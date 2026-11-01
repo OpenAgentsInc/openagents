@@ -1,0 +1,95 @@
+// The checks of fuzzing.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/fuzzing.coax
+#load "../fuzzing.coax";
+
+// book:begin check
+// xorshift64 outputs computed with Python's integers, masking each left
+// shift to 64 bits: the first four from seed 1, and the 1000th from the
+// JSON target's seed.
+#test "xorshift64 matches Python integers" {
+  rng := [1] u64.[1];
+  want := [4] u64.[0x40822041, 0x100041060c011441, 0x9b1e842f6e862629, 0xf554f503555d8025];
+  for w: want { #assert xorshift(rng[..]) == w; }
+  rng[0] = 20261101;
+  last: u64;
+  for i: 0..<1000 { last = xorshift(rng[..]); }
+  #assert last == 0x2a317c08f968e919;
+}
+// Each operation on "[1]", with the results a Python model of mutate_once
+// gives for the same r.
+mutated :: (r: u64, want: string) -> bool {
+  buf: [8] u8; buf[0] = '['; buf[1] = '1'; buf[2] = ']';
+  n := mutate_once(buf[..], 3, r);
+  return cast(string) buf[0..<n] == want;
+}
+#test "one mutation of each kind" {
+  #assert mutated(0x40822041, "[\"]");    // op 1: position 1 gets DICT[2]
+  #assert mutated(0x3, "1]");             // op 3: delete position 0
+  #assert mutated(0x4100000002, "A[1]");  // op 2: insert 0x41 at 0
+  #assert mutated(0x50000, "[1}");        // op 0: flip bit 5 of position 2
+}
+#test "an insert into a full buffer and a change of nothing keep the length" {
+  full: [3] u8; full[0] = 'a'; full[1] = 'b'; full[2] = 'c';
+  #assert mutate_once(full[..], 3, 0x2) == 3;
+  empty: [4] u8;
+  #assert mutate_once(empty[..], 0, 0x1) == 0 && mutate_once(empty[..], 0, 0x3) == 0;
+}
+// The probe reports reads at -1 and at n, and nothing for reads inside.
+#test "peek records out-of-bounds reads" {
+  b := [2] u8.[7, 9];
+  p: [1] Probe; p[0].bytes = b[..];
+  #assert peek(p[..], 1) == 9 && !p[0].oob;
+  #assert peek(p[..], 2) == 0 && p[0].oob;
+  p[0].oob = false;
+  #assert peek(p[..], -1) == 0 && p[0].oob;
+}
+// The two shrunk inputs, worked out by hand in the chapter.
+#test "the shrunk inputs give their findings" {
+  hits: [10] bool;
+  oob := [4] u8.[0, 0, 2, 0];
+  #assert probe(oob[..], false, hits[..]) == FIND_OOB;
+  #assert probe(oob[..], true, hits[..]) == FIND_NONE;
+  hang := [2] u8.[255, 0];
+  #assert probe(hang[..], false, hits[..]) == FIND_HANG;
+  #assert probe(hang[..], true, hits[..]) == FIND_NONE;
+}
+// For seeds 1 to 10 the guided fuzzer finds both bugs, and each finding
+// shrinks to the same input, which is 1-minimal: no single deletion or
+// zeroing keeps the finding.
+TSEED :: [8] u8.[0, 1, 'a', 1, 3, 'w', 's', 's'];
+#forall "each seed finds and shrinks both bugs" s: 1..<11 #steps 1000000000 {
+  seed := TSEED;
+  f := guided(seed[..], cast(u64) s, 20000, true, false);
+  want_len := [3] int.[0, 4, 2];
+  for kind: 1..<3 {
+    #assert f.at[kind] >= 0;
+    m := shrink(f.bytes[kind][..], f.count[kind], kind);
+    #assert m == want_len[kind];
+    hits: [10] bool; trial: [CAP] u8;
+    for i: 0..<m {
+      for k: 0..<i { trial[k] = f.bytes[kind][k]; }
+      for k: i + 1..<m { trial[k - 1] = f.bytes[kind][k]; }
+      #assert probe(trial[0..<m - 1], false, hits[..]) != kind;
+      if f.bytes[kind][i] != 0 {
+        for k: 0..<m { trial[k] = f.bytes[kind][k]; }
+        trial[i] = 0;
+        #assert probe(trial[0..<m], false, hits[..]) != kind;
+      }
+    }
+  }
+}
+// The fixed reader gives no finding for seeds 1 to 5.
+#forall "the fixed reader has no finding" s: 1..<6 #steps 1000000000 {
+  seed := TSEED;
+  f := guided(seed[..], cast(u64) s, 20000, true, true);
+  #assert f.at[1] < 0 && f.at[2] < 0;
+}
+// The JSON invariant holds on a complete text and on a cut one; the
+// reader refuses trailing bytes.
+#test "the JSON invariant on whole and cut texts" {
+  #assert json_ok("[1,{\"a\":\"b\"}]");
+  #assert json_ok("[1,");
+  #assert json_valid("[1]") && !json_valid("[1] x");
+}
+// book:end check

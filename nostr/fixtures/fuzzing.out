@@ -1,0 +1,20 @@
+xorshift64 from 1: 0x40822041 0x100041060c011441 0x9b1e842f6e862629
+"[1]" mutated with seed 1: "["]", JSON false
+json, event seed: seed 20261101, 3000 inputs, 1006 accepted, 0 findings
+json, filter seed: seed 20261102, 3000 inputs, 732 accepted, 0 findings
+filter: seed 20261103, 3000 inputs, 98 accepted, 0 findings
+event: seed 20261104, 1000 inputs, 13 accepted, 0 findings
+frames: seed 20261105, 3000 inputs, 2341 accepted, 0 findings
+nip19 nprofile TLV: seed 20261106, 3000 inputs, 695 accepted, 0 findings
+nip44 payload: seed 20261107, 1000 inputs, 2 accepted, 0 findings
+seed record: special "a", relay "wss": ok
+guided: corpus 7, branches 10, out-of-bounds read at input 2706, hang at input 580
+blind: branches 10, out-of-bounds read at input 106, hang at input 7075
+out-of-bounds read: 00 01 33 02 ca 01 03 75 73
+  shrunk: 00 00 02 00
+  buggy reader: ok, fixed reader: short
+hang: ff 00 ca 01 03 75 80 db
+  shrunk: ff 00
+  buggy reader: hang, fixed reader: ok
+seeds 1 to 20, inputs to find both: guided 44536, blind 80928
+fixed reader, 20000 inputs: branches 9, out-of-bounds read at input -1, hang at input -1

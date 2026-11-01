@@ -514,6 +514,16 @@
       ]
     },
     {
+      "source": "nostr/examples/fuzzing.coax",
+      "chapter": "nostr/book/ch095-fuzzing.md",
+      "stdout": "nostr/fixtures/fuzzing.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "nostr/examples/dev-nips.coax",
       "chapter": "nostr/book/ch091-git-signing-projects-leases-and-read-state.md",
       "stdout": "nostr/fixtures/dev-nips.out",

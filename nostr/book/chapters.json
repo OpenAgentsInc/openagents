@@ -1713,7 +1713,7 @@
    "number": 95,
    "title": "Fuzzing",
    "file": "ch095-fuzzing.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     17,
@@ -1724,7 +1724,9 @@
    "source": [
     "tools/coax-nostr/fuzz/differential.py",
     "tools/coax-nostr/fuzz/oracle.py",
-    "tools/coax-nostr/fuzz/run.sh"
+    "tools/coax-nostr/fuzz/run.sh",
+    "nostr/examples/fuzzing.coax",
+    "nostr/examples/checks/fuzzing.coax"
    ],
    "qualified_targets": [
     "cpu"

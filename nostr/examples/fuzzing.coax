@@ -1,0 +1,415 @@
+// book:begin example
+#load "../../coax/lib/nostr/filter_read.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/nip44.coax";
+#load "../../coax/lib/net/ws.coax";
+#import "Basic";
+
+// book:begin prng
+// xorshift64 (Marsaglia 2003, shifts 13, 7, 17). The state is never 0.
+// The same seed gives the same inputs on every machine and in every build.
+xorshift :: (rng: [] u64) -> u64 {
+  x := rng[0];
+  x ^= x << 13;
+  x ^= x >> 7;
+  x ^= x << 17;
+  rng[0] = x;
+  return x;
+}
+// book:end prng
+
+// book:begin mutate
+// Bytes that JSON, frames and TLVs give meaning to.
+DICT :: [16] u8.[0x00, 0xff, '"', '\\', '[', ']', '{', '}', ',', ':', '0', '-', 'e', 'u', 0x7f, 0x80];
+// One mutation of buf[0..<n] driven by r; returns the new length.
+// Bits 0-1 choose the operation, bits 8 and up the position, bits 16-19
+// the bit or the dictionary entry, bits 32-39 an inserted byte.
+mutate_once :: (buf: [] u8, n: int, r: u64) -> int {
+  op := cast(int) (r % 4);
+  if op == 2 {
+    if n >= buf.count { return n; }
+    at := cast(int) ((r >> 8) % cast(u64) (n + 1));
+    i := n;
+    while i > at { buf[i] = buf[i - 1]; i -= 1; }
+    buf[at] = cast,trunc(u8) (r >> 32);
+    return n + 1;
+  }
+  if n == 0 { return n; }
+  at := cast(int) ((r >> 8) % cast(u64) n);
+  if op == 0 { buf[at] ^= cast(u8) 1 << cast(u8) ((r >> 16) % 8); return n; }
+  if op == 1 { buf[at] = DICT[cast(int) ((r >> 16) % 16)]; return n; }
+  for i: at..<n - 1 { buf[i] = buf[i + 1]; }
+  return n - 1;
+}
+// Copy seed into buf and apply 1 to 4 mutations; bits 62-63 of the first
+// output say how many. Returns the length.
+mutate :: (seed: [] u8, buf: [] u8, rng: [] u64) -> int {
+  for i: 0..<seed.count { buf[i] = seed[i]; }
+  r := xorshift(rng);
+  n := mutate_once(buf, seed.count, r);
+  for k: 0..<cast(int) (r >> 62) { n = mutate_once(buf, n, xorshift(rng)); }
+  return n;
+}
+// book:end mutate
+
+// Print a label and bytes as lowercase hex, two digits a byte.
+show :: (label: string, bytes: [] u8) {
+  digits := "0123456789abcdef";
+  print("%:", label);
+  for b: bytes { print(" %", digits[b >> 4 ..< (b >> 4) + 1]); print("%", digits[b & 15 ..< (b & 15) + 1]); }
+  print("\n");
+}
+// Print a u64 as 0x and lowercase hex without leading zeros.
+print_hex64 :: (x: u64) {
+  digits := "0123456789abcdef";
+  print("0x");
+  shift := 60;
+  while shift > 0 && (x >> cast(u64) shift) == 0 { shift -= 4; }
+  while shift >= 0 { d := cast(int) ((x >> cast(u64) shift) & 15); print("%", digits[d..<d + 1]); shift -= 4; }
+}
+bytes_of :: (s: string, out: [] u8) -> int { for i: 0..<s.count { out[i] = s[i]; } return s.count; }
+
+// One target's run: inputs tried, inputs the reader accepted, findings.
+Run :: struct { inputs: int; accepted: int; findings: int; }
+report :: (name: string, seed: u64, r: Run) {
+  print("%: seed %, % inputs, % accepted, % findings\n", name, seed, r.inputs, r.accepted, r.findings);
+}
+
+// book:begin json
+// JSON (chapter 17): every token's bytes lie inside the input, the reader
+// stops within n + 1 tokens, and an accepted text stays accepted with a
+// space after it.
+json_ok :: (text: string) -> bool {
+  j: [1] Json; json_start(j[..], text);
+  tokens := 0; t := json_next(j[..]);
+  while t != JSON_END && t != JSON_ERROR {
+    if j[0].from < 0 || j[0].from > j[0].to || j[0].to > text.count { return false; }
+    tokens += 1;
+    if tokens > text.count + 1 { return false; }
+    t = json_next(j[..]);
+  }
+  return true;
+}
+fuzz_json :: (seed_text: string, seed: u64, inputs: int) -> Run {
+  rng := [1] u64.[seed]; s: [512] u8; buf: [520] u8; r: Run;
+  m := bytes_of(seed_text, s[..]);
+  for i: 0..<inputs {
+    n := mutate(s[0..<m], buf[0..<512], rng[..]);
+    text := cast(string) buf[0..<n];
+    r.inputs += 1;
+    if !json_ok(text) { r.findings += 1; continue; }
+    if json_valid(text) {
+      r.accepted += 1;
+      buf[n] = ' ';
+      if !json_valid(cast(string) buf[0..<n + 1]) { r.findings += 1; }
+    }
+  }
+  return r;
+}
+// book:end json
+
+// book:begin filter
+// Filters (chapter 23): what filter_read accepts, nf_write writes, and the
+// written text reads back and writes again to the same bytes.
+FSpace :: struct { strs: [32] string; ints: [32] int; tags: [8] NostrTagFilter; bytes: [2048] u8; }
+fread :: (text: string, f: [] NostrFilter, s: [] FSpace) -> int {
+  sp: [1] FrSpace;
+  sp[0] = FrSpace.{strs = s[0].strs[..], ints = s[0].ints[..], tags = s[0].tags[..], bytes = s[0].bytes[..]};
+  return filter_read(text, f, sp[..]);
+}
+fuzz_filter :: (seed_text: string, seed: u64, inputs: int) -> Run {
+  rng := [1] u64.[seed]; s: [512] u8; buf: [512] u8; r: Run;
+  m := bytes_of(seed_text, s[..]);
+  for i: 0..<inputs {
+    n := mutate(s[0..<m], buf[..], rng[..]);
+    r.inputs += 1;
+    a: [1] FSpace; f: [1] NostrFilter;
+    if fread(cast(string) buf[0..<n], f[..], a[..]) != FR_OK { continue; }
+    r.accepted += 1;
+    once: [1024] u8; twice: [1024] u8;
+    w := nf_write(f[0], once[..], false);
+    b: [1] FSpace; g: [1] NostrFilter;
+    if w < 0 || fread(cast(string) once[0..<w], g[..], b[..]) != FR_OK { r.findings += 1; continue; }
+    v := nf_write(g[0], twice[..], false);
+    if v != w || cast(string) twice[0..<v] != cast(string) once[0..<w] { r.findings += 1; }
+  }
+  return r;
+}
+// book:end filter
+
+// book:begin event
+// Events (chapter 21): an event ne_parse accepts serializes to valid JSON,
+// and nostr_event_read accepts only when the hash of that serialization is
+// the event's id, written inside the output.
+fuzz_event :: (seed_text: string, seed: u64, inputs: int) -> Run {
+  rng := [1] u64.[seed]; s: [512] u8; buf: [512] u8; out: [1024] u8; r: Run;
+  m := bytes_of(seed_text, s[..]);
+  for i: 0..<inputs {
+    n := mutate(s[0..<m], buf[..], rng[..]);
+    text := cast(string) buf[0..<n];
+    r.inputs += 1;
+    e := ne_parse(text);
+    if e.error != NE_OK { continue; }
+    w := ne_serialize(e, out[..]);
+    if w < 0 || !json_valid(cast(string) out[0..<w]) { r.findings += 1; continue; }
+    read := nostr_event_read(text, out[..], false);
+    if read.error != NE_OK { continue; }
+    r.accepted += 1;
+    if read.written != w || !ne_same_id(read) { r.findings += 1; }
+  }
+  return r;
+}
+// book:end event
+
+// book:begin frames
+// WebSocket frames (chapter 26): a frame ws_frame_read accepts never ends
+// past the bytes it was given, and its header is inside the frame. An input
+// counts as accepted when its first frame is.
+fuzz_frames :: (seed_hex: [] u8, seed: u64, inputs: int) -> Run {
+  rng := [1] u64.[seed]; buf: [64] u8; msg: [16] u8; r: Run;
+  for i: 0..<inputs {
+    n := mutate(seed_hex, buf[..], rng[..]);
+    r.inputs += 1;
+    reader: [1] WsReader; at := 0;
+    while at < n {
+      f := ws_frame_read(cast(string) buf[at..<n], msg.count);
+      if f.status != WS_FRAME_OK { break; }
+      if f.header > f.total || f.total > n - at { r.findings += 1; break; }
+      if at == 0 { r.accepted += 1; }
+      ev := ws_take(reader[..], f, cast(string) buf[at + f.header..<at + f.total], msg[..]);
+      at += f.total;
+      if ev >= WS_EV_CONTINUATION { break; }
+    }
+  }
+  return r;
+}
+// book:end frames
+
+// book:begin nip19
+// NIP-19 TLVs (chapter 16): TLV bytes that nprofile encoding accepts decode
+// back to the same bytes.
+fuzz_nip19 :: (seed_bytes: [] u8, seed: u64, inputs: int) -> Run {
+  rng := [1] u64.[seed]; buf: [160] u8; text: [400] u8; back: [160] u8; r: Run;
+  for i: 0..<inputs {
+    n := mutate(seed_bytes, buf[..], rng[..]);
+    r.inputs += 1;
+    e := nip19_encode_checked(N19_PROFILE, cast(string) buf[0..<n], text[..], false);
+    if e.error != NC_OK { continue; }
+    r.accepted += 1;
+    d := nip19_decode_checked(cast(string) text[0..<e.written], back[..], false);
+    if d.error != NC_OK || d.written != n || cast(string) back[0..<n] != cast(string) buf[0..<n] { r.findings += 1; }
+  }
+  return r;
+}
+// book:end nip19
+
+// book:begin nip44
+// NIP-44 payloads (chapter 20): a changed payload either is refused or
+// decrypts to the original plaintext. The MAC allows nothing else.
+fuzz_nip44 :: (key: [] u8, payload: string, plain: string, seed: u64, inputs: int) -> Run {
+  rng := [1] u64.[seed]; s: [200] u8; buf: [200] u8; work: [512] u8; out: [256] u8; r: Run;
+  m := bytes_of(payload, s[..]);
+  for i: 0..<inputs {
+    n := mutate(s[0..<m], buf[..], rng[..]);
+    r.inputs += 1;
+    d := nip44_decrypt_checked(NIP44_COMPAT, key, cast(string) buf[0..<n], work[..], out[..], false);
+    if d.error != NIP44_OK { continue; }
+    r.accepted += 1;
+    if cast(string) out[0..<d.written] != plain { r.findings += 1; }
+  }
+  return r;
+}
+// book:end nip44
+
+// book:begin planted
+// A toy TLV reader with two planted bugs. Each byte is read through peek,
+// which records an out-of-bounds index the way AddressSanitizer reports
+// one, and each branch marks its slot in hits for coverage.
+TLV_OK :: 0; TLV_SHORT :: 1; TLV_ORDER :: 2; TLV_HANG :: 3;
+Probe :: struct { bytes: []u8; oob: bool; hits: [10] bool; }
+peek :: (p: [] Probe, i: int) -> u8 {
+  if i < 0 || i >= p[0].bytes.count { p[0].oob = true; return 0; }
+  return p[0].bytes[i];
+}
+// Records: type 0 (special, first), type 1 (relay), type 2 (author, 32
+// bytes, after the special), type 255 (padding), others skipped. fixed
+// false keeps the two bugs: type 2 trusts its type and reads 32 bytes, and
+// padding forgets its 2-byte header, so a zero-length pad never advances.
+// The loop gives up after n + 1 records: no valid input needs more.
+tlv_read :: (p: [] Probe, fixed: bool) -> int {
+  n := p[0].bytes.count; at := 0; special := false; records := 0; sum := 0;
+  p[0].hits[0] = true;
+  while at < n {
+    records += 1;
+    if records > n + 1 { p[0].hits[9] = true; return TLV_HANG; }
+    if at + 2 > n { p[0].hits[1] = true; return TLV_SHORT; }
+    t := peek(p, at); size := cast(int) peek(p, at + 1);
+    if t == 2 {
+      if !special { p[0].hits[2] = true; return TLV_ORDER; }
+      p[0].hits[3] = true;
+      if fixed && (size != 32 || at + 2 + size > n) { return TLV_SHORT; }
+      for i: 0..<32 { sum += cast(int) peek(p, at + 2 + i); }
+      at += 34;
+      continue;
+    }
+    if at + 2 + size > n { p[0].hits[4] = true; return TLV_SHORT; }
+    if t == 0 { p[0].hits[5] = true; special = true; }
+    else if t == 1 { p[0].hits[6] = true; }
+    else if t == 255 { p[0].hits[7] = true; at += size; if fixed { at += 2; } continue; }
+    else { p[0].hits[8] = true; }
+    for i: 0..<size { sum += cast(int) peek(p, at + 2 + i); }
+    at += 2 + size;
+  }
+  return TLV_OK;
+}
+// What one input does: 0 nothing wrong, 1 an out-of-bounds read, 2 a hang.
+FIND_NONE :: 0; FIND_OOB :: 1; FIND_HANG :: 2;
+FIND :: [3] string.["none", "out-of-bounds read", "hang"];
+probe :: (bytes: [] u8, fixed: bool, hits: [] bool) -> int {
+  p: [1] Probe; p[0].bytes = bytes;
+  status := tlv_read(p[..], fixed);
+  for i: 0..<10 { hits[i] = p[0].hits[i]; }
+  if p[0].oob { return FIND_OOB; }
+  if status == TLV_HANG { return FIND_HANG; }
+  return FIND_NONE;
+}
+// book:end planted
+
+// book:begin guided
+// Coverage-guided fuzzing of the TLV reader. The corpus starts with one
+// seed; an input that reaches a branch no earlier input reached joins it.
+// The first input of each finding kind is kept. Returns the input index
+// at which both kinds were found, or -1.
+CAP :: 48;
+Found :: struct { at: [3] int; bytes: [3] [CAP] u8; count: [3] int; corpus: int; covered: int; }
+guided :: (seed_bytes: [] u8, seed: u64, inputs: int, keep: bool, fixed: bool) -> Found {
+  corpus: [64] [CAP] u8; lens: [64] int; seen: [10] bool; found: Found;
+  for i: 0..<seed_bytes.count { corpus[0][i] = seed_bytes[i]; }
+  lens[0] = seed_bytes.count; found.corpus = 1;
+  found.at[1] = -1; found.at[2] = -1;
+  rng := [1] u64.[seed]; buf: [CAP] u8; hits: [10] bool;
+  for i: 0..<inputs {
+    c := cast(int) (xorshift(rng[..]) % cast(u64) found.corpus);
+    n := mutate(corpus[c][0..<lens[c]], buf[..], rng[..]);
+    kind := probe(buf[0..<n], fixed, hits[..]);
+    if kind != FIND_NONE && found.at[kind] < 0 {
+      found.at[kind] = i; found.count[kind] = n;
+      for k: 0..<n { found.bytes[kind][k] = buf[k]; }
+    }
+    fresh := false;
+    for b: 0..<10 { if hits[b] && !seen[b] { seen[b] = true; fresh = true; } }
+    if keep && fresh && kind == FIND_NONE && found.corpus < 64 {
+      for k: 0..<n { corpus[found.corpus][k] = buf[k]; }
+      lens[found.corpus] = n; found.corpus += 1;
+    }
+    if found.at[1] >= 0 && found.at[2] >= 0 { break; }
+  }
+  for b: 0..<10 { if seen[b] { found.covered += 1; } }
+  return found;
+}
+// book:end guided
+
+// book:begin shrink
+// Shrink an input while it still gives the same finding: try deleting
+// each byte, then setting each byte to 0, until neither helps. The result
+// is 1-minimal: no single deletion or zeroing keeps the finding.
+shrink :: (bytes: [] u8, count: int, kind: int) -> int {
+  n := count;
+  hits: [10] bool; trial: [CAP] u8;
+  changed := true;
+  while changed {
+    changed = false;
+    i := 0;
+    while i < n {
+      for k: 0..<i { trial[k] = bytes[k]; }
+      for k: i + 1..<n { trial[k - 1] = bytes[k]; }
+      if probe(trial[0..<n - 1], false, hits[..]) == kind {
+        for k: 0..<n - 1 { bytes[k] = trial[k]; }
+        n -= 1; changed = true;
+      } else { i += 1; }
+    }
+    for k: 0..<n {
+      if bytes[k] == 0 { continue; }
+      old := bytes[k]; bytes[k] = 0;
+      if probe(bytes[0..<n], false, hits[..]) == kind { changed = true; } else { bytes[k] = old; }
+    }
+  }
+  return n;
+}
+// book:end shrink
+
+// The input at which the second of the two bugs was found, or 20000.
+both_at :: (f: Found) -> int {
+  if f.at[1] < 0 || f.at[2] < 0 { return 20000; }
+  return ifx f.at[1] > f.at[2] then f.at[1] + 1 else f.at[2] + 1;
+}
+STATUS :: [4] string.["ok", "short", "order", "hang"];
+read_status :: (bytes: [] u8, fixed: bool) -> string {
+  p: [1] Probe; p[0].bytes = bytes;
+  return STATUS[tlv_read(p[..], fixed)];
+}
+key_of :: (hex: string) -> [32] u8 {
+  b: [32] u8;
+  #assert hex_decode_checked(hex, b[..], false).error == 0;
+  return b;
+}
+
+FILTER :: "{\"ids\":[\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],\"kinds\":[1,30617],\"#d\":[\"coax\",\"a\\\"b\"],\"since\":10,\"limit\":0}";
+EVENT :: "{\"id\":\"ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":1,\"tags\":[[\"t\",\"nostr\"]],\"content\":\"hi\\n\\\"x\\\"\\\\\\u0001\",\"sig\":\"434d7839f0efb03875c96af21ea07b0428860602ad04729cf57d78f336902ef31e3e4b743b49aec045db97a91b8c70012da8fa21679ee701b88572dc05079494\"}";
+NPROFILE :: "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p";
+SEALED_KEY :: "d5a2f879123145a4b291d767428870f5a8d9e5007193321795b40183d4ab8c2b";
+SEALED_PAYLOAD :: "ArIJia3D3cQc0sQ1lSwNWakTFdjFIY1QQFc/w3SVQ6yvbG2S0x4Yu86QGwPTy7mP3961I1XqB6SFFTzqDZZavhxoWMj7mEVGMQIsh2RLWI5EYQaQDIePSnXPlzf7CIt+voTD";
+SEALED_PLAIN :: "ability🤝的 ȺȾ";
+
+// book:begin main
+main :: () {
+  // The generator's first outputs from seed 1, and one mutation of "[1]".
+  rng := [1] u64.[1];
+  print("xorshift64 from 1:");
+  for i: 0..<3 { print(" "); print_hex64(xorshift(rng[..])); }
+  print("\n");
+  rng[0] = 1;
+  seed: [3] u8; #assert bytes_of("[1]", seed[..]) == 3; buf: [8] u8;
+  n := mutate(seed[..], buf[..], rng[..]);
+  print("\"[1]\" mutated with seed 1: \"%\", JSON %\n", cast(string) buf[0..<n], json_valid(cast(string) buf[0..<n]));
+
+  // Every reader for a fixed budget, each with its seed.
+  report("json, event seed", 20261101, fuzz_json(EVENT, 20261101, 3000));
+  report("json, filter seed", 20261102, fuzz_json(FILTER, 20261102, 3000));
+  report("filter", 20261103, fuzz_filter(FILTER, 20261103, 3000));
+  report("event", 20261104, fuzz_event(EVENT, 20261104, 1000));
+  frames: [18] u8; #assert hex_decode_checked("010348656c89017000016c80016f880203e8", frames[..], false).error == 0;
+  report("frames", 20261105, fuzz_frames(frames[..], 20261105, 3000));
+  tlv: [160] u8; d := nip19_decode_checked(NPROFILE, tlv[..], false);
+  report("nip19 nprofile TLV", 20261106, fuzz_nip19(tlv[0..<d.written], 20261106, 3000));
+  key := key_of(SEALED_KEY);
+  report("nip44 payload", 20261107, fuzz_nip44(key[..], SEALED_PAYLOAD, SEALED_PLAIN, 20261107, 1000));
+
+  // The planted bugs: coverage-guided, then blind, from the same seed.
+  tseed := [8] u8.[0, 1, 'a', 1, 3, 'w', 's', 's'];
+  print("seed record: special \"a\", relay \"wss\": %\n", read_status(tseed[..], false));
+  g := guided(tseed[..], 7, 20000, true, false);
+  print("guided: corpus %, branches %, out-of-bounds read at input %, hang at input %\n", g.corpus, g.covered, g.at[1], g.at[2]);
+  blind := guided(tseed[..], 7, 20000, false, false);
+  print("blind: branches %, out-of-bounds read at input %, hang at input %\n", blind.covered, blind.at[1], blind.at[2]);
+  for kind: 1..<3 {
+    if g.at[kind] < 0 { continue; }
+    show(FIND[kind], g.bytes[kind][0..<g.count[kind]]);
+    m := shrink(g.bytes[kind][..], g.count[kind], kind);
+    show("  shrunk", g.bytes[kind][0..<m]);
+    print("  buggy reader: %, fixed reader: %\n", read_status(g.bytes[kind][0..<m], false), read_status(g.bytes[kind][0..<m], true));
+  }
+  // Inputs until both bugs are found, summed over seeds 1 to 20 (20000
+  // counted when a run doesn't find both).
+  sum_guided := 0; sum_blind := 0;
+  for s: 1..<21 {
+    a := guided(tseed[..], cast(u64) s, 20000, true, false);
+    b := guided(tseed[..], cast(u64) s, 20000, false, false);
+    sum_guided += both_at(a); sum_blind += both_at(b);
+  }
+  print("seeds 1 to 20, inputs to find both: guided %, blind %\n", sum_guided, sum_blind);
+  fixed := guided(tseed[..], 7, 20000, true, true);
+  print("fixed reader, 20000 inputs: branches %, out-of-bounds read at input %, hang at input %\n", fixed.covered, fixed.at[1], fixed.at[2]);
+}
+// book:end main
+// book:end example
