@@ -1,0 +1,50 @@
+// The checks of private-agent-state.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test nostr/examples/checks/private-agent-state.coax --run-steps 250000000
+#load "../private-agent-state.coax";
+
+// book:begin check
+// Copied from NIP-AE's "Reference test vectors" (nostr/nips/block/NIP-AE.md),
+// not from any code: K_c, the three d tags, and events 1 and 3's ids and
+// signatures. coax/tests/nostr/private_state_vectors.py reproduces every one
+// of them with nip59_reference.py's integer secp256k1, ChaCha20 and BIP-340
+// and hashlib's HMAC before it writes a vector.
+NIP_KC :: "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d";
+NIP_D_CORE :: "bdc233238ffe52e272b44cc233c8f33a2bc510b08be04495b225964283be4a90";
+NIP_D_EXAMPLE :: "72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba";
+NIP_D_NOTES :: "31651571a312780cfdc1f0b706b682ac9f3f51a053e8dca76fe57710bae5a4d4";
+NIP_E1_ID :: "f4a594177b7aeea4fe99a09efbf74ae85f0126244f322135682c405888a38689";
+NIP_E1_SIG :: "0a4582f0bc5995b9a010afda5984f568055988ebbe4552b4e0ec6d11aeb2b303af940f3d84726a7edd1763badb284eb3aa8457664ceba85a90d6252ed4b494cb";
+NIP_E3_ID :: "c8604bef05295856a67a88ec895e07b5b47a2febc23c82934734096a7b123b63";
+NIP_E3_SIG :: "c8d53859cf08b3a9a20a5b01c61d12fa2f082f462adb635420f05dc6f9bb662a174e729023854bf53e5e35fae8f6f4c9d604e8979a070e298cd77cfb7e6b6468";
+NIP_E1_CONTENT :: "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABedgcxyfmpph68LBjCWZsTI5lb0Cbg8dIPVYVe/WVj/l4Yd8HGgzC8awyBi9bn9ClRdtd2IPsmont0jN/cajVSQhahTOwuNNwoJtZIg35aSsUzeCq4tQfd8E+fLoKomdPxjs=";
+// The canary engram's id as the Python reference signs it.
+PY_CANARY_ID :: "edacb6c761c8361cc35bf0229c1f4c3052ef11a7eda4e509340eb75417a48415";
+
+#test "the example's two versions are NIP-AE's events 1 and 3" #steps 2000000000 {
+  w:[1]AeWork;none:AeRecord;b1:[4096]u8;b2:[4096]u8;st:[4096]u8;cb:[4096]u8;
+  e1:=seal_at("mem/example",PSV_BODY1,1700000000,none,1,w[..],b1[..]).text;
+  v1:=open_as(e1,PSV_AGENT_SECRET,false,w[..],st[..]);
+  e2:=seal_at("mem/example",PSV_BODY3,1700000002,v1,3,w[..],b2[..]).text;
+  #assert ps_contains(e1,NIP_E1_ID) && ps_contains(e1,NIP_E1_SIG) && ps_contains(e1,NIP_E1_CONTENT);
+  #assert ps_contains(e2,NIP_E3_ID) && ps_contains(e2,NIP_E3_SIG) && ps_contains(e2,"\"created_at\":1700000002");
+  #assert v1.d==NIP_D_EXAMPLE && PSV_KC==NIP_KC && PSV_D_CORE==NIP_D_CORE && PSV_D_NOTES==NIP_D_NOTES;
+  c:=seal_at("mem/canary",PSV_CANARY_BODY,1700000004,none,5,w[..],cb[..]).text;#assert ps_contains(c,PY_CANARY_ID) && c==PSV_CANARY_EVENT;
+  // The rollback by hand: version 1 (1700000000) is not newer than version 2 (1700000002).
+  #assert ae_accept(open_as(e2,PSV_OWNER_SECRET,true,w[..],st[..]),open_as(e1,PSV_OWNER_SECRET,true,w[..],cb[..]))==AE_STALE;
+}
+
+// NIP-AO's examples are illustrative: the wire events carry "a1b2c3d4..."
+// for the id, "agent_pubkey_hex" for keys and "<NIP-44 v2 ciphertext>" for
+// content, so read as published they refuse before any other check. Their
+// decrypted payloads are well formed: they are PSV_TELEMETRY_BODY and
+// PSV_CONTROL_BODY, which the Python reference sealed.
+NIP_AO_WIRE :: "{\"id\":\"a1b2c3d4...\",\"kind\":24200,\"pubkey\":\"agent_pubkey_hex\",\"created_at\":1777464041,\"content\":\"<NIP-44 v2 ciphertext>\",\"tags\":[[\"p\",\"owner_pubkey_hex\"],[\"agent\",\"agent_pubkey_hex\"],[\"frame\",\"telemetry\"]],\"sig\":\"...\"}";
+#test "NIP-AO's examples" #steps 2000000000 {
+  s:[8192]u8;p:=[1]AoPair.[AoPair.{agent=PSV_AGENT_X,owner=PSV_OWNER_X}];
+  #assert ao_admit(NIP_AO_WIRE,p[..],1777464041,s[..]).error==AO_EVENT;
+  w:[1]AoWork;st:[4096]u8;a:=[1]AoText.[AoText.{buf=st[..]}];t:AoOpened;t.frame=AO_TELEMETRY;k:AoOpened;k.frame=AO_CONTROL;
+  r:=ao_read(PSV_TELEMETRY_BODY,t,w[..],a[..]);#assert r.error==AO_FANOUT && r.name=="acp_write" && r.seq==42;
+  r=ao_read(PSV_CONTROL_BODY,k,w[..],a[..]);#assert r.error==AO_FANOUT && r.name=="cancel_turn";
+}
+// book:end check

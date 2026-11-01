@@ -1,0 +1,41 @@
+-- the agent writes mem/example twice
+write mem/example at 1700000000: event f4a594177b7aeea4…
+write mem/example at 1700000002: event c8604bef05295856…
+same second again: created_at 1700000003
+-- the owner reads
+owner, version 1: mem/example at 1700000000: "hello, agent memory"
+owner, version 2: mem/example at 1700000002: tombstone (absent)
+d tag: 72d4f96291064515…
+head: version 2 (created_at 1700000002)
+replayed version 1: stale
+a head 601 s ahead of the clock: conflict
+-- refused
+stranger reads version 1: refused: decrypt
+stranger's engram: refused: author
+engram for another owner: refused: tags
+d from another slug: refused: address
+repeated member name: refused: json
+value 7: refused: shape
+slug mem/Example: refused: slug
+-- the relay routes each event
+write mem/canary at 1700000004: event edacb6c761c8361c…
+engram v1: stored (fan out)
+engram v2: stored (fan out)
+canary engram: stored (fan out)
+telemetry: memory only (fan out)
+control: memory only (fan out)
+canary frame: memory only (fan out)
+stranger's frame: refused (AUTH required)
+PMA 30179: refused (reserved)
+snapshot: 2105 bytes, 0 frames of kind 24200
+audit log:
+stored kind 30174 id f4a594177b7aeea4fe99a09efbf74ae85f0126244f322135682c405888a38689 bytes 687
+stored kind 30174 id c8604bef05295856a67a88ec895e07b5b47a2febc23c82934734096a7b123b63 bytes 687
+stored kind 30174 id edacb6c761c8361cc35bf0229c1f4c3052ef11a7eda4e509340eb75417a48415 bytes 731
+refused 8
+-- the canary
+owner decrypts the engram: ok, canary true
+owner decrypts the frame: acp_read seq 43, canary true
+canary in the snapshot: false
+canary in the audit log: false
+canary frame's id in the snapshot or log: false

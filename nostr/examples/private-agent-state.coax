@@ -1,0 +1,129 @@
+// Chapter 92: an agent's private memory, its live telemetry, and a relay
+// that keeps the one and forgets the other. The agent writes two versions
+// of mem/example (NIP-AE), its owner reads them and refuses a replayed
+// older version; the relay stores the engrams as ciphertext, fans the
+// observer frames out in memory only (NIP-AO) and refuses the NIP-PMA
+// reservation; and a canary written into one engram and one frame shows up
+// in what the owner decrypts and nowhere in the relay's snapshot or audit
+// log. Keys are the scalars 1 (the agent), 2 (the owner) and 3 (a
+// stranger), NIP-AE's own test keys: TEST ONLY. The frames were signed in
+// Python (coax/tests/nostr/private_state_vectors.coax).
+#load "../../coax/lib/nostr/nipae.coax";
+#load "../../coax/lib/nostr/nipao.coax";
+#import "Basic";
+
+AE_WORDS :: [15]string.["ok","input","event id","signature","kind","author","tags","decrypt","json","slug","address","shape","limit","stale","conflict"];
+AO_WORDS :: [13]string.["fan out","drop","event id","signature","kind","tags","AUTH required","stale","reserved","full","decrypt","shape","ignored"];
+ROUTE_WORDS :: [5]string.["stored","memory only","dropped","refused","ephemeral"];
+RELAY_NOW :: 1777464050;
+
+key_of :: (hex:string)->[32]u8 {
+  k:[32]u8;
+  for i:0..<32 {
+    hi:=hex[2*i];lo:=hex[2*i+1];
+    h:=ifx hi>='a' then cast(int)(hi-'a')+10 else cast(int)(hi-'0');
+    l:=ifx lo>='a' then cast(int)(lo-'a')+10 else cast(int)(lo-'0');
+    k[i]=cast(u8)(h*16+l);
+  }
+  return k;
+}
+nonce_of :: (n:int)->[32]u8 {k:[32]u8;k[31]=cast(u8)n;return k;}
+
+// book:begin write
+// The agent writes body at slug: created_at from the head it holds and its
+// clock, then seal and sign. The signed event goes to out; "" when refused.
+WriteResult :: struct {error:u32; created_at:int; text:string;}
+seal_at :: (slug:string,body:string,now:int,head:AeRecord,n:int,w:[]AeWork,out:[]u8)->WriteResult {
+  r:WriteResult;when:=ae_write_at(now,head);r.created_at=when.created_at;
+  r.error=when.error;if when.error!=AE_OK {return r;}
+  sk:=key_of(PSV_AGENT_SECRET);ox:=key_of(PSV_OWNER_X);nonce:=nonce_of(n);aux:[32]u8;
+  s:=ae_seal(slug,body,sk[..],ox[..],nonce[..],aux[..],when.created_at,w,out);
+  r.error=s.error;if s.error==AE_OK {r.text=cast(string)out[0..<s.written];}
+  return r;
+}
+agent_write :: (slug:string,body:string,now:int,head:AeRecord,n:int,w:[]AeWork,out:[]u8)->string {
+  r:=seal_at(slug,body,now,head,n,w,out);
+  if r.error!=AE_OK {print("write %: %\n",slug,AE_WORDS[r.error]);return "";}
+  print("write % at %: event %…\n",slug,r.created_at,r.text[7..<23]);
+  return r.text;
+}
+// book:end write
+
+// book:begin read
+// Opens text as the owner (or the agent, or a stranger by secret).
+open_as :: (text:string,secret_hex:string,as_owner:bool,w:[]AeWork,store:[]u8)->AeRecord {
+  a:=[1]AeText.[AeText.{buf=store}];
+  sk:=key_of(secret_hex);ax:=key_of(PSV_AGENT_X);ox:=key_of(PSV_OWNER_X);
+  return ae_open(text,sk[..],ax[..],ox[..],as_owner,w,a[..]);
+}
+show_record :: (who:string,r:AeRecord) {
+  if r.error!=AE_OK {print("%: refused: %\n",who,AE_WORDS[r.error]);}
+  else if r.tombstone {print("%: % at %: tombstone (absent)\n",who,r.slug,r.created_at);}
+  else {print("%: % at %: \"%\"\n",who,r.slug,r.created_at,r.value);}
+}
+// book:end read
+
+main :: () {
+  w:[1]AeWork;none:AeRecord;
+  e1buf:[4096]u8;e2buf:[4096]u8;cbuf:[4096]u8;s1:[4096]u8;s2:[4096]u8;s3:[4096]u8;s4:[4096]u8;
+
+  print("-- the agent writes mem/example twice\n");
+  // book:begin versions
+  e1:=agent_write("mem/example",PSV_BODY1,1700000000,none,1,w[..],e1buf[..]);
+  v1:=open_as(e1,PSV_AGENT_SECRET,false,w[..],s1[..]);
+  e2:=agent_write("mem/example",PSV_BODY3,1700000002,v1,3,w[..],e2buf[..]);
+  print("same second again: created_at %\n",ae_write_at(1700000002,open_as(e2,PSV_AGENT_SECRET,false,w[..],s2[..])).created_at);
+  // book:end versions
+
+  print("-- the owner reads\n");
+  // book:begin owner
+  r1:=open_as(e1,PSV_OWNER_SECRET,true,w[..],s1[..]);show_record("owner, version 1",r1);
+  r2:=open_as(e2,PSV_OWNER_SECRET,true,w[..],s2[..]);show_record("owner, version 2",r2);
+  print("d tag: %…\n",r2.d[0..<16]);
+  rs:=[2]AeRecord.[r1,r2];h:=ae_head(rs[..],r1.d);
+  print("head: version % (created_at %)\n",h+1,rs[h].created_at);
+  // A relay replays version 1 to the owner, who holds version 2.
+  print("replayed version 1: %\n",AE_WORDS[ae_accept(r2,r1)]);
+  // book:end owner
+  poisoned:=r2;poisoned.created_at=1700000002+601;
+  print("a head 601 s ahead of the clock: %\n",AE_WORDS[ae_write_at(1700000002,poisoned).error]);
+
+  print("-- refused\n");
+  show_record("stranger reads version 1",open_as(e1,PSV_STRANGER_SECRET,true,w[..],s3[..]));
+  show_record("stranger's engram",open_as(PSV_AE_STRANGER,PSV_OWNER_SECRET,true,w[..],s3[..]));
+  show_record("engram for another owner",open_as(PSV_AE_OTHER_OWNER,PSV_OWNER_SECRET,true,w[..],s3[..]));
+  show_record("d from another slug",open_as(PSV_AE_WRONG_D,PSV_OWNER_SECRET,true,w[..],s3[..]));
+  show_record("repeated member name",open_as(PSV_AE_DUPLICATE,PSV_OWNER_SECRET,true,w[..],s3[..]));
+  show_record("value 7",open_as(PSV_AE_SHAPE,PSV_OWNER_SECRET,true,w[..],s3[..]));
+  show_record("slug mem/Example",open_as(PSV_AE_SLUG,PSV_OWNER_SECRET,true,w[..],s3[..]));
+
+  print("-- the relay routes each event\n");
+  // book:begin relay
+  canary:=agent_write("mem/canary",PSV_CANARY_BODY,1700000004,none,5,w[..],cbuf[..]);
+  pairs:=[1]AoPair.[AoPair.{agent=PSV_AGENT_X,owner=PSV_OWNER_X}];
+  events:=[8]string.[e1,e2,canary,PSV_TELEMETRY,PSV_CONTROL,PSV_CANARY_FRAME,PSV_AO_STRANGER,PSV_PMA];
+  names:=[8]string.["engram v1","engram v2","canary engram","telemetry","control","canary frame","stranger's frame","PMA 30179"];
+  snapshot:[16384]u8;at:=0;audit:[2048]u8;logged:=0;scratch:[8192]u8;frames_stored:=0;
+  for i:0..<8 {
+    r:=ps_route(events[i],pairs[..],RELAY_NOW,scratch[..],snapshot[at..<16384]);
+    at+=r.written;logged+=ps_log(r,audit[logged..<2048]);
+    if r.kind==AO_KIND_FRAME && r.written>0 {frames_stored+=1;}
+    print("%: % (%)\n",names[i],ROUTE_WORDS[r.route],AO_WORDS[r.error]);
+  }
+  print("snapshot: % bytes, % frames of kind 24200\n",at,frames_stored);
+  print("audit log:\n%",cast(string)audit[0..<logged]);
+  // book:end relay
+
+  print("-- the canary\n");
+  // book:begin canary
+  aw:[1]AoWork;fs:[4096]u8;fa:=[1]AoText.[AoText.{buf=fs[..]}];osk:=key_of(PSV_OWNER_SECRET);
+  mem:=open_as(canary,PSV_OWNER_SECRET,true,w[..],s4[..]);
+  frame:=ao_open(PSV_CANARY_FRAME,osk[..],PSV_OWNER_X,PSV_AGENT_X,aw[..],fa[..]);
+  print("owner decrypts the engram: %, canary %\n",AE_WORDS[mem.error],ps_contains(mem.value,PSV_CANARY));
+  print("owner decrypts the frame: % seq %, canary %\n",frame.name,frame.seq,ps_contains(frame.payload,PSV_CANARY));
+  print("canary in the snapshot: %\n",ps_contains(cast(string)snapshot[0..<at],PSV_CANARY));
+  print("canary in the audit log: %\n",ps_contains(cast(string)audit[0..<logged],PSV_CANARY));
+  print("canary frame's id in the snapshot or log: %\n",
+    ps_contains(cast(string)snapshot[0..<at],PSV_CANARY_FRAME_ID) || ps_contains(cast(string)audit[0..<logged],PSV_CANARY_FRAME_ID));
+  // book:end canary
+}

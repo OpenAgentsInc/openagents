@@ -1,0 +1,46 @@
+// Helpers for the checks of coax/lib/nostr/nipae.coax, kept apart so
+// root-only mutation mutates the engram code, not these.
+aet_key :: (hex:string)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=cast(u8)(aet_nib(hex[2*i])*16+aet_nib(hex[2*i+1]));}return k;}
+aet_nib :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+aet_nonce :: (n:int)->[32]u8 {k:[32]u8;k[31]=cast(u8)n;return k;}
+aet_repeat :: (c:u8,n:int,out:[]u8)->string {for i:0..<n {out[i]=c;}return cast(string)out[0..<n];}
+// Opens text as the agent (as_owner false) or the owner, with that party's secret.
+aet_open :: (text:string,as_owner:bool,w:[]AeWork,store:[]u8)->AeRecord {
+  return aet_open_with(text,ifx as_owner then PSV_OWNER_SECRET else PSV_AGENT_SECRET,as_owner,w,store);
+}
+aet_open_with :: (text:string,secret_hex:string,as_owner:bool,w:[]AeWork,store:[]u8)->AeRecord {
+  a:=[1]AeText.[AeText.{buf=store}];
+  sk:=aet_key(secret_hex);ax:=aet_key(PSV_AGENT_X);ox:=aet_key(PSV_OWNER_X);
+  return ae_open(text,sk[..],ax[..],ox[..],as_owner,w,a[..]);
+}
+// The agent seals body at slug for the owner, NIP-44 nonce n, aux zero.
+aet_seal :: (slug:string,body:string,at:int,n:int,w:[]AeWork,out:[]u8)->AeSealed {
+  sk:=aet_key(PSV_AGENT_SECRET);ox:=aet_key(PSV_OWNER_X);nonce:=aet_nonce(n);aux:[32]u8;
+  return ae_seal(slug,body,sk[..],ox[..],nonce[..],aux[..],at,w,out);
+}
+aet_text :: (r:AeSealed,out:[]u8)->string {return cast(string)out[0..<r.written];}
+// One body read under the published K_c, its d derived from d_slug.
+aet_body :: (body:string,d_slug:string,store:[]u8)->AeBody {
+  ck:=aet_key(PSV_KC);h:[64]u8;d:=ae_derive(ck[..],d_slug,h[..]);
+  a:=[1]AeText.[AeText.{buf=store}];return ae_body(body,ck[..],d,a[..]);
+}
+aet_tags :: (tags:string)->bool {d:[64]u8;return ae_tags(tags,PSV_OWNER_X,d[..]);}
+aet_rec :: (event:string,at:int,d:string)->AeRecord {r:AeRecord;r.error=AE_OK;r.event=event;r.created_at=at;r.d=d;return r;}
+// text with the byte at position i (from the end when i < 0) replaced by c.
+aet_patch :: (text:string,i:int,c:u8,out:[]u8)->string {
+  for k:0..<text.count {out[k]=text[k];}
+  at:=ifx i<0 then text.count+i else i;out[at]=c;return cast(string)out[0..<text.count];
+}
+aet_find :: (text:string,s:string)->int {
+  for i:0..<text.count-s.count+1 {if text[i..<i+s.count]==s {return i;}}
+  return -1;
+}
+aet_zero :: (b:[]u8)->bool {for c:b {if c!=0 {return false;}}return true;}
+aet_zeroed :: (w:[]AeWork)->bool {
+  return aet_zero(w[0].pre[..]) && aet_zero(w[0].body[..]) && aet_zero(w[0].cipher[..]) && aet_zero(w[0].scratch[..]) && aet_zero(w[0].ck[..]);
+}
+// Every field written, so a missing clear shows.
+aet_dirty :: (w:[]AeWork) {
+  w[0].pre[0]=1;w[0].body[0]=1;w[0].cipher[0]=1;w[0].scratch[0]=1;w[0].ck[0]=1;
+  w[0].pre[AE_REGION-1]=1;w[0].body[AE_REGION-1]=1;w[0].cipher[2*AE_REGION-1]=1;w[0].scratch[AE_REGION-1]=1;w[0].ck[31]=1;
+}

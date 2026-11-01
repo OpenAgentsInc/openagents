@@ -1,0 +1,38 @@
+// Helpers for the checks of coax/lib/nostr/nipao.coax, kept apart so
+// root-only mutation mutates the routing code, not these.
+AOT_NOW :: 1777464050;   // the relay's fixed clock: nine seconds after the telemetry frame
+aot_pairs :: ()->[1]AoPair {return [1]AoPair.[AoPair.{agent=PSV_AGENT_X,owner=PSV_OWNER_X}];}
+aot_admit :: (text:string,now:int)->AoFrame {
+  s:[8192]u8;p:=aot_pairs();return ao_admit(text,p[..],now,s[..]);
+}
+aot_route :: (text:string,snapshot:[]u8)->PsRoute {
+  s:[8192]u8;p:=aot_pairs();return ps_route(text,p[..],AOT_NOW,s[..],snapshot);
+}
+aot_key :: (hex:string)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=cast(u8)(aot_nib(hex[2*i])*16+aot_nib(hex[2*i+1]));}return k;}
+aot_nib :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+// The owner opens telemetry (as_owner), the agent opens control.
+aot_open :: (text:string,as_owner:bool,w:[]AoWork,store:[]u8)->AoOpened {
+  a:=[1]AoText.[AoText.{buf=store}];
+  sk:=aot_key(ifx as_owner then PSV_OWNER_SECRET else PSV_AGENT_SECRET);
+  return ao_open(text,sk[..],ifx as_owner then PSV_OWNER_X else PSV_AGENT_X,PSV_AGENT_X,w,a[..]);
+}
+aot_zeroed :: (w:[]AoWork)->bool {
+  for i:0..<AO_REGION {if w[0].scratch[i]!=0 || w[0].body[i]!=0 || w[0].cipher[i]!=0 || w[0].cipher[AO_REGION+i]!=0 {return false;}}
+  for i:0..<32 {if w[0].ck[i]!=0 {return false;}}
+  return true;
+}
+aot_dirty :: (w:[]AoWork) {
+  w[0].scratch[0]=1;w[0].body[0]=1;w[0].cipher[0]=1;w[0].ck[0]=1;
+  w[0].scratch[AO_REGION-1]=1;w[0].body[AO_REGION-1]=1;w[0].cipher[2*AO_REGION-1]=1;w[0].ck[31]=1;
+}
+// A frame's tags with the frame value and extra tags given.
+aot_tags :: (frame:string,extra:string,out:[]u8)->string {
+  n:=json_raw(out,0,"[[\"p\",\"");n=json_raw(out,n,PSV_OWNER_X);n=json_raw(out,n,"\"],[\"agent\",\"");
+  n=json_raw(out,n,PSV_AGENT_X);n=json_raw(out,n,"\"],[\"frame\",\"");n=json_raw(out,n,frame);n=json_raw(out,n,"\"]");
+  n=json_raw(out,n,extra);n=json_raw(out,n,"]");return cast(string)out[0..<n];
+}
+aot_frame :: (tags:string)->int {p:[64]u8;a:[64]u8;return ao_tags(tags,p[..],a[..]);}
+aot_patch :: (text:string,i:int,c:u8,out:[]u8)->string {
+  for k:0..<text.count {out[k]=text[k];}
+  at:=ifx i<0 then text.count+i else i;out[at]=c;return cast(string)out[0..<text.count];
+}

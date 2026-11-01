@@ -123,7 +123,7 @@
 - [89. Channels](ch089-channels.md) — implemented
 - [90. Artifacts, archives and reminders](ch090-artifacts-archives-and-reminders.md) — implemented
 - [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) — implemented
-- [92. Private agent state](ch092-private-agent-state.md) — design draft
+- [92. Private agent state](ch092-private-agent-state.md) — implemented
 
 **XI. Interop and verification**
 

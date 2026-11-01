@@ -1,0 +1,500 @@
+// NIP-AE agent engrams (Block): an agent's private memory as addressable
+// kind 30174 events, signed by the agent and encrypted with NIP-44 v2 under
+// the conversation key K_c of the agent and its owner. Pinned spec:
+// nostr/nips/block/NIP-AE.md ("Slugs", "Addressing", "Event envelope",
+// "Bodies", "Encryption", "Head selection", "Writing", "Reading").
+//
+// Only the two holders of K_c read a record: the agent (its secret and the
+// owner's key) and the owner (its secret and the agent's key). Anyone else
+// derives another key and the content does not decrypt. Only the agent
+// writes: a record signed by any other key is refused before decryption.
+//
+// ae_open does NIP-AE's validity rules in their order: the NIP-01 id; kind
+// 30174, author the agent, exactly one d (64 lowercase hex) and exactly one
+// p equal to the owner; the BIP-340 signature (before decryption); NIP-44
+// decryption under K_c and one JSON object with no member name repeated at
+// any depth; the slug's grammar and its re-derived d equal to the d tag;
+// and last the body's shape (memory: value a string or null, a tombstone
+// when null; core: profile a string). Unknown body fields are ignored.
+//
+// ae_head is head selection over records already opened: the greatest
+// created_at, ties to the lowest id. ae_accept is the same rule held as a
+// local view: a record that is not newer than the head already held is
+// refused as AE_STALE, so a relay replaying an older version cannot roll
+// the slug back. ae_write_at is Writing step 2: created_at = max(now,
+// T + 1), refused as a conflict when that runs more than AE_MAX_AHEAD
+// seconds past the caller's clock (a clock-poisoned head).
+//
+// The decrypted body and K_c live in the AeWork, which is cleared before
+// every return. The slug and the value an open returns are copied into the
+// caller's arena: that arena is private, and nothing here writes plaintext
+// anywhere else.
+//
+// Not here: querying relays (the union over configured relays, NIP-65
+// relay lists), the write-verify step, NIP-09 deletion requests, listing
+// across relays, and wiki-link reachability.
+//   coax/bin/coax test coax/lib/nostr/nipae.coax --library --run-steps 250000000
+#load "nip44-key.coax";
+#load "event.coax";
+#load "event_sign.coax";
+#load "../crypto/schnorr_fast.coax";
+#load "../../tests/nostr/private_state_vectors.coax";
+#load "../../tests/nostr/nipae_fixtures.coax";
+#authority;
+
+// book:begin codes
+AE_OK :: cast(u32)0;
+AE_INPUT :: cast(u32)1;     // a key, nonce, aux or work view is refused, or the body is over 65,535 bytes
+AE_EVENT :: cast(u32)2;     // not a NIP-01 event with its own id
+AE_SIGNATURE :: cast(u32)3;
+AE_KIND :: cast(u32)4;      // not kind 30174
+AE_AUTHOR :: cast(u32)5;    // not signed by the agent
+AE_TAGS :: cast(u32)6;      // not exactly one d of 64 hex and one p, or p is not the owner
+AE_DECRYPT :: cast(u32)7;   // the content does not decrypt under this reader's K_c
+AE_JSON :: cast(u32)8;      // not one JSON object, or a member name repeats
+AE_SLUG :: cast(u32)9;      // the slug breaks the grammar
+AE_ADDRESS :: cast(u32)10;  // the slug does not derive the d tag
+AE_SHAPE :: cast(u32)11;    // slug, value or profile missing or of the wrong type
+AE_LIMIT :: cast(u32)12;    // the caller's arena or output is too small
+AE_STALE :: cast(u32)13;    // not newer than the head held: a rollback
+AE_CONFLICT :: cast(u32)14; // the next created_at runs too far past the clock
+
+AE_KIND_ENGRAM :: 30174;
+AE_MAX_BODY :: 65535;       // NIP-44's plaintext limit
+AE_MAX_SLUG :: 255;
+AE_MAX_SEGMENT :: 64;
+AE_MAX_AHEAD :: 600;        // seconds; NIP-AE leaves the threshold to the implementation
+AE_DOMAIN :: "agent-memory/v1/d-tag";
+AE_REGION :: 131072;
+// book:end codes
+
+// book:begin record
+AeText :: struct {buf:[]u8;at:int;}
+// The private workspace: K_c and every decrypted byte live here, and seal
+// and open leave it all zero.
+AeWork :: struct {pre:[AE_REGION]u8;body:[AE_REGION]u8;cipher:[2*AE_REGION]u8;scratch:[AE_REGION]u8;ck:[32]u8;}
+AeRecord :: struct {
+  error:u32=AE_INPUT;
+  event:string; created_at:int; d:string;   // public: the signed event
+  slug:string; core:bool; tombstone:bool;   // private: from the decrypted body
+  value:string;                             // a memory's value, or core's profile
+}
+AeSealed :: struct {error:u32=AE_INPUT; written:int;}
+AeWhen :: struct {error:u32; created_at:int;}
+// book:end record
+
+ae_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+ae_clear :: (w:[]AeWork) {ae_zero(w[0].pre[..]);ae_zero(w[0].body[..]);ae_zero(w[0].cipher[..]);ae_zero(w[0].scratch[..]);ae_zero(w[0].ck[..]);}
+ae_keep :: (a:[]AeText,s:string)->string {
+  from:=a[0].at;if from+s.count>a[0].buf.count {return "";}
+  for i:0..<s.count {a[0].buf[from+i]=s[i];}a[0].at+=s.count;return cast(string)a[0].buf[from..<a[0].at];
+}
+ae_hex :: (a:[]AeText,bytes:[]u8)->string {
+  h:[64]u8;r:=hex_encode_checked(cast(string)bytes,h[..],false);return ae_keep(a,cast(string)h[0..<r.written]);
+}
+ae_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+
+// book:begin slug
+// "core", or ^mem/[a-z0-9][a-z0-9_-]{0,63}(/[a-z0-9][a-z0-9_-]{0,63})*$
+// in at most 255 bytes.
+ae_slug_ok :: (s:string)->bool {
+  if s=="core" {return true;}
+  if s.count<5 || s.count>AE_MAX_SLUG || s[0..<4]!="mem/" {return false;}
+  run:=0;   // characters in the current segment
+  for i:4..<s.count {
+    c:=s[i];
+    if c=='/' {if run==0 {return false;}run=0;continue;}
+    first:=(c>='a' && c<='z') || (c>='0' && c<='9');
+    if !first && (run==0 || (c!='_' && c!='-')) {return false;}
+    run+=1;if run>AE_MAX_SEGMENT {return false;}
+  }
+  return run>0;
+}
+// book:end slug
+
+// book:begin derive
+// d = lower_hex(HMAC-SHA256(K_c, "agent-memory/v1/d-tag" || 0x00 || slug)),
+// written as 64 characters to out. The slug must already be valid (at most
+// 255 bytes), so the message fits and the HMAC cannot refuse.
+ae_derive :: (ck:[]u8,slug:string,out:[]u8)->string {
+  m:[22+AE_MAX_SLUG]u8;
+  for i:0..<21 {m[i]=AE_DOMAIN[i];}
+  for i:0..<slug.count {m[22+i]=slug[i];}
+  mac:[32]u8;st:=hmac_sha256_checked(ck,m[0..<22+slug.count],mac[..],false);
+  r:=hex_encode_checked(cast(string)mac[..],out,false);return cast(string)out[0..<64];
+}
+// book:end derive
+
+// book:begin tags
+// Exactly one ["d", <64 hex>] (copied to d) and exactly one ["p", owner];
+// any other tag (alt, say) is ignored. Names and p are compared as JSON
+// strings (escapes allowed); d must be written as plain hex.
+ae_tags :: (tags:string,owner_hex:string,d:[]u8)->bool {
+  j:[1]Json;json_start(j[..],tags);
+  t:=json_next(j[..]);ds:=0;ps:=0;
+  t=json_next(j[..]);
+  while t==JSON_ARRAY {
+    k:=0;name:="";v:=json_next(j[..]);
+    while v==JSON_STRING {
+      raw:=json_text(j[..]);
+      if k==0 {name=ifx json_is(raw,"d") then "d" else ifx json_is(raw,"p") then "p" else "-";}
+      if k==1 {
+        if name=="d" {ds+=1;if !ae_hex64(raw) {return false;}for i:0..<64 {d[i]=raw[i];}}
+        if name=="p" {ps+=1;if !json_is(raw,owner_hex) {return false;}}
+      }
+      k+=1;v=json_next(j[..]);
+    }
+    t=json_next(j[..]);
+  }
+  return ds==1 && ps==1;
+}
+// book:end tags
+
+// book:begin body
+// One decrypted body: one JSON object with no repeated member name; its
+// slug a string in the grammar that derives d under ck; then its shape.
+// The slug and value are unescaped into the arena.
+AeBody :: struct {error:u32=AE_JSON; slug:string; core:bool; tombstone:bool; value:string;}
+AE_ABSENT :: 0; AE_STRING :: 1; AE_NULL :: 2;   // a wrong type reads as absent
+ae_state :: (t:int)->int {return ifx t==JSON_STRING then AE_STRING else ifx t==JSON_NULL then AE_NULL else AE_ABSENT;}
+AeStr :: struct {ok:bool;s:string;}
+ae_string :: (raw:string,a:[]AeText)->AeStr {
+  r:AeStr;n:=json_unescape(raw,a[0].buf[a[0].at..<a[0].buf.count]);
+  if n<0 {return r;}   // the arena is full
+  r.s=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;r.ok=true;return r;
+}
+ae_body :: (body:string,ck:[]u8,d:string,a:[]AeText)->AeBody {
+  r:AeBody;
+  if ja_admit(body,ja_policy(1),0,0)!=JA_OK {return r;}   // valid JSON, no repeated name at any depth
+  j:[1]Json;json_start(j[..],body);
+  if json_next(j[..])!=JSON_OBJECT {return r;}
+  slug:="";value:="";profile:="";vs:=AE_ABSENT;ps:=AE_ABSENT;ss:=AE_ABSENT;
+  k:=json_next(j[..]);
+  while k==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);raw:=json_text(j[..]);
+    if json_is(key,"slug") {ss=ae_state(v);slug=raw;}
+    if json_is(key,"value") {vs=ae_state(v);value=raw;}
+    if json_is(key,"profile") {ps=ae_state(v);profile=raw;}
+    ok:=json_skip(j[..]);   // an unknown field's object or array; ja_admit read it already
+    k=json_next(j[..]);
+  }
+  r.error=AE_SHAPE;if ss!=AE_STRING {return r;}
+  sl:=ae_string(slug,a);r.slug=sl.s;
+  r.error=AE_LIMIT;if !sl.ok {return r;}
+  r.error=AE_SLUG;if !ae_slug_ok(r.slug) {return r;}
+  h:[64]u8;r.error=AE_ADDRESS;if ae_derive(ck,r.slug,h[..])!=d {return r;}
+  r.core=r.slug=="core";
+  r.error=AE_SHAPE;
+  if r.core {if ps!=AE_STRING {return r;}value=profile;}
+  else {if vs!=AE_STRING && vs!=AE_NULL {return r;}r.tombstone=vs==AE_NULL;}
+  if !r.tombstone {vl:=ae_string(value,a);r.value=vl.s;r.error=AE_LIMIT;if !vl.ok {return r;}}
+  r.error=AE_OK;return r;
+}
+// book:end body
+
+// book:begin open
+ae_done :: (r:AeRecord,error:u32,w:[]AeWork)->AeRecord {ae_clear(w);out:=r;out.error=error;return out;}
+// Opens one kind 30174 for the pair (agent_x, owner_x). The reader is the
+// owner when as_owner (secret is the owner's), else the agent. Strings of
+// the result live in the arena.
+ae_open :: (text:string,secret:[]u8,agent_x:[]u8,owner_x:[]u8,as_owner:bool,w:[]AeWork,a:[]AeText)->AeRecord {
+  r:AeRecord;
+  if secret.count!=32 || agent_x.count!=32 || owner_x.count!=32 || w.count!=1 {return r;}
+  e:=nostr_event_read(text,w[0].scratch[..],false);
+  if e.error!=NE_OK {return ae_done(r,AE_EVENT,w);}
+  id:=e.id;r.event=ae_hex(a,id[..]);r.created_at=e.created_at;
+  if r.event=="" {return ae_done(r,AE_LIMIT,w);}
+  if e.kind!=AE_KIND_ENGRAM {return ae_done(r,AE_KIND,w);}
+  pk:=e.public_key;if cast(string)pk[..]!=cast(string)agent_x {return ae_done(r,AE_AUTHOR,w);}
+  oh:[64]u8;dh:[64]u8;hr:=hex_encode_checked(cast(string)owner_x,oh[..],false);
+  if !ae_tags(text[e.tags_from..<e.tags_to],cast(string)oh[..],dh[..]) {return ae_done(r,AE_TAGS,w);}
+  r.d=ae_keep(a,cast(string)dh[..]);
+  if r.d=="" {return ae_done(r,AE_LIMIT,w);}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return ae_done(r,AE_SIGNATURE,w);}
+  ew:[1]EcdhScratch;peer:=ifx as_owner then agent_x else owner_x;
+  if nip44_conversation_key_from_keys_checked(secret,peer,ew[..],w[0].ck[..],false)!=NIP44_OK {return ae_done(r,AE_INPUT,w);}
+  n:=json_unescape(text[e.content_from..<e.content_to],w[0].scratch[..]);
+  dc:=nip44_decrypt_checked(NIP44_COMPAT,w[0].ck[..],cast(string)w[0].scratch[0..<n],w[0].cipher[..],w[0].body[..],false);
+  if dc.error!=NIP44_OK {return ae_done(r,AE_DECRYPT,w);}
+  b:=ae_body(cast(string)w[0].body[0..<dc.written],w[0].ck[..],r.d,a);
+  r.slug=b.slug;r.core=b.core;r.tombstone=b.tombstone;r.value=b.value;
+  return ae_done(r,b.error,w);
+}
+// book:end open
+
+// book:begin seal
+// Seals body at slug from the agent to owner_x and signs it at created_at
+// (from ae_write_at). nonce and aux are 32 fresh random bytes each from the
+// host. The body is read exactly as a reader will read it first, so the
+// agent never publishes a record its owner would refuse.
+ae_seal :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]AeWork,out:[]u8)->AeSealed {
+  r:AeSealed;
+  // A key that is not 32 bytes is refused by the conversation key below.
+  if nonce.count!=32 || aux.count!=32 || w.count!=1 || body.count>AE_MAX_BODY {return r;}
+  r.error=AE_SLUG;if !ae_slug_ok(slug) {return r;}
+  r=ae_seal_in(slug,body,agent,owner_x,nonce,aux,created_at,w,out);
+  ae_clear(w);return r;
+}
+ae_seal_in :: (slug:string,body:string,agent:[]u8,owner_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]AeWork,out:[]u8)->AeSealed {
+  r:AeSealed;ew:[1]EcdhScratch;
+  if nip44_conversation_key_from_keys_checked(agent,owner_x,ew[..],w[0].ck[..],false)!=NIP44_OK {return r;}
+  dh:[64]u8;d:=ae_derive(w[0].ck[..],slug,dh[..]);
+  a:=[1]AeText.[AeText.{buf=w[0].scratch[..]}];
+  b:=ae_body(body,w[0].ck[..],d,a[..]);
+  r.error=b.error;if b.error!=AE_OK {return r;}
+  for i:0..<body.count {w[0].body[i]=body[i];}
+  // Cannot refuse: the key and nonce are 32 bytes, and an admitted body is
+  // 2 to 65,535 bytes.
+  e:=nip44_encrypt_checked(NIP44_COMPAT,w[0].ck[..],nonce,w[0].body[0..<body.count],w[0].cipher[..],w[0].pre[..],false);
+  oh:[64]u8;hr:=hex_encode_checked(cast(string)owner_x,oh[..],false);
+  tags:[160]u8;
+  n:=json_raw(tags[..],0,"[[\"d\",\"");n=json_raw(tags[..],n,d);n=json_raw(tags[..],n,"\"],[\"p\",\"");
+  n=json_raw(tags[..],n,cast(string)oh[..]);n=json_raw(tags[..],n,"\"]]");
+  sw:[1]NostrSignWork;k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(agent,aux,created_at,AE_KIND_ENGRAM,cast(string)tags[0..<n],cast(string)w[0].pre[0..<e.written],sw[..],w[0].scratch[..],out,false);}
+  r.error=AE_LIMIT;if k==EVENT_REFUSED {return r;}
+  r.error=AE_OK;r.written=k;return r;
+}
+// book:end seal
+
+// book:begin head
+// Equal-length lowercase hex compares as bytes.
+ae_lower_id :: (a:string,b:string)->bool {
+  for i:0..<a.count {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
+  return false;
+}
+// a replaces b: a later created_at, or the same second and a lower id.
+ae_newer :: (a:AeRecord,b:AeRecord)->bool {
+  return a.created_at>b.created_at || (a.created_at==b.created_at && ae_lower_id(a.event,b.event));
+}
+// The head of d among opened records: valid ones only. -1 when none.
+ae_head :: (rs:[]AeRecord,d:string)->int {
+  best:=-1;
+  for i:0..<rs.count {
+    if rs[i].error==AE_OK && rs[i].d==d && (best<0 || ae_newer(rs[i],rs[best])) {best=i;}
+  }
+  return best;
+}
+// The local view: next replaces held only when it is valid, addresses the
+// same d and is newer. held.error != AE_OK means nothing is held yet.
+ae_accept :: (held:AeRecord,next:AeRecord)->u32 {
+  if next.error!=AE_OK {return next.error;}
+  if held.error!=AE_OK {return AE_OK;}
+  if next.d!=held.d {return AE_ADDRESS;}
+  if !ae_newer(next,held) {return AE_STALE;}
+  return AE_OK;
+}
+// Writing step 2: created_at = max(now, T + 1), T the head's created_at or
+// 0; a conflict when that is more than AE_MAX_AHEAD seconds after now.
+ae_write_at :: (now:int,head:AeRecord)->AeWhen {
+  r:AeWhen;t:=ifx head.error==AE_OK then head.created_at else 0;
+  r.created_at=now;if t>=now {r.created_at=t+1;}
+  if r.created_at-now>AE_MAX_AHEAD {r.error=AE_CONFLICT;}
+  return r;
+}
+// book:end head
+
+#test "the codes are distinct" {
+  #assert AE_OK==0 && AE_INPUT==1 && AE_EVENT==2 && AE_SIGNATURE==3 && AE_KIND==4 && AE_AUTHOR==5 && AE_TAGS==6 && AE_DECRYPT==7;
+  #assert AE_JSON==8 && AE_SLUG==9 && AE_ADDRESS==10 && AE_SHAPE==11 && AE_LIMIT==12 && AE_STALE==13 && AE_CONFLICT==14;
+  #assert AE_KIND_ENGRAM==30174 && AE_MAX_BODY==65535 && AE_MAX_AHEAD==600 && AE_DOMAIN.count==21;
+}
+#test "the slug grammar" {
+  b:[300]u8;
+  #assert ae_slug_ok("core") && ae_slug_ok("mem/example") && ae_slug_ok("mem/notes/2026-05-12") && ae_slug_ok("mem/a") && ae_slug_ok("mem/0a_-");
+  #assert ae_slug_ok("mem/z9") && ae_slug_ok("mem/a/b/c") && ae_slug_ok("mem/9");
+  #assert !ae_slug_ok("") && !ae_slug_ok("mem/") && !ae_slug_ok("mem") && !ae_slug_ok("cor") && !ae_slug_ok("Core") && !ae_slug_ok("core/x");
+  #assert !ae_slug_ok("mem/Example") && !ae_slug_ok("mem/_a") && !ae_slug_ok("mem/-a") && !ae_slug_ok("mem/a/") && !ae_slug_ok("mem//a");
+  #assert !ae_slug_ok("mem/a b") && !ae_slug_ok("mem/a.b") && !ae_slug_ok("mem/a/_b") && !ae_slug_ok("men/a") && !ae_slug_ok("mem:a");
+  #assert !ae_slug_ok("mem/`") && !ae_slug_ok("mem/{") && !ae_slug_ok("mem/:") && !ae_slug_ok("mem/a{") && !ae_slug_ok("mem/a`") && !ae_slug_ok("mem/a:");
+  #assert !ae_slug_ok("mem/a^") && !ae_slug_ok("mem/a,") && !ae_slug_ok("mem/a.") && !ae_slug_ok("mem/ae/");
+  // 64 characters a segment, 255 bytes in all.
+  for i:0..<300 {b[i]='a';}b[0]='m';b[1]='e';b[2]='m';b[3]='/';
+  #assert ae_slug_ok(cast(string)b[0..<68]);
+  #assert !ae_slug_ok(cast(string)b[0..<69]);
+  for i:0..<300 {b[i]=ifx i%65==3 then '/' else 'a';}b[0]='m';b[1]='e';b[2]='m';
+  #assert ae_slug_ok(cast(string)b[0..<255]) && !ae_slug_ok(cast(string)b[0..<256]);
+  b[254]='/';#assert !ae_slug_ok(cast(string)b[0..<255]);
+}
+#test "K_c and the d tags are NIP-AE's" #steps 400000000 {
+  sk:=aet_key(PSV_AGENT_SECRET);ox:=aet_key(PSV_OWNER_X);ck:[32]u8;ew:[1]EcdhScratch;
+  #assert nip44_conversation_key_from_keys_checked(sk[..],ox[..],ew[..],ck[..],false)==NIP44_OK;
+  want:=aet_key(PSV_KC);for i:0..<32 {#assert ck[i]==want[i];}
+  h:[64]u8;
+  #assert ae_derive(ck[..],"core",h[..])==PSV_D_CORE && ae_derive(ck[..],"mem/example",h[..])==PSV_D_EXAMPLE;
+  #assert ae_derive(ck[..],"mem/notes/2026-05-12",h[..])==PSV_D_NOTES;
+}
+#test "sealing reproduces NIP-AE's four events byte for byte" #steps 1000000000 {
+  w:[1]AeWork;aet_dirty(w[..]);out:[4096]u8;
+  r:=aet_seal("mem/example",PSV_BODY1,1700000000,1,w[..],out[..]);#assert r.error==AE_OK && aet_text(r,out[..])==PSV_AE1 && aet_zeroed(w[..]);
+  r=aet_seal("mem/notes/2026-05-12",PSV_BODY2,1700000001,2,w[..],out[..]);#assert r.error==AE_OK && aet_text(r,out[..])==PSV_AE2;
+  r=aet_seal("mem/example",PSV_BODY3,1700000002,3,w[..],out[..]);#assert r.error==AE_OK && aet_text(r,out[..])==PSV_AE3;
+  aet_dirty(w[..]);r=aet_seal("core",PSV_BODY4,1700000003,4,w[..],out[..]);#assert r.error==AE_OK && aet_text(r,out[..])==PSV_AE4 && aet_zeroed(w[..]);
+  r=aet_seal("mem/canary",PSV_CANARY_BODY,1700000004,5,w[..],out[..]);#assert r.error==AE_OK && aet_text(r,out[..])==PSV_CANARY_EVENT;
+}
+#test "the agent and the owner both read every record" #steps 1000000000 {
+  w:[1]AeWork;st:[4096]u8;aet_dirty(w[..]);
+  r:=aet_open(PSV_AE1,false,w[..],st[..]);
+  #assert r.error==AE_OK && r.event==PSV_AE1_ID && r.created_at==1700000000 && r.d==PSV_D_EXAMPLE && r.slug=="mem/example" && r.value=="hello, agent memory";
+  #assert !r.core && !r.tombstone && aet_zeroed(w[..]);
+  aet_dirty(w[..]);r=aet_open(PSV_AE1,true,w[..],st[..]);#assert r.error==AE_OK && r.value=="hello, agent memory" && aet_zeroed(w[..]);
+  r=aet_open(PSV_AE2,true,w[..],st[..]);#assert r.error==AE_OK && r.slug=="mem/notes/2026-05-12" && r.value=="meeting note: [[mem/example]]" && r.d==PSV_D_NOTES;
+  r=aet_open(PSV_AE3,true,w[..],st[..]);#assert r.error==AE_OK && r.tombstone && !r.core && r.value=="" && r.d==PSV_D_EXAMPLE && r.event==PSV_AE3_ID;
+  r=aet_open(PSV_AE4,false,w[..],st[..]);#assert r.error==AE_OK && r.core && !r.tombstone && r.slug=="core" && r.value=="test agent. see [[mem/example]] and [[mem/notes/2026-05-12]]." && r.d==PSV_D_CORE;
+}
+#test "nobody else reads, and only the agent writes" #steps 1000000000 {
+  w:[1]AeWork;st:[4096]u8;aet_dirty(w[..]);
+  r:=aet_open_with(PSV_AE1,PSV_STRANGER_SECRET,true,w[..],st[..]);#assert r.error==AE_DECRYPT && r.value=="" && aet_zeroed(w[..]);
+  #assert aet_open_with(PSV_AE1,PSV_STRANGER_SECRET,false,w[..],st[..]).error==AE_DECRYPT;
+  // The owner's secret in the agent's role pairs it with itself.
+  #assert aet_open_with(PSV_AE1,PSV_OWNER_SECRET,false,w[..],st[..]).error==AE_DECRYPT;
+  aet_dirty(w[..]);#assert aet_open(PSV_AE_STRANGER,true,w[..],st[..]).error==AE_AUTHOR && aet_zeroed(w[..]);
+  #assert aet_open(PSV_AE_OTHER_OWNER,true,w[..],st[..]).error==AE_TAGS;
+  z:[64]u8;for i:0..<64 {z[i]='0';}
+  #assert aet_open_with(PSV_AE1,cast(string)z[..],true,w[..],st[..]).error==AE_INPUT;
+}
+#test "the refused engrams" #steps 1000000000 {
+  w:[1]AeWork;st:[4096]u8;c:[4096]u8;
+  #assert aet_open(PSV_AE_DUPLICATE,true,w[..],st[..]).error==AE_JSON;
+  #assert aet_open(PSV_AE_DUPLICATE_NESTED,true,w[..],st[..]).error==AE_JSON;
+  #assert aet_open(PSV_AE_WRONG_D,true,w[..],st[..]).error==AE_ADDRESS;
+  r:=aet_open(PSV_AE_SHAPE,true,w[..],st[..]);#assert r.error==AE_SHAPE && r.slug=="mem/example";
+  #assert aet_open(PSV_AE_SLUG,true,w[..],st[..]).error==AE_SLUG;
+  #assert aet_open(PSV_AE_CORE_SHAPE,true,w[..],st[..]).error==AE_SHAPE;
+  r=aet_open(PSV_AE_EXTRA,true,w[..],st[..]);#assert r.error==AE_OK && r.value=="y";
+  #assert aet_open(PSV_TELEMETRY,true,w[..],st[..]).error==AE_KIND;
+  aet_dirty(w[..]);#assert aet_open(aet_patch(PSV_AE1,-3,'0',c[..]),true,w[..],st[..]).error==AE_SIGNATURE && aet_zeroed(w[..]);
+  at:=aet_find(PSV_AE1,"1700000000");
+  aet_dirty(w[..]);#assert aet_open(aet_patch(PSV_AE1,at+9,'9',c[..]),true,w[..],st[..]).error==AE_EVENT && aet_zeroed(w[..]);
+  sk:=aet_key(PSV_OWNER_SECRET);ax:=aet_key(PSV_AGENT_X);ox:=aet_key(PSV_OWNER_X);a:=[1]AeText.[AeText.{buf=st[..]}];
+  r=ae_open(PSV_AE1,sk[0..<31],ax[..],ox[..],true,w[..],a[..]);#assert r.error==AE_INPUT && r.event=="";
+  #assert ae_open(PSV_AE1,sk[..],ax[0..<31],ox[..],true,w[..],a[..]).error==AE_INPUT;
+  #assert ae_open(PSV_AE1,sk[..],ax[..],ox[0..<31],true,w[..],a[..]).error==AE_INPUT;
+  #assert ae_open(PSV_AE1,sk[..],ax[..],ox[..],true,w[0..<0],a[..]).error==AE_INPUT;
+}
+#test "a full arena refuses" #steps 1000000000 {
+  w:[1]AeWork;
+  s1:[63]u8;#assert aet_open(PSV_AE1,true,w[..],s1[..]).error==AE_LIMIT;
+  s2:[127]u8;#assert aet_open(PSV_AE1,true,w[..],s2[..]).error==AE_LIMIT;
+  s3:[138]u8;#assert aet_open(PSV_AE1,true,w[..],s3[..]).error==AE_LIMIT;   // 128 hex + 11 bytes of slug
+  s4:[157]u8;#assert aet_open(PSV_AE1,true,w[..],s4[..]).error==AE_LIMIT;   // + 19 bytes of value
+  s5:[158]u8;#assert aet_open(PSV_AE1,true,w[..],s5[..]).error==AE_OK;
+  s6:[139]u8;#assert aet_open(PSV_AE3,true,w[..],s6[..]).error==AE_OK;      // a tombstone keeps no value
+  b:[4]u8;k:=[1]AeText.[AeText.{buf=b[..]}];
+  #assert ae_keep(k[..],"abc")=="abc" && ae_keep(k[..],"de")=="" && k[0].at==3 && ae_keep(k[..],"d")=="d" && k[0].at==4;
+}
+#test "the body reader" #steps 1000000000 {
+  s:[1024]u8;
+  b:=aet_body("{\"slug\":\"mem/example\",\"value\":\"x\"}","mem/example",s[..]);#assert b.error==AE_OK && b.slug=="mem/example" && b.value=="x" && !b.tombstone && !b.core;
+  #assert aet_body("[]","mem/example",s[..]).error==AE_JSON && aet_body("{","mem/example",s[..]).error==AE_JSON && aet_body("\"mem/example\"","mem/example",s[..]).error==AE_JSON;
+  #assert aet_body("{\"slug\":\"mem/example\",\"slug\":\"mem/example\",\"value\":\"x\"}","mem/example",s[..]).error==AE_JSON;
+  #assert aet_body("{\"slug\":\"mem/example\",\"\\u0076alue\":\"x\",\"value\":\"y\"}","mem/example",s[..]).error==AE_JSON;
+  #assert aet_body("{\"value\":\"x\"}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":7,\"value\":\"x\"}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":null,\"value\":\"x\"}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"mem/example\"}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"mem/example\",\"value\":{}}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"mem/example\",\"value\":true}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"mem/example\",\"profile\":\"p\"}","mem/example",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"mem/Example\",\"value\":\"x\"}","mem/Example",s[..]).error==AE_SLUG;
+  #assert aet_body("{\"slug\":\"mem/example\",\"value\":\"x\"}","mem/other",s[..]).error==AE_ADDRESS;
+  b=aet_body("{\"slug\":\"mem/example\",\"value\":null}","mem/example",s[..]);#assert b.error==AE_OK && b.tombstone && b.value=="";
+  b=aet_body("{\"slug\":\"mem/example\",\"value\":\"\"}","mem/example",s[..]);#assert b.error==AE_OK && !b.tombstone && b.value=="";
+  b=aet_body("{\"\\u0073lug\":\"mem\\/example\",\"value\":\"a\\nb\"}","mem/example",s[..]);#assert b.error==AE_OK && b.slug=="mem/example" && b.value=="a\nb";
+  b=aet_body("{\"slug\":\"mem/example\",\"value\":\"x\",\"meta\":{\"value\":5,\"slug\":1}}","mem/example",s[..]);#assert b.error==AE_OK && b.value=="x";
+  b=aet_body("{\"meta\":[{\"slug\":1}],\"slug\":\"mem/example\",\"value\":\"x\",\"profile\":3}","mem/example",s[..]);#assert b.error==AE_OK && b.value=="x";
+  b=aet_body("{\"slug\":\"core\",\"profile\":\"me\"}","core",s[..]);#assert b.error==AE_OK && b.core && b.value=="me" && !b.tombstone;
+  b=aet_body("{\"slug\":\"core\",\"profile\":\"me\",\"value\":null}","core",s[..]);#assert b.error==AE_OK && b.value=="me" && !b.tombstone;
+  #assert aet_body("{\"slug\":\"core\",\"profile\":null}","core",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"core\",\"value\":\"x\"}","core",s[..]).error==AE_SHAPE;
+  #assert aet_body("{\"slug\":\"core\"}","core",s[..]).error==AE_SHAPE;
+  // A body over 65,536 bytes is not admitted as JSON at all.
+  big:[65600]u8;n:=json_raw(big[..],0,"{\"slug\":\"mem/example\",\"value\":\"");for i:n..<65535 {big[i]='x';}big[65535]='"';big[65536]='}';
+  #assert aet_body(cast(string)big[0..<65537],"mem/example",s[..]).error==AE_JSON;
+  big[65534]='"';big[65535]='}';#assert aet_body(cast(string)big[0..<65536],"mem/example",s[..]).error==AE_LIMIT;
+}
+#test "the tags: one d, one p, the owner" {
+  b:[600]u8;
+  d:=PSV_D_EXAMPLE;
+  #assert aet_tags("[[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert aet_tags("[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"alt\",\"encrypted agent memory record\"],[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\",\"x\"]]");
+  #assert !aet_tags("[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert !aet_tags("[[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"]]");
+  #assert !aet_tags("[[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert !aet_tags("[[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert !aet_tags("[[\"d\",\"mem/example\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert !aet_tags("[[\"d\",\"72D4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert !aet_tags("[[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]");
+  // Names and p may be escaped; d must be plain hex.
+  #assert aet_tags("[[\"\\u0064\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"\\u00636047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert !aet_tags("[[\"d\",\"\\u00372d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  // A bare ["d"] carries no value and is not counted.
+  #assert aet_tags("[[\"d\"],[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  // A long alt is ignored; a long d is refused.
+  n:=json_raw(b[..],0,"[[\"alt\",\"");for i:0..<300 {b[n+i]='x';}n+=300;
+  n=json_raw(b[..],n,"\"],[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]");
+  #assert aet_tags(cast(string)b[0..<n]);
+  n=json_raw(b[..],0,"[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"d\",\"");for i:0..<300 {b[n+i]='a';}n+=300;n=json_raw(b[..],n,"\"]]");
+  #assert !aet_tags(cast(string)b[0..<n]);
+  dd:[64]u8;#assert ae_tags("[[\"d\",\"72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",PSV_OWNER_X,dd[..]) && cast(string)dd[..]==d;
+  #assert ae_hex64(d) && !ae_hex64(d[0..<63]) && !ae_hex64(aet_repeat('g',64,b[..])) && !ae_hex64(aet_repeat('/',64,b[..])) && !ae_hex64(aet_repeat(':',64,b[..])) && !ae_hex64(aet_repeat('`',64,b[..]));
+  #assert ae_hex64(aet_repeat('0',64,b[..])) && ae_hex64(aet_repeat('9',64,b[..])) && ae_hex64(aet_repeat('f',64,b[..])) && ae_hex64(aet_repeat('a',64,b[..]));
+}
+#test "head selection: latest created_at, then the lowest id" {
+  a:="1000000000000000000000000000000000000000000000000000000000000000";
+  b:="0f00000000000000000000000000000000000000000000000000000000000000";
+  c:="1000000000000000000000000000000000000000000000000000000000000001";
+  rs:=[4]AeRecord.[aet_rec(a,10,"d1"),aet_rec(b,10,"d1"),aet_rec(c,9,"d1"),aet_rec(a,20,"d2")];
+  #assert ae_head(rs[..],"d1")==1 && ae_head(rs[..],"d2")==3 && ae_head(rs[..],"d3")==-1;
+  rs[1].error=AE_SHAPE;#assert ae_head(rs[..],"d1")==0;
+  rs[0].created_at=8;#assert ae_head(rs[..],"d1")==2;
+  #assert ae_head(rs[0..<1],"d1")==0 && ae_head(rs[0..<0],"d1")==-1;
+  q:=[2]AeRecord.[aet_rec(c,10,"d1"),aet_rec(a,10,"d1")];#assert ae_head(q[..],"d1")==1;
+  q[1].created_at=9;#assert ae_head(q[..],"d1")==0;
+  #assert ae_lower_id(b,a) && !ae_lower_id(a,b) && !ae_lower_id(a,a) && ae_lower_id(a,c) && !ae_lower_id(c,a);
+  #assert ae_newer(aet_rec(a,11,"d"),aet_rec(b,10,"d")) && !ae_newer(aet_rec(b,10,"d"),aet_rec(a,11,"d")) && ae_newer(aet_rec(b,10,"d"),aet_rec(a,10,"d")) && !ae_newer(aet_rec(a,10,"d"),aet_rec(b,10,"d"));
+}
+#test "a rollback is refused" {
+  a:="1000000000000000000000000000000000000000000000000000000000000000";
+  b:="0f00000000000000000000000000000000000000000000000000000000000000";
+  none:AeRecord;held:=aet_rec(a,20,"d1");
+  #assert ae_accept(none,aet_rec(a,20,"d1"))==AE_OK;
+  #assert ae_accept(held,aet_rec(b,10,"d1"))==AE_STALE && ae_accept(held,aet_rec(a,20,"d1"))==AE_STALE;
+  #assert ae_accept(held,aet_rec(b,20,"d1"))==AE_OK && ae_accept(held,aet_rec(a,21,"d1"))==AE_OK;
+  #assert ae_accept(held,aet_rec(a,30,"d2"))==AE_ADDRESS;
+  bad:=aet_rec(a,30,"d1");bad.error=AE_SIGNATURE;#assert ae_accept(held,bad)==AE_SIGNATURE && ae_accept(none,bad)==AE_SIGNATURE;
+}
+#test "the next created_at" {
+  none:AeRecord;
+  w:=ae_write_at(1000,none);#assert w.error==AE_OK && w.created_at==1000;
+  w=ae_write_at(1000,aet_rec("",500,"d"));#assert w.error==AE_OK && w.created_at==1000;
+  w=ae_write_at(1000,aet_rec("",999,"d"));#assert w.error==AE_OK && w.created_at==1000;
+  w=ae_write_at(1000,aet_rec("",1000,"d"));#assert w.error==AE_OK && w.created_at==1001;
+  w=ae_write_at(1000,aet_rec("",1599,"d"));#assert w.error==AE_OK && w.created_at==1600;
+  w=ae_write_at(1000,aet_rec("",1600,"d"));#assert w.error==AE_CONFLICT && w.created_at==1601;
+  bad:=aet_rec("",5000,"d");bad.error=AE_SIGNATURE;w=ae_write_at(1000,bad);#assert w.error==AE_OK && w.created_at==1000;
+  w=ae_write_at(0,none);#assert w.error==AE_OK && w.created_at==1;
+}
+#test "sealing refuses before it signs" #steps 1000000000 {
+  w:[1]AeWork;out:[4096]u8;big:[65536]u8;
+  #assert aet_seal("mem/Example",PSV_BODY1,1,1,w[..],out[..]).error==AE_SLUG;
+  aet_dirty(w[..]);#assert aet_seal("mem/other",PSV_BODY1,1,1,w[..],out[..]).error==AE_ADDRESS && aet_zeroed(w[..]);
+  #assert aet_seal("mem/example","{\"slug\":\"mem/example\",\"value\":\"a\",\"value\":\"b\"}",1,1,w[..],out[..]).error==AE_JSON;
+  #assert aet_seal("mem/example","{\"slug\":\"mem/example\",\"value\":3}",1,1,w[..],out[..]).error==AE_SHAPE;
+  small:[500]u8;#assert aet_seal("mem/example",PSV_BODY1,1700000000,1,w[..],small[..]).error==AE_LIMIT;
+  // 65,535 bytes is NIP-44's limit; one more is refused.
+  n:=json_raw(big[..],0,"{\"slug\":\"mem/example\",\"value\":\"");for i:n..<65534 {big[i]='x';}big[65534]='"';big[65535]='}';
+  #assert aet_seal("mem/example",cast(string)big[..],1,1,w[..],out[..]).error==AE_INPUT;
+  big[65533]='"';big[65534]='}';#assert aet_seal("mem/example",cast(string)big[0..<65535],1,1,w[..],out[..]).error==AE_LIMIT;
+  sk:=aet_key(PSV_AGENT_SECRET);ox:=aet_key(PSV_OWNER_X);nonce:=aet_nonce(1);aux:[32]u8;zero:[32]u8;
+  #assert ae_seal("mem/example",PSV_BODY1,zero[..],ox[..],nonce[..],aux[..],1,w[..],out[..]).error==AE_INPUT;
+  #assert ae_seal("mem/example",PSV_BODY1,sk[0..<31],ox[..],nonce[..],aux[..],1,w[..],out[..]).error==AE_INPUT;
+  #assert ae_seal("mem/example",PSV_BODY1,sk[..],ox[0..<31],nonce[..],aux[..],1,w[..],out[..]).error==AE_INPUT;
+  #assert ae_seal("mem/example",PSV_BODY1,sk[..],ox[..],nonce[0..<31],aux[..],1,w[..],out[..]).error==AE_INPUT;
+  #assert ae_seal("mem/example",PSV_BODY1,sk[..],ox[..],nonce[..],aux[0..<31],1,w[..],out[..]).error==AE_INPUT;
+  #assert ae_seal("mem/example",PSV_BODY1,sk[..],ox[..],nonce[..],aux[..],1,w[0..<0],out[..]).error==AE_INPUT;
+}

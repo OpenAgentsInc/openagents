@@ -1997,14 +1997,25 @@
    "number": 92,
    "title": "Private agent state",
    "file": "ch092-private-agent-state.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     20,
     87
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipae.coax",
+    "coax/lib/nostr/nipao.coax",
+    "coax/tests/nostr/private_state_vectors.py",
+    "coax/tests/nostr/private_state_vectors.coax",
+    "coax/tests/nostr/nipae_fixtures.coax",
+    "coax/tests/nostr/nipao_fixtures.coax",
+    "nostr/examples/private-agent-state.coax",
+    "nostr/examples/checks/private-agent-state.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

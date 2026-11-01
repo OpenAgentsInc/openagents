@@ -1,0 +1,408 @@
+// NIP-AO agent observer frames (Block) and the relay's routing of private
+// agent state. Pinned specs: nostr/nips/block/NIP-AO.md ("Event Structure",
+// "Ephemerality Contract", "Authorization", "Relay Behavior", "Client
+// Behavior") and nostr/nips/block/NIP-PMA.md (kind 30179 is reserved and
+// refused).
+//
+// ao_admit is the relay's check of one kind 24200 frame, in NIP-AO's
+// order: the NIP-01 id and BIP-340 signature; exactly one p, one agent and
+// one frame tag (p and agent 64 lowercase hex); a frame value other than
+// telemetry or control is dropped (OK to the publisher, sent to nobody);
+// then authorization: telemetry is signed by the agent and addressed to its
+// owner, control is signed by the owner and addressed to the agent, and in
+// both the (agent, owner) pair must be in the relay's ownership records.
+// Last, created_at within AO_WINDOW seconds of the relay's clock.
+//
+// ps_route is the relay's one entry for private agent state. A 24200 goes
+// only to in-memory fan-out (PS_MEMORY) or is dropped or refused; it never
+// reaches the snapshot writer. Kind 30179 (NIP-PMA) is refused. Every other
+// event goes through store_admit.coax's ns_admit_one, which frames a
+// verified durable event (the ciphertext of a 30174 or 44200, say) into the
+// snapshot and stores no ephemeral kind. ps_log writes the relay's audit
+// line: nothing for a 24200 (NIP-AO: no audit logs), an id, kind and size
+// for a stored event, a code for a refusal. No route reads, decrypts or
+// logs content.
+//
+// ao_open is the client's side: verify, check the frame is addressed to
+// this client from the trusted agent, decrypt under NIP-44 with the
+// sender, and read the telemetry kind and seq or the control type. Unknown
+// kinds and types are ignored (AO_IGNORED). The decrypted payload is copied
+// into the caller's arena only.
+//
+// Not here: filling the ownership records (an authenticated lookup; a relay
+// can record a pair after verifying a NIP-OA attestation, chapter 87),
+// NIP-42 gating of subscriptions, the 100 events/second rate limit, the
+// client's ring buffer, NIP-59 wrapping, and the NIP-29 h tag's meaning
+// (it is allowed and ignored).
+//   coax/bin/coax test coax/lib/nostr/nipao.coax --library --run-steps 250000000
+#load "nip44-key.coax";
+#load "event.coax";
+#load "../crypto/schnorr_fast.coax";
+#load "store_admit.coax";
+#load "../../tests/nostr/private_state_vectors.coax";
+#load "../../tests/nostr/nipao_fixtures.coax";
+#authority;
+
+// book:begin codes
+AO_FANOUT :: cast(u32)0;    // relay: fan out in memory; client: a frame it reads
+AO_DROP :: cast(u32)1;      // an unknown frame value: OK to the publisher, delivered to nobody
+AO_EVENT :: cast(u32)2;     // not a NIP-01 event with its own id
+AO_SIGNATURE :: cast(u32)3;
+AO_KIND :: cast(u32)4;      // not kind 24200
+AO_TAGS :: cast(u32)5;      // not exactly one p, one agent and one frame, or p or agent not 64 hex
+AO_AUTH :: cast(u32)6;      // "AUTH required": wrong direction, or the pair is not in the ownership records
+AO_STALE :: cast(u32)7;     // created_at outside the freshness window
+AO_RESERVED :: cast(u32)8;  // kind 30179: NIP-PMA's reservation, refused until its gates exist
+AO_FULL :: cast(u32)9;      // the snapshot output or the client's arena is too small
+AO_DECRYPT :: cast(u32)10;  // client: the content does not decrypt for this reader
+AO_SHAPE :: cast(u32)11;    // client: a required payload field missing or of the wrong type
+AO_IGNORED :: cast(u32)12;  // client: an unknown telemetry kind or control type
+
+AO_KIND_FRAME :: 24200;
+AO_KIND_PMA :: 30179;
+AO_WINDOW :: 300;           // seconds either side of the relay's clock
+AO_TELEMETRY :: 0; AO_CONTROL :: 1; AO_UNKNOWN :: 2;
+AO_FRAMES :: [2]string.["telemetry","control"];
+AO_KINDS :: [4]string.["acp_read","acp_write","turn_started","session_resolved"];
+PS_STORED :: 0; PS_MEMORY :: 1; PS_DROPPED :: 2; PS_REFUSED :: 3; PS_EPHEMERAL :: 4;
+AO_REGION :: 131072;
+// book:end codes
+
+// book:begin record
+// One ownership record, as 64-hex keys.
+AoPair :: struct {agent:string; owner:string;}
+AoFrame :: struct {error:u32=AO_EVENT; frame:int; agent:[64]u8; owner:[64]u8;}
+PsRoute :: struct {route:int=PS_REFUSED; error:u32=AO_EVENT; kind:int; id:[64]u8; written:int;}
+AoText :: struct {buf:[]u8;at:int;}
+AoWork :: struct {scratch:[AO_REGION]u8;cipher:[2*AO_REGION]u8;body:[AO_REGION]u8;ck:[32]u8;}
+AoOpened :: struct {error:u32=AO_EVENT; frame:int; name:string; seq:int; payload:string;}
+// book:end record
+
+ao_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+
+// book:begin tags
+// Exactly one p and one agent (64 hex each, written as plain hex, copied
+// out) and one frame. Returns the frame (AO_TELEMETRY, AO_CONTROL or
+// AO_UNKNOWN), or -1.
+ao_tags :: (tags:string,p:[]u8,agent:[]u8)->int {
+  j:[1]Json;json_start(j[..],tags);
+  t:=json_next(j[..]);ps:=0;as:=0;fs:=0;fv:="";
+  t=json_next(j[..]);
+  while t==JSON_ARRAY {
+    k:=0;name:="";v:=json_next(j[..]);
+    while v==JSON_STRING {
+      raw:=json_text(j[..]);
+      if k==0 {name=ifx json_is(raw,"p") then "p" else ifx json_is(raw,"agent") then "a" else ifx json_is(raw,"frame") then "f" else "-";}
+      if k==1 {
+        if name=="p" {ps+=1;if !ao_hex64(raw) {return -1;}for i:0..<64 {p[i]=raw[i];}}
+        if name=="a" {as+=1;if !ao_hex64(raw) {return -1;}for i:0..<64 {agent[i]=raw[i];}}
+        if name=="f" {fs+=1;fv=raw;}
+      }
+      k+=1;v=json_next(j[..]);
+    }
+    t=json_next(j[..]);
+  }
+  if ps!=1 || as!=1 || fs!=1 {return -1;}
+  return ifx json_is(fv,"telemetry") then AO_TELEMETRY else ifx json_is(fv,"control") then AO_CONTROL else AO_UNKNOWN;
+}
+// book:end tags
+
+// book:begin admit
+ao_owns :: (pairs:[]AoPair,agent:string,owner:string)->bool {
+  for q:pairs {if q.agent==agent && q.owner==owner {return true;}}
+  return false;
+}
+ao_fail :: (f:AoFrame,error:u32)->AoFrame {r:=f;r.error=error;return r;}
+// The relay's check of a frame whose id and signature verified.
+ao_check :: (e:NostrEvent,text:string,pairs:[]AoPair,now:int)->AoFrame {
+  r:AoFrame;
+  if e.kind!=AO_KIND_FRAME {return ao_fail(r,AO_KIND);}
+  p:[64]u8;
+  r.frame=ao_tags(text[e.tags_from..<e.tags_to],p[..],r.agent[..]);
+  if r.frame<0 {return ao_fail(r,AO_TAGS);}
+  if r.frame==AO_UNKNOWN {return ao_fail(r,AO_DROP);}
+  sh:[64]u8;key:=e.public_key;hr:=hex_encode_checked(cast(string)key[..],sh[..],false);
+  agent:=cast(string)r.agent[..];
+  // Telemetry: the agent signs, p is the owner. Control: the owner signs,
+  // p is the agent.
+  if r.frame==AO_TELEMETRY {
+    if cast(string)sh[..]!=agent {return ao_fail(r,AO_AUTH);}
+    r.owner=p;
+  } else {
+    if cast(string)p[..]!=agent {return ao_fail(r,AO_AUTH);}
+    r.owner=sh;
+  }
+  if !ao_owns(pairs,agent,cast(string)r.owner[..]) {return ao_fail(r,AO_AUTH);}
+  if e.created_at<now-AO_WINDOW || e.created_at>now+AO_WINDOW {return ao_fail(r,AO_STALE);}
+  return ao_fail(r,AO_FANOUT);
+}
+ao_admit :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8)->AoFrame {
+  r:AoFrame;
+  e:=nostr_event_read(text,scratch,false);
+  if e.error!=NE_OK {return r;}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return ao_fail(r,AO_SIGNATURE);}
+  return ao_check(e,text,pairs,now);
+}
+// book:end admit
+
+// book:begin route
+// The relay's entry for one EVENT. snapshot receives a stored event's
+// frame; a 24200 never touches it.
+ps_route :: (text:string,pairs:[]AoPair,now:int,scratch:[]u8,snapshot:[]u8)->PsRoute {
+  r:PsRoute;
+  e:=nostr_event_read(text,scratch,false);
+  if e.error!=NE_OK {return r;}
+  id:=e.id;hr:=hex_encode_checked(cast(string)id[..],r.id[..],false);r.kind=e.kind;
+  if e.kind==AO_KIND_FRAME {
+    f:=ao_admit(text,pairs,now,scratch);r.error=f.error;
+    r.route=ifx f.error==AO_FANOUT then PS_MEMORY else ifx f.error==AO_DROP then PS_DROPPED else PS_REFUSED;
+    return r;
+  }
+  r.error=AO_RESERVED;if e.kind==AO_KIND_PMA {return r;}
+  a:=ns_admit_one(text,scratch,snapshot,false);
+  r.error=AO_FANOUT;
+  if a.status==NS_ADMIT_OK {r.route=PS_STORED;r.written=a.written;return r;}
+  if a.status==NS_ADMIT_EPHEMERAL {r.route=PS_EPHEMERAL;return r;}
+  r.error=ifx a.status==NS_ADMIT_INVALID then AO_SIGNATURE else AO_FULL;
+  return r;
+}
+// The audit line for a route, written to out; returns its length. A frame
+// (kind 24200) is never logged, whatever happened to it.
+ps_log :: (r:PsRoute,out:[]u8)->int {
+  if r.kind==AO_KIND_FRAME {return 0;}
+  if r.route==PS_STORED {
+    n:=json_raw(out,0,"stored kind ");n=json_write_int(out,n,r.kind);n=json_raw(out,n," id ");
+    id:=r.id;n=json_raw(out,n,cast(string)id[..]);n=json_raw(out,n," bytes ");n=json_write_int(out,n,r.written);
+    return json_raw(out,n,"\n");
+  }
+  if r.route==PS_REFUSED {n:=json_raw(out,0,"refused ");n=json_write_int(out,n,cast(int)r.error);return json_raw(out,n,"\n");}
+  return 0;
+}
+// The canary check: does text appear anywhere in bytes?
+ps_contains :: (bytes:string,text:string)->bool {
+  for i:0..<bytes.count-text.count+1 {if bytes[i..<i+text.count]==text {return true;}}
+  return false;
+}
+// book:end route
+
+// book:begin open
+ao_done :: (r:AoOpened,error:u32,w:[]AoWork)->AoOpened {
+  for i:0..<AO_REGION {w[0].scratch[i]=0;w[0].body[i]=0;w[0].cipher[i]=0;w[0].cipher[AO_REGION+i]=0;}
+  for i:0..<32 {w[0].ck[i]=0;}
+  out:=r;out.error=error;return out;
+}
+// The client: me_x is this client's key (the frame's p), agent_x the agent
+// it trusts. The owner reads telemetry; the agent reads control.
+ao_open :: (text:string,secret:[]u8,me_x:string,agent_x:string,w:[]AoWork,a:[]AoText)->AoOpened {
+  r:AoOpened;
+  if secret.count!=32 || w.count!=1 {return r;}
+  e:=nostr_event_read(text,w[0].scratch[..],false);
+  if e.error!=NE_OK {return ao_done(r,AO_EVENT,w);}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return ao_done(r,AO_SIGNATURE,w);}
+  if e.kind!=AO_KIND_FRAME {return ao_done(r,AO_KIND,w);}
+  p:[64]u8;ag:[64]u8;
+  r.frame=ao_tags(text[e.tags_from..<e.tags_to],p[..],ag[..]);
+  if r.frame<0 {return ao_done(r,AO_TAGS,w);}
+  if r.frame==AO_UNKNOWN {return ao_done(r,AO_DROP,w);}
+  if cast(string)p[..]!=me_x || cast(string)ag[..]!=agent_x {return ao_done(r,AO_AUTH,w);}
+  ew:[1]EcdhScratch;peer:=e.public_key;
+  if nip44_conversation_key_from_keys_checked(secret,peer[..],ew[..],w[0].ck[..],false)!=NIP44_OK {return ao_done(r,AO_DECRYPT,w);}
+  n:=json_unescape(text[e.content_from..<e.content_to],w[0].scratch[..]);
+  dc:=nip44_decrypt_checked(NIP44_COMPAT,w[0].ck[..],cast(string)w[0].scratch[0..<n],w[0].cipher[..],w[0].body[..],false);
+  if dc.error!=NIP44_OK {return ao_done(r,AO_DECRYPT,w);}
+  return ao_read(cast(string)w[0].body[0..<dc.written],r,w,a);
+}
+// Telemetry needs seq (an integer), timestamp and kind (strings) and
+// payload (an object); control needs type (a string). Then the name must
+// be known. The payload and the name are returned from the arena.
+ao_read :: (body:string,opened:AoOpened,w:[]AoWork,a:[]AoText)->AoOpened {
+  r:=opened;
+  if ja_admit(body,ja_policy(1),0,0)!=JA_OK {return ao_done(r,AO_SHAPE,w);}
+  j:[1]Json;json_start(j[..],body);
+  if json_next(j[..])!=JSON_OBJECT {return ao_done(r,AO_SHAPE,w);}
+  // name: where the telemetry kind or the control type sits in body.
+  seen:=0;nf:int;nt:int;
+  k:=json_next(j[..]);
+  while k==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);raw:=json_text(j[..]);
+    if json_is(key,"seq") && v==JSON_NUMBER {n:=json_int(raw);if n.ok {seen|=1;r.seq=n.value;}}
+    if json_is(key,"timestamp") && v==JSON_STRING {seen|=2;}
+    if json_is(key,ifx r.frame==AO_TELEMETRY then "kind" else "type") && v==JSON_STRING {seen|=4;nf=j[0].from;nt=j[0].to;}
+    if json_is(key,"payload") && v==JSON_OBJECT {seen|=8;}
+    ok:=json_skip(j[..]);
+    k=json_next(j[..]);
+  }
+  want:=ifx r.frame==AO_TELEMETRY then 15 else 4;
+  if (seen&want)!=want {return ao_done(r,AO_SHAPE,w);}
+  name:=body[nf..<nt];known:=false;
+  if r.frame==AO_TELEMETRY {for s:AO_KINDS {if json_is(name,s) {known=true;}}}
+  else {known=json_is(name,"cancel_turn");}
+  if !known {return ao_done(r,AO_IGNORED,w);}
+  // Copied out before the work is cleared: the name points into the copy.
+  from:=a[0].at;if from+body.count>a[0].buf.count {return ao_done(r,AO_FULL,w);}
+  for i:0..<body.count {a[0].buf[from+i]=body[i];}a[0].at+=body.count;
+  r.payload=cast(string)a[0].buf[from..<a[0].at];r.name=r.payload[nf..<nt];
+  return ao_done(r,AO_FANOUT,w);
+}
+// book:end open
+
+#test "the codes are distinct" {
+  #assert AO_FANOUT==0 && AO_DROP==1 && AO_EVENT==2 && AO_SIGNATURE==3 && AO_KIND==4 && AO_TAGS==5 && AO_AUTH==6;
+  #assert AO_STALE==7 && AO_RESERVED==8 && AO_FULL==9 && AO_DECRYPT==10 && AO_SHAPE==11 && AO_IGNORED==12;
+  #assert AO_KIND_FRAME==24200 && AO_KIND_PMA==30179 && AO_WINDOW==300;
+  #assert PS_STORED==0 && PS_MEMORY==1 && PS_DROPPED==2 && PS_REFUSED==3 && PS_EPHEMERAL==4;
+}
+#test "the frame tags" {
+  b:[1024]u8;
+  #assert aot_frame(aot_tags("telemetry","",b[..]))==AO_TELEMETRY && aot_frame(aot_tags("control","",b[..]))==AO_CONTROL;
+  #assert aot_frame(aot_tags("debug","",b[..]))==AO_UNKNOWN && aot_frame(aot_tags("Telemetry","",b[..]))==AO_UNKNOWN;
+  #assert aot_frame(aot_tags("telemetry",",[\"h\",\"group-1\"],[\"x\"]",b[..]))==AO_TELEMETRY;
+  #assert aot_frame(aot_tags("telemetry",",[\"frame\",\"telemetry\"]",b[..]))==-1;
+  #assert aot_frame(aot_tags("telemetry",",[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]",b[..]))==-1;
+  #assert aot_frame(aot_tags("telemetry",",[\"agent\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]",b[..]))==-1;
+  #assert aot_frame("[[\"agent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"telemetry\"]]")==-1;
+  #assert aot_frame("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"telemetry\"]]")==-1;
+  #assert aot_frame("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"agent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]")==-1;
+  #assert aot_frame("[[\"p\",\"79BE667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"agent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"control\"]]")==-1;
+  #assert aot_frame("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"agent\",\"79be\"],[\"frame\",\"control\"]]")==-1;
+  #assert aot_frame("[[\"p\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"agent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"control\"]]")==AO_CONTROL;
+  #assert aot_frame("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"\\u0061gent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"\\u0063ontrol\"]]")==AO_CONTROL;
+  // A long value in another tag is ignored; a long p is refused.
+  n:=json_raw(b[..],0,"[[\"alt\",\"");for i:0..<300 {b[n+i]='x';}n+=300;n=json_raw(b[..],n,"\"],");
+  n=json_raw(b[..],n,"[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"agent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"control\"]]");
+  #assert aot_frame(cast(string)b[0..<n])==AO_CONTROL;
+  n=json_raw(b[..],0,"[[\"agent\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"frame\",\"control\"],[\"p\",\"");for i:0..<300 {b[n+i]='a';}n+=300;n=json_raw(b[..],n,"\"]]");
+  #assert aot_frame(cast(string)b[0..<n])==-1;
+  p:[64]u8;a:[64]u8;
+  #assert ao_tags(aot_tags("control","",b[..]),p[..],a[..])==AO_CONTROL && cast(string)p[..]==PSV_OWNER_X && cast(string)a[..]==PSV_AGENT_X;
+  #assert ao_hex64(PSV_AGENT_X) && !ao_hex64(PSV_AGENT_X[0..<63]);
+  for c:[6]u8.['g','/',':','`','A','F'] {for i:0..<64 {b[i]=c;}#assert !ao_hex64(cast(string)b[0..<64]);}
+  for c:[4]u8.['0','9','a','f'] {for i:0..<64 {b[i]=c;}#assert ao_hex64(cast(string)b[0..<64]);}
+}
+#test "the relay admits telemetry and control between an owned pair" #steps 1000000000 {
+  f:=aot_admit(PSV_TELEMETRY,AOT_NOW);
+  #assert f.error==AO_FANOUT && f.frame==AO_TELEMETRY && cast(string)f.agent[..]==PSV_AGENT_X && cast(string)f.owner[..]==PSV_OWNER_X;
+  f=aot_admit(PSV_CONTROL,AOT_NOW);
+  #assert f.error==AO_FANOUT && f.frame==AO_CONTROL && cast(string)f.agent[..]==PSV_AGENT_X && cast(string)f.owner[..]==PSV_OWNER_X;
+  #assert aot_admit(PSV_AO_GROUP,AOT_NOW).error==AO_FANOUT;
+  s:[8192]u8;none:[1]AoPair;
+  #assert ao_admit(PSV_TELEMETRY,none[0..<0],AOT_NOW,s[..]).error==AO_AUTH && ao_admit(PSV_CONTROL,none[0..<0],AOT_NOW,s[..]).error==AO_AUTH;
+  // The pair, not each key alone, is what the records hold.
+  q:=[2]AoPair.[AoPair.{agent=PSV_AGENT_X,owner=PSV_STRANGER_X},AoPair.{agent=PSV_STRANGER_X,owner=PSV_OWNER_X}];
+  #assert ao_admit(PSV_TELEMETRY,q[..],AOT_NOW,s[..]).error==AO_AUTH;
+  q[1].agent=PSV_AGENT_X;#assert ao_admit(PSV_TELEMETRY,q[..],AOT_NOW,s[..]).error==AO_FANOUT;
+}
+#test "the relay refuses frames it cannot authorize" #steps 1000000000 {
+  #assert aot_admit(PSV_AO_STRANGER,AOT_NOW).error==AO_AUTH;
+  #assert aot_admit(PSV_AO_NOT_OWNER,AOT_NOW).error==AO_AUTH;
+  #assert aot_admit(PSV_AO_CONTROL_STRANGER,AOT_NOW).error==AO_AUTH;
+  #assert aot_admit(PSV_AO_CONTROL_WRONG_P,AOT_NOW).error==AO_AUTH;
+  #assert aot_admit(PSV_AO_AGENT_MISMATCH,AOT_NOW).error==AO_AUTH;
+  #assert aot_admit(PSV_AO_TWO_FRAMES,AOT_NOW).error==AO_TAGS;
+  f:=aot_admit(PSV_AO_UNKNOWN_FRAME,AOT_NOW);#assert f.error==AO_DROP && f.frame==AO_UNKNOWN;
+  #assert aot_admit(PSV_AE1,AOT_NOW).error==AO_KIND;
+  c:[4096]u8;#assert aot_admit(aot_patch(PSV_TELEMETRY,-3,'0',c[..]),AOT_NOW).error==AO_SIGNATURE;
+  #assert aot_admit("{}",AOT_NOW).error==AO_EVENT;
+}
+#test "the freshness window is 300 seconds either side" #steps 1000000000 {
+  t:=1777464041;
+  #assert aot_admit(PSV_TELEMETRY,t+300).error==AO_FANOUT && aot_admit(PSV_TELEMETRY,t+301).error==AO_STALE;
+  #assert aot_admit(PSV_TELEMETRY,t-300).error==AO_FANOUT && aot_admit(PSV_TELEMETRY,t-301).error==AO_STALE;
+  #assert aot_admit(PSV_AO_STALE,AOT_NOW).error==AO_STALE;
+}
+#test "a frame never reaches the snapshot" #steps 1000000000 {
+  snap:[8192]u8;for i:0..<8192 {snap[i]=77;}
+  for t:[5]string.[PSV_TELEMETRY,PSV_CONTROL,PSV_CANARY_FRAME,PSV_AO_UNKNOWN_FRAME,PSV_AO_STRANGER] {
+    r:=aot_route(t,snap[..]);#assert r.kind==AO_KIND_FRAME && r.written==0 && r.route!=PS_STORED;
+  }
+  for i:0..<8192 {#assert snap[i]==77;}
+  #assert aot_route(PSV_TELEMETRY,snap[..]).route==PS_MEMORY && aot_route(PSV_AO_UNKNOWN_FRAME,snap[..]).route==PS_DROPPED;
+  r:=aot_route(PSV_AO_STRANGER,snap[..]);#assert r.route==PS_REFUSED && r.error==AO_AUTH;
+  r=aot_route(PSV_AO_STALE,snap[..]);#assert r.route==PS_REFUSED && r.error==AO_STALE && r.written==0;
+  c:[4096]u8;r=aot_route(aot_patch(PSV_CONTROL,-3,'0',c[..]),snap[..]);#assert r.route==PS_REFUSED && r.error==AO_SIGNATURE;
+  for i:0..<8192 {#assert snap[i]==77;}
+}
+#test "engrams are stored as ciphertext; the reservation and bad events are refused" #steps 1000000000 {
+  snap:[8192]u8;
+  r:=aot_route(PSV_AE1,snap[..]);
+  #assert r.route==PS_STORED && r.error==AO_FANOUT && r.kind==30174 && cast(string)r.id[..]==PSV_AE1_ID && r.written==20+PSV_AE1.count;
+  #assert cast(string)snap[20..<r.written]==PSV_AE1;
+  r=aot_route(PSV_CANARY_EVENT,snap[..]);#assert r.route==PS_STORED && !ps_contains(cast(string)snap[0..<r.written],PSV_CANARY);
+  #assert ps_contains(PSV_CANARY_BODY,PSV_CANARY) && ps_contains(PSV_CANARY,PSV_CANARY) && !ps_contains("",PSV_CANARY) && !ps_contains(PSV_CANARY[1..<PSV_CANARY.count],PSV_CANARY);
+  #assert ps_contains("ab","b") && ps_contains("ab","a") && !ps_contains("ab","c") && ps_contains("a","");
+  for i:0..<8192 {snap[i]=77;}
+  r=aot_route(PSV_PMA,snap[..]);#assert r.route==PS_REFUSED && r.error==AO_RESERVED && r.kind==30179 && snap[0]==77;
+  r=aot_route(NS_EPHEMERAL_TEST,snap[..]);#assert r.route==PS_EPHEMERAL && r.error==AO_FANOUT && r.written==0 && snap[0]==77;
+  c:[4096]u8;r=aot_route(aot_patch(PSV_AE1,-3,'0',c[..]),snap[..]);#assert r.route==PS_REFUSED && r.error==AO_SIGNATURE && snap[0]==77;
+  r=aot_route("{}",snap[..]);#assert r.route==PS_REFUSED && r.error==AO_EVENT;
+  small:[100]u8;r=aot_route(PSV_AE1,small[..]);#assert r.route==PS_REFUSED && r.error==AO_FULL;
+}
+#test "the audit line never names a frame" #steps 1000000000 {
+  snap:[8192]u8;out:[256]u8;for i:0..<256 {out[i]=77;}
+  for t:[4]string.[PSV_TELEMETRY,PSV_AO_UNKNOWN_FRAME,PSV_AO_STRANGER,NS_EPHEMERAL_TEST] {#assert ps_log(aot_route(t,snap[..]),out[..])==0;}
+  #assert out[0]==77;
+  r:=aot_route(PSV_AE1,snap[..]);n:=ps_log(r,out[..]);
+  #assert cast(string)out[0..<n]=="stored kind 30174 id f4a594177b7aeea4fe99a09efbf74ae85f0126244f322135682c405888a38689 bytes 687\n";
+  n=ps_log(aot_route(PSV_PMA,snap[..]),out[..]);#assert cast(string)out[0..<n]=="refused 8\n";
+  fake:PsRoute;fake.route=PS_MEMORY;fake.kind=1;#assert ps_log(fake,out[..])==0;
+}
+#test "the owner reads telemetry and the agent reads control" #steps 1000000000 {
+  w:[1]AoWork;st:[4096]u8;aot_dirty(w[..]);
+  o:=aot_open(PSV_TELEMETRY,true,w[..],st[..]);
+  #assert o.error==AO_FANOUT && o.frame==AO_TELEMETRY && o.name=="acp_write" && o.seq==42 && o.payload==PSV_TELEMETRY_BODY && aot_zeroed(w[..]);
+  aot_dirty(w[..]);o=aot_open(PSV_CONTROL,false,w[..],st[..]);
+  #assert o.error==AO_FANOUT && o.frame==AO_CONTROL && o.name=="cancel_turn" && o.payload==PSV_CONTROL_BODY && aot_zeroed(w[..]);
+  o=aot_open(PSV_CANARY_FRAME,true,w[..],st[..]);#assert o.error==AO_FANOUT && o.seq==43 && o.name=="acp_read" && ps_contains(o.payload,PSV_CANARY);
+}
+#test "the client refuses what is not its own" #steps 1000000000 {
+  w:[1]AoWork;st:[4096]u8;c:[4096]u8;
+  aot_dirty(w[..]);#assert aot_open(PSV_TELEMETRY,false,w[..],st[..]).error==AO_AUTH && aot_zeroed(w[..]);
+  #assert aot_open(PSV_CONTROL,true,w[..],st[..]).error==AO_AUTH;
+  #assert aot_open(PSV_AO_AGENT_MISMATCH,true,w[..],st[..]).error==AO_AUTH;
+  #assert aot_open(PSV_AO_UNKNOWN_FRAME,true,w[..],st[..]).error==AO_DROP;
+  #assert aot_open(PSV_AO_TWO_FRAMES,true,w[..],st[..]).error==AO_TAGS;
+  #assert aot_open(PSV_AE1,true,w[..],st[..]).error==AO_KIND;
+  aot_dirty(w[..]);#assert aot_open(aot_patch(PSV_TELEMETRY,-3,'0',c[..]),true,w[..],st[..]).error==AO_SIGNATURE && aot_zeroed(w[..]);
+  aot_dirty(w[..]);#assert aot_open("{}",true,w[..],st[..]).error==AO_EVENT && aot_zeroed(w[..]);
+  a:=[1]AoText.[AoText.{buf=st[..]}];sk:=aot_key(PSV_STRANGER_SECRET);zero:[32]u8;
+  aot_dirty(w[..]);#assert ao_open(PSV_TELEMETRY,sk[..],PSV_OWNER_X,PSV_AGENT_X,w[..],a[..]).error==AO_DECRYPT && aot_zeroed(w[..]);
+  #assert ao_open(PSV_TELEMETRY,zero[..],PSV_OWNER_X,PSV_AGENT_X,w[..],a[..]).error==AO_DECRYPT;
+  #assert ao_open(PSV_TELEMETRY,sk[0..<31],PSV_OWNER_X,PSV_AGENT_X,w[..],a[..]).error==AO_EVENT;
+  #assert ao_open(PSV_TELEMETRY,sk[..],PSV_OWNER_X,PSV_AGENT_X,w[0..<0],a[..]).error==AO_EVENT;
+  small:[100]u8;#assert aot_open(PSV_TELEMETRY,true,w[..],small[..]).error==AO_FULL;
+}
+#test "the decrypted payload's fields" #steps 2000000000 {
+  w:[1]AoWork;st:[4096]u8;a:=[1]AoText.[AoText.{buf=st[..]}];
+  t:AoOpened;t.frame=AO_TELEMETRY;k:AoOpened;k.frame=AO_CONTROL;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"kind\":\"turn_started\",\"payload\":{}}",t,w[..],a[..]).error==AO_FANOUT;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"kind\":\"session_resolved\",\"payload\":{\"kind\":1,\"seq\":\"x\"}}",t,w[..],a[..]).seq==1;
+  #assert ao_read("{\"timestamp\":\"t\",\"kind\":\"turn_started\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":\"1\",\"timestamp\":\"t\",\"kind\":\"turn_started\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1.5,\"timestamp\":\"t\",\"kind\":\"turn_started\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"kind\":\"turn_started\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"timestamp\":7,\"kind\":\"turn_started\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"kind\":3,\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"kind\":\"turn_started\"}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"kind\":\"turn_started\",\"payload\":[]}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"kind\":\"debug\",\"payload\":{}}",t,w[..],a[..]).error==AO_IGNORED;
+  #assert ao_read("{\"seq\":1,\"timestamp\":\"t\",\"type\":\"cancel_turn\",\"payload\":{}}",t,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"type\":\"cancel_turn\"}",k,w[..],a[..]).error==AO_FANOUT;
+  #assert ao_read("{\"type\":\"pause\"}",k,w[..],a[..]).error==AO_IGNORED;
+  #assert ao_read("{\"kind\":\"cancel_turn\"}",k,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"type\":1}",k,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("[]",k,w[..],a[..]).error==AO_SHAPE && ao_read("{",k,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"type\":\"cancel_turn\",\"type\":\"pause\"}",k,w[..],a[..]).error==AO_SHAPE;
+  #assert ao_read("{\"x\":{\"type\":\"pause\"},\"type\":\"cancel_turn\"}",k,w[..],a[..]).error==AO_FANOUT;
+  #assert ao_read("{\"type\":\"cancel_turn\",\"x\":{\"type\":\"pause\"}}",k,w[..],a[..]).error==AO_FANOUT;
+  for s:AO_KINDS {b:[128]u8;n:=json_raw(b[..],0,"{\"seq\":0,\"timestamp\":\"t\",\"kind\":\"");n=json_raw(b[..],n,s);n=json_raw(b[..],n,"\",\"payload\":{}}");
+    #assert ao_read(cast(string)b[0..<n],t,w[..],a[..]).name==s;}
+  e:=[1]AoText.[AoText.{buf=st[0..<16]}];
+  #assert ao_read("{\"type\":\"cancel_turn\"}",k,w[..],e[..]).error==AO_FULL;
+  f:=[1]AoText.[AoText.{buf=st[0..<22]}];
+  r:=ao_read("{\"type\":\"cancel_turn\"}",k,w[..],f[..]);#assert r.error==AO_FANOUT && r.payload=="{\"type\":\"cancel_turn\"}" && f[0].at==22;
+}
