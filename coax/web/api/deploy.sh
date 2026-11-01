@@ -51,7 +51,10 @@ git -C "$work/source" ls-files -z -- coax/src coax/bootstrap coax/lib coax/book 
    ':(glob)coax/*' ':(glob)coax/tests/**/*.coax' ':(glob)coax/web/api/*.coax' ':(glob)coax/web/api/*.generated.*' | rsync -a --from0 --files-from=- "$work/source/" "$stage/"
 # The lines the image's compiler build gates its mutants on (Dockerfile): those
 # changed since origin/main, as in a checkout of main.
-(cd "$work/source/coax" && ./mutation-gate.sh changed "$work/source" "$(git -C "$work/source" merge-base HEAD origin/main)") > "$stage/coax/mutation-changed"
+mkdir -p "$stage/coax"; : > "$stage/coax/mutation-changed"
+if [[ -x "$work/source/coax/mutation-gate.sh" ]]; then
+  (cd "$work/source/coax" && ./mutation-gate.sh changed "$work/source" "$(git -C "$work/source" merge-base HEAD origin/main)") > "$stage/coax/mutation-changed"
+fi
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
 # Capture the authenticated build result, not the mutable tag's later value.
 # The compiler bootstrap is parallel on a 32-core builder, but with its
