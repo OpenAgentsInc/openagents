@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 12 are implemented, 44 are partly implemented and
+Of the 104 chapters, 13 are implemented, 43 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -158,7 +158,7 @@ hashes.
 | --- | --- | --- |
 | [15. Bech32](ch015-bech32.md) | Runnable: native C | BIP-173 Bech32 (checksum constant 1, never Bech32m) with the pinned vectors and canonical lowercase re-encoding. |
 | [16. NIP-19 entities and nostr: URIs](ch016-nip-19-entities-and-nostr-uris.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | `npub`, `nsec` and `note`, and the TLV forms `nprofile`, `nevent` and `naddr` with relay hints, plus the `nostr:` URI scheme of NIP-21. |
-| [17. JSON you can sign](ch017-json-you-can-sign.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | A bounded JSON reader and writer that keep original bytes, and the exact NIP-01 serialization `[0, pubkey, created_at, kind, tags, content]` with its escape rules, distinct from RFC 8785 JCS. |
+| [17. JSON you can sign](ch017-json-you-can-sign.md) | Runnable: native C | A bounded JSON reader and writer that keep original bytes, and the exact NIP-01 serialization `[0, pubkey, created_at, kind, tags, content]` with its escape rules, distinct from RFC 8785 JCS. |
 
 ### Part V. Encryption (chapters 18–20)
 

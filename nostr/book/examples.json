@@ -121,6 +121,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/signable-json.coax",
+      "chapter": "nostr/book/ch017-json-you-can-sign.md",
+      "stdout": "nostr/fixtures/signable-json.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

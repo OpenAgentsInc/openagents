@@ -248,6 +248,7 @@ json_valid :: (text: string) -> bool {
   return t==JSON_END;
 }
 
+// book:begin int
 // A number token's text as an integer: no fraction or exponent, |n| <= 2^53.
 JsonInt :: struct { ok: bool; value: int; }
 JSON_INT_MOST :: 9007199254740992;
@@ -266,6 +267,7 @@ json_int :: (s: string) -> JsonInt {
   return JsonInt.{ok=true,value=ifx negative then -v else v};
 }
 
+// book:end int
 // A UTF-8 encoding of cp into out at n: the new length, or -1 when it doesn't fit.
 json_put_cp :: (out: [] u8, n: int, cp: int) -> int {
   need := ifx cp < 0x80 then 1 else ifx cp < 0x800 then 2 else ifx cp < 0x10000 then 3 else 4;
@@ -348,6 +350,7 @@ json_raw :: (out: [] u8, at: int, text: string) -> int {
   return at + text.count;
 }
 
+// book:begin write-string
 // s as a JSON string, escaped the way NIP-01 serializes an event: \" \\ \n
 // \r \t \b \f, other control bytes as \u00XX, everything else as it is.
 json_write_string :: (out: [] u8, at: int, s: string) -> int {
@@ -376,6 +379,7 @@ json_write_string :: (out: [] u8, at: int, s: string) -> int {
   return json_raw(out, n, "\"");
 }
 
+// book:end write-string
 json_write_int :: (out: [] u8, at: int, v: int) -> int {
   if at < 0 { return -1; }
   digits: [24] u8; c := 0; x := v; n := at;

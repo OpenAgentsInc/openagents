@@ -1,0 +1,146 @@
+// book:begin example
+#load "../../coax/lib/nostr/adapters/json-admission.coax";
+#load "../../coax/lib/nostr/jcs.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself supplies; it must be valid.
+bytes_of :: (text: string, out: [] u8) -> string {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+
+// The NIP-01 ID preimage [0,pubkey,created_at,kind,tags,content] into out.
+// The tags are one flat list of strings; sizes[i] says how many belong to
+// tag i. Returns the length, or -1 when out is too small.
+id_preimage :: (out: [] u8, pubkey: string, created_at: int, kind: int,
+                tags: [] string, sizes: [] int, content: string) -> int {
+  n := json_raw(out, 0, "[0,");
+  n = json_write_string(out, n, pubkey);
+  n = json_raw(out, n, ",");
+  n = json_write_int(out, n, created_at);
+  n = json_raw(out, n, ",");
+  n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",[");
+  next := 0;
+  for t: 0..<sizes.count {
+    if t > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "[");
+    for v: 0..<sizes[t] {
+      if v > 0 { n = json_raw(out, n, ","); }
+      n = json_write_string(out, n, tags[next]);
+      next += 1;
+    }
+    n = json_raw(out, n, "]");
+  }
+  n = json_raw(out, n, "],");
+  n = json_write_string(out, n, content);
+  return json_raw(out, n, "]");
+}
+
+TOKEN :: [11] string.["error", "end", "{", "}", "[", "]", "string", "number", "true", "false", "null"];
+JA :: [9] string.["ok", "policy", "size", "json", "string", "duplicate key", "keys", "work", "number"];
+
+// Read text to its end and print where it was refused, if it was.
+try_parse :: (label: string, text: string) {
+  j: [1] Json; json_start(j[..], text);
+  t := json_next(j[..]);
+  while t != JSON_END && t != JSON_ERROR { t = json_next(j[..]); }
+  if t == JSON_END { print("%: valid\n", label); }
+  else { print("%: refused at byte %\n", label, j[0].error_at); }
+}
+// The admission policy for a Nostr event (domain 0) on a whole text.
+try_admit :: (label: string, text: string) {
+  print("%: %\n", label, JA[ja_admit(text, ja_policy(0), text.count, 0)]);
+}
+
+PUBKEY :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+
+main :: () {
+  // The worked event: content is h i LF " x " \ 0x01.
+  raw: [8] u8;
+  content := bytes_of("68690a2278225c01", raw[..]);
+  tags := [2] string.["t", "nostr"];
+  sizes := [1] int.[2];
+  out: [256] u8;
+  n := id_preimage(out[..], PUBKEY, 1761686400, 1, tags[..], sizes[..], content);
+  print("content bytes: %\n", content.count);
+  print("preimage: %\n", cast(string) out[0..<n]);
+  print("preimage bytes: %\n", n);
+  id: [32] u8;
+  #assert sha256_hash_checked(out[0..<n], id[..], false) == SHA_OK;
+  show("id", id[..]);
+
+  // One byte of each class through the writer.
+  print("escapes:");
+  for c: [12] u8.[10, 34, 92, 13, 9, 8, 12, 0, 1, 31, 47, 127] {
+    one: [1] u8; one[0] = c;
+    w: [8] u8;
+    k := json_write_string(w[..], 0, cast(string) one[..]);
+    print(" %=", c);
+    if c == 127 { print("raw"); } else { print("%", cast(string) w[1..<k - 1]); }
+  }
+  print("\n");
+  small: [18] u8; fit: [19] u8;
+  print("content into 18 bytes: %, into 19 bytes: %\n",
+        json_write_string(small[..], 0, content), json_write_string(fit[..], 0, content));
+
+  // Read the preimage back, token by token.
+  text := cast(string) out[0..<n];
+  j: [1] Json; json_start(j[..], text);
+  print("tokens:");
+  t := json_next(j[..]);
+  while t != JSON_END && t != JSON_ERROR {
+    print(" %@%", TOKEN[t + 1], j[0].from);
+    t = json_next(j[..]);
+  }
+  print(" %\n", TOKEN[t + 1]);
+  // The content string is the last string token; unescape it.
+  json_start(j[..], text);
+  // Token 12: [ 0 pubkey created_at kind [ [ "t" "nostr" ] ] content.
+  for i: 0..<12 { t = json_next(j[..]); }
+  back: [64] u8;
+  m := json_unescape(json_text(j[..]), back[..]);
+  print("content raw in the text: % bytes, unescaped: % bytes, same as the original: %\n",
+        j[0].to - j[0].from, m, cast(string) back[0..<m] == content);
+  ca := json_int("1761686400");
+  print("created_at as an integer: ok %, value %\n", ca.ok, ca.value);
+
+  // Refusals by the reader.
+  try_parse("trailing comma [1,]", "[1,]");
+  try_parse("raw line feed in a string", "\"a\nb\"");
+  try_parse("unknown escape \\x41", "\"\\x41\"");
+  try_parse("leading zero 01", "01");
+  try_parse("two values", "1 2");
+  deep: [17] u8; for i: 0..<17 { deep[i] = '['; }
+  try_parse("17 nested arrays", cast(string) deep[..]);
+  try_parse("lone surrogate \\ud800", "\"\\ud800\"");
+  lone: [8] u8;
+  print("lone surrogate unescaped: %\n", json_unescape("\\ud800", lone[..]));
+  print("2^53 + 1 as an integer: ok %\n", json_int("9007199254740993").ok);
+
+  // Refusals by event admission.
+  try_admit("duplicate key", "{\"kind\":1,\"kind\":2}");
+  try_admit("duplicate key by escape", "{\"kind\":1,\"\\u006bind\":2}");
+  try_admit("lone surrogate", "{\"content\":\"\\ud800\"}");
+  try_admit("kind 2^53 - 1", "{\"kind\":9007199254740991}");
+  try_admit("kind 2^53", "{\"kind\":9007199254740992}");
+  try_admit("kind 1.0", "{\"kind\":1.0}");
+  try_admit("trailing comma", "{\"kind\":1,}");
+
+  // JCS sorts object members; NIP-01 is a fixed array.
+  jcs: [128] u8;
+  r := jcs_canonicalize_checked("{\"pubkey\":\"ab\",\"kind\":1,\"content\":\"\\u0068i\"}", jcs[..], false);
+  print("JCS: error %, %\n", r.error, cast(string) jcs[0..<r.written]);
+  r = jcs_canonicalize_checked("{\"created_at\":1.5}", jcs[..], false);
+  print("JCS of 1.5: error %\n", r.error);
+}
+// book:end example

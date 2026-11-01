@@ -1,0 +1,27 @@
+content bytes: 8
+preimage: [0,"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",1761686400,1,[["t","nostr"]],"hi\n\"x\"\\\u0001"]
+preimage bytes: 119
+id: ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
+escapes: 10=\n 34=\" 92=\\ 13=\r 9=\t 8=\b 12=\f 0=\u0000 1=\u0001 31=\u001f 47=/ 127=raw
+content into 18 bytes: -1, into 19 bytes: 19
+tokens: [@0 number@1 string@4 number@70 number@81 [@83 [@84 string@86 string@90 ]@96 ]@97 string@100 ]@118 end
+content raw in the text: 17 bytes, unescaped: 8 bytes, same as the original: true
+created_at as an integer: ok true, value 1761686400
+trailing comma [1,]: refused at byte 3
+raw line feed in a string: refused at byte 2
+unknown escape \x41: refused at byte 1
+leading zero 01: refused at byte 1
+two values: refused at byte 2
+17 nested arrays: refused at byte 16
+lone surrogate \ud800: valid
+lone surrogate unescaped: -1
+2^53 + 1 as an integer: ok false
+duplicate key: duplicate key
+duplicate key by escape: duplicate key
+lone surrogate: string
+kind 2^53 - 1: ok
+kind 2^53: number
+kind 1.0: number
+trailing comma: json
+JCS: error 0, {"content":"hi","kind":1,"pubkey":"ab"}
+JCS of 1.5: error 8

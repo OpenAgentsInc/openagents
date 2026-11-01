@@ -340,16 +340,19 @@
    "number": 17,
    "title": "JSON you can sign",
    "file": "ch017-json-you-can-sign.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     1,
+    4,
     "coax:18"
    ],
    "source": [
     "coax/lib/nostr/adapters/json-admission.coax",
     "coax/lib/nostr/jcs.coax",
-    "coax/lib/nostr/json.coax"
+    "coax/lib/nostr/json.coax",
+    "nostr/examples/checks/signable-json.coax",
+    "nostr/examples/signable-json.coax"
    ],
    "qualified_targets": [
     "cpu"

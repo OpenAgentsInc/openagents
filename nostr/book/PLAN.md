@@ -94,7 +94,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | --- | --- | --- | --- |
 | [15. Bech32](ch015-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector gives its expected result. A Bech32m string refuses. | — |
 | [16. NIP-19 entities and nostr: URIs](ch016-nip-19-entities-and-nostr-uris.md) — partly implemented | 15 | The NIP-19 examples in `nostr/nips/official/19.md` decode to their stated values. A `nostr:nsec1…` URI refuses. | [NIP-19](../nips/official/19.md), [NIP-21](../nips/official/21.md) |
-| [17. JSON you can sign](ch017-json-you-can-sign.md) — partly implemented | 1, coax:18 | The JSONTestSuite cases pinned in `coax/tests/vectors/upstream/json/` give their expected results. Serializations of events with every escape class match an independent implementation byte for byte. | [NIP-01](../nips/official/01.md) |
+| [17. JSON you can sign](ch017-json-you-can-sign.md) — implemented | 1, 4, coax:18 | The JSONTestSuite cases pinned in `coax/tests/vectors/upstream/json/` give their expected results. Serializations of events with every escape class match an independent implementation byte for byte. | [NIP-01](../nips/official/01.md) |
 
 ### Part V. Encryption
 
