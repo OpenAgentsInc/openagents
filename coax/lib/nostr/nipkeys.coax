@@ -76,7 +76,7 @@ KY_CHECK :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 KY_GEN :: [5] u64.[0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd];
 ky_polymod :: (c:u64,v:u64)->u64 {
   top:=c>>35;r:=((c&0x7ffffffff)<<5)^v;
-  for i:0..<5 {if ((top>>cast(u64)i)&1)!=0 {r^=KY_GEN[i];}}
+  for i:0..<KY_GEN.count {if ((top>>cast(u64)i)&1)!=0 {r^=KY_GEN[i];}}
   return r;
 }
 // The eight checksum characters of a descriptor without its "#...", into
@@ -108,11 +108,11 @@ ky_checksum_ok :: (d:string)->bool {
   cs:[8]u8;
   #assert ky_checksum("raw(deadbeef)",cs[..]) && cast(string)cs[..]=="89f8spxm";
   #assert ky_checksum_ok("raw(deadbeef)#89f8spxm");
-  #assert !ky_checksum_ok("raw(deadbeef)#89f8spxn");
+  #assert !ky_checksum_ok("raw(deadbeef)#89f8spxn") && !ky_checksum_ok("raw(deadbeef)#99f8spxm");
   #assert !ky_checksum_ok("raw(deadbeef)x89f8spxm");
   #assert !ky_checksum_ok("#89f8spxm");
   #assert !ky_checksum_ok("raw(deadbeee)#89f8spxm");
-  #assert !ky_checksum("raw(é)",cs[..]);
+  #assert !ky_checksum("raw(é)",cs[..]) && !ky_checksum_ok("raw(é)#89f8spxm");
   #assert ky_checksum_ok(KY_DESC2);
   #assert ky_checksum("wsh(multi(1,A,BC))",cs[..]) && cast(string)cs[..]=="c9c7qek3";
 }
@@ -145,14 +145,13 @@ ky_nibble :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(i
 ky_eq32 :: (a:[32]u8,b:[32]u8)->bool {for k:0..<32 {if a[k]!=b[k] {return false;}}return true;}
 ky_sha :: (s:string,out:[]u8)->bool {
   state:[112]u8;chunk:[64]u8;
-  if sha256_init(state[..])!=SHA_OK {return false;}
-  at:=0;
-  while at<s.count {
-    n:=ifx s.count-at<64 then s.count-at else 64;
-    for k:0..<n {chunk[k]=s[at+k];}
-    if sha256_update_checked(state[..],chunk[0..<n],false)!=SHA_OK {return false;}
-    at+=n;
+  #assert sha256_init(state[..])==SHA_OK;
+  n:=0;
+  for c:s {
+    chunk[n]=c;n+=1;
+    if n==chunk.count {#assert sha256_update_checked(state[..],chunk[..],false)==SHA_OK;n=0;}
   }
+  #assert sha256_update_checked(state[..],chunk[0..<n],false)==SHA_OK;
   return sha256_final_checked(state[..],out,false)==SHA_OK;
 }
 // An ArtifactRef object (the opening brace read): its digest, or "" when it
@@ -292,7 +291,6 @@ KY_B58 :: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 // fingerprint, child number, chain code and a compressed public key.
 ky_ext_key :: (s:string)->KyExtKey {
   r:KyExtKey;b:[82]u8;
-  if s.count<100 || s.count>112 {return r;}
   for c:s {
     d:=-1;for k:0..<58 {if KY_B58[k]==c {d=k;}}
     if d<0 {return r;}
@@ -321,7 +319,7 @@ ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
   if !il.ok || !a.ok {return r;}                          // IL >= n, or a key off the curve
   s:=ecmult_vartime(il.value,a.value,sc_small(1));        // IL·G + K: public data, variable time
   e:=sg_encode_public(s.value);
-  if !s.ok || !e.ok || e.length!=33 {return r;}
+  if e.length!=33 {return r;}                             // infinity encodes as one byte
   for k:0..<33 {r.key[k]=e.bytes[k];}
   for k:0..<32 {r.chain[k]=i[32+k];}
   r.version=p.version;r.ok=true;return r;
@@ -354,6 +352,9 @@ ky_origin :: (s:string)->string {
   #assert ky_origin("[78c16713/]tpubX")=="" && ky_origin("[78c16713/0")=="" && ky_origin("[78c16713/0h")=="";
   #assert ky_origin("[78c16713/0x]tpubX")=="" && ky_origin("[78c16713/12345678901]tpubX")=="";
   #assert ky_origin("[78c16713/1234567890]X")=="X" && ky_origin("[78c16713/0/")=="";
+  #assert ky_origin("[78c1671:/0]x")=="" && ky_origin("[78c1671`/0]x")=="" && ky_origin("[78c1671//0]x")=="";
+  #assert ky_origin("[0123abcd/0]x")=="x" && ky_origin("[456789ef/0]x")=="x";
+  #assert ky_origin("[78c16713/4:]x")=="" && ky_origin("[78c16713/123456789012]X")=="";
 }
 
 // ---- enrollment and independence
@@ -454,7 +455,7 @@ ky_multi :: (out:[]u8,at:int,name:string,w:KyWallet,e:[]KyEnrollment,p:KyPath)->
 // exactly one path, and every primary key precedes every recovery key.
 ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
   if w.npaths>2 {return -1;}
-  p:=ky_primary(w);a:=0;
+  p:=ky_primary(w);a:int;
   if w.npaths==1 {
     a=ky_put(out,0,"wsh(");a=ky_multi(out,a,"sortedmulti",w,e,w.paths[0]);a=ky_put(out,a,")");
   } else {
@@ -464,7 +465,7 @@ ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
     a=ky_put_int(out,a,r.older+r.after);a=ky_put(out,a,"),");
     a=ky_multi(out,a,"multi",w,e,r);a=ky_put(out,a,")))");
   }
-  if a<0 || a+9>out.count {return -1;}
+  if a==-1 || a+9>out.count {return -1;}
   if !ky_checksum(cast(string)out[0..<a],out[a+1..<a+9]) {return -1;}
   out[a]='#';return a+9;
 }
@@ -597,15 +598,16 @@ KY_REQ_FIELDS :: [13] string.["v","requires","meta","wallet","requester","psbt",
 KY_OUT_FIELDS :: [3] string.["address","amount_sat","change"];
 ky_stated :: (j:[]Json,s:[]KyStated)->bool {
   seen:=0;names:=KY_OUT_FIELDS;
-  while true {
-    t:=json_next(j);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return false;}
+  t:=json_next(j);
+  while t==JSON_STRING {
     f:=ky_field(json_text(j),names[..]);t=json_next(j);
     if f<0 || (seen&(1<<f))!=0 {return false;}seen|=1<<f;
     if f==0 {if t!=JSON_STRING {return false;}s[0].address=json_text(j);}
     else if f==1 {s[0].amount=ky_uint(j,t);if s[0].amount<1 || s[0].amount>KY_MAX_SAT {return false;}}
     else {if t!=JSON_TRUE && t!=JSON_FALSE {return false;}s[0].change=t==JSON_TRUE;}
+    t=json_next(j);
   }
-  return seen==7;
+  return t==JSON_OBJECT_END && seen==7;
 }
 // book:begin request
 ky_request_read :: (content:string)->KyRequest {
@@ -651,16 +653,17 @@ at_slug_ky :: (s:string)->bool {
 }
 
 // ---- PSBT v0
-// A compact size at b[at]: its value and the next position, or -1. Only the
-// one- and three-byte forms; nothing this reader needs is larger.
-KyVar :: struct {value:int;next:int;}
+// A compact size at b[at]: its value and the next position (ok false, value
+// 0, when malformed). Only the one- and three-byte forms; nothing this
+// reader needs is larger.
+KyVar :: struct {ok:bool;value:int;next:int;}
 ky_var :: (b:[]u8,at:int)->KyVar {
-  if at<0 || at>=b.count {return KyVar.{next=-1};}
-  if b[at]<0xfd {return KyVar.{value=cast(int)b[at],next=at+1};}
-  if b[at]>0xfd || at+3>b.count {return KyVar.{next=-1};}
+  if at<0 || at>=b.count {return KyVar.{};}
+  if b[at]<0xfd {return KyVar.{ok=true,value=cast(int)b[at],next=at+1};}
+  if b[at]>0xfd || at+3>b.count {return KyVar.{};}
   v:=cast(int)b[at+1]|(cast(int)b[at+2]<<8);
-  if v<0xfd {return KyVar.{next=-1};}
-  return KyVar.{value=v,next=at+3};
+  if v<0xfd {return KyVar.{};}
+  return KyVar.{ok=true,value=v,next=at+3};
 }
 ky_le :: (b:[]u8,at:int,n:int)->int {v:=0;for k:0..<n {v|=cast(int)b[at+k]<<(8*k);}return v;}
 // value (8 bytes little-endian) then a script; the next position, or -1.
@@ -669,60 +672,65 @@ ky_txout :: (b:[]u8,at:int,end:int,value:[]int,s:[]KyScript)->int {
   value[0]=ky_le(b,at,8);
   if value[0]<0 || value[0]>KY_MAX_SAT {return -1;}
   v:=ky_var(b,at+8);
-  if v.next<0 || v.value>KY_SCRIPT || v.next+v.value>end {return -1;}
+  if !v.ok || v.value>KY_SCRIPT || v.next+v.value>end {return -1;}
   s[0].n=v.value;for k:0..<v.value {s[0].b[k]=b[v.next+k];}
   return v.next+v.value;
 }
-// One key-value map. The callback-free reader returns where each key of
-// type want starts its value (or -1) and the map's end (after 0x00).
-KyMap :: struct {end:int;at:int;n:int;dup:bool;other:int;}
-ky_map :: (b:[]u8,at:int,want:u8)->KyMap {
-  r:KyMap;r.at=-1;r.end=-1;i:=at;
+// One key-value map. The callback-free reader returns, for the one-byte
+// keys of types 0 and 1 (the global map's unsigned transaction, an input's
+// witness UTXO), whether each is there and where its value starts; whether
+// either repeats; the version (key 0xfb); and the map's end (after 0x00)
+// when it is well formed.
+KyMap :: struct {ok:bool;end:int;found:[2]bool;at:[2]int;n:[2]int;dup:bool;other:int;}
+ky_map :: (b:[]u8,at:int)->KyMap {
+  r:KyMap;i:=at;
   while true {
-    k:=ky_var(b,i);if k.next<0 {return r;}
-    if k.value==0 {r.end=k.next;return r;}
-    if k.next+k.value>b.count {return r;}
+    k:=ky_var(b,i);if !k.ok {return r;}
+    if k.value==0 {r.ok=true;r.end=k.next;return r;}
+    if k.next>=b.count {return r;}            // the key's type byte, then ky_var bounds the rest
     kt:=b[k.next];
-    v:=ky_var(b,k.next+k.value);if v.next<0 || v.next+v.value>b.count {return r;}
-    if kt==want && k.value==1 {if r.at>=0 {r.dup=true;}r.at=v.next;r.n=v.value;}
-    else if kt==0xfb && k.value==1 && want==0 {r.other=ifx v.value==4 then ky_le(b,v.next,4) else -1;}
+    v:=ky_var(b,k.next+k.value);if !v.ok {return r;}           // a value past the end leaves no terminator
+    if k.value==1 && kt<2 {x:=cast(int)kt;r.dup=r.dup || r.found[x];r.found[x]=true;r.at[x]=v.next;r.n[x]=v.value;}
+    else if k.value==1 && kt==0xfb {r.other=ifx v.value==4 then ky_le(b,v.next,4) else -1;}
     i=v.next+v.value;
   }
   return r;
 }
+KY_MAGIC :: [5]u8.['p','s','b','t',0xff];
+// b[i], or -1 past the end.
+ky_at :: (b:[]u8,i:int)->int {return ifx i<b.count then cast(int)b[i] else -1;}
 // book:begin psbt
 ky_psbt_read :: (b:[]u8)->KyPsbt {
   r:=[1]KyPsbt.[KyPsbt.{}];bad:=KyPsbt.{code=KyCode.psbt};
-  if b.count<6 || b[0]!='p' || b[1]!='s' || b[2]!='b' || b[3]!='t' || b[4]!=0xff {return bad;}
-  g:=ky_map(b,5,0);
-  if g.end<0 || g.at<0 || g.dup {return bad;}
+  for k:0..<KY_MAGIC.count {if ky_at(b,k)!=cast(int)KY_MAGIC[k] {return bad;}}
+  g:=ky_map(b,5);
+  if !g.ok || !g.found[0] || g.dup {return bad;}
   if g.other!=0 {return KyPsbt.{code=KyCode.not_built};}       // PSBT v2 (BIP-370)
   // The unsigned transaction: version, inputs with empty scriptSigs, outputs, locktime.
-  t:=g.at;end:=g.at+g.n;
-  if end-t<10 {return bad;}
+  t:=g.at[0];end:=t+g.n[0];
   ni:=ky_var(b,t+4);
-  if ni.next<0 || ni.value<1 || ni.value>KY_IO {return bad;}
+  if ni.value<1 || ni.value>KY_IO {return bad;}   // a malformed size reads as 0
   i:=ni.next;
   for k:0..<ni.value {
     if i+41>end || b[i+36]!=0 {return bad;}
     i+=41;
   }
   no:=ky_var(b,i);
-  if no.next<0 || no.value<1 || no.value>KY_IO {return bad;}
+  if no.value<1 || no.value>KY_IO {return bad;}
   i=no.next;
-  for k:0..<no.value {i=ky_txout(b,i,end,r[0].out_value[k..<k+1],r[0].out_script[k..<k+1]);if i<0 {return bad;}}
+  for k:0..<no.value {i=ky_txout(b,i,end,r[0].out_value[k..<k+1],r[0].out_script[k..<k+1]);if i==-1 {return bad;}}
   if i+4!=end {return bad;}
   r[0].nin=ni.value;r[0].nout=no.value;
   // One map per input with its witness UTXO, then one per output.
   at:=g.end;
   for k:0..<r[0].nin {
-    m:=ky_map(b,at,1);
-    if m.end<0 || m.dup {return bad;}
-    if m.at<0 {return KyPsbt.{code=KyCode.inputs};}
-    if ky_txout(b,m.at,m.at+m.n,r[0].in_value[k..<k+1],r[0].in_script[k..<k+1])!=m.at+m.n {return bad;}
+    m:=ky_map(b,at);
+    if !m.ok || m.dup {return bad;}
+    if !m.found[1] {return KyPsbt.{code=KyCode.inputs};}
+    u:=m.at[1];e:=u+m.n[1];if ky_txout(b,u,e,r[0].in_value[k..<k+1],r[0].in_script[k..<k+1])!=e {return bad;}
     at=m.end;
   }
-  for k:0..<r[0].nout {m:=ky_map(b,at,0xfc);if m.end<0 {return bad;}at=m.end;}
+  for k:0..<r[0].nout {m:=ky_map(b,at);if !m.ok {return bad;}at=m.end;}
   if at!=b.count {return bad;}
   return r[0];
 }
@@ -752,7 +760,7 @@ ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript {
   r.n=34;return r;
 }
 // book:end scripts
-ky_less :: (a:[33]u8,b:[33]u8)->bool {for k:0..<33 {if a[k]!=b[k] {return a[k]<b[k];}}return false;}
+ky_less :: (a:[33]u8,b:[33]u8)->bool {for k:0..<33 {if a[k]<b[k] {return true;}if a[k]>b[k] {return false;}}return false;}
 ky_same :: (a:KyScript,b:KyScript)->bool {
   if a.n!=b.n {return false;}
   for k:0..<a.n {if a.b[k]!=b.b[k] {return false;}}
@@ -778,7 +786,7 @@ ky_is_ours :: (all:KyScripts,s:KyScript,br:int)->bool {
 ky_address :: (w:KyWallet,address:string)->KyScript {
   r:KyScript;t:=a3_segwit(address);
   mainnet:=json_is(w.network,"mainnet");
-  if address.count<4 || !a3_starts_ci(address,ifx mainnet then "bc1" else "tb1") {return r;}
+  if !a3_starts_ci(address,ifx mainnet then "bc1" else "tb1") {return r;}
   if t.status!=(ifx mainnet then A3_OK else A3_NETWORK) {return r;}
   r.b[0]=cast(u8)(ifx t.version==0 then 0 else 0x50+t.version);r.b[1]=cast(u8)t.n;
   for k:0..<t.n {r.b[2+k]=t.program[k];}
@@ -815,7 +823,7 @@ ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt
     if r.out[k].change && !ky_is_ours(all,s,1) {return KyCode.change;}
     sum_out+=t.out_value[k];
   }
-  if sum_out>sum_in || sum_in-sum_out!=r.fee {return KyCode.fee;}
+  if sum_in-sum_out!=r.fee {return KyCode.fee;}             // the request's fee is never negative
   if r.fee>ceiling {return KyCode.ceiling;}
   return KyCode.ok;
 }
@@ -908,6 +916,11 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_eq32(w,w) && !ky_eq32(w,b);
   v:=w;v[31]^=1;#assert !ky_eq32(w,v);
   #assert ky_nibble('0')==0 && ky_nibble('9')==9 && ky_nibble('a')==10 && ky_nibble('f')==15;
+  // key order: the first differing byte decides, from byte 0; equal keys are not less
+  ka:[33]u8;kb:[33]u8;ka[0]=2;kb[0]=3;ka[1]=0xff;
+  #assert ky_less(ka,kb) && !ky_less(kb,ka) && !ky_less(ka,ka);
+  kb[0]=2;#assert !ky_less(ka,kb) && ky_less(kb,ka);
+  ka[1]=0;ka[32]=1;#assert !ky_less(ka,kb) && ky_less(kb,ka);
 }
 
 #test "ArtifactRefs and key lists" {
@@ -972,6 +985,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"}","} ")).code==KyCode.ok;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"wallet\":\"7777777777777777777777777777777777777777777777777777777777777777\"}","\"wallet\":\"7777777777777777777777777777777777777777777777777777777777777777\"}1")).code==KyCode.json;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"keys-wallet.v1","keys-wallet.v2")).code==KyCode.version;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"v\":\"openagents.keys-wallet.v1\",","")).code==KyCode.field;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"v\":\"openagents.keys-wallet.v1\"","\"v\":1")).code==KyCode.version;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"requires\":[]","\"requires\":[\"x\"]")).code==KyCode.version;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"requires\":[]","\"requires\":[],\"meta\":{\"a\":1}")).code==KyCode.ok;
@@ -1010,6 +1024,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"name\":\"primary\"","\"name\":1")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"name\":\"primary\",","")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"name\":\"primary\"","\"name\":\"primary\",\"name\":\"p\"")).code==KyCode.paths;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"threshold\":2","\"threshold\":2,\"threshold\":2")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"name\":\"primary\"","\"nom\":\"primary\"")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"keys\":[{","\"keys\":[1,{")).code==KyCode.paths;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:1e1959c86c68ae20c27fdb36082562b0f754a47e6c4fa8f5f6db1924985283b5\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:04479e7fac2c45c7f116542d1b1ed8b7fe01098052e0e2303d437261603a782c\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":964}]","\"keys\":[]")).code==KyCode.paths;
@@ -1038,6 +1053,22 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"starts_at\":1793100000","\"starts_at\":0")).code==KyCode.ok;
   #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"{\"descriptor\"","{1:2,\"descriptor\"")).code==KyCode.json;
   #assert ky_primary(w)==0;
+  // one enrollment, one recipient
+  c3:[4096]u8;
+  #assert ky_wallet_read(ky_case(c3[..],ky_case(c[..],KY_WALLET,"\"enrollments\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},","\"enrollments\":["),"{\"digest\":\"sha256:1e1959c86c68ae20c27fdb36082562b0f754a47e6c4fa8f5f6db1924985283b5\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},","")).nenroll==1;
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",","")).nrecip==1;
+  pp:=w;pp.npaths=2;pp.paths[1]=w.paths[0];#assert ky_primary(pp)==0;   // the first path with no timelock
+  pp.npaths=1;pp.paths[0].older=9;#assert ky_primary(pp)==0;   // none: 0
+  #assert ky_find(w,ky_bytes(KY_HOLDER))==-1 && ky_find(w,w.enrollments[2])==2;
+  // KY_PATHS paths read; one more refuses
+  many:[2048]u8;m:=json_raw(many[..],0,"\"paths\":[");
+  for k:0..<KY_PATHS {
+    if k==KY_PATHS-1 {big:=ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[",cast(string)many[0..<m]));#assert big.code==KyCode.ok && big.npaths==KY_PATHS;}
+    m=json_raw(many[..],m,"{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"a\",\"size\":1}],\"name\":\"r");
+    many[m]=cast(u8)('a'+k);m+=1;
+    m=json_raw(many[..],m,"\",\"threshold\":1,\"timelock\":{\"older\":9}},");
+  }
+  #assert ky_wallet_read(ky_case(c[..],KY_WALLET,"\"paths\":[",cast(string)many[0..<m])).code==KyCode.paths;
 }
 
 #test "an enrollment reads: agent is the signer, the wallet, the xpub with its origin, the class" #steps 600000000 {
@@ -1054,6 +1085,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"{\"agent\"","{1:2,\"agent\"")).code==KyCode.json;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"vg\"}","vg\"}x")).code==KyCode.json;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"keys-enrollment.v1\",\"wallet","keys-enrollment.v2\",\"wallet")).code==KyCode.version;
+  #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"v\":\"openagents.keys-enrollment.v1\",","")).code==KyCode.field;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"v\":\"openagents.keys-enrollment.v1\"","\"v\":1")).code==KyCode.version;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"requires\":[]","\"requires\":[1]")).code==KyCode.version;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"requires\":[]","\"requires\":[],\"meta\":{}")).code==KyCode.ok;
@@ -1078,6 +1110,9 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_enrollment_read(KY_AGENT0,ky_case(c[..],KY_ENR0,"\"class\":\"software\"","\"class\":\"institutional\"")).code==KyCode.ok;
   #assert ky_enrollment_read(KY_AGENT0,ky_case(c[..],KY_ENR0,"\"attestation\":null","\"attestation\":7")).code==KyCode.attestation;
   #assert ky_enrollment_read(KY_AGENT0,ky_case(c[..],KY_ENR0,"\"attestation\":null","\"attestation\":{}")).code==KyCode.attestation;
+  #assert ky_enrollment_read(KY_AGENT0,ky_case(c[..],KY_ENR0,"\"signing_policy\":{","\"signing_policy\":{},\"x\":{")).code==KyCode.field;
+  #assert ky_enrollment_read(KY_AGENT0,ky_case(c[..],KY_ENR0,"\"independence\":{","\"independence\":{},\"x\":{")).code==KyCode.field;
+  #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"attestation\":{","\"attestation\":{},\"x\":{")).code==KyCode.attestation;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"signing_policy\":{\"digest\":\"sha256:cd","\"signing_policy\":{\"digest\":\"sha256:c")).code==KyCode.field;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"signing_policy\":{","\"signing_policy\":7,\"q\":{")).code==KyCode.field;
   #assert ky_enrollment_read(KY_AGENT2,ky_case(c[..],KY_ENR2,"\"independence\":{\"digest\":\"sha256:33","\"independence\":{\"digest\":\"sha256:3")).code==KyCode.field;
@@ -1097,6 +1132,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,"v1\"}","v1\"}x")).code==KyCode.json;
   #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,"independence.v1","independence.v2")).code==KyCode.version;
   #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,"\"v\":\"openagents.keys-independence.v1\"","\"v\":1")).code==KyCode.version;
+  #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,",\"v\":\"openagents.keys-independence.v1\"","")).code==KyCode.field;
   #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,"\"requires\":[]","\"requires\":[1]")).code==KyCode.version;
   #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,"\"requires\":[]","\"requires\":[],\"meta\":{}")).code==KyCode.ok;
   #assert ky_independence_read(KY_AGENT1,ky_case(c[..],KY_IND1,"\"requires\":[]","\"requires\":[],\"meta\":[]")).code==KyCode.field;
@@ -1125,6 +1161,18 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_descriptor(w,p.e[..],d[0..<n-1])==-1;
   #assert ky_descriptor(w,p.e[..],d[0..<n])==n;
   #assert ky_descriptor(w,p.e[..],d[0..<10])==-1;
+  ex:=p;ex.e[1].xpub="é";#assert ky_descriptor(w,ex.e[..],d[..])==-1;   // outside BIP-380's input set: no checksum
+  pb:[3]u8;#assert ky_put(pb[..],0,"abc")==3 && ky_put(pb[0..<2],0,"abc")==-1 && ky_put(pb[..],1,"ab")==3 && ky_put(pb[..],-1,"")==-1;
+  e0:=p;e0.e[0].wallet=KY_HOLDER;#assert ky_admit(w,e0.e[..],e0.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.enrollment;
+  // a mainnet wallet whose keys are xpubs
+  mnx:=w;mnx.network="mainnet";xk:=p;for i:0..<3 {xk.e[i].key=KY_BIP32_M0H;}
+  #assert ky_admit(mnx,xk.e[..],xk.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.ok;
+  #assert ky_admit(w,xk.e[..],xk.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.network;
+  // tr( is a family this build doesn't build; anything else is unknown
+  fam:=w;fam.descriptor="tr(x";#assert ky_admit(fam,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.not_built;
+  fam.descriptor="tr(";#assert ky_admit(fam,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.family;
+  fam.descriptor="wsh(";#assert ky_admit(fam,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.descriptor;
+  fam.descriptor="wsh";#assert ky_admit(fam,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.family;
   // the wallet's own code, enrollment and declaration codes
   bad:=w;bad.code=KyCode.json;#assert ky_admit(bad,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.json;
   #assert ky_admit(w,p.e[0..<2],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code==KyCode.enrollment;
@@ -1189,6 +1237,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_compose(r,p.e[..],p.ind[..],true,144,KY_H0)==KyCode.ok;
   r.paths[1].older=0;r.paths[1].after=KY_H0+4320;#assert ky_compose(r,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_H0)==KyCode.ok;
   r.paths[1].after=KY_H0+4319;#assert ky_compose(r,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_H0)==KyCode.recovery;
+  r.paths[1].after=1;#assert ky_compose(r,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_H0)==KyCode.recovery;
   // a recovery path that needs the attested co-signer
   r.paths[1].after=0;r.paths[1].older=4320;r.paths[1].keys[1]=w.enrollments[2];
   #assert ky_compose(r,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_H0)==KyCode.attested_only;
@@ -1214,6 +1263,8 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   // after instead of older
   r.paths[1].older=0;r.paths[1].after=905000;n=ky_descriptor(r,e[..],d[..]);
   #assert n>0 && ky_contains(cast(string)d[0..<n],"/*),and_v(v:after(905000),multi(1,[78c16713/");
+  o1:=r;o1.paths[1].older=1;o1.paths[1].after=0;n=ky_descriptor(o1,e[..],d[..]);
+  #assert n>0 && ky_contains(cast(string)d[0..<n],"/*),and_v(v:older(1),multi(1,[78c16713/");
   // recovery keys first in enrollment order
   lo:=r;lo.enrollments=w.enrollments;#assert ky_layout(lo)==KyCode.key_order;
   lo.enrollments[0]=w.enrollments[1];lo.enrollments[1]=w.enrollments[0];#assert ky_layout(lo)==KyCode.key_order;
@@ -1247,6 +1298,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_successor(w,pd,p.e[..],low,p.e[..],one[..])==KyCode.approval;
   #assert ky_successor(w,pd,p.e[..],low,p.e[..],dup[..])==KyCode.approval;
   #assert ky_successor(w,pd,p.e[..],low,p.e[..],two[..])==KyCode.ok;
+  first:=[2]string.[KY_AGENT0,KY_AGENT1];#assert ky_successor(w,pd,p.e[..],low,p.e[..],first[..])==KyCode.ok;
   hi:=n;hi.paths[0].threshold=3;#assert !ky_weakens(w,p.e[..],hi,p.e[..]);
   // a removed key agent, a removed or renamed path, a shorter or dropped timelock
   q:=p;q.e[2].agent=KY_WALLET_ID;#assert ky_weakens(w,p.e[..],n,q.e[..]);
@@ -1280,15 +1332,30 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   for i:0..<5 {c[i]^=1;#assert ky_psbt_read(c[0..<ps.count]).code==KyCode.psbt;c[i]^=1;}
   // scriptSig not empty: input 0's length byte at 5+4+4+36
   c[49]=1;#assert ky_psbt_read(c[0..<ps.count]).code==KyCode.psbt;c[49]=0;
+  // output 0's script, first byte (5+3 to the tx, +4+1+82+1 to output 0, +8 value, +1 length)
+  #assert c[104]==22 && c[105]==0;
+  c[105]=0x51;#assert ky_psbt_read(c[0..<ps.count]).out_script[0].b[0]==0x51;c[105]=0;
   // a 0xfe size, or an over-long 0xfd form, as the tx key's length
   c[5]=0xfe;#assert ky_psbt_read(c[0..<ps.count]).code==KyCode.psbt;c[5]=1;
-  #assert ky_var(ps,-1).next==-1 && ky_var(ps,ps.count).next==-1;
+  #assert !ky_var(ps,-1).ok && !ky_var(ps,ps.count).ok && ky_var(ps,0).ok;
   v:=[3]u8.[0xfd,0xfd,0x00];#assert ky_var(v[..],0).next==3 && ky_var(v[..],0).value==253;
-  v[1]=0xfc;#assert ky_var(v[..],0).next==-1;
-  #assert ky_var(v[0..<2],0).next==-1;
+  v[1]=0xfc;#assert !ky_var(v[..],0).ok;
+  #assert !ky_var(v[0..<2],0).ok;
   v[0]=0xfc;#assert ky_var(v[..],0).value==252 && ky_var(v[..],0).next==1;
-  v[0]=0xff;#assert ky_var(v[..],0).next==-1;
+  v[0]=0xff;#assert !ky_var(v[..],0).ok;
+  b7:[7]u8;tv:[1]int;ts:[1]KyScript;#assert ky_txout(b7[..],0,7,tv[..],ts[..])==-1;   // shorter than a value and a size
+  b9:[9]u8;b9[0]=5;#assert ky_txout(b9[..],0,9,tv[..],ts[..])==9 && tv[0]==5 && ts[0].n==0;
+  b9[0]=0;#assert ky_txout(b9[..],0,9,tv[..],ts[..])==9 && tv[0]==0;   // a zero value is an output
+  mx:=[8]u8.[0x00,0x40,0x07,0x5a,0xf0,0x75,0x07,0x00];for k:0..<8 {b9[k]=mx[k];}#assert ky_txout(b9[..],0,9,tv[..],ts[..])==9 && tv[0]==KY_MAX_SAT;
+  b9[0]=1;#assert ky_txout(b9[..],0,9,tv[..],ts[..])==-1;   // KY_MAX_SAT + 1
+  b9[0]=0;b9[7]=0x80;#assert ky_txout(b9[..],0,9,tv[..],ts[..])==-1;   // negative as a signed 64-bit value
+  // a key length with no key after it
+  kl:=[6]u8.['p','s','b','t',0xff,1];#assert ky_psbt_read(kl[..]).code==KyCode.psbt;
+  // output 0's script longer than KY_SCRIPT: refused before output 1 is read
+  c[104]=65;#assert ky_psbt_read(c[0..<ps.count]).code==KyCode.psbt;c[104]=22;
   v=[3]u8.[0xfd,0x00,0x01];#assert ky_var(v[..],0).value==256;
+  v[0]=0xfe;#assert !ky_var(v[..],0).ok;
+  #assert ky_psbt_read(ps[0..<4]).code==KyCode.psbt && ky_at(ps,ps.count)==-1 && ky_at(ps,0)=='p';
   #assert ky_le(ps,0,4)==0x74627370;
   // the global version key: 0 is v0, 2 is v2 (not built)
   n:=0;g:[600]u8;
@@ -1313,6 +1380,27 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   c[at]=1;
   // a witness UTXO that is a byte short of its stated length
   c[at+1]=42;#assert ky_psbt_read(c[0..<ps.count]).code==KyCode.psbt;c[at+1]=43;
+  // KY_IO inputs and outputs read; none, or one more, refuses
+  big:[2048]u8;
+  full:=ky_psbt_read(ky_build_psbt(big[..],KY_IO,KY_IO));
+  #assert full.code==KyCode.ok && full.nin==KY_IO && full.nout==KY_IO && full.in_value[KY_IO-1]==1 && full.out_value[KY_IO-1]==1;
+  #assert ky_psbt_read(ky_build_psbt(big[..],1,1)).code==KyCode.ok;
+  #assert ky_psbt_read(ky_build_psbt(big[..],KY_IO+1,1)).code==KyCode.psbt;
+  #assert ky_psbt_read(ky_build_psbt(big[..],1,KY_IO+1)).code==KyCode.psbt;
+  #assert ky_psbt_read(ky_build_psbt(big[..],1,0)).code==KyCode.psbt;
+  #assert ky_psbt_read(ky_build_psbt(big[..],0,1)).code==KyCode.psbt;
+  // other global keys: a one-byte key that isn't the version, and a longer version-typed key, are ignored
+  one:=ky_build_psbt(big[..],1,1);x:[256]u8;
+  extra:=[7]u8.[1,0x02,4,2,0,0,0];
+  for k:0..<5 {x[k]=one[k];}
+  for k:0..<7 {x[5+k]=extra[k];}
+  for k:5..<one.count {x[7+k]=one[k];}
+  #assert ky_psbt_read(x[0..<one.count+7]).code==KyCode.ok;
+  x[5]=2;x[6]=0xfb;x[7]=0;x[8]=3;x[9]=2;x[10]=0;x[11]=0;   // key fb 00, value 02 00 00
+  #assert ky_psbt_read(x[0..<one.count+7]).code==KyCode.ok;
+  x[5]=1;x[6]=0xfb;x[7]=4;x[8]=2;#assert ky_psbt_read(x[0..<one.count+7]).code==KyCode.not_built;
+  // a version value that isn't four bytes is no version this reader knows
+  x[5]=1;x[6]=0xfb;x[7]=1;x[8]=0;x[9]=1;x[10]=2;x[11]=0;#assert ky_psbt_read(x[0..<one.count+7]).code==KyCode.not_built;
 }
 
 #test "the signer recomputes every output and the fee, and derives change" #steps 200000000 {
@@ -1349,6 +1437,7 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_same(sc.s[KY_GAP],ky_address(w,KY_CHANGE0)) && ky_same(sc.s[0],ky_address(w,KY_RECEIVE0));
   #assert !ky_same(sc.s[1],sc.s[0]);
   short:=sc.s[0];short.n=33;#assert !ky_same(short,sc.s[0]);
+  b0:=sc.s[0];b0.b[0]=0x51;#assert !ky_same(b0,sc.s[0]);
   emp:KyScripts;emp.s[0]=sc.s[0];emp.s[0].n=0;#assert !ky_is_ours(emp,KyScript.{},-1);
   // a two-path wallet's spends are not built
   two:=w;two.npaths=2;#assert ky_sign_check(two,wd,sc,r,ps,1000,KY_T0)==KyCode.not_built;
@@ -1359,6 +1448,13 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   h:[64]u8;
   ri:=ky_request_read(ky_case(c[..],KY_REQUEST,"4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812",ky_hexs(d[..],h[..])));
   #assert ky_sign_check(w,wd,sc,ri,ib[0..<ps.count],1000,KY_T0)==KyCode.inputs;
+  // an input on the change branch is the wallet's too
+  ch:=ky_spk(KY_SPK[KY_GAP]);for k:0..<34 {ib[ps.count-37+k]=ch.b[k];}
+  #assert sha256_hash_checked(ib[0..<ps.count],d[..],false)==SHA_OK;
+  rc:=ky_request_read(ky_case(c[..],KY_REQUEST,"4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812",ky_hexs(d[..],h[..])));
+  #assert ky_sign_check(w,wd,sc,rc,ib[0..<ps.count],1000,KY_T0)==KyCode.ok;
+  for k:0..<34 {ib[ps.count-37+k]=ps[ps.count-37+k];}
+  ib[ps.count-4]^=1;
   ib[ps.count-4]^=1;ib[12]=0;    // no inputs: a malformed PSBT the request names
   #assert sha256_hash_checked(ib[0..<ps.count],d[..],false)==SHA_OK;
   rm:=ky_request_read(ky_case(c[..],KY_REQUEST,"4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812",ky_hexs(d[..],h[..])));
@@ -1367,12 +1463,19 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
 
 #test "the sign request reads" #steps 600000000 {
   c:[2048]u8;
+  rq:=ky_request_read(KY_REQUEST);
+  #assert rq.code==KyCode.ok && rq.requester==KY_HOLDER && rq.deadline==1793200000 && rq.fee==1000;
+  #assert rq.nonce=="9999999999999999999999999999999999999999999999999999999999999999";
+  #assert rq.psbt=="sha256:4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812";
+  #assert rq.wallet=="sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323";
+  #assert rq.nout==2 && rq.out[1].address==KY_CHANGE0 && rq.out[1].amount==29000 && rq.out[1].change && !rq.out[0].change;
   #assert ky_request_read("[]").code==KyCode.json;
   #assert ky_request_read("{\"v\":\"openagents.keys-sign-request.v1\"").code==KyCode.json;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"{\"action\"","{1:2,\"action\"")).code==KyCode.json;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"size\":2081}}","\"size\":2081}}x")).code==KyCode.json;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"sign-request.v1","sign-request.v2")).code==KyCode.version;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"v\":\"openagents.keys-sign-request.v1\"","\"v\":1")).code==KyCode.version;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"v\":\"openagents.keys-sign-request.v1\",","")).code==KyCode.field;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"requires\":[]","\"requires\":[1]")).code==KyCode.version;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"requires\":[]","\"requires\":[],\"meta\":{}")).code==KyCode.ok;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"requires\":[]","\"requires\":[],\"meta\":null")).code==KyCode.ok;
@@ -1399,6 +1502,15 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"amount_sat\":70000,","")).code==KyCode.outputs;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"amount_sat\":70000,","\"amount_sat\":70000,\"amount_sat\":70000,")).code==KyCode.outputs;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"amount_sat\":70000,","\"amount_sat\":70000,\"memo\":1,")).code==KyCode.outputs;
+  // a bad value that is an array: the output refuses where it stands
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"amount_sat\":70000","\"amount_sat\":[]")).code==KyCode.outputs;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"address\":\"tb1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez\"","\"address\":[]")).code==KyCode.outputs;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"change\":false}","\"change\":[]}")).code==KyCode.outputs;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"change\":false}","\"change\":false,\"x\":[]}")).code==KyCode.outputs;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"change\":false}","\"change\":false,\"change\":[]}")).code==KyCode.outputs;
+  #assert ky_request_read(ky_case(c[..],KY_REQUEST,",\"change\":false}","}")).code==KyCode.outputs;
+  r1:=ky_request_read(ky_case(c[..],KY_REQUEST,",{\"address\":\"tb1qzzxa9gpdee47e9k7wp8h8ql9h8y5aray38h6z2unnhjhw74jqz0sr0utuy\",\"amount_sat\":29000,\"change\":true}",""));
+  #assert r1.code==KyCode.ok && r1.nout==1;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"{\"address\":\"tb1qqyp","{1:2,\"address\":\"tb1qqyp")).code==KyCode.outputs;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"address\":\"tb1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez\"","\"address\":1")).code==KyCode.outputs;
   #assert ky_request_read(ky_case(c[..],KY_REQUEST,"\"change\":false","\"change\":0")).code==KyCode.outputs;
@@ -1424,6 +1536,8 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert ky_address(w,"TB1QQYPQXPQ9QCRSSZG2PVXQ6RS0ZQG3YYC5R7FXEZ").n==22;
   #assert ky_address(w,"bc1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez").n==0;
   #assert ky_address(w,"bcrt1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez").n==0;
+  #assert a3_segwit("bcrt1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5phstwt").status==A3_NETWORK;   // regtest: valid, not this network
+  #assert ky_address(w,"bcrt1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5phstwt").n==0;
   #assert ky_address(w,"tb1").n==0 && ky_address(w,"tb1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxey").n==0;
   m:=w;m.network="mainnet";
   #assert ky_address(m,KY_PAY).n==0 && ky_address(m,"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4").n==22;
@@ -1459,6 +1573,8 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   p.older=0;p.after=905000;
   #assert ky_path_open(p,0,905000)==KyCode.ok && ky_path_open(p,0,904999)==KyCode.locked;
   p.after=0;#assert ky_path_open(p,5,0)==KyCode.ok;
+  p.older=1;#assert ky_path_open(p,KY_H0+1,KY_H0)==KyCode.locked && ky_path_open(p,KY_H0,KY_H0)==KyCode.ok;
+  p.older=0;p.after=1;#assert ky_path_open(p,0,0)==KyCode.locked && ky_path_open(p,0,1)==KyCode.ok;p.after=0;
   d:=ky_bytes(KY_WALLET_DIGEST);sweeps:=[1]string.["sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323"];
   none:[1]string;
   #assert ky_retired(false,d,none[0..<0])==KyCode.ok && ky_retired(true,d,sweeps[..])==KyCode.ok && ky_retired(true,d,none[0..<0])==KyCode.retired;
@@ -1493,11 +1609,19 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   #assert p.ok && p.version==KY_XPUB;
   c:=ky_child(p,1);
   #assert c.ok && a3_hex_is(c.key[..],"03501e454bf00751f24b1b489aa925215d66af2234e3891c3b21a52bedb3cd711c");
+  #assert c.version==KY_XPUB;
   #assert !ky_child(p,BIP32_HARDENED).ok && !ky_child(p,-1).ok && !ky_child(KyExtKey.{},0).ok;
   #assert ky_child(p,BIP32_HARDENED-1).ok;
+  off:=p;for k:1..<33 {off.key[k]=0;}#assert !ky_child(off,1).ok;   // x = 0 is not on the curve
   #assert !ky_ext_key(KY_BIP32_BAD).ok;                       // one character changed: checksum
   #assert !ky_ext_key("0pub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw").ok;
   #assert !ky_ext_key("xpub").ok && !ky_ext_key(KY_ZZZ).ok;
   #assert ky_ext_key(KY_BIP32_M0H[0..<100]).ok==false && ky_ext_key(KY_BIP32_XPRV).ok==false;
+  #assert !ky_ext_key("xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvhkD5H").ok;   // checksum byte 0
+  xc:[128]u8;#assert !ky_ext_key(ky_case(xc[..],KY_BIP32_M0H,"A1W","A0W")).ok;   // 0 is not base58, though it would decode as 1
+  #assert !ky_ext_key("").ok;
+  // m/0H re-encoded (Python): the key's prefix byte 04, and the xprv version on its public key
+  #assert !ky_ext_key("xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LKegMo6QASAh1V2xNrpdozQnWoZ7ofkxfPnEdfqkKgdx2UeV3g6").ok;
+  #assert !ky_ext_key("xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV6Zf6PVmuH3TyDLKoXTBFEGDi2SrQ7KvMkPkYCLoQAkKmqjFUY5").ok;
   #assert ky_ext_key(ky_origin(KY_XPUB0)).version==KY_TPUB;
 }

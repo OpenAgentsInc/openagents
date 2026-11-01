@@ -84,3 +84,22 @@ ky_branch1 :: (i:int)->KyExtKey {
   for j:0..<33 {r.key[j]=cast(u8)(ky_nib(k[2*j])*16+ky_nib(k[2*j+1]));}
   r.version=KY_TPUB;r.ok=true;return r;
 }
+// A PSBT v0 built in place: nin inputs (each a witness UTXO of 1 sat with an
+// empty script) and nout outputs (1 sat, empty script), both below 0xfd.
+ky_build_psbt :: (out:[]u8,nin:int,nout:int)->[]u8 {
+  tx:=4+1+41*nin+1+9*nout+4;
+  head:=[7]u8.['p','s','b','t',0xff,1,0];
+  for k:0..<7 {out[k]=head[k];}
+  n:=8;out[7]=cast(u8)(tx&255);
+  if tx>=0xfd {out[7]=0xfd;out[8]=cast(u8)(tx&255);out[9]=cast(u8)(tx>>8);n=10;}
+  for k:0..<tx {out[n+k]=0;}
+  out[n]=2;out[n+4]=cast(u8)nin;
+  i:=n+5;for k:0..<nin {out[i+32]=cast(u8)k;i+=41;}
+  out[i]=cast(u8)nout;i+=1;
+  for k:0..<nout {out[i]=1;i+=9;}
+  n+=tx;out[n]=0;n+=1;
+  m:=[13]u8.[1,1,9,1,0,0,0,0,0,0,0,0,0];
+  for k:0..<nin {for q:0..<13 {out[n+q]=m[q];}n+=13;}
+  for k:0..<nout {out[n]=0;n+=1;}
+  return out[0..<n];
+}

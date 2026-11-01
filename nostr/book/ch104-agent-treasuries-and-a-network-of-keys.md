@@ -90,7 +90,7 @@ KY_CHECK :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 KY_GEN :: [5] u64.[0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd];
 ky_polymod :: (c:u64,v:u64)->u64 {
   top:=c>>35;r:=((c&0x7ffffffff)<<5)^v;
-  for i:0..<5 {if ((top>>cast(u64)i)&1)!=0 {r^=KY_GEN[i];}}
+  for i:0..<KY_GEN.count {if ((top>>cast(u64)i)&1)!=0 {r^=KY_GEN[i];}}
   return r;
 }
 // The eight checksum characters of a descriptor without its "#...", into
@@ -125,7 +125,7 @@ change):
 // exactly one path, and every primary key precedes every recovery key.
 ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
   if w.npaths>2 {return -1;}
-  p:=ky_primary(w);a:=0;
+  p:=ky_primary(w);a:int;
   if w.npaths==1 {
     a=ky_put(out,0,"wsh(");a=ky_multi(out,a,"sortedmulti",w,e,w.paths[0]);a=ky_put(out,a,")");
   } else {
@@ -135,7 +135,7 @@ ky_descriptor :: (w:KyWallet,e:[]KyEnrollment,out:[]u8)->int {
     a=ky_put_int(out,a,r.older+r.after);a=ky_put(out,a,"),");
     a=ky_multi(out,a,"multi",w,e,r);a=ky_put(out,a,")))");
   }
-  if a<0 || a+9>out.count {return -1;}
+  if a==-1 || a+9>out.count {return -1;}
   if !ky_checksum(cast(string)out[0..<a],out[a+1..<a+9]) {return -1;}
   out[a]='#';return a+9;
 }
@@ -449,7 +449,6 @@ since nothing here is secret:
 // fingerprint, child number, chain code and a compressed public key.
 ky_ext_key :: (s:string)->KyExtKey {
   r:KyExtKey;b:[82]u8;
-  if s.count<100 || s.count>112 {return r;}
   for c:s {
     d:=-1;for k:0..<58 {if KY_B58[k]==c {d=k;}}
     if d<0 {return r;}
@@ -478,7 +477,7 @@ ky_child :: (parent:KyExtKey,index:int)->KyExtKey {
   if !il.ok || !a.ok {return r;}                          // IL >= n, or a key off the curve
   s:=ecmult_vartime(il.value,a.value,sc_small(1));        // IL·G + K: public data, variable time
   e:=sg_encode_public(s.value);
-  if !s.ok || !e.ok || e.length!=33 {return r;}
+  if e.length!=33 {return r;}                             // infinity encodes as one byte
   for k:0..<33 {r.key[k]=e.bytes[k];}
   for k:0..<32 {r.chain[k]=i[32+k];}
   r.version=p.version;r.ok=true;return r;
@@ -574,36 +573,35 @@ as `not_built`:
 ```jai
 ky_psbt_read :: (b:[]u8)->KyPsbt {
   r:=[1]KyPsbt.[KyPsbt.{}];bad:=KyPsbt.{code=KyCode.psbt};
-  if b.count<6 || b[0]!='p' || b[1]!='s' || b[2]!='b' || b[3]!='t' || b[4]!=0xff {return bad;}
-  g:=ky_map(b,5,0);
-  if g.end<0 || g.at<0 || g.dup {return bad;}
+  for k:0..<KY_MAGIC.count {if ky_at(b,k)!=cast(int)KY_MAGIC[k] {return bad;}}
+  g:=ky_map(b,5);
+  if !g.ok || !g.found[0] || g.dup {return bad;}
   if g.other!=0 {return KyPsbt.{code=KyCode.not_built};}       // PSBT v2 (BIP-370)
   // The unsigned transaction: version, inputs with empty scriptSigs, outputs, locktime.
-  t:=g.at;end:=g.at+g.n;
-  if end-t<10 {return bad;}
+  t:=g.at[0];end:=t+g.n[0];
   ni:=ky_var(b,t+4);
-  if ni.next<0 || ni.value<1 || ni.value>KY_IO {return bad;}
+  if ni.value<1 || ni.value>KY_IO {return bad;}   // a malformed size reads as 0
   i:=ni.next;
   for k:0..<ni.value {
     if i+41>end || b[i+36]!=0 {return bad;}
     i+=41;
   }
   no:=ky_var(b,i);
-  if no.next<0 || no.value<1 || no.value>KY_IO {return bad;}
+  if no.value<1 || no.value>KY_IO {return bad;}
   i=no.next;
-  for k:0..<no.value {i=ky_txout(b,i,end,r[0].out_value[k..<k+1],r[0].out_script[k..<k+1]);if i<0 {return bad;}}
+  for k:0..<no.value {i=ky_txout(b,i,end,r[0].out_value[k..<k+1],r[0].out_script[k..<k+1]);if i==-1 {return bad;}}
   if i+4!=end {return bad;}
   r[0].nin=ni.value;r[0].nout=no.value;
   // One map per input with its witness UTXO, then one per output.
   at:=g.end;
   for k:0..<r[0].nin {
-    m:=ky_map(b,at,1);
-    if m.end<0 || m.dup {return bad;}
-    if m.at<0 {return KyPsbt.{code=KyCode.inputs};}
-    if ky_txout(b,m.at,m.at+m.n,r[0].in_value[k..<k+1],r[0].in_script[k..<k+1])!=m.at+m.n {return bad;}
+    m:=ky_map(b,at);
+    if !m.ok || m.dup {return bad;}
+    if !m.found[1] {return KyPsbt.{code=KyCode.inputs};}
+    u:=m.at[1];e:=u+m.n[1];if ky_txout(b,u,e,r[0].in_value[k..<k+1],r[0].in_script[k..<k+1])!=e {return bad;}
     at=m.end;
   }
-  for k:0..<r[0].nout {m:=ky_map(b,at,0xfc);if m.end<0 {return bad;}at=m.end;}
+  for k:0..<r[0].nout {m:=ky_map(b,at);if !m.ok {return bad;}at=m.end;}
   if at!=b.count {return bad;}
   return r[0];
 }
@@ -642,7 +640,7 @@ ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt
     if r.out[k].change && !ky_is_ours(all,s,1) {return KyCode.change;}
     sum_out+=t.out_value[k];
   }
-  if sum_out>sum_in || sum_in-sum_out!=r.fee {return KyCode.fee;}
+  if sum_in-sum_out!=r.fee {return KyCode.fee;}             // the request's fee is never negative
   if r.fee>ceiling {return KyCode.ceiling;}
   return KyCode.ok;
 }
