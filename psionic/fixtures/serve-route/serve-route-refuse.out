@@ -1,0 +1,20 @@
+depth 9: configuration or traffic out of bounds
+an arrival before the one ahead of it: arrivals out of order
+a 33-token prompt, client 2 of 2, no output:
+  request 0: refused, request outside the bounds
+  request 1: refused, request outside the bounds
+  request 2: refused, request outside the bounds
+  request 3: replica 0, started at 15000 us
+overload, 40 requests 5 ms apart, 2 replicas, queues of 2, share 4:
+  refused, request outside the bounds: 0
+  refused, client over its share: 4
+  refused, every queue full: 22
+  refused, no replica running or starting: 0
+  served 14, deepest queue 2
+scaled to zero, cold start 520740 us: started 2, stopped 3, 1 replica-seconds
+  request 0: replica 0, started at 0 us
+  request 1: refused, no replica running or starting
+  request 2: refused, no replica running or starting
+  request 3: refused, no replica running or starting
+  request 4: replica 0, started at 1520740 us
+  request 5: replica 0, started at 1700000 us

@@ -1,0 +1,690 @@
+// Chapter 177: route, queue and scale replicas. A router sends each request
+// to the replica with the smallest predicted time to finish it: the work
+// already waiting there plus the request's own cost after the prompt blocks
+// that replica's prefix trie (chapter 176) already holds. Each replica has a
+// bounded queue; each client a bounded share of the requests in flight;
+// what does not fit is refused with a typed reason. An autoscaler adds and
+// removes replicas between a floor and an owner's budget, with a band of
+// hysteresis, a scale-down delay, and the measured cold-start cost from
+// chapter 178's receipt deciding whether a new replica would come up in
+// time to help. A discrete-event simulation replays traffic against it.
+// Profile rr-route-v1: integer microseconds; each replica serves one request
+// at a time, timed by chapter 175's step model; replicas are simulated in
+// one process.
+#authority;
+#load "serve-pages.coax";
+#load "bench.coax";
+#load "../tests/serve-route-checks.coax";  // the checks' brute-force router and hand-traced fleets
+
+RR_PROFILE :: "rr-route-v1";
+RR_REPLICAS :: 8;
+RR_DEPTH :: 8;
+RR_CLIENTS :: 8;
+RR_OUTPUT :: 64;
+RR_REQUESTS :: 256;
+RR_EVENTS :: 4096;
+// Frame values: 48 frames of (8 + 1) * 4 values, chapter 176's largest
+// page. With the device tier only, no frame is ever copied or written (a
+// full device drops its least recently used block), so every replica's
+// trie can share one scratch region.
+RR_MEM :: 1728;
+RR_NEVER :: 1125899906842624;  // 2^50: cb_min and cb_max stay exact
+// book:begin cold
+// Measured cold starts on coderos-4080, chapter 178's receipt
+// (psionic/fixtures/startup/coderos-4080.json, 256 MiB of weights, an empty
+// file cache): 520,740 us when a verification record lets the start skip
+// hashing ("cold, record"), 1,264,892 us when every byte is hashed ("cold,
+// no record").
+RR_COLD_RECORD_US :: 520740;
+RR_COLD_HASH_US :: 1264892;
+// book:end cold
+
+RrStatus :: enum u8 {ok;config;order;events;}
+// book:begin types
+// Why a request was refused: outside the request bounds, its client already
+// holds its share of the requests in flight, every replica's queue is full,
+// or no replica is running or starting.
+RrRefusal :: enum u8 {none;shape;client;full;cold;}
+// affinity: the smallest predicted finish, counting cached blocks. least:
+// the same prediction, blind to the cache. round: the next replica in turn
+// with room.
+RrPolicy :: enum u8 {affinity;least;round;}
+RrPhase :: enum u8 {off;starting;ready;}
+// replicas: running at the start. depth: most requests waiting at one
+// replica. share: most requests one client may have queued or running.
+// events: the most event times a simulation may take.
+RrConfig :: struct {policy:RrPolicy;replicas:int;depth:int;clients:int;share:int;pages:PgConfig;events:int;}
+RrRequest :: struct {client:int;arrive:int;prompt:int;output:int;}
+// One replica: its queue (request numbers, oldest first), the predicted
+// cost of what waits there, the request it is serving and when that ends,
+// and its own prefix trie and frames.
+RrReplica :: struct {phase:RrPhase;ready_at:int;running:int;busy_until:int;nq:int;queue:[8]int;work:int;st:PgStore;}
+// The router's choice: a replica, the cached blocks it counted there, and
+// the predicted time from now until the request would finish.
+RrPick :: struct {refusal:RrRefusal;replica:int;cached:int;est:int;turn:int;}
+// book:end types
+// book:begin load-types
+// floor and budget: fewest and most replicas. target: requests in flight per
+// replica. band: percent of hysteresis around the target. down: consecutive
+// low ticks before one replica is removed. cold_us: the measured start cost.
+RrScaler :: struct {on:bool;floor:int;budget:int;target:int;band:int;down:int;cold_us:int;tick_us:int;}
+// What the autoscaler sees at a tick: replicas ready and starting, requests
+// queued or running, the predicted work they hold, and the low and high
+// ticks in a row so far.
+RrLoad :: struct {ready:int;starting:int;load:int;backlog:int;low:int;high:int;}
+RrAct :: enum u8 {hold;up;down;}
+// steady: inside the band. floor: below the floor. load: the load asks for
+// it. cold: a new replica would start after the backlog has drained, and
+// the load has not been high for as long as a cold start.
+// budget: more are wanted than the budget allows. delay: low, but not for
+// long enough yet.
+RrWhy :: enum u8 {steady;floor;load;cold;budget;delay;}
+RrScale :: struct {act:RrAct;count:int;why:RrWhy;low:int;high:int;}
+// book:end load-types
+RrFate :: struct {refusal:RrRefusal;replica:int;pred:int;start:int;first:int;finish:int;reused:int;}
+// A simulation's record: every request's fate, refusals by reason, blocks
+// reused of those that could be, the deepest queue, the autoscaler's ticks
+// by reason, replicas started and stopped, the most provisioned at once,
+// and replica-microseconds provisioned.
+RrSim :: struct {
+    status:RrStatus;n:int;fate:[256]RrFate;
+    refused:[5]int;hit:int;blocks:int;deepest:int;
+    why:[6]int;ups:int;downs:int;peak:int;replica_us:int;end:int;events:int;
+}
+RrReport :: struct {served:int;refused:int;hit:int;blocks:int;first:BnStats;latency:BnStats;peak:int;replica_us:int;}
+
+// Checks come first. The hand-traced fleets and the brute-force router are
+// in psionic/tests/serve-route-checks.coax; chapter 177 works the numbers.
+// book:begin check-cost
+#test "costs follow chapter 175's step model: one step of prefill rows, then one per output token" {
+    // 17,792,472 ns for one row, 1,459,182 ns per further row.
+    #assert rr_cost(13,2,0)==53095 && rr_cost(13,2,8)==41421 && rr_cost(13,2,12)==35584;
+    #assert rr_prefill(13,0)==35302 && rr_prefill(13,12)==17792 && rr_cost(1,1,0)==17792;
+}
+// book:end check-cost
+// book:begin check-hand
+#test "the hand-traced routes" {
+    f:=rrx_hand();cfg:=rrx_hand_config();tok:=rrx_hand_tok();
+    // Replica 0 holds A's first 2 blocks and is idle; replica 1 holds 3 and has 10 ms of work; replica 2 is empty.
+    #assert pg_match(f[0].st,0,tok[..],13).n==2 && pg_match(f[1].st,0,tok[..],13).n==3 && pg_match(f[2].st,0,tok[..],13).n==0;
+    r:=RrRequest.{client=0,prompt=13,output=2};
+    p:=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.refusal==RrRefusal.none && p.replica==0 && p.cached==2 && p.est==41421;
+    // With 5 ms of work, replica 1's 5,000 + 35,584 beats replica 0's 41,421.
+    f[1].work=5000;p=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.replica==1 && p.cached==3 && p.est==40584;
+    // Blind to the cache, the idle replicas tie at 53,095 and the lowest goes; in turn, replica 2 is next after 1.
+    c:=cfg;c.policy=RrPolicy.least;p=rr_route(f[..],c,r,tok[..],0,rrx_held(0),0);#assert p.replica==0 && p.cached==0 && p.est==53095;
+    c.policy=RrPolicy.round;p=rr_route(f[..],c,r,tok[..],0,rrx_held(0),2);#assert p.replica==2 && p.turn==0 && p.est==53095;
+    // Replica 1 still starting: 1,000 us to go costs it the request; 800 does not.
+    f[1].phase=RrPhase.starting;f[1].ready_at=1000;p=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.replica==0 && p.est==41421;
+    f[1].ready_at=800;p=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.replica==1 && p.est==41384;
+    // Replica 0 busy until 12 ms: at 0 replica 2 wins, at 2 ms replica 0 does again.
+    f[1].phase=RrPhase.off;f[0].running=7;f[0].busy_until=12000;
+    p=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.replica==2 && p.est==53095;
+    p=rr_route(f[..],cfg,r,tok[..],2000,rrx_held(0),0);#assert p.replica==0 && p.est==51421;
+}
+// book:end check-hand
+// book:begin check-refuse
+#test "refusals, each with its reason" {
+    f:=rrx_hand();cfg:=rrx_hand_config();tok:=rrx_hand_tok();
+    r:=RrRequest.{client=0,prompt=13,output=2};
+    #assert rr_route(f[..],cfg,r,tok[..],0,rrx_held(1),0).refusal==RrRefusal.none && rr_route(f[..],cfg,r,tok[..],0,rrx_held(2),0).refusal==RrRefusal.client;
+    bad:=r;bad.client=-1;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.shape;
+    bad.client=3;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.shape;bad.client=2;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.none;
+    bad=r;bad.prompt=0;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.shape;
+    bad.prompt=33;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.shape;bad.prompt=32;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.none;
+    bad=r;bad.output=0;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.shape;
+    bad.output=65;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.shape;bad.output=64;#assert rr_route(f[..],cfg,bad,tok[..],0,rrx_held(0),0).refusal==RrRefusal.none;
+    // Queues of depth 2: full ones are skipped; all full is a refusal.
+    f[0].nq=2;p:=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.replica==1;
+    f[1].nq=2;f[2].nq=1;p=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);#assert p.replica==2;
+    f[2].nq=2;#assert rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0).refusal==RrRefusal.full && rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0).replica== -1;
+    c:=cfg;c.policy=RrPolicy.round;#assert rr_route(f[..],c,r,tok[..],0,rrx_held(0),1).refusal==RrRefusal.full;
+    f[1].nq=1;p=rr_route(f[..],c,r,tok[..],0,rrx_held(0),2);#assert p.replica==1 && p.turn==2;
+    // Off replicas take nothing; with none running or starting the refusal is cold.
+    f[1].phase=RrPhase.off;#assert rr_route(f[..],c,r,tok[..],0,rrx_held(0),2).refusal==RrRefusal.full;
+    f[0].phase=RrPhase.off;f[2].phase=RrPhase.off;#assert rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0).refusal==RrRefusal.cold;
+    f[2].phase=RrPhase.starting;#assert rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0).refusal==RrRefusal.full;
+    f[2].phase=RrPhase.off;f[0].phase=RrPhase.ready;#assert rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0).refusal==RrRefusal.full;
+    // The share is per client: client 1 at its share, client 0 not.
+    h:=rrx_held(0);h[1]=2;f[0].nq=0;#assert rr_route(f[..],cfg,r,tok[..],0,h,0).replica==0;
+    r.client=1;#assert rr_route(f[..],cfg,r,tok[..],0,h,0).refusal==RrRefusal.client;
+}
+// book:end check-refuse
+#test "configurations and traffic the simulation refuses" {
+    cfg:=rrx_sim_config();q:=[2]RrRequest.[RrRequest.{prompt=4,output=1},RrRequest.{arrive=5,prompt=4,output=1}];tok:[64]int;sc:RrScaler;
+    #assert rr_sim(cfg,sc,q[..],tok[..]).status==RrStatus.ok;
+    c:=cfg;c.replicas=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.replicas=8;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;c.replicas=9;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.depth=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.depth=8;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;c.depth=9;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.clients=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.clients=8;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;c.clients=9;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.share=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.pages.page=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.pages.page=9;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.pages.dim=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.pages.dim=5;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;c.pages.dim=4;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;
+    // The device must hold a whole prompt of 32 positions: 8 pages of 4, not 7.
+    c=cfg;c.pages.cap[0]=7;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.pages.cap[0]=16;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;c.pages.cap[0]=17;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.pages.hybrid=true;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    // The device tier only; pages of 8 need 4 frames.
+    c=cfg;c.pages.cap[1]=1;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.pages.cap[2]=1;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c=cfg;c.pages.page=8;c.pages.cap[0]=4;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;
+    c.pages.cap[0]=3;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    // The event limit: this run takes 4 event times.
+    c=cfg;c.events=0;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.events=4097;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.config;
+    c.events=4096;#assert rr_sim(c,sc,q[..],tok[..]).events==4;
+    c.events=1;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.events;
+    c.events=4;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.ok;
+    c.events=3;#assert rr_sim(c,sc,q[..],tok[..]).status==RrStatus.events;
+    #assert rr_sim(cfg,sc,q[0..<1],tok[..]).status==RrStatus.ok;
+    #assert rr_sim(cfg,sc,q[..],tok[0..<63]).status==RrStatus.config;
+    #assert rr_sim(cfg,sc,q[0..<0],tok[..]).status==RrStatus.config;
+    many:[257]RrRequest;mt:[8224]int;for i:0..<257 {many[i]=q[0];}
+    #assert rr_sim(cfg,sc,many[0..<256],mt[..]).status==RrStatus.ok && rr_sim(cfg,sc,many[..],mt[..]).status==RrStatus.config;
+    o:=q;o[1].arrive=-1;#assert rr_sim(cfg,sc,o[..],tok[..]).status==RrStatus.order;
+    o[0].arrive=-1;#assert rr_sim(cfg,sc,o[..],tok[..]).status==RrStatus.order;
+    o[0].arrive=5;o[1].arrive=5;#assert rr_sim(cfg,sc,o[..],tok[..]).status==RrStatus.ok;
+    o[0].arrive=-1;#assert rr_sim(cfg,sc,o[..],tok[..]).status==RrStatus.order;
+    o[0].arrive=10;#assert rr_sim(cfg,sc,o[..],tok[..]).status==RrStatus.order;
+    // The scaler's own bounds, checked only when it is on.
+    s:=rrx_scaler();#assert rr_sim(cfg,s,q[..],tok[..]).status==RrStatus.ok;
+    x:=s;x.floor=-1;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.floor=0;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.ok;
+    x=s;x.floor=3;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.budget=8;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.ok;x.budget=9;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.budget=1;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.target=0;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.band=0;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x.band=99;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.ok;x.band=100;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.down=0;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x=s;x.cold_us=-1;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    x.cold_us=0;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.ok;
+    x=s;x.tick_us=0;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.config;
+    // Edges that pass: a tick of 1 us runs out of events instead.
+    x.tick_us=1;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.events;
+    x=s;x.floor=2;x.budget=2;x.target=1;x.band=1;x.down=1;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.ok;
+    // Requests outside the bounds are refused one by one, and the rest run.
+    b:=q;b[0].client=-1;b[1].client=2;y:=rr_sim(cfg,sc,b[..],tok[..]);
+    #assert y.status==RrStatus.ok && y.refused[1]==2 && y.fate[0].replica== -1 && y.fate[1].start== -1;
+    x=s;x.on=false;x.floor=-1;#assert rr_sim(cfg,x,q[..],tok[..]).status==RrStatus.ok;
+}
+// book:begin check-scale
+#test "the hand-worked autoscaler ticks" {
+    s:=rrx_scaler();  // floor 1, budget 4, target 2, band 25, down after 3 ticks, cold start 520,740 us
+    // 2 replicas: up above 2 * 2 * 1.25 = 5 requests, down at or below 1 * 2 * 0.75 = 1.5.
+    d:=rr_scale(s,RrLoad.{ready=2,load=5,backlog=9000000});#assert d.act==RrAct.hold && d.why==RrWhy.steady && d.low==0;
+    d=rr_scale(s,RrLoad.{ready=2,load=6,backlog=9000000});#assert d.act==RrAct.up && d.count==1 && d.why==RrWhy.load;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=9000000});#assert d.act==RrAct.up && d.count==2 && d.why==RrWhy.load;
+    // A backlog of 2 * 520,740 us or less drains before a new replica would be up:
+    // hold, until the load has been high for 6 ticks of 100 ms, longer than the start.
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1041480});#assert d.act==RrAct.hold && d.why==RrWhy.cold && d.high==1;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1041481,high=3});#assert d.act==RrAct.up && d.count==2 && d.high==0;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1041480,high=4});#assert d.act==RrAct.hold && d.high==5;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1041480,high=5});#assert d.act==RrAct.up && d.count==2;
+    // A start that hashes every byte, 1,264,892 us, waits 13 ticks.
+    s.cold_us=RR_COLD_HASH_US;d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1041481,high=11});#assert d.act==RrAct.hold && d.why==RrWhy.cold;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=2529784,high=11});#assert d.act==RrAct.hold;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=2529785,high=11});#assert d.act==RrAct.up;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1041481,high=12});#assert d.act==RrAct.up;
+    s=rrx_scaler();
+    // Starting replicas count: 3 provisioned hold 7.
+    d=rr_scale(s,RrLoad.{ready=2,starting=1,load=7,backlog=9000000});#assert d.act==RrAct.hold && d.why==RrWhy.steady;
+    // The budget caps the count, then refuses to grow.
+    d=rr_scale(s,RrLoad.{ready=3,load=20,backlog=9000000});#assert d.act==RrAct.up && d.count==1;
+    d=rr_scale(s,RrLoad.{ready=4,load=20,backlog=9000000,high=2});#assert d.act==RrAct.hold && d.why==RrWhy.budget && d.high==3;
+    d=rr_scale(s,RrLoad.{ready=4,load=8,high=2});#assert d.act==RrAct.hold && d.why==RrWhy.steady && d.high==0;
+    // Down only after 3 low ticks in a row.
+    d=rr_scale(s,RrLoad.{ready=2,load=1});#assert d.act==RrAct.hold && d.why==RrWhy.delay && d.low==1;
+    d=rr_scale(s,RrLoad.{ready=2,load=1,low=1});#assert d.act==RrAct.hold && d.low==2;
+    d=rr_scale(s,RrLoad.{ready=2,load=1,low=2});#assert d.act==RrAct.down && d.count==1 && d.why==RrWhy.load && d.low==0;
+    d=rr_scale(s,RrLoad.{ready=2,load=2,low=2});#assert d.act==RrAct.hold && d.why==RrWhy.steady && d.low==0;
+    // Never below the floor; below it, up to it at once.
+    d=rr_scale(s,RrLoad.{ready=1,load=0,low=5});#assert d.act==RrAct.hold && d.why==RrWhy.steady;
+    d=rr_scale(s,RrLoad.{load=0});#assert d.act==RrAct.up && d.count==1 && d.why==RrWhy.floor;
+    // Floor 0: one replica goes after the delay, and the first request starts one, cold or not.
+    s.floor=0;d=rr_scale(s,RrLoad.{ready=1,load=0,low=2});#assert d.act==RrAct.down;
+    d=rr_scale(s,RrLoad.{load=1,backlog=1});#assert d.act==RrAct.up && d.count==1 && d.why==RrWhy.load;
+    d=rr_scale(s,RrLoad.{load=0});#assert d.act==RrAct.hold && d.why==RrWhy.steady;
+    // Exact edges: 200 > 1 * 1 * 199 is high; 13,900 <= 7 * 20 * 99 = 13,860 is not low.
+    x:=RrScaler.{on=true,floor=0,budget=8,target=1,band=99,down=1,cold_us=0,tick_us=1};
+    d=rr_scale(x,RrLoad.{ready=1,load=2});#assert d.act==RrAct.up && d.count==1;
+    x.target=20;x.band=1;d=rr_scale(x,RrLoad.{ready=8,load=139});#assert d.act==RrAct.hold && d.why==RrWhy.steady;
+    d=rr_scale(x,RrLoad.{ready=8,load=138});#assert d.act==RrAct.down;
+    // Six high ticks of 100,000 us reach a 600,000 us start exactly.
+    s.cold_us=600000;d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1,high=5});#assert d.act==RrAct.up;
+    d=rr_scale(s,RrLoad.{ready=2,load=7,backlog=1,high=4});#assert d.act==RrAct.hold;
+}
+// book:end check-scale
+#test "names" {
+    #assert rr_refusal_name(RrRefusal.none)=="none" && rr_refusal_name(RrRefusal.shape)=="request outside the bounds";
+    #assert rr_refusal_name(RrRefusal.client)=="client over its share" && rr_refusal_name(RrRefusal.full)=="every queue full" && rr_refusal_name(RrRefusal.cold)=="no replica running or starting";
+    #assert rr_why_name(RrWhy.steady)=="steady" && rr_why_name(RrWhy.floor)=="floor" && rr_why_name(RrWhy.load)=="load";
+    #assert rr_why_name(RrWhy.cold)=="cold" && rr_why_name(RrWhy.budget)=="budget" && rr_why_name(RrWhy.delay)=="delay";
+    #assert rr_policy_name(RrPolicy.affinity)=="prefix affinity" && rr_policy_name(RrPolicy.least)=="least work" && rr_policy_name(RrPolicy.round)=="round robin";
+    #assert rr_status_name(RrStatus.ok)=="ok" && rr_status_name(RrStatus.config)=="configuration or traffic out of bounds";
+    #assert rr_status_name(RrStatus.order)=="arrivals out of order" && rr_status_name(RrStatus.events)=="event limit reached";
+}
+
+// book:begin check-frozen
+#test "frozen: light load (60 ms gaps), prefix affinity" {
+    q:=rrx_requests(60000);s:=rrx_run(q,RrPolicy.affinity);
+    #assert rrx_frozen(s,q.req[..],648,28006,63027,152554,187574) && s.blocks==1120 && s.end==9507618;
+}
+#test "frozen: light load, least work" {
+    q:=rrx_requests(60000);#assert rrx_frozen(rrx_run(q,RrPolicy.least),q.req[..],314,63027,63027,152554,187574);
+}
+#test "frozen: light load, round robin" {
+    q:=rrx_requests(60000);#assert rrx_frozen(rrx_run(q,RrPolicy.round),q.req[..],316,63027,63027,152554,187574);
+}
+#test "frozen: heavy load (40 ms gaps), prefix affinity" {
+    q:=rrx_requests(40000);s:=rrx_run(q,RrPolicy.affinity);
+    #assert rrx_frozen(s,q.req[..],476,63027,200221,179878,310598) && s.replica_us==25313360 && s.end==6328340 && s.peak==4;
+}
+#test "frozen: heavy load, least work" {
+    q:=rrx_requests(40000);#assert rrx_frozen(rrx_run(q,RrPolicy.least),q.req[..],342,70915,216966,187574,311525);
+}
+#test "frozen: heavy load, round robin" {
+    q:=rrx_requests(40000);s:=rrx_run(q,RrPolicy.round);
+    #assert rrx_frozen(s,q.req[..],316,122859,295833,219375,400961) && s.end==6408837;
+}
+#test "frozen: chapter 172's recorded schedule on two replicas" {
+    reqs:[8]RrRequest;toks:[256]int;off:RrScaler;rec:=RRX_RECORDED;
+    #assert rr_recorded(rec[..],1000,8,reqs[..],toks[..])==BnStatus.ok;
+    #assert reqs[2].prompt==32 && reqs[1].arrive==200570 && reqs[7].arrive==2357518 && reqs[3].client==1 && toks[3*32]==301 && toks[3*32+5]==306 && toks[3*32+8]==1000104;
+    c:=rrx_fleet_config(RrPolicy.affinity);c.replicas=2;
+    #assert rrx_frozen(rr_sim(c,off,reqs[..],toks[..]),reqs[..],8,28006,51353,318240,602920);
+    c.policy=RrPolicy.least;#assert rrx_frozen(rr_sim(c,off,reqs[..],toks[..]),reqs[..],6,28006,63027,318240,614593);
+    c.policy=RrPolicy.round;#assert rrx_frozen(rr_sim(c,off,reqs[..],toks[..]),reqs[..],8,28006,51353,318240,602920);
+    #assert rr_recorded(rec[0..<0],1000,8,reqs[..],toks[..])==BnStatus.shape;
+    big:[257]BnRequest;#assert rr_recorded(big[..],1000,8,reqs[..],toks[..])==BnStatus.capacity;
+    out:[256]RrRequest;ot:[8192]int;#assert rr_recorded(big[0..<256],1000,8,out[..],ot[..])==BnStatus.ok;
+}
+#test "frozen: the autoscaler from one replica, a cold start with a record" {
+    q:=rrx_requests(40000);
+    sc:=rrx_scaler();sc.budget=6;c:=rrx_fleet_config(RrPolicy.affinity);c.replicas=1;
+    s:=rr_sim(c,sc,q.req[..],q.tok[..]);
+    #assert rrx_frozen(s,q.req[..],412,182294,548802,282403,660065);
+    #assert s.ups==5 && s.downs==5 && s.peak==6 && s.replica_us==27300000 && s.end==7000000;
+    #assert s.why[0]==36 && s.why[1]==0 && s.why[2]==8 && s.why[3]==6 && s.why[4]==7 && s.why[5]==13;
+}
+#test "frozen: the autoscaler from one replica, a cold start that hashes every byte" {
+    q:=rrx_requests(40000);
+    sc:=rrx_scaler();sc.budget=6;sc.cold_us=RR_COLD_HASH_US;c:=rrx_fleet_config(RrPolicy.affinity);c.replicas=1;
+    s:=rr_sim(c,sc,q.req[..],q.tok[..]);
+    #assert rrx_frozen(s,q.req[..],408,553480,1210248,651131,1314462);
+    #assert s.ups==5 && s.downs==5 && s.peak==6 && s.replica_us==31400000 && s.end==6800000;
+    #assert s.why[0]==12 && s.why[2]==8 && s.why[3]==15 && s.why[4]==21 && s.why[5]==12;
+    w:=rrx_workload();big:[256]RrRequest;bt:[8192]int;w.requests=256;#assert rr_traffic(w,24,big[..],bt[..])==BnStatus.ok;
+    w.requests=257;#assert rr_traffic(w,24,q.req[..],q.tok[..])==BnStatus.capacity;
+    w.requests=0;#assert rr_traffic(w,24,q.req[..],q.tok[..])==BnStatus.shape;
+}
+#test "overload: full queues and a flooding client are refused and counted" {
+    off:RrScaler;cfg:=rrx_sim_config();tok:[1280]int;q:[40]RrRequest;
+    for i:0..<40 {q[i]=RrRequest.{client=ifx i%4==3 then 1 else 0,arrive=i*5000,prompt=8,output=2};}
+    c:=cfg;c.depth=2;c.share=4;s:=rr_sim(c,off,q[..],tok[..]);
+    #assert s.refused[1]==0 && s.refused[2]==4 && s.refused[3]==22 && s.refused[4]==0 && s.deepest==2;
+    p:=rr_report(s,q[..]);#assert p.served==14 && p.refused==26;
+}
+#test "a fleet at zero refuses, counts the refusals as load, and starts replica 0 again" {
+    cfg:=rrx_sim_config();tok:[1280]int;
+    sc:=rrx_scaler();sc.floor=0;c:=cfg;c.replicas=1;
+    z:=[6]RrRequest.[RrRequest.{arrive=0,prompt=8,output=2},RrRequest.{arrive=1000000,prompt=8,output=2},RrRequest.{arrive=1000000,prompt=8,output=2},
+        RrRequest.{arrive=1000000,prompt=8,output=2},RrRequest.{arrive=1050000,prompt=8,output=2},RrRequest.{arrive=1700000,prompt=8,output=2}];
+    s:=rr_sim(c,sc,z[..],tok[..]);
+    #assert s.ups==2 && s.downs==3 && s.refused[4]==3 && s.fate[1].refusal==RrRefusal.cold && s.fate[3].refusal==RrRefusal.cold;
+    #assert s.fate[4].replica==0 && s.fate[4].start==1520740 && s.fate[5].start==1700000;
+    #assert s.end==2000000 && s.replica_us==1600000 && s.events==26;
+}
+#test "round robin starts at replica 0, and all 8 replicas serve" {
+    off:RrScaler;c:=rrx_sim_config();c.policy=RrPolicy.round;c.replicas=8;tok:[1280]int;q:[8]RrRequest;
+    for i:0..<8 {q[i]=RrRequest.{arrive=i,prompt=8,output=2};}
+    s:=rr_sim(c,off,q[..],tok[..]);
+    for i:0..<8 {#assert s.fate[i].replica==i && s.fate[i].start==i;}
+}
+#test "the first high tick holds for a cold start longer than one tick, then the backlog drains" {
+    c:=rrx_sim_config();c.replicas=1;tok:[1280]int;
+    sc:=rrx_scaler();sc.cold_us=150000;
+    z:=[3]RrRequest.[RrRequest.{arrive=90000,prompt=8,output=2},RrRequest.{arrive=95000,prompt=8,output=2},RrRequest.{arrive=99000,prompt=8,output=2}];
+    s:=rr_sim(c,sc,z[..],tok[..]);
+    #assert s.ups==0 && s.why[3]==1 && s.status==RrStatus.ok;
+}
+#test "the tick stops an idle replica, a starting one first, and waits when every one is busy" {
+    sc:=rrx_scaler();cfg:=rrx_sim_config();f:[3]RrReplica;
+    for k:0..<3 {f[k]=RrReplica.{phase=RrPhase.ready,running=-1,st=rr_store(cfg.pages)};}
+    // Load 1 on 3 replicas is low; the third low tick stops one.
+    f[1].running=0;f[1].busy_until=500;f[2].nq=1;f[2].queue[0]=0;
+    d:=rr_tick(f[..],sc,cfg,0,2,0,0);#assert d.act==RrAct.down && f[0].phase==RrPhase.off && f[1].phase==RrPhase.ready && f[2].phase==RrPhase.ready;
+    f[0].phase=RrPhase.starting;f[0].ready_at=900;f[1].running=-1;f[2].nq=0;
+    d=rr_tick(f[..],sc,cfg,0,2,0,0);#assert d.act==RrAct.down && f[0].phase==RrPhase.off && f[1].phase==RrPhase.ready && f[2].phase==RrPhase.ready;
+    d=rr_tick(f[..],sc,cfg,0,2,0,0);#assert d.act==RrAct.down && f[2].phase==RrPhase.off && f[1].phase==RrPhase.ready;
+    f[1].running=0;f[1].busy_until=10;f[0].phase=RrPhase.ready;f[0].nq=1;f[0].queue[0]=1;f[0].work=10;f[2].phase=RrPhase.ready;f[2].running=2;f[2].busy_until=10;
+    d=rr_tick(f[..],sc,cfg,0,2,0,0);#assert d.act==RrAct.hold && d.why==RrWhy.load && d.low==2;
+    // Up starts the lowest-numbered off replica, empty, ready after the cold start.
+    f[2].phase=RrPhase.off;d=rr_tick(f[..],sc,cfg,100,0,5,3);#assert d.act==RrAct.up && d.count==1 && f[2].phase==RrPhase.starting && f[2].ready_at==520840 && f[2].running== -1;
+}
+// book:end check-frozen
+
+// Independent checks (psionic/tests/serve-route-checks.coax).
+#forall "the router picks the brute-force best replica" seed:0..<200 #steps 400000000 {
+    w:=rrx_fleet(seed);
+    for pol:0..<3 {
+        c:=w.cfg;c.policy=cast(RrPolicy)cast(u8)pol;
+        p:=rr_route(w.rep[..],c,w.req,w.tok[..],w.now,w.held,w.turn);b:=rrx_best(w.rep[..],c,w.req,w.tok[..],w.now,w.held,w.turn);
+        #assert p.refusal==b.refusal && p.replica==b.replica && p.cached==b.cached && p.est==b.est && p.turn==b.turn;
+    }
+}
+#forall "the autoscaler stays within floor and budget, and never undoes itself at the same load" seed:0..<2000 #steps 20000000 {
+    s:=rrx_scaler();h:=pgx_next(seed+77);
+    s.floor=h/65536%3;h=pgx_next(h);s.budget=s.floor+1+h/65536%5;h=pgx_next(h);
+    s.target=1+h/65536%4;h=pgx_next(h);s.band=1+h/65536%60;h=pgx_next(h);s.down=1+h/65536%4;h=pgx_next(h);
+    o:=RrLoad.{ready=h/65536%9};h=pgx_next(h);o.starting=h/65536%3;h=pgx_next(h);
+    if o.ready+o.starting>s.budget {o.starting=0;o.ready=s.budget;}
+    o.load=h/65536%40;h=pgx_next(h);o.backlog=h/65536%4000000;h=pgx_next(h);o.low=h/65536%s.down;o.high=h/65536/7%8;
+    d:=rr_scale(s,o);n:=o.ready+o.starting;after:=n;
+    if d.act==RrAct.up {after=n+d.count;#assert d.count>=1;}
+    if d.act==RrAct.down {after=n-1;#assert d.count==1 && o.low+1>=s.down && o.load*100<=after*s.target*(100-s.band);}
+    if d.act==RrAct.hold {#assert d.count==0;}
+    #assert after<=s.budget && (n<s.floor)==(d.why==RrWhy.floor);
+    if n<s.floor {#assert after==s.floor;} else {#assert after>=s.floor;}
+    if d.act==RrAct.up && n>=s.floor {#assert o.load*100>n*s.target*(100+s.band) && (n==0 || o.backlog>n*s.cold_us || (o.high+1)*s.tick_us>=s.cold_us) && after*s.target<o.load+s.target;}
+    // After a step up or down, the same load asks for no step back.
+    if d.act!=RrAct.hold {
+        e:=rr_scale(s,RrLoad.{ready=after,load=o.load,backlog=o.backlog,low=s.down-1});
+        if d.act==RrAct.up {#assert e.act!=RrAct.down;}
+        if d.act==RrAct.down {#assert e.act!=RrAct.up;}
+    }
+}
+#forall "the simulation keeps its bounds: queues, shares, budget, one request per replica" seed:0..<24 #steps 400000000 {
+    w:=rrx_traffic(seed);
+    s:=rr_sim(w.cfg,w.sc,w.req[0..<w.n],w.tok[..]);
+    #assert s.status==RrStatus.ok;
+    rrx_sim_check(s,w);
+}
+
+// book:begin cost
+// Modeled microseconds: the uncached prompt positions run as rows of one
+// step that yields the first token; each further output token is a step of
+// one row (chapter 175's cb_step_ns). Cached positions are not run.
+rr_prefill :: (prompt:int,cached:int)->int {return cb_step_ns(prompt-cached)/1000;}
+rr_cost :: (prompt:int,output:int,cached:int)->int {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
+// Predicted microseconds before a new request could start here: the rest
+// of the start, the rest of the running request, and the queued work.
+rr_wait :: (rep:[]RrReplica,k:int,now:int)->int {
+    w:=rep[k].work;
+    if rep[k].phase==RrPhase.starting {w+=rep[k].ready_at-now;}
+    if rep[k].running>=0 {w+=rep[k].busy_until-now;}
+    return w;
+}
+// book:end cost
+
+// book:begin route
+// Refuse a request outside the bounds or over its client's share (held: each
+// client's requests queued or running); otherwise take the replica, running or
+// starting with room in its queue, with the smallest predicted finish, the
+// lowest number on a tie. Round robin takes the first with room from turn.
+rr_route :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]int,turn:int)->RrPick {
+    pick:=RrPick.{refusal=RrRefusal.shape,replica=-1,turn=turn};
+    if r.client<0 || r.client>=cfg.clients || r.prompt<1 || r.prompt>PG_PROMPT || r.output<1 || r.output>RR_OUTPUT {return pick;}
+    pick.refusal=RrRefusal.client;
+    if held[r.client]>=cfg.share {return pick;}
+    pick.refusal=RrRefusal.cold;
+    for k:0..<rep.count {if rep[k].phase!=RrPhase.off {pick.refusal=RrRefusal.full;}}
+    for j:0..<rep.count {
+        k:=j;
+        if cfg.policy==RrPolicy.round {k=(turn+j)%rep.count;}
+        if rep[k].phase==RrPhase.off || rep[k].nq>=cfg.depth {continue;}
+        c:=0;
+        if cfg.policy==RrPolicy.affinity {c=pg_match(rep[k].st,0,tok,r.prompt).n;}
+        e:=rr_wait(rep,k,now)+rr_cost(r.prompt,r.output,c*cfg.pages.page);
+        if pick.replica<0 || e<pick.est {pick=RrPick.{replica=k,cached=c,est=e,turn=(k+1)%rep.count};}
+        if cfg.policy==RrPolicy.round {return pick;}
+    }
+    return pick;
+}
+// book:end route
+
+// book:begin cache
+// An empty trie and free frames, as chapter 176 starts them.
+rr_store :: (c:PgConfig)->PgStore {
+    s:PgStore;s.cfg=c;s.pool=pg_pool(c);
+    for n:0..<PG_NODES {s.node[n].frame=-1;}
+    for i:0..<PG_REQUESTS {s.live[i]=-1;}
+    return s;
+}
+RrCached :: struct {st:PgStore;reused:int;}
+// Serve a prompt's blocks through chapter 176's trie, device tier only:
+// hold the cached prefix's frames (a frame a request holds is never
+// moved), give the rest new frames, commit every whole block, and let go
+// of the request's table. The trie's least recently used blocks make room.
+rr_cache :: (from:PgStore,mem:[]f64,tok:[]int,prompt:int,stamp:int)->RrCached {
+    s:=from;p:=s.cfg.page;path:=pg_match(s,0,tok,prompt);
+    for k:0..<prompt/p {
+        if k<path.n {f:=s.node[path.node[k]].frame;s.pool=pg_retain(s.pool,f);s.table[0].page[k]=f;}
+        else {s=pg_take(s,mem);s.table[0].page[k]=s.pool.got;}
+    }
+    s.table[0].n=prompt/p;
+    for k:0..<prompt/p {s=pg_commit(s,0,k,0,tok,stamp);}
+    return RrCached.{st=pg_free_table(s,0),reused=path.n};
+}
+// book:end cache
+
+// book:begin autoscale
+// Up when the load is above the band over the target: to the replicas the
+// load asks for, within the budget, unless the predicted backlog drains on
+// the replicas already provisioned before a new one would finish starting
+// and the load has been high for less than a cold start.
+// Down by one when the load fits one replica fewer below the band, after
+// that has held for `down` ticks in a row. Never below the floor.
+rr_scale :: (c:RrScaler,o:RrLoad)->RrScale {
+    n:=o.ready+o.starting;d:=RrScale.{why=RrWhy.floor};
+    if n<c.floor {d.act=RrAct.up;d.count=c.floor-n;return d;}
+    d.why=RrWhy.budget;
+    if o.load*100>n*c.target*(100+c.band) {
+        d.high=o.high+1;want:=cb_min((o.load+c.target-1)/c.target,c.budget);
+        if want<=n {return d;}
+        d.why=RrWhy.cold;
+        if n>0 && o.backlog<=n*c.cold_us && d.high*c.tick_us<c.cold_us {return d;}
+        d.act=RrAct.up;d.count=want-n;d.why=RrWhy.load;d.high=0;
+        return d;
+    }
+    d.why=RrWhy.steady;
+    if n>c.floor && o.load*100<=(n-1)*c.target*(100-c.band) {
+        d.low=o.low+1;d.why=RrWhy.delay;
+        if d.low<c.down {return d;}
+        d.act=RrAct.down;d.count=1;d.low=0;d.why=RrWhy.load;
+    }
+    return d;
+}
+// book:end autoscale
+
+// book:begin start
+rr_config_ok :: (c:RrConfig)->bool {
+    g:=c.pages;
+    if c.replicas<1 || c.replicas>RR_REPLICAS || c.depth<1 || c.depth>RR_DEPTH || c.clients<1 || c.clients>RR_CLIENTS || c.share<1 {return false;}
+    if c.events<1 || c.events>RR_EVENTS || g.page>PG_PAGE || g.dim<1 || g.dim>PG_DIM || g.hybrid {return false;}
+    // The device tier only, and room for a whole prompt of 32 positions.
+    return g.cap[0]*g.page>=PG_PROMPT && g.cap[0]<=PG_TIER && g.cap[1]==0 && g.cap[2]==0;
+}
+rr_scaler_ok :: (s:RrScaler,replicas:int)->bool {
+    if !s.on {return true;}
+    return s.floor>=0 && s.floor<=replicas && replicas<=s.budget && s.budget<=RR_REPLICAS && s.target>=1
+        && s.band>=1 && s.band<100 && s.down>=1 && s.cold_us>=0 && s.tick_us>=1;
+}
+rr_check :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrStatus {
+    if !rr_config_ok(cfg) || !rr_scaler_ok(sc,cfg.replicas) || reqs.count<1 || reqs.count>RR_REQUESTS {return RrStatus.config;}
+    if tok.count<reqs.count*PG_PROMPT {return RrStatus.config;}
+    for i:0..<reqs.count {if reqs[i].arrive<0 || (i>0 && reqs[i].arrive<reqs[i-1].arrive) {return RrStatus.order;}}
+    return RrStatus.ok;
+}
+// book:end start
+
+// book:begin sim
+// A discrete-event simulation. At each event time, in this order: requests
+// finish; started replicas become ready; arrivals are routed and queued or
+// refused; idle ready replicas take their queue's head; the autoscaler
+// ticks. It ends when every request is done and, with the autoscaler on,
+// the fleet is back at its floor. (A queue waits on a running or starting
+// replica, whose events keep the loop going.)
+rr_sim :: (cfg:RrConfig,sc:RrScaler,reqs:[]RrRequest,tok:[]int)->RrSim {
+    s:RrSim;s.status=rr_check(cfg,sc,reqs,tok);mem:[1728]f64;
+    if s.status!=RrStatus.ok {return s;}
+    rep:[8]RrReplica;
+    for k:0..<RR_REPLICAS {
+        rep[k]=RrReplica.{running=-1,st=rr_store(cfg.pages)};
+        if k<cfg.replicas {rep[k].phase=RrPhase.ready;}
+    }
+    s.n=reqs.count;s.peak=cfg.replicas;
+    a:=0;now:=0;tick:=sc.tick_us;held:[8]int;turn:=0;low:=0;high:=0;cold:=0;
+    while true {
+        t:=RR_NEVER;busy:=a<s.n;live:=0;
+        if a<s.n {t=reqs[a].arrive;}
+        for k:0..<RR_REPLICAS {
+            if rep[k].phase!=RrPhase.off {live+=1;}
+            if rep[k].running>=0 {t=cb_min(t,rep[k].busy_until);busy=true;}
+            if rep[k].phase==RrPhase.starting {t=cb_min(t,rep[k].ready_at);}
+        }
+        if sc.on && (busy || live>sc.floor) {t=cb_min(t,tick);}
+        if t==RR_NEVER {break;}
+        s.events+=1;
+        if s.events>cfg.events {s.status=RrStatus.events;return s;}
+        s.replica_us+=live*(t-now);now=t;s.end=now;
+        for k:0..<RR_REPLICAS {
+            if rep[k].running>=0 && rep[k].busy_until==now {held[reqs[rep[k].running].client]-=1;rep[k].running=-1;}
+            if rep[k].phase==RrPhase.starting && rep[k].ready_at==now {rep[k].phase=RrPhase.ready;}
+        }
+        while a<s.n && reqs[a].arrive==now {
+            r:=reqs[a];
+            p:=rr_route(rep[..],cfg,r,tok[a*PG_PROMPT..<a*PG_PROMPT+PG_PROMPT],now,held,turn);
+            s.fate[a]=RrFate.{refusal=p.refusal,replica=p.replica,start=-1,first=-1,finish=-1};
+            if p.refusal!=RrRefusal.none {s.refused[cast(int)p.refusal]+=1;if p.refusal==RrRefusal.cold {cold+=1;}}
+            else {
+                k:=p.replica;turn=p.turn;held[r.client]+=1;s.fate[a].pred=rr_cost(r.prompt,r.output,p.cached*cfg.pages.page);
+                rep[k].queue[rep[k].nq]=a;rep[k].nq+=1;rep[k].work+=s.fate[a].pred;
+                s.deepest=cb_max(s.deepest,rep[k].nq);
+            }
+            a+=1;
+        }
+        for k:0..<RR_REPLICAS {
+            if rep[k].phase==RrPhase.ready && rep[k].running<0 && rep[k].nq>0 {
+                i:=rep[k].queue[0];u:=rr_serve(rep[..],s.fate[..],k,reqs[i],tok[i*PG_PROMPT..<i*PG_PROMPT+PG_PROMPT],mem[..],now);
+                s.hit+=u;s.blocks+=(reqs[i].prompt-1)/cfg.pages.page;
+            }
+        }
+        if sc.on && now==tick {
+            d:=rr_tick(rep[..],sc,cfg,now,low,high,cold);low=d.low;high=d.high;cold=0;tick+=sc.tick_us;s.why[cast(int)d.why]+=1;
+            if d.act==RrAct.up {s.ups+=d.count;s.peak=cb_max(s.peak,live+d.count);}
+            if d.act==RrAct.down {s.downs+=1;}
+        }
+    }
+    return s;
+}
+// Replica k starts the head of its queue: its cached blocks are counted
+// now, when it runs, not when it was routed. Returns the blocks reused.
+rr_serve :: (rep:[]RrReplica,fate:[]RrFate,k:int,r:RrRequest,tok:[]int,mem:[]f64,now:int)->int {
+    i:=rep[k].queue[0];
+    for j:1..<rep[k].nq {rep[k].queue[j-1]=rep[k].queue[j];}
+    rep[k].nq-=1;rep[k].work-=fate[i].pred;
+    c:=rr_cache(rep[k].st,mem,tok,r.prompt,now);
+    rep[k].st=c.st;u:=c.reused*c.st.cfg.page;
+    fate[i].reused=c.reused;fate[i].start=now;fate[i].first=now+rr_prefill(r.prompt,u);
+    fate[i].finish=now+rr_cost(r.prompt,r.output,u);
+    rep[k].running=i;rep[k].busy_until=fate[i].finish;
+    return c.reused;
+}
+// book:end sim
+
+// book:begin tick
+// The autoscaler's tick. The load is the requests queued or running plus
+// those refused since the last tick because nothing was running or
+// starting, so a fleet at zero sees its demand. Up starts the
+// lowest-numbered off replicas, each ready after the cold start with an
+// empty cache. Down stops one replica with nothing queued or running, a
+// starting one first, else the highest ready one; when every replica is
+// busy the step waits for the next tick.
+rr_tick :: (rep:[]RrReplica,sc:RrScaler,cfg:RrConfig,now:int,low:int,high:int,cold:int)->RrScale {
+    o:=RrLoad.{low=low,high=high,load=cold};
+    for k:0..<rep.count {
+        if rep[k].phase==RrPhase.ready {o.ready+=1;}
+        if rep[k].phase==RrPhase.starting {o.starting+=1;}
+        if rep[k].phase!=RrPhase.off {o.backlog+=rr_wait(rep,k,now);o.load+=rep[k].nq;}
+        if rep[k].running>=0 {o.load+=1;}
+    }
+    d:=rr_scale(sc,o);
+    if d.act==RrAct.up {
+        left:=d.count;
+        for k:0..<rep.count {
+            if left>0 && rep[k].phase==RrPhase.off {
+                rep[k]=RrReplica.{phase=RrPhase.starting,ready_at=now+sc.cold_us,running=-1,st=rr_store(cfg.pages)};
+                left-=1;
+            }
+        }
+    }
+    if d.act==RrAct.down {
+        v:=-1;
+        for k:0..<rep.count {
+            if rep[k].phase==RrPhase.off || rep[k].nq>0 || rep[k].running>=0 {continue;}
+            if v<0 || rep[v].phase==RrPhase.ready {v=k;}
+        }
+        if v<0 {d.act=RrAct.hold;d.low=sc.down-1;return d;}
+        rep[v].phase=RrPhase.off;
+    }
+    return d;
+}
+// book:end tick
+
+// book:begin report
+// Requests served and refused; blocks reused of those a request could
+// reuse; nearest-rank time to first token and latency from arrival
+// (chapter 172's bn_stats: P50, P90, P95, P99).
+rr_report :: (s:RrSim,reqs:[]RrRequest)->RrReport {
+    p:=RrReport.{hit=s.hit,blocks=s.blocks,peak=s.peak,replica_us=s.replica_us};
+    first:[256]int;lat:[256]int;
+    for i:0..<s.n {
+        f:=s.fate[i];
+        if f.refusal==RrRefusal.none {first[p.served]=f.first-reqs[i].arrive;lat[p.served]=f.finish-reqs[i].arrive;p.served+=1;}
+        else {p.refused+=1;}
+    }
+    p.first=bn_stats(first[0..<p.served]);p.latency=bn_stats(lat[0..<p.served]);
+    return p;
+}
+// book:end report
+
+// book:begin traffic
+// Synthetic traffic from chapter 172's load schedule: content picks one of
+// the shared prefixes, sampling the client, input the prompt length (at
+// most 32), output the output length. A prompt's first `prefix` tokens
+// are its family's; the rest are its own.
+rr_traffic :: (w:BnWorkload,prefix:int,out:[]RrRequest,tok:[]int)->BnStatus {
+    b:[256]BnRequest;st:=bn_schedule(w,b[..]);
+    if st!=BnStatus.ok {return st;}
+    for i:0..<w.requests {rr_one(b[i],prefix,i,out,tok);}
+    return BnStatus.ok;
+}
+rr_one :: (q:BnRequest,prefix:int,i:int,out:[]RrRequest,tok:[]int) {
+    out[i]=RrRequest.{client=q.sampling,arrive=q.at_us,prompt=cb_min(q.input,PG_PROMPT),output=q.output};
+    for p:0..<PG_PROMPT {tok[i*PG_PROMPT+p]=ifx p<prefix then q.content*100+p+1 else 1000000+i*PG_PROMPT+p;}
+}
+// Recorded traffic: chapter 172's recorded schedule, replayed scale_pct
+// times as fast, mapped the same way.
+rr_recorded :: (rec:[]BnRequest,scale_pct:int,prefix:int,out:[]RrRequest,tok:[]int)->BnStatus {
+    b:[256]BnRequest;st:=bn_replay(rec,scale_pct,b[..]);
+    if st!=BnStatus.ok {return st;}
+    for i:0..<rec.count {rr_one(b[i],prefix,i,out,tok);}
+    return BnStatus.ok;
+}
+// book:end traffic
+
+rr_refusal_name :: (r:RrRefusal)->string {
+    names:=[5]string.["none","request outside the bounds","client over its share","every queue full","no replica running or starting"];
+    return names[cast(int)r];
+}
+rr_why_name :: (w:RrWhy)->string {names:=[6]string.["steady","floor","load","cold","budget","delay"];return names[cast(int)w];}
+rr_policy_name :: (p:RrPolicy)->string {names:=[3]string.["prefix affinity","least work","round robin"];return names[cast(int)p];}
+rr_status_name :: (s:RrStatus)->string {
+    names:=[4]string.["ok","configuration or traffic out of bounds","arrivals out of order","event limit reached"];
+    return names[cast(int)s];
+}

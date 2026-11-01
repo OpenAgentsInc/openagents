@@ -47,6 +47,15 @@ production. The runbook is in `nostr/book/ch103-replace-relay-openagents-com.md`
 Any refused line in the import (a forged or malformed event in the export)
 also comes to you before the cutover continues.
 
+## Psionic chapter 177: machines for a live multi-replica run (2026-11-01)
+
+The router, bounded queues and autoscaler (`psionic/lib/serve-route.coax`,
+`#authority`) run only in a simulation of replicas in one process; nothing
+was provisioned. The chapter's last "Done means" item, a live run that
+reproduces the simulated percentiles within a stated tolerance, needs your
+choice of hosts (two or more replicas of one qualified model), the replica
+budget the autoscaler may spend up to, and the spending limit for the run.
+
 ## Psionic chapter 34: approve a packaged llama.cpp build (2026-11-01)
 
 Chapter 34 compares Psionic with llama.cpp only through an owner-approved

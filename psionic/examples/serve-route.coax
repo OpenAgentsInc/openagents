@@ -1,0 +1,55 @@
+// Chapter 177: the hand-traced routes, then three routers against the same
+// synthetic traffic at two loads and against chapter 172's recorded
+// schedule, then the autoscaler with both measured cold starts.
+#import "Basic";
+#load "../lib/serve-route.coax";
+
+// Microseconds as milliseconds with one decimal.
+ms :: (us:int) {print("%.%",us/1000,us/100%10);}
+line :: (name:string,s:RrSim,reqs:[]RrRequest) {
+    p:=rr_report(s,reqs);
+    print("  %: served %, refused %; reused % of % blocks (% percent)\n",name,p.served,p.refused,p.hit,p.blocks,p.hit*100/p.blocks);
+    print("    first token P50 ");ms(p.first.p[0]);print(" P95 ");ms(p.first.p[2]);
+    print(" ms; latency P50 ");ms(p.latency.p[0]);print(" P95 ");ms(p.latency.p[2]);print(" ms\n");
+}
+routers :: (reqs:[]RrRequest,toks:[]int,replicas:int) {
+    off:RrScaler;
+    for k:0..<3 {
+        pol:=cast(RrPolicy)cast(u8)k;c:=rrx_fleet_config(pol);c.replicas=replicas;
+        line(rr_policy_name(pol),rr_sim(c,off,reqs,toks),reqs);
+    }
+}
+
+// book:begin main
+main :: () {
+    f:=rrx_hand();cfg:=rrx_hand_config();tok:=rrx_hand_tok();
+    r:=RrRequest.{client=0,prompt=13,output=2};
+    p:=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);
+    print("hand trace: replica %, % cached blocks, predicted finish % us\n",p.replica,p.cached,p.est);
+    f[1].work=5000;p=rr_route(f[..],cfg,r,tok[..],0,rrx_held(0),0);
+    print("replica 1 with 5 ms of work: replica %, % cached blocks, % us\n",p.replica,p.cached,p.est);
+
+    w:=rrx_workload();reqs:[160]RrRequest;toks:[5120]int;
+    for gap:[2]int.[60000,40000] {
+        w.gap_us=gap;
+        if rr_traffic(w,24,reqs[..],toks[..])!=BnStatus.ok {print("traffic refused\n");return;}
+        print("synthetic, mean gap % ms: 160 requests, 6 shared prefixes of 24 tokens, 4 replicas (%)\n",gap/1000,RR_PROFILE);
+        routers(reqs[..],toks[..],4);
+    }
+    rec:=RRX_RECORDED;
+    if rr_recorded(rec[..],1000,8,reqs[..],toks[..])!=BnStatus.ok {print("recording refused\n");return;}
+    print("recorded (chapter 172, 8 requests at 10 times speed), 2 replicas:\n");
+    routers(reqs[0..<8],toks[..],2);
+
+    if rr_traffic(w,24,reqs[..],toks[..])!=BnStatus.ok {return;}
+    for cold:[2]int.[RR_COLD_RECORD_US,RR_COLD_HASH_US] {
+        sc:=rrx_scaler();sc.budget=6;sc.cold_us=cold;c:=rrx_fleet_config(RrPolicy.affinity);c.replicas=1;
+        s:=rr_sim(c,sc,reqs[..],toks[..]);
+        print("autoscaled from 1 replica, cold start % us: started %, stopped %, at most %, % replica-seconds, last event at ",cold,s.ups,s.downs,s.peak,s.replica_us/1000000);
+        ms(s.end);print(" ms\n  ticks:");
+        for k:0..<6 {print(" % %",s.why[k],rr_why_name(cast(RrWhy)cast(u8)k));}
+        print("\n");
+        line("prefix affinity",s,reqs[..]);
+    }
+}
+// book:end main

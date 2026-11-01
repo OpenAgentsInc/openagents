@@ -1,0 +1,201 @@
+// Chapter 177's check helpers, loaded by psionic/lib/serve-route.coax and
+// owned by its checks: the hand-traced fleet, a brute-force router that
+// counts cached blocks by walking every chain of chapter 176's trie and
+// writes the step model's constants out by hand, random fleets and traffic,
+// the invariants a finished simulation must keep, and chapter 172's
+// recorded schedule.
+
+// The hand-traced fleet: page 4, three replicas. Replica 0 has served A's
+// first 8 tokens, replica 1 its first 12 and has 10 ms of work queued,
+// replica 2 nothing.
+rrx_hand_config :: ()->RrConfig {
+    c:=RrConfig.{policy=RrPolicy.affinity,replicas=3,depth=2,clients=3,share=2,events=RR_EVENTS};
+    c.pages=PgConfig.{page=4,dim=1};c.pages.cap[0]=8;
+    return c;
+}
+rrx_hand_tok :: ()->[32]int {t:[32]int;for p:0..<32 {t[p]=p+1;}return t;}
+rrx_hand :: ()->[3]RrReplica {
+    c:=rrx_hand_config();f:[3]RrReplica;tok:=rrx_hand_tok();mem:[1728]f64;
+    for k:0..<3 {f[k]=RrReplica.{phase=RrPhase.ready,running=-1,st=rr_store(c.pages)};}
+    f[0].st=rr_cache(f[0].st,mem[..],tok[..],8,1).st;
+    f[1].st=rr_cache(f[1].st,mem[..],tok[..],12,1).st;f[1].work=10000;
+    return f;
+}
+rrx_sim_config :: ()->RrConfig {
+    c:=RrConfig.{policy=RrPolicy.affinity,replicas=2,depth=4,clients=2,share=8,events=RR_EVENTS};
+    c.pages=PgConfig.{page=4,dim=1};c.pages.cap[0]=8;
+    return c;
+}
+rrx_scaler :: ()->RrScaler {return RrScaler.{on=true,floor=1,budget=4,target=2,band=25,down=3,cold_us=RR_COLD_RECORD_US,tick_us=100000};}
+
+// The brute-force router: every replica's predicted finish, written out
+// with the step model's constants; cached blocks from chapter 176's
+// brute-force lookup; the smallest finish, then the lowest number.
+rrx_best :: (rep:[]RrReplica,cfg:RrConfig,r:RrRequest,tok:[]int,now:int,held:[8]int,turn:int)->RrPick {
+    b:=RrPick.{refusal=RrRefusal.shape,replica=-1,turn=turn};
+    ok:=r.client>=0 && r.client<cfg.clients && r.prompt>=1 && r.prompt<=32 && r.output>=1 && r.output<=64;
+    if !ok {return b;}
+    if held[r.client]>=cfg.share {b.refusal=RrRefusal.client;return b;}
+    live:=0;for k:0..<rep.count {if rep[k].phase!=RrPhase.off {live+=1;}}
+    if live==0 {b.refusal=RrRefusal.cold;return b;}
+    est:[8]int;room:[8]bool;cached:[8]int;
+    for k:0..<rep.count {
+        x:=rep[k];room[k]=x.phase!=RrPhase.off && x.nq<cfg.depth;
+        wait:=x.work;
+        if x.phase==RrPhase.starting {wait=wait+x.ready_at-now;}
+        if x.running>=0 {wait=wait+x.busy_until-now;}
+        if cfg.policy==RrPolicy.affinity {cached[k]=pgx_brute_match(cfg.pages,x.st.node[..],0,tok,r.prompt);}
+        rows:=r.prompt-cached[k]*cfg.pages.page;
+        est[k]=wait+(17792472+(rows-1)*1459182+(r.output-1)*17792472)/1000;
+    }
+    b.refusal=RrRefusal.full;
+    if cfg.policy==RrPolicy.round {
+        for j:0..<rep.count {
+            k:=(turn+j)%rep.count;
+            if room[k] {return RrPick.{replica=k,cached=0,est=est[k],turn=(k+1)%rep.count};}
+        }
+        return b;
+    }
+    low:=-1;
+    for k:0..<rep.count {if room[k] && (low<0 || est[k]<low) {low=est[k];}}
+    for k:0..<rep.count {if room[k] && est[k]==low {return RrPick.{replica=k,cached=cached[k],est=low,turn=(k+1)%rep.count};}}
+    return b;
+}
+
+// Random fleets: up to 8 replicas in every phase, with random queues, work
+// and running requests, tries filled by up to 10 earlier prompts from three
+// families, and one request, sometimes outside the bounds.
+RrxFleet :: struct {cfg:RrConfig;rep:[8]RrReplica;req:RrRequest;now:int;held:[8]int;turn:int;tok:[32]int;}
+rrx_fleet :: (seed:int)->RrxFleet {
+    w:RrxFleet;h:=pgx_next(seed*7919+5);mem:[1728]f64;
+    w.cfg.pages.page=2+h/65536%3;h=pgx_next(h);w.cfg.pages.dim=1;
+    base:=(31+w.cfg.pages.page)/w.cfg.pages.page;w.cfg.pages.cap[0]=base+h/65536%(17-base);h=pgx_next(h);
+    w.cfg.events=RR_EVENTS;
+    w.cfg.depth=1+h/65536%4;h=pgx_next(h);w.cfg.clients=1+h/65536%3;h=pgx_next(h);w.cfg.share=1+h/65536%3;h=pgx_next(h);
+    w.now=h/65536%20000;h=pgx_next(h);for c:0..<8 {w.held[c]=h/65536%4;h=pgx_next(h);}w.turn=h/65536%8;h=pgx_next(h);
+    for k:0..<8 {
+        x:=RrReplica.{phase=RrPhase.ready,running=-1,st=rr_store(w.cfg.pages)};
+        ph:=h/65536%6;h=pgx_next(h);
+        if ph==0 {x.phase=RrPhase.off;}
+        if ph==1 {x.phase=RrPhase.starting;x.ready_at=w.now+1+h/65536%90000;h=pgx_next(h);}
+        x.nq=h/65536%(w.cfg.depth+1);h=pgx_next(h);x.work=x.nq*(h/65536%60000);h=pgx_next(h);
+        if x.phase==RrPhase.ready && h/65536%2==0 {x.running=1;x.busy_until=w.now+1+h/65536%80000;}
+        h=pgx_next(h);
+        w.rep[k]=x;
+    }
+    // Everything off now and then, so the cold refusal is reached.
+    if seed%23==0 {for k:0..<8 {w.rep[k].phase=RrPhase.off;}}
+    t:[32]int;
+    for j:0..<h/65536%11 {
+        h=pgx_next(h);fam:=h/65536%3;h=pgx_next(h);size:=1+h/65536%32;h=pgx_next(h);k:=h/65536%8;h=pgx_next(h);
+        for p:0..<32 {t[p]=ifx p<20 then fam*50+p else 900+j*40+p;}
+        w.rep[k].st=rr_cache(w.rep[k].st,mem[..],t[..],size,j+1).st;
+    }
+    h=pgx_next(h);fam:=h/65536%3;h=pgx_next(h);share:=h/65536%33;h=pgx_next(h);
+    for p:0..<32 {w.tok[p]=ifx p<share then fam*50+p else 5000+p;}
+    w.req=RrRequest.{client=h/65536%5-1,prompt=h/65536/7%35,output=1+h/65536/11%8};h=pgx_next(h);
+    if h/65536%9==0 {w.req.output=63+h/65536/9%3;}
+    return w;
+}
+
+// Random traffic: 8 to 40 requests from chapter 172's schedule, with random
+// fleets, policies and autoscalers.
+RrxTraffic :: struct {cfg:RrConfig;sc:RrScaler;n:int;req:[40]RrRequest;tok:[1280]int;}
+rrx_traffic :: (seed:int)->RrxTraffic {
+    w:RrxTraffic;h:=pgx_next(seed*104729+3);
+    w.cfg.policy=cast(RrPolicy)cast(u8)(seed%3);
+    w.cfg.pages.page=4;w.cfg.pages.dim=1;w.cfg.pages.cap[0]=8+h/65536%9;h=pgx_next(h);w.cfg.events=RR_EVENTS;
+    w.cfg.replicas=1+h/65536%4;h=pgx_next(h);w.cfg.depth=1+h/65536%4;h=pgx_next(h);
+    w.cfg.clients=1+h/65536%3;h=pgx_next(h);w.cfg.share=1+h/65536%6;h=pgx_next(h);
+    w.sc=RrScaler.{on=seed%2==1,target=1+h/65536%3,band=10+h/65536%40,down=1+h/65536%3,tick_us=50000+h/65536%150000};h=pgx_next(h);
+    w.sc.floor=h/65536%(w.cfg.replicas+1);h=pgx_next(h);w.sc.budget=w.cfg.replicas+h/65536%3;h=pgx_next(h);
+    w.sc.cold_us=ifx h/65536%2==0 then RR_COLD_RECORD_US else RR_COLD_HASH_US;h=pgx_next(h);
+    b:=BnWorkload.{seed=cast(u64)(seed+1),requests=8+h/65536%33,gap_us=20000+h/65536%60000,jitter_pct=50,contents=1+h/65536%5,samplings=1+h/65536%4};h=pgx_next(h);
+    b.input.count=3;b.input.len=[16]int.[13,24,40,0,0,0,0,0,0,0,0,0,0,0,0,0];b.input.weight[0]=1;b.input.weight[1]=2;b.input.weight[2]=1;
+    b.output.count=2;b.output.len[0]=2;b.output.len[1]=8;b.output.weight[0]=1;b.output.weight[1]=1;
+    w.n=b.requests;
+    #assert rr_traffic(b,h/65536%25,w.req[..],w.tok[..])==BnStatus.ok;
+    return w;
+}
+
+// What a finished simulation must keep, recomputed from its fates alone.
+rrx_sim_check :: (s:RrSim,w:RrxTraffic) {
+    v:=w;refused:[5]int;hit:=0;blocks:=0;
+    for i:0..<v.n {
+        f:=s.fate[i];r:=v.req[i];
+        refused[cast(int)f.refusal]+=1;
+        // The client's requests in flight at its arrival (finishes at that instant come first).
+        held:=0;
+        for j:0..<i {g:=s.fate[j];if g.refusal==RrRefusal.none && v.req[j].client==r.client && g.finish>r.arrive {held+=1;}}
+        if f.refusal==RrRefusal.client {#assert held>=v.cfg.share;}
+        if f.refusal!=RrRefusal.none {#assert f.replica== -1 && f.start== -1 && f.first== -1 && f.finish== -1;continue;}
+        #assert held<v.cfg.share && f.start>=r.arrive && f.replica>=0 && f.replica<8;
+        rows:=r.prompt-f.reused*4;
+        #assert f.reused<=(r.prompt-1)/4 && f.first-f.start==(17792472+(rows-1)*1459182)/1000;
+        #assert f.finish-f.start==(17792472+(rows-1)*1459182+(r.output-1)*17792472)/1000;
+        hit+=f.reused;blocks+=(r.prompt-1)/4;
+        // Waiting ahead of it on its replica when it was routed: fewer than the depth.
+        ahead:=0;
+        for j:0..<i {
+            g:=s.fate[j];
+            if g.refusal==RrRefusal.none && g.replica==f.replica {
+                if g.start>=r.arrive {ahead+=1;}
+                // One request at a time, in the order they were routed.
+                #assert g.finish<=f.start || g.start>=f.finish;
+                #assert g.start<=f.start;
+            }
+        }
+        #assert ahead<v.cfg.depth;
+    }
+    for k:1..<5 {#assert refused[k]==s.refused[k];}
+    #assert s.refused[0]==0;
+    #assert refused[0]+refused[1]+refused[2]+refused[3]+refused[4]==v.n && s.hit==hit && s.blocks==blocks;
+    #assert s.deepest<=v.cfg.depth && s.peak>=v.cfg.replicas && s.events<=RR_EVENTS;
+    if v.sc.on {#assert s.peak<=v.sc.budget && s.ups-s.downs+v.cfg.replicas>=v.sc.floor;}
+    else {#assert s.peak==v.cfg.replicas && s.ups==0 && s.downs==0;}
+}
+
+// Frozen from the run shown in chapter 177: hit blocks, then nearest-rank
+// P50 and P95 of time to first token and of latency, in microseconds.
+rrx_frozen :: (s:RrSim,reqs:[]RrRequest,hit:int,f50:int,f95:int,l50:int,l95:int)->bool {
+    p:=rr_report(s,reqs);
+    return s.status==RrStatus.ok && p.refused==0 && p.hit==hit && p.first.p[0]==f50 && p.first.p[2]==f95 && p.latency.p[0]==l50 && p.latency.p[2]==l95;
+}
+// Every client holding n requests in flight.
+rrx_held :: (n:int)->[8]int {h:[8]int;for c:0..<8 {h[c]=n;}return h;}
+
+// Chapter 172's recorded schedule (psionic/fixtures/bench/2026-10-29/gpt-115.sched):
+// arrival offset in us, input tokens, output tokens, content, sampling.
+RRX_RECORDED :: [8]BnRequest.[
+    BnRequest.{at_us=0,input=8,output=16,content=0,sampling=1},
+    BnRequest.{at_us=2005708,input=8,output=32,content=2,sampling=0},
+    BnRequest.{at_us=6935126,input=128,output=16,content=0,sampling=2},
+    BnRequest.{at_us=9275753,input=8,output=32,content=3,sampling=1},
+    BnRequest.{at_us=12275826,input=32,output=32,content=0,sampling=1},
+    BnRequest.{at_us=17572702,input=32,output=16,content=3,sampling=2},
+    BnRequest.{at_us=19940358,input=8,output=16,content=3,sampling=1},
+    BnRequest.{at_us=23575182,input=32,output=32,content=2,sampling=1}];
+
+// The chapter's synthetic traffic: 160 requests, a mean gap of 40 ms,
+// prompts of 32 tokens whose first 24 come from one of 6 shared prefixes,
+// outputs of 4 or 8 tokens, 4 clients.
+rrx_workload :: ()->BnWorkload {
+    b:=BnWorkload.{seed=177,requests=160,gap_us=40000,jitter_pct=50,contents=6,samplings=4};
+    b.input.count=1;b.input.len[0]=32;b.input.weight[0]=1;
+    b.output.count=2;b.output.len[0]=4;b.output.len[1]=8;b.output.weight[0]=1;b.output.weight[1]=1;
+    return b;
+}
+// Four replicas with 16 device pages of 4 positions each: two prompts' worth.
+rrx_fleet_config :: (p:RrPolicy)->RrConfig {
+    c:=RrConfig.{policy=p,replicas=4,depth=8,clients=4,share=16,events=RR_EVENTS};
+    c.pages=PgConfig.{page=4,dim=1};c.pages.cap[0]=16;
+    return c;
+}
+// The chapter's traffic at one mean gap, and a run of it on the fixed fleet.
+RrxRequests :: struct {req:[160]RrRequest;tok:[5120]int;}
+rrx_requests :: (gap:int)->RrxRequests {
+    q:RrxRequests;w:=rrx_workload();w.gap_us=gap;
+    #assert rr_traffic(w,24,q.req[..],q.tok[..])==BnStatus.ok;
+    return q;
+}
+rrx_run :: (q:RrxRequests,p:RrPolicy)->RrSim {off:RrScaler;v:=q;return rr_sim(rrx_fleet_config(p),off,v.req[..],v.tok[..]);}

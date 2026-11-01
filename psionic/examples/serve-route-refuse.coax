@@ -1,0 +1,48 @@
+// Chapter 177: what the router and the simulation refuse. A configuration
+// out of bounds, arrivals out of order, requests outside the bounds, an
+// overload that fills the queues and a client that floods, and a fleet
+// scaled to zero that refuses until a replica has started.
+#import "Basic";
+#load "../lib/serve-route.coax";
+
+fates :: (s:RrSim,n:int) {
+    for i:0..<n {
+        f:=s.fate[i];
+        if f.refusal==RrRefusal.none {print("  request %: replica %, started at % us\n",i,f.replica,f.start);}
+        else {print("  request %: refused, %\n",i,rr_refusal_name(f.refusal));}
+    }
+}
+
+// book:begin main
+main :: () {
+    off:RrScaler;cfg:=rrx_sim_config();tok:[1280]int;
+    q:[40]RrRequest;
+    for i:0..<40 {q[i]=RrRequest.{client=i%2,arrive=i*5000,prompt=8,output=2};}
+    c:=cfg;c.depth=9;
+    print("depth 9: %\n",rr_status_name(rr_sim(c,off,q[0..<4],tok[..]).status));
+    b:=q;b[1].arrive=-1;
+    print("an arrival before the one ahead of it: %\n",rr_status_name(rr_sim(cfg,off,b[0..<4],tok[..]).status));
+    b=q;b[0].prompt=33;b[1].client=2;b[2].output=0;
+    print("a 33-token prompt, client 2 of 2, no output:\n");
+    fates(rr_sim(cfg,off,b[0..<4],tok[..]),4);
+
+    // 40 requests 5 ms apart from two clients, on 2 replicas with queues of
+    // 2; each client may hold 4 requests in flight; 3 in 4 come from client 0.
+    c=cfg;c.depth=2;c.share=4;
+    for i:0..<40 {q[i].client=ifx i%4==3 then 1 else 0;}
+    s:=rr_sim(c,off,q[..],tok[..]);
+    print("overload, 40 requests 5 ms apart, 2 replicas, queues of 2, share 4:\n");
+    for k:1..<5 {print("  refused, %: %\n",rr_refusal_name(cast(RrRefusal)cast(u8)k),s.refused[k]);}
+    print("  served %, deepest queue %\n",40-s.refused[1]-s.refused[2]-s.refused[3]-s.refused[4],s.deepest);
+
+    // Floor 0: after 3 quiet ticks of 100 ms the last replica stops. Three
+    // requests at 1 s find nothing running; the tick at that instant counts
+    // them as load and starts ceil(3 / 2) = 2 replicas.
+    sc:=rrx_scaler();sc.floor=0;c=cfg;c.replicas=1;
+    z:=[6]RrRequest.[RrRequest.{arrive=0,prompt=8,output=2},RrRequest.{arrive=1000000,prompt=8,output=2},RrRequest.{arrive=1000000,prompt=8,output=2},
+        RrRequest.{arrive=1000000,prompt=8,output=2},RrRequest.{arrive=1050000,prompt=8,output=2},RrRequest.{arrive=1700000,prompt=8,output=2}];
+    s=rr_sim(c,sc,z[..],tok[..]);
+    print("scaled to zero, cold start % us: started %, stopped %, % replica-seconds\n",sc.cold_us,s.ups,s.downs,s.replica_us/1000000);
+    fates(s,6);
+}
+// book:end main
