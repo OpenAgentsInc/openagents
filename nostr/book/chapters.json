@@ -498,7 +498,7 @@
    "number": 24,
    "title": "Relay messages",
    "file": "ch024-relay-messages.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     21,
@@ -507,7 +507,9 @@
    "source": [
     "coax/lib/nostr/message.coax",
     "coax/lib/nostr/message_agree.coax",
-    "coax/lib/nostr/message_server.coax"
+    "coax/lib/nostr/message_server.coax",
+    "nostr/examples/relay-messages.coax",
+    "nostr/examples/checks/relay-messages.coax"
    ],
    "qualified_targets": [
     "cpu"

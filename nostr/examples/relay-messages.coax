@@ -1,0 +1,203 @@
+// book:begin example
+#load "../../coax/lib/nostr/message_agree.coax";
+#load "../../coax/lib/nostr/filter_read.coax";
+#import "Basic";
+
+// Status names, in the order of each file's constants.
+NM :: [10] string.["ok", "json", "shape", "type", "sub", "id", "message", "limit", "output", "alias"];
+MS :: [7] string.["ok", "json", "shape", "verb", "sub", "too many", "too big"];
+RELAY_TYPE :: [6] string.["-", "EVENT", "OK", "EOSE", "CLOSED", "NOTICE"];
+CLIENT_VERB :: [6] string.["-", "EVENT", "REQ", "CLOSE", "AUTH", "COUNT"];
+PREFIX :: [10] string.["none", "duplicate", "pow", "blocked", "rate-limited", "invalid", "restricted", "mute", "error", "another word"];
+
+// NIP-01's example OK id, written out in full.
+ID :: "b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30";
+
+// The worked REQ's two filters (chapter 23's JSON).
+F1 :: "{\"kinds\":[1],\"limit\":2}";
+F2 :: "{\"#t\":[\"nostr\"]}";
+Space :: struct { strs: [16] string; ints: [16] int; tags: [4] NostrTagFilter; bytes: [1024] u8; }
+read_filter :: (text: string, f: [] NostrFilter, s: [] Space) -> int {
+  sp: [1] FrSpace;
+  sp[0] = FrSpace.{strs = s[0].strs[..], ints = s[0].ints[..], tags = s[0].tags[..], bytes = s[0].bytes[..]};
+  return filter_read(text, f, sp[..]);
+}
+
+// What the client reads from one relay frame.
+client_view :: (frame: string) {
+  m := nostr_message_read(frame);
+  if m.error != NM_OK { print("  client reads: refused, %\n", NM[m.error]); return; }
+  print("  client reads: %", RELAY_TYPE[m.type]);
+  if m.type == NM_EVENT || m.type == NM_EOSE || m.type == NM_CLOSED { print(", sub %", nm_text(m, m.sub)); }
+  if m.type == NM_EVENT { print(", event bytes %..%", m.event.from, m.event.to); }
+  if m.type == NM_EOSE && m.extra > 0 { print(", % extra values", m.extra); }
+  if m.type == NM_ACCEPT { print(", id "); print_hex(m.id[0..<2]); print("..."); print_hex(m.id[30..<32]); print(", %", m.accepted); }
+  if m.type == NM_ACCEPT || m.type == NM_CLOSED { print(", prefix %", PREFIX[m.prefix]); }
+  if m.type != NM_EVENT && m.type != NM_EOSE { print(", message \"%\"", nm_text(m, m.message)); }
+  print("\n");
+}
+print_hex :: (bytes: [] u8) {
+  digits := "0123456789abcdef"; s: [2] u8;
+  for b: bytes { s[0] = digits[cast(int) (b >> 4)]; s[1] = digits[cast(int) (b & 15)]; print("%", cast(string) s[..]); }
+}
+// What the relay reads from one client frame.
+relay_view :: (frame: string) {
+  m := ms_read(frame);
+  if m.error != MS_OK { print("  relay reads: refused, %\n", MS[m.error]); return; }
+  print("  relay reads: %", CLIENT_VERB[m.type]);
+  if m.has_sub { print(", sub %", cast(string) m.sub[0..<m.sub_n]); }
+  if m.type == MS_EVENT || m.type == MS_AUTH { print(", object bytes %..%", m.event_from, m.event_to); }
+  if m.type == MS_REQ || m.type == MS_COUNT {
+    print(", % filters", m.filters);
+    for i: 0..<m.filters { print(" %..%", m.filter_from[i], m.filter_to[i]); }
+  }
+  print("\n");
+}
+// Print a written frame, or the writer's refusal.
+show :: (label: string, n: int, out: [] u8) -> string {
+  if n < 0 { print("%: writer refuses (-1)\n", label); return ""; }
+  print("%: %\n", label, cast(string) out[0..<n]);
+  return cast(string) out[0..<n];
+}
+client_refuses :: (label: string, frame: string) { print("client, %: %\n", label, NM[nostr_message_read(frame).error]); }
+relay_refuses :: (label: string, frame: string) {
+  m := ms_read(frame);
+  print("relay, %: %", label, MS[m.error]);
+  if m.error != MS_OK && m.has_sub { print(" (sub % already read)", cast(string) m.sub[0..<m.sub_n]); }
+  print("\n");
+}
+// ["<verb>","<count copies of c>"] into out.
+sub_frame :: (out: [] u8, verb: string, c: string, count: int) -> string {
+  n := json_raw(out, 0, "[\""); n = json_raw(out, n, verb); n = json_raw(out, n, "\",\"");
+  for i: 0..<count { n = json_raw(out, n, c); }
+  n = json_raw(out, n, "\"]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+main :: () {
+  print("worked REQ\n");
+  s: [2] Space; f: [2] NostrFilter;
+  #assert read_filter(F1, f[0..<1], s[0..<1]) == FR_OK && read_filter(F2, f[1..<2], s[1..<2]) == FR_OK;
+  req: [256] u8;
+  frame := show("client writes", nostr_message_write_req("feed", f[..], req[..], false), req[..]);
+  print("same bytes as the hand frame: %\n", frame == "[\"REQ\",\"feed\",{\"kinds\":[1],\"limit\":2},{\"#t\":[\"nostr\"]}]");
+  relay_view(frame);
+  m := ms_read(frame);
+  for i: 0..<m.filters {
+    span := frame[m.filter_from[i]..<m.filter_to[i]];
+    g: [1] NostrFilter; t: [1] Space; out: [256] u8;
+    r := read_filter(span, g[..], t[..]); w := nf_write(g[0], out[..], false);
+    print("  filter %: %, filter_read %, written back %\n", i + 1, span, ifx r == FR_OK then "ok" else "refused",
+          ifx w == span.count && cast(string) out[0..<w] == span then "byte for byte" else "differently");
+  }
+
+  print("worked OK\n");
+  id: [32] u8; #assert ne_lower_hex(ID, id[..]);
+  ok: [256] u8;
+  frame = show("relay writes", ms_write_ok(id[..], false, "invalid", "bad signature", ok[..]), ok[..]);
+  client_view(frame);
+
+  print("client to relay\n");
+  out: [1024] u8;
+  frame = show("EVENT", nostr_message_write_event(NE_FIXTURE, out[..], false), out[..]);
+  relay_view(frame);
+  e := ms_read(frame);
+  print("  object is the event's original bytes: %\n", frame[e.event_from..<e.event_to] == NE_FIXTURE);
+  relay_view(show("REQ, one filter", nostr_message_write_req("q\"1", f[0..<1], out[..], false), out[..]));
+  relay_view(show("CLOSE", nostr_message_write_close("feed", out[..], false), out[..]));
+  print("AUTH: [\"AUTH\",{}]\n"); relay_view("[\"AUTH\",{}]");
+  print("COUNT: [\"COUNT\",\"q\",{}]\n"); relay_view("[\"COUNT\",\"q\",{}]");
+
+  print("relay to client\n");
+  frame = show("EVENT", ms_write_event("feed", NE_FIXTURE, out[..]), out[..]);
+  client_view(frame);
+  ev := nostr_message_read(frame);
+  print("  event is the original bytes: %\n", nm_text(ev, ev.event) == NE_FIXTURE);
+  client_view(show("OK accepted", ms_write_ok(id[..], true, "", "", out[..]), out[..]));
+  client_view(show("OK duplicate", ms_write_ok(id[..], true, "duplicate", "already have this event", out[..]), out[..]));
+  client_view(show("OK blocked", ms_write_ok(id[..], false, "blocked", "you are banned from posting here", out[..]), out[..]));
+  client_view(show("OK auth-required", ms_write_ok(id[..], false, "auth-required", "sign in first", out[..]), out[..]));
+  client_view(show("EOSE", ms_write_eose("feed", out[..]), out[..]));
+  print("EOSE with metadata: [\"EOSE\",\"feed\",[\"finish\"]]\n"); client_view("[\"EOSE\",\"feed\",[\"finish\"]]");
+  client_view(show("CLOSED", ms_write_closed("feed", "restricted", "too many filters", out[..]), out[..]));
+  client_view(show("NOTICE", ms_write_notice("error", "bad frame", out[..]), out[..]));
+  print("NOTICE from another relay: [\"NOTICE\",\"slow down\"]\n"); client_view("[\"NOTICE\",\"slow down\"]");
+
+  print("refusals the relay reads\n");
+  buf: [256] u8;
+  relay_refuses("[\"PING\"]", "[\"PING\"]");
+  relay_refuses("[\"OK\",...] from a client", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]");
+  relay_refuses("sub of 64 a", sub_frame(buf[..], "CLOSE", "a", 64));
+  relay_refuses("sub of 65 a", sub_frame(buf[..], "CLOSE", "a", 65));
+  relay_refuses("sub of 64 é (128 bytes)", sub_frame(buf[..], "CLOSE", "é", 64));
+  relay_refuses("[\"REQ\",\"\",{}]", "[\"REQ\",\"\",{}]");
+  relay_refuses("[\"REQ\",1,{}]", "[\"REQ\",1,{}]");
+  relay_refuses("[\"REQ\",\"s\",1]", "[\"REQ\",\"s\",1]");
+  relay_refuses("[\"CLOSE\"]", "[\"CLOSE\"]");
+  relay_refuses("[\"CLOSE\",\"s\",{}]", "[\"CLOSE\",\"s\",{}]");
+  relay_refuses("[\"EVENT\",{},{}]", "[\"EVENT\",{},{}]");
+  relay_refuses("[\"EVENT\",{}] x", "[\"EVENT\",{}] x");
+  relay_refuses("{}", "{}");
+  n := json_raw(buf[..], 0, "[\"REQ\",\"s\"");
+  for k: 0..<17 { n = json_raw(buf[..], n, ",{}"); }
+  n = json_raw(buf[..], n, "]");
+  relay_refuses("REQ with 17 filters", cast(string) buf[0..<n]);
+  buf[n - 4] = ']';
+  relay_refuses("REQ with 16 filters", cast(string) buf[0..<n - 3]);
+
+  print("refusals the client reads\n");
+  client_refuses("OK with 1 for the verdict", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",1,\"\"]");
+  client_refuses("OK with \"true\" for the verdict", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",\"true\",\"\"]");
+  client_refuses("OK with three values", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true]");
+  client_refuses("OK with five values", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\",\"x\"]");
+  client_refuses("OK false with \"\"", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"\"]");
+  client_refuses("OK false with no prefix", "[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"no prefix here\"]");
+  client_refuses("OK with an uppercase id", "[\"OK\",\"B1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]");
+  client_refuses("OK with a 6-digit id", "[\"OK\",\"b1a649\",true,\"\"]");
+  client_refuses("[\"eose\",\"a\"]", "[\"eose\",\"a\"]");
+  client_refuses("[\"REQ\",\"a\",{}] from a relay", "[\"REQ\",\"a\",{}]");
+  client_refuses("[\"EOSE\",\"\"]", "[\"EOSE\",\"\"]");
+  client_refuses("sub of 65 s", sub_frame(buf[..], "EOSE", "s", 65));
+  client_refuses("[\"CLOSED\",\"sub1\",\"\"]", "[\"CLOSED\",\"sub1\",\"\"]");
+  client_refuses("[\"CLOSED\",\"sub1\"]", "[\"CLOSED\",\"sub1\"]");
+  client_refuses("[\"EOSE\",\"s\",1,2,3,4,5]", "[\"EOSE\",\"s\",1,2,3,4,5]");
+  client_refuses("[\"EOSE\",\"a\"", "[\"EOSE\",\"a\"");
+
+  print("refusals the writers return\n");
+  written: string;
+  written = show("OK false with no prefix", ms_write_ok(id[..], false, "", "", out[..]), out[..]);
+  written = show("CLOSED with prefix closed", ms_write_closed("feed", "closed", "bye", out[..]), out[..]);
+  written = show("REQ with an empty sub", nostr_message_write_req("", f[..], out[..], false), out[..]);
+  written = show("REQ with no filters", nostr_message_write_req("feed", f[0..<0], out[..], false), out[..]);
+  written = show("EVENT of {}", nostr_message_write_event("{}", out[..], false), out[..]);
+  written = show("CLOSE into 15 bytes", nostr_message_write_close("feed", out[0..<15], false), out[..]);
+
+  print("captured session\n");
+  from := 0; frames := 0; refused := 0; same := 0; verified := 0; extras := 0;
+  counts: [6] int; scratch: [262144] u8;
+  for i: 0..<COAX_RELAY.count + 1 {
+    if i < COAX_RELAY.count && COAX_RELAY[i] != 10 { continue; }
+    line := COAX_RELAY[from..<i]; from = i + 1;
+    if line.count == 0 { continue; }
+    frames += 1;
+    r := nostr_message_read(line);
+    if r.error != NM_OK { refused += 1; continue; }
+    counts[r.type] += 1;
+    if r.type == NM_EOSE { extras += r.extra; }
+    if r.type != NM_EVENT { continue; }
+    // Write the frame again from its parts; it must be the same bytes.
+    w := ms_write_event(nm_text(r, r.sub), nm_text(r, r.event), scratch[..]);
+    if w == line.count && cast(string) scratch[0..<w] == line { same += 1; }
+    // The event span is a whole event: its id and signature verify.
+    v := nostr_message_event_verify_vartime(line, scratch[..], false);
+    if v.error == NE_OK && v.verified { verified += 1; }
+  }
+  print("% frames: % EVENT, % EOSE, % OK, % CLOSED, % NOTICE, % refused\n", frames, counts[NM_EVENT], counts[NM_EOSE], counts[NM_ACCEPT], counts[NM_CLOSED], counts[NM_NOTICE], refused);
+  head := nm_line(COAX_RELAY, 0);
+  print("refused frame: %..., %\n", COAX_RELAY[0..<9], NM[nostr_message_read(COAX_RELAY[head.from..<head.to]).error]);
+  print("EVENT frames written again byte for byte: % of %\n", same, counts[NM_EVENT]);
+  print("events whose id and signature verify: % of %\n", verified, counts[NM_EVENT]);
+  print("EOSE metadata values: % in % frames\n", extras, counts[NM_EOSE]);
+}
+// book:end example

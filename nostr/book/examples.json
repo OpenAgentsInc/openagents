@@ -305,6 +305,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/relay-messages.coax",
+      "chapter": "nostr/book/ch024-relay-messages.md",
+      "stdout": "nostr/fixtures/relay-messages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

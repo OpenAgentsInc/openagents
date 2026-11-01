@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 29 are implemented, 27 are partly implemented and
+Of the 104 chapters, 30 are implemented, 26 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -181,7 +181,7 @@ that carry them, and NIP-59 gift wrap built on all of them.
 | [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) | Runnable: native C and wasm | The NIP-01 event: `id`, `pubkey`, `created_at`, `kind`, `tags`, `content`, `sig`; recomputing the ID, verifying the signature, and building signed events separately from reading them. |
 | [22. Kinds and tags](ch022-kinds-and-tags.md) | Runnable: native C | Kind ranges (regular, replaceable 0, 3 and 10000–19999, ephemeral 20000–29999, addressable 30000–39999 by `d` tag) and the standard tags `e`, `p`, `a` and `d`. |
 | [23. Filters](ch023-filters.md) | Runnable: native C and wasm | NIP-01 filters: `ids`, `authors`, `kinds`, `#<letter>` tags, `since`, `until` and `limit`; AND across fields, OR within a list, inclusive times, and absent lists distinct from empty ones. |
-| [24. Relay messages](ch024-relay-messages.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Client frames `EVENT`, `REQ`, `CLOSE`, `AUTH` and `COUNT`, relay frames `EVENT`, `OK`, `EOSE`, `CLOSED`, `NOTICE` and `AUTH`, and the `OK`/`CLOSED` reason prefixes NIP-20 introduced. |
+| [24. Relay messages](ch024-relay-messages.md) | Runnable: native C | Client frames `EVENT`, `REQ`, `CLOSE`, `AUTH` and `COUNT`, relay frames `EVENT`, `OK`, `EOSE`, `CLOSED`, `NOTICE` and `AUTH`, and the `OK`/`CLOSED` reason prefixes NIP-20 introduced. |
 | [25. Gift wrap](ch025-gift-wrap.md) | Runnable: native C | NIP-59 rumors, kind-13 seals and kind-1059 gift wraps from one-time keys, with randomized timestamps, checked in both directions against an independent implementation. |
 
 ### Part VII. Transport (chapters 26–28)

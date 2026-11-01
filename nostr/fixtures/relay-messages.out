@@ -1,0 +1,89 @@
+worked REQ
+client writes: ["REQ","feed",{"kinds":[1],"limit":2},{"#t":["nostr"]}]
+same bytes as the hand frame: true
+  relay reads: REQ, sub feed, 2 filters 14..37 38..54
+  filter 1: {"kinds":[1],"limit":2}, filter_read ok, written back byte for byte
+  filter 2: {"#t":["nostr"]}, filter_read ok, written back byte for byte
+worked OK
+relay writes: ["OK","b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30",false,"invalid: bad signature"]
+  client reads: OK, id b1a6...ce30, false, prefix invalid, message "invalid: bad signature"
+client to relay
+EVENT: ["EVENT",{"pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":0,"kind":1,"tags":[[],["x","\u00e9"],["x","/\n"]],"content":"a\"\\\n\r\t\b\f\u0000\u00e9\ud83d\ude00/","sig":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","id":"53d4f42ea78a74ab5ab47515040729f9ae9348f4ed05b59d07c7d24fb90116dc"}]
+  relay reads: EVENT, object bytes 9..411
+  object is the event's original bytes: true
+REQ, one filter: ["REQ","q\"1",{"kinds":[1],"limit":2}]
+  relay reads: REQ, sub q"1, 1 filters 14..37
+CLOSE: ["CLOSE","feed"]
+  relay reads: CLOSE, sub feed
+AUTH: ["AUTH",{}]
+  relay reads: AUTH, object bytes 8..10
+COUNT: ["COUNT","q",{}]
+  relay reads: COUNT, sub q, 1 filters 13..15
+relay to client
+EVENT: ["EVENT","feed",{"pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":0,"kind":1,"tags":[[],["x","\u00e9"],["x","/\n"]],"content":"a\"\\\n\r\t\b\f\u0000\u00e9\ud83d\ude00/","sig":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","id":"53d4f42ea78a74ab5ab47515040729f9ae9348f4ed05b59d07c7d24fb90116dc"}]
+  client reads: EVENT, sub feed, event bytes 16..418
+  event is the original bytes: true
+OK accepted: ["OK","b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30",true,""]
+  client reads: OK, id b1a6...ce30, true, prefix none, message ""
+OK duplicate: ["OK","b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30",true,"duplicate: already have this event"]
+  client reads: OK, id b1a6...ce30, true, prefix duplicate, message "duplicate: already have this event"
+OK blocked: ["OK","b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30",false,"blocked: you are banned from posting here"]
+  client reads: OK, id b1a6...ce30, false, prefix blocked, message "blocked: you are banned from posting here"
+OK auth-required: ["OK","b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30",false,"auth-required: sign in first"]
+  client reads: OK, id b1a6...ce30, false, prefix another word, message "auth-required: sign in first"
+EOSE: ["EOSE","feed"]
+  client reads: EOSE, sub feed
+EOSE with metadata: ["EOSE","feed",["finish"]]
+  client reads: EOSE, sub feed, 1 extra values
+CLOSED: ["CLOSED","feed","restricted: too many filters"]
+  client reads: CLOSED, sub feed, prefix restricted, message "restricted: too many filters"
+NOTICE: ["NOTICE","error: bad frame"]
+  client reads: NOTICE, message "error: bad frame"
+NOTICE from another relay: ["NOTICE","slow down"]
+  client reads: NOTICE, message "slow down"
+refusals the relay reads
+relay, ["PING"]: verb
+relay, ["OK",...] from a client: verb
+relay, sub of 64 a: ok
+relay, sub of 65 a: sub
+relay, sub of 64 é (128 bytes): ok
+relay, ["REQ","",{}]: sub
+relay, ["REQ",1,{}]: shape
+relay, ["REQ","s",1]: shape (sub s already read)
+relay, ["CLOSE"]: shape
+relay, ["CLOSE","s",{}]: shape (sub s already read)
+relay, ["EVENT",{},{}]: shape
+relay, ["EVENT",{}] x: json
+relay, {}: shape
+relay, REQ with 17 filters: too many (sub s already read)
+relay, REQ with 16 filters: ok
+refusals the client reads
+client, OK with 1 for the verdict: shape
+client, OK with "true" for the verdict: shape
+client, OK with three values: shape
+client, OK with five values: shape
+client, OK false with "": message
+client, OK false with no prefix: message
+client, OK with an uppercase id: id
+client, OK with a 6-digit id: id
+client, ["eose","a"]: type
+client, ["REQ","a",{}] from a relay: type
+client, ["EOSE",""]: sub
+client, sub of 65 s: sub
+client, ["CLOSED","sub1",""]: message
+client, ["CLOSED","sub1"]: shape
+client, ["EOSE","s",1,2,3,4,5]: limit
+client, ["EOSE","a": json
+refusals the writers return
+OK false with no prefix: writer refuses (-1)
+CLOSED with prefix closed: writer refuses (-1)
+REQ with an empty sub: writer refuses (-1)
+REQ with no filters: writer refuses (-1)
+EVENT of {}: writer refuses (-1)
+CLOSE into 15 bytes: writer refuses (-1)
+captured session
+243 frames: 237 EVENT, 5 EOSE, 0 OK, 0 CLOSED, 0 NOTICE, 1 refused
+refused frame: ["AUTH","..., type
+EVENT frames written again byte for byte: 237 of 237
+events whose id and signature verify: 237 of 237
+EOSE metadata values: 5 in 5 frames

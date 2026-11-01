@@ -1,0 +1,96 @@
+// The checks of relay-messages.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/relay-messages.coax
+#load "../relay-messages.coax";
+
+// book:begin check
+// NIP-01's own OK and CLOSED examples, with each verdict and prefix read by
+// hand from the NIP's list. NIP-01 shortens the id to "b1a649ebe8..."; the
+// frames here carry the whole 64-digit id. CLOSED's "unsupported" is not one
+// of the eight standard words, so it reads as another word.
+NIP01_OK :: [11] string.[
+  "\"\"", "\"pow: difficulty 25>=24\"", "\"duplicate: already have this event\"",
+  "\"blocked: you are banned from posting here\"",
+  "\"blocked: please register your pubkey at https://my-expensive-relay.example.com\"",
+  "\"rate-limited: slow down there chief\"",
+  "\"invalid: event creation date is too far off from the current time\"",
+  "\"pow: difficulty 26 is less than 30\"", "\"restricted: not allowed to write.\"",
+  "\"error: could not connect to the database\"",
+  "\"mute: no one was listening to your ephemeral event and it wasn't handled in any way, it was ignored\""];
+NIP01_OK_ACCEPTED :: [11] bool.[true, true, true, false, false, false, false, false, false, false, false];
+NIP01_OK_PREFIX :: [11] int.[0, 2, 1, 3, 3, 4, 5, 2, 6, 8, 7];
+NIP01_CLOSED :: [3] string.[
+  "\"unsupported: filter contains unknown elements\"",
+  "\"error: could not connect to the database\"",
+  "\"error: shutting down idle subscription\""];
+NIP01_CLOSED_PREFIX :: [3] int.[9, 8, 8];
+
+#test "NIP-01's OK and CLOSED examples read with the hand verdicts and prefixes" {
+  frame: [256] u8;
+  for k: 0..<11 {
+    n := json_raw(frame[..], 0, "[\"OK\",\""); n = json_raw(frame[..], n, ID);
+    n = json_raw(frame[..], n, ifx NIP01_OK_ACCEPTED[k] then "\",true," else "\",false,");
+    n = json_raw(frame[..], n, NIP01_OK[k]); n = json_raw(frame[..], n, "]");
+    m := nostr_message_read(cast(string) frame[0..<n]);
+    #assert m.error == NM_OK && m.type == NM_ACCEPT && m.accepted == NIP01_OK_ACCEPTED[k] && m.prefix == NIP01_OK_PREFIX[k];
+    #assert m.id[0] == 0xb1 && m.id[1] == 0xa6 && m.id[31] == 0x30;
+  }
+  for k: 0..<3 {
+    n := json_raw(frame[..], 0, "[\"CLOSED\",\"sub1\","); n = json_raw(frame[..], n, NIP01_CLOSED[k]); n = json_raw(frame[..], n, "]");
+    m := nostr_message_read(cast(string) frame[0..<n]);
+    #assert m.error == NM_OK && m.type == NM_CLOSED && nm_text(m, m.sub) == "sub1" && m.prefix == NIP01_CLOSED_PREFIX[k];
+  }
+}
+
+#test "the worked frames, split by hand" {
+  s: [2] Space; f: [2] NostrFilter; out: [256] u8;
+  #assert read_filter(F1, f[0..<1], s[0..<1]) == FR_OK && read_filter(F2, f[1..<2], s[1..<2]) == FR_OK;
+  n := nostr_message_write_req("feed", f[..], out[..], false);
+  frame := cast(string) out[0..<n];
+  // ["REQ", is bytes 0..6, "feed" 7..12, a comma at 13, then the filters:
+  // F1 is 23 bytes at 14..37, a comma at 37, F2 16 bytes at 38..54, "]" at 54.
+  #assert n == 55 && F1.count == 23 && F2.count == 16;
+  #assert frame[0..<7] == "[\"REQ\"," && frame[7..<13] == "\"feed\"" && frame[13] == ',' && frame[37] == ',' && frame[54] == ']';
+  m := ms_read(frame);
+  #assert m.error == MS_OK && m.type == MS_REQ && m.sub_n == 4 && m.filters == 2;
+  #assert m.filter_from[0] == 14 && m.filter_to[0] == 37 && m.filter_from[1] == 38 && m.filter_to[1] == 54;
+  // The OK reply's four fields: "OK", the id, false, the message.
+  id: [32] u8; #assert ne_lower_hex(ID, id[..]);
+  n = ms_write_ok(id[..], false, "invalid", "bad signature", out[..]);
+  frame = cast(string) out[0..<n];
+  // [ "OK" , "<64>" , false , "invalid: bad signature" ]: 1+4+1+66+1+5+1+24+1.
+  #assert n == 104 && frame[6..<72] == "\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\"" && frame[73..<78] == "false";
+  r := nostr_message_read(frame);
+  #assert r.error == NM_OK && !r.accepted && r.prefix == 5 && r.message.from == 80 && r.message.to == 102;
+}
+
+// A subscription id drawn from four characters: a, the quote and backslash
+// that JSON escapes, and two-byte é. The check builds the CLOSE frame it
+// expects by hand, escaping as RFC 8259 says, and compares bytes.
+SUB_CHARS :: [4] string.["a", "\"", "\\", "é"];
+SUB_JSON :: [4] string.["a", "\\\"", "\\\\", "é"];
+#test "subscription ids of 1 to 65 characters, written and read by both codecs" {
+  seed := 24;
+  for count: 0..<66 {
+    for trial: 0..<4 {
+      sub: [260] u8; want: [300] u8; s := 0;
+      w := json_raw(want[..], 0, "[\"CLOSE\",\"");
+      for i: 0..<count {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff; c := (seed >> 8) & 3;
+        s = json_raw(sub[..], s, SUB_CHARS[c]); w = json_raw(want[..], w, SUB_JSON[c]);
+      }
+      w = json_raw(want[..], w, "\"]");
+      id := cast(string) sub[0..<s]; out: [300] u8;
+      n := nostr_message_write_close(id, out[..], false);
+      if count < 1 || count > 64 { #assert n == -1 && ms_read(cast(string) want[0..<w]).error == MS_SUB; continue; }
+      #assert n == w && cast(string) out[0..<n] == cast(string) want[0..<w];
+      m := ms_read(cast(string) out[0..<n]);
+      #assert m.error == MS_OK && m.type == MS_CLOSE && cast(string) m.sub[0..<m.sub_n] == id;
+      // The relay names the same id in its EOSE, and the client reads it.
+      e := ms_write_eose(id, out[..]);
+      r := nostr_message_read(cast(string) out[0..<e]);
+      #assert e > 0 && r.error == NM_OK && r.type == NM_EOSE && nm_text(r, r.sub) == cast(string) want[10..<w - 2];
+    }
+  }
+}
+// book:end check
