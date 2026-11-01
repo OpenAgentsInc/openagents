@@ -1,0 +1,142 @@
+// The checks of ecdh.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/ecdh.coax
+#load "../ecdh.coax";
+
+// book:begin check
+// Run ECDH from hex; return the status and the staged raw x.
+EcdhRun :: struct { code: u32; x: [32] u8; }
+run_hex :: (secret_hex: string, peer_hex: string) -> EcdhRun {
+  secret := bytes_of(secret_hex); peer := bytes_of(peer_hex);
+  work: [1] EcdhScratch; r: EcdhRun;
+  r.code = ecdh_stage(secret[..], peer[..], work[..]);
+  r.x = work[0].staged;
+  return r;
+}
+// True when the staged x equals the expected hex.
+x_is :: (r: EcdhRun, want_hex: string) -> bool {
+  want := bytes_of(want_hex); got := r.x;
+  return same_bytes(got[..], want[..]);
+}
+
+// NIP-44 get_conversation_key rows from the pinned nip44.vectors.json:
+// (sec1, pub2, conversation_key). Rows 0-2 and the three rows with notes:
+// sec1 = n - 2, sec1 = 2, and pub2 = x(G) with sec1 = 1. All 35 rows run
+// end to end in coax/tests/nostr/nip44_key_vectors.coax.
+NIP44_ROWS :: [18] string.[
+    "315e59ff51cb9209768cf7da80791ddcaae56ac9775eb25b6dee1234bc5d2268", "c2f9d9948dc8c7c38321e4b85c8558872eafa0641cd269db76848a6073e69133", "3dfef0ce2a4d80a25e7a328accf73448ef67096f65f79588e358d9a0eb9013f1",
+    "a1e37752c9fdc1273be53f68c5f74be7c8905728e8de75800b94262f9497c86e", "03bb7947065dde12ba991ea045132581d0954f042c84e06d8c00066e23c1a800", "4d14f36e81b8452128da64fe6f1eae873baae2f444b02c950b90e43553f2178b",
+    "98a5902fd67518a0c900f0fb62158f278f94a21d6f9d33d30cd3091195500311", "aae65c15f98e5e677b5050de82e3aba47a6fe49b3dab7863cf35d9478ba9f7d1", "9c00b769d5f54d02bf175b7284a1cbd28b6911b06cda6666b2243561ac96bad7",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364139", "0000000000000000000000000000000000000000000000000000000000000002", "8b6392dbf2ec6a2b2d5b1477fc2be84d63ef254b667cadd31bd3f444c44ae6ba",
+    "0000000000000000000000000000000000000000000000000000000000000002", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdeb", "be234f46f60a250bef52a5ee34c758800c4ca8e5030bf4cc1a31d37ba2104d43",
+    "0000000000000000000000000000000000000000000000000000000000000001", "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "3b4610cb7189beb9cc29eb3716ecc6102f1247e8f3101a03a1787d8908aeb54e"];
+#forall "NIP-44 get_conversation_key rows give the published key" i: 0..<6 #steps 1000000000 {
+  secret := bytes_of(NIP44_ROWS[3 * i]); peer := bytes_of(NIP44_ROWS[3 * i + 1]);
+  want := bytes_of(NIP44_ROWS[3 * i + 2]);
+  work: [1] EcdhScratch; key: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(secret[..], peer[..], work[..], key[..], false) == NIP44_OK;
+  #assert same_bytes(key[..], want[..]);
+}
+// The 8 invalid get_conversation_key rows. Every pub2 here has no point on
+// the curve, so each refuses as NIP44_PEER before the secret is read.
+NIP44_INVALID :: [16] string.[
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", // sec1 higher than curve.n
+    "0000000000000000000000000000000000000000000000000000000000000000", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", // sec1 is 0
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364139", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", // pub2 all-ff
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", // sec1 == curve.n
+    "0000000000000000000000000000000000000000000000000000000000000002", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", // pub2 no sqrt
+    "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", "0000000000000000000000000000000000000000000000000000000000000000", // order 3 on twist
+    "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", "eb1f7200aecaa86682376fb1c13cd12b732221e774f553b0a0857f88fa20f86d", // order 13 on twist
+    "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", "709858a4c121e4a84eb59c0ded0261093c71e8ca29efeef21a6161c447bcaf9f"]; // order 3319 on twist
+#forall "NIP-44 invalid get_conversation_key rows refuse" i: 0..<8 #steps 1000000000 {
+  secret := bytes_of(NIP44_INVALID[2 * i]); peer := bytes_of(NIP44_INVALID[2 * i + 1]);
+  work: [1] EcdhScratch; key: [32] u8; for j: 0..<32 { key[j] = 165; }
+  #assert nip44_conversation_key_from_keys_checked(secret[..], peer[..], work[..], key[..], false) == NIP44_PEER;
+  for j: 0..<32 { #assert key[j] == 165; }
+}
+
+// Wycheproof ecdh_secp256k1_test.json (pinned in coax/tests/vectors/SOURCES.md),
+// adapted to x-only keys: the 32-byte x of the SEC1 public key (uncompressed
+// 04 or compressed 02/03 under the named-curve SubjectPublicKeyInfo), the
+// private key as 32 bytes, and the published shared x. 12 of the 475 valid or
+// acceptable cases, one per kind of edge.
+WY_VALID :: [36] string.[
+    "f4b7ff7cccc98813a69fae3df222bfe3f4e28f764bf91b4a10d8096ce446b254", "d8096af8a11e0b80037e1ee68246b5dcbb0aeb1cf1244fd767db80f3fa27da2b", "544dfae22af6af939042b1d85b71a1e49e9a5614123c4d6ad0c8af65baf87d65", // tcId 1: normal case
+    "f4b7ff7cccc98813a69fae3df222bfe3f4e28f764bf91b4a10d8096ce446b254", "d8096af8a11e0b80037e1ee68246b5dcbb0aeb1cf1244fd767db80f3fa27da2b", "544dfae22af6af939042b1d85b71a1e49e9a5614123c4d6ad0c8af65baf87d65", // tcId 2: compressed public key
+    "a2b6442a37f8a3764aeff4011a4c422b389a1e509669c43f279c8b7e32d80c3a", "6da9eb2cdac02122d5f05cf6a8cd768e378f664ea4a7871d10e25f57eb1ee1cc", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2c", // tcId 6: shared x = p - 3
+    "a2b6442a37f8a3764aeff4011a4c422b389a1e509669c43f279c8b7e32d80c3a", "f2976154c4f53ce392d1fe39a891a4611ba8cf046023cd8f1bcd9fdd2e921191", "0000000000000000000000000000000000000000000000000000000000010000", // tcId 7: shared x = 2^16
+    "a2b6442a37f8a3764aeff4011a4c422b389a1e509669c43f279c8b7e32d80c3a", "f43b610a2a5c5f6e2b395567489657059e3351c6f9a7e2ebde52638abfea006a", "55555555555555555555555555555555555555555555555555555554fffffebc", // tcId 41: shared x about p/3
+    "a2b6442a37f8a3764aeff4011a4c422b389a1e509669c43f279c8b7e32d80c3a", "56baf1d72606c7af5a5fa108620b0839e2c7dd40b832ef847e5b64c86efe1aa5", "800000000000000000000000009fa2f1ffffffffffffffffffffffffffffffff", // tcId 45: public y with many trailing 1s
+    "2bc15cf3981eab61e594ebf591290a045ca9326a8d3dd49f3de1190d39270bb8", "0000000000000000000000000000000000000000000000000000000000000001", "12c2ad36a59fda5ac4f7e97ff611728d0748ac359fca9b12f6d4f43519516487", // tcId 57: public x = 1
+    "2bc15cf3981eab61e594ebf591290a045ca9326a8d3dd49f3de1190d39270bb8", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2c", "e97fb4c4fb33d6a114da6e0d180e54f99ec1ece9ff558871054e99d221930d16", // tcId 60: public x = p - 3
+    "938f3dbe37135cd8c8c48a676b28b2334b72a3f09814c8efb6a451be00c93d23", "59294e8bc54e76d48b5594f01fe4729566d9b6df6385982fbb533183921f1a12", "e976057e8a322dfdb2debd55d8e58802fb54425950b2dbfd00f0813de27105e4", // tcId 99: Jacobian edge case
+    "c1781d86cac2c052b865f228e64bd1ce433c78ca7dfca9e8b810473e2ce17da5", "0000000000000000000000000000000000000000000000000000000000000001", "afe5b60fe3e1dc873b3f3022893a359880e817537beb96b3d48d375766ab59e6", // tcId 279: doubling to x = 1
+    "c1781d86cac2c052b865f228e64bd1ce433c78ca7dfca9e8b810473e2ce17da5", "cbb0deab125754f1fdb2038b0434ed9cb3fb53ab735391129994a535d925f673", "af306c993dee0dcfc441ebe53360b569e21f186052db8197f4a124fa77b98148", // tcId 369: doubling to y = 1
+    "0000000000000000000000000000000000000000000000000000000000000003", "32bdd978eb62b1f369a56d0949ab8551a7ad527d9602e891ce457586c2a8569e", "34005694e3cac09332aa42807e3afdc3b3b3bc7c7be887d1f98d76778c55cfd7"]; // tcId 459: private key 3
+#forall "Wycheproof valid cases give the published raw x" i: 0..<12 #steps 1000000000 {
+  r := run_hex(WY_VALID[3 * i], WY_VALID[3 * i + 1]);
+  #assert r.code == EC_OK && x_is(r, WY_VALID[3 * i + 2]);
+}
+// Every invalid Wycheproof case whose public key has an x-only form and whose
+// x is not on the curve: x = 0, x = p - 1 and x = p from the uncompressed keys,
+// and three compressed keys. Each refuses as EC_PEER and stages zeros.
+WY_OFF_CURVE :: [32] string.[
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "0000000000000000000000000000000000000000000000000000000000000000", // tcId 475
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "0000000000000000000000000000000000000000000000000000000000000000", // tcId 476
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "0000000000000000000000000000000000000000000000000000000000000000", // tcId 477
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "0000000000000000000000000000000000000000000000000000000000000000", // tcId 478
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e", // tcId 483
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e", // tcId 484
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e", // tcId 485
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e", // tcId 486
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", // tcId 487
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", // tcId 488
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", // tcId 489
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", // tcId 490
+    "cfe75ee764197aa7732a5478556b478898423d2bc0e484a6ebb3674a6036a65d", "0000000000000000000000000000000000000000000000000000000000000000", // tcId 495: (0, 0)
+    "d09182a4d0c94ba85f82eff9fc1bddb0b07d3f2af8632fc1c73a3604e8f0b335", "977cb7fb9a0ec5b208e811d6a0795eb78d7642e3cac42a801bcc8fc0f06472d4", // tcId 528: compressed
+    "98b5c223cf9cc0920a5145ba1fd2f6afee7e1f66d0120b8536685fdf05ebb300", "0000000000000000000000000000000000000000000000000000000000000000", // tcId 529: compressed, twist
+    "98b5c223cf9cc0920a5145ba1fd2f6afee7e1f66d0120b8536685fdf05ebb2ff", "0000000000000000000000000000000000000000000000000000000000000000"]; // tcId 530: compressed, twist
+#forall "every off-curve Wycheproof public key refuses" i: 0..<16 #steps 1000000000 {
+  r := run_hex(WY_OFF_CURVE[2 * i], WY_OFF_CURVE[2 * i + 1]);
+  #assert r.code == EC_PEER;
+  for j: 0..<32 { #assert r.x[j] == 0; }
+}
+// The 5 other invalid cases with an x-only form have an x on the curve and a
+// wrong y (tcIds 479-482 share x = 1; tcId 494). An x-only key carries no y,
+// so the x names the valid point with even y, and ECDH must give the x of
+// k times that point, computed here with Python's integers.
+WY_WRONG_Y :: [6] string.[
+    "c6cafb74e2a50c83b3d232c4585237f44d4c5433c4b3f50ce978e6aeda3a4f5d", "0000000000000000000000000000000000000000000000000000000000000001", "7fc84eb175af79d9bed0dea1cf26850644a1e6f08701f25fb3176984c1d951ef", // tcIds 479-482
+    "cfe75ee764197aa7732a5478556b478898423d2bc0e484a6ebb3674a6036a65d", "49c248edc659e18482b7105748a4b95d3a46952a5ba72da0d702dc97a64e9979", "380c53e0a509ebb3b63346598105219b43d51ae196b4557d59bbd67824032dff"]; // tcId 494
+#forall "an on-curve x with a wrong y names the even-y point" i: 0..<2 #steps 1000000000 {
+  r := run_hex(WY_WRONG_Y[3 * i], WY_WRONG_Y[3 * i + 1]);
+  #assert r.code == EC_OK && x_is(r, WY_WRONG_Y[3 * i + 2]);
+}
+
+// Both orders agree: a·x(bG) = b·x(aG) = x(abG), for three small pairs.
+PAIRS :: [6] u8.[2, 3, 3, 5, 4, 7];
+#forall "both sides derive x(abG)" i: 0..<3 #steps 2000000000 {
+  a := PAIRS[2 * i]; b := PAIRS[2 * i + 1];
+  sa := small_secret(a); sb := small_secret(b); sab := small_secret(a * b);
+  ax := public_x(sa[..]); bx := public_x(sb[..]); want := public_x(sab[..]);
+  w1: [1] EcdhScratch; w2: [1] EcdhScratch;
+  #assert ecdh_stage(sa[..], bx[..], w1[..]) == EC_OK && ecdh_stage(sb[..], ax[..], w2[..]) == EC_OK;
+  #assert same_bytes(w1[0].staged[..], want[..]) && same_bytes(w2[0].staged[..], want[..]);
+}
+// The sign of the peer's y does not change the result: k·(-P) = -(k·P) has
+// the same x. 17G has an odd y, so its x-only key names -17G; the ladder on
+// the true 17G must give the same x as ECDH.
+#test "the peer's y sign does not change the shared x" #steps 500000000 {
+  point := smc_multiply(sc_small(17), sg_generator()).value;
+  k := sc_small(11);
+  product := sg_to_affine(smc_multiply(k, point).value).value;
+  want: [32] u8; #assert sf_store(product.x, want[..]);
+  s := small_secret(17); peer := public_x(s[..]);
+  lifted := sg_lift_x_public(peer[..]);
+  #assert lifted.ok && sg_equal_mask(lifted.value, point) != CB_MAX64;
+  secret := small_secret(11); work: [1] EcdhScratch;
+  #assert ecdh_stage(secret[..], peer[..], work[..]) == EC_OK;
+  #assert same_bytes(work[0].staged[..], want[..]);
+}
+// book:end check

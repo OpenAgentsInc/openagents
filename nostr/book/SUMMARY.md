@@ -24,7 +24,7 @@
 - [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — implemented
 - [12. Keys and randomness](ch012-keys-and-randomness.md) — implemented
 - [13. Sign with Schnorr](ch013-sign-with-schnorr.md) — partly implemented
-- [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — partly implemented
+- [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — implemented
 
 **IV. Encodings**
 

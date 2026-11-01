@@ -286,7 +286,7 @@
    "number": 14,
    "title": "Shared secrets with ECDH",
    "file": "ch014-shared-secrets-with-ecdh.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     10,
@@ -295,7 +295,9 @@
    "source": [
     "coax/lib/crypto/ecdh.coax",
     "coax/lib/crypto/ecdh_fast.coax",
-    "coax/lib/crypto/ecdh_lifecycle.coax"
+    "coax/lib/crypto/ecdh_lifecycle.coax",
+    "nostr/examples/ecdh.coax",
+    "nostr/examples/checks/ecdh.coax"
    ],
    "qualified_targets": [
     "cpu",

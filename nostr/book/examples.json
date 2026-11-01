@@ -153,6 +153,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/ecdh.coax",
+      "chapter": "nostr/book/ch014-shared-secrets-with-ecdh.md",
+      "stdout": "nostr/fixtures/ecdh.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

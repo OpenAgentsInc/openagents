@@ -1,0 +1,22 @@
+x(3G), sent by a: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+x(5G), sent by b: 2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4
+a: 3 times x(5G): d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e
+b: 5 times x(3G): d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e
+x(15G): d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e
+both sides hold x(15G): true
+pub1: 87d3561f19b74adbe8bf840682992466068830a9d8c36b4a0c99d36f826cb6cb
+pub2: fa3b4f81a620c66514bda0302847df167ed02a483141b5939e57bdd0cf76ad3b
+sec1 with pub2, shared x: 94da47d851b9c1ed33b3b72f35434f56aa608d60e573e9c295f568011f4f50a4
+sec2 with pub1, shared x: 94da47d851b9c1ed33b3b72f35434f56aa608d60e573e9c295f568011f4f50a4
+same shared x: true
+conversation key: 3e2b52a63be47d34fe0a80e34e73d436d6963bc8f39827f327057a9986c20a45
+matches the NIP-44 vector: true
+from sec2 and pub1 in one call: NIP44_OK, same key true
+peer x = 0 (0^3 + 7 has no square root): EC_PEER, staged x all zero true
+peer x = p (not below the field prime): EC_PEER, staged x all zero true
+peer x = 2^256 - 1: EC_PEER, staged x all zero true
+secret 0: EC_SCALAR, staged x all zero true
+secret n (the group order): EC_SCALAR, staged x all zero true
+31-byte peer: EC_LENGTH
+conversation key, peer x = 0: NIP44_PEER, key untouched true
+conversation key, secret 0: NIP44_SECRET, key untouched true

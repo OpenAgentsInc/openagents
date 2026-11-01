@@ -1,0 +1,119 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip44-key.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [80] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  #assert r.error == 0;
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode 64 hex digits into 32 bytes.
+bytes_of :: (text: string) -> [32] u8 {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == 0;
+  return b;
+}
+// The x-only public key of a secret: x(k·G) on the ladder of chapter 10.
+public_x :: (secret: [] u8) -> [32] u8 {
+  k := sc_reduce_bytes(secret).value;
+  a := sg_to_affine(smc_multiply(k, sg_generator()).value).value;
+  b: [32] u8;
+  #assert sf_store(a.x, b[..]);
+  return b;
+}
+// A 32-byte secret holding a small number.
+small_secret :: (k: u8) -> [32] u8 { b: [32] u8; b[31] = k; return b; }
+// The name of an ecdh_stage status.
+ec_name :: (code: u32) -> string {
+  if code == EC_OK { return "EC_OK"; }
+  if code == EC_LENGTH { return "EC_LENGTH"; }
+  if code == EC_PEER { return "EC_PEER"; }
+  if code == EC_SCALAR { return "EC_SCALAR"; }
+  return "other";
+}
+// The name of a conversation-key status.
+nip44_name :: (code: u32) -> string {
+  if code == NIP44_OK { return "NIP44_OK"; }
+  if code == NIP44_PEER { return "NIP44_PEER"; }
+  if code == NIP44_SECRET { return "NIP44_SECRET"; }
+  return "other";
+}
+// Run ECDH; print the status and, on success, the raw shared x.
+derive :: (label: string, secret: [] u8, peer: [] u8) -> [32] u8 {
+  work: [1] EcdhScratch;
+  code := ecdh_stage(secret, peer, work[..]);
+  out := work[0].staged;
+  work[0] = EcdhScratch.{};
+  if code == EC_OK { show(label, out[..]); }
+  else { print("%: %\n", label, ec_name(code)); }
+  return out;
+}
+// Run ECDH and report only the status and whether the output is all zero.
+try_refuse :: (label: string, secret: [] u8, peer: [] u8) {
+  work: [1] EcdhScratch;
+  code := ecdh_stage(secret, peer, work[..]);
+  zero := true;
+  for b: work[0].staged { if b != 0 { zero = false; } }
+  work[0] = EcdhScratch.{};
+  print("%: %, staged x all zero %\n", label, ec_name(code), zero);
+}
+same_bytes :: (a: [] u8, b: [] u8) -> bool { return cb_ct_equal(a, b) == CB_MAX64; }
+
+P_HEX :: "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
+N_HEX :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+
+main :: () {
+  // Small scalars: a = 3, b = 5. Each side sends only x(aG) or x(bG).
+  a := small_secret(3); b := small_secret(5); c := small_secret(15);
+  ax := public_x(a[..]); bx := public_x(b[..]);
+  show("x(3G), sent by a", ax[..]);
+  show("x(5G), sent by b", bx[..]);
+  s1 := derive("a: 3 times x(5G)", a[..], bx[..]);
+  s2 := derive("b: 5 times x(3G)", b[..], ax[..]);
+  fifteen := public_x(c[..]);
+  show("x(15G)", fifteen[..]);
+  print("both sides hold x(15G): %\n", same_bytes(s1[..], fifteen[..]) && same_bytes(s2[..], fifteen[..]));
+
+  // Two NIP-44 test keys (encrypt_decrypt vector 3). They are published
+  // test values, never real secrets.
+  sec1 := bytes_of("5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a");
+  sec2 := bytes_of("4b22aa260e4acb7021e32f38a6cdf4b673c6a277755bfce287e370c924dc936d");
+  pub1 := public_x(sec1[..]); pub2 := public_x(sec2[..]);
+  show("pub1", pub1[..]);
+  show("pub2", pub2[..]);
+  x1 := derive("sec1 with pub2, shared x", sec1[..], pub2[..]);
+  x2 := derive("sec2 with pub1, shared x", sec2[..], pub1[..]);
+  print("same shared x: %\n", same_bytes(x1[..], x2[..]));
+
+  // The NIP-44 conversation key: HKDF-extract(salt "nip44-v2", raw x).
+  key: [32] u8;
+  #assert nip44_conversation_key_checked(x1[..], key[..], false) == NIP44_OK;
+  show("conversation key", key[..]);
+  want := bytes_of("3e2b52a63be47d34fe0a80e34e73d436d6963bc8f39827f327057a9986c20a45");
+  print("matches the NIP-44 vector: %\n", same_bytes(key[..], want[..]));
+  work: [1] EcdhScratch; other: [32] u8;
+  code := nip44_conversation_key_from_keys_checked(sec2[..], pub1[..], work[..], other[..], false);
+  print("from sec2 and pub1 in one call: %, same key %\n", nip44_name(code), same_bytes(other[..], key[..]));
+
+  // Refusals.
+  zero := small_secret(0);
+  p := bytes_of(P_HEX);
+  n := bytes_of(N_HEX);
+  ones: [32] u8; for i: 0..<32 { ones[i] = 255; }
+  try_refuse("peer x = 0 (0^3 + 7 has no square root)", sec1[..], zero[..]);
+  try_refuse("peer x = p (not below the field prime)", sec1[..], p[..]);
+  try_refuse("peer x = 2^256 - 1", sec1[..], ones[..]);
+  try_refuse("secret 0", zero[..], pub2[..]);
+  try_refuse("secret n (the group order)", n[..], pub2[..]);
+  short: [31] u8;
+  print("31-byte peer: %\n", ec_name(ecdh_stage(sec1[..], short[..], work[..])));
+  for i: 0..<32 { other[i] = 165; }
+  code = nip44_conversation_key_from_keys_checked(sec1[..], zero[..], work[..], other[..], false);
+  print("conversation key, peer x = 0: %, key untouched %\n", nip44_name(code), other[0] == 165);
+  code = nip44_conversation_key_from_keys_checked(zero[..], pub2[..], work[..], other[..], false);
+  print("conversation key, secret 0: %, key untouched %\n", nip44_name(code), other[0] == 165);
+}
+// book:end example
