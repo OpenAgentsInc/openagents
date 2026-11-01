@@ -328,8 +328,8 @@ save :: (r: [] Run, c: [] Cdp) -> bool {
   if r[0].rev != before + 1 || probe(c, 4) != 0 || probe(c, 2) != r[0].rev { return why_n(r, "the save isn't the next revision", r[0].rev); }
   // the server's document: that revision, with the move
   o: [200] u8; k: [1] Buf;
-  bput(k[..], "j.doc.rev + ' ' + j.doc.moved.some(m => m.entity === 'trees:"); bint(k[..], r[0].tree);
-  bput(k[..], "' && Math.round(m.x * 100) === "); bint(k[..], r[0].tx); bput(k[..], " && Math.round(m.z * 100) === "); bint(k[..], r[0].tz); bput(k[..], ")");
+  // MOVE picks the nearest thing, a tree or (in a courtyard) the centrepiece: find the move by where it went
+  bput(k[..], "j.doc.rev + ' ' + j.doc.moved.some(m => Math.round(m.x * 100) === "); bint(k[..], r[0].tx); bput(k[..], " && Math.round(m.z * 100) === "); bint(k[..], r[0].tz); bput(k[..], ")");
   want: [1] Buf; bint(want[..], r[0].rev); bput(want[..], " true");
   if doc_field(r, c, slug_text(r), btext(k[..]), o[..]) != btext(want[..]) { return why(r, "the server's document isn't the saved revision with the move"); }
   if r[0].slug_n > 0 && probe(c, 6) > 0 && probe(c, 6) != r[0].rev {
