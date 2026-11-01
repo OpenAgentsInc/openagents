@@ -20,7 +20,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
 | `docs/verification/`, `docs/lightning/`, `docs/verse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, Verse and the Verse engine, the Coax-native voice proposal |
-| `nostr/` | Nostr: `nips/` (official, external and OpenAgents NIPs, pinned) and `book/`, *Nostr From Scratch*, which builds every primitive, the client, the relay and every NIP in Coax (partly implemented chapters cite the existing `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/` code; check with `python3 psionic/tests/book.py --book nostr`; epic #12612) |
+| `nostr/` | Nostr: `nips/` (official, external and OpenAgents NIPs, pinned) and `book/`, *Nostr From Scratch*, which builds every primitive, the client, the relay and every NIP in Coax (implemented chapters cite the existing `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/` code; check with `python3 psionic/tests/book.py --book nostr`; epic #12612) |
 
 ## Rules
 

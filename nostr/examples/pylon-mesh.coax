@@ -1,0 +1,299 @@
+// book:begin example
+#load "../../psionic/lib/pylon/host.coax";
+#load "../../psionic/lib/pylon/queue.coax";
+#load "../../psionic/lib/mesh/opening.coax";
+#load "../../coax/lib/nostr/nip42-event.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip44-key.coax";
+#import "Basic";
+
+// The clock is fixed at the time of decision.coax's fixtures
+// (2026-10-07T16:26:40Z). The engine is not run: its answer is
+// decision.coax's PD_ANSWER, chapter 20's 200 body.
+CLOCK :: 1791400000;
+// Published test keys: the scalars 3, 7 and 5. Never sign with a real key
+// in an example. The Pylon holds 3, the buyer 7, another provider 5.
+PYLON :: "0000000000000000000000000000000000000000000000000000000000000003";
+BUYER :: "0000000000000000000000000000000000000000000000000000000000000007";
+OTHER :: "0000000000000000000000000000000000000000000000000000000000000005";
+// BIP-340's aux and the two NIP-44 nonces are fixed so that the output is
+// the same on every run. run.coax draws all three from the OS.
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+NONCE_JOB :: "0101010101010101010101010101010101010101010101010101010101010101";
+NONCE_ANSWER :: "0202020202020202020202020202020202020202020202020202020202020202";
+RELAY_URL :: "wss://relay.example.com/";
+CHALLENGE :: "pylon-challenge-1";
+
+bytes_of :: (text: string) -> [32] u8 {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == NC_OK;
+  return b;
+}
+hex_of :: (bytes: [] u8, out: [] u8) -> string {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+// The x-only public key of a test secret, through the signer: an event
+// signed here and read back.
+public_of :: (secret: string, out: [] u8) -> string {
+  s: [1024] u8; w: [1024] u8; e := nostr_event_read(sign(secret, 0, 1, "[]", "", s[..]), w[..], false);
+  key := e.public_key;
+  return hex_of(key[..], out);
+}
+// One event signed with a test key: event_sign.coax's stages, as py_sign
+// runs them, with AUX in place of the OS's 32 bytes.
+sign :: (secret: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key := bytes_of(secret); aux := bytes_of(AUX);
+  work: [1] NostrSignWork; scratch: [16384] u8; k := EVENT_MORE;
+  while k == EVENT_MORE {
+    k = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert k > 0;
+  return cast(string) out[0..<k];
+}
+// A conversation key from a secret and a peer's x-only key (nip44-key.coax).
+conv_key :: (secret: string, peer: string) -> [32] u8 {
+  key := bytes_of(secret); x := bytes_of(peer); ecdh: [1] EcdhScratch; ck: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(key[..], x[..], ecdh[..], ck[..], false) == NIP44_OK;
+  return ck;
+}
+// NIP-44 v2 of plaintext under ck with a fixed nonce, as py_seal does.
+seal :: (ck: [] u8, nonce_hex: string, plaintext: string, out: [] u8) -> string {
+  nonce := bytes_of(nonce_hex); work: [8192] u8; pt: [4096] u8;
+  n := plaintext.count;
+  r := nip44_encrypt_checked(NIP44_COMPAT, ck, nonce[..], bytes_in(plaintext, pt[..]),
+         work[0..<nip44_encrypt_work_size(NIP44_COMPAT, n)], out[0..<nip44_payload_size(NIP44_COMPAT, n)], false);
+  #assert r.error == NIP44_OK;
+  return cast(string) out[0..<r.written];
+}
+// Opens a payload under ck, as py_open_payload does: the result.
+open_payload :: (ck: [] u8, payload: string, out: [] u8) -> Nip44Result {
+  work: [8192] u8; size := nip44_decrypt_work_size(NIP44_COMPAT, payload.count);
+  if size < 0 || size > work.count { return Nip44Result.{error = NIP44_CAPACITY}; }
+  return nip44_decrypt_checked(NIP44_COMPAT, ck, payload, work[0..<size], out, false);
+}
+// A string's bytes copied into out, as a [] u8 view.
+bytes_in :: (s: string, out: [] u8) -> [] u8 {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return out[0..<s.count];
+}
+nip44_name :: (e: u32) -> string {
+  names := [13] string.["NIP44_OK", "NIP44_VERSION", "NIP44_PAYLOAD", "NIP44_BASE64", "NIP44_MAC", "NIP44_PADDING",
+    "NIP44_LENGTH", "NIP44_CAPACITY", "NIP44_KEY", "NIP44_OUTPUT", "NIP44_ALIAS", "NIP44_PROFILE", "NIP44_INTERNAL"];
+  return names[e];
+}
+ne_name :: (e: int) -> string {
+  names := [9] string.["NE_OK", "NE_JSON", "NE_SHAPE", "NE_LIMIT", "NE_HEX", "NE_OUTPUT", "NE_ALIAS", "NE_ID", "NE_SIGNATURE"];
+  return names[e];
+}
+n42_name :: (e: int) -> string {
+  names := [13] string.["N42_OK", "N42_FRAME", "N42_URL", "N42_STALE", "N42_NO_CHALLENGE", "N42_EVENT",
+    "N42_KIND", "N42_TIME", "N42_TAGS", "N42_RELAY", "N42_CHALLENGE", "N42_OUTPUT", "N42_MACHINE"];
+  return names[e];
+}
+
+// book:begin take
+// What the Pylon does with one EVENT, in py_event's order, at clock now:
+// verify, open the content with its own key, admit, route. The fields it
+// reads are kept in Taken for the answer.
+Taken :: struct {
+  verified: bool; kind: int; tried: bool; opened: u32; jb: PdJob; route: PqRoute;
+  id: [64] u8; caller: [64] u8; plain: [4096] u8; plain_n: int; body: [4096] u8;
+}
+pylon_take :: (event: string, me: string, now: int, t: [] Taken) {
+  scratch: [8192] u8;
+  ev := nostr_event_verify_vartime(event, scratch[..], false);
+  t[0].verified = ev.verified; t[0].kind = ev.kind; t[0].opened = NIP44_PAYLOAD; t[0].tried = false;
+  id := ev.id; key := ev.public_key;
+  caller := hex_of(key[..], t[0].caller[..]);
+  idh := hex_of(id[..], t[0].id[..]);
+  if ev.verified && ev.kind == PD_REQUEST {
+    raw := ev.original[ev.content_from..<ev.content_to]; payload: [4096] u8;
+    k := json_unescape(raw, payload[..]);
+    ck := conv_key(PYLON, caller);
+    r := open_payload(ck[..], cast(string) payload[0..<k], t[0].plain[..]);
+    t[0].tried = true; t[0].opened = r.error; t[0].plain_n = r.written;
+  }
+  decrypted := t[0].opened == NIP44_OK;
+  plaintext := ifx decrypted then cast(string) t[0].plain[0..<t[0].plain_n] else "";
+  env := PdEnvelope.{kind = ev.kind, id = idh, pubkey = caller, created_at = ev.created_at,
+                     tags = ev.original[ev.tags_from..<ev.tags_to], plaintext = plaintext};
+  t[0].jb = pd_admit(env, me, now, t[0].body[..]);
+  q: [1] PqQueue;
+  t[0].route = pq_route(ev.verified, ev.kind, decrypted, cast(int) t[0].jb.code, cast(int) t[0].jb.type,
+                        t[0].jb.answerable, false, pq_free(q[..]));
+}
+// book:end take
+show_taken :: (label: string, t: [] Taken) {
+  opened := ifx t[0].tried then nip44_name(t[0].opened) else "not tried";
+  print("%: verified %, kind %, opened %, admit %, route %\n", label, t[0].verified, t[0].kind,
+        opened, code_text(t[0].jb.code), t[0].route);
+}
+code_text :: (c: PdCode) -> string { return ifx c == PdCode.none then "none" else pd_code_name(c); }
+
+main :: () {
+  print("== 1. Keys\n");
+  b1: [64] u8; b2: [64] u8; b3: [64] u8;
+  pylon := public_of(PYLON, b1[..]); buyer := public_of(BUYER, b2[..]); other := public_of(OTHER, b3[..]);
+  print("Pylon (3G)          %\nbuyer (7G)          %\nother provider (5G) %\n", pylon, buyer, other);
+  print("Pylon is decision.coax's PD_WORKER: %; buyer is PD_CALLER: %\n", pylon == PD_WORKER, buyer == PD_CALLER);
+
+  print("\n== 2. NIP-42: the Pylon authenticates to the relay\n");
+  relay_n42: [1] Nip42; relay_out: [256] u8;
+  #assert nip42_init(relay_n42[..], RELAY_URL) == N42_OK;
+  f := nip42_issue(relay_n42[..], 1, CHALLENGE, relay_out[..]);
+  challenge_frame := cast(string) relay_out[0..<f.written];
+  print("relay sends %\n", challenge_frame);
+  rl: [1] Relay; n42: [1] Nip42;
+  g := rl_start(rl[..], 0); opened := rl_opened(rl[..], g, 0);
+  #assert nip42_init(n42[..], RELAY_URL) == N42_OK;
+  #assert nip42_input(rl[..], n42[..], g, challenge_frame) >= 0;
+  tb: [512] u8; t := nip42_template(n42[..], g, CLOCK, tb[..]);
+  print("Pylon's AUTH template: kind %, created_at %, tags %\n", t.kind, t.created_at, t.tags);
+  ab: [1024] u8; auth := sign(PYLON, t.created_at, t.kind, t.tags, t.content, ab[..]);
+  as: [4096] u8; admitted := nip42_admit(relay_n42[..], 1, CLOCK, auth, as[..], false);
+  ak := admitted.public_key; akh: [64] u8;
+  print("relay: nip42_admit -> %, key %\n", n42_name(admitted.error), hex_of(ak[..], akh[..]));
+  wb: [1024] u8;
+  wrong := sign(PYLON, CLOCK, 22242, "[[\"relay\",\"wss://relay.example.com/\"],[\"challenge\",\"old-challenge\"]]", "", wb[..]);
+  print("relay: an answer to another challenge -> %\n", n42_name(nip42_admit(relay_n42[..], 1, CLOCK, wrong, as[..], false).error));
+
+  print("\n== 3. The beacon: what is checked and what is only claimed\n");
+  lanes: [1] string; services: [1] PbService; settlement: [1] string;
+  beacon := pb_fixture(lanes[..], services[..], settlement[..]);
+  bs: [4096] u8; bt: [8192] u8; bn := ph_beacon(beacon, PbAuth.{}, bs[..], bt[..]);
+  #assert bn > 0;
+  // Sign the template's four fields, as py_publish does after py_fields.
+  bc: [4096] u8; tpl := py_fields_of(cast(string) bt[0..<bn], bc[..]);
+  be: [8192] u8; signed_beacon := sign(PYLON, tpl.created_at, tpl.kind, tpl.tags, tpl.content, be[..]);
+  print("beacon: kind %, % bytes signed, tags %\n", tpl.kind, signed_beacon.count, tpl.tags);
+  read_beacon("buyer reads it", signed_beacon, CLOCK + 10);
+  oe: [8192] u8; by_other := sign(OTHER, tpl.created_at, tpl.kind, tpl.tags, tpl.content, oe[..]);
+  read_beacon("the same template signed by 5G", by_other, CLOCK + 10);
+  read_beacon("the Pylon's beacon at observed_at + 301", signed_beacon, CLOCK + 301);
+
+  print("\n== 4. The buyer seals a job to the Pylon\n");
+  ck_buyer := conv_key(BUYER, pylon); ck_pylon := conv_key(PYLON, buyer);
+  hb: [64] u8; print("conversation key (7, 3G) %\n", hex_of(ck_buyer[..], hb[..]));
+  print("conversation key (3, 7G) is the same: %\n", cb_ct_equal(ck_buyer[..], ck_pylon[..]) == CB_MAX64);
+  print("plaintext: % bytes, padded to %\n", PD_CALL.count, nip44_calc_padded_len(PD_CALL.count));
+  pj: [4096] u8; payload := seal(ck_buyer[..], NONCE_JOB, PD_CALL, pj[..]);
+  print("payload: % characters, starts %\n", payload.count, payload[0..<48]);
+  jt: [8192] u8; jn := pt_template(jt[..], buyer, CLOCK, PD_REQUEST, PD_TAGS, payload);
+  jtpl := py_fields_of(cast(string) jt[0..<jn], bc[..]);
+  je: [8192] u8; request := sign(BUYER, jtpl.created_at, jtpl.kind, jtpl.tags, jtpl.content, je[..]);
+  print("job event: kind %, tags %, id %\n", PD_REQUEST, PD_TAGS, request[7..<71]);
+
+  print("\n== 5. The Pylon takes it\n");
+  taken: [1] Taken;
+  pylon_take(request, pylon, CLOCK, taken[..]);
+  show_taken("job", taken[..]);
+  jb := taken[0].jb;
+  print("request %, attempt %, % ms to the deadline\n", jb.request, jb.attempt, pd_left_ms(jb, CLOCK));
+  print("engine body: %\n", cast(string) taken[0].body[0..<jb.body]);
+
+  print("\n== 6. The Pylon answers, sealed to the buyer\n");
+  receipt := "{\"attempt_id\":\"r-1#1\",\"schema\":\"openagents.receipt.execution.v1\",\"transport\":\"relay\"}";
+  rb: [4096] u8; result := pd_result(rb[..], jb, PD_ANSWER, "studio-gpu", pylon, "psionic-pylon-v1", PB_IDENTITY, receipt);
+  print("pd_result: %, % bytes\n", code_text(result.code), result.written);
+  result_text := cast(string) rb[0..<result.written];
+  pa: [8192] u8; sealed := seal(ck_pylon[..], NONCE_ANSWER, result_text, pa[..]);
+  at: [8192] u8; an := pd_template(at[..], pylon, CLOCK + 2, PD_RESULT, jb, sealed);
+  atpl := py_fields_of(cast(string) at[0..<an], bc[..]);
+  ae: [8192] u8; answer := sign(PYLON, atpl.created_at, atpl.kind, atpl.tags, atpl.content, ae[..]);
+  print("answer event: kind %, tags %\n", atpl.kind, atpl.tags);
+  // The buyer: verify, check the signer and the p and e tags, open.
+  vs: [8192] u8; v := nostr_event_verify_vartime(answer, vs[..], false);
+  vk := v.public_key; vkh: [64] u8;
+  vtags := v.original[v.tags_from..<v.tags_to];
+  print("buyer: verified %, signer is the Pylon %, p names the buyer %, e names the job %\n", v.verified,
+        hex_of(vk[..], vkh[..]) == pylon, pt_tag(vtags, "p").v[1] == buyer, pt_tag(vtags, "e").v[1] == request[7..<71]);
+  ob: [8192] u8; got := open_payload(ck_buyer[..], sealed, ob[..]);
+  print("buyer opens it: %, the result is pd_result's bytes %\n", nip44_name(got.error), cast(string) ob[0..<got.written] == result_text);
+  print("%\n", cast(string) ob[0..<got.written]);
+
+  print("\n== 7. The mesh's opening capability\n");
+  keys: [76] u8;
+  #assert mo_keys(ck_pylon[..], sealed, keys[..]);
+  rk: [4096] u8; result_bytes := bytes_in(result_text, rk[..]); cb: [4096] u8;
+  kh: [152] u8; print("message keys for the answer (76 bytes): %...\n", hex_of(keys[0..<16], kh[..]));
+  print("a checker with only these keys: the answer opens to the result %\n", mo_authenticate(keys[..], sealed, result_bytes));
+  edited: [4096] u8; for i: 0..<result_text.count { edited[i] = result_text[i]; }
+  edited[result_text.count - 3] = 'X';
+  print("the same keys against an edited result: %\n", mo_authenticate(keys[..], sealed, edited[0..<result_text.count]));
+  print("the same keys against the job's payload: %\n", mo_authenticate(keys[..], payload, bytes_in(PD_CALL, cb[..])));
+
+  print("\n== 8. Refusals\n");
+  // A job sealed to the other provider and addressed to it.
+  ck_other := conv_key(BUYER, other);
+  po: [4096] u8; to_other := seal(ck_other[..], NONCE_JOB, PD_CALL, po[..]);
+  ot: [512] u8; other_tags := tags_for(other, ot[..]);
+  oe2: [8192] u8; other_job := sign(BUYER, CLOCK, PD_REQUEST, other_tags, to_other, oe2[..]);
+  pylon_take(other_job, pylon, CLOCK, taken[..]);
+  show_taken("sealed to 5G, p names 5G", taken[..]);
+  ck_5 := conv_key(OTHER, buyer); o5: [4096] u8;
+  print("  the provider 5G opens it: %\n", nip44_name(open_payload(ck_5[..], to_other, o5[..]).error));
+  // The same ciphertext, p naming the Pylon.
+  me2: [8192] u8; misaddressed := sign(BUYER, CLOCK, PD_REQUEST, PD_TAGS, to_other, me2[..]);
+  pylon_take(misaddressed, pylon, CLOCK, taken[..]);
+  show_taken("sealed to 5G, p names the Pylon", taken[..]);
+  // The job with one signature digit changed.
+  fb: [8192] u8; forged := flip_signature(request, fb[..]);
+  pylon_take(forged, pylon, CLOCK, taken[..]);
+  fs: [8192] u8;
+  print("signature digit changed: % from the verifier\n", ne_name(nostr_event_verify_vartime(forged, fs[..], false).error));
+  show_taken("  so the Pylon", taken[..]);
+  // The job at the edge of its expiration tag.
+  pylon_take(request, pylon, CLOCK + 59, taken[..]);
+  show_taken("at expiration - 1", taken[..]);
+  pylon_take(request, pylon, CLOCK + 60, taken[..]);
+  show_taken("at expiration", taken[..]);
+  sb: [1024] u8; sn := pd_status(sb[..], taken[0].jb, PdStatus.error, taken[0].jb.code, -1);
+  print("  27010 body: %\n", cast(string) sb[0..<sn]);
+}
+
+// The four signed fields of a template, as run.coax's py_fields reads them.
+py_fields_of :: (template: string, content: [] u8) -> PyFields {
+  r: PyFields; j: [1] Json; json_start(j[..], template);
+  #assert json_next(j[..]) == JSON_OBJECT;
+  while true {
+    tok := json_next(j[..]); if tok == JSON_OBJECT_END { break; }
+    key := json_text(j[..]); tok = json_next(j[..]);
+    if json_is(key, "created_at") { r.created_at = json_int(json_text(j[..])).value; }
+    else if json_is(key, "kind") { r.kind = json_int(json_text(j[..])).value; }
+    else if json_is(key, "tags") { r.tags = pt_raw(j[..], tok); }
+    else if json_is(key, "content") { n := json_unescape(json_text(j[..]), content); r.content = cast(string) content[0..<n]; }
+    else { raw := pt_raw(j[..], tok); }
+  }
+  return r;
+}
+PyFields :: struct { created_at: int; kind: int; tags: string; content: string; }
+// A beacon as a buyer reads it: verify, then ph_read_beacon with the
+// verified signer, then freshness on the buyer's clock.
+read_beacon :: (label: string, event: string, received: int) {
+  s: [16384] u8; e := nostr_event_verify_vartime(event, s[..], false);
+  key := e.public_key; kh: [64] u8; signer := hex_of(key[..], kh[..]);
+  c: [8192] u8; k := json_unescape(e.original[e.content_from..<e.content_to], c[..]);
+  r := ph_read_beacon(e.kind, signer, e.original[e.tags_from..<e.tags_to], cast(string) c[0..<k]);
+  if r.code != PbCode.ok { print("%: verified %, read %\n", label, e.verified, r.code); return; }
+  fresh := pb_fresh(r, received, PbHeld.{});
+  print("%: verified %, read %, fresh %, routable %\n", label, e.verified, r.code, fresh, pb_routable(r, fresh));
+  if fresh == PbFresh.fresh {
+    print("  checked: signer = provider, capability %:pylon/decision, x = SHA-256 of the content\n", py_short_of(signer));
+    print("  claimed: % % % GB, % of % slots free, identity %\n", r.family, r.tier, r.memory_gb, r.free, r.total, r.identity);
+  }
+}
+py_short_of :: (s: string) -> string { return s[0..<12]; }
+tags_for :: (to: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[[\"p\",\""); n = json_raw(out, n, to); n = json_raw(out, n, "\"],[\"expiration\",\"1791400060\"]]");
+  return cast(string) out[0..<n];
+}
+// A copy of the event with the first digit of its signature changed.
+flip_signature :: (event: string, out: [] u8) -> string {
+  for i: 0..<event.count { out[i] = event[i]; }
+  at := pb_index(event, "\"sig\":\"") + 7;
+  out[at] = ifx event[at] == '0' then cast(u8) '1' else cast(u8) '0';
+  return cast(string) out[0..<event.count];
+}
+// book:end example

@@ -137,7 +137,7 @@
 
 - [98. Projects on Nostr](ch098-projects-on-nostr.md) — implemented
 - [99. The website and sign-in](ch099-the-website-and-sign-in.md) — implemented
-- [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) — partly implemented
+- [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) — implemented
 - [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) — design draft
 - [102. Agents on Nostr](ch102-agents-on-nostr.md) — design draft
 - [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) — design draft

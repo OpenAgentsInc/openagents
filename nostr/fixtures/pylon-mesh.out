@@ -1,0 +1,54 @@
+== 1. Keys
+Pylon (3G)          f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+buyer (7G)          5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc
+other provider (5G) 2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4
+Pylon is decision.coax's PD_WORKER: true; buyer is PD_CALLER: true
+
+== 2. NIP-42: the Pylon authenticates to the relay
+relay sends ["AUTH","pylon-challenge-1"]
+Pylon's AUTH template: kind 22242, created_at 1791400000, tags [["relay","wss://relay.example.com"],["challenge","pylon-challenge-1"]]
+relay: nip42_admit -> N42_OK, key f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+relay: an answer to another challenge -> N42_CHALLENGE
+
+== 3. The beacon: what is checked and what is only claimed
+beacon: kind 30200, 1221 bytes signed, tags [["d","studio-gpu"],["t","oa:pylon-beacon:v1"],["x","a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664"],["expiration","1791400300"]]
+buyer reads it: verified true, read ok, fresh fresh, routable true
+  checked: signer = provider, capability f9308a019258:pylon/decision, x = SHA-256 of the content
+  claimed: gpu medium 16 GB, 1 of 1 slots free, identity elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+the same template signed by 5G: verified true, read provider
+the Pylon's beacon at observed_at + 301: verified true, read ok, fresh stale, routable false
+
+== 4. The buyer seals a job to the Pylon
+conversation key (7, 3G) 87911e47109d035c08d1704433a66f396d3c4a28b9a26149f329f7e0dbcc4316
+conversation key (3, 7G) is the same: true
+plaintext: 269 bytes, padded to 320
+payload: 516 characters, starts AgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBt+8M
+job event: kind 25910, tags [["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["expiration","1791400060"]], id 8366669c1337ef543d110d5f79d762829f77137f6da54a50f3cfe5873cf9c248
+
+== 5. The Pylon takes it
+job: verified true, kind 25910, opened NIP44_OK, admit none, route queue
+request r-1, attempt 1, 60000 ms to the deadline
+engine body: {"model":"elephant-1","state":{"ticket":"I was billed twice"},"questions":{"refund":{"type":"noul","instructions":"Does the customer ask for money back?"}}}
+
+== 6. The Pylon answers, sealed to the buyer
+pd_result: none, 560 bytes
+answer event: kind 26910, tags [["p","5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc"],["e","8366669c1337ef543d110d5f79d762829f77137f6da54a50f3cfe5873cf9c248"]]
+buyer: verified true, signer is the Pylon true, p names the buyer true, e names the job true
+buyer opens it: NIP44_OK, the result is pd_result's bytes true
+{"attempt":1,"outcome":"answered","receipt":{"attempt_id":"r-1#1","schema":"openagents.receipt.execution.v1","transport":"relay"},"request":"r-1","requires":[],"response":{"answers":{"refund":{"type":"noul","noul":0.93}},"latency_ms":412,"model":"elephant-1","service":{"door":"pylon:studio-gpu","identity":"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","provider":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","version":"psionic-pylon-v1"},"usage":null},"type":"result","v":"openagents.systemone.v1"}
+
+== 7. The mesh's opening capability
+message keys for the answer (76 bytes): 0305260fb3798f3d538cb9a103a7ab15...
+a checker with only these keys: the answer opens to the result true
+the same keys against an edited result: false
+the same keys against the job's payload: false
+
+== 8. Refusals
+sealed to 5G, p names 5G: verified true, kind 25910, opened NIP44_MAC, admit not_addressed, route ignore
+  the provider 5G opens it: NIP44_OK
+sealed to 5G, p names the Pylon: verified true, kind 25910, opened NIP44_MAC, admit malformed, route ignore
+signature digit changed: NE_SIGNATURE from the verifier
+  so the Pylon: verified false, kind 25910, opened not tried, admit malformed, route ignore
+at expiration - 1: verified true, kind 25910, opened NIP44_OK, admit none, route queue
+at expiration: verified true, kind 25910, opened NIP44_OK, admit stale, route refuse
+  27010 body: {"attempt":1,"code":"stale","message":"the request is outside its time window","request":"r-1","requires":[],"status":"error","type":"status","v":"openagents.systemone.v1"}
