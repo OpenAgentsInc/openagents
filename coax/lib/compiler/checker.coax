@@ -346,9 +346,9 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_ov
  first:=CB_query(b,2,3,BS_Path.{},out[..]);again:=CB_query(b,2,3,BS_Path.{},out[..]);#assert first.count==0 && !first.incomplete && again.count==0 && !again.incomplete && !state[0].fatal && state[0].error_count==0;
 }
 
-#forall "return borrow malformed memo links and published prefixes are hard failures" mode:0..<23 {
+#forall "return borrow malformed memo links and published prefixes are hard failures" mode:0..<25 {
  nodes:[16]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=15,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;out:[64]BS_Origin;
- c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=13};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=4,loc=CK_Loc.{line=42,column=7}};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};work[0].loc=CK_Loc.{line=40,column=2};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=13};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=4,loc=CK_Loc.{line=42,column=7}};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};work[0].loc=CK_Loc.{line=40,column=2};b:=CB_Context.{c=c,queries=queries[..],origins=ifx mode==24 then origins[0..<2] else origins[..],state=work[..]};
  first:=CB_query(b,2,3,BS_Path.{},out[..]);#assert first.count==1 && !first.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;
  row:=nodes[3].borrow_query-1;
  if mode==1 {nodes[3].borrow_query=-1;}if mode==2 {nodes[3].borrow_query=work[0].queries+1;}
@@ -358,13 +358,14 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_ov
  if mode==11 {queries[row].path.count=9;}if mode==12 {queries[row].type=17;}if mode==13 {queries[row].start=-1;}if mode==14 {queries[row].count=-1;}
  if mode==15 {queries[row].start=work[0].origins+1;}if mode==16 {queries[row].count=2;}
  if mode==18 {work[0].queries=-1;}if mode==19 {work[0].queries=129;}if mode==20 {work[0].origins=-1;}if mode==21 {work[0].origins=1025;}if mode==22 {work[0].work=1048576;}
- result:=CB_query(b,2,3,BS_Path.{},ifx mode==17 then out[0..<0] else out[..]);
- if mode==0 {#assert !state[0].fatal && state[0].error_count==0 && result.count==1 && !result.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;}
+ if mode==23 || mode==24 {second:=CB_query(b,2,4,BS_Path.{},out[..]);#assert second.count==1 && !second.incomplete && out[0].kind==BS_PARAMETER && out[0].root==1;if mode==23 {queries[nodes[4].borrow_query-1].count=2;}}
+ result:=CB_query(b,2,ifx mode==23 then 4 else 3,BS_Path.{},ifx mode==17 then out[0..<0] else out[..]);
+ if mode==0 || mode==24 {#assert !state[0].fatal && state[0].error_count==0 && result.count==1 && !result.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;}
  else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}
 }
 
-#forall "return borrow invocation node extents admit both endpoints before reset" variant:0..<5 {
- nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;used:=[5]int.[-1,0,1,7,8];state[0].used=used[variant];nodes[1]=CK_Node.{kind=CK_Tag.file};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+#forall "return borrow invocation node extents admit both endpoints before reset" variant:0..<7 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;used:=[7]int.[-1,0,1,7,8,1,1];state[0].used=used[variant];nodes[1]=CK_Node.{kind=CK_Tag.file};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};if variant==5 {c.nodes=nodes[0..<0];}if variant==6 {c.nodes=nodes[0..<1];}
  CB_run(c,queries[..],origins[..]);if variant==2 || variant==3 {#assert !state[0].fatal && state[0].error_count==0;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==1 && errors[0].loc.column==1;}
 }
 
