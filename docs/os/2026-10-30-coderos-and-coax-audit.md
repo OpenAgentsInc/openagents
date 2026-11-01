@@ -555,8 +555,12 @@ compiler and the examples have not been run on Linux yet.
   screen it enters, so a launch lands there. Headless, two terminals
   tiled on the left screen and a third filled the right one as desk 2;
   the 23-step damage check matched a full redraw on both layouts. With
-  `--screen` it still takes only the first connected KMS screen, and one
-  `wl_output` stands for the whole picture.
+  `--screen` it still takes only the first connected KMS screen. Each
+  screen is its own `wl_output`, with its place and size, and a window
+  gets `enter` for the screen it shows on and `leave` when it moves off.
+  `wayland-info` listed outputs 5 (800x600 at 0,0) and 9 (640x480 at
+  800,0), and foot's log showed `leave(#8)` then `enter(#13)` when its
+  window moved to the right screen.
 
   Also left: and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
