@@ -1,0 +1,21 @@
+corpus: 47 sentences, 4080 symbols; split by time: 38 train, 9 held out
+streams: train 3399 symbols, held-out 728 (727 transitions)
+bigram baseline: held-out 2.245995271590946 nats per symbol
+model: 3152 parameters; held-out at initialization 2.912052180237498
+step 50: train loss 2.3691303849935768
+step 100: train loss 2.215522050643217, held-out 2.2383164539522182
+step 150: train loss 2.1182495317068373
+step 200: train loss 2.00755062928158, held-out 2.181159394918942
+step 250: train loss 1.9534208094123406
+step 300: train loss 1.862617216160598, held-out 2.136476928998962
+step 350: train loss 1.8467996869585566
+step 400: train loss 1.8767169022663621, held-out 2.1320579221135967
+held-out: decoder 2.1320579221135967, bigram 2.245995271590946, decoder better by 0.11393734947734924 (frozen margin 0.05)
+weights: sha256 f166553e852669ed...
+resumed from step 350 (75908 bytes): 50 of 50 losses identical, weights and moments identical: true
+resume as a 399-step run: optimizer
+resume with one pointer byte changed: corrupt
+seed 1 at 0.8: iducosee_*ad_resersit_rer_ra_
+seed 2 at 0.8: id_*and_aliniont_non_re**s_cer*
+seed 3 at 0.8: the_arecoderaiset_alllitil_thal
+seed 1 again: identical true

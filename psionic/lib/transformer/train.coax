@@ -1,0 +1,315 @@
+// Chapter 115: train the whole tiny decoder (tiny-train-cpu-f64-v1).
+// Chapter 113's causal decoder trained end to end on a fixed corpus: the
+// book's own prose folded to 15 symbols, split leak-free by chapter 120,
+// streamed in packed rows by chapter 122, updated by chapter 124's AdamW on a
+// recorded linear schedule, checkpointed and resumed through chapter 122's
+// record, measured on held-out likelihood against a count bigram, and sampled
+// with chapter 53's seeded sampler. Binary64 on the CPU, one thread, every sum
+// in a fixed order: the same seed and data order give the same bits.
+#load "decoder.coax";
+#load "../data/split.coax";
+#load "../next-token.coax";
+#load "../../fixtures/tiny-train/corpus.coax";
+TtStatus :: enum u8 {ok;data;model;optimizer;}
+TtStep :: struct {status:TtStatus;run:RsRun;loss:f64;}
+// book:begin config
+TT_SHAPE :: TdShape.{vocab=16,width=16,heads=2,kv_heads=1,head_width=8,hidden=16,layers=2,context=32};
+TT_PARAMETERS :: 3152;
+TT_WORK :: 13984;
+TT_BATCH :: 4;
+TT_STEPS :: 400;
+TT_RATE :: 0.01;
+TT_INIT :: 115;
+TT_ORDER :: 7;
+TT_PLAN :: SpPlan.{train_end=37,valid_end=46};
+// Frozen before the first run: the decoder's held-out cross entropy must be
+// at least this many nats per token below the add-one bigram's.
+TT_MARGIN :: 0.05;
+// book:end config
+TT_ROWS :: 47;
+TT_TOKENS :: 4080;
+TT_RECORD :: 75908;
+TT_LETTERS :: "etaoinshrdlcu";
+TT_GLYPHS :: [16]string.["_","e","t","a","o","i","n","s","h","r","d","l","c","u","*","|"];
+// From psionic/tests/tiny_train_oracle.py, written apart from this file.
+TT_ORACLE_BIGRAM :: 2.2459952715909473;
+// Pinned by the first run of this profile: three steps of a three-step run
+// at the checks' small shape (TT_SMALL): losses, a weight digest's first
+// bytes and the cursor's document and offset after it.
+TT_SHORT_LOSSES :: [3]f64.[2.9360807937186078,2.761001189796394,2.7893926020018047];
+TT_SHORT_DIGEST :: [8]u8.[255,180,157,173,180,165,167,53];
+TT_SHORT_CURSOR :: [2]int.[1,60];
+TT_ID_PINS :: [3][4]u8.[[4]u8.[83,121,225,97],[4]u8.[104,203,150,117],[4]u8.[38,247,122,230]];
+
+// Shared setup for the checks: the corpus, its split and the buffers.
+TtFix :: struct {rows:[47]SpRow;tokens:[4096]u8;n:int;docs:[47]PkDoc;}
+tt_fix :: ()->TtFix {f:TtFix;f.n=tt_corpus(f.rows[..],f.tokens[..]);s:=tt_docs(f.rows[..],f.tokens[0..<f.n],f.docs[..]);#assert s==SpStatus.ok;return f;}
+tt_same :: (a:[]f64,b:[]f64)->bool {for i:0..<a.count {if f64_bits(a[i])!=f64_bits(b[i]) {return false;}}return true;}
+
+#test "symbols fold by hand and the corpus matches the independent reader" #steps 4000000000 {
+    #assert tt_symbol(84)==2 && tt_symbol(116)==2 && tt_symbol(101)==1 && tt_symbol(117)==13 && tt_symbol(85)==13 && tt_symbol(109)==14 && tt_symbol(77)==14;
+    #assert tt_symbol(97)==3 && tt_symbol(122)==14 && tt_symbol(90)==14 && tt_symbol(65)==3 && tt_symbol(64)==0 && tt_symbol(91)==0 && tt_symbol(96)==0 && tt_symbol(123)==0 && tt_symbol(32)==0;
+    for c:0..<256 {t:=tt_symbol(c);#assert t>=0 && t<=14;#assert (t==0)==!((c>=65 && c<=90) || (c>=97 && c<=122));}
+    b:[16]u8;for i:0..<16 {b[i]=99;}end:=tt_fold(" The cat,  ran. ",b[..],2);
+    want:=[12]u8.[2,8,1,0,12,3,2,0,9,3,6,0];#assert end==14 && b[0]==99 && b[1]==99 && b[14]==99;for i:0..<12 {#assert b[2+i]==want[i];}
+    f:=tt_fix();#assert f.n==TT_TOKENS && f.rows[0].count==152 && f.rows[46].count==68 && f.rows[46].first==TT_TOKENS-68 && f.rows[46].id==47;
+    first:=[12]u8.[3,0,7,14,3,11,11,0,11,3,6,14];for i:0..<12 {#assert f.tokens[i]==first[i];}
+    for i:0..<47 {r:=f.rows[i];#assert r.licence==1 && r.task==i && r.session==i && r.time==i && r.outcome==i && r.source==0;}
+}
+#test "the split is leak-free and the bigram baseline matches the oracle" #steps 4000000000 {
+    f:=tt_fix();none:[1]SpCell;splits:[47]PkSplit;train:=0;
+    for i:0..<47 {splits[i]=f.docs[i].split;#assert f.docs[i].id==i+1 && f.docs[i].count==f.rows[i].count;if splits[i]==PkSplit.train {train+=1;#assert i<=37;}else {#assert splits[i]==PkSplit.validation;}}
+    // The oracle's groups: rows 0 and 6, and rows 8, 24, 27, 30, 32 and 36.
+    label:[64]int;sp_groups(f.rows[..],f.tokens[0..<f.n],label[..]);groups:=0;for i:0..<47 {if label[i]==i {groups+=1;}}
+    #assert groups==41 && label[6]==0 && label[24]==8 && label[27]==8 && label[30]==8 && label[32]==8 && label[36]==8 && label[37]==37;
+    #assert train==38;a:=sp_audit(f.rows[..],f.tokens[0..<f.n],splits[..],none[0..<0],0);#assert a.status==SpStatus.ok && a.exact==0 && a.near==0 && a.task==0 && a.session==0;
+    tr:[4096]int;held:[4096]int;nt:=tt_stream(f.docs[..],f.tokens[0..<f.n],PkSplit.train,tr[..]);nh:=tt_stream(f.docs[..],f.tokens[0..<f.n],PkSplit.validation,held[..]);
+    #assert nt==3399 && nh==728 && tr[0]==PK_BOS && tr[1]==3 && tr[153]==PK_BOS && held[0]==PK_BOS && held[nh-1]==tt_symbol(46) && held[nh-2]==tt_symbol(116);
+    counts:[256]int;for i:0..<256 {counts[i]=5;}tt_bigram(tr[0..<nt],counts[..]);total:=0;for c:counts {total+=c;}
+    #assert total==nt-1 && counts[2*16+8]==52 && counts[8*16+1]==46;
+    loss:=tt_bigram_loss(counts[..],held[0..<nh]);#assert abs(loss-TT_ORACLE_BIGRAM)<1e-12;
+    two:=[2]int.[2,8];row:=0;for j:0..<16 {row+=counts[32+j];}#assert row==281 && abs(tt_bigram_loss(counts[..],two[..])+log(53.0/297.0))<1e-15;
+    bad:=f.rows;bad[46].first=0;docs:[47]PkDoc;#assert tt_docs(bad[..],f.tokens[0..<f.n],docs[..])==SpStatus.shape;
+}
+// A shape small enough that the checks train, save and resume in moments.
+TT_SMALL :: TdShape.{vocab=16,width=4,heads=2,kv_heads=1,head_width=2,hidden=4,layers=1,context=8};
+#test "held-out windows equal the one-token-at-a-time route" #steps 4000000000 {
+    f:=tt_fix();s:=TT_SMALL;p:[220]f64;w:[600]f64;held:[4096]int;nh:=tt_stream(f.docs[..],f.tokens[0..<f.n],PkSplit.validation,held[..]);
+    #assert td_init(s,CrSeed.{seed=TT_INIT},p[..]).counter==220 && td_parameter_count(s)==220 && td_work_count(s)==600 && nh==728;
+    #assert td_parameter_count(TT_SHAPE)==TT_PARAMETERS && td_work_count(TT_SHAPE)==TT_WORK && ck_size(TT_PARAMETERS)==TT_RECORD;
+    x:=[3]f64.[1,2,-0.0];y:=[3]f64.[0,2,0];#assert tt_same(x[..],x[..]) && !tt_same(x[0..<1],y[0..<1]) && tt_same(x[1..<2],y[1..<2]) && !tt_same(x[2..<3],y[2..<3]);
+    // 9 symbols are one window of 8 and a second of 2 sharing one; 20 are two
+    // full windows and a third of 6; 728 is the whole held-out stream.
+    for n:[3]int.[9,20,728] {a:=tt_held_loss(s,p[..],held[0..<n],w[..]);b:=tt_held_decode(s,p[..],held[0..<n],w[..]);#assert abs(a-b)<1e-12 && a>2 && a<4;}
+}
+// One run's buffers live in the check; these start and advance them.
+// Moments start at zero because the check declares them fresh.
+tt_start :: (p:[]f64)->RsRun {seed:=td_init(TT_SMALL,CrSeed.{seed=TT_INIT},p);return RsRun.{cursor=PkCursor.{seed=TT_ORDER}};}
+tt_steps :: (docs:[]PkDoc,tokens:[]u8,run:RsRun,count:int,steps:int,p:[]f64,m:[]f64,v:[]f64,total:[]f64,losses:[]f64)->RsRun {
+    w:[600]f64;dw:[600]f64;g:[220]f64;r:=run;
+    for k:0..<count {s:=tt_step(TT_SMALL,docs,tokens,r,steps,p,m,v,w[..],dw[..],g[..],total);#assert s.status==TtStatus.ok;r=s.run;losses[k]=s.loss;}
+    return r;
+}
+#test "the same seed and order give the same losses and weights; resume is exact and refuses other runs" #steps 4000000000 {
+    f:=tt_fix();p:[220]f64;m:[220]f64;v:[220]f64;run:=tt_start(p[..]);la:[3]f64;
+    // The step's accumulator starts dirty: a step must clear what it sums.
+    total:[220]f64;for i:0..<220 {total[i]=7;}
+    run=tt_steps(f.docs[..],f.tokens[0..<f.n],run,2,3,p[..],m[..],v[..],total[..],la[0..<2]);
+    // Interrupted after two steps: the record and pointer are all that survive.
+    ids:=tt_ids(TT_SMALL,f.docs[..],f.tokens[0..<f.n],3);bytes:[5540]u8;pointer:[80]u8;
+    #assert tt_save(ids,run,p[..],m[..],v[..],bytes[..],pointer[..])==CkStatus.ok;
+    kp:=p;km:=m;kv:=v;
+    run=tt_steps(f.docs[..],f.tokens[0..<f.n],run,1,3,p[..],m[..],v[..],total[..],la[2..<3]);
+    for k:0..<3 {#assert la[k]==TT_SHORT_LOSSES[k];}d:=tt_digest(p[..]);for i:0..<8 {#assert d[i]==TT_SHORT_DIGEST[i];}
+    #assert run.revision==3 && run.state.step==3 && run.cursor.epoch==0 && run.cursor.order==TT_SHORT_CURSOR[0] && run.cursor.offset==TT_SHORT_CURSOR[1];
+    // Every refusal leaves the fresh buffers as they were.
+    cp:[220]f64;cm:[220]f64;cv:[220]f64;for i:0..<220 {cp[i]=7;cm[i]=7;cv[i]=7;}
+    other:=tt_ids(TT_SMALL,f.docs[..],f.tokens[0..<f.n],4);#assert tt_resume(pointer[..],bytes[..],other,f.docs[..],cp[..],cm[..],cv[..]).status==CkStatus.optimizer;
+    g:=f;g.tokens[5]=1;moved:=tt_ids(TT_SMALL,g.docs[..],g.tokens[0..<g.n],3);#assert tt_resume(pointer[..],bytes[..],moved,f.docs[..],cp[..],cm[..],cv[..]).status==CkStatus.dataset;
+    big:=tt_ids(TT_SHAPE,f.docs[..],f.tokens[0..<f.n],3);#assert tt_resume(pointer[..],bytes[..],big,f.docs[..],cp[..],cm[..],cv[..]).status==CkStatus.model;
+    #assert tt_resume(pointer[0..<79],bytes[..],ids,f.docs[..],cp[..],cm[..],cv[..]).status==CkStatus.truncated;
+    old:=pointer;old[8]=0;#assert tt_resume(old[..],bytes[..],ids,f.docs[..],cp[..],cm[..],cv[..]).status==CkStatus.corrupt;
+    #assert tt_resume(pointer[..],bytes[..],ids,f.docs[..],cp[0..<219],cm[..],cv[..]).status==CkStatus.shape;
+    huge:[4097]f64;#assert tt_resume(pointer[..],bytes[..],ids,f.docs[..],huge[..],cm[..],cv[..]).status==CkStatus.shape;
+    // Buffers of exactly the record limit pass the size check and reach the pointer.
+    full:[4096]f64;#assert tt_resume(pointer[0..<79],bytes[..],ids,f.docs[..],full[..],cm[..],cv[..]).status==CkStatus.truncated;
+    #assert tt_resume(pointer[0..<79],bytes[..],ids,f.docs[..],cp[..],full[..],cv[..]).status==CkStatus.truncated && tt_resume(pointer[0..<79],bytes[..],ids,f.docs[..],cp[..],cm[..],full[..]).status==CkStatus.truncated;
+    #assert tt_resume(pointer[..],bytes[..],ids,f.docs[..],cp[..],huge[..],cv[..]).status==CkStatus.shape && tt_resume(pointer[..],bytes[..],ids,f.docs[..],cp[..],cm[..],huge[..]).status==CkStatus.shape;
+    for i:0..<220 {#assert cp[i]==7 && cm[i]==7 && cv[i]==7;}
+    // The real record resumes into fresh buffers and finishes the run.
+    q:=tt_resume(pointer[..],bytes[..],ids,f.docs[..],cp[..],cm[..],cv[..]);#assert q.status==CkStatus.ok && q.meta.revision==2 && q.meta.state.step==2;
+    #assert tt_same(cp[..],kp[..]) && tt_same(cm[..],km[..]) && tt_same(cv[..],kv[..]);
+    cr:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};lc:[1]f64;cr=tt_steps(f.docs[..],f.tokens[0..<f.n],cr,1,3,cp[..],cm[..],cv[..],total[..],lc[..]);
+    #assert lc[0]==la[2] && tt_same(cp[..],p[..]) && tt_same(cm[..],m[..]) && tt_same(cv[..],v[..]);
+    #assert cr.revision==3 && cr.cursor.order==TT_SHORT_CURSOR[0] && cr.cursor.offset==TT_SHORT_CURSOR[1];
+    // A signed record whose cursor names no document of this split.
+    far:=cr;far.cursor.order=38;#assert tt_save(ids,far,kp[..],km[..],kv[..],bytes[..],pointer[..])==CkStatus.ok;
+    #assert tt_resume(pointer[..],bytes[..],ids,f.docs[..],cp[..],cm[..],cv[..]).status==CkStatus.corrupt && tt_same(cp[..],p[..]);
+    small:[100]u8;#assert tt_save(ids,cr,p[..],m[..],v[..],small[..],pointer[..])==CkStatus.shape;
+    #assert tt_save(ids,cr,p[..],m[..],v[..],bytes[..],pointer[0..<79])==CkStatus.shape;
+}
+#test "a refused step changes nothing" #steps 4000000000 {
+    f:=tt_fix();s:=TT_SMALL;p:[220]f64;m:[220]f64;v:[220]f64;w:[600]f64;dw:[600]f64;g:[220]f64;total:[220]f64;run:=tt_start(p[..]);keep:=p;
+    bad:=run;bad.cursor.order=38;r:=tt_step(s,f.docs[..],f.tokens[0..<f.n],bad,3,p[..],m[..],v[..],w[..],dw[..],g[..],total[..]);
+    #assert r.status==TtStatus.data && r.run.cursor.order==38 && r.run.revision==0;
+    // An optimizer state AdamW cannot hold is refused after the rows are read.
+    late:=run;late.state.step=-1;r=tt_step(s,f.docs[..],f.tokens[0..<f.n],late,3,p[..],m[..],v[..],w[..],dw[..],g[..],total[..]);
+    #assert r.status==TtStatus.optimizer && r.run.state.step==-1;
+    p[9]=2*TD_NUMBER;r=tt_step(s,f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],w[..],dw[..],g[..],total[..]);#assert r.status==TtStatus.model;p[9]=keep[9];
+    #assert tt_same(p[..],keep[..]);for i:0..<220 {#assert m[i]==0 && v[i]==0;}
+}
+#test "seeded generation repeats and stops at BOS or the context" #steps 4000000000 {
+    s:=TT_SHAPE;p:[3152]f64;w:[13984]f64;seed:=td_init(s,CrSeed.{seed=TT_INIT},p[..]);out:[32]int;again:[32]int;
+    want:=[21]int.[2,8,8,1,3,8,2,12,7,14,11,10,7,4,11,11,5,2,5,7,13];
+    n:=tt_generate(s,p[..],w[..],3,0.8,out[..]);#assert n==21;for i:0..<21 {#assert out[i]==want[i];}
+    #assert tt_generate(s,p[..],w[..],3,0.8,again[..])==21;for i:0..<21 {#assert again[i]==out[i];}
+    m:=tt_generate(s,p[..],w[..],4,0.8,again[..]);same:=m==n;if same {for i:0..<n {same=same && again[i]==out[i];}}#assert !same;
+    // Greedy from this initialization never picks BOS, so it runs to the context.
+    g:=tt_generate(s,p[..],w[..],3,0,out[..]);#assert g==31;for i:0..<31 {#assert out[i]==6;}
+}
+
+#test "the schedule and identities are what the record names" #steps 4000000000 {
+    #assert tt_rate(0,400)==0.01 && abs(tt_rate(200,400)-0.0055)<1e-17 && abs(tt_rate(400,400)-0.001)<1e-17;
+    f:=tt_fix();a:=tt_ids(TT_SHAPE,f.docs[..],f.tokens[0..<f.n],400);b:=tt_ids(TT_SHAPE,f.docs[..],f.tokens[0..<f.n],399);
+    #assert ck_equal(a.model,b.model) && ck_equal(a.tokenizer,b.tokenizer) && ck_equal(a.dataset,b.dataset) && !ck_equal(a.optimizer,b.optimizer);
+    #assert !ck_equal(a.model,a.tokenizer) && !ck_equal(a.model,a.optimizer) && !ck_equal(tt_text("t","ab",1),tt_text("t","ab",2)) && !ck_equal(tt_text("t","ab",1),tt_text("t","ac",1));
+    #assert !ck_equal(tt_text("t","ab",1),tt_text("t","bb",1)) && ck_equal(tt_text("t","ab",1),tt_text("t","ab",1));
+    // Every shape field is part of the model's identity.
+    for k:0..<8 {t:=TT_SHAPE;
+        if k==0 {t.vocab+=1;}if k==1 {t.width+=1;}if k==2 {t.heads+=1;}if k==3 {t.kv_heads+=1;}if k==4 {t.head_width+=1;}if k==5 {t.hidden+=1;}if k==6 {t.layers+=1;}if k==7 {t.context+=1;}
+        #assert !ck_equal(tt_model(t),a.model);}
+    // The identities a checkpoint of the pinned run carries, by their first bytes.
+    pins:=[3][32]u8.[a.model,a.tokenizer,a.optimizer];for k:0..<3 {for i:0..<4 {#assert pins[k][i]==TT_ID_PINS[k][i];}}
+    g:=f;g.tokens[5]=1;c:=tt_ids(TT_SHAPE,g.docs[..],g.tokens[0..<g.n],400);#assert !ck_equal(a.dataset,c.dataset) && ck_equal(a.model,c.model);
+}
+
+// book:begin symbol
+// Letters fold to lower case. The 13 most common English letters are
+// symbols 1 to 13 in order, every other letter is 14, and any run of other
+// bytes (spaces, punctuation) is one separator, 0. Symbol 15 is chapter
+// 122's BOS, which only the packer writes.
+tt_symbol :: (c:int)->int {
+    // Setting bit 5 lowers A-Z to a-z and sends no other byte into a-z.
+    x:=c|32;if x<97 || x>122 {return 0;}
+    for i:0..<13 {if byte_at(TT_LETTERS,i)==x {return i+1;}}
+    return 14;
+}
+// Appends the symbols of text at tokens[at..]; a separator run collapses to
+// one and a leading separator is dropped. Returns the new end.
+tt_fold :: (text:string,tokens:[]u8,at:int)->int {
+    end:=at;prev:=0;
+    for i:0..<text.count {t:=tt_symbol(byte_at(text,i));if t!=0 || prev!=0 {tokens[end]=cast(u8)t;end+=1;}prev=t;}
+    return end;
+}
+// book:end symbol
+// book:begin corpus
+// One row per sentence. Each sentence is its own task and session, its time
+// is its place in the book, and its licence is the repository's own (1).
+tt_corpus :: (rows:[]SpRow,tokens:[]u8)->int {
+    at:=0;
+    for i:0..<TT_ROWS {end:=tt_fold(TT_CORPUS[i],tokens,at);rows[i]=SpRow.{id=i+1,licence=1,task=i,session=i,time=i,outcome=i,first=at,count=end-at};at=end;}
+    return at;
+}
+// Chapter 120's split by time with whole groups, audited, as packed documents.
+tt_docs :: (rows:[]SpRow,tokens:[]u8,docs:[]PkDoc)->SpStatus {
+    splits:[64]PkSplit;s:=sp_assign(rows,tokens,TT_PLAN,splits[0..<rows.count]);if s!=SpStatus.ok {return s;}
+    return sp_docs(rows,tokens,splits[0..<rows.count],docs);
+}
+// The documents of one split, each as BOS then its symbols, in ID order.
+tt_stream :: (docs:[]PkDoc,tokens:[]u8,split:PkSplit,out:[]int)->int {
+    n:=0;for d:docs {if d.split==split {out[n]=PK_BOS;n+=1;for i:0..<d.count {out[n]=cast(int)tokens[d.first+i];n+=1;}}}
+    return n;
+}
+// book:end corpus
+
+// book:begin bigram
+// The baseline: add-one bigram counts over the training stream, scored as
+// mean negative log probability of every held-out transition.
+tt_bigram :: (train:[]int,counts:[]int) {
+    for i:0..<256 {counts[i]=0;}for t:1..<train.count {counts[train[t-1]*16+train[t]]+=1;}
+}
+tt_bigram_loss :: (counts:[]int,held:[]int)->f64 {
+    total:=0.0;
+    for t:1..<held.count {a:=held[t-1];row:=0;for j:0..<16 {row+=counts[a*16+j];}total-=log(f64(counts[a*16+held[t]]+1)/f64(row+16));}
+    return total/f64(held.count-1);
+}
+// book:end bigram
+// book:begin held
+// The decoder's held-out loss: windows of the context length that overlap by
+// one token, so every transition the bigram scores is predicted exactly once.
+tt_held_loss :: (s:TdShape,p:[]f64,held:[]int,w:[]f64)->f64 {
+    total:=0.0;first:=0;logits:[512]f64;
+    while first+1<held.count {n:=nx_min(held.count-first,s.context);
+        r:=td_forward(s,p,held[first..<first+n],w,logits[0..<n*s.vocab],false);#assert r.status==TdStatus.ok;
+        total+=r.loss*f64(n-1);first+=n-1;}
+    return total/f64(held.count-1);
+}
+// book:end held
+// The same quantity by another route: one token at a time through the KV
+// cache, with an unshifted log-sum-exp (these logits are small). Used only
+// by the checks.
+tt_held_decode :: (s:TdShape,p:[]f64,held:[]int,cache:[]f64)->f64 {
+    total:=0.0;first:=0;logits:[16]f64;
+    while first+1<held.count {n:=nx_min(held.count-first,s.context);
+        for t:0..<n-1 {r:=td_decode(s,p,cache,t,held[first+t],logits[..],false);#assert r.status==TdStatus.ok;
+            sum:=0.0;for v:0..<16 {sum+=exp(logits[v]);}total+=log(sum)-logits[held[first+t+1]];}
+        first+=n-1;}
+    return total/f64(held.count-1);
+}
+
+// book:begin step
+// The rate falls linearly from TT_RATE at step 0 to a tenth of it at `steps`.
+tt_rate :: (step:int,steps:int)->f64 {return TT_RATE*(1-0.9*f64(step)/f64(steps));}
+// One step: TT_BATCH packed rows of the context length from the cursor, the
+// mean of their decoder gradients, one AdamW update at the scheduled rate.
+// Nothing is updated unless every row and the optimizer are admitted.
+tt_step :: (s:TdShape,docs:[]PkDoc,tokens:[]u8,run:RsRun,steps:int,p:[]f64,m:[]f64,v:[]f64,w:[]f64,dw:[]f64,grads:[]f64,total:[]f64)->TtStep {
+    c:=run.cursor;loss:=0.0;row:[64]u8;ints:[64]int;n:=s.context;
+    for i:0..<p.count {total[i]=0;}
+    for b:0..<TT_BATCH {
+        next:=pk_next(docs,tokens,c,row[0..<n],false);if next.status!=PkStatus.ok {return TtStep.{status=TtStatus.data,run=run};}c=next.cursor;
+        for t:0..<n {ints[t]=cast(int)row[t];}
+        r:=td_gradients(s,p,ints[0..<n],w,dw,grads,false);if r.status!=TdStatus.ok {return TtStep.{status=TtStatus.model,run=run};}
+        loss+=r.loss/TT_BATCH;for i:0..<p.count {total[i]+=grads[i]/TT_BATCH;}
+    }
+    groups:=[1]AwGroup.[AwGroup.{first=0,count=p.count,lr=tt_rate(run.state.step,steps),beta1=0.9,beta2=0.99,eps=0.00000001,decay=0}];none:[1]f32;
+    a:=aw_step(groups[..],AwPolicy.{},run.state,p,total,m,v,none[0..<0],false);if a.status!=AwStatus.ok {return TtStep.{status=TtStatus.optimizer,run=run};}
+    return TtStep.{run=RsRun.{cursor=c,state=a.state,revision=run.revision+1},loss=loss};
+}
+// book:end step
+
+// book:begin ids
+tt_text :: (tag:string,s:string,extra:int)->[32]u8 {
+    b:[256]u8;for i:0..<s.count {b[i]=cast(u8)byte_at(s,i);}at:=ck_put64(b[..],s.count,cast(u64)extra);return ck_digest(tag,b[0..<at]);
+}
+// The model: every shape field and the initialization seed, as u64 words.
+tt_model :: (s:TdShape)->[32]u8 {
+    b:[72]u8;at:=0;for x:[9]int.[s.vocab,s.width,s.heads,s.kv_heads,s.head_width,s.hidden,s.layers,s.context,TT_INIT] {at=ck_put64(b[..],at,cast(u64)x);}
+    return ck_digest("psionic.model.v1",b[0..<at]);
+}
+// What a checkpoint must match to resume: the model and its initialization,
+// the tokenizer, the packed dataset, and the optimizer with its schedule and
+// batch for a run of `steps` steps (rows are the model's context long).
+tt_ids :: (s:TdShape,docs:[]PkDoc,tokens:[]u8,steps:int)->CkIds {
+    d:[32]u8;k:=pk_identity(docs,tokens,d[..]);#assert k==PkStatus.ok;
+    return CkIds.{model=tt_model(s),tokenizer=tt_text("psionic.tokenizer.v1","fold etaoinshrdlcu=1..13 other letters=14 separator runs=0 BOS=15",16),dataset=d,
+        optimizer=tt_text("psionic.optimizer.v1","adamw beta1=0.9 beta2=0.99 eps=1e-8 decay=0 rate=0.01 linear to 0.001 batch=4 rows=context steps",steps)};
+}
+// book:end ids
+// book:begin save
+// Writes the whole run as one checkpoint and the pointer that names it.
+tt_save :: (ids:CkIds,run:RsRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)->CkStatus {
+    s:=ck_write(CkMeta.{ids=ids,revision=run.revision,cursor=run.cursor,state=run.state},p,m,v,bytes,false);if s!=CkStatus.ok {return s;}
+    // The record ends with its own digest, which is what the pointer names.
+    return ck_pointer_write(run.revision,ck_get(bytes,bytes.count-32),pointer);
+}
+// Restores a run into p, m and v from a checkpoint whose pointer is current.
+// Every check passes before anything is written.
+tt_resume :: (pointer:[]u8,bytes:[]u8,ids:CkIds,docs:[]PkDoc,p:[]f64,m:[]f64,v:[]f64)->CkRead {
+    if p.count>CK_VALUES || m.count>CK_VALUES || v.count>CK_VALUES {return CkRead.{status=CkStatus.shape};}
+    q:=ck_pointer_read(pointer);if q.status!=CkStatus.ok {return CkRead.{status=q.status};}
+    sp:[4096]f64;sm:[4096]f64;sv:[4096]f64;r:=ck_read(bytes,ids,sp[0..<p.count],sm[0..<m.count],sv[0..<v.count],false);
+    s:=ck_current(q,r);if s!=CkStatus.ok {return CkRead.{status=s};}
+    if !pk_cursor(docs,r.meta.cursor) {return CkRead.{status=CkStatus.corrupt};}
+    for i:0..<p.count {p[i]=sp[i];m[i]=sm[i];v[i]=sv[i];}return r;
+}
+// book:end save
+
+// book:begin generate
+// Seeded generation: BOS, then up to context-1 symbols drawn by chapter 53's
+// sampler at the given temperature, stopping at the first BOS. Returns the
+// number of symbols written to out (the BOS is not counted).
+tt_generate :: (s:TdShape,p:[]f64,cache:[]f64,seed:u64,temperature:f64,out:[]int)->int {
+    logits:[16]f64;narrow:[16]f32;probs:[16]f64;st:[16]f64;o:[16]int;tm:[16]int;none:[1]u8;stops:=[1]int.[PK_BOS];
+    run:=NxRun.{random=CrSeed.{seed=seed},limit=s.context-1};token:=PK_BOS;n:=0;
+    while run.stop==NxStop.running {
+        r:=td_decode(s,p,cache,n,token,logits[..],false);#assert r.status==TdStatus.ok;
+        for v:0..<16 {narrow[v]=cast(f32)logits[v];}
+        e:=nx_step(narrow[..],none[0..<0],NxOptions.{temperature=temperature},run,stops[..],false,probs[..],nx_work(st[..],o[..],tm[..]),false);#assert e.status==NxStatus.ok;
+        run=e.run;token=e.token;if token!=PK_BOS {out[n]=token;n+=1;}
+    }
+    return n;
+}
+// book:end generate
+// SHA-256 of the parameters' bits, the identity printed for a trained model.
+tt_digest :: (p:[]f64)->[32]u8 {b:[32768]u8;at:=0;for x:p {at=ck_put64(b[..],at,f64_bits(x));}return ck_digest("psionic.weights.v1",b[0..<at]);}

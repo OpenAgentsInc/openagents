@@ -1,0 +1,42 @@
+#import "Basic";
+#load "../lib/transformer/train.coax";
+TT_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+tt_hex :: (d:[32]u8) {for i:0..<8 {print("%",TT_HEX[cast(int)d[i]/16]);print("%",TT_HEX[cast(int)d[i]%16]);}}
+tt_show :: (out:[]int,n:int) {for i:0..<n {print("%",TT_GLYPHS[out[i]]);}}
+// book:begin example
+main :: () {
+    s:=TT_SHAPE;rows:[47]SpRow;tokens:[4096]u8;n:=tt_corpus(rows[..],tokens[..]);docs:[47]PkDoc;
+    #assert tt_docs(rows[..],tokens[0..<n],docs[..])==SpStatus.ok;
+    train:[4096]int;held:[4096]int;nt:=tt_stream(docs[..],tokens[0..<n],PkSplit.train,train[..]);nh:=tt_stream(docs[..],tokens[0..<n],PkSplit.validation,held[..]);
+    print("corpus: % sentences, % symbols; split by time: % train, % held out\n",TT_ROWS,n,pk_trains(docs[..]),TT_ROWS-pk_trains(docs[..]));
+    print("streams: train % symbols, held-out % (% transitions)\n",nt,nh,nh-1);
+    counts:[256]int;tt_bigram(train[0..<nt],counts[..]);bigram:=tt_bigram_loss(counts[..],held[0..<nh]);
+    print("bigram baseline: held-out % nats per symbol\n",bigram);
+    // The pinned run, with a checkpoint written after step 350.
+    p:[3152]f64;m:[3152]f64;v:[3152]f64;w:[13984]f64;dw:[13984]f64;g:[3152]f64;total:[3152]f64;
+    seed:=td_init(s,CrSeed.{seed=TT_INIT},p[..]);ids:=tt_ids(s,docs[..],tokens[0..<n],TT_STEPS);
+    print("model: % parameters; held-out at initialization %\n",td_parameter_count(s),tt_held_loss(s,p[..],held[0..<nh],w[..]));
+    run:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};losses:[400]f64;bytes:[75908]u8;pointer:[80]u8;
+    for k:0..<TT_STEPS {
+        r:=tt_step(s,docs[..],tokens[0..<n],run,TT_STEPS,p[..],m[..],v[..],w[..],dw[..],g[..],total[..]);#assert r.status==TtStatus.ok;run=r.run;losses[k]=r.loss;
+        if k==349 {#assert tt_save(ids,run,p[..],m[..],v[..],bytes[..],pointer[..])==CkStatus.ok;}
+        if (k+1)%50==0 {print("step %: train loss %",k+1,r.loss);if (k+1)%100==0 {print(", held-out %",tt_held_loss(s,p[..],held[0..<nh],w[..]));}print("\n");}
+    }
+    decoder:=tt_held_loss(s,p[..],held[0..<nh],w[..]);
+    print("held-out: decoder %, bigram %, decoder better by % (frozen margin %)\n",decoder,bigram,bigram-decoder,TT_MARGIN);
+    #assert bigram-decoder>=TT_MARGIN;
+    print("weights: sha256 ");tt_hex(tt_digest(p[..]));print("...\n");
+    // A fresh process would hold only the record and its pointer.
+    rp:[3152]f64;rm:[3152]f64;rv:[3152]f64;q:=tt_resume(pointer[..],bytes[..],ids,docs[..],rp[..],rm[..],rv[..]);#assert q.status==CkStatus.ok;
+    again:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};same:=0;
+    for k:350..<TT_STEPS {r:=tt_step(s,docs[..],tokens[0..<n],again,TT_STEPS,rp[..],rm[..],rv[..],w[..],dw[..],g[..],total[..]);#assert r.status==TtStatus.ok;again=r.run;if r.loss==losses[k] {same+=1;}}
+    print("resumed from step % (% bytes): % of 50 losses identical, weights and moments identical: %\n",q.meta.revision,bytes.count,same,tt_same(rp[..],p[..]) && tt_same(rm[..],m[..]) && tt_same(rv[..],v[..]));
+    // Broken inputs: a record from a run of another length, and a damaged pointer.
+    other:=tt_ids(s,docs[..],tokens[0..<n],TT_STEPS-1);print("resume as a 399-step run: %\n",tt_resume(pointer[..],bytes[..],other,docs[..],rp[..],rm[..],rv[..]).status);
+    pointer[8]^=1;print("resume with one pointer byte changed: %\n",tt_resume(pointer[..],bytes[..],ids,docs[..],rp[..],rm[..],rv[..]).status);
+    out:[32]int;repeat:[32]int;
+    for x:1..<4 {c:=tt_generate(s,p[..],w[..],cast(u64)x,0.8,out[..]);print("seed % at 0.8: ",x);tt_show(out[..],c);print("\n");}
+    a:=tt_generate(s,p[..],w[..],1,0.8,out[..]);b:=tt_generate(s,p[..],w[..],1,0.8,repeat[..]);ok:=a==b;for i:0..<a {ok=ok && out[i]==repeat[i];}
+    print("seed 1 again: identical %\n",ok);
+}
+// book:end example

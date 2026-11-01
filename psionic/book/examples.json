@@ -1830,6 +1830,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/tiny-train.coax",
+      "chapter": "psionic/book/ch115-train-the-whole-tiny-decoder.md",
+      "stdout": "psionic/fixtures/tiny-train.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
