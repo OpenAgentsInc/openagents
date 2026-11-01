@@ -25,7 +25,7 @@ admin_who :: (s: string, out: [] u8) -> string {
   if s.count > 5 && s[0..<5] == "npub1" {
     b: [64] u8;
     d := nip19_decode_checked(s, b[..], false);
-    if d.error != NC_OK || d.type != N19_NPUB || d.written != 32 || !cli_hex(b[0..<32], out) { return ""; }
+    if out.count < 64 || d.error != NC_OK || d.type != N19_NPUB || d.written != 32 || !cli_hex(b[0..<32], out[0..<64]) { return ""; }
     return cast(string) out[0..<64];
   }
   if !cli_who_ok(s) { return ""; }
