@@ -164,6 +164,24 @@ overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
 mutation 0 survivors) and `verse/player.coax` ("jumping onto, landing on
 and walking off a ledge is the same in every realm").
 
+## The Grid steps only on its session's record
+
+The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
+the phone's thumbs, the input buffer and the session's record
+(`aethyr/replay.coax`). The page's C face hands it the devices' input and
+the frame's time once a frame and draws what it reads back; the face does
+not clamp time, step the player or keep the player. Each frame's controls
+are one `REPLAY_ACTIONS` event, and a fixed step applies only the events
+`replay_take` hands it, through the input buffer, so look and zoom change
+the state only on steps. When a record fills, a new one starts from the
+state the session has then, with the frames still waiting for a step in its
+start's input buffer, so no press or turn is lost. Checks:
+`verse/gridwalk.coax` ("a recorded session replays to the same digest at
+every step", "a record full of frames starts a new one", "the keyboard and
+the touch stick drive the same session to the same digests"; mutation 0
+survivors) and `coax/web/replay-hosts.test.ts` (a recorded Grid session
+gives the same digest at every step natively and in wasm).
+
 ## Simulation steps and supplied wall clocks keep their domains
 
 The step-clock precursor uses integer simulation steps and distinct nominal
@@ -2113,8 +2131,8 @@ behind you; `verse/camera.coax` owns the overview orbit and the dolly path
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
-`verse/grid.coax` owns its projection, line art and
-move/look/jump touch policy; `verse/player.coax` owns walking and the
+`verse/grid.coax` owns its projection and line art,
+`verse/sticks.coax` the move/look/jump touch policy; `verse/player.coax` owns walking and the
 camera; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
