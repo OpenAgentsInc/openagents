@@ -1,0 +1,9 @@
+prompt: 320 321 72 101 315 111 44 263 111 114 108 100 33 322 323
+greedy reply, stopped by limit after 26 positions
+  ids: 244 213 49 270 323 38 35 274 45 107 253 25
+  text: \xf4\xd51in<|assistant_start|>&# o-k\xfd\x19
+seed 126, top-k 40 reply, stopped by limit after 26 positions
+  ids: 235 195 4 85 63 59 290 34 123 156 283 270
+  text: \xeb\xc3\x04U?; st"{\x9c pin
+refused prompt: prompt, written 0
+refused generation: model (model shape), written 0

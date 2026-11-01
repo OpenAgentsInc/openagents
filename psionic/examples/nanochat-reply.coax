@@ -1,0 +1,39 @@
+#import "Basic";
+#load "../lib/nanochat/engine.coax";
+
+// Printable ASCII as is, every other byte as \xNN.
+show_text :: (bytes:[]u8) {
+    hex:="0123456789abcdef";
+    for b:bytes {if b>=32 && b<127 && b!=92 {one:=[1]u8.[b];print("%",cast(string)one[..]);}
+        else {e:=[4]u8.[92,'x',hex[b>>4],hex[b&15]];print("%",cast(string)e[..]);}}
+}
+show_ids :: (label:string,ids:[]int) {print("%:",label);for t:ids {print(" %",t);}print("\n");}
+
+// book:begin example
+main :: () {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);none:[1]NcPart;
+    hello:=[2]NcMessage.[NcMessage.{role=NcRole.user,text="Hello, world!"},NcMessage.{role=NcRole.assistant,text=""}];
+    prompt:[64]int;r:=ne_prompt(table[..],sp[..],329,hello[..],none[0..<0],prompt[..],false);#assert r.status==NeStatus.ok;
+    show_ids("prompt",prompt[0..<r.written]);
+
+    c:=NE_CHECKPOINT;p:[53290]f64;ne_checkpoint_weights(c,p[..]);
+    cache:[4128]f64;work:[64*6*32+6*32+64]f64;logits:[64*329]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    w:=ne_buffers(c,r.written,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    settings:=[2]NxOptions.[NxOptions.{temperature=0},NxOptions.{temperature=1,top_k=40}];seeds:=[2]u64.[0,126];
+    labels:=[2]string.["greedy","seed 126, top-k 40"];
+    for k:0..<2 {
+        out:[64]int;g:=ne_generate(c,p[..],320,prompt[0..<r.written],settings[k],seeds[k],12,out[..],w,false);#assert g.status==NeStatus.ok;
+        print("% reply, stopped by % after % positions\n",labels[k],g.stop,g.positions);show_ids("  ids",out[0..<g.written]);
+        text:[512]u8;t:=ne_text(table[..],out[0..<g.written],text[..]);#assert t.status==NeStatus.ok;
+        print("  text: ");show_text(text[0..<t.written]);print("\n");
+    }
+
+    // A conversation that ends with the user's turn has no reply to open.
+    asked:=[1]NcMessage.[hello[0]];bad:=ne_prompt(table[..],sp[..],329,asked[..],none[0..<0],prompt[..],false);
+    print("refused prompt: %, written %\n",bad.status,bad.written);
+    // A prompt longer than the model's context refuses before any token is drawn.
+    long:[70]int;for i:0..<70 {long[i]=97;}out:[8]int;
+    g:=ne_generate(c,p[..],320,long[..],settings[0],0,8,out[..],w,false);
+    print("refused generation: % (model %), written %\n",g.status,g.model,g.written);
+}
+// book:end example

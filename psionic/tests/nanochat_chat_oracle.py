@@ -173,14 +173,14 @@ def build():
         out.append(f'    want:=[{max(1, len(r["ids"]))}]int.[{",".join(map(str, r["ids"])) or "0"}];mask:=[{max(1, len(r["mask"]))}]u8.[{",".join(map(str, r["mask"])) or "0"}];')
         out.append(f'    ids:[2048]int;got:[2048]u8;table:=NC_LEARNED;specials:[9]int;for i:0..<9 {{specials[i]=NC_BASE+i;}}')
         out.append(f'    r:=nc_render(table[..],specials[..],32768,messages[..],parts[..],{r["limit"]},ids[..],got[..],false);')
-        out.append(f'    #assert r.status==NcStatus.ok && r.written=={len(r["ids"])} && r.total=={r["total"]};')
+        out.append(f'    #assert r.status==NcChatStatus.ok && r.written=={len(r["ids"])} && r.total=={r["total"]};')
         out.append(f'    for i:0..<r.written {{#assert ids[i]==want[i] && got[i]==mask[i];}}')
         out.append('}')
     for n, text in enumerate(DOCUMENTS):
         ids = [base] + enc(text)
         out.append(f'#test "independent nanochat document {n} begins with BOS" {{')
         out.append(f'    table:=NC_LEARNED;want:=[{len(ids)}]int.[{",".join(map(str, ids))}];ids:[64]int;')
-        out.append(f'    r:=nc_document(table[..],{coax_str(text)},ids[..],false);#assert r.status==NcStatus.ok && r.written=={len(ids)};')
+        out.append(f'    r:=nc_document(table[..],{coax_str(text)},ids[..],false);#assert r.status==NcChatStatus.ok && r.written=={len(ids)};')
         out.append(f'    for i:0..<r.written {{#assert ids[i]==want[i];}}')
         out.append('}')
     # Byte accounting: nanochat's evaluate_bpb over targets, ignore index -1, specials count 0 bytes.
@@ -190,7 +190,7 @@ def build():
     nats = sum(l for l, b in zip(losses, nb) if b > 0); total = sum(nb)
     out.append('#test "independent bits per byte: ignored targets and special tokens carry no bytes" {')
     out.append(f'    table:=NC_LEARNED;targets:=[{len(targets)}]int.[{",".join(map(str, targets))}];losses:=[{len(losses)}]f64.[{",".join(repr(x) for x in losses)}];')
-    out.append(f'    r:=nc_bpb(table[..],targets[..],losses[..]);#assert r.status==NcStatus.ok && r.bytes=={total} && r.nats=={nats!r};')
+    out.append(f'    r:=nc_bpb(table[..],targets[..],losses[..]);#assert r.status==NcChatStatus.ok && r.bytes=={total} && r.nats=={nats!r};')
     out.append(f'    #assert abs(r.bpb-{nats / (math.log(2) * total)!r})<0.000000000001;')
     for t, b in zip(targets, nb):
         if t >= 0:
@@ -215,4 +215,5 @@ def main():
           f'{cases} conversations, {docs} BOS documents and bits-per-byte accounting {"written" if a.write else "verify"}')
 
 
-main()
+if __name__ == '__main__':
+    main()

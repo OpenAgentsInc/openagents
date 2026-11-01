@@ -166,16 +166,16 @@ counts nothing, a special token counts zero bytes, and the result is nats over
 <!-- source: psionic/lib/nanochat-chat.coax bpb -->
 ```jai
 nc_bpb :: (table:[]u8,targets:[]int,losses:[]f64)->NcBpb #export_c {
-    if !nc_ok(pt_layout(table)) {return NcBpb.{status=NcStatus.artifact};}
-    if targets.count!=losses.count {return NcBpb.{status=NcStatus.shape};}
+    if !nc_ok(pt_layout(table)) {return NcBpb.{status=NcChatStatus.artifact};}
+    if targets.count!=losses.count {return NcBpb.{status=NcChatStatus.shape};}
     nats:PsionicAccumulator;bytes:=0;
     for i:0..<targets.count {
-        if !(losses[i]>=0 && losses[i]<=NC_LOSS_MAX) {return NcBpb.{status=NcStatus.number};}
+        if !(losses[i]>=0 && losses[i]<=NC_LOSS_MAX) {return NcBpb.{status=NcChatStatus.number};}
         if targets[i]<0 {continue;}
-        b:=nc_token_bytes(table,targets[i]);if b<0 {return NcBpb.{status=NcStatus.shape};}
+        b:=nc_token_bytes(table,targets[i]);if b<0 {return NcBpb.{status=NcChatStatus.shape};}
         if b>0 {nats=psionic_ops_accumulate(nats,losses[i]);bytes+=b;}
     }
-    if bytes==0 {return NcBpb.{status=NcStatus.shape};}
+    if bytes==0 {return NcBpb.{status=NcChatStatus.shape};}
     total:=psionic_ops_total(nats);
     return NcBpb.{nats=total,bytes=bytes,bpb=total/(log(2.0)*f64(bytes))};
 }

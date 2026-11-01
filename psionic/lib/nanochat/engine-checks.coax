@@ -1,0 +1,40 @@
+// Chapter 126's checks against the independent oracle
+// (psionic/tests/nanochat_engine_oracle.py): the stand-in checkpoint's
+// weights, the prompt's last logits, and five conversations rendered,
+// generated and decoded. Kept apart from engine.coax so its mutation run
+// does not repeat these longer generations for every mutant.
+#load "engine.coax";
+
+// Golden helper: render, generate and decode one conversation; compare all three.
+ne_golden :: (messages:[]NcMessage,prompt:[]int,want:[]int,bytes:[]u8,o:NxOptions,seed:u64,limit:int,stop:NeStop)->bool {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ids:[64]int;none:[1]NcPart;
+    r:=ne_prompt(table[..],sp[..],329,messages,none[0..<0],ids[..],false);
+    if r.status!=NeStatus.ok || r.written!=prompt.count {return false;}
+    for i:0..<r.written {if ids[i]!=prompt[i] {return false;}}
+    c:=NE_CHECKPOINT;p:[53290]f64;ne_checkpoint_weights(c,p[..]);
+    cache:[4128]f64;work:[64*6*32+6*32+64]f64;logits:[64*329]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    w:=ne_buffers(c,prompt.count,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    out:[64]int;g:=ne_generate(c,p[..],320,prompt,o,seed,limit,out[..],w,false);
+    if g.status!=NeStatus.ok || g.stop!=stop || g.written!=want.count {return false;}
+    for i:0..<want.count {if out[i]!=want[i] {return false;}}
+    text:[512]u8;t:=ne_text(table[..],out[0..<g.written],text[..]);
+    if t.status!=NeStatus.ok || t.written!=bytes.count {return false;}
+    for i:0..<bytes.count {if text[i]!=bytes[i] {return false;}}
+    return true;
+}
+// The prompt's last-position logits against the oracle's one-at-a-time values.
+ne_golden_logits :: (prompt:[]int,want:[]f64)->bool {
+    c:=NE_CHECKPOINT;p:[53290]f64;ne_checkpoint_weights(c,p[..]);cache:[4128]f64;work:[64*6*32+6*32+64]f64;logits:[64*329]f64;none:[1]f64;
+    r:=nc_forward(c,p[..],prompt,cache[..],work[0..<nc_work_count(c,prompt.count)],logits[..],none[0..<0],false);if r.status!=NcStatus.ok {return false;}
+    at:=(prompt.count-1)*329;
+    for v:0..<329 {if !(abs(logits[at+v]-want[v])<=0.000000000001*(1+abs(want[v]))) {return false;}}
+    return true;
+}
+#test "the stand-in checkpoint carries the export's F32 and round-to-nearest BF16 values" {
+    c:=NE_CHECKPOINT;#assert nc_valid(c) && nc_parameter_count(c)==NE_WEIGHT_COUNT;p:[53290]f64;ne_checkpoint_weights(c,p[..]);
+    for i:0..<NE_WEIGHT_SAMPLES.count {#assert p[i*97]==NE_WEIGHT_SAMPLES[i];}
+    // Halfway cases round to even: 1+2^-8 stays 1, 1+3*2^-8 rounds up to 1+2^-6; a carry reaches the exponent.
+    #assert ne_bf16(1.00390625)==1 && ne_bf16(1.01171875)==1.015625 && ne_bf16(1.0078125)==1.0078125 && ne_bf16(-1.01171875)==-1.015625;
+    #assert ne_bf16(1.99609375)==2 && ne_bf16(0.0)==0;
+}
+#load "../../fixtures/nanochat/engine-goldens.coax";

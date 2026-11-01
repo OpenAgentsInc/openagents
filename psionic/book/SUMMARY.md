@@ -137,7 +137,7 @@
 - [124. AdamW, Muon and explicit precision](ch124-adamw-and-explicit-precision.md)
 - [125. Execute the pinned nanochat GPT](ch125-execute-the-pinned-nanochat-gpt.md)
 
-- [126. Execute nanochat exactly](ch126-execute-nanochat-exactly.md) — design draft
+- [126. Execute nanochat exactly](ch126-execute-nanochat-exactly.md) — partly implemented
 - [127. Differentiate nanochat](ch127-differentiate-nanochat.md) — design draft
 - [128. A complete pretraining run](ch128-a-complete-pretraining-run.md) — design draft
 - [129. Train a whole model on one GPU](ch129-train-a-whole-model-on-one-gpu.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–117, 119, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–117, 119, 120, 121, 123, 124, 126, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

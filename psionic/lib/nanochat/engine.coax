@@ -1,0 +1,238 @@
+// Chapter 126: nanochat from text to text. The pinned nanochat/engine.py at
+// 92d63d4e (read, never executed) renders a conversation for completion,
+// prefills the KV cache with the prompt, then picks one token at a time from
+// the last position's logits until <|assistant_end|> or <|bos|>; neither is
+// part of the reply. Here the prompt comes from chapter 123's renderer, the
+// model is chapter 125's binary64 forward pass and cached decode, and every
+// pick is chapter 53's sampler over binary32 logits with its counter RNG
+// (one draw per step), so a seed names one reply. torch.multinomial's stream
+// is not reproduced. engine.py's calculator tool is not run: a reply that
+// closes a python block stops as `tool` with the call in its tokens.
+#load "gpt.coax" as gpt;
+#load "../nanochat-chat.coax" as chat;
+#load "../next-token.coax";
+
+NeStatus :: enum u8 {ok;shape;capacity;alias;artifact;prompt;model;}
+NeStop :: enum u8 {none;assistant_end;bos;limit;context;tool;}
+// chat and model keep the refusing module's own status.
+NePrompt :: struct {status:NeStatus;chat:NcChatStatus;written:int;}
+NeReply :: struct {status:NeStatus;model:NcStatus;stop:NeStop;written:int;positions:int;}
+NeText :: struct {status:NeStatus;written:int;}
+// What one pick does: emit it or not, open a python block, end the reply.
+NeState :: struct {emit:bool;python:bool;stop:NeStop;}
+// cache, work and logits are chapter 125's buffers for the prompt; the rest
+// is the sampler's, one vocabulary each.
+NeWork :: struct {cache:[]f64;work:[]f64;logits:[]f64;last:[]f32;probabilities:[]f64;stage:[]f64;order:[]int;temporary:[]int;}
+NE_PROMPT_MAX :: 2048;
+// The exported test checkpoint: chapter 123's 320 tokens plus nine specials,
+// "SSSL" (bits 0..2 short), context = sequence_len as admission sets it.
+NE_CHECKPOINT :: NcConfig.{sequence_len=64,vocab=329,layers=2,heads=2,kv_heads=1,width=32,pattern=7,pattern_len=4,context=64};
+
+// Checks first. The independent goldens are loaded at the end.
+ne_specials :: (out:[]int) {for i:0..<9 {out[i]=320+i;}}
+ne_buffers :: (c:NcConfig,n:int,cache:[]f64,work:[]f64,logits:[]f64,last:[]f32,probabilities:[]f64,stage:[]f64,order:[]int,temporary:[]int)->NeWork {
+    return NeWork.{cache=cache[0..<nc_cache_count(c)],work=work[0..<nc_work_count(c,n)],logits=logits[0..<n*c.vocab],last=last[0..<c.vocab],
+        probabilities=probabilities[0..<c.vocab],stage=stage[0..<c.vocab],order=order[0..<c.vocab],temporary=temporary[0..<c.vocab]};
+}
+// A one-block model whose 12 IDs are 3 ordinary tokens and the nine
+// specials from 3: cheap enough to replay every pick through the full pass.
+// Seeds that reach every stop on NE_SMALL (19 and 30 close a python block).
+NE_SMALL_SEEDS :: [8]int.[0,1,2,3,4,9,19,30];
+NE_SMALL :: NcConfig.{sequence_len=8,vocab=12,layers=1,heads=2,kv_heads=1,width=24,pattern=0,pattern_len=1,context=8};
+#test "every pick replays through the full pass and the sampler; each stop is reached" #steps 100000000 {
+    c:=NE_SMALL;p:[10216]f64;#assert nc_parameter_count(c)==10216;nc_formula(c,0.5,p[..]);prompt:=[4]int.[3,4,5,6];
+    cache:[216]f64;work:[1304]f64;logits:[96]f64;last:[12]f32;pr:[12]f64;st:[12]f64;or:[12]int;te:[12]int;
+    w:=ne_buffers(c,4,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    seen:[6]int;
+    for seed:NE_SMALL_SEEDS {out:[8]int;for i:0..<8 {out[i]=-7;}
+        o:=NxOptions.{temperature=100};limit:=8;if seed%2==0 {limit=4;}if seed%3==0 {o=NxOptions.{temperature=0.5,top_k=6,top_p=0.75};}
+        g:=ne_generate(c,p[..],3,prompt[..],o,cast(u64)seed,limit,out[0..<limit],w,false);
+        #assert g.status==NeStatus.ok && ne_replay(c,p[..],3,prompt[..],o,cast(u64)seed,limit,out[..],g);
+        for i:g.written..<8 {#assert out[i]==-7;}
+        seen[cast(int)g.stop]+=1;
+    }
+    for s:1..<6 {#assert seen[s]>0;}#assert seen[0]==0;
+    // The replay is a real check: a changed token, stop or count fails it.
+    out:[8]int;g:=ne_generate(c,p[..],3,prompt[..],NxOptions.{temperature=100},1,8,out[..],w,false);#assert g.stop==NeStop.context && ne_replay(c,p[..],3,prompt[..],NxOptions.{temperature=100},1,8,out[..],g);
+    t:=out;t[1]=(t[1]+1)%12;#assert !ne_replay(c,p[..],3,prompt[..],NxOptions.{temperature=100},1,8,t[..],g);
+    h:=g;h.stop=NeStop.limit;#assert !ne_replay(c,p[..],3,prompt[..],NxOptions.{temperature=100},1,8,out[..],h);
+    h=g;h.positions-=1;#assert !ne_replay(c,p[..],3,prompt[..],NxOptions.{temperature=100},1,8,out[..],h);
+    #assert !ne_replay(c,p[..],3,prompt[..],NxOptions.{temperature=100},2,8,out[..],g);
+    // Greedy is the seed-free argmax: two seeds give one reply.
+    a:[8]int;b:[8]int;greedy:=NxOptions.{temperature=0};
+    ga:=ne_generate(c,p[..],3,prompt[..],greedy,1,8,a[..],w,false);gb:=ne_generate(c,p[..],3,prompt[..],greedy,99,8,b[..],w,false);
+    #assert ga.written==gb.written && ga.stop==gb.stop && ne_replay(c,p[..],3,prompt[..],greedy,1,8,a[..],ga);for i:0..<ga.written {#assert a[i]==b[i];}
+}
+#test "generation refuses before it writes" {
+    c:=NE_SMALL;p:[10216]f64;nc_formula(c,0.5,p[..]);prompt:=[4]int.[3,4,5,6];
+    cache:[216]f64;work:[1304]f64;logits:[96]f64;last:[12]f32;pr:[12]f64;st:[12]f64;or:[12]int;te:[12]int;out:[8]int;
+    w:=ne_buffers(c,4,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);greedy:=NxOptions.{temperature=0};
+    for f:0..<13 {for i:0..<8 {out[i]=-7;}ww:=w;lim:=4;base:=3;on:=8;o:=greedy;alias:=false;pp:=prompt[..];want:=NeStatus.capacity;
+        if f==0 {ww.last=last[0..<11];}if f==1 {ww.probabilities=pr[0..<11];}if f==2 {ww.stage=st[0..<11];}if f==3 {ww.order=or[0..<11];}
+        if f==4 {ww.temporary=te[0..<11];}if f==5 {on=3;}if f==6 {lim=0;want=NeStatus.shape;}if f==7 {base=4;want=NeStatus.artifact;}
+        if f==8 {base=-1;want=NeStatus.artifact;}if f==9 {alias=true;want=NeStatus.alias;}if f==10 {o.top_k=13;want=NeStatus.shape;}
+        if f==11 {pp=prompt[0..<1];want=NeStatus.model;}if f==12 {ww.cache=cache[0..<215];want=NeStatus.model;}
+        g:=ne_generate(c,p[..],base,pp,o,0,lim,out[0..<on],ww,alias);#assert g.status==want && g.written==0 && g.stop==NeStop.none;
+        if f==11 {#assert g.model==NcStatus.shape;}if f==12 {#assert g.model==NcStatus.capacity;}
+        for i:0..<8 {#assert out[i]==-7;}
+    }
+    // The edges that are accepted: base 0 with the last special at the top ID, and a limit equal to the room.
+    g:=ne_generate(c,p[..],3,prompt[..],greedy,0,4,out[0..<4],w,false);#assert g.status==NeStatus.ok && g.written>=1;
+    g=ne_generate(c,p[..],3,prompt[..],greedy,0,1,out[0..<1],w,false);#assert g.status==NeStatus.ok && g.written<=1;
+    g=ne_generate(c,p[..],0,prompt[..],greedy,0,4,out[..],w,false);#assert g.status==NeStatus.ok;
+}
+#test "the stand-in checkpoint stores wte and value embeddings as BF16, the rest as F32" {
+    c:=NE_SMALL;p:[10216]f64;ne_checkpoint_weights(c,p[..]);b:=nc_block(c,0);
+    // Tensor k, element e: scale*sin(0.61e + 1.3k + 0.25) + offset (chapter 125's formula).
+    #assert p[0]==cast(f64)cast(f32)(0.1*sin(0.25)+1) && p[nc_wte(c)+1]==ne_bf16(0.8*sin(0.61+1.3*4+0.25));
+    #assert p[b.q+2]==cast(f64)cast(f32)(0.3*sin(1.22+1.3*5+0.25)) && p[b.value+3]==ne_bf16(0.5*sin(1.83+1.3*14+0.25));
+    #assert p[nc_wte(c)+1]!=cast(f64)cast(f32)(0.8*sin(0.61+1.3*4+0.25));
+    // Halfway cases round to even: 1+2^-8 stays 1, 1+3*2^-8 rounds up to 1+2^-6; a carry reaches the exponent.
+    #assert ne_bf16(1.00390625)==1 && ne_bf16(1.01171875)==1.015625 && ne_bf16(1.0078125)==1.0078125 && ne_bf16(-1.01171875)==-1.015625;
+    #assert ne_bf16(1.99609375)==2 && ne_bf16(0.0)==0;
+}
+#test "render for completion drops the final assistant message and opens the reply" #steps 100000000 {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ids:[64]int;for i:0..<64 {ids[i]=-7;}none:[1]NcPart;
+    m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text="Hi"},NcMessage.{role=NcRole.assistant,text="ignored"}];
+    r:=ne_prompt(table[..],sp[..],329,m[..],none[0..<0],ids[..],false);
+    #assert r.status==NeStatus.ok && r.chat==NcChatStatus.ok && r.written==6 && ids[0]==320 && ids[1]==321 && ids[2]==72 && ids[3]==105 && ids[4]==322 && ids[5]==323 && ids[6]==-7;
+    // Exactly enough room, then one short.
+    r=ne_prompt(table[..],sp[..],329,m[..],none[0..<0],ids[0..<6],false);#assert r.status==NeStatus.ok && r.written==6;
+    for i:0..<64 {ids[i]=-7;}
+    r=ne_prompt(table[..],sp[..],329,m[..],none[0..<0],ids[0..<5],false);#assert r.status==NeStatus.capacity && r.written==0;
+    r=ne_prompt(table[..],sp[..],329,m[..],none[0..<0],ids[..],true);#assert r.status==NeStatus.alias;
+    // The final message must be the assistant's; a lone message has nothing to answer.
+    u:=[1]NcMessage.[m[0]];r=ne_prompt(table[..],sp[..],329,u[..],none[0..<0],ids[..],false);#assert r.status==NeStatus.prompt && r.chat==NcChatStatus.ok;
+    a:=[1]NcMessage.[m[1]];r=ne_prompt(table[..],sp[..],329,a[..],none[0..<0],ids[..],false);#assert r.status==NeStatus.prompt;
+    ua:=[3]NcMessage.[m[0],m[1],m[0]];r=ne_prompt(table[..],sp[..],329,ua[..],none[0..<0],ids[..],false);#assert r.status==NeStatus.prompt;
+    // The renderer's own refusals pass through with its status.
+    two:=[3]NcMessage.[m[0],m[0],m[1]];r=ne_prompt(table[..],sp[..],329,two[..],none[0..<0],ids[..],false);#assert r.status==NeStatus.prompt && r.chat==NcChatStatus.shape;
+    bad:=[1]u8.[255];b:=m;b[0].text=cast(string)bad[..];r=ne_prompt(table[..],sp[..],329,b[..],none[0..<0],ids[..],false);#assert r.status==NeStatus.prompt && r.chat==NcChatStatus.utf8;
+    r=ne_prompt(table[..],sp[..],328,m[..],none[0..<0],ids[..],false);#assert r.status==NeStatus.artifact && r.chat==NcChatStatus.artifact;
+    // A prompt that the renderer would have to truncate refuses.
+    long:[3000]u8;for i:0..<3000 {long[i]=1;}big:[4096]int;big[0]=-7;
+    l:=m;l[0].text=cast(string)long[0..<2100];r=ne_prompt(table[..],sp[..],329,l[..],none[0..<0],big[0..<2048],false);#assert r.status==NeStatus.capacity && r.written==0;
+    l[0].text=cast(string)long[..];r=ne_prompt(table[..],sp[..],329,l[..],none[0..<0],big[..],false);#assert r.status==NeStatus.capacity && big[0]==-7;
+    // 2,044 one-byte tokens make a 2,048-token prompt, the most it may hold; one more refuses.
+    l[0].text=cast(string)long[0..<2044];r=ne_prompt(table[..],sp[..],329,l[..],none[0..<0],big[..],false);#assert r.status==NeStatus.ok && r.written==2048 && big[2047]==323;
+    l[0].text=cast(string)long[0..<2045];r=ne_prompt(table[..],sp[..],329,l[..],none[0..<0],big[..],false);#assert r.status==NeStatus.capacity;
+    for i:0..<64 {#assert ids[i]==-7;}
+}
+#test "after each pick: stop tokens are not emitted, a closed python block stops as tool" {
+    for f:0..<11 {tok:=72;sampler:=NxStop.running;python:=false;filled:=10;want:=NeState.{emit=true};
+        if f==0 {tok=324;sampler=NxStop.stop_token;want=NeState.{stop=NeStop.assistant_end};}
+        if f==1 {tok=320;sampler=NxStop.stop_token;want=NeState.{stop=NeStop.bos};}
+        if f==2 {tok=325;want=NeState.{emit=true,python=true};}
+        if f==3 {tok=326;python=true;want=NeState.{emit=true,python=true,stop=NeStop.tool};}
+        if f==4 {tok=326;want=NeState.{emit=true};}                       // python_end with no open block
+        if f==5 {python=true;want=NeState.{emit=true,python=true};}        // inside the block
+        if f==6 {sampler=NxStop.limit;want=NeState.{emit=true,stop=NeStop.limit};}
+        if f==7 {filled=64;want=NeState.{emit=true,stop=NeStop.context};}
+        if f==8 {tok=326;python=true;sampler=NxStop.limit;want=NeState.{emit=true,python=true,stop=NeStop.tool};} // tool before limit
+        if f==9 {sampler=NxStop.limit;filled=64;want=NeState.{emit=true,stop=NeStop.limit};}         // limit before context
+        if f==10 {tok=325;filled=64;want=NeState.{emit=true,python=true,stop=NeStop.context};}
+        got:=ne_after(320,tok,sampler,python,filled,64);#assert got.emit==want.emit && got.stop==want.stop && got.python==want.python;
+    }
+}
+#test "decoding a reply: ordinary bytes, special names, and refusals" {
+    table:=NC_LEARNED;text:[64]u8;for i:0..<64 {text[i]=7;}
+    ids:=[3]int.[72,324,105];t:=ne_text(table[..],ids[..],text[..]);#assert t.status==NeStatus.ok && t.written==19 && text[0]==72 && text[1]=='<' && text[17]=='>' && text[18]==105 && text[19]==7;
+    for i:0..<64 {text[i]=7;}
+    #assert ne_text(table[..],ids[..],text[0..<18]).status==NeStatus.capacity && text[0]==7 && ne_text(table[..],ids[..],text[0..<19]).written==19;
+    for i:0..<64 {text[i]=7;}
+    bad:=[2]int.[72,329];#assert ne_text(table[..],bad[..],text[..]).status==NeStatus.shape;bad[1]=-1;#assert ne_text(table[..],bad[..],text[..]).status==NeStatus.shape;
+    #assert ne_text(table[0..<2000],ids[..],text[..]).status==NeStatus.artifact && ne_text(table[..],ids[0..<0],text[..]).written==0;
+    edge:=[3]int.[0,320,328];#assert ne_text(table[..],edge[..],text[0..<21]).status==NeStatus.capacity && text[0]==7;t=ne_text(table[..],edge[..],text[..]);#assert t.status==NeStatus.ok && t.written==1+7+14 && text[0]==0 && text[1]=='<' && text[2]=='|' && text[3]=='b' && text[8]=='<' && text[9]=='|' && text[10]=='o';
+    for i:0..<64 {text[i]=7;}
+    long:=[1]int.[319];#assert ne_text(table[..],long[..],text[..]).written==nc_token_bytes(table[..],319);
+    for i:0..<64 {#assert text[i]==7 || i<nc_token_bytes(table[..],319);}
+}
+
+// book:begin weights
+// Round a binary32 to BF16, nearest with ties to even, as torch stores
+// nanochat's wte and value embeddings.
+ne_bf16 :: (x:f64)->f64 {b:=f32_bits(cast(f32)x);b=(b+0x7fff+((b>>16)&1))&0xffff0000;return cast(f64)f32_from_bits(b);}
+// The committed export's values: chapter 125's formula weights, stored F32
+// except wte and the value embeddings, which are BF16.
+ne_checkpoint_weights :: (c:NcConfig,p:[]f64) {
+    nc_formula(c,0.5,p);inv:[NC_TENSORS_MAX]NcTensor;n:=nc_inventory(c,inv[..]);
+    for k:0..<n {t:=inv[k];bf:=t.kind==NcKind.wte || t.kind==NcKind.value;
+        for e:0..<nc_elements(t) {x:=p[t.offset+e];if bf {p[t.offset+e]=ne_bf16(x);}else {p[t.offset+e]=cast(f64)cast(f32)x;}}}
+}
+// book:end weights
+
+// book:begin prompt
+// render_for_completion: the conversation must end with an assistant
+// message; it is dropped, the rest is rendered whole (never truncated), and
+// <|assistant_start|> opens the reply.
+ne_prompt :: (table:[]u8,specials:[]int,vocab:int,messages:[]NcMessage,parts:[]NcPart,ids:[]int,overlap:bool)->NePrompt {
+    if messages.count<2 || messages[messages.count-1].role!=NcRole.assistant {return NePrompt.{status=NeStatus.prompt};}
+    if overlap {return NePrompt.{status=NeStatus.alias};}
+    staged:[NE_PROMPT_MAX]int;mask:[NE_PROMPT_MAX]u8;
+    r:=nc_render(table,specials,vocab,messages[0..<messages.count-1],parts,NE_PROMPT_MAX,staged[..],mask[..],false);
+    if r.status==NcChatStatus.artifact {return NePrompt.{status=NeStatus.artifact,chat=r.status};}
+    if r.status!=NcChatStatus.ok {return NePrompt.{status=NeStatus.prompt,chat=r.status};}
+    if r.total+1>ids.count || r.total+1>NE_PROMPT_MAX {return NePrompt.{status=NeStatus.capacity};}
+    for i:0..<r.total {ids[i]=staged[i];}ids[r.total]=specials[0]+chat.NC_ASSISTANT_START;
+    return NePrompt.{written=r.total+1};
+}
+// book:end prompt
+
+// book:begin after
+// The sampler already stopped on <|assistant_end|> or <|bos|>; neither is
+// part of the reply. A python_end that closes an open block stops as tool:
+// engine.py would run its calculator here, which this chapter does not.
+ne_after :: (base:int,token:int,sampler:NxStop,python:bool,filled:int,context:int)->NeState {
+    if sampler==NxStop.stop_token {return NeState.{stop=ifx token==base then NeStop.bos else NeStop.assistant_end};}
+    s:=NeState.{emit=true,python=python || token==base+chat.NC_PYTHON_START};
+    if python && token==base+chat.NC_PYTHON_END {s.stop=NeStop.tool;}
+    else if sampler==NxStop.limit {s.stop=NeStop.limit;}
+    else if filled==context {s.stop=NeStop.context;}
+    return s;
+}
+// book:end after
+
+// book:begin generate
+// Engine.generate for one row. Prefill with the full pass, then one cached
+// step per emitted token. base is <|bos|>'s ID; the eight others follow it.
+ne_generate :: (c:NcConfig,p:[]f64,base:int,prompt:[]int,options:NxOptions,seed:u64,limit:int,out:[]int,w:NeWork,overlap:bool)->NeReply {
+    if base<0 || base+chat.NC_SPECIAL_COUNT>c.vocab {return NeReply.{status=NeStatus.artifact};}
+    if limit<1 || !nx_options(options,c.vocab) {return NeReply.{status=NeStatus.shape};}
+    if out.count<limit || w.last.count<c.vocab || w.probabilities.count<c.vocab || w.stage.count<c.vocab || w.order.count<c.vocab || w.temporary.count<c.vocab {return NeReply.{status=NeStatus.capacity};}
+    if overlap {return NeReply.{status=NeStatus.alias};}
+    none:[1]f64;
+    f:=nc_forward(c,p,prompt,w.cache,w.work,w.logits,none[0..<0],false);
+    if f.status!=NcStatus.ok {return NeReply.{status=NeStatus.model,model=f.status};}
+    row:=w.logits[(prompt.count-1)*c.vocab..<prompt.count*c.vocab];filled:=prompt.count;
+    run:=NxRun.{random=CrSeed.{seed=seed},limit=limit};stops:=[2]int.[base+chat.NC_ASSISTANT_END,base];
+    next:=nx_work(w.stage,w.order,w.temporary);python:=false;written:=0;
+    while true {
+        for v:0..<c.vocab {w.last[v]=cast(f32)row[v];}
+        nomask:[1]u8;e:=nx_step(w.last[0..<c.vocab],nomask[0..<0],options,run,stops[..],false,w.probabilities,next,false);#assert e.status==NxStatus.ok;
+        run=e.run;a:=ne_after(base,e.token,run.stop,python,filled,c.context);python=a.python;
+        if a.emit {out[written]=e.token;written+=1;}
+        if a.stop!=NeStop.none {return NeReply.{stop=a.stop,written=written,positions=filled};}
+        d:=nc_decode(c,p,w.cache,filled,e.token,w.work,w.logits,false);#assert d.status==NcStatus.ok;
+        row=w.logits[0..<c.vocab];filled+=1;
+    }
+    return NeReply.{};
+}
+// book:end generate
+
+// book:begin text
+// The reply's bytes: ordinary tokens from the table, specials by name, as
+// tiktoken decodes them. Sized first; a refusal writes nothing.
+ne_text :: (table:[]u8,ids:[]int,out:[]u8)->NeText {
+    t:=pt_layout(table);if !chat.nc_ok(t) {return NeText.{status=NeStatus.artifact};}base:=t.counts[0];names:=chat.NC_SPECIAL_NAMES;need:=0;
+    for id:ids {if id<0 || id>=base+chat.NC_SPECIAL_COUNT {return NeText.{status=NeStatus.shape};}
+        if id<base {s:=pt_span(table,t,id);need+=s.end-s.begin;}else {need+=names[id-base].count;}}
+    if need>out.count {return NeText.{status=NeStatus.capacity};}
+    at:=0;
+    for id:ids {
+        if id<base {s:=pt_span(table,t,id);for i:s.begin..<s.end {out[at]=table[i];at+=1;}}
+        else {name:=names[id-base];for i:0..<name.count {out[at]=name[i];at+=1;}}
+    }
+    return NeText.{written=at};
+}
+// book:end text
+#load "../../fixtures/nanochat/engine-replay.coax";

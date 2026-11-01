@@ -492,7 +492,7 @@ before longer runs rather than postponing provenance until this part.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [126. Execute nanochat exactly](ch126-execute-nanochat-exactly.md) — design draft | Pinned BPE/conversation rules, inert checkpoint export, every enabled forward feature and cached inference. |
+| [126. Execute nanochat exactly](ch126-execute-nanochat-exactly.md) — runnable on the CPU, partly implemented | Pinned BPE/conversation rules, inert checkpoint export, every enabled forward feature and cached inference. |
 | [127. Differentiate nanochat](ch127-differentiate-nanochat.md) — design draft | Gradients for every enabled feature; tiny independent comparisons and complete parameter coverage. |
 | [128. A complete pretraining run](ch128-a-complete-pretraining-run.md) — design draft | Tokenizer training from 123, initialization, schedules, accumulation, token budgets, packing, resume and held-out loss/bits-per-byte; tiny first, measured scale later. The same budget spent two ways (a smaller model trained longer against a larger one trained for fewer steps), including the deployed inference cost. |
 | [129. Train a whole model on one GPU](ch129-train-a-whole-model-on-one-gpu.md) — design draft | GPU forward and backward, gradient accumulation and optimizer updates on device, BF16 and FP32 policies, and the backward kernels inference never needed: matrix products, normalization, attention and convolution gradients. An MLP, a CNN and a tiny transformer train on the RTX 4080 with all trainable state on the device between steps, and a 10–50M-parameter decoder runs a complete training job with no PyTorch, no unintended CPU fallback and independently verified gradients. Framework track. |

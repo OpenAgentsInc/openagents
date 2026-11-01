@@ -1,0 +1,24 @@
+// Check helper for psionic/lib/nanochat/engine.coax (chapter 126). Tooling for
+// the checks only, kept out of the unit's mutation sites.
+// Replay a reply with chapter 125's full pass over prompt + reply[0..<k]
+// and chapter 53's sampler with counter k: every emitted token, the stop
+// token that ended it, and the stop's bookkeeping must agree.
+ne_replay :: (c:NcConfig,p:[]f64,base:int,prompt:[]int,o:NxOptions,seed:u64,limit:int,out:[]int,g:NeReply)->bool {
+    seq:[16]int;n:=prompt.count;for i:0..<n {seq[i]=prompt[i];}
+    cache:[216]f64;work:[1304]f64;logits:[96]f64;none:[1]f64;row:[12]f32;pr:[12]f64;st:[12]f64;or:[12]int;te:[12]int;nomask:[1]u8;
+    sampled:=g.stop==NeStop.assistant_end || g.stop==NeStop.bos;picks:=g.written;if sampled {picks+=1;}
+    for k:0..<picks {
+        r:=nc_forward(c,p,seq[0..<n],cache[..],work[0..<nc_work_count(c,n)],logits[0..<n*12],none[0..<0],false);if r.status!=NcStatus.ok {return false;}
+        for v:0..<12 {row[v]=cast(f32)logits[(n-1)*12+v];}
+        d:=nx_distribution(row[..],nomask[0..<0],o,pr[..],nx_work(st[..],or[..],te[..]),false);if d.status!=NxStatus.ok {return false;}
+        pick:=nx_pick(pr[..],cr_draw(CrSeed.{seed=seed,counter=cast(u64)k}).value).token;
+        if k<g.written {if pick!=out[k] {return false;}seq[n]=pick;n+=1;}
+        else if pick!=(ifx g.stop==NeStop.bos then base else base+4) {return false;}
+    }
+    if sampled {return g.positions==prompt.count+g.written && g.written<limit;}
+    if g.positions!=prompt.count+g.written-1 {return false;}
+    if g.stop==NeStop.limit {return g.written==limit;}
+    if g.stop==NeStop.context {return g.positions==c.context && g.written<limit;}
+    if g.stop==NeStop.tool {opened:=false;for i:0..<g.written-1 {if out[i]==base+5 {opened=true;}}return opened && out[g.written-1]==base+6;}
+    return false;
+}

@@ -9,6 +9,7 @@
 // pattern, a squared-ReLU MLP, backout of the middle residual, a final
 // parameterless RMSNorm, an untied head over the padded vocabulary cropped to
 // the real one, and a 15*tanh(z/15) logit softcap.
+#module "psionic.nanochat.gpt";
 NcStatus :: enum u8 {ok;config;shape;token;capacity;number;alias;position;}
 // book:begin config
 // GPTConfig's seven fields; window_pattern is bit i = 1 for 'S' at character

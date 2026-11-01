@@ -1900,6 +1900,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/nanochat-reply.coax",
+      "chapter": "psionic/book/ch126-execute-nanochat-exactly.md",
+      "stdout": "psionic/fixtures/nanochat-reply.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
