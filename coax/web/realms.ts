@@ -3,7 +3,7 @@
 //
 //   apps/openagents-web/realms.coax           the galaxy's worlds (verse.coax loads it)
 //   apps/openagents-web/realms/<slug>/index.html  each realm's page: its module, assets and save slot
-//   apps/openagents-web/realms/list.coax      /realms' rows (realmlist.coax): every realm the galaxy lists
+//   apps/openagents-web/realms/list.coax      /realms' rows (realmlist.coax): every listed realm
 //   apps/openagents-web/realms/index.md       /realms as text
 //   apps/openagents-web/realms/index.html     /realms: the page, its links for agents and readers without a GPU
 //
@@ -141,7 +141,7 @@ export function coax(list: World[]): string {
   ].join("\n")
 }
 
-// /realms (realmlist.coax): the realms the galaxy lists, in its order.
+// /realms (realmlist.coax): the listed realms, in the table's order.
 export function listed(list: World[]): Realm[] {
   return list.filter((w) => w.kind === "open" && w.listed !== false && w.realm).map((w) => w.realm!)
 }
@@ -149,7 +149,7 @@ export function listCoax(list: World[]): string {
   const rows = listed(list).map((r) => `${r.slug}|${r.title}|${r.line}|${r.added}|${r.style}\n`).join("")
   return [
     "// Written by coax/web/realms.ts from realms.json: change the table, not this file.",
-    "// /realms' rows (realmlist.coax), the galaxy's listed realms in its order:",
+    "// /realms' rows (realmlist.coax), the listed realms in the table's order:",
     "// slug | title | its one line | when it opened (Chicago, YYYY-MM-DDTHH:MM) | art style",
     `REALMS_ROWS :: ${JSON.stringify(rows)};`,
     "",
@@ -166,7 +166,7 @@ export function listMarkdown(list: World[]): string {
     "",
     ...rows.map((r) => `- [${r.title}](https://openagents.com/realms/${r.slug}): ${r.line}. Opened ${day(r.added!)}.`),
     "",
-    "Also: [the galaxy](https://openagents.com/verse/galaxy), [build your own realm](https://openagents.com/realms/new).",
+    "Also: [the Verse](https://openagents.com/verse), [build your own realm](https://openagents.com/realms/new).",
     "",
   ].join("\n")
 }

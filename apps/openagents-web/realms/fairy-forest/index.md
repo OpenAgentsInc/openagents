@@ -1,6 +1,6 @@
 # Fairy Forest
 
-A Verse realm, drawn flat, you walk in the browser at https://openagents.com/realms/fairy-forest. It is a first version, unlisted: the galaxy shows it only with `?realms=all`. The plan for the whole realm is in `verse/fairy-forest/README.md`.
+A Verse realm, drawn flat, you walk in the browser at https://openagents.com/realms/fairy-forest. It is a first version, unlisted: the [realms list](https://openagents.com/realms) leaves it out, so you open it by its address. The plan for the whole realm is in `verse/fairy-forest/README.md`.
 
 ## The park
 

@@ -62,13 +62,15 @@ check(all(f"/projects/{slug}" in pages for slug in ("coax", "verse", "planetary-
 moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md",   # the old addresses: 301 to /projects/* and /realms/*
          "/realm/haunted-house", "/realm/everglade?from=playtest", "/realm/haunted-house/index.md", "/realm/everglade/og.jpg", "/realm/hecates-cemetery/card.jpg"]
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
-verse = ["/verse", "/verse/index.md", "/verse/galaxy", "/verse/galaxy/index.md"]   # the playtest's landing and galaxy
-first = fetch(["/", ("/", "GET", "http"), "/realms/haunted-house", "/realms/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse)
+verse = ["/verse", "/verse/index.md"]   # the playtest's landing
+retired = ["/verse/galaxy", "/verse/galaxy/", "/verse/galaxy/index.md", "/verse/galaxy?realms=all"]   # the galaxy: 301 to /realms (lb.sh)
+first = fetch(["/", ("/", "GET", "http"), "/realms/haunted-house", "/realms/haunted-house/index.md"] + pages + moved + [p for p, _ in extra] + verse + retired)
 (s, h, page), redirect, house, house_md = first[:4]
 s_pages = first[4:4 + len(pages)]
 s_moved = first[4 + len(pages):4 + len(pages) + len(moved)]
 s_extra = first[4 + len(pages) + len(moved):4 + len(pages) + len(moved) + len(extra)]
-s_verse = first[4 + len(pages) + len(moved) + len(extra):]
+s_verse = first[4 + len(pages) + len(moved) + len(extra):4 + len(pages) + len(moved) + len(extra) + len(verse)]
+s_retired = first[4 + len(pages) + len(moved) + len(extra) + len(verse):]
 
 check(s == 200 and h.get("content-type", "").startswith("text/html"), f"/ is a page ({s})")
 check("no-cache" in h.get("cache-control", ""), "/ is checked on every visit (no-cache)")
@@ -129,13 +131,16 @@ for (path, want), (s, _, body) in zip(extra, s_extra):
         check(s in want, f"coder still answers {path} ({s})")
     else:
         check(s in want and b'data-page="1"' in body, f"an unknown path gets the Coax 404 ({s})")
-# The Verse's way in: the landing (page 0) and the galaxy (page 1), one app, and their Markdown.
+# The galaxy is retired: every address of it moves for good to /realms, its query dropped.
+for path, (s, h, _) in zip(retired, s_retired):
+    where = h.get("location", "")
+    check(s == 301 and where in ("/realms", f"https://{host}/realms"), f"{path} moves to /realms ({s} {where})")
+# The Verse's way in: the landing (the verse app's page 0) and its Markdown.
 for path, (s, h, body) in zip(verse, s_verse):
     if path.endswith(".md"):
         check(s == 200 and body.startswith(b"# "), f"{path} ({s})")
     else:
-        want = b'data-page="1"' if path.endswith("galaxy") else b'data-page="0"'
-        ok = s == 200 and b'data-app="verse"' in body and want in body and b"<!--" not in body
+        ok = s == 200 and b'data-app="verse"' in body and b'data-page="0"' in body and b"<!--" not in body
         check(ok, f"{path} runs the verse app ({s})")
         if ok:
             for f in sorted(set(re.findall(rb'(?:data-wasm|data-wgsl)="(/[^"]+)"', body))):

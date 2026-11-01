@@ -24,7 +24,7 @@ session.
 ## By page
 
 - **home** (newland-face.c): load-engine, click, key, `card` (1-5), `open` (where PLAYTEST or OPEN PROJECT went).
-- **galaxy** (verse.coax): planet-click, voice-on, start, join, planet-create; tally `nav_<slug>` for arrow steps.
+- **galaxy** (verse.coax; the native host only since 2026-10-31, when the web's page became a redirect to /realms): planet-click, voice-on, start, join, planet-create; tally `nav_<slug>` for arrow steps.
 - **haunt** and **sandbox** (realm.coax, realm-face.c): area, objective, quest, npc, place, edit, survey, voice; `walk`; `fail piece`.
 - **everglade** (everglade-track.coax): visit (place, building), walk, wanted, talk, quest, edit, voice, chat-sent, fail (pack, npc); tally cast_/use_<spell>, kill_guard, kill_folk, death, fire, destroy.
 - **the-grid** (thegrid-track.coax): visit (station), station, answer, suggest, galaxy, walk, others, setting first-person, fail (pack, suggest).

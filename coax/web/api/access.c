@@ -215,7 +215,7 @@ static void realms_twin(PGconn *db) {
   if (fork() != 0) return;
   bool kept = drops_site_write("realms/invite-only.txt", "text/plain; charset=utf-8", on ? "on\n" : "off\n");
   char *md = drops_site_read("realms/index.md"), *to = NULL;
-  if (md) to = on ? replaced(md, BUILD_LINK, "") : (strstr(md, BUILD_LINK) ? NULL : replaced(md, "(https://openagents.com/verse/galaxy).", "(https://openagents.com/verse/galaxy)" BUILD_LINK "."));
+  if (md) to = on ? replaced(md, BUILD_LINK, "") : (strstr(md, BUILD_LINK) ? NULL : replaced(md, "(https://openagents.com/verse).", "(https://openagents.com/verse)" BUILD_LINK "."));
   bool wrote = to && drops_site_write("realms/index.md", "text/markdown; charset=utf-8", to);
   api_log("access: realms twin %s: marker %s, copy %s", on ? "on" : "off", kept ? "kept" : "not kept", wrote ? "written" : "as it was");
   free(md); free(to);

@@ -19,5 +19,5 @@ check("the house: its last event, counts for the hour and the day, and the missi
 sql("insert into analytics.events (ms, sid, ev, page, space) values (floor(extract(epoch from now()) * 1000)::bigint, 'c-health-1', 'quest', 'haunt', 'web')")
 health = call("GET", reports, headers={"Cookie": token})[1].decode()
 check("once it arrives the house is whole", any(r.startswith("haunt|") and r.endswith("|none") for r in health.split("\n")), health[:400])
-check("a surface nobody reached says never", any(r.startswith("galaxy|never|0|0|MISSING page-view") for r in health.split("\n"))
-      or sql("select count(*) from analytics.events where page = 'galaxy'") != "0", health[:400])
+check("a surface nobody reached says never", any(r.startswith("belt-2200|never|0|0|MISSING load-engine, page-view") for r in health.split("\n"))
+      or sql("select count(*) from analytics.events where page = 'belt-2200'") != "0", health[:400])

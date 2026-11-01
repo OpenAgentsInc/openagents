@@ -36,15 +36,13 @@ export type Page = { path: string; lit: number; settle: number; blocks: number; 
 export type Pages = { pages: Record<string, Page>; byAddress: Record<string, Page>; open: ReturnType<typeof worlds>; unlisted: Set<string> }
 
 export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
-  const pages: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" },
-    galaxy: { path: "/verse/galaxy", lit: 0.01, settle: 2500, blocks: 8, module: "verse" } }
-  // Every realm, and the open worlds in the order the galaxy's arrows step
-  // through them with ?realms=all (realms.json's order).
+  const pages: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" } }
+  // Every realm, the open worlds in realms.json's order.
   const open = worlds(file, { site: join(ROOT, APP), packs: join(ROOT, "verse/packs"), styleBlock: existsSync(join(ROOT, "verse/style.coax")) }).filter((w) => w.kind === "open" && w.realm)
   for (const w of open) pages[w.realm!.slug] = { path: `/realms/${w.realm!.slug}`, ...w.realm!.golden, module: w.realm!.module }
-  // Realms the galaxy doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
+  // Realms /realms doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
   const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
-  // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
+  // Pages of their own (not in realms.json), walked by their address.
   const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
     "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
   byAddress["connect-pylon"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon"}

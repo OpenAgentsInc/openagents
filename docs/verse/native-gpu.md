@@ -477,9 +477,9 @@ tasks (native-gpu.json) come after the port.
     matches the browser (0 of 230400 past tolerance); vk-realm's 90th frame
     is vk-passes' to the bit.
   - Travel: a realm's navigation (action 1) is remembered by the host and
-    mapped to the realm it opens (rh_realm_of: /verse/galaxy the galaxy, /
-    and /new-land the Grid, /realms/SLUG that realm; a tip page, the builder
-    or another site is the web's; realm-run --test-travel checks 20 paths).
+    mapped to the realm it opens (rh_realm_of: /realms the galaxy (/verse/galaxy until it was retired on
+    2026-10-31), / and /new-land the Grid, /realms/SLUG that realm; a tip page,
+    the builder or another site is the web's; realm-run --test-travel checks 22 paths).
     vk-realm --go FILE writes the slug and leaves with status 3, and
     verse/gpu/realm.sh, given several realms (REALM="verse orbitleague ..."),
     builds each in its own directory and, on the screen, starts the realm the

@@ -21,7 +21,7 @@ test("data, docs and the release tools change no page", () => {
 })
 
 test("a page's own inputs change it and not the others", () => {
-  expect(affected(["apps/openagents-web/verse.coax"], p)).toEqual(["landing", "galaxy"])
+  expect(affected(["apps/openagents-web/verse.coax"], p)).toEqual(["landing"])
   expect(affected(["apps/openagents-web/realms/everglade/assets/everglade.pack"], p)).toEqual(["everglade"])
   expect(affected(["apps/openagents-web/fixture.coax"], p)).toEqual(["fixture", "fixture-painterly-0", "fixture-painterly-0.25", "fixture-painterly-0.5", "fixture-painterly-0.75",
     "fixture-painterly-phone-0", "fixture-painterly-phone-0.25", "fixture-painterly-phone-0.5", "fixture-painterly-phone-0.75", "fixture-painterly-shafts"])
@@ -29,7 +29,7 @@ test("a page's own inputs change it and not the others", () => {
   const engine = affected(["verse/haunt.coax"], p)
   expect(engine).toContain("haunted-house")
   expect(engine).not.toContain("landing")
-  expect(affected(["coax/web/goldens/galaxy.png"], p)).toEqual(["galaxy"])
+  expect(affected(["coax/web/goldens/landing.png"], p)).toEqual(["landing"])
   // a file a page #loads is its input
   expect(affected(["apps/openagents-web/textkeys.coax"], p)).toContain("landing")
 })
@@ -55,17 +55,17 @@ test("the likeliest break touches the page's own inputs, newest first; shared on
 test("a page's bytes in the bucket: its bare path and its index.html, not its twin or its children", () => {
   const r = new RegExp(pageObjects("/verse"))
   expect(["verse", "verse/index.html"].every((o) => r.test(o))).toBe(true)
-  expect(["verse/index.md", "verse/galaxy", "verse/galaxy/index.html", "verses"].some((o) => r.test(o))).toBe(false)
+  expect(["verse/index.md", "verse/og-verse.jpg", "verse/child/index.html", "verses"].some((o) => r.test(o))).toBe(false)
   expect(new RegExp(pageObjects("/realms/fixture?style=painterly&clock=0.5")).test("realms/fixture")).toBe(true)
 })
 
 test("the check's server answers like the bucket", () => {
   const site = mkdtempSync(join(tmpdir(), "golden-serve-"))
-  mkdirSync(join(site, "verse/galaxy"), { recursive: true })
-  writeFileSync(join(site, "verse/index.html"), "v"); writeFileSync(join(site, "verse.page"), "v"); writeFileSync(join(site, "verse/galaxy/index.html"), "g")
+  mkdirSync(join(site, "realms/fixture"), { recursive: true }); mkdirSync(join(site, "verse"))
+  writeFileSync(join(site, "verse/index.html"), "v"); writeFileSync(join(site, "verse.page"), "v"); writeFileSync(join(site, "realms/fixture/index.html"), "g")
   writeFileSync(join(site, "host.abc.js"), "js")
   expect(resolve(site, "/verse")?.file).toBe(join(site, "verse.page"))
-  expect(resolve(site, "/verse/galaxy")?.file).toBe(join(site, "verse/galaxy/index.html"))
+  expect(resolve(site, "/realms/fixture")?.file).toBe(join(site, "realms/fixture/index.html"))
   expect(resolve(site, "/host.abc.js")?.type).toStartWith("text/javascript")
   expect(resolve(site, "/../etc/passwd")).toBeNull()
   expect(resolve(site, "/nope")).toBeNull()

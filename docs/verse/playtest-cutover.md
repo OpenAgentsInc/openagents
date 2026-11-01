@@ -44,8 +44,8 @@ project `openagentsgemini`, the automation account:
 
 openagents.com is a different load balancer (`coaxial-openagents-web-staging`,
 136.69.24.60, certificate map with openagents.com and staging.openagents.com).
-`/verse`, `/verse/galaxy`, `/realms/*`, `/admin/analytics` go to the site's
-bucket and `/api/*` to Cloud Run `oa-api` there; the old `/realm/*` answers 301 to `/realms/*`, path, query and hash kept.
+`/verse`, `/realms/*`, `/admin/analytics` go to the site's
+bucket and `/api/*` to Cloud Run `oa-api` there; the old `/realm/*` answers 301 to `/realms/*`, path, query and hash kept, and `/verse/galaxy` (retired 2026-10-31) answers 301 to `/realms`.
 
 ## 2. Why the URL map and not DNS
 
@@ -70,7 +70,7 @@ so the dashboard tells arrivals from the old host apart.
 
 | Old address on playtest.openagents.com | Answer | New address |
 | --- | --- | --- |
-| `/`, `/index.html`, `/kiki/…` (the Kiki landing), `/home.html` | 301 (URL map), query dropped | `/verse?from=playtest` (the landing; its galaxy is `/verse/galaxy`, reached from it) |
+| `/`, `/index.html`, `/kiki/…` (the Kiki landing), `/home.html` | 301 (URL map), query dropped | `/verse?from=playtest` (the landing; `/verse/galaxy` answers 301 to `/realms` since 2026-10-31) |
 | `/haunt.html` (the Haunted House; the Share link) | 301 from `oa-api` (`/api/playtest/old-link`) | `/realms/haunted-house?from=playtest` |
 | `/haunt.html?visit=ID&planet=…` (a shared or invited world) | 301 from `oa-api` | `/realms/haunted-house?from=playtest#ID` (that world; the realm page's hash names it). IDs are `[a-z0-9-]{1,64}`; anything else opens the house |
 | `/analytics.html`, `/feedback.html` | 301 (URL map) | `/admin/analytics` |

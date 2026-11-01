@@ -1,5 +1,5 @@
 // What the release walk (goldens.ts) does with a page that has no golden yet.
-// A realm the galaxy doesn't list yet (realms.json listed: false) may arrive
+// A realm /realms doesn't list yet (realms.json listed: false) may arrive
 // before its golden: it must still start, show no errors and draw (goldens.ts
 // checks those first), and its shot waits in goldens/pending/ for approval.
 // A listed realm, and any page that once had a golden, stays strict.

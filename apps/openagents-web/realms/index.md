@@ -12,4 +12,4 @@ Worlds on the Verse you play in the browser, newest first. The page sorts them b
 - [Ice Cream Man](https://openagents.com/realms/ice-cream-man): Find three keys and escape the house. Opened Oct 28, 2026.
 - [Haunted House](https://openagents.com/realms/haunted-house): Nine haunts to find and doors to open. Opened Oct 28, 2026.
 
-Also: [the galaxy](https://openagents.com/verse/galaxy), [build your own realm](https://openagents.com/realms/new).
+Also: [the Verse](https://openagents.com/verse), [build your own realm](https://openagents.com/realms/new).

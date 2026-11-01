@@ -41,11 +41,11 @@ static char *slurp(const char *path, size_t *n) {
 // The paths travel maps (rh_realm_of): realm-run --test-travel.
 static int test_travel(void) {
   static const char *cases[][2] = {
-    {"/", "the-grid"}, {"/new-land", "the-grid"}, {"/new-land/", "the-grid"}, {"/verse/galaxy", "galaxy"}, {"/verse/galaxy/#x", "galaxy"},
+    {"/", "the-grid"}, {"/new-land", "the-grid"}, {"/new-land/", "the-grid"}, {"/realms", "galaxy"}, {"/realms/", "galaxy"}, {"/realms?x=1", "galaxy"}, {"https://openagents.com/realms", "galaxy"},
     {"/realms/orbit-league", "orbit-league"}, {"/realms/orbit-league/", "orbit-league"}, {"/realms/orbit-league/?quick=2v2", "orbit-league"},
     {"/realms/haunted-house#a=1", "haunted-house"}, {"https://openagents.com/realms/belt-2200", "belt-2200"},
-    {"/realms/hold-the-stair/tip", ""}, {"/realms/", ""}, {"/realms/Bad", ""}, {"/docs", ""}, {"https://example.com/realms/x", ""},
-    {"lightning:lnbc1", ""}, {"/verse/galaxyx", ""}, {"/new-landing", ""}, {"", ""}};
+    {"/realms/hold-the-stair/tip", ""}, {"/realms/Bad", ""}, {"/docs", ""}, {"https://example.com/realms/x", ""},
+    {"lightning:lnbc1", ""}, {"/verse/galaxy", ""}, {"/realmsx", ""}, {"/new-landing", ""}, {"", ""}};
   int bad = 0;
   for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
     char slug[64] = "";

@@ -4,8 +4,8 @@ Status: plan and blockout, October 28, 2026 (eg-design); the forest and
 its paths, October 29 (eg-forest); the kit buildings and seven
 interiors, October 29 (eg-buildings); its people, who talk and remember
 you, October 29 (eg-people). The city is
-walkable at https://openagents.com/realms/everglade (not on the galaxy until
-eg-launch; `/verse/galaxy?realms=all` shows it). The order of the work after
+walkable at https://openagents.com/realms/everglade (listed at
+https://openagents.com/realms). The order of the work after
 this is in [realms-port.md](realms-port.md).
 The previous Everglade, on the Rust engine, is kept for parity in
 [`verse/everglade/previous/`](../../verse/everglade/previous/README.md): its map and specifications.

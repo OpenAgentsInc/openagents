@@ -177,7 +177,7 @@
         "style": "lowpoly",
         "clock": "fixed:0.5",
         "title": "Fixture Realm",
-        "description": "The realm host's test world: its own module, its own save slot and its own asset pack, opened from the galaxy like any realm.",
+        "description": "The realm host's test world: its own module, its own save slot and its own asset pack, opened by its address like any realm.",
         "alt": "Enter the Verse",
         "module": "fixture",
         "slot": "fixture",

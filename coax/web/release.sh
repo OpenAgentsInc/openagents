@@ -62,7 +62,7 @@
 # about a minute. Never approve someone else's page to get a release through.
 # Data needs no release: project pages read their relay live, and
 # coax/web/project/publish-data.sh refreshes their Markdown (seconds). A realm not yet
-# listed on the galaxy (realms.json listed: false) with no golden doesn't
+# listed on /realms (realms.json listed: false) with no golden doesn't
 # block: it must start, show no errors and draw, and its shot waits in
 # coax/web/goldens/pending/ ("NEW REALM ...") for approval.
 #

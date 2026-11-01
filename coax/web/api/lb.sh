@@ -8,6 +8,7 @@
 # as headers (geography, RTT, TLS, the client's address in X-Forwarded-For),
 # which pt-capture records. Every other path keeps its rule; what no rule
 # names goes to the site's bucket (the coder service is retired).
+# Old addresses move: /verse/galaxy (retired 2026-10-31) to /realms, on both hosts.
 #
 # Private projects (private.c, docs/private-projects.md):
 #   lb.sh private-route SLUG   /projects/SLUG and /projects/SLUG/* on both hosts -> the API
@@ -164,6 +165,21 @@ for pm in m["pathMatchers"]:
         rules.sort(key=lambda r: r["priority"])
         changed = True
         print("url map: production " + want[0]["fullPathMatch"] + " to " + to)
+# The galaxy is retired (2026-10-31): /verse/galaxy, /verse/galaxy/ and anything under it move for
+# good to /realms, the query dropped, on both hosts (smoke.sh checks it), ahead of the /verse/ rule.
+for pm in m["pathMatchers"]:
+    if pm["name"] not in ("production", "staging"): continue
+    rules = pm.setdefault("routeRules", [])
+    match = [{"fullPathMatch": "/verse/galaxy"}, {"prefixMatch": "/verse/galaxy/"}]
+    go = {"pathRedirect": "/realms", "stripQuery": True, "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
+    rule = next((r for r in rules if r.get("matchRules") == match), None)
+    if rule and rule.get("urlRedirect") == go: continue
+    if rule: rules.remove(rule)
+    free = next(p for p in range(6, 40) if p not in {r["priority"] for r in rules})
+    rules.append({"priority": free, "matchRules": match, "urlRedirect": go})
+    rules.sort(key=lambda r: r["priority"])
+    changed = True
+    print(f"url map: {pm['name']} /verse/galaxy to /realms")
 # The coder service is retired (docs/2026-10-28-coder-service-deprecation.md): whatever no rule
 # names is the site's bucket, so an unknown path gets the Coax 404.
 for pm in m["pathMatchers"]:

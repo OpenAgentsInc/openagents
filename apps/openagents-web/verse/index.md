@@ -1,6 +1,6 @@
 # Enter the Verse
 
-The way into the Verse playtest at https://openagents.com/verse: A HAUNTED HOUSE PLAYTEST, ENTER THE VERSE, one line, "Explore our haunted house. Can you make it scarier?", and **PLAYTEST NOW**, which opens the Haunted House directly, [/realms/haunted-house](https://openagents.com/realms/haunted-house). The galaxy of worlds is still at [/verse/galaxy](https://openagents.com/verse/galaxy). Nothing is asked.
+The way into the Verse playtest at https://openagents.com/verse: A HAUNTED HOUSE PLAYTEST, ENTER THE VERSE, one line, "Explore our haunted house. Can you make it scarier?", and **PLAYTEST NOW**, which opens the Haunted House directly, [/realms/haunted-house](https://openagents.com/realms/haunted-house). Every realm is listed at [/realms](https://openagents.com/realms). Nothing is asked.
 
 In the house there is one camera, behind you, and only your name, the minimap, a voice button and the hotbar on screen: take a thing from the hotbar and click or tap where it goes ([the realm's page](../realms/haunted-house/index.md) has the controls).
 

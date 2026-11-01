@@ -35,7 +35,7 @@ automation the way `/admin/analytics` does.
 | `id` | The world's id on the galaxy (analytics' `planet`). |
 | `name` | What the galaxy writes over it: capitals, at most 40. |
 | `kind` | `open` (a click opens the realm), `soon` or `locked`. An open world must have a `realm`. |
-| `listed` | `false` keeps it off the galaxy unless the galaxy's URL has `?realms=all` (the fixture realm; a realm before its launch). Default `true`. |
+| `listed` | `false` keeps it off `/realms` and off the galaxy unless the galaxy's facts have `?realms=all` (the fixture realm; a realm before its launch); its page still opens by its address. Default `true`. |
 | `orbit` | `r` the orbit's radius and `size` the planet's, both as shares of the galaxy's size (the playtest's orbits are 0.15 to 0.46); `a` its angle in radians. Pick an orbit the galaxy already draws (`ORBITS` in `verse.coax`) or one clear of the others. |
 | `realm.slug` | The page: `/realms/<slug>`. Its old address, `/realm/<slug>` (before October 29), answers 301 to it at the load balancer, path and query kept. |
 | `realm.title`, `description`, `alt` | The page's title, its description and its link-preview text. |
@@ -71,7 +71,7 @@ What every realm module exports:
 | `coaxial_frame(state, vertices, uniforms, w, h, dpr, dt, still)` | yes | Steps and draws one frame; returns the vertex count. The HUD is drawn here, in Coax. |
 | `coaxial_key`, `coaxial_key_up`, `coaxial_blur`, `coaxial_pointer`, `coaxial_wheel`, `coaxial_cursor` | to play | Input. A realm reads both a keyboard and two thumbs (390 px phones). |
 | `coaxial_inbox`, `coaxial_inbox_cap`, `coaxial_message(state, kind, length)` | for saves | Message 4 is the slot's save, 600 the page facts (with `realm=<slug>` and `slot=<slot>`). |
-| `coaxial_action`, `coaxial_outbox`, `coaxial_outbox_len`, `coaxial_action_done` | for saves | Action 4 keeps the outbox in the realm's slot; action 1 goes to a URL (`/verse/galaxy` to leave). |
+| `coaxial_action`, `coaxial_outbox`, `coaxial_outbox_len`, `coaxial_action_done` | for saves | Action 4 keeps the outbox in the realm's slot; action 1 goes to a URL (`/realms` to leave). |
 | `coaxial_asset`, `coaxial_asset_ready` | with assets | Where a `data:` asset goes in memory, and that each asset arrived. |
 | `coaxial_draws`, `coaxial_draw_count`, `coaxial_stores`, ... | with a 3D scene | The scene's indexed draws over its storage, index and texture assets (`realm.wgsl` `scene_vs`/`scene_fs`). |
 | `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `verse/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
@@ -182,20 +182,25 @@ and Hecate's Cemetery.
 
 ## 4. The galaxy orbit
 
+The web's galaxy page is retired (2026-10-31): `/verse/galaxy` answers 301
+to `/realms` (`coax/web/api/lb.sh`), and every realm's way out goes to
+`/realms`. The galaxy stays as the native host's travel hub, the verse app's
+page 1, which `/realms` opens there (`verse/native/realm-host.c`
+`rh_realm_of`), and the homepage draws a small one (`newland.coax`).
+
 The galaxy (`verse.coax`) draws `realms.coax`'s worlds in order, then
 players' own realms on the outer orbit. An open world is drawn lit, its
 name and OPEN show under the pointer, and a click goes to its page
 (`PLANET_PATH`). Without a pointer, LEFT and RIGHT step through the open
 worlds it shows (the table's order, then players' realms) and ENTER opens the
 one chosen. The Haunted House and Coding keep their tags. A world the
-table doesn't list shows only at `/verse/galaxy?realms=all`.
+table doesn't list shows only with `realms=all` in the page facts' URL.
 
 ## The release walk
 
 `coax/web/goldens.ts` (run by `release.sh` on staging, then on production)
-walks the landing, the galaxy and the Haunted House, then opens **every other
-realm in the table from the galaxy**: `/verse/galaxy?realms=all`, RIGHT to its
-world, ENTER. Each realm's page must arrive, start (`coaxial.ready`), report
+walks the landing and the Haunted House, then opens **every other realm in
+the table by its address**, `/realms/<slug>`, unlisted ones too. Each realm's page must arrive, start (`coaxial.ready`), report
 no error (a pack or asset that fails says so), light at least its
 `golden.lit`, and on staging match `coax/web/goldens/<slug>.png`. A realm that
 is blank, broken or changed fails the release before production. A new

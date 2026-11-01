@@ -125,7 +125,7 @@ connectpylon=$!
 # /coax/changelog: the compiler's complete release history, drawn in Coax.
 "$here/../../coax/web/wasm.sh" "$here/changelog.coax" "$here/changelog-face.c" "$here/build/changelog.wasm" &
 changelog=$!
-# /verse and /verse/galaxy: the playtest's landing and galaxy.
+# /verse: the playtest's landing (verse.coax's page 1, the galaxy, is the native host's).
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!
 # The project pages: every projects/<slug>/project.json with a page, its tasks

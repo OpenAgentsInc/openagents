@@ -340,7 +340,6 @@ coax/web/api/deploy_verify.py
 coax/web/api/deploy_verify_test.py
 coax/web/api/edit_live.sh
 coax/web/api/flow.ts
-coax/web/api/galaxy-flow.ts
 coax/web/api/import_demo.py
 coax/web/api/import_demo.sh
 coax/web/api/lb.sh

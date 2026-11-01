@@ -1,8 +1,7 @@
 // The playtest flow, walked in headless Chrome with WebGPU (no window opens,
-// nothing takes focus): the landing, ENTER as a guest directly to the house,
-// then the galaxy and a click on the Haunted House; then every other realm in realms.json,
-// each opened from the galaxy (/verse/galaxy?realms=all, the arrows to its
-// world, ENTER), unlisted ones too, so a realm is walked before its launch;
+// nothing takes focus): the landing, ENTER as a guest directly to the house;
+// then every other realm in realms.json, each opened by its address
+// (/realms/<slug>), unlisted ones too, so a realm is walked before its launch;
 // then the pages of their own (the Garden) by their address. Each page must start (its engine says
 // ready, nothing reports an error or throws) and draw (enough lit pixels),
 // and looks like its golden screenshot. It closes the gap the HTTP smoke
@@ -17,8 +16,8 @@
 // pin.sh walks a pinned demo (--walk --root).
 // The walk runs in lanes side by side, each in its own headless tab
 // (GOLDENS_POOL tabs, default 4; GOLDENS_CHROMES=1 for one Chrome a lane):
-// the journey (landing, house, galaxy, the house's analytics contract), each
-// other realm from the galaxy, the Garden. Each page keeps its own checks.
+// the journey (landing, house, the house's analytics contract), each
+// other realm by its address, the Garden. Each page keeps its own checks.
 // With --unchanged-against ORIGIN --since COMMIT (release.sh, on staging), a
 // page byte-identical to what production serves, whose golden inputs haven't
 // changed since COMMIT, skips its golden comparison but still starts and
@@ -30,7 +29,7 @@
 //   bun coax/web/goldens.ts BASE --starts         # brief: each page by its address answers and its engine starts, no errors
 //   bun coax/web/goldens.ts BASE --root /demo/N   # a pinned demo's pages
 //   bun coax/web/goldens.ts BASE --unchanged-against https://openagents.com --since COMMIT [--full]
-//   bun coax/web/goldens.ts BASE --only landing,galaxy   # compare only these pages (golden-check.sh)
+//   bun coax/web/goldens.ts BASE --only landing,everglade   # compare only these pages (golden-check.sh)
 //   bun coax/web/goldens.ts BASE --report FILE    # also write the failures as JSON (release.sh's hold-back)
 //
 // A golden is coax/web/goldens/NAME.png (the Mac's; Linux's in goldens/linux/, golden-pages.ts GOLDEN_DIR) at 1280x800 (or its page's own size), NAME a realm's slug for
@@ -40,7 +39,7 @@
 // when its mean differs by more than SHADE in a channel; 16,000 blocks a
 // page). Every page runs in golden mode (host.js): an app that knows it
 // holds its effects (the house's candles, fireflies, embers and dust) at
-// one moment. Blocks that still move on their own (the galaxy's orbits, the
+// one moment. Blocks that still move on their own (the landing's orbs, the
 // stars) are found by three more shots of the page and left out, with the
 // blocks round them.
 // A moved panel or a changed word does not pass. A shot that differs is kept and its path printed: look at it, and
@@ -65,7 +64,7 @@ const goldens = join(import.meta.dir, "../..", GOLDEN_DIR)
 const contract: Record<string, string[]> = JSON.parse(readFileSync(join(import.meta.dir, "analytics-contract.json"), "utf8"))
 const sent = new Set<string>()
 // The pages and their numbers (golden-pages.ts): the least share of pixels
-// each lights (the landing and the galaxy are words and stars on black; the
+// each lights (the landing is words and stars on black; the
 // house, a dark night, lights about 6%, its loading screen or one that failed
 // under 1%), how long it settles, how many of its blocks may change.
 // --only NAME,NAME compares only those pages with their goldens (golden-check.sh):
@@ -183,7 +182,7 @@ async function compareInputs(name: string, at: string): Promise<string> {
   }
   const file = async (rel: string) => at ? await git("show", `${at}:${rel}`) : existsSync(join(import.meta.dir, "../..", rel)) ? new Uint8Array(readFileSync(join(import.meta.dir, "../..", rel))) : null
   const golden = await file(`${GOLDEN_DIR}/${name}.png`), self = await file("coax/web/goldens.ts"), table = await file("apps/openagents-web/realms.json")
-  let page: unknown = BY_ADDRESS[name] ?? (name === "landing" || name === "galaxy" ? PAGES[name] : null), listed: unknown = null
+  let page: unknown = BY_ADDRESS[name] ?? (name === "landing" ? PAGES[name] : null), listed: unknown = null
   if (table && !page) {
     const w = (JSON.parse(new TextDecoder().decode(table)).worlds as World[]).find((w) => w.kind === "open" && w.realm?.slug === name)
     page = w ? { path: `/realms/${name}`, ...w.realm!.golden } : null; listed = w?.listed ?? null
@@ -359,39 +358,15 @@ class Tab {
 // ---- The walk, in lanes: each lane runs in one tab, the lanes side by side.
 type Lane = { name: string; run: (t: Tab) => Promise<void> }
 const lanes: Lane[] = []
-// The journey: the landing, ENTER into the house, the galaxy, a click on the
-// Haunted House, and the house's analytics contract (its own lane, first).
-const journey = ["landing", "galaxy", "haunted-house"].some(wanted)
+// The journey: the landing, ENTER into the house, and the house's analytics
+// contract (its own lane, first).
+const journey = ["landing", "haunted-house"].some(wanted)
 if (journey) lanes.push({ name: "journey", run: async (t) => {
   await t.send("Page.navigate", { url: base + root + PAGES.landing.path })
   if (!(await t.arrive("landing"))) return
   await t.key("Enter", "Enter", 13)   // ENTER: play now as a guest
-  // Current landing opens the house directly. Pinned demos preserve their
-  // historical landing-to-galaxy route; check the current direct route
-  // before separately exercising the galaxy's house selector below.
-  if (!root) {
-    await t.arrive("haunted-house")
-    await t.send("Page.navigate", { url: `${base}/verse/galaxy` })
-  }
-  const galaxy = await t.arrive("galaxy")
-  if (!galaxy) return
-  // The Haunted House's tag (a plate edged in the focus's lit gold under its
-  // planet, verse.coax EMBER_*; orange is only for Bitcoin since 34c9bb6f0f)
-  // moves with the orbit. Its top and bottom edges are the two longest gold
-  // rows a plate's height apart: click between them, in the middle.
-  const fresh = png(await t.shot()), rows = new Array(fresh.h).fill(0), xs: number[][] = Array.from({ length: fresh.h }, () => [])
-  for (let y = 0; y < fresh.h; y++) for (let x = 0; x < fresh.w; x++) {
-    const i = (y * fresh.w + x) * 4, r = fresh.px[i], g = fresh.px[i + 1], b = fresh.px[i + 2]
-    if (r > 180 && g > 140 && g < 215 && b > 70 && b < 150 && r - b > 70) { rows[y]++; xs[y].push(x) }
-  }
-  const top = rows.indexOf(Math.max(...rows))
-  let other = -1
-  for (let y = Math.max(0, top - 40); y <= Math.min(fresh.h - 1, top + 40); y++) if (Math.abs(y - top) >= 10 && (other < 0 || rows[y] > rows[other])) other = y
-  const y = other >= 0 && rows[other] > rows[top] / 2 ? (top + other) >> 1 : top + 12, x = xs[top].sort((a, b) => a - b)[xs[top].length >> 1]
-  t.check(rows[top] > 20, `galaxy: the Haunted House's tag is drawn (${rows[top]} gold pixels at y ${top})`)
-  if (rows[top] <= 20) return
-  for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
-    await t.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 })
+  // A pinned demo's landing goes on to its own galaxy: open its house by its address.
+  if (root) await t.send("Page.navigate", { url: base + root + PAGES["haunted-house"].path })
   if (!(await t.arrive("haunted-house")) || root) return
   const t0 = Date.now()
   const want = Object.entries(contract).filter(([page]) => !open.some((w) => w.realm!.slug === page)).flatMap(([page, evs]) => evs.map((ev) => `${page}/${ev}`))
@@ -409,36 +384,19 @@ if (journey) lanes.push({ name: "journey", run: async (t) => {
   const missing = want.filter((w) => !t.sent.has(w))
   t.check(!missing.length, `analytics contract: every contract event sent (${missing.length ? "missing " + missing.join(", ") : want.length + " events"}, ${((Date.now() - t0) / 1000).toFixed(1)} s)`)
 } })
-// Every other realm, opened from the galaxy with the keyboard (a pinned demo has only the house).
-const fromGalaxy = async (t: Tab, slug: string, k: number) => {
-  t.errors = []; t.startupNetworkFailures = []
-  await t.send("Page.navigate", { url: `${base}/verse/galaxy?realms=all` })
-  const ready = await t.until(async () => (await t.evaluate("location.pathname")) === "/verse/galaxy" && (await t.evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
-  t.check(ready, `${slug}: the galaxy started, to open it from`)
-  if (!ready) {
-    const state = await t.evaluate("({path:location.pathname,document:document.readyState,host:typeof globalThis.coaxial,ready:globalThis.coaxial?.ready === true})")
-    t.log(`  info   ${slug}: startup failure ${JSON.stringify({ state, errors: t.errors.slice(-8), network: t.startupNetworkFailures.slice(-8), inflight: t.inflight.size })}`)
-    return
-  }
-  await Bun.sleep(1000)
-  t.errors = []
-  for (let i = 0; i <= k; i++) await t.key("ArrowRight", "ArrowRight", 39)
-  await t.key("Enter", "Enter", 13)
-  if (!(await t.arrive(slug)) || !contract[slug]) return
-  await t.realmContract(slug)
-}
-// A realm unchanged since production's walk: opened by its address, it must start and draw.
-const byAddress = async (t: Tab, slug: string, k: number) => {
+// Every other realm, opened by its address (a pinned demo has only the house). cheap: unchanged
+// since production's walk, so no golden comparison, unless a file it fetched changed ("again").
+const byAddress = async (t: Tab, slug: string, cheap: boolean): Promise<void> => {
   t.errors = []; t.startupNetworkFailures = []
   await t.send("Page.navigate", { url: base + PAGES[slug].path })
-  const r = await t.arrive(slug, true)
-  if (r === "again") return fromGalaxy(t, slug, k)
+  const r = await t.arrive(slug, cheap)
+  if (r === "again") return byAddress(t, slug, false)
   if (r && contract[slug]) await t.realmContract(slug)
 }
-if (!root) for (const [k, w] of open.entries()) {
+if (!root) for (const w of open) {
   const slug = w.realm!.slug
   if (slug === "haunted-house" || !wanted(slug)) continue
-  lanes.push({ name: slug, run: (t) => skipping(slug) ? byAddress(t, slug, k) : fromGalaxy(t, slug, k) })
+  lanes.push({ name: slug, run: (t) => byAddress(t, slug, skipping(slug)) })
 }
 // Pages of their own, by their address.
 if (!root) for (const name of Object.keys(BY_ADDRESS)) {

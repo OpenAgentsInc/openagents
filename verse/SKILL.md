@@ -62,13 +62,13 @@ realm can leave out.
   Escape -1, Enter -2, Backspace -3, ArrowLeft -4, ArrowRight -5, ArrowUp
   -6, ArrowDown -7 (`KEYS` in `coax/web/host.js`). Message 600 is the page facts (`realm=<slug>` and more,
   one `key=value` a line); action 1 with a URL in the outbox navigates
-  (`/verse/galaxy` to leave). Coax is not C or Rust: read
+  (`/realms` to leave). Coax is not C or Rust: read
   `coax/README.md` and copy idioms from the module you started from.
   Loaded files (`#load "font.coax"` for text) share one namespace with
   your module: a top-level name of yours must not clash with a name in
   them (errors then point into the loaded file), and `font.coax` uses
   `lo`/`hi`, which your module defines (the template does).
-- Draw a way back: Escape and a drawn button go to `/verse/galaxy`
+- Draw a way back: Escape and a drawn REALMS button go to `/realms`
   (action 1); every realm has one.
 - `<module>-face.c`: the browser exports over the module (`coaxial_layout`,
   `coaxial_state_size`, `coaxial_frame`, input, inbox/outbox). Copy the
@@ -122,7 +122,7 @@ Write `apps/openagents-web/realms/<slug>/index.md` by hand (the generator
 refuses a realm without it): the realm as text
 (what it is, how to play with keys and on a phone, how it is made). Copy
 `realms/hold-the-stair/index.md`'s headings. Then write the page and the
-galaxy's table:
+realm table:
 
 ```sh
 bun coax/web/realms.ts
@@ -178,7 +178,7 @@ rewrote (`git checkout -- apps/openagents-web/projects
 apps/openagents-web/newland-data.coax`). Don't commit
 `apps/openagents-web/build/`. The team builds it,
 makes its golden (the release walk opens every realm and compares a shot)
-and lists it on the galaxy.
+and lists it on [/realms](https://openagents.com/realms).
 
 ## After it ships
 

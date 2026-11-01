@@ -150,7 +150,7 @@ int rh_realm_of(const char *p, size_t n, char *slug, size_t cap) {
   while (end < n && p[end] != '?' && p[end] != '#') end++;
   if (end == 1 && p[0] == '/') return put_slug("the-grid", 8, slug, cap);
   if ((end == 9 || end == 10) && starts(p, end, "/new-land") && (end == 9 || p[9] == '/')) return put_slug("the-grid", 8, slug, cap);
-  if ((end == 13 || end == 14) && starts(p, end, "/verse/galaxy") && (end == 13 || p[13] == '/')) return put_slug("galaxy", 6, slug, cap);
+  if ((end == 7 || end == 8) && starts(p, end, "/realms") && (end == 7 || p[7] == '/')) return put_slug("galaxy", 6, slug, cap);
   if (!starts(p, end, "/realms/")) return 0;
   size_t a = 8, b = a;
   while (b < end && p[b] != '/') {

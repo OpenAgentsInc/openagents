@@ -41,7 +41,7 @@ case "$realm" in
   newland) app="$web/newland.coax"; face="$web/newland-face.c"; libraries=("$root/verse/gridwalk.coax")
     units_too=("$root/coax/web/project/landing-browser.coax" "$root/coax/web/project/landing-fold.coax")
     faces_too=("$root/coax/web/project/landing-reader-face.c" "$root/coax/web/project/landing-fold-face.c" "$root/coax/web/project/landing-cache-face.c") ;;
-  # the galaxy (/verse/galaxy, the verse app's page 1), where travel starts
+  # the galaxy (the verse app's page 1, which /realms opens natively), where travel starts
   verse) app="$web/verse.coax"; face="$web/verse-face.c"; libraries=() ;;
   belt|waterlab|orbitleague) app="$web/$realm.coax"; face="$web/$realm-face.c"; libraries=() ;;
   *) [[ -f "$web/$realm.coax" && -f "$web/$realm-face.c" ]] || [[ -f "$out/sources" ]] || { echo "build.sh: no realm $realm" >&2; exit 2; }

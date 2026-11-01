@@ -43,8 +43,8 @@ engine; this chapter measures a whole realm as a player sees it.
 5. **Probes.** `?probe` reads the frame back; `?probe&at=SECONDS` runs the
    clock that far in 0.1 s steps; `?probe&do=STEPS` runs input before the
    probed frame. Probes are development only.
-6. **Goldens.** `goldens.ts` walks the landing, the house and the galaxy,
-   then every realm in `realms.json`; each must say ready, throw nothing,
+6. **Goldens.** `goldens.ts` walks the landing and the house, then opens
+   every realm in `realms.json` by its address; each must say ready, throw nothing,
    draw enough lit pixels and match its golden. `release.sh` runs it on
    staging before promoting.
 7. **Analytics.** Common events (session-start, load-engine, world-enter,

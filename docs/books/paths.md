@@ -84,8 +84,8 @@ coax/web/serve.sh apps/openagents-web
 ```
 
 When the server prints `coax serve: http://127.0.0.1:8800/`, open
-`http://127.0.0.1:8800/verse`, choose **ENTER** to play as a guest, and open
-the Haunted House from the galaxy. The dev server rewrites generated content
+`http://127.0.0.1:8800/verse`, choose **ENTER** to play as a guest, and the
+Haunted House opens. The dev server rewrites generated content
 files under `apps/openagents-web/`, so don't commit them by accident.
 
 Chapters, in order:

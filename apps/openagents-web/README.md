@@ -18,12 +18,11 @@ input and WebGPU. The [homepage notes](new-land/README.md) name the focused chec
 `font.coax` is Filament ([coax/font.md](../../coax/font.md)); HTML/Markdown twins
 carry accessible text. Visible UI is drawn in Coax.
 
-`/verse` and `/verse/galaxy` are the Verse playtest's way in, one app
-(`verse.coax`, `verse-face.c`, `verse.wgsl`, `data-page` 0 and 1): the
-landing (CREATE ANYTHING, ENTER THE VERSE, the email box with GO, and ENTER
-to play as a guest; an email goes to `POST /api/playtest/join`) and the
-galaxy, where only the Haunted House opens. Their panels are the Haunted
-House's wood-and-bronze plates, not the HUD bar.
+`/verse` is the Verse playtest's way in (`verse.coax`, `verse-face.c`,
+`verse.wgsl`, `data-page` 0): the landing, where PLAYTEST NOW opens the
+Haunted House. Its panels are the Haunted House's wood-and-bronze plates, not
+the HUD bar. The app's page 1, the galaxy, runs only on the native host;
+`/verse/galaxy` redirects to `/realms`, where every realm is listed.
 
 ```sh
 coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000

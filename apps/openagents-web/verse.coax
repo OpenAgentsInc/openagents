@@ -1,6 +1,9 @@
-// The Verse's way in, drawn by Coax: the landing (openagents.com/verse) and
-// the galaxy after it (/verse/galaxy), ported from the playtest's Kiki flow
-// (aethyr-cpp frozen/kiki at revision 8, demo/kiki-2026-10-27b).
+// The Verse's way in, drawn by Coax: the landing (openagents.com/verse, page 0)
+// and the galaxy (page 1), ported from the playtest's Kiki flow (aethyr-cpp
+// frozen/kiki at revision 8, demo/kiki-2026-10-27b). The web's galaxy page is
+// retired (2026-10-31: /verse/galaxy redirects to /realms); page 1 stays as
+// the native host's travel hub, which a realm's REALMS button opens there
+// (verse/native/realm-host.c rh_realm_of, verse/gpu/realm.sh).
 //
 // The landing, as playtest.openagents.com drew it: A HAUNTED HOUSE PLAYTEST over
 // ENTER THE VERSE, the one line about the house, and PLAYTEST NOW, which
@@ -1419,7 +1422,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert fixture >= 0 && !PLANET_LISTED[fixture];
   for all: 0..<2 {
     s: [1] VerseState; t: [1] Track;
-    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse/galaxy?realms=all"); }
+    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse?realms=all"); }
     page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
     q := project(s[..], fixture);
     #assert (planet_at(s[..], q.x, q.y) == fixture) == (all == 1);
@@ -1434,7 +1437,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 #test "without a pointer, the arrows choose an open world and ENTER opens it" {
   for all: 0..<2 {
     s: [1] VerseState; t: [1] Track;
-    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse/galaxy?realms=all"); }
+    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse?realms=all"); }
     page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
     seen := 0; last := -1;
     for i: 0..<PLANETS + 2 {
