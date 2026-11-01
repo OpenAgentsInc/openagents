@@ -3,6 +3,7 @@
 //   openagents transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo]
 //                              [--language en|auto|CODE] [--text|--srt|--vtt|--json]
 //                              [--backend whispercpp|psionic] [--threads N]
+//                              [--words Psionic,Coax,...] [--prompt TEXT]   (psionic)
 //   openagents transcribe models          the cached models
 //   openagents transcribe fetch MODEL     downloads one to ~/.cache/openagents/models/whisper
 // Backends, on the same ggml model files:
@@ -30,6 +31,7 @@ transcribe_usage :: () {
   print("%\n", "Transcribe (speech to text, on this computer):");
   print("%\n", "  transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo] [--language en|auto|CODE]");
   print("%\n", "                  [--text|--srt|--vtt|--json] [--backend whispercpp|psionic] [--threads N]");
+  print("%\n", "                  [--words Psionic,Coax] [--prompt TEXT]   names to spell right (psionic)");
   print("%\n", "                                     audio or video; base and English by default");
   print("%\n", "  transcribe models                  the models in ~/.cache/openagents/models/whisper");
   print("%\n", "  transcribe fetch MODEL             downloads a model (transcribe fetches one it needs)");
@@ -165,6 +167,8 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   }
   threads := args_value(a, "--threads", "8");
   if text_int(threads) < 1 || text_int(threads) > 64 { return fail(r, EXIT_USAGE, "--threads is 1 to 64"); }
+  prompt := args_value(a, "--prompt", ""); words := args_value(a, "--words", "");
+  if (prompt != "" || words != "") && backend != "psionic" { return fail(r, EXIT_USAGE, "--prompt and --words need --backend psionic"); }
 
   code := tr_fetch(r, name);
   if code != EXIT_OK { return code; }
@@ -188,14 +192,17 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
     flag := "--text";
     if format == cast(int) TrFormat.srt { flag = "--srt"; } else if format == cast(int) TrFormat.vtt { flag = "--vtt"; } else if format == cast(int) TrFormat.json { flag = "--json"; }
     input := ifx is_wav then file else wav;
-    pv := [12] string.[engine, "transcribe", model, input, flag, "--language", lang0, "--threads", threads, "--name", name, "--gpu"];
+    pv: [16] string; np := 0;
+    for v: [12] string.[engine, "transcribe", model, input, flag, "--language", lang0, "--threads", threads, "--name", name, "--gpu"] { pv[np] = v; np += 1; }
+    if prompt != "" { pv[np] = "--prompt"; pv[np + 1] = prompt; np += 2; }
+    if words != "" { pv[np] = "--words"; pv[np + 1] = words; np += 2; }
     t0 := proc_now_ms();
-    got := proc_run(pv[..], 900000, run[0].out[..], err[..]);
+    got := proc_run(pv[0..<np], 900000, run[0].out[..], err[..]);
     if is_wav && got.started == 0 && got.status == 65 {
       code = tr_decode(file, wav, err[..]);
       if code != EXIT_OK { rm := fs_remove(tmp); return fail(r, code, ifx code == EXIT_NOT_FOUND then "ffmpeg was not found (brew install ffmpeg, or set OPENAGENTS_FFMPEG)" else "ffmpeg could not decode the file"); }
       pv[3] = wav;
-      got = proc_run(pv[..], 900000, run[0].out[..], err[..]);
+      got = proc_run(pv[0..<np], 900000, run[0].out[..], err[..]);
     }
     ms := proc_now_ms() - t0;
     rm := fs_remove(tmp);

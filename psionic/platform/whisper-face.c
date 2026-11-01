@@ -298,6 +298,7 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--no-fallback") == 0) opt.fallback = 0;
         else if (strcmp(argv[i], "--prompt") == 0 && i + 1 < argc) prompt = argv[++i];
         else if (strcmp(argv[i], "--words") == 0 && i + 1 < argc) words = argv[++i];
+        else if (strcmp(argv[i], "--word-push") == 0 && i + 2 < argc) { opt.word_first = strtod(argv[i + 1], 0); opt.word_next = strtod(argv[i + 2], 0); i += 2; }
         else if (strcmp(argv[i], "--gpu") == 0) g_gpu = 1;
         else return usage();
     }

@@ -28,12 +28,16 @@ WE_BIAS_MAX :: 32;
 WE_BIAS_LEN :: 12;
 
 // How to decode. language: a language token, -1 (an English-only model, or
-// English), or -2 (detect it from the first window).
+// English), or -2 (detect it from the first window). words: comma-separated
+// names; word_first is added to the log probability of each name's first
+// token, word_next to the next token of a name already started. A stronger
+// word_next (6) turned "Coder" into "Coax der" and "code" into "Coder" on
+// the names clip; 3 spells all five names right on tiny.en and base.en.
 WeOptions :: struct {
   beam: int = 5; best_of: int = 5; fallback: bool = true;
   language: int = -1;
   prompt: string; words: string;
-  word_first: f64 = 2.0; word_next: f64 = 6.0;
+  word_first: f64 = 2.0; word_next: f64 = 3.0;
   entropy_thold: f64 = 2.4; logprob_thold: f64 = -1.0; no_speech_thold: f64 = 0.6;
 }
 // One decoder: its tokens with their log probabilities, and whisper.cpp's
