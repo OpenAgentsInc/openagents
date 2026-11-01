@@ -1782,6 +1782,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-meter.coax",
+      "chapter": "psionic/book/ch180-observe-meter-and-price.md",
+      "stdout": "psionic/fixtures/serve-meter/serve-meter.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-meter-refuse.coax",
+      "chapter": "psionic/book/ch180-observe-meter-and-price.md",
+      "stdout": "psionic/fixtures/serve-meter/serve-meter-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/ssm.coax",
       "chapter": "psionic/book/ch162-a-recurrence-you-can-inspect.md",
       "stdout": "psionic/fixtures/ssm.out",

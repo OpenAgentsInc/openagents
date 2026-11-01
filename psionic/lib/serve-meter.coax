@@ -1,0 +1,334 @@
+// Chapter 180: what a served request leaves behind. One usage record per
+// request, numbered in order and bound to the evidence it ran under (model,
+// checkpoint digest, backend, profile and the chapter-17 record that qualified
+// it); service metrics folded from those records (volume, status counts,
+// input and output lengths, device time, a fixed-bucket latency histogram
+// and its percentiles, quoted and charged millisatoshis); gauges for replicas,
+// queue depth and utilization; and an audit log of configuration, build and
+// policy changes that holds digests only. No type here has a field for
+// request or answer content. The records are the in-process profile
+// psionic-usage-v1; they are not yet a schema in proto/. Prices come from
+// serve-price.coax, which is #authority and gates itself.
+//   coax/bin/coax test psionic/lib/serve-meter.coax
+//   coax/bin/coax mutate psionic/lib/serve-meter.coax --root-only
+#load "serve-price.coax";
+// book:begin types
+// What a request ran under, copied from its capability entry (chapter 173).
+UmEvidence :: struct {model:string;digest:string;backend:string;profile:string;record:string;}
+UmRecord :: struct {seq:int;evidence:UmEvidence;use:BlUse;latency_us:int;quote_msat:int;charge_msat:int;}
+UmMetrics :: struct {
+    requests:int;status:[5]int;tokens_in:int;tokens_out:int;device_us:int;
+    latency:[UM_BUCKETS]int;latency_most:int;slowest:int;quoted:int;charged:int;
+}
+UmCause :: enum u8 {none;seq;evidence;use;charge;full;kind;digest;order;}
+UmResult :: struct {cause:UmCause;metrics:UmMetrics;}
+// The current queue depth, its peak and when the peak was first reached.
+UmGauges :: struct {replicas:int;queue:int;queue_most:int;queue_most_ms:int;}
+UmKind :: enum u8 {none;config;build;policy;}
+// One change: what kind, when, and the digests before and after. Nothing else.
+UmAudit :: struct {seq:int;at_ms:int;kind:UmKind;before:[64]u8;after:[64]u8;}
+UmLog :: struct {count:int;entries:[UM_AUDIT_MAX]UmAudit;}
+// book:end types
+UM_BUCKETS :: 12;
+// Upper bounds of the first 11 latency buckets, in microseconds; the 12th
+// holds everything slower.
+UM_BOUNDS :: [11]int.[1000,2000,5000,10000,20000,50000,100000,200000,500000,1000000,2000000];
+UM_REQUESTS_MOST :: 1000000;
+UM_QUEUE_MOST :: 1000000;
+UM_REPLICAS_MOST :: 64;
+UM_AUDIT_MAX :: 64;
+// The largest price psionic-price-v1 can produce (every rate and use at its
+// bound), so a million records cannot overflow a total.
+UM_QUOTE_MOST :: 88498152000;
+
+// Checks come first. The values in them are worked by hand in chapter 180.
+UM_D1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+UM_D2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+um_test_evidence :: ()->UmEvidence {return UmEvidence.{model="psionic-toy",digest=UM_D1,backend="cpu",profile="p",record="r1"};}
+um_test_record :: (seq:int,status:BlStatus,tokens_in:int,tokens_out:int,device_us:int,latency_us:int,quote:int,charge:int)->UmRecord {
+    return UmRecord.{seq=seq,evidence=um_test_evidence(),use=BlUse.{status=status,tokens_in=tokens_in,tokens_out=tokens_out,device_us=device_us},latency_us=latency_us,quote_msat=quote,charge_msat=charge};
+}
+um_has :: (text:[]u8,mark:string)->bool {
+    for i:0..<text.count-mark.count+1 {if cast(string)text[i..<i+mark.count]==mark {return true;}}
+    return false;
+}
+#test "the quote bound is the largest price the schedule can produce" {
+    s:=BlSchedule.{base=BL_RATE_MOST,per_k_in=BL_RATE_MOST,per_k_out=BL_RATE_MOST,per_second=BL_RATE_MOST};
+    #assert bl_quote(s,BL_TOKENS_MOST,BL_TOKENS_MOST,BL_DEVICE_US_MOST).msat==UM_QUOTE_MOST;
+    #assert UM_QUOTE_MOST*UM_REQUESTS_MOST<BL_MSAT_MOST;
+}
+// book:begin check-observe
+#test "three records fold into totals a reader can recompute by hand" {
+    m:=UmMetrics.{};
+    r:=[3]UmRecord.[um_test_record(1,BlStatus.answered,37,5,12345,13000,2202,1732),
+        um_test_record(2,BlStatus.answered,3,1,999,1500,2202,1064),
+        um_test_record(3,BlStatus.refused,0,0,0,40,0,0)];
+    for i:0..<3 {o:=um_observe(m,r[i]);#assert o.cause==UmCause.none;m=o.metrics;}
+    #assert m.requests==3 && m.status[1]==2 && m.status[2]==1 && m.status[3]==0 && m.status[4]==0;
+    #assert m.tokens_in==40 && m.tokens_out==6 && m.device_us==13344;
+    // 13000 us is in the (10000, 20000] bucket, 1500 in (1000, 2000], 40 in [0, 1000].
+    #assert m.latency[0]==1 && m.latency[1]==1 && m.latency[4]==1 && m.latency_most==13000 && m.slowest==1;
+    #assert m.quoted==4404 && m.charged==2796;
+    // Conservation: the metrics' charged total is the invoice of the records.
+    charges:=[3]int.[r[0].charge_msat,r[1].charge_msat,r[2].charge_msat];#assert bl_total(charges[..]).msat==m.charged;
+    // Percentiles: ranks ceil(3*50/100)=2 and ceil(3*99/100)=3.
+    #assert um_percentile(m,50)==2000 && um_percentile(m,99)==20000 && um_percentile(m,1)==1000;
+}
+// book:end check-observe
+#test "a record out of order, without evidence or over its quote is refused" {
+    m:=UmMetrics.{};ok:=um_test_record(1,BlStatus.answered,37,5,12345,13000,2202,1732);
+    #assert um_observe(m,ok).cause==UmCause.none;
+    x:=ok;x.seq=2;o:=um_observe(m,x);#assert o.cause==UmCause.seq && o.metrics.requests==0;
+    x.seq=0;#assert um_observe(m,x).cause==UmCause.seq;
+    // A second record for request 1 is a duplicate.
+    m=um_observe(m,ok).metrics;#assert um_observe(m,ok).cause==UmCause.seq;
+    m=UmMetrics.{};
+    for k:0..<5 {
+        x=ok;
+        if k==0 {x.evidence.model="";}if k==1 {x.evidence.digest=UM_D1[1..<64];}if k==2 {x.evidence.backend="";}if k==3 {x.evidence.profile="";}if k==4 {x.evidence.record="a b";}
+        #assert um_observe(m,x).cause==UmCause.evidence;
+        // A refused request ran under no entry; it needs no evidence.
+        x.use=BlUse.{status=BlStatus.refused};x.charge_msat=0;#assert um_observe(m,x).cause==UmCause.none;
+        x.use.status=BlStatus.busy;#assert um_observe(m,x).cause==UmCause.none;
+        x.use.status=BlStatus.cancelled;#assert um_observe(m,x).cause==UmCause.evidence;
+    }
+    x=ok;x.use.tokens_in=-1;#assert um_observe(m,x).cause==UmCause.use;
+    x=ok;x.latency_us=-1;#assert um_observe(m,x).cause==UmCause.use;
+    x=ok;x.latency_us=BL_DEVICE_US_MOST+1;#assert um_observe(m,x).cause==UmCause.use;
+    x=ok;x.latency_us=BL_DEVICE_US_MOST;#assert um_observe(m,x).cause==UmCause.none;
+    x=ok;x.charge_msat=2203;#assert um_observe(m,x).cause==UmCause.charge;
+    x=ok;x.charge_msat=2202;#assert um_observe(m,x).cause==UmCause.none;
+    x=ok;x.charge_msat=-1;#assert um_observe(m,x).cause==UmCause.charge;
+    x=ok;x.quote_msat=UM_QUOTE_MOST+1;#assert um_observe(m,x).cause==UmCause.charge;
+    x=ok;x.quote_msat=UM_QUOTE_MOST;#assert um_observe(m,x).cause==UmCause.none;
+    x=ok;x.use.status=BlStatus.refused;x.charge_msat=1;#assert um_observe(m,x).cause==UmCause.charge;
+    x.use.status=BlStatus.busy;#assert um_observe(m,x).cause==UmCause.charge;
+    x.charge_msat=0;#assert um_observe(m,x).cause==UmCause.none;
+    full:=UmMetrics.{requests=UM_REQUESTS_MOST};x=ok;x.seq=UM_REQUESTS_MOST+1;#assert um_observe(full,x).cause==UmCause.full;
+    full.requests-=1;x.seq-=1;#assert um_observe(full,x).cause==UmCause.none;
+}
+#forall "every status is counted once and every bucket edge is exact" s: 1..<5, b: 0..<12, d: 0..<3 {
+    m:=UmMetrics.{};bounds:=[12]int.[1000,2000,5000,10000,20000,50000,100000,200000,500000,1000000,2000000,3000000];
+    low:=ifx b==0 then 0 else bounds[b-1]+1;lat:=ifx d==0 then low else ifx d==1 then bounds[b] else (low+bounds[b])/2;
+    r:=um_test_record(1,cast(BlStatus)s,4,2,7,lat,9,0);
+    o:=um_observe(m,r);#assert o.cause==UmCause.none && o.metrics.status[s]==1 && o.metrics.requests==1;
+    for k:0..<12 {#assert o.metrics.latency[k]==(ifx k==b then 1 else 0);}
+    #assert um_bucket(lat)==b && o.metrics.latency_most==lat && o.metrics.quoted==9;
+    // A single observation is every percentile: its bucket's upper bound,
+    // or the slowest latency seen when it is past the last bound.
+    #assert um_percentile(o.metrics,50)==(ifx b<11 then bounds[b] else lat);
+}
+#test "percentiles walk the histogram by rank" {
+    m:=UmMetrics.{};
+    #assert um_percentile(m,50)==-1;
+    m.requests=100;m.latency[0]=50;m.latency[3]=45;m.latency[11]=5;m.latency_most=7000000;
+    #assert um_percentile(m,50)==1000 && um_percentile(m,51)==10000 && um_percentile(m,95)==10000 && um_percentile(m,96)==7000000;
+    #assert um_percentile(m,100)==7000000 && um_percentile(m,0)==-1 && um_percentile(m,101)==-1;
+    m.requests=7;m.latency[0]=3;m.latency[3]=4;m.latency[11]=0;
+    // ceil(7*50/100) = 4: the fourth fastest is in bucket 3.
+    #assert um_percentile(m,42)==1000 && um_percentile(m,43)==10000;
+}
+#test "folding keeps the slowest latency and the first request that reached it" {
+    m:=UmMetrics.{};
+    m=um_observe(m,um_test_record(1,BlStatus.answered,9,2,1,5,0,0)).metrics;
+    m=um_observe(m,um_test_record(2,BlStatus.answered,3,8,1,4,0,0)).metrics;
+    #assert m.latency_most==5 && m.slowest==1;
+    m=um_observe(m,um_test_record(3,BlStatus.answered,9,8,1,5,0,0)).metrics;
+    #assert m.latency_most==5 && m.slowest==1 && m.requests==3;
+    m=um_observe(m,um_test_record(4,BlStatus.answered,9,8,1,6,0,0)).metrics;
+    #assert m.latency_most==6 && m.slowest==4;
+}
+#test "gauges: replicas, queue depth and utilization in basis points" {
+    g:=UmGauges.{replicas=2};
+    g=um_queue(g,3,10);g=um_queue(g,1,11);#assert g.queue==1 && g.queue_most==3 && g.queue_most_ms==10;
+    g=um_queue(g,3,12);#assert g.queue_most==3 && g.queue_most_ms==10;g=um_queue(g,4,13);#assert g.queue_most==4 && g.queue_most_ms==13;
+    g=um_queue(g,-1,14);#assert g.queue==4;g=um_queue(g,UM_QUEUE_MOST+1,14);#assert g.queue==4;g=um_queue(g,UM_QUEUE_MOST,14);#assert g.queue==UM_QUEUE_MOST;
+    // 13344 device-us over 2 replicas for a 100000 us window: 667 basis points (6.67%).
+    #assert um_utilization(13344,2,100000)==667 && um_utilization(0,1,1)==0 && um_utilization(1,1,1)==10000;
+    #assert um_utilization(200000,2,100000)==10000 && um_utilization(200001,2,100000)==-1;
+    #assert um_utilization(-1,2,100000)==-1 && um_utilization(1,0,100000)==-1 && um_utilization(1,2,0)==-1;
+    #assert um_utilization(1,UM_REPLICAS_MOST,1)==156 && um_utilization(1,UM_REPLICAS_MOST+1,1)==-1;
+    #assert um_utilization(1,1,BL_DEVICE_US_MOST)==0 && um_utilization(1,1,BL_DEVICE_US_MOST+1)==-1;
+    #assert um_utilization(UM_REPLICAS_MOST*BL_DEVICE_US_MOST,UM_REPLICAS_MOST,BL_DEVICE_US_MOST)==10000;
+}
+// book:begin check-audit
+#test "the audit log keeps kinds, times and digests, in order" {
+    trail:[1]UmLog;
+    #assert um_audit(trail[..],100,UmKind.config,UM_D1,UM_D2)==UmCause.none;
+    #assert um_audit(trail[..],100,UmKind.policy,UM_D2,UM_D1)==UmCause.none;
+    #assert trail[0].count==2 && trail[0].entries[1].seq==2 && trail[0].entries[1].kind==UmKind.policy;
+    #assert cast(string)trail[0].entries[0].before[..]==UM_D1 && cast(string)trail[0].entries[0].after[..]==UM_D2;
+    // Free text cannot enter: only 64 lowercase hex digits are accepted.
+    #assert um_audit(trail[..],101,UmKind.build,UM_D1,"set temperature to 0.7 for alice")==UmCause.digest;
+    #assert um_audit(trail[..],99,UmKind.build,UM_D1,UM_D2)==UmCause.order;
+    #assert um_audit(trail[..],101,UmKind.none,UM_D1,UM_D2)==UmCause.kind;
+    #assert trail[0].count==2;
+// book:end check-audit
+    #assert um_audit(trail[..],101,UmKind.build,"x",UM_D2)==UmCause.digest;
+    #assert um_audit(trail[..],101,UmKind.build,UM_D1,UM_D1)==UmCause.digest;
+    #assert um_audit(trail[..],-1,UmKind.build,UM_D1,UM_D2)==UmCause.order;
+    for i:2..<UM_AUDIT_MAX {#assert um_audit(trail[..],101,UmKind.build,UM_D1,UM_D2)==UmCause.none;}
+    #assert um_audit(trail[..],101,UmKind.build,UM_D1,UM_D2)==UmCause.full && trail[0].count==UM_AUDIT_MAX;
+    once:[1]UmLog;#assert um_audit(once[..],5,UmKind.build,UM_D1,UM_D2)==UmCause.none && um_audit(once[..],4,UmKind.build,UM_D1,UM_D2)==UmCause.order;
+    fresh:[1]UmLog;#assert um_audit(fresh[..],-1,UmKind.build,UM_D1,UM_D2)==UmCause.order && um_audit(fresh[..],0,UmKind.build,UM_D1,UM_D2)==UmCause.none;
+    #assert um_hex64(UM_D1) && um_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !um_hex64(UM_D1[0..<63]) && !um_hex64("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !um_hex64("/123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !um_hex64(":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !um_hex64("`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !um_hex64("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+#test "evidence text is printable, bounded and has no spaces" {
+    #assert um_text("a",1) && !um_text(" a",3) && !um_text("",1) && !um_text("ab",1) && !um_text("a b",3) && um_text("~!",2);
+    del:=[2]u8.['a',127];#assert !um_text(cast(string)del[..],3);
+    e:=um_test_evidence();#assert um_evidence_valid(e);
+    long:[129]u8;for i:0..<129 {long[i]='m';}
+    x:=e;x.model=cast(string)long[0..<128];#assert um_evidence_valid(x);x.model=cast(string)long[..];#assert !um_evidence_valid(x);
+    x=e;x.record=cast(string)long[0..<128];#assert um_evidence_valid(x);x.record=cast(string)long[..];#assert !um_evidence_valid(x);
+    x=e;x.backend=cast(string)long[0..<16];#assert um_evidence_valid(x);x.backend=cast(string)long[0..<17];#assert !um_evidence_valid(x);
+    x=e;x.profile=cast(string)long[0..<64];#assert um_evidence_valid(x);x.profile=cast(string)long[0..<65];#assert !um_evidence_valid(x);
+}
+// book:begin check-private
+#test "a request's marked content leaves no trace in records, metrics or the log" {
+    // The request said "MARK-7f3a: my account number is 12345". The engine
+    // processed 11 input tokens; nothing else about it reaches the meter.
+    r:=um_test_record(1,BlStatus.answered,11,1,800,900,2202,1031);
+    m:=um_observe(UmMetrics.{},r).metrics;trail:[1]UmLog;
+    #assert um_audit(trail[..],5,UmKind.config,UM_D1,UM_D2)==UmCause.none;
+    out:[1024]u8;n:=um_line(r,out[..],0);n=um_metrics_line(m,out[..],n);n=um_audit_line(trail[0].entries[0],out[..],n);
+    #assert n>0 && !um_has(out[0..<n],"MARK-7f3a") && !um_has(out[0..<n],"12345 ") && um_has(out[0..<n],"tokens_in=11 ");
+}
+// book:end check-private
+#test "lines are exact and refuse a buffer that is too small" {
+    r:=um_test_record(1,BlStatus.answered,37,5,12345,13000,2202,1732);out:[400]u8;
+    n:=um_line(r,out[..],0);
+    want:="usage seq=1 model=psionic-toy digest=1111111111111111111111111111111111111111111111111111111111111111 backend=cpu profile=p record=r1 status=answered tokens_in=37 tokens_out=5 device_us=12345 latency_us=13000 quote_msat=2202 charge_msat=1732\n";
+    #assert n==want.count && cast(string)out[0..<n]==want;
+    #assert um_line(r,out[0..<n],0)==n && um_line(r,out[0..<n-1],0)==-1 && um_line(r,out[..],-1)==-1;
+    m:=um_observe(UmMetrics.{},r).metrics;k:=um_metrics_line(m,out[..],0);
+    w2:="metrics requests=1 answered=1 refused=0 busy=0 cancelled=0 tokens_in=37 tokens_out=5 device_us=12345 p50_us=20000 p95_us=20000 p99_us=20000 quoted_msat=2202 charged_msat=1732\n";
+    #assert cast(string)out[0..<k]==w2 && um_metrics_line(m,out[0..<k-1],0)==-1 && um_metrics_line(m,out[..],-1)==-1;
+    // Distinct counts and percentiles: ranks 50, 95 and 99 of 100 land in
+    // buckets 0, 1 and 2; one rank later each would land a bucket further.
+    w:=UmMetrics.{requests=100,status=[5]int.[0,94,3,2,1]};w.latency[0]=50;w.latency[1]=45;w.latency[2]=4;w.latency[3]=1;
+    k=um_metrics_line(w,out[..],0);
+    w4:="metrics requests=100 answered=94 refused=3 busy=2 cancelled=1 tokens_in=0 tokens_out=0 device_us=0 p50_us=1000 p95_us=2000 p99_us=5000 quoted_msat=0 charged_msat=0\n";
+    #assert cast(string)out[0..<k]==w4;
+    trail:[1]UmLog;#assert um_audit(trail[..],7,UmKind.build,UM_D1,UM_D2)==UmCause.none;
+    a:=um_audit_line(trail[0].entries[0],out[..],0);
+    w3:="audit seq=1 at_ms=7 kind=build before=1111111111111111111111111111111111111111111111111111111111111111 after=2222222222222222222222222222222222222222222222222222222222222222\n";
+    #assert cast(string)out[0..<a]==w3 && um_audit_line(trail[0].entries[0],out[0..<a-1],0)==-1;
+    #assert um_int(out[..],0,0)==1 && out[0]=='0' && um_int(out[..],0,-1)==-1 && um_int(out[0..<2],0,100)==-1 && um_int(out[0..<3],0,100)==3;
+    #assert um_put(out[..],-1,"a")==-1 && um_put(out[0..<1],0,"a")==1 && um_put(out[0..<1],1,"a")==-1;
+    #assert um_has(out[0..<0],"")==true && !um_has(out[0..<1],"ab");
+}
+#test "names" {
+    c:=[9]string.["none","seq","evidence","use","charge","full","kind","digest","order"];for k:0..<9 {#assert um_cause_name(cast(UmCause)k)==c[k];}
+    s:=[4]string.["none","config","build","policy"];for k:0..<4 {#assert um_kind_name(cast(UmKind)k)==s[k];}
+}
+
+um_text :: (s:string,most:int)->bool {
+    if s.count<1 || s.count>most {return false;}
+    for i:0..<s.count {if s[i]<33 || s[i]>126 {return false;}}
+    return true;
+}
+um_hex64 :: (s:string)->bool {
+    if s.count!=64 {return false;}
+    for i:0..<64 {c:=s[i];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+    return true;
+}
+um_evidence_valid :: (e:UmEvidence)->bool {
+    return um_text(e.model,128) && um_hex64(e.digest) && um_text(e.backend,16) && um_text(e.profile,64) && um_text(e.record,128);
+}
+// The bucket a latency falls in: the first bound it does not exceed.
+um_bucket :: (us:int)->int {
+    for i:0..<11 {if us<=UM_BOUNDS[i] {return i;}}
+    return 11;
+}
+// book:begin observe
+// Fold one record into the metrics, or refuse it and change nothing.
+um_observe :: (m:UmMetrics,r:UmRecord)->UmResult {
+    if m.requests>=UM_REQUESTS_MOST {return UmResult.{cause=UmCause.full,metrics=m};}
+    if r.seq!=m.requests+1 {return UmResult.{cause=UmCause.seq,metrics=m};}
+    if !bl_use_valid(r.use) || !bl_in(r.latency_us,BL_DEVICE_US_MOST) {return UmResult.{cause=UmCause.use,metrics=m};}
+    ran:=r.use.status==BlStatus.answered || r.use.status==BlStatus.cancelled;
+    if ran && !um_evidence_valid(r.evidence) {return UmResult.{cause=UmCause.evidence,metrics=m};}
+    if !bl_in(r.quote_msat,UM_QUOTE_MOST) || !bl_in(r.charge_msat,ifx ran then r.quote_msat else 0) {return UmResult.{cause=UmCause.charge,metrics=m};}
+    n:=m;n.requests+=1;n.status[cast(int)r.use.status]+=1;
+    n.tokens_in+=r.use.tokens_in;n.tokens_out+=r.use.tokens_out;n.device_us+=r.use.device_us;
+    n.latency[um_bucket(r.latency_us)]+=1;
+    if r.latency_us>n.latency_most || n.slowest==0 {n.latency_most=r.latency_us;n.slowest=r.seq;}
+    n.quoted+=r.quote_msat;n.charged+=r.charge_msat;
+    return UmResult.{metrics=n};
+}
+// The upper bound of the bucket holding the observation at rank
+// ceil(requests*pct/100); past the last bound, the slowest latency seen.
+um_percentile :: (m:UmMetrics,pct:int)->int {
+    if m.requests<1 || pct<1 || pct>100 {return -1;}
+    rank:=(m.requests*pct+99)/100;seen:=0;
+    for i:0..<11 {seen+=m.latency[i];if seen>=rank {return UM_BOUNDS[i];}}
+    return m.latency_most;
+}
+// book:end observe
+um_queue :: (g:UmGauges,depth:int,at_ms:int)->UmGauges {
+    if !bl_in(depth,UM_QUEUE_MOST) {return g;}
+    h:=g;h.queue=depth;if depth>h.queue_most {h.queue_most=depth;h.queue_most_ms=at_ms;}return h;
+}
+// Device time over the time the replicas existed, in basis points (floor).
+um_utilization :: (device_us:int,replicas:int,window_us:int)->int {
+    if replicas<1 || replicas>UM_REPLICAS_MOST || window_us<1 || window_us>BL_DEVICE_US_MOST {return -1;}
+    if !bl_in(device_us,replicas*window_us) {return -1;}
+    return device_us*10000/(replicas*window_us);
+}
+// book:begin audit
+um_audit :: (trail:[]UmLog,at_ms:int,kind:UmKind,before:string,after:string)->UmCause {
+    n:=trail[0].count;
+    if kind==UmKind.none {return UmCause.kind;}
+    if !um_hex64(before) || !um_hex64(after) || before==after {return UmCause.digest;}
+    last:=ifx n>0 then trail[0].entries[n-1].at_ms else 0;
+    if at_ms<last {return UmCause.order;}
+    if n>=UM_AUDIT_MAX {return UmCause.full;}
+    e:=UmAudit.{seq=n+1,at_ms=at_ms,kind=kind};
+    for i:0..<64 {e.before[i]=before[i];e.after[i]=after[i];}
+    trail[0].entries[n]=e;trail[0].count=n+1;return UmCause.none;
+}
+// book:end audit
+// Append text at `at`; -1 when it does not fit or `at` already failed.
+um_put :: (out:[]u8,at:int,s:string)->int {
+    if at<0 || at>out.count-s.count {return -1;}
+    for i:0..<s.count {out[at+i]=s[i];}
+    return at+s.count;
+}
+um_int :: (out:[]u8,at:int,v:int)->int {
+    digits:[20]u8;n:=0;x:=v;
+    while true {digits[n]=cast(u8)('0'+x%10);n+=1;x/=10;if x==0 {break;}}
+    if v<0 || at<0 || at>out.count-n {return -1;}
+    for i:0..<n {out[at+i]=digits[n-1-i];}
+    return at+n;
+}
+um_field :: (out:[]u8,at:int,key:string,v:int)->int {return um_int(out,um_put(out,at,key),v);}
+um_line :: (r:UmRecord,out:[]u8,from:int)->int {
+    at:=um_put(out,from,"usage");at=um_field(out,at," seq=",r.seq);
+    at=um_put(out,at," model=");at=um_put(out,at,r.evidence.model);at=um_put(out,at," digest=");at=um_put(out,at,r.evidence.digest);
+    at=um_put(out,at," backend=");at=um_put(out,at,r.evidence.backend);at=um_put(out,at," profile=");at=um_put(out,at,r.evidence.profile);
+    at=um_put(out,at," record=");at=um_put(out,at,r.evidence.record);at=um_put(out,at," status=");at=um_put(out,at,bl_status_name(r.use.status));
+    at=um_field(out,at," tokens_in=",r.use.tokens_in);at=um_field(out,at," tokens_out=",r.use.tokens_out);
+    at=um_field(out,at," device_us=",r.use.device_us);at=um_field(out,at," latency_us=",r.latency_us);
+    at=um_field(out,at," quote_msat=",r.quote_msat);at=um_field(out,at," charge_msat=",r.charge_msat);
+    return um_put(out,at,"\n");
+}
+um_metrics_line :: (m:UmMetrics,out:[]u8,from:int)->int {
+    at:=um_field(out,from,"metrics requests=",m.requests);
+    at=um_field(out,at," answered=",m.status[1]);at=um_field(out,at," refused=",m.status[2]);
+    at=um_field(out,at," busy=",m.status[3]);at=um_field(out,at," cancelled=",m.status[4]);
+    at=um_field(out,at," tokens_in=",m.tokens_in);at=um_field(out,at," tokens_out=",m.tokens_out);at=um_field(out,at," device_us=",m.device_us);
+    at=um_field(out,at," p50_us=",um_percentile(m,50));at=um_field(out,at," p95_us=",um_percentile(m,95));at=um_field(out,at," p99_us=",um_percentile(m,99));
+    at=um_field(out,at," quoted_msat=",m.quoted);at=um_field(out,at," charged_msat=",m.charged);
+    return um_put(out,at,"\n");
+}
+um_audit_line :: (a:UmAudit,out:[]u8,from:int)->int {
+    b:=a;at:=um_field(out,from,"audit seq=",a.seq);at=um_field(out,at," at_ms=",a.at_ms);
+    at=um_put(out,at," kind=");at=um_put(out,at,um_kind_name(a.kind));
+    at=um_put(out,at," before=");at=um_put(out,at,cast(string)b.before[..]);at=um_put(out,at," after=");at=um_put(out,at,cast(string)b.after[..]);
+    return um_put(out,at,"\n");
+}
+um_cause_name :: (c:UmCause)->string {names:=[9]string.["none","seq","evidence","use","charge","full","kind","digest","order"];return names[cast(int)c];}
+um_kind_name :: (k:UmKind)->string {names:=[4]string.["none","config","build","policy"];return names[cast(int)k];}

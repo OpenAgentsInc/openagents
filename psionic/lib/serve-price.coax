@@ -1,0 +1,265 @@
+// Chapter 180: what a served request costs, in whole millisatoshis.
+// A price schedule names four integer rates: a base per answered request,
+// millisatoshis per 1000 input tokens, per 1000 output tokens and per
+// device-second. A request's price is the base plus one ceiling of the rest,
+// rounded up to the next whole millisatoshi, once per request. A quote prices
+// the worst case a request may reach (its input, its output limit, its
+// deadline); admission holds the quote against the account's budget, and
+// settlement charges the smaller of the actual price and the quote, then
+// releases the hold. No float touches money, and every bound below keeps every
+// product and sum inside int. Settlement in bitcoin stays in the wallet,
+// outside Psionic. The schedule is the in-process profile psionic-price-v1;
+// it is not yet a schema in proto/.
+//   coax/bin/coax test psionic/lib/serve-price.coax
+//   coax/bin/coax mutate psionic/lib/serve-price.coax
+#authority;
+// book:begin types
+BlStatus :: enum u8 {none;answered;refused;busy;cancelled;}
+// Millisatoshis per answered request, per 1000 input tokens, per 1000 output
+// tokens and per device-second.
+BlSchedule :: struct {base:int;per_k_in:int;per_k_out:int;per_second:int;}
+// What one request used: its outcome, its tokens and its device time.
+BlUse :: struct {status:BlStatus;tokens_in:int;tokens_out:int;device_us:int;}
+BlCause :: enum u8 {none;schedule;use;account;quote;budget;total;}
+BlPrice :: struct {cause:BlCause;msat:int;}
+// budget is what the account may spend; held is what admitted requests may
+// still charge; spent is what settled requests did charge.
+BlAccount :: struct {budget:int;held:int;spent:int;}
+// capped says the request ran past its quote and was charged the quote.
+BlSettle :: struct {cause:BlCause;charge:int;capped:bool;account:BlAccount;}
+// book:end types
+BL_RATE_MOST :: 1000000;            // 1000 sat for each unit of any rate
+BL_TOKENS_MOST :: 1048576;          // the live service's per-request token bound
+BL_DEVICE_US_MOST :: 86400000000;   // one day of device time
+BL_MSAT_MOST :: 2100000000000000000; // 21 million bitcoin, in millisatoshis
+BL_US_PER_SECOND :: 1000000;
+
+// Checks come first. The values in them are worked by hand in chapter 180.
+bl_test_schedule :: ()->BlSchedule {return BlSchedule.{base=1000,per_k_in=2000,per_k_out=8000,per_second=50000};}
+// book:begin check-price
+#test "a price is the base plus one ceiling, worked by hand" {
+    s:=bl_test_schedule();
+    // 37*2000*1000 + 5*8000*1000 + 12345*50000 = 731250000 millionths of a
+    // msat: 731.25 msat, rounded up to 732, plus the 1000 msat base.
+    p:=bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=5,device_us=12345});
+    #assert p.cause==BlCause.none && p.msat==1732;
+    // 3 in, 1 out, 999 us: 63950000 millionths, 63.95 msat, so 64 + 1000.
+    p=bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=3,tokens_out=1,device_us=999});
+    #assert p.msat==1064;
+    // A cancelled request pays for the device time it used and nothing else:
+    // 12345*50000 = 617250000 millionths, 617.25, so 618.
+    p=bl_price(s,BlUse.{status=BlStatus.cancelled,tokens_in=37,tokens_out=5,device_us=12345});
+    #assert p.msat==618;
+    // A refused or busy request costs nothing.
+    #assert bl_price(s,BlUse.{status=BlStatus.refused,tokens_in=37,device_us=12345}).msat==0;
+    #assert bl_price(s,BlUse.{status=BlStatus.busy,device_us=12345}).msat==0;
+}
+// book:end check-price
+#test "the ceiling is exact at its boundaries" {
+    #assert bl_ceil(0,1000000)==0 && bl_ceil(1,1000000)==1 && bl_ceil(999999,1000000)==1;
+    #assert bl_ceil(1000000,1000000)==1 && bl_ceil(1000001,1000000)==2 && bl_ceil(2000000,1000000)==2;
+    s:=BlSchedule.{base=0,per_k_in=0,per_k_out=0,per_second=1};
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,device_us=1}).msat==1;
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,device_us=1000000}).msat==1;
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,device_us=1000001}).msat==2;
+    #assert bl_price(s,BlUse.{status=BlStatus.answered}).msat==0;
+    s=BlSchedule.{base=7,per_k_in=1,per_k_out=0,per_second=0};
+    // One input token at 1 msat per 1000 is a thousandth of a msat: 1.
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=1}).msat==8;
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=1000}).msat==8;
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=1001}).msat==9;
+    s=BlSchedule.{base=0,per_k_in=0,per_k_out=3,per_second=0};
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,tokens_out=1000}).msat==3;
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,tokens_out=1001}).msat==4;
+    #assert bl_price(s,BlUse.{status=BlStatus.cancelled,tokens_out=1001}).msat==0;
+}
+// An independent oracle: price with exact rationals kept as a whole part and
+// a remainder per component, then round the summed remainders once.
+bl_oracle :: (s:BlSchedule,u:BlUse)->int {
+    if u.status==BlStatus.refused || u.status==BlStatus.busy {return 0;}
+    whole:=(u.device_us/1000000)*s.per_second;rest:=(u.device_us%1000000)*s.per_second;
+    if u.status==BlStatus.answered {
+        whole+=s.base+(u.tokens_in/1000)*s.per_k_in+(u.tokens_out/1000)*s.per_k_out;
+        rest+=(u.tokens_in%1000)*s.per_k_in*1000+(u.tokens_out%1000)*s.per_k_out*1000;
+    }
+    whole+=rest/1000000;if rest%1000000!=0 {whole+=1;}
+    return whole;
+}
+#forall "the price agrees with an exact oracle" a: 0..<5, b: 0..<5, c: 0..<5, k: 0..<4 {
+    ins:=[5]int.[0,1,999,1000,1048576];outs:=[5]int.[0,1,1001,4096,1048576];devs:=[5]int.[0,1,999999,1000001,86400000000];
+    rates:=[4]BlSchedule.[bl_test_schedule(),BlSchedule.{base=1,per_k_in=1,per_k_out=1,per_second=1},
+        BlSchedule.{base=1000000,per_k_in=1000000,per_k_out=1000000,per_second=1000000},BlSchedule.{per_k_in=3,per_k_out=7,per_second=11}];
+    for st:1..<5 {
+        u:=BlUse.{status=cast(BlStatus)st,tokens_in=ins[a],tokens_out=outs[b],device_us=devs[c]};
+        p:=bl_price(rates[k],u);#assert p.cause==BlCause.none && p.msat==bl_oracle(rates[k],u);
+    }
+}
+#test "the largest request at the largest rates stays far inside int" {
+    s:=BlSchedule.{base=BL_RATE_MOST,per_k_in=BL_RATE_MOST,per_k_out=BL_RATE_MOST,per_second=BL_RATE_MOST};
+    u:=BlUse.{status=BlStatus.answered,tokens_in=BL_TOKENS_MOST,tokens_out=BL_TOKENS_MOST,device_us=BL_DEVICE_US_MOST};
+    // The largest numerator is 2*1048576*1000000*1000 + 86400000000*1000000,
+    // about 8.85e16 millionths; the price is 1000000 + 2*1048576000 +
+    // 86400000000 = 88498152000 msat.
+    #assert bl_price(s,u).msat==88498152000;
+}
+#test "a schedule or a use outside its bounds is refused, not priced" {
+    s:=bl_test_schedule();u:=BlUse.{status=BlStatus.answered,tokens_in=1,tokens_out=1,device_us=1};
+    #assert bl_price(s,u).cause==BlCause.none;
+    for k:0..<4 {
+        for v:0..<2 {
+            x:=s;bad:=ifx v==0 then -1 else BL_RATE_MOST+1;ok:=ifx v==0 then 0 else BL_RATE_MOST;
+            if k==0 {x.base=bad;}if k==1 {x.per_k_in=bad;}if k==2 {x.per_k_out=bad;}if k==3 {x.per_second=bad;}
+            p:=bl_price(x,u);#assert p.cause==BlCause.schedule && p.msat==0;
+            if k==0 {x.base=ok;}if k==1 {x.per_k_in=ok;}if k==2 {x.per_k_out=ok;}if k==3 {x.per_second=ok;}
+            #assert bl_price(x,u).cause==BlCause.none;
+        }
+    }
+    for k:0..<3 {
+        x:=u;if k==0 {x.tokens_in=-1;}if k==1 {x.tokens_out=-1;}if k==2 {x.device_us=-1;}
+        #assert bl_price(s,x).cause==BlCause.use;
+        x=u;if k==0 {x.tokens_in=BL_TOKENS_MOST+1;}if k==1 {x.tokens_out=BL_TOKENS_MOST+1;}if k==2 {x.device_us=BL_DEVICE_US_MOST+1;}
+        #assert bl_price(s,x).cause==BlCause.use;
+        x=u;if k==0 {x.tokens_in=BL_TOKENS_MOST;}if k==1 {x.tokens_out=BL_TOKENS_MOST;}if k==2 {x.device_us=BL_DEVICE_US_MOST;}
+        #assert bl_price(s,x).cause==BlCause.none;
+    }
+    x:=u;x.status=BlStatus.none;#assert bl_price(s,x).cause==BlCause.use;
+}
+// book:begin check-budget
+#test "admission holds the quote; settlement charges at most the quote" {
+    s:=bl_test_schedule();
+    // The worst case of 37 input tokens, at most 16 output tokens and a 20 ms
+    // deadline: 74000000 + 128000000 + 1000000000 millionths, 1202 + 1000.
+    q:=bl_quote(s,37,16,20000);#assert q.cause==BlCause.none && q.msat==2202;
+    a:=BlAccount.{budget=4000};
+    h:=bl_admit(a,q);#assert h.cause==BlCause.none && h.account.held==2202 && h.account.spent==0;
+    // It used 5 tokens and 12345 us: 1732 msat, and the hold is released.
+    d:=bl_settle(s,h.account,q,BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=5,device_us=12345});
+    #assert d.cause==BlCause.none && d.charge==1732 && d.account.held==0 && d.account.spent==1732;
+    // 1732 spent + 2202 held = 3934 fits 4000; a third hold would need 6136.
+    h=bl_admit(d.account,q);#assert h.cause==BlCause.none && h.account.held==2202;
+    r:=bl_admit(h.account,q);#assert r.cause==BlCause.budget && r.account.held==2202 && r.account.spent==1732;
+    // On a 3000 msat budget the second request is refused before any work.
+    r=bl_admit(BlAccount.{budget=3000,spent=1732},q);#assert r.cause==BlCause.budget;
+}
+// book:end check-budget
+#test "a late request is charged its quote, never more" {
+    s:=bl_test_schedule();q:=bl_quote(s,37,16,20000);
+    h:=bl_admit(BlAccount.{budget=2202},q);#assert h.cause==BlCause.none && h.account.held==2202;
+    d:=bl_settle(s,h.account,q,BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=16,device_us=20001});
+    #assert d.cause==BlCause.none && d.charge==2202 && d.capped && d.account.spent==2202 && d.account.held==0;
+    #assert bl_admit(d.account,BlPrice.{msat=1}).cause==BlCause.budget && bl_admit(d.account,BlPrice.{}).cause==BlCause.none;
+    // Exactly at the quote is the quote.
+    h=bl_admit(BlAccount.{budget=2202},q);
+    d=bl_settle(s,h.account,q,BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=16,device_us=20000});#assert d.charge==2202 && !d.capped;
+    d=bl_settle(s,h.account,q,BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=16,device_us=19980});#assert d.charge==2201 && !d.capped;
+    // Refused after admission: nothing charged, the hold released.
+    d=bl_settle(s,h.account,q,BlUse.{status=BlStatus.refused,tokens_in=37});#assert d.cause==BlCause.none && d.charge==0 && d.account.held==0 && d.account.spent==0;
+}
+#test "admission and settlement refuse what they cannot hold" {
+    s:=bl_test_schedule();q:=bl_quote(s,37,16,20000);
+    #assert bl_quote(s,-1,16,20000).cause==BlCause.use && bl_quote(BlSchedule.{base=-1},1,1,1).cause==BlCause.schedule;
+    #assert bl_admit(BlAccount.{budget=4000},bl_quote(s,-1,1,1)).cause==BlCause.quote;
+    #assert bl_admit(BlAccount.{budget=4000},BlPrice.{msat=-1}).cause==BlCause.quote;
+    #assert bl_admit(BlAccount.{budget=BL_MSAT_MOST},BlPrice.{msat=BL_MSAT_MOST}).cause==BlCause.none;
+    #assert bl_admit(BlAccount.{budget=BL_MSAT_MOST},BlPrice.{msat=BL_MSAT_MOST+1}).cause==BlCause.quote;
+    #assert bl_admit(BlAccount.{budget=4000,held=1798},q).cause==BlCause.none && bl_admit(BlAccount.{budget=4000,held=1799},q).cause==BlCause.budget;
+    #assert bl_admit(BlAccount.{budget=4000,spent=1798},q).cause==BlCause.none && bl_admit(BlAccount.{budget=4000,spent=1799},q).cause==BlCause.budget;
+    // Accounts that cannot exist are refused.
+    #assert bl_account_valid(BlAccount.{}) && bl_account_valid(BlAccount.{budget=BL_MSAT_MOST,held=1,spent=BL_MSAT_MOST-1});
+    #assert !bl_account_valid(BlAccount.{budget=-1}) && !bl_account_valid(BlAccount.{budget=BL_MSAT_MOST+1,held=0,spent=0});
+    #assert !bl_account_valid(BlAccount.{budget=5,held=-1}) && !bl_account_valid(BlAccount.{budget=5,spent=-1});
+    #assert !bl_account_valid(BlAccount.{budget=5,held=3,spent=3}) && bl_account_valid(BlAccount.{budget=6,held=3,spent=3});
+    #assert bl_admit(BlAccount.{budget=5,held=3,spent=3},BlPrice.{}).cause==BlCause.account;
+    // Settling more than is held, a bad quote, a bad use or a bad account.
+    u:=BlUse.{status=BlStatus.answered,tokens_in=1,tokens_out=1,device_us=1};
+    #assert bl_settle(s,BlAccount.{budget=4000,held=2201},q,u).cause==BlCause.quote;
+    #assert bl_settle(s,BlAccount.{budget=4000,held=2202},q,u).cause==BlCause.none;
+    #assert bl_settle(s,BlAccount.{budget=4000,held=2202},BlPrice.{cause=BlCause.use,msat=2202},u).cause==BlCause.quote;
+    #assert bl_settle(s,BlAccount.{budget=4000,held=2202},BlPrice.{msat=-1},u).cause==BlCause.quote;
+    bad:=u;bad.tokens_in=-1;d:=bl_settle(s,BlAccount.{budget=4000,held=2202},q,bad);
+    #assert d.cause==BlCause.use && d.charge==0 && d.account.held==2202;
+    #assert bl_settle(s,BlAccount.{budget=4000,held=2202,spent=1799},q,u).cause==BlCause.account;
+}
+// book:begin check-total
+#test "an invoice is the sum of per-request charges, not a re-priced total" {
+    s:=BlSchedule.{base=0,per_k_in=0,per_k_out=0,per_second=400000};
+    // Each request used 1 us at 400000 msat per second: 0.4 msat, charged 1.
+    one:=bl_price(s,BlUse.{status=BlStatus.answered,device_us=1}).msat;#assert one==1;
+    charges:=[2]int.[one,one];t:=bl_total(charges[..]);#assert t.cause==BlCause.none && t.msat==2;
+    // Pricing the 2 us total once would say 0.8, so 1: one msat less than charged.
+    #assert bl_price(s,BlUse.{status=BlStatus.answered,device_us=2}).msat==1;
+}
+// book:end check-total
+#forall "a total never overflows and refuses past 21 million bitcoin" n: 0..<4 {
+    big:=[3]int.[BL_MSAT_MOST-1,1,0];
+    t:=bl_total(big[0..<n]);
+    want:=[4]int.[0,BL_MSAT_MOST-1,BL_MSAT_MOST,BL_MSAT_MOST];
+    #assert t.cause==BlCause.none && t.msat==want[n];
+    over:=[2]int.[BL_MSAT_MOST,1];#assert bl_total(over[..]).cause==BlCause.total && bl_total(over[0..<1]).msat==BL_MSAT_MOST;
+    neg:=[2]int.[5,-1];#assert bl_total(neg[..]).cause==BlCause.total;
+    top:=[1]int.[BL_MSAT_MOST+1];#assert bl_total(top[..]).cause==BlCause.total;
+}
+#test "names" {
+    s:=[5]string.["none","answered","refused","busy","cancelled"];for k:0..<5 {#assert bl_status_name(cast(BlStatus)k)==s[k];}
+    c:=[7]string.["none","schedule","use","account","quote","budget","total"];for k:0..<7 {#assert bl_cause_name(cast(BlCause)k)==c[k];}
+}
+
+// book:begin price
+bl_in :: (v:int,most:int)->bool {return v>=0 && v<=most;}
+bl_schedule_valid :: (s:BlSchedule)->bool {
+    return bl_in(s.base,BL_RATE_MOST) && bl_in(s.per_k_in,BL_RATE_MOST) && bl_in(s.per_k_out,BL_RATE_MOST) && bl_in(s.per_second,BL_RATE_MOST);
+}
+bl_use_valid :: (u:BlUse)->bool {
+    if u.status==BlStatus.none {return false;}
+    return bl_in(u.tokens_in,BL_TOKENS_MOST) && bl_in(u.tokens_out,BL_TOKENS_MOST) && bl_in(u.device_us,BL_DEVICE_US_MOST);
+}
+// Round up to the next whole unit; num is never negative.
+bl_ceil :: (num:int,den:int)->int {return (num+den-1)/den;}
+// Millionths of a msat: 1000 tokens at r msat is r*1000000/1000 per token.
+bl_price :: (s:BlSchedule,u:BlUse)->BlPrice #export_c {
+    if !bl_schedule_valid(s) {return BlPrice.{cause=BlCause.schedule};}
+    if !bl_use_valid(u) {return BlPrice.{cause=BlCause.use};}
+    if u.status==BlStatus.refused || u.status==BlStatus.busy {return BlPrice.{};}
+    device:=u.device_us*s.per_second;
+    if u.status==BlStatus.cancelled {return BlPrice.{msat=bl_ceil(device,BL_US_PER_SECOND)};}
+    tokens:=u.tokens_in*s.per_k_in*1000+u.tokens_out*s.per_k_out*1000;
+    return BlPrice.{msat=s.base+bl_ceil(tokens+device,BL_US_PER_SECOND)};
+}
+// The worst case a request may reach: its input, its output limit, its deadline.
+bl_quote :: (s:BlSchedule,tokens_in:int,max_out:int,deadline_us:int)->BlPrice #export_c {
+    return bl_price(s,BlUse.{status=BlStatus.answered,tokens_in=tokens_in,tokens_out=max_out,device_us=deadline_us});
+}
+// book:end price
+// book:begin admit
+bl_account_valid :: (a:BlAccount)->bool {
+    return bl_in(a.budget,BL_MSAT_MOST) && bl_in(a.held,a.budget) && bl_in(a.spent,a.budget-a.held);
+}
+// Hold a quote against what is left; refuse before any work if it does not fit.
+bl_admit :: (a:BlAccount,q:BlPrice)->BlSettle #export_c {
+    if !bl_account_valid(a) {return BlSettle.{cause=BlCause.account,account=a};}
+    if q.cause!=BlCause.none || !bl_in(q.msat,BL_MSAT_MOST) {return BlSettle.{cause=BlCause.quote,account=a};}
+    if q.msat>a.budget-a.held-a.spent {return BlSettle.{cause=BlCause.budget,account=a};}
+    b:=a;b.held+=q.msat;return BlSettle.{account=b};
+}
+// Release the hold and charge the smaller of the actual price and the quote.
+bl_settle :: (s:BlSchedule,a:BlAccount,q:BlPrice,u:BlUse)->BlSettle #export_c {
+    if !bl_account_valid(a) {return BlSettle.{cause=BlCause.account,account=a};}
+    if q.cause!=BlCause.none || !bl_in(q.msat,a.held) {return BlSettle.{cause=BlCause.quote,account=a};}
+    p:=bl_price(s,u);if p.cause!=BlCause.none {return BlSettle.{cause=p.cause,account=a};}
+    capped:=p.msat>q.msat;charge:=ifx capped then q.msat else p.msat;
+    b:=a;b.held-=q.msat;b.spent+=charge;return BlSettle.{charge=charge,capped=capped,account=b};
+}
+// book:end admit
+// book:begin total
+// The invoice: the sum of the charges, refused past 21 million bitcoin.
+bl_total :: (charges:[]int)->BlPrice #export_c {
+    t:=0;
+    for i:0..<charges.count {
+        if !bl_in(charges[i],BL_MSAT_MOST-t) {return BlPrice.{cause=BlCause.total,msat=t};}
+        t+=charges[i];
+    }
+    return BlPrice.{msat=t};
+}
+// book:end total
+bl_status_name :: (s:BlStatus)->string {names:=[5]string.["none","answered","refused","busy","cancelled"];return names[cast(int)s];}
+bl_cause_name :: (c:BlCause)->string {names:=[7]string.["none","schedule","use","account","quote","budget","total"];return names[cast(int)c];}

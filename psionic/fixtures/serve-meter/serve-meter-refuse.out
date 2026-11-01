@@ -1,0 +1,13 @@
+a negative rate: schedule
+2000000 input tokens: use
+a 2202 msat quote on a 2201 msat budget: budget, held 0
+settling a quote that was never held: quote, spent 0
+an invoice past 21 million bitcoin: total, total stops at 2100000000000000000
+record 1 again: seq
+record 3 after record 1: seq
+an answer with no checkpoint digest: evidence
+a charge of 2203 msat on a 2202 msat quote: charge
+metrics after the refusals: 1 requests, 1732 msat charged
+free text in the audit log: digest
+a change at 4 ms after one at 5 ms: order
+audit entries kept: 1 (first: none)

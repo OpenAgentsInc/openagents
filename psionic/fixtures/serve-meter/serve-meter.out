@@ -1,0 +1,12 @@
+request 1: quote 2202 msat, budget left 4000 msat: none
+request 2: quote 2134 msat, budget left 2268 msat: none
+request 3: quote 2202 msat, budget left 1204 msat: budget
+usage seq=1 model=psionic-toy digest=b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 backend=cpu profile=serve-cpu-bf16-v1 record=psionic/fixtures/serve-decision.out status=answered tokens_in=37 tokens_out=5 device_us=12345 latency_us=13000 quote_msat=2202 charge_msat=1732
+usage seq=2 model=psionic-toy digest=b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 backend=cpu profile=serve-cpu-bf16-v1 record=psionic/fixtures/serve-decision.out status=answered tokens_in=3 tokens_out=1 device_us=999 latency_us=1500 quote_msat=2134 charge_msat=1064
+usage seq=3 model=psionic-toy digest=b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 backend=cpu profile=serve-cpu-bf16-v1 record=psionic/fixtures/serve-decision.out status=refused tokens_in=37 tokens_out=0 device_us=0 latency_us=40 quote_msat=0 charge_msat=0
+metrics requests=3 answered=2 refused=1 busy=0 cancelled=0 tokens_in=77 tokens_out=6 device_us=13344 p50_us=2000 p95_us=20000 p99_us=20000 quoted_msat=4336 charged_msat=2796
+audit seq=1 at_ms=1000 kind=policy before=0f3e4c1b7a9d2e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6a7b8c9d0e1f2a3b after=5c2d8e1f4a7b0c3d6e9f2a5b8c1d4e7f0a3b6c9d2e5f8a1b4c7d0e3f6a9b2c5d
+invoice: 2796 msat over 3 requests; metrics charged 2796 msat; equal: true
+account: spent 2796 msat, held 0 msat of 4000
+utilization: 1334 basis points of one replica over 100000 us
+request text in the meter's output: false

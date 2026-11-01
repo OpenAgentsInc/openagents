@@ -1,0 +1,42 @@
+// Chapter 180: three requests against a 4000 msat budget. Each is quoted,
+// held, run (or refused), settled and recorded; the records fold into
+// metrics, the invoice is the sum of their charges, and the request text
+// never reaches any line the meter writes.
+#import "Basic";
+#load "../lib/serve-meter.coax";
+
+Ask :: struct {text:string;tokens_in:int;max_out:int;deadline_us:int;tokens_out:int;device_us:int;latency_us:int;}
+// book:begin example
+main :: () {
+    s:=BlSchedule.{base=1000,per_k_in=2000,per_k_out=8000,per_second=50000};
+    // The toy's qualified capability entry from chapter 173.
+    toy:=UmEvidence.{model="psionic-toy",digest="b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+        backend="cpu",profile="serve-cpu-bf16-v1",record="psionic/fixtures/serve-decision.out"};
+    asks:=[3]Ask.[
+        Ask.{text="MARK-7f3a: is water wet?",tokens_in=37,max_out=16,deadline_us=20000,tokens_out=5,device_us=12345,latency_us=13000},
+        Ask.{text="MARK-7f3a: tea or soup?",tokens_in=3,max_out=16,deadline_us=20000,tokens_out=1,device_us=999,latency_us=1500},
+        Ask.{text="MARK-7f3a: one more?",tokens_in=37,max_out=16,deadline_us=20000,latency_us=40}];
+    a:=BlAccount.{budget=4000};m:=UmMetrics.{};out:[2048]u8;n:=0;charges:[3]int;
+    for i:0..<3 {
+        q:=bl_quote(s,asks[i].tokens_in,asks[i].max_out,asks[i].deadline_us);h:=bl_admit(a,q);
+        print("request %: quote % msat, budget left % msat: %\n",i+1,q.msat,a.budget-a.held-a.spent,bl_cause_name(h.cause));
+        r:=UmRecord.{seq=i+1,evidence=toy,latency_us=asks[i].latency_us};
+        if h.cause==BlCause.none {
+            r.use=BlUse.{status=BlStatus.answered,tokens_in=asks[i].tokens_in,tokens_out=asks[i].tokens_out,device_us=asks[i].device_us};
+            d:=bl_settle(s,h.account,q,r.use);a=d.account;r.quote_msat=q.msat;r.charge_msat=d.charge;
+        } else {
+            r.use=BlUse.{status=BlStatus.refused,tokens_in=asks[i].tokens_in};
+        }
+        m=um_observe(m,r).metrics;charges[i]=r.charge_msat;n=um_line(r,out[..],n);
+    }
+    trail:[1]UmLog;
+    changed:=um_audit(trail[..],1000,UmKind.policy,"0f3e4c1b7a9d2e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6a7b8c9d0e1f2a3b","5c2d8e1f4a7b0c3d6e9f2a5b8c1d4e7f0a3b6c9d2e5f8a1b4c7d0e3f6a9b2c5d");#assert changed==UmCause.none;
+    n=um_metrics_line(m,out[..],n);n=um_audit_line(trail[0].entries[0],out[..],n);
+    print("%",cast(string)out[0..<n]);
+    t:=bl_total(charges[..]);
+    print("invoice: % msat over % requests; metrics charged % msat; equal: %\n",t.msat,m.requests,m.charged,t.msat==m.charged);
+    print("account: spent % msat, held % msat of %\n",a.spent,a.held,a.budget);
+    print("utilization: % basis points of one replica over 100000 us\n",um_utilization(m.device_us,1,100000));
+    print("request text in the meter's output: %\n",um_has(out[0..<n],"MARK-7f3a"));
+}
+// book:end example

@@ -1,0 +1,34 @@
+// Chapter 180: inputs the price policy and the meter refuse, each with its
+// typed cause. A refusal changes nothing: no hold, no charge, no record.
+#import "Basic";
+#load "../lib/serve-meter.coax";
+
+// book:begin refuse
+main :: () {
+    s:=BlSchedule.{base=1000,per_k_in=2000,per_k_out=8000,per_second=50000};
+    bad:=s;bad.per_second=-1;
+    print("a negative rate: %\n",bl_cause_name(bl_price(bad,BlUse.{status=BlStatus.answered}).cause));
+    print("2000000 input tokens: %\n",bl_cause_name(bl_quote(s,2000000,16,20000).cause));
+    q:=bl_quote(s,37,16,20000);
+    h:=bl_admit(BlAccount.{budget=2201},q);
+    print("a 2202 msat quote on a 2201 msat budget: %, held %\n",bl_cause_name(h.cause),h.account.held);
+    d:=bl_settle(s,BlAccount.{budget=4000},q,BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=5,device_us=12345});
+    print("settling a quote that was never held: %, spent %\n",bl_cause_name(d.cause),d.account.spent);
+    big:=[2]int.[BL_MSAT_MOST,1];t:=bl_total(big[..]);
+    print("an invoice past 21 million bitcoin: %, total stops at %\n",bl_cause_name(t.cause),t.msat);
+    toy:=UmEvidence.{model="psionic-toy",digest="b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+        backend="cpu",profile="serve-cpu-bf16-v1",record="psionic/fixtures/serve-decision.out"};
+    r:=UmRecord.{seq=1,evidence=toy,use=BlUse.{status=BlStatus.answered,tokens_in=37,tokens_out=5,device_us=12345},latency_us=13000,quote_msat=2202,charge_msat=1732};
+    m:=um_observe(UmMetrics.{},r).metrics;
+    print("record 1 again: %\n",um_cause_name(um_observe(m,r).cause));
+    x:=r;x.seq=3;print("record 3 after record 1: %\n",um_cause_name(um_observe(m,x).cause));
+    x=r;x.seq=2;x.evidence.digest="";print("an answer with no checkpoint digest: %\n",um_cause_name(um_observe(m,x).cause));
+    x=r;x.seq=2;x.charge_msat=2203;print("a charge of 2203 msat on a 2202 msat quote: %\n",um_cause_name(um_observe(m,x).cause));
+    print("metrics after the refusals: % requests, % msat charged\n",m.requests,m.charged);
+    trail:[1]UmLog;D1:="1111111111111111111111111111111111111111111111111111111111111111";
+    print("free text in the audit log: %\n",um_cause_name(um_audit(trail[..],5,UmKind.config,D1,"temperature 0.7 for alice")));
+    first:=um_audit(trail[..],5,UmKind.config,D1,"2222222222222222222222222222222222222222222222222222222222222222");
+    print("a change at 4 ms after one at 5 ms: %\n",um_cause_name(um_audit(trail[..],4,UmKind.config,D1,"3333333333333333333333333333333333333333333333333333333333333333")));
+    print("audit entries kept: % (first: %)\n",trail[0].count,um_cause_name(first));
+}
+// book:end refuse
