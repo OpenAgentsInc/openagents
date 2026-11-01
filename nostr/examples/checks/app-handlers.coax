@@ -1,0 +1,109 @@
+// The checks of app-handlers.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/app-handlers.coax --run-steps 250000000
+#load "../app-handlers.coax";
+
+// book:begin check
+// From a Python script written from NIP-01, NIP-19, NIP-89, NIP-5A and
+// BIP-173 (it shares no code with Coax): the public keys of secret keys 1
+// to 5 by integer secp256k1, each event's id as hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False), the bech32 strings from its
+// own BIP-173 encoder, and the file and aggregate hashes from hashlib.
+PY_ID :: [EVENTS] string.[
+  "f8d88455f78c403c3a9814aeb54d4225d29b39e9b66689120cb193376ed76564",
+  "7c0d38b09867c43d31957108beb03fefdc69073c74f567ae8283452ca1ceef57",
+  "d24bb6ee181ea301d72e2b281a8d0aa1724534b44101db0dfe66106117dd1fdc",
+  "51e78e445cd00d3637f097eb430adfd443f47ebee09a8c4f67071cff33da9f60",
+  "a4d3c5f394d40b010e8310f5b2bb8add585a49667a68aeffd63f3bf1f3a3f743",
+  "ac2549b1e7c5fb6aa62b22b24b9a7a8b6909c68eb4496c3ce89190b325cbc7b4",
+  "3e9e66d59712466cf07255ff368b7e37362454c60104ef91ebe47b4a4e7d6d0d",
+  "9c228a0b110efbed49507e112325cee38f84c652cadbb61cd1dde4af10fa39de",
+  "91f12a59d81279c6d1f4fb44f58c4c0b8088dd8fe8364c36e3d2d0043718e5ca",
+  "c5f0df3482bdb7d1152059999e6008d5076ffc170652b32f51d56f07efd4a4da"];
+PY_NADDR :: "naddr1qq9xxmmp0qkkjmn5wfhsz9mhwden5te0wfjkccte9ejhsctdwpkx2tnrdaksygxxq3legs0d04knq32qd62uqlxct3mcujuvau7202avpxu4cuy7u5psgqqqw4rss6c9tf";
+PY_NEVENT :: "nevent1qqsvtuxlxjptmd73z5s9nxv7vqyd2pm0lstsv54n9aga2mc8al22fkszypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqqqqqgjr4s5l";
+PY_INDEX :: "7b5c4b28567b11747205eedb2fe28364e863eaacebf52d4bd868540e98a8fe26";
+PY_CSS :: "f7d891fb00e73ad2d6ccc238a771f4c0e69a701dad896fa5a569d33f9c6603e0";
+PY_AGGREGATE :: "bcceb55cfa4d5d933a33ee2411d212d90981186b288f292672279893c7334a4a";
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+same_id :: (id: [32] u8, text: string) -> bool { want: [32] u8; decode_hex(text, want[..]); return ns_equal32(id, want); }
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked.
+py :: (k: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  tags: [2048] u8;
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags_of(k, tags[..]));
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+read_all :: (ev: [] NostrEvent, buf: [][4096] u8, scratch: [][4096] u8) {
+  for k: 0..<EVENTS { ev[k] = py(k, buf[k][..], scratch[k][..]); }
+}
+
+#test "the ids are Python's" {
+  buf: [EVENTS][4096] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  for k: 0..<EVENTS { #assert ev[k].error == NE_OK && ns_equal32(ev[k].computed_id, ev[k].id); }
+}
+// By hand, from the chapter: the naddr's TLV bytes for Bob's article with
+// the relay hint, field by field.
+#test "the naddr's TLV bytes match the hand values, its string Python's" {
+  buf: [EVENTS][4096] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  hand: [77] u8; n := 0;
+  hand[0] = 0; hand[1] = 10; n = json_raw(hand[..], 2, "coax-intro");                 // d
+  hand[n] = 1; hand[n + 1] = 23; n = json_raw(hand[..], n + 2, RELAY);                 // relay
+  hand[n] = 2; hand[n + 1] = 32; bob := key_of(BOB); for i: 0..<32 { hand[n + 2 + i] = bob[i]; } n += 34;   // author
+  hand[n] = 3; hand[n + 1] = 4; hand[n + 2] = 0; hand[n + 3] = 0; hand[n + 4] = 0x75; hand[n + 5] = 0x47; n += 6;   // 30023
+  #assert n == 77;
+  out: [512] u8; en := n89_entity(ev[0], RELAY, out[..]);
+  #assert cast(string) out[0..<en] == PY_NADDR;
+  dec: [512] u8; r := nip19_decode_checked(cast(string) out[0..<en], dec[..], false);
+  #assert r.error == NC_OK && r.written == 77;
+  for i: 0..<77 { #assert dec[i] == hand[i]; }
+  nn := n89_entity(ev[9], "", out[..]);
+  #assert cast(string) out[0..<nn] == PY_NEVENT;
+}
+#test "resolution: Dave's app first with two votes, Eve's unvetted, Carol's notes refused" {
+  buf: [EVENTS][4096] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  follows: [2][32] u8; follows[0] = key_of(BOB); follows[1] = key_of(CAROL);
+  out: [8] N89Choice; f := n89_resolve(30023, follows[..], ev[4..<7], ev[1..<4], out[..]);
+  #assert f.error == N89_OK && f.n == 2 && f.not_handled == 1 && f.missing == 0 && f.broken == 0;
+  #assert out[0].handler == 0 && out[0].votes == 2 && out[0].rank == N89_BY_FOLLOWS;
+  #assert out[1].handler == 1 && out[1].votes == 0 && out[1].rank == N89_UNVETTED;
+  // Alice follows nobody: both apps are unvetted, in the order found.
+  f = n89_resolve(30023, follows[0..<0], ev[4..<7], ev[1..<4], out[..]);
+  #assert f.n == 2 && out[0].rank == N89_UNVETTED && out[1].rank == N89_UNVETTED;
+  // The URL the client opens, written out from Python's naddr.
+  u: [1024] u8; e: [512] u8; en := n89_entity(ev[0], RELAY, e[..]);
+  url := n89_url(ev[1], "web", cast(string) e[0..<en], u[..]);
+  want: [512] u8; wn := json_raw(want[..], 0, "https://reads.example.com/a/"); wn = json_raw(want[..], wn, PY_NADDR);
+  #assert url.error == N89_OK && url.at == 3 && cast(string) u[0..<url.n] == cast(string) want[0..<wn];
+}
+// NIP-89's recommendation example, its <relay-url> placeholder filled.
+#test "NIP-89's recommendation example reads" {
+  b: [512] u8;
+  e := unsigned(31989, "[[\"d\",\"31337\"],[\"a\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"wss://relay.example.com\",\"web\"]]", b[..]);
+  r := n89_recommend(e);
+  #assert r.error == N89_OK && r.kind == 31337 && r.n == 1 && n32_is(r.a[0].d, "abcd") && n32_is(r.a[0].platform, "web");
+  #assert r.a[0].author[0] == 0x17 && r.a[0].author[31] == 0xb0;
+}
+#test "the site's hashes are Python's; a changed byte is refused" {
+  buf: [EVENTS][4096] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  site := n5a_read(ev[8]);
+  #assert site.error == N5A_OK && site.has_x && same_id(site.aggregate, PY_AGGREGATE) && same_id(site.x, PY_AGGREGATE);
+  #assert same_id(site.files[0].hash, PY_INDEX) && same_id(site.files[1].hash, PY_CSS);
+  b: [64] u8; for i: 0..<INDEX_HTML.count { b[i] = INDEX_HTML[i]; }
+  #assert n5a_check(site, 0, b[0..<INDEX_HTML.count]) == N5A_OK && n5a_check(site, 1, b[0..<INDEX_HTML.count]) == N5A_HASH;
+  b[4] = 'Z'; #assert n5a_check(site, 0, b[0..<INDEX_HTML.count]) == N5A_HASH;
+  // NIP-5A's two-line example input, hashed by Python.
+  e := unsigned(15128, "[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"path\",\"/favicon.ico\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"]]", buf[0][..]);
+  #assert same_id(n5a_read(e).aggregate, "c2ff582b672a4c689c5e1753528f03dd31b95ec1fdcc3d82d25e7d91e8769638");
+}
+// book:end check

@@ -1,0 +1,65 @@
+== 1. Each event's id (T0 = 1762000000)
+A: kind 30023, by Bob, at T0+0, id f8d88455f78c403c3a9814aeb54d4225d29b39e9b66689120cb193376ed76564
+H1: kind 31990, by Dave, at T0+10, id 7c0d38b09867c43d31957108beb03fefdc69073c74f567ae8283452ca1ceef57
+H2: kind 31990, by Eve, at T0+20, id d24bb6ee181ea301d72e2b281a8d0aa1724534b44101db0dfe66106117dd1fdc
+H3: kind 31990, by Carol, at T0+30, id 51e78e445cd00d3637f097eb430adfd443f47ebee09a8c4f67071cff33da9f60
+R1: kind 31989, by Bob, at T0+40, id a4d3c5f394d40b010e8310f5b2bb8add585a49667a68aeffd63f3bf1f3a3f743
+R2: kind 31989, by Carol, at T0+50, id ac2549b1e7c5fb6aa62b22b24b9a7a8b6909c68eb4496c3ce89190b325cbc7b4
+R3: kind 31989, by Eve, at T0+60, id 3e9e66d59712466cf07255ff368b7e37362454c60104ef91ebe47b4a4e7d6d0d
+S: kind 30078, by Alice, at T0+70, id 9c228a0b110efbed49507e112325cee38f84c652cadbb61cd1dde4af10fa39de
+M: kind 35128, by Dave, at T0+80, id 91f12a59d81279c6d1f4fb44f58c4c0b8088dd8fe8364c36e3d2d0043718e5ca
+C: kind 1, by Alice, at T0+90, id c5f0df3482bdb7d1152059999e6008d5076ffc170652b32f51d56f07efd4a4da
+H1's tags: [["d","reads"],["k","30023"],["k","30024"],["web","https://reads.example.com/a/<bech32>","naddr"],["web","https://reads.example.com/e/<bech32>"]]
+R2's tags: [["d","30023"],["a","31990:e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13:reads","wss://relay.example.com","web"],["a","31990:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:notes","",""]]
+
+== 2. App data
+S: kind 30078, d coax-reader/settings, content {"theme":"dark"} (the app's own format)
+served to Alice after AUTH: true; to Bob after AUTH: false; to Alice without AUTH: false
+
+== 3. Handlers and recommendations
+H1: ok, by Dave, d reads, kinds 30023 30024
+H2: ok, by Eve, d spam, kinds 30023
+H3: ok, by Carol, d notes, kinds 1
+R1: ok, by Bob, for kind 30023: 31990:Dave:reads (web)
+R2: ok, by Carol, for kind 30023: 31990:Dave:reads (web) 31990:Carol:notes
+R3: ok, by Eve, for kind 30023: 31990:Eve:spam
+
+== 4. Which app opens Bob's article? Alice follows Bob and Carol
+kind 30023: ok, 2 handlers, 1 recommended but not handling the kind, 0 missing
+  1. H1 by Dave, d reads: recommended by follows, 2 votes
+  2. H2 by Eve, d spam: unvetted, 0 votes
+
+== 5. The entity and the URL
+A as naddr, 77 TLV bytes: 000a636f61782d696e74726f01177773733a2f2f72656c61792e6578616d706c652e636f6d0220c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5030400007547
+  naddr1qq9xxmmp0qkkjmn5wfhsz9mhwden5te0wfjkccte9ejhsctdwpkx2tnrdaksygxxq3legs0d04knq32qd62uqlxct3mcujuvau7202avpxu4cuy7u5psgqqqw4rss6c9tf
+H1 web for naddr: ok at tag 3
+  https://reads.example.com/a/naddr1qq9xxmmp0qkkjmn5wfhsz9mhwden5te0wfjkccte9ejhsctdwpkx2tnrdaksygxxq3legs0d04knq32qd62uqlxct3mcujuvau7202avpxu4cuy7u5psgqqqw4rss6c9tf
+H1 web for C's nevent: ok at tag 4
+  https://reads.example.com/e/nevent1qqsvtuxlxjptmd73z5s9nxv7vqyd2pm0lstsv54n9aga2mc8al22fkszypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqqqqqgjr4s5l
+H1 ios: no template
+C's client tag: ok, "Reads", handler 31990:Dave:reads, relay wss://relay.example.com
+
+== 6. Dave's site
+M: ok, named site reads, 2 files, aggregate bcceb55cfa4d5d933a33ee2411d212d90981186b288f292672279893c7334a4a
+  /index.html 7b5c4b28567b11747205eedb2fe28364e863eaacebf52d4bd868540e98a8fe26
+  /reads.css f7d891fb00e73ad2d6ccc238a771f4c0e69a701dad896fa5a569d33f9c6603e0
+GET /: ok, file /index.html
+GET /reads.css: ok, file /reads.css
+GET /missing.html: not found
+serve the fetched /index.html: ok
+serve a blob with one byte changed: hash mismatch
+
+== 7. Refusals
+javascript: template: unsafe scheme at tag 2
+template without <bech32>: no <bech32> at tag 2
+web template over http: unsafe scheme at tag 2
+template with a quote: unsafe character at tag 2
+an nsec as the entity: bad entity
+writing a handler with a javascript: template: unsafe scheme
+handler with k long-form: bad k at tag 1
+recommendation naming an article: a names the wrong kind at tag 1
+app data without d: no d
+named site with d Reads: bad d
+root site with a d: bad d at tag 0
+path without a file name: bad path at tag 0
+x that isn't the aggregate: aggregate mismatch

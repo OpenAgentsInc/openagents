@@ -1,0 +1,672 @@
+// NIP-89 recommended application handlers read and written from parsed
+// events: kind 31990 handler information (the kinds an app handles, as k
+// tags, and a URL template per platform), kind 31989 recommendations (one
+// per supported kind, its d tag, with a tags naming 31990 handlers), and
+// the client tag any event may carry.
+//
+// n89_resolve answers "which app opens this kind?" from events the caller
+// has fetched and verified. Handlers that the user's follows recommend come
+// first, ordered by how many follows recommend them; then handlers announced
+// by a follow; then every other handler that announces the kind, which
+// NIP-89 warns may be spam. A recommended handler whose current 31990 does
+// not list the kind in a k tag is not returned: a recommendation can't add
+// a kind the app never claimed.
+//
+// n89_url fills a handler's template for one platform with a NIP-19 entity
+// and decides whether the URL is safe to open. It picks the platform tag
+// whose third value names the entity's type (nevent, naddr, ...), else the
+// first one without a type. It refuses a template with no <bech32>, a
+// scheme outside lowercase letters, digits and + - ., the schemes
+// javascript, data, vbscript and file, a web template that is not https,
+// bytes outside printable ASCII or one of " < > \ ` around the placeholder,
+// and an entity that isn't a valid NIP-19 string or is an nsec.
+//
+// A reading of signed tags, not authority over them: nothing here fetches
+// an event, verifies a signature or opens a URL.
+#load "nip53.coax";
+#load "nip19-core.coax";
+#load "../../tests/nostr/nip89_fixtures.coax";
+#authority;
+
+N89_OK :: 0; N89_EVENT :: 1; N89_KIND :: 2; N89_NO_D :: 3; N89_K :: 4;
+N89_ADDRESS :: 5; N89_TAG :: 6; N89_NOT_HANDLED :: 7; N89_NO_TEMPLATE :: 8;
+N89_NO_BECH32 :: 9; N89_SCHEME :: 10; N89_URL :: 11; N89_ENTITY :: 12;
+N89_LIMIT :: 13; N89_OUTPUT :: 14;
+N89_RECOMMEND :: 31989; N89_HANDLER :: 31990;
+N89_MAX_K :: 16; N89_MAX_A :: 8;
+// How a resolved handler was found, best first.
+N89_BY_FOLLOWS :: 0; N89_FOLLOW_APP :: 1; N89_UNVETTED :: 2;
+N89_PLACEHOLDER :: "<bech32>";
+
+// book:begin record
+N89Handler :: struct {
+  error:int=N89_EVENT; at:int=-1;     // the refusing tag
+  d:N32Text;
+  k:[N89_MAX_K]int; nk:int;           // the kinds its k tags list
+}
+N89Ref :: struct {author:[32]u8; d:N32Text; relay:N32Text; platform:N32Text;}   // 31990:author:d
+N89Recommend :: struct {
+  error:int=N89_EVENT; at:int=-1;
+  kind:int;                           // the d tag: the kind recommended for
+  a:[N89_MAX_A]N89Ref; n:int;
+}
+N89Client :: struct {
+  error:int=N89_EVENT; at:int=-1;
+  present:bool; name:N32Text;
+  has_handler:bool; handler:N89Ref;   // the 31990 address, when given
+}
+// One resolved handler: its index in the caller's handler events.
+N89Choice :: struct {handler:int; votes:int; rank:int; last:int;}
+N89Found :: struct {error:int=N89_OK; n:int; not_handled:int; missing:int; broken:int;}
+N89Url :: struct {error:int=N89_EVENT; at:int=-1; n:int;}
+// What the writers take.
+N89Template :: struct {platform:string; url:string; entity:string;}
+N89Pick :: struct {author:[32]u8; d:string; relay:string; platform:string;}
+// book:end record
+
+N89_K1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+N89_K2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+// NIP-89's recommendation example, with its <relay-url> placeholder filled.
+N89_T_NIP_REC :: "[[\"d\",\"31337\"],[\"a\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"wss://relay.example.com\",\"web\"]]";
+N89_T_APP :: "[[\"d\",\"reads\"],[\"k\",\"30023\"],[\"k\",\"30024\"],[\"web\",\"https://reads.example.com/a/<bech32>\",\"naddr\"],[\"web\",\"https://reads.example.com/e/<bech32>\"],[\"ios\",\"reads://open/<bech32>\"]]";
+N89_NEVENT :: "nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm";
+N89_NPROFILE :: "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p";
+N89_NSEC :: "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
+#test "NIP-89's recommendation example reads" {
+  r:=n89_recommend(n32_event(N89_RECOMMEND,N89_T_NIP_REC));
+  #assert r.error==N89_OK && r.at== -1 && r.kind==31337 && r.n==1 && r.a[0].author[0]==0x17 && r.a[0].author[31]==0xb0;
+  #assert n32_is(r.a[0].d,"abcd") && n32_is(r.a[0].relay,"wss://relay.example.com") && n32_is(r.a[0].platform,"web");
+  r=n89_recommend(n32_event(N89_RECOMMEND,"[[\"a\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\"],[\"d\",\"1\"],[\"d\",\"x\"]]"));
+  #assert r.error==N89_OK && r.kind==1 && r.a[0].relay.n==0 && r.a[0].platform.n==0;
+  z:=n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"0\"]]"));#assert z.error==N89_OK && z.kind==0 && z.n==0;
+  #assert n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"65535\"]]")).error==N89_OK;
+}
+#test "recommendation refusals: kind, d, a" {
+  k0:=n89_recommend(n32_event(N89_HANDLER,N89_T_NIP_REC));#assert k0.error==N89_KIND && k0.at== -1;
+  k0=n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"x\"]]"));#assert k0.error==N89_K && k0.at== -1;
+  r:=n89_recommend(n32_event(N89_RECOMMEND,"[[\"t\",\"x\"]]"));#assert r.error==N89_NO_D && r.at== -1;
+  #assert n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"\"]]")).error==N89_NO_D;
+  bad:=[7]string.["[[\"d\",\"x\"]]","[[\"d\",\"65536\"]]","[[\"d\",\"030023\"]]","[[\"d\",\"-1\"]]","[[\"d\",\"1e3\"]]","[[\"d\",\"123456\"]]","[[\"d\",\" 1\"]]"];
+  for s:bad {#assert n89_recommend(n32_event(N89_RECOMMEND,s)).error==N89_K;}
+  r=n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"1\"],[\"a\",\"30023:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\"]]"));#assert r.error==N89_ADDRESS && r.at==1;
+  r=n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"1\"],[\"t\",\"y\"],[\"a\",\"31990:17:abcd\"]]"));#assert r.error==N89_TAG && r.at==2;
+  r=n89_recommend(n32_event(N89_RECOMMEND,"[[\"d\",\"1\"],[\"a\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"https://x\"]]"));#assert r.error==N89_TAG;
+  many:[2048]u8;m:=json_raw(many[..],0,"[[\"d\",\"1\"]");
+  for k:0..<9 {m=json_raw(many[..],m,",[\"a\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\"]");}
+  m=json_raw(many[..],m,"]");r=n89_recommend(n32_event(N89_RECOMMEND,cast(string)many[0..<m]));#assert r.error==N89_LIMIT && r.at==9 && r.n==8;
+  none:NostrEvent;#assert n89_recommend(none).error==N89_EVENT && n89_handler(none).error==N89_EVENT && n89_client(none).error==N89_EVENT;
+  e:=n32_event(N89_RECOMMEND,"[]");e.original="[[\"d\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  r=n89_recommend(e);#assert r.error==N89_EVENT && r.at==0;
+  e.kind=N89_HANDLER;h:=n89_handler(e);#assert h.error==N89_EVENT && h.at==0;
+  e.kind=1;c:=n89_client(e);#assert c.error==N89_EVENT && c.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n89_recommend(n32_event(N89_RECOMMEND,cast(string)long[0..<n]));#assert r.error==N89_LIMIT && r.at==0;
+  h=n89_handler(n32_event(N89_HANDLER,cast(string)long[0..<n]));#assert h.error==N89_LIMIT && h.at==0;
+  c=n89_client(n32_event(1,cast(string)long[0..<n]));#assert c.error==N89_LIMIT && c.at==0;
+}
+#test "handler information: d and k tags" {
+  h:=n89_handler(n32_event(N89_HANDLER,N89_T_APP));
+  #assert h.error==N89_OK && h.at== -1 && n32_is(h.d,"reads") && h.nk==2 && h.k[0]==30023 && h.k[1]==30024;
+  #assert n89_handles(h,30023) && n89_handles(h,30024) && !n89_handles(h,1) && !n89_handles(h,0);
+  r:=n89_handler(n32_event(N89_RECOMMEND,N89_T_APP));#assert r.error==N89_KIND && r.at== -1;
+  r=n89_handler(n32_event(N89_HANDLER,"[[\"k\",\"1\"]]"));#assert r.error==N89_NO_D && r.at== -1;
+  r=n89_handler(n32_event(N89_HANDLER,"[[\"d\",\"\"],[\"k\",\"1\"]]"));#assert r.error==N89_NO_D;
+  r=n89_handler(n32_event(N89_HANDLER,"[[\"d\",\"x\"]]"));#assert r.error==N89_K && r.at== -1;
+  r=n89_handler(n32_event(N89_HANDLER,"[[\"d\",\"x\"],[\"k\",\"1\"],[\"k\",\"one\"]]"));#assert r.error==N89_K && r.at==2;
+  r=n89_handler(n32_event(N89_HANDLER,"[[\"d\",\"x\"],[\"k\"]]"));#assert r.error==N89_K && r.at==1;
+  r=n89_handler(n32_event(N89_HANDLER,"[[\"d\",\"x\"],[\"d\",\"y\"],[\"k\",\"0\"]]"));#assert r.error==N89_OK && n32_is(r.d,"x") && n89_handles(r,0) && !n89_handles(r,1);
+  many:[1024]u8;m:=json_raw(many[..],0,"[[\"d\",\"x\"]");
+  for k:0..<16 {m=json_raw(many[..],m,",[\"k\",\"7\"]");}
+  e:=json_raw(many[..],m,"]");#assert n89_handler(n32_event(N89_HANDLER,cast(string)many[0..<e])).nk==16;
+  m=json_raw(many[..],m,",[\"k\",\"7\"]]");
+  r=n89_handler(n32_event(N89_HANDLER,cast(string)many[0..<m]));#assert r.error==N89_LIMIT && r.at==17 && r.nk==16;
+}
+#test "kind numbers: decimal 0..65535, no sign or leading zero" {
+  #assert n89_kind_of("0")==0 && n89_kind_of("1")==1 && n89_kind_of("30023")==30023 && n89_kind_of("65535")==65535;
+  #assert n89_kind_of("")== -1 && n89_kind_of("65536")== -1 && n89_kind_of("00")== -1 && n89_kind_of("01")== -1;
+  #assert n89_kind_of("99999")== -1 && n89_kind_of("100000")== -1 && n89_kind_of("1a")== -1 && n89_kind_of("/")== -1 && n89_kind_of(":")== -1;
+  #assert n89_kind_of("9")==9 && n89_kind_of("10")==10;
+}
+#test "client tag: name, handler address and relay" {
+  c:=n89_client(n32_event(1,"[[\"t\",\"x\"],[\"client\",\"My Client\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"wss://relay1\"],[\"client\",\"Other\"]]"));
+  #assert c.error==N89_OK && c.present && n32_is(c.name,"My Client") && c.has_handler && c.handler.author[0]==0x17 && n32_is(c.handler.d,"abcd") && n32_is(c.handler.relay,"wss://relay1");
+  c=n89_client(n32_event(1,"[[\"client\",\"Plain\"]]"));#assert c.error==N89_OK && c.at== -1 && c.present && n32_is(c.name,"Plain") && !c.has_handler;
+  c=n89_client(n32_event(1,"[[\"client\",\"Plain\",\"\"]]"));#assert c.error==N89_OK && !c.has_handler;
+  c=n89_client(n32_event(1,"[[\"t\",\"x\"]]"));#assert c.error==N89_OK && !c.present && c.at== -1;
+  c=n89_client(n32_event(1,"[[\"client\"]]"));#assert c.error==N89_TAG && c.at==0;
+  c=n89_client(n32_event(1,"[[\"client\",\"\"]]"));#assert c.error==N89_TAG;
+  c=n89_client(n32_event(1,"[[\"t\",\"x\"],[\"client\",\"A\",\"30023:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\"]]"));#assert c.error==N89_ADDRESS && c.at==1;
+  c=n89_client(n32_event(1,"[[\"client\",\"A\",\"31990:17:abcd\"]]"));#assert c.error==N89_TAG && c.at==0;
+  c=n89_client(n32_event(1,"[[\"client\",\"A\",\"x\"]]"));#assert c.error==N89_TAG && c.at==0;
+  c=n89_client(n32_event(1,"[[\"client\",\"A\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"x\"]]"));#assert c.error==N89_TAG;
+  c=n89_client(n32_event(1,"[[\"client\",\"A\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"https://x\"]]"));#assert c.error==N89_TAG;
+  c=n89_client(n32_event(1,"[[\"client\",\"A\",\"31990:1743058db7078661b94aaf4286429d97ee5257d14a86d6bfa54cb0482b876fb0:abcd\",\"\"]]"));#assert c.error==N89_OK && c.handler.relay.n==0;
+}
+#test "templates: scheme, placeholder and characters" {
+  out:[512]u8;e:="nevent1x";
+  #assert n89_fill("https://a.example/e/<bech32>","web",e,out[..]).error==N89_OK;
+  #assert n89_template("https://a.example/e/<bech32>?x=<bech32>","web")==N89_OK;
+  #assert n89_template("https://a.example/e/","web")==N89_NO_BECH32;
+  #assert n89_template("https://a.example/e/<bech3>","web")==N89_URL;
+  #assert n89_template("http://a.example/e/<bech32>","web")==N89_SCHEME;
+  #assert n89_template("javascript:alert(1)//<bech32>","web")==N89_SCHEME;
+  #assert n89_template("javascript:alert(1)//<bech32>","ios")==N89_SCHEME;
+  #assert n89_template("data:text/html,<bech32>","android")==N89_SCHEME;
+  #assert n89_template("vbscript:x<bech32>","ios")==N89_SCHEME && n89_template("file:///x/<bech32>","ios")==N89_SCHEME;
+  #assert n89_template("JavaScript:x<bech32>","ios")==N89_SCHEME && n89_template("HTTPS://a/<bech32>","web")==N89_SCHEME;
+  #assert n89_template("reads://open/<bech32>","ios")==N89_OK && n89_template("a+b.c-d://x/<bech32>","ios")==N89_OK;
+  #assert n89_template("1reads://open/<bech32>","ios")==N89_SCHEME && n89_template("://open/<bech32>","ios")==N89_SCHEME;
+  #assert n89_template("reads/open/<bech32>","ios")==N89_SCHEME && n89_template("<bech32>","ios")==N89_SCHEME;
+  #assert n89_template("re_ads://<bech32>","ios")==N89_SCHEME && n89_template("javascripts://<bech32>","ios")==N89_OK;
+  #assert n89_template("https:///<bech32>","web")==N89_URL && n89_template("https:<bech32>","web")==N89_URL && n89_template("https:/x/<bech32>","web")==N89_URL;
+  #assert n89_template("https://a.example/<bech32>","Web")==N89_OK;
+  bad:=[8]string.["https://a b/<bech32>","https://a\"b/<bech32>","https://a<b/<bech32>","https://a>b/<bech32>","https://a\\b/<bech32>","https://a`b/<bech32>","https://a\tb/<bech32>","https://a\nb/<bech32>"];
+  for s:bad {#assert n89_template(s,"web")==N89_URL;}
+  #assert n89_template("https://a.example/~!$&'()*+,;=%-_.:@/?#[]{}|^<bech32>","web")==N89_OK;
+  #assert n89_template("https://a.example/<bech32","web")==N89_URL;
+  del:[40]u8;dn:=json_raw(del[..],0,"https://a");del[dn]=0x7f;dn=json_raw(del[..],dn+1,"b/<bech32>");
+  #assert n89_template(cast(string)del[0..<dn],"web")==N89_URL;
+  del[9]=0x80;#assert n89_template(cast(string)del[0..<dn],"web")==N89_URL;
+  del[9]='~';#assert n89_template(cast(string)del[0..<dn],"web")==N89_OK;
+  del[9]='!';#assert n89_template(cast(string)del[0..<dn],"web")==N89_OK;
+  // Scheme edges: a lone scheme, one letter, z, digits, and the bytes past them.
+  #assert n89_template("reads","ios")==N89_SCHEME && n89_template("a://x/<bech32>","ios")==N89_OK && n89_template("z://x/<bech32>","ios")==N89_OK;
+  #assert n89_template("a{://x/<bech32>","ios")==N89_SCHEME && n89_template("a0b9://x/<bech32>","ios")==N89_OK && n89_template("0x://x/<bech32>","ios")==N89_SCHEME;
+  #assert n89_template("a/b://x/<bech32>","ios")==N89_SCHEME && n89_template("9x://x/<bech32>","ios")==N89_SCHEME && n89_template(".x://x/<bech32>","ios")==N89_SCHEME;
+  #assert n89_template("x:\"<bech32>","ios")==N89_URL && n89_template("x:<bech32>","ios")==N89_OK;
+  // The web host: two slashes, then not a third.
+  #assert n89_template("https:x/ab/<bech32>","web")==N89_URL && n89_template("https:/xy<bech32>","web")==N89_URL;
+  #assert n89_template("https://a","web")==N89_NO_BECH32 && n89_template("https://","web")==N89_URL;
+}
+#test "fill: the placeholder replaced, every time" {
+  out:[512]u8;
+  r:=n89_fill("https://a.example/e/<bech32>?again=<bech32>","web","nevent1qq",out[..]);
+  #assert r.error==N89_OK && r.n==45 && cast(string)out[0..<r.n]=="https://a.example/e/nevent1qq?again=nevent1qq";
+  r=n89_fill("https://a.example/<bech32>","web","nevent1qq",out[0..<27]);#assert r.error==N89_OK && r.n==27;
+  #assert n89_fill("https://a.example/<bech32>","web","nevent1qq",out[0..<26]).error==N89_OUTPUT;
+  #assert n89_fill("https://a.example/<bech32>!","web","nevent1qq",out[0..<27]).error==N89_OUTPUT;
+  r=n89_fill("http://a/<bech32>","web","x",out[..]);#assert r.error==N89_SCHEME && r.n==0;
+}
+#test "url: the template for the entity's type, else the generic one" {
+  out:[512]u8;h:=n32_event(N89_HANDLER,N89_T_APP);
+  u:=n89_url(h,"web",N89_NEVENT,out[..]);
+  #assert u.error==N89_OK && u.at==4 && cast(string)out[0..<u.n]=="https://reads.example.com/e/nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm";
+  u=n89_url(h,"ios",N89_NPROFILE,out[..]);#assert u.error==N89_OK && u.at==5 && out[0]=='r' && out[13]=='n';
+  u=n89_url(h,"android",N89_NPROFILE,out[..]);#assert u.error==N89_NO_TEMPLATE && u.at== -1;
+  u=n89_url(h,"web",N89_NSEC,out[..]);#assert u.error==N89_ENTITY && u.at== -1;
+  u=n89_url(h,"web","nevent1qqqq",out[..]);#assert u.error==N89_ENTITY;
+  u=n89_url(h,"web","",out[..]);#assert u.error==N89_ENTITY;
+  u=n89_url(h,"web",N89_NEVENT,out[0..<20]);#assert u.error==N89_OUTPUT && u.at==4;
+  // An exact type wins over an earlier generic tag; a typed tag for another type is skipped.
+  g:=n32_event(N89_HANDLER,"[[\"d\",\"g\"],[\"k\",\"1\"],[\"web\",\"https://g/<bech32>\"],[\"web\",\"https://p/<bech32>\",\"nprofile\"],[\"web\",\"https://e/<bech32>\",\"nevent\"],[\"web\",\"https://h/<bech32>\"]]");
+  u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_OK && u.at==4 && out[8]=='e';
+  u=n89_url(g,"web",N89_NPROFILE,out[..]);#assert u.error==N89_OK && u.at==3 && out[8]=='p';
+  // The first exact tag wins, even at index 0; so does the first generic one.
+  g=n32_event(N89_HANDLER,"[[\"web\",\"https://a/<bech32>\",\"nevent\"],[\"web\",\"https://b/<bech32>\",\"nevent\"],[\"web\",\"https://c/<bech32>\"]]");
+  u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_OK && u.at==0 && out[8]=='a';
+  g=n32_event(N89_HANDLER,"[[\"web\",\"https://a/<bech32>\"],[\"web\",\"https://b/<bech32>\"]]");
+  u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_OK && u.at==0 && out[8]=='a';
+  g=n32_event(N89_HANDLER,"[[\"d\",\"g\"],[\"web\",\"https://p/<bech32>\",\"nprofile\"],[\"web\",\"https://g/<bech32>\",\"\"],[\"web\",\"https://h/<bech32>\"]]");
+  u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_OK && u.at==2 && out[8]=='g';
+  // The chosen template is checked; a bad one refuses at its tag.
+  g=n32_event(N89_HANDLER,"[[\"d\",\"g\"],[\"web\",\"javascript:alert(document.cookie)//<bech32>\"]]");
+  u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_SCHEME && u.at==1;
+  g=n32_event(N89_HANDLER,"[[\"d\",\"g\"],[\"web\",\"https://g/e/\"]]");
+  u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_NO_BECH32 && u.at==1;
+  g=n32_event(N89_HANDLER,"[[\"d\",\"g\"],[\"web\"]]");u=n89_url(g,"web",N89_NEVENT,out[..]);#assert u.error==N89_TAG && u.at==1;
+  none:NostrEvent;#assert n89_url(none,"web",N89_NEVENT,out[..]).error==N89_EVENT;
+  e:=n32_event(N89_HANDLER,"[]");e.original="[[\"web\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  u=n89_url(e,"web",N89_NEVENT,out[..]);#assert u.error==N89_EVENT && u.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"web\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  u=n89_url(n32_event(N89_HANDLER,cast(string)long[0..<n]),"web",N89_NEVENT,out[..]);#assert u.error==N89_LIMIT && u.at==0;
+}
+#test "entity: nevent for a regular event, naddr for an addressable one" {
+  out:[1024]u8;dec:[512]u8;evb:[256]u8;
+  e:=n89_event_by(1,"[]",0x79,evb[..]);for i:0..<32 {e.id[i]=cast(u8)(i+1);}
+  n:=n89_entity(e,"wss://r.example",out[0..<256]);#assert n>0 && cast(string)out[0..<7]=="nevent1";
+  r:=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);
+  #assert r.error==NC_OK && r.type==N19_EVENT && r.special_length==32 && dec[r.special_at]==1 && dec[r.special_at+31]==32 && r.relays==1 && r.has_author && dec[r.author_at]==0x79 && r.has_kind && r.kind==1;
+  #assert r.written==2+32+2+15+2+32+2+4 && cast(string)dec[36..<51]=="wss://r.example" && dec[34]==1 && dec[35]==15;
+  n=n89_entity(e,"w",out[..]);r=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);#assert r.relays==1 && dec[36]==0x77 && r.written==77;
+  n=n89_entity(e,"",out[0..<256]);r=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);#assert r.error==NC_OK && r.relays==0 && r.written==74;
+  buf:[512]u8;a:=n89_event_by(30023,"[[\"t\",\"x\"],[\"d\",\"coax-intro\"]]",0x79,buf[..]);
+  n=n89_entity(a,"wss://r.example",out[0..<256]);#assert n>0 && cast(string)out[0..<6]=="naddr1";
+  r=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);
+  #assert r.error==NC_OK && r.type==N19_ADDR && r.special_length==10 && cast(string)dec[r.special_at..<r.special_at+10]=="coax-intro" && r.kind==30023 && r.relays==1 && dec[r.author_at+31]==0x79;
+  a=n89_event_by(30023,"[]",0x79,buf[..]);n=n89_entity(a,"",out[0..<256]);
+  r=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);#assert r.error==NC_OK && r.type==N19_ADDR && r.special_length==0;
+  a=n89_event_by(10002,"[]",0x79,buf[..]);n=n89_entity(a,"",out[0..<256]);#assert cast(string)out[0..<7]=="nevent1";
+  a=n89_event_by(65535,"[]",0x79,buf[..]);n=n89_entity(a,"",out[0..<256]);
+  r=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);#assert r.error==NC_OK && r.kind==65535;
+  a.kind=0;n=n89_entity(a,"",out[0..<256]);r=nip19_decode_checked(cast(string)out[0..<n],dec[..],false);#assert r.error==NC_OK && r.kind==0 && r.type==N19_EVENT;
+  a.kind=65536;#assert n89_entity(a,"",out[0..<256])== -1;a.kind= -1;#assert n89_entity(a,"",out[0..<256])== -1;
+  // A d of 255 bytes fits one TLV; 256 doesn't, even when its bytes would
+  // read as two unknown TLVs after a zero length.
+  dd:[300]u8;dl:=json_raw(dd[..],0,"[[\"d\",\"");for i:0..<256 {dd[dl+i]='d';}
+  q:=json_raw(dd[..],dl+255,"\"]]");a=n89_event_by(30023,cast(string)dd[0..<q],0x79,buf[..]);#assert n89_entity(a,"",out[..])>0;
+  dd[dl+255]='d';q=json_raw(dd[..],dl+256,"\"]]");a=n89_event_by(30023,cast(string)dd[0..<q],0x79,buf[..]);#assert n89_entity(a,"",out[..])== -1;
+  dd[dl]='c';dd[dl+1]='~';dd[dl+128]='c';dd[dl+129]='~';a=n89_event_by(30023,cast(string)dd[0..<q],0x79,buf[..]);#assert n89_entity(a,"",out[..])== -1;
+  #assert n89_entity(e,"wss://r.example",out[0..<20])== -1;
+  rel:[300]u8;for i:0..<300 {rel[i]='w';}
+  #assert n89_entity(e,cast(string)rel[0..<255],out[..])>0 && n89_entity(e,cast(string)rel[0..<256],out[..])== -1;
+  rel[3]=200;#assert n89_entity(e,cast(string)rel[0..<10],out[..])== -1;
+  none:NostrEvent;#assert n89_entity(none,"",out[..])== -1;
+  f:=n32_event(30023,"[]");f.original="[[\"d\",1]]";f.tags_from=0;f.tags_to=f.original.count;#assert n89_entity(f,"",out[..])== -1;
+}
+
+#test "resolve: follows' recommendations first, then a follow's app, then the rest" {
+  w:[1]N89World;n89_world(w[..]);out:[8]N89Choice;
+  f:=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);
+  #assert f.error==N89_OK && f.n==3 && f.not_handled==1 && f.missing==1;
+  #assert out[0].handler==4 && out[0].votes==2 && out[0].rank==N89_BY_FOLLOWS;
+  #assert out[1].handler==2 && out[1].votes==0 && out[1].rank==N89_FOLLOW_APP;
+  #assert out[2].handler==0 && out[2].votes==0 && out[2].rank==N89_UNVETTED;
+  // Kind 1: 0x22 recommends notes; 0x33 lists notes for 30023 only.
+  f=n89_resolve(1,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);
+  #assert f.error==N89_OK && f.n==1 && out[0].handler==1 && out[0].votes==1 && f.not_handled==0 && f.missing==0;
+  // 30024: nobody recommends it, the app announces it, its author is no follow.
+  f=n89_resolve(30024,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.n==1 && out[0].handler==4 && out[0].rank==N89_UNVETTED;
+  // With no follows, every recommendation is ignored.
+  f=n89_resolve(30023,w[0].follows[0..<0],w[0].rec[..],w[0].hand[..],out[..]);
+  #assert f.n==3 && out[0].rank==N89_UNVETTED && out[0].handler==0 && out[1].handler==2 && out[2].handler==4 && f.not_handled==0;
+  // The old rec[4] for spam is replaced; made current, spam gets 0x44's vote.
+  w[0].rec[4].created_at=30;f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);
+  #assert f.n==3 && out[0].handler==4 && out[1].handler==0 && out[1].votes==1 && out[1].rank==N89_BY_FOLLOWS && out[2].handler==2;
+  // Ties keep first-seen order; more votes go first.
+  w[0].rec[4].created_at=10;w[0].rec[0]=n89_event_by(N89_RECOMMEND,"[[\"d\",\"30023\"],[\"a\",\"31990:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c:spam\"]]",0x22,w[0].rb[0][..]);
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);
+  #assert f.n==3 && out[0].handler==0 && out[0].votes==1 && out[1].handler==4 && out[1].votes==1 && out[2].handler==2;
+  w[0].rec[5]=n89_event_by(N89_RECOMMEND,"[[\"d\",\"30023\"],[\"a\",\"31990:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a:reads\"]]",0x44,w[0].rb[5][..]);w[0].rec[5].created_at=20;
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert out[0].handler==4 && out[0].votes==2 && out[1].handler==0;
+  // A handler found third with the most votes moves up two places.
+  n89_world(w[..]);
+  w[0].rec[0]=n89_event_by(N89_RECOMMEND,"[[\"d\",\"30023\"],[\"a\",\"31990:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c:spam\"],[\"a\",\"31990:4444444444444444444444444444444444444444444444444444444444444444:mine\"],[\"a\",\"31990:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a:reads\"]]",0x22,w[0].rb[0][..]);
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);
+  #assert f.n==3 && out[0].handler==4 && out[0].votes==2 && out[1].handler==0 && out[2].handler==2 && out[2].rank==N89_BY_FOLLOWS;
+}
+#test "resolve: limits and refusals" {
+  w:[1]N89World;n89_world(w[..]);out:[8]N89Choice;
+  f:=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[0..<2]);#assert f.error==N89_LIMIT && f.n==2;
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[0..<3]);#assert f.error==N89_OK && f.n==3;
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[0..<0]);#assert f.error==N89_LIMIT && f.n==0;
+  // A follow's broken recommendation is skipped and counted.
+  w[0].rec[0]=n89_event_by(N89_RECOMMEND,"[[\"d\",\"30023\"],[\"a\",\"30023:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a:reads\"]]",0x22,w[0].rb[0][..]);
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.error==N89_OK && f.broken==1 && f.n==3 && out[0].handler==4 && out[0].votes==1;
+  // A forged record: its d doesn't read, so it is no current version and is skipped uncounted.
+  w[0].rec[0].original="[[\"d\",1]]";w[0].rec[0].tags_from=0;w[0].rec[0].tags_to=w[0].rec[0].original.count;
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.error==N89_OK && f.broken==0 && f.n==3;
+  // Other kinds and refused records among the inputs are skipped.
+  n89_world(w[..]);w[0].rec[2].kind=1;w[0].rec[3].error=NE_JSON;w[0].hand[1].kind=1;
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.error==N89_OK && f.n==3 && f.broken==0;
+  w[0].hand[0].error=NE_JSON;f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.n==2;
+  n89_world(w[..]);w[0].hand[2]=n89_event_by(N89_HANDLER,"[[\"d\",\"mine\"],[\"k\",\"x\"]]",0x44,w[0].hb[2][..]);
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.error==N89_OK && f.n==2 && out[1].handler==0;
+  // A k tag for the kind doesn't count when a later k tag refuses.
+  w[0].hand[2]=n89_event_by(N89_HANDLER,"[[\"d\",\"mine\"],[\"k\",\"30023\"],[\"k\",\"x\"]]",0x44,w[0].hb[2][..]);
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.error==N89_OK && f.n==2;
+  w[0].hand[4]=n89_event_by(N89_HANDLER,"[[\"d\",\"reads\"],[\"k\",\"30023\"],[\"k\",\"x\"]]",0x0a,w[0].hb[4][..]);w[0].hand[4].created_at=6;
+  f=n89_resolve(30023,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]);#assert f.error==N89_OK && f.n==1 && f.not_handled==4;
+  #assert n89_resolve(-1,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]).error==N89_K && n89_resolve(65536,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]).error==N89_K;
+  #assert n89_resolve(0,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]).error==N89_OK && n89_resolve(65535,w[0].follows[..],w[0].rec[..],w[0].hand[..],out[..]).error==N89_OK;
+}
+#test "writers: handler, recommendation and client tags read back" {
+  out:[1024]u8;kinds:=[2]int.[30023,30024];
+  t:=[2]N89Template.[N89Template.{platform="web",url="https://reads.example.com/a/<bech32>",entity="naddr"},N89Template.{platform="web",url="https://reads.example.com/e/<bech32>"}];
+  n:=n89_handler_tags("reads",kinds[..],t[..],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"reads\"],[\"k\",\"30023\"],[\"k\",\"30024\"],[\"web\",\"https://reads.example.com/a/<bech32>\",\"naddr\"],[\"web\",\"https://reads.example.com/e/<bech32>\"]]";
+  h:=n89_handler(n32_event(N89_HANDLER,cast(string)out[0..<n]));#assert h.error==N89_OK && h.nk==2 && n89_handles(h,30024);
+  #assert n89_handler_tags("",kinds[..],t[..],out[..])== -N89_NO_D && n89_handler_tags("x",kinds[0..<0],t[..],out[..])== -N89_K;
+  bad:=[2]int.[1,65536];#assert n89_handler_tags("x",bad[..],t[..],out[..])== -N89_K;bad[1]= -1;#assert n89_handler_tags("x",bad[..],t[..],out[..])== -N89_K;
+  bad[0]=0;bad[1]=65535;#assert n89_handler_tags("x",bad[..],t[0..<0],out[..])>0;
+  t1:=[1]N89Template.[N89Template.{platform="ios",url="x://<bech32>",entity="e"}];n=n89_handler_tags("x",bad[0..<1],t1[..],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"x\"],[\"k\",\"0\"],[\"ios\",\"x://<bech32>\",\"e\"]]";
+  t[1].url="javascript:alert(1)//<bech32>";#assert n89_handler_tags("reads",kinds[..],t[..],out[..])== -N89_SCHEME;
+  t[1].url="https://x/";#assert n89_handler_tags("reads",kinds[..],t[..],out[..])== -N89_NO_BECH32;
+  t[1].url="https://x/<bech32>";t[1].platform="";#assert n89_handler_tags("reads",kinds[..],t[..],out[..])== -N89_TAG;
+  t[1].platform="web";#assert n89_handler_tags("reads",kinds[..],t[..],out[0..<40])== -N89_OUTPUT;
+  #assert n89_handler_tags("reads",kinds[0..<1],t[0..<0],out[..])>0;
+  p:=[2]N89Pick.[N89Pick.{d="reads",relay="wss://relay.example.com",platform="web"},N89Pick.{d="notes"}];
+  p[0].author=n89_hex_key(N89_K1);p[1].author=n89_hex_key(N89_K2);
+  n=n89_recommend_tags(30023,p[..],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"30023\"],[\"a\",\"31990:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:reads\",\"wss://relay.example.com\",\"web\"],[\"a\",\"31990:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:notes\",\"\",\"\"]]";
+  r:=n89_recommend(n32_event(N89_RECOMMEND,cast(string)out[0..<n]));#assert r.error==N89_OK && r.kind==30023 && r.n==2 && n32_is(r.a[0].platform,"web") && r.a[1].author[0]==0xc6;
+  #assert n89_recommend_tags(65536,p[..],out[..])== -N89_K && n89_recommend_tags(-1,p[..],out[..])== -N89_K && n89_recommend_tags(65535,p[..],out[..])>0;
+  longd:[300]u8;for i:0..<300 {longd[i]='d';}
+  p[1].d=cast(string)longd[..];#assert n89_recommend_tags(30023,p[..],out[..])== -N89_LIMIT;
+  #assert n89_client_tag("a",p[0].author,cast(string)longd[..],"",out[..])== -1;p[1].d="notes";
+  #assert n89_recommend_tags(0,p[0..<0],out[..])>0 && n89_recommend_tags(30023,p[..],out[0..<100])== -N89_OUTPUT;
+  p[1].d="";#assert n89_recommend_tags(30023,p[..],out[..])== -N89_NO_D;
+  n=n89_client_tag("My \"Client\"",p[0].author,"reads","wss://relay1",out[..]);
+  #assert cast(string)out[0..<n]=="[\"client\",\"My \\\"Client\\\"\",\"31990:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:reads\",\"wss://relay1\"]";
+  tags:[512]u8;m:=json_raw(tags[..],0,"[");m=json_raw(tags[..],m,cast(string)out[0..<n]);m=json_raw(tags[..],m,"]");
+  c:=n89_client(n32_event(1,cast(string)tags[0..<m]));#assert c.error==N89_OK && n32_is(c.name,"My \"Client\"") && n32_is(c.handler.d,"reads");
+  #assert n89_client_tag("",p[0].author,"x","",out[..])== -1 && n89_client_tag("a",p[0].author,"","",out[..])== -1 && n89_client_tag("a",p[0].author,"r","",out[0..<40])== -1;
+}
+
+// ---- the implementation
+
+n89_h_fail :: (h:N89Handler,error:int,at:int)->N89Handler {r:=h;r.error=error;r.at=at;return r;}
+n89_r_fail :: (r:N89Recommend,error:int,at:int)->N89Recommend {o:=r;o.error=error;o.at=at;return o;}
+n89_c_fail :: (c:N89Client,error:int,at:int)->N89Client {o:=c;o.error=error;o.at=at;return o;}
+n89_u_fail :: (u:N89Url,error:int,at:int)->N89Url {o:=u;o.error=error;o.at=at;return o;}
+
+// book:begin kind
+// A kind written in decimal, as a d or k tag holds it: 0..65535 with no
+// sign and no leading zero, or -1.
+n89_kind_of :: (s:string)->int {
+  if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
+  v:=0;
+  for c:s {
+    if c<'0' || c>'9' {return -1;}
+    v=v*10+cast(int)(c-'0');
+    if v>65535 {return -1;}
+  }
+  return v;
+}
+// book:end kind
+
+// book:begin read
+// A kind 31990 handler: its d and the kinds its k tags list.
+n89_handler :: (e:NostrEvent)->N89Handler {
+  h:N89Handler;if e.error!=NE_OK {return h;}
+  if e.kind!=N89_HANDLER {return n89_h_fail(h,N89_KIND,-1);}
+  i:=0;has_d:=false;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n89_h_fail(h,N89_LIMIT,i);}
+    if t.error!=NT_OK {return n89_h_fail(h,N89_EVENT,i);}
+    if n32_is(t.v[0],"d") && !has_d {has_d=true;h.d=t.v[1];}
+    if n32_is(t.v[0],"k") {
+      k:=n89_kind_of(cast(string)t.v[1].b[0..<t.v[1].n]);
+      if k<0 || t.values<2 {return n89_h_fail(h,N89_K,i);}
+      if h.nk==N89_MAX_K {return n89_h_fail(h,N89_LIMIT,i);}
+      h.k[h.nk]=k;h.nk+=1;
+    }
+    i+=1;
+  }
+  if h.d.n==0 {return n89_h_fail(h,N89_NO_D,-1);}
+  if h.nk==0 {return n89_h_fail(h,N89_K,-1);}
+  return n89_h_fail(h,N89_OK,-1);
+}
+n89_handles :: (h:N89Handler,kind:int)->bool {
+  for i:0..<h.nk {if h.k[i]==kind {return true;}}
+  return false;
+}
+// A kind 31989 recommendation: the kind its d names and the 31990
+// handlers its a tags name, each with a relay hint and a platform.
+n89_recommend :: (e:NostrEvent)->N89Recommend {
+  r:N89Recommend;if e.error!=NE_OK {return r;}
+  if e.kind!=N89_RECOMMEND {return n89_r_fail(r,N89_KIND,-1);}
+  i:=0;d:N32Text;has_d:=false;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n89_r_fail(r,N89_LIMIT,i);}
+    if t.error!=NT_OK {return n89_r_fail(r,N89_EVENT,i);}
+    if n32_is(t.v[0],"d") && !has_d {has_d=true;d=t.v[1];}
+    if n32_is(t.v[0],"a") {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {return n89_r_fail(r,N89_TAG,i);}
+      if s.address_kind!=N89_HANDLER {return n89_r_fail(r,N89_ADDRESS,i);}
+      if r.n==N89_MAX_A {return n89_r_fail(r,N89_LIMIT,i);}
+      a:N89Ref;a.author=s.pubkey;a.d=n53_copy(s.d,s.d_n);a.relay=n53_copy(s.relay,s.relay_n);
+      a.platform.n=n53_value(e,i,3,a.platform.b[..]);
+      r.a[r.n]=a;r.n+=1;
+    }
+    i+=1;
+  }
+  if d.n==0 {return n89_r_fail(r,N89_NO_D,-1);}
+  r.kind=n89_kind_of(cast(string)d.b[0..<d.n]);
+  if r.kind<0 {return n89_r_fail(r,N89_K,-1);}
+  return n89_r_fail(r,N89_OK,-1);
+}
+// The first client tag: a name, then optionally a 31990 address and a
+// relay hint. No client tag reads as not present.
+n89_client :: (e:NostrEvent)->N89Client {
+  c:N89Client;if e.error!=NE_OK {return c;}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n89_c_fail(c,N89_LIMIT,i);}
+    if t.error!=NT_OK {return n89_c_fail(c,N89_EVENT,i);}
+    if n32_is(t.v[0],"client") {
+      c.present=true;c.name=t.v[1];
+      if c.name.n==0 {return n89_c_fail(c,N89_TAG,i);}
+      if t.v[2].n>0 {
+        a:=nt_address(cast(string)t.v[2].b[0..<t.v[2].n]);
+        if a.error!=NT_OK {return n89_c_fail(c,N89_TAG,i);}
+        if a.address_kind!=N89_HANDLER {return n89_c_fail(c,N89_ADDRESS,i);}
+        c.has_handler=true;c.handler.author=a.pubkey;c.handler.d=n53_copy(a.d,a.d_n);
+        c.handler.relay.n=n53_value(e,i,3,c.handler.relay.b[..]);
+        if c.handler.relay.n>0 && !nt_relay_ok(cast(string)c.handler.relay.b[0..<c.handler.relay.n]) {return n89_c_fail(c,N89_TAG,i);}
+      }
+      return n89_c_fail(c,N89_OK,-1);
+    }
+    i+=1;
+  }
+  return n89_c_fail(c,N89_OK,-1);
+}
+// book:end read
+
+// book:begin resolve
+n89_follows :: (follows:[][32]u8,key:[32]u8)->bool {
+  for f:follows {if ns_equal32(f,key) {return true;}}
+  return false;
+}
+// Whether handler event e reads and lists kind in a k tag.
+n89_lists :: (e:NostrEvent,kind:int)->bool {h:=n89_handler(e);return h.error==N89_OK && n89_handles(h,kind);}
+// Whether e is the current version of its own address among set.
+n89_current :: (set:[]NostrEvent,i:int)->bool {
+  e:=set[i];t:=nostr_tag_d(e);
+  if t.error!=NT_OK {return false;}
+  return nip23_current(set,e.kind,e.public_key,cast(string)t.d[0..<t.d_n])==i;
+}
+// The choice for handler index h in out[0..<n], adding it at out[n] when
+// new: its position, or -1 when out is full.
+n89_choice :: (out:[]N89Choice,n:int,h:int,rank:int)->int {
+  for c:0..<n {if out[c].handler==h {return c;}}
+  if n==out.count {return -1;}
+  out[n]=N89Choice.{handler=h,rank=rank,last=-1};return n;
+}
+// Which handlers open kind, from recommendations and handler events the
+// caller fetched and verified, best first, into out. A follow's
+// recommendation that doesn't read is skipped and counted in broken, so
+// one bad event can't hide every handler.
+n89_resolve :: (kind:int,follows:[][32]u8,recs:[]NostrEvent,handlers:[]NostrEvent,out:[]N89Choice)->N89Found {
+  f:N89Found;
+  if kind<0 || kind>65535 {f.error=N89_K;return f;}
+  // 1. Each follow's current recommendation for kind votes once for each
+  //    handler it names whose current 31990 lists the kind.
+  for i:0..<recs.count {
+    e:=recs[i];
+    if e.kind!=N89_RECOMMEND || !n89_follows(follows,e.public_key) || !n89_current(recs,i) {continue;}
+    r:=n89_recommend(e);
+    if r.error!=N89_OK {f.broken+=1;continue;}
+    if r.kind!=kind {continue;}
+    for a:0..<r.n {
+      h:=nip23_current(handlers,N89_HANDLER,r.a[a].author,cast(string)r.a[a].d.b[0..<r.a[a].d.n]);
+      if h==N23_NONE {f.missing+=1;continue;}
+      if !n89_lists(handlers[h],kind) {f.not_handled+=1;continue;}
+      c:=n89_choice(out,f.n,h,N89_BY_FOLLOWS);
+      if c<0 {f.error=N89_LIMIT;return f;}
+      if c==f.n {f.n+=1;}
+      if out[c].last!=i {out[c].votes+=1;out[c].last=i;}
+    }
+  }
+  // 2. Every other current handler that lists the kind: a follow's app,
+  //    then the rest.
+  for h:0..<handlers.count {
+    e:=handlers[h];
+    if !n89_current(handlers,h) || !n89_lists(e,kind) {continue;}
+    rank:=ifx n89_follows(follows,e.public_key) then N89_FOLLOW_APP else N89_UNVETTED;
+    c:=n89_choice(out,f.n,h,rank);
+    if c<0 {f.error=N89_LIMIT;return f;}
+    if c==f.n {f.n+=1;}
+  }
+  // 3. Best first: rank, then more votes; ties keep the order found.
+  for i:1..<f.n {
+    j:=i;
+    while j>0 && (out[j].rank<out[j-1].rank || (out[j].rank==out[j-1].rank && out[j].votes>out[j-1].votes)) {
+      t:=out[j];out[j]=out[j-1];out[j-1]=t;j-=1;
+    }
+  }
+  return f;
+}
+// book:end resolve
+
+// book:begin url
+N89_DENIED :: [4] string.["javascript", "data", "vbscript", "file"];
+N89_SCHEME_CHARS :: "abcdefghijklmnopqrstuvwxyz0123456789+-.";
+// Whether a template is safe to fill for platform: N89_OK or the refusal.
+// The scheme is a lowercase letter, then letters, digits, + - or ., up to
+// the first ':'; after it, printable ASCII without " < > \ ` except in the
+// placeholder.
+n89_template :: (url:string,platform:string)->int {
+  scheme_part:=true;scheme:="";found:=false;i:=0;
+  while i<url.count {
+    c:=url[i];
+    if scheme_part {
+      if c==':' {
+        if i==0 {return N89_SCHEME;}
+        scheme_part=false;scheme=url[0..<i];
+      }
+      else {
+        k:=-1;for j:0..<N89_SCHEME_CHARS.count {if N89_SCHEME_CHARS[j]==c {k=j;}}
+        if k<0 || (i==0 && k>=26) {return N89_SCHEME;}
+      }
+    } else if url.count-i>=N89_PLACEHOLDER.count && url[i..<i+N89_PLACEHOLDER.count]==N89_PLACEHOLDER {found=true;i+=N89_PLACEHOLDER.count;continue;}
+    else if c<=' ' || c>'~' || c=='"' || c=='<' || c=='>' || c=='\\' || c=='`' {return N89_URL;}
+    i+=1;
+  }
+  if scheme_part {return N89_SCHEME;}
+  for d:N89_DENIED {if scheme==d {return N89_SCHEME;}}
+  if platform=="web" {
+    if scheme!="https" {return N89_SCHEME;}
+    // "https" is 5 bytes: "://" and a host byte that isn't another /.
+    if url.count<9 || url[6..<8]!="//" || url[8]=='/' {return N89_URL;}
+  }
+  if !found {return N89_NO_BECH32;}
+  return N89_OK;
+}
+// The template with every <bech32> replaced by entity, into out.
+n89_fill :: (url:string,platform:string,entity:string,out:[]u8)->N89Url {
+  u:N89Url;u.error=n89_template(url,platform);
+  if u.error!=N89_OK {return u;}
+  n:=0;i:=0;
+  while i<url.count {
+    if url.count-i>=N89_PLACEHOLDER.count && url[i..<i+N89_PLACEHOLDER.count]==N89_PLACEHOLDER {n=json_raw(out,n,entity);i+=N89_PLACEHOLDER.count;}
+    else {n=json_raw(out,n,url[i..<i+1]);i+=1;}
+  }
+  if n== -1 {u.error=N89_OUTPUT;return u;}
+  u.n=n;return u;
+}
+// The URL a handler event gives for platform and a NIP-19 entity, into out.
+n89_url :: (h:NostrEvent,platform:string,entity:string,out:[]u8)->N89Url {
+  u:N89Url;if h.error!=NE_OK {return u;}
+  dec:[N19_MAX_BYTES]u8;r:=n19_decode(entity,dec[..],false,false);
+  if r.error!=NC_OK {return n89_u_fail(u,N89_ENTITY,-1);}
+  type:=n19_prefix(r.type);
+  exact:=-1;generic:=-1;i:=0;
+  while exact<0 {
+    t:=n32_tag(h,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n89_u_fail(u,N89_LIMIT,i);}
+    if t.error!=NT_OK {return n89_u_fail(u,N89_EVENT,i);}
+    if n32_is(t.v[0],platform) {
+      if t.values<2 {return n89_u_fail(u,N89_TAG,i);}
+      if n32_is(t.v[2],type) {exact=i;}
+      else if t.v[2].n==0 && generic<0 {generic=i;}
+    }
+    i+=1;
+  }
+  at:=ifx exact>=0 then exact else generic;
+  if at<0 {return n89_u_fail(u,N89_NO_TEMPLATE,-1);}
+  t:=n32_tag(h,at);
+  f:=n89_fill(cast(string)t.v[1].b[0..<t.v[1].n],platform,entity,out);
+  return n89_u_fail(f,f.error,at);
+}
+// book:end url
+
+// book:begin entity
+// The NIP-19 entity a handler loads for event e: naddr (d, relay, author,
+// kind) for an addressable kind, else nevent (id, relay, author, kind).
+// An empty relay is left out; the kind is 4 bytes big-endian, and NIP-01
+// kinds fit in the low two. Its length in out, or -1.
+n89_entity :: (e:NostrEvent,relay:string,out:[]u8)->int {
+  if e.error!=NE_OK || relay.count>255 || e.kind<0 || e.kind>65535 {return -1;}
+  tlv:[2+NT_MAX_VALUE+2+255+2+32+2+4]u8;n:=34;
+  addressable:=ns_class(e.kind)==NS_ADDRESSABLE;
+  if addressable {
+    d:=nostr_tag_d(e);
+    if d.error!=NT_OK || d.d_n>255 {return -1;}
+    tlv[1]=cast(u8)d.d_n;for i:0..<d.d_n {tlv[2+i]=d.d[i];}n=2+d.d_n;
+  } else {
+    tlv[1]=32;for i:0..<32 {tlv[2+i]=e.id[i];}
+  }
+  if relay.count>0 {
+    tlv[n]=1;tlv[n+1]=cast(u8)relay.count;
+    for i:0..<relay.count {tlv[n+2+i]=relay[i];}n+=2+relay.count;
+  }
+  tlv[n]=2;tlv[n+1]=32;for i:0..<32 {tlv[n+2+i]=e.public_key[i];}n+=34;
+  tlv[n]=3;tlv[n+1]=4;tlv[n+4]=cast(u8)((e.kind>>8)&255);tlv[n+5]=cast(u8)(e.kind&255);n+=6;
+  w:=nip19_encode_checked(ifx addressable then N19_ADDR else N19_EVENT,cast(string)tlv[0..<n],out,false);
+  if w.error!=NC_OK {return -1;}
+  return w.written;
+}
+// book:end entity
+
+// book:begin write
+// A kind 31990's tags into out: d, a k tag per kind, a template tag per
+// template (each checked as n89_url checks it). Its length, or minus the
+// refusal.
+n89_handler_tags :: (d:string,kinds:[]int,templates:[]N89Template,out:[]u8)->int {
+  if d.count==0 {return -N89_NO_D;}
+  if kinds.count==0 {return -N89_K;}
+  for k:kinds {if k<0 || k>65535 {return -N89_K;}}
+  for t:templates {
+    if t.platform.count==0 {return -N89_TAG;}
+    ok:=n89_template(t.url,t.platform);if ok!=N89_OK {return -ok;}
+  }
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,d);n=json_raw(out,n,"]");
+  num:[8]u8;
+  for k:kinds {m:=json_write_int(num[..],0,k);n=n23_pair(out,n,"k",cast(string)num[0..<m]);}
+  for t:templates {
+    n=json_raw(out,n,",[");n=json_write_string(out,n,t.platform);n=json_raw(out,n,",");n=json_write_string(out,n,t.url);
+    if t.entity.count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,t.entity);}
+    n=json_raw(out,n,"]");
+  }
+  n=json_raw(out,n,"]");
+  if n== -1 {return -N89_OUTPUT;}
+  return n;
+}
+// A kind 31989's tags into out: d (the kind), then an a tag per handler
+// with its relay hint and platform. Its length, or minus the refusal.
+n89_recommend_tags :: (kind:int,picks:[]N89Pick,out:[]u8)->int {
+  if kind<0 || kind>65535 {return -N89_K;}
+  for p:picks {if p.d.count==0 {return -N89_NO_D;}}
+  num:[8]u8;m:=json_write_int(num[..],0,kind);
+  n:=json_raw(out,0,"[[\"d\",\"");n=json_raw(out,n,cast(string)num[0..<m]);n=json_raw(out,n,"\"]");
+  for p:picks {
+    addr:[NT_MAX_VALUE+80]u8;an:=nip23_address(N89_HANDLER,p.author,p.d,addr[..]);
+    if an== -1 {return -N89_LIMIT;}
+    n=json_raw(out,n,",[\"a\",");n=json_write_string(out,n,cast(string)addr[0..<an]);
+    n=json_raw(out,n,",");n=json_write_string(out,n,p.relay);n=json_raw(out,n,",");n=json_write_string(out,n,p.platform);n=json_raw(out,n,"]");
+  }
+  n=json_raw(out,n,"]");
+  if n== -1 {return -N89_OUTPUT;}
+  return n;
+}
+// One client tag, ["client", name, "31990:author:d", relay], into out: its
+// length, or -1 for an empty name or d or a short out.
+n89_client_tag :: (name:string,author:[32]u8,d:string,relay:string,out:[]u8)->int {
+  if name.count==0 || d.count==0 {return -1;}
+  addr:[NT_MAX_VALUE+80]u8;an:=nip23_address(N89_HANDLER,author,d,addr[..]);
+  if an== -1 {return -1;}
+  n:=json_raw(out,0,"[\"client\",");n=json_write_string(out,n,name);n=json_raw(out,n,",");
+  n=json_write_string(out,n,cast(string)addr[0..<an]);n=json_raw(out,n,",");n=json_write_string(out,n,relay);
+  return json_raw(out,n,"]");
+}
+// book:end write

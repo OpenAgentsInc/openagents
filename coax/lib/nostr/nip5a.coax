@@ -1,0 +1,381 @@
+// NIP-5A static website manifests read from a parsed event, and the host's
+// two decisions: which file a request path names, and whether a blob
+// fetched for it may be served.
+//
+// A manifest is kind 15128 (a root site, one per key, with no d tag),
+// kind 35128 (a named site, whose d matches ^[a-z0-9-]{1,13}$ and doesn't
+// end in -) or kind 5128 (a snapshot of either, with exactly one a tag and
+// exactly one aggregate x tag). Its path tags map absolute paths to the
+// SHA-256 of the file served there.
+//
+// The aggregate hash is SHA-256 over the lines "<hash> <path>\n" of every
+// path tag, sorted. A manifest's aggregate x tag must equal it. A copied
+// site carries one a tag (its parent) and one A tag (its lineage's origin);
+// this reader requires both or neither and doesn't follow them.
+//
+// The reader refuses a path that isn't absolute or doesn't end in a file
+// name with an extension, a hash that isn't 64 lowercase hex digits, and a
+// path listed twice. n5a_lookup maps a request ending in / to its
+// index.html and falls back to /404.html. n5a_check refuses a blob whose
+// SHA-256 differs from the manifest's: NIP-5A says the host SHOULD verify,
+// and this host does.
+//
+// Not built: Blossom fetches, server tags and BUD-03 lists, the base36
+// host labels, and source, title and app tags.
+#load "nip53.coax";
+#authority;
+
+N5A_OK :: 0; N5A_EVENT :: 1; N5A_KIND :: 2; N5A_D :: 3; N5A_PATH :: 4;
+N5A_NO_PATH :: 5; N5A_X :: 6; N5A_AGGREGATE :: 7; N5A_LINEAGE :: 8;
+N5A_LIMIT :: 9; N5A_NOT_FOUND :: 10; N5A_HASH :: 11; N5A_OUTPUT :: 12;
+N5A_ROOT :: 15128; N5A_NAMED :: 35128; N5A_SNAPSHOT :: 5128;
+N5A_MAX_PATHS :: 16;
+
+// book:begin record
+N5aFile :: struct {path:N32Text; hash:[32]u8;}
+N5aSite :: struct {
+  error:int=N5A_EVENT; at:int=-1;     // the refusing tag
+  kind:int;
+  d:N32Text;                          // a named site's identifier
+  files:[N5A_MAX_PATHS]N5aFile; n:int;
+  aggregate:[32]u8;                   // computed from the path tags
+  has_x:bool; x:[32]u8;               // the aggregate x tag, when present
+  parents:int; origins:int;           // a and A tags
+}
+N5aHit :: struct {error:int=N5A_NOT_FOUND; file:int=-1; fallback:bool;}
+// What the writer takes.
+N5aEntry :: struct {path:string; hash:[32]u8;}
+// book:end record
+
+N5A_PK :: "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5";
+// NIP-5A's root site example's path tags, its x placeholder left out.
+N5A_T_ROOT :: "[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"path\",\"/about.html\",\"a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456\"],[\"path\",\"/favicon.ico\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"],[\"app\",\"31990:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:my-app\",\"wss://relay.example.com\"],[\"server\",\"https://blossom.example.com\"],[\"title\",\"My Nostr Site\"]]";
+// sha256 of "186ea5fd... /index.html\na1b2c3d4... /about.html\nfedcba09... /favicon.ico\n"
+// (already sorted), from Python's hashlib.
+N5A_ROOT_AGGREGATE :: "89acc6381f045bae6f7985b8ff8e70ca50bb20f693d938dc59e0f8d2e4567cb2";
+// NIP-5A's two-line example input: sorted, then hashed (hashlib).
+N5A_NIP_LINES_AGGREGATE :: "c2ff582b672a4c689c5e1753528f03dd31b95ec1fdcc3d82d25e7d91e8769638";
+
+n5a_hex :: (s:string)->[32]u8 {k:[32]u8;ok:=hex_decode_checked(s,k[..],false);return k;}
+
+#test "NIP-5A's root site example reads; its aggregate is hashlib's" {
+  s:=n5a_read(n32_event(N5A_ROOT,N5A_T_ROOT));
+  #assert s.error==N5A_OK && s.at== -1 && s.kind==N5A_ROOT && s.n==3 && s.d.n==0 && !s.has_x && s.parents==0;
+  #assert n32_is(s.files[0].path,"/index.html") && s.files[0].hash[0]==0x18 && n32_is(s.files[2].path,"/favicon.ico") && s.files[2].hash[31]==0x21;
+  #assert ns_equal32(s.aggregate,n5a_hex(N5A_ROOT_AGGREGATE));
+}
+#test "aggregate: the lines sorted, whatever the tag order" {
+  two:="[[\"path\",\"/favicon.ico\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"],[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]";
+  s:=n5a_read(n32_event(N5A_ROOT,two));#assert s.error==N5A_OK && ns_equal32(s.aggregate,n5a_hex(N5A_NIP_LINES_AGGREGATE));
+  s2:=n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"path\",\"/favicon.ico\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"]]"));
+  #assert ns_equal32(s2.aggregate,s.aggregate);
+  // One hash for two paths: the path decides, and "\n" sorts before "/".
+  a:N5aFile;b:N5aFile;a.path.n=json_raw(a.path.b[..],0,"/a.html");b.path.n=json_raw(b.path.b[..],0,"/a.html/b.html");
+  #assert n5a_before(a,b) && !n5a_before(b,a) && !n5a_before(a,a);
+  b.path.n=json_raw(b.path.b[..],0,"/b.html");#assert n5a_before(a,b) && !n5a_before(b,a);
+  b.hash[0]=1;b.path.n=json_raw(b.path.b[..],0,"/a.html");#assert n5a_before(a,b) && !n5a_before(b,a);
+  a.hash[31]=0xff;#assert n5a_before(a,b);a.hash[0]=2;#assert n5a_before(b,a) && !n5a_before(a,b);
+  // The line ends in "\n" (0x0a): a space after the name sorts after it, a tab before it.
+  a.hash=b.hash;a.path.n=json_raw(a.path.b[..],0,"/a.x");b.path.n=json_raw(b.path.b[..],0,"/a.x ");#assert n5a_before(a,b) && !n5a_before(b,a);
+  b.path.n=json_raw(b.path.b[..],0,"/a.x\t");#assert n5a_before(b,a) && !n5a_before(a,b);
+  // The first byte counts; bytes 0, 5 and 11 against the end of line.
+  a.path.n=json_raw(a.path.b[..],0,"x.a");b.path.n=json_raw(b.path.b[..],0,"y.a");#assert n5a_before(a,b) && !n5a_before(b,a);
+  // Fresh records, so the bytes past each path are zero.
+  c:N5aFile;g:N5aFile;c.path.n=json_raw(c.path.b[..],0,"/a");g.path.n=json_raw(g.path.b[..],0,"/a?x");g.path.b[2]=0;
+  #assert !n5a_before(c,g) && n5a_before(g,c);
+  g.path.b[2]=5;g.path.b[3]=0;g.path.n=3;#assert !n5a_before(c,g) && n5a_before(g,c);
+  g.path.b[2]=11;#assert n5a_before(c,g) && !n5a_before(g,c);
+}
+#test "named sites and snapshots" {
+  named:="[[\"d\",\"blog\"],[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]";
+  s:=n5a_read(n32_event(N5A_NAMED,named));#assert s.error==N5A_OK && n32_is(s.d,"blog") && s.n==1;
+  ds:=[7]string.["a","0","a-b","abcdefghijklm","x-1-y","---a","z9"];
+  bad:=[10]string.["","-","a-","Blog","abcdefghijklmn","a_b","a.b","a b","a{","a:"];
+  buf:[512]u8;
+  for d:ds {n:=json_raw(buf[..],0,"[[\"d\",");n=json_write_string(buf[..],n,d);n=json_raw(buf[..],n,"],[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]");
+    #assert n5a_read(n32_event(N5A_NAMED,cast(string)buf[0..<n])).error==N5A_OK;}
+  for d:bad {n:=json_raw(buf[..],0,"[[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"d\",");n=json_write_string(buf[..],n,d);n=json_raw(buf[..],n,"]]");
+    r:=n5a_read(n32_event(N5A_NAMED,cast(string)buf[0..<n]));#assert r.error==N5A_D && r.at== -1;}
+  r:=n5a_read(n32_event(N5A_NAMED,"[[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]"));#assert r.error==N5A_D;
+  r=n5a_read(n32_event(N5A_ROOT,named));#assert r.error==N5A_D && r.at==0;
+  r=n5a_read(n32_event(N5A_NAMED,"[[\"d\",\"blog\"],[\"d\",\"BAD\"],[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]"));#assert r.error==N5A_OK && n32_is(r.d,"blog");
+  // A snapshot: one a, one aggregate x equal to the paths'.
+  snap:[1024]u8;n:=json_raw(snap[..],0,"[[\"a\",\"35128:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:blog\"],[\"path\",\"/favicon.ico\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"],[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"x\",\"");
+  n=json_raw(snap[..],n,N5A_NIP_LINES_AGGREGATE);n=json_raw(snap[..],n,"\",\"aggregate\"]]");
+  s=n5a_read(n32_event(N5A_SNAPSHOT,cast(string)snap[0..<n]));#assert s.error==N5A_OK && s.has_x && s.parents==1 && s.origins==0 && ns_equal32(s.x,s.aggregate);
+  snap[n-20]=ifx snap[n-20]=='0' then '1' else '0';r=n5a_read(n32_event(N5A_SNAPSHOT,cast(string)snap[0..<n]));#assert r.error==N5A_AGGREGATE && r.at== -1;
+  r=n5a_read(n32_event(N5A_SNAPSHOT,named));#assert r.error==N5A_LINEAGE && r.at== -1;
+  r=n5a_read(n32_event(N5A_SNAPSHOT,"[[\"a\",\"35128:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:blog\"],[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]"));#assert r.error==N5A_X && r.at== -1;
+}
+#test "x tags and copied-site lineage" {
+  p:="[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]";
+  agg:="\"10d0d6c8cd0b07ddb3d38b9d2fe46a8e4bb2b4ff3dc2c0b3c03b5c0e8f8f6a77\"";
+  buf:[1024]u8;
+  one:=n5a_read(n32_event_in(N5A_ROOT,"[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]",buf[..]));
+  hx:[64]u8;own:=one.aggregate;h:=hex_encode_checked(cast(string)own[..],hx[..],false);
+  t:[1024]u8;n:=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",[\"x\",\"");n=json_raw(t[..],n,cast(string)hx[..]);n=json_raw(t[..],n,"\",\"aggregate\"]]");
+  s:=n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n]));#assert s.error==N5A_OK && s.has_x;
+  // An x tag without the aggregate marker is someone else's tag.
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",[\"x\",");n=json_raw(t[..],n,agg);n=json_raw(t[..],n,"]]");
+  s=n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n]));#assert s.error==N5A_OK && !s.has_x;
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",[\"x\",");n=json_raw(t[..],n,agg);n=json_raw(t[..],n,",\"aggregate\"]]");
+  s=n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n]));#assert s.error==N5A_AGGREGATE;
+  r:=n5a_read(n32_event(N5A_ROOT,"[[\"x\",\"10D0\",\"aggregate\"],[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]"));#assert r.error==N5A_X && r.at==0;
+  r=n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"x\",\"10d0d6c8cd0b07ddb3d38b9d2fe46a8e4bb2b4ff3dc2c0b3c03b5c0e8f8f6a77\",\"aggregate\"],[\"x\",\"10d0d6c8cd0b07ddb3d38b9d2fe46a8e4bb2b4ff3dc2c0b3c03b5c0e8f8f6a77\",\"aggregate\"]]"));#assert r.error==N5A_X && r.at==2;
+  // Copies: a and A together, one of each.
+  aa:="[\"a\",\"35128:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:blog\"]";
+  AA:="[\"A\",\"35128:266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5:blog\"]";
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",");n=json_raw(t[..],n,aa);n=json_raw(t[..],n,",");n=json_raw(t[..],n,AA);n=json_raw(t[..],n,"]");
+  s=n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n]));#assert s.error==N5A_OK && s.parents==1 && s.origins==1;
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",");n=json_raw(t[..],n,aa);n=json_raw(t[..],n,"]");
+  lin:=n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n]));#assert lin.error==N5A_LINEAGE && lin.at== -1;
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",");n=json_raw(t[..],n,AA);n=json_raw(t[..],n,"]");
+  #assert n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n])).error==N5A_LINEAGE;
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);for k:0..<2 {n=json_raw(t[..],n,",");n=json_raw(t[..],n,aa);n=json_raw(t[..],n,",");n=json_raw(t[..],n,AA);}n=json_raw(t[..],n,"]");
+  #assert n5a_read(n32_event(N5A_ROOT,cast(string)t[0..<n])).error==N5A_LINEAGE;
+  // A snapshot of a copy copies its A.
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",");n=json_raw(t[..],n,aa);n=json_raw(t[..],n,",");n=json_raw(t[..],n,AA);
+  n=json_raw(t[..],n,",[\"x\",\"");n=json_raw(t[..],n,cast(string)hx[..]);n=json_raw(t[..],n,"\",\"aggregate\"]]");
+  s=n5a_read(n32_event(N5A_SNAPSHOT,cast(string)t[0..<n]));#assert s.error==N5A_OK && s.origins==1;
+  n=json_raw(t[..],0,"[");n=json_raw(t[..],n,p);n=json_raw(t[..],n,",");n=json_raw(t[..],n,aa);n=json_raw(t[..],n,",");n=json_raw(t[..],n,AA);n=json_raw(t[..],n,",");n=json_raw(t[..],n,AA);
+  n=json_raw(t[..],n,",[\"x\",\"");n=json_raw(t[..],n,cast(string)hx[..]);n=json_raw(t[..],n,"\",\"aggregate\"]]");
+  s=n5a_read(n32_event(N5A_SNAPSHOT,cast(string)t[0..<n]));#assert s.error==N5A_LINEAGE && s.at== -1;
+}
+#test "path tag refusals" {
+  h:="186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99";
+  paths:=[11]string.["index.html","/","/blog/","/index","/blog/index.","/.html/","","/a.b/c","//","/a\tb.html","/a\nb.html"];
+  ok:=[6]string.["/index.html","/.htaccess","/a/b/c.tar.gz","/a.b/c.d","/a b.html","/~.html"];
+  buf:[512]u8;
+  for p:paths {n:=json_raw(buf[..],0,"[[\"t\",\"x\"],[\"path\",");n=json_write_string(buf[..],n,p);n=json_raw(buf[..],n,",\"");n=json_raw(buf[..],n,h);n=json_raw(buf[..],n,"\"]]");
+    r:=n5a_read(n32_event(N5A_ROOT,cast(string)buf[0..<n]));#assert r.error==N5A_PATH && r.at==1;}
+  for p:ok {n:=json_raw(buf[..],0,"[[\"path\",");n=json_write_string(buf[..],n,p);n=json_raw(buf[..],n,",\"");n=json_raw(buf[..],n,h);n=json_raw(buf[..],n,"\"]]");
+    #assert n5a_read(n32_event(N5A_ROOT,cast(string)buf[0..<n])).error==N5A_OK;}
+  #assert n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/i.html\",\"186EA5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]")).error==N5A_PATH;
+  #assert n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/i.html\",\"186ea5\"]]")).error==N5A_PATH;
+  #assert n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/i.html\"]]")).error==N5A_PATH;
+  r:=n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/i.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"path\",\"/i.html\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"]]"));
+  #assert r.error==N5A_PATH && r.at==1;
+  r=n5a_read(n32_event(N5A_ROOT,"[[\"title\",\"x\"]]"));#assert r.error==N5A_NO_PATH && r.at== -1;
+  k0:=n5a_read(n32_event(1,N5A_T_ROOT));#assert k0.error==N5A_KIND && k0.at== -1 && n5a_read(n32_event(35129,N5A_T_ROOT)).error==N5A_KIND;
+  del:[128]u8;dn:=json_raw(del[..],0,"[[\"path\",\"/a");del[dn]=127;dn=json_raw(del[..],dn+1,".html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]");
+  #assert n5a_read(n32_event(N5A_ROOT,cast(string)del[0..<dn])).error==N5A_PATH;
+  #assert n5a_path_ok("/a") == false && n5a_path_ok("/.x") && n5a_path_ok("/~.x");
+  pb:=[5]u8.['/','a','.','x','y'];#assert n5a_path_ok(cast(string)pb[..]);pb[1]=0x80;#assert n5a_path_ok(cast(string)pb[..]);pb[1]=31;#assert !n5a_path_ok(cast(string)pb[..]);pb[1]=' ';#assert n5a_path_ok(cast(string)pb[..]);
+  many:[4096]u8;m:=json_raw(many[..],0,"[[\"t\",\"x\"]");
+  for k:0..<17 {m=json_raw(many[..],m,",[\"path\",\"/");many[m]=cast(u8)('a'+k);m+=1;m=json_raw(many[..],m,".html\",\"");m=json_raw(many[..],m,h);m=json_raw(many[..],m,"\"]");}
+  m=json_raw(many[..],m,"]");
+  r=n5a_read(n32_event(N5A_ROOT,cast(string)many[0..<m]));#assert r.error==N5A_LIMIT && r.at==17 && r.n==16;
+  none:NostrEvent;#assert n5a_read(none).error==N5A_EVENT;
+  e:=n32_event(N5A_ROOT,"[]");e.original="[[\"path\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  r=n5a_read(e);#assert r.error==N5A_EVENT && r.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"path\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n5a_read(n32_event(N5A_ROOT,cast(string)long[0..<n]));#assert r.error==N5A_LIMIT && r.at==0;
+}
+#test "lookup: exact path, index.html, then 404.html" {
+  t:="[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"path\",\"/blog/index.html\",\"a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456\"],[\"path\",\"/404.html\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"]]";
+  s:=n5a_read(n32_event(N5A_ROOT,t));#assert s.error==N5A_OK;
+  h:=n5a_lookup(s,"/index.html");#assert h.error==N5A_OK && h.file==0 && !h.fallback;
+  h=n5a_lookup(s,"/");#assert h.error==N5A_OK && h.file==0 && !h.fallback;
+  h=n5a_lookup(s,"/blog/");#assert h.error==N5A_OK && h.file==1 && !h.fallback;
+  h=n5a_lookup(s,"/blog");#assert h.error==N5A_OK && h.file==2 && h.fallback;
+  h=n5a_lookup(s,"/nothing.html");#assert h.error==N5A_OK && h.file==2 && h.fallback;
+  h=n5a_lookup(s,"/404.html");#assert h.error==N5A_OK && h.file==2 && !h.fallback;
+  h=n5a_lookup(s,"");#assert h.error==N5A_OK && h.file==2 && h.fallback;
+  h=n5a_lookup(s,"/index.htm");#assert h.fallback;h=n5a_lookup(s,"/index.html2");#assert h.fallback;
+  s2:=n5a_read(n32_event(N5A_ROOT,"[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]"));
+  h=n5a_lookup(s2,"/x.html");#assert h.error==N5A_NOT_FOUND && h.file== -1 && !h.fallback;
+  long:[300]u8;for i:0..<300 {long[i]='/';}
+  #assert n5a_lookup(s2,cast(string)long[0..<246]).error==N5A_NOT_FOUND && n5a_lookup(s2,cast(string)long[0..<247]).error==N5A_NOT_FOUND;
+  bad:N5aSite;#assert n5a_lookup(bad,"/index.html").error==N5A_EVENT;
+}
+#test "serve: the blob's hash must match its path tag" {
+  body:="hello";   // sha256 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+  t:="[[\"path\",\"/hello.txt\",\"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\"]]";
+  s:=n5a_read(n32_event(N5A_ROOT,t));
+  b:[8]u8;for i:0..<5 {b[i]=body[i];}
+  #assert n5a_check(s,0,b[0..<5])==N5A_OK;
+  b[0]='H';#assert n5a_check(s,0,b[0..<5])==N5A_HASH;
+  b[0]='h';#assert n5a_check(s,0,b[0..<4])==N5A_HASH && n5a_check(s,0,b[0..<6])==N5A_HASH;
+  #assert n5a_check(s,1,b[0..<5])==N5A_NOT_FOUND && n5a_check(s,-1,b[0..<5])==N5A_NOT_FOUND;
+  bad:N5aSite;#assert n5a_check(bad,0,b[0..<5])==N5A_EVENT;
+}
+#test "writer: path tags and the aggregate x, read back" {
+  f:=[2]N5aEntry.[N5aEntry.{path="/index.html"},N5aEntry.{path="/favicon.ico"}];
+  f[0].hash=n5a_hex("186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99");f[1].hash=n5a_hex("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321");
+  out:[1024]u8;n:=n5a_tags(N5A_NAMED,"blog",f[..],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"blog\"],[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"path\",\"/favicon.ico\",\"fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321\"],[\"x\",\"c2ff582b672a4c689c5e1753528f03dd31b95ec1fdcc3d82d25e7d91e8769638\",\"aggregate\"]]";
+  s:=n5a_read(n32_event(N5A_NAMED,cast(string)out[0..<n]));#assert s.error==N5A_OK && s.has_x && s.n==2;
+  n=n5a_tags(N5A_ROOT,"",f[0..<1],out[..]);#assert n>0 && out[3]=='p';
+  #assert n5a_read(n32_event(N5A_ROOT,cast(string)out[0..<n])).error==N5A_OK;
+  #assert n5a_tags(N5A_ROOT,"b",f[..],out[..])== -N5A_D && n5a_tags(N5A_ROOT,"blog",f[..],out[..])== -N5A_D && n5a_tags(N5A_NAMED,"",f[..],out[..])== -N5A_D && n5a_tags(N5A_NAMED,"Blog",f[..],out[..])== -N5A_D;
+  #assert n5a_tags(N5A_SNAPSHOT,"",f[..],out[..])== -N5A_KIND && n5a_tags(N5A_NAMED,"blog",f[0..<0],out[..])== -N5A_NO_PATH;
+  f[1].path="favicon.ico";#assert n5a_tags(N5A_NAMED,"blog",f[..],out[..])== -N5A_PATH;
+  f[1].path="/index.html";#assert n5a_tags(N5A_NAMED,"blog",f[..],out[..])== -N5A_PATH;
+  f[1].path="/favicon.ico";#assert n5a_tags(N5A_NAMED,"blog",f[..],out[0..<100])== -N5A_OUTPUT;
+  many:[17]N5aEntry;names:=[17]string.["/a.x","/b.x","/c.x","/d.x","/e.x","/f.x","/g.x","/h.x","/i.x","/j.x","/k.x","/l.x","/m.x","/n.x","/o.x","/p.x","/q.x"];
+  for k:0..<17 {many[k].path=names[k];}
+  big:[4096]u8;#assert n5a_tags(N5A_ROOT,"",many[0..<16],big[..])>0 && n5a_tags(N5A_ROOT,"",many[..],big[..])== -N5A_LIMIT;
+  long:[300]u8;long[0]='/';for i:1..<300 {long[i]='a';}long[250]='.';
+  many[0].path=cast(string)long[0..<256];#assert n5a_tags(N5A_ROOT,"",many[0..<1],big[..])>0;
+  many[0].path=cast(string)long[0..<257];#assert n5a_tags(N5A_ROOT,"",many[0..<1],big[..])== -N5A_PATH;
+}
+
+// ---- the implementation
+
+n5a_fail :: (s:N5aSite,error:int,at:int)->N5aSite {r:=s;r.error=error;r.at=at;return r;}
+
+// book:begin rules
+// A named site's d: 1 to 13 of a-z, 0-9 and -, not ending in -.
+n5a_d_ok :: (d:string)->bool {
+  if d.count<1 || d.count>13 || d[d.count-1]=='-' {return false;}
+  for c:d {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
+  return true;
+}
+// An absolute path ending in a file name with an extension: it starts
+// with /, doesn't end in / or ., has no control bytes, and its last
+// segment has a . in it (a dot file such as /.htaccess counts).
+n5a_path_ok :: (p:string)->bool {
+  if p.count==0 || p.count>NT_MAX_VALUE || p[0]!='/' || p[p.count-1]=='/' || p[p.count-1]=='.' {return false;}
+  for c:p {if c<' ' || c==127 {return false;}}
+  last:=p.count-1;
+  while p[last-1]!='/' {last-=1;}
+  for i:last..<p.count {if p[i]=='.' {return true;}}
+  return false;
+}
+// Whether file a's line "<hash> <path>\n" sorts before b's. Lowercase hex
+// sorts as the bytes it encodes, so the hashes compare as bytes.
+n5a_before :: (a:N5aFile,b:N5aFile)->bool {
+  for i:0..<32 {
+    if a.hash[i]<b.hash[i] {return true;}
+    if a.hash[i]>b.hash[i] {return false;}
+  }
+  // The paths, each followed by "\n" (byte 10): the first byte that differs.
+  i:=0;
+  while i<a.path.n && i<b.path.n && a.path.b[i]==b.path.b[i] {i+=1;}
+  x:=ifx i<a.path.n then cast(int)a.path.b[i] else 10;
+  y:=ifx i<b.path.n then cast(int)b.path.b[i] else 10;
+  return x<y;
+}
+// book:end rules
+
+// book:begin aggregate
+// SHA-256 of the sorted lines "<hash> <path>\n" of files[0..<n].
+n5a_aggregate :: (files:[]N5aFile,n:int)->[32]u8 {
+  state:[SHA_STATE_BYTES]u8;ok:=sha256_init(state[..]);
+  line:[64+1+NT_MAX_VALUE+1]u8;used:[N5A_MAX_PATHS]bool;
+  for k:0..<n {
+    // The k'th line in order: the smallest file not yet hashed.
+    best:=-1;
+    for i:0..<n {if !used[i] && (best<0 || n5a_before(files[i],files[best])) {best=i;}}
+    used[best]=true;f:=files[best];
+    h:=hex_encode_checked(cast(string)f.hash[..],line[..],false);
+    line[64]=' ';for i:0..<f.path.n {line[65+i]=f.path.b[i];}line[65+f.path.n]=10;
+    ok=sha256_update_checked(state[..],line[0..<66+f.path.n],false);
+  }
+  digest:[32]u8;ok=sha256_final_checked(state[..],digest[..],false);
+  return digest;
+}
+// book:end aggregate
+
+// book:begin read
+// A kind 15128, 35128 or 5128 manifest: its files and aggregate hash.
+n5a_read :: (e:NostrEvent)->N5aSite {
+  s:N5aSite;if e.error!=NE_OK {return s;}
+  if e.kind!=N5A_ROOT && e.kind!=N5A_NAMED && e.kind!=N5A_SNAPSHOT {return n5a_fail(s,N5A_KIND,-1);}
+  s.kind=e.kind;has_d:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n5a_fail(s,N5A_LIMIT,i);}
+    if t.error!=NT_OK {return n5a_fail(s,N5A_EVENT,i);}
+    if n32_is(t.v[0],"d") {
+      if e.kind==N5A_ROOT {return n5a_fail(s,N5A_D,i);}
+      if !has_d {has_d=true;s.d=t.v[1];}
+    }
+    if n32_is(t.v[0],"path") {
+      f:N5aFile;f.path=t.v[1];
+      if !n5a_path_ok(cast(string)f.path.b[0..<f.path.n]) || !ne_lower_hex(cast(string)t.v[2].b[0..<t.v[2].n],f.hash[..]) {return n5a_fail(s,N5A_PATH,i);}
+      for k:0..<s.n {if n32_text_order(s.files[k].path,f.path)==0 {return n5a_fail(s,N5A_PATH,i);}}
+      if s.n==N5A_MAX_PATHS {return n5a_fail(s,N5A_LIMIT,i);}
+      s.files[s.n]=f;s.n+=1;
+    }
+    if n32_is(t.v[0],"x") && n32_is(t.v[2],"aggregate") {
+      if s.has_x || !ne_lower_hex(cast(string)t.v[1].b[0..<t.v[1].n],s.x[..]) {return n5a_fail(s,N5A_X,i);}
+      s.has_x=true;
+    }
+    if n32_is(t.v[0],"a") {s.parents+=1;}
+    if n32_is(t.v[0],"A") {s.origins+=1;}
+    i+=1;
+  }
+  if e.kind==N5A_NAMED && !n5a_d_ok(cast(string)s.d.b[0..<s.d.n]) {return n5a_fail(s,N5A_D,-1);}
+  if s.n==0 {return n5a_fail(s,N5A_NO_PATH,-1);}
+  if s.origins>1 {return n5a_fail(s,N5A_LINEAGE,-1);}
+  if e.kind==N5A_SNAPSHOT {
+    if s.parents!=1 {return n5a_fail(s,N5A_LINEAGE,-1);}
+    if !s.has_x {return n5a_fail(s,N5A_X,-1);}
+  } else if s.parents!=s.origins {return n5a_fail(s,N5A_LINEAGE,-1);}
+  s.aggregate=n5a_aggregate(s.files[..],s.n);
+  if s.has_x && !ns_equal32(s.x,s.aggregate) {return n5a_fail(s,N5A_AGGREGATE,-1);}
+  return n5a_fail(s,N5A_OK,-1);
+}
+// book:end read
+
+// book:begin serve
+n5a_find :: (s:N5aSite,path:string)->int {
+  for k:0..<s.n {
+    p:=s.files[k].path;
+    if cast(string)p.b[0..<p.n]==path {return k;}
+  }
+  return -1;
+}
+// The file a request path names: the path itself, or its index.html when
+// it ends in /, else /404.html with fallback set.
+n5a_lookup :: (s:N5aSite,request:string)->N5aHit {
+  h:N5aHit;if s.error!=N5A_OK {h.error=N5A_EVENT;return h;}
+  want:[NT_MAX_VALUE]u8;n:=json_raw(want[..],0,request);
+  if request.count>0 && request[request.count-1]=='/' {n=json_raw(want[..],n,"index.html");}
+  if n!= -1 {h.file=n5a_find(s,cast(string)want[0..<n]);}
+  if h.file<0 {h.file=n5a_find(s,"/404.html");h.fallback=true;}
+  if h.file<0 {h.fallback=false;return h;}
+  h.error=N5A_OK;return h;
+}
+// Whether blob, fetched for file index, may be served: N5A_OK when its
+// SHA-256 is the manifest's hash for that file, else N5A_HASH.
+n5a_check :: (s:N5aSite,file:int,blob:[]u8)->int {
+  if s.error!=N5A_OK {return N5A_EVENT;}
+  if file<0 || file>=s.n {return N5A_NOT_FOUND;}
+  digest:[32]u8;ok:=sha256_hash_checked(blob,digest[..],false);
+  if ok!=SHA_OK || !ns_equal32(digest,s.files[file].hash) {return N5A_HASH;}
+  return N5A_OK;
+}
+// book:end serve
+
+// book:begin write
+// A kind 15128 or 35128 manifest's tags into out: d for a named site, a
+// path tag per file, and the aggregate x tag. Its length, or minus the
+// refusal.
+n5a_tags :: (kind:int,d:string,files:[]N5aEntry,out:[]u8)->int {
+  if kind!=N5A_ROOT && kind!=N5A_NAMED {return -N5A_KIND;}
+  if (kind==N5A_ROOT && d.count>0) || (kind==N5A_NAMED && !n5a_d_ok(d)) {return -N5A_D;}
+  if files.count==0 {return -N5A_NO_PATH;}
+  if files.count>N5A_MAX_PATHS {return -N5A_LIMIT;}
+  read:[N5A_MAX_PATHS]N5aFile;
+  for k:0..<files.count {
+    p:=files[k].path;
+    if !n5a_path_ok(p) {return -N5A_PATH;}
+    for j:0..<k {if files[j].path==p {return -N5A_PATH;}}
+    for i:0..<p.count {read[k].path.b[i]=p[i];}read[k].path.n=p.count;read[k].hash=files[k].hash;
+  }
+  n:=json_raw(out,0,"[");
+  if kind==N5A_NAMED {n=json_raw(out,n,"[\"d\",");n=json_write_string(out,n,d);n=json_raw(out,n,"],");}
+  hx:[64]u8;
+  for f:files {
+    own:=f.hash;h:=hex_encode_checked(cast(string)own[..],hx[..],false);
+    n=json_raw(out,n,"[\"path\",");n=json_write_string(out,n,f.path);n=json_raw(out,n,",\"");n=json_raw(out,n,cast(string)hx[..]);n=json_raw(out,n,"\"],");
+  }
+  agg:=n5a_aggregate(read[..],files.count);h:=hex_encode_checked(cast(string)agg[..],hx[..],false);
+  n=json_raw(out,n,"[\"x\",\"");n=json_raw(out,n,cast(string)hx[..]);n=json_raw(out,n,"\",\"aggregate\"]]");
+  if n== -1 {return -N5A_OUTPUT;}
+  return n;
+}
+// book:end write

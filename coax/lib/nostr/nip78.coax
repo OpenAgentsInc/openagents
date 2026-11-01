@@ -1,0 +1,91 @@
+// NIP-78 application data read and written from a parsed event: kind 30078,
+// an addressable event whose d tag names the app and its context, and kind
+// 78, a regular event an app groups by its own tags.
+//
+// The content and the other tags belong to the app; nothing here reads
+// them. The reader refuses a kind 30078 with no d tag or an empty one:
+// without one, every app's data under a key would replace every other's.
+// A kind 78 may carry a d tag or not.
+//
+// NIP-78 says a relay SHOULD serve this data only to its author after
+// NIP-42 AUTH. n78_serve makes that decision from the authenticated pubkey
+// the caller passes; any other kind is outside this NIP and is served.
+#load "nip53.coax";
+#authority;
+
+N78_OK :: 0; N78_EVENT :: 1; N78_KIND :: 2; N78_NO_D :: 3; N78_LIMIT :: 4;
+N78_APP :: 30078; N78_REGULAR :: 78;
+
+// book:begin record
+N78Data :: struct {
+  error:int=N78_EVENT;
+  kind:int;
+  has_d:bool; d:N32Text;              // the first d tag's value
+}
+// book:end record
+
+#test "kind 30078 needs a d; kind 78 may have one" {
+  a:=n78_read(n32_event(N78_APP,"[[\"d\",\"coax-reader/settings\"],[\"theme\",\"dark\"]]"));
+  #assert a.error==N78_OK && a.kind==N78_APP && a.has_d && n32_is(a.d,"coax-reader/settings");
+  #assert n78_read(n32_event(N78_APP,"[[\"theme\",\"dark\"]]")).error==N78_NO_D;
+  #assert n78_read(n32_event(N78_APP,"[[\"d\",\"\"]]")).error==N78_NO_D && n78_read(n32_event(N78_APP,"[[\"d\"]]")).error==N78_NO_D;
+  #assert n78_read(n32_event(N78_APP,"[]")).error==N78_NO_D;
+  r:=n78_read(n32_event(N78_REGULAR,"[]"));#assert r.error==N78_OK && r.kind==N78_REGULAR && !r.has_d && r.d.n==0;
+  r=n78_read(n32_event(N78_REGULAR,"[[\"t\",\"x\"],[\"d\",\"log\"],[\"d\",\"other\"]]"));#assert r.error==N78_OK && r.has_d && n32_is(r.d,"log");
+  r=n78_read(n32_event(N78_REGULAR,"[[\"d\"]]"));#assert r.error==N78_OK && r.has_d && r.d.n==0;
+  #assert n32_is(n78_read(n32_event(N78_APP,"[[\"d\",\"a\"],[\"d\",\"b\"]]")).d,"a");
+  #assert n78_read(n32_event(1,"[[\"d\",\"x\"]]")).error==N78_KIND && n78_read(n32_event(30079,"[[\"d\",\"x\"]]")).error==N78_KIND;
+  none:NostrEvent;#assert n78_read(none).error==N78_EVENT;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n78_read(n32_event(N78_APP,cast(string)long[0..<n])).error==N78_LIMIT;
+  e:=n32_event(N78_APP,"[]");e.original="[[\"d\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  #assert n78_read(e).error==N78_EVENT;
+}
+#test "only the authenticated author is served app data" {
+  e:=n32_at(n32_event(N78_APP,"[[\"d\",\"x\"]]"),0x79,1);
+  owner:[32]u8;for i:0..<32 {owner[i]=0x79;}
+  other:=owner;other[31]=0x7a;
+  #assert n78_serve(e,true,owner) && !n78_serve(e,true,other) && !n78_serve(e,false,owner);
+  e.kind=N78_REGULAR;#assert n78_serve(e,true,owner) && !n78_serve(e,false,owner) && !n78_serve(e,true,other);
+  e.kind=1;#assert n78_serve(e,false,other) && n78_serve(e,true,other);
+  e.kind=30079;#assert n78_serve(e,false,other);
+}
+#test "writer: the d tag, read back" {
+  out:[64]u8;n:=n78_tags("coax-reader/\"s\"",out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"coax-reader/\\\"s\\\"\"]]";
+  #assert n32_is(n78_read(n32_event(N78_APP,cast(string)out[0..<n])).d,"coax-reader/\"s\"");
+  #assert n78_tags("",out[..])== -1 && n78_tags("abc",out[0..<12])== -1 && n78_tags("abc",out[0..<13])==13;
+}
+
+// ---- the implementation
+
+// book:begin read
+// A kind 30078 or 78 event's d tag.
+n78_read :: (e:NostrEvent)->N78Data {
+  r:N78Data;if e.error!=NE_OK {return r;}
+  t:=n10_text(e,"d",r.d.b[..]);
+  if t.status==N10_LIMIT {r.error=N78_LIMIT;return r;}
+  if t.status!=N10_OK {return r;}
+  r.has_d=t.present;r.d.n=t.n;
+  if e.kind!=N78_APP && e.kind!=N78_REGULAR {r.error=N78_KIND;return r;}
+  r.kind=e.kind;
+  if e.kind==N78_APP && r.d.n==0 {r.error=N78_NO_D;return r;}
+  r.error=N78_OK;return r;
+}
+// Whether a relay serves e to a client that authenticated (NIP-42) as who:
+// app data only to its author, everything else to anyone.
+n78_serve :: (e:NostrEvent,authenticated:bool,who:[32]u8)->bool {
+  if e.kind!=N78_APP && e.kind!=N78_REGULAR {return true;}
+  return authenticated && ns_equal32(e.public_key,who);
+}
+// book:end read
+
+// book:begin write
+// A kind 30078's tags, [["d", d]], into out: its length, or -1 for an
+// empty d or a short out.
+n78_tags :: (d:string,out:[]u8)->int {
+  if d.count==0 {return -1;}
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,d);
+  return json_raw(out,n,"]]");
+}
+// book:end write

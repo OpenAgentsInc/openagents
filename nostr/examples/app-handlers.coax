@@ -1,0 +1,230 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip78.coax";
+#load "../../coax/lib/nostr/nip89.coax";
+#load "../../coax/lib/nostr/nip5a.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+E89 :: [15] string.["ok", "event", "kind", "no d", "bad k", "a names the wrong kind", "bad tag", "kind not handled",
+  "no template", "no <bech32>", "unsafe scheme", "unsafe character", "bad entity", "limit", "output"];
+E5A :: [13] string.["ok", "event", "kind", "bad d", "bad path", "no path", "bad x", "aggregate mismatch", "bad lineage",
+  "limit", "not found", "hash mismatch", "output"];
+E78 :: [5] string.["ok", "event", "kind", "no d", "limit"];
+RANK :: [3] string.["recommended by follows", "a follow's app", "unvetted"];
+// The public keys of the secret keys 1 to 5: published test values.
+// Never sign with a real key in an example.
+PEOPLE :: [5] string.["Alice", "Bob", "Carol", "Dave", "Eve"];
+PUB :: [5] string.[
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+  "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; DAVE :: 3; EVE :: 4;
+T0 :: 1762000000;
+RELAY :: "wss://relay.example.com";
+// The two files of Dave's site.
+INDEX_HTML :: "<h1>Reads</h1>\n";
+READS_CSS :: "h1 { color: green; }\n";
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+person :: (key: [32] u8) -> string {
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { return PEOPLE[k]; } }
+  return "someone else";
+}
+file_hash :: (text: string) -> [32] u8 {
+  b: [64] u8; for i: 0..<text.count { b[i] = text[i]; }
+  d: [32] u8; ok := sha256_hash_checked(b[0..<text.count], d[..], false);
+  #assert ok == SHA_OK;
+  return d;
+}
+
+// Sign an event with secret key who+1 and read it back with its ID and
+// signature checked.
+sign :: (signer: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; key[31] = cast(u8) (signer + 1);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified && ns_equal32(e.public_key, key_of(signer));
+  return e;
+}
+// An unsigned event by Eve, parsed but not verified. Used for the
+// refusals, which no signer here would write.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[EVE]); n = json_raw(out, n, "\",\"created_at\":1762000000,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// The events: who signs, when (after T0), the kind and the content.
+EVENTS :: 10;
+NAME :: [EVENTS] string.["A", "H1", "H2", "H3", "R1", "R2", "R3", "S", "M", "C"];
+WHO :: [EVENTS] int.[BOB, DAVE, EVE, CAROL, BOB, CAROL, EVE, ALICE, DAVE, ALICE];
+AT :: [EVENTS] int.[0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+KIND :: [EVENTS] int.[30023, 31990, 31990, 31990, 31989, 31989, 31989, 30078, 35128, 1];
+CONTENT :: [EVENTS] string.["Coax is a language for writing Nostr from scratch.", "", "", "", "", "", "", "{\"theme\":\"dark\"}", "",
+  "Reading Bob's article."];
+
+// The tags of event k, each written by its NIP's writer.
+tags_of :: (k: int, out: [] u8) -> string {
+  n := 0;
+  if k == 0 { m: N23Meta; m.d = "coax-intro"; m.title = "Coax, an introduction"; t := nip23_tags(m, out); #assert t.error == N23_OK; n = t.n; }
+  if k == 1 {
+    kinds := [2] int.[30023, 30024];
+    t := [2] N89Template.[N89Template.{platform = "web", url = "https://reads.example.com/a/<bech32>", entity = "naddr"},
+                          N89Template.{platform = "web", url = "https://reads.example.com/e/<bech32>"}];
+    n = n89_handler_tags("reads", kinds[..], t[..], out);
+  }
+  if k == 2 {
+    kinds := [1] int.[30023]; t := [1] N89Template.[N89Template.{platform = "web", url = "https://spam.example.com/<bech32>"}];
+    n = n89_handler_tags("spam", kinds[..], t[..], out);
+  }
+  if k == 3 {
+    kinds := [1] int.[1]; t := [1] N89Template.[N89Template.{platform = "web", url = "https://notes.example.com/<bech32>"}];
+    n = n89_handler_tags("notes", kinds[..], t[..], out);
+  }
+  if k == 4 { p := [1] N89Pick.[N89Pick.{author = key_of(DAVE), d = "reads", relay = RELAY, platform = "web"}]; n = n89_recommend_tags(30023, p[..], out); }
+  if k == 5 {
+    p := [2] N89Pick.[N89Pick.{author = key_of(DAVE), d = "reads", relay = RELAY, platform = "web"}, N89Pick.{author = key_of(CAROL), d = "notes"}];
+    n = n89_recommend_tags(30023, p[..], out);
+  }
+  if k == 6 { p := [1] N89Pick.[N89Pick.{author = key_of(EVE), d = "spam"}]; n = n89_recommend_tags(30023, p[..], out); }
+  if k == 7 { n = n78_tags("coax-reader/settings", out); }
+  if k == 8 {
+    f := [2] N5aEntry.[N5aEntry.{path = "/index.html", hash = file_hash(INDEX_HTML)}, N5aEntry.{path = "/reads.css", hash = file_hash(READS_CSS)}];
+    n = n5a_tags(N5A_NAMED, "reads", f[..], out);
+  }
+  if k == 9 {
+    c: [512] u8; m := n89_client_tag("Reads", key_of(DAVE), "reads", RELAY, c[..]);
+    n = json_raw(out, 0, "["); n = json_raw(out, n, cast(string) c[0..<m]); n = json_raw(out, n, "]");
+  }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+show_handler :: (name: string, e: NostrEvent) {
+  h := n89_handler(e);
+  print("%: %, by %, d ", name, E89[h.error], person(e.public_key)); say(h.d); print(", kinds");
+  for i: 0..<h.nk { print(" %", h.k[i]); }
+  print("\n");
+}
+show_recommend :: (name: string, e: NostrEvent) {
+  r := n89_recommend(e);
+  print("%: %, by %, for kind %:", name, E89[r.error], person(e.public_key), r.kind);
+  for i: 0..<r.n { print(" 31990:%:", person(r.a[i].author)); say(r.a[i].d); if r.a[i].platform.n > 0 { print(" ("); say(r.a[i].platform); print(")"); } }
+  print("\n");
+}
+index_of :: (name: string) -> int { for k: 0..<EVENTS { if NAME[k] == name { return k; } } return -1; }
+show_url :: (what: string, h: NostrEvent, platform: string, entity: string) {
+  out: [1024] u8; u := n89_url(h, platform, entity, out[..]);
+  print("%: %", what, E89[u.error]);
+  if u.at >= 0 { print(" at tag %", u.at); }
+  if u.error == N89_OK { print("\n  %", cast(string) out[0..<u.n]); }
+  print("\n");
+}
+show_site :: (name: string, e: NostrEvent) {
+  s := n5a_read(e);
+  print("%: %", name, E5A[s.error]);
+  if s.at >= 0 { print(" at tag %", s.at); }
+  print("\n");
+}
+
+main :: () {
+  all: [EVENTS] NostrEvent; buf: [EVENTS][4096] u8; tags: [2048] u8;
+  for k: 0..<EVENTS { all[k] = sign(WHO[k], T0 + AT[k], KIND[k], tags_of(k, tags[..]), CONTENT[k], buf[k][..]); }
+  print("== 1. Each event's id (T0 = %)\n", T0);
+  for k: 0..<EVENTS { hex: [64] u8; print("%: kind %, by %, at T0+%, id %\n", NAME[k], KIND[k], PEOPLE[WHO[k]], AT[k], hex32(all[k].id, hex[..])); }
+  print("H1's tags: %\n", tags_of(1, tags[..]));
+  print("R2's tags: %\n", tags_of(5, tags[..]));
+
+  print("\n== 2. App data\n");
+  s := n78_read(all[7]);
+  print("S: kind %, d ", s.kind); say(s.d); print(", content % (the app's own format)\n", CONTENT[7]);
+  print("served to Alice after AUTH: %; to Bob after AUTH: %; to Alice without AUTH: %\n",
+        n78_serve(all[7], true, key_of(ALICE)), n78_serve(all[7], true, key_of(BOB)), n78_serve(all[7], false, key_of(ALICE)));
+
+  print("\n== 3. Handlers and recommendations\n");
+  show_handler("H1", all[1]); show_handler("H2", all[2]); show_handler("H3", all[3]);
+  show_recommend("R1", all[4]); show_recommend("R2", all[5]); show_recommend("R3", all[6]);
+
+  print("\n== 4. Which app opens Bob's article? Alice follows Bob and Carol\n");
+  follows: [2][32] u8; follows[0] = key_of(BOB); follows[1] = key_of(CAROL);
+  recs := all[4..<7]; handlers := all[1..<4]; choices: [8] N89Choice;
+  f := n89_resolve(30023, follows[..], recs, handlers, choices[..]);
+  print("kind 30023: %, % handlers, % recommended but not handling the kind, % missing\n", E89[f.error], f.n, f.not_handled, f.missing);
+  for i: 0..<f.n {
+    c := choices[i]; h := n89_handler(handlers[c.handler]);
+    print("  %. H% by %, d ", i + 1, c.handler + 1, person(handlers[c.handler].public_key)); say(h.d); print(": %, % votes\n", RANK[c.rank], c.votes);
+  }
+
+  print("\n== 5. The entity and the URL\n");
+  entity: [512] u8; en := n89_entity(all[0], RELAY, entity[..]);
+  dec: [512] u8; r := nip19_decode_checked(cast(string) entity[0..<en], dec[..], false);
+  hex: [1024] u8; hx := hex_encode_checked(cast(string) dec[0..<r.written], hex[..], false);
+  print("A as naddr, % TLV bytes: %\n", r.written, cast(string) hex[0..<hx.written]);
+  print("  %\n", cast(string) entity[0..<en]);
+  best := handlers[choices[0].handler];
+  show_url("H1 web for naddr", best, "web", cast(string) entity[0..<en]);
+  note: [512] u8; nn := n89_entity(all[9], "", note[..]);
+  show_url("H1 web for C's nevent", best, "web", cast(string) note[0..<nn]);
+  show_url("H1 ios", best, "ios", cast(string) entity[0..<en]);
+  c := n89_client(all[9]);
+  print("C's client tag: %, \"", E89[c.error]); say(c.name); print("\", handler 31990:%:", person(c.handler.author)); say(c.handler.d); print(", relay "); say(c.handler.relay); print("\n");
+
+  print("\n== 6. Dave's site\n");
+  site := n5a_read(all[8]);
+  agg: [64] u8;
+  print("M: %, named site ", E5A[site.error]); say(site.d); print(", % files, aggregate %\n", site.n, hex32(site.aggregate, agg[..]));
+  for i: 0..<site.n { h: [64] u8; print("  "); say(site.files[i].path); print(" %\n", hex32(site.files[i].hash, h[..])); }
+  requests := [3] string.["/", "/reads.css", "/missing.html"];
+  for q: requests {
+    hit := n5a_lookup(site, q);
+    print("GET %: %", q, E5A[hit.error]);
+    if hit.error == N5A_OK { print(", file "); say(site.files[hit.file].path); if hit.fallback { print(" (fallback)"); } }
+    print("\n");
+  }
+  blob: [64] u8; for i: 0..<INDEX_HTML.count { blob[i] = INDEX_HTML[i]; }
+  hit := n5a_lookup(site, "/");
+  print("serve the fetched /index.html: %\n", E5A[n5a_check(site, hit.file, blob[0..<INDEX_HTML.count])]);
+  blob[4] = 'Z';
+  print("serve a blob with one byte changed: %\n", E5A[n5a_check(site, hit.file, blob[0..<INDEX_HTML.count])]);
+
+  print("\n== 7. Refusals\n");
+  bad: [2048] u8; out: [512] u8;
+  show_url("javascript: template", unsigned(31990, "[[\"d\",\"x\"],[\"k\",\"30023\"],[\"web\",\"javascript:alert(document.cookie)//<bech32>\"]]", bad[..]), "web", cast(string) entity[0..<en]);
+  show_url("template without <bech32>", unsigned(31990, "[[\"d\",\"x\"],[\"k\",\"30023\"],[\"web\",\"https://x.example.com/open\"]]", bad[..]), "web", cast(string) entity[0..<en]);
+  show_url("web template over http", unsigned(31990, "[[\"d\",\"x\"],[\"k\",\"30023\"],[\"web\",\"http://x.example.com/<bech32>\"]]", bad[..]), "web", cast(string) entity[0..<en]);
+  show_url("template with a quote", unsigned(31990, "[[\"d\",\"x\"],[\"k\",\"30023\"],[\"web\",\"https://x.example.com/\\\"<bech32>\"]]", bad[..]), "web", cast(string) entity[0..<en]);
+  show_url("an nsec as the entity", best, "web", "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5");
+  k1 := [1] int.[30023]; t1 := [1] N89Template.[N89Template.{platform = "web", url = "javascript:alert(1)//<bech32>"}];
+  print("writing a handler with a javascript: template: %\n", E89[-n89_handler_tags("x", k1[..], t1[..], out[..])]);
+  h := n89_handler(unsigned(31990, "[[\"d\",\"x\"],[\"k\",\"long-form\"]]", bad[..]));
+  print("handler with k long-form: % at tag %\n", E89[h.error], h.at);
+  rr := n89_recommend(unsigned(31989, "[[\"d\",\"30023\"],[\"a\",\"30023:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:coax-intro\"]]", bad[..]));
+  print("recommendation naming an article: % at tag %\n", E89[rr.error], rr.at);
+  d := n78_read(unsigned(30078, "[]", bad[..]));
+  print("app data without d: %\n", E78[d.error]);
+  show_site("named site with d Reads", unsigned(35128, "[[\"d\",\"Reads\"],[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]", bad[..]));
+  show_site("root site with a d", unsigned(15128, "[[\"d\",\"reads\"],[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]", bad[..]));
+  show_site("path without a file name", unsigned(15128, "[[\"path\",\"/blog/\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"]]", bad[..]));
+  show_site("x that isn't the aggregate", unsigned(15128, "[[\"path\",\"/index.html\",\"186ea5fd14e88fd1ac49351759e7ab906fa94892002b60bf7f5a428f28ca1c99\"],[\"x\",\"0000000000000000000000000000000000000000000000000000000000000000\",\"aggregate\"]]", bad[..]));
+}
+// book:end example

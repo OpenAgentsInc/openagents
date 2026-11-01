@@ -1,0 +1,36 @@
+// Event records for nip89.coax's checks: parsed records with an author
+// byte, and a small world of recommendations and handler events. They live
+// here so that mutation of nip89.coax changes the library, not the checks.
+n89_event_by :: (kind:int,tags:string,author:u8,out:[]u8)->NostrEvent {
+  e:=n32_event_in(kind,tags,out);for i:0..<32 {e.public_key[i]=author;}return e;
+}
+n89_hex_key :: (s:string)->[32]u8 {k:[32]u8;ok:=hex_decode_checked(s,k[..],false);return k;}
+
+
+// The test world: user 0x11 follows 0x22, 0x33 and 0x44. App 0x0a's
+// "reads" handles 30023; app 0x0b's "notes" handles only kind 1; app 0x0c's
+// "spam" handles 30023; follow 0x44's own "mine" handles 30023.
+N89World :: struct {
+  rec:[6]NostrEvent; hand:[5]NostrEvent; follows:[3][32]u8;
+  rb:[6][512]u8; hb:[5][512]u8;
+}
+n89_world :: (w:[]N89World) {
+  for k:0..<3 {for i:0..<32 {w[0].follows[k][i]=cast(u8)(0x22+0x11*k);}}
+  ra:="[[\"d\",\"30023\"],[\"a\",\"31990:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a:reads\",\"\",\"web\"]]";
+  rab:="[[\"d\",\"30023\"],[\"a\",\"31990:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b:notes\"],[\"a\",\"31990:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a:reads\"],[\"a\",\"31990:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a:reads\"],[\"a\",\"31990:0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d:gone\"]]";
+  rc:="[[\"d\",\"30023\"],[\"a\",\"31990:0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c:spam\"]]";
+  r1:="[[\"d\",\"1\"],[\"a\",\"31990:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b:notes\"]]";
+  w[0].rec[0]=n89_event_by(N89_RECOMMEND,ra,0x22,w[0].rb[0][..]);
+  w[0].rec[1]=n89_event_by(N89_RECOMMEND,rab,0x33,w[0].rb[1][..]);
+  w[0].rec[2]=n89_event_by(N89_RECOMMEND,rc,0x55,w[0].rb[2][..]);        // not a follow
+  w[0].rec[3]=n89_event_by(N89_RECOMMEND,r1,0x22,w[0].rb[3][..]);         // another kind
+  w[0].rec[4]=n89_event_by(N89_RECOMMEND,rc,0x44,w[0].rb[4][..]);w[0].rec[4].created_at=10;   // replaced by rec[5]
+  w[0].rec[5]=n89_event_by(N89_RECOMMEND,"[[\"d\",\"30023\"]]",0x44,w[0].rb[5][..]);w[0].rec[5].created_at=20;
+  w[0].hand[0]=n89_event_by(N89_HANDLER,"[[\"d\",\"spam\"],[\"k\",\"30023\"],[\"web\",\"https://spam/<bech32>\"]]",0x0c,w[0].hb[0][..]);
+  w[0].hand[1]=n89_event_by(N89_HANDLER,"[[\"d\",\"notes\"],[\"k\",\"1\"],[\"web\",\"https://notes/<bech32>\"]]",0x0b,w[0].hb[1][..]);
+  w[0].hand[2]=n89_event_by(N89_HANDLER,"[[\"d\",\"mine\"],[\"k\",\"30023\"],[\"web\",\"https://mine/<bech32>\"]]",0x44,w[0].hb[2][..]);
+  w[0].hand[3]=n89_event_by(N89_HANDLER,"[[\"d\",\"reads\"],[\"k\",\"1\"]]",0x0a,w[0].hb[3][..]);w[0].hand[3].created_at=5;  // an older version
+  w[0].hand[4]=n89_event_by(N89_HANDLER,N89_T_APP,0x0a,w[0].hb[4][..]);w[0].hand[4].created_at=6;
+  for i:0..<5 {w[0].hand[i].id[0]=cast(u8)i;}
+  for i:0..<6 {w[0].rec[i].id[0]=cast(u8)i;}
+}

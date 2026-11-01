@@ -1339,13 +1339,21 @@
    "number": 64,
    "title": "App data and handlers",
    "file": "ch064-app-data-and-handlers.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip78.coax",
+    "coax/lib/nostr/nip89.coax",
+    "coax/lib/nostr/nip5a.coax",
+    "nostr/examples/app-handlers.coax",
+    "nostr/examples/checks/app-handlers.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
