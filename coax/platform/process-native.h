@@ -49,6 +49,8 @@ int64_t cxproc_kill(int64_t h, int64_t sig);
 int64_t cxproc_wait(int64_t h, int64_t timeout_ms);
 int64_t cxproc_pid(int64_t h);
 int64_t cxproc_group_alive(int64_t pgid);
+int64_t cxproc_pid_alive(int64_t pid);              /* kill(pid, 0): 1 when it is there */
+int64_t cxproc_pid_signal(int64_t pid, int64_t sig); /* 0 or -1 */
 int64_t cxproc_stderr_count(int64_t h);
 int64_t cxproc_stderr_byte(int64_t h, int64_t i);
 int64_t cxproc_release(int64_t h);

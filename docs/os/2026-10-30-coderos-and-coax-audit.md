@@ -302,8 +302,14 @@ compiler and the examples have not been run on Linux yet.
   that disappears and comes back, and no microphone at first. In all five
   it wrote the same segments, arguments, warnings, reports and markers as
   the shell's `supervise_audio`, with offsets within 0.4 s of each other.
-  Left in row 4: `start`, `stop`, `status` and `repair`, then
-  `recording-hud`, `presentation-mode` and `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  `os/screen-record.coax` is the command. Its `status` and `repair` print
+  the shell's lines and leave the same files: on coderos-4080, seven status
+  states (none, a stale pid, a live take with and without a mic report, an
+  outage and reattachments, a broken or empty report) and two repair sets
+  (nothing to do; a silent take, one that has sound, an empty capture, a
+  broken video, a hidden file, a take with no capture) matched exactly.
+  Left in row 4: `start` and `stop`, then `recording-hud`,
+  `presentation-mode` and `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.

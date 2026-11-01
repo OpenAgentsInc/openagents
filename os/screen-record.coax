@@ -1,0 +1,207 @@
+// CoderOS screen recording, the command (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 4),
+// in place of ops/screen-record.sh (openagents 2ca255550e). The pieces it runs are Coax already:
+// os/record-audio.coax supervises the microphone, os/microphone.coax picks it, and
+// os/record-place.coax places the sound and builds the mux. This file holds the verbs:
+//   coax/web/tool.sh os/screen-record.coax status        what is recording, and how its sound is
+//   coax/web/tool.sh os/screen-record.coax repair [FILE] put orphaned sound back into its recording
+// start and stop come next. Every line printed is the shell's, so the HUD's and the desk's readers
+// see the same words from either.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+
+cxproc_pid_alive :: (pid: int) -> int #foreign;
+
+// ---- pure pieces
+
+// A pid file's text as bash read it ($(cat f) drops trailing newlines; kill -0 wants a whole number):
+// the pid, or -1 when kill would refuse it.
+sr_pid :: (text: string) -> int {
+  t := sr_chomp(text);
+  if t.count == 0 || t.count > 18 { return -1; }
+  v := 0;
+  for c: t { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return ifx v > 0 then v else -1;
+}
+#test "pid files" {
+  #assert sr_pid("1234\n") == 1234 && sr_pid("1234\n\n") == 1234 && sr_pid("77") == 77;
+  #assert sr_pid("") == -1 && sr_pid("\n") == -1 && sr_pid("12 34") == -1 && sr_pid("-5") == -1 && sr_pid("0") == -1 && sr_pid("x1") == -1;
+}
+// $(...): the text without its trailing newlines.
+sr_chomp :: (s: string) -> string { n := s.count; while n > 0 && s[n - 1] == '\n' { n -= 1; } return s[0..<n]; }
+
+// "${f%.*}.repair.${f##*.}": the repaired file's name beside f. Without a dot both halves are f.
+sr_repair_name :: (f: string, out: [] u8) -> string {
+  i := f.count - 1;
+  while i >= 0 && f[i] != '.' { i -= 1; }
+  stem := ifx i >= 0 then f[0..<i] else f;
+  ext := ifx i >= 0 then f[i + 1..<f.count] else f;
+  n := sr_cat(out, 0, stem); n = sr_cat(out, n, ".repair."); n = sr_cat(out, n, ext);
+  return cast(string) out[0..<n];
+}
+#test "the repair file's name" {
+  b: [256] u8;
+  #assert sr_repair_name("/home/c/Videos/take.mp4", b[..]) == "/home/c/Videos/take.repair.mp4";
+  #assert sr_repair_name("a.b.mkv", b[..]) == "a.b.repair.mkv" && sr_repair_name("take", b[..]) == "take.repair.take";
+  #assert sr_repair_name("/v.d/take", b[..]) == "/v.repair.d/take";
+}
+sr_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// What `jq -r '.KEY // "FALLBACK"'` printed for a .mic file, and whether jq would have failed.
+// A string prints decoded, a number or true as written, null, false or a missing key the fallback;
+// empty input prints nothing. The mic report only ever holds strings and null there; an object or
+// array value prints its compact text where jq would indent it.
+Raw :: struct { text: string; failed: bool; }
+sr_jq_raw :: (file: string, key: string, fallback: string, out: [] u8) -> Raw {
+  t := file; s := 0; while s < t.count && (t[s] == ' ' || t[s] == '\n' || t[s] == '\t' || t[s] == '\r') { s += 1; }
+  if s == t.count { return Raw.{}; }
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], t, nodes[..]) { return Raw.{failed = true}; }
+  k := jv_kind(d[0], 0);
+  if k == JV_NULL { return Raw.{text = fallback}; }
+  if k != JV_OBJECT { return Raw.{failed = true}; }
+  at := jv_get(d[0], 0, key);
+  vk := jv_kind(d[0], at);
+  if at < 0 || vk == JV_NULL || vk == JV_FALSE { return Raw.{text = fallback}; }
+  if vk == JV_STRING { m := jv_str(d[0], at, out); return Raw.{text = cast(string) out[0..<ifx m > 0 then m else 0]}; }
+  return Raw.{text = jv_raw(d[0], at)};
+}
+#test "the mic report as jq -r read it" {
+  b: [256] u8;
+  m := "{\"id\":57,\"description\":\"Yeti \\\"X\\\"\",\"warning\":\"\",\"live\":true}\n";
+  #assert sr_jq_raw(m, "description", "none", b[..]).text == "Yeti \"X\"" && sr_jq_raw(m, "warning", "", b[..]).text == "";
+  #assert sr_jq_raw("{\"description\":null}", "description", "none", b[..]).text == "none" && sr_jq_raw("{}", "description", "none", b[..]).text == "none";
+  #assert sr_jq_raw("{\"description\":false}", "description", "none", b[..]).text == "none" && sr_jq_raw("{\"description\":4}", "description", "none", b[..]).text == "4";
+  #assert sr_jq_raw("", "description", "none", b[..]).text == "" && !sr_jq_raw("", "description", "none", b[..]).failed;
+  #assert sr_jq_raw("{bad", "description", "none", b[..]).failed && sr_jq_raw("[1]", "description", "none", b[..]).failed;
+  #assert sr_jq_raw("null", "description", "none", b[..]).text == "none";
+}
+
+// awk 'END { print NR + 0 }': lines, counting a last one without its newline.
+sr_lines :: (t: string) -> int {
+  n := 0; for c: t { if c == '\n' { n += 1; } }
+  if t.count > 0 && t[t.count - 1] != '\n' { n += 1; }
+  return n;
+}
+#test "lines as awk counts them" {
+  #assert sr_lines("") == 0 && sr_lines("a\n") == 1 && sr_lines("a\nb") == 2 && sr_lines("a\nb\n") == 2 && sr_lines("\n\n") == 2;
+}
+
+// ---- the take's files
+
+Files :: struct { pid_file: string; meta_file: string; }
+sr_path :: (base: string, suffix: string, out: [] u8) -> string { n := sr_cat(out, 0, base); n = sr_cat(out, n, suffix); return cast(string) out[0..<n]; }
+sr_read :: (path: string, out: [] u8) -> string { n := fs_read(path, out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+
+// ---- status
+
+sr_status :: (f: Files) -> int {
+  pb: [64] u8;
+  if fs_exists(f.pid_file) {
+    pid := sr_pid(sr_read(f.pid_file, pb[..]));
+    if pid > 0 && cxproc_pid_alive(pid) == 1 {
+      ob: [4096] u8; out := "unknown";
+      if fs_exists(f.meta_file) && fs_size(f.meta_file) >= 0 { out = sr_chomp(sr_read(f.meta_file, ob[..])); }
+      print("Recording in progress (PID: %) -> %\n", pid, out);
+      mb: [256] u8; mic := sr_path(f.meta_file, ".mic", mb[..]);
+      if fs_exists(mic) {
+        tb: [65536] u8; t := sr_read(mic, tb[..]);
+        db: [4096] u8; wb: [4096] u8;
+        d := sr_jq_raw(t, "description", "none", db[..]); w := sr_jq_raw(t, "warning", "", wb[..]);
+        print("Microphone: %\n", ifx d.failed then "unknown" else d.text);
+        if !w.failed && w.text.count > 0 { print("Warning: %\n", w.text); }
+      }
+      xb: [256] u8; outage := sr_path(f.meta_file, ".audio.outage", xb[..]);
+      if fs_exists(outage) {
+        sb: [256] u8; since := sr_chomp(sr_read(outage, sb[..]));
+        print("Audio: none since %s into the take; looking for the microphone.\n", since);
+      }
+      gb: [256] u8; segs := sr_path(f.meta_file, ".audio.segments", gb[..]);
+      lb: [65536] u8; pieces := ifx fs_exists(segs) then sr_lines(sr_read(segs, lb[..])) else 0;
+      if pieces > 1 { print("Audio: reattached % time(s); the file will name every hole.\n", pieces - 1); }
+      return 0;
+    }
+  }
+  print("No recording active.\n");
+  return 0;
+}
+
+// ---- repair
+
+// A program's output as $(...) kept it, "" when it failed to run.
+sr_run :: (argv: [] string, out: [] u8) -> string {
+  e: [4096] u8; r := proc_run(argv, 120000, out, e[..]);
+  return ifx r.started != 0 || r.out_n <= 0 then "" else sr_chomp(cast(string) out[0..<r.out_n]);
+}
+sr_repair :: (target: string) -> int {
+  count := 0; fixed := 0;
+  hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
+  vb: [4096] u8; dir := sr_path(home, "/Videos", vb[..]);
+  l: [1] FsList; n := 0;
+  if target.count == 0 { n = fs_list(dir, l[..]); if n < 0 { n = 0; } }
+  total := ifx target.count > 0 then 1 else n;
+  for i: 0..<total {
+    fb: [4096] u8; f := target;
+    if target.count == 0 {
+      name := fs_entry(l[..], i);
+      // the glob ~/Videos/*.mp4: no hidden names, regular files (through links)
+      if name.count < 5 || name[0] == '.' || name[name.count - 4..<name.count] != ".mp4" { continue; }
+      fn := sr_cat(fb[..], 0, dir); fn = sr_cat(fb[..], fn, "/"); fn = sr_cat(fb[..], fn, name);
+      f = cast(string) fb[0..<fn];
+      if fs_kind(f) != 1 { continue; }
+    }
+    wb: [4200] u8; wav := sr_path(f, ".audio.wav", wb[..]);
+    if fs_kind(wav) != 1 { continue; }
+    count += 1;
+    sz := fs_size(wav); if sz < 0 { sz = 0; }
+    if sz <= 4096 {
+      print("empty capture beside %; removing it\n", fs_base(f));
+      r := fs_remove(wav); continue;
+    }
+    ob: [65536] u8;
+    probe := [9] string.["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0"];
+    pa: [10] string; for k: 0..<9 { pa[k] = probe[k]; } pa[9] = f;
+    streams := sr_lines(sr_run(pa[..], ob[..]));
+    if streams > 0 { print("% already carries sound; its capture is still at %\n", fs_base(f), wav); continue; }
+    db: [256] u8;
+    da := [8] string.["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", wav];
+    dur := sr_run(da[..], db[..]); if dur.count == 0 { dur = "0"; }
+    nb: [8192] u8; nn := sr_cat(nb[..], 0, "coderos: the sound was put back from "); nn = sr_cat(nb[..], nn, fs_base(wav));
+    nn = sr_cat(nb[..], nn, ", "); nn = sr_cat(nb[..], nn, dur); nn = sr_cat(nb[..], nn, "s, by screen-record repair");
+    note := cast(string) nb[0..<nn];
+    cb: [8192] u8; cn := sr_cat(cb[..], 0, "comment="); cn = sr_cat(cb[..], cn, note);
+    mb: [4300] u8; muxed := sr_repair_name(f, mb[..]);
+    ma := [27] string.["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", f, "-i", wav,
+      "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest",
+      "-metadata", cast(string) cb[0..<cn], muxed, "", "", "", ""];
+    xb: [1024] u8; eb: [65536] u8;
+    r := proc_run(ma[0..<23], -1, xb[..], eb[..]);
+    if r.started == 0 && r.status == 0 && fs_size(muxed) > 0 && fs_rename(muxed, f) {
+      x := fs_remove(wav); fixed += 1;
+      print("put the sound back into %\n", fs_base(f));
+    } else {
+      x := fs_remove(muxed);
+      print("could not put the sound back into %; its capture is still at %\n", fs_base(f), wav);
+    }
+  }
+  if count == 0 { print("no recording has a capture beside it.\n"); }
+  else { print("read %, repaired %.\n", count, fixed); }
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: screen-record status | repair [FILE]"); return 1; }
+  e: [2] [4096] u8;
+  f := Files.{pid_file = proc_getenv("CODEROS_SCREEN_RECORD_PID", e[0][..]), meta_file = proc_getenv("CODEROS_SCREEN_RECORD_META", e[1][..])};
+  if f.pid_file.count == 0 { f.pid_file = "/tmp/screen-record.pid"; }
+  if f.meta_file.count == 0 { f.meta_file = "/tmp/screen-record.meta"; }
+  verb := args_at(a[..], 0);
+  if verb == "status" { return sr_status(f); }
+  if verb == "repair" { return sr_repair(ifx args_count(a[..]) > 1 then args_at(a[..], 1) else ""); }
+  tool_errln("usage: screen-record status | repair [FILE]");
+  return 1;
+}
