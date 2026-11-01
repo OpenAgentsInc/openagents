@@ -230,8 +230,8 @@ filters as JSON text and reads them back when an event arrives
 (`rs_sub_matches`), so this property also checks `nf_write` and
 `filter_read` on every filter of its domain. Each `REQ` goes through
 `rs_req` first, as `coax/relay/relay.coax` does: `rs_sub_open` trusts its
-caller to have admitted the message, and opens even an unterminated
-array.
+caller to have admitted the filters, though it refuses a message `ms_read`
+refused, such as an unterminated array, as `RS_FRAME`.
 
 <!-- source: nostr/examples/formal-properties.coax union -->
 ```jai

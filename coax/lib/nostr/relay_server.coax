@@ -437,6 +437,21 @@ RsSub :: struct {
   t = "[\"REQ\",\"bad\",{\"kinds\":\"x\"}]";
   #assert rs_sub_open(one[..], ms_read(t), t, 2) == 0 && !rs_sub_matches(one[..], 0, e) && !rs_sub_matches(one[..], 1, e);
 }
+#test "a REQ that ms_read refused opens nothing" {
+  subs: [2] RsSub;
+  // no closing bracket, a stray byte after the array, a trailing comma
+  t := "[\"REQ\",\"a\",{\"kinds\":[1]}";
+  #assert ms_read(t).error != MS_OK && rs_sub_open(subs[..], ms_read(t), t, 2) == -RS_FRAME && rs_subs_live(subs[..]) == 0;
+  t = "[\"REQ\",\"a\",{\"kinds\":[1]}] x";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == -RS_FRAME && !subs[0].live;
+  t = "[\"REQ\",\"a\",{\"kinds\":[1]},";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == -RS_FRAME && rs_subs_live(subs[..]) == 0;
+  // the same REQ closed opens, and a refused one doesn't replace it
+  t = "[\"REQ\",\"a\",{\"kinds\":[1]}]";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == 0 && subs[0].filters == 1;
+  t = "[\"REQ\",\"a\",{\"kinds\":[2]},{}";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == -RS_FRAME && subs[0].live && subs[0].filters == 1;
+}
 rs_subs_live :: (subs: [] RsSub) -> int {
   n := 0;
   for i: 0..<subs.count { if subs[i].live { n += 1; } }
@@ -447,8 +462,10 @@ rs_sub_find :: (subs: [] RsSub, id: string) -> int {
   return -1;
 }
 // Opens (or replaces, by id) a subscription from an admitted REQ: its slot,
-// or minus a reason. max caps the live subscriptions.
+// or minus a reason. max caps the live subscriptions. A message ms_read
+// refused (an unterminated array, bytes after it) is -RS_FRAME.
 rs_sub_open :: (subs: [] RsSub, m: MsMsg, text: string, max: int) -> int {
+  if m.error != MS_OK { return -RS_FRAME; }
   mm := m; id := cast(string) mm.sub[0..<mm.sub_n];
   at := rs_sub_find(subs, id);
   if at < 0 {
