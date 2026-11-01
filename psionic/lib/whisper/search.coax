@@ -471,7 +471,11 @@ we_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, voc
         segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * (seek + d.seek_delta), text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1;
       }
     }
-    seek += d.seek_delta;
+    // a window that ends on a single timestamp after text was heard to its
+    // end: the whole window is used (whisper.cpp and OpenAI's Whisper)
+    delta := d.seek_delta; L := d.result_len;
+    if L > 1 && d.toks[L - 2] < sp.beg && d.toks[L - 1] > sp.beg { delta = ifx seek_end - seek < 3000 then seek_end - seek else 3000; }
+    seek += delta;
   }
   run.status = WeStatus.ok; run.segments = ns; run.text = tn;
   return run;

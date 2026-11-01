@@ -18,11 +18,11 @@
 // containers yet); it is one program call, and the WAV it writes is all
 // either backend reads.
 #load "transcribe-rules.coax";
-#load "transcribe-compare.coax";
+#load "../../psionic/lib/whisper/score.coax";
 
 TR_HF :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-";
 // What psionic-whisper is built from; a newer one rebuilds it.
-TR_ENGINE_SOURCES :: [8] string.["psionic/lib/whisper/engine.coax", "psionic/lib/whisper/front.coax", "psionic/lib/whisper/ggml.coax",
+TR_ENGINE_SOURCES :: [10] string.["psionic/lib/whisper/search.coax", "psionic/lib/counter-rng.coax", "psionic/lib/whisper/engine.coax", "psionic/lib/whisper/front.coax", "psionic/lib/whisper/ggml.coax",
   "psionic/lib/whisper/tokens.coax", "psionic/lib/whisper/segments.coax", "psionic/lib/spectral.coax",
   "psionic/platform/whisper-face.c", "psionic/platform/whisper-build.sh"];
 
@@ -227,5 +227,251 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
     tool_err("transcribe: "); tool_err(name); tool_err(" on whisper.cpp (interim backend), ");
     tool_err(int_text(ms, sec[..])); tool_errln(" ms");
   }
+  return EXIT_OK;
+}
+
+// ==== The comparison harness (#12621) ====
+// The comparison harness: Psionic's Whisper and whisper.cpp side by side on
+// the same files and models (#12621). Design and results:
+// psionic/docs/transcribe.md.
+//   openagents transcribe compare FILE|DIR... [--models tiny.en,base.en] [--threads 8]
+//                                 [--prompt TEXT] [--diffs]
+//   openagents transcribe corpus DIR        writes the generated corpus
+// For each model and file it runs both backends on the same 16 kHz WAV,
+// under /usr/bin/time -l for the peak memory, and prints one markdown row:
+// word error rate against the reference (FILE's sibling .txt, when there is
+// one), the error rate between the two transcripts, how far segment starts
+// drift, wall time with model loading, and peak resident memory. --diffs
+// also lists the word differences between the two transcripts; leave it out
+// for private audio, so only numbers are printed.
+// whisper.cpp runs with its defaults (beam 5, best of 5, temperature
+// fallback); Psionic with its own. This is the only place the whisper.cpp
+// backend stays once Psionic is the default (#12623).
+
+// ---- the generated corpus ----------------------------------------------------
+
+// A clip made with macOS `say`: its name, voice, words per minute, pink
+// noise amplitude ("" for none), and the words, which are also its
+// reference. The texts are public domain or our own.
+TcClip :: struct { name: string; voice: string; rate: string; noise: string; text: string; }
+TC_FOX :: "The quick brown fox jumps over the lazy dog. Psionic runs Whisper inside the verse, and Christopher tests it on a Tuesday afternoon.";
+TC_NAMES :: "OpenAgents builds Psionic in Coax. The Verse talks to Nostr relays, and Coder writes the code. Psionic, Coax, Nostr and OpenAgents are names a transcript should spell right.";
+TC_GETTYSBURG :: "Four score and seven years ago our fathers brought forth on this continent, a new nation, conceived in Liberty, and dedicated to the proposition that all men are created equal. Now we are engaged in a great civil war, testing whether that nation, or any nation so conceived and so dedicated, can long endure. We are met on a great battlefield of that war. We have come to dedicate a portion of that field, as a final resting place for those who here gave their lives that that nation might live. It is altogether fitting and proper that we should do this. But, in a larger sense, we cannot dedicate, we cannot consecrate, we cannot hallow this ground. The brave men, living and dead, who struggled here, have consecrated it, far above our poor power to add or detract. The world will little note, nor long remember what we say here, but it can never forget what they did here. It is for us the living, rather, to be dedicated here to the unfinished work which they who fought here have thus far so nobly advanced. It is rather for us to be here dedicated to the great task remaining before us, that from these honored dead we take increased devotion to that cause for which they gave the last full measure of devotion, that we here highly resolve that these dead shall not have died in vain, that this nation, under God, shall have a new birth of freedom, and that government of the people, by the people, for the people, shall not perish from the earth.";
+TC_CLIPS :: [6] TcClip.[
+  TcClip.{name = "say-fox", voice = "Samantha", rate = "175", noise = "", text = TC_FOX},
+  TcClip.{name = "say-names", voice = "Samantha", rate = "175", noise = "", text = TC_NAMES},
+  TcClip.{name = "say-names-fast", voice = "Daniel", rate = "260", noise = "", text = TC_NAMES},
+  TcClip.{name = "gettysburg", voice = "Samantha", rate = "165", noise = "", text = TC_GETTYSBURG},
+  TcClip.{name = "gettysburg-noise", voice = "Karen", rate = "165", noise = "0.06", text = TC_GETTYSBURG},
+  TcClip.{name = "gettysburg-loud-noise", voice = "Daniel", rate = "180", noise = "0.18", text = TC_GETTYSBURG}];
+TC_JFK :: "/opt/homebrew/share/whisper-cpp/jfk.wav";
+TC_JFK_TEXT :: "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.";
+
+tc_cat :: (w: [] WsOut, a: string, b: string) -> string { w[0].n = 0; wsg_put(w, a); wsg_put(w, b); return cast(string) w[0].buf[0..<w[0].n]; }
+// One program call; false (with its errors shown) when it fails.
+tc_call :: (argv: [] string) -> bool {
+  o: [4096] u8; e: [16384] u8;
+  got := proc_run(argv, 900000, o[..], e[..]);
+  if got.started != 0 || got.status != 0 || got.timed_out { if got.err_n > 0 { tool_err(cast(string) e[0..<got.err_n]); } return false; }
+  return true;
+}
+transcribe_corpus :: (r: [] Rep, dir: string) -> int {
+  if dir == "" { return fail(r, EXIT_USAGE, "openagents transcribe corpus DIR"); }
+  if !fs_mkdir(dir) { return fail(r, EXIT_FAIL, "cannot make the corpus directory"); }
+  fb: [1024] u8; ffmpeg := tr_program("OPENAGENTS_FFMPEG", "ffmpeg", fb[..]);
+  pb: [1200] u8; pw: [1] WsOut; pw[0].buf = pb[..];
+  qb: [1200] u8; qw: [1] WsOut; qw[0].buf = qb[..];
+  base: [1100] u8;
+  // jfk.wav from whisper.cpp's samples
+  if fs_kind(TC_JFK) == FS_FILE {
+    stem := fs_join(dir, "jfk", base[..]);
+    out := tc_cat(pw[..], stem, ".wav");
+    argv := [12] string.[ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", TC_JFK, "-ar", "16000", "-ac", "1", out];
+    if !tc_call(argv[..]) || !fs_write(tc_cat(qw[..], stem, ".txt"), TC_JFK_TEXT) { return fail(r, EXIT_FAIL, "cannot write jfk"); }
+  }
+  for c: TC_CLIPS {
+    stem := fs_join(dir, c.name, base[..]);
+    aiff := tc_cat(pw[..], stem, ".aiff");
+    say := [8] string.["say", "-v", c.voice, "-r", c.rate, "-o", aiff, c.text];
+    if !tc_call(say[..]) { return fail(r, EXIT_FAIL, "say failed (macOS only)"); }
+    wb: [1200] u8; ww: [1] WsOut; ww[0].buf = wb[..];
+    wav := tc_cat(ww[..], stem, ".wav");
+    ok := false;
+    if c.noise == "" {
+      argv := [12] string.[ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", aiff, "-ar", "16000", "-ac", "1", wav];
+      ok = tc_call(argv[..]);
+    } else {
+      nb: [160] u8; nw: [1] WsOut; nw[0].buf = nb[..];
+      wsg_put(nw[..], "anoisesrc=color=pink:sample_rate=16000:amplitude="); wsg_put(nw[..], c.noise);
+      argv := [18] string.[ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-i", aiff, "-f", "lavfi", "-i", cast(string) nb[0..<nw[0].n],
+        "-filter_complex", "[0:a]aresample=16000[s];[s][1:a]amix=inputs=2:duration=first:normalize=0", "-ar", "16000", "-ac", "1", wav];
+      ok = tc_call(argv[..]);
+    }
+    rm := fs_remove(aiff);
+    if !ok || !fs_write(tc_cat(qw[..], stem, ".txt"), c.text) { return fail(r, EXIT_FAIL, "ffmpeg could not write a clip"); }
+    tool_err("transcribe corpus: "); tool_errln(wav);
+  }
+  rep_str(r, "corpus", dir);
+  return rep_done(r, EXIT_OK);
+}
+
+// ---- running and scoring -------------------------------------------------------
+
+// The peak resident set size that /usr/bin/time -l printed, in bytes; -1.
+tc_peak :: (err: string) -> int {
+  key := "maximum resident set size";
+  at := -1;
+  for i: 0..<err.count - key.count + 1 { if cast(string) err[i..<i + key.count] == key { at = i; } }
+  if at < 0 { return -1; }
+  j := at; while j > 0 && err[j - 1] == ' ' { j -= 1; }
+  e := j; while j > 0 && err[j - 1] >= '0' && err[j - 1] <= '9' { j -= 1; }
+  if j == e { return -1; }
+  v := 0; for i: j..<e { v = v * 10 + cast(int) (err[i] - '0'); }
+  return v;
+}
+TC_WORDS :: 65536;
+// One backend's run of one file.
+TcSide :: struct { ok: bool; ms: int; peak: int; n: int; out: [4194304] u8; segs: [WS_SEGMENTS_MAX] WsSegment; joined: [1048576] u8; wb: [1048576] u8; words: [TC_WORDS] string; nw: int; }
+TcBufs :: struct {
+  err: [262144] u8;
+  ref: [1048576] u8; rb: [1048576] u8; rw: [TC_WORDS] string; nr: int;
+  row: [2 * TC_WORDS + 2] int; dir: [16777216] u8; edits: [8192] ScEdit;
+  table: [262144] u8; diffs: [1048576] u8;
+}
+// Runs argv under /usr/bin/time -l into side; its segments and words.
+tc_side :: (argv: [] string, s: [] TcSide, err: [] u8) -> bool {
+  t0 := proc_now_ms();
+  got := proc_run(argv, 3600000, s[0].out[..], err);
+  s[0].ms = proc_now_ms() - t0;
+  s[0].ok = false;
+  if got.started != 0 || got.status != 0 || got.timed_out || got.cut {
+    if got.err_n > 0 { n := got.err_n; if n > 4000 { n = 4000; } tool_err(cast(string) err[got.err_n - n..<got.err_n]); }
+    return false;
+  }
+  s[0].peak = tc_peak(cast(string) err[0..<got.err_n]);
+  s[0].n = tr_whispercpp_segments(cast(string) s[0].out[0..<got.out_n], s[0].segs[..]);
+  if s[0].n < 0 { return false; }
+  j := sc_join(s[0].segs[0..<s[0].n], s[0].joined[..]);
+  if j < 0 { return false; }
+  s[0].nw = sc_words(cast(string) s[0].joined[0..<j], s[0].wb[..], s[0].words[..]);
+  s[0].ok = s[0].nw >= 0;
+  return s[0].ok;
+}
+tc_pct :: (w: [] WsOut, bp: int) { wsg_digits(w, bp / 100, 1); wsg_byte(w, '.'); wsg_digits(w, bp % 100, 2); wsg_byte(w, '%'); }
+tc_mb :: (w: [] WsOut, bytes: int) { if bytes < 0 { wsg_put(w, "?"); } else { wsg_digits(w, (bytes + 524288) / 1048576, 1); } }
+tc_cell :: (w: [] WsOut) { wsg_put(w, " | "); }
+// Totals over every row of one model, for the summary line.
+TcTotal :: struct { words: int; ea: int; eb: int; ms_a: int; ms_b: int; files: int; }
+
+transcribe_compare :: (a: [] Args, r: [] Rep) -> int {
+  models_arg := args_value(a, "--models", "tiny.en,base.en");
+  threads := args_value(a, "--threads", "8");
+  if text_int(threads) < 1 || text_int(threads) > 64 { return fail(r, EXIT_USAGE, "--threads is 1 to 64"); }
+  prompt := args_value(a, "--prompt", "");
+  diffs := args_has(a, "--diffs");
+  eb: [1100] u8; engine := tr_engine(eb[..]);
+  if engine == "" { return fail(r, EXIT_FAIL, "cannot build psionic-whisper from this checkout (psionic/platform/whisper-build.sh)"); }
+  wc: [1024] u8; whisper := tr_program("OPENAGENTS_WHISPER_CLI", "whisper-cli", wc[..]);
+  fb: [1024] u8; ffmpeg := tr_program("OPENAGENTS_FFMPEG", "ffmpeg", fb[..]);
+  // the inputs: files, and each directory's .wav files
+  paths: [64] string; pbytes: [65536] u8; pn := 0; pat := 0;
+  k := 2;
+  while true {
+    f := positional(a, k); k += 1;
+    if f == "" { break; }
+    if fs_kind(f) == FS_DIR {
+      l: [1] FsList; n := fs_list(f, l[..]);
+      for i: 0..<n {
+        e := fs_entry(l[..], i);
+        if e.count < 5 || cast(string) e[e.count - 4..<e.count] != ".wav" || pn >= paths.count { continue; }
+        jb: [1200] u8; p := fs_join(f, e, jb[..]);
+        if pat + p.count > pbytes.count { break; }
+        for c: p { pbytes[pat] = c; pat += 1; }
+        paths[pn] = cast(string) pbytes[pat - p.count..<pat]; pn += 1;
+      }
+    } else if fs_kind(f) == FS_FILE {
+      if pn < paths.count && pat + f.count <= pbytes.count { for c: f { pbytes[pat] = c; pat += 1; } paths[pn] = cast(string) pbytes[pat - f.count..<pat]; pn += 1; }
+    } else { tool_err("transcribe compare: no such file: "); tool_errln(f); return fail(r, EXIT_NOT_FOUND, "no such file"); }
+  }
+  if pn == 0 { return fail(r, EXIT_USAGE, "openagents transcribe compare FILE|DIR... [--models tiny.en,base.en]"); }
+  td: [1024] u8; tmp := fs_temp("openagents-compare", td[..]);
+  if tmp == "" { return fail(r, EXIT_FAIL, "cannot make a temporary directory"); }
+  bufs_: [1] TcBufs; B := bufs_[..]; sa_: [1] TcSide; A := sa_[..]; sb_: [1] TcSide; Bs := sb_[..];
+  t: [1] WsOut; t[0].buf = B[0].table[..];
+  d: [1] WsOut; d[0].buf = B[0].diffs[..];
+  wsg_put(t[..], "| File | Model | Words | Psionic WER | whisper.cpp WER | Between | Drift (mean / max) | Psionic | whisper.cpp | Psionic peak | whisper.cpp peak |\n");
+  wsg_put(t[..], "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+  failed := 0;
+  mstart := 0;
+  for mi: 0..<models_arg.count + 1 {
+    if mi < models_arg.count && models_arg[mi] != ',' { continue; }
+    mname := cast(string) models_arg[mstart..<mi]; mstart = mi + 1;
+    if mname == "" { continue; }
+    nb: [64] u8; name := tr_model_name(mname, "en", nb[..]);
+    if name == "" { return fail(r, EXIT_USAGE, "--models is a comma list such as tiny.en,base.en"); }
+    code := tr_fetch(r, name);
+    if code != EXIT_OK { return code; }
+    mp: [1024] u8; model := tr_model_path(name, mp[..]);
+    tot: TcTotal;
+    for pi: 0..<pn {
+      file := paths[pi];
+      // the same WAV for both
+      wb: [1100] u8; wav := fs_join(tmp, "audio.wav", wb[..]);
+      dec := [14] string.[ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", file, "-vn", "-ar", "16000", "-ac", "1", wav];
+      if !tc_call(dec[..]) { failed += 1; continue; }
+      // the reference: FILE with its extension replaced by .txt
+      dot := file.count; for i: 0..<file.count { if file[i] == '.' { dot = i; } if file[i] == '/' { dot = file.count; } }
+      rp: [1200] u8; rw: [1] WsOut; rw[0].buf = rp[..];
+      refpath := tc_cat(rw[..], cast(string) file[0..<dot], ".txt");
+      B[0].nr = -1;
+      if fs_kind(refpath) == FS_FILE {
+        n := fs_read(refpath, B[0].ref[..]);
+        if n >= 0 { B[0].nr = sc_words(cast(string) B[0].ref[0..<n], B[0].rb[..], B[0].rw[..]); }
+      }
+      tool_err("transcribe compare: "); tool_err(name); tool_err(" "); tool_errln(fs_base(file));
+      pa: [16] string; na := 0;
+      for s: [11] string.["/usr/bin/time", "-l", engine, "transcribe", model, wav, "--lines", "--threads", threads, "--name", name] { pa[na] = s; na += 1; }
+      if prompt != "" { pa[na] = "--prompt"; pa[na + 1] = prompt; na += 2; }
+      wa: [16] string; nwa := 0;
+      for s: [12] string.["/usr/bin/time", "-l", whisper, "-m", model, "-f", wav, "-t", threads, "-l", "en", "-np"] { wa[nwa] = s; nwa += 1; }
+      if prompt != "" { wa[nwa] = "--prompt"; wa[nwa + 1] = prompt; nwa += 2; }
+      oka := tc_side(pa[0..<na], A, B[0].err[..]);
+      okb := tc_side(wa[0..<nwa], Bs, B[0].err[..]);
+      if !oka || !okb { failed += 1; tool_errln("transcribe compare: a backend failed on this file"); continue; }
+      // the row
+      wsg_put(t[..], "| "); wsg_put(t[..], fs_base(file)); tc_cell(t[..]); wsg_put(t[..], name); tc_cell(t[..]);
+      if B[0].nr >= 0 {
+        ea := sc_align(B[0].rw[0..<B[0].nr], A[0].words[0..<A[0].nw], B[0].row[..], B[0].dir[0..<0], B[0].edits[..]).errors;
+        ebr := sc_align(B[0].rw[0..<B[0].nr], Bs[0].words[0..<Bs[0].nw], B[0].row[..], B[0].dir[0..<0], B[0].edits[..]).errors;
+        wsg_digits(t[..], B[0].nr, 1); tc_cell(t[..]); tc_pct(t[..], sc_wer_bp(ea)); tc_cell(t[..]); tc_pct(t[..], sc_wer_bp(ebr)); tc_cell(t[..]);
+        tot.words += B[0].nr; tot.ea += sc_errors(ea); tot.eb += sc_errors(ebr);
+      } else { wsg_put(t[..], "–"); tc_cell(t[..]); wsg_put(t[..], "–"); tc_cell(t[..]); wsg_put(t[..], "–"); tc_cell(t[..]); }
+      // between: whisper.cpp as the reference, with the edits
+      al := sc_align(Bs[0].words[0..<Bs[0].nw], A[0].words[0..<A[0].nw], B[0].row[..], B[0].dir[..], B[0].edits[..]);
+      tc_pct(t[..], sc_wer_bp(al.errors)); tc_cell(t[..]);
+      dr := sc_drift(A[0].segs[0..<A[0].n], Bs[0].segs[0..<Bs[0].n]);
+      wsg_digits(t[..], dr.mean_ms, 1); wsg_put(t[..], " / "); wsg_digits(t[..], dr.max_ms, 1); wsg_put(t[..], " ms"); tc_cell(t[..]);
+      wsg_digits(t[..], A[0].ms, 1); wsg_put(t[..], " ms"); tc_cell(t[..]); wsg_digits(t[..], Bs[0].ms, 1); wsg_put(t[..], " ms"); tc_cell(t[..]);
+      tc_mb(t[..], A[0].peak); wsg_put(t[..], " MB"); tc_cell(t[..]); tc_mb(t[..], Bs[0].peak); wsg_put(t[..], " MB |\n");
+      tot.ms_a += A[0].ms; tot.ms_b += Bs[0].ms; tot.files += 1;
+      if diffs && al.edits_n > 0 {
+        wsg_put(d[..], "- "); wsg_put(d[..], fs_base(file)); wsg_put(d[..], ", "); wsg_put(d[..], name); wsg_put(d[..], " (whisper.cpp -> Psionic): ");
+        sc_edits_text(Bs[0].words[0..<Bs[0].nw], A[0].words[0..<A[0].nw], B[0].edits[0..<ifx al.edits_n < B[0].edits.count then al.edits_n else B[0].edits.count], d[..]);
+        wsg_byte(d[..], '\n');
+      }
+    }
+    if tot.files > 0 {
+      wsg_put(t[..], "| **all** | "); wsg_put(t[..], name); tc_cell(t[..]); wsg_digits(t[..], tot.words, 1); tc_cell(t[..]);
+      if tot.words > 0 {
+        tc_pct(t[..], (tot.ea * 10000 + tot.words / 2) / tot.words); tc_cell(t[..]); tc_pct(t[..], (tot.eb * 10000 + tot.words / 2) / tot.words); tc_cell(t[..]);
+      } else { wsg_put(t[..], "– | – | "); }
+      wsg_put(t[..], " | "); tc_cell(t[..]);
+      wsg_digits(t[..], tot.ms_a, 1); wsg_put(t[..], " ms"); tc_cell(t[..]); wsg_digits(t[..], tot.ms_b, 1); wsg_put(t[..], " ms | | |\n");
+    }
+  }
+  rm := fs_remove(tmp);
+  print("%", cast(string) B[0].table[0..<t[0].n]);
+  if diffs && d[0].n > 0 { print("\nDifferences:\n%", cast(string) B[0].diffs[0..<d[0].n]); }
+  if failed > 0 { return fail(r, EXIT_FAIL, "some files failed"); }
   return EXIT_OK;
 }
