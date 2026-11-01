@@ -1,0 +1,472 @@
+// Chapter 162: a tiny Mamba-2 style state-space layer in three forms: the
+// token step, chunks, and the whole sequence as one mixing matrix.
+// Profile ssm-cpu-f64-v1: f32 parameters, inputs, convolution history, state
+// and outputs; binary64 gates, products and compensated sums; each
+// convolved channel is narrowed to f32 once; the state is narrowed to f32
+// once per chunk, at its end (once per token in the step); the chunk's last
+// token reads that narrowed state, as the step reads its own.
+#load "delta.coax";                     // chapter 11's silu and softplus
+#load "../tests/ssm-oracle.coax";       // the checks' binary64 oracle
+
+// book:begin types
+SsShape :: struct { heads:int; head_dim:int; state_dim:int; groups:int; }
+SsStatus :: enum u8 { ok; shape; range; capacity; alias; number; arithmetic; }
+// written: tokens whose outputs, state and history were committed.
+// snapshots: chunk-boundary snapshots written.
+SsResult :: struct { status:SsStatus; written:int; snapshots:int; }
+// One head's chunk: tokens rows of stride convolved channels; x, b and c are
+// where this head's input, its group's B and its group's C start in a row.
+SsChunk :: struct { head_dim:int; state_dim:int; tokens:int; stride:int; x:int; b:int; c:int; }
+// book:end types
+
+// book:begin layout
+// Convolved channels per token: x (heads x head_dim), then B and C
+// (groups x state_dim each).
+ss_valid :: (s:SsShape)->bool {
+    if s.heads>128 || s.head_dim<1 || s.head_dim>128 || s.state_dim<1 || s.state_dim>256 {return false;}
+    // groups >= 1 and groups <= heads also bound heads below.
+    return s.groups>=1 && s.groups<=s.heads && s.heads%s.groups==0;
+}
+ss_channels :: (s:SsShape)->int {return s.heads*s.head_dim+2*s.groups*s.state_dim;}
+ss_states :: (s:SsShape)->int {return s.heads*s.head_dim*s.state_dim;}
+// One token's input: the raw channels, the gate z (heads x head_dim), raw dt (heads).
+ss_input_count :: (s:SsShape)->int {return ss_channels(s)+s.heads*s.head_dim+s.heads;}
+// Parameters: 4 convolution taps per channel (oldest first), a bias per
+// channel, then log A, the dt bias and the skip D, one per head.
+ss_param_count :: (s:SsShape)->int {return 5*ss_channels(s)+3*s.heads;}
+// One snapshot is the convolution history (3 per channel) and then the state.
+ss_snapshot_size :: (s:SsShape)->int {return 3*ss_channels(s)+ss_states(s);}
+ss_chunks :: (tokens:int,chunk:int)->int {return (tokens+chunk-1)/chunk;}
+ss_scratch_count :: (chunk:int)->int {return 2*chunk*chunk+chunk;}
+ss_step_work_count :: (s:SsShape)->int {return 4*ss_channels(s)+ss_states(s)+s.heads*s.head_dim;}
+ss_work_count :: (s:SsShape,chunk:int)->int {
+    c:=ss_channels(s);v:=s.heads*s.head_dim;
+    return chunk*c+3*c+ss_states(s)+chunk*v+chunk*s.head_dim+2*chunk+ss_scratch_count(chunk);
+}
+// book:end layout
+
+// book:begin gate
+// A head's step size and how much of its state it keeps for one token:
+// dt = softplus(raw dt + dt bias), keep = exp(-exp(log A) dt).
+SsGate :: struct { dt:f64; keep:f64; }
+ss_gate :: (s:SsShape,params:[]f32,row:[]f32,head:int)->SsGate {
+    c:=ss_channels(s);g:SsGate;
+    g.dt=pd_softplus(f64(row[c+s.heads*s.head_dim+head])+f64(params[5*c+s.heads+head]));
+    g.keep=exp(-exp(f64(params[5*c+head]))*g.dt);
+    return g;
+}
+// book:end gate
+
+// The causal convolution of one token: four taps over the last three raw
+// inputs and this one, plus a bias, then silu, narrowed to f32 into conv
+// (as f64 copies). The history shifts in place. False on an f32 overflow.
+// book:begin convolve
+ss_convolve :: (c:int,params:[]f32,raw:[]f32,hist:[]f64,conv:[]f64)->bool {
+    for ch:0..<c {
+        acc:PsionicAccumulator;
+        for tap:0..<4 {
+            item:=f64(raw[ch]);if tap<3 {item=hist[ch*3+tap];}
+            acc=psionic_ops_accumulate(acc,item*f64(params[ch*4+tap]));
+        }
+        x:=pd_silu(psionic_ops_total(acc)+f64(params[4*c+ch]));
+        if !psionic_ops_fits_f32(x) {return false;}
+        conv[ch]=f64(f32(x));
+        hist[ch*3]=hist[ch*3+1];hist[ch*3+1]=hist[ch*3+2];hist[ch*3+2]=f64(raw[ch]);
+    }
+    return true;
+}
+// The skip and the output gate: (y + D x) silu(z).
+ss_finish :: (y:f64,d:f32,x:f64,z:f32)->f64 {return (y+f64(d)*x)*pd_silu(f64(z));}
+// book:end convolve
+
+// step: the token step's work view, otherwise a prefill's.
+ss_admit :: (s:SsShape,tokens:int,chunk:int,step:bool,params:[]f32,input:[]f32,history:[]f32,state:[]f32,out:[]f32,snaps:[]f32,mix:[]f64,work:[]f64,overlap:bool)->SsStatus {
+    if !ss_valid(s) {return SsStatus.shape;}
+    if tokens<1 || tokens>4096 || chunk<1 || chunk>64 {return SsStatus.range;}
+    c:=ss_channels(s);v:=s.heads*s.head_dim;need:=ifx step then ss_step_work_count(s) else ss_work_count(s,chunk);
+    if params.count!=ss_param_count(s) || input.count!=tokens*ss_input_count(s) || history.count!=3*c || state.count!=ss_states(s) || out.count!=tokens*v || work.count<need {return SsStatus.capacity;}
+    if snaps.count!=0 && snaps.count!=ss_chunks(tokens,chunk)*ss_snapshot_size(s) {return SsStatus.capacity;}
+    if mix.count!=0 && mix.count!=s.heads*tokens*tokens {return SsStatus.capacity;}
+    if overlap {return SsStatus.alias;}
+    if pd_data_status(params)!=PdStatus.ok {return SsStatus.number;}
+    if pd_data_status(input)!=PdStatus.ok {return SsStatus.number;}
+    if pd_data_status(history)!=PdStatus.ok {return SsStatus.number;}
+    if pd_data_status(state)!=PdStatus.ok {return SsStatus.number;}
+    for head:0..<s.heads {if params[5*c+head]>80 {return SsStatus.number;}}
+    return SsStatus.ok;
+}
+
+// One token. row is the token's input; out receives heads x head_dim
+// outputs. Outputs, history and state are committed together, or not at all.
+// book:begin step
+ss_step :: (s:SsShape,params:[]f32,row:[]f32,history:[]f32,state:[]f32,out:[]f32,work:[]f64,overlap:bool)->SsResult {
+    // A step is one token in a chunk of one token.
+    tokens:=1;
+    status:=ss_admit(s,tokens,tokens,true,params,row,history,state,out,out[0..<0],work[0..<0],work,overlap);
+    if status!=SsStatus.ok {return SsResult.{status=status};}
+    c:=ss_channels(s);P:=s.head_dim;N:=s.state_dim;H:=s.heads;v:=H*P;n:=ss_states(s);
+    w1:=3*c;w2:=w1+c;w3:=w2+n;
+    hist:=work[0..<w1];conv:=work[w1..<w2];next:=work[w2..<w3];outs:=work[w3..<w3+v];
+    for i:0..<3*c {hist[i]=f64(history[i]);}
+    if !ss_convolve(c,params,row,hist,conv) {return SsResult.{status=SsStatus.arithmetic};}
+    for head:0..<H {
+        g:=ss_gate(s,params,row,head);group:=head/(H/s.groups);b:=v+group*N;cc:=v+s.groups*N+group*N;
+        for p:0..<P {
+            u:=g.dt*conv[head*P+p];
+            for k:0..<N {
+                i:=(head*P+p)*N+k;
+                x:=f64(state[i])*g.keep;
+                x+=conv[b+k]*u;
+                if !psionic_ops_fits_f32(x) {return SsResult.{status=SsStatus.arithmetic};}
+                next[i]=f64(f32(x));
+            }
+            acc:PsionicAccumulator;
+            for k:0..<N {acc=psionic_ops_accumulate(acc,conv[cc+k]*next[(head*P+p)*N+k]);}
+            y:=ss_finish(psionic_ops_total(acc),params[5*c+2*H+head],conv[head*P+p],row[c+head*P+p]);
+            if !psionic_ops_fits_f32(y) {return SsResult.{status=SsStatus.arithmetic};}
+            outs[head*P+p]=y;
+        }
+    }
+    for i:0..<3*c {history[i]=f32(hist[i]);}
+    for i:0..<n {state[i]=f32(next[i]);}
+    for i:0..<v {out[i]=f32(outs[i]);}
+    return SsResult.{status=SsStatus.ok,written=1};
+}
+// book:end step
+
+#test "a two-token chunk with decay, worked by hand" {
+    // One input and one state dimension. Rows are [x, B, C].
+    h:=SsChunk.{head_dim=1,state_dim=1,tokens=2,stride=3,x=0,b=1,c=2};
+    conv:=[6]f64.[3,1,1, 5,1,2];dt:=[2]f64.[0.5,0.5];keep:=[2]f64.[0.5,0.5];
+    start:=[1]f32.[2];draft:=[2]f64.[-7,-7];end:=[1]f64.[-7];scratch:[10]f64;
+    #assert ss_scratch_count(2)==10;for i:0..<10 {scratch[i]=-7;}
+    #assert ss_head(h,conv[..],dt[..],keep[..],start[..],draft[..],end[..],scratch[..]);
+    // ratio = [1, -; 0.5, 1]; mix = [0.5, 0; 0.5, 1]; totals = [0.5, 0.25].
+    #assert scratch[0]==1 && scratch[2]==0.5 && scratch[3]==1;
+    #assert scratch[4]==0.5 && scratch[5]==0 && scratch[6]==0.5 && scratch[7]==1;
+    #assert scratch[8]==0.5 && scratch[9]==0.25;
+    #assert draft[0]==2.5 && draft[1]==7.5 && end[0]==3.75;
+    // A chunk of one token: 0.5 * 2 + 0.5 * 3 = 2.5.
+    h.tokens=1;#assert ss_head(h,conv[..],dt[..],keep[..],start[..],draft[..],end[..],scratch[..]);
+    #assert draft[0]==2.5 && end[0]==2.5 && start[0]==2 && scratch[0]==1 && scratch[1]==0.5 && scratch[2]==0.5;
+}
+#test "a carried state that cannot narrow to f32 refuses the chunk" {
+    h:=SsChunk.{head_dim=1,state_dim=1,tokens=1,stride=3,x=0,b=1,c=2};
+    big:=f64(f32_from_bits(0x7f7fffff));
+    // keep 1, dt 1, B 1: the state max + x.
+    conv:=[3]f64.[big,1,0];one:=[1]f64.[1];start:=[1]f32.[f32_from_bits(0x7f7fffff)];
+    draft:=[1]f64.[-7];end:=[1]f64.[-7];scratch:[3]f64;
+    #assert !ss_head(h,conv[..],one[..],one[..],start[..],draft[..],end[..],scratch[..]);
+    #assert draft[0]==-7 && end[0]==-7;
+    // keep 0.5: max / 2 + max / 2 = max fits.
+    half:=[1]f64.[0.5];conv[0]=big/2;
+    #assert ss_head(h,conv[..],one[..],half[..],start[..],draft[..],end[..],scratch[..]);
+    #assert end[0]==big && draft[0]==0;
+}
+
+// Solve one head's chunk. start is the head's f32 state at the chunk start
+// (head_dim x state_dim, row major). draft receives tokens x head_dim
+// outputs before the skip and gate, and end the state after the chunk as
+// f64 copies of f32 values. scratch holds ratio, then the mixing matrix,
+// then total. Returns false when the state does not fit f32.
+// book:begin head
+ss_head :: (h:SsChunk,conv:[]f64,dt:[]f64,keep:[]f64,start:[]f32,draft:[]f64,end:[]f64,scratch:[]f64)->bool {
+    n:=h.tokens;P:=h.head_dim;N:=h.state_dim;w:=h.stride;
+    ratio:=scratch[0..<n*n];mix:=scratch[n*n..<2*n*n];total:=scratch[2*n*n..<2*n*n+n];
+    // total[t]: what the chunk's start state keeps through token t.
+    // ratio[t*n+i]: what token i's write keeps through token t (1 when i = t).
+    g:=1.0;
+    for t:0..<n {
+        g=g*keep[t];total[t]=g;ratio[t*n+t]=1;
+        for j:0..<t {i:=t-1-j;ratio[t*n+i]=ratio[t*n+i+1]*keep[i+1];}
+    }
+    // mix[t*n+i] = ratio (C_t . B_i) dt_i: how much of x_i reaches y_t.
+    for t:0..<n {for i:0..<n {
+        mix[t*n+i]=0;
+        if i<=t {
+            acc:PsionicAccumulator;
+            for k:0..<N {acc=psionic_ops_accumulate(acc,conv[t*w+h.c+k]*conv[i*w+h.b+k]);}
+            mix[t*n+i]=ratio[t*n+i]*psionic_ops_total(acc)*dt[i];
+        }
+    }}
+    // The state the chunk carries out, narrowed to f32.
+    for p:0..<P {for k:0..<N {
+        x:=f64(start[p*N+k])*total[n-1];
+        for i:0..<n {x+=ratio[(n-1)*n+i]*conv[i*w+h.b+k]*(dt[i]*conv[i*w+h.x+p]);}
+        if !psionic_ops_fits_f32(x) {return false;}
+        end[p*N+k]=f64(f32(x));
+    }}
+    // Outputs: the last token reads the carried state; the others read
+    // total[t] C_t . S0 + the row of M times x (zero above the diagonal).
+    for t:0..<n {for p:0..<P {
+        acc:PsionicAccumulator;
+        if t==n-1 {
+            for k:0..<N {acc=psionic_ops_accumulate(acc,conv[t*w+h.c+k]*end[p*N+k]);}
+        } else {
+            for k:0..<N {acc=psionic_ops_accumulate(acc,conv[t*w+h.c+k]*f64(start[p*N+k])*total[t]);}
+            for i:0..<n {acc=psionic_ops_accumulate(acc,mix[t*n+i]*conv[i*w+h.x+p]);}
+        }
+        draft[t*P+p]=psionic_ops_total(acc);
+    }}
+    return true;
+}
+// book:end head
+
+// The shared prefill: chunks of chunk tokens; when mix is not empty there is
+// one chunk and every head's mixing matrix is copied into it.
+ss_run :: (s:SsShape,params:[]f32,tokens:int,chunk:int,input:[]f32,history:[]f32,state:[]f32,out:[]f32,snaps:[]f32,mix:[]f64,work:[]f64,overlap:bool)->SsResult {
+    status:=ss_admit(s,tokens,chunk,false,params,input,history,state,out,snaps,mix,work,overlap);
+    if status!=SsStatus.ok {return SsResult.{status=status};}
+    c:=ss_channels(s);m:=ss_input_count(s);n:=ss_states(s);H:=s.heads;P:=s.head_dim;N:=s.state_dim;v:=H*P;
+    w1:=chunk*c;w2:=w1+3*c;w3:=w2+n;w4:=w3+chunk*v;w5:=w4+chunk*P;w6:=w5+chunk;w7:=w6+chunk;
+    conv:=work[0..<w1];hist:=work[w1..<w2];next:=work[w2..<w3];outs:=work[w3..<w4];draft:=work[w4..<w5];
+    dt:=work[w5..<w6];keep:=work[w6..<w7];scratch:=work[w7..<w7+ss_scratch_count(chunk)];
+    done:SsResult;last:=ss_chunks(tokens,chunk)-1;
+    for b:0..<last+1 {
+        lo:=b*chunk;size:=ifx b==last then tokens-lo else chunk;
+        for i:0..<3*c {hist[i]=f64(history[i]);}
+        for l:0..<size {
+            if !ss_convolve(c,params,input[(lo+l)*m..<(lo+l+1)*m],hist,conv[l*c..<(l+1)*c]) {done.status=SsStatus.arithmetic;return done;}
+        }
+        for head:0..<H {
+            group:=head/(H/s.groups);
+            for l:0..<size {g:=ss_gate(s,params,input[(lo+l)*m..<(lo+l+1)*m],head);dt[l]=g.dt;keep[l]=g.keep;}
+            one:=SsChunk.{head_dim=P,state_dim=N,tokens=size,stride=c,x=head*P,b=v+group*N,c=v+s.groups*N+group*N};
+            if !ss_head(one,conv,dt,keep,state[head*P*N..<(head+1)*P*N],draft,next[head*P*N..<(head+1)*P*N],scratch) {done.status=SsStatus.arithmetic;return done;}
+            for i:0..<size*size {if mix.count!=0 {mix[head*size*size+i]=scratch[size*size+i];}}
+            for l:0..<size {for p:0..<P {
+                y:=ss_finish(draft[l*P+p],params[5*c+2*H+head],conv[l*c+head*P+p],input[(lo+l)*m+c+head*P+p]);
+                if !psionic_ops_fits_f32(y) {done.status=SsStatus.arithmetic;return done;}
+                outs[l*v+head*P+p]=y;
+            }}
+        }
+        for i:0..<3*c {history[i]=f32(hist[i]);}
+        for i:0..<n {state[i]=f32(next[i]);}
+        for i:0..<size*v {out[lo*v+i]=f32(outs[i]);}
+        done.written=lo+size;
+        if snaps.count!=0 {
+            snap:=snaps[b*ss_snapshot_size(s)..<(b+1)*ss_snapshot_size(s)];
+            for i:0..<3*c {snap[i]=history[i];}
+            for i:0..<n {snap[3*c+i]=state[i];}
+            done.snapshots+=1;
+        }
+    }
+    return done;
+}
+
+// book:begin forms
+// Prefill in chunks of up to 64 tokens. Each chunk commits its outputs,
+// history and state together, then writes its snapshot when snaps is not
+// empty. An f32 overflow stops before the failing chunk commits.
+ss_prefill :: (s:SsShape,params:[]f32,tokens:int,chunk:int,input:[]f32,history:[]f32,state:[]f32,out:[]f32,snaps:[]f32,work:[]f64,overlap:bool)->SsResult {
+    return ss_run(s,params,tokens,chunk,input,history,state,out,snaps,work[0..<0],work,overlap);
+}
+// The whole sequence (up to 64 tokens) as one chunk: y = M x plus what the
+// start state contributes, and each head's tokens x tokens mixing matrix M
+// written to mix, row t holding what every x_i adds to y_t.
+ss_whole :: (s:SsShape,params:[]f32,tokens:int,input:[]f32,history:[]f32,state:[]f32,out:[]f32,mix:[]f64,work:[]f64,overlap:bool)->SsResult {
+    if mix.count==0 {return SsResult.{status=SsStatus.capacity};}
+    return ss_run(s,params,tokens,tokens,input,history,state,out,out[0..<0],mix,work,overlap);
+}
+// A new request starts from zero history and zero state.
+ss_clear :: (history:[]f32,state:[]f32) {
+    for i:0..<history.count {history[i]=0;}
+    for i:0..<state.count {state[i]=0;}
+}
+// book:end forms
+
+// The checks' shape (psionic/tests/ssm-oracle.coax): 4 heads of width 2 in
+// 2 groups, state width 3; per token 20 channels, 32 inputs and 8 outputs;
+// 60 history and 24 state values, so one snapshot is 84; 112 parameters.
+#test "chunks of one token are the token step, bit for bit" {
+    for mi:0..<2 {
+        memory:=f32(5*mi-4);k:=sso_check(memory,1);
+        #assert k.same && k.histories && k.snapshots==13;
+        params:=sso_params(memory);input:=sso_input(0);ref:=sso_reference(params[..],input[..]);
+        #assert k.out<=SS_TOLERANCE*(1+sso_largest(ref.out[..])) && k.state<=SS_TOLERANCE*(1+sso_largest(ref.state[..]));
+        #assert k.snapshot<=SS_TOLERANCE*(1+sso_largest(ref.state[..]));
+    }
+}
+#test "longer chunks stay within the frozen tolerance, outputs, state and snapshots" {
+    for mi:0..<2 {
+        memory:=f32(5*mi-4);params:=sso_params(memory);input:=sso_input(0);ref:=sso_reference(params[..],input[..]);
+        limit_out:=SS_TOLERANCE*(1+sso_largest(ref.out[..]));limit_state:=SS_TOLERANCE*(1+sso_largest(ref.state[..]));
+        sizes:=[7]int.[2,3,4,5,8,13,64];
+        for si:0..<7 {
+            k:=sso_check(memory,sizes[si]);
+            #assert k.out<=limit_out && k.state<=limit_state && k.snapshot<=limit_state && k.histories;
+            #assert k.snapshots==ss_chunks(13,sizes[si]);
+        }
+    }
+}
+#test "the whole-sequence form and its mixing matrix match the closed form" {
+    for mi:0..<2 {
+        memory:=f32(5*mi-4);params:=sso_params(memory);input:=sso_input(0);ref:=sso_reference(params[..],input[..]);
+        w:=sso_whole(memory);
+        #assert w.upper_zero && w.mix<=w.limit_mix;
+        #assert w.out<=SS_TOLERANCE*(1+sso_largest(ref.out[..])) && w.state<=SS_TOLERANCE*(1+sso_largest(ref.state[..]));
+    }
+    // The whole form equals chunks of 13 bit for bit: it is one chunk.
+    s:=sso_shape();params:=sso_params(-4);input:=sso_input(0);work:[2048]f64;
+    h1:[60]f32;s1:[24]f32;o1:[104]f32;mix:[676]f64;h2:[60]f32;s2:[24]f32;o2:[104]f32;
+    #assert ss_whole(s,params[..],13,input[..],h1[..],s1[..],o1[..],mix[..],work[..],false).status==SsStatus.ok;
+    #assert ss_prefill(s,params[..],13,13,input[..],h2[..],s2[..],o2[..],o2[0..<0],work[..],false).status==SsStatus.ok;
+    #assert sso_same(o1[..],o2[..]) && sso_same(s1[..],s2[..]) && sso_same(h1[..],h2[..]);
+    // Head 2's matrix sits after heads 0 and 1: y_0 reads x_0 only.
+    #assert mix[2*169]!=0 && mix[2*169+1]==0 && mix[3*169+12*13+12]!=0;
+    // The whole form needs its matrix and fits 64 tokens.
+    #assert ss_whole(s,params[..],13,input[..],h1[..],s1[..],o1[..],mix[0..<0],work[..],false).status==SsStatus.capacity;
+    #assert ss_whole(s,params[..],13,input[..],h1[..],s1[..],o1[..],mix[0..<675],work[..],false).status==SsStatus.capacity;
+    big:[2080]f32;bo:[520]f32;
+    #assert ss_whole(s,params[..],65,big[..],h1[..],s1[..],bo[..],mix[..],work[..],false).status==SsStatus.range;
+}
+#test "the gate readout is the closed form exp(-exp(log A) dt)" {
+    s:=sso_shape();input:=sso_input(0);
+    for mi:0..<2 {
+        params:=sso_params(f32(5*mi-4));ref:=sso_reference(params[..],input[..]);
+        for t:0..<13 {for head:0..<4 {
+            g:=ss_gate(s,params[..],input[t*32..<(t+1)*32],head);
+            want:=exp(-exp(f64(params[100+head]))*ref.dt[t*4+head]);
+            #assert abs(g.dt-ref.dt[t*4+head])<=0.000000000001 && abs(g.keep-want)<=0.000000000001;
+            if mi==0 {#assert g.keep>0.93 && g.keep<1;} else {#assert g.keep>0 && g.keep<0.6;}
+        }}
+    }
+}
+#test "resuming from a boundary snapshot equals continuing, bit for bit" {
+    s:=sso_shape();params:=sso_params(-4);input:=sso_input(0);work:[2048]f64;
+    history:[60]f32;state:[24]f32;out:[104]f32;snaps:[336]f32;
+    r:=ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    #assert r.status==SsStatus.ok && r.written==13 && r.snapshots==4;
+    // The second snapshot is the boundary after token 8: restart there.
+    h2:[60]f32;s2:[24]f32;for i:0..<60 {h2[i]=snaps[84+i];}for i:0..<24 {s2[i]=snaps[144+i];}
+    rest:[40]f32;none:=snaps[0..<0];
+    r=ss_prefill(s,params[..],5,4,input[8*32..<13*32],h2[..],s2[..],rest[..],none,work[..],false);
+    #assert r.status==SsStatus.ok && r.written==5 && r.snapshots==0;
+    #assert sso_same(rest[..],out[64..<104]) && sso_same(s2[..],state[..]) && sso_same(h2[..],history[..]);
+    #assert sso_same(snaps[252..<312],history[..]) && sso_same(snaps[312..<336],state[..]);
+    // Decoding on from the snapshot with the step stays within tolerance of the reference.
+    ref:=sso_reference(params[..],input[..]);
+    for i:0..<60 {h2[i]=snaps[84+i];}for i:0..<24 {s2[i]=snaps[144+i];}
+    one:[112]f64;
+    for t:8..<13 {#assert ss_step(s,params[..],input[t*32..<(t+1)*32],h2[..],s2[..],rest[(t-8)*8..<(t-7)*8],one[..],false).status==SsStatus.ok;}
+    #assert sso_deviation(rest[..],ref.out[64..<104])<=SS_TOLERANCE*(1+sso_largest(ref.out[..]));
+    // With chunks of one, every snapshot's state is the step's state at that token.
+    steps:=sso_steps(params[..],input[..]);all:[1092]f32;
+    ss_clear(history[..],state[..]);
+    #assert ss_prefill(s,params[..],13,1,input[..],history[..],state[..],out[..],all[..],work[..],false).snapshots==13;
+    for t:0..<13 {#assert sso_same(all[t*84+60..<t*84+84],steps.state[t*24..<(t+1)*24]);}
+}
+#test "two requests in sequence equal each alone" {
+    s:=sso_shape();params:=sso_params(-4);a:=sso_input(0);b:=sso_input(1);work:[2048]f64;
+    hb:[60]f32;sb:[24]f32;ob:[104]f32;
+    #assert ss_prefill(s,params[..],13,4,b[..],hb[..],sb[..],ob[..],ob[0..<0],work[..],false).status==SsStatus.ok;
+    // Request a, then clear, then request b on the same buffers.
+    h:[60]f32;st:[24]f32;o:[104]f32;
+    #assert ss_prefill(s,params[..],13,4,a[..],h[..],st[..],o[..],o[0..<0],work[..],false).status==SsStatus.ok;
+    ss_clear(h[..],st[..]);for x:h {#assert x==0;}for x:st {#assert x==0;}
+    #assert ss_prefill(s,params[..],13,4,b[..],h[..],st[..],o[..],o[0..<0],work[..],false).status==SsStatus.ok;
+    #assert sso_same(o[..],ob[..]) && sso_same(st[..],sb[..]) && sso_same(h[..],hb[..]);
+    // Without the clear, the first run's state leaks into the second's outputs.
+    #assert ss_prefill(s,params[..],13,4,b[..],h[..],st[..],o[..],o[0..<0],work[..],false).status==SsStatus.ok;
+    #assert !sso_same(o[..],ob[..]);
+    // Two requests interleaved token by token, each with its own buffers.
+    ha:[60]f32;sa:[24]f32;oa:[104]f32;h3:[60]f32;s3:[24]f32;o3:[104]f32;one:[112]f64;
+    for t:0..<13 {
+        #assert ss_step(s,params[..],a[t*32..<(t+1)*32],ha[..],sa[..],oa[t*8..<(t+1)*8],one[..],false).status==SsStatus.ok;
+        #assert ss_step(s,params[..],b[t*32..<(t+1)*32],h3[..],s3[..],o3[t*8..<(t+1)*8],one[..],false).status==SsStatus.ok;
+    }
+    ra:=sso_steps(params[..],a[..]);rb:=sso_steps(params[..],b[..]);
+    #assert sso_same(oa[..],ra.out[..]) && sso_same(o3[..],rb.out[..]) && sso_same(sa[..],ra.state[288..<312]);
+}
+#test "shapes and sizes have exact bounds" {
+    s:=SsShape.{heads=128,head_dim=128,state_dim=256,groups=128};#assert ss_valid(s);
+    #assert ss_channels(s)==128*128+2*128*256 && ss_states(s)==128*128*256;
+    bad:=s;bad.heads=129;#assert !ss_valid(bad);
+    bad.groups=1;#assert !ss_valid(bad);bad.heads=128;#assert ss_valid(bad);
+    bad=s;bad.head_dim=129;#assert !ss_valid(bad);
+    bad=s;bad.state_dim=257;#assert !ss_valid(bad);
+    bad=s;bad.groups=129;#assert !ss_valid(bad);
+    bad=s;bad.groups=3;#assert !ss_valid(bad);
+    one:=SsShape.{heads=1,head_dim=1,state_dim=1,groups=1};#assert ss_valid(one);
+    bad=one;bad.heads=0;#assert !ss_valid(bad);
+    bad=one;bad.head_dim=0;#assert !ss_valid(bad);
+    bad=one;bad.state_dim=0;#assert !ss_valid(bad);
+    bad=one;bad.groups=0;#assert !ss_valid(bad);
+    t:=sso_shape();
+    #assert ss_channels(t)==20 && ss_states(t)==24 && ss_input_count(t)==32 && ss_param_count(t)==112 && ss_snapshot_size(t)==84;
+    #assert ss_step_work_count(t)==112 && ss_scratch_count(4)==36;
+    #assert ss_work_count(t,4)==4*20+60+24+4*8+4*2+2*4+36 && ss_work_count(t,4)==248;
+    #assert ss_chunks(13,4)==4 && ss_chunks(12,4)==3 && ss_chunks(1,64)==1;
+}
+#test "refusals name their cause and change nothing" {
+    s:=sso_shape();params:=sso_params(-4);input:=sso_input(0);w:=ss_work_count(s,4);work:[2048]f64;
+    history:[60]f32;state:[24]f32;out:[104]f32;snaps:[336]f32;
+    for i:0..<104 {out[i]=-7;}for i:0..<24 {state[i]=0.5;}for i:0..<60 {history[i]=0.25;}
+    bad:=s;bad.groups=3;
+    #assert ss_prefill(bad,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.shape;
+    #assert ss_prefill(s,params[..],13,0,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.range;
+    #assert ss_prefill(s,params[..],13,65,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.range;
+    #assert ss_prefill(s,params[..],0,4,input[0..<0],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.range;
+    #assert ss_prefill(s,params[..],4097,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.range;
+    #assert ss_prefill(s,params[..],4096,64,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[0..<111],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[0..<415],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[..],history[0..<59],state[..],out[..],snaps[..],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[..],history[..],state[0..<23],out[..],snaps[..],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[0..<103],snaps[..],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[0..<335],work[..],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[0..<w-1],false).status==SsStatus.capacity;
+    #assert ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],true).status==SsStatus.alias;
+    // log A is admitted up to 80, for every head.
+    for head:0..<4 {
+        params[100+head]=81;
+        #assert ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==SsStatus.number;
+        params[100+head]=80;
+    }
+    for x:out {#assert x==-7;}for x:state {#assert x==0.5;}for x:history {#assert x==0.25;}for x:snaps {#assert x==0;}
+    r:=ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[0..<0],work[0..<w],false);
+    #assert r.status==SsStatus.ok && r.written==13 && r.snapshots==0;
+    // The step refuses the same way.
+    one:[112]f64;o1:=[8]f32.[-7,-7,-7,-7,-7,-7,-7,-7];h1:[60]f32;s1:[24]f32;
+    #assert ss_step(bad,params[..],input[0..<32],h1[..],s1[..],o1[..],one[..],false).status==SsStatus.shape;
+    #assert ss_step(s,params[..],input[0..<31],h1[..],s1[..],o1[..],one[..],false).status==SsStatus.capacity;
+    #assert ss_step(s,params[..],input[0..<32],h1[..],s1[..],o1[..],one[0..<111],false).status==SsStatus.capacity;
+    #assert ss_step(s,params[..],input[0..<32],h1[..],s1[..],o1[..],one[..],true).status==SsStatus.alias;
+    params[101]=81;#assert ss_step(s,params[..],input[0..<32],h1[..],s1[..],o1[..],one[..],false).status==SsStatus.number;
+    for x:o1 {#assert x==-7;}
+    // Non-finite values cannot exist in a compile-time check; the example
+    // refuses an infinite input at run time.
+}
+#test "an overflow stops at the previous boundary, and the step changes nothing" {
+    s:=sso_shape();params:=sso_params(-4);input:=sso_input(0);work:[2048]f64;
+    history:[60]f32;state:[24]f32;out:[104]f32;snaps:[336]f32;for i:0..<104 {out[i]=-7;}
+    // Token 9's channel 0 is 1e30 and so is its newest tap: the convolution overflows f32.
+    input[9*32]=1e30;params[3]=1e30;
+    r:=ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    #assert r.status==SsStatus.arithmetic && r.written==8 && r.snapshots==2;
+    #assert sso_same(state[..],snaps[144..<168]) && sso_same(history[..],snaps[84..<144]);
+    for i:64..<104 {#assert out[i]==-7;}
+    one:[112]f64;o1:=[8]f32.[-7,-7,-7,-7,-7,-7,-7,-7];h1:=history;s1:=state;
+    #assert ss_step(s,params[..],input[9*32..<10*32],h1[..],s1[..],o1[..],one[..],false).status==SsStatus.arithmetic;
+    #assert sso_same(h1[..],history[..]) && sso_same(s1[..],state[..]) && o1[0]==-7;
+    // An output past f32: head 0's z and D are 1e20 at token 2.
+    params=sso_params(-4);input=sso_input(0);input[2*32+20]=1e20;params[108]=1e20;
+    hz:[60]f32;sz:[24]f32;
+    r=ss_prefill(s,params[..],13,4,input[..],hz[..],sz[..],out[..],snaps[..],work[..],false);
+    #assert r.status==SsStatus.arithmetic && r.written==0 && r.snapshots==0;
+    for x:sz {#assert x==0;}for x:hz {#assert x==0;}
+    #assert ss_step(s,params[..],input[2*32..<3*32],hz[..],sz[..],o1[..],one[..],false).status==SsStatus.arithmetic;
+    for x:sz {#assert x==0;}for x:hz {#assert x==0;}
+    // A state past f32: one head, keep 1 (log A = -80), x = 1e25, B = 1e10.
+    t:=SsShape.{heads=1,head_dim=1,state_dim=1,groups=1};
+    p:[18]f32;p[3]=1;p[7]=1;p[11]=1;p[15]=-80;
+    row:=[5]f32.[1e25,1e10,1,0,1];max:=f32_from_bits(0x7f7fffff);
+    for k:0..<2 {
+        h:[9]f32;st:=[1]f32.[max];o:=[1]f32.[-7];w:[16]f64;ph:=h;ps:=st;po:=o;w2:[64]f64;
+        if k==1 {st[0]=1e38;ps[0]=1e38;}
+        a:=ss_step(t,p[..],row[..],h[..],st[..],o[..],w[..],false);
+        b:=ss_prefill(t,p[..],1,1,row[..],ph[..],ps[..],po[..],po[0..<0],w2[..],false);
+        if k==0 {#assert a.status==SsStatus.arithmetic && b.status==SsStatus.arithmetic && st[0]==max && o[0]==-7 && ps[0]==max && h[0]==0;}
+        else {#assert a.status==SsStatus.ok && b.status==SsStatus.ok && st[0]>1e38 && sso_same(st[..],ps[..]) && sso_same(o[..],po[..]);}
+    }
+}

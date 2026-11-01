@@ -1,0 +1,69 @@
+#import "Basic";
+#load "../lib/ssm.coax";
+
+// book:begin example
+main :: () {
+    print("profile ssm-cpu-f64-v1, tolerance % x (1 + largest |reference value|)\n",SS_TOLERANCE);
+    // The hand trace: one input and one state dimension, start state 2, two
+    // tokens with x = 3 then 5, B = 1, C = 1 then 2, dt 0.5 and keep 0.5.
+    h:=SsChunk.{head_dim=1,state_dim=1,tokens=2,stride=3,x=0,b=1,c=2};
+    conv:=[6]f64.[3,1,1, 5,1,2];dt:=[2]f64.[0.5,0.5];keep:=[2]f64.[0.5,0.5];
+    start:=[1]f32.[2];draft:[2]f64;end:[1]f64;scratch:[10]f64;
+    #assert ss_head(h,conv[..],dt[..],keep[..],start[..],draft[..],end[..],scratch[..]);
+    print("kept through each token %, %; token 0's write kept through token 1 %\n",scratch[8],scratch[9],scratch[2]);
+    print("mixing matrix [%, %; %, %]; outputs %, %; carried state %\n",scratch[4],scratch[5],scratch[6],scratch[7],draft[0],draft[1],end[0]);
+
+    s:=sso_shape();input:=sso_input(0);
+    print("13 tokens, 4 heads of width 2 in 2 groups, state width 3:\n");
+    for mi:0..<2 {
+        memory:=f32(5*mi-4);params:=sso_params(memory);
+        low:=1.0;high:=0.0;
+        for t:0..<13 {for head:0..<4 {g:=ss_gate(s,params[..],input[t*32..<(t+1)*32],head);if g.keep<low {low=g.keep;}if g.keep>high {high=g.keep;}}}
+        print("  log A %: each token keeps between % and % of the state\n",memory,low,high);
+        sizes:=[8]int.[1,2,3,4,5,8,13,64];
+        for si:0..<8 {
+            k:=sso_check(memory,sizes[si]);
+            print("    chunk %: outputs %, state %, snapshots % (% of them, histories equal %), step bit for bit %\n",sizes[si],k.out,k.state,k.snapshot,k.snapshots,k.histories,k.same);
+        }
+        w:=sso_whole(memory);
+        print("    whole sequence: outputs %, state %, mixing matrix % (limit %), zero above the diagonal %\n",w.out,w.state,w.mix,w.limit_mix,w.upper_zero);
+    }
+
+    // Inspect head 0's mixing matrix: what x_0..x_3 add to y_0..y_3.
+    params:=sso_params(1);history:[60]f32;state:[24]f32;out:[104]f32;mix:[676]f64;work:[16384]f64;
+    r:=ss_whole(s,params[..],13,input[..],history[..],state[..],out[..],mix[..],work[..],false);
+    #assert r.status==SsStatus.ok;
+    print("log A 1, head 0's mixing matrix, tokens 0 to 3:\n");
+    for t:0..<4 {print("  % % % %\n",mix[t*13],mix[t*13+1],mix[t*13+2],mix[t*13+3]);}
+
+    // Resume from the snapshot after token 8 and compare with the run that continued.
+    params=sso_params(-4);snaps:[336]f32;
+    ss_clear(history[..],state[..]);
+    r=ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    #assert r.status==SsStatus.ok;
+    h2:[60]f32;s2:[24]f32;rest:[40]f32;
+    for i:0..<60 {h2[i]=snaps[84+i];}for i:0..<24 {s2[i]=snaps[144+i];}
+    r=ss_prefill(s,params[..],5,4,input[8*32..<13*32],h2[..],s2[..],rest[..],snaps[0..<0],work[..],false);
+    print("resumed at token 8 from a snapshot: outputs, state and history bit for bit %\n",sso_same(rest[..],out[64..<104]) && sso_same(s2[..],state[..]) && sso_same(h2[..],history[..]));
+
+    // Request b alone, and after request a on the same buffers.
+    other:=sso_input(1);hb:[60]f32;sb:[24]f32;ob:[104]f32;
+    r=ss_prefill(s,params[..],13,4,other[..],hb[..],sb[..],ob[..],ob[0..<0],work[..],false);
+    r=ss_prefill(s,params[..],13,4,other[..],history[..],state[..],out[..],out[0..<0],work[..],false);
+    print("request b after request a without a clear: equal to b alone %\n",sso_same(out[..],ob[..]));
+    ss_clear(history[..],state[..]);
+    r=ss_prefill(s,params[..],13,4,other[..],history[..],state[..],out[..],out[0..<0],work[..],false);
+    print("request b after a clear: equal to b alone %\n",sso_same(out[..],ob[..]) && sso_same(state[..],sb[..]));
+
+    for i:0..<104 {out[i]=-7;}
+    r=ss_prefill(s,params[..],13,0,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    print("refused: chunk 0: %, output %\n",r.status,out[0]);
+    bits:u32=0x7f000000;bits+=0x00800000;input[5*32+3]=f32_from_bits(bits);
+    r=ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    print("refused: an infinite input at token 5: %, output %, written %\n",r.status,out[0],r.written);
+    input=sso_input(0);input[9*32]=1e30;params[3]=1e30;
+    ss_clear(history[..],state[..]);
+    r=ss_prefill(s,params[..],13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    print("refused: a convolution past f32 at token 9: %, tokens committed %, snapshots %, state equals snapshot 2 %\n",r.status,r.written,r.snapshots,sso_same(state[..],snaps[144..<168]));
+}
+// book:end example

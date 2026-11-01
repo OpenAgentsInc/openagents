@@ -178,7 +178,7 @@
 - [160. Execute DoMINO](ch160-execute-domino.md) — design draft
 - [161. Forecast on a sphere](ch161-forecast-on-a-sphere.md) — design draft
 
-- [162. A recurrence you can inspect](ch162-a-recurrence-you-can-inspect.md) — design draft
+- [162. A recurrence you can inspect](ch162-a-recurrence-you-can-inspect.md)
 - [163. Execute Nemotron Nano](ch163-execute-nemotron-nano.md) — design draft
 - [164. Execute Nemotron Lightning](ch164-execute-nemotron-lightning.md) — design draft
 
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–42, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 114, 117, 120, 123, 124, 140, 142, 147, 148, 151, 156–158, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–42, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 114, 117, 120, 123, 124, 140, 142, 147, 148, 151, 156–158, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

@@ -1,0 +1,150 @@
+// Chapter 162's check oracle, loaded by psionic/lib/ssm.coax. The reference
+// is the state-space recurrence written from its definition in binary64:
+// the convolution reads the raw inputs directly instead of a shift register,
+// each token's decay is exp(dt A), and nothing is narrowed to f32. It shares
+// no code with the library.
+
+// Profile ssm-cpu-f64-v1, frozen before any comparison: an output, carried
+// state, snapshot state or mixing-matrix entry may differ from this
+// reference by at most SS_TOLERANCE * (1 + the largest |reference value|).
+// book:begin tolerance
+SS_TOLERANCE :: 0.00001;
+// book:end tolerance
+
+// Four heads of width 2 in two groups, state width 3. Per token: 20
+// convolved channels (8 x, 6 B, 6 C), 32 inputs and 8 outputs; 24 state
+// and 60 history values, so one snapshot is 84 values; 112 parameters.
+SSO_TOKENS :: 13;
+sso_shape :: ()->SsShape {return SsShape.{heads=4,head_dim=2,state_dim=3,groups=2};}
+// memory: log A for head 0; head h adds h / 4. At -4 every head keeps
+// between 0.94 and 1 of its state per token; at 1, between 0 and 0.6.
+sso_params :: (memory:f32)->[112]f32 {
+    a:[112]f32;
+    for i:0..<112 {a[i]=f32((i*5+i*i%7)%13-6)/8;}
+    for head:0..<4 {a[100+head]=memory+f32(head)/4;}
+    return a;
+}
+// seed changes every value, so two requests can differ.
+sso_input :: (seed:int)->[416]f32 {
+    a:[416]f32;
+    for t:0..<SSO_TOKENS {for i:0..<32 {a[t*32+i]=f32((i*7+t*13+i*i%5+seed*3)%17-8)/9;}}
+    return a;
+}
+
+sso_sigmoid :: (x:f64)->f64 {return 1/(1+exp(-x));}
+sso_softplus :: (x:f64)->f64 {return log(1+exp(x));}
+// conv: every token's 20 convolved channels; dt: every token's 4 step sizes.
+SsoRun :: struct { out:[104]f64; state:[312]f64; conv:[260]f64; dt:[52]f64; }
+sso_reference :: (params:[]f32,input:[]f32)->SsoRun {
+    r:SsoRun;h:[24]f64;
+    for t:0..<SSO_TOKENS {
+        for ch:0..<20 {
+            // Tap 3 multiplies this token's raw value, tap 0 the one 3 tokens back.
+            sum:=f64(params[80+ch]);
+            for back:0..<4 {if t>=back {sum+=f64(input[(t-back)*32+ch])*f64(params[ch*4+3-back]);}}
+            r.conv[t*20+ch]=sum*sso_sigmoid(sum);
+        }
+        for head:0..<4 {
+            group:=head/2;
+            dt:=sso_softplus(f64(input[t*32+28+head])+f64(params[104+head]));r.dt[t*4+head]=dt;
+            a:=-exp(f64(params[100+head]));
+            for p:0..<2 {
+                x:=r.conv[t*20+head*2+p];y:=0.0;
+                for k:0..<3 {
+                    i:=(head*2+p)*3+k;
+                    h[i]=exp(dt*a)*h[i]+dt*x*r.conv[t*20+8+group*3+k];
+                    y+=r.conv[t*20+14+group*3+k]*h[i];
+                }
+                z:=f64(input[t*32+20+head*2+p]);
+                r.out[t*8+head*2+p]=(y+f64(params[108+head])*x)*z*sso_sigmoid(z);
+            }
+        }
+        for i:0..<24 {r.state[t*24+i]=h[i];}
+    }
+    return r;
+}
+// The mixing matrix from its closed form: token i reaches token t's output
+// through exp(A (dt_{i+1} + ... + dt_t)) (C_t . B_i) dt_i, and not at all
+// when i > t.
+sso_mix :: (params:[]f32,r:SsoRun,head:int,t:int,i:int)->f64 {
+    if i>t {return 0;}
+    group:=head/2;sum:=0.0;cb:=0.0;
+    for j:i+1..<t+1 {sum+=r.dt[j*4+head];}
+    for k:0..<3 {cb+=r.conv[t*20+14+group*3+k]*r.conv[i*20+8+group*3+k];}
+    return exp(-exp(f64(params[100+head]))*sum)*cb*r.dt[i*4+head];
+}
+// The convolution history after token t: each channel's raw inputs of
+// tokens t-2, t-1 and t, 0 before the first token.
+sso_history :: (input:[]f32,t:int,ch:int,tap:int)->f32 {
+    at:=t-2+tap;if at<0 {return 0;}
+    return input[at*32+ch];
+}
+
+sso_largest :: (a:[]f64)->f64 {big:=0.0;for x:a {if abs(x)>big {big=abs(x);}}return big;}
+sso_deviation :: (a:[]f32,b:[]f64)->f64 {worst:=0.0;for i:0..<a.count {d:=abs(f64(a[i])-b[i]);if d>worst {worst=d;}}return worst;}
+sso_same :: (a:[]f32,b:[]f32)->bool {for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return false;}}return true;}
+
+// The library's token step over every token, from the zero state.
+SsoSteps :: struct { out:[104]f32; state:[312]f32; }
+sso_steps :: (params:[]f32,input:[]f32)->SsoSteps {
+    s:=sso_shape();r:SsoSteps;history:[60]f32;state:[24]f32;work:[112]f64;
+    #assert ss_step_work_count(s)==112;
+    for t:0..<SSO_TOKENS {
+        p:=ss_step(s,params,input[t*32..<(t+1)*32],history[..],state[..],r.out[t*8..<(t+1)*8],work[..],false);
+        #assert p.status==SsStatus.ok && p.written==1;
+        for i:0..<24 {r.state[t*24+i]=state[i];}
+    }
+    return r;
+}
+// Chunked outputs and final state against the binary64 reference and, bit
+// for bit, against the token step; every snapshot's state against the
+// reference at its boundary, and its history against the raw inputs.
+SsoCheck :: struct { out:f64; state:f64; snapshot:f64; histories:bool; same:bool; snapshots:int; }
+sso_check :: (memory:f32,chunk:int)->SsoCheck {
+    s:=sso_shape();params:=sso_params(memory);input:=sso_input(0);
+    ref:=sso_reference(params[..],input[..]);steps:=sso_steps(params[..],input[..]);
+    history:[60]f32;state:[24]f32;out:[104]f32;snaps:[1092]f32;work:[16384]f64;
+    n:=ss_chunks(SSO_TOKENS,chunk);
+    r:=ss_prefill(s,params[..],SSO_TOKENS,chunk,input[..],history[..],state[..],out[..],snaps[0..<n*84],work[..],false);
+    #assert r.status==SsStatus.ok && r.written==SSO_TOKENS && r.snapshots==n;
+    k:SsoCheck;k.snapshots=r.snapshots;k.histories=true;
+    k.out=sso_deviation(out[..],ref.out[..]);k.state=sso_deviation(state[..],ref.state[288..<312]);
+    k.same=sso_same(out[..],steps.out[..]) && sso_same(state[..],steps.state[288..<312]);
+    for b:0..<n {
+        t:=ifx (b+1)*chunk<SSO_TOKENS then (b+1)*chunk-1 else SSO_TOKENS-1;
+        d:=sso_deviation(snaps[b*84+60..<b*84+84],ref.state[t*24..<(t+1)*24]);if d>k.snapshot {k.snapshot=d;}
+        for ch:0..<20 {for tap:0..<3 {if f32_bits(snaps[b*84+ch*3+tap])!=f32_bits(sso_history(input[..],t,ch,tap)) {k.histories=false;}}}
+    }
+    return k;
+}
+// The whole-sequence form: outputs and state against the reference, and
+// every head's mixing matrix against its closed form.
+SsoWhole :: struct { out:f64; state:f64; mix:f64; limit_mix:f64; upper_zero:bool; }
+sso_whole :: (memory:f32)->SsoWhole {
+    s:=sso_shape();params:=sso_params(memory);input:=sso_input(0);ref:=sso_reference(params[..],input[..]);
+    history:[60]f32;state:[24]f32;out:[104]f32;mix:[676]f64;work:[16384]f64;
+    r:=ss_whole(s,params[..],SSO_TOKENS,input[..],history[..],state[..],out[..],mix[..],work[..],false);
+    #assert r.status==SsStatus.ok && r.written==SSO_TOKENS && r.snapshots==0;
+    w:SsoWhole;w.upper_zero=true;
+    w.out=sso_deviation(out[..],ref.out[..]);w.state=sso_deviation(state[..],ref.state[288..<312]);
+    big:=0.0;
+    for head:0..<4 {for t:0..<SSO_TOKENS {for i:0..<SSO_TOKENS {
+        want:=sso_mix(params[..],ref,head,t,i);if abs(want)>big {big=abs(want);}
+        got:=mix[head*169+t*13+i];
+        if i>t && got!=0 {w.upper_zero=false;}
+        if abs(got-want)>w.mix {w.mix=abs(got-want);}
+    }}}
+    w.limit_mix=SS_TOLERANCE*(1+big);
+    return w;
+}
+
+#test "the reference's convolution and decay match a hand calculation" {
+    // All weights 1, bias 0, only channel 0 of token 0 and 1 nonzero: the
+    // pre-activation at token 1 is 1 + 2 = 3, and silu(3) = 3 sigmoid(3).
+    params:[112]f32;for i:0..<80 {params[i]=1;}
+    input:[416]f32;input[0]=1;input[32]=2;
+    r:=sso_reference(params[..],input[..]);
+    #assert r.conv[0]==1*sso_sigmoid(1) && r.conv[20]==3*sso_sigmoid(3) && r.conv[1]==0;
+    // dt raw 0 and bias 0: dt = log 2.
+    #assert r.dt[0]==log(2.0) && sso_history(input[..],1,0,1)==1 && sso_history(input[..],1,0,2)==2 && sso_history(input[..],1,0,0)==0;
+}

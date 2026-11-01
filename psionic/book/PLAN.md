@@ -579,7 +579,7 @@ simulation without a separate consumer contract.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [162. A recurrence you can inspect](ch162-a-recurrence-you-can-inspect.md) — design draft | Tiny state-space transitions, causal convolution, chunked/whole-sequence versus token-step execution and independent state reset. |
+| [162. A recurrence you can inspect](ch162-a-recurrence-you-can-inspect.md) — runnable: ssm-cpu-f64-v1, bounded CPU | Tiny state-space transitions, causal convolution, chunked/whole-sequence versus token-step execution and independent state reset. |
 | [163. Execute Nemotron Nano](ch163-execute-nemotron-nano.md) — design draft | NVIDIA-Nemotron-3-Nano-4B-BF16: the complete Mamba-2/Transformer hybrid and all recurrent/cache state. |
 | [164. Execute Nemotron Lightning](ch164-execute-nemotron-lightning.md) — design draft | NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16: combine the exact hybrid and MoE profiles; floating point before NVFP4 or speculation. |
 

@@ -1660,6 +1660,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/ssm.coax",
+      "chapter": "psionic/book/ch162-a-recurrence-you-can-inspect.md",
+      "stdout": "psionic/fixtures/ssm.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
