@@ -1,7 +1,7 @@
 # 167. Command a robot
 
 This chapter builds position-only inverse kinematics, principal orientation
-error and one pose update, seven-joint PD with gravity compensation, and a
+error, a capped whole-pose solve, seven-joint PD with gravity compensation, and a
 short coupled run on our owned Panda dynamics.
 The queries return source-limited coordinates or explicit force terms. The
 250-step experiment then recomputes the PD command on every owned state and
@@ -10,7 +10,7 @@ the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Holding/tracking experiments,
-complete pose/nullspace IK, collision-free planning, trajectory timing and
+nullspace IK, collision-free planning, trajectory timing and
 compiler-enforced bounded control retain their separate acceptance criteria.
 
 ## A source-bound position IK query
@@ -250,13 +250,109 @@ entry, and 2e-10 in the named pose coordinate/diagnostic units. Counts, statuses
 and cross-profile byte criteria are exact. The original debug run completed all 4,200/54 numerical records and sign/ABI probes before an independently constructed norm-shell guard failed. Its numerical outputs were retained. A corrected guard-only debug continuation passes 37,246 assertions; first full release and fail-fast ASan/UBSan runs pass 231,306 assertions each. The complete numerical streams match byte for byte across these three profiles. Maximum standalone vector/angle errors are 8.88e-16/1.11e-15 radian, with cut-band rotation-entry error 1.06e-15; pose joint/position/rotation errors are 2.23e-15 radian, 1.12e-15 metre and 1.45e-15 per entry. Reader guards pair only actual sign-paired rows; the 24 independent matrix rows are not invented sign pairs. These tooling corrections preserve the product, expected data and numerical budgets.
 
 These are source-bound Darwin scalar-libm/F64 query observations. They do not
-establish general cross-target reproducibility. A complete pose solve,
-nullspace behavior, collision admission, RRT and compiler `#bounded` control
-remain separate work.
+establish general cross-target reproducibility. The next section adds a capped whole-pose solve. Nullspace behavior, collision
+admission, RRT and compiler `#bounded` control remain separate work.
 
 The [component record](../fixtures/robotics/panda-pose-ik/README.md) links
 the unchanged targets, pre-comparison correction, independent named-grid check,
 source-restore note and separate numerical/native contexts.
+
+
+## Solve until both pose coordinates are close
+
+A single update is useful for inspection, but a whole query must decide when to
+stop and what an unfinished result means. Add `pps_solve` with its own status and
+nominal `PpsOutput`; leave every one-step and position-only source unchanged.
+The caller gives seven typed radians, one world/metre position plus raw
+world-from-grip wxyz attitude, and a budget from zero through 96 updates.
+
+Compute fresh metrics **before** moving. Succeed only when position error is at
+most **1e-6 metre** AND principal orientation error is at most **1e-6 radian**.
+A seed already within both tolerances can succeed with no updates, even with a
+zero budget. Otherwise repeat the carried geometric DLS update with its fixed
+0.25 m/rad task weight, 0.05 m damping, global 0.1-rad cap and source joint limits.
+The angular matrix remains a geometric rate Jacobian; this is not an exact
+finite-log Hessian method or a global convergence guarantee.
+
+After each candidate, test the two fresh errors separately. Count actual
+updates and every projected joint coordinate cumulatively. If the budget runs
+out, return typed `not_converged` and leave the complete caller result intact.
+`PpsOutput` has its own identity: it cannot implicitly pass as a one-step result
+whose update count means something different. The source-visible `pps_walk`
+POD can retain staged diagnostics on exhaustion, but it is a trusted, unsealed
+helper and **not an admission certificate**. It requires an already admitted
+seed/target and a budget in 0..96; it is not a total raw-input admission API.
+Exported wrappers publish only `ok`.
+
+The [runnable example](../examples/panda-pose-solve.coax) uses a new independent
+moderate target that takes nine updates. Reducing the budget
+to eight refuses publication. Reusing the converged seed with a zero budget
+succeeds without work; reversing the target quaternion gives identical bytes.
+
+<!-- source: psionic/examples/panda-pose-solve.coax pps-query -->
+```jai
+ // New independent moderate-B target. This is a kinematic query, not a command.
+ x:=pps_fixture([14]f64.[-0.43,-0.17,0.52,-1.87,-0.61,1.43,-0.82,-0.3312488088297923,-0.02236227277159756,1.1949403501120703,0.3087793425683993,0.26307588076182686,-0.9008416321384713,0.15469567663807282]);solution:[1]PpsOutput;
+ #assert pps_solve(x.seed[..],x.target[..],96,solution[..])==PpsStatus.ok;
+ #assert solution[0].position_error_metres<=1e-6 && solution[0].orientation_error.value<=1e-6;
+ print("updates: %; projected coordinates: %\n",solution[0].updates,solution[0].projected_coordinates);
+ q:=solution[0].angles;p:=solution[0].position;
+ print("candidate joints (urad): % % % % % % %\n",pps_example_scale(q[0].value,1e6),pps_example_scale(q[1].value,1e6),pps_example_scale(q[2].value,1e6),pps_example_scale(q[3].value,1e6),pps_example_scale(q[4].value,1e6),pps_example_scale(q[5].value,1e6),pps_example_scale(q[6].value,1e6));
+ print("grip xyz (um): % % %\n",pps_example_scale(p.x,1e6),pps_example_scale(p.y,1e6),pps_example_scale(p.z,1e6));
+ print("fresh errors: % nm position; % nrad orientation; % nm weighted\n",pps_example_scale(solution[0].position_error_metres,1e9),pps_example_scale(solution[0].orientation_error.value,1e9),pps_example_scale(solution[0].weighted_error_metres,1e9));
+ // Exhaustion preserves an earlier complete solution; no partial candidate leaks.
+ before:=solution[0];#assert pps_solve(x.seed[..],x.target[..],8,solution[..])==PpsStatus.not_converged;pps_same(solution[0],before);
+ print("8 updates: not_converged; complete old result unchanged\n");
+ // A seed already within BOTH tolerances needs no update, even at budget zero.
+ settled:=before.angles;zero:[1]PpsOutput;
+ #assert pps_solve(settled[..],x.target[..],0,zero[..])==PpsStatus.ok && zero[0].updates==0 && zero[0].projected_coordinates==0;
+ print("settled seed with zero budget: ok; updates %\n",zero[0].updates);
+ // Both attitude signs yield the same complete, converged result.
+ opposite:[1]PpsOutput;for i:0..<4 {x.target[0].world_from_grip_wxyz[i]= -x.target[0].world_from_grip_wxyz[i];}
+ #assert pps_solve(x.seed[..],x.target[..],96,opposite[..])==PpsStatus.ok;pps_same(before,opposite[0]);
+ print("q/-q target: complete result identical\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-pose-solve.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-panda-pose-solve-native.sh /tmp/new-whole-pose-proof
+```
+
+The new experiment freezes fourteen physical target/seed contexts before
+comparison: twelve converge and two finite far targets exhaust their budgets.
+Sixty-eight base queries, eight separate AND-policy guards and 36 predeclared
+success-boundary queries give **112 public queries** (54 successes, 58 refusals).
+The independent matrix/tangent and pivoted-Gaussian recipe computes each new
+trajectory once: **279 unique updates**. No old 54-case pose-update or 4,200-case
+rotation corpus, SDK acquisition or neural execution is repeated. The active
+source-limit case converges in thirteen updates with **38 cumulative coordinate
+projections**. The fixed errors and counts are reported without retuning.
+
+Nine new source groups and four meaningful typing refusals qualify the policy,
+including exact inclusive threshold literals, all XYZ admission roles, the
+independent nine-update endpoint and the active-limit staged prefixes. The
+changed-root proof kills **111/111 actual emitted sites**. Its first attempt's
+six survivors are preserved: additional observations and fail-closed staging
+remove redundant/hidden flows, with no equivalence waivers. Quantity lowering
+still omits some authored token provenance, so this is not full quantity-token
+mutation coverage. The example has an independently prewritten output and
+passes its own display check plus debug/release execution.
+
+The native proof distinguishes actual whole-query results from an external
+replay of the unchanged one-step API on these new trajectories. Public successes
+expose exact cumulative counts; public failures expose no unfinished candidate.
+Replay-only diagnostics of a nonconverged path are not reported as published
+whole-solver output. The first debug, release and fail-fast ASan/UBSan profiles each pass **23,665 assertions**, with complete numerical files identical across modes. They observe 112 configured whole-solver queries, 279 external one-step transitions, and fourteen zero-budget whole-solver calls from the external replay terminal seeds: **405 events**. Twelve terminal calls succeed with zero updates/projections; two refuse without publishing. These are 345 success payloads and 60 unavailable-result markers, not instrumented internal whole-solver states. Maximum joint, position, rotation-entry and orientation-error discrepancies are **1.994e-12 rad**, **6.59e-14 m**, **8.18e-13** and **5.48e-13 rad**. Exact status/count/sign checks and twelve overlap cases, fourteen joint-bound checks, seventy IEEE cases, four shell cases and fourteen poisoned-reader guards also pass.
+
+All six new whole-path comparison groups retain absolute 2e-10 budgets with zero
+relative tolerance. This does not change the standalone principal-error budget.
+The source-bound scalar-libm profile does not establish arbitrary cross-target
+determinism. Collision checks, nullspace objectives, RRT, trajectory and actuator
+admission, compiler `#bounded` control and hardware behavior remain separate.
+
+The [complete component record](../fixtures/robotics/panda-pose-solve/README.md)
+links frozen inputs, independent trajectory/terminal bindings and numerical,
+source, typing and example receipts.
 
 
 ## Joint errors become forces
@@ -468,8 +564,7 @@ do not qualify these complete control and planning tools.
 
 
 - Measured joint-space PD holding/tracking, gain analysis and saturation behavior.
-- Inverse kinematics by damped least squares, with joint limits and
-  null-space objectives.
+- Null-space posture objectives beyond the implemented position and pose queries.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
 - Trajectory timing within velocity and acceleration limits.
 
@@ -513,10 +608,10 @@ plan is reproducible; shortcutting and time parameterization follow.
 - PD holds a pose under gravity with steady-state error below a stated bound;
   step response matches the second-order model of its gains on a single
   joint.
-- Broader IK reaches held-out position/orientation targets within declared
-  tolerances; exhausted iterations return typed nonconvergence, preserving
-  the distinction between local failure and global unreachability. Joint
-  ranges remain enforced.
+- Broader pose/nullspace behavior near singularities and the principal cut;
+  keep typed local nonconvergence distinct from global unreachability. The
+  fixed-source position and pose profiles above already enforce source ranges
+  and their separate convergence criteria.
 - Planned paths are collision-free when re-checked at 10× resolution;
   the same seed gives the same plan.
 - Timed trajectories never exceed velocity and acceleration limits.

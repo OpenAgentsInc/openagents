@@ -1092,6 +1092,16 @@
       ]
     },
     {
+      "source": "psionic/examples/panda-pose-solve.coax",
+      "chapter": "psionic/book/ch167-command-a-robot.md",
+      "stdout": "psionic/examples/panda-pose-solve.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/panda-joint-pd.coax",
       "chapter": "psionic/book/ch167-command-a-robot.md",
       "stdout": "psionic/examples/panda-joint-pd.out",
