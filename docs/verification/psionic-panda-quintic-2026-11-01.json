@@ -1,0 +1,565 @@
+{
+  "schema": "psionic.panda-quintic.publication.v1",
+  "passed": true,
+  "component_commit": "a2c553c46f6ffa92ca619fd223ddb2907d5d47d9",
+  "original_component_commit": "55ac9fb12b",
+  "compiler_binding": {
+    "passed": true,
+    "input_fingerprint": "d03dc328401b97bf08eecabc2772bd6fd76bff15f5473ec40903dfdda48175cb",
+    "compiler_sha256": "196fbbf386c1e13c3bf87189bc9e1d48bf5dbe1713e898e1ed83d042f1cff498",
+    "compiler_scope": "Private current C++ emitter build with unchanged checked frontend artifacts carried; no fresh full bootstrap qualification.",
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "panda-quintic.c",
+        "bytes": 89795,
+        "sha256": "2d9de0c9d94ec16f9110c96f4d16c9a873437c55cdb1b83e9f08a832e6bbdd72",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "panda-quintic.h",
+        "bytes": 10489,
+        "sha256": "94b54677b07398d6340a7ebe68ebe1de5c0da0910c5df735ad69062dbb2ab247",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-quintic.c",
+        "bytes": 89403,
+        "sha256": "b5ec61dd43abf9871c8bd499994cdc37439d526145724931740de80439f279bc",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-quintic.h",
+        "bytes": 10489,
+        "sha256": "94b54677b07398d6340a7ebe68ebe1de5c0da0910c5df735ad69062dbb2ab247",
+        "exact_native_context_match": true
+      }
+    ],
+    "commands": [
+      {
+        "argv": [
+          "/tmp/coax-quintic-current-compiler-first/coax",
+          "c",
+          "psionic/lib/robotics/panda-quintic.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-quintic-main-binding-first/debug/panda-quintic.h"
+        ],
+        "exit": 0,
+        "seconds": 0.022776083031203598,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/tmp/coax-quintic-current-compiler-first/coax",
+          "c",
+          "psionic/lib/robotics/panda-quintic.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-quintic-main-binding-first/release/panda-quintic.h"
+        ],
+        "exit": 0,
+        "seconds": 0.02298100001644343,
+        "stderr_bytes": 0
+      }
+    ],
+    "new_source_inventory_exact": true,
+    "frozen_native_input_files": 31,
+    "numerical_reruns": 0
+  },
+  "private_compiler_build": {
+    "record": "docs/verification/coax-quintic-emitter-binding-2026-11-01.json",
+    "sha256": "610aa915b0e46df855edb0741af3cd83666170486c902c9cc041062f0db041c0",
+    "scope": "Current emitter compiled from immutable matching inputs with checked unchanged frontend artifacts carried. Exact whole C/H match binds this component to the original native proof; this is not a fresh full compiler-release qualification.",
+    "prior_cache_verification": "docs/verification/psionic-panda-nullspace-2026-11-01.json",
+    "prior_cache_verification_sha256": "4069516b7a1c15ebb802a49cc69ac0b1435218ffcdf2e9363b0a9ab67daa5d98"
+  },
+  "receipts": {
+    "psionic/fixtures/robotics/panda-quintic/checks-qualification.json": "83298ad4deaaaae993f4c441ad73ffabf8c78edbcff030eafa85336011f56f97",
+    "psionic/fixtures/robotics/panda-quintic/unit-refusals.json": "5e7f52b97d01bfc10a765ebb5e686b2cd9ec8bce5ecb9c561eb63a49594f2cd7",
+    "psionic/fixtures/robotics/panda-quintic/input-freeze-v1.json": "cbe6806534cedb6c5ebc6456656741a592b02c052ac8b274490dc220f18d1f38",
+    "psionic/fixtures/robotics/panda-quintic/reference.json": "0f23456968a3ccc8196f386477128e3a60baafdfe8f770f13c8dd185eb1e439b",
+    "psionic/fixtures/robotics/panda-quintic/reference-publication-v1.json": "2b2522e032bbd1c576bb484778ef7f28e0554d0dad491932dd818a8445ca2615",
+    "psionic/fixtures/robotics/panda-quintic/native-contract-v1.json": "b9366c81dd9fa9f3b83f0edcd48637ffe3b3457705a5143217472845c7d4d480",
+    "psionic/fixtures/robotics/panda-quintic/native-qualification.json": "81dc5c4774a50989c85ecffaa763657fbf2379f0e4518db0385655674cb58b05",
+    "psionic/fixtures/robotics/panda-quintic/native-publication-v1.json": "b596e2b8357521ce4cfe40cc6b67096b5c08323df16228ba7db7ed069f9f1bca",
+    "psionic/fixtures/robotics/panda-quintic/example-qualification.json": "da896cbfedbf21cc0a22723e23a1cf3ab50d43b57a6cd7d2a2828b8685e7bf80"
+  },
+  "new_source_groups": 13,
+  "root_mutation": {
+    "roots": [
+      {
+        "root": "psionic/lib/robotics/panda-quintic-math.coax",
+        "root_only": true,
+        "emitted_sites": 107,
+        "killed": 107,
+        "survivors": 0,
+        "stdout_sha256": "07d1ecec328d12041b7f77fa4c391d369098a143211a0d89768cf6b650e3896d"
+      },
+      {
+        "root": "psionic/lib/robotics/panda-quintic.coax",
+        "root_only": true,
+        "emitted_sites": 89,
+        "killed": 89,
+        "survivors": 0,
+        "stdout_sha256": "005329f3dedb5d1546db78cf7b8a7890e35f48032b2e834a0d7762853ea52d9f"
+      }
+    ],
+    "emitted": 196,
+    "killed": 196,
+    "survivors": 0,
+    "equivalence_waivers": false,
+    "initial_math_and_public_survivors_preserved": true
+  },
+  "new_numerical_work": {
+    "edges": 27,
+    "timing_ok": 25,
+    "duration_refusals": 2,
+    "sample_queries": 238,
+    "sample_ok": 236,
+    "unavailable_sample_markers": 2,
+    "published_timing_F64_fields": 50,
+    "unavailable_timing_transport_words": 4,
+    "published_sample_F64_fields": 4956,
+    "unavailable_sample_transport_words": 42,
+    "profiles_run": [
+      "debug",
+      "release",
+      "sanitized"
+    ],
+    "assertions_per_profile": 26756,
+    "all_complete_mode_bytes_identical": true,
+    "timing_file_byte_exact_to_independent_oracle": true,
+    "metrics": {
+      "time": {
+        "passed": true,
+        "values": 50,
+        "max_abs_error": 0.0,
+        "maximum_budget_fraction": 0.0,
+        "atol": 2e-12,
+        "rtol": 2e-12
+      },
+      "position": {
+        "passed": true,
+        "values": 1652,
+        "max_abs_error": 4.440892098500626e-16,
+        "maximum_budget_fraction": 0.0002220446049250313,
+        "atol": 2e-12,
+        "rtol": 0
+      },
+      "rate": {
+        "passed": true,
+        "values": 1652,
+        "max_abs_error": 4.440892098500626e-16,
+        "maximum_budget_fraction": 2.1700978348013183e-06,
+        "atol": 2e-10,
+        "rtol": 2e-12
+      },
+      "acceleration": {
+        "passed": true,
+        "values": 1652,
+        "max_abs_error": 1.4210854715202004e-14,
+        "maximum_budget_fraction": 5.298911567521749e-05,
+        "atol": 2e-10,
+        "rtol": 2e-12
+      }
+    },
+    "exact_endpoint_samples": 47,
+    "alias_cases": 24,
+    "source_and_limit_endpoints": 56,
+    "IEEE_role_patterns": 140,
+    "tick_refusals": 10,
+    "reader_poison_cases": 20,
+    "maximum_observed_tick_estimate_error": "1.383984073177746381200557554877201119058522766960804848027308945E-10",
+    "minimum_observed_real_reserve_ticks": "0.99999999999999371870638356453618018748656372816083148105020813970944672053896",
+    "reference": "Exact-input Fraction rounded-operation model with sqrt midpoint certificates for policy; independent80digit real quintic polynomials and continuous extrema, not the product half evaluator."
+  },
+  "book": {
+    "passed": true,
+    "exit": 0,
+    "seconds": 0.26635945797897875,
+    "stdout_sha256": "b8c652e4881b69ac0469cf314563eb3681a21b3c308c5683ffba41bd18b003be",
+    "stderr_bytes": 0,
+    "programs": 130,
+    "source_linked_listings": 477
+  },
+  "registration": {
+    "schema": "psionic.panda-quintic.registration.v1",
+    "passed": true,
+    "scope": "Syntax and exact command-routing stubs only; no real Coax, C compiler, native/numeric/SDK/model/oracle/old gate execution.",
+    "sources": {
+      "psionic/check.sh": {
+        "bytes": 44679,
+        "sha256": "67988d73681ea774651b3ed9a8769dc07523479ac6542a8aa9afc6ce8077e730"
+      },
+      "psionic/tests/robotics/check.sh": {
+        "bytes": 19625,
+        "sha256": "00e5e99e84fd1d06485347e975bf5c7d89697e9a6957811683b80e055efa12d5"
+      }
+    },
+    "commands": [
+      {
+        "label": "syntax-psionic-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/check.sh"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "syntax-psionic-tests-robotics-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "math-only",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-quintic-math"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "query-group",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-quintic"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "630161ca1613d40dec9e90e11df10753c25ecce6303e37ae00259b7cffcc33ec"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "query-no-mutation",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-quintic"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "630161ca1613d40dec9e90e11df10753c25ecce6303e37ae00259b7cffcc33ec"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "explicit-two-deduplicated",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-quintic-math",
+          "robotics/panda-quintic"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "630161ca1613d40dec9e90e11df10753c25ecce6303e37ae00259b7cffcc33ec"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-quintic-math",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-quintic-math",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-quintic",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-quintic",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "630161ca1613d40dec9e90e11df10753c25ecce6303e37ae00259b7cffcc33ec"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "default-list",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--list",
+          "all"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 2197,
+          "sha256": "349a42f43c74916985a4c0130237930fde18c10070540044fd412c7a4e4f32dc"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "unknown-rejected",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-quintic-unknown"
+        ],
+        "exit": 2,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 54,
+          "sha256": "3e29e399dccb318c15672c204ba1b34d3d1cf51c67c29e3dc98936e4bc5a4c7b"
+        }
+      },
+      {
+        "label": "whitelist-isolated",
+        "argv": [
+          "bash",
+          "/tmp/panda-quintic-registration-first/whitelist.sh",
+          "robotics/panda-quintic-math",
+          "robotics/panda-quintic",
+          "psionic/lib/robotics/panda-quintic-math.coax",
+          "psionic/lib/robotics/panda-quintic.coax",
+          "robotics/panda-quintic-unknown"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 186,
+          "sha256": "4abd16377595a44ea0e9cc1e5cc9cb93e905e6b134a2df6b13ee9a5cfb2f94cc"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "cases": [
+      {
+        "name": "math-only",
+        "source_units": [
+          "panda-quintic-math"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "query-group",
+        "source_units": [
+          "panda-quintic-math",
+          "panda-quintic"
+        ],
+        "Coax_stub_commands": 6,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "query-no-mutation",
+        "source_units": [
+          "panda-quintic-math",
+          "panda-quintic"
+        ],
+        "Coax_stub_commands": 4,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "explicit-two-deduplicated",
+        "source_units": [
+          "panda-quintic-math",
+          "panda-quintic"
+        ],
+        "Coax_stub_commands": 6,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-quintic-math",
+        "source_units": [
+          "panda-quintic-math"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-quintic",
+        "source_units": [
+          "panda-quintic-math",
+          "panda-quintic"
+        ],
+        "Coax_stub_commands": 6,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      }
+    ],
+    "source_identity_only_copies_from_NEW": {
+      "psionic/lib/robotics/panda-quintic-math.coax": {
+        "bytes": 9105,
+        "sha256": "d7d834285ae9f415a35337fea21c478018c0b0500b38982ce8554fd7faf70fd9"
+      },
+      "psionic/lib/robotics/panda-quintic.coax": {
+        "bytes": 8360,
+        "sha256": "24c2071b031738094307cbfa1d08b86579c0db2299ab7d5f407f83944195882c"
+      }
+    },
+    "product_copied_into_PUB": false,
+    "default_list": {
+      "passed": true,
+      "new_units": [
+        "panda-quintic-math",
+        "panda-quintic"
+      ],
+      "no_gate_execution": true
+    },
+    "whitelist": {
+      "passed": true,
+      "positive_cases": 4,
+      "negative_cases": 1,
+      "exact_function_sha256": "27e49e6edc5ee252a3b6be25d6f700ce737438009785f09e4a62ea0cafc0856d"
+    },
+    "real_Coax_calls": 0,
+    "real_C_compiler_calls": 0,
+    "real_native_runs": 0,
+    "SDK_calls": 0,
+    "old_gates_repeated": false,
+    "seconds": 2.0698196250014007,
+    "tooling": {
+      "check-routing.py": {
+        "bytes": 6372,
+        "sha256": "e048ffe065771e3544430940e74b1aec6041f6cc3ed988776cc2f8787f239ee8"
+      },
+      "shadow/coax-stub": {
+        "bytes": 206,
+        "sha256": "afd9da0922a8011fc4b19dd91d6964a8fd080cef112d477dd01004ec3dcd5721"
+      },
+      "shadow/psionic/tests/robotics/check-panda-quintic-native.sh": {
+        "bytes": 213,
+        "sha256": "497d6a2b36b51a1838ead05ee23326d6805b809b45dc19791b78516248a9bac1"
+      }
+    },
+    "initial_syntax_only_failure": {
+      "record": {
+        "bytes": 1527,
+        "sha256": "c79f5671d75b404ab73900d554d74c6c0872bdb09c9fd7611a586fe85b20fd7d"
+      },
+      "retained_directory": "first-syntax-failure",
+      "cause": "One duplicated shell case-pattern separator introduced by the new whitelist concatenation; removed before any stub routing or real numerical invocation.",
+      "real_Coax_or_C_or_native_calls": 0
+    },
+    "post_execution_binding": "Metadata-only tooling/failure identities; passing stub routing and final source scripts unchanged, no repeated gates."
+  },
+  "manifest_claim_review": {
+    "scope": "Own167 CPU quintic timing and example only; previous model/device/serving claims are unchanged.",
+    "updates": [
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "1ac1a4fbe8c35badd72d99b74013fb226c8e1dfbce14afaad7e632a57b223198",
+        "new": "3ff5ca3aee3e0decd49b3b6c5474b1487f6e9dc53aadece757b57ea284eda28d"
+      },
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/examples.json",
+        "old": "4548df41f5c9ea23f205e157a633b8e485e26c8017ae2f961723fdb3f922d4be",
+        "new": "f08ea897c5abdf1cbd7e6d62f98ef6c421c21fd35defd006db4dbd01a2f5ae51"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "1ac1a4fbe8c35badd72d99b74013fb226c8e1dfbce14afaad7e632a57b223198",
+        "new": "3ff5ca3aee3e0decd49b3b6c5474b1487f6e9dc53aadece757b57ea284eda28d"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/examples.json",
+        "old": "4548df41f5c9ea23f205e157a633b8e485e26c8017ae2f961723fdb3f922d4be",
+        "new": "f08ea897c5abdf1cbd7e6d62f98ef6c421c21fd35defd006db4dbd01a2f5ae51"
+      }
+    ]
+  },
+  "scope": "Source-limited rest-to-rest joint reference with declared numerical timing assumptions. No applied plant motion, moving-state/VLA retargeting, jerk bounds, collision, tracking, compilerR14 or hardware certificate.",
+  "publication_numerical_reruns": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "quantity_operator_token_gap_retained": true
+}
