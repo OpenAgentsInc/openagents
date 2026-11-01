@@ -96,13 +96,17 @@ and takes them into it.
 | plants | fern, flower, mushroom, cactus, crystal; 4 to 24 | ferns; flowers on stems; mushrooms that glow after dark; cacti with arms; glowing crystals (0088) |
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
 | flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0088) |
-| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue, fountain, wall, wreck (up to 8) | the fixture pack's props (two wagons: "Wagons"); a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088); a fountain (a stone basin, water and glowing jets), a stone wall with a gap, a shipwreck (a broken hull on its side, ribs and a mast) (0092) |
+| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue, fountain, wall, wreck, dock (up to 8) | the fixture pack's props (two wagons: "Wagons"); a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088); a fountain (a stone basin, water and glowing jets), a stone wall with a gap, a shipwreck (a broken hull on its side, ribs and a mast) (0092) |
 | character | a name and a role (up to 4) | a figure (verse/figure.coax, drawn bone by bone as round cones: myrealm-shapes.coax) with its name and role |
 | house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065); a small one is "a cottage" (0092) |
 | herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur, elephant, giraffe, monkey, squirrel; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079); elephants with trunks, tusks and big ears, giraffes with long patched necks, monkeys with pale faces, squirrels with bushy tails (0092) |
 | mist | (on or off) | mist lying low over the land: the haze starts at once, four times as thick, and greys the horizon (0092; `uniforms[RAY_AT + 11]`) |
 | dwellings | tepee, tent, hut; 1 to 8 | a camp, doors to its middle: tepees of hide on crossed poles, ridge tents, round thatched huts |
 | village | 3 to 8 people | its people walking about the dwellings or the house (with neither, a few cottages round a well): plain figures in everyday colours, never a caricature |
+| enclosure | stone, wood, palisade, hedge; small, medium, large | walls all round the middle with a gateway north and south: masoned stone with a coping, a rail fence, sharpened logs, or a clipped hedge (0097; see "The site") |
+| centre | fountain, statue, well, campfire, tower, stones, tree, pond | the one thing in the very middle (0097) |
+| layout | square, garden, clearing, ring, village | how the rest stands round the middle: paved flagstones, beds inside the walls, trees round open ground, a ring, or cottages round a green (0097) |
+| path | stone, earth | flagstones or a trodden track from where you start through the middle (0097) |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |
 
 Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coax`):
@@ -127,6 +131,50 @@ realm draws with `verse/style-preset.coax`: painterly is `STYLE_PAINTERLY`, flat
 `verse_style_flat(FLAT_GARDEN, tier)`, each at the realm's time of day (`verse_style_at`) and the
 phone tier under 600 CSS pixels wide; `myrealm.wgsl` carries `verse/style.coax`'s functions
 (`build.sh` splices them). Low poly draws as before.
+
+## The site
+
+A place built round a middle, such as a courtyard, walled garden, fort, village square or
+clearing, is planned as one site (`0097_builder_layout.sql`, `myrealm-site.coax`). The planner
+writes four typed features: `enclosure`, `centre`, `layout` and `path`. Each carries its kind in
+its own `kind` field, because one enum of every variant over about 90 values is refused by the
+model API with a 400. Holding a board copies `kind` into the feature's variant. A thing in the
+middle is the centre only: the same thing as a prop, a tower building, a big tree or a pond is
+dropped when the board is held.
+
+The page lays the site out as follows:
+
+- The middle stands in front of where you start. With walls, you start 7.5 m inside the south
+  wall, so the camera 6 m behind you is inside too, and you face the centre.
+- Walls are six segment colliders with gateways south and north. You walk out of either gate.
+- Inside the walls only small things stand (under 0.75 m), so nothing large blocks the yard. The
+  gateways, the open ground round the centre and the path stay clear.
+- A layout draws what it promises even when nothing else was asked: a garden's beds and
+  blossom trees, a clearing's ring of trees, a ring of low stones.
+- A dock runs from the shore nearest you out over the water, with a boat tied to it.
+- A realm without these features lays out exactly as before: the seeded draws are unchanged.
+
+The layout eval scores what is laid out, not what the planner said. Run it with:
+
+```sh
+coax/web/api/eval-builder.sh --layout PLANS --set tune   # plans and makes each realm on a throwaway api
+coax/web/tool.sh realm-layout-eval PLANS --why          # lays each spec out as the page does and scores it
+```
+
+`coax/web/api/eval_layout.tsv` holds 10 tuning prompts and 14 held-out prompts. Never tune on the
+held-out set. The checks are: walls round the middle (48 of 64 rays meet a wall within 15 m), the
+centre present and in the walls' middle (or in front of where you start), each layout's own
+check, the path, the water, the dock, and that every realm is playable (you start clear and can
+walk to the edge).
+
+| Set | Before (0096) | After (0097) |
+|---|---|---|
+| Tuning, 10 realms | 45%, 19 of 42 checks | 100%, 42 of 42 |
+| Held out, 14 realms | 49%, 27 of 56 checks | 95%, 53 of 56 |
+
+Before, no realm had walls round its middle (0 of 12) and only 1 centre of 21 stood in the
+middle. The held-out misses after: a stockade's lookout tower was planned as a building, not the
+centre, and a standing-stone circle in a pine clearing was planned as a ring, not a clearing.
 
 ## Ownership and settings
 

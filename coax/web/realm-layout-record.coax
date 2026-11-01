@@ -1,0 +1,139 @@
+// Records the layout eval's plans (realm-layout-eval.coax): each prompt of
+// coax/web/api/eval_layout.tsv planned by the real planner behind API, made, and the realm's spec
+// (the document the page lays out) kept in OUT, after "== ID". eval-builder.sh --layout runs it
+// against a throwaway api and database.
+//   coax/web/tool.sh realm-layout-record API OUT [--set tune|held]
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+starts :: (text: string, head: string) -> bool { return text.count >= head.count && text[0..<head.count] == head; }
+line_end :: (text: string, from: int) -> int { e := from; while e < text.count && text[e] != '\n' { e += 1; } return e; }
+word_of :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < line.count {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    e := i; while e < line.count && line[e] != ' ' { e += 1; }
+    if e > i { if n == k { return line[i..<e]; } n += 1; }
+    i = e;
+  }
+  return "";
+}
+LE_TEXT :: 262144;
+LeBuf :: struct { b: [LE_TEXT] u8; n: int; bad: bool; }
+le_put :: (o: [] LeBuf, t: string) {
+  if o[0].n + t.count > LE_TEXT { o[0].bad = true; return; }
+  for k: 0..<t.count { o[0].b[o[0].n + k] = t[k]; }
+  o[0].n += t.count;
+}
+le_int :: (o: [] LeBuf, v: int) {
+  if v < 0 { le_put(o, "-"); le_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; le_put(o, cast(string) e[..]); }
+}
+le_text :: (o: [] LeBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+// A JSON string's body: our prompts' quotes and backslashes escaped.
+le_json :: (o: [] LeBuf, t: string) { for c: t { if c == '"' || c == '\\' { le_put(o, "\\"); } e: [1] u8; e[0] = c; le_put(o, cast(string) e[..]); } }
+
+// ---- the prompts (eval_layout.tsv: id, set, prompt, wanted)
+
+LE_MOST :: 40;
+LeRow :: struct { id: string; set: string; prompt: string; wants: string; }
+le_field :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= line.count {
+    e := i; while e < line.count && line[e] != '\t' { e += 1; }
+    if n == k { return line[i..<e]; }
+    n += 1; i = e + 1;
+  }
+  return "";
+}
+le_rows :: (text: string, rows: [] LeRow) -> int {
+  n := 0; i := 0;
+  while i < text.count && n < rows.count {
+    e := line_end(text, i); line := text[i..<e]; i = e + 1;
+    if line.count == 0 { continue; }
+    rows[n] = LeRow.{id = le_field(line, 0), set = le_field(line, 1), prompt = le_field(line, 2), wants = le_field(line, 3)};
+    n += 1;
+  }
+  return n;
+}
+
+// ---- recording: the planner's board for each prompt, made, and the realm's spec
+
+le_curl :: (method: string, url: string, body: string, key: string, out: [] u8) -> string {
+  argv: [12] string; n := 0;
+  argv[n] = "curl"; n += 1; argv[n] = "-s"; n += 1; argv[n] = "-X"; n += 1; argv[n] = method; n += 1;
+  argv[n] = "-H"; n += 1; argv[n] = "Content-Type: application/json"; n += 1;
+  hk: [1] LeBuf;
+  if key.count > 0 { le_put(hk[..], "X-Verse-Player: "); le_put(hk[..], key); argv[n] = "-H"; n += 1; argv[n] = le_text(hk[..]); n += 1; }
+  if body.count > 0 { argv[n] = "--data-binary"; n += 1; argv[n] = body; n += 1; }
+  argv[n] = url; n += 1;
+  err: [4096] u8;
+  r := proc_run(argv[0..<n], 60000, out, err[..]);
+  if r.started != 0 || r.status != 0 { return ""; }
+  return cast(string) out[0..<r.out_n];
+}
+// The text after `"name":"` up to its closing quote (our API's own answer: a bounded field).
+le_json_text :: (body: string, name: string) -> string {
+  for i: 0..<body.count {
+    if i + name.count + 4 <= body.count && body[i] == '"' && body[i + 1..<i + 1 + name.count] == name && body[i + 1 + name.count] == '"' {
+      j := i + name.count + 2;
+      while j < body.count && (body[j] == ':' || body[j] == ' ') { j += 1; }
+      if j < body.count && body[j] == '"' { e := j + 1; while e < body.count && body[e] != '"' { e += 1; } return body[j + 1..<e]; }
+    }
+  }
+  return "";
+}
+le_record :: (api: string, out_path: string, rows: [] LeRow, n: int, set: string) -> int {
+  o: [1] LeBuf; made := 0;
+  for i: 0..<n {
+    row := rows[i];
+    if set.count > 0 && row.set != set { continue; }
+    u: [1] LeBuf; le_put(u[..], api); le_put(u[..], "/api/playtest/player");
+    b1: [4096] u8; who := le_curl("POST", le_text(u[..]), "{}", "", b1[..]);
+    key := le_json_text(who, "key");
+    if key.count == 0 { print("% no player: %\n", row.id, who); continue; }
+    p: [1] LeBuf; le_put(p[..], "{\"prompt\":\""); le_json(p[..], row.prompt); le_put(p[..], "\"}");
+    u[0].n = 0; le_put(u[..], api); le_put(u[..], "/api/playtest/realms/plan?as=lines");
+    b2: [16384] u8; board := le_curl("POST", le_text(u[..]), le_text(p[..]), key, b2[..]);
+    if !starts(board, "plan ") { print("% no board: %\n", row.id, board); continue; }
+    // MAKE IT with the board's rows as the planner switched them
+    m: [1] LeBuf; le_put(m[..], "{\"plan\":"); le_put(m[..], word_of(board[0..<line_end(board, 0)], 1)); le_put(m[..], ",\"on\":[");
+    first := true; j := 0;
+    while j < board.count {
+      e := line_end(board, j); line := board[j..<e]; j = e + 1;
+      if word_of(line, 0) != "f" { continue; }
+      if !first { le_put(m[..], ","); } first = false;
+      le_put(m[..], ifx word_of(line, 2) == "1" then "true" else "false");
+    }
+    le_put(m[..], "]}");
+    u[0].n = 0; le_put(u[..], api); le_put(u[..], "/api/playtest/realms?as=lines");
+    b3: [4096] u8; made_lines := le_curl("POST", le_text(u[..]), le_text(m[..]), key, b3[..]);
+    slug := ifx starts(made_lines, "slug ") then word_of(made_lines[0..<line_end(made_lines, 0)], 1) else "";
+    if slug.count == 0 { print("% not made: %\n", row.id, made_lines); continue; }
+    u[0].n = 0; le_put(u[..], api); le_put(u[..], "/api/playtest/realms/"); le_put(u[..], slug);
+    b4: [16384] u8; spec := le_curl("GET", le_text(u[..]), "", key, b4[..]);
+    if !starts(spec, "realm ") { print("% no spec: %\n", row.id, spec); continue; }
+    le_put(o[..], "== "); le_put(o[..], row.id); le_put(o[..], "\n"); le_put(o[..], spec);
+    if spec[spec.count - 1] != '\n' { le_put(o[..], "\n"); }
+    made += 1;
+    print("% %\n", row.id, row.prompt);
+    k := 0; while k < board.count { e := line_end(board, k); line := board[k..<e]; k = e + 1; if starts(line, "f ") || starts(line, "want ") || starts(line, "ground ") { print("     %\n", line); } }
+  }
+  if o[0].bad || !fs_write(out_path, le_text(o[..])) { tool_errln("realm-layout-eval: cannot write the plans"); return 1; }
+  print("recorded % realms into %\n", made, out_path);
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  tsv: [65536] u8; tn := fs_read("coax/web/api/eval_layout.tsv", tsv[..]);
+  if !ok || tn < 0 || args_count(a[..]) < 2 { tool_errln("usage (from the repository root): coax/web/tool.sh realm-layout-record API OUT [--set tune|held]"); return 2; }
+  rows: [LE_MOST] LeRow; n := le_rows(cast(string) tsv[0..<tn], rows[..]);
+  return le_record(args_at(a[..], 0), args_at(a[..], 1), rows[..], n, args_value(a[..], "--set", ""));
+}

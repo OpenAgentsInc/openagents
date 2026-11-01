@@ -1,0 +1,486 @@
+// A made realm's site (migrations/0097_builder_layout.sql; docs/verse/realm-builder.md "The site"):
+// what was asked for round a middle. Four features plan it and the planner picks them:
+//   enclosure KIND SIZE  walls all round the middle with a gate north and south: stone walls, a
+//                        wooden fence, a palisade of logs or a hedge, round a yard 14, 18 or 22 m across
+//   centre KIND          the one thing in the middle: a fountain, a statue, a well, a campfire, a stone
+//                        tower, a ring of standing stones, a giant tree or a round pond
+//   layout KIND          how the rest stands round it: a paved square, a garden (beds along the walls),
+//                        a clearing (the trees round it), a ring, a village (houses round a green)
+//   path KIND            flagstones or trodden earth from behind where you start, through the middle
+//                        and out the far side
+// You start inside the walls, a few metres in from the south gate, facing the middle. Nothing is
+// laid out across a wall or in a gateway, so there is always a way out. A realm with none of these
+// features has no site and is laid out exactly as before.
+
+ENCL_KINDS :: [4] string.["stone", "wood", "palisade", "hedge"];
+ENCL_STONE :: 1; ENCL_WOOD :: 2; ENCL_PALISADE :: 3; ENCL_HEDGE :: 4;
+CENTRE_N :: 8;
+CENTRE_KINDS :: [CENTRE_N] string.["fountain", "statue", "well", "campfire", "tower", "stones", "tree", "pond"];
+CENTRE_FOUNTAIN :: 0; CENTRE_STATUE :: 1; CENTRE_WELL :: 2; CENTRE_CAMPFIRE :: 3; CENTRE_TOWER :: 4; CENTRE_STONES :: 5; CENTRE_TREE :: 6; CENTRE_POND :: 7;
+CENTRE_PROP :: [CENTRE_N] int.[14, 13, 9, 5, -1, -1, -1, -1];   // the prop each is drawn as (PROPS), or its own
+CENTRE_R :: [CENTRE_N] f32.[1.8, 0.9, 0.9, 0.8, 1.9, 3.6, 2.4, 3.0];   // how far from the middle it reaches
+LAYOUT_KINDS :: [5] string.["square", "garden", "clearing", "ring", "village"];
+LAYOUT_SQUARE :: 1; LAYOUT_GARDEN :: 2; LAYOUT_CLEARING :: 3; LAYOUT_RING :: 4; LAYOUT_VILLAGE :: 5;
+PATH_KINDS :: [2] string.["stone", "earth"];
+SITE_H :: [3] f32.[9, 11, 13];    // half the yard's width, small to large
+SITE_IN :: 7.5f32;                   // you start this far inside the south wall: the camera, 6 m behind you, inside too
+GATE_HALF :: 1.7f32;                 // half a gateway's width
+CLEARING_R :: 10.0f32;               // a clearing's open ground round the middle
+SEGS :: 8;
+// each kind of wall: its height, half its thickness, and its colour
+WALL_H :: [5] f32.[0, 1.85, 1.25, 2.75, 1.7];
+WALL_HALF :: [5] f32.[0, 0.32, 0.1, 0.24, 0.55];
+HEDGE_RGB :: [3] f32.[0.22, 0.42, 0.16];
+EARTH_RGB :: [3] f32.[0.5, 0.38, 0.26];
+PROP_DOCK :: 17;
+
+site_reset :: (s: [] MyRealm) {
+  s[0].encl = 0; s[0].encl_size = 1; s[0].centre = -1; s[0].site_layout = 0; s[0].path_kind = 0;
+}
+// A feature line of the site's, read into the spec (read_spec): true when it was one.
+site_read :: (s: [] MyRealm, f: string, line: string) -> bool {
+  a := word_of(line, 2); b := word_of(line, 3);
+  if f == "enclosure" {
+    s[0].encl_size = ifx a == "small" then 0 else ifx a == "large" then 2 else 1;
+    s[0].encl = ENCL_STONE; for k: 0..<4 { if ENCL_KINDS[k] == b || ENCL_KINDS[k] == a { s[0].encl = k + 1; } }
+    return true;
+  }
+  if f == "centre" { for k: 0..<CENTRE_N { if CENTRE_KINDS[k] == a { s[0].centre = k; } } return true; }
+  if f == "layout" { for k: 0..<5 { if LAYOUT_KINDS[k] == a { s[0].site_layout = k + 1; } } return true; }
+  if f == "path" { s[0].path_kind = ifx a == "earth" then 2 else 1; return true; }
+  return false;
+}
+
+// Where the site is, from the spec alone (before anything is laid out).
+site_plan :: (s: [] MyRealm) {
+  s[0].seg_n = 0; s[0].centre_laid = false; s[0].dock_laid = false; s[0].path_tiles = 0; s[0].paved_n = 0; s[0].site_ring = false;
+  s[0].site = s[0].camera != CAM_SIDE && (s[0].encl > 0 || s[0].centre >= 0 || s[0].site_layout > 0 || s[0].path_kind > 0);
+  if !s[0].site { return; }
+  walled := s[0].encl > 0;
+  h := ifx walled then SITE_H[s[0].encl_size] else ifx s[0].site_layout == LAYOUT_CLEARING then CLEARING_R else 8.0f32;
+  s[0].site_h = h; s[0].site_x = 0;
+  s[0].site_z = ifx walled then 6 - (h - SITE_IN) else ifx s[0].site_layout == LAYOUT_CLEARING then -2.0f32 else -3.0f32;
+  s[0].site_open = (ifx s[0].centre >= 0 then CENTRE_R[s[0].centre] else 1.0f32) + 1.4;
+  s[0].site_paved = s[0].site_layout == LAYOUT_SQUARE || (s[0].encl == ENCL_STONE && s[0].site_layout == 0 && s[0].ground == 4);
+  s[0].paved_h = ifx walled then h - 0.5 else 8.5f32;
+  // the path: from behind where you start, through the middle, out to the far edge
+  s[0].path_south = lo(GROUND_R - 3, 15); s[0].path_north = -(GROUND_R - 3);
+}
+// The path's line across the land at z: straight through the walls, bending a little outside them.
+path_x :: (s: [] MyRealm, z: f32) -> f32 {
+  out := abs(z - s[0].site_z) - (ifx s[0].encl > 0 then s[0].site_h + 1.0f32 else 3.0f32);
+  return s[0].site_x + 0.9 * clamp(out / 4, 0, 1) * sin((z - s[0].site_z) * 0.21);
+}
+// How far (x, z) is from wall segment k's line, past its half thickness.
+seg_gap :: (s: [] MyRealm, k: int, x: f32, z: f32) -> f32 {
+  ax := s[0].seg_x0[k]; az := s[0].seg_z0[k]; bx := s[0].seg_x1[k]; bz := s[0].seg_z1[k];
+  dx := bx - ax; dz := bz - az; l2 := dx * dx + dz * dz;
+  t := ifx l2 > 0.0001 then clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1) else 0.0f32;
+  qx := ax + t * dx - x; qz := az + t * dz - z;
+  return sqrt(qx * qx + qz * qz) - s[0].seg_r[k];
+}
+// May something of radius r stand at (x, z) for the site: clear of the middle, the walls, the
+// gateways and the path, inside the walls only when it is small (or set there in a ring), and off
+// the paving when it is ground cover.
+site_free :: (s: [] MyRealm, x: f32, z: f32, r: f32) -> bool {
+  if !s[0].site { return true; }
+  dx := x - s[0].site_x; dz := z - s[0].site_z; d := sqrt(dx * dx + dz * dz);
+  if d < s[0].site_open + r { return false; }
+  for k: 0..<s[0].seg_n { if seg_gap(s, k, x, z) < r + 0.25 { return false; } }
+  h := s[0].site_h; m := hi(abs(dx), abs(dz));
+  if s[0].encl > 0 {
+    in_yard := m < h - r - 0.4;
+    if !in_yard && m < h + r + 0.5 { return false; }                     // across a wall
+    if in_yard && r >= 0.75 && !s[0].site_ring { return false; }          // a big thing stands outside
+    if abs(dx) < GATE_HALF + r + 0.3 && abs(dz) > h - 3.2 && abs(dz) < h + 3.2 { return false; }   // the gateways stay open
+  }
+  if s[0].site_layout == LAYOUT_CLEARING && r >= 0.9 && d < CLEARING_R + r { return false; }   // the clearing stays open
+  if s[0].site_paved && r < 0.5 && m < s[0].paved_h + r && !s[0].site_ring { return false; }   // no tufts on the paving
+  if s[0].path_kind > 0 && z < s[0].path_south + r && z > s[0].path_north - r && abs(x - path_x(s, z)) < 1.1 + r { return false; }
+  return true;
+}
+// A wall segment: what you can't walk through (walk_to), its height for a jump.
+seg_add :: (s: [] MyRealm, ax: f32, az: f32, bx: f32, bz: f32) {
+  if s[0].seg_n >= SEGS { return; }
+  n := s[0].seg_n;
+  s[0].seg_x0[n] = ax; s[0].seg_z0[n] = az; s[0].seg_x1[n] = bx; s[0].seg_z1[n] = bz;
+  s[0].seg_r[n] = WALL_HALF[s[0].encl]; s[0].seg_h[n] = WALL_H[s[0].encl];
+  s[0].seg_n = n + 1;
+}
+// Pushes p out of every wall it is in (you, BODY_R round): walk_to's.
+seg_push :: (s: [] MyRealm, p: Spot) -> Spot {
+  q := p;
+  for k: 0..<s[0].seg_n {
+    if s[0].y >= s[0].seg_h[k] { continue; }   // over a fence with a jump
+    ax := s[0].seg_x0[k]; az := s[0].seg_z0[k]; bx := s[0].seg_x1[k]; bz := s[0].seg_z1[k];
+    dx := bx - ax; dz := bz - az; l2 := dx * dx + dz * dz;
+    t := ifx l2 > 0.0001 then clamp(((q.x - ax) * dx + (q.z - az) * dz) / l2, 0, 1) else 0.0f32;
+    cx := ax + t * dx; cz := az + t * dz;
+    ox := q.x - cx; oz := q.z - cz; d := sqrt(ox * ox + oz * oz); room := s[0].seg_r[k] + BODY_R;
+    if d >= room { continue; }
+    if d < 0.0001 { ox = -dz; oz = dx; d = hi(sqrt(l2), 0.0001); }
+    q = Spot.{x = cx + ox / d * room, z = cz + oz / d * room};
+  }
+  return q;
+}
+
+// ---- building the site
+
+site_out :: (s: [] MyRealm, r: [] Seed) {
+  if !s[0].site { return; }
+  if s[0].encl > 0 { walls_out(s, r); }
+  if s[0].site_paved { paving_out(s, r); }
+  if s[0].path_kind > 0 { path_out(s, r); }
+  if s[0].centre >= 0 { centre_out(s, r); }
+  coat(s, 1); glowing(s, 0);
+}
+
+// Four walls round the middle, a gateway in the south and the north one, a pillar or post at every end.
+walls_out :: (s: [] MyRealm, r: [] Seed) {
+  cx := s[0].site_x; cz := s[0].site_z; h := s[0].site_h; g := GATE_HALF;
+  w := cx - h; e := cx + h; n := cz - h; so := cz + h;
+  seg_add(s, w, so, cx - g, so); seg_add(s, cx + g, so, e, so);
+  seg_add(s, w, n, cx - g, n); seg_add(s, cx + g, n, e, n);
+  seg_add(s, e, n, e, so); seg_add(s, w, n, w, so);
+  for k: 0..<s[0].seg_n { wall_run(s, r, s[0].seg_x0[k], s[0].seg_z0[k], s[0].seg_x1[k], s[0].seg_z1[k]); }
+  // the gateways: posts either side, and over a palisade's a beam
+  for side: 0..<2 {
+    gz := ifx side == 0 then so else n;
+    for k: 0..<2 { u: f32 = ifx k == 0 then -g else g; wall_end(s, cx + u, gz, true); }
+    if s[0].encl == ENCL_PALISADE {
+      crate := mesh_named(s, "Prop_Crate"); coat(s, 1);
+      sized(s, crate, cx, 3.05, gz, 0, 0, 2 * g + 0.7, 0.3, 0.32, WOOD_RGB[0] * 0.8, WOOD_RGB[1] * 0.8, WOOD_RGB[2] * 0.8);
+    }
+  }
+  for k: 0..<4 { wall_end(s, ifx k % 2 == 0 then w else e, ifx k < 2 then n else so, false); }
+}
+// One run of wall from a to b (along x or along z), in the realm's kind of wall.
+wall_run :: (s: [] MyRealm, r: [] Seed, ax: f32, az: f32, bx: f32, bz: f32) {
+  crate := mesh_named(s, "Prop_Crate");
+  dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz);
+  if l < 0.2 { return; }
+  ux := dx / l; uz := dz / l;
+  yaw: f32 = ifx abs(dz) > abs(dx) then 1.5707963f32 else 0.0f32;   // a box's width runs along (cos yaw, -sin yaw)
+  kind := s[0].encl;
+  if kind == ENCL_STONE {
+    // dry stone in courses, a block every 2.4 m in its own grey, a darker coping on top
+    blocks := cast(int) (l / 2.4) + 1; bl := l / cast(f32) blocks;
+    for i: 0..<blocks {
+      m := (cast(f32) i + 0.5) * bl; x := ax + ux * m; z := az + uz * m;
+      t := 0.92 + 0.14 * rand(r);
+      masoned(s); sized(s, crate, x, 0, z, yaw, 0, bl + 0.02, 1.7, 0.62, STONE_RGB[0] * t, STONE_RGB[1] * t, STONE_RGB[2] * t * 0.97);
+      coat(s, 1); sized(s, crate, x, 1.68, z, yaw, 0, bl + 0.04, 0.17, 0.76, STONE_RGB[0] * 0.86, STONE_RGB[1] * 0.86, STONE_RGB[2] * 0.84);
+    }
+    return;
+  }
+  if kind == ENCL_WOOD {
+    // a rail fence: a post every two metres, two rails between
+    posts := cast(int) (l / 2.0) + 1; pl := l / cast(f32) posts;
+    coat(s, 1);
+    for i: 0..<posts + 1 {
+      m := cast(f32) i * pl;
+      sized(s, crate, ax + ux * m, 0, az + uz * m, yaw, 0, 0.17, 1.25, 0.17, WOOD_RGB[0] * 0.85, WOOD_RGB[1] * 0.85, WOOD_RGB[2] * 0.85);
+    }
+    for k: 0..<2 {
+      y: f32 = ifx k == 0 then 0.45f32 else 0.95f32;
+      sized(s, crate, ax + ux * l * 0.5, y, az + uz * l * 0.5, yaw, 0, l, 0.11, 0.08, WOOD_RGB[0], WOOD_RGB[1], WOOD_RGB[2]);
+    }
+    return;
+  }
+  if kind == ENCL_PALISADE {
+    // a stockade: logs side by side, each sharpened to a point, not all the same height
+    logs := cast(int) (l / 0.44) + 1; ll := l / cast(f32) logs;
+    for i: 0..<logs {
+      m := (cast(f32) i + 0.5) * ll; x := ax + ux * m; z := az + uz * m;
+      top := 2.25 + 0.25 * rand(r); t := 0.85 + 0.25 * rand(r);
+      round_cone(s, x, -0.05, z, 0.22, x, top, z, 0.19, WOOD_RGB[0] * t, WOOD_RGB[1] * t, WOOD_RGB[2] * t);
+      round_cone(s, x, top - 0.02, z, 0.19, x, top + 0.5, z, 0.025, WOOD_RGB[0] * t * 1.15, WOOD_RGB[1] * t * 1.12, WOOD_RGB[2] * t * 1.05);
+    }
+    return;
+  }
+  // a hedge: clipped and green, its top rounded
+  untextured(s);
+  sized(s, crate, ax + ux * l * 0.5, 0, az + uz * l * 0.5, yaw, 0, l + 0.4, 1.35, 1.0, HEDGE_RGB[0], HEDGE_RGB[1], HEDGE_RGB[2]);
+  balls := cast(int) (l / 0.9) + 1; bl := l / cast(f32) balls;
+  for i: 0..<balls + 1 {
+    m := cast(f32) i * bl; t := 0.9 + 0.2 * rand(r);
+    ball(s, ax + ux * m, 1.3, az + uz * m, 0.55, HEDGE_RGB[0] * t, HEDGE_RGB[1] * t, HEDGE_RGB[2] * t);
+  }
+  coat(s, 1);
+}
+// A pillar at a wall's corner or a gateway (stone), a post (wood, palisade), or nothing (hedge).
+wall_end :: (s: [] MyRealm, x: f32, z: f32, gate: bool) {
+  crate := mesh_named(s, "Prop_Crate");
+  kind := s[0].encl;
+  if kind == ENCL_STONE {
+    up: f32 = ifx gate then 2.35f32 else 2.05f32;
+    masoned(s); sized(s, crate, x, 0, z, 0, 0, 0.96, up, 0.96, STONE_RGB[0] * 1.04, STONE_RGB[1] * 1.04, STONE_RGB[2]);
+    coat(s, 1); sized(s, crate, x, up - 0.02, z, 0, 0, 1.12, 0.2, 1.12, STONE_RGB[0] * 0.84, STONE_RGB[1] * 0.84, STONE_RGB[2] * 0.82);
+    if gate { round_cone(s, x, up + 0.18, z, 0.3, x, up + 0.5, z, 0.12, STONE_RGB[0] * 0.95, STONE_RGB[1] * 0.95, STONE_RGB[2] * 0.92); }
+    return;
+  }
+  if kind == ENCL_WOOD && gate { coat(s, 1); sized(s, crate, x, 0, z, 0, 0, 0.24, 1.6, 0.24, WOOD_RGB[0] * 0.8, WOOD_RGB[1] * 0.8, WOOD_RGB[2] * 0.8); return; }
+  if kind == ENCL_PALISADE && gate { round_cone(s, x, -0.05, z, 0.3, x, 3.3, z, 0.27, WOOD_RGB[0] * 0.8, WOOD_RGB[1] * 0.8, WOOD_RGB[2] * 0.8); }
+  if kind == ENCL_HEDGE && gate { untextured(s); ball(s, x, 1.4, z, 0.7, HEDGE_RGB[0] * 0.9, HEDGE_RGB[1] * 0.9, HEDGE_RGB[2] * 0.9); coat(s, 1); }
+}
+// Flagstones over the square: each its own grey, the ground showing between them as the joints.
+paving_out :: (s: [] MyRealm, r: [] Seed) {
+  crate := mesh_named(s, "Prop_Crate");
+  ph := s[0].paved_h; n := cast(int) (2 * ph / 1.45) + 1; t := 2 * ph / cast(f32) n;
+  coat(s, 0.85); masoned(s);   // dressed stone, not the crate's planks
+  for i: 0..<n { for j: 0..<n {
+    x := s[0].site_x - ph + t * (cast(f32) i + 0.5); z := s[0].site_z - ph + t * (cast(f32) j + 0.5);
+    if water_in(s, x, z) > -0.6 { continue; }
+    k := 0.86 + 0.2 * rand(r); warm := 0.97 + 0.06 * rand(r);
+    sized(s, crate, x, -0.035, z, (rand(r) - 0.5) * 0.04, 0, t - 0.09, 0.07, t - 0.09, STONE_RGB[0] * k * warm, STONE_RGB[1] * k, STONE_RGB[2] * k / warm);
+    s[0].paved_n += 1;
+  } }
+  coat(s, 1); glowing(s, 0);
+}
+// The path: stone, pairs of flagstones a step apart; earth, a trodden strip, darker than the ground.
+path_out :: (s: [] MyRealm, r: [] Seed) {
+  crate := mesh_named(s, "Prop_Crate"); rock := mesh_named(s, "Rock_Medium_1");
+  z := s[0].path_south;
+  step: f32 = ifx s[0].path_kind == 1 then 0.92f32 else 0.85f32;
+  while z > s[0].path_north {
+    x := path_x(s, z);
+    dx := x - s[0].site_x; dz := z - s[0].site_z;
+    on_paving := s[0].site_paved && hi(abs(dx), abs(dz)) < s[0].paved_h + 0.3;
+    in_middle := sqrt(dx * dx + dz * dz) < s[0].site_open - 0.2;
+    if !on_paving && !in_middle && water_in(s, x, z) < -0.4 && sqrt(x * x + z * z) < GROUND_R - 1.2 {
+      yaw := (path_x(s, z - 0.5) - x) * 0.9;
+      if s[0].path_kind == 1 {
+        for k: 0..<2 {
+          u: f32 = ifx k == 0 then -0.4f32 else 0.4f32; kk := 0.85 + 0.22 * rand(r);
+          coat(s, 1); sized(s, rock, x + u + (rand(r) - 0.5) * 0.1, -0.06, z + (rand(r) - 0.5) * 0.12, yaw + (rand(r) - 0.5) * 0.3, 0, 0.74, 0.12, 0.7, 0.86 * kk, 0.84 * kk, 0.8 * kk);
+        }
+      } else {
+        kk := 0.9 + 0.15 * rand(r);
+        untextured(s); sized(s, crate, x, -0.04, z, yaw, 0, 1.55, 0.06, step + 0.25, EARTH_RGB[0] * kk, EARTH_RGB[1] * kk, EARTH_RGB[2] * kk);
+      }
+      s[0].path_tiles += 1;
+    }
+    z -= step;
+  }
+  coat(s, 1);
+}
+// The thing in the middle, a thing a move can shift (centre:0); a pond is the realm's water instead.
+centre_out :: (s: [] MyRealm, r: [] Seed) {
+  c := Spot.{x = s[0].site_x, z = s[0].site_z}; kind := s[0].centre;
+  rock := mesh_named(s, "Rock_Medium_1");
+  if kind == CENTRE_POND {
+    // the pond is the water (site_water); its rim, a ring of stones
+    for k: 0..<18 {
+      t := cast(f32) k / 18.0 * 6.2831853; rr := s[0].water_r + 0.25;
+      coat(s, 1); sized(s, rock, c.x + rr * sin(t), -0.08, c.z + rr * cos(t), t, 0, 0.75, 0.32, 0.55, 0.7, 0.69, 0.66);
+    }
+    s[0].centre_laid = true; s[0].centre_x = c.x; s[0].centre_z = c.z;
+    return;
+  }
+  ent_begin(s, EK_CENTRE, 0, c.x, c.z);
+  if CENTRE_PROP[kind] >= 0 { prop_at(s, r, CENTRE_PROP[kind], c); glowing(s, 0); }
+  if kind == CENTRE_TOWER { building_at(s, 5, c.x, c.z, turn_of(-c.x, 6 - c.z)); glowing(s, 0); }
+  if kind == CENTRE_TREE { thing_at(s, 2, c.x, c.z, 0.7, GREAT_GROW * 0.8, s[0].great_kind); great_branches(s, c.x, c.z); }
+  if kind == CENTRE_STONES {
+    // standing stones in a ring, leaning a little, and a flat stone in the middle
+    for k: 0..<9 {
+      t := cast(f32) k / 9.0 * 6.2831853 + 0.17; rr: f32 = 3.0;
+      x := c.x + rr * sin(t); z := c.z + rr * cos(t); tall := 2.0 + 0.7 * rand(r);
+      coat(s, 1); sized(s, rock, x, -0.1, z, t + 1.5707963, (rand(r) - 0.5) * 0.12, 0.95, tall, 0.55, 0.62, 0.62, 0.64);
+      solid_up(s, x, z, 0.45, WALL);
+    }
+    coat(s, 1); sized(s, rock, c.x, -0.15, c.z, 0.4, 0, 1.7, 0.6, 1.1, 0.58, 0.57, 0.56);
+    solid_up(s, c.x, c.z, 0.8, 0.45);
+  }
+  ent_end(s);
+  s[0].centre_laid = true; s[0].centre_x = c.x; s[0].centre_z = c.z;
+}
+// The water with a site: a pond in the middle when that is the centre; else beyond the far wall,
+// or beside the site, wherever it fits on the land. False: the water is placed as before.
+site_water :: (s: [] MyRealm, r: [] Seed) -> bool {
+  if !s[0].site { return false; }
+  if s[0].centre == CENTRE_POND {
+    s[0].water_kind = 1; s[0].water = hi_int(s[0].water, 1); s[0].water_r = 2.6; s[0].water_x = s[0].site_x; s[0].water_z = s[0].site_z;
+    return true;
+  }
+  if s[0].water <= 0 { return false; }
+  far := s[0].site_z - (ifx s[0].encl > 0 then s[0].site_h else s[0].site_open + 2.0f32);
+  if s[0].water_kind == 2 {
+    s[0].water_r = ifx s[0].water == 1 then 1.3f32 else ifx s[0].water == 3 then 2.6f32 else 1.9f32;
+    s[0].water_x = 0; s[0].water_z = hi(far - s[0].water_r - 2.8, -(GROUND_R - s[0].water_r - 3.5));
+    return true;
+  }
+  s[0].water_r = ifx s[0].water == 1 then 2.5f32 else ifx s[0].water == 3 then 6.5f32 else 4.0f32;
+  z := far - s[0].water_r - 2.5;
+  if abs(z) + s[0].water_r < GROUND_R - 1.5 { s[0].water_x = 0; s[0].water_z = z; return true; }
+  // beside it, east or west
+  side: f32 = ifx rand(r) < 0.5 then -1.0f32 else 1.0f32;
+  reach := ifx s[0].encl > 0 then s[0].site_h + 2.5f32 else s[0].site_open + 2.5f32;
+  x := side * hi(reach + s[0].water_r, 0);
+  if abs(x) + s[0].water_r > GROUND_R - 1.5 { x = side * (GROUND_R - 1.5 - s[0].water_r); }
+  s[0].water_x = x; s[0].water_z = s[0].site_z;
+  return true;
+}
+
+// ---- what stands round the middle
+
+// A place on a ring round the middle at angle a (0: north, away from where you start), or none.
+ring_spot :: (s: [] MyRealm, a: f32, rr: f32, size: f32) -> Spot {
+  for tries: 0..<5 {
+    t := a + (ifx tries % 2 == 0 then 1.0f32 else -1.0f32) * 0.12 * cast(f32) ((tries + 1) / 2);
+    x := s[0].site_x + rr * sin(t); z := s[0].site_z - rr * cos(t);
+    s[0].site_ring = true; ok := free(s, x, z, size); s[0].site_ring = false;
+    if ok { return Spot.{x = x, z = z}; }
+  }
+  return Spot.{x = 99, z = 99};
+}
+// The angle of the i'th of n round the middle, leaving the way to where you start open.
+ring_angle :: (i: int, n: int) -> f32 {
+  if n <= 1 { return 0; }
+  gap: f32 = 1.1;   // radians kept open toward you
+  return -3.1415926 + gap + (6.2831853 - 2 * gap) * cast(f32) i / cast(f32) (n - 1);
+}
+// The ring a layout sets things on: inside the walls, or round the middle.
+ring_r :: (s: [] MyRealm, size: f32) -> f32 {
+  if s[0].encl > 0 { return clamp(s[0].site_open + 2.2 + size, s[0].site_open + size + 0.6, s[0].site_h - size - 1.0); }
+  if s[0].site_layout == LAYOUT_SQUARE { return s[0].paved_h + 1.2 + size; }
+  return s[0].site_open + 2.6 + size;
+}
+// Lanterns round the middle (any site): just inside the walls, or in a ring round it.
+site_lantern :: (s: [] MyRealm, i: int) -> Spot {
+  n := s[0].lanterns;
+  if s[0].encl > 0 && s[0].site_layout != LAYOUT_RING {
+    a := (cast(f32) i + 0.5) / cast(f32) hi_int(n, 1) * 6.2831853 + 0.39;
+    rr := s[0].site_h - 1.3;
+    x := s[0].site_x + rr * clamp(1.42 * sin(a), -1, 1); z := s[0].site_z - rr * clamp(1.42 * cos(a), -1, 1);
+    if abs(x - s[0].site_x) < GATE_HALF + 0.6 { x = s[0].site_x + (ifx x < s[0].site_x then -1.0f32 else 1.0f32) * (GATE_HALF + 0.8); }
+    return Spot.{x = x, z = z};
+  }
+  rr := s[0].site_open + 2.4;
+  a := cast(f32) i / cast(f32) hi_int(n, 1) * 6.2831853 + 0.2;
+  return Spot.{x = s[0].site_x + rr * sin(a), z = s[0].site_z - rr * cos(a)};
+}
+// A garden's beds: just inside the walls, a little apart, either side of the paths.
+garden_spot :: (s: [] MyRealm, r: [] Seed, i: int, n: int) -> Spot {
+  for tries: 0..<8 {
+    side := (i + tries) % 4; along := (rand(r) * 2 - 1) * (s[0].site_h - 1.6); inset := s[0].site_h - 1.3 - 0.5 * rand(r);
+    x := ifx side < 2 then along else (ifx side == 2 then inset else -inset);
+    z := ifx side < 2 then (ifx side == 0 then inset else -inset) else along;
+    x += s[0].site_x; z += s[0].site_z;
+    if free(s, x, z, 0.4) { return Spot.{x = x, z = z}; }
+  }
+  return Spot.{x = 99, z = 99};
+}
+// A tree in a walled place's corner, inside (a garden's, a courtyard's), the i'th of four.
+corner_spot :: (s: [] MyRealm, i: int) -> Spot {
+  inset := s[0].site_h - 2.1;
+  x := s[0].site_x + (ifx i % 2 == 0 then -inset else inset); z := s[0].site_z + (ifx i < 2 then -inset else inset);
+  return Spot.{x = x, z = z};
+}
+
+// ---- the dock
+
+// A wooden dock from the shore nearest where you start out over the water, a boat tied at its end.
+dock_out :: (s: [] MyRealm, r: [] Seed) -> bool {
+  if s[0].water_r <= 0 || s[0].water_kind == 4 { return false; }
+  crate := mesh_named(s, "Prop_Crate");
+  rx: f32 = 0; rz: f32 = 0; tx: f32 = 0; tz: f32 = 0;
+  if s[0].water_kind == 2 {
+    // a river: from its near bank, a little to the side
+    x: f32 = 3.2; bank := s[0].water_z + 2.5 * sin(x * 0.15) + s[0].water_r;
+    rx = x; rz = bank + 1.2; tx = x; tz = bank - lo(s[0].water_r * 1.1, 2.4);
+  } else {
+    ux := -s[0].water_x; uz := 6 - s[0].water_z; ul := hi(sqrt(ux * ux + uz * uz), 0.01); ux /= ul; uz /= ul;
+    out := lo(3.4, s[0].water_r * 0.75);
+    rx = s[0].water_x + ux * (s[0].water_r + 1.3); rz = s[0].water_z + uz * (s[0].water_r + 1.3);
+    tx = s[0].water_x + ux * (s[0].water_r - out); tz = s[0].water_z + uz * (s[0].water_r - out);
+  }
+  lx := tx - rx; lz := tz - rz; l := sqrt(lx * lx + lz * lz); fx := lx / l; fz := lz / l;
+  yaw := turn_of(fx, -fz) + 1.5707963;   // its planks run across it
+  planks := cast(int) (l / 0.36) + 1; pl := l / cast(f32) planks;
+  coat(s, 1);
+  for i: 0..<planks {
+    m := (cast(f32) i + 0.5) * pl; t := 0.85 + 0.25 * rand(r);
+    sized(s, crate, rx + fx * m, 0.28, rz + fz * m, yaw + (rand(r) - 0.5) * 0.03, 0, 1.75, 0.09, pl - 0.05, WOOD_RGB[0] * t, WOOD_RGB[1] * t, WOOD_RGB[2] * t);
+  }
+  for k: 0..<3 { for side: 0..<2 {
+    m := l * cast(f32) k / 2.0; u: f32 = ifx side == 0 then -0.82f32 else 0.82f32;
+    px := rx + fx * m - fz * u; pz := rz + fz * m + fx * u;
+    sized(s, crate, px, -0.6, pz, yaw, 0, 0.16, 1.25, 0.16, WOOD_RGB[0] * 0.7, WOOD_RGB[1] * 0.7, WOOD_RGB[2] * 0.7);
+  } }
+  boat(s, tx - fz * 1.6 + fx * 0.4, tz + fx * 1.6 + fz * 0.4, yaw, false);
+  s[0].dock_laid = true; s[0].dock_x0 = rx; s[0].dock_z0 = rz; s[0].dock_x1 = tx; s[0].dock_z1 = tz;
+  return true;
+}
+
+// Is (x, z) free for something set in the site's ring: as free() with the ring's leave to stand inside the walls.
+ring_ok :: (s: [] MyRealm, x: f32, z: f32, size: f32) -> bool { s[0].site_ring = true; ok := free(s, x, z, size); s[0].site_ring = false; return ok; }
+// Where the site puts tree i: a walled place's first four in its corners, inside (a fort's stand
+// outside); a clearing's all round it, past its open ground. None: the tree goes where it would.
+site_tree :: (s: [] MyRealm, r: [] Seed, i: int) -> Spot {
+  if !s[0].site { return Spot.{x = 99, z = 99}; }
+  if s[0].encl > 0 && s[0].encl != ENCL_PALISADE && s[0].site_layout != LAYOUT_CLEARING && i < 4 {
+    c := corner_spot(s, i);
+    if ring_ok(s, c.x, c.z, 1.0) { return c; }
+  }
+  if s[0].site_layout == LAYOUT_CLEARING {
+    for tries: 0..<20 {
+      a := rand(r) * 6.2831853; d := CLEARING_R + 1.0 + 5.0 * sqrt(rand(r));
+      x := s[0].site_x + d * sin(a); z := s[0].site_z - d * cos(a);
+      if sqrt(x * x + z * z) < GROUND_R - 2 && free(s, x, z, 1.0) { return Spot.{x = x, z = z}; }
+    }
+  }
+  return Spot.{x = 99, z = 99};
+}
+// The dock as a thing a move can shift (props:I), from the shore over the water; nothing with no water.
+dock_at :: (s: [] MyRealm, r: [] Seed, p: int) {
+  e := s[0].ent_n;
+  ent_begin(s, EK_PROP, p, 0, 0);
+  if !dock_out(s, r) { ent_end(s); if e < ENTS { s[0].ent_kind[e] = -1; } return; }
+  if e < ENTS { s[0].ent_x[e] = s[0].dock_x0; s[0].ent_z[e] = s[0].dock_z0; }
+  ent_end(s);
+}
+
+// Cottages on the site's ring, their doors to the middle (house:I, as a house feature's would be).
+site_cottages :: (s: [] MyRealm, r: [] Seed, n: int) {
+  rr := ring_r(s, 1.9);
+  for i: 0..<n {
+    c := ring_spot(s, ring_angle(i, n), rr, 1.9);
+    if c.x > 90 { continue; }
+    ent_begin(s, EK_HOUSE, i, c.x, c.z); coat(s, 0.75); house(s, c.x, c.z, turn_of(s[0].site_x - c.x, s[0].site_z - c.z) + 3.1415926, 0, COTTAGE_COLOURS[i % 5]); glowing(s, 0); ent_end(s);
+  }
+}
+// What a layout draws of its own, whatever else was asked: a garden's flower beds inside its walls
+// (and four trees in blossom when no trees were asked), a clearing's ring of trees, and a ring of
+// low stones when nothing else stands in a ring.
+site_fill :: (s: [] MyRealm, r: [] Seed) {
+  if !s[0].site { return; }
+  if s[0].site_layout == LAYOUT_GARDEN && s[0].encl > 0 {
+    if s[0].trees == 0 {
+      for i: 0..<4 { c := corner_spot(s, i); if ring_ok(s, c.x, c.z, 1.0) { thing_at(s, 2, c.x, c.z, rand(r) * 6.28, 0.7 + 0.2 * rand(r), 5); } }
+    }
+    for i: 0..<12 {
+      c := garden_spot(s, r, i, 12);
+      if c.x > 90 { continue; }
+      plant_at(s, 1, c.x, c.z, rand(r) * 6.28, 0.9 + 0.5 * rand(r), i); glowing(s, 0);
+      if s[0].plant_n < 24 { s[0].plant_x[s[0].plant_n] = c.x; s[0].plant_z[s[0].plant_n] = c.z; s[0].plant_n += 1; }
+    }
+  }
+  if s[0].site_layout == LAYOUT_CLEARING {
+    laid := 0; for i: 0..<TREES_MOST { if s[0].tree_laid[i] { laid += 1; } }
+    kind := ifx s[0].trees > 0 && s[0].tree_kind < 3 then s[0].tree_kind else 1;
+    for i: laid..<16 {
+      c := site_tree(s, r, i);
+      if c.x > 90 { continue; }
+      thing_at(s, 2, c.x, c.z, rand(r) * 6.28, 0.85 + 0.45 * rand(r), ifx kind == 1 && i % 3 == 0 then 0 else kind);
+    }
+  }
+  if s[0].site_layout == LAYOUT_RING && s[0].lanterns == 0 && s[0].rocks == 0 && s[0].dwellings == 0 && s[0].houses == 0 && s[0].centre != CENTRE_STONES {
+    rock := mesh_named(s, "Rock_Medium_1");
+    for i: 0..<8 {
+      c := ring_spot(s, cast(f32) i / 8.0 * 6.2831853 + 0.39, s[0].site_open + 2.0, 0.6);
+      if c.x > 90 { continue; }
+      coat(s, 1); sized(s, rock, c.x, -0.1, c.z, rand(r) * 6, 0, 0.9, 0.75, 0.8, 0.66, 0.65, 0.63); solid_up(s, c.x, c.z, 0.45, 0.65);
+    }
+  }
+}

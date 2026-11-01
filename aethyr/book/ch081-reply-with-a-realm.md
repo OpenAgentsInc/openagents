@@ -8,6 +8,11 @@
 > `migrations/0076_realm_replies.sql`), and only Everglade can do it. This
 > chapter plans replies as an Aethyrforge feature that any realm can offer.
 > Nothing in `aethyr/` runs yet.
+>
+> A realm made from a prompt now keeps the shape the words describe: "a stone
+> courtyard with a fountain" makes stone walls round a paved yard with the
+> fountain in the middle ([realm-builder.md](../../docs/verse/realm-builder.md),
+> "The site"). A reply that makes a realm would use the same board.
 
 A reply is a very small realm document: one realm, one place, a few words
 and a seed. Its link replays the same moment for anyone who opens it. This

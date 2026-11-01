@@ -1,0 +1,319 @@
+// The realm builder's layout eval (#12610; docs/verse/realm-builder.md, "Layout eval"). It asks
+// whether a made realm is the place that was asked for: walls round a courtyard, the fountain in
+// its middle, a path to it, a dock on the lake. The prompts and what each asks for are
+// coax/web/api/eval_layout.tsv: a tuning set (tune) and a held-out set (held) that is never tuned on.
+//
+//   coax/web/api/eval-builder.sh --layout PLANS [--set tune|held]
+//       plans each prompt with the real planner on a throwaway api and database, makes the realm and
+//       keeps its spec, the document the page lays out (realm-layout-record.coax)
+//   coax/web/tool.sh realm-layout-eval PLANS [--set tune|held] [--why]
+//       lays each spec out with myrealm.coax, as the page does, and scores what was laid out
+//
+// Every check reads the laid-out realm, never the prompt's words: what was asked for is the TSV's
+// hand-written labels. Each prompt scores the share of its checks that pass:
+//   enclosure:KIND  walls of that kind (stone, wood, palisade, hedge) stand all round the middle: at
+//                   least 3 of 4 rays from it meet a wall within 15 m
+//   centre:KIND     a KIND (fountain, statue, well, campfire, tower, stones, tree, pond) is there, and
+//                   it is centred: within 1.5 m of the walls' middle, or with no walls in front of
+//                   where you start (within 25 degrees, 3 to 15 m)
+//   layout:square   paved underfoot round the middle; garden: three or more trees or plants inside the
+//                   walls; clearing: no tree within 5 m of the middle and trees round it in 6 of 8
+//                   directions; ring: five or more things the same distance (within 20%) round the
+//                   middle in 5 of 8 directions; village: three or more houses or dwellings within
+//                   16 m of the middle, most facing it
+//   path            a path from where you start reaches the middle
+//   water:KIND      lake (a pond 6 m across or more), pond, river
+//   dock            a dock reaches from the shore over the water
+// and every realm two more: where you start is clear of everything solid, and you can walk from it
+// to the realm's edge (a way out of any walls).
+#import "Basic";
+#load "../../apps/openagents-web/myrealm.coax";
+#load "../lib/sys/fs.coax";
+
+LE_TEXT :: 262144;
+LeBuf :: struct { b: [LE_TEXT] u8; n: int; bad: bool; }
+le_put :: (o: [] LeBuf, t: string) {
+  if o[0].n + t.count > LE_TEXT { o[0].bad = true; return; }
+  for k: 0..<t.count { o[0].b[o[0].n + k] = t[k]; }
+  o[0].n += t.count;
+}
+le_int :: (o: [] LeBuf, v: int) {
+  if v < 0 { le_put(o, "-"); le_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; le_put(o, cast(string) e[..]); }
+}
+le_text :: (o: [] LeBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+// A JSON string's body: our prompts' quotes and backslashes escaped.
+le_json :: (o: [] LeBuf, t: string) { for c: t { if c == '"' || c == '\\' { le_put(o, "\\"); } e: [1] u8; e[0] = c; le_put(o, cast(string) e[..]); } }
+
+// ---- the prompts (eval_layout.tsv: id, set, prompt, wanted)
+
+LE_MOST :: 40;
+LeRow :: struct { id: string; set: string; prompt: string; wants: string; }
+le_field :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= line.count {
+    e := i; while e < line.count && line[e] != '\t' { e += 1; }
+    if n == k { return line[i..<e]; }
+    n += 1; i = e + 1;
+  }
+  return "";
+}
+le_rows :: (text: string, rows: [] LeRow) -> int {
+  n := 0; i := 0;
+  while i < text.count && n < rows.count {
+    e := line_end(text, i); line := text[i..<e]; i = e + 1;
+    if line.count == 0 { continue; }
+    rows[n] = LeRow.{id = le_field(line, 0), set = le_field(line, 1), prompt = le_field(line, 2), wants = le_field(line, 3)};
+    n += 1;
+  }
+  return n;
+}
+
+
+// argv (tool-native.c), without args.coax: its names are myrealm's too
+cxargs_count :: () -> int #foreign;
+cxargs_len :: (i: int) -> int #foreign;
+cxargs_byte :: (i: int, j: int) -> int #foreign;
+LeArg :: struct { b: [512] u8; n: int; }
+le_arg :: (i: int, a: [] LeArg) -> string {
+  k := cxargs_len(i); a[0].n = 0;
+  for j: 0..<k { if j < 512 { a[0].b[j] = cast,trunc(u8) cxargs_byte(i, j); a[0].n = j + 1; } }
+  return cast(string) a[0].b[0..<a[0].n];
+}
+
+// ---- laying a spec out, as the page does
+
+le_open :: (s: [] MyRealm, t: [] Track, spec: string) {
+  slug := word_of(spec[0..<line_end(spec, 0)], 1);
+  f := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\n";
+  track_init(t, "realm");
+  realm_message(s, t, MSG_DATA_TEXT, slug);
+  t0 := track_message(t, HOST_FACTS, f);
+  realm_message(s, t, HOST_FACTS, f);
+  realm_catalog(s, PACK);
+  n := frame_of(s, t, 1440, 900);
+  realm_requested(s, 2);
+  b: [1] LeBuf; le_put(b[..], "200\n"); le_put(b[..], spec);
+  realm_message(s, t, HTTP_ANSWER_KIND + 2, le_text(b[..]));
+}
+
+// ---- what was laid out
+
+le_d :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz)); }
+// Is (x, z) in a wall: a site's wall, or a stone wall or fence standing about (props)?
+le_wall_at :: (s: [] MyRealm, x: f32, z: f32) -> bool {
+  for k: 0..<s[0].seg_n { if seg_gap(s, k, x, z) < 0 { return true; } }
+  for e: 0..<s[0].ent_n {
+    if !ent_laid(s, e) || s[0].ent_kind[e] != EK_PROP { continue; }
+    kind := s[0].props[s[0].ent_i[e]];
+    if kind != 3 && kind != PROP_WALL { continue; }
+    for q: s[0].ent_s0[e]..<s[0].ent_s1[e] { if le_d(x, z, s[0].solid_x[q], s[0].solid_z[q]) < s[0].solid_r[q] { return true; } }
+    // a fence's rails stand between its posts: a fence prop's pieces
+    for q: s[0].ent_p0[e]..<s[0].ent_p1[e] { if le_d(x, z, s[0].piece_x[q], s[0].piece_z[q]) < 1.1 { return true; } }
+  }
+  return false;
+}
+// The share of 64 rays from (x, z) that meet a wall within 15 m.
+le_walled :: (s: [] MyRealm, x: f32, z: f32) -> f32 {
+  hit := 0;
+  for k: 0..<64 {
+    a := cast(f32) k / 64.0 * 6.2831853; d: f32 = 0.5;
+    while d < 15 { if le_wall_at(s, x + d * sin(a), z - d * cos(a)) { hit += 1; break; } d += 0.2; }
+  }
+  return cast(f32) hit / 64.0;
+}
+// Where a thing of centre kind k stands (x 99: none): the site's centre, a prop, a tower, a giant tree, a pond.
+le_find :: (s: [] MyRealm, k: int) -> Spot {
+  if s[0].centre == k && s[0].centre_laid {
+    for e: 0..<s[0].ent_n { if ent_laid(s, e) && s[0].ent_kind[e] == EK_CENTRE { return ent_at(s, e); } }
+    return Spot.{x = s[0].centre_x, z = s[0].centre_z};
+  }
+  for e: 0..<s[0].ent_n {
+    if !ent_laid(s, e) { continue; }
+    if s[0].ent_kind[e] == EK_PROP && CENTRE_PROP[k] >= 0 && s[0].props[s[0].ent_i[e]] == CENTRE_PROP[k] { return ent_at(s, e); }
+    if s[0].ent_kind[e] == EK_BUILDING && k == CENTRE_TOWER && s[0].building[s[0].ent_i[e]] == 5 { return ent_at(s, e); }
+  }
+  if k == CENTRE_TREE && s[0].great { return Spot.{x = s[0].great_x, z = s[0].great_z}; }
+  if k == CENTRE_POND && s[0].water_r > 0 && s[0].water_kind == 1 { return Spot.{x = s[0].water_x, z = s[0].water_z}; }
+  return Spot.{x = 99, z = 99};
+}
+// Can you walk from where you start to the realm's edge (a grid of half metres, round what is solid)?
+LE_CELLS :: 106;
+le_way_out :: (s: [] MyRealm) -> bool {
+  open: [LE_CELLS * LE_CELLS] bool; vis: [LE_CELLS * LE_CELLS] bool; q: [LE_CELLS * LE_CELLS] int;
+  for i: 0..<LE_CELLS { for j: 0..<LE_CELLS {
+    x := -26.25 + 0.5 * cast(f32) i; z := -26.25 + 0.5 * cast(f32) j; c := i * LE_CELLS + j;
+    ok := sqrt(x * x + z * z) < GROUND_R - BODY_R;
+    for k: 0..<s[0].seg_n { if ok && seg_gap(s, k, x, z) < BODY_R { ok = false; } }
+    for k: 0..<s[0].solid_n { if ok && le_d(x, z, s[0].solid_x[k], s[0].solid_z[k]) < s[0].solid_r[k] + BODY_R { ok = false; } }
+    open[c] = ok; vis[c] = false;
+  } }
+  si := cast(int) ((0 + 26.25) / 0.5 + 0.5); sj := cast(int) ((6 + 26.25) / 0.5 + 0.5);
+  head := 0; tail := 0; q[tail] = si * LE_CELLS + sj; tail += 1; vis[si * LE_CELLS + sj] = true;
+  while head < tail {
+    c := q[head]; head += 1; i := c / LE_CELLS; j := c % LE_CELLS;
+    x := -26.25 + 0.5 * cast(f32) i; z := -26.25 + 0.5 * cast(f32) j;
+    if sqrt(x * x + z * z) > GROUND_R - 2.5 { return true; }
+    for k: 0..<4 {
+      ni := i + (ifx k == 0 then 1 else ifx k == 1 then -1 else 0); nj := j + (ifx k == 2 then 1 else ifx k == 3 then -1 else 0);
+      if ni < 0 || nj < 0 || ni >= LE_CELLS || nj >= LE_CELLS { continue; }
+      n := ni * LE_CELLS + nj;
+      if open[n] && !vis[n] { vis[n] = true; q[tail] = n; tail += 1; }
+    }
+  }
+  return false;
+}
+le_start_clear :: (s: [] MyRealm) -> bool {
+  for k: 0..<s[0].seg_n { if seg_gap(s, k, 0, 6) < BODY_R { return false; } }
+  for k: 0..<s[0].solid_n { if le_d(0, 6, s[0].solid_x[k], s[0].solid_z[k]) < s[0].solid_r[k] + BODY_R { return false; } }
+  return true;
+}
+le_in_walls :: (s: [] MyRealm, x: f32, z: f32) -> bool {
+  return s[0].encl > 0 && hi(abs(x - s[0].site_x), abs(z - s[0].site_z)) < s[0].site_h - 0.3;
+}
+// Things set round p: lanterns, rocks, dwellings, houses, the standing stones. True when five or
+// more stand at one distance (within 20% of their middle one) in 5 of 8 directions.
+le_ring :: (s: [] MyRealm, p: Spot) -> bool {
+  d: [64] f32; a: [64] f32; n := 0;
+  for i: 0..<s[0].lanterns { if n < 64 { d[n] = le_d(s[0].lantern_x[i], s[0].lantern_z[i], p.x, p.z); a[n] = turn_of(s[0].lantern_x[i] - p.x, p.z - s[0].lantern_z[i]); n += 1; } }
+  for e: 0..<s[0].ent_n {
+    if !ent_laid(s, e) || n >= 64 { continue; }
+    kd := s[0].ent_kind[e];
+    if kd != EK_ROCK && kd != EK_DWELLING && kd != EK_HOUSE { continue; }
+    c := ent_at(s, e); d[n] = le_d(c.x, c.z, p.x, p.z); a[n] = turn_of(c.x - p.x, p.z - c.z); n += 1;
+  }
+  if s[0].centre == CENTRE_STONES && s[0].centre_laid { return true; }
+  for m: 0..<n {
+    if d[m] < 1.5 || d[m] > 16 { continue; }
+    near := 0; sect: [8] bool;
+    for j: 0..<n { if abs(d[j] - d[m]) < 0.2 * d[m] { near += 1; sect[(cast(int) ((a[j] + 3.1415927) / 0.7853982)) % 8] = true; } }
+    c := 0; for k: 0..<8 { if sect[k] { c += 1; } }
+    if near >= 5 && c >= 5 { return true; }
+  }
+  return false;
+}
+le_clearing :: (s: [] MyRealm, p: Spot) -> bool {
+  trunk := mesh_named(s, "CommonTree_3"); sect: [8] bool; close_n := 0;
+  for q: 0..<s[0].static_n {
+    if s[0].piece_mesh[q] != trunk { continue; }
+    dd := le_d(s[0].piece_x[q], s[0].piece_z[q], p.x, p.z);
+    if dd < 5 { close_n += 1; }
+    if dd >= 5 && dd < 18 { sect[(cast(int) ((turn_of(s[0].piece_x[q] - p.x, p.z - s[0].piece_z[q]) + 3.1415927) / 0.7853982)) % 8] = true; }
+  }
+  c := 0; for k: 0..<8 { if sect[k] { c += 1; } }
+  return close_n == 0 && c >= 6;
+}
+le_village :: (s: [] MyRealm, p: Spot) -> bool {
+  n := 0;
+  for e: 0..<s[0].ent_n {
+    if !ent_laid(s, e) || (s[0].ent_kind[e] != EK_HOUSE && s[0].ent_kind[e] != EK_DWELLING) { continue; }
+    c := ent_at(s, e); if le_d(c.x, c.z, p.x, p.z) < 16 { n += 1; }
+  }
+  return n >= 3;
+}
+
+// ---- scoring
+
+LeTally :: struct { asked: [16] int; met: [16] int; }
+LE_KINDS :: [12] string.["enclosure", "centre", "centred", "square", "garden", "clearing", "ring", "village", "path", "water", "dock", "playable"];
+le_kind :: (name: string) -> int { for k: 0..<12 { if LE_KINDS[k] == name { return k; } } return -1; }
+le_note :: (o: [] LeBuf, tally: [] LeTally, kind: string, ok: bool) {
+  k := le_kind(kind); tally[0].asked[k] += 1; if ok { tally[0].met[k] += 1; }
+  if !ok { le_put(o, " "); le_put(o, kind); }
+}
+// One realm's checks: how many were asked, how many pass; the failures named in o.
+le_one :: (s: [] MyRealm, wants: string, o: [] LeBuf, tally: [] LeTally) -> [2] int {
+  asked := 0; met := 0;
+  want_encl := ""; want_centre := -1; i := 0;
+  while i < wants.count { e := word_end(wants, i); w := wants[i..<e]; i = e + 1;
+    if starts(w, "enclosure:") { want_encl = w[10..<w.count]; }
+    if starts(w, "centre:") { c := w[7..<w.count]; for k: 0..<CENTRE_N { if CENTRE_KINDS[k] == c { want_centre = k; } } }
+  }
+  p := ifx want_centre >= 0 then le_find(s, want_centre) else Spot.{x = 99, z = 99};
+  mid := ifx p.x < 90 then p else ifx s[0].site then Spot.{x = s[0].site_x, z = s[0].site_z} else Spot.{x = 0, z = -2};
+  i = 0;
+  while i < wants.count { e := word_end(wants, i); w := wants[i..<e]; i = e + 1;
+    if w.count == 0 { continue; }
+    ok := false; kind := w;
+    if starts(w, "enclosure:") {
+      kind = "enclosure"; k := want_encl;
+      ok = le_walled(s, mid.x, mid.z) >= 0.75 && (k == "any" || (s[0].encl > 0 && ENCL_KINDS[s[0].encl - 1] == k));
+    } else if starts(w, "centre:") {
+      kind = "centre"; ok = p.x < 90;
+      asked += 1; if ok { met += 1; } le_note(o, tally, kind, ok);
+      // centred: in the walls' middle, or with none in front of where you start
+      kind = "centred";
+      if want_encl.count > 0 { ok = p.x < 90 && s[0].encl > 0 && le_d(p.x, p.z, s[0].site_x, s[0].site_z) < 1.5; }
+      else { dd := le_d(p.x, p.z, 0, 6); ok = p.x < 90 && dd >= 3 && dd <= 15 && abs(p.x) < (6 - p.z) * 0.4663; }
+    } else if starts(w, "layout:") {
+      kind = w[7..<w.count];
+      if kind == "square" { ok = s[0].paved_n > 0 && hi(abs(mid.x - s[0].site_x), abs(mid.z - s[0].site_z)) < s[0].paved_h; }
+      if kind == "garden" {
+        c := 0;
+        for t: 0..<TREES_MOST { if s[0].tree_laid[t] && le_in_walls(s, s[0].tree_x[t], s[0].tree_z[t]) { c += 1; } }
+        for t: 0..<s[0].plant_n { if le_in_walls(s, s[0].plant_x[t], s[0].plant_z[t]) { c += 1; } }
+        ok = c >= 3;
+      }
+      if kind == "clearing" { ok = le_clearing(s, mid); }
+      if kind == "ring" { ok = le_ring(s, mid); }
+      if kind == "village" { ok = le_village(s, mid); }
+    } else if w == "path" {
+      ok = s[0].path_tiles > 0 && s[0].path_south >= 6 && abs(path_x(s, 6)) < 1.2 && abs(path_x(s, mid.z) - mid.x) < 1.5;
+    } else if starts(w, "water:") {
+      kind = "water"; k := w[6..<w.count];
+      if k == "lake" { ok = s[0].water_kind == 1 && s[0].water_r >= 4; }
+      if k == "pond" { ok = s[0].water_kind == 1 && s[0].water_r > 0; }
+      if k == "river" { ok = s[0].water_kind == 2 && s[0].water_r > 0; }
+    } else if w == "dock" {
+      ok = s[0].dock_laid && water_in(s, s[0].dock_x1, s[0].dock_z1) > 0.3 && water_in(s, s[0].dock_x0, s[0].dock_z0) < 0;
+    }
+    asked += 1; if ok { met += 1; } le_note(o, tally, kind, ok);
+  }
+  // every realm: where you start is clear, and there is a way out to the edge
+  ok := le_start_clear(s) && le_way_out(s);
+  asked += 1; if ok { met += 1; } le_note(o, tally, "playable", ok);
+  return [2] int.[asked, met];
+}
+le_score :: (plans: string, rows: [] LeRow, n: int, set: string, why: bool) -> int {
+  tally: [1] LeTally; sum: f32 = 0; count := 0; checks := 0; passed := 0;
+  i := 0;
+  while i < plans.count {
+    e := line_end(plans, i); head := plans[i..<e]; i = e + 1;
+    if !starts(head, "== ") { continue; }
+    id := head[3..<head.count];
+    from := i; while i < plans.count && !starts(plans[i..<plans.count], "== ") { i = line_end(plans, i) + 1; }
+    spec := plans[from..<lo_int(i, plans.count)];
+    row := -1; for k: 0..<n { if rows[k].id == id { row = k; } }
+    if row < 0 || (set.count > 0 && rows[row].set != set) { continue; }
+    s: [1] MyRealm; t: [1] Track;
+    le_open(s[..], t[..], spec);
+    o: [1] LeBuf;
+    if !s[0].laid { print("% not laid out\n", id); continue; }
+    got := le_one(s[..], rows[row].wants, o[..], tally[..]);
+    share := cast(f32) got[1] / cast(f32) got[0];
+    sum += share; count += 1; checks += got[0]; passed += got[1];
+    print("%  %/%  %\n", id, got[1], got[0], rows[row].prompt);
+    if why && o[0].n > 0 { print("     fails:%\n", le_text(o[..])); }
+  }
+  if count == 0 { print("no plans scored\n"); return 1; }
+  print("score % realms: mean % percent, % of % checks\n", count, cast(int) (100 * sum / cast(f32) count + 0.5), passed, checks);
+  for k: 0..<12 { if tally[0].asked[k] > 0 { print("  %: %/%\n", LE_KINDS[k], tally[0].met[k], tally[0].asked[k]); } }
+  return 0;
+}
+lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+
+tool_main :: () -> int #export_c {
+  a: [1] LeArg; argc := cxargs_count();
+  tsv: [65536] u8; tn := fs_read("coax/web/api/eval_layout.tsv", tsv[..]);
+  if argc < 2 || tn < 0 { print("usage (from the repository root): coax/web/tool.sh realm-layout-eval PLANS [--set tune|held] [--why]\n"); return 2; }
+  rows: [LE_MOST] LeRow; n := le_rows(cast(string) tsv[0..<tn], rows[..]);
+  path: [1] LeArg; pp := le_arg(1, path[..]);
+  set := ""; why := false; sb: [1] LeArg;
+  for k: 2..<argc { w := le_arg(k, a[..]); if w == "--why" { why = true; } if w == "--set" && k + 1 < argc { set = le_arg(k + 1, sb[..]); } }
+  plans: [LE_TEXT] u8; pn := fs_read(pp, plans[..]);
+  if pn < 0 { print("realm-layout-eval: no plans file %\n", pp); return 2; }
+  return le_score(cast(string) plans[0..<pn], rows[..], n, set, why);
+}

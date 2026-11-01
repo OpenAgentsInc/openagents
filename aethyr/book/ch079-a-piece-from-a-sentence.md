@@ -10,6 +10,13 @@
 > from a prompt, from the catalogue in migration `0048_realm_builder.sql`.
 > They keep separate catalogues and checks. This chapter plans one catalogue
 > and one selector path for both. Nothing in `aethyr/` runs yet.
+>
+> Since migration `0097_builder_layout.sql`, the board's selector also plans
+> a place built round a middle as four typed features: `enclosure`,
+> `centre`, `layout` and `path`. Each takes its kind in a field of its own,
+> because the model API refuses one enum of more than about 90 values. A
+> layout eval (`coax/web/realm-layout-eval.coax`) scores what is laid out
+> against 14 held-out prompts: 49% before, 95% after.
 
 You type or say what you want, such as "a flock of birds follows me", and
 the realm gets it. The words never reach the engine. A model picks one entry

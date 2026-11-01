@@ -1,0 +1,24 @@
+t1	tune	a stone courtyard with a fountain	enclosure:stone centre:fountain layout:square
+t2	tune	a walled garden with a well	enclosure:stone centre:well layout:garden
+t3	tune	a village square with a statue	centre:statue layout:square
+t4	tune	a lakeside dock at dusk	water:lake dock
+t5	tune	a forest clearing with a ring of stones	centre:stones layout:clearing
+t6	tune	a wooden palisade fort with a campfire in the middle	enclosure:palisade centre:campfire
+t7	tune	a castle courtyard with a stone tower in the middle	enclosure:stone centre:tower
+t8	tune	a flagstone path through a meadow to a fountain	path centre:fountain
+t9	tune	a garden inside a hedge with a statue	enclosure:hedge centre:statue layout:garden
+t10	tune	a little village round a well	centre:well layout:village
+h1	held	a quiet monastery cloister: stone walls round a small courtyard with a fountain	enclosure:stone centre:fountain layout:square
+h2	held	a rose garden walled in old stone with a statue at its heart	enclosure:stone centre:statue layout:garden
+h3	held	a town market square paved with cobbles and a well in the middle	centre:well layout:square
+h4	held	a fishing jetty on a wide lake with rowing boats	water:lake dock
+h5	held	standing stones in a circle in a misty pine clearing	centre:stones layout:clearing
+h6	held	a frontier stockade of sharpened logs with a lookout tower	enclosure:palisade centre:tower
+h7	held	a farmyard inside a wooden fence with a well	enclosure:wood centre:well
+h8	held	five cottages round a village green with a campfire	centre:campfire layout:village
+h9	held	a cobbled stone path leading through the woods to an old statue	path centre:statue
+h10	held	a camp ringed by a rail fence, a campfire at its centre, at night	enclosure:wood centre:campfire
+h11	held	a riverbank with a wooden dock and a log cabin	water:river dock
+h12	held	a walled stone yard with a round pond in the middle	enclosure:stone centre:pond
+h13	held	a stone tower in the middle of a ring of glowing lanterns	centre:tower layout:ring
+h14	held	a snowy courtyard of stone with a well at its centre	enclosure:stone centre:well

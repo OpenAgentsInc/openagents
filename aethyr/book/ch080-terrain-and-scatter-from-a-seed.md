@@ -10,6 +10,13 @@
 > a seed from the realm's text. Each realm has its own generator and its own
 > random numbers. This chapter plans one generation module. Nothing in
 > `aethyr/` runs yet.
+>
+> Made realms now lay out a site round a middle
+> ([`myrealm-site.coax`](../../apps/openagents-web/myrealm-site.coax)): walls
+> as segment colliders with two gateways, a centre, paving, a path, and a
+> layout's own beds, ring or clearing. Scatter keeps out of the walls, the
+> gateways and the open middle. A realm without a site draws the same random
+> numbers as before, so its layout is unchanged.
 
 A realm's ground and the things on it come from rules and a seed, not from a
 hand-placed list. This chapter builds the rules: a heightfield shaped by

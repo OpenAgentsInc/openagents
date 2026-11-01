@@ -41,7 +41,8 @@
 #load "../../verse/figure.coax" as fig;   // the figures: you, the villagers, the characters
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../aethyr/forge/edit.coax";   // the realm document's edits: a move, undo, the revision a save names
-#load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
+#load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
+#load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 #load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -152,9 +153,9 @@ TREES_MOST :: 20;   // read_spec's most trees
 // What a move can shift (book chapter 52): tree i is entity i; the rest follow from TREES_MOST in
 // the order they are laid out. Each is named in the document by its feature and its index there.
 ENTS :: 96;
-EK_TREE :: 0; EK_ROCK :: 1; EK_PROP :: 2; EK_BUILDING :: 3; EK_HOUSE :: 4; EK_DWELLING :: 5; EK_LANTERN :: 6; EK_PLACED :: 7; EK_KINDS :: 8;
-EK_FEATURE :: [EK_KINDS] string.["trees", "rocks", "props", "building", "house", "dwellings", "lanterns", "placed"];
-EK_HIGH :: [EK_KINDS] f32.[1.5, 0.4, 0.6, 2.0, 1.5, 1.0, 1.0, 0.5];   // where on it a tap aims (metres up)
+EK_TREE :: 0; EK_ROCK :: 1; EK_PROP :: 2; EK_BUILDING :: 3; EK_HOUSE :: 4; EK_DWELLING :: 5; EK_LANTERN :: 6; EK_PLACED :: 7; EK_CENTRE :: 8; EK_KINDS :: 9;
+EK_FEATURE :: [EK_KINDS] string.["trees", "rocks", "props", "building", "house", "dwellings", "lanterns", "placed", "centre"];
+EK_HIGH :: [EK_KINDS] f32.[1.5, 0.4, 0.6, 2.0, 1.5, 1.0, 1.0, 0.5, 1.2];   // where on it a tap aims (metres up)
 MSG_KEPT :: 4; ACT_KEEP :: 4;   // host.js: the text this browser kept for the page (unsaved moves), and keeping it
 PUT_AHEAD :: 2.5;   // PUT IT HERE: metres in front of you
 PICK_PX :: 56.0;    // a tap this near a tree (CSS pixels) picks it to move
@@ -199,6 +200,15 @@ MyRealm :: struct {
   roof: [ROOF_CELLS] f32; owl_y: [BIRDS] f32; owl_hx: f32; owl_hz: f32; owl_r: f32; owl_up: f32; owl_seen: int;   // how high what stands reaches, by cell (roofs_out); each flying owl's height
   perch_n: int; perch: [12] f32;   // where owls sit on the giant tree's branches: x, y, z, yaw   // one giant tree standing alone (0083): 0 round, 1 pine, 2 dead
   props: [PROP_MOST] int; prop_n: int;   // PROPS
+  // the site (myrealm-site.coax): its features, where its middle is and how wide, its walls as
+  // segments you can't walk through, and what was laid of it (for the checks and the layout eval)
+  encl: int; encl_size: int; centre: int; site_layout: int; path_kind: int;
+  site: bool; site_x: f32; site_z: f32; site_h: f32; site_open: f32; site_paved: bool; paved_h: f32; site_ring: bool;
+  path_south: f32; path_north: f32; path_tiles: int; paved_n: int;
+  seg_n: int; seg_x0: [SEGS] f32; seg_z0: [SEGS] f32; seg_x1: [SEGS] f32; seg_z1: [SEGS] f32; seg_r: [SEGS] f32; seg_h: [SEGS] f32;
+  centre_laid: bool; centre_x: f32; centre_z: f32;
+  plant_n: int; plant_x: [24] f32; plant_z: [24] f32;   // where each plant stands (the layout eval)
+  dock_laid: bool; dock_x0: f32; dock_z0: f32; dock_x1: f32; dock_z1: f32;
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
   herd: int; herd_kind: int; herd_split: int; herd_kind2: int;
@@ -289,9 +299,9 @@ THING_NAMES :: [THINGS] string.["crate", "barrel", "tree", "rock", "plant", "lan
 THING_WORDS :: [THINGS] string.["CRATE", "BARREL", "TREE", "ROCK", "FERN", "LANTERN", "FENCE", "CHEST"];
 GROUNDS :: [6] string.["meadow", "forest", "desert", "snow", "stone", "beach"];
 TIMES :: [4] string.["day", "dawn", "dusk", "night"];
-PROP_KINDS :: 17;
+PROP_KINDS :: 18;
 PROPS :: [PROP_KINDS] string.["crates", "barrels", "wagon", "fence", "camp", "campfire", "boat", "bridge", "signpost", "well", "treasure", "graves", "tumbleweeds", "statue",
-                              "fountain", "wall", "wreck"];
+                              "fountain", "wall", "wreck", "dock"];
 PROP_MOST :: 8;
 PALETTES :: [4] string.["natural", "pastel", "vivid", "muted"];
 COLOURS :: [7] string.["gold", "orange", "red", "green", "blue", "violet", "white"];
@@ -363,6 +373,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
   s[0].herd = 0; s[0].herd_split = HERD; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
   s[0].water_kind = 1; s[0].land = 0; s[0].flier = 0; s[0].plant_kind = 0; s[0].building_n = 0;
+  site_reset(s);
   was := s[0].camera;
   s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
   s[0].server_rev = 0; s[0].published_rev = 0; s[0].server_undo = 0; s[0].listed = true; s[0].from_n = 0; s[0].from_rev = 0; s[0].from_name_n = 0;
@@ -425,6 +436,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     }
     if head == "feature" {
       f := word_of(line, 1); a := word_of(line, 2);
+      if site_read(s, f, line) { continue; }
       if f == "water" {
         s[0].water = ifx a == "small" then 1 else ifx a == "large" then 3 else 2;
         v := word_of(line, 3); s[0].water_kind = ifx v == "river" then 2 else ifx v == "frozen" then 3 else ifx v == "lava" then 4 else 1;
@@ -645,6 +657,7 @@ put_ahead :: (s: [] MyRealm, e: int) -> f32 { return PUT_AHEAD + hi(ent_reach(s,
 put_clear :: (s: [] MyRealm, e: int, x: f32, z: f32) -> bool {
   reach := ent_reach(s, e);
   if sqrt(x * x + z * z) > GROUND_R - 1 - reach || water_in(s, x, z) > -(reach + 0.1) { return false; }
+  for k: 0..<s[0].seg_n { if seg_gap(s, k, x, z) < reach + 0.1 { return false; } }   // never in a wall
   c := ent_at(s, e); dx := x - c.x; dz := z - c.z;
   mine0 := s[0].ent_s0[e]; mine1 := s[0].ent_s1[e];
   for k: 0..<s[0].solid_n {
@@ -833,6 +846,7 @@ free :: (s: [] MyRealm, x: f32, z: f32, r: f32) -> bool {
   // nor round the camera behind you, for anything tall enough to stand in its way
   cz := z - 6 - CAM_BACK; if r >= 0.8 && sqrt(x * x + cz * cz) < r + 1.6 { return false; }
   if water_in(s, x, z) > -(r + 0.3) { return false; }
+  if s[0].site && !site_free(s, x, z, r) { return false; }
   for i: 0..<s[0].solid_n { ox := x - s[0].solid_x[i]; oz := z - s[0].solid_z[i]; if sqrt(ox * ox + oz * oz) < s[0].solid_r[i] + r + 0.2 { return false; } }
   return true;
 }
@@ -909,10 +923,13 @@ lay_out :: (s: [] MyRealm) {
   if !s[0].spec_ready || !s[0].pack_ready { return; }
   r: [1] Seed; r[0].v = seed_of(slug_text(s));
   s[0].piece_n = 0; s[0].static_n = 0; s[0].solid_n = 0; s[0].water_r = 0; s[0].glow_pen = 0;
-  s[0].mill_n = 0; s[0].beacon = false; s[0].fire_n = 0; s[0].weed_n = 0;
+  s[0].mill_n = 0; s[0].beacon = false; s[0].fire_n = 0; s[0].weed_n = 0; s[0].plant_n = 0;
   s[0].ent_n = TREES_MOST; s[0].ent_open = -1; for e: 0..<ENTS { s[0].ent_kind[e] = -1; s[0].ent_lamp[e] = -1; }
   if !s[0].flock_set { f := flock_target(s); s[0].flock_x = f.x; s[0].flock_z = f.z; s[0].flock_set = true; }
-  if s[0].water > 0 && s[0].water_kind == 2 {
+  site_plan(s);
+  if site_water(s, r[..]) {
+    // a site's water: in its middle (a pond), or beyond its far side (myrealm-site.coax)
+  } else if s[0].water > 0 && s[0].water_kind == 2 {
     // a river: a band across the land ahead of you, bending
     s[0].water_r = ifx s[0].water == 1 then 1.3f32 else ifx s[0].water == 3 then 2.6f32 else 1.9f32;
     s[0].water_x = 0; s[0].water_z = -11 - 3 * rand(r[..]);
@@ -923,6 +940,7 @@ lay_out :: (s: [] MyRealm) {
     s[0].water_x = d * sin(a); s[0].water_z = -d * cos(a);
   }
   land_out(s, r[..]); glowing(s, 0);
+  site_out(s, r[..]);   // walls, paving, the path and the middle first: the rest stands clear of them
   // the headline things first, in the places ahead of you (SLOT_A): what was asked for most is
   // in frame and close from where you start, on a phone too
   s[0].slot_i = 0; s[0].near_i = 0; s[0].perch_n = 0; s[0].built_n = 0;
@@ -938,7 +956,12 @@ lay_out :: (s: [] MyRealm) {
   }
   // a village with no houses or camp asked for: a few cottages round a well, its people among them
   hamlet := Spot.{x = 99, z = 99};
-  if s[0].villagers > 0 && s[0].houses == 0 && s[0].dwellings == 0 {
+  if s[0].site && s[0].site_layout == LAYOUT_VILLAGE && s[0].villagers == 0 && s[0].houses == 0 && s[0].dwellings == 0 { site_cottages(s, r[..], 4); }
+  if s[0].site && s[0].villagers > 0 && s[0].houses == 0 && s[0].dwellings == 0 {
+    // round the site's middle: cottages on its ring, their doors to it
+    site_cottages(s, r[..], 2 + hi_int(1, s[0].villagers / 3));
+    hamlet = Spot.{x = s[0].site_x, z = s[0].site_z};
+  } else if s[0].villagers > 0 && s[0].houses == 0 && s[0].dwellings == 0 {
     hamlet = headline_spot(s, r[..], 5.5);
     if hamlet.x < 90 { cottages(s, r[..], hamlet, 2 + hi_int(1, s[0].villagers / 3)); }
   }
@@ -958,6 +981,7 @@ lay_out :: (s: [] MyRealm) {
   for i: 0..<s[0].lanterns {
     a := cast(f32) i / cast(f32) hi_int(s[0].lanterns, 1) * 6.2831853 + 0.3;
     s[0].lantern_x[i] = 7.5 * sin(a); s[0].lantern_z[i] = 6 - 7.5 * cos(a);
+    if s[0].site { l := site_lantern(s, i); s[0].lantern_x[i] = l.x; s[0].lantern_z[i] = l.z; }
     ent_begin(s, EK_LANTERN, i, s[0].lantern_x[i], s[0].lantern_z[i]);
     if s[0].ent_open >= 0 { s[0].ent_lamp[s[0].ent_open] = i; }
     lantern_post(s, s[0].lantern_x[i], s[0].lantern_z[i]); ent_end(s);
@@ -965,6 +989,11 @@ lay_out :: (s: [] MyRealm) {
   // the houses first of what stands about: the first ahead of you, its door towards where you start
   for h: 0..<s[0].houses {
     w := HOUSE_W[s[0].house_size];
+    if s[0].site && (s[0].site_layout == LAYOUT_VILLAGE || s[0].site_layout == LAYOUT_SQUARE || s[0].site_layout == LAYOUT_RING) {
+      // round the middle, their doors to it
+      c := ring_spot(s, ring_angle(h, s[0].houses), ring_r(s, 0.62 * w), 0.62 * w);
+      if c.x < 90 { ent_begin(s, EK_HOUSE, h, c.x, c.z); house(s, c.x, c.z, turn_of(s[0].site_x - c.x, s[0].site_z - c.z) + 3.1415926, s[0].house_size, s[0].house_colour); ent_end(s); continue; }
+    }
     c := ifx h == 0 && free(s, 2.5, -3.5, 0.62 * w) then Spot.{x = 2.5, z = -3.5} else ifx h < 2 then headline_spot(s, r[..], 0.62 * w) else Spot.{x = 99, z = 99};
     if c.x > 90 { c = spot(s, r[..], 6, 16, 0.62 * w); }
     if c.x > 90 { continue; }
@@ -972,17 +1001,21 @@ lay_out :: (s: [] MyRealm) {
   }
   // the dwellings in a loose camp round the first, their doors to its middle; the village about them
   camp := Spot.{x = 99, z = 99};
-  if s[0].dwellings > 0 {
+  if s[0].dwellings > 0 && s[0].site {
+    camp = Spot.{x = s[0].site_x, z = s[0].site_z};   // round the middle
+  } else if s[0].dwellings > 0 {
     camp = headline_spot(s, r[..], 4.5);
     if camp.x > 90 { camp = spot(s, r[..], 7, 14, 4.5); }
     if camp.x > 90 { camp = spot(s, r[..], 5, GROUND_R - 4, 2.0); }
   }
   if camp.x < 90 {
     ring := ifx s[0].dwellings <= 1 then 0.0f32 else 3.2 + 0.45 * cast(f32) s[0].dwellings;
+    if s[0].site { ring = ring_r(s, 1.3); }
     for i: 0..<s[0].dwellings {
       a := cast(f32) i / cast(f32) hi_int(s[0].dwellings, 1) * 6.2831853 + rand(r[..]) * 0.4;
       x := camp.x + ring * sin(a); z := camp.z - ring * cos(a);
-      if !free(s, x, z, 1.3) { c := spot(s, r[..], 5, GROUND_R - 2, 1.4); if c.x > 90 { continue; } x = c.x; z = c.z; }
+      if s[0].site { c := ring_spot(s, ring_angle(i, s[0].dwellings), ring, 1.3); if c.x < 90 { x = c.x; z = c.z; } }
+      if !free(s, x, z, 1.3) && !(s[0].site && ring_ok(s, x, z, 1.3)) { c := spot(s, r[..], 5, GROUND_R - 2, 1.4); if c.x > 90 { continue; } x = c.x; z = c.z; }
       ent_begin(s, EK_DWELLING, i, x, z); dwelling(s, x, z, turn_of(camp.x - x, z - camp.z), s[0].dwelling_kind); ent_end(s);
     }
   }
@@ -1018,6 +1051,7 @@ lay_out :: (s: [] MyRealm) {
   }
   for p: 0..<s[0].prop_n {
     kind := s[0].props[p];
+    if kind == PROP_DOCK { dock_at(s, r[..], p); continue; }   // from the shore over the water (myrealm-site.coax)
     c := spot(s, r[..], 5, 13, 2.2);
     if c.x > 90 { continue; }
     ent_begin(s, EK_PROP, p, c.x, c.z);
@@ -1038,7 +1072,8 @@ lay_out :: (s: [] MyRealm) {
   }
   for i: 0..<TREES_MOST { s[0].tree_laid[i] = false; }
   for i: 0..<s[0].trees {
-    c := spot(s, r[..], 8, GROUND_R - 2, 1.0);
+    c := site_tree(s, r[..], i);
+    if c.x > 90 { c = spot(s, r[..], 8, GROUND_R - 2, 1.0); }
     if c.x > 90 { continue; }
     // tree i: its pieces and solids, so a move (the document's "trees:I") shifts it and nothing else
     s[0].tree_laid[i] = true; s[0].tree_x[i] = c.x; s[0].tree_z[i] = c.z; s[0].tree_p0[i] = s[0].piece_n; s[0].tree_s0[i] = s[0].solid_n;
@@ -1051,11 +1086,14 @@ lay_out :: (s: [] MyRealm) {
     s[0].tree_p1[i] = s[0].piece_n; s[0].tree_s1[i] = s[0].solid_n;
     ent_end(s);
   }
+  site_fill(s, r[..]);   // what a layout promises of its own: a garden's beds, a clearing's trees, a ring
   wood(s, r[..]);
-  for i: 0..<s[0].rocks { c := spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { ent_begin(s, EK_ROCK, i, c.x, c.z); thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); ent_end(s); } }
+  for i: 0..<s[0].rocks { c := ifx s[0].site && s[0].site_layout == LAYOUT_RING then ring_spot(s, cast(f32) i / cast(f32) s[0].rocks * 6.2831853, s[0].site_open + 2.0, 0.8) else spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { ent_begin(s, EK_ROCK, i, c.x, c.z); thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); ent_end(s); } }
   for i: 0..<s[0].plants {
-    c := spot(s, r[..], 3, GROUND_R - 2, 0.4);
+    c := ifx s[0].site && s[0].encl > 0 && s[0].site_layout == LAYOUT_GARDEN then garden_spot(s, r[..], i, s[0].plants) else Spot.{x = 99, z = 99};
+    if c.x > 90 { c = spot(s, r[..], 3, GROUND_R - 2, 0.4); }
     if c.x > 90 { continue; }
+    if s[0].plant_n < 24 { s[0].plant_x[s[0].plant_n] = c.x; s[0].plant_z[s[0].plant_n] = c.z; s[0].plant_n += 1; }
     if s[0].plant_kind == 0 { thing_at(s, 4, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), 0); }
     else { plant_at(s, s[0].plant_kind, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), i); glowing(s, 0); }
   }
@@ -1425,7 +1463,8 @@ realm_object_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid th
 Spot :: struct { x: f32; z: f32; }
 walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
   p := Spot.{x = x + dx, z = z + dz};
-  if s[0].flying || s[0].y > 1.2 { return kept_in(p); }
+  if s[0].flying { return kept_in(p); }
+  if s[0].y > 1.2 { return kept_in(seg_push(s, p)); }   // a jump clears what is low, never a wall
   for pass: 0..<2 {
     for i: 0..<s[0].solid_n {
       ox := p.x - s[0].solid_x[i]; oz := p.z - s[0].solid_z[i];
@@ -1434,7 +1473,7 @@ walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
       if d < 0.0001 { ox = 0; oz = 1; d = 1; }
       p.x = s[0].solid_x[i] + ox / d * room; p.z = s[0].solid_z[i] + oz / d * room;
     }
-    p = kept_in(p);
+    p = kept_in(seg_push(s, p));
   }
   return p;
 }
@@ -1771,7 +1810,7 @@ json_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> 
 TREE_AUTUMN :: 6; TREE_ACACIA :: 7;
 TREE_WORDS :: [8] string.["round trees", "pines", "dead trees", "trees of every kind", "palm trees", "blossom trees", "autumn trees, orange and red", "acacia trees"];
 PROP_WORDS :: [PROP_KINDS] string.["crates", "barrels", "wagons", "a fence", "a camp", "a campfire", "boats", "a bridge", "a signpost", "a well", "treasure", "gravestones", "tumbleweeds", "a statue",
-                                   "a fountain", "a stone wall", "a shipwreck"];
+                                   "a fountain", "a stone wall", "a shipwreck", "a dock"];
 CAMERA_CONTROLS :: [4] string.[
   "W and S or the arrows walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns.",
   "W and S walk, A and D turn, a drag looks round; on a phone the left thumb walks and the right looks.",
@@ -3628,4 +3667,48 @@ MYREALM_BUDGET :: FrameBudget.{steps = 8, vertices = 2000, draws = 0, bytes = 24
     }
   }
   #assert budget_ok(m[0]);
+}
+
+// Is the line from where you start straight out of the south gate clear of walls and solids?
+gate_clear :: (s: [] MyRealm) -> bool {
+  z: f32 = 6;
+  while z < s[0].site_z + s[0].site_h + 1.5 {
+    for k: 0..<s[0].seg_n { if seg_gap(s, k, 0, z) < BODY_R { return false; } }
+    for k: 0..<s[0].solid_n { if sqrt(s[0].solid_x[k] * s[0].solid_x[k] + (z - s[0].solid_z[k]) * (z - s[0].solid_z[k])) < s[0].solid_r[k] + BODY_R { return false; } }
+    z += 0.25;
+  }
+  return true;
+}
+#test "a stone courtyard with a fountain: walls all round with a gate each end, the fountain in the middle, paving, and you start inside with a way out" {
+  s: [1] MyRealm; t: [1] Track;
+  b: [4096] u8; m := put(b[..], 0, "200\nrealm yard\nname Yard\nstyle lowpoly\nground stone\ntime day\nowner 0\nfeature enclosure medium stone\nfeature centre fountain\nfeature layout square\nfeature trees round 6\nfeature lanterns gold 6\n");
+  opened(s[..], t[..], "yard", cast(string) b[4..<m]);
+  #assert s[0].laid && s[0].site && s[0].encl == 1 && s[0].centre == CENTRE_FOUNTAIN && s[0].site_layout == LAYOUT_SQUARE;
+  #assert s[0].seg_n == 6 && s[0].paved_n > 100 && s[0].centre_laid;
+  #assert abs(s[0].centre_x - s[0].site_x) < 0.01 && abs(s[0].centre_z - s[0].site_z) < 0.01;
+  // you start inside, in front of the fountain, and walk straight out of the south gate
+  #assert s[0].site_z + s[0].site_h > 6 + 6 && s[0].site_z < 6 - 3 && gate_clear(s[..]);
+  #assert s[0].piece_n <= PIECES && s[0].solid_n <= SOLIDS;
+  // a wall stops you: nothing stands inside a wall
+  for k: 0..<s[0].solid_n { for q: 0..<s[0].seg_n { #assert seg_gap(s[..], q, s[0].solid_x[k], s[0].solid_z[k]) > -0.01 || s[0].solid_r[k] < 0.5; } }
+}
+#test "a realm with none of the site's features lays out as before: no walls, no site" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "plain", "realm plain\nname Plain\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature trees round 9\nfeature props fountain\nfeature props wall\n");
+  #assert s[0].laid && !s[0].site && s[0].seg_n == 0 && s[0].paved_n == 0 && s[0].path_tiles == 0 && !s[0].dock_laid;
+}
+#test "a dock runs from the shore over the water; a village's houses stand round its well; a walled garden has beds inside" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "dock", "realm dock\nname Dock\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\nfeature water large pond\nfeature props dock\n");
+  #assert s[0].dock_laid && water_in(s[..], s[0].dock_x0, s[0].dock_z0) < 0 && water_in(s[..], s[0].dock_x1, s[0].dock_z1) > 0.3;
+  v: [1] MyRealm; vt: [1] Track;
+  opened(v[..], vt[..], "green", "realm green\nname Green\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature centre well\nfeature layout village\n");
+  houses := 0;
+  for e: 0..<v[0].ent_n { if ent_laid(v[..], e) && v[0].ent_kind[e] == EK_HOUSE { houses += 1; } }
+  #assert v[0].site && v[0].centre_laid && houses >= 3;
+  g: [1] MyRealm; gt: [1] Track;
+  opened(g[..], gt[..], "garden", "realm garden\nname Garden\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature enclosure medium hedge\nfeature centre statue\nfeature layout garden\n");
+  inside_n := 0;
+  for k: 0..<g[0].plant_n { if abs(g[0].plant_x[k] - g[0].site_x) < g[0].site_h && abs(g[0].plant_z[k] - g[0].site_z) < g[0].site_h { inside_n += 1; } }
+  #assert g[0].seg_n == 6 && inside_n >= 6 && gate_clear(g[..]);
 }
