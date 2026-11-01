@@ -1,0 +1,386 @@
+// CoderOS screen recording: stop (screen-record's stop_recording, audio_segments, audio_piece,
+// trailing_outage, tag_recording, hud_meter_crop's lookups and sync_check, openagents 2ca255550e),
+// loaded by os/screen-record.coax. It ends the picture and the sound at the same instant, places
+// the take's pieces of sound on its clock (os/record-policy.coax), muxes them into the video
+// (os/record-mux.coax), checks the result by the HUD meter (os/record-sync.coax), and says what
+// it found on the terminal and in the file's comment tag, in the shell's words.
+// One change from the shell: a sync check with too few windows says how many it had. The shell
+// read its tab-separated line with IFS=$'\t', which folds the empty fields, so it always said
+// "0 of 0 windows". And the drift and outage limits are os/record-policy.coax's constants: the
+// shell let CODEROS_RECORD_DRIFT_LIMIT and CODEROS_RECORD_AUDIO_OUTAGE_MIN move them, and no
+// CoderOS host sets either.
+
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+
+St :: struct { files: Files; output: string; }
+
+// ---- small pieces
+
+// A program's stdout as `$(prog 2>/dev/null || echo FALLBACK)` kept it.
+st_probe :: (argv: [] string, out: [] u8, fallback: string) -> string {
+  e: [4096] u8; r := proc_run(argv, 120000, out, e[..]);
+  if r.started != 0 || r.status != 0 { return fallback; }
+  return sr_chomp(cast(string) out[0..<r.out_n]);
+}
+// One ffprobe answer about a file: `ffprobe -v error [-select_streams v:0] -show_entries E -of csv=p=0 F`.
+st_ffprobe :: (file: string, video: bool, entries: string, out: [] u8, fallback: string) -> string {
+  if video {
+    a := [10] string.["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", entries, "-of", "csv=p=0", file];
+    return st_probe(a[..], out, fallback);
+  }
+  b := [8] string.["ffprobe", "-v", "error", "-show_entries", entries, "-of", "csv=p=0", file];
+  return st_probe(b[..], out, fallback);
+}
+// printf's %+.3f.
+st_signed :: (v: f64, out: [] u8) -> string {
+  if v < 0.0 { return rec_fixed(v, 3, out); }
+  out[0] = '+'; t := rec_fixed(v, 3, out[1..<out.count]);
+  return cast(string) out[0..<t.count + 1];
+}
+#test "signed thousandths" {
+  b: [32] u8;
+  #assert st_signed(0.0, b[..]) == "+0.000" && st_signed(1.2345, b[..]) == "+1.234" && st_signed(-0.4, b[..]) == "-0.400" && st_signed(-0.0001, b[..]) == "-0.000";
+}
+// A ledger line as `IFS=$'\t' read -r index off path` splits it: tabs are whitespace to read, so
+// runs of them are one break and the ends are trimmed; the path keeps what is left.
+St3 :: struct { a: string; b: string; rest: string; }
+st_read3 :: (line: string) -> St3 {
+  r: St3; i := 0;
+  t := line; e := t.count; while e > 0 && t[e - 1] == '\t' { e -= 1; } t = t[0..<e];
+  while i < t.count && t[i] == '\t' { i += 1; }
+  j := i; while j < t.count && t[j] != '\t' { j += 1; } r.a = t[i..<j];
+  i = j; while i < t.count && t[i] == '\t' { i += 1; }
+  j = i; while j < t.count && t[j] != '\t' { j += 1; } r.b = t[i..<j];
+  i = j; while i < t.count && t[i] == '\t' { i += 1; }
+  r.rest = t[i..<t.count];
+  return r;
+}
+#test "ledger lines as read splits them" {
+  x := st_read3("1\t2.500\t/v/t.mp4.audio.001.wav");
+  #assert x.a == "1" && x.b == "2.500" && x.rest == "/v/t.mp4.audio.001.wav";
+  y := st_read3("\t0\t\t0.000\ta\tb\t");
+  #assert y.a == "0" && y.b == "0.000" && y.rest == "a\tb";
+  z := st_read3("0\t0.000");
+  #assert z.a == "0" && z.b == "0.000" && z.rest == "";
+}
+// cut -f N of a line: the Nth tab field, or the whole line when it has no tab.
+st_cut :: (line: string, n: int) -> string {
+  has := false; for c: line { if c == '\t' { has = true; } }
+  if !has { return line; }
+  k := 1; i := 0;
+  while k < n { while i < line.count && line[i] != '\t' { i += 1; } if i >= line.count { return ""; } i += 1; k += 1; }
+  j := i; while j < line.count && line[j] != '\t' { j += 1; }
+  return line[i..<j];
+}
+#test "cut's fields" {
+  #assert st_cut("a\tb\tc\td", 3) == "c" && st_cut("a\tb", 3) == "" && st_cut("abc", 3) == "abc" && st_cut("a\t\tc", 2) == "";
+}
+// The last line as tail -n 1 prints it (a final newline ends the line, it does not start one).
+st_last_line :: (t: string) -> string {
+  e := t.count; if e > 0 && t[e - 1] == '\n' { e -= 1; }
+  i := e; while i > 0 && t[i - 1] != '\n' { i -= 1; }
+  return t[i..<e];
+}
+#test "the last line" {
+  #assert st_last_line("a\nb\n") == "b" && st_last_line("a\nb") == "b" && st_last_line("") == "" && st_last_line("\n") == "";
+}
+
+// ---- the take's sound
+
+// Where the sound stopped for good, as text ("" when nothing saw it stop): the outage marker, or
+// the last capture's offset when that capture holds no sound.
+st_trailing :: (f: Files, out: [] u8) -> string {
+  pb: [256] u8; ob: [256] u8;
+  marker := sr_path(f.meta_file, ".audio.outage", ob[..]);
+  if fs_exists(marker) { return sr_chomp(sr_read(marker, out)); }
+  segs := sr_path(f.meta_file, ".audio.segments", pb[..]);
+  if !fs_exists(segs) { return ""; }
+  lb: [262144] u8; last := st_last_line(sr_read(segs, lb[..]));
+  if last.count == 0 { return ""; }
+  off := st_cut(last, 2); path := st_cut(last, 3);
+  size := 0; if fs_exists(path) { size = fs_size(path); if size < 0 { size = 0; } }
+  if size > 4096 { return ""; }
+  n := sr_cat(out, 0, off);
+  return cast(string) out[0..<n];
+}
+// One line of the placement for a capture, appended to b; none (and the capture removed) when it
+// holds no sound.
+st_piece :: (off: string, path: string, b: [] RpBuf) {
+  size := fs_size(path); if size < 0 { size = 0; }
+  cb: [4200] u8; clock := sr_path(path, ".clock", cb[..]);
+  if size <= 4096 { r := fs_remove(path); r = fs_remove(clock); return; }
+  db: [256] u8; dur := st_ffprobe(path, false, "format=duration", db[..], "0");
+  tb: [64] u8; tempo := "";
+  if fs_kind(clock) == 1 {
+    kb: [1048576] u8; r := rp_clock_ratio(sr_read(clock, kb[..]));
+    if r != 0.0 { tempo = rec_fixed(r, 6, tb[..]); }
+  }
+  sb: [64] u8;
+  if tempo.count > 0 { dur = rec_fixed(rec_num(ifx dur.count > 0 then dur else "0") / rec_num(tempo), 6, sb[..]); }
+  rp_put(b, off); rp_put(b, "\t"); rp_put(b, ifx dur.count > 0 then dur else "0"); rp_put(b, "\t"); rp_put(b, path); rp_put(b, "\t"); rp_put(b, tempo); rp_put(b, "\n");
+}
+// Every piece of the take that holds sound, oldest first, as the placement's text.
+st_segments :: (f: Files, output: string, b: [] RpBuf) {
+  pb: [256] u8; segs := sr_path(f.meta_file, ".audio.segments", pb[..]);
+  if fs_exists(segs) {
+    lb: [262144] u8; t := sr_read(segs, lb[..]);
+    i := 0;
+    while i < t.count {
+      j := i; while j < t.count && t[j] != '\n' { j += 1; }
+      if j >= t.count { break; }   // read gives up on a last line with no newline
+      x := st_read3(t[i..<j]);
+      if x.rest.count > 0 && fs_kind(x.rest) == 1 { st_piece(x.b, x.rest, b); }
+      i = j + 1;
+    }
+    return;
+  }
+  wb: [4200] u8; wav := sr_path(output, ".audio.wav", wb[..]);
+  if fs_kind(wav) == 1 { st_piece("0.000", wav, b); }
+}
+
+// The note written into the file without touching a frame (tag_recording).
+st_tag :: (output: string, note: string) -> bool {
+  tb: [4300] u8; tagged := st_beside(output, ".tagged.", tb[..]);
+  cb: [16384] u8; cn := sr_cat(cb[..], 0, "comment="); cn = sr_cat(cb[..], cn, note);
+  a := [14] string.["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", output, "-map", "0", "-c", "copy", "-metadata", cast(string) cb[0..<cn], tagged];
+  xb: [1024] u8; eb: [65536] u8;
+  r := proc_run(a[..], -1, xb[..], eb[..]);
+  if r.started == 0 && r.status == 0 && fs_size(tagged) > 0 && fs_rename(tagged, output) { return true; }
+  x := fs_remove(tagged); return false;
+}
+// "${f%.*}MIDDLE${f##*.}"
+st_beside :: (f: string, middle: string, out: [] u8) -> string {
+  i := f.count - 1; while i >= 0 && f[i] != '.' { i -= 1; }
+  n := sr_cat(out, 0, ifx i >= 0 then f[0..<i] else f); n = sr_cat(out, n, middle); n = sr_cat(out, n, ifx i >= 0 then f[i + 1..<f.count] else f);
+  return cast(string) out[0..<n];
+}
+
+// ---- the sync check
+
+// The HUD's meter crop: $CODEROS_RECORD_METER_CROP, else the recording HUD's window as coder-desk
+// lists it scaled to the picture; "" for a region take or when nothing says where the HUD is.
+st_crop :: (f: Files, output: string, out: [] u8) -> string {
+  eb: [256] u8; given := proc_getenv("CODEROS_RECORD_METER_CROP", eb[..]);
+  if given.count > 0 { n := sr_cat(out, 0, given); return cast(string) out[0..<n]; }
+  gb: [256] u8; if fs_exists(sr_path(f.meta_file, ".geometry", gb[..])) { return ""; }
+  lt: [1048576] u8; la := [2] string.["coder-desk", "list"];
+  e: [4096] u8; r := proc_run(la[..], 10000, lt[..], e[..]);
+  if r.started != 0 { return ""; }   // no coder-desk on this host
+  nodes: [65536] JvNode; d: [1] Jv;
+  if r.status != 0 || !jv_parse(d[..], cast(string) lt[0..<r.out_n], nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return ""; }
+  hud := -1;
+  c := d[0].nodes[0].first;
+  while c >= 0 {
+    k := jv_kind(d[0], c);
+    if k != JV_OBJECT && k != JV_NULL { return ""; }   // .title of anything else stops jq
+    if hud < 0 && k == JV_OBJECT {
+      t := jv_get(d[0], c, "title");
+      sb: [256] u8;
+      if jv_kind(d[0], t) == JV_STRING && jv_str(d[0], t, sb[..]) == 13 && cast(string) sb[0..<13] == "recording-hud" { hud = c; }
+    }
+    c = d[0].nodes[c].next;
+  }
+  if hud < 0 { return ""; }
+  st: [65536] u8; sa := [2] string.["coder-desk", "screens"];
+  r2 := proc_run(sa[..], 10000, st[..], e[..]);
+  sw := ""; wb: [256] u8;
+  sn: [8192] JvNode; s: [1] Jv;
+  if r2.started == 0 && r2.status == 0 && jv_parse(s[..], cast(string) st[0..<r2.out_n], sn[..]) && jv_kind(s[0], 0) == JV_ARRAY {
+    first := s[0].nodes[0].first;
+    if first >= 0 && jv_kind(s[0], first) == JV_OBJECT {
+      w := jv_path(s[0], first, "size.width");
+      wk := jv_kind(s[0], w);
+      if wk == JV_STRING { m := jv_str(s[0], w, wb[..]); if m > 0 { sw = cast(string) wb[0..<m]; } }
+      else if wk == JV_NUMBER || wk == JV_TRUE { sw = jv_raw(s[0], w); }
+    }
+  }
+  vb: [64] u8; hb: [64] u8;
+  vw := st_ffprobe(output, true, "stream=width", vb[..], "");
+  vh := st_ffprobe(output, true, "stream=height", hb[..], "");
+  if vw.count == 0 || vh.count == 0 || !sync_number(vw) || !sync_number(vh) { return ""; }
+  return sync_crop(jv_raw(d[0], hud), sw, rec_num(vw), rec_num(vh), out);
+}
+// Lines "PREFIX<value>" from text, the values into out: how many.
+st_series :: (text: string, prefix: string, level: bool, out: [] f64) -> int {
+  k := 0; i := 0;
+  while i < text.count && k < out.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    line := text[i..<j];
+    if line.count >= prefix.count && line[0..<prefix.count] == prefix {
+      v := line[prefix.count..<line.count];
+      lb: [64] u8;
+      // sound_series' awk read the dB value's first field
+      a := 0; while a < v.count && (v[a] == ' ' || v[a] == '\t') { a += 1; }
+      e := a; while e < v.count && v[e] != ' ' && v[e] != '\t' { e += 1; }
+      out[k] = ifx level then rec_num(sync_level(v[a..<e], lb[..])) else rec_num(v[a..<e]);
+      k += 1;
+    }
+    i = j + 1;
+  }
+  return k;
+}
+Check :: struct { clause: string; code: int; }
+st_sync :: (f: Files, output: string, fps: string, out: [] u8) -> Check {
+  eb: [64] u8; on := proc_getenv("CODEROS_RECORD_SYNC_CHECK", eb[..]);
+  if on.count == 0 { on = "1"; }
+  if on != "1" { return Check.{code = 2}; }
+  cb: [128] u8; crop := st_crop(f, output, cb[..]);
+  if crop.count == 0 { return Check.{code = 2}; }
+  text: [67108864] u8; e: [65536] u8;
+  meter: [SYNC_TREND_MAX] f64; sound: [SYNC_TREND_MAX] f64;
+  vf: [256] u8; vn := sr_cat(vf[..], 0, "crop="); vn = sr_cat(vf[..], vn, crop); vn = sr_cat(vf[..], vn, ",signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG:file=-");
+  ma := [12] string.["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "error", "-i", output, "-an", "-vf", cast(string) vf[0..<vn], "-f", "null"];
+  mv: [13] string; for i: 0..<12 { mv[i] = ma[i]; } mv[12] = "-";
+  r := proc_run(mv[..], -1, text[..], e[..]);
+  nm := ifx r.started == 0 then st_series(cast(string) text[0..<r.out_n], "lavfi.signalstats.YAVG=", false, meter[..]) else 0;
+  fv := rec_num(fps);
+  ns := 0;
+  if fv > 0.0 {
+    per := cast(int) (cast(f64) REC_AUDIO_RATE / fv + 0.5);
+    ab: [512] u8; ib: [24] u8;
+    an := sr_cat(ab[..], 0, "aresample=48000,asetnsamples=n="); an = sr_cat(ab[..], an, rp_int(per, ib[..]));
+    an = sr_cat(ab[..], an, ":p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-");
+    sa := [13] string.["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "error", "-i", output, "-vn", "-af", cast(string) ab[0..<an], "-f", "null", "-"];
+    r2 := proc_run(sa[..], -1, text[..], e[..]);
+    ns = ifx r2.started == 0 then st_series(cast(string) text[0..<r2.out_n], "lavfi.astats.Overall.RMS_level=", true, sound[..]) else 0;
+  }
+  tr := sync_trend(meter[0..<nm], sound[0..<ns], fv);
+  bb: [1] RpBuf; bb[0].buf = out; b := bb[..];
+  ub: [24] u8; tb: [24] u8;
+  if tr.verdict == SYNC_UNKNOWN {
+    rp_put(b, "sync check: not enough of the HUD meter followed the sound to measure (");
+    rp_put(b, rp_int(tr.used, ub[..])); rp_put(b, " of "); rp_put(b, rp_int(tr.total, tb[..])); rp_put(b, " windows)");
+    return Check.{clause = rp_since(b, 0), code = 2};
+  }
+  fb: [32] u8; gb: [32] u8; xb: [32] u8;
+  first := rec_fixed(tr.first, 3, fb[..]); final := rec_fixed(tr.final, 3, gb[..]);
+  change := st_signed(rec_num(final) - rec_num(first), xb[..]);
+  rp_put(b, "sync check: the HUD meter trails the sound "); rp_put(b, first); rp_put(b, "s at the start and "); rp_put(b, final);
+  rp_put(b, "s at the end ("); rp_put(b, change); rp_put(b, "s over the take, limit 2 frames; ");
+  rp_put(b, rp_int(tr.used, ub[..])); rp_put(b, " of "); rp_put(b, rp_int(tr.total, tb[..])); rp_put(b, " windows)");
+  return Check.{clause = rp_since(b, 0), code = ifx tr.verdict == SYNC_OK then 0 else 1};
+}
+
+// ---- stop
+
+st_stop :: (f: Files) -> int {
+  if !fs_exists(f.pid_file) { print("No recording in progress.\n"); return 0; }
+  pt: [64] u8; ptext := sr_chomp(sr_read(f.pid_file, pt[..]));
+  pid := sr_pid(ptext);
+  ob: [4096] u8; output := "video";
+  if fs_exists(f.meta_file) && fs_size(f.meta_file) >= 0 { output = sr_chomp(sr_read(f.meta_file, ob[..])); }
+  if pid > 0 && cxproc_pid_alive(pid) == 1 {
+    print("Stopping recording (PID: %)...\n", ptext);
+    k1: [256] u8; k2: [256] u8; k3: [256] u8; s1: [64] u8; s2: [64] u8;
+    spid := sr_pid(sr_read(sr_path(f.pid_file, ".audio.supervisor", k1[..]), s1[..]));
+    apid := sr_pid(sr_read(sr_path(f.pid_file, ".audio", k2[..]), s2[..]));
+    x := fs_write(sr_path(f.pid_file, ".audio.stop", k3[..]), "");
+    if spid > 0 { r := cxproc_pid_signal(spid, PROC_SIGTERM); }
+    r := cxproc_pid_signal(pid, 2);
+    if apid > 0 { r = cxproc_pid_signal(apid, 2); }
+    for i: 0..<50 { if cxproc_pid_alive(pid) != 1 { break; } proc_sleep(100); }
+    if apid > 0 { w := 0; while cxproc_pid_alive(apid) == 1 && w < 30 { proc_sleep(200); w += 1; } }
+    st_finish(f, output);
+  } else {
+    print("Recording process (PID: %) was not active.\n", ptext);
+  }
+  pb: [256] u8;
+  if fs_exists(sr_path(f.meta_file, ".presentation", pb[..])) {
+    pa := [2] string.["presentation-mode", "off"]; po: [65536] u8; pe: [65536] u8;
+    r := proc_run(pa[..], 60000, po[..], pe[..]);
+    // proc_run joins stdout's lines without the last newline; the lines are passed on whole
+    if r.started == 0 { if r.out_n > 0 { print("%\n", cast(string) po[0..<r.out_n]); } tool_err(cast(string) pe[0..<r.err_n]); }
+  }
+  ends := [6] string.["", ".audio", ".audio.stop", ".audio.supervisor", "", ""];
+  for e: ends[0..<4] { b: [256] u8; x := fs_remove(sr_path(f.pid_file, e, b[..])); }
+  metas := [11] string.["", ".sync", ".presentation", ".mic", ".fps", ".audio.segments", ".audio.outage", ".audio.t0", ".audio.place", ".geometry", ""];
+  for e: metas[0..<10] { b: [256] u8; x := fs_remove(sr_path(f.meta_file, e, b[..])); }
+  return 0;
+}
+
+// The take after both captures have closed: placed, muxed, checked and tagged.
+st_finish :: (f: Files, output: string) {
+  db: [256] u8; nb: [256] u8; fb: [256] u8; eb: [64] u8;
+  vdur := st_ffprobe(output, true, "stream=duration", db[..], "0");
+  vframes := st_ffprobe(output, true, "stream=nb_frames", nb[..], "0");
+  fp: [256] u8; fpath := sr_path(f.meta_file, ".fps", fp[..]);
+  vfps := "";
+  if fs_exists(fpath) && fs_size(fpath) >= 0 { vfps = sr_chomp(sr_read(fpath, fb[..])); }
+  else { vfps = proc_getenv("CODEROS_RECORD_FPS", eb[..]); if vfps.count == 0 { vfps = "30"; } }
+  pl: [256] u8; place := sr_path(f.meta_file, ".audio.place", pl[..]);
+  tb: [256] u8; proven := st_trailing(f, tb[..]);
+  ptext: [1048576] u8; bb: [1] RpBuf; bb[0].buf = ptext[..]; b := bb[..];
+  st_segments(f, output, b);
+  pt := rp_since(b, 0);
+  x := fs_write(place, pt);
+  pieces: [RP_MAX] Piece; np := rp_place(pt, pieces[..]);
+  ps := pieces[0..<np];
+  nt: [32768] u8; nn: [1] RpBuf; nn[0].buf = nt[..]; note := nn[..];
+  if np > 0 {
+    sh: [256] u8; sp: [256] u8; shift := "";
+    spath := sr_path(f.meta_file, ".sync", sp[..]);
+    if fs_exists(spath) { shift = sr_chomp(sr_read(spath, sh[..])); }
+    if shift.count > 0 { print("Holding the audio back %s to match the camera...\n", shift); }
+    ab: [64] u8; aend := rec_fixed(rec_end(ps), 6, ab[..]);
+    cb: [8192] u8; clock := rec_clock_note(ps, cb[..]);
+    mb: [65536] u8; missing := rec_outages(ps, rec_num(vdur), proven.count > 0, mb[..]);
+    hb: [64] u8; short := ""; s := rec_shortfall(ps, rec_num(vdur), proven.count > 0); if s >= 0.0 { short = rec_fixed(s, 3, hb[..]); }
+    rb: [64] u8; drift := st_signed(rec_num(aend) - rec_num(vdur), rb[..]);
+    rp_put(note, "coderos: video "); rp_put(note, vdur); rp_put(note, "s, "); rp_put(note, vframes); rp_put(note, " frames at "); rp_put(note, vfps);
+    rp_put(note, " fps constant; audio "); rp_put(note, aend); rp_put(note, "s; the audio ends "); rp_put(note, drift); rp_put(note, "s after the video");
+    if missing.count > 0 { rp_put(note, "; audio missing "); rp_put(note, missing); }
+    if short.count > 0 { rp_put(note, "; audio "); rp_put(note, short); rp_put(note, "s short, and the take does not say where"); }
+    if clock.count > 0 { rp_put(note, "; "); rp_put(note, clock); }
+    n := rp_since(note, 0);
+    print("Video %s (% frames at % fps), audio %s, audio ends %s after the video.\n", vdur, vframes, vfps, aend, drift);
+    if clock.count > 0 { c := clock; if c.count >= 4 && c[0..<4] == "the " { c = c[4..<c.count]; } print("The %.\n", c); }
+    if np > 1 { print("The microphone was reattached % time(s) during the take.\n", np - 1); }
+    if missing.count > 0 {
+      print("The audio is missing %; the picture is whole.\n", missing);
+      tool_err("The audio is missing "); tool_err(missing); tool_errln(".");
+    }
+    limit := REC_DRIFT_LIMIT;
+    dv := rec_num(drift); if dv < 0.0 { dv = -dv; }
+    if short.count > 0 {
+      print("The audio is %s short and the take does not say where; check the sound against the picture before you use it.\n", short);
+      tool_err("The audio is "); tool_err(short); tool_errln("s short and the take does not say where.");
+    } else if missing.count == 0 && dv > limit {
+      tool_err("The audio and the video end "); tool_err(drift); tool_errln("s apart; check the sync at the end of the take.");
+    }
+    argv: [1024] string; ab2: [262144] u8;
+    k := rp_mux(ps, vdur, output, n, shift, pt, argv[..], ab2[..]);
+    muxed := ifx k > 0 then argv[k - 1] else "";
+    xb: [1024] u8; mx: [65536] u8;
+    ok := false;
+    if k > 0 { r := proc_run(argv[0..<k], -1, xb[..], mx[..]); ok = r.started == 0 && r.status == 0 && fs_size(muxed) > 0 && fs_rename(muxed, output); }
+    if ok {
+      i := 0;
+      while i < pt.count {
+        j := i; while j < pt.count && pt[j] != '\n' { j += 1; }
+        seg := st_cut(pt[i..<j], 3);
+        gb: [4200] u8; y := fs_remove(seg); y = fs_remove(sr_path(seg, ".clock", gb[..]));
+        i = j + 1;
+      }
+      kb: [8192] u8; ch := st_sync(f, output, vfps, kb[..]);
+      if ch.clause.count > 0 {
+        full: [40000] u8; fn := sr_cat(full[..], 0, n); fn = sr_cat(full[..], fn, "; "); fn = sr_cat(full[..], fn, ch.clause);
+        t := st_tag(output, cast(string) full[0..<fn]);
+        print("Sync %.\n", ch.clause[5..<ch.clause.count]);
+      }
+      if ch.code == 1 {
+        tool_err("The sound drifts against the picture over this take; "); tool_err(ch.clause[12..<ch.clause.count]); tool_errln(". Fix the sync before you use it.");
+      }
+    } else {
+      if k > 0 { y := fs_remove(muxed); }
+      tool_err("Could not add the audio; it is beside the video at "); tool_errln(st_cut(st_first_line(pt), 3));
+    }
+  } else {
+    rp_put(note, "coderos: video "); rp_put(note, vdur); rp_put(note, "s, "); rp_put(note, vframes); rp_put(note, " frames at "); rp_put(note, vfps);
+    rp_put(note, " fps constant; audio missing 0.0s-"); rp_put(note, vdur); rp_put(note, "s");
+    t := st_tag(output, rp_since(note, 0));
+    tool_errln("The microphone captured no audio; saved video only.");
+  }
+  y := fs_remove(place);
+  print("Recording saved: %\n", output);
+}
+st_first_line :: (t: string) -> string { i := 0; while i < t.count && t[i] != '\n' { i += 1; } return t[0..<i]; }

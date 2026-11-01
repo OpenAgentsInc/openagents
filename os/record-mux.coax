@@ -125,3 +125,16 @@ rp_int :: (v: int, out: [] u8) -> string {
   #assert argv[k - 1] == "take.muxed.take" && rp_mux(p[0..<0], "1", "x", "", "", "", argv[..], buf[..]) == -1;
   #assert rp_int(0, buf[..]) == "0" && rp_int(4560240, buf[..]) == "4560240";
 }
+
+// A capture's clock log (`wall-microseconds<TAB>file-bytes` lines) as the stretch it needs, 0 for none.
+rp_clock_ratio :: (t: string) -> f64 {
+  us: [RP_MAX] f64; by: [RP_MAX] f64; k := 0;
+  f: [4] string;
+  i := 0;
+  while i < t.count && k < RP_MAX {
+    j := i; while j < t.count && t[j] != '\n' { j += 1; }
+    if rp_fields(t[i..<j], f[..]) >= 2 { us[k] = rec_num(f[0]); by[k] = rec_num(f[1]); k += 1; }
+    i = j + 1;
+  }
+  return rec_clock_ratio(us[0..<k], by[0..<k]);
+}

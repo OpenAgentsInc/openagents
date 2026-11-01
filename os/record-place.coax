@@ -48,15 +48,7 @@ tool_main :: () -> int #export_c {
   n := fs_read(args_at(a[..], 1), text[..]);
   t := ifx n > 0 then cast(string) text[0..<n] else "";
   if verb == "ratio" {
-    us: [RP_MAX] f64; by: [RP_MAX] f64; k := 0;
-    f: [4] string;
-    i := 0;
-    while i < t.count && k < RP_MAX {
-      j := i; while j < t.count && t[j] != '\n' { j += 1; }
-      if rp_fields(t[i..<j], f[..]) >= 2 { us[k] = rec_num(f[0]); by[k] = rec_num(f[1]); k += 1; }
-      i = j + 1;
-    }
-    r := rec_clock_ratio(us[0..<k], by[0..<k]);
+    r := rp_clock_ratio(t);
     if r != 0.0 { print("%", rec_fixed(r, 6, b[..])); }
     return 0;
   }

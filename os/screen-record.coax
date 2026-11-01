@@ -4,7 +4,8 @@
 // os/record-place.coax places the sound and builds the mux. This file holds the verbs:
 //   coax/web/tool.sh os/screen-record.coax status        what is recording, and how its sound is
 //   coax/web/tool.sh os/screen-record.coax repair [FILE] put orphaned sound back into its recording
-// start and stop come next. Every line printed is the shell's, so the HUD's and the desk's readers
+//   coax/web/tool.sh os/screen-record.coax stop          end the take and put its sound in
+// (os/record-stop.coax). start comes next. Every line printed is the shell's, so the HUD's and the desk's readers
 // see the same words from either.
 #import "Basic";
 #load "../coax/lib/sys/tool.coax";
@@ -12,6 +13,10 @@
 #load "../coax/lib/sys/args.coax";
 #load "../coax/lib/sys/proc.coax";
 #load "../coax/lib/json/json.coax";
+#load "record-policy.coax";
+#load "record-mux.coax";
+#load "record-sync.coax";
+#load "record-stop.coax";
 
 cxproc_pid_alive :: (pid: int) -> int #foreign;
 
@@ -194,14 +199,15 @@ sr_repair :: (target: string) -> int {
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: screen-record status | repair [FILE]"); return 1; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: screen-record stop | status | repair [FILE]"); return 1; }
   e: [2] [4096] u8;
   f := Files.{pid_file = proc_getenv("CODEROS_SCREEN_RECORD_PID", e[0][..]), meta_file = proc_getenv("CODEROS_SCREEN_RECORD_META", e[1][..])};
   if f.pid_file.count == 0 { f.pid_file = "/tmp/screen-record.pid"; }
   if f.meta_file.count == 0 { f.meta_file = "/tmp/screen-record.meta"; }
   verb := args_at(a[..], 0);
   if verb == "status" { return sr_status(f); }
+  if verb == "stop" { return st_stop(f); }
   if verb == "repair" { return sr_repair(ifx args_count(a[..]) > 1 then args_at(a[..], 1) else ""); }
-  tool_errln("usage: screen-record status | repair [FILE]");
+  tool_errln("usage: screen-record stop | status | repair [FILE]");
   return 1;
 }

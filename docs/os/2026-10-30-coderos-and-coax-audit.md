@@ -308,8 +308,19 @@ compiler and the examples have not been run on Linux yet.
   outage and reattachments, a broken or empty report) and two repair sets
   (nothing to do; a silent take, one that has sound, an empty capture, a
   broken video, a hidden file, a take with no capture) matched exactly.
-  Left in row 4: `start` and `stop`, then `recording-hud`,
-  `presentation-mode` and `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  `stop` (`os/record-stop.coax`, with the HUD meter sync check in
+  `os/record-sync.coax`) ends both captures, places and muxes the sound,
+  checks it by the HUD meter, and tags the file. Twelve prepared takes on
+  coderos-4080 (none, a stale pid, one piece, a hole, no sound, a slow
+  microphone clock, a sync check by a given crop and by the desk's HUD
+  window, a region take, a camera shift, no ledger, a proven end) gave the
+  same output, files, streams and tags as the shell. The pieces of the
+  sync check matched awk and jq on 500 trends, 3,000 levels and 2,000
+  crops. Two changes: a sync check with too few windows gives its real
+  counts (the shell always said "0 of 0"), and the placement limits are
+  policy constants rather than environment overrides.
+  Left in row 4: `start`, then `recording-hud`, `presentation-mode` and
+  `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
