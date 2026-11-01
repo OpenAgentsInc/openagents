@@ -1,0 +1,43 @@
+{
+  "schema": "psionic.rotor-pd.unit-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks": [
+    {
+      "name": "inertia",
+      "source_sha256": "80980c75201c86c587bc127791494b219afa88ffe0e85a9c88549c68b355886a",
+      "exit": 1,
+      "diagnostic": "E0327",
+      "expected_diagnostic": "E0327",
+      "refused": true,
+      "stderr_sha256": "b5df8cdd264b1bab65d88b00bb08bdf3c431a2b603dd0db55afe580499df1087"
+    },
+    {
+      "name": "damping",
+      "source_sha256": "1ef9880e98656f54fe2b77d4c72cfa95200772219af8e6fcd2f7da58306fcaa6",
+      "exit": 1,
+      "diagnostic": "E0327",
+      "expected_diagnostic": "E0327",
+      "refused": true,
+      "stderr_sha256": "56dbe5c236f333cffe5d9050e423c4505cef05d205a2a6f6e40ccb44161d37a5"
+    },
+    {
+      "name": "state",
+      "source_sha256": "1bcb39f937f3658f3ab8d1bfaa2bdca1fd893586e02efae2b24897ce6c16d98b",
+      "exit": 1,
+      "diagnostic": "E0327",
+      "expected_diagnostic": "E0327",
+      "refused": true,
+      "stderr_sha256": "1b88ee242ceb222158c20b3f602e3221d6734bdfa6e42bcabad1af168a4f3793"
+    },
+    {
+      "name": "frequency",
+      "source_sha256": "d789cfd1bf4e4c5a759a4c41d4dbaefb18308d563025e6848acc5385f30bf56b",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "b69b055593a448bc816ab7f4116f4de525308f3881ebaf75212102934ea017e9"
+    }
+  ]
+}

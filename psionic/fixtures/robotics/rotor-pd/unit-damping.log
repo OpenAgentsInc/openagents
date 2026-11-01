@@ -1,0 +1,4 @@
+psionic/tests/robotics/rotor_pd_bad_damping.coax:2:68: error[E0327]: the target is Quantity(RpdDamping, f64), assigned Quantity(RpdStiffness, f64)
+  main :: () {spring:rpu.Quantity(RpdStiffness,f64);p:RpdParams;p.kd=spring;}
+                                                                     ^
+1 error

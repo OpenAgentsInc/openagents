@@ -1,0 +1,13 @@
+isolated constant rotor; not a Panda stability certificate
+natural coefficient (1/s): 100; zeta (ppm): 110000
+alpha/beta (ppm): 39841 956175; strict Jury: 1
+initial: 375000 urad; -500000 urad/s; acceleration unavailable
+step 1: 359104 urad; -7948207 urad/s; -3724103586 urad/s^2
+step 32: 181028 urad; -2976313 urad/s; -1879503180 urad/s^2
+step 64: 85474 urad; -2755616 urad/s; -884615796 urad/s^2
+step 128: 17696 urad; -1228866 urad/s; -181769385 urad/s^2
+Kd3 neighbor 0: class 0; strict 1
+Kd3 neighbor 1: class 1; strict 0
+Kd3 neighbor 2: class 2; strict 0
+outside error domain: range; complete result unchanged
+computed Jury boundary is not a boundedness or motor-admission certificate

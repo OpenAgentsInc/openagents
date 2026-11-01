@@ -1,0 +1,16 @@
+// Isolated constant rotor, not Panda/nonlinear-plant or motor admission.
+#load "../../../coax/lib/quantity.coax" as rpu;
+RpdInertia :: struct @unit(mass=1,length=2,time=0,angle=-2,numerator=1,denominator=1) {}
+RpdDamping :: struct @unit(mass=1,length=2,time=-1,angle=-2,numerator=1,denominator=1) {}
+RpdStiffness :: struct @unit(mass=1,length=2,time=-2,angle=-2,numerator=1,denominator=1) {}
+RpdForce :: struct @unit(mass=1,length=2,time=-2,angle=-1,numerator=1,denominator=1) {}
+RpdRate :: struct @unit(mass=0,length=0,time=-1,angle=1,numerator=1,denominator=1) {}
+RpdAcceleration :: struct @unit(mass=0,length=0,time=-2,angle=1,numerator=1,denominator=1) {}
+RpdInverseSecond :: struct @unit(mass=0,length=0,time=-1,angle=0,numerator=1,denominator=1) {}
+RpdInverseSecondSquared :: struct @unit(mass=0,length=0,time=-2,angle=0,numerator=1,denominator=1) {}
+RpdStatus :: enum u8 {ok;shape;number;range;}
+RpdClass :: enum u8 {stable;boundary;unstable;}
+RpdParams :: struct {inertia:rpu.Quantity(RpdInertia,f64);physical_damping:rpu.Quantity(RpdDamping,f64);kp:rpu.Quantity(RpdStiffness,f64);kd:rpu.Quantity(RpdDamping,f64);step:rpu.Quantity(rpu.Second,f64);}
+RpdState :: struct {error:rpu.Quantity(rpu.Radian,f64);rate:rpu.Quantity(RpdRate,f64);}
+RpdOutput :: struct {state:RpdState;effective_acceleration:rpu.Quantity(RpdAcceleration,f64);}
+RpdAnalysis :: struct {effective_inertia:rpu.Quantity(RpdInertia,f64);alpha:rpu.Quantity(UnitOne,f64);beta:rpu.Quantity(UnitOne,f64);transition:[4]rpu.Quantity(UnitOne,f64);natural_inverse_seconds:rpu.Quantity(RpdInverseSecond,f64);zeta:rpu.Quantity(UnitOne,f64);trace:rpu.Quantity(UnitOne,f64);algebraic_determinant:rpu.Quantity(UnitOne,f64);jury_damping:rpu.Quantity(RpdDamping,f64);jury_margin:rpu.Quantity(RpdInertia,f64);strict_stable:int;classification:int;}

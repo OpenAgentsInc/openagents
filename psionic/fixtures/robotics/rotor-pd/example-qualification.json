@@ -1,0 +1,27 @@
+{
+  "schema": "psionic.rotor-pd.example-qualification.v1",
+  "passed": true,
+  "source_sha256": "ce88c3566ef1c2adf421235d1fce00ce460610c3839a6541b4a15580d134e3df",
+  "golden_sha256": "d3981b48e175a82562dfbff9cf234319df0d6e0b1b070d36363a6565871f8488",
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "profiles": [
+    {
+      "profile": "debug",
+      "passed": true,
+      "stdout_sha256": "d3981b48e175a82562dfbff9cf234319df0d6e0b1b070d36363a6565871f8488",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "profile": "release",
+      "passed": true,
+      "stdout_sha256": "d3981b48e175a82562dfbff9cf234319df0d6e0b1b070d36363a6565871f8488",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "display_check": {
+    "groups": 1,
+    "passed": true,
+    "stdout_sha256": "1371f877cd59a68c4f1d27af06d491356dce312ef41dc6dd6b68586f9cb9fc9a"
+  },
+  "expected_before_execution_sha256": "25f7c90c9b03fc35771d88d022bca132244e0255c08e3c4792b218680c60d2cf"
+}

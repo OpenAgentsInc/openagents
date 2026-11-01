@@ -1,0 +1,2 @@
+#load "../../lib/robotics/rotor-pd.coax";
+main :: () {spring:rpu.Quantity(RpdStiffness,f64);p:RpdParams;p.kd=spring;}

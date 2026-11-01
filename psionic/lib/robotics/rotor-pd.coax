@@ -1,0 +1,73 @@
+#load "rotor-pd-fixtures.coax";
+#authority;
+#test "Rotor PD bit admission rejects IEEE words before arithmetic and preserves field precedence" {
+ #assert rpd_word(0x7ff0000000000000,0,1)==RpdStatus.number && rpd_word(0xfff0000000000000,0,1)==RpdStatus.number && rpd_word(0x7ff8000000000001,0,1)==RpdStatus.number;
+ #assert rpd_word(f64_bits(0.0),0,1)==RpdStatus.ok && rpd_word(f64_bits(1.0),0,1)==RpdStatus.ok && rpd_word(f64_bits(-1.0),0,1)==RpdStatus.range && rpd_word(f64_bits(2.0),0,1)==RpdStatus.range;
+ words:=[5]u64.[f64_bits(1.0),f64_bits(2.0),f64_bits(4.0),f64_bits(1.0),f64_bits(0.5)];#assert rpd_params_bits(words)==RpdStatus.ok;words[0]=f64_bits(0.001);words[1]=0x7ff8000000000001;#assert rpd_params_bits(words)==RpdStatus.range;
+}
+#test "Rotor PD physical inertia damping and explicit angle basis give literal dimensionless map" {
+ p:=rpd_fixture();a:=rpd_analyze_owned(p);#assert a.effective_inertia.value==2 && a.alpha.value==0.5 && a.beta.value==0.25;
+ expected:=[4]f64.[0.5,0.25,-0.5,0.25];for i:0..<4 {#assert a.transition[i].value==expected[i];}#assert a.natural_inverse_seconds.value==2 && a.zeta.value==0.75 && a.trace.value==0.75 && a.algebraic_determinant.value==0.25 && a.jury_damping.value==3 && a.jury_margin.value==4 && a.strict_stable==1 && a.classification==0;
+ s:RpdState;s.error.value=1;s.rate.value=2;x:=rpd_coordinates(s,p.step);#assert x[0].value==1 && x[1].value==1;next:=rpd_step_owned(p,s);#assert next.state.error.value==0.75 && next.state.rate.value== -0.5 && next.effective_acceleration.value== -5;z:=rpd_coordinates(next.state,p.step);for row:0..<2 {#assert z[row].value==a.transition[row*2].value*x[0].value+a.transition[row*2+1].value*x[1].value;}
+}
+#test "Rotor PD strict Jury boundary classification observes both independent inequalities" {
+ damping:rpu.Quantity(RpdDamping,f64);margin:rpu.Quantity(RpdInertia,f64);damping.value=1;margin.value=1;#assert rpd_classify(damping,margin)==RpdClass.stable;damping.value=0;#assert rpd_classify(damping,margin)==RpdClass.boundary;damping.value=1;margin.value=0;#assert rpd_classify(damping,margin)==RpdClass.boundary;damping.value= -1;#assert rpd_classify(damping,margin)==RpdClass.unstable;damping.value=1;margin.value= -1;#assert rpd_classify(damping,margin)==RpdClass.unstable;
+ p:=rpd_fixture();p.physical_damping.value=0;p.kd.value=3;center:=rpd_analyze_owned(p);#assert center.jury_margin.value==0 && center.strict_stable==0 && center.classification==1;
+ p.kd.value=f64_from_bits(f64_bits(3.0)-1);low:=rpd_analyze_owned(p);#assert low.jury_margin.value>0 && low.classification==0 && low.strict_stable==1;
+ p.kd.value=f64_from_bits(f64_bits(3.0)+1);high:=rpd_analyze_owned(p);#assert high.jury_margin.value<0 && high.classification==2 && high.strict_stable==0;
+}
+
+#test "Rotor PD independent dense profile distinguishes continuous square root gain and every matrix coefficient" {
+ p:RpdParams;p.inertia.value=0.01;p.physical_damping.value=0.02;p.kp.value=100;p.kd.value=0.2;p.step.value=0.002;a:=rpd_analyze_owned(p);
+ expected:=[13]f64.[0.01004,0.0398406374501992,0.9561752988047809,0.9601593625498008,0.9561752988047809,-0.0398406374501992,0.9561752988047809,100,0.11,1.9163346613545817,0.9561752988047809,0.22,0.03888];
+ actual:=[13]f64.[a.effective_inertia.value,a.alpha.value,a.beta.value,a.transition[0].value,a.transition[1].value,a.transition[2].value,a.transition[3].value,a.natural_inverse_seconds.value,a.zeta.value,a.trace.value,a.algebraic_determinant.value,a.jury_damping.value,a.jury_margin.value];for i:0..<13 {#assert abs(actual[i]-expected[i])<=2e-12+2e-12*abs(expected[i]);}#assert a.strict_stable==1 && a.classification==0;
+ s:RpdState;s.error.value=0.375;s.rate.value= -0.5;next:=rpd_step_owned(p,s);#assert abs(next.state.error.value-0.3591035856573705)<=2e-10 && abs(next.state.rate.value+7.948207171314741)<=2e-10 && abs(next.effective_acceleration.value+3724.1035856573703)<=2e-10;
+}
+
+rpd_word :: (word:u64,lower:f64,upper:f64)->RpdStatus {if (word&0x7ff0000000000000)==0x7ff0000000000000 {return RpdStatus.number;}value:=f64_from_bits(word);if value<lower || value>upper {return RpdStatus.range;}return RpdStatus.ok;}
+rpd_params_bits :: (words:[5]u64)->RpdStatus {lower:=[5]f64.[0.01,0,1e-6,0,1e-6];upper:=[5]f64.[10,100,500,100,0.5];for i:0..<5 {status:=rpd_word(words[i],lower[i],upper[i]);if status!=RpdStatus.ok {return status;}}return RpdStatus.ok;}
+rpd_state_bits :: (words:[2]u64)->RpdStatus {status:=rpd_word(words[0],-1e6,1e6);if status!=RpdStatus.ok {return status;}return rpd_word(words[1],-1e8,1e8);}
+rpd_output_bits :: (words:[3]u64)->RpdStatus {lower:=[3]f64.[-1e12,-1e8,-1e6];upper:=[3]f64.[1e12,1e8,1e6];for i:0..<3 {status:=rpd_word(words[i],lower[i],upper[i]);if status!=RpdStatus.ok {return status;}}return RpdStatus.ok;}
+rpd_param_words :: (p:RpdParams)->[5]u64 {return [5]u64.[f64_bits(p.inertia.value),f64_bits(p.physical_damping.value),f64_bits(p.kp.value),f64_bits(p.kd.value),f64_bits(p.step.value)];}
+rpd_from_words :: (values:[5]f64)->RpdParams {p:RpdParams;p.inertia.value=values[0];p.physical_damping.value=values[1];p.kp.value=values[2];p.kd.value=values[3];p.step.value=values[4];return p;}
+rpd_classify :: (damping:rpu.Quantity(RpdDamping,f64),margin:rpu.Quantity(RpdInertia,f64))->RpdClass {if damping.value<0 || margin.value<0 {return RpdClass.unstable;}if damping.value==0 || margin.value==0 {return RpdClass.boundary;}return RpdClass.stable;}
+// Normalize BOTH coordinates by one explicit radian before extracting numbers.
+rpd_coordinates :: (state:RpdState,step:rpu.Quantity(rpu.Second,f64))->[2]rpu.Quantity(UnitOne,f64) {basis:rpu.Quantity(rpu.Radian,f64);basis.value=1;hv:=convert_unit(rpu.Radian,step*state.rate);return [2]rpu.Quantity(UnitOne,f64).[convert_unit(UnitOne,state.error/basis),convert_unit(UnitOne,hv/basis)];}
+rpd_analyze_owned :: (p:RpdParams)->RpdAnalysis {
+ a:RpdAnalysis;hb:=convert_unit(RpdInertia,p.step*p.physical_damping);hkd:=convert_unit(RpdInertia,p.step*p.kd);h2kp:=convert_unit(RpdInertia,p.step*p.step*p.kp);a.effective_inertia=p.inertia+hb;a.alpha=convert_unit(UnitOne,h2kp/a.effective_inertia);a.beta=convert_unit(UnitOne,(p.inertia-hkd)/a.effective_inertia);
+ a.transition[0].value=1-a.alpha.value;a.transition[1]=a.beta;a.transition[2].value= -a.alpha.value;a.transition[3]=a.beta;
+ frequency_squared:=convert_unit(RpdInverseSecondSquared,p.kp/p.inertia);a.natural_inverse_seconds.value=sqrt(frequency_squared.value);damping_squared:=convert_unit(UnitProduct(RpdDamping,RpdDamping),p.inertia*p.kp);damping_scale:rpu.Quantity(RpdDamping,f64);damping_scale.value=2*sqrt(damping_squared.value);a.jury_damping=p.physical_damping+p.kd;a.zeta=convert_unit(UnitOne,a.jury_damping/damping_scale);
+ a.trace.value=a.transition[0].value+a.transition[3].value;a.algebraic_determinant=a.beta;a.jury_margin=((p.inertia*4+hb*2)-hkd*2)-h2kp;kind:=rpd_classify(a.jury_damping,a.jury_margin);a.classification=cast(int)kind;a.strict_stable=ifx kind==RpdClass.stable then 1 else 0;return a;
+}
+rpd_step_owned :: (p:RpdParams,state:RpdState)->RpdOutput {
+ effective_inertia:=p.inertia+convert_unit(RpdInertia,p.step*p.physical_damping);spring:=convert_unit(RpdForce,p.kp*state.error);damper:=convert_unit(RpdForce,(p.physical_damping+p.kd)*state.rate);force:rpu.Quantity(RpdForce,f64);force.value= -spring.value-damper.value;out:RpdOutput;out.effective_acceleration=convert_unit(RpdAcceleration,force/effective_inertia);out.state.rate=state.rate+convert_unit(RpdRate,p.step*out.effective_acceleration);out.state.error=state.error+convert_unit(rpu.Radian,p.step*out.state.rate);return out;
+}
+
+#test "Rotor PD every public shape and parameter role refuses atomically" {
+ p:=[2]RpdParams.[rpd_fixture(),rpd_fixture()];s:[2]RpdState;s[0].error.value=1;s[0].rate.value=2;out:=[2]RpdOutput.[rpd_poison(),rpd_poison()];before:=out[0];a:=[2]RpdAnalysis.[rpd_analysis_poison(),rpd_analysis_poison()];old:=a[0];
+ #assert rpd_analyze(p[0..<0],a[0..<1])==RpdStatus.shape && rpd_analyze(p[..],a[0..<1])==RpdStatus.shape && rpd_analyze(p[0..<1],a[0..<0])==RpdStatus.shape && rpd_analyze(p[0..<1],a[..])==RpdStatus.shape;
+ #assert rpd_step(p[0..<0],s[0..<1],out[0..<1])==RpdStatus.shape && rpd_step(p[..],s[0..<1],out[0..<1])==RpdStatus.shape && rpd_step(p[0..<1],s[0..<0],out[0..<1])==RpdStatus.shape && rpd_step(p[0..<1],s[..],out[0..<1])==RpdStatus.shape && rpd_step(p[0..<1],s[0..<1],out[0..<0])==RpdStatus.shape && rpd_step(p[0..<1],s[0..<1],out[..])==RpdStatus.shape;
+ invalid:=[5]f64.[0.001,-1,0,-1,0];
+ for role:0..<5 {values:=[5]f64.[1,2,4,1,0.5];values[role]=invalid[role];p[0]=rpd_from_words(values);#assert rpd_step(p[0..<1],s[0..<1],out[0..<1])==RpdStatus.range && rpd_analyze(p[0..<1],a[0..<1])==RpdStatus.range;rpd_same(out[0],before);rpd_analysis_same(a[0],old);}
+ rpd_same(out[1],before);rpd_analysis_same(a[1],old);
+}
+#test "Rotor PD checked raw bridges match all typed scalar fields and diagnostic flags" {
+ p:=[1]RpdParams.[rpd_fixture()];s:[1]RpdState;s[0].error.value=1;s[0].rate.value=2;a:[1]RpdAnalysis;b:[1]RpdAnalysis;out:[1]RpdOutput;other:[1]RpdOutput;values:=[5]f64.[1,2,4,1,0.5];state:=[2]f64.[1,2];
+ #assert rpd_analyze(p[..],a[..])==RpdStatus.ok && rpd_analyze_raw(values[..],b[..])==RpdStatus.ok;rpd_analysis_same(a[0],b[0]);#assert rpd_step(p[..],s[..],out[..])==RpdStatus.ok && rpd_step_raw(values[..],state[..],other[..])==RpdStatus.ok;rpd_same(out[0],other[0]);#assert out[0].state.error.value==0.75 && out[0].state.rate.value== -0.5 && out[0].effective_acceleration.value== -5;
+ before:=out[0];#assert rpd_step_raw(values[0..<4],state[..],out[..])==RpdStatus.shape && rpd_step_raw(values[..],state[0..<1],out[..])==RpdStatus.shape && rpd_step_raw(values[..],state[..],out[0..<0])==RpdStatus.shape;rpd_same(out[0],before);#assert rpd_analyze_raw(values[0..<4],a[..])==RpdStatus.shape && rpd_analyze_raw(values[..],a[0..<0])==RpdStatus.shape;
+}
+#test "Rotor PD state and effective acceleration rate error endcaps preserve complete output" {
+ p:=[1]RpdParams.[rpd_fixture()];s:[1]RpdState;out:=[1]RpdOutput.[rpd_poison()];before:=out[0];
+ s[0].error.value=1e6+1;#assert rpd_step(p[..],s[..],out[..])==RpdStatus.range;s[0].error.value=0;s[0].rate.value=1e8+1;#assert rpd_step(p[..],s[..],out[..])==RpdStatus.range;
+ p[0].inertia.value=0.01;p[0].physical_damping.value=0;p[0].kp.value=500;p[0].kd.value=100;p[0].step.value=1e-6;s[0].error.value=5e5;s[0].rate.value=1e8;#assert rpd_step(p[..],s[..],out[..])==RpdStatus.range;rpd_same(out[0],before);
+ words:=[3]u64.[f64_bits(0.0),f64_bits(0.0),f64_bits(0.0)];#assert rpd_output_bits(words)==RpdStatus.ok;
+ caps:=[3]f64.[1e12,1e8,1e6];for i:0..<3 {words=[3]u64.[f64_bits(0.0),f64_bits(0.0),f64_bits(0.0)];words[i]=f64_bits(caps[i]);#assert rpd_output_bits(words)==RpdStatus.ok;words[i]=f64_bits(caps[i]*1.01);#assert rpd_output_bits(words)==RpdStatus.range;words[i]=0x7ff8000000000001;#assert rpd_output_bits(words)==RpdStatus.number;}
+}
+#test "Rotor PD unstable diagnostic does not authorize or prohibit a numerically admitted step" {
+ p:=[1]RpdParams.[rpd_fixture()];p[0].physical_damping.value=0;p[0].kd.value=4;s:[1]RpdState;s[0].error.value=1;out:[1]RpdOutput;a:[1]RpdAnalysis;#assert rpd_analyze(p[..],a[..])==RpdStatus.ok && a[0].strict_stable==0 && a[0].classification==2;#assert rpd_step(p[..],s[..],out[..])==RpdStatus.ok && out[0].state.error.value==0 && out[0].state.rate.value== -2 && out[0].effective_acceleration.value== -4;
+}
+
+rpd_analyze :: (params:[]RpdParams,output:[]RpdAnalysis)->RpdStatus #export_c {if params.count!=1 || output.count!=1 {return RpdStatus.shape;}status:=rpd_params_bits(rpd_param_words(params[0]));if status!=RpdStatus.ok {return status;}candidate:=rpd_analyze_owned(params[0]);output[0]=candidate;return RpdStatus.ok;}
+rpd_analyze_raw :: (params:[]f64,output:[]RpdAnalysis)->RpdStatus #export_c {if params.count!=5 || output.count!=1 {return RpdStatus.shape;}values:[5]f64;for i:0..<5 {values[i]=params[i];}p:=[1]RpdParams.[rpd_from_words(values)];return rpd_analyze(p[..],output);}
+rpd_step :: (params:[]RpdParams,state:[]RpdState,output:[]RpdOutput)->RpdStatus #export_c {if params.count!=1 || state.count!=1 || output.count!=1 {return RpdStatus.shape;}status:=rpd_params_bits(rpd_param_words(params[0]));if status!=RpdStatus.ok {return status;}status=rpd_state_bits([2]u64.[f64_bits(state[0].error.value),f64_bits(state[0].rate.value)]);if status!=RpdStatus.ok {return status;}candidate:=rpd_step_owned(params[0],state[0]);status=rpd_output_bits([3]u64.[f64_bits(candidate.effective_acceleration.value),f64_bits(candidate.state.rate.value),f64_bits(candidate.state.error.value)]);if status!=RpdStatus.ok {return status;}output[0]=candidate;return RpdStatus.ok;}
+rpd_step_raw :: (params:[]f64,state:[]f64,output:[]RpdOutput)->RpdStatus #export_c {if params.count!=5 || state.count!=2 || output.count!=1 {return RpdStatus.shape;}values:[5]f64;for i:0..<5 {values[i]=params[i];}p:=[1]RpdParams.[rpd_from_words(values)];s:[1]RpdState;s[0].error.value=state[0];s[0].rate.value=state[1];return rpd_step(p[..],s[..],output);}

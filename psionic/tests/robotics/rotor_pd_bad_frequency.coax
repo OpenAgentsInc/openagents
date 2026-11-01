@@ -1,0 +1,3 @@
+#load "../../lib/robotics/rotor-pd.coax";
+consume_angular_rate :: (rate:rpu.Quantity(RpdRate,f64)) {}
+main :: () {analysis:RpdAnalysis;consume_angular_rate(analysis.natural_inverse_seconds);}

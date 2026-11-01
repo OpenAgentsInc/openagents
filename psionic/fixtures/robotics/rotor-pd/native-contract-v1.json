@@ -1,0 +1,38 @@
+{
+  "schema": "psionic.rotor-pd.native-contract.v1",
+  "frozen_before_first_native_product_emission_or_comparison": true,
+  "experiment_sha256": "4e2924f589ea1c9a0b22c7f0c8ccd382f25702e057513b0f6b8449812d98036a",
+  "profile": "Darwin-arm64 scalar-libm binary64 FPCR0; no fastmath/contraction",
+  "input": "RPD1 magic0x31445052,11profiles,22runs,version1 as4u32;profiles11x5F64;run22x(7F64,updatesI64). Parameters M,B,Kp,Kd,h; run alsoerror/rate.",
+  "analysis_output": "11x128B statusI64+13F64+strictStableI64+classificationI64. beta=(M-hKd)/(M+hB) is velocity retention and may be negative. Jury rawfields are B+Kd and4M+2hB-2hKd-h^2Kp.",
+  "response_output": "2054x48B runI64,stageI64,statusI64,errorF64,rateF64,accelerationF64.2032 Coax response updates;22 stage0 records copy initial inputs with acceleration0 as unavailable transport, NOT an applied step or evaluated initial acceleration.",
+  "preflight": "Pin original closedform/source/data identities. Recompute all11 exactFractionJury classes and Kd3/nextafter3\u00b1 one-ULP signs. Independently verify all parameter/state/A endpoint and isolated lateA/V/E fixture predicates BEFORE product calls.",
+  "primary_response_oracle": "Original cached80-digit eigen closedforms/repeated-root expressions. The independent one-step helper classifies only guard fixtures, never generates response targets.",
+  "guard_cases": {
+    "parameter_endpoints": 10,
+    "state_and_acceleration_endpoints": 6,
+    "isolated_late_acceleration_rate_error_refusals": 6,
+    "nonfinite_role_patterns": 35,
+    "input_output_alias_cases": 14,
+    "actual_expected_reader_poisons": 16
+  },
+  "atomicity": "Every refusal preserves caller output/spares/canaries and actual typed/raw input objects. Success allows changes only inside published output extent, including overlaps with parameter/state storage.",
+  "budgets": "Unchanged experiment: response2e-10absolute+2e-12relative;analysis2e-12absolute+2e-12relative;exactclassification/strictflags/complete cross-profile bytes.",
+  "permission": "A strictJury diagnostic is not admission permission, a finite-precision certificate, nonlinear Panda stability, clock/R14 guarantee or hardware permission. Numericallyunstable valid zero-state inputs still admit steps.",
+  "warning_scope": "Only generated C suppresses unused empty-tag printer parameters; authored native effects/ABI witness remains strict.",
+  "omissions": "No Panda/pose/SDK/NN/old gate, contact/fluid/coupled inertia/force clipping/moving target/general stability or runtime learning qualification.",
+  "exact_dyadic_margin_outputs": {
+    "profiles": [
+      6,
+      7,
+      8
+    ],
+    "binary64_values": [
+      0.0,
+      4.440892098500626e-16,
+      -4.440892098500626e-16
+    ],
+    "bit_exact": true,
+    "expected_flags_tied_to_independent_Fraction_classes": true
+  }
+}

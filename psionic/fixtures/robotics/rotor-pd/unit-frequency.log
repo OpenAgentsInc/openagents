@@ -1,0 +1,4 @@
+psionic/tests/robotics/rotor_pd_bad_frequency.coax:3:63: error[E0317]: argument 1 of 'consume_angular_rate' is Quantity(RpdRate, f64), given Quantity(RpdInverseSecond, f64)
+  main :: () {analysis:RpdAnalysis;consume_angular_rate(analysis.natural_inverse_seconds);}
+                                                                ^
+1 error

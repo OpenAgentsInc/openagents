@@ -1,0 +1,42 @@
+{
+  "schema": "psionic.rotor-pd.native-publication.v1",
+  "passed": true,
+  "original_native_receipt": {
+    "bytes": 23927,
+    "sha256": "6a317f8b07b8e9485cb57acd0c2e242fa3ea62aa187f12e6839e5976697dc88a"
+  },
+  "original_independent_reference": {
+    "bytes": 2265,
+    "sha256": "113b84b50a8f5a82f76d0575715b9db9c7ffb3ca50d1d895cce2b43d00a48741"
+  },
+  "native_or_oracle_or_old_gate_repeated": false,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "profiles": 11,
+  "runs": 22,
+  "analysis_finite_F64_words": 143,
+  "response_finite_F64_words": 6162,
+  "actual_response_update_records": 2032,
+  "unapplied_initial_transport_records": 22,
+  "initial_scope": "Stage0 copies initial error/rate and stores unavailable acceleration0. It is neither an applied product step nor an evaluated initial acceleration. Each response update is independently checked through typed/raw APIs.",
+  "assertions_each_profile": 22225,
+  "complete_mode_bytes_exact": true,
+  "exact_dyadic_Jury_margins": {
+    "profile_indices": [
+      6,
+      7,
+      8
+    ],
+    "binary64_values": [
+      0.0,
+      4.440892098500626e-16,
+      -4.440892098500626e-16
+    ],
+    "bit_exact": true,
+    "binary_flags_tied_to_independently_recomputed_Fraction_classes": true
+  },
+  "mixed_error_scope": "Every scalar uses its own unchanged atol+rtol*abs(reference), never a global scale. Large-value acceleration max absolute error5.21540641784668e-8 remains within1.125percent of its applicable mixed budget.",
+  "diagnostic_scope": "Continuous natural inverse-seconds/zeta and discrete normalized-map Jury differ. Strict diagnostics are not certificates or admission permission. No nonlinear Panda, contact/fluid, physical-clock or hardware claim.",
+  "reused_tooling_scope": "Only authored Run/source-inventory utility definitions are imported from an earlier native driver; no earlier model, gate, expected-data generator or numeric corpus is invoked.",
+  "post_execution_packaging": "Thin shell gate passed syntax only; publication metadata and gate were added after execution, without changing measured C/driver/Coax/reference inputs."
+}

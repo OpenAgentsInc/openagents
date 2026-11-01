@@ -1,0 +1,2 @@
+#load "../../lib/robotics/rotor-pd.coax";
+main :: () {length:rpu.Quantity(rpu.Metre,f64);state:RpdState;state.error=length;}

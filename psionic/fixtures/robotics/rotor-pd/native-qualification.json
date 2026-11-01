@@ -1,0 +1,740 @@
+{
+  "schema": "psionic.rotor-pd.native.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "oracle_regenerated": false,
+  "experiment": {
+    "bytes": 13021,
+    "sha256": "4e2924f589ea1c9a0b22c7f0c8ccd382f25702e057513b0f6b8449812d98036a"
+  },
+  "reference": {
+    "bytes": 2265,
+    "sha256": "113b84b50a8f5a82f76d0575715b9db9c7ffb3ca50d1d895cce2b43d00a48741"
+  },
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "commands": [
+    {
+      "name": "emit-debug",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/rotor-pd.coax",
+        "--library",
+        "--header",
+        "/private/tmp/rotor-pd-native-first/debug/rotor-pd.h"
+      ],
+      "exit": 0,
+      "seconds": 0.01461733301403001,
+      "stdout": {
+        "bytes": 56718,
+        "sha256": "423ffb832b57702e83734b7becae7427cb2d59fca21e1bed27148f96c37be2cb"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/rotor-pd.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/rotor-pd-native-first/release/rotor-pd.h"
+      ],
+      "exit": 0,
+      "seconds": 0.012865707976743579,
+      "stdout": {
+        "bytes": 56718,
+        "sha256": "423ffb832b57702e83734b7becae7427cb2d59fca21e1bed27148f96c37be2cb"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O0",
+        "-g",
+        "-c",
+        "/private/tmp/rotor-pd-native-first/debug/rotor-pd.c",
+        "-o",
+        "/private/tmp/rotor-pd-native-first/native-debug/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.059578166983556,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O0",
+        "-g",
+        "-I/private/tmp/rotor-pd-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/rotor_pd_native.c",
+        "/private/tmp/rotor-pd-native-first/native-debug/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/rotor-pd-native-first/native-debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.11865787499118596,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/rotor-pd-native-first/native-debug/native",
+        "/private/tmp/rotor-pd-native-first/input.bin",
+        "/private/tmp/rotor-pd-native-first/native-debug/analysis.bin",
+        "/private/tmp/rotor-pd-native-first/native-debug/response.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.24873495899373665,
+      "stdout": {
+        "bytes": 318,
+        "sha256": "219de032094d7bd084bfe7b5d16d925f097e37b0b7d8e9f317e97334799f537d"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O2",
+        "-c",
+        "/private/tmp/rotor-pd-native-first/release/rotor-pd.c",
+        "-o",
+        "/private/tmp/rotor-pd-native-first/native-release/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.07834558299509808,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O2",
+        "-I/private/tmp/rotor-pd-native-first/release",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/rotor_pd_native.c",
+        "/private/tmp/rotor-pd-native-first/native-release/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/rotor-pd-native-first/native-release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.17705233301967382,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/rotor-pd-native-first/native-release/native",
+        "/private/tmp/rotor-pd-native-first/input.bin",
+        "/private/tmp/rotor-pd-native-first/native-release/analysis.bin",
+        "/private/tmp/rotor-pd-native-first/native-release/response.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.18071350001264364,
+      "stdout": {
+        "bytes": 318,
+        "sha256": "219de032094d7bd084bfe7b5d16d925f097e37b0b7d8e9f317e97334799f537d"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-c",
+        "/private/tmp/rotor-pd-native-first/debug/rotor-pd.c",
+        "-o",
+        "/private/tmp/rotor-pd-native-first/native-sanitized/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.12728433398297057,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/rotor-pd-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/rotor_pd_native.c",
+        "/private/tmp/rotor-pd-native-first/native-sanitized/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/rotor-pd-native-first/native-sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 0.34845408296678215,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/rotor-pd-native-first/native-sanitized/native",
+        "/private/tmp/rotor-pd-native-first/input.bin",
+        "/private/tmp/rotor-pd-native-first/native-sanitized/analysis.bin",
+        "/private/tmp/rotor-pd-native-first/native-sanitized/response.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.2919925409951247,
+      "stdout": {
+        "bytes": 318,
+        "sha256": "219de032094d7bd084bfe7b5d16d925f097e37b0b7d8e9f317e97334799f537d"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "budgets": {
+    "response": {
+      "atol": 2e-10,
+      "rtol": 2e-12
+    },
+    "analysis": {
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "classification": "exact",
+    "strict_stable": "exact",
+    "mode_bytes": "exact"
+  },
+  "frozen_inputs": {
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/fixtures/robotics/rotor-pd/analysis-expected.bin": {
+      "bytes": 1320,
+      "sha256": "a3df3c0933b597c703a8afba803982e0a598c35579ad735e88027de44e03d6d2"
+    },
+    "psionic/fixtures/robotics/rotor-pd/checks-qualification.json": {
+      "bytes": 2133,
+      "sha256": "3cb6f3ad4c943295b3386424b8551275559e9fa124f40bda1ceeb4cc583d960b"
+    },
+    "psionic/fixtures/robotics/rotor-pd/example-expected.json": {
+      "bytes": 920,
+      "sha256": "25f7c90c9b03fc35771d88d022bca132244e0255c08e3c4792b218680c60d2cf"
+    },
+    "psionic/fixtures/robotics/rotor-pd/example-qualification.json": {
+      "bytes": 1104,
+      "sha256": "7d4f6bb9757e5459061022b3039190134a4b364afef9d0fdef55c865bc250389"
+    },
+    "psionic/fixtures/robotics/rotor-pd/experiment.json": {
+      "bytes": 13021,
+      "sha256": "4e2924f589ea1c9a0b22c7f0c8ccd382f25702e057513b0f6b8449812d98036a"
+    },
+    "psionic/fixtures/robotics/rotor-pd/input-freeze-v1.json": {
+      "bytes": 609,
+      "sha256": "f9ad79097c524d7abe836b4318b12f04915ae5265e5111f5cc1bc8616b80cff5"
+    },
+    "psionic/fixtures/robotics/rotor-pd/native-contract-v1.json": {
+      "bytes": 2834,
+      "sha256": "bd8d4d3ae1af965c73c436d8ebbcc0ae1c30e367220c1bbc30f06d9abddc1020"
+    },
+    "psionic/fixtures/robotics/rotor-pd/profiles-exact.json": {
+      "bytes": 7440,
+      "sha256": "2bea76efc61fa7fbccc68fbe5951c4fb04644f7c7f9f97d20d612868fa5c74af"
+    },
+    "psionic/fixtures/robotics/rotor-pd/profiles.f64": {
+      "bytes": 440,
+      "sha256": "a9d7cb9a681c315c96b4d96271cd289ddff8585c127df291d6fdbd28b90f979e"
+    },
+    "psionic/fixtures/robotics/rotor-pd/reference-publication-v1.json": {
+      "bytes": 1830,
+      "sha256": "48df347ecc137c70f883f53ad413b05d397de4cb7b41fd9502e20ee78c9d3c31"
+    },
+    "psionic/fixtures/robotics/rotor-pd/reference.json": {
+      "bytes": 2265,
+      "sha256": "113b84b50a8f5a82f76d0575715b9db9c7ffb3ca50d1d895cce2b43d00a48741"
+    },
+    "psionic/fixtures/robotics/rotor-pd/response-expected.bin": {
+      "bytes": 49296,
+      "sha256": "3f865e45a701f284154abbeeed69fd01248325ea3bd9ef68194c20cbb1c60f23"
+    },
+    "psionic/fixtures/robotics/rotor-pd/response-index.json": {
+      "bytes": 10683,
+      "sha256": "7b043194777bb9ea2f32d418d6bf1f69de599ed1cd493944726f014798e4d0c6"
+    },
+    "psionic/fixtures/robotics/rotor-pd/runs.bin": {
+      "bytes": 1408,
+      "sha256": "63f44eb1e76ced10b9c84473e65ba10709bd7fdd4c0e8844d6be47c6de57ce34"
+    },
+    "psionic/fixtures/robotics/rotor-pd/unit-damping.log": {
+      "bytes": 304,
+      "sha256": "56dbe5c236f333cffe5d9050e423c4505cef05d205a2a6f6e40ccb44161d37a5"
+    },
+    "psionic/fixtures/robotics/rotor-pd/unit-frequency.log": {
+      "bytes": 339,
+      "sha256": "b69b055593a448bc816ab7f4116f4de525308f3881ebaf75212102934ea017e9"
+    },
+    "psionic/fixtures/robotics/rotor-pd/unit-inertia.log": {
+      "bytes": 320,
+      "sha256": "b5df8cdd264b1bab65d88b00bb08bdf3c431a2b603dd0db55afe580499df1087"
+    },
+    "psionic/fixtures/robotics/rotor-pd/unit-refusals.json": {
+      "bytes": 1481,
+      "sha256": "a43277999f9af0ad14d3bc9614ee127f91aae5fa025819fface0e7a51eedba63"
+    },
+    "psionic/fixtures/robotics/rotor-pd/unit-state.log": {
+      "bytes": 305,
+      "sha256": "1b88ee242ceb222158c20b3f602e3221d6734bdfa6e42bcabad1af168a4f3793"
+    },
+    "psionic/lib/robotics/rotor-pd-fixtures.coax": {
+      "bytes": 1744,
+      "sha256": "c39ec9ef676d0ad0d0c4243a9e2da047e0aad65a98ebf8460b81f1f0483ec7d7"
+    },
+    "psionic/lib/robotics/rotor-pd-types.coax": {
+      "bytes": 1806,
+      "sha256": "bcdfceac6a01a4515b7ba78bca8058315047c6f338d638cca0494497d95a51a6"
+    },
+    "psionic/lib/robotics/rotor-pd.coax": {
+      "bytes": 12998,
+      "sha256": "c2952bfd47d158489016b6ec32809fad646c675c458aff709c8462e1f6b7641e"
+    },
+    "psionic/tests/robotics/panda_pose_ik_native_reference.py": {
+      "bytes": 22571,
+      "sha256": "fe9b4e594b2a7841953f7630928143a4182d15738033e0ba41949bc05a5b54f2"
+    },
+    "psionic/tests/robotics/rotor_pd_native.c": {
+      "bytes": 13017,
+      "sha256": "d8dc5f988bd6fa8518e437ad3ba169a69716f6bd83f1ae581f86284b22d94d65"
+    },
+    "psionic/tests/robotics/rotor_pd_native_reference.py": {
+      "bytes": 14143,
+      "sha256": "149ea82ee23e4908b213fd552dd4480e9c689fe13039e64bd91e82a2d83532bb"
+    }
+  },
+  "independent_preflight": {
+    "profiles": 11,
+    "runs": 22,
+    "updates": 2032,
+    "initial_transport_records": 22,
+    "exact_Fraction_Jury": true,
+    "Kd3_IEEE_neighbors_verified": true,
+    "endpoint_and_isolated_cap_fixtures_verified": true
+  },
+  "input": {
+    "bytes": 1864,
+    "sha256": "263cc9f50e316f26a9019018304444117ce2b709b4bc226cb05be66fc381cb94"
+  },
+  "emissions": {
+    "debug": {
+      "C": {
+        "bytes": 56718,
+        "sha256": "423ffb832b57702e83734b7becae7427cb2d59fca21e1bed27148f96c37be2cb"
+      },
+      "header": {
+        "bytes": 12278,
+        "sha256": "4e7a3dc0c7a6a3f02c9811be5d0e00bc6a9eb872727e95ed39a92bbaf228a345"
+      }
+    },
+    "release": {
+      "C": {
+        "bytes": 56718,
+        "sha256": "423ffb832b57702e83734b7becae7427cb2d59fca21e1bed27148f96c37be2cb"
+      },
+      "header": {
+        "bytes": 12278,
+        "sha256": "4e7a3dc0c7a6a3f02c9811be5d0e00bc6a9eb872727e95ed39a92bbaf228a345"
+      }
+    }
+  },
+  "modes": {
+    "debug": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "profiles": 11,
+        "runs": 22,
+        "response_updates": 2032,
+        "initial_transport_records": 22,
+        "analysis_record_bytes": 128,
+        "response_record_bytes": 48,
+        "assertions": 22225,
+        "alias_cases": 14,
+        "parameter_endpoints": 10,
+        "state_acceleration_endpoints": 6,
+        "late_cap_refusals": 6,
+        "nonfinite_role_patterns": 35,
+        "fpcr": 0
+      },
+      "comparison": {
+        "passed": true,
+        "analysis": {
+          "passed": true,
+          "values": 143,
+          "max_abs_error": 2.220446049250313e-16,
+          "maximum_budget_fraction": 3.710658292014278e-05,
+          "atol": 2e-12,
+          "rtol": 2e-12
+        },
+        "response": {
+          "error_radians": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 7.105427357601002e-14,
+            "maximum_budget_fraction": 0.0002484389185344253,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "rate_radians_per_second": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 6.548361852765083e-11,
+            "maximum_budget_fraction": 0.000904631894101401,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "effective_acceleration_radians_per_second_squared": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 5.21540641784668e-08,
+            "maximum_budget_fraction": 0.011246735355023242,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          }
+        },
+        "exact_classification": true,
+        "applied_update_records": 2032,
+        "initial_unapplied_transport_records": 22,
+        "all_actual_and_expected_analysis_finite_words": 143,
+        "all_actual_and_expected_response_finite_words": 6162,
+        "diagnostic_is_permission": false
+      },
+      "binary": {
+        "bytes": 72920,
+        "sha256": "45dee7b4147704060ec00415581d8db244b05b8a7e2464c512c15b88553ad686"
+      },
+      "analysis": {
+        "bytes": 1408,
+        "sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2"
+      },
+      "response": {
+        "bytes": 98592,
+        "sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf"
+      }
+    },
+    "release": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "profiles": 11,
+        "runs": 22,
+        "response_updates": 2032,
+        "initial_transport_records": 22,
+        "analysis_record_bytes": 128,
+        "response_record_bytes": 48,
+        "assertions": 22225,
+        "alias_cases": 14,
+        "parameter_endpoints": 10,
+        "state_acceleration_endpoints": 6,
+        "late_cap_refusals": 6,
+        "nonfinite_role_patterns": 35,
+        "fpcr": 0
+      },
+      "comparison": {
+        "passed": true,
+        "analysis": {
+          "passed": true,
+          "values": 143,
+          "max_abs_error": 2.220446049250313e-16,
+          "maximum_budget_fraction": 3.710658292014278e-05,
+          "atol": 2e-12,
+          "rtol": 2e-12
+        },
+        "response": {
+          "error_radians": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 7.105427357601002e-14,
+            "maximum_budget_fraction": 0.0002484389185344253,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "rate_radians_per_second": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 6.548361852765083e-11,
+            "maximum_budget_fraction": 0.000904631894101401,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "effective_acceleration_radians_per_second_squared": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 5.21540641784668e-08,
+            "maximum_budget_fraction": 0.011246735355023242,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          }
+        },
+        "exact_classification": true,
+        "applied_update_records": 2032,
+        "initial_unapplied_transport_records": 22,
+        "all_actual_and_expected_analysis_finite_words": 143,
+        "all_actual_and_expected_response_finite_words": 6162,
+        "diagnostic_is_permission": false
+      },
+      "binary": {
+        "bytes": 52984,
+        "sha256": "4a58092afdaa077f2a19346549494f39aa4eb2e188d4b8b84c0fc7431a051993"
+      },
+      "analysis": {
+        "bytes": 1408,
+        "sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2"
+      },
+      "response": {
+        "bytes": 98592,
+        "sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf"
+      }
+    },
+    "sanitized": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "profiles": 11,
+        "runs": 22,
+        "response_updates": 2032,
+        "initial_transport_records": 22,
+        "analysis_record_bytes": 128,
+        "response_record_bytes": 48,
+        "assertions": 22225,
+        "alias_cases": 14,
+        "parameter_endpoints": 10,
+        "state_acceleration_endpoints": 6,
+        "late_cap_refusals": 6,
+        "nonfinite_role_patterns": 35,
+        "fpcr": 0
+      },
+      "comparison": {
+        "passed": true,
+        "analysis": {
+          "passed": true,
+          "values": 143,
+          "max_abs_error": 2.220446049250313e-16,
+          "maximum_budget_fraction": 3.710658292014278e-05,
+          "atol": 2e-12,
+          "rtol": 2e-12
+        },
+        "response": {
+          "error_radians": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 7.105427357601002e-14,
+            "maximum_budget_fraction": 0.0002484389185344253,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "rate_radians_per_second": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 6.548361852765083e-11,
+            "maximum_budget_fraction": 0.000904631894101401,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "effective_acceleration_radians_per_second_squared": {
+            "passed": true,
+            "values": 2054,
+            "max_abs_error": 5.21540641784668e-08,
+            "maximum_budget_fraction": 0.011246735355023242,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          }
+        },
+        "exact_classification": true,
+        "applied_update_records": 2032,
+        "initial_unapplied_transport_records": 22,
+        "all_actual_and_expected_analysis_finite_words": 143,
+        "all_actual_and_expected_response_finite_words": 6162,
+        "diagnostic_is_permission": false
+      },
+      "binary": {
+        "bytes": 97496,
+        "sha256": "14389583309f9a52c9ea41d1b6fe659dd99368e7b7d843457d52fd805661511f"
+      },
+      "analysis": {
+        "bytes": 1408,
+        "sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2"
+      },
+      "response": {
+        "bytes": 98592,
+        "sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf"
+      }
+    }
+  },
+  "new_reader_guards": {
+    "passed": true,
+    "cases": 16,
+    "actual_and_expected": true
+  },
+  "modes_byte_identical": true,
+  "analysis_sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2",
+  "response_sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf",
+  "seconds": 1.6898959170212038,
+  "partial_or_full_outputs": {
+    "native-release/analysis.bin": {
+      "bytes": 1408,
+      "sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2"
+    },
+    "native-debug/analysis.bin": {
+      "bytes": 1408,
+      "sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2"
+    },
+    "native-sanitized/analysis.bin": {
+      "bytes": 1408,
+      "sha256": "f264a9bd7873e0d4d1bfe9e7e07d55b4582da50054782dbc83cbdc4f93de0ac2"
+    },
+    "native-release/response.bin": {
+      "bytes": 98592,
+      "sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf"
+    },
+    "native-debug/response.bin": {
+      "bytes": 98592,
+      "sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf"
+    },
+    "native-sanitized/response.bin": {
+      "bytes": 98592,
+      "sha256": "d91b8cf763c2d5d331d10eba76bc9994203f52ea3bc677ed8f03a73b919380bf"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+#load "../../lib/robotics/rotor-pd.coax";
+WrongRotorInertia :: struct @unit(mass=1,length=2,time=0,angle=0,numerator=1,denominator=1) {}
+main :: () {raw:rpu.Quantity(WrongRotorInertia,f64);p:RpdParams;p.inertia=raw;}

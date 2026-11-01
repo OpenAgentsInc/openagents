@@ -1,0 +1,22 @@
+{
+  "schema": "psionic.rotor-pd.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 13021,
+    "sha256": "4e2924f589ea1c9a0b22c7f0c8ccd382f25702e057513b0f6b8449812d98036a"
+  },
+  "profiles": {
+    "bytes": 440,
+    "sha256": "a9d7cb9a681c315c96b4d96271cd289ddff8585c127df291d6fdbd28b90f979e"
+  },
+  "runs": {
+    "bytes": 1408,
+    "sha256": "63f44eb1e76ced10b9c84473e65ba10709bd7fdd4c0e8844d6be47c6de57ce34"
+  },
+  "expected_generated": false,
+  "product_comparisons": 0,
+  "source": {
+    "bytes": 14531,
+    "sha256": "971688d67445eceabf165886eb591a5b51ec8e851cab400f96eabc570f3bfe82"
+  }
+}

@@ -1,0 +1,688 @@
+{
+  "schema": "psionic.rotor-pd.experiment.v1",
+  "frozen_before_closedform_generation_and_product_comparison": true,
+  "scope": "Isolated constant rotor with explicit PD and implicit physical joint damping. No nonlinear Panda/contact/fluid/clipping/moving target/coupled inertia/clock/global/hardware stability claim.",
+  "parameter_order": [
+    "inertia",
+    "physical_damping",
+    "kp",
+    "kd",
+    "step"
+  ],
+  "parameter_units": [
+    "J*s^2/rad^2",
+    "J*s/rad^2",
+    "J/rad^2",
+    "J*s/rad^2",
+    "s"
+  ],
+  "parameter_bounds": [
+    [
+      0.01,
+      10
+    ],
+    [
+      0,
+      100
+    ],
+    [
+      1e-06,
+      500
+    ],
+    [
+      0,
+      100
+    ],
+    [
+      1e-06,
+      0.5
+    ]
+  ],
+  "state_order": [
+    "error",
+    "rate"
+  ],
+  "state_units": [
+    "rad",
+    "rad/s"
+  ],
+  "state_absolute_caps": [
+    1000000.0,
+    100000000.0
+  ],
+  "effective_acceleration_absolute_cap": 1000000000000.0,
+  "effective_acceleration_units": "rad/s^2",
+  "maximum_updates": 128,
+  "physics": "D=M+hB; a=(-Kp*e-(B+Kd)*v)/D; vnew=v+h*a; enew=e+h*vnew. PhysicalB implicit; feedbackKd explicit.",
+  "normalized_state": "[e,hv],both radians",
+  "transition": "alpha=h^2*Kp/D,beta=(M-h*Kd)/D,A=[[1-alpha,beta],[-alpha,beta]]",
+  "continuous": "omega=sqrt(Kp/M) in1/s,zeta=(B+Kd)/(2sqrt(M*Kp)); distinct from discrete roots/Jury",
+  "strict_Jury": "For positiveM,Kp,h and nonnegativeB,Kd: B+Kd>0 AND4M+2hB-2hKd-h^2Kp>0; equality excluded. Classification0stable1boundary2unstable.",
+  "analysis_record": "13F64 D,alpha,beta,A4rowmajor,omega,zeta,trace,algebraicdet(beta),jury_damping,jury_margin;I64strict_stable,I64classification=120B",
+  "analysis_units": [
+    "J*s^2/rad^2",
+    "1",
+    "1",
+    "1",
+    "1",
+    "1",
+    "1",
+    "1/s",
+    "1",
+    "1",
+    "1",
+    "J*s/rad^2",
+    "J*s^2/rad^2"
+  ],
+  "response_record": "3F64 error,rate,effective_acceleration=24B; initial stage0 acceleration0 is unavailable input transport, not an applied product step",
+  "reference_method": "Fraction exact IEEE input algebra and80-digit Decimal complex eigen roots/integer powers or repeated-root closed form. Velocity from consecutive analytic errors; acceleration from consecutive analytic velocities. No product step recurrence.",
+  "budgets": {
+    "response": {
+      "atol": 2e-10,
+      "rtol": 2e-12
+    },
+    "analysis": {
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "classification": "exact",
+    "strict_stable": "exact",
+    "mode_bytes": "exact"
+  },
+  "profiles": [
+    {
+      "index": 0,
+      "name": "underdamped",
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        0.2,
+        0.002
+      ],
+      "parameter_u64": [
+        4576918229304087675,
+        4581421828931458171,
+        4636737291354636288,
+        4596373779694328218,
+        4566758108544739836
+      ],
+      "updates": 128,
+      "step_scope": "primary .002-second model"
+    },
+    {
+      "index": 1,
+      "name": "continuous-critical",
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        4.0,
+        0.002
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4616189618054758400,
+        4616189618054758400,
+        4566758108544739836
+      ],
+      "updates": 128,
+      "step_scope": "primary .002-second model"
+    },
+    {
+      "index": 2,
+      "name": "overdamped",
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        4.0,
+        0.002
+      ],
+      "parameter_u64": [
+        4576918229304087675,
+        4581421828931458171,
+        4636737291354636288,
+        4616189618054758400,
+        4566758108544739836
+      ],
+      "updates": 128,
+      "step_scope": "primary .002-second model"
+    },
+    {
+      "index": 3,
+      "name": "zero-damping",
+      "parameters": [
+        0.01,
+        0.0,
+        100.0,
+        0.0,
+        0.002
+      ],
+      "parameter_u64": [
+        4576918229304087675,
+        0,
+        4636737291354636288,
+        0,
+        4566758108544739836
+      ],
+      "updates": 128,
+      "step_scope": "primary .002-second model"
+    },
+    {
+      "index": 4,
+      "name": "derivative-unstable",
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        12.0,
+        0.002
+      ],
+      "parameter_u64": [
+        4576918229304087675,
+        4581421828931458171,
+        4636737291354636288,
+        4622945017495814144,
+        4566758108544739836
+      ],
+      "updates": 24,
+      "step_scope": "primary .002-second model"
+    },
+    {
+      "index": 5,
+      "name": "discrete-repeated",
+      "parameters": [
+        1.0,
+        0.0,
+        64.0,
+        15.875,
+        0.001953125
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4634204016564240384,
+        4625126448565321728,
+        4566650022153682944
+      ],
+      "updates": 128,
+      "step_scope": "explicit isolated mathematical dyadic/coarse fixture"
+    },
+    {
+      "index": 6,
+      "name": "jury-exact-boundary",
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.0,
+        0.5
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4616189618054758400,
+        4613937818241073152,
+        4602678819172646912
+      ],
+      "updates": 32,
+      "step_scope": "explicit isolated mathematical dyadic/coarse fixture"
+    },
+    {
+      "index": 7,
+      "name": "jury-stable-neighbor",
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        2.9999999999999996,
+        0.5
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4616189618054758400,
+        4613937818241073151,
+        4602678819172646912
+      ],
+      "updates": 32,
+      "step_scope": "explicit isolated mathematical dyadic/coarse fixture"
+    },
+    {
+      "index": 8,
+      "name": "jury-unstable-neighbor",
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.0000000000000004,
+        0.5
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4616189618054758400,
+        4613937818241073153,
+        4602678819172646912
+      ],
+      "updates": 32,
+      "step_scope": "explicit isolated mathematical dyadic/coarse fixture"
+    },
+    {
+      "index": 9,
+      "name": "continuous-near-below",
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.9999990463256836,
+        0.002
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4616189618054758400,
+        4616189615907274752,
+        4566758108544739836
+      ],
+      "updates": 128,
+      "step_scope": "primary .002-second model"
+    },
+    {
+      "index": 10,
+      "name": "continuous-near-above",
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        4.000000953674316,
+        0.002
+      ],
+      "parameter_u64": [
+        4607182418800017408,
+        0,
+        4616189618054758400,
+        4616189619128500224,
+        4566758108544739836
+      ],
+      "updates": 128,
+      "step_scope": "primary .002-second model"
+    }
+  ],
+  "runs": [
+    {
+      "index": 0,
+      "profile": 0,
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        0.2,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 1,
+      "profile": 0,
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        0.2,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    },
+    {
+      "index": 2,
+      "profile": 1,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        4.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 3,
+      "profile": 1,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        4.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    },
+    {
+      "index": 4,
+      "profile": 2,
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        4.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 5,
+      "profile": 2,
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        4.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    },
+    {
+      "index": 6,
+      "profile": 3,
+      "parameters": [
+        0.01,
+        0.0,
+        100.0,
+        0.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 7,
+      "profile": 3,
+      "parameters": [
+        0.01,
+        0.0,
+        100.0,
+        0.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    },
+    {
+      "index": 8,
+      "profile": 4,
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        12.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 24
+    },
+    {
+      "index": 9,
+      "profile": 4,
+      "parameters": [
+        0.01,
+        0.02,
+        100.0,
+        12.0,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 24
+    },
+    {
+      "index": 10,
+      "profile": 5,
+      "parameters": [
+        1.0,
+        0.0,
+        64.0,
+        15.875,
+        0.001953125
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 11,
+      "profile": 5,
+      "parameters": [
+        1.0,
+        0.0,
+        64.0,
+        15.875,
+        0.001953125
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    },
+    {
+      "index": 12,
+      "profile": 6,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.0,
+        0.5
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 32
+    },
+    {
+      "index": 13,
+      "profile": 6,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.0,
+        0.5
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 32
+    },
+    {
+      "index": 14,
+      "profile": 7,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        2.9999999999999996,
+        0.5
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 32
+    },
+    {
+      "index": 15,
+      "profile": 7,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        2.9999999999999996,
+        0.5
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 32
+    },
+    {
+      "index": 16,
+      "profile": 8,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.0000000000000004,
+        0.5
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 32
+    },
+    {
+      "index": 17,
+      "profile": 8,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.0000000000000004,
+        0.5
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 32
+    },
+    {
+      "index": 18,
+      "profile": 9,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.9999990463256836,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 19,
+      "profile": 9,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        3.9999990463256836,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    },
+    {
+      "index": 20,
+      "profile": 10,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        4.000000953674316,
+        0.002
+      ],
+      "initial_error_rate": [
+        -1.0,
+        0.0
+      ],
+      "updates": 128
+    },
+    {
+      "index": 21,
+      "profile": 10,
+      "parameters": [
+        1.0,
+        0.0,
+        4.0,
+        4.000000953674316,
+        0.002
+      ],
+      "initial_error_rate": [
+        0.375,
+        -0.5
+      ],
+      "updates": 128
+    }
+  ],
+  "profile_count": 11,
+  "run_count": 22,
+  "product_updates": 2032,
+  "initial_transport_records": 22,
+  "response_records": 2054,
+  "profiles_file": {
+    "bytes": 440,
+    "sha256": "a9d7cb9a681c315c96b4d96271cd289ddff8585c127df291d6fdbd28b90f979e"
+  },
+  "runs_file": {
+    "bytes": 1408,
+    "sha256": "63f44eb1e76ced10b9c84473e65ba10709bd7fdd4c0e8844d6be47c6de57ce34"
+  },
+  "source_sha256": {
+    "psionic/tests/robotics/rotor_pd_reference.py": "971688d67445eceabf165886eb591a5b51ec8e851cab400f96eabc570f3bfe82"
+  },
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false
+}

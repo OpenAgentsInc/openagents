@@ -1,0 +1,34 @@
+{
+  "schema": "psionic.rotor-pd.example-expected.v1",
+  "source": "Independent once-only closed-form Decimal/Fraction profile0,run1, at predeclared1/32/64/128 updates. Exact rational Kd3\u00b1oneULP Jury classes.",
+  "sample_values": {
+    "0": [
+      0.375,
+      -0.5,
+      0.0
+    ],
+    "1": [
+      0.3591035856573705,
+      -7.948207171314741,
+      -3724.1035856573703
+    ],
+    "32": [
+      0.18102756779793475,
+      -2.9763127600812616,
+      -1879.5031796449844
+    ],
+    "64": [
+      0.08547423964355721,
+      -2.7556161978554137,
+      -884.6157958748556
+    ],
+    "128": [
+      0.017695634225369957,
+      -1.2288660903805324,
+      -181.7693854926443
+    ]
+  },
+  "response_expected_sha256": "3f865e45a701f284154abbeeed69fd01248325ea3bd9ef68194c20cbb1c60f23",
+  "expected_sha256": "d3981b48e175a82562dfbff9cf234319df0d6e0b1b070d36363a6565871f8488",
+  "generated_before_example_execution": true
+}

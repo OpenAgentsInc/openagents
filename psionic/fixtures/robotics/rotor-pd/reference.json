@@ -1,0 +1,106 @@
+{
+  "schema": "psionic.rotor-pd.independent-reference.v1",
+  "passed": true,
+  "Coax_calls": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "product_recurrence_used_as_oracle": false,
+  "experiment": {
+    "bytes": 13021,
+    "sha256": "4e2924f589ea1c9a0b22c7f0c8ccd382f25702e057513b0f6b8449812d98036a"
+  },
+  "input_freeze": {
+    "bytes": 609,
+    "sha256": "f9ad79097c524d7abe836b4318b12f04915ae5265e5111f5cc1bc8616b80cff5"
+  },
+  "source_sha256": {
+    "psionic/tests/robotics/rotor_pd_reference.py": "971688d67445eceabf165886eb591a5b51ec8e851cab400f96eabc570f3bfe82"
+  },
+  "budgets": {
+    "response": {
+      "atol": 2e-10,
+      "rtol": 2e-12
+    },
+    "analysis": {
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "classification": "exact",
+    "strict_stable": "exact",
+    "mode_bytes": "exact"
+  },
+  "profile_count": 11,
+  "run_count": 22,
+  "product_update_records": 2032,
+  "initial_transport_records": 22,
+  "total_response_records": 2054,
+  "decimal_precision": 80,
+  "decimal_rounding": "ROUND_HALF_EVEN",
+  "maximum_closedform_imaginary": "2E-80",
+  "exact_Jury_classes": [
+    0,
+    0,
+    0,
+    1,
+    2,
+    0,
+    1,
+    0,
+    2,
+    0,
+    0
+  ],
+  "continuous_discriminant_signs": [
+    -1,
+    0,
+    1,
+    -1,
+    1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    1
+  ],
+  "discrete_discriminant_signs": [
+    -1,
+    1,
+    1,
+    -1,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "root_branch_counts": {
+    "complex-conjugate": 4,
+    "distinct-real": 16,
+    "repeated-root": 2
+  },
+  "all_expected_analysis_finite_words": 143,
+  "all_expected_response_finite_words": 6162,
+  "outputs": {
+    "analysis-expected.bin": {
+      "bytes": 1320,
+      "sha256": "a3df3c0933b597c703a8afba803982e0a598c35579ad735e88027de44e03d6d2"
+    },
+    "response-expected.bin": {
+      "bytes": 49296,
+      "sha256": "3f865e45a701f284154abbeeed69fd01248325ea3bd9ef68194c20cbb1c60f23"
+    },
+    "profiles-exact.json": {
+      "bytes": 7440,
+      "sha256": "2bea76efc61fa7fbccc68fbe5951c4fb04644f7c7f9f97d20d612868fa5c74af"
+    },
+    "response-index.json": {
+      "bytes": 10683,
+      "sha256": "7b043194777bb9ea2f32d418d6bf1f69de599ed1cd493944726f014798e4d0c6"
+    }
+  },
+  "seconds": 0.028654541994910687
+}

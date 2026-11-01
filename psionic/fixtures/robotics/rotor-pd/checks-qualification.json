@@ -1,0 +1,45 @@
+{
+  "schema": "psionic.rotor-pd.source-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_inventory": {
+    "psionic/lib/robotics/rotor-pd-types.coax": "bcdfceac6a01a4515b7ba78bca8058315047c6f338d638cca0494497d95a51a6",
+    "psionic/lib/robotics/rotor-pd-fixtures.coax": "c39ec9ef676d0ad0d0c4243a9e2da047e0aad65a98ebf8460b81f1f0483ec7d7",
+    "psionic/lib/robotics/rotor-pd.coax": "c2952bfd47d158489016b6ec32809fad646c675c458aff709c8462e1f6b7641e"
+  },
+  "checks": {
+    "new_groups": 8,
+    "new_cases": 8,
+    "first_seven_stdout_sha256": "3c28f1afff420452c7c1ba21cdf36e1c355e6b917088ffb0f2c2be4c8482d715",
+    "new_independent_dense_group_qualified_in_changed_root_baseline": true
+  },
+  "mutations": {
+    "root": "psionic/lib/robotics/rotor-pd.coax",
+    "root_only": true,
+    "emitted_sites": 136,
+    "killed": 136,
+    "survivors": 0,
+    "stdout_sha256": "0939c7ba6ac91b9a3b84597150e0b6feba8dd90954770f389391016968c0ecbe"
+  },
+  "history": {
+    "first_standalone_math_compile": {
+      "diagnostic": "E0336",
+      "stderr_sha256": "4352a0b8bb74584a60def4819ce316b652fb8358487ac6a9cac7ad0c9c7519be",
+      "fix": "Consolidated own unexported standalone math/test source into the checked exported API root before any passing math run; no arithmetic or numeric-profile change."
+    },
+    "first_mutation": {
+      "emitted_sites": 136,
+      "killed": 135,
+      "survivors": 1,
+      "stdout_sha256": "a463ed573e4f7ae500a5797e3e8f2fe31a9faabd9073070d83bd5c867ceb8680"
+    },
+    "closure": "Independent dense profile observes the continuous damping square-root scale away from coincident2*2==2+2. Only checks changed; no equivalence waiver, product body/corpus/tolerance change."
+  },
+  "unit_refusals": {
+    "file": "unit-refusals.json",
+    "sha256": "a43277999f9af0ad14d3bc9614ee127f91aae5fa025819fface0e7a51eedba63",
+    "count": 4,
+    "passed": true
+  },
+  "scope": "New isolated rotor authority only; no Panda/pose/physics/SDK/NN/old gates. Actual emitted counts do not imply full Quantity operator-token provenance coverage."
+}

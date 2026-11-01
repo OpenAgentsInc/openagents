@@ -1,0 +1,4 @@
+psionic/tests/robotics/rotor_pd_bad_state.coax:2:75: error[E0327]: the target is Quantity(Radian, f64), assigned Quantity(Metre, f64)
+  main :: () {length:rpu.Quantity(rpu.Metre,f64);state:RpdState;state.error=length;}
+                                                                            ^
+1 error

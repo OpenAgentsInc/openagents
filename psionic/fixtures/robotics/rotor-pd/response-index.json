@@ -1,0 +1,486 @@
+[
+  {
+    "run": 0,
+    "profile": 0,
+    "name": "underdamped",
+    "offset_records": 0,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "complex-conjugate",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      86.0768085658307,
+      9960.1593625498
+    ],
+    "maximum_closedform_imaginary": "2E-80"
+  },
+  {
+    "run": 1,
+    "profile": 0,
+    "name": "underdamped",
+    "offset_records": 129,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "complex-conjugate",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      32.344372220970556,
+      3724.1035856573703
+    ],
+    "maximum_closedform_imaginary": "2E-80"
+  },
+  {
+    "run": 2,
+    "profile": 1,
+    "name": "continuous-critical",
+    "offset_records": 258,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      0.6149895243299882,
+      4.0
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 3,
+    "profile": 1,
+    "name": "continuous-critical",
+    "offset_records": 387,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      0.5,
+      0.5
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 4,
+    "profile": 2,
+    "name": "overdamped",
+    "offset_records": 516,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      23.09487150997603,
+      9960.1593625498
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 5,
+    "profile": 2,
+    "name": "overdamped",
+    "offset_records": 645,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      8.676449580165395,
+      3534.860557768924
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 6,
+    "profile": 3,
+    "name": "zero-damping",
+    "offset_records": 774,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "complex-conjugate",
+    "strict_stable": false,
+    "classification": 1,
+    "maximum_absolute_error_rate_acceleration": [
+      1.004994525614567,
+      100.49420939334986,
+      10049.94525614567
+    ],
+    "maximum_closedform_imaginary": "2E-80"
+  },
+  {
+    "run": 7,
+    "profile": 3,
+    "name": "zero-damping",
+    "offset_records": 903,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "complex-conjugate",
+    "strict_stable": false,
+    "classification": 1,
+    "maximum_absolute_error_rate_acceleration": [
+      0.3773290376204028,
+      37.72867501197397,
+      3773.290376204028
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 8,
+    "profile": 4,
+    "name": "derivative-unstable",
+    "offset_records": 1032,
+    "records": 25,
+    "updates": 24,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": false,
+    "classification": 2,
+    "maximum_absolute_error_rate_acceleration": [
+      43.001495086133744,
+      36093.516365403935,
+      30780393.781977702
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 9,
+    "profile": 4,
+    "name": "derivative-unstable",
+    "offset_records": 1057,
+    "records": 25,
+    "updates": 24,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": false,
+    "classification": 2,
+    "maximum_absolute_error_rate_acceleration": [
+      13.599014511721878,
+      11380.441072288035,
+      9705479.637544055
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 10,
+    "profile": 5,
+    "name": "discrete-repeated",
+    "offset_records": 1082,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "repeated-root",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      2.9662396890933427,
+      64.0
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 11,
+    "profile": 5,
+    "name": "discrete-repeated",
+    "offset_records": 1211,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "repeated-root",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      1.1332686096121902,
+      16.0625
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 12,
+    "profile": 6,
+    "name": "jury-exact-boundary",
+    "offset_records": 1340,
+    "records": 33,
+    "updates": 32,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": false,
+    "classification": 1,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      2.0,
+      6.0
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 13,
+    "profile": 6,
+    "name": "jury-exact-boundary",
+    "offset_records": 1373,
+    "records": 33,
+    "updates": 32,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": false,
+    "classification": 1,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      0.5,
+      1.0
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 14,
+    "profile": 7,
+    "name": "jury-stable-neighbor",
+    "offset_records": 1406,
+    "records": 33,
+    "updates": 32,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      2.0,
+      5.999999999999999
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 15,
+    "profile": 7,
+    "name": "jury-stable-neighbor",
+    "offset_records": 1439,
+    "records": 33,
+    "updates": 32,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      0.5000000000000001,
+      1.0000000000000002
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 16,
+    "profile": 8,
+    "name": "jury-unstable-neighbor",
+    "offset_records": 1472,
+    "records": 33,
+    "updates": 32,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": false,
+    "classification": 2,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      2.0,
+      6.000000000000001
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 17,
+    "profile": 8,
+    "name": "jury-unstable-neighbor",
+    "offset_records": 1505,
+    "records": 33,
+    "updates": 32,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": false,
+    "classification": 2,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      0.5,
+      0.9999999999999997
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 18,
+    "profile": 9,
+    "name": "continuous-near-below",
+    "offset_records": 1538,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      0.6149895864762026,
+      4.0
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 19,
+    "profile": 9,
+    "name": "continuous-near-below",
+    "offset_records": 1667,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      0.5,
+      0.4999995231628418
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 20,
+    "profile": 10,
+    "name": "continuous-near-above",
+    "offset_records": 1796,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      -1.0,
+      0.0
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      1.0,
+      0.614989462183783,
+      4.0
+    ],
+    "maximum_closedform_imaginary": "0"
+  },
+  {
+    "run": 21,
+    "profile": 10,
+    "name": "continuous-near-above",
+    "offset_records": 1925,
+    "records": 129,
+    "updates": 128,
+    "initial_error_rate": [
+      0.375,
+      -0.5
+    ],
+    "initial_acceleration_available": false,
+    "root_branch": "distinct-real",
+    "strict_stable": true,
+    "classification": 0,
+    "maximum_absolute_error_rate_acceleration": [
+      0.375,
+      0.5,
+      0.5000004768371582
+    ],
+    "maximum_closedform_imaginary": "0"
+  }
+]

@@ -1,0 +1,4 @@
+psionic/tests/robotics/rotor_pd_bad_inertia.coax:3:75: error[E0327]: the target is Quantity(RpdInertia, f64), assigned Quantity(WrongRotorInertia, f64)
+  main :: () {raw:rpu.Quantity(WrongRotorInertia,f64);p:RpdParams;p.inertia=raw;}
+                                                                            ^
+1 error

@@ -1,0 +1,31 @@
+#import "Basic";
+#load "../lib/robotics/rotor-pd.coax";
+
+#test "Rotor PD example display rounds signed rates and large effective accelerations" {
+ #assert rpd_example_micro(0.3591035856573705)==359104 && rpd_example_micro(-7.948207171314741)== -7948207;
+ #assert rpd_example_micro(-3724.1035856573703)== -3724103586 && rpd_example_micro(0)==0 && rpd_example_micro(-0.0000006)== -1;
+}
+rpd_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("isolated constant rotor; not a Panda stability certificate\n");
+// book:begin rpd-response
+ // M is J*s^2/rad^2; B and Kd are J*s/rad^2; Kp is J/rad^2.
+ // Physical B acts implicitly at the new velocity; controller Kd uses old rate.
+ p:[1]RpdParams;p[0].inertia.value=0.01;p[0].physical_damping.value=0.02;p[0].kp.value=100;p[0].kd.value=0.2;p[0].step.value=0.002;
+ analysis:[1]RpdAnalysis;#assert rpd_analyze(p[..],analysis[..])==RpdStatus.ok;
+ print("natural coefficient (1/s): %; zeta (ppm): %\n",cast(int)analysis[0].natural_inverse_seconds.value,rpd_example_micro(analysis[0].zeta.value));
+ print("alpha/beta (ppm): % %; strict Jury: %\n",rpd_example_micro(analysis[0].alpha.value),rpd_example_micro(analysis[0].beta.value),analysis[0].strict_stable);
+ state:[1]RpdState;state[0].error.value=0.375;state[0].rate.value= -0.5;out:[1]RpdOutput;
+ print("initial: % urad; % urad/s; acceleration unavailable\n",rpd_example_micro(state[0].error.value),rpd_example_micro(state[0].rate.value));
+ for n:1..<129 {
+  #assert rpd_step(p[..],state[..],out[..])==RpdStatus.ok;state[0]=out[0].state;
+  if n==1 || n==32 || n==64 || n==128 {print("step %: % urad; % urad/s; % urad/s^2\n",n,rpd_example_micro(state[0].error.value),rpd_example_micro(state[0].rate.value),rpd_example_micro(out[0].effective_acceleration.value));}
+ }
+ // Exact one-ULP neighbors distinguish the strict computed Jury boundary.
+ p[0].inertia.value=1;p[0].physical_damping.value=0;p[0].kp.value=4;p[0].step.value=0.5;
+ for side:0..<3 {word:=f64_bits(3.0);if side==0 {word-=1;}if side==2 {word+=1;}p[0].kd.value=f64_from_bits(word);#assert rpd_analyze(p[..],analysis[..])==RpdStatus.ok;print("Kd3 neighbor %: class %; strict %\n",side,analysis[0].classification,analysis[0].strict_stable);}
+ before:=out[0];state[0].error.value=1e6+1;#assert rpd_step(p[..],state[..],out[..])==RpdStatus.range;rpd_same(out[0],before);
+ print("outside error domain: range; complete result unchanged\n");
+// book:end rpd-response
+ print("computed Jury boundary is not a boundedness or motor-admission certificate\n");
+}
