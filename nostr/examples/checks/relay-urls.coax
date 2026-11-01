@@ -1,0 +1,84 @@
+// The checks of relay-urls.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/relay-urls.coax
+#load "../relay-urls.coax";
+
+// book:begin check
+// URL, host and request target, and the port, from Python's
+// urllib.parse.urlsplit, which shares no code with uri.coax or relay_uri.coax:
+//   s = urlsplit(u); s.hostname; (s.path or "/") + ("?" + s.query if "?" in u else "")
+//   s.port or (443 if s.scheme == "wss" else 80)
+SPLIT :: [36] string.[
+  "wss://relay.damus.io", "relay.damus.io", "/",
+  "wss://relay.example/", "relay.example", "/",
+  "wss://relay.example:443", "relay.example", "/",
+  "wss://Relay.Example:8443/nostr?x=1", "relay.example", "/nostr?x=1",
+  "ws://localhost:7777", "localhost", "/",
+  "ws://relay.example", "relay.example", "/",
+  "ws://relay.example:443", "relay.example", "/",
+  "wss://relay.example?x", "relay.example", "/?x",
+  "wss://xn--bcher-kva.example", "xn--bcher-kva.example", "/",
+  "ws://relay.example:7777/a%20b?x=1", "relay.example", "/a%20b?x=1",
+  "wss://nos.lol/", "nos.lol", "/",
+  "wss://relay.primal.net/v1?a=b&c=d", "relay.primal.net", "/v1?a=b&c=d"];
+PORTS :: [12] int.[443, 443, 443, 8443, 7777, 80, 443, 443, 443, 7777, 443, 443];
+// urlsplit lowercases the host, so relay_uri's host is lowercased with
+// nip42_host_byte before the comparison.
+#forall "host, port and target agree with urlsplit" i: 0..<12 {
+  url := SPLIT[3 * i]; want := SPLIT[3 * i + 1]; r := relay_uri(url);
+  #assert r.ok && r.tls == (url[2] == 's') && r.port == PORTS[i];
+  host := url[r.host_from..<r.host_to];
+  #assert host.count == want.count;
+  for b, k: host { #assert nip42_host_byte(b) == cast(int) want[k]; }
+  t: [64] u8; n := rc_target(url[r.target_from..<r.target_to], t[..]);
+  #assert n > 0 && cast(string) t[0..<n] == SPLIT[3 * i + 2];
+}
+// The worked trace in the chapter, by hand.
+#test "the worked URL's byte positions" {
+  url := "wss://Relay.Example:8443/nostr?x=1"; r := relay_uri(url);
+  #assert url.count == 34 && r.ok && r.tls && r.host_from == 6 && r.host_to == 19 && r.port == 8443;
+  #assert r.target_from == 24 && r.target_to == 34;
+  // The ws:// spelling: every range one byte earlier, the same port.
+  w := "ws://Relay.Example:8443/nostr?x=1"; q := relay_uri(w);
+  #assert q.ok && !q.tls && q.host_from == 5 && q.host_to == 18 && q.port == 8443 && q.target_from == 23 && q.target_to == 33;
+  // Canonical NIP-42 form of the second worked URL.
+  out: [N42_MAX_URL] u8; c := nip42_url("WSS://Relay.Example:443/nostr//", out[..]);
+  #assert c.error == N42U_OK && cast(string) out[0..<c.count] == "wss://relay.example/nostr";
+  #assert !relay_uri("WSS://Relay.Example:443/nostr//").ok;
+}
+// Every refusal in the example, with the reason uri.coax gives.
+#test "the example's refusals" {
+  bad := [16] string.["http://relay.example", "https://relay.example", "wss://user@relay.example",
+    "wss://relay.example/#frag", "wss://relay.example:0", "wss://relay.example:65536", "wss://relay.example:0443",
+    "wss://relay.example:", "wss://127.0.0.1:7777", "wss://[::1]:7777", "wss://relay.example.",
+    "wss://relay_1.example", "wss://-relay.example", "wss://bücher.example", "wss://relay.example/a b",
+    "wss://relay.example/%00"];
+  for u: bad { r := relay_uri(u); #assert !r.ok && r.port == 0 && r.host_to == 0; }
+}
+// Splitting the wire into reads of any size never changes what the rules
+// decide, and a cut wire never invents an event.
+#forall "every read size gives the same events" chunk: 1..<52 {
+  wire: [256] u8; cp: [16] u8;
+  w := put_frame(wire[..], 0, WS_OP_TEXT, true, "[\"NOTICE\",\"hi\"]");
+  w = put_frame(wire[..], w, WS_OP_TEXT, false, "[\"EVENT\",\"s\",");
+  w = put_frame(wire[..], w, WS_OP_PING, true, "p1");
+  w = put_frame(wire[..], w, WS_OP_CONT, true, "{}]");
+  w = put_frame(wire[..], w, WS_OP_PONG, true, "k");
+  w = put_frame(wire[..], w, WS_OP_CLOSE, true, close_payload(1000, "bye", cp[..]));
+  #assert w == 51;
+  t := replay(cast(string) wire[0..<w], chunk, false);
+  #assert t.result == RC_CLOSED && cast(string) t.log[0..<t.events] == "TPTOC" && t.close == 1000;
+  #assert t.text_bytes == 15 + 16;
+  // Cut after any byte: at most the events whose frames are complete.
+  for cut: 0..<w {
+    c := replay(cast(string) wire[0..<cut], chunk, false);
+    #assert c.result == RC_NONE && c.events <= 4;
+  }
+}
+// Read results from both transports, and the -12 rule.
+#test "transport codes" {
+  #assert rc_read(1) == RC_GOT && rc_read(-1) == RC_CLOSED && rc_read(-2) == RC_NONE;
+  for code: 3..<13 { #assert rc_read(-code) == RC_FAIL; }
+  #assert !rc_closed_stream(-12, 0) && rc_closed_stream(-12, 1000) && rc_closed_stream(-1, 0);
+}
+// book:end check

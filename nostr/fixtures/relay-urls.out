@@ -1,0 +1,78 @@
+accepted:
+wss://relay.damus.io  -> TLS host relay.damus.io port 443 target / | nip42 wss://relay.damus.io
+wss://relay.example/  -> TLS host relay.example port 443 target / | nip42 wss://relay.example
+wss://relay.example:443  -> TLS host relay.example port 443 target / | nip42 wss://relay.example
+wss://Relay.Example:8443/nostr?x=1  -> TLS host Relay.Example port 8443 target /nostr?x=1 | nip42 PATH
+WSS://Relay.Example:443/nostr//  -> refused | nip42 wss://relay.example/nostr
+ws://localhost:7777  -> plain host localhost port 7777 target / | nip42 ws://localhost:7777
+ws://relay.example  -> plain host relay.example port 80 target / | nip42 ws://relay.example
+ws://relay.example:443  -> plain host relay.example port 443 target / | nip42 ws://relay.example:443
+wss://relay.example?x  -> TLS host relay.example port 443 target /?x | nip42 HOST
+wss://xn--bcher-kva.example  -> TLS host xn--bcher-kva.example port 443 target / | nip42 wss://xn--bcher-kva.example
+refused:
+http://relay.example  -> refused | nip42 SCHEME
+https://relay.example  -> refused | nip42 SCHEME
+wss://user@relay.example  -> refused | nip42 HOST
+wss://relay.example/#frag  -> refused | nip42 PATH
+wss://relay.example:0  -> refused | nip42 PORT
+wss://relay.example:65536  -> refused | nip42 PORT
+wss://relay.example:0443  -> refused | nip42 wss://relay.example
+wss://relay.example:  -> refused | nip42 PORT
+wss://127.0.0.1:7777  -> refused | nip42 wss://127.0.0.1:7777
+wss://[::1]:7777  -> refused | nip42 HOST
+wss://relay.example.  -> refused | nip42 wss://relay.example.
+wss://relay_1.example  -> refused | nip42 HOST
+wss://-relay.example  -> refused | nip42 wss://-relay.example
+wss://bücher.example  -> refused | nip42 HOST
+wss://relay.example/a b  -> refused | nip42 PATH
+wss://relay.example/%00  -> refused | nip42 wss://relay.example/%00
+ws:// of 2047 bytes: true
+ws:// of 2048 bytes: false
+request: GET /nostr?x=1 HTTP/1.1
+request: Host: Relay.Example:8443
+script: 51 bytes
+read 7: RC_GOT
+read 7: RC_GOT
+read 7: RC_GOT
+  scan: TEXT ["NOTICE","hi"]
+read 7: RC_GOT
+read 7: RC_GOT
+  scan: MORE, 15 fragment bytes taken into the message
+read 7: RC_GOT
+  scan: PING "p1" -> send a masked pong with the same payload
+  scan: TEXT ["EVENT","s",{}]
+read 7: RC_GOT
+  scan: PONG "k" -> pongs += 1
+read 2: RC_GOT
+  scan: CLOSE 1000 -> echo close 1000, shut, RC_CLOSED
+poll result: RC_CLOSED, events TPTOC
+read sizes 1 to 51: 51 of 51 give the same events and text
+script cut after 20 bytes:
+read 7: RC_GOT
+read 7: RC_GOT
+read 6: RC_GOT
+  scan: TEXT ["NOTICE","hi"]
+read -2: RC_NONE
+poll result: RC_NONE, events T
+empty close:
+read 2: RC_GOT
+  scan: CLOSE 1005 -> echo close 1000, shut, RC_CLOSED
+binary message: REFUSE close 1003
+masked server frame: REFUSE close 1002
+text ff: REFUSE close 1007
+65 bytes against 64: REFUSE close 1009
+continuation first: REFUSE close 1002
+close code 1005 sent: REFUSE close 1002
+read 5 bytes: RC_GOT
+read 0: RC_NONE
+read -2 timeout: RC_NONE
+read -1 end of stream: RC_CLOSED
+read -3 error: RC_FAIL
+read -8 handshake: RC_FAIL
+read -9 untrusted: RC_FAIL
+read -10 wrong name: RC_FAIL
+read -11 old version: RC_FAIL
+read -12 unverified end: RC_FAIL
+-12 accepted as end with no close frame: false
+-12 accepted as end after close 1000: true
+wait: -1 3800 1 0

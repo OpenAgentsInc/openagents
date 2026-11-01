@@ -50,7 +50,7 @@
 
 - [26. WebSocket frames](ch026-websocket-frames.md) — implemented
 - [27. A WebSocket server](ch027-a-websocket-server.md) — implemented
-- [28. Sockets, TLS and relay URLs](ch028-sockets-tls-and-relay-urls.md) — partly implemented
+- [28. Sockets, TLS and relay URLs](ch028-sockets-tls-and-relay-urls.md) — implemented
 
 **VIII. A client**
 

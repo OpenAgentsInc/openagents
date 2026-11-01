@@ -572,7 +572,7 @@
    "number": 28,
    "title": "Sockets, TLS and relay URLs",
    "file": "ch028-sockets-tls-and-relay-urls.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     26,
@@ -583,7 +583,9 @@
     "coax/lib/net/relay_conn_rules.coax",
     "coax/lib/net/relay_uri.coax",
     "coax/lib/net/uri.coax",
-    "coax/platform/tls-native.c"
+    "coax/platform/tls-native.c",
+    "nostr/examples/relay-urls.coax",
+    "nostr/examples/checks/relay-urls.coax"
    ],
    "qualified_targets": [
     "cpu"
