@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 43 are implemented, 13 are partly implemented and
+Of the 104 chapters, 44 are implemented, 12 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -266,7 +266,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [72. Wallet Connect](ch072-wallet-connect.md) | Unimplemented: design draft | NIP-47 Nostr Wallet Connect: `nostr+walletconnect://` URIs, info (13194), requests (23194) and responses (23195) encrypted with NIP-44, and the commands `pay_invoice`, `make_invoice`, `get_balance` and others. |
 | [73. Payment targets](ch073-payment-targets.md) | Unimplemented: design draft | NIP-A3 kind 10133 `payto` tags, with only the Bitcoin and Lightning target types acted on under the repository rule. |
 | [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) | Unimplemented: design draft | NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87 mint discovery, described for reading only; the repository's Bitcoin-only rule excludes Cashu and Fedimint from implementation. |
-| [75. Hosts and reachability](ch075-hosts-and-reachability.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | NIP-HOST invitations, enrollment, grants with epochs and revocation bound to the original host-signed envelope, and NIP-REACH host directories, presence, hints and direct channels. |
+| [75. Hosts and reachability](ch075-hosts-and-reachability.md) | Runnable: native C | NIP-HOST grants bound to the original host-signed 3188 envelope and admitted against the host's record (request window, revocation, expiry, epochs, rights, retained replies), and NIP-REACH presence freshness and route generations. Invitations, enrollment, the directory, hint selection and direct channels are not built. |
 | [76. Work, coordination and control](ch076-work-coordination-and-control.md) | Unimplemented: design draft | NIP-WORK tracked items and revisions, NIP-COORD claims with fencing tokens and leases, NIP-CTRL client pairing and commands, and NIP-CTX task frames and context receipts. |
 | [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) | Unimplemented: design draft | NIP-CAP execution descriptions and bindings, NIP-POL inspectable host policy and approvals, NIP-EXT signed component packages, and NIP-REG curated plugin registries. |
 | [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) | Unimplemented: design draft | NIP-RUN durable run journals with controller handoff, NIP-SESS engine sessions, NIP-TERM terminal sessions, and NIP-ATIF agent trajectories as manifests and chunks. |

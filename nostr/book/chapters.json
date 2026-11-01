@@ -1377,7 +1377,7 @@
    "number": 75,
    "title": "Hosts and reachability",
    "file": "ch075-hosts-and-reachability.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     20,
@@ -1385,7 +1385,11 @@
     49
    ],
    "source": [
-    "coax/lib/nostr/host/grant.coax"
+    "coax/lib/nostr/host/admit.coax",
+    "coax/lib/nostr/host/grant.coax",
+    "coax/lib/nostr/reach/fresh.coax",
+    "nostr/examples/checks/hosts-reach.coax",
+    "nostr/examples/hosts-reach.coax"
    ],
    "qualified_targets": [
     "cpu"

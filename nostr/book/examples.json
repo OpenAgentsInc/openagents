@@ -469,6 +469,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/hosts-reach.coax",
+      "chapter": "nostr/book/ch075-hosts-and-reachability.md",
+      "stdout": "nostr/fixtures/hosts-reach.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

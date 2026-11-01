@@ -1,0 +1,114 @@
+// book:begin example
+// Chapter 75: a host grant from envelope to admission, and REACH freshness.
+// The device binds the grant the host sealed to it (signature, NIP-44,
+// envelope, body); the host admits requests against its own record at a
+// fixed clock; the device keeps presence samples and judges a hint set.
+// The sealed grants are coax/tests/nostr/host_grant_vectors.coax, made by an
+// independent implementation. Keys are the scalars 1 (host), 2 (owner),
+// 3 (device) and 7 (another device): TEST ONLY.
+#load "../../coax/lib/nostr/host/grant.coax";
+#load "../../coax/lib/nostr/host/admit.coax";
+#load "../../coax/lib/nostr/reach/fresh.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+DEVICE :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+OTHER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+GRANT_1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+GRANT_2 :: "3333333333333333333333333333333333333333333333333333333333333333";
+REQUEST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+EVENT_1 :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+EVENT_2 :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+to_hex :: (bytes:[]u8,out:[]u8)->string {
+  r:=hex_encode_checked(cast(string)bytes,out,false);return cast(string)out[0..<r.written];
+}
+// The device: bind an Access wire with device 3's key (or device 7's).
+open_access :: (wire:[]u8,other:bool)->HostGrant {
+  secret:=ifx other then HG_OTHER_SECRET else HG_DEVICE_SECRET;x:=ifx other then HG_OTHER_X else HG_DEVICE_X;
+  work:[HG_WORK]u8;
+  return host_access_bind_checked(wire,secret[..],x[..],work[..],false);
+}
+GRANT_WORDS :: [13]string.["ok","input","wire","event","signature","artifact","key","decrypt","envelope","scoped","grant","issuer","projection"];
+ADMIT_WORDS :: [10]string.["admitted","retry: the retained reply, no new effect","silent: the request expired",
+  "malformed","early","not_admitted","revoked","expired","stale","conflict"];
+REACH_WORDS :: [5]string.["kept","future","stale","rollback","not newer"];
+HINT_WORDS :: [3]string.["usable","future","stale"];
+
+make_request :: (grant:string,epoch:int,at:int,event:string,right:int)->HostRequest {
+  q:HostRequest;q.request=REQUEST;q.event=event;q.signer=DEVICE;q.grant=grant;q.epoch=epoch;
+  q.issued_at=at;q.expires_at=at+60;q.right=right;return q;
+}
+show :: (label:string,g:[]HostGrantRecord,e:[]HostEpoch,r:[]HostRetained,q:HostRequest,now:int) {
+  print("%: %\n",label,ADMIT_WORDS[host_admit(g,e,r,q,now)]);
+}
+make_sample :: (generation:int,observed:int,received:int)->ReachSample {
+  s:ReachSample;s.generation=generation;s.observed_at=observed;s.received_at=received;return s;
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("the device opens its grant\n");
+  original:=HG_ORIGINAL_OK;pre:[HG_REGION]u8;e:=nostr_event_read(original,pre[..],false);
+  h:[128]u8;
+  print("original: kind %, created_at %, % bytes\n",e.kind,e.created_at,original.count);
+  print("  id %\n",to_hex(e.id[..],h[..]));
+  print("  signer %\n",to_hex(e.public_key[..],h[..]));
+  print("  tags %\n",original[e.tags_from..<e.tags_to]);
+  wire:=HG_ACCESS_OK;g:=open_access(wire[..],false);
+  print("bind: %, epoch %, issued_at %, expires_at %, lifetime % s, % rights, original kept: %\n",
+    GRANT_WORDS[g.error],g.epoch,g.issued_at,g.expires_at,g.expires_at-g.issued_at,g.rights,g.original==original);
+  print("the signed body: %\n",HG_FIXTURE_GRANT);
+
+  print("refusals at the device\n");
+  forged:=HG_ACCESS_FORGED;print("first signature digit changed: %\n",GRANT_WORDS[open_access(forged[..],false).error]);
+  sub:=HG_ACCESS_SUBSTITUTED;print("projection names relay wss://other.example.com/: %\n",GRANT_WORDS[open_access(sub[..],false).error]);
+  mine:=HG_ACCESS_FOR_OTHER;print("sealed to device 7, opened by device 3: %\n",GRANT_WORDS[open_access(mine[..],false).error]);
+  print("the same, opened by device 7: %\n",GRANT_WORDS[open_access(mine[..],true).error]);
+  mail:=HG_ACCESS_MAILBOX;print("mailbox is not the grant id: %\n",GRANT_WORDS[open_access(mail[..],false).error]);
+  wrong:=HG_ACCESS_NOT_HOST;print("signed by the owner, not the host: %\n",GRANT_WORDS[open_access(wrong[..],false).error]);
+
+  print("the host admits requests, now = T0 + 110\n");
+  grants:[2]HostGrantRecord;epochs:[1]HostEpoch;kept:[1]HostRetained;
+  grants[0].grant=GRANT_1;grants[0].device=DEVICE;grants[0].epoch=g.epoch;
+  grants[0].issued_at=g.issued_at;grants[0].expires_at=g.expires_at;grants[0].rights=HA_STANDARD;
+  epochs[0].device=DEVICE;epochs[0].epoch=0;
+  one:=grants[0..<1];none:=kept[0..<0];
+  q:=make_request(GRANT_1,0,T0+100,EVENT_1,HA_OPERATE);
+  show("task.create (operate), epoch 0",one,epochs[..],none,q,T0+110);
+  kept[0].request=REQUEST;kept[0].event=EVENT_1;kept[0].expires_at=q.expires_at;
+  show("the same event again",one,epochs[..],kept[..],q,T0+120);
+  show("new bytes under the same request ID",one,epochs[..],kept[..],make_request(GRANT_1,0,T0+100,EVENT_2,HA_OPERATE),T0+120);
+  show("device.revoke (access_admin)",one,epochs[..],none,make_request(GRANT_1,0,T0+100,EVENT_1,HA_ACCESS_ADMIN),T0+110);
+  stolen:=q;stolen.signer=OTHER;show("device 7 presents device 3's grant",one,epochs[..],none,stolen,T0+110);
+  show("the request again at T0 + 161",one,epochs[..],kept[..],q,T0+161);
+  long:=q;long.expires_at=q.issued_at+61;show("a 61-second request",one,epochs[..],none,long,T0+110);
+
+  print("the owner revokes device 3\n");
+  print("new epoch: %\n",host_revoke(one,epochs[..],DEVICE));
+  show("the same event again",one,epochs[..],kept[..],q,T0+120);
+  show("a new request under grant 1",one,epochs[..],none,make_request(GRANT_1,0,T0+130,EVENT_2,HA_OPERATE),T0+130);
+  print("device 3 enrolls again: grant 2 at epoch 1\n");
+  grants[1]=grants[0];grants[1].grant=GRANT_2;grants[1].epoch=1;grants[1].revoked=false;
+  grants[1].issued_at=T0+200;grants[1].expires_at=T0+86600;
+  both:=grants[..];
+  show("grant 2 named with epoch 0",both,epochs[..],none,make_request(GRANT_2,0,T0+210,EVENT_2,HA_OPERATE),T0+210);
+  show("grant 2 at epoch 1",both,epochs[..],none,make_request(GRANT_2,1,T0+210,EVENT_2,HA_OPERATE),T0+210);
+  show("grant 2 at epoch 1, now = its expires_at",both,epochs[..],none,make_request(GRANT_2,1,T0+86540,EVENT_2,HA_OPERATE),T0+86600);
+
+  print("REACH: presence and hints, received by the device's clock\n");
+  held:ReachSample;have:=false;
+  s:=make_sample(4,T0,T0+2);r:=reach_presence_accept(held,have,s);
+  print("generation 4, observed T0, received T0 + 2: %\n",REACH_WORDS[r]);
+  if r==RF_OK {held=s;have=true;}
+  print("generation 3 replayed, observed T0 + 60, received T0 + 61: %\n",REACH_WORDS[reach_presence_accept(held,have,make_sample(3,T0+60,T0+61))]);
+  print("generation 4 again, observed T0, received T0 + 9: %\n",REACH_WORDS[reach_presence_accept(held,have,make_sample(4,T0,T0+9))]);
+  print("generation 4, observed T0 + 40, received T0 + 5: %\n",REACH_WORDS[reach_presence_accept(held,have,make_sample(4,T0+40,T0+5))]);
+  print("generation 5, observed T0 - 200, received T0 + 10: %\n",REACH_WORDS[reach_presence_accept(held,have,make_sample(5,T0-200,T0+10))]);
+  print("hints of generation 3 (the old routes), now T0 + 60: %\n",HINT_WORDS[reach_hints_usable(3,T0+3600,held,have,T0+60)]);
+  print("hints of generation 4, now T0 + 60: %\n",HINT_WORDS[reach_hints_usable(4,T0+3600,held,have,T0+60)]);
+  print("hints of generation 4, now T0 + 183: %\n",HINT_WORDS[reach_hints_usable(4,T0+3600,held,have,T0+183)]);
+  print("hints of generation 4 that expired at T0 + 60, now T0 + 60: %\n",HINT_WORDS[reach_hints_usable(4,T0+60,held,have,T0+60)]);
+}
+// book:end main

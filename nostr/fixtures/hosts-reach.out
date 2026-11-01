@@ -1,0 +1,40 @@
+the device opens its grant
+original: kind 3188, created_at 1790000000, 1969 bytes
+  id 1b9bc616c2ce5998bed89393335a5190ca2b715ca18c6e1409c44d4d3d740bf2
+  signer 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+  tags [["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["h","1111111111111111111111111111111111111111111111111111111111111111"],["t","oa:artifact:v1"]]
+bind: ok, epoch 0, issued_at 1790000000, expires_at 1790086400, lifetime 86400 s, 4 rights, original kept: true
+the signed body: {"device":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","epoch":0,"expires_at":1790086400,"grant":"1111111111111111111111111111111111111111111111111111111111111111","host":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","issued_at":1790000000,"origin":{"id":"2222222222222222222222222222222222222222222222222222222222222222","issuer":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kind":"invitation"},"owner":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","relay":"wss://relay.example.com/","requires":[],"rights":["observe","operate","terminal","review"],"v":"openagents.host-grant.v1"}
+refusals at the device
+first signature digit changed: signature
+projection names relay wss://other.example.com/: projection
+sealed to device 7, opened by device 3: artifact
+the same, opened by device 7: ok
+mailbox is not the grant id: issuer
+signed by the owner, not the host: issuer
+the host admits requests, now = T0 + 110
+task.create (operate), epoch 0: admitted
+the same event again: retry: the retained reply, no new effect
+new bytes under the same request ID: conflict
+device.revoke (access_admin): not_admitted
+device 7 presents device 3's grant: not_admitted
+the request again at T0 + 161: silent: the request expired
+a 61-second request: malformed
+the owner revokes device 3
+new epoch: 1
+the same event again: revoked
+a new request under grant 1: revoked
+device 3 enrolls again: grant 2 at epoch 1
+grant 2 named with epoch 0: stale
+grant 2 at epoch 1: admitted
+grant 2 at epoch 1, now = its expires_at: expired
+REACH: presence and hints, received by the device's clock
+generation 4, observed T0, received T0 + 2: kept
+generation 3 replayed, observed T0 + 60, received T0 + 61: rollback
+generation 4 again, observed T0, received T0 + 9: not newer
+generation 4, observed T0 + 40, received T0 + 5: future
+generation 5, observed T0 - 200, received T0 + 10: stale
+hints of generation 3 (the old routes), now T0 + 60: stale
+hints of generation 4, now T0 + 60: usable
+hints of generation 4, now T0 + 183: stale
+hints of generation 4 that expired at T0 + 60, now T0 + 60: stale

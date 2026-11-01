@@ -1,0 +1,67 @@
+// The checks of hosts-reach.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/hosts-reach.coax --steps 2000000000 --run-steps 250000000
+#load "../hosts-reach.coax";
+
+// book:begin check
+// HG_ORIGINAL_OK opened by coax/tests/nostr/nip59_reference.py, a pure-Python
+// NIP-01, BIP-340 and NIP-44 v2 that shares no code with Coax (or with
+// nostr-effect, which sealed it): the NIP-01 id of its fields, BIP-340 verify
+// true, the conversation key of device 3 and the signer, and from the
+// decrypted envelope the artifact's digest, size and retain_until. The inline
+// grant, as JCS bytes, equals HG_FIXTURE_GRANT and hashes to that digest.
+PY_ID :: "1b9bc616c2ce5998bed89393335a5190ca2b715ca18c6e1409c44d4d3d740bf2";
+PY_CK :: "68ace26dd21fd98a8781d65588d0a7bfb3746974cafdfbf8ea797fb42d251b9d";
+PY_DIGEST :: "84eb6b0a96c6f74ad4d8cd327a54eaddd40405ef1acf108f2b593575cdf15644";
+PY_SIZE :: 668;
+PY_RETAIN_UNTIL :: 1790086460;
+
+hex32 :: (b:[]u8,out:[]u8)->string {r:=hex_encode_checked(cast(string)b,out,false);return cast(string)out[0..<r.written];}
+
+#test "the original's id and conversation key match the Python reference" {
+  pre:[HG_REGION]u8;e:=nostr_event_read(HG_ORIGINAL_OK,pre[..],false);h:[64]u8;
+  #assert e.error==NE_OK && hex32(e.id[..],h[..])==PY_ID;
+  ck:[32]u8;ew:[1]EcdhScratch;dev:=HG_DEVICE_SECRET;peer:=e.public_key;
+  #assert nip44_conversation_key_from_keys_checked(dev[..],peer[..],ew[..],ck[..],false)==NIP44_OK;
+  #assert hex32(ck[..],h[..])==PY_CK;
+}
+#test "the signed body hashes to the envelope's digest and size" {
+  body:=HG_FIXTURE_GRANT;b:[1024]u8;for i:0..<body.count {b[i]=body[i];}
+  d:[32]u8;#assert sha256_hash_checked(b[0..<body.count],d[..],false)==SHA_OK;
+  h:[64]u8;#assert hex32(d[..],h[..])==PY_DIGEST && body.count==PY_SIZE;
+  // The lifetime by hand: 1790086400 - 1790000000 = 86400 s, a day, under 30 days.
+  #assert 1790086400-1790000000==86400 && 86400<=30*24*3600 && 30*24*3600==HG_MAX_LIFETIME;
+  // The sealer asked relays to retain it 60 s past expiry: NIP-HOST's tombstone window.
+  #assert PY_RETAIN_UNTIL==1790086400+HA_WINDOW;
+}
+#test "binding gives what the Python reference decrypted" {
+  w:=HG_ACCESS_OK;g:=open_access(w[..],false);
+  #assert g.error==HG_OK && g.epoch==0 && g.issued_at==1790000000 && g.expires_at==1790086400 && g.rights==4 && g.original==HG_ORIGINAL_OK;
+}
+
+// PLAN.md's Done means, worked by hand from NIP-HOST's rules: grant 1 for
+// device 3 at epoch 0, T0 to T0 + 86400, standard rights.
+grant_one :: (g:[]HostGrantRecord,revoked:bool) {
+  g[0].grant=GRANT_1;g[0].device=DEVICE;g[0].issued_at=T0;g[0].expires_at=T0+86400;g[0].rights=HA_STANDARD;g[0].revoked=revoked;
+}
+#test "Done means: a revoked, expired or replayed grant refuses" {
+  ep:[1]HostEpoch;ep[0].device=DEVICE;r1:[1]HostRetained;none:=r1[0..<0];
+  q:=make_request(GRANT_1,0,T0+100,EVENT_1,HA_OPERATE);
+  live:[1]HostGrantRecord;grant_one(live[..],false);#assert host_admit(live[..],ep[..],none,q,T0+100)==HA_OK;
+  dead:[1]HostGrantRecord;grant_one(dead[..],true);#assert host_admit(dead[..],ep[..],none,q,T0+100)==HA_REVOKED;
+  late:=make_request(GRANT_1,0,T0+86340,EVENT_1,HA_OPERATE);
+  #assert host_admit(live[..],ep[..],none,late,T0+86399)==HA_OK && host_admit(live[..],ep[..],none,late,T0+86400)==HA_EXPIRED;
+  // Replayed: the grant from before a revocation, at the old epoch, after re-enrollment.
+  ep[0].epoch=1;#assert host_admit(live[..],ep[..],none,q,T0+100)==HA_STALE;
+  // Replayed: the request itself, after its 60 s, earns nothing; inside them, only the retained reply.
+  ep[0].epoch=0;r1[0].request=REQUEST;r1[0].event=EVENT_1;r1[0].expires_at=T0+160;
+  #assert host_admit(live[..],ep[..],r1[..],q,T0+160)==HA_RETRY && host_admit(live[..],ep[..],r1[..],q,T0+161)==HA_SILENT;
+}
+#test "Done means: a stale route generation is not used" {
+  held:=make_sample(4,T0,T0+2);
+  #assert reach_hints_usable(3,T0+3600,held,true,T0+60)==RF_STALE;
+  #assert reach_hints_usable(4,T0+3600,held,true,T0+60)==RF_OK;
+  // The old generation's presence cannot come back either.
+  #assert reach_presence_accept(held,true,make_sample(3,T0+60,T0+61))==RF_ROLLBACK;
+}
+// book:end check

@@ -1,0 +1,195 @@
+// HOST admission: the host's own decision on a device request, after the
+// request event's signature and the grant's original envelope are checked
+// (grant.coax binds a projection to that envelope; it decides nothing about
+// freshness or revocation). NIP-HOST "Grants, epochs, and revocation" and
+// "Admission order and retention".
+//
+// The host's current record decides: its grants (with a revoked mark), one
+// revocation epoch per device key, and the replies it retains by request ID.
+// The order is the NIP's: the request's own window, then the principal (the
+// grant, its device, revocation, host-clock expiry, epochs), then the right,
+// then idempotency. An exact retry repeats every check, so a retry after
+// revocation refuses instead of reading its retained reply.
+//
+// host_revoke marks every grant of a device revoked and advances its epoch
+// by one, together. A grant issued before that epoch is stale even when the
+// host no longer keeps its tombstone.
+//
+// It trusts the strings it is given: the caller passes the verified signer
+// and event id, and the host's own record. Keys and ids are 64-hex strings
+// compared exactly. Times are Unix seconds on the host's clock.
+//
+// Not here: the owner (who needs no grant), invitations, redemption,
+// delegation, renewal, and the operation bodies.
+//   coax/bin/coax test coax/lib/nostr/host/admit.coax --library
+#authority;
+
+// book:begin codes
+HA_OK :: cast(u32)0;           // admit and act
+HA_RETRY :: cast(u32)1;        // an exact retry: answer the retained reply, act again never
+HA_SILENT :: cast(u32)2;       // the request has expired: no reply, no effect
+HA_MALFORMED :: cast(u32)3;    // window over 60 s, empty, or outside the grant
+HA_EARLY :: cast(u32)4;        // dated more than 60 s after the host's clock
+HA_NOT_ADMITTED :: cast(u32)5; // no such grant, another device's grant, or a right it lacks
+HA_REVOKED :: cast(u32)6;
+HA_EXPIRED :: cast(u32)7;      // the grant has expired by the host's clock
+HA_STALE :: cast(u32)8;        // an epoch differs: request vs grant, or grant vs device
+HA_CONFLICT :: cast(u32)9;     // different bytes under a retained request ID
+
+HA_WINDOW :: 60;  // a request's lifetime, and the clock skew the host allows
+// book:end codes
+
+// Rights as bits, in NIP-HOST order.
+HA_OBSERVE :: 0; HA_OPERATE :: 1; HA_TERMINAL :: 2; HA_REVIEW :: 3;
+HA_ACCESS_READ :: 4; HA_ACCESS_ADMIN :: 5; HA_WORLD :: 6;
+HA_STANDARD :: 15;  // observe, operate, terminal, review
+
+// book:begin record
+HostGrantRecord :: struct {grant:string;device:string;epoch:int;issued_at:int;expires_at:int;rights:int;revoked:bool;}
+HostEpoch :: struct {device:string;epoch:int;}
+HostRetained :: struct {request:string;event:string;expires_at:int;}
+HostRequest :: struct {request:string;event:string;signer:string;grant:string;epoch:int;issued_at:int;expires_at:int;right:int;}
+// book:end record
+
+HA_D3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+HA_D7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+HA_G1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+HA_G2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+HA_R1 :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+HA_E1 :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+HA_E2 :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+HA_T0 :: 1790000000;
+
+ha_grant :: (id:string,device:string,epoch:int)->HostGrantRecord {
+  g:HostGrantRecord;g.grant=id;g.device=device;g.epoch=epoch;g.issued_at=HA_T0;g.expires_at=HA_T0+86400;g.rights=HA_STANDARD;
+  return g;
+}
+ha_request :: (at:int)->HostRequest {
+  q:HostRequest;q.request=HA_R1;q.event=HA_E1;q.signer=HA_D3;q.grant=HA_G1;q.issued_at=at;q.expires_at=at+60;q.right=HA_OPERATE;
+  return q;
+}
+
+#test "the codes are distinct and in admission order" {
+  #assert HA_OK==0 && HA_RETRY==1 && HA_SILENT==2 && HA_MALFORMED==3 && HA_EARLY==4 && HA_NOT_ADMITTED==5;
+  #assert HA_REVOKED==6 && HA_EXPIRED==7 && HA_STALE==8 && HA_CONFLICT==9 && HA_WINDOW==60;
+  #assert HA_STANDARD==(1<<HA_OBSERVE)|(1<<HA_OPERATE)|(1<<HA_TERMINAL)|(1<<HA_REVIEW) && HA_ACCESS_READ==4 && HA_ACCESS_ADMIN==5 && HA_WORLD==6;
+}
+#test "a current grant at the device's epoch admits a fresh request" {
+  g:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0)];e1:[1]HostEpoch;e:=e1[0..<0];r1:[1]HostRetained;r:=r1[0..<0];
+  #assert host_admit(g[..],e[..],r[..],ha_request(HA_T0+100),HA_T0+110)==HA_OK;
+  // The request may be dated 60 s before its grant, and end exactly at its expiry.
+  #assert host_admit(g[..],e[..],r[..],ha_request(HA_T0-60),HA_T0-60)==HA_OK;
+  #assert host_admit(g[..],e[..],r[..],ha_request(HA_T0+86340),HA_T0+86399)==HA_OK;
+  // A device absent from the epoch list is at epoch 0.
+  ep:=[1]HostEpoch.[HostEpoch.{device=HA_D7,epoch=3}];#assert host_admit(g[..],ep[..],r[..],ha_request(HA_T0),HA_T0)==HA_OK;
+  // The same request naming no grant the host holds, even this device's only one.
+  q:=ha_request(HA_T0);q.grant=HA_E2;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_NOT_ADMITTED;
+  #assert ha_request(0).right==HA_OPERATE && ha_request(0).epoch==0;
+}
+#test "the request's own window is checked first" {
+  g:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0)];e1:[1]HostEpoch;e:=e1[0..<0];r1:[1]HostRetained;r:=r1[0..<0];
+  q:=ha_request(HA_T0+100);q.expires_at=q.issued_at+61;#assert host_admit(g[..],e[..],r[..],q,HA_T0+100)==HA_MALFORMED;
+  q.expires_at=q.issued_at;#assert host_admit(g[..],e[..],r[..],q,HA_T0+100)==HA_MALFORMED;
+  q.expires_at=q.issued_at+1;#assert host_admit(g[..],e[..],r[..],q,HA_T0+100)==HA_OK;
+  // Expired: silent, at the first second past its end; the last second still admits.
+  q=ha_request(HA_T0+100);
+  #assert host_admit(g[..],e[..],r[..],q,HA_T0+160)==HA_OK && host_admit(g[..],e[..],r[..],q,HA_T0+161)==HA_SILENT;
+  // From the future: 60 s of skew, no more.
+  #assert host_admit(g[..],e[..],r[..],q,HA_T0+40)==HA_OK && host_admit(g[..],e[..],r[..],q,HA_T0+39)==HA_EARLY;
+  // Outside the grant: more than 60 s before it, or past its expiry.
+  q=ha_request(HA_T0-61);#assert host_admit(g[..],e[..],r[..],q,HA_T0-61)==HA_MALFORMED;
+  q=ha_request(HA_T0+86341);#assert host_admit(g[..],e[..],r[..],q,HA_T0+86341)==HA_MALFORMED;
+}
+#test "the principal: an unknown grant, another device's grant and a missing right are not admitted" {
+  g:=[2]HostGrantRecord.[ha_grant(HA_G2,HA_D7,0),ha_grant(HA_G1,HA_D3,0)];e1:[1]HostEpoch;e:=e1[0..<0];r1:[1]HostRetained;r:=r1[0..<0];
+  q:=ha_request(HA_T0);#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_OK;
+  q.grant=HA_E2;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_NOT_ADMITTED;
+  // A copied grant is no bearer credential: device 7's grant under device 3's signature.
+  q=ha_request(HA_T0);q.grant=HA_G2;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_NOT_ADMITTED;
+  q=ha_request(HA_T0);q.right=HA_ACCESS_ADMIN;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_NOT_ADMITTED;
+  q.right=HA_REVIEW;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_OK;
+  q.right=HA_WORLD;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_NOT_ADMITTED;
+}
+#test "a revoked grant refuses, and revocation is checked before expiry and epochs" {
+  g:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0)];e:=[1]HostEpoch.[HostEpoch.{device=HA_D3,epoch=0}];r1:[1]HostRetained;r:=r1[0..<0];
+  #assert host_revoke(g[..],e[..],HA_D3)==1 && g[0].revoked && e[0].epoch==1;
+  #assert host_admit(g[..],e[..],r[..],ha_request(HA_T0),HA_T0)==HA_REVOKED;
+  q:=ha_request(HA_T0+86340);#assert host_admit(g[..],e[..],r[..],q,HA_T0+86400)==HA_REVOKED;
+}
+#test "an expired grant refuses by the host's clock" {
+  g:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0)];e1:[1]HostEpoch;e:=e1[0..<0];r1:[1]HostRetained;r:=r1[0..<0];
+  q:=ha_request(HA_T0+86340);
+  #assert host_admit(g[..],e[..],r[..],q,HA_T0+86399)==HA_OK && host_admit(g[..],e[..],r[..],q,HA_T0+86400)==HA_EXPIRED;
+}
+#test "a stale epoch refuses: request against grant, and grant against device" {
+  g:=[2]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0),ha_grant(HA_G2,HA_D3,1)];e:=[1]HostEpoch.[HostEpoch.{device=HA_D3,epoch=1}];r1:[1]HostRetained;r:=r1[0..<0];
+  // The old grant at epoch 0 without its tombstone: stale, not admitted.
+  q:=ha_request(HA_T0);#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_STALE;
+  q.grant=HA_G2;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_STALE;
+  q.epoch=1;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_OK;
+  q.epoch=2;#assert host_admit(g[..],e[..],r[..],q,HA_T0)==HA_STALE;
+}
+#test "retained replies: an exact retry, changed bytes, and an expired entry" {
+  g:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0)];e1:[1]HostEpoch;e:=e1[0..<0];
+  r:=[2]HostRetained.[HostRetained.{request=HA_E2,event=HA_E2,expires_at=HA_T0+60},HostRetained.{request=HA_R1,event=HA_E1,expires_at=HA_T0+60}];
+  q:=ha_request(HA_T0);#assert host_admit(g[..],e[..],r[..],q,HA_T0+10)==HA_RETRY;
+  q.event=HA_E2;#assert host_admit(g[..],e[..],r[..],q,HA_T0+10)==HA_CONFLICT;
+  // A retained reply past its request's expiry is gone; the entry no longer matches.
+  r[1].expires_at=HA_T0+9;#assert host_admit(g[..],e[..],r[..],q,HA_T0+10)==HA_OK;
+  r[1].expires_at=HA_T0+10;#assert host_admit(g[..],e[..],r[..],q,HA_T0+10)==HA_CONFLICT;
+}
+#test "a retry after revocation refuses; it never reads the retained reply" {
+  g:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0)];e:[1]HostEpoch;e[0].device=HA_D3;
+  r:=[1]HostRetained.[HostRetained.{request=HA_R1,event=HA_E1,expires_at=HA_T0+60}];q:=ha_request(HA_T0);
+  #assert host_admit(g[..],e[..],r[..],q,HA_T0+5)==HA_RETRY;
+  #assert host_revoke(g[..],e[..],HA_D3)==1;
+  #assert host_admit(g[..],e[..],r[..],q,HA_T0+5)==HA_REVOKED;
+}
+#test "revocation reaches every grant of that device and no other" {
+  g:=[3]HostGrantRecord.[ha_grant(HA_G1,HA_D3,0),ha_grant(HA_G2,HA_D7,0),ha_grant(HA_E1,HA_D3,0)];
+  e:=[2]HostEpoch.[HostEpoch.{device=HA_D7,epoch=4},HostEpoch.{device=HA_D3,epoch=2}];
+  #assert host_revoke(g[..],e[..],HA_D3)==3;
+  #assert g[0].revoked && !g[1].revoked && g[2].revoked && e[0].epoch==4 && e[1].epoch==3;
+  // A device with no epoch entry: grants are revoked, and the count says no epoch moved.
+  n1:[1]HostEpoch;none:=n1[0..<0];h:=[1]HostGrantRecord.[ha_grant(HA_G1,HA_D7,0)];
+  #assert host_revoke(h[..],none[..],HA_D7)==-1 && h[0].revoked;
+}
+
+// book:begin admit
+host_admit :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,retained:[]HostRetained,q:HostRequest,now:int)->u32 {
+  // 1. The request: at most 60 s long, not yet expired, not from the future.
+  if q.expires_at<=q.issued_at || q.expires_at-q.issued_at>HA_WINDOW {return HA_MALFORMED;}
+  if now>q.expires_at {return HA_SILENT;}
+  if q.issued_at>now+HA_WINDOW {return HA_EARLY;}
+  // 2. The principal: this device's grant, unrevoked, unexpired, current.
+  k:=-1;
+  for i:0..<grants.count {if grants[i].grant==q.grant {k=i;}}
+  if k<0 || grants[k].device!=q.signer {return HA_NOT_ADMITTED;}
+  g:=grants[k];
+  if g.revoked {return HA_REVOKED;}
+  if now>=g.expires_at {return HA_EXPIRED;}
+  if q.epoch!=g.epoch || g.epoch!=host_epoch(epochs,g.device) {return HA_STALE;}
+  if q.issued_at<g.issued_at-HA_WINDOW || q.expires_at>g.expires_at {return HA_MALFORMED;}
+  // 3. The right. It is necessary, never sufficient.
+  if (g.rights>>q.right)&1==0 {return HA_NOT_ADMITTED;}
+  // 4. Idempotency: the request ID, while its retained reply lasts.
+  for r:retained {
+    if r.request==q.request && now<=r.expires_at {return ifx r.event==q.event then HA_RETRY else HA_CONFLICT;}
+  }
+  return HA_OK;
+}
+// book:end admit
+host_epoch :: (epochs:[]HostEpoch,device:string)->int {
+  for e:epochs {if e.device==device {return e.epoch;}}
+  return 0;
+}
+// book:begin revoke
+// Marks every grant of device revoked and advances its epoch, together.
+// Returns the new epoch, or -1 when the device has no epoch entry (its
+// grants are still revoked; the caller adds the entry at epoch 1).
+host_revoke :: (grants:[]HostGrantRecord,epochs:[]HostEpoch,device:string)->int {
+  for i:0..<grants.count {if grants[i].device==device {grants[i].revoked=true;}}
+  for i:0..<epochs.count {if epochs[i].device==device {epochs[i].epoch+=1;return epochs[i].epoch;}}
+  return -1;
+}
+// book:end revoke

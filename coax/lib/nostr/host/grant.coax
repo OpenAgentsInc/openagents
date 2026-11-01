@@ -310,6 +310,7 @@ hg_done :: (r:HostGrant,error:u32,work:[]u8)->HostGrant {
   return r;
 }
 
+// book:begin bind
 // Binds Access.grant to Access.authorization for the device whose secret
 // and x-only public key are given. On HG_OK, original is the exact signed
 // envelope (borrowed from access_wire) to retain beside the projection.
@@ -361,3 +362,4 @@ hg_open :: (text:string,e:NostrEvent,g:H_Grant,ck:[]u8,device_x:[]u8,work:[]u8)-
   if b.error!=HG_OK {return hg_done(r,b.error,work);}
   b.original=text;return hg_done(b,HG_OK,work);
 }
+// book:end bind

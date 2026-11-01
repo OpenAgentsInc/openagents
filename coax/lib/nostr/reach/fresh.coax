@@ -1,0 +1,106 @@
+// REACH freshness: which host presence sample a device keeps, and whether a
+// set of reachability hints may be used at all. NIP-REACH "Freshness" and
+// "Selection" step 1.
+//
+// The reader judges by its own receipt time, never by the host's clock: a
+// sample observed more than 30 s after it was received is from the future,
+// and one received more than 180 s after it was observed is a late replay.
+// The newest sample per host is kept; a lower generation, or a sample that
+// is not newer within the same generation, would roll the host back and is
+// refused. A hint set names a generation: it is used only when that is the
+// generation of the current, fresh presence sample and it has not expired.
+//
+// It takes the opened records' numbers. Opening the 3188 artifacts (signer
+// is the host the directory or enrollment names, body names the same host
+// and owner) is the caller's, as for every private artifact. Not here: the
+// directory, compatibility, hint address rules, selection order and the
+// direct channel. Nothing here grants anything.
+//   coax/bin/coax test coax/lib/nostr/reach/fresh.coax --library
+#authority;
+
+// book:begin codes
+RF_OK :: cast(u32)0;
+RF_FUTURE :: cast(u32)1;    // observed after receipt plus the skew
+RF_STALE :: cast(u32)2;     // too old, a late replay, or hints of another generation or expired
+RF_ROLLBACK :: cast(u32)3;  // a lower generation than the sample held
+RF_NOT_NEWER :: cast(u32)4; // the same generation, observed no later
+
+RF_SKEW :: 30;     // NIP-REACH's reference skew, seconds
+RF_MAX_AGE :: 180; // NIP-REACH's reference maximum age, seconds
+// book:end codes
+
+// book:begin sample
+// A presence sample as kept: the host's generation and observed_at, and the
+// reader's own clock when the event arrived.
+ReachSample :: struct {generation:int;observed_at:int;received_at:int;}
+// book:end sample
+
+RF_T0 :: 1790000000;
+rf_sample :: (generation:int,observed:int,received:int)->ReachSample {
+  s:ReachSample;s.generation=generation;s.observed_at=observed;s.received_at=received;return s;
+}
+
+#test "the codes and reference limits" {
+  #assert RF_OK==0 && RF_FUTURE==1 && RF_STALE==2 && RF_ROLLBACK==3 && RF_NOT_NEWER==4;
+  #assert RF_SKEW==30 && RF_MAX_AGE==180;
+}
+#test "a first sample is kept unless it is from the future or a late replay" {
+  none:ReachSample;
+  #assert reach_presence_accept(none,false,rf_sample(4,RF_T0,RF_T0+5))==RF_OK;
+  #assert reach_presence_accept(none,false,rf_sample(4,RF_T0+30,RF_T0))==RF_OK;
+  #assert reach_presence_accept(none,false,rf_sample(4,RF_T0+31,RF_T0))==RF_FUTURE;
+  #assert reach_presence_accept(none,false,rf_sample(4,RF_T0,RF_T0+180))==RF_OK;
+  #assert reach_presence_accept(none,false,rf_sample(4,RF_T0,RF_T0+181))==RF_STALE;
+}
+#test "a held sample is never rolled back" {
+  held:=rf_sample(4,RF_T0,RF_T0+2);
+  #assert reach_presence_accept(held,true,rf_sample(5,RF_T0-100,RF_T0+10))==RF_OK;
+  #assert reach_presence_accept(held,true,rf_sample(4,RF_T0+1,RF_T0+10))==RF_OK;
+  #assert reach_presence_accept(held,true,rf_sample(4,RF_T0,RF_T0+10))==RF_NOT_NEWER;
+  #assert reach_presence_accept(held,true,rf_sample(4,RF_T0-1,RF_T0+10))==RF_NOT_NEWER;
+  #assert reach_presence_accept(held,true,rf_sample(3,RF_T0+60,RF_T0+70))==RF_ROLLBACK;
+  // Without a held sample the same lower generation is kept.
+  #assert reach_presence_accept(held,false,rf_sample(3,RF_T0+60,RF_T0+70))==RF_OK;
+  // Receipt checks come first: a future sample of a higher generation still refuses.
+  #assert reach_presence_accept(held,true,rf_sample(9,RF_T0+100,RF_T0+10))==RF_FUTURE;
+}
+#test "a kept sample goes stale by the reader's clock" {
+  s:=rf_sample(4,RF_T0,RF_T0+20);
+  #assert reach_presence_fresh(s,RF_T0+200) && !reach_presence_fresh(s,RF_T0+201);
+  late:=rf_sample(4,RF_T0,RF_T0+181);#assert !reach_presence_fresh(late,RF_T0+181);
+  edge:=rf_sample(4,RF_T0,RF_T0+180);#assert reach_presence_fresh(edge,RF_T0+180);
+}
+#test "hints are used only for the current generation, fresh and unexpired" {
+  p:=rf_sample(4,RF_T0,RF_T0+2);
+  #assert reach_hints_usable(4,RF_T0+3600,p,true,RF_T0+60)==RF_OK;
+  #assert reach_hints_usable(3,RF_T0+3600,p,true,RF_T0+60)==RF_STALE;
+  #assert reach_hints_usable(5,RF_T0+3600,p,true,RF_T0+60)==RF_STALE;
+  #assert reach_hints_usable(4,RF_T0+3600,p,false,RF_T0+60)==RF_STALE;
+  #assert reach_hints_usable(4,RF_T0+3600,p,true,RF_T0+183)==RF_STALE && reach_hints_usable(4,RF_T0+3600,p,true,RF_T0+182)==RF_OK;
+  #assert reach_hints_usable(4,RF_T0+60,p,true,RF_T0+60)==RF_STALE && reach_hints_usable(4,RF_T0+61,p,true,RF_T0+60)==RF_OK;
+}
+
+// book:begin presence
+// Whether to keep sample s, given the sample held for that host (have
+// says whether there is one).
+reach_presence_accept :: (held:ReachSample,have:bool,s:ReachSample)->u32 {
+  if s.observed_at>s.received_at+RF_SKEW {return RF_FUTURE;}
+  if s.received_at-s.observed_at>RF_MAX_AGE {return RF_STALE;}
+  if have && s.generation<held.generation {return RF_ROLLBACK;}
+  if have && s.generation==held.generation && s.observed_at<=held.observed_at {return RF_NOT_NEWER;}
+  return RF_OK;
+}
+// Whether a kept sample is still fresh at now, the reader's clock.
+reach_presence_fresh :: (s:ReachSample,now:int)->bool {
+  return now-s.received_at<=RF_MAX_AGE && s.received_at-s.observed_at<=RF_MAX_AGE;
+}
+// book:end presence
+// book:begin hints
+// Whether a hint set of this generation and expiry may be tried at now,
+// against the presence sample held for its host.
+reach_hints_usable :: (generation:int,expires_at:int,presence:ReachSample,have:bool,now:int)->u32 {
+  if !have || !reach_presence_fresh(presence,now) || generation!=presence.generation {return RF_STALE;}
+  if now>=expires_at {return RF_STALE;}
+  return RF_OK;
+}
+// book:end hints
