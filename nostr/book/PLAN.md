@@ -118,7 +118,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [26. WebSocket frames](ch026-websocket-frames.md) — partly implemented | 4, 1 | RFC 6455 section 1.3's example key gives `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. A fuzzed frame stream never reads past its buffer under ASan. | — |
+| [26. WebSocket frames](ch026-websocket-frames.md) — implemented | 4, 1 | RFC 6455 section 1.3's example key gives `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. A fuzzed frame stream never reads past its buffer under ASan. | — |
 | [27. A WebSocket server](ch027-a-websocket-server.md) — partly implemented | 26 | Every malformed upgrade refuses with its HTTP status. A session from the Coax client passes under ASan and UBSan. | — |
 | [28. Sockets, TLS and relay URLs](ch028-sockets-tls-and-relay-urls.md) — partly implemented | 26, coax:20 | `coax/tests/net/tls.sh` passes against local TLS endpoints under ASan and UBSan. A certificate for the wrong name refuses the connection. | — |
 

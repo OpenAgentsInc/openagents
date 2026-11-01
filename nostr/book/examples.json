@@ -185,6 +185,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/websocket-frames.coax",
+      "chapter": "nostr/book/ch026-websocket-frames.md",
+      "stdout": "nostr/fixtures/websocket-frames.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,46 @@
+key ok: true
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+SHA-1 ok: true
+SHA-1(key || GUID): b37a4f2cc0624f1690f64606cf385945b2bec4ea
+accept ok: true
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+request: 152 bytes
+GET / HTTP/1.1
+Host: relay.example
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+
+response: status 0 consumed 129 of 129
+masked Hello: 818537fa213d7f9f4d5158
+unmasked by hand: Hello
+server Hello: OK fin true op 1 header 2 length 5
+masked server frame: MASKED fin true op 1 header 0 length 0
+01 03 Hel: PART
+89 05 Hello: PING
+80 02 lo: MESSAGE
+message: op 1 "Hello"
+client header, 125 bytes: 82fd00000000
+client header, 256 bytes: 82fe010000000000
+client header, 65536 bytes: 82ff000000000001000000000000
+server 256 bytes, header only: MORE fin true op 2 header 4 length 256
+server 65536 bytes, header only: MORE fin true op 2 header 10 length 65536
+client close 1000: 888237fa213d3412
+server close 03 e8: CLOSE, code 1000
+RSV1 set: RSV fin true op 1 header 0 length 0
+opcode 3: OPCODE fin true op 3 header 0 length 0
+fragmented ping: CONTROL fin false op 9 header 0 length 0
+ping of 126 bytes: CONTROL fin true op 9 header 0 length 0
+126 in the 16-bit form: LENGTH fin true op 2 header 0 length 0
+131073 bytes under a 128 KiB limit: TOO_BIG fin true op 2 header 10 length 131073
+ping of 126 bytes, written: -1
+three-byte mask, written: -1
+text ff: UTF8, close 1007
+continuation first: CONTINUATION, close 1002
+close code 999: BAD_CLOSE, close 1002
+Hello into 4 bytes: TOO_BIG, close 1009
+wrong accept: status 7
+200 OK: status 3
+request with CRLF in the host: -1
+fuzz: 20000 streams, 35570 frames read, 15877 refused, 4123 waiting for more, 0 read past the buffer

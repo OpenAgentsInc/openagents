@@ -1,0 +1,93 @@
+// The checks of websocket-frames.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/websocket-frames.coax
+#load "../websocket-frames.coax";
+
+// book:begin check
+// True when bytes equal the hex text.
+is_hex :: (bytes: [] u8, hex: string) -> bool {
+  b: [64] u8;
+  want := bytes_of(hex, b[..]);
+  return cast(string) bytes == want;
+}
+// Every example frame in RFC 6455 section 5.7, written or read by the code.
+#test "RFC 6455 section 5.7 example frames" {
+  mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d]; out: [70000] u8; payload: [65536] u8;
+  // A single-frame masked text message, and the masked pong.
+  n := ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[..]);
+  #assert is_hex(out[0..<n], "818537fa213d7f9f4d5158");
+  n = ws_frame_write(WS_OP_PONG, true, "Hello", mask[..], out[..]);
+  #assert is_hex(out[0..<n], "8a8537fa213d7f9f4d5158");
+  // A single-frame unmasked text message and the unmasked ping.
+  b: [64] u8;
+  f := ws_frame_read(bytes_of("810548656c6c6f", b[..]), 100);
+  #assert f.status == WS_FRAME_OK && f.fin && f.op == WS_OP_TEXT && f.header == 2 && f.length == 5;
+  f = ws_frame_read(bytes_of("890548656c6c6f", b[..]), 100);
+  #assert f.status == WS_FRAME_OK && f.fin && f.op == WS_OP_PING && f.length == 5;
+  // A fragmented unmasked text message.
+  r: [1] WsReader; msg: [16] u8;
+  #assert take(r[..], "010348656c", msg[..]) == WS_EV_PART;
+  #assert take(r[..], "80026c6f", msg[..]) == WS_EV_MESSAGE && cast(string) msg[0..<r[0].used] == "Hello";
+  // 256 bytes and 64 KiB of binary data: the 16-bit and 64-bit lengths.
+  f = ws_frame_read(bytes_of("827e0100", b[..]), 1 << 20);
+  #assert f.status == WS_FRAME_MORE && f.header == 4 && f.length == 256;
+  f = ws_frame_read(bytes_of("827f0000000000010000", b[..]), 1 << 20);
+  #assert f.status == WS_FRAME_MORE && f.header == 10 && f.length == 65536;
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) payload[0..<256], mask[..], out[..]);
+  #assert n == 4 + 4 + 256 && is_hex(out[0..<8], "82fe010037fa213d");
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) payload[..], mask[..], out[..]);
+  #assert n == 10 + 4 + 65536 && is_hex(out[0..<14], "82ff000000000001000037fa213d");
+}
+// Keys and accept values from Python's base64 and hashlib, which share no
+// code with ws.coax or sha1.coax:
+// base64.b64encode(hashlib.sha1(key + GUID).digest()) for key = b64(nonce).
+NONCES :: [9] string.[
+  "000102030405060708090a0b0c0d0e0f", "AAECAwQFBgcICQoLDA0ODw==", "Bz3qJYTGdOe8gUSpLosEdiLKDrk=",
+  "ffffffffffffffffffffffffffffffff", "/////////////////////w==", "XXpj4jYzLM2yUE0C7TIgMwTQh2g=",
+  "30313233343536373839616263646566", "MDEyMzQ1Njc4OWFiY2RlZg==", "BACScCJPNqyz+UBoqMH89VmURoA="];
+#forall "keys and accept values match Python's hashlib" i: 0..<3 {
+  b: [64] u8; key: [24] u8; accept: [28] u8;
+  #assert bytes_of(NONCES[3 * i], b[..]).count == 16;
+  #assert ws_key(b[0..<16], key[..]) && cast(string) key[..] == NONCES[3 * i + 1];
+  #assert ws_accept_of(cast(string) key[..], accept[..]) && cast(string) accept[..] == NONCES[3 * i + 2];
+}
+// A client frame with its mask key removed and its mask bit cleared is the
+// same frame a server would send. With a zero key the payload is unchanged,
+// so the reader must give back the writer's opcode, FIN bit and length.
+LENGTHS :: [8] int.[0, 1, 125, 126, 127, 255, 65535, 65536];
+#forall "a written frame reads back with its length" i: 0..<8, op: 0..<11 {
+  if ws_op_ok(op) && (op < 8 || LENGTHS[i] <= 125) {
+    zero := [4] u8.[0, 0, 0, 0]; payload: [70000] u8; out: [70000] u8; server: [70000] u8;
+    fin := op >= 8 || i % 2 == 0;
+    n := ws_frame_write(op, fin, cast(string) payload[0..<LENGTHS[i]], zero[..], out[..]);
+    #assert n > 0;
+    header := n - LENGTHS[i];
+    for k: 0..<header - 4 { server[k] = out[k]; }
+    server[1] = out[1] & 127;
+    for k: header..<n { server[k - 4] = out[k]; }
+    f := ws_frame_read(cast(string) server[0..<n - 4], 1 << 20);
+    #assert f.status == WS_FRAME_OK && f.op == op && f.fin == fin && f.length == LENGTHS[i] && f.total == n - 4;
+  }
+}
+// Random byte strings: whatever ws_frame_read says, the frame it admits lies
+// inside the bytes it was given, and its header has one of the three sizes.
+#forall "the reader stays inside random input" seed: 0..<2000 {
+  state: u64 = cast(u64) seed + 1;
+  b: [24] u8;
+  for k: 0..<24 { state = next(state); b[k] = cast,trunc(u8) (state >> 56); }
+  // Clear the reserved and mask bits in half the cases, so more frames pass.
+  if seed % 2 == 0 { b[0] = b[0] & 0x8f; b[1] = b[1] & 0x7f; }
+  for count: 0..<25 {
+    f := ws_frame_read(cast(string) b[0..<count], 16);
+    if f.status == WS_FRAME_OK {
+      #assert f.header == 2 || f.header == 4 || f.header == 10;
+      #assert f.total == f.header + f.length && f.total <= count && f.length <= 16;
+    }
+  }
+}
+// The example's fuzz loop on a shorter run.
+#test "no fuzzed frame ends past its buffer" {
+  t := fuzz(500);
+  #assert t.past == 0 && t.frames > 0 && t.refused > 0 && t.waiting > 0;
+}
+// book:end check

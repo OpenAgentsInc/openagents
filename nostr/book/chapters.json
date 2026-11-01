@@ -528,7 +528,7 @@
    "number": 26,
    "title": "WebSocket frames",
    "file": "ch026-websocket-frames.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     4,
@@ -536,7 +536,9 @@
    ],
    "source": [
     "coax/lib/crypto/sha1.coax",
-    "coax/lib/net/ws.coax"
+    "coax/lib/net/ws.coax",
+    "nostr/examples/websocket-frames.coax",
+    "nostr/examples/checks/websocket-frames.coax"
    ],
    "qualified_targets": [
     "cpu"

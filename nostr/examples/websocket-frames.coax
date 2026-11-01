@@ -1,0 +1,182 @@
+// book:begin example
+#load "../../coax/lib/net/ws.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  #assert r.error == 0;
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex into out; the bytes as a string.
+bytes_of :: (text: string, out: [] u8) -> string {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return cast(string) out[0..<r.written];
+}
+// The name of a ws_frame_read status.
+frame_name :: (status: int) -> string {
+  names := [8] string.["OK", "MORE", "RSV", "OPCODE", "MASKED", "CONTROL", "LENGTH", "TOO_BIG"];
+  return names[status];
+}
+// The name of a ws_take event.
+event_name :: (event: int) -> string {
+  names := [10] string.["PART", "MESSAGE", "PING", "PONG", "CLOSE", "CONTINUATION", "INTERLEAVED", "TOO_BIG", "UTF8", "BAD_CLOSE"];
+  return names[event];
+}
+// Read the start of one server frame and print what its header says.
+read_frame :: (label: string, hex: string, limit: int) {
+  b: [64] u8;
+  f := ws_frame_read(bytes_of(hex, b[..]), limit);
+  print("%: % fin % op % header % length %\n", label, frame_name(f.status), f.fin, f.op, f.header, f.length);
+}
+// Read one complete server frame of at most 125 bytes and feed it to the
+// message reader.
+take :: (r: [] WsReader, hex: string, msg: [] u8) -> int {
+  b: [64] u8;
+  bytes := bytes_of(hex, b[..]);
+  f := ws_frame_read(bytes, 125);
+  #assert f.status == WS_FRAME_OK;
+  return ws_take(r, f, bytes[f.header..<f.total], msg);
+}
+// Print an HTTP head with each CRLF shown as one line break.
+show_head :: (head: string) {
+  line := 0;
+  for c, i: head {
+    if c == '\r' { print("%\n", head[line..<i]); line = i + 2; }
+  }
+}
+// The next value of a fixed linear congruential generator.
+next :: (state: u64) -> u64 { return add_wrap(mul_wrap(state, 6364136223846793005), 1442695040888963407); }
+
+// Change a valid frame stream at random and read it to the end, the way a
+// connection does. The generator is fixed, so every run reads the same
+// streams. The debug build checks every slice bound, and the C can be built
+// with AddressSanitizer.
+FuzzTally :: struct { frames: int; refused: int; waiting: int; past: int; }
+fuzz :: (streams: int) -> FuzzTally {
+  base: [32] u8;
+  valid := bytes_of("010348656c89017000016c80016f880203e8", base[..]);
+  state: u64 = 0x2545f4914f6cdd1d;
+  buf: [48] u8; msg: [16] u8;
+  t: FuzzTally;
+  for s: 0..<streams {
+    for i: 0..<valid.count { buf[i] = valid[i]; }
+    // Change one to four bytes, then cut or extend the stream.
+    state = next(state);
+    for k: 0..<cast(int) (state >> 62) + 1 {
+      state = next(state);
+      buf[cast(int) ((state >> 40) % cast(u64) valid.count)] = cast,trunc(u8) (state >> 56);
+    }
+    state = next(state);
+    n := cast(int) ((state >> 33) % cast(u64) (buf.count + 1));
+    for i: valid.count..<n { state = next(state); buf[i] = cast,trunc(u8) (state >> 56); }
+    r: [1] WsReader;
+    at := 0;
+    while true {
+      f := ws_frame_read(cast(string) buf[at..<n], msg.count);
+      if f.status == WS_FRAME_MORE { t.waiting += 1; break; }
+      if f.status != WS_FRAME_OK { t.refused += 1; break; }
+      if f.total > n - at { t.past += 1; break; }
+      ev := ws_take(r[..], f, cast(string) buf[at + f.header..<at + f.total], msg[..]);
+      t.frames += 1;
+      at += f.total;
+      if ev >= WS_EV_CONTINUATION { t.refused += 1; break; }
+    }
+  }
+  return t;
+}
+
+main :: () {
+  // RFC 6455 section 1.3: the key from the 16-byte nonce "the sample nonce".
+  text := "the sample nonce"; nonce: [16] u8; key: [24] u8; accept: [28] u8;
+  for i: 0..<16 { nonce[i] = text[i]; }
+  print("key ok: %\n", ws_key(nonce[..], key[..]));
+  print("Sec-WebSocket-Key: %\n", cast(string) key[..]);
+  joined: [60] u8;
+  for i: 0..<24 { joined[i] = key[i]; }
+  for i: 0..<36 { joined[24 + i] = WS_GUID[i]; }
+  digest: [20] u8;
+  print("SHA-1 ok: %\n", sha1_hash(cast(string) joined[..], digest[..]));
+  show("SHA-1(key || GUID)", digest[..]);
+  print("accept ok: %\n", ws_accept_of(cast(string) key[..], accept[..]));
+  print("Sec-WebSocket-Accept: %\n", cast(string) accept[..]);
+
+  // The opening request and the server's answer.
+  request: [256] u8;
+  n := ws_request("relay.example", 80, "/", cast(string) key[..], request[..]);
+  print("request: % bytes\n", n);
+  show_head(cast(string) request[0..<n]);
+  answer := "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+  hello := ws_response(answer, cast(string) key[..]);
+  print("response: status % consumed % of %\n", hello.status, hello.consumed, answer.count);
+
+  // RFC 6455 section 5.7: the client's masked "Hello".
+  mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d]; out: [70000] u8;
+  n = ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[..]);
+  show("masked Hello", out[0..<n]);
+  plain: [5] u8;
+  for i: 0..<5 { plain[i] = out[6 + i] ^ out[2 + i % 4]; }
+  print("unmasked by hand: %\n", cast(string) plain[..]);
+
+  // Server frames are not masked.
+  read_frame("server Hello", "810548656c6c6f", 100);
+  read_frame("masked server frame", "818537fa213d7f9f4d5158", 100);
+
+  // Fragments with a ping between them.
+  r: [1] WsReader; msg: [16] u8; small: [4] u8;
+  print("01 03 Hel: %\n", event_name(take(r[..], "010348656c", msg[..])));
+  print("89 05 Hello: %\n", event_name(take(r[..], "890548656c6c6f", msg[..])));
+  print("80 02 lo: %\n", event_name(take(r[..], "80026c6f", msg[..])));
+  print("message: op % \"%\"\n", r[0].op, cast(string) msg[0..<r[0].used]);
+
+  // The three length forms.
+  zero := [4] u8.[0, 0, 0, 0]; payload: [65536] u8;
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) payload[0..<125], zero[..], out[..]);
+  show("client header, 125 bytes", out[0..<6]);
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) payload[0..<256], zero[..], out[..]);
+  show("client header, 256 bytes", out[0..<8]);
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) payload[..], zero[..], out[..]);
+  show("client header, 65536 bytes", out[0..<14]);
+  read_frame("server 256 bytes, header only", "827e0100", 1 << 20);
+  read_frame("server 65536 bytes, header only", "827f0000000000010000", 1 << 20);
+
+  // Closing.
+  n = ws_close_write(WS_CLOSE_NORMAL, mask[..], out[..]);
+  show("client close 1000", out[0..<n]);
+  print("server close 03 e8: %, code %\n", event_name(take(r[..], "880203e8", msg[..])), ws_close_code(bytes_of("03e8", small[..])));
+
+  // Refusals: frames.
+  read_frame("RSV1 set", "c100", 100);
+  read_frame("opcode 3", "8300", 100);
+  read_frame("fragmented ping", "0900", 100);
+  read_frame("ping of 126 bytes", "897e007e", 1000);
+  read_frame("126 in the 16-bit form", "827e007d", 1000);
+  read_frame("131073 bytes under a 128 KiB limit", "827f0000000000020001", 131072);
+  print("ping of 126 bytes, written: %\n", ws_frame_write(WS_OP_PING, true, cast(string) payload[0..<126], mask[..], out[..]));
+  print("three-byte mask, written: %\n", ws_frame_write(WS_OP_TEXT, true, "Hello", mask[0..<3], out[..]));
+
+  // Refusals: messages, with the close code to send.
+  ev := take(r[..], "8101ff", msg[..]);
+  print("text ff: %, close %\n", event_name(ev), ws_error_code(ev));
+  r[0] = WsReader.{};
+  ev = take(r[..], "800178", msg[..]);
+  print("continuation first: %, close %\n", event_name(ev), ws_error_code(ev));
+  ev = take(r[..], "880203e7", msg[..]);
+  print("close code 999: %, close %\n", event_name(ev), ws_error_code(ev));
+  ev = take(r[..], "810548656c6c6f", small[..]);
+  print("Hello into 4 bytes: %, close %\n", event_name(ev), ws_error_code(ev));
+
+  // Refusals: the handshake.
+  wrong := "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: AAAAAAAAAAAAAAAAAAAAAAAAAAA=\r\n\r\n";
+  print("wrong accept: status %\n", ws_response(wrong, cast(string) key[..]).status);
+  print("200 OK: status %\n", ws_response("HTTP/1.1 200 OK\r\n\r\n", cast(string) key[..]).status);
+  print("request with CRLF in the host: %\n", ws_request("a\r\nX: y", 80, "/", cast(string) key[..], request[..]));
+
+  t := fuzz(20000);
+  print("fuzz: 20000 streams, % frames read, % refused, % waiting for more, % read past the buffer\n",
+        t.frames, t.refused, t.waiting, t.past);
+}
+// book:end example
