@@ -40,7 +40,7 @@
 
 **VI. The event model**
 
-- [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) — partly implemented
+- [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) — implemented
 - [22. Kinds and tags](ch022-kinds-and-tags.md) — partly implemented
 - [23. Filters](ch023-filters.md) — partly implemented
 - [24. Relay messages](ch024-relay-messages.md) — partly implemented

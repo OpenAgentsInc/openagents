@@ -1,0 +1,86 @@
+// The checks of events.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/events.coax --run-steps 250000000
+#load "../events.coax";
+
+// book:begin check
+// Chapter 17's event signed by a pure-Python BIP-340 signer (hashlib and
+// integers, written from the BIP; it shares no code with Coax) with the same
+// key and aux, then written by Python's json.dumps(..., separators=(",", ":"),
+// ensure_ascii=False). The same script verifies the signature.
+PY_EVENT :: "{\"id\":\"ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":1,\"tags\":[[\"t\",\"nostr\"]],\"content\":\"hi\\n\\\"x\\\"\\\\\\u0001\",\"sig\":\"434d7839f0efb03875c96af21ea07b0428860602ad04729cf57d78f336902ef31e3e4b743b49aec045db97a91b8c70012da8fa21679ee701b88572dc05079494\"}";
+// Python's preimage length and SHA-256 for the captured event, and its
+// SHA-256 of the NIP-70 example's preimage.
+PY_CAPTURED_PREIMAGE :: 428;
+PY_CAPTURED_ID :: "813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21";
+PY_NIP70_ID :: "f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6";
+
+// Sign to the end without printing; returns the length in out or -1.
+sign_quietly :: (key: [] u8, aux: [] u8, created_at: int, kind: int, tags: string,
+                 content: string, out: [] u8) -> int {
+  work: [1] NostrSignWork; scratch: [1024] u8; result := EVENT_MORE;
+  while result == EVENT_MORE {
+    result = nostr_event_sign_step(key, aux, created_at, kind, tags, content,
+                                   work[..], scratch[..], out, false);
+  }
+  return result;
+}
+id_is :: (id: [32] u8, text: string) -> bool {
+  want: [32] u8; decode_hex(text, want[..]);
+  for i: 0..<32 { if id[i] != want[i] { return false; } }
+  return true;
+}
+verify :: (text: string) -> NostrEvent {
+  scratch: [1024] u8;
+  return nostr_event_verify_vartime(text, scratch[..], false);
+}
+
+#test "chapter 17's event signs to the Python signer's bytes" #steps 400000000 {
+  key: [32] u8; aux: [32] u8; content: [8] u8; out: [1024] u8;
+  decode_hex(KEY_HEX, key[..]); decode_hex(AUX_HEX, aux[..]); decode_hex(CONTENT_HEX, content[..]);
+  n := sign_quietly(key[..], aux[..], 1761686400, 1, "[[\"t\",\"nostr\"]]", cast(string) content[..], out[..]);
+  #assert n == PY_EVENT.count && cast(string) out[0..<n] == PY_EVENT;
+  e := verify(PY_EVENT);
+  #assert e.error == NE_OK && e.verified && e.written == 119;
+  #assert id_is(e.id, "ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3");
+}
+// The library's own Python-signed event (event_sign_vectors.py): escapes in
+// tags and content, an empty tag, and a 589-byte result.
+#test "the library's Python-signed event signs byte for byte" #steps 400000000 {
+  key := ES_KEY; aux := ES_AUX; tags := ES_TAGS; content := ES_CONTENT; out: [1024] u8;
+  n := sign_quietly(key[..], aux[..], ES_CREATED, ES_KIND, cast(string) tags[..], cast(string) content[..], out[..]);
+  #assert n == ES_EVENT.count;
+  for i: 0..<n { #assert out[i] == ES_EVENT[i]; }
+}
+#test "the captured event verifies with Python's ID" #steps 400000000 {
+  e := verify(CAPTURED);
+  #assert e.error == NE_OK && e.verified && e.written == PY_CAPTURED_PREIMAGE;
+  #assert id_is(e.id, PY_CAPTURED_ID) && id_is(e.computed_id, PY_CAPTURED_ID);
+  #assert e.kind == 30617 && e.created_at == 1793214821 && e.tags == 7;
+}
+#test "each altered copy of the captured event refuses with its own status" #steps 400000000 {
+  edit: [1024] u8;
+  #assert verify(replace(CAPTURED, "\"id\":\"8", "\"id\":\"9", edit[..])).error == NE_ID;
+  #assert verify(replace(CAPTURED, "\"content\":\"\"", "\"content\":\"x\"", edit[..])).error == NE_ID;
+  #assert verify(replace(CAPTURED, "d71eb\"", "d71ea\"", edit[..])).error == NE_SIGNATURE;
+  #assert verify(replace(CAPTURED, "30617", "99999", edit[..])).error == NE_SHAPE;
+}
+#test "NIP-70's example event has Python's computed ID, not its claimed one" {
+  scratch: [1024] u8;
+  e := nostr_event_read(NIP70, scratch[..], false);
+  #assert e.error == NE_ID && !e.verified && e.written == 0;
+  #assert id_is(e.computed_id, PY_NIP70_ID) && !id_is(e.id, PY_NIP70_ID);
+}
+#test "id_is notices a change in the first or last byte" {
+  id: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert id_is(id, zero);
+  id[0] = 1; #assert !id_is(id, zero);
+  id[0] = 0; id[31] = 1; #assert !id_is(id, zero);
+}
+#test "replace changes exactly the first occurrence" {
+  out: [16] u8;
+  #assert replace("abab", "ab", "x", out[..]) == "xab";
+  #assert replace("abab", "ba", "", out[..]) == "ab";
+  #assert replace("ab", "b", "bcd", out[..]) == "abcd";
+}
+// book:end check

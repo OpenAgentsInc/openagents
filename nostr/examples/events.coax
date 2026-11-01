@@ -1,0 +1,138 @@
+// book:begin example
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+STATUS :: [9] string.["ok", "json", "shape", "limit", "hex", "output", "alias", "id", "signature"];
+
+// Sign one event: call nostr_event_sign_step until it stops returning
+// EVENT_MORE. Returns the event's length in out, or EVENT_REFUSED.
+sign_event :: (key: [] u8, aux: [] u8, created_at: int, kind: int, tags: string,
+               content: string, out: [] u8) -> int {
+  work: [1] NostrSignWork; scratch: [1024] u8;
+  calls := 0; result := EVENT_MORE;
+  while result == EVENT_MORE {
+    result = nostr_event_sign_step(key, aux, created_at, kind, tags, content,
+                                   work[..], scratch[..], out, false);
+    calls += 1;
+    if calls == 1 { print_hex("call 1, key: pubkey", work[0].pub[..]); }
+    if calls == 2 { print_hex("call 2, id", work[0].id[..]); }
+  }
+  print("calls: %, result: %\n", calls, result);
+  return result;
+}
+
+JA :: [9] string.["ok", "policy", "size", "json", "string", "duplicate key", "keys", "work", "number"];
+
+// Print what reading and verifying gave: the status, the admission rule
+// for a JSON refusal, and the ID when the event verified.
+report :: (label: string, e: NostrEvent) {
+  print("%: %", label, STATUS[e.error]);
+  if e.error == NE_JSON { print(" (%)", JA[e.admission]); }
+  if e.verified {
+    text: [64] u8; id := e.id;
+    r := hex_encode_checked(cast(string) id[..], text[..], false);
+    print(", id %", cast(string) text[0..<r.written]);
+  }
+  print("\n");
+}
+// Verify text with old replaced by new, and report it.
+check_edit :: (label: string, text: string, old: string, new: string) {
+  edit: [1024] u8; scratch: [1024] u8;
+  report(label, nostr_event_verify_vartime(replace(text, old, new, edit[..]), scratch[..], false));
+}
+
+// text with the first occurrence of old replaced by new, written into out.
+replace :: (text: string, old: string, new: string, out: [] u8) -> string {
+  at := -1;
+  for i: 0..<text.count - old.count + 1 {
+    if at < 0 && text[i..<i + old.count] == old { at = i; }
+  }
+  #assert at >= 0;
+  n := json_raw(out, 0, text[0..<at]);
+  n = json_raw(out, n, new);
+  n = json_raw(out, n, text[at + old.count..<text.count]);
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// Chapter 17's worked event, signed with BIP-340 vector 1's published test
+// key and aux. Never sign with a real key in an example.
+KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+// Its content is h i LF " x " \ 0x01, the bytes chapter 17 escapes.
+CONTENT_HEX :: "68690a2278225c01";
+
+main :: () {
+  print("sign chapter 17's event\n");
+  key: [32] u8; aux: [32] u8;
+  decode_hex(KEY_HEX, key[..]); decode_hex(AUX_HEX, aux[..]);
+  content: [8] u8; decode_hex(CONTENT_HEX, content[..]);
+  out: [1024] u8;
+  n := sign_event(key[..], aux[..], 1761686400, 1, "[[\"t\",\"nostr\"]]", cast(string) content[..], out[..]);
+  signed := cast(string) out[0..<n];
+  print("event: %\n", signed);
+
+  print("read it back\n");
+  scratch: [1024] u8;
+  r := nostr_event_read(signed, scratch[..], false);
+  print("read: %, verified %\n", STATUS[r.error], r.verified);
+  print("preimage (% bytes): %\n", r.written, cast(string) scratch[0..<r.written]);
+  print_hex("computed id", r.computed_id[..]);
+  v := nostr_event_verify_vartime(signed, scratch[..], false);
+  report("verify", v);
+  print("verified: %, kind %, created_at %, tags %\n", v.verified, v.kind, v.created_at, v.tags);
+  print_hex("sig", v.signature[..]);
+
+  print("refusals\n");
+  check_edit("id first digit e -> f", signed, "\"id\":\"ef", "\"id\":\"ff");
+  check_edit("content h -> H", signed, "\"content\":\"hi", "\"content\":\"Hi");
+  check_edit("kind 1 -> 2", signed, "\"kind\":1,", "\"kind\":2,");
+  check_edit("sig first digit 4 -> 5", signed, "\"sig\":\"43", "\"sig\":\"53");
+  check_edit("sig last digit 4 -> 5", signed, "9494\"}", "9495\"}");
+  check_edit("pubkey in uppercase hex", signed, "dff1d77f", "DFF1D77F");
+  check_edit("kind missing", signed, ",\"kind\":1,", ",");
+  check_edit("kind twice", signed, ",\"kind\":1,", ",\"kind\":1,\"kind\":1,");
+  check_edit("created_at -1", signed, "1761686400", "-1");
+  check_edit("created_at 2^53 - 1", signed, "1761686400", "9007199254740991");
+  check_edit("created_at 2^53", signed, "1761686400", "9007199254740992");
+  check_edit("kind 65536", signed, "\"kind\":1,", "\"kind\":65536,");
+  check_edit("tag value 1", signed, "[[\"t\",\"nostr\"]]", "[[\"t\",1]]");
+  print("accepted\n");
+  check_edit("extra field relay", signed, "{\"id\"", "{\"relay\":\"wss://relay.example.com\",\"id\"");
+  check_edit("spaces between tokens", signed, ",\"kind\":1,", " , \"kind\" : 1 , ");
+
+  print("a captured event\n");
+  c := nostr_event_verify_vartime(CAPTURED, scratch[..], false);
+  report("relay.openagents.com, 2026-10-28", c);
+  print("bytes %, kind %, created_at %, tags %, preimage bytes %\n",
+        CAPTURED.count, c.kind, c.created_at, c.tags, c.written);
+  check_edit("id first digit 8 -> 9", CAPTURED, "\"id\":\"8", "\"id\":\"9");
+  check_edit("content \"\" -> \"x\"", CAPTURED, "\"content\":\"\"", "\"content\":\"x\"");
+  check_edit("sig last bit flipped", CAPTURED, "d71eb\"", "d71ea\"");
+  check_edit("kind 30617 -> 99999", CAPTURED, "30617", "99999");
+
+  print("NIP-70's example event\n");
+  p := nostr_event_verify_vartime(NIP70, scratch[..], false);
+  report("NIP-70", p);
+  print_hex("claimed id ", p.id[..]);
+  print_hex("computed id", p.computed_id[..]);
+}
+// book:end example
+
+// What wss://relay.openagents.com sent for the Coax repository announcement
+// on 2026-10-28T20:33Z, byte for byte (coax/lib/nostr/fixtures/coax_relay.coax;
+// object SHA-256 dcf32812f99618c23fa3dd2bff0569ef590f2b15d2d44b61bfb61f3257f00e93).
+CAPTURED :: "{\"id\":\"813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21\",\"pubkey\":\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\",\"created_at\":1793214821,\"kind\":30617,\"tags\":[[\"d\",\"openagents\"],[\"name\",\"OpenAgents\"],[\"description\",\"The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.\"],[\"web\",\"https://github.com/OpenAgentsInc/openagents\"],[\"clone\",\"https://github.com/OpenAgentsInc/openagents.git\"],[\"relays\",\"wss://relay.openagents.com\"],[\"r\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c2\",\"euc\"]],\"content\":\"\",\"sig\":\"56c7a3094a3c56049f98fb26bd33bb5d09face83ba8981b8b78903fd82630dbb317898c211bc2d15ba88f0891900fb5805488b82dfdb76d22ecff49e412d71eb\"}";
+// The event in nostr/nips/official/70.md, as published there.
+NIP70 :: "{\"id\":\"cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1707409439,\"kind\":1,\"tags\":[[\"-\"]],\"content\":\"hello members of the secret group\",\"sig\":\"fa163f5cfb75d77d9b6269011872ee22b34fb48d23251e9879bb1e4ccbdd8aaaf4b6dc5f5084a65ef42c52fbcde8f3178bac3ba207de827ec513a6aa39fa684c\"}";

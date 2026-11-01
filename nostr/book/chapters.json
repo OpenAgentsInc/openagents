@@ -432,7 +432,7 @@
    "number": 21,
    "title": "Events, IDs and signatures",
    "file": "ch021-events-ids-and-signatures.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     11,
@@ -442,7 +442,9 @@
    ],
    "source": [
     "coax/lib/nostr/event.coax",
-    "coax/lib/nostr/event_sign.coax"
+    "coax/lib/nostr/event_sign.coax",
+    "nostr/examples/checks/events.coax",
+    "nostr/examples/events.coax"
    ],
    "qualified_targets": [
     "cpu",

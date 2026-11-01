@@ -216,6 +216,18 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/events.coax",
+      "chapter": "nostr/book/ch021-events-ids-and-signatures.md",
+      "stdout": "nostr/fixtures/events.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

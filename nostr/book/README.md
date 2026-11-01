@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 21 are implemented, 35 are partly implemented and
+Of the 104 chapters, 22 are implemented, 34 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -178,7 +178,7 @@ that carry them, and NIP-59 gift wrap built on all of them.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | The NIP-01 event: `id`, `pubkey`, `created_at`, `kind`, `tags`, `content`, `sig`; recomputing the ID, verifying the signature, and building signed events separately from reading them. |
+| [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) | Runnable: native C and wasm | The NIP-01 event: `id`, `pubkey`, `created_at`, `kind`, `tags`, `content`, `sig`; recomputing the ID, verifying the signature, and building signed events separately from reading them. |
 | [22. Kinds and tags](ch022-kinds-and-tags.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Kind ranges (regular, replaceable 0, 3 and 10000–19999, ephemeral 20000–29999, addressable 30000–39999 by `d` tag) and the standard tags `e`, `p`, `a` and `d`. |
 | [23. Filters](ch023-filters.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | NIP-01 filters: `ids`, `authors`, `kinds`, `#<letter>` tags, `since`, `until` and `limit`; AND across fields, OR within a list, inclusive times, and absent lists distinct from empty ones. |
 | [24. Relay messages](ch024-relay-messages.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Client frames `EVENT`, `REQ`, `CLOSE`, `AUTH` and `COUNT`, relay frames `EVENT`, `OK`, `EOSE`, `CLOSED`, `NOTICE` and `AUTH`, and the `OK`/`CLOSED` reason prefixes NIP-20 introduced. |
