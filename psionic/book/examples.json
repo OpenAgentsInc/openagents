@@ -1400,6 +1400,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/pose-conventions.coax",
+      "chapter": "psionic/book/ch147-poses-have-conventions.md",
+      "stdout": "psionic/fixtures/pose-conventions.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

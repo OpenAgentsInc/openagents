@@ -160,7 +160,7 @@
 - [145. Compress and reconstruct an image](ch145-compress-and-reconstruct-an-image.md) — design draft
 - [146. Noise, diffusion and flow](ch146-noise-diffusion-and-flow.md) — design draft
 
-- [147. Poses have conventions](ch147-poses-have-conventions.md) — design draft
+- [147. Poses have conventions](ch147-poses-have-conventions.md)
 - [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — design draft
 - [149. Execute MotionBricks](ch149-execute-motionbricks.md) — design draft
 - [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–32, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 147, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

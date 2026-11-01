@@ -1,0 +1,71 @@
+#import "Basic";
+#load "../lib/pose.coax";
+
+// Round to a whole number of millionths (or thousandths) for printing.
+pose_micro :: (x:f64)->int {return cast(int)floor(x*1000000+0.5);}
+pose_milli :: (x:f64)->int {return cast(int)floor(x*1000+0.5);}
+#test "printing rounds half up and keeps signs" {
+    #assert pose_micro(0.7071067811865476)==707107 && pose_micro(-0.5)== -500000 && pose_micro(0)==0 && pose_micro(-1e-9)==0;
+    #assert pose_milli(0.4)==400 && pose_milli(-0.0004)==0 && pose_milli(-0.0006)== -1;
+}
+
+main :: () {
+// book:begin forms
+    // The knee's rest-to-bent rotation: a quarter turn about +X.
+    q:=pose_vector_quat([3]f64.[POSE_PI/2,0,0]);m:=pose_quat_matrix(q);six:=pose_matrix_six(m);v:=pose_quat_vector(q);
+    print("quaternion wxyz (millionths): % % % %\n",pose_micro(q[0]),pose_micro(q[1]),pose_micro(q[2]),pose_micro(q[3]));
+    print("matrix rows: % % % | % % % | % % %\n",pose_micro(m[0]),pose_micro(m[1]),pose_micro(m[2]),pose_micro(m[3]),pose_micro(m[4]),pose_micro(m[5]),pose_micro(m[6]),pose_micro(m[7]),pose_micro(m[8]));
+    print("6D columns: % % % | % % %\n",pose_micro(six[0]),pose_micro(six[1]),pose_micro(six[2]),pose_micro(six[3]),pose_micro(six[4]),pose_micro(six[5]));
+    print("rotation vector: % % %\n",pose_micro(v[0]),pose_micro(v[1]),pose_micro(v[2]));
+    back:=pose_six_matrix(six);r:=pose_matrix_quat(back.value);
+    print("6D -> matrix -> quaternion: % % % %\n",pose_micro(r[0]),pose_micro(r[1]),pose_micro(r[2]),pose_micro(r[3]));
+// book:end forms
+// book:begin leg
+    // A leg in Y-up, +Z forward, right-handed metres, w-first quaternions,
+    // absolute roots, 30 frames per second.
+    leg:PoseSkeleton;leg.count=3;leg.parent[0]= -1;leg.parent[1]=0;leg.parent[2]=1;
+    leg.offset[1]=[3]f64.[0,-0.5,0];leg.offset[2]=[3]f64.[0,-0.4,0];
+    clip:PoseClip;clip.frames=3;
+    clip.convention=PoseConvention.{up=PoseAxis.pos_y,forward=PoseAxis.pos_z,hand=PoseHand.right,order=PoseOrder.wxyz,unit=PoseUnit.metre,root=PoseRoot.absolute,rate=30};
+    for k:0..<3 {
+        clip.frame[k].root=[3]f64.[0,0.9,0.1*f64(k)];
+        clip.frame[k].rotation[0]=pose_vector_quat([3]f64.[-POSE_PI/4*f64(k),0,0]);
+        clip.frame[k].rotation[1]=q;clip.frame[k].rotation[2]=[4]f64.[1,0,0,0];
+    }
+    for k:0..<3 {
+        w:=pose_forward(leg,clip,k);
+        print("frame %: knee (mm) % % %, foot (mm) % % %\n",k,pose_milli(w.position[1][0]),pose_milli(w.position[1][1]),pose_milli(w.position[1][2]),pose_milli(w.position[2][0]),pose_milli(w.position[2][1]),pose_milli(w.position[2][2]));
+    }
+// book:end leg
+// book:begin convert
+    // The same motion in Z-up, -Y forward, right-handed centimetres,
+    // w-last quaternions, root deltas, 60 frames per second.
+    zup:=PoseConvention.{up=PoseAxis.pos_z,forward=PoseAxis.neg_y,hand=PoseHand.right,order=PoseOrder.xyzw,unit=PoseUnit.centimetre,root=PoseRoot.delta,rate=60};
+    moved:=pose_convert(clip,leg,zup);bones:=pose_convert_skeleton(leg,clip.convention,zup);
+    print("converted: %, % frames\n",moved.status,moved.clip.frames);
+    for k:0..<moved.clip.frames {
+        d:=moved.clip.frame[k].root;h:=moved.clip.frame[k].rotation[0];
+        print("frame %: root delta (mm) % % %, hip xyzw % % % %\n",k,pose_milli(d[0]/100),pose_milli(d[1]/100),pose_milli(d[2]/100),pose_micro(h[0]),pose_micro(h[1]),pose_micro(h[2]),pose_micro(h[3]));
+    }
+    w:=pose_forward(bones.skeleton,moved.clip,4);
+    print("frame 4 foot (mm): % % %\n",pose_milli(w.position[2][0]/100),pose_milli(w.position[2][1]/100),pose_milli(w.position[2][2]/100));
+// book:end convert
+// book:begin retarget
+    short:=leg;short.offset[1]=[3]f64.[0,-0.25,0];short.offset[2]=[3]f64.[0,-0.2,0];
+    small:=pose_retarget(clip,leg,short,2);
+    for k:0..<3 {
+        w=pose_forward(short,small.clip,k);
+        print("short leg frame %: root (mm) % % %, foot (mm) % % %\n",k,pose_milli(w.position[0][0]),pose_milli(w.position[0][1]),pose_milli(w.position[0][2]),pose_milli(w.position[2][0]),pose_milli(w.position[2][1]),pose_milli(w.position[2][2]));
+    }
+// book:end retarget
+// book:begin refuse
+    undeclared:=clip;undeclared.convention.up=PoseAxis.undeclared;
+    print("clip with no up axis: %\n",pose_convert(undeclared,leg,zup).status);
+    stretched:=clip;stretched.frame[1].rotation[2]=[4]f64.[1,0,0,0.1];
+    print("foot quaternion (1, 0, 0, 0.1): %\n",pose_forward(leg,stretched,1).status);
+    print("6D with parallel columns: %\n",pose_six_matrix([6]f64.[1,0,0,2,0,0]).status);
+    print("retarget on joint 3 of 3: %\n",pose_retarget(clip,leg,short,3).status);
+    loop:=leg;loop.parent[1]=2;
+    print("knee whose parent is the foot: %\n",pose_forward(loop,clip,0).status);
+// book:end refuse
+}

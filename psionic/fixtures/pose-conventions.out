@@ -1,0 +1,23 @@
+quaternion wxyz (millionths): 707107 707107 0 0
+matrix rows: 1000000 0 0 | 0 0 -1000000 | 0 1000000 0
+6D columns: 1000000 0 0 | 0 0 1000000
+rotation vector: 1570796 0 0
+6D -> matrix -> quaternion: 707107 707107 0 0
+frame 0: knee (mm) 0 400 0, foot (mm) 0 400 -400
+frame 1: knee (mm) 0 546 454, foot (mm) 0 264 171
+frame 2: knee (mm) 0 900 700, foot (mm) 0 500 700
+converted: ok, 5 frames
+frame 0: root delta (mm) 0 0 900, hip xyzw 0 0 0 1000000
+frame 1: root delta (mm) 0 -50 0, hip xyzw -195090 0 0 980785
+frame 2: root delta (mm) 0 -50 0, hip xyzw -382683 0 0 923880
+frame 3: root delta (mm) 0 -50 0, hip xyzw -555570 0 0 831470
+frame 4: root delta (mm) 0 -50 0, hip xyzw -707107 0 0 707107
+frame 4 foot (mm): 0 -700 500
+short leg frame 0: root (mm) 0 450 0, foot (mm) 0 200 -200
+short leg frame 1: root (mm) 0 450 50, foot (mm) 0 132 85
+short leg frame 2: root (mm) 0 450 100, foot (mm) 0 250 350
+clip with no up axis: convention
+foot quaternion (1, 0, 0, 0.1): not_unit
+6D with parallel columns: degenerate
+retarget on joint 3 of 3: joint
+knee whose parent is the foot: parent

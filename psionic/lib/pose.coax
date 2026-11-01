@@ -1,0 +1,807 @@
+// Chapter 147: poses have conventions. A pose is a set of joint rotations on
+// a skeleton plus a root position. Two motion files can describe the same
+// movement with different rotation forms, axes, units, root modes and frame
+// rates. This unit makes every one of those conventions declared data and
+// converts between them; a clip whose convention is undeclared is refused.
+// Profile cpu-f64-pose-v1: binary64, at most 24 joints and 64 frames,
+// rates 1 to 1,000 frames per second, tolerance 2^-30 (about 9.3e-10).
+// Quaternions are Hamilton w,x,y,z inside this unit; matrices are row-major
+// and map local coordinates to parent coordinates. The quaternion product and
+// matrix are chapter 167's (robotics/panda-fk-math.coax).
+#load "robotics/panda-fk-math.coax";
+
+POSE_JOINTS :: 24;
+POSE_FRAMES :: 64;
+POSE_RATE_MAX :: 1000;
+POSE_TOLERANCE :: 0.000000000931322574615478515625; // 2^-30, so boundaries are exact
+POSE_LENGTH_MAX :: 1000000.0;
+POSE_PI :: 3.141592653589793;
+POSE_TAN_PI_8 :: 0.41421356237309515;
+
+PoseStatus :: enum u8 {ok;shape;number;range;not_unit;not_rotation;degenerate;convention;parent;joint;rate;}
+PoseAxis :: enum u8 {undeclared;pos_x;neg_x;pos_y;neg_y;pos_z;neg_z;}
+PoseHand :: enum u8 {undeclared;right;left;}
+PoseOrder :: enum u8 {undeclared;wxyz;xyzw;}
+PoseUnit :: enum u8 {undeclared;metre;centimetre;}
+PoseRoot :: enum u8 {undeclared;absolute;delta;}
+// Every field must be declared. Up and forward are signed coordinate axes;
+// the right axis follows from them and the handedness.
+PoseConvention :: struct {up:PoseAxis;forward:PoseAxis;hand:PoseHand;order:PoseOrder;unit:PoseUnit;root:PoseRoot;rate:int;}
+PoseQuat :: struct {status:PoseStatus;value:[4]f64;}
+PoseMatrix :: struct {status:PoseStatus;value:[9]f64;}
+// Joints are stored parents first: parent[0] is -1 and 0 <= parent[j] < j.
+// offset[j] is joint j's rest position in its parent's frame; offset[0] is
+// the root joint's rest position relative to the clip's root translation.
+PoseSkeleton :: struct {count:int;parent:[POSE_JOINTS]int;offset:[POSE_JOINTS][3]f64;}
+PoseSkeletonResult :: struct {status:PoseStatus;skeleton:PoseSkeleton;}
+// Rotations are local (child to parent), in the clip's declared order.
+PoseFrame :: struct {root:[3]f64;rotation:[POSE_JOINTS][4]f64;}
+PoseClip :: struct {convention:PoseConvention;frames:int;frame:[POSE_FRAMES]PoseFrame;}
+PoseClipResult :: struct {status:PoseStatus;clip:PoseClip;}
+PoseWorld :: struct {status:PoseStatus;position:[POSE_JOINTS][3]f64;rotation:[POSE_JOINTS][4]f64;}
+
+// ---- Checks. Expected values are derived by hand in chapter 147. ----
+
+pose_near :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+// q and -q are one rotation, so compare against both signs.
+pose_same_rotation :: (a:[4]f64,b:[4]f64,tolerance:f64)->bool {
+    plus:=true;minus:=true;
+    for i:0..<4 {if !pose_near(a[i],b[i],tolerance) {plus=false;}if !pose_near(a[i],-b[i],tolerance) {minus=false;}}
+    return plus || minus;
+}
+#forall "admission reads bits: infinities and NaNs are numbers out of the domain" sign:0..<2 {
+    top:=(cast(u64)sign)<<63;
+    for word:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000000] {#assert pose_value_bits(top|word,2)==PoseStatus.number;}
+    #assert pose_value_bits(top|0x4000000000000000,2)==PoseStatus.ok;#assert pose_value_bits(top|0x4000000000000001,2)==PoseStatus.range;
+    #assert pose_value_bits(top|0x7fefffffffffffff,2)==PoseStatus.range;#assert pose_value_bits(top,0)==PoseStatus.ok;
+}
+pose_axis_angle :: (axis:[3]f64,angle:f64)->[4]f64 {
+    n:=pose_norm3(axis);s:=sin(angle/2)/n;return [4]f64.[cos(angle/2),axis[0]*s,axis[1]*s,axis[2]*s];
+}
+// The fixed rotation set: seven axes, each at nine angles including the tiny
+// and near-half-turn cases.
+pose_fixed_axis :: (k:int)->[3]f64 {
+    axes:=[21]f64.[1,0,0, 0,1,0, 0,0,1, 1,1,1, 1,-2,3, -0.3,0.1,0.95, 1e-3,1,-1e-3];
+    return [3]f64.[axes[3*k],axes[3*k+1],axes[3*k+2]];
+}
+pose_fixed_angle :: (k:int)->f64 {
+    angles:=[9]f64.[0,1e-12,1e-6,0.3,1.5707963267948966,2.5,3.141592653,3.1415926535897,3.141592653589793];
+    return angles[k];
+}
+pose_gltf :: ()->PoseConvention {return PoseConvention.{up=PoseAxis.pos_y,forward=PoseAxis.pos_z,hand=PoseHand.right,order=PoseOrder.wxyz,unit=PoseUnit.metre,root=PoseRoot.absolute,rate=30};}
+pose_zup :: ()->PoseConvention {return PoseConvention.{up=PoseAxis.pos_z,forward=PoseAxis.neg_y,hand=PoseHand.right,order=PoseOrder.xyzw,unit=PoseUnit.centimetre,root=PoseRoot.delta,rate=60};}
+pose_unity :: ()->PoseConvention {return PoseConvention.{up=PoseAxis.pos_y,forward=PoseAxis.pos_z,hand=PoseHand.left,order=PoseOrder.xyzw,unit=PoseUnit.metre,root=PoseRoot.absolute,rate=30};}
+// A three-joint leg: hip at the root, knee 0.5 m below, foot 0.4 m below that.
+pose_leg :: (scale:f64)->PoseSkeleton {
+    s:PoseSkeleton;s.count=3;for j:0..<s.count {s.parent[j]=j-1;}
+    s.offset[1]=[3]f64.[0,-0.5*scale,0];s.offset[2]=[3]f64.[0,-0.4*scale,0];return s;
+}
+// Hip swings about +X by 0, 45 and 90 degrees; the knee bends back 90 degrees.
+pose_leg_clip :: ()->PoseClip {
+    c:PoseClip;c.convention=pose_gltf();c.frames=3;
+    for k:0..<c.frames {
+        c.frame[k].root=[3]f64.[0,0.9,0.1*f64(k)];
+        c.frame[k].rotation[0]=pose_axis_angle([3]f64.[1,0,0],-POSE_PI/4*f64(k));
+        c.frame[k].rotation[1]=pose_axis_angle([3]f64.[1,0,0],POSE_PI/2);
+        c.frame[k].rotation[2]=[4]f64.[1,0,0,0];
+    }
+    return c;
+}
+
+#test "quaternion admission refuses nonfinite and nonunit values" {
+    #assert pose_quat_check([4]f64.[1,0,0,0])==PoseStatus.ok;
+    #assert pose_quat_check([4]f64.[0.5,0.5,0.5,0.5])==PoseStatus.ok;
+    #assert pose_quat_check([4]f64.[1+4e-10,0,0,0])==PoseStatus.ok;
+    #assert pose_quat_check([4]f64.[1+6e-10,0,0,0])==PoseStatus.not_unit;
+    #assert pose_quat_check([4]f64.[0,0,0,0])==PoseStatus.not_unit;
+    #assert pose_quat_check([4]f64.[2,0,0,0])==PoseStatus.not_unit;
+    for i:0..<4 {q:=[4]f64.[0,0,0,0];q[i]=2.0000000000000004;#assert pose_quat_check(q)==PoseStatus.range;q[i]= -2.0000000000000004;#assert pose_quat_check(q)==PoseStatus.range;q[i]= -2;#assert pose_quat_check(q)==PoseStatus.not_unit;}
+}
+#test "canonical quaternions have w >= 0 and break the w = 0 tie on the first nonzero part" {
+    r:=pose_canonical([4]f64.[-0.5,0.5,-0.5,0.5]);#assert r[0]==0.5 && r[1]== -0.5 && r[2]==0.5 && r[3]== -0.5;
+    r=pose_canonical([4]f64.[0.5,-0.5,0.5,-0.5]);#assert r[0]==0.5 && r[1]== -0.5;
+    for axis:1..<4 {q:[4]f64;q[axis]= -1;r=pose_canonical(q);for i:0..<4 {#assert r[i]==(ifx i==axis then 1.0 else 0.0);}q[axis]=1;r=pose_canonical(q);#assert r[axis]==1;}
+    r=pose_canonical([4]f64.[0,0,-0.6,0.8]);#assert r[2]==0.6 && r[3]== -0.8;
+    r=pose_canonical([4]f64.[0,-0.6,0.8,0]);#assert r[1]==0.6 && r[2]== -0.8;
+    r=pose_canonical([4]f64.[0,0.6,-0.8,0]);#assert r[1]==0.6 && r[2]== -0.8;
+    r=pose_canonical([4]f64.[0,0,0.6,-0.8]);#assert r[2]==0.6 && r[3]== -0.8;
+    r=pose_canonical([4]f64.[0,0,0,0]);for x:r {#assert f64_bits(x)==0;}
+    r=pose_canonical([4]f64.[-0.0,-0.0,-0.0,-1]);#assert r[3]==1;
+}
+#test "hand-derived rotations: a quarter turn about Z" {
+    h:=sqrt(0.5);q:=[4]f64.[h,0,0,h];m:=pose_quat_matrix(q);
+    want:=[9]f64.[0,-1,0, 1,0,0, 0,0,1];for i:0..<9 {#assert pose_near(m[i],want[i],1e-15);}
+    v:=pose_quat_vector(q);#assert pose_near(v[0],0,0) && pose_near(v[1],0,0) && pose_near(v[2],POSE_PI/2,1e-15);
+    s:=pose_matrix_six(want);six:=[6]f64.[0,1,0,-1,0,0];for i:0..<6 {#assert s[i]==six[i];}
+    r:=pose_matrix_quat(want);#assert pose_near(r[0],h,1e-15) && r[1]==0 && r[2]==0 && pose_near(r[3],h,1e-15);
+    b:=pose_vector_quat([3]f64.[0,0,POSE_PI/2]);#assert pose_near(b[0],h,1e-15) && b[1]==0 && b[2]==0 && pose_near(b[3],h,1e-15);
+    p:=pose_rotate(q,[3]f64.[1,2,3]);#assert pose_near(p[0],-2,1e-15) && pose_near(p[1],1,1e-15) && p[2]==3;
+}
+#test "hand-derived rotations: a third of a turn about (1,1,1) permutes the axes" {
+    q:=[4]f64.[0.5,0.5,0.5,0.5];m:=pose_quat_matrix(q);want:=[9]f64.[0,0,1, 1,0,0, 0,1,0];for i:0..<9 {#assert m[i]==want[i];}
+    r:=pose_matrix_quat(want);for i:0..<4 {#assert r[i]==0.5;}
+    v:=pose_quat_vector(q);e:=2*POSE_PI/3/sqrt(3.0);for i:0..<3 {#assert pose_near(v[i],e,1e-15);}
+    six:=pose_six_matrix(pose_matrix_six(want));#assert six.status==PoseStatus.ok;for i:0..<9 {#assert six.value[i]==want[i];}
+}
+#test "hand-derived rotations: each half turn takes the branch of its own axis" {
+    for axis:0..<3 {
+        q:[4]f64;q[axis+1]=1;m:=pose_quat_matrix(q);
+        for i:0..<3 {for j:0..<3 {#assert m[i*3+j]==(ifx i!=j then 0.0 else (ifx i==axis then 1.0 else -1.0));}}
+        r:=pose_matrix_quat(m);for i:0..<4 {#assert r[i]==q[i];}
+        v:=pose_quat_vector(q);for i:0..<3 {#assert v[i]==(ifx i==axis then POSE_PI else 0.0);}
+        q[axis+1]= -1;v=pose_quat_vector(q);for i:0..<3 {#assert v[i]==(ifx i==axis then POSE_PI else 0.0);}
+    }
+    // A half turn about (0,0.6,0.8): the z diagonal is largest.
+    m:=pose_quat_matrix([4]f64.[0,0,0.6,0.8]);r:=pose_matrix_quat(m);#assert r[0]==0 && r[1]==0 && pose_near(r[2],0.6,1e-15) && pose_near(r[3],0.8,1e-15);
+    m=pose_quat_matrix([4]f64.[0,0.8,0.6,0]);r=pose_matrix_quat(m);#assert r[0]==0 && pose_near(r[1],0.8,1e-15) && pose_near(r[2],0.6,1e-15) && r[3]==0;
+    m=pose_quat_matrix([4]f64.[0,0,0.8,0.6]);r=pose_matrix_quat(m);#assert r[0]==0 && r[1]==0 && pose_near(r[2],0.8,1e-15) && pose_near(r[3],0.6,1e-15);
+    m=pose_quat_matrix([4]f64.[0,0.6,0,0.8]);r=pose_matrix_quat(m);#assert r[0]==0 && pose_near(r[1],0.6,1e-15) && r[2]==0 && pose_near(r[3],0.8,1e-15);
+}
+#test "the owned arctangent matches known angles on both sides of its reduction" {
+    #assert pose_atan(0)==0;#assert pose_near(pose_atan(1),POSE_PI/4,1e-15);
+    #assert pose_near(pose_atan(1/sqrt(3.0)),POSE_PI/6,1e-15);#assert pose_near(pose_atan(2-sqrt(3.0)),POSE_PI/12,1e-15);
+    #assert pose_near(pose_atan(0.1),0.09966865249116204,1e-15);#assert pose_near(pose_atan(0.5),0.4636476090008061,1e-15);
+    #assert pose_near(pose_atan(POSE_TAN_PI_8),POSE_PI/8,1e-15);#assert pose_near(pose_atan(0.4142135623730951),POSE_PI/8,1e-15);
+    #assert pose_near(pose_atan(0.41421356237309520),0.39269908169872420,1e-15);
+    // The series alone, with each of its terms.
+    #assert pose_near(pose_atan_series(0.4),0.3805063771123649,1e-15);#assert pose_atan_series(1e-300)==1e-300;
+}
+#forall "rotation forms round-trip on the fixed set" axis:0..<7,angle:0..<9 {
+    q:=pose_axis_angle(pose_fixed_axis(axis),pose_fixed_angle(angle));
+    #assert pose_quat_check(q)==PoseStatus.ok;
+    m:=pose_quat_matrix(q);#assert pose_matrix_check(m)==PoseStatus.ok;
+    #assert pose_same_rotation(pose_matrix_quat(m),q,1e-15);
+    #assert pose_same_rotation(pose_vector_quat(pose_quat_vector(q)),q,1e-15);
+    six:=pose_six_matrix(pose_matrix_six(m));#assert six.status==PoseStatus.ok;for i:0..<9 {#assert pose_near(six.value[i],m[i],1e-15);}
+    // The vector's length is the angle, its direction the axis.
+    v:=pose_quat_vector(q);a:=pose_fixed_angle(angle);n:=pose_norm3(v);#assert pose_near(n,a,1e-15);
+    if a>0 {u:=pose_fixed_axis(axis);l:=pose_norm3(u);for i:0..<3 {#assert pose_near(v[i]/n,u[i]/l,1e-9);}}
+    // q and -q are one rotation.
+    neg:=[4]f64.[-q[0],-q[1],-q[2],-q[3]];w:=pose_quat_vector(neg);for i:0..<3 {#assert pose_near(w[i],v[i],1e-15);}
+}
+// Shepperd's branch shows in the last bits. Each case is first checked
+// against the quaternion it came from, then pinned to the bits of the branch
+// the method takes: w, x, y and z largest, then ties.
+#test "matrix to quaternion takes the largest of w, x, y, z, and w on ties" {
+    qs:=[32]f64.[4,1,2,3, 1,4,2,3, 1,2,4,3, 1,2,3,4, 1,0,0,1, 0,0,1,0, 1,1,1,1, 0,1,1,0];
+    bits:=[32]u64.[4604753147827630234,4595745948572889239,4600249548200259735,4603108665757041779,
+        4595745948572889240,4604753147827630233,4600249548200259736,4603108665757041779,
+        4595745948572889240,4600249548200259736,4604753147827630233,4603108665757041779,
+        4595745948572889240,4600249548200259736,4603108665757041779,4604753147827630233,
+        4604544271217802190,0,0,4604544271217802188, 0,0,4607182418800017408,0,
+        4602678819172646912,4602678819172646912,4602678819172646912,4602678819172646912, 0,4604544271217802189,4604544271217802189,0];
+    for n:0..<8 {
+        q:=pose_normalize([4]f64.[qs[4*n],qs[4*n+1],qs[4*n+2],qs[4*n+3]]);r:=pose_matrix_quat(pose_quat_matrix(q));
+        #assert pose_same_rotation(r,q,4e-16);for i:0..<4 {#assert f64_bits(r[i])==bits[4*n+i];}
+    }
+}
+// Shepperd's rule restated: the largest diagonal entry (first on ties)
+// against the trace, then that branch's formulas.
+pose_oracle_branch :: (m:[9]f64)->[4]f64 {
+    big:=0;if m[4]>m[0] {big=1;}if m[8]>m[big*4] {big=2;}
+    t:=m[0]+m[4]+m[8];q:[4]f64;
+    if t>=m[big*4] {s:=2*sqrt(1+t);q[0]=s/4;q[1]=(m[7]-m[5])/s;q[2]=(m[2]-m[6])/s;q[3]=(m[3]-m[1])/s;}
+    else if big==0 {s:=2*sqrt(1+2*m[0]-t);q[0]=(m[7]-m[5])/s;q[1]=s/4;q[2]=(m[1]+m[3])/s;q[3]=(m[2]+m[6])/s;}
+    else if big==1 {s:=2*sqrt(1+2*m[4]-t);q[0]=(m[2]-m[6])/s;q[1]=(m[1]+m[3])/s;q[2]=s/4;q[3]=(m[5]+m[7])/s;}
+    else {s:=2*sqrt(1+2*m[8]-t);q[0]=(m[3]-m[1])/s;q[1]=(m[2]+m[6])/s;q[2]=(m[5]+m[7])/s;q[3]=s/4;}
+    return pose_canonical(pose_normalize(q));
+}
+#forall "matrix to quaternion takes Shepperd's branch on the fixed set" axis:0..<7,angle:0..<9,turn:0..<4 {
+    // Turn the fixed rotation by a quarter turn about X, Y or Z so every
+    // diagonal entry gets to be largest.
+    q:=pose_axis_angle(pose_fixed_axis(axis),pose_fixed_angle(angle));
+    if turn>0 {e:[3]f64;e[turn-1]=1;q=pfk_multiply(pose_axis_angle(e,POSE_PI/2),q);}
+    m:=pose_quat_matrix(q);r:=pose_matrix_quat(m);o:=pose_oracle_branch(m);
+    for i:0..<4 {#assert f64_bits(r[i])==f64_bits(o[i]);}
+    // Mixed signs: w largest while m[5] exceeds the trace.
+    m=pose_quat_matrix(pose_normalize([4]f64.[0.6,-0.48,0.45,0.45]));r=pose_matrix_quat(m);o=pose_oracle_branch(m);
+    for i:0..<4 {#assert f64_bits(r[i])==f64_bits(o[i]);}
+}
+#test "matrix to quaternion breaks exact ties as Shepperd's rule says" {
+    // Quarter turns about X, Y, Z (trace ties a diagonal entry) and half turns
+    // about (0,1,1), (1,1,0), (1,0,1) (two diagonal entries tie).
+    ms:=[54]f64.[1,0,0,0,0,-1,0,1,0, 0,0,1,0,1,0,-1,0,0, 0,-1,0,1,0,0,0,0,1,
+        -1,0,0,0,0,1,0,1,0, 0,1,0,1,0,0,0,0,-1, 0,0,1,0,-1,0,1,0,0];
+    for n:0..<6 {
+        m:[9]f64;for i:0..<9 {m[i]=ms[9*n+i];}
+        r:=pose_matrix_quat(m);o:=pose_oracle_branch(m);for i:0..<4 {#assert f64_bits(r[i])==f64_bits(o[i]);}
+        #assert pose_matrix_check(m)==PoseStatus.ok;
+        b:=pose_quat_matrix(r);for i:0..<9 {#assert pose_near(b[i],m[i],1e-15);}
+        t:=m;for i:0..<3 {for j:0..<3 {t[i*3+j]=m[j*3+i];}}
+        r=pose_matrix_quat(t);o=pose_oracle_branch(t);for i:0..<4 {#assert f64_bits(r[i])==f64_bits(o[i]);}
+    }
+    // At tan(pi/8) itself the series is used without reduction.
+    #assert f64_bits(pose_atan(POSE_TAN_PI_8))==f64_bits(pose_atan_series(POSE_TAN_PI_8));
+}
+#test "normalizing divides every part by the length" {
+    r:=pose_normalize([4]f64.[1,1,1,1]);for x:r {#assert x==0.5;}
+    r=pose_normalize([4]f64.[0,-3,0,4]);#assert r[0]==0 && r[1]== -0.6 && r[2]==0 && r[3]==0.8;
+}
+#test "comparing rotations accepts q and -q and nothing else" {
+    q:=[4]f64.[0.5,-0.5,0.5,0.5];n:=[4]f64.[-0.5,0.5,-0.5,-0.5];
+    #assert pose_same_rotation(q,q,0) && pose_same_rotation(q,n,0) && pose_same_rotation(n,q,0);
+    for i:0..<4 {b:=q;b[i]+=0.25;#assert !pose_same_rotation(q,b,0.1) && pose_same_rotation(q,b,0.25);b=n;b[i]-=0.25;#assert !pose_same_rotation(q,b,0.1);}
+}
+#test "the determinant of a dense matrix" {
+    #assert pose_det3([9]f64.[2,3,5, 7,11,13, 17,19,23])== -78;
+    #assert pose_det3([9]f64.[1,0,0, 0,1,0, 0,0,1])==1 && pose_det3([9]f64.[0,1,0, 1,0,0, 0,0,1])== -1;
+}
+#test "admission boundaries sit exactly on the tolerance" {
+    t:=POSE_TOLERANCE;#assert t*1073741824==1;
+    // 1 + (2^-15)^2 = 1 + 2^-30 exactly.
+    #assert pose_quat_check([4]f64.[1,0.000030517578125,0,0])==PoseStatus.ok;
+    // 2^-15 + 2^-39 squares to 2^-30 + 2^-53 + 2^-78: one ulp above.
+    #assert pose_quat_check([4]f64.[1,0.000030517578125+t/512,0,0])==PoseStatus.not_unit;
+    m:=[9]f64.[1+0.75*t,0,0, 0,1,0, 0,0,1];#assert pose_det3(m)==1+0.75*t && pose_matrix_check(m)==PoseStatus.not_rotation;
+    m=[9]f64.[1,0,0, 0,1,0, 0,0,1];m[1]=t;#assert pose_matrix_check(m)==PoseStatus.ok;m[1]=t*1.0000001;#assert pose_matrix_check(m)==PoseStatus.not_rotation;
+    // (1 + 2^-31)^2 rounds to 1 + 2^-30: orthonormal and det 1 at the edge.
+    h:=1+t/2;m=[9]f64.[h,0,0, 0,h,0, 0,0,1];#assert pose_det3(m)==1+t && pose_matrix_check(m)==PoseStatus.ok;
+    #assert pose_six_matrix([6]f64.[t,0,0, 0,1,0]).status==PoseStatus.degenerate;#assert pose_six_matrix([6]f64.[t*1.0000001,0,0, 0,1,0]).status==PoseStatus.ok;
+    #assert pose_six_matrix([6]f64.[1,0,0, 2,t,0]).status==PoseStatus.degenerate;#assert pose_six_matrix([6]f64.[1,0,0, 2,t*1.0000001,0]).status==PoseStatus.ok;
+    a:=pose_leg(1);b:=pose_leg(1);b.count=2;a.count=2;b.offset[1]=[3]f64.[0,-t,0];c:=pose_leg_clip();
+    #assert pose_retarget(c,a,b,1).status==PoseStatus.degenerate && pose_retarget(c,b,a,1).status==PoseStatus.degenerate;
+    b.offset[1][1]= -t*1.0000001;#assert pose_retarget(c,a,b,1).status==PoseStatus.ok && pose_retarget(c,b,a,1).status==PoseStatus.ok;
+}
+#test "a dense 6D input: (2,3,6) and (5,-3,8)" {
+    // b1 = (2,3,6)/7; (5,-3,8) has 7 along b1, leaving (3,-6,2), length 7.
+    r:=pose_six_matrix([6]f64.[2,3,6, 5,-3,8]);#assert r.status==PoseStatus.ok;
+    want:=[9]f64.[2,3,6, 3,-6,2, 6,2,-3];for i:0..<9 {#assert pose_near(r.value[i],want[i]/7,1e-15);}
+}
+#test "the series has as many terms as tan(pi/8) needs" {
+    // 30 Horner terms, written out separately.
+    z:=POSE_TAN_PI_8;sum:f64=0;k:=29;while k>=0 {sum=(ifx k%2==0 then 1.0 else -1.0)/f64(2*k+1)+z*z*sum;k-=1;}
+    #assert f64_bits(pose_atan_series(z))==f64_bits(z*sum);
+}
+#forall "every declared axis pair gives an orthonormal basis of the declared handedness" up:1..<7,forward:1..<7,hand:1..<3 {
+    c:=pose_gltf();c.up=cast(PoseAxis)up;c.forward=cast(PoseAxis)forward;c.hand=cast(PoseHand)hand;
+    if (up-1)/2==(forward-1)/2 {#assert pose_convention_check(c)==PoseStatus.convention;}
+    else {
+        #assert pose_convention_check(c)==PoseStatus.ok;e:=pose_basis(c);
+        for i:0..<3 {for j:0..<3 {#assert e[3*i]*e[3*j]+e[3*i+1]*e[3*j+1]+e[3*i+2]*e[3*j+2]==(ifx i==j then 1.0 else 0.0);}}
+        #assert pose_det3(e)==(ifx c.hand==PoseHand.right then -1.0 else 1.0);
+        u:=pose_axis_vector(c.up);for i:0..<3 {#assert e[3+i]==u[i];}
+    }
+}
+#test "glTF to Unity mirrors X and keeps the timing" {
+    s:=pose_leg(1);c:=pose_leg_clip();for k:0..<3 {c.frame[k].root[0]=0.25*f64(k+1);}
+    r:=pose_convert(c,s,pose_unity());#assert r.status==PoseStatus.ok && r.clip.frames==3;
+    for k:0..<3 {#assert r.clip.frame[k].root[0]== -0.25*f64(k+1) && r.clip.frame[k].root[1]==0.9 && r.clip.frame[k].root[2]==c.frame[k].root[2];}
+}
+#test "30 to 29 fps interpolates at 1/29 of a frame" {
+    s:=pose_leg(1);c:=pose_leg_clip();c.frame[1].root[0]=0.5;c.frame[2].root[0]=1;to:=c.convention;to.rate=29;
+    r:=pose_convert(c,s,to);#assert r.status==PoseStatus.ok && r.clip.frames==2;
+    #assert pose_near(r.clip.frame[1].root[0],0.5+0.5/29,1e-15) && pose_near(r.clip.frame[1].root[2],0.1+0.1/29,1e-15);
+    #assert pose_same_rotation(r.clip.frame[1].rotation[0],pose_axis_angle([3]f64.[1,0,0],-POSE_PI/4*(1+1.0/29)),1e-15);
+    #assert r.clip.frame[0].root[1]==0.9 && r.clip.frame[0].rotation[0][0]==1;
+}
+#test "the root offset places the root joint and converts with the skeleton" {
+    s:=pose_leg(1);s.offset[0]=[3]f64.[0.125,0.25,-0.5];s.offset[1][0]=0.5;c:=pose_leg_clip();
+    w:=pose_forward(s,c,1);#assert w.position[0][0]==0.125 && w.position[0][1]==1.15 && w.position[0][2]== -0.4;
+    o:=pose_oracle_joint(s,pose_internal(c,3).frame[1],2);for i:0..<3 {#assert pose_near(w.position[2][i],o[i],1e-15);}
+    k:=pose_convert_skeleton(s,c.convention,pose_zup());#assert k.status==PoseStatus.ok;
+    #assert k.skeleton.offset[0][0]==12.5 && k.skeleton.offset[0][1]==50 && k.skeleton.offset[0][2]==25 && k.skeleton.offset[1][0]==50;
+    // The root offset is not a bone: it does not count toward a chain.
+    #assert pose_chain_length(s,1)==sqrt(0.5);
+}
+#test "retargeting compares parents from the last joint down and scales every root part" {
+    a:=pose_leg(1);b:=pose_leg(0.5);c:=pose_leg_clip();c.frame[1].root[0]=0.5;
+    b.parent[3]=7;#assert pose_retarget(c,a,b,2).status==PoseStatus.ok && pose_retarget(c,a,b,2).clip.frame[1].root[0]==0.25;
+    a.count=4;b.count=4;a.parent[3]=2;b.parent[3]=1;for k:0..<3 {c.frame[k].rotation[3]=[4]f64.[1,0,0,0];}
+    #assert pose_retarget(c,a,b,2).status==PoseStatus.shape;
+}
+#test "admission checks frame 0, joint 0 and one-frame clips" {
+    s:=pose_leg(1);c:=pose_leg_clip();c.frames=1;#assert pose_clip_check(c,s)==PoseStatus.ok;
+    c=pose_leg_clip();c.frame[0].root[0]=1e7;#assert pose_clip_check(c,s)==PoseStatus.range;
+    c=pose_leg_clip();c.frame[0].rotation[0]=[4]f64.[0.5,0,0,0];#assert pose_clip_check(c,s)==PoseStatus.not_unit;
+    c=pose_leg_clip();c.frame[1].rotation[0]=[4]f64.[0.5,0,0,0];#assert pose_clip_check(c,s)==PoseStatus.not_unit;
+}
+#test "the near half turn keeps its angle through the matrix" {
+    q:=pose_axis_angle([3]f64.[1,0,0],POSE_PI-1e-9);m:=pose_quat_matrix(q);r:=pose_matrix_quat(m);v:=pose_quat_vector(r);
+    #assert pose_near(v[0],POSE_PI-1e-9,1e-15) && v[1]==0 && v[2]==0;
+}
+#test "matrix admission refuses nonfinite, non-orthonormal and mirror matrices" {
+    m:=[9]f64.[1,0,0, 0,1,0, 0,0,1];#assert pose_matrix_check(m)==PoseStatus.ok;
+    for i:0..<9 {b:=m;b[i]+=1e-6;#assert pose_matrix_check(b)==PoseStatus.not_rotation;b[i]=m[i]+4e-10;#assert pose_matrix_check(b)==PoseStatus.ok;b[i]=2.0000000000000004;#assert pose_matrix_check(b)==PoseStatus.range;b[i]= -2.0000000000000004;#assert pose_matrix_check(b)==PoseStatus.range;}
+    for i:0..<3 {b:=m;b[i*4]= -1;#assert pose_matrix_check(b)==PoseStatus.not_rotation;}
+    #assert pose_matrix_check([9]f64.[0,1,0, 1,0,0, 0,0,1])==PoseStatus.not_rotation;
+    #assert pose_matrix_check([9]f64.[0,-1,0, 1,0,0, 0,0,1])==PoseStatus.ok;
+}
+#test "the 6D form orthonormalizes its first column then its second" {
+    r:=pose_six_matrix([6]f64.[2,0,0, 3,4,0]);#assert r.status==PoseStatus.ok;
+    want:=[9]f64.[1,0,0, 0,1,0, 0,0,1];for i:0..<9 {#assert r.value[i]==want[i];}
+    r=pose_six_matrix([6]f64.[0,3,4, 1,0,0]);#assert r.status==PoseStatus.ok;
+    want=[9]f64.[0,1,0, 0.6,0,0.8, 0.8,0,-0.6];for i:0..<9 {#assert pose_near(r.value[i],want[i],1e-15);}
+    r=pose_six_matrix([6]f64.[0,0,0, 1,0,0]);#assert r.status==PoseStatus.degenerate;
+    r=pose_six_matrix([6]f64.[1e-10,0,0, 0,1,0]);#assert r.status==PoseStatus.degenerate;
+    r=pose_six_matrix([6]f64.[2e-9,0,0, 0,1,0]);#assert r.status==PoseStatus.ok;
+    r=pose_six_matrix([6]f64.[1,0,0, 2,0,0]);#assert r.status==PoseStatus.degenerate;
+    r=pose_six_matrix([6]f64.[1,0,0, 2,1e-10,0]);#assert r.status==PoseStatus.degenerate;
+    r=pose_six_matrix([6]f64.[1,0,0, 2,2e-9,0]);#assert r.status==PoseStatus.ok && r.value[4]==1;
+    for i:0..<6 {s:=[6]f64.[1,0,0,0,1,0];s[i]=1000000.0000000001;#assert pose_six_matrix(s).status==PoseStatus.range;s[i]=1000000;#assert pose_six_matrix(s).status!=PoseStatus.range;}
+}
+#test "the rotation vector refuses nonfinite parts and maps zero to the identity" {
+    r:=pose_vector_checked([3]f64.[0,0,0]);#assert r.status==PoseStatus.ok && r.value[0]==1 && r.value[1]==0 && r.value[2]==0 && r.value[3]==0;
+    for i:0..<3 {v:=[3]f64.[0,0,0];v[i]= -1000000.0000000001;#assert pose_vector_checked(v).status==PoseStatus.range;v[i]= -1000000;#assert pose_vector_checked(v).status==PoseStatus.ok;}
+    r=pose_vector_checked([3]f64.[0,POSE_PI,0]);#assert r.status==PoseStatus.ok && pose_near(r.value[0],0,1e-15) && pose_near(r.value[2],1,1e-15);
+    q:=pose_vector_quat([3]f64.[1e-150,0,0]);#assert q[0]==1 && q[1]==5e-151;
+}
+#test "conventions must be declared in full" {
+    c:=pose_gltf();#assert pose_convention_check(c)==PoseStatus.ok;
+    c.up=PoseAxis.undeclared;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.forward=PoseAxis.undeclared;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.hand=PoseHand.undeclared;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.order=PoseOrder.undeclared;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.unit=PoseUnit.undeclared;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.root=PoseRoot.undeclared;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.forward=PoseAxis.neg_y;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.up=PoseAxis.neg_z;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.up=PoseAxis.pos_x;c.forward=PoseAxis.neg_x;#assert pose_convention_check(c)==PoseStatus.convention;
+    c=pose_gltf();c.up=PoseAxis.neg_x;#assert pose_convention_check(c)==PoseStatus.ok;
+    c=pose_gltf();c.rate=0;#assert pose_convention_check(c)==PoseStatus.rate;
+    c.rate=1;#assert pose_convention_check(c)==PoseStatus.ok;c.rate=POSE_RATE_MAX;#assert pose_convention_check(c)==PoseStatus.ok;
+    c.rate=POSE_RATE_MAX+1;#assert pose_convention_check(c)==PoseStatus.rate;
+}
+#test "the basis rows are right, up and forward" {
+    // Right-handed Y-up, +Z forward: right = forward x up = -X.
+    e:=pose_basis(pose_gltf());want:=[9]f64.[-1,0,0, 0,1,0, 0,0,1];for i:0..<9 {#assert e[i]==want[i];}
+    // Left-handed Y-up, +Z forward: right = up x forward = +X.
+    e=pose_basis(pose_unity());want=[9]f64.[1,0,0, 0,1,0, 0,0,1];for i:0..<9 {#assert e[i]==want[i];}
+    // Right-handed Z-up, -Y forward: right = -Y x Z = -X.
+    e=pose_basis(pose_zup());want=[9]f64.[-1,0,0, 0,0,1, 0,-1,0];for i:0..<9 {#assert e[i]==want[i];}
+    for a:1..<7 {v:=pose_axis_vector(cast(PoseAxis)a);n:=0;for x:v {if x!=0 {n+=1;}}#assert n==1 && pose_norm3(v)==1;}
+    #assert pose_axis_vector(PoseAxis.neg_x)[0]== -1 && pose_axis_vector(PoseAxis.pos_y)[1]==1 && pose_axis_vector(PoseAxis.neg_z)[2]== -1;
+}
+#test "Y-up to Z-up sends (x, y, z) to (x, -z, y)" {
+    c:=pose_change(pose_gltf(),pose_zup());want:=[9]f64.[1,0,0, 0,0,-1, 0,1,0];for i:0..<9 {#assert c[i]==want[i];}
+    p:=pose_apply(c,[3]f64.[1,2,3]);#assert p[0]==1 && p[1]== -3 && p[2]==2;
+    // A quarter turn about Y-up is a quarter turn about Z-up.
+    q:=pose_change_rotation(c,pose_axis_angle([3]f64.[0,1,0],POSE_PI/2));
+    #assert pose_same_rotation(q,pose_axis_angle([3]f64.[0,0,1],POSE_PI/2),1e-15);
+}
+#test "right-handed to left-handed mirrors X and reverses turns about Y" {
+    c:=pose_change(pose_gltf(),pose_unity());want:=[9]f64.[-1,0,0, 0,1,0, 0,0,1];for i:0..<9 {#assert c[i]==want[i];}
+    q:=pose_change_rotation(c,pose_axis_angle([3]f64.[0,1,0],POSE_PI/2));
+    #assert pose_same_rotation(q,pose_axis_angle([3]f64.[0,1,0],-POSE_PI/2),1e-15);
+    q=pose_change_rotation(c,pose_axis_angle([3]f64.[1,0,0],0.3));#assert pose_same_rotation(q,pose_axis_angle([3]f64.[1,0,0],0.3),1e-15);
+}
+#test "skeleton admission refuses bad counts, parents and offsets" {
+    s:=pose_leg(1);#assert pose_skeleton_check(s)==PoseStatus.ok;
+    s.count=0;#assert pose_skeleton_check(s)==PoseStatus.shape;s.count=POSE_JOINTS+1;#assert pose_skeleton_check(s)==PoseStatus.shape;
+    s.count=POSE_JOINTS;for j:1..<POSE_JOINTS {s.parent[j]=j-1;}#assert pose_skeleton_check(s)==PoseStatus.ok;
+    s=pose_leg(1);s.parent[0]=0;#assert pose_skeleton_check(s)==PoseStatus.parent;
+    s=pose_leg(1);s.parent[2]=2;#assert pose_skeleton_check(s)==PoseStatus.parent;
+    s=pose_leg(1);s.parent[2]= -1;#assert pose_skeleton_check(s)==PoseStatus.parent;
+    s=pose_leg(1);s.parent[2]=0;#assert pose_skeleton_check(s)==PoseStatus.ok;
+    s=pose_leg(1);s.count=1;#assert pose_skeleton_check(s)==PoseStatus.ok;
+    for i:0..<3 {s=pose_leg(1);s.offset[2][i]=1000000.0000000001;#assert pose_skeleton_check(s)==PoseStatus.range;}
+    s=pose_leg(1);s.offset[0][0]=1e7;#assert pose_skeleton_check(s)==PoseStatus.range;s=pose_leg(1);s.offset[3][0]=1e7;#assert pose_skeleton_check(s)==PoseStatus.ok;
+}
+#test "clip admission refuses undeclared conventions, bad frame counts and bad rotations" {
+    s:=pose_leg(1);c:=pose_leg_clip();#assert pose_clip_check(c,s)==PoseStatus.ok;
+    c.convention.up=PoseAxis.undeclared;#assert pose_clip_check(c,s)==PoseStatus.convention;
+    c=pose_leg_clip();c.frames=0;#assert pose_clip_check(c,s)==PoseStatus.shape;c.frames=POSE_FRAMES+1;#assert pose_clip_check(c,s)==PoseStatus.shape;
+    c.frames=POSE_FRAMES;for k:3..<POSE_FRAMES {c.frame[k]=c.frame[2];}#assert pose_clip_check(c,s)==PoseStatus.ok;
+    c=pose_leg_clip();c.frame[2].rotation[2]=[4]f64.[0.9,0,0,0];#assert pose_clip_check(c,s)==PoseStatus.not_unit;
+    c=pose_leg_clip();c.frame[2].rotation[3]=[4]f64.[0.9,0,0,0];#assert pose_clip_check(c,s)==PoseStatus.ok;
+    for i:0..<3 {c=pose_leg_clip();c.frame[2].root[i]=1e7;#assert pose_clip_check(c,s)==PoseStatus.range;}c=pose_leg_clip();c.frame[3].root[0]=1e7;#assert pose_clip_check(c,s)==PoseStatus.ok;
+    c=pose_leg_clip();s.parent[2]=5;#assert pose_clip_check(c,s)==PoseStatus.parent;
+    // The order decides which slot is w: (0,0,0,1) is unit either way, (1,0,0,0) reads as x in xyzw.
+    s=pose_leg(1);c=pose_leg_clip();c.convention.order=PoseOrder.xyzw;#assert pose_clip_check(c,s)==PoseStatus.ok;
+}
+#test "component order moves w" {
+    q:=pose_read(PoseOrder.xyzw,[4]f64.[1,2,3,4]);#assert q[0]==4 && q[1]==1 && q[2]==2 && q[3]==3;
+    q=pose_read(PoseOrder.wxyz,[4]f64.[1,2,3,4]);#assert q[0]==1 && q[3]==4;
+    q=pose_write(PoseOrder.xyzw,[4]f64.[1,2,3,4]);#assert q[0]==2 && q[1]==3 && q[2]==4 && q[3]==1;
+    q=pose_write(PoseOrder.wxyz,[4]f64.[1,2,3,4]);#assert q[0]==1 && q[3]==4;
+}
+// Independent forward kinematics: 4x4 homogeneous matrices, multiplied down
+// the path from the root to the joint, with no quaternion products. The root's
+// translation is the frame's root plus its rest offset.
+pose_oracle_joint :: (s:PoseSkeleton,f:PoseFrame,joint:int)->[3]f64 {
+    path:[POSE_JOINTS]int;n:=0;j:=joint;while j>=0 {path[n]=j;n+=1;j=s.parent[j];}
+    t:[16]f64;for i:0..<4 {t[i*5]=1;}
+    for back:0..<n {
+        k:=path[n-1-back];r:=pfk_matrix(f.rotation[k]);o:=s.offset[k];if k==0 {for i:0..<3 {o[i]+=f.root[i];}}
+        local:[16]f64;for a:0..<3 {for b:0..<3 {local[a*4+b]=r[a*3+b];}local[a*4+3]=o[a];}local[15]=1;
+        next:[16]f64;for a:0..<4 {for b:0..<4 {sum:f64=0;for c:0..<4 {sum+=t[a*4+c]*local[c*4+b];}next[a*4+b]=sum;}}t=next;
+    }
+    return [3]f64.[t[3],t[7],t[11]];
+}
+#test "forward kinematics of the leg matches the hand trace" {
+    s:=pose_leg(1);c:=pose_leg_clip();
+    w:=pose_forward(s,c,0);#assert w.status==PoseStatus.ok;
+    // Frame 0: hip upright, knee bent back 90 degrees about +X.
+    #assert w.position[0][1]==0.9 && w.position[1][1]==0.4 && pose_near(w.position[2][1],0.4,1e-15) && pose_near(w.position[2][2],-0.4,1e-15);
+    w=pose_forward(s,c,2);#assert w.status==PoseStatus.ok;
+    // Frame 2: hip swung forward 90 degrees; the thigh points along +Z.
+    #assert pose_near(w.position[1][1],0.9,1e-15) && pose_near(w.position[1][2],0.7,1e-15);
+    #assert pose_near(w.position[2][1],0.5,1e-15) && pose_near(w.position[2][2],0.7,1e-15);
+    #assert pose_same_rotation(w.rotation[2],[4]f64.[1,0,0,0],1e-15);
+    #assert pose_forward(s,c,3).status==PoseStatus.shape && pose_forward(s,c,-1).status==PoseStatus.shape;
+    c.convention.rate=0;#assert pose_forward(s,c,0).status==PoseStatus.rate;
+}
+#forall "forward kinematics matches the homogeneous-matrix oracle" frame:0..<4,mode:0..<2 {
+    // A five-joint branching skeleton with dense rotations.
+    s:PoseSkeleton;s.count=5;s.parent=[POSE_JOINTS]int.[-1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    s.offset[1]=[3]f64.[0.1,0.3,-0.2];s.offset[2]=[3]f64.[0,0.4,0.05];s.offset[3]=[3]f64.[-0.25,0.1,0];s.offset[4]=[3]f64.[0.2,-0.5,0.1];
+    c:PoseClip;c.convention=pose_gltf();c.frames=4;
+    for k:0..<4 {c.frame[k].root=[3]f64.[0.3*f64(k),1-0.1*f64(k),-0.2];for j:0..<5 {c.frame[k].rotation[j]=pose_axis_angle(pose_fixed_axis((j+k)%7),0.4*f64(j)+0.7*f64(k)+0.1);}}
+    if mode==1 {c.convention.order=PoseOrder.xyzw;for k:0..<4 {for j:0..<5 {c.frame[k].rotation[j]=pose_write(PoseOrder.xyzw,c.frame[k].rotation[j]);}}}
+    w:=pose_forward(s,c,frame);#assert w.status==PoseStatus.ok;
+    plain:=pose_leg_clip();plain.frame[frame].root=c.frame[frame].root;
+    for j:0..<5 {plain.frame[frame].rotation[j]=pose_read(c.convention.order,c.frame[frame].rotation[j]);}
+    for j:0..<5 {o:=pose_oracle_joint(s,plain.frame[frame],j);for i:0..<3 {#assert pose_near(w.position[j][i],o[i],1e-15);}}
+}
+#test "delta roots integrate to absolute roots" {
+    s:=pose_leg(1);c:=pose_leg_clip();c.convention.root=PoseRoot.delta;
+    c.frame[0].root=[3]f64.[1,2,3];c.frame[1].root=[3]f64.[0.5,0,-1];c.frame[2].root=[3]f64.[0.25,1,0];
+    w:=pose_forward(s,c,2);#assert w.position[0][0]==1.75 && w.position[0][1]==3 && w.position[0][2]==2;
+    a:=pose_internal(c,s.count);#assert a.frame[1].root[0]==1.5 && a.frame[1].root[2]==2 && a.convention.root==PoseRoot.absolute && a.convention.order==PoseOrder.wxyz;
+    x:=c;x.convention.order=PoseOrder.xyzw;#assert pose_internal(x,s.count).convention.order==PoseOrder.wxyz;
+    b:=pose_external(a,s.count,c.convention);for k:0..<3 {for i:0..<3 {#assert b.frame[k].root[i]==c.frame[k].root[i];}}
+}
+#test "resampling 30 to 60 fps adds exact midpoints" {
+    s:=pose_leg(1);c:=pose_leg_clip();to:=c.convention;to.rate=60;
+    r:=pose_convert(c,s,to);#assert r.status==PoseStatus.ok && r.clip.frames==5 && r.clip.convention.rate==60;
+    #assert r.clip.frame[1].root[2]==0.05 && r.clip.frame[3].root[2]==0.15000000000000002 && r.clip.frame[4].root[2]==0.2;
+    // Halfway between 0 and -45 degrees about X is -22.5 degrees.
+    #assert pose_same_rotation(r.clip.frame[1].rotation[0],pose_axis_angle([3]f64.[1,0,0],-POSE_PI/8),1e-15);
+    #assert pose_same_rotation(r.clip.frame[3].rotation[0],pose_axis_angle([3]f64.[1,0,0],-3*POSE_PI/8),1e-15);
+    for k:0..<5 {#assert pose_same_rotation(r.clip.frame[k].rotation[1],c.frame[0].rotation[1],1e-15);}
+    #assert pose_same_rotation(r.clip.frame[2].rotation[0],c.frame[1].rotation[0],0);
+}
+#test "resampling 30 to 20 fps lands on whole and half frames" {
+    s:=pose_leg(1);c:=pose_leg_clip();c.frames=4;c.frame[3]=c.frame[2];c.frame[3].root[2]=0.3;c.frame[3].rotation[0]=pose_axis_angle([3]f64.[1,0,0],-3*POSE_PI/4);
+    to:=c.convention;to.rate=20;r:=pose_convert(c,s,to);#assert r.status==PoseStatus.ok && r.clip.frames==3;
+    #assert r.clip.frame[1].root[2]==0.15000000000000002 && r.clip.frame[2].root[2]==0.3;
+    #assert pose_same_rotation(r.clip.frame[1].rotation[0],pose_axis_angle([3]f64.[1,0,0],-3*POSE_PI/8),1e-15);
+    // 30 to 7 fps: frame 1 is at source time 30/7 = 4 + 2/7, past the end.
+    to.rate=7;r=pose_convert(c,s,to);#assert r.status==PoseStatus.ok && r.clip.frames==1;
+    // A clip that would grow past the frame limit is refused.
+    c=pose_leg_clip();to=c.convention;to.rate=1000;#assert pose_convert(c,s,to).status==PoseStatus.shape;
+    to.rate=945;#assert pose_convert(c,s,to).status==PoseStatus.ok && pose_convert(c,s,to).clip.frames==64;
+    to.rate=960;#assert pose_convert(c,s,to).status==PoseStatus.shape;
+}
+#test "slerp takes the short way and interpolates the angle" {
+    a:=[4]f64.[1,0,0,0];b:=pose_axis_angle([3]f64.[0,0,1],POSE_PI/2);
+    m:=pose_slerp(a,b,0.25);#assert pose_same_rotation(m,pose_axis_angle([3]f64.[0,0,1],POSE_PI/8),1e-15);
+    nb:=[4]f64.[-b[0],-b[1],-b[2],-b[3]];m=pose_slerp(a,nb,0.5);#assert pose_same_rotation(m,pose_axis_angle([3]f64.[0,0,1],POSE_PI/4),1e-15);
+    m=pose_slerp(b,a,0.5);#assert pose_same_rotation(m,pose_axis_angle([3]f64.[0,0,1],POSE_PI/4),1e-15);
+    m=pose_slerp(b,b,0.7);#assert pose_same_rotation(m,b,1e-15);
+}
+#test "converting a clip moves axes, units, order, root mode and rate together" {
+    s:=pose_leg(1);c:=pose_leg_clip();to:=pose_zup();
+    r:=pose_convert(c,s,to);#assert r.status==PoseStatus.ok && r.clip.frames==5;
+    // Roots: (0, 0.9, 0.1k) m becomes (0, -10k, 90) cm, stored as deltas.
+    #assert r.clip.frame[0].root[0]==0 && r.clip.frame[0].root[1]==0 && r.clip.frame[0].root[2]==90;
+    #assert r.clip.frame[1].root[0]==0 && pose_near(r.clip.frame[1].root[1],-5,1e-14) && r.clip.frame[1].root[2]==0;
+    // Quarter turn about X stays about X; stored x, y, z, w.
+    q:=r.clip.frame[0].rotation[1];h:=sqrt(0.5);#assert pose_near(q[0],h,1e-15) && q[1]==0 && q[2]==0 && pose_near(q[3],h,1e-15);
+    k:=pose_convert_skeleton(s,c.convention,to);#assert k.status==PoseStatus.ok && k.skeleton.offset[1][2]== -50 && k.skeleton.offset[1][1]==0 && pose_near(k.skeleton.offset[2][2],-40,1e-14);
+    #assert pose_convert(c,s,PoseConvention.{}).status==PoseStatus.convention;c.frames=0;#assert pose_convert(c,s,to).status==PoseStatus.shape;
+    #assert pose_convert_skeleton(s,PoseConvention.{},to).status==PoseStatus.convention && pose_convert_skeleton(s,to,PoseConvention.{}).status==PoseStatus.convention;
+    s.parent[1]=1;#assert pose_convert_skeleton(s,to,to).status==PoseStatus.parent;
+}
+#forall "forward kinematics commutes with every convention change" from:0..<3,to:0..<3,frame:0..<3 {
+    conventions:=[3]PoseConvention.[pose_gltf(),pose_zup(),pose_unity()];
+    for i:0..<3 {conventions[i].rate=30;}
+    s:=pose_leg(1);c:=pose_leg_clip();c.frame[1].rotation[2]=pose_axis_angle([3]f64.[1,-2,3],0.8);
+    for k:0..<3 {c.frame[k].rotation[0]=pose_axis_angle([3]f64.[2,1,-1],0.6*f64(k)+0.1);c.frame[k].root[0]=0.3*f64(k)-0.2;}s.offset[0]=[3]f64.[0.1,-0.05,0.02];
+    c0:=pose_convert(c,s,conventions[from]);k0:=pose_convert_skeleton(s,c.convention,conventions[from]);#assert c0.status==PoseStatus.ok && k0.status==PoseStatus.ok;
+    c1:=pose_convert(c0.clip,k0.skeleton,conventions[to]);k1:=pose_convert_skeleton(k0.skeleton,conventions[from],conventions[to]);#assert c1.status==PoseStatus.ok;
+    w0:=pose_forward(k0.skeleton,c0.clip,frame);w1:=pose_forward(k1.skeleton,c1.clip,frame);#assert w0.status==PoseStatus.ok && w1.status==PoseStatus.ok;
+    m:=pose_change(conventions[from],conventions[to]);scale:=pose_unit_factor(conventions[from].unit,conventions[to].unit);
+    for j:0..<3 {p:=pose_apply(m,w0.position[j]);for i:0..<3 {#assert pose_near(w1.position[j][i],p[i]*scale,1e-12);}#assert pose_same_rotation(w1.rotation[j],pose_change_rotation(m,w0.rotation[j]),1e-15);}
+    // And back again.
+    c2:=pose_convert(c1.clip,k1.skeleton,c.convention);#assert c2.status==PoseStatus.ok;
+    for j:0..<3 {#assert pose_same_rotation(c2.clip.frame[frame].rotation[j],c.frame[frame].rotation[j],1e-15);}for i:0..<3 {#assert pose_near(c2.clip.frame[frame].root[i],c.frame[frame].root[i],1e-14);}
+}
+#test "unit factors are exact" {
+    #assert pose_unit_factor(PoseUnit.metre,PoseUnit.centimetre)==100 && pose_unit_factor(PoseUnit.centimetre,PoseUnit.metre)==0.01;
+    #assert pose_unit_factor(PoseUnit.metre,PoseUnit.metre)==1 && pose_unit_factor(PoseUnit.centimetre,PoseUnit.centimetre)==1;
+}
+#test "retargeting onto a shorter leg scales the root and keeps the rotations" {
+    a:=pose_leg(1);b:=pose_leg(0.5);c:=pose_leg_clip();
+    #assert pose_chain_length(a,2)==0.9 && pose_chain_length(b,2)==0.45 && pose_chain_length(a,1)==0.5;
+    r:=pose_retarget(c,a,b,2);#assert r.status==PoseStatus.ok;
+    for k:0..<3 {for i:0..<3 {#assert r.clip.frame[k].root[i]==c.frame[k].root[i]*0.5;}for j:0..<3 {for i:0..<4 {#assert r.clip.frame[k].rotation[j][i]==c.frame[k].rotation[j][i];}}}
+    // Proportional skeletons: every joint lands at half the distance.
+    for k:0..<3 {wa:=pose_forward(a,c,k);wb:=pose_forward(b,r.clip,k);for j:0..<3 {for i:0..<3 {#assert pose_near(wb.position[j][i],wa.position[j][i]*0.5,1e-15);}}}
+    // A leg with a long thigh and short shin: 0.6 + 0.2 = 0.8, scale 8/9.
+    d:=pose_leg(1);d.offset[1][1]= -0.6;d.offset[2][1]= -0.2;r=pose_retarget(c,a,d,2);#assert r.status==PoseStatus.ok && pose_near(r.clip.frame[0].root[1],0.8,1e-15);
+    w:=pose_forward(d,r.clip,0);#assert pose_near(w.position[2][1],0.2,1e-15) && pose_near(w.position[2][2],-0.2,1e-15);
+}
+#test "retargeting refuses bad joints, mismatched skeletons and zero chains" {
+    a:=pose_leg(1);b:=pose_leg(0.5);c:=pose_leg_clip();
+    #assert pose_retarget(c,a,b,0).status==PoseStatus.joint && pose_retarget(c,a,b,3).status==PoseStatus.joint && pose_retarget(c,a,b,-1).status==PoseStatus.joint;
+    #assert pose_retarget(c,a,b,1).status==PoseStatus.ok;
+    b.count=2;#assert pose_retarget(c,a,b,1).status==PoseStatus.shape;
+    b=pose_leg(0.5);b.parent[2]=0;#assert pose_retarget(c,a,b,2).status==PoseStatus.shape;
+    b=pose_leg(0);#assert pose_retarget(c,a,b,2).status==PoseStatus.degenerate;#assert pose_retarget(c,b,a,2).status==PoseStatus.degenerate;
+    b=pose_leg(0.5);b.parent[0]=3;#assert pose_retarget(c,a,b,2).status==PoseStatus.parent;
+    #assert pose_retarget(c,b,a,2).status==PoseStatus.parent;
+    c.convention.hand=PoseHand.undeclared;#assert pose_retarget(c,a,pose_leg(0.5),2).status==PoseStatus.convention;
+}
+
+// ---- Rotations ----
+
+// The interpreter that runs checks has no infinities or NaNs, so admission
+// reads a value's bits: a native caller can pass any of them.
+pose_value_bits :: (bits:u64,limit:f64)->PoseStatus {
+    if !pfk_finite(bits) {return PoseStatus.number;}
+    if abs(f64_from_bits(bits))>limit {return PoseStatus.range;}
+    return PoseStatus.ok;
+}
+pose_value :: (x:f64,limit:f64)->PoseStatus {return pose_value_bits(f64_bits(x),limit);}
+pose_dot3 :: (a:[3]f64,b:[3]f64)->f64 {return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+pose_norm3 :: (a:[3]f64)->f64 {return sqrt(pose_dot3(a,a));}
+pose_cross3 :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+
+// book:begin admit
+// A unit quaternion has four finite parts whose squares sum to 1.
+pose_quat_check :: (q:[4]f64)->PoseStatus {
+    sum:f64=0;for x:q {status:=pose_value(x,2);if status!=PoseStatus.ok {return status;}sum+=x*x;}
+    if abs(sum-1)>POSE_TOLERANCE {return PoseStatus.not_unit;}
+    return PoseStatus.ok;
+}
+// q and -q are one rotation; the canonical one has w > 0, or, when w is 0,
+// a positive first nonzero part.
+pose_canonical :: (q:[4]f64)->[4]f64 {
+    lead:=q[0];if lead==0 {lead=q[1];if lead==0 {lead=q[2];if lead==0 {lead=q[3];}}}
+    if lead<0 {return [4]f64.[-q[0],-q[1],-q[2],-q[3]];}
+    return q;
+}
+// book:end admit
+pose_quat_matrix :: (q:[4]f64)->[9]f64 {return pfk_matrix(q);}
+pose_rotate :: (q:[4]f64,v:[3]f64)->[3]f64 {m:=pfk_matrix(q);return pose_apply(m,v);}
+pose_normalize :: (q:[4]f64)->[4]f64 {n:=sqrt(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]);return [4]f64.[q[0]/n,q[1]/n,q[2]/n,q[3]/n];}
+
+// book:begin matrix
+// M^T M must be the identity within the tolerance, and det M must be +1
+// within it too: a mirror has orthonormal columns but determinant -1.
+pose_matrix_check :: (m:[9]f64)->PoseStatus {
+    for x:m {status:=pose_value(x,2);if status!=PoseStatus.ok {return status;}}
+    for i:0..<3 {for j:0..<3 {
+        dot:=m[i]*m[j]+m[3+i]*m[3+j]+m[6+i]*m[6+j];
+        if abs(dot-(ifx i==j then 1.0 else 0.0))>POSE_TOLERANCE {return PoseStatus.not_rotation;}
+    }}
+    if abs(pose_det3(m)-1)>POSE_TOLERANCE {return PoseStatus.not_rotation;}
+    return PoseStatus.ok;
+}
+pose_det3 :: (m:[9]f64)->f64 {return m[0]*(m[4]*m[8]-m[5]*m[7])-m[1]*(m[3]*m[8]-m[5]*m[6])+m[2]*(m[3]*m[7]-m[4]*m[6]);}
+// Shepperd's method: 4w^2 = 1 + trace and 4x^2 = 1 + 2 m00 - trace (and so
+// on); take the square root of the largest of the four, so the divisor is
+// never small, even at a half turn where w is 0.
+pose_matrix_quat :: (m:[9]f64)->[4]f64 {
+    t:=m[0]+m[4]+m[8];q:[4]f64;
+    if t>=m[0] && t>=m[4] && t>=m[8] {
+        s:=2*sqrt(1+t);q=[4]f64.[s/4,(m[7]-m[5])/s,(m[2]-m[6])/s,(m[3]-m[1])/s];
+    } else if m[0]>=m[4] && m[0]>=m[8] {
+        s:=2*sqrt(1+2*m[0]-t);q=[4]f64.[(m[7]-m[5])/s,s/4,(m[1]+m[3])/s,(m[2]+m[6])/s];
+    } else if m[4]>=m[8] {
+        s:=2*sqrt(1+2*m[4]-t);q=[4]f64.[(m[2]-m[6])/s,(m[1]+m[3])/s,s/4,(m[5]+m[7])/s];
+    } else {
+        s:=2*sqrt(1+2*m[8]-t);q=[4]f64.[(m[3]-m[1])/s,(m[2]+m[6])/s,(m[5]+m[7])/s,s/4];
+    }
+    return pose_canonical(pose_normalize(q));
+}
+// book:end matrix
+
+// book:begin vector
+// A rotation vector v has angle |v| and axis v/|v|. Going to a quaternion
+// needs only sin and cos; sin(theta/2)/theta stays accurate for tiny theta.
+pose_vector_quat :: (v:[3]f64)->[4]f64 {
+    theta:=pose_norm3(v);if theta==0 {return [4]f64.[1,0,0,0];}
+    k:=sin(theta/2)/theta;return [4]f64.[cos(theta/2),v[0]*k,v[1]*k,v[2]*k];
+}
+// Coming back needs an arctangent: with w >= 0 and s = |(x,y,z)|,
+// theta/4 = atan(s/(1+w)), and s/(1+w) lies in [0, 1].
+pose_quat_vector :: (q:[4]f64)->[3]f64 {
+    c:=pose_canonical(q);s:=sqrt(c[1]*c[1]+c[2]*c[2]+c[3]*c[3]);if s==0 {return [3]f64.[0,0,0];}
+    k:=4*pose_atan(s/(1+c[0]))/s;return [3]f64.[c[1]*k,c[2]*k,c[3]*k];
+}
+// atan on [0, 1]: above tan(pi/8), atan z = pi/4 + atan((z-1)/(z+1)), which
+// brings the argument within tan(pi/8); then 20 terms of the odd series,
+// the fewest that give the same double as 30 terms at tan(pi/8).
+pose_atan :: (z:f64)->f64 {
+    if z>POSE_TAN_PI_8 {return POSE_PI/4+pose_atan_series((z-1)/(z+1));}
+    return pose_atan_series(z);
+}
+pose_atan_series :: (z:f64)->f64 {
+    sum:f64=0;for back:0..<20 {k:=19-back;sign:=ifx k%2==0 then 1.0 else -1.0;sum=sign/f64(2*k+1)+z*z*sum;}
+    return z*sum;
+}
+// book:end vector
+pose_vector_checked :: (v:[3]f64)->PoseQuat {
+    for x:v {status:=pose_value(x,POSE_LENGTH_MAX);if status!=PoseStatus.ok {return PoseQuat.{status=status};}}
+    return PoseQuat.{status=PoseStatus.ok,value=pose_vector_quat(v)};
+}
+
+// book:begin six
+// The 6D form keeps the first two columns of the matrix. Any six numbers map
+// back to a rotation by Gram-Schmidt, unless the columns are (nearly) zero or
+// parallel; then there is no rotation to recover and the input is refused.
+pose_matrix_six :: (m:[9]f64)->[6]f64 {return [6]f64.[m[0],m[3],m[6],m[1],m[4],m[7]];}
+pose_six_matrix :: (six:[6]f64)->PoseMatrix {
+    for x:six {status:=pose_value(x,POSE_LENGTH_MAX);if status!=PoseStatus.ok {return PoseMatrix.{status=status};}}
+    a1:=[3]f64.[six[0],six[1],six[2]];a2:=[3]f64.[six[3],six[4],six[5]];
+    n1:=pose_norm3(a1);if n1<=POSE_TOLERANCE {return PoseMatrix.{status=PoseStatus.degenerate};}
+    b1:=[3]f64.[a1[0]/n1,a1[1]/n1,a1[2]/n1];d:=pose_dot3(b1,a2);
+    u:=[3]f64.[a2[0]-d*b1[0],a2[1]-d*b1[1],a2[2]-d*b1[2]];
+    n2:=pose_norm3(u);if n2<=POSE_TOLERANCE {return PoseMatrix.{status=PoseStatus.degenerate};}
+    b2:=[3]f64.[u[0]/n2,u[1]/n2,u[2]/n2];b3:=pose_cross3(b1,b2);
+    return PoseMatrix.{status=PoseStatus.ok,value=[9]f64.[b1[0],b2[0],b3[0],b1[1],b2[1],b3[1],b1[2],b2[2],b3[2]]};
+}
+// book:end six
+
+// book:begin slerp
+// Spherical interpolation as a product: from a, turn t of the way along the
+// short arc to b. The canonical relative rotation is the short arc.
+pose_slerp :: (a:[4]f64,b:[4]f64,t:f64)->[4]f64 {
+    conjugate:=[4]f64.[a[0],-a[1],-a[2],-a[3]];v:=pose_quat_vector(pfk_multiply(conjugate,b));
+    return pfk_multiply(a,pose_vector_quat([3]f64.[v[0]*t,v[1]*t,v[2]*t]));
+}
+// book:end slerp
+
+// ---- Conventions ----
+
+// book:begin convention
+pose_convention_check :: (c:PoseConvention)->PoseStatus {
+    if c.up==PoseAxis.undeclared || c.forward==PoseAxis.undeclared || c.hand==PoseHand.undeclared {return PoseStatus.convention;}
+    if c.order==PoseOrder.undeclared || c.unit==PoseUnit.undeclared || c.root==PoseRoot.undeclared {return PoseStatus.convention;}
+    // pos_x, neg_x are 1, 2; pos_y, neg_y 3, 4; pos_z, neg_z 5, 6.
+    if (cast(int)c.up-1)/2==(cast(int)c.forward-1)/2 {return PoseStatus.convention;}
+    if c.rate<1 || c.rate>POSE_RATE_MAX {return PoseStatus.rate;}
+    return PoseStatus.ok;
+}
+pose_axis_vector :: (a:PoseAxis)->[3]f64 {
+    v:[3]f64;k:=cast(int)a-1;v[k/2]=ifx k%2==0 then 1.0 else -1.0;return v;
+}
+// Rows right, up, forward, in the convention's coordinates. Right-handed
+// coordinates have right = forward x up; left-handed, right = up x forward.
+pose_basis :: (c:PoseConvention)->[9]f64 {
+    u:=pose_axis_vector(c.up);f:=pose_axis_vector(c.forward);
+    r:=ifx c.hand==PoseHand.right then pose_cross3(f,u) else pose_cross3(u,f);
+    return [9]f64.[r[0],r[1],r[2],u[0],u[1],u[2],f[0],f[1],f[2]];
+}
+// A point's right/up/forward parts are E_from p; in the new coordinates it is
+// E_to^T E_from p. C is orthogonal; det C is -1 when the handedness changes.
+pose_change :: (from:PoseConvention,to:PoseConvention)->[9]f64 {
+    a:=pose_basis(from);b:=pose_basis(to);c:[9]f64;
+    for i:0..<3 {for j:0..<3 {c[i*3+j]=b[i]*a[j]+b[3+i]*a[3+j]+b[6+i]*a[6+j];}}
+    return c;
+}
+pose_apply :: (m:[9]f64,v:[3]f64)->[3]f64 {
+    return [3]f64.[m[0]*v[0]+m[1]*v[1]+m[2]*v[2],m[3]*v[0]+m[4]*v[1]+m[5]*v[2],m[6]*v[0]+m[7]*v[1]+m[8]*v[2]];
+}
+// A rotation R in the old coordinates is C R C^T in the new ones. It is a
+// rotation even when C is a mirror, so it goes back to a quaternion.
+pose_change_rotation :: (c:[9]f64,q:[4]f64)->[4]f64 {
+    r:=pfk_matrix(q);cr:[9]f64;out:[9]f64;
+    for i:0..<3 {for j:0..<3 {cr[i*3+j]=c[i*3]*r[j]+c[i*3+1]*r[3+j]+c[i*3+2]*r[6+j];}}
+    for i:0..<3 {for j:0..<3 {out[i*3+j]=cr[i*3]*c[j*3]+cr[i*3+1]*c[j*3+1]+cr[i*3+2]*c[j*3+2];}}
+    return pose_matrix_quat(out);
+}
+pose_unit_factor :: (from:PoseUnit,to:PoseUnit)->f64 {
+    a:=ifx from==PoseUnit.metre then 100.0 else 1.0;b:=ifx to==PoseUnit.metre then 100.0 else 1.0;return a/b;
+}
+pose_read :: (order:PoseOrder,q:[4]f64)->[4]f64 {if order==PoseOrder.xyzw {return [4]f64.[q[3],q[0],q[1],q[2]];}return q;}
+pose_write :: (order:PoseOrder,q:[4]f64)->[4]f64 {if order==PoseOrder.xyzw {return [4]f64.[q[1],q[2],q[3],q[0]];}return q;}
+// book:end convention
+
+// ---- Skeletons and clips ----
+
+// book:begin skeleton
+pose_skeleton_check :: (s:PoseSkeleton)->PoseStatus {
+    if s.count<1 || s.count>POSE_JOINTS {return PoseStatus.shape;}
+    if s.parent[0]!= -1 {return PoseStatus.parent;}
+    for j:1..<s.count {if s.parent[j]<0 || s.parent[j]>=j {return PoseStatus.parent;}}
+    for j:0..<s.count {for x:s.offset[j] {status:=pose_value(x,POSE_LENGTH_MAX);if status!=PoseStatus.ok {return status;}}}
+    return PoseStatus.ok;
+}
+pose_clip_check :: (c:PoseClip,s:PoseSkeleton)->PoseStatus {
+    status:=pose_skeleton_check(s);if status!=PoseStatus.ok {return status;}
+    status=pose_convention_check(c.convention);if status!=PoseStatus.ok {return status;}
+    if c.frames<1 || c.frames>POSE_FRAMES {return PoseStatus.shape;}
+    for k:0..<c.frames {
+        for x:c.frame[k].root {status=pose_value(x,POSE_LENGTH_MAX);if status!=PoseStatus.ok {return status;}}
+        for j:0..<s.count {status=pose_quat_check(c.frame[k].rotation[j]);if status!=PoseStatus.ok {return status;}}
+    }
+    return PoseStatus.ok;
+}
+// book:end skeleton
+// The working form: w,x,y,z rotations and absolute roots, other conventions
+// unchanged.
+pose_internal :: (c:PoseClip,count:int)->PoseClip {
+    out:=c;out.convention.order=PoseOrder.wxyz;out.convention.root=PoseRoot.absolute;
+    for k:0..<c.frames {
+        for j:0..<count {out.frame[k].rotation[j]=pose_read(c.convention.order,c.frame[k].rotation[j]);}
+        if c.convention.root==PoseRoot.delta && k>0 {for i:0..<3 {out.frame[k].root[i]=out.frame[k-1].root[i]+c.frame[k].root[i];}}
+    }
+    return out;
+}
+pose_external :: (c:PoseClip,count:int,to:PoseConvention)->PoseClip {
+    out:=c;out.convention=to;
+    for k:0..<c.frames {
+        for j:0..<count {out.frame[k].rotation[j]=pose_write(to.order,c.frame[k].rotation[j]);}
+        if to.root==PoseRoot.delta && k>0 {for i:0..<3 {out.frame[k].root[i]=c.frame[k].root[i]-c.frame[k-1].root[i];}}
+    }
+    return out;
+}
+
+// book:begin forward
+// World rotation and position of every joint, parents first:
+//   R_j = R_parent * q_j,  p_j = p_parent + R_parent offset_j.
+// The root joint sits at the frame's root translation plus offset_0, its
+// rest position (zero when the translation is the root joint itself).
+pose_forward :: (s:PoseSkeleton,c:PoseClip,frame:int)->PoseWorld {
+    out:PoseWorld;out.status=pose_clip_check(c,s);if out.status!=PoseStatus.ok {return out;}
+    if frame<0 || frame>=c.frames {out.status=PoseStatus.shape;return out;}
+    f:=pose_internal(c,s.count).frame[frame];
+    out.rotation[0]=f.rotation[0];for i:0..<3 {out.position[0][i]=f.root[i]+s.offset[0][i];}
+    for j:1..<s.count {
+        p:=s.parent[j];out.rotation[j]=pfk_multiply(out.rotation[p],f.rotation[j]);
+        d:=pose_rotate(out.rotation[p],s.offset[j]);
+        for i:0..<3 {out.position[j][i]=out.position[p][i]+d[i];}
+    }
+    return out;
+}
+// book:end forward
+
+// book:begin convert
+// Convert a clip to another convention: axes and units on every root and
+// rotation, then the frame rate, then the order and root mode.
+pose_convert :: (c:PoseClip,s:PoseSkeleton,to:PoseConvention)->PoseClipResult {
+    out:PoseClipResult;out.status=pose_clip_check(c,s);if out.status!=PoseStatus.ok {return out;}
+    out.status=pose_convention_check(to);if out.status!=PoseStatus.ok {return out;}
+    from:=c.convention;
+    // Output frame k sits at source time k * from.rate / to.rate frames.
+    frames:=(c.frames-1)*to.rate/from.rate+1;
+    if frames>POSE_FRAMES {out.status=PoseStatus.shape;return out;}
+    work:=pose_internal(c,s.count);m:=pose_change(from,to);scale:=pose_unit_factor(from.unit,to.unit);
+    for k:0..<c.frames {
+        p:=pose_apply(m,work.frame[k].root);for i:0..<3 {work.frame[k].root[i]=p[i]*scale;}
+        for j:0..<s.count {work.frame[k].rotation[j]=pose_change_rotation(m,work.frame[k].rotation[j]);}
+    }
+    timed:PoseClip;timed.frames=frames;
+    for k:0..<frames {
+        i:=k*from.rate/to.rate;rest:=k*from.rate%to.rate;
+        if rest==0 {timed.frame[k]=work.frame[i];continue;}
+        t:=f64(rest)/f64(to.rate);a:=work.frame[i];b:=work.frame[i+1];
+        for x:0..<3 {timed.frame[k].root[x]=a.root[x]+(b.root[x]-a.root[x])*t;}
+        for j:0..<s.count {timed.frame[k].rotation[j]=pose_slerp(a.rotation[j],b.rotation[j],t);}
+    }
+    out.clip=pose_external(timed,s.count,to);
+    return out;
+}
+// book:end convert
+pose_convert_skeleton :: (s:PoseSkeleton,from:PoseConvention,to:PoseConvention)->PoseSkeletonResult {
+    out:PoseSkeletonResult;out.status=pose_skeleton_check(s);if out.status!=PoseStatus.ok {return out;}
+    out.status=pose_convention_check(from);if out.status!=PoseStatus.ok {return out;}
+    out.status=pose_convention_check(to);if out.status!=PoseStatus.ok {return out;}
+    m:=pose_change(from,to);scale:=pose_unit_factor(from.unit,to.unit);out.skeleton=s;
+    for j:0..<s.count {p:=pose_apply(m,s.offset[j]);for i:0..<3 {out.skeleton.offset[j][i]=p[i]*scale;}}
+    return out;
+}
+
+// book:begin retarget
+// Sum of bone lengths from a joint up to the root.
+pose_chain_length :: (s:PoseSkeleton,joint:int)->f64 {
+    sum:f64=0;j:=joint;while j>0 {sum+=pose_norm3(s.offset[j]);j=s.parent[j];}return sum;
+}
+// Same joints, same parents, different bone lengths: keep the local
+// rotations and scale the root by the ratio of the two chain lengths (a leg,
+// so that feet that touched the ground still do).
+pose_retarget :: (c:PoseClip,from:PoseSkeleton,to:PoseSkeleton,joint:int)->PoseClipResult {
+    out:PoseClipResult;out.status=pose_clip_check(c,from);if out.status!=PoseStatus.ok {return out;}
+    out.status=pose_skeleton_check(to);if out.status!=PoseStatus.ok {return out;}
+    if to.count!=from.count {out.status=PoseStatus.shape;return out;}
+    for back:0..<to.count {j:=to.count-1-back;if to.parent[j]!=from.parent[j] {out.status=PoseStatus.shape;return out;}}
+    if joint<1 || joint>=to.count {out.status=PoseStatus.joint;return out;}
+    a:=pose_chain_length(from,joint);b:=pose_chain_length(to,joint);
+    if a<=POSE_TOLERANCE || b<=POSE_TOLERANCE {out.status=PoseStatus.degenerate;return out;}
+    out.clip=c;scale:=b/a;
+    for k:0..<c.frames {for i:0..<3 {out.clip.frame[k].root[i]=c.frame[k].root[i]*scale;}}
+    return out;
+}
+// book:end retarget
