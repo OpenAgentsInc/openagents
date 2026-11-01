@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793540829,
+  "content": "reviewed",
+  "tags": [
+    [
+      "commit",
+      "3cd3a5852b885d7095107d909861ee80c481dc1e"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "a1afce6bd465bdb3fce8d7b545da2a434251d22dcf4703521bae02b5a09b35ab",
+  "sig": "74430f9996f6104a6d74b18c208fced1e790a456b8a105657eac397c706b9bc2de4cd09bcded465fd72a83e926f3ab316a12dfa3be0d39ecef15ab325d4fb6ab"
+}
