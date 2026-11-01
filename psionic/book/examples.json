@@ -482,6 +482,16 @@
       ]
     },
     {
+      "source": "psionic/examples/grid-world.coax",
+      "chapter": "psionic/book/ch110-a-grid-world-that-learns-plans-and-recovers.md",
+      "stdout": "psionic/fixtures/grid-world.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/model-router.coax",
       "chapter": "psionic/book/ch225-learn-which-model-to-call.md",
       "stdout": "psionic/fixtures/model-router.out",

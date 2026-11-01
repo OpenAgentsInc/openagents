@@ -1,0 +1,510 @@
+// Chapter 110: a grid world that learns, plans and recovers. A small headless
+// grid with walls, one start and one goal; value iteration as the exact
+// planner; tabular Q-learning from seeded episodes; and an agent that plans on
+// a learned transition table, takes one action, records what happened and
+// plans again. Measured: steps, collisions, decisions and planner sweeps.
+// Profile cpu-f64-grid-v1: binary64, maps of at most 8 x 8 cells, four moves,
+// a cost of 1 per move until the goal, discount strictly between 0 and 1,
+// chapter 53's counter RNG (splitmix64) for every random draw.
+#load "counter-rng.coax";
+#load "../tests/gridworld-oracle.coax";   // the checks' independent oracles
+
+GwStatus :: enum u8 {ok;shape;capacity;goal;start;unreachable;discount;budget;}
+// A cell is row * 8 + column, whatever the map's width. Actions: 0 up,
+// 1 right, 2 down, 3 left.
+GwMap :: struct {status:GwStatus;width:int;height:int;wall:[64]bool;goal:int=-1;start:int=-1;}
+// A transition table: open[s] says the cell can be occupied, next[4 s + a]
+// is where action a leads from s. The goal ends every episode.
+GwTable :: struct {goal:int;open:[64]bool;next:[256]int;}
+// changed is the cell whose value moved most in the last sweep, the lowest
+// cell on a tie, or -1 when nothing moved.
+GwPlan :: struct {status:GwStatus;value:[64]f64;action:[64]int;sweeps:int;residual:f64;changed:int=-1;}
+// One walk through a world: whether and when it reached the goal, the moves
+// that hit a wall or an edge, how many times it planned and the sweeps those
+// plans took, the steps its first plan promised, the transitions the model got
+// wrong, and the table it ends with.
+GwRun :: struct {status:GwStatus;reached:bool;steps:int;collisions:int;decisions:int;sweeps:int;
+    predicted:int=-1;surprises:int;model:GwTable;}
+// Q-learning: the table, the transitions seen, the episodes and steps taken,
+// how many (cell, action) pairs are still off the planner's Q by more than
+// the tolerance, when that count first reached 0, when the greedy walk from
+// the start first took the fewest steps, and a digest of every step.
+GwLearn :: struct {status:GwStatus;q:[256]f64;model:GwTable;episodes:int;steps:int;
+    off:int=-1;close_episode:int=-1;close_steps:int=-1;optimal_episode:int=-1;optimal_steps:int=-1;digest:u64;}
+// explore is the exploration rate in sixteenths: 8 explores half the time.
+GwSettings :: struct {gamma:f64;alpha:f64;explore:int;seed:u64;episodes:int;episode_steps:int;tol:f64;}
+
+GW_SIDE :: 8;
+GW_CELLS :: 64;
+GW_SWEEPS_MAX :: 4096;
+GW_WALK_MAX :: 4096;
+GW_EPISODES_MAX :: 4096;
+GW_EPISODE_STEPS_MAX :: 256;
+GW_TOL :: 0.000000000001;
+
+// Checks precede the implementation. Expected values are derived in chapter 110.
+HAND :: "S#G/...";
+#test "parsing a map: rows, walls, the start and the goal" {
+    m:=gw_parse(HAND);
+    #assert m.status==GwStatus.ok && m.width==3 && m.height==2 && m.start==0 && m.goal==2;
+    #assert m.wall[1] && !m.wall[0] && !m.wall[2] && !m.wall[8] && !m.wall[9] && !m.wall[10] && !m.wall[3];
+    m=gw_parse("SG");#assert m.status==GwStatus.ok && m.width==2 && m.height==1 && m.goal==1;
+    m=gw_parse("S......./......../......../......../......../......../......../.......G");
+    #assert m.status==GwStatus.ok && m.width==8 && m.height==8 && m.goal==63;
+    // The goal at cell 0, left of the start: a search must expand in both directions.
+    m=gw_parse("G.S");#assert m.status==GwStatus.ok && m.goal==0 && m.start==2;
+    m=gw_parse("G../#.S");#assert m.status==GwStatus.ok && m.goal==0 && m.start==10;
+    m=gw_parse("S/./G");#assert m.status==GwStatus.ok && m.width==1 && m.height==3 && m.goal==16;
+}
+#test "malformed maps are refused with their reason" {
+    #assert gw_parse("").status==GwStatus.shape && gw_parse("S..").status==GwStatus.goal;
+    #assert gw_parse("..G").status==GwStatus.start && gw_parse("SGG").status==GwStatus.goal && gw_parse("SSG").status==GwStatus.start;
+    #assert gw_parse("S#G").status==GwStatus.unreachable && gw_parse("S#./##./..G").status==GwStatus.unreachable;
+    #assert gw_parse("G#S").status==GwStatus.unreachable && gw_parse("G.#/##S").status==GwStatus.unreachable;
+    #assert gw_parse("S.x.G").status==GwStatus.shape && gw_parse("S./G").status==GwStatus.shape && gw_parse("S/G.").status==GwStatus.shape;
+    #assert gw_parse("S.G/").status==GwStatus.shape && gw_parse("/S.G").status==GwStatus.shape && gw_parse("S.//.G").status==GwStatus.shape;
+    #assert gw_parse("S/../G.").status==GwStatus.shape && gw_parse("S./.../G.").status==GwStatus.shape;
+    #assert gw_parse("S.......G").status==GwStatus.capacity;
+    #assert gw_parse("S/./././././././G").status==GwStatus.capacity && gw_parse("S/././././././G").status==GwStatus.ok;
+    #assert gw_parse("S........").status==GwStatus.capacity;
+    // A refused map carries nothing that looks usable.
+    m:=gw_parse("S#G");#assert m.width==0 && m.height==0 && m.goal==-1 && m.start==-1 && !m.wall[1];
+}
+#test "moves stop at walls and edges" {
+    m:=gw_parse(HAND);
+    #assert gw_move(m,0,0)==0 && gw_move(m,0,1)==0 && gw_move(m,0,2)==8 && gw_move(m,0,3)==0;
+    #assert gw_move(m,9,0)==9 && gw_move(m,9,1)==10 && gw_move(m,9,2)==9 && gw_move(m,9,3)==8;
+    #assert gw_move(m,10,0)==2 && gw_move(m,10,1)==10 && gw_move(m,8,3)==8 && gw_move(m,8,0)==0;
+    t:=gw_truth(m);#assert t.goal==2 && t.open[0] && !t.open[1] && t.open[10] && !t.open[3] && !t.open[16];
+    #assert t.next[4*0+2]==8 && t.next[4*0+1]==0 && t.next[4*10+0]==2;
+    // A closed cell leads nowhere, even where a move from it would land inside.
+    #assert t.next[4*3+3]==3 && t.next[4*1+2]==1 && t.next[4*16+0]==16;
+    p:=gw_prior(m);#assert p.open[1] && p.next[4*0+1]==1 && p.next[4*1+1]==2 && !p.open[3];
+    p=gw_prior(gw_parse("#S/G."));#assert p.open[0] && p.next[4*1+3]==0;
+}
+#test "value iteration on the hand-solved map, sweep by sweep" {
+    t:=gw_truth(gw_parse(HAND));
+    // Sweep 1 sets every cell to -1; sweep 2 leaves only the goal's neighbour there;
+    // sweeps 3 and 4 settle -1.5, -1.75 and -1.875; sweep 5 changes nothing.
+    p:=gw_plan(t,0.5,GW_TOL,4);#assert p.status==GwStatus.budget && p.sweeps==4 && p.residual==0.125 && p.changed==0;
+    p=gw_plan(t,0.5,GW_TOL,1);#assert p.value[0]==-1 && p.value[8]==-1 && p.value[10]==-1 && p.residual==1 && p.changed==0;
+    p=gw_plan(t,0.5,GW_TOL,2);#assert p.value[10]==-1 && p.value[9]==-1.5 && p.value[0]==-1.5 && p.residual==0.5 && p.changed==0;
+    p=gw_plan(t,0.5,GW_TOL,3);#assert p.value[9]==-1.5 && p.value[0]==-1.75 && p.residual==0.25 && p.changed==0;
+    p=gw_plan(t,0.5,GW_TOL,5);
+    #assert p.status==GwStatus.ok && p.sweeps==5 && p.residual==0 && p.changed==-1;
+    #assert p.value[0]==-1.875 && p.value[8]==-1.75 && p.value[9]==-1.5 && p.value[10]==-1 && p.value[2]==0;
+    #assert p.action[0]==2 && p.action[8]==1 && p.action[9]==1 && p.action[10]==0 && p.action[2]==-1 && p.action[1]==-1;
+    #assert gw_predict(t,p,0)==4 && gw_predict(t,p,10)==1 && gw_predict(t,p,2)==0;
+    #assert gw_predict(t,p,-1)==-1 && gw_predict(t,p,64)==-1 && gw_predict(t,p,1)==-1 && gw_predict(t,p,3)==-1;
+    // A residual equal to the tolerance is enough.
+    p=gw_plan(t,0.5,0.125,10);#assert p.status==GwStatus.ok && p.sweeps==4;
+    // Starting from the goal's row, the only change in sweep 2 is not in the lowest cell.
+    g:=gw_plan(gw_truth(gw_parse("G../#.S")),0.5,GW_TOL,2);#assert g.changed==2 && g.residual==0.5;
+}
+#test "ties go to the lowest action" {
+    // Right and down from the start are equally short; right (1) comes before down (2).
+    m:=gw_parse("S../.../..G");t:=gw_truth(m);p:=gw_plan(t,0.9,GW_TOL,100);
+    #assert p.status==GwStatus.ok && p.value[1]==p.value[8] && p.action[0]==1 && p.action[9]==1 && p.action[17]==1 && p.action[2]==2;
+    zero:[256]f64;#assert gw_greedy(zero[..],5)==0;
+    zero[4*5+2]=-1;zero[4*5+0]=-1;#assert gw_greedy(zero[..],5)==1;
+}
+#test "bad discounts, tolerances and budgets are refused" {
+    t:=gw_truth(gw_parse(HAND));
+    #assert gw_plan(t,0,GW_TOL,10).status==GwStatus.discount && gw_plan(t,1,GW_TOL,10).status==GwStatus.discount;
+    #assert gw_plan(t,-0.5,GW_TOL,10).status==GwStatus.discount && gw_plan(t,0.0/0.0,GW_TOL,10).status==GwStatus.discount;
+    #assert gw_plan(t,0.000001,GW_TOL,10).status==GwStatus.ok && gw_plan(t,0.999,0.5,10000).status==GwStatus.shape;
+    #assert gw_plan(t,0.5,0,10).status==GwStatus.shape && gw_plan(t,0.5,0.0/0.0,10).status==GwStatus.shape;
+    #assert gw_plan(t,0.5,GW_TOL,0).status==GwStatus.shape && gw_plan(t,0.5,GW_TOL,GW_SWEEPS_MAX).status==GwStatus.ok;
+    #assert gw_plan(t,0.5,GW_TOL,GW_SWEEPS_MAX+1).status==GwStatus.shape && gw_plan(t,0.5,GW_TOL,1).status==GwStatus.budget;
+    bad:=t;bad.goal=1;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.shape;
+    bad=t;bad.goal=64;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.shape;
+    bad=t;bad.goal=-1;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.shape;
+    bad=t;bad.next[4*0+2]=1;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.shape;
+    bad=t;bad.next[4*0+2]=64;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.shape;
+    bad=t;bad.next[4*0+2]=-1;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.shape;
+    // A closed cell's entries are never read; a goal at cell 0 is fine.
+    bad=t;bad.next[4*1+2]=-1;#assert gw_plan(bad,0.5,GW_TOL,10).status==GwStatus.ok;
+    #assert gw_plan(gw_truth(gw_parse("G.S")),0.5,GW_TOL,10).status==GwStatus.ok;
+}
+#test "the planner matches exhaustive search over all 256 policies of the hand map" #steps 200000000 {
+    t:=gw_truth(gw_parse(HAND));best:[64]f64;
+    #assert go_brute(HAND,3,2,2,0.5,best[..])==256;
+    p:=gw_plan(t,0.5,GW_TOL,100);
+    for s:0..<64 {#assert p.value[s]==best[s];}
+}
+#forall "on random 2 x 3 maps the planner matches exhaustive search" seed: 0..<12 #steps 400000000 {
+    buf:=[7]u8.['S','.','.','/','.','.','G'];
+    for i:1..<6 {if i!=3 && cr_bits(cast(u64)seed+100,cast(u64)i)%3==0 {buf[i]='#';}}
+    rows:=cast(string)buf[..];m:=gw_parse(rows);
+    if m.status==GwStatus.ok {
+        best:[64]f64;n:=go_brute(rows,3,2,10,0.75,best[..]);p:=gw_plan(gw_truth(m),0.75,GW_TOL,400);
+        #assert p.status==GwStatus.ok && n>=4;
+        for s:0..<64 {#assert abs(p.value[s]-best[s])<=0.000000000001;}
+        // The greedy policy is optimal from every cell at once.
+        for s:0..<64 {if m.wall[s] || s==m.goal || s%8>=3 || s/8>=2 {continue;}
+            #assert abs(go_policy_value(rows,3,2,10,p.action[..],s,0.75)-best[s])<=0.000000000001;}
+    } else {#assert m.status==GwStatus.unreachable;}
+}
+#forall "the Bellman residual bounds the error, and shortest paths give the values" seed: 0..<16 #steps 100000000 {
+    buf:[29]u8;rows:=go_random_map(cast(u64)seed,buf[..]);m:=gw_parse(rows);
+    if m.status==GwStatus.ok {
+        d:[64]int;go_distance(rows,5,5,m.goal,d[..]);t:=gw_truth(m);
+        // Stopped early, the error stays within gamma / (1 - gamma) times the last change.
+        for sweeps:1..<12 {
+            p:=gw_plan(t,0.9,GW_TOL,sweeps);
+            for s:0..<64 {if t.open[s] {#assert abs(p.value[s]-go_value(d[s],0.9))<=9*p.residual+0.000000000001;}}
+        }
+        p:=gw_plan(t,0.9,GW_TOL,GW_SWEEPS_MAX);#assert p.status==GwStatus.ok;
+        for s:0..<64 {
+            if !t.open[s] {#assert p.value[s]==0 && p.action[s]==-1 && d[s]==-1;continue;}
+            #assert abs(p.value[s]-go_value(d[s],0.9))<=9*GW_TOL+0.000000000001;
+            #assert gw_predict(t,p,s)==d[s];
+        }
+    } else {#assert m.status==GwStatus.unreachable;}
+}
+// The wall moves: map A has gaps in its second row at columns 1 and 3; in map B
+// the gap at column 3 is closed. Map C hides a wall the prior cannot know about.
+MAP_A :: "....S/#.#.#/...../....G";
+MAP_B :: "....S/#.###/...../....G";
+MAP_C :: "S..../####./G....";
+gw_settings :: (seed:u64)->GwSettings {
+    return GwSettings.{gamma=0.9,alpha=1,explore=8,seed=seed,episodes=1000,episode_steps=GW_EPISODE_STEPS_MAX,tol=0.000000001};
+}
+// The planner's Q table, for walking a fixed policy.
+gw_plan_q :: (m:GwMap,gamma:f64)->[256]f64 {
+    t:=gw_truth(m);p:=gw_plan(t,gamma,GW_TOL,GW_SWEEPS_MAX);q:[256]f64;
+    for i:0..<256 {q[i]=gw_backup(t.next[..],gamma,p.value[..],i/4,i%4);}
+    return q;
+}
+// gw_learn against the oracle's second implementation, step for step.
+gw_learn_same :: (rows:string,width:int,height:int,q:[256]f64,c:GwSettings)->bool {
+    m:=gw_parse(rows);l:=gw_learn(m,q,gw_prior(m),c);
+    o:=go_learn(rows,width,height,m.start,m.goal,q,c.gamma,c.alpha,c.explore,c.seed,c.episodes,c.episode_steps,c.tol);
+    #assert l.status==GwStatus.ok;#assert l.digest==o.digest;#assert l.steps==o.steps;#assert l.episodes==c.episodes;#assert l.off==o.off;
+    #assert l.close_episode==o.close_episode;#assert l.close_steps==o.close_steps;
+    #assert l.optimal_episode==o.optimal_episode;#assert l.optimal_steps==o.optimal_steps;
+    prior:=gw_prior(m);same:=0;
+    for i:0..<256 {
+        want:=ifx o.visited[i] then go_step(rows,width,height,i/4,i%4) else prior.next[i];
+        if f64_bits(l.q[i])==f64_bits(o.q[i]) {same+=1;}
+        if l.model.next[i]==want {same+=1000;}
+    }
+    return same==256256;
+}
+#test "Q-learning follows its specification step for step" #steps 400000000 {
+    q0:[256]f64;c:=gw_settings(5);c.episodes=40;c.explore=4;c.episode_steps=16;
+    #assert gw_learn_same(HAND,3,2,q0,c);
+    c.alpha=0.5;c.tol=0.01;c.episodes=120;#assert gw_learn_same(HAND,3,2,q0,c);
+    c=gw_settings(3);c.episodes=60;c.episode_steps=8;#assert gw_learn_same(MAP_A,5,4,q0,c);
+    c.explore=0;c.episodes=12;#assert gw_learn_same(MAP_A,5,4,q0,c);
+    c.explore=16;c.seed=9;#assert gw_learn_same(MAP_A,5,4,q0,c);
+    // Resumed from a table that is not zero.
+    c=gw_settings(11);c.episodes=30;c.episode_steps=32;
+    #assert gw_learn_same(MAP_B,5,4,gw_plan_q(gw_parse(MAP_A),0.9),c);
+}
+#test "Q-learning reaches the oracle's Q on fixed seeds and replays from its seed" #steps 400000000 {
+    m:=gw_parse(MAP_A);q0:[256]f64;d:[64]int;go_distance(MAP_A,5,4,m.goal,d[..]);truth:=gw_truth(m);
+    for seed:0..<3 {
+        l:=gw_learn(m,q0,gw_prior(m),gw_settings(cast(u64)seed));
+        #assert l.status==GwStatus.ok && l.episodes==1000 && l.close_episode>0 && l.close_steps>0 && l.off==0;
+        #assert l.optimal_episode>0 && l.optimal_episode<=l.close_episode && l.optimal_steps<=l.close_steps && l.steps>l.close_steps;
+        // Q(s, a) = -1 + 0.9 V(next), with V from the oracle's shortest paths.
+        for s:0..<GW_CELLS {
+            if !go_inside(5,4,s) || go_cell(MAP_A,5,s)=='#' || s==m.goal {continue;}
+            for a:0..<4 {
+                n:=go_step(MAP_A,5,4,s,a);want:=-1+0.9*go_value(d[n],0.9);
+                #assert abs(l.q[4*s+a]-want)<=0.000000001 && l.model.next[4*s+a]==truth.next[4*s+a];
+            }
+        }
+        again:=gw_learn(m,q0,gw_prior(m),gw_settings(cast(u64)seed));
+        #assert again.digest==l.digest && again.steps==l.steps && again.close_episode==l.close_episode;
+        for i:0..<256 {#assert f64_bits(again.q[i])==f64_bits(l.q[i]);}
+        other:=gw_learn(m,q0,gw_prior(m),gw_settings(cast(u64)seed+7));#assert other.digest!=l.digest;
+    }
+    // Seed 0's recorded marks: the shortest walk at episode 15, every pair within tolerance at 117.
+    l:=gw_learn(m,q0,gw_prior(m),gw_settings(0));
+    #assert l.optimal_episode==15 && l.optimal_steps==424 && l.close_episode==117 && l.close_steps==1197 && l.steps==7857;
+}
+#test "few episodes leave the table short of the planner's" #steps 100000000 {
+    m:=gw_parse(HAND);q0:[256]f64;c:=gw_settings(1);c.episodes=1;c.episode_steps=1;
+    l:=gw_learn(m,q0,gw_prior(m),c);
+    #assert l.status==GwStatus.ok && l.steps==1 && l.episodes==1 && l.close_episode==-1 && l.close_steps==-1 && l.optimal_episode==-1 && l.optimal_steps==-1;
+    #assert l.off==16;
+    // One step from a goal neighbour learns that it ends the episode.
+    c.episodes=200;c.episode_steps=8;l=gw_learn(m,q0,gw_prior(m),c);
+    #assert l.close_episode>0 && l.optimal_episode>0 && l.q[4*10+0]==-1 && l.q[4*0+2]==-1+0.9*(-1+0.9*(-1+0.9*(-1)));
+    // A smaller step size approaches the same table but does not reach it.
+    c.alpha=0.5;l=gw_learn(m,q0,gw_prior(m),c);#assert l.off>0 && l.close_episode==-1;
+    c.tol=0.01;l=gw_learn(m,q0,gw_prior(m),c);#assert l.close_episode>0 && l.off==0;
+}
+#test "counting pairs off the planner's table" {
+    m:=gw_parse(HAND);t:=gw_truth(m);p:=gw_plan(t,0.5,GW_TOL,100);q:=gw_plan_q(m,0.5);
+    #assert gw_q_off(t,0.5,p,q[..],0.25)==0;
+    // Off by exactly the tolerance is close enough; by more is not.
+    q[0]+=0.25;#assert gw_q_off(t,0.5,p,q[..],0.25)==0 && gw_q_off(t,0.5,p,q[..],0.125)==1;
+    q[4*10+3]-=1;#assert gw_q_off(t,0.5,p,q[..],0.25)==1 && gw_q_off(t,0.5,p,q[..],0.125)==2;
+    // A closed cell or the goal is never counted.
+    q[4*1+0]=7;q[4*2+1]=7;#assert gw_q_off(t,0.5,p,q[..],0.125)==2;
+    // The greedy walk under the planner's Q is the plan's walk; a table that loops never arrives.
+    r:=gw_plan_q(m,0.5);next:=t.next;
+    #assert gw_greedy_steps(next[..],r[..],0,2)==4 && gw_greedy_steps(next[..],r[..],10,2)==1 && gw_greedy_steps(next[..],r[..],2,2)==0;
+    zero:[256]f64;#assert gw_greedy_steps(next[..],zero[..],0,2)==-1;
+}
+#test "replanning recovers when a wall moves; a fixed policy does not" {
+    a:=gw_parse(MAP_A);b:=gw_parse(MAP_B);
+    // A's best walk: left once, then down through the gap at column 3.
+    r:=gw_follow(a,gw_plan_q(a,0.9),200);#assert r.status==GwStatus.ok && r.reached && r.steps==5 && r.collisions==0 && r.predicted==-1;
+    r=gw_follow(b,gw_plan_q(a,0.9),200);#assert r.status==GwStatus.ok && !r.reached && r.steps==200 && r.collisions==199;
+    r=gw_follow(b,gw_plan_q(a,0.9),1);#assert r.status==GwStatus.ok && !r.reached && r.steps==1 && r.collisions==0;
+    h:=gw_parse(HAND);r=gw_follow(h,gw_plan_q(h,0.5),200);#assert r.reached && r.steps==4;
+    // Knowing all of A, the agent promises 5, hits the new wall once and goes round in 10.
+    r=gw_navigate(b,gw_truth(a),0.9,200);
+    #assert r.status==GwStatus.ok && r.reached && r.steps==10 && r.collisions==1 && r.surprises==1 && r.predicted==5 && r.decisions==10;
+    #assert r.model.next[4*3+2]==3 && gw_truth(a).next[4*3+2]==11;
+    r=gw_navigate(b,gw_truth(b),0.9,200);#assert r.reached && r.steps==9 && r.predicted==9 && r.collisions==0 && r.surprises==0;
+    r=gw_navigate(b,gw_truth(a),0.9,3);#assert r.status==GwStatus.ok && !r.reached && r.steps==3 && r.decisions==3;
+    r=gw_navigate(b,gw_truth(a),0.9,1);#assert r.status==GwStatus.ok && !r.reached && r.steps==1 && r.decisions==1 && r.predicted==5;
+}
+#test "the planted shortcut: the planner trusts the prior where it is wrong" {
+    c:=gw_parse(MAP_C);
+    // The prior promises two steps straight down; each of the first four columns costs a collision.
+    r:=gw_navigate(c,gw_prior(c),0.9,200);
+    #assert r.status==GwStatus.ok && r.reached && r.predicted==2 && r.steps==14 && r.collisions==4 && r.surprises==4 && r.decisions==14;
+    for col:0..<4 {#assert r.model.next[4*col+2]==col;}
+    #assert r.model.next[4*4+2]==12 && r.model.next[4*12+2]==20;
+    again:=gw_navigate(c,r.model,0.9,200);#assert again.reached && again.predicted==10 && again.steps==10 && again.collisions==0 && again.surprises==0;
+    t:=gw_navigate(c,gw_truth(c),0.9,200);#assert t.reached && t.predicted==10 && t.steps==10 && t.collisions==0;
+}
+#test "a model with no route stops instead of walking" {
+    m:=gw_parse(HAND);t:=gw_truth(m);t.next[4*10+0]=10;
+    r:=gw_navigate(m,t,0.5,100);#assert r.status==GwStatus.ok && !r.reached && r.steps==0 && r.decisions==1 && r.predicted==-1 && r.sweeps>1;
+}
+#test "learning and walking refuse bad inputs" #steps 100000000 {
+    m:=gw_parse(HAND);bad:=gw_parse("S#G");q0:[256]f64;c:=gw_settings(1);p:=gw_prior(m);
+    #assert gw_learn(bad,q0,p,c).status==GwStatus.unreachable && gw_navigate(bad,p,0.5,10).status==GwStatus.unreachable;
+    #assert gw_follow(bad,q0,10).status==GwStatus.unreachable;
+    #assert gw_follow(m,q0,0).status==GwStatus.shape && gw_follow(m,q0,GW_WALK_MAX+1).status==GwStatus.shape && gw_follow(m,q0,GW_WALK_MAX).status==GwStatus.ok;
+    #assert gw_navigate(m,p,1,10).status==GwStatus.discount && gw_navigate(m,p,0,10).status==GwStatus.discount;
+    #assert gw_navigate(m,p,0.5,0).status==GwStatus.shape && gw_navigate(m,p,0.5,GW_WALK_MAX+1).status==GwStatus.shape;
+    #assert gw_navigate(m,p,0.5,GW_WALK_MAX).status==GwStatus.ok;
+    other:=gw_prior(gw_parse("G#S/..."));#assert gw_navigate(m,other,0.5,10).status==GwStatus.shape && gw_learn(m,q0,other,c).status==GwStatus.shape;
+    broken:=p;broken.next[0]=-1;#assert gw_navigate(m,broken,0.5,10).status==GwStatus.shape && gw_learn(m,q0,broken,c).status==GwStatus.shape;
+    k:=c;k.gamma=1;#assert gw_learn(m,q0,p,k).status==GwStatus.discount;
+    k=c;k.gamma=0;#assert gw_learn(m,q0,p,k).status==GwStatus.discount;
+    k=c;k.alpha=0;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.alpha=1.0000000000000002;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.alpha=0.0/0.0;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.explore=-1;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.explore=17;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.tol=0;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.tol=0.0/0.0;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.episodes=0;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.episodes=GW_EPISODES_MAX+1;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.episode_steps=0;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.episode_steps=GW_EPISODE_STEPS_MAX+1;#assert gw_learn(m,q0,p,k).status==GwStatus.shape;
+    k=c;k.episodes=1;k.episode_steps=GW_EPISODE_STEPS_MAX;k.explore=16;k.alpha=1;#assert gw_learn(m,q0,p,k).status==GwStatus.ok;
+    k=c;k.episodes=1;k.explore=0;k.episode_steps=1;#assert gw_learn(m,q0,p,k).status==GwStatus.ok;
+    k=c;k.episodes=GW_EPISODES_MAX;k.episode_steps=1;#assert gw_learn(m,q0,p,k).episodes==GW_EPISODES_MAX;
+    // A cell that never reaches the goal converges too slowly to plan at a discount this close to 1.
+    shut:=gw_parse("S.G/#.#/.#.");#assert shut.status==GwStatus.ok;
+    k=c;k.gamma=0.9999;#assert gw_learn(shut,q0,gw_prior(shut),k).status==GwStatus.budget;
+    #assert gw_navigate(shut,gw_truth(shut),0.9999,10).status==GwStatus.budget;
+}
+
+// book:begin parse
+gw_parse :: (rows:string)->GwMap {
+    m:GwMap;r:=0;c:=0;width:=0;goals:=0;starts:=0;
+    for ch:rows {
+        if ch=='/' {
+            if c==0 || (width>0 && c!=width) {return GwMap.{status=GwStatus.shape};}
+            width=c;r+=1;c=0;
+            if r>=GW_SIDE {return GwMap.{status=GwStatus.capacity};}
+            continue;
+        }
+        if c>=GW_SIDE {return GwMap.{status=GwStatus.capacity};}
+        s:=r*GW_SIDE+c;
+        if ch=='#' {m.wall[s]=true;}
+        else if ch=='G' {goals+=1;m.goal=s;}
+        else if ch=='S' {starts+=1;m.start=s;}
+        else if ch!='.' {return GwMap.{status=GwStatus.shape};}
+        c+=1;
+    }
+    if c==0 || (width>0 && c!=width) {return GwMap.{status=GwStatus.shape};}
+    if goals!=1 {return GwMap.{status=GwStatus.goal};}
+    if starts!=1 {return GwMap.{status=GwStatus.start};}
+    m.width=c;m.height=r+1;
+    if !gw_reaches(m) {return GwMap.{status=GwStatus.unreachable};}
+    return m;
+}
+// book:end parse
+// Every cell the start can reach: grow the set until a pass adds nothing.
+gw_reaches :: (m:GwMap)->bool {
+    seen:[64]bool;seen[m.start]=true;grew:=true;
+    while grew {
+        grew=false;
+        for s:0..<GW_CELLS {if seen[s] {for a:0..<4 {t:=gw_move(m,s,a);if !seen[t] {seen[t]=true;grew=true;}}}}
+    }
+    return seen[m.goal];
+}
+// book:begin move
+gw_move :: (m:GwMap,s:int,a:int)->int {
+    // Up, right, down, left.
+    dr:=[4]int.[-1,0,1,0];dc:=[4]int.[0,1,0,-1];
+    row:=s/GW_SIDE+dr[a];col:=s%GW_SIDE+dc[a];
+    if row<0 || col<0 || row>=m.height || col>=m.width {return s;}
+    t:=row*GW_SIDE+col;
+    if m.wall[t] {return s;}
+    return t;
+}
+// book:end move
+gw_truth :: (m:GwMap)->GwTable {
+    t:GwTable;t.goal=m.goal;
+    for s:0..<GW_CELLS {
+        t.open[s]=s%GW_SIDE<m.width && s/GW_SIDE<m.height && !m.wall[s];
+        for a:0..<4 {t.next[4*s+a]=ifx t.open[s] then gw_move(m,s,a) else s;}
+    }
+    return t;
+}
+// What an agent knows before it moves: the map's size and its goal, no walls.
+gw_prior :: (m:GwMap)->GwTable {
+    open:=m;for s:0..<GW_CELLS {open.wall[s]=false;}
+    return gw_truth(open);
+}
+gw_table_ok :: (t:GwTable)->bool {
+    if t.goal<0 || t.goal>=GW_CELLS || !t.open[t.goal] {return false;}
+    for s:0..<GW_CELLS {if t.open[s] {for a:0..<4 {n:=t.next[4*s+a];if n<0 || n>=GW_CELLS || !t.open[n] {return false;}}}}
+    return true;
+}
+// book:begin plan
+gw_backup :: (next:[]int,gamma:f64,value:[]f64,s:int,a:int)->f64 {
+    return -1+gamma*value[next[4*s+a]];
+}
+// The action with the best backup; the lowest action wins a tie.
+gw_argmax :: (next:[]int,gamma:f64,value:[]f64,s:int)->int {
+    best:=0;
+    for a:1..<4 {if gw_backup(next,gamma,value,s,a)>gw_backup(next,gamma,value,s,best) {best=a;}}
+    return best;
+}
+gw_plan :: (t:GwTable,gamma:f64,tol:f64,sweeps:int)->GwPlan #export_c {
+    if !(gamma>0 && gamma<1) {return GwPlan.{status=GwStatus.discount};}
+    if !(tol>0) || sweeps<1 || sweeps>GW_SWEEPS_MAX || !gw_table_ok(t) {return GwPlan.{status=GwStatus.shape};}
+    p:GwPlan;p.status=GwStatus.budget;next:=t.next;
+    for k:0..<sweeps {
+        old:=p.value;p.residual=0;p.changed=-1;p.sweeps=k+1;
+        for s:0..<GW_CELLS {
+            if !t.open[s] || s==t.goal {continue;}
+            p.value[s]=gw_backup(next[..],gamma,old[..],s,gw_argmax(next[..],gamma,old[..],s));
+            change:=abs(p.value[s]-old[s]);
+            if change>p.residual {p.residual=change;p.changed=s;}
+        }
+        if p.residual<=tol {p.status=GwStatus.ok;break;}
+    }
+    for s:0..<GW_CELLS {p.action[s]=ifx t.open[s] && s!=t.goal then gw_argmax(next[..],gamma,p.value[..],s) else -1;}
+    return p;
+}
+// book:end plan
+// The steps the plan's greedy walk takes through its own table to the goal,
+// or -1 when that walk comes back to a cell it has visited.
+gw_predict :: (t:GwTable,p:GwPlan,s:int)->int {
+    if s<0 || s>=GW_CELLS || !t.open[s] {return -1;}
+    seen:[64]bool;at:=s;steps:=0;
+    while at!=t.goal {
+        if seen[at] {return -1;}
+        seen[at]=true;at=t.next[4*at+p.action[at]];steps+=1;
+    }
+    return steps;
+}
+// book:begin navigate
+// Plan on the model, take the first action in the world, write down where it
+// led, plan again. A plan whose walk never reaches the goal ends the run.
+gw_navigate :: (world:GwMap,model:GwTable,gamma:f64,limit:int)->GwRun #export_c {
+    if world.status!=GwStatus.ok {return GwRun.{status=world.status};}
+    if limit<1 || limit>GW_WALK_MAX || !gw_table_ok(model) || model.goal!=world.goal {return GwRun.{status=GwStatus.shape};}
+    r:GwRun;r.model=model;s:=world.start;
+    while s!=world.goal && r.steps<limit {
+        p:=gw_plan(r.model,gamma,GW_TOL,GW_SWEEPS_MAX);
+        if p.status!=GwStatus.ok {return GwRun.{status=p.status};}
+        r.decisions+=1;r.sweeps+=p.sweeps;
+        promise:=gw_predict(r.model,p,s);
+        if r.decisions==1 {r.predicted=promise;}
+        if promise==-1 {break;}
+        a:=p.action[s];t:=gw_move(world,s,a);
+        if t!=r.model.next[4*s+a] {r.surprises+=1;r.model.next[4*s+a]=t;}
+        if t==s {r.collisions+=1;}
+        r.steps+=1;s=t;
+    }
+    r.reached=s==world.goal;
+    return r;
+}
+// book:end navigate
+// The greedy action under a Q table; the lowest action wins a tie.
+gw_greedy :: (q:[]f64,s:int)->int {
+    best:=0;for a:1..<4 {if q[4*s+a]>q[4*s+best] {best=a;}}
+    return best;
+}
+// A fixed policy, the greedy one under q, walked without learning or planning.
+gw_follow :: (world:GwMap,q:[256]f64,limit:int)->GwRun #export_c {
+    if world.status!=GwStatus.ok {return GwRun.{status=world.status};}
+    if limit<1 || limit>GW_WALK_MAX {return GwRun.{status=GwStatus.shape};}
+    r:GwRun;s:=world.start;next:=gw_truth(world).next;table:=q;
+    while s!=world.goal && r.steps<limit {
+        t:=next[4*s+gw_greedy(table[..],s)];
+        if t==s {r.collisions+=1;}
+        r.steps+=1;s=t;
+    }
+    r.reached=s==world.goal;
+    return r;
+}
+// The steps of the greedy walk under q from s, or -1 when it comes back to a cell.
+gw_greedy_steps :: (next:[]int,q:[]f64,s:int,goal:int)->int {
+    seen:[64]bool;at:=s;steps:=0;
+    while at!=goal {
+        if seen[at] {return -1;}
+        seen[at]=true;at=next[4*at+gw_greedy(q,at)];steps+=1;
+    }
+    return steps;
+}
+// How many (open cell, action) pairs of q are off the planner's Q by more than tol.
+gw_q_off :: (t:GwTable,gamma:f64,p:GwPlan,q:[]f64,tol:f64)->int {
+    off:=0;next:=t.next;value:=p.value;
+    for i:0..<256 {
+        if t.open[i/4] && i/4!=t.goal && abs(q[i]-gw_backup(next[..],gamma,value[..],i/4,i%4))>tol {off+=1;}
+    }
+    return off;
+}
+// book:begin learn
+gw_learn :: (world:GwMap,q:[256]f64,model:GwTable,c:GwSettings)->GwLearn #export_c {
+    if world.status!=GwStatus.ok {return GwLearn.{status=world.status};}
+    if !(c.alpha>0 && c.alpha<=1) || c.explore<0 || c.explore>16 || !(c.tol>0) || c.episodes<1 || c.episodes>GW_EPISODES_MAX
+        || c.episode_steps<1 || c.episode_steps>GW_EPISODE_STEPS_MAX || !gw_table_ok(model) || model.goal!=world.goal {return GwLearn.{status=GwStatus.shape};}
+    // The planner's answer is read only to measure the table, never to fill it.
+    truth:=gw_truth(world);plan:=gw_plan(truth,c.gamma,GW_TOL,GW_SWEEPS_MAX);
+    if plan.status!=GwStatus.ok {return GwLearn.{status=plan.status};}
+    fewest:=gw_predict(truth,plan,world.start);world_next:=truth.next;
+    cells:[64]int;n:=0;
+    for s:0..<GW_CELLS {if truth.open[s] && s!=world.goal {cells[n]=s;n+=1;}}
+    l:GwLearn;l.q=q;l.model=model;l.digest=(cast(u64)14695981039346656037);counter:u64=0;
+    for e:0..<c.episodes {
+        // Exploring starts: every episode begins in a uniformly drawn open cell.
+        s:=cells[cast(int)(cr_bits(c.seed,counter)%cast(u64)n)];counter+=1;
+        for k:0..<c.episode_steps {
+            if s==world.goal {break;}
+            // Explore with probability explore/16: a uniformly drawn action.
+            a:=gw_greedy(l.q[..],s);
+            if cr_bits(c.seed,counter)%16<cast(u64)c.explore {a=cast(int)(cr_bits(c.seed,counter+1)%4);}
+            counter+=2;
+            // Move, write the transition into the model, and pull Q(s, a) toward
+            // -1 plus the discounted best Q where the move led (zero at the goal).
+            t:=world_next[4*s+a];l.model.next[4*s+a]=t;
+            target:=-1.0;if t!=world.goal {target=-1+c.gamma*l.q[4*t+gw_greedy(l.q[..],t)];}
+            l.q[4*s+a]+=c.alpha*(target-l.q[4*s+a]);l.steps+=1;
+            l.digest=mul_wrap(l.digest^cast(u64)(4*s+a),(cast(u64)1099511628211))^cast(u64)t;
+            s=t;
+        }
+        l.episodes=e+1;l.off=gw_q_off(truth,c.gamma,plan,l.q[..],c.tol);
+        if l.close_episode==-1 && l.off==0 {l.close_episode=l.episodes;l.close_steps=l.steps;}
+        if l.optimal_episode==-1 && gw_greedy_steps(world_next[..],l.q[..],world.start,world.goal)==fewest {l.optimal_episode=l.episodes;l.optimal_steps=l.steps;}
+    }
+    return l;
+}
+// book:end learn

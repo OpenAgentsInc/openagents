@@ -1,0 +1,47 @@
+profile: cpu-f64-grid-v1
+hand map S#G/... at discount 0.5
+  sweep 1: S -1.0 | row 2: -1.0 -1.0 -1.0 | residual 1.0
+  sweep 2: S -1.5 | row 2: -1.5 -1.5 -1.0 | residual 0.5
+  sweep 3: S -1.75 | row 2: -1.75 -1.5 -1.0 | residual 0.25
+  sweep 4: S -1.875 | row 2: -1.75 -1.5 -1.0 | residual 0.125
+  sweep 5: S -1.875 | row 2: -1.75 -1.5 -1.0 | residual 0.0
+    v#G
+    >>^
+exhaustive search: 256 policies, best values equal the planner's: true
+map A, discount 0.9: 5 steps from the start
+    >>>v<
+    #v#v#
+    >>>>v
+    >>>>G
+Q-learning on A: 1000 episodes of at most 64 steps, alpha 1, explore 8/16, exploring starts, tolerance 1e-9
+  seed 0: shortest walk after 13 episodes (409 steps); within tolerance after 116 episodes (1172 steps); pairs off 0; replay digest equal
+  seed 1: shortest walk after 30 episodes (478 steps); within tolerance after 73 episodes (857 steps); pairs off 0; replay digest equal
+  seed 2: shortest walk after 20 episodes (379 steps); within tolerance after 189 episodes (1746 steps); pairs off 0; replay digest equal
+  seed 3: shortest walk after 15 episodes (321 steps); within tolerance after 91 episodes (882 steps); pairs off 0; replay digest equal
+the wall moves: map B closes the gap at column 3 (9 steps)
+    >v<<<
+    #v###
+    >>>>v
+    >>>>G
+  A's greedy Q policy, fixed: reached false, 200 steps, 199 collisions, promised -1, 0 decisions, 0 sweeps
+  replanning on A's learned model: reached true, 10 steps, 1 collisions, promised 5, 10 decisions, 96 sweeps
+  surprises 1, sweeps per decision 9.6
+  planning on B's true table: reached true, 9 steps, 0 collisions, promised 9, 9 decisions, 90 sweeps
+  Q-learning resumed on B, seed 0: shortest walk again after 52 episodes (461 steps)
+  Q-learning resumed on B, seed 1: shortest walk again after 27 episodes (278 steps)
+  Q-learning resumed on B, seed 2: shortest walk again after 13 episodes (187 steps)
+  Q-learning resumed on B, seed 3: shortest walk again after 4 episodes (115 steps)
+planted shortcut: map C, the agent knows only its size and goal
+  planning on the free-space prior: reached true, 14 steps, 4 collisions, promised 2, 14 decisions, 130 sweeps
+  planning on what it learned: reached true, 10 steps, 0 collisions, promised 10, 10 decisions, 110 sweeps
+  planning on C's true table: reached true, 10 steps, 0 collisions, promised 10, 10 decisions, 110 sweeps
+refused:
+  S.. -> goal
+  ..G -> start
+  S#G -> unreachable
+  S.x.G -> shape
+  S./G -> shape
+  S.......G -> capacity
+  S/./././././././G -> capacity
+  discount 1 -> discount
+  discount 0.9999 with a closed-off cell -> budget

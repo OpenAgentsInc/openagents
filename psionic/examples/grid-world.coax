@@ -1,0 +1,73 @@
+// Chapter 110: plan a small grid exactly, learn the same answer from seeded
+// episodes, and recover when a wall moves.
+#import "Basic";
+#load "../lib/gridworld.coax";
+// The map as rows of text, the plan's action drawn in each open cell.
+gw_example_draw :: (m:GwMap,p:GwPlan) {
+    arrows:="^>v<";
+    for r:0..<m.height {
+        print("    ");
+        for c:0..<m.width {
+            s:=r*GW_SIDE+c;
+            if m.wall[s] {print("#");} else if s==m.goal {print("G");} else {print("%",arrows[p.action[s]..<p.action[s]+1]);}
+        }
+        print("\n");
+    }
+}
+gw_example_run :: (name:string,r:GwRun) {
+    print("  %: reached %, % steps, % collisions, promised %, % decisions, % sweeps\n",name,r.reached,r.steps,r.collisions,r.predicted,r.decisions,r.sweeps);
+}
+// book:begin example
+main :: () {
+    print("profile: cpu-f64-grid-v1\n");
+    hand:=gw_parse("S#G/...");t:=gw_truth(hand);
+    print("hand map S#G/... at discount 0.5\n");
+    for k:1..<6 {
+        p:=gw_plan(t,0.5,GW_TOL,k);
+        print("  sweep %: S % | row 2: % % % | residual %\n",k,p.value[0],p.value[8],p.value[9],p.value[10],p.residual);
+    }
+    p:=gw_plan(t,0.5,GW_TOL,GW_SWEEPS_MAX);#assert p.status==GwStatus.ok && p.sweeps==5;
+    gw_example_draw(hand,p);
+    best:[64]f64;count:=go_brute("S#G/...",3,2,2,0.5,best[..]);same:=true;
+    for s:0..<GW_CELLS {if best[s]!=p.value[s] {same=false;}}
+    print("exhaustive search: % policies, best values equal the planner's: %\n",count,same);
+
+    a:=gw_parse("....S/#.#.#/...../....G");b:=gw_parse("....S/#.###/...../....G");
+    pa:=gw_plan(gw_truth(a),0.9,GW_TOL,GW_SWEEPS_MAX);pb:=gw_plan(gw_truth(b),0.9,GW_TOL,GW_SWEEPS_MAX);
+    print("map A, discount 0.9: % steps from the start\n",gw_predict(gw_truth(a),pa,a.start));gw_example_draw(a,pa);
+    print("Q-learning on A: 1000 episodes of at most 64 steps, alpha 1, explore 8/16, exploring starts, tolerance 1e-9\n");
+    q0:[256]f64;learned:[4]GwLearn;
+    for seed:0..<4 {
+        set:=GwSettings.{gamma=0.9,alpha=1,explore=8,seed=cast(u64)seed,episodes=1000,episode_steps=64,tol=0.000000001};
+        l:=gw_learn(a,q0,gw_prior(a),set);#assert l.status==GwStatus.ok;learned[seed]=l;
+        again:=gw_learn(a,q0,gw_prior(a),set);
+        print("  seed %: shortest walk after % episodes (% steps); within tolerance after % episodes (% steps); pairs off %; replay digest %\n",
+            seed,l.optimal_episode,l.optimal_steps,l.close_episode,l.close_steps,l.off,ifx again.digest==l.digest then "equal" else "DIFFERENT");
+    }
+
+    print("the wall moves: map B closes the gap at column 3 (% steps)\n",gw_predict(gw_truth(b),pb,b.start));gw_example_draw(b,pb);
+    gw_example_run("A's greedy Q policy, fixed",gw_follow(b,learned[0].q,200));
+    r:=gw_navigate(b,learned[0].model,0.9,200);
+    gw_example_run("replanning on A's learned model",r);
+    print("  surprises %, sweeps per decision %\n",r.surprises,f64(r.sweeps)/f64(r.decisions));
+    gw_example_run("planning on B's true table",gw_navigate(b,gw_truth(b),0.9,200));
+    for seed:0..<4 {
+        set:=GwSettings.{gamma=0.9,alpha=1,explore=8,seed=cast(u64)seed+100,episodes=1000,episode_steps=64,tol=0.000000001};
+        l:=gw_learn(b,learned[seed].q,learned[seed].model,set);#assert l.status==GwStatus.ok;
+        print("  Q-learning resumed on B, seed %: shortest walk again after % episodes (% steps)\n",seed,l.optimal_episode,l.optimal_steps);
+    }
+
+    c:=gw_parse("S..../####./G....");
+    print("planted shortcut: map C, the agent knows only its size and goal\n");
+    first:=gw_navigate(c,gw_prior(c),0.9,200);
+    gw_example_run("planning on the free-space prior",first);
+    gw_example_run("planning on what it learned",gw_navigate(c,first.model,0.9,200));
+    gw_example_run("planning on C's true table",gw_navigate(c,gw_truth(c),0.9,200));
+
+    print("refused:\n");
+    bad:=[7]string.["S..","..G","S#G","S.x.G","S./G","S.......G","S/./././././././G"];
+    for m:bad {print("  % -> %\n",m,gw_parse(m).status);}
+    print("  discount 1 -> %\n",gw_plan(t,1,GW_TOL,10).status);
+    print("  discount 0.9999 with a closed-off cell -> %\n",gw_plan(gw_truth(gw_parse("S.G/#.#/.#.")),0.9999,GW_TOL,GW_SWEEPS_MAX).status);
+}
+// book:end example
