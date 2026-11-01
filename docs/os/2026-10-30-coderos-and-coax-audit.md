@@ -468,11 +468,25 @@ compiler and the examples have not been run on Linux yet.
   `coder-close` first warned about a Coder turn still running, and that
   check is not ported yet.
 
-  Left: the compositor's two faces to the machine, DRM/KMS output (the
-  native GPU path already drives KMS) and evdev input with the Super key
-  bindings. Also left: clipboard data, the pointer cursor, and the
-  protocols foot reports missing (xdg-decoration, fractional scale,
-  activation, text input).
+  The compositor's two faces to the machine are written, after
+  `verse/kms`: `coax/platform/screen-native.c` takes one screen through
+  KMS dumb buffers with page flips, and grabs keyboards and mice through
+  evdev. `--screen` uses both, draws a pointer arrow, and puts the screen
+  back on Ctrl+Alt+Backspace. `--input FILE` plays recorded evdev records
+  through the same path on their own clock. Played headless from such a
+  file, two Super+Return presses opened two terminals. Moving the mouse
+  500 px left moved the focus, the typed `echo mouse` ran in that
+  terminal, a click reached it, Super+Shift+Right swapped the two, and
+  Ctrl+Alt+Backspace quit cleanly.
+
+  The KMS output has not run on a screen yet. It needs a free VT, and the
+  owner's session is on this machine, so it waits for the owner
+  (NEEDS_OWNER.md, "Try the Coax compositor").
+
+  Also left: clipboard data, client cursors, damage tracking (it
+  composites the whole screen on every change), and the protocols foot
+  reports missing (xdg-decoration, fractional scale, activation, text
+  input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
   integers and floats (a pointer and a length), so a C face can fill a Coax
