@@ -2952,6 +2952,33 @@ changes the next answer; shared expression chains stay bounded; library and
 development/release modes stay distinct; repeated descriptor aliases remain
 cacheable; a damaged or old private cache is rebuilt).
 
+## A library's checks are checked once, and a cached result equals a fresh one
+
+A compile that emits C, a header or nothing leaves a loaded unit's `#test`
+and `#forall` declarations out of the consumer only when that unit checked
+in its own `#load` closure, and, when the program has an `#authority` unit,
+when its checks also passed when run. `coax/lib/compiler/sources.coax`
+decides which declarations those are (`SU_check_spans`) and which units
+qualify (`SU_library_checks`): never the entry unit, nor a unit whose
+closure has an `#authority` unit or an `#import_proto`. A unit that doesn't
+check on its own keeps its checks in the consumer, which reports their
+errors as before. The cached result is used only under the same compiler
+SHA-256, checking options and closure units' relative paths and SHA-256, and
+it gives the same C and diagnostics as checking again. `coax test`,
+`mutate`, `query`, `checks-c` and `deps` see every check. C holds only the
+generic instances that emitted code calls and the print and enum-conversion
+helpers it uses; leaving out what only checks reach never changes what a
+program does.
+
+Check: `coax/tests/library-checks.coax` (a first compile checks both loaded
+units, a second reuses both, a new cache gives the same C; the C has the
+instances main calls and none that only a check makes; only the printed type
+keeps its helper and the program prints; `coax test` runs every check; an
+edited library is checked again; a library check with a type error, and one
+that fails when run under `#authority`, still fail the consumer);
+`sources.coax` checks and zero-survivor mutation gate; the bootstrap's seed
+and compiler fixpoints.
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser
