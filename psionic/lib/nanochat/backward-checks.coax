@@ -1,0 +1,18 @@
+// Chapter 127's long check: sliding windows over 140 positions, against
+// central differences through chapter 125's forward pass. Kept apart from
+// backward.coax so its mutation run stays short; backward.coax checks the
+// window rule itself on three positions.
+#load "backward.coax";
+#test "sliding windows: the S layer's gradient sees only its window" #steps 4000000000 {
+    // NC_WINDOW is "SL": layer 0 keeps 128 keys behind each query, so from
+    // position 129 on, key 0 is out of its reach. All-L windows change the gradient.
+    c:=NC_WINDOW;n:=nc_parameter_count(c);p:[23672]f64;nc_formula(c,0.5,p[..]);tokens:[140]int;for i:0..<140 {tokens[i]=(3*i*i+i)%7;}
+    g:[23672]f64;tape:[200000]f64;logits:[980]f64;r:=nb_run_case(c,p[..],tokens[..],g[..],tape[..],logits[..]);#assert r.status==NcStatus.ok;
+    full:=c;full.pattern=0;gl:[23672]f64;r=nb_run_case(full,p[..],tokens[..],gl[..],tape[..],logits[..]);#assert r.status==NcStatus.ok;
+    cache:[10104]f64;work:[20480]f64;want:[980]f64;none:[1]f64;
+    #assert nb_close(r.loss,nc_forward(full,p[..],tokens[..],cache[..],work[..],want[..],none[0..<0],false).loss,1e-13);
+    r=nb_run_case(c,p[..],tokens[..],g[..],tape[..],logits[..]);#assert nb_close(r.loss,nc_forward(c,p[..],tokens[..],cache[..],work[..],want[..],none[0..<0],false).loss,1e-13);
+    b:=nc_block(c,0);at:=b.k+5;#assert g[at]!=gl[at];
+    #assert abs(nb_central(c,p[..],tokens[..],at)-g[at])<=1e-7*(1+abs(g[at]));
+    #assert abs(nb_central(full,p[..],tokens[..],at)-gl[at])<=1e-7*(1+abs(gl[at]));
+}

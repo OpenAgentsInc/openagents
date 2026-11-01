@@ -1,0 +1,31 @@
+#import "Basic";
+#load "../lib/nanochat/backward.coax";
+// book:begin example
+main :: () {
+    // The hand-worked derivatives.
+    x:=[2]f64.[3,4];dy:=[2]f64.[1,0];dx:[2]f64;nb_rms_back(x[..],0,2,dy[..],0,1,dx[..],0);
+    print("rms backward at (3,4), dy=(1,0): % %\n",dx[0],dx[1]);
+    print("softcap slope where the logit is 9: %\n",nb_softcap_slope(15*0.5*log(4.0)));
+    print("squared ReLU slope at 1.5 and -0.5: % %\n",2*nb_relu(1.5),2*nb_relu(-0.5));
+
+    // The one-block model: loss and gradient, tensor by tensor.
+    c:=NB_SMALL;n:=nc_parameter_count(c);p:[10216]f64;nc_formula(c,0.5,p[..]);tokens:=[6]int.[3,4,5,6,9,3];
+    g:[10216]f64;tape:[8000]f64;logits:[72]f64;need:=nb_tape_count(c,6);
+    r:=nb_gradient(c,p[..],tokens[..],g[..],tape[0..<need],logits[..],false);#assert r.status==NcStatus.ok;
+    print("% parameters, tape % values, loss %\n",n,need,r.loss);
+    inv:[NC_TENSORS_MAX]NcTensor;k:=nc_inventory(c,inv[..]);
+    for i:0..<k {t:=inv[i];s:=0.0;nonzero:=0;for e:0..<nc_elements(t) {s+=g[t.offset+e]*g[t.offset+e];if g[t.offset+e]!=0 {nonzero+=1;}}
+        print("  %: % of % elements reached, gradient norm %\n",t.kind,nonzero,nc_elements(t),sqrt(s));}
+
+    // Central differences through chapter 125's forward pass.
+    b:=nc_block(c,0);picks:=[4]int.[2*c.layers+1,b.gate+3,nc_head(c)+4*24+7,b.k+100];
+    for at:picks {print("  parameter %: gradient %, central difference %\n",at,g[at],nb_central(c,p[..],tokens[..],at));}
+
+    // Three steps of plain gradient descent, rate 0.02.
+    for step:0..<3 {for i:0..<n {p[i]-=0.02*g[i];}r=nb_gradient(c,p[..],tokens[..],g[..],tape[0..<need],logits[..],false);print("after step %: loss %\n",step+1,r.loss);}
+
+    // Refusals: a tape one value short, and a token outside the vocabulary.
+    r=nb_gradient(c,p[..],tokens[..],g[..],tape[0..<need-1],logits[..],false);print("refused: % (loss %)\n",r.status,r.loss);
+    tokens[5]=12;r=nb_gradient(c,p[..],tokens[..],g[..],tape[0..<need],logits[..],false);print("refused: % (loss %)\n",r.status,r.loss);
+}
+// book:end example

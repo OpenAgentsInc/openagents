@@ -1910,6 +1910,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/nanochat-gradient.coax",
+      "chapter": "psionic/book/ch127-differentiate-nanochat.md",
+      "stdout": "psionic/fixtures/nanochat-gradient.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

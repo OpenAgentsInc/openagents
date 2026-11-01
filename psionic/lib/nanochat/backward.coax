@@ -1,0 +1,355 @@
+// Chapter 127: the backward pass of chapter 125's pinned nanochat GPT
+// (karpathy/nanochat 92d63d4e gpt.py, read and never executed), written by
+// hand in binary64 on the CPU (nanochat-grad-cpu-f64-v1). One call runs the
+// training forward pass over a sequence, records every value the backward
+// pass needs on a caller-sized tape, and returns the mean next-token loss and
+// its gradient with respect to every parameter in state_dict order: the four
+// scalars, wte, each block's c_q, c_k, c_v, c_proj, ve_gate, c_fc and mlp
+// c_proj, lm_head, smear_gate and the value embeddings.
+#load "gpt.coax";
+NbResult :: struct {status:NcStatus;loss:f64;written:int;}
+// Where each recorded value lives on the tape, for n positions.
+NbLayout :: struct {n:int;x0:int;layer:int;per:int;xl:int;xb:int;t:int;nf:int;acc:int;
+    u:int;dx:int;dx0:int;du:int;dxb:int;dy:int;dq:int;dk:int;dv:int;dn:int;dm:int;dt:int;dqr:int;dkr:int;tmp:int;dp:int;pr:int;count:int;}
+// The raw normalized embeddings come first.
+NB_RAW :: 0;
+// Per layer, relative to its start: the input x, the scaled a, rms(a), the
+// rotated q, the normed q, the attention output y, the residual b after
+// attention, rms(b), the MLP's pre-activation (4 widths), then the rotated k,
+// the normed k, v and the value-embedding gates.
+NB_XIN :: 0;NB_A :: 1;NB_N :: 2;NB_QR :: 3;NB_QH :: 4;NB_Y :: 5;NB_B :: 6;NB_M :: 7;NB_H :: 8;
+nb_layout :: (c:NcConfig,n:int)->NbLayout {
+    d:=c.width;kv:=nc_kv_width(c);nd:=n*d;o:NbLayout;o.n=n;
+    o.x0=nd;o.layer=2*nd;o.per=12*nd+3*n*kv+n*c.kv_heads;
+    // The last layer's output lands in xl, right after the layers.
+    o.xl=o.layer+c.layers*o.per;o.u=o.xl+nd;o.xb=o.u+4*d;o.t=o.xb+nd;o.nf=o.t+nd;o.acc=o.nf+nd;
+    o.dx=o.acc+n*c.vocab;o.dx0=o.dx+nd;o.du=o.dx0+nd;o.dxb=o.du+4*d;o.dy=o.dxb+nd;o.dq=o.dy+nd;o.dk=o.dq+nd;o.dv=o.dk+n*kv;
+    o.dn=o.dv+n*kv;o.dm=o.dn+d;o.dt=o.dm+d;o.dqr=o.dt+d;o.dkr=o.dqr+d;o.tmp=o.dkr+kv;o.dp=o.tmp+d;o.pr=o.dp+n;
+    o.count=o.pr+n;return o;
+}
+nb_tape_count :: (c:NcConfig,n:int)->int {return nb_layout(c,n).count;}
+
+// Checks first: hand values for each new derivative, then the whole pass
+// against chapter 125's forward, an independent oracle and finite differences.
+#test "hand values: RMS norm, softcap, squared ReLU and the rotation's transpose" {
+    // y = x/rms(x) at x = (3,4): dy/dx1 at dy = (1,0) is sqrt(2)*16/125, dy/dx2 is -sqrt(2)*12/125.
+    x:=[2]f64.[3,4];dy:=[2]f64.[1,0];dx:=[2]f64.[0.5,-0.5];nb_rms_back(x[..],0,2,dy[..],0,1,dx[..],0);
+    #assert abs(dx[0]-0.5-sqrt(2.0)*16/125)<1e-15 && abs(dx[1]+0.5+sqrt(2.0)*12/125)<1e-15;
+    dx[0]=0;dx[1]=0;dy[0]=0;dy[1]=1;nb_rms_back(x[..],0,2,dy[..],0,3,dx[..],0);
+    #assert abs(dx[0]+3*sqrt(2.0)*12/125)<1e-15 && abs(dx[1]-3*sqrt(2.0)*9/125)<1e-15;
+    // At x = 0 only eps = 2^-52 keeps r from 0: r = 2^-26, and dx = dy/r.
+    z:=[2]f64.[0,0];dx[0]=0;dx[1]=0;dy[0]=1;dy[1]=0;nb_rms_back(z[..],0,2,dy[..],0,1,dx[..],0);#assert dx[0]==67108864 && dx[1]==0;
+    // 15*tanh(a/15) has slope 1 - tanh^2: 0.64 where the logit is 9.
+    a:=15*0.5*log(1.6/0.4);#assert abs(nb_softcap_slope(a)-0.64)<1e-15 && nb_softcap_slope(0)==1;
+    // relu(h)^2: slope 2*relu(h), 3 at 1.5 and 0 at -0.5.
+    #assert nb_relu(1.5)==1.5 && nb_relu(-0.5)==0 && nb_relu(0)==0;
+    // The rotary backward is the rotation's transpose: <R u, w> = <u, R^T w>.
+    for pos:0..<5 {u:[8]f64;w:[8]f64;for i:0..<8 {u[i]=sin(f64(3*i+pos));w[i]=cos(f64(5*i+1));}
+        ru:=u;nc_rotary(ru[..],0,2,4,pos);rw:=w;nb_rotary_back(rw[..],0,2,4,pos);
+        l:=0.0;r:=0.0;for i:0..<8 {l+=ru[i]*w[i];r+=u[i]*rw[i];}#assert abs(l-r)<1e-15;
+        if pos>0 {moved:=false;for i:0..<8 {if rw[i]!=w[i] {moved=true;}}#assert moved;}
+    }
+}
+#test "the tape, counted by hand for one block and six positions" {
+    // n*d = 144; a layer is 12*144 + 3*6*12 + 6 = 1950 values; the head adds
+    // 6*12 pre-softcap logits; scratch ends with two attention rows of 6.
+    o:=nb_layout(NB_SMALL,6);
+    #assert o.x0==144 && o.layer==288 && o.per==1950 && o.xl==2238 && o.u==2382 && o.xb==2478 && o.t==2622 && o.nf==2766 && o.acc==2910;
+    #assert o.dx==2982 && o.dx0==3126 && o.du==3270 && o.dxb==3366 && o.dy==3510 && o.dq==3654 && o.dk==3798 && o.dv==3870;
+    #assert o.dn==3942 && o.dm==3966 && o.dt==3990 && o.dqr==4014 && o.dkr==4038 && o.tmp==4050 && o.dp==4074 && o.pr==4080 && o.count==4086;
+    #assert nb_tape_count(NB_DEEP,7)==nb_layout(NB_DEEP,7).count && nb_layout(NB_DEEP,7).per==12*168+3*7*12+7*2;
+}
+#test "two blocks: backout reads layer 1, and central differences still agree" #steps 400000000 {
+    c:=NB_SMALL;c.layers=2;n:=nc_parameter_count(c);p:[20000]f64;nc_formula(c,0.5,p[0..<n]);tokens:=NB_SMALL_TOKENS;
+    g:[20000]f64;tape:[20000]f64;logits:[72]f64;r:=nb_run_case(c,p[0..<n],tokens[..],g[0..<n],tape[..],logits[..]);#assert r.status==NcStatus.ok;
+    #assert nb_close(r.loss,nb_loss_at(c,p[0..<n],tokens[..],0,0),1e-13);
+    b:=nc_block(c,0);picks:=[3]int.[0,b.q+7,nc_wte(c)+4*24+3];
+    for at:picks {#assert abs(nb_central(c,p[0..<n],tokens[..],at)-g[at])<=1e-7*(1+abs(g[at]));}
+}
+nb_close :: (a:f64,b:f64,tol:f64)->bool {return abs(a-b)<=tol*(1+abs(b));}
+nb_run_case :: (c:NcConfig,p:[]f64,tokens:[]int,grad:[]f64,tape:[]f64,logits:[]f64)->NbResult {
+    return nb_gradient(c,p,tokens,grad,tape[0..<nb_tape_count(c,tokens.count)],logits[0..<tokens.count*c.vocab],false);
+}
+// Per tensor: sum, sum of squares and a cosine-weighted sum, as the oracle prints them.
+nb_digests :: (c:NcConfig,g:[]f64,out:[]f64)->int {
+    inv:[NC_TENSORS_MAX]NcTensor;k:=nc_inventory(c,inv[..]);
+    for i:0..<k {t:=inv[i];s:=0.0;q:=0.0;w:=0.0;for e:0..<nc_elements(t) {x:=g[t.offset+e];s+=x;q+=x*x;w+=x*cos(0.37*f64(e));}out[3*i]=s;out[3*i+1]=q;out[3*i+2]=w;}
+    return 3*k;
+}
+NB_SMALL :: NcConfig.{sequence_len=8,vocab=12,layers=1,heads=2,kv_heads=1,width=24,pattern=0,pattern_len=1,context=8};
+NB_DEEP :: NcConfig.{sequence_len=8,vocab=7,layers=3,heads=4,kv_heads=2,width=24,pattern=0,pattern_len=1,context=8};
+nb_matches_oracle :: (c:NcConfig,tokens:[]int,loss:f64,digests:[]f64,samples:[]f64)->bool {
+    p:[23696]f64;n:=nc_parameter_count(c);nc_formula(c,0.5,p[0..<n]);g:[23696]f64;tape:[20000]f64;logits:[72]f64;
+    r:=nb_run_case(c,p[0..<n],tokens,g[0..<n],tape[..],logits[..]);#assert r.status==NcStatus.ok;#assert r.written==n;
+    d:[90]f64;k:=nb_digests(c,g[0..<n],d[..]);#assert k==digests.count;
+    for i:0..<k {if !nb_close(d[i],digests[i],1e-11) {return false;}}
+    for i:0..<samples.count {if !nb_close(g[13*i],samples[i],1e-11) {return false;}}
+    return nb_close(r.loss,loss,1e-13);
+}
+#test "one block: loss and every gradient match the independent oracle" #steps 400000000 {
+    t:=NB_SMALL_TOKENS;d:=NB_SMALL_DIGESTS;s:=NB_SMALL_SAMPLES;#assert s.count==786 && nb_close(1,1,0);
+    #assert nb_matches_oracle(NB_SMALL,t[..],NB_SMALL_LOSS,d[..],s[..]);
+    // The comparison is sharp: a wrong loss, digest or sample fails it.
+    d[0]*=1.000001;#assert !nb_matches_oracle(NB_SMALL,t[..],NB_SMALL_LOSS,d[..],s[..]);d[0]=NB_SMALL_DIGESTS[0];
+    s[0]+=0.000001;#assert !nb_matches_oracle(NB_SMALL,t[..],NB_SMALL_LOSS,d[..],s[..]);s[0]=NB_SMALL_SAMPLES[0];
+    #assert !nb_matches_oracle(NB_SMALL,t[..],NB_SMALL_LOSS+1e-9,d[..],s[..]);
+}
+#test "three blocks, 4 query heads over 2 key-value heads: every gradient matches the oracle" #steps 800000000 {
+    t:=NB_DEEP_TOKENS;d:=NB_DEEP_DIGESTS;s:=NB_DEEP_SAMPLES;#assert s.count==1823 && nb_matches_oracle(NB_DEEP,t[..],NB_DEEP_LOSS,d[..],s[..]);
+}
+#test "the recorded forward pass is chapter 125's" #steps 400000000 {
+    c:=NB_DEEP;p:[23696]f64;nc_formula(c,0.5,p[..]);tokens:=NB_DEEP_TOKENS;g:[23696]f64;tape:[20000]f64;logits:[49]f64;
+    r:=nb_run_case(c,p[..],tokens[..],g[..],tape[..],logits[..]);
+    cache:[1000]f64;work:[2000]f64;want:[49]f64;none:[1]f64;f:=nc_forward(c,p[..],tokens[..],cache[..],work[..],want[..],none[0..<0],false);
+    #assert f.status==NcStatus.ok && nb_close(r.loss,f.loss,1e-14);for i:0..<49 {#assert nb_close(logits[i],want[i],1e-13);}
+}
+// The loss at p with element at moved by h, through chapter 125's forward pass.
+nb_loss_at :: (c:NcConfig,p:[]f64,tokens:[]int,at:int,h:f64)->f64 {
+    q:[23696]f64;for i:0..<p.count {q[i]=p[i];}q[at]+=h;cache:[10200]f64;work:[20480]f64;logits:[980]f64;none:[1]f64;
+    f:=nc_forward(c,q[0..<p.count],tokens,cache[..],work[..],logits[..],none[0..<0],false);#assert f.status==NcStatus.ok;return f.loss;
+}
+// Central difference (L(p+h) - L(p-h)) / 2h with h = 1e-5: truncation about
+// h^2 times the third derivative, rounding about 1e-16/h.
+nb_central :: (c:NcConfig,p:[]f64,tokens:[]int,at:int)->f64 {h:=0.00001;return (nb_loss_at(c,p,tokens,at,h)-nb_loss_at(c,p,tokens,at,-h))/(2*h);}
+#test "central differences agree with the gradient in every tensor" #steps 2000000000 {
+    c:=NB_SMALL;n:=nc_parameter_count(c);p:[10216]f64;nc_formula(c,0.5,p[..]);tokens:=NB_SMALL_TOKENS;
+    g:[10216]f64;tape:[20000]f64;logits:[72]f64;r:=nb_run_case(c,p[..],tokens[..],g[..],tape[..],logits[..]);#assert r.status==NcStatus.ok;
+    inv:[NC_TENSORS_MAX]NcTensor;k:=nc_inventory(c,inv[..]);#assert k==15;
+    for i:0..<k {t:=inv[i];
+        // Two elements per tensor that the loss reaches: a row of token 4 for the tables, the last element otherwise.
+        picks:[2]int;picks[0]=t.offset+nc_elements(t)-1;picks[1]=t.offset+nc_elements(t)/2;
+        if t.kind==NcKind.wte || t.kind==NcKind.value || t.kind==NcKind.head {picks[0]=t.offset+4*t.cols;picks[1]=t.offset+5*t.cols-1;}
+        for at:picks {fd:=nb_central(c,p[..],tokens[..],at);#assert g[at]!=0 && abs(fd-g[at])<=1e-7*(1+abs(g[at]));}
+    }
+}
+#test "attention weights keep exactly the keys the window admits" {
+    // Three positions, one head of width 2, window 1: query 2 sees keys 1 and 2, not 0.
+    c:=NcConfig.{sequence_len=8,vocab=5,layers=1,heads=1,kv_heads=1,width=24,pattern=0,pattern_len=1,context=8};
+    o:NbLayout;o.n=3;o.pr=0;tape:[2000]f64;base:=10;
+    for i:0..<3 {for x:0..<24 {tape[base+NB_QH*3*24+i*24+x]=0.1*f64(i+1);tape[base+12*3*24+3*24+i*24+x]=0.05*f64(i+x%3);}}
+    for w:0..<4 {nb_weights(c,tape[..],o,base,2,0,w);total:=0.0;for j:0..<3 {total+=tape[j];#assert (tape[j]>0)==(2-j<=w);}#assert abs(total-1)<1e-15;}
+    nb_weights(c,tape[..],o,base,2,0,8);#assert tape[0]<tape[1] && tape[1]<tape[2];
+}
+#test "every parameter the loss reaches gets a gradient; the rest get exactly zero" #steps 400000000 {
+    for which:0..<2 {c:=NB_SMALL;if which==1 {c=NB_DEEP;}n:=nc_parameter_count(c);p:[23696]f64;nc_formula(c,0.5,p[0..<n]);
+        tokens:=[7]int.[1,3,0,2,6,5,1];m:=7;if which==0 {for i:0..<6 {tokens[i]=NB_SMALL_TOKENS[i];}m=6;}
+        g:[23696]f64;tape:[20000]f64;logits:[72]f64;r:=nb_run_case(c,p[0..<n],tokens[0..<m],g[0..<n],tape[..],logits[..]);#assert r.status==NcStatus.ok;
+        inv:[NC_TENSORS_MAX]NcTensor;k:=nc_inventory(c,inv[..]);zeros:=0;
+        for i:0..<k {t:=inv[i];
+            for e:0..<nc_elements(t) {reached:=true;
+                // Embedding rows of tokens absent from the sequence and the head's padding rows are never used.
+                if t.kind==NcKind.wte || t.kind==NcKind.value {row:=e/t.cols;reached=false;for x:tokens[0..<m] {if x==row {reached=true;}}}
+                if t.kind==NcKind.head {reached=e/t.cols<c.vocab;}
+                #assert (g[t.offset+e]!=0)==reached;if !reached {zeros+=1;}
+            }
+        }
+        if which==0 {#assert zeros==(64-5)*24+(64-5)*12+(64-12)*24;}
+    }
+}
+#test "three steps of gradient descent match the oracle's losses and weights" #steps 2000000000 {
+    c:=NB_SMALL;n:=nc_parameter_count(c);p:[10216]f64;nc_formula(c,0.5,p[..]);tokens:=NB_SMALL_TOKENS;
+    g:[10216]f64;tape:[20000]f64;logits:[72]f64;
+    for step:0..<4 {r:=nb_run_case(c,p[..],tokens[..],g[..],tape[..],logits[..]);#assert r.status==NcStatus.ok && nb_close(r.loss,NB_DESCENT_LOSSES[step],1e-12);
+        if step<3 {for i:0..<n {p[i]-=0.02*g[i];}}}
+    #assert NB_DESCENT_LOSSES[3]<NB_DESCENT_LOSSES[0];
+    d:[45]f64;#assert nb_digests(c,p[..],d[..])==45;for i:0..<45 {#assert nb_close(d[i],NB_DESCENT_DIGESTS[i],1e-11);}
+}
+#test "refusals come before any write" #steps 400000000 {
+    c:=NB_SMALL;p:[10216]f64;nc_formula(c,0.5,p[..]);tokens:=NB_SMALL_TOKENS;need:=nb_tape_count(c,6);
+    for f:0..<12 {g:[10216]f64;for i:0..<10216 {g[i]=-3;}tape:[20000]f64;for i:0..<20000 {tape[i]=-5;}logits:[72]f64;for i:0..<72 {logits[i]=-7;}
+        cc:=c;q:=p;t:=tokens;m:=6;gn:=10216;tn:=need;ln:=72;alias:=false;want:=NcStatus.ok;
+        if f==0 {cc.width=23;want=NcStatus.config;}if f==1 {gn=10215;want=NcStatus.shape;}if f==2 {m=1;want=NcStatus.shape;}
+        if f==3 {t[2]=12;want=NcStatus.token;}if f==4 {t[0]=-1;want=NcStatus.token;}if f==5 {tn=need-1;want=NcStatus.capacity;}
+        if f==6 {ln=71;want=NcStatus.capacity;}if f==7 {alias=true;want=NcStatus.alias;}if f==8 {q[77]=0.0/0.0;want=NcStatus.number;}
+        if f==9 {q[3]=-2*NC_NUMBER;want=NcStatus.number;}if f==10 {cc.context=5;want=NcStatus.shape;}
+        if f==11 {r:=nb_gradient(c,p[0..<10215],t[..],g[0..<10215],tape[0..<tn],logits[..],false);#assert r.status==NcStatus.shape;continue;}
+        r:=nb_gradient(cc,q[..],t[0..<m],g[0..<gn],tape[0..<tn],logits[0..<ln],alias);#assert r.status==want && r.written==0 && r.loss==0;
+        for i:0..<10216 {#assert g[i]==-3;}for i:0..<20000 {#assert tape[i]==-5;}for i:0..<72 {#assert logits[i]==-7;}
+    }
+    q:=p;q[3]=NC_NUMBER;q[4]=-NC_NUMBER;g:[10216]f64;tape:[20000]f64;logits:[96]f64;
+    #assert nb_gradient(c,q[..],tokens[..],g[..],tape[0..<need],logits[0..<72],false).status==NcStatus.ok;
+    // The edges that are accepted: two positions, a full context, exactly the tape it needs.
+    #assert nb_gradient(c,p[..],tokens[0..<2],g[..],tape[0..<nb_tape_count(c,2)],logits[0..<24],false).status==NcStatus.ok;
+    eight:=[8]int.[0,1,2,3,4,5,6,7];#assert nb_gradient(c,p[..],eight[..],g[..],tape[0..<nb_tape_count(c,8)],logits[..],false).status==NcStatus.ok;
+}
+
+// book:begin rms
+// y = x/r with r = sqrt(mean(x^2) + eps). Its vector-Jacobian product:
+// dx += (dy - y (dy . y)/n) / r, here for dy scaled by s (1.2 for QK norm).
+nb_rms_back :: (x:[]f64,xo:int,n:int,dy:[]f64,dyo:int,s:f64,dx:[]f64,dxo:int) {
+    q:=0.0;for i:0..<n {q+=x[xo+i]*x[xo+i];}r:=sqrt(q/f64(n)+NC_EPS);
+    dot:=0.0;for i:0..<n {dot+=s*dy[dyo+i]*x[xo+i]/r;}
+    for i:0..<n {dx[dxo+i]+=(s*dy[dyo+i]-x[xo+i]/r*dot/f64(n))/r;}
+}
+// book:end rms
+// book:begin pointwise
+// The logit softcap 15*tanh(a/15) has slope 1 - tanh(a/15)^2.
+nb_softcap_slope :: (a:f64)->f64 {t:=nc_tanh(a/NC_SOFTCAP);return 1-t*t;}
+// relu(h) without a branch; the MLP's u = relu(h)^2 has slope 2*relu(h).
+nb_relu :: (h:f64)->f64 {return (h+abs(h))/2;}
+// book:end pointwise
+// book:begin rotary
+// apply_rotary_emb rotates each pair (x1, x2) by -theta; the backward
+// rotates the gradient by +theta: dx1 = dy1 cos - dy2 sin, dx2 = dy1 sin + dy2 cos.
+nb_rotary_back :: (x:[]f64,xo:int,heads:int,hd:int,pos:int) {
+    half:=hd/2;
+    for h:0..<heads {for i:0..<half {
+        angle:=f64(pos)*(1/exp(log(NC_BASE)*f64(2*i)/f64(hd)));co:=cos(angle);si:=sin(angle);
+        a:=xo+h*hd+i;y1:=x[a];y2:=x[a+half];x[a]=y1*co-y2*si;x[a+half]=y1*si+y2*co;
+    }}
+}
+// book:end rotary
+// y = W x: dW += dy x^T and dx += W^T dy.
+nb_mv_back :: (p:[]f64,grad:[]f64,wo:int,rows:int,cols:int,x:[]f64,xo:int,dy:[]f64,dyo:int,dx:[]f64,dxo:int) {
+    for r:0..<rows {g:=dy[dyo+r];for i:0..<cols {grad[wo+r*cols+i]+=g*x[xo+i];dx[dxo+i]+=p[wo+r*cols+i]*g;}}
+}
+// Attention weights of query i in head h over keys 0..i that the window
+// admits (i - j <= window). QK norm bounds every score by 1.44 sqrt(hd) <=
+// 11.6, so exp needs no shift.
+nb_weights :: (c:NcConfig,tape:[]f64,o:NbLayout,base:int,i:int,h:int,window:int) {
+    d:=c.width;hd:=nc_head_dim(c);kv:=nc_kv_width(c);g:=h/(c.heads/c.kv_heads);KH:=base+12*o.n*d+o.n*kv;total:=0.0;
+    for j:0..<i+1 {e:=0.0;if i-j<=window {s:=0.0;for x:0..<hd {s+=tape[base+NB_QH*o.n*d+i*d+h*hd+x]*tape[KH+j*kv+g*hd+x];}e=exp(s/sqrt(f64(hd)));}tape[o.pr+j]=e;total+=e;}
+    for j:0..<i+1 {tape[o.pr+j]=tape[o.pr+j]/total;}
+}
+
+// book:begin forward
+// The forward pass, keeping what the backward pass reads. It follows
+// chapter 125's nc_run in binary64 except that attention and the loss skip
+// the max shift, which their bounded inputs make unnecessary.
+nb_record :: (c:NcConfig,p:[]f64,tokens:[]int,tape:[]f64,o:NbLayout,logits:[]f64)->f64 {
+    n:=tokens.count;d:=c.width;hd:=nc_head_dim(c);kv:=nc_kv_width(c);G:=c.kv_heads;L:=c.layers;nd:=n*d;
+    W:=nc_wte(c);sg:=nc_smear_gate(c);lam:=p[2*L];
+    for i:0..<n {nc_rms(p,W+tokens[i]*d,d,tape,NB_RAW+i*d);for j:0..<d {tape[o.x0+i*d+j]=tape[NB_RAW+i*d+j];}}
+    for i:1..<n {z:=0.0;for j:0..<NC_SMEAR {z+=p[sg+j]*tape[NB_RAW+i*d+j];}gate:=lam*nc_sigmoid(z);
+        for j:0..<d {tape[o.x0+i*d+j]+=gate*tape[NB_RAW+(i-1)*d+j];}}
+    for j:0..<nd {tape[o.layer+j]=tape[o.x0+j];}
+    for l:0..<L {b:=nc_block(c,l);base:=o.layer+l*o.per;A:=base+NB_A*nd;N:=base+NB_N*nd;QR:=base+NB_QR*nd;QH:=base+NB_QH*nd;
+        Y:=base+NB_Y*nd;B:=base+NB_B*nd;M:=base+NB_M*nd;H:=base+NB_H*nd;KR:=base+12*nd;KH:=KR+n*kv;V:=KH+n*kv;GT:=V+n*kv;
+        out:=base+o.per;
+        for i:0..<n {
+            for j:0..<d {tape[A+i*d+j]=p[l]*tape[base+i*d+j]+p[L+l]*tape[o.x0+i*d+j];}
+            nc_rms(tape,A+i*d,d,tape,N+i*d);nc_mv(p,b.q,d,d,tape,N+i*d,tape,QR+i*d);nc_mv(p,b.k,kv,d,tape,N+i*d,tape,KR+i*kv);nc_mv(p,b.v,kv,d,tape,N+i*d,tape,V+i*kv);
+            if nc_has_ve(c,l) {for g:0..<G {z:=0.0;for j:0..<NC_GATE {z+=p[b.gate+g*NC_GATE+j]*tape[N+i*d+j];}gt:=3*nc_sigmoid(z);tape[GT+i*G+g]=gt;
+                for x:0..<hd {tape[V+i*kv+g*hd+x]+=gt*p[b.value+tokens[i]*kv+g*hd+x];}}}
+            nc_rotary(tape,QR+i*d,c.heads,hd,i);nc_rotary(tape,KR+i*kv,G,hd,i);
+            for h:0..<c.heads {nc_rms(tape,QR+i*d+h*hd,hd,tape,QH+i*d+h*hd);for x:0..<hd {tape[QH+i*d+h*hd+x]*=NC_QK;}}
+            for g:0..<G {nc_rms(tape,KR+i*kv+g*hd,hd,tape,KH+i*kv+g*hd);for x:0..<hd {tape[KH+i*kv+g*hd+x]*=NC_QK;}}
+        }
+        for i:0..<n {for h:0..<c.heads {nb_weights(c,tape,o,base,i,h,nc_window(c,l));g:=h/(c.heads/G);
+            for x:0..<hd {acc:=0.0;for j:0..<i+1 {acc+=tape[o.pr+j]*tape[V+j*kv+g*hd+x];}tape[Y+i*d+h*hd+x]=acc;}}}
+        for i:0..<n {
+            nc_mv(p,b.proj,d,d,tape,Y+i*d,tape,o.tmp);for j:0..<d {tape[B+i*d+j]=tape[A+i*d+j]+tape[o.tmp+j];}
+            nc_rms(tape,B+i*d,d,tape,M+i*d);nc_mv(p,b.fc,4*d,d,tape,M+i*d,tape,H+i*4*d);
+            for f:0..<4*d {r:=nb_relu(tape[H+i*4*d+f]);tape[o.u+f]=r*r;}
+            nc_mv(p,b.mlp,d,4*d,tape,o.u,tape,o.tmp);for j:0..<d {tape[out+i*d+j]=tape[B+i*d+j]+tape[o.tmp+j];}
+        }
+        if l==L/2 {for j:0..<nd {tape[o.xb+j]=tape[out+j];}}
+    }
+    back:=p[2*L+1];HD:=nc_head(c);loss:=0.0;
+    for i:0..<n {for j:0..<d {tape[o.t+i*d+j]=tape[o.xl+i*d+j]-back*tape[o.xb+i*d+j];}nc_rms(tape,o.t+i*d,d,tape,o.nf+i*d);
+        sum:=0.0;
+        for v:0..<c.vocab {acc:=0.0;for j:0..<d {acc+=p[HD+v*d+j]*tape[o.nf+i*d+j];}tape[o.acc+i*c.vocab+v]=acc;z:=NC_SOFTCAP*nc_tanh(acc/NC_SOFTCAP);logits[i*c.vocab+v]=z;sum+=exp(z);}
+        if i+1<n {loss+=log(sum)-logits[i*c.vocab+tokens[i+1]];}
+    }
+    return loss/f64(n-1);
+}
+// book:end forward
+
+nb_backward :: (c:NcConfig,p:[]f64,tokens:[]int,grad:[]f64,tape:[]f64,o:NbLayout,logits:[]f64) {
+    n:=tokens.count;d:=c.width;hd:=nc_head_dim(c);kv:=nc_kv_width(c);G:=c.kv_heads;L:=c.layers;nd:=n*d;group:=c.heads/G;
+    for i:0..<grad.count {grad[i]=0;}for i:o.dx..<o.count {tape[i]=0;}
+// book:begin head
+    // Cross entropy over the n-1 predicted positions: dz = (softmax(z) - onehot)/(n-1).
+    // Then the softcap's slope, the untied head, the final RMS norm and backout.
+    back:=p[2*L+1];HD:=nc_head(c);
+    for i:0..<n-1 {sum:=0.0;for v:0..<c.vocab {sum+=exp(logits[i*c.vocab+v]);}
+        for j:0..<d {tape[o.dt+j]=0;tape[o.dn+j]=0;}
+        for v:0..<c.vocab {dz:=exp(logits[i*c.vocab+v])/sum;if v==tokens[i+1] {dz-=1;}
+            da:=dz/f64(n-1)*nb_softcap_slope(tape[o.acc+i*c.vocab+v]);
+            for j:0..<d {grad[HD+v*d+j]+=da*tape[o.nf+i*d+j];tape[o.dn+j]+=da*p[HD+v*d+j];}}
+        nb_rms_back(tape,o.t+i*d,d,tape,o.dn,1,tape,o.dt);
+        for j:0..<d {tape[o.dx+i*d+j]+=tape[o.dt+j];tape[o.dxb+i*d+j]-=back*tape[o.dt+j];grad[2*L+1]-=tape[o.dt+j]*tape[o.xb+i*d+j];}
+    }
+// book:end head
+    for k:0..<L {l:=L-1-k;b:=nc_block(c,l);base:=o.layer+l*o.per;A:=base+NB_A*nd;N:=base+NB_N*nd;QR:=base+NB_QR*nd;QH:=base+NB_QH*nd;
+        Y:=base+NB_Y*nd;B:=base+NB_B*nd;M:=base+NB_M*nd;H:=base+NB_H*nd;KR:=base+12*nd;KH:=KR+n*kv;V:=KH+n*kv;GT:=V+n*kv;
+        // Backout read this layer's output: its gradient joins here.
+        if l==L/2 {for j:0..<nd {tape[o.dx+j]+=tape[o.dxb+j];}}
+        for j:0..<nd {tape[o.dy+j]=0;}
+// book:begin mlp
+        // x' = b + W2 relu(W1 rms(b))^2, then b = a + Wproj y.
+        for i:0..<n {
+            for f:0..<4*d {r:=nb_relu(tape[H+i*4*d+f]);tape[o.u+f]=r*r;tape[o.du+f]=0;}
+            nb_mv_back(p,grad,b.mlp,d,4*d,tape,o.u,tape,o.dx+i*d,tape,o.du);
+            for f:0..<4*d {tape[o.du+f]*=2*nb_relu(tape[H+i*4*d+f]);}
+            for j:0..<d {tape[o.dm+j]=0;}nb_mv_back(p,grad,b.fc,4*d,d,tape,M+i*d,tape,o.du,tape,o.dm);
+            nb_rms_back(tape,B+i*d,d,tape,o.dm,1,tape,o.dx+i*d);
+            nb_mv_back(p,grad,b.proj,d,d,tape,Y+i*d,tape,o.dx+i*d,tape,o.dy+i*d);
+        }
+// book:end mlp
+// book:begin attention
+        // y_i = sum_j P_ij v_j with P = softmax(q_i . k_j / sqrt(hd)) over the
+        // window: dv_j += P_ij dy_i, ds_ij = P_ij (dP_ij - sum_k P_ik dP_ik),
+        // dq_i += ds_ij k_j / sqrt(hd), dk_j += ds_ij q_i / sqrt(hd). Query
+        // head h reads key-value head h/group, so the groups' gradients add.
+        for j:o.dq..<o.dv+n*kv {tape[j]=0;}
+        for i:0..<n {for h:0..<c.heads {g:=h/group;nb_weights(c,tape,o,base,i,h,nc_window(c,l));mean:=0.0;
+            for j:0..<i+1 {dp:=0.0;for x:0..<hd {dy:=tape[o.dy+i*d+h*hd+x];dp+=dy*tape[V+j*kv+g*hd+x];tape[o.dv+j*kv+g*hd+x]+=tape[o.pr+j]*dy;}
+                tape[o.dp+j]=dp;mean+=tape[o.pr+j]*dp;}
+            for j:0..<i+1 {ds:=tape[o.pr+j]*(tape[o.dp+j]-mean)/sqrt(f64(hd));
+                for x:0..<hd {tape[o.dq+i*d+h*hd+x]+=ds*tape[KH+j*kv+g*hd+x];tape[o.dk+j*kv+g*hd+x]+=ds*tape[QH+i*d+h*hd+x];}}
+        }}
+// book:end attention
+// book:begin project
+        // QK norm (scaled by 1.2), rotary, the value-embedding gate, then the
+        // three projections and the pre-attention RMS norm.
+        for i:0..<n {
+            for j:0..<d {tape[o.dqr+j]=0;tape[o.dn+j]=0;}for j:0..<kv {tape[o.dkr+j]=0;}
+            for h:0..<c.heads {nb_rms_back(tape,QR+i*d+h*hd,hd,tape,o.dq+i*d+h*hd,NC_QK,tape,o.dqr+h*hd);}
+            for g:0..<G {nb_rms_back(tape,KR+i*kv+g*hd,hd,tape,o.dk+i*kv+g*hd,NC_QK,tape,o.dkr+g*hd);}
+            nb_rotary_back(tape,o.dqr,c.heads,hd,i);nb_rotary_back(tape,o.dkr,G,hd,i);
+            if nc_has_ve(c,l) {for g:0..<G {gt:=tape[GT+i*G+g];row:=b.value+tokens[i]*kv+g*hd;dgt:=0.0;
+                for x:0..<hd {dv:=tape[o.dv+i*kv+g*hd+x];dgt+=dv*p[row+x];grad[row+x]+=gt*dv;}
+                // gt = 3 sigmoid(z): dz = dgt * gt * (1 - gt/3).
+                dz:=dgt*gt*(1-gt/3);for j:0..<NC_GATE {grad[b.gate+g*NC_GATE+j]+=dz*tape[N+i*d+j];tape[o.dn+j]+=dz*p[b.gate+g*NC_GATE+j];}}}
+            nb_mv_back(p,grad,b.q,d,d,tape,N+i*d,tape,o.dqr,tape,o.dn);
+            nb_mv_back(p,grad,b.k,kv,d,tape,N+i*d,tape,o.dkr,tape,o.dn);
+            nb_mv_back(p,grad,b.v,kv,d,tape,N+i*d,tape,o.dv+i*kv,tape,o.dn);
+            nb_rms_back(tape,A+i*d,d,tape,o.dn,1,tape,o.dx+i*d);
+            // a = resid[l] x + x0[l] x0.
+            for j:0..<d {da:=tape[o.dx+i*d+j];grad[l]+=da*tape[base+i*d+j];grad[L+l]+=da*tape[o.x0+i*d+j];
+                tape[o.dx0+i*d+j]+=p[L+l]*da;tape[o.dx+i*d+j]=p[l]*da;}
+        }
+// book:end project
+    }
+// book:begin embed
+    // x_i = r_i + lam sigmoid(z_i) r_(i-1) with z_i = smear_gate . r_i[0..24],
+    // r_i = rms(wte[token_i]); x0 is x, so its gradient joins x's.
+    sg:=nc_smear_gate(c);lam:=p[2*L];W:=nc_wte(c);DR:=o.dq;
+    for j:0..<nd {tape[o.dx+j]+=tape[o.dx0+j];tape[DR+j]=tape[o.dx+j];}
+    for i:1..<n {z:=0.0;for j:0..<NC_SMEAR {z+=p[sg+j]*tape[NB_RAW+i*d+j];}s:=nc_sigmoid(z);ds:=0.0;
+        for j:0..<d {dx:=tape[o.dx+i*d+j];ds+=dx*tape[NB_RAW+(i-1)*d+j];tape[DR+(i-1)*d+j]+=lam*s*dx;}
+        grad[2*L]+=ds*s;dz:=ds*lam*s*(1-s);
+        for j:0..<NC_SMEAR {grad[sg+j]+=dz*tape[NB_RAW+i*d+j];tape[DR+i*d+j]+=dz*p[sg+j];}
+    }
+    for i:0..<n {nb_rms_back(p,W+tokens[i]*d,d,tape,DR+i*d,1,grad,W+tokens[i]*d);}
+// book:end embed
+}
+
+// book:begin api
+// The mean next-token loss over tokens and its gradient for every parameter.
+// grad has one value per parameter; tape holds nb_tape_count(c, n) values.
+// Every refusal comes before the first write.
+nb_gradient :: (c:NcConfig,p:[]f64,tokens:[]int,grad:[]f64,tape:[]f64,logits:[]f64,overlap:bool)->NbResult {
+    if !nc_valid(c) {return NbResult.{status=NcStatus.config};}
+    count:=nc_parameter_count(c);if p.count!=count || grad.count!=count {return NbResult.{status=NcStatus.shape};}
+    for x:p {if !(x>=-NC_NUMBER && x<=NC_NUMBER) {return NbResult.{status=NcStatus.number};}}
+    n:=tokens.count;if n<2 || n>c.context {return NbResult.{status=NcStatus.shape};}
+    for x:tokens {if x<0 || x>=c.vocab {return NbResult.{status=NcStatus.token};}}
+    o:=nb_layout(c,n);if tape.count<o.count || logits.count<n*c.vocab {return NbResult.{status=NcStatus.capacity};}
+    if overlap {return NbResult.{status=NcStatus.alias};}
+    loss:=nb_record(c,p,tokens,tape,o,logits);nb_backward(c,p,tokens,grad,tape,o,logits);
+    return NbResult.{loss=loss,written=count};
+}
+// book:end api
+#load "../../fixtures/nanochat/grad-goldens.coax";
