@@ -226,7 +226,7 @@ ffk_carried :: (s: [] Fairy, feet: Point, face: f32) {
   ffn_carried(s, p);
 }
 
-#test "skills: the bird, the axe, the lantern and the dam each teach one; CRAFT cuts deadwood; a find teaches GATHER" {
+#test "skills: the bird, the axe, the lantern and the dam each teach one; CRAFT cuts deadwood; a find teaches GATHER" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   fairy_clock(s[..], 29000000.0 * 60000);

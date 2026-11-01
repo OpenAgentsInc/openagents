@@ -429,7 +429,7 @@ ffpk_signs :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, you: Point) -> int 
   return n;
 }
 
-#test "the park's trees: many, inside its wall, off its paths and lakes; the Mall has its rows of elms" {
+#test "the park's trees: many, inside its wall, off its paths and lakes; the Mall has its rows of elms" #steps 200000000 {
   g: [1] Fairy;
   fairy_start(g[..]);
   #assert g[0].tree_n > 900 && g[0].bush_n > 100;
@@ -451,7 +451,7 @@ ffpk_signs :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, you: Point) -> int 
   #assert ground_at(g[..], 0, 40) > ground_at(g[..], 0, 20) + 3;
 }
 
-#test "a landmark's name floats over it as you come near, and not from across the park" {
+#test "a landmark's name floats over it as you come near, and not from across the park" #steps 150000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -485,7 +485,7 @@ ffpk_walls :: (s: [] Fairy, at: int) -> int {
   return w;
 }
 
-#test "the bridges carry you on their decks over the water, stepping on and off level with the path" {
+#test "the bridges carry you on their decks over the water, stepping on and off level with the path" #steps 200000000 {
   g: [1] Fairy;
   fairy_start(g[..]);
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;

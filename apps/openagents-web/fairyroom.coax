@@ -796,7 +796,7 @@ ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c {
   if track_begin(t, "presence") { track_str(t, "room", FF_ROOM); track_int(t, "here", here); track_bool(t, "full", full); track_end(t); }
 }
 
-#test "typing a line never walks you; Enter says it, and the face is asked to send it" {
+#test "typing a line never walks you; Enter says it, and the face is asked to send it" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   #assert fairy_key(s[..], 'w', 0) && s[0].held != 0;
@@ -823,7 +823,7 @@ ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c {
   #assert ff_has(body, "\"ev\":\"chat\"") && !ff_has(body, "again") && ff_has(body, "\"room\":\"fairy-forest\",\"here\":2");
 }
 
-#test "the inbox: open a player you have met, read, write and send; block and remove" {
+#test "the inbox: open a player you have met, read, write and send; block and remove" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   g := s[0].social[..];
@@ -870,7 +870,7 @@ ffs_track_here :: (t: [] Track, here: int, full: bool) #export_c {
   #assert !g[0].inbox_open;
 }
 
-#test "a phone: the chat is one line along the top, a tap opens it; BLOOM and the talk pane stay clear" {
+#test "a phone: the chat is one line along the top, a tap opens it; BLOOM and the talk pane stay clear" #steps 200000000 {
   s: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   fairy_start(s[..]);

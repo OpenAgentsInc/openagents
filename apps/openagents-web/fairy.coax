@@ -2325,7 +2325,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert SHAPE_VERTICES[2] <= 1024 && WATER_DRAW == DRAWS - 1;
 }
 
-#test "a frame lays the valley out within its slots and sees you" {
+#test "a frame lays the valley out within its slots and sees you" #steps 150000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2344,7 +2344,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert tris < 700000 && fairy_draws(g[..]) == DRAWS && g[0].draws[WATER_DRAW * 4 + 1] == cast(u32) g[0].water_vertices;
 }
 
-#test "E at the first flower blooms it; the hedgehog's three patches make it happy and wake a root" {
+#test "E at the first flower blooms it; the hedgehog's three patches make it happy and wake a root" #steps 350000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2364,7 +2364,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert ff_restored(g[0].forest[..], FF_CREATURE[0], FF_CREATURE[1], g[0].time) == 1;
 }
 
-#test "a phone taps BLOOM; a tap elsewhere is the sticks'" {
+#test "a phone taps BLOOM; a tap elsewhere is the sticks'" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2380,7 +2380,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert g[0].forest[0].bloomed[0];
 }
 
-#test "a phone's FLAP, bottom right clear of BLOOM: a press beats once, held she climbs, lifted she glides" {
+#test "a phone's FLAP, bottom right clear of BLOOM: a press beats once, held she climbs, lifted she glides" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2408,7 +2408,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert g[0].flap_box.x1 == 0;
 }
 
-#test "E by a creature talks to it: you type, Enter asks, the answer shows, Esc ends; a click on it talks too" {
+#test "E by a creature talks to it: you type, Enter asks, the answer shows, Esc ends; a click on it talks too" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2453,7 +2453,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert !fairy_talking(g[..]);
 }
 
-#test "flying, the BLOOM prompt hides and E waits until you land" {
+#test "flying, the BLOOM prompt hides and E waits until you land" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2483,7 +2483,7 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   }
   return out;
 }
-#test "trunks are solid; the heart tree's canopy and the stones are floors" {
+#test "trunks are solid; the heart tree's canopy and the stones are floors" #steps 200000000 {
   g: [1] Fairy;
   fairy_start(g[..]);
   #assert g[0].wall_n > g[0].tree_n + 20 && g[0].wall_n <= WALLS;
@@ -2501,7 +2501,7 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   if st.ok { #assert near(top_under(g[..], st.x, st.z, 0.3), 0.6, 0.001); }
 }
 
-#test "a kept place in Fairy Forest: open ground stays, the stream or a trunk moves you clear" {
+#test "a kept place in Fairy Forest: open ground stays, the stream or a trunk moves you clear" #steps 200000000 {
   g: [1] Fairy;
   fairy_start(g[..]);
   sx := f32(FF_SPAWN_X); sz := f32(FF_SPAWN_Z);
@@ -2526,7 +2526,7 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
 
 // Behind: the camera within 17 degrees of straight behind her, looking down
 // from 10 degrees (the orbit rests at 17) to 65, near or far.
-#test "from behind, no wing ever crosses her head, at any beat, pitch or distance, in any of the maker's shapes" {
+#test "from behind, no wing ever crosses her head, at any beat, pitch or distance, in any of the maker's shapes" #steps 200000000 {
   u: [UNIFORM_FLOATS] f32;
   feet := v3(3, 2, -4);
   face := 0.7f32;
@@ -2575,7 +2575,7 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
 }
 dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return sqrt(dx * dx + dy * dy); }
 
-#test "trees keep off the trails, the stream and the glades" {
+#test "trees keep off the trails, the stream and the glades" #steps 200000000 {
   g: [1] Fairy;
   fairy_start(g[..]);
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
@@ -2590,7 +2590,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   #assert ground_at(g[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)) > f32(FF_LEVEL) + 0.2;
 }
 
-#test "Thornfall and the Old Ring: their patches can be stood at, and a frame there in full bloom stays within its slots" {
+#test "Thornfall and the Old Ring: their patches can be stood at, and a frame there in full bloom stays within its slots" #steps 450000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2614,7 +2614,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
 }
 
-#test "EDIT for its owner and admins only; the board switches the skyline off (its ridges row), SETTINGS flight" {
+#test "EDIT for its owner and admins only; the board switches the skyline off (its ridges row), SETTINGS flight" #steps 350000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;

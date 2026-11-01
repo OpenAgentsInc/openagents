@@ -216,7 +216,7 @@ ffm_pool :: (s: [] Fairy) {
   }
 }
 
-#test "the maker: the first visit opens it, a tap on a choice sets it, DONE closes it and she is made" {
+#test "the maker: the first visit opens it, a tap on a choice sets it, DONE closes it and she is made" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   s[0].width = 1280; s[0].height = 800; s[0].dpr = 1;
@@ -247,7 +247,7 @@ ffm_pool :: (s: [] Fairy) {
   #assert fairy_key(s[..], KEY_ESCAPE, 0) && !s[0].maker[0].open;
 }
 
-#test "a save with a look made closes the first visit's maker; one without leaves it" {
+#test "a save with a look made closes the first visit's maker; one without leaves it" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   ffm_ready(s[..]);
@@ -262,7 +262,7 @@ ffm_frame :: (g: [] Fairy, out: [] f32, u: [] f32, w: f32, h: f32) {
   _n := fairy_frame(g, out, u, w, h, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
 }
 
-#test "LOOK by the title opens the maker any time, DONE closes it; L does both on a computer" {
+#test "LOOK by the title opens the maker any time, DONE closes it; L does both on a computer" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;

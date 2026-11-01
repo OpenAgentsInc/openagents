@@ -99,7 +99,7 @@ ffg_draw :: (s: [] Fairy) {
   }
 }
 
-#test "the garden: E at a bed plants, then waters and sings; it grows by the clock" {
+#test "the garden: E at a bed plants, then waters and sings; it grows by the clock" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   s[0].forest[0].awake[0] = true;   // one root: the garden room is open

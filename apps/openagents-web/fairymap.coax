@@ -170,7 +170,7 @@ ffmap_hint :: (s: [] Fairy) -> string {
   return "THE MAP · M OR ESC TO WALK AGAIN";
 }
 
-#test "M opens the map over the whole park and stands you still; M or Esc brings you back" {
+#test "M opens the map over the whole park and stands you still; M or Esc brings you back" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -201,7 +201,7 @@ ffmap_hint :: (s: [] Fairy) -> string {
   #assert g[0].map[0].lift == 0;
 }
 
-#test "on a phone the park runs up the screen, and a tap on MAP opens it and on WALK closes it" {
+#test "on a phone the park runs up the screen, and a tap on MAP opens it and on WALK closes it" #steps 200000000 {
   g: [1] Fairy;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;

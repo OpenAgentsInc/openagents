@@ -275,7 +275,7 @@ ffb_home :: (s: [] Fairy, eye: Point) {
   }
 }
 
-#test "BUILD in your home: PLACE puts the piece ahead of you, MOVE carries it, TURN, SIZE and UNDO; outside it is put back" {
+#test "BUILD in your home: PLACE puts the piece ahead of you, MOVE carries it, TURN, SIZE and UNDO; outside it is put back" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   s[0].width = 1280; s[0].height = 800; s[0].dpr = 1;

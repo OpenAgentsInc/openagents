@@ -88,7 +88,7 @@ ffp_draw :: (s: [] Fairy, eye: Point) {
   }
 }
 
-#test "the pond: low until filled with WATER, which takes a few seconds and is kept; the waterfall runs once the dam is cleared" {
+#test "the pond: low until filled with WATER, which takes a few seconds and is kept; the waterfall runs once the dam is cleared" #steps 300000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   l := s[0].life[..];

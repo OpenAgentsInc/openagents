@@ -156,7 +156,7 @@ ffq_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
   return true;
 }
 
-#test "a creature with a quest gives it when you come near; ticking its steps finishes it" {
+#test "a creature with a quest gives it when you come near; ticking its steps finishes it" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   e := s[0].ed[..];

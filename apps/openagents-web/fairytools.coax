@@ -114,7 +114,7 @@ ffo_carried :: (s: [] Fairy, feet: Point, face: f32) -> Point {
   return lamp;
 }
 
-#test "tools: made at Rowan's stump with CRAFT from wood and finds, one by one; the basket gathers two, the can cares twice, the lantern lights farther; kept in the save" {
+#test "tools: made at Rowan's stump with CRAFT from wood and finds, one by one; the basket gathers two, the can cares twice, the lantern lights farther; kept in the save" #steps 300000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   fairy_clock(s[..], 29000000.0 * 60000);

@@ -149,7 +149,7 @@ ffx_draw :: (s: [] Fairy, eye: Point) {
   }
 }
 
-#test "mending: the fence, the footbridge and the birdhouse show broken; with MEND, E mends each, and it stays mended" {
+#test "mending: the fence, the footbridge and the birdhouse show broken; with MEND, E mends each, and it stays mended" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   l := s[0].life[..];
@@ -180,7 +180,7 @@ ffx_draw :: (s: [] Fairy, eye: Point) {
   }
 }
 
-#test "the footbridge, once mended, carries you over the Loch on its planks" {
+#test "the footbridge, once mended, carries you over the Loch on its planks" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   x := FFX_THING[FFX_BRIDGE * 4]; z := FFX_THING[FFX_BRIDGE * 4 + 1];

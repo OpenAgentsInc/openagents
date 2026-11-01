@@ -583,7 +583,7 @@ ffc_note_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> in
   return draw_text(out, at, word, (w - ww) / 2, b.y1 - 10 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
 }
 
-#test "a course: hoops hung ahead, flown in order against the clock, its best kept; SHARE copies a link" {
+#test "a course: hoops hung ahead, flown in order against the clock, its best kept; SHARE copies a link" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   fairy_clock(s[..], 29000000.0 * 60000);
@@ -648,7 +648,7 @@ ffc_note_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> in
   #assert ffl_open(l[..], b[0..<n]) && l[0].course.n == 4 && l[0].course.best == 7500 && l[0].course.id_n == 10;
 }
 
-#test "a course by link: its hoops and times come from the server, a run's time goes back" {
+#test "a course by link: its hoops and times come from the server, a run's time goes back" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   fairy_hash(s[..], "course=abcd1234");

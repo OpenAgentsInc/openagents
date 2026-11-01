@@ -110,7 +110,7 @@ ffn_carried :: (s: [] Fairy, lantern: Point) {
   ffn_moths(s, lantern, 2, 0.45, 0.5, effect_time(s));
 }
 
-#test "night: a pinned midnight is dark and lights her LIGHT; LIGHT waits for the dark at the lantern flower, a rest brings it; the moon hollow shows only then, is found and kept" {
+#test "night: a pinned midnight is dark and lights her LIGHT; LIGHT waits for the dark at the lantern flower, a rest brings it; the moon hollow shows only then, is found and kept" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   fairy_facts(s[..], "clock=fixed:0.5");

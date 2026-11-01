@@ -84,7 +84,7 @@ ffw_draw :: (s: [] Fairy, u: [] f32, you: Point, eye: Point) {
   shadow(s, u, x, z, 0.55, 0.5);
 }
 
-#test "Rowan the woodcutter: talking to him the first time gives the axe and CRAFT; he talks like the creatures, and stands clear of them" {
+#test "Rowan the woodcutter: talking to him the first time gives the axe and CRAFT; he talks like the creatures, and stands clear of them" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   rowan := v3(f32(FFW_X) + 1, 0, f32(FFW_Z));

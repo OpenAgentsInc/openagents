@@ -58,7 +58,7 @@ ffv_draw :: (s: [] Fairy, u: [] f32, eye: Point) {
   }
 }
 
-#test "a happy creature is invited by E and moves in; a sad one is talked to" {
+#test "a happy creature is invited by E and moves in; a sad one is talked to" #steps 150000000 {
   s: [1] Fairy;
   fairy_start(s[..]);
   c := FF_CREATURE[0]; cz := FF_CREATURE[1];
