@@ -3,18 +3,18 @@
 This chapter builds position-only inverse kinematics, principal orientation
 error, a capped whole-pose solve, linearized posture projection, rest-to-rest
 reference timing, isolated PD gain/response analysis, seven-joint PD with gravity
-compensation, and a short coupled run on our owned Panda dynamics. IK returns
-source-limited coordinates; posture returns a delta, timing returns reference
-samples, and PD returns explicit force terms. The
-250-step experiment then recomputes the PD command on every owned state and
-compares that trajectory with one MuJoCo reference. General stability and
-the broader planning tools remain work.
+compensation, and short experiments on our owned nonlinear Panda dynamics.
+IK returns source-limited coordinates; posture returns a delta, timing returns
+reference samples, and PD returns explicit force terms. A 250-step prefix and
+four new hold/track/pulse/brake cases compare owned feedback with MuJoCo.
+Numerical agreement passes; the four-case nominal final-error and brake-recovery
+goals remain unmet. General stability and the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
-runs operational-space control against MuJoCo. Holding/tracking experiments,
-finite-step nullspace/IK integration, collision-free planning, tracking timed
-references and compiler-enforced bounded control retain separate acceptance
-criteria. The timing query below does not qualify those tracking dynamics.
+runs operational-space control against MuJoCo. Meeting broader tracking and
+recovery criteria, finite-step nullspace/IK integration, collision-free planning
+and compiler-enforced bounded control remain separate work. A timing reference
+does not establish those physical behaviors.
 
 ## A source-bound position IK query
 
@@ -907,9 +907,9 @@ source law, not an SDK-observed counter.
 
 The target-error norm falls from **0.0384057 to 0.00993709 rad**. This is a
 reported result for these gains and this short prefix, without a convergence,
-steady-state or stability threshold. Contact response, large disturbances,
-nonlinear Panda gain analysis, timed trajectories and whole-policy success are
-still open.
+steady-state or stability threshold. This prefix does not qualify contact response, large disturbances, nonlinear
+stability, general timed-reference tracking or whole-policy success; the
+following cases add specific measurements.
 
 The [complete evidence](../fixtures/robotics/panda-joint-pd-prefix/README.md)
 retains the first generated-C printer-warning build failure, before any SDK
@@ -920,14 +920,87 @@ endpoint before its first debug/release execution. Historical PD and Euler
 mutation scopes are carried separately on unchanged product files; this
 composition adds no new admission rule or compiler boundedness claim.
 
+## Measure a nonlinear hold, track, disturbance and brake
+
+A scalar rotor's gain diagnostic does not establish what the coupled Panda does. This experiment composes the existing source-bound nonlinear plant with the joint PD controller and the rest-to-rest reference. Four fresh cases each run 750 updates at 500 Hz, or 1.5 seconds. The scene uses the pinned Panda's inertias, armature, physical joint damping, fluid and source actuators, with contacts and constraints disabled. It measures this isolated numerical profile. Each case starts from compiled XML defaults with named robot-coordinate overrides. The run measures these controlled initializations; it supplies no LIBERO task-reset or neural-task success score.
+
+| Case | Reference and initial condition | External force |
+| --- | --- | --- |
+| Hold | New dense arm configuration, zero initial rates; keep the initial target. | Zero. |
+| Track | Move seven joints by the frozen small offsets; reference limits are 0.12 rad/s and 0.6 rad/s². | Zero. |
+| Pulse | Same tracking reference. | Joint 2 receives +3 J/rad for control ticks 200 through 249. |
+| Brake | Keep the initial target; joint 7 starts at +2 rad/s and uses Kd=20 J·s/rad². | Zero. |
+
+The tracking reference lasts 270 ticks, or 0.54 seconds. Control tick `k` uses reference `min(k,270)` and holds the endpoint afterward. The post-integration state is compared with reference `k+1`. This alignment matters around the pulse and the end of motion. Both fingers retain their initial position targets; their actual drift is measured. The quintic reference has zero endpoint velocity and acceleration; it is not a retargeter for a moving VLA action chunk.
+
+The [fixed test consumer](../tests/robotics/panda-joint-pd-tracking.coax) owns the case constants, gains, reference selection, pulse interval and composition in Coax. `pnt_control` returns the reference, all five controller vectors, the clipped controls, external forces, actuator prediction and separate clipping counts. It reads the current raw joint positions and rates and computes fresh owned gravity; it does not substitute cached SDK body geometry. `pnt_step` stages the same command with one owned Euler update. Observing the actuator forces for diagnostics does not add them a second time to the plant.
+
+<!-- source: psionic/examples/panda-joint-pd-tracking.coax pnt-tracking -->
+
+```jai
+ // Public inputs choose one of the four frozen experiments, never new gains.
+ // q9/v9 are explicit mixed-coordinate raw boundaries; outputs retain units.
+ initial:[1]PntInitial;command:[1]PntCommand;
+ #assert pnt_ok(pnt_initial(1,initial[..]));q:=initial[0].q;v:=initial[0].v;
+ #assert pnt_ok(pnt_control(1,135,q[..],v[..],command[..]));
+ print("track midpoint: reference tick %/%; joint1 % urad; % urad/s\n",command[0].reference_tick,command[0].reference_steps,pnt_example_micro(command[0].reference.angle[0].value),pnt_example_micro(command[0].reference.rate[0].value));
+ #assert pnt_ok(pnt_control(2,200,q[..],v[..],command[..]));
+ print("pulse at tick 200: active %; joint2 external % micro-J/rad\n",command[0].pulse,pnt_example_micro(command[0].external[1]));
+ #assert pnt_ok(pnt_initial(3,initial[..]));q=initial[0].q;v=initial[0].v;
+ #assert pnt_ok(pnt_control(3,0,q[..],v[..],command[..]));c:=command[0].controller;
+ print("brake joint7 P/D/g0/requested/command (micro-J/rad): % % % % %\n",pnt_example_micro(c.proportional[6].value),pnt_example_micro(c.derivative[6].value),pnt_example_micro(c.gravity[6].value),pnt_example_micro(c.requested[6].value),pnt_example_micro(c.command[6].value));
+ print("controller clips %; actuator control/force clips %/%\n",c.clipped,command[0].actuator_control_clipped,command[0].actuator_force_clipped);
+ old:=command[0];status:=pnt_control(3,750,q[..],v[..],command[..]);#assert status.stage==2 && status.code==2;pnt_command_same(command[0],old);
+ print("tick 750: stage % code %; complete command unchanged\n",status.stage,status.code);
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-joint-pd-tracking.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-panda-joint-pd-tracking.sh /tmp/new-panda-tracking
+```
+
+The runnable example executes pure queries. At the initial brake state, the independent gravity value for joint 7 is 0.0015419353651608013 J/rad. The derivative term is −40 J/rad, so the requested command is −39.99845806463484 J/rad and the controller clips it to −12 J/rad. Its one clipped coordinate is separate from the actuator's control and force clipping counts. A failed case/tick/admission leaves the complete command or step output unchanged and returns both the failing stage and its underlying code.
+
+The new composition has twelve source check groups and 194 actual emitted root mutation sites, all killed. Initial runs exposed seven missing observations; new dense-rate, slider-role, real nonzero actuator-clipping and complete plant-output checks closed them without changing production bodies. The deliberately altered unsealed diagnostic configurations are source tests, not extra experiment cases. The counts describe emitted mutation sites; they do not close the compiler's wider quantity-token provenance gap. Existing controller, timing, actuation and dynamics proofs carry unchanged.
+
+The SDK branch uses the same Coax controller with genuine SDK joint states. It has one initial forward per case and no explicit post-step forwards; SDK actuator observations are labelled as the pre-integration cache left by the step. Independent scalar PD and matrix potential-gradient calculations audit every recorded controller field, while the original analytic reference supplies all 751 frames per case. Separate owned branches use their own evolving feedback state and replay the SDK's recorded commands on an owned plant to distinguish feedback accumulation from plant response.
+
+The first acquisition completed exactly 3,000 SDK steps and four initial forwards. All three new owned/native profiles passed, each with 1,329,240 assertions; their complete output files are byte-identical. Against the SDK, the largest fresh-feedback joint position/rate errors are 4.44e−16 rad and 1.60e−15 rad/s; recorded-command shadow errors are 3.33e−15 rad and 5.75e−15 rad/s. Independent matrix/scalar auditing of all 105,000 controller and 27,000 actuator fields passes, with controller error at most 6.04e−14 and actuator values numerically exact.
+
+| Behavior in the SDK trace | Measured result | Frozen goal |
+| --- | --- | --- |
+| Hold peak arm drift | 0.0000162924 rad | Pass: ≤0.005 rad. |
+| Nominal tracking RMS | 0.00725912 rad versus analytic stationary 0.0199807 rad | Pass: smaller RMS. |
+| Nominal final maximum error | 0.0157710 rad | **Miss: goal ≤0.01 rad.** |
+| Pulse final maximum error | 0.0159404 rad | Pass: ≤0.02 rad. |
+| Pulse's 25-state error/rate band | Entry state 477, confirmed at 501 | Observed temporary band; not permanent settling. |
+| Brake | 31 controller-clipped ticks; final error 0.0455202 rad | **Not recovered within 1.5 seconds.** |
+
+Pulse-band entry is 0.454 seconds after the force interval ends; confirmation is at 1.002 seconds from reset. The trajectory later leaves the 0.01 rad band, as its final error shows. No actuator-stage control or force clips were observed. Every recorded post-state was within the source joint coordinate ranges. The reference's 0.12 rad/s and 0.6 rad/s² limits constrain its commanded curve, not actual motion: the brake starts at 2 rad/s and the measured peak effective arm acceleration reaches about 41.587 rad/s². These misses are retained without changing gains, cases, horizons or tolerances.
+
+Numerical parity and behavior goals are separate results. The frozen goals include hold drift ≤0.005 rad, nominal final error ≤0.01 rad, pulse final error ≤0.02 rad, and recovery for 25 consecutive states within both 0.01 rad and 0.05 rad/s. Recovery reports entry and confirmation ticks. The stationary-position comparator is analytic, not another executed controller. A missed goal stays in the record. No gains, cases, horizons or budgets are adjusted after observing a run.
+
+The public entry points accept only the four fixed cases and ticks 0 through 749. Their raw `q9`/`v9` inputs are explicit mixed-coordinate boundaries; physical reference, controller and actuator fields retain their quantity types. Low-level case, reference, control and apply helpers are source-visible and unsealed: their valid-profile, current-state and coherent-command preconditions must be preserved. Their PODs are not admission certificates.
+
+This is short unconstrained behavior evidence. It does not establish global or nonlinear stability, collisions, contacts, hardware safety, general trajectory following or compiler-enforced real-time bounds. Finite nullspace integration and collision/RRT work remain separate.
+
+The [component evidence](../fixtures/robotics/panda-joint-pd-tracking/README.md)
+links the frozen inputs, source checks, first SDK acquisition, independent
+controller audit and native profiles. The additive offline gate uses committed
+trace/input/receipts and builds SDK-free current-source binaries. Its new
+adapter was syntax/plan/stub-routing checked here; the measured numerical proof
+above is carried unchanged, rather than rerun through that new adapter. New
+SDK acquisition is a separate opt-in tool and is not part of this gate.
+
 ## The remaining control and planning layers
 
 The following sections are design work; the position and force queries above
 do not qualify these complete control and planning tools.
 
 
-- Nonlinear Panda holding/tracking, disturbance and dynamic saturation analysis
-  beyond the isolated rotor and short no-contact prefix.
+- Meeting broader nonlinear tracking/recovery goals, including the retained
+  nominal final-error and brake-recovery misses, with systematic gain,
+  disturbance and saturation analysis beyond the four measured cases.
 - Finite, range-preserving nullspace steps and their integration with pose IK,
   beyond the delivered linearized posture projection.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
@@ -938,8 +1011,9 @@ do not qualify these complete control and planning tools.
 ## Planned control and planning math
 
 The typed PD query supplies this force equation. The isolated rotor above
-qualifies its sampled constant-inertia response; a nonlinear Panda gain analysis
-still needs the full coupled dynamics and a declared timestep:
+qualifies its sampled constant-inertia response. The four nonlinear cases use
+the owned coupled dynamics at a declared 0.002-second step; broader gain analysis
+and acceptable tracking/recovery profiles remain work:
 
 ```jai
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
@@ -970,8 +1044,8 @@ saturation. The position query above has an explicit iteration cap and typed
 nonconvergence, while compiler enforcement remains pending. The planner uses Aethyr chapter 20 and 21's queries for collision checks
 in a single-environment scene copy, seeded from the counter-based RNG so a
 plan is reproducible. A rest-to-rest timing query is available above;
-connecting certified edges, shortcutting and tracking their references remain
-planned.
+connecting certified edges, shortcutting and meeting declared tracking/recovery
+goals remain planned.
 
 ## Planned additional modules
 
@@ -980,9 +1054,10 @@ planned.
 
 ## Remaining acceptance checks and oracles
 
-- Nonlinear Panda PD holds a pose under gravity with steady-state error below
-  a stated bound, including disturbance and saturation experiments. The isolated
-  single-rotor response and computed Jury diagnostic are qualified above.
+- Broader nonlinear PD holding/tracking acceptance under declared disturbance
+  and saturation profiles. The measured four-case hold passes its drift goal,
+  while nominal final error and brake recovery miss their goals. The isolated
+  rotor response and computed Jury diagnostic remain separate evidence.
 - Finite nullspace-step policy and pose-IK integration, plus broader behavior
   near singularities and the principal cut. The delivered posture query has
   explicit numerical rank/residual refusal; it does not qualify a finite motion.
@@ -994,9 +1069,9 @@ planned.
   Follow the [collision-to-planning sequence](../docs/robotics/panda-motion-planning.md)
   before qualifying RRT.
 - The rest-to-rest reference meets its declared velocity/acceleration profile
-  under the stated numerical assumptions. Physical tracking must separately
-  measure limits, timing delays and fault recovery; moving-state blends and
-  jerk-bounded profiles remain future work.
+  under the stated numerical assumptions. The four cases begin physical tracking
+  measurement; broader limit, timing-delay and fault-recovery acceptance,
+  moving-state blends and jerk-bounded profiles remain future work.
 
 ## How Genesis does it
 
