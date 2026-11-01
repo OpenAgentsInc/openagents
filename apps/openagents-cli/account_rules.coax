@@ -1,0 +1,264 @@
+// The account domain's decisions, with no host calls: which origin a profile
+// talks to, the machine name a login sends, the server's line answers, when a
+// device login stops polling, what logout may delete, and the login QR drawn
+// as text.
+//   coax/bin/coax test apps/openagents-cli/account_rules.coax --library
+//   coax/bin/coax mutate apps/openagents-cli/account_rules.coax --library
+#authority;
+
+AR_ORIGIN :: "https://openagents.com";
+AR_MACHINE_MAX :: 64;
+
+// An origin the CLI signs requests for: https and a host name (letters,
+// digits, '-' and '.'), an optional port, nothing after; or plain http to this
+// computer (127.0.0.1 or localhost, a port), for a local API.
+#test "origins" {
+  #assert ar_origin_ok("https://openagents.com") && ar_origin_ok("https://staging.openagents.com") && ar_origin_ok("https://a");
+  #assert ar_origin_ok("https://a-b.c9:8443") && ar_origin_ok("http://127.0.0.1:57000") && ar_origin_ok("http://localhost:8080");
+  #assert !ar_origin_ok("https://") && !ar_origin_ok("https://openagents.com/") && !ar_origin_ok("https://openagents.com/api");
+  #assert !ar_origin_ok("http://openagents.com") && !ar_origin_ok("http://127.0.0.1") && !ar_origin_ok("http://127.0.0.1:") && !ar_origin_ok("http://localhost");
+  #assert !ar_origin_ok("http://127.0.0.1:5x") && !ar_origin_ok("http://127.0.0.2:5") && !ar_origin_ok("ftp://a") && !ar_origin_ok("");
+  #assert !ar_origin_ok("https://Open.com") && !ar_origin_ok("https://a_b") && !ar_origin_ok("https://a b") && !ar_origin_ok("https://a@b");
+  #assert !ar_origin_ok("https://a:") && !ar_origin_ok("https://a:1:2") && !ar_origin_ok("https://:1") && ar_origin_ok("https://a:1");
+  #assert !ar_origin_ok("https://a:/") && !ar_origin_ok("https://a:123456") && ar_origin_ok("https://a:12345");
+  #assert ar_origin_ok("https://0.z") && !ar_origin_ok("https://a/") && !ar_origin_ok("https://a`") && !ar_origin_ok("https://a{");
+  #assert !ar_origin_ok("https://a,") && !ar_origin_ok("https://a/b") && !ar_origin_ok("https://-:") && ar_origin_ok("http://127.0.0.1:9");
+  #assert !ar_origin_ok("http://localhost:1:") && !ar_origin_ok("http://localhost:") && ar_origin_ok("https://z") && !ar_origin_ok("https://a:b");
+}
+ar_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+ar_starts :: (s: string, p: string) -> bool {
+  if s.count < p.count { return false; }
+  return s[0..<p.count] == p;
+}
+#test "helpers: digits and prefixes" {
+  #assert ar_digit('0') && ar_digit('9') && !ar_digit('/') && !ar_digit(':');
+  #assert ar_index(":a:", ':') == 0 && ar_index("a:b:", ':') == 1 && ar_index("ab", ':') == 2 && ar_index("", ':') == 0;
+  #assert ar_starts("ab", "ab") && ar_starts("abc", "ab") && !ar_starts("a", "ab") && !ar_starts("ac", "ab") && ar_starts("", "");
+}
+// The first index of c in s, or s.count.
+ar_index :: (s: string, c: u8) -> int {
+  for i: 0..<s.count { if s[i] == c { return i; } }
+  return s.count;
+}
+ar_port_ok :: (p: string) -> bool {
+  if p.count < 1 || p.count > 5 { return false; }
+  for c: p { if !ar_digit(c) { return false; } }
+  return true;
+}
+ar_origin_ok :: (o: string) -> bool {
+  if ar_starts(o, "https://") {
+    h := o[8..<o.count];
+    colon := ar_index(h, ':');   // where the host ends
+    if colon == 0 { return false; }
+    for c: h[0..<colon] { if !((c >= 'a' && c <= 'z') || ar_digit(c) || c == '-' || c == '.') { return false; } }
+    return colon == h.count || ar_port_ok(h[colon + 1..<h.count]);
+  }
+  for local: [2] string.["http://127.0.0.1:", "http://localhost:"] {
+    if ar_starts(o, local) { return ar_port_ok(o[local.count..<o.count]); }
+  }
+  return false;
+}
+
+// The machine name a login sends: printable ASCII, spaces kept inside, at
+// most 64 bytes; anything else becomes '-'. Empty: "cli".
+#test "machine names" {
+  out: [AR_MACHINE_MAX] u8;
+  #assert ar_machine("chris-mbp.local", out[..]) == "chris-mbp.local" && ar_machine("", out[..]) == "cli" && ar_machine("   ", out[..]) == "cli";
+  #assert ar_machine("  my box  ", out[..]) == "my box" && ar_machine("a\tb\nc", out[..]) == "a-b-c" && ar_machine("é", out[..]) == "--";
+  #assert ar_machine("~!", out[..]) == "~!" && ar_machine("a|b", out[..]) == "a|b";
+  long: [70] u8; big: [100] u8;
+  for i: 0..<70 { long[i] = 'x'; }
+  #assert ar_machine(cast(string) long[..], big[..]).count == 64 && ar_machine("abcdef", out[0..<3]) == "abc";
+  #assert ar_machine(" ab ", out[..]) == "ab" && ar_machine("ab ", out[..]) == "ab" && ar_machine(" ab", out[..]) == "ab";
+  del: [2] u8; del[0] = 'a'; del[1] = 127;
+  #assert ar_machine(cast(string) del[..], out[..]) == "a-";
+  us: [2] u8; us[0] = 31; us[1] = 'b';
+  #assert ar_machine(cast(string) us[..], out[..]) == "-b";
+}
+ar_machine :: (name: string, out: [] u8) -> string {
+  a := 0; b := name.count;
+  while a < b && name[a] == ' ' { a += 1; }
+  while b > a && name[b - 1] == ' ' { b -= 1; }
+  n := 0;
+  for i: a..<b {
+    if n == AR_MACHINE_MAX || n == out.count { break; }
+    c := name[i];
+    out[n] = ifx c >= 32 && c <= 126 then c else '-';
+    n += 1;
+  }
+  return ifx n == 0 then "cli" else cast(string) out[0..<n];
+}
+
+// The value of a "KEY value" line in an answer, or "" (the first such line).
+#test "line values" {
+  t := "state approved\naccount n-ab\nid|nostr|npub1x|cli:box\n";
+  #assert ar_line(t, "state") == "approved" && ar_line(t, "account") == "n-ab" && ar_line(t, "acc") == "" && ar_line(t, "id|nostr|npub1x|cli:box") == "";
+  #assert ar_line("code 00ff", "code") == "00ff" && ar_line("code", "code") == "" && ar_line("", "x") == "" && ar_line("x y\nx z\n", "x") == "y";
+  #assert ar_line("xcode 1\ncode 2\n", "code") == "2" && ar_line("code \n", "code") == "" && ar_line("code \ncode 2\n", "code") == "2";
+  #assert ar_line("a 1\nb 2", "b") == "2" && ar_line("\nk v", "k") == "v";
+}
+ar_line :: (body: string, key: string) -> string {
+  start := 0;
+  for i: 0..<body.count + 1 {
+    if i == body.count || body[i] == '\n' {
+      l := body[start..<i];
+      if l.count > key.count + 1 && l[0..<key.count] == key && l[key.count] == ' ' { return l[key.count + 1..<l.count]; }
+      start = i + 1;
+    }
+  }
+  return "";
+}
+
+// A device login's poll: go on while the server says waiting and there is
+// time; stop when it says approved or expired, or the time is up.
+AR_WAIT :: 0; AR_APPROVED :: 1; AR_EXPIRED :: 2; AR_TIMEOUT :: 3; AR_REFUSED :: 4;
+#test "a device login polls until approved, expired or out of time" {
+  #assert ar_poll(200, "waiting", 1000, 2000) == AR_WAIT && ar_poll(200, "waiting", 1999, 2000) == AR_WAIT;
+  #assert ar_poll(200, "waiting", 2000, 2000) == AR_TIMEOUT && ar_poll(200, "approved", 5000, 2000) == AR_APPROVED;
+  #assert ar_poll(200, "expired", 0, 2000) == AR_EXPIRED && ar_poll(200, "other", 0, 2000) == AR_REFUSED;
+  #assert ar_poll(404, "waiting", 0, 2000) == AR_REFUSED && ar_poll(401, "", 0, 2000) == AR_REFUSED;
+  // A failed request (no answer, 429, 5xx) is tried again while there is time.
+  #assert ar_poll(0, "", 0, 2000) == AR_WAIT && ar_poll(429, "", 0, 2000) == AR_WAIT && ar_poll(503, "", 0, 2000) == AR_WAIT && ar_poll(500, "", 0, 2000) == AR_WAIT;
+  #assert ar_poll(1, "", 0, 2000) == AR_REFUSED && ar_poll(0, "", 2000, 2000) == AR_TIMEOUT && ar_poll(499, "", 0, 2000) == AR_REFUSED && ar_poll(-3, "", 0, 2000) == AR_WAIT;
+}
+ar_poll :: (status: int, state: string, now_ms: int, deadline_ms: int) -> int {
+  if status == 200 && state == "approved" { return AR_APPROVED; }
+  if status == 200 && state == "expired" { return AR_EXPIRED; }
+  retry := status <= 0 || status == 429 || status >= 500;
+  if (status == 200 && state == "waiting") || retry { return ifx now_ms < deadline_ms then AR_WAIT else AR_TIMEOUT; }
+  return AR_REFUSED;
+}
+
+// Logout asks the server to unlink this key, then forgets it here. When the
+// key is its own account (409: the account's own key; 404: no account linked
+// it), forgetting it loses the account unless its words are kept: only --yes.
+AR_FORGET :: 0; AR_KEEP_OWN :: 1; AR_KEEP_ERROR :: 2;
+#test "logout forgets a linked key, and an account's own key only with --yes" {
+  #assert ar_logout(200, false) == AR_FORGET && ar_logout(200, true) == AR_FORGET;
+  #assert ar_logout(409, false) == AR_KEEP_OWN && ar_logout(404, false) == AR_KEEP_OWN && ar_logout(409, true) == AR_FORGET && ar_logout(404, true) == AR_FORGET;
+  #assert ar_logout(401, false) == AR_KEEP_ERROR && ar_logout(0, false) == AR_KEEP_ERROR && ar_logout(500, true) == AR_KEEP_ERROR && ar_logout(429, true) == AR_KEEP_ERROR;
+}
+ar_logout :: (status: int, yes: bool) -> int {
+  if status == 200 { return AR_FORGET; }
+  if status == 409 || status == 404 { return ifx yes then AR_FORGET else AR_KEEP_OWN; }
+  return AR_KEEP_ERROR;
+}
+
+// The login link: origin + /login/device#code= + the 32-hex code; "" for a
+// code that isn't one.
+#test "the login link" {
+  out: [300] u8;
+  #assert ar_link("https://openagents.com", "00112233445566778899aabbccddeeff", out[..]) == "https://openagents.com/login/device#code=00112233445566778899aabbccddeeff";
+  #assert ar_link("https://a", "00112233445566778899aabbccddeef", out[..]) == "" && ar_link("https://a", "00112233445566778899aabbccddeefg", out[..]) == "";
+  #assert ar_link("https://a", "0011223344556677889/aabbccddeeff", out[..]) == "" && ar_link("https://a", "0011223344556677889:aabbccddeeff", out[..]) == "";
+  #assert ar_hex32("00112233445566778899aabbccddeeff") && !ar_hex32("00112233445566778899aabbccddeefg") && !ar_hex32("0011223344556677889`aabbccddeeff");
+  #assert ar_link("https://a", "0011223344556677889`aabbccddeeff", out[..]) == "" && ar_link("https://a", "00112233445566778899aabbccddeeff", out[0..<40]) == "";
+  #assert ar_link("https://a", "00112233445566778899aabbccddeeff", out[0..<60]) != "" && ar_link("https://a", "00112233445566778899aabbccddeeff", out[0..<59]) == "";
+}
+// 32 lowercase hex: a device code, an invite code.
+ar_hex32 :: (code: string) -> bool {
+  if code.count != 32 { return false; }
+  for c: code { if !(ar_digit(c) || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+ar_link :: (origin: string, code: string, out: [] u8) -> string {
+  if !ar_hex32(code) { return ""; }
+  mid := "/login/device#code=";
+  n := origin.count + mid.count + 32;
+  if n > out.count { return ""; }
+  for i: 0..<origin.count { out[i] = origin[i]; }
+  for i: 0..<mid.count { out[origin.count + i] = mid[i]; }
+  for i: 0..<32 { out[origin.count + mid.count + i] = code[i]; }
+  return cast(string) out[0..<n];
+}
+
+// A QR grid (one byte a module, 1 dark, size x size) as text, two module rows
+// a line with half blocks, in a two-module light margin. The light modules are
+// the blocks and a dark one is a space, for a terminal's dark background (as
+// qrencode -t UTF8 draws). Its length, or -1 when out is short.
+AR_UPPER :: "▀";
+#test "a QR grid as half-block text" {
+  g: [4] u8;
+  g[0] = 1; g[1] = 0; g[2] = 0; g[3] = 1;
+  out: [400] u8;
+  // 2 modules + 4 margin = 6 columns; 6 rows, two a line: 3 lines. Light is a block, dark a space.
+  n := ar_qr_text(g[..], 2, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "██████\n██▄▀██\n██████\n";
+  g[2] = 1;   // both dark in the first column
+  n = ar_qr_text(g[..], 2, out[..]);
+  #assert cast(string) out[0..<n] == "██████\n██ ▀██\n██████\n";
+  #assert ar_qr_text(g[..], 2, out[0..<n]) == n && ar_qr_text(g[..], 2, out[0..<n - 1]) == -1 && ar_qr_text(g[..], 2, out[0..<n - 2]) == -1;
+  #assert ar_qr_text(g[0..<3], 2, out[..]) == -1 && ar_qr_text(g[..], 0, out[..]) == -1;
+  one: [1] u8; one[0] = 1;
+  // An odd width (5): the last line's bottom half is past the edge, printed light-less.
+  n = ar_qr_text(one[..], 1, out[..]);
+  #assert cast(string) out[0..<n] == "█████\n██▄██\n▀▀▀▀▀\n";
+  g9: [9] u8;
+  for i: 0..<9 { g9[i] = cast(u8) (ifx i == 4 then 1 else 0); }
+  n = ar_qr_text(g9[..], 3, out[..]);
+  #assert cast(string) out[0..<n] == "███████\n███▀███\n███████\n▀▀▀▀▀▀▀\n";
+}
+ar_dark :: (grid: [] u8, size: int, x: int, y: int) -> bool {
+  return x >= 2 && y >= 2 && x < size + 2 && y < size + 2 && grid[(y - 2) * size + (x - 2)] == 1;
+}
+ar_qr_text :: (grid: [] u8, size: int, out: [] u8) -> int {
+  if size < 1 || grid.count != size * size { return -1; }
+  w := size + 4; n := 0;
+  y := 0;
+  while y < w {
+    for x: 0..<w {
+      top := !ar_dark(grid, size, x, y); bottom := y + 1 < w && !ar_dark(grid, size, x, y + 1);
+      glyph := ifx top && bottom then "█" else ifx top then "▀" else ifx bottom then "▄" else " ";
+      for c: glyph { if n == out.count { return -1; } out[n] = c; n += 1; }
+    }
+    if n == out.count { return -1; }
+    out[n] = '\n'; n += 1;
+    y += 2;
+  }
+  return n;
+}
+
+// A JSON string, quotes included: '"' and '\' escaped, control bytes as \u00XX.
+// Its length, or -1 when out is short.
+#test "JSON strings" {
+  out: [64] u8;
+  n := ar_json_str("a\"b\\c", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "\"a\\\"b\\\\c\"";
+  n = ar_json_str("x\ny", out[..]);
+  #assert cast(string) out[0..<n] == "\"x\\u000ay\"";
+  us: [2] u8; us[0] = 31; us[1] = 32;
+  n = ar_json_str(cast(string) us[..], out[..]);
+  #assert cast(string) out[0..<n] == "\"\\u001f \"";
+  n = ar_json_str("", out[..]);
+  #assert cast(string) out[0..<n] == "\"\"";
+  #assert ar_json_str("ab", out[0..<4]) == 4 && ar_json_str("ab", out[0..<3]) == -1 && ar_json_str("", out[0..<1]) == -1;
+  #assert ar_json_str("\n", out[0..<8]) == 8 && ar_json_str("\n", out[0..<7]) == -1 && ar_json_str("\"", out[0..<4]) == 4 && ar_json_str("\"", out[0..<3]) == -1;
+  #assert ar_json_str("é", out[..]) == 4;
+}
+ar_json_str :: (s: string, out: [] u8) -> int {
+  digits := "0123456789abcdef";
+  n := 0;
+  for at: 0..<s.count + 2 {
+    quote := at == 0 || at == s.count + 1;
+    c := ifx quote then cast(u8) '"' else s[at - 1];
+    esc: [6] u8; k := 1;
+    esc[0] = c;
+    if !quote && (c == '"' || c == '\\') { esc[0] = '\\'; esc[1] = c; k = 2; }
+    if c < 32 { esc[0] = '\\'; esc[1] = 'u'; esc[2] = '0'; esc[3] = '0'; esc[4] = digits[cast(int) (c >> 4)]; esc[5] = digits[cast(int) (c & 15)]; k = 6; }
+    for i: 0..<k { if n == out.count { return -1; } out[n] = esc[i]; n += 1; }
+  }
+  return n;
+}
+
+// A time in milliseconds as the server writes it: 1 to 15 digits, or -1.
+#test "milliseconds" {
+  #assert ar_ms("0") == 0 && ar_ms("7") == 7 && ar_ms("1793556316731") == 1793556316731;
+  #assert ar_ms("999999999999999") == 999999999999999 && ar_ms("1000000000000000") == -1;
+  #assert ar_ms("") == -1 && ar_ms("12a") == -1 && ar_ms("-1") == -1 && ar_ms("/") == -1 && ar_ms(":") == -1;
+}
+ar_ms :: (s: string) -> int {
+  if s.count < 1 || s.count > 15 { return -1; }
+  v := 0;
+  for c: s { if !ar_digit(c) { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}

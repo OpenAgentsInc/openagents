@@ -1,10 +1,16 @@
 // The CLI's account domain and its HTTPS calls (coax/lib/net/http.coax).
 //
+//   openagents login | logout | whoami | account keys | access ...   (below)
 //   openagents http METHOD URL [--header 'K: V']... [--body FILE] [--redirects N] [--timeout MS]
 //       hidden: one request, printing `status N` and the body (a check of the client)
 #load "../../coax/lib/net/http.coax";
+#load "../../coax/lib/nostr/nip98_sign.coax";
+#load "../../coax/lib/qr/qr-memory.coax";
+#load "account_rules.coax";
 
 CLI_HTTP_MS :: 15000;
+ACCT_QR_GRID :: 6000;    // version 15 is 77 x 77 modules
+ACCT_QR_TEXT :: 12000;   // half blocks, 3 bytes each, plus margins
 
 // Every --header's value, in order, into out; their count, or -1 past out.
 cli_headers :: (a: [] Args, out: [] string) -> int {
@@ -48,5 +54,318 @@ cli_http :: (a: [] Args, r: [] Rep) -> int {
   rep_int(r, "redirects", res.redirects);
   rep_str(r, "content_type", http_header(cast(string) w[0].head[0..<w[0].head_n], "content-type"));
   rep_str(r, "body", cast(string) out[0..<res.n]);
+  return rep_done(r, EXIT_OK);
+}
+
+// ---- the account: login, logout, whoami, keys, access -------------------------
+// (docs/cli/2026-11-01-openagents-cli-v1.md, "Accounts and keys"). Every call is
+// signed with this profile's key (coax/lib/nostr/nip98_sign.coax): the server
+// takes a NIP-98 signature as its key's account. The key is never printed.
+
+account_usage :: () {
+  print("%\n", "Account (https://openagents.com, or --origin; a login keeps its origin for the profile):");
+  print("%\n", "  login [--machine NAME] [--poll SECONDS]   approve this computer in a browser: a link and a QR code");
+  print("%\n", "  login --words | --key-stdin              log in with your 12 words or a secret, from stdin");
+  print("%\n", "  logout [--yes]                           unlink this computer's key, then forget it here");
+  print("%\n", "  whoami                                   the account and its keys, as the server sees this key");
+  print("%\n", "  account keys                             the keys linked to the account, this one marked");
+  print("%\n", "  access | access redeem CODE | access request TEXT [--contact C]   making realms: invites");
+  print("%\n", "");
+}
+
+AcctCall :: struct { w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int; status: int; error: int; }
+
+acct_body :: (c: [] AcctCall) -> string { return cast(string) c[0].out[0..<c[0].n]; }
+
+origin_file :: (profile: string, out: [] u8) -> string {
+  d: [1024] u8; o: [1024] u8;
+  return fs_join(fs_join(cli_dir(d[..]), "origins", o[..]), profile, out);
+}
+// The origin: --origin, else the one this profile logged in to, else openagents.com. "" when --origin is bad.
+acct_origin :: (a: [] Args, profile: string, out: [] u8) -> string {
+  if args_has(a, "--origin") {
+    o := args_value(a, "--origin", "");
+    return ifx ar_origin_ok(o) then o else "";
+  }
+  p: [1024] u8; text: [300] u8;
+  path := origin_file(profile, p[..]);
+  if fs_kind(path) == FS_FILE {
+    n := fs_read(path, text[..]);
+    e := n;
+    while e > 0 && (text[e - 1] == '\n' || text[e - 1] == ' ') { e -= 1; }
+    if n > 0 && ar_origin_ok(cast(string) text[0..<e]) { m := copy(cast(string) text[0..<e], out); return cast(string) out[0..<m]; }
+  }
+  return AR_ORIGIN;
+}
+save_origin :: (profile: string, origin: string) -> bool {
+  d: [1024] u8; od: [1024] u8; p: [1024] u8; line: [300] u8;
+  base := cli_dir(d[..]);
+  dir := fs_join(base, "origins", od[..]);
+  if base.count == 0 || dir.count == 0 || cxcli_mkdir_private(d[0..<base.count]) != 0 || cxcli_mkdir_private(od[0..<dir.count]) != 0 { return false; }
+  n := copy(origin, line[..]);
+  if n < 0 || n == line.count { return false; }
+  line[n] = '\n';
+  path := origin_file(profile, p[..]);
+  return path.count > 0 && cxcli_write_private(p[0..<path.count], line[0..<n + 1]) == 0;
+}
+
+// One request to origin + path, signed with secret (a NIP-98 header bound to the body unless a GET).
+acct_call :: (c: [] AcctCall, secret: [] u8, origin: string, method: string, path: string, body: string) -> int {
+  url: [2400] u8;
+  u := copy(origin, url[..]);
+  v := copy(path, url[u..<url.count]);
+  if u < 0 || v < 0 { c[0].status = 0; c[0].error = HTTP_E_URL; c[0].n = 0; return 0; }
+  full := cast(string) url[0..<u + v];
+  aux: [32] u8; nonce: [16] u8; auth: [N98S_HEADER + 16] u8; bb: [8192] u8;
+  bn := copy(body, bb[..]);
+  pre := copy("Authorization: ", auth[..]);
+  if bn < 0 || cxrand_draw(aux[..], 32) != 0 || cxrand_draw(nonce[..], 16) != 0 { c[0].status = 0; c[0].error = HTTP_E_REQUEST; c[0].n = 0; return 0; }
+  an := n98s_header(secret, aux[..], nonce[..], cxcli_now_s(), full, method, bb[0..<bn], method != "GET", auth[pre..<auth.count]);
+  wipe(aux[..]);
+  if an < 0 { c[0].status = 0; c[0].error = HTTP_E_REQUEST; c[0].n = 0; return 0; }
+  hs: [2] string;
+  hs[0] = cast(string) auth[0..<pre + an]; hs[1] = "Content-Type: application/json";
+  res := http_do(c[0].w[..], method, full, hs[0..<ifx bn > 0 then 2 else 1], body, CLI_HTTP_MS, 0, c[0].out[..]);
+  c[0].error = res.error; c[0].n = ifx res.error == HTTP_OK then res.n else 0;
+  c[0].status = ifx res.error == HTTP_OK then res.code else 0;
+  return c[0].status;
+}
+// A failed call: no answer, or the server's words (its {"error"} or first line) and the exit code of its status.
+acct_fail :: (r: [] Rep, c: [] AcctCall, doing: string) -> int {
+  if c[0].status == 0 {
+    m: [300] u8; n := copy(doing, m[..]); k := copy(": ", m[n..<m.count]); e := copy(http_error_text(c[0].error), m[n + k..<m.count]);
+    return fail(r, EXIT_FAIL, ifx e < 0 then doing else cast(string) m[0..<n + k + e]);
+  }
+  b := acct_body(c[..]);
+  at := 0;
+  for i: 0..<b.count - 9 { if i >= 0 && b[i..<i + 10] == "\"error\": \"" { at = i + 10; break; } }
+  if at == 0 { for i: 0..<b.count - 8 { if i >= 0 && b[i..<i + 9] == "\"error\":\"" { at = i + 9; break; } } }
+  e := at;
+  if at > 0 { while e < b.count && b[e] != '"' { e += 1; } } else { while e < b.count && b[e] != '\n' { e += 1; } }
+  why := b[at..<e];
+  return fail(r, cli_exit_of(c[0].status), ifx why.count > 0 then why else doing);
+}
+
+// The key: this profile's, or a new one made and kept for it (made: true).
+acct_key :: (profile: string, k: [] Key, made: [] bool) -> bool {
+  made[0] = false;
+  if load_key(profile, k[..]) { return true; }
+  for tries: 0..<4 {
+    if cxrand_draw(k[0].secret[..], 32) != 0 { return false; }
+    pub: [33] u8;
+    if bip32_public(k[0].secret[..], pub[..]) {
+      if store_key(profile, k[0].secret[..]) == "" { wipe(k[0].secret[..]); return false; }
+      k[0].ok = true; k[0].from = "new"; made[0] = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+// whoami (keys: account keys): GET /api/auth/v2/me with this key.
+cli_whoami :: (a: [] Args, r: [] Rep, profile: string, keys: bool) -> int {
+  ob: [300] u8;
+  origin := acct_origin(a, profile, ob[..]);
+  if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile: run `openagents login`"); }
+  c: [1] AcctCall;
+  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/v2/me", "");
+  np: [80] u8; npn := npub_of(k[0].secret[..], np[..]); hx: [64] u8; ok := pubkey_hex(k[0].secret[..], hx[..]);
+  wipe(k[0].secret[..]);
+  if st != 200 { return acct_fail(r, c[..], "asking who this key is"); }
+  me := npub_text(np[..], npn);
+  rep_str(r, "origin", origin);
+  rep_str(r, "profile", profile);
+  rep_str(r, "account", ar_line(acct_body(c[..]), "account"));
+  if !keys { rep_str(r, "npub", me); if ok { rep_str(r, "pubkey", cast(string) hx[..]); } }
+  // The identities, "kind value [label]", this key's marked.
+  list: [8192] u8; ln := 0; count := 0;
+  b := acct_body(c[..]); start := 0;
+  for i: 0..<b.count + 1 {
+    if i < b.count && b[i] != '\n' { continue; }
+    l := b[start..<i]; start = i + 1;
+    if l.count < 4 || l[0..<3] != "id|" { continue; }
+    j: [600] u8; jn := ar_json_str(l[3..<l.count], j[..]);
+    if jn < 0 || ln + jn + 2 > list.count { continue; }
+    if count > 0 { list[ln] = ','; ln += 1; }
+    for x: 0..<jn { list[ln + x] = j[x]; }
+    ln += jn; count += 1;
+    if !r[0].json { mark := ifx me.count > 0 && acct_has(l, me) then "  (this computer)" else ""; print_id(l[3..<l.count], mark); }
+  }
+  if r[0].json {
+    arr: [8200] u8; arr[0] = '['; for x: 0..<ln { arr[1 + x] = list[x]; } arr[1 + ln] = ']';
+    rep_raw(r, "identities", cast(string) arr[0..<ln + 2]);
+  }
+  return rep_done(r, EXIT_OK);
+}
+npub_text :: (np: [] u8, n: int) -> string { return ifx n > 0 then cast(string) np[0..<n] else ""; }
+acct_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+print_id :: (id: string, mark: string) {
+  // "nostr|npub1...|cli:box" -> "id nostr npub1... cli:box"
+  out: [700] u8; n := copy("id ", out[..]);
+  for c: id { if n < out.count - 1 { out[n] = ifx c == '|' then cast(u8) ' ' else c; n += 1; } }
+  print("%", cast(string) out[0..<n]); print("%\n", mark);
+}
+
+// login: device approval, or --words / --key-stdin.
+cli_login :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  ob: [300] u8;
+  origin := acct_origin(a, profile, ob[..]);
+  if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
+  words := args_has(a, "--words"); stdin := args_has(a, "--key-stdin");
+  if words && stdin { return fail(r, EXIT_USAGE, "--words or --key-stdin, not both"); }
+  c: [1] AcctCall;
+  if words || stdin {
+    key: [32] u8;
+    code := read_secret(r, words, key[..]);
+    if code >= 0 { return code; }
+    store := store_key(profile, key[..]);
+    if store == "" { wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
+    st := acct_call(c[..], key[..], origin, "GET", "/api/auth/v2/me", "");
+    wipe(key[..]);
+    if st != 200 { return acct_fail(r, c[..], "the key is kept; asking the server who it is"); }
+    if !save_origin(profile, origin) { return fail(r, EXIT_FAIL, "could not keep the origin"); }
+    rep_str(r, "account", ar_line(acct_body(c[..]), "account"));
+    rep_str(r, "origin", origin); rep_str(r, "profile", profile); rep_str(r, "store", store);
+    return rep_done(r, EXIT_OK);
+  }
+  k: [1] Key; made: [1] bool;
+  if !acct_key(profile, k[..], made[..]) { return fail(r, EXIT_FAIL, "could not make or keep a key for this profile"); }
+  if made[0] { tool_errln("openagents: made a new key for this computer (kept in ~/.openagents/cli/keys)"); }
+  // Already some account's other than the key's own: say so and stop.
+  st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/v2/me", "");
+  hx: [64] u8; own: [80] u8; on := 0;
+  if pubkey_hex(k[0].secret[..], hx[..]) { on = copy("n-", own[..]); for x: 0..<64 { own[on + x] = hx[x]; } on += 64; }
+  acct := ar_line(acct_body(c[..]), "account");
+  if st == 200 && acct.count > 0 && acct != cast(string) own[0..<on] && !args_has(a, "--again") {
+    wipe(k[0].secret[..]);
+    if !save_origin(profile, origin) { return fail(r, EXIT_FAIL, "could not keep the origin"); }
+    rep_str(r, "account", acct); rep_str(r, "origin", origin); rep_str(r, "profile", profile); rep_bool(r, "already", true);
+    return rep_done(r, EXIT_OK);
+  }
+  // Ask, show the link and its QR, then wait for APPROVE.
+  hn: [256] u8; hl := cxcli_hostname(hn[..]); mb: [AR_MACHINE_MAX] u8;
+  machine := ar_machine(args_value(a, "--machine", ifx hl > 0 then cast(string) hn[0..<hl] else ""), mb[..]);
+  body: [200] u8; bn := copy("{\"machine\":", body[..]);
+  jn := ar_json_str(machine, body[bn..<body.count]); bn += jn;
+  body[bn] = '}'; bn += 1;
+  st = acct_call(c[..], k[0].secret[..], origin, "POST", "/api/auth/v2/device/start?as=lines", cast(string) body[0..<bn]);
+  if st != 200 { wipe(k[0].secret[..]); return acct_fail(r, c[..], "asking to log in"); }
+  idb: [32] u8; cb: [32] u8; lb: [400] u8;
+  idn := copy(ar_line(acct_body(c[..]), "id"), idb[..]); cn := copy(ar_line(acct_body(c[..]), "code"), cb[..]);
+  expires := ar_ms(ar_line(acct_body(c[..]), "expires_ms"));
+  link := ar_link(origin, ifx cn == 32 then cast(string) cb[..] else "", lb[..]);
+  if idn != 16 || link == "" || expires < 0 { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "the server's answer was not a login request"); }
+  id := cast(string) idb[0..<idn];
+  tool_errln("");
+  tool_err("Open this link where you are logged in to OpenAgents, and press APPROVE:\n\n  ");
+  tool_errln(link);
+  q: [ACCT_QR_GRID] u8; qt: [ACCT_QR_TEXT] u8;
+  qr := qr_encode(lb[0..<link.count], q[..]);
+  if qr.status == 0 {
+    tn := ar_qr_text(q[0..<qr.size * qr.size], qr.size, qt[..]);
+    if tn > 0 { tool_errln(""); tool_err(cast(string) qt[0..<tn]); }
+  }
+  tool_err("\nThe computer: "); tool_errln(machine);
+  tool_errln("Waiting for APPROVE (Ctrl-C stops; the link works for ten minutes).");
+  now := cxcli_now_s() * 1000;
+  limit := text_int(args_value(a, "--poll", "600"));
+  if limit < 1 { limit = 600; }
+  deadline := ifx now + limit * 1000 < expires then now + limit * 1000 else expires;
+  pp: [64] u8; pn := copy("/api/auth/v2/device/", pp[..]); pn += copy(id, pp[pn..<pp.count]); pn += copy("?as=lines", pp[pn..<pp.count]);
+  state := AR_WAIT;
+  while state == AR_WAIT {
+    proc_sleep(2000);
+    st = acct_call(c[..], k[0].secret[..], origin, "GET", cast(string) pp[0..<pn], "");
+    state = ar_poll(st, ar_line(acct_body(c[..]), "state"), cxcli_now_s() * 1000, deadline);
+  }
+  wipe(k[0].secret[..]);
+  if state == AR_APPROVED {
+    if !save_origin(profile, origin) { return fail(r, EXIT_FAIL, "logged in, but could not keep the origin"); }
+    rep_str(r, "account", ar_line(acct_body(c[..]), "account"));
+    rep_str(r, "machine", machine); rep_str(r, "origin", origin); rep_str(r, "profile", profile);
+    return rep_done(r, EXIT_OK);
+  }
+  if state == AR_EXPIRED || state == AR_TIMEOUT { return fail(r, EXIT_AUTH, "not approved in time: run openagents login again"); }
+  return acct_fail(r, c[..], "waiting for APPROVE");
+}
+
+// logout: unlink this key from its account, then forget it here.
+cli_logout :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  ob: [300] u8;
+  origin := acct_origin(a, profile, ob[..]);
+  if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile"); }
+  if k[0].from == "env" { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "OPENAGENTS_NSEC is set: nothing is kept to log out of"); }
+  hx: [64] u8; body: [120] u8;
+  if !pubkey_hex(k[0].secret[..], hx[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "this profile's key is not a good key"); }
+  bn := copy("{\"pubkey\":\"", body[..]); for x: 0..<64 { body[bn + x] = hx[x]; } bn += 64; bn += copy("\"}", body[bn..<body.count]);
+  c: [1] AcctCall;
+  st := acct_call(c[..], k[0].secret[..], origin, "POST", "/api/auth/v2/unlink", cast(string) body[0..<bn]);
+  wipe(k[0].secret[..]);
+  plan := ar_logout(st, args_has(a, "--yes"));
+  if plan == AR_KEEP_OWN { return fail(r, EXIT_CONFLICT, "this key is its own account, not linked to another: forgetting it loses that account unless you kept its words. Add --yes to forget it anyway"); }
+  if plan == AR_KEEP_ERROR { return acct_fail(r, c[..], "unlinking this key"); }
+  acct: [64] u8; p: [1024] u8;
+  if keychain_on() { an := keychain_account(profile, acct[..]); gone := cxcli_keychain_remove(acct[0..<an]); }
+  path := key_file(profile, p[..]);
+  if fs_kind(path) == FS_FILE && !fs_remove(path) { return fail(r, EXIT_FAIL, "unlinked, but could not delete the key file"); }
+  rep_bool(r, "unlinked", st == 200);
+  rep_bool(r, "forgot", true);
+  rep_str(r, "profile", profile);
+  return rep_done(r, EXIT_OK);
+}
+
+// access: whether this account may make realms; redeem an invite; ask for one.
+cli_access :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  ob: [300] u8;
+  origin := acct_origin(a, profile, ob[..]);
+  if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile: run `openagents login`"); }
+  c: [1] AcctCall; body: [4200] u8; bn := 0; st := 0;
+  if verb == "" {
+    st = acct_call(c[..], k[0].secret[..], origin, "GET", "/api/playtest/access", "");
+  } else if verb == "redeem" {
+    code := positional(a, 2);
+    if !ar_hex32(code) { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "access redeem CODE: the 32 letters and digits after #code= in the invite link"); }
+    bn = copy("{\"code\":\"", body[..]); bn += copy(code, body[bn..<body.count]); bn += copy("\"}", body[bn..<body.count]);
+    st = acct_call(c[..], k[0].secret[..], origin, "POST", "/api/playtest/access/redeem?as=lines", cast(string) body[0..<bn]);
+  } else if verb == "request" {
+    note := positional(a, 2);
+    if note == "" { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "access request TEXT [--contact C]: say what you would make"); }
+    bn = copy("{\"note\":", body[..]);
+    j := ar_json_str(note, body[bn..<body.count]);
+    if j < 0 { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "that note is too long"); }
+    bn += j;
+    if args_has(a, "--contact") {
+      bn += copy(",\"contact\":", body[bn..<body.count]);
+      j = ar_json_str(args_value(a, "--contact", ""), body[bn..<body.count]);
+      if j < 0 { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "that contact is too long"); }
+      bn += j;
+    }
+    body[bn] = '}'; bn += 1;
+    st = acct_call(c[..], k[0].secret[..], origin, "POST", "/api/playtest/access/request?as=lines", cast(string) body[0..<bn]);
+  } else {
+    wipe(k[0].secret[..]);
+    return fail(r, EXIT_USAGE, "access | access redeem CODE | access request TEXT [--contact C]");
+  }
+  wipe(k[0].secret[..]);
+  if st != 200 { return acct_fail(r, c[..], "asking about access"); }
+  // The answer's "key value" lines, as the report.
+  b := acct_body(c[..]); start := 0;
+  for i: 0..<b.count + 1 {
+    if i < b.count && b[i] != '\n' { continue; }
+    l := b[start..<i]; start = i + 1;
+    sp := 0;
+    while sp < l.count && l[sp] != ' ' { sp += 1; }
+    if sp > 0 && sp < l.count { rep_str(r, l[0..<sp], l[sp + 1..<l.count]); }
+  }
   return rep_done(r, EXIT_OK);
 }

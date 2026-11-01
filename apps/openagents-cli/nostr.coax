@@ -6,7 +6,7 @@ nostr_usage :: () {
   print("%\n", "Identity (Nostr, NIP-06):");
   print("%\n", "  nostr new [--force]              make a key from 12 new words; the words are shown once");
   print("%\n", "  nostr import --words | --nsec    read 12 words or an nsec/hex secret from stdin");
-  print("%\n", "  nostr show                       your npub and public key (also: openagents whoami)");
+  print("%\n", "  nostr show                       your npub and public key (openagents whoami asks the server too)");
   print("%\n", "  nostr forget --yes               delete this profile's stored key");
   print("%\n", "  nostr sign --content TEXT [--kind N] [--tags JSON]   print a signed event");
   print("%\n", "  nostr auth URL [--method M] [--body FILE]            print a NIP-98 Authorization header");
@@ -130,8 +130,20 @@ nostr_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
 nostr_import :: (a: [] Args, r: [] Rep, profile: string) -> int {
   words := args_has(a, "--words");
   if words == args_has(a, "--nsec") { return fail(r, EXIT_USAGE, "say --words (12 words) or --nsec (nsec1... or 64 hex), then give it on stdin"); }
+  key: [32] u8;
+  code := read_secret(r, words, key[..]);
+  if code >= 0 { return code; }
+  store := store_key(profile, key[..]);
+  if store == "" { wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
+  report_identity(r, profile, key[..], store);
+  wipe(key[..]);
+  return rep_done(r, EXIT_OK);
+}
+// Reads 12 or 24 words (words) or an nsec/hex secret from stdin into key: -1, or
+// the exit code of the failure it reported. Never echoed on a terminal.
+read_secret :: (r: [] Rep, words: bool, key: [] u8) -> int {
   if cxcli_isatty(0) == 1 { tool_err(ifx words then "words: " else "secret: "); }
-  line: [512] u8; key: [32] u8;
+  line: [512] u8;
   n := cxcli_read_line(line[..], 1);
   if n <= 0 { wipe(line[..]); return fail(r, EXIT_USAGE, "nothing on stdin"); }
   ok := false;
@@ -148,11 +160,7 @@ nostr_import :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if !ok { wipe(line[..]); return fail(r, EXIT_USAGE, "that is not an nsec1... or 64-hex secret"); }
   }
   wipe(line[..]);
-  store := store_key(profile, key[..]);
-  if store == "" { wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
-  report_identity(r, profile, key[..], store);
-  wipe(key[..]);
-  return rep_done(r, EXIT_OK);
+  return -1;
 }
 
 nostr_show :: (r: [] Rep, profile: string) -> int {

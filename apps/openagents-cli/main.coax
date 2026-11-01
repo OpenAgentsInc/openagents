@@ -31,6 +31,7 @@
 CLI_VERSION :: "1.0.0-dev";
 
 cxcli_now_s :: () -> int #foreign;
+cxcli_hostname :: (out: [] u8) -> int #foreign;
 cxcli_isatty :: (fd: int) -> int #foreign;
 cxcli_read_line :: (out: [] u8, hide: int) -> int #foreign;
 cxcli_read_stdin :: (out: [] u8) -> int #foreign;
@@ -51,6 +52,7 @@ usage :: () {
   nostr_usage();
   pylon_usage();
   project_usage();
+  account_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
@@ -76,7 +78,12 @@ tool_main :: () -> int #export_c {
   verb := positional(a[..], 1);
   if domain == "" || domain == "help" || args_has(a[..], "--help") || domain == "-h" { usage(); return ifx domain == "" && !args_has(a[..], "--help") then EXIT_USAGE else EXIT_OK; }
   if domain == "version" { rep_str(r[..], "openagents", CLI_VERSION); return rep_done(r[..], EXIT_OK); }
-  if domain == "whoami" { return nostr_show(r[..], profile); }
+  // Account: login, logout, whoami, account keys, access (account.coax).
+  if domain == "login" { return cli_login(a[..], r[..], profile); }
+  if domain == "logout" { return cli_logout(a[..], r[..], profile); }
+  if domain == "whoami" { return cli_whoami(a[..], r[..], profile, false); }
+  if domain == "account" { return ifx verb == "keys" then cli_whoami(a[..], r[..], profile, true) else fail(r[..], EXIT_USAGE, "account keys"); }
+  if domain == "access" { return cli_access(a[..], r[..], profile, verb); }
   // One line per domain; each domain file dispatches its own verbs.
   if domain == "nostr" { return nostr_main(a[..], r[..], profile, verb); }
   if domain == "pylon" { return pylon_main(a[..], r[..], profile, verb); }

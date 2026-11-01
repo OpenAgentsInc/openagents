@@ -24,7 +24,7 @@ compiler; on Linux, TLS comes from OpenSSL through Nix
 openagents nostr new                         # 12 new words (shown once) and their NIP-06 key
 openagents nostr import --words < words.txt  # or type them; nothing goes in argv
 openagents nostr import --nsec               # an nsec1... or 64-hex secret on stdin
-openagents whoami                            # npub, public key, where the key is kept
+openagents nostr show                        # npub, public key, where the key is kept
 openagents nostr sign --content "hi" [--kind 1] [--tags '[["t","coax"]]']
 openagents nostr auth https://openagents.com/api/v1/systemone --body request.json
 openagents nostr forget --yes
@@ -47,6 +47,27 @@ openagents nostr forget --yes
 curl -H "Authorization: $(openagents nostr auth https://openagents.com/api/v1/systemone --body d.json)" \
      -H 'Content-Type: application/json' --data-binary @d.json https://openagents.com/api/v1/systemone
 ```
+
+## Account
+
+```sh
+openagents login                             # a link and a QR code; press APPROVE where you're logged in
+openagents login --words < words.txt         # or --key-stdin: an nsec/hex secret on stdin
+openagents whoami                            # the account and its keys, as the server sees this key
+openagents account keys                      # the same keys, this computer's marked
+openagents access                            # may this account make realms (invites)
+openagents access redeem CODE                # the 32 characters after #code= in an invite link
+openagents access request "what I'd make" [--contact C]
+openagents logout                            # unlink this key, then delete it here
+openagents --origin https://staging.openagents.com login   # a profile keeps the origin it logged in to
+```
+
+- Every call is NIP-98 signed with the profile's key
+  (`coax/lib/nostr/nip98_sign.coax`); the server takes the signature as its
+  key's account. The key never leaves the 0600 file except as signatures.
+- `login` makes a key for the profile when it has none.
+- `logout` keeps a key that is its own account (nothing linked it) unless
+  you add `--yes`.
 
 ## Relays
 
@@ -153,14 +174,15 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `nostr.coax` | the `nostr` domain: identity, signing, NIP-98, publish and req |
 | `relay.coax` | the relay client: connect, NIP-42 AUTH, one REQ to EOSE, publish and OK |
 | `pylon.coax` | the `pylon` domain: start, stop, status, logs; claim, unclaim and list over the relay ([xp_keys.coax](../../coax/lib/nostr/xp_keys.coax) and [beacon.coax](../../psionic/lib/pylon/beacon.coax) decide) |
-| `account.coax` | HTTPS calls through `coax/lib/net/http.coax`; the hidden `http METHOD URL` check |
+| `account.coax` | login, logout, whoami, account keys, access: signed HTTPS calls through `coax/lib/net/http.coax`; the hidden `http METHOD URL` check |
+| `account_rules.coax` | `#authority`: origins, machine names, a device login's poll states, logout's plan, JSON strings, the terminal QR text |
 | `project.coax` | the `project` domain: the config, the key, reading and folding the relay, `list` and `show` |
 | `project-write.coax` | claim, release, note, plan, done, status, move and respread, signed with the project key |
 | `project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
 | `project-review.coax` | `review`: an independent review file signed with the reviewer's key |
 | `project-rules.coax` | `#authority`: hashes, slugs, standing, claims, plans, ranks, the order, relay paging |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
-| `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, process liveness, the executable's path |
+| `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, the host name, process liveness, the executable's path |
 | `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |
 
 A new domain goes in its own file with a `DOMAIN_main` dispatch, one
@@ -174,4 +196,7 @@ coax/bin/coax test apps/openagents-cli/rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/rules.coax --library    # 295 mutants, 0 survivors (2026-11-01)
 coax/bin/coax test apps/openagents-cli/project-rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/project-rules.coax --library    # 750 mutants, 0 survivors (2026-11-01)
+coax/bin/coax test apps/openagents-cli/account_rules.coax --library
+coax/bin/coax mutate apps/openagents-cli/account_rules.coax --library   # 0 survivors (2026-11-01)
+coax/web/api/cli-auth-test.sh https://staging.openagents.com     # the server side of login, as a Coax program
 ```

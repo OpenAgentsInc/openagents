@@ -43,6 +43,17 @@ static int cstr(coax_v_u8 v, char *out, size_t cap) {
 
 int64_t cxcli_now_s(void) { return (int64_t)time(NULL); }
 
+/* This computer's name (gethostname), for the machine a login names: its length, or -1. */
+int64_t cxcli_hostname(coax_v_u8 out) {
+  char name[256];
+  if (gethostname(name, sizeof name) != 0) return -1;
+  name[sizeof name - 1] = 0;
+  size_t n = strlen(name);
+  if ((int64_t)n > out.count) n = (size_t)out.count;
+  memcpy(out.data, name, n);
+  return (int64_t)n;
+}
+
 int64_t cxcli_isatty(int64_t fd) { return fd >= 0 && fd <= 2 && isatty((int)fd) ? 1 : 0; }
 
 int64_t cxcli_read_line(coax_v_u8 out, int64_t hide) {

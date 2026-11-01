@@ -118,19 +118,23 @@ which the server already checks in `nip98.coax`.
 The default flow approves the CLI from a browser where you're already logged
 in, the reverse of the phone QR flow at `/login`:
 
-1. The CLI generates a fresh key (`coax/lib/crypto/entropy.coax`) and stores
-   it (below).
+1. The CLI uses the profile's key, or generates a fresh one and stores it
+   (below). Built in `apps/openagents-cli/account.coax`; its decisions
+   (origin, machine name, poll states, logout, the QR text) are in
+   `account_rules.coax`, `#authority`, every mutant killed.
 2. It signs `POST /api/auth/v2/device/start` (**new**) and gets a short code
    and an ID.
-3. It prints a link, `https://openagents.com/login/device#code=WXYZ-1234`,
-   and the same link as a QR code in the terminal (`coax/lib/qr`). It opens
-   the link in the default browser only when stdout is a TTY and
-   `--no-browser` isn't given.
+3. It prints a link, `https://openagents.com/login/device#code=<32 hex>`,
+   and the same link as a QR code in the terminal (`coax/lib/qr`, half
+   blocks), on stderr. It never opens a browser itself.
 4. On that page (**new**, drawn in Coax like `/login`), you see the code, the
    machine name the CLI sent, and APPROVE. Approving links the CLI's key to
    your account (`auth.identities`, kind `nostr`, with label `cli:<machine>`).
 5. The CLI polls `GET /api/auth/v2/device/<id>` (**new**, signed) every 2
-   seconds for up to 10 minutes, then prints `account ACCOUNT` and exits 0.
+   seconds for up to 10 minutes (`--poll SECONDS` for less), then prints
+   `account ACCOUNT` and exits 0. A key already linked to another account
+   answers that account at once (`already true`); `--again` asks anyway.
+   `--machine NAME` names the computer (default: its host name).
 
 Other ways in, for machines with no browser:
 
@@ -150,11 +154,12 @@ web. That's enough to make and own realms without a browser at all.
 | macOS | The same 0600 file as Linux (built). The Keychain (service `com.openagents.cli`) is opt-in with `OPENAGENTS_KEYCHAIN=1`: macOS ties an item to the binary that made it, so every rebuilt CLI asked for the login password, and agents rebuild it all day (owner, 2026-11-01). |
 | Linux | `~/.openagents/cli/keys/PROFILE` mode 0600 in a 0700 directory (built), as an NIP-49 `ncryptsec` when `--encrypt` is given (`coax/lib/crypto/scrypt_nip49.coax`), else the raw key with a warning at login. |
 
-The profile file `~/.openagents/cli/profiles` holds each profile's origin
-and public key, never a secret. The key is never printed, logged, put in
-argv or sent anywhere except as signatures. `openagents logout` deletes the
-key and asks the server to unlink it (`POST /api/auth/v2/unlink {pubkey}`,
-**new**).
+`~/.openagents/cli/origins/PROFILE` (0600) holds the origin a profile
+logged in to, never a secret; `--origin` overrides it for one run. The key is never printed, logged, put in
+argv or sent anywhere except as signatures. `openagents logout` asks the server to unlink the
+key (`POST /api/auth/v2/unlink {pubkey}`, **new**), then deletes it. A key
+that is its own account (nothing linked it) is kept unless `--yes` is
+given: deleting it would lose that account.
 
 ### Account commands
 
@@ -162,7 +167,6 @@ key and asks the server to unlink it (`POST /api/auth/v2/unlink {pubkey}`,
 | --- | --- |
 | `openagents whoami` | `GET /api/auth/v2/me`: account, identities, whether you're an approved creator |
 | `openagents account keys` | the identities linked to the account, this CLI's marked |
-| `openagents account unlink PUBKEY` | **new**: remove a linked key (not the last one) |
 | `openagents access` | `GET /api/playtest/access`: invites on or off, whether you may make realms |
 | `openagents access redeem CODE` | `POST /api/playtest/access/redeem` |
 | `openagents access request "what I'd make"` | `POST /api/playtest/access/request` |
@@ -187,6 +191,20 @@ CLI:
 3. **A list of your realms**: `GET /api/playtest/realms/mine` (**new**):
    slug, name, revision, published revision, listed. Today no route lists
    them.
+
+Built (`migrations/0098_cli_callers.sql`):
+`caller-policy.coax` decides a signed caller (a bad, unbound or replayed
+signature is 401, never the player key); the signer acts through a player
+key SQL derives for its account (`auth.caller_key`), so the realm rules are
+unchanged. The shared signer is `coax/lib/nostr/nip98_sign.coax`; each event
+carries a `nonce` tag, so two requests to one URL in one second are two
+events. `GET /api/auth/v2/me`, `device/*` and `unlink` answer with the
+`auth_v2` flag off. Device codes are 128 bits (32 hex), and
+`POST /api/auth/v2/device/look {code}` gives the page the machine name.
+APPROVE is a press on the page, never automatic. A key with realms, players
+or creator rows of its own is refused (409), as `link/nostr` refuses it.
+The checks are Coax programs: `coax/web/api/tests/cli_auth.coax`, run by
+`coax/web/api/test.sh` and against staging by `coax/web/api/cli-auth-test.sh`.
 
 Limits stay as they are and count against the account: the builder's daily
 cap, one plan every 2 seconds, 12 realms a day, 200 placed things, 64 moves
