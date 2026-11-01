@@ -1,0 +1,26 @@
+Q2_K elements 0, 32, 64, 96: -2.0 0.5 5.0 -12.0
+Q4_K scale/min 0: 3/1, 4: 53/18; elements 0 and 128: 14.0 167.5
+IQ4 levels -127 ... 113; IQ4_NL elements 0 and 16: -63.5 56.5
+Q2_K (GGUF type 10): 84 bytes per 256 values (2.625 bits each), oracle vectors match: true
+Q3_K (GGUF type 11): 110 bytes per 256 values (3.4375 bits each), oracle vectors match: true
+Q4_K (GGUF type 12): 144 bytes per 256 values (4.5 bits each), oracle vectors match: true
+Q5_K (GGUF type 13): 176 bytes per 256 values (5.5 bits each), oracle vectors match: true
+Q6_K (GGUF type 14): 210 bytes per 256 values (6.5625 bits each), oracle vectors match: true
+IQ4_NL (GGUF type 20): 144 bytes per 256 values (4.5 bits each), oracle vectors match: true
+IQ4_XS (GGUF type 23): 136 bytes per 256 values (4.25 bits each), oracle vectors match: true
+tensor type 12 (256 x 2): ok, 512 values; chapter 50's 'quants' (type 2): ok
+declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9; the f32 layer: 32768 bytes
+Q8_0: 8704 bytes, agreement 1.0 (low 1.0), KL 0.00022960896719454973 (high 0.00028397003336496973), perplexity 2.3511811667797677 -> 2.35421236686352, promoted true
+Q4_0: 4608 bytes, agreement 0.8125 (low 0.714921906275025), KL 0.050112980281734595 (high 0.06036053356438464), perplexity 2.3511811667797677 -> 2.5021304257374326, promoted false
+Q2_K: 2688 bytes, agreement 0.578125 (low 0.454660307583757), KL 0.4218520012100292 (high 0.5204050973854987), perplexity 2.3511811667797677 -> 3.5890874882700423, promoted false
+Q3_K: 3520 bytes, agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876996 (high 0.1644972986082705), perplexity 2.3511811667797677 -> 2.599784901002744, promoted false
+Q4_K: 4608 bytes, agreement 0.9375 (low 0.8769846352155091), KL 0.02808012551034966 (high 0.0347936353432874), perplexity 2.3511811667797677 -> 2.4562710262184893, promoted false
+Q5_K: 5632 bytes, agreement 0.953125 (low 0.9002822294591067), KL 0.006410056397020745 (high 0.007941411979327073), perplexity 2.3511811667797677 -> 2.420125305386027, promoted true
+Q6_K: 6720 bytes, agreement 0.96875 (low 0.9252518409153905), KL 0.002086438434421452 (high 0.0026257607518881446), perplexity 2.3511811667797677 -> 2.339389045465552, promoted true
+IQ4_NL: 4608 bytes, agreement 0.890625 (low 0.8125977173615696), KL 0.029766057060308375 (high 0.03668478416335541), perplexity 2.3511811667797677 -> 2.416809699701994, promoted false
+IQ4_XS: 4352 bytes, agreement 0.890625 (low 0.8125977173615696), KL 0.027503436237209685 (high 0.033781521455899015), perplexity 2.3511811667797677 -> 2.424072909713312, promoted false
+GGUF type 16 (IQ2_XXS): kind
+a Q2_K block one byte short: storage
+a Q4_K row of 128 values: partial
+a Q2_K block whose dmin is NaN: scale
+output left unchanged: -7.0

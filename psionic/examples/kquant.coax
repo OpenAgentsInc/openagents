@@ -1,0 +1,58 @@
+// Chapter 51: K-quant and IQ4 blocks decoded by hand, against the oracle's
+// vectors and through chapter 49's descriptors; quality cards; refusals.
+#import "Basic";
+#load "../lib/kquant.coax";
+
+// book:begin example
+main :: () {
+    // The hand Q2_K block: d = 0.5, dmin = 1, four (scale | min << 4) bytes.
+    q2:[84]u8;q2[0]=0x21;q2[2]=0x13;q2[4]=0x05;q2[6]=0xf2;q2[16]=0xe4;q2[81]=0x38;q2[83]=0x3c;y:[512]f32;
+    #assert kq_decode(KQ_Q2_K,1,256,q2[..],y[..]).status==QzStatus.ok;
+    print("Q2_K elements 0, 32, 64, 96: % % % %\n",y[0],y[32],y[64],y[96]);
+
+    // The hand Q4_K block: sub-block 4's 6-bit scale and min are split across three bytes.
+    q4:[144]u8;q4[1]=0x38;q4[3]=0x3c;q4[4]=0xc3;q4[8]=0x41;q4[12]=0x25;q4[16]=0x9a;q4[80]=0x07;
+    #assert kq_decode(KQ_Q4_K,1,256,q4[..],y[..]).status==QzStatus.ok;
+    print("Q4_K scale/min 0: %/%, 4: %/%; elements 0 and 128: % %\n",
+        kq_scale_min(q4[..],0,0),kq_scale_min(q4[..],0,1),kq_scale_min(q4[..],4,0),kq_scale_min(q4[..],4,1),y[0],y[128]);
+
+    // IQ4_NL: one half scale and a 16-entry table of non-uniform levels.
+    nl:[18]u8;nl[1]=0x38;nl[2]=0xf0;
+    #assert kq_decode(KQ_IQ4_NL,1,32,nl[..],y[..]).status==QzStatus.ok;
+    print("IQ4 levels % ... %; IQ4_NL elements 0 and 16: % %\n",KQ_IQ4[0],KQ_IQ4[15],y[0],y[16]);
+
+    // The independent oracle's blocks, compared bit for bit.
+    names:=[7]string.["Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ4_NL","IQ4_XS"];
+    kinds:=[7]int.[10,11,12,13,14,20,23];
+    for i:0..<7 {
+        p:=kq_plan(kinds[i],1,256);
+        print("% (GGUF type %): % bytes per 256 values (% bits each), oracle vectors match: %\n",
+            names[i],kinds[i],p.bytes,f64(p.bytes*8)/256,kq_oracle(i,y[..]));
+    }
+
+    // Chapter 49's descriptor of a 256 x 2 Q4_K tensor over the oracle's bytes.
+    file:=PG_OWNED;m:[15]PgMeta;ms:[15]PgMeta;t:[2]PgTensor;ts:[2]PgTensor;
+    #assert pg_read(file[..],file.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.ok;
+    k:=t[1];k.kind=KQ_Q4_K;k.dims[0]=256;k.dims[1]=2;k.elements=512;k.begin=0;k.end=288;
+    payload:=KQV_Q4K_BYTES;
+    r:=kq_tensor(k,payload[..],y[..]);
+    print("tensor type % (% x %): %, % values; chapter 50's '%' (type %): %\n",
+        k.kind,k.dims[0],k.dims[1],r.status,r.written,t[1].name,t[1].kind,kq_tensor(t[1],file[..],y[..]).status);
+
+    // Quality cards: the stand-in's 32 x 256 first layer in each format.
+    print("declared: KL + 2 SE <= %, agreement - 2 SE >= %; the f32 layer: % bytes\n",qz_declared().kl,qz_declared().agreement,KQ_HIDDEN*KQ_IN*4);
+    for i:0..<KQ_PROFILES {
+        c:=kq_standin_card(i);
+        print("%: % bytes, agreement % (low %), KL % (high %), perplexity % -> %, promoted %\n",
+            KQ_PROFILE_NAMES[i],c.bytes,c.agreement,c.agreement_low,c.kl,c.kl_high,c.perplexity_original,c.perplexity_quantized,c.promoted);
+    }
+
+    // Refusals, each typed; none writes its output.
+    y[0]=-7;
+    print("GGUF type 16 (IQ2_XXS): %\n",kq_decode(16,1,256,q2[..],y[..]).status);
+    print("a Q2_K block one byte short: %\n",kq_decode(KQ_Q2_K,1,256,q2[0..<83],y[..]).status);
+    print("a Q4_K row of 128 values: %\n",kq_decode(KQ_Q4_K,1,128,q4[..],y[..]).status);
+    q2[82]=0x00;q2[83]=0x7e;print("a Q2_K block whose dmin is NaN: %\n",kq_decode(KQ_Q2_K,1,256,q2[..],y[..]).status);
+    print("output left unchanged: %\n",y[0]);
+}
+// book:end example

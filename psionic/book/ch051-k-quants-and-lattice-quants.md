@@ -1,42 +1,530 @@
 # 51. K-quants and lattice quants
 
-> **Status: unimplemented — design draft.** Nothing here runs yet.
+> **Status: partly implemented.** Decoders for the five K-quant formats
+> (Q2_K to Q6_K) and the two IQ4 formats run on the CPU, match an independent
+> oracle bit for bit, read tensors through chapter 49's descriptors, and each
+> has a quality card on a small stand-in model. The IQ3 and IQ2 lattice
+> formats, llama.cpp's own quantizers, and cards measured on a named model's
+> original weights are not done yet.
 
-Most published quantized checkpoints use the K-quant and IQ block formats.
-This chapter adds decoders for the 2- to 6-bit K-quant blocks and for the
-non-uniform and lattice-codebook formats, so Psionic can read those files and
-measure their quality.
+Most published quantized checkpoints are not Q8_0 or Q4_0. They use the
+K-quant formats, which group 256 weights into a super-block with small packed
+scales inside it, and the IQ formats, which replace evenly spaced levels with
+a table. This chapter adds decoders for seven of these block formats, so
+Psionic can read the files, and measures each format with chapter 50's
+quality card.
 
-## What this chapter covers
+Everything here runs on the CPU, written in Coax.
 
-- K-quant block decoders from 2 to 6 bits, including their packed scales.
-- IQ4: a non-uniform 4-bit value table.
-- IQ3 and IQ2: lattice codebooks, where each code indexes a grid of values.
-- Independent decode vectors for every format.
-- The quality card from chapter 50 for each format:
-  - mean KL divergence against the original weights;
-  - the same-top-token rate;
-  - perplexity with its error.
-- License handling: copied tables (IQ grids, IQ4 values, K-quant scale
-  packing) carry the MIT notice in a Psionic `NOTICE` and in this chapter.
+```shell
+coax/bin/coax run psionic/examples/kquant.coax
+coax/bin/coax test psionic/lib/kquant.coax
+coax/bin/coax mutate psionic/lib/kquant.coax --root-only
+python3 -I psionic/tests/kquant_oracle.py
+```
 
-## What it builds
+## Two levels of scales
 
-- Planned decoders for each block format, read through chapter 49's GGUF
-  reader.
+Chapter 50's Q4_0 stores one 16-bit scale for every 32 weights: half a bit per
+weight goes to the scale. K-quants spend less on scales by stacking them. A
+super-block of 256 weights has one or two half-precision numbers, `d` and
+sometimes `dmin`. Each sub-block of 16 or 32 weights has a small integer
+scale, 4, 6 or 8 bits wide, that multiplies `d`. One weight decodes as:
+
+```text
+asymmetric (Q2_K, Q4_K, Q5_K):  x = d × scale × q − dmin × min
+symmetric  (Q3_K, Q6_K):        x = d × scale × q,  scale and q signed
+```
+
+The byte layouts are ggml's block structs in `ggml-common.h`. Chapter 49's
+table already knows each GGUF type's block size:
+
+| Format | GGUF type | Values per block | Bytes per block | Bits per weight | Sub-block scales |
+| --- | --- | --- | --- | --- | --- |
+| Q2_K | 10 | 256 | 16 + 64 + 2 + 2 = 84 | 2.625 | 16 × (4-bit scale, 4-bit min) |
+| Q3_K | 11 | 256 | 32 + 64 + 12 + 2 = 110 | 3.4375 | 16 × 6-bit, minus 32 |
+| Q4_K | 12 | 256 | 2 + 2 + 12 + 128 = 144 | 4.5 | 8 × (6-bit scale, 6-bit min) |
+| Q5_K | 13 | 256 | 2 + 2 + 12 + 32 + 128 = 176 | 5.5 | 8 × (6-bit scale, 6-bit min) |
+| Q6_K | 14 | 256 | 128 + 64 + 16 + 2 = 210 | 6.5625 | 16 × signed 8-bit |
+| IQ4_NL | 20 | 32 | 2 + 16 = 18 | 4.5 | none; a 16-level table |
+| IQ4_XS | 23 | 256 | 2 + 2 + 4 + 128 = 136 | 4.25 | 8 × 6-bit, minus 32; the table |
+
+The decoder works in exact integers. A finite half is an integer number of
+2⁻²⁴ units: a subnormal is `fraction` units and a normal number is
+`(1024 + fraction) × 2^(exponent − 1)` units. The largest half, 65,504, is
+just under 2⁴⁰ units, and the largest code product, Q6_K's 128 × 32, adds 12
+bits, so every decoded value is an integer below 2⁵³. That converts to binary64
+exactly and rounds to f32 once. ggml's float loops also round each value at
+most once, so the two agree; the oracle below checks it.
+
+<!-- source: psionic/lib/kquant.coax units -->
+```jai
+// A finite half as a signed integer number of 2^-24 units: exact for every
+// half, and products of a half with small codes stay below 2^53.
+kq_units :: (bits:int)->int {
+    e:=(bits>>10)&31;m:=bits&1023;
+    v:=ifx e==0 then m else (1024+m)<<(e-1);
+    return ifx (bits&0x8000)!=0 then -v else v;
+}
+kq_byte :: (b:[]u8,at:int)->int {return cast(int)b[at];}
+kq_half_bits :: (b:[]u8,at:int)->int {return kq_byte(b,at)|(kq_byte(b,at+1)<<8);}
+kq_half_units :: (b:[]u8,at:int)->int {return kq_units(kq_half_bits(b,at));}
+```
+
+## Q2_K by hand
+
+A Q2_K block starts with 16 scale bytes, one per sub-block of 16: the low
+nibble is the scale and the high nibble the min. Then come 64 bytes of 2-bit
+codes and the two halves, `d` at byte 80 and `dmin` at byte 82. ggml's loop
+walks the 256 values in two halves of 128. In each half, byte `l` of the
+32-byte code run holds four codes, one for each run of 32 values, at shifts
+0, 2, 4 and 6.
+
+Take `d = 0x3800 = 0.5`, `dmin = 0x3c00 = 1`, and scale bytes 0, 2, 4 and 6
+(the first sub-block of each run of 32) set to `0x21`, `0x13`, `0x05` and
+`0xf2`. Code byte 16 is `0xe4 = 0b11 10 01 00`:
+
+```text
+element  sub-block  scale byte  scale  min  code (shift)  d·scale·q − dmin·min
+0        0          0x21        1      2    0  (0)        0.5·1·0 − 1·2  = −2
+32       2          0x13        3      1    1  (2)        0.5·3·1 − 1·1  = 0.5
+64       4          0x05        5      0    2  (4)        0.5·5·2 − 0    = 5
+96       6          0xf2        2      15   3  (6)        0.5·2·3 − 15   = −12
+16       1          0x00        0      0    0  (0)        0
+```
+
+## Q3_K by hand: 6 bits from two places
+
+Q3_K is symmetric. Each value has a 2-bit low part in `qs` (at byte 32) and a
+high bit in `hmask` (bytes 0 to 31); without the high bit the code is 4 lower,
+so codes run from −4 to 3. The sixteen 6-bit scales are packed into 12 bytes
+at offset 96: the low four bits of scale `s` are a nibble of byte
+`96 + s mod 8` (the low nibble for `s < 8`), and its top two bits come from
+byte `104 + s mod 4`, at shift `2 × (s div 4)`. The stored scale is 32 more
+than the real one.
+
+With `d = 1`:
+
+```text
+scale 0: byte 96 = 0x01 -> low 1; byte 104 = 0x02 -> top 2; 1 + 2·16 = 33 -> 1
+element 0: qs byte 32 = 0x03 -> 3; hmask byte 0 bit 0 set -> code 3;   1·3     = 3
+element 1: qs byte 33 = 0x02 -> 2; hmask byte 1 bit 0 clear -> 2 − 4; 1·(−2)  = −2
+element 32: scale 2 has no bits -> 0 − 32; code 0 − 4;               −32·−4   = 128
+element 144: scale 9: byte 97 = 0x50 -> high nibble 5; byte 105 = 0x10, shift 4 -> 1;
+             5 + 16 = 21 -> −11; code 1 with hmask byte 16 bit 4 set;  −11·1    = −11
+```
+
+## Q4_K and Q5_K: 12 bytes for 16 six-bit numbers
+
+Q4_K and Q5_K have eight sub-blocks of 32, each with a 6-bit scale and a 6-bit
+min, 96 bits in the 12 bytes from offset 4. Sub-blocks 0 to 3 use the low six
+bits of bytes 4 to 7 (scales) and 8 to 11 (mins). Sub-blocks 4 to 7 take their
+low four bits from the nibbles of bytes 12 to 15 and their top two bits from
+the spare top bits of bytes 4 to 11. This is ggml's `get_scale_min_k4`:
+
+<!-- source: psionic/lib/kquant.coax kquant -->
+```jai
+// Q4_K and Q5_K: eight 6-bit scales (min = 0) or mins (min = 1) in the 12
+// bytes from offset 4, ggml's get_scale_min_k4.
+kq_scale_min :: (b:[]u8,j:int,min:int)->int {
+    if j<4 {return kq_byte(b,4+j+4*min)&63;}
+    return ((kq_byte(b,4+j+4)>>(4*min))&15)|((kq_byte(b,j+4*min)>>6)<<4);
+}
+// Element k of one block, in 2^-24 units.
+kq_value :: (kind:int,b:[]u8,k:int)->int {
+    if kind==KQ_Q6_K {
+        // 128 values per half: four runs of 32, low nibbles in ql, two high bits in qh.
+        n:=k/128;part:=(k%128)/32;l:=k%32;
+        q:=((kq_byte(b,64*n+l+32*(part%2))>>(4*(part/2)))&15)|(((kq_byte(b,128+32*n+l)>>(2*part))&3)<<4);
+        return kq_half_units(b,208)*qz_signed(b[192+k/16])*(q-32);
+    }
+    if kind==KQ_Q4_K || kind==KQ_Q5_K {
+        // Four runs of 64: low nibbles are sub-block 2g, high nibbles 2g + 1.
+        g:=k/64;part:=(k%64)/32;l:=k%32;j:=2*g+part;
+        q:=(kq_byte(b,ifx kind==KQ_Q5_K then 48+32*g+l else 16+32*g+l)>>(4*part))&15;
+        if kind==KQ_Q5_K {q+=((kq_byte(b,16+l)>>j)&1)<<4;}
+        return kq_half_units(b,0)*kq_scale_min(b,j,0)*q-kq_half_units(b,2)*kq_scale_min(b,j,1);
+    }
+    // Q2_K and Q3_K: two halves of 128, each byte of qs holds four 2-bit
+    // codes, the shift picks the run of 32, and h picks the sub-block of 16.
+    n:=k/128;j:=(k%128)/32;h:=(k%32)/16;l:=k%16;s:=8*n+2*j+h;
+    if kind==KQ_Q2_K {
+        sc:=kq_byte(b,s);
+        return kq_half_units(b,80)*(sc&15)*((kq_byte(b,16+32*n+16*h+l)>>(2*j))&3)-kq_half_units(b,82)*(sc>>4);
+    }
+    low:=(kq_byte(b,32+32*n+16*h+l)>>(2*j))&3;high:=(kq_byte(b,16*h+l)>>(4*n+j))&1;
+    sc:=((kq_byte(b,96+s%8)>>(4*(s/8)))&15)|(((kq_byte(b,104+s%4)>>(2*(s/4)))&3)<<4);
+    return kq_half_units(b,108)*(sc-32)*(low-4+4*high);
+}
+```
+
+By hand, with `d = 0.5` and `dmin = 1`:
+
+```text
+byte 4 = 0xc3 = 0b11 000011: scale 0 = 3, top bits of scale 4 = 3
+byte 8 = 0x41 = 0b01 000001: min 0 = 1,   top bits of min 4 = 1
+byte 12 = 0x25:             scale 4 = 5 + 3·16 = 53, min 4 = 2 + 1·16 = 18
+Q4_K element 0: low nibble of byte 16 (0x9a) = 10:  0.5·3·10 − 1·1   = 14
+Q4_K element 128: run 2, low nibble of byte 80 = 7:  0.5·53·7 − 1·18  = 167.5
+```
+
+Q5_K stores the same nibbles at offset 48 and adds a fifth bit from the 32
+bytes at offset 16: bit `j` of byte `16 + l` belongs to element `l` of
+sub-block `j`. With byte 16 = `0x11`, element 0 gets bit 0 (code
+10 + 16 = 26, so 0.5·3·26 − 1 = 38) and element 128 gets bit 4 (code
+7 + 16 = 23, so 0.5·53·23 − 18 = 591.5).
+
+Q6_K keeps the low four bits of each code in 128 bytes, the top two bits in
+64 more, and one signed 8-bit scale per sub-block of 16 at byte 192 + k / 16.
+Codes are stored 32 higher than their value. With `d = 0.5`: element 0 has low
+nibble 1 and top bits 2, so 33 − 32 = 1, times scale 2: 1. Element 64 has the
+high nibble of the same byte, 3, so 3 − 32 = −29, times scale `0xfd` = −3:
+0.5·−3·−29 = 43.5.
+
+## IQ4: a table instead of evenly spaced levels
+
+Weights are not spread evenly: there are many near zero and a few large
+ones. IQ4_NL keeps chapter 50's Q4_0 layout, a half scale and 16 bytes of
+nibbles for 32 values, but each nibble indexes a fixed table of 16 levels
+that are closer together near zero. The table is copied from ggml:
+
+<!-- source: psionic/lib/kquant.coax table -->
+```jai
+// kvalues_iq4nl from ggml-common.h (MIT, Copyright (c) 2023-2026 The ggml authors).
+KQ_IQ4 :: [16]int.[-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113];
+```
+
+IQ4_XS puts the same table inside a super-block of 256: one half `d`, then
+eight 6-bit sub-block scales (stored 32 higher) split into four low bits in
+`scales_l` and two high bits in the 16-bit `scales_h`. That is 136 bytes for
+256 weights, 4.25 bits each.
+
+<!-- source: psionic/lib/kquant.coax iq4 -->
+```jai
+kq_iq4 :: (kind:int,b:[]u8,k:int)->int {
+    if kind==KQ_IQ4_NL {return kq_half_units(b,0)*KQ_IQ4[(kq_byte(b,2+k%16)>>(4*(k/16)))&15];}
+    // IQ4_XS: eight sub-blocks of 32, each a 6-bit scale minus 32: four low
+    // bits in scales_l (byte 4 + ib/2), two high bits in the 16-bit scales_h.
+    ib:=k/32;r:=k%32;
+    ls:=((kq_byte(b,4+ib/2)>>(4*(ib%2)))&15)|(((kq_half_bits(b,2)>>(2*ib))&3)<<4);
+    return kq_half_units(b,0)*(ls-32)*KQ_IQ4[(kq_byte(b,8+16*ib+r%16)>>(4*(r/16)))&15];
+}
+```
+
+By hand: an IQ4_NL block with `d = 0.5` and byte 2 = `0xf0` gives element 0
+(low nibble 0) 0.5·−127 = −63.5 and element 16 (high nibble 15) 0.5·113 =
+56.5. An IQ4_XS block with `d = 1`, `scales_h` = 2 and `scales_l[0]` = 1 has
+sub-block 0's scale 1 + 2·16 − 32 = 1 and sub-block 1's 0 − 32 = −32; byte 8 =
+`0x8f` makes element 0 113 and element 16 1, and element 32 (nibble 0) is
+−32·−127 = 4064.
+
+These are the hand checks, compared exactly by `#test`s:
+
+<!-- source: psionic/lib/kquant.coax hand-tests -->
+```jai
+#test "Q2_K by hand: 4-bit scale and min in one byte, 2-bit codes" {
+    // d = 0.5 and dmin = 1; scale bytes 0, 2, 4, 6 hold (scale | min << 4).
+    b:[84]u8;b[0]=0x21;b[2]=0x13;b[4]=0x05;b[6]=0xf2;b[16]=0xe4;b[80]=0x00;b[81]=0x38;b[82]=0x00;b[83]=0x3c;
+    y:[256]f32;
+    #assert kq_decode(KQ_Q2_K,1,256,b[..],y[..]).status==QzStatus.ok;
+    // Byte 16 = 0b11100100: codes 0, 1, 2, 3 for elements 0, 32, 64, 96.
+    #assert y[0]==-2 && y[32]==0.5 && y[64]==5 && y[96]==-12 && y[1]==-2 && y[16]==0;
+}
+#test "Q3_K by hand: a 6-bit scale minus 32, a 2-bit code and a high bit" {
+    b:[110]u8;b[108]=0x00;b[109]=0x3c;
+    b[96]=0x01;b[104]=0x02;b[32]=0x03;b[0]=0x01;b[33]=0x02;
+    b[97]=0x50;b[105]=0x10;b[80]=0x01;b[16]=0x10;
+    y:[256]f32;
+    #assert kq_decode(KQ_Q3_K,1,256,b[..],y[..]).status==QzStatus.ok;
+    // Scale 0 = 1 | 2 << 4 = 33 -> 1. Element 0: code 3, high bit set -> 3; element 1: 2 - 4.
+    #assert y[0]==3 && y[1]==-2;
+    // Scale 2 is all zero bits: 0 - 32; element 32's code 0 without its high bit: -4.
+    #assert y[32]==128;
+    // Scale 9 = 5 | 1 << 4 = 21 -> -11; element 144: code 1, high bit 4 of byte 16 set.
+    #assert y[144]==-11;
+}
+#test "Q4_K and Q5_K by hand: 6-bit scales and mins packed into 12 bytes" {
+    b:[176]u8;b[0]=0x00;b[1]=0x38;b[2]=0x00;b[3]=0x3c;b[4]=0xc3;b[8]=0x41;b[12]=0x25;
+    // Sub-block 0: scale 3, min 1. Sub-block 4: scale 5 | 3 << 4 = 53, min 2 | 1 << 4 = 18.
+    four:=b;four[16]=0x9a;four[80]=0x07;
+    y:[256]f32;
+    #assert kq_decode(KQ_Q4_K,1,256,four[0..<144],y[..]).status==QzStatus.ok;
+    #assert y[0]==14 && y[32]==0 && y[128]==167.5;
+    // Q5_K: codes at 48, the fifth bit of element l in byte 16 + l, bit = sub-block.
+    b[48]=0x9a;b[112]=0x07;b[16]=0x11;
+    #assert kq_decode(KQ_Q5_K,1,256,b[..],y[..]).status==QzStatus.ok;
+    #assert y[0]==38 && y[128]==591.5 && y[1]==-1;
+}
+#test "Q6_K and IQ4 by hand: signed 8-bit scales and the non-uniform table" {
+    b:[210]u8;b[208]=0x00;b[209]=0x38;b[0]=0x31;b[128]=0x02;b[192]=2;b[196]=0xfd;
+    y:[256]f32;
+    #assert kq_decode(KQ_Q6_K,1,256,b[..],y[..]).status==QzStatus.ok;
+    // Element 0: 1 | 2 << 4 = 33 -> 1, scale 2. Element 64: 3 -> -29, scale -3.
+    #assert y[0]==1 && y[64]==43.5 && y[32]==0;
+    n:[18]u8;n[0]=0x00;n[1]=0x38;n[2]=0xf0;
+    #assert kq_decode(KQ_IQ4_NL,1,32,n[..],y[..]).status==QzStatus.ok;
+    #assert y[0]==-63.5 && y[16]==56.5 && y[1]==-63.5 && y[17]==-63.5;
+    x:[136]u8;x[0]=0x00;x[1]=0x3c;x[2]=0x02;x[4]=0x01;x[8]=0x8f;
+    #assert kq_decode(KQ_IQ4_XS,1,256,x[..],y[..]).status==QzStatus.ok;
+    // Sub-block 0: 1 | 2 << 4 = 33 -> 1; sub-block 1: 0 -> -32.
+    #assert y[0]==113 && y[16]==1 && y[32]==4064;
+}
+```
+
+## Decoding a tensor
+
+`kq_plan` uses chapter 49's table for the block sizes and refuses anything
+that is not one of the seven types. `kq_decode` checks every block's half
+scales before it writes anything, so a refused tensor leaves the output as it
+was. `kq_tensor` takes a tensor descriptor from chapter 49's reader and sends
+chapter 50's Q8_0 and Q4_0 to chapter 50, so one entry decodes every format
+Psionic reads.
+
+<!-- source: psionic/lib/kquant.coax plan -->
+```jai
+kq_kind :: (kind:int)->bool {return (kind>=KQ_Q2_K && kind<=KQ_Q6_K) || kind==KQ_IQ4_NL || kind==KQ_IQ4_XS;}
+// Chapter 49's table gives each type's values and bytes per block.
+kq_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c {
+    if !kq_kind(kind) {return QzPlan.{status=QzStatus.kind};}
+    if rows<1 || width<1 {return QzPlan.{status=QzStatus.shape};}
+    if width%PG_BLOCKS[kind]!=0 {return QzPlan.{status=QzStatus.partial};}
+    if rows>KQ_GROUPS_MAX/(width/32) {return QzPlan.{status=QzStatus.limit};}
+    blocks:=rows*width/PG_BLOCKS[kind];
+    return QzPlan.{blocks=blocks,bytes=blocks*PG_WIDTHS[kind],values=rows*width,block_bytes=PG_WIDTHS[kind]};
+}
+// Where each block keeps its half scales: d, and dmin (d again when there is none).
+kq_d_at :: (kind:int)->int {return ifx kind==KQ_Q2_K then 80 else ifx kind==KQ_Q3_K then 108 else ifx kind==KQ_Q6_K then 208 else 0;}
+kq_m_at :: (kind:int)->int {return ifx kind==KQ_Q2_K then 82 else ifx kind==KQ_Q4_K || kind==KQ_Q5_K then 2 else kq_d_at(kind);}
+```
+
+<!-- source: psionic/lib/kquant.coax decode -->
+```jai
+kq_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c {
+    p:=kq_plan(kind,rows,width);
+    if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
+    if bytes.count!=p.bytes {return QzResult.{status=QzStatus.storage};}
+    if out.count<p.values {return QzResult.{status=QzStatus.capacity};}
+    size:=p.block_bytes;n:=PG_BLOCKS[kind];
+    for blk:0..<p.blocks {
+        b:=bytes[blk*size..<(blk+1)*size];
+        if !qz_half_ok(kq_half_bits(b,kq_d_at(kind))) || !qz_half_ok(kq_half_bits(b,kq_m_at(kind))) {return QzResult.{status=QzStatus.scale};}
+    }
+    for i:0..<p.values {
+        b:=bytes[(i/n)*size..<(i/n+1)*size];
+        units:=ifx kind<KQ_IQ4_NL then kq_value(kind,b,i%n) else kq_iq4(kind,b,i%n);
+        // |units| < 2^53, so the f64 is exact and f32 rounds once.
+        out[i]=f32(f64(units)/16777216);
+    }
+    return QzResult.{written=p.values};
+}
+// One tensor from chapter 49's reader: chapter 50's types go to chapter 50.
+kq_tensor :: (t:PgTensor,file:[]u8,out:[]f32)->QzResult #export_c {
+    if t.kind==QZ_Q8_0 || t.kind==QZ_Q4_0 {return qz_tensor(t,file,out);}
+    if t.dims[0]<1 {return QzResult.{status=QzStatus.shape};}
+    if t.begin<0 || t.end>file.count {return QzResult.{status=QzStatus.storage};}
+    return kq_decode(t.kind,t.elements/t.dims[0],t.dims[0],file[t.begin..<t.end],out);
+}
+```
+
+A plan holds at most 32,768 groups of 32 values, 1,048,576 values, the same
+limit as chapter 50.
+
+## An independent oracle
+
+[kquant_oracle.py](../tests/kquant_oracle.py) decodes the same formats a
+different way. It walks each block in ggml's loop order (two halves of 128,
+four shifts, two runs of 16) instead of computing each element's position,
+keeps values as Python integers in 2⁻²⁴ units, and rounds them to binary32
+with integer arithmetic, nearest with ties to even. It runs no upstream code
+and no Coax. It writes two pseudo-random blocks per format (eight for
+IQ4_NL), with half scales that include subnormals, negative scales and the
+largest finite half, and the 3,328 decoded values as f32 bit patterns, to
+[kquant-vectors.coax](../fixtures/kquant-vectors.coax). Run without
+arguments, it checks that the fixture has not drifted. A `#test` decodes every
+block and compares every bit pattern.
+
+## Quality cards
+
+To measure a format, something has to write it. The checks file
+[kquant-checks.coax](../tests/kquant-checks.coax) has a simple reference
+quantizer for each format. It picks each sub-block's min (rounded up) and
+then the scale that reaches the sub-block's top from it (also rounded up), so
+the codes cover every value, and then rounds each value to its nearest code.
+For the symmetric formats the value of largest magnitude maps to the most
+negative code, as in chapter 50's Q4_0. These are not llama.cpp's quantizers,
+which search for better scales; a card measures a format as written by this
+quantizer. A `#forall` over 126 cases of two blocks checks the round trip: every error is
+within the format's step (for example, half of a range of up to 2 × amax
+over Q2_K's 3 steps, or IQ4's 14 table units at the end of the table).
+
+The stand-in model is chapter 50's with a wider first layer, because a
+K-quant row must hold whole super-blocks: 256 inputs, a ReLU layer of 32 and
+a readout over 16 options. Only the 32 × 256 first layer is quantized; the
+readout stays f32. Each card uses chapter 50's `qz_card` with the same bound,
+declared before measuring: KL plus two standard errors at most 0.01, and
+top-1 agreement minus two standard errors at least 0.9.
+
+## Run it
+
+The example, [kquant.coax](../examples/kquant.coax), decodes the hand blocks,
+compares the oracle's vectors, reads a tensor, prints the nine cards and shows
+four refusals:
+
+```shell
+coax/bin/coax run psionic/examples/kquant.coax
+```
+
+<!-- source: psionic/examples/kquant.coax example -->
+```jai
+main :: () {
+    // The hand Q2_K block: d = 0.5, dmin = 1, four (scale | min << 4) bytes.
+    q2:[84]u8;q2[0]=0x21;q2[2]=0x13;q2[4]=0x05;q2[6]=0xf2;q2[16]=0xe4;q2[81]=0x38;q2[83]=0x3c;y:[512]f32;
+    #assert kq_decode(KQ_Q2_K,1,256,q2[..],y[..]).status==QzStatus.ok;
+    print("Q2_K elements 0, 32, 64, 96: % % % %\n",y[0],y[32],y[64],y[96]);
+
+    // The hand Q4_K block: sub-block 4's 6-bit scale and min are split across three bytes.
+    q4:[144]u8;q4[1]=0x38;q4[3]=0x3c;q4[4]=0xc3;q4[8]=0x41;q4[12]=0x25;q4[16]=0x9a;q4[80]=0x07;
+    #assert kq_decode(KQ_Q4_K,1,256,q4[..],y[..]).status==QzStatus.ok;
+    print("Q4_K scale/min 0: %/%, 4: %/%; elements 0 and 128: % %\n",
+        kq_scale_min(q4[..],0,0),kq_scale_min(q4[..],0,1),kq_scale_min(q4[..],4,0),kq_scale_min(q4[..],4,1),y[0],y[128]);
+
+    // IQ4_NL: one half scale and a 16-entry table of non-uniform levels.
+    nl:[18]u8;nl[1]=0x38;nl[2]=0xf0;
+    #assert kq_decode(KQ_IQ4_NL,1,32,nl[..],y[..]).status==QzStatus.ok;
+    print("IQ4 levels % ... %; IQ4_NL elements 0 and 16: % %\n",KQ_IQ4[0],KQ_IQ4[15],y[0],y[16]);
+
+    // The independent oracle's blocks, compared bit for bit.
+    names:=[7]string.["Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ4_NL","IQ4_XS"];
+    kinds:=[7]int.[10,11,12,13,14,20,23];
+    for i:0..<7 {
+        p:=kq_plan(kinds[i],1,256);
+        print("% (GGUF type %): % bytes per 256 values (% bits each), oracle vectors match: %\n",
+            names[i],kinds[i],p.bytes,f64(p.bytes*8)/256,kq_oracle(i,y[..]));
+    }
+
+    // Chapter 49's descriptor of a 256 x 2 Q4_K tensor over the oracle's bytes.
+    file:=PG_OWNED;m:[15]PgMeta;ms:[15]PgMeta;t:[2]PgTensor;ts:[2]PgTensor;
+    #assert pg_read(file[..],file.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.ok;
+    k:=t[1];k.kind=KQ_Q4_K;k.dims[0]=256;k.dims[1]=2;k.elements=512;k.begin=0;k.end=288;
+    payload:=KQV_Q4K_BYTES;
+    r:=kq_tensor(k,payload[..],y[..]);
+    print("tensor type % (% x %): %, % values; chapter 50's '%' (type %): %\n",
+        k.kind,k.dims[0],k.dims[1],r.status,r.written,t[1].name,t[1].kind,kq_tensor(t[1],file[..],y[..]).status);
+
+    // Quality cards: the stand-in's 32 x 256 first layer in each format.
+    print("declared: KL + 2 SE <= %, agreement - 2 SE >= %; the f32 layer: % bytes\n",qz_declared().kl,qz_declared().agreement,KQ_HIDDEN*KQ_IN*4);
+    for i:0..<KQ_PROFILES {
+        c:=kq_standin_card(i);
+        print("%: % bytes, agreement % (low %), KL % (high %), perplexity % -> %, promoted %\n",
+            KQ_PROFILE_NAMES[i],c.bytes,c.agreement,c.agreement_low,c.kl,c.kl_high,c.perplexity_original,c.perplexity_quantized,c.promoted);
+    }
+
+    // Refusals, each typed; none writes its output.
+    y[0]=-7;
+    print("GGUF type 16 (IQ2_XXS): %\n",kq_decode(16,1,256,q2[..],y[..]).status);
+    print("a Q2_K block one byte short: %\n",kq_decode(KQ_Q2_K,1,256,q2[0..<83],y[..]).status);
+    print("a Q4_K row of 128 values: %\n",kq_decode(KQ_Q4_K,1,128,q4[..],y[..]).status);
+    q2[82]=0x00;q2[83]=0x7e;print("a Q2_K block whose dmin is NaN: %\n",kq_decode(KQ_Q2_K,1,256,q2[..],y[..]).status);
+    print("output left unchanged: %\n",y[0]);
+}
+```
+
+It prints:
+
+```text
+Q2_K elements 0, 32, 64, 96: -2.0 0.5 5.0 -12.0
+Q4_K scale/min 0: 3/1, 4: 53/18; elements 0 and 128: 14.0 167.5
+IQ4 levels -127 ... 113; IQ4_NL elements 0 and 16: -63.5 56.5
+Q2_K (GGUF type 10): 84 bytes per 256 values (2.625 bits each), oracle vectors match: true
+Q3_K (GGUF type 11): 110 bytes per 256 values (3.4375 bits each), oracle vectors match: true
+Q4_K (GGUF type 12): 144 bytes per 256 values (4.5 bits each), oracle vectors match: true
+Q5_K (GGUF type 13): 176 bytes per 256 values (5.5 bits each), oracle vectors match: true
+Q6_K (GGUF type 14): 210 bytes per 256 values (6.5625 bits each), oracle vectors match: true
+IQ4_NL (GGUF type 20): 144 bytes per 256 values (4.5 bits each), oracle vectors match: true
+IQ4_XS (GGUF type 23): 136 bytes per 256 values (4.25 bits each), oracle vectors match: true
+tensor type 12 (256 x 2): ok, 512 values; chapter 50's 'quants' (type 2): ok
+declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9; the f32 layer: 32768 bytes
+Q8_0: 8704 bytes, agreement 1.0 (low 1.0), KL 0.00022960896719454973 (high 0.00028397003336496973), perplexity 2.3511811667797677 -> 2.35421236686352, promoted true
+Q4_0: 4608 bytes, agreement 0.8125 (low 0.714921906275025), KL 0.050112980281734595 (high 0.06036053356438464), perplexity 2.3511811667797677 -> 2.5021304257374326, promoted false
+Q2_K: 2688 bytes, agreement 0.578125 (low 0.454660307583757), KL 0.4218520012100292 (high 0.5204050973854987), perplexity 2.3511811667797677 -> 3.5890874882700423, promoted false
+Q3_K: 3520 bytes, agreement 0.8125 (low 0.714921906275025), KL 0.12899541365876996 (high 0.1644972986082705), perplexity 2.3511811667797677 -> 2.599784901002744, promoted false
+Q4_K: 4608 bytes, agreement 0.9375 (low 0.8769846352155091), KL 0.02808012551034966 (high 0.0347936353432874), perplexity 2.3511811667797677 -> 2.4562710262184893, promoted false
+Q5_K: 5632 bytes, agreement 0.953125 (low 0.9002822294591067), KL 0.006410056397020745 (high 0.007941411979327073), perplexity 2.3511811667797677 -> 2.420125305386027, promoted true
+Q6_K: 6720 bytes, agreement 0.96875 (low 0.9252518409153905), KL 0.002086438434421452 (high 0.0026257607518881446), perplexity 2.3511811667797677 -> 2.339389045465552, promoted true
+IQ4_NL: 4608 bytes, agreement 0.890625 (low 0.8125977173615696), KL 0.029766057060308375 (high 0.03668478416335541), perplexity 2.3511811667797677 -> 2.416809699701994, promoted false
+IQ4_XS: 4352 bytes, agreement 0.890625 (low 0.8125977173615696), KL 0.027503436237209685 (high 0.033781521455899015), perplexity 2.3511811667797677 -> 2.424072909713312, promoted false
+GGUF type 16 (IQ2_XXS): kind
+a Q2_K block one byte short: storage
+a Q4_K row of 128 values: partial
+a Q2_K block whose dmin is NaN: scale
+output left unchanged: -7.0
+```
+
+Reading it:
+
+- The first three lines are the hand calculations above.
+- All seven formats match the oracle's 3,328 values bit for bit, and a Q4_K
+  tensor described by chapter 49 decodes through `kq_tensor`, as does chapter
+  50's Q4_0 tensor.
+- The K-quant ladder is in order: each extra bit lowers the mean KL, from
+  0.42 for Q2_K to 0.0021 for Q6_K. Under the declared bound, Q8_0, Q6_K and
+  Q5_K are promoted; Q5_K only just, with its agreement's lower end at 0.9003.
+- No format of about 4 bits is promoted on this stand-in. Among them, Q4_K
+  (KL 0.028) and the two IQ4 formats (0.030 and 0.028) lose about half as much
+  as Q4_0 (0.050), and IQ4_XS does it in 256 fewer bytes than Q4_K.
+- Each refusal names its reason: GGUF type 16 (IQ2_XXS, not decoded yet) is
+  `kind`, a block one byte short is `storage`, a row of 128 values cannot hold
+  a super-block (`partial`), and a NaN `dmin` is `scale`. The last line shows
+  that none wrote the output.
+
+## What the checks compare
+
+The checks in [kquant.coax](../lib/kquant.coax) were written before the code.
+They compare:
+
+- each half's integer units against chapter 50's `qz_half`, as a `#forall`
+  over 4,096 bit patterns and both signs;
+- each plan's sizes against the block structs, the limit at exactly 32,768
+  groups, and each refusal;
+- the hand blocks above, value by value;
+- every value of the oracle's blocks, bit for bit;
+- wrong types, partial rows, truncated blocks, short outputs, and an infinite
+  or NaN `d` or `dmin` in every format, each refused before any output is
+  written;
+- the reference quantizers' round trips, within each format's step;
+- tensors from chapter 49's descriptors, including chapter 50's types and
+  each descriptor refusal;
+- the nine stand-in cards: their sizes, which are promoted, and that the
+  K-quant KL falls with each extra bit.
+
+The library is an `#authority` file, because it admits or refuses blocks read
+from files. `coax mutate --root-only` (the units it loads check themselves)
+leaves zero survivors of 406 mutants.
+
+## What remains
+
+- IQ3 (IQ3_XXS, IQ3_S) and IQ2 (IQ2_XXS, IQ2_XS, IQ2_S): lattice codebooks,
+  where each code indexes a grid of 4 or 8 values with separate sign bits.
+  Their grids, 256 to 1,024 entries each, must be embedded as fixtures with
+  their provenance and digest, with their own oracle vectors.
+- llama.cpp's quantizers for these formats (`make_qkx2_quants` and the
+  importance-weighted searches), so cards measure the files people publish.
+- Cards measured on a named model's original weights, and perplexity on fixed
+  text; the stand-in here only shows the method.
+
+## License
+
+The IQ4 table above and the block layouts follow ggml's `ggml-common.h` at
+llama.cpp `0893ec98f5eafad36a43a72cd1c3723d72b0d03a`, MIT licensed,
+"Copyright (c) 2023-2026 The ggml authors". The notice is in
+[psionic/NOTICE](../NOTICE).
 
 ## Dependencies
 
-- [Chapter 49](ch049-read-a-gguf-file.md): the GGUF container.
-- [Chapter 50](ch050-quantized-weights-and-caches.md): the quality card and the
-  profile rules.
-
-## Done means
-
-- Every decoder matches its independent vectors exactly.
-- Each format has a quality card measured against the original weights of a
-  named model.
-- Malformed blocks and truncated rows are refused.
+- [Chapter 49](ch049-read-a-gguf-file.md): the GGUF container and its block
+  size table.
+- [Chapter 50](ch050-quantized-weights-and-caches.md): half precision, Q8_0
+  and Q4_0, and the quality card.
 
 ## Sources
 
