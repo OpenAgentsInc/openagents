@@ -1,0 +1,36 @@
+#import "Basic";
+#load "../lib/robotics/panda-pose-ik.coax";
+
+#test "Panda pose example display rounds independent signed and tiny coefficients" {
+ #assert ppo_example_micro(-0.24645310784144053)== -246453 && ppo_example_micro(0.8022737156511386)==802274;
+ #assert ppo_example_micro(0.0004269339447285114)==427 && ppo_example_micro(-0.0000006)== -1 && ppo_example_micro(0)==0;
+}
+ppo_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("one geometric pose update: fixed grip SITE/world\n");
+// book:begin ppo-step
+ // The target is an independently frozen matrix pose. Angles are radians;
+ // position is a world/metre Point3. Hamilton wxyz stays an explicit raw boundary.
+ words:=[14]f64.[-0.26070335378293363,0.4197829540218629,-0.17224976514367665,-2.7864034195561564,-0.17538875316188446,2.740753613038838,0.7788488675752366,-0.5250789228078325,-0.11265799954996873,0.8947516665468195,-0.16060863355553037,0.7705457766950156,0.5952945116922437,-0.16151940191194944];
+ seed:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {seed[i].value=words[i];}
+ target:[1]PpoTarget;target[0].position.x=words[7];target[0].position.y=words[8];target[0].position.z=words[9];for i:0..<4 {target[0].world_from_grip_wxyz[i]=words[10+i];}
+ candidate:[1]PpoOutput;
+ #assert ppo_step(seed[..],target[..],candidate[..])==PpoStatus.ok;
+ q:=candidate[0].angles;p:=candidate[0].position;
+ print("candidate joints (urad): % % % % % % %\n",ppo_example_micro(q[0].value),ppo_example_micro(q[1].value),ppo_example_micro(q[2].value),ppo_example_micro(q[3].value),ppo_example_micro(q[4].value),ppo_example_micro(q[5].value),ppo_example_micro(q[6].value));
+ print("grip xyz (um): % % %\n",ppo_example_micro(p.x),ppo_example_micro(p.y),ppo_example_micro(p.z));
+ print("fresh errors: % um position; % urad orientation; % um weighted\n",ppo_example_micro(candidate[0].position_error_metres),ppo_example_micro(candidate[0].orientation_error.value),ppo_example_micro(candidate[0].weighted_error_metres));
+ print("updates: %; projected coordinates: %\n",candidate[0].updates,candidate[0].projected_coordinates);
+ // The same physical attitude has two quaternion representations.
+ opposite:[1]PpoOutput;for i:0..<4 {target[0].world_from_grip_wxyz[i]= -target[0].world_from_grip_wxyz[i];}
+ #assert ppo_step(seed[..],target[..],opposite[..])==PpoStatus.ok;ppo_same(candidate[0],opposite[0]);
+ print("q/-q target: complete output identical\n");
+ identity:=[4]f64.[1,0,0,0];half_turn:=[4]f64.[0,0,0,-1];rotation:[1]PpoRotation;
+ #assert ppo_rotation_raw(identity[..],half_turn[..],rotation[..])==PpoStatus.ok;
+ print("principal +Z half-turn (urad): %\n",ppo_example_micro(rotation[0].vector[2].value));
+ before:=candidate[0];for i:0..<4 {target[0].world_from_grip_wxyz[i]=0;}
+ #assert ppo_step(seed[..],target[..],candidate[..])==PpoStatus.rotation;ppo_same(candidate[0],before);
+ print("zero quaternion: rotation refusal; complete candidate unchanged\n");
+// book:end ppo-step
+ print("one candidate; convergence, collision and command admission remain separate\n");
+}

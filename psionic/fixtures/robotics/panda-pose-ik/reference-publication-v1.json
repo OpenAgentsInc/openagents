@@ -1,0 +1,68 @@
+{
+  "schema": "psionic.panda-pose-ik.reference-publication.v1",
+  "passed": true,
+  "operation": "Byte-for-byte publication and current source binding only; no numerical/reference/native/SDK/NN rerun.",
+  "original_reference": {
+    "bytes": 5873,
+    "sha256": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43"
+  },
+  "original_rotation_grid_guard": {
+    "bytes": 1625,
+    "sha256": "73fcbbb1c6c2064db7d9a39abd0ecb465035bd044657c420ebe5e7682e222270"
+  },
+  "published_files": {
+    "reference.json": {
+      "bytes": 5873,
+      "sha256": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43"
+    },
+    "rotation-grid-qualification.json": {
+      "bytes": 1625,
+      "sha256": "73fcbbb1c6c2064db7d9a39abd0ecb465035bd044657c420ebe5e7682e222270"
+    },
+    "rotation-expected.f64": {
+      "bytes": 436800,
+      "sha256": "f046e6d2118029750eff697149cb39aca096b6c8e91027fde01ffbb558e25b87"
+    },
+    "pose-expected.bin": {
+      "bytes": 8208,
+      "sha256": "e2d547fd6d037ff77bfa8ebf43222d9bb8a06a4617d07c7bcee91f01c6c20261"
+    },
+    "pose-diagnostics.json": {
+      "bytes": 13302,
+      "sha256": "922c24be6b877d7eab8563f816d611f46b993715b0b9480241b6248b0aec2573"
+    },
+    "oracle-source-restore-v1.json": {
+      "bytes": 1077,
+      "sha256": "bfa3b23bb496e3f07076a5c388d87ef097e31cc1a2a3a6efde6fb1395b0fd126"
+    }
+  },
+  "current_source_sha256": {
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row0.pc-sample.f64": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row1.pc-sample.f64": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row128.pc-sample.f64": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row2.pc-sample.f64": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row232.pc-sample.f64": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row3.pc-sample.f64": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+    "psionic/fixtures/robotics/panda-fk/retained-controller/row64.pc-sample.f64": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+    "psionic/fixtures/robotics/panda-fk/sdk-cases.f64": "482fb40c4c7bac35ff733a1cdb9de071f534959d552a69d89d94dd551787186b",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/fixtures/robotics/panda-fk/sdk-poses.f64": "d1550bd8bafdc00f3f31b0a4d726cff7c0bb5370fc7e2a16e875439462a87305",
+    "psionic/fixtures/robotics/panda-fk/sdk-profile.json": "96fac0f2d9cfd1477e930a9444ddf14e214c7da065fea4e52d80203a6312d50b",
+    "psionic/fixtures/robotics/panda-fk/sdk-reference.json": "d7a4036276c9732e9038c52e4dc419d5b22f9c30d363836cbb2bc6f905981117",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-pose-ik/experiment.json": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88",
+    "psionic/fixtures/robotics/panda-pose-ik/pose-cases-v2.f64": "aef336dd7417caf91edcaa1ee4e27ae752b6a5fd9a845a42859c08b72721ea14",
+    "psionic/fixtures/robotics/panda-pose-ik/pose-cases.f64": "c38a6947852964fd026d3865fbaf26fd782a3b8c5294fdc797a9655296476f63",
+    "psionic/fixtures/robotics/panda-pose-ik/precomparison-input-addendum-v1.json": "2acc58ffe264cbafe1b2014a1bb5f0fe738e01d7271cce51875937b6c03d2e64",
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-cases.f64": "83e77dc07eb80906019399540e14bbde7b0455cbbcc1d1d03b0f25a0a038798b",
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-flags.u8": "80b32bfcb982dea45d0c5f5dd049546c19b139e3b2ac619e784de0bd26b16409",
+    "psionic/tests/robotics/panda_fk_reference.py": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/tests/robotics/panda_pose_ik_reference.py": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04"
+  },
+  "reference_regenerated": false,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false
+}

@@ -1,0 +1,9 @@
+one geometric pose update: fixed grip SITE/world
+candidate joints (urad): -246453 405154 -151015 -2797569 -158987 2749403 802274
+grip xyz (um): -525341 -112993 894709
+fresh errors: 427 um position; 1388 urad orientation; 550 um weighted
+updates: 1; projected coordinates: 0
+q/-q target: complete output identical
+principal +Z half-turn (urad): 3141593
+zero quaternion: rotation refusal; complete candidate unchanged
+one candidate; convergence, collision and command admission remain separate

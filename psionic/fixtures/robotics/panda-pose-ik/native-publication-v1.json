@@ -1,0 +1,48 @@
+{
+  "schema": "psionic.panda-pose-ik.native-publication.v1",
+  "passed": true,
+  "native_receipt": {
+    "bytes": 30518,
+    "sha256": "245fb6a520f927565fbc96da59e27b7282199b855551f17a3d3f6d5f671e7859"
+  },
+  "original_failed_receipt": {
+    "bytes": 14470,
+    "sha256": "6b0731ed0826ba9e3ddc83cb2f2c5a130b2cbde49dc51470d9917ee3a25b6f1e"
+  },
+  "first_source_archive": {
+    "bytes": 15454,
+    "sha256": "72c0d0d1890e467676294d833ad503d6919206d520c777ea7c64f6054f370f50"
+  },
+  "first_driver_archive": {
+    "bytes": 19283,
+    "sha256": "51e240fbeab5a593ebda86ea5d2aeea18a09ccf130b4e4c9b4f4e272216b245a"
+  },
+  "guard_followup": {
+    "bytes": 3585,
+    "sha256": "afb1cd71e1986b5ad780a430480fdb39ce92074e9725c204f88c05518d901c06"
+  },
+  "independent_reference": {
+    "bytes": 5873,
+    "sha256": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43"
+  },
+  "oracle_source_restore": {
+    "bytes": 1077,
+    "sha256": "bfa3b23bb496e3f07076a5c388d87ef097e31cc1a2a3a6efde6fb1395b0fd126"
+  },
+  "historical_mode_contexts_preserved": {
+    "debug": "Original completed4200/54 numerical records plus original sign/ABI checks; late independent shell-fixture predicate failed. Those numerical files were compared once, never regenerated.",
+    "debug_guard_continuation": "Corrected fixture plus guards-only execution,37246assertions,zero repeated numerical corpus. No fabricated combined full-debug assertion total.",
+    "release": "First complete corrected execution,231306assertions.",
+    "sanitized": "First complete corrected fail-fast ASan/UBSan execution,231306assertions."
+  },
+  "all_three_complete_numerical_streams_byte_identical": true,
+  "Coax_emission_or_oracle_generation_repeated": false,
+  "tooling_fixes_only": [
+    "Independent host norm-shell fixture now uses prechecked adjacent inside/outside hexF64 points at the same2e-12 boundary.",
+    "Reader uses15 actual original paired-pose metadata groups;24 distinct matrix cases remain unpaired.",
+    "Independent generator was temporarily overwritten by an unexecuted native driver filename collision, then exactly restored to its qualified0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04 before first product comparison. Expected tables never changed."
+  ],
+  "same_frozen_54_4200_cases_budgets_cut_band_and_product": true,
+  "public_expected_artifacts_copied_after_native_run": true,
+  "public_copy_scope": "Byte-preserving metadata/reference publication only; no native,oracle,SDK or old gate replay."
+}

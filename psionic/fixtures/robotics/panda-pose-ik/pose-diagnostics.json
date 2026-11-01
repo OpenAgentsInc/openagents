@@ -1,0 +1,434 @@
+[
+  {
+    "case": 0,
+    "linear_residual": 5.637851296924623e-18,
+    "unscaled_delta_infinity_norm": 0.026527128240042785,
+    "projected": 0,
+    "nearest_projection_boundary": 0.623745281753465,
+    "initial_angle": 0.02985661792823317
+  },
+  {
+    "case": 1,
+    "linear_residual": 5.637851296924623e-18,
+    "unscaled_delta_infinity_norm": 0.026527128240042785,
+    "projected": 0,
+    "nearest_projection_boundary": 0.623745281753465,
+    "initial_angle": 0.02985661792823317
+  },
+  {
+    "case": 2,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.026527732546406755,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6247537180118354,
+    "initial_angle": 0.02983500677781534
+  },
+  {
+    "case": 3,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.026527732546406755,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6247537180118354,
+    "initial_angle": 0.02983500677781534
+  },
+  {
+    "case": 4,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.026528502296733335,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6260082898154993,
+    "initial_angle": 0.02981272394014286
+  },
+  {
+    "case": 5,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.026528502296733335,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6260082898154993,
+    "initial_angle": 0.02981272394014286
+  },
+  {
+    "case": 6,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.026529369899529757,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6275220841214963,
+    "initial_angle": 0.02979180006459698
+  },
+  {
+    "case": 7,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.026529369899529757,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6275220841214963,
+    "initial_angle": 0.02979180006459698
+  },
+  {
+    "case": 8,
+    "linear_residual": 6.938893903907228e-18,
+    "unscaled_delta_infinity_norm": 0.02890883424216752,
+    "projected": 0,
+    "nearest_projection_boundary": 0.8923878052504874,
+    "initial_angle": 0.03150426985541368
+  },
+  {
+    "case": 9,
+    "linear_residual": 6.938893903907228e-18,
+    "unscaled_delta_infinity_norm": 0.02890883424216752,
+    "projected": 0,
+    "nearest_projection_boundary": 0.8923878052504874,
+    "initial_angle": 0.03150426985541368
+  },
+  {
+    "case": 10,
+    "linear_residual": 2.6020852139652106e-18,
+    "unscaled_delta_infinity_norm": 0.026818284064530348,
+    "projected": 0,
+    "nearest_projection_boundary": 1.080316859365491,
+    "initial_angle": 0.03925026422499425
+  },
+  {
+    "case": 11,
+    "linear_residual": 2.6020852139652106e-18,
+    "unscaled_delta_infinity_norm": 0.026818284064530348,
+    "projected": 0,
+    "nearest_projection_boundary": 1.080316859365491,
+    "initial_angle": 0.03925026422499425
+  },
+  {
+    "case": 12,
+    "linear_residual": 1.214306433183765e-17,
+    "unscaled_delta_infinity_norm": 0.02813906948061813,
+    "projected": 0,
+    "nearest_projection_boundary": 0.10612439724625489,
+    "initial_angle": 0.019979677644117854
+  },
+  {
+    "case": 13,
+    "linear_residual": 1.214306433183765e-17,
+    "unscaled_delta_infinity_norm": 0.02813906948061813,
+    "projected": 0,
+    "nearest_projection_boundary": 0.10612439724625489,
+    "initial_angle": 0.019979677644117854
+  },
+  {
+    "case": 14,
+    "linear_residual": 9.860761315262648e-32,
+    "unscaled_delta_infinity_norm": 8.639897674152041e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 0.45380612200850656,
+    "initial_angle": 1.0110095038134724e-16
+  },
+  {
+    "case": 15,
+    "linear_residual": 9.860761315262648e-32,
+    "unscaled_delta_infinity_norm": 8.639897674152041e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 0.45380612200850656,
+    "initial_angle": 1.0110095038134724e-16
+  },
+  {
+    "case": 16,
+    "linear_residual": 3.4512664603419266e-31,
+    "unscaled_delta_infinity_norm": 6.980126082725652e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 1.5009999999999992,
+    "initial_angle": 2.3286257022990827e-16
+  },
+  {
+    "case": 17,
+    "linear_residual": 3.4512664603419266e-31,
+    "unscaled_delta_infinity_norm": 6.980126082725652e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 1.5009999999999992,
+    "initial_angle": 2.3286257022990827e-16
+  },
+  {
+    "case": 18,
+    "linear_residual": 1.3866695599588098e-32,
+    "unscaled_delta_infinity_norm": 3.3755380702612454e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6538061220085063,
+    "initial_angle": 2.8336731210928976e-16
+  },
+  {
+    "case": 19,
+    "linear_residual": 1.3866695599588098e-32,
+    "unscaled_delta_infinity_norm": 3.3755380702612454e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 0.6538061220085063,
+    "initial_angle": 2.8336731210928976e-16
+  },
+  {
+    "case": 20,
+    "linear_residual": 1.0477058897466563e-31,
+    "unscaled_delta_infinity_norm": 7.645599136110556e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 1.1718000000000008,
+    "initial_angle": 3.5208476902118333e-16
+  },
+  {
+    "case": 21,
+    "linear_residual": 1.0477058897466563e-31,
+    "unscaled_delta_infinity_norm": 7.645599136110556e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 1.1718000000000008,
+    "initial_angle": 3.5208476902118333e-16
+  },
+  {
+    "case": 22,
+    "linear_residual": 4.336808689942018e-19,
+    "unscaled_delta_infinity_norm": 0.009760648575294361,
+    "projected": 0,
+    "nearest_projection_boundary": 0.00023935142470543624,
+    "initial_angle": 0.014804990960750422
+  },
+  {
+    "case": 23,
+    "linear_residual": 4.336808689942018e-19,
+    "unscaled_delta_infinity_norm": 0.009760648575294361,
+    "projected": 0,
+    "nearest_projection_boundary": 0.00023935142470543624,
+    "initial_angle": 0.014804990960750422
+  },
+  {
+    "case": 24,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.011319038724215824,
+    "projected": 2,
+    "nearest_projection_boundary": 0.00021411088055423022,
+    "initial_angle": 0.034584704279852926
+  },
+  {
+    "case": 25,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.011319038724215824,
+    "projected": 2,
+    "nearest_projection_boundary": 0.00021411088055423022,
+    "initial_angle": 0.034584704279852926
+  },
+  {
+    "case": 26,
+    "linear_residual": 1.7256332301709633e-31,
+    "unscaled_delta_infinity_norm": 4.0424707153251677e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 0.33020000000000027,
+    "initial_angle": 2.9301939241834095e-16
+  },
+  {
+    "case": 27,
+    "linear_residual": 1.7256332301709633e-31,
+    "unscaled_delta_infinity_norm": 4.0424707153251677e-16,
+    "projected": 0,
+    "nearest_projection_boundary": 0.33020000000000027,
+    "initial_angle": 2.9301939241834095e-16
+  },
+  {
+    "case": 28,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.023424848075901943,
+    "projected": 0,
+    "nearest_projection_boundary": 0.274231375950043,
+    "initial_angle": 0.01610705294721013
+  },
+  {
+    "case": 29,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.023764793929729425,
+    "projected": 0,
+    "nearest_projection_boundary": 0.24196125605822738,
+    "initial_angle": 0.07996173338215595
+  },
+  {
+    "case": 30,
+    "linear_residual": 3.144186300207963e-18,
+    "unscaled_delta_infinity_norm": 0.01674195331028122,
+    "projected": 0,
+    "nearest_projection_boundary": 0.4634627099963611,
+    "initial_angle": 0.014536787997209036
+  },
+  {
+    "case": 31,
+    "linear_residual": 1.734723475976807e-18,
+    "unscaled_delta_infinity_norm": 0.014102478189601328,
+    "projected": 0,
+    "nearest_projection_boundary": 0.38093394106522993,
+    "initial_angle": 0.0223269281510797
+  },
+  {
+    "case": 32,
+    "linear_residual": 8.673617379884035e-18,
+    "unscaled_delta_infinity_norm": 0.025723852432921388,
+    "projected": 0,
+    "nearest_projection_boundary": 0.598736201323721,
+    "initial_angle": 0.056460547437220406
+  },
+  {
+    "case": 33,
+    "linear_residual": 5.637851296924623e-18,
+    "unscaled_delta_infinity_norm": 0.012952711620790697,
+    "projected": 0,
+    "nearest_projection_boundary": 0.35498618589229247,
+    "initial_angle": 0.009230511911813902
+  },
+  {
+    "case": 34,
+    "linear_residual": 8.673617379884035e-19,
+    "unscaled_delta_infinity_norm": 0.014241833782110767,
+    "projected": 0,
+    "nearest_projection_boundary": 0.35823060528285744,
+    "initial_angle": 0.0205301840493201
+  },
+  {
+    "case": 35,
+    "linear_residual": 8.673617379884035e-19,
+    "unscaled_delta_infinity_norm": 0.008577434823010027,
+    "projected": 0,
+    "nearest_projection_boundary": 0.24000083690603402,
+    "initial_angle": 0.01734798075711457
+  },
+  {
+    "case": 36,
+    "linear_residual": 8.673617379884035e-18,
+    "unscaled_delta_infinity_norm": 0.02313311673610997,
+    "projected": 0,
+    "nearest_projection_boundary": 0.3427151066859815,
+    "initial_angle": 0.028910103577005387
+  },
+  {
+    "case": 37,
+    "linear_residual": 6.938893903907228e-18,
+    "unscaled_delta_infinity_norm": 0.016294309815237266,
+    "projected": 0,
+    "nearest_projection_boundary": 0.5683379472378243,
+    "initial_angle": 0.03761071957424227
+  },
+  {
+    "case": 38,
+    "linear_residual": 8.673617379884035e-18,
+    "unscaled_delta_infinity_norm": 0.023388803864519792,
+    "projected": 0,
+    "nearest_projection_boundary": 0.4850320101281014,
+    "initial_angle": 0.057824270680430334
+  },
+  {
+    "case": 39,
+    "linear_residual": 5.204170427930421e-18,
+    "unscaled_delta_infinity_norm": 0.01797725027519203,
+    "projected": 0,
+    "nearest_projection_boundary": 0.24988332504561273,
+    "initial_angle": 0.03435251487378132
+  },
+  {
+    "case": 40,
+    "linear_residual": 1.431146867680866e-17,
+    "unscaled_delta_infinity_norm": 0.024449211368084894,
+    "projected": 0,
+    "nearest_projection_boundary": 0.36694937290279617,
+    "initial_angle": 0.04261188874848424
+  },
+  {
+    "case": 41,
+    "linear_residual": 1.3010426069826053e-18,
+    "unscaled_delta_infinity_norm": 0.011146898260095689,
+    "projected": 0,
+    "nearest_projection_boundary": 0.4568530484159332,
+    "initial_angle": 0.03068285474620972
+  },
+  {
+    "case": 42,
+    "linear_residual": 5.204170427930421e-18,
+    "unscaled_delta_infinity_norm": 0.01840365123749932,
+    "projected": 0,
+    "nearest_projection_boundary": 0.3640237828760995,
+    "initial_angle": 0.02528682505427499
+  },
+  {
+    "case": 43,
+    "linear_residual": 7.15573433840433e-18,
+    "unscaled_delta_infinity_norm": 0.021003504460510202,
+    "projected": 0,
+    "nearest_projection_boundary": 0.2914253195757599,
+    "initial_angle": 0.03198956082662024
+  },
+  {
+    "case": 44,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.016097576945334358,
+    "projected": 0,
+    "nearest_projection_boundary": 0.512813498938721,
+    "initial_angle": 0.023857740046848753
+  },
+  {
+    "case": 45,
+    "linear_residual": 3.2526065174565133e-18,
+    "unscaled_delta_infinity_norm": 0.019640949686532835,
+    "projected": 0,
+    "nearest_projection_boundary": 0.5025094125409661,
+    "initial_angle": 0.007984944129097279
+  },
+  {
+    "case": 46,
+    "linear_residual": 2.6020852139652106e-18,
+    "unscaled_delta_infinity_norm": 0.016684827609547814,
+    "projected": 0,
+    "nearest_projection_boundary": 0.42926980703281936,
+    "initial_angle": 0.025712508529907575
+  },
+  {
+    "case": 47,
+    "linear_residual": 2.6020852139652106e-18,
+    "unscaled_delta_infinity_norm": 0.0138369221569449,
+    "projected": 0,
+    "nearest_projection_boundary": 0.4408150987160928,
+    "initial_angle": 0.04035380716676933
+  },
+  {
+    "case": 48,
+    "linear_residual": 3.469446951953614e-18,
+    "unscaled_delta_infinity_norm": 0.02368379299731187,
+    "projected": 0,
+    "nearest_projection_boundary": 0.48761954157331866,
+    "initial_angle": 0.04235633959962692
+  },
+  {
+    "case": 49,
+    "linear_residual": 5.204170427930421e-18,
+    "unscaled_delta_infinity_norm": 0.022529754493338126,
+    "projected": 0,
+    "nearest_projection_boundary": 0.38053429841653097,
+    "initial_angle": 0.04426433744165926
+  },
+  {
+    "case": 50,
+    "linear_residual": 5.204170427930421e-18,
+    "unscaled_delta_infinity_norm": 0.021265400409395775,
+    "projected": 0,
+    "nearest_projection_boundary": 0.2296455865905882,
+    "initial_angle": 0.05080261848387887
+  },
+  {
+    "case": 51,
+    "linear_residual": 4.336808689942018e-18,
+    "unscaled_delta_infinity_norm": 0.02401734175582865,
+    "projected": 0,
+    "nearest_projection_boundary": 0.4069131987241912,
+    "initial_angle": 0.0324471528041408
+  },
+  {
+    "case": 52,
+    "linear_residual": 8.050921283143786e-16,
+    "unscaled_delta_infinity_norm": 9.045091542667933,
+    "projected": 0,
+    "nearest_projection_boundary": 0.5538061220085062,
+    "initial_angle": 6.211611964741962e-16
+  },
+  {
+    "case": 53,
+    "linear_residual": 8.050921283143786e-16,
+    "unscaled_delta_infinity_norm": 9.045091542667933,
+    "projected": 0,
+    "nearest_projection_boundary": 0.5538061220085062,
+    "initial_angle": 6.211611964741962e-16
+  }
+]

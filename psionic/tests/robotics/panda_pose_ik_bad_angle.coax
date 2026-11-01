@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-pose-ik.coax";
+main :: () {q:[7]pfku.Quantity(pfku.Metre,f64);target:[1]PpoTarget;out:[1]PpoOutput;status:=ppo_step(q[..],target[..],out[..]);}

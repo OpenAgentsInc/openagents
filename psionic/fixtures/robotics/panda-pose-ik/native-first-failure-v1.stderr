@@ -1,0 +1,1 @@
+Panda pose native line47: (fabs(shells[k]*shells[k]-1)<=2e-12)==(k%2==0)

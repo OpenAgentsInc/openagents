@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-pose-ik.coax";
+main :: () {p:Point3(PfkWorld,pfku.HalfMetre,f64);target:PpoTarget;target.position=p;}

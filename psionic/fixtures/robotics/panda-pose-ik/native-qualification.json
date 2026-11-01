@@ -1,0 +1,865 @@
+{
+  "schema": "psionic.panda-pose-ik.native.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "simulation_steps": 0,
+  "old_gates_repeated": false,
+  "oracle_regenerated": false,
+  "experiment_sha256": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88",
+  "input_addendum_sha256": "2acc58ffe264cbafe1b2014a1bb5f0fe738e01d7271cce51875937b6c03d2e64",
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "commands": [
+    {
+      "name": "compile-effects-debug-guards",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O0",
+        "-g",
+        "-I/private/tmp/panda-pose-ik-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_pose_ik_native.c",
+        "/private/tmp/panda-pose-ik-native-first/native-debug/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-pose-ik-native-followup/native-debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.1135631250217557,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-debug-guards",
+      "argv": [
+        "/private/tmp/panda-pose-ik-native-followup/native-debug/native",
+        "/private/tmp/panda-pose-ik-native-followup/input.bin",
+        "--guards-only"
+      ],
+      "exit": 0,
+      "seconds": 0.16225566697539762,
+      "stdout": {
+        "bytes": 412,
+        "sha256": "1a142fdedad642e6b7c852f36576c5c5a0e11298fbace7f5d73e17dae4f01892"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O2",
+        "-c",
+        "/private/tmp/panda-pose-ik-native-first/release/panda-pose-ik.c",
+        "-o",
+        "/private/tmp/panda-pose-ik-native-followup/native-release/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.1868205419741571,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O2",
+        "-I/private/tmp/panda-pose-ik-native-first/release",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_pose_ik_native.c",
+        "/private/tmp/panda-pose-ik-native-followup/native-release/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-pose-ik-native-followup/native-release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.14860779099399224,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-pose-ik-native-followup/native-release/native",
+        "/private/tmp/panda-pose-ik-native-followup/input.bin",
+        "/private/tmp/panda-pose-ik-native-followup/native-release/rotation.bin",
+        "/private/tmp/panda-pose-ik-native-followup/native-release/pose.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.17827649996615946,
+      "stdout": {
+        "bytes": 424,
+        "sha256": "bcfa1068d1a521fe1e00cc53716a38f4d20c05ea3b5320fff0f004d21ee5f1fa"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-c",
+        "/private/tmp/panda-pose-ik-native-first/debug/panda-pose-ik.c",
+        "-o",
+        "/private/tmp/panda-pose-ik-native-followup/native-sanitized/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.2814443340175785,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/panda-pose-ik-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_pose_ik_native.c",
+        "/private/tmp/panda-pose-ik-native-followup/native-sanitized/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-pose-ik-native-followup/native-sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 0.19425729202339426,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-pose-ik-native-followup/native-sanitized/native",
+        "/private/tmp/panda-pose-ik-native-followup/input.bin",
+        "/private/tmp/panda-pose-ik-native-followup/native-sanitized/rotation.bin",
+        "/private/tmp/panda-pose-ik-native-followup/native-sanitized/pose.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.23271362500963733,
+      "stdout": {
+        "bytes": 424,
+        "sha256": "bcfa1068d1a521fe1e00cc53716a38f4d20c05ea3b5320fff0f004d21ee5f1fa"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "budgets": {
+    "joint_radians_atol": 2e-10,
+    "position_metres_atol": 2e-10,
+    "angular_vector_radians_atol": 2e-12,
+    "angular_magnitude_radians_atol": 2e-12,
+    "physical_rotation_matrix_max_entry_atol": 2e-12,
+    "pose_error_diagnostics_atol": 2e-10,
+    "rtol": 0,
+    "mode_bytes": "exact",
+    "target_sign_pairs": "exact"
+  },
+  "source_sha256": {
+    "psionic/lib/robotics/panda-pose-ik.coax": "51dadd18037e11c35c2433aff5e487fa5cf0db8614aa14d0a2a612bb6adbb4b3",
+    "psionic/lib/robotics/panda-pose-ik-math.coax": "cc3e829f46bf5cef67e24f2dd71b1790e19633cbc1cff9fbfa40b99fe59084fe",
+    "psionic/lib/robotics/panda-pose-ik-rotation.coax": "1ef68eb239f7672532eb42d9c2e4eb21499de8c2b242af1959042519b71a3639",
+    "psionic/lib/robotics/panda-pose-ik-fixtures.coax": "d150ecb721fb9531908bfdadd2cde132e6b29ab6ad5a3f5bee9e171716231259",
+    "psionic/lib/robotics/panda-pose-ik-types.coax": "0de3a184ee1af023692a600f44ed132a9279d177f6cd473afdc9efc11c915c6a",
+    "psionic/lib/robotics/panda-ik-math.coax": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7",
+    "psionic/lib/robotics/panda-ik-types.coax": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9",
+    "psionic/lib/robotics/panda-jacobian-types.coax": "408c9a3ff60888564b189ad5920f97ed9761a060cf981c7701979d4f9c08e58a",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-jacobian.coax": "f0d63c9389c3a8140eb583e208e424aacd624c1d21743666720c0c05d7f9e18f",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-jacobian-math.coax": "b9791923effe7f9766134fa67bb28dc8d94ff177da43b81007f053ade10fd64f",
+    "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": "7b010bc725c0c0494fc7377003591d1a16e63f334e7d409f6e73e936668252ac"
+  },
+  "frozen_inputs": {
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/checks-qualification.json": {
+      "bytes": 2656,
+      "sha256": "ec366533f9c4ff6890cac6f62d205da9f9eeed283de185fe17fe6f9806a2f0d1"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/example-expected.json": {
+      "bytes": 804,
+      "sha256": "ad0e9fca0edbbbf88ca9abbb61b52bfb22f6a190740c13944aabb99bdd6a4f4c"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/example-qualification.json": {
+      "bytes": 1109,
+      "sha256": "a71db0dc15a273b1a4bdbe4befc289fb9badcb4ab36abce41f63196c1b0aaf7f"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/experiment.json": {
+      "bytes": 71373,
+      "sha256": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/native-contract-v1.json": {
+      "bytes": 2664,
+      "sha256": "907a51b129a2b8c360f6c85dc22ef7b42c50828e998a9249fa5e45e6e433481c"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/native-guard-followup-v1.json": {
+      "bytes": 3585,
+      "sha256": "afb1cd71e1986b5ad780a430480fdb39ce92074e9725c204f88c05518d901c06"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/pose-cases-v2.f64": {
+      "bytes": 6048,
+      "sha256": "aef336dd7417caf91edcaa1ee4e27ae752b6a5fd9a845a42859c08b72721ea14"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/pose-cases.f64": {
+      "bytes": 6048,
+      "sha256": "c38a6947852964fd026d3865fbaf26fd782a3b8c5294fdc797a9655296476f63"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/precomparison-input-addendum-v1.json": {
+      "bytes": 5283,
+      "sha256": "2acc58ffe264cbafe1b2014a1bb5f0fe738e01d7271cce51875937b6c03d2e64"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-cases.f64": {
+      "bytes": 268800,
+      "sha256": "83e77dc07eb80906019399540e14bbde7b0455cbbcc1d1d03b0f25a0a038798b"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-flags.u8": {
+      "bytes": 4200,
+      "sha256": "80b32bfcb982dea45d0c5f5dd049546c19b139e3b2ac619e784de0bd26b16409"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/unit-angle.log": {
+      "bytes": 402,
+      "sha256": "3e545a1bea710c73d00b2423f6175f3ea3289ae6163de0aec40bf6f0b30cec63"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/unit-frame.log": {
+      "bytes": 332,
+      "sha256": "e7583447d30729979db170bfbf01be05907bcda505489e05e2f22fc6842c0749"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/unit-output.log": {
+      "bytes": 281,
+      "sha256": "8aa80150a8511a623aaa82a3d94ef3eb37af5c9bc6f0f97e7ec4473ab6e2279b"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/unit-refusals.json": {
+      "bytes": 1987,
+      "sha256": "4c09cd8904d5ccd7071fddb251f22d799da72496ebed22f3277f6a277d297cda"
+    },
+    "psionic/fixtures/robotics/panda-pose-ik/unit-target_unit.log": {
+      "bytes": 344,
+      "sha256": "dd6b40465f4d5fede4a7a4da233e16a23c64ab58a3fa1e1d4053a6c62595a148"
+    },
+    "psionic/lib/robotics/panda-fk-chain.coax": {
+      "bytes": 4459,
+      "sha256": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba"
+    },
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": {
+      "bytes": 812,
+      "sha256": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7"
+    },
+    "psionic/lib/robotics/panda-fk-math.coax": {
+      "bytes": 5124,
+      "sha256": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e"
+    },
+    "psionic/lib/robotics/panda-fk-profile.coax": {
+      "bytes": 1984,
+      "sha256": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2"
+    },
+    "psionic/lib/robotics/panda-fk-types.coax": {
+      "bytes": 722,
+      "sha256": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b"
+    },
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": {
+      "bytes": 742,
+      "sha256": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9"
+    },
+    "psionic/lib/robotics/panda-ik-math.coax": {
+      "bytes": 5810,
+      "sha256": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7"
+    },
+    "psionic/lib/robotics/panda-ik-types.coax": {
+      "bytes": 392,
+      "sha256": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83"
+    },
+    "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": {
+      "bytes": 824,
+      "sha256": "7b010bc725c0c0494fc7377003591d1a16e63f334e7d409f6e73e936668252ac"
+    },
+    "psionic/lib/robotics/panda-jacobian-math.coax": {
+      "bytes": 2106,
+      "sha256": "b9791923effe7f9766134fa67bb28dc8d94ff177da43b81007f053ade10fd64f"
+    },
+    "psionic/lib/robotics/panda-jacobian-types.coax": {
+      "bytes": 243,
+      "sha256": "408c9a3ff60888564b189ad5920f97ed9761a060cf981c7701979d4f9c08e58a"
+    },
+    "psionic/lib/robotics/panda-jacobian.coax": {
+      "bytes": 3120,
+      "sha256": "f0d63c9389c3a8140eb583e208e424aacd624c1d21743666720c0c05d7f9e18f"
+    },
+    "psionic/lib/robotics/panda-matrix-types.coax": {
+      "bytes": 203,
+      "sha256": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483"
+    },
+    "psionic/lib/robotics/panda-matrix.coax": {
+      "bytes": 8993,
+      "sha256": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f"
+    },
+    "psionic/lib/robotics/panda-pose-ik-fixtures.coax": {
+      "bytes": 1336,
+      "sha256": "d150ecb721fb9531908bfdadd2cde132e6b29ab6ad5a3f5bee9e171716231259"
+    },
+    "psionic/lib/robotics/panda-pose-ik-math.coax": {
+      "bytes": 2867,
+      "sha256": "cc3e829f46bf5cef67e24f2dd71b1790e19633cbc1cff9fbfa40b99fe59084fe"
+    },
+    "psionic/lib/robotics/panda-pose-ik-rotation.coax": {
+      "bytes": 7792,
+      "sha256": "1ef68eb239f7672532eb42d9c2e4eb21499de8c2b242af1959042519b71a3639"
+    },
+    "psionic/lib/robotics/panda-pose-ik-types.coax": {
+      "bytes": 888,
+      "sha256": "0de3a184ee1af023692a600f44ed132a9279d177f6cd473afdc9efc11c915c6a"
+    },
+    "psionic/lib/robotics/panda-pose-ik.coax": {
+      "bytes": 8991,
+      "sha256": "51dadd18037e11c35c2433aff5e487fa5cf0db8614aa14d0a2a612bb6adbb4b3"
+    },
+    "psionic/tests/robotics/panda_pose_ik_native.c": {
+      "bytes": 15687,
+      "sha256": "046ca8bdb73f9bef7d664e4a388537304c4f1881b054cc787b72599586757b63"
+    },
+    "psionic/tests/robotics/panda_pose_ik_native_reference.py": {
+      "bytes": 22571,
+      "sha256": "fe9b4e594b2a7841953f7630928143a4182d15738033e0ba41949bc05a5b54f2"
+    },
+    "/private/tmp/panda-pose-ik-reference-first/oracle-source.py": {
+      "bytes": 17705,
+      "sha256": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04"
+    },
+    "/private/tmp/panda-pose-ik-reference-first/pose-diagnostics.json": {
+      "bytes": 13302,
+      "sha256": "922c24be6b877d7eab8563f816d611f46b993715b0b9480241b6248b0aec2573"
+    },
+    "/private/tmp/panda-pose-ik-reference-first/pose-expected.bin": {
+      "bytes": 8208,
+      "sha256": "e2d547fd6d037ff77bfa8ebf43222d9bb8a06a4617d07c7bcee91f01c6c20261"
+    },
+    "/private/tmp/panda-pose-ik-reference-first/reference.json": {
+      "bytes": 5873,
+      "sha256": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43"
+    },
+    "/private/tmp/panda-pose-ik-reference-first/rotation-expected.f64": {
+      "bytes": 436800,
+      "sha256": "f046e6d2118029750eff697149cb39aca096b6c8e91027fde01ffbb558e25b87"
+    },
+    "/private/tmp/panda-pose-ik-reference-first/rotation-flags.u8": {
+      "bytes": 4200,
+      "sha256": "80b32bfcb982dea45d0c5f5dd049546c19b139e3b2ac619e784de0bd26b16409"
+    }
+  },
+  "input": {
+    "bytes": 275032,
+    "sha256": "ddc04d0e0682d44e79b7a29d8eb28d3f708ae5f75b10f79b9e135b86286ecf9e"
+  },
+  "guard_seed_source": "effective pose case0; no nominal controller home assumption",
+  "tooling_followup": {
+    "first_failed_record": {
+      "bytes": 14470,
+      "sha256": "6b0731ed0826ba9e3ddc83cb2f2c5a130b2cbde49dc51470d9917ee3a25b6f1e"
+    },
+    "first_native_source": {
+      "bytes": 15454,
+      "sha256": "72c0d0d1890e467676294d833ad503d6919206d520c777ea7c64f6054f370f50"
+    },
+    "first_driver": {
+      "bytes": 19283,
+      "sha256": "51e240fbeab5a593ebda86ea5d2aeea18a09ccf130b4e4c9b4f4e272216b245a"
+    },
+    "addendum": {
+      "bytes": 3585,
+      "sha256": "afb1cd71e1986b5ad780a430480fdb39ce92074e9725c204f88c05518d901c06"
+    },
+    "Coax_emissions_repeated": false,
+    "debug_corpus_repeated": false,
+    "all_other_frozen_inputs_exact": true
+  },
+  "emissions": {
+    "debug": {
+      "C": {
+        "bytes": 142714,
+        "sha256": "55d31ada56a371ff0388f5cc9f49408564003f07f5f57dbef8392730c8458d7a"
+      },
+      "header": {
+        "bytes": 26667,
+        "sha256": "400d6ab2e01b80adcf3317d8281eb19be4be9b028702ebfc3d484fe4f9d7e0d1"
+      }
+    },
+    "release": {
+      "C": {
+        "bytes": 141521,
+        "sha256": "4512402b8b5340b803d877ea3fb7709fa54f8a3a49ae0f62642678e65ed6e1d3"
+      },
+      "header": {
+        "bytes": 26667,
+        "sha256": "400d6ab2e01b80adcf3317d8281eb19be4be9b028702ebfc3d484fe4f9d7e0d1"
+      }
+    }
+  },
+  "modes": {
+    "debug": {
+      "original_native_failed_after_complete_corpus": true,
+      "original_failed_record": {
+        "bytes": 14470,
+        "sha256": "6b0731ed0826ba9e3ddc83cb2f2c5a130b2cbde49dc51470d9917ee3a25b6f1e"
+      },
+      "original_native_binary": {
+        "bytes": 111192,
+        "sha256": "4b6f460330695ac833cdc19a106cceb79271ad4a861343e0cfe577adebcabccb"
+      },
+      "guard_continuation": {
+        "passed": true,
+        "SDK_calls": 0,
+        "guards_only": true,
+        "executed_rotation_corpus": 0,
+        "executed_pose_corpus": 0,
+        "rotation_cases": 4200,
+        "pose_cases": 54,
+        "rotation_record_bytes": 40,
+        "pose_record_bytes": 160,
+        "assertions": 37246,
+        "rotation_calls": 111,
+        "pose_calls": 315,
+        "full_byte_sign_checks": 0,
+        "alias_cases": 8,
+        "seed_endpoints": 14,
+        "XYZ_endpoints": 6,
+        "norm_shell_contexts": 12,
+        "exact_literals": 8,
+        "nonfinite_lane_patterns": 110,
+        "fpcr": 0
+      },
+      "guard_binary": {
+        "bytes": 111224,
+        "sha256": "1c6d2feea5f2cc572d4761210cf66e0bbcaca96fab08f2a2f18e883fbdae6652"
+      },
+      "rotation": {
+        "bytes": 168000,
+        "sha256": "717b527bc5252d500862b3d297af4b4144eb17764c7cb79721b0a91378f91596"
+      },
+      "pose": {
+        "bytes": 8640,
+        "sha256": "7f1d003e4f56e36b3e3a7c13676ce1838fb1658559e1bcc4c0fdf2b9ea2503d4"
+      },
+      "metrics": {
+        "rotation": {
+          "outside_cut_vector": {
+            "passed": true,
+            "values": 9576,
+            "max_abs_error": 8.881784197001252e-16,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "all_angles": {
+            "passed": true,
+            "values": 4200,
+            "max_abs_error": 1.1102230246251565e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "inside_cut_physical_rotation": {
+            "passed": true,
+            "values": 9072,
+            "max_abs_error": 1.0547118733938987e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "exact_pi_vectors": {
+            "passed": true,
+            "values": 336,
+            "max_abs_error": 4.440892098500626e-16,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "cut_cases": 1008,
+          "exact_pi_cases": 112,
+          "modeled_cut_band_unchanged": true,
+          "all_actual_finite_words": 16800,
+          "all_expected_finite_words": 54600
+        },
+        "pose": {
+          "joints_radians": {
+            "passed": true,
+            "values": 378,
+            "max_abs_error": 2.220446049250313e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "position_metres": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 1.1102230246251565e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "physical_rotation": {
+            "passed": true,
+            "values": 486,
+            "max_abs_error": 1.4432899320127035e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "diagnostics": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 1.160530005428484e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "all_actual_finite_words": 918,
+          "all_expected_finite_words": 918,
+          "all_status_and_counters_exact": true,
+          "whole_pose_convergence_claimed": false
+        }
+      },
+      "full_debug_assertion_total_not_reconstructed": true
+    },
+    "release": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "guards_only": false,
+        "executed_rotation_corpus": 4200,
+        "executed_pose_corpus": 54,
+        "rotation_cases": 4200,
+        "pose_cases": 54,
+        "rotation_record_bytes": 40,
+        "pose_record_bytes": 160,
+        "assertions": 231306,
+        "rotation_calls": 16911,
+        "pose_calls": 531,
+        "full_byte_sign_checks": 12654,
+        "alias_cases": 8,
+        "seed_endpoints": 14,
+        "XYZ_endpoints": 6,
+        "norm_shell_contexts": 12,
+        "exact_literals": 8,
+        "nonfinite_lane_patterns": 110,
+        "fpcr": 0
+      },
+      "binary": {
+        "bytes": 71928,
+        "sha256": "a821f8295840ed409cedeb2367a506677bad006a3a07096834de45225f5255a1"
+      },
+      "rotation": {
+        "bytes": 168000,
+        "sha256": "717b527bc5252d500862b3d297af4b4144eb17764c7cb79721b0a91378f91596"
+      },
+      "pose": {
+        "bytes": 8640,
+        "sha256": "7f1d003e4f56e36b3e3a7c13676ce1838fb1658559e1bcc4c0fdf2b9ea2503d4"
+      },
+      "metrics": {
+        "rotation": {
+          "outside_cut_vector": {
+            "passed": true,
+            "values": 9576,
+            "max_abs_error": 8.881784197001252e-16,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "all_angles": {
+            "passed": true,
+            "values": 4200,
+            "max_abs_error": 1.1102230246251565e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "inside_cut_physical_rotation": {
+            "passed": true,
+            "values": 9072,
+            "max_abs_error": 1.0547118733938987e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "exact_pi_vectors": {
+            "passed": true,
+            "values": 336,
+            "max_abs_error": 4.440892098500626e-16,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "cut_cases": 1008,
+          "exact_pi_cases": 112,
+          "modeled_cut_band_unchanged": true,
+          "all_actual_finite_words": 16800,
+          "all_expected_finite_words": 54600
+        },
+        "pose": {
+          "joints_radians": {
+            "passed": true,
+            "values": 378,
+            "max_abs_error": 2.220446049250313e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "position_metres": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 1.1102230246251565e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "physical_rotation": {
+            "passed": true,
+            "values": 486,
+            "max_abs_error": 1.4432899320127035e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "diagnostics": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 1.160530005428484e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "all_actual_finite_words": 918,
+          "all_expected_finite_words": 918,
+          "all_status_and_counters_exact": true,
+          "whole_pose_convergence_claimed": false
+        }
+      }
+    },
+    "sanitized": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "guards_only": false,
+        "executed_rotation_corpus": 4200,
+        "executed_pose_corpus": 54,
+        "rotation_cases": 4200,
+        "pose_cases": 54,
+        "rotation_record_bytes": 40,
+        "pose_record_bytes": 160,
+        "assertions": 231306,
+        "rotation_calls": 16911,
+        "pose_calls": 531,
+        "full_byte_sign_checks": 12654,
+        "alias_cases": 8,
+        "seed_endpoints": 14,
+        "XYZ_endpoints": 6,
+        "norm_shell_contexts": 12,
+        "exact_literals": 8,
+        "nonfinite_lane_patterns": 110,
+        "fpcr": 0
+      },
+      "binary": {
+        "bytes": 145128,
+        "sha256": "35107840136064751dbc5f60a9c8524bbeaafc6ec2a31dac66904bd2f2364013"
+      },
+      "rotation": {
+        "bytes": 168000,
+        "sha256": "717b527bc5252d500862b3d297af4b4144eb17764c7cb79721b0a91378f91596"
+      },
+      "pose": {
+        "bytes": 8640,
+        "sha256": "7f1d003e4f56e36b3e3a7c13676ce1838fb1658559e1bcc4c0fdf2b9ea2503d4"
+      },
+      "metrics": {
+        "rotation": {
+          "outside_cut_vector": {
+            "passed": true,
+            "values": 9576,
+            "max_abs_error": 8.881784197001252e-16,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "all_angles": {
+            "passed": true,
+            "values": 4200,
+            "max_abs_error": 1.1102230246251565e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "inside_cut_physical_rotation": {
+            "passed": true,
+            "values": 9072,
+            "max_abs_error": 1.0547118733938987e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "exact_pi_vectors": {
+            "passed": true,
+            "values": 336,
+            "max_abs_error": 4.440892098500626e-16,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "cut_cases": 1008,
+          "exact_pi_cases": 112,
+          "modeled_cut_band_unchanged": true,
+          "all_actual_finite_words": 16800,
+          "all_expected_finite_words": 54600
+        },
+        "pose": {
+          "joints_radians": {
+            "passed": true,
+            "values": 378,
+            "max_abs_error": 2.220446049250313e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "position_metres": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 1.1102230246251565e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "physical_rotation": {
+            "passed": true,
+            "values": 486,
+            "max_abs_error": 1.4432899320127035e-15,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "diagnostics": {
+            "passed": true,
+            "values": 162,
+            "max_abs_error": 1.160530005428484e-15,
+            "atol": 2e-10,
+            "rtol": 0
+          },
+          "all_actual_finite_words": 918,
+          "all_expected_finite_words": 918,
+          "all_status_and_counters_exact": true,
+          "whole_pose_convergence_claimed": false
+        }
+      }
+    }
+  },
+  "new_reader_guards": {
+    "passed": true,
+    "new_negative_cases": 26,
+    "expected_and_actual": true,
+    "no_oracle_or_product_regeneration": true
+  },
+  "whole_mode_bytes_exact": true,
+  "rotation_sha256": "717b527bc5252d500862b3d297af4b4144eb17764c7cb79721b0a91378f91596",
+  "pose_sha256": "7f1d003e4f56e36b3e3a7c13676ce1838fb1658559e1bcc4c0fdf2b9ea2503d4",
+  "seconds": 1.5530669579748064,
+  "committed_output_files": {
+    "native-release/rotation.bin": {
+      "bytes": 168000,
+      "sha256": "717b527bc5252d500862b3d297af4b4144eb17764c7cb79721b0a91378f91596"
+    },
+    "native-sanitized/rotation.bin": {
+      "bytes": 168000,
+      "sha256": "717b527bc5252d500862b3d297af4b4144eb17764c7cb79721b0a91378f91596"
+    },
+    "native-release/pose.bin": {
+      "bytes": 8640,
+      "sha256": "7f1d003e4f56e36b3e3a7c13676ce1838fb1658559e1bcc4c0fdf2b9ea2503d4"
+    },
+    "native-sanitized/pose.bin": {
+      "bytes": 8640,
+      "sha256": "7f1d003e4f56e36b3e3a7c13676ce1838fb1658559e1bcc4c0fdf2b9ea2503d4"
+    }
+  }
+}

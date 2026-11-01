@@ -1,0 +1,141 @@
+{
+  "schema": "psionic.panda-pose-ik.native-guard-followup.v1",
+  "frozen_after_first_guard_failure_before_followup_product_calls": true,
+  "original_experiment_sha256": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88",
+  "first_failed_record_sha256": "6b0731ed0826ba9e3ddc83cb2f2c5a130b2cbde49dc51470d9917ee3a25b6f1e",
+  "first_native_source_sha256": "72c0d0d1890e467676294d833ad503d6919206d520c777ea7c64f6054f370f50",
+  "first_driver_sha256": "51e240fbeab5a593ebda86ea5d2aeea18a09ccf130b4e4c9b4f4e272216b245a",
+  "changes": [
+    "Choose adjacent inside/outside high norm-shell points by independently evaluated binary64 predicate; unchanged2e-12 gate.",
+    "Apply adjacent pose-output sign-pair check only to15 actual original sign pairs; the24 distinct matrix cases remain unpaired.",
+    "Add debug guard-only continuation to reuse complete first debug numerical files and unchanged Coax C/header/object."
+  ],
+  "native_shell_hex": [
+    "0x1.0000000001197p+0",
+    "0x1.0000000001198p+0",
+    "0x1.fffffffffdcd1p-1",
+    "0x1.fffffffffdcd0p-1"
+  ],
+  "native_shell_admitted": [
+    true,
+    false,
+    true,
+    false
+  ],
+  "native_shell_squared_norm_errors": [
+    1.999733711954832e-12,
+    2.000177801164682e-12,
+    1.999955756559757e-12,
+    2.000177801164682e-12
+  ],
+  "actual_original_adjacent_pose_sign_pairs": [
+    [
+      0,
+      1
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      4,
+      5
+    ],
+    [
+      6,
+      7
+    ],
+    [
+      8,
+      9
+    ],
+    [
+      10,
+      11
+    ],
+    [
+      12,
+      13
+    ],
+    [
+      14,
+      15
+    ],
+    [
+      16,
+      17
+    ],
+    [
+      18,
+      19
+    ],
+    [
+      20,
+      21
+    ],
+    [
+      22,
+      23
+    ],
+    [
+      24,
+      25
+    ],
+    [
+      26,
+      27
+    ],
+    [
+      52,
+      53
+    ]
+  ],
+  "pair_seed_target_sha256": [
+    "b250122de86629e8e8388cb6f32f08e2c537d566c386de1f7447f7bcfb6e359c",
+    "63fefe953bd98fd49866e05b27e6772d1245f6c27ede95e6b6daf1f15c1ae0c0",
+    "d7f7d95228b32319463cc1ebbf386db675b7e2a67e21853bd46eeba07d5afe6c",
+    "de09bdf0de31a58bf1617fd04cdc62e8b7a7df914b5f4400ef4a1f37b4aee5c6",
+    "c1d47e80c7e1f4a540b8e397d029f49ed3b6d2372a0bbfeb9c081ecf64206f3a",
+    "4c2049b05c0b5a86dc665b6b5941f4dfe767436b8b210fffd7a255e354a84408",
+    "934e52774741fdf3fdef6a800c65769130212a2ca684c968c8cf39a038136515",
+    "862c60dadb7065f3230ca564663dcaac19430693cca0a3710ec66d1f9c88ea3f",
+    "244a2643f91638de1d9ca5d1cb1685b28b9797bfcd1c6e0bfa701bd283cc7d16",
+    "f6b30af66ef2dcb96c537e881467395560f616b6c87ae26e6ceb5254fc131484",
+    "8b0e70680ec74551d32445bb8c79ce3cbeae22cca14d0b5d0659511b7e977bc2",
+    "9de3b43d19b7f904673642a0cbc6f16f9809629be84cdf65efeaf61f3a5d3856",
+    "5563b12b6432bb9ee8a2164667ad8ad51688953c1c2d834ba907a52b5a168439",
+    "73fab6fe24c4c50d880c2e5fc2fa8c6f761a057dedb58201329893936c5f5287",
+    "ec69de3c969206eb83eafab89a4f7a3386b28f72a012805af200ae04eec6c871"
+  ],
+  "24_unpaired_matrix_rows": [
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51
+  ],
+  "Coax_product_or_expected_tables_changed": false,
+  "original54_pose_and4200_rotation_cases_changed": false,
+  "budgets_or_principal_cut_band_changed": false,
+  "first_debug_numerical_corpus_rerun": false,
+  "debug_assertions_scope": "Initial process completed corpus/sign/ABI queries then failed one independent shell-fixture assertion. Followup runs guards only; no invented combined full-debug assertion total."
+}

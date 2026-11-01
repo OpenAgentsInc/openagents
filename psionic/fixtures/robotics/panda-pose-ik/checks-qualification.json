@@ -1,0 +1,60 @@
+{
+  "schema": "psionic.panda-pose-ik.source-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_inventory": {
+    "psionic/lib/robotics/panda-pose-ik-types.coax": "0de3a184ee1af023692a600f44ed132a9279d177f6cd473afdc9efc11c915c6a",
+    "psionic/lib/robotics/panda-pose-ik-fixtures.coax": "d150ecb721fb9531908bfdadd2cde132e6b29ab6ad5a3f5bee9e171716231259",
+    "psionic/lib/robotics/panda-pose-ik-rotation.coax": "1ef68eb239f7672532eb42d9c2e4eb21499de8c2b242af1959042519b71a3639",
+    "psionic/lib/robotics/panda-pose-ik-math.coax": "cc3e829f46bf5cef67e24f2dd71b1790e19633cbc1cff9fbfa40b99fe59084fe",
+    "psionic/lib/robotics/panda-pose-ik.coax": "51dadd18037e11c35c2433aff5e487fa5cf0db8614aa14d0a2a612bb6adbb4b3"
+  },
+  "scope": "Only actual emitted sites in three new roots; existing kinematic/physics checks not repeated. Quantity operator-token provenance is not fully preserved by this compiler; these counts do not establish full quantity-token mutation coverage.",
+  "focused_checks": {
+    "groups": 15,
+    "cases": 15,
+    "passed": true,
+    "log_sha256": "6434a4926562961a83dd75f62110bc46c31ab8558ddf9efb14bf6b00ca8941e2"
+  },
+  "mutations": [
+    {
+      "root": "psionic/lib/robotics/panda-pose-ik-rotation.coax",
+      "root_only": true,
+      "emitted_sites": 132,
+      "killed": 132,
+      "survivors": 0,
+      "stdout_sha256": "f11c7bc9a664cdbd975c34d4609505d271dbe6528f5ddd1522780fbadfbe192d"
+    },
+    {
+      "root": "psionic/lib/robotics/panda-pose-ik-math.coax",
+      "root_only": true,
+      "emitted_sites": 65,
+      "killed": 65,
+      "survivors": 0,
+      "stdout_sha256": "521b7ae6419cba8917c7f606714886aafc4ab7a42033c4cea3ffe1428de826fd"
+    },
+    {
+      "root": "psionic/lib/robotics/panda-pose-ik.coax",
+      "root_only": true,
+      "emitted_sites": 123,
+      "killed": 123,
+      "survivors": 0,
+      "stdout_sha256": "f64e3b0cbe936853fd4f5017af8e437b69bc9a45e8bc98aa4884216be282e0a8"
+    }
+  ],
+  "history": {
+    "rotation_first_run": {
+      "emitted_sites": 123,
+      "killed": 115,
+      "survivors": 8,
+      "stdout_sha256": "31b3909bed7cc3d78c04210a65eb6ec41a377071cdabc941a37f453b79711a93"
+    },
+    "closure": "Observable full Horner trace and canonicalization/public-copy assertions close the first run; no equivalent waivers. Rotation only rerun after its code/checks changed. Unchanged math/public passing results were not rerun."
+  },
+  "unit_refusals": {
+    "file": "unit-refusals.json",
+    "sha256": "4c09cd8904d5ccd7071fddb251f22d799da72496ebed22f3277f6a277d297cda",
+    "count": 4,
+    "passed": true
+  }
+}

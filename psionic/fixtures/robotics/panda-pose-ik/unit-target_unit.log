@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_pose_ik_bad_target_unit.coax:2:84: error[E0327]: the target is Point3(PfkWorld,Metre,f64), assigned Point3(PfkWorld,HalfMetre,f64)
+  main :: () {p:Point3(PfkWorld,pfku.HalfMetre,f64);target:PpoTarget;target.position=p;}
+                                                                                     ^
+1 error

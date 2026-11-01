@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-pose-ik.coax";
+consume_length :: (length:pfku.Quantity(pfku.Metre,f64)) {}
+main :: () {out:PpoOutput;consume_length(out.orientation_error);}

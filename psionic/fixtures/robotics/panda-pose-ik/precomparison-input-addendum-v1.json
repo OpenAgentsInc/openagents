@@ -1,0 +1,196 @@
+{
+  "schema": "psionic.panda-pose-ik.precomparison-input-addendum.v1",
+  "frozen_before_expected_generation_and_product_comparison": true,
+  "original_experiment_sha256": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88",
+  "original_pose_cases_sha256": "c38a6947852964fd026d3865fbaf26fd782a3b8c5294fdc797a9655296476f63",
+  "replacement_pose_cases_sha256": "aef336dd7417caf91edcaa1ee4e27ae752b6a5fd9a845a42859c08b72721ea14",
+  "replacement_file": "pose-cases-v2.f64",
+  "case_count": 54,
+  "changes": [
+    {
+      "case_index": 22,
+      "case_name": "sdk4-matched-sign1",
+      "old_seed_radians": [
+        -2.8973,
+        -1.7628,
+        -2.8973,
+        -3.0718,
+        -2.8973,
+        -0.0175,
+        -2.8973
+      ],
+      "new_seed_radians": [
+        -2.8873,
+        -1.7528,
+        -2.8873,
+        -3.0618000000000003,
+        -2.8873,
+        -0.0075000000000000015,
+        -2.8873
+      ],
+      "old_seed_u64": [
+        13837078595254983485,
+        13833989801450551430,
+        13837078595254983485,
+        13837471534322471561,
+        13837078595254983485,
+        13804073289845854700,
+        13837078595254983485
+      ],
+      "new_seed_u64": [
+        13837056077256846633,
+        13833944765454277725,
+        13837056077256846633,
+        13837449016324334709,
+        13837056077256846633,
+        13798668970293010106,
+        13837056077256846633
+      ],
+      "target_bytes_unchanged": true
+    },
+    {
+      "case_index": 23,
+      "case_name": "sdk4-matched-sign-1",
+      "old_seed_radians": [
+        -2.8973,
+        -1.7628,
+        -2.8973,
+        -3.0718,
+        -2.8973,
+        -0.0175,
+        -2.8973
+      ],
+      "new_seed_radians": [
+        -2.8873,
+        -1.7528,
+        -2.8873,
+        -3.0618000000000003,
+        -2.8873,
+        -0.0075000000000000015,
+        -2.8873
+      ],
+      "old_seed_u64": [
+        13837078595254983485,
+        13833989801450551430,
+        13837078595254983485,
+        13837471534322471561,
+        13837078595254983485,
+        13804073289845854700,
+        13837078595254983485
+      ],
+      "new_seed_u64": [
+        13837056077256846633,
+        13833944765454277725,
+        13837056077256846633,
+        13837449016324334709,
+        13837056077256846633,
+        13798668970293010106,
+        13837056077256846633
+      ],
+      "target_bytes_unchanged": true
+    },
+    {
+      "case_index": 24,
+      "case_name": "sdk5-matched-sign1",
+      "old_seed_radians": [
+        2.8973,
+        1.7628,
+        2.8973,
+        -0.0698,
+        2.8973,
+        3.7525,
+        2.8973
+      ],
+      "new_seed_radians": [
+        2.8873,
+        1.7528,
+        2.8873,
+        -0.0798,
+        2.8873,
+        3.7425,
+        2.8873
+      ],
+      "old_seed_u64": [
+        4613706558400207677,
+        4610617764595775622,
+        4613706558400207677,
+        13813066077581788106,
+        4613706558400207677,
+        4615632297600871301,
+        4613706558400207677
+      ],
+      "new_seed_u64": [
+        4613684040402070825,
+        4610572728599501917,
+        4613684040402070825,
+        13813786653522167385,
+        4613684040402070825,
+        4615609779602734449,
+        4613684040402070825
+      ],
+      "target_bytes_unchanged": true
+    },
+    {
+      "case_index": 25,
+      "case_name": "sdk5-matched-sign-1",
+      "old_seed_radians": [
+        2.8973,
+        1.7628,
+        2.8973,
+        -0.0698,
+        2.8973,
+        3.7525,
+        2.8973
+      ],
+      "new_seed_radians": [
+        2.8873,
+        1.7528,
+        2.8873,
+        -0.0798,
+        2.8873,
+        3.7425,
+        2.8873
+      ],
+      "old_seed_u64": [
+        4613706558400207677,
+        4610617764595775622,
+        4613706558400207677,
+        13813066077581788106,
+        4613706558400207677,
+        4615632297600871301,
+        4613706558400207677
+      ],
+      "new_seed_u64": [
+        4613684040402070825,
+        4610572728599501917,
+        4613684040402070825,
+        13813786653522167385,
+        4613684040402070825,
+        4615609779602734449,
+        4613684040402070825
+      ],
+      "target_bytes_unchanged": true
+    }
+  ],
+  "other50_rows_byte_identical": true,
+  "targets_byte_identical": true,
+  "rotation_cases_sha256": "83e77dc07eb80906019399540e14bbde7b0455cbbcc1d1d03b0f25a0a038798b",
+  "rotation_flags_sha256": "80b32bfcb982dea45d0c5f5dd049546c19b139e3b2ac619e784de0bd26b16409",
+  "budgets": {
+    "joint_radians_atol": 2e-10,
+    "position_metres_atol": 2e-10,
+    "angular_vector_radians_atol": 2e-12,
+    "angular_magnitude_radians_atol": 2e-12,
+    "physical_rotation_matrix_max_entry_atol": 2e-12,
+    "pose_error_diagnostics_atol": 2e-10,
+    "rtol": 0,
+    "mode_bytes": "exact",
+    "target_sign_pairs": "exact"
+  },
+  "algorithm_or_budget_changes": false,
+  "reason": "Precomparison review: exactly-on-source-bound SDK matching seeds have ulp-sized geometry residuals, making exact one-step projection counters ill-conditioned between independent arithmetic profiles. Move only both signed copies of the all-lower/all-upper seed inward.01rad; keep real SDK targets and endpoint admission tests.",
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "numerical_expected_outputs_observed": false,
+  "product_comparisons_observed": false
+}

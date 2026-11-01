@@ -1,0 +1,24 @@
+{
+  "schema": "psionic.panda-pose-ik.oracle-source-restore.v1",
+  "passed": true,
+  "reference": {
+    "bytes": 5873,
+    "sha256": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43"
+  },
+  "executed_source": {
+    "path": "psionic/tests/robotics/panda_pose_ik_reference.py",
+    "bytes": 17705,
+    "sha256": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04"
+  },
+  "restored_source": {
+    "bytes": 17705,
+    "sha256": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04"
+  },
+  "exact_original_source_restored": true,
+  "incident": "After expected generation, a parallel native-driver author briefly reused the independent oracle pathname. The native driver was moved to panda_pose_ik_native_reference.py before its execution. The independent oracle was restored exactly from its authored patch history and its earlier source snapshot/receipt; the SHA256 matches the already executed reference.",
+  "expected_regenerated": false,
+  "Coax_calls": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "historical_receipts_modified": false
+}

@@ -1,0 +1,10 @@
+// Additive fixed-grip pose query. Raw Hamilton attitude does not supply a
+// generic compiler-proven transform chain or command permission.
+#load "panda-ik-math.coax";
+#load "panda-jacobian-types.coax";
+PpoAngularWeight :: struct @unit(mass=0,length=1,time=0,angle=-1,numerator=1,denominator=1) {}
+PpoStatus :: enum u8 {ok;shape;number;range;limits;rotation;solve;}
+PpoTarget :: struct {position:Point3(PfkWorld,pfku.Metre,f64);world_from_grip_wxyz:[4]f64;}
+PpoRotation :: struct {vector:[3]pfku.Quantity(pfku.Radian,f64);angle:pfku.Quantity(pfku.Radian,f64);}
+PpoOutput :: struct {angles:[7]pfku.Quantity(pfku.Radian,f64);position:Point3(PfkWorld,pfku.Metre,f64);world_from_grip_wxyz:[4]f64;position_error_metres:f64;orientation_error:pfku.Quantity(pfku.Radian,f64);weighted_error_metres:f64;updates:int;projected_coordinates:int;}
+PpoDelta :: struct {status:PpoStatus;radians:[7]f64;}

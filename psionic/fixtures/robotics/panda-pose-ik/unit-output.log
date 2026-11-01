@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_pose_ik_bad_output.coax:3:45: error[E0317]: argument 1 of 'consume_length' is Quantity(Metre, f64), given Quantity(Radian, f64)
+  main :: () {out:PpoOutput;consume_length(out.orientation_error);}
+                                              ^
+1 error

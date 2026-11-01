@@ -1,0 +1,30 @@
+{
+  "schema": "psionic.panda-pose-ik.native-contract.v1",
+  "frozen_before_first_product_emission_or_native_comparison": true,
+  "experiment_sha256": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88",
+  "input_addendum_sha256": "2acc58ffe264cbafe1b2014a1bb5f0fe738e01d7271cce51875937b6c03d2e64",
+  "numerical_corpus_or_budgets_changed": false,
+  "profile": "Darwin-arm64 binary64 scalar-libm FPCR0; no fastmath/contraction",
+  "input": "PPO1 header fouru32 magic0x314f5050,4200,54,version1; rotation4200x8F64; effectivepose54x14F64; lower7,upper7,guardseed7F64. Guardseed is effectivecase0, not nominal controllerhome.",
+  "rotation_output": "4200x40B: statusI64,vector3F64,angleF64",
+  "pose_output": "54x160B: statusI64,17F64,updatesI64,projectedcoordinatesI64",
+  "canonical_bytes": "Each standalone case has four current/target sign combinations; every pose also flips targetsign. Entire outputs must be identical, plus adjacent originaltargetsign pair records identical.",
+  "independent_cut_scope": "The unchanged preclassified1008 principalcutcases compare magnitude and reconstructedphysicalR;3192 ordinarycases comparevector+angle.112 literalexactpi cases additionally comparecanonicalaxis. No observed-result classification.",
+  "supplemental_exact_literals": [
+    "identity current/target returns four canonical+0 words",
+    "identity current, target[0,+/-1,0,0] andY/Z analogues returns positive-cardinal pi vector,pi angle,+0 othercomponents",
+    "identity current,target[1,1e-200,0,0] returns exact[2e-200,0,0,2e-200] to observe scaled small-norm arithmetic beyond an absolute tolerance"
+  ],
+  "supplemental_guards": {
+    "original_joint_endpoints": 14,
+    "targetXYZ_endpoints": 6,
+    "quaternion_norm_shell_contexts": 12,
+    "nonfinite_lane_patterns": 110,
+    "input_output_alias_cases": 8,
+    "reader_actual_expected_negative_cases": 26
+  },
+  "atomicity": "Refusals preserve whole output/spares/canaries and actual inputs. Successful overlap permits modification only inside published output extent. Both typed and raw actual target objects are snapshotted.",
+  "status_scope": "Every serialized corpus status exactlyOK; standalone negative contract queries assert precise number/range/limits/rotation/shape status and full refusal atomicity.",
+  "warning_scope": "Only generated Coax C object suppresses unused empty-tag printer parameters. The authored C effects/ABI witness remains strict.",
+  "scope": "One geometric-rate-J sixdimensional DLS candidate and principal rotation error, not a whole pose solver, collision/control rollout, differentiation, R12transform chain, R14, SDK parity or hardware permission."
+}

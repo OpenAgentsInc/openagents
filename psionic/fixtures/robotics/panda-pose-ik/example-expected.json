@@ -1,0 +1,28 @@
+{
+  "schema": "psionic.panda-pose-ik.example-expected.v1",
+  "source": "Independent precomputed matrix/Gaussian pose row28 supplied before any example execution; exact canonical +Z pi literal",
+  "expected_sha256": "1465a81dd6091e214e824bc9fce9045780d358f3fe3b90afbdac962fea9f79b2",
+  "values": {
+    "angles": [
+      -0.24645310784144053,
+      0.40515373240152075,
+      -0.15101450667273245,
+      -2.797568624049957,
+      -0.1589868039633642,
+      2.749403021932217,
+      0.8022737156511386
+    ],
+    "position": [
+      -0.5253406457302225,
+      -0.11299264751058398,
+      0.8947094238253975
+    ],
+    "errors": [
+      0.0004269339447285114,
+      0.0013878801998152472,
+      0.0005501461703278487
+    ]
+  },
+  "rounding": "floor(1e6*x+.5)",
+  "generated_before_example_execution": true
+}

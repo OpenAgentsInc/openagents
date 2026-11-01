@@ -1,0 +1,29 @@
+// Six-row coefficient boundary. Typed public construction attaches one-radian
+// coordinates and .25 metre/radian orientation weight before raw factor math.
+#load "panda-pose-ik-rotation.coax";
+#authority;
+#test "Panda pose six-row damped solve has independent diagonal signs null column and global cap" {
+ j:[42]f64;diagonal:=[6]f64.[1,2,3,4,2,3];e:=[6]f64.[0.03,-0.04,0.02,-0.01,0.05,-0.06];for i:0..<6 {j[i*7+i]=diagonal[i];}
+ d:=ppo_delta(j,e);#assert d.status==PpoStatus.ok;for i:0..<6 {#assert abs(d.radians[i]-diagonal[i]*e[i]/(diagonal[i]*diagonal[i]+0.0025))<2e-12;}#assert d.radians[6]==0;
+ d=ppo_delta(j,[6]f64.[10,10,10,10,10,10]);#assert d.status==PpoStatus.ok && abs(d.radians[0]-0.1)<2e-12;for i:1..<7 {#assert d.radians[i]<0.1;}
+ zero:[42]f64;d=ppo_delta(zero,e);#assert d.status==PpoStatus.ok;for x:d.radians {#assert x==0;}
+ j[41]=4.0000001;#assert ppo_delta(j,e).status==PpoStatus.range;j[41]=4;#assert ppo_delta(j,e).status==PpoStatus.ok;e[5]=20.0000001;#assert ppo_delta(j,e).status==PpoStatus.range;e[5]=20;#assert ppo_delta(j,e).status==PpoStatus.ok;
+ #assert ppo_weight().value==0.25;
+}
+#test "Panda pose source admission retains old source limits position box and status roles" {
+ q:=pik_home();w:[10]u64;for i:0..<7 {w[i]=f64_bits(q[i].value);}#assert ppo_admit_position(w)==PpoStatus.ok;
+ for i:0..<10 {old:=w[i];w[i]=0x7ff8000000000001;#assert ppo_admit_position(w)==PpoStatus.number;w[i]=f64_bits(11.0);#assert ppo_admit_position(w)==(ifx i<7 then PpoStatus.limits else PpoStatus.range);w[i]=old;}
+}
+
+ppo_weight :: ()->pfku.Quantity(PpoAngularWeight,f64) {r:pfku.Quantity(PpoAngularWeight,f64);r.value=0.25;return r;}
+ppo_admit_position :: (words:[10]u64)->PpoStatus {
+ status:=pik_admit(words,96);if status==PikStatus.number {return PpoStatus.number;}if status==PikStatus.range {return PpoStatus.range;}if status==PikStatus.limits {return PpoStatus.limits;}return PpoStatus.ok;
+}
+ppo_delta :: (j:[42]f64,error:[6]f64)->PpoDelta {
+ for x:j {if !pfk_finite(f64_bits(x)) {return PpoDelta.{status=PpoStatus.number};}if pik_greater(abs(x),4) {return PpoDelta.{status=PpoStatus.range};}}
+ for x:error {if !pfk_finite(f64_bits(x)) {return PpoDelta.{status=PpoStatus.number};}if pik_greater(abs(x),20) {return PpoDelta.{status=PpoStatus.range};}}
+ a:[49]f64;for row:0..<6 {for col:0..<6 {sum:f64=0;for k:0..<7 {sum+=j[row*7+k]*j[col*7+k];}if row==col {sum+=0.0025;}a[row*7+col]=sum;}}
+ inverse:=pm_inverse(6,a);if inverse.status!=PmCode.ok {return PpoDelta.{status=PpoStatus.solve};}weighted:[6]f64;for row:0..<6 {for col:0..<6 {weighted[row]+=inverse.value[row*7+col]*error[col];}}
+ out:PpoDelta;largest:f64=0;for k:0..<7 {for row:0..<6 {out.radians[k]+=j[row*7+k]*weighted[row];}if pik_greater(abs(out.radians[k]),largest) {largest=abs(out.radians[k]);}}
+ if pik_greater(largest,0.1) {for k:0..<7 {out.radians[k]*=0.1/largest;}}return out;
+}

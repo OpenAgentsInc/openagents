@@ -1,0 +1,45 @@
+{
+  "schema": "psionic.panda-pose-ik.rotation-grid-guard.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "expected_regenerated": false,
+  "cases": 4200,
+  "exact_target_sign_pairs": 2100,
+  "metrics": {
+    "current": {
+      "values": 37800,
+      "max_abs_error": 0.0,
+      "atol": 2e-12,
+      "rtol": 0
+    },
+    "relative": {
+      "values": 37800,
+      "max_abs_error": 6.661338147750939e-16,
+      "atol": 2e-12,
+      "rtol": 0
+    },
+    "angle": {
+      "values": 4200,
+      "max_abs_error": 6.661338147750939e-16,
+      "atol": 2e-12,
+      "rtol": 0
+    },
+    "ordinary_vector": {
+      "values": 9576,
+      "max_abs_error": 8.881784197001252e-16,
+      "atol": 2e-12,
+      "rtol": 0
+    }
+  },
+  "reference_sha256": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43",
+  "expected_rotation_sha256": "f046e6d2118029750eff697149cb39aca096b6c8e91027fde01ffbb558e25b87",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_pose_ik_grid_guard.py": "68b9f1c85910ddc35308991de3a76b2826bd88e57ea5ae874d440fbd45f3ecbc",
+    "psionic/tests/robotics/panda_pose_ik_reference.py": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04",
+    "psionic/fixtures/robotics/panda-pose-ik/experiment.json": "4ff40ce11ebcbfa7be54f3a02aded7d35ac3b56101541717dd365b40d7c47d88",
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-cases.f64": "83e77dc07eb80906019399540e14bbde7b0455cbbcc1d1d03b0f25a0a038798b",
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-flags.u8": "80b32bfcb982dea45d0c5f5dd049546c19b139e3b2ac619e784de0bd26b16409"
+  },
+  "seconds": 0.04187300003832206
+}
