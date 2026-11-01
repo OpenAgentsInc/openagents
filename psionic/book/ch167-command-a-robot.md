@@ -739,8 +739,10 @@ plan is reproducible; shortcutting and time parameterization follow.
   keep typed local nonconvergence distinct from global unreachability. The
   fixed-source position and pose profiles above already enforce source ranges
   and their separate convergence criteria.
-- Planned paths are collision-free when re-checked at 10× resolution;
-  the same seed gives the same plan.
+- Planned edges retain fixed-scene conservative clearance evidence; a 10×
+  denser recheck is an additional oracle. The same seed gives the same plan.
+  Follow the [collision-to-planning sequence](../docs/robotics/panda-motion-planning.md)
+  before qualifying RRT.
 - Timed trajectories never exceed velocity and acceleration limits.
 
 ## How Genesis does it
