@@ -10,6 +10,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/big-integers-in-limbs.coax",
+      "chapter": "nostr/book/ch002-big-integers-in-fixed-limbs.md",
+      "stdout": "nostr/fixtures/big-integers-in-limbs.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

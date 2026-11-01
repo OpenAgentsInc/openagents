@@ -28,7 +28,7 @@
    "number": 2,
    "title": "Big integers in fixed limbs",
    "file": "ch002-big-integers-in-fixed-limbs.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     1,
@@ -36,7 +36,8 @@
    ],
    "source": [
     "coax/lib/crypto/secp_field.coax",
-    "coax/lib/crypto/secp_scalar.coax"
+    "coax/lib/crypto/secp_scalar.coax",
+    "nostr/examples/big-integers-in-limbs.coax"
    ],
    "qualified_targets": [
     "cpu",

@@ -1,0 +1,106 @@
+// book:begin example
+#load "../../coax/lib/crypto/secp_field.coax";
+#load "../../coax/lib/crypto/secp_scalar.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print the ten limbs of a field element, lowest first.
+show_limbs :: (label: string, a: SecpField) {
+  print("%:", label);
+  for i: 0..<10 { print(" %", a.limb[i]); }
+  print("\n");
+}
+
+// Print 32 bytes as lowercase hex.
+show_bytes :: (label: string, bytes: [] u8) {
+  text: [64] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+
+// Every limb at its mask: 2^256 - 1, before any reduction.
+all_ones :: (magnitude: u64) -> SecpField {
+  a: SecpField;
+  for i: 0..<10 { a.limb[i] = magnitude * (ifx i == 9 then SF_MASK22 else SF_MASK26); }
+  return a;
+}
+
+main :: () {
+  one: SecpField; one.limb[0] = 1;
+  bytes: [32] u8;
+
+  // A bit's limb is bit / 26 and its place in the limb is bit % 26.
+  bit26: SecpField; bit26.limb[1] = 1;
+  #assert sf_store(bit26, bytes[..]);
+  show_bytes("2^26 as bytes", bytes[..]);
+
+  // 2^256 - 1 is 2^32 + 976 more than p, so it reduces to limbs 976 and 64.
+  show_limbs("2^256 - 1 raw", all_ones(1));
+  show_limbs("2^256 - 1 mod p", sf_normalize(all_ones(1)));
+
+  // p - 1 is the largest canonical value.
+  minus_one := sf_negate(one);
+  show_limbs("p - 1", minus_one);
+  #assert sf_store(minus_one, bytes[..]);
+  show_bytes("p - 1 as bytes", bytes[..]);
+
+  // (p - 1) * (p - 1) = (-1) * (-1) = 1.
+  show_limbs("(p - 1)^2", sf_square(minus_one));
+
+  // Magnitude 8: every limb holds 8 times its mask. Normalize still works.
+  show_limbs("magnitude 8 mod p", sf_normalize(all_ones(8)));
+
+  // The bound certificate for magnitude 8.
+  b := sf_mul_bounds(8);
+  print("largest product column: %\n", b.facts[5]);
+  print("u64 maximum:            %\n", CB_MAX64);
+  print("certificate for magnitude 8 holds: %\n", b.ok);
+
+  // Scalars: eight 32-bit limbs, one widening multiply-accumulate each.
+  print("one multiply-accumulate at most: %\n", SC_MAC_MAX);
+  n_minus_one := sc_sub(ScScalar.{}, sc_small(1));
+  print("n - 1 limbs:");
+  for i: 0..<8 { print(" %", n_minus_one.limbs[i]); }
+  print("\n");
+  print("(n - 1) + 1 is zero: %\n", sc_is_zero(sc_add(n_minus_one, sc_small(1))));
+
+  // Refusals.
+  p_bytes := [32] u8.[255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 254, 255, 255, 252, 47];
+  print("strict load of p: ok %\n", sf_load_strict(p_bytes[..]).ok);
+  print("load of 31 bytes: ok %\n", sf_load(p_bytes[0..<31]).ok);
+  n_bytes := [32] u8.[255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 254, 186, 174, 220, 230, 175, 72, 160, 59, 191, 210,
+    94, 140, 208, 54, 65, 65];
+  n := sc_load(n_bytes[..]);
+  print("scalar load of n: ok %, overflow %\n", n.ok, n.overflow);
+  print("certificate for magnitude 9: ok %\n", sf_mul_bounds(9).ok);
+}
+// book:end example
+
+// book:begin check
+// The hand-derived values from the chapter, checked against the code.
+#test "hand-derived limbs match the code" {
+  r := sf_normalize(all_ones(1));
+  #assert r.limb[0] == 976 && r.limb[1] == 64;
+  for i: 2..<10 { #assert r.limb[i] == 0; }
+  // 10 * (2^26 - 1)^2, the largest column of a product of canonical limbs.
+  #assert sf_mul_bounds(8).facts[5] == 10 * 67108863 * 67108863;
+  // (2^32 - 1)^2 + 2 * (2^32 - 1) = 2^64 - 1 exactly.
+  #assert SC_MAC_MAX == CB_MAX64;
+}
+
+// Every byte position, with every bit set, round-trips through strict load
+// and store, and lands in the limb that bit / 26 names.
+#forall "each byte maps to the limbs its bits name" at: 0..<32 {
+  bytes: [32] u8; back: [32] u8;
+  bytes[31 - at] = 255;
+  r := sf_load_strict(bytes[..]);
+  #assert r.ok && sf_store(r.value, back[..]);
+  for i: 0..<32 { #assert back[i] == bytes[i]; }
+  for bit: at * 8..<at * 8 + 8 {
+    #assert ((r.value.limb[bit / 26] >> cast(u64) (bit % 26)) & 1) == 1;
+  }
+}
+// book:end check
