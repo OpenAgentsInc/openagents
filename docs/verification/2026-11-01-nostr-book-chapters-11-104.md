@@ -13,8 +13,8 @@ work found outside the book.
     comparer exist and are checked. The cutover and the rollback rehearsal
     need owner sign-off (`NEEDS_OWNER.md`).
   - **Chapter 104:** NIP-KEYS signing (ECDSA/BIP-143, BIP-341, BIP-322) is
-    not built, and root-only mutation of `coax/lib/nostr/nipkeys.coax` is
-    not finished.
+    not built. Root-only mutation of `coax/lib/nostr/nipkeys.coax` finished
+    later at `a9ce49d714`: 1963 of 1963 mutants killed across 40 shards.
 - `python3 psionic/tests/book.py --book nostr` (the structure check) passes.
 
 ## Final example run
@@ -118,8 +118,8 @@ These earlier records are cited, not rerun:
 - **Entropy (chapter 12):** the Mac, iOS and Chrome runs.
 - **Mutation, sanitizers and the 10,000-entity run:** chapters 15 and 16.
 - **Full mutation (`COAX_MUTATION_FULL=1`):** not run on any new file. Each
-  new `#authority` file had root-only mutation with zero survivors, except
-  `nipkeys.coax` (chapter 104).
+  new `#authority` file had root-only mutation with zero survivors,
+  `nipkeys.coax` included (`a9ce49d714`).
 
 ## Plan lines rewritten
 
