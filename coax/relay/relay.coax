@@ -33,6 +33,11 @@
 // only on a connection authenticated as its author (checked after the
 // signature and the rate limit); a repost embedding one is refused.
 //
+// NIP-13 (chapter 56, nip13.coax): with --pow BITS (default 0, off) an
+// EVENT needs that many leading zero bits in its id and a nonce tag
+// committing to at least as many, checked before the signature; the NIP-11
+// document then says min_pow_difficulty.
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -47,6 +52,7 @@
 #load "../lib/nostr/relay_route.coax";
 #load "../lib/nostr/relay_rate.coax";
 #load "../lib/nostr/nip70.coax";
+#load "../lib/nostr/nip13.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
 #load "../lib/nostr/message_agree.coax";
 
@@ -111,6 +117,7 @@ RyWork :: struct {
   n42: [1] Nip42;                 // the relay URL, copied into each connection
   gen: int;                       // the last connection generation
   rate: RtConfig;                 // --rate, or relay_rate.coax's defaults
+  pow: int;                       // --pow: the NIP-13 difficulty an EVENT needs, 0 off
   keys: [1] RtKeys;               // the per-key EVENT windows
   nip11: [4096] u8; nip11_n: int; // RR_NIP11 with the rate limits (rt_nip11)
 }
@@ -161,8 +168,12 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   event := text[m.event_from..<m.event_to];
   r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
   if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
-  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
   id := r.e.id;
+  if r.reason == RS_ACCEPT && w[0].pow > 0 {
+    a := nip13_admit(event, w[0].pow, w[0].scratch[..], false);
+    if a.error != N13_OK { ry_ok_reason(c, w, id[..], cast(string) w[0].out[0..<nip13_reason(a, w[0].out[..])]); return; }
+  }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
   if r.reason == RS_ACCEPT {
     key := r.e.public_key;
     rt := rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());
@@ -178,6 +189,11 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), prefix, why, w[0].body[..]));
   if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
+}
+// OK false with reason, "prefix: text" (nip13_reason's form).
+ry_ok_reason :: (c: [] RyConn, w: [] RyWork, id: [] u8, reason: string) {
+  k := 0; while k + 1 < reason.count && !(reason[k] == ':' && reason[k + 1] == ' ') { k += 1; }
+  ok := ry_text(c, w, ms_write_ok(id, false, reason[0..<k], reason[k + 2..<reason.count], w[0].body[..]));
 }
 ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg) {
   mm := m;
@@ -388,8 +404,13 @@ main :: () {
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
   }
   w[0].rate = ry_rate();
-  w[0].nip11_n = rt_nip11(RR_NIP11, w[0].rate, w[0].nip11[..]);
-  if w[0].nip11_n < 0 { print("relay: --rate needs three limits from 1 to %\n", RT_LIMIT_MAX); return; }
+  base: [4096] u8;
+  b := rt_nip11(RR_NIP11, w[0].rate, base[..]);
+  if b < 0 { print("relay: --rate needs three limits from 1 to %\n", RT_LIMIT_MAX); return; }
+  w[0].pow = rr_pow(ry_host_pow());
+  if w[0].pow < 0 { print("relay: --pow needs 0 to % bits\n", RR_POW_MAX); return; }
+  w[0].nip11_n = rr_nip11_pow(cast(string) base[0..<b], w[0].pow, w[0].nip11[..]);
+  if w[0].nip11_n < 0 { print("relay: the NIP-11 document does not fit\n"); return; }
   print("relay: listening on port %\n", cxsrv_bound_port());
   ry_serve(conns[..], w[..], store[..]);
 }

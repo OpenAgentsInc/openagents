@@ -579,7 +579,7 @@ Part X are wired into it, and what the rest still need.
 | `nip50.coax` via `filter_read_search` | 41 | Not wired | Read filters with `filter_read_search` in `rs_filter`, build and update the word index (`n50_build`), answer search filters with `n50_query`, and advertise `50` |
 | `nip70.coax` | 42 | Wired | `ry_event` calls `nip70_admit` (accepts true) with the connection's `RrAuth` after the signature and the rate limit, so a `["-"]` event is accepted only from its author |
 | `nip77.coax` | 43 | Not wired | Per-connection `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE` sessions over the store's items (`re_items` builds them), with `NEG-ERR` on limits and time outs; also step 9's remote check |
-| `nip13.coax` | 56 | Not wired | An optional minimum difficulty in admission (`nip13_admit`) and its NIP-11 `min_pow_difficulty` |
+| `nip13.coax` | 56 | Wired | `--pow BITS` (default 0, off; `rr_pow`): `nip13_admit` before the signature, refused "pow: ..."; NIP-11 then carries `min_pow_difficulty` (`rr_nip11_pow`) |
 | `nip86.coax` | 67 | Not wired | An HTTP POST branch in `ry_http` for `application/nostr+json+rpc` that calls `n86_serve` after NIP-98 auth, and `n86_admit` in admission for banned keys and allowed kinds |
 | `nip43.coax` | 67 | Not wired | A relay key (`n43_self` in NIP-11), membership state from kinds 13534, 8000 and 8001, and the join and leave requests routed to `n43_request` |
 | `nip29.coax` | 59 | Not wired | Group state per `h` tag, `g29_admit` for events with an `h` tag, and the relay-signed metadata, admins and members events (`g29_write_*`) |

@@ -461,6 +461,41 @@ def protected(port):
     w.close()
 
 
+def proof_of_work(exe, log):
+    """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
+    refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
+    p, port = start(exe, log)
+    try:
+        check('min_pow_difficulty' not in info(port)['limitation'], 'pow: off by default, not in NIP-11')
+    finally:
+        p.terminate(); p.wait(10)
+    p = subprocess.Popen([str(exe), '--listen', '127.0.0.1', '--port', '0', '--pow', '8'] + TLS_ARGS,
+                         stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+    try:
+        port = int(p.stdout.readline().split()[-1])
+        check(info(port)['limitation'].get('min_pow_difficulty') == 8, 'pow: --pow 8 is advertised as min_pow_difficulty')
+        w = Ws(port)
+        check(w.auth()[2] is True, 'pow: AUTH')
+        now = int(time.time())
+        plain = sign([{"kind": 1, "created_at": now, "tags": [], "content": "no work"}])[0]
+        r = publish(w, plain)
+        check(r[2] is False and r[3].startswith('pow: '), 'pow: an event without a nonce is refused with pow: (%r)' % (r[3],))
+        pk = plain['pubkey']
+        def mined(target):
+            for nonce in range(1 << 20):
+                tags = [["nonce", str(nonce), str(target)]]
+                i = hashlib.sha256(json.dumps([0, pk, now, 1, tags, "work"], separators=(',', ':'), ensure_ascii=False).encode()).digest()
+                if i[0] == 0:
+                    return tags
+        low = sign([{"kind": 1, "created_at": now, "tags": mined(4), "content": "work"}])[0]
+        check(publish(w, low)[3] == 'pow: committed target 4 is less than 8', 'pow: a lucky id that commits to 4 is refused')
+        good = sign([{"kind": 1, "created_at": now, "tags": mined(8), "content": "work"}])[0]
+        check(publish(w, good) == ['OK', good['id'], True, ''], 'pow: 8 zero bits committing to 8 are accepted')
+        w.close()
+    finally:
+        p.terminate(); p.wait(10)
+
+
 def info(port):
     s = connect(port)
     s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
@@ -652,6 +687,7 @@ def main():
             finally:
                 p.terminate(); p.wait(10)
             rate_limits(exe, log)
+            proof_of_work(exe, log)
             if tls:
                 tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()

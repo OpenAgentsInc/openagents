@@ -639,9 +639,9 @@ example's own `main` was not run; its output is pinned by the fixture.
 - Delegated proof of work: a service that mines for a client. The miner
   already needs only the public key; the service and its payment are not
   built.
-- Wiring `nip13_admit` into the relay's admission of
-  [chapter 34](ch034-admit-an-event.md). The relay doesn't call it yet; a
-  relay that does would advertise its requirement in NIP-11's
+- A per-kind or per-key difficulty. `coax/relay/relay.coax` takes one
+  difficulty for every EVENT (`--pow BITS`, default 0, off), checks it with
+  `nip13_admit` before the signature, and advertises it as NIP-11's
   `limitation.min_pow_difficulty`
   ([chapter 37](ch037-nip-11-relay-information.md)).
 
