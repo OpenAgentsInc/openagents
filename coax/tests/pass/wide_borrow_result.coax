@@ -1,0 +1,28 @@
+// A result holding more than 64 borrowed strings, shaped like Psionic's mesh
+// totals (psionic/lib/mesh/totals.coax): 0.46 refused it with E0381 while
+// summarizing the returned borrows and the retained stores at its caller.
+// An array past the 64-leaf budget is now one leaf, the unknown element.
+#import "Basic";
+WideResult :: struct {
+  count:int;
+  few:[32]string;
+  many:[64]string;
+  most:[128]string;
+  digest:[32]u8;
+}
+collect :: (ids:[]string)->WideResult {
+  r:WideResult;
+  for i:0..<ids.count {
+    if i<32 {r.few[i]=ids[i];}
+    if i<64 {r.many[i]=ids[i];}
+    r.most[r.count]=ids[i];r.count+=1;
+  }
+  return r;
+}
+main :: () {
+  ids:=[3]string.["a","bb","ccc"];
+  totals:=collect(ids[..]);
+  print("% % % %\n",totals.count,totals.few[0],totals.many[1],totals.most[2]);
+  totals=collect(ids[0..<1]);
+  print("% %\n",totals.count,totals.most[0]);
+}

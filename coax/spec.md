@@ -887,7 +887,7 @@ Limits for the bootstrap:
 | Evaluation work | 100,000 steps by default across one compilation; `--run-steps N` selects 1 through 250,000,000. Each evaluated expression or statement and each zero-initialized array element counts; E0400. |
 | Aggregate storage | At most 1,572,864 live aggregate-vector capacity slots and 131,072 live aggregate containers, independently of the work limit and in every profile; E0400. |
 | Aggregate traversal | At most 134,217,728 visited values/fields per frontend evaluation or individual check, independent of the step budget; E0400. |
-| Cast-string snapshots | At most 67,108,864 live owned bytes per compilation and 268,435,456 materialized bytes per frontend evaluation or individual check; E0400. Each cast charges its output length plus one terminator. |
+| Frozen string snapshots | At most 67,108,864 live owned bytes per compilation and 268,435,456 materialized bytes per frontend evaluation or individual check; E0400. Each snapshot charges its length plus one terminator; a cast itself copies nothing. |
 | Active interpreted calls | 64, E0403; call sites are printed as bounded source notes. |
 | Active constant dependencies | 64, E0403; type-resolution dependencies also stop at 64, E0347. |
 | Constant cycles | E0340 for type dependencies; E0402 for a value cycle reached through a procedure. |
@@ -913,12 +913,13 @@ authority checks begin.
 The independent storage limit counts actual allocated vector capacity, including
 nested copies and retained constants, and releases it with the last owner or
 view. The evaluator also clears view cycles when the compilation ends; an
-unreachable cycle may continue consuming budget until then. Interpreted
-byte-view-to-string casts own immutable snapshots. Copies, slices, aggregate
-fields and returned values share that owner; folded strings remain owned until
-compilation ends. Live byte accounting includes the terminator once per owner,
-and the work limit charges each successful materialization even after its owner
-is released. Source literals and other strings, metadata, syntax trees, host
+unreachable cycle may continue consuming budget until then. An interpreted
+byte-view-to-string cast borrows the view's storage, as in native code: a later
+write through the array shows in the string, its slices and copies. A string
+folded into a compile-time result is copied once into an owned snapshot, which
+remains owned until compilation ends. Live byte accounting includes the
+terminator once per owner, and the work limit charges each successful
+materialization even after its owner is released. Source literals and other strings, metadata, syntax trees, host
 I/O, and generated output are not covered. An aggregate cycle holding a string
 may retain it until compilation ends; these limits do not bound total RSS.
 

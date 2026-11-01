@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""String snapshots in checks and emitted native programs."""
+"""Borrowed strings in checks and emitted native programs; snapshots in frozen constants."""
 from pathlib import Path
 import os
 import json
@@ -12,17 +12,24 @@ COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax'))
 SOURCE = r'''
 #import "Basic";
 Box :: struct { text:string; }
-make :: (ch:u8)->Box { bytes:=[3]u8.[ch,66,67]; b:Box; b.text=cast(string)bytes[..]; return b; }
-A :: #run make(65).text;
-B :: #run make(68).text;
-C :: #run make(69);
+// Source can't freeze a borrowed string (a constant has no view, E0366, and
+// returning a local's bytes is E0383); ct_strings.cpp checks that snapshot.
+first :: (ch:u8)->u8 { bytes:=[3]u8.[ch,66,67]; s:=cast(string)bytes[..]; return s[0]; }
+A :: "ABC";
+B :: #run ifx first(68)==68 then "DBC" else "copied";
+C :: #run Box.{text=A[1..<3]};
 DefaultBox :: struct { text:string = A; }
 default_box :: ()->DefaultBox { d:DefaultBox; return d; }
 D :: #run default_box();
 as_text :: (a:[]u8)->string { return cast(string)a; }
-#assert A=="ABC" && B=="DBC" && C.text=="EBC" && D.text=="ABC";
-#test "snapshot and sliced aliases" { bytes:=[3]u8.[65,66,67]; s:=as_text(bytes[..]); part:=s[1..<3]; b:Box; b.text=s; bytes[1]=90; #assert s=="ABC" && part=="BC" && b.text=="ABC"; }
-main :: () { print("% % %\n", A,B,C.text); }
+// cast(string) borrows (spec.md): a later write through the array shows in
+// the string, its slices and copies, in checks and in native code alike.
+borrowed :: ()->string { bytes:=[3]u8.[65,66,67]; s:=as_text(bytes[..]); part:=s[1..<3]; b:Box; b.text=s; bytes[1]=90;
+  if s=="AZC" && part=="ZC" && b.text=="AZC" && s[1]==90 {return "borrowed";} return "copied"; }
+Seen :: #run borrowed();
+#assert A=="ABC" && B=="DBC" && C.text=="BC" && D.text=="ABC" && Seen=="borrowed";
+#test "borrowed strings and sliced aliases" { #assert borrowed()=="borrowed"; }
+main :: () { print("% % % %\n", A,B,C.text,borrowed()); }
 '''
 
 class StringTests(unittest.TestCase):
@@ -35,7 +42,7 @@ class StringTests(unittest.TestCase):
                     r = subprocess.run([str(COMPILER), command, str(source), *profile],
                                        text=True, capture_output=True, timeout=120)
                     self.assertEqual(r.returncode, 0, r.stderr)
-                    if command == 'run': self.assertEqual(r.stdout, 'ABC DBC EBC\n')
+                    if command == 'run': self.assertEqual(r.stdout, 'ABC DBC BC borrowed\n')
 
     def test_declared_limits_and_frontend_peak_are_reported(self):
         with tempfile.TemporaryDirectory(prefix='coax-strings-metadata-') as d:
@@ -50,7 +57,8 @@ class StringTests(unittest.TestCase):
             result = subprocess.run([str(COMPILER), 'check', str(source), '--timings', str(report)],
                                     text=True, capture_output=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertGreaterEqual(json.loads(report.read_text())['string_peak_bytes'], 12)
+            # Casts borrow, and nothing here freezes a borrowed string.
+            self.assertEqual(json.loads(report.read_text())['string_peak_bytes'], 0)
 
     def test_repeated_casts(self):
         source = """#test "repeated snapshots" {
@@ -64,12 +72,14 @@ class StringTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('1 check, 1 passed, 0 failed', result.stdout)
 
-    def test_real_check_rejects_excess_live_and_work_then_recovers(self):
+    def test_borrowing_casts_take_no_string_storage(self):
+        # Before 0.47 a check copied every cast; these exceeded the live and
+        # work limits. A borrow copies nothing; only a frozen result does.
         programs = {
-            'live': """#test "too many live strings" { input:[1048576]u8; strings:[64]string; i:=0;
-                         while i<64 { strings[i]=cast(string)input[..]; i+=1; } }
+            'live': """#test "many live strings" { input:[1048576]u8; strings:[64]string; i:=0;
+                         while i<64 { strings[i]=cast(string)input[..]; i+=1; } #assert strings[63].count==1048576; }
                          #test "later" { #assert true; } main :: () {}""",
-            'work': """#test "too much copying" { input:[32768]u8; i:=0;
+            'work': """#test "many casts" { input:[32768]u8; i:=0;
                          while i<8192 { s:=cast(string)input[..]; #assert s.count==32768; i+=1; } }
                          #test "later" { #assert true; } main :: () {}""",
         }
@@ -79,10 +89,8 @@ class StringTests(unittest.TestCase):
                     path = Path(d) / (label + '.coax'); path.write_text(source)
                     result = subprocess.run([str(COMPILER), 'test', str(path)], text=True,
                                             capture_output=True, timeout=180)
-                    self.assertEqual(result.returncode, 1)
-                    self.assertIn('compile-time string storage or work limit exceeded', result.stderr)
-                    self.assertIn('ok   #test later', result.stdout)
-                    self.assertNotIn('error[E0402]', result.stderr)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('2 checks, 2 passed, 0 failed', result.stdout)
 
     def test_actual_owner_under_sanitizers(self):
         with tempfile.TemporaryDirectory(prefix='coax-strings-asan-') as d:

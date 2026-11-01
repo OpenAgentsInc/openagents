@@ -164,7 +164,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Versioned checked shader emission | WGSL/SPIR-V use checked tree2 for the legacy registry and tree3 for explicit fine derivatives/helper conversion; rich reflection2 reports actual entry layouts and capability requirements. Scalar CPU derivative bodies remain zero; quad execution and device qualification are separate | partial | 0.47.0 |
 | Linux x86-64 C11 host | Builds, checks and runs on the tested NixOS x86-64 host with GCC; not a release-qualified target | partial | 0.23.0 |
 | Bounded aggregate traversal | Independent finite work accounting for evaluated aggregate traversal | works | 0.21.0 |
-| Bounded interpreted string snapshots | Owned cast snapshots with finite live bytes and materialization work | works | 0.20.0 |
+| Bounded interpreted string snapshots | Cast strings borrow; frozen results own snapshots with finite live bytes and materialization work | works | 0.20.0 |
 | Conservative mutation scheduling | Runs all mutants with isolated check scheduling and full-run fallback | works | 0.19.0 |
 | Differential conformance tooling | Optional bounded evaluator/native tests with independent oracle and reduced witnesses | partial | 0.14.0 |
 | General ownership | Transfer, destruction and complete region/lifetime rules remain planned | designed | — |

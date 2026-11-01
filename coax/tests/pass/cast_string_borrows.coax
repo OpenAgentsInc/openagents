@@ -1,0 +1,14 @@
+// cast(string) borrows a []u8 as text (spec.md): a later write through the
+// array shows in the string. The #assert runs it in the compile-time
+// evaluator (as coax test does), main in native code; both must agree.
+// Before 0.47 the evaluator copied the bytes and saw "ABC".
+#import "Basic";
+borrowed :: ()->string {
+  bytes:=[3]u8.[65,66,67];s:=cast(string)bytes[..];part:=s[1..<3];
+  bytes[1]=90;
+  if s=="AZC" && part=="ZC" && s[1]==90 {return "borrowed";}
+  return "copied";
+}
+Seen :: #run borrowed();
+#assert Seen=="borrowed";
+main :: () {print("% %\n",Seen,borrowed());}

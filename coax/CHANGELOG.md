@@ -34,6 +34,20 @@ Commit: [`aabbf0d5189a7b26002114733cff0de77c7d9283`](https://github.com/OpenAgen
 - Declare and reuse an implicit float vec3 for array sample coordinates when
   the reachable source declares only vec2 and vec4. Preserve an existing
   declared vec3 and the existing sample operations in both tree versions.
+- Follow-up 2026-11-01: a result or store holding more than 64 borrowed
+  strings no longer stops with E0381. The returned-borrow leaves (0.46) and
+  the retained-store leaves (#3696) gave every array element its own leaf,
+  so `psionic/lib/mesh/totals.coax`, whose result holds 224 strings, ran
+  past the 64-leaf budget and then past the shared work. An array whose
+  elements would not all fit the remaining 64 leaves is now one leaf, the
+  unknown element, whose origins are every element's. A record with more
+  than 64 distinct borrowed fields is still E0381.
+- Follow-up 2026-11-01: `cast(string)` borrows in the compile-time evaluator
+  too, as the spec and emitted C have it, so `coax test` and `#run` see a
+  later write through the array. Before, the evaluator copied the bytes and a
+  check could pass that the native program fails. A string frozen into a
+  constant still takes one owned snapshot, under the same live-byte and work
+  limits; a cast copies nothing.
 
 ## 0.46.0 — Returned Borrow Summaries — 2026-10-31
 

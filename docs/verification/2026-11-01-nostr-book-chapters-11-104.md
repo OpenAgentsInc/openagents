@@ -45,9 +45,15 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
    `E0381: type checker storage or nesting budget exceeded` on
    `psionic/lib/mesh/totals.coax` (for example `psionic/examples/mesh-totals.coax`).
    That file is unchanged since 2026-10-30, and older compilers accept it.
+   Fixed in the compiler (0.47 follow-up): its result holds 224 strings,
+   and the borrow leaves gave each array element its own leaf past the
+   64-leaf budget; a wide array is now one leaf. Regression:
+   `coax/tests/pass/wide_borrow_result.coax`.
 3. **Possible compiler aliasing difference.** A `cast(string)` of a slice is
    copied under `coax test` but aliases the buffer under `coax run`
-   (chapter 17).
+   (chapter 17). Aliasing is correct (spec: `cast(string)` borrows); the
+   compile-time evaluator copied. Fixed in the compiler (0.47 follow-up).
+   Regression: `coax/tests/pass/cast_string_borrows.coax`.
 4. **Flat namespace collisions.** Procedure names and local names share one
    namespace. Chapter 98 renamed a local in `secp_field.coax` (`fold` to
    `reduced`) and parameters in `schnorr.coax` (`event_id` to `nostr_id`)

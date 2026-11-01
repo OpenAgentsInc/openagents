@@ -204,6 +204,44 @@ struct Evaluator {
     return v;
   }
 
+  // A string is source or snapshot text (s), or a borrow of a []u8's bytes
+  // (agg, offset, count) made by cast(string), as in emitted C: writes to
+  // the bytes show through the string.
+  static int64_t text_count(const Value &v) { return v.agg ? v.count : v.s.count; }
+  static uint8_t text_byte(const Value &v, int64_t i) {
+    return v.agg ? (uint8_t)(*v.agg)[(size_t)(v.offset + i)].bits : (uint8_t)v.s.data[i];
+  }
+  static bool text_equal(const Value &a, const Value &b) {
+    if (!a.agg && !b.agg) return str_eq(a.s, b.s);
+    int64_t n = text_count(a);
+    if (n != text_count(b)) return false;
+    for (int64_t i = 0; i < n; i++) if (text_byte(a, i) != text_byte(b, i)) return false;
+    return true;
+  }
+  // A compile-time result outlives the bytes a string borrows: copy them
+  // once, charging retained bytes and work, and share the copy.
+  Value snapshot(const Value &v) {
+    int64_t n = text_count(v);
+    if (n < 0 || (uint64_t)n > INT32_MAX) throw CtStringLimit{};
+    size_t size = (size_t)n + 1;
+    if (!CB_admit(string_work, size, CB_string_work_limit())) throw CtStringLimit{};
+    auto storage = std::make_shared<CtString>(file->ct_memory, size);
+    string_work += size;
+    for (int64_t i = 0; i < n; i++) storage->bytes[(size_t)i] = (char)text_byte(v, i);
+    storage->bytes[(size_t)n] = 0;
+    Value s;
+    s.type = &T_STRING;
+    s.s = Str{storage->bytes.get(), (int32_t)n};
+    s.string_owner = std::move(storage);
+    return s;
+  }
+  // Every borrowed string in a value to be frozen becomes a snapshot.
+  void own_text(Value &v) {
+    if (v.type == &T_STRING) { if (v.agg) v = snapshot(v); return; }
+    if (is_aggregate(v.type) && v.agg)
+      for (Value &e : *v.agg) { traverse(); own_text(e); }
+  }
+
   std::shared_ptr<CtStorage> storage() {
     auto memory = file->ct_memory;
     memory->take_container();
@@ -290,16 +328,24 @@ struct Evaluator {
     // Prepare all fallible ownership and aggregate copies before touching the
     // syntax node; a limit or host-allocation failure must leave it intact.
     Value *saved = nullptr;
+    Str text = value.s;
     switch (value.type->kind) {
       case TypeKind::integer: case TypeKind::bool_: case TypeKind::enum_:
       case TypeKind::floating: break;
       case TypeKind::string_:
-        if (value.string_owner) file->frozen_values.push_back(std::make_unique<Value>(value));
+        if (value.agg) {
+          Value owned = snapshot(value);
+          text = owned.s;
+          file->frozen_values.push_back(std::make_unique<Value>(std::move(owned)));
+        } else if (value.string_owner) file->frozen_values.push_back(std::make_unique<Value>(value));
         break;
-      default:
-        file->frozen_values.push_back(std::make_unique<Value>(clone(value)));
+      default: {
+        Value owned = clone(value);
+        own_text(owned);
+        file->frozen_values.push_back(std::make_unique<Value>(std::move(owned)));
         saved = file->frozen_values.back().get();
         break;
+      }
     }
     e->type = value.type;
     e->lhs = e->rhs = e->third = nullptr;
@@ -309,7 +355,7 @@ struct Evaluator {
       case TypeKind::enum_: e->kind = ExprKind::enum_value; e->int_value = value.bits; break;
       case TypeKind::floating: e->kind = ExprKind::float_lit; e->float_value = value.f; break;
       case TypeKind::string_:
-        e->kind = ExprKind::string_lit; e->text = value.s; break;
+        e->kind = ExprKind::string_lit; e->text = text; break;
       default:
         e->kind = ExprKind::ct_value;
         e->ct = saved;
@@ -444,19 +490,15 @@ struct Evaluator {
     Type to = e->type, from = v.type;
     if (from == to) return v;
     if (to == &T_STRING) {
-      // Snapshot once, share it through string copies and slices, and charge
-      // both retained bytes and materialization work before copying.
+      // The string borrows the view's bytes, as the spec and emitted C have
+      // it: later writes through the array show in the string. A frozen
+      // result takes a snapshot (freeze).
       if (v.count < 0 || (uint64_t)v.count > INT32_MAX) throw CtStringLimit{};
-      size_t size = (size_t)v.count + 1;
-      if (!CB_admit(string_work, size, CB_string_work_limit())) throw CtStringLimit{};
-      auto storage = std::make_shared<CtString>(file->ct_memory, size);
-      string_work += size;
-      for (int64_t i = 0; i < v.count; i++) storage->bytes[(size_t)i] = (char)(*v.agg)[(size_t)(v.offset + i)].bits;
-      storage->bytes[(size_t)v.count] = 0;
       Value s;
       s.type = &T_STRING;
-      s.s = Str{storage->bytes.get(), (int32_t)v.count};
-      s.string_owner = std::move(storage);
+      s.agg = std::move(v.agg);
+      s.offset = v.offset;
+      s.count = v.count;
       return s;
     }
     if (is_float(to)) {
@@ -580,7 +622,7 @@ struct Evaluator {
             return scalar(T_INT, (uint64_t)lt->length);
           }
           Value v = expr(e->lhs, frame, allow_calls);
-          return scalar(T_INT, (uint64_t)(lt == &T_STRING ? v.s.count : v.count));
+          return scalar(T_INT, (uint64_t)(lt == &T_STRING ? text_count(v) : v.count));
         }
         if (e->kind == ExprKind::index && e->lhs->type == &T_STRING) {
           Value s = expr(e->lhs, frame, allow_calls);
@@ -588,12 +630,12 @@ struct Evaluator {
           Value iv = expr(e->rhs, frame, allow_calls);
           if (failed) return {};
           int64_t i = index_value(iv);
-          if (i < 0 || i >= s.s.count) {
+          if (i < 0 || i >= text_count(s)) {
             err(e->loc, "E0410", "index " + std::to_string((long long)(int64_t)iv.bits) + " is out of bounds for a " +
-                                     std::to_string(s.s.count) + "-byte string");
+                                     std::to_string((long long)text_count(s)) + "-byte string");
             return {};
           }
-          return scalar(&T_U8, (uint8_t)s.s.data[i]);
+          return scalar(&T_U8, text_byte(s, i));
         }
         Holder h;
         CtLocal *root = nullptr;
@@ -712,7 +754,7 @@ struct Evaluator {
         }
         bool result = false;
         if (t == &T_STRING) {
-          result = str_eq(a.s, b.s);
+          result = text_equal(a, b);
           if (e->op == Tok::noteq) result = !result;
         } else if (is_float(t)) {
           switch (e->op) {
@@ -783,7 +825,7 @@ struct Evaluator {
         } else {
           base = expr(e->lhs, frame, allow_calls);
           if (failed) return {};
-          count = lt == &T_STRING ? base.s.count : base.count;
+          count = lt == &T_STRING ? text_count(base) : base.count;
         }
         int64_t lo = 0, hi = count;
         if (e->rhs) {
@@ -799,7 +841,7 @@ struct Evaluator {
                                    " is out of bounds for " + std::to_string((long long)count) + " elements");
           return {};
         }
-        if (lt == &T_STRING) {
+        if (lt == &T_STRING && !base.agg) {
           base.s = Str{base.s.data + lo, (int32_t)(hi - lo)};
           return base;
         }
@@ -925,14 +967,14 @@ struct Evaluator {
         } else {
           collection = expr(s->expr, frame, true);
           if (failed) return Flow::normal;
-          if (ct == &T_STRING) count = collection.s.count;
+          if (ct == &T_STRING) count = text_count(collection);
           else { storage = collection.agg; offset = collection.offset; count = collection.count; }
         }
         size_t mark = frame.locals.size();
         frame.locals.push_back({s->name, {}, true});
         if (s->name2.count) frame.locals.push_back({s->name2, {}, true});
         for (int64_t i = 0; i < count && !failed; i++) {
-          frame.locals[mark].value = ct == &T_STRING ? scalar(&T_U8, (uint8_t)collection.s.data[i])
+          frame.locals[mark].value = ct == &T_STRING ? scalar(&T_U8, text_byte(collection, i))
                                                      : clone((*storage)[(size_t)(offset + i)], true);
           if (s->name2.count) frame.locals[mark + 1].value = scalar(T_INT, (uint64_t)i);
           Flow f = stmt(s->then_, frame, returned);
