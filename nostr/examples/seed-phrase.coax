@@ -103,7 +103,9 @@ main :: () {
         bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive xyzzy", entropy[..]));
   print("11 words: ok %\n",
         bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive", entropy[..]));
-  print("24 words (vector 2): ok %\n", bip39_entropy(VECTOR_2, entropy[..]));
+  print("24 words (vector 2) into 16 bytes: ok %\n", bip39_entropy(VECTOR_2, entropy[..]));
+  wide: [32] u8;
+  print("24 words (vector 2) into 32 bytes: % bytes\n", bip39_entropy_len(VECTOR_2, wide[..]));
   print("nip06_key, last word beauty: ok %\n",
         nip06_key("leader monkey parrot ring guide accident before fence cannon height naive beauty", key[..]));
   show("  key", key[..]);

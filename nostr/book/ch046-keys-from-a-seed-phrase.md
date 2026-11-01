@@ -25,13 +25,13 @@ private key, its public key and its `npub`.
 
 | File | Procedure | What it does |
 | --- | --- | --- |
-| [bip39.coax](../../coax/lib/crypto/bip39.coax) | `bip39_words(entropy, out)` | 16 bytes to 12 words |
-| | `bip39_entropy(phrase, out)` | 12 words back to 16 bytes; refuses an unknown word, a count other than 12 or a wrong checksum |
+| [bip39.coax](../../coax/lib/crypto/bip39.coax) | `bip39_words(entropy, out)` | 16, 20, 24, 28 or 32 bytes to 12, 15, 18, 21 or 24 words |
+| | `bip39_entropy_len(phrase, out)`, `bip39_entropy(phrase, out)` | the words back to their entropy (its byte count, or `-1`; or `true`/`false`); refuses an unknown word, a count BIP-39 doesn't define, a wrong checksum or too small an `out` |
 | | `bip39_seed(phrase, out)`, `bip39_seed_with(phrase, passphrase, out)` | the 64-byte seed |
 | | `bip39_word(i)`, `bip39_index(w)` | the English list, checked against its published SHA-256 |
 | [sha512.coax](../../coax/lib/crypto/sha512.coax) | `sha512`, `hmac_sha512`, `pbkdf2_hmac_sha512` | the hash, the MAC and the one-block PBKDF2 that BIP-39 uses |
 | [bip32.coax](../../coax/lib/crypto/bip32.coax) | `bip32_master`, `bip32_child`, `bip32_path`, `bip32_public` | private derivation on chapter 10's constant-time multiplication |
-| [nip06.coax](../../coax/lib/nostr/nip06.coax) | `nip06_key(phrase, key)`, `nip06_npub(key, out)` | the NIP-06 key and its `npub` (chapter 16) |
+| [nip06.coax](../../coax/lib/nostr/nip06.coax) | `nip06_key(phrase, key)`, `nip06_npub(key, out)` | the NIP-06 key of checked words, and its `npub` (chapter 16) |
 
 [pbkdf2.coax](../../coax/lib/crypto/pbkdf2.coax) is a different PBKDF2: a
 resumable PBKDF2-HMAC-SHA256 for the website's phrase gate. NIP-06 doesn't
@@ -48,18 +48,30 @@ A 12-word phrase holds 132 bits: 128 bits of entropy followed by the first
 from the top, as an index into a list of 2,048 English words. `abandon` is
 index 0 and `zoo` is index 2047.
 
-To read a phrase, `bip39_entropy`:
+BIP-39 also defines 15, 18, 21 and 24 words, with 1 checksum bit per 32
+bits of entropy:
+
+| Words | Entropy | Checksum bits |
+| --- | --- | --- |
+| 12 | 16 bytes | 4 |
+| 15 | 20 bytes | 5 |
+| 18 | 24 bytes | 6 |
+| 21 | 28 bytes | 7 |
+| 24 | 32 bytes | 8 |
+
+`n` words hold `11n` bits: `32n/3` bits of entropy and `n/3` checksum bits.
+The words account makes 16 bytes of entropy, so it uses 12 words.
+
+To read a phrase, `bip39_entropy_len`:
 
 1. splits it on spaces (any number of them) and looks up each word;
-2. refuses an unknown word or a 13th word;
-3. refuses fewer than 12 words;
-4. packs the 132 bits, hashes the first 128 and compares the first 4 bits
-   of the hash with the last 4 bits of the phrase.
-
-The library handles 12-word phrases only, because the words account makes
-16 bytes of entropy. BIP-39 also defines 15, 18, 21 and 24 words, with 1
-checksum bit per 32 bits of entropy. `bip39_entropy` refuses those as a
-wrong count.
+2. refuses an unknown word or a 25th word;
+3. refuses a count that isn't 12, 15, 18, 21 or 24, and an `out` smaller
+   than the entropy;
+4. packs the bits, hashes the entropy and compares the first `n/3` bits of
+   the hash with the last `n/3` bits of the phrase;
+5. returns the entropy's byte count. `bip39_entropy` returns `true` when
+   that count is positive.
 
 ### Worked example: the all-zero phrase
 
@@ -122,7 +134,8 @@ The seed is one 64-byte PBKDF2 block, so `pbkdf2_hmac_sha512` computes
 and so a different key; nothing records whether one was used.
 
 The seed hashes the words, not the entropy, so a phrase with a wrong
-checksum still has a seed. Checking the words is a separate step.
+checksum still has a seed. Checking the words is a separate step, which
+`nip06_key` takes before it derives.
 
 ## BIP-32 derivation
 
@@ -169,10 +182,10 @@ gives a different key. A client must use `NIP06_PATH` as written.
 
 ## The NIP-06 key
 
-`nip06_key(phrase, key)` runs `bip39_seed` and `bip32_path` with
-`NIP06_PATH` and writes the 32-byte private key. It does not check the
-checksum: the words account calls `bip39_entropy` on typed words first
-(`weblogin.coax`). The x coordinate of `k·G` is the Nostr public key, and
+`nip06_key(phrase, key)` checks the words with `bip39_entropy`, then runs
+`bip39_seed` and `bip32_path` with `NIP06_PATH` and writes the 32-byte
+private key. It refuses what `bip39_entropy` refuses and zeroes `key`, so a
+mistyped word never yields a key. The x coordinate of `k·G` is the Nostr public key, and
 `nip06_npub` encodes it as an `npub`.
 
 ## The example
@@ -180,8 +193,8 @@ checksum: the words account calls `bip39_entropy` on typed words first
 The example is [nostr/examples/seed-phrase.coax](../examples/seed-phrase.coax).
 It works the all-zero checksum, prints vector 1's word indexes, entropy,
 hash byte and seed, walks the seed down the path one level at a time,
-derives both NIP-06 vectors, shows two other paths, and prints eight
-refusals.
+derives both NIP-06 vectors, shows two other paths, reads vector 2's 24
+words back to 32 bytes, and prints eight refusals.
 
 <!-- source: nostr/examples/seed-phrase.coax example -->
 ```jai
@@ -289,7 +302,9 @@ main :: () {
         bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive xyzzy", entropy[..]));
   print("11 words: ok %\n",
         bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive", entropy[..]));
-  print("24 words (vector 2): ok %\n", bip39_entropy(VECTOR_2, entropy[..]));
+  print("24 words (vector 2) into 16 bytes: ok %\n", bip39_entropy(VECTOR_2, entropy[..]));
+  wide: [32] u8;
+  print("24 words (vector 2) into 32 bytes: % bytes\n", bip39_entropy_len(VECTOR_2, wide[..]));
   print("nip06_key, last word beauty: ok %\n",
         nip06_key("leader monkey parrot ring guide accident before fence cannon height naive beauty", key[..]));
   show("  key", key[..]);
@@ -356,9 +371,10 @@ no hardening, m/44/1237/0/0/0: 88a7533bccda9ab25127c961764d309dd4181763730814ca1
 checksum, last word beauty: ok false
 unknown word xyzzy: ok false
 11 words: ok false
-24 words (vector 2): ok false
-nip06_key, last word beauty: ok true
-  key: 4ed23d190a70f69ca3731710572a23da0bb4cbcf57e8e6af5769b40510805514
+24 words (vector 2) into 16 bytes: ok false
+24 words (vector 2) into 32 bytes: 32 bytes
+nip06_key, last word beauty: ok false
+  key: 0000000000000000000000000000000000000000000000000000000000000000
 child index 2^32: ok false
 child index -1: ok false
 master of a 15-byte seed: ok false
@@ -370,11 +386,11 @@ The refusals:
 - `beauty` as the last word leaves the entropy unchanged and the checksum
   wrong, so `bip39_entropy` returns `false`.
 - `xyzzy` is not in the list, so `bip39_entropy` returns `false`.
-- 11 words, and the 24 words of vector 2, are not 12 words, so
-  `bip39_entropy` returns `false`. `nip06_key` still derives vector 2,
-  because it doesn't check the phrase.
-- `nip06_key` accepts the `beauty` phrase and gives the unrelated key
-  `4ed23d19...`. This is why the caller checks the words first.
+- 11 words is not a BIP-39 count, so `bip39_entropy` returns `false`.
+- Vector 2's 24 words hold 32 bytes of entropy, which don't fit a 16-byte
+  `out`, so `bip39_entropy` returns `false`; with 32 bytes of room
+  `bip39_entropy_len` returns 32.
+- `nip06_key` refuses the `beauty` phrase and leaves `key` zero.
 - `bip32_child` refuses index `2^32` and index `-1`.
 - `bip32_master` refuses a 15-byte seed.
 - `nip06_key` refuses a 31-byte key buffer.
@@ -483,11 +499,13 @@ VECTOR_1_SEED :: "173b9c5f0d165502d08a4d122b2c9bf1e33e27806eac119713600a263c1241
   plain := [5] int.[44, 1237, 0, 0, 0];
   #assert bip32_path(seed, plain[..], key[..], chain[..]) && hex_is(key[..], "88a7533bccda9ab25127c961764d309dd4181763730814ca1ea94bcb311aa754");
 }
-#test "a wrong checksum is refused by bip39_entropy, not by nip06_key" #steps 1000000000 {
+#test "a wrong checksum is refused by bip39_entropy and by nip06_key" #steps 1000000000 {
   bad := "leader monkey parrot ring guide accident before fence cannon height naive beauty";
-  e: [16] u8; key: [32] u8;
+  e: [32] u8; key: [32] u8;
   #assert !bip39_entropy(bad, e[..]);
-  #assert nip06_key(bad, key[..]) && hex_is(key[..], "4ed23d190a70f69ca3731710572a23da0bb4cbcf57e8e6af5769b40510805514");
+  #assert !nip06_key(bad, key[..]) && hex_is(key[..], "0000000000000000000000000000000000000000000000000000000000000000");
+  // 24 words read back to 32 bytes of entropy
+  #assert bip39_entropy_len(VECTOR_2, e[..]) == 32;
 }
 ```
 
@@ -511,7 +529,9 @@ chapter.
 
 [bip39.coax](../../coax/lib/crypto/bip39.coax) checks the English list's
 SHA-256 (`2f5eed53...dbda`, the same check as the iOS app's `BIP39.swift`)
-and six BIP-39 reference vectors from entropy to words and back, with the
+and six BIP-39 reference vectors from entropy to words and back, the ten
+18- and 24-word Trezor vectors, a 15- and a 21-word phrase built with
+Python's `hashlib`, a wrong checksum bit at each length, and the
 refusals. [sha512.coax](../../coax/lib/crypto/sha512.coax) checks the FIPS
 180-4 SHA-512 examples, RFC 4231 HMAC-SHA512 cases 1, 2, 6 and 7, and
 PBKDF2-HMAC-SHA512 at 1 and 2 rounds. The slower vectors, two more Trezor
@@ -534,8 +554,7 @@ and unchanged.
 - BIP-32 hardened children hash the parent private key; normal children
   hash its public key. NIP-06 uses `m/44'/1237'/0'/0/0`.
 - `bip39_entropy` refuses a wrong checksum, an unknown word and a count
-  other than 12; `nip06_key` checks none of these, so the caller checks the
-  words first.
+  other than 12, 15, 18, 21 or 24; `nip06_key` refuses the same phrases.
 - Both NIP-06 vectors give their published keys and `npub`s.
 
 ## Dependencies

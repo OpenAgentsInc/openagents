@@ -82,10 +82,12 @@ VECTOR_1_SEED :: "173b9c5f0d165502d08a4d122b2c9bf1e33e27806eac119713600a263c1241
   plain := [5] int.[44, 1237, 0, 0, 0];
   #assert bip32_path(seed, plain[..], key[..], chain[..]) && hex_is(key[..], "88a7533bccda9ab25127c961764d309dd4181763730814ca1ea94bcb311aa754");
 }
-#test "a wrong checksum is refused by bip39_entropy, not by nip06_key" #steps 1000000000 {
+#test "a wrong checksum is refused by bip39_entropy and by nip06_key" #steps 1000000000 {
   bad := "leader monkey parrot ring guide accident before fence cannon height naive beauty";
-  e: [16] u8; key: [32] u8;
+  e: [32] u8; key: [32] u8;
   #assert !bip39_entropy(bad, e[..]);
-  #assert nip06_key(bad, key[..]) && hex_is(key[..], "4ed23d190a70f69ca3731710572a23da0bb4cbcf57e8e6af5769b40510805514");
+  #assert !nip06_key(bad, key[..]) && hex_is(key[..], "0000000000000000000000000000000000000000000000000000000000000000");
+  // 24 words read back to 32 bytes of entropy
+  #assert bip39_entropy_len(VECTOR_2, e[..]) == 32;
 }
 // book:end check

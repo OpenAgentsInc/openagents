@@ -40,9 +40,10 @@ no hardening, m/44/1237/0/0/0: 88a7533bccda9ab25127c961764d309dd4181763730814ca1
 checksum, last word beauty: ok false
 unknown word xyzzy: ok false
 11 words: ok false
-24 words (vector 2): ok false
-nip06_key, last word beauty: ok true
-  key: 4ed23d190a70f69ca3731710572a23da0bb4cbcf57e8e6af5769b40510805514
+24 words (vector 2) into 16 bytes: ok false
+24 words (vector 2) into 32 bytes: 32 bytes
+nip06_key, last word beauty: ok false
+  key: 0000000000000000000000000000000000000000000000000000000000000000
 child index 2^32: ok false
 child index -1: ok false
 master of a 15-byte seed: ok false
