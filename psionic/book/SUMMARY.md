@@ -188,7 +188,7 @@
 - [168. Imitation before robotics scale](ch168-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [169. Execute a GR00T policy](ch169-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
 - [170. Close the simulated control loop](ch170-close-the-simulated-control-loop.md) — genuine GR00T/Panda SDK evaluation plus a first 9-action neural prefix with owned controller samples and exact physics replay
-- [171. Learn a gait in many worlds](ch171-learn-a-gait-in-many-worlds.md) — design draft
+- [171. Learn a gait in many worlds](ch171-learn-a-gait-in-many-worlds.md) — runnable CPU F64 GAE targets and clipped PPO scalar objective; learner and gait pending
 
 - [172. Benchmark a service, not a kernel](ch172-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter
 - [173. Serve a model with an honest capability](ch173-serve-a-model-with-an-honest-capability.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 167–170, 172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
-table gives each one's exact status. Chapter 171 and every other
-planned chapter without runnable code are design drafts. The physics engine and spacecraft chapters
+Chapters 1–32, 36–40, 44–47, 49, 52, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+table gives each one's exact status. Planned chapters without runnable code
+are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).
