@@ -545,12 +545,20 @@ module name, it lists the file's own declarations.
 `--json` prints one `coax.query.v1` object with absolute paths, declaration
 IDs and modules, for a tool to read.
 
-The first query checks the program, which takes about 6 seconds for the
-compiler's own 25 source units. The query keeps the index it built in
-`~/.cache/coax-query/`, and the next question about the same program takes
-under 0.1 seconds. Before it uses the cached index, the query compares the
-SHA-256 of every source unit with the one it recorded, so an edit anywhere in
-the program makes the next query check it again. `--fresh` skips the cache.
+The first query checks the program and keeps its index in
+`~/.cache/coax-query/`. Before reusing it, the query checks the compiler,
+front-end profile, library mode, source paths and hashes, and descriptor hashes.
+It also checks the complete cached payload for damage. A mismatch makes the
+next query check the program again; `--fresh` requests that check explicitly.
+The cache is trusted local state, and its private format is separate from the
+public `coax.query.v1` answer.
+
+Pass `--library` for a unit without `main` or an exported C entry point.
+Changing the build profile can change `#if BUILD_DEBUG` declarations, so a
+cached development answer cannot replace a release check. Shared expression
+nodes are visited once per owner. The local query fixture records the best of
+three warm questions over the compiler sources and checks it is under one
+second; it also compares cold and warm answers.
 
 On the Fairy Forest page, 34 source units, `grep -w view` over those files
 gives 35 lines, and 34 of them aren't uses of the procedure `view`. The query

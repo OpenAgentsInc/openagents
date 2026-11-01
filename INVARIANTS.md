@@ -2912,9 +2912,15 @@ through `#load`, never from text, so no answer lies in a comment or a string,
 and each use's line and column point at the written name. A use is a written
 name that resolves to the declaration; an inferred type is not a use. The
 cached index is used only when the compiler binary's SHA-256, the entry unit,
-and every source unit's path and SHA-256 and every descriptor's SHA-256 match
-the ones it was built from; any difference, or a damaged file, makes the query
-check the program again. The query's check stops before compile-time
+the selected front-end profile and library mode, every source unit's path and
+SHA-256 and every descriptor's SHA-256 match the ones it was built from. Its
+private payload checksum and record validation detect damaged local cache
+state; they do not authenticate facts supplied by another party. Old private
+indexes are rebuilt without changing the public `coax.query.v1` answer.
+Expression traversal visits each shared node once per owner. `--library` is
+honored, and changing `#if BUILD_DEBUG` selection cannot reuse another
+profile's checked graph. Any mismatch makes the query check the program again.
+The query's check stops before compile-time
 evaluation and `#authority` checks and changes nothing the compiler emits.
 
 Check: `coax/tests/query.coax` (recorded answers for a fixture module with
@@ -2922,7 +2928,9 @@ comments, strings, an alias, an export list, untyped and folded constants
 and a generic body, and for the compiler's own sources; every compiler use
 is checked to be the name in code; a cold and a warm answer match, and a warm
 query over the compiler sources takes under 1 s; an edit to a loaded unit
-changes the next answer; a damaged cache is rebuilt).
+changes the next answer; shared expression chains stay bounded; library and
+development/release modes stay distinct; repeated descriptor aliases remain
+cacheable; a damaged or old private cache is rebuilt).
 
 ## CPU reflection lowers to bounded ordinary values
 

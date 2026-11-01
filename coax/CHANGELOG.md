@@ -18,6 +18,10 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 Commit: [`b7078e94696b668021ff3f547a4d60608304163c`](https://github.com/OpenAgentsInc/openagents/commit/b7078e94696b668021ff3f547a4d60608304163c)
 
 - Extend local-borrow diagnostics through resolved helper calls and aggregate return projections, preserving caller-owned descriptors and explicit manual scope for recursive/helper-store paths; qualify real caller-buffer return APIs.
+- Visit each query expression once per owner, honor `--library`, and bind
+  cached indexes to their complete payload and front-end profile/library mode.
+  Damaged or old private indexes rebuild; the public `coax.query.v1` schema
+  stays unchanged.
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 

@@ -1,11 +1,11 @@
 # Completed returned-borrow bootstrap checkpoint
 
 This preserves the completed fresh normal bootstrap of source
-`4c173f0a4555b9f109304c0c0653fe4af7388379`: all163 statements, both
-fixed points, seed comparisons and8147/8147 killed checker mutants.
+`4c173f0a4555b9f109304c0c0653fe4af7388379`: all 163 statements, both
+fixed points, seed comparisons and all 8,147 checker mutants killed.
 `manifest.json` identifies every retained member of `proof.tar.gz`, including
 the actual compiler, consistency record, empty survivor artifact, raw command
-observations and a reconstructable source patch against admitted main8b8.
+observations and a reconstructable source patch against admitted main `8b8b480d`.
 
 This checkpoint changes documentation and evidence only. The qualified local
 build exists; archiving its candidate patch does not ship a runtime compiler

@@ -1741,9 +1741,14 @@ bytes. An unknown MODULE exits 1; a name with no declaration prints nothing
 and exits 0. The index behind the answers (every declaration and every
 reference) is cached in `$COAX_QUERY_CACHE`, by default
 `~/.cache/coax-query/`, one file an entry unit. The query uses a cached index
-only when the compiler binary's SHA-256, the entry, each source unit's path and
-SHA-256 and each descriptor's SHA-256 all match. Otherwise it checks the
-program again and replaces the file. That check stops before compile-time
+only when the compiler binary's SHA-256, the entry, the selected front-end
+profile and library mode, each source unit's path and SHA-256, and each
+descriptor's SHA-256 all match. The private index has a whole-payload checksum
+and rejects malformed records; an old private index is rebuilt. These are
+consistency checks on trusted local cache state. The public answer remains
+`coax.query.v1`. Otherwise it checks the program again and replaces the file.
+Use `--library` for a unit without `main` or an exported C entry point.
+That check stops before compile-time
 evaluation and `#authority` checks, which don't change the graph. `--fresh`
 ignores the cache. Build-only stage0 refuses queries.
 
