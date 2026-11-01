@@ -1545,11 +1545,21 @@
    "number": 74,
    "title": "Cashu and Fedimint are excluded",
    "file": "ch074-cashu-and-fedimint-are-excluded.md",
-   "status": "design draft",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
+   "status": "implemented",
+   "profile": "native C",
+   "depends_on": [
+    55,
+    66,
+    73
+   ],
+   "source": [
+    "coax/lib/nostr/ecash.coax",
+    "nostr/examples/ecash-excluded.coax",
+    "nostr/examples/checks/ecash-excluded.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

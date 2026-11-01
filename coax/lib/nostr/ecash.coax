@@ -1,0 +1,174 @@
+// Ecash on Nostr, recognized and never built. NIP-60 (Cashu wallets),
+// NIP-61 (nutzaps) and NIP-87 (Cashu and Fedimint discovery) define nine
+// kinds. The repository's money rule (AGENTS.md, "Bitcoin-only money")
+// allows Lightning, on-chain Bitcoin, Spark and Taproot Assets, and names
+// Cashu as excluded; Fedimint is not on the allowed list. So this stack holds
+// no wallet, no token, no mint list and no nutzap code. This file only
+// recognizes them, so a client shows such an event as unsupported and never
+// acts on it.
+//
+// - ec_kind: the row of an excluded kind, or EC_NONE.
+// - ec_event: a received event's verdict. An event of an excluded kind is
+//   EC_EXCLUDED. An event of another kind whose k, K, a or A tag names an
+//   excluded kind (a NIP-09 deletion with ["k", "7375"], a reaction to a
+//   nutzap) is EC_REFERS: the client handles it as its own kind and never
+//   follows the reference.
+// - ec_option and ec_value: a payment option's type naming cashu, ecash,
+//   fedimint or nutzap, or a value that is a Cashu token or a Fedimint
+//   invite code, is EC_EXCLUDED.
+// - ec_build: the publishing check. Any event of an excluded kind refuses.
+//
+// The other refusals stay where they are: NIP-15 payment options of type
+// cashu are not a Bitcoin rail (nip15.coax, n15_rail and n15_write_request),
+// and NIP-A3 targets of an unlisted type are never offered (nipa3.coax).
+#load "nip32.coax";
+#authority;
+
+EC_OK :: 0; EC_EXCLUDED :: 1; EC_REFERS :: 2; EC_EVENT :: 3;
+EC_NONE :: -1;
+EC_N :: 9;
+
+// book:begin table
+// The kinds, in the order of the pinned official README's kind table, with
+// its name for each and the NIP that defines it.
+EC_KIND :: [EC_N] int.[7374, 7375, 7376, 9321, 10019, 17375, 38000, 38172, 38173];
+EC_NAME :: [EC_N] string.["Reserved Cashu Wallet Tokens", "Cashu Wallet Tokens", "Cashu Wallet History",
+  "Nutzap", "Nutzap Mint Recommendation", "Cashu Wallet Event", "Mint Recommendation",
+  "Cashu Mint Announcement", "Fedimint Announcement"];
+EC_NIP :: [EC_N] string.["60", "60", "60", "61", "61", "60", "87", "87", "87"];
+// Who holds the money an event of the kind speaks for.
+EC_HOLDER :: [EC_N] string.["a Cashu mint", "a Cashu mint", "a Cashu mint", "a Cashu mint", "a Cashu mint",
+  "a Cashu mint", "a Cashu mint or a Fedimint federation", "a Cashu mint", "a Fedimint federation"];
+// Payment option types and value prefixes that name ecash.
+EC_WORDS :: [4] string.["cashu", "ecash", "fedimint", "nutzap"];
+// book:end table
+
+EcVerdict :: struct {status:int=EC_EVENT; row:int=EC_NONE; at:int=EC_NONE;}  // at: the referring tag
+
+#test "the table: nine kinds, each found by ec_kind" {
+  for i:0..<EC_N {#assert ec_kind(EC_KIND[i])==i && ec_build(EC_KIND[i])==EC_EXCLUDED;}
+  near:=[12]int.[7373, 7377, 9320, 9322, 10018, 10020, 17374, 17376, 37999, 38001, 38171, 38174];
+  for k:near {#assert ec_kind(k)==EC_NONE && ec_build(k)==EC_OK;}
+  #assert ec_kind(0)==EC_NONE && ec_kind(1)==EC_NONE && ec_kind(9735)==EC_NONE && ec_kind(-7375)==EC_NONE;
+}
+#test "kinds written in tags" {
+  #assert ec_number("7375")==7375 && ec_number("0")==0 && ec_number("38173")==38173;
+  #assert ec_number("")==EC_NONE && ec_number("7375x")==EC_NONE && ec_number("-1")==EC_NONE && ec_number("1234567")==EC_NONE;
+  #assert ec_number("123456")==123456 && ec_number(" 1")==EC_NONE && ec_number("1/")==EC_NONE && ec_number(":")==EC_NONE;
+  #assert ec_tag_kind("k","9321")==3 && ec_tag_kind("K","9321")==3 && ec_tag_kind("k","1")==EC_NONE;
+  #assert ec_tag_kind("a","38172:abc:d")==7 && ec_tag_kind("A","38173:x:")==8 && ec_tag_kind("a","38172")==EC_NONE;
+  #assert ec_tag_kind("a","30023:abc:d")==EC_NONE && ec_tag_kind("e","9321")==EC_NONE && ec_tag_kind("kk","9321")==EC_NONE;
+  #assert ec_tag_kind("a","7375:")==1 && ec_tag_kind("a","7375")==EC_NONE && ec_tag_kind("a","")==EC_NONE;
+  #assert ec_tag_kind("a",":38172:")==EC_NONE && ec_tag_kind("t","38172:x")==EC_NONE && ec_tag_kind("","7375")==EC_NONE;
+}
+#test "received events: excluded, referring or neither" {
+  v:=ec_event(n32_event(9321,"[[\"p\",\"x\"],[\"u\",\"https://mint\"]]"));#assert v.status==EC_EXCLUDED && v.row==3 && v.at==EC_NONE;
+  v=ec_event(n32_event(38000,"[]"));#assert v.status==EC_EXCLUDED && v.row==6;
+  v=ec_event(n32_event(5,"[[\"e\",\"x\"],[\"k\",\"7375\"]]"));#assert v.status==EC_REFERS && v.row==1 && v.at==1;
+  v=ec_event(n32_event(7,"[[\"a\",\"38173:aa:fed\",\"wss://r\"],[\"k\",\"9321\"]]"));#assert v.status==EC_REFERS && v.row==8 && v.at==0;
+  v=ec_event(n32_event(1,"[[\"k\",\"1\"],[\"a\",\"30023:aa:x\"]]"));#assert v.status==EC_OK && v.row==EC_NONE && v.at==EC_NONE;
+  v=ec_event(n32_event(1,"[]"));#assert v.status==EC_OK;
+  v=ec_event(n32_event(1,"[[\"k\",1]]"));#assert v.status==EC_EVENT;
+  v=ec_event(n32_event(1,"[[],[\"k\",\"7376\"]]"));#assert v.status==EC_REFERS && v.at==1 && v.row==2;
+  v=ec_event(n32_event(1,"[[\"k\"],[\"k\",\"7376\"]]"));#assert v.status==EC_REFERS && v.at==1 && v.row==2;
+  // An excluded kind needs no readable tags: it is refused before they are read.
+  v=ec_event(n32_event(7375,"[[\"k\",1]]"));#assert v.status==EC_EXCLUDED && v.row==1;
+  none:NostrEvent;#assert ec_event(none).status==EC_EVENT;
+  // A value past NT_MAX_VALUE: skipped in other tags, unreadable in k, K, a and A.
+  long:[600]u8;
+  s:=ec_long(long[..],"alt");#assert s.count==325 && s[9]=='x' && s[308]=='x' && s[309]=='"';
+  v=ec_event(n32_event(1,ec_long(long[..],"alt")));#assert v.status==EC_REFERS && v.at==1;
+  v=ec_event(n32_event(1,ec_long(long[..],"a")));#assert v.status==EC_EVENT;
+  v=ec_event(n32_event(1,ec_long(long[..],"K")));#assert v.status==EC_EVENT;
+}
+#test "payment options and values" {
+  #assert ec_option("cashu")==EC_EXCLUDED && ec_option("Cashu")==EC_EXCLUDED && ec_option("ECASH")==EC_EXCLUDED;
+  #assert ec_option("fedimint")==EC_EXCLUDED && ec_option("nutzap")==EC_EXCLUDED && ec_option("cashu-token")==EC_EXCLUDED;
+  #assert ec_option("ln")==EC_OK && ec_option("btc")==EC_OK && ec_option("cashme")==EC_OK && ec_option("")==EC_OK && ec_option("cash")==EC_OK;
+  #assert ec_option("x-fedimint")==EC_EXCLUDED && ec_option("nutza")==EC_OK && ec_option("ecas")==EC_OK;
+  #assert ec_value("cashuAeyJ0b2tlbiI6W119")==EC_EXCLUDED && ec_value("cashuBo2F0")==EC_EXCLUDED && ec_value("CASHUB")==EC_EXCLUDED;
+  #assert ec_value("fed11abc")==EC_EXCLUDED && ec_value("FED11XYZ")==EC_EXCLUDED;
+  #assert ec_value("fed1")==EC_OK && ec_value("fed12")==EC_OK && ec_value("lnbc1")==EC_OK && ec_value("bc1qx")==EC_OK && ec_value("")==EC_OK && ec_value("cash")==EC_OK;
+  #assert ec_value("acashuA")==EC_OK && ec_value("xfed11")==EC_OK && ec_value("xashuA")==EC_OK && ec_value("ged11")==EC_OK;
+  #assert ec_option("NUTZAP")==EC_EXCLUDED && ec_option("dashu")==EC_OK && ec_option("cashu.")==EC_EXCLUDED && ec_option("ecash")==EC_EXCLUDED;
+  #assert ec_lower('A')=='a' && ec_lower('Z')=='z' && ec_lower('@')=='@' && ec_lower('[')=='[' && ec_lower('a')=='a' && ec_lower('z')=='z';
+}
+
+// [[name, 300 x's], ["k", "9321"]], into out.
+ec_long :: (out:[]u8,name:string)->string {
+  n:=json_raw(out,0,"[[\"");n=json_raw(out,n,name);n=json_raw(out,n,"\",\"");
+  for j:0..<300 {out[n]='x';n+=1;}
+  n=json_raw(out,n,"\"],[\"k\",\"9321\"]]");
+  return cast(string)out[0..<n];
+}
+
+// book:begin classify
+// The row of an excluded kind, or EC_NONE.
+ec_kind :: (kind:int)->int {
+  for i:0..<EC_N {if EC_KIND[i]==kind {return i;}}
+  return EC_NONE;
+}
+// A received event: EC_EXCLUDED for an excluded kind, EC_REFERS when a k, K,
+// a or A tag names one (the first such tag), EC_OK otherwise, or EC_EVENT
+// when its tags don't read.
+ec_event :: (e:NostrEvent)->EcVerdict {
+  v:EcVerdict;if e.error!=NE_OK {return v;}
+  v.row=ec_kind(e.kind);
+  if v.row!=EC_NONE {v.status=EC_EXCLUDED;return v;}
+  i:=0;t:=n32_tag(e,0);
+  while t.error!=NT_INDEX {
+    name:=cast(string)t.v[0].b[0..<t.v[0].n];
+    // A value too long to read is skipped, unless it is the one a k, K, a
+    // or A tag would name a kind with.
+    // A value not read is empty, and names no kind.
+    if t.error==NT_LIMIT && ec_names(name) {return v;}
+    if t.error!=NT_OK && t.error!=NT_SHAPE && t.error!=NT_LIMIT {return v;}
+    row:=ec_tag_kind(name,cast(string)t.v[1].b[0..<t.v[1].n]);
+    if row!=EC_NONE {v.status=EC_REFERS;v.row=row;v.at=i;return v;}
+    i+=1;t=n32_tag(e,i);
+  }
+  v.status=EC_OK;return v;
+}
+// The publishing check: an event of an excluded kind is never built.
+ec_build :: (kind:int)->int {return ifx ec_kind(kind)==EC_NONE then EC_OK else EC_EXCLUDED;}
+// A payment option's type: EC_EXCLUDED when it contains an ecash word in
+// any case.
+ec_option :: (type:string)->int {
+  for w:EC_WORDS {if ec_holds_ci(type,w) {return EC_EXCLUDED;}}
+  return EC_OK;
+}
+// A payment value: EC_EXCLUDED for a Cashu token (cashuA..., cashuB...,
+// any case) or a Fedimint invite code (fed11...).
+ec_value :: (text:string)->int {
+  if ec_starts_ci(text,"cashu") || ec_starts_ci(text,"fed11") {return EC_EXCLUDED;}
+  return EC_OK;
+}
+// book:end classify
+
+// The row a tag names: a k or K tag's kind, or an a or A tag's
+// "kind:pubkey:d" address.
+ec_tag_kind :: (name:string,value:string)->int {
+  if !ec_names(name) {return EC_NONE;}
+  if name=="k" || name=="K" {return ec_kind(ec_number(value));}
+  to:=0;while to<value.count && value[to]!=':' {to+=1;}
+  if to==value.count {return EC_NONE;}
+  return ec_kind(ec_number(value[0..<to]));
+}
+// A kind written in decimal (one to six digits), or EC_NONE.
+ec_number :: (s:string)->int {
+  if s.count<1 || s.count>6 {return EC_NONE;}
+  n:=0;
+  for c:s {if c<'0' || c>'9' {return EC_NONE;} n=n*10+cast(int)(c-'0');}
+  return n;
+}
+ec_names :: (name:string)->bool {return name=="k" || name=="K" || name=="a" || name=="A";}
+ec_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+32 else c;}
+ec_starts_ci :: (s:string,p:string)->bool {
+  if s.count<p.count {return false;}
+  for i:0..<p.count {if ec_lower(s[i])!=p[i] {return false;}}
+  return true;
+}
+ec_holds_ci :: (s:string,p:string)->bool {
+  for i:0..<s.count {if ec_starts_ci(s[i..<s.count],p) {return true;}}
+  return false;
+}

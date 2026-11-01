@@ -26,6 +26,27 @@ BOOKS = {
 # Aethyr's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}
 DRAFT = "> **Status: unimplemented — design draft.**"
+# Kinds a book's library must never build (Nostr chapter 74: Cashu and
+# Fedimint, excluded by AGENTS.md's Bitcoin-only rule). The table file holds
+# the kinds; the pinned README and NIP texts must agree with it; and only the
+# files below may name a kind or an ecash word, each for its stated reason.
+# A file is added here only with an owner decision recorded in NEEDS_OWNER.md.
+EXCLUDED = {
+    "nostr": {
+        "table": "coax/lib/nostr/ecash.coax",
+        "readme": "nostr/nips/official/README.md",
+        "nips": ("60", "61", "87"),
+        "other": {0: "NIP-01 metadata", 5: "NIP-09 deletion"},
+        "scan": ("coax/lib/nostr", "nostr/examples"),
+        "allowed": {
+            "coax/lib/nostr/ecash.coax": "chapter 74: recognizes the kinds, builds nothing",
+            "coax/lib/nostr/nip15.coax": "chapter 66: refuses cashu payment options",
+            "nostr/examples/ecash-excluded.coax": "chapter 74's example",
+            "nostr/examples/checks/ecash-excluded.coax": "chapter 74's checks",
+            "nostr/examples/markets-orders.coax": "chapter 66's example: shows the cashu refusal",
+        },
+    },
+}
 
 
 def path(name):
@@ -91,6 +112,8 @@ def check(name="psionic"):
             assert listing == expected, f"listing drift: {doc.name} -> {source} {tag}"
             listings += 1
     assert listings >= least, "required library/example listings missing"
+    if name in EXCLUDED:
+        excluded(EXCLUDED[name])
     for item in examples:
         source = path(item["source"])
         chapter = path(item["chapter"])
@@ -104,6 +127,40 @@ def check(name="psionic"):
         assert limit is None or (type(limit) is int and 60 <= limit <= 600), f"timeout is 60 to 600 seconds: {source}"
     print(f"{name} book structure: {len(examples)} programs, {listings} source-linked listings, local links pass")
     return examples
+
+
+def excluded(rule):
+    """The excluded kinds match the pinned texts, and no other file names them."""
+    table = path(rule["table"]).read_text()
+
+    def constant(label):
+        found = re.search(label + r" :: \[[A-Z_0-9]+\] (?:int|string)\.\[(.*?)\];", table, re.DOTALL)
+        assert found, f"{rule['table']}: no {label}"
+        return re.findall(r'"([^"]*)"|(\d+)', found.group(1))
+
+    kinds = [int(n) for _, n in constant("EC_KIND")]
+    rows = list(zip(kinds, [t for t, _ in constant("EC_NAME")], [t for t, _ in constant("EC_NIP")]))
+    words = [t for t, _ in constant("EC_WORDS")]
+    readme = path(rule["readme"]).read_text()
+    pinned = [(int(k), name, nip) for k, name, nip in re.findall(r"^\| `(\d+)` *\| (.+?) *\| \[(\w+)\]\(\3\.md\)", readme, re.M) if nip in rule["nips"]]
+    assert pinned == rows, f"{rule['table']} differs from {rule['readme']}: {pinned} != {rows}"
+    for nip in rule["nips"]:
+        text = path(f"{Path(rule['readme']).parent}/{nip}.md").read_text()
+        mentioned = {int(a or b) for a, b in re.findall(r'kind:(\d+)|"kind": (\d+)', text)}
+        extra = mentioned - set(kinds) - set(rule["other"])
+        assert not extra, f"NIP-{nip} names a kind in no table: {extra}"
+        own = {k for k, _, n in rows if n == nip}
+        assert own <= mentioned, f"NIP-{nip} never names {own - mentioned}"
+    number = re.compile(r"(?<![0-9A-Za-z_])(?:" + "|".join(map(str, kinds)) + r")(?![0-9A-Za-z_])")
+    naming = set()
+    for top in rule["scan"]:
+        for source in sorted((ROOT / top).rglob("*.coax")):
+            text = source.read_text()
+            if number.search(text) or any(w in text.lower() for w in words):
+                naming.add(str(source.relative_to(ROOT)))
+    allowed = set(rule["allowed"])
+    assert naming <= allowed, f"files name an excluded kind or ecash with no owner decision: {sorted(naming - allowed)}"
+    assert allowed <= naming, f"allowed files that no longer name ecash: {sorted(allowed - naming)}"
 
 
 def chapters(name, book):

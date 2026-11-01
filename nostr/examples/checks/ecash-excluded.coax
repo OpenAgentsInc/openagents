@@ -1,0 +1,85 @@
+// The checks of ecash-excluded.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/ecash-excluded.coax
+#load "../ecash-excluded.coax";
+#load "../../../coax/lib/nostr/nip15.coax";
+#load "../../../coax/lib/nostr/nipa3.coax";
+
+// The rows of nostr/nips/official/README.md's kind table whose NIP column
+// is 60, 61 or 87, copied by hand on 2026-11-01 (README lines 191-193,
+// 200, 218, 238 and 300-302). psionic/tests/book.py reads the same rows
+// from the file on every structure check and fails if they change.
+PINNED :: [EC_N] string.[
+  "| `7374`        | Reserved Cashu Wallet Tokens    | [60](60.md)                            |",
+  "| `7375`        | Cashu Wallet Tokens             | [60](60.md)                            |",
+  "| `7376`        | Cashu Wallet History            | [60](60.md)                            |",
+  "| `9321`        | Nutzap                          | [61](61.md)                            |",
+  "| `10019`       | Nutzap Mint Recommendation      | [61](61.md)                            |",
+  "| `17375`       | Cashu Wallet Event              | [60](60.md)                            |",
+  "| `38000`       | Mint Recommendation             | [87](87.md)                            |",
+  "| `38172`       | Cashu Mint Announcement         | [87](87.md)                            |",
+  "| `38173`       | Fedimint Announcement           | [87](87.md)                            |"];
+// One Markdown table cell, trimmed: the text between the n'th and the
+// next "|".
+cell :: (line: string, n: int) -> string {
+  bars := 0; from := 0;
+  for i: 0..<line.count {
+    if line[i] != '|' { continue; }
+    if bars == n + 1 {
+      a := from; b := i;
+      while a < b && line[a] == ' ' { a += 1; }
+      while b > a && line[b - 1] == ' ' { b -= 1; }
+      return line[a..<b];
+    }
+    bars += 1; from = i + 1;
+  }
+  return "";
+}
+#test "the table is the pinned README's rows for NIP-60, 61 and 87" {
+  #assert cell("| a | b c |", 0) == "a" && cell("| a | b c |", 1) == "b c" && cell("| a |", 1) == "";
+  for i: 0..<EC_N {
+    k := cell(PINNED[i], 0); nip := cell(PINNED[i], 2);
+    #assert k[0] == '`' && k[k.count - 1] == '`' && ec_number(k[1..<k.count - 1]) == EC_KIND[i];
+    #assert cell(PINNED[i], 1) == EC_NAME[i];
+    #assert nip == "[60](60.md)" || nip == "[61](61.md)" || nip == "[87](87.md)";
+    #assert nip[1..<3] == EC_NIP[i];
+  }
+}
+
+// book:begin check
+// The four events the chapter classifies by hand.
+#test "the hand classification of E1 to E4" {
+  e1 := n32_event(9321, "[[\"unit\",\"sat\"],[\"u\",\"https://stablenut.umint.cash\"],[\"p\",\"e9fbced3a42dcf551486650cc752ab354347dd413b307484e4fd1818ab53f991\"]]");
+  v := ec_event(e1); #assert v.status == EC_EXCLUDED && EC_KIND[v.row] == 9321 && v.at == EC_NONE;
+  e2 := n32_event(38172, "[[\"d\",\"mint-pubkey\"],[\"u\",\"https://cashu.example.com\"],[\"nuts\",\"1,2,3,4,5,6,7\"],[\"n\",\"mainnet\"]]");
+  v = ec_event(e2); #assert v.status == EC_EXCLUDED && EC_KIND[v.row] == 38172 && EC_HOLDER[v.row] == "a Cashu mint";
+  e3 := n32_event(5, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"7375\"]]");
+  v = ec_event(e3); #assert v.status == EC_REFERS && EC_KIND[v.row] == 7375 && v.at == 1;
+  e4 := n32_event(9734, "[[\"p\",\"e9fbced3a42dcf551486650cc752ab354347dd413b307484e4fd1818ab53f991\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"1\"],[\"amount\",\"21000\"]]");
+  v = ec_event(e4); #assert v.status == EC_OK && v.row == EC_NONE && v.at == EC_NONE;
+}
+
+// Every attempt to build one of the kinds, or to accept a token, refuses.
+#forall "every excluded kind refuses to be built" i: 0..<EC_N {
+  #assert ec_build(EC_KIND[i]) == EC_EXCLUDED;
+}
+#test "tokens and invite codes refuse; Bitcoin values don't" {
+  // NUT-00 token prefixes (V3 cashuA, V4 cashuB) and NIP-87's invite codes.
+  refuse := [5] string.["cashuAeyJ0b2tlbiI6W119", "cashuBo2F0", "fed11abc..", "fed11xyz..", "CashuA"];
+  for s: refuse { #assert ec_value(s) == EC_EXCLUDED; }
+  keep := [4] string.["lnbc430u1x", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", "alice@example.com", "lnurl1dp68gurn"];
+  for s: keep { #assert ec_value(s) == EC_OK && ec_option(s) == EC_OK; }
+}
+
+// The refusals that already exist, which this chapter links to rather
+// than repeats: chapter 66's NIP-15 rails and chapter 73's NIP-A3 targets.
+#test "chapters 66 and 73 refuse cashu too" {
+  #assert n15_rail("cashu") == N15_RAIL_NONE && ec_option("cashu") == EC_EXCLUDED;
+  out: [512] u8;
+  types := [2] string.["ln", "cashu"]; links := [2] string.["lnbc430u1x", "cashuAeyJ0b2tlbiI6W119"];
+  #assert n15_write_request(out[..], "o1", "", types[..], links[..]) == N15_W_RAIL;
+  t := a3_try("cashu", "cashuAeyJ0b2tlbiI6W119");
+  uri: [300] u8;
+  #assert t.status == A3_UNKNOWN && a3_pay_uri(t, uri[..]) == -1;
+}
+// book:end check

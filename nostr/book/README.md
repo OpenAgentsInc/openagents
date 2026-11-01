@@ -15,7 +15,7 @@ The C host may link one TLS library so native clients reach `wss://` relays.
 Every protocol decision above the socket, including WebSocket framing, Nostr
 messages, NIP-42 and NIP-44, is Coax code ([AGENTS.md](../../AGENTS.md)).
 Money follows the repository's Bitcoin-only rule: Lightning and on-chain
-Bitcoin are built; Cashu and Fedimint are described and excluded
+Bitcoin are built; Cashu and Fedimint are recognized and never built
 ([chapter 74](ch074-cashu-and-fedimint-are-excluded.md)).
 
 You need the Coax language (its book's Parts I–III). The
@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 79 are implemented and 25 are design drafts.
+Of the 104 chapters, 80 are implemented and 24 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -264,7 +264,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) | Unimplemented: design draft | NIP-57 zap requests (9734) sent to an LNURL server and zap receipts (9735) whose bolt11 description hash commits to the request, and NIP-75 zap goals (9041). |
 | [72. Wallet Connect](ch072-wallet-connect.md) | Runnable: native C | NIP-47 Nostr Wallet Connect: `nostr+walletconnect://` URIs (secret kept, never printed), the info event (13194) with NIP-04-only wallets refused, every command's request (23194) and response (23195) JSON read and written, NIP-44 v2 under the connection secret, responses matched by author, `p`, `e` and `result_type`, and an `#authority` spending budget that refuses with `QUOTA_EXCEEDED`. |
 | [73. Payment targets](ch073-payment-targets.md) | Runnable: native C | NIP-A3 kind 10133 `payto` tags, with only the Bitcoin and Lightning target types acted on under the repository rule. |
-| [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) | Unimplemented: design draft | NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87 mint discovery, described for reading only; the repository's Bitcoin-only rule excludes Cashu and Fedimint from implementation. |
+| [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) | Runnable: native C | NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87 mint discovery, recognized and never built: a classifier marks their nine kinds, references to them and ecash payment values as excluded, and the book check fails if another file names them. |
 | [75. Hosts and reachability](ch075-hosts-and-reachability.md) | Runnable: native C | NIP-HOST grants bound to the original host-signed 3188 envelope and admitted against the host's record (request window, revocation, expiry, epochs, rights, retained replies), and NIP-REACH presence freshness and route generations. Invitations, enrollment, the directory, hint selection and direct channels are not built. |
 | [76. Work, coordination and control](ch076-work-coordination-and-control.md) | Unimplemented: design draft | NIP-WORK tracked items and revisions, NIP-COORD claims with fencing tokens and leases, NIP-CTRL client pairing and commands, and NIP-CTX task frames and context receipts. |
 | [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) | Unimplemented: design draft | NIP-CAP execution descriptions and bindings, NIP-POL inspectable host policy and approvals, NIP-EXT signed component packages, and NIP-REG curated plugin registries. |

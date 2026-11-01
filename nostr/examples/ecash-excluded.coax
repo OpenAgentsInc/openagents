@@ -1,0 +1,63 @@
+// book:begin example
+#load "../../coax/lib/nostr/ecash.coax";
+#import "Basic";
+
+STATUS :: [4] string.["not ecash", "excluded: not built", "refers to an excluded kind", "tags don't read"];
+
+show :: (label: string, e: NostrEvent) {
+  v := ec_event(e);
+  print("%: kind %\n  %", label, e.kind, STATUS[v.status]);
+  if v.status == EC_REFERS { print(", tag % names kind %", v.at, EC_KIND[v.row]); }
+  if v.row != EC_NONE { print(" (%, NIP-%, money held by %)", EC_NAME[v.row], EC_NIP[v.row], EC_HOLDER[v.row]); }
+  print("\n");
+}
+option :: (type: string, value: string) {
+  t := ec_option(type); w := ec_value(value);
+  print("  type %, value %: ", type, value);
+  if t == EC_EXCLUDED || w == EC_EXCLUDED { print("%\n", STATUS[EC_EXCLUDED]); }
+  else { print("not ecash (its own chapter decides)\n"); }
+}
+build :: (label: string, kind: int) {
+  print("build %: ", label);
+  if ec_build(kind) == EC_EXCLUDED { print("refused, %\n", STATUS[EC_EXCLUDED]); }
+  else { print("may be built\n"); }
+}
+accept :: (value: string) {
+  print("accept %: ", value);
+  if ec_value(value) == EC_EXCLUDED { print("refused, %\n", STATUS[EC_EXCLUDED]); }
+  else { print("not ecash\n"); }
+}
+
+main :: () {
+  print("excluded kinds\n");
+  for r: 0..<EC_N { print("  %  NIP-%  %, money held by %\n", EC_KIND[r], EC_NIP[r], EC_NAME[r], EC_HOLDER[r]); }
+
+  print("four events\n");
+  // E1: NIP-61's example nutzap, without its proof tag.
+  show("E1", n32_event(9321, "[[\"unit\",\"sat\"],[\"u\",\"https://stablenut.umint.cash\"],[\"p\",\"e9fbced3a42dcf551486650cc752ab354347dd413b307484e4fd1818ab53f991\"]]"));
+  // E2: NIP-87's example Cashu mint announcement.
+  show("E2", n32_event(38172, "[[\"d\",\"mint-pubkey\"],[\"u\",\"https://cashu.example.com\"],[\"nuts\",\"1,2,3,4,5,6,7\"],[\"n\",\"mainnet\"]]"));
+  // E3: the NIP-09 deletion NIP-60 requires when a token event is spent.
+  show("E3", n32_event(5, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"7375\"]]"));
+  // E4: a NIP-57 zap request for a kind 1 note, paid over Lightning.
+  show("E4", n32_event(9734, "[[\"p\",\"e9fbced3a42dcf551486650cc752ab354347dd413b307484e4fd1818ab53f991\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"1\"],[\"amount\",\"21000\"]]"));
+  print("an event that only refers to ecash\n");
+  show("E5, a reaction to a Fedimint announcement", n32_event(7, "[[\"a\",\"38173:fedimint-pubkey:federation-id\"],[\"k\",\"38173\"]]"));
+
+  print("payment options\n");
+  option("cashu", "cashuAeyJ0b2tlbiI6W119");
+  option("Fedimint", "fed11abc");
+  option("url", "cashuBo2F0");
+  option("ln", "lnbc430u1x");
+  option("btc", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4");
+
+  print("refusals\n");
+  build("a nutzap (kind 9321)", 9321);
+  build("a Cashu wallet event (kind 17375)", 17375);
+  build("a mint recommendation (kind 38000)", 38000);
+  accept("cashuAeyJ0b2tlbiI6W119");
+  accept("fed11abc");
+  build("a kind 1 note", 1);
+  show("tags that don't read", n32_event(1, "[[\"k\",7375]]"));
+}
+// book:end example

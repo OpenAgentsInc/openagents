@@ -1,0 +1,37 @@
+excluded kinds
+  7374  NIP-60  Reserved Cashu Wallet Tokens, money held by a Cashu mint
+  7375  NIP-60  Cashu Wallet Tokens, money held by a Cashu mint
+  7376  NIP-60  Cashu Wallet History, money held by a Cashu mint
+  9321  NIP-61  Nutzap, money held by a Cashu mint
+  10019  NIP-61  Nutzap Mint Recommendation, money held by a Cashu mint
+  17375  NIP-60  Cashu Wallet Event, money held by a Cashu mint
+  38000  NIP-87  Mint Recommendation, money held by a Cashu mint or a Fedimint federation
+  38172  NIP-87  Cashu Mint Announcement, money held by a Cashu mint
+  38173  NIP-87  Fedimint Announcement, money held by a Fedimint federation
+four events
+E1: kind 9321
+  excluded: not built (Nutzap, NIP-61, money held by a Cashu mint)
+E2: kind 38172
+  excluded: not built (Cashu Mint Announcement, NIP-87, money held by a Cashu mint)
+E3: kind 5
+  refers to an excluded kind, tag 1 names kind 7375 (Cashu Wallet Tokens, NIP-60, money held by a Cashu mint)
+E4: kind 9734
+  not ecash
+an event that only refers to ecash
+E5, a reaction to a Fedimint announcement: kind 7
+  refers to an excluded kind, tag 0 names kind 38173 (Fedimint Announcement, NIP-87, money held by a Fedimint federation)
+payment options
+  type cashu, value cashuAeyJ0b2tlbiI6W119: excluded: not built
+  type Fedimint, value fed11abc: excluded: not built
+  type url, value cashuBo2F0: excluded: not built
+  type ln, value lnbc430u1x: not ecash (its own chapter decides)
+  type btc, value bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4: not ecash (its own chapter decides)
+refusals
+build a nutzap (kind 9321): refused, excluded: not built
+build a Cashu wallet event (kind 17375): refused, excluded: not built
+build a mint recommendation (kind 38000): refused, excluded: not built
+accept cashuAeyJ0b2tlbiI6W119: refused, excluded: not built
+accept fed11abc: refused, excluded: not built
+build a kind 1 note: may be built
+tags that don't read: kind 1
+  tags don't read
