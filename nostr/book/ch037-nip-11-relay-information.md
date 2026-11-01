@@ -35,6 +35,7 @@ application/nostr+json`: name, pubkey, `supported_nips`, software, version and
 | | `wss_http_write` | one HTTP/1.1 response with the CORS headers, then the connection closes |
 | [relay_route.coax](../../coax/lib/nostr/relay_route.coax) | `rr_http` | the action for a head: wait, upgrade, NIP-11 or 400 (`#authority`) |
 | | `RR_NIP11` | the document `relay.coax` serves |
+| | `rr_nip11_pow`, `rr_nip13_at` | with `--pow`, NIP-13 added to `supported_nips` and `min_pow_difficulty` to `limitation` (`#authority`) |
 | [relay_server.coax](../../coax/lib/nostr/relay_server.coax) | `RS_MAX_MESSAGE`, `RS_MAX_SUBS`, `RS_MAX_TAGS`, `RS_FUTURE`, `rs_limit` | the limits the document advertises (`#authority`) |
 | | `RS_NIP11`, `rs_nip11` | a second copy of the document with its own checks; the same bytes as `RR_NIP11` since this chapter |
 | [message_server.coax](../../coax/lib/nostr/message_server.coax) | `MS_SUB_MAX`, `ms_sub_ok` | subscription ids of 1 to 64 characters |
@@ -95,26 +96,26 @@ The example's requests, and what the rules above give:
 | `Accept: text/html` | `WSS_UPGRADE` | 400 | `HTTP/1.1 400 Bad Request` |
 
 The NIP-11 answer is the head and then the document. The document,
-`RR_NIP11`, is 506 bytes, so the head says `Content-Length: 506`. Each
+`RR_NIP11`, is 517 bytes, so the head says `Content-Length: 517`. Each
 header line ends in CRLF, two bytes:
 
 | Line | Bytes |
 | --- | --- |
 | `HTTP/1.1 200 OK` | 15 + 2 = 17 |
 | `Content-Type: application/nostr+json` | 36 + 2 = 38 |
-| `Content-Length: 506` | 19 + 2 = 21 |
+| `Content-Length: 517` | 19 + 2 = 21 |
 | `Access-Control-Allow-Origin: *` | 30 + 2 = 32 |
 | `Access-Control-Allow-Headers: *` | 31 + 2 = 33 |
 | `Access-Control-Allow-Methods: GET` | 33 + 2 = 35 |
 | `Connection: close` | 17 + 2 = 19 |
 | the empty line | 2 |
 
-That is 197 bytes of head, and 197 + 506 = 703 bytes in all.
+That is 197 bytes of head, and 197 + 517 = 714 bytes in all.
 
 The `400` answer has the same header lines with three values changed:
 `400 Bad Request` is 9 bytes longer than `200 OK`, `text/plain` is 12 bytes
 shorter than `application/nostr+json`, and the body is the 83-byte text,
-so `83` is one digit shorter than `506`. Its head is 197 + 9 − 12 − 1 = 193
+so `83` is one digit shorter than `517`. Its head is 197 + 9 − 12 − 1 = 193
 bytes, and the answer is 193 + 83 = 276 bytes.
 
 ## The document
@@ -126,7 +127,7 @@ it is sent):
 {
  "name": "OpenAgents Coax relay (R1)",
  "description": "A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.",
- "supported_nips": [1, 11, 40, 42],
+ "supported_nips": [1, 9, 11, 40, 42, 45, 62, 70],
  "software": "https://github.com/OpenAgentsInc/openagents",
  "version": "r1",
  "limitation": {
@@ -164,18 +165,25 @@ The list names what the relay does, not what its libraries could do:
 | NIP | What the relay does | Where |
 | --- | --- | --- |
 | 1 | `EVENT`, `REQ`, `CLOSE`; `OK`, `EOSE`, `CLOSED`, `NOTICE` | `message_server.coax`, `relay_server.coax` (chapters 24, 34) |
+| 9 | a stored kind 5 retires the events it names, and they are refused `blocked:` afterwards | `store_delete.coax` in `rd_admit` (chapter 39) |
 | 11 | this document on `Accept: application/nostr+json` | `ws_server.coax`, `relay_route.coax` |
 | 40 | refuses an expired event and never serves one | `rs_expiration`, `rs_live` (chapter 34) |
 | 42 | sends a challenge, checks `AUTH`, and requires a key for writes | `nip42.coax`, `rr_auth` (chapter 38) |
+| 45 | answers `COUNT` with the exact number of matching stored events | `nip45.coax` through `rd_count` (chapter 40) |
+| 62 | a kind 62 naming this relay, or `ALL_RELAYS`, retires its author's events | `store_delete.coax` in `rd_admit` (chapter 39) |
+| 70 | an event with the `"-"` tag only from a connection authenticated as its author | `nip70.coax`'s `nip70_admit` (chapter 42) |
+
+One NIP is listed only when it is turned on:
+
+- NIP-13, proof of work: off by default. With `--pow BITS` the relay asks
+  each `EVENT` for that many leading zero bits (chapter 56), and
+  `rr_nip11_pow` puts 13 into `supported_nips` before the first larger
+  NIP and `min_pow_difficulty` at the end of `limitation`.
 
 NIPs the relay doesn't list, and what it does instead:
 
-- NIP-45, `COUNT`: answered by `nip45.coax` (chapter 40); listed once the
-  document is updated with the other wired NIPs.
 - NIP-50, `search`: a filter with `search` is refused with `CLOSED` and
   `invalid: malformed filter`.
-- NIP-09, deletion: a kind 5 event retires what it names, and the deleted
-  event is refused afterwards (chapter 39); listed with the others.
 
 ### `limitation`
 
@@ -366,11 +374,17 @@ enforced :: () -> [9] int {
   return v;
 }
 // The NIPs the relay implements, each with the code that implements it.
-RELAY_NIPS :: [4] int.[
+// NIP-13 is not here: proof of work is off unless the relay starts with
+// --pow, and then rr_nip11_pow adds 13 to the served list.
+RELAY_NIPS :: [8] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
+  9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
   40,    // rs_expiration and rs_live: expired events refused and never served
-  42     // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+  42,    // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+  45,    // nip45.coax through rd_count: COUNT answered with an exact count
+  62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
+  70     // nip70.coax's nip70_admit: a "-" event only from its authenticated author
 ];
 // The number of fields where the document disagrees with the relay.
 info_compare :: (i: RelayInfo, say: bool) -> int {
@@ -383,7 +397,11 @@ info_compare :: (i: RelayInfo, say: bool) -> int {
   nips_same := i.nips_n == RELAY_NIPS.count;
   for n: RELAY_NIPS { if !info_has(i, n) { nips_same = false; } }
   if !nips_same { bad += 1; }
-  if say { print("  supported_nips: % listed, relay implements 1, 11, 40, 42 %\n", i.nips_n, ifx nips_same then "ok" else "MISMATCH"); }
+  if say {
+    print("  supported_nips: % listed, relay implements", i.nips_n);
+    for n, k: RELAY_NIPS { print("% %", ifx k == 0 then "" else ",", n); }
+    print(" %\n", ifx nips_same then "ok" else "MISMATCH");
+  }
   return bad;
 }
 ```
@@ -540,11 +558,17 @@ enforced :: () -> [9] int {
   return v;
 }
 // The NIPs the relay implements, each with the code that implements it.
-RELAY_NIPS :: [4] int.[
+// NIP-13 is not here: proof of work is off unless the relay starts with
+// --pow, and then rr_nip11_pow adds 13 to the served list.
+RELAY_NIPS :: [8] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
+  9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
   40,    // rs_expiration and rs_live: expired events refused and never served
-  42     // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+  42,    // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+  45,    // nip45.coax through rd_count: COUNT answered with an exact count
+  62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
+  70     // nip70.coax's nip70_admit: a "-" event only from its authenticated author
 ];
 // The number of fields where the document disagrees with the relay.
 info_compare :: (i: RelayInfo, say: bool) -> int {
@@ -557,7 +581,11 @@ info_compare :: (i: RelayInfo, say: bool) -> int {
   nips_same := i.nips_n == RELAY_NIPS.count;
   for n: RELAY_NIPS { if !info_has(i, n) { nips_same = false; } }
   if !nips_same { bad += 1; }
-  if say { print("  supported_nips: % listed, relay implements 1, 11, 40, 42 %\n", i.nips_n, ifx nips_same then "ok" else "MISMATCH"); }
+  if say {
+    print("  supported_nips: % listed, relay implements", i.nips_n);
+    for n, k: RELAY_NIPS { print("% %", ifx k == 0 then "" else ",", n); }
+    print(" %\n", ifx nips_same then "ok" else "MISMATCH");
+  }
   return bad;
 }
 // book:end enforced
@@ -744,8 +772,8 @@ main :: () {
   print("  max_message_length: advertised %, enforced %\n", i.limit[0], want[0]);
   i = info_read(edited("\"restricted_writes\":true", "\"restricted_writes\":false", d[..]));
   print("restricted_writes edited to false: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
-  i = info_read(edited("[1,11,40,42]", "[1,11,40,42,45]", d[..]));
-  print("NIP-45 added to supported_nips: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
+  i = info_read(edited("45,62", "45,50,62", d[..]));
+  print("NIP-50 added to supported_nips: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
   print("last byte cut: %\n", INFO_ERRORS[info_read(RR_NIP11[0..<RR_NIP11.count - 1]).error]);
   print("an array: %\n", INFO_ERRORS[info_read("[]").error]);
   print("\"supported_nips\":[\"11\"]: %\n", INFO_ERRORS[info_read("{\"supported_nips\":[\"11\"]}").error]);
@@ -773,16 +801,16 @@ routing: one request head, one answer
 7. OPTIONS: METHOD -> 400, answer "HTTP/1.1 400 Bad Request"
 8. head not finished: MORE -> wait, answer ""
 
-the NIP-11 answer: 703 bytes, head 197 and body 506
+the NIP-11 answer: 714 bytes, head 197 and body 517
   HTTP/1.1 200 OK\r\n
   Content-Type: application/nostr+json\r\n
-  Content-Length: 506\r\n
+  Content-Length: 517\r\n
   Access-Control-Allow-Origin: *\r\n
   Access-Control-Allow-Headers: *\r\n
   Access-Control-Allow-Methods: GET\r\n
   Connection: close\r\n
   \r\n
-  {"name":"OpenAgents Coax relay (R1)","description":"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,11,40,42],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
+  {"name":"OpenAgents Coax relay (R1)","description":"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,9,11,40,42,45,62,70],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
 
 the 400 answer: 276 bytes
   HTTP/1.1 400 Bad Request\r\n
@@ -797,8 +825,8 @@ the 400 answer: 276 bytes
 
 the client reads the document
   error: ok, name "OpenAgents Coax relay (R1)", software "https://github.com/OpenAgentsInc/openagents", version "r1"
-  supported_nips: 1 11 40 42
-  NIP-45 COUNT listed: false, NIP-50 search listed: false
+  supported_nips: 1 9 11 40 42 45 62 70
+  NIP-45 COUNT listed: true, NIP-50 search listed: false
 advertised against enforced
   max_message_length: advertised 131072, enforced 131072 ok
   max_subscriptions: advertised 32, enforced 32 ok
@@ -809,7 +837,7 @@ advertised against enforced
   default_limit: advertised 127, enforced 127 ok
   auth_required: advertised 0, enforced 0 ok
   restricted_writes: advertised 1, enforced 1 ok
-  supported_nips: 4 listed, relay implements 1, 11, 40, 42 ok
+  supported_nips: 8 listed, relay implements 1, 9, 11, 40, 42, 45, 62, 70 ok
   0 mismatches
 
 each limit, at the limit and one past it
@@ -852,7 +880,7 @@ broken documents
 max_message_length edited to 131073: read ok, 1 mismatch
   max_message_length: advertised 131073, enforced 131072
 restricted_writes edited to false: read ok, 1 mismatch
-NIP-45 added to supported_nips: read ok, 1 mismatch
+NIP-50 added to supported_nips: read ok, 1 mismatch
 last byte cut: not JSON
 an array: not an object
 "supported_nips":["11"]: bad supported_nips
@@ -866,7 +894,7 @@ The broken cases at the end:
   and the comparison reports one mismatch: advertised 131073, enforced
   131072. A client that trusted it would send a 131,073-byte message and
   have its connection closed with 1009.
-- `restricted_writes` edited to `false`, and NIP-45 added to
+- `restricted_writes` edited to `false`, and NIP-50 added to
   `supported_nips`, are one mismatch each.
 - The document without its last byte isn't JSON; `[]` isn't an object;
   `"supported_nips":["11"]` and `"max_limit":-1` are refused by field.
@@ -882,16 +910,18 @@ which loads the example, so running the example doesn't run them:
 
 - the served answer equals, byte for byte, a head and document written out
   by hand from NIP-11's field list and the limits traced in chapter 34: 197
-  + 506 = 703 bytes;
+  + 517 = 714 bytes;
 - `relay_server.coax`'s `RS_NIP11` equals `RR_NIP11`, the document
   `relay.coax` serves;
+- with proof of work at 8 bits, `rr_nip11_pow` adds 13 as the fourth NIP
+  and 26 bytes in all, and the comparison names that one difference;
 - a request with both headers gets the RFC 6455 section 1.3 accept value,
   `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`, in a 129-byte `101`; the `400` answer is
   276 bytes;
 - `info_read` gives the integers and booleans that Python's `json.loads`
   gives for the hand-written document;
 - `enforced` equals the hand values, and editing each of the nine fields
-  and `supported_nips` (one NIP removed, one added, one replaced) gives
+  and `supported_nips` (one NIP removed at each end, one added, one replaced) gives
   exactly one mismatch; a missing `default_limit` reads as absent and is a
   mismatch;
 - the reader's refusals, unknown fields skipped, and 32 NIPs read where 33
@@ -904,23 +934,34 @@ which loads the example, so running the example doesn't run them:
 // limits chapter 34 traced (frames of 131072 bytes, 256 tags, 900 s ahead)
 // and the REQ limits in relay_server.coax's header comment (32
 // subscriptions, sub ids 1..64, max_limit and default_limit 127).
-HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,11,40,42],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 // The head counted by hand: 17 + 38 + 21 + 32 + 33 + 35 + 19 + 2 = 197 bytes.
-HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 506\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
+HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 517\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
 
 #test "the served answer is the hand-written head and document, byte for byte" {
   out: [1024] u8;
   a := http_answer(NIP11_GET, out[..]);
   #assert a.status == WSS_NIP11 && a.action == RR_H_NIP11;
-  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 506 && a.n == 703;
-  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<703] == HAND_DOC;
+  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 517 && a.n == 714;
+  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<714] == HAND_DOC;
 }
 #test "relay_server.coax's copy of the document is the one relay.coax serves" {
   #assert RS_NIP11 == RR_NIP11;
   out: [1024] u8;
-  #assert rs_nip11(out[..]) == 703;
+  #assert rs_nip11(out[..]) == 714;
 }
 // RFC 6455 section 1.3's key and accept value.
+// With --pow, the served list gains 13 in order and the limitation object
+// min_pow_difficulty; the comparison against RELAY_NIPS then names one
+// difference, the optional NIP-13.
+#test "proof of work adds 13 to supported_nips" {
+  out: [1024] u8;
+  n := rr_nip11_pow(RR_NIP11, 8, out[..]);
+  i := info_read(cast(string) out[0..<n]);
+  #assert n == RR_NIP11.count + 3 + 23 && i.error == INFO_OK && i.nips_n == 9 && i.nips[3] == 13 && info_has(i, 13);
+  #assert info_compare(i, false) == 1;
+  #assert rr_nip11_pow(RR_NIP11, 0, out[..]) == RR_NIP11.count;
+}
 #test "routing: NIP-11, upgrade (which wins over NIP-11), refusal or wait" {
   out: [1024] u8;
   #assert http_answer(UPGRADE, out[..]).action == RR_H_UPGRADE;
@@ -937,7 +978,9 @@ HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent
 #test "the client reads every field the document states" {
   i := info_read(HAND_DOC);
   #assert i.error == INFO_OK && i.name == "OpenAgents Coax relay (R1)" && i.version == "r1";
-  #assert i.nips_n == 4 && i.nips[0] == 1 && i.nips[1] == 11 && i.nips[2] == 40 && i.nips[3] == 42;
+  nips := [8] int.[1, 9, 11, 40, 42, 45, 62, 70];
+  #assert i.nips_n == 8;
+  for k: 0..<8 { #assert i.nips[k] == nips[k]; }
   want := [9] int.[131072, 32, 127, 64, 256, 900, 127, 0, 1];
   for k: 0..<9 { #assert i.limit[k] == want[k]; }
   #assert info_compare(i, false) == 0;
@@ -959,9 +1002,10 @@ HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent
   }
   i := info_read(edited("\"restricted_writes\":true", "\"restricted_writes\":false", d[..]));
   #assert i.error == INFO_OK && i.limit[8] == 0 && info_compare(i, false) == 1;
-  i = info_read(edited("[1,11,40,42]", "[1,11,40]", d[..])); #assert info_compare(i, false) == 1;
-  i = info_read(edited("[1,11,40,42]", "[1,11,40,42,45]", d[..])); #assert info_compare(i, false) == 1;
-  i = info_read(edited("[1,11,40,42]", "[1,11,40,9]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited(",70]", "]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("45,62", "45,50,62", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("[1,9,", "[1,13,", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("[1,9,", "[1,", d[..])); #assert info_compare(i, false) == 1;
   i = info_read(edited("\"default_limit\":127", "\"x\":1", d[..])); #assert i.limit[6] == -1 && info_compare(i, false) == 1;
 }
 #test "the client's refusals" {
@@ -1007,8 +1051,8 @@ To run them:
 coax/bin/coax test nostr/examples/checks/relay-info.coax
 ```
 
-On 2026-11-01 `coax test` ran 271 checks, including the loaded units' own
-checks, and all passed in 6 s. The limit check is the largest, at 17.7
+On 2026-11-01 `coax test` ran 279 checks, including the loaded units' own
+checks, and all passed in 22 s on a loaded machine. The limit check is the largest, at 17.7
 million steps, because it copies two 65,536-byte fragments. The checks
 file has no procedures of its own, so `coax mutate --root-only` on it has
 nothing to mutate; `info_read` and `info_compare` are example code, checked
@@ -1027,10 +1071,19 @@ didn't. The checks file's `RS_NIP11 == RR_NIP11` check failed first; then
 `coax mutate coax/lib/nostr/relay_server.coax --root-only` killed 340 of
 340 mutants.
 
+### The supported_nips update
+
+The relay first served `[1,11,40,42]` while NIP-09, NIP-45, NIP-62 and
+NIP-70 were already wired into it (chapter 103). `RR_NIP11` and
+`RS_NIP11` now list those four as well, and `rr_nip11_pow` adds 13 with
+`--pow`. The new procedure `rr_nip13_at` finds where 13 goes. On
+2026-11-01, `coax mutate --root-only` killed 438 of 438 mutants in
+`relay_route.coax` and 344 of 344 in `relay_server.coax`.
+
 ### Records not rerun
 
-`ws_server.coax` and `relay_route.coax` are unchanged; their records were
-not rerun:
+`ws_server.coax` is unchanged since these records, and `relay_route.coax`
+changed only as above; the records were not rerun:
 
 - [2026-10-29-coax-relay-r1.md](../../docs/verification/2026-10-29-coax-relay-r1.md):
   `relay_server.coax`'s whole graph, including `ws_server.coax`, 6,087 of
@@ -1039,9 +1092,10 @@ not rerun:
   `relay_route.coax`, 255 of 255, and the Rust and Coax relays given the
   same observations, including the NIP-11 request.
 
-The NIP-11 request over a real socket, in `relay_session.py` and the
-wss:// session of
-[2026-10-30-coax-relay-r1-tls.md](../../docs/verification/2026-10-30-coax-relay-r1-tls.md),
+The NIP-11 request over a real socket is in `relay_session.py`, which
+checks the served `supported_nips`, with and without `--pow`. The wss://
+session of
+[2026-10-30-coax-relay-r1-tls.md](../../docs/verification/2026-10-30-coax-relay-r1-tls.md)
 was not rerun.
 
 ## Summary
@@ -1050,10 +1104,11 @@ was not rerun.
   `Accept: application/nostr+json`, the WebSocket handshake for
   `Upgrade: websocket` (which wins when both are present), and `400`
   otherwise.
-- The answer is 703 bytes: a 197-byte head with `Content-Length: 506`, the
+- The answer is 714 bytes: a 197-byte head with `Content-Length: 517`, the
   three CORS headers and `Connection: close`, then the document.
-- `supported_nips` lists 1, 11, 40 and 42, the relay-side NIPs the relay
-  implements; `COUNT` and `search` are refused.
+- `supported_nips` lists 1, 9, 11, 40, 42, 45, 62 and 70, the relay-side
+  NIPs the relay implements, and 13 when `--pow` is set; `search` is
+  refused.
 - Every `limitation` value is read from the code that enforces it, and
   each is hit at its value and refused one past it.
 
@@ -1066,8 +1121,11 @@ was not rerun.
 
 - [NIP-11](../nips/official/11.md), Relay Information Document: the
   fields, the CORS headers and the `limitation` object.
-- [NIP-01](../nips/official/01.md), [NIP-40](../nips/official/40.md) and
-  [NIP-42](../nips/official/42.md): the NIPs the relay lists.
+- [NIP-01](../nips/official/01.md), [NIP-09](../nips/official/09.md),
+  [NIP-13](../nips/official/13.md), [NIP-40](../nips/official/40.md),
+  [NIP-42](../nips/official/42.md), [NIP-45](../nips/official/45.md),
+  [NIP-62](../nips/official/62.md) and [NIP-70](../nips/official/70.md):
+  the NIPs the relay lists.
 - [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455) section 1.3 (the
   accept value) and section 7.4.1 (close code 1009).
 - The Fetch standard's CORS-safelisted request headers:

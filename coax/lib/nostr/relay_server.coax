@@ -510,7 +510,7 @@ rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool {
 
 // The same bytes as relay_route.coax's RR_NIP11, which coax/relay/relay.coax
 // serves (nostr/examples/checks/relay-info.coax checks that they agree).
-RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,11,40,42],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 #test "the NIP-11 document is JSON and states the limits in force" {
   #assert json_valid(RS_NIP11);
   #assert RS_MAX_MESSAGE == 131072 && RS_MAX_SUBS == 32 && RS_MAX_LIMIT == 127 && MS_SUB_MAX == 64 && RS_MAX_TAGS == 256 && RS_FUTURE == 900;

@@ -61,11 +61,22 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
 5. **NIP-49 scrypt needs a 64 MiB stack.** Coax has no heap, so log_n 16
    puts a 64 MiB array on the stack. It crashes at the default 8 MiB and
    can't run on macOS, whose stack limit is 64 MiB (chapter 47).
-6. **Relay modules not wired.** The running relay calls none of these:
-   `store_index`, `store_delete`, `relay_rate`, `nip45`, `nip50`
-   (`filter_read_search`), `nip70`, `nip77`, `nip13`, `nip86`, `nip43`,
-   `nip29`. Chapter 103 lists the wiring each needs. The Coax store also
-   holds at most 2,048 events, which blocks a cutover of the production data.
+6. **Relay modules not wired. Partly fixed.** When this record was written
+   the running relay called none of these: `store_index`, `store_delete`,
+   `relay_rate`, `nip45`, `nip50` (`filter_read_search`), `nip70`,
+   `nip77`, `nip13`, `nip86`, `nip43`, `nip29`. Chapter 103's table says
+   which are wired now and what the rest need.
+   - Wired in `0a8fe18801`..`54f00c2e64`: `store_index`, `store_delete`
+     (NIP-09, NIP-62), `relay_rate`, `nip45`, `nip70` and `nip13`.
+   - The served NIP-11 `supported_nips` lists them: `[1,9,11,40,42,45,62,70]`,
+     and 13 with `--pow` (`rr_nip11_pow`). Root-only mutation:
+     `relay_route.coax` 438 of 438, `relay_server.coax` 344 of 344.
+   - Still not wired: `nip50`, `nip77`, `nip86`, `nip43`, `nip29`.
+   - The Coax store holds at most 2,048 events, which blocks a cutover of
+     the production data.
+   - Not rerun: the Rust differential (`relay_rust_differential.py`) needs
+     the Rust sandbox; its expected COUNT reply and its `supported_nips`
+     note are out of date.
 7. **Hashing and phrase limits. Fixed.**
    - Fixed in `ad37e4eb61`: the one-shot SHA-256 stopped at 1 MiB, so
      `nip94.coax` refused larger files. `n94_check` now streams through

@@ -8,23 +8,34 @@
 // limits chapter 34 traced (frames of 131072 bytes, 256 tags, 900 s ahead)
 // and the REQ limits in relay_server.coax's header comment (32
 // subscriptions, sub ids 1..64, max_limit and default_limit 127).
-HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,11,40,42],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 // The head counted by hand: 17 + 38 + 21 + 32 + 33 + 35 + 19 + 2 = 197 bytes.
-HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 506\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
+HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 517\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
 
 #test "the served answer is the hand-written head and document, byte for byte" {
   out: [1024] u8;
   a := http_answer(NIP11_GET, out[..]);
   #assert a.status == WSS_NIP11 && a.action == RR_H_NIP11;
-  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 506 && a.n == 703;
-  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<703] == HAND_DOC;
+  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 517 && a.n == 714;
+  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<714] == HAND_DOC;
 }
 #test "relay_server.coax's copy of the document is the one relay.coax serves" {
   #assert RS_NIP11 == RR_NIP11;
   out: [1024] u8;
-  #assert rs_nip11(out[..]) == 703;
+  #assert rs_nip11(out[..]) == 714;
 }
 // RFC 6455 section 1.3's key and accept value.
+// With --pow, the served list gains 13 in order and the limitation object
+// min_pow_difficulty; the comparison against RELAY_NIPS then names one
+// difference, the optional NIP-13.
+#test "proof of work adds 13 to supported_nips" {
+  out: [1024] u8;
+  n := rr_nip11_pow(RR_NIP11, 8, out[..]);
+  i := info_read(cast(string) out[0..<n]);
+  #assert n == RR_NIP11.count + 3 + 23 && i.error == INFO_OK && i.nips_n == 9 && i.nips[3] == 13 && info_has(i, 13);
+  #assert info_compare(i, false) == 1;
+  #assert rr_nip11_pow(RR_NIP11, 0, out[..]) == RR_NIP11.count;
+}
 #test "routing: NIP-11, upgrade (which wins over NIP-11), refusal or wait" {
   out: [1024] u8;
   #assert http_answer(UPGRADE, out[..]).action == RR_H_UPGRADE;
@@ -41,7 +52,9 @@ HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent
 #test "the client reads every field the document states" {
   i := info_read(HAND_DOC);
   #assert i.error == INFO_OK && i.name == "OpenAgents Coax relay (R1)" && i.version == "r1";
-  #assert i.nips_n == 4 && i.nips[0] == 1 && i.nips[1] == 11 && i.nips[2] == 40 && i.nips[3] == 42;
+  nips := [8] int.[1, 9, 11, 40, 42, 45, 62, 70];
+  #assert i.nips_n == 8;
+  for k: 0..<8 { #assert i.nips[k] == nips[k]; }
   want := [9] int.[131072, 32, 127, 64, 256, 900, 127, 0, 1];
   for k: 0..<9 { #assert i.limit[k] == want[k]; }
   #assert info_compare(i, false) == 0;
@@ -63,9 +76,10 @@ HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent
   }
   i := info_read(edited("\"restricted_writes\":true", "\"restricted_writes\":false", d[..]));
   #assert i.error == INFO_OK && i.limit[8] == 0 && info_compare(i, false) == 1;
-  i = info_read(edited("[1,11,40,42]", "[1,11,40]", d[..])); #assert info_compare(i, false) == 1;
-  i = info_read(edited("[1,11,40,42]", "[1,11,40,42,45]", d[..])); #assert info_compare(i, false) == 1;
-  i = info_read(edited("[1,11,40,42]", "[1,11,40,9]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited(",70]", "]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("45,62", "45,50,62", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("[1,9,", "[1,13,", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("[1,9,", "[1,", d[..])); #assert info_compare(i, false) == 1;
   i = info_read(edited("\"default_limit\":127", "\"x\":1", d[..])); #assert i.limit[6] == -1 && info_compare(i, false) == 1;
 }
 #test "the client's refusals" {

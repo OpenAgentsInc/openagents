@@ -147,11 +147,17 @@ enforced :: () -> [9] int {
   return v;
 }
 // The NIPs the relay implements, each with the code that implements it.
-RELAY_NIPS :: [4] int.[
+// NIP-13 is not here: proof of work is off unless the relay starts with
+// --pow, and then rr_nip11_pow adds 13 to the served list.
+RELAY_NIPS :: [8] int.[
   1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
+  9,     // store_delete.coax in rd_admit: a stored kind 5 retires what it names
   11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
   40,    // rs_expiration and rs_live: expired events refused and never served
-  42     // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+  42,    // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+  45,    // nip45.coax through rd_count: COUNT answered with an exact count
+  62,    // store_delete.coax in rd_admit: a kind 62 retires its author's events
+  70     // nip70.coax's nip70_admit: a "-" event only from its authenticated author
 ];
 // The number of fields where the document disagrees with the relay.
 info_compare :: (i: RelayInfo, say: bool) -> int {
@@ -164,7 +170,11 @@ info_compare :: (i: RelayInfo, say: bool) -> int {
   nips_same := i.nips_n == RELAY_NIPS.count;
   for n: RELAY_NIPS { if !info_has(i, n) { nips_same = false; } }
   if !nips_same { bad += 1; }
-  if say { print("  supported_nips: % listed, relay implements 1, 11, 40, 42 %\n", i.nips_n, ifx nips_same then "ok" else "MISMATCH"); }
+  if say {
+    print("  supported_nips: % listed, relay implements", i.nips_n);
+    for n, k: RELAY_NIPS { print("% %", ifx k == 0 then "" else ",", n); }
+    print(" %\n", ifx nips_same then "ok" else "MISMATCH");
+  }
   return bad;
 }
 // book:end enforced
@@ -351,8 +361,8 @@ main :: () {
   print("  max_message_length: advertised %, enforced %\n", i.limit[0], want[0]);
   i = info_read(edited("\"restricted_writes\":true", "\"restricted_writes\":false", d[..]));
   print("restricted_writes edited to false: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
-  i = info_read(edited("[1,11,40,42]", "[1,11,40,42,45]", d[..]));
-  print("NIP-45 added to supported_nips: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
+  i = info_read(edited("45,62", "45,50,62", d[..]));
+  print("NIP-50 added to supported_nips: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
   print("last byte cut: %\n", INFO_ERRORS[info_read(RR_NIP11[0..<RR_NIP11.count - 1]).error]);
   print("an array: %\n", INFO_ERRORS[info_read("[]").error]);
   print("\"supported_nips\":[\"11\"]: %\n", INFO_ERRORS[info_read("{\"supported_nips\":[\"11\"]}").error]);
