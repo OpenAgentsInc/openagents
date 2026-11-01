@@ -1,0 +1,14 @@
+// Chapter 136's checks: a programmed bigram model. Every block matrix is
+// zero, so each block passes its input through (resid 1, x0 0, no smear, no
+// backout) and the logits at a position depend only on that position's token.
+// Each pair (from, to) gives token `from` its own direction k in the width and
+// adds 2 e_k to lm_head's row for `to`: after `from`, greedy decoding picks `to`.
+sf_program :: (c:NcConfig,pairs:[][2]int,p:[]f64) {
+    for i:0..<p.count {p[i]=0;}
+    for l:0..<c.layers {p[l]=1;}
+    W:=nc_wte(c);H:=nc_head(c);
+    for k:0..<pairs.count {from:=pairs[k][0];to:=pairs[k][1];p[W+from*c.width+k]=1;p[H+to*c.width+k]=2;}
+}
+// One block of width 24 over chapter 123's 320 tokens and nine specials.
+SF_TEST :: NcConfig.{sequence_len=64,vocab=329,layers=1,heads=2,kv_heads=1,width=24,pattern=0,pattern_len=1,context=64};
+SF_TEST_PARAMETERS :: 29416;

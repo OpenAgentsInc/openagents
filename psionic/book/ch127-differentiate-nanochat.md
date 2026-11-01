@@ -113,7 +113,7 @@ nb_relu :: (h:f64)->f64 {return (h+abs(h))/2;}
 nb_rotary_back :: (x:[]f64,xo:int,heads:int,hd:int,pos:int) {
     half:=hd/2;
     for h:0..<heads {for i:0..<half {
-        angle:=f64(pos)*(1/exp(log(NC_BASE)*f64(2*i)/f64(hd)));co:=cos(angle);si:=sin(angle);
+        angle:=f64(pos)*(1/exp(log(gpt.NC_BASE)*f64(2*i)/f64(hd)));co:=cos(angle);si:=sin(angle);
         a:=xo+h*hd+i;y1:=x[a];y2:=x[a+half];x[a]=y1*co-y2*si;x[a+half]=y1*si+y2*co;
     }}
 }
@@ -136,7 +136,7 @@ head's two norms, 72 pre-softcap logits; then the backward pass's scratch,
 // The forward pass, keeping what the backward pass reads. It follows
 // chapter 125's nc_run in binary64 except that attention and the loss skip
 // the max shift, which their bounded inputs make unnecessary.
-nb_record :: (c:NcConfig,p:[]f64,tokens:[]int,tape:[]f64,o:NbLayout,logits:[]f64)->f64 {
+nb_record :: (c:NcConfig,p:[]f64,tokens:[]int,targets:[]int,tape:[]f64,o:NbLayout,logits:[]f64)->f64 {
     n:=tokens.count;d:=c.width;hd:=nc_head_dim(c);kv:=nc_kv_width(c);G:=c.kv_heads;L:=c.layers;nd:=n*d;
     W:=nc_wte(c);sg:=nc_smear_gate(c);lam:=p[2*L];
     for i:0..<n {nc_rms(p,W+tokens[i]*d,d,tape,NB_RAW+i*d);for j:0..<d {tape[o.x0+i*d+j]=tape[NB_RAW+i*d+j];}}
@@ -165,13 +165,14 @@ nb_record :: (c:NcConfig,p:[]f64,tokens:[]int,tape:[]f64,o:NbLayout,logits:[]f64
         }
         if l==L/2 {for j:0..<nd {tape[o.xb+j]=tape[out+j];}}
     }
-    back:=p[2*L+1];HD:=nc_head(c);loss:=0.0;
+    back:=p[2*L+1];HD:=nc_head(c);loss:=0.0;kept:=0;
     for i:0..<n {for j:0..<d {tape[o.t+i*d+j]=tape[o.xl+i*d+j]-back*tape[o.xb+i*d+j];}nc_rms(tape,o.t+i*d,d,tape,o.nf+i*d);
         sum:=0.0;
         for v:0..<c.vocab {acc:=0.0;for j:0..<d {acc+=p[HD+v*d+j]*tape[o.nf+i*d+j];}tape[o.acc+i*c.vocab+v]=acc;z:=NC_SOFTCAP*nc_tanh(acc/NC_SOFTCAP);logits[i*c.vocab+v]=z;sum+=exp(z);}
-        if i+1<n {loss+=log(sum)-logits[i*c.vocab+tokens[i+1]];}
+        // Position i predicts targets[i]; -1 is no target (chapter 136's mask).
+        if i+1<n && targets[i]>=0 {loss+=log(sum)-logits[i*c.vocab+targets[i]];kept+=1;}
     }
-    return loss/f64(n-1);
+    return loss/f64(kept);
 }
 ```
 
@@ -184,13 +185,14 @@ reaches the layer.
 
 <!-- source: psionic/lib/nanochat/backward.coax head -->
 ```jai
-    // Cross entropy over the n-1 predicted positions: dz = (softmax(z) - onehot)/(n-1).
+    // Cross entropy over the kept targets (all n-1 for nb_gradient):
+    // dz = (softmax(z) - onehot)/kept; a position with no target adds nothing.
     // Then the softcap's slope, the untied head, the final RMS norm and backout.
     back:=p[2*L+1];HD:=nc_head(c);
-    for i:0..<n-1 {sum:=0.0;for v:0..<c.vocab {sum+=exp(logits[i*c.vocab+v]);}
+    for i:0..<n-1 {if targets[i]<0 {continue;}sum:=0.0;for v:0..<c.vocab {sum+=exp(logits[i*c.vocab+v]);}
         for j:0..<d {tape[o.dt+j]=0;tape[o.dn+j]=0;}
-        for v:0..<c.vocab {dz:=exp(logits[i*c.vocab+v])/sum;if v==tokens[i+1] {dz-=1;}
-            da:=dz/f64(n-1)*nb_softcap_slope(tape[o.acc+i*c.vocab+v]);
+        for v:0..<c.vocab {dz:=exp(logits[i*c.vocab+v])/sum;if v==targets[i] {dz-=1;}
+            da:=dz/f64(kept)*nb_softcap_slope(tape[o.acc+i*c.vocab+v]);
             for j:0..<d {grad[HD+v*d+j]+=da*tape[o.nf+i*d+j];tape[o.dn+j]+=da*p[HD+v*d+j];}}
         nb_rms_back(tape,o.t+i*d,d,tape,o.dn,1,tape,o.dt);
         for j:0..<d {tape[o.dx+i*d+j]+=tape[o.dt+j];tape[o.dxb+i*d+j]-=back*tape[o.dt+j];grad[2*L+1]-=tape[o.dt+j]*tape[o.xb+i*d+j];}
@@ -282,20 +284,35 @@ or fewer than two positions or more than the context (`shape`), a
 non-finite or out-of-range weight (`number`), a token outside the vocabulary
 (`token`), too small a tape or logits view (`capacity`), and an alias.
 
+[Chapter 136](ch136-supervised-conversations-and-tools.md) needs a loss on
+chosen positions only, so the pass takes a target per position: `nb_masked`
+skips a position whose target is -1 and divides by the targets kept, and
+`nb_gradient` is `nb_masked` keeping every next token, with the same result
+bit for bit.
+
 <!-- source: psionic/lib/nanochat/backward.coax api -->
 ```jai
 // The mean next-token loss over tokens and its gradient for every parameter.
 // grad has one value per parameter; tape holds nb_tape_count(c, n) values.
 // Every refusal comes before the first write.
 nb_gradient :: (c:NcConfig,p:[]f64,tokens:[]int,grad:[]f64,tape:[]f64,logits:[]f64,overlap:bool)->NbResult {
+    t:=tokens;if t.count>=2 {t=tokens[1..<tokens.count];}
+    return nb_masked(c,p,tokens,t,grad,tape,logits,overlap);
+}
+// The same with chosen targets: position i predicts targets[i], or nothing
+// when it is -1, and the loss is the mean over the targets kept. nb_gradient
+// keeps every next token. A sequence with no target to keep is refused.
+nb_masked :: (c:NcConfig,p:[]f64,tokens:[]int,targets:[]int,grad:[]f64,tape:[]f64,logits:[]f64,overlap:bool)->NbResult {
     if !nc_valid(c) {return NbResult.{status=NcStatus.config};}
     count:=nc_parameter_count(c);if p.count!=count || grad.count!=count {return NbResult.{status=NcStatus.shape};}
     for x:p {if !(x>=-NC_NUMBER && x<=NC_NUMBER) {return NbResult.{status=NcStatus.number};}}
-    n:=tokens.count;if n<2 || n>c.context {return NbResult.{status=NcStatus.shape};}
+    n:=tokens.count;if n<2 || n>c.context || targets.count!=n-1 {return NbResult.{status=NcStatus.shape};}
     for x:tokens {if x<0 || x>=c.vocab {return NbResult.{status=NcStatus.token};}}
+    kept:=0;for x:targets {if x< -1 || x>=c.vocab {return NbResult.{status=NcStatus.token};}if x>=0 {kept+=1;}}
+    if kept==0 {return NbResult.{status=NcStatus.shape};}
     o:=nb_layout(c,n);if tape.count<o.count || logits.count<n*c.vocab {return NbResult.{status=NcStatus.capacity};}
     if overlap {return NbResult.{status=NcStatus.alias};}
-    loss:=nb_record(c,p,tokens,tape,o,logits);nb_backward(c,p,tokens,grad,tape,o,logits);
+    loss:=nb_record(c,p,tokens,targets,tape,o,logits);nb_backward(c,p,tokens,targets,kept,grad,tape,o,logits);
     return NbResult.{loss=loss,written=count};
 }
 ```

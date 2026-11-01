@@ -1,0 +1,13 @@
+#load "sft-drive.coax";
+// Chapter 136's recorded run (release only; psionic/tests/check_sft.sh
+// compares its transcript with psionic/fixtures/sft/long.out): 600 base steps
+// of 8 equation windows, then 1200 tuning steps of 16 conversations from the
+// base record, checkpointed after step 1100, and 256 held-out questions asked
+// of each model.
+// book:begin long
+SF_BASE_RUN :: NpPlan.{model=SF_MODEL,batch=8,steps=600,warmup=20,warmdown=120,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1361,budget=1e12};
+SF_TUNE_RUN :: NpPlan.{model=SF_MODEL,batch=16,steps=1200,warmup=0,warmdown=300,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=11,init=0,budget=1e13};
+main :: () {sf_drive(SF_BASE_RUN,SF_TUNE_RUN,4096,256,256,200,1100);}
+// book:end long

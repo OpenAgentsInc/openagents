@@ -1,0 +1,30 @@
+problems: 4096 training, 256 held out (one key in eight), shared: 0, audit: ok
+2+3 tokens: 320 321 87 104 300 32 105 115 32 50 43 51 63 322 323 325 50 43 51 326 327 53 328 53 324
+2+3 targets: - - - - - - - - - - - - - - 325 50 43 51 326 - - - 53 324 -
+equations: 38507 training tokens, 601 windows of 64; held out: 2414 tokens, 37 windows
+conversations: 4096, 130262 tokens, 42603 supervised targets; targets agree with the mask from tokens alone: 4096 of 4096
+base step 300: loss 1.8273938321629386
+base step 600: loss 1.715941086050738
+base record: 1279092 bytes, digest ccf18d6cc7c4118b...
+base: held-out equations 2.676034251495632 bits per byte; 256 questions: 0 exact calls, 0 exact answers, 5436 positions read
+tune step 200: loss 0.39774023562687155, gradient norm 0.2948535326427079, rate scale 1.0
+tune step 400: loss 0.009525585840467296, gradient norm 0.08247045846316757, rate scale 1.0
+tune step 600: loss 0.007173103179035303, gradient norm 0.12458899302515761, rate scale 1.0
+tune step 800: loss 0.00031492155862624575, gradient norm 0.002355723668432103, rate scale 1.0
+tune step 1000: loss 0.0001145616325124049, gradient norm 0.00033332075386028416, rate scale 0.67
+tune step 1100: checkpoint, digest 17a7b047d9192202...
+tune step 1200: loss 0.00002175982000802627, gradient norm 0.0000844417885613393, rate scale 0.0033333333333333335
+tuned: held-out equations 18.564109611527613 bits per byte; 256 questions: 256 exact calls, 256 exact answers, 13628 positions read
+first held-out exchange: <|bos|><|user_start|>What is 16*55?<|user_end|><|assistant_start|><|python_start|>16*55<|python_end|><|output_start|>880<|output_end|>880
+acceptance (frozen before the run): failed
+resumed at step 1100: 100 of 100 losses identical; parameters and moments identical: true
+the base record resumed as the tuning run: plan
+the tuning checkpoint against another base: plan
+a held-out question that repeats a training problem: leak
+a tool output with no call before it: tool
+a recorded output the calculator would not return: result
+a call the calculator cannot run: tool
+a call with no output after it: tool
+a conversation that ends on the user's turn: shape
+two user turns in a row: render
+a conversation longer than the 64-token window: window

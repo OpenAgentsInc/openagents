@@ -2113,6 +2113,18 @@
       ],
       "timeout": 300,
       "stack_kib": 65536
+    },
+    {
+      "source": "psionic/examples/sft.coax",
+      "chapter": "psionic/book/ch136-supervised-conversations-and-tools.md",
+      "stdout": "psionic/fixtures/sft.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180,
+      "stack_kib": 65536
     }
   ]
 }

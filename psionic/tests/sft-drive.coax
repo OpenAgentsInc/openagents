@@ -1,0 +1,84 @@
+// Chapter 136's driving loop, shared by the short example
+// (psionic/examples/sft.coax) and the recorded long run
+// (psionic/tests/sft-long.coax). Every decision is in
+// psionic/lib/nanochat/sft.coax; this file holds the buffers and prints.
+#import "Basic";
+#load "../lib/nanochat/sft.coax";
+SF_PARAMETERS :: 53290;
+SF_TRAIN_MAX :: 4096;
+SF_HELD_MAX :: 256;
+SF_SEED :: cast(u64)7;
+sf_show :: (label:string,x:[]int) {print("%:",label);for t:x {if t<0 {print(" -");} else {print(" %",t);}}print("\n");}
+SF_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+sf_hex :: (d:[32]u8) {for i:0..<8 {print("%",SF_HEX[cast(int)d[i]/16]);print("%",SF_HEX[cast(int)d[i]%16]);}}
+// book:begin drive
+// The split and its audit, the two streams, the base run and its record, the
+// base model's answers, tuning from the record with a checkpoint after step
+// cut, the tuned model's answers, the frozen rule, then a resume replayed to
+// the end and the refusals.
+sf_drive :: (base:NpPlan,tune:NpPlan,trains:int,helds:int,asks:int,report:int,cut:int) {
+    c:=tune.model;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);bos:=sp[0];L:=c.sequence_len;
+    train:[SF_TRAIN_MAX]SfProblem;held:[SF_HELD_MAX]SfProblem;seen:[SF_KEYS]u8;
+    #assert sf_problems(SF_SEED,false,train[0..<trains])==trains && sf_problems(SF_SEED,true,held[0..<helds])==helds;
+    tr:=train[0..<trains];he:=held[0..<helds];a:=sf_audit(tr,he,seen[..]);
+    print("problems: % training, % held out (one key in eight), shared: %, audit: %\n",a.train,a.held,a.shared,a.status);
+    // The tiny conversation, by hand in the chapter.
+    ids:[64]int;t:[64]int;x:=sf_example(table[..],sp[..],c.vocab,L,SfProblem.{a=2,b=3},ids[..],t[..]);
+    sf_show("2+3 tokens",ids[0..<x.n]);sf_show("2+3 targets",t[0..<x.n]);
+    // Base documents: BOS and one equation each.
+    eq:[SF_TRAIN_MAX*12]int;val:[SF_HELD_MAX*12]int;d:=sf_stream(table[..],bos,tr,eq[..]);dv:=sf_stream(table[..],bos,he,val[..]);#assert d.status==SfStatus.ok && dv.status==SfStatus.ok;
+    windows:=dv.tokens/L;lengths:[329]int;#assert np_lengths(table[..],bos,lengths[..])==NpStatus.ok;
+    print("equations: % training tokens, % windows of %; held out: % tokens, % windows\n",d.tokens,d.tokens/L,L,dv.tokens,windows);
+    // Conversations, and their targets checked against the tokens alone.
+    tok:[SF_TRAIN_MAX*40]int;tgt:[SF_TRAIN_MAX*40]int;start:[SF_TRAIN_MAX+1]int;e:=sf_encode(table[..],sp[..],c.vocab,L,tr,tok[..],tgt[..],start[..]);#assert e.status==SfStatus.ok;
+    agree:=0;for j:0..<e.count {if sf_check(tok[start[j]..<start[j+1]],tgt[start[j]..<start[j+1]],bos) {agree+=1;}}
+    print("conversations: %, % tokens, % supervised targets; targets agree with the mask from tokens alone: % of %\n",e.count,e.tokens,e.kept,agree,e.count);
+    #assert np_admit(base,d.tokens/L)==NpStatus.ok && np_admit(tune,e.count)==NpStatus.ok;
+    n:=nc_parameter_count(c);#assert n==SF_PARAMETERS;
+    // The base run: chapter 128's step on equation windows.
+    w:[SF_PARAMETERS]f64;m:[SF_PARAMETERS]f64;v:[SF_PARAMETERS]f64;g:[SF_PARAMETERS]f64;total:[SF_PARAMETERS]f64;
+    tape:[110000]f64;logits:[21056]f64;cache:[8192]f64;work:[16384]f64;order:[SF_TRAIN_MAX+1]int;
+    last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;ww:=ne_buffers(c,L,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    np_init(c,base.init,w[..]);order[d.tokens/L]=-1;run:=NpRun.{};
+    while run.step<base.steps {r:=np_step(base,run,eq[0..<d.tokens],order[0..<d.tokens/L+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;
+        if run.step%(base.steps/2)==0 {print("base step %: loss %\n",run.step,r.loss);}}
+    bp:=np_plan_id(base);bd:=np_data_id(eq[0..<d.tokens],val[0..<dv.tokens]);rec:[1279092]u8;#assert np_size(n)==rec.count && np_save(bp,bd,run,w[..],m[..],v[..],rec[..])==NpCheck.ok;
+    print("base record: % bytes, digest ",rec.count);sf_hex(ck_get(rec[..],rec.count-32));print("...\n");
+    before:=np_eval(c,w[..],val[0..<dv.tokens],lengths[..],windows,cache[..],work[..],logits[..]);#assert before.status==NpStatus.ok;
+    br:=sf_rates(c,w[..],table[..],sp[..],he[0..<asks],ww);#assert br.status==SfStatus.ok;
+    print("base: held-out equations % bits per byte; % questions: % exact calls, % exact answers, % positions read\n",before.bpb,br.asked,br.called,br.answered,br.positions);
+    // Tuning starts from the record, with fresh moments.
+    tp:=sf_plan_id(tune,ck_get(rec[..],rec.count-32));td:=np_data_id(tok[0..<e.tokens],tgt[0..<e.tokens]);
+    s:=sf_start(bp,bd,base.steps,rec[..],w[..],m[..],v[..]);#assert s.status==NpCheck.ok;
+    for i:0..<e.count+1 {order[i]=0;}order[e.count]=-1;run=s.run;losses:[4000]f64;saved:[1279092]u8;
+    while run.step<tune.steps {r:=sf_step(tune,run,tok[0..<e.tokens],tgt[0..<e.tokens],start[0..<e.count+1],order[0..<e.count+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+        #assert r.status==NpStatus.ok;losses[run.step]=r.loss;run=r.run;
+        if run.step%report==0 {print("tune step %: loss %, gradient norm %, rate scale %\n",run.step,r.loss,r.norm,r.scale);}
+        if run.step==cut {#assert np_save(tp,td,run,w[..],m[..],v[..],saved[..])==NpCheck.ok;print("tune step %: checkpoint, digest ",cut);sf_hex(ck_get(saved[..],saved.count-32));print("...\n");}}
+    after:=np_eval(c,w[..],val[0..<dv.tokens],lengths[..],windows,cache[..],work[..],logits[..]);#assert after.status==NpStatus.ok;
+    tr2:=sf_rates(c,w[..],table[..],sp[..],he[0..<asks],ww);#assert tr2.status==SfStatus.ok;
+    print("tuned: held-out equations % bits per byte; % questions: % exact calls, % exact answers, % positions read\n",after.bpb,tr2.asked,tr2.called,tr2.answered,tr2.positions);
+    // The first held-out exchange as text.
+    ex:[64]int;xa:=sf_ask(c,w[..],table[..],sp[..],he[0],ww,ex[..]);text:[1024]u8;tx:=ne_text(table[..],ex[0..<xa.written],text[..]);#assert xa.status==SfStatus.ok && tx.status==NeStatus.ok;
+    print("first held-out exchange: %\n",cast(string)text[0..<tx.written]);
+    print("acceptance (frozen before the run): %\n",ifx sf_accept(br,tr2,before.bpb,after.bpb) then "passed" else "failed");
+    // A fresh set of buffers holds only the checkpoint.
+    y:[SF_PARAMETERS]f64;ym:[SF_PARAMETERS]f64;yv:[SF_PARAMETERS]f64;o2:[SF_TRAIN_MAX+1]int;o2[e.count]=-1;
+    rd:=np_resume(tune,tp,td,saved[..],y[..],ym[..],yv[..]);#assert rd.status==NpCheck.ok;again:=rd.run;same:=0;
+    while again.step<tune.steps {r:=sf_step(tune,again,tok[0..<e.tokens],tgt[0..<e.tokens],start[0..<e.count+1],o2[0..<e.count+1],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;
+        if f64_bits(r.loss)==f64_bits(losses[again.step]) {same+=1;}again=r.run;}
+    print("resumed at step %: % of % losses identical; parameters and moments identical: %\n",rd.run.step,same,tune.steps-rd.run.step,np_same(y[..],w[..]) && np_same(ym[..],m[..]) && np_same(yv[..],v[..]));
+    // Broken inputs, each refused before anything is written.
+    print("the base record resumed as the tuning run: %\n",np_resume(tune,tp,td,rec[..],y[..],ym[..],yv[..]).status);
+    print("the tuning checkpoint against another base: %\n",np_resume(tune,sf_plan_id(tune,bp),td,saved[..],y[..],ym[..],yv[..]).status);
+    leaky:=he;leaky[0]=tr[0];print("a held-out question that repeats a training problem: %\n",sf_audit(tr,leaky,seen[..]).status);
+    u:=NcMessage.{role=NcRole.user,text="What is 2+3?"};as:=NcMessage.{role=NcRole.assistant,list=true,first=0,parts=3};
+    good:=[3]NcPart.[NcPart.{kind=NcPartKind.python,text="2+3"},NcPart.{kind=NcPartKind.output,text="5"},NcPart.{text="5"}];
+    names:=[6]string.["a tool output with no call before it","a recorded output the calculator would not return","a call the calculator cannot run","a call with no output after it","a conversation that ends on the user's turn","two user turns in a row"];
+    for f:0..<6 {p:=good;mm:=[2]NcMessage.[u,as];k:=2;
+        if f==0 {p[0].kind=NcPartKind.text;}if f==1 {p[1].text="6";}if f==2 {p[0].text="2+";}if f==3 {mm[1].parts=1;}if f==4 {k=1;}if f==5 {mm[1]=u;}
+        r:=sf_admit(table[..],sp[..],c.vocab,L,mm[0..<k],p[..],ids[..],t[..]);print("%: %\n",names[f],r.status);}
+    long:=[2]NcMessage.[NcMessage.{role=NcRole.user,text="What is 2+3? Please write the call for the calculator first, wait for its output, and then reply with the number alone."},as];
+    print("a conversation longer than the %-token window: %\n",L,sf_admit(table[..],sp[..],c.vocab,L,long[..],good[..],ids[..],t[..]).status);
+}
+// book:end drive

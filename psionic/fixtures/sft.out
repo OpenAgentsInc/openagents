@@ -1,0 +1,28 @@
+problems: 256 training, 64 held out (one key in eight), shared: 0, audit: ok
+2+3 tokens: 320 321 87 104 300 32 105 115 32 50 43 51 63 322 323 325 50 43 51 326 327 53 328 53 324
+2+3 targets: - - - - - - - - - - - - - - 325 50 43 51 326 - - - 53 324 -
+equations: 2394 training tokens, 37 windows of 64; held out: 601 tokens, 9 windows
+conversations: 256, 8116 tokens, 2650 supervised targets; targets agree with the mask from tokens alone: 256 of 256
+base step 8: loss 3.3308819203681033
+base step 16: loss 2.7833560952587995
+base record: 1279092 bytes, digest 0fa71fbf0e27843f...
+base: held-out equations 4.04010301064654 bits per byte; 8 questions: 0 exact calls, 0 exact answers, 504 positions read
+tune step 6: loss 3.6748412267622856, gradient norm 1.0993966818246024, rate scale 1.0
+tune step 12: loss 2.978963921750017, gradient norm 0.9517926710514433, rate scale 1.0
+tune step 12: checkpoint, digest 4e3593bae3463fea...
+tune step 18: loss 2.589846376385457, gradient norm 0.5425937531765223, rate scale 1.0
+tune step 24: loss 2.4513006758845246, gradient norm 0.6890203245428601, rate scale 0.16666666666666666
+tuned: held-out equations 4.604901682363932 bits per byte; 8 questions: 0 exact calls, 0 exact answers, 152 positions read
+first held-out exchange: <|bos|><|user_start|>What is 16*55?<|user_end|><|assistant_start|><|python_start|>1
+acceptance (frozen before the run): failed
+resumed at step 12: 12 of 12 losses identical; parameters and moments identical: true
+the base record resumed as the tuning run: plan
+the tuning checkpoint against another base: plan
+a held-out question that repeats a training problem: leak
+a tool output with no call before it: tool
+a recorded output the calculator would not return: result
+a call the calculator cannot run: tool
+a call with no output after it: tool
+a conversation that ends on the user's turn: shape
+two user turns in a row: render
+a conversation longer than the 64-token window: window

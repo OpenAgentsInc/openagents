@@ -1,0 +1,516 @@
+// Chapter 136: supervised fine-tuning of chapter 128's nanochat-shaped model
+// on rendered conversations that call a calculator tool, on the CPU in
+// binary64 (nanochat-sft-cpu-f64-v1). Problems are generated here from a
+// counter generator and split by problem, never by conversation; the audit
+// refuses a held-out problem that training also holds. Each conversation is
+// rendered by chapter 123's nc_render, whose mask supervises assistant text,
+// python calls and <|assistant_end|> and leaves the user's words and the tool's
+// output unsupervised; admission refuses a conversation that is malformed, too
+// long for the window, or whose recorded tool output is not what the
+// calculator returns. A step averages chapter 127's masked gradient over a
+// batch of conversations, weighted by supervised tokens, and takes one AdamW
+// step. Evaluation asks held-out questions through chapter 126's engine, runs
+// the calculator when a reply stops as `tool`, and scores the call and the
+// final answer. The acceptance rule is frozen here, before any run.
+#load "pretrain.coax";
+#load "engine.coax";
+#load "../../tests/sft-helpers.coax";
+#authority;
+
+SfStatus :: enum u8 {ok;shape;render;window;tool;result;leak;data;model;}
+// a op b, with a and b in 0..99 and op 0, 1 or 2 for +, - and *.
+SfProblem :: struct {a:int;b:int;op:int;}
+SfCalc :: struct {ok:bool;value:int;}
+SfAdmit :: struct {status:SfStatus;chat:NcChatStatus;n:int;kept:int;}
+SfSplit :: struct {status:SfStatus;train:int;held:int;shared:int;}
+SfData :: struct {status:SfStatus;chat:NcChatStatus;count:int;tokens:int;kept:int;}
+SfAsk :: struct {status:SfStatus;called:bool;answered:bool;first:NeStop;last:NeStop;written:int;positions:int;}
+SfRates :: struct {status:SfStatus;asked:int;called:int;answered:int;positions:int;}
+SF_OPS :: "+-*";
+// Problem keys: op*10000 + 100*first + second, operands sorted for + and *.
+SF_KEYS :: 30000;
+SF_SPLIT :: cast(u64)136;
+// The run's model: chapter 128's, over chapter 123's 320 ordinary tokens and
+// nanochat's nine specials.
+SF_MODEL :: NcConfig.{sequence_len=64,vocab=329,layers=2,heads=2,kv_heads=1,width=32,pattern=0,pattern_len=1,context=64};
+// book:begin accept
+// The acceptance rule, frozen before the first run, on the same held-out
+// questions for both models, in tenths: the tuned model answers at least 6 in
+// 10 exactly, at least 5 in 10 more than the base model does, and makes the
+// exact calculator call for at least 6 in 10; and its held-out bits per byte
+// on plain equations, the base model's own skill, rises by at most 0.5.
+SF_ANSWER_TENTHS :: 6;
+SF_GAIN_TENTHS :: 5;
+SF_CALL_TENTHS :: 6;
+SF_DRIFT_MAX :: 0.5;
+sf_accept :: (base:SfRates,tuned:SfRates,before:f64,after:f64)->bool {
+    if base.status!=SfStatus.ok || tuned.status!=SfStatus.ok || tuned.asked!=base.asked {return false;}
+    n:=tuned.asked;
+    return 10*tuned.answered>=SF_ANSWER_TENTHS*n && 10*(tuned.answered-base.answered)>=SF_GAIN_TENTHS*n && 10*tuned.called>=SF_CALL_TENTHS*n && after-before<=SF_DRIFT_MAX;
+}
+// book:end accept
+
+// Checks first.
+sf_text :: (b:[]u8,n:int)->string {return cast(string)b[0..<n];}
+#test "hand values: the calculator, numbers, problems, keys and the split" {
+    #assert sf_calc("37+48").ok && sf_calc("37+48").value==85 && sf_calc("3-48").value==-45 && sf_calc("12*34").value==408 && sf_calc("0*0").ok;
+    #assert sf_calc("9999*9999").value==99980001 && sf_calc("1+0").value==1 && !sf_calc("1:+2").ok && !sf_calc("1/+2").ok;
+    for bad:[12]string.["","+1","1+","1","12345+1","1+12345","1/2","1+2+3"," 1+2","1+2 ","a+1","1+-2"] {#assert !sf_calc(bad).ok && sf_calc(bad).value==0;}
+    b:[16]u8;#assert sf_text(b[..],sf_itoa(-45,b[..]))=="-45" && sf_text(b[..],sf_itoa(0,b[..]))=="0" && sf_text(b[..],sf_itoa(99980001,b[..]))=="99980001" && sf_text(b[..],sf_itoa(7,b[..]))=="7";
+    // Problem j takes one draw x of chapter 103's generator: a = x mod 100,
+    // b = (x / 100) mod 100, op = (x / 10000) mod 3.
+    for j:0..<20 {x:=cr_bits(5,cast(u64)j);p:=sf_problem(5,j);
+        #assert p.a==cast(int)(x%100) && p.b==cast(int)((x/100)%100) && p.op==cast(int)((x/10000)%3);}
+    p:=SfProblem.{a=37,b=48,op=0};#assert sf_text(b[..],sf_expr(p,b[..]))=="37+48" && sf_value(p)==85 && sf_text(b[..],sf_equation(p,b[..]))=="37+48=85";
+    q:[24]u8;#assert sf_text(q[..],sf_question(p,q[..]))=="What is 37+48?";
+    p.op=1;#assert sf_text(b[..],sf_expr(p,b[..]))=="37-48" && sf_value(p)==-11 && sf_text(b[..],sf_equation(p,b[..]))=="37-48=-11";
+    p.op=2;#assert sf_value(p)==1776 && sf_text(b[..],sf_expr(p,b[..]))=="37*48";
+    // + and * ignore the operands' order; - does not.
+    #assert sf_key(SfProblem.{a=37,b=48})==3748 && sf_key(SfProblem.{a=48,b=37})==3748 && sf_key(SfProblem.{a=48,b=37,op=2})==23748;
+    #assert sf_key(SfProblem.{a=48,b=37,op=1})==14837 && sf_key(SfProblem.{a=37,b=48,op=1})==13748 && sf_key(SfProblem.{a=99,b=99,op=2})==SF_KEYS-1;
+    for k:[4]int.[0,3748,14837,29999] {#assert sf_held(k)==(cr_bits(SF_SPLIT,cast(u64)k)%8==0);}
+    held:=0;for k:0..<SF_KEYS {if sf_held(k) {held+=1;}}#assert held>3500 && held<4000;
+}
+#test "the tiny conversation: tokens, mask and targets by hand" {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ids:[64]int;t:[64]int;for i:0..<64 {ids[i]=-7;t[i]=-7;}
+    // "What is 2+3?" is W h "at" space i s space 2 + 3 ?: bytes are their own IDs, 300 is "at".
+    at:=[1]int.[300];d:=bt_decode(table[..],at[..]);#assert d.status==PtStatus.ok && cast(string)d.bytes[0..<d.written]=="at";
+    a:=sf_example(table[..],sp[..],329,64,SfProblem.{a=2,b=3},ids[..],t[..]);
+    want:=[25]int.[320,321,87,104,300,32,105,115,32,50,43,51,63,322,323,325,50,43,51,326,327,53,328,53,324];
+    #assert a.status==SfStatus.ok && a.n==25 && a.kept==7;for i:0..<25 {#assert ids[i]==want[i];}#assert ids[25]==-7;
+    // Supervised: <|python_start|> 2 + 3 <|python_end|>, the answer 5 and <|assistant_end|>.
+    // Position i's target is token i+1 when that token is supervised, else -1.
+    tw:=[25]int.[-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,325,50,43,51,326,-1,-1,-1,53,324,-1];
+    for i:0..<25 {#assert t[i]==tw[i];}#assert t[25]==-7;
+    // The mask re-derived from the tokens alone agrees; a target on the tool's
+    // output, or a lost target, is caught.
+    #assert sf_check(ids[0..<25],t[0..<25],320);
+    bad:=t;bad[20]=53;#assert !sf_check(ids[0..<25],bad[0..<25],320);
+    bad=t;bad[22]=-1;#assert !sf_check(ids[0..<25],bad[0..<25],320);
+    bad=t;bad[24]=0;#assert !sf_check(ids[0..<25],bad[0..<25],320);
+    bad=t;bad[13]=323;#assert !sf_check(ids[0..<25],bad[0..<25],320);
+    bad=t;bad[14]=326;#assert !sf_check(ids[0..<25],bad[0..<25],320);
+    #assert !sf_check(ids[0..<25],t[0..<24],320) && !sf_check(ids[0..<25],t[0..<25],319);
+    bad=t;bad[0]=321;#assert !sf_check(ids[0..<25],bad[0..<25],320);
+    // The first token counts too: a bare assistant turn supervises its reply.
+    bare:=[3]int.[323,53,324];bt:=[3]int.[53,324,-1];#assert sf_check(bare[..],bt[..],320);
+    #assert sf_kept(t[0..<25])==7 && sf_kept(bt[..])==2;zero:=[3]int.[0,-1,0];#assert sf_kept(zero[..])==2;
+}
+#test "masks re-derived from tokens agree on generated conversations of every operation" #steps 2000000000 {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ids:[64]int;t:[64]int;ops:[3]int;longest:=0;
+    for j:0..<60 {p:=sf_problem(9,j);a:=sf_example(table[..],sp[..],329,64,p,ids[..],t[..]);#assert a.status==SfStatus.ok;
+        #assert sf_check(ids[0..<a.n],t[0..<a.n],320);ops[p.op]+=1;if a.n>longest {longest=a.n;}
+        k:=0;for i:0..<a.n {if t[i]>=0 {k+=1;}}#assert k==a.kept;}
+    for k:0..<3 {#assert ops[k]>0;}#assert longest<=40;
+}
+#test "admission refuses malformed conversations before writing" {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ids:[64]int;t:[64]int;for i:0..<64 {ids[i]=-7;t[i]=-7;}
+    u:=NcMessage.{role=NcRole.user,text="What is 2+3?"};a:=NcMessage.{role=NcRole.assistant,list=true,first=0,parts=3};
+    good:=[3]NcPart.[NcPart.{kind=NcPartKind.python,text="2+3"},NcPart.{kind=NcPartKind.output,text="5"},NcPart.{text="5"}];
+    m:=[2]NcMessage.[u,a];#assert sf_admit(table[..],sp[..],329,64,m[..],good[..],ids[..],t[..]).status==SfStatus.ok;for i:0..<64 {ids[i]=-7;t[i]=-7;}
+    for f:0..<16 {p:=good;mm:=m;n:=2;want:=SfStatus.tool;ctx:=64;ii:=ids[..];tt:=t[..];
+        if f==0 {p[0].kind=NcPartKind.text;}                                  // an output with no call before it
+        if f==1 {p[1].text="6";want=SfStatus.result;}                         // the wrong result
+        if f==2 {p[0].text="2+";}                                             // a call the calculator cannot run
+        if f==3 {mm[1].parts=1;}                                              // a call with no output after it
+        if f==4 {p[1].kind=NcPartKind.text;}                                  // a call followed by text
+        if f==5 {n=1;want=SfStatus.shape;}                                    // nothing to learn: the user speaks last
+        if f==6 {mm[1]=u;want=SfStatus.render;}                               // two user turns
+        if f==7 {ctx=24;want=SfStatus.window;}                                // longer than the window: never truncated
+        if f==8 {ctx=1;want=SfStatus.shape;}if f==9 {ctx=2049;want=SfStatus.shape;}if f==14 {ctx=2;want=SfStatus.window;}
+        if f==15 {mm[0].first=1;mm[0].parts=1;want=SfStatus.ok;}                // a text message's parts are not read
+        if f==10 {ii=ids[0..<63];want=SfStatus.shape;}if f==11 {tt=t[0..<63];want=SfStatus.shape;}
+        if f==12 {p[1].text="05";want=SfStatus.result;}                       // the same number, not the same text
+        if f==13 {mm[1].first=1;mm[1].parts=1;}                               // an output first
+        r:=sf_admit(table[..],sp[..],329,ctx,mm[0..<n],p[..],ii,tt);#assert r.status==want;
+        if f==15 {#assert r.n==25;for i:0..<64 {ids[i]=-7;t[i]=-7;}continue;}
+        #assert r.n==0 && r.kept==0;for i:0..<64 {#assert ids[i]==-7 && t[i]==-7;}
+    }
+    bad:=[1]u8.[255];x:=u;x.text=cast(string)bad[..];m[0]=x;r:=sf_admit(table[..],sp[..],329,64,m[..],good[..],ids[..],t[..]);#assert r.status==SfStatus.render && r.chat==NcChatStatus.utf8;
+    // The edges that are accepted: exactly the window, and a plain text reply with no tool.
+    m[0]=u;#assert sf_admit(table[..],sp[..],329,25,m[..],good[..],ids[0..<25],t[0..<25]).status==SfStatus.ok;
+    #assert sf_admit(table[..],sp[..],329,24,m[..],good[..],ids[..],t[..]).status==SfStatus.window;
+    big:[2049]int;bt:[2049]int;#assert sf_admit(table[..],sp[..],329,2048,m[..],good[..],big[..],bt[..]).status==SfStatus.ok && sf_admit(table[..],sp[..],329,2049,m[..],good[..],big[..],bt[..]).status==SfStatus.shape;
+    plain:=[2]NcMessage.[u,NcMessage.{role=NcRole.assistant,text="5"}];r=sf_admit(table[..],sp[..],329,64,plain[..],good[..],ids[..],t[..]);
+    #assert r.status==SfStatus.ok && r.n==17 && r.kept==2 && t[14]==53 && t[15]==324 && t[16]==-1 && t[13]==-1;
+    // A system message is merged into the first user turn and stays unsupervised.
+    sys:=[3]NcMessage.[NcMessage.{role=NcRole.system,text="Use the tool."},u,a];r=sf_admit(table[..],sp[..],329,64,sys[..],good[..],ids[..],t[..]);
+    #assert r.status==SfStatus.ok && r.kept==7 && sf_check(ids[0..<r.n],t[0..<r.n],320);
+    // Two turns: the second question is unsupervised again.
+    two:=[4]NcMessage.[u,a,u,NcMessage.{role=NcRole.assistant,text="5"}];r=sf_admit(table[..],sp[..],329,64,two[..],good[..],ids[..],t[..]);
+    #assert r.status==SfStatus.ok && r.n==25+16 && r.kept==9 && sf_check(ids[0..<r.n],t[0..<r.n],320);
+}
+#test "the split holds out whole problems, and the audit refuses a shared one" {
+    train:[200]SfProblem;held:[40]SfProblem;seen:[SF_KEYS]u8;
+    #assert sf_problems(3,false,train[..])==200 && sf_problems(3,true,held[..])==40;
+    for p:train {#assert !sf_held(sf_key(p));}for p:held {#assert sf_held(sf_key(p));}
+    s:=sf_audit(train[..],held[..],seen[..]);#assert s.status==SfStatus.ok && s.train==200 && s.held==40 && s.shared==0;
+    // The first held problem, written the other way round, repeated in training.
+    h:=held[0];h.op=0;h2:=h;h2.a=h.b;h2.b=h.a;held[0]=h;train[7]=h2;
+    s=sf_audit(train[..],held[..],seen[..]);#assert s.status==SfStatus.leak && s.shared==1;
+    held[1]=h;s=sf_audit(train[..],held[..],seen[..]);#assert s.status==SfStatus.leak && s.shared==2;
+    #assert sf_audit(train[8..<200],held[..],seen[..]).status==SfStatus.ok;
+    #assert sf_audit(train[..],held[..],seen[0..<SF_KEYS-1]).status==SfStatus.data && sf_audit(train[0..<0],held[..],seen[..]).status==SfStatus.data && sf_audit(train[..],held[0..<0],seen[..]).status==SfStatus.data;
+    // Each side keeps the draws in order.
+    #assert sf_problems(3,false,train[0..<5])==5 && sf_problems(3,true,held[0..<5])==5;k:=0;h0:=0;
+    for j:0..<200 {p:=sf_problem(3,j);if !sf_held(sf_key(p)) && k<5 {#assert sf_key(train[k])==sf_key(p) && train[k].a==p.a;k+=1;}
+        if sf_held(sf_key(p)) && h0<5 {#assert held[h0].a==p.a && held[h0].b==p.b && held[h0].op==p.op;h0+=1;}}
+    #assert k==5 && h0==5;
+    // The audit starts clean each time, down to key 0 (0+0).
+    #assert sf_audit(train[8..<200],held[..],seen[..]).status==SfStatus.ok;
+    zz:=[1]SfProblem.[SfProblem.{}];#assert sf_audit(zz[..],zz[..],seen[..]).status==SfStatus.leak && sf_audit(train[8..<200],zz[..],seen[..]).status==SfStatus.ok;
+}
+#test "streams: equations for the base model, conversations for tuning" {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ps:=[2]SfProblem.[SfProblem.{a=2,b=3},SfProblem.{a=4,b=1,op=1}];
+    out:[16]int;d:=sf_stream(table[..],320,ps[..],out[..]);
+    want:=[12]int.[320,50,43,51,61,53,320,52,45,49,61,51];#assert d.status==SfStatus.ok && d.count==2 && d.tokens==12;for i:0..<12 {#assert out[i]==want[i];}
+    #assert sf_stream(table[..],320,ps[..],out[0..<11]).status==SfStatus.data && sf_stream(table[..],320,ps[..],out[0..<12]).status==SfStatus.ok;
+    tok:[128]int;tgt:[128]int;start:=[3]int.[9,9,9];e:=sf_encode(table[..],sp[..],329,64,ps[..],tok[..],tgt[..],start[..]);
+    #assert e.status==SfStatus.ok && e.count==2 && e.tokens==50 && e.kept==14 && start[0]==0 && start[1]==25 && start[2]==50 && tok[25]==320 && tgt[24]==-1 && tgt[22]==53;
+    // The second conversation needs a whole window of room from position 25.
+    #assert sf_encode(table[..],sp[..],329,64,ps[..],tok[0..<88],tgt[..],start[..]).status==SfStatus.data;
+    #assert sf_encode(table[..],sp[..],329,64,ps[..],tok[..],tgt[0..<88],start[..]).status==SfStatus.data;
+    #assert sf_encode(table[..],sp[..],329,64,ps[..],tok[..],tgt[..],start[0..<2]).status==SfStatus.data;
+    #assert sf_encode(table[..],sp[..],329,64,ps[..],tok[0..<89],tgt[0..<89],start[..]).status==SfStatus.ok;
+    f:=sf_encode(table[..],sp[..],329,24,ps[..],tok[..],tgt[..],start[..]);#assert f.status==SfStatus.window && f.count==0;
+}
+#test "a batch's loss by hand, its gradient weighted by supervised tokens, and a cut run continued bit for bit" #steps 2000000000 {
+    // Three short sequences over 12 tokens stand in for conversations; the
+    // step only sees tokens and targets.
+    c:=NcConfig.{sequence_len=8,vocab=12,layers=1,heads=2,kv_heads=1,width=24,pattern=0,pattern_len=1,context=8};n:=nc_parameter_count(c);#assert n==10216;
+    tok:=[19]int.[1,4,2,7,3,5,  0,9,9,2,6,8,1,11,  3,3,10,4,2];
+    tgt:=[19]int.[-1,2,7,-1,5,-1,  -1,-1,2,6,8,-1,11,-1,  3,10,4,2,-1];
+    start:=[4]int.[0,6,14,19];#assert sf_kept(tgt[0..<5])==3 && sf_kept(tgt[6..<13])==4 && sf_kept(tgt[14..<18])==4;
+    p:=NpPlan.{model=c,batch=2,steps=3,warmup=0,warmdown=1,final=0.5,embed=0.05,matrix=0.02,head=0.02,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=0,seed=4,init=9,budget=1e12};
+    w:[10216]f64;m:[10216]f64;v:[10216]f64;g:[10216]f64;total:[10216]f64;tape:[6000]f64;logits:[96]f64;order:[4]int;
+    // A zero head gives every logit 0: each kept target costs ln 12 nats.
+    np_init(c,p.init,w[..]);for i:nc_head(c)..<nc_smear_gate(c) {w[i]=0;}order[3]=-1;
+    r:=sf_step(p,NpRun.{},tok[..],tgt[..],start[..],order[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+    #assert r.status==NpStatus.ok && abs(r.loss-log(12.0))<1e-14 && r.run.step==1;
+    // The step's gradient by hand: each sequence's mean gradient times its kept targets over the batch's.
+    o:[4]int;o[3]=-1;i0:=np_window(p,3,0,o[..]);i1:=np_window(p,3,1,o[..]);np_init(c,p.init,w[..]);
+    k0:=sf_kept(tgt[start[i0]..<start[i0+1]-1]);k1:=sf_kept(tgt[start[i1]..<start[i1+1]-1]);g1:[10216]f64;
+    #assert nb_masked(c,w[..],tok[start[i0]..<start[i0+1]],tgt[start[i0]..<start[i0+1]-1],g[..],tape[..],logits[..],false).status==NcStatus.ok;
+    #assert nb_masked(c,w[..],tok[start[i1]..<start[i1+1]],tgt[start[i1]..<start[i1+1]-1],g1[..],tape[..],logits[..],false).status==NcStatus.ok;
+    want:[10216]f64;for i:0..<n {want[i]=g[i]*f64(k0)/f64(k0+k1)+g1[i]*f64(k1)/f64(k0+k1);}
+    for i:0..<n {m[i]=0;v[i]=0;}order[3]=-1;r=sf_step(p,NpRun.{},tok[..],tgt[..],start[..],order[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+    #assert r.status==NpStatus.ok && k0!=k1;for i:0..<n {#assert abs(total[i]-want[i])<=1e-15*(1+abs(want[i]));}
+    // Three steps straight, and the same run cut after one and resumed from its record.
+    first:=w;np_init(c,p.init,w[..]);for i:0..<n {m[i]=0;v[i]=0;}order[3]=-1;run:=NpRun.{};losses:[3]f64;
+    for s:0..<3 {r=sf_step(p,run,tok[..],tgt[..],start[..],order[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;losses[s]=r.loss;run=r.run;}
+    #assert !np_same(first[..],w[..]);
+    x:[10216]f64;xm:[10216]f64;xv:[10216]f64;np_init(c,p.init,x[..]);o2:[4]int;o2[3]=-1;
+    r=sf_step(p,NpRun.{},tok[..],tgt[..],start[..],o2[..],x[..],xm[..],xv[..],g[..],total[..],tape[..],logits[..]);#assert r.loss==losses[0];
+    pid:=sf_plan_id(p,NP_ORACLE_PLAN_ID);did:=np_data_id(tok[..],tgt[..]);rec:[245316]u8;#assert np_size(n)==rec.count;
+    #assert np_save(pid,did,r.run,x[..],xm[..],xv[..],rec[..])==NpCheck.ok;
+    y:[10216]f64;ym:[10216]f64;yv:[10216]f64;rd:=np_resume(p,pid,did,rec[..],y[..],ym[..],yv[..]);#assert rd.status==NpCheck.ok && rd.run.step==1;
+    o3:[4]int;o3[3]=-1;again:=rd.run;
+    for s:1..<3 {r=sf_step(p,again,tok[..],tgt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]);#assert f64_bits(r.loss)==f64_bits(losses[s]);again=r.run;}
+    #assert np_same(y[..],w[..]) && np_same(ym[..],m[..]) && np_same(yv[..],v[..]);
+    // The record belongs to this plan and this base.
+    #assert np_resume(p,sf_plan_id(p,NP_ORACLE_DATA_ID),did,rec[..],y[..],ym[..],yv[..]).status==NpCheck.plan;
+    #assert np_resume(p,np_plan_id(p),did,rec[..],y[..],ym[..],yv[..]).status==NpCheck.plan;
+    // Refusals: a finished run, too few sequences, nothing to learn, an optimizer refusal.
+    keep0:=y;keepm:=ym;keepv:=yv;
+    #assert sf_step(p,NpRun.{step=3,state=AwState.{step=3}},tok[..],tgt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.config;
+    #assert sf_step(p,NpRun.{},tok[..],tgt[..],start[0..<2],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.data;
+    o4:[3]int;o4[2]=-1;#assert sf_step(p,NpRun.{},tok[0..<14],tgt[0..<14],start[0..<3],o4[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.ok;y=keep0;ym=keepm;yv=keepv;
+    keep:=y;bt:=tgt;for i:0..<19 {bt[i]=-1;}
+    #assert sf_step(p,NpRun.{},tok[..],bt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.data && np_same(keep[..],y[..]);
+    #assert sf_step(p,NpRun.{state=AwState.{step=-1}},tok[..],tgt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.optimizer && np_same(keep[..],y[..]);
+    // Clipping: norm clip leaves the step's gradient at exactly clip; exactly at the norm it scales nothing.
+    q:=p;q.clip=0.001;r=sf_step(q,NpRun.{},tok[..],tgt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]);
+    s:=0.0;for z:total {s+=z*z;}#assert r.status==NpStatus.ok && r.norm>0.01 && abs(sqrt(s)-0.001)<1e-15;
+    y0:=y;q.clip=0;r=sf_step(q,NpRun.{},tok[..],tgt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]);t0:=total;
+    y=y0;q.clip=r.norm;r=sf_step(q,NpRun.{},tok[..],tgt[..],start[..],o3[..],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]);#assert np_same(total[..],t0[..]);
+}
+#test "starting from a base record keeps its weights and drops its moments" {
+    pid:=NP_ORACLE_PLAN_ID;did:=NP_ORACLE_DATA_ID;w:=[3]f64.[1.5,-2,0];m:=[3]f64.[-0.25,0,3];v:=[3]f64.[0,0.5,7];run:=NpRun.{step=4,state=AwState.{step=4}};
+    bytes:[204]u8;#assert np_save(pid,did,run,w[..],m[..],v[..],bytes[..])==NpCheck.ok;
+    x:=[3]f64.[9,9,9];xm:=x;xv:=x;r:=sf_start(pid,did,4,bytes[..],x[..],xm[..],xv[..]);
+    #assert r.status==NpCheck.ok && r.run.step==0 && r.run.state.step==0 && np_same(x[..],w[..]);for i:0..<3 {#assert xm[i]==0 && xv[i]==0;}
+    x=[3]f64.[9,9,9];xm=x;xv=x;r=sf_start(did,did,4,bytes[..],x[..],xm[..],xv[..]);#assert r.status==NpCheck.plan;for i:0..<3 {#assert x[i]==9 && xm[i]==9 && xv[i]==9;}
+    #assert sf_start(pid,did,3,bytes[..],x[..],xm[..],xv[..]).status==NpCheck.step;
+    // Plan identities see the base record and every plan field.
+    a:=sf_plan_id(NP_TEST,pid);#assert !ck_equal(a,sf_plan_id(NP_TEST,did)) && !ck_equal(a,np_plan_id(NP_TEST));q:=NP_TEST;q.steps=7;#assert !ck_equal(a,sf_plan_id(q,pid));
+    // The digest of the plan identity followed by the base record's digest.
+    id:=np_plan_id(NP_TEST);b:[64]u8;for i:0..<32 {b[i]=id[i];}for i:0..<32 {b[32+i]=pid[i];}#assert ck_equal(a,ck_digest("psionic.sft-plan.v1",b[..]));
+}
+#test "asking: a programmed model calls the calculator, reads its output and answers" #steps 2000000000 {
+    c:=SF_TEST;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);w:[29416]f64;
+    cache:[8000]f64;work:[12000]f64;logits:[21056]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    ww:=ne_buffers(c,64,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    one:=SfProblem.{a=1,b=2};two:=SfProblem.{a=2,b=2};ids:[64]int;for i:0..<64 {ids[i]=-7;}
+    // <|assistant_start|> -> <|python_start|> 1 + 2 <|python_end|>; <|output_end|> -> 3 -> <|assistant_end|>.
+    tool:=[7][2]int.[[2]int.[323,325],[2]int.[325,49],[2]int.[49,43],[2]int.[43,50],[2]int.[50,326],[2]int.[328,51],[2]int.[51,324]];
+    first:=tool;sf_program(c,tool[..],w[..]);
+    a:=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.status==SfStatus.ok && a.called && a.answered && a.first==NeStop.tool && a.last==NeStop.assistant_end;
+    // The whole exchange: the 15-token prompt, the call, the calculator's output and the answer.
+    // The model read 15 + 4 positions for the first reply and 23 + 1 for the second.
+    want:=[24]int.[320,321,87,104,300,32,105,115,32,49,43,50,63,322,323,325,49,43,50,326,327,51,328,51];
+    #assert a.written==24 && a.positions==43 && ids[24]==-7;for i:0..<24 {#assert ids[i]==want[i];}
+    #assert sf_ask(c,w[..],table[..],sp[..],one,ww,ids[0..<63]).status==SfStatus.shape;
+    // A two-token output, 63 for 7*9, goes back in order.
+    mul:=[8][2]int.[[2]int.[323,325],[2]int.[325,55],[2]int.[55,42],[2]int.[42,57],[2]int.[57,326],[2]int.[328,54],[2]int.[54,51],[2]int.[51,324]];
+    sf_program(c,mul[..],w[..]);a=sf_ask(c,w[..],table[..],sp[..],SfProblem.{a=7,b=9,op=2},ww,ids[..]);#assert a.called && a.answered && a.written==26;
+    tail:=[11]int.[323,325,55,42,57,326,327,54,51,328,54];for i:0..<11 {#assert ids[14+i]==tail[i];}#assert ids[25]==51;sf_program(c,tool[..],w[..]);
+    a=sf_ask(c,w[..],table[..],sp[..],two,ww,ids[..]);#assert a.status==SfStatus.ok && !a.called && !a.answered && a.first==NeStop.tool && a.last==NeStop.assistant_end;
+    // The calculator's output, not the model's own guess, is what it copies: 1+2 returns 3 for 1*2's question too.
+    ps:=[3]SfProblem.[one,two,SfProblem.{a=1,b=2,op=2}];rt:=sf_rates(c,w[..],table[..],sp[..],ps[..],ww);#assert rt.status==SfStatus.ok && rt.asked==3 && rt.called==1 && rt.answered==1 && rt.positions==3*43;
+    // The same tokens with the answer 4 after the output: the call is right, the answer is not.
+    tool[5][1]=52;tool[6][0]=52;sf_program(c,tool[..],w[..]);a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.called && !a.answered && a.last==NeStop.assistant_end;
+    // A direct answer with no tool: 3 for 1+2, wrong for 2+2.
+    direct:=[2][2]int.[[2]int.[323,51],[2]int.[51,324]];sf_program(c,direct[..],w[..]);
+    a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.status==SfStatus.ok && !a.called && a.answered && a.first==NeStop.assistant_end && a.last==NeStop.none;
+    #assert a.written==16 && ids[15]==51 && a.positions==16;
+    a=sf_ask(c,w[..],table[..],sp[..],two,ww,ids[..]);#assert !a.answered;
+    // Text before the call is allowed; the call is what lies between the python tokens.
+    lead:=[7][2]int.[[2]int.[323,32],[2]int.[32,325],[2]int.[325,49],[2]int.[49,43],[2]int.[43,50],[2]int.[50,326],[2]int.[328,324]];
+    sf_program(c,lead[..],w[..]);a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.called && !a.answered && a.last==NeStop.assistant_end;
+    // A call the calculator cannot run gets no output and no second reply.
+    junk:=[3][2]int.[[2]int.[323,325],[2]int.[325,43],[2]int.[43,326]];sf_program(c,junk[..],w[..]);
+    a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.status==SfStatus.ok && !a.called && !a.answered && a.first==NeStop.tool && a.last==NeStop.none;
+    // A call holding a special token is not text.
+    sp2:=[3][2]int.[[2]int.[323,325],[2]int.[325,327],[2]int.[327,326]];sf_program(c,sp2[..],w[..]);
+    a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert !a.called && !a.answered && a.first==NeStop.tool && a.last==NeStop.none;
+    // A reply that runs to the window answers nothing.
+    loop:=[2][2]int.[[2]int.[323,49],[2]int.[49,49]];sf_program(c,loop[..],w[..]);
+    a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.status==SfStatus.ok && !a.answered && a.first==NeStop.limit;
+    // A second reply that runs to the window answers nothing either.
+    tool[5][1]=55;tool[6]=[2]int.[55,55];sf_program(c,tool[..],w[..]);a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.called && !a.answered && a.last==NeStop.limit;
+    // Refusals: a model the engine refuses, and a window too small for the question.
+    w[0]=0.0/0.0;a=sf_ask(c,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.status==SfStatus.model;
+    #assert sf_rates(c,w[..],table[..],sp[..],ps[..],ww).status==SfStatus.model && sf_rates(c,w[..],table[..],sp[..],ps[0..<0],ww).status==SfStatus.data;
+    // The prompt for 1+2 is 15 tokens: a window of 15 leaves no room for a reply.
+    small:=c;small.sequence_len=15;small.context=15;sf_program(c,first[..],w[..]);#assert sf_ask(small,w[..],table[..],sp[..],one,ww,ids[..]).status==SfStatus.window;
+    // 15 + 5 for the call + 3 for the output leaves room for exactly one token in a window of 24.
+    small.sequence_len=24;small.context=24;a=sf_ask(small,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.called && !a.answered && a.last==NeStop.limit;
+    small.sequence_len=23;small.context=23;a=sf_ask(small,w[..],table[..],sp[..],one,ww,ids[..]);#assert a.called && a.last==NeStop.none;
+}
+#test "acceptance: each threshold, just met and just missed" {
+    // 21 questions: answers and calls need 13 (12.6 rounded up), the gain 11 (10.5).
+    base:=SfRates.{asked=21,answered=2};t:=SfRates.{asked=21,called=13,answered=13};
+    #assert sf_accept(base,t,2,2.5) && !sf_accept(base,t,2,2.5000001);
+    b:=t;b.answered=12;z:=base;z.answered=0;#assert !sf_accept(z,b,2,2);
+    b=t;b.called=12;#assert !sf_accept(base,b,2,2);
+    z.answered=3;#assert !sf_accept(z,t,2,2);
+    b=t;b.status=SfStatus.model;#assert !sf_accept(base,b,2,2);b=base;b.status=SfStatus.data;#assert !sf_accept(b,t,2,2);
+    b=t;b.asked=20;#assert !sf_accept(base,b,2,2);
+    // 10 questions: every threshold met exactly.
+    #assert sf_accept(SfRates.{asked=10,answered=1},SfRates.{asked=10,called=6,answered=6},2,2.5);
+}
+
+// book:begin problems
+// Problem j is one draw of chapter 103's counter generator.
+sf_problem :: (seed:u64,j:int)->SfProblem {
+    x:=cr_bits(seed,cast(u64)j);return SfProblem.{a=cast(int)(x%100),b=cast(int)((x/100)%100),op=cast(int)((x/10000)%3)};
+}
+sf_value :: (p:SfProblem)->int {if p.op==0 {return p.a+p.b;}if p.op==1 {return p.a-p.b;}return p.a*p.b;}
+// A problem's identity: the same operation on the same operands, in either
+// order for + and *.
+sf_key :: (p:SfProblem)->int {
+    lo:=p.a;hi:=p.b;if p.op!=1 {lo=np_min(p.a,p.b);hi=p.a+p.b-lo;}
+    return p.op*10000+lo*100+hi;
+}
+// The split is by problem: one in eight keys, chosen by a draw, is held out.
+sf_held :: (key:int)->bool {return cr_bits(SF_SPLIT,cast(u64)key)%8==0;}
+// The first out.count problems on one side of the split, in draw order.
+sf_problems :: (seed:u64,held:bool,out:[]SfProblem)->int {
+    k:=0;j:=0;while k<out.count {p:=sf_problem(seed,j);if sf_held(sf_key(p))==held {out[k]=p;k+=1;}j+=1;}
+    return k;
+}
+// Every held-out problem against every training problem.
+sf_audit :: (train:[]SfProblem,held:[]SfProblem,seen:[]u8)->SfSplit {
+    r:=SfSplit.{train=train.count,held=held.count};
+    if seen.count<SF_KEYS || train.count==0 || held.count==0 {r.status=SfStatus.data;return r;}
+    for i:0..<SF_KEYS {seen[i]=0;}for p:train {seen[sf_key(p)]=1;}
+    for p:held {if seen[sf_key(p)]==1 {r.shared+=1;}}
+    if r.shared>0 {r.status=SfStatus.leak;}
+    return r;
+}
+// book:end problems
+// book:begin calculator
+// The tool: "a op b" with a and b of one to four decimal digits and op one
+// of + - *. Anything else is not a call it can run.
+sf_digits :: (s:string,at:int)->int {e:=at;while e<s.count && s[e]>='0' && s[e]<='9' {e+=1;}return e-at;}
+sf_number :: (s:string,at:int,n:int)->int {x:=0;for i:at..<at+n {x=x*10+cast(int)(s[i]-'0');}return x;}
+sf_calc :: (s:string)->SfCalc {
+    da:=sf_digits(s,0);if da<1 || da>4 {return SfCalc.{};}
+    db:=sf_digits(s,da+1);if db<1 || db>4 || da+1+db!=s.count {return SfCalc.{};}
+    a:=sf_number(s,0,da);b:=sf_number(s,da+1,db);op:=s[da];
+    if op=='+' {return SfCalc.{ok=true,value=a+b};}
+    if op=='-' {return SfCalc.{ok=true,value=a-b};}
+    if op=='*' {return SfCalc.{ok=true,value=a*b};}
+    return SfCalc.{};
+}
+// Decimal text of x, with a sign when negative.
+sf_itoa :: (x:int,out:[]u8)->int {
+    n:=0;v:=x;if x<0 {out[0]='-';n=1;v=-x;}
+    digits:[20]u8;k:=0;while true {digits[k]='0'+cast(u8)(v%10);k+=1;v/=10;if v==0 {break;}}
+    for i:0..<k {out[n+i]=digits[k-1-i];}return n+k;
+}
+// book:end calculator
+// "37+48", "What is 37+48?" and "37+48=85".
+sf_expr :: (p:SfProblem,out:[]u8)->int {n:=sf_itoa(p.a,out);out[n]=SF_OPS[p.op];n+=1;return n+sf_itoa(p.b,out[n..<out.count]);}
+sf_question :: (p:SfProblem,out:[]u8)->int {w:="What is ";for i:0..<w.count {out[i]=w[i];}n:=w.count+sf_expr(p,out[w.count..<out.count]);out[n]='?';return n+1;}
+sf_equation :: (p:SfProblem,out:[]u8)->int {n:=sf_expr(p,out);out[n]='=';n+=1;return n+sf_itoa(sf_value(p),out[n..<out.count]);}
+
+// book:begin admit
+// One conversation into tokens and targets, or a refusal that writes nothing.
+// Position i's target is token i+1 when the render supervises it, else -1;
+// the last position has none.
+sf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,messages:[]NcMessage,parts:[]NcPart,ids:[]int,targets:[]int)->SfAdmit {
+    if context<2 || context>NC_MAX_TOKENS || ids.count<context || targets.count<context {return SfAdmit.{status=SfStatus.shape};}
+    staged:[NC_MAX_TOKENS]int;mask:[NC_MAX_TOKENS]u8;
+    r:=nc_render(table,specials,vocab,messages,parts,NC_MAX_TOKENS,staged[..],mask[..],false);
+    if r.status!=NcChatStatus.ok {return SfAdmit.{status=SfStatus.render,chat=r.status};}
+    if messages[messages.count-1].role!=NcRole.assistant {return SfAdmit.{status=SfStatus.shape};}
+    if r.total>context {return SfAdmit.{status=SfStatus.window};}
+    // Every call is followed by its output, every output follows a call, and
+    // the output is exactly what the calculator returns for the call.
+    for m:messages {if !m.list {continue;}
+        for k:m.first..<m.first+m.parts {p:=parts[k];
+            if p.kind==NcPartKind.output && (k==m.first || parts[k-1].kind!=NcPartKind.python) {return SfAdmit.{status=SfStatus.tool};}
+            if p.kind!=NcPartKind.python {continue;}
+            if k+1==m.first+m.parts || parts[k+1].kind!=NcPartKind.output {return SfAdmit.{status=SfStatus.tool};}
+            c:=sf_calc(p.text);if !c.ok {return SfAdmit.{status=SfStatus.tool};}
+            b:[24]u8;if parts[k+1].text!=sf_text(b[..],sf_itoa(c.value,b[..])) {return SfAdmit.{status=SfStatus.result};}
+        }
+    }
+    // <|bos|> is never supervised, so a supervised token always has a position before it.
+    n:=r.written;kept:=0;
+    for i:0..<n {ids[i]=staged[i];targets[i]=-1;if mask[i]==1 {targets[i-1]=staged[i];kept+=1;}}
+    return SfAdmit.{n=n,kept=kept};
+}
+// book:end admit
+// The canonical conversation for a problem: the question, a call, its output
+// and the answer.
+sf_example :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,ids:[]int,targets:[]int)->SfAdmit {
+    q:[24]u8;e:[12]u8;v:[12]u8;nq:=sf_question(p,q[..]);ne:=sf_expr(p,e[..]);nv:=sf_itoa(sf_value(p),v[..]);
+    parts:=[3]NcPart.[NcPart.{kind=NcPartKind.python,text=sf_text(e[..],ne)},NcPart.{kind=NcPartKind.output,text=sf_text(v[..],nv)},NcPart.{text=sf_text(v[..],nv)}];
+    m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=sf_text(q[..],nq)},NcMessage.{role=NcRole.assistant,list=true,first=0,parts=3}];
+    return sf_admit(table,specials,vocab,context,m[..],parts[..],ids,targets);
+}
+// book:begin check
+// The mask again, from the tokens alone: inside an assistant turn every token
+// is supervised except a tool output (<|output_start|> to <|output_end|>);
+// <|assistant_start|> itself and everything outside are not. targets must
+// name exactly the supervised next tokens.
+sf_check :: (ids:[]int,targets:[]int,base:int)->bool {
+    if targets.count!=ids.count {return false;}
+    assistant:=false;output:=false;
+    for i:0..<ids.count {x:=ids[i]-base;supervised:=false;
+        if x==NC_ASSISTANT_START {assistant=true;}
+        else if x==NC_ASSISTANT_END {supervised=true;assistant=false;}
+        else if x==NC_OUTPUT_START {output=true;}
+        else if x==NC_OUTPUT_END {output=false;}
+        else {supervised=assistant && !output;}
+        if i>0 && targets[i-1]!=(ifx supervised then ids[i] else -1) {return false;}
+    }
+    return targets[ids.count-1]==-1;
+}
+// book:end check
+sf_kept :: (targets:[]int)->int {k:=0;for x:targets {if x>=0 {k+=1;}}return k;}
+// BOS then each equation's tokens: the base model's documents.
+sf_stream :: (table:[]u8,bos:int,problems:[]SfProblem,out:[]int)->SfData {
+    r:=SfData.{};
+    for p:problems {b:[24]u8;e:=bt_encode(table,sf_text(b[..],sf_equation(p,b[..])));
+        if r.tokens+1+e.written>out.count {r.status=SfStatus.data;return r;}
+        out[r.tokens]=bos;for i:0..<e.written {out[r.tokens+1+i]=e.ids[i];}r.tokens+=1+e.written;r.count+=1;}
+    return r;
+}
+// Every problem's conversation, back to back: conversation j holds
+// tok[start[j]..<start[j+1]] and its targets the same positions of tgt.
+sf_encode :: (table:[]u8,specials:[]int,vocab:int,context:int,problems:[]SfProblem,tok:[]int,tgt:[]int,start:[]int)->SfData {
+    r:=SfData.{};if start.count<problems.count+1 {r.status=SfStatus.data;return r;}
+    start[0]=0;
+    for p:problems {at:=r.tokens;if at+context>tok.count || at+context>tgt.count {r.status=SfStatus.data;return r;}
+        a:=sf_example(table,specials,vocab,context,p,tok[at..<tok.count],tgt[at..<tgt.count]);
+        if a.status!=SfStatus.ok {return SfData.{status=a.status,chat=a.chat};}
+        r.tokens+=a.n;r.kept+=a.kept;r.count+=1;start[r.count]=r.tokens;}
+    return r;
+}
+
+// book:begin step
+// One step: conversations drawn in chapter 128's seeded per-epoch order,
+// chapter 127's masked gradient for each, weighted by its supervised targets
+// over the batch's (the mean over every supervised token), then clipping,
+// the schedule and AdamW, as in chapter 128.
+sf_step :: (p:NpPlan,run:NpRun,tok:[]int,tgt:[]int,start:[]int,order:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep {
+    c:=p.model;count:=start.count-1;n:=w.count;fail:=NpStep.{run=run};
+    if run.step>=p.steps {fail.status=NpStatus.config;return fail;}
+    if count<p.batch {fail.status=NpStatus.data;return fail;}
+    picks:[NP_BATCH]int;all:=0;
+    for j:0..<p.batch {k:=np_window(p,count,run.step*p.batch+j,order);picks[j]=k;all+=sf_kept(tgt[start[k]..<start[k+1]-1]);}
+    for i:0..<n {total[i]=0;}loss:=0.0;
+    for j:0..<p.batch {k:=picks[j];a:=start[k];b:=start[k+1];t:=tgt[a..<b-1];
+        r:=nb_masked(c,w,tok[a..<b],t,g,tape,logits,false);
+        if r.status!=NcStatus.ok {fail.status=NpStatus.data;return fail;}
+        share:=f64(sf_kept(t))/f64(all);for i:0..<n {total[i]+=g[i]*share;}loss+=r.loss*share;
+    }
+    sum:=0.0;for x:total {sum+=x*x;}norm:=sqrt(sum);
+    if p.clip>0 && norm>p.clip {for i:0..<n {total[i]=total[i]*p.clip/norm;}}
+    scale:=np_scale(p,run.step);groups:[5]AwGroup;np_groups(p,scale,groups[..]);none:[1]f32;
+    a:=aw_step(groups[..],AwPolicy.{},run.state,w,total,m,v,none[0..<0],false);
+    if a.status!=AwStatus.ok {fail.status=NpStatus.optimizer;return fail;}
+    return NpStep.{run=NpRun.{step=run.step+1,state=a.state},loss=loss,norm=norm,scale=scale};
+}
+// book:end step
+// book:begin start
+// The tuning plan's identity covers the base record it starts from.
+sf_plan_id :: (p:NpPlan,base:[32]u8)->[32]u8 {
+    id:=np_plan_id(p);b:[64]u8;for i:0..<32 {b[i]=id[i];b[32+i]=base[i];}
+    return ck_digest("psionic.sft-plan.v1",b[..]);
+}
+// Tuning starts from the base record's weights with fresh moments at step 0,
+// as nanochat's chat_sft builds a new optimizer.
+sf_start :: (plan:[32]u8,data:[32]u8,steps:int,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->NpRead {
+    r:=np_read(plan,data,steps,bytes,w,m,v);if r.status!=NpCheck.ok {return r;}
+    for i:0..<m.count {m[i]=0;v[i]=0;}
+    return NpRead.{};
+}
+// book:end start
+
+// book:begin ask
+// One held-out question through chapter 126's engine, greedy, with the
+// whole exchange written to ids. A reply that stops as `tool` has its call
+// (the text after its <|python_start|>) run by the calculator; the output
+// goes back between <|output_start|> and <|output_end|> and the model
+// replies again. called: the call was exactly the question's expression.
+// answered: the final reply ended with <|assistant_end|> and was exactly the
+// right number. positions: the positions the model read, for the cost.
+sf_ask :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,work:NeWork,ids:[]int)->SfAsk {
+    if ids.count<c.context {return SfAsk.{status=SfStatus.shape};}
+    q:[24]u8;e:[12]u8;v:[12]u8;nq:=sf_question(p,q[..]);expr:=sf_text(e[..],sf_expr(p,e[..]));want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));
+    m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=sf_text(q[..],nq)},NcMessage.{role=NcRole.assistant}];none:[1]NcPart;
+    pr:=ne_prompt(table,specials,c.vocab,m[..],none[..],ids,false);
+    if pr.status!=NeStatus.ok {return SfAsk.{status=SfStatus.render};}
+    n:=pr.written;if n>=c.context {return SfAsk.{status=SfStatus.window};}
+    // Greedy decoding draws nothing, so any seed names the same reply.
+    greedy:=NxOptions.{temperature=0};base:=specials[0];seed:=cast(u64)n;
+    g:=ne_generate(c,w,base,ids[0..<n],greedy,seed,c.context-n,ids[n..<c.context],work,false);
+    if g.status!=NeStatus.ok {return SfAsk.{status=SfStatus.model};}
+    at:=n+g.written;r:=SfAsk.{first=g.stop,written=at,positions=g.positions};reply:=ids[n..<at];
+    if g.stop==NeStop.assistant_end {r.answered=sf_says(table,reply,want);return r;}
+    if g.stop!=NeStop.tool {return r;}
+    s:=0;while reply[s]!=base+NC_PYTHON_START {s+=1;}
+    // A call holding a special token does not decode: it is empty text.
+    d:=bt_decode(table,reply[s+1..<g.written-1]);call:=cast(string)d.bytes[0..<d.written];r.called=call==expr;
+    k:=sf_calc(call);if !k.ok {return r;}
+    o:[24]u8;out:=bt_encode(table,sf_text(o[..],sf_itoa(k.value,o[..])));
+    room:=c.context-at-out.written-2;if room<1 {return r;}
+    ids[at]=base+NC_OUTPUT_START;for i:0..<out.written {ids[at+1+i]=out.ids[i];}at+=out.written+2;ids[at-1]=base+NC_OUTPUT_END;
+    h:=ne_generate(c,w,base,ids[0..<at],greedy,seed,room,ids[at..<c.context],work,false);
+    r.last=h.stop;r.written=at+h.written;r.positions+=h.positions;r.answered=h.stop==NeStop.assistant_end && sf_says(table,ids[at..<r.written],want);
+    return r;
+}
+// book:end ask
+// The reply's tokens are exactly the text want.
+sf_says :: (table:[]u8,reply:[]int,want:string)->bool {d:=bt_decode(table,reply);return d.status==PtStatus.ok && cast(string)d.bytes[0..<d.written]==want;}
+sf_rates :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,problems:[]SfProblem,work:NeWork)->SfRates {
+    r:=SfRates.{};if problems.count==0 {r.status=SfStatus.data;return r;}
+    ids:[NE_PROMPT_MAX]int;
+    for p:problems {a:=sf_ask(c,w,table,specials,p,work,ids[..]);if a.status!=SfStatus.ok {r.status=a.status;return r;}
+        r.asked+=1;r.positions+=a.positions;if a.called {r.called+=1;}if a.answered {r.answered+=1;}}
+    return r;
+}
