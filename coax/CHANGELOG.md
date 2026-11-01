@@ -66,6 +66,14 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   replacement edits for "add 'X'" fixes. `coax c`, `check`, `test` and
   `mutate` take it. Without it the text output is byte-identical. `coax
   explain` now explains E0706.
+- Follow-up (`ax-code-index`): `coax query FILE defines NAME`, `uses NAME`
+  and `exports [MODULE]` answer from the checked program through every
+  `#load`, with file, line and column, as text or with `--json` as one
+  `coax.query.v1` object. Uses include untyped constants (also where the
+  checker folded them), checks, top-level asserts and generic bodies, and
+  never a comment or a string. The index is cached in `~/.cache/coax-query/`
+  and used only while every source unit's SHA-256 matches: a warm query over
+  the compiler's sources takes under 0.1 s, a cold one about 6 s.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

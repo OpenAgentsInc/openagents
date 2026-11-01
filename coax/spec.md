@@ -1657,7 +1657,8 @@ slice, not just a successful Wasm link.
 
 Implemented commands: `coax version`, `check`, `c`, `build`, `run`, `lib`,
 `header`, `layout` (struct sizes, alignment, offsets and padding), `deps`
-(source/descriptor input inventory) and
+(source/descriptor input inventory), `query` (definitions, uses and exports,
+below) and
 `explain` (every error code, also as the Markdown table the book uses) and
 `source-digest ROOT` (one hash of the compiler sources under `ROOT/coax`:
 `src`, `bootstrap`, `lib/compiler` and `lib/proto`). `coax/build.sh` writes
@@ -1688,8 +1689,38 @@ presentation script checks source hashes. This is not a Coax expression
 evaluator, complete native type encoding, shader map or device-support claim.
 See [DEBUGGING.md](DEBUGGING.md).
 
-Planned tools include a formatter, typed symbol/effect queries,
-expansion traces and a compiler server. The editor needs a safe analysis mode
+`coax query FILE defines NAME`, `uses NAME` and `exports [MODULE]` answer
+from the checked program, through every `#load`, never from text search, so a
+comment or a string never matches. `defines` lists each top-level declaration
+named NAME. `uses` lists each place a declaration named NAME is written and
+resolves to it: calls, typed and untyped constants (also inside constant
+arithmetic the checker folds, and in array lengths), and struct and enum names
+in types, literals and casts. Uses are found in declarations, checks,
+top-level `#assert`s and generic bodies, and each names what contains it
+(`proc NAME`, `struct NAME`, `#test "NAME"`). A use's column is the name's
+first byte, after any alias (`shapes.area`). A type the checker infers
+(`a := f()`) isn't written, so it isn't a use; `coax deps --declarations`
+lists those references. Code outside the graph, such as C that calls an
+`#export_c` procedure, isn't searched. `exports MODULE` lists the module's
+public declarations: the names its `#export` lists give, or every declaration
+of a module without a list. With no MODULE, it lists FILE's module, or FILE's
+own declarations when FILE has no module.
+
+The text answer is one `file:line:column: ...` line a result, with paths
+relative to the working directory when they are under it. `--json` prints one
+`coax.query.v1` object with absolute paths, declaration IDs, modules and each
+declaration's last line. Lines and columns are 1-based, and columns count
+bytes. An unknown MODULE exits 1; a name with no declaration prints nothing
+and exits 0. The index behind the answers (every declaration and every
+reference) is cached in `$COAX_QUERY_CACHE`, by default
+`~/.cache/coax-query/`, one file an entry unit. The query uses a cached index
+only when the compiler binary's SHA-256, the entry, each source unit's path and
+SHA-256 and each descriptor's SHA-256 all match. Otherwise it checks the
+program again and replaces the file. That check stops before compile-time
+evaluation and `#authority` checks, which don't change the graph. `--fresh`
+ignores the cache. Build-only stage0 refuses queries.
+
+Planned tools include a formatter, expansion traces and a compiler server. The editor needs a safe analysis mode
 that does not automatically execute privileged build plugins. Missing generated
 inputs must be reported honestly rather than replaced with guessed symbols.
 

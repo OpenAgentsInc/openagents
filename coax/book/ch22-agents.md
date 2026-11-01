@@ -19,9 +19,9 @@ prove almost nothing, fix that, and then watch the build stop a plausible
 
 > Note: Stable error codes, fix lines, `--json`, `coax explain`,
 > `coax check`, `coax test`, `#authority`, `coax mutate`, `coax layout`
-> and readable C output all work in the current `coax0`. A first formatter
-> slice works (below). A compiler server that answers queries and expansion
-> traces are designed (spec §17.3) and marked where they come up.
+> and readable C output all work in the current `coax0`. So do `coax query`
+> and a first formatter slice (below). A resident compiler server and
+> expansion traces are designed (spec §17.3) and marked where they come up.
 
 The agent can edit the checks, directives and build scripts as well as the
 implementation. Compiler gates do not protect their own configuration from
@@ -508,7 +508,53 @@ explicit calls, and every trap names a source line.
 
 `deps --declarations` and `deps --modules` already report checked nominal
 identities, source ranges, resolved references and conservative revisions
-(Chapter 10). They are batch reports, not a general editor query server.
+(Chapter 10). They are batch reports of the whole program.
+
+### Finding code
+
+To change a procedure safely, an agent needs to know who calls it. `grep`
+finds the name in comments and strings too, finds same-named declarations in
+programs that don't load this one, and can't tell which file a use resolves
+to. `coax query` answers from the checked program instead, through every
+`#load`:
+
+```shell
+$ coax query main.coax defines Shape
+shapes.coax:7:1: struct Shape
+$ coax query main.coax uses area
+main.coax:8:17: proc total
+shapes.coax:25:11: #test "area of a unit square"
+$ coax query main.coax exports demo.shapes
+shapes.coax:5:1: enum Kind
+shapes.coax:7:1: struct Shape
+shapes.coax:12:1: const UNIT
+shapes.coax:19:1: proc area
+shapes.coax:32:1: proc corners
+```
+
+Each answer is a file, a line and a column, then what the answer is. A use
+names what contains it: a procedure, a struct, a constant or a check. The
+column points at the name itself, even after an alias, so `shapes.area(s)`
+on line 8 is reported at `area`. A comment that mentions `area()` or a
+string that contains `"Shape"` is never an answer, because the query reads
+the checked graph, not the text. Uses of untyped constants count too, even
+where the checker folded them into a literal, such as an array length
+`[GRID * CORNERS] u8`. `exports` lists what a module makes public; with no
+module name, it lists the file's own declarations.
+
+`--json` prints one `coax.query.v1` object with absolute paths, declaration
+IDs and modules, for a tool to read.
+
+The first query checks the program, which takes about 6 seconds for the
+compiler's own 25 source units. The query keeps the index it built in
+`~/.cache/coax-query/`, and the next question about the same program takes
+under 0.1 seconds. Before it uses the cached index, the query compares the
+SHA-256 of every source unit with the one it recorded, so an edit anywhere in
+the program makes the next query check it again. `--fresh` skips the cache.
+
+On the Fairy Forest page, 34 source units, `grep -w view` over those files
+gives 35 lines, and 34 of them aren't uses of the procedure `view`. The query
+gives the one that is.
 
 `coax/web/tool.sh fmt` is the first slice of a formatter. It lays out only
 whitespace outside literals: CRLF becomes LF, trailing blanks go, a run of
@@ -579,9 +625,11 @@ in a prompt:
    a missing check. Don't mark mutants equivalent yourself; report them.
 6. Prefer one `#forall` that states the rule over many single examples, and
    choose its ranges to cross every boundary in the code.
-7. Read the generated C (`coax c`) or the layout (`coax layout`) when
+7. Find definitions and callers with `coax query FILE defines NAME` and
+   `coax query FILE uses NAME`, not with `grep`.
+8. Read the generated C (`coax c`) or the layout (`coax layout`) when
    performance or behavior matters, rather than reasoning from the source.
-8. When you add a feature or fix a bug in the compiler, add a test: a
+9. When you add a feature or fix a bug in the compiler, add a test: a
    `tests/pass` program with exact output, or a `tests/fail` program whose
    first line names the expected code.
 
