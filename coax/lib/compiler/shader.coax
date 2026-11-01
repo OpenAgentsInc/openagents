@@ -83,7 +83,7 @@ ShState :: struct {
   at:int; next:u32; ok:bool; reason:u32; open:bool; mute:int;
   nd:int; nt:int; nc:int; types:int; procs:int; insts:int; binds:int; consts:int; ftypes:int; loops:int; edges:int;
   locals:int; inst:int; ret:u32; fragment:bool; int64:bool; query:bool; glsl:u32; privs:int; depth:bool;
-  array_query_type:u32;
+  array_query_type:u32; array_sample_type:u32;
   c_true:u32; c_false:u32; u32_0:u32; fine_derivatives:bool; demote_helper:bool; tree_version:u32;
 }
 ShVal :: struct {id:u32; ty:u32;}
@@ -675,13 +675,22 @@ sh_value_arg :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32,want:u32)->u32 {
   if !ok {sh_fail(s,11);return sh_nothing();}
   return v.id;
 }
-// A vector type of n f32 for an image's coordinates or texel: the V2..V4
-// the program declares if it has one, else its own.
+// A vector type of n f32 declared by the program. Texture UV arguments and
+// texel results carry V2/V4; an implicit array coordinate uses sh_vec3 below.
 sh_vec :: (s:[]ShState,tree:[]u32,w:[]u32,n:int)->u32 {
-  // Every caller holds a value of such a vector, so the program has one.
   r:u32;
   for t:0..<s[0].types {if sh_vector(tree,w,cast(u32)t)==n {r=sh_tid(s,tree,w,cast(u32)t);}} // mutant: equivalent (type 0 is void)
   return r;
+}
+// A sample's (u,v,layer) has no source V3 value. Reuse a declared V3 when
+// present, or declare one f32 vector shared by every array sample.
+sh_vec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
+  declared:=sh_vec(s,tree,w,3);
+  if declared!=0 {return declared;}
+  if s[0].array_sample_type!=0 {return s[0].array_sample_type;}
+  id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_VECTOR,id,sh_tid(s,tree,w,SH_F32),3);
+  s[0].array_sample_type=id;
+  return id;
 }
 sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
   // An s32 vector of two, kept in s32's UniformConstant pointer word (s32 is never a resource).
@@ -734,7 +743,7 @@ sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
       if !s[0].ok {return sh_refused();}
       parts:=[3] u32.[sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,f,uv,0),sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,f,uv,1),sh_r1(s,w,SH_OP_CONVERT_S_TO_F,f,layer)];
       coord=sh_id(s);
-      sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,6);sh_word(s,w,SH_C,sh_vec(s,tree,w,3));sh_word(s,w,SH_C,coord);
+      sh_op(s,w,SH_C,SH_OP_COMPOSITE_CONSTRUCT,6);sh_word(s,w,SH_C,sh_vec3(s,tree,w));sh_word(s,w,SH_C,coord);
       sh_word(s,w,SH_C,parts[0]);sh_word(s,w,SH_C,parts[1]);sh_word(s,w,SH_C,parts[2]);
     }
     extra:u32;
@@ -1937,6 +1946,50 @@ sh_gpu_profile_out :: (body:string,out:[]u32,version:u32)->int {
     aq_at+=aq_len;
   }
   #assert aq_vectors==1 && aq_queries==2 && aq_extracts==2;
+}
+
+// A checked module with only V2/V4 and array resources. Most SH fixtures
+// preload V3 in SH_MORE, although ordinary reachable type tables need not.
+sh_sparse_array_tree :: (sa_version:u32,sa_declared:bool,sa_tree:[]u32)->int {
+  sa_count:[1]int;
+  sa_n:=sh_parse("2 10 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 2 4 8 10 1 11 0",sa_tree);
+  sa_tree[0]=sa_version;
+  if sa_declared {sa_tree[1]=11;sa_n+=sh_parse("7 3 2 0 2 4 2 8 12",sa_tree[sa_n..<sa_tree.count]);}
+  sa_procs_at:=sa_n;sa_n+=1;
+  sa_n+=sh_procs(SH_VS,sa_tree[sa_n..<sa_tree.count],sa_count[..]);
+  sa_n+=sh_procs("6 3 6 8 9 3 6 8 9 | 1 3 2 33 4 6 4 18 1 18 2 17 7 16 3 1 2 33 6 6 5 18 1 18 2 17 7 16 3 1 16 2 0 4 33 5 6 5 18 1 18 2 17 7 16 3 1 16 2 0 ;",sa_tree[sa_n..<sa_tree.count],sa_count[..]);
+  sa_tree[sa_procs_at]=u32(sa_count[0]);
+  sa_n+=sh_parse("2 0 0 0 1 1 1 2 3 4",sa_tree[sa_n..<sa_tree.count]);
+  return sa_n;
+}
+#test "array samples declare one float coordinate vector when V3 is absent" {
+  sa_binary:[8192]u32;sa_tree:[4096]u32;sa_work:[SH_CHECK_WORK]u32;
+  for sa_version:[2]u32.[2,3] {for sa_declared:[2]bool.[false,true] {
+    sa_tree_size:=sh_sparse_array_tree(sa_version,sa_declared,sa_tree[..]);
+    // Audit the fixture's version and absence/presence before output erases
+    // those transport details; both variants must actually reach the test.
+    sa_expected_types:u32=ifx sa_declared then 11 else 10;
+    #assert sa_tree[0]==sa_version && sa_tree[1]==sa_expected_types;
+    sa_size:=SH_lower(sa_tree[0..<sa_tree_size],sa_binary[..],sa_work[..]);
+    #assert sa_size>0;
+    sa_at:=5;sa_float:u32;sa_vector:u32;sa_vectors:int;sa_coordinates:int;sa_functions:bool;
+    while sa_at<sa_size {
+      sa_words:=int(sa_binary[sa_at]>>16);sa_opcode:=sa_binary[sa_at]&65535;
+      #assert sa_words>0 && sa_at+sa_words<=sa_size;
+      if sa_opcode==22 && sa_words==3 && sa_binary[sa_at+2]==32 {sa_float=sa_binary[sa_at+1];}
+      if sa_opcode==54 {sa_functions=true;}
+      if sa_opcode==23 && sa_words==4 && sa_binary[sa_at+3]==3 {
+        #assert !sa_functions && sa_float!=0 && sa_binary[sa_at+2]==sa_float;
+        sa_vector=sa_binary[sa_at+1];sa_vectors+=1;
+      }
+      if sa_opcode==80 && sa_words==6 {
+        #assert sa_vector!=0 && sa_binary[sa_at+1]==sa_vector;
+        sa_coordinates+=1;
+      }
+      sa_at+=sa_words;
+    }
+    #assert sa_vectors==1 && sa_coordinates==3;
+  }}
 }
 // Modules too large for a limit: 0 an fs of n locals, 1 n loops in each
 // other, 2 n calls, 3 an array of n f32 made, 4 one read from a view.
