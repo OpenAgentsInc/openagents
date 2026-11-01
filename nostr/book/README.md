@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 54 are implemented, 2 are partly implemented and
+Of the 104 chapters, 55 are implemented, 1 is partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -273,7 +273,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) | Unimplemented: design draft | NIP-AGENT saved agents (30187), NIP-SKILL published `SKILL.md` listings (30188), NIP-SOV sovereign agents with local custody, and NIP-AUTO scheduled and triggered work. |
 | [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) | Unimplemented: design draft | NIP-CJ encrypted conversation, typed-decision and execution jobs, NIP-LAB agent labor terms and delivery, and NIP-MKT offerings, negotiated orders and Bitcoin settlement. |
 | [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) | Unimplemented: design draft | NIP-DEC decision requests and answers (25910), NIP-EVAL suites and reports, NIP-OPT optimization studies, and NIP-PRG typed programs (30182, 30183). |
-| [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | NIP-PYLON beacons (30200), service receipts (3201) and pool aggregates (30201), NIP-ENV environment leases, and NIP-DEPLOY public deploy status (3205, 30440). |
+| [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) | Runnable: native C | NIP-PYLON beacons (30200) and service receipts (3201) verified and read: freshness by the reader's clock, no capacity from an expired beacon, receipts signed by their buyer and credited only to the beacon their p and a tags name. Model-group beacons, paid receipts, 30201 events, NIP-ENV and NIP-DEPLOY are not built. |
 | [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) | Unimplemented: design draft | NIP-ATT attested workload releases (3202), release heads (30202), rebuilds (3203) and endpoints, and NIP-VAULT sealed personal data with wraps and key slots. |
 | [84. Knowledge and workspaces](ch084-knowledge-and-workspaces.md) | Unimplemented: design draft | NIP-KB knowledge entries (3190), heads (30190), withdrawals (3191) and evidence, and NIP-WS workspaces with documents, ranges, worktrees and checkpoints. |
 | [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) | Unimplemented: design draft | NIP-LIVE voice, camera and screen sessions, NIP-MV 3D-world presence (world 33300, entity 33301, pose frames 23300), and NIP-XP quests (30193), awards (3193) and revocations (3194). |

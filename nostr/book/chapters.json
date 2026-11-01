@@ -1486,7 +1486,7 @@
    "number": 82,
    "title": "Pylons, environments and deploys",
    "file": "ch082-pylons-environments-and-deploys.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     80,
@@ -1494,7 +1494,10 @@
    ],
    "source": [
     "psionic/lib/mesh/receipt.coax",
-    "psionic/lib/pylon/beacon.coax"
+    "psionic/lib/pylon/beacon.coax",
+    "psionic/lib/pylon/host.coax",
+    "nostr/examples/pylon-receipts.coax",
+    "nostr/examples/checks/pylon-receipts.coax"
    ],
    "qualified_targets": [
     "cpu"

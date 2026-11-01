@@ -147,6 +147,7 @@ mr_body_read :: (content:string,created_at:int)->MrReceipt {
     if !mf_string(mf_get(content,"capability"),cast(string)cap[0..<n]) {return bad;}
     return r;
 }
+// book:begin read
 mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrReceipt #export_c {
     bad:MrReceipt;if kind!=MR_KIND {return bad;}r:=mr_body_read(content,created_at);if !r.ok || r.buyer!=signer {return bad;}
     p:=pt_tag(tags,"p");a:=pt_tag(tags,"a");t:=pt_tag(tags,"t");x:=pt_tag(tags,"x");
@@ -154,6 +155,7 @@ mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->M
     hex:[64]u8;hashed:=ph_digest(content,hex[..]);address:[160]u8;expected:=mr_address(r.provider,r.pylon,address[..]);
     if p.v[1]!=r.provider || a.v[1]!=expected || t.v[1]!=MR_MARKER || x.v[1]!=cast(string)hex[..] {return bad;}return r;
 }
+// book:end read
 mr_check_name :: (verdict:int)->string {names:=[3]string.["check-pass","check-fail","check-inconclusive"];return names[verdict-1];}
 mr_check_valid :: (c:MrCheck)->bool {return c.ok && pt_hex64(c.checker) && pt_hex64(c.provider) && c.checker!=c.provider && pt_hex64(c.receipt) && pt_hex64(c.result_digest) && c.method.count>=1 && c.method.count<=512 && mr_time(c.created_at) && c.verdict>=1 && c.verdict<=3;}
 mr_check_tags :: (c:MrCheck,out:[]u8)->int #export_c {

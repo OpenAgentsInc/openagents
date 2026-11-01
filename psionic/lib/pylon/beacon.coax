@@ -554,6 +554,7 @@ pb_read :: (kind:int,signer:string,tags:string,content:string,digest:string)->Pb
 }
 
 // ---- freshness, by the reader's receipt time
+// book:begin fresh
 pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c {
     if r.observed_at>received+PB_FUTURE {return PbFresh.future;}
     if held.present {
@@ -570,6 +571,7 @@ pb_show :: (r:PbRead,f:PbFresh)->PbShow {
 pb_routable :: (r:PbRead,f:PbFresh)->bool #export_c {
     return r.code==PbCode.ok && f==PbFresh.fresh && r.status==PbStatus.online && r.free>0 && r.decision;
 }
+// book:end fresh
 
 // ---- the provider's lifecycle and republish schedule
 pb_start :: (life:PbLife,now:int)->PbLife #export_c {

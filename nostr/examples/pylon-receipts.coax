@@ -1,0 +1,141 @@
+// Chapter 82: a Pylon beacon and a buyer's receipt, verified, read and
+// counted. The pylon (key 3) signed a kind 30200 beacon; a buyer (key 1)
+// signed a kind 3201 receipt for one job. A reader verifies each event (id
+// and BIP-340 signature), reads it with the psionic units, judges the
+// beacon's freshness by its own clock and asks what the beacon adds to a
+// pool. Keys are the scalars 1 (the buyer), 2 (another key) and 3 (the
+// pylon): TEST ONLY. The events were signed once with
+// coax/lib/nostr/event_sign.coax (aux 0, so the signatures are reproducible)
+// from what pb_content and mr_body/mr_tags write, and are copied here as a
+// relay would send them; main shows the writers still produce their bytes.
+#load "../../psionic/lib/mesh/receipt.coax";
+#load "../../coax/lib/nostr/event.coax";
+#import "Basic";
+
+BEACON :: "{\"id\":\"5e8c454542809f9066eb59e6f944b697b6a57008230eefb3b70812bc6a4a057f\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400000,\"kind\":30200,\"tags\":[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664\"],[\"expiration\",\"1791400300\"]],\"content\":\"{\\\"class\\\":{\\\"family\\\":\\\"gpu\\\",\\\"memory_gb\\\":16,\\\"tier\\\":\\\"medium\\\"},\\\"generation\\\":7,\\\"label\\\":\\\"Studio GPU\\\",\\\"observed_at\\\":1791400000,\\\"pools\\\":[],\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"requires\\\":[],\\\"services\\\":[{\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"lanes\\\":[\\\"cj-decision\\\"],\\\"model\\\":\\\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\\\",\\\"offering\\\":null,\\\"price_hint_msat\\\":null}],\\\"settlement\\\":[\\\"free-v1\\\"],\\\"since\\\":1791380000,\\\"slots\\\":{\\\"free\\\":1,\\\"total\\\":1},\\\"status\\\":\\\"online\\\",\\\"v\\\":\\\"openagents.pylon-beacon.v1\\\",\\\"valid_until\\\":1791400300}\",\"sig\":\"c9c6479ccb9ed5d93a202f27f1e1dfa236b1f82ee6b32ab22de0ad477c0e32cb27e7be15ae55aaa47398187dccf4f9b60092de91434adfef991ffab5a0e759fe\"}";
+BEACON_BY_OTHER :: "{\"id\":\"a7c49b5162a2e4cef079726a9974bd32df4378241d114fbe8f9bcf80415972f1\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1791400000,\"kind\":30200,\"tags\":[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664\"],[\"expiration\",\"1791400300\"]],\"content\":\"{\\\"class\\\":{\\\"family\\\":\\\"gpu\\\",\\\"memory_gb\\\":16,\\\"tier\\\":\\\"medium\\\"},\\\"generation\\\":7,\\\"label\\\":\\\"Studio GPU\\\",\\\"observed_at\\\":1791400000,\\\"pools\\\":[],\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"requires\\\":[],\\\"services\\\":[{\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"lanes\\\":[\\\"cj-decision\\\"],\\\"model\\\":\\\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\\\",\\\"offering\\\":null,\\\"price_hint_msat\\\":null}],\\\"settlement\\\":[\\\"free-v1\\\"],\\\"since\\\":1791380000,\\\"slots\\\":{\\\"free\\\":1,\\\"total\\\":1},\\\"status\\\":\\\"online\\\",\\\"v\\\":\\\"openagents.pylon-beacon.v1\\\",\\\"valid_until\\\":1791400300}\",\"sig\":\"698da714207c27146ae4d8138daa6ed880b6630a74e19435fee0a2a60e87700ce5c627faf77166f47e17c84e40d76008e033728b2c22ec4cb30d712c53fddf70\"}";
+BEACON_LATE_EXPIRATION :: "{\"id\":\"35c087ad1ad5c46f31ac5dc83499436b087db7a1ef6ec28c5ccf56c8263650e5\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400000,\"kind\":30200,\"tags\":[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664\"],[\"expiration\",\"1791400400\"]],\"content\":\"{\\\"class\\\":{\\\"family\\\":\\\"gpu\\\",\\\"memory_gb\\\":16,\\\"tier\\\":\\\"medium\\\"},\\\"generation\\\":7,\\\"label\\\":\\\"Studio GPU\\\",\\\"observed_at\\\":1791400000,\\\"pools\\\":[],\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"requires\\\":[],\\\"services\\\":[{\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"lanes\\\":[\\\"cj-decision\\\"],\\\"model\\\":\\\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\\\",\\\"offering\\\":null,\\\"price_hint_msat\\\":null}],\\\"settlement\\\":[\\\"free-v1\\\"],\\\"since\\\":1791380000,\\\"slots\\\":{\\\"free\\\":1,\\\"total\\\":1},\\\"status\\\":\\\"online\\\",\\\"v\\\":\\\"openagents.pylon-beacon.v1\\\",\\\"valid_until\\\":1791400300}\",\"sig\":\"9d0aef994fc2960cf7bbed6eebc094667affbbbb2929d9098ee93d854c5d9ca15b6562856795799886d84c5631c9dff6cef80dda4b9817279c2bfb6aef1d98eb\"}";
+RECEIPT :: "{\"id\":\"d3645062fa1ee20d15cb68853b4adbdb05565e4c94097472d79d35028cabbd88\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1791400103,\"kind\":3201,\"tags\":[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"a\",\"30200:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:studio-gpu\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b\"]],\"content\":\"{\\\"buyer\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"finished_at\\\":1791400102,\\\"lane\\\":\\\"cj-decision\\\",\\\"outcome\\\":\\\"accepted\\\",\\\"payment\\\":null,\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"request\\\":\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"request_digest\\\":\\\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\\",\\\"requires\\\":[],\\\"result_digest\\\":\\\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\\",\\\"started_at\\\":1791400100,\\\"units\\\":{\\\"count\\\":1,\\\"kind\\\":\\\"jobs\\\"},\\\"v\\\":\\\"openagents.pylon-receipt.v2\\\"}\",\"sig\":\"047d11f571a7ae73f77a3fd2792b3066c153de7ffd0006e8967a60e04b1dac12832e38329466e3cc056b44d1269e7b003d8a63f3c33c0ebb80a47ab7ff3b1879\"}";
+RECEIPT_BY_OTHER :: "{\"id\":\"5f7de15664129fe06346a10aa21818a5b6b5476a6ea992afbb3884cb4d536fbc\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1791400103,\"kind\":3201,\"tags\":[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"a\",\"30200:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:studio-gpu\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b\"]],\"content\":\"{\\\"buyer\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"finished_at\\\":1791400102,\\\"lane\\\":\\\"cj-decision\\\",\\\"outcome\\\":\\\"accepted\\\",\\\"payment\\\":null,\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"request\\\":\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"request_digest\\\":\\\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\\",\\\"requires\\\":[],\\\"result_digest\\\":\\\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\\",\\\"started_at\\\":1791400100,\\\"units\\\":{\\\"count\\\":1,\\\"kind\\\":\\\"jobs\\\"},\\\"v\\\":\\\"openagents.pylon-receipt.v2\\\"}\",\"sig\":\"440d1e93a81cde90522a9bfa8a5ae2d6d30127e490c5e981369d1841df20ef557e127e306ab7631389a2b21c714fce19d47f77f751af78675f5d4238ce4958cb\"}";
+RECEIPT_BY_PYLON :: "{\"id\":\"c911c4315e51d70b73bcc814152a0b0df13642e7018160bd6b4cec4c7ff134ca\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400103,\"kind\":3201,\"tags\":[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"a\",\"30200:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:studio-gpu\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b\"]],\"content\":\"{\\\"buyer\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"capability\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\\\",\\\"finished_at\\\":1791400102,\\\"lane\\\":\\\"cj-decision\\\",\\\"outcome\\\":\\\"accepted\\\",\\\"payment\\\":null,\\\"provider\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"request\\\":\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"request_digest\\\":\\\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\\",\\\"requires\\\":[],\\\"result_digest\\\":\\\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\\",\\\"started_at\\\":1791400100,\\\"units\\\":{\\\"count\\\":1,\\\"kind\\\":\\\"jobs\\\"},\\\"v\\\":\\\"openagents.pylon-receipt.v2\\\"}\",\"sig\":\"ce992858ab694d26175f3340168edccb22125a5c3c3781549ac32dd86a49a7e1d993db207d4b0205d823d29d1da45acf983f0d7fd82a7a7d21ced421aa26e229\"}";
+RECEIPT_OTHER_PYLON :: "{\"id\":\"945c2dc64e1450091493d29a68e7814f4f951d044652e0e0d265cb9c9ea0441e\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1791400103,\"kind\":3201,\"tags\":[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"a\",\"30200:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:studio-gpu\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"1f9be2db6c2d006f125025a6eb1987894be1454acc7e8bdf2fce9565beed2123\"]],\"content\":\"{\\\"buyer\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"capability\\\":\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:pylon/decision\\\",\\\"finished_at\\\":1791400102,\\\"lane\\\":\\\"cj-decision\\\",\\\"outcome\\\":\\\"accepted\\\",\\\"payment\\\":null,\\\"provider\\\":\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\\\",\\\"pylon\\\":\\\"studio-gpu\\\",\\\"request\\\":\\\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\\",\\\"request_digest\\\":\\\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\\",\\\"requires\\\":[],\\\"result_digest\\\":\\\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\\\",\\\"started_at\\\":1791400100,\\\"units\\\":{\\\"count\\\":1,\\\"kind\\\":\\\"jobs\\\"},\\\"v\\\":\\\"openagents.pylon-receipt.v2\\\"}\",\"sig\":\"86b67b38e42a1ccd7dd44013bd546293116f1ebc7a3e7dd991190a3b30f5c8c435f504e64ffe395d2c8af1e5e71c5a31c88c285d239573815f8114faa6bfcd4e\"}";
+
+// book:begin example
+T0 :: 1791400000;   // the beacon's observed_at (chapter 24's fixture)
+BUYER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";   // scalar 1
+OTHER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";   // scalar 2
+PYLON :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";   // scalar 3, PB_KEY
+
+CODE_WORDS :: [22]string.["ok","kind","tags","marker","digest","json","version","field","provider","slug","label",
+  "status","times","expiration","class","slots","services","lanes","identity","settlement","pools","auth"];
+FRESH_WORDS :: [5]string.["fresh","future","stale","rollback","not newer"];
+SHOW_WORDS :: [4]string.["online","draining","offline","unknown"];
+NE_WORDS :: [9]string.["ok","json","shape","limit","hex","output","alias","id","signature"];
+
+to_hex :: (bytes:[]u8,out:[]u8)->string {r:=hex_encode_checked(cast(string)bytes,out,false);return cast(string)out[0..<r.written];}
+
+// What a reader holds after verifying one event: its id, signer, kind,
+// time, tags and unescaped content. error is NE_OK only when the id
+// recomputes from the fields and the signature verifies under pubkey.
+Opened :: struct {error:int;id:string;signer:string;kind:int;created_at:int;tags:string;content:string;}
+Bufs :: struct {id:[64]u8;signer:[64]u8;content:[2048]u8;}
+open_event :: (event:string,b:[]Bufs)->Opened {
+  o:Opened;scratch:[16384]u8;e:=nostr_event_verify_vartime(event,scratch[..],false);o.error=e.error;
+  if e.error!=NE_OK {return o;}
+  o.id=to_hex(e.id[..],b[0].id[..]);o.signer=to_hex(e.public_key[..],b[0].signer[..]);o.kind=e.kind;o.created_at=e.created_at;
+  o.tags=event[e.tags_from..<e.tags_to];
+  n:=json_unescape(event[e.content_from..<e.content_to],b[0].content[..]);#assert n>=0;o.content=cast(string)b[0].content[0..<n];
+  return o;
+}
+// The receipt the buyer wrote: one accepted decision job on studio-gpu.
+the_receipt :: ()->MrReceipt {
+  return MrReceipt.{ok=true,buyer=BUYER,provider=PYLON,pylon="studio-gpu",request=MR_REQUEST,request_digest=MR_REQUEST_DIGEST,
+    result_digest=MR_RESULT_DIGEST,started_at=T0+100,finished_at=T0+102,created_at=T0+103};
+}
+// A copy of text with the byte at i replaced by c.
+altered :: (text:string,i:int,c:u8,out:[]u8)->string {for k:0..<text.count {out[k]=text[k];}out[i]=c;return cast(string)out[0..<text.count];}
+// book:end example
+
+// book:begin attach
+// A receipt counts for a beacon only when its p and a tags (which mr_read
+// has already bound to the body) name the beacon's signer and pylon.
+attaches :: (r:MrReceipt,beacon_signer:string,b:PbRead)->bool {
+  return r.ok && b.code==PbCode.ok && r.provider==beacon_signer && r.pylon==b.pylon;
+}
+// book:end attach
+
+// book:begin capacity
+// What one verified beacon adds to a pool's capacity at the reader's time
+// now: its slots while it is fresh and not offline, nothing otherwise. The
+// aggregate rule (NIP-PYLON 30201 totals, psionic/lib/mesh/totals.coax's
+// mt_recompute) counts the same beacons at window.to.
+Capacity :: struct {pylons:int;total:int;free:int;}
+capacity_at :: (b:PbRead,now:int)->Capacity {
+  c:Capacity;f:=pb_fresh(b,now,PbHeld.{});
+  if b.code!=PbCode.ok || f!=PbFresh.fresh || b.status==PbStatus.offline {return c;}
+  c.pylons=1;c.total=b.total;c.free=b.free;return c;
+}
+// book:end capacity
+
+// book:begin main
+main :: () {
+  print("the pylon's beacon (key 3)\n");
+  lanes:[1]string;services:[1]PbService;settlement:[1]string;pb:=pb_fixture(lanes[..],services[..],settlement[..]);
+  body:[2048]u8;n:=pb_content(pb,body[..]);content:=cast(string)body[0..<n];
+  x:[64]u8;#assert ph_digest(content,x[..]);
+  bb:[1]Bufs;ob:=open_event(BEACON,bb[..]);
+  print("verify: %, id %, signer %, kind %, created_at T0 + %\n",NE_WORDS[ob.error],ob.id,ob.signer,ob.kind,ob.created_at-T0);
+  print("tags %\n",ob.tags);
+  print("content (% bytes) is what pb_content writes: %\n",ob.content.count,ob.content==content);
+  print("x = sha256(content) = %\n",cast(string)x[..]);
+  b:=ph_read_beacon(ob.kind,ob.signer,ob.tags,ob.content);
+  print("read: %, %, generation %, slots %/% free, class %/%/% GB, valid_until T0 + %\n",CODE_WORDS[cast(int)b.code],
+    SHOW_WORDS[cast(int)b.status],b.generation,b.free,b.total,b.family,b.tier,b.memory_gb,b.valid_until-T0);
+
+  print("freshness by the reader's clock\n");
+  none:=PbHeld.{};
+  for at:[5]int.[-30,10,300,301,-31] {
+    f:=pb_fresh(b,T0+at,none);
+    print("received at T0 % % s: %, shown %, routable %\n",ifx at<0 then "-" else "+",ifx at<0 then -at else at,
+      FRESH_WORDS[cast(int)f],SHOW_WORDS[cast(int)pb_show(b,f)],pb_routable(b,f));
+  }
+  held:=PbHeld.{present=true,generation=8,observed_at=T0-500};
+  print("generation 8 already held, received at T0 + 10: %\n",FRESH_WORDS[cast(int)pb_fresh(b,T0+10,held)]);
+
+  print("the buyer's receipt (key 1)\n");
+  rb:[1]Bufs;orc:=open_event(RECEIPT,rb[..]);
+  print("verify: %, id %, signer %, kind %, created_at T0 + %\n",NE_WORDS[orc.error],orc.id,orc.signer,orc.kind,orc.created_at-T0);
+  print("tags %\n",orc.tags);
+  mine:[4096]u8;m:=mr_body(the_receipt(),mine[..]);
+  print("content (% bytes) is what mr_body writes: %\n",orc.content.count,orc.content==cast(string)mine[0..<m]);
+  r:=mr_read(orc.kind,orc.signer,orc.created_at,orc.tags,orc.content);
+  print("read: %, buyer is the signer: %, finished T0 + %, attaches to the beacon: %\n",ifx r.ok then "admitted" else "refused",
+    r.buyer==orc.signer,r.finished_at-T0,attaches(r,ob.signer,b));
+
+  print("what the beacon adds to the pool\n");
+  for at:[3]int.[200,300,301] {
+    c:=capacity_at(b,T0+at);
+    print("at T0 + %: pylons online %, slots total %, free %\n",at,c.pylons,c.total,c.free);
+  }
+
+  print("refusals\n");
+  b2:[1]Bufs;o:=open_event(BEACON_BY_OTHER,b2[..]);
+  print("the beacon's bytes signed by key 2: verify %, read %\n",NE_WORDS[o.error],CODE_WORDS[cast(int)ph_read_beacon(o.kind,o.signer,o.tags,o.content).code]);
+  b3:[1]Bufs;o=open_event(BEACON_LATE_EXPIRATION,b3[..]);
+  print("expiration tag T0 + 400, valid_until T0 + 300: verify %, read %\n",NE_WORDS[o.error],CODE_WORDS[cast(int)ph_read_beacon(o.kind,o.signer,o.tags,o.content).code]);
+  out:[4096]u8;
+  forged:=altered(RECEIPT,RECEIPT.count-3,ifx RECEIPT[RECEIPT.count-3]=='0' then cast(u8)'1' else cast(u8)'0',out[..]);
+  print("the receipt with one signature digit changed: verify %\n",NE_WORDS[open_event(forged,b3[..]).error]);
+  at:=pb_index(RECEIPT,"\\\"started_at\\\":1791400100");#assert at>=0;
+  late:=altered(RECEIPT,at+24,'9',out[..]);
+  print("the receipt with started_at changed to 1791400109: verify %\n",NE_WORDS[open_event(late,b3[..]).error]);
+  for which:0..<3 {
+    event:=ifx which==0 then RECEIPT_BY_OTHER else ifx which==1 then RECEIPT_BY_PYLON else RECEIPT_OTHER_PYLON;
+    label:=ifx which==0 then "the receipt's bytes signed by key 2" else ifx which==1 then "the receipt's bytes signed by the pylon's key 3" else "a receipt by key 1 for key 2's studio-gpu";
+    bo:[1]Bufs;o=open_event(event,bo[..]);v:=mr_read(o.kind,o.signer,o.created_at,o.tags,o.content);
+    print("%: verify %, read %, attaches %\n",label,NE_WORDS[o.error],ifx v.ok then "admitted" else "refused",attaches(v,ob.signer,b));
+  }
+  self:=the_receipt();self.buyer=PYLON;
+  print("the pylon writing a receipt for its own job: mr_body %\n",mr_body(self,mine[..]));
+}
+// book:end main

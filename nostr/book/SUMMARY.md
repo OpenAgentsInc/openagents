@@ -113,7 +113,7 @@
 - [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) — design draft
 - [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) — design draft
 - [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) — design draft
-- [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) — partly implemented
+- [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) — implemented
 - [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) — design draft
 - [84. Knowledge and workspaces](ch084-knowledge-and-workspaces.md) — design draft
 - [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) — design draft

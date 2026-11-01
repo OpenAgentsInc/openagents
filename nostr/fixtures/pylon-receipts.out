@@ -1,0 +1,31 @@
+the pylon's beacon (key 3)
+verify: ok, id 5e8c454542809f9066eb59e6f944b697b6a57008230eefb3b70812bc6a4a057f, signer f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9, kind 30200, created_at T0 + 0
+tags [["d","studio-gpu"],["t","oa:pylon-beacon:v1"],["x","a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664"],["expiration","1791400300"]]
+content (657 bytes) is what pb_content writes: true
+x = sha256(content) = a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664
+read: ok, online, generation 7, slots 1/1 free, class gpu/medium/16 GB, valid_until T0 + 300
+freshness by the reader's clock
+received at T0 - 30 s: fresh, shown online, routable true
+received at T0 + 10 s: fresh, shown online, routable true
+received at T0 + 300 s: fresh, shown online, routable true
+received at T0 + 301 s: stale, shown unknown, routable false
+received at T0 - 31 s: future, shown unknown, routable false
+generation 8 already held, received at T0 + 10: rollback
+the buyer's receipt (key 1)
+verify: ok, id d3645062fa1ee20d15cb68853b4adbdb05565e4c94097472d79d35028cabbd88, signer 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798, kind 3201, created_at T0 + 103
+tags [["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["a","30200:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:studio-gpu"],["t","oa:pylon-receipt:v2"],["x","e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b"]]
+content (702 bytes) is what mr_body writes: true
+read: admitted, buyer is the signer: true, finished T0 + 102, attaches to the beacon: true
+what the beacon adds to the pool
+at T0 + 200: pylons online 1, slots total 1, free 1
+at T0 + 300: pylons online 1, slots total 1, free 1
+at T0 + 301: pylons online 0, slots total 0, free 0
+refusals
+the beacon's bytes signed by key 2: verify ok, read provider
+expiration tag T0 + 400, valid_until T0 + 300: verify ok, read expiration
+the receipt with one signature digit changed: verify signature
+the receipt with started_at changed to 1791400109: verify id
+the receipt's bytes signed by key 2: verify ok, read refused, attaches false
+the receipt's bytes signed by the pylon's key 3: verify ok, read refused, attaches false
+a receipt by key 1 for key 2's studio-gpu: verify ok, read admitted, attaches false
+the pylon writing a receipt for its own job: mr_body -1

@@ -1,0 +1,88 @@
+// The checks of pylon-receipts.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/pylon-receipts.coax --run-steps 250000000
+#load "../pylon-receipts.coax";
+
+// book:begin check
+// From a Python script written from NIP-01 and BIP-340 that shares no code
+// with Coax (hashlib, plus coax/tests/nostr/nip59_reference.py's integer
+// BIP-340): for each event, the SHA-256 of its content (the x tag), the
+// SHA-256 of [0,pubkey,created_at,kind,tags,content] (the id), its content
+// length, and that the reference signer with aux 0 reproduces every sig and
+// the reference verifier accepts it. The signatures are checked there and in
+// the example's run; here each id is recomputed without the slow verify.
+PY_EVENTS :: [7]string.[BEACON,BEACON_BY_OTHER,BEACON_LATE_EXPIRATION,RECEIPT,RECEIPT_BY_OTHER,RECEIPT_BY_PYLON,RECEIPT_OTHER_PYLON];
+PY_ID :: [7]string.[
+  "5e8c454542809f9066eb59e6f944b697b6a57008230eefb3b70812bc6a4a057f",
+  "a7c49b5162a2e4cef079726a9974bd32df4378241d114fbe8f9bcf80415972f1",
+  "35c087ad1ad5c46f31ac5dc83499436b087db7a1ef6ec28c5ccf56c8263650e5",
+  "d3645062fa1ee20d15cb68853b4adbdb05565e4c94097472d79d35028cabbd88",
+  "5f7de15664129fe06346a10aa21818a5b6b5476a6ea992afbb3884cb4d536fbc",
+  "c911c4315e51d70b73bcc814152a0b0df13642e7018160bd6b4cec4c7ff134ca",
+  "945c2dc64e1450091493d29a68e7814f4f951d044652e0e0d265cb9c9ea0441e"];
+PY_X :: [7]string.[
+  "a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664",
+  "a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664",
+  "a200d2649d0fdabc548e70175b18b0f274674b21f587fae8bc4c5d1be9797664",
+  "e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b",
+  "e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b",
+  "e23e991fd9e601d8c0cecdccd5e82e3a5047125114f541d5ef107cabbc06b37b",
+  "1f9be2db6c2d006f125025a6eb1987894be1454acc7e8bdf2fce9565beed2123"];
+PY_LEN :: [7]int.[657,657,657,702,702,702,702];
+
+// Read an event without its signature: the id must recompute.
+read_only :: (event:string,b:[]Bufs)->Opened {
+  o:Opened;scratch:[16384]u8;e:=nostr_event_read(event,scratch[..],false);o.error=e.error;
+  if e.error!=NE_OK {return o;}
+  o.id=to_hex(e.id[..],b[0].id[..]);o.signer=to_hex(e.public_key[..],b[0].signer[..]);o.kind=e.kind;o.created_at=e.created_at;
+  o.tags=event[e.tags_from..<e.tags_to];
+  n:=json_unescape(event[e.content_from..<e.content_to],b[0].content[..]);o.content=cast(string)b[0].content[0..<n];
+  return o;
+}
+
+#test "every id and content digest matches the Python reference" {
+  for i:0..<7 {
+    b:[1]Bufs;o:=read_only(PY_EVENTS[i],b[..]);#assert o.error==NE_OK && o.id==PY_ID[i] && o.content.count==PY_LEN[i];
+    x:[64]u8;#assert ph_digest(o.content,x[..]) && cast(string)x[..]==PY_X[i];
+    #assert pt_tag(o.tags,"x").v[1]==PY_X[i];
+  }
+}
+#test "the beacon by hand: a 300-second window, the expiration tag, the slots" {
+  b:[1]Bufs;o:=read_only(BEACON,b[..]);r:=ph_read_beacon(o.kind,o.signer,o.tags,o.content);
+  #assert r.code==PbCode.ok && r.valid_until-r.observed_at==300 && PB_WINDOW==300 && r.observed_at==o.created_at;
+  #assert pt_tag(o.tags,"expiration").v[1]=="1791400300" && pt_tag(o.tags,"d").v[1]==r.pylon;
+  #assert r.since==1791380000 && r.observed_at-r.since==20000;   // uptime 20000 s, 5 h 33 min 20 s
+  // Freshness: observed_at may lead the reader by 30 s; valid_until is the last fresh second.
+  #assert pb_fresh(r,T0-30,PbHeld.{})==PbFresh.fresh && pb_fresh(r,T0-31,PbHeld.{})==PbFresh.future;
+  #assert pb_fresh(r,T0+300,PbHeld.{})==PbFresh.fresh && pb_fresh(r,T0+301,PbHeld.{})==PbFresh.stale;
+  // An expired beacon contributes no capacity, an offline one neither.
+  #assert capacity_at(r,T0+300).total==1 && capacity_at(r,T0+300).free==1 && capacity_at(r,T0+300).pylons==1;
+  #assert capacity_at(r,T0+301).total==0 && capacity_at(r,T0+301).free==0 && capacity_at(r,T0+301).pylons==0;
+  off:=r;off.status=PbStatus.offline;#assert capacity_at(off,T0+10).pylons==0;
+  drain:=r;drain.status=PbStatus.draining;#assert capacity_at(drain,T0+10).total==1 && !pb_routable(drain,PbFresh.fresh);
+  bad:=r;bad.code=PbCode.slots;#assert capacity_at(bad,T0+10).pylons==0;
+}
+#test "the beacon refusals: another signer, a late expiration tag" {
+  b:[1]Bufs;o:=read_only(BEACON_BY_OTHER,b[..]);#assert o.signer==OTHER && ph_read_beacon(o.kind,o.signer,o.tags,o.content).code==PbCode.provider;
+  o=read_only(BEACON_LATE_EXPIRATION,b[..]);#assert o.signer==PYLON && ph_read_beacon(o.kind,o.signer,o.tags,o.content).code==PbCode.expiration;
+}
+#test "the receipt binds the buyer as signer and the beacon by p and a" {
+  b:[1]Bufs;o:=read_only(RECEIPT,b[..]);r:=mr_read(o.kind,o.signer,o.created_at,o.tags,o.content);
+  #assert r.ok && r.buyer==BUYER && r.provider==PYLON && r.pylon=="studio-gpu" && r.finished_at-r.started_at==2;
+  #assert pt_tag(o.tags,"p").v[1]==PYLON && pt_tag(o.tags,"a").v[1]=="30200:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:studio-gpu";
+  bb:[1]Bufs;ob:=read_only(BEACON,bb[..]);beacon:=ph_read_beacon(ob.kind,ob.signer,ob.tags,ob.content);
+  #assert attaches(r,ob.signer,beacon) && !attaches(r,OTHER,beacon);
+  // Signed by a key other than the buyer: by key 2, and by the beacon's own key 3.
+  o=read_only(RECEIPT_BY_OTHER,b[..]);#assert o.signer==OTHER && !mr_read(o.kind,o.signer,o.created_at,o.tags,o.content).ok;
+  o=read_only(RECEIPT_BY_PYLON,b[..]);#assert o.signer==PYLON && !mr_read(o.kind,o.signer,o.created_at,o.tags,o.content).ok;
+  // A good receipt for another pylon reads, but never counts for this beacon.
+  o=read_only(RECEIPT_OTHER_PYLON,b[..]);v:=mr_read(o.kind,o.signer,o.created_at,o.tags,o.content);
+  #assert v.ok && v.provider==OTHER && !attaches(v,ob.signer,beacon);
+  // The writer refuses a receipt whose buyer is its provider.
+  self:=the_receipt();self.buyer=PYLON;out:[4096]u8;#assert mr_body(self,out[..])==-1 && mr_body(the_receipt(),out[..])==702;
+}
+#test "a changed byte breaks the id before any signature is tried" {
+  out:[4096]u8;at:=pb_index(RECEIPT,"\\\"started_at\\\":1791400100");#assert at>=0;
+  b:[1]Bufs;#assert read_only(altered(RECEIPT,at+24,'9',out[..]),b[..]).error==NE_ID;
+}
+// book:end check
