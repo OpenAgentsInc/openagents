@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_gaussian_bad_uniform.coax:2:187: error[E0317]: argument 3 of 'rgp_from_uniforms' is Quantity(UnitOne, f64), given Quantity(Metre, f64)
+  main :: () {mean:RgpAction;log_std:rlu.Quantity(UnitOne,f64);radial:rlu.Quantity(rlu.Metre,f64);angle:rlu.Quantity(UnitOne,f64);output:[1]RgpValue;status:=rgp_from_uniforms(mean,log_std,radial,angle,output[..]);}
+                                                                                                                                                                                            ^
+1 error

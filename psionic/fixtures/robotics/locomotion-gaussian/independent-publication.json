@@ -1,0 +1,133 @@
+{
+  "schema": "psionic.locomotion-gaussian.independent-publication.v1",
+  "passed": true,
+  "original_reference_and_all_expected_payloads_byte_exact": true,
+  "producer_executions": 2,
+  "expected_generation_executions": 1,
+  "source_and_inputs_frozen_before_first_product_comparison": true,
+  "reference_receipt": {
+    "bytes": 2701,
+    "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+  },
+  "generation_command": [
+    "python3",
+    "psionic/tests/robotics/locomotion_gaussian_reference.py",
+    "--output",
+    "/tmp/locomotion-gaussian-reference-first"
+  ],
+  "generation_cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+  "counts": {
+    "density": 960,
+    "uniforms": 1344,
+    "seeded": 160,
+    "ratio": 640
+  },
+  "primary_oracle": "Smooth Decimal80 density using exp(-2s), separately reduced high-precision cosine, Fraction signed-zero RN local arithmetic; conditional exact Rcp from independently Decimal-bounded observed Coax exp-probe rho.",
+  "scope": "Normalized scalar numerical queries only; finite top53 transform is not a continuous-distribution/RNG-quality proof. No tape, gradients through a plant, training, optimizer, environment, model or SDK.",
+  "exact_zero_scope": "Entropy all960 and density-at-mean all4words128rows; uniform exact masks640rows include literal zero and tiny-positive rounded-w1. Seeded exact-mask count51 INCLUDES48 unavailable rows; only3 successful seeded zero/copy rows. Counters/statuses independently exact. Failed transport zeros are unavailable markers after native physical atomicity checks, not published results.",
+  "ratio_scope": "640 ratio rows,536 safe probe requests. Ideal expected ratio table is NOT the exact conditional Rcp oracle. Actual probe rho is independently accuracy checked first, then exact public status/payload reconstructed; successful public rho binds probe bits. No correctly-rounded-libm claim.",
+  "archive_scope": "Endpoint observed-value JSON is transcribed archival evidence, not an original stdout file; explicit scope addendum preserves the first archival receipt. Root coefficient correction evidence is copied byte exact. No endpoint or coefficient numerical rerun for publication.",
+  "files": {
+    "psionic/tests/robotics/locomotion_gaussian_reference.py": {
+      "bytes": 18680,
+      "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/experiment.json": {
+      "bytes": 6131,
+      "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/input-freeze.json": {
+      "bytes": 346,
+      "sha256": "101141351dda8abb047c8d045afbdd8b1bef58a7dbbbb3c39e338d58211d8ff8"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/contract.md": {
+      "bytes": 11462,
+      "sha256": "7652688126ab36722ba4e1783ceb701dc860561c4f92a7d396a412f5cdefea8d"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/density-inputs.f64": {
+      "bytes": 23040,
+      "sha256": "4738114d5e6b6c64f8b280fa847175ee1b30a04575b4280207c48dc5b86ab0eb"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/uniform-inputs.f64": {
+      "bytes": 43008,
+      "sha256": "1306206441194d6803106b1a6ec62217ee2e12bb0d57ea861f10491696198787"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/seeded-inputs.bin": {
+      "bytes": 5120,
+      "sha256": "f99dd000022e383d223d78c3ad83af1505e6184b99971103246b2716e23f1d9f"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-inputs.f64": {
+      "bytes": 20480,
+      "sha256": "a7d495ce56a0c11bf201129f1985efcdc23d61a3c02f87854893d27f8e9e1388"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-dlog.f64": {
+      "bytes": 5120,
+      "sha256": "cf40abbcb0ff923a42229ef3caf613c36d59e55e4467d7167d287912b052ce36"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-eligibility.u8": {
+      "bytes": 640,
+      "sha256": "1a131c791cc0d1f5bc560cdfdec412b0fd9673cc628432a0c74cb2aeb05991de"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/reference.json": {
+      "bytes": 2701,
+      "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/density-expected.bin": {
+      "bytes": 38400,
+      "sha256": "6501cfd4bbf221435e7f7fcce7570f8fb00cf800d776b3609fa677e93a02245a"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/uniform-expected.bin": {
+      "bytes": 32256,
+      "sha256": "251cd2914619de19252deb6a8b5e1aefb670336283b553e4866fdc866e48fdd3"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/seeded-expected.bin": {
+      "bytes": 6400,
+      "sha256": "d64e2f964998729d49775d46b740dbf5014b428c5cb38c45755db13d3d979f2d"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-expected.bin": {
+      "bytes": 40960,
+      "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/density-exact.u8": {
+      "bytes": 960,
+      "sha256": "7999c8273862d22588d0ee9f4a309e0161e333c55d1adf5a697d8e36511e7d0e"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/uniform-exact.u8": {
+      "bytes": 1344,
+      "sha256": "ad760a503cd4b077e2f3b1bbb9b3bab6f16e9ca43395e18cfe3cc4be4eac7f81"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/seeded-exact.u8": {
+      "bytes": 160,
+      "sha256": "d45d001c091a7c41ad947a2f3ac711008eaad6c1c6f8cbfa497c660cf9769dab"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.py": {
+      "bytes": 1016,
+      "sha256": "ff02a7cd7bf99488d2d17667cebff2cd7aafe1f014edaae78cacf119130a64bd"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-original-output.json": {
+      "bytes": 3851,
+      "sha256": "31c18231e0d1306006c164ae8dadea5ee3a72c2e44ea9e68c9fa9dd50e172e28"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.json": {
+      "bytes": 867,
+      "sha256": "710f7626d8557413da74fda74dddb239b43a7fa41d4a5df5b01bfa991657f057"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-archive-scope-v1.json": {
+      "bytes": 834,
+      "sha256": "0a0c65c0d483eb081c765b2825f6a8806fec23ad268dad10bf9232333a4dde92"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-enclosure-v1.json": {
+      "bytes": 3143,
+      "sha256": "93b6df1ec5b6d1d8c5d4235fc17c86a191cc1d01a35682b6419a57744beb91e4"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/coefficient-correction.json": {
+      "bytes": 1830,
+      "sha256": "8810935ce8a6783ebb49e63dea65a5924f4fc5f3f538aa15f9e633d976975aa2"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/coefficient-inline.py": {
+      "bytes": 496,
+      "sha256": "ed0df66032ff3c4e567757ddd68ad64f1dc5f79741cd2e20101b653490595834"
+    }
+  },
+  "input_freeze_executions": 1
+}

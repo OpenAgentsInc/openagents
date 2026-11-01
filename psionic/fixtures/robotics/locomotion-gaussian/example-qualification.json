@@ -1,0 +1,90 @@
+{
+  "schema": "psionic.locomotion-gaussian.example.v1",
+  "compiler": {
+    "bytes": 3012376,
+    "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+  },
+  "prewrite": {
+    "source": {
+      "bytes": 2055,
+      "sha256": "8dd9f596363fbe4fc25d5197cd92e994c89eb2e15104a57b0b2211a3e93b2d94"
+    },
+    "golden": {
+      "bytes": 506,
+      "sha256": "e627f52effd9b6b5d96a1e6af4f72571c7a55158fa4eec3c516c1674a9abff3b"
+    },
+    "basis": "Prewritten before execution from standard-normal at mean, radius sqrt(2ln2), mean2/sigma1, zero-word counter seed, and logratio1/rho e/positiveA2 clipped at1.25. No learner/environment outcome."
+  },
+  "modes": {
+    "debug": {
+      "passed": true,
+      "seconds": 0.42087754199746996,
+      "exact_prewritten_golden": true,
+      "C": {
+        "bytes": 65586,
+        "sha256": "338e17edad1cd662587510cb79e002bda9b0401db859ebf81d2688dfc1227443"
+      },
+      "header": {
+        "bytes": 16772,
+        "sha256": "625a5d6eef96140c7e540ec7515febcd60348e6c1b3fbbd7728f433aa9b59705"
+      },
+      "binary": {
+        "bytes": 52776,
+        "sha256": "e2e554ac092ff3e0b03f3d42d07ac8d424c575133c44b3c441f49907d2033908"
+      },
+      "stdout": {
+        "bytes": 506,
+        "sha256": "e627f52effd9b6b5d96a1e6af4f72571c7a55158fa4eec3c516c1674a9abff3b"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "native_flags": [
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-exp",
+        "-fno-builtin-log",
+        "-fno-builtin-sqrt",
+        "-fno-builtin-cos"
+      ]
+    },
+    "release": {
+      "passed": true,
+      "seconds": 0.44313825003337115,
+      "exact_prewritten_golden": true,
+      "C": {
+        "bytes": 65582,
+        "sha256": "e0421a177d7616c0212f73c7fdf8e98835e57fdd3e66f73f4f08487a16847b8e"
+      },
+      "header": {
+        "bytes": 16772,
+        "sha256": "625a5d6eef96140c7e540ec7515febcd60348e6c1b3fbbd7728f433aa9b59705"
+      },
+      "binary": {
+        "bytes": 34808,
+        "sha256": "a44267e8cdb332d9faab582aaa9ef03c7c7a201db880a0ba8c1e4d54199f557e"
+      },
+      "stdout": {
+        "bytes": 506,
+        "sha256": "e627f52effd9b6b5d96a1e6af4f72571c7a55158fa4eec3c516c1674a9abff3b"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "native_flags": [
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-exp",
+        "-fno-builtin-log",
+        "-fno-builtin-sqrt",
+        "-fno-builtin-cos"
+      ]
+    }
+  },
+  "passed": true,
+  "scope": "Pure scalar density/uniform-transform/seeded-value/log-ratio fixtures; no policy network, optimizer, environment or old gate."
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "psionic.locomotion-gaussian.input-freeze.v1",
+  "experiment": {
+    "bytes": 6131,
+    "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+  },
+  "producer": {
+    "bytes": 18680,
+    "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+  },
+  "expected_generation_executions": 0
+}

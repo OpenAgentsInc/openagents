@@ -1,0 +1,44 @@
+{
+  "schema": "psionic.locomotion-gaussian.gate-qualification.v1",
+  "passed": true,
+  "syntax_pass": true,
+  "source": {
+    "psionic/tests/robotics/check-locomotion-gaussian.sh": {
+      "bytes": 421,
+      "sha256": "560eb6130fa8c63c86271e65267da93739e7be9b1a822d35871efd429bc6c544"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_native_reference.py": {
+      "bytes": 21038,
+      "sha256": "5f3105a02ffb54625910403dc297af56e8924b7f6a2e971a628241843777d230"
+    }
+  },
+  "metadata_plan": {
+    "bytes": 11594,
+    "sha256": "6c80f829a40951a29c3c489498275581709133e734fd29a861f25cc4a4647eb7"
+  },
+  "plan_numeric_path_executed": false,
+  "stub": {
+    "argv": [
+      "bash",
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/check-locomotion-gaussian.sh",
+      "/tmp/locomotion-gaussian-gate-routing-first/would-be-native",
+      "--plan"
+    ],
+    "observed_arguments": [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_gaussian_native_reference.py",
+      "--work-dir",
+      "/tmp/locomotion-gaussian-gate-routing-first/would-be-native",
+      "--coax",
+      "/tmp/locomotion-gaussian-gate-routing-first/compiler-not-executed",
+      "--plan"
+    ],
+    "exit": 0,
+    "real_compiler_native_model_calls": 0
+  },
+  "numeric_wrapper_reruns_during_packaging": 0,
+  "original_native_evidence": {
+    "bytes": 35280,
+    "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+  },
+  "scope": "CPU/stdlib gate selects caller COAX or repository compiler; no private data/compiler fallback. Underlying measured native evidence carried, not rerun through the additive shell."
+}

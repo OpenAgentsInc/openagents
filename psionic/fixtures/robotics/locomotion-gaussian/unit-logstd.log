@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_gaussian_bad_logstd.coax:2:128: error[E0317]: argument 2 of 'rgp_density' is Quantity(UnitOne, f64), given Quantity(Second, f64)
+  main :: () {mean:RgpAction;action:RgpAction;log_std:rlu.Quantity(rlu.Second,f64);output:[1]RgpDensity;status:=rgp_density(mean,log_std,action,output[..]);}
+                                                                                                                                 ^
+1 error

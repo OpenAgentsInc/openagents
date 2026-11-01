@@ -1,0 +1,62 @@
+{
+  "schema": "psionic.locomotion-gaussian.endpoint-enclosure.v1",
+  "passed": true,
+  "method": "NEW exact Fraction interval check of ALREADY observed Decimal log endpoints. No log/exp or initial endpoint derivation rerun. Assuming correctly-rounded Decimal ln2, two final Decimal ULPs cover initial ln2 error amplified by exact integer20/4 plus final multiplication rounding.",
+  "original_endpoint_receipt": {
+    "bytes": 867,
+    "sha256": "710f7626d8557413da74fda74dddb239b43a7fa41d4a5df5b01bfa991657f057"
+  },
+  "transcribed_observed_values": {
+    "bytes": 3851,
+    "sha256": "31c18231e0d1306006c164ae8dadea5ee3a72c2e44ea9e68c9fa9dd50e172e28"
+  },
+  "archive_scope": {
+    "bytes": 834,
+    "sha256": "0a0c65c0d483eb081c765b2825f6a8806fec23ad268dad10bf9232333a4dde92"
+  },
+  "experiment": {
+    "bytes": 6131,
+    "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+  },
+  "whole_frozen_producer": {
+    "bytes": 18680,
+    "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+  },
+  "input_freeze": {
+    "bytes": 346,
+    "sha256": "101141351dda8abb047c8d045afbdd8b1bef58a7dbbbb3c39e338d58211d8ff8"
+  },
+  "proofs": [
+    {
+      "precision": 80,
+      "lower_radius": "1/500000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "upper_radius": "1/5000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "lower_prev_below_entire_interval": true,
+      "lower_candidate_above_entire_interval": true,
+      "upper_candidate_below_entire_interval": true,
+      "upper_next_above_entire_interval": true
+    },
+    {
+      "precision": 160,
+      "lower_radius": "1/50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "upper_radius": "1/500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "lower_prev_below_entire_interval": true,
+      "lower_candidate_above_entire_interval": true,
+      "upper_candidate_below_entire_interval": true,
+      "upper_next_above_entire_interval": true
+    },
+    {
+      "precision": 240,
+      "lower_radius": "1/5000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "upper_radius": "1/50000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "lower_prev_below_entire_interval": true,
+      "lower_candidate_above_entire_interval": true,
+      "upper_candidate_below_entire_interval": true,
+      "upper_next_above_entire_interval": true
+    }
+  ],
+  "lower_bits": "c02bb9d3beb8c86b",
+  "upper_bits": "40062e42fefa39ef",
+  "expected_generation_calls": 0,
+  "product_calls": 0
+}

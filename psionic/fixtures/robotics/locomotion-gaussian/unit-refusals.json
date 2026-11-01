@@ -1,0 +1,51 @@
+{
+  "schema": "psionic.locomotion-gaussian.unit-refusals.v1",
+  "passed": true,
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "checks": [
+    {
+      "name": "logstd",
+      "source": "psionic/tests/robotics/locomotion_gaussian_bad_logstd.coax",
+      "source_sha256": "6e25d7b15cc31eb47b86b63658ee0addeea53c7487efbb323d36aaf89d76a196",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-logstd.log",
+      "log_sha256": "515901d7a42b490a46a800548934401450fe7ee67d34eb047fbc73e1922d8631"
+    },
+    {
+      "name": "action",
+      "source": "psionic/tests/robotics/locomotion_gaussian_bad_action.coax",
+      "source_sha256": "0dd2fb22371ac5c0967aa7afb96005ee25f968d3beca1791ba58da6896cd2a80",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-action.log",
+      "log_sha256": "d677d52ea7eb7f894352f0727f94bdc4f31815bc1b8a11eaf497eddf9d6bd65a"
+    },
+    {
+      "name": "uniform",
+      "source": "psionic/tests/robotics/locomotion_gaussian_bad_uniform.coax",
+      "source_sha256": "fc255ca35b7326bbdc6d6569cabf3331e14d28200103f770d1fec50d14af5b81",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-uniform.log",
+      "log_sha256": "e734b5deea542209756cad5891ee8680e4e175f12e3d4b1a73945ce07905fd5e"
+    },
+    {
+      "name": "logprob",
+      "source": "psionic/tests/robotics/locomotion_gaussian_bad_logprob.coax",
+      "source_sha256": "82de97434dfd937425adebb48abf4ae932cea42ed092cc96f2e3a700d0d6827f",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-logprob.log",
+      "log_sha256": "4723c3242d124813247c4ae505f08b7773f408b0204ff868473519083727ea7a"
+    }
+  ],
+  "scope": "Four first compiler-only unit/nominal-role refusals; no numerical/model/RNG simulation."
+}

@@ -1,0 +1,25 @@
+# Normalized scalar Gaussian primitives
+
+This chapter 171 foundation adds normalized scalar log-density/scores, a finite-grid seeded transform and a checked log-ratio adapter to the existing clipped PPO objective. It does not implement an actor/critic graph, optimizer, environment, learner or gait.
+
+`RgpAction` is a nominal normalized coordinate. Physical action scaling needs a separate mapping and log-density Jacobian. Density score fields are formal derivatives of the smooth Gaussian formula with a detached action, not derivatives of its rounded implementation or of a robot trajectory.
+
+The public aggregate is `lib/robotics/locomotion-gaussian.coax`. Its density, sampling and ratio roots are separate; the old `locomotion.coax`, GAE/PPO and counter RNG remain unchanged. Domains are mean ∈ [-16,16], density action ∈ [-128,128], log-standard-deviation ∈ [-4,2] and uniforms ∈ [0,1). Output shape is checked first, then all input finiteness, then domains, before arithmetic/publication. Every ordinary refusal preserves the full output. Seeded sampling additionally checks two-draw headroom and publishes the value and next seed together.
+
+Pure uniform calls accept every admitted binary64 uniform. The seeded call consumes exactly two carried top53 RNG draws and discards the unused Box–Muller companion. Its finite tail is a numerical sampling profile, not an exact continuous Gaussian or a new RNG-quality proof. Literal radial ±0 copies the mean bytes and publishes z+0; tiny nonzero radial input with rounded(1-U)==1 follows the nonzero signed-zero recipe. Rounded quarter-turn cosine is evaluated, not forced to zero.
+
+The ratio bridge uses the frozen inward log-domain endpoints, then admits the **observed** scalar-libm exp result in [2^-20,16]. It refuses rather than clamps. The separate test-only exp probe transports raw exp only for predeclared eligible differences. Its value is bounded independently before exact conditional ratio/objective composition is checked; it is not an independent exp implementation. Clipping decisions use advantage sign and ratio bounds. The exact-knot derivative convention is the carried unclipped branch. Only zero advantage canonicalizes surrogate/loss/gradient to +0; the clipped-ratio diagnostic retains its defined value.
+
+The qualified host profile is Darwin arm64 binary64 round-to-nearest with gradual underflow, no contraction/fast reassociation and scalar exp/log/sqrt/cos. Cross-target bit identity and an owned-libm accuracy proof are outside scope.
+
+## Frozen evidence
+
+`source-qualification.json` retains the corrected density42, unchanged sampling48 and ratio40 emitted-site proofs, all zero survivors, plus 15 new source groups. A separate test-only transport has seven zero-survivor sites in one group; the load-only public aggregate has zero body sites and no invented mutation run. The original density coefficient context, changed coefficient proof, first ratio survivors and their focused guard fixes remain recorded. `sampling-call-closure-carry.json` binds the unchanged whole sampling body and exact imported finite/parameter helpers across the density coefficient correction. Four unit/role witnesses refuse with E0317; their outputs are in `unit-refusals.json`. General Quantity-token provenance and compiler R14 are not closed by these counts.
+
+The first debug, release and fail-fast ASan+UBSan host profiles each pass 32,579 assertions, including 250 dedicated refusals, 56 scalar-by-value overlap observations and 65 IEEE patterns. The 960 density, 1,344 pure-uniform, 160 seeded and 640 ratio records form complete byte-identical streams across all three modes. Fifty-nine new reader poisons are rejected. Seeded rows comprise 112 admitted samples and 48 exhausted counters; ratio rows comprise 536 admitted and 104 range refusals.
+
+The maximum density error is 7.451e−9 on large-magnitude fields and consumes at most 5.322% of the applicable frozen mixed budget; entropy is exact. Sample action/z errors are at most 1.777e−15 and 2.221e−16, using at most 1.839% of their budgets. The declared exact comparisons cover 1,344 density fields, 1,280 pure-uniform fields and six seeded fields; all seed/counter transitions and 192 density zero-sign checks are exact. Every actual/expected comparison field is checked finite before a maximum is formed.
+
+All 536 eligible observed exp values match the independently Decimal-rounded reference in this corpus. Their exact conditional ratio/objective composition then passes. This corpus result is not a general correctly-rounded-libm proof and does not remove the public actual-rho admission at the inward endpoints.
+
+The independent expected generation is frozen in `reference.json`. The pure `examples/locomotion-gaussian.coax` example has a prewritten transcript and first debug/release execution; its receipt is `example-qualification.json`. It makes no environment or training call. Source/history, independent high-precision evidence and numerical host evidence remain separate.

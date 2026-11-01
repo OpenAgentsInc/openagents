@@ -1,0 +1,2 @@
+#load "../../lib/robotics/locomotion-gaussian.coax";
+main :: () {mean:RgaReward;action:RgpAction;log_std:rlu.Quantity(UnitOne,f64);output:[1]RgpDensity;status:=rgp_density(mean,log_std,action,output[..]);}

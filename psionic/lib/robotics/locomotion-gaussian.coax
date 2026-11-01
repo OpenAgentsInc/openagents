@@ -1,0 +1,4 @@
+// Additive scalar Gaussian policy math; old locomotion aggregate stays frozen.
+#load "locomotion/gaussian-density.coax";
+#load "locomotion/gaussian-sampling.coax";
+#load "locomotion/gaussian-ratio.coax";

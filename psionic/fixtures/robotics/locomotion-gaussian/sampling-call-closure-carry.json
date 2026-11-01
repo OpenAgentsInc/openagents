@@ -1,0 +1,73 @@
+{
+  "schema": "psionic.locomotion-gaussian.sampling-call-closure-carry.v1",
+  "passed": true,
+  "sampling_source": {
+    "bytes": 6944,
+    "sha256": "abcd98010519a83c02a38ba60c2b287ce4ff6f35d360013655d38ab7ec746483"
+  },
+  "sampling_source_receipt": {
+    "bytes": 6512,
+    "sha256": "e339cb9442821f8c3aad99d0ad1be91b63912359d03902313bd459db330ba153"
+  },
+  "sampling_mutation_scope": "48actualnewroot sites,qualifiedonce;notrerun",
+  "original_density_source": {
+    "bytes": 4500,
+    "sha256": "917e53f22ef360a7e3b0a8a99321818ea878b6c04576bd9dc97a5bf2a1769f16"
+  },
+  "original_density_source_identity_scope": "Honest byte reconstruction by reversing ONLY documented C literal correction in final source. Not an assertion that a preexecution source snapshot was captured.",
+  "final_density_source": {
+    "bytes": 4500,
+    "sha256": "68d012f2f3e38c75e2905ba0ad3300722e24dc7e5cec87b545e384a091a08f18"
+  },
+  "correction_only": true,
+  "helper_declarations": {
+    "rgp_finite": {
+      "old_declaration": {
+        "bytes": 87,
+        "sha256": "efba5a30f2e1d1f10ae214701fe5959d3409831444cbf305976fb479260c9c16"
+      },
+      "final_declaration": {
+        "bytes": 87,
+        "sha256": "efba5a30f2e1d1f10ae214701fe5959d3409831444cbf305976fb479260c9c16"
+      },
+      "byte_equal": true
+    },
+    "rgp_finite2": {
+      "old_declaration": {
+        "bytes": 76,
+        "sha256": "faff8ef4b453e9f892ba4958a60d7f61a9ed93a7c83d4a49b7888e09d17ec6e3"
+      },
+      "final_declaration": {
+        "bytes": 76,
+        "sha256": "faff8ef4b453e9f892ba4958a60d7f61a9ed93a7c83d4a49b7888e09d17ec6e3"
+      },
+      "byte_equal": true
+    },
+    "rgp_finite3": {
+      "old_declaration": {
+        "bytes": 99,
+        "sha256": "421870f642a7cc5623b91de729a254310fc6c4e61d4d5025dd7799f3220fbde1"
+      },
+      "final_declaration": {
+        "bytes": 99,
+        "sha256": "421870f642a7cc5623b91de729a254310fc6c4e61d4d5025dd7799f3220fbde1"
+      },
+      "byte_equal": true
+    },
+    "rgp_parameters": {
+      "old_declaration": {
+        "bytes": 107,
+        "sha256": "07c0cf20265eae95bb2ab4fa00dc4ab709fa7d9a4dda7cffc23483f48df64586"
+      },
+      "final_declaration": {
+        "bytes": 107,
+        "sha256": "07c0cf20265eae95bb2ab4fa00dc4ab709fa7d9a4dda7cffc23483f48df64586"
+      },
+      "byte_equal": true
+    }
+  },
+  "product_call_closure": "Sampling imports only rgp_finite/2/3/rgp_parameters from density; all other used sampling/RNG/type bodies unchanged. Density C/arithmetic is not called by sampling.",
+  "corrected_density_scope": "Separate changed-coefficient42site proof; measured source receipt staysbyteexact",
+  "old_RNG_source_carried": true,
+  "checks_or_mutations_or_numerics_repeated": false
+}

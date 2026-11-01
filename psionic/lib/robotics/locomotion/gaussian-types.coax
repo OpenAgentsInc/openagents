@@ -1,0 +1,10 @@
+// Normalized scalar action coordinates; no physical scaling or provenance seal.
+#load "types.coax";
+#load "../../counter-rng.coax";
+RgpAction :: struct {value:f64;}
+RgpStatus :: enum u8 {ok;shape;number;range;exhausted;}
+RlrStatus :: enum u8 {ok;shape;number;range;}
+RgpDensity :: struct {logp:rlu.Quantity(UnitOne,f64);score_mean:rlu.Quantity(UnitOne,f64);score_logstd:rlu.Quantity(UnitOne,f64);entropy:rlu.Quantity(UnitOne,f64);}
+RgpValue :: struct {action:RgpAction;z:rlu.Quantity(UnitOne,f64);}
+RgpDraw :: struct {action:RgpAction;z:rlu.Quantity(UnitOne,f64);next:CrSeed;}
+RlrOutput :: struct {log_ratio:rlu.Quantity(UnitOne,f64);ratio:rlu.Quantity(UnitOne,f64);objective:RcpOutput;}

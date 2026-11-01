@@ -1,0 +1,84 @@
+{
+  "schema": "psionic.locomotion-gaussian.reference.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 18680,
+    "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+  },
+  "experiment": {
+    "bytes": 6131,
+    "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+  },
+  "inputs": {
+    "density-inputs.f64": {
+      "bytes": 23040,
+      "sha256": "4738114d5e6b6c64f8b280fa847175ee1b30a04575b4280207c48dc5b86ab0eb"
+    },
+    "uniform-inputs.f64": {
+      "bytes": 43008,
+      "sha256": "1306206441194d6803106b1a6ec62217ee2e12bb0d57ea861f10491696198787"
+    },
+    "seeded-inputs.bin": {
+      "bytes": 5120,
+      "sha256": "f99dd000022e383d223d78c3ad83af1505e6184b99971103246b2716e23f1d9f"
+    },
+    "ratio-inputs.f64": {
+      "bytes": 20480,
+      "sha256": "a7d495ce56a0c11bf201129f1985efcdc23d61a3c02f87854893d27f8e9e1388"
+    },
+    "ratio-dlog.f64": {
+      "bytes": 5120,
+      "sha256": "cf40abbcb0ff923a42229ef3caf613c36d59e55e4467d7167d287912b052ce36"
+    },
+    "ratio-eligibility.u8": {
+      "bytes": 640,
+      "sha256": "1a131c791cc0d1f5bc560cdfdec412b0fd9673cc628432a0c74cb2aeb05991de"
+    }
+  },
+  "counts": {
+    "density": 960,
+    "uniforms": 1344,
+    "seeded": 160,
+    "ratio": 640
+  },
+  "product_calls": 0,
+  "model_SDK_environment_optimizer_calls": 0,
+  "elapsed_seconds": 0.5078554580104537,
+  "outputs": {
+    "density-expected.bin": {
+      "bytes": 38400,
+      "sha256": "6501cfd4bbf221435e7f7fcce7570f8fb00cf800d776b3609fa677e93a02245a"
+    },
+    "uniform-expected.bin": {
+      "bytes": 32256,
+      "sha256": "251cd2914619de19252deb6a8b5e1aefb670336283b553e4866fdc866e48fdd3"
+    },
+    "seeded-expected.bin": {
+      "bytes": 6400,
+      "sha256": "d64e2f964998729d49775d46b740dbf5014b428c5cb38c45755db13d3d979f2d"
+    },
+    "ratio-expected.bin": {
+      "bytes": 40960,
+      "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+    },
+    "density-exact.u8": {
+      "bytes": 960,
+      "sha256": "7999c8273862d22588d0ee9f4a309e0161e333c55d1adf5a697d8e36511e7d0e"
+    },
+    "uniform-exact.u8": {
+      "bytes": 1344,
+      "sha256": "ad760a503cd4b077e2f3b1bbb9b3bab6f16e9ca43395e18cfe3cc4be4eac7f81"
+    },
+    "seeded-exact.u8": {
+      "bytes": 160,
+      "sha256": "d45d001c091a7c41ad947a2f3ac711008eaad6c1c6f8cbfa497c660cf9769dab"
+    }
+  },
+  "exact_mask_counts": {
+    "density_all4": 128,
+    "uniform_all2": 640,
+    "seeded_all2_or_unavailable": 51
+  },
+  "ratio_eligible": 536,
+  "ratio_conditional_composition": "Use observed separately Decimal-bounded probe rho, not this ideal rho, for exact public status/Rcp payload; successful public rho must equal probe bits."
+}

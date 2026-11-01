@@ -1,0 +1,216 @@
+{
+  "schema": "psionic.locomotion-gaussian.native.v1",
+  "passed": true,
+  "plan_only": true,
+  "commands": [],
+  "modes": {},
+  "model_SDK_environment_optimizer_training_calls": 0,
+  "old_source_or_native_gates": 0,
+  "source": {
+    "psionic/tests/robotics/locomotion-gaussian-native.coax": {
+      "bytes": 1205,
+      "sha256": "b7b7d92f310427ea6dc970ca8955f339a64b40f7d02fe2e48f6b330d5a3eec77"
+    },
+    "psionic/lib/robotics/locomotion-gaussian.coax": {
+      "bytes": 205,
+      "sha256": "cac2b51ef0c77c9705dc686560a25dbb470843628fa73c73acdb00cd30b55d9e"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-density.coax": {
+      "bytes": 4500,
+      "sha256": "68d012f2f3e38c75e2905ba0ad3300722e24dc7e5cec87b545e384a091a08f18"
+    },
+    "psionic/lib/robotics/locomotion/fixtures.coax": {
+      "bytes": 928,
+      "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+    },
+    "psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-fixtures.coax": {
+      "bytes": 1342,
+      "sha256": "5df76b04fbeab70f88ffe72fe78b2faf50f52265e9d177d8839467db3653ea6f"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-types.coax": {
+      "bytes": 689,
+      "sha256": "bb4d00afba9f37887455a44491febaa2d582381436c295dfc0d37ac802bb720c"
+    },
+    "psionic/lib/counter-rng.coax": {
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-sampling.coax": {
+      "bytes": 6944,
+      "sha256": "abcd98010519a83c02a38ba60c2b287ce4ff6f35d360013655d38ab7ec746483"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-ratio.coax": {
+      "bytes": 6780,
+      "sha256": "a50570d463033b569ebfc866d96236203faaf4429c2f3d7dc9dd388f15c65bd6"
+    },
+    "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_native.c": {
+      "bytes": 11478,
+      "sha256": "78fb3522b7ee0d0782578e47f48c8e27dccc036813e15c3d3c10e5961f0fe5c4"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_native_reference.py": {
+      "bytes": 21038,
+      "sha256": "5f3105a02ffb54625910403dc297af56e8924b7f6a2e971a628241843777d230"
+    }
+  },
+  "frozen_inputs_oracles_evidence": {
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/density-inputs.f64": {
+      "bytes": 23040,
+      "sha256": "4738114d5e6b6c64f8b280fa847175ee1b30a04575b4280207c48dc5b86ab0eb"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/uniform-inputs.f64": {
+      "bytes": 43008,
+      "sha256": "1306206441194d6803106b1a6ec62217ee2e12bb0d57ea861f10491696198787"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/seeded-inputs.bin": {
+      "bytes": 5120,
+      "sha256": "f99dd000022e383d223d78c3ad83af1505e6184b99971103246b2716e23f1d9f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/ratio-inputs.f64": {
+      "bytes": 20480,
+      "sha256": "a7d495ce56a0c11bf201129f1985efcdc23d61a3c02f87854893d27f8e9e1388"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/ratio-dlog.f64": {
+      "bytes": 5120,
+      "sha256": "cf40abbcb0ff923a42229ef3caf613c36d59e55e4467d7167d287912b052ce36"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/ratio-eligibility.u8": {
+      "bytes": 640,
+      "sha256": "1a131c791cc0d1f5bc560cdfdec412b0fd9673cc628432a0c74cb2aeb05991de"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/lib/counter-rng.coax": {
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion/native-qualification.json": {
+      "bytes": 21900,
+      "sha256": "890ae428e387bdd37846feadbe1dbc7e1c12216c4f233e9a93aa322b2273edc6"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.py": {
+      "bytes": 1016,
+      "sha256": "ff02a7cd7bf99488d2d17667cebff2cd7aafe1f014edaae78cacf119130a64bd"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/endpoint-original-output.json": {
+      "bytes": 3851,
+      "sha256": "31c18231e0d1306006c164ae8dadea5ee3a72c2e44ea9e68c9fa9dd50e172e28"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.json": {
+      "bytes": 867,
+      "sha256": "710f7626d8557413da74fda74dddb239b43a7fa41d4a5df5b01bfa991657f057"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/endpoint-archive-scope-v1.json": {
+      "bytes": 834,
+      "sha256": "0a0c65c0d483eb081c765b2825f6a8806fec23ad268dad10bf9232333a4dde92"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/coefficient-correction.json": {
+      "bytes": 1830,
+      "sha256": "8810935ce8a6783ebb49e63dea65a5924f4fc5f3f538aa15f9e633d976975aa2"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/coefficient-inline.py": {
+      "bytes": 496,
+      "sha256": "ed0df66032ff3c4e567757ddd68ad64f1dc5f79741cd2e20101b653490595834"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/density-expected.bin": {
+      "bytes": 38400,
+      "sha256": "6501cfd4bbf221435e7f7fcce7570f8fb00cf800d776b3609fa677e93a02245a"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/uniform-expected.bin": {
+      "bytes": 32256,
+      "sha256": "251cd2914619de19252deb6a8b5e1aefb670336283b553e4866fdc866e48fdd3"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/seeded-expected.bin": {
+      "bytes": 6400,
+      "sha256": "d64e2f964998729d49775d46b740dbf5014b428c5cb38c45755db13d3d979f2d"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/ratio-expected.bin": {
+      "bytes": 40960,
+      "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/density-exact.u8": {
+      "bytes": 960,
+      "sha256": "7999c8273862d22588d0ee9f4a309e0161e333c55d1adf5a697d8e36511e7d0e"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/uniform-exact.u8": {
+      "bytes": 1344,
+      "sha256": "ad760a503cd4b077e2f3b1bbb9b3bab6f16e9ca43395e18cfe3cc4be4eac7f81"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/seeded-exact.u8": {
+      "bytes": 160,
+      "sha256": "d45d001c091a7c41ad947a2f3ac711008eaad6c1c6f8cbfa497c660cf9769dab"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/experiment.json": {
+      "bytes": 6131,
+      "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/input-freeze.json": {
+      "bytes": 346,
+      "sha256": "101141351dda8abb047c8d045afbdd8b1bef58a7dbbbb3c39e338d58211d8ff8"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/contract.md": {
+      "bytes": 11462,
+      "sha256": "7652688126ab36722ba4e1783ceb701dc860561c4f92a7d396a412f5cdefea8d"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/source-qualification.json": {
+      "bytes": 6512,
+      "sha256": "e339cb9442821f8c3aad99d0ad1be91b63912359d03902313bd459db330ba153"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/unit-refusals.json": {
+      "bytes": 1907,
+      "sha256": "06e850348d9e6f39fbaf94e1f2da185befc350c395cbb2c2446d678edacb930a"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/endpoint-enclosure-v1.json": {
+      "bytes": 3143,
+      "sha256": "93b6df1ec5b6d1d8c5d4235fc17c86a191cc1d01a35682b6419a57744beb91e4"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/sampling-call-closure-carry.json": {
+      "bytes": 2725,
+      "sha256": "ffbbc9660e271ad7f9572e73f7c9146b0015afea8d9036f708453f333c53ec98"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/fixtures/robotics/locomotion-gaussian/reference.json": {
+      "bytes": 2701,
+      "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+    },
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_gaussian_reference.py": {
+      "bytes": 18680,
+      "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+    }
+  },
+  "experiment": {
+    "bytes": 6131,
+    "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+  },
+  "independent_reference": {
+    "bytes": 2701,
+    "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+  },
+  "compiler": {
+    "bytes": 3012376,
+    "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+  },
+  "counts": {
+    "density": 960,
+    "uniforms": 1344,
+    "seeded": 160,
+    "ratio": 640
+  },
+  "seconds": 0.009585374966263771
+}

@@ -1,0 +1,34 @@
+#load "fixtures.coax";
+#load "gaussian-fixtures.coax";
+#authority;
+#test "Gaussian density standard scores and translation have independent literal values" {
+ out:[1]RgpDensity;#assert rgp_density_raw(0,0,0,out[..])==RgpStatus.ok && out[0].logp.value== -0.9189385332046728 && f64_bits(out[0].score_mean.value)==0 && out[0].score_logstd.value== -1 && out[0].entropy.value==1.4189385332046727;
+ for sign:[2]f64.[-1,1] {#assert rgp_density_raw(2,0,2+sign,out[..])==RgpStatus.ok && out[0].logp.value== -1.4189385332046727 && out[0].score_mean.value==sign && out[0].score_logstd.value==0 && out[0].entropy.value==1.4189385332046727;}
+ #assert rgp_density_raw(-2,0,0,out[..])==RgpStatus.ok && out[0].logp.value== -2.9189385332046727 && out[0].score_mean.value==2 && out[0].score_logstd.value==3;
+}
+#test "Gaussian equal mean/action canonicalizes displacement but preserves its declared entropy order" {
+ out:[1]RgpDensity;negative_zero:=f64_from_bits(0x8000000000000000);for mean:[3]f64.[0,negative_zero,16] {for ls:[3]f64.[-4,0,2] {#assert rgp_density_raw(mean,ls,mean,out[..])==RgpStatus.ok && f64_bits(out[0].score_mean.value)==0 && out[0].score_logstd.value== -1 && out[0].logp.value==(-ls)-0.9189385332046728 && out[0].entropy.value==ls+1.4189385332046727;}}
+ #assert rgp_density_raw(negative_zero,0,0,out[..])==RgpStatus.ok && f64_bits(out[0].score_mean.value)==0;
+ #assert rgp_density_raw(0,0,negative_zero,out[..])==RgpStatus.ok && f64_bits(out[0].score_mean.value)==0;
+ #assert rgp_density_raw(0,0,f64_from_bits(0x8000000000000001),out[..])==RgpStatus.ok && f64_bits(out[0].score_mean.value)==0x8000000000000001;
+}
+#test "Gaussian density typed raw snapshots and numeric endpoint admission are atomic" {
+ mean:RgpAction;action:RgpAction;ls:rlu.Quantity(UnitOne,f64);mean.value=1;action.value=2;ls.value=0;out:[1]RgpDensity;other:[1]RgpDensity;#assert rgp_density(mean,ls,action,out[..])==RgpStatus.ok && rgp_density_raw(1,0,2,other[..])==RgpStatus.ok;rgp_density_same(out[0],other[0]);
+ for m:[2]f64.[-16,16] {for x:[2]f64.[-128,128] {for logstd:[2]f64.[-4,2] {#assert rgp_density_raw(m,logstd,x,out[..])==RgpStatus.ok;}}}
+ poison:=[2]RgpDensity.[rgp_density_poison(),rgp_density_poison()];#assert rgp_density_raw(17,3,129,poison[..])==RgpStatus.shape;for bad:[2]f64.[-16.000001,16.000001] {#assert rgp_density_raw(bad,0,0,poison[0..<1])==RgpStatus.range;}for bad:[2]f64.[-4.000001,2.000001] {#assert rgp_density_raw(0,bad,0,poison[0..<1])==RgpStatus.range;}for bad:[2]f64.[-128.000001,128.000001] {#assert rgp_density_raw(0,0,bad,poison[0..<1])==RgpStatus.range;}for i:0..<2 {rgp_density_same(poison[i],rgp_density_poison());}
+}
+#test "Gaussian density raw exponent predicates expose complete finite-first admission" {
+ #assert rgp_finite(0) && rgp_finite(0x8000000000000000) && rgp_finite(0x7fefffffffffffff) && rgp_finite2(0,0) && rgp_finite3(0,0,0);
+ for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {#assert !rgp_finite(bad) && !rgp_finite2(bad,0) && !rgp_finite2(0,bad) && !rgp_finite3(bad,0,0) && !rgp_finite3(0,bad,0) && !rgp_finite3(0,0,bad);}
+}
+
+// Shared predicates only interpret raw numeric observations; no provenance seal.
+rgp_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+rgp_finite2 :: (a:u64,b:u64)->bool {return rgp_finite(a) && rgp_finite(b);}
+rgp_finite3 :: (a:u64,b:u64,c:u64)->bool {return rgp_finite(a) && rgp_finite(b) && rgp_finite(c);}
+rgp_parameters :: (mean:f64,logstd:f64)->bool {return mean>= -16 && mean<=16 && logstd>= -4 && logstd<=2;}
+rgp_density :: (mean:RgpAction,log_std:rlu.Quantity(UnitOne,f64),action:RgpAction,output:[]RgpDensity)->RgpStatus #export_c {
+ if output.count!=1 {return RgpStatus.shape;}if !rgp_finite3(f64_bits(mean.value),f64_bits(log_std.value),f64_bits(action.value)) {return RgpStatus.number;}if !rgp_parameters(mean.value,log_std.value) || abs(action.value)>128 {return RgpStatus.range;}
+ inv_sigma:=exp(-log_std.value);d:f64=0;if action.value!=mean.value {d=action.value-mean.value;}z:=d*inv_sigma;z2:=z*z;fresh:RgpDensity;fresh.logp.value=((-0.5*z2)-log_std.value)-0.9189385332046728;fresh.score_mean.value=z*inv_sigma;fresh.score_logstd.value=z2-1;fresh.entropy.value=log_std.value+(0.5+0.9189385332046728);output[0]=fresh;return RgpStatus.ok;
+}
+rgp_density_raw :: (mean:f64,log_std:f64,action:f64,output:[]RgpDensity)->RgpStatus #export_c {m:RgpAction;a:RgpAction;l:rlu.Quantity(UnitOne,f64);m.value=mean;a.value=action;l.value=log_std;return rgp_density(m,l,a,output);}

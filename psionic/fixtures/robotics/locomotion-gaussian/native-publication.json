@@ -1,0 +1,59 @@
+{
+  "schema": "psionic.locomotion-gaussian.native-publication.v1",
+  "passed": true,
+  "published_utc": "2026-11-01T04:12:59.645806+00:00",
+  "original_receipt": {
+    "bytes": 35280,
+    "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+  },
+  "byte_exact_copies": true,
+  "artifacts": {
+    "psionic/tests/robotics/locomotion_gaussian_native.c": {
+      "bytes": 11478,
+      "sha256": "78fb3522b7ee0d0782578e47f48c8e27dccc036813e15c3d3c10e5961f0fe5c4"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_native_reference.py": {
+      "bytes": 21038,
+      "sha256": "5f3105a02ffb54625910403dc297af56e8924b7f6a2e971a628241843777d230"
+    },
+    "psionic/tests/robotics/check-locomotion-gaussian.sh": {
+      "bytes": 421,
+      "sha256": "560eb6130fa8c63c86271e65267da93739e7be9b1a822d35871efd429bc6c544"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-qualification.json": {
+      "bytes": 35280,
+      "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-density.bin": {
+      "bytes": 38400,
+      "sha256": "bd8c068a151579425175e90bd7acf3e2ea2dd40d6b24ed9a9f831654199067f5"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-uniform.bin": {
+      "bytes": 32256,
+      "sha256": "f2f5c925a7cb0d9778de15ac18e3305860fbec625c4a9ed3e03668eb4b084b22"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-seeded.bin": {
+      "bytes": 6400,
+      "sha256": "2189134bc09a66a5c680d4186865d265f64f77bac93b522052284023182437b5"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-ratio.bin": {
+      "bytes": 40960,
+      "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-ratio-exp.bin": {
+      "bytes": 5120,
+      "sha256": "ab98eec86add3e006da8468728e45333cd2430104c2c844eb7b39543553b93a9"
+    }
+  },
+  "experiment": {
+    "bytes": 6131,
+    "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+  },
+  "reference": {
+    "bytes": 2701,
+    "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+  },
+  "gate_qualification_file": "gate-qualification.json",
+  "gate_numeric_path_repeated_during_packaging": false,
+  "scope": "First Darwin-arm64 scalar backend profile; finite-top53 numerical sampling, not an exact continuous Gaussian or RNG-independence proof. Decimal probe accuracy precedes exact conditional Rcp composition; no correctly-rounded-libm claim. Overlaps concern output storage from which by-value inputs were copied, not delayed-load read-span aliasing. No optimizer, learner, environment, model, SDK or hardware claim."
+}

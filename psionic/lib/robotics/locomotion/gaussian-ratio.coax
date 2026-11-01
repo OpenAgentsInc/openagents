@@ -1,0 +1,41 @@
+#load "ppo-surrogate.coax";
+#load "gaussian-density.coax";
+#authority;
+#test "Gaussian log-ratio adapter exposes zero exact loss composition and detached roles" {
+ out:[1]RlrOutput;#assert rlr_surrogate_raw(0,0,2,0.25,out[..])==RlrStatus.ok && f64_bits(out[0].log_ratio.value)==0 && out[0].ratio.value==1 && out[0].objective.surrogate.value==2 && out[0].objective.loss.value== -2 && out[0].objective.dloss_dlogp.value== -2 && out[0].objective.clipped_ratio.value==1 && out[0].objective.clipped_active==0;
+ #assert rlr_surrogate_raw(1,0,2,0.25,out[..])==RlrStatus.ok && out[0].log_ratio.value==1 && abs(out[0].ratio.value-2.718281828459045)<1e-14 && out[0].objective.surrogate.value==2.5 && out[0].objective.loss.value== -2.5 && out[0].objective.dloss_dlogp.value==0 && out[0].objective.clipped_ratio.value==1.25 && out[0].objective.clipped_active==1;
+ #assert rlr_surrogate_raw(0,1,-2,0.25,out[..])==RlrStatus.ok && out[0].log_ratio.value== -1 && out[0].objective.loss.value==1.5 && out[0].objective.clipped_ratio.value==0.75 && out[0].objective.clipped_active==1;
+}
+#test "Gaussian inward log interval has exact inclusive endpoint bits and adjacent exclusions" {
+ lower:=rlr_lower();upper:=rlr_upper();#assert f64_bits(lower)==0xc02bb9d3beb8c86b && f64_bits(upper)==0x40062e42fefa39ef && rlr_log_interval(lower) && rlr_log_interval(upper) && !rlr_log_interval(f64_from_bits(f64_bits(lower)+1)) && !rlr_log_interval(f64_from_bits(f64_bits(upper)+1)) && rlr_log_interval(f64_from_bits(f64_bits(lower)-1)) && rlr_log_interval(f64_from_bits(f64_bits(upper)-1));
+ out:=[1]RlrOutput.[rlr_poison()];#assert rlr_surrogate_raw(f64_from_bits(f64_bits(lower)+1),0,1,0.25,out[..])==RlrStatus.range && rlr_surrogate_raw(f64_from_bits(f64_bits(upper)+1),0,1,0.25,out[..])==RlrStatus.range;rlr_same(out[0],rlr_poison());
+ // Public admission is based on REALIZED backend rho, without clamping.
+ for endpoint:[2]f64.[lower,upper] {rho:=exp(endpoint);status:=rlr_surrogate_raw(endpoint,0,1,0.25,out[..]);if rlr_ratio_ok(f64_bits(rho)) {#assert status==RlrStatus.ok && f64_bits(out[0].ratio.value)==f64_bits(rho);}else {#assert status==RlrStatus.range;}}
+}
+#test "Gaussian log-ratio does not cap individual finite logp and handles subtraction overflow as range" {
+ out:=[2]RlrOutput.[rlr_poison(),rlr_poison()];max:=f64_from_bits(0x7fefffffffffffff);#assert rlr_surrogate_raw(max,max,-2,0,out[0..<1])==RlrStatus.ok && out[0].log_ratio.value==0 && out[0].ratio.value==1 && out[0].objective.loss.value==2;
+ out[0]=rlr_poison();#assert rlr_surrogate_raw(max,-max,1,0,out[0..<1])==RlrStatus.range && rlr_surrogate_raw(-max,max,1,0,out[0..<1])==RlrStatus.range;for i:0..<2 {rlr_same(out[i],rlr_poison());}
+ negative_zero:=f64_from_bits(0x8000000000000000);#assert rlr_surrogate_raw(negative_zero,0,0,0,out[0..<1])==RlrStatus.ok && f64_bits(out[0].log_ratio.value)==0x8000000000000000 && out[0].ratio.value==1 && f64_bits(out[0].objective.loss.value)==0;
+}
+#test "Gaussian ratio typed raw scalar transport shape cap and epsilon refusals are fully atomic" {
+ a:RgaReward;newp:rlu.Quantity(UnitOne,f64);oldp:rlu.Quantity(UnitOne,f64);epsilon:rlu.Quantity(UnitOne,f64);newp.value=1;oldp.value=0;a.value=2;epsilon.value=0.25;typed:[1]RlrOutput;raw:[1]RlrOutput;#assert rlr_surrogate(newp,oldp,a,epsilon,typed[..])==RlrStatus.ok && rlr_surrogate_raw(1,0,2,0.25,raw[..])==RlrStatus.ok;rlr_same(typed[0],raw[0]);out:=[2]RlrOutput.[rlr_poison(),rlr_poison()];#assert rlr_surrogate_raw(100,0,1000000001,2,out[..])==RlrStatus.shape;for bad:[2]f64.[-1000000001,1000000001] {#assert rlr_surrogate_raw(0,0,bad,0,out[0..<1])==RlrStatus.range;}for bad:[2]f64.[-0.000001,1.000001] {#assert rlr_surrogate_raw(0,0,0,bad,out[0..<1])==RlrStatus.range;}for i:0..<2 {rlr_same(out[i],rlr_poison());}
+}
+#test "Gaussian ratio raw finite and realized-ratio predicates observe every numeric lane and endpoint" {
+ #assert rlr_finite4(0,0,0,0);for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {#assert !rlr_finite4(bad,0,0,0) && !rlr_finite4(0,bad,0,0) && !rlr_finite4(0,0,bad,0) && !rlr_finite4(0,0,0,bad) && !rlr_ratio_ok(bad);}
+ minimum:f64=0.00000095367431640625;maximum:f64=16;#assert rlr_ratio_ok(f64_bits(minimum)) && rlr_ratio_ok(f64_bits(maximum)) && !rlr_ratio_ok(f64_bits(minimum)-1) && !rlr_ratio_ok(f64_bits(maximum)+1);
+}
+
+#test "Gaussian ratio pre-exp objective domain has independent inclusive observations" {
+ #assert rlr_objective_domain(-1000000000,0) && rlr_objective_domain(1000000000,1) && !rlr_objective_domain(-1000000001,0) && !rlr_objective_domain(1000000001,0) && !rlr_objective_domain(0,-0.000001) && !rlr_objective_domain(0,1.000001);
+ out:[1]RlrOutput;#assert rlr_surrogate_raw(0,0,-1000000000,0,out[..])==RlrStatus.ok && rlr_surrogate_raw(0,0,1000000000,1,out[..])==RlrStatus.ok;
+}
+
+rlr_lower :: ()->f64 {return f64_from_bits(0xc02bb9d3beb8c86b);}
+rlr_upper :: ()->f64 {return f64_from_bits(0x40062e42fefa39ef);}
+rlr_finite4 :: (a:u64,b:u64,c:u64,d:u64)->bool {return rgp_finite(a) && rgp_finite(b) && rgp_finite(c) && rgp_finite(d);}
+rlr_log_interval :: (value:f64)->bool {return rgp_finite(f64_bits(value)) && value>=rlr_lower() && value<=rlr_upper();}
+rlr_ratio_ok :: (bits:u64)->bool {if !rgp_finite(bits) {return false;}rho:=f64_from_bits(bits);return rho>=0.00000095367431640625 && rho<=16;}
+// Finite arguments required; explicit pre-exp policy, not a provenance certificate.
+rlr_objective_domain :: (advantage:f64,epsilon:f64)->bool {return abs(advantage)<=1000000000 && epsilon>=0 && epsilon<=1;}
+rlr_surrogate :: (new_logp:rlu.Quantity(UnitOne,f64),old_logp:rlu.Quantity(UnitOne,f64),advantage:RgaReward,epsilon:rlu.Quantity(UnitOne,f64),output:[]RlrOutput)->RlrStatus #export_c {if output.count!=1 {return RlrStatus.shape;}if !rlr_finite4(f64_bits(new_logp.value),f64_bits(old_logp.value),f64_bits(advantage.value),f64_bits(epsilon.value)) {return RlrStatus.number;}if !rlr_objective_domain(advantage.value,epsilon.value) {return RlrStatus.range;}difference:=new_logp.value-old_logp.value;if !rlr_log_interval(difference) {return RlrStatus.range;}rho:rlu.Quantity(UnitOne,f64);rho.value=exp(difference);if !rlr_ratio_ok(f64_bits(rho.value)) {return RlrStatus.range;}objective:[1]RcpOutput;status:=rcp_surrogate(rho,advantage,epsilon,objective[..]);if status!=RcpStatus.ok {return cast(RlrStatus)(cast(int)status);}fresh:RlrOutput;fresh.log_ratio.value=difference;fresh.ratio=rho;fresh.objective=objective[0];output[0]=fresh;return RlrStatus.ok;}
+rlr_surrogate_raw :: (new_logp:f64,old_logp:f64,advantage:f64,epsilon:f64,output:[]RlrOutput)->RlrStatus #export_c {n:rlu.Quantity(UnitOne,f64);o:rlu.Quantity(UnitOne,f64);a:RgaReward;e:rlu.Quantity(UnitOne,f64);n.value=new_logp;o.value=old_logp;a.value=advantage;e.value=epsilon;return rlr_surrogate(n,o,a,e,output);}

@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_gaussian_bad_action.coax:2:120: error[E0317]: argument 1 of 'rgp_density' is RgpAction, given RgaReward
+  main :: () {mean:RgaReward;action:RgpAction;log_std:rlu.Quantity(UnitOne,f64);output:[1]RgpDensity;status:=rgp_density(mean,log_std,action,output[..]);}
+                                                                                                                         ^
+1 error

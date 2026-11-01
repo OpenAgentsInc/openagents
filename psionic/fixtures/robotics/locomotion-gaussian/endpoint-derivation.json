@@ -1,0 +1,23 @@
+{
+  "schema": "psionic.locomotion-gaussian.endpoint-derivation.v1",
+  "passed": true,
+  "execution_count": 1,
+  "archival_note": "Exact initial inline Python body and its stdout recovered from the tool-call transcript; original derivation was NOT rerun for archival. No product calls.",
+  "producer": {
+    "bytes": 1016,
+    "sha256": "ff02a7cd7bf99488d2d17667cebff2cd7aafe1f014edaae78cacf119130a64bd"
+  },
+  "stdout": {
+    "bytes": 3851,
+    "sha256": "31c18231e0d1306006c164ae8dadea5ee3a72c2e44ea9e68c9fa9dd50e172e28"
+  },
+  "precisions": [
+    80,
+    160,
+    240
+  ],
+  "lower_bits": "c02bb9d3beb8c86b",
+  "upper_bits": "40062e42fefa39ef",
+  "stability_all_precisions_agree": true,
+  "boundary_caveat": "Closest inward lower has ideal exp only 1.8806603354642207e-23 above2^-20; actual libm admission is conditioned on independently checked test-probe rho."
+}

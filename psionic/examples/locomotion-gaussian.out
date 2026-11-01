@@ -1,0 +1,7 @@
+normalized scalar Gaussian math; no environment or learner
+density at mean: logp -918939, mean score 0, logstd score -1000000, entropy 1418939 micro-units
+uniform fixture: action 3177410, standardized 1177410 micro-units
+seeded zero radius: mean sign preserved 1, z bits 0, next counter 2
+log-ratio fixture: logratio 1000000, ratio 2718282, clipped ratio 1250000, active 1
+loss -2500000, formal logp gradient 0 micro-reward
+finite-grid samples are not exact continuous-Gaussian or physical-action evidence

@@ -1,0 +1,10 @@
+// Test-only intrinsic transport for independent conditional composition proof.
+#load "../../lib/robotics/locomotion-gaussian.coax";
+#authority;
+#test "Test-only exp transport has exact zero and atomic shape finite interval admission" {
+ out:=[2]f64.[101,102];#assert rlr_exp_probe(0,out[..])==RlrStatus.shape && out[0]==101 && out[1]==102;#assert rlr_exp_probe(0,out[0..<1])==RlrStatus.ok && out[0]==1 && out[1]==102;out[0]=101;
+ #assert rlr_exp_probe(f64_from_bits(f64_bits(rlr_lower())+1),out[0..<1])==RlrStatus.range && rlr_exp_probe(f64_from_bits(f64_bits(rlr_upper())+1),out[0..<1])==RlrStatus.range && out[0]==101;
+ maximum:=f64_from_bits(0x7fefffffffffffff);overflow:=maximum+maximum;#assert rlr_exp_probe(overflow,out[0..<1])==RlrStatus.number && out[0]==101;
+ for endpoint:[2]f64.[rlr_lower(),rlr_upper()] {#assert rlr_exp_probe(endpoint,out[0..<1])==RlrStatus.ok && f64_bits(out[0])==f64_bits(exp(endpoint));}
+}
+rlr_exp_probe :: (difference:f64,output:[]f64)->RlrStatus #export_c {if output.count!=1 {return RlrStatus.shape;}if !rgp_finite(f64_bits(difference)) {return RlrStatus.number;}if !rlr_log_interval(difference) {return RlrStatus.range;}output[0]=exp(difference);return RlrStatus.ok;}

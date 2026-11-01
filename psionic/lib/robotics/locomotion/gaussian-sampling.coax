@@ -1,0 +1,34 @@
+#load "gaussian-density.coax";
+#authority;
+#test "Box Muller zero radial branch copies mean bytes including negative zero after complete admission" {
+ out:[1]RgpValue;negative_zero:=f64_from_bits(0x8000000000000000);for radial:[2]f64.[0,negative_zero] {for mean:[3]f64.[-16,negative_zero,16] {#assert rgp_from_uniforms_raw(mean,2,radial,0.75,out[..])==RgpStatus.ok && f64_bits(out[0].action.value)==f64_bits(mean) && f64_bits(out[0].z.value)==0;}}
+ tiny:=f64_from_bits(1);#assert 1.0-tiny==1;#assert rgp_from_uniforms_raw(negative_zero,0,tiny,0,out[..])==RgpStatus.ok && f64_bits(out[0].z.value)==0x8000000000000000 && f64_bits(out[0].action.value)==0x8000000000000000;#assert rgp_from_uniforms_raw(negative_zero,0,tiny,0.5,out[..])==RgpStatus.ok && f64_bits(out[0].z.value)==0 && f64_bits(out[0].action.value)==0;
+}
+#test "Box Muller normalized transform has analytic sign magnitude scale and exact rounded angle interpretation" {
+ out:[1]RgpValue;#assert rgp_from_uniforms_raw(0,0,0.5,0,out[..])==RgpStatus.ok && abs(out[0].z.value-1.1774100225154747)<3e-15 && out[0].action.value==out[0].z.value;
+ #assert rgp_from_uniforms_raw(2,0,0.5,0.5,out[..])==RgpStatus.ok && abs(out[0].z.value+1.1774100225154747)<3e-15 && abs(out[0].action.value-0.8225899774845253)<3e-15;
+ #assert rgp_from_uniforms_raw(0,0,0.5,0.25,out[..])==RgpStatus.ok && out[0].z.value>0 && abs(out[0].z.value-7.209557076787946e-17)<2e-31;
+ #assert rgp_from_uniforms_raw(0,0,0.5,0.75,out[..])==RgpStatus.ok && out[0].z.value<0;
+ max_uniform:=f64_from_bits(0x3fefffffffffffff);#assert rgp_from_uniforms_raw(16,2,max_uniform,0,out[..])==RgpStatus.ok && out[0].action.value<80 && out[0].action.value>79;
+}
+#test "Box Muller typed/raw wrappers and all uniform hyper endpoints preserve poison on refusal" {
+ mean:RgpAction;ls:rlu.Quantity(UnitOne,f64);u:rlu.Quantity(UnitOne,f64);v:rlu.Quantity(UnitOne,f64);mean.value=2;ls.value=1;u.value=0.5;v.value=0.125;out:[1]RgpValue;raw:[1]RgpValue;#assert rgp_from_uniforms(mean,ls,u,v,out[..])==RgpStatus.ok && rgp_from_uniforms_raw(2,1,0.5,0.125,raw[..])==RgpStatus.ok;rgp_value_same(out[0],raw[0]);poison:=[2]RgpValue.[rgp_value_poison(),rgp_value_poison()];#assert rgp_from_uniforms_raw(17,3,1,1,poison[..])==RgpStatus.shape;
+ for bad:[2]f64.[-0.000001,1] {#assert rgp_from_uniforms_raw(0,0,bad,0,poison[0..<1])==RgpStatus.range && rgp_from_uniforms_raw(0,0,0,bad,poison[0..<1])==RgpStatus.range;}#assert rgp_from_uniforms_raw(17,0,0,0,poison[0..<1])==RgpStatus.range && rgp_from_uniforms_raw(0,3,0,0,poison[0..<1])==RgpStatus.range;for i:0..<2 {rgp_value_same(poison[i],rgp_value_poison());}
+ #assert rgp_finite4(0,0,0,0);for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {#assert !rgp_finite4(bad,0,0,0) && !rgp_finite4(0,bad,0,0) && !rgp_finite4(0,0,bad,0) && !rgp_finite4(0,0,0,bad);}
+}
+#test "Seeded Box Muller consumes exactly two qualified counter draws and stages next state with value" {
+ out:=[2]RgpDraw.[rgp_draw_poison(),rgp_draw_poison()];for seed:[3]CrSeed.[CrSeed.{},CrSeed.{seed=7,counter=13},CrSeed.{seed=0xffffffffffffffff,counter=18446744073709551613}] {#assert rgp_sample_raw(seed,2,1,out[0..<1])==RgpStatus.ok && out[0].next.seed==seed.seed && out[0].next.counter==seed.counter+2;first:=cr_draw(seed);second:=cr_draw(first.next);expected:[1]RgpValue;#assert rgp_from_uniforms_raw(2,1,first.value,second.value,expected[..])==RgpStatus.ok && f64_bits(out[0].action.value)==f64_bits(expected[0].action.value) && f64_bits(out[0].z.value)==f64_bits(expected[0].z.value);}
+ rgp_draw_same(out[1],rgp_draw_poison());negative_zero:=f64_from_bits(0x8000000000000000);#assert rgp_sample_raw(CrSeed.{seed=0x61c8864680b583eb},negative_zero,2,out[0..<1])==RgpStatus.ok && f64_bits(out[0].action.value)==0x8000000000000000 && f64_bits(out[0].z.value)==0 && out[0].next.counter==2;
+}
+#test "Seeded Box Muller shape numeric and domain admission precede counter exhaustion without publication" {
+ out:=[2]RgpDraw.[rgp_draw_poison(),rgp_draw_poison()];bad:=CrSeed.{seed=99,counter=18446744073709551615};#assert rgp_sample_raw(bad,17,3,out[..])==RgpStatus.shape && rgp_sample_raw(bad,17,0,out[0..<1])==RgpStatus.range && rgp_sample_raw(bad,0,3,out[0..<1])==RgpStatus.range;for counter:[2]u64.[18446744073709551614,18446744073709551615] {#assert rgp_sample_raw(CrSeed.{seed=99,counter=counter},0,0,out[0..<1])==RgpStatus.exhausted;}for i:0..<2 {rgp_draw_same(out[i],rgp_draw_poison());}
+ mean:RgpAction;ls:rlu.Quantity(UnitOne,f64);mean.value=1;ls.value=0;typed:[1]RgpDraw;raw:[1]RgpDraw;#assert rgp_sample(CrSeed.{seed=7},mean,ls,typed[..])==RgpStatus.ok && rgp_sample_raw(CrSeed.{seed=7},1,0,raw[..])==RgpStatus.ok;rgp_draw_same(typed[0],raw[0]);
+}
+
+rgp_finite4 :: (a:u64,b:u64,c:u64,d:u64)->bool {return rgp_finite(a) && rgp_finite(b) && rgp_finite(c) && rgp_finite(d);}
+// Trusted finite/domain profile. Only literal radial zero copies mean bytes.
+rgp_transform_owned :: (mean:f64,logstd:f64,radial:f64,angle:f64)->RgpValue {fresh:RgpValue;if radial==0 {fresh.action.value=mean;return fresh;}w:=1.0-radial;theta:=6.283185307179586*angle;radius:=sqrt(-2.0*log(w));z:=radius*cos(theta);sigma:=exp(logstd);fresh.z.value=z;fresh.action.value=mean+sigma*z;return fresh;}
+rgp_from_uniforms :: (mean:RgpAction,log_std:rlu.Quantity(UnitOne,f64),radial:rlu.Quantity(UnitOne,f64),angle:rlu.Quantity(UnitOne,f64),output:[]RgpValue)->RgpStatus #export_c {if output.count!=1 {return RgpStatus.shape;}if !rgp_finite4(f64_bits(mean.value),f64_bits(log_std.value),f64_bits(radial.value),f64_bits(angle.value)) {return RgpStatus.number;}if !rgp_parameters(mean.value,log_std.value) || radial.value<0 || radial.value>=1 || angle.value<0 || angle.value>=1 {return RgpStatus.range;}output[0]=rgp_transform_owned(mean.value,log_std.value,radial.value,angle.value);return RgpStatus.ok;}
+rgp_from_uniforms_raw :: (mean:f64,log_std:f64,radial:f64,angle:f64,output:[]RgpValue)->RgpStatus #export_c {m:RgpAction;l:rlu.Quantity(UnitOne,f64);r:rlu.Quantity(UnitOne,f64);a:rlu.Quantity(UnitOne,f64);m.value=mean;l.value=log_std;r.value=radial;a.value=angle;return rgp_from_uniforms(m,l,r,a,output);}
+rgp_sample :: (seed:CrSeed,mean:RgpAction,log_std:rlu.Quantity(UnitOne,f64),output:[]RgpDraw)->RgpStatus #export_c {if output.count!=1 {return RgpStatus.shape;}if !rgp_finite2(f64_bits(mean.value),f64_bits(log_std.value)) {return RgpStatus.number;}if !rgp_parameters(mean.value,log_std.value) {return RgpStatus.range;}if seed.counter>(cast(u64)18446744073709551613) {return RgpStatus.exhausted;}first:=cr_draw(seed);second:=cr_draw(first.next);value:=rgp_transform_owned(mean.value,log_std.value,first.value,second.value);fresh:RgpDraw;fresh.action=value.action;fresh.z=value.z;fresh.next=second.next;output[0]=fresh;return RgpStatus.ok;}
+rgp_sample_raw :: (seed:CrSeed,mean:f64,log_std:f64,output:[]RgpDraw)->RgpStatus #export_c {m:RgpAction;l:rlu.Quantity(UnitOne,f64);m.value=mean;l.value=log_std;return rgp_sample(seed,m,l,output);}

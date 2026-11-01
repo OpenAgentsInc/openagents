@@ -1,0 +1,167 @@
+{
+  "schema": "psionic.locomotion-gaussian.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "source_files": {
+    "psionic/lib/robotics/locomotion/gaussian-types.coax": {
+      "bytes": 689,
+      "sha256": "bb4d00afba9f37887455a44491febaa2d582381436c295dfc0d37ac802bb720c"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-fixtures.coax": {
+      "bytes": 1342,
+      "sha256": "5df76b04fbeab70f88ffe72fe78b2faf50f52265e9d177d8839467db3653ea6f"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-density.coax": {
+      "bytes": 4500,
+      "sha256": "68d012f2f3e38c75e2905ba0ad3300722e24dc7e5cec87b545e384a091a08f18"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-sampling.coax": {
+      "bytes": 6944,
+      "sha256": "abcd98010519a83c02a38ba60c2b287ce4ff6f35d360013655d38ab7ec746483"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-ratio.coax": {
+      "bytes": 6780,
+      "sha256": "a50570d463033b569ebfc866d96236203faaf4429c2f3d7dc9dd388f15c65bd6"
+    },
+    "psionic/lib/robotics/locomotion-gaussian.coax": {
+      "bytes": 205,
+      "sha256": "cac2b51ef0c77c9705dc686560a25dbb470843628fa73c73acdb00cd30b55d9e"
+    },
+    "psionic/tests/robotics/locomotion-gaussian-native.coax": {
+      "bytes": 1205,
+      "sha256": "b7b7d92f310427ea6dc970ca8955f339a64b40f7d02fe2e48f6b330d5a3eec77"
+    }
+  },
+  "contract": {
+    "bytes": 11462,
+    "sha256": "7652688126ab36722ba4e1783ceb701dc860561c4f92a7d396a412f5cdefea8d"
+  },
+  "public_math_groups": 15,
+  "public_math_root_scopes": {
+    "gaussian-density": 42,
+    "gaussian-sampling": 48,
+    "gaussian-ratio": 40
+  },
+  "public_math_actual_mutants": 130,
+  "test_transport_groups": 1,
+  "test_transport_root_scopes": {
+    "locomotion-gaussian-native": 7
+  },
+  "test_transport_actual_mutants": 7,
+  "killed": 137,
+  "survived": 0,
+  "aggregate_body_sites": 0,
+  "aggregate_mutation_run": false,
+  "runs": {
+    "density-first": {
+      "stdout": {
+        "bytes": 114,
+        "sha256": "9673552a998ed6aa0d23e3a707349e053e29a3e837db5f4819e1b4660f6994f7"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 42,
+      "killed": 42,
+      "survived": 0
+    },
+    "density-corrected": {
+      "stdout": {
+        "bytes": 114,
+        "sha256": "9673552a998ed6aa0d23e3a707349e053e29a3e837db5f4819e1b4660f6994f7"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 42,
+      "killed": 42,
+      "survived": 0
+    },
+    "sampling-first": {
+      "stdout": {
+        "bytes": 114,
+        "sha256": "969652377a8712ec70b4d729eef0054c36f465e9b07d2eb5b70be96339cf37d7"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 48,
+      "killed": 48,
+      "survived": 0
+    },
+    "ratio-first": {
+      "stdout": {
+        "bytes": 6050,
+        "sha256": "3a616c245c1fe85ec6aa54830105343c035cfc8e41a31b49557747d1e61c60c7"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 40,
+      "killed": 36,
+      "survived": 4
+    },
+    "ratio-second": {
+      "stdout": {
+        "bytes": 114,
+        "sha256": "07a37c773e28b10190d0ba60d5f03a79691464b5b23b77e018fb174d076ca628"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 40,
+      "killed": 40,
+      "survived": 0
+    },
+    "probe-first": {
+      "stdout": {
+        "bytes": 112,
+        "sha256": "ef0c1d30112e74dff4c7be20737f9a99823cab8351003afc7b8277f63e2e2157"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 7,
+      "killed": 7,
+      "survived": 0
+    }
+  },
+  "units": {
+    "bytes": 1907,
+    "sha256": "06e850348d9e6f39fbaf94e1f2da185befc350c395cbb2c2446d678edacb930a"
+  },
+  "history": [
+    "Initial density42passed under Root original C=.9189385332046727; Root corrected its correctly-rounded-real label to C=.9189385332046728 BEFORE expected/native comparison. Only changed densitycontext42wasqualifiedagain; first context receipt retained. H=RN(.5+C)unchanged.",
+    "Sampling source/call closure unchanged; its dependency helpers rgp_finite/2/3 and rgp_parameters are byte-identical across Ccorrection; new corrected densityproof qualifies changed density arithmetic/checks. Sampling48proof carried,notrerun.",
+    "Initial ratio4observationalsurvivors closed with explicit pre-exp objective-domain helper and inclusive endpoint observations; no equivalent waiver.",
+    "Transport7is new checked raw exp observation for conditional proof,not fourth Gaussian policy proof or libm oracle."
+  ],
+  "original_C_context_reconstructed_source": {
+    "bytes": 4500,
+    "sha256": "917e53f22ef360a7e3b0a8a99321818ea878b6c04576bd9dc97a5bf2a1769f16",
+    "scope": "Byte reconstruction by reversing ONLY documented C literal correction; first stdout/stderr identities retained."
+  },
+  "numerical_contract": [
+    "Corrected C bits3fed67f1c864beb5;hostscalar-libmF64,no ownlibm/crossplatformaccuracyclaim",
+    "Normalized action/mean nominalRgpAction,finiteallinputsfirst,shape/rangebefore arithmetic; atomic stagedoutputs",
+    "Densityscoresformal detached-action derivatives,notquantized-output or plant derivatives",
+    "Pureuniformdomainallbinary64[0,1);seededsamplertop53only;explicitUrad\u00b10copiesmean bytes/z+0,tinyNONZEROw1followsIEEErecipe",
+    "Seedbyvalue/headroommax\u22122,EXACTLY2carriedcounterdraws,nextseedpublishedwithsample;finite-gridnotexactcontinuousGaussian/independenceproof",
+    "Inwardloginterval plusACTUALexp-ratioadmission,no clamp;testprobe rawexpboundedindependentlythenRcp wordsderivedconditionedonobservedrho",
+    "Old GAE/PPO/RNG/tape/product aggregates unchanged; no old gates, learner, environment, NN orSDK"
+  ],
+  "execution": "Only new source checks/mutations and compiler type refusals; no native oracle/model comparison or expected generation by Flow.",
+  "experiment": {
+    "bytes": 6131,
+    "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+  }
+}

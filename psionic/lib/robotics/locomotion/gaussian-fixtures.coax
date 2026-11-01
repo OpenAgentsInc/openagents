@@ -1,0 +1,9 @@
+#load "gaussian-types.coax";
+rgp_density_poison :: ()->RgpDensity {x:RgpDensity;x.logp.value=101;x.score_mean.value=102;x.score_logstd.value=103;x.entropy.value=104;return x;}
+rgp_density_same :: (a:RgpDensity,b:RgpDensity) {#assert f64_bits(a.logp.value)==f64_bits(b.logp.value) && f64_bits(a.score_mean.value)==f64_bits(b.score_mean.value) && f64_bits(a.score_logstd.value)==f64_bits(b.score_logstd.value) && f64_bits(a.entropy.value)==f64_bits(b.entropy.value);}
+rgp_value_poison :: ()->RgpValue {x:RgpValue;x.action.value=101;x.z.value=102;return x;}
+rgp_value_same :: (a:RgpValue,b:RgpValue) {#assert f64_bits(a.action.value)==f64_bits(b.action.value) && f64_bits(a.z.value)==f64_bits(b.z.value);}
+rgp_draw_poison :: ()->RgpDraw {x:RgpDraw;x.action.value=101;x.z.value=102;x.next=CrSeed.{seed=103,counter=104};return x;}
+rgp_draw_same :: (a:RgpDraw,b:RgpDraw) {#assert f64_bits(a.action.value)==f64_bits(b.action.value) && f64_bits(a.z.value)==f64_bits(b.z.value) && a.next.seed==b.next.seed && a.next.counter==b.next.counter;}
+rlr_poison :: ()->RlrOutput {x:RlrOutput;x.log_ratio.value=101;x.ratio.value=102;x.objective=rcp_poison();return x;}
+rlr_same :: (a:RlrOutput,b:RlrOutput) {#assert f64_bits(a.log_ratio.value)==f64_bits(b.log_ratio.value) && f64_bits(a.ratio.value)==f64_bits(b.ratio.value);rcp_same(a.objective,b.objective);}

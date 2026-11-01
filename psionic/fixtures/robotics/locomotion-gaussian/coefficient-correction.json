@@ -1,0 +1,21 @@
+{
+  "schema": "psionic.gaussian.precomparison-coefficient-correction.v1",
+  "passed": true,
+  "product_calls": 0,
+  "expected_generation_calls": 0,
+  "method": "First Decimal90 .5*ln(2*pi), pi literal to90 significant digits; nearest via correctly-rounded Python Decimal-to-F64.",
+  "exact_decimal": "0.91893853320467274178032973640561763986139747363778341281715154048276569592726039769474330",
+  "nearest_C_decimal": "0.9189385332046728",
+  "nearest_C_hex": "0x1.d67f1c864beb5p-1",
+  "old_C_hex": "0x1.d67f1c864beb4p-1",
+  "nearest_error": "3.878294158067241582230538872020987283718284845951723430407273960230525670E-17",
+  "old_error": "-7.223936088184323822005777808887215841281715154048276569592726039769474330E-17",
+  "two_pi_hex": "0x1.921fb54442d18p+2",
+  "scope": "Correction before native/oracle comparison. No budgets or domains changed; first old-coefficient source proof preserved as nonfinal.",
+  "executed_inline_source_archive": {
+    "bytes": 496,
+    "sha256": "ed0df66032ff3c4e567757ddd68ad64f1dc5f79741cd2e20101b653490595834",
+    "source": "from decimal import Decimal,localcontext\nfrom fractions import Fraction\nwith localcontext() as c:\n c.prec=90\n pi=Decimal('3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825')\n x=(2*pi).ln()/2\n f=float(x)\n print('C exact decimal',x)\n print('nearest C',repr(f),f.hex(),Decimal.from_float(f)-x)\n print('frozen literal',float('0.9189385332046727').hex(),Decimal.from_float(float('0.9189385332046727'))-x)\n print('TWO_PI',repr(float(2*pi)),float(2*pi).hex())\n"
+  },
+  "archive_note": "Source is an archival copy of the first executed inline cell; observed result fields were transcribed from its tool output. No original process stdout file was created. Do not describe this derived JSON as the original stdout bytes."
+}

@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../lib/robotics/locomotion-gaussian.coax";
+locomotion_gaussian_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("normalized scalar Gaussian math; no environment or learner\n");
+// book:begin locomotion-gaussian
+ density:[1]RgpDensity;
+ #assert rgp_density_raw(2,0,2,density[..])==RgpStatus.ok;
+ print("density at mean: logp %, mean score %, logstd score %, entropy % micro-units\n",locomotion_gaussian_micro(density[0].logp.value),locomotion_gaussian_micro(density[0].score_mean.value),locomotion_gaussian_micro(density[0].score_logstd.value),locomotion_gaussian_micro(density[0].entropy.value));
+ value:[1]RgpValue;#assert rgp_from_uniforms_raw(2,0,0.5,0,value[..])==RgpStatus.ok;
+ print("uniform fixture: action %, standardized % micro-units\n",locomotion_gaussian_micro(value[0].action.value),locomotion_gaussian_micro(value[0].z.value));
+ draw:[1]RgpDraw;negative_zero:=f64_from_bits(0x8000000000000000);
+ // This seed's first qualified counter draw has radial uniform exactly zero.
+ #assert rgp_sample_raw(CrSeed.{seed=0x61c8864680b583eb},negative_zero,2,draw[..])==RgpStatus.ok;
+ print("seeded zero radius: mean sign preserved %, z bits %, next counter %\n",(ifx f64_bits(draw[0].action.value)==f64_bits(negative_zero) then 1 else 0),f64_bits(draw[0].z.value),draw[0].next.counter);
+ objective:[1]RlrOutput;#assert rlr_surrogate_raw(1,0,2,0.25,objective[..])==RlrStatus.ok;
+ print("log-ratio fixture: logratio %, ratio %, clipped ratio %, active %\n",locomotion_gaussian_micro(objective[0].log_ratio.value),locomotion_gaussian_micro(objective[0].ratio.value),locomotion_gaussian_micro(objective[0].objective.clipped_ratio.value),objective[0].objective.clipped_active);
+ print("loss %, formal logp gradient % micro-reward\n",locomotion_gaussian_micro(objective[0].objective.loss.value),locomotion_gaussian_micro(objective[0].objective.dloss_dlogp.value));
+// book:end locomotion-gaussian
+ print("finite-grid samples are not exact continuous-Gaussian or physical-action evidence\n");
+}
