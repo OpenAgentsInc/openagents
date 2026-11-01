@@ -1,0 +1,120 @@
+// Chapter 146: noise, diffusion and flow on a mixture of four Gaussians.
+// Schedules and a forward-noised class traced against closed forms, the four
+// objectives' losses on one guess, an affine noise predictor trained per
+// level and class and compared with least squares and the population
+// optimum, DDPM, DDIM and flow samples measured against gates fixed before
+// they ran, the Euler and Heun orders, and a seed that names every sample.
+#import "Basic";
+#load "../lib/diffusion.coax";
+
+T :: 100;                    // diffusion steps of the trained model
+FLOW :: 20;                  // flow grid: t = j / 20
+CELL :: 128;                 // training points a level and class
+N :: 1000;                   // samples a measurement
+SEED_TRAIN :: 1;
+SEED_SAMPLE :: 7;
+r6 :: (v:f64)->f64 {return floor(v*1000000+0.5)/1000000;}
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+line :: (label:string,st:DfStats,class:int) {
+    print("%",label);if class>=0 {print(", class %",class);}
+    print(": mean (%, %), variance %, nearest % % % %, spread % -> gate %\n",
+        r4(st.mean[0]),r4(st.mean[1]),r4(st.var),st.count[0],st.count[1],st.count[2],st.count[3],r4(st.within),ifx df_gate(st,class) then "pass" else "fail");
+}
+measure :: (label:string,kind:DfSampler,s:DfSchedule,m:DfModel,class:int,steps:int,out:[]f64)->bool {
+    status:=df_samples(kind,s,m,class,steps,SEED_SAMPLE,N,out);
+    if status!=DfStatus.ok {print("%: %\n",label,status);return false;}
+    st:=df_stats(out,N);line(label,st,class);return df_gate(st,class);
+}
+
+main :: () {
+    // book:begin schedules
+    lin:=df_linear(4,0.1,0.4);cos4:=df_cosine(4);
+    print("linear, 4 steps: abar % % % %\n",r6(lin.abar[1]),r6(lin.abar[2]),r6(lin.abar[3]),r6(lin.abar[4]));
+    print("cosine, 4 steps: beta % % % %\n",r6(cos4.beta[1]),r6(cos4.beta[2]),r6(cos4.beta[3]),r6(cos4.beta[4]));
+    print("cosine, 4 steps: abar % % % %\n",r6(cos4.abar[1]),r6(cos4.abar[2]),r6(cos4.abar[3]),r6(cos4.abar[4]));
+    s:=df_cosine(T);print("cosine, % steps: abar_1 %, abar_50 %, abar_100 %\n",T,r6(s.abar[1]),r6(s.abar[50]),s.abar[100]);
+    // book:end schedules
+
+    // book:begin forward
+    print("normal draw, seed 0, k 0: %\n",df_normal(0,0));
+    // Class 0 noised to abar 0.64: 4,000 points against mean 0.8 * (2, 0) and variance 0.64 * 0.25 + 0.36.
+    sum:[2]f64;sq:=0.0;
+    for i:0..<4000 {x:=df_noise(df_data(2,cast(u64)(2*i),0),[2]f64.[df_normal(2,cast(u64)(4*i+2)),df_normal(2,cast(u64)(4*i+3))],0.8,0.6);sum[0]+=x[0];sum[1]+=x[1];sq+=(x[0]-1.6)*(x[0]-1.6)+x[1]*x[1];}
+    print("forward, class 0 at alpha 0.8: mean (%, %), variance %; closed form (1.6, 0), 0.52\n",r4(sum[0]/4000),r4(sum[1]/4000),r4(sq/8000));
+    // book:end forward
+
+    // book:begin objectives
+    x0:=[2]f64.[2,0];eps:=[2]f64.[1,-1];x:=df_noise(x0,eps,0.8,0.6);guess:=[2]f64.[0.5,-0.5];
+    print("x = 0.8 (2, 0) + 0.6 (1, -1) = (%, %)\n",x[0],x[1]);
+    names:=[4]string.["eps","x0","v","flow"];
+    for o:0..<4 {
+        ob:=cast(DfObjective)o;p:=df_restate(DfObjective.eps,ob,guess,x,0.8,0.6);
+        print("  guess as %: (%, %), loss %\n",names[o],r6(p[0]),r6(p[1]),r6(df_loss(ob,p,x0,eps,0.8,0.6)));
+    }
+    best:=df_posterior(x,0.8,0.6,0);mix:=df_posterior(x,0.8,0.6,-1);
+    print("  best guess for class 0: eps (%, %), x0 (%, %)\n",r6(best.eps[0]),r6(best.eps[1]),r6(best.x0[0]),r6(best.x0[1]));
+    print("  best guess for the mixture: eps (%, %), x0 (%, %)\n",r6(mix.eps[0]),r6(mix.eps[1]),r6(mix.x0[0]),r6(mix.x0[1]));
+    // book:end objectives
+
+    // book:begin train
+    al:[T+1]f64;sg:[T+1]f64;w:[12*(T+1)]f64;scratch:[4*CELL]f64;
+    m:=df_vp_model(s,DfObjective.eps,al[..],sg[..],w[..]);
+    print("train the noise predictor: % levels x 4 classes, % points, % steps at rate %: %\n",T+1,CELL,DF_ITERATIONS,DF_RATE,
+        df_train(m,SEED_TRAIN,CELL,DF_ITERATIONS,DF_RATE,scratch[..]));
+    xs:=scratch[0..<2*CELL];ys:=scratch[2*CELL..<4*CELL];gap:=0.0;off:=0.0;where:=0;
+    for j:0..<T+1 {for c:0..<4 {
+        df_cell(SEED_TRAIN,j,c,DfObjective.eps,al[j],sg[j],xs,ys);f:=df_fit(xs,ys);o:=df_optimal(DfObjective.eps,al[j],sg[j],c);
+        for k:0..<3 {if abs(w[12*j+3*c+k]-f[k])>gap {gap=abs(w[12*j+3*c+k]-f[k]);}if abs(w[12*j+3*c+k]-o[k])>off {off=abs(w[12*j+3*c+k]-o[k]);where=j;}}
+    }}
+    print("  largest gap to least squares: %\n",ifx gap<1e-9 then "below 1e-9" else "too large");
+    print("  largest distance to the population optimum: %, at level %\n",r4(off),where);
+    o:=df_optimal(DfObjective.eps,al[50],sg[50],1);
+    print("  level 50, class 1: learned (%, %, %), optimum (%, %, %)\n",r4(w[603]),r4(w[604]),r4(w[605]),r4(o[0]),r4(o[1]),r4(o[2]));
+    // book:end train
+
+    // book:begin sample
+    out:[2*N]f64;exact:=DfModel.{};passed:=0;gates:=0;
+    print("% samples each, seed %:\n",N,SEED_SAMPLE);
+    for c:0..<4 {gates+=1;if measure("  DDPM, learned",DfSampler.ddpm,s,m,c,T,out[..]) {passed+=1;}}
+    gates+=1;if measure("  DDPM, exact mixture, 100 steps",DfSampler.ddpm,s,exact,-1,T,out[..]) {passed+=1;}
+    gates+=1;if measure("  DDIM, exact mixture, 100 steps",DfSampler.ddim,s,exact,-1,T,out[..]) {passed+=1;}
+    print("gates passed: % of %\n",passed,gates);
+    print("too few steps:\n");
+    few:=measure("  DDPM, exact mixture, 10 steps",DfSampler.ddpm,df_cosine(10),exact,-1,10,out[..]);
+    few=measure("  DDIM, exact mixture, 10 steps",DfSampler.ddim,s,exact,-1,10,out[..]);
+    zero:[12*(T+1)]f64;untrained:=df_vp_model(s,DfObjective.eps,al[..],sg[..],zero[..]);
+    print("an untrained model (every weight 0):\n");
+    none:=measure("  DDPM",DfSampler.ddpm,s,untrained,0,T,out[..]);
+    // book:end sample
+
+    // book:begin flow
+    fa:[FLOW+1]f64;fs:[FLOW+1]f64;fw:[12*(FLOW+1)]f64;
+    fm:=df_flow_model(FLOW,fa[..],fs[..],fw[..]);
+    print("train the flow velocity: % levels x 4 classes: %\n",FLOW+1,df_train(fm,SEED_TRAIN,CELL,DF_ITERATIONS,DF_RATE,scratch[..]));
+    fp:=0;
+    for c:0..<4 {if measure("  Heun, learned, 10 steps",DfSampler.heun,s,fm,c,10,out[..]) {fp+=1;}}
+    if measure("  Heun, exact mixture, 10 steps",DfSampler.heun,s,exact,-1,10,out[..]) {fp+=1;}
+    print("gates passed: % of 5\ntoo few steps:\n",fp);
+    few=measure("  Euler, exact mixture, 10 steps",DfSampler.euler,s,exact,-1,10,out[..]);
+    // book:end flow
+
+    // book:begin order
+    z:=[2]f64.[df_normal(3,0),df_normal(3,1)];want:=[2]f64.[0.5*z[0],2+0.5*z[1]];
+    print("class 1 from z = (%, %): exact end (%, %)\n",r6(z[0]),r6(z[1]),r6(want[0]),r6(want[1]));
+    prev:=[2]f64.[0,0];
+    for k:0..<5 {
+        steps:=4<<k;err:[2]f64;
+        for h:0..<2 {e:=df_flow_solve(exact,1,steps,h==1,z);err[h]=sqrt((e[0]-want[0])*(e[0]-want[0])+(e[1]-want[1])*(e[1]-want[1]));}
+        print("  % steps: Euler error %, Heun error %",steps,r6(err[0]),r6(err[1]));
+        if k>0 {print("; halving the step divides them by % and %",r4(prev[0]/err[0]),r4(prev[1]/err[1]));}
+        print("\n");prev=err;
+    }
+    // book:end order
+
+    // book:begin seed
+    a:=df_sample(DfSampler.ddpm,s,exact,-1,T,SEED_SAMPLE,0);b:=df_sample(DfSampler.ddpm,s,exact,-1,T,SEED_SAMPLE,0);
+    other:=df_sample(DfSampler.ddpm,s,exact,-1,T,SEED_SAMPLE+1,0);
+    print("sample 0, seed 7: (%, %), bits % %\n",a.x[0],a.x[1],f64_bits(a.x[0]),f64_bits(a.x[1]));
+    print("again: same bits %; seed 8 gives (%, %)\n",f64_bits(a.x[0])==f64_bits(b.x[0]) && f64_bits(a.x[1])==f64_bits(b.x[1]),other.x[0],other.x[1]);
+    // book:end seed
+}

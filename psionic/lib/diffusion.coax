@@ -1,0 +1,747 @@
+// Chapter 146: noise, diffusion and flow. A noise schedule (linear, cosine or
+// any non-decreasing list of betas), the forward noising of a point, the exact
+// posterior of a two-dimensional mixture of four Gaussians at any noise level,
+// four training objectives (noise, data, diffusion velocity and flow
+// velocity), an affine predictor per noise level and class trained by
+// gradient descent, and four samplers: DDPM (stochastic), DDIM
+// (deterministic), and Euler and Heun on the flow-matching ODE.
+// Profile cpu-f64-diffusion-v1: binary64, one CPU core, plain sums in a fixed
+// order; 2 dimensions, 4 classes, at most 1,000 diffusion steps (1,001 noise
+// levels) and 4,096 training points a cell. Every normal draw comes from
+// chapter 53's counter generator, so a seed names every sample.
+#load "counter-rng.coax";
+
+// book:begin types
+DfStatus :: enum u8 {ok;steps;range;order;number;shape;class;objective;}
+// What a model predicts from the noisy point x = alpha x0 + sigma eps: the
+// noise eps, the data x0, the diffusion velocity alpha eps - sigma x0, or the
+// flow velocity eps - x0.
+DfObjective :: enum u8 {eps;x0;v;flow;}
+DfSampler :: enum u8 {ddpm;ddim;euler;heun;}
+// beta[t] and abar[t] for t = 1..steps; abar[0] = 1. abar[t] is the product
+// of (1 - beta[s]) for s <= t.
+DfSchedule :: struct {status:DfStatus;steps:int;beta:[DF_LEVELS_MAX]f64;abar:[DF_LEVELS_MAX]f64;}
+// A model: noise level j has x = alpha[j] x0 + sigma[j] eps, and class c's
+// predictor there is a x + b with (a, b0, b1) = w[12 j + 3 c ..]. levels = 0
+// stands for the exact posterior of the target.
+DfModel :: struct {status:DfStatus;objective:DfObjective;levels:int;alpha:[]f64;sigma:[]f64;w:[]f64;}
+// What a predictor says about a noisy point: its noise, its data, and (for
+// the exact posterior) the class it most likely came from, the first on ties.
+DfPair :: struct {eps:[2]f64;x0:[2]f64;likely:int;}
+DfSample :: struct {status:DfStatus;x:[2]f64;}
+// Mean and per-coordinate variance of n points, how many are nearest each
+// class mean, and the variance about the nearest class mean.
+DfStats :: struct {status:DfStatus;n:int;mean:[2]f64;var:f64;count:[4]int;within:f64;}
+// book:end types
+
+// book:begin target
+DF_LEVELS_MAX :: 1001;
+DF_STEPS_MAX :: 1000;
+DF_CELL_MAX :: 4096;            // training points for one level and class
+DF_SPREAD :: 0.5;               // each class: N(mean, 0.5^2 I)
+DF_MEAN :: [8]f64.[2,0, 0,2, -2,0, 0,-2];
+DF_STRIDE :: 2002;              // normals reserved for one sample
+DF_PI :: 3.141592653589793;
+DF_CLIP :: 0.999;               // the cosine schedule's largest beta
+DF_OFFSET :: 0.008;             // the cosine schedule's offset s
+// book:end target
+
+// Checks precede the implementation. Expected values are worked by hand in
+// chapter 146, or come from an independent derivation written in the check.
+df_near :: (a:f64,b:f64,tol:f64)->bool {return abs(a-b)<=tol;}
+df_near2 :: (a:[2]f64,b:[2]f64,tol:f64)->bool {return df_near(a[0],b[0],tol) && df_near(a[1],b[1],tol);}
+// The target's log density at a noise level, by its definition: the log of
+// the average of the class densities (or one class's).
+df_log_density :: (x:[2]f64,alpha:f64,sigma:f64,class:int)->f64 {
+    v:=alpha*alpha*DF_SPREAD*DF_SPREAD+sigma*sigma;sum:=0.0;
+    for c:0..<4 {
+        if class<0 || class==c {
+            d0:=x[0]-alpha*DF_MEAN[2*c];d1:=x[1]-alpha*DF_MEAN[2*c+1];
+            sum+=exp(-(d0*d0+d1*d1)/(2*v))/(2*DF_PI*v);
+        }
+    }
+    if class<0 {sum/=4;}
+    return log(sum);
+}
+
+#test "the checks' own helpers" {
+    #assert df_near2([2]f64.[1,2],[2]f64.[1.5,2.5],0.5) && !df_near2([2]f64.[1,2],[2]f64.[1,3],0.5) && !df_near2([2]f64.[1,2],[2]f64.[2,2],0.5);
+    // The density by its definition: class 0 at its own mean is 1 / (2 pi v); the mixture at alpha 0 is one standard normal.
+    #assert df_near(df_log_density([2]f64.[1.6,0],0.8,0.6,0),-log(2*DF_PI*0.52),1e-15);
+    #assert df_near(df_log_density([2]f64.[0,0],0,1,-1),-log(2*DF_PI),1e-15) && df_near(df_log_density([2]f64.[1,0],0,1,2),-log(2*DF_PI)-0.5,1e-15);
+}
+#test "normal draws: Box-Muller on the counter generator, by hand" {
+    // u1 = 0.8833108082136426, u2 = 0.43152799704850997 from cr_bits(0, 0) and cr_bits(0, 1).
+    #assert df_normal(0,0)==sqrt(-2*log(1-0.8833108082136426))*cos(2*DF_PI*0.43152799704850997);
+    #assert df_near(df_normal(0,0),-1.8839083333524405,1e-15) && df_near(df_normal(0,1),0.22760793546360525,1e-15);
+    #assert df_normal(5,9)!=df_normal(6,9) && df_normal(5,9)==df_normal(5,9);
+    p:=df_data(0,0,1);#assert p[0]==0.5*df_normal(0,0) && p[1]==2+0.5*df_normal(0,1);
+    q:=df_data(3,2,3);#assert q[0]==0.5*df_normal(3,4) && q[1]==-2+0.5*df_normal(3,5);
+    r:=df_data(3,2,2);#assert r[0]==-2+0.5*df_normal(3,4);
+}
+#test "schedules by hand" {
+    s:=df_linear(4,0.1,0.4);
+    #assert s.status==DfStatus.ok && s.steps==4 && s.abar[0]==1 && s.beta[0]==0;
+    #assert s.beta[1]==0.1 && s.beta[2]==0.2 && s.beta[3]==0.1+(0.4-0.1)*2.0/3 && s.beta[4]==0.4;
+    #assert s.abar[1]==0.9 && s.abar[2]==0.9*0.8 && s.abar[3]==0.9*0.8*(1-s.beta[3]) && s.abar[4]==s.abar[3]*0.6;
+    #assert df_near(s.abar[4],0.3024,1e-15);
+    one:=df_linear(1,0.3,0.3);#assert one.status==DfStatus.ok && one.beta[1]==0.3 && one.abar[1]==0.7;
+    c:=df_cosine(4);
+    #assert c.status==DfStatus.ok && df_near(c.abar[1],0.8470121613269047,1e-15) && df_near(c.abar[2],0.4938435904406378,1e-15);
+    #assert df_near(c.beta[3],0.7078587123971634,1e-15) && df_near(c.beta[4],DF_CLIP,1e-15) && c.abar[4]==c.abar[3]*(1-c.beta[4]);
+    f:=cos(DF_OFFSET/(1+DF_OFFSET)*DF_PI/2);g:=cos((0.25+DF_OFFSET)/(1+DF_OFFSET)*DF_PI/2);
+    #assert df_near(c.abar[1],g*g/(f*f),1e-15);
+    single:=df_cosine(1);#assert single.status==DfStatus.ok && df_near(single.beta[1],DF_CLIP,1e-15);
+    #assert df_cap(0.5)==0.5 && df_near(df_cap(1),DF_CLIP,2e-16) && df_near(df_cap(3),DF_CLIP,2e-16) && df_near(df_cap(0.25),0.25,1e-16);
+    big:=df_cosine(1000);#assert big.status==DfStatus.ok && df_near(big.abar[1000],2.4287669070348567e-09,1e-20);
+    for t:1..<1000 {#assert big.beta[t+1]>=big.beta[t] && big.abar[t+1]<big.abar[t];}
+    l:=df_linear(1000,0.0001,0.02);#assert l.status==DfStatus.ok && l.beta[1000]==0.02 && df_near(l.abar[1000],4.0358297653756754e-05,1e-18);
+}
+#test "schedules refuse bad step counts, betas out of range and decreasing betas" {
+    #assert df_linear(0,0.1,0.2).status==DfStatus.steps && df_linear(1001,0.1,0.2).status==DfStatus.steps && df_linear(1000,0.1,0.2).status==DfStatus.ok;
+    #assert df_cosine(0).status==DfStatus.steps && df_cosine(1001).status==DfStatus.steps;
+    #assert df_linear(4,0,0.2).status==DfStatus.range && df_linear(4,0.1,1).status==DfStatus.range && df_linear(4,-0.1,0.2).status==DfStatus.range;
+    #assert df_linear(4,0.3,0.2).status==DfStatus.order && df_linear(1,0.3,0.2).status==DfStatus.order;
+    #assert df_linear(4,0.1,0.0/0.0).status==DfStatus.number && df_linear(4,1.0/0.0,0.2).status==DfStatus.number;
+    b:=[3]f64.[0.1,0.2,0.2];#assert df_betas(b[..]).status==DfStatus.ok && df_betas(b[..]).abar[3]==0.9*0.8*0.8;
+    b[1]=0.05;#assert df_betas(b[..]).status==DfStatus.order;
+    b[1]=0.999999;b[2]=1;#assert df_betas(b[..]).status==DfStatus.range;
+    b[2]=0.0/0.0;#assert df_betas(b[..]).status==DfStatus.number;
+    #assert df_betas(b[0..<0]).status==DfStatus.steps && df_betas(b[0..<1]).status==DfStatus.ok;
+    many:[1001]f64;for i:0..<1001 {many[i]=0.5;}
+    #assert df_betas(many[..]).status==DfStatus.steps && df_betas(many[0..<1000]).status==DfStatus.ok;
+    bad:=df_betas(b[..]);#assert bad.steps==0 && bad.abar[1]==0;
+}
+#test "the posterior by hand, and its noise is the score times -sigma" {
+    // x0 = (2, 0) with eps = (1, -1) at alpha 0.8, sigma 0.6 gives x = (2.2, -0.6).
+    x:=df_noise([2]f64.[2,0],[2]f64.[1,-1],0.8,0.6);#assert df_near2(x,[2]f64.[2.2,-0.6],1e-15);
+    // Class 0: V = 0.64 * 0.25 + 0.36 = 0.52, x - alpha mu = (0.6, -0.6).
+    p:=df_posterior(x,0.8,0.6,0);
+    #assert df_near2(p.eps,[2]f64.[0.6/0.52*0.6,-0.6/0.52*0.6],1e-15) && df_near2(p.x0,[2]f64.[2+0.2/0.52*0.6,-0.2/0.52*0.6],1e-15) && p.likely==0;
+    m:=df_posterior(x,0.8,0.6,-1);
+    #assert df_near2(m.eps,[2]f64.[0.7059792014299524,-0.6793054590423947],1e-14) && df_near2(m.x0,[2]f64.[2.2205155989275354,-0.2405209057182038],1e-14) && m.likely==0;
+    // Both answers put x back together: alpha x0 + sigma eps = x.
+    #assert df_near2(df_noise(m.x0,m.eps,0.8,0.6),x,1e-15) && df_near2(df_noise(p.x0,p.eps,0.8,0.6),x,1e-15);
+    // Far from every class the weights still sum to one (no overflow).
+    far:=df_posterior([2]f64.[40,-30],0.8,0.6,-1);#assert df_near2(df_noise(far.x0,far.eps,0.8,0.6),[2]f64.[40,-30],1e-12) && far.likely==0;
+    far=df_posterior([2]f64.[-30,40],0.8,0.6,-1);#assert df_near2(df_noise(far.x0,far.eps,0.8,0.6),[2]f64.[-30,40],1e-12) && far.likely==1;
+    far=df_posterior([2]f64.[-40,-30],0.3,0.6,-1);#assert df_near2(df_noise(far.x0,far.eps,0.3,0.6),[2]f64.[-40,-30],1e-12) && far.likely==2;
+    #assert df_posterior([2]f64.[1,-40],0.3,0.6,-1).likely==3 && df_posterior([2]f64.[1,-40],0.3,0.6,1).likely==1;
+    // At the origin every class is equally likely: the first wins, and the guesses cancel.
+    o:=df_posterior([2]f64.[0,0],0.8,0.6,-1);#assert o.likely==0 && df_near2(o.x0,[2]f64.[0,0],1e-15) && df_near2(o.eps,[2]f64.[0,0],1e-15);
+    // At sigma 0 the point is the data; at alpha 0 it is the noise.
+    d:=df_posterior([2]f64.[1,2],1,0,2);#assert d.eps[0]==0 && d.eps[1]==0 && d.x0[0]==1 && d.x0[1]==2;
+    n:=df_posterior([2]f64.[1,2],0,1,-1);#assert n.eps[0]==1 && n.eps[1]==2 && n.x0[0]==0 && n.x0[1]==0;
+    n=df_posterior([2]f64.[1,2],0,1,3);#assert n.x0[0]==0 && n.x0[1]==-2;
+}
+#forall "the posterior noise is -sigma times the gradient of the log density" k:0..<15 {
+    x:=[2]f64.[f64(k%5)-2.1,f64(k/5)*1.3-1.7];alpha:=0.3+0.04*f64(k);sigma:=sqrt(1-alpha*alpha);h:=1e-5;
+    for class:-1..<4 {
+        e:=df_posterior(x,alpha,sigma,class).eps;
+        g0:=(df_log_density([2]f64.[x[0]+h,x[1]],alpha,sigma,class)-df_log_density([2]f64.[x[0]-h,x[1]],alpha,sigma,class))/(2*h);
+        g1:=(df_log_density([2]f64.[x[0],x[1]+h],alpha,sigma,class)-df_log_density([2]f64.[x[0],x[1]-h],alpha,sigma,class))/(2*h);
+        #assert df_near(e[0],-sigma*g0,1e-8) && df_near(e[1],-sigma*g1,1e-8);
+    }
+}
+#test "four objectives on fixed inputs: one prediction, four losses" {
+    x0:=[2]f64.[2,0];eps:=[2]f64.[1,-1];x:=df_noise(x0,eps,0.8,0.6);
+    #assert df_target(DfObjective.eps,x0,eps,0.8,0.6)[1]==-1 && df_target(DfObjective.x0,x0,eps,0.8,0.6)[0]==2;
+    #assert df_near2(df_target(DfObjective.v,x0,eps,0.8,0.6),[2]f64.[-0.4,-0.8],1e-15) && df_target(DfObjective.flow,x0,eps,0.8,0.6)[0]==-1 && df_target(DfObjective.flow,x0,eps,0.8,0.6)[1]==-1;
+    // A noise guess (0.5, -0.5) misses by 0.5 a coordinate: loss 0.5.
+    guess:=[2]f64.[0.5,-0.5];#assert df_loss(DfObjective.eps,guess,x0,eps,0.8,0.6)==0.5;
+    // The same guess as data: x0 = (x - 0.6 guess) / 0.8 = (2.375, -0.375); loss (0.6/0.8)^2 * 0.5.
+    as_x0:=df_restate(DfObjective.eps,DfObjective.x0,guess,x,0.8,0.6);#assert df_near2(as_x0,[2]f64.[2.375,-0.375],1e-15);
+    #assert df_near(df_loss(DfObjective.x0,as_x0,x0,eps,0.8,0.6),0.28125,1e-15);
+    // As diffusion velocity: (guess - sigma x) / alpha = (-1.025, -0.175); loss 0.5 / 0.64.
+    as_v:=df_restate(DfObjective.eps,DfObjective.v,guess,x,0.8,0.6);#assert df_near2(as_v,[2]f64.[-1.025,-0.175],1e-15);
+    #assert df_near(df_loss(DfObjective.v,as_v,x0,eps,0.8,0.6),0.78125,1e-15);
+    // As flow velocity: guess - x0 guess; loss (1 + 0.6/0.8)^2 * 0.5.
+    as_f:=df_restate(DfObjective.eps,DfObjective.flow,guess,x,0.8,0.6);#assert df_near2(as_f,[2]f64.[0.5-2.375,-0.5+0.375],1e-15);
+    #assert df_near(df_loss(DfObjective.flow,as_f,x0,eps,0.8,0.6),1.53125,1e-15);
+    // Every restatement goes back to the same noise guess.
+    for o:[4]DfObjective.[DfObjective.eps,DfObjective.x0,DfObjective.v,DfObjective.flow] {
+        there:=df_restate(DfObjective.eps,o,guess,x,0.8,0.6);#assert df_near2(df_restate(o,DfObjective.eps,there,x,0.8,0.6),guess,1e-14);
+        #assert df_near2(df_restate(o,DfObjective.x0,there,x,0.8,0.6),as_x0,1e-14);
+    }
+    // On the flow path (alpha + sigma = 1, not a unit circle) at t = 0.25.
+    y:=df_noise(x0,eps,0.75,0.25);u:=df_target(DfObjective.flow,x0,eps,0.75,0.25);
+    #assert df_near2(df_restate(DfObjective.flow,DfObjective.eps,u,y,0.75,0.25),eps,1e-15) && df_near2(df_restate(DfObjective.flow,DfObjective.x0,u,y,0.75,0.25),x0,1e-15);
+    w:=df_target(DfObjective.v,x0,eps,0.75,0.25);
+    #assert df_near2(df_restate(DfObjective.v,DfObjective.eps,w,y,0.75,0.25),eps,1e-15) && df_near2(df_restate(DfObjective.v,DfObjective.x0,w,y,0.75,0.25),x0,1e-15);
+}
+#test "least squares by hand, and gradient descent reaches it" {
+    // Points (1, 0), (0, 1), (-1, -1) with targets (1, 1), (0, 0), (2, -1).
+    xs:=[6]f64.[1,0, 0,1, -1,-1];ys:=[6]f64.[1,1, 0,0, 2,-1];
+    // Sum x = 0, so b = mean y = (1, 0); a = sum x.y / sum |x|^2 = (1 + 0 - 1) / 4 = 0.
+    w:=df_fit(xs[..],ys[..]);#assert w[0]==0 && w[1]==1 && w[2]==0;
+    ys[0]=3;w=df_fit(xs[..],ys[..]);#assert w[0]==0.5 && w[1]==5.0/3 && w[2]==0;
+    // From zero the gradient is -(2/3) (sum x.y, sum y) = -(2/3) (2, 5, 0).
+    g:=df_gradient(xs[..],ys[..],[3]f64.[0,0,0]);
+    #assert df_near(g[0],-2.0/3*2,1e-15) && df_near(g[1],-2.0/3*5,1e-15) && df_near(g[2],0,1e-15);
+    h:=1e-6;base:=df_mse(xs[..],ys[..],[3]f64.[0.2,0.1,-0.3]);g=df_gradient(xs[..],ys[..],[3]f64.[0.2,0.1,-0.3]);
+    #assert df_near(g[0],(df_mse(xs[..],ys[..],[3]f64.[0.2+h,0.1,-0.3])-df_mse(xs[..],ys[..],[3]f64.[0.2-h,0.1,-0.3]))/(2*h),1e-8);
+    #assert df_near(g[1],(df_mse(xs[..],ys[..],[3]f64.[0.2,0.1+h,-0.3])-df_mse(xs[..],ys[..],[3]f64.[0.2,0.1-h,-0.3]))/(2*h),1e-8);
+    #assert df_near(g[2],(df_mse(xs[..],ys[..],[3]f64.[0.2,0.1,-0.3+h])-df_mse(xs[..],ys[..],[3]f64.[0.2,0.1,-0.3-h]))/(2*h),1e-8);
+    #assert df_near(base,((0.2+0.1-3)*(0.2+0.1-3)+(-0.3-1)*(-0.3-1)+0.1*0.1+(0.2-0.3)*(0.2-0.3)+(-0.2+0.1-2)*(-0.2+0.1-2)+(-0.2-0.3+1)*(-0.2-0.3+1))/3,1e-15);
+    d:=df_descend(xs[..],ys[..],300,0.2);#assert df_near(d[0],0.5,1e-12) && df_near(d[1],5.0/3,1e-12) && df_near(d[2],0,1e-12);
+    one:=df_descend(xs[..],ys[..],1,0.2);#assert df_near(one[0],0.2*4.0/3,1e-15) && df_near(one[1],0.2*10.0/3,1e-15) && one[2]==0;
+    flat:=[6]f64.[1,1, 1,1, 1,1];#assert df_fit(flat[..],ys[..])[0]==0;
+    // The first two points only: a = (3 + 0) / 2 ... from the centred sums: x mean (0.5, 0.5).
+    two:=df_fit(xs[0..<4],ys[0..<4]);#assert df_near(two[0],1,1e-15) && df_near(two[1],1,1e-15) && df_near(two[2],0,1e-15);
+}
+#test "a trained cell is the least-squares answer" {
+    xs:[64]f64;ys:[64]f64;
+    df_cell(11,7,2,DfObjective.eps,0.8,0.6,xs[..],ys[..]);
+    exact:=df_fit(xs[..],ys[..]);d:=df_descend(xs[..],ys[..],DF_ITERATIONS,DF_RATE);
+    for i:0..<3 {#assert df_near(d[i],exact[i],1e-9);}
+    // The cell's points: x = 0.8 x0 + 0.6 eps, from normals 4q .. 4q+3 with q = (7 * 4 + 2) * 32.
+    q:=cast(u64)((7*4+2)*32);x0:=df_data(11,2*q,2);
+    #assert xs[0]==0.8*x0[0]+0.6*df_normal(11,4*q+2) && xs[1]==0.8*x0[1]+0.6*df_normal(11,4*q+3) && ys[1]==df_normal(11,4*q+3);
+    #assert xs[63]==0.8*df_data(11,2*(q+31),2)[1]+0.6*df_normal(11,4*(q+31)+3);
+}
+#test "each objective's least-squares answer is the same predictor, near the population optimum" {
+    xs:[8192]f64;ys:[8192]f64;
+    df_cell(4,3,1,DfObjective.eps,0.8,0.6,xs[..],ys[..]);e:=df_fit(xs[..],ys[..]);
+    best:=df_optimal(DfObjective.eps,0.8,0.6,1);
+    #assert df_near(e[0],best[0],0.04) && df_near(e[1],best[1],0.04) && df_near(e[2],best[2],0.06);
+    for o:[3]DfObjective.[DfObjective.x0,DfObjective.v,DfObjective.flow] {
+        df_cell(4,3,1,o,0.8,0.6,xs[..],ys[..]);w:=df_fit(xs[..],ys[..]);
+        for k:0..<3 {
+            x:=[2]f64.[f64(k)-0.4,0.7*f64(k)+1];
+            mine:=[2]f64.[w[0]*x[0]+w[1],w[0]*x[1]+w[2]];eps:=[2]f64.[e[0]*x[0]+e[1],e[0]*x[1]+e[2]];
+            #assert df_near2(df_restate(o,DfObjective.eps,mine,x,0.8,0.6),eps,1e-12);
+        }
+    }
+}
+#test "the four objectives' optima are one predictor, the exact posterior" {
+    for o:[4]DfObjective.[DfObjective.eps,DfObjective.x0,DfObjective.v,DfObjective.flow] {for c:0..<4 {
+        w:=df_optimal(o,0.8,0.6,c);
+        for k:0..<3 {
+            x:=[2]f64.[f64(k)-0.4,0.7*f64(k)];mine:=[2]f64.[w[0]*x[0]+w[1],w[0]*x[1]+w[2]];p:=df_posterior(x,0.8,0.6,c);
+            #assert df_near2(df_restate(o,DfObjective.eps,mine,x,0.8,0.6),p.eps,1e-14) && df_near2(df_restate(o,DfObjective.x0,mine,x,0.8,0.6),p.x0,1e-14);
+        }
+    }}
+}
+#test "models: levels from a schedule or the flow grid, and their refusals" {
+    s:=df_linear(4,0.1,0.4);al:[5]f64;sg:[5]f64;w:[60]f64;
+    m:=df_vp_model(s,DfObjective.eps,al[..],sg[..],w[..]);
+    #assert m.status==DfStatus.ok && m.levels==5 && al[0]==1 && sg[0]==0 && al[4]==sqrt(s.abar[4]) && sg[4]==sqrt(1-s.abar[4]);
+    #assert m.alpha.count==5 && m.sigma.count==5 && m.w.count==60 && df_trained(m) && !df_trained(DfModel.{});
+    #assert df_vp_model(s,DfObjective.flow,al[..],sg[..],w[..]).status==DfStatus.objective;
+    #assert df_vp_model(s,DfObjective.eps,al[0..<4],sg[..],w[..]).status==DfStatus.shape && df_vp_model(s,DfObjective.eps,al[..],sg[0..<4],w[..]).status==DfStatus.shape;
+    #assert df_vp_model(s,DfObjective.eps,al[..],sg[..],w[0..<59]).status==DfStatus.shape;
+    #assert df_vp_model(df_linear(0,0.1,0.2),DfObjective.eps,al[..],sg[..],w[..]).status==DfStatus.steps;
+    for i:0..<5 {al[i]=7;sg[i]=7;}
+    f:=df_flow_model(4,al[..],sg[..],w[..]);
+    #assert f.status==DfStatus.ok && f.objective==DfObjective.flow && f.levels==5 && al[0]==1 && sg[0]==0 && al[1]==0.75 && sg[1]==0.25 && al[4]==0 && sg[4]==1;
+    #assert f.alpha.count==5 && f.sigma.count==5 && f.w.count==60;
+    #assert df_flow_model(0,al[..],sg[..],w[..]).status==DfStatus.steps && df_flow_model(5,al[..],sg[..],w[..]).status==DfStatus.shape;
+    #assert df_flow_model(4,al[..],sg[0..<4],w[..]).status==DfStatus.shape && df_flow_model(4,al[..],sg[..],w[0..<59]).status==DfStatus.shape;
+    #assert df_flow_model(1,al[..],sg[..],w[..]).status==DfStatus.ok && al[1]==0 && sg[1]==1;
+    big:[1001]f64;bw:[12012]f64;
+    #assert df_flow_model(1000,big[..],big[..],bw[..]).status==DfStatus.ok && df_flow_model(1001,big[..],big[..],bw[..]).status==DfStatus.steps;
+    for i:0..<60 {w[i]=7;}
+    df_fill_optimal(m);
+    for j:0..<5 {for c:0..<4 {b:=df_optimal(DfObjective.eps,m.alpha[j],m.sigma[j],c);for i:0..<3 {#assert w[12*j+3*c+i]==b[i];}}}
+    for c:0..<4 {
+        p:=df_pair(m,3,9,9,c,[2]f64.[0.3,0.4]);q:=df_posterior([2]f64.[0.3,0.4],m.alpha[3],m.sigma[3],c);
+        #assert df_near2(p.eps,q.eps,1e-14) && df_near2(p.x0,q.x0,1e-14);
+    }
+    e:=df_pair(DfModel.{},3,0.8,0.6,-1,[2]f64.[0.3,0.4]);r:=df_posterior([2]f64.[0.3,0.4],0.8,0.6,-1);
+    #assert e.eps[0]==r.eps[0] && e.eps[1]==r.eps[1] && e.x0[0]==r.x0[0] && e.x0[1]==r.x0[1];
+}
+#test "training: every cell, and its refusals" {
+    s:=df_linear(2,0.2,0.5);al:[3]f64;sg:[3]f64;w:[36]f64;scratch:[128]f64;
+    m:=df_vp_model(s,DfObjective.x0,al[..],sg[..],w[..]);
+    #assert df_train(m,5,6,4,0.15,scratch[..])==DfStatus.ok;
+    xs:[12]f64;ys:[12]f64;
+    for j:0..<3 {for c:0..<4 {
+        df_cell(5,j,c,DfObjective.x0,al[j],sg[j],xs[..],ys[..]);e:=df_descend(xs[..],ys[..],4,0.15);
+        for i:0..<3 {#assert w[12*j+3*c+i]==e[i];}
+    }}
+    #assert df_train(m,5,1,1,0.1,scratch[..])==DfStatus.shape && df_train(m,5,33,1,0.1,scratch[..])==DfStatus.shape && df_train(m,5,32,1,0.1,scratch[..])==DfStatus.ok;
+    #assert df_train(m,5,2,0,0.1,scratch[..])==DfStatus.steps && df_train(m,5,2,1,0,scratch[..])==DfStatus.range && df_train(m,5,2,1,0.15,scratch[..])==DfStatus.ok && df_train(m,5,2,1,0.1500001,scratch[..])==DfStatus.range;
+    #assert df_train(m,5,2,1,0.0/0.0,scratch[..])==DfStatus.range && df_train(m,5,2,1,-0.1,scratch[..])==DfStatus.range;
+    bad:=m;bad.status=DfStatus.steps;#assert df_train(bad,5,2,1,0.1,scratch[..])==DfStatus.shape;
+    #assert df_train(DfModel.{},5,2,1,0.1,scratch[..])==DfStatus.shape;
+    // One level is enough, and 4,096 points a cell is the most.
+    la:=[1]f64.[0.8];ls:=[1]f64.[0.6];lw:[12]f64;one:=DfModel.{levels=1,alpha=la[..],sigma=ls[..],w=lw[..]};
+    big:[16388]f64;
+    #assert df_train(one,5,4096,1,0.1,big[..])==DfStatus.ok && df_train(one,5,4097,1,0.1,big[..])==DfStatus.shape && lw[0]!=0;
+}
+#test "a DDPM step and a DDIM jump by hand" {
+    s:=df_linear(4,0.1,0.4);x:=[2]f64.[0.5,-1];
+    // At t = 4, abar 0.3024: the exact class-0 noise, the mean step, and the posterior variance.
+    e:=df_posterior(x,sqrt(0.3024),sqrt(0.6976),0).eps;
+    #assert df_near2(e,[2]f64.[-0.6479343518773082,-1.080217952292866],1e-14);
+    st:=df_ddpm_step(s,4,x,e,[2]f64.[0,0]);#assert df_near2(st,[2]f64.[1.0460983229586969,-0.6231235492346127],1e-14);
+    z:=df_ddpm_step(s,4,x,e,[2]f64.[1,-2]);v:=(1-0.504)/(1-0.3024)*0.4;
+    #assert df_near(v,0.28440366972477066,1e-15) && df_near2(z,[2]f64.[st[0]+sqrt(v),st[1]-2*sqrt(v)],1e-14);
+    // At t = 2 the spread is sqrt((1 - 0.9) / (1 - 0.72) * 0.2).
+    two:=df_ddpm_step(s,2,x,e,[2]f64.[1,0]);m:=df_ddpm_step(s,2,x,e,[2]f64.[0,0]);
+    #assert df_near(two[0]-m[0],sqrt(0.1/0.28*0.2),1e-15) && two[1]==m[1] && df_near(m[0],(0.5-0.2/sqrt(0.28)*e[0])/sqrt(0.8),1e-15);
+    // The last step adds no noise.
+    last:=df_ddpm_step(s,1,x,e,[2]f64.[1,1]);#assert df_near2(last,[2]f64.[(0.5-0.1/sqrt(0.1)*e[0])/sqrt(0.9),(-1-0.1/sqrt(0.1)*e[1])/sqrt(0.9)],1e-15);
+    // DDIM from t = 4 to t = 2: the data guess, then renoised to abar 0.72 with the same noise.
+    j:=df_ddim_step(s,4,2,x,e);#assert df_near2(j,[2]f64.[1.2637065726954102,-0.7224684515173326],1e-14);
+    h:=df_ddim_step(s,4,0,x,e);#assert df_near2(h,[2]f64.[1.8933505372792778,-0.1778029886816801],1e-14);
+}
+#test "an Euler and a Heun flow step by hand" {
+    // Class 1 at t = 1 from z = (0.4, -0.2): x0 guess is the class mean (0, 2), velocity z - mean.
+    m:=DfModel.{};z:=[2]f64.[0.4,-0.2];
+    u:=df_velocity(m,0,1,1.0,z);#assert df_near2(u,[2]f64.[0.4,-2.2],1e-15);
+    e:=df_flow_step(m,1,2,2,z,false);#assert df_near2(e,[2]f64.[0.2,0.9],1e-15);
+    // At t = 0.5 the velocity is (0.24, -2.12); Heun averages it with (0.4, -2.2).
+    #assert df_near2(df_velocity(m,0,1,0.5,e),[2]f64.[0.24,-2.12],1e-15);
+    h:=df_flow_step(m,1,2,2,z,true);#assert df_near2(h,[2]f64.[0.24,0.88],1e-15);
+}
+#test "a flow model set to its optimum follows the exact flow" {
+    al:[9]f64;sg:[9]f64;w:[108]f64;f:=df_flow_model(8,al[..],sg[..],w[..]);df_fill_optimal(f);
+    z:=[2]f64.[0.7,-1.1];
+    for c:0..<4 {for steps:[3]int.[2,4,8] {for heun:[2]bool.[false,true] {
+        #assert df_near2(df_flow_solve(f,c,steps,heun,z),df_flow_solve(DfModel.{},c,steps,heun,z),1e-13);
+    }}}
+}
+#test "Euler is first order and Heun second on the exact Gaussian flow" {
+    // For one class the flow is solved in closed form: x(0) = mean + 0.5 z.
+    m:=DfModel.{};z:=[2]f64.[df_normal(3,0),df_normal(3,1)];want:=[2]f64.[0.5*z[0],2+0.5*z[1]];
+    err:[2][4]f64;
+    for k:0..<4 {
+        steps:=8<<k;
+        for heun:0..<2 {
+            x:=df_flow_solve(m,1,steps,heun==1,z);err[heun][k]=sqrt((x[0]-want[0])*(x[0]-want[0])+(x[1]-want[1])*(x[1]-want[1]));
+        }
+    }
+    #assert err[1][3]<err[0][3]/100;
+    #assert err[0][2]/err[0][3]>1.9 && err[0][2]/err[0][3]<2.1 && err[1][2]/err[1][3]>3.5 && err[1][2]/err[1][3]<4.1;
+    #assert err[0][1]/err[0][2]>1.85 && err[1][1]/err[1][2]>3;
+}
+#test "samplers refuse bad steps, classes, models and room" {
+    s:=df_linear(4,0.1,0.4);m:=DfModel.{};out:[8]f64;
+    #assert df_samples(DfSampler.ddpm,s,m,-1,4,1,4,out[..])==DfStatus.ok && df_samples(DfSampler.ddpm,s,m,3,4,1,4,out[..])==DfStatus.ok;
+    #assert df_samples(DfSampler.ddpm,s,m,4,4,1,4,out[..])==DfStatus.class && df_samples(DfSampler.ddpm,s,m,-2,4,1,4,out[..])==DfStatus.class;
+    #assert df_samples(DfSampler.ddim,s,m,0,5,1,4,out[..])==DfStatus.steps && df_samples(DfSampler.ddim,s,m,0,0,1,4,out[..])==DfStatus.steps && df_samples(DfSampler.ddim,s,m,0,3,1,4,out[..])==DfStatus.ok;
+    #assert df_samples(DfSampler.ddim,s,m,0,1,1,4,out[..])==DfStatus.ok && df_samples(DfSampler.ddpm,s,m,0,3,1,4,out[..])==DfStatus.steps;
+    #assert df_samples(DfSampler.euler,s,m,0,0,1,4,out[..])==DfStatus.steps && df_samples(DfSampler.heun,s,m,0,1001,1,4,out[..])==DfStatus.steps && df_samples(DfSampler.heun,s,m,0,7,1,4,out[..])==DfStatus.ok;
+    #assert df_samples(DfSampler.euler,s,m,0,1,1,4,out[..])==DfStatus.ok && df_samples(DfSampler.euler,s,m,0,1000,1,1,out[..])==DfStatus.ok;
+    #assert df_samples(DfSampler.ddpm,s,m,0,4,1,5,out[..])==DfStatus.shape && df_samples(DfSampler.ddpm,s,m,0,4,1,0,out[..])==DfStatus.shape && df_samples(DfSampler.ddpm,s,m,0,4,1,1,out[..])==DfStatus.ok;
+    #assert df_samples(DfSampler.ddpm,df_linear(4,0.4,0.1),m,0,4,1,4,out[..])==DfStatus.order;
+    al:[5]f64;sg:[5]f64;w:[60]f64;v:=df_vp_model(s,DfObjective.eps,al[..],sg[..],w[..]);
+    #assert df_samples(DfSampler.ddim,s,v,-1,4,1,4,out[..])==DfStatus.class && df_samples(DfSampler.heun,s,v,0,4,1,4,out[..])==DfStatus.objective;
+    #assert df_samples(DfSampler.ddpm,df_linear(3,0.1,0.4),v,0,3,1,4,out[..])==DfStatus.shape && df_samples(DfSampler.ddim,df_linear(5,0.1,0.4),v,0,5,1,4,out[..])==DfStatus.shape;
+    // A one-level model is still a trained one.
+    la:=[1]f64.[0.8];ls:=[1]f64.[0.6];lw:[12]f64;one:=DfModel.{levels=1,alpha=la[..],sigma=ls[..],w=lw[..]};
+    #assert df_samples(DfSampler.ddpm,s,one,-1,4,1,4,out[..])==DfStatus.class && df_samples(DfSampler.ddpm,s,one,0,4,1,4,out[..])==DfStatus.shape;
+    #assert df_samples(DfSampler.euler,s,one,0,1,1,4,out[..])==DfStatus.objective;
+    one.objective=DfObjective.flow;#assert df_samples(DfSampler.ddim,s,one,0,4,1,4,out[..])==DfStatus.objective && df_samples(DfSampler.euler,s,one,0,1,1,4,out[..])==DfStatus.steps;
+    f:=df_flow_model(4,al[..],sg[..],w[0..<60]);
+    #assert df_samples(DfSampler.ddpm,s,f,0,4,1,4,out[..])==DfStatus.objective && df_samples(DfSampler.euler,s,f,0,3,1,4,out[..])==DfStatus.steps && df_samples(DfSampler.euler,s,f,0,2,1,4,out[..])==DfStatus.ok && df_samples(DfSampler.heun,s,f,0,4,1,4,out[..])==DfStatus.ok;
+    v.status=DfStatus.shape;#assert df_samples(DfSampler.ddpm,s,v,0,4,1,4,out[..])==DfStatus.shape;
+    for i:0..<8 {out[i]=7;}#assert df_samples(DfSampler.ddpm,s,m,9,4,1,4,out[..])==DfStatus.class && out[0]==7;
+}
+#test "a model set to its optimum samples like the exact posterior" {
+    s:=df_linear(4,0.1,0.4);al:[5]f64;sg:[5]f64;w:[60]f64;v:=df_vp_model(s,DfObjective.v,al[..],sg[..],w[..]);df_fill_optimal(v);
+    for c:0..<4 {
+        a:=df_sample(DfSampler.ddpm,s,v,c,4,5,1);b:=df_sample(DfSampler.ddpm,s,DfModel.{},c,4,5,1);
+        #assert a.status==DfStatus.ok && df_near2(a.x,b.x,1e-13);
+        a=df_sample(DfSampler.ddim,s,v,c,2,5,1);b=df_sample(DfSampler.ddim,s,DfModel.{},c,2,5,1);#assert df_near2(a.x,b.x,1e-13);
+    }
+}
+#test "sampling follows the counter: a seed names every sample" {
+    s:=df_linear(4,0.1,0.4);m:=DfModel.{};a:[8]f64;b:[8]f64;
+    #assert df_samples(DfSampler.ddpm,s,m,-1,4,9,4,a[..])==DfStatus.ok && df_samples(DfSampler.ddpm,s,m,-1,4,9,4,b[..])==DfStatus.ok;
+    for i:0..<8 {#assert f64_bits(a[i])==f64_bits(b[i]);}
+    for k:0..<4 {one:=df_sample(DfSampler.ddpm,s,m,-1,4,9,k);#assert one.status==DfStatus.ok && one.x[0]==a[2*k] && one.x[1]==a[2*k+1];}
+    #assert df_samples(DfSampler.ddpm,s,m,-1,4,10,4,b[..])==DfStatus.ok && a[0]!=b[0];
+    // DDIM and the flow samplers are deterministic given the starting noise: normals 2002 k and 2002 k + 1.
+    k:=cast(u64)3;z:=[2]f64.[df_normal(9,DF_STRIDE*k),df_normal(9,DF_STRIDE*k+1)];
+    #assert df_sample(DfSampler.heun,s,m,1,4,9,3).x[0]==df_flow_solve(m,1,4,true,z)[0];
+    t:=df_sample(DfSampler.euler,s,m,1,4,9,3);#assert t.x[0]==df_flow_solve(m,1,4,false,z)[0] && t.x[1]==df_flow_solve(m,1,4,false,z)[1];
+    d:=df_sample(DfSampler.ddim,s,m,2,2,9,3);x:=df_ddim_step(s,4,2,z,df_posterior(z,sqrt(s.abar[4]),sqrt(1-s.abar[4]),2).eps);
+    x=df_ddim_step(s,2,0,x,df_posterior(x,sqrt(s.abar[2]),sqrt(1-s.abar[2]),2).eps);#assert d.x[0]==x[0] && d.x[1]==x[1];
+    // DDPM draws its step noise from normals 2002 k + 2 t and 2002 k + 2 t + 1.
+    three:=df_linear(3,0.3,0.3);r:=df_sample(DfSampler.ddpm,three,m,0,3,9,3);y:=z;
+    for i:0..<3 {
+        tt:=3-i;e:=df_posterior(y,sqrt(three.abar[tt]),sqrt(1-three.abar[tt]),0).eps;
+        y=df_ddpm_step(three,tt,y,e,[2]f64.[df_normal(9,DF_STRIDE*k+cast(u64)(2*tt)),df_normal(9,DF_STRIDE*k+cast(u64)(2*tt+1))]);
+    }
+    #assert r.x[0]==y[0] && r.x[1]==y[1];
+}
+#test "statistics by hand" {
+    pts:=[10]f64.[2,0.5, 2.5,0, -2,0, 0,-1.5, 0,0];st:=df_stats(pts[..],5);
+    #assert st.status==DfStatus.ok && st.n==5 && st.mean[0]==0.5 && st.mean[1]==-0.2;
+    // The origin is equally near all four means: it counts for class 0.
+    #assert st.count[0]==3 && st.count[1]==0 && st.count[2]==1 && st.count[3]==1;
+    // Squared distances to the nearest mean: 0.25, 0.25, 0, 0.25, 4 over 10 coordinates.
+    #assert st.within==4.75/10;
+    vx:=1.5*1.5+2*2+2.5*2.5+0.5*0.5+0.5*0.5;vy:=0.7*0.7+0.2*0.2+0.2*0.2+1.3*1.3+0.2*0.2;
+    #assert df_near(st.var,(vx+vy)/10,1e-15);
+    near:=[8]f64.[0.1,1.8, -1.7,0.2, 0.3,-2.2, 0.9,0.8];st=df_stats(near[..],4);
+    #assert st.count[0]==1 && st.count[1]==1 && st.count[2]==1 && st.count[3]==1 && df_near(st.within,(0.05+0.13+0.13+((0.9-2)*(0.9-2)+0.64))/8,1e-15);
+    st=df_stats(near[6..<8],1);#assert st.count[0]==1 && st.var==0 && st.mean[0]==0.9;
+    #assert df_stats(pts[..],6).status==DfStatus.shape && df_stats(pts[..],0).status==DfStatus.shape;
+}
+#test "the gate at its edges" {
+    // n = 64: a class mean may be 4 * 0.5 / 8 = 0.25 off, its variance 4 * 0.25 / 8 = 0.125.
+    g:=DfStats.{status=DfStatus.ok,n=64,mean=[2]f64.[2.25,-0.25],var=0.375};
+    #assert df_gate(g,0) && !df_gate(g,1);
+    g.mean[0]=2.2500001;#assert !df_gate(g,0);g.mean[0]=1.75;#assert df_gate(g,0);g.mean[1]=0.2500001;#assert !df_gate(g,0);g.mean[1]=0;
+    g.var=0.3750001;#assert !df_gate(g,0);g.var=0.125;#assert df_gate(g,0);g.var=0.1249999;#assert !df_gate(g,0);g.var=0.25;
+    for c:0..<4 {g.mean=[2]f64.[DF_MEAN[2*c],DF_MEAN[2*c+1]];#assert df_gate(g,c) && !df_gate(g,(c+1)%4);}
+    g.status=DfStatus.shape;#assert !df_gate(g,3);
+    // The mixture, n = 64: mean within 4 * 1.5 / 8 = 0.75, spread within 0.125, shares within 4 sqrt(3/16) / 8 of 1/4.
+    u:=DfStats.{status=DfStatus.ok,n=64,mean=[2]f64.[0.75,-0.75],var=2.25,within=0.375,count=[4]int.[16,16,16,16]};
+    #assert df_gate(u,-1);u.mean[0]=0.7500001;#assert !df_gate(u,-1);u.mean[0]=0;u.mean[1]=-0.7500001;#assert !df_gate(u,-1);u.mean[1]=0;
+    u.within=0.3750001;#assert !df_gate(u,-1);u.within=0.125;#assert df_gate(u,-1);u.within=0.1249999;#assert !df_gate(u,-1);u.within=0.25;
+    // n = 272: the variance within 4 sqrt(1.0625 / 272) = 0.25 of 2.25.
+    u.n=272;u.count=[4]int.[68,68,68,68];u.var=2.5;#assert df_gate(u,-1);u.var=2.5000001;#assert !df_gate(u,-1);u.var=2;#assert df_gate(u,-1);u.var=1.9999999;#assert !df_gate(u,-1);
+    // n = 12: a share within 4 sqrt(3/16 / 12) = 0.5 of 1/4, so a count of 9 passes and 10 fails, for each class.
+    u.n=12;u.var=2.25;
+    for c:0..<4 {
+        u.count=[4]int.[1,1,1,1];u.count[c]=9;#assert df_gate(u,-1);u.count[c]=10;#assert !df_gate(u,-1);u.count[c]=0;#assert df_gate(u,-1);
+    }
+    u.count=[4]int.[3,3,3,3];u.status=DfStatus.shape;#assert !df_gate(u,-1);
+}
+
+// book:begin draw
+// A standard normal from two uniforms, counters 2k and 2k + 1 (Box-Muller,
+// cosine branch). 1 - u is never 0, so the log is finite.
+df_normal :: (seed:u64,k:u64)->f64 #export_c {
+    u1:=f64(cr_bits(seed,2*k)>>11)/9007199254740992.0;u2:=f64(cr_bits(seed,2*k+1)>>11)/9007199254740992.0;
+    return sqrt(-2*log(1-u1))*cos(2*DF_PI*u2);
+}
+// Data point i of a class: its mean plus 0.5 times normals 2i and 2i + 1.
+df_data :: (seed:u64,i:u64,class:int)->[2]f64 {
+    return [2]f64.[DF_MEAN[2*class]+DF_SPREAD*df_normal(seed,2*i),DF_MEAN[2*class+1]+DF_SPREAD*df_normal(seed,2*i+1)];
+}
+// The forward process at one noise level: x = alpha x0 + sigma eps.
+df_noise :: (x0:[2]f64,eps:[2]f64,alpha:f64,sigma:f64)->[2]f64 {
+    return [2]f64.[alpha*x0[0]+sigma*eps[0],alpha*x0[1]+sigma*eps[1]];
+}
+// book:end draw
+
+
+// book:begin schedule
+df_finite :: (v:f64)->bool {return v-v==0;}
+// Admit betas[0..T-1] as beta_1..beta_T: 1 to 1,000 of them, finite, in
+// (0, 1) and never decreasing; abar is their running product of 1 - beta.
+df_betas :: (betas:[]f64)->DfSchedule {
+    s:DfSchedule;
+    if betas.count<1 || betas.count>DF_STEPS_MAX {s.status=DfStatus.steps;return s;}
+    for b:betas {if !df_finite(b) {s.status=DfStatus.number;return s;}}
+    for b:betas {if b<=0 || b>=1 {s.status=DfStatus.range;return s;}}
+    for t:1..<betas.count {if betas[t]<betas[t-1] {s.status=DfStatus.order;return s;}}
+    s.steps=betas.count;s.abar[0]=1;
+    for t:1..<betas.count+1 {s.beta[t]=betas[t-1];s.abar[t]=s.abar[t-1]*(1-betas[t-1]);}
+    return s;
+}
+// Linear betas from first (beta_1) to last (beta_T).
+df_linear :: (steps:int,first:f64,last:f64)->DfSchedule {
+    if steps<1 || steps>DF_STEPS_MAX {return DfSchedule.{status=DfStatus.steps};}
+    if !df_finite(first) || !df_finite(last) {return DfSchedule.{status=DfStatus.number};}
+    if last<first {return DfSchedule.{status=DfStatus.order};}
+    b:[DF_STEPS_MAX]f64;b[0]=first;
+    for t:1..<steps {b[t]=first+(last-first)*f64(t)/f64(steps-1);}
+    return df_betas(b[0..<steps]);
+}
+// The cosine schedule: abar(t) = f(t) / f(0) with f(t) = cos^2((t/T + s) /
+// (1 + s) * pi/2), each beta capped at 0.999 so the last level stays above 0.
+df_cosine :: (steps:int)->DfSchedule {
+    if steps<1 || steps>DF_STEPS_MAX {return DfSchedule.{status=DfStatus.steps};}
+    b:[DF_STEPS_MAX]f64;prev:=df_cosine_f(0,steps);
+    for t:1..<steps+1 {now:=df_cosine_f(t,steps);b[t-1]=df_cap(1-now/prev);prev=now;}
+    return df_betas(b[0..<steps]);
+}
+// The smaller of b and 0.999, written without a comparison: (b + c - |b - c|) / 2.
+df_cap :: (b:f64)->f64 {return (b+DF_CLIP-abs(b-DF_CLIP))/2;}
+df_cosine_f :: (t:int,steps:int)->f64 {c:=cos((f64(t)/f64(steps)+DF_OFFSET)/(1+DF_OFFSET)*DF_PI/2);return c*c;}
+// book:end schedule
+
+// book:begin posterior
+// What a noisy point x = alpha x0 + sigma eps says about its data and its
+// noise. Each class makes x normal with mean alpha mu and variance
+// v = alpha^2 0.5^2 + sigma^2 a coordinate; given x and the class, x0 and eps
+// are normal too, with means mu + (alpha 0.5^2 / v)(x - alpha mu) and
+// (sigma / v)(x - alpha mu). Class -1 is the mixture: the classes weighted
+// by how likely each makes x, computed against the largest weight so that
+// no exponential overflows.
+df_posterior :: (x:[2]f64,alpha:f64,sigma:f64,class:int)->DfPair {
+    if class>=0 {return df_class_posterior(x,alpha,sigma,class);}
+    v:=alpha*alpha*DF_SPREAD*DF_SPREAD+sigma*sigma;lw:[4]f64;
+    for c:0..<4 {d0:=x[0]-alpha*DF_MEAN[2*c];d1:=x[1]-alpha*DF_MEAN[2*c+1];lw[c]=-(d0*d0+d1*d1)/(2*v);}
+    best:=0;for k:0..<3 {if lw[k+1]>lw[best] {best=k+1;}}
+    total:=0.0;for c:0..<4 {total+=exp(lw[c]-lw[best]);}
+    p:=DfPair.{likely=best};
+    for c:0..<4 {
+        w:=exp(lw[c]-lw[best])/total;one:=df_class_posterior(x,alpha,sigma,c);
+        for d:0..<2 {p.eps[d]+=w*one.eps[d];p.x0[d]+=w*one.x0[d];}
+    }
+    return p;
+}
+df_class_posterior :: (x:[2]f64,alpha:f64,sigma:f64,class:int)->DfPair {
+    v:=alpha*alpha*DF_SPREAD*DF_SPREAD+sigma*sigma;p:=DfPair.{likely=class};
+    for d:0..<2 {
+        r:=x[d]-alpha*DF_MEAN[2*class+d];
+        p.eps[d]=sigma*r/v;p.x0[d]=DF_MEAN[2*class+d]+alpha*DF_SPREAD*DF_SPREAD*r/v;
+    }
+    return p;
+}
+// book:end posterior
+
+// book:begin objectives
+// The training target of each objective, from the data and the noise.
+df_mix :: (o:DfObjective,x0:f64,eps:f64,alpha:f64,sigma:f64)->f64 {
+    if o==DfObjective.eps {return eps;}
+    if o==DfObjective.x0 {return x0;}
+    if o==DfObjective.v {return alpha*eps-sigma*x0;}
+    return eps-x0;
+}
+df_target :: (o:DfObjective,x0:[2]f64,eps:[2]f64,alpha:f64,sigma:f64)->[2]f64 {
+    return [2]f64.[df_mix(o,x0[0],eps[0],alpha,sigma),df_mix(o,x0[1],eps[1],alpha,sigma)];
+}
+// A prediction of one objective, read as noise and data: whichever one it
+// names, the other follows from x = alpha x0 + sigma eps.
+df_as_pair :: (o:DfObjective,pred:[2]f64,x:[2]f64,alpha:f64,sigma:f64)->DfPair {
+    p:DfPair;r:=alpha*alpha+sigma*sigma;
+    for d:0..<2 {
+        if o==DfObjective.eps {p.eps[d]=pred[d];p.x0[d]=(x[d]-sigma*pred[d])/alpha;}
+        if o==DfObjective.x0 {p.x0[d]=pred[d];p.eps[d]=(x[d]-alpha*pred[d])/sigma;}
+        if o==DfObjective.v {p.eps[d]=(alpha*pred[d]+sigma*x[d])/r;p.x0[d]=(alpha*x[d]-sigma*pred[d])/r;}
+        if o==DfObjective.flow {p.eps[d]=(x[d]+alpha*pred[d])/(alpha+sigma);p.x0[d]=p.eps[d]-pred[d];}
+    }
+    return p;
+}
+df_restate :: (from:DfObjective,to:DfObjective,pred:[2]f64,x:[2]f64,alpha:f64,sigma:f64)->[2]f64 {
+    p:=df_as_pair(from,pred,x,alpha,sigma);return df_target(to,p.x0,p.eps,alpha,sigma);
+}
+// The squared error of one prediction against its objective's target.
+df_loss :: (o:DfObjective,pred:[2]f64,x0:[2]f64,eps:[2]f64,alpha:f64,sigma:f64)->f64 {
+    t:=df_target(o,x0,eps,alpha,sigma);return (pred[0]-t[0])*(pred[0]-t[0])+(pred[1]-t[1])*(pred[1]-t[1]);
+}
+// The best affine predictor a x + b of an objective for one class: the
+// posterior means are affine in x, and every target is a fixed combination
+// of them.
+df_optimal :: (o:DfObjective,alpha:f64,sigma:f64,class:int)->[3]f64 {
+    v:=alpha*alpha*DF_SPREAD*DF_SPREAD+sigma*sigma;ae:=sigma/v;ax:=alpha*DF_SPREAD*DF_SPREAD/v;
+    w:=[3]f64.[df_mix(o,ax,ae,alpha,sigma),0,0];
+    for d:0..<2 {mu:=DF_MEAN[2*class+d];w[1+d]=df_mix(o,mu-ax*alpha*mu,-ae*alpha*mu,alpha,sigma);}
+    return w;
+}
+// book:end objectives
+
+// book:begin fit
+// Along any level of this target the loss curves at most 10.8 (alpha = 1:
+// the largest eigenvalue of [[9, 4], [4, 2]]), so a rate up to 2 / 10.8
+// converges; 0.15 leaves room for sampling noise. The flattest direction
+// curves about 0.185, so each step keeps at most 0.972 of the error.
+DF_ITERATIONS :: 1000;
+DF_RATE :: 0.15;
+DF_RATE_MAX :: 0.15;
+// The mean squared error of w = (a, b0, b1) on the points xs (two values a
+// point) against the targets ys, and its gradient.
+df_mse :: (xs:[]f64,ys:[]f64,w:[3]f64)->f64 {
+    sum:=0.0;n:=xs.count/2;
+    for i:0..<n {for d:0..<2 {r:=w[0]*xs[2*i+d]+w[1+d]-ys[2*i+d];sum+=r*r;}}
+    return sum/f64(n);
+}
+df_gradient :: (xs:[]f64,ys:[]f64,w:[3]f64)->[3]f64 {
+    g:[3]f64;n:=xs.count/2;
+    for i:0..<n {for d:0..<2 {r:=w[0]*xs[2*i+d]+w[1+d]-ys[2*i+d];g[0]+=r*xs[2*i+d];g[1+d]+=r;}}
+    for k:0..<3 {g[k]*=2/f64(n);}
+    return g;
+}
+// Gradient descent from zero.
+df_descend :: (xs:[]f64,ys:[]f64,iterations:int,rate:f64)->[3]f64 {
+    w:[3]f64;
+    for step:0..<iterations {g:=df_gradient(xs,ys,w);for k:0..<3 {w[k]-=rate*g[k];}}
+    return w;
+}
+// The same minimum in closed form: b = (sum y - a sum x) / n, and a from the
+// centred sums. A cell whose points all coincide gets a = 0.
+df_fit :: (xs:[]f64,ys:[]f64)->[3]f64 {
+    n:=xs.count/2;sx:[2]f64;sy:[2]f64;sxx:=0.0;sxy:=0.0;
+    for i:0..<n {for d:0..<2 {sx[d]+=xs[2*i+d];sy[d]+=ys[2*i+d];sxx+=xs[2*i+d]*xs[2*i+d];sxy+=xs[2*i+d]*ys[2*i+d];}}
+    den:=sxx-(sx[0]*sx[0]+sx[1]*sx[1])/f64(n);a:=0.0;
+    if den>0 {a=(sxy-(sx[0]*sy[0]+sx[1]*sy[1])/f64(n))/den;}
+    return [3]f64.[a,(sy[0]-a*sx[0])/f64(n),(sy[1]-a*sx[1])/f64(n)];
+}
+// One cell's training points: point i draws its data from normals 4q, 4q + 1
+// and its noise from 4q + 2, 4q + 3, where q = (4 level + class) n + i and
+// n = xs.count / 2.
+df_cell :: (seed:u64,level:int,class:int,o:DfObjective,alpha:f64,sigma:f64,xs:[]f64,ys:[]f64) {
+    n:=xs.count/2;
+    for i:0..<n {
+        q:=cast(u64)((4*level+class)*n+i);x0:=df_data(seed,2*q,class);
+        eps:=[2]f64.[df_normal(seed,4*q+2),df_normal(seed,4*q+3)];x:=df_noise(x0,eps,alpha,sigma);y:=df_target(o,x0,eps,alpha,sigma);
+        for d:0..<2 {xs[2*i+d]=x[d];ys[2*i+d]=y[d];}
+    }
+}
+// book:end fit
+
+// book:begin model
+// A model whose levels are a schedule's: level t has alpha = sqrt(abar_t),
+// sigma = sqrt(1 - abar_t).
+df_vp_model :: (s:DfSchedule,o:DfObjective,alpha:[]f64,sigma:[]f64,w:[]f64)->DfModel {
+    if s.status!=DfStatus.ok {return DfModel.{status=s.status};}
+    if o==DfObjective.flow {return DfModel.{status=DfStatus.objective};}
+    levels:=s.steps+1;
+    if alpha.count<levels || sigma.count<levels || w.count<12*levels {return DfModel.{status=DfStatus.shape};}
+    for t:0..<levels {alpha[t]=sqrt(s.abar[t]);sigma[t]=sqrt(1-s.abar[t]);}
+    return DfModel.{objective=o,levels=levels,alpha=alpha[0..<levels],sigma=sigma[0..<levels],w=w[0..<12*levels]};
+}
+// A flow model on the grid t = j / steps: alpha = 1 - t, sigma = t.
+df_flow_model :: (steps:int,alpha:[]f64,sigma:[]f64,w:[]f64)->DfModel {
+    if steps<1 || steps>DF_STEPS_MAX {return DfModel.{status=DfStatus.steps};}
+    levels:=steps+1;
+    if alpha.count<levels || sigma.count<levels || w.count<12*levels {return DfModel.{status=DfStatus.shape};}
+    for j:0..<levels {sigma[j]=f64(j)/f64(steps);alpha[j]=1-sigma[j];}
+    return DfModel.{objective=DfObjective.flow,levels=levels,alpha=alpha[0..<levels],sigma=sigma[0..<levels],w=w[0..<12*levels]};
+}
+// Train every level and class: n fresh points a cell, gradient descent from
+// zero on the objective's squared error.
+df_train :: (m:DfModel,seed:u64,n:int,iterations:int,rate:f64,scratch:[]f64)->DfStatus {
+    if m.status!=DfStatus.ok || m.levels<1 || n<2 || n>DF_CELL_MAX || scratch.count<4*n {return DfStatus.shape;}
+    if iterations<1 {return DfStatus.steps;}
+    if !(rate>0 && rate<=DF_RATE_MAX) {return DfStatus.range;}
+    xs:=scratch[0..<2*n];ys:=scratch[2*n..<4*n];
+    for j:0..<m.levels {for c:0..<4 {
+        df_cell(seed,j,c,m.objective,m.alpha[j],m.sigma[j],xs,ys);
+        w:=df_descend(xs,ys,iterations,rate);for k:0..<3 {m.w[12*j+3*c+k]=w[k];}
+    }}
+    return DfStatus.ok;
+}
+// Every cell set to its population optimum.
+df_fill_optimal :: (m:DfModel) {
+    for j:0..<m.levels {for c:0..<4 {w:=df_optimal(m.objective,m.alpha[j],m.sigma[j],c);for k:0..<3 {m.w[12*j+3*c+k]=w[k];}}}
+}
+// A model with levels was trained (or set); one without is the exact posterior.
+df_trained :: (m:DfModel)->bool {return m.levels>0;}
+// What a model says about x at a level: the exact posterior when it has no
+// levels, else its cell's prediction read as noise and data.
+df_pair :: (m:DfModel,level:int,alpha:f64,sigma:f64,class:int,x:[2]f64)->DfPair {
+    if !df_trained(m) {return df_posterior(x,alpha,sigma,class);}
+    k:=12*level+3*class;pred:=[2]f64.[m.w[k]*x[0]+m.w[k+1],m.w[k]*x[1]+m.w[k+2]];
+    return df_as_pair(m.objective,pred,x,m.alpha[level],m.sigma[level]);
+}
+// book:end model
+
+// book:begin samplers
+// DDPM: the mean of x_{t-1} given x_t and the predicted noise, plus the
+// posterior's spread times fresh noise z. At the last step the spread is 0,
+// since abar_0 = 1.
+df_ddpm_step :: (s:DfSchedule,t:int,x:[2]f64,eps:[2]f64,z:[2]f64)->[2]f64 {
+    out:[2]f64;spread:=sqrt((1-s.abar[t-1])/(1-s.abar[t])*s.beta[t]);
+    for d:0..<2 {
+        out[d]=(x[d]-s.beta[t]/sqrt(1-s.abar[t])*eps[d])/sqrt(1-s.beta[t])+spread*z[d];
+    }
+    return out;
+}
+// DDIM: guess the data, then noise it to level u with the same noise.
+df_ddim_step :: (s:DfSchedule,t:int,u:int,x:[2]f64,eps:[2]f64)->[2]f64 {
+    out:[2]f64;
+    for d:0..<2 {x0:=(x[d]-sqrt(1-s.abar[t])*eps[d])/sqrt(s.abar[t]);out[d]=sqrt(s.abar[u])*x0+sqrt(1-s.abar[u])*eps[d];}
+    return out;
+}
+// The flow's velocity eps - x0 at time t, where x = (1 - t) x0 + t eps.
+df_velocity :: (m:DfModel,level:int,class:int,t:f64,x:[2]f64)->[2]f64 {
+    p:=df_pair(m,level,1-t,t,class,x);return [2]f64.[p.eps[0]-p.x0[0],p.eps[1]-p.x0[1]];
+}
+// One step of the flow ODE from t = i / steps to (i - 1) / steps: Euler, or
+// Heun (Euler's guess, then the average of the two velocities).
+df_flow_step :: (m:DfModel,class:int,i:int,steps:int,x:[2]f64,heun:bool)->[2]f64 {
+    per:=(m.levels-1)/steps;    // flow-grid levels a step; unused by the exact posterior
+    t:=f64(i)/f64(steps);u:=f64(i-1)/f64(steps);h:=u-t;
+    v:=df_velocity(m,i*per,class,t,x);guess:=[2]f64.[x[0]+h*v[0],x[1]+h*v[1]];
+    if !heun {return guess;}
+    w:=df_velocity(m,(i-1)*per,class,u,guess);
+    return [2]f64.[x[0]+h*(v[0]+w[0])/2,x[1]+h*(v[1]+w[1])/2];
+}
+df_flow_solve :: (m:DfModel,class:int,steps:int,heun:bool,z:[2]f64)->[2]f64 {
+    x:=z;for k:0..<steps {x=df_flow_step(m,class,steps-k,steps,x,heun);}
+    return x;
+}
+// What every sampler needs before it starts.
+df_admit :: (kind:DfSampler,s:DfSchedule,m:DfModel,class:int,steps:int)->DfStatus {
+    if class< -1 || class>3 {return DfStatus.class;}
+    if m.status!=DfStatus.ok {return m.status;}
+    if df_trained(m) && class<0 {return DfStatus.class;}
+    if kind==DfSampler.ddpm || kind==DfSampler.ddim {
+        if s.status!=DfStatus.ok {return s.status;}
+        if df_trained(m) && m.objective==DfObjective.flow {return DfStatus.objective;}
+        if df_trained(m) && m.levels!=s.steps+1 {return DfStatus.shape;}
+        if kind==DfSampler.ddpm && steps!=s.steps {return DfStatus.steps;}
+        if steps<1 || steps>s.steps {return DfStatus.steps;}
+        return DfStatus.ok;
+    }
+    if df_trained(m) && m.objective!=DfObjective.flow {return DfStatus.objective;}
+    if steps<1 || steps>DF_STEPS_MAX {return DfStatus.steps;}
+    if df_trained(m) && (m.levels-1<steps || (m.levels-1)%steps!=0) {return DfStatus.steps;}
+    return DfStatus.ok;
+}
+// Sample k: it starts from normals 2002 k and 2002 k + 1; DDPM's step t
+// adds normals 2002 k + 2t and 2002 k + 2t + 1.
+df_sample :: (kind:DfSampler,s:DfSchedule,m:DfModel,class:int,steps:int,seed:u64,k:int)->DfSample {
+    status:=df_admit(kind,s,m,class,steps);if status!=DfStatus.ok {return DfSample.{status=status};}
+    base:=DF_STRIDE*cast(u64)k;x:=[2]f64.[df_normal(seed,base),df_normal(seed,base+1)];
+    if kind==DfSampler.euler || kind==DfSampler.heun {return DfSample.{x=df_flow_solve(m,class,steps,kind==DfSampler.heun,x)};}
+    if kind==DfSampler.ddim {
+        for i:0..<steps {
+            t:=(steps-i)*s.steps/steps;u:=(steps-i-1)*s.steps/steps;
+            e:=df_pair(m,t,sqrt(s.abar[t]),sqrt(1-s.abar[t]),class,x).eps;x=df_ddim_step(s,t,u,x,e);
+        }
+        return DfSample.{x=x};
+    }
+    for i:0..<steps {
+        t:=steps-i;e:=df_pair(m,t,sqrt(s.abar[t]),sqrt(1-s.abar[t]),class,x).eps;
+        z:=[2]f64.[df_normal(seed,base+cast(u64)(2*t)),df_normal(seed,base+cast(u64)(2*t+1))];
+        x=df_ddpm_step(s,t,x,e,z);
+    }
+    return DfSample.{x=x};
+}
+df_samples :: (kind:DfSampler,s:DfSchedule,m:DfModel,class:int,steps:int,seed:u64,n:int,out:[]f64)->DfStatus {
+    if n<1 || out.count<2*n {return DfStatus.shape;}
+    status:=df_admit(kind,s,m,class,steps);if status!=DfStatus.ok {return status;}
+    for k:0..<n {p:=df_sample(kind,s,m,class,steps,seed,k);out[2*k]=p.x[0];out[2*k+1]=p.x[1];}
+    return DfStatus.ok;
+}
+// book:end samplers
+
+// book:begin gate
+DF_GATE_Z :: 4.0;              // standard errors a statistic may stray
+DF_TOTAL_VAR :: 2.25;          // the mixture's variance a coordinate: 2 + 0.5^2
+DF_SQUARE_VAR :: 1.0625;       // the variance of (x^2 + y^2) / 2 under the mixture
+// The squared distance from (x, y) to class c's mean.
+df_distance2 :: (x:f64,y:f64,c:int)->f64 {d0:=x-DF_MEAN[2*c];d1:=y-DF_MEAN[2*c+1];return d0*d0+d1*d1;}
+df_stats :: (xs:[]f64,n:int)->DfStats {
+    if n<1 || xs.count<2*n {return DfStats.{status=DfStatus.shape};}
+    st:=DfStats.{n=n};
+    for i:0..<n {for d:0..<2 {st.mean[d]+=xs[2*i+d];}}
+    for d:0..<2 {st.mean[d]/=f64(n);}
+    for i:0..<n {
+        best:=0;near:=df_distance2(xs[2*i],xs[2*i+1],0);
+        for k:0..<3 {q:=df_distance2(xs[2*i],xs[2*i+1],k+1);if q<near {near=q;best=k+1;}}
+        st.count[best]+=1;st.within+=near;
+        for d:0..<2 {dev:=xs[2*i+d]-st.mean[d];st.var+=dev*dev;}
+    }
+    st.var/=f64(2*n);st.within/=f64(2*n);
+    return st;
+}
+// Fixed before any sample was drawn: each statistic within 4 standard errors
+// of the target's value, checked squared, as dev^2 n <= 16 se^2 n, so that no
+// square root rounds. One class: its mean (se^2 n = 0.25 a coordinate) and
+// its variance (0.0625). The mixture: the mean (2.25), the variance (1.0625:
+// (x^2 + y^2) / 2 has that variance under the target), each class's share of
+// nearest points (3/16 around 1/4) and the spread about the nearest mean
+// (0.0625).
+df_close :: (dev:f64,n:int,var_n:f64)->bool {return dev*dev*f64(n)<=DF_GATE_Z*DF_GATE_Z*var_n;}
+df_gate :: (st:DfStats,class:int)->bool {
+    if st.status!=DfStatus.ok {return false;}
+    s2:=DF_SPREAD*DF_SPREAD;
+    if class>=0 {
+        return df_close(st.mean[0]-DF_MEAN[2*class],st.n,s2) && df_close(st.mean[1]-DF_MEAN[2*class+1],st.n,s2) && df_close(st.var-s2,st.n,s2*s2);
+    }
+    ok:=df_close(st.mean[0],st.n,DF_TOTAL_VAR) && df_close(st.mean[1],st.n,DF_TOTAL_VAR) && df_close(st.var-DF_TOTAL_VAR,st.n,DF_SQUARE_VAR) && df_close(st.within-s2,st.n,s2*s2);
+    for c:0..<4 {if !df_close(f64(st.count[c])/f64(st.n)-0.25,st.n,3.0/16) {ok=false;}}
+    return ok;
+}
+// book:end gate

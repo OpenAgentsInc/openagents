@@ -1832,6 +1832,26 @@
       ]
     },
     {
+      "source": "psionic/examples/diffusion.coax",
+      "chapter": "psionic/book/ch146-noise-diffusion-and-flow.md",
+      "stdout": "psionic/fixtures/diffusion.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/diffusion-refuse.coax",
+      "chapter": "psionic/book/ch146-noise-diffusion-and-flow.md",
+      "stdout": "psionic/fixtures/diffusion-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/cooperate.coax",
       "chapter": "psionic/book/ch068-coax-kernels-cooperate.md",
       "stdout": "psionic/fixtures/cooperate.out",

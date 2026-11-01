@@ -1,0 +1,47 @@
+linear, 4 steps: abar 0.9 0.72 0.504 0.3024
+cosine, 4 steps: beta 0.152988 0.416958 0.707859 0.999
+cosine, 4 steps: abar 0.847012 0.493844 0.144272 0.000144
+cosine, 100 steps: abar_1 0.999369, abar_50 0.493844, abar_100 2.428572279349792e-07
+normal draw, seed 0, k 0: -1.8839083333524405
+forward, class 0 at alpha 0.8: mean (1.5963, 0.0004), variance 0.5213; closed form (1.6, 0), 0.52
+x = 0.8 (2, 0) + 0.6 (1, -1) = (2.2, -0.6)
+  guess as eps: (0.5, -0.5), loss 0.5
+  guess as x0: (2.375, -0.375), loss 0.28125
+  guess as v: (-1.025, -0.175), loss 0.78125
+  guess as flow: (-1.875, -0.125), loss 1.53125
+  best guess for class 0: eps (0.692308, -0.692308), x0 (2.230769, -0.230769)
+  best guess for the mixture: eps (0.705979, -0.679305), x0 (2.220516, -0.240521)
+train the noise predictor: 101 levels x 4 classes, 128 points, 1000 steps at rate 0.15: ok
+  largest gap to least squares: below 1e-9
+  largest distance to the population optimum: 0.6313, at level 4
+  level 50, class 1: learned (1.1359, 0.0349, -1.5427), optimum (1.13, 0.0, -1.5881)
+1000 samples each, seed 7:
+  DDPM, learned, class 0: mean (1.9736, 0.0234), variance 0.2464, nearest 993 4 0 3, spread 0.2443 -> gate pass
+  DDPM, learned, class 1: mean (-0.0235, 1.9756), variance 0.2385, nearest 4 993 3 0, spread 0.2358 -> gate pass
+  DDPM, learned, class 2: mean (-2.007, -0.0077), variance 0.2351, nearest 0 3 993 4, spread 0.2323 -> gate pass
+  DDPM, learned, class 3: mean (-0.0372, -2.0194), variance 0.2325, nearest 2 0 3 995, spread 0.2318 -> gate pass
+  DDPM, exact mixture, 100 steps: mean (-0.0336, -0.0789), variance 2.2183, nearest 242 233 258 267, spread 0.2375 -> gate pass
+  DDIM, exact mixture, 100 steps: mean (0.0034, 0.0378), variance 2.1972, nearest 246 263 243 248, spread 0.2437 -> gate pass
+gates passed: 6 of 6
+too few steps:
+  DDPM, exact mixture, 10 steps: mean (-0.0309, 0.0414), variance 1.9292, nearest 250 267 247 236, spread 0.208 -> gate fail
+  DDIM, exact mixture, 10 steps: mean (0.0042, 0.036), variance 1.9241, nearest 246 263 243 248, spread 0.2307 -> gate fail
+an untrained model (every weight 0):
+  DDPM, class 0: mean (-20.3788, 52.5759), variance 4059583.1037, nearest 246 261 244 249, spread 4056637.2909 -> gate fail
+train the flow velocity: 21 levels x 4 classes: ok
+  Heun, learned, 10 steps, class 0: mean (1.9776, 0.0319), variance 0.2276, nearest 997 2 0 1, spread 0.2281 -> gate pass
+  Heun, learned, 10 steps, class 1: mean (-0.039, 2.0132), variance 0.2343, nearest 1 998 1 0, spread 0.2349 -> gate pass
+  Heun, learned, 10 steps, class 2: mean (-1.9811, -0.004), variance 0.2266, nearest 0 2 997 1, spread 0.2261 -> gate pass
+  Heun, learned, 10 steps, class 3: mean (-0.0099, -1.983), variance 0.2329, nearest 2 0 2 996, spread 0.2322 -> gate pass
+  Heun, exact mixture, 10 steps: mean (0.0034, 0.0382), variance 2.2283, nearest 246 263 243 248, spread 0.2524 -> gate pass
+gates passed: 5 of 5
+too few steps:
+  Euler, exact mixture, 10 steps: mean (0.004, 0.0362), variance 1.9067, nearest 246 263 243 248, spread 0.2462 -> gate fail
+class 1 from z = (-0.150789, 1.235967): exact end (-0.075395, 2.617983)
+  4 steps: Euler error 0.198548, Heun error 0.00602
+  8 steps: Euler error 0.106104, Heun error 0.00304; halving the step divides them by 1.8713 and 1.9803
+  16 steps: Euler error 0.05518, Heun error 0.000951; halving the step divides them by 1.9229 and 3.1964
+  32 steps: Euler error 0.028185, Heun error 0.000261; halving the step divides them by 1.9578 and 3.6373
+  64 steps: Euler error 0.01425, Heun error 0.000068; halving the step divides them by 1.9779 and 3.8275
+sample 0, seed 7: (0.6705417335151039, 2.131017800549175), bits 4604214922547666393 4611981044286253987
+again: same bits true; seed 8 gives (-0.4610600789839521, 2.078532038495612)

@@ -1,0 +1,26 @@
+linear schedule, 0 steps: steps
+linear schedule, 1,001 steps: steps
+linear schedule, betas 0.3 down to 0.2: order
+linear schedule, first beta 0: range
+linear schedule, last beta 1: range
+linear schedule, a NaN beta: number
+cosine schedule, 0 steps: steps
+betas 0.1, 0.05, 0.2: order
+betas 0.1, 1.5, 0.2: range
+a diffusion model with flow levels: objective
+a 4-step model in room for 59 weights of 60: shape
+a model on a refused schedule: order
+train on 1 point a cell: shape
+train 17 points in scratch for 16: shape
+train 0 steps: steps
+train at rate 0.2, above 0.15: range
+sample class 4 of 0..3: class
+sample the mixture from a trained model: class
+DDPM in 3 steps on a 4-step schedule: steps
+DDIM in 5 steps on a 4-step schedule: steps
+DDPM on a decreasing schedule: order
+Heun with a noise predictor: objective
+Euler in 3 steps on a 4-interval flow grid: steps
+5 samples into room for 4: shape
+values still -7: 8 of 8
+statistics of 0 samples: shape

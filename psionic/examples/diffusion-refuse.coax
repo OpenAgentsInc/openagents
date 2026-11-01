@@ -1,0 +1,41 @@
+// Chapter 146: bad schedules, models, training settings and sampler
+// requests, each refused with its status before anything is written.
+#import "Basic";
+#load "../lib/diffusion.coax";
+
+// book:begin refuse
+main :: () {
+    print("linear schedule, 0 steps: %\n",df_linear(0,0.1,0.2).status);
+    print("linear schedule, 1,001 steps: %\n",df_linear(1001,0.1,0.2).status);
+    print("linear schedule, betas 0.3 down to 0.2: %\n",df_linear(4,0.3,0.2).status);
+    print("linear schedule, first beta 0: %\n",df_linear(4,0,0.2).status);
+    print("linear schedule, last beta 1: %\n",df_linear(4,0.1,1).status);
+    print("linear schedule, a NaN beta: %\n",df_linear(4,0.1,0.0/0.0).status);
+    print("cosine schedule, 0 steps: %\n",df_cosine(0).status);
+    b:=[3]f64.[0.1,0.05,0.2];print("betas 0.1, 0.05, 0.2: %\n",df_betas(b[..]).status);
+    b[1]=1.5;print("betas 0.1, 1.5, 0.2: %\n",df_betas(b[..]).status);
+
+    s:=df_linear(4,0.1,0.4);al:[5]f64;sg:[5]f64;w:[60]f64;scratch:[64]f64;
+    print("a diffusion model with flow levels: %\n",df_vp_model(s,DfObjective.flow,al[..],sg[..],w[..]).status);
+    print("a 4-step model in room for 59 weights of 60: %\n",df_vp_model(s,DfObjective.eps,al[..],sg[..],w[0..<59]).status);
+    print("a model on a refused schedule: %\n",df_vp_model(df_linear(4,0.3,0.2),DfObjective.eps,al[..],sg[..],w[..]).status);
+    m:=df_vp_model(s,DfObjective.eps,al[..],sg[..],w[..]);
+    print("train on 1 point a cell: %\n",df_train(m,1,1,10,0.1,scratch[..]));
+    print("train 17 points in scratch for 16: %\n",df_train(m,1,17,10,0.1,scratch[..]));
+    print("train 0 steps: %\n",df_train(m,1,8,0,0.1,scratch[..]));
+    print("train at rate 0.2, above 0.15: %\n",df_train(m,1,8,10,0.2,scratch[..]));
+
+    out:[8]f64;for i:0..<8 {out[i]=-7;}exact:=DfModel.{};
+    print("sample class 4 of 0..3: %\n",df_samples(DfSampler.ddpm,s,exact,4,4,1,4,out[..]));
+    print("sample the mixture from a trained model: %\n",df_samples(DfSampler.ddpm,s,m,-1,4,1,4,out[..]));
+    print("DDPM in 3 steps on a 4-step schedule: %\n",df_samples(DfSampler.ddpm,s,exact,0,3,1,4,out[..]));
+    print("DDIM in 5 steps on a 4-step schedule: %\n",df_samples(DfSampler.ddim,s,exact,0,5,1,4,out[..]));
+    print("DDPM on a decreasing schedule: %\n",df_samples(DfSampler.ddpm,df_linear(4,0.3,0.2),exact,0,4,1,4,out[..]));
+    print("Heun with a noise predictor: %\n",df_samples(DfSampler.heun,s,m,0,4,1,4,out[..]));
+    f:=df_flow_model(4,al[..],sg[..],w[..]);
+    print("Euler in 3 steps on a 4-interval flow grid: %\n",df_samples(DfSampler.euler,s,f,0,3,1,4,out[..]));
+    print("5 samples into room for 4: %\n",df_samples(DfSampler.ddpm,s,exact,0,4,1,5,out[..]));
+    untouched:=0;for v:out {if v==-7 {untouched+=1;}}print("values still -7: % of 8\n",untouched);
+    print("statistics of 0 samples: %\n",df_stats(out[..],0).status);
+}
+// book:end refuse

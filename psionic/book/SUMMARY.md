@@ -158,7 +158,7 @@
 - [143. Elephant and Mammoth see](ch143-elephant-and-mammoth-see.md) — design draft
 - [144. See with C-RADIO](ch144-see-with-c-radio.md) — design draft
 - [145. Compress and reconstruct an image](ch145-compress-and-reconstruct-an-image.md) — partly implemented
-- [146. Noise, diffusion and flow](ch146-noise-diffusion-and-flow.md) — design draft
+- [146. Noise, diffusion and flow](ch146-noise-diffusion-and-flow.md)
 
 - [147. Poses have conventions](ch147-poses-have-conventions.md)
 - [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — partly implemented
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126, 127, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126, 127, 140, 142, 145–148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).
