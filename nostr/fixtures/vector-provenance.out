@@ -1,0 +1,28 @@
+file: upstream/json/n_object_trailing_comma.json, 9 bytes, text {"id":0,}
+padded block: 7b226964223a302c7d80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000048
+sha256: 60e04bc71fcc4c57abeef95a9604a96aa60f833881a2f028d27bd4f03e176603
+ok: upstream/json/i_string_UTF-16LE_with_BOM.json
+ok: upstream/json/i_structure_500_nested_arrays.json
+ok: upstream/json/n_object_trailing_comma.json
+ok: upstream/json/n_string_incomplete_escape.json
+ok: upstream/json/n_string_invalid-utf-8-in-escape.json
+ok: upstream/json/n_string_unescaped_ctrl_char.json
+ok: upstream/json/y_number_int_with_exp.json
+ok: upstream/json/y_string_escaped_control_character.json
+ok: upstream/json/y_string_utf8.json
+ok: upstream/bip340/test-vectors.csv
+ok: upstream/nip44/nip44.vectors.json
+ok: upstream/rfc/rfc8439.txt
+ok: upstream/nist/SHA256ShortMsg.rsp
+ok: upstream/wycheproof/ecdh_secp256k1_test.json
+14 of 14 records pass, 9 with their bytes
+vector integrity: digest mismatch: upstream/json/n_object_trailing_comma.json
+vector integrity: byte count mismatch: upstream/json/n_object_trailing_comma.json
+vector integrity: unpinned revision: upstream/bip340/test-vectors.csv
+vector integrity: RFC revision: upstream/rfc/rfc8439.txt
+vector integrity: unpinned revision: upstream/nist/SHA256ShortMsg.rsp
+vector integrity: archive digest: upstream/nist/SHA256ShortMsg.rsp
+vector integrity: invalid digest: upstream/nip44/nip44.vectors.json
+vector integrity: invalid path: upstream/../manifest.json
+vector integrity: invalid corpus path: nip44.vectors.json
+vector integrity: invalid retrieved: upstream/nip44/nip44.vectors.json

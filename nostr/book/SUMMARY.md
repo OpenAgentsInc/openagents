@@ -127,7 +127,7 @@
 
 **XI. Interop and verification**
 
-- [93. Test vectors and their provenance](ch093-test-vectors-and-their-provenance.md) — partly implemented
+- [93. Test vectors and their provenance](ch093-test-vectors-and-their-provenance.md) — implemented
 - [94. Differential tests](ch094-differential-tests.md) — partly implemented
 - [95. Fuzzing](ch095-fuzzing.md) — partly implemented
 - [96. Formal properties](ch096-formal-properties.md) — design draft

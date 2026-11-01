@@ -1,0 +1,183 @@
+// The checks of vector-provenance.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/vector-provenance.coax
+#load "../vector-provenance.coax";
+
+// book:begin check
+// GNU coreutils 9.11 `sha256sum` and `wc -c` over the committed files in
+// coax/tests/vectors/upstream/, run 2026-11-01, in the example's PIN order.
+// They share no code with the Coax SHA-256 or with check_vectors.py.
+SHA256SUM :: [14] string.[
+    "6a9c15ecc8fc3da72b0ba5e3539e07f2aad3c704b496fe3496579dc723ce49c5",
+    "a6c6b45361ff77e7372a015a1f0289e9c09d1fe1ed59cf9773d599c55acf57cf",
+    "60e04bc71fcc4c57abeef95a9604a96aa60f833881a2f028d27bd4f03e176603",
+    "df3709e1b19bc2562a9bc0301265c237ca5a5b35bd9bc5c3a7f45c57092e0537",
+    "1c1ef70149258ff7ee082817269431c45e34f75a2268c3dff56f35d3a4859f1e",
+    "c85db33857913bc4c4d4f044c72cd06d50ffb5644b2e5093ef8b46ebfe340ed0",
+    "6d014f6467daa9753d57f0d75067fe62c9f3b0116455a3222c26e58432541b0d",
+    "1a9f37085203c6d712945c5fb87ad5e08fa38515e51ee4a637c7558bb1b82725",
+    "adec79032c3509dce21c9b0b96445a0fe398533d6647d12abc639eef16e621ab",
+    "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
+    "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040",
+    "25bef70fbf7a07ff45c2fe4cb7c6ce954eac687413d8610603268b4e4415324c",
+    "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c",
+    "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"];
+WC_C :: [14] int.[12, 1000, 9, 5, 7, 7, 6, 10, 11, 6892, 37630, 88847, 10299, 501501];
+hex32 :: (text: string) -> [32] u8 {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == 0;
+  return b;
+}
+// The nine embedded files hash to sha256sum's digests and pass the audit.
+#forall "the embedded files match sha256sum" i: 0..<FILES {
+  buf: [1000] u8; digest: [32] u8;
+  data := file_bytes(i, buf[..]);
+  #assert data.count == WC_C[i];
+  #assert sha256_hash_checked(data, digest[..], false) == SHA_OK;
+  want := hex32(SHA256SUM[i]);
+  #assert cast(string) digest[..] == cast(string) want[..];
+  #assert audit(pin(i), data, true) == OK;
+}
+// The five larger records carry sha256sum's digest and byte count.
+#forall "the larger records match sha256sum" i: FILES..<PINS {
+  #assert PIN_SHA256[i] == SHA256SUM[i] && PIN_BYTES[i] == WC_C[i];
+  none: [1] u8;
+  #assert audit(pin(i), none[0..<0], false) == OK;
+}
+// FIPS 180-2 appendix B.1: SHA-256("abc"). A record for it passes.
+#test "a record for abc passes" {
+  p := pin(2);
+  p.sha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  p.bytes = 3;
+  abc: [3] u8; abc[0] = 'a'; abc[1] = 'b'; abc[2] = 'c';
+  #assert check_bytes(p, abc[..]) == OK;
+  abc[2] = 'd';
+  #assert check_bytes(p, abc[..]) == 5;
+  abc[2] = 'c'; p.bytes = 4;
+  #assert check_bytes(p, abc[..]) == 6;
+}
+// The padded block worked by hand: 9 bytes, 0x80, 46 zero bytes, then the
+// bit length 72 = 0x48 in 8 big-endian bytes.
+#test "the hand-padded block" {
+  buf: [1000] u8; text: [128] u8;
+  b := pad_block(file_bytes(2, buf[..]));
+  #assert b.ok;
+  #assert hex_encode_checked(cast(string) b.bytes[..], text[..], false).error == 0;
+  hand := "7b226964223a302c7d80";
+  #assert cast(string) text[0..<20] == hand;
+  for i: 20..<112 { #assert text[i] == '0'; }
+  #assert cast(string) text[112..<128] == "0000000000000048";
+}
+// The largest one-block message, 55 bytes = 440 bits = 0x01b8, and the
+// smallest two-block one, 56 bytes, which pad_block refuses.
+#test "one block holds at most 55 bytes" {
+  buf: [56] u8;
+  for i: 0..<56 { buf[i] = 'a'; }
+  b := pad_block(buf[0..<55]);
+  #assert b.ok && b.bytes[54] == 'a' && b.bytes[55] == 0x80;
+  #assert b.bytes[61] == 0 && b.bytes[62] == 0x01 && b.bytes[63] == 0xb8;
+  #assert !pad_block(buf[..]).ok;
+}
+// Every one-byte change of every embedded file fails its digest. Bit k of
+// byte k (mod the length) flips; the 1,000-byte file is sampled at 0..11.
+#forall "one changed byte fails the digest" i: 0..<FILES, k: 0..<12 {
+  buf: [1000] u8;
+  data := file_bytes(i, buf[..]);
+  data[k % data.count] ^= cast(u8) (1 << (k % 8));
+  #assert audit(pin(i), data, true) == 5;
+}
+// Dropping the last byte fails the digest first, as in check_vectors.py.
+#forall "a short file fails the digest" i: 0..<FILES {
+  buf: [1000] u8;
+  data := file_bytes(i, buf[..]);
+  #assert audit(pin(i), data[0..<data.count - 1], true) == 5;
+}
+// Each refusal, one changed field at a time, on the NIP-44 corpus record.
+BAD :: 13;
+BAD_FIELD :: [13] int.[0, 0, 0, 1, 1, 1, 2, 3, 3, 4, 4, 4, 5];
+BAD_VALUE :: [13] string.[
+    "nip44.vectors.json", "upstream/../manifest.json", "upstream//x.json",
+    "2026-10-2", "2026/10/28", "2026-1a-28",
+    "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce2504",
+    "http://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/test/nip44.vectors.json",
+    "https://raw.githubusercontent.com/paulmillr/nip44/main/javascript/test/nip44.vectors.json",
+    "git:671a1f04", "git:671A1F04BCFACAF125B0DB68ADC45BC9CE0E763B", "RFC 44",
+    "upstream/./nip44.vectors.json"];
+BAD_CODE :: [13] int.[1, 4, 4, 2, 2, 2, 3, 7, 8, 8, 8, 9, 4];
+#forall "each tampered field gives its refusal" i: 0..<BAD {
+  p := pin(10);
+  f := BAD_FIELD[i];
+  if f == 0 || f == 5 { p.path = BAD_VALUE[i]; }
+  if f == 1 { p.retrieved = BAD_VALUE[i]; }
+  if f == 2 { p.sha256 = BAD_VALUE[i]; }
+  if f == 3 { p.url = BAD_VALUE[i]; }
+  if f == 4 { p.revision = BAD_VALUE[i]; }
+  none: [1] u8;
+  #assert audit(p, none[0..<0], false) == BAD_CODE[i];
+}
+// The RFC rule: right number and URL pass; wrong digits, suffix or prefix fail.
+#test "the RFC revision names its URL" {
+  p := pin(11);
+  #assert check_source(p) == OK;
+  p.revision = "RFC 8439x"; #assert check_source(p) == 9;
+  p.revision = "RFC "; #assert check_source(p) == 9;
+  p.revision = "RFC 8438"; #assert check_source(p) == 9;
+  p.revision = "RFC 8439"; p.url = "https://www.rfc-editor.org/rfc/rfc8439.html"; #assert check_source(p) == 9;
+  p.url = "https://www.rfc-editor.org/rfc/rfc8439.txt.gz"; #assert check_source(p) == 9;
+  p.url = "https://www.ietf.org/rfc/rfc8439.txt"; #assert check_source(p) == 9;
+  p.url = "https://www.rfc-editor.org/rfc/rfc8439.xtx"; #assert check_source(p) == 9;
+  p.url = "https://www.rfc-editor.net/rfc/rfc8439.txt"; #assert check_source(p) == 9;
+  p.url = "https://www.rfc-editor.org/rfc/rfc9439.txt"; #assert check_source(p) == 9;
+  p.url = "https://www.rfc-editor.org/rfc/rfc7.txt"; p.revision = "RFC 7"; #assert check_source(p) == OK;
+  p.revision = "RFC x"; #assert check_source(p) == 9;
+}
+// The commit must sit between slashes in the URL, at any position.
+#test "the commit is a whole URL segment" {
+  p := pin(9);
+  p.url = "https://example.org/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/x.csv";
+  #assert check_source(p) == OK;
+  p.url = "https://example.org/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793x/x.csv";
+  #assert check_source(p) == 8;
+  p.url = "https://example.org/x5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/x.csv";
+  #assert check_source(p) == 8;
+  p.url = "https://e/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/";
+  #assert check_source(p) == OK;
+  p.url = "https://e/5aadddb511a5dcfe4599531bd8ae5e5b96d0f79/";
+  #assert check_source(p) == 8;
+  p.url = "https://e/5aadddb511a5dcfe4599531bd8ae5e5b96d0f79x/";
+  #assert check_source(p) == 8;
+  // The commit as the host, right after "https://", as Python's "in" finds it.
+  p.url = "https://5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/x";
+  #assert check_source(p) == OK;
+}
+// With bytes, a right digest still goes on to the source rules.
+#test "matching bytes do not skip the revision" {
+  buf: [1000] u8;
+  p := pin(2);
+  p.url = "https://raw.githubusercontent.com/nst/JSONTestSuite/master/test_parsing/n_object_trailing_comma.json";
+  #assert audit(p, file_bytes(2, buf[..]), true) == 8;
+}
+// An archive record needs a 64-digit lowercase archive digest.
+#test "the archive digest is required and spelled" {
+  p := pin(12);
+  #assert check_source(p) == OK;
+  p.archive = ""; #assert check_source(p) == 8;
+  p.archive = "929ef80b"; #assert check_source(p) == 10;
+  p.archive = "929EF80B7B3418ACA026643F6F248815913B60E01741A44BBA9E118067F4C9B8"; #assert check_source(p) == 10;
+}
+// The helpers at their edges.
+#test "text helpers" {
+  #assert starts("upstream/x", "upstream/") && !starts("upstrea", "upstream/");
+  #assert match("xabc", 1, "abc", 0) && !match("xabc", 2, "abc", 0) && !match("abc", -1, "a", 0);
+  #assert match("abc", 1, "bc", 0) && !match("abc", 2, "cd", 0) && !match("xbc", 0, "abc", 0);
+  #assert match("bc", 0, "abc", 1) && !match("bc", 0, "abc", 0);
+  #assert digit('0') && digit('9') && !digit('/') && !digit(':');
+  #assert lower_hex_digit('a') && lower_hex_digit('f') && !lower_hex_digit('g') && !lower_hex_digit('`');
+  #assert lower_hex("x09af", 1, 4) && !lower_hex("x09ag", 1, 4) && !lower_hex("x09a:", 1, 4);
+  #assert digits_from("RFC 0", 4) && !digits_from("RFC ", 4) && !digits_from("RFC x1", 4);
+  #assert date_shape("2026-10-28") && !date_shape("2026-10-28 ") && !date_shape("2026-10:28");
+  #assert date_shape("2099-09-29") && !date_shape("x026-10-28") && !date_shape("2026-10-2:");
+  #assert segments_named("a/b") && !segments_named("a/") && !segments_named("/a");
+  #assert !segments_named("a/../b") && !segments_named("..") && segments_named("a/.b") && segments_named("a/..b");
+}
+// book:end check

@@ -63,7 +63,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented | coax:5, coax:6 | Every RFC 4648 test vector for base64 passes, and every non-canonical form refuses. Hex and base64 round trips hold for every length up to the profile limit in a `#forall` check. `coax mutate` leaves zero survivors on the codec files. | — |
+| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented | coax:5, coax:6 | Every RFC 4648 test vector for base64 (`coax/tests/vectors/upstream/rfc/rfc4648.txt`) passes, and every non-canonical form refuses. Hex and base64 round trips hold for every length up to the profile limit in a `#forall` check. `coax mutate` leaves zero survivors on the codec files. | — |
 | [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) — implemented | 1, coax:13 | Limb operations match the big-integer oracle on edge values: 0, 1, `p - 1`, `2^256 - 1` and values at each magnitude bound. A `#forall` check confirms no intermediate exceeds its declared bound. Native and wasm builds give the same bytes. | — |
 | [3. Constant-time rules and secrets](ch003-constant-time-rules.md) — implemented | 1, 2, coax:23 | A leaky branch fixture and a leaky index fixture are each detected by the timing harness. The constant-time checker refuses a seeded secret-dependent branch with its diagnostic. Every secret buffer in Parts II–V is erased on success and on every failure path. | — |
 
@@ -71,9 +71,9 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [4. SHA-256](ch004-sha-256.md) — implemented | 1 | Every NIST CAVS 11.0 SHA256ShortMsg and SHA256LongMsg vector passes. Every split of a 1,000-byte message gives the same digest. The compression kernel moves out of the compiler-fingerprint module without changing a digest. | — |
-| [5. HMAC-SHA256](ch005-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 pass. A tag that differs in one bit is refused by the constant-time comparison. | — |
-| [6. HKDF](ch006-hkdf.md) — implemented | 5 | RFC 5869 SHA-256 cases 1–3 pass. An expand request of `255 * 32 + 1` bytes refuses. | — |
+| [4. SHA-256](ch004-sha-256.md) — implemented | 1 | Every NIST CAVS 11.0 vector in `coax/tests/vectors/upstream/nist/SHA256ShortMsg.rsp` and `SHA256LongMsg.rsp` passes. Every split of a 1,000-byte message gives the same digest. The compression kernel moves out of the compiler-fingerprint module without changing a digest. | — |
+| [5. HMAC-SHA256](ch005-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 (`coax/tests/vectors/upstream/rfc/rfc4231.txt`) pass. A tag that differs in one bit is refused by the constant-time comparison. | — |
+| [6. HKDF](ch006-hkdf.md) — implemented | 5 | RFC 5869 SHA-256 cases 1–3 (`coax/tests/vectors/upstream/rfc/rfc5869.txt`) pass. An expand request of `255 * 32 + 1` bytes refuses. | — |
 
 ### Part III. Elliptic curves
 
@@ -83,16 +83,16 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | [8. Scalars mod n](ch008-scalars-mod-n.md) — implemented | 2, 3 | Scalar operations match the big-integer oracle. Out-of-range keys and `s` values refuse, each with its own status. | — |
 | [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) — implemented | 7 | Group laws hold on random points: associativity, `P + (-P) = O`, `2P = P + P`. `lift_x` refuses every x whose `x^3 + 7` is not a square. | — |
 | [10. Scalar multiplication](ch010-scalar-multiplication.md) — implemented | 8, 9, 3 | All three paths give the oracle's point for random and edge scalars (0, 1, `n - 1`). The constant-time paths pass the timing harness with leaky controls detected. | — |
-| [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — implemented | 4, 8, 10 | All 19 BIP-340 vectors give their expected result. Fast and reference paths agree on every vector and on random signatures. | — |
+| [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — implemented | 4, 8, 10 | All 19 BIP-340 vectors in `coax/tests/vectors/upstream/bip340/test-vectors.csv` give their expected result. Fast and reference paths agree on every vector and on random signatures. | — |
 | [12. Keys and randomness](ch012-keys-and-randomness.md) — implemented | 8, 3 | A key drawn on each host is a valid scalar, and a forced out-of-range draw is retried. A signer reply with the wrong ID, pubkey or body is refused. | — |
 | [13. Sign with Schnorr](ch013-sign-with-schnorr.md) — implemented | 11, 12, 3 | The BIP-340 signing rows (secret key, aux and message given) produce the expected signatures byte for byte. A secret-probe run finds no secret-dependent branch in the emitted signer. An independent library verifies 10,000 signatures from the Coax signer. | — |
-| [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — implemented | 10, 12 | The NIP-44 `get_conversation_key` vectors give the expected keys. Every invalid Wycheproof public key refuses whose x-only form names no curve point (all 16 such cases; the chapter accounts for the rest). | — |
+| [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — implemented | 10, 12 | The NIP-44 `get_conversation_key` vectors in `coax/tests/vectors/upstream/nip44/nip44.vectors.json` give the expected keys. Every invalid Wycheproof public key in `coax/tests/vectors/upstream/wycheproof/ecdh_secp256k1_test.json` refuses whose x-only form names no curve point (all 16 such cases; the chapter accounts for the rest). | — |
 
 ### Part IV. Encodings
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [15. Bech32](ch015-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector gives its expected result. A Bech32m string refuses. | — |
+| [15. Bech32](ch015-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector in `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki` gives its expected result. A Bech32m string refuses (BIP-350's strings, not yet pinned in the corpus). | — |
 | [16. NIP-19 entities and nostr: URIs](ch016-nip-19-entities-and-nostr-uris.md) — implemented | 15 | The NIP-19 examples in `nostr/nips/official/19.md` decode to their stated values. A `nostr:nsec1…` URI refuses. | [NIP-19](../nips/official/19.md), [NIP-21](../nips/official/21.md) |
 | [17. JSON you can sign](ch017-json-you-can-sign.md) — implemented | 1, 4, coax:18 | The JSONTestSuite cases pinned in `coax/tests/vectors/upstream/json/` give their expected results. Serializations of events with every escape class match an independent implementation byte for byte. | [NIP-01](../nips/official/01.md) |
 
@@ -100,7 +100,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [18. ChaCha20](ch018-chacha20.md) — implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors pass. A request that would pass counter `2^32 - 1` refuses. | — |
+| [18. ChaCha20](ch018-chacha20.md) — implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors (`coax/tests/vectors/upstream/rfc/rfc8439.txt`) pass. A request that would pass counter `2^32 - 1` refuses. | — |
 | [19. NIP-04 and why it is retired](ch019-nip-04-and-why-it-is-retired.md) — design draft | 14, 1 | The chapter states every weakness above with a reference to the pinned text. If a reader is built: FIPS-197 and NIST CBC vectors pass, and the reader refuses to encrypt. | [NIP-04](../nips/official/04.md) |
 | [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) — implemented | 6, 14, 18, 5, 1 | Every `valid` and `invalid` entry in `nip44.vectors.json` gives its expected result. Lengths 65,535, 65,536 and 65,537 behave as the active profile states. A ciphertext with a wrong MAC never produces plaintext output. | [NIP-44](../nips/official/44.md) |
 
@@ -153,8 +153,8 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
 | [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) — implemented | 22, 28 | NIP-05 lookups refuse redirects and non-matching keys. A newer kind 3 replaces an older one in the store. | [NIP-02](../nips/official/02.md), [NIP-05](../nips/official/05.md), [NIP-24](../nips/official/24.md), [NIP-39](../nips/official/39.md) |
-| [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — implemented | 13, 5 | Both NIP-06 vectors produce their stated private and public keys. An invalid checksum refuses. | [NIP-06](../nips/official/06.md) |
-| [47. Encrypted key backup](ch047-encrypted-key-backup.md) — implemented | 18, 5, 15 | The NIP-49 test vector decrypts to its stated key. A `log_n` of 22 refuses on a profile limited to 18. | [NIP-49](../nips/official/49.md) |
+| [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — implemented | 13, 5 | Both NIP-06 vectors in `nostr/nips/official/06.md` produce their stated private and public keys. An invalid checksum refuses. | [NIP-06](../nips/official/06.md) |
+| [47. Encrypted key backup](ch047-encrypted-key-backup.md) — implemented | 18, 5, 15 | The NIP-49 test vector in `nostr/nips/official/49.md` decrypts to its stated key. A `log_n` of 22 refuses on a profile limited to 18. | [NIP-49](../nips/official/49.md) |
 | [48. Signers outside the app](ch048-signers-outside-the-app.md) — design draft | 12, 20, 31 | A Coax client signs through a Coax bunker and an independent bunker. A reused connect secret refuses. | [NIP-07](../nips/official/07.md), [NIP-46](../nips/official/46.md), [NIP-55](../nips/official/55.md) |
 | [49. HTTP auth](ch049-http-auth.md) — implemented | 21, 4 | Each server check has a refusing test. The same event ID used twice refuses the second time. | [NIP-98](../nips/official/98.md) |
 | [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) — implemented | 22 | Thread reconstruction on a fixture matches a hand-built tree. A positional-only event is read with the documented rule. | [NIP-10](../nips/official/10.md), [NIP-14](../nips/official/14.md), [NIP-36](../nips/official/36.md) |
@@ -205,7 +205,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [93. Test vectors and their provenance](ch093-test-vectors-and-their-provenance.md) — partly implemented | 4, 11, 20 | `python3 coax/tests/vectors/check_vectors.py` and `test_integrity.py` pass. Every chapter's "done means" names the vector file it uses. | — |
+| [93. Test vectors and their provenance](ch093-test-vectors-and-their-provenance.md) — implemented | 4, 11, 20 | `python3 coax/tests/vectors/check_vectors.py` and `test_integrity.py` pass. Every chapter's "done means" names the vector file it uses. | — |
 | [94. Differential tests](ch094-differential-tests.md) — partly implemented | 34, 93 | Every difference has a classification and a reason. A seeded fault in the Coax relay produces a new unexplained difference. | — |
 | [95. Fuzzing](ch095-fuzzing.md) — partly implemented | 17, 23, 26, 93 | Each target runs for a fixed budget without a finding, recorded with its seed. A seeded out-of-bounds read is found by the fuzzer. | — |
 | [96. Formal properties](ch096-formal-properties.md) — design draft | 11, 23, 36 | Each property has a check that a deliberate bug breaks. Counterexamples from any model become regression tests. | — |

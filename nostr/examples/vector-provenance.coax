@@ -1,0 +1,286 @@
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Fourteen records copied from coax/tests/vectors/manifest.json: the nine
+// JSONTestSuite files, whose bytes are below, and five larger files whose
+// metadata alone is checked here.
+PINS :: 14;
+PIN_PATH :: [14] string.[
+    "upstream/json/i_string_UTF-16LE_with_BOM.json",
+    "upstream/json/i_structure_500_nested_arrays.json",
+    "upstream/json/n_object_trailing_comma.json",
+    "upstream/json/n_string_incomplete_escape.json",
+    "upstream/json/n_string_invalid-utf-8-in-escape.json",
+    "upstream/json/n_string_unescaped_ctrl_char.json",
+    "upstream/json/y_number_int_with_exp.json",
+    "upstream/json/y_string_escaped_control_character.json",
+    "upstream/json/y_string_utf8.json",
+    "upstream/bip340/test-vectors.csv",
+    "upstream/nip44/nip44.vectors.json",
+    "upstream/rfc/rfc8439.txt",
+    "upstream/nist/SHA256ShortMsg.rsp",
+    "upstream/wycheproof/ecdh_secp256k1_test.json"];
+PIN_URL :: [14] string.[
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/i_string_UTF-16LE_with_BOM.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/i_structure_500_nested_arrays.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_object_trailing_comma.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_string_incomplete_escape.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_string_invalid-utf-8-in-escape.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/n_string_unescaped_ctrl_char.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_number_int_with_exp.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_string_escaped_control_character.json",
+    "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_string_utf8.json",
+    "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0340/test-vectors.csv",
+    "https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/test/nip44.vectors.json",
+    "https://www.rfc-editor.org/rfc/rfc8439.txt",
+    "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip",
+    "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdh_secp256k1_test.json"];
+JSON_REV :: "git:1ef36fa01286573e846ac449e8683f8833c5b26a";
+PIN_REVISION :: [14] string.[JSON_REV, JSON_REV, JSON_REV, JSON_REV, JSON_REV,
+    JSON_REV, JSON_REV, JSON_REV, JSON_REV,
+    "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+    "git:671a1f04bcfacaf125b0db68adc45bc9ce0e763b",
+    "RFC 8439",
+    "NIST CAVS 11.0 byte-oriented SHA vectors (archive identity pinned)",
+    "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9"];
+// Only the NIST record comes from an archive; it pins the archive's digest.
+PIN_ARCHIVE :: [14] string.["", "", "", "", "", "", "", "", "", "", "", "",
+    "929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8", ""];
+PIN_BYTES :: [14] int.[12, 1000, 9, 5, 7, 7, 6, 10, 11, 6892, 37630, 88847, 10299, 501501];
+PIN_SHA256 :: [14] string.[
+    "6a9c15ecc8fc3da72b0ba5e3539e07f2aad3c704b496fe3496579dc723ce49c5",
+    "a6c6b45361ff77e7372a015a1f0289e9c09d1fe1ed59cf9773d599c55acf57cf",
+    "60e04bc71fcc4c57abeef95a9604a96aa60f833881a2f028d27bd4f03e176603",
+    "df3709e1b19bc2562a9bc0301265c237ca5a5b35bd9bc5c3a7f45c57092e0537",
+    "1c1ef70149258ff7ee082817269431c45e34f75a2268c3dff56f35d3a4859f1e",
+    "c85db33857913bc4c4d4f044c72cd06d50ffb5644b2e5093ef8b46ebfe340ed0",
+    "6d014f6467daa9753d57f0d75067fe62c9f3b0116455a3222c26e58432541b0d",
+    "1a9f37085203c6d712945c5fb87ad5e08fa38515e51ee4a637c7558bb1b82725",
+    "adec79032c3509dce21c9b0b96445a0fe398533d6647d12abc639eef16e621ab",
+    "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
+    "269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040",
+    "25bef70fbf7a07ff45c2fe4cb7c6ce954eac687413d8610603268b4e4415324c",
+    "75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c",
+    "049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae"];
+RETRIEVED :: "2026-10-28";
+RFC_BASE :: "https://www.rfc-editor.org/rfc/rfc";
+
+// The nine JSON files' bytes as hex (xxd -p). The 500 nested arrays file is
+// 500 "[" then 500 "]", built by file_bytes.
+FILES :: 9;
+FILE_HEX :: [9] string.["fffe5b002200e90022005d00", "", "7b226964223a302c7d",
+    "5b225c225d", "5b225c75e5225d", "5b22610061225d", "5b323065315d",
+    "5b225c7530303132225d", "5b22e282acf09d849e225d"];
+
+// book:begin records
+// One record, the fields check_vectors.py reads.
+Pin :: struct { path: string; url: string; revision: string; archive: string;
+                retrieved: string; bytes: int; sha256: string; }
+pin :: (i: int) -> Pin {
+  return Pin.{path = PIN_PATH[i], url = PIN_URL[i], revision = PIN_REVISION[i],
+              archive = PIN_ARCHIVE[i], retrieved = RETRIEVED,
+              bytes = PIN_BYTES[i], sha256 = PIN_SHA256[i]};
+}
+
+// The refusals, worded as check_vectors.py words them.
+OK :: 0;
+REASON :: [11] string.["ok", "invalid corpus path", "invalid retrieved",
+    "invalid digest", "invalid path", "digest mismatch", "byte count mismatch",
+    "source URL", "unpinned revision", "RFC revision", "archive digest"];
+// book:end records
+
+// Text helpers. match is true when s holds p's bytes from p[from] on,
+// starting at s[at].
+match :: (s: string, at: int, p: string, from: int) -> bool {
+  n := p.count - from;
+  if at < 0 || at + n > s.count { return false; }
+  for i: 0..<n { if s[at + i] != p[from + i] { return false; } }
+  return true;
+}
+starts :: (s: string, p: string) -> bool { return match(s, 0, p, 0); }
+digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+lower_hex_digit :: (c: u8) -> bool { return digit(c) || (c >= 'a' && c <= 'f'); }
+// Exactly n lowercase hex digits from position at to the end.
+lower_hex :: (s: string, at: int, n: int) -> bool {
+  if s.count - at != n { return false; }
+  for i: at..<s.count { if !lower_hex_digit(s[i]) { return false; } }
+  return true;
+}
+// One or more decimal digits from position at to the end.
+digits_from :: (s: string, at: int) -> bool {
+  if s.count <= at { return false; }
+  for i: at..<s.count { if !digit(s[i]) { return false; } }
+  return true;
+}
+// YYYY-MM-DD, digits and dashes only, as the Python regex \d{4}-\d{2}-\d{2}.
+date_shape :: (s: string) -> bool {
+  if s.count != 10 { return false; }
+  for i: 0..<10 {
+    dash := i == 4 || i == 7;
+    if dash != (s[i] == '-') { return false; }
+    if !dash && !digit(s[i]) { return false; }
+  }
+  return true;
+}
+// A relative path whose segments are all named: no "", ".", or "..".
+segments_named :: (p: string) -> bool {
+  start := 0;
+  for i: 0..<p.count + 1 {
+    if i == p.count || p[i] == '/' {
+      n := i - start;
+      if n == 0 { return false; }
+      if n == 1 && p[start] == '.' { return false; }
+      if n == 2 && p[start] == '.' && p[start + 1] == '.' { return false; }
+      start = i + 1;
+    }
+  }
+  return true;
+}
+
+// book:begin rules
+// The metadata rules, in check_vectors.py's order: path prefix, date,
+// digest spelling, path segments. The URL and revision rules come after the
+// bytes in that script, so they are a second step.
+check_record :: (p: Pin) -> int {
+  if !starts(p.path, "upstream/") && !starts(p.path, "derived/") { return 1; }
+  if !date_shape(p.retrieved) { return 2; }
+  if !lower_hex(p.sha256, 0, 64) { return 3; }
+  if !segments_named(p.path) { return 4; }
+  return OK;
+}
+check_source :: (p: Pin) -> int {
+  if !starts(p.url, "https://") { return 7; }
+  if starts(p.revision, "git:") {
+    if !lower_hex(p.revision, 4, 40) { return 8; }
+    // "/<commit>/" must sit in the URL: a branch name there can move.
+    // Positions before 7 are inside "https:/".
+    for at: 7..<p.url.count {
+      if p.url[at] == '/' && match(p.url, at + 1, p.revision, 4) &&
+         match(p.url, at + 41, "/", 0) { return OK; }
+    }
+    return 8;
+  }
+  if starts(p.revision, "RFC ") {
+    // "RFC n" must name https://www.rfc-editor.org/rfc/rfcn.txt and no other.
+    if !digits_from(p.revision, 4) { return 9; }
+    n := p.revision.count - 4;
+    if p.url.count != RFC_BASE.count + n + 4 { return 9; }
+    if !starts(p.url, RFC_BASE) { return 9; }
+    if !match(p.url, RFC_BASE.count, p.revision, 4) { return 9; }
+    if !match(p.url, RFC_BASE.count + n, ".txt", 0) { return 9; }
+    return OK;
+  }
+  // Neither a commit nor an RFC: the record must pin its archive.
+  if p.archive.count == 0 { return 8; }
+  if !lower_hex(p.archive, 0, 64) { return 10; }
+  return OK;
+}
+// The bytes against the record: the digest first, then the count.
+check_bytes :: (p: Pin, data: [] u8) -> int {
+  digest: [32] u8; text: [64] u8;
+  #assert sha256_hash_checked(data, digest[..], false) == SHA_OK;
+  #assert hex_encode_checked(cast(string) digest[..], text[..], false).error == 0;
+  if cast(string) text[..] != p.sha256 { return 5; }
+  if data.count != p.bytes { return 6; }
+  return OK;
+}
+// The whole audit of one record, with or without its bytes.
+audit :: (p: Pin, data: [] u8, have_bytes: bool) -> int {
+  r := check_record(p);
+  if r != OK { return r; }
+  if have_bytes { r = check_bytes(p, data); if r != OK { return r; } }
+  return check_source(p);
+}
+// book:end rules
+say :: (p: Pin, r: int) {
+  if r == OK { print("ok: %\n", p.path); }
+  else { print("vector integrity: %: %\n", REASON[r], p.path); }
+}
+
+// File i's bytes, into out.
+file_bytes :: (i: int, out: [] u8) -> [] u8 {
+  if FILE_HEX[i].count == 0 {
+    for k: 0..<500 { out[k] = '['; out[500 + k] = ']'; }
+    return out[0..<1000];
+  }
+  r := hex_decode_checked(FILE_HEX[i], out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+// book:begin pad
+// The one padded SHA-256 block of a message: its bytes, 0x80, zeros, and
+// the length in bits as 8 big-endian bytes. 56 bytes or more need two.
+Block :: struct { ok: bool; bytes: [64] u8; }
+pad_block :: (data: [] u8) -> Block {
+  r: Block;
+  if data.count >= 56 { return r; }
+  for i: 0..<data.count { r.bytes[i] = data[i]; }
+  r.bytes[data.count] = 0x80;
+  bits := data.count * 8;
+  for i: 0..<8 { r.bytes[63 - i] = cast(u8) ((bits >> (8 * i)) & 0xff); }
+  r.ok = true;
+  return r;
+}
+// book:end pad
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  #assert r.error == 0;
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+
+// book:begin main
+main :: () {
+  // The worked record: n_object_trailing_comma.json.
+  buf: [1000] u8;
+  comma := file_bytes(2, buf[..]);
+  print("file: %, % bytes, text %\n", PIN_PATH[2], comma.count, cast(string) comma);
+  block := pad_block(comma);
+  #assert block.ok;
+  show("padded block", block.bytes[..]);
+  digest: [32] u8;
+  #assert sha256_hash_checked(comma, digest[..], false) == SHA_OK;
+  show("sha256", digest[..]);
+
+  // Every record's metadata, and the bytes of the nine small files.
+  passed := 0;
+  for i: 0..<PINS {
+    data := buf[0..<0];
+    if i < FILES { data = file_bytes(i, buf[..]); }
+    r := audit(pin(i), data, i < FILES);
+    say(pin(i), r);
+    if r == OK { passed += 1; }
+  }
+  print("% of % records pass, % with their bytes\n", passed, PINS, FILES);
+
+  // Refusals. One byte changed: {"id":0,} becomes {"id":1,}.
+  changed := file_bytes(2, buf[..]);
+  changed[6] = '1';
+  say(pin(2), audit(pin(2), changed, true));
+  // Right bytes, wrong count in the record.
+  wrong := pin(2); wrong.bytes = 10;
+  say(wrong, audit(wrong, file_bytes(2, buf[..]), true));
+  // A branch name where the commit should be.
+  moving := pin(9);
+  moving.url = "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0340/test-vectors.csv";
+  say(moving, audit(moving, buf[0..<0], false));
+  // An RFC record pointing at another RFC's URL.
+  other := pin(11); other.url = "https://www.rfc-editor.org/rfc/rfc7539.txt";
+  say(other, audit(other, buf[0..<0], false));
+  // An archive member with no archive digest, and with a cut one.
+  loose := pin(12); loose.archive = "";
+  say(loose, audit(loose, buf[0..<0], false));
+  loose.archive = "929ef80b7b3418aca026643f6f248815";
+  say(loose, audit(loose, buf[0..<0], false));
+  // A digest in capitals, a path that climbs out, a path outside the corpus.
+  loud := pin(10); loud.sha256 = "269ED0F69E4C192512CC779E78C555090CEBC7C785B609E338A62AFC3CE25040";
+  say(loud, audit(loud, buf[0..<0], false));
+  climb := pin(10); climb.path = "upstream/../manifest.json";
+  say(climb, audit(climb, buf[0..<0], false));
+  outside := pin(10); outside.path = "nip44.vectors.json";
+  say(outside, audit(outside, buf[0..<0], false));
+  late := pin(10); late.retrieved = "28 Oct 2026";
+  say(late, audit(late, buf[0..<0], false));
+}
+// book:end main

@@ -1664,7 +1664,7 @@
    "number": 93,
    "title": "Test vectors and their provenance",
    "file": "ch093-test-vectors-and-their-provenance.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     4,
@@ -1674,7 +1674,10 @@
    "source": [
     "coax/tests/vectors/SOURCES.md",
     "coax/tests/vectors/check_vectors.py",
-    "coax/tests/vectors/manifest.json"
+    "coax/tests/vectors/test_integrity.py",
+    "coax/tests/vectors/manifest.json",
+    "nostr/examples/vector-provenance.coax",
+    "nostr/examples/checks/vector-provenance.coax"
    ],
    "qualified_targets": [
     "cpu"

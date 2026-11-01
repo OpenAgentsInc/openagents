@@ -502,6 +502,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/vector-provenance.coax",
+      "chapter": "nostr/book/ch093-test-vectors-and-their-provenance.md",
+      "stdout": "nostr/fixtures/vector-provenance.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
