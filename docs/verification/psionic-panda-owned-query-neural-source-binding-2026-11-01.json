@@ -1,0 +1,440 @@
+{
+  "schema": "psionic.panda-owned-query-neural.source-relocation-binding.v1",
+  "passed": true,
+  "scope": "Post-execution main migration only. Original executed binary/source125/context receipts remain unchanged; no current-source fullbyte identity claim. First raw declaration comparison failed on moved SHA formatting. New binding compares lexical token spellings/order while removing ONLY whitespace/comments; identifiers, numeric spellings, string/character literals and operators are retained. No semantic/numeric equivalence waiver. No executable/model/gate run.",
+  "first_byte_only_current_tree_check": {
+    "passed": false,
+    "mismatches": [
+      "coax/lib/crypto/sha256.coax",
+      "coax/lib/proto/fingerprint.coax"
+    ],
+    "cause": "Main commit3580010f7a moved SHA kernel after the one-shot runtime completed."
+  },
+  "executed_source_baseline": "710bb6ba0f",
+  "main_tree_commit": "7f7f708a4296f4f4504e57b48beb6819252daa95",
+  "old_fingerprint_sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+  "current_fingerprint_sha256": "257f1224ca907bb8b0ed313b0b1800605d023f393eb1178fc69c5db9e02d6878",
+  "new_kernel_sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+  "streaming_authority_and_all_remaining_bytes_exact": true,
+  "old_streaming_sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+  "current_streaming_sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+  "streaming_prefix_change": "Comments and #load ../proto/fingerprint.coax replaced by #load sha256-kernel.coax; authority section and complete remaining implementation/check bytes identical.",
+  "all_declaration_names_exact": true,
+  "preserved_first_raw_binding": {
+    "path": "/tmp/panda-neural-source-relocation-first/record.json",
+    "sha256": "e628b39e5417d63e5113da8a891f88169f6093e9c75a7672234662c051f92e64"
+  },
+  "token_differences": [],
+  "tokenizer_script_sha256": "fb5a8b8c7b1be58a19c1d1c04577d6d4ed3163e6e7e38dc15131a2cab955205f",
+  "raw_declarations": [
+    {
+      "name": "F_Limits",
+      "old_sha256": "e170e583f37fca686ffd91d163bdc3333714567ca7124db32c514646f320f437",
+      "current_sha256": "e170e583f37fca686ffd91d163bdc3333714567ca7124db32c514646f320f437",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 17
+    },
+    {
+      "name": "F_Result",
+      "old_sha256": "23ed54d58a88d4aa90c894c480f1a6eba119d9e2edc281410f324f53ea4961c3",
+      "current_sha256": "23ed54d58a88d4aa90c894c480f1a6eba119d9e2edc281410f324f53ea4961c3",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 17
+    },
+    {
+      "name": "F_Writer",
+      "old_sha256": "4e398b2ec6b942b8307c0bc304fba08f15ab09a4e19918849b5a541a3aad12dc",
+      "current_sha256": "4e398b2ec6b942b8307c0bc304fba08f15ab09a4e19918849b5a541a3aad12dc",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 19
+    },
+    {
+      "name": "F_capacities",
+      "old_sha256": "9f0dbea54893c34276d670a590582267b9f3c44c63a15dbb3ff9cdb28c883b1c",
+      "current_sha256": "9f0dbea54893c34276d670a590582267b9f3c44c63a15dbb3ff9cdb28c883b1c",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 27
+    },
+    {
+      "name": "F_digest",
+      "old_sha256": "64acc7dd3843753b557b860b4fd7e5a5dea8dc3b0f70ad2342184b026145ac7d",
+      "current_sha256": "64acc7dd3843753b557b860b4fd7e5a5dea8dc3b0f70ad2342184b026145ac7d",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 60
+    },
+    {
+      "name": "F_hash",
+      "old_sha256": "07cba37a5f509fa9ec9aba873fcf4678f72de69e93ec66ae5d995e24fe1ab08a",
+      "current_sha256": "07cba37a5f509fa9ec9aba873fcf4678f72de69e93ec66ae5d995e24fe1ab08a",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 25
+    },
+    {
+      "name": "F_package",
+      "old_sha256": "8908d78c00f97ea8ab5241c6440f83c3296b841a90c7e4d5a65b20738029ab27",
+      "current_sha256": "8908d78c00f97ea8ab5241c6440f83c3296b841a90c7e4d5a65b20738029ab27",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 292
+    },
+    {
+      "name": "F_runtime",
+      "old_sha256": "a13fe6a6a1c0cbf20ae19aa4acee05759bcab8ccaffcec7b8b5ca0e367f77244",
+      "current_sha256": "a13fe6a6a1c0cbf20ae19aa4acee05759bcab8ccaffcec7b8b5ca0e367f77244",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 155
+    },
+    {
+      "name": "F_write",
+      "old_sha256": "df11e1b5d577362d9215d68f54617ddc8b206471386660be5d7315e4eb9eae5a",
+      "current_sha256": "df11e1b5d577362d9215d68f54617ddc8b206471386660be5d7315e4eb9eae5a",
+      "current_file": "coax/lib/proto/fingerprint.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 80
+    },
+    {
+      "name": "S_Digest",
+      "old_sha256": "41d8a2136f89a1864fb60cb213e56caad2d309f3982a95ea40ac771f4a9580aa",
+      "current_sha256": "41d8a2136f89a1864fb60cb213e56caad2d309f3982a95ea40ac771f4a9580aa",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": true,
+      "token_exact": true,
+      "token_count": 16
+    },
+    {
+      "name": "S_blocks",
+      "old_sha256": "08e9c1b57951fa7fc3f72fa643d2ecc7706515578b6fdd84f053a533206622d9",
+      "current_sha256": "64d136463fb06c7bb150642b4e9d12b6fb536666c2bee5a4b0b6024f3ab67b54",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 35
+    },
+    {
+      "name": "S_compress",
+      "old_sha256": "d5f4325502816bf530555807b5adaac12a5f5267d79af9ac45cf87188966d499",
+      "current_sha256": "9cffb8e4573898bf924d0f51a293389937b9c6cc92816632ff691320897525af",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 714
+    },
+    {
+      "name": "S_hash",
+      "old_sha256": "44d698fea1fd58b0f9a2cb27d6ebdcd3f2b12a3948fb7d531f155dc1e7aa9924",
+      "current_sha256": "c2e5e9f4e7c091bad162db168e5c3e7676a8e67b25d60f4c12bfc64db7d78529",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 91
+    },
+    {
+      "name": "S_hex",
+      "old_sha256": "3138dfd3b3625bd5990703707622c852b094b08c335d58fbeb3df8b6090793d2",
+      "current_sha256": "d7fd5cc8cd33fdecffa6b72590dfbeabdff1957926925eb8a529439331dffedd",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 98
+    },
+    {
+      "name": "S_length",
+      "old_sha256": "5dbc11dd1dbd22eb811de73d2c9b26a98c935ebf37c9947f102996c0ca61e4e9",
+      "current_sha256": "e482d22dbda54ba13f964d45fad2d7ac80fa68952d02c731ad51f4d908dff630",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 20
+    },
+    {
+      "name": "S_padded",
+      "old_sha256": "6c9325d10c21fd376d3f20e8daa33ec9a5cdbd1e6cf0ce56853c0d3456f2de0d",
+      "current_sha256": "4c9ff3305a44ea4eb1b2defd1b15efc3dd62a27f63dbfbb49d67058ab2a19cad",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 45
+    },
+    {
+      "name": "S_padding",
+      "old_sha256": "c3e522a98139a107fac15699f3794b88073f3c5a8e17f5eb4f7cc3be00c83e40",
+      "current_sha256": "964e62f2b3e365e51c57284c4106b3a16a6f8ede0e988bb9dc26a68307bfd033",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 70
+    },
+    {
+      "name": "S_rotr",
+      "old_sha256": "9c6b032a1f2259dbc2213e0de1315e25b15cb93d6cb5d9b2ec25ffc3c9fd045d",
+      "current_sha256": "adc55354cb4fb2e15e492af87ab33128ea65b6021e729361eb954082bc4635a4",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 41
+    },
+    {
+      "name": "S_seed",
+      "old_sha256": "65ca5d0cfd4b2ffb322f86898e3d8a6884b21f319579f5a9ab96bee09f9043c0",
+      "current_sha256": "a7aed8cfb8e9c18edeb6960319fecea295130b8f7c971e9eb410baefad4b162a",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 63
+    },
+    {
+      "name": "S_sum2",
+      "old_sha256": "3436669a355748d6295d0b931bc6ff6c8e39d4ffde953dddee7cae4003fb06b4",
+      "current_sha256": "c624fcaa5ad289da7dbfc604a9b5a952ce6e1fa69c3a5a8fd2411b2697dc39cc",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 36
+    },
+    {
+      "name": "S_sum4",
+      "old_sha256": "feb76eb7e25ecf68c07952e88c63945b67d329df64dcdca8d99feb12bc0ca4fd",
+      "current_sha256": "de763222d899a67fd6fb7d14e01492e46b22ca0b12c2bdceb91ef9cd20a64132",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 56
+    },
+    {
+      "name": "S_sum5",
+      "old_sha256": "263698b84083e47d290e830550346a1ea8bc2edb6cda03f38a1d8c82f54e3cb8",
+      "current_sha256": "7940145b96c9efbaa20cd48b3a826e14ce12c3bb533e94d69c631fa9b5188ede",
+      "current_file": "coax/lib/crypto/sha256-kernel.coax",
+      "raw_exact": false,
+      "token_exact": true,
+      "token_count": 66
+    }
+  ],
+  "differing_declarations": [
+    "S_length",
+    "S_blocks",
+    "S_rotr",
+    "S_sum2",
+    "S_sum4",
+    "S_sum5",
+    "S_padding",
+    "S_padded",
+    "S_compress",
+    "S_seed",
+    "S_hash",
+    "S_hex"
+  ],
+  "unchanged_full_files": 123,
+  "limits": "This is a raw source relocation/function binding for the versioned already-executed profile; it is not a fresh compiler/bootstrap/native/NN replay or claim that all current125 files retain old hashes.",
+  "preserved_first_raw_record": {
+    "schema": "psionic.panda-owned-query-neural.source-relocation-binding.v1",
+    "passed": false,
+    "scope": "Post-execution main migration only. Original executed binary/source125/context receipts remain unchanged; no current-source fullbyte identity claim. Exact raw declaration/body comparison, no numeric/diagnostic/identifier normalization. No executable/model/gate run.",
+    "first_byte_only_current_tree_check": {
+      "passed": false,
+      "mismatches": [
+        "coax/lib/crypto/sha256.coax",
+        "coax/lib/proto/fingerprint.coax"
+      ],
+      "cause": "Main commit3580010f7a moved SHA kernel after the one-shot runtime completed."
+    },
+    "executed_source_baseline": "710bb6ba0f",
+    "main_tree_commit": "7f7f708a4296f4f4504e57b48beb6819252daa95",
+    "old_fingerprint_sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "current_fingerprint_sha256": "257f1224ca907bb8b0ed313b0b1800605d023f393eb1178fc69c5db9e02d6878",
+    "new_kernel_sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+    "streaming_authority_and_all_remaining_bytes_exact": true,
+    "old_streaming_sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "current_streaming_sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+    "streaming_prefix_change": "Comments and #load ../proto/fingerprint.coax replaced by #load sha256-kernel.coax; authority section and complete remaining implementation/check bytes identical.",
+    "all_declaration_names_exact": true,
+    "raw_declarations": [
+      {
+        "name": "F_Limits",
+        "old_sha256": "e170e583f37fca686ffd91d163bdc3333714567ca7124db32c514646f320f437",
+        "current_sha256": "e170e583f37fca686ffd91d163bdc3333714567ca7124db32c514646f320f437",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_Result",
+        "old_sha256": "23ed54d58a88d4aa90c894c480f1a6eba119d9e2edc281410f324f53ea4961c3",
+        "current_sha256": "23ed54d58a88d4aa90c894c480f1a6eba119d9e2edc281410f324f53ea4961c3",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_Writer",
+        "old_sha256": "4e398b2ec6b942b8307c0bc304fba08f15ab09a4e19918849b5a541a3aad12dc",
+        "current_sha256": "4e398b2ec6b942b8307c0bc304fba08f15ab09a4e19918849b5a541a3aad12dc",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_capacities",
+        "old_sha256": "9f0dbea54893c34276d670a590582267b9f3c44c63a15dbb3ff9cdb28c883b1c",
+        "current_sha256": "9f0dbea54893c34276d670a590582267b9f3c44c63a15dbb3ff9cdb28c883b1c",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_digest",
+        "old_sha256": "64acc7dd3843753b557b860b4fd7e5a5dea8dc3b0f70ad2342184b026145ac7d",
+        "current_sha256": "64acc7dd3843753b557b860b4fd7e5a5dea8dc3b0f70ad2342184b026145ac7d",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_hash",
+        "old_sha256": "07cba37a5f509fa9ec9aba873fcf4678f72de69e93ec66ae5d995e24fe1ab08a",
+        "current_sha256": "07cba37a5f509fa9ec9aba873fcf4678f72de69e93ec66ae5d995e24fe1ab08a",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_package",
+        "old_sha256": "8908d78c00f97ea8ab5241c6440f83c3296b841a90c7e4d5a65b20738029ab27",
+        "current_sha256": "8908d78c00f97ea8ab5241c6440f83c3296b841a90c7e4d5a65b20738029ab27",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_runtime",
+        "old_sha256": "a13fe6a6a1c0cbf20ae19aa4acee05759bcab8ccaffcec7b8b5ca0e367f77244",
+        "current_sha256": "a13fe6a6a1c0cbf20ae19aa4acee05759bcab8ccaffcec7b8b5ca0e367f77244",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "F_write",
+        "old_sha256": "df11e1b5d577362d9215d68f54617ddc8b206471386660be5d7315e4eb9eae5a",
+        "current_sha256": "df11e1b5d577362d9215d68f54617ddc8b206471386660be5d7315e4eb9eae5a",
+        "current_file": "coax/lib/proto/fingerprint.coax",
+        "exact": true
+      },
+      {
+        "name": "S_Digest",
+        "old_sha256": "41d8a2136f89a1864fb60cb213e56caad2d309f3982a95ea40ac771f4a9580aa",
+        "current_sha256": "41d8a2136f89a1864fb60cb213e56caad2d309f3982a95ea40ac771f4a9580aa",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": true
+      },
+      {
+        "name": "S_blocks",
+        "old_sha256": "08e9c1b57951fa7fc3f72fa643d2ecc7706515578b6fdd84f053a533206622d9",
+        "current_sha256": "64d136463fb06c7bb150642b4e9d12b6fb536666c2bee5a4b0b6024f3ab67b54",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_compress",
+        "old_sha256": "d5f4325502816bf530555807b5adaac12a5f5267d79af9ac45cf87188966d499",
+        "current_sha256": "9cffb8e4573898bf924d0f51a293389937b9c6cc92816632ff691320897525af",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_hash",
+        "old_sha256": "44d698fea1fd58b0f9a2cb27d6ebdcd3f2b12a3948fb7d531f155dc1e7aa9924",
+        "current_sha256": "c2e5e9f4e7c091bad162db168e5c3e7676a8e67b25d60f4c12bfc64db7d78529",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_hex",
+        "old_sha256": "3138dfd3b3625bd5990703707622c852b094b08c335d58fbeb3df8b6090793d2",
+        "current_sha256": "d7fd5cc8cd33fdecffa6b72590dfbeabdff1957926925eb8a529439331dffedd",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_length",
+        "old_sha256": "5dbc11dd1dbd22eb811de73d2c9b26a98c935ebf37c9947f102996c0ca61e4e9",
+        "current_sha256": "e482d22dbda54ba13f964d45fad2d7ac80fa68952d02c731ad51f4d908dff630",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_padded",
+        "old_sha256": "6c9325d10c21fd376d3f20e8daa33ec9a5cdbd1e6cf0ce56853c0d3456f2de0d",
+        "current_sha256": "4c9ff3305a44ea4eb1b2defd1b15efc3dd62a27f63dbfbb49d67058ab2a19cad",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_padding",
+        "old_sha256": "c3e522a98139a107fac15699f3794b88073f3c5a8e17f5eb4f7cc3be00c83e40",
+        "current_sha256": "964e62f2b3e365e51c57284c4106b3a16a6f8ede0e988bb9dc26a68307bfd033",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_rotr",
+        "old_sha256": "9c6b032a1f2259dbc2213e0de1315e25b15cb93d6cb5d9b2ec25ffc3c9fd045d",
+        "current_sha256": "adc55354cb4fb2e15e492af87ab33128ea65b6021e729361eb954082bc4635a4",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_seed",
+        "old_sha256": "65ca5d0cfd4b2ffb322f86898e3d8a6884b21f319579f5a9ab96bee09f9043c0",
+        "current_sha256": "a7aed8cfb8e9c18edeb6960319fecea295130b8f7c971e9eb410baefad4b162a",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_sum2",
+        "old_sha256": "3436669a355748d6295d0b931bc6ff6c8e39d4ffde953dddee7cae4003fb06b4",
+        "current_sha256": "c624fcaa5ad289da7dbfc604a9b5a952ce6e1fa69c3a5a8fd2411b2697dc39cc",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_sum4",
+        "old_sha256": "feb76eb7e25ecf68c07952e88c63945b67d329df64dcdca8d99feb12bc0ca4fd",
+        "current_sha256": "de763222d899a67fd6fb7d14e01492e46b22ca0b12c2bdceb91ef9cd20a64132",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      },
+      {
+        "name": "S_sum5",
+        "old_sha256": "263698b84083e47d290e830550346a1ea8bc2edb6cda03f38a1d8c82f54e3cb8",
+        "current_sha256": "7940145b96c9efbaa20cd48b3a826e14ce12c3bb533e94d69c631fa9b5188ede",
+        "current_file": "coax/lib/crypto/sha256-kernel.coax",
+        "exact": false
+      }
+    ],
+    "differing_declarations": [
+      "S_length",
+      "S_blocks",
+      "S_rotr",
+      "S_sum2",
+      "S_sum4",
+      "S_sum5",
+      "S_padding",
+      "S_padded",
+      "S_compress",
+      "S_seed",
+      "S_hash",
+      "S_hex"
+    ],
+    "unchanged_full_files": 123,
+    "limits": "This is a raw source relocation/function binding for the versioned already-executed profile; it is not a fresh compiler/bootstrap/native/NN replay or claim that all current125 files retain old hashes."
+  }
+}

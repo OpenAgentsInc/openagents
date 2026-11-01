@@ -1,0 +1,510 @@
+{
+  "schema": "psionic.panda-owned-query-neural.publication.v1",
+  "passed": true,
+  "scope": "FIRST genuine original GR00T Metal + OWNED FK/Jacobian/mass/bias sample + original OSC + SDK-contact/integration/camera nine-action prefix. Not C/D scheduled PD or own Euler, full task success, training or hardware.",
+  "source_tree_commit": "7f7f708a4296f4f4504e57b48beb6819252daa95",
+  "original_measured_receipts": {
+    "experiment.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/experiment.json",
+      "bytes": 28719,
+      "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+    },
+    "input-freeze.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/input-freeze.json",
+      "bytes": 4293,
+      "sha256": "64805c6e09c2c79f361bdb092497794f3a916b340e9d89143855067ea1c16c37"
+    },
+    "preparation.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/preparation.json",
+      "bytes": 9988,
+      "sha256": "5de66520daef9f3e01b671a0395dc2026b6873a313e150bdbbb72b6eccc82b52"
+    },
+    "prelaunch-audit-contract.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/prelaunch-audit-contract.json",
+      "bytes": 2073,
+      "sha256": "1cce08104e8d640f2c90cd54da48338c019356f15b548eab9d8f658e898d8990"
+    },
+    "prelaunch-verified.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/prelaunch-verified.json",
+      "bytes": 2193,
+      "sha256": "0587e19df747fdd170e26e5e37ca98bac188f5a8b6843b5c462f90dbc79f29d9"
+    },
+    "launch-once.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/launch-once.json",
+      "bytes": 1189,
+      "sha256": "bdba2ad21188cbc652889dd1d4b08b2f72feb4c81209a1c4a1f23b0fbe9bccdd"
+    },
+    "execution.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/execution.json",
+      "bytes": 12788,
+      "sha256": "e00dca003389010e3455d06cbfd2d983623693d4432d6efc87df13d64863c9de"
+    },
+    "reader-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/reader-qualification.json",
+      "bytes": 545,
+      "sha256": "0d382f2c9ffedd0fb72afd6e05b2b740bbfdfb0bba9b729f01608c916e93b91e"
+    },
+    "independent-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/independent-qualification.json",
+      "bytes": 4406,
+      "sha256": "b3089434fef53120dcdb3fd333c63bba4971a59e7da3cc6b37bbc9f5d0a6e53b"
+    },
+    "core-publication.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/core-publication.json",
+      "bytes": 4980,
+      "sha256": "9a9c542595cdc86b5e383a6ea9014a3d2b3a0293bd1fb331b02199f20a57add2"
+    },
+    "independent-publication.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/independent-publication.json",
+      "bytes": 2147,
+      "sha256": "1be1b770f627251374097f6dde65eae88013aebda161f38cfda48d091cc1b770"
+    },
+    "offline-input-v1.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/offline-input-v1.json",
+      "bytes": 1070,
+      "sha256": "0b848d344aa65393b1866c7551fa9f130d8be9519c78143a83ba7558906899f7"
+    },
+    "offline-plan-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/offline-plan-qualification.json",
+      "bytes": 1149,
+      "sha256": "44e9992449f0bab96b2ca0a5007c0fa00c19dd548438e7c3fffbd1fecf21a379"
+    },
+    "offline-adapter-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-owned-query-neural/offline-adapter-qualification.json",
+      "bytes": 1820,
+      "sha256": "6db5f4aa4d0d36798809ed912b8cfc42742587495bed27e77a552909139f87c0"
+    }
+  },
+  "new_product_source_or_authority_mutations": false,
+  "reuse": "Frozen prebuilt e42e4451 binary, original executed C/H/shaders and checked old source/kernel proofs; no rebuild, re-emission, old mutation/native/model corpus, standalone88-file admission or GB weight rehash. Product entry MUST and did perform its ordinary input admission.",
+  "new_runtime": {
+    "command_wall_seconds_including_open_live_replay": 36.65515991701977,
+    "observed_ticks": 9,
+    "observed_model_calls": 2,
+    "observed_forward_physics_records": 225,
+    "observed_exact_native_replay_receipt": true,
+    "mandatory_replay_steps_from_bound_source": 225,
+    "task_success_observed": false,
+    "task_success_required": false,
+    "holds_or_fallbacks": 0,
+    "refusals": 0,
+    "coordinate_torque_clips": 0,
+    "stderr_bytes": 0,
+    "first_decoded_prior_hash_matches_DIAGNOSTIC_ONLY": true,
+    "source_derived_NOT_instrumented": {
+      "SOURCE_DERIVED_NOT_RUNTIME_INSTRUMENTED": true,
+      "completed_ticks": 9,
+      "NN_calls_recorded": 2,
+      "live_physics_steps_recorded": 225,
+      "mandatory_native_replay_steps_source_and_exact_receipt": 225,
+      "total_SDK_steps": 450,
+      "SDK_resets": 2,
+      "explicit_mj_forward": 452,
+      "telemetry_sample_calls": 237,
+      "robot_state_owned_query_paths": 226,
+      "OFFSCREENimage_captures": 4,
+      "model_open": 1,
+      "setup_integration_steps": 0,
+      "second_request_full_decoded_bytes_audited": false
+    }
+  },
+  "independent_new_audit": {
+    "trace": {
+      "passed": true,
+      "canonical_records": 225,
+      "canonical_bytes": 115200,
+      "finite_action_F32words": 1575,
+      "finite_control_state_F64words": 12150,
+      "all_clocks": 225,
+      "max_clock_error_seconds": 3.3306690738754696e-16,
+      "clock_atol_seconds": 1.4901161193847656e-08,
+      "epoch": 1,
+      "request_serials": [
+        1,
+        2
+      ],
+      "first_consumed_decoded_rows_bound": 8,
+      "second_full_decoded_array_persisted": false,
+      "torque_clipped_flagged_substeps": 0,
+      "reported_coordinate_clips": 0,
+      "coordinate_clip_exact_reconstruction_claimed": false,
+      "seed_sha256": "94f6e468ce9fa434b968f7b2cb9833d3a8a29a12940e7025af751014301d7c98",
+      "final_chain_sha256": "436e2efba0681e2a0f45f6f8bcfa3fe17ca909d6738578d51b0c34c07485256c",
+      "success_flag_always_unset": true,
+      "native_replay_repeated": false
+    },
+    "native_replay_evidence_scope": "Exact bound-source SDK replay of all45F64statewords. Not independently rerun here; excludes render/NN/controller recomputation.",
+    "observations": {
+      "completed_prespecified_tick_cap": true,
+      "early_authoritative_source_success": false,
+      "task_success_observed": false,
+      "task_success_was_required": false,
+      "full_first_decoded_sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+      "prior_frame_decoded_sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+      "first_frame_hash_matches_prior_DIAGNOSTIC_ONLY": true,
+      "no_model_parity_gate_from_hash": true,
+      "first_consumed_rows_bound": 8,
+      "torque_coordinate_clips_observed": 0,
+      "runtime_geometry_retained": true,
+      "NN_source_profile_is_public_endpoint_qualified_not_all_global_hidden_parity": true
+    },
+    "timing": {
+      "native_loop_wall_excludes_context_open_and_replay_seconds": 10.348945,
+      "model_context_open_seconds": 12.463753,
+      "inference_seconds": 8.971714,
+      "inference_max_seconds": 4.755421,
+      "GPU_compute_seconds": 2.09474417,
+      "simulated_seconds": 0.45,
+      "synchronous_simulation_paused_for_inference": true,
+      "no_wall_realtime_claim": true
+    },
+    "seconds": 0.027245207980740815,
+    "source": {
+      "psionic/tests/robotics/panda_owned_query_neural_audit.py": {
+        "bytes": 17083,
+        "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+      }
+    }
+  },
+  "new_synthetic_reader_guards": {
+    "schema": "psionic.panda-owned-query-neural.reader-guards.v1",
+    "passed": true,
+    "source": {
+      "bytes": 17083,
+      "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+    },
+    "guards": {
+      "passed": true,
+      "synthetic_valid_records": 25,
+      "poisoned_trace_cases": 198,
+      "poisoned_case_records": 18,
+      "all61_raw_numeric_lanes_tested": true,
+      "poison_hash_chains_recomputed_to_isolate_field_admission": true,
+      "SDK_calls": 0,
+      "NN_calls": 0,
+      "plant_steps": 0,
+      "old_gate_calls": 0
+    }
+  },
+  "source_context": {
+    "at_execution": "All original125-source/runtime/input/stat bindings admitted and unchanged after the ONE runtime invocation.",
+    "after_main_rebase": "123 whole-file identities unchanged; SHA streaming import moved and kernel reformatted in commit3580010f7a. First byte-only check and raw declaration binding fail honestly; final22 declarations are token-identical with only whitespace/comments removed, and complete streaming authority/implementation/check suffix remains raw-byte identical.",
+    "relocation_binding": {
+      "path": "docs/verification/psionic-panda-owned-query-neural-source-binding-2026-11-01.json",
+      "bytes": 19303,
+      "sha256": "1589db23266c929fdc9a2c7b8096580c816679e824165e1e7a960d22d6f825e2"
+    },
+    "executed_binding_tool": {
+      "path": "docs/verification/psionic-panda-owned-query-neural-source-binding-2026-11-01.py",
+      "bytes": 4647,
+      "sha256": "fb5a8b8c7b1be58a19c1d1c04577d6d4ed3163e6e7e38dc15131a2cab955205f"
+    },
+    "no_numeric_identifier_string_or_operator_token_changes": true,
+    "prebuilt_versioned_profile_not_reexecuted": true
+  },
+  "new_offline_routing": {
+    "schema": "psionic.panda-owned-query-neural.registration.v1",
+    "passed": true,
+    "scope": "NEW offline-only and mixed routing contexts with spies; no real Coax/native/NN/SDK/old gates or decoder execution.",
+    "sources": {
+      "psionic/check.sh": {
+        "bytes": 45086,
+        "sha256": "41e8d534824064d7818e1dff6b19014b4ffa79d3f005cf486a40cc1464eaf5ae"
+      },
+      "psionic/tests/robotics/check.sh": {
+        "bytes": 22080,
+        "sha256": "fa2f90807531a0a4dbae11927e5f38f518b712f5cc38db56791a663f39d08f26"
+      }
+    },
+    "commands": [
+      {
+        "label": "direct",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-owned-query-neural"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "5dd2c831578c865742273994db5b72d2b9e2c876f392b55f6ea782981c98c0f7"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "mutate-still-offline",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "robotics/panda-owned-query-neural"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "5dd2c831578c865742273994db5b72d2b9e2c876f392b55f6ea782981c98c0f7"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "deduplicated",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-owned-query-neural",
+          "psionic/lib/robotics/panda-owned-query-neural.coax",
+          "robotics/panda-owned-query-neural"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "5dd2c831578c865742273994db5b72d2b9e2c876f392b55f6ea782981c98c0f7"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-owned-query-neural",
+          "--jobs",
+          "3"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "5dd2c831578c865742273994db5b72d2b9e2c876f392b55f6ea782981c98c0f7"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "mixed",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-owned-query-neural",
+          "robotics/panda-scheduled-pd-validation-control"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "8127b7b28e1a20e9adb8b3d906f8614252ee148dcb15e64cd059ea6a41f105a2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "mixed-top",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-owned-query-neural",
+          "robotics/panda-scheduled-pd-validation-control",
+          "--jobs",
+          "3"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "8127b7b28e1a20e9adb8b3d906f8614252ee148dcb15e64cd059ea6a41f105a2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "default-list",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/tests/robotics/check.sh",
+          "--list",
+          "all"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 2667,
+          "sha256": "0dadf4d5c85a24b7ac80d88cfa2148a2f9c497863134bc585010a983813de5b6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "unknown",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-owned-query-neural-unknown"
+        ],
+        "returncode": 2,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 65,
+          "sha256": "35530078c5768ea6ff6d6ddd841c344bd5bcb9aae61b4c25bcb8457d155dc8af"
+        }
+      },
+      {
+        "label": "whitelist",
+        "argv": [
+          "bash",
+          "/tmp/panda-owned-query-neural-routing-stub-fix-first/whitelist.sh",
+          "robotics/panda-owned-query-neural",
+          "psionic/lib/robotics/panda-owned-query-neural.coax",
+          "robotics/panda-owned-query-neural-unknown"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 11,
+          "sha256": "110a14d9b46455d763c24cd704e231189e4f2906f507f50d32f4533c045297ed"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "cases": [
+      {
+        "name": "direct",
+        "offline_gate_stub_calls": 1,
+        "Coax_stub_commands": 0,
+        "real_Coax_NN_SDK_calls": 0
+      },
+      {
+        "name": "mutate-still-offline",
+        "offline_gate_stub_calls": 1,
+        "Coax_stub_commands": 0,
+        "real_Coax_NN_SDK_calls": 0
+      },
+      {
+        "name": "deduplicated",
+        "offline_gate_stub_calls": 1,
+        "Coax_stub_commands": 0,
+        "real_Coax_NN_SDK_calls": 0
+      },
+      {
+        "name": "top",
+        "offline_gate_stub_calls": 1,
+        "Coax_stub_commands": 0,
+        "real_Coax_NN_SDK_calls": 0
+      },
+      {
+        "name": "mixed",
+        "offline_gate_stub_calls": 1,
+        "Coax_stub_commands": 3,
+        "real_Coax_NN_SDK_calls": 0
+      },
+      {
+        "name": "mixed-top",
+        "offline_gate_stub_calls": 1,
+        "Coax_stub_commands": 3,
+        "real_Coax_NN_SDK_calls": 0
+      }
+    ],
+    "carried_syntax": {
+      "prior_record": {
+        "bytes": 2136,
+        "sha256": "94cbca53ffa57ce66a1135b452f59d83f44c46e803fc1929e11ba8f0c4f1e636"
+      },
+      "passed_commands": [
+        {
+          "label": "syntax-psionic-check.sh",
+          "argv": [
+            "bash",
+            "-n",
+            "/tmp/panda-owned-query-neural-registration-first/shadow/psionic/check.sh"
+          ],
+          "returncode": 0,
+          "stdout": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        {
+          "label": "syntax-psionic-tests-robotics-check.sh",
+          "argv": [
+            "bash",
+            "-n",
+            "/tmp/panda-owned-query-neural-registration-first/shadow/psionic/tests/robotics/check.sh"
+          ],
+          "returncode": 0,
+          "stdout": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "stderr": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ],
+      "unchanged_dispatcher_checks_not_repeated": true
+    },
+    "preserved_initial_stub_failure": "First direct routing attempt invoked a Python spy through bash; only the private shell-compatible spy and its Python parenthesis were corrected. No repository source change.",
+    "real_Coax_calls": 0,
+    "real_NN_calls": 0,
+    "real_SDK_calls": 0,
+    "real_decoder_calls": 0,
+    "seconds": 1.312889583001379
+  },
+  "book": {
+    "first_pass": {
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.4232778750010766,
+      "source": {
+        "psionic/book/README.md": "f22f6e4d9e3a73ae8f7980f94e41f9c1418fce6ab35414dc8c5e32f8f3e16dff",
+        "psionic/book/SUMMARY.md": "f74ad0e5c0b969290ac4df61db6000b34d214e28eda40d343b30bcdd72df35ff",
+        "psionic/book/ch170-close-the-simulated-control-loop.md": "ed0f51aec7911f476dae28bd10745ba2035d44419628e36af1c8fdb7fa518711",
+        "psionic/book/chapters.json": "b288908a56d8ade1d1a41a847b8caa3ef511699c21b15d41ca9a6974c247d7fd",
+        "psionic/book/examples.json": "cac142af23998077f06ade7843f7ee9b98a1c62cabdffa1cd2d3c0188bc2ab48",
+        "psionic/tests/book.py": "b11541e899f4d629a638c6fd8cd9b2a1a5fe32694b5d881499745e5414dc2f37"
+      }
+    },
+    "programs": 134,
+    "source_linked_listings": 481,
+    "new_Coax_programs": 0
+  },
+  "retained_tooling_failures": [
+    "First PRIVATE dispatcher spy was Python invoked via bash and had one extra parenthesis. Only the spy changed; successful unchanged dispatcher syntax proofs carried. All six first changed-context routing cases pass.",
+    "First offline-adapter publication/plan preceded positional shell OUT binding; original plan/publication copies retained separately; no numerical decoder/runtime repeated.",
+    "Main SHA module relocation invalidated current whole-file125 equality after successful execution. Raw comparison retains formatting differences; final token-only source binding is explicit rather than asserting byte equality."
+  ],
+  "limits": [
+    "The exact replay is native bound-source evidence for all45 SDK state words, not independently repeated. Rendering/model/controller recomputation are outside that exact-replay claim.",
+    "Only first8 consumed rows independently bind to the persisted first decoded array. Full second decoded array was not persisted; source-backed pipeline/serial/frame checks cover that handoff.",
+    "450 total SDK steps,452 explicit forwards,237 telemetry samples,226 owned paths and4 offscreen captures are SOURCE-DERIVED. Do not present uninstrumented per-function counters as observed.",
+    "The task did not succeed within.45 simulated seconds. This prespecified prefix qualifies integration only. GPU/inference/open/loop/whole-command times are distinct; replay duration is not inferred by subtraction.",
+    "Default committed-evidence adapter received syntax/metadata-plan/stub checks only. The original independent numerical reader audit carries; no duplicate numerical adapter execution.",
+    "No universal hidden-model parity, stable real-time/hardware, no-SDK geometry, contact replacement, R14/compiler boundedness or global policy competence is claimed. Historical records remain untouched."
+  ]
+}
