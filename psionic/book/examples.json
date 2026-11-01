@@ -1710,6 +1710,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/image-codec.coax",
+      "chapter": "psionic/book/ch145-compress-and-reconstruct-an-image.md",
+      "stdout": "psionic/fixtures/image-codec.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/image-codec-refuse.coax",
+      "chapter": "psionic/book/ch145-compress-and-reconstruct-an-image.md",
+      "stdout": "psionic/fixtures/image-codec-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,629 @@
+// Chapter 145: compress and reconstruct an image. A small convolutional
+// autoencoder maps a 3 by 8 by 8 image to a 4 by 2 by 2 latent, quantizes
+// each latent value to one of 15 levels (a 4-bit code), and decodes the code
+// back to pixels with transposed convolutions. Training uses chapter 142's
+// convolution and gradients and chapter 124's AdamW on procedural images
+// generated here. Profile psionic-codec-v1: f32 storage, binary64
+// compensated sums (chapter 4's accumulator), binary64 parameters and AdamW,
+// one CPU core, at most 64 images a batch.
+#load "pixels.coax";
+#load "optim/adamw.coax";
+#load "../tests/image-codec-checks.coax";   // the checks' oracles and fixtures
+
+// book:begin types
+CzStatus :: enum u8 {ok;batch;shape;code;number;capacity;}
+CzResult :: struct {status:CzStatus;written:int;}
+CzLoss :: struct {status:CzStatus;loss:f64;}
+// Training: steps of AdamW on minibatches of batch images taken in order,
+// optionally through the quantizer (straight-through), at rate lr halved
+// after each quarter of the steps.
+CzTrain :: struct {steps:int;batch:int;lr:f64;quantize:bool=true;}
+// book:end types
+
+// book:begin shape
+CZ_SIDE :: 8;               // image side, pixels
+CZ_PIXELS :: 192;           // 3 channels of 8 by 8
+CZ_HIDDEN :: 128;           // 8 channels of 4 by 4, between the two layers
+CZ_LATENT :: 16;            // 4 channels of 2 by 2
+CZ_LEVELS :: 7;             // a latent value is k / 7 for k in -7..7: 15 levels
+CZ_BATCH_MAX :: 64;
+CZ_LEAK :: 0.125;           // the activation's slope below zero
+// One parameter vector: each layer's weights, then its bias.
+CZ_E1W :: 0;      // encoder 1: 8 filters over 3 channels, 4 by 4 taps
+CZ_E1B :: 384;
+CZ_E2W :: 392;    // encoder 2: 4 filters over 8 channels
+CZ_E2B :: 904;
+CZ_D1W :: 908;    // decoder 1: transposes a conv shaped like encoder 2
+CZ_D1B :: 1420;   //   bias per output channel (8)
+CZ_D2W :: 1428;   // decoder 2: transposes a conv shaped like encoder 1
+CZ_D2B :: 1812;   //   bias per output channel (3)
+CZ_PARAMS :: 1815;
+// Workspace per image: the forward pass (encoder 1 before and after its
+// activation, encoder 2's output, the latent, decoder 1 before and after its
+// activation, the reconstruction), then the backward pass's gradients.
+CZ_FORWARD :: 736;
+CZ_WORK :: 1200;
+// The two convolution shapes. Kernel 4, stride 2, padding 1 halves each side.
+cz_outer :: (n:int)->PxConv {
+    return PxConv.{batch=n,channels=3,height=8,width=8,filters=8,kernel_h=4,kernel_w=4,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
+}
+cz_inner :: (n:int)->PxConv {
+    return PxConv.{batch=n,channels=8,height=4,width=4,filters=4,kernel_h=4,kernel_w=4,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
+}
+// book:end shape
+
+// book:begin gates
+// Frozen before the first training run (chapter 145, "Acceptance").
+CZ_GATE_PSNR :: 22.0;       // test PSNR with quantized latents, dB, at least
+CZ_GATE_GAIN :: 4.0;        // test MSE at most a quarter of the mean image's
+// book:end gates
+
+// Checks precede the implementation. Expected values are derived in chapter 145.
+#test "the fixtures themselves" {
+    x:[4]f32;cz_fill(x[..],5);#assert x[0]==0.1875 && x[1]==0.5 && x[2]==-0.25 && x[3]==0.0625;
+    y:=x;#assert cz_same(x[..],y[..]) && !cz_same(x[0..<3],y[..]);y[3]=0;#assert !cz_same(x[..],y[..]);y=x;y[0]=1;#assert !cz_same(x[..],y[..]);
+    #assert px_conv_plan(cz_outer(1)).out_h==4 && px_conv_plan(cz_outer(1)).w==384 && px_conv_plan(cz_inner(1)).out_w==2 && px_conv_plan(cz_inner(1)).w==512;
+    #assert CZ_E1B==CZ_E1W+384 && CZ_E2W==CZ_E1B+8 && CZ_E2B==CZ_E2W+512 && CZ_D1W==CZ_E2B+4 && CZ_D1B==CZ_D1W+512;
+    #assert CZ_D2W==CZ_D1B+8 && CZ_D2B==CZ_D2W+384 && CZ_PARAMS==CZ_D2B+3;
+    #assert CZ_FORWARD==4*CZ_HIDDEN+2*CZ_LATENT+CZ_PIXELS && CZ_WORK==CZ_FORWARD+CZ_PIXELS+2*CZ_HIDDEN+CZ_LATENT;
+    #assert CZ_Y+CZ_PIXELS==CZ_FORWARD && CZ_DA1+CZ_HIDDEN==CZ_WORK && CZ_DY==CZ_FORWARD;
+    w:[CZ_PARAMS]f32;w[7]=3;cz_probe(w[..]);n:=0;for v:w {if v!=0 {n+=1;}}
+    #assert n==23 && w[7]==0 && w[5]==1 && w[CZ_E1W+7*48+5]==1 && w[CZ_E2W+3*128+5]==1 && w[CZ_D1W+7*16+5]==1 && w[CZ_D2W+2*16+5]==1;
+    #assert cz_pixel_hand(0,0)==0.28125 && cz_pixel_hand(0,7)==0.5;
+}
+#test "upsampling one row by hand" {
+    // A 1 by 4 conv, kernel 4, stride 2, padding 1, has 2 outputs; its
+    // transpose maps 2 values to 4: out[r] sums u[q] * w[r + 1 - 2q].
+    c:=PxConv.{channels=1,height=1,width=4,filters=1,kernel_h=1,kernel_w=4,stride_w=2,pad_w=1};
+    u:=[2]f32.[1,10];w:=[4]f32.[1,2,3,4];bias:=[1]f32.[0.5];out:=[5]f32.[-7,-7,-7,-7,-7];s:[4]f32;
+    r:=cz_up(c,u[..],w[..],bias[0..<0],out[..],s[..]);
+    #assert r.status==CzStatus.ok && r.written==4 && out[0]==2 && out[1]==13 && out[2]==24 && out[3]==30 && out[4]==-7;
+    r=cz_up(c,u[..],w[..],bias[..],out[..],s[..]);#assert out[0]==2.5 && out[3]==30.5;
+    // Stride 2 with kernel 2 and no padding: each input becomes a 2-pixel block.
+    c=PxConv.{channels=1,height=1,width=4,filters=1,kernel_h=1,kernel_w=2,stride_w=2};w=[4]f32.[3,5,0,0];
+    r=cz_up(c,u[..],w[0..<2],bias[0..<0],out[..],s[..]);#assert out[0]==3 && out[1]==5 && out[2]==30 && out[3]==50;
+}
+#forall "upsampling equals its scatter definition on every setting" stride: 1..<3, pad: 0..<2, dilation: 1..<3, groups: 1..<3 {
+    c:=PxConv.{batch=2,channels=2,height=5,width=4,filters=2,kernel_h=3,kernel_w=2,stride_h=stride,stride_w=3-stride,
+        pad_h=pad,pad_w=pad,dilation_h=dilation,groups=groups};
+    p:=px_conv_plan(c);#assert p.status==PxStatus.ok;
+    u:[64]f32;w:[24]f32;bias:[2]f32;cz_fill(u[0..<p.y],5);cz_fill(w[0..<p.w],3);cz_fill(bias[..],7);
+    out:[80]f32;s:[80]f32;ref:[80]f64;
+    #assert cz_up(c,u[0..<p.y],w[0..<p.w],bias[..],out[..],s[..]).written==p.x;
+    cz_scatter(c,u[0..<p.y],w[0..<p.w],bias[..],ref[..]);
+    // Every value is a multiple of 1/256 far inside f32, so both are exact.
+    for i:0..<p.x {#assert f64(out[i])==ref[i];}
+    // The adjoint: <up(u), v> = <u, conv(v)> with no bias.
+    v:[80]f32;cz_fill(v[0..<p.x],2);y:[64]f32;t:[64]f32;
+    #assert cz_up(c,u[0..<p.y],w[0..<p.w],bias[0..<0],out[..],s[..]).status==CzStatus.ok;
+    #assert px_conv_direct(c,v[0..<p.x],w[0..<p.w],bias[0..<0],y[..],t[..],false).status==PxStatus.ok;
+    left:=0.0;right:=0.0;for i:0..<p.x {left+=f64(out[i])*f64(v[i]);}for i:0..<p.y {right+=f64(u[i])*f64(y[i]);}
+    #assert left==right;
+}
+#test "upsampling refuses before it writes" {
+    c:=PxConv.{channels=1,height=1,width=4,filters=1,kernel_h=1,kernel_w=4,stride_w=2,pad_w=1};
+    u:=[2]f32.[1,10];w:=[4]f32.[1,2,3,4];b:=[1]f32.[0.5];out:=[4]f32.[-7,-7,-7,-7];s:[4]f32;
+    bad:=c;bad.pad_w=4;#assert cz_up(bad,u[..],w[..],b[..],out[..],s[..]).status==CzStatus.shape;
+    #assert cz_up(c,u[0..<1],w[..],b[..],out[..],s[..]).status==CzStatus.shape;
+    #assert cz_up(c,u[..],w[0..<3],b[..],out[..],s[..]).status==CzStatus.shape;
+    two:=[2]f32.[1,1];#assert cz_up(c,u[..],w[..],two[..],out[..],s[..]).status==CzStatus.shape;
+    #assert cz_up(c,u[..],w[..],b[..],out[0..<3],s[..]).status==CzStatus.capacity;
+    #assert cz_up(c,u[..],w[..],b[..],out[..],s[0..<3]).status==CzStatus.capacity;
+    u[1]=0.0/0.0;#assert cz_up(c,u[..],w[..],b[..],out[..],s[..]).status==CzStatus.number;u[1]=10;
+    w[2]=1.0/0.0;#assert cz_up(c,u[..],w[..],b[..],out[..],s[..]).status==CzStatus.number;w[2]=3;
+    b[0]=0.0/0.0;#assert cz_up(c,u[..],w[..],b[..],out[..],s[..]).status==CzStatus.number;b[0]=0.5;
+    big:=f32_from_bits(0x7f7fffff);u[0]=big;w[1]=2;#assert cz_up(c,u[..],w[..],b[..],out[..],s[..]).status==CzStatus.number;
+    #assert out[0]==-7 && out[1]==-7 && out[2]==-7 && out[3]==-7;u[0]=1;
+    #assert cz_up(c,u[..],w[..],b[..],out[..],s[..]).written==4 && out[0]==2.5;
+}
+#test "quantization: levels, rounding and the exact round trip" {
+    for k:-7..<8 {
+        z:=cz_level(k);#assert cz_code(f64(z))==k;
+        // Anything within just under half a step of a level returns it.
+        if k> -7 {#assert cz_code(f64(z)-0.0714)==k;}
+        if k<7 {#assert cz_code(f64(z)+0.0714)==k;}
+    }
+    #assert cz_level(0)==0 && cz_level(7)==1 && cz_level(-7)==-1 && cz_level(1)==f32(1.0/7);
+    // The step is 1/7 = 0.142857: the boundary between 0 and 1 is 0.0714286.
+    #assert cz_code(0.0714)==0 && cz_code(0.0715)==1 && cz_code(-0.0714)==0 && cz_code(-0.0715)==-1;
+    // Beyond the ends it clamps.
+    #assert cz_code(0.9285)==6 && cz_code(0.9286)==7 && cz_code(2)==7 && cz_code(-2)==-7 && cz_code(-0.9286)==-7 && cz_code(-0.9285)==-6;
+    #assert cz_code(1)==7 && cz_code(-1)==-7 && cz_code(1.0715)==7 && cz_code(-1.0715)==-7 && cz_code(100)==7 && cz_code(-100)==-7;
+    // tanh by hand: tanh(1/2) = 0.4621, 7 times that is 3.23, code 3.
+    #assert abs(cz_tanh(0.5)-0.46211715726000974)<1e-15 && cz_code(cz_tanh(0.5))==3 && cz_tanh(-0.5)==-cz_tanh(0.5);
+    #assert f64_bits(cz_tanh(0))==0 && cz_tanh(400)==1 && cz_tanh(-400)==-1;
+}
+#test "packing: two codes a byte, and the nibble 15 refused" {
+    codes:[16]int;for i:0..<16 {codes[i]=i-8;}codes[0]=7;
+    bytes:[8]u8;#assert cz_pack(codes[..],bytes[..]).status==CzStatus.ok;
+    // Code k is stored as k + 7: codes 7 and -7 become 14 and 0, one byte 0x0e.
+    #assert bytes[0]==0x0e && bytes[1]==0x21 && bytes[7]==0xed;
+    back:[16]int;#assert cz_unpack(bytes[..],back[..]).written==16;
+    for i:0..<16 {#assert back[i]==codes[i];}
+    bytes[3]=0xf0;#assert cz_unpack(bytes[..],back[..]).status==CzStatus.code;
+    bytes[3]=0x0f;#assert cz_unpack(bytes[..],back[..]).status==CzStatus.code;
+    bytes[3]=0x7f;#assert cz_unpack(bytes[..],back[..]).status==CzStatus.code;
+    bytes[3]=0xf7;#assert cz_unpack(bytes[..],back[..]).status==CzStatus.code;
+    bytes[3]=0xee;#assert cz_unpack(bytes[..],back[..]).status==CzStatus.ok && back[6]==7 && back[7]==7;
+    #assert cz_unpack(bytes[0..<7],back[..]).status==CzStatus.shape && cz_unpack(bytes[..],back[0..<15]).status==CzStatus.capacity;
+    #assert cz_unpack(bytes[0..<0],back[..]).status==CzStatus.shape && cz_pack(codes[0..<0],bytes[..]).status==CzStatus.shape;
+    #assert cz_pack(codes[0..<15],bytes[..]).status==CzStatus.shape && cz_pack(codes[..],bytes[0..<7]).status==CzStatus.capacity;
+    codes[5]=8;#assert cz_pack(codes[..],bytes[..]).status==CzStatus.code;codes[5]=-8;#assert cz_pack(codes[..],bytes[..]).status==CzStatus.code;
+    // Two images: 32 codes in 16 bytes.
+    many:[32]int;for i:0..<32 {many[i]=i%15-7;}sixteen:[16]u8;#assert cz_pack(many[..],sixteen[..]).written==16;
+    again:[32]int;#assert cz_unpack(sixteen[..],again[..]).written==32;
+    for i:0..<32 {#assert again[i]==many[i];}
+}
+#test "a hand-set model encodes and decodes by hand" {
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);
+    // Encoder 1's tap (1, 1) at stride 2, padding 1 reads pixel (2i, 2j);
+    // encoder 2 does it again, so latent (i, j) is leaky(red pixel (4i, 4j)).
+    x:[CZ_PIXELS]f32;x[0]=0.5;x[4]=-0.25;x[32]=2;x[36]=-3;x[64]=0.75;
+    codes:[16]int;ws:[CZ_WORK]f32;
+    #assert cz_encode(w[..],x[..],1,codes[..],ws[..]).written==16;
+    // tanh 0.5 = 0.462, times 7 is 3.23: code 3. -0.25 leaks to -1/32:
+    // 7 tanh is -0.219, code 0. tanh 2 = 0.964: 6.75, code 7. -3 leaks to
+    // -3/8: 7 tanh is -2.51, code -3.
+    for f:0..<4 {#assert codes[f*4]==3 && codes[f*4+1]==0 && codes[f*4+2]==7 && codes[f*4+3]==-3;}
+    // Decoding reverses the path: latent (i, j) lands on pixel (4i, 4j) of
+    // every channel, through one leak below zero.
+    y:[CZ_PIXELS]f32;#assert cz_decode(w[..],codes[..],1,y[..],ws[..]).written==CZ_PIXELS;
+    for c:0..<3 {
+        #assert y[c*64]==f32(3.0/7) && y[c*64+4]==0 && y[c*64+32]==1 && y[c*64+36]==f32(-3.0/7)*0.125;
+        for i:0..<64 {if i!=0 && i!=4 && i!=32 && i!=36 {#assert y[c*64+i]==0;}}
+    }
+    // The quantized forward pass gives the same pixels; the continuous one
+    // carries tanh's values instead of the levels.
+    #assert cz_forward(w[..],x[..],1,ws[..],true)==CzStatus.ok;
+    for i:0..<CZ_PIXELS {#assert ws[CZ_Y+i]==y[i];}
+    for i:0..<CZ_LATENT {#assert ws[CZ_Z+i]==cz_level(codes[i]);}
+    #assert cz_forward(w[..],x[..],1,ws[..],false)==CzStatus.ok && ws[CZ_Y]==f32(cz_tanh(0.5)) && ws[CZ_Z+1]==f32(cz_tanh(-0.03125));
+    w[CZ_D2B+1]=0.5;#assert cz_decode(w[..],codes[..],1,y[..],ws[..]).status==CzStatus.ok && y[65]==0.5 && y[64]==f32(f64(f32(3.0/7))+0.5) && y[1]==0;
+    // Decoder 1's bias reaches every even output pixel of channel 0 through decoder 2's one tap.
+    w[CZ_D1B+0]=0.25;#assert cz_decode(w[..],codes[..],1,y[..],ws[..]).status==CzStatus.ok && y[0]==f32(f64(f32(3.0/7))+0.25) && y[2]==0.25 && y[1]==0 && y[65]==0.5;
+    w[CZ_E1B+0]=1;w[CZ_E2B+3]=-0.5;#assert cz_encode(w[..],x[..],1,codes[..],ws[..]).status==CzStatus.ok;
+    // Encoder 1's bias lifts 0.5 to 1.5 (7 tanh 1.5 = 6.34, code 6), 2 to 3
+    // (6.97, code 7) and -3 to -2 (leaks to -1/4: -1.71, code -2); encoder
+    // 2's bias moves only its own channel: 1.5 - 0.5 gives 5, -0.25 - 0.5 gives -4.
+    #assert codes[0]==6 && codes[2]==7 && codes[3]==-2 && codes[4]==6 && codes[12]==5 && codes[15]==-4;
+}
+#test "encode and decode refuse before they write" {
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);x:[2*CZ_PIXELS]f32;codes:[32]int;ws:[2*CZ_WORK]f32;y:[2*CZ_PIXELS]f32;
+    for i:0..<32 {codes[i]=-9;}
+    #assert cz_admit(w[..],64)==CzStatus.ok && cz_admit(w[..],1)==CzStatus.ok && cz_admit(w[..],65)==CzStatus.batch && cz_admit(w[..],0)==CzStatus.batch;
+    #assert cz_admit(w[0..<1814],1)==CzStatus.shape;
+    #assert cz_encode(w[..],x[..],0,codes[..],ws[..]).status==CzStatus.batch;
+    #assert cz_encode(w[..],x[..],65,codes[..],ws[..]).status==CzStatus.batch;
+    #assert cz_encode(w[..],x[0..<191],1,codes[..],ws[..]).status==CzStatus.shape;
+    #assert cz_encode(w[0..<1814],x[0..<192],1,codes[..],ws[..]).status==CzStatus.shape;
+    #assert cz_encode(w[..],x[..],2,codes[0..<31],ws[..]).status==CzStatus.capacity;
+    #assert cz_encode(w[..],x[..],2,codes[..],ws[0..<2*CZ_FORWARD-1]).status==CzStatus.capacity;
+    x[100]=0.0/0.0;#assert cz_encode(w[..],x[..],2,codes[..],ws[..]).status==CzStatus.number;x[100]=0;
+    w[3]=1.0/0.0;#assert cz_encode(w[..],x[..],2,codes[..],ws[..]).status==CzStatus.number;w[3]=0;
+    w[CZ_E2W+200]=0.0/0.0;#assert cz_encode(w[..],x[..],2,codes[..],ws[..]).status==CzStatus.number;w[CZ_E2W+200]=0;
+    // Encoder 1's sum 2 x the largest f32, then encoder 2's, do not fit.
+    big:=f32_from_bits(0x7f7fffff);x[0]=big;w[CZ_E1W+5]=2;#assert cz_encode(w[..],x[..],2,codes[..],ws[..]).status==CzStatus.number;
+    w[CZ_E1W+5]=1;w[CZ_E2W+5]=2;#assert cz_encode(w[..],x[..],2,codes[..],ws[..]).status==CzStatus.number;w[CZ_E2W+5]=1;x[0]=0;
+    for i:0..<32 {#assert codes[i]==-9;}
+    #assert cz_encode(w[..],x[..],2,codes[..],ws[0..<2*CZ_FORWARD]).written==32 && codes[0]==0 && codes[31]==0;
+    for i:0..<2*CZ_PIXELS {y[i]=-7;}
+    #assert cz_decode(w[..],codes[..],0,y[..],ws[..]).status==CzStatus.batch;
+    #assert cz_decode(w[..],codes[0..<31],2,y[..],ws[..]).status==CzStatus.shape;
+    #assert cz_decode(w[0..<1],codes[..],2,y[..],ws[..]).status==CzStatus.shape;
+    #assert cz_decode(w[..],codes[..],2,y[0..<383],ws[..]).status==CzStatus.capacity;
+    #assert cz_decode(w[..],codes[..],2,y[..],ws[0..<2*CZ_FORWARD-1]).status==CzStatus.capacity;
+    codes[17]=8;#assert cz_decode(w[..],codes[..],2,y[..],ws[..]).status==CzStatus.code;
+    codes[17]=-8;#assert cz_decode(w[..],codes[..],2,y[..],ws[..]).status==CzStatus.code;
+    w[CZ_D2W]=0.0/0.0;codes[17]=0;#assert cz_decode(w[..],codes[..],2,y[..],ws[..]).status==CzStatus.number;w[CZ_D2W]=0;
+    w[CZ_D1W]=1.0/0.0;#assert cz_decode(w[..],codes[..],2,y[..],ws[..]).status==CzStatus.number;w[CZ_D1W]=0;
+    // Decoder 1's bias at the largest f32, plus a level of 1 through a weight of it, does not fit.
+    w[CZ_D1B]=big;codes[0]=7;w[CZ_D1W+5]=big;w[CZ_D2W+5]=0;#assert cz_decode(w[..],codes[..],2,y[..],ws[..]).status==CzStatus.number;
+    codes[0]=0;w[CZ_D1W+5]=1;w[CZ_D2W+5]=1;w[CZ_D1B]=0;
+    for i:0..<2*CZ_PIXELS {#assert y[i]==-7;}
+    codes[16]=7;codes[31]=-7;#assert cz_decode(w[..],codes[..],2,y[..],ws[0..<2*CZ_FORWARD]).written==384 && y[0]==0 && y[192]==1;
+}
+#test "the procedural images" #steps 400000000 {
+    all:[64*CZ_PIXELS]f32;b:[CZ_PIXELS]f32;
+    for k:0..<64 {cz_image(k,all[k*CZ_PIXELS..<(k+1)*CZ_PIXELS]);}
+    cz_image(3,b[..]);#assert cz_same(all[3*CZ_PIXELS..<4*CZ_PIXELS],b[..]);
+    lo:=1.0;hi:=0.0;
+    for v:all {
+        if f64(v)<lo {lo=f64(v);}
+        if f64(v)>hi {hi=f64(v);}
+        // Every value is a multiple of 1/128 in [0, 1].
+        #assert v>=0 && v<=1 && f64(v)*128==floor(f64(v)*128);
+    }
+    #assert lo==0 && hi==1;
+    // No image is another's copy, so no held-out image is a training image.
+    for k:0..<64 {for j:0..<k {#assert !cz_same(all[k*CZ_PIXELS..<(k+1)*CZ_PIXELS],all[j*CZ_PIXELS..<(j+1)*CZ_PIXELS]);}}
+    // The generator's first two draws from seed 1, by hand: 48271, and
+    // 48271^2 = 2330089441, less 2147483647, is 182605794.
+    #assert cz_draw(1)==48271 && cz_draw(48271)==182605794;
+    for k:0..<64 {for i:0..<CZ_PIXELS {#assert all[k*CZ_PIXELS+i]==f32(cz_pixel_hand(k,i));}}
+    #assert cz_clamp01(-0.5)==0 && cz_clamp01(0.25)==0.25 && cz_clamp01(1.5)==1 && cz_clamp01(0)==0 && cz_clamp01(1)==1;
+}
+#test "initial weights, the rate schedule, PSNR and the activation" {
+    p:[CZ_PARAMS]f64;cz_init(p[..],7);
+    bounds:=[8]f64.[sqrt(6.0/48),0,sqrt(6.0/128),0,sqrt(6.0/16),0,sqrt(6.0/32),0.5];
+    starts:=[9]int.[CZ_E1W,CZ_E1B,CZ_E2W,CZ_E2B,CZ_D1W,CZ_D1B,CZ_D2W,CZ_D2B,CZ_PARAMS];
+    for l:0..<8 {
+        big:=0.0;
+        for i:starts[l]..<starts[l+1] {
+            #assert f64(f32(p[i]))==p[i] && p[i]*4096==floor(p[i]*4096) && abs(p[i])<=bounds[l]+1.0/8192;
+            if abs(p[i])>big {big=abs(p[i]);}
+        }
+        // Each weight layer reaches most of its range; biases are exact.
+        if l%2==0 {#assert big>0.9*bounds[l];}
+        if l%2==1 && l<7 {#assert big==0;}
+    }
+    #assert p[CZ_D2B]==0.5 && p[CZ_D2B+1]==0.5 && p[CZ_D2B+2]==0.5;
+    // Each weight layer's first weight is drawn, not left at zero.
+    #assert p[CZ_E1W]!=0 && p[CZ_E2W]!=0 && p[CZ_D1W]!=0 && p[CZ_D2W]!=0 && p[CZ_D2B-1]!=0;
+    // The first draw from seed 7 is 337897; 337897 mod 8193 = 1984, so u =
+    // 1984/4096 - 1 = -0.515625 and a u 4096 = -746.70: weight -747/4096.
+    #assert p[0]==-747.0/4096;
+    q:[CZ_PARAMS]f64;cz_init(q[..],7);#assert p[1000]==q[1000];cz_init(q[..],8);#assert p[0]!=q[0];
+    cfg:=CzTrain.{steps=8,lr=0.5};
+    #assert cz_rate(cfg,0)==0.5 && cz_rate(cfg,1)==0.5 && cz_rate(cfg,2)==0.25 && cz_rate(cfg,5)==0.125 && cz_rate(cfg,7)==0.0625;
+    #assert abs(cz_psnr(0.01)-20)<1e-12 && cz_psnr(1)==0 && abs(cz_psnr(0.001)-30)<1e-12;
+    #assert cz_leak(2)==2 && cz_leak(-2)==-0.25 && cz_leak(0)==0 && cz_leak(0.75)==0.75 && cz_leak(-0.75)==-0.09375;
+    #assert cz_slope(0.5)==1 && cz_slope(0)==0.125 && cz_slope(-1)==0.125;
+    big:=f32_from_bits(0x7f7fffff);#assert cz_leak(big)==big && cz_leak(-big)==-big*0.125;
+}
+#test "training admission" {
+    #assert cz_train_admit(CzTrain.{steps=1,batch=1},1)==CzStatus.ok && cz_train_admit(CzTrain.{steps=1,batch=64},64)==CzStatus.ok;
+    #assert cz_train_admit(CzTrain.{steps=1,batch=2},4)==CzStatus.ok && cz_train_admit(CzTrain.{steps=9,batch=2},2)==CzStatus.ok;
+    #assert cz_train_admit(CzTrain.{steps=0,batch=1},1)==CzStatus.batch && cz_train_admit(CzTrain.{steps=1,batch=0},1)==CzStatus.batch;
+    #assert cz_train_admit(CzTrain.{steps=1,batch=65},65)==CzStatus.batch && cz_train_admit(CzTrain.{steps=1,batch=2},1)==CzStatus.batch;
+    #assert cz_train_admit(CzTrain.{steps=1,batch=3},4)==CzStatus.batch && cz_train_admit(CzTrain.{steps=1,batch=2},0)==CzStatus.batch;
+}
+#test "one training step is one gradient and one AdamW step" #steps 2000000000 {
+    x:[4*CZ_PIXELS]f32;for k:0..<4 {cz_image(k,x[k*CZ_PIXELS..<(k+1)*CZ_PIXELS]);}
+    p:[CZ_PARAMS]f64;m:[CZ_PARAMS]f64;v:[CZ_PARAMS]f64;losses:[2]f64;cz_init(p[..],7);
+    // By hand: images 0 and 1 at the full rate, then images 2 and 3 at a
+    // quarter of it (step 1 of 2 is past two quarters).
+    q:=p;mq:[CZ_PARAMS]f64;vq:[CZ_PARAMS]f64;state:AwState;w:[CZ_PARAMS]f32;g:[CZ_PARAMS]f64;ws:[2*CZ_WORK]f32;none:[1]f32;
+    loss:[2]f64;
+    for s:0..<2 {
+        for i:0..<CZ_PARAMS {w[i]=f32(q[i]);}
+        r:=cz_gradient(w[..],x[2*s*CZ_PIXELS..<(2*s+2)*CZ_PIXELS],2,true,ws[..],g[..]);#assert r.status==CzStatus.ok;loss[s]=r.loss;
+        rate:=0.01;if s==1 {rate=0.0025;}
+        group:=[1]AwGroup.[AwGroup.{first=0,count=CZ_PARAMS,lr=rate,beta1=0.9,beta2=0.999,eps=0.00000001}];
+        a:=aw_step(group[..],AwPolicy.{},state,q[..],g[..],mq[..],vq[..],none[0..<0],false);#assert a.status==AwStatus.ok;state=a.state;
+    }
+    #assert cz_train(p[..],m[..],v[..],x[..],4,CzTrain.{steps=2,batch=2,lr=0.01},losses[..])==CzStatus.ok;
+    #assert losses[0]==loss[0] && losses[1]==loss[1];
+    for i:0..<CZ_PARAMS {#assert p[i]==q[i] && m[i]==mq[i] && v[i]==vq[i];}
+}
+#test "training refuses bad settings, and a few steps lower the error" #steps 2000000000 {
+    x:[4*CZ_PIXELS]f32;for k:0..<4 {cz_image(k,x[k*CZ_PIXELS..<(k+1)*CZ_PIXELS]);}
+    p:[CZ_PARAMS]f64;m:[CZ_PARAMS]f64;v:[CZ_PARAMS]f64;losses:[3]f64;cz_init(p[..],7);
+    cfg:=CzTrain.{steps=3,batch=2,lr=0.01};
+    bad:=cfg;bad.batch=3;#assert cz_train(p[..],m[..],v[..],x[..],4,bad,losses[..])==CzStatus.batch;
+    #assert cz_train(p[0..<1],m[..],v[..],x[..],4,cfg,losses[..])==CzStatus.shape;
+    #assert cz_train(p[..],m[0..<1],v[..],x[..],4,cfg,losses[..])==CzStatus.shape;
+    #assert cz_train(p[..],m[..],v[0..<1],x[..],4,cfg,losses[..])==CzStatus.shape;
+    #assert cz_train(p[..],m[..],v[..],x[0..<700],4,cfg,losses[..])==CzStatus.shape;
+    #assert cz_train(p[..],m[..],v[..],x[..],4,cfg,losses[0..<2])==CzStatus.shape;
+    #assert cz_mse(p[..],x[..],0,true)==-1 && cz_mse(p[..],x[0..<700],4,true)==-1 && cz_mse(p[0..<1],x[..],4,true)==-1;
+    before:=cz_mse(p[..],x[..],4,true);
+    #assert cz_train(p[..],m[..],v[..],x[..],4,cfg,losses[..])==CzStatus.ok;
+    after:=cz_mse(p[..],x[..],4,true);
+    #assert before>0.05 && after<before*0.9 && losses[0]>0 && losses[2]>0;
+    // The error by codes, image by image, agrees bit for bit; the continuous
+    // error agrees with the forward pass's own mean.
+    #assert after==cz_mse_by_codes(p[..],x[..],4) && cz_mse(p[..],x[0..<CZ_PIXELS],1,true)==cz_mse_by_codes(p[..],x[0..<CZ_PIXELS],1);
+    ws:[CZ_WORK]f32;#assert cz_mse(p[..],x[3*CZ_PIXELS..<4*CZ_PIXELS],1,false)==cz_loss_at(p[..],x[3*CZ_PIXELS..<4*CZ_PIXELS],1,ws[..],false);
+    x[700]=0.0/0.0;#assert cz_mse(p[..],x[..],4,true)==-1;x[700]=0;
+    p[5]=0.0/0.0;#assert cz_mse(p[..],x[..],4,true)==-1;
+    #assert cz_train(p[..],m[..],v[..],x[..],4,cfg,losses[..])==CzStatus.number;
+}
+#test "gradient refusals" {
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);x:[CZ_PIXELS]f32;ws:[CZ_WORK]f32;g:[CZ_PARAMS]f64;
+    #assert cz_gradient(w[..],x[..],0,true,ws[..],g[..]).status==CzStatus.batch;
+    #assert cz_gradient(w[0..<5],x[..],1,true,ws[..],g[..]).status==CzStatus.shape;
+    #assert cz_gradient(w[..],x[0..<191],1,true,ws[..],g[..]).status==CzStatus.shape;
+    #assert cz_gradient(w[..],x[..],1,true,ws[..],g[0..<1814]).status==CzStatus.shape;
+    #assert cz_gradient(w[..],x[..],1,true,ws[0..<CZ_WORK-1],g[..]).status==CzStatus.capacity;
+    x[7]=0.0/0.0;#assert cz_gradient(w[..],x[..],1,true,ws[..],g[..]).status==CzStatus.number;x[7]=0;
+    w[CZ_D1B]=0.0/0.0;#assert cz_gradient(w[..],x[..],1,true,ws[..],g[..]).status==CzStatus.number;w[CZ_D1B]=0;
+    r:=cz_gradient(w[..],x[..],1,true,ws[..],g[..]);#assert r.status==CzStatus.ok && r.loss==0 && g[CZ_D2B]==0;
+    // An output near f32's largest value: the error's gradient still fits,
+    // but through a weight near it decoder 1's output gradient does not.
+    w[CZ_D2B]=f32_from_bits(0x7f7fffff);#assert cz_gradient(w[..],x[..],1,true,ws[..],g[..]).status==CzStatus.ok;
+    w[CZ_D2W+5]=w[CZ_D2B];#assert cz_gradient(w[..],x[..],1,true,ws[..],g[..]).status==CzStatus.number;
+}
+#test "gradients meet central differences" #steps 4000000000 {
+    params:[CZ_PARAMS]f64;cz_init(params[..],5);
+    x:[CZ_PIXELS]f32;cz_image(1,x[..]);ws:[CZ_WORK]f32;
+    w:[CZ_PARAMS]f32;for i:0..<CZ_PARAMS {w[i]=f32(params[i]);}
+    g:[CZ_PARAMS]f64;
+    r:=cz_gradient(w[..],x[..],1,false,ws[..],g[..]);#assert r.status==CzStatus.ok && r.loss==cz_loss_at(params[..],x[..],1,ws[..],false);
+    // The first, a middle and the last parameter of every layer; h = 2^-10.
+    starts:=[9]int.[CZ_E1W,CZ_E1B,CZ_E2W,CZ_E2B,CZ_D1W,CZ_D1B,CZ_D2W,CZ_D2B,CZ_PARAMS];
+    h:=0.0009765625;
+    for l:0..<8 {
+        picks:=[3]int.[starts[l],(starts[l]+starts[l+1])/2,starts[l+1]-1];
+        for i:picks {
+            v:=params[i];params[i]=v+h;up:=cz_loss_at(params[..],x[..],1,ws[..],false);
+            params[i]=v-h;down:=cz_loss_at(params[..],x[..],1,ws[..],false);params[i]=v;
+            // f32 activations round at about 6e-8 of the loss; over 2h that is
+            // a few 1e-6 at these sizes. Allow 1e-5 plus 1 percent.
+            #assert abs((up-down)/(2*h)-g[i])<=0.00001+0.01*abs(g[i]);
+        }
+    }
+    // Through the quantizer the latent does not move with the decoder's
+    // parameters, so their gradients are exact there too.
+    q:=cz_gradient(w[..],x[..],1,true,ws[..],g[..]);#assert q.status==CzStatus.ok && q.loss==cz_loss_at(params[..],x[..],1,ws[..],true);
+    for i:[3]int.[CZ_D1W+100,CZ_D1B+7,CZ_D2W+200] {
+        v:=params[i];params[i]=v+h;up:=cz_loss_at(params[..],x[..],1,ws[..],true);
+        params[i]=v-h;down:=cz_loss_at(params[..],x[..],1,ws[..],true);params[i]=v;
+        #assert abs((up-down)/(2*h)-g[i])<=0.00001+0.01*abs(g[i]);
+    }
+}
+
+// book:begin data
+// One step of the Park-Miller generator: s * 48271 mod (2^31 - 1).
+cz_draw :: (s:int)->int {return (s*48271)%2147483647;}
+// v clamped to [0, 1] without a branch: (v + |v|) / 2 is max(v, 0).
+cz_clamp01 :: (v:f64)->f64 {low:=(v+abs(v))/2;return 1-((1-low)+abs(1-low))/2;}
+// Image k: each channel a base level in [1/4, 3/4] plus a slope across and
+// a slope down, then a 4 by 4 tile at an even offset that adds up to 1/4
+// to each channel, clamped to [0, 1]. Every value is a multiple of 1/128.
+cz_image :: (k:int,out:[]f32) {
+    s:=1+7919*k;d:[14]int;for j:0..<14 {s=cz_draw(s);d[j]=s;}
+    top:=2*(d[9]%3);left:=2*(d[10]%3);
+    for c:0..<3 {
+        base:=f64(8+d[3*c]%17)/32;across:=f64(d[3*c+1]%9-4)/64;down:=f64(d[3*c+2]%9-4)/64;tile:=f64(d[11+c]%9-4)/16;
+        for y:0..<CZ_SIDE {for x:0..<CZ_SIDE {
+            v:=base+across*(f64(x)-3.5)+down*(f64(y)-3.5);
+            if y>=top && y<top+4 && x>=left && x<left+4 {v+=tile;}
+            out[(c*CZ_SIDE+y)*CZ_SIDE+x]=f32(cz_clamp01(v));
+        }}
+    }
+}
+// book:end data
+
+// book:begin quantize
+cz_tanh :: (a:f64)->f64 {
+    t:=exp(-2*abs(a));v:=(1-t)/(1+t);
+    if a<0 {return -v;}
+    return v;
+}
+// A latent value t in [-1, 1] becomes the nearest of 15 levels k / 7: code
+// k = floor(7 t + 1/2), clamped to -7..7 as (|k + 7| - |k - 7|) / 2. The
+// level is k / 7 rounded once to f32.
+cz_code :: (t:f64)->int {
+    k:=floor(t*CZ_LEVELS+0.5);
+    return int((abs(k+CZ_LEVELS)-abs(k-CZ_LEVELS))/2);
+}
+cz_level :: (k:int)->f32 {return f32(f64(k)/CZ_LEVELS);}
+// Codes in 4 bits each, k + 7 in 0..14, the first of a pair in the low half.
+cz_pack :: (codes:[]int,bytes:[]u8)->CzResult {
+    if codes.count<CZ_LATENT || codes.count%CZ_LATENT!=0 {return CzResult.{status=CzStatus.shape};}
+    if bytes.count<codes.count/2 {return CzResult.{status=CzStatus.capacity};}
+    for k:codes {if k< -CZ_LEVELS || k>CZ_LEVELS {return CzResult.{status=CzStatus.code};}}
+    for j:0..<codes.count/2 {bytes[j]=cast(u8)(codes[2*j]+CZ_LEVELS+16*(codes[2*j+1]+CZ_LEVELS));}
+    return CzResult.{written=codes.count/2};
+}
+cz_unpack :: (bytes:[]u8,codes:[]int)->CzResult {
+    if bytes.count<CZ_LATENT/2 || bytes.count%(CZ_LATENT/2)!=0 {return CzResult.{status=CzStatus.shape};}
+    if codes.count<2*bytes.count {return CzResult.{status=CzStatus.capacity};}
+    for b:bytes {if int(b)%16==15 || int(b)/16==15 {return CzResult.{status=CzStatus.code};}}
+    for j:0..<bytes.count {codes[2*j]=int(bytes[j])%16-CZ_LEVELS;codes[2*j+1]=int(bytes[j])/16-CZ_LEVELS;}
+    return CzResult.{written=2*bytes.count};
+}
+// book:end quantize
+
+// book:begin up
+// One value rounded once to f32, refused when it does not fit. Inputs are
+// checked to be finite first, so every sum is a finite binary64 value.
+cz_put :: (v:f64,out:[]f32,i:int)->bool {if !psionic_ops_fits_f32(v) {return false;}out[i]=f32(v);return true;}
+// The transposed convolution of c: u is shaped like c's output (batch,
+// filters, out_h, out_w), the result like c's input (batch, channels,
+// height, width). Output pixel (n, ch, row, col) gathers every u value whose
+// window put a tap on it, times that tap's weight: chapter 142's input
+// gradient with u in the place of dy. Bias, one per output channel, may be
+// empty.
+cz_up_into :: (c:PxConv,p:PxConvPlan,u:[]f32,w:[]f32,bias:[]f32,out:[]f32)->bool {
+    area:=c.height*c.width;
+    for i:0..<p.x {
+        v:=px_conv_dx(c,p,w,u,i);if bias.count>0 {v+=f64(bias[(i/area)%c.channels]);}
+        if !cz_put(v,out,i) {return false;}
+    }
+    return true;
+}
+// The checked form: shapes first, then every value into scratch, and only
+// when all of them fit, into out.
+cz_up :: (c:PxConv,u:[]f32,w:[]f32,bias:[]f32,out:[]f32,scratch:[]f32)->CzResult {
+    p:=px_conv_plan(c);if p.status!=PxStatus.ok {return CzResult.{status=CzStatus.shape};}
+    if u.count!=p.y || w.count!=p.w || (bias.count!=0 && bias.count!=c.channels) {return CzResult.{status=CzStatus.shape};}
+    if out.count<p.x || scratch.count<p.x {return CzResult.{status=CzStatus.capacity};}
+    if !px_finite(u) || !px_finite(w) || !px_finite(bias) {return CzResult.{status=CzStatus.number};}
+    if !cz_up_into(c,p,u,w,bias,scratch) {return CzResult.{status=CzStatus.number};}
+    for i:0..<p.x {out[i]=scratch[i];}
+    return CzResult.{written=p.x};
+}
+// book:end up
+
+// book:begin forward
+// The leak without a branch: max(v, 0) + (min(v, 0)) / 8, in binary64,
+// where each part is exact.
+cz_leak :: (v:f32)->f32 {a:=f64(v);return f32((a+abs(a))/2+CZ_LEAK*((a-abs(a))/2));}
+cz_slope :: (v:f32)->f64 {if v>0 {return 1;}return CZ_LEAK;}
+cz_conv_into :: (c:PxConv,p:PxConvPlan,x:[]f32,w:[]f32,bias:[]f32,out:[]f32)->bool {
+    for i:0..<p.y {if !cz_put(px_conv_value(c,p,x,w,bias,i),out,i) {return false;}}
+    return true;
+}
+// Workspace regions, each times the batch n: encoder 1 before and after the
+// activation, encoder 2's output, the latent, decoder 1 before and after the
+// activation, the reconstruction.
+CZ_A1 :: 0;CZ_H1 :: 128;CZ_A2 :: 256;CZ_Z :: 272;CZ_A3 :: 288;CZ_H3 :: 416;CZ_Y :: 544;
+// Everything from position at on; each reader and writer stays in its region.
+cz_from :: (v:[]f32,at:int)->[]f32 {return v[at..<v.count];}
+cz_encoder :: (w:[]f32,x:[]f32,n:int,ws:[]f32)->bool {
+    outer:=cz_outer(n);inner:=cz_inner(n);po:=px_conv_plan(outer);pi:=px_conv_plan(inner);
+    if !cz_conv_into(outer,po,x,cz_from(w,CZ_E1W),cz_from(w,CZ_E1B),cz_from(ws,n*CZ_A1)) {return false;}
+    for i:0..<po.y {ws[n*CZ_H1+i]=cz_leak(ws[n*CZ_A1+i]);}
+    return cz_conv_into(inner,pi,cz_from(ws,n*CZ_H1),cz_from(w,CZ_E2W),cz_from(w,CZ_E2B),cz_from(ws,n*CZ_A2));
+}
+// The latent in its region becomes the reconstruction in its region.
+cz_decoder :: (w:[]f32,n:int,ws:[]f32)->bool {
+    outer:=cz_outer(n);inner:=cz_inner(n);po:=px_conv_plan(outer);pi:=px_conv_plan(inner);
+    if !cz_up_into(inner,pi,cz_from(ws,n*CZ_Z),cz_from(w,CZ_D1W),cz_from(w,CZ_D1B),cz_from(ws,n*CZ_A3)) {return false;}
+    for i:0..<pi.x {ws[n*CZ_H3+i]=cz_leak(ws[n*CZ_A3+i]);}
+    return cz_up_into(outer,po,cz_from(ws,n*CZ_H3),cz_from(w,CZ_D2W),cz_from(w,CZ_D2B),cz_from(ws,n*CZ_Y));
+}
+// The whole model on n admitted images; the latent is tanh of encoder 2's
+// output, through the quantizer when quantize is set.
+cz_forward :: (w:[]f32,x:[]f32,n:int,ws:[]f32,quantize:bool)->CzStatus {
+    if !cz_encoder(w,x,n,ws) {return CzStatus.number;}
+    pi:=px_conv_plan(cz_inner(n));
+    for i:0..<pi.y {
+        t:=cz_tanh(f64(ws[n*CZ_A2+i]));ws[n*CZ_Z+i]=f32(t);
+        if quantize {ws[n*CZ_Z+i]=cz_level(cz_code(t));}
+    }
+    if !cz_decoder(w,n,ws) {return CzStatus.number;}
+    return CzStatus.ok;
+}
+// book:end forward
+
+// book:begin codec
+cz_admit :: (w:[]f32,n:int)->CzStatus {
+    if n<1 || n>CZ_BATCH_MAX {return CzStatus.batch;}
+    if w.count!=CZ_PARAMS {return CzStatus.shape;}
+    return CzStatus.ok;
+}
+// Images to codes, 16 an image in (channel, row, column) order.
+cz_encode :: (w:[]f32,x:[]f32,n:int,codes:[]int,ws:[]f32)->CzResult {
+    s:=cz_admit(w,n);if s!=CzStatus.ok {return CzResult.{status=s};}
+    if x.count!=n*CZ_PIXELS {return CzResult.{status=CzStatus.shape};}
+    if codes.count<n*CZ_LATENT || ws.count<n*CZ_FORWARD {return CzResult.{status=CzStatus.capacity};}
+    if !px_finite(x) || !px_finite(w) {return CzResult.{status=CzStatus.number};}
+    if !cz_encoder(w,x,n,ws) {return CzResult.{status=CzStatus.number};}
+    pi:=px_conv_plan(cz_inner(n));
+    for i:0..<pi.y {codes[i]=cz_code(cz_tanh(f64(ws[n*CZ_A2+i])));}
+    return CzResult.{written=pi.y};
+}
+// Codes to images: each code k is the latent value k / 7.
+cz_decode :: (w:[]f32,codes:[]int,n:int,out:[]f32,ws:[]f32)->CzResult {
+    s:=cz_admit(w,n);if s!=CzStatus.ok {return CzResult.{status=s};}
+    if codes.count!=n*CZ_LATENT {return CzResult.{status=CzStatus.shape};}
+    if out.count<n*CZ_PIXELS || ws.count<n*CZ_FORWARD {return CzResult.{status=CzStatus.capacity};}
+    for k:codes {if k< -CZ_LEVELS || k>CZ_LEVELS {return CzResult.{status=CzStatus.code};}}
+    if !px_finite(w) {return CzResult.{status=CzStatus.number};}
+    for i:0..<codes.count {ws[n*CZ_Z+i]=cz_level(codes[i]);}
+    if !cz_decoder(w,n,ws) {return CzResult.{status=CzStatus.number};}
+    po:=px_conv_plan(cz_outer(n));
+    for i:0..<po.x {out[i]=ws[n*CZ_Y+i];}
+    return CzResult.{written=po.x};
+}
+// book:end codec
+
+// book:begin backward
+// Mean squared error over every pixel and its gradient for every parameter.
+// An upsampling layer's input gradient is the convolution it transposes,
+// applied to its output gradient; its weight gradient is chapter 142's
+// weight gradient with input and output swapped; its bias gradient sums its
+// output gradient per channel: chapter 142's bias gradient of a channel-by-
+// channel 1 by 1 convolution with that output. The quantizer passes its gradient straight
+// through; tanh multiplies it by 1 - t^2.
+CZ_DY :: 736;CZ_DA3 :: 928;CZ_DZ :: 1056;CZ_DA1 :: 1072;
+cz_sums :: (c:PxConv)->PxConv {return PxConv.{batch=c.batch,channels=c.channels,height=c.height,width=c.width,filters=c.channels,kernel_h=1,kernel_w=1,groups=c.channels};}
+cz_gradient :: (w:[]f32,x:[]f32,n:int,quantize:bool,ws:[]f32,g:[]f64)->CzLoss {
+    s:=cz_admit(w,n);if s!=CzStatus.ok {return CzLoss.{status=s};}
+    if x.count!=n*CZ_PIXELS || g.count!=CZ_PARAMS {return CzLoss.{status=CzStatus.shape};}
+    if ws.count<n*CZ_WORK {return CzLoss.{status=CzStatus.capacity};}
+    if !px_finite(x) || !px_finite(w) {return CzLoss.{status=CzStatus.number};}
+    s=cz_forward(w,x,n,ws,quantize);if s!=CzStatus.ok {return CzLoss.{status=s};}
+    outer:=cz_outer(n);inner:=cz_inner(n);po:=px_conv_plan(outer);pi:=px_conv_plan(inner);
+    so:=cz_sums(outer);si:=cz_sums(inner);pso:=px_conv_plan(so);psi:=px_conv_plan(si);
+    none:[1]f32;total:=0.0;scale:=2.0/f64(po.x);
+    for i:0..<po.x {
+        e:=f64(ws[n*CZ_Y+i])-f64(x[i]);total+=e*e;
+        if !cz_put(scale*e,ws,n*CZ_DY+i) {return CzLoss.{status=CzStatus.number};}
+    }
+    // Decoder 2.
+    for f:0..<so.filters {g[CZ_D2B+f]=px_conv_db(so,pso,cz_from(ws,n*CZ_DY),f);}
+    for i:0..<po.w {g[CZ_D2W+i]=px_conv_dw(outer,po,cz_from(ws,n*CZ_DY),cz_from(ws,n*CZ_H3),i);}
+    for i:0..<po.y {
+        v:=px_conv_value(outer,po,cz_from(ws,n*CZ_DY),cz_from(w,CZ_D2W),none[0..<0],i)*cz_slope(ws[n*CZ_A3+i]);
+        if !cz_put(v,ws,n*CZ_DA3+i) {return CzLoss.{status=CzStatus.number};}
+    }
+    // Decoder 1.
+    for f:0..<si.filters {g[CZ_D1B+f]=px_conv_db(si,psi,cz_from(ws,n*CZ_DA3),f);}
+    for i:0..<pi.w {g[CZ_D1W+i]=px_conv_dw(inner,pi,cz_from(ws,n*CZ_DA3),cz_from(ws,n*CZ_Z),i);}
+    for i:0..<pi.y {
+        t:=cz_tanh(f64(ws[n*CZ_A2+i]));
+        v:=px_conv_value(inner,pi,cz_from(ws,n*CZ_DA3),cz_from(w,CZ_D1W),none[0..<0],i)*(1-t*t);
+        if !cz_put(v,ws,n*CZ_DZ+i) {return CzLoss.{status=CzStatus.number};}
+    }
+    // Encoder 2.
+    for i:0..<pi.w {g[CZ_E2W+i]=px_conv_dw(inner,pi,cz_from(ws,n*CZ_H1),cz_from(ws,n*CZ_DZ),i);}
+    for f:0..<inner.filters {g[CZ_E2B+f]=px_conv_db(inner,pi,cz_from(ws,n*CZ_DZ),f);}
+    for i:0..<pi.x {
+        v:=px_conv_dx(inner,pi,cz_from(w,CZ_E2W),cz_from(ws,n*CZ_DZ),i)*cz_slope(ws[n*CZ_A1+i]);
+        if !cz_put(v,ws,n*CZ_DA1+i) {return CzLoss.{status=CzStatus.number};}
+    }
+    // Encoder 1.
+    for i:0..<po.w {g[CZ_E1W+i]=px_conv_dw(outer,po,x,cz_from(ws,n*CZ_DA1),i);}
+    for f:0..<outer.filters {g[CZ_E1B+f]=px_conv_db(outer,po,cz_from(ws,n*CZ_DA1),f);}
+    return CzLoss.{loss=total/f64(po.x)};
+}
+// book:end backward
+
+// book:begin train
+// Weights uniform in [-a, a] with a = sqrt(6 / fan-in), on a grid of 1/4096
+// so that every one is exact in f32; biases zero but the output's, 1/2.
+cz_init :: (params:[]f64,seed:int) {
+    s:=seed;
+    for i:0..<CZ_PARAMS {
+        a:=0.0;
+        if i<CZ_E1B {a=sqrt(6.0/48);}
+        else if i>=CZ_E2W && i<CZ_E2B {a=sqrt(6.0/128);}
+        else if i>=CZ_D1W && i<CZ_D1B {a=sqrt(6.0/16);}    // 4 channels, 4 taps reach a pixel
+        else if i>=CZ_D2W {a=sqrt(6.0/32);}                // 8 channels, 4 taps
+        s=cz_draw(s);u:=f64(s%8193)/4096-1;
+        params[i]=floor(a*u*4096+0.5)/4096;
+        if i>=CZ_D2B {params[i]=0.5;}
+    }
+}
+cz_rate :: (cfg:CzTrain,step:int)->f64 {return cfg.lr*pow(0.5,f64((4*step)/cfg.steps));}
+cz_train_admit :: (cfg:CzTrain,count:int)->CzStatus {
+    if cfg.steps<1 || cfg.batch<1 || cfg.batch>CZ_BATCH_MAX || count<cfg.batch || count%cfg.batch!=0 {return CzStatus.batch;}
+    return CzStatus.ok;
+}
+// losses[s] is step s's minibatch loss before its update.
+cz_train :: (params:[]f64,m:[]f64,v:[]f64,x:[]f32,count:int,cfg:CzTrain,losses:[]f64)->CzStatus {
+    s:=cz_train_admit(cfg,count);if s!=CzStatus.ok {return s;}
+    if params.count!=CZ_PARAMS || m.count!=CZ_PARAMS || v.count!=CZ_PARAMS || x.count!=count*CZ_PIXELS || losses.count<cfg.steps {return CzStatus.shape;}
+    ws:[CZ_BATCH_MAX*CZ_WORK]f32;w:[CZ_PARAMS]f32;g:[CZ_PARAMS]f64;none:[1]f32;state:AwState;b:=cfg.batch;
+    for t:0..<cfg.steps {
+        for i:0..<CZ_PARAMS {w[i]=f32(params[i]);}
+        start:=(t*b)%count;
+        r:=cz_gradient(w[..],x[start*CZ_PIXELS..<(start+b)*CZ_PIXELS],b,cfg.quantize,ws[..],g[..]);
+        if r.status!=CzStatus.ok {return r.status;}
+        losses[t]=r.loss;
+        group:=[1]AwGroup.[AwGroup.{first=0,count=CZ_PARAMS,lr=cz_rate(cfg,t),beta1=0.9,beta2=0.999,eps=0.00000001}];
+        a:=aw_step(group[..],AwPolicy.{},state,params,g[..],m,v,none[0..<0],false);
+        if a.status!=AwStatus.ok {return CzStatus.number;}
+        state=a.state;
+    }
+    return CzStatus.ok;
+}
+// Mean squared error over count images, one at a time; -1 when refused.
+cz_mse :: (params:[]f64,x:[]f32,count:int,quantize:bool)->f64 {
+    if count<1 || params.count!=CZ_PARAMS || x.count!=count*CZ_PIXELS {return -1;}
+    w:[CZ_PARAMS]f32;for i:0..<CZ_PARAMS {w[i]=f32(params[i]);}
+    if !px_finite(x) || !px_finite(w[..]) {return -1;}
+    ws:[CZ_FORWARD]f32;total:=0.0;
+    for k:0..<count {
+        image:=x[k*CZ_PIXELS..<(k+1)*CZ_PIXELS];
+        if cz_forward(w[..],image,1,ws[..],quantize)!=CzStatus.ok {return -1;}
+        for i:0..<CZ_PIXELS {e:=f64(ws[CZ_Y+i])-f64(image[i]);total+=e*e;}
+    }
+    return total/f64(count*CZ_PIXELS);
+}
+// Peak signal-to-noise ratio for values in [0, 1]: 10 log10(1 / mse).
+cz_psnr :: (mse:f64)->f64 {return -10*log(mse)/log(10.0);}
+// book:end train

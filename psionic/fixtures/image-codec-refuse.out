@@ -1,0 +1,23 @@
+encode 0 images: batch
+encode 65 images: batch
+191 values for one 3x8x8 image: shape
+1,814 weights for 1,815: shape
+room for 31 codes of 32: capacity
+a NaN pixel: number
+codes still -9: 32 of 32
+decode 15 codes as one image: shape
+decode 32 codes as 1 image: shape
+code 8, past the last level 7: code
+code -8: code
+an infinite decoder weight: number
+pixels still -7: 384 of 384
+a byte holding the nibble 15: code
+7 bytes for one image's 8: shape
+pack 15 codes: shape
+upsample with padding 4 on a 4-tap window: shape
+upsample 1 value where the conv has 2 outputs: shape
+upsample into 3 of 4 outputs: capacity
+an upsampled sum past the largest f32: number
+train 2 images in batches of 3: batch
+train 0 steps: batch
+train with room for 4 losses of 5 steps: shape

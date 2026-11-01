@@ -1,0 +1,43 @@
+// Chapter 145: malformed images, latents, codes, upsampling shapes and
+// training settings, each refused with its status before anything is written.
+#import "Basic";
+#load "../lib/image-codec.coax";
+
+// book:begin refuse
+main :: () {
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);x:[2*CZ_PIXELS]f32;ws:[2*CZ_WORK]f32;
+    codes:[32]int;for i:0..<32 {codes[i]=-9;}
+    print("encode 0 images: %\n",cz_encode(w[..],x[0..<0],0,codes[..],ws[..]).status);
+    print("encode 65 images: %\n",cz_encode(w[..],x[..],65,codes[..],ws[..]).status);
+    print("191 values for one 3x8x8 image: %\n",cz_encode(w[..],x[0..<191],1,codes[..],ws[..]).status);
+    print("1,814 weights for 1,815: %\n",cz_encode(w[0..<1814],x[0..<192],1,codes[..],ws[..]).status);
+    print("room for 31 codes of 32: %\n",cz_encode(w[..],x[..],2,codes[0..<31],ws[..]).status);
+    x[100]=0.0/0.0;print("a NaN pixel: %\n",cz_encode(w[..],x[..],2,codes[..],ws[..]).status);x[100]=0;
+    untouched:=0;for k:codes {if k==-9 {untouched+=1;}}print("codes still -9: % of 32\n",untouched);
+
+    for i:0..<32 {codes[i]=0;}y:[2*CZ_PIXELS]f32;for i:0..<2*CZ_PIXELS {y[i]=-7;}
+    print("decode 15 codes as one image: %\n",cz_decode(w[..],codes[0..<15],1,y[..],ws[..]).status);
+    print("decode 32 codes as 1 image: %\n",cz_decode(w[..],codes[..],1,y[..],ws[..]).status);
+    codes[17]=8;print("code 8, past the last level 7: %\n",cz_decode(w[..],codes[..],2,y[..],ws[..]).status);
+    codes[17]=-8;print("code -8: %\n",cz_decode(w[..],codes[..],2,y[..],ws[..]).status);codes[17]=0;
+    w[CZ_D2W]=1.0/0.0;print("an infinite decoder weight: %\n",cz_decode(w[..],codes[..],2,y[..],ws[..]).status);w[CZ_D2W]=0;
+    untouched=0;for v:y {if v==-7 {untouched+=1;}}print("pixels still -7: % of 384\n",untouched);
+
+    bytes:=[8]u8.[0x77,0x77,0x77,0xf7,0x77,0x77,0x77,0x77];back:[16]int;
+    print("a byte holding the nibble 15: %\n",cz_unpack(bytes[..],back[..]).status);
+    print("7 bytes for one image's 8: %\n",cz_unpack(bytes[0..<7],back[..]).status);
+    print("pack 15 codes: %\n",cz_pack(codes[0..<15],bytes[..]).status);
+
+    c:=PxConv.{channels=1,height=1,width=4,filters=1,kernel_h=1,kernel_w=4,stride_w=2,pad_w=1};
+    u:=[2]f32.[1,10];k4:=[4]f32.[1,2,3,4];none:[1]f32;up:[4]f32;s:[4]f32;
+    bad:=c;bad.pad_w=4;print("upsample with padding 4 on a 4-tap window: %\n",cz_up(bad,u[..],k4[..],none[0..<0],up[..],s[..]).status);
+    print("upsample 1 value where the conv has 2 outputs: %\n",cz_up(c,u[0..<1],k4[..],none[0..<0],up[..],s[..]).status);
+    print("upsample into 3 of 4 outputs: %\n",cz_up(c,u[..],k4[..],none[0..<0],up[0..<3],s[..]).status);
+    u[0]=f32_from_bits(0x7f7fffff);print("an upsampled sum past the largest f32: %\n",cz_up(c,u[..],k4[..],none[0..<0],up[..],s[..]).status);
+
+    params:[CZ_PARAMS]f64;m:[CZ_PARAMS]f64;v:[CZ_PARAMS]f64;losses:[4]f64;
+    print("train 2 images in batches of 3: %\n",cz_train(params[..],m[..],v[..],x[..],2,CzTrain.{steps=4,batch=3,lr=0.01},losses[..]));
+    print("train 0 steps: %\n",cz_train(params[..],m[..],v[..],x[..],2,CzTrain.{steps=0,batch=2,lr=0.01},losses[..]));
+    print("train with room for 4 losses of 5 steps: %\n",cz_train(params[..],m[..],v[..],x[..],2,CzTrain.{steps=5,batch=2,lr=0.01},losses[..]));
+}
+// book:end refuse

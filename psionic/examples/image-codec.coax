@@ -1,0 +1,81 @@
+// Chapter 145: compress and reconstruct an image. Upsampling by hand, a
+// hand-set codec traced value by value, a small autoencoder trained briefly
+// on procedural images, the recorded longer run's weights measured on
+// validation and test images against gates frozen in the chapter, and one
+// image taken to 8 bytes and back.
+#import "Basic";
+#load "../lib/image-codec.coax";
+#load "../fixtures/image-codec-weights.coax";
+
+TRAIN :: 192;
+HELD :: 16;
+TEST :: 64;
+STEPS :: 200;
+cz_r :: (v:f64,places:f64)->f64 {return floor(v*places+0.5)/places;}
+show :: (label:string,v:[]f32) {print("%",label);for x:v {print(" %",x);}print("\n");}
+codes_line :: (label:string,v:[]int) {print("%",label);for x:v {print(" %",x);}print("\n");}
+
+// book:begin example
+main :: () {
+    // 1. Upsampling by hand: a 1 by 4 conv, kernel 4, stride 2, padding 1, transposed.
+    c:=PxConv.{channels=1,height=1,width=4,filters=1,kernel_h=1,kernel_w=4,stride_w=2,pad_w=1};
+    u:=[2]f32.[1,10];k4:=[4]f32.[1,2,3,4];none:[1]f32;up:[4]f32;s4:[4]f32;
+    r:=cz_up(c,u[..],k4[..],none[0..<0],up[..],s4[..]);print("upsample [1, 10] with taps [1, 2, 3, 4]: %",r.status);show(",",up[..]);
+
+    // 2. The hand-set codec: latent (i, j) is red pixel (4i, 4j), through one leak.
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);x:[CZ_PIXELS]f32;x[0]=0.5;x[4]=-0.25;x[32]=2;x[36]=-3;
+    ws:[64*CZ_WORK]f32;codes:[64*CZ_LATENT]int;y:[64*CZ_PIXELS]f32;
+    e:=cz_encode(w[..],x[..],1,codes[..],ws[..]);codes_line("hand-set codec, codes of channel 0:",codes[0..<4]);
+    e=cz_decode(w[..],codes[0..<16],1,y[..],ws[..]);
+    print("decoded red pixels (0,0) (0,4) (4,0) (4,4): % % % %\n",y[0],y[4],y[32],y[36]);
+
+    // 3. The quantizer: every level comes back as its own code.
+    back:=0;for k:-7..<8 {if cz_code(f64(cz_level(k)))==k {back+=1;}}
+    print("levels k/7 that quantize back to k: % of 15\n",back);
+
+    // 4. Data: training images 0..191, validation images 4096..4111 (used to
+    // choose the run), test images 8192..8255 (used only for the gates).
+    train:[TRAIN*CZ_PIXELS]f32;held:[HELD*CZ_PIXELS]f32;test:[TEST*CZ_PIXELS]f32;
+    for k:0..<TRAIN {cz_image(k,train[k*CZ_PIXELS..<(k+1)*CZ_PIXELS]);}
+    for k:0..<HELD {cz_image(4096+k,held[k*CZ_PIXELS..<(k+1)*CZ_PIXELS]);}
+    for k:0..<TEST {cz_image(8192+k,test[k*CZ_PIXELS..<(k+1)*CZ_PIXELS]);}
+    show("image 0, red row 0:",train[0..<8]);
+    // The baseline: predict the mean training image for every image.
+    mean:[CZ_PIXELS]f64;for k:0..<TRAIN {for i:0..<CZ_PIXELS {mean[i]+=f64(train[k*CZ_PIXELS+i])/TRAIN;}}
+    base:=0.0;for k:0..<TEST {for i:0..<CZ_PIXELS {d:=f64(test[k*CZ_PIXELS+i])-mean[i];base+=d*d;}}base/=TEST*CZ_PIXELS;
+    print("mean-image baseline, test: MSE %, PSNR % dB\n",cz_r(base,1000000),cz_r(cz_psnr(base),100));
+
+    // 5. Train briefly from the start: 200 AdamW steps, 16 images a step,
+    // through the quantizer. The recorded run continues to 1,500 steps.
+    params:[CZ_PARAMS]f64;m:[CZ_PARAMS]f64;v:[CZ_PARAMS]f64;losses:[STEPS]f64;cz_init(params[..],7);
+    cfg:=CzTrain.{steps=STEPS,batch=16,lr=0.01};
+    status:=cz_train(params[..],m[..],v[..],train[..],TRAIN,cfg,losses[..]);print("200 training steps: %\n",status);
+    for t:0..<STEPS {if t%50==0 || t==STEPS-1 {print("  step %: loss %\n",t,cz_r(losses[t],1000000));}}
+    print("  validation after 200 steps, quantized: PSNR % dB\n",cz_r(cz_psnr(cz_mse(params[..],held[..],HELD,true)),100));
+
+    // 6. The recorded 1,500-step weights: reconstruction error, then the
+    // frozen gates on the test images.
+    for i:0..<CZ_PARAMS {params[i]=f64(f32_from_bits(CZ_TRAINED[i]));}
+    rows:=[4]string.["training, quantized","validation, quantized","test, continuous latent","test, quantized"];
+    mse:=[4]f64.[cz_mse(params[..],train[..],TRAIN,true),cz_mse(params[..],held[..],HELD,true),
+        cz_mse(params[..],test[..],TEST,false),cz_mse(params[..],test[..],TEST,true)];
+    print("recorded weights, 1,500 steps:\n");
+    for i:0..<4 {print("  %: MSE %, PSNR % dB\n",rows[i],cz_r(mse[i],1000000),cz_r(cz_psnr(mse[i]),100));}
+    print("compression: % bytes to % bytes, % to 1\n",CZ_PIXELS,CZ_LATENT/2,CZ_PIXELS/(CZ_LATENT/2));
+    print("gate PSNR >= % dB: %; gate MSE <= baseline / %: %\n",CZ_GATE_PSNR,cz_psnr(mse[3])>=CZ_GATE_PSNR,CZ_GATE_GAIN,mse[3]*CZ_GATE_GAIN<=base);
+
+    // 7. One test image to 8 bytes and back.
+    for i:0..<CZ_PARAMS {w[i]=f32(params[i]);}
+    e=cz_encode(w[..],test[0..<CZ_PIXELS],1,codes[0..<16],ws[..]);codes_line("test image 0, codes:",codes[0..<16]);
+    bytes:[8]u8;p:=cz_pack(codes[0..<16],bytes[..]);print("packed:");for b:bytes {print(" %",b);}print("\n");
+    again:[16]int;p=cz_unpack(bytes[..],again[..]);same:=true;for i:0..<16 {if again[i]!=codes[i] {same=false;}}
+    print("unpacked codes equal the codes: %\n",same);
+    e=cz_decode(w[..],again[..],1,y[..],ws[..]);
+    show("  original red row 0:",test[0..<8]);
+    print("  decoded red row 0:");for i:0..<8 {print(" %",cz_r(f64(y[i]),1000));}print("\n");
+    // Decoding the codes gives exactly what the quantized forward pass gives.
+    q:=cz_forward(w[..],test[0..<CZ_PIXELS],1,ws[0..<CZ_WORK],true);exact:=true;
+    for i:0..<CZ_PIXELS {if ws[CZ_Y+i]!=y[i] {exact=false;}}
+    print("decode(codes) equals the quantized forward pass: %\n",exact && q==CzStatus.ok);
+}
+// book:end example

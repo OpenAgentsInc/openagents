@@ -1,0 +1,26 @@
+upsample [1, 10] with taps [1, 2, 3, 4]: ok, 2.0 13.0 24.0 30.0
+hand-set codec, codes of channel 0: 3 0 7 -3
+decoded red pixels (0,0) (0,4) (4,0) (4,4): 0.42857143 0.0 1.0 -0.05357143
+levels k/7 that quantize back to k: 15 of 15
+image 0, red row 0: 0.28125 0.3125 0.34375 0.375 0.40625 0.4375 0.46875 0.5
+mean-image baseline, test: MSE 0.046745, PSNR 13.3 dB
+200 training steps: ok
+  step 0: loss 0.093668
+  step 50: loss 0.04206
+  step 100: loss 0.024552
+  step 150: loss 0.016447
+  step 199: loss 0.017331
+  validation after 200 steps, quantized: PSNR 17.91 dB
+recorded weights, 1,500 steps:
+  training, quantized: MSE 0.004784, PSNR 23.2 dB
+  validation, quantized: MSE 0.004997, PSNR 23.01 dB
+  test, continuous latent: MSE 0.005293, PSNR 22.76 dB
+  test, quantized: MSE 0.006013, PSNR 22.21 dB
+compression: 192 bytes to 8 bytes, 24 to 1
+gate PSNR >= 22.0 dB: true; gate MSE <= baseline / 4.0: true
+test image 0, codes: 2 0 4 3 -2 -1 -2 -2 4 3 2 0 -3 -2 -3 -3
+packed: 121 171 101 85 171 121 84 68
+unpacked codes equal the codes: true
+  original red row 0: 0.2890625 0.2578125 0.1015625 0.0703125 0.0390625 0.0078125 0.1015625 0.0703125
+  decoded red row 0: 0.339 0.3 0.223 0.177 0.153 0.169 0.138 0.17
+decode(codes) equals the quantized forward pass: true

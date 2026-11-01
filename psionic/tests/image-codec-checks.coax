@@ -1,0 +1,63 @@
+// Chapter 145's check helpers and oracles, loaded by psionic/lib/image-codec.coax.
+// Each is written from the chapter's description, independently of the
+// procedure it checks; "the fixtures themselves" in the unit pins them.
+
+// Multiples of 1/16 in [-1/2, 1/2]: every product and sum below is exact in f32.
+cz_fill :: (x:[]f32,seed:int) {for i:0..<x.count {x[i]=f32((i*seed+11)%17-8)/16;}}
+cz_same :: (a:[]f32,b:[]f32)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+// The upsampling written as a scatter: every input value adds weight times
+// itself to each output pixel its taps land on, in binary64.
+cz_scatter :: (c:PxConv,u:[]f32,w:[]f32,bias:[]f32,out:[]f64) {
+    p:=px_conv_plan(c);per:=c.channels/c.groups;each:=c.filters/c.groups;area:=c.height*c.width;
+    for i:0..<p.x {out[i]=0;if bias.count>0 {out[i]=f64(bias[(i/area)%c.channels]);}}
+    for n:0..<c.batch {for f:0..<c.filters {for oh:0..<p.out_h {for ow:0..<p.out_w {
+        v:=f64(u[((n*c.filters+f)*p.out_h+oh)*p.out_w+ow]);g:=f/each;
+        for k:0..<per {for a:0..<c.kernel_h {for b:0..<c.kernel_w {
+            row:=oh*c.stride_h-c.pad_h+a*c.dilation_h;col:=ow*c.stride_w-c.pad_w+b*c.dilation_w;
+            if row<0 || row>=c.height || col<0 || col>=c.width {continue;}
+            out[((n*c.channels+g*per+k)*c.height+row)*c.width+col]+=v*f64(w[((f*per+k)*c.kernel_h+a)*c.kernel_w+b]);
+        }}}
+    }}}}
+}
+// The model's mean squared error in binary64 on images x.
+cz_loss_at :: (params:[]f64,x:[]f32,n:int,ws:[]f32,quantize:bool)->f64 {
+    w:[CZ_PARAMS]f32;for i:0..<CZ_PARAMS {w[i]=f32(params[i]);}
+    #assert cz_forward(w[..],x,n,ws,quantize)==CzStatus.ok;
+    s:=0.0;
+    for i:0..<n*CZ_PIXELS {d:=f64(ws[n*CZ_Y+i])-f64(x[i]);s+=d*d;}
+    return s/f64(n*CZ_PIXELS);
+}
+// The quantized error by another path: encode each image to codes, decode
+// the codes, and sum the squared differences in the same order.
+cz_mse_by_codes :: (params:[]f64,x:[]f32,count:int)->f64 {
+    w:[CZ_PARAMS]f32;for i:0..<CZ_PARAMS {w[i]=f32(params[i]);}
+    ws:[CZ_WORK]f32;codes:[CZ_LATENT]int;y:[CZ_PIXELS]f32;s:=0.0;
+    for k:0..<count {
+        image:=x[k*CZ_PIXELS..<(k+1)*CZ_PIXELS];
+        #assert cz_encode(w[..],image,1,codes[..],ws[..]).status==CzStatus.ok;
+        #assert cz_decode(w[..],codes[..],1,y[..],ws[..]).status==CzStatus.ok;
+        for i:0..<CZ_PIXELS {d:=f64(y[i])-f64(image[i]);s+=d*d;}
+    }
+    return s/f64(count*CZ_PIXELS);
+}
+// A hand-set model: every weight zero except tap (1, 1) of the first
+// channel in each layer, which is 1.
+cz_probe :: (w:[]f32) {
+    for i:0..<w.count {w[i]=0;}
+    for f:0..<8 {w[CZ_E1W+f*48+5]=1;}
+    for f:0..<4 {w[CZ_E2W+f*128+5]=1;}
+    for c:0..<8 {w[CZ_D1W+c*16+5]=1;}
+    for c:0..<3 {w[CZ_D2W+c*16+5]=1;}
+}
+// Image k's pixel i, written out again from the description in chapter 145.
+cz_pixel_hand :: (k:int,i:int)->f64 {
+    s:=1+7919*k;d:[14]int;for j:0..<14 {s=(s*48271)%2147483647;d[j]=s;}
+    c:=i/64;y:=(i/8)%8;x:=i%8;
+    base:=f64(8+d[3*c]%17)/32;sx:=f64(d[3*c+1]%9-4)/64;sy:=f64(d[3*c+2]%9-4)/64;
+    v:=base+sx*(f64(x)-3.5)+sy*(f64(y)-3.5);
+    top:=2*(d[9]%3);left:=2*(d[10]%3);
+    if y>=top && y<top+4 && x>=left && x<left+4 {v+=f64(d[11+c]%9-4)/16;}
+    if v<0 {return 0;}
+    if v>1 {return 1;}
+    return v;
+}
