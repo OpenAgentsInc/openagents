@@ -1,0 +1,335 @@
+{
+  "schema": "psionic.locomotion-lqr.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "source_files": {
+    "psionic/lib/robotics/locomotion/lqr-types.coax": {
+      "bytes": 1242,
+      "sha256": "8542c1c0068cf03545084732fc3837829b7e1e465dfb94f8c83839dfbd73b25a"
+    },
+    "psionic/lib/robotics/locomotion/lqr-fixtures.coax": {
+      "bytes": 1329,
+      "sha256": "c3e65b405f9d856d812cf2481b7a1433b6cb8a0c12f1a4719c9f577ebf96b2f3"
+    },
+    "psionic/lib/robotics/locomotion/lqr-policy.coax": {
+      "bytes": 6521,
+      "sha256": "11b74a1e943b534e7869fecaa6e5aa8b8af191daeac9c18bf4790db9ed88abf8"
+    },
+    "psionic/lib/robotics/locomotion/lqr-rollout.coax": {
+      "bytes": 7084,
+      "sha256": "316f3f674201d08d49761bd7f4cd690cbd7cc9ca1b0cd3bdbc3ec5dcf39e0ab1"
+    },
+    "psionic/lib/robotics/locomotion/lqr-update.coax": {
+      "bytes": 11430,
+      "sha256": "7ca92b04616d92b4960aa2f76ca28b59c4d78264ee6002e0de969afa8d29aa5d"
+    },
+    "psionic/lib/robotics/locomotion/lqr-score.coax": {
+      "bytes": 4697,
+      "sha256": "6f6360ec73f6a522f4de3e2bd3caa4c16f623d5e22dd22f6d215e5691e58b7d7"
+    },
+    "psionic/lib/robotics/locomotion-lqr.coax": {
+      "bytes": 238,
+      "sha256": "050c14611847dc60690b30188d0f1feb46f8b16f49afb4f67e692d8b539ce86d"
+    },
+    "psionic/tests/robotics/locomotion-lqr-native.coax": {
+      "bytes": 2678,
+      "sha256": "548b9bc542449dd445c8e929653e5fcb9d0c350011518b6ad4c4c37cf017ff25"
+    }
+  },
+  "roots": {
+    "policy": {
+      "source": "psionic/lib/robotics/locomotion/lqr-policy.coax",
+      "identity": {
+        "bytes": 6521,
+        "sha256": "11b74a1e943b534e7869fecaa6e5aa8b8af191daeac9c18bf4790db9ed88abf8"
+      },
+      "actual_emitted_sites": 158,
+      "killed": 158,
+      "survived": 0,
+      "new_groups": 5,
+      "log": {
+        "bytes": 116,
+        "sha256": "cf142d89a697240bc2a27aa1bd7cdb471567e40a647940ece55e84b375de390c"
+      }
+    },
+    "rollout": {
+      "source": "psionic/lib/robotics/locomotion/lqr-rollout.coax",
+      "identity": {
+        "bytes": 7084,
+        "sha256": "316f3f674201d08d49761bd7f4cd690cbd7cc9ca1b0cd3bdbc3ec5dcf39e0ab1"
+      },
+      "actual_emitted_sites": 111,
+      "killed": 111,
+      "survived": 0,
+      "new_groups": 5,
+      "log": {
+        "bytes": 116,
+        "sha256": "3031344206cc4b7a6ba867136d36124ebb3b2d95a6bf1703f67e1beefc475809"
+      }
+    },
+    "update": {
+      "source": "psionic/lib/robotics/locomotion/lqr-update.coax",
+      "identity": {
+        "bytes": 11430,
+        "sha256": "7ca92b04616d92b4960aa2f76ca28b59c4d78264ee6002e0de969afa8d29aa5d"
+      },
+      "actual_emitted_sites": 188,
+      "killed": 188,
+      "survived": 0,
+      "new_groups": 8,
+      "log": {
+        "bytes": 116,
+        "sha256": "3ff018e1d51ce6787d9a685d64cb26372c4ce83e7bdd08166159aba3cac9063e"
+      }
+    },
+    "score": {
+      "source": "psionic/lib/robotics/locomotion/lqr-score.coax",
+      "identity": {
+        "bytes": 4697,
+        "sha256": "6f6360ec73f6a522f4de3e2bd3caa4c16f623d5e22dd22f6d215e5691e58b7d7"
+      },
+      "actual_emitted_sites": 97,
+      "killed": 97,
+      "survived": 0,
+      "new_groups": 3,
+      "log": {
+        "bytes": 114,
+        "sha256": "1725833b1fa0eb94a1e3bccb458b7c2d47fe73de8436690adcf77df3bde68256"
+      }
+    }
+  },
+  "actual_product_sites": 554,
+  "survived": 0,
+  "product_groups": 21,
+  "test_only_coefficient_transport": {
+    "source": "psionic/tests/robotics/locomotion-lqr-native.coax",
+    "identity": {
+      "bytes": 2678,
+      "sha256": "548b9bc542449dd445c8e929653e5fcb9d0c350011518b6ad4c4c37cf017ff25"
+    },
+    "actual_emitted_sites": 23,
+    "killed": 23,
+    "survived": 0,
+    "new_groups": 2,
+    "log": {
+      "bytes": 114,
+      "sha256": "e9879222027b8c0970ef7b27a882376334ab34adf6cc0fd6062f006c9ed3152c"
+    }
+  },
+  "load_only_aggregate_body_sites": 0,
+  "unit_refusals": {
+    "bytes": 1856,
+    "sha256": "0b435017ecd8bd88375ba388f9ec7a11ee46f6bcd0fee248006b409b65edd7de"
+  },
+  "history": [
+    {
+      "context": "lqr-policy-first",
+      "logs": {
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 1188,
+          "sha256": "350c88f4233d06edd70e6519dce6b61e52166dc47b9e142f3983b33815a921e3"
+        }
+      }
+    },
+    {
+      "context": "lqr-policy-mutate-first",
+      "logs": {
+        "stdout": {
+          "bytes": 5193,
+          "sha256": "a4a4ff12b13ead84a655a997d8251328428bbf44ef2b47641ec12ee15e5fd2f5"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-policy-mutate-second",
+      "logs": {
+        "stdout": {
+          "bytes": 116,
+          "sha256": "cf142d89a697240bc2a27aa1bd7cdb471567e40a647940ece55e84b375de390c"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-rollout-mutate-first",
+      "logs": {
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 942,
+          "sha256": "b8b1e29f221ef61255b1ae78fd5e39f3094e46e4066a74efe2ef37a126acf1e2"
+        }
+      }
+    },
+    {
+      "context": "lqr-rollout-mutate-second",
+      "logs": {
+        "stdout": {
+          "bytes": 3739,
+          "sha256": "c481b6fc498ab9040787c98671af657b37641b42b9a13a3101da1c5265536667"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-rollout-mutate-third",
+      "logs": {
+        "stdout": {
+          "bytes": 116,
+          "sha256": "3031344206cc4b7a6ba867136d36124ebb3b2d95a6bf1703f67e1beefc475809"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-update-mutate-first",
+      "logs": {
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 3191,
+          "sha256": "ac140ef0ce697b2f414efe741f6a3bc30f993180d225e13322061837f53e0e5f"
+        }
+      }
+    },
+    {
+      "context": "lqr-update-mutate-second",
+      "logs": {
+        "stdout": {
+          "bytes": 10523,
+          "sha256": "fefa3054c2aad723e6deb5ec4ef6a8c22e7809481b0058cda3b615e508949b9d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-update-mutate-third",
+      "logs": {
+        "stdout": {
+          "bytes": 1925,
+          "sha256": "67391a8d9f1c068ce86a61f36e003a2264fbe596d0cf5ee3e619a84360bac9a0"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-update-mutate-fourth",
+      "logs": {
+        "stdout": {
+          "bytes": 387,
+          "sha256": "e72221981a287f34ab72e56bca9d0ad10bc2844a33a1490b669696e701f432bf"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-update-mutate-fifth",
+      "logs": {
+        "stdout": {
+          "bytes": 116,
+          "sha256": "3ff018e1d51ce6787d9a685d64cb26372c4ce83e7bdd08166159aba3cac9063e"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-score-mutate-first",
+      "logs": {
+        "stdout": {
+          "bytes": 2709,
+          "sha256": "d710821a618316a7af2e5981ab4e5fbab479bec3943ebeaecdc78ddd4a24365e"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-score-mutate-second",
+      "logs": {
+        "stdout": {
+          "bytes": 114,
+          "sha256": "1725833b1fa0eb94a1e3bccb458b7c2d47fe73de8436690adcf77df3bde68256"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-probe-mutate-first",
+      "logs": {
+        "stdout": {
+          "bytes": 834,
+          "sha256": "31578d717d83c3f68fd1bfdf88374539af26b9eb051cedbe06a4a98924f6e76e"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "context": "lqr-probe-mutate-second",
+      "logs": {
+        "stdout": {
+          "bytes": 114,
+          "sha256": "e9879222027b8c0970ef7b27a882376334ab34adf6cc0fd6062f006c9ed3152c"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  ],
+  "source_wiring_scope": {
+    "diagnostic_seed": 13,
+    "one_baseline_witness_plant_steps": 512,
+    "updates": 4,
+    "canonical_training": false,
+    "mutant_evaluations_separate": true
+  },
+  "invariant_failure": "Constructed tape forward/backward or saved-logp mismatch is a fatal internal invariant before publication; ordinary malformed inputs, ratio and optimizer refusals are typed/atomic.",
+  "carry_note": "Existing 0..6 RlpStatus values/layouts unchanged when optimizer=7 was appended for the new update body. Policy158 and rollout111 bodies and used type fields unchanged; no old standalone gates rerun.",
+  "new_libraries_only": true,
+  "no_native_or_canonical_learning_executed": true
+}

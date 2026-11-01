@@ -1,0 +1,72 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-audit.v1",
+  "passed": true,
+  "auditor": {
+    "bytes": 27773,
+    "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+  },
+  "product_learner_model_SDK_calls": 0,
+  "inputs": {
+    "descriptor": {
+      "bytes": 9275,
+      "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+    },
+    "math_record": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    },
+    "before": {
+      "bytes": 488,
+      "sha256": "a639b186ce2efaa30753936bc3149518d6089e2e5d76dbf1b359def87365e269"
+    },
+    "after": {
+      "bytes": 488,
+      "sha256": "b1eae8ac94473f9b01577d9c012b68559c70aae06cbef0556fd95c0ce3639153"
+    },
+    "iterations": {
+      "bytes": 1003184,
+      "sha256": "708dedc18e697a8ba3d0baa13fbc5fd0448af5f6c6b4fef1d05af69c606fd14d"
+    },
+    "coefficients": {
+      "bytes": 2883632,
+      "sha256": "adfd2606d1f5d7f3f3168890a36a4658004bdb5dcf36ebe3a9f13919b7bd07b7"
+    },
+    "progress": {
+      "bytes": 989,
+      "sha256": "66190724a6a62ca20577fa92961be85074448c9b8aab2a9c6cb95e8a0039585b"
+    }
+  },
+  "result": {
+    "passed": true,
+    "seed": 7,
+    "first_batch": 0,
+    "batches": 16,
+    "plant_steps": 8192,
+    "AdamW_updates": 64,
+    "coefficient_observations": 32768,
+    "maximum_absolute_errors": {
+      "sampler_action": 1.1102230246251565e-16,
+      "sampler_z": 4.440892098500626e-16,
+      "GAE_advantage": 8.881784197001252e-16,
+      "GAE_return": 1.7763568394002505e-15,
+      "loss": 1.700029006457271e-16,
+      "gradient": 1.1102230246251565e-16,
+      "candidate": 0.0
+    },
+    "ppo_clipped_samples": 0,
+    "projected_updates": 7,
+    "minimum_state_box_margin": 14.563460294533547,
+    "peak_action_magnitude": 1.083184524837612,
+    "coefficient_density_max": [
+      1.7763568394002505e-15,
+      1.7763568394002505e-15,
+      3.552713678800501e-15,
+      0.0
+    ],
+    "coefficient_rho_relative_max": 2.21758872468945e-16,
+    "counter_status_masks_projection_lineage_exact": true,
+    "all_coefficients_admitted_before_VJP": true,
+    "scope": "New captured canonical or declared replay chunk only; no product/old-gate/optimizer/environment execution by auditor."
+  },
+  "seconds": 8.290553124970756
+}

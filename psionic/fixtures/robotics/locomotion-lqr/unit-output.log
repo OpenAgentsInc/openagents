@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_lqr_bad_output.coax:2:105: error[E0317]: argument 4 of 'rlt_epoch' is [] RltEpoch, given [] RlpBlock
+  main :: () {rows:[1]RlpRow;output:[1]RlpBlock;status:=rlt_epoch(0.5,RltOptimizer.{K=0.5},rows[..],output[..]);}
+                                                                                                          ^
+1 error

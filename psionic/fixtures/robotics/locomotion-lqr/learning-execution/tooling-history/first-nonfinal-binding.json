@@ -1,0 +1,30 @@
+{
+  "schema": "psionic.locomotion-lqr.pre-effect-tooling-history.v1",
+  "old_prepared": {
+    "bytes": 1530,
+    "sha256": "f4cfc49f4f142e3b0ee588e0402e33e3ad70d7beb97215e576b0f92002bd7eec"
+  },
+  "old_descriptor": {
+    "bytes": 8420,
+    "sha256": "e7e3b48ac0d0b3674054b9431eecf67333971e63fba3ee8371b1beebfb4b635d"
+  },
+  "old_driver": {
+    "bytes": 16912,
+    "sha256": "77cc36aa0999d46404929e5a3bd871e541f7d98e67db2ab6fe6b1be47d583b0b"
+  },
+  "execution_attempted": false,
+  "physical_steps": 0,
+  "finding": "Obsolete fresh-record guard blocked a second READY advance; removed before any canonical call.",
+  "replacement_driver": {
+    "bytes": 17538,
+    "sha256": "9a9dfc1cfdc6fadffc0120edc96d18fc817fccc503c5eb6226eb5f714dd8f50d"
+  },
+  "replacement_descriptor": {
+    "bytes": 8420,
+    "sha256": "51426c1bedaa885098cefb50fbf070b783db794082bb3ef393cc10ae770c2fe5"
+  },
+  "metadata_guard_receipt": {
+    "bytes": 557,
+    "sha256": "0295e5d0f7cf7f9b1d6f5786c722dc6e351f2396b505d11862101f70ac4e88f7"
+  }
+}

@@ -1,0 +1,2 @@
+#load "../../lib/robotics/locomotion-lqr.coax";
+main :: () {rows:[1]RlpRow;output:[1]RlpBlock;status:=rlt_epoch(0.5,RltOptimizer.{K=0.5},rows[..],output[..]);}

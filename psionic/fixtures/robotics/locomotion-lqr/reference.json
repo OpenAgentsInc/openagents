@@ -1,0 +1,134 @@
+{
+  "schema": "psionic.locomotion-lqr.reference.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 29435,
+    "sha256": "c105189fbe2f539d52fca631c722d532798fb10789e7237218edbaac142e8ec9"
+  },
+  "experiment": {
+    "bytes": 8660,
+    "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+  },
+  "counts": {
+    "actor_blocks": 112,
+    "actor_rows": 2008,
+    "critic": 9,
+    "transition": 81,
+    "projection": 54,
+    "epochs": 24,
+    "epoch_rows": 2640,
+    "eval": 24,
+    "score": 27,
+    "rollouts": 7,
+    "worlds": 27,
+    "rollout_steps": 597,
+    "eval_steps": 798
+  },
+  "input_files": {
+    "actor-cases.bin": {
+      "bytes": 3584,
+      "sha256": "86cad1641a624be99d09acceabdbf28a48b752df93bd1a4bd7376a0e928b300e"
+    },
+    "actor-rows.bin": {
+      "bytes": 64256,
+      "sha256": "05c53e71180c52d41bbc611050bdb1ae84d42b1c9cada82c4d423faa3f6c438c"
+    },
+    "critic-inputs.f64": {
+      "bytes": 72,
+      "sha256": "4de13feb1f53b64a198db24c4e05fda3255ee1794c0c9c42ba4b88613fc83880"
+    },
+    "transition-inputs.f64": {
+      "bytes": 2592,
+      "sha256": "62ab915588dba2ca752bc140dd994705915afa7f3bece8fb330612e28343bf3b"
+    },
+    "projection-inputs.f64": {
+      "bytes": 864,
+      "sha256": "62a7065e43bd97c516b9e4753f1b8846a5cbf984bb06bfc9663d30ca70f09c22"
+    },
+    "epoch-cases.bin": {
+      "bytes": 1536,
+      "sha256": "48e6186b2c9ee3eb104646a48131c75846bd1bf4c23e62f4de995222a8ac29b1"
+    },
+    "epoch-rows.bin": {
+      "bytes": 84480,
+      "sha256": "6306597e14d63297890c6db74c61258a1a7f40f1b87ea959ef1c8943f3a61f14"
+    },
+    "eval-inputs.bin": {
+      "bytes": 576,
+      "sha256": "9ab2ed263663411f2376d771f99b19c327a7b056c4f6d425ed67fdb624422a60"
+    },
+    "score-inputs.f64": {
+      "bytes": 216,
+      "sha256": "76513da27c9d55edd248dbf49973c9470abadf0a389eeb058417ae7762b2dc92"
+    },
+    "rollout-cases.bin": {
+      "bytes": 280,
+      "sha256": "12c5e838d68a16c19dc3b15d66f03efb5ad054e469cc04c93569eafd2c56eb59"
+    },
+    "rollout-worlds.bin": {
+      "bytes": 648,
+      "sha256": "131189053591679d0ffdb06c216ac68a0a27a9bafa354f4a1a6116e0d32b5b3c"
+    }
+  },
+  "product_learner_model_SDK_calls": 0,
+  "seconds": 1.1970474169938825,
+  "outputs": {
+    "actor-expected.bin": {
+      "bytes": 6272,
+      "sha256": "4a2add0575e0a9f651b4fe7cda241050574127be107154f0a40c977c6d977dd1"
+    },
+    "actor-coefficients.bin": {
+      "bytes": 176704,
+      "sha256": "3b46d164c6be714531cab17737db9af25dcd3e241a0f0d77c153ab74972d1864"
+    },
+    "actor-conditions.f64": {
+      "bytes": 2688,
+      "sha256": "220603ca4eb88821e117c6a8c35607087af34eacdfa5eb1d342beea4cee2894d"
+    },
+    "critic-expected.bin": {
+      "bytes": 216,
+      "sha256": "aa8ac99ce79b06bf4756acbb878c08a5d73369c4622eb257a6b507cb068a9663"
+    },
+    "transition-expected.bin": {
+      "bytes": 10368,
+      "sha256": "89beb4a6a7646b7ae7f6c706785e23940fdc4fcdb82caa3a2e7774af4d84d659"
+    },
+    "projection-expected.bin": {
+      "bytes": 864,
+      "sha256": "96dae66a16ddff268347178eef5550018ea7fec01ea7c5c060651bbea16e19c8"
+    },
+    "epoch-expected.bin": {
+      "bytes": 2496,
+      "sha256": "ed9328aa0728631006dec1d81c2b4cb2a91cad8e47f009859b0b3f357914f58b"
+    },
+    "epoch-conditions.f64": {
+      "bytes": 384,
+      "sha256": "d4f77dfdbe804914577befdb5cd6d5c52c5d79dc8a7cb2268bf689ee84951b9c"
+    },
+    "epoch-coefficients.bin": {
+      "bytes": 232320,
+      "sha256": "c788c0cfa499d521090af260c2eb4cde4756dc10c3ecaf490ae771765eca2766"
+    },
+    "eval-expected.bin": {
+      "bytes": 1728,
+      "sha256": "9128ab44e7860517f59b387eec03be989921c9c511899589f59d4fac300b1d2a"
+    },
+    "score-expected.bin": {
+      "bytes": 5616,
+      "sha256": "a03f62cc5516bdc1ea5420d0af8b1193add85df126f1f2cc1c495e29540bac06"
+    },
+    "rollout-expected.bin": {
+      "bytes": 433160,
+      "sha256": "a6d7e1b405d81a1b9e079324f93b57cd83579ea7bdadb459820e3c24d1e70aa4"
+    },
+    "fd-diagnostics.json": {
+      "bytes": 29855,
+      "sha256": "be4bfc1d960bd7dd99e5a3a9dbee7677b20bf895cd9b632c65eb89f14831657a"
+    },
+    "score-real.json": {
+      "bytes": 50373,
+      "sha256": "f25e17d0f75438616647547f9593dcc3a824e47b9c5250969736c90eba73811e"
+    }
+  },
+  "conditional_scope": "Native coefficients/inverse are independently admitted FIRST; then conditional VJP, observed-gradient AdamW, observed-candidate projection and observed-Pstar scorer. Ideal tables are not substitutes for those staged checks."
+}

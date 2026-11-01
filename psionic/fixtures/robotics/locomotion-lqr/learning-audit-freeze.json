@@ -1,0 +1,44 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-audit-freeze.v1",
+  "passed": true,
+  "whole_auditor": {
+    "bytes": 23978,
+    "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+  },
+  "first_reader_receipt": {
+    "bytes": 265,
+    "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+  },
+  "reader_execution_count": 1,
+  "poisons": 29,
+  "experiment": {
+    "bytes": 8660,
+    "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+  },
+  "math_reference": {
+    "bytes": 4454,
+    "sha256": "d5bfebc50e90daa9f0edc565009ceef1a679d5fa5b8efa4a5666778efc87fb07"
+  },
+  "math_producer": {
+    "bytes": 29435,
+    "sha256": "c105189fbe2f539d52fca631c722d532798fb10789e7237218edbaac142e8ec9"
+  },
+  "first_math_native": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "reader_command": [
+    "python3",
+    "psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+    "--reader-guards",
+    "--output",
+    "/tmp/locomotion-lqr-learning-reader-first"
+  ],
+  "canonical_effects_started": false,
+  "per_chunk_timeout_seconds": 180,
+  "per_chunk_audit_before_next_chunk": true,
+  "coefficient_scope": "Source-bound deterministic recomputed observations, NOT internal instrumentation. Independently bound all coefficient layers before VJP; no extra product/plant/RNG/optimizer calls by auditor.",
+  "replay_scope": "Byte compare NEW declared replay with already independently audited canonical target, carrying previous numerical proof without recalculating it.",
+  "quality_scope": "Source F64 flags plus separate independent nominal-continuous-Gaussian real diagnostics and fixed ambiguity reserve. Numerical success does not imply convergence; every seed retained.",
+  "product_math_regeneration_model_SDK_calls": 0
+}

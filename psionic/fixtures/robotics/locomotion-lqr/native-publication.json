@@ -1,0 +1,72 @@
+{
+  "schema": "psionic.locomotion-lqr.native-publication.v1",
+  "passed": true,
+  "original_qualification": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "public_qualification": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "byte_exact_canonical_outputs": {
+    "native-actor-actual.bin": {
+      "bytes": 6272,
+      "sha256": "ea17291d5b4d929e719eb1da6420594beb1c8d49dd4ef014dfb129298eeda7a9"
+    },
+    "native-critic-actual.bin": {
+      "bytes": 216,
+      "sha256": "aa8ac99ce79b06bf4756acbb878c08a5d73369c4622eb257a6b507cb068a9663"
+    },
+    "native-transition-actual.bin": {
+      "bytes": 10368,
+      "sha256": "89beb4a6a7646b7ae7f6c706785e23940fdc4fcdb82caa3a2e7774af4d84d659"
+    },
+    "native-projection-actual.bin": {
+      "bytes": 864,
+      "sha256": "96dae66a16ddff268347178eef5550018ea7fec01ea7c5c060651bbea16e19c8"
+    },
+    "native-epoch-actual.bin": {
+      "bytes": 2496,
+      "sha256": "ed9328aa0728631006dec1d81c2b4cb2a91cad8e47f009859b0b3f357914f58b"
+    },
+    "native-eval-actual.bin": {
+      "bytes": 1728,
+      "sha256": "fd29f85a80f0e43c12bcbf8b85f3648c33377f6e5904fe8b6b5a449f65cab45a"
+    },
+    "native-score-actual.bin": {
+      "bytes": 5616,
+      "sha256": "a03f62cc5516bdc1ea5420d0af8b1193add85df126f1f2cc1c495e29540bac06"
+    },
+    "native-rollout-actual.bin": {
+      "bytes": 433160,
+      "sha256": "3c27c278fa5fb856892dfad1d55f3169cfa9004e0d81c962d6ad7a700e2b936f"
+    },
+    "native-actor-coefficients.bin": {
+      "bytes": 176704,
+      "sha256": "f76508a0ceca3c0c428e993ca2c2f047b2aec9be96f97f2ee1ff0b9ba22db6bc"
+    },
+    "native-epoch-coefficients.bin": {
+      "bytes": 232320,
+      "sha256": "aa6fb09c70ccc16f3e0835a14032c2cea7f022776209ff533b49ef8417c987e7"
+    },
+    "native-inverse-sigma.f64": {
+      "bytes": 8,
+      "sha256": "400c52dd5bd0047d64c0582af027b387a7938a64283d0d4f727331140cb6462c"
+    },
+    "native-initial-0.bin": {
+      "bytes": 440,
+      "sha256": "90a0c64915456f0ba541cf09dffe26d38dd7ccbe5f19b9f5998bd0f7c98ce6c5"
+    },
+    "native-initial-1.bin": {
+      "bytes": 440,
+      "sha256": "3659957ca87572c7ed2087d2be6a1fb5af9dcb578da3e39a1bea3aba38e532da"
+    },
+    "native-initial-7.bin": {
+      "bytes": 440,
+      "sha256": "5f334bff9fcccfd1c691caf542f06f749a0ffa91974cd7bae2b2d47cbac71d8a"
+    }
+  },
+  "numeric_reruns": 0,
+  "learning_executions": 0
+}

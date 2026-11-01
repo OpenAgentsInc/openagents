@@ -1,0 +1,90 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-audit-followup.v1",
+  "passed": true,
+  "old_source": {
+    "bytes": 23978,
+    "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+  },
+  "new_source": {
+    "bytes": 27773,
+    "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+  },
+  "carried_reader_receipt": {
+    "bytes": 265,
+    "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+  },
+  "historical_audit_freeze": {
+    "bytes": 1851,
+    "sha256": "515abd0ef715854483a508aad962a0e1ce5ac29687359f37e9e8346e3b90296c"
+  },
+  "historical_nonfinal_profile_binding": {
+    "bytes": 650,
+    "sha256": "187365dc4d2749111c7f6012fb272d7ef849b5a76df8b4a28353a5c1999c47e8"
+  },
+  "new_lineage_receipt": {
+    "bytes": 474,
+    "sha256": "9d696fcd1595813ea8a471853b9021e622207e5de36d3c5229dfb2f8c401bcdb"
+  },
+  "unchanged_declarations": {
+    "header": {
+      "bytes": 254,
+      "sha256": "fcd79cbb39c90b04bca98bb109acb9acdcbae7e60f9a28f5905b846ca82fda79"
+    },
+    "decode_state": {
+      "bytes": 333,
+      "sha256": "9b8849ea4e4787ec69bda5f1ce349a4b69e19a50a48c152619b6a965bfe877bf"
+    },
+    "admit_state": {
+      "bytes": 564,
+      "sha256": "c5c6348297e8a004cad41076425a0876a6818fe8d2efbdcf586de510507abc44"
+    },
+    "snapshot": {
+      "bytes": 130,
+      "sha256": "8740a4985bc80b13f3efeb9c8666f3b2e181d90bd14151be0866bcc6a20c1c61"
+    },
+    "decode_iterations": {
+      "bytes": 1028,
+      "sha256": "38cc21fac0d6f45ea6fe79f0de5d87be0d030311c65607a0ecd70b691e9db85b"
+    },
+    "decode_coefficients": {
+      "bytes": 373,
+      "sha256": "464d4f03c99c2e7e574ad6f19db2debb4694f46187fb4ea8e2bcfc6f95d3812c"
+    },
+    "reader_guards": {
+      "bytes": 2673,
+      "sha256": "6ae1c7407014e8e98688fb88cfeb02035a1262c4bcaec1d13bcb9f95befa4870"
+    },
+    "bindings": {
+      "bytes": 2016,
+      "sha256": "a890ea65bf181063c9420ca2aa74eea4a2d857df872d3f2572782432b1af189d"
+    },
+    "math_kernel": {
+      "bytes": 233,
+      "sha256": "1ef4f84a272ade61b6044ae310d5085758c00a8b26353d1c46854b60900e614a"
+    },
+    "close": {
+      "bytes": 221,
+      "sha256": "5485c3ed6aaed2e07d2ef8d05e6d983714ec9d60031b09b793eb1c99d52b8219"
+    },
+    "audit_replay": {
+      "bytes": 2197,
+      "sha256": "6906f10605234b37b0967a3da6159324f0a211d7dd1741bc110813d32b85a7c8"
+    }
+  },
+  "chunk_and_evaluation_numeric_AST_unchanged_after_removing_ONLY_lineage_branches": true,
+  "new_cases": {
+    "positive": 4,
+    "poisons": 19
+  },
+  "old29_reader_tests_repeated": 0,
+  "math_source_expected_native_model_runs_repeated": 0,
+  "scope": "Pre-effect guard-only correction: exact qualified initial440; later/final snapshot bound to prior passed same-source/context/seed contiguous audit. Historical f3/83/515/187 preserved.",
+  "experiment": {
+    "bytes": 8660,
+    "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+  },
+  "math_reference": {
+    "bytes": 4454,
+    "sha256": "d5bfebc50e90daa9f0edc565009ceef1a679d5fa5b8efa4a5666778efc87fb07"
+  }
+}

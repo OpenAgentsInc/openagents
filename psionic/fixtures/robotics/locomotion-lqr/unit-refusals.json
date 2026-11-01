@@ -1,0 +1,48 @@
+{
+  "schema": "psionic.locomotion-lqr.type-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks": [
+    {
+      "name": "gain",
+      "source": "psionic/tests/robotics/locomotion_lqr_bad_gain.coax",
+      "source_sha256": "befb86729f619eab02b45b23de00f2435030336511745b9ca153b6ff872f6456",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-gain.log",
+      "log_sha256": "f63915d504ac6171e2d68331b186517e9eb1a08e2887bebfb23d88d3faca486e"
+    },
+    {
+      "name": "state",
+      "source": "psionic/tests/robotics/locomotion_lqr_bad_state.coax",
+      "source_sha256": "d9cc76b4693a5bf7ec33484beec07468d4dfcd09454a82b2e76b31e27d1bad2b",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-state.log",
+      "log_sha256": "1b84d2ad5fbce6902e4f4f417a40ecd84d468bb78cd4c9dbbbd84a2ffe614df6"
+    },
+    {
+      "name": "rows",
+      "source": "psionic/tests/robotics/locomotion_lqr_bad_rows.coax",
+      "source_sha256": "612b014439818934987d8be255573620ee76d5445166e29bb0923e8b032bfdfb",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-rows.log",
+      "log_sha256": "a98aafe0b816eb65f287add6eb94a1bb2982578413758e1717de16f312c24fde"
+    },
+    {
+      "name": "output",
+      "source": "psionic/tests/robotics/locomotion_lqr_bad_output.coax",
+      "source_sha256": "8d0f39918ac7ceb28e56b0a361583429c8fdfd4a1ea92f553b35057510aaef85",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-output.log",
+      "log_sha256": "655ff97219154aac33f769f2718e93043d5e92c9160fb61454933f96206eb6b1"
+    }
+  ],
+  "scope": "Compiler-only explicit normalized raw boundary and record-role witnesses; no claim of physical dimensional LQR types."
+}

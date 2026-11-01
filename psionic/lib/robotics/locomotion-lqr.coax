@@ -1,0 +1,5 @@
+// Scalar-LQR learning and separately owned quality queries. No body sites in this aggregate.
+#load "locomotion/lqr-policy.coax";
+#load "locomotion/lqr-rollout.coax";
+#load "locomotion/lqr-update.coax";
+#load "locomotion/lqr-score.coax";

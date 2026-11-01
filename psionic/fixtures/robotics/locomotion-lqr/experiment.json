@@ -1,0 +1,322 @@
+{
+  "schema": "psionic.locomotion-lqr.experiment.v1",
+  "frozen_before_expected_product_learning": true,
+  "contract": {
+    "bytes": 17905,
+    "sha256": "e6e490fad8d3db4eb26c42c92fecd2fac3cb08c142b26013793abeb34e5099ae"
+  },
+  "counts": {
+    "actor_blocks": 112,
+    "actor_rows": 2008,
+    "critic": 9,
+    "transition": 81,
+    "projection": 54,
+    "epochs": 24,
+    "epoch_rows": 2640,
+    "eval": 24,
+    "score": 27,
+    "rollouts": 7,
+    "worlds": 27,
+    "rollout_steps": 597,
+    "eval_steps": 798
+  },
+  "metadata": {
+    "FD_case_indices": [
+      96,
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111
+    ],
+    "FD_h": [
+      0.001,
+      0.0001,
+      1e-05,
+      1e-06,
+      1e-07
+    ],
+    "FD_primary_h": 1e-05,
+    "input_threshold_selection_benchmark": {
+      "Pstar": 1.603732134399152,
+      "Kstar": 0.6037321343991521,
+      "real_cost_roots": [
+        0.531230832465672,
+        0.681203844892408
+      ]
+    },
+    "rollout_steps": 597,
+    "eval_steps": 798
+  },
+  "input_files": {
+    "actor-cases.bin": {
+      "bytes": 3584,
+      "sha256": "86cad1641a624be99d09acceabdbf28a48b752df93bd1a4bd7376a0e928b300e"
+    },
+    "actor-rows.bin": {
+      "bytes": 64256,
+      "sha256": "05c53e71180c52d41bbc611050bdb1ae84d42b1c9cada82c4d423faa3f6c438c"
+    },
+    "critic-inputs.f64": {
+      "bytes": 72,
+      "sha256": "4de13feb1f53b64a198db24c4e05fda3255ee1794c0c9c42ba4b88613fc83880"
+    },
+    "transition-inputs.f64": {
+      "bytes": 2592,
+      "sha256": "62ab915588dba2ca752bc140dd994705915afa7f3bece8fb330612e28343bf3b"
+    },
+    "projection-inputs.f64": {
+      "bytes": 864,
+      "sha256": "62a7065e43bd97c516b9e4753f1b8846a5cbf984bb06bfc9663d30ca70f09c22"
+    },
+    "epoch-cases.bin": {
+      "bytes": 1536,
+      "sha256": "48e6186b2c9ee3eb104646a48131c75846bd1bf4c23e62f4de995222a8ac29b1"
+    },
+    "epoch-rows.bin": {
+      "bytes": 84480,
+      "sha256": "6306597e14d63297890c6db74c61258a1a7f40f1b87ea959ef1c8943f3a61f14"
+    },
+    "eval-inputs.bin": {
+      "bytes": 576,
+      "sha256": "9ab2ed263663411f2376d771f99b19c327a7b056c4f6d425ed67fdb624422a60"
+    },
+    "score-inputs.f64": {
+      "bytes": 216,
+      "sha256": "76513da27c9d55edd248dbf49973c9470abadf0a389eeb058417ae7762b2dc92"
+    },
+    "rollout-cases.bin": {
+      "bytes": 280,
+      "sha256": "12c5e838d68a16c19dc3b15d66f03efb5ad054e469cc04c93569eafd2c56eb59"
+    },
+    "rollout-worlds.bin": {
+      "bytes": 648,
+      "sha256": "131189053591679d0ffdb06c216ac68a0a27a9bafa354f4a1a6116e0d32b5b3c"
+    }
+  },
+  "carried": {
+    "psionic/tests/robotics/locomotion_gaussian_reference.py": {
+      "bytes": 18680,
+      "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+    },
+    "psionic/tests/robotics/locomotion_reference.py": {
+      "bytes": 17341,
+      "sha256": "f78d03724bcb040292ba2408db3108962f20e5980ab0ad53291edcabbaeb14d0"
+    },
+    "psionic/lib/tape.coax": {
+      "bytes": 24490,
+      "sha256": "4c7ab5eb73a556cdb56139b3da2eceb9c0b91f9ef94b24cb1036641e55672230"
+    },
+    "psionic/lib/optim/adamw.coax": {
+      "bytes": 22069,
+      "sha256": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64"
+    },
+    "psionic/lib/counter-rng.coax": {
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-qualification.json": {
+      "bytes": 35280,
+      "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+    },
+    "psionic/fixtures/robotics/locomotion/native-qualification.json": {
+      "bytes": 21900,
+      "sha256": "890ae428e387bdd37846feadbe1dbc7e1c12216c4f233e9a93aa322b2273edc6"
+    }
+  },
+  "new_source_qualification": {
+    "bytes": 10261,
+    "sha256": "17a416fbc0ed976a00a483f71fb4788f8dadbe3d83934754039ca0cd52ebd4d4"
+  },
+  "new_unit_refusals": {
+    "bytes": 1856,
+    "sha256": "0b435017ecd8bd88375ba388f9ec7a11ee46f6bcd0fee248006b409b65edd7de"
+  },
+  "input_layouts": {
+    "actor-cases.bin": "<2d2q K,Kold,offset,N",
+    "actor-rows.bin": "<4d x,action,old_logp,A",
+    "critic-inputs.f64": "<d K",
+    "transition-inputs.f64": "<4d K,x,action,z",
+    "projection-inputs.f64": "<2d Kold,candidate",
+    "epoch-cases.bin": "<4d4q Kold,K,m,v,step,skipped,offset,N",
+    "epoch-rows.bin": "<4d x,action,old_logp,A",
+    "eval-inputs.bin": "<d2q K,startid,N",
+    "score-inputs.f64": "<d K",
+    "rollout-cases.bin": "<2qd2q W,H,K,worldOffset,worldCount",
+    "rollout-worlds.bin": "<d2Q x,seed,counter"
+  },
+  "output_layouts": {
+    "actor-expected.bin": "<q3d3q status,loss,gradient,proxy,N,nodes,clipped",
+    "actor-coefficients.bin": "<10dq Density4+Rlr6+active (88B)",
+    "critic-expected.bin": "<q2d status,P,C",
+    "transition-expected.bin": "statusI64+RleRow120",
+    "projection-expected.bin": "<qd status,projectedK",
+    "epoch-expected.bin": "statusI64+RltEpoch96",
+    "epoch-coefficients.bin": "<10dq Density4+Rlr6+active (88B)",
+    "eval-expected.bin": "<q7dq status,Evaluation64",
+    "score-expected.bin": "<q23d2q status,Quality200",
+    "rollout-expected.bin": "statusI64+Batch61872; unused rows/worlds canonicalzero"
+  },
+  "domains": {
+    "K": [
+      0.25,
+      1.0
+    ],
+    "x": [
+      -16.0,
+      16.0
+    ],
+    "action": [
+      -18.25,
+      18.25
+    ],
+    "z": [
+      -9.0,
+      9.0
+    ],
+    "old_logp": [
+      -1000000.0,
+      1000000.0
+    ],
+    "advantage": [
+      -1000000000.0,
+      1000000000.0
+    ],
+    "actor_rows": [
+      1,
+      64
+    ],
+    "epoch_rows": [
+      1,
+      512
+    ]
+  },
+  "budgets": {
+    "ordinary": {
+      "absolute": 2e-12,
+      "relative": 2e-12
+    },
+    "block": {
+      "absolute": 8e-12,
+      "sum_absolute_contribution_factor": 4e-13
+    },
+    "rollout_target": {
+      "absolute": 2e-11,
+      "relative": 2e-12
+    },
+    "density": {
+      "absolute": 4e-12,
+      "relative": 8e-15
+    },
+    "rho_inverse": {
+      "absolute": 0.0,
+      "relative": 4e-15
+    },
+    "FD_primary_absolute": 3e-08
+  },
+  "coefficient_proof_order": [
+    "ALL numeric finite",
+    "independent Decimal density/inverse accuracy",
+    "exact observed-logp dlog",
+    "independent Decimal exp accuracy",
+    "exact Fraction-RN Rcp",
+    "analytic stored-primal VJP using bounded weights, never observed score/gradient"
+  ],
+  "epoch_proof_order": [
+    "independent actor gradient/loss bounds",
+    "conditional exact-RN moments from observed gradient",
+    "independent Decimal pow/sqrt candidate accuracy",
+    "exact projection/flag from observed candidate",
+    "retained moments/step"
+  ],
+  "score_scope": "Exact source F64 fields/flags conditioned on independently accurate exposed Pstar; independent Decimal real-optimum and signed goal-margin diagnostics; ambiguous real thresholds never promote learning.",
+  "unavailable": "Non-ok transport is canonical zero ONLY AFTER full native physical refusal atomicity assertions; not a published result.",
+  "node_formula": "7+13*N",
+  "training": {
+    "seeds": [
+      0,
+      1,
+      7
+    ],
+    "initial": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -0.25,
+      -0.25,
+      -0.25,
+      -0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "worlds": 16,
+    "horizon": 32,
+    "batches": 128,
+    "epochs": 4,
+    "block": 64,
+    "sigma": 0.25,
+    "log_std": -1.3862943611198906,
+    "gamma": 0.95,
+    "lambda": 0.95,
+    "epsilon": 0.2,
+    "initial_K": 0.25,
+    "initial_m_v_step_skipped": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "lr": 0.001,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "adam_eps": 1e-08,
+    "decay": 0.0,
+    "trust": 0.00390625,
+    "projection": "rounded rollout-start K_old endpoints, retain Adam moments/step",
+    "counter": "world*8192+batch*64",
+    "collector": "carry states, term/trunc0, local tail tracecut only",
+    "chunks": 16,
+    "command_timeout": 180,
+    "canonical_steps": 196608,
+    "canonical_updates": 1536,
+    "replay_steps": 1536,
+    "replay_updates": 12,
+    "deterministic_eval_steps": 3072,
+    "replay_after_completed_batches": 64,
+    "replay_zero_based_batch": 64,
+    "heldout_initials": [
+      -4.0,
+      -2.0,
+      -0.75,
+      0.75,
+      2.0,
+      4.0
+    ],
+    "all_seed_goals": {
+      "gain_error_max": 0.05,
+      "nominal_relative_cost_gap_max": 0.01,
+      "complete_batches": 128,
+      "skips_refusals": 0
+    },
+    "no_best_seed_checkpoint_or_tuning": true
+  },
+  "learning_executions": 0,
+  "model_SDK_old_gate_calls": 0
+}

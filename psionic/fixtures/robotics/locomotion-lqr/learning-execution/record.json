@@ -1,0 +1,4109 @@
+{
+  "schema": "psionic.locomotion-lqr.learning.v1",
+  "passed": true,
+  "lifecycle_state": "complete",
+  "descriptor": {
+    "bytes": 9275,
+    "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+  },
+  "prepared": {
+    "bytes": 2115,
+    "sha256": "6099ebbae7a7442d545eb35d65ecab32e2a4fb064d3a21e53f57f19f48b18f78"
+  },
+  "qualified_math": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "binary": {
+    "bytes": 115064,
+    "sha256": "bb87cd7b747da63380b6483b8143d3101ed912aeb5d6b5a34c1bf2ef2acc471a"
+  },
+  "source": {
+    "psionic/tests/robotics/locomotion_lqr_learn.py": {
+      "bytes": 19645,
+      "sha256": "8c77dc6d7ee19a08bc009eff40437eae939e4e76905eb3805ea3568831957ef5"
+    },
+    "psionic/tests/robotics/locomotion_lqr_learning_audit.py": {
+      "bytes": 27773,
+      "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-reader-qualification.json": {
+      "bytes": 265,
+      "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-freeze.json": {
+      "bytes": 1851,
+      "sha256": "515abd0ef715854483a508aad962a0e1ce5ac29687359f37e9e8346e3b90296c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-followup-v1.json": {
+      "bytes": 3052,
+      "sha256": "b24bae2d6431ac939b10a8b0b27f0d4d98aa6a13322618b46fcff153916724ba"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-lineage-qualification.json": {
+      "bytes": 474,
+      "sha256": "9d696fcd1595813ea8a471853b9021e622207e5de36d3c5229dfb2f8c401bcdb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-original-v1.py.txt": {
+      "bytes": 23978,
+      "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+    }
+  },
+  "chunks": [
+    {
+      "seed": 0,
+      "first_batch": 0,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-000",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 16,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "55366b8c647081136fd7b57149f5e239b8081468c35368697dde00416fbda40d"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "56df6c85ada0026e189a14a92f031b15eb4204452ac02c273ca500918eb6d121"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "e79af507db38712546e1fa9006e2b033798a523d2da71a1aa6e30a24ae78d065"
+        },
+        "progress.jsonl": {
+          "bytes": 989,
+          "sha256": "66190724a6a62ca20577fa92961be85074448c9b8aab2a9c6cb95e8a0039585b"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "a6cc6c814e47cb6defcd871c145edf1b431b64e2c22506693f10d1b75af1bcc4"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-000/audit",
+        "record": {
+          "bytes": 2305,
+          "sha256": "89a32e9a002ad69d018a543a116677ff99df075342b25cb04f5f7ed76508ba90"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 16,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-016",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 32,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "7f348fd573538d501840e00096c5c9617e956422be17e84877b6321dbc62246b"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "fbabe78bfddbc8745494901f80388738b28c90d710339b24f7a33ad33ebb3898"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "017097c7857c7a8ce8b69658c0ea7a05d50ef0c741ad078a7adeb17e82cf256c"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "9b18c25d01776c2996ed5928f8b08c8d84ab03a2dcef01504a64794fcac17e62"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "b202ffc01a0b48ec1f522f17689f439b6b7f4bb8e4972b520297f0129c4f8d3b"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-016/audit",
+        "record": {
+          "bytes": 2442,
+          "sha256": "99d2811b5a203873cd322f958520b800053cec5d496125864c666941a49b005b"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 32,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-032",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 48,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "16e9d2c03875379f7d9dae368499665ca9a3cb34ccf478b972bfc10ff8635e7e"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "692e5742877ebc1d5f36236c9dde8827ef8723e4aeb2c347c0e99e068149c012"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "dd2a7f77043e4338f9f964b0bb41d9a0735b15578a6b9a8ab3796c0f204d39ad"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "01c7950610b887b3ddae5d4f43749c0196219f17a807b6ae6a99a087e4ebd2c9"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "41b89769d7d0098f20e78cb439392488f3c083d3c5ad5f7f3cefd0599a043af9"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-032/audit",
+        "record": {
+          "bytes": 2440,
+          "sha256": "3cecd2c3473296dc553e733cb12832205fedd6b01afdc7272974f2f03e3c1d90"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 48,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-048",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 64,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "f135690f5a8bb2009cae08dcc439fe5bf95772ecf317b238c353f73517c91634"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "97c4e7feaa0939ee61b5e0c99dbba81e8a79f9de60e2e8ced7a92de2198366c3"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "e938748a15d72b72b0e538494b54ac03906b22506264e1f4417d25a3080fc18e"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "99f539d072063dfffbe0fc022c1a7b156780c1bc7040e8d5bab0ec84054c843a"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "d01b59b85ff56f5262b588f629c09ebc975e7d6ae7e375ded11df36bddf7d574"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-048/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "a9653ccecb3ec96948b135cb83389f12e46a4dcaa968e6e75931732e2cd42d41"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 64,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-064",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 80,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "1d021ec088d3ac3500b081a315d7499ce0f6940fbc99e53e4435545549e5aa43"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "58361a045d7008a8ec56714d3318896ebafc07b8cb01dabe2dd186132823ef00"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "b0638870f08062ad9bcbd73c87a32490e4bff6547def38fdf1e6f49778f79788"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "f0e50225f55e7585d6efb2f7a05a1ffbd9026181c16454c3c00f8d813e20ac08"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "f0f1376fbb2f64e69c023331ba060cbe6f3c1f810b2bf88ed0962127396e82ef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-064/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "0be32a9687e1502aca8c2b565e8051b768ea5650af91ddf74e1a7d0856f56b91"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 80,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-080",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 96,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "2ff046675d5448eedf8867a60e569947cf63c32f3be7569de35a397f3cc220fc"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "a8b06cdcf8144915549853bf3e834ce2c4c2180a70cc77e45ce67d21dfce0302"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "bab0842688c86f67198b93e64cc98a179bad526803ff4c4edebe9ebf90fa06a7"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "49c1c6791270f63398be30e7775b654b3613418ed1557d6487dfeaf67cb2a8bf"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "e80d8ff15cfb22b5e0dffb39e0078899bae53ba54f9ef09b476ba0b682f021c2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-080/audit",
+        "record": {
+          "bytes": 2440,
+          "sha256": "d1b6e7f8ee88c374f7dd93e2bf01ac1bec59597d715bf5e6a484d9ce71f163c8"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 96,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-096",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 112,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "f9fbb72b235b9a05218d2c0ddd53ff4352afe114c3174d099a99cf57c73b3117"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "220c9bd77363e74aee5528c2e3bb506003eb9546d7d679113411648fb77c7e09"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "776caad58fe51223827e67e543b88465b773b453c8cce158fa508f77f33b1a94"
+        },
+        "progress.jsonl": {
+          "bytes": 1033,
+          "sha256": "da2714f250c202a7935c9b23ebd8a25deba01ed611b9747a1841f68e638e26fc"
+        },
+        "stdout": {
+          "bytes": 162,
+          "sha256": "4f2c9929fd2eecc7417259110f4d091db70275b8e12fb4b7476aa9eb92576581"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-096/audit",
+        "record": {
+          "bytes": 2440,
+          "sha256": "618e1b02152e0c379dc3dae42008ad7f640e89bed26d6f378a270c8b54fd2854"
+        }
+      }
+    },
+    {
+      "seed": 0,
+      "first_batch": 112,
+      "batches": 16,
+      "directory": "canonical/seed-0/batch-112",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 128,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "22c5c2a6903d5ad7d359e2a0208401de71a99635e9ece6bcda499224f09eb82a"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "d54a194cc637e58d86183b89c9a0a7943315c2014a0e94ba72f5927d208c590b"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "8465caab7312d479559ea1a70e8243c432a4d59fdfccfd7dda8d41457ce5e3d6"
+        },
+        "progress.jsonl": {
+          "bytes": 1040,
+          "sha256": "a25444d43bc431825406d8a750dc88c1c8e4cf2489daa510ca29e3aff9cf445c"
+        },
+        "stdout": {
+          "bytes": 162,
+          "sha256": "821388ff12ea6088d79790e2da07f2b311df6a0e863267e53921c3d06de7fe07"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-0/batch-112/audit",
+        "record": {
+          "bytes": 2442,
+          "sha256": "4ed7c7399e996ca5b5333680a8ceae3102442be0ffa2912ab4a70af1038c8913"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 0,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-000",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 16,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "da9d23621ce544ca764253a046046bca69e3c5aaa46d6db89bde49964ac5b45d"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "25a19dc22795ce322c802f66d35df84eb57c68565e9e4996524ab08587abe21f"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "66553f62718d8163a2426b1d066db6fb6880d2faa7cd3d4ca6a01b4e9cc56044"
+        },
+        "progress.jsonl": {
+          "bytes": 989,
+          "sha256": "66190724a6a62ca20577fa92961be85074448c9b8aab2a9c6cb95e8a0039585b"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "a6cc6c814e47cb6defcd871c145edf1b431b64e2c22506693f10d1b75af1bcc4"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-000/audit",
+        "record": {
+          "bytes": 2303,
+          "sha256": "1fcfc59cae9084b3b505819d3c9c584d639fa5e497eecb54604f41513430da86"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 16,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-016",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 32,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "f9fd1c9e9514bea03ba760baa7a1a068709083d695d1cdb389cce18aa0961e7c"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "90a216bab149199a8620bab87afdfc0c7ac31630d1d68fdfbb1b9e4d4fe67008"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "e7d3045cf42a26c21afb16a320e51245efbcb9c34442ead780facd0e1d2bfb80"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "9b18c25d01776c2996ed5928f8b08c8d84ab03a2dcef01504a64794fcac17e62"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "b202ffc01a0b48ec1f522f17689f439b6b7f4bb8e4972b520297f0129c4f8d3b"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-016/audit",
+        "record": {
+          "bytes": 2459,
+          "sha256": "ef3a68eb95f705799bcac7e7bb341c82ee522cf8549947046e5e53b19bc38c0f"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 32,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-032",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 48,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "efef9e6ebc0f89f30654e4af1e5e2b9444b7a9e02b4215dce27c3728f2a9d363"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "46ab5ddf12fae7d04bbc08f74812ee2223bc99c7435352a782fb8259f1d8e8ee"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "9c71254c110b04ba80e39214fa260c72aa004fbc99986b1185d87f47c3957c0a"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "01c7950610b887b3ddae5d4f43749c0196219f17a807b6ae6a99a087e4ebd2c9"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "41b89769d7d0098f20e78cb439392488f3c083d3c5ad5f7f3cefd0599a043af9"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-032/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "d672dae0852435b12177f0664beda5c65412139d9e07d7cac5ae366b5f20c63a"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 48,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-048",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 64,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "ed2a1fbfe94d1de2a0e1d786ba1f16f8b6175b203662e369d29be3be03faa160"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "e6719a68d411ccf203014fe79bd811c51ab0d2c7f5833fcce26fe3d7492dfe68"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "8a6813bb79e481948a1be8e15559efed3dc24699d636b24ca2785c8e56a9ef3b"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "99f539d072063dfffbe0fc022c1a7b156780c1bc7040e8d5bab0ec84054c843a"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "d01b59b85ff56f5262b588f629c09ebc975e7d6ae7e375ded11df36bddf7d574"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-048/audit",
+        "record": {
+          "bytes": 2442,
+          "sha256": "e398583af283776b34419460077275400d6e50c14ef428fd6474ec2fc06c83a9"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 64,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-064",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 80,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "5f6b4a34660baf03cf95970874dc406c6d9f97f74e91c204c5bbd57cd787e571"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "03d54891dde89d35dc67d73e73666819c43677bf3518c8eb40c1546b692c4416"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "f3fb38d8e2ccfe2291a892a22133f2883381151344908ac285f5416a40bd0b91"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "f0e50225f55e7585d6efb2f7a05a1ffbd9026181c16454c3c00f8d813e20ac08"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "f0f1376fbb2f64e69c023331ba060cbe6f3c1f810b2bf88ed0962127396e82ef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-064/audit",
+        "record": {
+          "bytes": 2440,
+          "sha256": "363f88572e38adf1ced2ba892460e9a74b28fb324de670949ab68d22c33cea34"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 80,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-080",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 96,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "b2c05e80a1375a2920bf30dc28ca069171553b36eb1a22109d27550453af1bff"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "3daa5606328f50ae0087759b359ba22dd8940c7878eb7d5321647cd0fdf821bb"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "a21bcef0afdd09a826425ee47a0445a7919b22116438f3bc1b4fa76aef2309f2"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "49c1c6791270f63398be30e7775b654b3613418ed1557d6487dfeaf67cb2a8bf"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "e80d8ff15cfb22b5e0dffb39e0078899bae53ba54f9ef09b476ba0b682f021c2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-080/audit",
+        "record": {
+          "bytes": 2440,
+          "sha256": "20234116c92d77e44b2d628e33c5cef3118ea7ae17ae521b2d91585445f26966"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 96,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-096",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 112,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "94469fecee7c1e83fac117be3150738d3ea24e27f644810710e2631d00d8f31e"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "01c836dbe2540ad873c178d853c6e9f98ceba9c997925760bf59c737f147aa13"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "cf8d20ecf60517be219a373bbecda82fd3953b6ddaa9ebb95f1dec8317010f4b"
+        },
+        "progress.jsonl": {
+          "bytes": 1033,
+          "sha256": "da2714f250c202a7935c9b23ebd8a25deba01ed611b9747a1841f68e638e26fc"
+        },
+        "stdout": {
+          "bytes": 162,
+          "sha256": "4f2c9929fd2eecc7417259110f4d091db70275b8e12fb4b7476aa9eb92576581"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-096/audit",
+        "record": {
+          "bytes": 2439,
+          "sha256": "96f2ad0f403cfc793bba44e87a07bc28325e5a52360053108aa398503457c491"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 112,
+      "batches": 16,
+      "directory": "canonical/seed-1/batch-112",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 128,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "6629cb99b11f53652ead2578609b383bab45f1ef4507ba5ca65fc2c4ffbec6b9"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "e1d077dd981c6ce6908b6aa15c41b442940d9928145a24c4c7914075f7ae963a"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "c7b9eeff704da11624ff51037276db559acf3e4f25118893ada6d360b714c9f3"
+        },
+        "progress.jsonl": {
+          "bytes": 1040,
+          "sha256": "a25444d43bc431825406d8a750dc88c1c8e4cf2489daa510ca29e3aff9cf445c"
+        },
+        "stdout": {
+          "bytes": 162,
+          "sha256": "821388ff12ea6088d79790e2da07f2b311df6a0e863267e53921c3d06de7fe07"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-1/batch-112/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "fc9c7eff87384549841d3007a1b8c482ec973a6e18501263317482e1f8fa839a"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 0,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-000",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 16,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "708dedc18e697a8ba3d0baa13fbc5fd0448af5f6c6b4fef1d05af69c606fd14d"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "adfd2606d1f5d7f3f3168890a36a4658004bdb5dcf36ebe3a9f13919b7bd07b7"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "b1eae8ac94473f9b01577d9c012b68559c70aae06cbef0556fd95c0ce3639153"
+        },
+        "progress.jsonl": {
+          "bytes": 989,
+          "sha256": "66190724a6a62ca20577fa92961be85074448c9b8aab2a9c6cb95e8a0039585b"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "a6cc6c814e47cb6defcd871c145edf1b431b64e2c22506693f10d1b75af1bcc4"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-000/audit",
+        "record": {
+          "bytes": 2304,
+          "sha256": "61b66f5a7a8b47162734ff42402d86e1c46b02d7f93da7a2b3a9f25546aba740"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 16,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-016",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 32,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "77591722195e2e297b0f42692fbd0fed9c4e51da38946f233ca4b304d03a2c90"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "2b1d1fd1d0cb7e2986086af4b7741393e45d807f26683144f6544eece55f97d4"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "ee9ef70149ead7adfeef9e81971e2fc38d60c7ab67c8dc575cf660f9aef1b114"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "9b18c25d01776c2996ed5928f8b08c8d84ab03a2dcef01504a64794fcac17e62"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "b202ffc01a0b48ec1f522f17689f439b6b7f4bb8e4972b520297f0129c4f8d3b"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-016/audit",
+        "record": {
+          "bytes": 2440,
+          "sha256": "c87c55f07bfa9c60ceab7ef62e5692788a775981293582b4a932a5b88f8cd137"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 32,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-032",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 48,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "cb4a815568ab539f58e48472f7ced1e3c35af4f02221c933a41d55d4c2f618c2"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "6663c767e04f2aaf99e100fe7e0d38f709206af2b00faa32e6e8ed8b9fbc9795"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "12df0b85a06a57e530fcb5b735ab106d2e3d99952264e5674bb4cedba9708682"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "01c7950610b887b3ddae5d4f43749c0196219f17a807b6ae6a99a087e4ebd2c9"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "41b89769d7d0098f20e78cb439392488f3c083d3c5ad5f7f3cefd0599a043af9"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-032/audit",
+        "record": {
+          "bytes": 2442,
+          "sha256": "9b56894841295233dc64c76e8eec3dcf86c8e7a1e40438e6eb01bea2dd9238ca"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 48,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-048",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 64,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "421112f2ea86b290d3e70c717d376ec8951642247f5013d5cdabd084e4586d20"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "a2e93b6a660f15a237b00fb2a90786335e1e35e0f29c1af5a240cff9506447bb"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "12f8f7d1e4c48af806f8f2e28380eb704b765a63685b0ac6adf147341f90c122"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "99f539d072063dfffbe0fc022c1a7b156780c1bc7040e8d5bab0ec84054c843a"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "d01b59b85ff56f5262b588f629c09ebc975e7d6ae7e375ded11df36bddf7d574"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-048/audit",
+        "record": {
+          "bytes": 2439,
+          "sha256": "173ad0648c18a32b80943767c1ffbcb86cef9be0c073efaa39f657d6126d6009"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 64,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-064",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 80,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "017f11dda021e90ef4f1218e66ac0cb0212543ac138b451631ef90f87e808727"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "46cd069387dee588ccc78169b808c1efeebf4baeb9110914958d838b42de5597"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "796148e4c959f7b58d3fb52ffa721dbaaf481250ae609af6693ee822d99eb34a"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "f0e50225f55e7585d6efb2f7a05a1ffbd9026181c16454c3c00f8d813e20ac08"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "f0f1376fbb2f64e69c023331ba060cbe6f3c1f810b2bf88ed0962127396e82ef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-064/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "ed9b90e2f28809c12abc1ecd7c8278ddc4f42d10caaeaa23a6613d9e11b3e2f9"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 80,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-080",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 96,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "7a122c8faa4063565e3e0c391edfbe2dcdc14510f1f2b5aa261d04c6452e471d"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "1b6de66cea0ee4d0bf8dc82f4b39cb4f83028deaa3340b518e28a6d9c50e6167"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "4702ac2837e6fd786d977ec5030de57bbc3be03c1453d7ae46efbf077c7f250c"
+        },
+        "progress.jsonl": {
+          "bytes": 1008,
+          "sha256": "49c1c6791270f63398be30e7775b654b3613418ed1557d6487dfeaf67cb2a8bf"
+        },
+        "stdout": {
+          "bytes": 161,
+          "sha256": "e80d8ff15cfb22b5e0dffb39e0078899bae53ba54f9ef09b476ba0b682f021c2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-080/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "021eceb6b95f41810d716e55631af7e6a43834fd0c06cd378b9e31c789d990bf"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 96,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-096",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 112,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "3134563bc810a756781668319718d8c6e22f514c7a4a6710842b7b9e95ffe682"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "78229618ea4aa229ab4e4dc683e955ca77bf7bac465aa98318b926ec13dbbeac"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "0ac1b02b654d41a2960707afeae00725e486e08749792659e86e8f8ee75b610e"
+        },
+        "progress.jsonl": {
+          "bytes": 1033,
+          "sha256": "da2714f250c202a7935c9b23ebd8a25deba01ed611b9747a1841f68e638e26fc"
+        },
+        "stdout": {
+          "bytes": 162,
+          "sha256": "4f2c9929fd2eecc7417259110f4d091db70275b8e12fb4b7476aa9eb92576581"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-096/audit",
+        "record": {
+          "bytes": 2441,
+          "sha256": "b61b5cddbcad3eb921693c80bf3994a3afe45fbb221023eed6220d7f52899b9a"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 112,
+      "batches": 16,
+      "directory": "canonical/seed-7/batch-112",
+      "native": {
+        "passed": true,
+        "committed_batches": 16,
+        "requested_batches": 16,
+        "status": 0,
+        "last_batch": 128,
+        "assertions": 938909,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 1003184,
+          "sha256": "f4bebc9f7c4d259755afe5a2da3e8ce7870eae9b6165dd6e16b5ab86e04be0d2"
+        },
+        "coefficients.bin": {
+          "bytes": 2883632,
+          "sha256": "4d63452d645fad778d0b83c46f9020ccc9ca9fe28682859f6a858126535b39d0"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "2077045152db2be23b17121b02d2b2810665c2cfe99c9530fe2de2af7cf5e389"
+        },
+        "progress.jsonl": {
+          "bytes": 1040,
+          "sha256": "a25444d43bc431825406d8a750dc88c1c8e4cf2489daa510ca29e3aff9cf445c"
+        },
+        "stdout": {
+          "bytes": 162,
+          "sha256": "821388ff12ea6088d79790e2da07f2b311df6a0e863267e53921c3d06de7fe07"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "canonical/seed-7/batch-112/audit",
+        "record": {
+          "bytes": 2443,
+          "sha256": "ff2ee804b95a3fcdca542b2aa99bcdeeb3c642686b8ff7cfe576d9dd4fffb07f"
+        }
+      }
+    }
+  ],
+  "replays": [
+    {
+      "seed": 0,
+      "first_batch": 64,
+      "batches": 1,
+      "directory": "replay/seed-0",
+      "native": {
+        "passed": true,
+        "committed_batches": 1,
+        "requested_batches": 1,
+        "status": 0,
+        "last_batch": 65,
+        "assertions": 58769,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 62744,
+          "sha256": "1a552d23b7bc6f69d771cb576735149f6f9dd09327e9fec65adbe1590948f77e"
+        },
+        "coefficients.bin": {
+          "bytes": 180272,
+          "sha256": "6914b5ff8d59d8bef292ab57baac524a8e1db84dc9f14cef6c541fd1bd1d0d92"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "20c1deccf3e0460470789a99bfdd18a15daaa557f8b4fddcd8973ff65e190376"
+        },
+        "progress.jsonl": {
+          "bytes": 63,
+          "sha256": "4ad3004af702e513cd88a66744b0d436498e47e5499d56e8f31d30312e8929af"
+        },
+        "stdout": {
+          "bytes": 158,
+          "sha256": "e50447738cc5a132abc5b172d6577b176eebd6ae8c7fbe6ea4902300d3c0621e"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "exact_original_batch65_bytes": true,
+      "audit": {
+        "directory": "replay/seed-0/audit",
+        "record": {
+          "bytes": 2093,
+          "sha256": "e35cc5627559533d7ffb047caff58fb4cf377dd37a9b04670e00bd69c7d7dbf0"
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "first_batch": 64,
+      "batches": 1,
+      "directory": "replay/seed-1",
+      "native": {
+        "passed": true,
+        "committed_batches": 1,
+        "requested_batches": 1,
+        "status": 0,
+        "last_batch": 65,
+        "assertions": 58769,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 62744,
+          "sha256": "0910329b5f22da480b68c705c29e1ac94dc5b30e4d2e0be02b1d1178f4d244a9"
+        },
+        "coefficients.bin": {
+          "bytes": 180272,
+          "sha256": "f4ac6595608ed7222763f1e131ccdd1bfdab663524ba3ac0867414b2c1f0c789"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "f990f7b81377e73cc3c021881ce4a1f446e8040fe6216dd4a52399795b5bfb7a"
+        },
+        "progress.jsonl": {
+          "bytes": 63,
+          "sha256": "4ad3004af702e513cd88a66744b0d436498e47e5499d56e8f31d30312e8929af"
+        },
+        "stdout": {
+          "bytes": 158,
+          "sha256": "e50447738cc5a132abc5b172d6577b176eebd6ae8c7fbe6ea4902300d3c0621e"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "exact_original_batch65_bytes": true,
+      "audit": {
+        "directory": "replay/seed-1/audit",
+        "record": {
+          "bytes": 2093,
+          "sha256": "ef0aaaf5df50841d5cbb7b9b0d067ac21fb78ec1b38415cbb824db6180add263"
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "first_batch": 64,
+      "batches": 1,
+      "directory": "replay/seed-7",
+      "native": {
+        "passed": true,
+        "committed_batches": 1,
+        "requested_batches": 1,
+        "status": 0,
+        "last_batch": 65,
+        "assertions": 58769,
+        "flush_and_file_fsync": true,
+        "directory_fsync": false
+      },
+      "artifacts": {
+        "iterations.bin": {
+          "bytes": 62744,
+          "sha256": "5dd339f07695a137eb3d38e51569ced45bcf1cd8cb4d6111c71806a8fe20999a"
+        },
+        "coefficients.bin": {
+          "bytes": 180272,
+          "sha256": "2125142379921ee4edaa8da9a5b972852bdace92677b318c664baac32c64dfa0"
+        },
+        "checkpoint.bin": {
+          "bytes": 488,
+          "sha256": "297cd2223c992ae27e8eca1722504b1ae5f94128e77f91e3771039ad7f54c167"
+        },
+        "progress.jsonl": {
+          "bytes": 63,
+          "sha256": "4ad3004af702e513cd88a66744b0d436498e47e5499d56e8f31d30312e8929af"
+        },
+        "stdout": {
+          "bytes": 158,
+          "sha256": "e50447738cc5a132abc5b172d6577b176eebd6ae8c7fbe6ea4902300d3c0621e"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "exact_original_batch65_bytes": true,
+      "audit": {
+        "directory": "replay/seed-7/audit",
+        "record": {
+          "bytes": 2093,
+          "sha256": "fd08d04fe1d359e4a9af49d7cb5460cedae196f46715b1de858aa6872a17d0a3"
+        }
+      }
+    }
+  ],
+  "evaluations": [
+    {
+      "label": "baseline",
+      "directory": "evaluation/baseline",
+      "native": {
+        "passed": true,
+        "evaluations": 6,
+        "steps": 768,
+        "assertions": 233
+      },
+      "artifacts": {
+        "evaluations.bin": {
+          "bytes": 480,
+          "sha256": "e836270777ced0a3bd1ea934803cdffd0959c76ceba2ffd4d865086933bd840d"
+        },
+        "quality.bin": {
+          "bytes": 248,
+          "sha256": "4e4bf8fa16598163ea6158a8c8819a2dc151b54ac9dd7f4b49ad826526142eeb"
+        },
+        "stdout": {
+          "bytes": 61,
+          "sha256": "b272d7fb77bdfde80e066729266767c9c9df977b653f572d0de679c666487f78"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "evaluation/baseline/audit",
+        "record": {
+          "bytes": 3535,
+          "sha256": "ecbcc0a8946046ca7cdb4efaa5b0da6d61fd94e6c916f8626f98ebfdbadd6205"
+        }
+      }
+    },
+    {
+      "label": "seed-0",
+      "directory": "evaluation/seed-0",
+      "native": {
+        "passed": true,
+        "evaluations": 6,
+        "steps": 768,
+        "assertions": 233
+      },
+      "artifacts": {
+        "evaluations.bin": {
+          "bytes": 480,
+          "sha256": "49c93cff16fb537607105f71bfba23d83963182e6b1091d80d90d3c9f35cd26e"
+        },
+        "quality.bin": {
+          "bytes": 248,
+          "sha256": "7dc376083c22ce7df82f45936547d52e0377ac8906df33ba44e1658202564cde"
+        },
+        "stdout": {
+          "bytes": 61,
+          "sha256": "b272d7fb77bdfde80e066729266767c9c9df977b653f572d0de679c666487f78"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "evaluation/seed-0/audit",
+        "record": {
+          "bytes": 3691,
+          "sha256": "6f275e18b543bd910a853c11bf3f934e3e9c6416862287761fc6d5ff89330274"
+        }
+      }
+    },
+    {
+      "label": "seed-1",
+      "directory": "evaluation/seed-1",
+      "native": {
+        "passed": true,
+        "evaluations": 6,
+        "steps": 768,
+        "assertions": 233
+      },
+      "artifacts": {
+        "evaluations.bin": {
+          "bytes": 480,
+          "sha256": "28963b02aca9b7469abae682c153d1a60c96a43bb467e3921d16bee0bc530626"
+        },
+        "quality.bin": {
+          "bytes": 248,
+          "sha256": "e3cdb12b250579bff66b1a365d3c262fc406e841679407d5e919fc129a644e3d"
+        },
+        "stdout": {
+          "bytes": 61,
+          "sha256": "b272d7fb77bdfde80e066729266767c9c9df977b653f572d0de679c666487f78"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "evaluation/seed-1/audit",
+        "record": {
+          "bytes": 3656,
+          "sha256": "941d3ab5c1b7305574ef4406f74a6417a1e15b981b96b6ee15347d6beac8de2b"
+        }
+      }
+    },
+    {
+      "label": "seed-7",
+      "directory": "evaluation/seed-7",
+      "native": {
+        "passed": true,
+        "evaluations": 6,
+        "steps": 768,
+        "assertions": 233
+      },
+      "artifacts": {
+        "evaluations.bin": {
+          "bytes": 480,
+          "sha256": "23a8a1ffa82826a091293047604c842ae97fdb4cbef0616fd3b1f15a514a97a3"
+        },
+        "quality.bin": {
+          "bytes": 248,
+          "sha256": "fbd7400f85138c91e113428960cc54f01faed9e82e7e9164cbf1241e7eb7c807"
+        },
+        "stdout": {
+          "bytes": 61,
+          "sha256": "b272d7fb77bdfde80e066729266767c9c9df977b653f572d0de679c666487f78"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "audit": {
+        "directory": "evaluation/seed-7/audit",
+        "record": {
+          "bytes": 3715,
+          "sha256": "cdf0ce372ce38bdcb3efaf898c8c07cbce9196d7ca9027414c60ebea080197d9"
+        }
+      }
+    }
+  ],
+  "completed_actions": [
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 0,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 16,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 32,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 48,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 64,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 80,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 96,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 112,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 0,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 16,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 32,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 48,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 64,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 80,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 96,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 112,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 0,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 16,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 32,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 48,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 64,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 80,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 96,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 112,
+      "batches": 16
+    },
+    {
+      "kind": "replay",
+      "seed": 0,
+      "first_batch": 64,
+      "batches": 1
+    },
+    {
+      "kind": "replay",
+      "seed": 1,
+      "first_batch": 64,
+      "batches": 1
+    },
+    {
+      "kind": "replay",
+      "seed": 7,
+      "first_batch": 64,
+      "batches": 1
+    },
+    {
+      "kind": "evaluation",
+      "label": "baseline",
+      "seed": 0
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-0",
+      "seed": 0
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-1",
+      "seed": 1
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-7",
+      "seed": 7
+    }
+  ],
+  "commands": [
+    {
+      "label": "canonical-0-0",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-0.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-000",
+      "exit": 0,
+      "seconds": 0.04756391700357199,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "55366b8c647081136fd7b57149f5e239b8081468c35368697dde00416fbda40d"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "56df6c85ada0026e189a14a92f031b15eb4204452ac02c273ca500918eb6d121"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-0",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-0.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "0",
+        "--count",
+        "16",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/audit"
+      ],
+      "directory": "canonical/seed-0/batch-000/audit-command",
+      "exit": 0,
+      "seconds": 9.141427583002951,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-16",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-016",
+      "exit": 0,
+      "seconds": 0.04169762501260266,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "7f348fd573538d501840e00096c5c9617e956422be17e84877b6321dbc62246b"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "fbabe78bfddbc8745494901f80388738b28c90d710339b24f7a33ad33ebb3898"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-1",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "16",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-000/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/audit"
+      ],
+      "directory": "canonical/seed-0/batch-016/audit-command",
+      "exit": 0,
+      "seconds": 8.598033124988433,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-32",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-032",
+      "exit": 0,
+      "seconds": 0.04543787497095764,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "16e9d2c03875379f7d9dae368499665ca9a3cb34ccf478b972bfc10ff8635e7e"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "692e5742877ebc1d5f36236c9dde8827ef8723e4aeb2c347c0e99e068149c012"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-2",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "32",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-016/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/audit"
+      ],
+      "directory": "canonical/seed-0/batch-032/audit-command",
+      "exit": 0,
+      "seconds": 8.525057791965082,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-48",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-048",
+      "exit": 0,
+      "seconds": 0.04360887501388788,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "f135690f5a8bb2009cae08dcc439fe5bf95772ecf317b238c353f73517c91634"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "97c4e7feaa0939ee61b5e0c99dbba81e8a79f9de60e2e8ced7a92de2198366c3"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-3",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "48",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-032/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/audit"
+      ],
+      "directory": "canonical/seed-0/batch-048/audit-command",
+      "exit": 0,
+      "seconds": 8.670326917024795,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-64",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-064",
+      "exit": 0,
+      "seconds": 0.04319079202832654,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "1d021ec088d3ac3500b081a315d7499ce0f6940fbc99e53e4435545549e5aa43"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "58361a045d7008a8ec56714d3318896ebafc07b8cb01dabe2dd186132823ef00"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-4",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "64",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/audit"
+      ],
+      "directory": "canonical/seed-0/batch-064/audit-command",
+      "exit": 0,
+      "seconds": 8.380244125030003,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-80",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-080",
+      "exit": 0,
+      "seconds": 0.04394925001543015,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "2ff046675d5448eedf8867a60e569947cf63c32f3be7569de35a397f3cc220fc"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "a8b06cdcf8144915549853bf3e834ce2c4c2180a70cc77e45ce67d21dfce0302"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-5",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "80",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/audit"
+      ],
+      "directory": "canonical/seed-0/batch-080/audit-command",
+      "exit": 0,
+      "seconds": 8.494288833986502,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-96",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-096",
+      "exit": 0,
+      "seconds": 0.044498083007056266,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "f9fbb72b235b9a05218d2c0ddd53ff4352afe114c3174d099a99cf57c73b3117"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "220c9bd77363e74aee5528c2e3bb506003eb9546d7d679113411648fb77c7e09"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-6",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "96",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-080/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/audit"
+      ],
+      "directory": "canonical/seed-0/batch-096/audit-command",
+      "exit": 0,
+      "seconds": 8.350780999986455,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-0-112",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-0/batch-112",
+      "exit": 0,
+      "seconds": 0.04265279200626537,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "22c5c2a6903d5ad7d359e2a0208401de71a99635e9ece6bcda499224f09eb82a"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "d54a194cc637e58d86183b89c9a0a7943315c2014a0e94ba72f5927d208c590b"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-7",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "112",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-096/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/audit"
+      ],
+      "directory": "canonical/seed-0/batch-112/audit-command",
+      "exit": 0,
+      "seconds": 8.518925916985609,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-0",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-1.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-000",
+      "exit": 0,
+      "seconds": 0.04396345798159018,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "da9d23621ce544ca764253a046046bca69e3c5aaa46d6db89bde49964ac5b45d"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "25a19dc22795ce322c802f66d35df84eb57c68565e9e4996524ab08587abe21f"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-8",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-1.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "0",
+        "--count",
+        "16",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/audit"
+      ],
+      "directory": "canonical/seed-1/batch-000/audit-command",
+      "exit": 0,
+      "seconds": 8.493604457995389,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-16",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-016",
+      "exit": 0,
+      "seconds": 0.04547970800194889,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "f9fd1c9e9514bea03ba760baa7a1a068709083d695d1cdb389cce18aa0961e7c"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "90a216bab149199a8620bab87afdfc0c7ac31630d1d68fdfbb1b9e4d4fe67008"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-9",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "16",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-000/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/audit"
+      ],
+      "directory": "canonical/seed-1/batch-016/audit-command",
+      "exit": 0,
+      "seconds": 8.441242999979295,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-32",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-032",
+      "exit": 0,
+      "seconds": 0.06204616604372859,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "efef9e6ebc0f89f30654e4af1e5e2b9444b7a9e02b4215dce27c3728f2a9d363"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "46ab5ddf12fae7d04bbc08f74812ee2223bc99c7435352a782fb8259f1d8e8ee"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-10",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "32",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-016/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/audit"
+      ],
+      "directory": "canonical/seed-1/batch-032/audit-command",
+      "exit": 0,
+      "seconds": 8.428858749975916,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-48",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-048",
+      "exit": 0,
+      "seconds": 0.04629012499935925,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "ed2a1fbfe94d1de2a0e1d786ba1f16f8b6175b203662e369d29be3be03faa160"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "e6719a68d411ccf203014fe79bd811c51ab0d2c7f5833fcce26fe3d7492dfe68"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-11",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "48",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-032/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/audit"
+      ],
+      "directory": "canonical/seed-1/batch-048/audit-command",
+      "exit": 0,
+      "seconds": 8.434979834011756,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-64",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-064",
+      "exit": 0,
+      "seconds": 0.057284707960207015,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "5f6b4a34660baf03cf95970874dc406c6d9f97f74e91c204c5bbd57cd787e571"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "03d54891dde89d35dc67d73e73666819c43677bf3518c8eb40c1546b692c4416"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-12",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "64",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/audit"
+      ],
+      "directory": "canonical/seed-1/batch-064/audit-command",
+      "exit": 0,
+      "seconds": 8.58694883302087,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-80",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-080",
+      "exit": 0,
+      "seconds": 0.045322334044612944,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "b2c05e80a1375a2920bf30dc28ca069171553b36eb1a22109d27550453af1bff"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "3daa5606328f50ae0087759b359ba22dd8940c7878eb7d5321647cd0fdf821bb"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-13",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "80",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/audit"
+      ],
+      "directory": "canonical/seed-1/batch-080/audit-command",
+      "exit": 0,
+      "seconds": 8.571772624971345,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-96",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-096",
+      "exit": 0,
+      "seconds": 0.0491422499762848,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "94469fecee7c1e83fac117be3150738d3ea24e27f644810710e2631d00d8f31e"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "01c836dbe2540ad873c178d853c6e9f98ceba9c997925760bf59c737f147aa13"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-14",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "96",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-080/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/audit"
+      ],
+      "directory": "canonical/seed-1/batch-096/audit-command",
+      "exit": 0,
+      "seconds": 8.602932999958284,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-1-112",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-1/batch-112",
+      "exit": 0,
+      "seconds": 0.047829832998104393,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "6629cb99b11f53652ead2578609b383bab45f1ef4507ba5ca65fc2c4ffbec6b9"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "e1d077dd981c6ce6908b6aa15c41b442940d9928145a24c4c7914075f7ae963a"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-15",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "112",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-096/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/audit"
+      ],
+      "directory": "canonical/seed-1/batch-112/audit-command",
+      "exit": 0,
+      "seconds": 8.666528625006322,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-0",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-7.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-000",
+      "exit": 0,
+      "seconds": 0.05112754198489711,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "708dedc18e697a8ba3d0baa13fbc5fd0448af5f6c6b4fef1d05af69c606fd14d"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "adfd2606d1f5d7f3f3168890a36a4658004bdb5dcf36ebe3a9f13919b7bd07b7"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-16",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-7.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "0",
+        "--count",
+        "16",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/audit"
+      ],
+      "directory": "canonical/seed-7/batch-000/audit-command",
+      "exit": 0,
+      "seconds": 8.359364125004504,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-16",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-016",
+      "exit": 0,
+      "seconds": 0.049272249976638705,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "77591722195e2e297b0f42692fbd0fed9c4e51da38946f233ca4b304d03a2c90"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "2b1d1fd1d0cb7e2986086af4b7741393e45d807f26683144f6544eece55f97d4"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-17",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "16",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-000/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/audit"
+      ],
+      "directory": "canonical/seed-7/batch-016/audit-command",
+      "exit": 0,
+      "seconds": 8.635776917042676,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-32",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-032",
+      "exit": 0,
+      "seconds": 0.05358033301308751,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "cb4a815568ab539f58e48472f7ced1e3c35af4f02221c933a41d55d4c2f618c2"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "6663c767e04f2aaf99e100fe7e0d38f709206af2b00faa32e6e8ed8b9fbc9795"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-18",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "32",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-016/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/audit"
+      ],
+      "directory": "canonical/seed-7/batch-032/audit-command",
+      "exit": 0,
+      "seconds": 8.596223249973264,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-48",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-048",
+      "exit": 0,
+      "seconds": 0.04370437498437241,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "421112f2ea86b290d3e70c717d376ec8951642247f5013d5cdabd084e4586d20"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "a2e93b6a660f15a237b00fb2a90786335e1e35e0f29c1af5a240cff9506447bb"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-19",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "48",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-032/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/audit"
+      ],
+      "directory": "canonical/seed-7/batch-048/audit-command",
+      "exit": 0,
+      "seconds": 8.582439541001804,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-64",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-064",
+      "exit": 0,
+      "seconds": 0.0471737080370076,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "017f11dda021e90ef4f1218e66ac0cb0212543ac138b451631ef90f87e808727"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "46cd069387dee588ccc78169b808c1efeebf4baeb9110914958d838b42de5597"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-20",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "64",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/audit"
+      ],
+      "directory": "canonical/seed-7/batch-064/audit-command",
+      "exit": 0,
+      "seconds": 8.546327707997989,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-80",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-080",
+      "exit": 0,
+      "seconds": 0.046617458981927484,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "7a122c8faa4063565e3e0c391edfbe2dcdc14510f1f2b5aa261d04c6452e471d"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "1b6de66cea0ee4d0bf8dc82f4b39cb4f83028deaa3340b518e28a6d9c50e6167"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-21",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "80",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/audit"
+      ],
+      "directory": "canonical/seed-7/batch-080/audit-command",
+      "exit": 0,
+      "seconds": 8.692242125049233,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-96",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-096",
+      "exit": 0,
+      "seconds": 0.0440629170043394,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "3134563bc810a756781668319718d8c6e22f514c7a4a6710842b7b9e95ffe682"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "78229618ea4aa229ab4e4dc683e955ca77bf7bac465aa98318b926ec13dbbeac"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-22",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "96",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-080/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/audit"
+      ],
+      "directory": "canonical/seed-7/batch-096/audit-command",
+      "exit": 0,
+      "seconds": 8.63209608400939,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "canonical-7-112",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112",
+        "16",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "canonical/seed-7/batch-112",
+      "exit": 0,
+      "seconds": 0.04470687499269843,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 1003184,
+          "complete_records": 16,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 1003184,
+            "sha256": "f4bebc9f7c4d259755afe5a2da3e8ce7870eae9b6165dd6e16b5ab86e04be0d2"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 2883632,
+          "complete_records": 32768,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 2883632,
+            "sha256": "4d63452d645fad778d0b83c46f9020ccc9ca9fe28682859f6a858126535b39d0"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-23",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "112",
+        "--count",
+        "16",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-096/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/audit"
+      ],
+      "directory": "canonical/seed-7/batch-112/audit-command",
+      "exit": 0,
+      "seconds": 8.735613957978785,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "replay-0-64",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-0",
+        "1",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "replay/seed-0",
+      "exit": 0,
+      "seconds": 0.011538958002347499,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 62744,
+          "complete_records": 1,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 62744,
+            "sha256": "1a552d23b7bc6f69d771cb576735149f6f9dd09327e9fec65adbe1590948f77e"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 180272,
+          "complete_records": 2048,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 180272,
+            "sha256": "6914b5ff8d59d8bef292ab57baac524a8e1db84dc9f14cef6c541fd1bd1d0d92"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-24",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-048/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-0/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-0/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-0/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-0/progress.jsonl",
+        "--seed",
+        "0",
+        "--first-batch",
+        "64",
+        "--count",
+        "1",
+        "--canonical-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/audit/record.json",
+        "--canonical-iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/iterations.bin",
+        "--canonical-coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-064/coefficients.bin",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-0/audit"
+      ],
+      "directory": "replay/seed-0/audit-command",
+      "exit": 0,
+      "seconds": 0.07740245800232515,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "replay-1-64",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-1",
+        "1",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "replay/seed-1",
+      "exit": 0,
+      "seconds": 0.008881040965206921,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 62744,
+          "complete_records": 1,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 62744,
+            "sha256": "0910329b5f22da480b68c705c29e1ac94dc5b30e4d2e0be02b1d1178f4d244a9"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 180272,
+          "complete_records": 2048,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 180272,
+            "sha256": "f4ac6595608ed7222763f1e131ccdd1bfdab663524ba3ac0867414b2c1f0c789"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-25",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-048/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-1/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-1/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-1/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-1/progress.jsonl",
+        "--seed",
+        "1",
+        "--first-batch",
+        "64",
+        "--count",
+        "1",
+        "--canonical-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/audit/record.json",
+        "--canonical-iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/iterations.bin",
+        "--canonical-coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-064/coefficients.bin",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-1/audit"
+      ],
+      "directory": "replay/seed-1/audit-command",
+      "exit": 0,
+      "seconds": 0.07936599996173754,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "replay-7-64",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "chunk",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-7",
+        "1",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "replay/seed-7",
+      "exit": 0,
+      "seconds": 0.01118058298015967,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": true,
+          "bytes": 62744,
+          "complete_records": 1,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 62744,
+            "sha256": "5dd339f07695a137eb3d38e51569ced45bcf1cd8cb4d6111c71806a8fe20999a"
+          }
+        },
+        "coefficients.bin": {
+          "exists": true,
+          "bytes": 180272,
+          "complete_records": 2048,
+          "trailing_bytes": 0,
+          "header_complete": true,
+          "identity": {
+            "bytes": 180272,
+            "sha256": "2125142379921ee4edaa8da9a5b972852bdace92677b318c664baac32c64dfa0"
+          }
+        }
+      }
+    },
+    {
+      "label": "audit-26",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--before",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-048/checkpoint.bin",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-7/checkpoint.bin",
+        "--iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-7/iterations.bin",
+        "--coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-7/coefficients.bin",
+        "--progress",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-7/progress.jsonl",
+        "--seed",
+        "7",
+        "--first-batch",
+        "64",
+        "--count",
+        "1",
+        "--canonical-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/audit/record.json",
+        "--canonical-iterations",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/iterations.bin",
+        "--canonical-coefficients",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-064/coefficients.bin",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/replay/seed-7/audit"
+      ],
+      "directory": "replay/seed-7/audit-command",
+      "exit": 0,
+      "seconds": 0.07766270800493658,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "evaluation-baseline",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "eval",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-0.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/baseline",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "evaluation/baseline",
+      "exit": 0,
+      "seconds": 0.0062220830004662275,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "audit-27",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/initial-0.bin",
+        "--evaluations",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/baseline/evaluations.bin",
+        "--quality",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/baseline/quality.bin",
+        "--seed",
+        "0",
+        "--baseline",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/baseline/audit"
+      ],
+      "directory": "evaluation/baseline/audit-command",
+      "exit": 0,
+      "seconds": 0.06933883397141472,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "evaluation-seed-0",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "eval",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-0",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "evaluation/seed-0",
+      "exit": 0,
+      "seconds": 0.008321041008457541,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "audit-28",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/checkpoint.bin",
+        "--evaluations",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-0/evaluations.bin",
+        "--quality",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-0/quality.bin",
+        "--seed",
+        "0",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-0/batch-112/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-0/audit"
+      ],
+      "directory": "evaluation/seed-0/audit-command",
+      "exit": 0,
+      "seconds": 0.0734411669545807,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "evaluation-seed-1",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "eval",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-1",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "evaluation/seed-1",
+      "exit": 0,
+      "seconds": 0.006808999984059483,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "audit-29",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/checkpoint.bin",
+        "--evaluations",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-1/evaluations.bin",
+        "--quality",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-1/quality.bin",
+        "--seed",
+        "1",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-1/batch-112/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-1/audit"
+      ],
+      "directory": "evaluation/seed-1/audit-command",
+      "exit": 0,
+      "seconds": 0.07265587500296533,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "evaluation-seed-7",
+      "argv": [
+        "/private/tmp/locomotion-lqr-native-first/native-release/native",
+        "eval",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/checkpoint.bin",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-7",
+        "/private/tmp/locomotion-lqr-learning-execution/context.bin"
+      ],
+      "directory": "evaluation/seed-7",
+      "exit": 0,
+      "seconds": 0.00630083295982331,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    },
+    {
+      "label": "audit-30",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+        "--descriptor",
+        "/private/tmp/locomotion-lqr-learning-execution/descriptor.json",
+        "--math-record",
+        "/private/tmp/locomotion-lqr-native-first/record.json",
+        "--after",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/checkpoint.bin",
+        "--evaluations",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-7/evaluations.bin",
+        "--quality",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-7/quality.bin",
+        "--seed",
+        "7",
+        "--previous-audit",
+        "/private/tmp/locomotion-lqr-learning-execution/canonical/seed-7/batch-112/audit/record.json",
+        "--output",
+        "/private/tmp/locomotion-lqr-learning-execution/evaluation/seed-7/audit"
+      ],
+      "directory": "evaluation/seed-7/audit-command",
+      "exit": 0,
+      "seconds": 0.07364770799176767,
+      "partial_artifacts": {
+        "iterations.bin": {
+          "exists": false
+        },
+        "coefficients.bin": {
+          "exists": false
+        }
+      }
+    }
+  ],
+  "old_math_compile_model_SDK_calls": 0,
+  "seconds_total": 208.0691565029556,
+  "last_advance_seconds": 0.09073570801410824,
+  "completed_seeds": [
+    0,
+    1,
+    7
+  ],
+  "canonical_batches": 384,
+  "canonical_steps": 196608,
+  "canonical_adam_updates": 1536,
+  "replay_steps": 1536,
+  "replay_adam_updates": 12,
+  "deterministic_eval_steps": 3072,
+  "goal_status": "All per-action math audits passed; retain each final goal result without seed selection"
+}

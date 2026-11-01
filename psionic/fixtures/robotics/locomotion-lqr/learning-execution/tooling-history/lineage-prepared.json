@@ -1,0 +1,58 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-preparation.v1",
+  "passed": true,
+  "descriptor": {
+    "bytes": 9275,
+    "sha256": "9e51ca041cdde319407bdaaaee0758e79959cbc05a918271c2eeb976a8246f1d"
+  },
+  "context": {
+    "bytes": 32,
+    "sha256": "d26e194c1962284ffe517b2c8e90ce8e15bfba92c417237db7f7d1065d76cc08"
+  },
+  "source": {
+    "psionic/tests/robotics/locomotion_lqr_learn.py": {
+      "bytes": 19647,
+      "sha256": "f980b5307d99d2e0532ae306823a435c74081dbcb05499646d482c124131baa5"
+    },
+    "psionic/tests/robotics/locomotion_lqr_learning_audit.py": {
+      "bytes": 27773,
+      "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-reader-qualification.json": {
+      "bytes": 265,
+      "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-freeze.json": {
+      "bytes": 1851,
+      "sha256": "515abd0ef715854483a508aad962a0e1ce5ac29687359f37e9e8346e3b90296c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-followup-v1.json": {
+      "bytes": 3052,
+      "sha256": "b24bae2d6431ac939b10a8b0b27f0d4d98aa6a13322618b46fcff153916724ba"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-lineage-qualification.json": {
+      "bytes": 474,
+      "sha256": "9d696fcd1595813ea8a471853b9021e622207e5de36d3c5229dfb2f8c401bcdb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-original-v1.py.txt": {
+      "bytes": 23978,
+      "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+    }
+  },
+  "initials": {
+    "initial-0.bin": {
+      "bytes": 488,
+      "sha256": "1e8f73d1d2762af8544404208f78f6cf3bcc88d5622a6eb2395ea7105abb8aef"
+    },
+    "initial-1.bin": {
+      "bytes": 488,
+      "sha256": "309d2f382289534d6f0cc193d0a6eef351005042e692f634b1a5619e5e7a930b"
+    },
+    "initial-7.bin": {
+      "bytes": 488,
+      "sha256": "a71bedbfe80613c8b52a8684c483e2a1a38a042ae775fc0198a60e6391a994e1"
+    }
+  },
+  "learning_calls": 0,
+  "commands": []
+}

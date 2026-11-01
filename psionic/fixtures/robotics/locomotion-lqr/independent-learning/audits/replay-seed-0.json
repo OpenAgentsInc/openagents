@@ -1,0 +1,65 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-audit.v1",
+  "passed": true,
+  "auditor": {
+    "bytes": 27773,
+    "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+  },
+  "product_learner_model_SDK_calls": 0,
+  "inputs": {
+    "descriptor": {
+      "bytes": 9275,
+      "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+    },
+    "math_record": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    },
+    "before": {
+      "bytes": 488,
+      "sha256": "e938748a15d72b72b0e538494b54ac03906b22506264e1f4417d25a3080fc18e"
+    },
+    "after": {
+      "bytes": 488,
+      "sha256": "20c1deccf3e0460470789a99bfdd18a15daaa557f8b4fddcd8973ff65e190376"
+    },
+    "iterations": {
+      "bytes": 62744,
+      "sha256": "1a552d23b7bc6f69d771cb576735149f6f9dd09327e9fec65adbe1590948f77e"
+    },
+    "coefficients": {
+      "bytes": 180272,
+      "sha256": "6914b5ff8d59d8bef292ab57baac524a8e1db84dc9f14cef6c541fd1bd1d0d92"
+    },
+    "progress": {
+      "bytes": 63,
+      "sha256": "4ad3004af702e513cd88a66744b0d436498e47e5499d56e8f31d30312e8929af"
+    },
+    "canonical_audit": {
+      "bytes": 2441,
+      "sha256": "0be32a9687e1502aca8c2b565e8051b768ea5650af91ddf74e1a7d0856f56b91"
+    },
+    "canonical_iterations": {
+      "bytes": 1003184,
+      "sha256": "1d021ec088d3ac3500b081a315d7499ce0f6940fbc99e53e4435545549e5aa43"
+    },
+    "canonical_coefficients": {
+      "bytes": 2883632,
+      "sha256": "58361a045d7008a8ec56714d3318896ebafc07b8cb01dabe2dd186132823ef00"
+    }
+  },
+  "result": {
+    "passed": true,
+    "seed": 0,
+    "plant_steps": 512,
+    "AdamW_updates": 4,
+    "coefficient_observations": 2048,
+    "iteration_and_coefficients_byte_exact": true,
+    "prior_numeric_proof_carried": {
+      "bytes": 2441,
+      "sha256": "0be32a9687e1502aca8c2b565e8051b768ea5650af91ddf74e1a7d0856f56b91"
+    },
+    "scope": "NEW declared resume replay versus already audited canonical batch65; no repeated independent numeric generation."
+  },
+  "seconds": 0.011702625022735447
+}

@@ -1,0 +1,53 @@
+{
+  "schema": "psionic.locomotion-lqr.gate.v1",
+  "passed": true,
+  "syntax_passed": true,
+  "stub_cases": 3,
+  "python_spy_calls": [
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_native_reference.py",
+      "--coax",
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/coax/bin/coax",
+      "--output",
+      "/tmp/locomotion-lqr-gate-first/fresh-math"
+    ],
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learn.py",
+      "--prepare",
+      "--qualified",
+      "/tmp/locomotion-lqr-gate-first/qualified",
+      "--output",
+      "/tmp/locomotion-lqr-gate-first/fresh-learning"
+    ],
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learn.py",
+      "--run-prepared",
+      "/tmp/locomotion-lqr-gate-first/fresh-learning",
+      "--qualified",
+      "/tmp/locomotion-lqr-gate-first/qualified"
+    ],
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learn.py",
+      "--run-prepared",
+      "/tmp/locomotion-lqr-gate-first/already-prepared",
+      "--qualified",
+      "/tmp/locomotion-lqr-gate-first/qualified"
+    ]
+  ],
+  "gates": {
+    "psionic/tests/robotics/check-locomotion-lqr.sh": {
+      "bytes": 287,
+      "sha256": "c69eae1b7613030d34c55f7fd59111099d9e52b77c2263164c048294d0c44699"
+    },
+    "psionic/tests/robotics/check-locomotion-lqr-learn.sh": {
+      "bytes": 641,
+      "sha256": "81fe30bdb815cd8591517528da17f815f12ebe05dbf75da75266307b3687cb78"
+    }
+  },
+  "fixture_qualification_carried": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "decoder_math_training_calls": 0,
+  "scope": "syntax/routing only; math fixture result carried; explicit learn wrapper advances one bounded action"
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-lineage.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 27773,
+    "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+  },
+  "math_qualification": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "new_positive_cases": 4,
+  "new_poisons_refused": 19,
+  "old_reader_or_numeric_tests_repeated": 0,
+  "product_learner_model_SDK_calls": 0
+}

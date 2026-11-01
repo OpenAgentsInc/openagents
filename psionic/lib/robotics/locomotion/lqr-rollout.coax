@@ -1,0 +1,43 @@
+#load "lqr-fixtures.coax";
+#load "lqr-policy.coax";
+#load "gaussian-sampling.coax";
+#load "gae.coax";
+#authority;
+#test "LQR nominal critic and scalar row retain the declared reward and final-state value" {
+ c:[1]RleCritic;#assert rle_critic(0.5,c[..])==RlpStatus.ok;P:=1.25/(1-0.95*0.25);C:=((1+0.95*P)*0.0625)/(1-0.95);#assert c[0].P==P && c[0].C==C;
+ r:[1]RleRow;#assert rle_transition(0.5,1,-0.5,0,r[..])==RlpStatus.ok;#assert r[0].x==1 && r[0].action== -0.5 && r[0].next_x==0.5 && r[0].z==0 && r[0].step.reward.value== -1.25 && r[0].step.current_value.value== -(P+C) && r[0].step.next_value.value== -(P*0.25+C) && r[0].step.terminated==0 && r[0].step.truncated==0 && r[0].old_logp==1.3862943611198906-0.9189385332046728 && r[0].target.delta.value==0 && r[0].target.advantage.value==0 && r[0].target.lambda_return.value==0 && r[0].target.bootstrap==0 && r[0].target.trace==0;
+ for K:[2]f64.[0.25,1] {#assert rle_critic(K,c[..])==RlpStatus.ok;}#assert rle_critic(0.24,c[..])==RlpStatus.range;
+}
+#test "LQR malformed sampled fields and candidate state refuse atomically" {
+ o:=[2]RleRow.[rlq_poison_row(),rlq_poison_row()];#assert rle_transition(0,0,0,0,o[..])==RlpStatus.shape;
+ for role:0..<5 {K:=0.5;x:=0.0;u:=0.0;z:=0.0;if role==0 {K=0.24;}if role==1 {x=16.01;}if role==2 {u=18.26;}if role==3 {z=9.01;}if role==4 {x=16;u=1;}#assert rle_transition(K,x,u,z,o[0..<1])==RlpStatus.range;}for r:o {rlq_same_row(r,rlq_poison_row());}
+ good:[1]RleRow;for sign:[2]f64.[-1,1] {#assert rle_transition(1,16*sign,-18.25*sign,9*sign,good[..])==RlpStatus.ok;}
+}
+#test "LQR two worlds and collector tails preserve per-world seed and value lineage" {
+ w:=[2]RleWorld.[RleWorld.{x=1,rng=CrSeed.{seed=0x61c8864680b583eb}},RleWorld.{x= -0.25,rng=CrSeed.{seed=7,counter=8}}];o:[1]RleBatch;#assert rle_rollout(2,2,0.5,w[..],o[..])==RlpStatus.ok;#assert o[0].worlds==2 && o[0].horizon==2 && o[0].count==4 && o[0].K_old==0.5 && o[0].rows[0].action== -0.5 && o[0].rows[0].z==0 && o[0].rows[0].next_x==0.5 && o[0].rows[1].x==0.5 && o[0].rows[2].x== -0.25 && o[0].next_worlds[0].rng.counter==4 && o[0].next_worlds[0].rng.seed==w[0].rng.seed && o[0].next_worlds[1].rng.counter==12 && o[0].next_worlds[1].rng.seed==7;
+ c:=RleCritic.{P=o[0].P,C=o[0].C};for i:0..<4 {r:=o[0].rows[i];#assert r.step.current_value.value==rle_value(c,r.x) && r.step.next_value.value==rle_value(c,r.next_x) && r.target.bootstrap==1 && r.target.trace==(ifx i%2==1 then 0 else 1) && r.step.terminated==0 && r.step.truncated==0;}#assert o[0].rows[0].target.advantage.value==o[0].rows[0].target.delta.value+(0.95*0.95)*o[0].rows[1].target.delta.value && o[0].rows[1].target.advantage.value==o[0].rows[1].target.delta.value && o[0].next_worlds[0].x==o[0].rows[1].next_x && o[0].next_worlds[1].x==o[0].rows[3].next_x;
+}
+#test "LQR rollout shape and counter admission precede all publication" {
+ w:[16]RleWorld;o:[1]RleBatch;o[0].count=777;for W:[4]int.[0,17,-1,9223372036854775807] {#assert rle_rollout(W,1,0,w[0..<1],o[..])==RlpStatus.shape;}for H:[3]int.[0,33,-1] {#assert rle_rollout(1,H,0,w[0..<1],o[..])==RlpStatus.shape;}#assert rle_rollout(1,1,0.5,w[..],o[..])==RlpStatus.shape && rle_rollout(1,1,0.5,w[0..<1],o[0..<0])==RlpStatus.shape;
+ w[0].rng.counter=18446744073709551614;#assert rle_rollout(1,1,0.5,w[0..<1],o[..])==RlpStatus.counter && o[0].count==777;w[0].rng.counter=18446744073709551613;#assert rle_rollout(1,1,1,w[0..<1],o[..])==RlpStatus.ok && o[0].next_worlds[0].rng.counter==18446744073709551615;
+}
+#test "LQR matching axis endpoints and scalar diagnostics are observable" {
+ w:[17]RleWorld;o:[1]RleBatch;#assert rle_rollout(0,1,0.5,w[0..<0],o[..])==RlpStatus.shape && rle_rollout(17,1,0.5,w[..],o[..])==RlpStatus.shape;#assert rle_rollout(16,1,0.5,w[0..<16],o[..])==RlpStatus.ok && o[0].count==16 && o[0].next_worlds[15].rng.counter==2;#assert rle_rollout(1,32,0.5,w[0..<1],o[..])==RlpStatus.ok && o[0].count==32 && o[0].next_worlds[0].rng.counter==64;
+ w[0].x=16;#assert rle_rollout(1,1,1,w[0..<1],o[..])==RlpStatus.ok;w[0].x=16.001;#assert rle_rollout(1,1,0.5,w[0..<1],o[..])==RlpStatus.range;
+ r:[1]RleRow;#assert rle_transition(1,16,0,9,r[..])==RlpStatus.ok && r[0].next_x==16 && r[0].z==9;w[0].x=0;#assert rle_rollout(1,1,0.5,w[0..<1],o[..])==RlpStatus.ok;q:=o[0].rows[0];#assert q.target.delta.value==(q.step.reward.value+0.95*q.step.next_value.value)-q.step.current_value.value && q.target.lambda_return.value==q.target.advantage.value+q.step.current_value.value;
+}
+// Numeric/profile helpers remain unsealed; critic/value inputs must be admitted.
+rle_critic_owned :: (K:f64)->RleCritic {b:=1-K;D:=1-0.95*(b*b);P:=(1+K*K)/D;C:=((1+0.95*P)*0.0625)/(1-0.95);return RleCritic.{P=P,C=C};}
+rle_value :: (c:RleCritic,x:f64)->f64 {return -(c.P*(x*x)+c.C);}
+rle_critic :: (K:f64,output:[]RleCritic)->RlpStatus #export_c {if output.count!=1 {return RlpStatus.shape;}if !rgp_finite(f64_bits(K)) {return RlpStatus.number;}if !rlp_gain(K) {return RlpStatus.range;}output[0]=rle_critic_owned(K);return RlpStatus.ok;}
+rle_transition :: (K:f64,x:f64,action:f64,z:f64,output:[]RleRow)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rlr_finite4(f64_bits(K),f64_bits(x),f64_bits(action),f64_bits(z)) {return RlpStatus.number;}if !rlp_gain(K) || abs(x)>16 || abs(action)>18.25 || abs(z)>9 {return RlpStatus.range;}next:=x+action;if abs(next)>16 {return RlpStatus.range;}
+ c:=rle_critic_owned(K);r:RleRow;r.x=x;r.action=action;r.next_x=next;r.z=z;r.step.reward.value= -(x*x+action*action);r.step.current_value.value=rle_value(c,x);r.step.next_value.value=rle_value(c,next);d:[1]RgpDensity;#assert rgp_density_raw(-(K*x),-1.3862943611198906,action,d[..])==RgpStatus.ok;r.old_logp=d[0].logp.value;output[0]=r;return RlpStatus.ok;
+}
+rle_rollout :: (worlds:int,horizon:int,K:f64,input:[]RleWorld,output:[]RleBatch)->RlpStatus #export_c {
+ if worlds<1 || worlds>16 || horizon<1 || horizon>32 || input.count!=worlds || output.count!=1 {return RlpStatus.shape;}
+ if !rgp_finite(f64_bits(K)) {return RlpStatus.number;}for w:input {if !rgp_finite(f64_bits(w.x)) {return RlpStatus.number;}}if !rlp_gain(K) {return RlpStatus.range;}for w:input {if abs(w.x)>16 {return RlpStatus.range;}}for w:input {if w.rng.counter>18446744073709551615-cast(u64)(horizon*2) {return RlpStatus.counter;}}
+ stage:RleBatch;stage.worlds=worlds;stage.horizon=horizon;stage.count=worlds*horizon;stage.K_old=K;c:=rle_critic_owned(K);stage.P=c.P;stage.C=c.C;gae:[512]RgaStep;targets:[512]RgaOutput;
+ for w:0..<worlds {current:=input[w];for t:0..<horizon {sample:[1]RgpDraw;#assert rgp_sample_raw(current.rng,-(K*current.x),-1.3862943611198906,sample[..])==RgpStatus.ok;row:[1]RleRow;#assert rle_transition(K,current.x,sample[0].action.value,sample[0].z.value,row[..])==RlpStatus.ok;index:=w*horizon+t;stage.rows[index]=row[0];gae[index]=row[0].step;current.x=row[0].next_x;current.rng=sample[0].next;}stage.next_worlds[w]=current;}
+ #assert rga_returns_raw(worlds,horizon,0.95,0.95,gae[0..<stage.count],targets[0..<stage.count])==RgaStatus.ok;for i:0..<stage.count {stage.rows[i].target=targets[i];}output[0]=stage;return RlpStatus.ok;
+}

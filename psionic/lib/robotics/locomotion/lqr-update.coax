@@ -1,0 +1,66 @@
+#load "lqr-policy.coax";
+#load "lqr-rollout.coax";
+#authority;
+#test "LQR projection preserves rounded old-policy trust endpoints and global box" {
+ #assert rlt_lower(0.25)==0.25 && rlt_upper(1)==1;
+ o:[1]f64;for old:[3]f64.[0.25,0.5,1] {#assert rlt_project(old,-100,o[..])==RlpStatus.ok && o[0]==rlt_lower(old);#assert rlt_project(old,100,o[..])==RlpStatus.ok && o[0]==rlt_upper(old);#assert rlt_project(old,old,o[..])==RlpStatus.ok && o[0]==old;}#assert rlt_project(0.5,0.49609375,o[..])==RlpStatus.ok && o[0]==0.49609375 && rlt_project(0.5,0.50390625,o[..])==RlpStatus.ok && o[0]==0.50390625;
+ o[0]=777;#assert rlt_project(0.24,0.5,o[..])==RlpStatus.range && rlt_project(0.5,0.5,o[0..<0])==RlpStatus.shape && o[0]==777;
+}
+#test "LQR epoch uses a full-batch mean and retains proposed optimizer moments" {
+ d:[1]RgpDensity;#assert rgp_density_raw(-0.5,-1.3862943611198906,0,d[..])==RgpStatus.ok;r:=[1]RlpRow.[RlpRow.{x=1,action=0,old_logp=d[0].logp.value,advantage=2}];o:[1]RltEpoch;incoming:=RltOptimizer.{K=0.5};#assert rlt_epoch(0.5,incoming,r[..],o[..])==RlpStatus.ok;
+ c:=aw_cell(rlt_group(),1,0.5,16,0,0);#assert o[0].next.K==c.p && o[0].next.m==c.m && o[0].next.v==c.v && o[0].next.adam.step==1 && o[0].next.adam.skipped==0 && o[0].actual_loss_mean== -2 && o[0].gradient_mean==16 && o[0].unprojectedK==c.p && o[0].projection==0 && o[0].rows==1 && o[0].blocks==1 && o[0].clipped==0;
+ incoming.K=0.49609375;incoming.m=100;incoming.v=0;incoming.adam.step=1;#assert rlt_epoch(0.5,incoming,r[..],o[..])==RlpStatus.ok && o[0].next.K==0.49609375 && o[0].projection==1 && o[0].next.adam.step==2 && o[0].next.m!=incoming.m;
+}
+#test "LQR epoch partial final block normalizes actual row count" {
+ d:[1]RgpDensity;#assert rgp_density_raw(-0.5,-1.3862943611198906,0,d[..])==RgpStatus.ok;r:[65]RlpRow;for i:0..<65 {r[i]=RlpRow.{x=1,action=0,old_logp=d[0].logp.value,advantage=2};}o:[1]RltEpoch;#assert rlt_epoch(0.5,RltOptimizer.{K=0.5},r[..],o[..])==RlpStatus.ok && o[0].gradient_mean==16 && o[0].actual_loss_mean== -2 && o[0].rows==65 && o[0].blocks==2 && o[0].clipped==0;
+}
+#test "LQR incoming state and late malformed rows refuse before epoch publication" {
+ r:[513]RlpRow;o:[1]RltEpoch;o[0].rows=777;s:=RltOptimizer.{K=0.5};#assert rlt_epoch(0.5,s,r[0..<0],o[..])==RlpStatus.shape && rlt_epoch(0.5,s,r[..],o[..])==RlpStatus.shape && rlt_epoch(0.5,s,r[0..<1],o[0..<0])==RlpStatus.shape;
+ s.K=0.6;#assert rlt_epoch(0.5,s,r[0..<1],o[..])==RlpStatus.state;s.K=0.5;s.v= -1;#assert rlt_epoch(0.5,s,r[0..<1],o[..])==RlpStatus.state;s.v=0;s.adam.skipped=1;#assert rlt_epoch(0.5,s,r[0..<1],o[..])==RlpStatus.state;s.adam.skipped=0;s.adam.step=1099511627776;#assert rlt_epoch(0.5,s,r[0..<1],o[..])==RlpStatus.state;s.adam.step=0;r[64].x=17;#assert rlt_epoch(0.5,s,r[0..<65],o[..])==RlpStatus.range && o[0].rows==777;
+}
+#test "LQR initializer fixes all worlds and exact counter partitions" {
+ o:[1]RltState;#assert rlt_begin(7,o[..])==RlpStatus.ok && o[0].optimizer.K==0.25 && o[0].optimizer.m==0 && o[0].optimizer.v==0 && o[0].optimizer.adam.step==0 && o[0].optimizer.adam.skipped==0 && o[0].batch==0 && o[0].runseed==7;
+ for w:0..<16 {want:=ifx w<4 then -1.0 else ifx w<8 then -0.25 else ifx w<12 then 0.25 else 1.0;#assert o[0].worlds[w].x==want && o[0].worlds[w].rng.seed==7 && o[0].worlds[w].rng.counter==cast(u64)(w*8192);}#assert rlt_state_ok(o[0]);bad:=o[0];bad.optimizer.adam.skipped=1;#assert !rlt_state_ok(bad);bad=o[0];bad.optimizer.adam.step=1;#assert !rlt_state_ok(bad);bad=o[0];bad.worlds[15].rng.counter+=1;#assert !rlt_state_ok(bad);bad=o[0];bad.worlds[0].rng.seed=1;#assert !rlt_state_ok(bad);bad=o[0];bad.worlds[7].x=17;#assert !rlt_state_ok(bad);
+ #assert rlt_begin(2,o[..])==RlpStatus.range && rlt_begin(1,o[0..<0])==RlpStatus.shape;
+}
+#test "LQR diagnostic seed13 one full batch owns all four transitions and publication" {
+ s:[1]RltState;#assert rlt_begin(13,s[..])==RlpStatus.ok;o:[1]RltIteration;#assert rlt_batch(s[0],o[..])==RlpStatus.ok && o[0].batch.worlds==16 && o[0].batch.horizon==32 && o[0].batch.count==512 && o[0].batch.K_old==0.25 && o[0].next.batch==1 && o[0].next.runseed==13 && rlt_state_ok(o[0].next);
+ for e:0..<4 {r:=o[0].epochs[e];#assert r.next.adam.step==e+1 && r.next.adam.skipped==0 && r.rows==512 && r.blocks==8 && r.next.K>=0.25 && r.next.K<=0.25390625 && r.next.v>=0 && r.clipped>=0 && r.clipped<=512;}
+ #assert o[0].epochs[0].actual_loss_mean!=0 && o[0].epochs[0].gradient_mean!=0;
+ #assert o[0].next.optimizer.K==o[0].epochs[3].next.K && o[0].next.optimizer.m==o[0].epochs[3].next.m && o[0].next.optimizer.v==o[0].epochs[3].next.v;for w:0..<16 {#assert o[0].batch.rows[w*32].x==s[0].worlds[w].x && o[0].next.worlds[w].x==o[0].batch.rows[w*32+31].next_x && o[0].next.worlds[w].rng.counter==cast(u64)(w*8192+64) && o[0].next.worlds[w].rng.seed==13;}
+ for i:0..<512 {r:=o[0].batch.rows[i];#assert abs(r.z)<=9 && abs(r.next_x)<=16 && r.target.bootstrap==1 && r.target.trace==(ifx i%32==31 then 0 else 1);}
+ bad:=s[0];bad.batch=128;bad.optimizer.adam.step=512;for w:0..<16 {bad.worlds[w].rng.counter=cast(u64)(w*8192+8192);}o[0].batch.count=777;#assert rlt_batch(bad,o[..])==RlpStatus.state && o[0].batch.count==777 && rlt_batch(s[0],o[0..<0])==RlpStatus.shape;
+}
+#test "LQR exact state endpoints detached fields and clipped epoch remain observable" {
+ #assert rlt_seed(0) && rlt_seed(1) && rlt_seed(7) && rlt_seed(13) && !rlt_seed(2) && rlt_index(0) && rlt_index(128) && !rlt_index(-1) && !rlt_index(129);bad:=RltOptimizer.{K=0.24};#assert !rlt_optimizer_ok(bad);s:[1]RltState;#assert rlt_begin(0,s[..])==RlpStatus.ok;s[0].batch=128;s[0].optimizer.adam.step=512;for w:0..<16 {s[0].worlds[w].rng.counter=cast(u64)(w*8192+8192);}s[0].worlds[0].x=16;#assert rlt_state_ok(s[0]);s[0].runseed=2;#assert !rlt_state_ok(s[0]);
+ a:[2]RleRow;a[0].x=2;a[0].action=3;a[0].old_logp=4;a[0].target.advantage.value=5;a[1].x= -2;a[1].action= -3;a[1].old_logp= -4;a[1].target.advantage.value= -5;b:[2]RlpRow;rlt_detach(a[..],b[..]);for i:0..<2 {#assert b[i].x==a[i].x && b[i].action==a[i].action && b[i].old_logp==a[i].old_logp && b[i].advantage==a[i].target.advantage.value;}
+ d:[1]RgpDensity;#assert rgp_density_raw(-0.50390625,-1.3862943611198906,0,d[..])==RgpStatus.ok;r:=[1]RlpRow.[RlpRow.{x=1,action=0,old_logp=d[0].logp.value-1,advantage=2}];o:[1]RltEpoch;#assert rlt_epoch(0.5,RltOptimizer.{K=0.50390625},r[..],o[..])==RlpStatus.ok && o[0].clipped==1;
+ r[0].old_logp=100;#assert rlt_epoch(0.5,RltOptimizer.{K=0.5},r[..],o[..])==RlpStatus.ratio;
+}
+#test "LQR state range and run labels are independently invalid" {
+ s:[1]RltState;#assert rlt_begin(0,s[..])==RlpStatus.ok;s[0].batch=129;s[0].optimizer.adam.step=516;for w:0..<16 {s[0].worlds[w].rng.counter=cast(u64)(w*8192+129*64);}#assert !rlt_state_ok(s[0]);s[0].batch=0;s[0].optimizer.adam.step=0;s[0].runseed=2;for w:0..<16 {s[0].worlds[w].rng.counter=cast(u64)(w*8192);s[0].worlds[w].rng.seed=2;}#assert !rlt_state_ok(s[0]);
+}
+// The helpers and state PODs are unsealed numeric observations, not provenance certificates.
+rlt_lower :: (K_old:f64)->f64 {x:=K_old-0.00390625;return ifx rcp_side(x,0.25,1)== -1 then 0.25 else x;}
+rlt_upper :: (K_old:f64)->f64 {x:=K_old+0.00390625;return ifx rcp_side(x,0.25,1)==1 then 1 else x;}
+rlt_project :: (K_old:f64,candidate:f64,output:[]f64)->RlpStatus #export_c {if output.count!=1 {return RlpStatus.shape;}if !rgp_finite2(f64_bits(K_old),f64_bits(candidate)) {return RlpStatus.number;}if !rlp_gain(K_old) {return RlpStatus.range;}lo:=rlt_lower(K_old);hi:=rlt_upper(K_old);side:=rcp_side(candidate,lo,hi);output[0]=ifx side== -1 then lo else ifx side==1 then hi else candidate;return RlpStatus.ok;}
+rlt_group :: ()->AwGroup {return AwGroup.{first=0,count=1,lr=0.001,beta1=0.9,beta2=0.999,eps=1e-8,decay=0};}
+rlt_optimizer_ok :: (s:RltOptimizer)->bool {return rlp_gain(s.K) && rgp_finite2(f64_bits(s.m),f64_bits(s.v)) && s.v>=0 && aw_state(s.adam) && s.adam.skipped==0;}
+rlt_epoch :: (K_old:f64,input:RltOptimizer,rows:[]RlpRow,output:[]RltEpoch)->RlpStatus #export_c {
+ if rows.count<1 || rows.count>512 || output.count!=1 {return RlpStatus.shape;}if !rgp_finite2(f64_bits(K_old),f64_bits(input.K)) {return RlpStatus.number;}for r:rows {if !rlp_row_finite(r) {return RlpStatus.number;}}
+ if !rlp_gain(K_old) {return RlpStatus.range;}if !rlt_optimizer_ok(input) || input.K<rlt_lower(K_old) || input.K>rlt_upper(K_old) {return RlpStatus.state;}for r:rows {if !rlp_row_domain(r) {return RlpStatus.range;}}
+ fresh:RltEpoch;loss:f64=0;gradient:f64=0;block_count:=(rows.count+63)/64;for block_index:0..<block_count {start:=block_index*64;end:=ifx block_index==block_count-1 then rows.count else start+64;block:[1]RlpBlock;status:=rlp_block(input.K,rows[start..<end],block[..]);if status!=RlpStatus.ok {return status;}loss+=block[0].actual_loss_sum;gradient+=block[0].gradient_sum;fresh.clipped+=block[0].clipped;fresh.blocks+=1;}
+ fresh.actual_loss_mean=loss/f64(rows.count);fresh.gradient_mean=gradient/f64(rows.count);p:=[1]f64.[input.K];m:=[1]f64.[input.m];v:=[1]f64.[input.v];g:=[1]f64.[fresh.gradient_mean];groups:=[1]AwGroup.[rlt_group()];compute:[1]f32;result:=aw_step(groups[..],AwPolicy.{},input.adam,p[..],g[..],m[..],v[..],compute[0..<0],false);if result.status!=AwStatus.ok {return RlpStatus.optimizer;}
+ projected:[1]f64;#assert rlt_project(K_old,p[0],projected[..])==RlpStatus.ok;fresh.unprojectedK=p[0];fresh.projection=ifx p[0]!=projected[0] then 1 else 0;fresh.next=RltOptimizer.{K=projected[0],m=m[0],v=v[0],adam=result.state};fresh.rows=rows.count;output[0]=fresh;return RlpStatus.ok;
+}
+rlt_seed :: (seed:u64)->bool {return seed==0 || seed==1 || seed==7 || seed==13;}
+rlt_begin :: (seed:u64,output:[]RltState)->RlpStatus #export_c {if output.count!=1 {return RlpStatus.shape;}if !rlt_seed(seed) {return RlpStatus.range;}s:RltState;s.optimizer.K=0.25;s.runseed=seed;for w:0..<16 {s.worlds[w].x=ifx w<4 then -1.0 else ifx w<8 then -0.25 else ifx w<12 then 0.25 else 1.0;s.worlds[w].rng=CrSeed.{seed=seed,counter=cast(u64)(w*8192)};}output[0]=s;return RlpStatus.ok;}
+rlt_state_ok :: (s:RltState)->bool {if !rlt_index(s.batch) || !rlt_seed(s.runseed) || !rlt_optimizer_ok(s.optimizer) || s.optimizer.adam.step!=4*s.batch {return false;}for w:0..<16 {if !rgp_finite(f64_bits(s.worlds[w].x)) || abs(s.worlds[w].x)>16 || s.worlds[w].rng.seed!=s.runseed || s.worlds[w].rng.counter!=cast(u64)(w*8192+s.batch*64) {return false;}}return true;}
+rlt_batch :: (input:RltState,output:[]RltIteration)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rlt_state_ok(input) || input.batch==128 {return RlpStatus.state;}fresh:RltIteration;worlds:=input.worlds;collected:[1]RleBatch;#assert rle_rollout(16,32,input.optimizer.K,worlds[..],collected[..])==RlpStatus.ok;fresh.batch=collected[0];rows:[512]RlpRow;source_rows:=fresh.batch.rows;rlt_detach(source_rows[..],rows[..]);
+ current:=input.optimizer;for epoch:0..<4 {next:[1]RltEpoch;status:=rlt_epoch(input.optimizer.K,current,rows[..],next[..]);if status!=RlpStatus.ok {return status;}fresh.epochs[epoch]=next[0];current=next[0].next;}
+ fresh.next=input;fresh.next.optimizer=current;fresh.next.batch=input.batch+1;for w:0..<16 {fresh.next.worlds[w]=fresh.batch.next_worlds[w];}output[0]=fresh;return RlpStatus.ok;
+}
+
+rlt_index :: (batch:int)->bool {return batch>=0 && batch<=128;}
+rlt_detach :: (input:[]RleRow,output:[]RlpRow) {for r,i:input {output[i]=RlpRow.{x=r.x,action=r.action,old_logp=r.old_logp,advantage=r.target.advantage.value};}}

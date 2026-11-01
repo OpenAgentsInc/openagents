@@ -1,0 +1,595 @@
+{
+  "schema": "psionic.locomotion-lqr.registration.v1",
+  "passed": true,
+  "sources": {
+    "psionic/check.sh": {
+      "bytes": 45481,
+      "sha256": "be0f5fbc66b3074d9a0515a6c550589cc5323679f675d3aed420bbd9e4347f35"
+    },
+    "psionic/tests/robotics/check.sh": {
+      "bytes": 23906,
+      "sha256": "7c5468c7c4f2ffd7de33fd1ccb2d9355d30787cf90c6cbcbd42664ef43b080a8"
+    }
+  },
+  "scope": "Only NEW path/source/mixed dispatcher spy contexts. No actual Coax/C/native/numeric/old gate/model/SDK/NN execution.",
+  "commands": [
+    {
+      "label": "syntax-psionic-check.sh",
+      "argv": [
+        "bash",
+        "-n",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "syntax-psionic-tests-robotics-check.sh",
+      "argv": [
+        "bash",
+        "-n",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "policy",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/locomotion/lqr-policy"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "rollout",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/locomotion/lqr-rollout"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "update",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/locomotion/lqr-update"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "score",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/locomotion/lqr-score"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "public-group",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/locomotion-lqr"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "b6492d3c5d0a04ae09cc1afe2554ba8ae4177337409aec75d1afd6272fbede53"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "public-no-mutation",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "robotics/locomotion-lqr"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "b6492d3c5d0a04ae09cc1afe2554ba8ae4177337409aec75d1afd6272fbede53"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deduplicated",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/locomotion-lqr",
+        "robotics/locomotion/lqr-score",
+        "robotics/locomotion/lqr-policy"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "b6492d3c5d0a04ae09cc1afe2554ba8ae4177337409aec75d1afd6272fbede53"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "top-policy",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh",
+        "--only",
+        "robotics/locomotion/lqr-policy",
+        "--jobs",
+        "3"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "top-rollout",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh",
+        "--only",
+        "robotics/locomotion/lqr-rollout",
+        "--jobs",
+        "3"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "top-update",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh",
+        "--only",
+        "robotics/locomotion/lqr-update",
+        "--jobs",
+        "3"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "top-score",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh",
+        "--only",
+        "robotics/locomotion/lqr-score",
+        "--jobs",
+        "3"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "top-public",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh",
+        "--only",
+        "robotics/locomotion-lqr",
+        "--jobs",
+        "3"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "b6492d3c5d0a04ae09cc1afe2554ba8ae4177337409aec75d1afd6272fbede53"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "mixed-offline",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--mutate",
+        "--jobs",
+        "3",
+        "robotics/panda-owned-query-neural",
+        "robotics/locomotion-lqr"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "565aff2713a136ada8b9532a4fac37ce69823865ac92917777d415536d5b4bbf"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "default-list",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--list",
+        "all"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 3077,
+        "sha256": "4b76db0961995d49a6386019c71186cf9df0cf5229a799c10460c1d6c4a3a0bc"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "unknown",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "robotics/locomotion/lqr-unknown"
+      ],
+      "returncode": 2,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 55,
+        "sha256": "9f4ec099487a0b71364d4e1296951584a4af65d58f98890f47d169101be2a1a4"
+      }
+    },
+    {
+      "label": "whitelist",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/whitelist.sh",
+        "robotics/locomotion/lqr-policy",
+        "robotics/locomotion/lqr-rollout",
+        "robotics/locomotion/lqr-update",
+        "robotics/locomotion/lqr-score",
+        "robotics/locomotion-lqr",
+        "psionic/lib/robotics/locomotion/lqr-policy.coax",
+        "psionic/lib/robotics/locomotion/lqr-rollout.coax",
+        "psionic/lib/robotics/locomotion/lqr-update.coax",
+        "psionic/lib/robotics/locomotion/lqr-score.coax",
+        "psionic/lib/robotics/locomotion-lqr.coax",
+        "robotics/locomotion/lqr-unknown"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 43,
+        "sha256": "2b0d2075662cd4b49123836d904a5e678c712d9b4f07427ee342aab8c1495cd3"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "learn-explicit",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "robotics/locomotion-lqr-learn"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "34758e7d95167b9783f8df4282ab9dad50aefc58d6a0f8cc6cfb5bb522164fb0"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "top-learn-explicit",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/check.sh",
+        "--only",
+        "robotics/locomotion-lqr-learn"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 119,
+        "sha256": "34758e7d95167b9783f8df4282ab9dad50aefc58d6a0f8cc6cfb5bb522164fb0"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "learn-list",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--list",
+        "robotics/locomotion-lqr-learn"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 29,
+        "sha256": "dc45ce5cb9b6fbf81074bdcd34202038416bc3399295ca9316ab507d458b86c9"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "default-list-no-training",
+      "argv": [
+        "bash",
+        "/tmp/locomotion-lqr-registration-first/shadow/psionic/tests/robotics/check.sh",
+        "--list",
+        "all"
+      ],
+      "returncode": 0,
+      "stdout": {
+        "bytes": 3077,
+        "sha256": "4b76db0961995d49a6386019c71186cf9df0cf5229a799c10460c1d6c4a3a0bc"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "policy",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "rollout",
+      "actual_Coax_roots": [
+        "locomotion/lqr-rollout"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "update",
+      "actual_Coax_roots": [
+        "locomotion/lqr-update"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "score",
+      "actual_Coax_roots": [
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "public-group",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy",
+        "locomotion/lqr-rollout",
+        "locomotion/lqr-update",
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 1,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "public-no-mutation",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy",
+        "locomotion/lqr-rollout",
+        "locomotion/lqr-update",
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 1,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "deduplicated",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy",
+        "locomotion/lqr-rollout",
+        "locomotion/lqr-update",
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 1,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "top-policy",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "top-rollout",
+      "actual_Coax_roots": [
+        "locomotion/lqr-rollout"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "top-update",
+      "actual_Coax_roots": [
+        "locomotion/lqr-update"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "top-score",
+      "actual_Coax_roots": [
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 0,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "top-public",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy",
+        "locomotion/lqr-rollout",
+        "locomotion/lqr-update",
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 1,
+      "offline_gate_spies": 0
+    },
+    {
+      "name": "mixed-offline",
+      "actual_Coax_roots": [
+        "locomotion/lqr-policy",
+        "locomotion/lqr-rollout",
+        "locomotion/lqr-update",
+        "locomotion/lqr-score"
+      ],
+      "aggregate_Coax_commands": 0,
+      "native_gate_spies": 1,
+      "offline_gate_spies": 1
+    },
+    {
+      "name": "learn-explicit",
+      "actual_Coax_roots": [],
+      "native_gate_spies": 0,
+      "training_gate_spies": 1
+    },
+    {
+      "name": "top-learn-explicit",
+      "actual_Coax_roots": [],
+      "native_gate_spies": 0,
+      "training_gate_spies": 1
+    }
+  ],
+  "missing_explicit_learning_paths_refused": true,
+  "actual_Coax_C_native_model_calls": 0,
+  "public_aggregate_source_sites_expected": 0,
+  "old_gates_repeated": false,
+  "seconds": 4.978071749967057
+}

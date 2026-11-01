@@ -1,0 +1,377 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-descriptor.v1",
+  "frozen_before_learning": true,
+  "experiment": {
+    "bytes": 8660,
+    "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+  },
+  "contract": {
+    "bytes": 17905,
+    "sha256": "e6e490fad8d3db4eb26c42c92fecd2fac3cb08c142b26013793abeb34e5099ae"
+  },
+  "qualified_math_record": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "math_qualification": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "independent_reference": {
+    "bytes": 4454,
+    "sha256": "d5bfebc50e90daa9f0edc565009ceef1a679d5fa5b8efa4a5666778efc87fb07"
+  },
+  "live_auditor": {
+    "bytes": 23978,
+    "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+  },
+  "live_auditor_path": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_learning_audit.py",
+  "live_reader_qualification": {
+    "bytes": 265,
+    "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+  },
+  "live_audit_freeze": {
+    "bytes": 1851,
+    "sha256": "515abd0ef715854483a508aad962a0e1ce5ac29687359f37e9e8346e3b90296c"
+  },
+  "actions": [
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 0,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 16,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 32,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 48,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 64,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 80,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 96,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 112,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 0,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 16,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 32,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 48,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 64,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 80,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 96,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 112,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 0,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 16,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 32,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 48,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 64,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 80,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 96,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 112,
+      "batches": 16
+    },
+    {
+      "kind": "replay",
+      "seed": 0,
+      "first_batch": 64,
+      "batches": 1
+    },
+    {
+      "kind": "replay",
+      "seed": 1,
+      "first_batch": 64,
+      "batches": 1
+    },
+    {
+      "kind": "replay",
+      "seed": 7,
+      "first_batch": 64,
+      "batches": 1
+    },
+    {
+      "kind": "evaluation",
+      "label": "baseline",
+      "seed": 0
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-0",
+      "seed": 0
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-1",
+      "seed": 1
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-7",
+      "seed": 7
+    }
+  ],
+  "native_binary": {
+    "bytes": 115064,
+    "sha256": "bb87cd7b747da63380b6483b8143d3101ed912aeb5d6b5a34c1bf2ef2acc471a"
+  },
+  "qualified_directory": "/private/tmp/locomotion-lqr-native-first",
+  "release_binary": {
+    "bytes": 115064,
+    "sha256": "bb87cd7b747da63380b6483b8143d3101ed912aeb5d6b5a34c1bf2ef2acc471a"
+  },
+  "compiler": {
+    "bytes": 3012376,
+    "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+  },
+  "source": {
+    "psionic/tests/robotics/locomotion_lqr_learn.py": {
+      "bytes": 16912,
+      "sha256": "77cc36aa0999d46404929e5a3bd871e541f7d98e67db2ab6fe6b1be47d583b0b"
+    },
+    "psionic/tests/robotics/locomotion_lqr_learning_audit.py": {
+      "bytes": 23978,
+      "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-reader-qualification.json": {
+      "bytes": 265,
+      "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-freeze.json": {
+      "bytes": 1851,
+      "sha256": "515abd0ef715854483a508aad962a0e1ce5ac29687359f37e9e8346e3b90296c"
+    }
+  },
+  "training": {
+    "seeds": [
+      0,
+      1,
+      7
+    ],
+    "initial": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -0.25,
+      -0.25,
+      -0.25,
+      -0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "worlds": 16,
+    "horizon": 32,
+    "batches": 128,
+    "epochs": 4,
+    "block": 64,
+    "sigma": 0.25,
+    "log_std": -1.3862943611198906,
+    "gamma": 0.95,
+    "lambda": 0.95,
+    "epsilon": 0.2,
+    "initial_K": 0.25,
+    "initial_m_v_step_skipped": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "lr": 0.001,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "adam_eps": 1e-08,
+    "decay": 0.0,
+    "trust": 0.00390625,
+    "projection": "rounded rollout-start K_old endpoints, retain Adam moments/step",
+    "counter": "world*8192+batch*64",
+    "collector": "carry states, term/trunc0, local tail tracecut only",
+    "chunks": 16,
+    "command_timeout": 180,
+    "canonical_steps": 196608,
+    "canonical_updates": 1536,
+    "replay_steps": 1536,
+    "replay_updates": 12,
+    "deterministic_eval_steps": 3072,
+    "replay_after_completed_batches": 64,
+    "replay_zero_based_batch": 64,
+    "heldout_initials": [
+      -4.0,
+      -2.0,
+      -0.75,
+      0.75,
+      2.0,
+      4.0
+    ],
+    "all_seed_goals": {
+      "gain_error_max": 0.05,
+      "nominal_relative_cost_gap_max": 0.01,
+      "complete_batches": 128,
+      "skips_refusals": 0
+    },
+    "no_best_seed_checkpoint_or_tuning": true
+  },
+  "wire": {
+    "header": "<4I +32B descriptorSHA",
+    "snapshot": [
+      827543884,
+      1,
+      440,
+      0
+    ],
+    "iteration": [
+      826888524,
+      1,
+      62696,
+      16
+    ],
+    "coefficient": [
+      826495308,
+      1,
+      88,
+      32768
+    ],
+    "coefficient_scope": "source-bound RECOMPUTED observation, batch/epoch/row order; not internal instrumentation",
+    "evaluation": [
+      826626380,
+      1,
+      72,
+      6
+    ],
+    "quality": [
+      826757452,
+      1,
+      200,
+      1
+    ]
+  },
+  "planned_effects": {
+    "canonical_plant_steps": 196608,
+    "canonical_adam_updates": 1536,
+    "canonical_tape_pairs": 12288,
+    "canonical_sample_gradients": 786432,
+    "canonical_coefficient_probe_calls": 786432,
+    "replay_plant_steps": 1536,
+    "replay_adam_updates": 12,
+    "replay_tape_pairs": 96,
+    "replay_sample_gradients": 6144,
+    "replay_coefficient_probe_calls": 6144,
+    "deterministic_evaluation_steps": 3072
+  },
+  "failure_policy": "Stop and preserve complete/partial records; never retry a batch or recover a packet/checkpoint disagreement automatically. No tuning or best-seed selection.",
+  "persistence": "C fflush and file fsync both iteration/coefficient batches before checkpoint temp fsync+rename; no directory fsync/crash-durability claim.",
+  "learning_executions": 0
+}

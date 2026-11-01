@@ -1,0 +1,16 @@
+{
+  "schema": "psionic.locomotion-lqr.lifecycle-reader.v1",
+  "passed": true,
+  "driver": {
+    "bytes": 17538,
+    "sha256": "9a9dfc1cfdc6fadffc0120edc96d18fc817fccc503c5eb6226eb5f714dd8f50d"
+  },
+  "descriptor": {
+    "bytes": 8420,
+    "sha256": "51426c1bedaa885098cefb50fbf070b783db794082bb3ef393cc10ae770c2fe5"
+  },
+  "metadata_assertions": 37,
+  "existing_READY_record_branch_exercised": true,
+  "product_math_learner_calls": 0,
+  "scope": "31 fixed-prefix selections, malformed state/order refusals and actual metadata-only existing-record branch"
+}

@@ -1,0 +1,6 @@
+scalar LQR math fixture; canonical learning is a separate opt-in run
+actual PPO loss -2000000, K gradient 16000000, tape nodes 20
+one-row mathematical update: K 499000, Adam step 1, projected 0
+one deterministic step: finite cost 703125, nonzero tail 219006, total 922131
+untrained initial K 250000, batch 0, last-world counter 122880
+proxy is not PPO loss; fixed variance and nominal critic are declared approximations

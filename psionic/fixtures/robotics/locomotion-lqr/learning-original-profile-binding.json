@@ -1,0 +1,25 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-audit.v1",
+  "passed": true,
+  "auditor": {
+    "bytes": 23978,
+    "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+  },
+  "product_learner_model_SDK_calls": 0,
+  "inputs": {
+    "descriptor": {
+      "bytes": 8420,
+      "sha256": "e7e3b48ac0d0b3674054b9431eecf67333971e63fba3ee8371b1beebfb4b635d"
+    },
+    "math_record": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    }
+  },
+  "result": {
+    "passed": true,
+    "plan_only": true,
+    "profile_binding_only": true
+  },
+  "seconds": 0.005373041029088199
+}

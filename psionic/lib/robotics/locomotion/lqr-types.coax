@@ -1,0 +1,15 @@
+#load "gaussian-types.coax";
+#load "../../optim/adamw.coax";
+RlpStatus :: enum u8 {ok;shape;number;range;counter;ratio;state;optimizer;}
+RlpRow :: struct {x:f64;action:f64;old_logp:f64;advantage:f64;}
+RlpBlock :: struct {actual_loss_sum:f64;gradient_sum:f64;vjp_proxy:f64;rows:int;nodes:int;clipped:int;}
+RleCritic :: struct {P:f64;C:f64;}
+RleWorld :: struct {x:f64;rng:CrSeed;}
+RleRow :: struct {x:f64;action:f64;next_x:f64;old_logp:f64;z:f64;step:RgaStep;target:RgaOutput;}
+RleBatch :: struct {worlds:int;horizon:int;count:int;K_old:f64;P:f64;C:f64;rows:[512]RleRow;next_worlds:[16]RleWorld;}
+RltOptimizer :: struct {K:f64;m:f64;v:f64;adam:AwState;}
+RltEpoch :: struct {next:RltOptimizer;actual_loss_mean:f64;gradient_mean:f64;unprojectedK:f64;projection:int;rows:int;blocks:int;clipped:int;}
+RltState :: struct {optimizer:RltOptimizer;worlds:[16]RleWorld;batch:int;runseed:u64;}
+RltIteration :: struct {batch:RleBatch;epochs:[4]RltEpoch;next:RltState;}
+RlsEvaluation :: struct {K:f64;finite_cost:f64;tail:f64;result:f64;analytic:f64;final_x:f64;discount:f64;steps:int;}
+RlsQuality :: struct {K:f64;Pstar:f64;Kstar:f64;gain_error:f64;max_relative_gap:f64;relative_gap:[6]f64;nominal_cost:[6]f64;optimal_cost:[6]f64;gain_ok:int;gap_ok:int;}

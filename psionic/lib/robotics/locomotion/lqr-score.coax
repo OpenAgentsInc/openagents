@@ -1,0 +1,32 @@
+// Scoring is intentionally downstream of rollout; learner roots never load this file.
+#load "lqr-rollout.coax";
+#authority;
+#test "LQR score optimum and all heldout fields are validation only" {
+ o:[1]RlsQuality;#assert rls_score(0.25,o[..])==RlpStatus.ok;root:=sqrt((1-2*0.95)*(1-2*0.95)+4*0.95);P:=(-(1-2*0.95)+root)/(2*0.95);K:=(0.95*P)/(1+0.95*P);#assert o[0].Pstar==P && o[0].Kstar==K && o[0].K==0.25 && o[0].gain_error==abs(0.25-K) && o[0].gain_ok==0 && o[0].gap_ok==0 && o[0].max_relative_gap>0.01;
+ c:=rle_critic_owned(0.25);C:=((1+0.95*P)*0.0625)/(1-0.95);for i:0..<6 {x:=rls_start(i);#assert o[0].nominal_cost[i]==c.P*(x*x)+c.C && o[0].optimal_cost[i]==P*(x*x)+C && o[0].relative_gap[i]>0 && o[0].relative_gap[i]<=o[0].max_relative_gap;deltaP:=((1+0.95*P)*((0.25-K)*(0.25-K)))/(1-0.95*(0.75*0.75));expected:=(deltaP*(x*x+(0.95*0.0625)/(1-0.95)))/(P*(x*x)+C);#assert o[0].relative_gap[i]==expected;}
+ #assert o[0].max_relative_gap==o[0].relative_gap[0];
+ #assert rls_score(K,o[..])==RlpStatus.ok && o[0].gain_error==0 && o[0].max_relative_gap==0 && o[0].gain_ok==1 && o[0].gap_ok==1;for i:0..<6 {#assert o[0].relative_gap[i]==0;}
+ #assert rls_score(1,o[..])==RlpStatus.ok && o[0].gain_ok==0 && o[0].gap_ok==0;
+}
+#test "LQR deterministic finite path and nonnegligible one-step tail use no critic constant" {
+ o:[1]RlsEvaluation;#assert rls_evaluate(0.5,2,1,o[..])==RlpStatus.ok;P:=rle_critic_owned(0.5).P;#assert o[0].K==0.5 && o[0].finite_cost==0.703125 && o[0].final_x== -0.375 && o[0].discount==0.95 && o[0].tail==0.95*(P*0.140625) && o[0].result==o[0].finite_cost+o[0].tail && o[0].analytic==P*0.5625 && o[0].steps==1;
+ #assert rls_evaluate(0.5,0,2,o[..])==RlpStatus.ok && o[0].finite_cost==24.75 && o[0].final_x== -1 && o[0].discount==0.95*0.95 && o[0].steps==2;#assert rls_evaluate(1,5,128,o[..])==RlpStatus.ok && o[0].finite_cost==32 && o[0].tail==0 && o[0].result==32 && o[0].analytic==32 && o[0].final_x==0 && o[0].discount>0 && o[0].discount<0.002 && o[0].steps==128;
+}
+#test "LQR exact goal predicates and shape/index refusals remain explicit" {
+ #assert rls_gain_ok(0.05) && !rls_gain_ok(f64_from_bits(f64_bits(0.05)+1)) && rls_gap_ok(0.01) && !rls_gap_ok(f64_from_bits(f64_bits(0.01)+1));xs:=[6]f64.[-4,-2,-0.75,0.75,2,4];for i:0..<6 {#assert rls_start(i)==xs[i];}
+ q:[1]RlsQuality;q[0].gain_ok=777;#assert rls_score(0.2,q[..])==RlpStatus.range && rls_score(0.5,q[0..<0])==RlpStatus.shape && q[0].gain_ok==777;e:[1]RlsEvaluation;e[0].steps=777;#assert rls_evaluate(0.2,0,1,e[..])==RlpStatus.range && rls_evaluate(0.5,0,1,e[0..<0])==RlpStatus.shape;for index:[2]int.[-1,6] {#assert rls_evaluate(0.5,index,1,e[..])==RlpStatus.range;}for n:[2]int.[0,129] {#assert rls_evaluate(0.5,0,n,e[..])==RlpStatus.range;}#assert e[0].steps==777;
+}
+rls_start :: (index:int)->f64 {xs:=[6]f64.[-4,-2,-0.75,0.75,2,4];return xs[index];}
+rls_gain_ok :: (error:f64)->bool {return error<=0.05;}
+rls_gap_ok :: (relative:f64)->bool {return relative<=0.01;}
+rls_score :: (K:f64,output:[]RlsQuality)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rgp_finite(f64_bits(K)) {return RlpStatus.number;}if !rlp_gain(K) {return RlpStatus.range;}
+ a:=1-2*0.95;disc:=a*a+4*0.95;Pstar:=(-a+sqrt(disc))/(2*0.95);gp:=0.95*Pstar;Kstar:=gp/(1+gp);b:=1-K;D:=1-0.95*(b*b);difference:=K-Kstar;deltaP:=((1+gp)*(difference*difference))/D;Cstar:=((1+gp)*0.0625)/(1-0.95);c:=rle_critic_owned(K);fresh:RlsQuality;fresh.K=K;fresh.Pstar=Pstar;fresh.Kstar=Kstar;fresh.gain_error=abs(difference);fresh.gain_ok=ifx rls_gain_ok(fresh.gain_error) then 1 else 0;fresh.gap_ok=1;
+ for i:0..<6 {x:=rls_start(i);square:=x*x;factor:=square+(0.95*0.0625)/(1-0.95);deltaJ:=deltaP*factor;Jstar:=Pstar*square+Cstar;relative:=deltaJ/Jstar;fresh.relative_gap[i]=relative;fresh.nominal_cost[i]=c.P*square+c.C;fresh.optimal_cost[i]=Jstar;if rcp_side(relative,fresh.max_relative_gap,fresh.max_relative_gap)==1 {fresh.max_relative_gap=relative;}if !rls_gap_ok(relative) {fresh.gap_ok=0;}}
+ output[0]=fresh;return RlpStatus.ok;
+}
+rls_evaluate :: (K:f64,start:int,steps:int,output:[]RlsEvaluation)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rgp_finite(f64_bits(K)) {return RlpStatus.number;}if !rlp_gain(K) || start<0 || start>5 || steps<1 || steps>128 {return RlpStatus.range;}initial:=rls_start(start);x:=initial;discount:f64=1;total:f64=0;completed:=0;
+ for i:0..<steps {u:= -(K*x);cost:=x*x+u*u;total+=discount*cost;x=x+u;discount*=0.95;completed+=1;}
+ c:=rle_critic_owned(K);tail:=discount*(c.P*(x*x));fresh:=RlsEvaluation.{K=K,finite_cost=total,tail=tail,result=total+tail,analytic=c.P*(initial*initial),final_x=x,discount=discount,steps=completed};output[0]=fresh;return RlpStatus.ok;
+}

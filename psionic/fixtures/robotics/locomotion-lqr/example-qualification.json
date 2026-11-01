@@ -1,0 +1,190 @@
+{
+  "schema": "psionic.locomotion-lqr.example.v1",
+  "compiler": {
+    "bytes": 3012376,
+    "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+  },
+  "prewrite": {
+    "source": {
+      "bytes": 1497,
+      "sha256": "bee0cab93220859d6f2b94f4f0b6db1d4a4f40781a88dfbe7a14d1a2db12332c"
+    },
+    "golden": {
+      "bytes": 420,
+      "sha256": "6c3517d6b097cc999281d3ac6d93efeffdf7dff413040b50acdf526cb67e2599"
+    },
+    "basis": "Prewritten before execution from one-row K=.5,u=0,x=1,A=2 score-chain gradient16/loss-2, first Adam step, literal one-step mean-policy cost plus tail, and untouched world initializer. No full rlt_batch or canonical learner."
+  },
+  "modes": {
+    "debug": {
+      "passed": true,
+      "seconds": 1.66493512497982,
+      "exact_prewritten_golden": true,
+      "commands": [
+        {
+          "stage": "emit-c",
+          "argv": [
+            "/tmp/coax-locomotion-current-compiler-first/coax",
+            "c",
+            "psionic/examples/locomotion-lqr.coax"
+          ],
+          "exit": 0
+        },
+        {
+          "stage": "emit-header",
+          "argv": [
+            "/tmp/coax-locomotion-current-compiler-first/coax",
+            "header",
+            "psionic/examples/locomotion-lqr.coax"
+          ],
+          "exit": 0
+        },
+        {
+          "stage": "compile",
+          "argv": [
+            "cc",
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-fno-builtin-exp",
+            "-fno-builtin-log",
+            "-fno-builtin-sqrt",
+            "-fno-builtin-cos",
+            "-fno-builtin-pow",
+            "-O0",
+            "/tmp/lqr-example-first/debug/example.c",
+            "-lm",
+            "-o",
+            "/tmp/lqr-example-first/debug/example"
+          ],
+          "exit": 0
+        },
+        {
+          "stage": "run",
+          "argv": [
+            "/tmp/lqr-example-first/debug/example"
+          ],
+          "exit": 0
+        }
+      ],
+      "C": {
+        "bytes": 340342,
+        "sha256": "1767085e9562492a92e162d7aa9e8b60c716f3c74008f7a183ab2edf117ce7e2"
+      },
+      "header": {
+        "bytes": 97443,
+        "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+      },
+      "binary": {
+        "bytes": 125656,
+        "sha256": "d641e63f8d0ac1fc627014947115484c66b1b6d6b6599e8233c24afc9b99d0cd"
+      },
+      "stdout": {
+        "bytes": 420,
+        "sha256": "6c3517d6b097cc999281d3ac6d93efeffdf7dff413040b50acdf526cb67e2599"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "native_flags": [
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-exp",
+        "-fno-builtin-log",
+        "-fno-builtin-sqrt",
+        "-fno-builtin-cos",
+        "-fno-builtin-pow",
+        "-O0"
+      ]
+    },
+    "release": {
+      "passed": true,
+      "seconds": 2.2720380409737118,
+      "exact_prewritten_golden": true,
+      "commands": [
+        {
+          "stage": "emit-c",
+          "argv": [
+            "/tmp/coax-locomotion-current-compiler-first/coax",
+            "c",
+            "psionic/examples/locomotion-lqr.coax",
+            "--release"
+          ],
+          "exit": 0
+        },
+        {
+          "stage": "emit-header",
+          "argv": [
+            "/tmp/coax-locomotion-current-compiler-first/coax",
+            "header",
+            "psionic/examples/locomotion-lqr.coax",
+            "--release"
+          ],
+          "exit": 0
+        },
+        {
+          "stage": "compile",
+          "argv": [
+            "cc",
+            "-std=c11",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-fno-builtin-exp",
+            "-fno-builtin-log",
+            "-fno-builtin-sqrt",
+            "-fno-builtin-cos",
+            "-fno-builtin-pow",
+            "-O2",
+            "/tmp/lqr-example-first/release/example.c",
+            "-lm",
+            "-o",
+            "/tmp/lqr-example-first/release/example"
+          ],
+          "exit": 0
+        },
+        {
+          "stage": "run",
+          "argv": [
+            "/tmp/lqr-example-first/release/example"
+          ],
+          "exit": 0
+        }
+      ],
+      "C": {
+        "bytes": 337858,
+        "sha256": "abab3b5907aab61ea49ce51b383ecd06d7c9a1425e34c13eb400ad185a129f4f"
+      },
+      "header": {
+        "bytes": 97443,
+        "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+      },
+      "binary": {
+        "bytes": 76424,
+        "sha256": "96bc7fa0e94a0f2ac286e21d5df7b23e8ea10395ce58149252c7fc0fa63f806f"
+      },
+      "stdout": {
+        "bytes": 420,
+        "sha256": "6c3517d6b097cc999281d3ac6d93efeffdf7dff413040b50acdf526cb67e2599"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "native_flags": [
+        "-std=c11",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-fno-builtin-exp",
+        "-fno-builtin-log",
+        "-fno-builtin-sqrt",
+        "-fno-builtin-cos",
+        "-fno-builtin-pow",
+        "-O2"
+      ]
+    }
+  },
+  "passed": true,
+  "scope": "Tiny mathematical actor/epoch/evaluation queries and untrained initialization only; no rlt_batch/full learning."
+}

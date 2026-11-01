@@ -1,0 +1,17 @@
+// Test transport only. Learner roots never import this file or use observed coefficients as an oracle.
+#load "../../lib/robotics/locomotion-lqr.coax";
+#authority;
+RlpCoefficient :: struct {density:RgpDensity;ratio:RlrOutput;}
+#test "LQR coefficient transport exposes density local weight and fixed inverse sigma" {
+ d:[1]RgpDensity;#assert rgp_density_raw(-0.5,-1.3862943611198906,0,d[..])==RgpStatus.ok;r:=RlpRow.{x=1,action=0,old_logp=d[0].logp.value,advantage=2};o:[1]RlpCoefficient;#assert rlp_coefficients(0.5,r,o[..])==RlpStatus.ok && o[0].density.logp.value==d[0].logp.value && o[0].density.score_mean.value==8 && o[0].density.score_logstd.value==3 && o[0].density.entropy.value==d[0].entropy.value && o[0].ratio.log_ratio.value==0 && o[0].ratio.ratio.value==1 && o[0].ratio.objective.surrogate.value==2 && o[0].ratio.objective.loss.value== -2 && o[0].ratio.objective.dloss_dlogp.value== -2 && o[0].ratio.objective.clipped_ratio.value==1 && o[0].ratio.objective.clipped_active==0;
+ sigma:[1]f64;#assert rlp_inverse_sigma(sigma[..])==RlpStatus.ok && sigma[0]==4 && rlp_inverse_sigma(sigma[0..<0])==RlpStatus.shape;
+ r.old_logp=100;#assert rlp_coefficients(0.5,r,o[..])==RlpStatus.ratio;r.old_logp=0;r.x=17;#assert rlp_coefficients(0.5,r,o[..])==RlpStatus.range;r.x=0;#assert rlp_coefficients(0.24,r,o[..])==RlpStatus.range && rlp_coefficients(0.5,r,o[0..<0])==RlpStatus.shape;
+}
+#test "LQR coefficient raw admission covers every nonfinite role before ranges" {
+ #assert rlp_coeff_bits(0,0,0,0,0);bad:=(cast(u64)0x7ff0000000000000);#assert !rlp_coeff_bits(bad,0,0,0,0) && !rlp_coeff_bits(0,bad,0,0,0) && !rlp_coeff_bits(0,0,bad,0,0) && !rlp_coeff_bits(0,0,0,bad,0) && !rlp_coeff_bits(0,0,0,0,bad);
+}
+rlp_coeff_bits :: (K:u64,x:u64,u:u64,old:u64,a:u64)->bool {return rgp_finite(K) && rlr_finite4(x,u,old,a);}
+rlp_coefficients :: (K:f64,row:RlpRow,output:[]RlpCoefficient)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rlp_coeff_bits(f64_bits(K),f64_bits(row.x),f64_bits(row.action),f64_bits(row.old_logp),f64_bits(row.advantage)) {return RlpStatus.number;}if !rlp_gain(K) || !rlp_row_domain(row) {return RlpStatus.range;}fresh:RlpCoefficient;density:[1]RgpDensity;#assert rgp_density_raw(-(K*row.x),-1.3862943611198906,row.action,density[..])==RgpStatus.ok;ratio:[1]RlrOutput;if rlr_surrogate_raw(density[0].logp.value,row.old_logp,row.advantage,0.2,ratio[..])!=RlrStatus.ok {return RlpStatus.ratio;}fresh.density=density[0];fresh.ratio=ratio[0];output[0]=fresh;return RlpStatus.ok;
+}
+rlp_inverse_sigma :: (output:[]f64)->RlpStatus #export_c {if output.count!=1 {return RlpStatus.shape;}output[0]=exp(-(-1.3862943611198906));return RlpStatus.ok;}

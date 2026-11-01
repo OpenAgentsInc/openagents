@@ -1,0 +1,46 @@
+{
+  "schema": "psionic.locomotion-lqr.pre-effect-context-history.v1",
+  "nonfinal_contexts": [
+    {
+      "label": "first",
+      "descriptor": {
+        "bytes": 8420,
+        "sha256": "e7e3b48ac0d0b3674054b9431eecf67333971e63fba3ee8371b1beebfb4b635d"
+      },
+      "prepared": {
+        "bytes": 1530,
+        "sha256": "f4cfc49f4f142e3b0ee588e0402e33e3ad70d7beb97215e576b0f92002bd7eec"
+      },
+      "effects": 0
+    },
+    {
+      "label": "ready",
+      "descriptor": {
+        "bytes": 8420,
+        "sha256": "51426c1bedaa885098cefb50fbf070b783db794082bb3ef393cc10ae770c2fe5"
+      },
+      "prepared": {
+        "bytes": 1530,
+        "sha256": "97b567ab5fc2bc48ae85277841e84c4ef4b68acd7419e0761ac850629539d801"
+      },
+      "effects": 0
+    },
+    {
+      "label": "lineage",
+      "descriptor": {
+        "bytes": 9275,
+        "sha256": "9e51ca041cdde319407bdaaaee0758e79959cbc05a918271c2eeb976a8246f1d"
+      },
+      "prepared": {
+        "bytes": 2115,
+        "sha256": "4ef9c9c724f7dd55ec4666daa3059399c5db4b4c522f540fbcd88e67c73bd8c2"
+      },
+      "effects": 0
+    }
+  ],
+  "final_descriptor": {
+    "bytes": 9275,
+    "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+  },
+  "reason": "Static pre-effect lifecycle/initial/checkpoint lineage corrections. Original passing math/native source and all numerical recipes/tolerances were unchanged. No canonical call occurred under a nonfinal context."
+}

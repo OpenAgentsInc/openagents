@@ -1,0 +1,26 @@
+{
+  "schema": "psionic.locomotion-lqr.driver-lineage.v1",
+  "passed": true,
+  "driver": {
+    "bytes": 19645,
+    "sha256": "8c77dc6d7ee19a08bc009eff40437eae939e4e76905eb3805ea3568831957ef5"
+  },
+  "descriptor": {
+    "bytes": 9275,
+    "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+  },
+  "positive_cases": 1,
+  "poisons_refused": 4,
+  "all_initials_match_qualified_factory": true,
+  "chunk_expected_state_checked_before_launch": true,
+  "replay_uses_authenticated_canonical_checkpoint_directly": true,
+  "selector_checks_carried": {
+    "bytes": 557,
+    "sha256": "0295e5d0f7cf7f9b1d6f5786c722dc6e351f2396b505d11862101f70ac4e88f7"
+  },
+  "unchanged_selector_declaration": {
+    "bytes": 353,
+    "sha256": "2a7cdb084053cd599593e46ccc9cfa73cc04c6f509490413640f0a841c4c7f94"
+  },
+  "product_math_learning_calls": 0
+}

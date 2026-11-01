@@ -1360,6 +1360,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/locomotion-lqr.coax",
+      "chapter": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+      "stdout": "psionic/examples/locomotion-lqr.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,18 @@
+#import "Basic";
+#load "../lib/robotics/locomotion-lqr.coax";
+lqr_micro :: (x:f64)->int {return cast(int)floor(x*1000000+0.5);}
+main :: () {
+ print("scalar LQR math fixture; canonical learning is a separate opt-in run\n");
+// book:begin locomotion-lqr
+ density:[1]RgpDensity;#assert rgp_density_raw(-0.5,-1.3862943611198906,0,density[..])==RgpStatus.ok;
+ rows:=[1]RlpRow.[RlpRow.{x=1,action=0,old_logp=density[0].logp.value,advantage=2}];block:[1]RlpBlock;#assert rlp_block(0.5,rows[..],block[..])==RlpStatus.ok;
+ print("actual PPO loss %, K gradient %, tape nodes %\n",lqr_micro(block[0].actual_loss_sum),lqr_micro(block[0].gradient_sum),block[0].nodes);
+ epoch:[1]RltEpoch;#assert rlt_epoch(0.5,RltOptimizer.{K=0.5},rows[..],epoch[..])==RlpStatus.ok;
+ print("one-row mathematical update: K %, Adam step %, projected %\n",lqr_micro(epoch[0].next.K),epoch[0].next.adam.step,epoch[0].projection);
+ evaluation:[1]RlsEvaluation;#assert rls_evaluate(0.5,2,1,evaluation[..])==RlpStatus.ok;
+ print("one deterministic step: finite cost %, nonzero tail %, total %\n",lqr_micro(evaluation[0].finite_cost),lqr_micro(evaluation[0].tail),lqr_micro(evaluation[0].result));
+ state:[1]RltState;#assert rlt_begin(0,state[..])==RlpStatus.ok;
+ print("untrained initial K %, batch %, last-world counter %\n",lqr_micro(state[0].optimizer.K),state[0].batch,state[0].worlds[15].rng.counter);
+// book:end locomotion-lqr
+ print("proxy is not PPO loss; fixed variance and nominal critic are declared approximations\n");
+}

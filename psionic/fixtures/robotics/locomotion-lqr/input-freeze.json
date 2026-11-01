@@ -1,0 +1,13 @@
+{
+  "schema": "psionic.locomotion-lqr.input-freeze.v1",
+  "experiment": {
+    "bytes": 8660,
+    "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+  },
+  "producer": {
+    "bytes": 29435,
+    "sha256": "c105189fbe2f539d52fca631c722d532798fb10789e7237218edbaac142e8ec9"
+  },
+  "expected_generation_calls": 0,
+  "input_benchmark_selection_only": true
+}

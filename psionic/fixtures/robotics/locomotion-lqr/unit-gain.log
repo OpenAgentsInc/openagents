@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_lqr_bad_gain.coax:2:99: error[E0317]: argument 1 of 'rlp_block' is f64, given Quantity(Second, f64)
+  main :: () {gain:rlu.Quantity(rlu.Second,f64);rows:[1]RlpRow;output:[1]RlpBlock;status:=rlp_block(gain,rows[..],output[..]);}
+                                                                                                    ^
+1 error

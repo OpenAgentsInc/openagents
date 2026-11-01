@@ -1,0 +1,46 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-preparation.v1",
+  "passed": true,
+  "descriptor": {
+    "bytes": 8420,
+    "sha256": "51426c1bedaa885098cefb50fbf070b783db794082bb3ef393cc10ae770c2fe5"
+  },
+  "context": {
+    "bytes": 32,
+    "sha256": "39a5efb4e3e6c56919f76781bbe7aed99aa570742ddc6478943aba4eeead3bd1"
+  },
+  "source": {
+    "psionic/tests/robotics/locomotion_lqr_learn.py": {
+      "bytes": 17538,
+      "sha256": "9a9dfc1cfdc6fadffc0120edc96d18fc817fccc503c5eb6226eb5f714dd8f50d"
+    },
+    "psionic/tests/robotics/locomotion_lqr_learning_audit.py": {
+      "bytes": 23978,
+      "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-reader-qualification.json": {
+      "bytes": 265,
+      "sha256": "83a401284b367ae265d1ec6383411c0484aae7c66fd00937cee4c930a27c7163"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-audit-freeze.json": {
+      "bytes": 1851,
+      "sha256": "515abd0ef715854483a508aad962a0e1ce5ac29687359f37e9e8346e3b90296c"
+    }
+  },
+  "initials": {
+    "initial-0.bin": {
+      "bytes": 488,
+      "sha256": "0cb48b7739757072b924d7883140ab810a612e3a42b124091ea3b92aa0a503b8"
+    },
+    "initial-1.bin": {
+      "bytes": 488,
+      "sha256": "6420b20da3f035aa881c483749a76271686d372042bdc34c4727316150650177"
+    },
+    "initial-7.bin": {
+      "bytes": 488,
+      "sha256": "2599bdcda7a987b3b0d3d3e5e82318b9b4d2919ea13d6bc7fca6226f7c2ccf06"
+    }
+  },
+  "learning_calls": 0,
+  "commands": []
+}

@@ -1,12 +1,12 @@
 # 171. Learn a gait in many worlds
 
-The runnable CPU F64 profiles provide return targets, a clipped scalar objective and normalized Gaussian policy primitives. They do not train a policy, simulate a quadruped or satisfy the full gait acceptance criteria. This chapter builds those foundations before attempting the full learner.
+The runnable CPU F64 profiles provide return targets, a clipped scalar objective, Gaussian primitives and a projected scalar-LQR actor/update pipeline. Its mathematical qualification and prescribed three-seed execution are complete; all three runs miss both frozen convergence goals. These scalar profiles do not simulate a quadruped or satisfy the full gait acceptance criteria.
 
-The eventual workload is a quadruped practising across many randomized simulated worlds, followed by held-out terrain and teacher/student evaluation. Environments, policy/critic networks, optimizer updates, device batching and transfer remain design work below. A return array shaped like several worlds is not evidence that those physical worlds exist.
+The eventual workload is a quadruped practising across many randomized simulated worlds, followed by held-out terrain and teacher/student evaluation. The scalar LQR environment and actor updates are implemented below. General neural actors, learned critics, physical worlds, device batching and transfer remain design work. A return array shaped like several worlds is not evidence that those physical worlds exist.
 
 ## First runnable slice: targets before a learner
 
-The first executable part constructs generalized-advantage targets and the scalar clipped PPO objective in CPU F64. It does not yet train a policy or simulate a quadruped. The LQR learning, held-out gait, same-target learning replay and teacher/student acceptance criteria remain open.
+The first executable part constructs generalized-advantage targets and the scalar clipped PPO objective in CPU F64. It does not yet train a policy or simulate a quadruped. The later scalar-LQR experiment has its own prospective learning/quality criteria; held-out gait, full-curve replay and teacher/student acceptance remain separate.
 
 A rollout row supplies a reward, its current value estimate, the value of its actual next/final observation, and separate `terminated` and `truncated` flags. These are observations from the caller; this API cannot certify where the next value came from. `RgaReward` is a nominal normalized-reward wrapper. Gamma, lambda, epsilon and probability ratio use dimensionless quantities. An advantage is not implicitly a length or a raw probability ratio.
 
@@ -92,7 +92,7 @@ The [foundation fixtures](../fixtures/robotics/locomotion/README.md) retain inpu
 
 ### Next steps remain explicit
 
-Scalar distribution/log-density and ratio adapters are qualified below. Next come policy/critic update gradients and a frozen small LQR learning experiment against its known optimum. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the full four chapter acceptance criteria and compiler R14/R20/R21/R23 remain later work.
+Scalar distribution/log-density and ratio adapters are qualified below. The scalar actor/update and frozen LQR experiment appear below; its three-seed outcome remains pending. General neural actor/learned-critic training remains later work. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the full four chapter acceptance criteria and compiler R14/R20/R21/R23 remain later work.
 
 ## A normalized scalar Gaussian policy primitive
 
@@ -191,7 +191,66 @@ The independent reference uses high-precision Decimal exp/log/sqrt and independe
 
 The first native target is Darwin arm64 scalar libm, round-to-nearest with gradual underflow, no contraction/fast math and explicit scalar exp/log/sqrt/cos calls. This is neither an owned-libm accuracy proof nor cross-target determinism. Density and sample smooth fields use frozen numerical budgets; entropy, density-at-mean, explicit radial-zero copies, counters and declared branch/zero cases are exact. No old RNG, GAE/PPO, tape, model or robot gate is repeated.
 
-The [Gaussian fixture](../fixtures/robotics/locomotion-gaussian/README.md) retains contract, input/reference, native, typing and example identities. Policy/critic update assembly and a frozen known-optimum LQR experiment still come next; walking, device batching, terrain, teacher/student and physical hardware remain later work.
+The [Gaussian fixture](../fixtures/robotics/locomotion-gaussian/README.md) retains contract, input/reference, native, typing and example identities. The additive scalar-LQR actor/update component follows below, with its three-seed outcome pending. General neural actors, learned critics, walking, device batching, terrain, teacher/student and physical hardware remain later work.
+
+## A projected scalar-LQR PPO actor
+
+This component connects the already qualified scalar Gaussian policy, GAE, reverse tape and AdamW to a normalized scalar environment. Only one actor gain K is trainable; variance is fixed at sigma=.25. There is no learned critic, neural policy, quadruped, SDK or hardware in this experiment.
+
+The plant is x_next=x+u and the reward is minus(x²+u²), with policy mean −K*x. All observed states/actions and the sampled standardized value have explicit bounds; observations are refused rather than silently clamped. Each run has 16 independent world records, with explicit disjoint counter ranges. Fragments are 32 steps long and their actual final states bootstrap values. Worlds and counters persist between fragments. Initial states are four consecutive copies each of −1,−.25,.25,1. Seeds 0,1,7 and all hyperparameters are fixed before learning.
+
+At rollout-start K_old, a declared continuous-Gaussian moment model supplies a nominal quadratic critic. It is not an exact value function for the finite-top53 sampler and is not fitted from the optimum. Observations/actions, old logp, nominal critic, advantages, returns and K_old are detached for all four full-batch epochs. No entropy bonus, whitening, value loss or plant gradient is added.
+
+### Local VJP, full-batch update and projection
+
+Each epoch uses eight contiguous 64-row tape blocks for 512 samples. A block graph has exactly 7+13*N nodes,839 at 64 rows, and ONE parameter. Each sample's coefficient is the existing sign-aware clipped objective's dloss/dlogp, detached at the current actor. The graph's scalar is sum(coefficient*logp), a LOCAL VJP proxy. Its value is not the PPO loss; the actual clipped losses are reported separately. Every graph logp word must match the existing Gaussian density before backward. An unexpected tape or word-coherence failure is a fatal internal invariant before publication, not a policy fallback.
+
+Raw gradient and actual-loss sums are combined in fixed block order and divided once by sample count. The named experiment always uses 512; small mathematical queries permit 1..512 and partial final blocks. Exactly one binary64 AdamW step follows each full epoch, with learning rate .001, betas(.9,.999),eps1e−8 and zero decay. Proposed moments and step are retained. Only K is projected into the global [.25,1] box intersected with rounded K_old±1/256, anchored to the SAME rollout-start gain throughout all four epochs. The optimizer has one persistent K/master value; the raw candidate and projection count remain visible.
+
+The source-owned batch function performs the rollout and all FOUR epoch transitions. C handles chunk/checkpoint/file effects. This explicit runtime/work profile is not compiler #bounded, R14 or a general training framework. Lower helpers and PODs have numeric/shape/lineage preconditions and are not provenance certificates.
+
+### An independent quality lane
+
+A separate scoring authority root computes the nominal optimum, stable gap and deterministic held-out checks. It is not imported or called by learner/types/fixtures, so Kstar/gap never select or stop an update. The six held-out initial starts differ from training starts. Nominal noisy-policy J, deterministic mean-policy finite trajectories plus analytic tail, and sampled training observations are distinct quantities.
+
+All three prescribed seeds must finish 128 batches/512 updates with no skips or numeric refusals. Prospective gain error is at most .05 and nominal held-out cost gap at most1% on all six starts. All final seeds are reported; no best seed/checkpoint is promoted. A checkpoint after 64 batches replays only its next complete batch, with separate workload counts; this is not a repeated whole learning curve or full R16 qualification.
+
+<!-- source: psionic/examples/locomotion-lqr.coax locomotion-lqr -->
+```jai
+ density:[1]RgpDensity;#assert rgp_density_raw(-0.5,-1.3862943611198906,0,density[..])==RgpStatus.ok;
+ rows:=[1]RlpRow.[RlpRow.{x=1,action=0,old_logp=density[0].logp.value,advantage=2}];block:[1]RlpBlock;#assert rlp_block(0.5,rows[..],block[..])==RlpStatus.ok;
+ print("actual PPO loss %, K gradient %, tape nodes %\n",lqr_micro(block[0].actual_loss_sum),lqr_micro(block[0].gradient_sum),block[0].nodes);
+ epoch:[1]RltEpoch;#assert rlt_epoch(0.5,RltOptimizer.{K=0.5},rows[..],epoch[..])==RlpStatus.ok;
+ print("one-row mathematical update: K %, Adam step %, projected %\n",lqr_micro(epoch[0].next.K),epoch[0].next.adam.step,epoch[0].projection);
+ evaluation:[1]RlsEvaluation;#assert rls_evaluate(0.5,2,1,evaluation[..])==RlpStatus.ok;
+ print("one deterministic step: finite cost %, nonzero tail %, total %\n",lqr_micro(evaluation[0].finite_cost),lqr_micro(evaluation[0].tail),lqr_micro(evaluation[0].result));
+ state:[1]RltState;#assert rlt_begin(0,state[..])==RlpStatus.ok;
+ print("untrained initial K %, batch %, last-world counter %\n",lqr_micro(state[0].optimizer.K),state[0].batch,state[0].worlds[15].rng.counter);
+```
+
+The prewritten tiny transcript has loss −2 and K-gradient 16 for the declared detached one-row fixture; its first mathematical Adam step displays K=.499000. A one-step mean-policy check displays finite cost .703125 and a nonzero tail .219006. The initializer remains untrained. These examples do not call the full learner or establish convergence.
+
+The four new policy roots close 554 actual emitted sites in 21 groups: actor 158, rollout 111, update 188 and score 97, all zero survivors. A separate checked coefficient transport closes 23 sites in two groups; it is a test transport, not a fifth learner proof. Four compiler-only record/normalized-raw-boundary witnesses refuse. General physical dimensions, compiler R14 and a generic learner remain separate.
+
+The first debug, release and fail-fast ASan+UBSan mathematical profiles each pass 229,063 assertions, 177 refusals, 12 overlaps and 83 reader poisons; complete output streams are byte-identical. The corpus contains 112 actor blocks and 24 epochs. Gradient absolute error is at most 2.911e−10 under the FROZEN per-block conditioning bounds; loss/proxy errors are at most 2.138e−11/5.821e−11. Epoch loss/gradient and raw-candidate errors are numerically zero in this corpus. The coefficient layer is independently validated before analytic local-VJP comparison; observed score/gradient fields are not used as their own oracle.
+
+Each mathematical host run executes 597 corpus rollout steps plus 13 guard rollout steps, 798 short deterministic evaluation steps and other declared scalar/epoch guard queries. It executes ZERO successful full training batches. Those fixtures are separate from canonical learning, checkpoint replay and the later 3,072-step named evaluation. Ordinary critic/transition/projection comparison error is zero; short evaluation error is at most 3.553e−15 and rollout error 1.777e−15. This is the qualified Darwin arm64 binary64 scalar-libm/no-FMA profile, not cross-target determinism or an owned-libm proof.
+
+The fixed experiment completed all 128 batches and 512 AdamW updates per seed. All 31 execution/audit actions passed, including byte-exact next-batch checkpoint replay. **All three seeds miss both prospective convergence goals.** No seed is promoted and no setting is retuned.
+
+| Seed | Final K | Absolute gain error | Worst nominal held-out cost gap | Result |
+| --- | ---: | ---: | ---: | --- |
+| 0 | 0.5184256094 | 0.085306525 | 1.404964% | Both goals missed |
+| 1 | 0.5227558679 | 0.080976266 | 1.259577% | Both goals missed |
+| 7 | 0.5214162090 | 0.082315925 | 1.303622% | Both goals missed |
+
+The nominal optimum is K*=0.6037321344. The frozen limits are gain error at most .05 and cost gap at most 1%. The initial K=.25 has gain error .3537321344 and worst nominal gap 40.451147%; the learned gains improve those measures substantially, but improvement does not satisfy the acceptance rule. The independent real-arithmetic margins also reject all three seeds. Rounded table values are explanatory; the original receipts retain full precision.
+
+Canonical learning executes 196,608 plant steps, 1,536 AdamW updates, 12,288 tape forward/backward pairs and 786,432 sample-gradient evaluations. Declared checkpoint replay adds 1,536 steps/12 updates/96 tape pairs; four mean-policy evaluations add 3,072 deterministic steps. The summed action time is about 208 seconds on this named host, not a GPU throughput or end-to-end engineering-time measurement. The [LQR fixture](../fixtures/robotics/locomotion-lqr/README.md) retains the full outcomes and compact curves.
+
+This closes the mathematical and experiment-integrity slice. The LQR convergence criterion remains **open**. A future separately frozen experiment may study optimizer/update budget; extending this profile would also require revisiting its state/counter bounds. The current result is retained without extra training or in-place tuning.
+
+This measured scalar experiment supplies no learned critic, terrain, sensors, contact-rich locomotion, teacher/student transfer, device throughput or hardware evidence. Full gait acceptance remains separate.
 
 ## What the full chapter will teach
 
@@ -232,13 +291,15 @@ Real hardware remains a separate, authorized integration.
 
 ## What the full learner still needs
 
-- `psionic/lib/robotics/locomotion/`: environment, reward, PPO learner,
-  terrain curriculum, teacher–student distillation.
+- `psionic/lib/robotics/locomotion/`: a physical quadruped environment/reward,
+  general neural actor and learned-critic training, terrain curriculum and
+  teacher–student distillation. The scalar LQR pipeline does not supply those.
 
 ## Remaining acceptance checks and oracles
 
-- PPO on a small environment with a known optimum (a linear-quadratic
-  regulator) converges to it within a stated gap.
+- The frozen scalar-LQR PPO actor completes all three prescribed seeds and
+  meets its declared optimum gaps: mathematical fixtures pass; learning
+  outcomes remain pending.
 - The quadruped walks at a commanded speed with stated tracking error on
   held-out terrain and randomized parameters.
 - The same seed and configuration reproduce the same learning curve on the

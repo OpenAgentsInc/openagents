@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_lqr_bad_state.coax:2:69: error[E0317]: argument 2 of 'rle_transition' is f64, given RgpAction
+  main :: () {x:RgpAction;output:[1]RleRow;status:=rle_transition(0.5,x,0,0,output[..]);}
+                                                                      ^
+1 error

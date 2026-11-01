@@ -1,0 +1,10 @@
+{
+  "schema": "psionic.locomotion-lqr.learning-reader.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 23978,
+    "sha256": "f3a491f0fddffd3954f8ef266c5f514f2bd4a12557722ef003381abcbbf667fe"
+  },
+  "poisons_refused": 29,
+  "product_learner_model_SDK_calls": 0
+}

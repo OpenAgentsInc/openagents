@@ -1,0 +1,2 @@
+#load "../../lib/robotics/locomotion-lqr.coax";
+main :: () {gain:rlu.Quantity(rlu.Second,f64);rows:[1]RlpRow;output:[1]RlpBlock;status:=rlp_block(gain,rows[..],output[..]);}
