@@ -18,7 +18,10 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
    cxscr_width/height/refresh; cxscr_present(rgb, y0, y1): shows w*h*3 bytes, copying rows y0..y1, at the next vertical
    blank (-1 while the last is still waiting); cxscr_close puts back what was shown before.
    cxin_open(path): keyboards and mice under /dev/input, grabbed, or with path a file of
-   input_event records; cxin_read fills a list read by cxin_type/code/value(i); cxin_close. */
+   input_event records; cxin_read fills a list read by cxin_type/code/value(i); cxin_close.
+   cxvt_open: the session's VT handed to this process (its number, 0 for none); cxvt_poll: 1 when it
+   let go for another VT, 2 when it is back; cxvt_switch(n): show VT n; cxvt_close(to): give the VT
+   back, showing VT `to` when it is above 0. While another VT shows, present waits and input is dropped. */
 int64_t cxscr_open(void);
 int64_t cxscr_width(void);
 int64_t cxscr_height(void);
@@ -31,6 +34,10 @@ int64_t cxin_type(int64_t i);
 int64_t cxin_code(int64_t i);
 int64_t cxin_value(int64_t i);
 int64_t cxin_close(void);
+int64_t cxvt_open(void);
+int64_t cxvt_poll(void);
+int64_t cxvt_switch(int64_t n);
+int64_t cxvt_close(int64_t to);
 #ifdef __cplusplus
 }
 #endif

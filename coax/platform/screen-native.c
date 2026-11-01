@@ -19,7 +19,12 @@
 #include <unistd.h>
 #if defined(__linux__)
 #include <linux/input.h>
+#include <linux/kd.h>
+#include <linux/vt.h>
 #include <poll.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
@@ -29,6 +34,9 @@ static uint32_t scr_crtc, scr_conn;
 static drmModeModeInfo scr_mode;
 static drmModeCrtc *scr_saved;
 static ScrBuf scr_buf[2];
+/* The VT the session runs on, when it has one: switches away and back are this process's to grant. */
+static int vt_fd = -1, vt_num, vt_kb = -1, vt_active = 1;
+static volatile sig_atomic_t vt_rel, vt_acq;
 
 static int scr_make(ScrBuf *b) {
   struct drm_mode_create_dumb c = {.width = (uint32_t)scr_w, .height = (uint32_t)scr_h, .bpp = 32};
@@ -101,6 +109,7 @@ int64_t cxscr_refresh(void) { return scr_mode.vrefresh; }
    yet (nothing changes), -2 on an error. */
 int64_t cxscr_present(coax_v_u8 rgb, int64_t y0, int64_t y1) {
   if (scr_fd < 0) return -2;
+  if (!vt_active) return -1;   /* another VT is showing: the frame waits for this one */
   if (scr_flip_pending) {
     struct pollfd p = {scr_fd, POLLIN, 0};
     if (poll(&p, 1, 0) > 0) { drmEventContext ev = {.version = 2, .page_flip_handler = scr_on_flip}; drmHandleEvent(scr_fd, &ev); }
@@ -183,6 +192,11 @@ int64_t cxin_read(void) {
     }
     return in_got;
   }
+  if (!vt_active) {   /* another VT is showing and its session reads these keys: drop them */
+    struct input_event junk[64];
+    for (int i = 0; i < in_n; i++) while (read(in_fd[i], junk, sizeof junk) > 0) {}
+    return 0;
+  }
   for (int i = 0; i < in_n; i++) {
     ssize_t n;
     while (in_got + 64 <= IN_EV && (n = read(in_fd[i], in_ev + in_got, 64 * sizeof in_ev[0])) > 0) in_got += (int)(n / (ssize_t)sizeof in_ev[0]);
@@ -195,6 +209,77 @@ int64_t cxin_value(int64_t i) { return (i >= 0 && i < in_got) ? in_ev[i].value :
 int64_t cxin_close(void) {
   for (int i = 0; i < in_n; i++) { if (!in_file) ioctl(in_fd[i], EVIOCGRAB, 0); close(in_fd[i]); }
   in_n = 0; in_file = 0; in_held = 0; in_t0 = 0;
+  return 0;
+}
+
+static void vt_on_rel(int sig) { (void)sig; vt_rel = 1; }
+static void vt_on_acq(int sig) { (void)sig; vt_acq = 1; }
+/* Takes the VT the session runs on ($CODEROS_COMPOSITOR_VT, a /dev/ttyN, else the controlling
+   terminal): the console's text and keyboard off, and switches handed to this process, which the
+   kernel asks with SIGUSR1 (let go) and SIGUSR2 (yours again). Call it before cxscr_open. The VT's
+   number; 0 when there is no VT (a test run), and then switches are not this process's business. */
+int64_t cxvt_open(void) {
+  const char *p = getenv("CODEROS_COMPOSITOR_VT"); if (!p || !*p) p = "/dev/tty";
+  int fd = open(p, O_RDWR | O_CLOEXEC | O_NOCTTY); if (fd < 0) return 0;
+  unsigned dev = 0; struct stat sb;
+  if (fstat(fd, &sb) == 0 && major(sb.st_rdev) == 4) dev = (unsigned)sb.st_rdev;
+  else if (ioctl(fd, TIOCGDEV, &dev) < 0) dev = 0;
+  struct vt_stat st;
+  if (major(dev) != 4 || minor(dev) < 1 || minor(dev) > 63 || ioctl(fd, VT_GETSTATE, &st) < 0) { close(fd); return 0; }
+  struct sigaction sa; memset(&sa, 0, sizeof sa); sa.sa_flags = SA_RESTART;
+  sa.sa_handler = vt_on_rel; sigaction(SIGUSR1, &sa, NULL);
+  sa.sa_handler = vt_on_acq; sigaction(SIGUSR2, &sa, NULL);
+  struct vt_mode m = {.mode = VT_PROCESS, .relsig = SIGUSR1, .acqsig = SIGUSR2};
+  if (ioctl(fd, VT_SETMODE, &m) < 0) { close(fd); return 0; }
+  ioctl(fd, KDGKBMODE, &vt_kb); ioctl(fd, KDSKBMODE, K_OFF); ioctl(fd, KDSETMODE, KD_GRAPHICS);
+  vt_fd = fd; vt_num = (int)minor(dev); vt_active = st.v_active == vt_num;
+  return vt_num;
+}
+/* What the kernel asked since the last call, done: 0 nothing, 1 let go (the screen's master and the
+   devices handed back, another VT shows), 2 taken back (the screen is this process's again and
+   shows what it last showed; draw everything). */
+int64_t cxvt_poll(void) {
+  if (vt_fd < 0) return 0;
+  if (vt_rel) {
+    vt_rel = 0;
+    if (scr_fd >= 0) drmDropMaster(scr_fd);
+    for (int i = 0; i < in_n; i++) if (!in_file) ioctl(in_fd[i], EVIOCGRAB, 0);
+    vt_active = 0;
+    ioctl(vt_fd, VT_RELDISP, 1);
+    return 1;
+  }
+  if (vt_acq) {
+    vt_acq = 0;
+    ioctl(vt_fd, VT_RELDISP, VT_ACKACQ);
+    ioctl(vt_fd, KDSETMODE, KD_GRAPHICS);
+    if (scr_fd >= 0) {
+      drmSetMaster(scr_fd);
+      struct pollfd q = {scr_fd, POLLIN, 0};
+      if (poll(&q, 1, 0) > 0) { drmEventContext ev = {.version = 2, .page_flip_handler = scr_on_flip}; drmHandleEvent(scr_fd, &ev); }
+      scr_flip_pending = 0;
+      drmModeSetCrtc(scr_fd, scr_crtc, scr_buf[scr_back ^ 1].fb, 0, 0, &scr_conn, 1, &scr_mode);
+    }
+    struct input_event junk[64];
+    for (int i = 0; i < in_n; i++) { if (in_file) continue; while (read(in_fd[i], junk, sizeof junk) > 0) {} ioctl(in_fd[i], EVIOCGRAB, 1); }
+    vt_active = 1;
+    return 2;
+  }
+  return 0;
+}
+/* Shows VT n (Ctrl+Alt+Fn): 0, or a negative errno. The kernel then asks this process to let go. */
+int64_t cxvt_switch(int64_t n) {
+  if (vt_fd < 0) return -ENOTTY;
+  return ioctl(vt_fd, VT_ACTIVATE, (int)n) < 0 ? -(int64_t)errno : 0;
+}
+/* Hands the VT back to the console (after cxscr_close, so the screen is no longer held), and with
+   to > 0 shows VT `to`, the session the person came from. */
+int64_t cxvt_close(int64_t to) {
+  if (vt_fd < 0) return 0;
+  struct vt_mode m = {.mode = VT_AUTO};
+  ioctl(vt_fd, VT_SETMODE, &m); ioctl(vt_fd, KDSETMODE, KD_TEXT);
+  if (vt_kb >= 0) ioctl(vt_fd, KDSKBMODE, vt_kb);
+  if (to > 0 && to != vt_num) ioctl(vt_fd, VT_ACTIVATE, (int)to);
+  close(vt_fd); vt_fd = -1; vt_active = 1;
   return 0;
 }
 #else
@@ -210,4 +295,8 @@ int64_t cxin_type(int64_t i) { (void)i; return -1; }
 int64_t cxin_code(int64_t i) { (void)i; return -1; }
 int64_t cxin_value(int64_t i) { (void)i; return 0; }
 int64_t cxin_close(void) { return 0; }
+int64_t cxvt_open(void) { return 0; }
+int64_t cxvt_poll(void) { return 0; }
+int64_t cxvt_switch(int64_t n) { (void)n; return -ENOSYS; }
+int64_t cxvt_close(int64_t to) { (void)to; return 0; }
 #endif
