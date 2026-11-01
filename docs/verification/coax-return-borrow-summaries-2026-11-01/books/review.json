@@ -1,0 +1,209 @@
+{
+  "schema": "coax.books.actual-pushed-v12.static-review.v1",
+  "outcome": "passed-static-review",
+  "reviewed_revision": "6784112fb02d3d418747e63923e22c6831c68c86",
+  "reviewed_tree": "af1c8b943a39b8221e8285ad991ba95a91c4f501",
+  "base": "8fd5f7fdbc9fe9503be97841e24620cb307be106",
+  "root_source_revision": "6784112fb02d3d418747e63923e22c6831c68c86",
+  "prior_review": {
+    "path": "/tmp/coax-return-borrows-A1/current-books-latest-main-v12/review.json",
+    "sha256": "f8a5e63e186947534a37a2369a32d8e3c5a962a3ea323d6455de8d036a4c0dff"
+  },
+  "scope": "Changed-input-only static update for the Gaussian delta8fd5..5426, checked against actual pushed6784112. Reuses prior f8a5/b481 proofs for unchanged bytes; confirms rebase identity and Root A1/0.46/cache prose. No repository gate, compiler/native/model/book execution, network, browser, auth, publication or Root write.",
+  "counts": {
+    "coax": {
+      "markdown_pages": 57,
+      "fenced_blocks_inventory_only": 715,
+      "source_tag_blocks": 0,
+      "checked_source_blocks": 21,
+      "chapters": 47,
+      "chapter_statuses": {
+        "implemented": 21,
+        "partly implemented": 8,
+        "planned": 18
+      }
+    },
+    "psionic": {
+      "markdown_pages": 253,
+      "fenced_blocks_inventory_only": 877,
+      "source_tag_blocks": 483,
+      "checked_source_blocks": 0,
+      "chapters": 250,
+      "chapter_statuses": {
+        "implemented": 116,
+        "partly implemented": 2,
+        "design draft": 132
+      }
+    }
+  },
+  "changed_pages": [
+    "psionic/book/PLAN.md",
+    "psionic/book/README.md",
+    "psionic/book/SUMMARY.md",
+    "psionic/book/ch171-learn-a-gait-in-many-worlds.md"
+  ],
+  "incoming_paths": 81,
+  "fresh_links": 1069,
+  "new_fixture_docs": [
+    "psionic/fixtures/robotics/locomotion-gaussian/README.md"
+  ],
+  "source_listings": 483,
+  "fresh_source_listings": [
+    {
+      "document": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+      "kind": "source",
+      "source": "psionic/examples/locomotion-targets.coax",
+      "tag": "locomotion-targets",
+      "newly_checked": true,
+      "matched": true
+    },
+    {
+      "document": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+      "kind": "source",
+      "source": "psionic/examples/locomotion-gaussian.coax",
+      "tag": "locomotion-gaussian",
+      "newly_checked": true,
+      "matched": true
+    }
+  ],
+  "program_inventory": {
+    "declared": 136,
+    "actual_top_level": 136,
+    "closed": true,
+    "added": [
+      "psionic/examples/locomotion-gaussian.coax"
+    ],
+    "removed": [],
+    "new_examples": [
+      {
+        "source": "psionic/examples/locomotion-gaussian.coax",
+        "chapter": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+        "stdout": "psionic/examples/locomotion-gaussian.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ]
+      }
+    ]
+  },
+  "registry_changes": [
+    {
+      "book": "psionic",
+      "number": 171,
+      "status": "implemented",
+      "profile": "CPU F64 GAE targets, PPO scalar objective and Gaussian policy primitives; learner and gait pending",
+      "sources_added": [
+        "psionic/examples/locomotion-gaussian.coax",
+        "psionic/lib/robotics/locomotion-gaussian.coax",
+        "psionic/lib/robotics/locomotion/gaussian-density.coax",
+        "psionic/lib/robotics/locomotion/gaussian-fixtures.coax",
+        "psionic/lib/robotics/locomotion/gaussian-ratio.coax",
+        "psionic/lib/robotics/locomotion/gaussian-sampling.coax",
+        "psionic/lib/robotics/locomotion/gaussian-types.coax",
+        "psionic/tests/robotics/locomotion-gaussian-native.coax"
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "coax.generics.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "coax.targets.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "coax.modules.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "psionic.autodiff.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "psionic.execution.current",
+      "ledger_object_changed": true,
+      "changed_evidence": [
+        "psionic/book/SUMMARY.md",
+        "psionic/book/examples.json"
+      ]
+    },
+    {
+      "id": "psionic.gpu.current",
+      "ledger_object_changed": true,
+      "changed_evidence": [
+        "psionic/book/SUMMARY.md",
+        "psionic/book/examples.json"
+      ]
+    },
+    {
+      "id": "psionic.language.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "psionic.compute.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "coax.wgsl.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    }
+  ],
+  "claim_drift": [],
+  "prior_input_identity_reused": 1072,
+  "unpublished_root_only_differences_to_preserve_not_overwrite": [],
+  "findings": [],
+  "input_manifest": {
+    "path": "/private/tmp/coax-return-borrows-A1/current-books-post-push-v12/inventory.json",
+    "sha256": "2bc960df6d065d1c9d6c759e2852e2d089b8c24b3b974862e754ebdb94f0c54f"
+  },
+  "review_script_sha256": "5d2f892acc7173ecdea5892686e8f212c8ac0f3a9ba00caed6e1769732396116",
+  "root_head_unchanged": true,
+  "newly_executed_repository_gates": 0,
+  "manual_scope_review_pending": false,
+  "actual_main_base": "5426f4af89bcbe17b6e3c39132fc4de0d06efb9e",
+  "original_root_source_revision": "44b25a4b3e83797ed8d6d3ffd9ca885aab8c1449",
+  "static_observation": {
+    "path": "/tmp/coax-return-borrows-A1/current-books-post-push-v12/static-observation.json",
+    "sha256": "56514fa8a512646cd18a2f1fd7853ddbfb0d86b11f9e8245014b3ffb2adfb14f"
+  },
+  "post_rebase_proof": {
+    "path": "/tmp/coax-return-borrows-A1/current-books-post-push-v12/post-rebase-proof.json",
+    "sha256": "adc5a1aeeb5e808cdc0e780e2adc066993d66e7d3807a70eb2178dafe1668b7d"
+  },
+  "manual_input_manifest": {
+    "path": "/tmp/coax-return-borrows-A1/current-books-post-push-v12/manual-inputs.json",
+    "sha256": "e2f2e6dc4f1a449a6456d3d6a6d3e1f4bc83f5dcf7f29ea6f32fbb70774cd3fa"
+  },
+  "manual_review": {
+    "new_gaussian_scope": "Normalized scalar CPU F64 density/formal detached-action scores, direct binary64 uniform transform, exactly two carried top53 counter draws, and admitted actual-libm log-ratio composition. Shape/finiteness/domain refusal precedes output publication. Literal radial zero preserves mean bytes; tiny nonzero uniforms retain the declared signed-zero recipe. The actual exp result must remain in the direct ratio domain and is never clamped. Physical-coordinate scaling/Jacobians, exact continuous-Gaussian/RNG quality, owned-libm/cross-target identity, learner/optimizer/environment/gait/hardware remain outside the slice.",
+    "stored_evidence_only": "Stored source/native/refusal receipts support15 public groups/130 public sites plus1 test-transport group/7 sites, four unit witnesses,960density/1344uniform/160seeded/640ratio rows and three native modes. Smooth numerical errors remain budgeted; exact fields/counters are declared separately. Observed exp is independently bounded before exact conditional objective comparison. This reviewer did not execute or newly qualify these historical peer profiles.",
+    "prior_prefix_and_GAE_PPO": "Unchanged chapter170 prefix and earlier return-target/PPO slice retain f8a5 review and original producer/effect scopes. No new model/SDK/physics/training result is inferred.",
+    "claims": "All9 actual pushed text/feature/evidence digests match. Only execution/GPU evidence changes for new SUMMARY/examples hashes; this is reviewed invalidation, not semantic proof.",
+    "A1_and_release": "Every Coax book file except the separately reviewed ledger is byte-identical to qualified44b Root scope. ch01 cache wording, ch06 memory, ch27/ch28 and managed0.46 prose remain exact. Spec/README/release-status are unchanged from44b; INVARIANTS adds only the exact upstream wallet edits. The changelog carries actual introduction9e29938427cba24fd4fa6778812c216f2f3ad1f5.",
+    "out_of_scope": "New Nostr HMAC and OS work is not audited; cross-book registry targets were read only for dependency membership."
+  },
+  "post_rebase_requirement": "Completed for actual pushed6784112 by the attached exact-object proof, including current local book bytes. Future changed inputs need their own review.",
+  "source_qualification_distinction": "Prior135program/482listing review and original134/481 static scope remain historical; the actual pushed closed inventory is136/483. No old runtime/book execution receipt is relabeled.",
+  "effect_observation": {
+    "new_repository_gate_executions": 0,
+    "compiler_or_native_or_model_or_book_runs": 0,
+    "network_browser_auth_publication_effects": 0,
+    "root_writes": 0
+  },
+  "post_review_head_observation": {
+    "before": "6784112fb02d3d418747e63923e22c6831c68c86",
+    "after": "6784112fb02d3d418747e63923e22c6831c68c86",
+    "unchanged": true,
+    "reviewed_objects_immutable": true
+  }
+}

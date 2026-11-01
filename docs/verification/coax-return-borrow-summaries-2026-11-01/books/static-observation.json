@@ -1,0 +1,191 @@
+{
+  "schema": "coax.books.latest-main-v12.static-review.v1",
+  "outcome": "passed-static-review",
+  "reviewed_revision": "6784112fb02d3d418747e63923e22c6831c68c86",
+  "reviewed_tree": "af1c8b943a39b8221e8285ad991ba95a91c4f501",
+  "base": "8fd5f7fdbc9fe9503be97841e24620cb307be106",
+  "root_source_revision": "44b25a4b3e83797ed8d6d3ffd9ca885aab8c1449",
+  "prior_review": {
+    "path": "/tmp/coax-return-borrows-A1/current-books-latest-main-v12/review.json",
+    "sha256": "f8a5e63e186947534a37a2369a32d8e3c5a962a3ea323d6455de8d036a4c0dff"
+  },
+  "scope": "Read-only Git-object changed-input navigation, registration, file/fragment, exact source-listing and reviewed-claim binding observations. No existing repository gate/import, compiler, native/model/book execution, network or Root write. Incoming main objects reviewed before rebase; preserve unpublished A1/cache prose.",
+  "counts": {
+    "coax": {
+      "markdown_pages": 57,
+      "fenced_blocks_inventory_only": 715,
+      "source_tag_blocks": 0,
+      "checked_source_blocks": 21,
+      "chapters": 47,
+      "chapter_statuses": {
+        "implemented": 21,
+        "partly implemented": 8,
+        "planned": 18
+      }
+    },
+    "psionic": {
+      "markdown_pages": 253,
+      "fenced_blocks_inventory_only": 877,
+      "source_tag_blocks": 483,
+      "checked_source_blocks": 0,
+      "chapters": 250,
+      "chapter_statuses": {
+        "implemented": 116,
+        "partly implemented": 2,
+        "design draft": 132
+      }
+    }
+  },
+  "changed_pages": [
+    "psionic/book/PLAN.md",
+    "psionic/book/README.md",
+    "psionic/book/SUMMARY.md",
+    "psionic/book/ch171-learn-a-gait-in-many-worlds.md"
+  ],
+  "incoming_paths": 81,
+  "fresh_links": 1069,
+  "new_fixture_docs": [
+    "psionic/fixtures/robotics/locomotion-gaussian/README.md"
+  ],
+  "source_listings": 483,
+  "fresh_source_listings": [
+    {
+      "document": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+      "kind": "source",
+      "source": "psionic/examples/locomotion-targets.coax",
+      "tag": "locomotion-targets",
+      "newly_checked": true,
+      "matched": true
+    },
+    {
+      "document": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+      "kind": "source",
+      "source": "psionic/examples/locomotion-gaussian.coax",
+      "tag": "locomotion-gaussian",
+      "newly_checked": true,
+      "matched": true
+    }
+  ],
+  "program_inventory": {
+    "declared": 136,
+    "actual_top_level": 136,
+    "closed": true,
+    "added": [
+      "psionic/examples/locomotion-gaussian.coax"
+    ],
+    "removed": [],
+    "new_examples": [
+      {
+        "source": "psionic/examples/locomotion-gaussian.coax",
+        "chapter": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+        "stdout": "psionic/examples/locomotion-gaussian.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ]
+      }
+    ]
+  },
+  "registry_changes": [
+    {
+      "book": "psionic",
+      "number": 171,
+      "status": "implemented",
+      "profile": "CPU F64 GAE targets, PPO scalar objective and Gaussian policy primitives; learner and gait pending",
+      "sources_added": [
+        "psionic/examples/locomotion-gaussian.coax",
+        "psionic/lib/robotics/locomotion-gaussian.coax",
+        "psionic/lib/robotics/locomotion/gaussian-density.coax",
+        "psionic/lib/robotics/locomotion/gaussian-fixtures.coax",
+        "psionic/lib/robotics/locomotion/gaussian-ratio.coax",
+        "psionic/lib/robotics/locomotion/gaussian-sampling.coax",
+        "psionic/lib/robotics/locomotion/gaussian-types.coax",
+        "psionic/tests/robotics/locomotion-gaussian-native.coax"
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "coax.generics.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "coax.targets.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "coax.modules.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "psionic.autodiff.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "psionic.execution.current",
+      "ledger_object_changed": true,
+      "changed_evidence": [
+        "psionic/book/SUMMARY.md",
+        "psionic/book/examples.json"
+      ]
+    },
+    {
+      "id": "psionic.gpu.current",
+      "ledger_object_changed": true,
+      "changed_evidence": [
+        "psionic/book/SUMMARY.md",
+        "psionic/book/examples.json"
+      ]
+    },
+    {
+      "id": "psionic.language.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "psionic.compute.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    },
+    {
+      "id": "coax.wgsl.current",
+      "ledger_object_changed": false,
+      "changed_evidence": []
+    }
+  ],
+  "claim_drift": [],
+  "prior_input_identity_reused": 1072,
+  "unpublished_root_only_differences_to_preserve_not_overwrite": [
+    "coax/book/appendix-a-keywords.md",
+    "coax/book/appendix-b-error-codes.md",
+    "coax/book/ch01-getting-started.md",
+    "coax/book/ch06-memory.md",
+    "coax/book/ch10-organizing-programs.md",
+    "coax/book/ch22-agents.md",
+    "coax/book/ch27-inside-coax0.md",
+    "coax/book/ch28-road-ahead.md",
+    "coax/release-status.json",
+    "coax/lib/compiler/checker.coax",
+    "coax/src/check.cpp",
+    "coax/spec.md",
+    "coax/src/eval.cpp",
+    "coax/src/main.cpp",
+    "coax/src/query.cpp",
+    "coax/tests/query.coax",
+    "coax/lib/compiler/parser.coax"
+  ],
+  "findings": [],
+  "input_manifest": {
+    "path": "/private/tmp/coax-return-borrows-A1/current-books-post-push-v12/inventory.json",
+    "sha256": "2bc960df6d065d1c9d6c759e2852e2d089b8c24b3b974862e754ebdb94f0c54f"
+  },
+  "review_script_sha256": "5d2f892acc7173ecdea5892686e8f212c8ac0f3a9ba00caed6e1769732396116",
+  "root_head_unchanged": true,
+  "newly_executed_repository_gates": 0,
+  "manual_scope_review_pending": true
+}

@@ -51,3 +51,17 @@ child; the borrow umbrella remains open.
 
 This record qualifies the implementation. Fresh changelog renders and website
 publication follow the pushed release identity and are recorded separately.
+
+Runtime commit `6784112fb02d3d418747e63923e22c6831c68c86` is pushed. The actual
+rebase base was `5426f4af89bcbe17b6e3c39132fc4de0d06efb9e`; the shared remote
+reference advanced after the earlier incoming-book review. No compiler
+fingerprint input changed, and post-push provenance verification passed. The
+first book comparison against the older incoming ledger stopped and is not
+counted as a pass. Its newer Gaussian/book evidence receives a separate static
+follow-up. The qualification retains its original source/image attribution.
+
+The [follow-up static review](books/review.json) now verifies actual pushed
+`6784112`: 136 registered Psionic programs, 483 source listings and nine matching
+capability bindings. Its [post-rebase proof](books/post-rebase-proof.json)
+confirms the incoming Gaussian evidence and the preserved A1/0.46 book prose.
+No programs, models or native gates were executed by this static review.

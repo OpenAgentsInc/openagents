@@ -283,6 +283,23 @@
     "actual_emission_profiles": 9,
     "skipped": 0
   },
-  "current_tree_integration": "Rebase/provenance/source comparison is retained separately before push. Qualification remains attributed to44b; no future source epoch is relabelled.",
+  "current_tree_integration": {
+    "pushed_runtime_commit": "6784112fb02d3d418747e63923e22c6831c68c86",
+    "actual_rebase_base": "5426f4af89bcbe17b6e3c39132fc4de0d06efb9e",
+    "actual_introducing_commit": "9e29938427cba24fd4fa6778812c216f2f3ad1f5",
+    "compiler_fingerprint_input_changes_since_qualified44b": [],
+    "post_rebase_matched_binary_metadata_generation": "passed; onlyCHANGELOG introducing commitline changed",
+    "post_push_actual_provenance_verification": "passed; installed image5c37377a and fingerprint7c749e remain unchanged",
+    "static_book_delta": {
+      "reviewed_pushed_revision": "6784112fb02d3d418747e63923e22c6831c68c86",
+      "review_sha256": "4be0695157c9f7bd6fe18b4b545f0eba718acb4325fb02d49ab5542191e64285",
+      "programs": 136,
+      "source_listings": 483,
+      "claim_bindings": 9,
+      "post_rebase_proof_sha256": "adc5a1aeeb5e808cdc0e780e2adc066993d66e7d3807a70eb2178dafe1668b7d",
+      "old8fd_comparison": "Stopped on newGaussian ledger inputs; not countedaspassed. Actual5426\u21926784 changed inputs then independently reviewed."
+    },
+    "scope": "Qualification remains at actual44b source epoch. Rebase changes no compiler fingerprint input; image5c and its own normal record are preserved. New books remain static-review scope only."
+  },
   "limits": "Named normal/final gate evidence only; no visual, publication, credentials, retained async request lifetime, generic alternate-target or whole-model qualification. Source fixtures prove admission, not manual-summary completeness; that is a separate native9 scope."
 }

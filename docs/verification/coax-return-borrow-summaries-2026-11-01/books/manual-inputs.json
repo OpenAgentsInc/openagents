@@ -1,0 +1,37 @@
+{
+  "revision": "6784112fb02d3d418747e63923e22c6831c68c86",
+  "files": {
+    "psionic/fixtures/robotics/locomotion-gaussian/README.md": {
+      "git_blob": "3d28d9864276a892fce15a493883958d2753a056",
+      "sha256": "76eeee08c236d264f2d9157a759dcdf7cd1897a1ccb1ba61f6b180bb09c20699"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/source-qualification.json": {
+      "git_blob": "060c5e8255a16a0ee31b544bc0e7877215a0b964",
+      "sha256": "e339cb9442821f8c3aad99d0ad1be91b63912359d03902313bd459db330ba153"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-qualification.json": {
+      "git_blob": "54d7e3342a600bb995bf70a79c65614bca0d8dff",
+      "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/unit-refusals.json": {
+      "git_blob": "72e538e707b38cfebaa8d49897305179739b1dd6",
+      "sha256": "06e850348d9e6f39fbaf94e1f2da185befc350c395cbb2c2446d678edacb930a"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-density.coax": {
+      "git_blob": "c6ab60becdb17e00bc9923058622639bb2bde9ac",
+      "sha256": "68d012f2f3e38c75e2905ba0ad3300722e24dc7e5cec87b545e384a091a08f18"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-sampling.coax": {
+      "git_blob": "62f7ef06e4a167e220d1644542849c3969ef66e0",
+      "sha256": "abcd98010519a83c02a38ba60c2b287ce4ff6f35d360013655d38ab7ec746483"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-ratio.coax": {
+      "git_blob": "a90ce516bd3ea1949a1d56aba5a961260e76a30e",
+      "sha256": "a50570d463033b569ebfc866d96236203faaf4429c2f3d7dc9dd388f15c65bd6"
+    },
+    "psionic/book/ch171-learn-a-gait-in-many-worlds.md": {
+      "git_blob": "0471e65343a04589360994fe49b4449ec35db245",
+      "sha256": "90e1b678346aee53947ced5fd39c71342978fa78e910ffb97233fe9141ff823b"
+    }
+  }
+}
