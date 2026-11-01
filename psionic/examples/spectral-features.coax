@@ -1,0 +1,68 @@
+#import "Basic";
+#load "../lib/spectral.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+larger :: (a:f64,b:f64)->f64 {if b>a {return b;}return a;}
+show :: (label:string,re:[]f64,im:[]f64) {
+    print("  %:",label);for k:0..<re.count {print(" % % i",r4(re[k]),r4(im[k]));}print("\n");
+}
+// The largest |FFT - DFT| over every bin, and the largest round-trip error.
+compare :: (n:int) {
+    re:[512]f64;im:[512]f64;dre:[512]f64;dim:[512]f64;keep:[512]f64;
+    for i:0..<n {re[i]=sin(0.37*f64(i*i%97))*0.9;keep[i]=re[i];}
+    #assert sf_dft(re[0..<n],im[0..<n],dre[0..<n],dim[0..<n],false)==SfStatus.ok && sf_fft(re[0..<n],im[0..<n],false)==SfStatus.ok;
+    worst:=0.0;for k:0..<n {worst=larger(worst,larger(abs(re[k]-dre[k]),abs(im[k]-dim[k])));}
+    #assert sf_fft(re[0..<n],im[0..<n],true)==SfStatus.ok;
+    back:=0.0;for k:0..<n {back=larger(back,larger(abs(re[k]-keep[k]),abs(im[k])));}
+    path:="radix-2";if !sf_power_of_two(n) {path="chirp";}
+    print("n = % (%): FFT within 1e-12 of the DFT: %; inverse returns the input within 1e-14: %\n",n,path,worst<1e-12,back<1e-14);
+}
+
+// book:begin example
+main :: () {
+    // 1. Four points by hand: 1 2 3 4.
+    re:=[4]f64.[1,2,3,4];im:[4]f64;dre:[4]f64;dim:[4]f64;
+    #assert sf_dft(re[..],im[..],dre[..],dim[..],false)==SfStatus.ok && sf_fft(re[..],im[..],false)==SfStatus.ok;
+    print("x = 1 2 3 4\n");show("DFT",dre[..],dim[..]);show("FFT",re[..],im[..]);
+    #assert sf_fft(re[..],im[..],true)==SfStatus.ok;show("inverse",re[..],im[..]);
+
+    // 2. Larger sizes against the direct DFT.
+    compare(6);compare(400);compare(512);
+
+    // 3. A spectrogram by hand: n_fft 4, hop 2, rectangle, centred.
+    x:=[4]f64.[0.125,0.25,0.375,0.5];a:=SfAudio.{rate=16000,channels=1,samples=x[..]};power:[9]f64;
+    s:=SfSpec.{rate=16000,n_fft=4,win_length=4,hop=2,window=SfWindow.rectangle,center=true,pad=SfPad.zero,mels=1,fmax=8000,guard=1};
+    for pad:0..<2 {
+        s.pad=cast(SfPad)pad;r:=sf_spectrogram(a,s,power[..]);
+        print("% padding: % frames x % bins, power x 64:",s.pad,r.frames,r.bins);
+        for v:power {print(" %",v*64);}print("\n");
+    }
+
+    // 4. Log-mel features of a 1 kHz tone, half a second at 16 kHz.
+    tone:[8000]f64;for i:0..<8000 {tone[i]=0.5*sin(2*SF_PI*1000*f64(i)/16000);}
+    nemo:=sf_nemo_spec();bank:[128*257]f64;features:[128*51]f64;
+    b:=sf_mel_bank(nemo,bank[..]);#assert b.status==SfStatus.ok;
+    print("mel bank: % filters x % bins; filter 0 weights:",b.mels,b.bins);for k:0..<3 {print(" %",r4(bank[k]*1000));}print(" (x 1000)\n");
+    raw:=nemo;raw.normalize=SfNormalize.none;audio:=SfAudio.{rate=16000,channels=1,samples=tone[..]};
+    f:=sf_features(audio,raw,bank[..],features[..]);#assert f.status==SfStatus.ok;
+    peak:=0;for m:0..<128 {if features[m*f.frames+25]>features[peak*f.frames+25] {peak=m;}}
+    lo:=sf_hz_to_mel(0,SfScale.slaney);hi:=sf_hz_to_mel(8000,SfScale.slaney);
+    centre:=sf_mel_to_hz(lo+f64(peak+1)*(hi-lo)/129,SfScale.slaney);
+    print("tone: % frames; frame 25 peaks in filter % (centre % Hz), log-mel %; filter 0 there: %\n",
+        f.frames,peak,r4(centre),r4(features[peak*f.frames+25]),r4(features[25]));
+    f=sf_features(audio,nemo,bank[..],features[..]);#assert f.status==SfStatus.ok;
+    mean:=0.0;for t:0..<f.frames {mean+=features[peak*f.frames+t];}mean/=f64(f.frames);
+    spread:=0.0;for t:0..<f.frames {d:=features[peak*f.frames+t]-mean;spread+=d*d;}
+    print("per-feature normalized, filter %: mean %, n - 1 deviation %\n",peak,r4(mean),r4(sqrt(spread/f64(f.frames-1))));
+
+    // 5. Broken inputs, each refused with its reason.
+    fast:=SfAudio.{rate=48000,channels=1,samples=tone[..]};print("48 kHz audio for a 16 kHz spec: %\n",sf_features(fast,nemo,bank[..],features[..]).status);
+    stereo:=SfAudio.{rate=16000,channels=2,samples=tone[..]};print("two channels: %\n",sf_features(stereo,nemo,bank[..],features[..]).status);
+    zero:=0.0;tone[100]=zero/zero;print("a NaN sample: %\n",sf_features(audio,nemo,bank[..],features[..]).status);tone[100]=1.5;
+    print("a sample of 1.5: %\n",sf_admit(audio,nemo));
+    print("no samples: %\n",sf_admit(SfAudio.{rate=16000,channels=1,samples=tone[0..<0]},nemo));
+    wide:=nemo;wide.n_fft=8192;print("an 8192-point frame: %\n",sf_admit(audio,wide));
+    many:=nemo;many.n_fft=64;many.win_length=64;many.hop=16;many.mels=64;print("64 mels on 33 bins: %\n",sf_mel_bank(many,bank[..]).status);
+    odd:=[3]f64.[1,2,3];one:[2]f64;print("FFT with 3 real and 2 imaginary parts: %\n",sf_fft(odd[..],one[..],false));
+}
+// book:end example

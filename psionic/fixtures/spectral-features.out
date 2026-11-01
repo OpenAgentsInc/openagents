@@ -1,0 +1,20 @@
+x = 1 2 3 4
+  DFT: 10.0 0.0 i -2.0 2.0 i -2.0 0.0 i -2.0 -2.0 i
+  FFT: 10.0 0.0 i -2.0 2.0 i -2.0 0.0 i -2.0 -2.0 i
+  inverse: 1.0 0.0 i 2.0 0.0 i 3.0 0.0 i 4.0 0.0 i
+n = 6 (chirp): FFT within 1e-12 of the DFT: true; inverse returns the input within 1e-14: true
+n = 400 (chirp): FFT within 1e-12 of the DFT: true; inverse returns the input within 1e-14: true
+n = 512 (radix-2): FFT within 1e-12 of the DFT: true; inverse returns the input within 1e-14: true
+zero padding: 3 frames x 3 bins, power x 64: 9.0 5.0 1.0 100.0 8.0 4.0 49.0 25.0 1.0
+reflect padding: 3 frames x 3 bins, power x 64: 64.0 4.0 0.0 100.0 8.0 4.0 144.0 4.0 0.0
+mel bank: 128 filters x 257 bins; filter 0 weights: 0.0 28.3775 0.0 (x 1000)
+tone: 51 frames; frame 25 peaks in filter 42 (centre 1005.6453 Hz), log-mel 2.4581; filter 0 there: -16.6107
+per-feature normalized, filter 42: mean 0.0, n - 1 deviation 1.0
+48 kHz audio for a 16 kHz spec: rate
+two channels: channels
+a NaN sample: number
+a sample of 1.5: number
+no samples: empty
+an 8192-point frame: size
+64 mels on 33 bins: filter
+FFT with 3 real and 2 imaginary parts: shape

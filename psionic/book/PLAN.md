@@ -527,7 +527,7 @@ Unitree G1 is a separate embodiment/profile, not an interchangeable asset.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [151. Waveforms and spectral features](ch151-waveforms-and-spectral-features.md) — design draft | Sample/rate/channel admission, windowing, tiny DFT → FFT/inverse, spectrogram/mel and exact feature normalization. |
+| [151. Waveforms and spectral features](ch151-waveforms-and-spectral-features.md) — runnable CPU FFT and log-mel features; recorded Parakeet features, dither and 2D open | Sample/rate/channel admission, windowing, tiny DFT → FFT/inverse, spectrogram/mel and exact feature normalization. |
 | [152. A speech encoder](ch152-a-speech-encoder.md) — design draft | FastConformer convolution/attention, subsampling and length/mask propagation, compared against fixed intermediate tensors. |
 | [153. Transcribe with Parakeet](ch153-transcribe-with-parakeet.md) — design draft | parakeet-tdt-0.6b-v3, token-duration-transducer decoding and bounded utterances; WER/CER and language slices. |
 | [154. Transcribe while someone speaks](ch154-transcribe-while-someone-speaks.md) — design draft | Chunked streaming input (Voxtral-Mini-4B-Realtime, Apache-2.0, is a candidate alongside Parakeet) with carried encoder/decoder state, partial and final hypotheses, measured per-chunk latency against a stated budget, and integration with the voice engine's end-of-turn and barge-in through `verse/platform/voice.h`. |

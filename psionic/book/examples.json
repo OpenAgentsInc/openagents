@@ -142,6 +142,16 @@
       ]
     },
     {
+      "source": "psionic/examples/spectral-features.coax",
+      "chapter": "psionic/book/ch151-waveforms-and-spectral-features.md",
+      "stdout": "psionic/fixtures/spectral-features.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/original-mxfp4.coax",
       "chapter": "psionic/book/ch060-original-mxfp4-weights.md",
       "stdout": "psionic/fixtures/original-mxfp4.out",

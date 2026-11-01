@@ -1,0 +1,683 @@
+// Chapter 151: waveforms and spectral features. Mono audio is admitted or
+// refused, framed with a window, transformed by a fast Fourier transform that
+// a direct DFT checks, and reduced to log-mel features with a stated
+// normalization. Chapters 152 to 156 and 161 build on the same transforms.
+// Profile cpu-f64-spectral-v1: binary64 throughout. A twiddle e^(-2 pi i r/d)
+// reduces r into (-d/2, d/2] first and is exact at quarter turns. Power-of-two
+// sizes use radix-2 Cooley-Tukey; other sizes up to 4,096 use Bluestein's
+// chirp transform. The direct DFT sums with chapter 4's compensated
+// accumulator. The FFT stays within 1e-14 times (1 + the sum of |x|) of the
+// DFT on every check here. Audio: 1 to 480,000 samples in [-1, 1], one
+// channel, 8,000 to 48,000 Hz.
+#load "ops.coax";
+
+SfStatus :: enum u8 {ok;empty;size;shape;capacity;number;rate;channels;length;filter;}
+SfWindow :: enum u8 {hann;hamming;rectangle;}
+SfPad :: enum u8 {zero;reflect;}
+SfScale :: enum u8 {slaney;htk;}
+SfNorm :: enum u8 {none;slaney;}
+SfLog :: enum u8 {add;clamp;}
+SfNormalize :: enum u8 {none;per_feature;}
+SfAudio :: struct {rate:int;channels:int;samples:[]f64;}
+// Every convention a feature extractor needs, with nothing hidden: the window
+// of win_length samples sits in the middle of n_fft; center pads n_fft/2
+// samples on each side; preemphasis c replaces x[i] by x[i] - c x[i-1].
+SfSpec :: struct {rate:int;n_fft:int;win_length:int;hop:int;window:SfWindow;periodic:bool;center:bool;pad:SfPad;
+    preemphasis:f64;mels:int;fmin:f64;fmax:f64;scale:SfScale;norm:SfNorm;log:SfLog;guard:f64;normalize:SfNormalize;}
+SfResult :: struct {status:SfStatus;frames:int;bins:int;mels:int;}
+SfTurn :: struct {re:f64;im:f64;}
+
+SF_FFT_MAX :: 4096;
+SF_CHIRP_MAX :: 8192;
+SF_BINS_MAX :: 2049;
+SF_SAMPLES_MAX :: 480000;
+SF_MELS_MAX :: 256;
+SF_RATE_MIN :: 8000;
+SF_RATE_MAX :: 48000;
+SF_PI :: 3.141592653589793;
+SF_DEVIATION_GUARD :: 0.00001;
+SF_LOG_GUARD :: 0.000000059604644775390625;
+
+// Checks precede the implementation. Values marked "oracle" come from
+// psionic/tests/spectral_oracle.py, which writes the formulas out in Python.
+sf_close :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+// A fixed test signal in [-1, 1] from a linear congruential sequence.
+sf_noise :: (seed:int,re:[]f64,im:[]f64) {
+    x:=seed*7919+12345;
+    for i:0..<re.count {
+        x=(x*1103515245+12345)%2147483648;re[i]=f64(x%2001-1000)/1000;
+        x=(x*1103515245+12345)%2147483648;im[i]=f64(x%2001-1000)/1000;
+    }
+}
+sf_nan :: ()->f64 {z:=0.0;return z/z;}
+sf_inf :: ()->f64 {z:=0.0;return 1/z;}
+sf_l1 :: (re:[]f64,im:[]f64)->f64 {s:=0.0;for i:0..<re.count {s+=abs(re[i])+abs(im[i]);}return s;}
+#test "the test helpers are pinned" {
+    re:=[2]f64.[-7,-7];im:=[2]f64.[-7,-7];sf_noise(1,re[..],im[..]);
+    #assert re[0]==0.961 && im[0]== -0.69 && re[1]== -0.4 && im[1]==0.443;
+    #assert sf_close(sf_l1(re[..],im[..]),2.494,1e-15) && sf_close(1,1,0) && !sf_close(1,1.5,0.25);
+}
+#test "quarter turns are exact, others reduce first" {
+    t:=sf_turn(0,8);#assert t.re==1 && t.im==0;
+    t=sf_turn(2,8);#assert t.re==0 && t.im== -1;
+    t=sf_turn(4,8);#assert t.re== -1 && t.im==0;
+    t=sf_turn(6,8);#assert t.re==0 && t.im==1;
+    t=sf_turn(14,8);#assert t.re==0 && t.im==1;
+    t=sf_turn(1,8);#assert t.re==cos(-SF_PI/4) && t.im==sin(-SF_PI/4);
+    t=sf_turn(7,8);#assert t.re==cos(SF_PI/4) && t.im==sin(SF_PI/4);
+    t=sf_turn(5,8);#assert t.re==cos(SF_PI*3/4) && t.im==sin(SF_PI*3/4);
+    t=sf_turn(1,3);#assert t.re==cos(-2*SF_PI/3) && t.im==sin(-2*SF_PI/3);
+    t=sf_turn(2,3);#assert t.re==cos(2*SF_PI/3) && t.im==sin(2*SF_PI/3);
+    t=sf_turn(1,2);#assert t.re== -1 && t.im==0;
+}
+#test "a 4-point transform by hand" {
+    re:=[4]f64.[1,2,3,4];im:[4]f64;ore:[4]f64;oim:[4]f64;
+    #assert sf_dft(re[..],im[..],ore[..],oim[..],false)==SfStatus.ok;
+    #assert ore[0]==10 && oim[0]==0 && ore[1]== -2 && oim[1]==2 && ore[2]== -2 && oim[2]==0 && ore[3]== -2 && oim[3]== -2;
+    #assert sf_fft(re[..],im[..],false)==SfStatus.ok;
+    #assert re[0]==10 && im[0]==0 && re[1]== -2 && im[1]==2 && re[2]== -2 && im[2]==0 && re[3]== -2 && im[3]== -2;
+    #assert sf_fft(re[..],im[..],true)==SfStatus.ok;
+    #assert re[0]==1 && re[1]==2 && re[2]==3 && re[3]==4 && im[0]==0 && im[1]==0 && im[2]==0 && im[3]==0;
+    #assert sf_dft(ore[..],oim[..],re[..],im[..],true)==SfStatus.ok;
+    #assert re[0]==1 && re[1]==2 && re[2]==3 && re[3]==4 && im[0]==0 && im[3]==0;
+    zr:[4]f64;zi:=[4]f64.[4,0,0,0];#assert sf_dft(zr[..],zi[..],ore[..],oim[..],true)==SfStatus.ok;
+    for k:0..<4 {#assert ore[k]==0 && oim[k]==1;}
+    one:=[1]f64.[-0.5];z:[1]f64;#assert sf_fft(one[..],z[..],false)==SfStatus.ok && one[0]== -0.5 && z[0]==0;
+    #assert sf_fft(one[..],z[..],true)==SfStatus.ok && one[0]== -0.5;
+    two:=[2]f64.[3,1];z2:=[2]f64.[0,1];#assert sf_fft(two[..],z2[..],false)==SfStatus.ok && two[0]==4 && two[1]==2 && z2[0]==1 && z2[1]== -1;
+}
+#test "an 8-point impulse and cosine" {
+    re:[8]f64;im:[8]f64;re[1]=1;
+    #assert sf_fft(re[..],im[..],false)==SfStatus.ok;
+    // A one-sample delay turns bin k by e^(-2 pi i k/8).
+    for k:0..<8 {t:=sf_turn(k,8);#assert sf_close(re[k],t.re,1e-15) && sf_close(im[k],t.im,1e-15);}
+    for n:0..<8 {re[n]=cos(2*SF_PI*f64(n)/8);im[n]=0;}
+    #assert sf_fft(re[..],im[..],false)==SfStatus.ok;
+    for k:0..<8 {
+        want:=0.0;if k==1 || k==7 {want=4;}
+        #assert sf_close(re[k],want,1e-14) && sf_close(im[k],0,1e-14);
+    }
+}
+#test "sizes 3 and 6 by hand, through the chirp transform" {
+    re:=[3]f64.[0,1,0];im:[3]f64;
+    #assert sf_fft(re[..],im[..],false)==SfStatus.ok;
+    h:=sqrt(3.0)/2;
+    #assert sf_close(re[0],1,1e-15) && sf_close(im[0],0,1e-15) && sf_close(re[1],-0.5,1e-15) && sf_close(im[1],-h,1e-15);
+    #assert sf_close(re[2],-0.5,1e-15) && sf_close(im[2],h,1e-15);
+    six:=[6]f64.[1,1,1,1,1,1];z:[6]f64;
+    #assert sf_fft(six[..],z[..],false)==SfStatus.ok && sf_close(six[0],6,1e-14);
+    for k:1..<6 {#assert sf_close(six[k],0,1e-14) && sf_close(z[k],0,1e-14);}
+    #assert sf_fft(six[..],z[..],true)==SfStatus.ok;
+    for k:0..<6 {#assert sf_close(six[k],1,1e-15) && sf_close(z[k],0,1e-15);}
+}
+#forall "the FFT matches the direct DFT and inverts, sizes 1 to 64" n:1..<65 #steps 100000000 {
+    re:[64]f64;im:[64]f64;dre:[64]f64;dim:[64]f64;keep:[64]f64;keepi:[64]f64;
+    sf_noise(n,re[0..<n],im[0..<n]);
+    for i:0..<n {keep[i]=re[i];keepi[i]=im[i];}
+    #assert sf_dft(re[0..<n],im[0..<n],dre[0..<n],dim[0..<n],false)==SfStatus.ok;
+    #assert sf_fft(re[0..<n],im[0..<n],false)==SfStatus.ok;
+    bound:=1e-14*(1+sf_l1(keep[0..<n],keepi[0..<n]));
+    for k:0..<n {#assert sf_close(re[k],dre[k],bound) && sf_close(im[k],dim[k],bound);}
+    #assert sf_fft(re[0..<n],im[0..<n],true)==SfStatus.ok;
+    for k:0..<n {#assert sf_close(re[k],keep[k],1e-13) && sf_close(im[k],keepi[k],1e-13);}
+}
+#forall "Parseval: energy is kept, divided by n" n:1..<41 #steps 10000000 {
+    re:[40]f64;im:[40]f64;
+    sf_noise(n+100,re[0..<n],im[0..<n]);
+    e:=0.0;for i:0..<n {e+=re[i]*re[i]+im[i]*im[i];}
+    #assert sf_fft(re[0..<n],im[0..<n],false)==SfStatus.ok;
+    s:=0.0;for i:0..<n {s+=re[i]*re[i]+im[i]*im[i];}
+    #assert sf_close(s/f64(n),e,1e-13*(1+e));
+}
+#forall "linearity: the transform of 2x - 3y is 2X - 3Y" n:1..<33 #steps 20000000 {
+    xr:[32]f64;xi:[32]f64;yr:[32]f64;yi:[32]f64;cr:[32]f64;ci:[32]f64;
+    sf_noise(n+200,xr[0..<n],xi[0..<n]);sf_noise(n+300,yr[0..<n],yi[0..<n]);
+    for i:0..<n {cr[i]=2*xr[i]-3*yr[i];ci[i]=2*xi[i]-3*yi[i];}
+    #assert sf_fft(xr[0..<n],xi[0..<n],false)==SfStatus.ok && sf_fft(yr[0..<n],yi[0..<n],false)==SfStatus.ok;
+    #assert sf_fft(cr[0..<n],ci[0..<n],false)==SfStatus.ok;
+    for k:0..<n {#assert sf_close(cr[k],2*xr[k]-3*yr[k],1e-12*f64(n)) && sf_close(ci[k],2*xi[k]-3*yi[k],1e-12*f64(n));}
+}
+#test "a speech frame of 400 samples" #steps 100000000 {
+    {
+        n:=400;
+        re:[400]f64;im:[400]f64;dre:[400]f64;dim:[400]f64;
+        sf_noise(n,re[0..<n],im[0..<n]);bound:=1e-14*(1+sf_l1(re[0..<n],im[0..<n]));
+        #assert sf_dft(re[0..<n],im[0..<n],dre[0..<n],dim[0..<n],false)==SfStatus.ok;
+        #assert sf_fft(re[0..<n],im[0..<n],false)==SfStatus.ok;
+        for k:0..<n {#assert sf_close(re[k],dre[k],bound) && sf_close(im[k],dim[k],bound);}
+    }
+}
+#test "transform refusals" #steps 200000000 {
+    re:=[4]f64.[1,2,3,4];im:[4]f64;o:[4]f64;p:[4]f64;
+    #assert sf_fft(re[0..<0],im[0..<0],false)==SfStatus.size && sf_dft(re[0..<0],im[0..<0],o[..],p[..],false)==SfStatus.size;
+    #assert sf_fft(re[..],im[0..<3],false)==SfStatus.shape && sf_dft(re[..],im[0..<3],o[..],p[..],false)==SfStatus.shape;
+    #assert sf_dft(re[..],im[..],o[0..<3],p[..],false)==SfStatus.capacity && sf_dft(re[..],im[..],o[..],p[0..<3],false)==SfStatus.capacity;
+    big:[4097]f64;bi:[4097]f64;#assert sf_fft(big[..],bi[..],false)==SfStatus.size && sf_dft(big[..],bi[..],big[..],bi[..],false)==SfStatus.size;
+    #assert sf_fft(big[0..<4096],bi[0..<4096],false)==SfStatus.ok;
+    #assert sf_fft(big[0..<4095],bi[0..<4095],false)==SfStatus.ok;
+    re[0]=sf_inf();#assert sf_fft(re[..],im[..],false)==SfStatus.number;re[0]=1;
+    im[0]=sf_nan();#assert sf_fft(re[..],im[..],false)==SfStatus.number;im[0]=0;
+    re[2]=sf_inf();#assert sf_fft(re[..],im[..],false)==SfStatus.number && re[0]==1;
+    #assert sf_dft(re[..],im[..],o[..],p[..],false)==SfStatus.number;
+    re[2]=3;im[1]=sf_nan();#assert sf_fft(re[..],im[..],false)==SfStatus.number && sf_dft(re[..],im[..],o[..],p[..],false)==SfStatus.number;
+    im[1]=-sf_inf();#assert sf_fft(re[..],im[..],false)==SfStatus.number;
+    #assert sf_finite(1.7976931348623157e308) && sf_finite(-1.7976931348623157e308) && !sf_finite(sf_inf()) && !sf_finite(sf_nan());
+    #assert sf_chirp_length(1)==2 && sf_chirp_length(3)==8 && sf_chirp_length(4)==8 && sf_chirp_length(5)==16 && sf_chirp_length(400)==1024;
+    #assert sf_power_of_two(1) && sf_power_of_two(2) && sf_power_of_two(4096) && !sf_power_of_two(3) && !sf_power_of_two(6) && !sf_power_of_two(4095);
+}
+#test "windows by hand" {
+    w:[5]f64;
+    #assert sf_window(SfWindow.hann,true,w[0..<4])==SfStatus.ok;
+    #assert w[0]==0 && sf_close(w[1],0.5,1e-16) && w[2]==1 && sf_close(w[3],0.5,1e-16);
+    #assert sf_window(SfWindow.hann,false,w[..])==SfStatus.ok;
+    #assert w[0]==0 && sf_close(w[1],0.5,1e-16) && w[2]==1 && sf_close(w[3],0.5,1e-16) && w[4]==0;
+    #assert sf_window(SfWindow.hamming,true,w[0..<4])==SfStatus.ok;
+    #assert sf_close(w[0],0.08,1e-16) && sf_close(w[1],0.54,1e-16) && w[2]==1 && sf_close(w[3],0.54,1e-16);
+    #assert sf_window(SfWindow.rectangle,false,w[..])==SfStatus.ok && w[0]==1 && w[4]==1;
+    #assert sf_window(SfWindow.hann,false,w[0..<1])==SfStatus.ok && w[0]==1;
+    #assert sf_window(SfWindow.hann,true,w[0..<1])==SfStatus.ok && w[0]==1;
+    #assert sf_window(SfWindow.hann,true,w[0..<0])==SfStatus.size;
+    big:[4097]f64;#assert sf_window(SfWindow.hann,true,big[..])==SfStatus.size && sf_window(SfWindow.hann,true,big[0..<4096])==SfStatus.ok;
+}
+#test "mel scales" {
+    #assert sf_hz_to_mel(1000,SfScale.slaney)==15 && sf_close(sf_hz_to_mel(600,SfScale.slaney),9,1e-14) && sf_hz_to_mel(0,SfScale.slaney)==0;
+    #assert sf_close(sf_hz_to_mel(6400,SfScale.slaney),42,1e-13) && sf_mel_to_hz(15,SfScale.slaney)==1000 && sf_close(sf_mel_to_hz(9,SfScale.slaney),600,1e-12);
+    #assert sf_close(sf_hz_to_mel(999,SfScale.slaney),14.985,1e-13) && sf_close(sf_mel_to_hz(14.985,SfScale.slaney),999,1e-12);
+    #assert sf_close(sf_mel_to_hz(42,SfScale.slaney),6400,1e-10);
+    #assert sf_close(sf_hz_to_mel(700,SfScale.htk),2595*log(2.0)/log(10.0),1e-12) && sf_close(sf_mel_to_hz(2595,SfScale.htk),6300,1e-10);
+    for f:0..<80 {
+        hz:=f64(f)*100+0.5;
+        #assert sf_close(sf_mel_to_hz(sf_hz_to_mel(hz,SfScale.slaney),SfScale.slaney),hz,1e-9);
+        #assert sf_close(sf_mel_to_hz(sf_hz_to_mel(hz,SfScale.htk),SfScale.htk),hz,1e-9);
+    }
+}
+sf_small :: ()->SfSpec {
+    return SfSpec.{rate=16000,n_fft=16,win_length=12,hop=4,window=SfWindow.hann,periodic=false,center=true,pad=SfPad.zero,
+        preemphasis=0.97,mels=4,fmin=0,fmax=8000,scale=SfScale.slaney,norm=SfNorm.slaney,log=SfLog.add,guard=SF_LOG_GUARD,normalize=SfNormalize.per_feature};
+}
+#test "mel banks match the oracle" {
+    // oracle: slaney bank 16 kHz, n_fft 16, 4 mels, slaney norm; then htk, no norm
+    want:=[36]f64.[0,0.0006050957639020401,0,0,0,0,0,0,0,
+        0,0.0007352135534891176,0.0003358614972034313,0,0,0,0,0,0,
+        0,0,0.00046726403337509203,0.00042571519645100484,9.680999238109699e-05,0,0,0,0,
+        0,0,0,0.00012267497989052392,0.000299228830973115,0.00028431835628968985,0.0001895455708597932,9.477278542989652e-05,0];
+    htk:=[36]f64.[0,0.2871922301763404,0,0,0,0,0,0,0,
+        0,0.7128077698236597,0.37793311174811073,0,0,0,0,0,0,
+        0,0,0.6220668882518893,0.7477060778501317,0.26709912408794506,0,0,0,0,
+        0,0,0,0.2522939221498683,0.7329008759120549,0.8710178644035251,0.5806785762690169,0.2903392881345087,5.281240885497176e-16];
+    bank:[36]f64;for i:0..<36 {bank[i]= -7;}s:=sf_small();
+    // The last edge is fmax's mel converted back, not the sum of five steps: 7999.999999999998 Hz.
+    e:[6]f64;sf_mel_edges(s,e[..]);hi:=sf_hz_to_mel(8000,SfScale.slaney);
+    #assert e[0]==0 && e[5]==sf_mel_to_hz(hi,SfScale.slaney) && e[4]==sf_mel_to_hz(4*(hi/5),SfScale.slaney) && sf_close(e[1],603.275206292333,1e-9);
+    r:=sf_mel_bank(s,bank[..]);#assert r.status==SfStatus.ok && r.bins==9 && r.mels==4;
+    for i:0..<36 {#assert sf_close(bank[i],want[i],1e-17);}
+    s.scale=SfScale.htk;s.norm=SfNorm.none;
+    r=sf_mel_bank(s,bank[..]);#assert r.status==SfStatus.ok;
+    for i:0..<36 {#assert sf_close(bank[i],htk[i],1e-13);}
+    // fmin and fmax move the edges: 1 kHz to 4 kHz in HTK mels.
+    s.fmin=1000;s.fmax=4000;s.mels=1;r=sf_mel_bank(s,bank[..]);#assert r.status==SfStatus.ok && bank[1]==0 && bank[2]>0 && bank[4]==0;
+    #assert sf_close(bank[2],(2000-1000)/(sf_mel_to_hz((sf_hz_to_mel(1000,SfScale.htk)+sf_hz_to_mel(4000,SfScale.htk))/2,SfScale.htk)-1000),1e-12);
+    s.mels=4;
+    #assert sf_mel_bank(s,bank[0..<35]).status==SfStatus.capacity;
+    // Too many mels for the bins: a triangle falls between two bins and is refused.
+    s=sf_small();s.mels=12;big:[108]f64;#assert sf_mel_bank(s,big[..]).status==SfStatus.filter;
+    s.mels=0;#assert sf_mel_bank(s,big[..]).status==SfStatus.shape;
+}
+#test "frames, padding and preemphasis by hand" {
+    s:=SfSpec.{rate=16000,n_fft=4,win_length=4,hop=2,window=SfWindow.rectangle,center=true,pad=SfPad.zero,mels=1,fmax=8000,guard=1};
+    x:=[4]f64.[0.125,0.25,0.375,0.5];a:=SfAudio.{rate=16000,channels=1,samples=x[..]};out:[9]f64;
+    // The padded signal 0 0 1 2 3 4 0 0 (in eighths): frames start at 0, 2 and 4.
+    r:=sf_spectrogram(a,s,out[..]);#assert r.status==SfStatus.ok && r.frames==3 && r.bins==3;
+    w:=[9]f64.[9,5,1,100,8,4,49,25,1];
+    for i:0..<9 {#assert out[i]==w[i]/64;}
+    // Reflection: 3 2 1 2 3 4 3 2.
+    s.pad=SfPad.reflect;r=sf_spectrogram(a,s,out[..]);#assert r.status==SfStatus.ok;
+    w=[9]f64.[64,4,0,100,8,4,144,4,0];
+    for i:0..<9 {#assert out[i]==w[i]/64;}
+    // No centering: one frame of the four samples.
+    s.center=false;r=sf_spectrogram(a,s,out[..]);#assert r.status==SfStatus.ok && r.frames==1 && out[0]==100.0/64 && out[1]==8.0/64;
+    #assert sf_frames(4,s)==1 && sf_frames(5,s)==1 && sf_frames(6,s)==2 && sf_frames(3,s)==0;
+    s.center=true;#assert sf_frames(4,s)==3 && sf_frames(5,s)==3 && sf_frames(1,s)==1;
+    // Preemphasis 0.5 turns 1 2 3 4 into 1 1.5 2 2.5.
+    s.pad=SfPad.zero;s.center=false;s.preemphasis=0.5;r=sf_spectrogram(a,s,out[..]);#assert out[0]==49.0/64;
+    #assert sf_emphasized(x[..],0.5,0)==0.125 && sf_emphasized(x[..],0.5,3)==0.3125;
+    // A window of 2 in a frame of 4 sits in the middle: 0 1 1 0.
+    s.preemphasis=0;s.win_length=2;r=sf_spectrogram(a,s,out[..]);#assert out[0]==(0.25+0.375)*(0.25+0.375);
+    p:=[4]f64.[-7,-7,-7,-7];s.window=SfWindow.hann;s.periodic=false;#assert sf_place_window(s,p[..])==SfStatus.ok && p[0]==0 && p[1]==0 && p[2]==0 && p[3]==0;
+    s.win_length=3;#assert sf_place_window(s,p[..])==SfStatus.ok && p[0]==0 && p[1]==1 && p[2]==0 && p[3]==0;
+    #assert sf_place_window(s,p[0..<3])==SfStatus.capacity;
+    s.center=true;#assert sf_spectrogram(a,s,out[..]).status==SfStatus.ok && sf_spectrogram(a,s,out[0..<8]).status==SfStatus.capacity;
+}
+#test "log-mel features match the oracle" #steps 40000000 {
+    // oracle: features 16 kHz, n_fft 16, win 12, hop 4, 4 mels, preemph 0.97
+    want:=[44]f64.[-1.8246527872659832,-0.6661516644402344,1.129421603383554,-0.5187637768535801,1.1280831011446024,0.08518425615055063,1.0744070321144439,-0.6073267967057828,1.1807223767977733,-0.5333439270589243,-0.4475794172664359,
+        -1.8629215798464458,-0.5633171953674594,1.1130431613285892,-0.5785500361832848,1.1023325801099355,0.03181122473263482,1.1108162314070646,-0.6455310582262025,1.1495384838773717,-0.6319994085196504,-0.22522240331255486,
+        -2.451730790846002,-0.3445800560554181,0.9032275545627461,-0.3178659241778401,0.8999062239727065,0.24670123733753074,0.9911516106018949,-0.3262281649202095,0.91174756362264,-0.38086208961818085,-0.13146716447985543,
+        -2.6257702022466747,-0.37800539321526017,0.34150632101481443,-0.23170553740071081,0.37818276764857583,1.2482893317554045,0.3178485820045872,-0.23081757360093086,0.3395903341296077,-0.06277771547582206,0.9036590853864344];
+    x:[40]f64;sf_test_signal(x[..]);
+    #assert sf_close(x[4],0.5,1e-15) && sf_close(x[20],0.625,1e-15);
+    s:=sf_small();bank:[36]f64;out:[44]f64;
+    #assert sf_mel_bank(s,bank[..]).status==SfStatus.ok;
+    r:=sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,bank[..],out[..]);
+    #assert r.status==SfStatus.ok && r.frames==11 && r.mels==4 && r.bins==9;
+    for i:0..<44 {#assert sf_close(out[i],want[i],1e-10);}
+    #assert sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,bank[..],out[0..<43]).status==SfStatus.capacity;
+    #assert sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,bank[0..<35],out[..]).status==SfStatus.capacity;
+}
+#test "log guards and normalization by hand" {
+    #assert sf_log(0,SfLog.add,0.25)==log(0.25) && sf_log(0.75,SfLog.add,0.25)==0;
+    #assert sf_log(0,SfLog.clamp,0.25)==log(0.25) && sf_log(1,SfLog.clamp,0.25)==0 && sf_log(0.25,SfLog.clamp,0.25)==log(0.25);
+    // One feature over three frames: 1 2 6, mean 3, deviations -2 -1 3, variance 14/2.
+    f:=[6]f64.[1,2,6,5,5,5];
+    #assert sf_normalize(f[..],2,3)==SfStatus.ok;
+    d:=sqrt(7.0)+SF_DEVIATION_GUARD;
+    #assert f[0]== -2/d && f[1]== -1/d && f[2]==3/d && f[3]==0 && f[4]==0 && f[5]==0;
+    #assert sf_normalize(f[0..<2],2,1)==SfStatus.length;
+    g:=[2]f64.[1,3];#assert sf_normalize(g[..],1,2)==SfStatus.ok && g[0]== -1/(sqrt(2.0)+SF_DEVIATION_GUARD) && g[1]==1/(sqrt(2.0)+SF_DEVIATION_GUARD);
+    // Without normalization the guarded logs come out unchanged.
+    s:=SfSpec.{rate=16000,n_fft=4,win_length=4,hop=2,window=SfWindow.rectangle,center=true,mels=1,fmax=8000,scale=SfScale.htk,
+        log=SfLog.clamp,guard=0.1,normalize=SfNormalize.none};
+    x:=[4]f64.[0.125,0.25,0.375,0.5];bank:=[3]f64.[0,1,0];out:[3]f64;
+    r:=sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,bank[..],out[..]);
+    // The middle bin's powers 5/64, 8/64 and 25/64; the first is below the guard.
+    #assert r.status==SfStatus.ok && out[0]==log(0.1) && out[1]==log(0.125) && out[2]==log(25.0/64);
+    // A bank that reads bin 0: the powers 9/64, 100/64 and 49/64.
+    dc:=[3]f64.[1,0,0];r=sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,dc[..],out[..]);
+    #assert r.status==SfStatus.ok && out[0]==log(9.0/64) && out[1]==log(100.0/64) && out[2]==log(49.0/64);
+    // Two frames can be normalized per feature: hop 4 without centering gives one.
+    s.normalize=SfNormalize.per_feature;s.hop=4;r=sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,bank[..],out[..]);
+    #assert r.status==SfStatus.ok && r.frames==2;
+    // One frame cannot be normalized per feature.
+    s.hop=2;s.center=false;
+    #assert sf_features(SfAudio.{rate=16000,channels=1,samples=x[..]},s,bank[..],out[..]).status==SfStatus.length;
+}
+#test "audio admission refuses with a reason" #steps 100000000 {
+    s:=sf_nemo_spec();x:=[4]f64.[0,0.5,-1,1];a:=SfAudio.{rate=16000,channels=1,samples=x[..]};
+    #assert sf_admit(a,s)==SfStatus.ok;
+    a.samples=x[0..<0];#assert sf_admit(a,s)==SfStatus.empty;a.samples=x[..];
+    a.channels=2;#assert sf_admit(a,s)==SfStatus.channels;a.channels=0;#assert sf_admit(a,s)==SfStatus.channels;a.channels=1;
+    a.rate=48000;#assert sf_admit(a,s)==SfStatus.rate;a.rate=16000;
+    x[1]=1.0000000000000002;#assert sf_admit(a,s)==SfStatus.number;
+    x[1]=-1.0000000000000002;#assert sf_admit(a,s)==SfStatus.number;
+    x[1]=sf_nan();#assert sf_admit(a,s)==SfStatus.number;x[1]=0.5;
+    long:[480001]f64;a.samples=long[..];#assert sf_admit(a,s)==SfStatus.length;
+    a.samples=long[0..<480000];#assert sf_admit(a,s)==SfStatus.ok;a.samples=x[..];
+    // Reflection needs more samples than half a frame; no centering needs a whole frame.
+    s.pad=SfPad.reflect;#assert sf_admit(a,s)==SfStatus.length;
+    a.samples=long[0..<257];#assert sf_admit(a,s)==SfStatus.ok;a.samples=long[0..<256];#assert sf_admit(a,s)==SfStatus.length;
+    s.center=false;a.samples=long[0..<511];#assert sf_admit(a,s)==SfStatus.length;a.samples=long[0..<512];#assert sf_admit(a,s)==SfStatus.ok;
+    // A bad spec is refused before the audio is read.
+    s=sf_nemo_spec();s.rate=7999;#assert sf_admit(a,s)==SfStatus.rate;s.rate=48001;#assert sf_admit(a,s)==SfStatus.rate;
+    pcm:=[4]s16.[0,-32768,32767,16384];o:=[4]f64.[-7,-7,-7,-7];
+    #assert sf_from_pcm16(pcm[..],o[..])==SfStatus.ok && o[0]==0 && o[1]== -1 && o[2]==32767.0/32768 && o[3]==0.5;
+    #assert sf_from_pcm16(pcm[..],o[0..<3])==SfStatus.capacity && sf_from_pcm16(pcm[0..<0],o[..])==SfStatus.empty;
+}
+#test "spec checks: every field has a range" {
+    s:=sf_nemo_spec();#assert sf_spec_ok(s)==SfStatus.ok;
+    #assert s.rate==16000 && s.n_fft==512 && s.win_length==400 && s.hop==160 && s.mels==128 && s.fmax==8000 && s.preemphasis==0.97;
+    #assert s.window==SfWindow.hann && !s.periodic && s.center && s.pad==SfPad.zero && s.scale==SfScale.slaney && s.norm==SfNorm.slaney;
+    #assert s.log==SfLog.add && s.guard==SF_LOG_GUARD && s.normalize==SfNormalize.per_feature && s.fmin==0;
+    t:=s;t.rate=8000;t.fmax=4000;#assert sf_spec_ok(t)==SfStatus.ok;t.rate=48000;#assert sf_spec_ok(t)==SfStatus.ok;
+    t.rate=48001;#assert sf_spec_ok(t)==SfStatus.rate;t.rate=7999;#assert sf_spec_ok(t)==SfStatus.rate;
+    t=s;t.n_fft=1;#assert sf_spec_ok(t)==SfStatus.size;t.n_fft=4097;#assert sf_spec_ok(t)==SfStatus.size;
+    t.n_fft=4096;#assert sf_spec_ok(t)==SfStatus.ok;t.n_fft=2;t.win_length=2;t.hop=2;#assert sf_spec_ok(t)==SfStatus.ok;
+    t=s;t.win_length=0;#assert sf_spec_ok(t)==SfStatus.shape;t.win_length=513;#assert sf_spec_ok(t)==SfStatus.shape;t.win_length=512;#assert sf_spec_ok(t)==SfStatus.ok;t.win_length=1;#assert sf_spec_ok(t)==SfStatus.ok;
+    t=s;t.hop=0;#assert sf_spec_ok(t)==SfStatus.shape;t.hop=513;#assert sf_spec_ok(t)==SfStatus.shape;t.hop=512;#assert sf_spec_ok(t)==SfStatus.ok;t.hop=1;#assert sf_spec_ok(t)==SfStatus.ok;
+    t=s;t.mels=0;#assert sf_spec_ok(t)==SfStatus.shape;t.mels=257;#assert sf_spec_ok(t)==SfStatus.shape;t.mels=256;#assert sf_spec_ok(t)==SfStatus.ok;t.mels=1;#assert sf_spec_ok(t)==SfStatus.ok;
+    t=s;t.fmin=-1;#assert sf_spec_ok(t)==SfStatus.shape;t.fmin=8000;#assert sf_spec_ok(t)==SfStatus.shape;t.fmin=7999;#assert sf_spec_ok(t)==SfStatus.ok;
+    t=s;t.fmax=8000.000000000001;#assert sf_spec_ok(t)==SfStatus.shape;t.fmax=sf_nan();#assert sf_spec_ok(t)==SfStatus.shape;
+    t=s;t.fmin=sf_nan();#assert sf_spec_ok(t)==SfStatus.shape;
+    t=s;t.guard=0;#assert sf_spec_ok(t)==SfStatus.shape;t.guard=1.0000000000000002;#assert sf_spec_ok(t)==SfStatus.shape;t.guard=1;#assert sf_spec_ok(t)==SfStatus.ok;
+    t.guard=sf_nan();#assert sf_spec_ok(t)==SfStatus.shape;
+    t=s;t.preemphasis=-0.0000001;#assert sf_spec_ok(t)==SfStatus.shape;t.preemphasis=1;#assert sf_spec_ok(t)==SfStatus.shape;
+    t.preemphasis=0;#assert sf_spec_ok(t)==SfStatus.ok;t.preemphasis=sf_nan();#assert sf_spec_ok(t)==SfStatus.shape;
+    // Every spectrogram and feature entry point checks the spec.
+    t=s;t.hop=0;x:[600]f64;out:[1]f64;a:=SfAudio.{rate=16000,channels=1,samples=x[..]};
+    #assert sf_spectrogram(a,t,out[..]).status==SfStatus.shape && sf_features(a,t,out[..],out[..]).status==SfStatus.shape;
+    #assert sf_mel_bank(t,out[..]).status==SfStatus.shape && sf_place_window(t,out[..])==SfStatus.shape;
+    a.channels=2;#assert sf_spectrogram(a,s,out[..]).status==SfStatus.channels && sf_features(a,s,out[..],out[..]).status==SfStatus.channels;
+}
+
+// book:begin turn
+// e^(-2 pi i r/d): r is reduced into (-d/2, d/2] so the angle stays small,
+// and the four quarter turns are written exactly.
+sf_turn :: (r:int,d:int)->SfTurn {
+    k:=r%d;if 2*k>d {k-=d;}
+    if k==0 {return SfTurn.{re=1,im=0};}
+    if 2*k==d {return SfTurn.{re=-1,im=0};}
+    if 4*k==d {return SfTurn.{re=0,im=-1};}
+    if 4*k== -d {return SfTurn.{re=0,im=1};}
+    a:=-2*SF_PI*f64(k)/f64(d);
+    return SfTurn.{re=cos(a),im=sin(a)};
+}
+// book:end turn
+
+sf_finite :: (v:f64)->bool {return v>= -1.7976931348623157e308 && v<=1.7976931348623157e308;}
+sf_power_of_two :: (n:int)->bool {p:=1;while p<n {p*=2;}return p==n;}
+sf_complex_ok :: (re:[]f64,im:[]f64)->SfStatus {
+    n:=re.count;
+    if n<1 || n>SF_FFT_MAX {return SfStatus.size;}
+    if im.count!=n {return SfStatus.shape;}
+    for i:0..<n {if !sf_finite(re[i]) || !sf_finite(im[i]) {return SfStatus.number;}}
+    return SfStatus.ok;
+}
+
+// book:begin dft
+// The reference: X[k] = sum over j of x[j] e^(-2 pi i jk/n), each sum in
+// order with the compensated accumulator. The inverse turns the other way
+// and divides by n. Output must not share storage with input.
+sf_dft :: (re:[]f64,im:[]f64,out_re:[]f64,out_im:[]f64,inverse:bool)->SfStatus {
+    status:=sf_complex_ok(re,im);if status!=SfStatus.ok {return status;}
+    n:=re.count;
+    if out_re.count<n || out_im.count<n {return SfStatus.capacity;}
+    for k:0..<n {
+        sr:PsionicAccumulator;si:PsionicAccumulator;
+        for j:0..<n {
+            r:=(j*k)%n;if inverse {r=(n-r)%n;}
+            t:=sf_turn(r,n);
+            sr=psionic_ops_accumulate(sr,re[j]*t.re);sr=psionic_ops_accumulate(sr,-im[j]*t.im);
+            si=psionic_ops_accumulate(si,re[j]*t.im);si=psionic_ops_accumulate(si,im[j]*t.re);
+        }
+        out_re[k]=psionic_ops_total(sr);out_im[k]=psionic_ops_total(si);
+        if inverse {out_re[k]/=f64(n);out_im[k]/=f64(n);}
+    }
+    return SfStatus.ok;
+}
+// book:end dft
+
+// book:begin radix2
+// Radix-2 Cooley-Tukey in place for a power of two: reverse the index bits,
+// then merge pairs of half transforms with one butterfly each.
+sf_radix2 :: (re:[]f64,im:[]f64) {
+    n:=re.count;sr:[SF_CHIRP_MAX]f64;si:[SF_CHIRP_MAX]f64;
+    for i:0..<n {r:=sf_reverse(i,n);sr[r]=re[i];si[r]=im[i];}
+    sf_butterflies(sr[0..<n],si[0..<n]);
+    for i:0..<n {re[i]=sr[i];im[i]=si[i];}
+}
+// i with its log2(n) bits in reverse order.
+sf_reverse :: (i:int,n:int)->int {
+    r:=0;k:=i;m:=n/2;
+    while m>=1 {r+=(k%2)*m;k/=2;m/=2;}
+    return r;
+}
+sf_butterflies :: (re:[]f64,im:[]f64) {
+    n:=re.count;span:=2;
+    while span<=n {
+        half:=span/2;
+        for k:0..<half {
+            w:=sf_turn(k,span);start:=0;
+            while start<n {
+                a:=start+k;b:=a+half;
+                tr:=re[b]*w.re-im[b]*w.im;ti:=re[b]*w.im+im[b]*w.re;
+                re[b]=re[a]-tr;im[b]=im[a]-ti;re[a]+=tr;im[a]+=ti;
+                start+=span;
+            }
+        }
+        span*=2;
+    }
+}
+// book:end radix2
+
+// book:begin chirp
+// Twice the smallest power of two at least n: at least 2n - 1 when n is not
+// itself a power of two.
+sf_chirp_length :: (n:int)->int {m:=1;while m<n {m*=2;}return 2*m;}
+// Bluestein: jk = (j^2 + k^2 - (k - j)^2)/2 turns the DFT into a convolution
+// with the chirp w[k] = e^(-pi i k^2/n), done with power-of-two transforms
+// of length m >= 2n - 1. k^2 is reduced modulo 2n before the angle.
+sf_chirp :: (re:[]f64,im:[]f64) {
+    n:=re.count;m:=sf_chirp_length(n);
+    ar:[SF_CHIRP_MAX]f64;ai:[SF_CHIRP_MAX]f64;br:[SF_CHIRP_MAX]f64;bi:[SF_CHIRP_MAX]f64;
+    wr:[SF_FFT_MAX]f64;wi:[SF_FFT_MAX]f64;
+    for k:0..<n {
+        w:=sf_turn((k*k)%(2*n),2*n);wr[k]=w.re;wi[k]=w.im;
+        ar[k]=re[k]*w.re-im[k]*w.im;ai[k]=re[k]*w.im+im[k]*w.re;
+        br[k]=w.re;bi[k]= -w.im;
+        if k>0 {br[m-k]=w.re;bi[m-k]= -w.im;}
+    }
+    sf_radix2(ar[0..<m],ai[0..<m]);sf_radix2(br[0..<m],bi[0..<m]);
+    // Multiply, then invert by conjugating around a forward transform.
+    for k:0..<m {
+        r:=ar[k]*br[k]-ai[k]*bi[k];i:=ar[k]*bi[k]+ai[k]*br[k];
+        ar[k]=r;ai[k]= -i;
+    }
+    sf_radix2(ar[0..<m],ai[0..<m]);
+    for k:0..<n {
+        cr:=ar[k]/f64(m);ci:= -ai[k]/f64(m);
+        re[k]=cr*wr[k]-ci*wi[k];im[k]=cr*wi[k]+ci*wr[k];
+    }
+}
+// book:end chirp
+
+// book:begin fft
+sf_forward :: (re:[]f64,im:[]f64) {
+    if sf_power_of_two(re.count) {sf_radix2(re,im);} else {sf_chirp(re,im);}
+}
+// The FFT in place, any size from 1 to 4,096. The inverse conjugates,
+// transforms forward, conjugates back and divides by n.
+sf_fft :: (re:[]f64,im:[]f64,inverse:bool)->SfStatus {
+    status:=sf_complex_ok(re,im);if status!=SfStatus.ok {return status;}
+    n:=re.count;
+    if inverse {for i:0..<n {im[i]= -im[i];}}
+    sf_forward(re,im);
+    if inverse {for i:0..<n {re[i]/=f64(n);im[i]= -im[i]/f64(n);}}
+    return SfStatus.ok;
+}
+// book:end fft
+
+// book:begin window
+// Hann is 0.5 - 0.5 cos(2 pi i/D), Hamming 0.54 - 0.46 cos(2 pi i/D). A
+// periodic window has D = N (the window that tiles); a symmetric one
+// D = N - 1. A window of one sample is 1.
+sf_window :: (kind:SfWindow,periodic:bool,out:[]f64)->SfStatus {
+    n:=out.count;
+    if n<1 || n>SF_FFT_MAX {return SfStatus.size;}
+    sf_fill_window(kind,periodic,out);
+    return SfStatus.ok;
+}
+sf_fill_window :: (kind:SfWindow,periodic:bool,out:[]f64) {
+    n:=out.count;d:=n;if !periodic {d=n-1;}
+    for i:0..<n {
+        if kind==SfWindow.rectangle || n==1 {out[i]=1;continue;}
+        a:=0.5;if kind==SfWindow.hamming {a=0.54;}
+        t:=sf_turn(i,d);out[i]=a-(1-a)*t.re;
+    }
+}
+// book:end window
+
+// book:begin admit
+// A spec is checked field by field; then the audio: present, one channel,
+// the spec's rate, at most 480,000 samples, enough samples for one frame,
+// every sample in [-1, 1] (which also refuses NaN and infinities).
+sf_spec_ok :: (s:SfSpec)->SfStatus {
+    if s.rate<SF_RATE_MIN || s.rate>SF_RATE_MAX {return SfStatus.rate;}
+    if s.n_fft<2 || s.n_fft>SF_FFT_MAX {return SfStatus.size;}
+    if s.win_length<1 || s.win_length>s.n_fft || s.hop<1 || s.hop>s.n_fft || s.mels<1 || s.mels>SF_MELS_MAX {return SfStatus.shape;}
+    if !(s.fmin>=0 && s.fmin<s.fmax && s.fmax<=f64(s.rate)/2) {return SfStatus.shape;}
+    if !(s.guard>0 && s.guard<=1) || !(s.preemphasis>=0 && s.preemphasis<1) {return SfStatus.shape;}
+    return SfStatus.ok;
+}
+sf_frames :: (n:int,s:SfSpec)->int {
+    padded:=n;if s.center {padded+=2*(s.n_fft/2);}
+    if padded<s.n_fft {return 0;}
+    return 1+(padded-s.n_fft)/s.hop;
+}
+sf_admit :: (a:SfAudio,s:SfSpec)->SfStatus {
+    status:=sf_spec_ok(s);if status!=SfStatus.ok {return status;}
+    n:=a.samples.count;
+    if n==0 {return SfStatus.empty;}
+    if a.channels!=1 {return SfStatus.channels;}
+    if a.rate!=s.rate {return SfStatus.rate;}
+    if n>SF_SAMPLES_MAX || sf_frames(n,s)==0 {return SfStatus.length;}
+    if s.center && s.pad==SfPad.reflect && n<=s.n_fft/2 {return SfStatus.length;}
+    for v:a.samples {if !(v>= -1 && v<=1) {return SfStatus.number;}}
+    return SfStatus.ok;
+}
+// 16-bit PCM to [-1, 1): divide by 32,768.
+sf_from_pcm16 :: (pcm:[]s16,out:[]f64)->SfStatus {
+    if pcm.count==0 {return SfStatus.empty;}
+    if out.count<pcm.count {return SfStatus.capacity;}
+    for i:0..<pcm.count {out[i]=f64(pcm[i])/32768;}
+    return SfStatus.ok;
+}
+// book:end admit
+
+// book:begin frame
+// Sample p of the padded, preemphasized signal. Padding adds n_fft/2 samples
+// each side: zeros, or the signal reflected without repeating its end sample.
+sf_emphasized :: (x:[]f64,c:f64,i:int)->f64 {
+    if i==0 || c==0 {return x[i];}
+    return x[i]-c*x[i-1];
+}
+sf_padded :: (x:[]f64,s:SfSpec,p:int)->f64 {
+    i:=p;n:=x.count;
+    if s.center {
+        i-=s.n_fft/2;
+        if i<0 || i>=n {
+            if s.pad==SfPad.zero {return 0;}
+            if i>=n {i=2*(n-1)-i;} else {i= -i;}
+        }
+    }
+    return sf_emphasized(x,s.preemphasis,i);
+}
+// The window of win_length samples placed in the middle of n_fft.
+sf_place_window :: (s:SfSpec,out:[]f64)->SfStatus {
+    status:=sf_spec_ok(s);if status!=SfStatus.ok {return status;}
+    if out.count<s.n_fft {return SfStatus.capacity;}
+    sf_place(s,out);
+    return SfStatus.ok;
+}
+sf_place :: (s:SfSpec,out:[]f64) {
+    for i:0..<s.n_fft {out[i]=0;}
+    left:=(s.n_fft-s.win_length)/2;
+    sf_fill_window(s.window,s.periodic,out[left..<left+s.win_length]);
+}
+// The power |X[k]|^2 of frame t, bins 0 to n_fft/2.
+sf_frame_power :: (x:[]f64,s:SfSpec,window:[]f64,t:int,out:[]f64) {
+    re:[SF_FFT_MAX]f64;im:[SF_FFT_MAX]f64;n:=s.n_fft;
+    for j:0..<n {re[j]=sf_padded(x,s,t*s.hop+j)*window[j];}
+    sf_forward(re[0..<n],im[0..<n]);
+    for k:0..<n/2+1 {out[k]=re[k]*re[k]+im[k]*im[k];}
+}
+// Frame-major: out[t * bins + k].
+sf_spectrogram :: (a:SfAudio,s:SfSpec,out:[]f64)->SfResult {
+    status:=sf_admit(a,s);if status!=SfStatus.ok {return SfResult.{status=status};}
+    frames:=sf_frames(a.samples.count,s);bins:=s.n_fft/2+1;
+    if out.count<frames*bins {return SfResult.{status=SfStatus.capacity};}
+    w:[SF_FFT_MAX]f64;sf_place(s,w[..]);
+    for t:0..<frames {sf_frame_power(a.samples,s,w[..],t,out[t*bins..<(t+1)*bins]);}
+    return SfResult.{frames=frames,bins=bins,mels=s.mels};
+}
+// book:end frame
+
+// book:begin mel
+// Slaney's scale is linear below 1 kHz (3 mels per 200 Hz) and logarithmic
+// above, 27 mels per factor 6.4; HTK's is 2595 log10(1 + f/700).
+sf_hz_to_mel :: (f:f64,scale:SfScale)->f64 {
+    if scale==SfScale.htk {return 2595*log(1+f/700)/log(10.0);}
+    if f>=1000 {return 15+log(f/1000)/(log(6.4)/27);}
+    return f/(200.0/3);
+}
+sf_mel_to_hz :: (m:f64,scale:SfScale)->f64 {
+    if scale==SfScale.htk {return 700*(pow(10.0,m/2595)-1);}
+    if m>=15 {return 1000*exp((log(6.4)/27)*(m-15));}
+    return (200.0/3)*m;
+}
+// mels + 2 edges evenly spaced in mels (as numpy's linspace places them) from fmin to fmax; filter i rises
+// from edge i to edge i+1 and falls to edge i+2, sampled at the bin centres
+// k rate/n_fft (computed as numpy's rfftfreq does). Slaney normalization divides by half the filter's width in
+// Hz, so every filter has the same area. A filter with no weight is refused.
+sf_mel_edges :: (s:SfSpec,edge:[]f64) {
+    lo:=sf_hz_to_mel(s.fmin,s.scale);hi:=sf_hz_to_mel(s.fmax,s.scale);
+    // edge.count is mels + 2.
+    last:=edge.count-1;step:=(hi-lo)/f64(last);
+    for i:0..<edge.count {
+        m:=hi;if i<last {m=lo+f64(i)*step;}
+        edge[i]=sf_mel_to_hz(m,s.scale);
+    }
+}
+sf_mel_bank :: (s:SfSpec,out:[]f64)->SfResult {
+    status:=sf_spec_ok(s);if status!=SfStatus.ok {return SfResult.{status=status};}
+    bins:=s.n_fft/2+1;
+    if out.count<s.mels*bins {return SfResult.{status=SfStatus.capacity};}
+    edge:[SF_MELS_MAX+2]f64;sf_mel_edges(s,edge[0..<s.mels+2]);
+    spacing:=1/(f64(s.n_fft)*(1/f64(s.rate)));
+    for i:0..<s.mels {
+        any:=false;
+        for k:0..<bins {
+            f:=f64(k)*spacing;
+            lower:=(f-edge[i])/(edge[i+1]-edge[i]);upper:=(edge[i+2]-f)/(edge[i+2]-edge[i+1]);
+            // min(lower, upper), then max(0, that), without comparisons.
+            w:=(lower+upper-abs(lower-upper))/2;w=(w+abs(w))/2;
+            if s.norm==SfNorm.slaney {w*=2/(edge[i+2]-edge[i]);}
+            if w>0 {any=true;}
+            out[i*bins+k]=w;
+        }
+        if !any {return SfResult.{status=SfStatus.filter};}
+    }
+    return SfResult.{bins=bins,mels=s.mels};
+}
+// book:end mel
+
+// book:begin features
+// add: log(v + guard). clamp: log(max(v, guard)), the maximum written as
+// (v + guard + |v - guard|)/2.
+sf_log :: (v:f64,kind:SfLog,guard:f64)->f64 {
+    if kind==SfLog.add {return log(v+guard);}
+    return log((v+guard+abs(v-guard))/2);
+}
+// Per feature: subtract the mean over frames and divide by the n - 1
+// standard deviation plus 1e-5.
+sf_normalize :: (f:[]f64,mels:int,frames:int)->SfStatus {
+    if frames<2 {return SfStatus.length;}
+    sf_standardize(f,mels,frames);
+    return SfStatus.ok;
+}
+sf_standardize :: (f:[]f64,mels:int,frames:int) {
+    for m:0..<mels {
+        row:=f[m*frames..<(m+1)*frames];
+        s:PsionicAccumulator;for v:row {s=psionic_ops_accumulate(s,v);}
+        mean:=psionic_ops_total(s)/f64(frames);
+        d:PsionicAccumulator;for v:row {e:=v-mean;d=psionic_ops_accumulate(d,e*e);}
+        deviation:=sqrt(psionic_ops_total(d)/f64(frames-1))+SF_DEVIATION_GUARD;
+        for t:0..<frames {row[t]=(row[t]-mean)/deviation;}
+    }
+}
+// Mel-major: out[m * frames + t] = log(sum over k of bank[m][k] power[t][k]),
+// then normalized. bank is sf_mel_bank's output for the same spec.
+sf_features :: (a:SfAudio,s:SfSpec,bank:[]f64,out:[]f64)->SfResult {
+    status:=sf_admit(a,s);if status!=SfStatus.ok {return SfResult.{status=status};}
+    frames:=sf_frames(a.samples.count,s);bins:=s.n_fft/2+1;
+    if bank.count<s.mels*bins || out.count<s.mels*frames {return SfResult.{status=SfStatus.capacity};}
+    if s.normalize==SfNormalize.per_feature && frames<2 {return SfResult.{status=SfStatus.length};}
+    w:[SF_FFT_MAX]f64;sf_place(s,w[..]);p:[SF_BINS_MAX]f64;
+    for t:0..<frames {
+        sf_frame_power(a.samples,s,w[..],t,p[0..<bins]);
+        for m:0..<s.mels {
+            sum:=0.0;for k:0..<bins {sum+=bank[m*bins+k]*p[k];}
+            out[m*frames+t]=sf_log(sum,s.log,s.guard);
+        }
+    }
+    if s.normalize==SfNormalize.per_feature {sf_standardize(out,s.mels,frames);}
+    return SfResult.{frames=frames,bins=bins,mels=s.mels};
+}
+// book:end features
+
+// NeMo's FilterbankFeatures settings as Parakeet's configuration lists them:
+// 16 kHz, 25 ms symmetric Hann window in a 512-point frame, 10 ms hop,
+// centred with zeros, preemphasis 0.97, 128 Slaney mels to 8 kHz, log with
+// 2^-24 added, per-feature normalization. Chapter 153 pins it against
+// recorded features; this chapter has not.
+sf_nemo_spec :: ()->SfSpec {
+    return SfSpec.{rate=16000,n_fft=512,win_length=400,hop=160,window=SfWindow.hann,periodic=false,center=true,pad=SfPad.zero,
+        preemphasis=0.97,mels=128,fmin=0,fmax=8000,scale=SfScale.slaney,norm=SfNorm.slaney,log=SfLog.add,guard=SF_LOG_GUARD,
+        normalize=SfNormalize.per_feature};
+}
+// The chapter's test waveform: 0.5 sin at 1 kHz, 0.25 cos at 3 kHz at
+// 16 kHz, plus 0.125 from the middle on.
+sf_test_signal :: (x:[]f64) {
+    for i:0..<x.count {
+        x[i]=0.5*sin(2*SF_PI*1000*f64(i)/16000)+0.25*cos(2*SF_PI*3000*f64(i)/16000);
+        if i>=x.count/2 {x[i]+=0.125;}
+    }
+}
