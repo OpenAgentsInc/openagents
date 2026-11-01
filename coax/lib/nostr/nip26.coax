@@ -1,0 +1,242 @@
+// NIP-26 delegation tags, read only. Pinned spec: nostr/nips/official/26.md,
+// marked `unrecommended`: "adds unnecessary burden for little gain".
+//
+// A delegation tag ["delegation", delegator, conditions, token] claims that
+// the delegator let the signer publish events that meet the conditions. The
+// token is the delegator's BIP-340 signature of
+// sha256("nostr:delegation:" + signer's hex pubkey + ":" + conditions).
+//
+// This stack never accepts the claim as authority. n26_attribute names the
+// event's signer as its author whatever the tag says, and n26_claim reports
+// the claim as read: its delegator, whether the token verifies and whether
+// the event meets the conditions. A caller may show "claims delegation from
+// X"; it must not show the event as X's, count it under X's pubkey in a
+// filter, or let X delete it. There is no writer: n26_delegate exists only
+// to give a caller a named refusal.
+//
+// Conditions: clauses joined by '&', each kind=N, created_at<T or
+// created_at>T, with N and T plain decimal numbers (no sign, no leading
+// zero). The kind clauses are alternatives (NIP-26's "kind=0&kind=1"); every
+// created_at clause must hold, and both comparisons are strict. An empty
+// query, an empty clause or any other field or operator refuses: an
+// unlimited delegation reads as an error here, not as everything.
+//
+// Nothing here checks the event's own id or signature: the caller passes an
+// event it got from nostr_event_verify_vartime.
+#load "tags.coax";
+#load "nip34-event.coax";
+#authority;
+
+N26_OK :: 0;          // the token verifies and the event meets the conditions
+N26_EVENT :: 1;       // not a parsed event, or its tags don't read
+N26_NONE :: 2;        // no delegation tag
+N26_REPEATED :: 3;    // more than one delegation tag
+N26_SHAPE :: 4;       // not exactly three values after the name
+N26_HEX :: 5;         // the delegator or the token is not lowercase hex of 32 or 64 bytes
+N26_CONDITIONS :: 6;  // the conditions don't read
+N26_LIMIT :: 7;       // the conditions are longer than N26_MAX_CONDITIONS bytes
+N26_TOKEN :: 8;       // the token is not the delegator's signature of the delegation string
+N26_OUTSIDE :: 9;     // the token verifies, the event breaks a condition
+N26_REFUSED :: 10;    // n26_delegate: this stack makes no delegations
+N26_MAX_CONDITIONS :: 256; N26_TEXT_MAX :: 17+65+N26_MAX_CONDITIONS;  // prefix, hex, colon, conditions
+N26_PREFIX :: "nostr:delegation:";
+
+// book:begin record
+N26Claim :: struct {
+  status:int=N26_EVENT;
+  delegator:[32]u8;                       // whom the tag names
+  token:[64]u8;                           // the delegator's claimed signature
+  conditions:[N26_MAX_CONDITIONS]u8; n:int;
+  hash:[32]u8;                            // sha256 of the delegation string
+}
+// The author is always the signer. The claim is reported, never applied.
+N26Attribution :: struct {author:[32]u8; claim:N26Claim;}
+// book:end record
+
+// ---- test events: a parsed event whose original text is its tags array.
+N26_DELEGATOR :: "8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd";
+N26_DELEGATEE :: "477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396";
+N26_CONDS :: "kind=1&created_at>1674834236&created_at<1677426236";
+N26_TOKEN_HEX :: "6f44d7fe4f1c09f3954640fb58bd12bae8bb8ff4120853c4693106c82e920e2b898f1f9ba9bd65449a987c39c0423426ab7b53910c0c6abfb41b30bc16e5f524";
+n26_test_event :: (signer:string,kind:int,created_at:int,tags:string)->NostrEvent {
+  e:=nt_event(tags);e.kind=kind;e.created_at=created_at;
+  #assert ne_lower_hex(signer,e.public_key[..]);
+  return e;
+}
+n26_tag :: (delegator:string,conditions:string,token:string,out:[]u8)->string {
+  n:=json_raw(out,0,"[[\"delegation\",");n=json_write_string(out,n,delegator);n=json_raw(out,n,",");
+  n=json_write_string(out,n,conditions);n=json_raw(out,n,",");n=json_write_string(out,n,token);
+  n=json_raw(out,n,"]]");return cast(string)out[0..<n];
+}
+
+#test "conditions: kinds are alternatives, times all hold, strictly" {
+  #assert n26_conditions(N26_CONDS,1,1674834237)==N26_OK && n26_conditions(N26_CONDS,1,1677426235)==N26_OK;
+  #assert n26_conditions(N26_CONDS,1,1674834236)==N26_OUTSIDE && n26_conditions(N26_CONDS,1,1677426236)==N26_OUTSIDE;
+  #assert n26_conditions(N26_CONDS,1,1677426298)==N26_OUTSIDE && n26_conditions(N26_CONDS,0,1675000000)==N26_OUTSIDE;
+  #assert n26_conditions("kind=0&kind=1&created_at>1675721813",0,1675721814)==N26_OK;
+  #assert n26_conditions("kind=0&kind=1&created_at>1675721813",1,1675721814)==N26_OK;
+  #assert n26_conditions("kind=0&kind=1&created_at>1675721813",2,1675721814)==N26_OUTSIDE;
+  #assert n26_conditions("kind=0&kind=1&created_at>1675721813",1,1675721813)==N26_OUTSIDE;
+  #assert n26_conditions("kind=1&created_at<1675721813",1,0)==N26_OK && n26_conditions("kind=1&created_at<1675721813",1,1675721813)==N26_OUTSIDE;
+  #assert n26_conditions("created_at>5",7,6)==N26_OK && n26_conditions("kind=0",0,99)==N26_OK && n26_conditions("kind=65535",65535,1)==N26_OK;
+  #assert n26_conditions("created_at<0",1,0)==N26_OUTSIDE && n26_conditions("kind=0",1,0)==N26_OUTSIDE;
+}
+#test "conditions that don't read refuse" {
+  bad:=[22]string.["","&","kind=1&","&kind=1","kind=1&&created_at<5","kind<1","created_at=5","kinds=1","kind=","kind=01",
+    "kind=-1","kind=65536","created_at<99999999999","created_at>1a","Kind=1","kind =1","created_at","kind=1:","created_at<1:",
+    "created_at<=5","ind=1","kind=1/"];
+  for s:bad {#assert n26_conditions(s,1,1)==N26_CONDITIONS;}
+  #assert n26_conditions("kind=0&created_at<1",1,0)==N26_OUTSIDE && n26_conditions("created_at<9999999999",1,0)==N26_OK;
+}
+#test "the delegation string and its hash" {
+  key:[32]u8;#assert ne_lower_hex(N26_DELEGATEE,key[..]);
+  out:[400]u8;n:=n26_string(key,N26_CONDS,out[..]);
+  #assert cast(string)out[0..<n]=="nostr:delegation:477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396:kind=1&created_at>1674834236&created_at<1677426236";
+  small:[100]u8;#assert n26_string(key,N26_CONDS,small[..])== -1;
+  exact:[132]u8;#assert n26_string(key,N26_CONDS,exact[..])==132 && exact[131]=='6' && exact[81]==':' && exact[80]=='6';
+  #assert n26_string(key,N26_CONDS,exact[0..<131])== -1;
+  #assert n26_string(key,"",out[..])==82;
+}
+#test "NIP-26's example token verifies; its own example event breaks created_at<" #steps 2000000000 {
+  buf:[512]u8;tags:=n26_tag(N26_DELEGATOR,N26_CONDS,N26_TOKEN_HEX,buf[..]);
+  e:=n26_test_event(N26_DELEGATEE,1,1677426298,tags);
+  a:=n26_attribute(e);
+  #assert a.claim.status==N26_OUTSIDE && a.author[0]==0x47 && a.author[31]==0x96 && a.claim.delegator[0]==0x8e && a.claim.token[63]==0x24;
+  // sha256 of the delegation string, from Python's hashlib.
+  #assert cast(string)a.claim.conditions[0..<a.claim.n]==N26_CONDS && a.claim.hash[0]==0x39 && a.claim.hash[1]==0x7b && a.claim.hash[31]==0xf6;
+  // Inside the window the claim holds, and the author is still the signer.
+  a=n26_attribute(n26_test_event(N26_DELEGATEE,1,1677426000,tags));
+  #assert a.claim.status==N26_OK && a.author[0]==0x47 && a.author[1]==0x73;
+  for i:0..<32 {#assert a.author[i]==e.public_key[i];}
+  #assert n26_attribute(n26_test_event(N26_DELEGATEE,0,1677426000,tags)).claim.status==N26_OUTSIDE;
+  #assert n26_attribute(n26_test_event(N26_DELEGATEE,1,1674834236,tags)).claim.status==N26_OUTSIDE;
+}
+#test "a token signed for another signer or other conditions refuses" #steps 2000000000 {
+  buf:[512]u8;tags:=n26_tag(N26_DELEGATOR,N26_CONDS,N26_TOKEN_HEX,buf[..]);
+  // Signed by the delegator itself: the string names another pubkey.
+  a:=n26_attribute(n26_test_event(N26_DELEGATOR,1,1677426000,tags));
+  #assert a.claim.status==N26_TOKEN && a.author[0]==0x8e;
+  tags=n26_tag(N26_DELEGATOR,"kind=1&created_at>1674834236&created_at<1677426237",N26_TOKEN_HEX,buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_TOKEN;
+  tags=n26_tag(N26_DELEGATEE,N26_CONDS,N26_TOKEN_HEX,buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_TOKEN;
+  tags=n26_tag(N26_DELEGATOR,N26_CONDS,"7f44d7fe4f1c09f3954640fb58bd12bae8bb8ff4120853c4693106c82e920e2b898f1f9ba9bd65449a987c39c0423426ab7b53910c0c6abfb41b30bc16e5f524",buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_TOKEN;
+  // An escaped spelling of the same conditions is the same string.
+  tags="[[\"delegation\",\"8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd\",\"kind=1\\u0026created_at>1674834236&created_at<1677426236\",\"6f44d7fe4f1c09f3954640fb58bd12bae8bb8ff4120853c4693106c82e920e2b898f1f9ba9bd65449a987c39c0423426ab7b53910c0c6abfb41b30bc16e5f524\"]]";
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_OK;
+}
+#test "refusals: no tag, two tags, shape, hex, conditions, limit, event" {
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1,"[]")).status==N26_NONE;
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1,"[[\"p\",\"x\"],[\"delegations\",\"x\"]]")).status==N26_NONE;
+  a:=n26_attribute(n26_test_event(N26_DELEGATEE,1,1,"[[\"t\",\"x\"]]"));#assert a.claim.status==N26_NONE && a.author[0]==0x47;
+  buf:[512]u8;one:=n26_tag(N26_DELEGATOR,N26_CONDS,N26_TOKEN_HEX,buf[..]);
+  two:[1024]u8;n:=json_raw(two[..],0,one[0..<one.count-1]);n=json_raw(two[..],n,",");n=json_raw(two[..],n,one[1..<one.count]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,cast(string)two[0..<n])).status==N26_REPEATED;
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1,"[[\"delegation\",\"8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd\",\"kind=1\"]]")).status==N26_SHAPE;
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1,"[[\"delegation\"]]")).status==N26_SHAPE;
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1,"[[\"delegation\",\"a\",\"b\",\"c\",\"d\"]]")).status==N26_SHAPE;
+  tags:=n26_tag("8E0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd",N26_CONDS,N26_TOKEN_HEX,buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_HEX;
+  tags=n26_tag("8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25",N26_CONDS,N26_TOKEN_HEX,buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_HEX;
+  tags=n26_tag(N26_DELEGATOR,N26_CONDS,N26_TOKEN_HEX[0..<126],buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_HEX;
+  tags=n26_tag(N26_DELEGATOR,"kind=1&created_at>1674834236&created_at<1677426236&",N26_TOKEN_HEX,buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_CONDITIONS;
+  long:[257]u8;for i:0..<257 {long[i]='k';}
+  big:[800]u8;tags=n26_tag(N26_DELEGATOR,cast(string)long[..],N26_TOKEN_HEX,big[..]);
+  c:=n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags));#assert c.status==N26_LIMIT && c.n==0;
+  tags=n26_tag(N26_DELEGATOR,"",N26_TOKEN_HEX,buf[..]);
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags)).status==N26_CONDITIONS;
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,tags[0..<tags.count-1])).status==N26_EVENT;
+  #assert n26_claim(n26_test_event(N26_DELEGATEE,1,1677426000,"[[\"delegation\",1,2,3]]")).status==N26_EVENT;
+  none:NostrEvent;a=n26_attribute(none);#assert a.claim.status==N26_EVENT;
+}
+#test "no delegation is ever made" {
+  key:[32]u8;out:[64]u8;for i:0..<64 {out[i]=7;}
+  #assert n26_delegate(key[..],key[..],N26_CONDS,out[..])==N26_REFUSED;
+  for i:0..<64 {#assert out[i]==0;}
+}
+
+// book:begin conditions
+// A decimal number of at most ten digits, no sign and no leading zero, or
+// -1.
+n26_number :: (s:string)->int {
+  if s.count==0 || s.count>10 || (s[0]=='0' && s.count>1) {return -1;}
+  v:=0;for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
+  return v;
+}
+// N26_OK when an event of this kind and time meets the conditions,
+// N26_OUTSIDE when it doesn't, N26_CONDITIONS when they don't read.
+n26_conditions :: (text:string,kind:int,created_at:int)->int {
+  has_kind:=false;kind_ok:=false;times_ok:=true;from:=0;
+  while from<=text.count {
+    i:=from;while i<text.count && text[i]!='&' {i+=1;}
+    c:=text[from..<i];from=i+1;
+    // The field ends at the first operator.
+    p:=0;while p<c.count && c[p]!='=' && c[p]!='<' && c[p]!='>' {p+=1;}
+    if p==c.count {return N26_CONDITIONS;}
+    field:=c[0..<p];op:=c[p];v:=n26_number(c[p+1..<c.count]);
+    if v<0 {return N26_CONDITIONS;}
+    if field=="kind" && op=='=' {
+      if v>65535 {return N26_CONDITIONS;}
+      has_kind=true;if v==kind {kind_ok=true;}
+    } else if field=="created_at" && op=='<' {
+      if created_at>=v {times_ok=false;}
+    } else if field=="created_at" && op=='>' {
+      if created_at<=v {times_ok=false;}
+    } else {return N26_CONDITIONS;}
+  }
+  if (has_kind && !kind_ok) || !times_ok {return N26_OUTSIDE;}
+  return N26_OK;
+}
+// book:end conditions
+
+// book:begin claim
+// "nostr:delegation:<signer hex>:<conditions>" into out: its length, or -1.
+n26_string :: (signer:[32]u8,conditions:string,out:[]u8)->int {
+  if out.count<N26_PREFIX.count+65+conditions.count {return -1;}
+  key:=signer;hex:[64]u8;h:=hex_encode_checked(cast(string)key[..],hex[..],false);
+  #assert h.error==NC_OK;
+  for i:0..<N26_PREFIX.count {out[i]=N26_PREFIX[i];}
+  n:=N26_PREFIX.count;
+  for i:0..<64 {out[n+i]=hex[i];}
+  n+=64;out[n]=':';n+=1;
+  for i:0..<conditions.count {out[n+i]=conditions[i];}
+  return n+conditions.count;
+}
+n26_status :: (c:N26Claim,status:int)->N26Claim {r:=c;r.status=status;return r;}
+// What the event's delegation tag claims, checked against its signer, kind
+// and created_at. A claim that reads OK is still only a claim.
+n26_claim :: (e:NostrEvent)->N26Claim {
+  c:N26Claim;ev:=nt_event_of(e);
+  count:=nt_tags(ev,"delegation");
+  if count<0 {return c;}
+  if count==0 {return n26_status(c,N26_NONE);}
+  if count>1 {return n26_status(c,N26_REPEATED);}
+  t:=nt_tag(ev,"delegation",0);
+  if t.values!=3 {return n26_status(c,N26_SHAPE);}
+  if !ne_lower_hex(nt_raw(ev,t.v[0]),c.delegator[..]) || !ne_lower_hex(nt_raw(ev,t.v[2]),c.token[..]) {return n26_status(c,N26_HEX);}
+  c.n=json_unescape(nt_raw(ev,t.v[1]),c.conditions[..]);
+  if c.n<0 {c.n=0;return n26_status(c,N26_LIMIT);}
+  conditions:=cast(string)c.conditions[0..<c.n];
+  held:=n26_conditions(conditions,e.kind,e.created_at);
+  if held==N26_CONDITIONS {return n26_status(c,N26_CONDITIONS);}
+  text:[N26_TEXT_MAX]u8;
+  n:=n26_string(e.public_key,conditions,text[..]);
+  if sha256_hash_checked(text[0..<n],c.hash[..],false)!=SHA_OK {return c;}
+  if !nostr_verify_vartime(c.hash[..],c.delegator[..],c.token[..]) {return n26_status(c,N26_TOKEN);}
+  return n26_status(c,held);
+}
+// The event's author is its signer, whatever its tags claim.
+n26_attribute :: (e:NostrEvent)->N26Attribution {
+  return N26Attribution.{author=e.public_key,claim=n26_claim(e)};
+}
+// book:end claim
+
+// This stack makes no delegations: out is cleared and the call refuses.
+n26_delegate :: (secret:[]u8,delegatee:[]u8,conditions:string,out:[]u8)->int {
+  for i:0..<out.count {out[i]=0;}
+  return N26_REFUSED;
+}

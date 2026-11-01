@@ -1,0 +1,130 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip26.coax";
+#load "../../coax/lib/nostr/nip31.coax";
+#load "../../coax/lib/nostr/retired.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+CLAIM :: [11] string.["token verifies, conditions hold", "event", "no delegation tag", "repeated delegation tag",
+  "bad shape", "bad hex", "conditions don't read", "conditions too long", "token does not verify",
+  "token verifies, event breaks the conditions", "refused: this stack makes no delegations"];
+READ :: [9] string.["ok", "not JSON", "bad shape", "too long", "bad hex", "no room", "aliased", "id is not the hash of the event", "bad signature"];
+ALT :: [6] string.["ok", "event", "none", "empty", "too long", "control byte"];
+// NIP-26's published keys, then BIP-340 test vector 0's. They are test
+// values: never sign with a real key in an example.
+PEOPLE :: [3] string.["Delegator", "Delegatee", "Alice"];
+PUB :: [3] string.[
+  "8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd",
+  "477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"];
+SECRET :: [3] string.[
+  "ee35e8bb71131c02c1d7e73231daa48e9953d329a4b701f7133c8f46dd21139c",
+  "777e4f60b4aa87937e13acc84f7abcc3c93cc035cb4c1e9f7a9086dd78fffce1",
+  "0000000000000000000000000000000000000000000000000000000000000003"];
+DELEGATOR :: 0; DELEGATEE :: 1; ALICE :: 2;
+// NIP-26's example event, byte for byte but without its whitespace.
+NIP26_EVENT :: "{\"id\":\"e93c6095c3db1c31d15ac771f8fc5fb672f6e52cd25505099f62cd055523224f\",\"pubkey\":\"477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396\",\"created_at\":1677426298,\"kind\":1,\"tags\":[[\"delegation\",\"8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd\",\"kind=1&created_at>1674834236&created_at<1677426236\",\"6f44d7fe4f1c09f3954640fb58bd12bae8bb8ff4120853c4693106c82e920e2b898f1f9ba9bd65449a987c39c0423426ab7b53910c0c6abfb41b30bc16e5f524\"]],\"content\":\"Hello, world!\",\"sig\":\"633db60e2e7082c13a47a6b19d663d45b2a2ebdeaf0b4c35ef83be2738030c54fc7fd56d139652937cdca875ee61b51904a1d0d0588a6acd6168d7be2909d693\"}";
+DELEGATION :: "[[\"delegation\",\"8e0d3d3eb2881ec137a11debe736a9086715a8c8beeeda615780064d68bc25dd\",\"kind=1&created_at>1674834236&created_at<1677426236\",\"6f44d7fe4f1c09f3954640fb58bd12bae8bb8ff4120853c4693106c82e920e2b898f1f9ba9bd65449a987c39c0423426ab7b53910c0c6abfb41b30bc16e5f524\"]]";
+// The kinds this timeline renders itself.
+KNOWN :: [5] int.[0, 1, 3, 6, 7];
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+show_key :: (key: [32] u8) {
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { print("%", PEOPLE[k]); return; } }
+  print("someone else");
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [16384] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+forms :: (e: NostrEvent) {
+  rows: [RT_N] int; n := rt_forms(e, rows[..]);
+  #assert n >= 0;
+  print("  retired forms:");
+  if n == 0 { print(" none"); }
+  for i: 0..<n { r := rows[i]; print(" NIP-% (chapter %)", RT_NIP[r], RT_CHAPTER[r]); }
+  print("\n");
+}
+attribute :: (label: string, e: NostrEvent) {
+  a := n26_attribute(e);
+  print("%: kind %, created_at %\n  author: ", label, e.kind, e.created_at); show_key(a.author);
+  print("\n  delegation: %", CLAIM[a.claim.status]);
+  if a.claim.status == N26_OK || a.claim.status == N26_OUTSIDE || a.claim.status == N26_TOKEN {
+    print(", claims "); show_key(a.claim.delegator);
+  }
+  print("\n");
+}
+display :: (label: string, e: NostrEvent) {
+  known := KNOWN; d := n31_display(e, known[..]);
+  print("%: kind %, alt %: ", label, d.kind, ALT[d.alt]);
+  if d.show == N31_KIND { print("shown as kind %\n", d.kind); }
+  else if d.show == N31_ALT { print("\"%\"\n", cast(string) d.text[0..<d.n]); }
+  else { print("an event of kind % this client can't show\n", d.kind); }
+}
+write :: (label: string, kind: int, tags: string, content: string) {
+  r := rt_write(kind, tags, content);
+  print("%: ", label);
+  if r == RT_ALLOWED { print("may be signed\n"); return; }
+  #assert r >= 0;
+  print("refused, NIP-% is unrecommended: %\n", RT_NIP[r], RT_REASON[r]);
+}
+
+main :: () {
+  print("unrecommended NIPs in the pinned texts\n");
+  for r: 0..<RT_N {
+    print("NIP-%  chapter %", RT_NIP[r], RT_CHAPTER[r]);
+    if RT_INSTEAD[r].count > 0 { print("  instead: %", RT_INSTEAD[r]); }
+    print("\n");
+  }
+
+  print("three events\n");
+  scratch: [16384] u8; b1: [4096] u8; b2: [4096] u8; b3: [4096] u8;
+  // NIP-26's example event, re-signed by the delegatee: as published, its
+  // id is not the hash of its content (see the refusals).
+  e1 := sign(DELEGATEE, 1677426298, 1, DELEGATION, "Hello, world!", b1[..]);
+  attribute("E1 (NIP-26's example, re-signed)", e1); forms(e1);
+  id: [64] u8; own := e1.id; r := hex_encode_checked(cast(string) own[..], id[..], false);
+  #assert r.error == NC_OK;
+  print("  id: %\n", cast(string) id[..]);
+  e2 := sign(ALICE, 1761955200, 31337, "[[\"d\",\"ruy-lopez\"],[\"alt\",\"Chess opening study: the Ruy Lopez\"]]", "{\"moves\":\"e4 e5 Nf3 Nc6 Bb5\"}", b2[..]);
+  display("E2", e2); forms(e2);
+  e3 := sign(ALICE, 1761955260, 1, "[[\"p\",\"477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396\"]]", "thanks #[0]", b3[..]);
+  display("E3", e3); forms(e3);
+
+  print("a delegation inside its window\n");
+  e4 := sign(DELEGATEE, 1677426000, 1, DELEGATION, "Inside the window", b1[..]);
+  attribute("E4", e4);
+
+  print("refusals\n");
+  published := nostr_event_verify_vartime(NIP26_EVENT, scratch[..], false);
+  print("NIP-26's example as published: %\n", READ[published.error]);
+  e5 := sign(DELEGATEE, 1677426000, 0, DELEGATION, "{}", b1[..]);
+  attribute("E5, a profile", e5);
+  e6 := sign(DELEGATOR, 1677426000, 1, DELEGATION, "self", b1[..]);
+  attribute("E6, the delegator's own", e6);
+  e7 := sign(ALICE, 1761955320, 31337, "[[\"alt\",\"Chess study\\nFrom: your bank\"]]", "", b1[..]);
+  display("E7", e7);
+  out: [64] u8; key := key_of(DELEGATEE);
+  print("make a delegation: %\n", CLAIM[n26_delegate(key[..], key[..], "kind=1&created_at<1677426236", out[..])]);
+  write("kind 1 note", 1, "[[\"t\",\"nostr\"]]", "gm");
+  write("kind 4 message", 4, "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]", "x?iv=y");
+  write("note with a delegation tag", 1, DELEGATION, "gm");
+  write("custom kind with an alt tag", 31337, "[[\"alt\",\"study\"]]", "");
+  write("note mentioning #[0]", 1, "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]", "hi #[0]");
+}
+// book:end example

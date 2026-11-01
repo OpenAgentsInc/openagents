@@ -1,0 +1,177 @@
+// The NIPs that the pinned upstream texts mark `unrecommended`, which kinds
+// and tags belong to them, and a classifier that names the retired forms an
+// event uses. Every pinned file under nostr/nips/official/ whose first line
+// is "> __Warning__  `unrecommended`: ..." has one row here, with that
+// reason copied as written, what the text points to instead, and the book
+// chapter that covers it.
+//
+// Reading is not writing. rt_forms reports what a received event uses, so
+// a client can read it through the chapter that covers it (NIP-04 decrypts
+// in chapter 19, NIP-26 claims are reported in nip26.coax, NIP-31 summaries
+// shown in nip31.coax). rt_write is the publishing check: an event this
+// stack would sign that uses any retired form refuses, naming the row.
+//
+// NIP-06 (keys from a seed phrase) and NIP-BE (Bluetooth LE transport) have
+// no event form, so no event is classified under them. NIP-08's form is
+// content: "#[i]" where tag i is a p or e tag. A "#[i]" whose tag is
+// anything else, or missing, is ordinary text.
+#load "tags.coax";
+#load "nip34-event.coax";
+#authority;
+
+RT_N :: 13;
+RT_03 :: 0; RT_04 :: 1; RT_06 :: 2; RT_08 :: 3; RT_15 :: 4; RT_26 :: 5; RT_28 :: 6;
+RT_31 :: 7; RT_72 :: 8; RT_90 :: 9; RT_96 :: 10; RT_BE :: 11; RT_EE :: 12;
+RT_ALLOWED :: -1;   // rt_write: no retired form
+RT_EVENT :: -2;     // rt_write and rt_forms: the tags don't read
+
+// book:begin table
+RT_NIP :: [RT_N] string.["03", "04", "06", "08", "15", "26", "28", "31", "72", "90", "96", "BE", "EE"];
+// The pinned texts' first lines after "`unrecommended`: ", each Markdown
+// link written as its label.
+RT_REASON :: [RT_N] string.[
+  "vulnerable to one specific attack, needs update",
+  "deprecated in favor of NIP-17",
+  "prefer a single nsec",
+  "deprecated in favor of NIP-27",
+  "too complicated, try NIP-99 instead",
+  "adds unnecessary burden for little gain",
+  "try NIP-29 instead",
+  "unnecessarily bloated",
+  "try NIP-29 instead",
+  "this got totally out of control, prefer use-case-specific microstandards",
+  "deprecated in favor of NIP-B7",
+  "only implemented once and unclear whether it works, requires review",
+  "superseded by the Marmot Protocol"];
+RT_INSTEAD :: [RT_N] string.["", "NIP-17", "one nsec", "NIP-27", "NIP-99", "", "NIP-29", "", "NIP-29",
+  "use-case-specific NIPs", "NIP-B7 (Blossom)", "", "Marmot"];
+RT_CHAPTER :: [RT_N] int.[68, 19, 46, 51, 66, 70, 59, 70, 59, 65, 57, 70, 60];
+// book:end table
+
+#test "the table has one row per unrecommended NIP" {
+  for i:0..<RT_N {#assert RT_NIP[i].count==2 && RT_REASON[i].count>0 && RT_CHAPTER[i]>=19 && RT_CHAPTER[i]<=70;}
+  #assert rt_kind(1040)==RT_03 && rt_kind(4)==RT_04 && rt_kind(1021)==RT_15 && rt_kind(1022)==RT_15;
+  #assert rt_kind(30017)==RT_15 && rt_kind(30020)==RT_15 && rt_kind(30016)==RT_ALLOWED && rt_kind(30021)==RT_ALLOWED;
+  #assert rt_kind(40)==RT_28 && rt_kind(44)==RT_28 && rt_kind(39)==RT_ALLOWED && rt_kind(45)==RT_ALLOWED;
+  #assert rt_kind(4550)==RT_72 && rt_kind(34550)==RT_72 && rt_kind(5000)==RT_90 && rt_kind(6999)==RT_90 && rt_kind(7000)==RT_90;
+  #assert rt_kind(4999)==RT_ALLOWED && rt_kind(7001)==RT_ALLOWED && rt_kind(10096)==RT_96;
+  #assert rt_kind(443)==RT_EE && rt_kind(444)==RT_EE && rt_kind(445)==RT_EE && rt_kind(10051)==RT_EE && rt_kind(442)==RT_ALLOWED && rt_kind(446)==RT_ALLOWED;
+  #assert rt_kind(1)==RT_ALLOWED && rt_kind(0)==RT_ALLOWED && rt_kind(14)==RT_ALLOWED && rt_kind(1039)==RT_ALLOWED && rt_kind(1041)==RT_ALLOWED;
+  #assert rt_kind(3)==RT_ALLOWED && rt_kind(5)==RT_ALLOWED && rt_kind(1020)==RT_ALLOWED && rt_kind(1023)==RT_ALLOWED;
+  #assert rt_kind(10095)==RT_ALLOWED && rt_kind(10097)==RT_ALLOWED && rt_kind(10050)==RT_ALLOWED && rt_kind(10052)==RT_ALLOWED;
+  #assert rt_kind(4549)==RT_ALLOWED && rt_kind(4551)==RT_ALLOWED && rt_kind(34549)==RT_ALLOWED && rt_kind(34551)==RT_ALLOWED;
+}
+#test "NIP-08 positions: #[i] naming a p or e tag" {
+  tags:="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"t\",\"x\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]";
+  e:=nt_event(tags);
+  #assert rt_mention(e,"hi #[0]") && rt_mention(e,"#[2]!") && rt_mention(e,"#[1] and #[2]");
+  #assert !rt_mention(e,"#[1]") && !rt_mention(e,"#[3]") && !rt_mention(e,"#[] #[x] #[0 #[-0]") && !rt_mention(e,"plain");
+  #assert !rt_mention(e,"#[00]") && !rt_mention(e,"#[99999999999999999999]") && !rt_mention(e,"[0]") && !rt_mention(e,"#0]") && !rt_mention(e,"#[0");
+  #assert rt_mention(e,"##[0]") && rt_mention(e,"#[#[0]") && !rt_mention(e,"") && !rt_mention(e,"x #") && !rt_mention(e,"a[0]") && !rt_mention(e,"#(0]");
+  #assert rt_mention(e,"#[0]") && !rt_mention(e,"#[0") && !rt_mention(e,"#[2") && !rt_mention(e,"[2]") && !rt_mention(e,"#[20]");
+  // Positions past 9 take two digits.
+  many:="[[\"t\",\"0\"],[\"t\",\"1\"],[\"t\",\"2\"],[\"t\",\"3\"],[\"t\",\"4\"],[\"t\",\"5\"],[\"t\",\"6\"],[\"t\",\"7\"],[\"t\",\"8\"],[\"t\",\"9\"],[\"t\",\"10\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+  m:=nt_event(many);#assert rt_mention(m,"#[11]") && !rt_mention(m,"#[1]") && !rt_mention(m,"#[10]") && !rt_mention(m,"#[111]");
+  #assert !rt_mention(nt_event("[[\"p\",\"x\"],[1]]"),"#[0] #[1]");
+  none:NostrEvent;#assert !rt_mention(none,"#[0]");
+  #assert !rt_mention(nt_event("[]"),"#[0]");
+}
+#test "an event's retired forms, in table order" {
+  out:[RT_N]int;
+  e:=nt_event("[[\"alt\",\"x\"],[\"delegation\",\"a\",\"b\",\"c\"]]");e.kind=5300;
+  n:=rt_scan(e,"",out[..]);#assert n==3 && out[0]==RT_26 && out[1]==RT_31 && out[2]==RT_90;
+  e=nt_event("[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]");e.kind=1;
+  n=rt_scan(e,"gm #[0]",out[..]);#assert n==1 && out[0]==RT_08;
+  e.kind=4;n=rt_scan(e,"gm #[0]",out[..]);#assert n==2 && out[0]==RT_04 && out[1]==RT_08;
+  e.kind=1;#assert rt_scan(e,"gm",out[..])==0;
+  e=nt_event("[[\"alts\",\"x\"],[\"t\",\"delegation\"]]");e.kind=1;#assert rt_scan(e,"",out[..])==0;
+  e=nt_event("[[\"alt\",1]]");#assert rt_scan(e,"",out[..])==RT_EVENT;
+  short:[1]int;e=nt_event("[[\"alt\",\"x\"]]");e.kind=4;#assert rt_scan(e,"",short[..])==1 && short[0]==RT_04;
+}
+#test "a received event's content is decoded before NIP-08 is looked for" {
+  out:[RT_N]int;
+  text:="{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"created_at\":1,\"kind\":1,\"tags\":[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]],\"content\":\"hi \\u0023[0]\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+  e:=ne_parse(text);#assert e.error==NE_OK;
+  n:=rt_forms(e,out[..]);#assert n==1 && out[0]==RT_08;
+  none:NostrEvent;#assert rt_forms(none,out[..])==RT_EVENT;
+  // Content that starts with the position, and empty content.
+  f:=e;f.original="{\"tags\":[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]],\"content\":\"#[0] hi\"}";
+  f.tags_from=8;f.tags_to=82;f.content_from=94;f.content_to=101;
+  #assert rt_forms(f,out[..])==1 && out[0]==RT_08;
+  f.content_to=94;#assert rt_forms(f,out[..])==0;
+  // A forged record whose content span ends inside an escape.
+  f.original="{\"tags\":[],\"content\":\"\\q\"}";f.tags_from=8;f.tags_to=10;f.content_from=22;f.content_to=23;
+  #assert rt_forms(f,out[..])==RT_EVENT;
+}
+#test "publishing refuses every retired form" {
+  #assert rt_write(1,"[]","gm")==RT_ALLOWED && rt_write(14,"[[\"p\",\"x\"]]","#[0]")==RT_ALLOWED;
+  #assert rt_write(4,"[]","x")==RT_04 && rt_write(1,"[[\"alt\",\"note\"]]","x")==RT_31 && rt_write(41,"[]","")==RT_28;
+  #assert rt_write(1,"[[\"delegation\",\"a\",\"b\",\"c\"]]","")==RT_26 && rt_write(10096,"[]","")==RT_96;
+  #assert rt_write(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]","see #[0]")==RT_08;
+  #assert rt_write(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]","see nostr:note1")==RT_ALLOWED;
+  #assert rt_write(445,"[[\"alt\",\"x\"]]","")==RT_31 && rt_write(1,"[[\"alt\"","")==RT_EVENT;
+  #assert rt_write(1040,"[]","")==RT_03 && rt_write(1040,"[[\"alt\",\"x\"]]","")==RT_03 && rt_write(30018,"[]","")==RT_15;
+}
+
+// book:begin classify
+// The row whose kinds include kind, or RT_ALLOWED.
+rt_kind :: (kind:int)->int {
+  if kind==1040 {return RT_03;}
+  if kind==4 {return RT_04;}
+  if kind==1021 || kind==1022 || (kind>=30017 && kind<=30020) {return RT_15;}
+  if kind>=40 && kind<=44 {return RT_28;}
+  if kind==4550 || kind==34550 {return RT_72;}
+  if kind>=5000 && kind<=7000 {return RT_90;}
+  if kind==10096 {return RT_96;}
+  if (kind>=443 && kind<=445) || kind==10051 {return RT_EE;}
+  return RT_ALLOWED;
+}
+// Whether content holds a NIP-08 position "#[i]" naming a p or e tag.
+rt_mention :: (e:NostrEvent,content:string)->bool {
+  i:=0;t:=nostr_tag(e,i);
+  while t.error!=NT_INDEX && t.error!=NT_EVENT {
+    if t.error==NT_OK && (t.type==NT_E || t.type==NT_P) {
+      at:[16]u8;n:=json_raw(at[..],0,"#[");n=json_write_int(at[..],n,i);n=json_raw(at[..],n,"]");
+      if rt_holds(content,cast(string)at[0..<n]) {return true;}
+    }
+    i+=1;t=nostr_tag(e,i);
+  }
+  return false;
+}
+rt_holds :: (text:string,part:string)->bool {
+  for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}
+  return false;
+}
+// The rows of the retired forms an event with these tags and this decoded
+// content uses, into out in table order: their count (at most out.count),
+// or RT_EVENT.
+rt_scan :: (e:NostrEvent,content:string,out:[]int)->int {
+  ev:=nt_event_of(e);
+  delegations:=nt_tags(ev,"delegation");
+  if delegations<0 {return RT_EVENT;}
+  rows:[RT_N]bool;
+  kind:=rt_kind(e.kind);if kind!=RT_ALLOWED {rows[kind]=true;}
+  rows[RT_08]=rt_mention(e,content);
+  rows[RT_26]=delegations>0;rows[RT_31]=nt_tags(ev,"alt")>0;
+  n:=0;
+  for r:0..<RT_N {if rows[r] && n<out.count {out[n]=r;n+=1;}}
+  return n;
+}
+// The retired forms a received event uses.
+rt_forms :: (e:NostrEvent,out:[]int)->int {
+  if e.error!=NE_OK {return RT_EVENT;}
+  decoded:[65536]u8;
+  n:=json_unescape(e.original[e.content_from..<e.content_to],decoded[..]);
+  if n<0 {return RT_EVENT;}
+  return rt_scan(e,cast(string)decoded[0..<n],out);
+}
+// Before signing: RT_ALLOWED, the first retired row the event would use,
+// or RT_EVENT when the tags don't read.
+rt_write :: (kind:int,tags:string,content:string)->int {
+  e:=nt_event(tags);e.kind=kind;out:[1]int;
+  n:=rt_scan(e,content,out[..]);
+  if n<0 {return n;}
+  if n==0 {return RT_ALLOWED;}
+  return out[0];
+}
+// book:end classify

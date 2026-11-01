@@ -1461,13 +1461,21 @@
    "number": 70,
    "title": "Retired and experimental NIPs",
    "file": "ch070-retired-and-experimental-nips.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     21
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip26.coax",
+    "coax/lib/nostr/nip31.coax",
+    "coax/lib/nostr/retired.coax",
+    "nostr/examples/retired-nips.coax",
+    "nostr/examples/checks/retired-nips.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

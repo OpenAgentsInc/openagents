@@ -1,0 +1,103 @@
+// The checks of retired-nips.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/retired-nips.coax --run-steps 250000000
+#load "../retired-nips.coax";
+
+// The first line of every pinned file under nostr/nips/official/ that
+// carries the `unrecommended` warning, copied by hand on 2026-11-01. A
+// Python script read the same lines from the files and found these 13 and
+// no others.
+PINNED :: [RT_N] string.[
+  "> __Warning__  `unrecommended`: vulnerable to one specific attack, needs update",
+  "> __Warning__  `unrecommended`: deprecated in favor of [NIP-17](17.md)",
+  "> __Warning__  `unrecommended`: prefer a single nsec",
+  "> __Warning__  `unrecommended`: deprecated in favor of [NIP-27](27.md)",
+  "> __Warning__  `unrecommended`: too complicated, try [NIP-99](99.md) instead",
+  "> __Warning__  `unrecommended`: adds unnecessary burden for little gain",
+  "> __Warning__  `unrecommended`: try [NIP-29](29.md) instead",
+  "> __Warning__  `unrecommended`: unnecessarily bloated",
+  "> __Warning__  `unrecommended`: try [NIP-29](29.md) instead",
+  "> __Warning__  `unrecommended`: this got totally out of control, prefer use-case-specific microstandards",
+  "> __Warning__  `unrecommended`: deprecated in favor of [NIP-B7](B7.md)",
+  "> __Warning__  `unrecommended`: only implemented once and unclear whether it works, requires review",
+  "> __Warning__  `unrecommended`: superseded by the [Marmot Protocol](https://github.com/marmot-protocol/marmot)"];
+
+
+// book:begin check
+PREFIX :: "> __Warning__  `unrecommended`: ";
+// A Markdown line with each link, a [label] then its (target), written as
+// its label.
+unlink :: (s: string, out: [] u8) -> string {
+  n := 0; i := 0; label := false;
+  while i < s.count {
+    c := s[i];
+    if c == '[' { label = true; i += 1; continue; }
+    if c == ']' && label && i + 1 < s.count && s[i + 1] == '(' {
+      label = false; i += 2;
+      while s[i] != ')' { i += 1; }
+      i += 1; continue;
+    }
+    out[n] = c; n += 1; i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+#test "the table's reasons are the pinned texts' warnings" {
+  buf: [256] u8;
+  #assert unlink("a [Marmot](https://e.org/m) b [c", buf[..]) == "a Marmot b c";
+  for i: 0..<RT_N {
+    #assert PINNED[i][0..<PREFIX.count] == PREFIX;
+    #assert unlink(PINNED[i][PREFIX.count..<PINNED[i].count], buf[..]) == RT_REASON[i];
+  }
+}
+
+// From Python, sharing no code with Coax: hashlib.sha256 of the delegation
+// string; hashlib.sha256 of json.dumps([0, pubkey, created_at, kind, tags,
+// content], separators=(",", ":"), ensure_ascii=False) for NIP-26's example
+// event; and a BIP-340 verifier written from the BIP with Python integers,
+// which accepts the token and rejects the example's signature over both its
+// published id and the computed one.
+PY_HASH :: "397b751983c871f6e3986c6ede36c0f955ddd752c514ad5d1ff026a3e9a8b7f6";
+PY_ID :: "61a9b5964c24d559aa961efa198d0b7c3a83b3b4c5c288ffb6e99fd562b9b99c";
+PUBLISHED_ID :: "e93c6095c3db1c31d15ac771f8fc5fb672f6e52cd25505099f62cd055523224f";
+PUBLISHED_SIG :: "633db60e2e7082c13a47a6b19d663d45b2a2ebdeaf0b4c35ef83be2738030c54fc7fd56d139652937cdca875ee61b51904a1d0d0588a6acd6168d7be2909d693";
+hex32_of :: (text: string) -> [32] u8 { b: [32] u8; decode_hex(text, b[..]); return b; }
+
+#test "NIP-26's example: the token verifies, the event's id and signature don't" #steps 2000000000 {
+  scratch: [16384] u8; buf: [4096] u8;
+  e := sign(DELEGATEE, 1677426298, 1, DELEGATION, "Hello, world!", buf[..]);
+  #assert ns_equal32(e.id, hex32_of(PY_ID));
+  c := n26_claim(e);
+  #assert c.status == N26_OUTSIDE && ns_equal32(c.hash, hex32_of(PY_HASH)) && ns_equal32(c.delegator, key_of(DELEGATOR));
+  published := nostr_event_read(NIP26_EVENT, scratch[..], false);
+  #assert published.error == NE_ID && ns_equal32(published.computed_id, hex32_of(PY_ID)) && ns_equal32(published.id, hex32_of(PUBLISHED_ID));
+  sig: [64] u8; decode_hex(PUBLISHED_SIG, sig[..]);
+  pub := key_of(DELEGATEE); a := hex32_of(PUBLISHED_ID); b := hex32_of(PY_ID);
+  #assert !nostr_verify_vartime(a[..], pub[..], sig[..]) && !nostr_verify_vartime(b[..], pub[..], sig[..]);
+  // The published keys: each secret key signs as its public key.
+  #assert ns_equal32(e.public_key, key_of(DELEGATEE));
+  d := sign(DELEGATOR, 1, 1, "[]", "", buf[..]); #assert ns_equal32(d.public_key, key_of(DELEGATOR));
+}
+
+// NIP-26's three example condition strings read; the hand-worked times.
+#test "NIP-26's condition examples" {
+  #assert n26_conditions("kind=1&created_at<1675721813", 1, 1675721812) == N26_OK;
+  #assert n26_conditions("kind=0&kind=1&created_at>1675721813", 0, 1675721814) == N26_OK;
+  #assert n26_conditions("kind=1&created_at>1674777689&created_at<1675721813", 1, 1675000000) == N26_OK;
+  // E1: 1677426298 is 62 seconds past created_at<1677426236.
+  #assert n26_conditions("kind=1&created_at>1674834236&created_at<1677426236", 1, 1677426298) == N26_OUTSIDE;
+  #assert n26_conditions("kind=1&created_at>1674834236&created_at<1677426236", 1, 1677426235) == N26_OK;
+}
+
+// The three events classified by hand in the chapter.
+#test "the hand classification of E1, E2 and E3" #steps 2000000000 {
+  buf: [3][4096] u8; rows: [RT_N] int; known := KNOWN;
+  e1 := sign(DELEGATEE, 1677426298, 1, DELEGATION, "Hello, world!", buf[0][..]);
+  #assert rt_forms(e1, rows[..]) == 1 && rows[0] == RT_26;
+  a := n26_attribute(e1); #assert ns_equal32(a.author, key_of(DELEGATEE)) && a.claim.status == N26_OUTSIDE;
+  e2 := sign(ALICE, 1761955200, 31337, "[[\"d\",\"ruy-lopez\"],[\"alt\",\"Chess opening study: the Ruy Lopez\"]]", "{\"moves\":\"e4 e5 Nf3 Nc6 Bb5\"}", buf[1][..]);
+  #assert rt_forms(e2, rows[..]) == 1 && rows[0] == RT_31;
+  d := n31_display(e2, known[..]); #assert d.show == N31_ALT && d.n == 34;
+  e3 := sign(ALICE, 1761955260, 1, "[[\"p\",\"477318cfb5427b9cfc66a9fa376150c1ddbc62115ae27cef72417eb959691396\"]]", "thanks #[0]", buf[2][..]);
+  #assert rt_forms(e3, rows[..]) == 1 && rows[0] == RT_08 && n31_display(e3, known[..]).show == N31_KIND;
+}
+// book:end check

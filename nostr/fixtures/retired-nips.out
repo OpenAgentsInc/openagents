@@ -1,0 +1,43 @@
+unrecommended NIPs in the pinned texts
+NIP-03  chapter 68
+NIP-04  chapter 19  instead: NIP-17
+NIP-06  chapter 46  instead: one nsec
+NIP-08  chapter 51  instead: NIP-27
+NIP-15  chapter 66  instead: NIP-99
+NIP-26  chapter 70
+NIP-28  chapter 59  instead: NIP-29
+NIP-31  chapter 70
+NIP-72  chapter 59  instead: NIP-29
+NIP-90  chapter 65  instead: use-case-specific NIPs
+NIP-96  chapter 57  instead: NIP-B7 (Blossom)
+NIP-BE  chapter 70
+NIP-EE  chapter 60  instead: Marmot
+three events
+E1 (NIP-26's example, re-signed): kind 1, created_at 1677426298
+  author: Delegatee
+  delegation: token verifies, event breaks the conditions, claims Delegator
+  retired forms: NIP-26 (chapter 70)
+  id: 61a9b5964c24d559aa961efa198d0b7c3a83b3b4c5c288ffb6e99fd562b9b99c
+E2: kind 31337, alt ok: "Chess opening study: the Ruy Lopez"
+  retired forms: NIP-31 (chapter 70)
+E3: kind 1, alt none: shown as kind 1
+  retired forms: NIP-08 (chapter 51)
+a delegation inside its window
+E4: kind 1, created_at 1677426000
+  author: Delegatee
+  delegation: token verifies, conditions hold, claims Delegator
+refusals
+NIP-26's example as published: id is not the hash of the event
+E5, a profile: kind 0, created_at 1677426000
+  author: Delegatee
+  delegation: token verifies, event breaks the conditions, claims Delegator
+E6, the delegator's own: kind 1, created_at 1677426000
+  author: Delegator
+  delegation: token does not verify, claims Delegator
+E7: kind 31337, alt control byte: an event of kind 31337 this client can't show
+make a delegation: refused: this stack makes no delegations
+kind 1 note: may be signed
+kind 4 message: refused, NIP-04 is unrecommended: deprecated in favor of NIP-17
+note with a delegation tag: refused, NIP-26 is unrecommended: adds unnecessary burden for little gain
+custom kind with an alt tag: refused, NIP-31 is unrecommended: unnecessarily bloated
+note mentioning #[0]: refused, NIP-08 is unrecommended: deprecated in favor of NIP-27

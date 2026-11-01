@@ -1,0 +1,92 @@
+// NIP-31 alt tags, read for display. Pinned spec:
+// nostr/nips/official/31.md, marked `unrecommended`: "unnecessarily
+// bloated". Many clients still write ["alt", summary] on custom kinds, so a
+// reader that meets a kind it doesn't know shows the summary instead of
+// nothing.
+//
+// n31_display decides what a timeline shows for one event, given the kinds
+// the caller renders itself: a known kind is shown as that kind and its alt
+// tag is ignored; an unknown kind shows its first alt tag's value; an
+// unknown kind without a usable alt shows only that it is an unknown kind.
+// The summary is plain text from the event's signer, so a value that is
+// empty, longer than NT_MAX_VALUE bytes or holds a control byte (below 0x20,
+// or 0x7f) is not shown: it could move a terminal's cursor or fake a second
+// line.
+#load "tags.coax";
+#load "nip34-event.coax";
+
+N31_KIND :: 0;      // show the event as its own kind
+N31_ALT :: 1;       // show the alt summary
+N31_UNKNOWN :: 2;   // show "an event of kind N" and nothing more
+N31_OK :: 0; N31_EVENT :: 1; N31_NONE :: 2; N31_SHAPE :: 3; N31_LIMIT :: 4; N31_CONTROL :: 5;
+
+// book:begin record
+N31Display :: struct {
+  show:int=N31_UNKNOWN;
+  alt:int=N31_EVENT;                     // how the first alt tag read
+  kind:int;
+  text:[NT_MAX_VALUE]u8; n:int;          // the summary when show is N31_ALT
+  alts:int;                              // alt tags on the event
+}
+// book:end record
+
+n31_test_event :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;return e;}
+N31_KNOWN :: [4]int.[0, 1, 6, 7];
+
+#test "a known kind is shown as itself; its alt is ignored" {
+  kn:=N31_KNOWN;
+  d:=n31_display(n31_test_event(1,"[[\"alt\",\"a note\"]]"),kn[..]);
+  #assert d.show==N31_KIND && d.kind==1 && d.alt==N31_OK && d.alts==1 && d.n==0;
+  d=n31_display(n31_test_event(7,"[]"),kn[..]);#assert d.show==N31_KIND && d.alt==N31_NONE && d.alts==0;
+}
+#test "an unknown kind shows its first alt" {
+  kn:=N31_KNOWN;
+  d:=n31_display(n31_test_event(31337,"[[\"d\",\"x\"],[\"alt\",\"A chess opening study\"],[\"alt\",\"second\"]]"),kn[..]);
+  #assert d.show==N31_ALT && d.kind==31337 && d.alt==N31_OK && d.alts==2 && cast(string)d.text[0..<d.n]=="A chess opening study";
+  d=n31_display(n31_test_event(1,"[[\"alt\",\"caf\\u00e9 \\\"menu\\\"\",\"extra\"]]"),kn[0..<1]);
+  #assert d.show==N31_ALT && d.n==12 && d.text[3]==0xc3 && d.text[4]==0xa9 && cast(string)d.text[5..<d.n]==" \"menu\"";
+  d=n31_display(n31_test_event(0,"[[\"alt\",\"x\"]]"),kn[0..<0]);#assert d.show==N31_ALT && d.n==1;
+}
+#test "no usable alt: the kind is named and nothing else" {
+  kn:=N31_KNOWN;
+  d:=n31_display(n31_test_event(9999,"[[\"t\",\"x\"]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_NONE && d.kind==9999 && d.n==0;
+  d=n31_display(n31_test_event(9999,"[[\"alt\"]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_SHAPE && d.alts==1;
+  d=n31_display(n31_test_event(9999,"[[\"alt\",\"\"]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_SHAPE;
+  d=n31_display(n31_test_event(9999,"[[\"alt\",\"two\\nlines\"]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_CONTROL && d.n==0 && d.text[0]==0 && d.text[8]==0;
+  d=n31_display(n31_test_event(9999,"[[\"alt\",\"\\u001b[2Jcleared\"]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_CONTROL;
+  #assert n31_display(n31_test_event(9999,"[[\"alt\",\"del\\u007f\"]]"),kn[..]).alt==N31_CONTROL;
+  #assert n31_display(n31_test_event(9999,"[[\"alt\",\" ~\"]]"),kn[..]).alt==N31_OK;
+  // Only the first alt counts, even when a later one would read.
+  d=n31_display(n31_test_event(9999,"[[\"alt\",\"\"],[\"alt\",\"later\"]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_SHAPE && d.alts==2;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"alt\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  d=n31_display(n31_test_event(9999,cast(string)long[0..<n]),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_LIMIT && d.n==0 && d.text[255]==0;
+  n=json_raw(long[..],0,"[[\"alt\",\"");for i:0..<256 {long[n+i]='x';}n+=256;n=json_raw(long[..],n,"\"]]");
+  d=n31_display(n31_test_event(9999,cast(string)long[0..<n]),kn[..]);#assert d.show==N31_ALT && d.n==256;
+  d=n31_display(n31_test_event(9999,"[[\"alt\",1]]"),kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_EVENT && d.alts==0;
+  none:NostrEvent;d=n31_display(none,kn[..]);#assert d.show==N31_UNKNOWN && d.alt==N31_EVENT;
+}
+
+// book:begin display
+n31_known :: (kind:int,known:[]int)->bool {for k:known {if k==kind {return true;}}return false;}
+// What a timeline shows for e when it renders the kinds in known itself.
+n31_display :: (e:NostrEvent,known:[]int)->N31Display {
+  d:N31Display;d.kind=e.kind;ev:=nt_event_of(e);
+  d.alts=nt_tags(ev,"alt");
+  if d.alts<0 {d.alts=0;return d;}
+  if d.alts==0 {d.alt=N31_NONE;}
+  else {
+    t:=nt_tag(ev,"alt",0);
+    n:=ifx t.values==0 then 0 else json_unescape(nt_raw(ev,t.v[0]),d.text[..]);
+    if n<0 {d.alt=N31_LIMIT;}
+    else if n==0 {d.alt=N31_SHAPE;}
+    else {
+      d.alt=N31_OK;
+      for i:0..<n {if d.text[i]<0x20 || d.text[i]==0x7f {d.alt=N31_CONTROL;}}
+    }
+    if d.alt==N31_OK {d.n=n;} else {for i:0..<d.text.count {d.text[i]=0;}}
+  }
+  if n31_known(e.kind,known) {d.show=N31_KIND;d.n=0;}
+  else if d.alt==N31_OK {d.show=N31_ALT;}
+  return d;
+}
+// book:end display
