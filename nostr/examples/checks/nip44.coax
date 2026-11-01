@@ -1,0 +1,195 @@
+// The checks of nip44.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/nip44.coax
+#load "../nip44.coax";
+
+// book:begin check
+// Decode an even number of hex digits into buf; return the byte count.
+hex_into :: (text: string, buf: [] u8) -> int {
+  r := hex_decode_checked(text, buf[0..<text.count / 2], false);
+  #assert r.error == 0;
+  return text.count / 2;
+}
+
+// The NIP's next_power, 1 << (floor(log2(n - 1)) + 1), with floor(log2(n - 1))
+// as the index of the top set bit of n - 1. For n = 1 it gives 2.
+spec_next_power :: (n: int) -> int {
+  top := 0; v := n - 1;
+  while v > 1 { v = v >> 1; top += 1; }
+  return 1 << (top + 1);
+}
+#test "next_power by hand" {
+  ns := [9] int.[2, 3, 4, 5, 33, 37, 256, 257, 300];
+  powers := [9] int.[2, 4, 4, 8, 64, 64, 256, 512, 512];
+  for i: 0..<9 { #assert spec_next_power(ns[i]) == powers[i]; }
+}
+// calc_padded_len from the NIP's pseudocode. Its chunk is 32 while
+// next_power <= 256 and next_power / 8 above: the loop doubles 32 until
+// 8 * chunk reaches next_power. Its n <= 32 case needs no branch: there
+// next_power <= 32, chunk is 32 and (n - 1) / 32 is 0.
+spec_padded_len :: (n: int) -> int {
+  next_power := spec_next_power(n);
+  chunk := 32;
+  while (chunk << 3) < next_power { chunk = chunk * 2; }
+  return chunk * ((n - 1) / chunk + 1);
+}
+// The 24 valid.calc_padded_len rows: (unpadded, padded).
+PADDED :: [48] int.[16, 32, 32, 32, 33, 64, 37, 64, 45, 64, 49, 64, 64, 64, 65, 96, 100, 128, 111, 128, 200, 224, 250, 256, 320, 320, 383, 384, 384, 384, 400, 448, 500, 512, 512, 512, 515, 640, 700, 768, 800, 896, 900, 1024, 1020, 1024, 65536, 65536];
+#test "calc_padded_len: the 24 published rows and the hand values" {
+  for i: 0..<24 { #assert nip44_calc_padded_len(PADDED[2 * i]) == PADDED[2 * i + 1]; }
+  #assert nip44_calc_padded_len(1) == 32 && nip44_calc_padded_len(37) == 64 && nip44_calc_padded_len(300) == 320;
+}
+#forall "calc_padded_len agrees with the NIP's pseudocode" n: 1..<3000 {
+  #assert nip44_calc_padded_len(n) == spec_padded_len(n);
+}
+#test "calc_padded_len agrees with the pseudocode at every power of two" {
+  for k: 1..<32 {
+    p := 1 << k;
+    #assert nip44_calc_padded_len(p - 1) == spec_padded_len(p - 1);
+    #assert nip44_calc_padded_len(p) == spec_padded_len(p);
+    #assert nip44_calc_padded_len(p + 1) == spec_padded_len(p + 1);
+  }
+  #assert nip44_calc_padded_len(4294967295) == spec_padded_len(4294967295);
+}
+
+// Four valid.get_message_keys rows: (nonce, chacha_key, chacha_nonce, hmac_key).
+MK_KEY :: "a1a3d60f3470a8612633924e91febf96dc5366ce130f658b1f0fc652c20b3b54";
+MK_ROWS :: [16] string.[
+    "e1e6f880560d6d149ed83dcc7e5861ee62a5ee051f7fde9975fe5d25d2a02d72", "f145f3bed47cb70dbeaac07f3a3fe683e822b3715edb7c4fe310829014ce7d76", "c4ad129bb01180c0933a160c", "027c1db445f05e2eee864a0975b0ddef5b7110583c8c192de3732571ca5838c4", // row 0
+    "e1d6d28c46de60168b43d79dacc519698512ec35e8ccb12640fc8e9f26121101", "e35b88f8d4a8f1606c5082f7a64b100e5d85fcdb2e62aeafbec03fb9e860ad92", "22925e920cee4a50a478be90", "46a7c55d4283cb0df1d5e29540be67abfe709e3b2e14b7bf9976e6df994ded30", // row 1
+    "e9d1eba47dd7e6c1532dc782ff63125db83042bb32841db7eeafd528f3ea7af9", "54241f68dc2e50e1db79e892c7c7a471856beeb8d51b7f4d16f16ab0645d2f1a", "a963ed7dc29b7b1046820a1d", "aba215c8634530dc21c70ddb3b3ee4291e0fa5fa79be0f85863747bde281c8b2", // row 15
+    "2dcf39b9d4c52f1cb9db2d516c43a7c6c3b8c401f6a4ac8f131a9e1059957036", "17f8057e6156ba7cc5310d01eda8c40f9aa388f9fd1712deb9511f13ecc37d27", "a8188daff807a1182200b39d", "47b89da97f68d389867b5d8a2d7ba55715a30e3d88a3cc11f3646bc2af5580ef"]; // row 31
+#forall "message keys split 32 / 12 / 32 as published" i: 0..<4 {
+  ck := bytes_of(MK_KEY); nonce := bytes_of(MK_ROWS[4 * i]);
+  keys: [77] u8; keys[76] = 165;
+  #assert nip44_message_keys_checked(ck[..], nonce[..], keys[..], false) == NIP44_OK;
+  want: [32] u8;
+  #assert hex_into(MK_ROWS[4 * i + 1], want[..]) == 32 && same_bytes(keys[0..<32], want[..]);
+  #assert hex_into(MK_ROWS[4 * i + 2], want[..]) == 12 && same_bytes(keys[32..<44], want[0..<12]);
+  #assert hex_into(MK_ROWS[4 * i + 3], want[..]) == 32 && same_bytes(keys[44..<76], want[..]);
+  #assert keys[76] == 165;
+}
+
+// All 10 valid.encrypt_decrypt rows: (sec1, sec2, conversation_key, nonce,
+// plaintext as UTF-8 hex, payload). Published test keys only.
+ED_ROWS :: [60] string.[
+    "0000000000000000000000000000000000000000000000000000000000000001", "0000000000000000000000000000000000000000000000000000000000000002", "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d", "0000000000000000000000000000000000000000000000000000000000000001", "61", "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb",
+    "0000000000000000000000000000000000000000000000000000000000000002", "0000000000000000000000000000000000000000000000000000000000000001", "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d", "f00000000000000000000000000000f00000000000000000000000000000000f", "f09f8d95f09fab83", "AvAAAAAAAAAAAAAAAAAAAPAAAAAAAAAAAAAAAAAAAAAPSKSK6is9ngkX2+cSq85Th16oRTISAOfhStnixqZziKMDvB0QQzgFZdjLTPicCJaV8nDITO+QfaQ61+KbWQIOO2Yj",
+    "5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a", "4b22aa260e4acb7021e32f38a6cdf4b673c6a277755bfce287e370c924dc936d", "3e2b52a63be47d34fe0a80e34e73d436d6963bc8f39827f327057a9986c20a45", "b635236c42db20f021bb8d1cdff5ca75dd1a0cc72ea742ad750f33010b24f73b", "e8a1a8e3839de3818241e9b797c592c3a9efbca2e9808dc39cc39fc2aac485c3b1e4b882e39080f0a08080", "ArY1I2xC2yDwIbuNHN/1ynXdGgzHLqdCrXUPMwELJPc7s7JqlCMJBAIIjfkpHReBPXeoMCyuClwgbT419jUWU1PwaNl4FEQYKCDKVJz+97Mp3K+Q2YGa77B6gpxB/lr1QgoqpDf7wDVrDmOqGoiPjWDqy8KzLueKDcm9BVP8xeTJIxs=",
+    "8f40e50a84a7462e2b8d24c28898ef1f23359fff50d8c509e6fb7ce06e142f9c", "b9b0a1e9cc20100c5faa3bbe2777303d25950616c4c6a3fa2e3e046f936ec2ba", "d5a2f879123145a4b291d767428870f5a8d9e5007193321795b40183d4ab8c2b", "b20989adc3ddc41cd2c435952c0d59a91315d8c5218d5040573fc3749543acaf", "6162696c697479f09fa49de79a8420c8bac8be", "ArIJia3D3cQc0sQ1lSwNWakTFdjFIY1QQFc/w3SVQ6yvbG2S0x4Yu86QGwPTy7mP3961I1XqB6SFFTzqDZZavhxoWMj7mEVGMQIsh2RLWI5EYQaQDIePSnXPlzf7CIt+voTD",
+    "875adb475056aec0b4809bd2db9aa00cff53a649e7b59d8edcbf4e6330b0995c", "9c05781112d5b0a2a7148a222e50e0bd891d6b60c5483f03456e982185944aae", "3b15c977e20bfe4b8482991274635edd94f366595b1a3d2993515705ca3cedb8", "8d4442713eb9d4791175cb040d98d6fc5be8864d6ec2f89cf0895a2b2b72d1b1", "706570706572f09f9180d197d0b6d0b0d0ba", "Ao1EQnE+udR5EXXLBA2Y1vxb6IZNbsL4nPCJWisrctGxY3AduCS+jTUgAAnfvKafkmpy15+i9YMwCdccisRa8SvzW671T2JO4LFSPX31K4kYUKelSAdSPwe9NwO6LhOsnoJ+",
+    "eba1687cab6a3101bfc68fd70f214aa4cc059e9ec1b79fdb9ad0a0a4e259829f", "dff20d262bef9dfd94666548f556393085e6ea421c8af86e9d333fa8747e94b3", "4f1538411098cf11c8af216836444787c462d47f97287f46cf7edb2c4915b8a5", "2180b52ae645fcf9f5080d81b1f0b5d6f2cd77ff3c986882bb549158462f3407", "2820cda1c2b020cd9cca9620cda1c2b029", "AiGAtSrmRfz59QgNgbHwtdbyzXf/PJhogrtUkVhGLzQHv4qhKQwnFQ54OjVMgqCea/Vj0YqBSdhqNR777TJ4zIUk7R0fnizp6l1zwgzWv7+ee6u+0/89KIjY5q1wu6inyuiv",
+    "d5633530f5bcfebceb5584cfbbf718a30df0751b729dd9a789b9f30c0587d74e", "b74e6a341fb134127272b795a08b59250e5fa45a82a2eb4095e4ce9ed5f5e214", "75fe686d21a035f0c7cd70da64ba307936e5ca0b20710496a6b6b5f573377bdd", "e4cd5f7ce4eea024bc71b17ad456a986a74ac426c2c62b0a15eb5c5c8f888b68", "d985d98fd986d98ed8a7d982d98ed8b4d98ed8a9d98f20d8b3d98fd8a8d98fd984d99020d8a7d990d8b3d992d8aad990d8aed992d8afd98ed8a7d985d99020d8a7d984d984d98fd991d8bad98ed8a9d99020d981d990d98a20d8a7d984d986d98fd991d8b8d98fd985d99020d8a7d984d992d982d98ed8a7d8a6d990d985d98ed8a9d99020d988d98ed981d990d98ad98520d98ad98ed8aed98fd8b5d98ed99120d8a7d984d8aad98ed991d8b7d992d8a8d990d98ad982d98ed8a7d8aad98f20d8a7d984d992d8add8a7d8b3d98fd988d8a8d990d98ad98ed991d8a9d98fd88c", "AuTNX3zk7qAkvHGxetRWqYanSsQmwsYrChXrXFyPiItoIBsWu1CB+sStla2M4VeANASHxM78i1CfHQQH1YbBy24Tng7emYW44ol6QkFD6D8Zq7QPl+8L1c47lx8RoODEQMvNCbOk5ffUV3/AhONHBXnffrI+0025c+uRGzfqpYki4lBqm9iYU+k3Tvjczq9wU0mkVDEaM34WiQi30MfkJdRbeeYaq6kNvGPunLb3xdjjs5DL720d61Flc5ZfoZm+CBhADy9D9XiVZYLKAlkijALJur9dATYKci6OBOoc2SJS2Clai5hOVzR0yVeyHRgRfH9aLSlWW5dXcUxTo7qqRjNf8W5+J4jF4gNQp5f5d0YA4vPAzjBwSP/5bGzNDslKfcAH",
+    "d5633530f5bcfebceb5584cfbbf718a30df0751b729dd9a789b9f30c0587d74e", "b74e6a341fb134127272b795a08b59250e5fa45a82a2eb4095e4ce9ed5f5e214", "75fe686d21a035f0c7cd70da64ba307936e5ca0b20710496a6b6b5f573377bdd", "38d1ca0abef9e5f564e89761a86cee04574b6825d3ef2063b10ad75899e4b023", "d8a7d984d983d98420d981d98a20d8a7d984d985d8acd985d98820d8b9d8a920283529", "AjjRygq++eX1ZOiXYahs7gRXS2gl0+8gY7EK11iZ5LAjbOTrlfrxak5Lki42v2jMPpLSicy8eHjsWkkMtF0i925vOaKG/ZkMHh9ccQBdfTvgEGKzztedqDCAWb5TP1YwU1PsWaiiqG3+WgVvJiO4lUdMHXL7+zKKx8bgDtowzz4QAwI=",
+    "d5633530f5bcfebceb5584cfbbf718a30df0751b729dd9a789b9f30c0587d74e", "b74e6a341fb134127272b795a08b59250e5fa45a82a2eb4095e4ce9ed5f5e214", "75fe686d21a035f0c7cd70da64ba307936e5ca0b20710496a6b6b5f573377bdd", "4f1a31909f3483a9e69c8549a55bbc9af25fa5bbecf7bd32d9896f83ef2e12e0", "f09d9691f09d9686f09d969ff09d969e20e7a4bee69c83e7a791e5adb8e999a2e8aa9ee5adb8e7a094e7a9b6e68980", "Ak8aMZCfNIOp5pyFSaVbvJryX6W77Pe9MtmJb4PvLhLgh/TsxPLFSANcT67EC1t/qxjru5ZoADjKVEt2ejdx+xGvH49mcdfbc+l+L7gJtkH7GLKpE9pQNQWNHMAmj043PAXJZ++fiJObMRR2mye5VHEANzZWkZXMrXF7YjuG10S1pOU=",
+    "d5633530f5bcfebceb5584cfbbf718a30df0751b729dd9a789b9f30c0587d74e", "b74e6a341fb134127272b795a08b59250e5fa45a82a2eb4095e4ce9ed5f5e214", "75fe686d21a035f0c7cd70da64ba307936e5ca0b20710496a6b6b5f573377bdd", "a3e219242d85465e70adcd640b564b3feff57d2ef8745d5e7a0663b2dccceb54", "f09f998820f09f998920f09f998a2030efb88fe283a32031efb88fe283a32032efb88fe283a32033efb88fe283a32034efb88fe283a32035efb88fe283a32036efb88fe283a32037efb88fe283a32038efb88fe283a32039efb88fe283a320f09f949f20506f776572d984d98fd984d98fd8b5d991d8a8d98fd984d98fd984d8b5d991d8a8d98fd8b1d8b1d98b20e0a5a320e0a5a36820e0a5a320e0a5a3e58697", "AqPiGSQthUZecK3NZAtWSz/v9X0u+HRdXnoGY7LczOtUf05aMF89q1FLwJvaFJYICZoMYgRJHFLwPiOHce7fuAc40kX0wXJvipyBJ9HzCOj7CgtnC1/cmPCHR3s5AIORmroBWglm1LiFMohv1FSPEbaBD51VXxJa4JyWpYhreSOEjn1wd0lMKC9b+osV2N2tpbs+rbpQem2tRen3sWflmCqjkG5VOVwRErCuXuPb5+hYwd8BoZbfCrsiAVLd7YT44dRtKNBx6rkabWfddKSLtreHLDysOhQUVOp/XkE7OzSkWl6sky0Hva6qJJ/V726hMlomvcLHjE41iKmW2CpcZfOedg=="];
+// The NIP's procedure for these rows: pub2 from sec2, the conversation key
+// from (sec1, pub2), encrypt, compare the payload; then pub1 from sec1, the
+// key from (sec2, pub1), decrypt, compare the plaintext. Both profiles.
+#forall "encrypt_decrypt rows run end to end from the two secret keys" i: 0..<10 #steps 2000000000 {
+  sec1 := bytes_of(ED_ROWS[6 * i]); sec2 := bytes_of(ED_ROWS[6 * i + 1]);
+  want := bytes_of(ED_ROWS[6 * i + 2]); nonce := bytes_of(ED_ROWS[6 * i + 3]);
+  plain: [256] u8; n := hex_into(ED_ROWS[6 * i + 4], plain[..]);
+  published := ED_ROWS[6 * i + 5];
+  pub1 := public_x(sec1[..]); pub2 := public_x(sec2[..]);
+  scratch: [1] EcdhScratch; ck1: [32] u8; ck2: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(sec1[..], pub2[..], scratch[..], ck1[..], false) == NIP44_OK;
+  #assert nip44_conversation_key_from_keys_checked(sec2[..], pub1[..], scratch[..], ck2[..], false) == NIP44_OK;
+  #assert same_bytes(ck1[..], want[..]) && same_bytes(ck2[..], want[..]);
+  for profile: [2] u32.[NIP44_COMPAT, NIP44_EXTENDED] {
+    work: [1024] u8; for j: 0..<1024 { work[j] = 165; }
+    out: [512] u8;
+    r := nip44_encrypt_checked(profile, ck1[..], nonce[..], plain[0..<n], work[..], out[..], false);
+    #assert r.error == NIP44_OK && cast(string) out[0..<r.written] == published;
+    back: [256] u8;
+    d := nip44_decrypt_checked(profile, ck2[..], published, work[..], back[..], false);
+    #assert d.error == NIP44_OK && d.written == n && same_bytes(back[0..<n], plain[0..<n]);
+  }
+}
+
+// All 12 invalid.decrypt rows: (conversation_key, payload), and the status
+// each must give.
+BAD_ROWS :: [24] string.[
+    "ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642", "#Atqupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJdU0MIDf06CUvEvdnr1cp1fiMtlM/GrE92xAc1K5odTpCzUB+mjXgbaqtntBUbTToSUoT0ovrlPwzGjyp", // unknown encryption version
+    "36f04e558af246352dcf73b692fbd3646a2207bd8abd4b1cd26b234db84d9481", "AK1AjUvoYW3IS7C/BGRUoqEC7ayTfDUgnEPNeWTF/reBZFaha6EAIRueE9D1B1RuoiuFScC0Q94yjIuxZD3JStQtE8JMNacWFs9rlYP+ZydtHhRucp+lxfdvFlaGV/sQlqZz", // unknown encryption version 0
+    "ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642", "Atфupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJZE0UICD06CUvEvdnr1cp1fiMtlM/GrE92xAc1EwsVCQEgWEu2gsHUVf4JAa3TpgkmFc3TWsax0v6n/Wq", // invalid base64
+    "cff7bd6a3e29a450fd27f6c125d5edeb0987c475fd1e8d97591e0d4d8a89763c", "Agn/l3ULCEAS4V7LhGFM6IGA17jsDUaFCKhrbXDANholyySBfeh+EN8wNB9gaLlg4j6wdBYh+3oK+mnxWu3NKRbSvQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // invalid MAC
+    "cfcc9cf682dfb00b11357f65bdc45e29156b69db424d20b3596919074f5bf957", "AmWxSwuUmqp9UsQX63U7OQ6K1thLI69L7G2b+j4DoIr0oRWQ8avl4OLqWZiTJ10vIgKrNqjoaX+fNhE9RqmR5g0f6BtUg1ijFMz71MO1D4lQLQfW7+UHva8PGYgQ1QpHlKgR", // invalid MAC
+    "5254827d29177622d40a7b67cad014fe7137700c3c523903ebbe3e1b74d40214", "Anq2XbuLvCuONcr7V0UxTh8FAyWoZNEdBHXvdbNmDZHB573MI7R7rrTYftpqmvUpahmBC2sngmI14/L0HjOZ7lWGJlzdh6luiOnGPc46cGxf08MRC4CIuxx3i2Lm0KqgJ7vA", // invalid padding
+    "fea39aca9aa8340c3a78ae1f0902aa7e726946e4efcd7783379df8096029c496", "An1Cg+O1TIhdav7ogfSOYvCj9dep4ctxzKtZSniCw5MwRrrPJFyAQYZh5VpjC2QYzny5LIQ9v9lhqmZR4WBYRNJ0ognHVNMwiFV1SHpvUFT8HHZN/m/QarflbvDHAtO6pY16", // invalid padding
+    "0c4cffb7a6f7e706ec94b2e879f1fc54ff8de38d8db87e11787694d5392d5b3f", "Am+f1yZnwnOs0jymZTcRpwhDRHTdnrFcPtsBzpqVdD6b2NZDaNm/TPkZGr75kbB6tCSoq7YRcbPiNfJXNch3Tf+o9+zZTMxwjgX/nm3yDKR2kHQMBhVleCB9uPuljl40AJ8kXRD0gjw+aYRJFUMK9gCETZAjjmrsCM+nGRZ1FfNsHr6Z", // invalid padding
+    "5cd2d13b9e355aeb2452afbd3786870dbeecb9d355b12cb0a3b6e9da5744cd35", "", // invalid payload length: 0
+    "d61d3f09c7dfe1c0be91af7109b60a7d9d498920c90cbba1e137320fdd938853", "Ag==", // invalid payload length: 4
+    "873bb0fc665eb950a8e7d5971965539f6ebd645c83c08cd6a85aafbad0f0bc47", "AqxgToSh3H7iLYRJjoWAM+vSv/Y1mgNlm6OWWjOYUClrFF8=", // invalid payload length: 48
+    "9f2fef8f5401ac33f74641b568a7a30bb19409c76ffdc5eae2db6b39d2617fbe", "Ap/2SEZCVFIhYk6qx7nqJxM6TMI1ZoKmAzrO7vBDVJhhuZXWiM20i/tIsbjT0KxkJs2MZjh1oXNYMO9ggfk7i47WQA=="]; // invalid payload length: 92
+BAD_CODES :: [12] u32.[NIP44_VERSION, NIP44_VERSION, NIP44_BASE64, NIP44_MAC, NIP44_MAC, NIP44_PADDING, NIP44_PADDING, NIP44_PADDING, NIP44_PAYLOAD, NIP44_PAYLOAD, NIP44_PAYLOAD, NIP44_PAYLOAD];
+// No row writes out. A row refused before its MAC matches never decrypts:
+// the area after the decoded bytes, where the padded plaintext would go,
+// keeps its 0xa5 bytes.
+#forall "invalid.decrypt rows refuse with their status and never write out" i: 0..<12 {
+  ck := bytes_of(BAD_ROWS[2 * i]); payload := BAD_ROWS[2 * i + 1];
+  for profile: [2] u32.[NIP44_COMPAT, NIP44_EXTENDED] {
+    work: [512] u8; for j: 0..<512 { work[j] = 165; }
+    out: [256] u8; for j: 0..<256 { out[j] = 165; }
+    r := nip44_decrypt_checked(profile, ck[..], payload, work[..], out[..], false);
+    #assert r.error == BAD_CODES[i] && r.written == 0;
+    for b: out { #assert b == 165; }
+    dlen := base64_decode_size(payload);
+    if r.error != NIP44_PADDING && dlen >= NIP44_MIN_DECODED {
+      for j: dlen..<2 * dlen - NIP44_OVERHEAD { #assert work[j] == 165; }
+    }
+  }
+}
+// One flipped bit in each decoded byte of the row 0 payload after the
+// version byte (bit i mod 8 of byte i) is refused as NIP44_MAC, and none
+// writes out.
+#forall "a flipped bit in nonce, ciphertext or MAC never yields plaintext" i: 1..<99 #steps 200000000 {
+  bit := i * 8 + i % 8;
+  raw: [99] u8;
+  #assert base64_decode_checked(ED_ROWS[5], raw[..], false).error == NC_OK;
+  raw[bit / 8] = raw[bit / 8] ^ cast(u8) (1 << (bit % 8));
+  text: [132] u8;
+  #assert base64_encode_checked(cast(string) raw[..], text[..], false).written == 132;
+  ck := bytes_of(ED_ROWS[2]);
+  work: [133] u8; out := [1] u8.[165];
+  r := nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) text[..], work[..], out[..], false);
+  #assert r.error == NIP44_MAC && out[0] == 165;
+}
+
+// invalid.encrypt_msg_lengths: 0, 65536, 100000 and 10000000 bytes.
+#test "invalid.encrypt_msg_lengths under both profiles" {
+  lengths := [4] int.[0, 65536, 100000, 10000000];
+  for n: lengths {
+    compat := nip44_encrypt_request(NIP44_COMPAT, 32, 32, n, 1 << 24, 1 << 24, false);
+    extended := nip44_encrypt_request(NIP44_EXTENDED, 32, 32, n, 1 << 24, 1 << 24, false);
+    if n == 0 { #assert compat == NIP44_LENGTH && extended == NIP44_LENGTH; }
+    else if n <= NIP44_EXTENDED_MAX { #assert compat == NIP44_CAPACITY && extended == NIP44_OK; }
+    else { #assert compat == NIP44_CAPACITY && extended == NIP44_CAPACITY; }
+  }
+}
+
+// The NIP's extended-prefix table: 'a' repeated n times under the row 0 key
+// and nonce, and the SHA-256 of the payload.
+BOUNDARY :: [3] string.[
+    "6d8c2810d1e870fbaa1f0a0937126cca837a15f9260e27060c331d70a3c0bc84", // 65535, u16 prefix
+    "b7b4edb36ba92e267d322d56d9aebc22e7fa96ff52e3c12adc07f07a43cbc616", // 65536, 6-byte prefix
+    "eeb7c7c5373894ea2c1547cfd3ccb15d5a0b2d619da852e5c79df792dcc9e435"]; // 65537, 6-byte prefix
+#forall "65535, 65536 and 65537 bytes: the NIP's payload hash, or compat refuses" i: 0..<3 #steps 1000000000 {
+  n := 65535 + i;
+  ck := bytes_of(ED_ROWS[2]); nonce := bytes_of(ED_ROWS[3]);
+  plain: [65537] u8; for j: 0..<n { plain[j] = 'a'; }
+  work: [163917] u8; out: [109324] u8;
+  r := nip44_encrypt_checked(NIP44_EXTENDED, ck[..], nonce[..], plain[0..<n], work[..], out[..], false);
+  #assert r.error == NIP44_OK && r.written == nip44_payload_size(NIP44_EXTENDED, n);
+  digest: [32] u8; want := bytes_of(BOUNDARY[i]);
+  #assert sha256_hash_checked(out[0..<r.written], digest[..], false) == SHA_OK && same_bytes(digest[..], want[..]);
+  if n > 65535 {
+    // A compat reader refuses the extended payload by its length.
+    back := [1] u8.[165];
+    #assert nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) out[0..<r.written], work[..], back[..], false).error == NIP44_CAPACITY;
+    #assert back[0] == 165;
+  }
+  c := nip44_encrypt_checked(NIP44_COMPAT, ck[..], nonce[..], plain[0..<n], work[..], out[..], false);
+  #assert c.error == (ifx n <= 65535 then NIP44_OK else NIP44_CAPACITY);
+}
+// book:end check

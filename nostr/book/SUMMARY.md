@@ -36,7 +36,7 @@
 
 - [18. ChaCha20](ch018-chacha20.md) — implemented
 - [19. NIP-04 and why it is retired](ch019-nip-04-and-why-it-is-retired.md) — design draft
-- [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) — partly implemented
+- [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) — implemented
 
 **VI. The event model**
 

@@ -408,7 +408,7 @@
    "number": 20,
    "title": "NIP-44 encrypted payloads",
    "file": "ch020-nip-44-encrypted-payloads.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     6,
@@ -419,7 +419,9 @@
    ],
    "source": [
     "coax/lib/nostr/nip44-key.coax",
-    "coax/lib/nostr/nip44.coax"
+    "coax/lib/nostr/nip44.coax",
+    "nostr/examples/nip44.coax",
+    "nostr/examples/checks/nip44.coax"
    ],
    "qualified_targets": [
     "cpu"

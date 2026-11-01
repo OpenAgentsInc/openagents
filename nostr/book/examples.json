@@ -195,6 +195,17 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/nip44.coax",
+      "chapter": "nostr/book/ch020-nip-44-encrypted-payloads.md",
+      "stdout": "nostr/fixtures/nip44.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

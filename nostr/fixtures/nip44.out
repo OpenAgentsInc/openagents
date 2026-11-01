@@ -1,0 +1,44 @@
+1 bytes: padded 32, prefix 2, payload 99 bytes, 132 characters
+32 bytes: padded 32, prefix 2, payload 99 bytes, 132 characters
+33 bytes: padded 64, prefix 2, payload 131 bytes, 176 characters
+37 bytes: padded 64, prefix 2, payload 131 bytes, 176 characters
+300 bytes: padded 320, prefix 2, payload 387 bytes, 516 characters
+65535 bytes: padded 65536, prefix 2, payload 65603 bytes, 87472 characters
+65536 bytes: padded 65536, prefix 6, payload 65607 bytes, 87476 characters
+65537 bytes: padded 81920, prefix 6, payload 81991 bytes, 109324 characters
+chacha key: f145f3bed47cb70dbeaac07f3a3fe683e822b3715edb7c4fe310829014ce7d76
+chacha nonce: c4ad129bb01180c0933a160c
+hmac key: 027c1db445f05e2eee864a0975b0ddef5b7110583c8c192de3732571ca5838c4
+match the vector: true
+conversation key: c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d
+same from both sides: true
+encrypt: NIP44_OK, 132 characters
+padded plaintext: 00016100000000000000000000000000000000000000000000000000000000000000
+version: 02
+nonce: 0000000000000000000000000000000000000000000000000000000000000001
+ciphertext: 79ed06e5548ad3ff58ca920e6c0b4329f6040230f7e6e5641f20741780f0adc35a09
+mac: 794259929a02bb06ad8e8cf709ee4ccc567e9d514cdf5781af27a3e905e55b1b
+payload: AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb
+equals the published payload: true
+decrypt with the other side's key: NIP44_OK, "a"
+row 3: 19 plaintext bytes, payload equals the published one: true
+last MAC character b -> c: NIP44_MAC, out untouched true, ciphertext decrypted false
+ciphertext character 60 -> A: NIP44_MAC, out untouched true, ciphertext decrypted false
+conversation key with one bit flipped: NIP44_MAC, out untouched true, ciphertext decrypted false
+row 0, leading #: NIP44_VERSION, out untouched true, ciphertext decrypted false
+row 1, version byte 0: NIP44_VERSION, out untouched true, ciphertext decrypted false
+row 2, a Cyrillic letter in the base64: NIP44_BASE64, out untouched true, ciphertext decrypted false
+row 3, MAC of zeros: NIP44_MAC, out untouched true, ciphertext decrypted false
+row 4, wrong MAC: NIP44_MAC, out untouched true, ciphertext decrypted false
+row 5, bad padding: NIP44_PADDING, out untouched true, ciphertext decrypted true
+row 6, bad padding: NIP44_PADDING, out untouched true, ciphertext decrypted true
+row 7, bad padding: NIP44_PADDING, out untouched true, ciphertext decrypted true
+row 8, empty payload: NIP44_PAYLOAD, out untouched true, ciphertext decrypted false
+row 9, 4 characters: NIP44_PAYLOAD, out untouched true, ciphertext decrypted false
+row 10, 48 characters: NIP44_PAYLOAD, out untouched true, ciphertext decrypted false
+row 11, 92 characters: NIP44_PAYLOAD, out untouched true, ciphertext decrypted false
+encrypt 0 bytes: NIP44_LENGTH
+encrypt 65535 bytes: compat NIP44_OK, extended NIP44_OK
+encrypt 65536 bytes: compat NIP44_CAPACITY, extended NIP44_OK
+encrypt 65537 bytes: compat NIP44_CAPACITY, extended NIP44_OK
+decrypt 87476 characters as compat: NIP44_CAPACITY

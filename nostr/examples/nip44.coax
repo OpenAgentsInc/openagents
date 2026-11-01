@@ -1,0 +1,163 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip44-key.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  #assert r.error == 0;
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode 64 hex digits into 32 bytes.
+bytes_of :: (text: string) -> [32] u8 {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == 0;
+  return b;
+}
+// The x-only public key of a secret: x(k·G) on the ladder of chapter 10.
+public_x :: (secret: [] u8) -> [32] u8 {
+  k := sc_reduce_bytes(secret).value;
+  a := sg_to_affine(smc_multiply(k, sg_generator()).value).value;
+  b: [32] u8;
+  #assert sf_store(a.x, b[..]);
+  return b;
+}
+same_bytes :: (a: [] u8, b: [] u8) -> bool {
+  return a.count == b.count && cb_ct_equal(a, b) == CB_MAX64;
+}
+// The name of a NIP-44 status.
+nip44_name :: (code: u32) -> string {
+  if code == NIP44_OK { return "NIP44_OK"; }
+  if code == NIP44_VERSION { return "NIP44_VERSION"; }
+  if code == NIP44_PAYLOAD { return "NIP44_PAYLOAD"; }
+  if code == NIP44_BASE64 { return "NIP44_BASE64"; }
+  if code == NIP44_MAC { return "NIP44_MAC"; }
+  if code == NIP44_PADDING { return "NIP44_PADDING"; }
+  if code == NIP44_LENGTH { return "NIP44_LENGTH"; }
+  if code == NIP44_CAPACITY { return "NIP44_CAPACITY"; }
+  return "other";
+}
+// Decrypt with work and out filled with 0xa5 first. Report the status,
+// whether out kept every 0xa5, and whether the area where the padded
+// plaintext would be decrypted kept every 0xa5.
+refuse :: (label: string, key: [] u8, payload: string) {
+  work: [512] u8; for i: 0..<512 { work[i] = 165; }
+  out: [256] u8; for i: 0..<256 { out[i] = 165; }
+  r := nip44_decrypt_checked(NIP44_COMPAT, key, payload, work[..], out[..], false);
+  out_kept := true; for b: out { if b != 165 { out_kept = false; } }
+  dlen := base64_decode_size(payload);
+  decrypted := false;
+  if dlen >= NIP44_MIN_DECODED {
+    for i: dlen..<2 * dlen - NIP44_OVERHEAD { if work[i] != 165 { decrypted = true; } }
+  }
+  print("%: %, out untouched %, ciphertext decrypted %\n", label, nip44_name(r.error), out_kept, decrypted);
+}
+
+main :: () {
+  // Padding: the padded length, the prefix and the payload sizes.
+  lengths := [8] int.[1, 32, 33, 37, 300, 65535, 65536, 65537];
+  for n: lengths {
+    print("% bytes: padded %, prefix %, payload % bytes, % characters\n", n,
+          nip44_calc_padded_len(n), nip44_prefix_len(n),
+          nip44_raw_size(NIP44_EXTENDED, n), nip44_payload_size(NIP44_EXTENDED, n));
+  }
+
+  // Message keys: get_message_keys row 0. HKDF-expand(conversation key,
+  // info = nonce, L = 76), split 32 / 12 / 32.
+  mk := bytes_of("a1a3d60f3470a8612633924e91febf96dc5366ce130f658b1f0fc652c20b3b54");
+  mn := bytes_of("e1e6f880560d6d149ed83dcc7e5861ee62a5ee051f7fde9975fe5d25d2a02d72");
+  keys: [76] u8;
+  #assert nip44_message_keys_checked(mk[..], mn[..], keys[..], false) == NIP44_OK;
+  show("chacha key", keys[0..<32]);
+  show("chacha nonce", keys[32..<44]);
+  show("hmac key", keys[44..<76]);
+  want_key := bytes_of("f145f3bed47cb70dbeaac07f3a3fe683e822b3715edb7c4fe310829014ce7d76");
+  want_mac := bytes_of("027c1db445f05e2eee864a0975b0ddef5b7110583c8c192de3732571ca5838c4");
+  print("match the vector: %\n", same_bytes(keys[0..<32], want_key[..]) && same_bytes(keys[44..<76], want_mac[..]));
+
+  // encrypt_decrypt row 0: sec1 = 1, sec2 = 2. Published test values only.
+  sec1 := bytes_of("0000000000000000000000000000000000000000000000000000000000000001");
+  sec2 := bytes_of("0000000000000000000000000000000000000000000000000000000000000002");
+  pub1 := public_x(sec1[..]); pub2 := public_x(sec2[..]);
+  scratch: [1] EcdhScratch; ck1: [32] u8; ck2: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(sec1[..], pub2[..], scratch[..], ck1[..], false) == NIP44_OK;
+  #assert nip44_conversation_key_from_keys_checked(sec2[..], pub1[..], scratch[..], ck2[..], false) == NIP44_OK;
+  show("conversation key", ck1[..]);
+  print("same from both sides: %\n", same_bytes(ck1[..], ck2[..]));
+
+  nonce := bytes_of("0000000000000000000000000000000000000000000000000000000000000001");
+  plain := [1] u8.['a'];
+  work: [512] u8; payload: [256] u8;
+  r := nip44_encrypt_checked(NIP44_COMPAT, ck1[..], nonce[..], plain[..], work[..], payload[..], false);
+  text := cast(string) payload[0..<r.written];
+  print("encrypt: %, % characters\n", nip44_name(r.error), r.written);
+  // The encrypt work holds the 99 decoded payload bytes, then the padded plaintext.
+  show("padded plaintext", work[99..<133]);
+  show("version", work[0..<1]);
+  show("nonce", work[1..<33]);
+  show("ciphertext", work[33..<67]);
+  show("mac", work[67..<99]);
+  print("payload: %\n", text);
+  published := "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb";
+  print("equals the published payload: %\n", text == published);
+  dwork: [512] u8; back: [256] u8;
+  d := nip44_decrypt_checked(NIP44_COMPAT, ck2[..], text, dwork[..], back[..], false);
+  print("decrypt with the other side's key: %, \"%\"\n", nip44_name(d.error), cast(string) back[0..<d.written]);
+
+  // encrypt_decrypt row 3: 19 bytes of UTF-8, one 32-byte bucket.
+  ck3 := bytes_of("d5a2f879123145a4b291d767428870f5a8d9e5007193321795b40183d4ab8c2b");
+  nonce3 := bytes_of("b20989adc3ddc41cd2c435952c0d59a91315d8c5218d5040573fc3749543acaf");
+  text3 := "ability🤝的 ȺȾ";
+  plain3: [19] u8; for i: 0..<19 { plain3[i] = text3[i]; }
+  r3 := nip44_encrypt_checked(NIP44_COMPAT, ck3[..], nonce3[..], plain3[..], work[..], payload[..], false);
+  published3 := "ArIJia3D3cQc0sQ1lSwNWakTFdjFIY1QQFc/w3SVQ6yvbG2S0x4Yu86QGwPTy7mP3961I1XqB6SFFTzqDZZavhxoWMj7mEVGMQIsh2RLWI5EYQaQDIePSnXPlzf7CIt+voTD";
+  print("row 3: % plaintext bytes, payload equals the published one: %\n", text3.count, cast(string) payload[0..<r3.written] == published3);
+
+  // Refusals. First, three edits of the row 0 payload.
+  edited: [132] u8;
+  for i: 0..<132 { edited[i] = text[i]; }
+  edited[131] = 'c';
+  refuse("last MAC character b -> c", ck2[..], cast(string) edited[..]);
+  edited[131] = text[131]; edited[60] = 'A';
+  refuse("ciphertext character 60 -> A", ck2[..], cast(string) edited[..]);
+  wrong := ck2; wrong[0] = wrong[0] ^ 1;
+  refuse("conversation key with one bit flipped", wrong[..], text);
+
+  // The invalid.decrypt rows of nip44.vectors.json.
+  k0 := bytes_of("ca2527a037347b91bea0c8a30fc8d9600ffd81ec00038671e3a0f0cb0fc9f642");
+  refuse("row 0, leading #", k0[..], "#Atqupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJdU0MIDf06CUvEvdnr1cp1fiMtlM/GrE92xAc1K5odTpCzUB+mjXgbaqtntBUbTToSUoT0ovrlPwzGjyp");
+  k1 := bytes_of("36f04e558af246352dcf73b692fbd3646a2207bd8abd4b1cd26b234db84d9481");
+  refuse("row 1, version byte 0", k1[..], "AK1AjUvoYW3IS7C/BGRUoqEC7ayTfDUgnEPNeWTF/reBZFaha6EAIRueE9D1B1RuoiuFScC0Q94yjIuxZD3JStQtE8JMNacWFs9rlYP+ZydtHhRucp+lxfdvFlaGV/sQlqZz");
+  refuse("row 2, a Cyrillic letter in the base64", k0[..], "Atфupco0WyaOW2IGDKcshwxI9xO8HgD/P8Ddt46CbxDbrhdG8VmJZE0UICD06CUvEvdnr1cp1fiMtlM/GrE92xAc1EwsVCQEgWEu2gsHUVf4JAa3TpgkmFc3TWsax0v6n/Wq");
+  k3 := bytes_of("cff7bd6a3e29a450fd27f6c125d5edeb0987c475fd1e8d97591e0d4d8a89763c");
+  refuse("row 3, MAC of zeros", k3[..], "Agn/l3ULCEAS4V7LhGFM6IGA17jsDUaFCKhrbXDANholyySBfeh+EN8wNB9gaLlg4j6wdBYh+3oK+mnxWu3NKRbSvQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+  k4 := bytes_of("cfcc9cf682dfb00b11357f65bdc45e29156b69db424d20b3596919074f5bf957");
+  refuse("row 4, wrong MAC", k4[..], "AmWxSwuUmqp9UsQX63U7OQ6K1thLI69L7G2b+j4DoIr0oRWQ8avl4OLqWZiTJ10vIgKrNqjoaX+fNhE9RqmR5g0f6BtUg1ijFMz71MO1D4lQLQfW7+UHva8PGYgQ1QpHlKgR");
+  k5 := bytes_of("5254827d29177622d40a7b67cad014fe7137700c3c523903ebbe3e1b74d40214");
+  refuse("row 5, bad padding", k5[..], "Anq2XbuLvCuONcr7V0UxTh8FAyWoZNEdBHXvdbNmDZHB573MI7R7rrTYftpqmvUpahmBC2sngmI14/L0HjOZ7lWGJlzdh6luiOnGPc46cGxf08MRC4CIuxx3i2Lm0KqgJ7vA");
+  k6 := bytes_of("fea39aca9aa8340c3a78ae1f0902aa7e726946e4efcd7783379df8096029c496");
+  refuse("row 6, bad padding", k6[..], "An1Cg+O1TIhdav7ogfSOYvCj9dep4ctxzKtZSniCw5MwRrrPJFyAQYZh5VpjC2QYzny5LIQ9v9lhqmZR4WBYRNJ0ognHVNMwiFV1SHpvUFT8HHZN/m/QarflbvDHAtO6pY16");
+  k7 := bytes_of("0c4cffb7a6f7e706ec94b2e879f1fc54ff8de38d8db87e11787694d5392d5b3f");
+  refuse("row 7, bad padding", k7[..], "Am+f1yZnwnOs0jymZTcRpwhDRHTdnrFcPtsBzpqVdD6b2NZDaNm/TPkZGr75kbB6tCSoq7YRcbPiNfJXNch3Tf+o9+zZTMxwjgX/nm3yDKR2kHQMBhVleCB9uPuljl40AJ8kXRD0gjw+aYRJFUMK9gCETZAjjmrsCM+nGRZ1FfNsHr6Z");
+  refuse("row 8, empty payload", k0[..], "");
+  refuse("row 9, 4 characters", k0[..], "Ag==");
+  refuse("row 10, 48 characters", k0[..], "AqxgToSh3H7iLYRJjoWAM+vSv/Y1mgNlm6OWWjOYUClrFF8=");
+  refuse("row 11, 92 characters", k0[..], "Ap/2SEZCVFIhYk6qx7nqJxM6TMI1ZoKmAzrO7vBDVJhhuZXWiM20i/tIsbjT0KxkJs2MZjh1oXNYMO9ggfk7i47WQA==");
+
+  // Lengths at the profile edges. The request check runs before any work.
+  print("encrypt 0 bytes: %\n", nip44_name(nip44_encrypt_request(NIP44_COMPAT, 32, 32, 0, 1 << 22, 1 << 22, false)));
+  for n: [3] int.[65535, 65536, 65537] {
+    compat := nip44_encrypt_request(NIP44_COMPAT, 32, 32, n, 1 << 22, 1 << 22, false);
+    extended := nip44_encrypt_request(NIP44_EXTENDED, 32, 32, n, 1 << 22, 1 << 22, false);
+    print("encrypt % bytes: compat %, extended %\n", n, nip44_name(compat), nip44_name(extended));
+  }
+  // A compat reader refuses an 87,476-character payload (a 65,536-byte
+  // plaintext) by its length, before decoding any base64.
+  wide: [87476] u8; for i: 0..<87476 { wide[i] = 'A'; }
+  out: [1] u8;
+  big := nip44_decrypt_checked(NIP44_COMPAT, ck1[..], cast(string) wide[..], work[..], out[..], false);
+  print("decrypt 87476 characters as compat: %\n", nip44_name(big.error));
+}
+// book:end example
