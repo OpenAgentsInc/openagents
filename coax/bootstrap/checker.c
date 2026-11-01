@@ -19078,7 +19078,6 @@ _Bool CK_run(coax_t_CK_Context l_c, int64_t l_used, coax_t_CK_Options l_options)
       ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 2602))).borrow_writes = INT64_C(0);
       ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 2602))).borrow_returns = INT64_C(0);
       ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 2602))).borrow_calls = INT64_C(0);
-      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 2602))).borrow_next = INT64_C(0);
       ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 2602))).borrow_status = ((uint8_t)UINT64_C(0));
     }
   }
