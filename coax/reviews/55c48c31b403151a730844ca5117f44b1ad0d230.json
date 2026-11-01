@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793503146,
+  "content": "Approve with fix d7c266208a. The INVARIANTS lines 55c48c31b4 changed were its own new buy paragraph's rewrap; the removed 'off pending owner decision' row is in docs/lightning/breez-spark.md and is now on by the owner's decision (#12613). Existing wallet checks: the wallet.coax hunk only adds lines; no #test, #forall or #assert was removed or changed. Gaps found and fixed with checks: the Cash App check took lnbcrt (regtest) and trusted SparkHost's msat/1000 rounding, now bw_invoice_is reads the invoice's own BOLT 11 amount and requires mainnet and exactly the sats asked; the MoonPay check missed a second currencyCode behind a percent-encoded name, a '#' or a ';', now every parameter name is letters and digits with no '#' or ';'; a MoonPay amount passed when the fee rate was unknown, now no_fee; BuyScreen started a second SDK call from the other button while asking and opened a page whenever the state was open, so two answers opened two pages, now it acts on verse_wallet_buy_starts and verse_wallet_buy_opens from the state before. coax test 29/29; coax mutate 471 of 471 killed. Breez key: unchanged since 9422a98da2, documented in BreezKey.swift and docs/lightning/breez-spark.md (owner, 2026-09-28); it decodes to a Breez-issued X.509 certificate with an Ed25519 public key only. The MoonPay pk_live key is in Breez's SDK, not our tree; the test's apiKey=pk is a placeholder. No other secret in the commit.",
+  "tags": [
+    [
+      "commit",
+      "55c48c31b403151a730844ca5117f44b1ad0d230"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "4c1cdb6f43a4989e5734503e632ad2e00a1e183d64f50058667eb75e423c8e82",
+  "sig": "d7a5ea53cfb0fe1c63ff425c1b29063f94340c859c2576bb5e07acd8ae1c0540af314bed6765b558292668c441257d0a6dc2eaaaff8dbee357db1c5c66e412e4"
+}
