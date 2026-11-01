@@ -1,0 +1,16 @@
+{
+  "state": "cargo test ran 3 tests: 3 passed, 0 failed.",
+  "questions": {
+    "passed": {"type": "noul", "instructions": "Did every test pass?"},
+    "next": {
+      "type": "choice",
+      "instructions": "What should happen next?",
+      "criteria": {"ship": "Merge the change.", "fix": "Change the code first."}
+    },
+    "risk": {
+      "type": "score",
+      "instructions": "How risky is merging now?",
+      "criteria": ["No risk.", "Some risk.", "High risk."]
+    }
+  }
+}

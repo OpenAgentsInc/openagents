@@ -565,6 +565,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/decisions-evals.coax",
+      "chapter": "nostr/book/ch081-decisions-evaluations-optimization-and-programs.md",
+      "stdout": "nostr/fixtures/decisions-evals.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
       "source": "nostr/examples/labor-market.coax",
       "chapter": "nostr/book/ch080-jobs-labor-and-markets.md",
       "stdout": "nostr/fixtures/labor-market.out",

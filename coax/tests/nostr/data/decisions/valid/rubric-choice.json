@@ -1,0 +1,30 @@
+{
+  "state": {
+    "channel": "support email",
+    "message": "I was charged twice for my March invoice. Please send the extra $49 back to my card.",
+    "account": {"plan": "team", "seats": 12}
+  },
+  "questions": {
+    "queue": {
+      "type": "choice",
+      "instructions": "Which queue should handle this message?",
+      "criteria": {
+        "billing": {
+          "what": "Charges, invoices, refunds, and payment methods.",
+          "not_for": "Questions about plan features or seat limits.",
+          "examples": ["I was billed twice", "Update my card"]
+        },
+        "technical": {
+          "what": "Something in the product is broken or behaves unexpectedly.",
+          "not_for": "Money questions, even when a bug caused them.",
+          "examples": ["The export button does nothing", "Login loops"]
+        },
+        "sales": {
+          "what": "Buying more, upgrading, or pricing for a new purchase.",
+          "not_for": "Disputes about money already paid.",
+          "examples": ["Can we add 20 seats?", "Do you have an annual plan?"]
+        }
+      }
+    }
+  }
+}

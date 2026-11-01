@@ -1,0 +1,61 @@
+// The checks of decisions-evals.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/decisions-evals.coax
+#load "../decisions-evals.coax";
+
+// book:begin check
+// The digests, from coax/tests/nostr/dec_eval_vectors.py: Python's json
+// (sorted keys, compact separators, which is JCS for these number-free
+// values) and hashlib.sha256. They share no code with jcs.coax or
+// sha256.coax.
+#test "Coax computes each Python digest" #steps 200000000 {
+  canon:[1024]u8;out:[CF_DIGEST]u8;root:=cl_root(DEV_BODY);
+  #assert ctrl_fingerprint(cl_json(DEV_BODY,cl_member(DEV_BODY,root,"state")),canon[..],out[..]).error==CF_OK;
+  #assert cast(string)out[..]==DEV_STATE_DIGEST && DEV_STATE_DIGEST=="sha256:a9b23eade88a35be19312f107a54ade134c606ada18cb1e03d6704d1bd2cd8f0";
+  #assert ctrl_fingerprint(cl_json(DEV_BODY,cl_member(DEV_BODY,root,"questions")),canon[..],out[..]).error==CF_OK;
+  #assert cast(string)out[..]==DEV_QUESTIONS_DIGEST && DEV_QUESTIONS_DIGEST=="sha256:22bba3312316efe0a7b344979a2479489966dfd289257d26073cbfdc80bcc4ff";
+  d:[71]u8;
+  #assert digest_of(DEV_SUITE,d[..])==DEV_SUITE_DIGEST && digest_of(DEV_PARTITION,d[..])==DEV_PARTITION_DIGEST;
+  #assert digest_of(DEV_R1,d[..])==DEV_R1_DIGEST && DEV_R1_DIGEST=="sha256:3c0b9f7e9b89cb6829c93350eeb3e23298558b5c14f76162a9744a8c338af6f9";
+  #assert digest_of(DEV_R2,d[..])==DEV_R2_DIGEST && digest_of(DEV_R3,d[..])==DEV_R3_DIGEST && digest_of(DEV_R4,d[..])==DEV_R4_DIGEST;
+}
+
+// The retired Rust crate's own decision fixtures (crates/nostr/fixtures/
+// decisions at 0b401561a0^, kept in coax/tests/nostr/data/decisions/):
+// every body it admitted admits here, and every one it refused refuses as
+// invalid_request, the state array, the bare number, the empty choice, the
+// third noul outcome, the bare-number level, the nine-level entry and the
+// unknown type alike.
+#test "the retired crate's valid bodies admit and its invalid ones refuse" #steps 400000000 {
+  for i:0..<DEV_VALID.count {#assert dec_body(DEV_VALID[i]).code==DEC_OK;}
+  for i:0..<DEV_INVALID.count {#assert dec_body(DEV_INVALID[i]).code==DEC_INVALID;}
+  #assert DEV_VALID.count==7 && DEV_INVALID.count==7;
+}
+
+// The decision worked by hand: risk's score is 0*0.6 + 1*0.3 + 2*0.1 = 0.5
+// and its confidence the largest probability, 0.6; next's choice is ship,
+// the larger of 0.8 and 0.2, with confidence 0.8. The concentration form
+// some doors serve, (0.8 - 1/2) / (1 - 1/2) = 0.6, is not NIP-DEC's.
+#test "the hand values" {
+  #assert dec_near(0.0*0.6+1.0*0.3+2.0*0.1,0.5) && dec_answer(DEV_BODY,DEV_ANSWER).code==DEC_OK;
+  #assert dec_near((0.8-0.5)/(1.0-0.5),0.6);
+}
+
+// The three evaluations weighed by hand: R1 is the only one this reader
+// may count, so the admission stands only citing R1 alone, with a
+// validation, issued by key 4 before T0 + 30 days.
+#test "the admission's outcomes" #steps 200000000 {
+  sd:[71]u8;pd:[71]u8;held:=[2]string.[digest_of(DEV_SUITE,sd[..]),digest_of(DEV_PARTITION,pd[..])];
+  trusted:=[2]string.[K1,K2];ops:=[1]string.[K4];
+  r:=[3]string.[DEV_R1,DEV_R2,DEV_R3];dg:=[3]string.[DEV_R1_DIGEST,DEV_R2_DIGEST,DEV_R3_DIGEST];seen:[3]EvalSeen;
+  for i:0..<3 {seen[i]=EvalSeen.{digest=dg[i],view=eval_report(r[i],held[..],trusted[..])};}
+  #assert seen[0].view.code==EV_VERIFIED && seen[1].view.code==EV_UNVERIFIABLE && seen[2].view.code==EV_UNTRUSTED;
+  #assert eval_report(DEV_R4,held[..],trusted[..]).code==EV_COVERAGE;
+  #assert eval_admit(DEV_ADMIT_ALL,seen[..],ops[..],T0)==EA_UNVERIFIED;
+  #assert eval_admit(DEV_ADMIT_BARE,seen[..],ops[..],T0)==EA_VALIDATION;
+  #assert eval_admit(DEV_ADMIT_R1,seen[..],ops[..],T0)==EA_OK;
+  #assert eval_admit(DEV_ADMIT_R1,seen[..],ops[..],T0+30*86400-1)==EA_OK;
+  #assert eval_admit(DEV_ADMIT_R1,seen[..],ops[..],T0+30*86400)==EA_EXPIRED;
+  #assert eval_admit(DEV_ADMIT_R1,seen[1..<3],ops[..],T0)==EA_UNSEEN;
+}
+// book:end check

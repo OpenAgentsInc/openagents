@@ -1,0 +1,18 @@
+{
+  "state": {
+    "task": "Add retry with backoff to the HTTP client.",
+    "a": {"summary": "Wraps every call in a loop with a fixed 1 s sleep, 3 tries.", "tests_added": 0},
+    "b": {"summary": "Adds exponential backoff with jitter for 5xx and timeouts only, 4 tries, and tests.", "tests_added": 3}
+  },
+  "questions": {
+    "better": {
+      "type": "choice",
+      "instructions": {
+        "question": "Which patch better does the task?",
+        "compare": ["a", "b"],
+        "focus": ["correctness for non-retryable errors", "test coverage"]
+      },
+      "criteria": {"a": "Patch a is better.", "b": "Patch b is better.", "tie": "Neither is clearly better."}
+    }
+  }
+}

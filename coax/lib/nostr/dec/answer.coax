@@ -1,0 +1,451 @@
+// DEC answers: whether a decision answer answers the question set it was
+// asked. NIP-DEC "Request", "Bounds" and "Answers".
+//
+// dec_body admits a decision body ({model?, state, questions}, the HTTP
+// lane's body and a 25910 job's model, state and questions) under the
+// bounds this file checks: state a string or an object, 1 to 64 questions
+// with distinct 1-64 byte IDs, each noul, choice or score, entries
+// (instructions, option descriptions, levels, noul outcomes) a string, an
+// object, an array or null at most 8 levels deep, choice options 1 to 255
+// with distinct 1-128 byte IDs, score levels 2 to 10. It answers with the
+// NIP's refusal code: invalid_request, too_many_questions, too_many_options.
+//
+// dec_answer holds a completed response ({model, answers, ...}) to the body
+// that asked it: answers keyed exactly as the questions, each with its
+// question's type; every probability and confidence a number in [0, 1];
+// a choice's probabilities naming exactly the requested options and a
+// score's exactly the level indexes "0".."n-1", summing to one within
+// 0.000001; the choice a maximum-probability option, ties to the
+// lexicographically least ID, its confidence that probability; the score
+// the probability-weighted index and its confidence the largest level
+// probability, both within 0.000001; the legend naming the same indexes.
+// The first fault refuses, with the index of the question it is in.
+//
+// It reads JSON through agent/claude/fields.coax. Not here: the wire job
+// (request, attempt, deadline, NIP-44, tags: cj/result.coax reads the
+// tags), byte bounds on the decrypted payload, the 32-level state depth
+// (the reader refuses any document past 16 levels, so a deep state
+// refuses here though the NIP admits it), and the legend's level texts.
+//   coax/bin/coax test coax/lib/nostr/dec/answer.coax --library
+#load "../../agent/claude/fields.coax";
+#load "../../../tests/nostr/text_swap.coax";
+#authority;
+
+// book:begin codes
+DEC_OK :: cast(u32)0;
+DEC_MALFORMED :: cast(u32)1;          // not a JSON object, or no questions or answers object
+DEC_INVALID :: cast(u32)2;            // invalid_request: the body breaks a bound or a shape
+DEC_TOO_MANY_QUESTIONS :: cast(u32)3; // too_many_questions: more than 64
+DEC_TOO_MANY_OPTIONS :: cast(u32)4;   // too_many_options: more than 255 options or 10 levels
+DEC_UNANSWERED :: cast(u32)5;         // a question has no answer
+DEC_EXTRA :: cast(u32)6;              // an answer to no question
+DEC_TYPE :: cast(u32)7;               // an answer of another type than its question
+DEC_PROBABILITY :: cast(u32)8;        // a probability or confidence not a number in [0, 1]
+DEC_OPTIONS :: cast(u32)9;            // probabilities not naming exactly the options or levels
+DEC_SUM :: cast(u32)10;               // categorical probabilities not summing to one
+DEC_CHOICE :: cast(u32)11;            // the choice is not the most probable option
+DEC_CONFIDENCE :: cast(u32)12;        // confidence is not the chosen or largest probability
+DEC_SCORE :: cast(u32)13;             // the score is not the probability-weighted index
+DEC_LEGEND :: cast(u32)14;            // the legend does not name exactly the level indexes
+
+DEC_MAX_QUESTIONS :: 64; DEC_QUESTION_ID :: 64; DEC_MODEL :: 128;
+DEC_MAX_OPTIONS :: 255; DEC_OPTION_ID :: 128; DEC_MIN_LEVELS :: 2; DEC_MAX_LEVELS :: 10;
+DEC_ENTRY_DEPTH :: 8; DEC_STATE_BYTES :: 131072; DEC_QUESTION_BYTES :: 65536;
+DEC_SLACK :: 0.000001;
+DEC_NOUL :: 1; DEC_CHOICE_KIND :: 2; DEC_SCORE_KIND :: 3;
+// book:end codes
+
+DecCheck :: struct {code:u32;question:int=-1;}
+dec_at :: (code:u32,question:int)->DecCheck {return DecCheck.{code=code,question=question};}
+
+// book:begin helpers
+// Within DEC_SLACK of b.
+dec_near :: (a:f64,b:f64)->bool {return a>=b-DEC_SLACK && a<=b+DEC_SLACK;}
+dec_unit :: (p:JsonF64)->bool {return p.ok && p.value>=0.0 && p.value<=1.0;}
+// a before b in byte order.
+dec_less :: (a:string,b:string)->bool {
+  for i:0..<a.count {
+    if i==b.count {return false;}
+    if a[i]<b[i] {return true;}
+    if a[i]>b[i] {return false;}
+  }
+  return a.count<b.count;
+}
+// Whether v nests at most most levels: a string or null 0, each object or
+// array one more.
+dec_within :: (text:string,v:ClSlice,most:int)->bool {
+  j:[1]Json;cl_parse(j[..],cl_json(text,v));
+  while json_next(j[..])>JSON_END {
+    if j[0].depth>most {return false;}
+  }
+  return true;
+}
+// An EntryType within its depth: a string, an object, an array or null.
+dec_entry :: (text:string,v:ClSlice)->bool {
+  if v.tok!=JSON_STRING && v.tok!=JSON_OBJECT && v.tok!=JSON_ARRAY && v.tok!=JSON_NULL {return false;}
+  return dec_within(text,v,DEC_ENTRY_DEPTH);
+}
+// Member i's key of the object v, decoded into buf (borrowed when plain).
+dec_key :: (text:string,v:ClSlice,i:int,buf:[]u8)->string {
+  inner:=text[v.from..<v.to];ar:[1]ClArena;ar[0].buf=buf;
+  return cl_text(ar[..],inner,cl_key(inner,i));
+}
+dec_count :: (text:string,v:ClSlice)->int {return cl_count(text[v.from..<v.to]);}
+dec_kind :: (text:string,q:ClSlice)->int {
+  t:=cl_member(text,q,"type");
+  if cl_eq(text,t,"noul") {return DEC_NOUL;}
+  if cl_eq(text,t,"choice") {return DEC_CHOICE_KIND;}
+  if cl_eq(text,t,"score") {return DEC_SCORE_KIND;}
+  return 0;
+}
+// Whether the object v's keys, at most DEC_MAX_OPTIONS of them, are
+// distinct and each 1 to most bytes: one pass, the keys decoded side by side.
+dec_keys :: (text:string,v:ClSlice,most:int)->bool {
+  inner:=text[v.from..<v.to];j:[1]Json;cl_parse(j[..],inner);
+  arena:[40000]u8;ar:[1]ClArena;ar[0].buf=arena[..];
+  keys:[DEC_MAX_OPTIONS]string;n:=0;
+  opened:=json_next(j[..]);
+  while json_next(j[..])==JSON_STRING {
+    k:=cl_text(ar[..],inner,ClSlice.{ok=true,tok=JSON_STRING,from=j[0].from,to=j[0].to});
+    if k.count<1 || k.count>most {return false;}
+    for i:0..<n {if keys[i]==k {return false;}}
+    keys[n]=k;n+=1;
+    value:=json_next(j[..]);skipped:=json_skip(j[..]);
+  }
+  return true;
+}
+// book:end helpers
+
+// book:begin question
+// What is wrong with question q, or DEC_OK.
+dec_question :: (text:string,q:ClSlice)->u32 {
+  if q.to-q.from>DEC_QUESTION_BYTES {return DEC_INVALID;}
+  kind:=dec_kind(text,q);
+  if kind==0 {return DEC_INVALID;}
+  ins:=cl_member(text,q,"instructions");
+  if ins.ok && !dec_entry(text,ins) {return DEC_INVALID;}
+  c:=cl_member(text,q,"criteria");
+  if kind==DEC_NOUL {
+    if !c.ok || c.tok==JSON_NULL || c.tok==JSON_STRING {return DEC_OK;}
+    if c.tok!=JSON_OBJECT {return DEC_INVALID;}
+    yes:=0;no:=0;
+    for i:0..<dec_count(text,c) {
+      b:[8]u8;k:=dec_key(text,c,i,b[..]);
+      if k=="true" {yes+=1;} else if k=="false" {no+=1;} else {return DEC_INVALID;}
+      if !dec_entry(text,cl_element(text,c,i)) {return DEC_INVALID;}
+    }
+    if yes>1 || no>1 {return DEC_INVALID;}
+    return DEC_OK;
+  }
+  if kind==DEC_CHOICE_KIND {
+    if c.tok!=JSON_OBJECT {return DEC_INVALID;}
+    n:=dec_count(text,c);
+    if n>DEC_MAX_OPTIONS {return DEC_TOO_MANY_OPTIONS;}
+    if n<1 || !dec_keys(text,c,DEC_OPTION_ID) {return DEC_INVALID;}
+    for i:0..<n {if !dec_entry(text,cl_element(text,c,i)) {return DEC_INVALID;}}
+    return DEC_OK;
+  }
+  if c.tok!=JSON_ARRAY {return DEC_INVALID;}
+  n:=dec_count(text,c);
+  if n>DEC_MAX_LEVELS {return DEC_TOO_MANY_OPTIONS;}
+  if n<DEC_MIN_LEVELS {return DEC_INVALID;}
+  for i:0..<n {if !dec_entry(text,cl_element(text,c,i)) {return DEC_INVALID;}}
+  return DEC_OK;
+}
+
+// What is wrong with the decision body, or DEC_OK; question is the index
+// of the question at fault.
+dec_body :: (text:string)->DecCheck {
+  root:=cl_root(text);
+  if !root.ok || root.tok!=JSON_OBJECT {return dec_at(DEC_MALFORMED,-1);}
+  model:=cl_member(text,root,"model");
+  if model.ok && (model.tok!=JSON_STRING || model.to-model.from<1 || model.to-model.from>DEC_MODEL) {return dec_at(DEC_INVALID,-1);}
+  state:=cl_member(text,root,"state");
+  if !state.ok || (state.tok!=JSON_STRING && state.tok!=JSON_OBJECT) || state.to-state.from>DEC_STATE_BYTES {return dec_at(DEC_INVALID,-1);}
+  qs:=cl_member(text,root,"questions");
+  if !qs.ok || qs.tok!=JSON_OBJECT {return dec_at(DEC_MALFORMED,-1);}
+  n:=dec_count(text,qs);
+  if n>DEC_MAX_QUESTIONS {return dec_at(DEC_TOO_MANY_QUESTIONS,-1);}
+  if n<1 || !dec_keys(text,qs,DEC_QUESTION_ID) {return dec_at(DEC_INVALID,-1);}
+  for i:0..<n {
+    code:=dec_question(text,cl_element(text,qs,i));
+    if code!=DEC_OK {return dec_at(code,i);}
+  }
+  return dec_at(DEC_OK,-1);
+}
+// book:end question
+
+// book:begin answer
+// What is wrong with answer a (in at) to question q (in qt), or DEC_OK.
+dec_one :: (qt:string,q:ClSlice,at:string,a:ClSlice)->u32 {
+  kind:=dec_kind(qt,q);
+  type:=cl_member(at,a,"type");
+  if kind==DEC_NOUL {
+    if !cl_eq(at,type,"noul") {return DEC_TYPE;}
+    if !dec_unit(cl_num_of(at,cl_member(at,a,"noul"))) {return DEC_PROBABILITY;}
+    return DEC_OK;
+  }
+  if (kind==DEC_CHOICE_KIND && !cl_eq(at,type,"choice")) || (kind==DEC_SCORE_KIND && !cl_eq(at,type,"score")) {return DEC_TYPE;}
+  c:=cl_member(qt,q,"criteria");n:=dec_count(qt,c);
+  probs:=cl_member(at,a,"probabilities");
+  if dec_count(at,probs)!=n {return DEC_OPTIONS;}
+  sum:=0.0;weighted:=0.0;best:int;most:=-1.0;
+  for i:0..<n {
+    b:[256]u8;name:=dec_key(qt,c,i,b[..]);
+    if kind==DEC_SCORE_KIND {b[0]=cast(u8)('0'+i);name=cast(string)b[0..<1];}
+    p:=cl_member(at,probs,name);
+    if !p.ok {return DEC_OPTIONS;}
+    v:=cl_num_of(at,p);
+    if !dec_unit(v) {return DEC_PROBABILITY;}
+    sum+=v.value;weighted+=cast(f64)i*v.value;
+    w:[256]u8;
+    if v.value>most || (v.value==most && kind==DEC_CHOICE_KIND && dec_less(name,dec_key(qt,c,best,w[..]))) {most=v.value;best=i;}
+  }
+  if !dec_near(sum,1.0) {return DEC_SUM;}
+  confidence:=cl_num_of(at,cl_member(at,a,"confidence"));
+  if kind==DEC_CHOICE_KIND {
+    w:[256]u8;ar:[1]ClArena;ar[0].buf=w[..];x:[256]u8;
+    chosen:=cl_member(at,a,"choice");
+    if chosen.tok!=JSON_STRING || cl_text(ar[..],at,chosen)!=dec_key(qt,c,best,x[..]) {return DEC_CHOICE;}
+  } else {
+    if !dec_near(cl_num_of(at,cl_member(at,a,"score")).value,weighted) || !cl_num_of(at,cl_member(at,a,"score")).ok {return DEC_SCORE;}
+    legend:=cl_member(at,a,"legend");
+    if dec_count(at,legend)!=n {return DEC_LEGEND;}
+    for i:0..<n {b:[1]u8;b[0]=cast(u8)('0'+i);if !cl_member(at,legend,cast(string)b[..]).ok {return DEC_LEGEND;}}
+  }
+  if !dec_unit(confidence) {return DEC_PROBABILITY;}
+  if !dec_near(confidence.value,most) {return DEC_CONFIDENCE;}
+  return DEC_OK;
+}
+
+// What is wrong with response as the answer to body, or DEC_OK. A body
+// that dec_body refuses refuses here with the same code.
+dec_answer :: (body:string,response:string)->DecCheck {
+  check:=dec_body(body);
+  if check.code!=DEC_OK {return check;}
+  root:=cl_root(response);
+  answers:=cl_member(response,root,"answers");
+  if answers.tok!=JSON_OBJECT {return dec_at(DEC_MALFORMED,-1);}
+  qs:=cl_member(body,cl_root(body),"questions");n:=dec_count(body,qs);
+  for i:0..<n {
+    b:[256]u8;a:=cl_member(response,answers,dec_key(body,qs,i,b[..]));
+    if !a.ok || a.tok!=JSON_OBJECT {return dec_at(DEC_UNANSWERED,i);}
+    code:=dec_one(body,cl_element(body,qs,i),response,a);
+    if code!=DEC_OK {return dec_at(code,i);}
+  }
+  if dec_count(response,answers)!=n {return dec_at(DEC_EXTRA,-1);}
+  return dec_at(DEC_OK,-1);
+}
+// book:end answer
+
+// ---- checks
+
+DEC_T_BODY :: "{\"model\":\"jev-1.13.0\",\"state\":\"cargo test ran 3 tests: 3 passed, 0 failed.\",\"questions\":{\"passed\":{\"type\":\"noul\",\"instructions\":\"Did every test pass?\"},\"next\":{\"type\":\"choice\",\"instructions\":\"What should happen next?\",\"criteria\":{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}},\"risk\":{\"type\":\"score\",\"instructions\":\"How risky is merging now?\",\"criteria\":[\"No risk.\",\"Some risk.\",\"High risk.\"]}}}";
+DEC_T_ANSWER :: "{\"model\":\"jev-1.13.0\",\"answers\":{\"passed\":{\"type\":\"noul\",\"noul\":0.97},\"next\":{\"type\":\"choice\",\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}},\"risk\":{\"type\":\"score\",\"score\":0.5,\"confidence\":0.6,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.6,\"1\":0.3,\"2\":0.1}}},\"usage\":null}";
+dec_t :: (from:string,to:string)->DecCheck {o:[2048]u8;return dec_answer(DEC_T_BODY,ts_swap(DEC_T_ANSWER,from,to,o[..]));}
+dec_tb :: (from:string,to:string)->DecCheck {o:[70000]u8;return dec_body(ts_swap(DEC_T_BODY,from,to,o[..]));}
+dec_is :: (c:DecCheck,code:u32,q:int)->bool {return c.code==code && c.question==q;}
+
+#test "the codes are distinct and in order" {
+  #assert DEC_OK==0 && DEC_MALFORMED==1 && DEC_INVALID==2 && DEC_TOO_MANY_QUESTIONS==3 && DEC_TOO_MANY_OPTIONS==4;
+  #assert DEC_UNANSWERED==5 && DEC_EXTRA==6 && DEC_TYPE==7 && DEC_PROBABILITY==8 && DEC_OPTIONS==9 && DEC_SUM==10;
+  #assert DEC_CHOICE==11 && DEC_CONFIDENCE==12 && DEC_SCORE==13 && DEC_LEGEND==14;
+  #assert DEC_NOUL==1 && DEC_CHOICE_KIND==2 && DEC_SCORE_KIND==3;
+}
+#test "within the slack, at both edges, and byte order" {
+  #assert dec_near(1.0+DEC_SLACK,1.0) && dec_near(1.0-DEC_SLACK,1.0) && dec_near(1.0,1.0);
+  #assert !dec_near(1.0+2.0*DEC_SLACK,1.0) && !dec_near(1.0-2.0*DEC_SLACK,1.0);
+  #assert dec_unit(JsonF64.{ok=true,value=0.0}) && dec_unit(JsonF64.{ok=true,value=1.0});
+  #assert !dec_unit(JsonF64.{ok=true,value=1.0000001}) && !dec_unit(JsonF64.{ok=true,value=-0.0000001}) && !dec_unit(JsonF64.{ok=false,value=0.5});
+  #assert dec_less("fix","ship") && !dec_less("ship","fix") && dec_less("a","ab") && !dec_less("ab","a") && !dec_less("a","a");
+  #assert dec_less("ab","b") && !dec_less("b","ab") && dec_less("","a") && !dec_less("a","");
+}
+#test "depth: a string 0, each container one more, at most the bound" {
+  t:="[\"x\",{\"a\":[[]]},{}]";
+  #assert dec_within(t,cl_element(t,cl_root(t),0),0) && dec_within(t,cl_element(t,cl_root(t),1),3) && !dec_within(t,cl_element(t,cl_root(t),1),2);
+  #assert dec_within(t,cl_element(t,cl_root(t),2),1) && !dec_within(t,cl_element(t,cl_root(t),2),0);
+  #assert dec_within(t,cl_root(t),4) && !dec_within(t,cl_root(t),3);
+  deep:="{\"a\":{\"b\":{\"c\":{\"d\":{\"e\":{\"f\":{\"g\":{\"h\":\"x\"}}}}}}}}";
+  #assert dec_entry(deep,cl_root(deep));
+  deeper:="[{\"a\":{\"b\":{\"c\":{\"d\":{\"e\":{\"f\":{\"g\":{\"h\":\"x\"}}}}}}}}]";
+  #assert !dec_entry(deeper,cl_root(deeper));
+  n:="7";#assert !dec_entry(n,cl_root(n));
+  b:="true";#assert !dec_entry(b,cl_root(b));
+  z:="null";#assert dec_entry(z,cl_root(z));
+  a:="[\"x\"]";#assert dec_entry(a,cl_root(a));
+  o:="{}";#assert dec_entry(o,cl_root(o));
+  q:="\"x\"";#assert dec_entry(q,cl_root(q));
+  r:ClSlice;#assert !dec_entry(q,r);
+}
+#test "the body and its answer agree" {
+  #assert dec_is(dec_body(DEC_T_BODY),DEC_OK,-1);
+  #assert dec_is(dec_answer(DEC_T_BODY,DEC_T_ANSWER),DEC_OK,-1);
+}
+#test "an answer that is not the question set's refuses" {
+  #assert dec_is(dec_t("\"passed\":{\"type\":\"noul\",\"noul\":0.97},",""),DEC_UNANSWERED,0);
+  #assert dec_is(dec_t("\"usage\":null","\"usage\":null,\"answers\":{}"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"passed\":{","\"extra\":{\"type\":\"noul\",\"noul\":0.5},\"passed\":{"),DEC_EXTRA,-1);
+  #assert dec_is(dec_t("\"passed\":{\"type\":\"noul\",\"noul\":0.97}","\"passed\":7"),DEC_UNANSWERED,0);
+  #assert dec_is(dec_t("{\"type\":\"noul\",\"noul\":0.97}","{\"type\":\"choice\",\"noul\":0.97}"),DEC_TYPE,0);
+  #assert dec_is(dec_t("\"type\":\"choice\"","\"type\":\"noul\""),DEC_TYPE,1);
+  #assert dec_is(dec_t("\"type\":\"score\"","\"type\":\"choice\""),DEC_TYPE,2);
+  #assert dec_is(dec_t("\"answers\":{","\"answers\":["),DEC_MALFORMED,-1);
+  #assert dec_is(dec_answer(DEC_T_BODY,"{\"model\":\"x\"}"),DEC_MALFORMED,-1);
+  #assert dec_is(dec_answer("{\"state\":\"x\"}",DEC_T_ANSWER),DEC_MALFORMED,-1);
+}
+#test "probabilities: in [0, 1], over exactly the options, summing to one" {
+  #assert dec_is(dec_t("\"noul\":0.97","\"noul\":1.5"),DEC_PROBABILITY,0);
+  #assert dec_is(dec_t("\"noul\":0.97","\"noul\":\"0.97\""),DEC_PROBABILITY,0);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"maybe\":0.2}"),DEC_OPTIONS,1);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"fix\":0.2,\"maybe\":0}"),DEC_OPTIONS,1);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","[0.8,0.2]"),DEC_OPTIONS,1);
+  #assert dec_is(dec_t("\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"ship\",\"confidence\":0.8"),DEC_OPTIONS,1);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"fix\":-0.2}"),DEC_PROBABILITY,1);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"fix\":0.3}"),DEC_SUM,1);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"fix\":0.1}"),DEC_SUM,1);
+  #assert dec_is(dec_t("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"fix\":0.2000009}"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"0\":0.6,\"1\":0.3,\"2\":0.1}","\"0\":0.6,\"1\":0.3,\"3\":0.1}"),DEC_OPTIONS,2);
+  #assert dec_is(dec_t("\"0\":0.6,\"1\":0.3,\"2\":0.1}","\"0\":0.6,\"1\":0.3}"),DEC_OPTIONS,2);
+  #assert dec_is(dec_t("\"0\":0.6,\"1\":0.3,\"2\":0.1}","\"0\":0.6,\"1\":0.3,\"2\":0.2}"),DEC_SUM,2);
+  #assert dec_is(dec_t("\"0\":0.6,\"1\":0.3,\"2\":0.1}","\"0\":0.6,\"1\":0.3,\"2\":1.1}"),DEC_PROBABILITY,2);
+}
+#test "the choice is the most probable option, ties to the least ID, its confidence that probability" {
+  #assert dec_is(dec_t("\"choice\":\"ship\"","\"choice\":\"fix\""),DEC_CHOICE,1);
+  #assert dec_is(dec_t("\"choice\":\"ship\"","\"choice\":\"none\""),DEC_CHOICE,1);
+  #assert dec_is(dec_t("\"choice\":\"ship\"","\"choice\":7"),DEC_CHOICE,1);
+  #assert dec_is(dec_t("\"choice\":\"ship\",",""),DEC_CHOICE,1);
+  #assert dec_is(dec_t("\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"fix\",\"confidence\":0.5,\"probabilities\":{\"ship\":0.5,\"fix\":0.5}"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"ship\",\"confidence\":0.5,\"probabilities\":{\"ship\":0.5,\"fix\":0.5}"),DEC_CHOICE,1);
+  #assert dec_is(dec_t("\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"fix\",\"confidence\":0.5,\"probabilities\":{\"fix\":0.5,\"ship\":0.5}"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"fix\",\"confidence\":0.6,\"probabilities\":{\"ship\":0.4,\"fix\":0.6}"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"confidence\":0.8","\"confidence\":0.7"),DEC_CONFIDENCE,1);
+  #assert dec_is(dec_t("\"confidence\":0.8","\"confidence\":0.9984"),DEC_CONFIDENCE,1);
+  #assert dec_is(dec_t("\"confidence\":0.8","\"confidence\":1.2"),DEC_PROBABILITY,1);
+  #assert dec_is(dec_t("\"confidence\":0.8,",""),DEC_PROBABILITY,1);
+}
+#test "the score is the weighted index, its confidence the largest probability, its legend the indexes" {
+  #assert dec_is(dec_t("\"score\":0.5","\"score\":0.5000009"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"score\":0.5","\"score\":0.6"),DEC_SCORE,2);
+  #assert dec_is(dec_t("\"score\":0.5","\"score\":0.4"),DEC_SCORE,2);
+  #assert dec_is(dec_t("\"score\":0.5","\"score\":\"0.5\""),DEC_SCORE,2);
+  #assert dec_is(dec_t("\"confidence\":0.6","\"confidence\":0.3"),DEC_CONFIDENCE,2);
+  #assert dec_is(dec_t("\"confidence\":0.6","\"confidence\":-1"),DEC_PROBABILITY,2);
+  #assert dec_is(dec_t("\"score\":0.5,\"confidence\":0.6,","\"score\":0.5,"),DEC_PROBABILITY,2);
+  #assert dec_is(dec_t(",\"2\":\"High risk.\"}",",\"3\":\"High risk.\"}"),DEC_LEGEND,2);
+  #assert dec_is(dec_t(",\"2\":\"High risk.\"}","}"),DEC_LEGEND,2);
+  #assert dec_is(dec_t("\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},",""),DEC_LEGEND,2);
+  #assert dec_is(dec_t("\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"}","\"legend\":[0,1,2]"),DEC_LEGEND,2);
+  // The most probable level is not the first.
+  #assert dec_is(dec_t("\"score\":0.5,\"confidence\":0.6,","\"score\":1.4,\"confidence\":0.6,"),DEC_SCORE,2);
+  #assert dec_is(dec_t("\"score\":0.5,\"confidence\":0.6,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.6,\"1\":0.3,\"2\":0.1}","\"score\":1.5,\"confidence\":0.6,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.1,\"1\":0.3,\"2\":0.6}"),DEC_OK,-1);
+  #assert dec_is(dec_t("\"score\":0.5,\"confidence\":0.6,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.6,\"1\":0.3,\"2\":0.1}","\"score\":1,\"confidence\":0.5,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.25,\"1\":0.5,\"2\":0.25}"),DEC_OK,-1);
+}
+#test "the body's bounds and shapes" {
+  #assert dec_is(dec_tb("\"model\":\"jev-1.13.0\",",""),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"model\":\"jev-1.13.0\"","\"model\":\"\""),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"model\":\"jev-1.13.0\"","\"model\":7"),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"state\":\"cargo test ran 3 tests: 3 passed, 0 failed.\"","\"state\":[\"a\"]"),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"state\":\"cargo test ran 3 tests: 3 passed, 0 failed.\"","\"state\":{\"a\":[1,true]}"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"state\":\"cargo test ran 3 tests: 3 passed, 0 failed.\",",""),DEC_INVALID,-1);
+  #assert dec_is(dec_body("[]"),DEC_MALFORMED,-1) && dec_is(dec_body("{\"state\":\"x\",\"questions\":[]}"),DEC_MALFORMED,-1);
+  #assert dec_is(dec_body("{\"state\":\"x\",\"questions\":{}}"),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"next\":","\"passed\":"),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"next\":","\"\":"),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","7"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","{\"q\":[1]}"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"type\":\"noul\"","\"type\":\"rank\""),DEC_INVALID,0);
+  #assert dec_is(dec_tb("{\"type\":\"noul\",","7,\"x\":{\"type\":\"noul\","),DEC_INVALID,0);
+  #assert dec_is(dec_tb("{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}","{}"),DEC_INVALID,1);
+  #assert dec_is(dec_tb("{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}","[\"a\"]"),DEC_INVALID,1);
+  #assert dec_is(dec_tb("\"fix\":\"Change the code first.\"","\"ship\":\"Change the code first.\""),DEC_INVALID,1);
+  #assert dec_is(dec_tb("\"fix\":\"Change the code first.\"","\"\":null"),DEC_INVALID,1);
+  #assert dec_is(dec_tb("\"fix\":\"Change the code first.\"","\"fix\":null"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"fix\":\"Change the code first.\"","\"fix\":2"),DEC_INVALID,1);
+  #assert dec_is(dec_tb("\"criteria\":{\"ship\"","\"x\":{\"ship\""),DEC_INVALID,1);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[\"No risk.\"]"),DEC_INVALID,2);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[\"No risk.\",{\"a\":1}]"),DEC_OK,-1);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[\"low\",2]"),DEC_INVALID,2);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","{\"0\":\"low\"}"),DEC_INVALID,2);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[0,1,2,3,4,5,6,7,8,9,10]"),DEC_TOO_MANY_OPTIONS,2);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[\"0\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"]"),DEC_OK,-1);
+}
+#test "noul criteria: absent, null, a string, or true and false entries" {
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":null"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":\"yes or no\""),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"true\":\"yes\",\"false\":{\"what\":\"no\"}}"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"true\":\"yes\"}"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"true\":\"yes\",\"maybe\":\"unsure\"}"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"true\":\"yes\",\"true\":\"no\"}"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"true\":7}"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":[\"yes\"]"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":7"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"false\":\"yes\",\"false\":\"no\"}"),DEC_INVALID,0);
+  #assert dec_is(dec_tb("\"Did every test pass?\"","\"Did every test pass?\",\"criteria\":{\"false\":\"no\"}"),DEC_OK,-1);
+  #assert !dec_is(DecCheck.{code=DEC_OK,question=0},DEC_OK,-1) && !dec_is(DecCheck.{code=DEC_TYPE,question=-1},DEC_OK,-1);
+}
+
+// Edits to the body and to the answer together.
+dec_tab :: (bfrom:string,bto:string,afrom:string,ato:string)->DecCheck {
+  o:[2048]u8;p:[2048]u8;
+  return dec_answer(ts_swap(DEC_T_BODY,bfrom,bto,o[..]),ts_swap(DEC_T_ANSWER,afrom,ato,p[..]));
+}
+#test "escaped IDs and choices are read decoded" {
+  #assert dec_is(dec_tab("\"passed\":","\"pa\\u0073sed\":","\"usage\"","\"usage\""),DEC_OK,-1);
+  #assert dec_is(dec_tab("\"ship\":\"Merge","\"\\u0073hip\":\"Merge","\"usage\"","\"usage\""),DEC_OK,-1);
+  #assert dec_is(dec_t("\"choice\":\"ship\"","\"choice\":\"\\u0073hip\""),DEC_OK,-1);
+  #assert dec_is(dec_t("\"passed\":{","\"pa\\u0073sed\":{"),DEC_OK,-1);
+}
+#test "a tie goes to the least ID whichever order the options come in" {
+  // Options asked fix first, then ship.
+  #assert dec_is(dec_tab("{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}","{\"fix\":\"Change the code first.\",\"ship\":\"Merge the change.\"}","\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"fix\",\"confidence\":0.5,\"probabilities\":{\"ship\":0.5,\"fix\":0.5}"),DEC_OK,-1);
+  #assert dec_is(dec_tab("{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}","{\"fix\":\"Change the code first.\",\"ship\":\"Merge the change.\"}","\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"ship\",\"confidence\":0.5,\"probabilities\":{\"ship\":0.5,\"fix\":0.5}"),DEC_CHOICE,1);
+  #assert dec_is(dec_tab("{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}","{\"fix\":\"Change the code first.\",\"ship\":\"Merge the change.\"}","\"usage\"","\"usage\""),DEC_OK,-1);
+}
+#test "the first of anything is checked too" {
+  #assert dec_is(dec_tb("{\"passed\":","{\"\":"),DEC_INVALID,-1);
+  #assert dec_is(dec_tb("\"ship\":\"Merge the change.\"","\"ship\":2"),DEC_INVALID,1);
+  #assert dec_is(dec_tb("\"ship\":\"Merge the change.\"","\"\":\"Merge the change.\""),DEC_INVALID,1);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[2,\"low\"]"),DEC_INVALID,2);
+  #assert dec_is(dec_tb("[\"No risk.\",\"Some risk.\",\"High risk.\"]","[[\"a\"],\"low\"]"),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"How risky is merging now?\"","[\"How risky?\"]"),DEC_OK,-1);
+  #assert dec_is(dec_t("{\"0\":\"No risk.\",","{\"3\":\"No risk.\","),DEC_LEGEND,2);
+  #assert dec_is(dec_tab("{\"ship\":\"Merge the change.\",\"fix\":\"Change the code first.\"}","{\"ship\":\"Merge the change.\"}","\"choice\":\"ship\",\"confidence\":0.8,\"probabilities\":{\"ship\":0.8,\"fix\":0.2}","\"choice\":\"ship\",\"confidence\":1,\"probabilities\":{\"ship\":1}"),DEC_OK,-1);
+  #assert dec_is(dec_tb("{\"passed\":{\"type\":\"noul\",\"instructions\":\"Did every test pass?\"},","{"),DEC_OK,-1);
+}
+#test "the bounds at their edges" #steps 2000000000 {
+  big:[140000]u8;body:[140100]u8;
+  // A model of 1 and of 128 bytes, not 129.
+  #assert dec_is(dec_tb("\"jev-1.13.0\"","\"j\""),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"jev-1.13.0\"",ts_wrap("\"",'m',128,"\"",big[..])),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"jev-1.13.0\"",ts_wrap("\"",'m',129,"\"",big[..])),DEC_INVALID,-1);
+  // A state of 131072 bytes, not 131073.
+  #assert dec_is(dec_body(ts_swap(DEC_T_BODY,"\"cargo test ran 3 tests: 3 passed, 0 failed.\"",ts_wrap("\"",'s',131072,"\"",big[..]),body[..])),DEC_OK,-1);
+  #assert dec_is(dec_body(ts_swap(DEC_T_BODY,"\"cargo test ran 3 tests: 3 passed, 0 failed.\"",ts_wrap("\"",'s',131073,"\"",big[..]),body[..])),DEC_INVALID,-1);
+  // A question of 65536 bytes, not 65537: {"type":"noul","instructions":"..."} is 33 bytes and the text.
+  #assert dec_is(dec_tb("\"Did every test pass?\"",ts_wrap("\"",'i',65536-33,"\"",big[..])),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"Did every test pass?\"",ts_wrap("\"",'i',65537-33,"\"",big[..])),DEC_INVALID,0);
+  // A question ID of 64 bytes, not 65; an option ID of 128, not 129.
+  #assert dec_is(dec_tab("\"passed\":",ts_wrap("\"",'p',64,"\":",big[..]),"\"passed\":",ts_wrap("\"",'p',64,"\":",body[..])),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"passed\":",ts_wrap("\"",'p',65,"\":",big[..])),DEC_INVALID,-1);
+  w1:[300]u8;w2:[300]u8;a1:[2048]u8;a2:[2048]u8;b1:[2048]u8;
+  ans:=ts_swap(ts_swap(DEC_T_ANSWER,"\"choice\":\"ship\"",ts_wrap("\"choice\":\"",'o',128,"\"",w1[..]),a1[..]),"{\"ship\":0.8",ts_wrap("{\"",'o',128,"\":0.8",w2[..]),a2[..]);
+  #assert dec_is(dec_answer(ts_swap(DEC_T_BODY,"\"ship\":\"Merge",ts_wrap("\"",'o',128,"\":\"Merge",big[..]),b1[..]),ans),DEC_OK,-1);
+  #assert dec_is(dec_tb("\"ship\":\"Merge",ts_wrap("\"",'o',129,"\":\"Merge",big[..])),DEC_INVALID,1);
+}
+// A body of n noul questions q0, q1, ... and a choice of n options o0, o1, ...
+dec_many :: (questions:int,options:int,out:[]u8)->string {
+  k:=0;
+  k=ts_put("{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"criteria\":{",out,k);
+  for i:0..<options {if i>0 {k=ts_put(",",out,k);} k=ts_put("\"o",out,k);k=ts_num(i,out,k);k=ts_put("\":null",out,k);}
+  k=ts_put("}}",out,k);
+  for i:0..<questions-1 {k=ts_put(",\"q",out,k);k=ts_num(i,out,k);k=ts_put("\":{\"type\":\"noul\"}",out,k);}
+  k=ts_put("}}",out,k);
+  return cast(string)out[0..<k];
+}
+#test "64 questions and 255 options, not 65 or 256" #steps 2000000000 {
+  b:[16384]u8;
+  #assert dec_is(dec_body(dec_many(1,1,b[..])),DEC_OK,-1);
+  #assert dec_is(dec_body(dec_many(64,255,b[..])),DEC_OK,-1);
+  #assert dec_is(dec_body(dec_many(65,1,b[..])),DEC_TOO_MANY_QUESTIONS,-1);
+  #assert dec_is(dec_body(dec_many(2,256,b[..])),DEC_TOO_MANY_OPTIONS,0);
+}

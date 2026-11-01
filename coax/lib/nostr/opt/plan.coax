@@ -1,0 +1,149 @@
+// OPT data plans: whether a study's case split keeps confirmation unseen.
+// NIP-OPT "Data access and partition isolation" and "Candidates and actual
+// trial execution", over NIP-EVAL's suite partition.
+//
+// opt_partition admits an EVAL partition (development, held_out, excluded)
+// for a suite's case IDs: no ID twice within or across the arrays, and
+// every ID a case of the suite. opt_plan admits a data plan (search,
+// selection, confirmation, excluded) against that partition: IDs distinct
+// across and within the arrays, their union exactly the suite's cases,
+// search and selection together exactly development, confirmation exactly
+// held_out, excluded exactly excluded. opt_trial admits a trial's case for
+// its phase: the case is in that phase's array.
+//
+// The caller passes case IDs it has read from the suite, partition and plan
+// artifacts, compared as exact strings. Not here: the artifacts' digests and
+// JSON, exposure and leakage units, confirmation allowances, candidates,
+// materializations, usage and results.
+//   coax/bin/coax test coax/lib/nostr/opt/plan.coax --library
+#authority;
+
+// book:begin codes
+OP_OK :: cast(u32)0;
+OP_DUPLICATE :: cast(u32)1;  // an ID twice, within one array or across two
+OP_UNKNOWN :: cast(u32)2;    // an ID that is not a case of the suite
+OP_MISSING :: cast(u32)3;    // a case of the suite in no array
+OP_PARTITION :: cast(u32)4;  // the plan's split does not match the partition's
+OP_PHASE :: cast(u32)5;      // a trial's case outside its phase, or no such phase
+
+OptPartition :: struct {development:[]string;held_out:[]string;excluded:[]string;}
+OptPlan :: struct {search:[]string;selection:[]string;confirmation:[]string;excluded:[]string;}
+// book:end codes
+
+// book:begin plan
+op_in :: (s:string,set:[]string)->bool {for x:set {if x==s {return true;}}return false;}
+// Whether every ID of a is in b.
+op_subset :: (a:[]string,b:[]string)->bool {for x:a {if !op_in(x,b) {return false;}}return true;}
+// OP_DUPLICATE when an ID of a repeats in a or in any earlier array, else
+// OP_UNKNOWN when one is not a case, else OP_OK.
+op_fresh :: (a:[]string,earlier:[][]string,cases:[]string)->u32 {
+  for i:0..<a.count {
+    if op_in(a[i],a[0..<i]) {return OP_DUPLICATE;}
+    for e:earlier {if op_in(a[i],e) {return OP_DUPLICATE;}}
+    if !op_in(a[i],cases) {return OP_UNKNOWN;}
+  }
+  return OP_OK;
+}
+
+opt_partition :: (p:OptPartition,cases:[]string)->u32 {
+  arrays:=[3][]string.[p.development,p.held_out,p.excluded];
+  for k:0..<3 {
+    code:=op_fresh(arrays[k],arrays[0..<k],cases);
+    if code!=OP_OK {return code;}
+  }
+  return OP_OK;
+}
+
+opt_plan :: (plan:OptPlan,p:OptPartition,cases:[]string)->u32 {
+  code:=opt_partition(p,cases);
+  if code!=OP_OK {return code;}
+  arrays:=[4][]string.[plan.search,plan.selection,plan.confirmation,plan.excluded];
+  total:=0;
+  for k:0..<4 {
+    code=op_fresh(arrays[k],arrays[0..<k],cases);
+    if code!=OP_OK {return code;}
+    total+=arrays[k].count;
+  }
+  if total!=cases.count {return OP_MISSING;}
+  // Every plan ID is a distinct case and every case is in the plan, so each
+  // plan array inside its partition array makes the two splits equal.
+  if !op_subset(plan.search,p.development) || !op_subset(plan.selection,p.development) {return OP_PARTITION;}
+  if !op_subset(plan.confirmation,p.held_out) || !op_subset(plan.excluded,p.excluded) {return OP_PARTITION;}
+  return OP_OK;
+}
+
+opt_trial :: (plan:OptPlan,phase:string,case_id:string)->u32 {
+  if phase=="search" && op_in(case_id,plan.search) {return OP_OK;}
+  if phase=="selection" && op_in(case_id,plan.selection) {return OP_OK;}
+  if phase=="confirmation" && op_in(case_id,plan.confirmation) {return OP_OK;}
+  return OP_PHASE;
+}
+// book:end plan
+
+// ---- checks
+
+#test "the codes are distinct" {
+  #assert OP_OK==0 && OP_DUPLICATE==1 && OP_UNKNOWN==2 && OP_MISSING==3 && OP_PARTITION==4 && OP_PHASE==5;
+}
+#test "a split that keeps confirmation to the held-out cases" {
+  cases:=[6]string.["c1","c2","c3","c4","c5","c6"];
+  dev:=[3]string.["c1","c2","c3"];held:=[2]string.["c4","c5"];ex:=[1]string.["c6"];
+  p:=OptPartition.{development=dev[..],held_out=held[..],excluded=ex[..]};
+  #assert opt_partition(p,cases[..])==OP_OK;
+  s:=[2]string.["c1","c2"];l:=[1]string.["c3"];
+  plan:=OptPlan.{search=s[..],selection=l[..],confirmation=held[..],excluded=ex[..]};
+  #assert opt_plan(plan,p,cases[..])==OP_OK;
+  #assert opt_trial(plan,"search","c1")==OP_OK && opt_trial(plan,"selection","c3")==OP_OK && opt_trial(plan,"confirmation","c5")==OP_OK;
+  #assert opt_trial(plan,"search","c4")==OP_PHASE && opt_trial(plan,"selection","c1")==OP_PHASE && opt_trial(plan,"confirmation","c3")==OP_PHASE;
+  #assert opt_trial(plan,"held_out","c4")==OP_PHASE && opt_trial(plan,"excluded","c6")==OP_PHASE;
+  // A held-out case moved into selection: no longer the partition's split.
+  l2:=[2]string.["c3","c4"];c2:=[1]string.["c5"];
+  #assert opt_plan(OptPlan.{search=s[..],selection=l2[..],confirmation=c2[..],excluded=ex[..]},p,cases[..])==OP_PARTITION;
+  s2:=[3]string.["c1","c2","c4"];
+  #assert opt_plan(OptPlan.{search=s2[..],selection=l[..],confirmation=c2[..],excluded=ex[..]},p,cases[..])==OP_PARTITION;
+  // Confirmation and excluded swapped.
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=ex[..],excluded=held[..]},p,cases[..])==OP_PARTITION;
+  c3:=[2]string.["c4","c6"];e3:=[1]string.["c5"];
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=c3[..],excluded=e3[..]},p,cases[..])==OP_PARTITION;
+  // A case the partition left out put into confirmation, or into excluded.
+  p0:=OptPartition.{development=dev[..],held_out=held[..],excluded=ex[0..<0]};
+  c6:=[3]string.["c4","c5","c6"];
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=c6[..],excluded=ex[0..<0]},p0,cases[..])==OP_PARTITION;
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=held[..],excluded=ex[..]},p0,cases[..])==OP_PARTITION;
+  // All development in search is a valid split too.
+  #assert opt_plan(OptPlan.{search=dev[..],selection=l[0..<0],confirmation=held[..],excluded=ex[..]},p,cases[..])==OP_OK;
+  #assert opt_plan(OptPlan.{search=l[..],selection=s[..],confirmation=held[..],excluded=ex[..]},p,cases[..])==OP_OK;
+}
+#test "duplicates, unknown and missing cases" {
+  cases:=[6]string.["c1","c2","c3","c4","c5","c6"];
+  dev:=[3]string.["c1","c2","c3"];held:=[2]string.["c4","c5"];ex:=[1]string.["c6"];
+  p:=OptPartition.{development=dev[..],held_out=held[..],excluded=ex[..]};
+  twice:=[3]string.["c1","c2","c1"];
+  #assert opt_partition(OptPartition.{development=twice[..],held_out=held[..],excluded=ex[..]},cases[..])==OP_DUPLICATE;
+  across:=[2]string.["c4","c3"];
+  #assert opt_partition(OptPartition.{development=dev[..],held_out=across[..],excluded=ex[..]},cases[..])==OP_DUPLICATE;
+  ex2:=[1]string.["c1"];
+  #assert opt_partition(OptPartition.{development=dev[..],held_out=held[..],excluded=ex2[..]},cases[..])==OP_DUPLICATE;
+  ex3:=[1]string.["c4"];
+  #assert opt_partition(OptPartition.{development=dev[..],held_out=held[..],excluded=ex3[..]},cases[..])==OP_DUPLICATE;
+  odd:=[1]string.["c9"];
+  #assert opt_partition(OptPartition.{development=dev[..],held_out=held[..],excluded=odd[..]},cases[..])==OP_UNKNOWN;
+  #assert opt_partition(OptPartition.{development=odd[..],held_out=held[..],excluded=ex[..]},cases[..])==OP_UNKNOWN;
+  s:=[2]string.["c1","c2"];l:=[1]string.["c3"];
+  // A plan whose partition refuses refuses with the partition's code.
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=held[..],excluded=ex[..]},OptPartition.{development=twice[..],held_out=held[..],excluded=ex[..]},cases[..])==OP_DUPLICATE;
+  sl:=[2]string.["c3","c1"];
+  #assert opt_plan(OptPlan.{search=s[..],selection=sl[..],confirmation=held[..],excluded=ex[..]},p,cases[..])==OP_DUPLICATE;
+  cx:=[2]string.["c4","c6"];
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=cx[..],excluded=ex[..]},p,cases[..])==OP_DUPLICATE;
+  s9:=[2]string.["c1","c9"];
+  #assert opt_plan(OptPlan.{search=s9[..],selection=l[..],confirmation=held[..],excluded=ex[..]},p,cases[..])==OP_UNKNOWN;
+  ss:=[2]string.["c2","c2"];
+  #assert opt_plan(OptPlan.{search=ss[..],selection=l[..],confirmation=held[..],excluded=ex[..]},p,cases[..])==OP_DUPLICATE;
+  one:=[1]string.["c1"];
+  #assert opt_plan(OptPlan.{search=one[..],selection=l[..],confirmation=held[..],excluded=ex[..]},p,cases[..])==OP_MISSING;
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=held[..],excluded=ex[0..<0]},p,cases[..])==OP_MISSING;
+  // The partition itself may leave a case out; the plan may not.
+  #assert opt_partition(OptPartition.{development=dev[..],held_out=held[..],excluded=ex[0..<0]},cases[..])==OP_OK;
+  #assert opt_plan(OptPlan.{search=s[..],selection=l[..],confirmation=held[..],excluded=ex[0..<0]},OptPartition.{development=dev[..],held_out=held[..],excluded=ex[0..<0]},cases[..])==OP_MISSING;
+}

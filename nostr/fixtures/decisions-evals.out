@@ -1,0 +1,33 @@
+decision: state and three questions (passed noul, next choice, risk score)
+  state_digest     sha256:a9b23eade88a35be19312f107a54ade134c606ada18cb1e03d6704d1bd2cd8f0
+  questions_digest sha256:22bba3312316efe0a7b344979a2479489966dfd289257d26073cbfdc80bcc4ff
+  the body: answers its question set
+  the answer: noul 0.97; ship 0.8 of {ship, fix}; risk 0*0.6 + 1*0.3 + 2*0.1 = 0.5: answers its question set
+answers that are not this question set's
+  risk left out: a question has no answer, question 2
+  an answer to urgent, never asked: an answer to no question
+  passed answered as a choice: another type, question 0
+  next over {ship, revert}: not exactly the options asked, question 1
+  risk over four levels: not exactly the options asked, question 2
+  next 0.8 and 0.3: does not sum to one, question 1
+  next chooses fix: not the most probable option, question 1
+  next's confidence (0.8 - 1/2) / (1 - 1/2) = 0.6: confidence is not that probability, question 1
+  risk scored 1, the most probable level's neighbour: not the weighted index, question 2
+  a body asking risk on eleven levels: too_many_options, question 2
+evaluations of 79be667e:merge/judge, read by a reader holding one suite and its partition
+  R1 by key 1 sha256:3c0b9f7e9b89...: verdict pass, verified
+  R2 by key 2 sha256:ba7fd097a756...: verdict pass, unverifiable: suite or partition not held
+  R3 by key 7 sha256:f59021234ac0...: verdict fail, untrusted evaluator
+  R4 by key 1 sha256:95e6c0fafdd7...: verdict -, coverage does not sum
+admissions by key 4 at T0, expiring T0 + 30 days
+  admit citing R1, R2, R3: cites a report not verified
+  admit citing R1, no validation: no validation
+  admit citing R1 with a validation: stands
+  the same, read by a reader who does not trust key 4: issuer not trusted
+  the same, 30 days later: expired
+an optimization study's split of six cases
+  partition dev {c1 c2 c3} held_out {c4 c5} excluded {c6}: admitted
+  plan search {c1 c2} selection {c3} confirmation {c4 c5}: admitted
+  plan selection {c3 c4} confirmation {c5}: not the partition's split
+  a confirmation trial on c4: admitted
+  a confirmation trial on c3: outside its phase

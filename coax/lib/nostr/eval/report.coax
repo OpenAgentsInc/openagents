@@ -1,0 +1,328 @@
+// EVAL reports as one reader sees them, and the admission that cites them.
+// NIP-EVAL "Reports, comparisons, and unknowns", "Publication and
+// disclosure" and "Promotion and learning".
+//
+// eval_report reads an openagents.eval-report.v1 body and answers what this
+// reader may show: refused (a code for the first fault in its shape), or
+// shown as unverifiable (its suite or partition digest names bytes this
+// reader does not hold: "an unverified claim at that reader's assurance
+// level, never independently reproduced evidence"), untrusted (signed by an
+// evaluator this reader has not chosen), or verified. The shape: the
+// version; suite, partition, runs and limitations ArtifactRefs with a
+// sha256 Digest and a size; a subject with a definition id; a baseline or
+// null; an evaluator; ordered times; coverage per arm whose five terminal
+// counts sum to attempted, the baseline arm present exactly when a baseline
+// is; measurements naming an arm (baseline and comparison only with a
+// baseline), a metric, a number or null, and nonnegative denominator and
+// unknown count; a verdict of pass, fail or inconclusive.
+//
+// eval_admit decides an openagents.eval-admission.v1 record against the
+// reports the reader has seen: the issuer is a trusted operator, the
+// record is unexpired, and an admit cites at least one validation. This
+// reader also requires every report an admit cites to be one it shows as
+// verified, about the admitted subject, with verdict pass: that is this
+// file's policy, not a rule NIP-EVAL states.
+//
+// It reads JSON through agent/claude/fields.coax. Not here: the 3188/3189
+// envelopes and their tags, the runs and limitations artifacts' contents,
+// metric definitions and aggregation, the required measurement profiles,
+// optimization reports, redaction, and the extension evaluation profile.
+//   coax/bin/coax test coax/lib/nostr/eval/report.coax --library
+#load "../../agent/claude/fields.coax";
+#load "../../../tests/nostr/text_swap.coax";
+#authority;
+
+// book:begin codes
+EV_VERIFIED :: cast(u32)0;     // shown: suite and partition held, evaluator trusted
+EV_UNVERIFIABLE :: cast(u32)1; // shown as unverifiable: a suite or partition digest not held
+EV_UNTRUSTED :: cast(u32)2;    // shown as untrusted: an evaluator this reader has not chosen
+EV_MALFORMED :: cast(u32)3;    // not an object, or a field missing or of the wrong type
+EV_VERSION :: cast(u32)4;      // not openagents.eval-report.v1
+EV_REF :: cast(u32)5;          // an ArtifactRef without a sha256 Digest and a size
+EV_TIME :: cast(u32)6;         // ended before it started
+EV_COVERAGE :: cast(u32)7;     // counts that do not sum, or an arm without its baseline
+EV_MEASUREMENT :: cast(u32)8;  // an arm, value, denominator or unknown count out of shape
+EV_VERDICT :: cast(u32)9;      // not pass, fail or inconclusive
+
+EV_PASS :: 1; EV_FAIL :: 2; EV_INCONCLUSIVE :: 3;   // verdicts
+
+EA_OK :: cast(u32)0;           // the admission stands
+EA_MALFORMED :: cast(u32)1;    // not an eval-admission.v1 body of the right shape
+EA_ISSUER :: cast(u32)2;       // issued by a key this reader does not trust to admit
+EA_EXPIRED :: cast(u32)3;      // at or past expires_at
+EA_VALIDATION :: cast(u32)4;   // an admit citing no validation
+EA_UNSEEN :: cast(u32)5;       // an admit citing a report this reader has not read
+EA_UNVERIFIED :: cast(u32)6;   // an admit citing a report not shown as verified
+EA_SUBJECT :: cast(u32)7;      // an admit citing a report about another subject
+EA_VERDICT :: cast(u32)8;      // an admit citing a report whose verdict is not pass
+// book:end codes
+
+EvalView :: struct {code:u32;verdict:int;subject:string;}
+
+// book:begin helpers
+// "sha256:" and 64 lowercase hex digits.
+ev_digest :: (s:string)->bool {
+  if s.count!=71 || s[0..<7]!="sha256:" {return false;}
+  for c:s[7..<71] {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+ev_in :: (s:string,set:[]string)->bool {for x:set {if x==s {return true;}}return false;}
+// An ArtifactRef: an object with a Digest and a nonnegative integer size.
+ev_ref :: (text:string,v:ClSlice)->bool {
+  if v.tok!=JSON_OBJECT {return false;}
+  d:=cl_member(text,v,"digest");size:=cl_int_of(text,cl_member(text,v,"size"));
+  return d.tok==JSON_STRING && ev_digest(text[d.from..<d.to]) && size.ok && size.value>=0;
+}
+ev_str :: (text:string,v:ClSlice)->string {if !v.ok || v.tok!=JSON_STRING {return "";}return text[v.from..<v.to];}
+ev_count :: (text:string,arm:ClSlice,name:string)->int {
+  n:=cl_int_of(text,cl_member(text,arm,name));
+  if !n.ok || n.value<0 {return -1;}
+  return n.value;
+}
+// An arm's counts: each a nonnegative integer, the five outcomes summing to attempted.
+ev_arm :: (text:string,arm:ClSlice)->bool {
+  if arm.tok!=JSON_OBJECT {return false;}
+  sum:=0;
+  for name:[5]string.["completed","refused","failed","cancelled","unknown"] {
+    n:=ev_count(text,arm,name);
+    if n<0 {return false;}
+    sum+=n;
+  }
+  return ev_count(text,arm,"planned")>=0 && ev_count(text,arm,"excluded")>=0 && ev_count(text,arm,"attempted")==sum;
+}
+// book:end helpers
+
+// book:begin report
+// What this reader may show of the report: held are the digests of the
+// artifacts it holds, trusted the evaluators it has chosen.
+eval_report :: (text:string,held:[]string,trusted:[]string)->EvalView {
+  r:EvalView;r.code=EV_MALFORMED;
+  root:=cl_root(text);
+  if !root.ok || root.tok!=JSON_OBJECT {return r;}
+  if !cl_eq(text,cl_member(text,root,"v"),"openagents.eval-report.v1") {r.code=EV_VERSION;return r;}
+  for name:[4]string.["suite","partition","runs","limitations"] {
+    if !ev_ref(text,cl_member(text,root,name)) {r.code=EV_REF;return r;}
+  }
+  subject:=cl_member(text,root,"subject");
+  id:=ev_str(text,cl_member(text,cl_member(text,subject,"definition"),"id"));
+  baseline:=cl_member(text,root,"baseline");
+  evaluator:=ev_str(text,cl_member(text,root,"evaluator"));
+  if id.count==0 || !baseline.ok || (baseline.tok!=JSON_NULL && baseline.tok!=JSON_OBJECT) || evaluator.count==0 {return r;}
+  based:=baseline.tok==JSON_OBJECT;
+  start:=cl_int_of(text,cl_member(text,root,"started_at"));end:=cl_int_of(text,cl_member(text,root,"ended_at"));
+  if !start.ok || !end.ok {return r;}
+  if end.value<start.value {r.code=EV_TIME;return r;}
+  coverage:=cl_member(text,root,"coverage");
+  base:=cl_member(text,coverage,"baseline");
+  if !ev_arm(text,cl_member(text,coverage,"subject")) || !base.ok {r.code=EV_COVERAGE;return r;}
+  if (based && !ev_arm(text,base)) || (!based && base.tok!=JSON_NULL) {r.code=EV_COVERAGE;return r;}
+  ms:=cl_member(text,root,"measurements");
+  if !ms.ok || ms.tok!=JSON_ARRAY {return r;}
+  for i:0..<cl_count(text[ms.from..<ms.to]) {
+    m:=cl_element(text,ms,i);arm:=cl_member(text,m,"arm");value:=cl_member(text,m,"value");
+    own:=cl_eq(text,arm,"subject") || (based && (cl_eq(text,arm,"baseline") || cl_eq(text,arm,"comparison")));
+    shaped:=value.ok && (value.tok==JSON_NULL || cl_num_of(text,value).ok);
+    if !own || !shaped || ev_str(text,cl_member(text,m,"metric")).count==0 || ev_count(text,m,"denominator")<0 || ev_count(text,m,"unknown_count")<0 {r.code=EV_MEASUREMENT;return r;}
+  }
+  verdict:=cl_member(text,root,"verdict");
+  if cl_eq(text,verdict,"pass") {r.verdict=EV_PASS;}
+  if cl_eq(text,verdict,"fail") {r.verdict=EV_FAIL;}
+  if cl_eq(text,verdict,"inconclusive") {r.verdict=EV_INCONCLUSIVE;}
+  if r.verdict==0 {r.code=EV_VERDICT;return r;}
+  r.subject=id;
+  suite:=cl_member(text,cl_member(text,root,"suite"),"digest");part:=cl_member(text,cl_member(text,root,"partition"),"digest");
+  if !ev_in(text[suite.from..<suite.to],held) || !ev_in(text[part.from..<part.to],held) {r.code=EV_UNVERIFIABLE;return r;}
+  if !ev_in(evaluator,trusted) {r.code=EV_UNTRUSTED;return r;}
+  r.code=EV_VERIFIED;
+  return r;
+}
+// book:end report
+
+// book:begin admit
+// A report the reader has read: the digest of its exact bytes and its view.
+EvalSeen :: struct {digest:string;view:EvalView;}
+
+// Whether the admission stands at now, given the reports this reader has
+// read and the operators it trusts to admit.
+eval_admit :: (text:string,seen:[]EvalSeen,operators:[]string,now:int)->u32 {
+  root:=cl_root(text);
+  if root.tok!=JSON_OBJECT || !cl_eq(text,cl_member(text,root,"v"),"openagents.eval-admission.v1") {return EA_MALFORMED;}
+  subject:=ev_str(text,cl_member(text,cl_member(text,root,"subject"),"id"));
+  reports:=cl_member(text,root,"reports");decision:=cl_member(text,root,"decision");
+  expires:=cl_int_of(text,cl_member(text,root,"expires_at"));
+  admit:=cl_eq(text,decision,"admit");
+  if subject.count==0 || reports.tok!=JSON_ARRAY || !expires.ok || !(admit || cl_eq(text,decision,"reject") || cl_eq(text,decision,"inconclusive")) {return EA_MALFORMED;}
+  n:=cl_count(text[reports.from..<reports.to]);
+  for i:0..<n {if !ev_ref(text,cl_element(text,reports,i)) {return EA_MALFORMED;}}
+  if !ev_in(ev_str(text,cl_member(text,root,"issuer")),operators) {return EA_ISSUER;}
+  if now>=expires.value {return EA_EXPIRED;}
+  if !admit {return EA_OK;}
+  validation:=cl_member(text,root,"validation");
+  if !validation.ok || validation.tok!=JSON_ARRAY || cl_count(text[validation.from..<validation.to])<1 {return EA_VALIDATION;}
+  for i:0..<n {
+    d:=cl_member(text,cl_element(text,reports,i),"digest");digest:=text[d.from..<d.to];
+    found:=-1;
+    for k:0..<seen.count {if seen[k].digest==digest {found=k;}}
+    if found<0 {return EA_UNSEEN;}
+    v:=seen[found].view;
+    if v.code!=EV_VERIFIED {return EA_UNVERIFIED;}
+    if v.subject!=subject {return EA_SUBJECT;}
+    if v.verdict!=EV_PASS {return EA_VERDICT;}
+  }
+  return EA_OK;
+}
+// book:end admit
+
+// ---- checks
+
+EV_T_SUITE :: "sha256:5555555555555555555555555555555555555555555555555555555555555555";
+EV_T_PART :: "sha256:6666666666666666666666666666666666666666666666666666666666666666";
+EV_T_REF :: "{\"digest\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"size\":10,\"media_type\":\"application/json\"}";
+EV_T_E1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+EV_T_REPORT :: "{\"v\":\"openagents.eval-report.v1\",\"requires\":[],\"suite\":{\"digest\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"size\":2048,\"media_type\":\"application/json\",\"schema\":\"openagents.eval-suite.v1\"},\"partition\":{\"digest\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"size\":512,\"media_type\":\"application/json\"},\"subject\":{\"definition\":{\"id\":\"x:pkg/agent\"},\"lock\":null,\"configuration\":null},\"baseline\":{\"definition\":{\"id\":\"x:pkg/base\"}},\"evaluator\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"started_at\":1790000000,\"ended_at\":1790003600,\"runs\":{\"digest\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"size\":10,\"media_type\":\"application/json\"},\"coverage\":{\"subject\":{\"planned\":10,\"attempted\":10,\"completed\":9,\"refused\":0,\"failed\":1,\"cancelled\":0,\"unknown\":0,\"excluded\":0},\"baseline\":{\"planned\":10,\"attempted\":10,\"completed\":7,\"refused\":0,\"failed\":3,\"cancelled\":0,\"unknown\":0,\"excluded\":0}},\"measurements\":[{\"arm\":\"subject\",\"metric\":\"success\",\"value\":0.9,\"denominator\":10,\"unknown_count\":0,\"uncertainty\":null,\"evidence\":[]},{\"arm\":\"comparison\",\"metric\":\"success\",\"value\":0.2,\"denominator\":10,\"unknown_count\":0,\"uncertainty\":null,\"evidence\":[]}],\"verdict\":\"pass\",\"limitations\":{\"digest\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"size\":10,\"media_type\":\"text/plain\"}}";
+EV_T_ADMIT :: "{\"v\":\"openagents.eval-admission.v1\",\"requires\":[],\"subject\":{\"id\":\"x:pkg/agent\"},\"reports\":[{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"size\":1,\"media_type\":\"application/json\"}],\"policy\":{\"id\":\"x:pkg/policy\"},\"scope\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"size\":1,\"media_type\":\"application/json\"},\"decision\":\"admit\",\"issuer\":\"op\",\"expires_at\":1790090000,\"validation\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"size\":1,\"media_type\":\"application/json\"}]}";
+EV_T_R1 :: "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+
+ev_t :: (from:string,to:string)->u32 {
+  o:[4096]u8;held:=[2]string.[EV_T_SUITE,EV_T_PART];trusted:=[1]string.[EV_T_E1];
+  return eval_report(ts_swap(EV_T_REPORT,from,to,o[..]),held[..],trusted[..]).code;
+}
+ev_ta :: (from:string,to:string,view:EvalView,now:int)->u32 {
+  o:[4096]u8;seen:=[1]EvalSeen.[EvalSeen.{digest=EV_T_R1,view=view}];ops:=[1]string.["op"];
+  return eval_admit(ts_swap(EV_T_ADMIT,from,to,o[..]),seen[..],ops[..],now);
+}
+EV_T_NONE :: [1]string.[""];
+EV_T_GOOD :: EvalView.{code=EV_VERIFIED,verdict=EV_PASS,subject="x:pkg/agent"};
+
+#test "the codes are distinct and in order" {
+  #assert EV_VERIFIED==0 && EV_UNVERIFIABLE==1 && EV_UNTRUSTED==2 && EV_MALFORMED==3 && EV_VERSION==4 && EV_REF==5;
+  #assert EV_TIME==6 && EV_COVERAGE==7 && EV_MEASUREMENT==8 && EV_VERDICT==9 && EV_PASS==1 && EV_FAIL==2 && EV_INCONCLUSIVE==3;
+  #assert EA_OK==0 && EA_MALFORMED==1 && EA_ISSUER==2 && EA_EXPIRED==3 && EA_VALIDATION==4 && EA_UNSEEN==5;
+  #assert EA_UNVERIFIED==6 && EA_SUBJECT==7 && EA_VERDICT==8;
+}
+#test "a digest is sha256: and 64 lowercase hex digits" {
+  #assert ev_digest(EV_T_SUITE) && ev_digest("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !ev_digest("sha256:555555555555555555555555555555555555555555555555555555555555555");
+  #assert !ev_digest("sha256:55555555555555555555555555555555555555555555555555555555555555555");
+  #assert !ev_digest("sha512:5555555555555555555555555555555555555555555555555555555555555555");
+  #assert !ev_digest("sha256:555555555555555555555555555555555555555555555555555555555555555A");
+  #assert !ev_digest("sha256:555555555555555555555555555555555555555555555555555555555555555g");
+  #assert !ev_digest("sha256:555555555555555555555555555555555555555555555555555555555555555/");
+  #assert !ev_digest("sha256:555555555555555555555555555555555555555555555555555555555555555:");
+  #assert !ev_digest("sha256:555555555555555555555555555555555555555555555555555555555555555`");
+  #assert !ev_digest("sha256:g555555555555555555555555555555555555555555555555555555555555555");
+}
+#test "the report is verified, unverifiable with an unknown suite, untrusted from another evaluator" {
+  #assert ev_t("\"verdict\":\"pass\"","\"verdict\":\"pass\"")==EV_VERIFIED;
+  o:[4096]u8;held:=[2]string.[EV_T_SUITE,EV_T_PART];trusted:=[1]string.[EV_T_E1];
+  v:=eval_report(EV_T_REPORT,held[..],trusted[..]);
+  #assert v.code==EV_VERIFIED && v.verdict==EV_PASS && v.subject=="x:pkg/agent";
+  #assert ev_t("5555555555555555555555555555555555555555555555555555555555555555","5555555555555555555555555555555555555555555555555555555555555556")==EV_UNVERIFIABLE;
+  #assert ev_t("6666666666666666666666666666666666666666666666666666666666666666","6666666666666666666666666666666666666666666666666666666666666667")==EV_UNVERIFIABLE;
+  #assert ev_t("\"evaluator\":\"79be","\"evaluator\":\"89be")==EV_UNTRUSTED;
+  #assert eval_report(EV_T_REPORT,held[0..<1],trusted[..]).code==EV_UNVERIFIABLE;
+  #assert eval_report(EV_T_REPORT,held[..],trusted[0..<0]).code==EV_UNTRUSTED;
+}
+#test "the report's shape refuses" {
+  #assert ev_t("\"v\":\"openagents.eval-report.v1\"","\"v\":\"openagents.eval-report.v2\"")==EV_VERSION;
+  #assert ev_t("\"v\":\"openagents.eval-report.v1\",","")==EV_VERSION;
+  none:=EV_T_NONE;#assert eval_report("[]",none[0..<0],none[0..<0]).code==EV_MALFORMED;
+  #assert ev_t("\"size\":2048","\"size\":-1")==EV_REF;
+  #assert ev_t("\"size\":2048","\"size\":\"2048\"")==EV_REF;
+  #assert ev_t("\"size\":512","\"size\":0")==EV_VERIFIED;
+  #assert ev_t("\"digest\":\"sha256:6666","\"digest\":\"sha257:6666")==EV_REF;
+  #assert ev_t("\"digest\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\"","\"digest\":7")==EV_REF;
+  #assert ev_t("\"runs\":{","\"runs\":7,\"x\":{")==EV_REF;
+  #assert ev_t("\"size\":10,\"media_type\":\"text/plain\"}","\"size\":1.5,\"media_type\":\"text/plain\"}")==EV_REF;
+  #assert ev_t("\"id\":\"x:pkg/agent\"","\"id\":\"\"")==EV_MALFORMED;
+  #assert ev_t("\"id\":\"x:pkg/agent\"","\"id\":7")==EV_MALFORMED;
+  #assert ev_t("\"baseline\":{\"definition\":{\"id\":\"x:pkg/base\"}},","")==EV_MALFORMED;
+  #assert ev_t("\"baseline\":{\"definition\":{\"id\":\"x:pkg/base\"}}","\"baseline\":\"x\"")==EV_MALFORMED;
+  #assert ev_t("\"evaluator\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"","\"evaluator\":\"\"")==EV_MALFORMED;
+  #assert ev_t("\"started_at\":1790000000","\"started_at\":\"x\"")==EV_MALFORMED;
+  #assert ev_t("\"ended_at\":1790003600","\"ended_at\":null")==EV_MALFORMED;
+  #assert ev_t("\"ended_at\":1790003600","\"ended_at\":1789999999")==EV_TIME;
+  #assert ev_t("\"ended_at\":1790003600","\"ended_at\":1790000000")==EV_VERIFIED;
+  #assert ev_t("\"verdict\":\"pass\"","\"verdict\":\"good\"")==EV_VERDICT;
+  held:=[2]string.[EV_T_SUITE,EV_T_PART];trusted:=[1]string.[EV_T_E1];o:[4096]u8;p:[4096]u8;
+  #assert eval_report(ts_swap(EV_T_REPORT,"\"verdict\":\"pass\"","\"verdict\":\"fail\"",o[..]),held[..],trusted[..]).verdict==EV_FAIL;
+  #assert eval_report(ts_swap(EV_T_REPORT,"\"verdict\":\"pass\"","\"verdict\":\"inconclusive\"",p[..]),held[..],trusted[..]).verdict==EV_INCONCLUSIVE;
+  #assert ev_t("\"measurements\":[","\"measurements\":{\"a\":1},\"x\":[")==EV_MALFORMED;
+}
+#test "coverage sums per arm, and a baseline arm only with a baseline" {
+  #assert ev_t("\"completed\":9","\"completed\":8")==EV_COVERAGE;
+  #assert ev_t("\"completed\":9","\"completed\":10")==EV_COVERAGE;
+  #assert ev_t("\"completed\":7","\"completed\":6")==EV_COVERAGE;
+  #assert ev_t("\"completed\":9,\"refused\":0","\"completed\":8,\"refused\":1")==EV_VERIFIED;
+  #assert ev_t("\"completed\":9,\"refused\":0,\"failed\":1","\"completed\":9,\"refused\":0,\"failed\":0")==EV_COVERAGE;
+  #assert ev_t("\"failed\":1,\"cancelled\":0","\"failed\":0,\"cancelled\":1")==EV_VERIFIED;
+  #assert ev_t("\"failed\":1,\"cancelled\":0,\"unknown\":0","\"failed\":0,\"cancelled\":0,\"unknown\":1")==EV_VERIFIED;
+  #assert ev_t("\"failed\":1,\"cancelled\":0,\"unknown\":0","\"failed\":0,\"cancelled\":0,\"unknown\":2")==EV_COVERAGE;
+  #assert ev_t("\"failed\":1","\"failed\":-1")==EV_COVERAGE;
+  #assert ev_t("\"planned\":10","\"planned\":-1")==EV_COVERAGE;
+  #assert ev_t("\"excluded\":0}","\"excluded\":-1}")==EV_COVERAGE;
+  #assert ev_t("\"planned\":10,","")==EV_COVERAGE;
+  #assert ev_t("\"planned\":10,","\"planned\":0,")==EV_VERIFIED;
+  #assert ev_t("\"coverage\":{\"subject\":","\"coverage\":{\"x\":")==EV_COVERAGE;
+  #assert ev_t("\"baseline\":{\"planned\":10,\"attempted\":10,\"completed\":7,\"refused\":0,\"failed\":3,\"cancelled\":0,\"unknown\":0,\"excluded\":0}","\"baseline\":null")==EV_COVERAGE;
+  #assert ev_t(",\"baseline\":{\"planned\":10,\"attempted\":10,\"completed\":7,\"refused\":0,\"failed\":3,\"cancelled\":0,\"unknown\":0,\"excluded\":0}","")==EV_COVERAGE;
+  // No baseline: its arm is null, and baseline or comparison measurements refuse.
+  o:[4096]u8;p:[4096]u8;held:=[2]string.[EV_T_SUITE,EV_T_PART];trusted:=[1]string.[EV_T_E1];
+  a:=ts_swap(EV_T_REPORT,"\"baseline\":{\"definition\":{\"id\":\"x:pkg/base\"}}","\"baseline\":null",o[..]);
+  b:=ts_swap(a,"\"baseline\":{\"planned\":10,\"attempted\":10,\"completed\":7,\"refused\":0,\"failed\":3,\"cancelled\":0,\"unknown\":0,\"excluded\":0}","\"baseline\":null",p[..]);
+  #assert eval_report(a,held[..],trusted[..]).code==EV_COVERAGE;
+  #assert eval_report(b,held[..],trusted[..]).code==EV_MEASUREMENT;
+  q:[4096]u8;c:=ts_swap(b,"\"arm\":\"comparison\"","\"arm\":\"subject\"",q[..]);
+  #assert eval_report(c,held[..],trusted[..]).code==EV_VERIFIED;
+  r:[4096]u8;d:=ts_swap(b,"\"arm\":\"comparison\"","\"arm\":\"baseline\"",r[..]);
+  #assert eval_report(d,held[..],trusted[..]).code==EV_MEASUREMENT;
+}
+#test "measurements: an arm, a metric, a number or null, counts not negative" {
+  #assert ev_t("\"arm\":\"comparison\"","\"arm\":\"baseline\"")==EV_VERIFIED;
+  #assert ev_t("\"arm\":\"comparison\"","\"arm\":\"other\"")==EV_MEASUREMENT;
+  #assert ev_t("\"arm\":\"subject\"","\"arm\":\"other\"")==EV_MEASUREMENT;
+  #assert ev_t("\"value\":0.9","\"value\":null")==EV_VERIFIED;
+  #assert ev_t("\"value\":0.9","\"value\":\"0.9\"")==EV_MEASUREMENT;
+  #assert ev_t("\"value\":0.9,","")==EV_MEASUREMENT;
+  #assert ev_t("\"metric\":\"success\",\"value\":0.9","\"metric\":\"\",\"value\":0.9")==EV_MEASUREMENT;
+  #assert ev_t("\"denominator\":10","\"denominator\":-1")==EV_MEASUREMENT;
+  #assert ev_t("\"denominator\":10","\"denominator\":0")==EV_VERIFIED;
+  #assert ev_t("\"unknown_count\":0","\"unknown_count\":-1")==EV_MEASUREMENT;
+  #assert ev_t("\"unknown_count\":0","\"unknown_count\":3")==EV_VERIFIED;
+}
+#test "an admission: the issuer trusted, unexpired, a validation, every cited report verified and passing" {
+  #assert ev_ta("\"op\"","\"op\"",EV_T_GOOD,1790000000)==EA_OK;
+  #assert ev_ta("\"issuer\":\"op\"","\"issuer\":\"other\"",EV_T_GOOD,1790000000)==EA_ISSUER;
+  #assert ev_ta("\"op\"","\"op\"",EV_T_GOOD,1790090000)==EA_EXPIRED;
+  #assert ev_ta("\"op\"","\"op\"",EV_T_GOOD,1790089999)==EA_OK;
+  #assert ev_ta(",\"validation\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"size\":1,\"media_type\":\"application/json\"}]","",EV_T_GOOD,1790000000)==EA_VALIDATION;
+  #assert ev_ta("\"validation\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"size\":1,\"media_type\":\"application/json\"}]","\"validation\":[]",EV_T_GOOD,1790000000)==EA_VALIDATION;
+  #assert ev_ta("\"validation\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"size\":1,\"media_type\":\"application/json\"}]","\"validation\":{\"a\":1}",EV_T_GOOD,1790000000)==EA_VALIDATION;
+  #assert ev_ta("sha256:1111111111111111111111111111111111111111111111111111111111111111","sha256:1111111111111111111111111111111111111111111111111111111111111112",EV_T_GOOD,1790000000)==EA_UNSEEN;
+  bad:=EV_T_GOOD;bad.code=EV_UNVERIFIABLE;#assert ev_ta("\"op\"","\"op\"",bad,1790000000)==EA_UNVERIFIED;
+  bad=EV_T_GOOD;bad.code=EV_UNTRUSTED;#assert ev_ta("\"op\"","\"op\"",bad,1790000000)==EA_UNVERIFIED;
+  bad=EV_T_GOOD;bad.subject="x:pkg/other";#assert ev_ta("\"op\"","\"op\"",bad,1790000000)==EA_SUBJECT;
+  bad=EV_T_GOOD;bad.verdict=EV_FAIL;#assert ev_ta("\"op\"","\"op\"",bad,1790000000)==EA_VERDICT;
+  bad=EV_T_GOOD;bad.verdict=EV_INCONCLUSIVE;#assert ev_ta("\"op\"","\"op\"",bad,1790000000)==EA_VERDICT;
+  // A reject or inconclusive needs no validation and no passing report.
+  bad=EV_T_GOOD;bad.verdict=EV_FAIL;
+  #assert ev_ta("\"decision\":\"admit\"","\"decision\":\"reject\"",bad,1790000000)==EA_OK;
+  #assert ev_ta("\"decision\":\"admit\"","\"decision\":\"inconclusive\"",bad,1790000000)==EA_OK;
+  #assert ev_ta("\"decision\":\"admit\"","\"decision\":\"reject\"",bad,1790090000)==EA_EXPIRED;
+  #assert ev_ta("\"decision\":\"admit\"","\"decision\":\"reject\"",bad,1)==EA_OK;
+  #assert ev_ta("\"issuer\":\"op\",\"expires_at\"","\"issuer\":\"no\",\"decision2\":0,\"expires_at\"",bad,1)==EA_ISSUER;
+}
+#test "an admission's shape refuses" {
+  g:=EV_T_GOOD;
+  #assert ev_ta("\"decision\":\"admit\"","\"decision\":\"maybe\"",g,1)==EA_MALFORMED;
+  #assert ev_ta("admission.v1","admission.v2",g,1)==EA_MALFORMED;
+  #assert ev_ta("\"subject\":{\"id\":\"x:pkg/agent\"}","\"subject\":{\"id\":\"\"}",g,1)==EA_MALFORMED;
+  #assert ev_ta("\"reports\":[","\"reports\":7,\"r\":[",g,1)==EA_MALFORMED;
+  #assert ev_ta("\"expires_at\":1790090000","\"expires_at\":\"soon\"",g,1)==EA_MALFORMED;
+  #assert ev_ta("\"size\":1,\"media_type\":\"application/json\"}],\"policy\"","\"size\":-1,\"media_type\":\"application/json\"}],\"policy\"",g,1)==EA_MALFORMED;
+  #assert ev_ta("\"op\"","\"op\"",g,1)==EA_OK;
+  nothing:[1]EvalSeen;none:=EV_T_NONE;#assert eval_admit("[]",nothing[0..<0],none[0..<0],1)==EA_MALFORMED;
+  // Every cited report is checked, not only the first.
+  two:="\"reports\":[{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"size\":1,\"media_type\":\"application/json\"},{\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"size\":1,\"media_type\":\"application/json\"}]";
+  #assert ev_ta("\"reports\":[{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"size\":1,\"media_type\":\"application/json\"}]",two,g,1)==EA_UNSEEN;
+}

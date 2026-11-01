@@ -1745,13 +1745,21 @@
    "number": 81,
    "title": "Decisions, evaluations, optimization and programs",
    "file": "ch081-decisions-evaluations-optimization-and-programs.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     80
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/dec/answer.coax",
+    "coax/lib/nostr/eval/report.coax",
+    "coax/lib/nostr/opt/plan.coax",
+    "nostr/examples/checks/decisions-evals.coax",
+    "nostr/examples/decisions-evals.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

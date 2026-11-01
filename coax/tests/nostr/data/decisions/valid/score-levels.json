@@ -1,0 +1,15 @@
+{
+  "state": "Checkout has returned HTTP 500 for every user in the EU region for twenty minutes. Retries fail.",
+  "questions": {
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is this incident?",
+      "criteria": [
+        {"summary": "Cosmetic", "signals": ["typo", "misaligned layout", "no user blocked"]},
+        {"summary": "Degraded", "signals": ["slow responses", "a workaround exists"]},
+        {"summary": "Major", "signals": ["one feature fails for many users", "no workaround"]},
+        {"summary": "Critical", "signals": ["revenue path down", "a whole region affected", "data at risk"]}
+      ]
+    }
+  }
+}

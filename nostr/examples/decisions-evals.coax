@@ -1,0 +1,102 @@
+// book:begin example
+// Chapter 81: one decision checked against the question set it answers,
+// then three evaluations of the judge that made it, read by one reader and
+// weighed by one admission, then an optimization study's case split. Keys
+// are the x-only public keys of the scalars 1, 2, 4 and 7: TEST ONLY. The
+// JSON texts and their digests come from coax/tests/nostr/dec_eval_vectors.py.
+#load "../../coax/lib/nostr/dec/answer.coax";
+#load "../../coax/lib/nostr/eval/report.coax";
+#load "../../coax/lib/nostr/opt/plan.coax";
+#load "../../coax/lib/nostr/ctrl/fingerprint.coax";
+#load "../../coax/tests/nostr/dec_eval_vectors.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+K1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+K2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+K4 :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
+
+DEC_WORDS :: [15]string.["answers its question set","malformed","invalid_request","too_many_questions",
+  "too_many_options","a question has no answer","an answer to no question","another type",
+  "not a probability","not exactly the options asked","does not sum to one",
+  "not the most probable option","confidence is not that probability","not the weighted index",
+  "legend is not the levels"];
+EV_WORDS :: [10]string.["verified","unverifiable: suite or partition not held","untrusted evaluator",
+  "malformed","version","artifact reference","time","coverage does not sum","measurement","verdict"];
+EA_WORDS :: [9]string.["stands","malformed","issuer not trusted","expired","no validation",
+  "cites a report not read","cites a report not verified","another subject","cites a verdict not pass"];
+OP_WORDS :: [6]string.["admitted","duplicate","unknown case","missing case","not the partition's split",
+  "outside its phase"];
+VERDICTS :: [4]string.["-","pass","fail","inconclusive"];
+
+// The answer with from replaced by to.
+edit :: (from:string,to:string,out:[]u8)->string {return ts_swap(DEV_ANSWER,from,to,out);}
+say_dec :: (what:string,c:DecCheck) {
+  if c.question<0 {print("  %: %\n",what,DEC_WORDS[c.code]);}
+  else {print("  %: %, question %\n",what,DEC_WORDS[c.code],c.question);}
+}
+digest_of :: (text:string,out:[]u8)->string {
+  bytes:[8192]u8;for i:0..<text.count {bytes[i]=text[i];}
+  #assert ae_digest(bytes[0..<text.count],out)==AE_OK;
+  return cast(string)out;
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("decision: state and three questions (passed noul, next choice, risk score)\n");
+  canon:[1024]u8;sd:[CF_DIGEST]u8;qd:[CF_DIGEST]u8;
+  root:=cl_root(DEV_BODY);
+  #assert ctrl_fingerprint(cl_json(DEV_BODY,cl_member(DEV_BODY,root,"state")),canon[..],sd[..]).error==CF_OK;
+  #assert ctrl_fingerprint(cl_json(DEV_BODY,cl_member(DEV_BODY,root,"questions")),canon[..],qd[..]).error==CF_OK;
+  print("  state_digest     %\n  questions_digest %\n",cast(string)sd[..],cast(string)qd[..]);
+  say_dec("the body",dec_body(DEV_BODY));
+  say_dec("the answer: noul 0.97; ship 0.8 of {ship, fix}; risk 0*0.6 + 1*0.3 + 2*0.1 = 0.5",dec_answer(DEV_BODY,DEV_ANSWER));
+  o:[2048]u8;
+  print("answers that are not this question set's\n");
+  say_dec("risk left out",dec_answer(DEV_BODY,edit(",\"risk\":{\"type\":\"score\",\"score\":0.5,\"confidence\":0.6,\"legend\":{\"0\":\"No risk.\",\"1\":\"Some risk.\",\"2\":\"High risk.\"},\"probabilities\":{\"0\":0.6,\"1\":0.3,\"2\":0.1}}","",o[..])));
+  say_dec("an answer to urgent, never asked",dec_answer(DEV_BODY,edit("\"passed\":{","\"urgent\":{\"type\":\"noul\",\"noul\":0.1},\"passed\":{",o[..])));
+  say_dec("passed answered as a choice",dec_answer(DEV_BODY,edit("{\"type\":\"noul\",\"noul\":0.97}","{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":1,\"probabilities\":{\"yes\":1}}",o[..])));
+  say_dec("next over {ship, revert}",dec_answer(DEV_BODY,edit("{\"ship\":0.8,\"fix\":0.2}","{\"ship\":0.8,\"revert\":0.2}",o[..])));
+  say_dec("risk over four levels",dec_answer(DEV_BODY,edit("\"2\":0.1}","\"2\":0.1,\"3\":0}",o[..])));
+  say_dec("next 0.8 and 0.3",dec_answer(DEV_BODY,edit("\"fix\":0.2","\"fix\":0.3",o[..])));
+  say_dec("next chooses fix",dec_answer(DEV_BODY,edit("\"choice\":\"ship\"","\"choice\":\"fix\"",o[..])));
+  say_dec("next's confidence (0.8 - 1/2) / (1 - 1/2) = 0.6",dec_answer(DEV_BODY,edit("\"confidence\":0.8","\"confidence\":0.6",o[..])));
+  say_dec("risk scored 1, the most probable level's neighbour",dec_answer(DEV_BODY,edit("\"score\":0.5","\"score\":1",o[..])));
+  b:[2048]u8;
+  say_dec("a body asking risk on eleven levels",dec_body(ts_swap(DEV_BODY,"[\"No risk.\",\"Some risk.\",\"High risk.\"]","[\"0\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\"]",b[..])));
+
+  print("evaluations of %:merge/judge, read by a reader holding one suite and its partition\n",K1[0..<8]);
+  sdig:[71]u8;pdig:[71]u8;
+  held:=[2]string.[digest_of(DEV_SUITE,sdig[..]),digest_of(DEV_PARTITION,pdig[..])];
+  trusted:=[2]string.[K1,K2];
+  reports:=[4]string.[DEV_R1,DEV_R2,DEV_R3,DEV_R4];
+  names:=[4]string.["R1 by key 1","R2 by key 2","R3 by key 7","R4 by key 1"];
+  d:[4][71]u8;seen:[4]EvalSeen;
+  for i:0..<4 {
+    v:=eval_report(reports[i],held[..],trusted[..]);
+    seen[i]=EvalSeen.{digest=digest_of(reports[i],d[i][..]),view=v};
+    print("  % %...: verdict %, %\n",names[i],seen[i].digest[0..<19],VERDICTS[v.verdict],EV_WORDS[v.code]);
+  }
+  ops:=[1]string.[K4];
+  print("admissions by key 4 at T0, expiring T0 + 30 days\n");
+  print("  admit citing R1, R2, R3: %\n",EA_WORDS[eval_admit(DEV_ADMIT_ALL,seen[..],ops[..],T0)]);
+  print("  admit citing R1, no validation: %\n",EA_WORDS[eval_admit(DEV_ADMIT_BARE,seen[..],ops[..],T0)]);
+  print("  admit citing R1 with a validation: %\n",EA_WORDS[eval_admit(DEV_ADMIT_R1,seen[..],ops[..],T0)]);
+  print("  the same, read by a reader who does not trust key 4: %\n",EA_WORDS[eval_admit(DEV_ADMIT_R1,seen[..],trusted[..],T0)]);
+  print("  the same, 30 days later: %\n",EA_WORDS[eval_admit(DEV_ADMIT_R1,seen[..],ops[..],T0+30*86400)]);
+
+  print("an optimization study's split of six cases\n");
+  cases:=[6]string.["c1","c2","c3","c4","c5","c6"];
+  dev:=[3]string.["c1","c2","c3"];held_out:=[2]string.["c4","c5"];ex:=[1]string.["c6"];
+  p:=OptPartition.{development=dev[..],held_out=held_out[..],excluded=ex[..]};
+  search:=[2]string.["c1","c2"];selection:=[1]string.["c3"];
+  plan:=OptPlan.{search=search[..],selection=selection[..],confirmation=held_out[..],excluded=ex[..]};
+  print("  partition dev {c1 c2 c3} held_out {c4 c5} excluded {c6}: %\n",OP_WORDS[opt_partition(p,cases[..])]);
+  print("  plan search {c1 c2} selection {c3} confirmation {c4 c5}: %\n",OP_WORDS[opt_plan(plan,p,cases[..])]);
+  leak:=[2]string.["c3","c4"];rest:=[1]string.["c5"];
+  print("  plan selection {c3 c4} confirmation {c5}: %\n",OP_WORDS[opt_plan(OptPlan.{search=search[..],selection=leak[..],confirmation=rest[..],excluded=ex[..]},p,cases[..])]);
+  print("  a confirmation trial on c4: %\n",OP_WORDS[opt_trial(plan,"confirmation","c4")]);
+  print("  a confirmation trial on c3: %\n",OP_WORDS[opt_trial(plan,"confirmation","c3")]);
+}
+// book:end main

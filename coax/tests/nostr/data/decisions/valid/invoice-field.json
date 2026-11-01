@@ -1,0 +1,27 @@
+{
+  "state": "INVOICE #4471\nAcme Tooling GmbH\nBill to: Northwind Ltd\nPO: NW-2291\nTotal due: EUR 1,240.00 by 2026-10-15",
+  "questions": {
+    "currency": {
+      "type": "choice",
+      "instructions": {
+        "field": {"name": "total_due", "meaning": "The amount the buyer owes on this invoice, after tax.", "where": "Usually the last money line."},
+        "question": "Which currency is the field in?"
+      },
+      "criteria": {"EUR": "Euro", "USD": "US dollar", "GBP": "Pound sterling", "other": "Any other currency, or none is shown."}
+    },
+    "present": {
+      "type": "noul",
+      "instructions": {
+        "field": {"name": "total_due", "meaning": "The amount the buyer owes on this invoice, after tax.", "where": "Usually the last money line."},
+        "question": "Does the invoice state the field explicitly?"
+      }
+    },
+    "has_po": {
+      "type": "noul",
+      "instructions": {
+        "field": {"name": "purchase_order", "meaning": "The buyer's purchase-order reference.", "where": "Near the bill-to block."},
+        "question": "Does the invoice state the field explicitly?"
+      }
+    }
+  }
+}
