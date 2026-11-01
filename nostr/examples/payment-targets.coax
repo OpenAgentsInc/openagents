@@ -1,0 +1,86 @@
+// book:begin example
+#load "../../coax/lib/nostr/nipa3.coax";
+#import "Basic";
+
+STATUS :: [16] string.["ok", "event", "not kind 10133", "bad payto tag", "not Bitcoin",
+  "unknown type", "Bitcoin type not built", "bad checksum", "bad address", "not mainnet",
+  "segwit version not yet defined", "limit", "bad weight", "all weights zero", "bad amount",
+  "bad witness program length"];
+FORM :: [8] string.["none", "P2PKH", "P2SH", "P2WPKH", "P2WSH", "P2TR", "future segwit", "Lightning address"];
+
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+show_program :: (t: A3Target) {
+  d := "0123456789abcdef"; c := t; text: [80] u8;
+  for i: 0..<c.n { text[2 * i] = d[c.program[i] >> 4]; text[2 * i + 1] = d[c.program[i] & 15]; }
+  print("%", cast(string) text[0..<2 * c.n]);
+}
+// One target: its type and address, then what may be done with it.
+show :: (t: A3Target) {
+  print("  "); say(t.type); print(" "); say(t.address); print("\n    ");
+  uri: [300] u8; n := a3_pay_uri(t, uri[..]);
+  if n > 0 { print("offer %", cast(string) uri[0..<n]); }
+  else { print("not offered: %", STATUS[t.status]); }
+  if t.form != A3_NONE {
+    print(" (%", FORM[t.form]);
+    if t.form != A3_LN_ADDRESS { print(", "); show_program(t); }
+    print(")");
+  }
+  print("\n");
+}
+show_list :: (label: string, e: NostrEvent) {
+  l := a3_list(e);
+  print("%: %, % targets, % offered\n", label, STATUS[l.status], l.count, l.payable);
+  for i: 0..<l.count { show(l.t[i]); }
+}
+show_split :: (label: string, total: int, weights: [] string) {
+  w: [A3_MAX] int; s: [A3_MAX] int;
+  status := a3_weights(weights, w[..]);
+  if status == A3_OK { status = a3_split(total, w[0..<weights.count], s[..]); }
+  print("%: %", label, STATUS[status]);
+  if status == A3_OK { print(" ->"); for i: 0..<weights.count { print(" %", s[i]); } }
+  print("\n");
+}
+
+// book:begin trace
+// The shortest BIP-350 address, decoded word by word.
+trace :: () {
+  s := "BC1SW50QGDZ25J";
+  print("trace %\n  words after the separator:", s);
+  for i: 3..<s.count { print(" %", b32_digit(b32_lower(s[i]))); }
+  state := b32_prefix("bc");
+  for i: 3..<s.count { state = b32_step(state, cast(u8) b32_digit(b32_lower(s[i]))); }
+  print("\n  checksum residue: % (Bech32m is %)\n", state, A3_BECH32M);
+  t := a3_try("bitcoin", s);
+  print("  version %, program ", t.version); show_program(t);
+  print(", %\n", STATUS[t.status]);
+}
+// book:end trace
+
+main :: () {
+  trace();
+
+  // NIP-A3's example event, as the pinned text gives it.
+  show_list("NIP-A3 example", n32_event(10133,
+    "[[\"payto\",\"bitcoin\",\"bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9k\"],[\"payto\",\"nano\",\"nano_1dctqbmqxfppo9pswbm6kg9d4s4mbraqn8i4m7ob9gnzz91aurmuho48jx3c\"],[\"payto\",\"unknowntype\",\"l7tbta5b9xze6ckkfc99uohzxd009b0r\"]]"));
+
+  // Every kind of Bitcoin address, and the targets that are kept but never offered.
+  show_list("Bitcoin targets", n32_event(10133,
+    "[[\"payto\",\"bitcoin\",\"BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4\"],[\"payto\",\"bitcoin\",\"bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0\"],[\"payto\",\"bitcoin\",\"1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2\"],[\"payto\",\"bitcoin\",\"3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy\"],[\"payto\",\"lightning\",\"alice@example.com\"],[\"payto\",\"bitcoin\",\"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7\"],[\"payto\",\"bitcoin\",\"bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs\"],[\"payto\",\"bip353\",\"alice@example.com\"]]"));
+
+  // Refusals: one changed character, a 16-byte v0 program, Bech32 on a v1
+  // address, a non-Bitcoin type and a malformed Lightning address.
+  show_list("refusals", n32_event(10133,
+    "[[\"payto\",\"bitcoin\",\"BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T5\"],[\"payto\",\"bitcoin\",\"BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P\"],[\"payto\",\"bitcoin\",\"bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd\"],[\"payto\",\"bitcoin\",\"1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN3\"],[\"payto\",\"ethereum\",\"0xd8da6bf26964af9d7eed9e03e53415d37aa96045\"],[\"payto\",\"lightning\",\"Alice@example.com\"]]"));
+  show_list("a kind 1 event", n32_event(1, "[[\"payto\",\"bitcoin\",\"1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2\"]]"));
+
+  // Zap splits in millisatoshis.
+  w123 := [3] string.["1", "2", "3"];      show_split("1000 sats over 1:2:3", 1000000, w123[..]);
+  w112 := [3] string.["1", "1", "2"];      show_split("21 sats over NIP-57's 1:1:2", 21000, w112[..]);
+  none := [3] string.["", "", ""];         show_split("7 msat, no weights", 7, none[..]);
+  some := [3] string.["", "1", "1"];       show_split("10 msat, one tag without a weight", 10, some[..]);
+  neg := [3] string.["1", "-1", "1"];      show_split("weight -1", 1000, neg[..]);
+  half := [3] string.["1", "1.5", "1"];    show_split("weight 1.5", 1000, half[..]);
+  zero := [3] string.["0", "0", "0"];      show_split("weights 0:0:0", 1000, zero[..]);
+  show_split("0 msat", 0, w123[..]);
+}
+// book:end example

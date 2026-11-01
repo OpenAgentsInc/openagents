@@ -1,0 +1,50 @@
+trace BC1SW50QGDZ25J
+  words after the separator: 16 14 20 15 0 8 13 2 10 20 18
+  checksum residue: 734539939 (Bech32m is 734539939)
+  version 16, program 751e, segwit version not yet defined
+NIP-A3 example: ok, 3 targets, 1 offered
+  bitcoin bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9k
+    offer bitcoin:bc1qxq66e0t8d7ugdecwnmv58e90tpry23nc84pg9k (P2WPKH, 3035acbd676fb886e70e9ed943e4af5846454678)
+  nano nano_1dctqbmqxfppo9pswbm6kg9d4s4mbraqn8i4m7ob9gnzz91aurmuho48jx3c
+    not offered: not Bitcoin
+  unknowntype l7tbta5b9xze6ckkfc99uohzxd009b0r
+    not offered: unknown type
+Bitcoin targets: ok, 8 targets, 5 offered
+  bitcoin BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4
+    offer bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4 (P2WPKH, 751e76e8199196d454941c45d1b3a323f1433bd6)
+  bitcoin bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0
+    offer bitcoin:bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0 (P2TR, 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)
+  bitcoin 1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2
+    offer bitcoin:1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2 (P2PKH, 77bff20c60e522dfaa3350c39b030a5d004e839a)
+  bitcoin 3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy
+    offer bitcoin:3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy (P2SH, b472a266d0bd89c13706a4132ccfb16f7c3b9fcb)
+  lightning alice@example.com
+    offer lightning:alice@example.com (Lightning address)
+  bitcoin tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7
+    not offered: not mainnet (P2WSH, 1863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262)
+  bitcoin bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs
+    not offered: segwit version not yet defined (future segwit, 751e76e8199196d454941c45d1b3a323)
+  bip353 alice@example.com
+    not offered: Bitcoin type not built
+refusals: ok, 6 targets, 0 offered
+  bitcoin BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T5
+    not offered: bad checksum
+  bitcoin BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P
+    not offered: bad witness program length
+  bitcoin bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd
+    not offered: bad checksum
+  bitcoin 1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN3
+    not offered: bad checksum
+  ethereum 0xd8da6bf26964af9d7eed9e03e53415d37aa96045
+    not offered: not Bitcoin
+  lightning Alice@example.com
+    not offered: bad address
+a kind 1 event: not kind 10133, 0 targets, 0 offered
+1000 sats over 1:2:3: ok -> 166667 333333 500000
+21 sats over NIP-57's 1:1:2: ok -> 5250 5250 10500
+7 msat, no weights: ok -> 3 2 2
+10 msat, one tag without a weight: ok -> 0 5 5
+weight -1: bad weight
+weight 1.5: bad weight
+weights 0:0:0: all weights zero
+0 msat: bad amount

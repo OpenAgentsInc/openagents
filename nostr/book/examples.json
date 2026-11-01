@@ -867,6 +867,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/payment-targets.coax",
+      "chapter": "nostr/book/ch073-payment-targets.md",
+      "stdout": "nostr/fixtures/payment-targets.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 240
     }
   ]
 }

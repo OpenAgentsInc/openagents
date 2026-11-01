@@ -1517,13 +1517,21 @@
    "number": 73,
    "title": "Payment targets",
    "file": "ch073-payment-targets.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
-    22
+    22,
+    15,
+    4
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipa3.coax",
+    "nostr/examples/payment-targets.coax",
+    "nostr/examples/checks/payment-targets.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

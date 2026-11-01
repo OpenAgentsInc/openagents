@@ -104,7 +104,7 @@
 - [70. Retired and experimental NIPs](ch070-retired-and-experimental-nips.md) — implemented
 - [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) — design draft
 - [72. Wallet Connect](ch072-wallet-connect.md) — design draft
-- [73. Payment targets](ch073-payment-targets.md) — design draft
+- [73. Payment targets](ch073-payment-targets.md) — implemented
 - [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) — design draft
 - [75. Hosts and reachability](ch075-hosts-and-reachability.md) — implemented
 - [76. Work, coordination and control](ch076-work-coordination-and-control.md) — design draft

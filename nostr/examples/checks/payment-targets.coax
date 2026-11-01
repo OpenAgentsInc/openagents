@@ -1,0 +1,115 @@
+// The checks of payment-targets.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/payment-targets.coax
+#load "../payment-targets.coax";
+
+// book:begin check
+// BIP-350's valid segwit addresses and the scriptPubKey each one pays,
+// copied from bitcoin/bips at 24e96e870fffaa257b465ce1f0370c14aac588e8
+// (bip-0350.mediawiki, SHA-256 63634b06...a7a0dec). The scriptPubKey's
+// first byte is the version (0x00, or 0x50 + v for v 1 to 16), its second
+// the program's length, then the program.
+BIP350_VALID :: [16] string.[
+  "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+  "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
+  "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y", "5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6",
+  "BC1SW50QGDZ25J", "6002751e",
+  "bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs", "5210751e76e8199196d454941c45d1b3a323",
+  "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy", "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+  "tb1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesf3hn0c", "5120000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+  "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0", "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"];
+// What this reader decides for each: mainnet v0 and v1 Taproot are offered,
+// testnet refuses for its network, other versions for having no output type.
+BIP350_STATUS :: [8] int.[A3_OK, A3_NETWORK, A3_FUTURE, A3_FUTURE, A3_FUTURE, A3_NETWORK, A3_NETWORK, A3_OK];
+spk_digit :: (c: u8) -> int { if c <= '9' { return cast(int)(c - '0'); } return cast(int)(c - 'a') + 10; }
+#forall "BIP-350's valid addresses give their scriptPubKey" i: 0..<8 {
+  t := a3_try("bitcoin", BIP350_VALID[2 * i]);
+  spk := BIP350_VALID[2 * i + 1];
+  first := spk_digit(spk[0]) * 16 + spk_digit(spk[1]);
+  #assert t.status == BIP350_STATUS[i];
+  #assert t.version == ifx first == 0 then 0 else first - 0x50;
+  #assert t.n == spk_digit(spk[2]) * 16 + spk_digit(spk[3]);
+  #assert a3_program_is(t, spk[4..<spk.count]);
+}
+// BIP-350's invalid segwit addresses: none may be offered.
+BIP350_INVALID :: [15] string.[
+  "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut",
+  "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd",
+  "tb1z0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqglt7rf",
+  "BC1S0XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ54WELL",
+  "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh",
+  "tb1q0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq24jc47",
+  "bc1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpql3jow4",
+  "BC130XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ7ZWS8R",
+  "bc1pw5dgrnzv",
+  "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav",
+  "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P",
+  "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47Zagq",
+  "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qwwzcrf",
+  "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vpggkg4j",
+  "bc1gmk9yu"];
+// The reason BIP-350 gives, as this reader's status.
+BIP350_WHY :: [15] int.[A3_ADDRESS, A3_CHECKSUM, A3_CHECKSUM, A3_CHECKSUM, A3_CHECKSUM, A3_CHECKSUM,
+  A3_ADDRESS, A3_ADDRESS, A3_LENGTH, A3_LENGTH, A3_LENGTH, A3_ADDRESS, A3_ADDRESS, A3_ADDRESS, A3_ADDRESS];
+#forall "BIP-350's invalid addresses refuse for their stated reason" i: 0..<15 {
+  #assert a3_try("bitcoin", BIP350_INVALID[i]).status == BIP350_WHY[i];
+}
+// BIP-350's generic Bech32m strings leave the residue 0x2bc830a3, through
+// chapter 15's polymod.
+BECH32M_VALID :: [7] string.["A1LQFN3A", "a1lqfn3a",
+  "an83characterlonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11sg7hg6",
+  "abcdef1l7aum6echk45nj3s0wdvt2fg8x9yrzpqzd3ryx",
+  "11llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllludsr8",
+  "split1checkupstagehandshakeupstreamerranterredcaperredlc445v", "?1v759aa"];
+#forall "Bech32m strings have residue 0x2bc830a3" i: 0..<7 {
+  s := BECH32M_VALID[i];
+  sep := 0; for k: 0..<s.count { if s[k] == '1' { sep = k; } }
+  state := b32_prefix(s[0..<sep]);
+  for k: sep + 1..<s.count { state = b32_step(state, cast(u8) b32_digit(b32_lower(s[k]))); }
+  #assert state == A3_BECH32M;
+}
+// BIP-173's segwit vectors (the pinned coax/tests/vectors/upstream/bip173/
+// bip-0173.mediawiki). Its v0 addresses still decode; its v1 to v16
+// addresses carry Bech32 checksums, which BIP-350 made invalid.
+#test "BIP-173's v0 addresses decode and its v1+ addresses refuse" {
+  #assert a3_try("bitcoin", "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3").status == A3_OK;
+  #assert a3_try("bitcoin", "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx").status == A3_NETWORK;
+  old := [3] string.["bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx",
+    "BC1SW50QA3JX3S", "bc1zw508d6qejxtdg4y5r3zarvaryvg6kdaj"];
+  for s: old { #assert a3_try("bitcoin", s).status == A3_CHECKSUM; }
+  #assert a3_try("bitcoin", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5").status == A3_CHECKSUM;
+  #assert a3_try("bitcoin", "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sL5k7").status == A3_ADDRESS;
+}
+// Base58check addresses decoded by a Python script (int, hashlib), which
+// shares no code with Coax: the version byte and hash160.
+#test "base58 addresses match Python's decoding" {
+  t := a3_try("bitcoin", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");
+  #assert t.status == A3_OK && t.form == A3_P2PKH && a3_program_is(t, "77bff20c60e522dfaa3350c39b030a5d004e839a");
+  t = a3_try("bitcoin", "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy");
+  #assert t.status == A3_OK && t.form == A3_P2SH && a3_program_is(t, "b472a266d0bd89c13706a4132ccfb16f7c3b9fcb");
+  t = a3_try("bitcoin", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn");
+  #assert t.status == A3_NETWORK && a3_program_is(t, "243f1394f44554f4ce3fd68649c19adc483ce924");
+  t = a3_try("bitcoin", "2MzQwSSnBHWHqSAqtTVQ6v47XtaisrJa1Vc");
+  #assert t.status == A3_NETWORK && t.form == A3_P2SH && a3_program_is(t, "4e9f39ca4688ff102128ea4ccda34105324305b0");
+}
+// Shares computed by Python as total*w//W with arbitrary-precision
+// integers, then one msat to each of the largest remainders total*w % W,
+// the earlier first on a tie: the rule stated in nipa3.coax, computed
+// without its q·w + r·w/W split.
+#test "splits match Python's" {
+  s: [16] int;
+  w1 := [4] int.[7, 11, 13, 17]; #assert a3_split(999, w1[..], s[..]) == A3_OK && s[0] == 146 && s[1] == 229 && s[2] == 270 && s[3] == 354;
+  w2 := [2] int.[5, 5]; #assert a3_split(1, w2[..], s[..]) == A3_OK && s[0] == 1 && s[1] == 0;
+  w3 := [5] int.[3, 0, 4, 0, 5]; #assert a3_split(123456789, w3[..], s[..]) == A3_OK && s[0] == 30864197 && s[1] == 0 && s[2] == 41152263 && s[3] == 0 && s[4] == 51440329;
+  w4 := [3] int.[1000000, 333333, 1]; #assert a3_split(A3_MAX_MSAT, w4[..], s[..]) == A3_OK && s[0] == 1574999212500393750 && s[1] == 524999212500393750 && s[2] == 1574999212500;
+  w5: [16] int; for i: 0..<16 { w5[i] = 1; }
+  #assert a3_split(100, w5[..], s[..]) == A3_OK && s[3] == 7 && s[4] == 6 && s[15] == 6;
+  w6 := [6] int.[2, 3, 5, 7, 11, 13]; #assert a3_split(17, w6[..], s[..]) == A3_OK && s[0] == 1 && s[1] == 1 && s[2] == 2 && s[3] == 3 && s[4] == 5 && s[5] == 5;
+}
+// NIP-57 appendix G's example: weights 1, 1 and 2 are 25%, 25% and 50%.
+#test "NIP-57's zap split example" {
+  w: [3] int; s: [3] int;
+  #assert a3_w3("1", "1", "2", w[..]) == A3_OK && a3_split(4000, w[..], s[..]) == A3_OK;
+  #assert s[0] == 1000 && s[1] == 1000 && s[2] == 2000;
+}
+// book:end check
