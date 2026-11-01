@@ -1,0 +1,445 @@
+// A small ONNX runner: reads a model file's graph and weights and runs it on the CPU in f32, for the
+// models CoderOS runs itself (the hand landmark model the camera daemon tracks with, os/hands.coax).
+// It takes the ops those models use, Conv (grouped and depthwise), Clip, Add, Gemm, Sigmoid,
+// Transpose, MaxPool, GlobalAveragePool and Squeeze, on a batch of one, and refuses a model with
+// anything else by naming the op. Weights and every intermediate value live in one f32 arena the
+// caller owns; ox_load says how much it needs. Results match onnxruntime to float rounding, not
+// bit for bit: the sums run in another order.
+// The file is protobuf (onnx.proto3): ModelProto.graph is field 7; GraphProto has node 1,
+// initializer 5, input 11 and output 12; NodeProto has input 1, output 2, op_type 4, attribute 5;
+// AttributeProto has name 1, f 2, i 3, ints 8; TensorProto has dims 1, data_type 2, float_data 4,
+// int64_data 7, name 8, raw_data 9; ValueInfoProto has name 1 and type 2 (tensor_type 1, shape 2,
+// dim 1, dim_value 1).
+
+OX_OK :: 0; OX_BAD :: 1; OX_UNSUPPORTED :: 2; OX_SMALL :: 3; OX_FULL :: 4;
+OX_VALUES :: 640; OX_NODES :: 320;
+OX_CONV :: 1; OX_CLIP :: 2; OX_ADD :: 3; OX_GEMM :: 4; OX_SIGMOID :: 5; OX_TRANSPOSE :: 6; OX_MAXPOOL :: 7; OX_GAP :: 8; OX_SQUEEZE :: 9;
+
+OxVal :: struct { name: string; nd: int; dims: [4] int; count: int; off: int; init: bool; ints: [4] int; nints: int; }
+OxNode :: struct {
+  op: int; ins: [3] int; nin: int; out: int;
+  kh: int; kw: int; sh: int; sw: int; pads: [4] int; group: int; perm: [4] int; nperm: int;
+  axes: [4] int; naxes: int; trans_a: bool; trans_b: bool; alpha: f32; beta: f32; dil: bool;
+}
+OxModel :: struct {
+  vals: [OX_VALUES] OxVal; nv: int; nodes: [OX_NODES] OxNode; nn: int;
+  input: int; outs: [8] int; nout: int;
+  need: int;          // arena floats the model needs
+  why: string;        // what was wrong, when ox_load did not answer OX_OK
+  op: string;         // the op it refused, for OX_UNSUPPORTED
+}
+
+// ---- protobuf
+
+OxPb :: struct { v: int; at: int; ok: bool; }
+ox_varint :: (b: [] u8, at: int) -> OxPb {
+  r: OxPb; v := 0; shift := 0; i := at;
+  while i < b.count && shift < 64 {
+    c := cast(int) b[i]; i += 1;
+    v = v | ((c & 127) << shift);
+    if c < 128 { r.v = v; r.at = i; r.ok = true; return r; }
+    shift += 7;
+  }
+  return r;
+}
+// One field: its number, wire type, the varint or fixed value, or the bytes of a length-delimited one.
+OxField :: struct { num: int; wt: int; v: int; from: int; to: int; next: int; ok: bool; }
+ox_field :: (b: [] u8, at: int, end: int) -> OxField {
+  f: OxField; k := ox_varint(b, at);
+  if !k.ok || k.at > end { return f; }
+  f.num = k.v >> 3; f.wt = k.v & 7;
+  if f.wt == 0 { x := ox_varint(b, k.at); if !x.ok || x.at > end { return f; } f.v = x.v; f.next = x.at; }
+  else if f.wt == 1 { if k.at + 8 > end { return f; } f.from = k.at; f.next = k.at + 8; }
+  else if f.wt == 5 { if k.at + 4 > end { return f; } f.v = ox_u32(b, k.at); f.next = k.at + 4; }
+  else if f.wt == 2 { n := ox_varint(b, k.at); if !n.ok || n.v < 0 || n.at + n.v > end { return f; } f.from = n.at; f.to = n.at + n.v; f.next = f.to; }
+  else { return f; }
+  f.ok = f.num > 0;
+  return f;
+}
+ox_u32 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+ox_f32 :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) ox_u32(b, at)); }
+// A repeated int64 field, packed or not, into out from n: the new count (-1 when it does not fit).
+ox_ints :: (b: [] u8, f: OxField, out: [] int, n: int) -> int {
+  if f.wt == 0 { if n >= out.count { return -1; } out[n] = f.v; return n + 1; }
+  if f.wt != 2 { return -1; }
+  k := n; at := f.from;
+  while at < f.to { x := ox_varint(b, at); if !x.ok || x.at > f.to || k >= out.count { return -1; } out[k] = x.v; k += 1; at = x.at; }
+  return k;
+}
+#test "varints and fields" {
+  b := [12] u8.[0x96, 0x01, 0x08, 0x2a, 0x12, 0x03, 0x01, 0x02, 0x03, 0xff, 0xff, 0x03];
+  v := ox_varint(b[..], 0); #assert v.ok && v.v == 150 && v.at == 2;
+  f := ox_field(b[..], 2, b.count); #assert f.ok && f.num == 1 && f.wt == 0 && f.v == 42 && f.next == 4;
+  g := ox_field(b[..], 4, b.count); #assert g.ok && g.num == 2 && g.wt == 2 && g.from == 6 && g.to == 9;
+  ints: [4] int; #assert ox_ints(b[..], g, ints[..], 0) == 3 && ints[2] == 3;
+  #assert !ox_field(b[..], 4, 8).ok && ox_varint(b[..], 9).v == 65535;
+  neg := [10] u8.[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01]; #assert ox_varint(neg[..], 0).v == -1;
+}
+
+// ---- loading
+
+ox_find :: (m: [] OxModel, name: string) -> int {
+  for i: 0..<m[0].nv { if m[0].vals[i].name == name { return i; } }
+  return -1;
+}
+ox_new :: (m: [] OxModel, name: string) -> int {
+  if m[0].nv >= OX_VALUES { return -1; }
+  i := m[0].nv; m[0].nv += 1;
+  m[0].vals[i] = OxVal.{name = name};
+  return i;
+}
+ox_fail :: (m: [] OxModel, code: int, why: string) -> int { m[0].why = why; return code; }
+ox_set_dims :: (m: [] OxModel, v: int, nd: int, d0: int, d1: int, d2: int, d3: int) {
+  m[0].vals[v].nd = nd; m[0].vals[v].dims[0] = d0; m[0].vals[v].dims[1] = d1; m[0].vals[v].dims[2] = d2; m[0].vals[v].dims[3] = d3;
+  c := 1; for i: 0..<nd { c *= m[0].vals[v].dims[i]; } m[0].vals[v].count = c;
+}
+// A TensorProto (an initializer): its shape and, for floats, its values into the arena.
+ox_tensor :: (m: [] OxModel, b: [] u8, from: int, to: int, arena: [] f32) -> int {
+  dims: [8] int; nd := 0; dtype := 0; name := ""; raw_from := -1; raw_to := -1; fd_from := -1; fd_to := -1; i64: [4] int; ni := 0;
+  at := from;
+  while at < to {
+    f := ox_field(b, at, to); if !f.ok { return ox_fail(m, OX_BAD, "a tensor does not parse"); }
+    if f.num == 1 { nd = ox_ints(b, f, dims[..], nd); if nd < 0 { return ox_fail(m, OX_UNSUPPORTED, "a tensor has more than eight dimensions"); } }
+    else if f.num == 2 && f.wt == 0 { dtype = f.v; }
+    else if f.num == 8 && f.wt == 2 { name = cast(string) b[f.from..<f.to]; }
+    else if f.num == 9 && f.wt == 2 { raw_from = f.from; raw_to = f.to; }
+    else if f.num == 4 && f.wt == 2 { fd_from = f.from; fd_to = f.to; }
+    else if f.num == 7 { ni = ox_ints(b, f, i64[..], ni); if ni < 0 { return ox_fail(m, OX_UNSUPPORTED, "an int64 tensor longer than four"); } }
+    at = f.next;
+  }
+  if nd > 4 { return ox_fail(m, OX_UNSUPPORTED, "a tensor has more than four dimensions"); }
+  v := ox_new(m, name); if v < 0 { return ox_fail(m, OX_FULL, "the model has too many values"); }
+  ox_set_dims(m, v, nd, ifx nd > 0 then dims[0] else 1, ifx nd > 1 then dims[1] else 1, ifx nd > 2 then dims[2] else 1, ifx nd > 3 then dims[3] else 1);
+  m[0].vals[v].init = true;
+  n := m[0].vals[v].count;
+  if dtype == 7 {
+    if raw_from >= 0 { ni = 0; k := raw_from; while k + 8 <= raw_to && ni < 4 { i64[ni] = ox_u32(b, k) | (ox_u32(b, k + 4) << 32); ni += 1; k += 8; } }
+    if ni != n { return ox_fail(m, OX_UNSUPPORTED, "an int64 tensor longer than four"); }
+    for i: 0..<ni { m[0].vals[v].ints[i] = i64[i]; } m[0].vals[v].nints = ni;
+    return OX_OK;
+  }
+  if dtype != 1 { return ox_fail(m, OX_UNSUPPORTED, "a tensor that is neither float32 nor int64"); }
+  m[0].vals[v].off = m[0].need; m[0].need += n;
+  src := ifx raw_from >= 0 then raw_from else fd_from; end := ifx raw_from >= 0 then raw_to else fd_to;
+  if src < 0 || end - src != n * 4 { return ox_fail(m, OX_BAD, "a float tensor's bytes do not match its shape"); }
+  if m[0].need <= arena.count { o := m[0].vals[v].off; for i: 0..<n { arena[o + i] = ox_f32(b, src + 4 * i); } }
+  return OX_OK;
+}
+// A graph input's ValueInfoProto: its name and fixed shape.
+ox_input :: (m: [] OxModel, b: [] u8, from: int, to: int) -> int {
+  name := ""; dims: [8] int; nd := 0; at := from;
+  while at < to {
+    f := ox_field(b, at, to); if !f.ok { return ox_fail(m, OX_BAD, "an input does not parse"); }
+    if f.num == 1 && f.wt == 2 { name = cast(string) b[f.from..<f.to]; }
+    if f.num == 2 && f.wt == 2 {
+      // TypeProto.tensor_type (1) .shape (2) .dim (1) .dim_value (1)
+      t := ox_sub(b, f.from, f.to, 1); s := ifx t.ok then ox_sub(b, t.from, t.to, 2) else t;
+      if s.ok {
+        k := s.from;
+        while k < s.to {
+          d := ox_field(b, k, s.to); if !d.ok { break; }
+          if d.num == 1 && d.wt == 2 && nd < 8 { dv := ox_sub(b, d.from, d.to, 1); dims[nd] = ifx dv.ok && dv.wt == 0 then dv.v else 1; nd += 1; }
+          k = d.next;
+        }
+      }
+    }
+    at = f.next;
+  }
+  if ox_find(m, name) >= 0 { return OX_OK; }   // an initializer an old exporter also listed
+  if nd > 4 { return ox_fail(m, OX_UNSUPPORTED, "an input with more than four dimensions"); }
+  v := ox_new(m, name); if v < 0 { return ox_fail(m, OX_FULL, "the model has too many values"); }
+  ox_set_dims(m, v, nd, ifx nd > 0 then dims[0] else 1, ifx nd > 1 then dims[1] else 1, ifx nd > 2 then dims[2] else 1, ifx nd > 3 then dims[3] else 1);
+  m[0].vals[v].off = m[0].need; m[0].need += m[0].vals[v].count;
+  m[0].input = v;
+  return OX_OK;
+}
+// The first field numbered num inside from..to.
+ox_sub :: (b: [] u8, from: int, to: int, num: int) -> OxField {
+  at := from;
+  while at < to { f := ox_field(b, at, to); if !f.ok { return f; } if f.num == num { return f; } at = f.next; }
+  none: OxField; return none;
+}
+ox_op :: (s: string) -> int {
+  names := [9] string.["Conv", "Clip", "Add", "Gemm", "Sigmoid", "Transpose", "MaxPool", "GlobalAveragePool", "Squeeze"];
+  for x, i: names { if x == s { return i + 1; } }
+  return 0;
+}
+// A NodeProto: its op and attributes, its inputs resolved, its output's shape worked out.
+ox_node :: (m: [] OxModel, b: [] u8, from: int, to: int) -> int {
+  if m[0].nn >= OX_NODES { return ox_fail(m, OX_FULL, "the model has too many nodes"); }
+  nd1: [1] OxNode; nd := nd1[..]; nd[0].group = 1; nd[0].sh = 1; nd[0].sw = 1; nd[0].alpha = 1.0; nd[0].beta = 1.0;
+  ins: [3] string; nin := 0; out := ""; nout := 0; op := "";
+  at := from;
+  while at < to {
+    f := ox_field(b, at, to); if !f.ok { return ox_fail(m, OX_BAD, "a node does not parse"); }
+    if f.num == 1 && f.wt == 2 { if nin >= 3 { return ox_fail(m, OX_UNSUPPORTED, "a node with more than three inputs"); } ins[nin] = cast(string) b[f.from..<f.to]; nin += 1; }
+    else if f.num == 2 && f.wt == 2 { if nout == 0 { out = cast(string) b[f.from..<f.to]; } nout += 1; }
+    else if f.num == 4 && f.wt == 2 { op = cast(string) b[f.from..<f.to]; }
+    else if f.num == 5 && f.wt == 2 { r := ox_attr(m, b, f.from, f.to, nd); if r != OX_OK { return r; } }
+    at = f.next;
+  }
+  nd[0].op = ox_op(op);
+  if nd[0].op == 0 { m[0].op = op; return ox_fail(m, OX_UNSUPPORTED, "an op this runner does not take"); }
+  if nout != 1 { return ox_fail(m, OX_UNSUPPORTED, "a node with more than one output"); }
+  if nd[0].dil { return ox_fail(m, OX_UNSUPPORTED, "a dilated convolution"); }
+  for i: 0..<nin {
+    if ins[i].count == 0 { nd[0].ins[i] = -1; continue; }   // an optional input left out
+    nd[0].ins[i] = ox_find(m, ins[i]);
+    if nd[0].ins[i] < 0 { return ox_fail(m, OX_BAD, "a node reads a value nothing made"); }
+  }
+  nd[0].nin = nin;
+  if nin < 1 || nd[0].ins[0] < 0 { return ox_fail(m, OX_BAD, "a node without its input"); }
+  v := ox_new(m, out); if v < 0 { return ox_fail(m, OX_FULL, "the model has too many values"); }
+  nd[0].out = v;
+  r := ox_shape(m, nd);
+  if r != OX_OK { return r; }
+  m[0].vals[v].off = m[0].need; m[0].need += m[0].vals[v].count;
+  m[0].nodes[m[0].nn] = nd[0]; m[0].nn += 1;
+  return OX_OK;
+}
+// An AttributeProto onto the node.
+ox_attr :: (m: [] OxModel, b: [] u8, from: int, to: int, nd: [] OxNode) -> int {
+  name := ""; iv := 0; fv: f32 = 0.0; ints: [8] int; ni := 0; at := from;
+  while at < to {
+    f := ox_field(b, at, to); if !f.ok { return ox_fail(m, OX_BAD, "an attribute does not parse"); }
+    if f.num == 1 && f.wt == 2 { name = cast(string) b[f.from..<f.to]; }
+    else if f.num == 2 && f.wt == 5 { fv = f32_from_bits(cast(u32) f.v); }
+    else if f.num == 3 && f.wt == 0 { iv = f.v; }
+    else if f.num == 8 { ni = ox_ints(b, f, ints[..], ni); if ni < 0 { return ox_fail(m, OX_UNSUPPORTED, "an attribute list longer than eight"); } }
+    at = f.next;
+  }
+  if name == "kernel_shape" && ni == 2 { nd[0].kh = ints[0]; nd[0].kw = ints[1]; }
+  else if name == "strides" && ni == 2 { nd[0].sh = ints[0]; nd[0].sw = ints[1]; }
+  else if name == "pads" && ni == 4 { for i: 0..<4 { nd[0].pads[i] = ints[i]; } }
+  else if name == "dilations" { for i: 0..<ni { if ints[i] != 1 { nd[0].dil = true; } } }
+  else if name == "group" { nd[0].group = iv; }
+  else if name == "perm" && ni <= 4 { for i: 0..<ni { nd[0].perm[i] = ints[i]; } nd[0].nperm = ni; }
+  else if name == "axes" && ni <= 4 { for i: 0..<ni { nd[0].axes[i] = ints[i]; } nd[0].naxes = ni; }
+  else if name == "transA" { nd[0].trans_a = iv != 0; }
+  else if name == "transB" { nd[0].trans_b = iv != 0; }
+  else if name == "alpha" { nd[0].alpha = fv; }
+  else if name == "beta" { nd[0].beta = fv; }
+  else if name == "auto_pad" || name == "ceil_mode" || name == "count_include_pad" || name == "storage_order" {
+    return ox_fail(m, OX_UNSUPPORTED, "an attribute this runner does not take (auto_pad, ceil_mode, storage_order)");
+  }
+  return OX_OK;
+}
+ox_dim :: (m: [] OxModel, v: int, i: int) -> int { return m[0].vals[v].dims[i]; }
+ox_shape :: (m: [] OxModel, nd: [] OxNode) -> int {
+  x := nd[0].ins[0]; o := nd[0].out; xv := m[0].vals[x];
+  if nd[0].op == OX_TRANSPOSE {
+    if nd[0].nperm != xv.nd { return ox_fail(m, OX_UNSUPPORTED, "a transpose without its permutation"); }
+    d: [4] int; for i: 0..<4 { d[i] = 1; } for i: 0..<nd[0].nperm { if nd[0].perm[i] < 0 || nd[0].perm[i] >= xv.nd { return ox_fail(m, OX_BAD, "a permutation out of range"); } d[i] = xv.dims[nd[0].perm[i]]; }
+    ox_set_dims(m, o, xv.nd, d[0], d[1], d[2], d[3]); return OX_OK;
+  }
+  if nd[0].op == OX_CLIP || nd[0].op == OX_SIGMOID { ox_set_dims(m, o, xv.nd, xv.dims[0], xv.dims[1], xv.dims[2], xv.dims[3]); return OX_OK; }
+  if nd[0].op == OX_ADD {
+    if nd[0].nin != 2 || nd[0].ins[1] < 0 || m[0].vals[nd[0].ins[1]].count != xv.count { return ox_fail(m, OX_UNSUPPORTED, "an Add that broadcasts"); }
+    ox_set_dims(m, o, xv.nd, xv.dims[0], xv.dims[1], xv.dims[2], xv.dims[3]); return OX_OK;
+  }
+  if nd[0].op == OX_CONV || nd[0].op == OX_MAXPOOL || nd[0].op == OX_GAP {
+    if xv.nd != 4 || xv.dims[0] != 1 { return ox_fail(m, OX_UNSUPPORTED, "a 2-D op on anything but one NCHW image"); }
+    if nd[0].op == OX_GAP { ox_set_dims(m, o, 4, 1, xv.dims[1], 1, 1); return OX_OK; }
+    c := xv.dims[1]; kh := nd[0].kh; kw := nd[0].kw; mm := c;
+    if nd[0].op == OX_CONV {
+      if nd[0].nin < 2 || nd[0].ins[1] < 0 { return ox_fail(m, OX_BAD, "a convolution without weights"); }
+      w := m[0].vals[nd[0].ins[1]];
+      if w.nd != 4 || nd[0].group < 1 || c % nd[0].group != 0 || w.dims[1] * nd[0].group != c || w.dims[0] % nd[0].group != 0 { return ox_fail(m, OX_BAD, "a convolution's weights do not fit its input"); }
+      if kh == 0 { kh = w.dims[2]; kw = w.dims[3]; }
+      if kh != w.dims[2] || kw != w.dims[3] { return ox_fail(m, OX_BAD, "a convolution's kernel does not match its weights"); }
+      mm = w.dims[0];
+      if nd[0].nin > 2 && nd[0].ins[2] >= 0 && m[0].vals[nd[0].ins[2]].count != mm { return ox_fail(m, OX_BAD, "a convolution's bias does not match"); }
+      nd[0].kh = kh; nd[0].kw = kw;
+    }
+    if kh < 1 || kw < 1 || nd[0].sh < 1 || nd[0].sw < 1 { return ox_fail(m, OX_BAD, "a kernel or stride of zero"); }
+    oh := (xv.dims[2] + nd[0].pads[0] + nd[0].pads[2] - kh) / nd[0].sh + 1;
+    ow := (xv.dims[3] + nd[0].pads[1] + nd[0].pads[3] - kw) / nd[0].sw + 1;
+    if oh < 1 || ow < 1 { return ox_fail(m, OX_BAD, "a 2-D op with nothing left"); }
+    ox_set_dims(m, o, 4, 1, mm, oh, ow); return OX_OK;
+  }
+  if nd[0].op == OX_SQUEEZE {
+    axes: [4] int; na := nd[0].naxes; for i: 0..<na { axes[i] = nd[0].axes[i]; }
+    if nd[0].nin > 1 && nd[0].ins[1] >= 0 { a := m[0].vals[nd[0].ins[1]]; na = a.nints; for i: 0..<na { axes[i] = a.ints[i]; } }
+    d: [4] int; k := 0;
+    for i: 0..<xv.nd {
+      drop := false; for j: 0..<na { ax := ifx axes[j] < 0 then axes[j] + xv.nd else axes[j]; if ax == i { drop = true; } }
+      if na == 0 && xv.dims[i] == 1 { drop = true; }
+      if drop && xv.dims[i] != 1 { return ox_fail(m, OX_BAD, "a squeeze of a dimension that is not one"); }
+      if !drop { d[k] = xv.dims[i]; k += 1; }
+    }
+    for i: k..<4 { d[i] = 1; }
+    ox_set_dims(m, o, k, d[0], d[1], d[2], d[3]); return OX_OK;
+  }
+  if nd[0].op == OX_GEMM {
+    if nd[0].nin < 2 || nd[0].ins[1] < 0 { return ox_fail(m, OX_BAD, "a Gemm without B"); }
+    b := m[0].vals[nd[0].ins[1]];
+    if xv.nd != 2 || b.nd != 2 { return ox_fail(m, OX_UNSUPPORTED, "a Gemm on anything but matrices"); }
+    rows := ifx nd[0].trans_a then xv.dims[1] else xv.dims[0]; k := ifx nd[0].trans_a then xv.dims[0] else xv.dims[1];
+    kb := ifx nd[0].trans_b then b.dims[1] else b.dims[0]; cols := ifx nd[0].trans_b then b.dims[0] else b.dims[1];
+    if k != kb { return ox_fail(m, OX_BAD, "a Gemm's matrices do not fit"); }
+    if nd[0].nin > 2 && nd[0].ins[2] >= 0 { cc := m[0].vals[nd[0].ins[2]].count; if cc != cols && cc != rows * cols && cc != 1 { return ox_fail(m, OX_UNSUPPORTED, "a Gemm bias that broadcasts another way"); } }
+    ox_set_dims(m, o, 2, rows, cols, 1, 1); return OX_OK;
+  }
+  return ox_fail(m, OX_UNSUPPORTED, "an op this runner does not take");
+}
+// Reads the model in bytes: OX_OK, or why not (m.why, and m.op for an op it does not take). The
+// weights go into arena; when it is smaller than m.need the answer is OX_SMALL and m.need says
+// how much to give it.
+ox_load :: (m: [] OxModel, b: [] u8, arena: [] f32) -> int {
+  m[0].nv = 0; m[0].nn = 0; m[0].need = 0; m[0].input = -1; m[0].nout = 0; m[0].why = ""; m[0].op = "";
+  g := ox_sub(b, 0, b.count, 7);
+  if !g.ok || g.wt != 2 { return ox_fail(m, OX_BAD, "not an ONNX model (no graph)"); }
+  at := g.from;
+  while at < g.to {   // weights and inputs first: nodes may come before them in the file
+    f := ox_field(b, at, g.to); if !f.ok { return ox_fail(m, OX_BAD, "the graph does not parse"); }
+    if f.num == 5 && f.wt == 2 { r := ox_tensor(m, b, f.from, f.to, arena); if r != OX_OK { return r; } }
+    at = f.next;
+  }
+  at = g.from;
+  while at < g.to {
+    f := ox_field(b, at, g.to);
+    if f.num == 11 && f.wt == 2 { r := ox_input(m, b, f.from, f.to); if r != OX_OK { return r; } }
+    at = f.next;
+  }
+  if m[0].input < 0 { return ox_fail(m, OX_BAD, "the graph has no input"); }
+  at = g.from;
+  while at < g.to {
+    f := ox_field(b, at, g.to);
+    if f.num == 1 && f.wt == 2 { r := ox_node(m, b, f.from, f.to); if r != OX_OK { return r; } }
+    at = f.next;
+  }
+  at = g.from;
+  while at < g.to {
+    f := ox_field(b, at, g.to);
+    if f.num == 12 && f.wt == 2 {
+      nm := ox_sub(b, f.from, f.to, 1);
+      v := ifx nm.ok then ox_find(m, cast(string) b[nm.from..<nm.to]) else -1;
+      if v < 0 || m[0].nout >= 8 { return ox_fail(m, OX_BAD, "an output nothing makes"); }
+      m[0].outs[m[0].nout] = v; m[0].nout += 1;
+    }
+    at = f.next;
+  }
+  if m[0].need > arena.count { return ox_fail(m, OX_SMALL, "the arena is too small"); }
+  return OX_OK;
+}
+
+// ---- running
+
+ox_conv :: (x: [] f32, c: int, h: int, w: int, wt: [] f32, bias: [] f32, has_bias: bool, mm: int, group: int, kh: int, kw: int,
+            sh: int, sw: int, pt: int, pl: int, y: [] f32, oh: int, ow: int) {
+  cg := c / group; mg := mm / group; plane := oh * ow; ip := h * w;
+  if kh == 1 && kw == 1 && sh == 1 && sw == 1 && pt == 0 && pl == 0 && oh == h && ow == w {
+    // pointwise: every output channel a weighted sum of its group's input planes
+    for o: 0..<mm {
+      b := ifx has_bias then bias[o] else 0.0;
+      yo := y[o * plane..<(o + 1) * plane];
+      for p: 0..<plane { yo[p] = b; }
+      g := o / mg;
+      for ci: 0..<cg {
+        k := wt[o * cg + ci];
+        xc := x[(g * cg + ci) * ip..<(g * cg + ci + 1) * ip];
+        for p: 0..<plane { yo[p] += k * xc[p]; }
+      }
+    }
+    return;
+  }
+  for o: 0..<mm {
+    b := ifx has_bias then bias[o] else 0.0;
+    g := o / mg;
+    for oy: 0..<oh {
+      for ox: 0..<ow {
+        acc: f32 = b;
+        for ci: 0..<cg {
+          xc := (g * cg + ci) * ip; wo := (o * cg + ci) * kh * kw;
+          for ky: 0..<kh {
+            iy := oy * sh - pt + ky;
+            if iy < 0 || iy >= h { continue; }
+            for kx: 0..<kw {
+              ix := ox * sw - pl + kx;
+              if ix < 0 || ix >= w { continue; }
+              acc += x[xc + iy * w + ix] * wt[wo + ky * kw + kx];
+            }
+          }
+        }
+        y[o * plane + oy * ow + ox] = acc;
+      }
+    }
+  }
+}
+ox_sigmoid :: (v: f32) -> f32 { return cast(f32) (1.0 / (1.0 + exp(-cast(f64) v))); }
+ox_view :: (m: [] OxModel, arena: [] f32, v: int) -> [] f32 { o := m[0].vals[v].off; return arena[o..<o + m[0].vals[v].count]; }
+// Runs every node, once the caller has written the input (ox_view of m.input).
+ox_run :: (m: [] OxModel, arena: [] f32) {
+  for ni: 0..<m[0].nn {
+    nd := m[0].nodes[ni];
+    x := ox_view(m, arena, nd.ins[0]); y := ox_view(m, arena, nd.out);
+    xv := m[0].vals[nd.ins[0]]; yv := m[0].vals[nd.out];
+    if nd.op == OX_CONV {
+      none: [1] f32; has := nd.nin > 2 && nd.ins[2] >= 0;
+      bias := ifx has then ox_view(m, arena, nd.ins[2]) else none[..];
+      ox_conv(x, xv.dims[1], xv.dims[2], xv.dims[3], ox_view(m, arena, nd.ins[1]), bias, has, yv.dims[1], nd.group, nd.kh, nd.kw,
+              nd.sh, nd.sw, nd.pads[0], nd.pads[1], y, yv.dims[2], yv.dims[3]);
+    } else if nd.op == OX_CLIP {
+      lo: f32 = -340282346638528859811704183484516925440.0; hi: f32 = 340282346638528859811704183484516925440.0;
+      if nd.nin > 1 && nd.ins[1] >= 0 { lo = ox_view(m, arena, nd.ins[1])[0]; }
+      if nd.nin > 2 && nd.ins[2] >= 0 { hi = ox_view(m, arena, nd.ins[2])[0]; }
+      for i: 0..<x.count { v := x[i]; y[i] = ifx v < lo then lo else ifx v > hi then hi else v; }
+    } else if nd.op == OX_ADD {
+      z := ox_view(m, arena, nd.ins[1]);
+      for i: 0..<x.count { y[i] = x[i] + z[i]; }
+    } else if nd.op == OX_SIGMOID {
+      for i: 0..<x.count { y[i] = ox_sigmoid(x[i]); }
+    } else if nd.op == OX_TRANSPOSE {
+      // out[i0,i1,i2,i3] = in[the same indices put back through perm]
+      sd: [4] int; for i: 0..<4 { sd[i] = ifx i < xv.nd then xv.dims[i] else 1; }
+      st: [4] int; st[3] = 1; st[2] = sd[3]; st[1] = sd[2] * sd[3]; st[0] = sd[1] * sd[2] * sd[3];
+      ps: [4] int; for i: 0..<4 { ps[i] = ifx i < nd.nperm then st[nd.perm[i]] else 0; }
+      od: [4] int; for i: 0..<4 { od[i] = ifx i < yv.nd then yv.dims[i] else 1; }
+      k := 0;
+      for a: 0..<od[0] { for b: 0..<od[1] { for c: 0..<od[2] { base := a * ps[0] + b * ps[1] + c * ps[2]; for d: 0..<od[3] { y[k] = x[base + d * ps[3]]; k += 1; } } } }
+    } else if nd.op == OX_MAXPOOL {
+      c := xv.dims[1]; h := xv.dims[2]; w := xv.dims[3]; oh := yv.dims[2]; ow := yv.dims[3];
+      for ch: 0..<c { for oy: 0..<oh { for ox: 0..<ow {
+        best: f32 = -340282346638528859811704183484516925440.0;
+        for ky: 0..<nd.kh { iy := oy * nd.sh - nd.pads[0] + ky; if iy < 0 || iy >= h { continue; }
+          for kx: 0..<nd.kw { ix := ox * nd.sw - nd.pads[1] + kx; if ix < 0 || ix >= w { continue; } v := x[(ch * h + iy) * w + ix]; if v > best { best = v; } } }
+        y[(ch * oh + oy) * ow + ox] = best;
+      } } }
+    } else if nd.op == OX_GAP {
+      c := xv.dims[1]; p := xv.dims[2] * xv.dims[3];
+      for ch: 0..<c { s: f32 = 0.0; for i: 0..<p { s += x[ch * p + i]; } y[ch] = s / cast(f32) p; }
+    } else if nd.op == OX_SQUEEZE {
+      for i: 0..<x.count { y[i] = x[i]; }
+    } else if nd.op == OX_GEMM {
+      bm := ox_view(m, arena, nd.ins[1]); bv := m[0].vals[nd.ins[1]];
+      rows := yv.dims[0]; cols := yv.dims[1]; k := ifx nd.trans_a then xv.dims[0] else xv.dims[1];
+      has := nd.nin > 2 && nd.ins[2] >= 0; none: [1] f32; cm := ifx has then ox_view(m, arena, nd.ins[2]) else none[..];
+      for r: 0..<rows { for j: 0..<cols {
+        s: f32 = 0.0;
+        for t: 0..<k {
+          a := ifx nd.trans_a then x[t * xv.dims[1] + r] else x[r * xv.dims[1] + t];
+          bb := ifx nd.trans_b then bm[j * bv.dims[1] + t] else bm[t * bv.dims[1] + j];
+          s += a * bb;
+        }
+        cv: f32 = 0.0; if has { cv = ifx cm.count == 1 then cm[0] else ifx cm.count == cols then cm[j] else cm[r * cols + j]; }
+        y[r * cols + j] = nd.alpha * s + nd.beta * cv;
+      } }
+    }
+  }
+}
+
+#test "a convolution, pointwise and 3x3 with padding and stride, and a depthwise one" {
+  x := [18] f32.[1,2,3, 4,5,6, 7,8,9,  1,0,0, 0,1,0, 0,0,1];   // two 3x3 channels
+  w1 := [4] f32.[1, 1,  2, -1]; b1 := [2] f32.[0, 0.5]; y1: [18] f32;
+  ox_conv(x[..], 2, 3, 3, w1[..], b1[..], true, 2, 1, 1, 1, 1, 1, 0, 0, y1[..], 3, 3);
+  #assert y1[0] == 2 && y1[4] == 6 && y1[9] == 1.5 && y1[13] == 9.5;
+  // one 3x3 all-ones kernel over channel 0, padding 1, stride 2: the 2x2 corners of the sums
+  w2: [18] f32; for i: 0..<9 { w2[i] = 1; } none: [1] f32; y2: [4] f32;
+  ox_conv(x[..], 2, 3, 3, w2[..], none[..], false, 1, 1, 3, 3, 2, 2, 1, 1, y2[..], 2, 2);
+  #assert y2[0] == 12 && y2[3] == 28;   // channel 1 weighs nothing
+  // depthwise (group 2): each channel its own 3x3 kernel, centre only, so the picture comes back
+  w3: [18] f32; w3[4] = 1; w3[13] = 2; y3: [18] f32;
+  ox_conv(x[..], 2, 3, 3, w3[..], none[..], false, 2, 2, 3, 3, 1, 1, 1, 1, y3[..], 3, 3);
+  #assert y3[8] == 9 && y3[9] == 2 && y3[10] == 0 && y3[17] == 2;
+  #assert ox_sigmoid(0) == 0.5 && ox_sigmoid(20) > 0.999 && ox_sigmoid(-20) < 0.001;
+}

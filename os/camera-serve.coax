@@ -7,8 +7,8 @@
 // The Rust daemon gave each output a thread behind a one-frame mailbox; this is one poll loop, and
 // the recording keeps the same mailbox: the frame being written, one waiting, and any more dropped
 // and counted. The loopback write and the hands lane finish within the frame, as their threads did.
+// The hand tracker runs as a child (os/hands.coax) fed one frame at a time, as its thread was.
 // Differences:
-// - the hand tracker is not ported yet: `hands on` turns the lane on and its status says so;
 // - a recording's ending (ffmpeg finishing, the probe and the tag) holds the loop while it runs,
 //   so for that second the outputs get no frames;
 // - an MJPEG frame without Huffman tables gets the standard ones (T.81 K.3) spliced in, as UVC
@@ -19,6 +19,7 @@
 // A camera path that names a regular file is read as concatenated JPEG frames played at the
 // grant's rate, for tests on a host whose camera is in use.
 #load "../coax/lib/image/jpeg.coax";
+#load "hands.coax";
 
 cxcam_strerror :: (err: int, out: [] u8) -> int #foreign;
 cxcam_open :: (path: [] u8, w: int, h: int, fps: int) -> int #foreign;
@@ -44,6 +45,7 @@ cxcam_hangup :: (h: int) -> int #foreign;
 cxcam_poll :: (timeout_ms: int) -> int #foreign;
 cxproc_out_null :: (h: int) -> int #foreign;
 cxproc_write_some :: (h: int, s: [] u8) -> int #foreign;
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
 cxproc_wall_us :: () -> int #foreign;
 cxterm_watch :: () -> int #foreign;
 cxterm_stopped :: () -> int #foreign;
@@ -246,6 +248,9 @@ Rec :: struct {
 }
 Lane :: struct { delivered: int; dropped: int; }
 Conn :: struct { h: int; n: int; opened_ms: int; buf: [8192] u8; }
+// The hand tracker's child (os/hands.coax): the frame being written to it, one waiting, its answer
+// so far, and the readers' drop count at the line last sent.
+Worker :: struct { h: int; busy: bool; len: int; off: int; queued: bool; announced: int; line: [16384] u8; n: int; }
 Daemon :: struct {
   grant: [1] Grant;
   control: [1] Txt; hands_sock: [1] Txt;
@@ -256,6 +261,7 @@ Daemon :: struct {
   hands_on: bool; hands_status: [1] Txt; hl: Lane; readers: [64] int; nreaders: int;
   conns: [16] Conn;
   stopping: bool;
+  hw: Worker;
   file_src: bool; file_n: int; file_at: int; file_next_ms: int; file_start_ms: int; file_k: int;
 }
 
@@ -340,7 +346,7 @@ sv_trim :: (s: string) -> string {
 
 // ---- the recording (record.rs)
 
-Bufs :: struct { cur: [] u8; next: [] u8; }
+Bufs :: struct { cur: [] u8; next: [] u8; hw_cur: [] u8; hw_next: [] u8; }
 sv_record_start :: (d: [] Daemon, given: string, has: bool, o: [] Jo) {
   if d[0].rec.on { m: [1] Txt; tx_set(m[..], "a recording is already writing "); tx_add(m[..], tx(d[0].rec.path[..])); sv_refused(o, "already_recording", tx(m[..])); return; }
   path: [1] Txt;
@@ -635,12 +641,96 @@ sv_serve_conns :: (d: [] Daemon, b: Bufs) {
 
 // ---- one frame to every lane
 
+// ---- the hands lane (hands.rs, publisher.rs)
+
+// The lane offered a frame: while tracking is off it is passed over; while on, it goes to the tracker
+// when the tracker is free, waits when it is not, and is dropped when one already waits.
+sv_hands_offer :: (d: [] Daemon, rgb: [] u8, w: int, h: int, b: Bufs) {
+  if !d[0].hands_on { d[0].hl.delivered += 1; return; }
+  if d[0].hw.h < 0 {
+    hd := proc_new();
+    ok := proc_arg(hd, "/proc/self/exe") && proc_arg(hd, "hands-worker");
+    e := ifx ok then proc_start(hd) else 22;
+    if e != 0 { r := proc_release(hd); tx_set(d[0].hands_status[..], "the hand tracker: "); sv_os_error(d[0].hands_status[..], e); d[0].hl.delivered += 1; return; }
+    d[0].hw.h = hd; d[0].hw.busy = false; d[0].hw.len = 0; d[0].hw.queued = false; d[0].hw.n = 0;
+  }
+  if !d[0].hw.busy && d[0].hw.len == 0 { sv_hands_pack(d, rgb, w, h, b.hw_cur); d[0].hw.len = 16 + HK_IN; d[0].hw.off = 0; d[0].hw.busy = true; return; }
+  if d[0].hw.queued { d[0].hl.dropped += 1; return; }
+  sv_hands_pack(d, rgb, w, h, b.hw_next); d[0].hw.queued = true;
+}
+// The 16-byte head (capture time in microseconds, frames dropped since the last line) and the square.
+sv_hands_pack :: (d: [] Daemon, rgb: [] u8, w: int, h: int, out: [] u8) {
+  us := cxproc_wall_us(); dropped := d[0].hl.dropped - d[0].hw.announced;
+  for i: 0..<8 { out[i] = cast,trunc(u8) ((us >> (8 * i)) & 255); out[8 + i] = cast,trunc(u8) ((dropped >> (8 * i)) & 255); }
+  hk_resize(rgb, w, h, out[16..<16 + HK_IN]);
+}
+// Feeds the tracker what it takes and reads what it said: its status, the lines for the readers,
+// and when it is free again (the waiting frame goes then).
+sv_hands_pump :: (d: [] Daemon, b: Bufs) {
+  if d[0].hw.h < 0 { return; }
+  hd := d[0].hw.h;
+  if d[0].hw.len > 0 {
+    n := cxproc_write_some(hd, b.hw_cur[d[0].hw.off..<d[0].hw.len]);
+    if n < 0 { sv_hands_lost(d); return; }
+    d[0].hw.off += n;
+    if d[0].hw.off >= d[0].hw.len {
+      d[0].hw.len = 0; d[0].hl.delivered += 1;
+      // what the line for this frame will say was dropped is now announced
+      v := 0; for i: 0..<8 { v = v | (cast(int) b.hw_cur[8 + i] << (8 * i)); } d[0].hw.announced += v;
+    }
+  }
+  while true {
+    rb: [16384] u8; n := cxproc_read_bytes(hd, 0, rb[..]);
+    if n == 0 { break; }
+    if n < 0 { sv_hands_lost(d); return; }
+    for k: 0..<n {
+      c := rb[k];
+      if c != '\n' { if d[0].hw.n < 16384 { d[0].hw.line[d[0].hw.n] = c; d[0].hw.n += 1; } continue; }
+      l := cast(string) d[0].hw.line[0..<d[0].hw.n]; d[0].hw.n = 0;
+      if l == "D" {
+        d[0].hw.busy = false;
+        if d[0].hw.queued {
+          d[0].hw.queued = false;
+          for i: 0..<16 + HK_IN { b.hw_cur[i] = b.hw_next[i]; }
+          // the waiting frame's head still counts drops from before it waited
+          dropped := d[0].hl.dropped - d[0].hw.announced;
+          for i: 0..<8 { b.hw_cur[8 + i] = cast,trunc(u8) ((dropped >> (8 * i)) & 255); }
+          d[0].hw.len = 16 + HK_IN; d[0].hw.off = 0; d[0].hw.busy = true;
+        }
+      } else if l.count > 2 && l[0] == 'S' && l[1] == ' ' {
+        if d[0].hands_on { tx_set(d[0].hands_status[..], l[2..<l.count]); }
+      } else if l.count > 2 && l[0] == 'L' && l[1] == ' ' {
+        if d[0].hands_on { sv_publish(d, l[2..<l.count]); }
+      }
+    }
+  }
+}
+// Publisher::publish: the line to every reader; one whose socket is full or gone is let go.
+sv_publish :: (d: [] Daemon, line: string) {
+  wb: [16400] u8; wn := 0; for c: line { wb[wn] = c; wn += 1; } wb[wn] = '\n'; wn += 1;
+  k := 0;
+  for i: 0..<d[0].nreaders {
+    h := d[0].readers[i];
+    if cxcam_write(h, wb[0..<wn]) == wn { d[0].readers[k] = h; k += 1; } else { x := cxcam_hangup(h); }
+  }
+  d[0].nreaders = k;
+}
+sv_hands_lost :: (d: [] Daemon) {
+  hd := d[0].hw.h; k := proc_kill(hd, PROC_SIGKILL); s := proc_wait(hd, 2000); r := proc_release(hd);
+  d[0].hw.h = -1; d[0].hw.busy = false; d[0].hw.len = 0; d[0].hw.queued = false;
+  if d[0].hands_on { tx_set(d[0].hands_status[..], "the hand tracker stopped; it starts again on the next frame"); }
+}
+sv_hands_stop :: (d: [] Daemon) {
+  if d[0].hw.h < 0 { return; }
+  hd := d[0].hw.h; c := proc_close_stdin(hd); s := proc_wait(hd, 2000);
+  if s == PROC_RUNNING { k := proc_kill(hd, PROC_SIGKILL); s = proc_wait(hd, 2000); }
+  r := proc_release(hd); d[0].hw.h = -1;
+}
+
 sv_fanout :: (d: [] Daemon, rgb: [] u8, w: int, h: int, b: Bufs, yuyv: [] u8) {
   if d[0].grant[0].has_loopback { sv_loopback_offer(d, rgb, w, h, yuyv); }
   sv_record_offer(d, rgb, w, h, b);
-  // hands: the lane takes every frame; while on, the tracker would read it (not ported yet)
-  d[0].hl.delivered += 1;
-  if d[0].hands_on { tx_set(d[0].hands_status[..], "the hand tracker is not ported to Coax yet; no landmarks are published"); }
+  sv_hands_offer(d, rgb, w, h, b);
 }
 // RecordSink's failure path: the pipe broke, so the recording ends where it is.
 sv_record_broke :: (d: [] Daemon, why: [] Txt) {
@@ -674,8 +764,9 @@ cam_serve :: () -> int {
   tx_add(m[..], tx(d[0].hands_sock[..])); tx_add(m[..], ", loopback "); tx_add(m[..], ifx d[0].grant[0].has_loopback then tx(d[0].grant[0].loopback[..]) else "none"); sv_say(tx(m[..]));
   raw: [SV_FRAME_MAX] u8; spliced: [SV_FRAME_MAX] u8; file: [67108864] u8;
   work: [12441600] u8; rgba: [SV_PIXELS_MAX * 4] u8; rgb: [SV_PIXELS_MAX * 3] u8; yuyv: [SV_PIXELS_MAX * 2] u8;
-  cur: [SV_PIXELS_MAX * 3] u8; next: [SV_PIXELS_MAX * 3] u8;
-  b := Bufs.{cur = cur[..], next = next[..]};
+  cur: [SV_PIXELS_MAX * 3] u8; next: [SV_PIXELS_MAX * 3] u8; hw_cur: [16 + HK_IN] u8; hw_next: [16 + HK_IN] u8;
+  b := Bufs.{cur = cur[..], next = next[..], hw_cur = hw_cur[..], hw_next = hw_next[..]};
+  d[0].hw.h = -1;
   open := false; retry_at := 0;
   while !d[0].stopping && cxterm_stopped() == 0 {
     if !open && sv_now_ms() >= retry_at {
@@ -689,11 +780,12 @@ cam_serve :: () -> int {
         retry_at = sv_now_ms() + 2000;
       }
     }
-    busy := d[0].rec.on && d[0].rec.cur_len > 0;
+    busy := (d[0].rec.on && d[0].rec.cur_len > 0) || d[0].hw.busy;
     p := cxcam_poll(ifx busy then 2 else ifx open && d[0].file_src then 5 else 50);
     sv_accept_all(d);
     sv_serve_conns(d, b);
     if d[0].rec.on { pw: [1] Txt; if !sv_record_pump(d, b, false, pw[..]) { sv_record_broke(d, pw[..]); } }
+    sv_hands_pump(d, b);
     if !open || d[0].stopping { continue; }
     n := ifx d[0].file_src then sv_file_frame(d, file[..], raw[..]) else cxcam_frame(raw[..]);
     if n == 0 { continue; }
@@ -720,6 +812,7 @@ cam_serve :: () -> int {
       mb: [4096] u8; s: [1] Txt; tx_set(s[..], "the recording did not stop cleanly: "); tx_add(s[..], cam_str(jd[0], 0, "message", mb[..])); sv_say(tx(s[..]));
     }
   }
+  sv_hands_stop(d);
   x := cxcam_close(); x = cxcam_out_close();
   for i: 0..<16 { if d[0].conns[i].h >= 0 { x = cxcam_hangup(d[0].conns[i].h); } }
   for i: 0..<d[0].nreaders { x = cxcam_hangup(d[0].readers[i]); }

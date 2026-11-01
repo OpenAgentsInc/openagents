@@ -270,3 +270,27 @@ int64_t cxcam_poll(int64_t timeout_ms) {
   int r = poll(p, (nfds_t)n, (int)timeout_ms);
   return r < 0 ? 0 : r;
 }
+
+/* What stdin has within timeout_ms (-1 waits): the count read into out, 0 when nothing came, -1 at
+   its end or on an error. For the hand tracker, which the daemon runs as a child fed frames. */
+int64_t cxcam_stdin(coax_v_u8 out, int64_t timeout_ms) {
+  struct pollfd p = {0, POLLIN, 0};
+  int r;
+  do { r = poll(&p, 1, (int)timeout_ms); } while (r < 0 && errno == EINTR);
+  if (r == 0) return 0;
+  if (r < 0) return -1;
+  ssize_t n;
+  do { n = read(0, out.data, (size_t)out.count); } while (n < 0 && errno == EINTR);
+  return n > 0 ? (int64_t)n : -1;
+}
+/* All of s onto stdout, waiting while the pipe is full: 0, or -1 when it broke. */
+int64_t cxcam_stdout(coax_v_u8 s) {
+  int64_t done = 0;
+  while (done < s.count) {
+    ssize_t n = write(1, s.data + done, (size_t)(s.count - done));
+    if (n < 0 && errno == EINTR) continue;
+    if (n <= 0) return -1;
+    done += n;
+  }
+  return 0;
+}

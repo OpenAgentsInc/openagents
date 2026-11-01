@@ -51,6 +51,9 @@ int64_t cxcam_write(int64_t h, coax_v_u8 s);
 int64_t cxcam_mute(int64_t h);   /* a connection only written to: not polled */
 int64_t cxcam_hangup(int64_t h);
 int64_t cxcam_poll(int64_t timeout_ms);
+/* stdin within timeout_ms: the count, 0 for nothing, -1 at the end; all of s onto stdout, 0 or -1. */
+int64_t cxcam_stdin(coax_v_u8 out, int64_t timeout_ms);
+int64_t cxcam_stdout(coax_v_u8 s);
 #ifdef __cplusplus
 }
 #endif

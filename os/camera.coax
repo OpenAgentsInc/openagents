@@ -261,6 +261,9 @@ tool_main :: () -> int #export_c {
     else if nw < words.count { words[nw] = x; nw += 1; }
   }
   if nw > 0 && words[0] == "serve" { return cam_serve(); }
+  // hidden: the hand tracker the daemon runs as its child, and one frame through the model for checks
+  if nw == 1 && words[0] == "hands-worker" { return hk_worker(); }
+  if nw == 5 && words[0] == "infer" { return hk_infer_verb(words[1], words[2], sv_u32(words[3]), sv_u32(words[4])); }
   v := cam_verb(words[0..<nw]);
   if !v.ok {
     if nw == 0 { tool_errln(CAM_USAGE); return 2; }

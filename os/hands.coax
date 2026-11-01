@@ -1,0 +1,330 @@
+// CoderOS hand tracker in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 5), from
+// crates/coder-hands/src/{landmarker,pose,wire,model}.rs (openagents 2ca255550e~1). The camera daemon
+// (os/camera-serve.coax) runs it as a child, `coderos-camera hands-worker`, so a slow frame holds the
+// tracker and not the camera: the daemon writes one frame at a time (a 16-byte head, the capture
+// time in microseconds and the frames dropped since the last, then 224x224 RGB), and the worker
+// answers lines: "S <status>" for the tracker's status, "L <json>" for the hands line to publish,
+// then "D" when it is ready for the next frame.
+// The model is the pinned MediaPipe hand landmark model (OpenCV Zoo's ONNX export), run by
+// coax/lib/nn/onnx.coax rather than onnxruntime, so landmarks match to float rounding.
+// The numbers on the wire are the shortest that read back as the same float, as serde writes them.
+#load "../coax/lib/nn/onnx.coax";
+#load "../coax/lib/crypto/sha256-memory.coax";
+
+cxcam_stdin :: (out: [] u8, timeout_ms: int) -> int #foreign;
+cxcam_stdout :: (s: [] u8) -> int #foreign;
+
+HK_NET :: 224;
+HK_IN :: 150528;               // 224 * 224 * 3
+HK_ARENA :: 12582912;          // floats for the weights and every value (the pinned model needs 9,866,900)
+HK_MODEL_MAX :: 16777216;
+HK_URL :: "https://github.com/opencv/opencv_zoo/raw/56cef36ae45e5a6da7eba01a91631f6d7e955da1/models/handpose_estimation_mediapipe/handpose_estimation_mediapipe_2023feb.onnx";
+HK_SHA :: "db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c";
+HK_FILE :: "hand_landmarker.onnx";
+HK_OVERRIDE :: "CODER_QUEST_HAND_MODEL";
+
+HkPt :: struct { x: f32; y: f32; z: f32; }
+HkFrame :: struct { has: bool; lm: [21] HkPt; pose: int; status: [1] Txt; }
+HK_NONE :: 0; HK_FIST :: 1; HK_V :: 2; HK_FLAT :: 3; HK_OPEN :: 4; HK_PINCH :: 5;
+hk_label :: (p: int) -> string {
+  names := [6] string.["none", "fist", "two-finger v", "flat hand", "open hand", "pinch"];
+  return ifx p >= 0 && p < 6 then names[p] else "none";
+}
+
+// ---- poses (pose.rs)
+
+hk_dist :: (a: HkPt, b: HkPt) -> f32 { dx := a.x - b.x; dy := a.y - b.y; dz := a.z - b.z; return cast(f32) sqrt(cast(f64) (dx * dx + dy * dy + dz * dz)); }
+hk_extended :: (tip: HkPt, pip: HkPt, mcp: HkPt) -> bool {
+  straight: f32 = 0.9;
+  return tip.y < pip.y && pip.y < mcp.y && hk_dist(mcp, tip) > hk_dist(mcp, pip) * straight;
+}
+hk_curled :: (tip: HkPt, pip: HkPt, mcp: HkPt, wrist: HkPt) -> bool {
+  close: f32 = 0.7; drop: f32 = 0.1;
+  r := hk_dist(wrist, mcp);
+  return tip.y > pip.y && (hk_dist(tip, mcp) < r * close || tip.y - pip.y > r * drop);
+}
+// One hand's pose from its 21 landmarks (MediaPipe order).
+hk_recognize :: (l: [] HkPt) -> int {
+  if l.count < 21 { return HK_NONE; }
+  pinch: f32 = 0.35; v_spread: f32 = 0.3; open_spread: f32 = 1.6; flat_spread: f32 = 1.7; eps: f32 = 0.00000011920929;
+  w := l[0];
+  dx := w.x - l[5].x; dy := w.y - l[5].y; palm := cast(f32) sqrt(cast(f64) (dx * dx + dy * dy));
+  if palm > eps && hk_dist(l[4], l[8]) / palm < pinch { return HK_PINCH; }
+  if hk_curled(l[8], l[6], l[5], w) && hk_curled(l[12], l[10], l[9], w) && hk_curled(l[16], l[14], l[13], w) && hk_curled(l[20], l[18], l[17], w) { return HK_FIST; }
+  ie := hk_extended(l[8], l[6], l[5]); me := hk_extended(l[12], l[10], l[9]);
+  if ie && me && hk_curled(l[16], l[14], l[13], w) && hk_curled(l[20], l[18], l[17], w) && hk_dist(l[8], l[12]) > hk_dist(w, l[5]) * v_spread { return HK_V; }
+  if ie && me && hk_extended(l[16], l[14], l[13]) && hk_extended(l[20], l[18], l[17]) && hk_extended(l[4], l[3], l[2]) {
+    tips := hk_dist(l[8], l[20]); mcps := hk_dist(l[5], l[17]);
+    if tips > mcps * open_spread { return HK_OPEN; }
+    if tips < mcps * flat_spread { return HK_FLAT; }
+  }
+  return HK_NONE;
+}
+#test "poses from hand shapes" {
+  l: [21] HkPt; for i: 0..<21 { l[i].z = 1; }
+  // an open hand, fingers up and fanned: knuckles on y 0.6, PIPs on 0.45, tips on 0.3, spread out
+  l[0] = HkPt.{x = 0.5, y = 0.9, z = 1};
+  xs := [5] f32.[0.3, 0.42, 0.5, 0.58, 0.66]; tip := [5] f32.[0.15, 0.32, 0.5, 0.68, 0.85];
+  // finger f's joints are 1 + 4f (knuckle) to 4 + 4f (tip)
+  for f: 0..<5 { b := 1 + 4 * f; l[b] = HkPt.{x = xs[f], y = 0.6, z = 1}; l[b + 1] = HkPt.{x = (2 * xs[f] + tip[f]) / 3, y = 0.45, z = 1}; l[b + 2] = HkPt.{x = (xs[f] + 2 * tip[f]) / 3, y = 0.375, z = 1}; l[b + 3] = HkPt.{x = tip[f], y = 0.3, z = 1}; }
+  l[2] = HkPt.{x = 0.3, y = 0.6, z = 1}; l[3] = HkPt.{x = 0.22, y = 0.45, z = 1}; l[4] = HkPt.{x = 0.1, y = 0.3, z = 1};
+  #assert hk_recognize(l[..]) == HK_OPEN;
+  // the same knuckles with the tips straight up over them: a flat hand
+  for f: 1..<5 { b := 1 + 4 * f; l[b + 1].x = xs[f]; l[b + 2].x = xs[f]; l[b + 3].x = xs[f]; }
+  #assert hk_recognize(l[..]) == HK_FLAT;
+  // thumb tip on the index tip: a pinch
+  l[4] = l[8]; #assert hk_recognize(l[..]) == HK_PINCH;
+  // every finger folded down past its PIP and near its knuckle: a fist
+  l[4] = HkPt.{x = 0.2, y = 0.5, z = 1};
+  for f: 1..<5 { b := 1 + 4 * f; l[b + 3] = HkPt.{x = xs[f], y = 0.55, z = 1}; }
+  #assert hk_recognize(l[..]) == HK_FIST;
+  #assert hk_recognize(l[0..<20]) == HK_NONE && hk_label(HK_V) == "two-finger v";
+}
+
+// ---- the model's answer (landmarker.rs)
+
+// A nearest-neighbour resize of an RGB frame to the model's square.
+hk_resize :: (src: [] u8, sw: int, sh: int, out: [] u8) {
+  for i: 0..<HK_IN { out[i] = 0; }
+  if sw <= 0 || sh <= 0 { return; }
+  for y: 0..<HK_NET {
+    sy := y * sh / HK_NET;
+    for x: 0..<HK_NET {
+      si := (sy * sw + x * sw / HK_NET) * 3; di := (y * HK_NET + x) * 3;
+      if si + 2 < src.count { out[di] = src[si]; out[di + 1] = src[si + 1]; out[di + 2] = src[si + 2]; }
+    }
+  }
+}
+hk_coord :: (v: f32) -> f32 {
+  a := ifx v < 0 then -v else v; side: f32 = 224.0; big: f32 = 1.5;
+  t := ifx a > big then v / side else v;
+  return ifx t < 0 then 0 else ifx t > 1 then 1 else t;
+}
+// read_landmarks: no hand when the answer is short or its presence is under 0.4.
+hk_read :: (flat: [] f32, second: f32, has_second: bool, fr: [] HkFrame) {
+  fr[0].has = false; fr[0].pose = HK_NONE;
+  if flat.count < 63 { tx_set(fr[0].status[..], "model output len "); tx_int(fr[0].status[..], flat.count); return; }
+  floor_: f32 = 0.4;
+  presence: f32 = ifx flat.count > 63 then flat[63] else ifx has_second then second else 1.0;
+  if presence < floor_ { tx_set(fr[0].status[..], "No hands detected"); return; }
+  for j: 0..<21 { fr[0].lm[j] = HkPt.{x = hk_coord(flat[3 * j]), y = hk_coord(flat[3 * j + 1]), z = 1}; }
+  fr[0].pose = hk_recognize(fr[0].lm[..]);
+  fr[0].has = true; tx_set(fr[0].status[..], "1 hand(s) detected");
+}
+// The model over one 224x224 RGB square.
+hk_infer :: (m: [] OxModel, arena: [] f32, small: [] u8, fr: [] HkFrame) {
+  in := ox_view(m, arena, m[0].input); iv := m[0].vals[m[0].input];
+  side: f32 = 255.0;
+  if iv.nd == 4 && iv.dims[1] == 3 {
+    plane := HK_NET * HK_NET;
+    for o: 0..<plane { in[o] = cast(f32) small[3 * o] / side; in[plane + o] = cast(f32) small[3 * o + 1] / side; in[2 * plane + o] = cast(f32) small[3 * o + 2] / side; }
+  } else { for i: 0..<HK_IN { in[i] = cast(f32) small[i] / side; } }
+  ox_run(m, arena);
+  if m[0].nout < 1 { fr[0].has = false; tx_set(fr[0].status[..], "model returned no tensors"); return; }
+  flat := ox_view(m, arena, m[0].outs[0]);
+  has := m[0].nout > 1 && m[0].vals[m[0].outs[1]].count > 0;
+  hk_read(flat, ifx has then ox_view(m, arena, m[0].outs[1])[0] else 0.0, has, fr);
+}
+
+// ---- the line (wire.rs)
+
+// The shortest decimal that reads back as v (an f32 from 0 to 1, the landmarks' range), as serde
+// writes one: "0.5", "1.0", "0.123456".
+hk_unit :: (t: [] Txt, v: f32) {
+  if v <= 0 { tx_add(t, "0.0"); return; }
+  if v >= 1 { tx_add(t, "1.0"); return; }
+  p := 1.0; d := 1;
+  while d <= 9 {
+    p = p * 10.0;
+    n := cast(int) floor(cast(f64) v * p + 0.5);
+    if cast(f32) (cast(f64) n / p) == v || d == 9 {
+      if n >= cast(int) p { tx_add(t, "1.0"); return; }
+      b: [16] u8; for i: 0..<d { b[d - 1 - i] = cast,trunc(u8) ('0' + n % 10); n = n / 10; }
+      k := d; while k > 1 && b[k - 1] == '0' { k -= 1; }
+      tx_add(t, "0."); tx_add(t, cast(string) b[0..<k]); return;
+    }
+    d += 1;
+  }
+}
+// Seconds since the epoch from microseconds: the fewest decimals that read back as the same f64.
+hk_seconds :: (t: [] Txt, us: int) {
+  v := cast(f64) us / 1000000.0;
+  tx_int(t, us / 1000000); frac := us % 1000000;
+  digits := [7] int.[1, 10, 100, 1000, 10000, 100000, 1000000];
+  for d: 1..<7 {
+    scale := 1000000 / digits[d];
+    n := (frac + scale / 2) / scale;
+    if n * scale > 999999 && d < 6 { continue; }
+    if cast(f64) (us / 1000000) + cast(f64) n / cast(f64) digits[d] == v || d == 6 {
+      b: [8] u8; m := n; for i: 0..<d { b[d - 1 - i] = cast,trunc(u8) ('0' + m % 10); m = m / 10; }
+      tx_add(t, "."); tx_add(t, cast(string) b[0..<d]); return;
+    }
+  }
+}
+hk_line :: (t: [] Txt, fr: [] HkFrame, us: int, dropped: int) {
+  tx_set(t, "{\"timestamp\":"); hk_seconds(t, us); tx_add(t, ",\"hands\":[");
+  if fr[0].has {
+    tx_add(t, "{\"landmarks\":[");
+    for j: 0..<21 {
+      if j > 0 { tx_add(t, ","); }
+      tx_add(t, "{\"x\":"); hk_unit(t, fr[0].lm[j].x); tx_add(t, ",\"y\":"); hk_unit(t, fr[0].lm[j].y); tx_add(t, ",\"z\":"); hk_unit(t, fr[0].lm[j].z); tx_add(t, "}");
+    }
+    tx_add(t, "],\"pose\":\""); tx_add(t, hk_label(fr[0].pose)); tx_add(t, "\"}");
+  }
+  tx_add(t, "],\"status\":"); hk_quoted(t, tx(fr[0].status[..])); tx_add(t, ",\"dropped\":"); tx_int(t, dropped); tx_add(t, "}");
+}
+hk_quoted :: (t: [] Txt, s: string) {
+  tx_add(t, "\"");
+  hex := "0123456789abcdef";
+  for c: s {
+    if c == '"' { tx_add(t, "\\\""); } else if c == '\\' { tx_add(t, "\\\\"); } else if c == '\n' { tx_add(t, "\\n"); } else if c == '\t' { tx_add(t, "\\t"); } else if c == '\r' { tx_add(t, "\\r"); }
+    else if c < 32 { tx_add(t, "\\u00"); b: [2] u8; b[0] = hex[c >> 4]; b[1] = hex[c & 15]; tx_add(t, cast(string) b[..]); }
+    else { b: [1] u8; b[0] = c; tx_add(t, cast(string) b[..]); }
+  }
+  tx_add(t, "\"");
+}
+#test "the line's numbers, as serde writes them" {
+  t: [1] Txt;
+  tx_set(t[..], ""); hk_unit(t[..], 0.5); #assert tx(t[..]) == "0.5";
+  tx_set(t[..], ""); hk_unit(t[..], 1); #assert tx(t[..]) == "1.0";
+  tx_set(t[..], ""); hk_unit(t[..], 0); #assert tx(t[..]) == "0.0";
+  tx_set(t[..], ""); x: f32 = 0.1; hk_unit(t[..], x); #assert tx(t[..]) == "0.1";
+  tx_set(t[..], ""); y: f32 = 0.123456; hk_unit(t[..], y); #assert tx(t[..]) == "0.123456";
+  tx_set(t[..], ""); z: f32 = 0.33333334; hk_unit(t[..], z); #assert tx(t[..]) == "0.33333334";
+  tx_set(t[..], ""); hk_seconds(t[..], 1761969000500000); #assert tx(t[..]) == "1761969000.5";
+  tx_set(t[..], ""); hk_seconds(t[..], 1761969000000000); #assert tx(t[..]) == "1761969000.0";
+  tx_set(t[..], ""); hk_seconds(t[..], 1761969000123456); #assert tx(t[..]) == "1761969000.123456";
+  fr: [1] HkFrame; tx_set(fr[0].status[..], "No hands detected");
+  hk_line(t[..], fr[..], 1761969000250000, 2);
+  #assert tx(t[..]) == "{\"timestamp\":1761969000.25,\"hands\":[],\"status\":\"No hands detected\",\"dropped\":2}";
+}
+
+// ---- the model file (model.rs)
+
+hk_model_path :: (t: [] Txt) {
+  ob: [4096] u8; o := proc_getenv(HK_OVERRIDE, ob[..]);
+  if proc_has_env(HK_OVERRIDE) { tx_set(t, o); return; }
+  hb: [4096] u8; tx_set(t, proc_getenv("HOME", hb[..])); tx_add(t, "/.openagents/quest/models/"); tx_add(t, HK_FILE);
+}
+hk_sha256 :: (b: [] u8, out: [] Txt) -> bool {
+  st: [112] u8; d: [32] u8;
+  if sha256_init(st[..]) != SHA_OK { return false; }
+  at := 0;
+  while at < b.count { e := ifx at + 1048576 < b.count then at + 1048576 else b.count; if sha256_update(st[..], b[at..<e]) != SHA_OK { return false; } at = e; }
+  if sha256_final(st[..], d[..]) != SHA_OK { return false; }
+  hex := "0123456789abcdef"; tx_set(out, "");
+  for c: d { h: [2] u8; h[0] = hex[c >> 4]; h[1] = hex[c & 15]; tx_add(out, cast(string) h[..]); }
+  return true;
+}
+// "" when the file at path is the pinned model, else what is wrong (the file's bytes left in buf).
+hk_verify :: (path: string, buf: [] u8, why: [] Txt) -> int {
+  n := fs_read(path, buf);
+  if n < 0 { tx_set(why, path); tx_add(why, ": "); sv_os_error(why, SV_ENOENT); return -1; }
+  got: [1] Txt; if !hk_sha256(buf[0..<n], got[..]) { tx_set(why, path); tx_add(why, ": could not hash it"); return -1; }
+  if tx(got[..]) == HK_SHA { return n; }
+  tx_set(why, path); tx_add(why, " has SHA-256 "); tx_add(why, tx(got[..])); tx_add(why, "; the pinned model from "); tx_add(why, HK_URL); tx_add(why, " has "); tx_add(why, HK_SHA);
+  return -1;
+}
+hk_mkdirs :: (path: string) -> bool {
+  for i: 1..<path.count + 1 { if (i == path.count || path[i] == '/') && !fs_exists(path[0..<i]) && !fs_mkdir(path[0..<i]) { return false; } }
+  return true;
+}
+// ensure_model then the load: the model into m and arena, its bytes kept in buf (the graph's names
+// point into them). status gets "fetching the hand model" or "loading the hand model" on the way.
+hk_load :: (m: [] OxModel, arena: [] f32, buf: [] u8, why: [] Txt) -> bool {
+  path: [1] Txt; hk_model_path(path[..]); p := tx(path[..]);
+  n := -1;
+  if proc_has_env(HK_OVERRIDE) {
+    n = fs_read(p, buf); if n < 0 { tx_set(why, p); tx_add(why, ": "); sv_os_error(why, SV_ENOENT); return false; }
+  } else {
+    e: [1] Txt; n = ifx fs_exists(p) then hk_verify(p, buf, e[..]) else -1;
+    if n < 0 {
+      hk_say("S fetching the hand model");
+      parent := fs_dir(p);
+      if !hk_mkdirs(parent) { tx_set(why, parent); tx_add(why, ": "); sv_os_error(why, SV_EACCES); return false; }
+      tmp: [1] Txt; tx_set(tmp[..], parent); tx_add(tmp[..], "/"); tx_add(tmp[..], HK_FILE); tx_add(tmp[..], ".part");
+      a := [7] string.["curl", "-fsSL", "--retry", "3", "-o", tx(tmp[..]), HK_URL];
+      o: [4096] u8; er: [4096] u8; r := proc_run(a[..], 600000, o[..], er[..]);
+      if r.started != 0 { tx_set(why, "curl: "); sv_os_error(why, r.started); return false; }
+      if r.status != 0 {
+        x := fs_remove(tx(tmp[..]));
+        tx_set(why, "could not fetch the hand model from "); tx_add(why, HK_URL); tx_add(why, " (curl exit "); sv_exit_text(why, r.status); tx_add(why, "); set "); tx_add(why, HK_OVERRIDE); tx_add(why, " to a file of your own");
+        return false;
+      }
+      n = hk_verify(tx(tmp[..]), buf, why);
+      if n < 0 { x := fs_remove(tx(tmp[..])); return false; }
+      if !fs_rename(tx(tmp[..]), p) { tx_set(why, "install model: "); sv_os_error(why, SV_EACCES); return false; }
+    }
+  }
+  hk_say("S loading the hand model");
+  r := ox_load(m, buf[0..<n], arena);
+  if r != OX_OK {
+    tx_set(why, p); tx_add(why, ": "); tx_add(why, m[0].why);
+    if r == OX_UNSUPPORTED && m[0].op.count > 0 { tx_add(why, " ("); tx_add(why, m[0].op); tx_add(why, ")"); }
+    if r == OX_SMALL { tx_add(why, " (it needs "); tx_int(why, m[0].need); tx_add(why, " floats)"); }
+    return false;
+  }
+  return true;
+}
+hk_say :: (s: string) { b: [8192] u8; n := 0; for c: s { if n < 8190 { b[n] = c; n += 1; } } b[n] = '\n'; x := cxcam_stdout(b[0..<n + 1]); }
+
+// ---- the worker: `coderos-camera hands-worker`
+
+hk_worker :: () -> int {
+  mm: [1] OxModel; m := mm[..];
+  arena: [HK_ARENA] f32; buf: [HK_MODEL_MAX] u8;
+  head: [16] u8; small: [HK_IN] u8; chunk: [65536] u8;
+  loaded := false; last_try := -100000;
+  while true {
+    // one frame: the head, then the square
+    got := 0; total := 16 + HK_IN;
+    while got < total {
+      n := cxcam_stdin(chunk[0..<ifx total - got < 65536 then total - got else 65536], -1);
+      if n < 0 { return 0; }
+      for i: 0..<n { k := got + i; if k < 16 { head[k] = chunk[i]; } else { small[k - 16] = chunk[i]; } }
+      got += n;
+    }
+    us := 0; dropped := 0;
+    for i: 0..<8 { us = us | (cast(int) head[i] << (8 * i)); dropped = dropped | (cast(int) head[8 + i] << (8 * i)); }
+    if !loaded {
+      now := cxproc_wall_us() / 1000;
+      if now - last_try > 10000 {   // a failed load is tried again after a while, not every frame
+        last_try = now;
+        why: [1] Txt;
+        if hk_load(m, arena[..], buf[..], why[..]) { loaded = true; }
+        else { s: [1] Txt; tx_set(s[..], "S "); tx_add(s[..], tx(why[..])); hk_say(tx(s[..])); }
+      }
+    }
+    if loaded {
+      fr: [1] HkFrame; hk_infer(m, arena[..], small[..], fr[..]);
+      s: [1] Txt; tx_set(s[..], "S "); tx_add(s[..], tx(fr[0].status[..])); hk_say(tx(s[..]));
+      l: [1] Txt; hk_line(l[..], fr[..], us, dropped);
+      o: [1] Txt; tx_set(o[..], "L "); tx_add(o[..], tx(l[..])); hk_say(tx(o[..]));
+    }
+    hk_say("D");
+  }
+  return 0;
+}
+// `coderos-camera infer MODEL RGB W H`: the model over one raw RGB frame; each output's floats as
+// their bits, then the line. For checks against onnxruntime.
+hk_infer_verb :: (model: string, rgbpath: string, w: int, h: int) -> int {
+  mm: [1] OxModel; m := mm[..]; arena: [HK_ARENA] f32; buf: [HK_MODEL_MAX] u8;
+  n := fs_read(model, buf[..]); if n < 0 { tool_errln("cannot read the model"); return 1; }
+  t0 := cxproc_wall_us();
+  r := ox_load(m, buf[0..<n], arena[..]);
+  if r != OX_OK { e: [1] Txt; tx_set(e[..], "load: "); tx_add(e[..], m[0].why); tx_add(e[..], " "); tx_add(e[..], m[0].op); tx_add(e[..], " need "); tx_int(e[..], m[0].need); tool_errln(tx(e[..])); return 1; }
+  t1 := cxproc_wall_us();
+  rgb: [6220800] u8; k := fs_read(rgbpath, rgb[..]); if k != w * h * 3 { tool_errln("the frame is not W*H*3 bytes"); return 1; }
+  small: [HK_IN] u8; hk_resize(rgb[0..<k], w, h, small[..]);
+  fr: [1] HkFrame; hk_infer(m, arena[..], small[..], fr[..]);
+  t2 := cxproc_wall_us();
+  for i: 0..<m[0].nout {
+    v := ox_view(m, arena[..], m[0].outs[i]);
+    s: [1] Txt; tx_set(s[..], "out "); tx_add(s[..], m[0].vals[m[0].outs[i]].name);
+    for x: v { tx_add(s[..], " "); tx_int(s[..], cast(int) f32_bits(x)); }
+    hk_say(tx(s[..]));
+  }
+  l: [1] Txt; hk_line(l[..], fr[..], 1761969000500000, 0); hk_say(tx(l[..]));
+  s: [1] Txt; tx_set(s[..], "need "); tx_int(s[..], m[0].need); tx_add(s[..], " floats, load "); tx_int(s[..], (t1 - t0) / 1000); tx_add(s[..], " ms, infer "); tx_int(s[..], (t2 - t1) / 1000); tx_add(s[..], " ms"); tool_errln(tx(s[..]));
+  return 0;
+}

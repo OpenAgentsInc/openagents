@@ -362,7 +362,7 @@ compiler and the examples have not been run on Linux yet.
   together. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
-- **Step 2 row 5, the camera daemon: started.** `os/camera.coax` is the
+- **Step 2 row 5, the camera daemon: written, not installed.** `os/camera.coax` is the
   command side of `coderos-camera`: every verb but `serve`, as one JSON
   line on the daemon's control socket. On coderos-4080 it matched the Rust
   command's output, `--json` output, exit status and requests in 33 cases
@@ -389,16 +389,31 @@ compiler and the examples have not been run on Linux yet.
   with the right receipt and tag, and counted a hands reader. At 1280x720
   and 30 fps it kept up using 79% of one core and 142 MB.
 
+  The hand tracker is `os/hands.coax`. The pinned MediaPipe landmark model
+  runs on `coax/lib/nn/onnx.coax`, a protobuf reader and f32 interpreter
+  for the nine ops the model uses, in place of onnxruntime. The tracker
+  runs as the daemon's child (`coderos-camera hands-worker`) fed one
+  224x224 frame at a time, so a slow frame holds the tracker and not the
+  camera, as its thread did. On coderos-4080:
+  - Every output float matched onnxruntime to within 2.3e-4 relative,
+    over four test frames.
+  - On a hand from OpenCV Zoo's demo (presence 0.98), the landmarks
+    matched to within 6.6e-7. Every number on the line was the shortest
+    that reads back as its float, and the pose matched a port of
+    `recognize` ("open hand").
+  - A frame takes about 100 ms on one core. Tracking a file source of that
+    hand at 15 fps, it published 9 lines a second with the drops counted,
+    while a recording at the same time kept all 75 frames.
+  - The model file is checked by SHA-256 in Coax and fetched with curl
+    when missing, as before.
+
   Differences from Rust:
-  - The hand tracker is not ported: `hands on` turns the lane on and says
-    so in its status, and no landmarks are published.
   - Stopping a recording holds the loop for the second ffmpeg takes to
     finish.
   - A request that does not parse is refused in our own words, not
     serde's.
 
   Left:
-  - The landmark model as a Coax kernel.
   - The real camera and loopback, which wait for an agreed time because
     the running daemon holds `/dev/video0` and `/dev/video10` is the
     owner's.
