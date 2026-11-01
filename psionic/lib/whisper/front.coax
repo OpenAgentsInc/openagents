@@ -96,6 +96,62 @@ wf_window :: (x: [] f32, f: WfFront, bank: [] f64, top: f64, start: int, out: []
   return WfStatus.ok;
 }
 
+// The cached path: frames t0..t1 of the padded file, log10 energies
+// frame-major (cache[t * mels + m]). The host may split frames across
+// threads; each frame is computed alone.
+wf_frames_part :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, t0: int, t1: int) {
+  v: [128] f64;
+  for t: t0..<t1 {
+    wf_frame(x, t, window, bank, mels, v[..]);
+    for m: 0..<mels { cache[t * mels + m] = cast(f32) v[m]; }
+  }
+}
+// The maximum over a filled cache of f.frames frames.
+wf_cache_max :: (f: WfFront, cache: [] f32) -> f64 {
+  best := -1000.0;
+  for i: 0..<f.frames * f.mels { if cast(f64) cache[i] > best { best = cast(f64) cache[i]; } }
+  return best;
+}
+// wf_window from the cache. The cache holds f32 log10 values, so a value
+// differs from wf_window's by at most one f32 rounding before the clamp.
+wf_cache_window :: (f: WfFront, cache: [] f32, top: f64, start: int, out: [] f32) -> WfStatus {
+  if out.count < f.mels * WF_WINDOW_FRAMES || cache.count < f.frames * f.mels { return WfStatus.capacity; }
+  if start < 0 || start >= f.frames { return WfStatus.shape; }
+  low := top - 8;
+  for j: 0..<WF_WINDOW_FRAMES {
+    t := start + j;
+    for m: 0..<f.mels {
+      e := ifx t < f.frames then cast(f64) cache[t * f.mels + m] else -10.0;
+      if e < low { e = low; }
+      out[m * WF_WINDOW_FRAMES + j] = cast(f32) ((e + 4) / 4);
+    }
+  }
+  return WfStatus.ok;
+}
+
+#test "the cache gives the same window" #steps 400000000 {
+  bank: [80 * 201] f64; r := sf_mel_bank(wf_spec(80), bank[..]);
+  x: [800] f32;
+  for i: 0..<800 { x[i] = cast(f32) (0.25 * sin(2 * SF_PI * 440 * cast(f64) i / 16000)); }
+  f := wf_front(x[..], bank[..], 80); w := f.window;
+  #assert f.frames == 3005;
+  // frames 8 on are wholly past the audio: log10(1e-10) = -10
+  cache: [3005 * 80] f32; wf_frames_part(x[..], w[..], bank[..], 80, cache[..], 0, 8);
+  for i: 8 * 80..<3005 * 80 { cache[i] = -10; }
+  a: [80 * 3000] f32;
+  top := wf_cache_max(f, cache[..]);
+  #assert wf_cache_window(f, cache[..], top, 0, a[..]) == WfStatus.ok;
+  v: [80] f64;
+  for t: 0..<12 {
+    wf_frame(x[..], t, w[..], bank[..], 80, v[..]);
+    for m: 0..<80 {
+      e := ifx v[m] < top - 8 then top - 8 else v[m];
+      #assert abs(cast(f64) a[m * 3000 + t] - (e + 4) / 4) <= 0.000001;
+    }
+  }
+  #assert a[2999] == cast(f32) ((top - 8 + 4) / 4) && top > -10;
+  #assert wf_cache_window(f, cache[0..<100], top, 0, a[..]) == WfStatus.capacity && wf_cache_window(f, cache[..], top, 3005, a[..]) == WfStatus.shape;
+}
 #test "the spec and frame counts" {
   s := wf_spec(80);
   #assert sf_spec_ok(s) == SfStatus.ok && s.n_fft == 400 && s.periodic && s.pad == SfPad.reflect;
