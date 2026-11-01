@@ -114,7 +114,7 @@
 - [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) — implemented
 - [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) — design draft
 - [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) — implemented
-- [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) — design draft
+- [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) — implemented
 - [84. Knowledge and workspaces](ch084-knowledge-and-workspaces.md) — design draft
 - [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) — design draft
 - [86. Lightning payments for requests](ch086-lightning-payments-for-requests.md) — implemented

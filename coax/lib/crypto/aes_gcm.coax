@@ -1,0 +1,217 @@
+// AES-256 forward cipher (FIPS-197 5.1) and AES-256-GCM (NIST SP 800-38D)
+// with 96-bit nonces and 16-byte tags, for NIP-VAULT objects, wraps and key
+// slots (chapter 83). aes.coax keeps its decrypt-only promise; the forward
+// rounds live here and reuse its computed S-box, so there are still no lookup
+// tables indexed by secret bytes. The GHASH multiply selects with masks, not
+// branches. As in aes.coax, that is the intent of the source, not a measured
+// timing property.
+//
+// open never writes plaintext unless the tag verifies: it computes the tag
+// over the ciphertext first, compares in constant time, then decrypts.
+#load "aes.coax";
+
+GCM_TAG :: 16;
+GCM_NONCE :: 12;
+GCM_MAX :: 1048576;   // plaintext bytes at most, the byte helpers' limit
+
+#test "FIPS-197 appendix C.3: the AES-256 forward cipher" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)i;}
+  s:=aes256_expand(key[..]);
+  out:=aes256_encrypt_block(s,aes_block_hex_test("00112233445566778899aabbccddeeff"));
+  #assert aes_block_equals_test(out,"8ea2b7ca516745bfeafc49904b496089");
+  #assert aes_block_equals_test(aes256_decrypt_block(s,out),"00112233445566778899aabbccddeeff");
+  // round 1 of C.3: start 00102030405060708090a0b0c0d0e0f0 after round 0
+  st:=aes_add_round_key(aes_block_hex_test("00112233445566778899aabbccddeeff"),s,0);
+  #assert aes_block_equals_test(st,"00102030405060708090a0b0c0d0e0f0");
+  st=aes_sub_bytes(st);#assert aes_block_equals_test(st,"63cab7040953d051cd60e0e7ba70e18c");
+  st=aes_shift_rows(st);#assert aes_block_equals_test(st,"6353e08c0960e104cd70b751bacad0e7");
+  st=aes_mix_columns(st);#assert aes_block_equals_test(st,"5f72641557f5bc92f7be3b291db9f91a");
+}
+#forall "the forward steps undo the inverse steps" i:0..<16 {
+  st:=aes_block_hex_test("0f1e2d3c4b5a69788796a5b4c3d2e1f0");st.b[i]^=0x5a;
+  #assert aes_inv_mix_columns(aes_mix_columns(st)).b[i]==st.b[i];
+  #assert aes_inv_shift_rows(aes_shift_rows(st)).b[i]==st.b[i];
+  #assert aes_inv_sub_bytes(aes_sub_bytes(st)).b[i]==st.b[i];
+}
+#test "GCM spec test cases 13 and 14: the zero key" #steps 100000000 {
+  key:[32]u8;nonce:[12]u8;none:[1]u8;out:[48]u8;back:[32]u8;
+  #assert aes256_gcm_seal(key[..],nonce[..],none[0..<0],none[0..<0],out[..])==16;
+  #assert gcm_hex_equals_test(out[0..<16],"530f8afbc74536b9a963b4f1c4cb738b");
+  #assert aes256_gcm_open(key[..],nonce[..],none[0..<0],out[0..<16],back[..])==0;
+  zero:[16]u8;
+  #assert aes256_gcm_seal(key[..],nonce[..],none[0..<0],zero[..],out[..])==32;
+  #assert gcm_hex_equals_test(out[0..<32],"cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919");
+  #assert aes256_gcm_open(key[..],nonce[..],none[0..<0],out[0..<32],back[..])==16;
+  for i:0..<16 {#assert back[i]==0;}
+}
+#test "GCM spec test cases 15 and 16: four blocks, then 60 bytes with associated data" #steps 200000000 {
+  key:[32]u8;gcm_hex_test("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",key[..]);
+  nonce:[12]u8;gcm_hex_test("cafebabefacedbaddecaf888",nonce[..]);
+  plain:[64]u8;gcm_hex_test(GCM_P15,plain[..]);
+  aad:[20]u8;gcm_hex_test("feedfacedeadbeeffeedfacedeadbeefabaddad2",aad[..]);
+  none:[1]u8;out:[80]u8;back:[64]u8;
+  #assert aes256_gcm_seal(key[..],nonce[..],none[0..<0],plain[..],out[..])==80;
+  #assert gcm_hex_equals_test(out[0..<64],GCM_C15) && gcm_hex_equals_test(out[64..<80],"b094dac5d93471bdec1a502270e3cc6c");
+  #assert aes256_gcm_seal(key[..],nonce[..],aad[..],plain[0..<60],out[..])==76;
+  #assert gcm_hex_equals_test(out[0..<60],GCM_C15[0..<120]) && gcm_hex_equals_test(out[60..<76],"76fc6ece0f4e1768cddf8853bb2d551b");
+  #assert aes256_gcm_open(key[..],nonce[..],aad[..],out[0..<76],back[..])==60;
+  for i:0..<60 {#assert back[i]==plain[i];}
+}
+#test "open refuses a changed byte anywhere and writes nothing" #steps 400000000 {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(7*i+1);}
+  nonce:[12]u8;for i:0..<12 {nonce[i]=cast(u8)(200-i);}
+  aad:[3]u8;aad[0]='a';aad[1]='a';aad[2]='d';
+  plain:[17]u8;for i:0..<17 {plain[i]=cast(u8)(65+i);}
+  sealed:[33]u8;back:[17]u8;
+  #assert aes256_gcm_seal(key[..],nonce[..],aad[..],plain[..],sealed[..])==33;
+  for i:[6]int.[0,15,16,17,24,32] {
+    for k:0..<17 {back[k]=77;}
+    sealed[i]^=1;
+    #assert aes256_gcm_open(key[..],nonce[..],aad[..],sealed[..],back[..])==-1;
+    sealed[i]^=1;
+    for k:0..<17 {#assert back[k]==77;}
+  }
+  aad[2]='D';#assert aes256_gcm_open(key[..],nonce[..],aad[..],sealed[..],back[..])==-1;aad[2]='d';
+  #assert aes256_gcm_open(key[..],nonce[..],aad[0..<2],sealed[..],back[..])==-1;
+  nonce[11]^=1;#assert aes256_gcm_open(key[..],nonce[..],aad[..],sealed[..],back[..])==-1;nonce[11]^=1;
+  key[31]^=1;#assert aes256_gcm_open(key[..],nonce[..],aad[..],sealed[..],back[..])==-1;key[31]^=1;
+  #assert aes256_gcm_open(key[..],nonce[..],aad[..],sealed[..],back[..])==17;
+  for k:0..<17 {#assert back[k]==plain[k];}
+}
+#test "sizes: key 32, nonce 12, tag present, room for the output" {
+  key:[33]u8;nonce:[13]u8;data:[40]u8;out:[40]u8;
+  #assert aes256_gcm_seal(key[0..<31],nonce[0..<12],data[0..<0],data[0..<4],out[..])==-1;
+  #assert aes256_gcm_seal(key[0..<33],nonce[0..<12],data[0..<0],data[0..<4],out[..])==-1;
+  #assert aes256_gcm_seal(key[0..<32],nonce[0..<13],data[0..<0],data[0..<4],out[..])==-1;
+  #assert aes256_gcm_seal(key[0..<32],nonce[0..<11],data[0..<0],data[0..<4],out[..])==-1;
+  #assert aes256_gcm_seal(key[0..<32],nonce[0..<12],data[0..<0],data[0..<4],out[0..<19])==-1;
+  #assert aes256_gcm_seal(key[0..<32],nonce[0..<12],data[0..<0],data[0..<4],out[0..<20])==20;
+  #assert aes256_gcm_open(key[0..<32],nonce[0..<12],data[0..<0],out[0..<15],data[..])==-1;
+  #assert aes256_gcm_open(key[0..<32],nonce[0..<12],data[0..<0],out[0..<20],data[0..<3])==-1;
+  #assert aes256_gcm_open(key[0..<31],nonce[0..<12],data[0..<0],out[0..<20],data[..])==-1;
+  #assert aes256_gcm_open(key[0..<32],nonce[0..<11],data[0..<0],out[0..<20],data[..])==-1;
+  #assert aes256_gcm_open(key[0..<32],nonce[0..<12],data[0..<0],out[0..<20],data[0..<4])==4;
+  #assert gcm_sizes_ok(32,12,GCM_MAX) && !gcm_sizes_ok(32,12,GCM_MAX+1) && !gcm_sizes_ok(32,12,-1);
+}
+
+GCM_P15 :: "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255";
+GCM_C15 :: "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662898015ad";
+gcm_hex_test :: (text:string,out:[]u8) {for i:0..<out.count {out[i]=cast(u8)(aes_nibble_test(text[2*i])*16+aes_nibble_test(text[2*i+1]));}}
+gcm_hex_equals_test :: (bytes:[]u8,text:string)->bool {
+  if text.count!=2*bytes.count {return false;}
+  for i:0..<bytes.count {if cast(u32)bytes[i]!=aes_nibble_test(text[2*i])*16+aes_nibble_test(text[2*i+1]) {return false;}}
+  return true;
+}
+
+// book:begin aes_forward_steps
+aes_sub_bytes :: (st:AesBlock)->AesBlock {
+  out:AesBlock;
+  for i:0..<16 {out.b[i]=cast(u8)aes_sbox(cast(u32)st.b[i]);}
+  return out;
+}
+// Row r moves r places to the left (column-major state, as in aes.coax).
+aes_shift_rows :: (st:AesBlock)->AesBlock {
+  out:AesBlock;
+  for c:0..<4 {for r:0..<4 {out.b[r+4*c]=st.b[r+4*((c+r)%4)];}}
+  return out;
+}
+// Each column times the matrix rows (02 03 01 01), rotated.
+aes_mix_columns :: (st:AesBlock)->AesBlock {
+  out:AesBlock;
+  m:=[4]u32.[0x02,0x03,0x01,0x01];
+  for c:0..<4 {
+    for r:0..<4 {
+      v:=cast(u32)0;
+      for k:0..<4 {v^=aes_gf_mul(cast(u32)st.b[4*c+k],m[(k-r+4)%4]);}
+      out.b[4*c+r]=cast(u8)v;
+    }
+  }
+  return out;
+}
+// FIPS-197 5.1, the cipher with Nr = 14 rounds; the last skips MixColumns.
+aes256_encrypt_block :: (s:AesSchedule,input:AesBlock)->AesBlock {
+  st:=aes_add_round_key(input,s,0);
+  for round:1..<14 {st=aes_add_round_key(aes_mix_columns(aes_shift_rows(aes_sub_bytes(st))),s,round);}
+  return aes_add_round_key(aes_shift_rows(aes_sub_bytes(st)),s,14);
+}
+// book:end aes_forward_steps
+
+// book:begin gcm_ghash
+// SP 800-38D algorithm 1: X * Y in GF(2^128), bits numbered from the most
+// significant bit of byte 0. Z gains V where X has a 1; V shifts right one
+// bit and folds R = e1 || 0^120 back in when a bit falls off the end.
+gcm_mul :: (x:AesBlock,y:AesBlock)->AesBlock {
+  z:AesBlock;v:=y;
+  for i:0..<128 {
+    bit:=(cast(u32)x.b[i/8]>>(7-cast(u32)(i%8)))&1;
+    mask:=cast(u8)(bit*255);
+    for k:0..<16 {z.b[k]^=v.b[k]&mask;}
+    low:=cast(u8)((cast(u32)v.b[15]&1)*0xe1);
+    k:=15;
+    while k>0 {v.b[k]=cast(u8)((cast(u32)v.b[k]>>1)|((cast(u32)v.b[k-1]&1)<<7));k-=1;}
+    v.b[0]=cast(u8)(cast(u32)v.b[0]>>1);
+    v.b[0]^=low;
+  }
+  return z;
+}
+// Fold data into y, 16 bytes at a time; a short last block is zero-padded.
+gcm_absorb :: (y:AesBlock,h:AesBlock,data:[]u8)->AesBlock {
+  acc:=y;at:=0;
+  while at<data.count {
+    for k:0..<16 {if at+k<data.count {acc.b[k]^=data[at+k];}}
+    acc=gcm_mul(acc,h);at+=16;
+  }
+  return acc;
+}
+// The tag: GHASH(H, A, C) with the 64-bit bit lengths of A and C, then
+// exclusive-or with E(K, J0), where J0 = nonce || 00000001.
+gcm_tag :: (s:AesSchedule,h:AesBlock,j0:AesBlock,aad:[]u8,ct:[]u8)->AesBlock {
+  y:=gcm_absorb(gcm_absorb(AesBlock.{},h,aad),h,ct);
+  lengths:AesBlock;
+  gcm_be(lengths.b[..],0,aad.count*8,8);gcm_be(lengths.b[..],8,ct.count*8,8);
+  y=gcm_absorb(y,h,lengths.b[..]);
+  e:=aes256_encrypt_block(s,j0);
+  for k:0..<16 {y.b[k]^=e.b[k];}
+  return y;
+}
+// book:end gcm_ghash
+// book:begin gcm_ctr
+// CTR from J0 + 1: block i of the text is XORed with E(K, nonce || be32(i + 2)).
+gcm_ctr :: (s:AesSchedule,nonce:[]u8,input:[]u8,out:[]u8) {
+  block:=0;
+  while block*16<input.count {
+    counter:AesBlock;for k:0..<12 {counter.b[k]=nonce[k];}
+    gcm_be(counter.b[..],12,block+2,4);
+    pad:=aes256_encrypt_block(s,counter);
+    for k:0..<16 {at:=block*16+k;if at<input.count {out[at]=input[at]^pad.b[k];}}
+    block+=1;
+  }
+}
+// width big-endian bytes of v at out[at..].
+gcm_be :: (out:[]u8,at:int,v:int,width:int) {for k:0..<width {out[at+k]=cast(u8)((v>>(8*(width-1-k)))&255);}}
+gcm_sizes_ok :: (key:int,nonce:int,n:int)->bool {return key==32 && nonce==GCM_NONCE && n>=0 && n<=GCM_MAX;}
+gcm_j0 :: (nonce:[]u8)->AesBlock {j:AesBlock;for k:0..<12 {j.b[k]=nonce[k];}j.b[15]=1;return j;}
+// Seal plain under key and nonce, binding aad: out gets ciphertext || tag.
+// Returns the bytes written (plain.count + 16), or -1 for bad sizes.
+aes256_gcm_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,plain:[]u8,out:[]u8)->int {
+  if !gcm_sizes_ok(key.count,nonce.count,plain.count) || out.count<plain.count+GCM_TAG {return -1;}
+  s:=aes256_expand(key);h:=aes256_encrypt_block(s,AesBlock.{});
+  gcm_ctr(s,nonce,plain,out);
+  t:=gcm_tag(s,h,gcm_j0(nonce),aad,out[0..<plain.count]);
+  for k:0..<16 {out[plain.count+k]=t.b[k];}
+  s=AesSchedule.{};
+  return plain.count+GCM_TAG;
+}
+// Open sealed = ciphertext || tag. Returns the plaintext length, or -1 when
+// the sizes are wrong or the tag does not verify; out is untouched then.
+aes256_gcm_open :: (key:[]u8,nonce:[]u8,aad:[]u8,sealed:[]u8,out:[]u8)->int {
+  n:=sealed.count-GCM_TAG;
+  if !gcm_sizes_ok(key.count,nonce.count,n) || out.count<n {return -1;}
+  s:=aes256_expand(key);h:=aes256_encrypt_block(s,AesBlock.{});
+  t:=gcm_tag(s,h,gcm_j0(nonce),aad,sealed[0..<n]);
+  if cb_ct_equal(t.b[..],sealed[n..<sealed.count])!=CB_MAX64 {s=AesSchedule.{};return -1;}
+  gcm_ctr(s,nonce,sealed[0..<n],out);
+  s=AesSchedule.{};
+  return n;
+}
+// book:end gcm_ctr

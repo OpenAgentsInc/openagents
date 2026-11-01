@@ -1,0 +1,43 @@
+the release (key 1, kind 3202)
+verify: ok, id 97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a, signer is the publisher: true
+content 806 bytes, x = sha256(content) = 0a4c0516008f3a460bd5a0c148f3625fb2918a4d893fd7fc64d1aa694544b2b8
+read: ok, workload vault, image sha256:9497a089dc980f4251ab27f5e62c772cfabd0b02b9a8219b4539f86111f288f4
+platform gcp-confidential-space, hwmodel GCP_INTEL_TDX, support STABLE, published_at T0 - 700000
+the release head (key 1, kind 30202)
+verify: ok, id e6d0a5d59831d5464c76d5e1039f2235eb46d83732772c42061f3c9acecbe3db
+read: ok, generation 7, notice_seconds 604800, admitted 1 release, effective_at T0 - 95200, retire_at null
+effective_at - published_at = 604800 = notice_seconds: true
+admitted at T0 + 0: ok
+admitted at T0 - 95200: ok
+admitted at T0 - 95201: early
+the endpoint (key 3, kind 30203)
+verify: ok, id 2ea538e2569a137ca38a7e9a6096dbe992454ef6eeaa508ba22f36e663a156cd, signer is the endpoint key: true
+read: ok, release is the one above: true, issued_at T0 - 60, valid_until T0 + 3540
+binding = sha256("openagents.att.v1" 0 endpoint release) = 5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035, equal: true
+token claims (471 bytes, signature not checked): {"aud":"openagents.att.v1","dbgstat":"disabled-since-boot","eat_nonce":["5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035"],"exp":1792003600,"hwmodel":"GCP_INTEL_TDX","iat":1791999940,"iss":"https://confidentialcomputing.googleapis.com","submods":{"confidential_space":{"support_attributes":["LATEST","STABLE","USABLE"]},"container":{"image_digest":"sha256:9497a089dc980f4251ab27f5e62c772cfabd0b02b9a8219b4539f86111f288f4"}},"swname":"CONFIDENTIAL_SPACE"}
+verify the chain at T0: ok, level open
+may send data that needs open: true, tee: false, tee-cloud: false
+endpoints that do not match the head
+release 2 (published T0 - 100000, another image), read ok, in the head: false
+an endpoint running release 2: listed
+an endpoint whose token reports another image: measurement
+an endpoint whose token is a debug image, not STABLE: debug
+key 4 claiming key 3's token: nonce
+the good endpoint with generation 8 already held: generation
+the good endpoint at T0 + 3541: expired
+the good endpoint with a head signed by key 3: head
+the endpoint with one signature digit changed: verify signature
+the vault object (tier user, 2 chunks)
+1620 bytes: magic OAVAULT1, header 516 bytes, body 1092 bytes; read ok, chunks 2 of 1024, wraps 1
+core_digest f8664f07d3a40f465d7c05f2b5ce3b355f72d5658ee6673e311e6eb831aa5946
+the nostr slot: read ok, method nostr, associated data 534 bytes (the slot without nonce and vmk)
+NIP-44 opens the slot's sealed secret with key 2: true
+open with the nostr slot: ok, 1060 bytes, sha256 590d186ab08b0b0c09666f8b3a192d9a2866e0a581e0994752453a58e1e283bb
+first line: Statement for the chapter 83 vault: opening balance 21000 sat, closing balance 34000 sat. Test data only.
+refusals
+the device slot with the nostr slot's secret: slot
+the nostr slot with its label changed to Key 3 (test): slot
+the nostr slot for vault 6c47...: vault
+the object without its last chunk: chunks
+one bit of chunk 0 flipped: chunk
+the header length one byte off: canonical

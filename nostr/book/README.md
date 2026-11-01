@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 92 are implemented and 12 are design drafts.
+Of the 104 chapters, 93 are implemented and 11 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -273,7 +273,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) | Runnable: native C | NIP-CJ response admission (only the worker the request named), NIP-MKT negotiation from RFQ to confirmed order and fixed-price Lightning settlement (one obligation, one attempt at a time, a preimage of the payment hash), and NIP-LAB submission, verification and acceptance at the exact price. CJ bodies, record encodings and chains, rework, disputes, cancellation, refunds and invoice decoding are not built. |
 | [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) | Unimplemented: design draft | NIP-DEC decision requests and answers (25910), NIP-EVAL suites and reports, NIP-OPT optimization studies, and NIP-PRG typed programs (30182, 30183). |
 | [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) | Runnable: native C | NIP-PYLON beacons (30200) and service receipts (3201) verified and read: freshness by the reader's clock, no capacity from an expired beacon, receipts signed by their buyer and credited only to the beacon their p and a tags name. Model-group beacons, paid receipts, 30201 events, NIP-ENV and NIP-DEPLOY are not built. |
-| [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) | Unimplemented: design draft | NIP-ATT attested workload releases (3202), release heads (30202), rebuilds (3203) and endpoints, and NIP-VAULT sealed personal data with wraps and key slots. |
+| [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) | Runnable: native C | NIP-ATT releases (3202), release heads (30202) and attested endpoints (30203) checked by a client under a fixed clock: admission under the notice delay, rollback, the key-to-release binding and a Confidential Space token's claims; an endpoint that does not match its head is refused. NIP-VAULT tier user: an object opens only through a key slot (device or nostr method). Token signatures, raw TEE quotes, rebuilds, transparency, sealed jobs, tiers sealed and operator, and the key index are not built. |
 | [84. Knowledge and workspaces](ch084-knowledge-and-workspaces.md) | Unimplemented: design draft | NIP-KB knowledge entries (3190), heads (30190), withdrawals (3191) and evidence, and NIP-WS workspaces with documents, ranges, worktrees and checkpoints. |
 | [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) | Unimplemented: design draft | NIP-LIVE voice, camera and screen sessions, NIP-MV 3D-world presence (world 33300, entity 33301, pose frames 23300), and NIP-XP quests (30193), awards (3193) and revocations (3194). |
 | [86. Lightning payments for requests](ch086-lightning-payments-for-requests.md) | Runnable: native C | NIP-X402: x402 v2 over HTTP with the three base64 JSON headers, Bitcoin mainnet Lightning with a bolt11 invoice in millisats, and the `openagents:spark-receiver:1` settlement profile. |

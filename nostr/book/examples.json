@@ -713,6 +713,17 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/attested-vault.coax",
+      "chapter": "nostr/book/ch083-attested-work-and-sealed-data.md",
+      "stdout": "nostr/fixtures/attested-vault.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
+    },
+    {
       "source": "nostr/examples/pylon-mesh.coax",
       "chapter": "nostr/book/ch100-pylons-and-the-mesh.md",
       "stdout": "nostr/fixtures/pylon-mesh.out",

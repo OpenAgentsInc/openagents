@@ -1780,14 +1780,22 @@
    "number": 83,
    "title": "Attested work and sealed data",
    "file": "ch083-attested-work-and-sealed-data.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     20,
     82
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/att.coax",
+    "coax/lib/nostr/vault.coax",
+    "coax/lib/crypto/aes_gcm.coax",
+    "nostr/examples/attested-vault.coax",
+    "nostr/examples/checks/attested-vault.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

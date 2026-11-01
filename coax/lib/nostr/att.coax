@@ -1,0 +1,770 @@
+// Chapter 83: NIP-ATT, the client side of an attested workload. It reads a
+// release (3202), a release head (30202) and an attested endpoint (30203),
+// decides whether the release is admitted at the reader's clock (listed,
+// effective, not retired, past its notice delay, head not rolled back),
+// recomputes the endpoint's binding, and checks the claims of a Google
+// Confidential Space token against the release: image digest, hardware
+// model, STABLE support, debugging disabled, issuer, audience, the binding
+// as an eat_nonce, and the times.
+//
+// Not built: verifying the token's RS256 signature and certificate chain to
+// Google's attestation root (NIP-ATT client step 3), raw TDX quotes, SEV-SNP
+// reports, NVIDIA evidence, App Attest, HPKE keys, transparency entries,
+// rebuild statements, personal approval sets and sealed jobs. Because step
+// 3 is missing, an endpoint whose every claim matches still gets level open:
+// the claims are read, not proven. A caller that needs tee or tee-cloud is
+// refused by at_may_send.
+//
+// The caller verifies each event's id and signature first (event.coax) and
+// passes its signer, tags and unescaped content; release digests are the
+// lowercase SHA-256 of the content, computed by the caller.
+#load "json.coax";
+#load "base64.coax";
+#load "../crypto/sha256.coax";
+#authority;
+
+AtCode :: enum u8 {ok;json;version;field;tags;marker;digest;workload;publisher;image;platform;gpu;times;head;generation;listed;early;retired;notice;release;endpoint;hpke;binding;evidence;token;issuer;audience;measurement;hwmodel;support;debug;nonce;expired;window;}
+AtLevel :: enum u8 {open;hardened;tee;tee_cloud;}
+AtRelease :: struct {code:AtCode;workload:string;publisher:string;image:string;hwmodel:string;support:string;published_at:int;}
+AtAdmit :: struct {release:string;effective_at:int;retire_at:int=-1;}
+AT_ADMITTED :: 8;
+AtHead :: struct {code:AtCode;workload:string;generation:int;notice:int;count:int;admitted:[AT_ADMITTED]AtAdmit;emergency:string;}
+AtEndpoint :: struct {code:AtCode;release:string;endpoint:string;binding:string;token:string;issued_at:int;valid_until:int;head:string;}
+AtVerdict :: struct {code:AtCode;level:AtLevel;}
+AtTag :: struct {ok:bool;count:int;first:string;has:bool;}
+
+AT_MAX_WINDOW :: 3600;
+AT_PAYLOAD :: 4096;             // decoded token claims, bytes at most          // valid_until - issued_at at most
+AT_EMERGENCY :: 86400;          // the shortest notice for a head's emergency release
+AT_ISSUER :: "https://confidentialcomputing.googleapis.com";
+AT_AUDIENCE :: "openagents.att.v1";
+AT_DOMAIN :: "openagents.att.v1";   // the binding's prefix, then one zero byte
+AT_TOKEN_KIND :: "gcp-confidential-space-token";
+
+#load "../../tests/nostr/att_fixtures.coax";
+
+#test "the release reads: workload, publisher, image, platform, published_at" {
+  r:=at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_X);
+  #assert r.code==AtCode.ok && r.workload=="vault" && r.publisher==AT_K1 && r.image==AT_IMAGE;
+  #assert r.hwmodel=="GCP_INTEL_TDX" && r.support=="STABLE" && r.published_at==1791300000;
+  c:[2048]u8;
+  #assert at_release_read(AT_K3,AT_RELEASE_TAGS,AT_RELEASE,AT_X).code==AtCode.publisher;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_BINDING).code==AtCode.digest;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,"11").code==AtCode.digest;
+  #assert at_release_read(AT_K1,at_case(c[..],AT_RELEASE_TAGS,"oa:att-release:v1","oa:att-release:v2"),AT_RELEASE,AT_X).code==AtCode.marker;
+  #assert at_release_read(AT_K1,at_case(c[..],AT_RELEASE_TAGS,"[\"w\",\"vault\"]","[\"w\",\"other\"]"),AT_RELEASE,AT_X).code==AtCode.workload;
+  #assert at_release_read(AT_K1,at_case(c[..],AT_RELEASE_TAGS,",[\"w\",\"vault\"]",""),AT_RELEASE,AT_X).code==AtCode.tags;
+  #assert at_release_read(AT_K1,at_case(c[..],AT_RELEASE_TAGS,"[\"t\",","[\"t\",\"oa:att-release:v1\"],[\"t\","),AT_RELEASE,AT_X).code==AtCode.tags;
+  #assert at_release_read(AT_K1,"{}",AT_RELEASE,AT_X).code==AtCode.tags;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"release.v1","release.v2"),AT_X).code==AtCode.version;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"requires\":[]","\"requires\":[\"x\"]"),AT_X).code==AtCode.version;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"gpu\":null","\"gpu\":{}"),AT_X).code==AtCode.gpu;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"gpu\":null","\"gpx\":null"),AT_X).code==AtCode.field;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"gpu\":null,",""),AT_X).code==AtCode.field;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"gpu\":null","\"gpu\":null,\"gpu\":null"),AT_X).code==AtCode.field;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"gpu\":null","\"gpu\":null,\"meta\":{\"a\":1}"),AT_X).code==AtCode.ok;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"sha256:0123","\"sha257:0123"),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"cdef\",\"reference\"","cdeF\",\"reference\""),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"reference\":\"r\"","\"other\":\"r\""),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"reference\":\"r\"","\"reference\":1"),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,",\"reference\":\"r\"",""),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"image\":{","\"image\":[{"),AT_X).code!=AtCode.ok;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"kind\":\"gcp-confidential-space\"","\"kind\":\"tdx\""),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"support\":\"STABLE\"","\"support\":\"EXPERIMENTAL\""),AT_X).code==AtCode.ok;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,",\"support\":\"STABLE\"",""),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"support\":\"STABLE\"","\"support\":\"STABLE\",\"x\":1"),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"hwmodel\":\"GCP_INTEL_TDX\"","\"hwmodel\":7"),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"platforms\":[{","\"platforms\":[{\"hwmodel\":\"A\",\"kind\":\"gcp-confidential-space\",\"support\":\"STABLE\"},{"),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"platforms\":[{\"hwmodel\":\"GCP_INTEL_TDX\",\"kind\":\"gcp-confidential-space\",\"support\":\"STABLE\"}]","\"platforms\":[]"),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"platforms\":[{","\"platforms\":[1,{"),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"published_at\":1791300000","\"published_at\":-1"),AT_X).code==AtCode.times;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"published_at\":1791300000","\"published_at\":\"1\""),AT_X).code==AtCode.times;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"workload\":\"vault\"","\"workload\":\"Vault\""),AT_X).code==AtCode.workload;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"workload\":\"vault\"","\"workload\":\"\""),AT_X).code==AtCode.workload;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"changes\":\"c\"","\"changes\":1"),AT_X).code==AtCode.field;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"models\":[]","\"models\":{}"),AT_X).code==AtCode.field;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"source\":{\"commit\":\"0\"}","\"source\":[]"),AT_X).code==AtCode.field;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"models\":[]","\"models\":[{\"id\":\"m\"}]"),AT_X).code==AtCode.ok;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"}","} x"),AT_X).code==AtCode.json;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,"[]",AT_X).code==AtCode.json;
+}
+#test "the head reads: generation, notice, the admitted list and an emergency" {
+  h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);
+  #assert h.code==AtCode.ok && h.workload=="vault" && h.generation==7 && h.notice==604800 && h.count==1;
+  #assert h.admitted[0].release==AT_RID && h.admitted[0].effective_at==1791904800 && h.admitted[0].retire_at==-1 && h.emergency=="";
+  c:[2048]u8;t:[1024]u8;
+  e:=at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"reason\":\"fix\",\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"}"));
+  #assert e.code==AtCode.ok && e.emergency==AT_RID;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"}")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"reason\":\"\",\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"}")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"reason\":\"a\",\"release\":\"x\"}")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"reason\":\"a\",\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\",\"x\":1}")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":1")).code==AtCode.head;
+  r:=at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"retire_at\":null","\"retire_at\":1792000000"));
+  #assert r.code==AtCode.ok && r.admitted[0].retire_at==1792000000;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"retire_at\":null","\"retire_at\":-5")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,",\"retire_at\":null","")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"effective_at\":1791904800,","")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"effective_at\":1791904800","\"effective_at\":-1")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"effective_at\":1791904800","\"effective_at\":1,\"x\":2")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"release\":\"97263","\"release\":\"X7263")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"admitted\":[{","\"admitted\":[1,{")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"admitted\":[","\"admitted\":{\"a\":")).code!=AtCode.ok;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":-7")).code==AtCode.times;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"notice_seconds\":604800","\"notice_seconds\":true")).code==AtCode.times;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"notice_seconds\":604800,","")).code==AtCode.field;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"workload\":\"vault\"","\"workload\":\"other\"")).code==AtCode.workload;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"workload\":\"vault\"","\"workload\":\"a b\"")).code==AtCode.workload;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"head.v1","head.v0")).code==AtCode.version;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"requires\":[]","\"requires\":{}")).code==AtCode.version;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":7,\"x\":1")).code==AtCode.field;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":7,\"generation\":7")).code==AtCode.field;
+  #assert at_head_read(AT_K1,at_case(t[..],AT_HEAD_TAGS,"oa:att-head:v1","oa:att-head:v2"),AT_HEAD).code==AtCode.marker;
+  #assert at_head_read(AT_K1,at_case(t[..],AT_HEAD_TAGS,"[\"d\",\"vault\"]","[\"d\",\"other\"]"),AT_HEAD).code==AtCode.workload;
+  #assert at_head_read(AT_K1,at_case(t[..],AT_HEAD_TAGS,",[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"]",""),AT_HEAD).code==AtCode.tags;
+  #assert at_head_read(AT_K1,at_case(t[..],AT_HEAD_TAGS,"[\"e\",\"97263","[\"e\",\"07263"),AT_HEAD).code==AtCode.tags;
+  #assert at_head_read(AT_K1,at_case(t[..],AT_HEAD_TAGS,"[\"d\",\"vault\"],",""),AT_HEAD).code==AtCode.tags;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,"{} x").code==AtCode.json;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,"7").code==AtCode.json;
+  // nine admitted releases are over the reader's bound
+  big:[4096]u8;n:=json_raw(big[..],0,"{\"admitted\":[");
+  for i:0..<9 {if i>0 {n=json_raw(big[..],n,",");}n=json_raw(big[..],n,"{\"effective_at\":1,\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\",\"retire_at\":null}");}
+  n=json_raw(big[..],n,"],\"emergency\":null,\"generation\":7,\"notice_seconds\":604800,\"requires\":[],\"v\":\"openagents.att-head.v1\",\"workload\":\"vault\"}");
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,cast(string)big[0..<n]).code==AtCode.head;
+}
+#test "admission: listed, effective, not retired, past the notice delay" {
+  h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);published:=1791300000;
+  #assert at_admitted(h,AT_RID,published,1791904800)==AtCode.ok;
+  #assert at_admitted(h,AT_RID,published,1791904799)==AtCode.early;
+  #assert at_admitted(h,AT_BINDING,published,AT_T0)==AtCode.listed;
+  #assert at_admitted(h,AT_RID,published+1,AT_T0)==AtCode.notice;
+  h.admitted[0].retire_at=AT_T0;#assert at_admitted(h,AT_RID,published,AT_T0)==AtCode.retired;
+  #assert at_admitted(h,AT_RID,published,AT_T0-1)==AtCode.ok;
+  h.admitted[0].retire_at=-1;
+  // an emergency release needs one day of notice, not the head's seven
+  late:=1791904800-86400;
+  #assert at_admitted(h,AT_RID,late,AT_T0)==AtCode.notice;
+  h.emergency=AT_RID;
+  #assert at_admitted(h,AT_RID,late,AT_T0)==AtCode.ok && at_admitted(h,AT_RID,late+1,AT_T0)==AtCode.notice;
+  h.emergency=AT_BINDING;#assert at_admitted(h,AT_RID,late,AT_T0)==AtCode.notice;
+  // a second entry is searched too
+  h.count=2;h.admitted[1]=h.admitted[0];h.admitted[0].release=AT_BINDING;
+  #assert at_admitted(h,AT_RID,published,AT_T0)==AtCode.ok;
+  h.count=1;#assert at_admitted(h,AT_RID,published,AT_T0)==AtCode.listed;
+  #assert at_generation(h,7)==AtCode.ok && at_generation(h,6)==AtCode.ok && at_generation(h,8)==AtCode.generation;
+}
+#test "the binding is SHA-256 of the domain, the endpoint key and the release id" {
+  out:[64]u8;
+  #assert at_binding(AT_K3,AT_RID,out[..]) && cast(string)out[..]==AT_BINDING;
+  #assert at_binding(AT_K1,AT_RID,out[..]) && cast(string)out[..]!=AT_BINDING;
+  #assert !at_binding(AT_K3[0..<62],AT_RID,out[..]) && !at_binding(AT_K3,"zz",out[..]);
+}
+#test "the endpoint reads; its key is its signer and its window is an hour" {
+  tb:[2048]u8;eb:[4096]u8;c:[4096]u8;t:[1024]u8;tok:=at_token_test(tb[..],AT_CLAIMS);text:=at_endpoint_test(eb[..],tok);
+  e:=at_endpoint_read(AT_K3,AT_EP_TAGS,text);
+  #assert e.code==AtCode.ok && e.release==AT_RID && e.endpoint==AT_K3 && e.binding==AT_BINDING && e.token==tok;
+  #assert e.issued_at==1791999940 && e.valid_until==1792003540 && e.head=="30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault";
+  #assert at_endpoint_read(AT_K1,AT_EP_TAGS,text).code==AtCode.endpoint;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null","\"hpke\":\"AAAA\"")).code==AtCode.hpke;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"valid_until\":1792003540","\"valid_until\":1792003541")).code==AtCode.window;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"valid_until\":1792003540","\"valid_until\":1791999939")).code==AtCode.window;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"valid_until\":1792003540","\"valid_until\":1791999940")).code==AtCode.tags;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"issued_at\":1791999940","\"issued_at\":-1")).code==AtCode.times;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"binding\":\"5312","\"binding\":\"X312")).code==AtCode.binding;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"release\":\"97263","\"release\":\"X7263")).code==AtCode.release;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"operator\":\"79be","\"operator\":\"X9be")).code==AtCode.field;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"kind\":\"gcp-confidential-space-token\"","\"kind\":\"tdx-quote\"")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"format\":\"pki\"","\"format\":\"raw\"")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"format\":\"pki\",","")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"format\":\"pki\"","\"format\":\"pki\",\"x\":1")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"token\":\"","\"token\":1,\"t\":\"")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"evidence\":[{","\"evidence\":[{\"format\":\"pki\",\"kind\":\"gcp-confidential-space-token\",\"token\":\"a\"},{")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"evidence\":[{","\"evidence\":[1,{")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"endpoint.v1","endpoint.v9")).code==AtCode.version;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"requires\":[]","\"requires\":[1]")).code==AtCode.version;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null,","")).code==AtCode.field;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null","\"hpke\":null,\"hpkf\":null")).code==AtCode.field;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null","\"hpke\":null,\"hpke\":null")).code==AtCode.field;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"}]","}] ]")).code==AtCode.json;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,"\"x\"").code==AtCode.json;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,"oa:att-endpoint:v1","oa:att-endpoint:v0"),text).code==AtCode.marker;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,"[\"e\",\"97263","[\"e\",\"07263"),text).code==AtCode.release;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,"[\"d\",\"aaaa","[\"d\",\"Aaaa"),text).code==AtCode.tags;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,"[\"d\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],",""),text).code==AtCode.tags;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,",[\"expiration\",\"1792003540\"]",""),text).code==AtCode.tags;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,"[\"expiration\",\"1792003540\"]","[\"expiration\",\"1792003541\"]"),text).code==AtCode.tags;
+  #assert at_endpoint_read(AT_K3,at_case(t[..],AT_EP_TAGS,"[\"a\",","[\"b\","),text).code==AtCode.tags;
+}
+#test "a matching endpoint passes every check and still gets level open" {
+  v:=at_good_test();#assert v.code==AtCode.ok && v.level==AtLevel.open;
+  #assert at_may_send(v,AtLevel.open) && !at_may_send(v,AtLevel.hardened) && !at_may_send(v,AtLevel.tee) && !at_may_send(v,AtLevel.tee_cloud);
+  #assert !at_may_send(AtVerdict.{code=AtCode.digest},AtLevel.open);
+  #assert at_may_send(AtVerdict.{level=AtLevel.tee},AtLevel.hardened) && at_may_send(AtVerdict.{level=AtLevel.tee},AtLevel.tee) && !at_may_send(AtVerdict.{level=AtLevel.tee},AtLevel.tee_cloud);
+}
+#test "the chain: head signer, workload, address, release, generation, admission, times" {
+  r:=at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_X);h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);
+  tb:[2048]u8;eb:[4096]u8;e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],AT_CLAIMS)));
+  #assert at_verify(AT_RID,r,AT_K1,h,7,e,AT_T0).code==AtCode.ok;
+  #assert at_verify(AT_RID,r,AT_K3,h,0,e,AT_T0).code==AtCode.head;
+  #assert at_verify(AT_RID,r,AT_K1,h,8,e,AT_T0).code==AtCode.generation;
+  #assert at_verify(AT_BINDING,r,AT_K1,h,0,e,AT_T0).code==AtCode.release;
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0+3540).code==AtCode.ok;
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0+3541).code==AtCode.expired;
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e,1791904799).code==AtCode.early;
+  x:=r;x.code=AtCode.image;#assert at_verify(AT_RID,x,AT_K1,h,0,e,AT_T0).code==AtCode.image;
+  x=r;x.workload="other";#assert at_verify(AT_RID,x,AT_K1,h,0,e,AT_T0).code==AtCode.workload;
+  g:=h;g.code=AtCode.json;#assert at_verify(AT_RID,r,AT_K1,g,0,e,AT_T0).code==AtCode.json;
+  f:=e;f.code=AtCode.hpke;#assert at_verify(AT_RID,r,AT_K1,h,0,f,AT_T0).code==AtCode.hpke;
+  f=e;f.head="30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:other";#assert at_verify(AT_RID,r,AT_K1,h,0,f,AT_T0).code==AtCode.head;
+  f=e;f.binding=AT_X;#assert at_verify(AT_RID,r,AT_K1,h,0,f,AT_T0).code==AtCode.binding;
+  f=e;f.endpoint=AT_K1;#assert at_verify(AT_RID,r,AT_K1,h,0,f,AT_T0).code==AtCode.binding;
+}
+#test "the token's claims must match the release, the binding and the window" {
+  r:=at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_X);h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);
+  c:[2048]u8;tb:[2048]u8;eb:[4096]u8;
+  cases:=[19]string.["\"aud\":\"openagents.att.v1\"","\"dbgstat\":\"disabled-since-boot\"","5312236c","\"exp\":1792003600","\"GCP_INTEL_TDX\"",
+    "\"iss\":\"https://confidentialcomputing.googleapis.com\"","\"STABLE\"","\"image_digest\":\"sha256:0123","\"submods\":{",
+    "\"eat_nonce\":[\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\"]","\"exp\":1792003600","\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
+    "\"support_attributes\":[\"LATEST\",\"STABLE\",\"USABLE\"]","\"aud\":\"openagents.att.v1\"","\"iss\":\"https://confidentialcomputing.googleapis.com\"","\"hwmodel\":\"GCP_INTEL_TDX\"","\"dbgstat\":\"disabled-since-boot\"","\"swname\"","\"exp\":1792003600"];
+  into:=[19]string.["\"aud\":\"other\"","\"dbgstat\":\"enabled\"","6312236c","\"exp\":1792003539","\"GCP_AMD_SEV\"",
+    "\"iss\":\"https://example.com\"","\"EXPERIMENTAL\"","\"image_digest\":\"sha256:1123","\"submods\":{\"x\":[1,{\"a\":2}],",
+    "\"eat_nonce\":\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\"","\"exp\":\"1792003600\"","\"container\":{}",
+    "\"support_attributes\":\"STABLE\"","\"aud\":1","\"iss\":1","\"hwmodel\":1","\"dbgstat\":1","\"swname2\"","\"exp\":1792003540"];
+  want:=[19]AtCode.[AtCode.audience,AtCode.debug,AtCode.nonce,AtCode.window,AtCode.hwmodel,
+    AtCode.issuer,AtCode.support,AtCode.measurement,AtCode.ok,
+    AtCode.ok,AtCode.window,AtCode.measurement,
+    AtCode.support,AtCode.audience,AtCode.issuer,AtCode.hwmodel,AtCode.debug,AtCode.ok,AtCode.ok];
+  for i:0..<19 {
+    e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,cases[i],into[i]))));
+    #assert e.code==AtCode.ok;
+    #assert at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0).code==want[i];
+  }
+  // a release that is not STABLE fails even with a STABLE token
+  x:=r;x.support="EXPERIMENTAL";
+  e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],AT_CLAIMS)));
+  #assert at_verify(AT_RID,x,AT_K1,h,0,e,AT_T0).code==AtCode.support;
+  x=r;x.hwmodel="GCP_AMD_SEV";#assert at_verify(AT_RID,x,AT_K1,h,0,e,AT_T0).code==AtCode.hwmodel;
+  // token shape: three parts, base64url, a JSON object
+  bad:=[6]string.["a.b","eyJ9.e30.c","a.e30.c.d","a.!!!!.c","a..c","a.eyJhIjoxfQ.c"];
+  wantb:=[6]AtCode.[AtCode.token,AtCode.issuer,AtCode.token,AtCode.token,AtCode.token,AtCode.issuer];
+  for i:0..<6 {
+    e2:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],bad[i]));
+    #assert e2.code==AtCode.ok && at_verify(AT_RID,r,AT_K1,h,0,e2,AT_T0).code==wantb[i];
+  }
+  e3:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],"[1]")));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e3,AT_T0).code==AtCode.token;
+  e3=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],"{\"a\":1} 2")));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e3,AT_T0).code==AtCode.token;
+  e3=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,"\"eat_nonce\":[\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\"]","\"eat_nonce\":[1,\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\"]"))));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e3,AT_T0).code==AtCode.ok;
+  e3=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,"\"eat_nonce\":[\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\"]","\"eat_nonce\":7"))));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e3,AT_T0).code==AtCode.nonce;
+}
+
+#test "hex keys, slugs and image digests are exact" {
+  #assert at_hex64(AT_K1) && at_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  bad:=[7]u8.['F','g','/',':','`','@','G'];
+  for c:bad {x:[64]u8;for i:0..<64 {x[i]=AT_K1[i];}x[63]=c;#assert !at_hex64(cast(string)x[..]);}
+  #assert !at_hex64(AT_K1[0..<63]) && !at_hex64("");
+  #assert at_slug("vault") && at_slug("a-z09") && at_slug("z") && at_slug("0123456789012345678901234567890123456789012345678901234567890123");
+  #assert !at_slug("01234567890123456789012345678901234567890123456789012345678901234") && !at_slug("");
+  badslug:=[8]string.["{","`","/",":","A","_"," ","a.b"];
+  for s:badslug {#assert !at_slug(s);}
+  #assert at_image_digest(AT_IMAGE) && !at_image_digest(AT_IMAGE[0..<70]) && !at_image_digest("sha256:") && !at_image_digest("sha512:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+#forall "a base64url digit's value is its place in the alphabet" c:0..<256 {
+  alphabet:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  want:=-1;for i:0..<64 {if alphabet[i]==cast(u8)c {want=i;}}
+  #assert at_b64v(cast(u8)c)==want;
+}
+#test "zero is a value: published_at, generation, notice, effective_at, retire_at, issued_at, valid_until" {
+  c:[4096]u8;t:[1024]u8;
+  z:=at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"published_at\":1791300000","\"published_at\":0"),AT_X);#assert z.code==AtCode.ok && z.published_at==0;
+  h:=at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":0"));#assert h.code==AtCode.ok && h.generation==0;
+  h=at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"notice_seconds\":604800","\"notice_seconds\":0"));#assert h.code==AtCode.ok && h.notice==0;
+  h=at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"effective_at\":1791904800","\"effective_at\":0"));#assert h.code==AtCode.ok && h.admitted[0].effective_at==0;
+  h=at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"retire_at\":null","\"retire_at\":0"));#assert h.code==AtCode.ok && h.admitted[0].retire_at==0;
+  #assert at_admitted(h,AT_RID,1791300000,AT_T0)==AtCode.retired;
+  tb:[2048]u8;eb:[4096]u8;text:=at_endpoint_test(eb[..],at_token_test(tb[..],AT_CLAIMS));
+  zero:=at_case(t[..],AT_EP_TAGS,"1792003540","0");
+  u:[4096]u8;z1:=at_case(c[..],text,"\"issued_at\":1791999940","\"issued_at\":0");
+  e:=at_endpoint_read(AT_K3,zero,at_case(u[..],z1,"\"valid_until\":1792003540","\"valid_until\":0"));
+  #assert e.code==AtCode.ok && e.issued_at==0 && e.valid_until==0;
+  #assert at_uint_test("0")==0 && at_uint_test("-1")==-1 && at_uint_test("1.5")==-1 && at_uint_test("\"1\"")==-1 && at_uint_test("12")==12;
+}
+#test "tags: an array of string arrays, nothing after it" {
+  r:=at_tag(AT_RELEASE_TAGS,"w","vault");#assert r.ok && r.count==1 && r.first=="vault" && r.has;
+  #assert !at_tag(AT_RELEASE_TAGS,"w","other").has && !at_tag(AT_RELEASE_TAGS,"t","vault").has;
+  #assert !at_tag("[[\"t\",\"a\"]] x","t","").ok && !at_tag("[1]","t","").ok && !at_tag("[[\"t\",1]]","t","").ok && !at_tag("{}","t","").ok;
+  two:=at_tag("[[\"e\",\"a\"],[\"x\",\"b\"],[\"e\",\"c\"]]","e","c");#assert two.ok && two.count==2 && two.first=="a" && two.has;
+  #assert at_release_read(AT_K1,"[[\"t\",\"oa:att-release:v1\"],[\"x\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"w\",\"vault\"]] x",AT_RELEASE,AT_X).code==AtCode.tags;
+  #assert at_head_read(AT_K1,"[[\"d\",\"vault\"],[\"t\",\"oa:att-head:v1\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"]] x",AT_HEAD).code==AtCode.tags;
+  tb:[2048]u8;eb:[4096]u8;tg:[1024]u8;text:=at_endpoint_test(eb[..],at_token_test(tb[..],AT_CLAIMS));
+  #assert at_endpoint_read(AT_K3,at_case(tg[..],AT_EP_TAGS,"\"]]","\"]] x"),text).code==AtCode.tags;
+}
+#test "a key twice, a field of the wrong type and a broken text refuse" {
+  c:[4096]u8;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"reference\":\"r\"","\"reference\":\"r\",\"reference\":\"r\""),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"image\":{","\"image\":{\"digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\","),AT_X).code==AtCode.image;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"support\":\"STABLE\"","\"support\":\"STABLE\",\"support\":\"STABLE\""),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"workload\":\"vault\"","\"workload\":7"),AT_X).code==AtCode.workload;
+  t7:[1024]u8;
+  #assert at_release_read(AT_K1,at_case(t7[..],AT_RELEASE_TAGS,"[\"w\",\"vault\"]","[\"w\",\"7\"]"),at_case(c[..],AT_RELEASE,"\"workload\":\"vault\"","\"workload\":7"),AT_X).code==AtCode.workload;
+  #assert at_head_read(AT_K1,at_case(t7[..],AT_HEAD_TAGS,"[\"d\",\"vault\"]","[\"d\",\"7\"]"),at_case(c[..],AT_HEAD,"\"workload\":\"vault\"","\"workload\":7")).code==AtCode.workload;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"support\":\"STABLE\"","\"support\":\"STABLE\",\"x\":\"y\""),AT_X).code==AtCode.platform;
+  #assert at_release_read(AT_K1,AT_RELEASE_TAGS,at_case(c[..],AT_RELEASE,"\"changes\":\"c\",","\"changes\":\"c\",,"),AT_X).code==AtCode.json;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"retire_at\":null","\"retire_at\":null,\"retire_at\":null")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"retire_at\":null","\"x\":1,\"retire_at\":null")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"reason\":\"a\",\"reason\":\"a\",\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"}")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"emergency\":null","\"emergency\":{\"reason\":7,\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"}")).code==AtCode.head;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"workload\":\"vault\"","\"workload\":7")).code==AtCode.workload;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7,","\"generation\":7,,")).code==AtCode.json;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":7,\"meta\":{\"a\":[1]}")).code==AtCode.ok;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":7,\"meta\":1")).code==AtCode.field;
+  #assert at_head_read(AT_K1,AT_HEAD_TAGS,at_case(c[..],AT_HEAD,"\"generation\":7","\"generation\":7,\"meta\":{\"a\":}")).code!=AtCode.ok;
+  tb:[2048]u8;eb:[4096]u8;text:=at_endpoint_test(eb[..],at_token_test(tb[..],AT_CLAIMS));
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"format\":\"pki\"","\"format\":\"pki\",\"format\":\"pki\"")).code==AtCode.evidence;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"format\":\"pki\"","\"format\":\"pki\",\"x\":\"y\"")).code==AtCode.evidence;
+  t64:[1024]u8;
+  #assert at_endpoint_read(AT_K3,at_case(t64[..],AT_EP_TAGS,"[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"]","[\"e\",\"1111111111111111111111111111111111111111111111111111111111111111\"]"),at_case(c[..],text,"\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"","\"release\":1111111111111111111111111111111111111111111111111111111111111111")).code==AtCode.release;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"","\"release\":1111111111111111111111111111111111111111111111111111111111111111")).code==AtCode.release;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null","\"hpke\":null,\"meta\":{\"a\":[1]}")).code==AtCode.ok;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null","\"hpke\":null,\"meta\":1")).code==AtCode.field;
+  #assert at_endpoint_read(AT_K3,AT_EP_TAGS,at_case(c[..],text,"\"hpke\":null,","\"hpke\":null,,")).code==AtCode.json;
+}
+#test "token shapes: digits, dots, empty parts, a payload that does not fit" {
+  r:=at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_X);h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);eb:[8192]u8;
+  toks:=[7]string.["!a.eyJhIjoxfQ.c",".eyJhIjoxfQ.c","a.eyJhIjoxfQ.",".a.eyJhIjoxfQ.c","a.eyJhIjoxfQ.c.","a.eyJhIjoxfQ.c!","Z-_z9.eyJhIjoxfQ.Z-_z9"];
+  want:=[7]AtCode.[AtCode.token,AtCode.token,AtCode.token,AtCode.token,AtCode.token,AtCode.token,AtCode.issuer];
+  for i:0..<7 {e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],toks[i]));#assert e.code==AtCode.ok && at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0).code==want[i];}
+  out:[4]u8;
+  #assert at_payload("a.eyJhIjoxfQ.c",out[..])=="";
+  big:[8]u8;#assert at_payload("a.eyJhIjoxfQ.c",big[..])=="{\"a\":1}";
+  #assert at_payload("a.YQ.c",out[0..<1])=="a" && at_payload("a.YWI.c",out[0..<1])=="" && at_payload("a.YWI.c",out[0..<2])=="ab";
+}
+#test "submods: only container.image_digest and confidential_space.support_attributes count" {
+  r:=at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_X);h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);
+  c:[2048]u8;tb:[2048]u8;eb:[4096]u8;
+  sub:="\"submods\":{\"confidential_space\":{\"support_attributes\":[\"LATEST\",\"STABLE\",\"USABLE\"]},\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
+  into:=[9]string.[
+    "\"submods\":{\"confidential_space\":{\"support_attributes\":[\"STABLE\"]},\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"z\":\"bad\"}}",
+    "\"submods\":{\"confidential_space\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"support_attributes\":[\"STABLE\"]},\"container\":{}}",
+    "\"submods\":{\"confidential_space\":{\"a\":1,\"support_attributes\":[\"STABLE\"]},\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+    "\"submods\":{\"confidential_space\":{\"support_attributes\":[\"STABLE\",1]},\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+    "\"submods\":{\"confidential_space\":{\"support_attributes\":[\"STABLE\"]},\"container\":1}",
+    "\"submods\":1",
+    "\"submods\":{\"confidential_space\":{\"support_attributes\":[\"STABLE\"]},\"container\":{\"image_digest\":7}}",
+    "\"submods\":{\"confidential_space\":{\"support_attributes\":[\"STABLE\"]},\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"gce\":{\"a\":[1,{}]}}",
+    "\"submods\":{\"container\":{\"support_attributes\":[\"STABLE\"],\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}"];
+  want:=[9]AtCode.[AtCode.ok,AtCode.measurement,AtCode.ok,AtCode.token,AtCode.measurement,AtCode.support,AtCode.measurement,AtCode.ok,AtCode.support];
+  for i:0..<9 {
+    e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,sub,into[i]))));
+    #assert e.code==AtCode.ok && at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0).code==want[i];
+  }
+  e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,"\"aud\":","\"a\":[1,,],\"aud\":"))));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0).code==AtCode.token;
+  e=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,"\"container\":{","\"container\":{\"a\":[1,,],"))));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0).code==AtCode.token;
+  e=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],at_case(c[..],AT_CLAIMS,"\"eat_nonce\":[","\"eat_nonce\":[[1,,],"))));
+  #assert at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0).code==AtCode.token;
+}
+
+// ---- small readers
+at_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+at_slug :: (s:string)->bool {
+  if s.count==0 || s.count>64 {return false;}
+  for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
+  return true;
+}
+at_image_digest :: (s:string)->bool {return s.count==71 && s[0..<7]=="sha256:" && at_hex64(s[7..<71]);}
+at_uint :: (j:[]Json,t:int)->int {
+  if t!=JSON_NUMBER {return -1;}v:=json_int(json_text(j));if !v.ok || v.value<0 {return -1;}return v.value;
+}
+// The tags named name: how many, the first one's first value, and whether
+// any of them has value as its first value. Every tag must be an array of
+// strings; values are read raw (unescaped hex and slugs).
+at_tag :: (tags:string,name:string,value:string)->AtTag {
+  r:AtTag;j:[1]Json;json_start(j[..],tags);if json_next(j[..])!=JSON_ARRAY {return r;}
+  t:=json_next(j[..]);
+  while t==JSON_ARRAY {
+    v:=json_next(j[..]);at:=0;mine:bool;
+    while v==JSON_STRING {
+      if at==0 {mine=json_text(j[..])==name;if mine {r.count+=1;}}
+      if at==1 && mine {
+        if r.count==1 {r.first=json_text(j[..]);}
+        if json_text(j[..])==value {r.has=true;}
+      }
+      at+=1;v=json_next(j[..]);
+    }
+    if v!=JSON_ARRAY_END {return AtTag.{};}
+    t=json_next(j[..]);
+  }
+  r.ok=t==JSON_ARRAY_END && json_next(j[..])==JSON_END;return r;
+}
+// requires must be [] for every version this reader knows.
+at_requires_empty :: (j:[]Json,t:int)->bool {return t==JSON_ARRAY && json_next(j)==JSON_ARRAY_END;}
+
+// ---- the release, kind 3202
+at_release_field :: (key:string)->int {
+  names:=[16]string.["v","requires","workload","publisher","image","platforms","measurements","gpu","models","components","source","rebuilds","transparency","changes","published_at","meta"];
+  for i:0..<16 {if json_is(key,names[i]) {return i;}}return -1;
+}
+at_image :: (j:[]Json,r:[]AtRelease)->bool {
+  seen:=0;
+  while true {
+    t:=json_next(j);if t==JSON_OBJECT_END {break;}
+    key:=json_text(j);t=json_next(j);
+    bit:int;
+    if json_is(key,"digest") {bit=1;if t!=JSON_STRING || !at_image_digest(json_text(j)) {return false;}r[0].image=json_text(j);}
+    else if json_is(key,"reference") {bit=2;if t!=JSON_STRING {return false;}}
+    else {return false;}
+    if (seen&bit)!=0 {return false;}seen|=bit;
+  }
+  return seen==3;
+}
+// Exactly one platform, gcp-confidential-space, with hwmodel and support.
+// Other kinds (tdx, sev-snp, apple-app-attest) are not built here.
+at_platforms :: (j:[]Json,r:[]AtRelease)->bool {
+  count:=0;v:=json_next(j);
+  while v!=JSON_ARRAY_END {
+    if v!=JSON_OBJECT {return false;}
+    seen:=0;
+    while true {
+      t:=json_next(j);if t==JSON_OBJECT_END {break;}
+      key:=json_text(j);t=json_next(j);if t!=JSON_STRING {return false;}
+      bit:int;
+      if json_is(key,"kind") {bit=1;if !json_is(json_text(j),"gcp-confidential-space") {return false;}}
+      else if json_is(key,"hwmodel") {bit=2;r[0].hwmodel=json_text(j);}
+      else if json_is(key,"support") {bit=4;r[0].support=json_text(j);}
+      else {return false;}
+      if (seen&bit)!=0 {return false;}seen|=bit;
+    }
+    if seen!=7 {return false;}
+    count+=1;v=json_next(j);
+  }
+  return count==1;
+}
+// book:begin release
+// signer is the verified event's pubkey, tags its tag array, content its
+// unescaped content, digest the lowercase SHA-256 of content.
+at_release_read :: (signer:string,tags:string,content:string,digest:string)->AtRelease {
+  r:=[1]AtRelease.[AtRelease.{}];
+  tt:=at_tag(tags,"t","");x:=at_tag(tags,"x","");w:=at_tag(tags,"w","");
+  if !tt.ok || tt.count!=1 || x.count!=1 || w.count!=1 {return AtRelease.{code=AtCode.tags};}
+  if tt.first!="oa:att-release:v1" {return AtRelease.{code=AtCode.marker};}
+  if !at_hex64(digest) || x.first!=digest {return AtRelease.{code=AtCode.digest};}
+  j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return AtRelease.{code=AtCode.json};}
+  seen:=0;
+  while true {
+    t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return AtRelease.{code=AtCode.json};}
+    f:=at_release_field(json_text(j[..]));t=json_next(j[..]);
+    if f==-1 || (seen&(1<<f))!=0 {return AtRelease.{code=AtCode.field};}seen|=1<<f;
+    if f==0 {if t!=JSON_STRING || !json_is(json_text(j[..]),"openagents.att-release.v1") {return AtRelease.{code=AtCode.version};}}
+    else if f==1 {if !at_requires_empty(j[..],t) {return AtRelease.{code=AtCode.version};}}
+    else if f==2 {if t!=JSON_STRING || !at_slug(json_text(j[..])) {return AtRelease.{code=AtCode.workload};}r[0].workload=json_text(j[..]);}
+    else if f==3 {if t!=JSON_STRING || json_text(j[..])!=signer {return AtRelease.{code=AtCode.publisher};}r[0].publisher=signer;}
+    else if f==4 {if t!=JSON_OBJECT || !at_image(j[..],r[..]) {return AtRelease.{code=AtCode.image};}}
+    else if f==5 {if t!=JSON_ARRAY || !at_platforms(j[..],r[..]) {return AtRelease.{code=AtCode.platform};}}
+    else if f==7 {if t!=JSON_NULL {return AtRelease.{code=AtCode.gpu};}}   // GPU evidence is not built
+    else if f==13 {if t!=JSON_STRING {return AtRelease.{code=AtCode.field};}}
+    else if f==14 {r[0].published_at=at_uint(j[..],t);if r[0].published_at<0 {return AtRelease.{code=AtCode.times};}}
+    else if f==10 || f==15 {if t!=JSON_OBJECT || !json_skip(j[..]) {return AtRelease.{code=AtCode.field};}}
+    else {if t!=JSON_ARRAY || !json_skip(j[..]) {return AtRelease.{code=AtCode.field};}}
+  }
+  if json_next(j[..])!=JSON_END {return AtRelease.{code=AtCode.json};}
+  if (seen&32767)!=32767 {return AtRelease.{code=AtCode.field};}
+  if w.first!=r[0].workload {return AtRelease.{code=AtCode.workload};}
+  return r[0];
+}
+// book:end release
+
+// ---- the release head, kind 30202
+at_head_field :: (key:string)->int {
+  names:=[8]string.["v","requires","workload","generation","notice_seconds","admitted","emergency","meta"];
+  for i:0..<8 {if json_is(key,names[i]) {return i;}}return -1;
+}
+at_admit :: (j:[]Json,h:[]AtHead)->bool {
+  v:=json_next(j);
+  while v!=JSON_ARRAY_END {
+    if v!=JSON_OBJECT || h[0].count==AT_ADMITTED {return false;}
+    a:AtAdmit;seen:=0;
+    while true {
+      t:=json_next(j);if t==JSON_OBJECT_END {break;}
+      key:=json_text(j);t=json_next(j);bit:int;
+      if json_is(key,"release") {bit=1;if t!=JSON_STRING || !at_hex64(json_text(j)) {return false;}a.release=json_text(j);}
+      else if json_is(key,"effective_at") {bit=2;a.effective_at=at_uint(j,t);if a.effective_at<0 {return false;}}
+      else if json_is(key,"retire_at") {bit=4;if t!=JSON_NULL {a.retire_at=at_uint(j,t);if a.retire_at<0 {return false;}}}
+      else {return false;}
+      if (seen&bit)!=0 {return false;}seen|=bit;
+    }
+    if seen!=7 {return false;}
+    h[0].admitted[h[0].count]=a;h[0].count+=1;v=json_next(j);
+  }
+  return true;
+}
+// null, or {release, reason} with a nonempty reason.
+at_emergency :: (j:[]Json,t:int,h:[]AtHead)->bool {
+  if t==JSON_NULL {return true;}
+  if t!=JSON_OBJECT {return false;}
+  seen:=0;
+  while true {
+    k:=json_next(j);if k==JSON_OBJECT_END {break;}
+    key:=json_text(j);k=json_next(j);bit:int;
+    if json_is(key,"release") {bit=1;if k!=JSON_STRING || !at_hex64(json_text(j)) {return false;}h[0].emergency=json_text(j);}
+    else if json_is(key,"reason") {bit=2;if k!=JSON_STRING || json_text(j).count==0 {return false;}}
+    else {return false;}
+    if (seen&bit)!=0 {return false;}seen|=bit;
+  }
+  return seen==3;
+}
+// book:begin head
+at_head_read :: (signer:string,tags:string,content:string)->AtHead {
+  h:=[1]AtHead.[AtHead.{}];
+  d:=at_tag(tags,"d","");tt:=at_tag(tags,"t","");
+  if !d.ok || d.count!=1 || tt.count!=1 {return AtHead.{code=AtCode.tags};}
+  if tt.first!="oa:att-head:v1" {return AtHead.{code=AtCode.marker};}
+  j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return AtHead.{code=AtCode.json};}
+  seen:=0;
+  while true {
+    t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return AtHead.{code=AtCode.json};}
+    f:=at_head_field(json_text(j[..]));t=json_next(j[..]);
+    if f==-1 || (seen&(1<<f))!=0 {return AtHead.{code=AtCode.field};}seen|=1<<f;
+    if f==0 {if t!=JSON_STRING || !json_is(json_text(j[..]),"openagents.att-head.v1") {return AtHead.{code=AtCode.version};}}
+    else if f==1 {if !at_requires_empty(j[..],t) {return AtHead.{code=AtCode.version};}}
+    else if f==2 {if t!=JSON_STRING || !at_slug(json_text(j[..])) {return AtHead.{code=AtCode.workload};}h[0].workload=json_text(j[..]);}
+    else if f==3 {h[0].generation=at_uint(j[..],t);if h[0].generation<0 {return AtHead.{code=AtCode.times};}}
+    else if f==4 {h[0].notice=at_uint(j[..],t);if h[0].notice<0 {return AtHead.{code=AtCode.times};}}
+    else if f==5 {if t!=JSON_ARRAY || !at_admit(j[..],h[..]) {return AtHead.{code=AtCode.head};}}
+    else if f==6 {if !at_emergency(j[..],t,h[..]) {return AtHead.{code=AtCode.head};}}
+    else {if t!=JSON_OBJECT || !json_skip(j[..]) {return AtHead.{code=AtCode.field};}}
+  }
+  if json_next(j[..])!=JSON_END {return AtHead.{code=AtCode.json};}
+  if (seen&127)!=127 {return AtHead.{code=AtCode.field};}
+  if d.first!=h[0].workload {return AtHead.{code=AtCode.workload};}
+  for i:0..<h[0].count {if !at_tag(tags,"e",h[0].admitted[i].release).has {return AtHead.{code=AtCode.tags};}}
+  return h[0];
+}
+// book:end head
+// book:begin admitted
+// NIP-ATT: admitted at now when listed, effective_at <= now, retire_at
+// null or later than now, and effective_at at least the notice delay after
+// the release's published_at (one day for the head's emergency release).
+at_admitted :: (h:AtHead,release:string,published_at:int,now:int)->AtCode {
+  for i:0..<h.count {
+    a:=h.admitted[i];
+    if a.release==release {
+      if a.effective_at>now {return AtCode.early;}
+      if a.retire_at>=0 && a.retire_at<=now {return AtCode.retired;}
+      notice:=ifx h.emergency==release then AT_EMERGENCY else h.notice;
+      if a.effective_at<published_at+notice {return AtCode.notice;}
+      return AtCode.ok;
+    }
+  }
+  return AtCode.listed;
+}
+// held is the highest generation this reader has seen for the workload.
+at_generation :: (h:AtHead,held:int)->AtCode {return ifx h.generation<held then AtCode.generation else AtCode.ok;}
+// book:end admitted
+
+// ---- the endpoint, kind 30203
+// book:begin binding
+// SHA-256("openagents.att.v1" || 0 || endpoint (32 bytes) || release id
+// (32 bytes)), as 64 lowercase hex digits. hpke is null here, so it adds no
+// bytes.
+at_binding :: (endpoint:string,release:string,out:[]u8)->bool {
+  if !at_hex64(endpoint) || !at_hex64(release) {return false;}
+  msg:[82]u8;for i:0..<AT_DOMAIN.count {msg[i]=AT_DOMAIN[i];}   // msg[17] stays 0
+  for i:0..<32 {msg[18+i]=cast(u8)(at_nibble(endpoint[2*i])*16+at_nibble(endpoint[2*i+1]));msg[50+i]=cast(u8)(at_nibble(release[2*i])*16+at_nibble(release[2*i+1]));}
+  digest:[32]u8;status:=sha256_hash_checked(msg[..],digest[..],false);
+  hex:="0123456789abcdef";
+  for i:0..<32 {out[2*i]=hex[cast(int)digest[i]>>4];out[2*i+1]=hex[cast(int)digest[i]&15];}
+  return status==SHA_OK;
+}
+// book:end binding
+at_nibble :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+at_endpoint_field :: (key:string)->int {
+  names:=[11]string.["v","requires","release","endpoint","hpke","binding","evidence","operator","issued_at","valid_until","meta"];
+  for i:0..<11 {if json_is(key,names[i]) {return i;}}return -1;
+}
+// Exactly one evidence entry: a Confidential Space PKI token. Raw TDX and
+// SEV-SNP quotes, App Attest and NVIDIA evidence are not built: refused.
+at_evidence :: (j:[]Json,e:[]AtEndpoint)->bool {
+  count:=0;v:=json_next(j);
+  while v!=JSON_ARRAY_END {
+    if v!=JSON_OBJECT {return false;}
+    seen:=0;
+    while true {
+      t:=json_next(j);if t==JSON_OBJECT_END {break;}
+      key:=json_text(j);t=json_next(j);if t!=JSON_STRING {return false;}bit:int;
+      if json_is(key,"kind") {bit=1;if !json_is(json_text(j),AT_TOKEN_KIND) {return false;}}
+      else if json_is(key,"format") {bit=2;if !json_is(json_text(j),"pki") {return false;}}
+      else if json_is(key,"token") {bit=4;e[0].token=json_text(j);}
+      else {return false;}
+      if (seen&bit)!=0 {return false;}seen|=bit;
+    }
+    if seen!=7 {return false;}
+    count+=1;v=json_next(j);
+  }
+  return count==1;
+}
+// book:begin endpoint
+at_endpoint_read :: (signer:string,tags:string,content:string)->AtEndpoint {
+  e:=[1]AtEndpoint.[AtEndpoint.{}];
+  d:=at_tag(tags,"d","");tt:=at_tag(tags,"t","");a:=at_tag(tags,"a","");et:=at_tag(tags,"e","");x:=at_tag(tags,"expiration","");
+  if !d.ok || d.count!=1 || !at_hex64(d.first) || tt.count!=1 || a.count!=1 || et.count!=1 || x.count!=1 {return AtEndpoint.{code=AtCode.tags};}
+  if tt.first!="oa:att-endpoint:v1" {return AtEndpoint.{code=AtCode.marker};}
+  j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return AtEndpoint.{code=AtCode.json};}
+  seen:=0;
+  while true {
+    t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return AtEndpoint.{code=AtCode.json};}
+    f:=at_endpoint_field(json_text(j[..]));t=json_next(j[..]);
+    if f==-1 || (seen&(1<<f))!=0 {return AtEndpoint.{code=AtCode.field};}seen|=1<<f;
+    if f==0 {if t!=JSON_STRING || !json_is(json_text(j[..]),"openagents.att-endpoint.v1") {return AtEndpoint.{code=AtCode.version};}}
+    else if f==1 {if !at_requires_empty(j[..],t) {return AtEndpoint.{code=AtCode.version};}}
+    else if f==2 {if t!=JSON_STRING || !at_hex64(json_text(j[..])) {return AtEndpoint.{code=AtCode.release};}e[0].release=json_text(j[..]);}
+    else if f==3 {if t!=JSON_STRING || json_text(j[..])!=signer {return AtEndpoint.{code=AtCode.endpoint};}e[0].endpoint=signer;}
+    else if f==4 {if t!=JSON_NULL {return AtEndpoint.{code=AtCode.hpke};}}   // HPKE carriage is not built
+    else if f==5 {if t!=JSON_STRING || !at_hex64(json_text(j[..])) {return AtEndpoint.{code=AtCode.binding};}e[0].binding=json_text(j[..]);}
+    else if f==6 {if t!=JSON_ARRAY || !at_evidence(j[..],e[..]) {return AtEndpoint.{code=AtCode.evidence};}}
+    else if f==7 {if t!=JSON_STRING || !at_hex64(json_text(j[..])) {return AtEndpoint.{code=AtCode.field};}}
+    else if f==8 {e[0].issued_at=at_uint(j[..],t);if e[0].issued_at<0 {return AtEndpoint.{code=AtCode.times};}}
+    else if f==9 {e[0].valid_until=at_uint(j[..],t);if e[0].valid_until<0 {return AtEndpoint.{code=AtCode.times};}}
+    else {if t!=JSON_OBJECT || !json_skip(j[..]) {return AtEndpoint.{code=AtCode.field};}}
+  }
+  if json_next(j[..])!=JSON_END {return AtEndpoint.{code=AtCode.json};}
+  if (seen&1023)!=1023 {return AtEndpoint.{code=AtCode.field};}
+  if et.first!=e[0].release {return AtEndpoint.{code=AtCode.release};}
+  if e[0].valid_until<e[0].issued_at || e[0].valid_until>e[0].issued_at+AT_MAX_WINDOW {return AtEndpoint.{code=AtCode.window};}
+  expiry:=json_int(x.first);if !expiry.ok || expiry.value!=e[0].valid_until {return AtEndpoint.{code=AtCode.tags};}
+  e[0].head=a.first;
+  return e[0];
+}
+// book:end endpoint
+
+// ---- the Confidential Space token's claims (signature not checked)
+// A base64url digit's value, or -1.
+at_b64v :: (c:u8)->int {
+  if c>='A' && c<='Z' {return cast(int)(c-'A');}
+  if c>='a' && c<='z' {return cast(int)(c-'a')+26;}
+  if c>='0' && c<='9' {return cast(int)(c-'0')+52;}
+  if c=='-' {return 62;}
+  if c=='_' {return 63;}
+  return -1;
+}
+// The middle part of header.payload.signature, base64url without padding,
+// decoded into out; "" when the token is not three nonempty parts of
+// base64url digits or the payload does not fit.
+at_payload :: (token:string,out:[]u8)->string {
+  dots:=0;first:int;second:int;
+  for i:0..<token.count {
+    c:=token[i];
+    if c=='.' {dots+=1;if dots==1 {first=i;}if dots==2 {second=i;}}
+    else if at_b64v(c)<0 {return "";}
+  }
+  if dots!=2 || first==0 || second==token.count-1 {return "";}
+  acc:int;bits:=0;n:=0;
+  for c:token[first+1..<second] {
+    acc=(acc*64+at_b64v(c))&4095;bits+=6;
+    if bits>=8 {
+      bits-=8;
+      if n>=out.count {return "";}
+      out[n]=cast(u8)(acc>>bits);n+=1;acc&=(1<<bits)-1;
+    }
+  }
+  return cast(string)out[0..<n];
+}
+AtClaims :: struct {ok:bool;iss:bool;aud:bool;exp:int=-1;hwmodel:string;dbg:bool;image:string;stable:bool;nonce:bool;}
+// submods: container.image_digest and confidential_space.support_attributes.
+// A refused text stops at the next key; the caller's end check refuses it.
+at_submods :: (j:[]Json,c:[]AtClaims) {
+  while true {
+    t:=json_next(j);if t!=JSON_STRING {return;}
+    key:=json_text(j);t=json_next(j);
+    container:=json_is(key,"container");
+    if (container || json_is(key,"confidential_space")) && t==JSON_OBJECT {
+      while true {
+        k:=json_next(j);if k!=JSON_STRING {break;}
+        inner:=json_text(j);k=json_next(j);
+        if container && json_is(inner,"image_digest") && k==JSON_STRING {c[0].image=json_text(j);}
+        else if !container && json_is(inner,"support_attributes") && k==JSON_ARRAY {
+          v:=json_next(j);while v==JSON_STRING {if json_is(json_text(j),"STABLE") {c[0].stable=true;}v=json_next(j);}
+          if v!=JSON_ARRAY_END {return;}
+        }
+        else {skipped:=json_skip(j);}
+      }
+    }
+    else {skipped:=json_skip(j);}
+  }
+}
+// book:begin claims
+// The claims a client compares with the release. Unknown claims are
+// skipped: a JWT carries many, and only these decide.
+at_claims :: (payload:string,binding:string)->AtClaims {
+  c:=[1]AtClaims.[AtClaims.{}];j:[1]Json;json_start(j[..],payload);
+  if json_next(j[..])!=JSON_OBJECT {return AtClaims.{};}
+  while true {
+    t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return AtClaims.{};}
+    key:=json_text(j[..]);t=json_next(j[..]);
+    if json_is(key,"iss") {c[0].iss=t==JSON_STRING && json_is(json_text(j[..]),AT_ISSUER);}
+    else if json_is(key,"aud") {c[0].aud=t==JSON_STRING && json_is(json_text(j[..]),AT_AUDIENCE);}
+    else if json_is(key,"exp") {c[0].exp=at_uint(j[..],t);}
+    else if json_is(key,"hwmodel") {if t==JSON_STRING {c[0].hwmodel=json_text(j[..]);}}
+    else if json_is(key,"dbgstat") {c[0].dbg=t==JSON_STRING && json_is(json_text(j[..]),"disabled-since-boot");}
+    else if json_is(key,"eat_nonce") {
+      if t==JSON_STRING {c[0].nonce=json_text(j[..])==binding;}
+      else if t==JSON_ARRAY {
+        v:=json_next(j[..]);
+        while v!=JSON_ARRAY_END {if v==JSON_STRING && json_text(j[..])==binding {c[0].nonce=true;}if !json_skip(j[..]) {return AtClaims.{};}v=json_next(j[..]);}
+      }
+      else if !json_skip(j[..]) {return AtClaims.{};}
+    }
+    else if json_is(key,"submods") && t==JSON_OBJECT {at_submods(j[..],c[..]);}
+    else if !json_skip(j[..]) {return AtClaims.{};}
+  }
+  if json_next(j[..])!=JSON_END {return AtClaims.{};}
+  c[0].ok=true;return c[0];
+}
+// book:end claims
+// book:begin verify
+// NIP-ATT client verification, steps 1, 2, 4, 5 and 6, for verified events:
+// release (its id and reading), head (its signer and reading, and the
+// highest generation held), endpoint (its reading; its signer is checked by
+// at_endpoint_read), at the reader's clock now. Step 3, the token's
+// signature to Google's root, is not built, so the level is open.
+at_verify :: (release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int,e:AtEndpoint,now:int)->AtVerdict {
+  if e.code!=AtCode.ok {return AtVerdict.{code=e.code};}
+  if r.code!=AtCode.ok {return AtVerdict.{code=r.code};}
+  if h.code!=AtCode.ok {return AtVerdict.{code=h.code};}
+  if head_signer!=r.publisher {return AtVerdict.{code=AtCode.head};}
+  if h.workload!=r.workload {return AtVerdict.{code=AtCode.workload};}
+  address:[160]u8;n:=json_raw(address[..],0,"30202:");n=json_raw(address[..],n,r.publisher);n=json_raw(address[..],n,":");n=json_raw(address[..],n,r.workload);
+  if e.head!=cast(string)address[0..<n] {return AtVerdict.{code=AtCode.head};}
+  if e.release!=release_id {return AtVerdict.{code=AtCode.release};}
+  code:=at_generation(h,held);if code!=AtCode.ok {return AtVerdict.{code=code};}
+  code=at_admitted(h,release_id,r.published_at,now);if code!=AtCode.ok {return AtVerdict.{code=code};}
+  if now>e.valid_until {return AtVerdict.{code=AtCode.expired};}
+  bound:[64]u8;
+  if !at_binding(e.endpoint,e.release,bound[..]) || e.binding!=cast(string)bound[..] {return AtVerdict.{code=AtCode.binding};}
+  buf:[AT_PAYLOAD]u8;payload:=at_payload(e.token,buf[..]);
+  c:=at_claims(payload,e.binding);
+  if !c.ok {return AtVerdict.{code=AtCode.token};}
+  if !c.iss {return AtVerdict.{code=AtCode.issuer};}
+  if !c.aud {return AtVerdict.{code=AtCode.audience};}
+  if !c.dbg {return AtVerdict.{code=AtCode.debug};}
+  if c.hwmodel!=r.hwmodel {return AtVerdict.{code=AtCode.hwmodel};}
+  if !c.stable || r.support!="STABLE" {return AtVerdict.{code=AtCode.support};}
+  if c.image!=r.image {return AtVerdict.{code=AtCode.measurement};}
+  if !c.nonce {return AtVerdict.{code=AtCode.nonce};}
+  if c.exp<e.valid_until {return AtVerdict.{code=AtCode.window};}
+  return AtVerdict.{code=AtCode.ok,level=AtLevel.open};
+}
+// Whether data whose policy requires level required may go to this
+// endpoint. Never falls back to a lower level.
+at_may_send :: (v:AtVerdict,required:AtLevel)->bool {
+  return v.code==AtCode.ok && cast(int)v.level>=cast(int)required;
+}
+// book:end verify

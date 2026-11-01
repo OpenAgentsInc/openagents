@@ -1,0 +1,155 @@
+// Chapter 83: an attested endpoint checked against its release head, and a
+// sealed vault object opened through a key slot. Key 1 publishes a release
+// (3202) and a release head (30202) for the vault workload; key 3, the
+// endpoint key, publishes an attested endpoint (30203) whose evidence is a
+// Confidential Space token naming the release's image and the binding; key
+// 2 owns a tier-user vault whose nostr key slot is sealed to itself with
+// NIP-44. Keys are the scalars 1 to 4, TEST ONLY; the token is a TEST TOKEN,
+// not signed by Google, and the vault secrets are hashes of fixed phrases.
+// coax/tests/nostr/att_vault_reference.py wrote every record (BIP-340 aux
+// 0); they are copied here as a relay and a blob store would hand them over.
+#load "../../coax/lib/nostr/att.coax";
+#load "../../coax/lib/nostr/vault.coax";
+#load "../../coax/lib/nostr/nip44-key.coax";
+#load "../../coax/lib/nostr/event.coax";
+#import "Basic";
+
+RELEASE :: "{\"id\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1791300000,\"kind\":3202,\"tags\":[[\"t\",\"oa:att-release:v1\"],[\"x\",\"0a4c0516008f3a460bd5a0c148f3625fb2918a4d893fd7fc64d1aa694544b2b8\"],[\"w\",\"vault\"]],\"content\":\"{\\\"changes\\\":\\\"First release of the vault workload.\\\",\\\"components\\\":[],\\\"gpu\\\":null,\\\"image\\\":{\\\"digest\\\":\\\"sha256:9497a089dc980f4251ab27f5e62c772cfabd0b02b9a8219b4539f86111f288f4\\\",\\\"reference\\\":\\\"us-docker.pkg.dev/openagents-vault/vault/vault-workload\\\"},\\\"measurements\\\":[],\\\"models\\\":[],\\\"platforms\\\":[{\\\"hwmodel\\\":\\\"GCP_INTEL_TDX\\\",\\\"kind\\\":\\\"gcp-confidential-space\\\",\\\"support\\\":\\\"STABLE\\\"}],\\\"published_at\\\":1791300000,\\\"publisher\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"rebuilds\\\":[],\\\"requires\\\":[],\\\"source\\\":{\\\"commit\\\":\\\"0000000000000000000000000000000000000000\\\",\\\"recipe\\\":\\\"deploy/att/vault.recipe\\\",\\\"recipe_digest\\\":\\\"sha256:e1d8e552330911f9f779f85b6f2c00a15e790dcc3fbb3b28f5da1d660a30c5b8\\\",\\\"repo\\\":\\\"https://github.com/OpenAgentsInc/openagents\\\"},\\\"transparency\\\":[],\\\"v\\\":\\\"openagents.att-release.v1\\\",\\\"workload\\\":\\\"vault\\\"}\",\"sig\":\"8e666cdc33295b1c836e33ec183858d4f371a91d53c955942110cb54256781b358d457ccd5b70ff3730ecef8d555b72859b2e2fbc0691e4442c7b54cdab9bb4e\"}";
+RELEASE2 :: "{\"id\":\"9f726a76dec4d66d197f6b0ed5483516df6567accc3643ffa6cf1f72044179fd\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1791900000,\"kind\":3202,\"tags\":[[\"t\",\"oa:att-release:v1\"],[\"x\",\"982fd7bc4c1e03a41f6e08a192157bcd3459b535010d485b0d02b427bcfdfa1e\"],[\"w\",\"vault\"]],\"content\":\"{\\\"changes\\\":\\\"First release of the vault workload.\\\",\\\"components\\\":[],\\\"gpu\\\":null,\\\"image\\\":{\\\"digest\\\":\\\"sha256:210277cb6266afe7c6cc4227ff3e9efc818f55234a7d7fbf033ab602440f2437\\\",\\\"reference\\\":\\\"us-docker.pkg.dev/openagents-vault/vault/vault-workload\\\"},\\\"measurements\\\":[],\\\"models\\\":[],\\\"platforms\\\":[{\\\"hwmodel\\\":\\\"GCP_INTEL_TDX\\\",\\\"kind\\\":\\\"gcp-confidential-space\\\",\\\"support\\\":\\\"STABLE\\\"}],\\\"published_at\\\":1791900000,\\\"publisher\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"rebuilds\\\":[],\\\"requires\\\":[],\\\"source\\\":{\\\"commit\\\":\\\"0000000000000000000000000000000000000000\\\",\\\"recipe\\\":\\\"deploy/att/vault.recipe\\\",\\\"recipe_digest\\\":\\\"sha256:e1d8e552330911f9f779f85b6f2c00a15e790dcc3fbb3b28f5da1d660a30c5b8\\\",\\\"repo\\\":\\\"https://github.com/OpenAgentsInc/openagents\\\"},\\\"transparency\\\":[],\\\"v\\\":\\\"openagents.att-release.v1\\\",\\\"workload\\\":\\\"vault\\\"}\",\"sig\":\"81d1c19414b4f4d2f542a155672208cd355a842c40c2bbd6f277e15038bddfc7c9a530b8460207cfc707cb12ae8b8c5127ae248892121303e5c9a0c10ac68533\"}";
+HEAD :: "{\"id\":\"e6d0a5d59831d5464c76d5e1039f2235eb46d83732772c42061f3c9acecbe3db\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1791999000,\"kind\":30202,\"tags\":[[\"d\",\"vault\"],[\"t\",\"oa:att-head:v1\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"]],\"content\":\"{\\\"admitted\\\":[{\\\"effective_at\\\":1791904800,\\\"release\\\":\\\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\\\",\\\"retire_at\\\":null}],\\\"emergency\\\":null,\\\"generation\\\":7,\\\"notice_seconds\\\":604800,\\\"requires\\\":[],\\\"v\\\":\\\"openagents.att-head.v1\\\",\\\"workload\\\":\\\"vault\\\"}\",\"sig\":\"e5a31065a6b54a72ab22a0624276acc2252c905e66de50b35bb69617b6ddd5ec5477773625e5ed6c44a862b83c7df7ed24598afdca7cc871986da038da98305b\"}";
+ENDPOINT :: "{\"id\":\"2ea538e2569a137ca38a7e9a6096dbe992454ef6eeaa508ba22f36e663a156cd\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791999940,\"kind\":30203,\"tags\":[[\"d\",\"e8e89b1373a99fcea28229b9a5f0d6d9887a3e2aba139e6f8fdcba4a6e9e70b2\"],[\"t\",\"oa:att-endpoint:v1\"],[\"a\",\"30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"],[\"expiration\",\"1792003540\"]],\"content\":\"{\\\"binding\\\":\\\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\\\",\\\"endpoint\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"evidence\\\":[{\\\"format\\\":\\\"pki\\\",\\\"kind\\\":\\\"gcp-confidential-space-token\\\",\\\"token\\\":\\\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImNoYXB0ZXItODMtdGVzdCIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJvcGVuYWdlbnRzLmF0dC52MSIsImRiZ3N0YXQiOiJkaXNhYmxlZC1zaW5jZS1ib290IiwiZWF0X25vbmNlIjpbIjUzMTIyMzZjM2U1NTQzYWJhYTU3ZmFlNmM4ZTM3ZmNhZDhlMjJiOTk2NWUwNjMxMWI5YzFkZTFiNmZkNzQwMzUiXSwiZXhwIjoxNzkyMDAzNjAwLCJod21vZGVsIjoiR0NQX0lOVEVMX1REWCIsImlhdCI6MTc5MTk5OTk0MCwiaXNzIjoiaHR0cHM6Ly9jb25maWRlbnRpYWxjb21wdXRpbmcuZ29vZ2xlYXBpcy5jb20iLCJzdWJtb2RzIjp7ImNvbmZpZGVudGlhbF9zcGFjZSI6eyJzdXBwb3J0X2F0dHJpYnV0ZXMiOlsiTEFURVNUIiwiU1RBQkxFIiwiVVNBQkxFIl19LCJjb250YWluZXIiOnsiaW1hZ2VfZGlnZXN0Ijoic2hhMjU2Ojk0OTdhMDg5ZGM5ODBmNDI1MWFiMjdmNWU2MmM3NzJjZmFiZDBiMDJiOWE4MjE5YjQ1MzlmODYxMTFmMjg4ZjQifX0sInN3bmFtZSI6IkNPTkZJREVOVElBTF9TUEFDRSJ9.bm90IHNpZ25lZCBieSBHb29nbGU6IHRlc3QgdG9rZW4\\\"}],\\\"hpke\\\":null,\\\"issued_at\\\":1791999940,\\\"operator\\\":\\\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\\\",\\\"release\\\":\\\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\\\",\\\"requires\\\":[],\\\"v\\\":\\\"openagents.att-endpoint.v1\\\",\\\"valid_until\\\":1792003540}\",\"sig\":\"44ce78b249d4e52acd15b623aacb23977df36b70e56ad394f475bb8a23c5c0d8be28c4f7ecbea5f1fade3ee7a316af15981b4e7f526d4d160760d7e6b270c889\"}";
+EP_UNLISTED :: "{\"id\":\"df8b864fecd981bbf26d4a29ae2a4909993a48add0792999726e21dcb72273e1\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791999940,\"kind\":30203,\"tags\":[[\"d\",\"e8e89b1373a99fcea28229b9a5f0d6d9887a3e2aba139e6f8fdcba4a6e9e70b2\"],[\"t\",\"oa:att-endpoint:v1\"],[\"a\",\"30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault\"],[\"e\",\"9f726a76dec4d66d197f6b0ed5483516df6567accc3643ffa6cf1f72044179fd\"],[\"expiration\",\"1792003540\"]],\"content\":\"{\\\"binding\\\":\\\"dfa5fc5aada86b349c5d34299f777e4cbfecc5c713a73c642ff15d0ca26730a5\\\",\\\"endpoint\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"evidence\\\":[{\\\"format\\\":\\\"pki\\\",\\\"kind\\\":\\\"gcp-confidential-space-token\\\",\\\"token\\\":\\\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImNoYXB0ZXItODMtdGVzdCIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJvcGVuYWdlbnRzLmF0dC52MSIsImRiZ3N0YXQiOiJkaXNhYmxlZC1zaW5jZS1ib290IiwiZWF0X25vbmNlIjpbImRmYTVmYzVhYWRhODZiMzQ5YzVkMzQyOTlmNzc3ZTRjYmZlY2M1YzcxM2E3M2M2NDJmZjE1ZDBjYTI2NzMwYTUiXSwiZXhwIjoxNzkyMDAzNjAwLCJod21vZGVsIjoiR0NQX0lOVEVMX1REWCIsImlhdCI6MTc5MTk5OTk0MCwiaXNzIjoiaHR0cHM6Ly9jb25maWRlbnRpYWxjb21wdXRpbmcuZ29vZ2xlYXBpcy5jb20iLCJzdWJtb2RzIjp7ImNvbmZpZGVudGlhbF9zcGFjZSI6eyJzdXBwb3J0X2F0dHJpYnV0ZXMiOlsiTEFURVNUIiwiU1RBQkxFIiwiVVNBQkxFIl19LCJjb250YWluZXIiOnsiaW1hZ2VfZGlnZXN0Ijoic2hhMjU2OjIxMDI3N2NiNjI2NmFmZTdjNmNjNDIyN2ZmM2U5ZWZjODE4ZjU1MjM0YTdkN2ZiZjAzM2FiNjAyNDQwZjI0MzcifX0sInN3bmFtZSI6IkNPTkZJREVOVElBTF9TUEFDRSJ9.bm90IHNpZ25lZCBieSBHb29nbGU6IHRlc3QgdG9rZW4\\\"}],\\\"hpke\\\":null,\\\"issued_at\\\":1791999940,\\\"operator\\\":\\\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\\\",\\\"release\\\":\\\"9f726a76dec4d66d197f6b0ed5483516df6567accc3643ffa6cf1f72044179fd\\\",\\\"requires\\\":[],\\\"v\\\":\\\"openagents.att-endpoint.v1\\\",\\\"valid_until\\\":1792003540}\",\"sig\":\"b0e713b0e107adb35c81ba5b190c85b713fa2acdf83e20523325044aaade55bebaf37861aa8edca91fa39b884cb884d120b77d2a932a94127d879bc674af57e6\"}";
+EP_WRONG_IMAGE :: "{\"id\":\"4a46691c32e300b55d6c351917473f33c35551592a6d540f14484c7e5b213ed6\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791999940,\"kind\":30203,\"tags\":[[\"d\",\"e8e89b1373a99fcea28229b9a5f0d6d9887a3e2aba139e6f8fdcba4a6e9e70b2\"],[\"t\",\"oa:att-endpoint:v1\"],[\"a\",\"30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"],[\"expiration\",\"1792003540\"]],\"content\":\"{\\\"binding\\\":\\\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\\\",\\\"endpoint\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"evidence\\\":[{\\\"format\\\":\\\"pki\\\",\\\"kind\\\":\\\"gcp-confidential-space-token\\\",\\\"token\\\":\\\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImNoYXB0ZXItODMtdGVzdCIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJvcGVuYWdlbnRzLmF0dC52MSIsImRiZ3N0YXQiOiJkaXNhYmxlZC1zaW5jZS1ib290IiwiZWF0X25vbmNlIjpbIjUzMTIyMzZjM2U1NTQzYWJhYTU3ZmFlNmM4ZTM3ZmNhZDhlMjJiOTk2NWUwNjMxMWI5YzFkZTFiNmZkNzQwMzUiXSwiZXhwIjoxNzkyMDAzNjAwLCJod21vZGVsIjoiR0NQX0lOVEVMX1REWCIsImlhdCI6MTc5MTk5OTk0MCwiaXNzIjoiaHR0cHM6Ly9jb25maWRlbnRpYWxjb21wdXRpbmcuZ29vZ2xlYXBpcy5jb20iLCJzdWJtb2RzIjp7ImNvbmZpZGVudGlhbF9zcGFjZSI6eyJzdXBwb3J0X2F0dHJpYnV0ZXMiOlsiTEFURVNUIiwiU1RBQkxFIiwiVVNBQkxFIl19LCJjb250YWluZXIiOnsiaW1hZ2VfZGlnZXN0Ijoic2hhMjU2OjIxMDI3N2NiNjI2NmFmZTdjNmNjNDIyN2ZmM2U5ZWZjODE4ZjU1MjM0YTdkN2ZiZjAzM2FiNjAyNDQwZjI0MzcifX0sInN3bmFtZSI6IkNPTkZJREVOVElBTF9TUEFDRSJ9.bm90IHNpZ25lZCBieSBHb29nbGU6IHRlc3QgdG9rZW4\\\"}],\\\"hpke\\\":null,\\\"issued_at\\\":1791999940,\\\"operator\\\":\\\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\\\",\\\"release\\\":\\\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\\\",\\\"requires\\\":[],\\\"v\\\":\\\"openagents.att-endpoint.v1\\\",\\\"valid_until\\\":1792003540}\",\"sig\":\"f627076b2a765fb72f07dec96f0185ccc873433090a1ecfecb862263e41ffa9bcf4e740838cbac7867f15b0735093296cfe0f0d60a8d985c6fa5c2256d7db664\"}";
+EP_DEBUG :: "{\"id\":\"a3ee6a8e52c15fed3c38b8b96b56ef9069cc903d4dcd552d5482e844313b7739\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791999940,\"kind\":30203,\"tags\":[[\"d\",\"e8e89b1373a99fcea28229b9a5f0d6d9887a3e2aba139e6f8fdcba4a6e9e70b2\"],[\"t\",\"oa:att-endpoint:v1\"],[\"a\",\"30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"],[\"expiration\",\"1792003540\"]],\"content\":\"{\\\"binding\\\":\\\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\\\",\\\"endpoint\\\":\\\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\\\",\\\"evidence\\\":[{\\\"format\\\":\\\"pki\\\",\\\"kind\\\":\\\"gcp-confidential-space-token\\\",\\\"token\\\":\\\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImNoYXB0ZXItODMtdGVzdCIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJvcGVuYWdlbnRzLmF0dC52MSIsImRiZ3N0YXQiOiJlbmFibGVkIiwiZWF0X25vbmNlIjpbIjUzMTIyMzZjM2U1NTQzYWJhYTU3ZmFlNmM4ZTM3ZmNhZDhlMjJiOTk2NWUwNjMxMWI5YzFkZTFiNmZkNzQwMzUiXSwiZXhwIjoxNzkyMDAzNjAwLCJod21vZGVsIjoiR0NQX0lOVEVMX1REWCIsImlhdCI6MTc5MTk5OTk0MCwiaXNzIjoiaHR0cHM6Ly9jb25maWRlbnRpYWxjb21wdXRpbmcuZ29vZ2xlYXBpcy5jb20iLCJzdWJtb2RzIjp7ImNvbmZpZGVudGlhbF9zcGFjZSI6eyJzdXBwb3J0X2F0dHJpYnV0ZXMiOlsiTEFURVNUIiwiVVNBQkxFIl19LCJjb250YWluZXIiOnsiaW1hZ2VfZGlnZXN0Ijoic2hhMjU2Ojk0OTdhMDg5ZGM5ODBmNDI1MWFiMjdmNWU2MmM3NzJjZmFiZDBiMDJiOWE4MjE5YjQ1MzlmODYxMTFmMjg4ZjQifX0sInN3bmFtZSI6IkNPTkZJREVOVElBTF9TUEFDRSJ9.bm90IHNpZ25lZCBieSBHb29nbGU6IHRlc3QgdG9rZW4\\\"}],\\\"hpke\\\":null,\\\"issued_at\\\":1791999940,\\\"operator\\\":\\\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\\\",\\\"release\\\":\\\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\\\",\\\"requires\\\":[],\\\"v\\\":\\\"openagents.att-endpoint.v1\\\",\\\"valid_until\\\":1792003540}\",\"sig\":\"5de49609e00cf1a55988104bdf3534794f1536a803092a2f5ec7f2b9aa6cdbcc930c4e8188d934d7bd4406033a6cfabea8fceda0a2ffdf932c4a6fc2fd448947\"}";
+EP_OTHER_KEY :: "{\"id\":\"6c714a51b029fc2b382c0f7f146caccc941a1cab86b0d87364aa4731c0750218\",\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"created_at\":1791999940,\"kind\":30203,\"tags\":[[\"d\",\"e8e89b1373a99fcea28229b9a5f0d6d9887a3e2aba139e6f8fdcba4a6e9e70b2\"],[\"t\",\"oa:att-endpoint:v1\"],[\"a\",\"30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"],[\"expiration\",\"1792003540\"]],\"content\":\"{\\\"binding\\\":\\\"9c0fad2278ea47c5f638a0cfb4c016676a5b6b29931f857b0fec9a9e8776119e\\\",\\\"endpoint\\\":\\\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\\\",\\\"evidence\\\":[{\\\"format\\\":\\\"pki\\\",\\\"kind\\\":\\\"gcp-confidential-space-token\\\",\\\"token\\\":\\\"eyJhbGciOiJSUzI1NiIsImtpZCI6ImNoYXB0ZXItODMtdGVzdCIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJvcGVuYWdlbnRzLmF0dC52MSIsImRiZ3N0YXQiOiJkaXNhYmxlZC1zaW5jZS1ib290IiwiZWF0X25vbmNlIjpbIjUzMTIyMzZjM2U1NTQzYWJhYTU3ZmFlNmM4ZTM3ZmNhZDhlMjJiOTk2NWUwNjMxMWI5YzFkZTFiNmZkNzQwMzUiXSwiZXhwIjoxNzkyMDAzNjAwLCJod21vZGVsIjoiR0NQX0lOVEVMX1REWCIsImlhdCI6MTc5MTk5OTk0MCwiaXNzIjoiaHR0cHM6Ly9jb25maWRlbnRpYWxjb21wdXRpbmcuZ29vZ2xlYXBpcy5jb20iLCJzdWJtb2RzIjp7ImNvbmZpZGVudGlhbF9zcGFjZSI6eyJzdXBwb3J0X2F0dHJpYnV0ZXMiOlsiTEFURVNUIiwiU1RBQkxFIiwiVVNBQkxFIl19LCJjb250YWluZXIiOnsiaW1hZ2VfZGlnZXN0Ijoic2hhMjU2Ojk0OTdhMDg5ZGM5ODBmNDI1MWFiMjdmNWU2MmM3NzJjZmFiZDBiMDJiOWE4MjE5YjQ1MzlmODYxMTFmMjg4ZjQifX0sInN3bmFtZSI6IkNPTkZJREVOVElBTF9TUEFDRSJ9.bm90IHNpZ25lZCBieSBHb29nbGU6IHRlc3QgdG9rZW4\\\"}],\\\"hpke\\\":null,\\\"issued_at\\\":1791999940,\\\"operator\\\":\\\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\\\",\\\"release\\\":\\\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\\\",\\\"requires\\\":[],\\\"v\\\":\\\"openagents.att-endpoint.v1\\\",\\\"valid_until\\\":1792003540}\",\"sig\":\"1850891ff0c1ee45714aea26b1176bb39e831bbeffa1f6c2c19b450ee2582a7cd33cf9d0093b7ca63e720291c1c28a84d5fce4e05ae00eb668f859ff7cec41e7\"}";
+SLOT_NOSTR :: "{\"created_at\":1791995000,\"label\":\"Key 2 (test)\",\"method\":\"nostr\",\"nonce\":\"Z2uLuEznJn3VIN7K\",\"params\":{\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"sealed\":\"AnTigNKnWmFcj+rvMls1iZKMQ80ph901ACOnV/M7Y8UU4OogOYStK8nzXPL1XYdDaPylSuIF1uSbJkgC8mNzXMDy66Pc+4bDhcThqPRKFXKsDoOgpWi+vIf1v6MFuBfBTMPlYxAKvB8zYtRyocfsgEVNCUr8qZmcRitlHfLnlaVzUkI=\"},\"requires\":[],\"slot\":\"a94fc668aebc1da71728e39873952ee2d9f303c1e21e6b561286189bb1eee707\",\"v\":\"openagents.vault-slot.v1\",\"vault\":\"5c47c764253f5fd269cb586c0e991ee13446b06736998e4e528d004794700028\",\"vmk\":\"ioU57nuB7u3zHZ9SkCRhXT6KObK3nefxijj/KmVJXxgGtsczWv0IM3ugMGF48awX\"}";
+SLOT_DEVICE :: "{\"created_at\":1791995000,\"label\":\"This laptop (test)\",\"method\":\"device\",\"nonce\":\"BICpPS6bCUuJ4I4B\",\"params\":{\"key_ref\":\"openagents-vault-test\",\"platform\":\"linux\"},\"requires\":[],\"slot\":\"00349a998651e23109043a3dd8c99cff6ba08661cd1d5fd1c01115b8af9fc19d\",\"v\":\"openagents.vault-slot.v1\",\"vault\":\"5c47c764253f5fd269cb586c0e991ee13446b06736998e4e528d004794700028\",\"vmk\":\"CFG9xRUM0TUxlapCeA6KFmNxjjFYehIKXgyANxahA3XcHHDdJ/ACoivCX9lG2Peb\"}";
+OBJECT :: "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";
+
+// book:begin example
+T0 :: 1792000000;   // the reader's clock
+PUBLISHER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";   // scalar 1
+PERSON :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";      // scalar 2
+ENDPOINT_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"; // scalar 3
+
+AT_WORDS :: [34]string.["ok","json","version","field","tags","marker","digest","workload","publisher","image","platform","gpu","times","head",
+  "generation","listed","early","retired","notice","release","endpoint","hpke","binding","evidence","token","issuer","audience","measurement",
+  "hwmodel","support","debug","nonce","expired","window"];
+VT_WORDS :: [19]string.["ok","json","canonical","version","field","vault","method","params","label","secret","slot","magic","header","tier",
+  "content","wrap","chunks","chunk","room"];
+NE_WORDS :: [9]string.["ok","json","shape","limit","hex","output","alias","id","signature"];
+LEVEL_WORDS :: [4]string.["open","hardened","tee","tee-cloud"];
+
+to_hex :: (bytes:[]u8,out:[]u8)->string {r:=hex_encode_checked(cast(string)bytes,out,false);return cast(string)out[0..<r.written];}
+// A verified event: error is NE_OK only when the id recomputes and the
+// BIP-340 signature verifies under pubkey.
+Opened :: struct {error:int;id:string;signer:string;kind:int;tags:string;content:string;}
+Bufs :: struct {id:[64]u8;signer:[64]u8;content:[4096]u8;}
+open_event :: (event:string,b:[]Bufs)->Opened {
+  o:Opened;scratch:[16384]u8;e:=nostr_event_verify_vartime(event,scratch[..],false);o.error=e.error;
+  if e.error!=NE_OK {return o;}
+  o.id=to_hex(e.id[..],b[0].id[..]);o.signer=to_hex(e.public_key[..],b[0].signer[..]);o.kind=e.kind;
+  o.tags=event[e.tags_from..<e.tags_to];
+  n:=json_unescape(event[e.content_from..<e.content_to],b[0].content[..]);#assert n>=0;o.content=cast(string)b[0].content[0..<n];
+  return o;
+}
+// The lowercase SHA-256 of text, as the x tag carries it.
+digest_hex :: (text:string,out:[]u8)->string {
+  b:[4096]u8;for i:0..<text.count {b[i]=text[i];}
+  d:[32]u8;#assert sha256_hash_checked(b[0..<text.count],d[..],false)==SHA_OK;return to_hex(d[..],out);
+}
+// An endpoint event checked against the release it names and the head.
+check :: (event:string,release_id:string,r:AtRelease,head_signer:string,h:AtHead,held:int,now:int)->AtVerdict {
+  b:[1]Bufs;o:=open_event(event,b[..]);
+  if o.error!=NE_OK {return AtVerdict.{code=AtCode.endpoint};}
+  return at_verify(release_id,r,head_signer,h,held,at_endpoint_read(o.signer,o.tags,o.content),now);
+}
+// A copy of text with the byte at i replaced by c.
+altered :: (text:string,i:int,c:u8,out:[]u8)->string {for k:0..<text.count {out[k]=text[k];}out[i]=c;return cast(string)out[0..<text.count];}
+find :: (text:string,what:string)->int {for i:0..<text.count-what.count+1 {if text[i..<i+what.count]==what {return i;}}return -1;}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("the release (key 1, kind 3202)\n");
+  rb:[1]Bufs;orl:=open_event(RELEASE,rb[..]);x:[64]u8;
+  print("verify: %, id %, signer is the publisher: %\n",NE_WORDS[orl.error],orl.id,orl.signer==PUBLISHER);
+  print("content % bytes, x = sha256(content) = %\n",orl.content.count,digest_hex(orl.content,x[..]));
+  r:=at_release_read(orl.signer,orl.tags,orl.content,digest_hex(orl.content,x[..]));
+  print("read: %, workload %, image %\n",AT_WORDS[cast(int)r.code],r.workload,r.image);
+  print("platform gcp-confidential-space, hwmodel %, support %, published_at T0 - %\n",r.hwmodel,r.support,T0-r.published_at);
+
+  print("the release head (key 1, kind 30202)\n");
+  hb:[1]Bufs;ohd:=open_event(HEAD,hb[..]);
+  print("verify: %, id %\n",NE_WORDS[ohd.error],ohd.id);
+  h:=at_head_read(ohd.signer,ohd.tags,ohd.content);
+  a:=h.admitted[0];
+  print("read: %, generation %, notice_seconds %, admitted % release, effective_at T0 - %, retire_at %\n",AT_WORDS[cast(int)h.code],
+    h.generation,h.notice,h.count,T0-a.effective_at,ifx a.retire_at<0 then "null" else "set");
+  print("effective_at - published_at = % = notice_seconds: %\n",a.effective_at-r.published_at,a.effective_at-r.published_at==h.notice);
+  for at:[3]int.[0,-95200,-95201] {
+    print("admitted at T0 % %: %\n",ifx at<0 then "-" else "+",ifx at<0 then -at else at,AT_WORDS[cast(int)at_admitted(h,orl.id,r.published_at,T0+at)]);
+  }
+
+  print("the endpoint (key 3, kind 30203)\n");
+  eb:[1]Bufs;oep:=open_event(ENDPOINT,eb[..]);
+  print("verify: %, id %, signer is the endpoint key: %\n",NE_WORDS[oep.error],oep.id,oep.signer==ENDPOINT_KEY);
+  e:=at_endpoint_read(oep.signer,oep.tags,oep.content);
+  print("read: %, release is the one above: %, issued_at T0 - %, valid_until T0 + %\n",AT_WORDS[cast(int)e.code],e.release==orl.id,T0-e.issued_at,e.valid_until-T0);
+  bound:[64]u8;#assert at_binding(e.endpoint,e.release,bound[..]);
+  print("binding = sha256(\"openagents.att.v1\" 0 endpoint release) = %, equal: %\n",cast(string)bound[..],cast(string)bound[..]==e.binding);
+  payload:[AT_PAYLOAD]u8;claims:=at_payload(e.token,payload[..]);
+  print("token claims (% bytes, signature not checked): %\n",claims.count,claims);
+  v:=at_verify(orl.id,r,ohd.signer,h,0,e,T0);
+  print("verify the chain at T0: %, level %\n",AT_WORDS[cast(int)v.code],LEVEL_WORDS[cast(int)v.level]);
+  print("may send data that needs open: %, tee: %, tee-cloud: %\n",at_may_send(v,AtLevel.open),at_may_send(v,AtLevel.tee),at_may_send(v,AtLevel.tee_cloud));
+
+  print("endpoints that do not match the head\n");
+  r2b:[1]Bufs;or2:=open_event(RELEASE2,r2b[..]);x2:[64]u8;
+  r2:=at_release_read(or2.signer,or2.tags,or2.content,digest_hex(or2.content,x2[..]));
+  print("release 2 (published T0 - %, another image), read %, in the head: %\n",T0-r2.published_at,AT_WORDS[cast(int)r2.code],at_admitted(h,or2.id,r2.published_at,T0)==AtCode.ok);
+  print("an endpoint running release 2: %\n",AT_WORDS[cast(int)check(EP_UNLISTED,or2.id,r2,ohd.signer,h,0,T0).code]);
+  print("an endpoint whose token reports another image: %\n",AT_WORDS[cast(int)check(EP_WRONG_IMAGE,orl.id,r,ohd.signer,h,0,T0).code]);
+  print("an endpoint whose token is a debug image, not STABLE: %\n",AT_WORDS[cast(int)check(EP_DEBUG,orl.id,r,ohd.signer,h,0,T0).code]);
+  print("key 4 claiming key 3's token: %\n",AT_WORDS[cast(int)check(EP_OTHER_KEY,orl.id,r,ohd.signer,h,0,T0).code]);
+  print("the good endpoint with generation 8 already held: %\n",AT_WORDS[cast(int)check(ENDPOINT,orl.id,r,ohd.signer,h,8,T0).code]);
+  print("the good endpoint at T0 + 3541: %\n",AT_WORDS[cast(int)check(ENDPOINT,orl.id,r,ohd.signer,h,0,T0+3541).code]);
+  print("the good endpoint with a head signed by key 3: %\n",AT_WORDS[cast(int)check(ENDPOINT,orl.id,r,ENDPOINT_KEY,h,0,T0).code]);
+  out:[8192]u8;
+  forged:=altered(ENDPOINT,ENDPOINT.count-3,ifx ENDPOINT[ENDPOINT.count-3]=='0' then cast(u8)'1' else cast(u8)'0',out[..]);
+  fb:[1]Bufs;print("the endpoint with one signature digit changed: verify %\n",NE_WORDS[open_event(forged,fb[..]).error]);
+
+  print("the vault object (tier user, 2 chunks)\n");
+  blob:[2048]u8;br:=base64_decode_checked(OBJECT,blob[..],false);#assert br.error==NC_OK;object:=blob[0..<br.written];
+  o:=vt_object_read(object);
+  print("% bytes: magic OAVAULT1, header % bytes, body % bytes; read %, chunks % of %, wraps %\n",object.count,o.body-12,object.count-o.body,
+    VT_WORDS[cast(int)o.code],o.chunks,o.chunk_bytes,o.count);
+  cd:[64]u8;print("core_digest %\n",to_hex(o.digest[..],cd[..]));
+  aad:[VT_AAD_MAX]u8;s:=vt_slot_read(SLOT_NOSTR,aad[..]);
+  print("the nostr slot: read %, method %, associated data % bytes (the slot without nonce and vmk)\n",VT_WORDS[cast(int)s.code],s.method,s.aad);
+  // key 2 opens its own NIP-44 seal: conversation key of key 2 with itself
+  sec:[32]u8;sec[31]=2;pub:[32]u8;hb2:=hex_decode_checked(PERSON,pub[..],false);#assert hb2.error==NC_OK;
+  work:[1]EcdhScratch;ck:[32]u8;#assert nip44_conversation_key_from_keys_checked(sec[..],pub[..],work[..],ck[..],false)==NIP44_OK;
+  secret:[32]u8;print("NIP-44 opens the slot's sealed secret with key 2: %\n",vt_nostr_secret(s.sealed,ck[..],secret[..]));
+  plain:[2048]u8;res:=vt_open(object,SLOT_NOSTR,secret[..],plain[..]);
+  pd:[64]u8;
+  print("open with the nostr slot: %, % bytes, sha256 %\n",VT_WORDS[cast(int)res.code],res.written,digest_hex(cast(string)plain[0..<res.written],pd[..]));
+  first:=0;while plain[first]!='\n' {first+=1;}
+  print("first line: %\n",cast(string)plain[0..<first]);
+
+  print("refusals\n");
+  print("the device slot with the nostr slot's secret: %\n",VT_WORDS[cast(int)vt_open(object,SLOT_DEVICE,secret[..],plain[..]).code]);
+  t:[2048]u8;at:=find(SLOT_NOSTR,"Key 2 (test)");
+  print("the nostr slot with its label changed to Key 3 (test): %\n",VT_WORDS[cast(int)vt_open(object,altered(SLOT_NOSTR,at+4,'3',t[..]),secret[..],plain[..]).code]);
+  at=find(SLOT_NOSTR,"\"vault\":\"5c47");
+  print("the nostr slot for vault 6c47...: %\n",VT_WORDS[cast(int)vt_open(object,altered(SLOT_NOSTR,at+9,'6',t[..]),secret[..],plain[..]).code]);
+  print("the object without its last chunk: %\n",VT_WORDS[cast(int)vt_open(object[0..<o.body+1040],SLOT_NOSTR,secret[..],plain[..]).code]);
+  object[o.body+100]^=1;
+  print("one bit of chunk 0 flipped: %\n",VT_WORDS[cast(int)vt_open(object,SLOT_NOSTR,secret[..],plain[..]).code]);
+  object[o.body+100]^=1;
+  object[11]^=1;
+  print("the header length one byte off: %\n",VT_WORDS[cast(int)vt_open(object,SLOT_NOSTR,secret[..],plain[..]).code]);
+  object[11]^=1;
+  for i:0..<32 {secret[i]=0;ck[i]=0;}
+}
+// book:end main

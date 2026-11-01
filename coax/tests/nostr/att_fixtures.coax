@@ -1,0 +1,46 @@
+// Chapter 83: fixtures for coax/lib/nostr/att.coax's checks: small hand-made
+// records (the example carries signed ones) and helpers that alter them.
+// Test data only. Loaded by att.coax, which loads json.coax and base64.coax.
+
+AT_K1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+AT_K3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+AT_RID :: "97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a";
+AT_IMAGE :: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+AT_BINDING :: "5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035";
+AT_T0 :: 1792000000;
+AT_RELEASE :: "{\"changes\":\"c\",\"components\":[],\"gpu\":null,\"image\":{\"digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"reference\":\"r\"},\"measurements\":[],\"models\":[],\"platforms\":[{\"hwmodel\":\"GCP_INTEL_TDX\",\"kind\":\"gcp-confidential-space\",\"support\":\"STABLE\"}],\"published_at\":1791300000,\"publisher\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"rebuilds\":[],\"requires\":[],\"source\":{\"commit\":\"0\"},\"transparency\":[],\"v\":\"openagents.att-release.v1\",\"workload\":\"vault\"}";
+AT_RELEASE_TAGS :: "[[\"t\",\"oa:att-release:v1\"],[\"x\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"w\",\"vault\"]]";
+AT_X :: "1111111111111111111111111111111111111111111111111111111111111111";
+AT_HEAD :: "{\"admitted\":[{\"effective_at\":1791904800,\"release\":\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\",\"retire_at\":null}],\"emergency\":null,\"generation\":7,\"notice_seconds\":604800,\"requires\":[],\"v\":\"openagents.att-head.v1\",\"workload\":\"vault\"}";
+AT_HEAD_TAGS :: "[[\"d\",\"vault\"],[\"t\",\"oa:att-head:v1\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"]]";
+AT_EP_TAGS :: "[[\"d\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"t\",\"oa:att-endpoint:v1\"],[\"a\",\"30202:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:vault\"],[\"e\",\"97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a\"],[\"expiration\",\"1792003540\"]]";
+
+// A copy of text with the first occurrence of from replaced by to.
+at_case :: (out:[]u8,text:string,from:string,to:string)->string {
+  at:=-1;i:=0;while at<0 && i+from.count<=text.count {if text[i..<i+from.count]==from {at=i;}i+=1;}
+  #assert at>=0;
+  n:=json_raw(out,0,text[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,text[at+from.count..<text.count]);
+  return cast(string)out[0..<n];
+}
+// The claims of a test token: header and signature parts are not read.
+at_token_test :: (out:[]u8,claims:string)->string {
+  b:[2048]u8;r:=base64_encode_checked(claims,b[..],false);
+  n:=json_raw(out,0,"eyJhbGciOiJSUzI1NiJ9.");
+  for i:0..<r.written {c:=b[i];if c=='=' {break;}out[n]=ifx c=='+' then cast(u8)'-' else ifx c=='/' then cast(u8)'_' else c;n+=1;}
+  n=json_raw(out,n,".c2ln");return cast(string)out[0..<n];
+}
+AT_CLAIMS :: "{\"aud\":\"openagents.att.v1\",\"dbgstat\":\"disabled-since-boot\",\"eat_nonce\":[\"5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035\"],\"exp\":1792003600,\"hwmodel\":\"GCP_INTEL_TDX\",\"iat\":1791999940,\"iss\":\"https://confidentialcomputing.googleapis.com\",\"submods\":{\"confidential_space\":{\"support_attributes\":[\"LATEST\",\"STABLE\",\"USABLE\"]},\"container\":{\"image_digest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}},\"swname\":\"CONFIDENTIAL_SPACE\"}";
+at_endpoint_test :: (out:[]u8,token:string)->string {
+  n:=json_raw(out,0,"{\"binding\":\"");n=json_raw(out,n,AT_BINDING);n=json_raw(out,n,"\",\"endpoint\":\"");n=json_raw(out,n,AT_K3);
+  n=json_raw(out,n,"\",\"evidence\":[{\"format\":\"pki\",\"kind\":\"gcp-confidential-space-token\",\"token\":\"");n=json_raw(out,n,token);
+  n=json_raw(out,n,"\"}],\"hpke\":null,\"issued_at\":1791999940,\"operator\":\"");n=json_raw(out,n,AT_K1);
+  n=json_raw(out,n,"\",\"release\":\"");n=json_raw(out,n,AT_RID);n=json_raw(out,n,"\",\"requires\":[],\"v\":\"openagents.att-endpoint.v1\",\"valid_until\":1792003540}");
+  return cast(string)out[0..<n];
+}
+at_good_test :: ()->AtVerdict {
+  r:=at_release_read(AT_K1,AT_RELEASE_TAGS,AT_RELEASE,AT_X);h:=at_head_read(AT_K1,AT_HEAD_TAGS,AT_HEAD);
+  tb:[2048]u8;eb:[4096]u8;e:=at_endpoint_read(AT_K3,AT_EP_TAGS,at_endpoint_test(eb[..],at_token_test(tb[..],AT_CLAIMS)));
+  return at_verify(AT_RID,r,AT_K1,h,0,e,AT_T0);
+}
+
+at_uint_test :: (text:string)->int {j:[1]Json;json_start(j[..],text);t:=json_next(j[..]);return at_uint(j[..],t);}

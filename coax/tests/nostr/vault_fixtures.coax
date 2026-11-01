@@ -1,0 +1,42 @@
+// Chapter 83: fixtures for coax/lib/nostr/vault.coax's checks, written by
+// coax/tests/nostr/att_vault_reference.py. TEST SECRETS ONLY: the VMK, the
+// slot secrets and the DEK are hashes of fixed phrases.
+
+VT_SLOT_NOSTR :: "{\"created_at\":1791995000,\"label\":\"Key 2 (test)\",\"method\":\"nostr\",\"nonce\":\"Z2uLuEznJn3VIN7K\",\"params\":{\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"sealed\":\"AnTigNKnWmFcj+rvMls1iZKMQ80ph901ACOnV/M7Y8UU4OogOYStK8nzXPL1XYdDaPylSuIF1uSbJkgC8mNzXMDy66Pc+4bDhcThqPRKFXKsDoOgpWi+vIf1v6MFuBfBTMPlYxAKvB8zYtRyocfsgEVNCUr8qZmcRitlHfLnlaVzUkI=\"},\"requires\":[],\"slot\":\"a94fc668aebc1da71728e39873952ee2d9f303c1e21e6b561286189bb1eee707\",\"v\":\"openagents.vault-slot.v1\",\"vault\":\"5c47c764253f5fd269cb586c0e991ee13446b06736998e4e528d004794700028\",\"vmk\":\"ioU57nuB7u3zHZ9SkCRhXT6KObK3nefxijj/KmVJXxgGtsczWv0IM3ugMGF48awX\"}";
+VT_SLOT_DEVICE :: "{\"created_at\":1791995000,\"label\":\"This laptop (test)\",\"method\":\"device\",\"nonce\":\"BICpPS6bCUuJ4I4B\",\"params\":{\"key_ref\":\"openagents-vault-test\",\"platform\":\"linux\"},\"requires\":[],\"slot\":\"00349a998651e23109043a3dd8c99cff6ba08661cd1d5fd1c01115b8af9fc19d\",\"v\":\"openagents.vault-slot.v1\",\"vault\":\"5c47c764253f5fd269cb586c0e991ee13446b06736998e4e528d004794700028\",\"vmk\":\"CFG9xRUM0TUxlapCeA6KFmNxjjFYehIKXgyANxahA3XcHHDdJ/ACoivCX9lG2Peb\"}";
+VT_AAD_NOSTR :: "{\"created_at\":1791995000,\"label\":\"Key 2 (test)\",\"method\":\"nostr\",\"params\":{\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"sealed\":\"AnTigNKnWmFcj+rvMls1iZKMQ80ph901ACOnV/M7Y8UU4OogOYStK8nzXPL1XYdDaPylSuIF1uSbJkgC8mNzXMDy66Pc+4bDhcThqPRKFXKsDoOgpWi+vIf1v6MFuBfBTMPlYxAKvB8zYtRyocfsgEVNCUr8qZmcRitlHfLnlaVzUkI=\"},\"requires\":[],\"slot\":\"a94fc668aebc1da71728e39873952ee2d9f303c1e21e6b561286189bb1eee707\",\"v\":\"openagents.vault-slot.v1\",\"vault\":\"5c47c764253f5fd269cb586c0e991ee13446b06736998e4e528d004794700028\"}";
+VT_CK :: "b127d717e2a3a193d07ba78341dec2d76dcaf3c7de82ea3cedf8d2e327e4871c";            // NIP-44 conversation key of key 2 with itself
+VT_NOSTR_SECRET :: "7ad7955349731cf781c561d4a6e37f0aade34eee56db023ce0b414f4c20f00c8";
+VT_DEVICE_SECRET :: "ecc9fdfadabdc06ff9e7b5ac3980fc994dd647ffd0bbe363fa2d650171c4d765";
+VT_VMK :: "6253099880e6ad1190cbe0e77c20a21ad2e6aa7f80f497f997ae320714b7e506";
+VT_KWRAP :: "c26f6fc125e52e0fec93d129c4ef679bc7099ccf6ce5e416f713aba62d1db7a8";
+VT_KEY_ID :: "027fdf6029d13db20b2462c5424fcc73";
+VT_SMALL :: "T0FWQVVMVDEAAAIEeyJjb3JlIjp7ImNvbnRlbnQiOnsiYWxnIjoiYWVzLTI1Ni1nY20tY2h1bmtlZC12MSIsImNodW5rX2J5dGVzIjoxMDI0LCJjaHVua3MiOjEsIm5vbmNlX3ByZWZpeCI6ImllV25BaUt0L1E9PSJ9LCJjcmVhdGVkX2F0IjoxNzkxOTk3MDAwLCJvYmplY3QiOiI2N2VlNjlmMDY1NTk1NTBjNTlmYzZiNDk5ZjJiZWM0MWFhZmQyZDJjNjg0MTEzOGE2MTU2ODk0MzYxNzgwMzQ1IiwidGllciI6InVzZXIiLCJ2YXVsdCI6IjVjNDdjNzY0MjUzZjVmZDI2OWNiNTg2YzBlOTkxZWUxMzQ0NmIwNjczNjk5OGU0ZTUyOGQwMDQ3OTQ3MDAwMjgifSwicmVxdWlyZXMiOltdLCJ2Ijoib3BlbmFnZW50cy52YXVsdC1vYmplY3QudjEiLCJ3cmFwcyI6W3siZGVrIjoidENFUFFUZVdVZnNrQW9WSU5QWHdBSTBFNlhYMGxpV0NaU09CNHJVdFBNenljMzdpZHUxTUJla05sNkdpbFZTRCIsImtleSI6IjAyN2ZkZjYwMjlkMTNkYjIwYjI0NjJjNTQyNGZjYzczIiwibW9kZSI6InVzZXIiLCJub25jZSI6IlNMY1RFMHpQazVIZ2RvNjcifV19zw9rxsLdJ7v8wPYSJdUAP4qmB+xtqin9cP924TbRd01YONceB52NPo+l";   // one chunk: "Test data only: 21000 sat."
+VT_SMALL_CORE_DIGEST :: "a490dc5b02c070adfd14be2152abf085e69ddf74684177d18f71b9829523bf5a";
+
+// 2n hex digits into n bytes.
+vt_hex_test :: (text:string,out:[]u8) {
+  for i:0..<text.count/2 {out[i]=cast(u8)(vt_digit_test(text[2*i])*16+vt_digit_test(text[2*i+1]));}
+}
+vt_digit_test :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+// A base64 blob decoded into out, as the string a reader takes.
+vt_blob_test :: (b64:string,out:[]u8)->string {r:=base64_decode_checked(b64,out,false);#assert r.error==NC_OK;return cast(string)out[0..<r.written];}
+// A copy of text with the first occurrence of from replaced by to.
+vt_case :: (out:[]u8,text:string,from:string,to:string)->string {
+  at:=-1;i:=0;while at<0 && i+from.count<=text.count {if text[i..<i+from.count]==from {at=i;}i+=1;}
+  #assert at>=0;
+  n:=json_raw(out,0,text[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,text[at+from.count..<text.count]);
+  return cast(string)out[0..<n];
+}
+// magic || be32(header.count) || header || body.
+vt_rebuild :: (header:string,body:string,out:[]u8)->string {
+  n:=json_raw(out,0,"OAVAULT1");
+  for k:0..<4 {out[n+k]=cast(u8)((header.count>>(8*(3-k)))&255);}
+  n=json_raw(out,n+4,header);n=json_raw(out,n,body);return cast(string)out[0..<n];
+}
+// A copy of text with byte i exclusive-ored with x.
+vt_flip :: (text:string,i:int,x:u8,out:[]u8)->string {for k:0..<text.count {out[k]=text[k];}out[i]^=x;return cast(string)out[0..<text.count];}
+// The reader takes bytes: text copied into buf, read from there.
+vt_u8 :: (text:string,buf:[]u8)->[]u8 {for k:0..<text.count {buf[k]=text[k];}return buf[0..<text.count];}
+vt_object_read_t :: (buf:[]u8,text:string)->VtObject {return vt_object_read(vt_u8(text,buf));}
+vt_open_t :: (buf:[]u8,text:string,slot:string,secret:[]u8,out:[]u8)->VtResult {return vt_open(vt_u8(text,buf),slot,secret,out);}

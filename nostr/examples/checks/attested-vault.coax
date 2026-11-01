@@ -1,0 +1,95 @@
+// The checks of attested-vault.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/attested-vault.coax
+#load "../attested-vault.coax";
+
+// book:begin check
+// From coax/tests/nostr/att_vault_reference.py, written from NIP-ATT,
+// NIP-VAULT, FIPS-197, SP 800-38D, RFC 5869, NIP-01, NIP-44 and BIP-340
+// with hashlib, hmac and integers; it shares no code with Coax. It signed
+// every event (aux 0, and its own verifier accepts each), and it printed
+// each id, each content's SHA-256 and length, the binding, user_key_id, the
+// object's core_digest, and the opened plaintext's length and SHA-256. Its
+// AES-256-GCM reproduces GCM spec test case 16 before it writes anything.
+PY_EVENTS :: [8]string.[RELEASE,RELEASE2,HEAD,ENDPOINT,EP_UNLISTED,EP_WRONG_IMAGE,EP_DEBUG,EP_OTHER_KEY];
+PY_ID :: [8]string.[
+  "97263cdd56d438b8a5a2719dab4cc41d62ea7135522c8a838ebf5e82060d504a",
+  "9f726a76dec4d66d197f6b0ed5483516df6567accc3643ffa6cf1f72044179fd",
+  "e6d0a5d59831d5464c76d5e1039f2235eb46d83732772c42061f3c9acecbe3db",
+  "2ea538e2569a137ca38a7e9a6096dbe992454ef6eeaa508ba22f36e663a156cd",
+  "df8b864fecd981bbf26d4a29ae2a4909993a48add0792999726e21dcb72273e1",
+  "4a46691c32e300b55d6c351917473f33c35551592a6d540f14484c7e5b213ed6",
+  "a3ee6a8e52c15fed3c38b8b96b56ef9069cc903d4dcd552d5482e844313b7739",
+  "6c714a51b029fc2b382c0f7f146caccc941a1cab86b0d87364aa4731c0750218"];
+PY_X :: [8]string.[
+  "0a4c0516008f3a460bd5a0c148f3625fb2918a4d893fd7fc64d1aa694544b2b8",
+  "982fd7bc4c1e03a41f6e08a192157bcd3459b535010d485b0d02b427bcfdfa1e",
+  "f184ce2bcf146aef6d11b97267403f581931fdd2489661582f7f8c00a65a4ce5",
+  "4514553b38bbdd955af43c43e2c42f7a26f98da474fef7b6ff3c959a5e2ce2d7",
+  "cb90ba726c944a3eb769929fa1270ddb51d328f42ee2d976d05d35eb84a3ffbe",
+  "f507095ce82dc71cab3466525917a75bd4cc0fbd98c16f2204f92f0224974361",
+  "5fa4169f1c4d27c220fca60e21b37ebd74de684630c886b96aefccde6a32b2a0",
+  "23129bbdf5cac5de32deedd94064733a502910bb15732d0bcc366bc3cf25bb53"];
+PY_LEN :: [8]int.[806,806,254,1238,1238,1238,1210,1238];
+PY_BINDING :: "5312236c3e5543abaa57fae6c8e37fcad8e22b9965e06311b9c1de1b6fd74035";
+PY_KEY_ID :: "027fdf6029d13db20b2462c5424fcc73";
+PY_CORE_DIGEST :: "f8664f07d3a40f465d7c05f2b5ce3b355f72d5658ee6673e311e6eb831aa5946";
+PY_PLAIN_SHA :: "590d186ab08b0b0c09666f8b3a192d9a2866e0a581e0994752453a58e1e283bb";
+
+// Read an event without its signature: the id must recompute.
+read_only :: (event:string,b:[]Bufs)->Opened {
+  o:Opened;scratch:[16384]u8;e:=nostr_event_read(event,scratch[..],false);o.error=e.error;
+  if e.error!=NE_OK {return o;}
+  o.id=to_hex(e.id[..],b[0].id[..]);o.signer=to_hex(e.public_key[..],b[0].signer[..]);o.kind=e.kind;
+  o.tags=event[e.tags_from..<e.tags_to];
+  n:=json_unescape(event[e.content_from..<e.content_to],b[0].content[..]);o.content=cast(string)b[0].content[0..<n];
+  return o;
+}
+
+#test "every id and content digest matches the Python reference" #steps 200000000 {
+  for i:0..<8 {
+    b:[1]Bufs;o:=read_only(PY_EVENTS[i],b[..]);#assert o.error==NE_OK && o.id==PY_ID[i] && o.content.count==PY_LEN[i];
+    x:[64]u8;#assert digest_hex(o.content,x[..])==PY_X[i];
+  }
+}
+#test "the chain by hand: notice delay, binding, window" #steps 400000000 {
+  b:[1]Bufs;orl:=read_only(RELEASE,b[..]);x:[64]u8;r:=at_release_read(orl.signer,orl.tags,orl.content,digest_hex(orl.content,x[..]));
+  hb:[1]Bufs;ohd:=read_only(HEAD,hb[..]);h:=at_head_read(ohd.signer,ohd.tags,ohd.content);
+  // published 700000 s before T0; effective exactly notice_seconds = 604800 later, 95200 s before T0
+  #assert r.published_at==T0-700000 && h.admitted[0].effective_at==T0-95200 && h.admitted[0].effective_at-r.published_at==604800;
+  #assert at_admitted(h,orl.id,r.published_at,T0-95200)==AtCode.ok && at_admitted(h,orl.id,r.published_at,T0-95201)==AtCode.early;
+  #assert at_admitted(h,orl.id,r.published_at+1,T0)==AtCode.notice;
+  eb:[1]Bufs;oep:=read_only(ENDPOINT,eb[..]);e:=at_endpoint_read(oep.signer,oep.tags,oep.content);
+  bound:[64]u8;#assert at_binding(ENDPOINT_KEY,orl.id,bound[..]) && cast(string)bound[..]==PY_BINDING && e.binding==PY_BINDING;
+  // issued 60 s before T0, valid for 3600 s, the token expiring 60 s after that
+  #assert e.issued_at==T0-60 && e.valid_until==T0+3540 && e.valid_until-e.issued_at==AT_MAX_WINDOW;
+  #assert at_verify(orl.id,r,ohd.signer,h,7,e,T0+3540).code==AtCode.ok && at_verify(orl.id,r,ohd.signer,h,7,e,T0+3541).code==AtCode.expired;
+  // Done means: an endpoint whose attestation does not match a release head is refused
+  r2b:[1]Bufs;or2:=read_only(RELEASE2,r2b[..]);x2:[64]u8;r2:=at_release_read(or2.signer,or2.tags,or2.content,digest_hex(or2.content,x2[..]));
+  ub:[1]Bufs;ou:=read_only(EP_UNLISTED,ub[..]);
+  #assert at_verify(or2.id,r2,ohd.signer,h,0,at_endpoint_read(ou.signer,ou.tags,ou.content),T0).code==AtCode.listed;
+  wb:[1]Bufs;ow:=read_only(EP_WRONG_IMAGE,wb[..]);
+  #assert at_verify(orl.id,r,ohd.signer,h,0,at_endpoint_read(ow.signer,ow.tags,ow.content),T0).code==AtCode.measurement;
+}
+#test "NIP-ATT's own examples are templates, not vectors: their placeholders refuse" {
+  head:="{\"v\":\"openagents.att-head.v1\",\"requires\":[],\"workload\":\"vault\",\"generation\":7,\"notice_seconds\":604800,\"admitted\":[{\"release\":\"<event id of a 3202>\",\"effective_at\":0,\"retire_at\":null}],\"emergency\":null}";
+  #assert at_head_read(PUBLISHER,"[[\"d\",\"vault\"],[\"t\",\"oa:att-head:v1\"]]",head).code==AtCode.head;
+}
+#test "the vault object by hand: core digest, user_key_id, two chunks, the plaintext" #steps 2000000000 {
+  blob:[2048]u8;br:=base64_decode_checked(OBJECT,blob[..],false);object:=blob[0..<br.written];
+  o:=vt_object_read(object);cd:[64]u8;
+  #assert o.code==VtCode.ok && to_hex(o.digest[..],cd[..])==PY_CORE_DIGEST && object.count==1620 && o.body==12+516;
+  // 1060 bytes in chunks of 1024: 1024 + 16 and 36 + 16 bytes of body
+  #assert object.count-o.body==1040+52 && vt_spans_ok(1092,1024,2) && !vt_spans_ok(1040,1024,2);
+  aad:[VT_AAD_MAX]u8;s:=vt_slot_read(SLOT_NOSTR,aad[..]);#assert s.aad==534;
+  secret:[32]u8;sec:[32]u8;sec[31]=2;pub:[32]u8;hb2:=hex_decode_checked(PERSON,pub[..],false);
+  work:[1]EcdhScratch;ck:[32]u8;#assert nip44_conversation_key_from_keys_checked(sec[..],pub[..],work[..],ck[..],false)==NIP44_OK;
+  #assert vt_nostr_secret(s.sealed,ck[..],secret[..]);
+  vmk:[32]u8;#assert vt_slot_open(SLOT_NOSTR,secret[..],vmk[..])==VtCode.ok;
+  k:[32]u8;id:[32]u8;#assert vt_user_keys(vmk[..],k[..],id[..]) && cast(string)id[..]==PY_KEY_ID && o.wraps[0].key==PY_KEY_ID;
+  plain:[2048]u8;r:=vt_open(object,SLOT_NOSTR,secret[..],plain[..]);pd:[64]u8;
+  #assert r.code==VtCode.ok && r.written==1060 && digest_hex(cast(string)plain[0..<1060],pd[..])==PY_PLAIN_SHA;
+  // Done means: a vault object opens only with a valid key slot
+  #assert vt_open(object,SLOT_DEVICE,secret[..],plain[..]).code==VtCode.slot;
+}
+// book:end check
