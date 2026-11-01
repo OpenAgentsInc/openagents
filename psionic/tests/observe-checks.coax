@@ -1,0 +1,61 @@
+// Chapter 165's check helpers and oracles, loaded by psionic/lib/observe.coax.
+// Each is written from the chapter's description, independently of the
+// procedure it checks; "the hand-built fixtures" in the unit pins them.
+
+// Independent oracles for the checks, written from the chapter's prose.
+// The square's pixel test: inside when column and row both fall in the
+// square, from its corner (x, y).
+ob_inside_hand :: (x:int,y:int,col:int,row:int)->bool {return col-x>=0 && col-x<2 && row-y>=0 && row-y<2;}
+// Pixel (c, row, col) of a frame by direct indexing.
+ob_at :: (p:[]f32,c:int,row:int,col:int)->f32 {return p[(c*8+row)*8+col];}
+// A frame with nothing but a square of colour (r, g, b) at (x, y).
+ob_frame_hand :: (x:int,y:int,r:f32,g:f32,b:f32,out:[]f32) {
+    for i:0..<192 {out[i]=0;}
+    colour:=[3]f32.[r,g,b];
+    for c:0..<3 {for dy:0..<2 {for dx:0..<2 {out[(c*8+y+dy)*8+x+dx]=colour[c];}}}
+}
+ob_same :: (a:[]f32,b:[]f32)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+// A two-frame record built by hand: ticks 100 and 140, one red square
+// moving right.
+ob_two :: ()->ObSeq {
+    s:ObSeq;s.count=2;s.period=40;s.ticks[0]=100;s.ticks[1]=140;s.actions[0]=1;s.actions[1]=0;
+    s.state[0]=2;s.state[1]=3;s.state[2]=3;s.state[3]=3;
+    ob_frame_hand(2,3,1,0,0,s.pixels[0..<192]);ob_frame_hand(3,3,1,0,0,s.pixels[192..<384]);
+    t:="red";for ch,i:t {s.text[i]=ch;}s.text_len=3;
+    return s;
+}
+// The ideal kernel for moves without walls: action a copies one tap.
+ob_ideal :: (w:[]f64) {
+    for i:0..<OB_PARAMS {w[i]=0;}
+    taps:=[5]int.[4,3,5,1,7];
+    for a:0..<5 {w[a*OB_TAPS+taps[a]]=1;}
+}
+
+// A training scene kept off the walls: scene k's colour, the start (3, 3),
+// and actions that stay within columns and rows 1 to 5, so every move
+// happens. For the least-squares check against the ideal kernel.
+ob_inner :: (k:int)->ObSeq {
+    s:=ob_scene(k,false,9);colour:=[3]f32.[s.pixels[int(s.state[1])*8+int(s.state[0])],s.pixels[64+int(s.state[1])*8+int(s.state[0])],s.pixels[128+int(s.state[1])*8+int(s.state[0])]];
+    x:=3;y:=3;d:=1+k;
+    for i:0..<9 {
+        a:=0;
+        for tries:0..<20 {
+            d=ob_draw(d);a=d%5;m:=ob_move(x,y,a);
+            if m[0]>=1 && m[0]<=5 && m[1]>=1 && m[1]<=5 {break;}
+        }
+        // Every fifth step uses the action i mod 5, so each action appears.
+        if i%5==k%5 && x>=2 && x<=4 && y>=2 && y<=4 {a=i%5;}
+        s.actions[i]=a;s.state[2*i]=f32(x);s.state[2*i+1]=f32(y);
+        ob_render(x,y,colour,s.pixels[i*OB_PIXELS..<(i+1)*OB_PIXELS]);
+        m:=ob_move(x,y,a);x=m[0];y=m[1];
+    }
+    return s;
+}
+// Whole-array comparisons, element by element.
+ob_moved :: (m:[2]int,x:int,y:int)->bool {return m[0]==x && m[1]==y;}
+ob_ten :: (a:[10]f64,b:[10]f64)->bool {for i:0..<10 {if a[i]!=b[i] {return false;}}return true;}
+ob_twelve :: (a:[12]int,b:[12]int)->bool {for i:0..<12 {if a[i]!=b[i] {return false;}}return true;}
+ob_text :: (a:[16]u8,b:[16]u8)->bool {for i:0..<16 {if a[i]!=b[i] {return false;}}return true;}
+// Summed squared difference of two equal-length views, directly.
+ob_sq_hand :: (a:[]f32,b:[]f32)->f64 {t:=0.0;for i:0..<a.count {d:=f64(a[i])-f64(b[i]);t+=d*d;}return t;}
+ob_four :: (w:[4]int,n:int)->bool {return w[0]==n && w[1]==n && w[2]==n && w[3]==n;}

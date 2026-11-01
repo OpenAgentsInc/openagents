@@ -1,0 +1,45 @@
+// Chapter 165: malformed records, byte forms, predictions, fits, rollouts
+// and contract inputs, each refused with its status.
+#import "Basic";
+#load "../lib/observe-contracts.coax";
+
+// book:begin refuse
+main :: () {
+    s:=ob_two();b:=s;
+    b.count=1;print("a record of 1 frame: %\n",ob_admit(b));
+    b=s;b.period=0;print("period 0: %\n",ob_admit(b));
+    b=s;b.ticks[1]=100;print("frame 1 at tick 100, the same as frame 0: %\n",ob_admit(b));
+    b=s;b.ticks[1]=60;print("frame 1 at tick 60, before frame 0: %\n",ob_admit(b));
+    b=s;b.ticks[1]=180;print("frame 1 at tick 180, one frame missing: %\n",ob_admit(b));
+    b=s;b.ticks[1]=150;print("frame 1 at tick 150, off the 40-tick rate: %\n",ob_admit(b));
+    b=s;b.actions[0]=5;print("action 5: %\n",ob_admit(b));
+    b=s;b.pixels[10]=0.0/0.0;print("a NaN pixel: %\n",ob_admit(b));
+    b=s;b.pixels[10]=1.5;print("a pixel of 1.5: %\n",ob_admit(b));
+    b=s;b.text[1]=10;print("a newline in the text: %\n",ob_admit(b));
+
+    bytes:[OB_HEAD+OB_TEXT_MAX+OB_FRAMES_MAX*OB_FRAME_BYTES]u8;for i:0..<bytes.count {bytes[i]=9;}
+    b=s;b.ticks[1]=180;print("write a record with a missing frame: %\n",ob_write(b,bytes[..]).status);
+    print("write 1,572 bytes into 1,571: %\n",ob_write(s,bytes[0..<1571]).status);
+    untouched:=0;for v:bytes {if v==9 {untouched+=1;}}print("bytes still 9: % of %\n",untouched,bytes.count);
+    n:=ob_write(s,bytes[..]).written;
+    print("read 1,571 of 1,572 bytes: %\n",ob_read(bytes[0..<n-1]).status);
+    bytes[3]=50;print("read \"OBS2\": %\n",ob_read(bytes[0..<n]).status);bytes[3]=49;
+    bytes[791]=180;print("read with frame 1's tick changed to 180: %\n",ob_read(bytes[0..<n]).status);bytes[791]=140;
+    print("read the untouched bytes: %\n",ob_read(bytes[0..<n]).status);
+
+    w:[OB_PARAMS]f64;ob_ideal(w[..]);out:[OB_PIXELS]f32;
+    print("predict under action 7: %\n",ob_predict(w[..],s.pixels[0..<OB_PIXELS],7,out[..]));
+    print("predict from 191 pixels: %\n",ob_predict(w[..],s.pixels[0..<191],1,out[..]));
+    w[3]=1.0/0.0;print("predict with an infinite weight: %\n",ob_predict(w[..],s.pixels[0..<OB_PIXELS],1,out[..]));w[3]=0;
+    sums:ObNormal;sums=ob_gather(sums,s);print("fit when only action 1 was seen: %\n",ob_fit(sums,w[..]));
+    print("roll out 2 steps from a 2-frame record: %\n",ob_rollout(w[..],s,2).status);
+    print("roll out 0 steps: %\n",ob_rollout(w[..],s,0).status);
+
+    cw:[CZ_PARAMS]f32;cz_probe(cw[..]);
+    print("codec run with 1,814 weights: %\n",ob_codec_run(cw[0..<1814],s).status);
+    b=s;b.ticks[1]=180;print("codec run over a record with a missing frame: % (contract: %)\n",ob_codec_run(cw[..],b).status,ob_codec_check(ob_codec_run(cw[..],b)));
+    bad:=[3]f64.[0.1,0.05,0.2];walk:=[2]int.[3,0];
+    print("betas 0.1, 0.05, 0.2: chapter 146 says %, the contract says %\n",df_betas(bad[..]).status,ob_schedule_check(df_betas(bad[..]),walk[..]));
+    print("a 6-step walk over 5 levels: % levels written\n",ob_walk(5,6,walk[..]));
+}
+// book:end refuse

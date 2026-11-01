@@ -1,0 +1,27 @@
+a record of 1 frame: count
+period 0: rate
+frame 1 at tick 100, the same as frame 0: order
+frame 1 at tick 60, before frame 0: order
+frame 1 at tick 180, one frame missing: missing
+frame 1 at tick 150, off the 40-tick rate: rate
+action 5: action
+a NaN pixel: number
+a pixel of 1.5: number
+a newline in the text: text
+write a record with a missing frame: missing
+write 1,572 bytes into 1,571: capacity
+bytes still 9: 9395 of 9395
+read 1,571 of 1,572 bytes: format
+read "OBS2": format
+read with frame 1's tick changed to 180: missing
+read the untouched bytes: ok
+predict under action 7: action
+predict from 191 pixels: count
+predict with an infinite weight: number
+fit when only action 1 was seen: rank
+roll out 2 steps from a 2-frame record: count
+roll out 0 steps: count
+codec run with 1,814 weights: codec
+codec run over a record with a missing frame: missing (contract: status)
+betas 0.1, 0.05, 0.2: chapter 146 says order, the contract says status
+a 6-step walk over 5 levels: 0 levels written

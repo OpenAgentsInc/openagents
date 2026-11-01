@@ -1,0 +1,79 @@
+// Chapter 165: a hand-built record to bytes and back, one prediction by
+// hand, the per-action kernels fitted by least squares on training scenes,
+// held-out next frames and open-loop rollouts against copying a frame with
+// gates frozen in the chapter, the leak count, a seeded replay, and the
+// codec and scheduler contracts run on chapters 145 and 146.
+#import "Basic";
+#load "../lib/observe-contracts.coax";
+#load "../fixtures/image-codec-weights.coax";
+
+TRAIN :: 48;
+HELD :: 16;
+FRAMES :: 12;
+show6 :: (v:f64)->f64 {return floor(v*1000000+0.5)/1000000;}
+show3 :: (v:f64)->f64 {return floor(v*1000+0.5)/1000;}
+
+// book:begin example
+main :: () {
+    // 1. A two-frame record: a red square at (2, 3), action "right", then at (3, 3).
+    s:=ob_two();bytes:[OB_HEAD+OB_TEXT_MAX+OB_FRAMES_MAX*OB_FRAME_BYTES]u8;
+    w:=ob_write(s,bytes[..]);
+    print("hand record: %, % bytes; header",w.status,w.written);for i:0..<10 {print(" %",bytes[i]);}print("\n");
+    back:=ob_read(bytes[0..<w.written]);
+    print("read back: %, equal bit for bit: %\n",back.status,ob_same(back.seq.pixels[..],s.pixels[..]) && ob_same(back.seq.state[..],s.state[..]) && ob_twelve(back.seq.ticks,s.ticks));
+
+    // 2. The ideal kernel for "right" predicts the second frame exactly.
+    ideal:[OB_PARAMS]f64;ob_ideal(ideal[..]);e:=ob_next(ideal[..],s);
+    print("ideal kernel on the hand record: model MSE %, copy MSE % (4 of 192 pixels off by 1)\n",e.model,show6(e.copy));
+
+    // 3. Fit on training scenes 0..47, 12 frames each.
+    sums:ObNormal;for k:0..<TRAIN {sums=ob_gather(sums,ob_scene(k,false,FRAMES));}
+    fit:[OB_PARAMS]f64;st:=ob_fit(sums,fit[..]);
+    names:=[5]string.["stay","right","left","down","up"];
+    print("fit on % transitions: %\n",TRAIN*(FRAMES-1),st);
+    for a:0..<OB_ACTIONS {
+        print("  % (% pixels):",names[a],sums.rows[a]);for j:0..<OB_TAPS {print(" %",show3(fit[a*OB_TAPS+j]));}print("\n");
+    }
+
+    // 4. Held-out scenes 0..15 (colours 5/8 and 7/8 only), one step ahead.
+    print("held-out frames equal to a training frame: %\n",ob_leaks(0,HELD,true,0,TRAIN,FRAMES));
+    m:=0.0;c:=0.0;
+    for k:0..<HELD {r:=ob_next(fit[..],ob_scene(k,true,FRAMES));m+=r.model;c+=r.copy;}
+    next:=ObError.{model=m/HELD,copy=c/HELD,frames=HELD*(FRAMES-1)};
+    print("one step ahead, held-out: model MSE %, copy MSE %, ratio %, gate <= %: %\n",show6(next.model),show6(next.copy),show3(next.model/next.copy),OB_GATE_NEXT,ob_pass(next,OB_GATE_NEXT));
+    m=0;c=0;for k:0..<TRAIN {r:=ob_next(fit[..],ob_scene(k,false,FRAMES));m+=r.model;c+=r.copy;}
+    print("one step ahead, training: model MSE %, copy MSE %\n",show6(m/TRAIN),show6(c/TRAIN));
+
+    // 5. Open loop from frame 0 of each held-out scene.
+    for h:[4]int.[1,2,4,8] {
+        m=0;c=0;for k:0..<HELD {r:=ob_rollout(fit[..],ob_scene(k,true,FRAMES),h);m+=r.model;c+=r.copy;}
+        g:=OB_GATE_SHORT;if h==8 {g=OB_GATE_LONG;}
+        line:=ObError.{model=m/HELD,copy=c/HELD,frames=HELD};
+        print("open loop, horizon %: model MSE %, copy frame 0 MSE %, ratio %",h,show6(line.model),show6(line.copy),show3(line.model/line.copy));
+        if h>1 {print(", gate <= %: %",g,ob_pass(line,g));}
+        print("\n");
+    }
+
+    // 6. Seeded: gathering and fitting again gives the same bits.
+    again:ObNormal;for k:0..<TRAIN {again=ob_gather(again,ob_scene(k,false,FRAMES));}
+    fit2:[OB_PARAMS]f64;st=ob_fit(again,fit2[..]);same:=true;for i:0..<OB_PARAMS {if f64_bits(fit2[i])!=f64_bits(fit[i]) {same=false;}}
+    print("refit from the same seeds, identical weights: %\n",same);
+
+    // 7. The codec contract on chapter 145's recorded weights, over held-out scene 0.
+    cw:[CZ_PARAMS]f32;for i:0..<CZ_PARAMS {cw[i]=f32_from_bits(CZ_TRAINED[i]);}
+    h0:=ob_scene(0,true,FRAMES);run:=ob_codec_run(cw[..],h0);
+    print("codec contract, chapter 145's weights, 12 frames: %, % codes\n",ob_codec_check(run),run.written[0]);
+    print("  frame 0 codes:");for i:0..<CZ_LATENT {print(" %",run.batch[i]);}print("\n");
+    zero:[OB_PIXELS]f32;rec:=0.0;blank:=0.0;
+    for f:0..<FRAMES {rec+=ob_sq(run.decoded[..],f*OB_PIXELS,h0.pixels[..],f*OB_PIXELS);blank+=ob_sq(zero[..],0,h0.pixels[..],f*OB_PIXELS);}
+    print("  reconstruction MSE over the 12 frames: %; an all-zero frame's: %\n",show6(rec/(FRAMES*OB_PIXELS)),show6(blank/(FRAMES*OB_PIXELS)));
+    bad:=run;bad.single[5]=bad.batch[5]+1;print("  one frame encoded alone gives a different code: %\n",ob_codec_check(bad));
+
+    // 8. The scheduler contract on chapter 146's schedules, with a 50-step walk.
+    walk:[1001]int;n:=ob_walk(1000,50,walk[..]);
+    print("scheduler contract: cosine 1000 steps, walk of % levels: %\n",n,ob_schedule_check(df_cosine(1000),walk[0..<n]));
+    print("scheduler contract: linear 1e-4 to 0.02: %\n",ob_schedule_check(df_linear(1000,0.0001,0.02),walk[0..<n]));
+    short:=[3]int.[1000,500,1];print("  a walk that stops at level 1: %\n",ob_schedule_check(df_cosine(1000),short[..]));
+    ds:=df_cosine(1000);ds.abar[500]*=1.000001;print("  abar 500 off its running product: %\n",ob_schedule_check(ds,walk[0..<n]));
+}
+// book:end example

@@ -1,0 +1,202 @@
+// Chapter 165's contracts for world-model components. A codec contract: run
+// a codec over every frame of an admitted observation record and check what
+// it produced (one group of codes a frame, every code in range, the same
+// codes whether frames are encoded together, alone or twice, the same codes
+// after packing to bytes and back, and finite decoded frames). A scheduler
+// contract: check a noise schedule (betas in (0, 1) and never decreasing,
+// abar starting at 1 and equal to the running product) and the walk of
+// levels a sampler visits (from the last level down to 0, strictly
+// decreasing). Both run here on chapter 145's codec and chapter 146's
+// schedules; chapter 166's components must pass the same checks.
+// Profile psionic-observe-v1, with chapter 145's psionic-codec-v1 and chapter
+// 146's cpu-f64-diffusion-v1.
+#load "observe.coax";
+#load "image-codec.coax";
+#load "diffusion.coax";
+
+// book:begin contract-types
+// Which clause of a contract failed, the first in the order listed.
+ObClause :: enum u8 {ok;status;count;range;batch;repeat;pack;finite;steps;start;beta;product;walk;}
+OB_CODES_MAX :: 192;        // 12 frames of 16 codes
+// What a codec produced over one record: codes for all frames encoded
+// together, one at a time and together again; the codes after packing to
+// bytes and unpacking; and the decoded frames. written counts what the
+// codec said it wrote for each list of codes, in that order, and pixels for
+// the decoded frames.
+ObCodecRun :: struct {
+    status:ObStatus;frames:int;written:[4]int;pixels:int;
+    batch:[OB_CODES_MAX]int;single:[OB_CODES_MAX]int;again:[OB_CODES_MAX]int;unpacked:[OB_CODES_MAX]int;
+    decoded:[OB_FRAMES_MAX*OB_PIXELS]f32;
+}
+// book:end contract-types
+
+#test "a hand-set codec over a record, by hand" #steps 400000000 {
+    // Chapter 145's probe weights: latent (i, j) is leaky(red pixel (4i, 4j)) in
+    // each of 4 filters. A square at (4, 4) with red 1 lights red pixel (4, 4)
+    // only: latent (1, 1), tanh 1 = 0.762, times 7 is 5.33, code 5.
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);
+    s:=ob_two();ob_frame_hand(4,4,1,0.5,0,s.pixels[0..<192]);ob_frame_hand(5,5,0.75,0,0,s.pixels[192..<384]);
+    r:=ob_codec_run(w[..],s);
+    #assert r.status==ObStatus.ok && r.frames==2 && ob_four(r.written,32) && r.pixels==384 && ob_codec_check(r)==ObClause.ok;
+    for f:0..<4 {for j:0..<4 {v:=0;if j==3 {v=5;}#assert r.batch[f*4+j]==v && r.single[f*4+j]==v && r.again[f*4+j]==v && r.unpacked[f*4+j]==v;}}
+    // Frame 1's square at (5, 5) misses every probe tap: all codes 0.
+    for i:16..<32 {#assert r.batch[i]==0;}
+    // Decoding puts level 5/7 on pixel (4, 4) of every channel.
+    for c:0..<3 {for i:0..<64 {v:f32=0;if i==36 {v=f32(5.0/7);}#assert r.decoded[c*64+i]==v;}}
+    for i:192..<384 {#assert r.decoded[i]==0;}
+    // Trained-looking weights from chapter 145's initializer also pass; batch and single agree.
+    p:[CZ_PARAMS]f64;cz_init(p[..],7);for i:0..<CZ_PARAMS {w[i]=f32(p[i]);}
+    r=ob_codec_run(w[..],ob_scene(1,true,5));#assert r.status==ObStatus.ok && ob_four(r.written,80) && ob_codec_check(r)==ObClause.ok;
+    nonzero:=0;for i:0..<80 {if r.batch[i]!=0 {nonzero+=1;}}#assert nonzero>0;
+    // Refusals: an inadmissible record, and weights the codec refuses.
+    bad:=s;bad.ticks[1]=300;#assert ob_codec_run(w[..],bad).status==ObStatus.missing && ob_codec_check(ob_codec_run(w[..],bad))==ObClause.status;
+    #assert ob_codec_run(w[0..<1814],s).status==ObStatus.codec;
+    w[0]=0.0/0.0;#assert ob_codec_run(w[..],s).status==ObStatus.codec;
+}
+#test "the codec contract names the first broken clause" #steps 400000000 {
+    w:[CZ_PARAMS]f32;cz_probe(w[..]);s:=ob_two();ob_frame_hand(4,4,1,0.5,0,s.pixels[0..<192]);
+    r:=ob_codec_run(w[..],s);#assert ob_codec_check(r)==ObClause.ok;
+    for k:0..<4 {b:=r;b.written[k]=31;#assert ob_codec_check(b)==ObClause.count;b=r;b.written[k]=48;#assert ob_codec_check(b)==ObClause.count;}
+    b:=r;
+    b.pixels=383;#assert ob_codec_check(b)==ObClause.count;b=r;b.frames=3;#assert ob_codec_check(b)==ObClause.count;
+    b=r;b.frames=0;b.written=[4]int.[0,0,0,0];b.pixels=0;#assert ob_codec_check(b)==ObClause.count;
+    b=r;b.frames=13;b.written=[4]int.[208,208,208,208];b.pixels=13*192;#assert ob_codec_check(b)==ObClause.count;
+    // One frame and twelve frames are within the contract's bounds.
+    b=r;b.frames=1;b.written=[4]int.[16,16,16,16];b.pixels=192;#assert ob_codec_check(b)==ObClause.ok;
+    b=r;b.frames=12;b.written=[4]int.[192,192,192,192];b.pixels=12*192;#assert ob_codec_check(b)==ObClause.ok;
+    for v:[4]int.[8,-8,100,-100] {
+        b=r;b.batch[31]=v;#assert ob_codec_check(b)==ObClause.range;
+        b=r;b.single[0]=v;#assert ob_codec_check(b)==ObClause.range;
+        b=r;b.again[5]=v;#assert ob_codec_check(b)==ObClause.range;
+        b=r;b.unpacked[17]=v;#assert ob_codec_check(b)==ObClause.range;
+    }
+    b=r;b.batch[31]=7;b.single[31]=7;b.again[31]=7;b.unpacked[31]=7;#assert ob_codec_check(b)==ObClause.ok;
+    b=r;b.batch[0]=-7;b.single[0]=-7;b.again[0]=-7;b.unpacked[0]=-7;#assert ob_codec_check(b)==ObClause.ok;
+    // Past the codes written, nothing is read.
+    b=r;b.batch[32]=99;b.single[40]=1;b.decoded[384]=0.0/0.0;#assert ob_codec_check(b)==ObClause.ok;
+    b=r;b.single[31]=1;#assert ob_codec_check(b)==ObClause.batch;
+    b=r;b.single[0]=1;#assert ob_codec_check(b)==ObClause.batch;
+    b=r;b.again[31]=1;#assert ob_codec_check(b)==ObClause.repeat;
+    b=r;b.again[0]=1;#assert ob_codec_check(b)==ObClause.repeat;
+    b=r;b.unpacked[31]=1;#assert ob_codec_check(b)==ObClause.pack;
+    b=r;b.unpacked[0]=1;#assert ob_codec_check(b)==ObClause.pack;
+    b=r;b.decoded[383]=1.0/0.0;#assert ob_codec_check(b)==ObClause.finite;
+    b=r;b.decoded[0]=0.0/0.0;#assert ob_codec_check(b)==ObClause.finite;
+    b=r;b.decoded[0]=-3;b.decoded[383]=1e30;#assert ob_codec_check(b)==ObClause.ok;
+    b=r;b.status=ObStatus.codec;b.single[0]=1;#assert ob_codec_check(b)==ObClause.status;
+    b=r;b.written[3]=31;b.single[0]=9;#assert ob_codec_check(b)==ObClause.count;
+}
+#test "the scheduler contract on chapter 146's schedules and on hand-made ones" #steps 400000000 {
+    walk:[1001]int;
+    #assert ob_walk(1000,50,walk[..])==51 && walk[0]==1000 && walk[1]==980 && walk[49]==20 && walk[50]==0;
+    #assert ob_walk(10,3,walk[..])==4 && walk[0]==10 && walk[1]==6 && walk[2]==3 && walk[3]==0;
+    #assert ob_walk(5,5,walk[..])==6 && walk[4]==1 && ob_walk(1,1,walk[..])==2 && walk[0]==1 && walk[1]==0;
+    #assert ob_walk(5,6,walk[..])==0 && ob_walk(5,0,walk[..])==0 && ob_walk(0,1,walk[..])==0 && ob_walk(10,3,walk[0..<3])==0 && ob_walk(10,3,walk[0..<4])==4;
+    c:=df_cosine(1000);n:=ob_walk(1000,50,walk[..]);#assert ob_schedule_check(c,walk[0..<n])==ObClause.ok;
+    l:=df_linear(1000,0.0001,0.02);#assert ob_schedule_check(l,walk[0..<n])==ObClause.ok;
+    // By hand: betas 0.1 and 0.2, abar 1, 0.9, 0.9 x 0.8.
+    s:DfSchedule;s.steps=2;s.beta[1]=0.1;s.beta[2]=0.2;s.abar[0]=1;s.abar[1]=0.9;s.abar[2]=0.9*(1-0.2);
+    two:=[3]int.[2,1,0];#assert ob_schedule_check(s,two[..])==ObClause.ok;
+    b:=s;b.status=DfStatus.order;#assert ob_schedule_check(b,two[..])==ObClause.status;
+    b=s;b.steps=0;#assert ob_schedule_check(b,two[..])==ObClause.steps;b.steps=1001;#assert ob_schedule_check(b,two[..])==ObClause.steps;
+    b=s;b.abar[0]=0.999;#assert ob_schedule_check(b,two[..])==ObClause.start;
+    b=s;b.beta[2]=0.05;b.abar[2]=0.9*0.95;#assert ob_schedule_check(b,two[..])==ObClause.beta;
+    b=s;b.beta[1]=0;b.abar[1]=1;#assert ob_schedule_check(b,two[..])==ObClause.beta;
+    b=s;b.beta[2]=1;b.abar[2]=0;#assert ob_schedule_check(b,two[..])==ObClause.beta;
+    b=s;b.beta[1]=-0.1;b.abar[1]=1.1;#assert ob_schedule_check(b,two[..])==ObClause.beta;
+    b=s;b.beta[2]=0.0/0.0;#assert ob_schedule_check(b,two[..])==ObClause.beta;
+    b=s;b.beta[2]=0.1;b.abar[2]=0.9*0.9;#assert ob_schedule_check(b,two[..])==ObClause.ok;
+    b=s;b.abar[2]=0.72000001;#assert ob_schedule_check(b,two[..])==ObClause.product;
+    b=s;b.abar[1]=0.9000001;#assert ob_schedule_check(b,two[..])==ObClause.product;
+    // abar 1 wrong but abar 2 its own product: the first level is checked too.
+    b=s;b.abar[1]=0.8;b.abar[2]=0.8*(1-0.2);#assert ob_schedule_check(b,two[..])==ObClause.product;
+    // beta 0 is not part of a schedule and is never read.
+    b=s;b.beta[0]=0.5;#assert ob_schedule_check(b,two[..])==ObClause.ok;
+    // One level is enough.
+    b=s;b.steps=1;w2:=[2]int.[1,0];#assert ob_schedule_check(b,w2[..])==ObClause.ok;
+    // 120 betas of 0.999: the running product reaches exactly 0, which no
+    // noise level may have.
+    u:DfSchedule;u.steps=120;u.abar[0]=1;for t:1..<121 {u.beta[t]=0.999;u.abar[t]=u.abar[t-1]*(1-0.999);}
+    #assert u.abar[120]==0 && u.abar[100]>0;w2=[2]int.[120,0];#assert ob_schedule_check(u,w2[..])==ObClause.product;
+    // A product that underflows to 0 breaks the contract too.
+    b=s;b.beta[1]=0.999;b.beta[2]=0.999;b.abar[1]=1e-300*(1-0.999);b.abar[1]=1-0.999;b.abar[2]=0;#assert ob_schedule_check(b,two[..])==ObClause.product;
+    // Walks: from the last level, strictly down, to 0.
+    w3:=[3]int.[2,0,0];#assert ob_schedule_check(s,w3[..])==ObClause.walk;
+    w3=[3]int.[1,1,0];#assert ob_schedule_check(s,w3[..])==ObClause.walk;
+    w3=[3]int.[3,1,0];#assert ob_schedule_check(s,w3[..])==ObClause.walk;
+    w3=[3]int.[2,1,1];#assert ob_schedule_check(s,w3[..])==ObClause.walk;
+    w3=[3]int.[2,0,-1];#assert ob_schedule_check(s,w3[..])==ObClause.walk;
+    w3=[3]int.[2,3,0];#assert ob_schedule_check(s,w3[..])==ObClause.walk;
+    #assert ob_schedule_check(s,two[0..<1])==ObClause.walk && ob_schedule_check(s,two[0..<0])==ObClause.walk;
+    w2=[2]int.[2,0];#assert ob_schedule_check(s,w2[..])==ObClause.ok;
+    // Every schedule chapter 146 admits passes; a refused one fails on its status.
+    #assert ob_schedule_check(df_cosine(2),two[..])==ObClause.ok && ob_schedule_check(df_linear(2,0.3,0.3),two[..])==ObClause.ok;
+    #assert ob_schedule_check(df_linear(2,0.3,0.2),two[..])==ObClause.status;
+}
+
+
+// book:begin codec-run
+// Run chapter 145's codec over every frame of an admitted record.
+ob_codec_run :: (w:[]f32,seq:ObSeq)->ObCodecRun {
+    r:ObCodecRun;r.status=ob_admit(seq);if r.status!=ObStatus.ok {return r;}
+    s:=seq;n:=s.count;r.frames=n;
+    ws:[OB_FRAMES_MAX*CZ_WORK]f32;x:=s.pixels[0..<n*OB_PIXELS];
+    e:=cz_encode(w,x,n,r.batch[..],ws[..]);
+    if e.status!=CzStatus.ok {r.status=ObStatus.codec;return r;}
+    r.written[0]=e.written;
+    one:[CZ_LATENT]int;
+    for f:0..<n {
+        r.written[1]+=cz_encode(w,s.pixels[f*OB_PIXELS..<(f+1)*OB_PIXELS],1,one[..],ws[..]).written;
+        for j:0..<CZ_LATENT {r.single[f*CZ_LATENT+j]=one[j];}
+    }
+    r.written[2]=cz_encode(w,x,n,r.again[..],ws[..]).written;
+    bytes:[OB_CODES_MAX/2]u8;
+    p:=cz_pack(r.batch[0..<n*CZ_LATENT],bytes[..]);
+    r.written[3]=cz_unpack(bytes[0..<p.written],r.unpacked[..]).written;
+    d:=cz_decode(w,r.batch[0..<n*CZ_LATENT],n,r.decoded[..],ws[..]);
+    r.pixels=d.written;
+    return r;
+}
+// book:end codec-run
+
+// book:begin codec-check
+ob_codec_check :: (r:ObCodecRun)->ObClause {
+    if r.status!=ObStatus.ok {return ObClause.status;}
+    n:=r.frames*CZ_LATENT;
+    if r.frames<1 || r.frames>OB_FRAMES_MAX || r.pixels!=r.frames*OB_PIXELS {return ObClause.count;}
+    for k:r.written {if k!=n {return ObClause.count;}}
+    for i:0..<n {
+        for k:[4]int.[r.batch[i],r.single[i],r.again[i],r.unpacked[i]] {if k< -CZ_LEVELS || k>CZ_LEVELS {return ObClause.range;}}
+    }
+    for i:0..<n {if r.single[i]!=r.batch[i] {return ObClause.batch;}}
+    for i:0..<n {if r.again[i]!=r.batch[i] {return ObClause.repeat;}}
+    for i:0..<n {if r.unpacked[i]!=r.batch[i] {return ObClause.pack;}}
+    for i:0..<r.pixels {if !ob_finite(r.decoded[i]) {return ObClause.finite;}}
+    return ObClause.ok;
+}
+// book:end codec-check
+
+// book:begin schedule-check
+// n + 1 levels from steps down to 0: level i is steps (n - i) / n, rounded
+// down. Returns how many it wrote, or 0 when n is not in 1..steps or out is
+// too short.
+ob_walk :: (steps:int,n:int,out:[]int)->int {
+    if n<1 || n>steps || out.count<n+1 {return 0;}
+    for i:0..<n+1 {out[i]=(steps*(n-i))/n;}
+    return n+1;
+}
+ob_schedule_check :: (s:DfSchedule,walk:[]int)->ObClause {
+    if s.status!=DfStatus.ok {return ObClause.status;}
+    if s.steps<1 || s.steps>DF_STEPS_MAX {return ObClause.steps;}
+    if s.abar[0]!=1 {return ObClause.start;}
+    for t:1..<s.steps+1 {
+        b:=s.beta[t];
+        if !(b>0 && b<1) {return ObClause.beta;}
+        if t>1 && b<s.beta[t-1] {return ObClause.beta;}
+    }
+    for t:1..<s.steps+1 {if s.abar[t]!=s.abar[t-1]*(1-s.beta[t]) || !(s.abar[t]>0) {return ObClause.product;}}
+    if walk.count<2 || walk[0]!=s.steps || walk[walk.count-1]!=0 {return ObClause.walk;}
+    for i:1..<walk.count {if walk[i]>=walk[i-1] {return ObClause.walk;}}
+    return ObClause.ok;
+}
+// book:end schedule-check

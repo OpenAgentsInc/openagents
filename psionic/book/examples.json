@@ -1852,6 +1852,26 @@
       ]
     },
     {
+      "source": "psionic/examples/observe.coax",
+      "chapter": "psionic/book/ch165-sequences-of-observations.md",
+      "stdout": "psionic/fixtures/observe.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/observe-refuse.coax",
+      "chapter": "psionic/book/ch165-sequences-of-observations.md",
+      "stdout": "psionic/fixtures/observe-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/cooperate.coax",
       "chapter": "psionic/book/ch068-coax-kernels-cooperate.md",
       "stdout": "psionic/fixtures/cooperate.out",

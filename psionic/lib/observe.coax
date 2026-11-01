@@ -1,0 +1,622 @@
+// Chapter 165: sequences of observations. A time-ordered record of frames,
+// each with a tick, an image, a state vector and the action taken after it,
+// plus one text condition for the whole sequence; its byte form, which
+// round-trips exactly and refuses frames with missing or out-of-order ticks;
+// a procedural scene (a coloured 2 by 2 square on an 8 by 8 image that each
+// action moves one pixel, stopped by the walls); and the tiny conditioned
+// model: one 3 by 3 kernel and a bias per action, fitted by least squares,
+// that predicts the next frame from the last one, measured one step ahead
+// and in open-loop rollouts against copying a frame. Chapter 165's codec and
+// scheduler contracts are in observe-contracts.coax.
+// Profile psionic-observe-v1: f32 pixels, binary64 sums and solve, one CPU
+// core, at most 12 frames a sequence.
+#load "../tests/observe-checks.coax";   // the checks' oracles and fixtures
+
+// book:begin types
+ObStatus :: enum u8 {ok;count;rate;order;missing;range;action;number;text;format;capacity;rank;codec;}
+// count frames, period ticks apart; frame i has ticks[i], its state (the
+// square's column and row), its pixels (3 channels of 8 by 8, channel by
+// channel) and actions[i], the action taken after it. The text is one
+// printable ASCII condition for the whole sequence.
+ObSeq :: struct {
+    count:int;period:int;text_len:int;text:[OB_TEXT_MAX]u8;
+    ticks:[OB_FRAMES_MAX]int;actions:[OB_FRAMES_MAX]int;
+    state:[OB_FRAMES_MAX*OB_STATE]f32;pixels:[OB_FRAMES_MAX*OB_PIXELS]f32;
+}
+ObResult :: struct {status:ObStatus;written:int;}
+ObParsed :: struct {status:ObStatus;seq:ObSeq;}
+// The least-squares sums for each action: 10 by 10 products of features and
+// 10 products of features with the target pixel.
+ObNormal :: struct {a:[OB_ACTIONS*OB_TAPS*OB_TAPS]f64;b:[OB_ACTIONS*OB_TAPS]f64;rows:[OB_ACTIONS]int;}
+// Mean squared error of the model and of the copy baseline over frames.
+ObError :: struct {status:ObStatus;model:f64;copy:f64;frames:int;}
+// book:end types
+
+// book:begin shape
+OB_SIDE :: 8;
+OB_PIXELS :: 192;           // 3 channels of 8 by 8
+OB_FRAMES_MAX :: 12;
+OB_STATE :: 2;              // the square's column and row
+OB_TEXT_MAX :: 16;
+OB_ACTIONS :: 5;            // stay, right, left, down, up
+OB_TAPS :: 10;              // 9 kernel taps and a bias
+OB_PARAMS :: 50;
+OB_SQUARE :: 2;             // the square's side
+OB_LAST :: 6;               // the last column or row the square can start at
+OB_PERIOD_MAX :: 255;
+OB_TICK_MAX :: 4294967295;  // ticks are stored in 4 bytes
+OB_HEAD :: 7;               // "OBS1", count, period, text length
+OB_FRAME_BYTES :: 781;      // tick 4, action 1, state 8, pixels 768
+// book:end shape
+
+// book:begin gates
+// Frozen before the first fit (chapter 165, "Acceptance"): held-out mean
+// squared error as a fraction of copying the frame, at most.
+OB_GATE_NEXT :: 0.25;       // one step ahead, from the true previous frame
+OB_GATE_SHORT :: 0.5;       // open loop, 2 and 4 steps ahead
+OB_GATE_LONG :: 1.0;        // open loop, 8 steps ahead
+// book:end gates
+
+#test "the hand-built fixtures" {
+    p:[192]f32;ob_frame_hand(6,0,0.5,0.25,1,p[..]);n:=0;for v:p {if v!=0 {n+=1;}}
+    #assert n==12 && ob_at(p[..],0,0,6)==0.5 && ob_at(p[..],1,1,7)==0.25 && ob_at(p[..],2,0,7)==1 && ob_at(p[..],0,2,6)==0;
+    #assert ob_inside_hand(2,3,2,3) && ob_inside_hand(2,3,3,4) && !ob_inside_hand(2,3,4,3) && !ob_inside_hand(2,3,1,3) && !ob_inside_hand(2,3,2,5) && !ob_inside_hand(2,3,2,2);
+    s:=ob_two();#assert s.count==2 && s.text[0]==114 && s.text[2]==100 && ob_at(s.pixels[192..<384],0,3,4)==1 && ob_at(s.pixels[192..<384],0,3,2)==0;
+    w:[OB_PARAMS]f64;ob_ideal(w[..]);t:=0.0;for v:w {t+=v;}#assert t==5 && w[4]==1 && w[13]==1 && w[25]==1 && w[31]==1 && w[47]==1;
+    q:=p;#assert ob_same(p[..],q[..]);q[5]=1;#assert !ob_same(p[..],q[..]) && !ob_same(p[0..<3],p[0..<4]);
+}
+#test "the scene: draws, colours, walls and frames" #steps 400000000 {
+    // Park-Miller by hand: 1 x 48271, and 48271^2 mod (2^31 - 1) = 182605794.
+    #assert ob_draw(1)==48271 && ob_draw(48271)==182605794;
+    #assert ob_moved(ob_move(3,4,0),3,4) && ob_moved(ob_move(3,4,1),4,4) && ob_moved(ob_move(3,4,2),2,4);
+    #assert ob_moved(ob_move(3,4,3),3,5) && ob_moved(ob_move(3,4,4),3,3);
+    #assert ob_moved(ob_move(6,0,1),6,0) && ob_moved(ob_move(0,0,2),0,0) && ob_moved(ob_move(0,6,3),0,6) && ob_moved(ob_move(5,0,4),5,0);
+    #assert ob_moved(ob_move(5,5,1),6,5) && ob_moved(ob_move(1,1,2),0,1) && ob_moved(ob_move(5,5,3),5,6) && ob_moved(ob_move(1,1,4),1,0);
+    for k:0..<12 {for held:[2]bool.[false,true] {
+        s:=ob_scene(k,held,12);
+        #assert ob_admit(s)==ObStatus.ok && s.count==12 && s.period==40 && s.ticks[0]==0 && s.ticks[11]==440;
+        // Colour levels: training uses 4/8, 6/8 or 8/8 a channel, held-out 5/8 or 7/8.
+        c:=[3]f32.[0,0,0];
+        x:=int(s.state[0]);y:=int(s.state[1]);
+        for ch:0..<3 {
+            c[ch]=ob_at(s.pixels[0..<192],ch,y,x);v:=int(c[ch]*8);
+            #assert f32(v)/8==c[ch];
+            if held {#assert v==5 || v==7;} else {#assert v==4 || v==6 || v==8;}
+        }
+        for t:0..<12 {
+            x=int(s.state[2*t]);y=int(s.state[2*t+1]);
+            #assert x>=0 && x<=6 && y>=0 && y<=6 && f32(x)==s.state[2*t] && s.actions[t]>=0 && s.actions[t]<5;
+            // Every frame is the hand frame of its state.
+            f:[192]f32;ob_frame_hand(x,y,c[0],c[1],c[2],f[..]);#assert ob_same(f[..],s.pixels[t*192..<(t+1)*192]);
+            if t>0 {
+                // The state follows the action through the walls, by an independent rule.
+                px:=int(s.state[2*t-2]);py:=int(s.state[2*t-1]);a:=s.actions[t-1];
+                ex:=px;ey:=py;
+                if a==1 && px<6 {ex=px+1;}
+                if a==2 && px>0 {ex=px-1;}
+                if a==3 && py<6 {ey=py+1;}
+                if a==4 && py>0 {ey=py-1;}
+                #assert x==ex && y==ey;
+            }
+        }
+        // Seeded: the same scene twice is the same, bit for bit.
+        r:=ob_scene(k,held,12);#assert ob_same(r.pixels[..],s.pixels[..]) && ob_same(r.state[..],s.state[..]) && ob_twelve(r.actions,s.actions);
+        #assert s.text_len==6 && s.text[0]==115;
+    }}
+    // Every action and every start column appear across 40 scenes.
+    seen:[5]int;cols:[7]int;for k:0..<40 {s:=ob_scene(k,false,12);cols[int(s.state[0])]+=1;for t:0..<11 {seen[s.actions[t]]+=1;}}
+    for a:0..<5 {#assert seen[a]>0;}for x:0..<7 {#assert cols[x]>0;}
+    // Different seeds differ; shorter scenes are prefixes.
+    s0:=ob_scene(0,false,12);s1:=ob_scene(1,false,12);#assert !ob_same(s0.pixels[..],s1.pixels[..]);
+    a:=ob_scene(3,true,12);b:=ob_scene(3,true,5);#assert b.count==5 && ob_same(a.pixels[0..<960],b.pixels[0..<960]) && b.pixels[960]==0;
+    #assert ob_scene(3,false,12).ticks[1]==40 && ob_scene(3,false,1).count==0 && ob_scene(3,false,13).count==0 && ob_scene(3,false,2).count==2;
+    #assert ob_scene(0,false,2).state[0]==f32(ob_draw(1)%7) && ob_scene(0,false,2).state[1]==f32(ob_draw(ob_draw(1))%7);
+    // Scene k starts from seed 1 + 7919 k: its corner, then its three colour draws.
+    d1:=ob_draw(1+7919);d2:=ob_draw(d1);d3:=ob_draw(d2);d4:=ob_draw(d3);d5:=ob_draw(d4);
+    u1:=ob_scene(1,false,2);x1:=d1%7;y1:=d2%7;
+    #assert u1.state[0]==f32(x1) && u1.state[1]==f32(y1);
+    #assert ob_at(u1.pixels[..],0,y1,x1)==f32(4+2*(d3%3))/8 && ob_at(u1.pixels[..],1,y1,x1)==f32(4+2*(d4%3))/8 && ob_at(u1.pixels[..],2,y1,x1)==f32(4+2*(d5%3))/8;
+    h1:=ob_scene(1,true,2);#assert ob_at(h1.pixels[..],0,y1,x1)==f32(5+2*(d3%2))/8 && ob_at(h1.pixels[..],2,y1,x1)==f32(5+2*(d5%2))/8;
+    #assert s1.actions[0]==ob_draw(d5)%5 && s1.actions[1]==ob_draw(ob_draw(d5))%5;
+}
+#test "admission: counts, rates, ticks, actions, numbers and text" {
+    s:=ob_two();#assert ob_admit(s)==ObStatus.ok;
+    b:=s;b.count=1;#assert ob_admit(b)==ObStatus.count;b.count=13;#assert ob_admit(b)==ObStatus.count;
+    b=s;b.period=0;#assert ob_admit(b)==ObStatus.rate;b.period=256;b.ticks[1]=356;#assert ob_admit(b)==ObStatus.rate;
+    b.period=255;b.ticks[1]=355;#assert ob_admit(b)==ObStatus.ok;b.period=1;b.ticks[1]=101;#assert ob_admit(b)==ObStatus.ok;
+    // A repeated or earlier tick is out of order; a gap of whole periods is a missing frame; anything else breaks the rate.
+    b=s;b.ticks[1]=100;#assert ob_admit(b)==ObStatus.order;b.ticks[1]=60;#assert ob_admit(b)==ObStatus.order;
+    b.ticks[1]=180;#assert ob_admit(b)==ObStatus.missing;b.ticks[1]=220;#assert ob_admit(b)==ObStatus.missing;
+    b.ticks[1]=139;#assert ob_admit(b)==ObStatus.rate;b.ticks[1]=141;#assert ob_admit(b)==ObStatus.rate;b.ticks[1]=150;#assert ob_admit(b)==ObStatus.rate;
+    b=s;b.ticks[0]=-40;b.ticks[1]=0;#assert ob_admit(b)==ObStatus.range;
+    b.ticks[0]=OB_TICK_MAX-40;b.ticks[1]=OB_TICK_MAX;#assert ob_admit(b)==ObStatus.ok;b.ticks[0]=OB_TICK_MAX-39;b.ticks[1]=OB_TICK_MAX+1;#assert ob_admit(b)==ObStatus.range;
+    b.ticks[0]=0;b.ticks[1]=40;#assert ob_admit(b)==ObStatus.ok;
+    b=s;b.actions[0]=5;#assert ob_admit(b)==ObStatus.action;b.actions[0]=-1;#assert ob_admit(b)==ObStatus.action;
+    b.actions[0]=4;b.actions[1]=5;#assert ob_admit(b)==ObStatus.action;b.actions[1]=4;#assert ob_admit(b)==ObStatus.ok;
+    b=s;b.pixels[383]=0.0/0.0;#assert ob_admit(b)==ObStatus.number;b.pixels[383]=1.5;#assert ob_admit(b)==ObStatus.number;
+    b.pixels[383]=-0.25;#assert ob_admit(b)==ObStatus.number;b.pixels[383]=1;#assert ob_admit(b)==ObStatus.ok;b.pixels[0]=-0.0;#assert ob_admit(b)==ObStatus.ok;
+    b.pixels[384]=0.0/0.0;#assert ob_admit(b)==ObStatus.ok;   // past the last frame
+    b=s;b.state[3]=1.0/0.0;#assert ob_admit(b)==ObStatus.number;b.state[3]=-2;#assert ob_admit(b)==ObStatus.ok;b.state[4]=0.0/0.0;#assert ob_admit(b)==ObStatus.ok;
+    b=s;b.state[0]=0.0/0.0;#assert ob_admit(b)==ObStatus.number;
+    t3:=ob_scene(0,false,3);t3.state[5]=1.0/0.0;#assert ob_admit(t3)==ObStatus.number;t3.state[5]=0;#assert ob_admit(t3)==ObStatus.ok;
+    b=s;for i:0..<16 {b.text[i]=65;}b.text_len=17;#assert ob_admit(b)==ObStatus.text;b.text_len=16;#assert ob_admit(b)==ObStatus.ok;
+    b=s;b.text[0]=31;#assert ob_admit(b)==ObStatus.text;
+    b=s;b.text_len=17;#assert ob_admit(b)==ObStatus.text;b.text_len=-1;#assert ob_admit(b)==ObStatus.text;b.text_len=0;#assert ob_admit(b)==ObStatus.ok;
+    b=s;b.text[1]=31;#assert ob_admit(b)==ObStatus.text;b.text[1]=127;#assert ob_admit(b)==ObStatus.text;b.text[1]=32;#assert ob_admit(b)==ObStatus.ok;b.text[1]=126;#assert ob_admit(b)==ObStatus.ok;
+    b.text[3]=0;#assert ob_admit(b)==ObStatus.ok;b.text_len=16;for i:0..<16 {b.text[i]=65;}#assert ob_admit(b)==ObStatus.ok;b.text[15]=10;#assert ob_admit(b)==ObStatus.text;
+    // The first failure in the order listed wins.
+    b=s;b.count=1;b.period=0;#assert ob_admit(b)==ObStatus.count;b.count=2;#assert ob_admit(b)==ObStatus.rate;
+}
+#test "the byte form: a hand-checked header, the exact round trip and its refusals" {
+    s:=ob_two();bytes:[OB_HEAD+OB_TEXT_MAX+OB_FRAMES_MAX*OB_FRAME_BYTES]u8;
+    #assert ob_size(s)==7+3+2*781;
+    r:=ob_write(s,bytes[..]);#assert r.status==ObStatus.ok && r.written==1572;
+    // "OBS1", 2 frames, period 40, 3 text bytes "red", then tick 100 in 4 little-endian bytes, action 1.
+    #assert bytes[0]==79 && bytes[1]==66 && bytes[2]==83 && bytes[3]==49 && bytes[4]==2 && bytes[5]==40 && bytes[6]==3 && bytes[7]==114 && bytes[9]==100;
+    #assert bytes[10]==100 && bytes[11]==0 && bytes[12]==0 && bytes[13]==0 && bytes[14]==1;
+    // State 2.0 is 0x40000000; pixel 0 is 0.0; the second frame's tick 140 sits 781 bytes on.
+    #assert bytes[15]==0 && bytes[18]==0x40 && bytes[19]==0 && bytes[22]==0x40 && bytes[791]==140 && bytes[795]==0;
+    // Red pixel (3, 2) of frame 0 is 1.0, 0x3f800000, at byte 23 + 4 x 26.
+    #assert bytes[23+4*26+3]==0x3f && bytes[23+4*26+2]==0x80 && bytes[23+4*26]==0;
+    p:=ob_read(bytes[0..<r.written]);#assert p.status==ObStatus.ok;
+    q:=p.seq;#assert q.count==2 && q.period==40 && q.text_len==3 && ob_text(q.text,s.text) && ob_twelve(q.ticks,s.ticks) && ob_twelve(q.actions,s.actions) && ob_same(q.state[..],s.state[..]) && ob_same(q.pixels[..],s.pixels[..]);
+    // Every bit of every value survives, negative zero and the largest tick included.
+    s.pixels[0]=0.25;s.pixels[7]=-0.0;s.pixels[8]=f32_from_bits(0x00000001);s.state[1]=-0.0;s.ticks[0]=OB_TICK_MAX-40;s.ticks[1]=OB_TICK_MAX;s.period=255;s.ticks[0]=OB_TICK_MAX-255;
+    r=ob_write(s,bytes[..]);#assert r.status==ObStatus.ok;p=ob_read(bytes[0..<r.written]);#assert p.status==ObStatus.ok && p.seq.ticks[1]==OB_TICK_MAX && p.seq.period==255;
+    #assert p.seq.pixels[0]==0.25 && f32_bits(p.seq.pixels[7])==0x80000000 && f32_bits(p.seq.pixels[8])==1 && f32_bits(p.seq.state[1])==0x80000000;
+    // A 16-byte text, the longest, round-trips too.
+    s=ob_two();for i:0..<16 {s.text[i]=cast(u8)(97+i);}s.text_len=16;r=ob_write(s,bytes[..]);
+    #assert r.written==7+16+2*781 && bytes[6]==16 && bytes[22]==112;p=ob_read(bytes[0..<r.written]);#assert p.status==ObStatus.ok && p.seq.text_len==16 && ob_text(p.seq.text,s.text);
+    for k:0..<6 {
+        e:=ob_scene(k,k%2==1,12);r=ob_write(e,bytes[..]);#assert r.written==7+6+12*781;
+        d:=ob_read(bytes[0..<r.written]);#assert d.status==ObStatus.ok && ob_same(d.seq.pixels[..],e.pixels[..]) && ob_same(d.seq.state[..],e.state[..]) && ob_twelve(d.seq.ticks,e.ticks) && ob_twelve(d.seq.actions,e.actions) && ob_text(d.seq.text,e.text);
+        again:[OB_HEAD+OB_TEXT_MAX+OB_FRAMES_MAX*OB_FRAME_BYTES]u8;#assert ob_write(d.seq,again[..]).written==r.written;
+        for i:0..<r.written {#assert again[i]==bytes[i];}
+    }
+    // Writing refuses an inadmissible record or too little room, and writes nothing.
+    s=ob_two();bad:=s;bad.ticks[1]=180;for i:0..<bytes.count {bytes[i]=9;}
+    #assert ob_write(bad,bytes[..]).status==ObStatus.missing && ob_write(s,bytes[0..<1571]).status==ObStatus.capacity && ob_write(s,bytes[0..<1571]).written==0;
+    for v:bytes {#assert v==9;}
+    #assert ob_write(s,bytes[0..<1572]).written==1572;
+    // Reading refuses short, foreign, long and malformed input.
+    #assert ob_read(bytes[0..<6]).status==ObStatus.format && ob_read(bytes[0..<1571]).status==ObStatus.format && ob_read(bytes[0..<1573]).status==ObStatus.format;
+    for at:0..<4 {bytes[at]+=1;#assert ob_read(bytes[0..<1572]).status==ObStatus.format;bytes[at]-=1;}
+    #assert ob_read(bytes[0..<1572]).status==ObStatus.ok;
+    bytes[4]=1;#assert ob_read(bytes[0..<7]).status==ObStatus.count;bytes[4]=2;#assert ob_read(bytes[0..<7]).status==ObStatus.format;
+    bytes[4]=13;#assert ob_read(bytes[0..<1572]).status==ObStatus.count;bytes[4]=1;#assert ob_read(bytes[0..<791]).status==ObStatus.count;bytes[4]=2;
+    bytes[6]=17;#assert ob_read(bytes[0..<1572]).status==ObStatus.text;bytes[6]=3;
+    // A frame whose tick skips a period, or comes early, is refused by its tick.
+    bytes[791]=180;#assert ob_read(bytes[0..<1572]).status==ObStatus.missing;bytes[791]=99;#assert ob_read(bytes[0..<1572]).status==ObStatus.order;
+    // 140 + 5 x 256 = 1420 is 33 periods after 100; 140 + 2^24 is no whole number of them.
+    bytes[791]=140;bytes[792]=5;#assert ob_read(bytes[0..<1572]).status==ObStatus.missing;bytes[792]=0;
+    bytes[794]=1;#assert ob_read(bytes[0..<1572]).status==ObStatus.rate;bytes[794]=0;
+    bytes[14]=9;#assert ob_read(bytes[0..<1572]).status==ObStatus.action;bytes[14]=1;
+    // Pixel 0 as 0x40000000 is 2.0, outside [0, 1].
+    bytes[26]=0x40;#assert ob_read(bytes[0..<1572]).status==ObStatus.number;bytes[26]=0;
+    bytes[5]=0;#assert ob_read(bytes[0..<1572]).status==ObStatus.rate;bytes[5]=40;
+    bytes[8]=200;#assert ob_read(bytes[0..<1572]).status==ObStatus.text;bytes[8]=101;
+    #assert ob_read(bytes[0..<1572]).status==ObStatus.ok;
+}
+#test "features and one prediction by hand" {
+    // Red square at column 2, row 3. Pixel (row 3, column 3) sees the
+    // square at its left (tap 3), itself (tap 4), lower left (tap 6) and below (tap 7).
+    p:[192]f32;ob_frame_hand(2,3,1,0,0,p[..]);f:[OB_TAPS]f64;
+    ob_features(p[..],0,3*8+3,f[..]);#assert ob_ten(f,[10]f64.[0,0,0,1,1,0,1,1,0,1]);
+    ob_features(p[..],0,0,f[..]);#assert ob_ten(f,[10]f64.[0,0,0,0,0,0,0,0,0,1]);
+    // Corner pixel (2, 7, 7): taps outside the image read zero.
+    q:[192]f32;for i:0..<192 {q[i]=f32(1+i%5)/8;}
+    ob_features(q[..],0,191,f[..]);#assert ob_ten(f,[10]f64.[f64(q[182]),f64(q[183]),0,f64(q[190]),f64(q[191]),0,0,0,0,1]);
+    ob_features(q[..],0,128,f[..]);#assert ob_ten(f,[10]f64.[0,0,0,0,f64(q[128]),f64(q[129]),0,f64(q[136]),f64(q[137]),1]);
+    ob_features(q[..],0,64+8+1,f[..]);#assert ob_ten(f,[10]f64.[f64(q[64]),f64(q[65]),f64(q[66]),f64(q[72]),f64(q[73]),f64(q[74]),f64(q[80]),f64(q[81]),f64(q[82]),1]);
+    // The same pixel of a frame stored 192 values on.
+    two:[384]f32;for i:0..<192 {two[192+i]=q[i];}
+    ob_features(two[..],192,64+8+1,f[..]);#assert ob_ten(f,[10]f64.[f64(q[64]),f64(q[65]),f64(q[66]),f64(q[72]),f64(q[73]),f64(q[74]),f64(q[80]),f64(q[81]),f64(q[82]),1]);
+    // The ideal kernel for "right" moves the square one column; the copy is the frame itself.
+    w:[OB_PARAMS]f64;ob_ideal(w[..]);out:[192]f32;want:[192]f32;
+    #assert ob_predict(w[..],p[..],1,out[..])==ObStatus.ok;ob_frame_hand(3,3,1,0,0,want[..]);#assert ob_same(out[..],want[..]);
+    #assert ob_predict(w[..],p[..],4,out[..])==ObStatus.ok;ob_frame_hand(2,2,1,0,0,want[..]);#assert ob_same(out[..],want[..]);
+    #assert ob_predict(w[..],p[..],0,out[..])==ObStatus.ok && ob_same(out[..],p[..]);
+    // A hand weight: tap 4 at 1/2, the bias 1/8: inside 5/8, outside 1/8.
+    for i:0..<OB_PARAMS {w[i]=0;}w[2*OB_TAPS+4]=0.5;w[2*OB_TAPS+9]=0.125;
+    #assert ob_predict(w[..],p[..],2,out[..])==ObStatus.ok && out[3*8+2]==0.625 && out[0]==0.125 && out[191]==0.125;
+    // Its error against the moved frame by hand: the square's 4 pixels at
+    // 3/8 off (2 of them now empty: 5/8), 2 newly lit at 7/8, the rest 1/8.
+    ob_frame_hand(1,3,1,0,0,want[..]);
+    e:=0.0;for i:0..<192 {d:=f64(out[i])-f64(want[i]);e+=d*d;}
+    #assert e==2*(9.0/64)+2*(25.0/64)+2*(49.0/64)+186*(1.0/64) && ob_sq(out[..],0,want[..],0)==e;
+    #assert ob_sq(want[..],0,want[..],0)==0 && ob_sq(p[..],0,want[..],0)==4;
+    // Tap 0 alone reads the upper-left neighbour: the square moves down and right.
+    for i:0..<OB_PARAMS {w[i]=0;}w[3*OB_TAPS]=1;
+    #assert ob_predict(w[..],p[..],3,out[..])==ObStatus.ok;ob_frame_hand(3,4,1,0,0,want[..]);#assert ob_same(out[..],want[..]);
+    // The largest f32 itself fits.
+    w[3*OB_TAPS+9]=3.4028234663852886e38;w[3*OB_TAPS]=0;#assert ob_predict(w[..],p[..],3,out[..])==ObStatus.ok && out[0]==f32_from_bits(0x7f7fffff);
+    w[3*OB_TAPS+9]=0.125;
+    // Refusals before writing.
+    for i:0..<192 {out[i]=-7;}
+    #assert ob_predict(w[..],p[..],5,out[..])==ObStatus.action && ob_predict(w[..],p[..],-1,out[..])==ObStatus.action;
+    #assert ob_predict(w[0..<49],p[..],1,out[..])==ObStatus.count && ob_predict(w[..],p[0..<191],1,out[..])==ObStatus.count;
+    #assert ob_predict(w[..],p[..],1,out[0..<191])==ObStatus.capacity;
+    w[3]=0.0/0.0;#assert ob_predict(w[..],p[..],1,out[..])==ObStatus.number;w[3]=0;
+    p[9]=1.0/0.0;#assert ob_predict(w[..],p[..],1,out[..])==ObStatus.number;p[9]=0;
+    for v:out {#assert v==-7;}
+    // A sum that does not fit in f32.
+    w[2*OB_TAPS+9]=1e300;#assert ob_predict(w[..],p[..],2,out[..])==ObStatus.number;
+}
+#test "least squares: the normal sums, the solve, and the ideal kernel without walls" #steps 400000000 {
+    // A 2 by 2 solve by hand: [2 1; 1 3] w = [3; 5] gives w = (4/5, 7/5).
+    m:=[4]f64.[2,1,1,3];r:=[2]f64.[3,5];w:[2]f64;
+    #assert ob_solve(m[..],r[..],2,w[..])==ObStatus.ok && abs(w[0]-0.8)<1e-15 && abs(w[1]-1.4)<1e-15;
+    // A zero first pivot needs a row swap: [0 1; 1 0] w = [2; 3].
+    m=[4]f64.[0,1,1,0];r=[2]f64.[2,3];#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.ok && w[0]==3 && w[1]==2;
+    // Partial pivoting takes the larger: [1e-20 1; 1 1] w = [1; 2] is about (1, 1).
+    m=[4]f64.[1e-20,1,1,1];r=[2]f64.[1,2];#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.ok && abs(w[0]-1)<1e-15 && abs(w[1]-1)<1e-15;
+    m=[4]f64.[1,2,2,4];r=[2]f64.[1,2];#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.rank;
+    m=[4]f64.[0,0,0,0];#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.rank;
+    m=[4]f64.[1,0,0,1e-13];#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.rank;m[3]=1e-11;#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.ok && abs(w[1]-2e11)<1e-3;
+    m=[4]f64.[1,0,0,-1];r=[2]f64.[1,2];#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.ok && w[0]==1 && w[1]==-2;
+    // n = 1, and n = 11 is past the 10 taps.
+    one1:=[1]f64.[4];r1:=[1]f64.[2];w1:[1]f64;#assert ob_solve(one1[..],r1[..],1,w1[..])==ObStatus.ok && w1[0]==0.5;
+    m11:[121]f64;r11:[11]f64;w11:[11]f64;for i:0..<11 {m11[i*12]=1;}#assert ob_solve(m11[..],r11[..],11,w11[..])==ObStatus.count;
+    // Ties go to the first row. Exactly, w = (-31, 5, 32) / 11; these are the
+    // bits that order of elimination gives (taking the last tied row, or
+    // comparing with the wrong entry, rounds differently).
+    mt:=[9]f64.[3,1,0, -3,3,-2, -1,-2,-1];rt:=[3]f64.[-8,4,-1];wt:[3]f64;
+    #assert ob_solve(mt[..],rt[..],3,wt[..])==ObStatus.ok && f64_bits(wt[0])==0xc0068ba2e8ba2e8c && f64_bits(wt[1])==0x3fdd1745d1745d14 && f64_bits(wt[2])==0x400745d1745d1745;
+    // The threshold scales with the diagonal: tiny diagonal entries are fine
+    // when the diagonal is all tiny, whatever the other entries are.
+    md:=[9]f64.[1e-20,0,1e10, 0,1e-20,0, 1e10,0,1e-20];rd:=[3]f64.[1,1,1];wd:[3]f64;
+    #assert ob_solve(md[..],rd[..],3,wd[..])==ObStatus.ok && abs(wd[1]/1e20-1)<1e-15;
+    // A 3 by 3 with a swap in the second column: answer (1, 2, 3).
+    m3:=[9]f64.[1,1,1, 1,1,2, 2,3,1];r3:=[3]f64.[6,9,11];w3:[3]f64;
+    #assert ob_solve(m3[..],r3[..],3,w3[..])==ObStatus.ok && abs(w3[0]-1)<1e-14 && abs(w3[1]-2)<1e-14 && abs(w3[2]-3)<1e-14;
+    // The normal sums of the hand record: one transition under action 1, 192 rows.
+    s:=ob_two();n:ObNormal;n=ob_gather(n,s);#assert n.rows[1]==192 && n.rows[0]==0;
+    // The bias column sums to 192 rows; tap 4 against itself sums the 4 red squares.
+    #assert n.a[1*100+9*10+9]==192 && n.a[1*100+4*10+4]==4 && n.a[1*100+4*10+9]==4 && n.b[1*10+9]==4 && n.b[1*10+3]==4 && n.b[1*10+4]==2;
+    // Scenes kept off the walls: every move is a pure shift, so least squares gives the ideal kernel.
+    n=ObNormal.{};for k:0..<5 {n=ob_gather(n,ob_inner(k));}
+    for a:0..<5 {#assert n.rows[a]>0;}
+    fit:[OB_PARAMS]f64;ideal:[OB_PARAMS]f64;ob_ideal(ideal[..]);
+    #assert ob_fit(n,fit[..])==ObStatus.ok;
+    for i:0..<OB_PARAMS {#assert abs(fit[i]-ideal[i])<1e-9;}
+    // At the fit, the gradient of the summed squared error is zero: A w = b.
+    for a:0..<5 {for i:0..<10 {g:=-n.b[a*10+i];for j:0..<10 {g+=n.a[a*100+i*10+j]*fit[a*10+j];}#assert abs(g)<1e-8;}}
+    // With walls the fit differs from the ideal, and it is still a stationary point.
+    n=ObNormal.{};for k:0..<8 {n=ob_gather(n,ob_scene(k,false,9));}
+    #assert ob_fit(n,fit[..])==ObStatus.ok;far:=0.0;for i:0..<OB_PARAMS {far+=abs(fit[i]-ideal[i]);}#assert far>0.01;
+    for a:0..<5 {for i:0..<10 {g:=-n.b[a*10+i];for j:0..<10 {g+=n.a[a*100+i*10+j]*fit[a*10+j];}#assert abs(g)<1e-8;}}
+    // Refusals: an action never seen, the wrong room.
+    one:ObNormal;one=ob_gather(one,s);#assert ob_fit(one,fit[..])==ObStatus.rank && ob_fit(n,fit[0..<49])==ObStatus.count;
+    #assert ob_solve(m[..],r[..],3,w[..])==ObStatus.count && ob_solve(m[0..<3],r[..],2,w[..])==ObStatus.count && ob_solve(m[..],r[0..<1],2,w[..])==ObStatus.count && ob_solve(m[..],r[..],2,w[0..<1])==ObStatus.count;
+    #assert ob_solve(m[..],r[..],0,w[..])==ObStatus.count;
+    m[1]=0.0/0.0;#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.number;m[1]=0;r[1]=1.0/0.0;#assert ob_solve(m[..],r[..],2,w[..])==ObStatus.number;
+}
+#test "errors one step ahead and in open loop" #steps 400000000 {
+    s:=ob_two();w:[OB_PARAMS]f64;ob_ideal(w[..]);
+    // The ideal kernel predicts the hand record exactly; copying is 4 red pixels off by 1: 4 / 192.
+    e:=ob_next(w[..],s);#assert e.status==ObStatus.ok && e.model==0 && e.copy==4.0/192 && e.frames==1;
+    e=ob_rollout(w[..],s,1);#assert e.status==ObStatus.ok && e.model==0 && e.copy==4.0/192;
+    // A square in the corner, pixel 0, moved right.
+    c0:=ob_two();ob_frame_hand(0,0,1,0.5,0.25,c0.pixels[0..<192]);ob_frame_hand(1,0,1,0.5,0.25,c0.pixels[192..<384]);
+    e=ob_rollout(w[..],c0,1);#assert e.model==0 && e.copy==(4.0+4*0.25+4*0.0625)/192;
+    e=ob_next(w[..],c0);#assert e.model==0 && e.copy==(4.0+4*0.25+4*0.0625)/192;
+    // Open loop by hand: a scene off the walls, 3 steps of the ideal kernel, is exact.
+    in:=ob_inner(4);
+    for h:1..<9 {e=ob_rollout(w[..],in,h);#assert e.status==ObStatus.ok && e.model==0 && e.frames==1;}
+    // Copying frame 0 against frame h: the oracle counts differing pixels from the states.
+    for h:1..<9 {
+        x0:=int(in.state[0]);y0:=int(in.state[1]);xh:=int(in.state[2*h]);yh:=int(in.state[2*h+1]);
+        c:=0.0;for ch:0..<3 {v:=f64(ob_at(in.pixels[0..<192],ch,y0,x0));for row:0..<8 {for col:0..<8 {
+            if ob_inside_hand(x0,y0,col,row)!=ob_inside_hand(xh,yh,col,row) {c+=v*v;}
+        }}}
+        #assert ob_rollout(w[..],in,h).copy==c/192;
+    }
+    // A model that halves every pixel compounds: after h steps the square is 2^-h of itself.
+    for i:0..<OB_PARAMS {w[i]=0;}for a:0..<5 {w[a*10+4]=0.5;}
+    sq:=ob_scene(2,false,9);
+    for h:1..<5 {
+        e=ob_rollout(w[..],sq,h);x:=int(sq.state[0]);y:=int(sq.state[1]);xh:=int(sq.state[2*h]);yh:=int(sq.state[2*h+1]);k:=pow(0.5,f64(h));
+        t:=0.0;for ch:0..<3 {v:=f64(ob_at(sq.pixels[0..<192],ch,y,x));for row:0..<8 {for col:0..<8 {
+            p:=0.0;q:=0.0;if ob_inside_hand(x,y,col,row) {p=k*v;}if ob_inside_hand(xh,yh,col,row) {q=v;}t+=(p-q)*(p-q);
+        }}}
+        #assert abs(e.model-t/192)<1e-15;
+    }
+    // Teacher forcing sums over every transition: 8 for a 9-frame scene.
+    e=ob_next(w[..],sq);#assert e.frames==8;
+    t:=0.0;c:=0.0;for i:0..<8 {
+        p:[192]f32;#assert ob_predict(w[..],sq.pixels[i*192..<(i+1)*192],sq.actions[i],p[..])==ObStatus.ok;
+        t+=ob_sq_hand(p[..],sq.pixels[(i+1)*192..<(i+2)*192]);c+=ob_sq_hand(sq.pixels[i*192..<(i+1)*192],sq.pixels[(i+1)*192..<(i+2)*192]);
+    }
+    #assert e.model==t/(8*192) && e.copy==c/(8*192);
+    // Refusals.
+    #assert ob_rollout(w[..],sq,0).status==ObStatus.count && ob_rollout(w[..],sq,9).status==ObStatus.count && ob_rollout(w[..],sq,8).status==ObStatus.ok;
+    #assert ob_rollout(w[0..<49],sq,1).status==ObStatus.count && ob_next(w[0..<49],sq).status==ObStatus.count;
+    bad:=sq;bad.ticks[3]=1000;#assert ob_next(w[..],bad).status==ObStatus.missing && ob_rollout(w[..],bad,2).status==ObStatus.missing;
+    w[0]=0.0/0.0;#assert ob_next(w[..],sq).status==ObStatus.number && ob_rollout(w[..],sq,2).status==ObStatus.number;
+}
+#test "the split is leak-free: no held-out frame equals a training frame" #steps 400000000 {
+    // Held-out colours (5/8, 7/8) never occur in training (4/8, 6/8, 8/8), so
+    // every lit pixel differs; the oracle compares frames directly.
+    for k:0..<4 {
+        h:=ob_scene(k,true,9);
+        for j:0..<4 {
+            t:=ob_scene(j,false,9);
+            for a:0..<9 {for b:0..<9 {#assert !ob_same(h.pixels[a*192..<(a+1)*192],t.pixels[b*192..<(b+1)*192]);}}
+        }
+    }
+    #assert ob_leaks(0,4,true,0,4,9)==0;
+    // The count itself: training scenes against themselves share every
+    // frame; against other training scenes, only frames that happen to match.
+    found:=0;
+    for k:0..<6 {u:=ob_scene(k,false,2);if u.state[0]!=u.state[2] || u.state[1]!=u.state[3] {found+=1;#assert ob_leaks(k,k+1,false,k,k+1,2)==2;}}
+    #assert found>0;
+    #assert ob_leaks(3,4,false,3,4,9)==9 && ob_leaks(3,5,false,3,4,9)==9+ob_leaks(4,5,false,3,4,9) && ob_leaks(3,4,false,0,0,9)==0;
+}
+#test "gates" {
+    #assert ob_pass(ObError.{model=0.25,copy=1,frames=1},OB_GATE_NEXT) && !ob_pass(ObError.{model=0.2501,copy=1,frames=1},OB_GATE_NEXT);
+    #assert !ob_pass(ObError.{status=ObStatus.rank,model=0,copy=1,frames=1},1) && !ob_pass(ObError.{model=0,copy=1,frames=0},1);
+    #assert OB_GATE_NEXT==0.25 && OB_GATE_SHORT==0.5 && OB_GATE_LONG==1;
+}
+
+// book:begin scene
+// One step of the Park-Miller generator: s * 48271 mod (2^31 - 1).
+ob_draw :: (s:int)->int #export_c {return (s*48271)%2147483647;}
+// Action a moves the square's corner (x, y) one pixel: 0 stays, 1 right,
+// 2 left, 3 down, 4 up. A move that would leave the image does nothing.
+ob_move :: (x:int,y:int,a:int)->[2]int {
+    dx:=[5]int.[0,1,-1,0,0];dy:=[5]int.[0,0,0,1,-1];
+    nx:=x+dx[a];ny:=y+dy[a];
+    if nx<0 || nx>OB_LAST {nx=x;}
+    if ny<0 || ny>OB_LAST {ny=y;}
+    return [2]int.[nx,ny];
+}
+ob_render :: (x:int,y:int,colour:[3]f32,out:[]f32) {
+    for c:0..<3 {for row:0..<OB_SIDE {for col:0..<OB_SIDE {
+        v:f32=0;if col>=x && col<x+OB_SQUARE && row>=y && row<y+OB_SQUARE {v=colour[c];}
+        out[(c*OB_SIDE+row)*OB_SIDE+col]=v;
+    }}}
+}
+// Scene k: a start corner, a colour and the actions, all drawn from seed
+// 1 + 7919 k. Training scenes take each channel from 4/8, 6/8 and 8/8;
+// held-out scenes from 5/8 and 7/8, so no held-out frame can equal a
+// training frame. Frames are 40 ticks apart from tick 0. 2 to 12 frames;
+// any other count gives an empty record.
+ob_scene :: (k:int,held:bool,frames:int)->ObSeq {
+    s:ObSeq;if frames<2 || frames>OB_FRAMES_MAX {return s;}
+    d:=1+7919*k;d=ob_draw(d);x:=d%7;d=ob_draw(d);y:=d%7;
+    colour:[3]f32;
+    for c:0..<3 {
+        d=ob_draw(d);
+        if held {colour[c]=f32(5+2*(d%2))/8;} else {colour[c]=f32(4+2*(d%3))/8;}
+    }
+    s.count=frames;s.period=40;
+    t:="square";for ch,i:t {s.text[i]=ch;}s.text_len=t.count;
+    for i:0..<frames {
+        d=ob_draw(d);s.ticks[i]=40*i;s.actions[i]=d%OB_ACTIONS;
+        s.state[2*i]=f32(x);s.state[2*i+1]=f32(y);
+        ob_render(x,y,colour,s.pixels[i*OB_PIXELS..<(i+1)*OB_PIXELS]);
+        m:=ob_move(x,y,s.actions[i]);x=m[0];y=m[1];
+    }
+    return s;
+}
+// book:end scene
+
+
+// book:begin record
+ob_finite :: (v:f32)->bool {return (f32_bits(v)&0x7fffffff)<0x7f800000;}
+// The first failure, in this order: frame count, period, text, ticks,
+// actions, numbers. Pixels must lie in [0, 1]; states need only be finite.
+ob_admit :: (s:ObSeq)->ObStatus {
+    if s.count<2 || s.count>OB_FRAMES_MAX {return ObStatus.count;}
+    if s.period<1 || s.period>OB_PERIOD_MAX {return ObStatus.rate;}
+    if s.text_len<0 || s.text_len>OB_TEXT_MAX {return ObStatus.text;}
+    for i:0..<s.text_len {if s.text[i]<32 || s.text[i]>126 {return ObStatus.text;}}
+    if s.ticks[0]<0 || s.ticks[s.count-1]>OB_TICK_MAX {return ObStatus.range;}
+    for i:1..<s.count {
+        gap:=s.ticks[i]-s.ticks[i-1];
+        if gap<=0 {return ObStatus.order;}
+        if gap%s.period!=0 {return ObStatus.rate;}
+        if gap!=s.period {return ObStatus.missing;}
+    }
+    for i:0..<s.count {if s.actions[i]<0 || s.actions[i]>=OB_ACTIONS {return ObStatus.action;}}
+    for i:0..<s.count*OB_STATE {if !ob_finite(s.state[i]) {return ObStatus.number;}}
+    for i:0..<s.count*OB_PIXELS {v:=s.pixels[i];if !ob_finite(v) || v<0 || v>1 {return ObStatus.number;}}
+    return ObStatus.ok;
+}
+// book:end record
+
+// book:begin bytes
+ob_size :: (s:ObSeq)->int {return OB_HEAD+s.text_len+s.count*OB_FRAME_BYTES;}
+ob_put :: (out:[]u8,at:int,v:u32) {for k:0..<4 {out[at+k]=cast(u8)((v>>cast(u32)(8*k))&255);}}
+ob_get :: (b:[]u8,at:int)->u32 {v:u32=0;for k:0..<4 {v|=cast(u32)b[at+k]<<cast(u32)(8*k);}return v;}
+// "OBS1", the frame count, the period and the text length, a byte each;
+// the text; then each frame: its tick (4 bytes), its action (1), its state
+// and pixels as f32 bit patterns (4 bytes each), all little-endian.
+ob_write :: (s:ObSeq,out:[]u8)->ObResult {
+    st:=ob_admit(s);if st!=ObStatus.ok {return ObResult.{status=st};}
+    n:=ob_size(s);if out.count<n {return ObResult.{status=ObStatus.capacity};}
+    out[0]=79;out[1]=66;out[2]=83;out[3]=49;
+    out[4]=cast(u8)s.count;out[5]=cast(u8)s.period;out[6]=cast(u8)s.text_len;
+    for i:0..<s.text_len {out[OB_HEAD+i]=s.text[i];}
+    at:=OB_HEAD+s.text_len;
+    for f:0..<s.count {
+        ob_put(out,at,cast(u32)s.ticks[f]);out[at+4]=cast(u8)s.actions[f];
+        for j:0..<OB_STATE {ob_put(out,at+5+4*j,f32_bits(s.state[f*OB_STATE+j]));}
+        for j:0..<OB_PIXELS {ob_put(out,at+13+4*j,f32_bits(s.pixels[f*OB_PIXELS+j]));}
+        at+=OB_FRAME_BYTES;
+    }
+    return ObResult.{written=n};
+}
+// The byte form back to a record, which must then pass admission.
+ob_read :: (b:[]u8)->ObParsed {
+    r:ObParsed;
+    if b.count<OB_HEAD || b[0]!=79 || b[1]!=66 || b[2]!=83 || b[3]!=49 {r.status=ObStatus.format;return r;}
+    count:=int(b[4]);tl:=int(b[6]);
+    if count<2 || count>OB_FRAMES_MAX {r.status=ObStatus.count;return r;}
+    if tl>OB_TEXT_MAX {r.status=ObStatus.text;return r;}
+    if b.count!=OB_HEAD+tl+count*OB_FRAME_BYTES {r.status=ObStatus.format;return r;}
+    s:ObSeq;s.count=count;s.period=int(b[5]);s.text_len=tl;
+    for i:0..<tl {s.text[i]=b[OB_HEAD+i];}
+    at:=OB_HEAD+tl;
+    for f:0..<count {
+        s.ticks[f]=int(ob_get(b,at));s.actions[f]=int(b[at+4]);
+        for j:0..<OB_STATE {s.state[f*OB_STATE+j]=f32_from_bits(ob_get(b,at+5+4*j));}
+        for j:0..<OB_PIXELS {s.pixels[f*OB_PIXELS+j]=f32_from_bits(ob_get(b,at+13+4*j));}
+        at+=OB_FRAME_BYTES;
+    }
+    r.seq=s;r.status=ob_admit(s);
+    return r;
+}
+// book:end bytes
+
+// book:begin model
+// The summed squared difference between one frame of a, from ia, and one
+// of b, from ib. Two frames are equal exactly when it is 0: the smallest
+// nonzero difference of two f32 values, squared in binary64, does not
+// underflow.
+ob_sq :: (a:[]f32,ia:int,b:[]f32,ib:int)->f64 {t:=0.0;for i:0..<OB_PIXELS {d:=f64(a[ia+i])-f64(b[ib+i]);t+=d*d;}return t;}
+// Pixel i's features, for the frame starting at pixels[at]: its 3 by 3
+// neighbourhood in its own channel, row by row from the upper left (taps 0
+// to 8, zero outside the image), then 1 (tap 9, the bias).
+ob_features :: (pixels:[]f32,at:int,i:int,f:[]f64) {
+    c:=i/64;row:=(i/8)%8;col:=i%8;f[9]=1;
+    for tap:0..<9 {
+        r:=row+tap/3-1;k:=col+tap%3-1;v:=0.0;
+        if r>=0 && r<OB_SIDE && k>=0 && k<OB_SIDE {v=f64(pixels[at+(c*OB_SIDE+r)*OB_SIDE+k]);}
+        f[tap]=v;
+    }
+}
+// The next frame under action a: each pixel is the dot product of its
+// features with the action's 10 weights. The same kernel serves every
+// channel.
+ob_predict :: (w:[]f64,frame:[]f32,a:int,out:[]f32)->ObStatus {
+    if a<0 || a>=OB_ACTIONS {return ObStatus.action;}
+    if w.count!=OB_PARAMS || frame.count!=OB_PIXELS {return ObStatus.count;}
+    if out.count<OB_PIXELS {return ObStatus.capacity;}
+    for v:w {if !(v-v==0) {return ObStatus.number;}}
+    for v:frame {if !ob_finite(v) {return ObStatus.number;}}
+    tmp:[OB_PIXELS]f32;f:[OB_TAPS]f64;
+    for i:0..<OB_PIXELS {
+        ob_features(frame,0,i,f[..]);t:=0.0;
+        for j:0..<OB_TAPS {t+=w[a*OB_TAPS+j]*f[j];}
+        if !(abs(t)<=3.4028234663852886e38) {return ObStatus.number;}
+        tmp[i]=f32(t);
+    }
+    for i:0..<OB_PIXELS {out[i]=tmp[i];}
+    return ObStatus.ok;
+}
+// book:end model
+
+// book:begin fit
+// Add every transition of an admitted record to the least-squares sums of
+// the action taken: one row per pixel of the next frame.
+ob_gather :: (n:ObNormal,seq:ObSeq)->ObNormal {
+    if ob_admit(seq)!=ObStatus.ok {return n;}
+    out:=n;s:=seq;f:[OB_TAPS]f64;
+    for t:0..<s.count-1 {
+        a:=s.actions[t];
+        for i:0..<OB_PIXELS {
+            ob_features(s.pixels[..],t*OB_PIXELS,i,f[..]);y:=f64(s.pixels[(t+1)*OB_PIXELS+i]);
+            for p:0..<OB_TAPS {
+                out.b[a*OB_TAPS+p]+=f[p]*y;
+                for q:0..<OB_TAPS {out.a[(a*OB_TAPS+p)*OB_TAPS+q]+=f[p]*f[q];}
+            }
+        }
+        out.rows[a]+=OB_PIXELS;
+    }
+    return out;
+}
+// Solve m w = r for n unknowns by Gaussian elimination with partial
+// pivoting (the first row on ties), in binary64. A pivot at most 1e-12
+// times the sum of the diagonal's magnitudes means the sums do not
+// determine w.
+ob_solve :: (m:[]f64,r:[]f64,n:int,w:[]f64)->ObStatus {
+    if n<1 || n>OB_TAPS || m.count!=n*n || r.count!=n || w.count!=n {return ObStatus.count;}
+    for v:m {if !(v-v==0) {return ObStatus.number;}}
+    for v:r {if !(v-v==0) {return ObStatus.number;}}
+    a:[OB_TAPS*OB_TAPS]f64;b:[OB_TAPS]f64;scale:=0.0;
+    for i:0..<n*n {a[i]=m[i];}
+    for i:0..<n {b[i]=r[i];scale+=abs(m[i*n+i]);}
+    for c:0..<n {
+        p:=c;for i:c+1..<n {if abs(a[i*n+c])>abs(a[p*n+c]) {p=i;}}
+        if abs(a[p*n+c])<=1e-12*scale {return ObStatus.rank;}
+        for j:0..<n {t:=a[c*n+j];a[c*n+j]=a[p*n+j];a[p*n+j]=t;}
+        t:=b[c];b[c]=b[p];b[p]=t;
+        for i:c+1..<n {
+            k:=a[i*n+c]/a[c*n+c];
+            for j:c..<n {a[i*n+j]-=k*a[c*n+j];}
+            b[i]-=k*b[c];
+        }
+    }
+    for c:0..<n {
+        i:=n-1-c;t:=b[i];
+        for j:i+1..<n {t-=a[i*n+j]*w[j];}
+        w[i]=t/a[i*n+i];
+    }
+    return ObStatus.ok;
+}
+// Each action's 10 weights from its own sums.
+ob_fit :: (sums:ObNormal,w:[]f64)->ObStatus {
+    if w.count!=OB_PARAMS {return ObStatus.count;}
+    n:=sums;
+    for a:0..<OB_ACTIONS {
+        s:=ob_solve(n.a[a*OB_TAPS*OB_TAPS..<(a+1)*OB_TAPS*OB_TAPS],n.b[a*OB_TAPS..<(a+1)*OB_TAPS],OB_TAPS,w[a*OB_TAPS..<(a+1)*OB_TAPS]);
+        if s!=ObStatus.ok {return s;}
+    }
+    return ObStatus.ok;
+}
+// book:end fit
+
+// book:begin measure
+// One step ahead: every transition predicted from the true frame before it,
+// against copying that frame.
+ob_next :: (w:[]f64,seq:ObSeq)->ObError {
+    if w.count!=OB_PARAMS {return ObError.{status=ObStatus.count};}
+    st:=ob_admit(seq);if st!=ObStatus.ok {return ObError.{status=st};}
+    s:=seq;e:ObError;p:[OB_PIXELS]f32;
+    for t:0..<s.count-1 {
+        st=ob_predict(w,s.pixels[t*OB_PIXELS..<(t+1)*OB_PIXELS],s.actions[t],p[..]);if st!=ObStatus.ok {return ObError.{status=st};}
+        e.model+=ob_sq(p[..],0,s.pixels[..],(t+1)*OB_PIXELS);e.copy+=ob_sq(s.pixels[..],t*OB_PIXELS,s.pixels[..],(t+1)*OB_PIXELS);e.frames+=1;
+    }
+    e.model/=f64(e.frames*OB_PIXELS);e.copy/=f64(e.frames*OB_PIXELS);
+    return e;
+}
+// Open loop: from frame 0, h predictions each fed the last prediction and
+// the recorded action, against frame h; the baseline copies frame 0.
+ob_rollout :: (w:[]f64,seq:ObSeq,h:int)->ObError {
+    if w.count!=OB_PARAMS {return ObError.{status=ObStatus.count};}
+    st:=ob_admit(seq);if st!=ObStatus.ok {return ObError.{status=st};}
+    s:=seq;
+    if h<1 || h>=s.count {return ObError.{status=ObStatus.count};}
+    cur:[OB_PIXELS]f32;nxt:[OB_PIXELS]f32;
+    for i:0..<OB_PIXELS {cur[i]=s.pixels[i];}
+    for t:0..<h {
+        st=ob_predict(w,cur[..],s.actions[t],nxt[..]);if st!=ObStatus.ok {return ObError.{status=st};}
+        cur=nxt;
+    }
+    return ObError.{model=ob_sq(cur[..],0,s.pixels[..],h*OB_PIXELS)/OB_PIXELS,copy=ob_sq(s.pixels[..],0,s.pixels[..],h*OB_PIXELS)/OB_PIXELS,frames=1};
+}
+// A gate passes when the measurement succeeded and the model's error is at
+// most the fraction of the copy's.
+ob_pass :: (e:ObError,fraction:f64)->bool {return e.status==ObStatus.ok && e.frames>0 && e.model<=fraction*e.copy;}
+// book:end measure
+
+// book:begin leaks
+// Scenes [h0, h1) (held-out when held is set) against training scenes
+// [t0, t1): how many of the first scenes' frames equal some training frame.
+ob_leaks :: (h0:int,h1:int,held:bool,t0:int,t1:int,frames:int)->int {
+    n:=0;
+    for k:h0..<h1 {
+        h:=ob_scene(k,held,frames);
+        for f:0..<frames {
+            hit:=false;
+            for j:t0..<t1 {
+                t:=ob_scene(j,false,frames);
+                for g:0..<frames {if ob_sq(h.pixels[..],f*OB_PIXELS,t.pixels[..],g*OB_PIXELS)==0 {hit=true;}}
+            }
+            if hit {n+=1;}
+        }
+    }
+    return n;
+}
+// book:end leaks

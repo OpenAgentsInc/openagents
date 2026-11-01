@@ -1,0 +1,25 @@
+hand record: ok, 1572 bytes; header 79 66 83 49 2 40 3 114 101 100
+read back: ok, equal bit for bit: true
+ideal kernel on the hand record: model MSE 0.0, copy MSE 0.020833 (4 of 192 pixels off by 1)
+fit on 528 transitions: ok
+  stay (20928 pixels): 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0
+  right (19008 pixels): 0.0 0.0 0.0 0.94 0.107 0.053 0.0 0.0 0.0 0.0
+  left (18816 pixels): 0.0 0.0 0.0 0.04 0.071 0.962 0.0 0.0 0.0 0.0
+  down (24000 pixels): 0.0 0.956 0.0 0.0 0.081 0.0 0.0 0.041 0.0 0.0
+  up (18624 pixels): 0.0 0.028 0.0 0.0 0.044 0.0 0.0 0.977 0.0 0.0
+held-out frames equal to a training frame: 0
+one step ahead, held-out: model MSE 0.002156, copy MSE 0.026578, ratio 0.081, gate <= 0.25: true
+one step ahead, training: model MSE 0.001987, copy MSE 0.02525
+open loop, horizon 1: model MSE 0.001546, copy frame 0 MSE 0.026062, ratio 0.059
+open loop, horizon 2: model MSE 0.004713, copy frame 0 MSE 0.043365, ratio 0.109, gate <= 0.5: true
+open loop, horizon 4: model MSE 0.008382, copy frame 0 MSE 0.048645, ratio 0.172, gate <= 0.5: true
+open loop, horizon 8: model MSE 0.011535, copy frame 0 MSE 0.052155, ratio 0.221, gate <= 1.0: true
+refit from the same seeds, identical weights: true
+codec contract, chapter 145's weights, 12 frames: ok, 192 codes
+  frame 0 codes: -4 1 -4 -5 2 -2 2 3 1 -1 2 4 5 1 5 5
+  reconstruction MSE over the 12 frames: 0.093499; an all-zero frame's: 0.040039
+  one frame encoded alone gives a different code: batch
+scheduler contract: cosine 1000 steps, walk of 51 levels: ok
+scheduler contract: linear 1e-4 to 0.02: ok
+  a walk that stops at level 1: walk
+  abar 500 off its running product: product
