@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793556037,
+  "content": "Independent review of deliberate B1 streamed-store profile/invariant transition: old mode13/20 expectations, caller-local wide source fixture, fixed per-leaf/pair/effect/path/work limits, two private8-field shapes, exact layout/prefix validation, frozen-graph assumptions, first-error stages and atomic public report count. Owned patchc259fb0187442af555570a650a46bbb912124ee8df480ce7a36936841f42b833 preserved through rebase. Corrective check scoping/final controls are included in the reviewed integrated descendant. Final integrated code reviewed as model2b5523fce0ba7428282106b3635a93616a4631b6c78dbfc04c9b7b2eb29481aa, seed2f4a3aee625c314044aa397ad6ad2d4cfc1e8afdf5e83cea1ecb9e9c5b300774, fingerprint2afe7bcee85579256696e6e1d2ff55ad362174eb810a211b4c814d78f5a55c81. Actual frozen H a7eebcd5 qualification19d9faa61733cc549426643855a078c2116486093bf4212126b378c6a1083699 passes167 normal statements, actual supported checker merge9447/9447 killed/0 survivors; final-seven75630b42c384d68f6a5f7b8e8c15152ee7e3482e5b12459ac0c034df78f515c1 passes all7 with actual compiler6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648 and unchanged17-file package. J a4440424 continuityc91be5093e7279817fb753387822cef4603a77ac1c988f4a1da1db36aca57efb independently verified: five complete patches byte-identical,236 repository consumer pins and50 external pins unchanged. Actual H receipts remain H; no standalone intermediate-parent qualification is claimed. Historical failed F89/G2 and unqualified cost candidates retain their outcomes. Code review only; page run remains separate and unapproved by this event. Authorship disclosure: reviewer authored prior poison-fixture refinement and private inlining examples/planning; Root independently reviewed that test component0c0b920dec66fa749121c13160518fec21e090bc7708b9fa50a31939cd10d231. Reviewer authored no production/cache algorithm or actual final H controls. Final-main rebase refresh: exact complete patch independently byte-compared with prior signed target d0247ecc6c87e533b494c1e86f8512edd6bc7aa5 and identical; new target 47e8768cb4a2c8d3c8c060134653d0c4421b01cf is integrated at J fec729694e02275dfa5938856c6ca72edf487c46 on origin/main c829567513. Prior J a444 continuity and all actual H qualification receipts remain historical, unmodified evidence; this refresh adds no execution or page approval. Final publication-hash refresh: exact complete patch independently byte-compared with prior signed target 47e8768cb4a2c8d3c8c060134653d0c4421b01cf and identical; final target fe6d83a83e0bf360bde0085a5ebc7eeab39efe36 is integrated at J 328d432fa13453e39ee4f0ee705853e040ddc19d. Prior signed artifacts and frozen cost archive remain historical unchanged evidence; this refresh adds no execution or page approval.",
+  "tags": [
+    [
+      "commit",
+      "fe6d83a83e0bf360bde0085a5ebc7eeab39efe36"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "6f7dbc6fb79fd54ddab236f222b8b310ba336e3902c80faa38a660469058343a",
+  "sig": "fb0b444f73db5b8238f69d608fbc20979662e05e7a9687a1bf062c0b8fbcd27d25964a3406362e9b1802fc108d07deb844d93b8852c0853eb35e17bf3c1dccf2"
+}

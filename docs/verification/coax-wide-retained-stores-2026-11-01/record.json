@@ -256,5 +256,13 @@
       "path": "final-controls-review/final-main-rebase/local-signing.json",
       "sha256": "f90574ead9541145831199cc422ab20d27964efdd756d71d5677bcffae54fb63"
     }
+  },
+  "main_push": {
+    "commit": "328d432fa13453e39ee4f0ee705853e040ddc19d",
+    "ancestor_of_origin_main_observed": true,
+    "base": "5dad1a51a2827e933f4f1741045df6fac050d938",
+    "unchanged_final7_repo_pins": 236,
+    "source_patch_identity_to_qualified_H": true,
+    "note": "After archive freeze a final integration rebase included Nostr and Psionic library/book work plus capability-claims documentation. Compiler source and236 final-gate repository inputs are byte-identical. H actual receipts and archive remain unchanged. Fresh signed reviews bind the final code commit IDs in the same directory as the historical signatures."
   }
 }
