@@ -1,4 +1,4 @@
-# Building Aethyr in Coax
+# Building Aethyr, World Engine
 
 Aethyr is the engine the Verse's realms run on: the frame loop, spaces and
 units, state, input, replay, entities, queries, the camera, the renderer,

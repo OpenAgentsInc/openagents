@@ -47,8 +47,8 @@ BOOKS = {
              "https://openagents.gitbook.io/the-coax-programming-language", coax_gate, True),
     "psionic": ("psionic/book", "Sha9csfX5lAIHvjiIheN", "Psionic: ML From Scratch",
                 "https://openagents.gitbook.io/psionic-ml-from-scratch", book_gate("psionic"), True),
-    "aethyr": ("aethyr/book", "QxVdkZGgQYnLsXWZlkTh", "Building Aethyr in Coax",
-               "https://openagents.gitbook.io/building-aethyr-in-coax", book_gate("aethyr"), True),
+    "aethyr": ("aethyr/book", "QxVdkZGgQYnLsXWZlkTh", "Building Aethyr, World Engine",
+               "https://openagents.gitbook.io/building-aethyr-world-engine", book_gate("aethyr"), True),
     "nostr": ("nostr/book", "FJJZf8YunJx2R1toVsuv", "Nostr From Scratch",
               "https://openagents.gitbook.io/nostr-from-scratch", book_gate("nostr"), True),
 }

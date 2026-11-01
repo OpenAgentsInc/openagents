@@ -38,7 +38,7 @@ Read our four books on GitBook:
   the language.
 - [**Psionic: ML From Scratch**](https://openagents.gitbook.io/psionic-ml-from-scratch):
   the machine-learning and execution engine, built in Coax.
-- [**Aethyr, World Engine**](https://openagents.gitbook.io/building-aethyr-in-coax):
+- [**Building Aethyr, World Engine**](https://openagents.gitbook.io/building-aethyr-world-engine):
   the game engine that runs the Verse's realms, built in Coax.
 - [**Nostr From Scratch**](https://openagents.gitbook.io/nostr-from-scratch):
   a complete Nostr implementation in Coax, from SHA-256 and secp256k1 to a
