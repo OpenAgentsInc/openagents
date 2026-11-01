@@ -4,9 +4,6 @@
 // page, which opens the realm after its # (/realms/built#moonlit-marsh) or, with none, a small
 // realm of its own so every release checks the module.
 //
-// Checks: coax test apps/openagents-web/myrealm.coax --steps 80000000 (a check lays out whole realms
-// several times, past the default 20,000,000 steps).
-//
 // The realm is its spec (GET /api/playtest/realms/<slug>, a line each): its name, style, ground and
 // time of day, which tools its owner gives visitors, its features (a house, water, trees, rocks,
 // plants, lanterns, a flock, props, characters) and the things placed since. Nothing else is in it: an
@@ -33,7 +30,7 @@
 // JUMP, FLY, MAP and BUILD are there only when the owner gives them. With TALK, E by a character (or a
 // tap on one) talks with it: type and press Enter; with VOICE too, HOLD TO TALK says it out loud.
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
-//   coax/bin/coax test apps/openagents-web/myrealm.coax --steps 200000000   (the owl, bird and 0088 checks take up to 65 million)
+//   coax/bin/coax test apps/openagents-web/myrealm.coax   (a check that lays out a realm several times has its own #steps)
 
 #load "font.coax";
 #load "ui.coax";
@@ -2754,7 +2751,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert s[0].perch_n == 3 && !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) > (q[0].piece_n - q[0].static_n) + 5 * 10;
 }
 
-#test "owls are owl-sized and fly over the roofs, never into a castle or a windmill" {
+#test "owls are owl-sized and fly over the roofs, never into a castle or a windmill" #steps 90000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "owl-keep", "realm owl-keep\nname Owl Keep\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\nfeature building castle\nfeature building windmill\nfeature bigtree round\nfeature flock owl 6\n");
   #assert s[0].laid && s[0].owls && s[0].perch_n == 3;
@@ -2801,7 +2798,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert m == 0 && !jungle_of(q[..]);
 }
 
-#test "circling birds are in view from where you start, on a phone and a desktop, in front of every roof" {
+#test "circling birds are in view from where you start, on a phone and a desktop, in front of every roof" #steps 30000000 {
   specs: [3] string;
   specs[0] = "realm sky-isle\nname Sky Isle\nstyle lowpoly\nground meadow\ntime day\ncamera third\nowner 0\ntool build 0\ntool fly 0\ntool jump 1\ntool map 1\ntool talk 1\ntool voice 0\nfeature land floating\nfeature building castle\nfeature building windmill\nfeature village 3\nfeature trees blossom 7\nfeature flock owl 6\nfeature plants flower 10\npalette natural\nrole visitor\n";
   specs[1] = "realm floating-island-village-3\nname Floating Island Village\nstyle lowpoly\nground meadow\ntime day\ncamera third\nowner 0\ntool build 0\ntool fly 0\ntool jump 1\ntool map 1\ntool talk 1\ntool voice 0\nfeature land floating\nfeature village 5\nfeature bigtree round\nfeature flock owl 7\npalette natural\nrole visitor\nrow land 1 A floating island in the sky\nrow village 1 A village of 5 people\nrow bigtree 1 A giant tree\nrow flock 1 A flock of 7 owls\n";
@@ -2822,7 +2819,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   }
 }
 
-#test "0088's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" {
+#test "0088's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" #steps 40000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "sky-isle", "realm sky-isle\nname Sky Isle\nstyle lowpoly\nground meadow\ntime night\nowner 0\nfeature land floating\nfeature building castle\nfeature building windmill\nfeature building lighthouse\nfeature water medium river\nfeature trees palm 6\nfeature plants mushroom 8\nfeature herd sheep 6\nfeature flock dragon 1\nfeature props campfire\nfeature props bridge\nfeature props boat\nfeature props tumbleweeds\n");
   #assert s[0].laid && s[0].land == LAND_FLOATING && s[0].building_n == 3 && s[0].building[0] == 4 && s[0].building[1] == 2 && s[0].building[2] == 3;
@@ -2899,7 +2896,7 @@ edit_opened :: (s: [] MyRealm) { redit_requested(s[0].ed[..], 6); used := redit_
   m5 := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].req_ready && url_is(s[..], "/api/playtest/realms/moonlit-marsh");
 }
-#test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" {
+#test "BUILD: the owner places at once; a visitor's goes to the owner, only when building is on" #steps 30000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "moonlit-marsh", SPEC);
   n := frame_of(s[..], t[..], 2560, 1600);
@@ -3277,7 +3274,7 @@ mist_drawn :: (s: [] MyRealm, t: [] Track, u: [] f32) {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   n := realm_frame(s, t, out[..], u, 1280, 800, 2, 0.016, false);
 }
-#test "0092's things are drawn: mist, a pagoda, a longhouse, elephants and giraffes, acacias, a fountain, a stone wall, a shipwreck, wagons" {
+#test "0092's things are drawn: mist, a pagoda, a longhouse, elephants and giraffes, acacias, a fountain, a stone wall, a shipwreck, wagons" #steps 40000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "savanna", "realm savanna\nname Savanna\nstyle lowpoly\nground desert\ntime dusk\nowner 0\nfeature mist\nfeature building pagoda\nfeature building longhouse\nfeature trees acacia 6\nfeature herd elephant 4\nfeature herd giraffe 3\nfeature props fountain\nfeature props wall\nfeature props wreck\nfeature props wagon\n");
   #assert s[0].laid && s[0].mist && s[0].building_n == 2 && s[0].building[0] == BUILD_PAGODA && s[0].building[1] == BUILD_LONGHOUSE;
@@ -3322,7 +3319,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   realm_message(s, t, HTTP_ANSWER_KIND + id, text);
 }
 
-#test "MOVE stands the nearest thing in front of you and moves nothing else; UNDO puts it back" {
+#test "MOVE stands the nearest thing in front of you and moves nothing else; UNDO puts it back" #steps 40000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", FORGED);
   n := frame_of(s[..], t[..], 2560, 1600);
@@ -3362,7 +3359,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert !s[0].shown[BTN_UNDO] && !s[0].shown[BTN_SAVE];
 }
 
-#test "SAVE names the revision it was read at; then PUBLISH that revision; FORK goes to the fork" {
+#test "SAVE names the revision it was read at; then PUBLISH that revision; FORK goes to the fork" #steps 40000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", FORGED);
   n := frame_of(s[..], t[..], 2560, 1600);
@@ -3400,7 +3397,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert realm_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/forge-court-fork";
 }
 
-#test "a moved tree stands where the document says; a save from an older revision is refused and kept unsaved" {
+#test "a moved tree stands where the document says; a save from an older revision is refused and kept unsaved" #steps 30000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nrev 7\npublished 7\nlisted 1\nfrom old-court 2|Old Court\nmoved trees:1 4.00 -5.50\n");
   c := tree_at(s[..], 1);
@@ -3419,7 +3416,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 7 && s[0].server_rev == 9;
 }
 
-#test "a visitor gets FORK and none of the owner's; a tap on another tree picks it to move; Esc lets it go" {
+#test "a visitor gets FORK and none of the owner's; a tap on another tree picks it to move; Esc lets it go" #steps 50000000 {
   v: [1] MyRealm; u: [1] Track;
   opened(v[..], u[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 0\nfeature trees round 6\nrev 3\n");
   n := frame_of(v[..], u[..], 2560, 1600);
@@ -3484,7 +3481,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert s[0].moving == picked && !forge_dirty(s[0].fd[..]) && note_is(s[..], "It stands there now. Walk to a new place.");
 }
 
-#test "MOVE shifts more than trees: a rock, a prop, a building, a lantern, each with its own light" {
+#test "MOVE shifts more than trees: a rock, a prop, a building, a lantern, each with its own light" #steps 70000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-yard", "realm forge-yard\nname Forge Yard\nstyle lowpoly\nground stone\ntime night\nowner 1\nfeature building lighthouse\nfeature trees round 3\nfeature rocks 3\nfeature lanterns gold 4\nfeature props campfire\nfeature props fountain\nrev 2\npublished 2\nlisted 0\n");
   n := frame_of(s[..], t[..], 2560, 1600);
@@ -3555,7 +3552,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert live_line(v[..], lb[..]) == 0 && realm_probe(v[..], 62) == LIVE_NONE && realm_probe(v[..], 5) == 0;
 }
 
-#test "unsaved moves are kept in this browser and come back on a reload of the same revision" {
+#test "unsaved moves are kept in this browser and come back on a reload of the same revision" #steps 50000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", FORGED);
   n := frame_of(s[..], t[..], 2560, 1600);
@@ -3591,7 +3588,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert got && cast(string) s[0].outbox[0..<s[0].out_n] == "forge forge-court 4\n";
 }
 
-#test "unsaved moves made on a revision the server moved on from without touching the moves save from the new one" {
+#test "unsaved moves made on a revision the server moved on from without touching the moves save from the new one" #steps 40000000 {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", FORGED);
   n := frame_of(s[..], t[..], 2560, 1600);
