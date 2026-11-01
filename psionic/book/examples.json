@@ -1880,6 +1880,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/patch-shortcut.coax",
+      "chapter": "psionic/book/ch119-change-an-activation-change-the-answer.md",
+      "stdout": "psionic/fixtures/patch-shortcut.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

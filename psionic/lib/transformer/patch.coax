@@ -1,0 +1,442 @@
+// Chapter 119: change an activation, change the answer (patch-cpu-f64-v1).
+// Causal experiments on chapter 113's decoder: an owned task with a known
+// shortcut, a decoder trained on it with chapter 124's AdamW, and a forward
+// pass that replaces one named activation at one position. Capture reads the
+// decoder's own bounded work buffer. Binary64 on the CPU, one thread, every
+// sum in the decoder's order, so a patch that writes back the value already
+// there leaves every output bit unchanged.
+#load "decoder.coax";
+#load "../optim/adamw.coax";
+#load "../../fixtures/patch-shortcut/weights.coax";
+AxStatus :: enum u8 {ok;model;site;values;}
+// book:begin site
+// A named activation: the residual stream entering a layer (or, at layer ==
+// layers, entering the final norm), one attention head's context before the
+// output projection, or one FFN unit's pre-activation, at one position.
+AxPart :: enum u8 {none;resid;head;unit;}
+AxSite :: struct {part:AxPart;layer:int;index:int;position:int;}
+// book:end site
+AxRun :: struct {status:AxStatus;loss:f64;}
+// book:begin task
+// The task: BOS, an answer a in 1..6, a hint, the query mark, then a. The
+// rule is "copy the symbol three places back". The hint 6+a names the answer
+// too; that is the shortcut. Hint 13 names nothing.
+AX_SHAPE :: TdShape.{vocab=16,width=8,heads=2,kv_heads=2,head_width=4,hidden=8,layers=1,context=5};
+AX_BOS :: 15;
+AX_NONE :: 13;
+AX_QUERY :: 14;
+AX_ANSWER :: 3;
+ax_sequence :: (a:int,hint:int)->[5]int {return [5]int.[AX_BOS,a,hint,AX_QUERY,a];}
+// book:end task
+AX_PARAMETERS :: 664;
+AX_STEPS :: 300;
+AX_RATE :: 0.02;
+AX_INIT :: 119;
+AX_HINTED :: 0.75;
+
+// book:begin offset
+// Where a site's values live in the decoder's work buffer, and how many.
+ax_width :: (s:TdShape,site:AxSite)->int {
+    if site.part==AxPart.resid {return s.width;}if site.part==AxPart.head {return s.head_width;}if site.part==AxPart.unit {return 1;}return 0;
+}
+ax_offset :: (s:TdShape,site:AxSite)->int {
+    if site.part==AxPart.resid {if site.layer==s.layers {return td_final(s,site.position);}return td_slot(s,site.layer,site.position);}
+    o:=td_slot(s,site.layer,site.position);cs:=o+2*s.width+2+s.heads*s.head_width;
+    if site.part==AxPart.head {return cs+site.index*s.head_width;}
+    return cs+s.heads*s.head_width+2*s.width+site.index;
+}
+ax_valid :: (s:TdShape,site:AxSite,n:int)->bool {
+    if site.position<0 || site.position>=n || site.layer<0 {return false;}
+    if site.part==AxPart.resid {return site.layer<=s.layers && site.index==0;}
+    if site.layer>=s.layers || site.index<0 {return false;}
+    if site.part==AxPart.head {return site.index<s.heads;}
+    return site.part==AxPart.unit && site.index<s.hidden;
+}
+// book:end offset
+// book:begin capture
+// Copies a site's values out of a work buffer a forward pass has filled.
+ax_capture :: (s:TdShape,w:[]f64,site:AxSite,out:[]f64) {o:=ax_offset(s,site);for i:0..<ax_width(s,site) {out[i]=w[o+i];}}
+// book:end capture
+
+// book:begin advance
+// Chapter 113's per-position computation, written apart from td_advance, in
+// the same work-buffer layout. One hook: when `here`, the offset of values
+// just computed, is the patched site's offset, they are overwritten before
+// anything reads them. Two steps are written differently from td_advance:
+// attention weights are exp(score) over their sum, without subtracting the
+// largest score, and the squared ReLU is r*r with r = (z+|z|)/2.
+ax_put :: (w:[]f64,at:int,here:int,values:[]f64) {if at==here {for i:0..<values.count {w[at+i]=values[i];}}}
+ax_advance :: (s:TdShape,p:[]f64,w:[]f64,token:int,t:int,at:int,values:[]f64) {
+    d:=s.width;e:=s.head_width;q:=s.heads*e;k:=s.kv_heads*e;group:=s.heads/s.kv_heads;scale:=1/sqrt(f64(e));
+    first:=td_slot(s,0,t);for i:0..<d {w[first+i]=p[token*d+i];}
+    for l:0..<s.layers {
+        b:=td_block(s,l);o:=td_slot(s,l,t);n1:=o+d;r:=o+2*d;qs:=r+2;cs:=qs+q;m:=cs+q;n2:=m+d;u:=n2+d;a:=u+s.hidden;
+        keys:=td_keys(s,l);values_at:=td_values(s,l);ax_put(w,at,o,values);
+        w[r]=td_norm(w,o,p,b.norm1,d,w,n1);
+        td_matvec(p,b.wq,q,d,w,n1,w,qs);td_matvec(p,b.wk,k,d,w,n1,w,keys+t*k);td_matvec(p,b.wv,k,d,w,n1,w,values_at+t*k);
+        td_rope(w,qs,s.heads,e,f64(t));td_rope(w,keys+t*k,s.kv_heads,e,f64(t));
+        for h:0..<s.heads {g:=h/group;row:=a+h*s.context;total:=0.0;
+            for j:0..<t+1 {score:=0.0;for x:0..<e {score+=w[qs+h*e+x]*w[keys+j*k+g*e+x];}w[row+j]=exp(score*scale);total+=w[row+j];}
+            for j:0..<t+1 {w[row+j]/=total;}
+            for x:0..<e {acc:=0.0;for j:0..<t+1 {acc+=w[row+j]*w[values_at+j*k+g*e+x];}w[cs+h*e+x]=acc;}
+            ax_put(w,at,cs+h*e,values);
+        }
+        td_matvec(p,b.wo,d,q,w,cs,w,m);for i:0..<d {w[m+i]+=w[o+i];}
+        w[r+1]=td_norm(w,m,p,b.norm2,d,w,n2);td_matvec(p,b.w1,s.hidden,d,w,n2,w,u);
+        for f:0..<s.hidden {ax_put(w,at,u+f,values);}
+        next:=td_slot(s,l+1,t);if l+1==s.layers {next=td_final(s,t);}
+        for i:0..<d {acc:=0.0;for f:0..<s.hidden {z:=(w[u+f]+abs(w[u+f]))/2;acc+=p[b.w2+i*s.hidden+f]*z*z;}w[next+i]=w[m+i]+acc;}
+    }
+    f:=td_final(s,t);ax_put(w,at,f,values);
+    w[f+2*d]=td_norm(w,f,p,td_final_norm(s),d,w,f+d);td_matvec(p,td_unembed(s),s.vocab,d,w,f+d,w,f+2*d+1);
+}
+// book:end advance
+// book:begin forward
+// The forward pass with one site replaced by `values`. A site of part none
+// patches nothing and takes no values. Every refusal comes before anything
+// is written. The unshifted attention needs every score below about 709,
+// where exp overflows; the scores of this chapter's models are far smaller.
+ax_forward :: (s:TdShape,p:[]f64,tokens:[]int,w:[]f64,logits:[]f64,site:AxSite,values:[]f64)->AxRun {
+    if td_admit(s,p,w)!=TdStatus.ok || td_tokens(s,tokens)!=TdStatus.ok || logits.count<tokens.count*s.vocab {return AxRun.{status=AxStatus.model};}
+    if site.part!=AxPart.none && !ax_valid(s,site,tokens.count) {return AxRun.{status=AxStatus.site};}
+    if values.count!=ax_width(s,site) {return AxRun.{status=AxStatus.values};}
+    for x:values {if !(x>=-TD_NUMBER && x<=TD_NUMBER) {return AxRun.{status=AxStatus.values};}}
+    at:=ax_offset(s,site);
+    for t:0..<tokens.count {ax_advance(s,p,w,tokens[t],t,at,values);}
+    for t:0..<tokens.count {z:=td_final(s,t)+2*s.width+1;for v:0..<s.vocab {logits[t*s.vocab+v]=w[z+v];}}
+    return AxRun.{loss=td_loss(s,w,tokens)};
+}
+// book:end forward
+
+// y += a*x, element by element.
+ax_add :: (y:[]f64,a:f64,x:[]f64) {for i:0..<x.count {y[i]+=a*x[i];}}
+// book:begin train
+// One sequence's share of a step: adds weight times its gradient to total
+// and returns weight times its loss.
+ax_term :: (p:[]f64,x:[5]int,weight:f64,total:[]f64)->f64 {
+    w:[640]f64;dw:[640]f64;g:[664]f64;t:=x;r:=td_gradients(AX_SHAPE,p,t[..],w[..],dw[..],g[..],false);#assert r.status==TdStatus.ok;
+    ax_add(total,weight,g[..]);return weight*r.loss;
+}
+// Full-batch training on the twelve sequences: each answer with its hint
+// (weight 3/24) and without (weight 1/24), so the hint is right whenever it
+// is present and present three times in four. Returns the last step's loss.
+ax_train :: (p:[]f64,steps:int)->f64 {
+    s:=AX_SHAPE;seed:=td_init(s,CrSeed.{seed=AX_INIT},p);#assert seed.counter==AX_PARAMETERS;
+    total:[664]f64;cleared:[664]f64;m:[664]f64;v:[664]f64;state:AwState;none:[1]f32;loss:=0.0;
+    groups:=[1]AwGroup.[AwGroup.{first=0,count=AX_PARAMETERS,lr=AX_RATE,beta1=0.9,beta2=0.99,eps=0.00000001,decay=0}];
+    for step:0..<steps {
+        loss=0;total=cleared;
+        for a:1..<7 {loss+=ax_term(p,ax_sequence(a,a+6),AX_HINTED/6,total[..]);loss+=ax_term(p,ax_sequence(a,AX_NONE),(1-AX_HINTED)/6,total[..]);}
+        u:=aw_step(groups[..],AwPolicy.{},state,p,total[..],m[..],v[..],none[0..<0],false);#assert u.status==AwStatus.ok;state=u.state;
+    }
+    return loss;
+}
+// book:end train
+
+// book:begin measure
+// A pair is a clean input, whose hint agrees with the answer a, and a
+// corrupted one, whose hint names b instead. The gap is logit b minus logit
+// a where the answer is predicted; the hint's effect is how far the
+// corrupted gap moves above the clean one. Development pairs have answers
+// 1..3, held-out pairs 4..6; no conflict is ever trained on.
+AxMode :: enum u8 {plain;patched;ablated;}
+AxEffect :: struct {effect:f64;follows:int;rule:int;pairs:int;}
+ax_gap :: (logits:[]f64,a:int,b:int)->f64 {return logits[AX_ANSWER*16+b]-logits[AX_ANSWER*16+a];}
+ax_answer :: (logits:[]f64)->int {return td_argmax(logits[AX_ANSWER*16..<AX_ANSWER*16+16]);}
+// One run of AX_SHAPE on a five-token sequence; the trained model always admits.
+ax_run :: (p:[]f64,x:[5]int,site:AxSite,values:[]f64,w:[]f64,logits:[]f64) {
+    t:=x;r:=ax_forward(AX_SHAPE,p,t[..],w,logits,site,values);#assert r.status==AxStatus.ok;
+}
+// plain: no patch. patched: the corrupted run takes the site's values from
+// the clean run. ablated: the site is zero in both runs. Over the pairs whose
+// answer is first..last.
+ax_measure :: (p:[]f64,site:AxSite,mode:AxMode,first:int,last:int)->AxEffect {
+    w:[640]f64;lg:[80]f64;clean:[8]f64;zero:[8]f64;none:AxSite;n:=ax_width(AX_SHAPE,site);out:AxEffect;
+    for a:first..<last+1 {for b:1..<7 {if b!=a {
+        c:=ax_sequence(a,a+6);k:=ax_sequence(a,b+6);
+        if mode==AxMode.ablated {ax_run(p,c,site,zero[0..<n],w[..],lg[..]);}else {ax_run(p,c,none,zero[0..<0],w[..],lg[..]);}
+        gc:=ax_gap(lg[..],a,b);ax_capture(AX_SHAPE,w[..],site,clean[..]);
+        if mode==AxMode.plain {ax_run(p,k,none,zero[0..<0],w[..],lg[..]);}
+        else if mode==AxMode.patched {ax_run(p,k,site,clean[0..<n],w[..],lg[..]);}
+        else {ax_run(p,k,site,zero[0..<n],w[..],lg[..]);}
+        out.effect+=ax_gap(lg[..],a,b)-gc;out.pairs+=1;
+        if ax_answer(lg[..])==b {out.follows+=1;}if ax_answer(lg[..])==a {out.rule+=1;}
+    }}}
+    out.effect/=f64(out.pairs);return out;
+}
+// The share of the hint's effect that patching the site from the clean run removes.
+ax_recovered :: (p:[]f64,site:AxSite,first:int,last:int)->f64 {
+    e:=ax_measure(p,site,AxMode.plain,first,last).effect;return (e-ax_measure(p,site,AxMode.patched,first,last).effect)/e;
+}
+// book:end measure
+// book:begin select
+// The candidates: each head and each FFN unit where the answer is predicted.
+AX_SITES :: 10;
+ax_candidate :: (i:int)->AxSite {
+    if i<2 {return AxSite.{part=AxPart.head,layer=0,index=i,position=AX_ANSWER};}
+    return AxSite.{part=AxPart.unit,layer=0,index=i-2,position=AX_ANSWER};
+}
+// ax_recovered for every candidate at once: per pair, one clean run that
+// every candidate's values are captured from, one plain corrupted run, and
+// one patched run per candidate.
+ax_scores :: (p:[]f64,first:int,last:int)->[10]f64 {
+    w:[640]f64;lg:[80]f64;clean:[10][8]f64;empty:[1]f64;none:AxSite;plain:=0.0;moved:[10]f64;
+    for a:first..<last+1 {for b:1..<7 {if b!=a {
+        ax_run(p,ax_sequence(a,a+6),none,empty[0..<0],w[..],lg[..]);gc:=ax_gap(lg[..],a,b);
+        for i:0..<AX_SITES {ax_capture(AX_SHAPE,w[..],ax_candidate(i),clean[i][..]);}
+        k:=ax_sequence(a,b+6);ax_run(p,k,none,empty[0..<0],w[..],lg[..]);gk:=ax_gap(lg[..],a,b);plain+=gk-gc;
+        for i:0..<AX_SITES {site:=ax_candidate(i);ax_run(p,k,site,clean[i][0..<ax_width(AX_SHAPE,site)],w[..],lg[..]);moved[i]+=gk-ax_gap(lg[..],a,b);}
+    }}}
+    for i:0..<AX_SITES {moved[i]/=plain;}return moved;
+}
+// The site whose patch removes the most of the hint's effect, and the one
+// whose patch moves it least (the unrelated control). Ties go to the first.
+AxChoice :: struct {best:int;least:int;}
+ax_pick :: (scores:[10]f64)->AxChoice {
+    c:AxChoice;
+    for i:1..<AX_SITES {if scores[i]>scores[c.best] {c.best=i;}if abs(scores[i])<abs(scores[c.least]) {c.least=i;}}
+    return c;
+}
+// book:end select
+// book:begin controls
+// Logits compared, and how many of them differ in any bit.
+AxCompare :: struct {logits:int;differ:int;}
+ax_compare :: (a:[]f64,b:[]f64,into:AxCompare)->AxCompare {
+    c:=into;for i:0..<a.count {c.logits+=1;if f64_bits(a[i])!=f64_bits(b[i]) {c.differ+=1;}}return c;
+}
+// No-op patches: on each sequence, every candidate site at every position
+// gets back the values its own plain run computed.
+ax_noop :: (p:[]f64,sequences:[][5]int)->AxCompare {
+    w:[640]f64;lg:[80]f64;base:[80]f64;own:[50][8]f64;empty:[1]f64;none:AxSite;out:AxCompare;
+    for x:sequences {ax_run(p,x,none,empty[0..<0],w[..],base[..]);
+        for i:0..<50 {site:=ax_candidate(i/5);site.position=i%5;ax_capture(AX_SHAPE,w[..],site,own[i][..]);}
+        for i:0..<50 {site:=ax_candidate(i/5);site.position=i%5;ax_run(p,x,site,own[i][0..<ax_width(AX_SHAPE,site)],w[..],lg[..]);out=ax_compare(lg[..],base[..],out);}}
+    return out;
+}
+// Remove, then restore: on each conflict with answer first..last, zero the
+// site, then write back the values captured from the plain run. Returns how
+// many inputs the zeroing changed, and the restored logits compared with
+// the plain ones.
+AxRestore :: struct {changed:int;restored:AxCompare;}
+ax_restore :: (p:[]f64,site:AxSite,first:int,last:int)->AxRestore {
+    w:[640]f64;base:[80]f64;lg:[80]f64;v:[8]f64;zero:[8]f64;none:AxSite;n:=ax_width(AX_SHAPE,site);out:AxRestore;
+    for a:first..<last+1 {for b:1..<7 {if b!=a {x:=ax_sequence(a,b+6);
+        ax_run(p,x,none,v[0..<0],w[..],base[..]);ax_capture(AX_SHAPE,w[..],site,v[..]);
+        ax_run(p,x,site,zero[0..<n],w[..],lg[..]);if !ax_same(lg[..],base[..]) {out.changed+=1;}
+        ax_run(p,x,site,v[0..<n],w[..],lg[..]);out.restored=ax_compare(lg[..],base[..],out.restored);
+    }}}
+    return out;
+}
+// Inputs without a conflict (each answer first..last with its hint and with
+// none) that get the rule's answer, with the site plain or zeroed.
+ax_retained :: (p:[]f64,site:AxSite,ablate:bool,first:int,last:int)->int {
+    w:[640]f64;lg:[80]f64;zero:[8]f64;none:AxSite;n:=ax_width(AX_SHAPE,site);right:=0;
+    for a:first..<last+1 {for h:[2]int.[a+6,AX_NONE] {x:=ax_sequence(a,h);
+        if ablate {ax_run(p,x,site,zero[0..<n],w[..],lg[..]);}else {ax_run(p,x,none,zero[0..<0],w[..],lg[..]);}
+        if ax_answer(lg[..])==a {right+=1;}}}
+    return right;
+}
+// book:end controls
+// book:begin picture
+// The attention picture: head h's mean weight, where the answer is
+// predicted, on position j, over the held-out conflicts.
+ax_attention :: (p:[]f64,h:int,j:int)->f64 {
+    s:=AX_SHAPE;w:[640]f64;lg:[80]f64;v:[1]f64;none:AxSite;total:=0.0;
+    // The weights follow the FFN pre-activations: one row of `context` per head.
+    row:=ax_offset(s,AxSite.{part=AxPart.unit,index=s.hidden,position=AX_ANSWER})+h*s.context;
+    for a:4..<7 {for b:1..<7 {if b!=a {ax_run(p,ax_sequence(a,b+6),none,v[0..<0],w[..],lg[..]);total+=w[row+j];}}}
+    return total/15;
+}
+// book:end picture
+// book:begin verdict
+// Frozen before the first run. No-op and restoring patches must leave every
+// logit's bits unchanged; the unrelated site's patch may move the held-out
+// effect by at most AX_UNRELATED of it. The chosen site isolates the
+// shortcut if zeroing it removes at least AX_ISOLATE of the held-out effect
+// while all six held-out inputs without a conflict keep the rule's answer.
+AX_UNRELATED :: 0.1;
+AX_ISOLATE :: 0.5;
+AxVerdict :: struct {controls:bool;isolated:bool;}
+ax_verdict :: (noop:AxCompare,restored:AxCompare,unrelated:f64,plain:f64,ablated:f64,kept:int)->AxVerdict {
+    controls:=noop.differ==0 && restored.differ==0 && abs(unrelated)<=AX_UNRELATED;
+    return AxVerdict.{controls=controls,isolated=controls && ablated<=(1-AX_ISOLATE)*plain && kept==6};
+}
+// book:end verdict
+
+AX_PIN :: [3]u64.[4612716438147408656,13823819072264664333,4599456827769586890];
+ax_same :: (a:[]f64,b:[]f64)->bool {for i:0..<a.count {if f64_bits(a[i])!=f64_bits(b[i]) {return false;}}return true;}
+// The weights of the recorded 300-step run, which the example re-trains and compares.
+ax_from_bits :: (bits:[]u64,out:[]f64) {for i:0..<bits.count {out[i]=f64_from_bits(bits[i]);}}
+ax_trained :: ()->[664]f64 {p:[664]f64;b:=AX_WEIGHTS;ax_from_bits(b[..],p[..]);return p;}
+ax_fresh :: (p:[]f64) {seed:=td_init(AX_SHAPE,CrSeed.{seed=AX_INIT},p);#assert seed.counter==AX_PARAMETERS;}
+// Every training and conflict sequence, for the no-op control.
+ax_all :: ()->[42][5]int {out:[42][5]int;for a:1..<7 {for h:7..<14 {out[(a-1)*7+h-7]=ax_sequence(a,h);}}return out;}
+
+#test "an unpatched run matches chapter 113's forward pass on two shapes" #steps 4000000000 {
+    s:=AX_SHAPE;p:=ax_trained();#assert td_parameter_count(s)==AX_PARAMETERS && td_work_count(s)==585;w:[640]f64;wt:[640]f64;lg:[80]f64;lt:[80]f64;none:AxSite;v:[8]f64;
+    for model:0..<2 {if model==1 {ax_fresh(p[..]);}
+        for a:1..<3 {for h:7..<14 {x:=ax_sequence(a,h);for i:0..<640 {w[i]=7;wt[i]=7;}
+            r:=ax_forward(s,p[..],x[..],w[..],lg[..],none,v[0..<0]);t:=td_forward(s,p[..],x[..],wt[..],lt[..],false);
+            #assert r.status==AxStatus.ok && t.status==TdStatus.ok && abs(r.loss-t.loss)<1e-13;for i:0..<80 {#assert abs(lg[i]-lt[i])<1e-12;}
+            // The whole work buffer: every saved value, and nothing written outside it.
+            for i:0..<640 {#assert abs(w[i]-wt[i])<1e-12;}}}}
+    x:=ax_sequence(2,8);#assert x[0]==AX_BOS && x[1]==2 && x[2]==8 && x[3]==AX_QUERY && x[4]==2;
+    // Chapter 113's tiny shape: two layers, two query heads sharing one key-value head.
+    tiny:=TD_TINY;q:[204]f64;#assert td_parameter_count(tiny)==204;seed:=td_init(tiny,CrSeed.{seed=7},q[..]);tokens:=[4]int.[1,4,0,3];base:[20]f64;
+    r:=ax_forward(tiny,q[..],tokens[..],w[..],base[..],none,v[0..<0]);t:=td_forward(tiny,q[..],tokens[..],wt[..],lt[0..<20],false);
+    #assert r.status==AxStatus.ok && abs(r.loss-t.loss)<1e-13;for i:0..<20 {#assert abs(base[i]-lt[i])<1e-12;}
+    // The second layer's stream at position 1 feeds positions 1..3; its head 1 at position 2 only position 2.
+    d:[20]f64;r=ax_forward(tiny,q[..],tokens[..],w[..],d[..],AxSite.{part=AxPart.resid,layer=1,position=1},v[0..<4]);
+    #assert ax_same(d[0..<5],base[0..<5]);for i:1..<4 {#assert !ax_same(d[i*5..<i*5+5],base[i*5..<i*5+5]);}
+    r=ax_forward(tiny,q[..],tokens[..],w[..],d[..],AxSite.{part=AxPart.head,layer=1,index=1,position=2},v[0..<2]);
+    #assert ax_same(d[0..<10],base[0..<10]) && !ax_same(d[10..<15],base[10..<15]) && ax_same(d[15..<20],base[15..<20]);
+    // A first-layer unit at position 0 reaches every later position through the second layer's keys.
+    three:=[1]f64.[3];r=ax_forward(tiny,q[..],tokens[..],w[..],d[..],AxSite.{part=AxPart.unit,layer=0,index=2,position=0},three[..]);for i:0..<4 {#assert !ax_same(d[i*5..<i*5+5],base[i*5..<i*5+5]);}
+}
+#test "captured values satisfy the decoder's equations, recomputed here" #steps 4000000000 {
+    s:=AX_SHAPE;p:[664]f64;ax_fresh(p[..]);b:=td_block(s,0);w:[640]f64;lg:[80]f64;none:AxSite;v:[1]f64;
+    x:=ax_sequence(5,11);r:=ax_forward(s,p[..],x[..],w[..],lg[..],none,v[0..<0]);#assert r.status==AxStatus.ok;
+    for t:0..<5 {
+        r0:[8]f64;cat:[8]f64;z:[8]f64;fin:[8]f64;
+        ax_capture(s,w[..],AxSite.{part=AxPart.resid,layer=0,position=t},r0[..]);for i:0..<8 {#assert f64_bits(r0[i])==f64_bits(p[x[t]*8+i]);}
+        for h:0..<2 {ax_capture(s,w[..],AxSite.{part=AxPart.head,index=h,position=t},cat[h*4..<h*4+4]);}
+        for f:0..<8 {ax_capture(s,w[..],AxSite.{part=AxPart.unit,index=f,position=t},z[f..<f+1]);}
+        ax_capture(s,w[..],AxSite.{part=AxPart.resid,layer=1,position=t},fin[..]);
+        // The mid residual from the heads, its norm, the units, then the stream out.
+        m:[8]f64;n2:[8]f64;for i:0..<8 {acc:=0.0;for c:0..<8 {acc+=p[b.wo+i*8+c]*cat[c];}m[i]=acc+r0[i];}
+        q:=td_norm(m[..],0,p[..],b.norm2,8,n2[..],0);#assert q>0;
+        for f:0..<8 {acc:=0.0;for c:0..<8 {acc+=p[b.w1+f*8+c]*n2[c];}#assert f64_bits(acc)==f64_bits(z[f]);}
+        for i:0..<8 {acc:=0.0;for f:0..<8 {if z[f]>0 {acc+=p[b.w2+i*8+f]*z[f]*z[f];}}#assert f64_bits(m[i]+acc)==f64_bits(fin[i]);}
+        // The logits from the stream out, through the final norm and the head.
+        y:[8]f64;o:[16]f64;q=td_norm(fin[..],0,p[..],td_final_norm(s),8,y[..],0);td_matvec(p[..],td_unembed(s),16,8,y[..],0,o[..],0);
+        #assert ax_same(o[..],lg[t*16..<t*16+16]);
+    }
+    // The offsets by hand: 68 values per position, head 1 at 3*68+16+2+8+4,
+    // unit 5 after both heads and two more streams, the final stream after 5*84.
+    #assert td_slot_size(s)==68 && ax_offset(s,AxSite.{part=AxPart.head,index=1,position=3})==234 && ax_offset(s,AxSite.{part=AxPart.unit,index=5,position=3})==259;
+    #assert ax_offset(s,AxSite.{part=AxPart.resid,layer=1,position=3})==519 && ax_offset(s,AxSite.{part=AxPart.resid,position=3})==204;
+    #assert ax_width(s,AxSite.{})==0 &&ax_width(s,AxSite.{part=AxPart.unit})==1 && ax_width(s,AxSite.{part=AxPart.head})==4 && ax_width(s,AxSite.{part=AxPart.resid})==8;
+}
+#test "a patch acts at its position and after, and a unit's patch moves the stream by the hand formula" #steps 4000000000 {
+    s:=AX_SHAPE;p:[664]f64;ax_fresh(p[..]);b:=td_block(s,0);w:[640]f64;base:[80]f64;lg:[80]f64;none:AxSite;v:[8]f64;x:=ax_sequence(3,9);
+    r:=ax_forward(s,p[..],x[..],w[..],base[..],none,v[0..<0]);fin:[8]f64;ax_capture(s,w[..],AxSite.{part=AxPart.resid,layer=1,position=3},fin[..]);
+    // One layer: a head's context feeds only its own position's output.
+    r=ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{part=AxPart.head,index=1,position=2},v[0..<4]);
+    #assert ax_same(lg[0..<32],base[0..<32]) && !ax_same(lg[32..<48],base[32..<48]) && ax_same(lg[48..<80],base[48..<80]);
+    // The stream entering the layer also feeds later positions' keys and values.
+    r=ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{part=AxPart.resid,position=2},v[..]);
+    #assert ax_same(lg[0..<32],base[0..<32]);for t:2..<5 {#assert !ax_same(lg[t*16..<t*16+16],base[t*16..<t*16+16]);}
+    // The stream entering the final norm feeds only its own logits.
+    r=ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{part=AxPart.resid,layer=1,position=4},v[..]);
+    #assert ax_same(lg[0..<64],base[0..<64]) && !ax_same(lg[64..<80],base[64..<80]);
+    // Unit f with pre-activation z > 0 adds w2[i,f]*z*z to the stream; patched to 2 it adds w2[i,f]*4.
+    z:[1]f64;f:=0;while true {ax_capture(s,w[..],AxSite.{part=AxPart.unit,index=f,position=3},z[..]);if z[0]>0 {break;}f+=1;}
+    two:=[1]f64.[2];neg:=[1]f64.[-1];zero:=[1]f64.[0];after:[8]f64;off:[80]f64;
+    r=ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{part=AxPart.unit,index=f,position=3},two[..]);ax_capture(s,w[..],AxSite.{part=AxPart.resid,layer=1,position=3},after[..]);
+    for i:0..<8 {#assert abs(after[i]-fin[i]-p[b.w2+i*8+f]*(4-z[0]*z[0]))<1e-12;}
+    r=ax_forward(s,p[..],x[..],w[..],off[..],AxSite.{part=AxPart.unit,index=f,position=3},zero[..]);ax_capture(s,w[..],AxSite.{part=AxPart.resid,layer=1,position=3},after[..]);
+    for i:0..<8 {#assert abs(after[i]-fin[i]+p[b.w2+i*8+f]*z[0]*z[0])<1e-12;}
+    // Every unit, patched to 2, moves the stream by w2[i,f]*(4 - z*z) with z clipped at zero.
+    for g:0..<8 {ax_capture(s,w[..],AxSite.{part=AxPart.unit,index=g,position=3},z[..]);c:=(z[0]+abs(z[0]))/2;
+        r=ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{part=AxPart.unit,index=g,position=3},two[..]);ax_capture(s,w[..],AxSite.{part=AxPart.resid,layer=1,position=3},after[..]);
+        for i:0..<8 {#assert abs(after[i]-fin[i]-p[b.w2+i*8+g]*(4-c*c))<1e-12;}r=ax_forward(s,p[..],x[..],w[..],lg[..],none,v[0..<0]);}
+    // Squared ReLU: any negative pre-activation is the same as zero.
+    r=ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{part=AxPart.unit,index=f,position=3},neg[..]);#assert ax_same(lg[..],off[..]) && !ax_same(lg[..],base[..]);
+}
+#test "refused patches leave the buffers untouched" #steps 4000000000 {
+    s:=AX_SHAPE;p:[664]f64;ax_fresh(p[..]);w:[640]f64;lg:[80]f64;v:[8]f64;x:=ax_sequence(4,10);
+    for i:0..<640 {w[i]=7;}for i:0..<80 {lg[i]=7;}
+    head:=AxSite.{part=AxPart.head,index=1,position=3};unit:=AxSite.{part=AxPart.unit,index=7,position=4};resid:=AxSite.{part=AxPart.resid,layer=1,position=0};
+    sites:=[9]AxSite.[AxSite.{part=AxPart.head,position=5},AxSite.{part=AxPart.head,position=-1},AxSite.{part=AxPart.head,layer=1},AxSite.{part=AxPart.head,layer=-1},
+        AxSite.{part=AxPart.head,index=2},AxSite.{part=AxPart.unit,index=8},AxSite.{part=AxPart.unit,index=-1},AxSite.{part=AxPart.resid,index=1},AxSite.{part=AxPart.resid,layer=2}];
+    for site:sites {#assert ax_forward(s,p[..],x[..],w[..],lg[..],site,v[0..<ax_width(s,site)]).status==AxStatus.site;}
+    #assert !ax_valid(s,AxSite.{},5) && ax_valid(s,head,5) && ax_valid(s,unit,5) && ax_valid(s,resid,5) && !ax_valid(s,unit,4) && ax_valid(s,AxSite.{part=AxPart.unit},1);
+    #assert ax_forward(s,p[..],x[..],w[..],lg[..],head,v[0..<3]).status==AxStatus.values && ax_forward(s,p[..],x[..],w[..],lg[..],head,v[0..<5]).status==AxStatus.values;
+    for bad:[3]f64.[2*TD_NUMBER,-2*TD_NUMBER,0.0/0.0] {u:=[1]f64.[bad];#assert ax_forward(s,p[..],x[..],w[..],lg[..],unit,u[..]).status==AxStatus.values;}
+    short:=x;short[2]=16;#assert ax_forward(s,p[..],short[..],w[..],lg[..],head,v[0..<4]).status==AxStatus.model;
+    #assert ax_forward(s,p[..],x[..],w[0..<584],lg[..],head,v[0..<4]).status==AxStatus.model && ax_forward(s,p[..],x[..],w[..],lg[0..<79],head,v[0..<4]).status==AxStatus.model;
+    q:=p;q[0]=0.0/0.0;#assert ax_forward(s,q[..],x[..],w[..],lg[..],head,v[0..<4]).status==AxStatus.model;
+    for i:0..<640 {#assert w[i]==7;}for i:0..<80 {#assert lg[i]==7;}
+    #assert ax_forward(s,p[..],x[..],w[..],lg[..],AxSite.{},v[0..<1]).status==AxStatus.values;
+    for i:0..<640 {#assert w[i]==7;}for i:0..<80 {#assert lg[i]==7;}
+    // The limits themselves are admitted; a site of part none takes no values.
+    edge:=[4]f64.[TD_NUMBER,-TD_NUMBER,0,0];#assert ax_forward(s,p[..],x[..],w[0..<585],lg[..],head,edge[..]).status==AxStatus.ok && ax_forward(s,p[..],x[..],w[..],lg[0..<80],AxSite.{},v[0..<0]).status==AxStatus.ok;
+}
+#test "the worked pair and the measurements equal the runs they summarize" #steps 4000000000 {
+    s:=AX_SHAPE;p:=ax_trained();site:=ax_candidate(1);w:[640]f64;lg:[80]f64;v:[8]f64;zero:[4]f64;none:AxSite;
+    // The pair worked by hand in the chapter: answer 4, hint for 3.
+    ax_run(p[..],ax_sequence(4,10),none,v[0..<0],w[..],lg[..]);gc:=ax_gap(lg[..],4,3);ax_capture(s,w[..],site,v[..]);
+    ax_run(p[..],ax_sequence(4,9),none,v[0..<0],w[..],lg[..]);gk:=ax_gap(lg[..],4,3);#assert ax_answer(lg[..])==3;
+    ax_run(p[..],ax_sequence(4,9),site,v[0..<4],w[..],lg[..]);gp:=ax_gap(lg[..],4,3);#assert ax_answer(lg[..])==4;
+    #assert abs(gc+9.253688)<1e-6 && abs(gk-4.655394)<1e-6 && abs(gp+8.591095)<1e-6 && abs((gk-gp)/(gk-gc)-0.9524)<1e-4;
+    effects:[3]f64;
+    for mode:[3]AxMode.[AxMode.plain,AxMode.patched,AxMode.ablated] {
+        e:=ax_measure(p[..],site,mode,4,4);total:=0.0;follows:=0;rule:=0;
+        for b:[5]int.[1,2,3,5,6] {c:=ax_sequence(4,10);k:=ax_sequence(4,b+6);
+            cv:=none;cvals:=zero[0..<0];if mode==AxMode.ablated {cv=site;cvals=zero[..];}
+            r:=ax_forward(s,p[..],c[..],w[..],lg[..],cv,cvals);c3:=lg[48+b]-lg[52];ax_capture(s,w[..],site,v[..]);
+            kv:=none;kvals:=zero[0..<0];if mode==AxMode.patched {kv=site;kvals=v[0..<4];}if mode==AxMode.ablated {kv=site;kvals=zero[..];}
+            r=ax_forward(s,p[..],k[..],w[..],lg[..],kv,kvals);total+=lg[48+b]-lg[52]-c3;
+            best:=td_argmax(lg[48..<64]);if best==b {follows+=1;}if best==4 {rule+=1;}}
+        #assert e.pairs==5 && e.follows==follows && e.rule==rule && abs(e.effect-total/5)<1e-12;effects[cast(int)mode]=e.effect;
+    }
+    // Answer 4's pairs: the hint for 3 wins plain and loses patched.
+    #assert ax_measure(p[..],site,AxMode.plain,4,4).follows==1 && ax_measure(p[..],site,AxMode.patched,4,4).follows==0 && ax_measure(p[..],site,AxMode.plain,4,4).rule==3;
+    #assert effects[0]!=effects[1] && effects[0]!=effects[2] && abs(ax_recovered(p[..],site,4,4)-(effects[0]-effects[1])/effects[0])<1e-15;
+    #assert ax_measure(p[..],site,AxMode.plain,6,6).pairs==5;
+}
+#test "the all-candidate scores equal each site's own recovery" #steps 4000000000 {
+    p:=ax_trained();sc:=ax_scores(p[..],2,2);
+    for i:[4]int.[0,1,2,9] {#assert abs(sc[i]-ax_recovered(p[..],ax_candidate(i),2,2))<1e-12;}
+    c:=ax_pick(sc);#assert sc[c.best]>0.5;
+}
+#test "no-op and restoring patches change no bits; zeroing changes exactly the live sites" #steps 4000000000 {
+    p:=ax_trained();all:=ax_all();
+    #assert all[0][1]==1 && all[0][2]==7 && all[8][1]==2 && all[8][2]==8 && all[41][1]==6 && all[41][2]==13 && all[41][4]==6;
+    n:=ax_noop(p[..],all[19..<21]);#assert n.logits==8000 && n.differ==0;
+    r:=ax_restore(p[..],ax_candidate(1),4,4);#assert r.changed==5 && r.restored.logits==400 && r.restored.differ==0;
+    // A unit whose pre-activation is not positive contributes nothing, so zeroing it changes nothing.
+    w:[640]f64;lg:[80]f64;z:[1]f64;none:AxSite;live:[8]int;
+    for b:[5]int.[1,2,3,4,6] {x:=ax_sequence(5,b+6);ax_run(p[..],x,none,z[0..<0],w[..],lg[..]);
+        for f:0..<8 {ax_capture(AX_SHAPE,w[..],ax_candidate(f+2),z[..]);if z[0]>0 {live[f]+=1;}}}
+    some:=0;for f:0..<8 {u:=ax_restore(p[..],ax_candidate(f+2),5,5);#assert u.changed==live[f] && u.restored.differ==0;if live[f]>0 && live[f]<5 {some+=1;}}
+    #assert some>0;
+}
+#test "retained counts and the attention picture" #steps 4000000000 {
+    p:=ax_trained();w:[640]f64;lg:[80]f64;zero:[4]f64;none:AxSite;
+    for site:[2]AxSite.[ax_candidate(0),ax_candidate(1)] {for ablate:[2]bool.[false,true] {right:=0;
+        for a:4..<7 {for h:[2]int.[a+6,13] {x:=ax_sequence(a,h);if ablate {ax_run(p[..],x,site,zero[..],w[..],lg[..]);}else {ax_run(p[..],x,none,zero[0..<0],w[..],lg[..]);}if td_argmax(lg[48..<64])==a {right+=1;}}}
+        #assert ax_retained(p[..],site,ablate,4,6)==right;}}
+    // Zeroing head 0, which reads the answer symbol, loses held-out answers; zeroing head 1 does not.
+    #assert ax_retained(p[..],ax_candidate(1),false,4,4)==2 && ax_retained(p[..],ax_candidate(1),true,4,6)==6 && ax_retained(p[..],ax_candidate(0),true,4,6)<6 && ax_retained(p[..],ax_candidate(0),true,5,5)<=2;
+    // Each head's weights at the answer's position cover positions 0..3 and sum to one.
+    total:=0.0;for j:0..<4 {x:=ax_attention(p[..],1,j);#assert x>0;total+=x;}#assert abs(total-1)<1e-12 && ax_attention(p[..],1,4)==0;
+    #assert abs(ax_attention(p[..],0,1)-0.5967093514904882)<1e-15 && abs(ax_attention(p[..],1,2)-0.2994069476444334)<1e-15;
+}
+#test "selection, comparison and the verdict at their boundaries" {
+    tie:[10]f64;for i:0..<10 {tie[i]=0.5;}c:=ax_pick(tie);#assert c.best==0 && c.least==0;
+    tie[3]=0.9;tie[6]=0.9;tie[4]=-0.1;tie[8]=0.1;c=ax_pick(tie);#assert c.best==3 && c.least==4;
+    tie[0]=0.95;tie[9]=0.05;c=ax_pick(tie);#assert c.best==0 && c.least==9;
+    sec:[10]f64;for i:0..<10 {sec[i]=0.5;}sec[1]=0.7;c=ax_pick(sec);#assert c.best==1 && c.least==0;sec[1]=0.01;c=ax_pick(sec);#assert c.best==0 && c.least==1;
+    lg:[80]f64;lg[53]=1;lg[64]=9;lg[47]=9;#assert ax_answer(lg[..])==5;
+    acc:=[3]f64.[1,2,3];step:=[3]f64.[4,6,8];ax_add(acc[..],0.5,step[..]);#assert acc[0]==3 && acc[1]==5 && acc[2]==7;
+    bits:=[2]u64.[4607182418800017408,13835058055282163712];two:[2]f64;ax_from_bits(bits[..],two[..]);#assert two[0]==1 && two[1]==-2;
+    x:=[3]f64.[1,2,3];y:=[3]f64.[0,2,3];zz:=[3]f64.[1,2,4];#assert ax_same(x[..],x[..]) && !ax_same(x[..],y[..]) && !ax_same(x[..],zz[..]);
+    a:=[3]f64.[1,0,2];b:=[3]f64.[1,-0.0,3];k:=ax_compare(a[..],b[..],AxCompare.{logits=5,differ=1});#assert k.logits==8 && k.differ==3;
+    zero:AxCompare;one:=AxCompare.{differ=1};
+    #assert ax_verdict(zero,zero,0.1,2,1,6).isolated && ax_verdict(zero,zero,-0.1,2,1,6).controls;
+    v:=ax_verdict(zero,zero,0.10000000000000002,2,1,6);#assert !v.controls && !v.isolated;
+    #assert !ax_verdict(zero,zero,-0.10000000000000002,2,1,6).controls && !ax_verdict(one,zero,0,2,1,6).controls && !ax_verdict(zero,one,0,2,1,6).controls;
+    v=ax_verdict(zero,zero,0,2,1.0000000000000002,6);#assert v.controls && !v.isolated;
+    #assert !ax_verdict(zero,zero,0,2,0,5).isolated && ax_verdict(zero,zero,0,2,-1,6).isolated && !ax_verdict(one,zero,0,2,0,6).isolated;
+    #assert ax_candidate(0).part==AxPart.head && ax_candidate(1).index==1 && ax_candidate(2).part==AxPart.unit && ax_candidate(2).index==0 && ax_candidate(9).index==7 && ax_candidate(9).position==AX_ANSWER;
+}
+#test "training repeats bit for bit and its first loss is the weighted mean of the twelve" #steps 4000000000 {
+    p:[664]f64;q:[664]f64;w:[640]f64;lg:[80]f64;
+    first:=ax_train(p[..],1);ax_fresh(q[..]);want:=0.0;
+    for a:1..<7 {x:=ax_sequence(a,a+6);r:=td_forward(AX_SHAPE,q[..],x[..],w[..],lg[..],false);want+=0.125*r.loss;x=ax_sequence(a,AX_NONE);r=td_forward(AX_SHAPE,q[..],x[..],w[..],lg[..],false);want+=r.loss/24;}
+    #assert abs(first-want)<1e-14 && !ax_same(p[..],q[..]);
+    l2:=ax_train(p[..],3);l3:=ax_train(q[..],3);#assert f64_bits(l2)==f64_bits(l3) && ax_same(p[..],q[..]) && l2<first;
+    // Pinned by the first run: the third step's loss and two parameters after it.
+    #assert f64_bits(l2)==AX_PIN[0] && f64_bits(p[8])==AX_PIN[1] && f64_bits(p[663])==AX_PIN[2];
+}

@@ -25,8 +25,9 @@ pieces other chapters built:
 - [Chapter 53](ch053-choosing-the-next-token.md): the seeded sampler
   (`nx_step`).
 
-[Chapter 119](ch119-change-an-activation-change-the-answer.md), still a
-design draft, plans to start from this trained model.
+[Chapter 119](ch119-change-an-activation-change-the-answer.md) trains the
+same decoder on a small task with a known shortcut and tests it by
+replacing activations inside it.
 
 ## The corpus and its symbols
 

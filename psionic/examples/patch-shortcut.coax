@@ -1,0 +1,41 @@
+#import "Basic";
+#load "../lib/transformer/patch.coax";
+// book:begin example
+// Train the decoder on the hint task, look at the attention picture, then
+// test it by intervention: controls first, a site chosen on development
+// pairs, its effect measured on held-out pairs, and two refused patches.
+AX_NAMES :: [10]string.["head 0","head 1","unit 0","unit 1","unit 2","unit 3","unit 4","unit 5","unit 6","unit 7"];
+main :: () {
+    s:=AX_SHAPE;p:[664]f64;#assert td_parameter_count(s)==AX_PARAMETERS;
+    loss:=ax_train(p[..],AX_STEPS);
+    print("decoder: % parameters; % full-batch AdamW steps on 12 sequences; last loss %\n",AX_PARAMETERS,AX_STEPS,loss);
+    recorded:=ax_trained();print("weights equal the recorded fixture, bit for bit: %\n",ax_same(p[..],recorded[..]));
+    for h:0..<2 {print("picture: head % puts % of its attention on the answer, % on the hint\n",h,ax_attention(p[..],h,1),ax_attention(p[..],h,2));}
+    // One held-out pair by hand: answer 4, hint for 3.
+    w:[640]f64;lg:[80]f64;v:[8]f64;none:AxSite;head:=ax_candidate(1);
+    ax_run(p[..],ax_sequence(4,10),none,v[0..<0],w[..],lg[..]);print("pair 4/3 clean:     logit 4 %, logit 3 %\n",lg[52],lg[51]);ax_capture(s,w[..],head,v[..]);
+    ax_run(p[..],ax_sequence(4,9),none,v[0..<0],w[..],lg[..]);print("pair 4/3 corrupted: logit 4 %, logit 3 %\n",lg[52],lg[51]);
+    ax_run(p[..],ax_sequence(4,9),head,v[0..<4],w[..],lg[..]);print("pair 4/3 patched:   logit 4 %, logit 3 %\n",lg[52],lg[51]);
+    // Controls first: no-op patches at every candidate site and position.
+    all:=ax_all();noop:=ax_noop(p[..],all[..]);print("control, no-op patches: % of % logits differ\n",noop.differ,noop.logits);
+    // Sites are chosen on development pairs (answers 1..3) only.
+    scores:=ax_scores(p[..],1,3);c:=ax_pick(scores);site:=ax_candidate(c.best);
+    for i:0..<AX_SITES {print("development: patching % from the clean run removes % of the effect\n",AX_NAMES[i],scores[i]);}
+    print("chosen: %; unrelated control: %\n",AX_NAMES[c.best],AX_NAMES[c.least]);
+    unrelated:=ax_recovered(p[..],ax_candidate(c.least),4,6);
+    print("control, unrelated patch on held-out pairs removes % of the effect (bound %)\n",unrelated,AX_UNRELATED);
+    restore:=ax_restore(p[..],site,4,6);
+    print("control, restore: zeroing changed % of 15 inputs; % of % restored logits differ\n",restore.changed,restore.restored.differ,restore.restored.logits);
+    modes:=[3]AxMode.[AxMode.plain,AxMode.patched,AxMode.ablated];labels:=[3]string.["plain","patched from clean","site zeroed"];effects:[3]AxEffect;
+    for i:0..<3 {e:=ax_measure(p[..],site,modes[i],4,6);effects[i]=e;print("held-out, %: effect % nats; follows the hint % of %, answers by the rule %\n",labels[i],e.effect,e.follows,e.pairs,e.rule);}
+    retained:=ax_retained(p[..],site,false,4,6);kept:=ax_retained(p[..],site,true,4,6);
+    print("retained: % of 6 held-out inputs without a conflict plain, % of 6 with the site zeroed\n",retained,kept);
+    v2:=ax_verdict(noop,restore.restored,unrelated,effects[0].effect,effects[2].effect,kept);
+    print("controls pass: %; % isolates the shortcut: %\n",v2.controls,AX_NAMES[c.best],v2.isolated);
+    // Deliberately broken patches are refused before anything runs.
+    x:=ax_sequence(4,9);far:=head;far.position=5;
+    print("refused: % at position 5 of 5 tokens: %\n",AX_NAMES[1],ax_forward(s,p[..],x[..],w[..],lg[..],far,v[0..<4]).status);
+    print("refused: 3 values for a 4-value head: %\n",ax_forward(s,p[..],x[..],w[..],lg[..],head,v[0..<3]).status);
+    #assert v2.isolated;
+}
+// book:end example

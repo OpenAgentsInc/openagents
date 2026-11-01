@@ -128,7 +128,7 @@
 - [116. Train within a memory budget](ch116-train-within-a-memory-budget.md) — design draft
 - [117. Models are compositions of modules](ch117-models-are-compositions-of-modules.md) — partly implemented
 - [118. One trainer for every model](ch118-one-trainer-for-every-model.md) — design draft
-- [119. Change an activation, change the answer](ch119-change-an-activation-change-the-answer.md) — design draft
+- [119. Change an activation, change the answer](ch119-change-an-activation-change-the-answer.md)
 
 - [120. Data and resumable state](ch120-data-and-resumable-state.md)
 - [121. Feed the accelerator](ch121-feed-the-accelerator.md) — partly implemented
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114, 115, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114, 115, 117, 119, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

@@ -1,0 +1,28 @@
+decoder: 664 parameters; 300 full-batch AdamW steps on 12 sequences; last loss 0.5909210872453994
+weights equal the recorded fixture, bit for bit: true
+picture: head 0 puts 0.5967093514904882 of its attention on the answer, 0.03267574302689099 on the hint
+picture: head 1 puts 0.16001057111927858 of its attention on the answer, 0.2994069476444334 on the hint
+pair 4/3 clean:     logit 4 11.730281742400319, logit 3 2.476593716276513
+pair 4/3 corrupted: logit 4 4.43836355002113, logit 3 9.09375766993636
+pair 4/3 patched:   logit 4 11.682882638710712, logit 3 3.0917884303387426
+control, no-op patches: 0 of 168000 logits differ
+development: patching head 0 from the clean run removes 0.19405291149120457 of the effect
+development: patching head 1 from the clean run removes 0.8017223257374475 of the effect
+development: patching unit 0 from the clean run removes 0.14257606227744657 of the effect
+development: patching unit 1 from the clean run removes 0.1018263986345193 of the effect
+development: patching unit 2 from the clean run removes 0.013604022915406569 of the effect
+development: patching unit 3 from the clean run removes 0.07300148674270075 of the effect
+development: patching unit 4 from the clean run removes 0.029119843633768783 of the effect
+development: patching unit 5 from the clean run removes 0.20579126656634092 of the effect
+development: patching unit 6 from the clean run removes 0.006108556838044004 of the effect
+development: patching unit 7 from the clean run removes 0.07717084298832813 of the effect
+chosen: head 1; unrelated control: unit 6
+control, unrelated patch on held-out pairs removes -0.06576079922616156 of the effect (bound 0.1)
+control, restore: zeroing changed 15 of 15 inputs; 0 of 1200 restored logits differ
+held-out, plain: effect 2.8647496159351484 nats; follows the hint 2 of 15, answers by the rule 12
+held-out, patched from clean: effect 0.4591226978807987 nats; follows the hint 0 of 15, answers by the rule 15
+held-out, site zeroed: effect 0.5349883248474029 nats; follows the hint 1 of 15, answers by the rule 14
+retained: 6 of 6 held-out inputs without a conflict plain, 6 of 6 with the site zeroed
+controls pass: true; head 1 isolates the shortcut: true
+refused: head 1 at position 5 of 5 tokens: site
+refused: 3 values for a 4-value head: values
