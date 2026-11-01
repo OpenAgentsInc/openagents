@@ -100,6 +100,7 @@ N57Zap :: struct {
   n=n57_lnurlp("odell@stacker.news",out[..]);#assert cast(string)out[0..<n]=="https://stacker.news/.well-known/lnurlp/odell";
   n=n57_lnurlp("a.b-c_9@x-1.y2",out[..]);#assert cast(string)out[0..<n]=="https://x-1.y2/.well-known/lnurlp/a.b-c_9";
   n=n57_lnurlp("z0@z0.az",out[..]);#assert cast(string)out[0..<n]=="https://z0.az/.well-known/lnurlp/z0";
+  n=n57_lnurlp("z9@a9.b9",out[..]);#assert cast(string)out[0..<n]=="https://a9.b9/.well-known/lnurlp/z9";
   #assert n57_lnurlp("bob@x.com@y.com",out[..])== -1 && n57_lnurlp("@a@x.com",out[..])== -1;
   n=n57_lnurlp("me@abcdefgh.onion",out[..]);#assert cast(string)out[0..<n]=="http://abcdefgh.onion/.well-known/lnurlp/me";
   n=n57_lnurlp("me@xonion.com",out[..]);#assert cast(string)out[0..<n]=="https://xonion.com/.well-known/lnurlp/me";
@@ -152,6 +153,7 @@ N57Zap :: struct {
   // one JSON object, each key once
   #assert n57_pay("{\"tag\":\"payRequest\",\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_JSON;
   #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}{}").status==N57P_JSON;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_JSON;
   #assert n57_pay("[]").status==N57P_JSON && n57_pay("{\"tag\":").status==N57P_JSON && n57_pay("{\"x\":[1,}").status==N57P_JSON;
   long:[400]u8;n:=json_raw(long[..],0,"{\"callback\":\"https://");for i:0..<300 {long[n+i]='x';}n+=300;n=json_raw(long[..],n,"\"}");
   #assert n57_pay(cast(string)long[0..<n]).status==N57P_JSON;
@@ -592,14 +594,13 @@ n57_invoice :: (text:string)->N57Invoice {
   r:=bech32_decode_checked(text,hrp[..],w[..],true,false);
   if r.error!=NC_OK {return v;}
   v.status=N57I_AMOUNT;v.msat=x402_bolt11_msat(text);
-  if v.msat<0 {return v;}
+  if v.msat== -1 {return v;}
   v.status=N57I_SHAPE;
   end:=r.written-104;
   if end<7 {return v;}
   for i:0..<7 {v.timestamp=v.timestamp*32+cast(int)w[i];}
   i:=7;
   while i<end {
-    if i+3>end {return v;}
     type:=w[i];size:=cast(int)w[i+1]*32+cast(int)w[i+2];i+=3;
     if i+size>end {return v;}
     if size==52 && type==1 && !v.has_payment_hash {v.has_payment_hash=true;v.payment_hash=n57_bytes32(w[..],i);}

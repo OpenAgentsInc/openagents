@@ -1510,7 +1510,7 @@
    "number": 71,
    "title": "Lightning zaps and goals",
    "file": "ch071-lightning-zaps-and-goals.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     21,

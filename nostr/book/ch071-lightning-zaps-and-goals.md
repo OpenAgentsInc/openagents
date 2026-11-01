@@ -1,10 +1,5 @@
 # 71. Lightning zaps and goals
 
-> **Status: partly implemented.** The code, its checks, the example and the
-> chapter text exist and pass. Mutation testing of the two `#authority`
-> files, `nip57.coax` and `nip75.coax`, has not finished: see "How the code
-> is checked".
-
 Zaps are Lightning payments tied to Nostr events. A client asks the
 recipient's Lightning server for an invoice and hands it a signed event,
 the zap request, that says who pays whom and for what. When the invoice is
@@ -356,14 +351,13 @@ n57_invoice :: (text:string)->N57Invoice {
   r:=bech32_decode_checked(text,hrp[..],w[..],true,false);
   if r.error!=NC_OK {return v;}
   v.status=N57I_AMOUNT;v.msat=x402_bolt11_msat(text);
-  if v.msat<0 {return v;}
+  if v.msat== -1 {return v;}
   v.status=N57I_SHAPE;
   end:=r.written-104;
   if end<7 {return v;}
   for i:0..<7 {v.timestamp=v.timestamp*32+cast(int)w[i];}
   i:=7;
   while i<end {
-    if i+3>end {return v;}
     type:=w[i];size:=cast(int)w[i+1]*32+cast(int)w[i+2];i+=3;
     if i+size>end {return v;}
     if size==52 && type==1 && !v.has_payment_hash {v.has_payment_hash=true;v.payment_hash=n57_bytes32(w[..],i);}
@@ -379,7 +373,9 @@ refuses. It does not check the signature: that would recover the node's
 key from it, and the server that signs the receipt also made the
 invoice. The amount comes from chapter 86's `x402_bolt11_msat`, which reads
 only mainnet `lnbc` invoices with an amount. A testnet `lntb` invoice
-refuses.
+refuses. A field header cut short by the signature needs no check of its
+own: its three words lie inside the signature, and its data, of zero or
+more words, starts past the end, so `i+size>end` refuses it.
 
 ## Checking a receipt
 
@@ -998,22 +994,27 @@ inclusive, order independence, duplicates, and the 64-receipt bound.
 coax/bin/coax test coax/lib/nostr/nip57.coax --library
 coax/bin/coax test coax/lib/nostr/nip75.coax --library
 coax/bin/coax test nostr/examples/checks/lightning-zaps.coax
-coax/bin/coax mutate coax/lib/nostr/nip57.coax --root-only --shard I/4
-coax/bin/coax mutate coax/lib/nostr/nip75.coax --root-only
+coax/bin/coax mutate coax/lib/nostr/nip57.coax --root-only --shard I/48 > I.rec
+coax/bin/coax mutate coax/lib/nostr/nip57.coax --root-only --merge 1.rec ... --merge 48.rec
+coax/bin/coax mutate coax/lib/nostr/nip75.coax --root-only --shard I/8 > I.rec
 ```
 
 On 2026-11-01, `coax test` passed all 233 checks of `nip57.coax` and all
 238 of `nip75.coax` (with the loaded files'), and all 392 of the example's
 checks. The example ran in debug and release with the same output.
 
-Mutation testing is not finished, so the chapter is partly implemented.
-`coax mutate --root-only` ran on earlier versions of `nip57.coax`: one
-quarter of an 848-mutant version left 18 survivors, and two quarters of a
-690-mutant version left 3 and 5. Each of those survivors has a check or a
-code change since (a boundary test, or a check rewritten so it has no
-equivalent mutant). Root-only mutation of the files as committed, and of
-`nip75.coax`, was stopped at the task's time limit and remains to run, with
-zero survivors required, before the status becomes implemented.
+On 2026-11-01, `coax mutate --root-only` killed all 678 mutants of
+`nip57.coax` (48 shards, merged) and all 131 of `nip75.coax` (8 shards,
+merged), with no survivors and none marked equivalent. The first full runs
+left six survivors in `nip57.coax` and one in `nip75.coax`, each now killed
+or removed: a lightning address whose domain holds a `9` (`c<='9'` became
+`c<'9'`); a second `nostrPubkey` in the LNURL-pay response (the seen-key
+shifts `>>` and `<<` swapped, which only caught a repeated `tag`); the
+goal's kind refusal, which now checks `at` is -1; the invoice's amount
+check, now `== -1`, since `x402_bolt11_msat` answers -1 or a positive
+amount, so `<0`, `<=0` and `<1` were the same test; and the separate check
+that a field header fits before the signature, removed because
+`i+size>end` already refuses that header.
 
 ### Not built
 

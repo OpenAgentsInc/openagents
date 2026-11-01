@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 83 are implemented, 1 is partly implemented and 20 are design drafts.
+Of the 104 chapters, 84 are implemented and 20 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -261,7 +261,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [68. Bridges, external IDs and timestamps](ch068-bridges-external-ids-and-timestamps.md) | Runnable: native C | NIP-48 `proxy` tags for bridged events, NIP-73 `i` and `k` tags for external content IDs (URLs, ISBNs, podcasts, geohashes), and NIP-03 kind 1040 OpenTimestamps attestations. |
 | [69. Small content kinds](ch069-small-content-kinds.md) | Runnable: native C | NIP-35 torrents (2003), NIP-64 chess games in PGN (64), NIP-CC geocaches (37516) and logs (7516, 7517), and NIP-F4 podcasts. |
 | [70. Retired and experimental NIPs](ch070-retired-and-experimental-nips.md) | Runnable: native C | NIP-26 delegation tokens, the NIP-31 `alt` tag and NIP-BE Bluetooth LE transport, each marked `unrecommended` in the pinned text, with what this stack reads and what it never builds. |
-| [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) | Partly implemented: native C (mutation of `nip57.coax` and `nip75.coax` still to run) | NIP-57 zap requests (9734) sent to an LNURL server and zap receipts (9735) whose bolt11 description hash commits to the request, and NIP-75 zap goals (9041). |
+| [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) | Runnable: native C | NIP-57 zap requests (9734) sent to an LNURL server and zap receipts (9735) whose bolt11 description hash commits to the request, and NIP-75 zap goals (9041). |
 | [72. Wallet Connect](ch072-wallet-connect.md) | Runnable: native C | NIP-47 Nostr Wallet Connect: `nostr+walletconnect://` URIs (secret kept, never printed), the info event (13194) with NIP-04-only wallets refused, every command's request (23194) and response (23195) JSON read and written, NIP-44 v2 under the connection secret, responses matched by author, `p`, `e` and `result_type`, and an `#authority` spending budget that refuses with `QUOTA_EXCEEDED`. |
 | [73. Payment targets](ch073-payment-targets.md) | Runnable: native C | NIP-A3 kind 10133 `payto` tags, with only the Bitcoin and Lightning target types acted on under the repository rule. |
 | [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) | Runnable: native C | NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87 mint discovery, recognized and never built: a classifier marks their nine kinds, references to them and ecash payment values as excluded, and the book check fails if another file names them. |

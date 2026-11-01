@@ -71,8 +71,8 @@ n75_receipt_in :: (request:string,invoice:string,e:string,at:int,out:[]u8)->Nost
 #test "goal refusals: kind, amount, relays, closed_at" {
   buf:[600]u8;
   none:NostrEvent;#assert n75_goal(none).status==N75_EVENT;
-  #assert n75_goal(n32_event_in(1,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"5\"]]",buf[..])).status==N75_KIND;
-  g:=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at== -1;
+  g:=n75_goal(n32_event_in(1,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"5\"]]",buf[..]));#assert g.status==N75_KIND && g.at== -1;
+  g=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at== -1;
   g=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"0\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at==1;
   g=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"5\"],[\"amount\",\"5\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at==2;
   g=n75_goal(n32_event_in(9041,"[[\"amount\",\"5\"]]",buf[..]));#assert g.status==N75_RELAYS && g.at== -1;
