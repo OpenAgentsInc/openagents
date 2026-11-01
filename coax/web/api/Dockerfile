@@ -10,9 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ libc6-d
 COPY coax/ /work/coax/
 COPY scripts/ /work/scripts/
 WORKDIR /work
-# The image has no git history, so build.sh alone would gate every mutant of
-# every compiler file (hours). deploy.sh passes the lines changed since main,
-# as a checkout of main has: none, because release.sh gated these sources.
+# The image has no git history, so build.sh alone would fail on a surviving
+# mutant on any line. deploy.sh passes the lines changed since main, as a
+# checkout of main has: none, because release.sh gated these sources. Every
+# file is still mutated (there is no gate cache here), which takes most of
+# the build.
 RUN COAX_RELEASE_CACHE=/tmp/coax-cache COAX_MUTATE_JOBS="$(nproc)" COAX_MUTATION_CHANGED=/work/coax/mutation-changed coax/build.sh
 RUN mkdir /out && for m in nip98 mesh-policy; do \
       coax/bin/coax c coax/web/api/$m.coax --run-steps 250000000 --library --header /out/$m.generated.h > /out/$m.generated.c || exit 1; \

@@ -58,10 +58,11 @@ if [[ -x "$work/source/coax/mutation-gate.sh" ]]; then
 fi
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
 # Capture the authenticated build result, not the mutable tag's later value.
-# The compiler bootstrap is parallel on a 32-core builder, but with its
-# mutation gates it can pass 30 minutes (twice on 2026-11-01), so the limit is an hour.
+# The compiler bootstrap is parallel on a 32-core builder, but the image has no
+# gate cache, so it mutates every compiler file: the checker alone took over
+# 44 minutes on 2026-11-01. The limit is two hours.
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$tag" --format=json --suppress-logs --quiet \
-  --machine-type e2-highcpu-32 --timeout 3600s \
+  --machine-type e2-highcpu-32 --timeout 7200s \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$work/build.json" 2> "$work/build.log" || { tail -30 "$work/build.log"; exit 1; }
 image="$(python3 "$here/deploy_verify.py" build-image "$work/build.json" "$tag")"
