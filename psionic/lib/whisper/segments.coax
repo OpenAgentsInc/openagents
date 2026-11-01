@@ -1,0 +1,166 @@
+// Transcript segments and how they are written: plain text, SubRip (SRT),
+// WebVTT and JSON. Every backend of `openagents transcribe` (the Psionic
+// Whisper engine, and the interim whisper.cpp backend) produces segments;
+// this file is the one place that writes them, so every backend prints the
+// same bytes for the same segments. Times are whole milliseconds.
+// Design: psionic/docs/transcribe.md.
+//   segs: [WS_SEGMENTS_MAX] WsSegment; ... out: [65536] u8;
+//   w: [1] WsOut; w[0].buf = out[..]; wsg_srt(segs[0..<n], w[..]);
+//   if !w[0].full { print("%", cast(string) out[0..<w[0].n]); }
+
+WS_SEGMENTS_MAX :: 4096;
+// start_ms <= end_ms; text is UTF-8 with no leading or trailing spaces.
+WsSegment :: struct { start_ms: int; end_ms: int; text: string; }
+// The output buffer and how much of it is used. full: something did not fit,
+// and the output must not be used.
+WsOut :: struct { buf: [] u8; n: int; full: bool; }
+
+wsg_byte :: (w: [] WsOut, c: u8) {
+  if w[0].n >= w[0].buf.count { w[0].full = true; return; }
+  w[0].buf[w[0].n] = c; w[0].n += 1;
+}
+wsg_put :: (w: [] WsOut, s: string) { for c: s { wsg_byte(w, c); } }
+// v in decimal, at least width digits.
+wsg_digits :: (w: [] WsOut, v: int, width: int) {
+  t: [24] u8; n := 0; x := v;
+  if x < 0 { wsg_byte(w, '-'); x = -x; }
+  while (x > 0 || n < width) && n < 20 { t[n] = cast(u8) (x % 10) + '0'; x = x / 10; n += 1; }
+  if n == 0 { t[0] = '0'; n = 1; }
+  for i: 0..<n { wsg_byte(w, t[n - 1 - i]); }
+}
+// HH:MM:SS<sep>mmm: SRT separates milliseconds with ',', WebVTT with '.'.
+// Hours keep counting past 99.
+wsg_clock :: (w: [] WsOut, ms: int, sep: u8) {
+  x := ifx ms < 0 then 0 else ms;
+  wsg_digits(w, x / 3600000, 2); wsg_byte(w, ':');
+  wsg_digits(w, (x / 60000) % 60, 2); wsg_byte(w, ':');
+  wsg_digits(w, (x / 1000) % 60, 2); wsg_byte(w, sep);
+  wsg_digits(w, x % 1000, 3);
+}
+// Seconds with three decimals, for JSON: 1234 ms is 1.234.
+wsg_seconds :: (w: [] WsOut, ms: int) {
+  x := ifx ms < 0 then 0 else ms;
+  wsg_digits(w, x / 1000, 1); wsg_byte(w, '.'); wsg_digits(w, x % 1000, 3);
+}
+
+// Leading and trailing ASCII spaces, tabs and line breaks removed.
+wsg_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\n' || s[a] == '\r') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\n' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+// One segment per line.
+wsg_text :: (segs: [] WsSegment, w: [] WsOut) {
+  for s: segs { if s.text.count > 0 { wsg_put(w, s.text); wsg_byte(w, '\n'); } }
+}
+// SubRip: a counter from 1, the times, the text, a blank line. Empty
+// segments are skipped and do not take a number.
+wsg_srt :: (segs: [] WsSegment, w: [] WsOut) {
+  k := 0;
+  for s: segs {
+    if s.text.count == 0 { continue; }
+    k += 1;
+    wsg_digits(w, k, 1); wsg_byte(w, '\n');
+    wsg_clock(w, s.start_ms, ','); wsg_put(w, " --> "); wsg_clock(w, s.end_ms, ','); wsg_byte(w, '\n');
+    wsg_put(w, s.text); wsg_put(w, "\n\n");
+  }
+}
+// WebVTT: the header, then each cue's times and text.
+wsg_vtt :: (segs: [] WsSegment, w: [] WsOut) {
+  wsg_put(w, "WEBVTT\n\n");
+  for s: segs {
+    if s.text.count == 0 { continue; }
+    wsg_clock(w, s.start_ms, '.'); wsg_put(w, " --> "); wsg_clock(w, s.end_ms, '.'); wsg_byte(w, '\n');
+    wsg_put(w, s.text); wsg_put(w, "\n\n");
+  }
+}
+// A JSON string: quotes, backslashes and control bytes escaped; other bytes,
+// UTF-8 included, as they are.
+wsg_quoted :: (w: [] WsOut, s: string) {
+  hex := "0123456789abcdef";
+  wsg_byte(w, '"');
+  for c: s {
+    if c == '"' || c == '\\' { wsg_byte(w, '\\'); wsg_byte(w, c); continue; }
+    if c == '\n' { wsg_put(w, "\\n"); continue; }
+    if c < 32 { wsg_put(w, "\\u00"); wsg_byte(w, hex[cast(int) (c >> 4)]); wsg_byte(w, hex[cast(int) (c & 15)]); continue; }
+    wsg_byte(w, c);
+  }
+  wsg_byte(w, '"');
+}
+// {"model":M,"backend":B,"language":L,"text":ALL,"segments":[{"start":S,"end":E,"text":T},...]}
+// on one line. ALL is the segments' texts joined by single spaces.
+wsg_json :: (segs: [] WsSegment, model: string, backend: string, language: string, w: [] WsOut) {
+  wsg_put(w, "{\"model\":"); wsg_quoted(w, model);
+  wsg_put(w, ",\"backend\":"); wsg_quoted(w, backend);
+  wsg_put(w, ",\"language\":"); wsg_quoted(w, language);
+  wsg_put(w, ",\"text\":\"");
+  first := true;
+  for s: segs {
+    if s.text.count == 0 { continue; }
+    if !first { wsg_byte(w, ' '); }
+    first = false;
+    // the quoted text without its quotes
+    at := w[0].n; wsg_quoted(w, s.text);
+    if !w[0].full { for i: at..<w[0].n - 2 { w[0].buf[i] = w[0].buf[i + 1]; } w[0].n -= 2; }
+  }
+  wsg_put(w, "\",\"segments\":[");
+  first = true;
+  for s: segs {
+    if s.text.count == 0 { continue; }
+    if !first { wsg_byte(w, ','); }
+    first = false;
+    wsg_put(w, "{\"start\":"); wsg_seconds(w, s.start_ms);
+    wsg_put(w, ",\"end\":"); wsg_seconds(w, s.end_ms);
+    wsg_put(w, ",\"text\":"); wsg_quoted(w, s.text); wsg_byte(w, '}');
+  }
+  wsg_put(w, "]}\n");
+}
+
+wsg_test_segments :: (segs: [] WsSegment) {
+  segs[0] = WsSegment.{start_ms = 0, end_ms = 3400, text = "The quick brown fox."};
+  segs[1] = WsSegment.{start_ms = 3400, end_ms = 3400, text = ""};
+  segs[2] = WsSegment.{start_ms = 3725, end_ms = 3723006, text = "Say \"hi\" \\ é"};
+}
+
+#test "clocks and seconds" {
+  b: [64] u8; w: [1] WsOut; w[0].buf = b[..];
+  wsg_clock(w[..], 0, ','); wsg_byte(w[..], '|'); wsg_clock(w[..], 3723006, '.'); wsg_byte(w[..], '|');
+  wsg_clock(w[..], 360000000, ','); wsg_byte(w[..], '|'); wsg_clock(w[..], -5, ',');
+  #assert cast(string) b[0..<w[0].n] == "00:00:00,000|01:02:03.006|100:00:00,000|00:00:00,000";
+  w[0].n = 0; wsg_seconds(w[..], 0); wsg_byte(w[..], ' '); wsg_seconds(w[..], 1234); wsg_byte(w[..], ' '); wsg_seconds(w[..], 60005);
+  #assert cast(string) b[0..<w[0].n] == "0.000 1.234 60.005";
+}
+#test "trim" {
+  #assert wsg_trim("  the fox. \n") == "the fox." && wsg_trim("") == "" && wsg_trim(" \t ") == "" && wsg_trim("a") == "a";
+}
+#test "text srt and vtt" {
+  segs: [3] WsSegment; wsg_test_segments(segs[..]);
+  b: [512] u8; w: [1] WsOut; w[0].buf = b[..];
+  wsg_text(segs[..], w[..]);
+  #assert cast(string) b[0..<w[0].n] == "The quick brown fox.\nSay \"hi\" \\ é\n";
+  w[0].n = 0; wsg_srt(segs[..], w[..]);
+  #assert cast(string) b[0..<w[0].n] == "1\n00:00:00,000 --> 00:00:03,400\nThe quick brown fox.\n\n2\n00:00:03,725 --> 01:02:03,006\nSay \"hi\" \\ é\n\n";
+  w[0].n = 0; wsg_vtt(segs[..], w[..]);
+  #assert cast(string) b[0..<w[0].n] == "WEBVTT\n\n00:00:00.000 --> 00:00:03.400\nThe quick brown fox.\n\n00:00:03.725 --> 01:02:03.006\nSay \"hi\" \\ é\n\n";
+  #assert !w[0].full;
+}
+#test "json" {
+  segs: [3] WsSegment; wsg_test_segments(segs[..]);
+  b: [512] u8; w: [1] WsOut; w[0].buf = b[..];
+  wsg_json(segs[..], "base.en", "whispercpp", "en", w[..]);
+  #assert cast(string) b[0..<w[0].n] == "{\"model\":\"base.en\",\"backend\":\"whispercpp\",\"language\":\"en\",\"text\":\"The quick brown fox. Say \\\"hi\\\" \\\\ é\",\"segments\":[{\"start\":0.000,\"end\":3.400,\"text\":\"The quick brown fox.\"},{\"start\":3.725,\"end\":3723.006,\"text\":\"Say \\\"hi\\\" \\\\ é\"}]}\n";
+  w[0].n = 0; wsg_json(segs[0..<0], "m", "b", "", w[..]);
+  #assert cast(string) b[0..<w[0].n] == "{\"model\":\"m\",\"backend\":\"b\",\"language\":\"\",\"text\":\"\",\"segments\":[]}\n";
+  w[0].n = 0; wsg_quoted(w[..], "a\nb\t");
+  #assert cast(string) b[0..<w[0].n] == "\"a\\nb\\u0009\"";
+}
+#test "a full buffer is reported" {
+  segs: [3] WsSegment; wsg_test_segments(segs[..]);
+  b: [40] u8; w: [1] WsOut; w[0].buf = b[..];
+  wsg_srt(segs[..], w[..]);
+  #assert w[0].full && w[0].n == 40;
+  w[0] = WsOut.{buf = b[..]}; wsg_json(segs[..], "m", "b", "", w[..]);
+  #assert w[0].full;
+}

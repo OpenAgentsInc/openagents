@@ -12,7 +12,7 @@
 // pylon.coax (start, stop, status, logs, around scripts/join-pylon.sh), and
 // project.coax (the project queue: list, show, plan, claim, note, done,
 // publish; with project-rules.coax, project-write.coax, project-publish.coax
-// and project-review.coax).
+// and project-review.coax), and transcribe.coax (speech to text).
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -30,6 +30,7 @@
 #load "api.coax";
 #load "realm.coax";
 #load "admin.coax";
+#load "transcribe.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -58,6 +59,7 @@ usage :: () {
   account_usage();
   realm_usage();
   admin_usage();
+  transcribe_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
@@ -96,5 +98,6 @@ tool_main :: () -> int #export_c {
   if domain == "project" { return project_main(a[..], r[..], verb); }
   if domain == "realm" { return realm_main(a[..], r[..], profile, verb); }
   if domain == "admin" { return admin_main(a[..], r[..], profile, verb); }
+  if domain == "transcribe" { return transcribe_main(a[..], r[..], verb); }
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }

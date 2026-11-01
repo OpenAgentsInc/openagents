@@ -2,9 +2,10 @@
 
 The OpenAgents command line, in Coax. The plan for v1.0.0 is
 [docs/cli/2026-11-01-openagents-cli-v1.md](../../docs/cli/2026-11-01-openagents-cli-v1.md).
-Today it has three domains: `nostr`, your NIP-06 identity and a relay client;
-`pylon`, which starts and stops this computer's Pylon; and `project`, the
-project queue at openagents.com/projects/SLUG.
+Its domains include `nostr`, your NIP-06 identity and a relay client;
+`pylon`, which starts and stops this computer's Pylon; `project`, the
+project queue at openagents.com/projects/SLUG; and `transcribe`, speech to
+text on this computer.
 
 ## Build
 
@@ -224,6 +225,31 @@ openagents admin key add NPUB [--note T] | key remove NPUB   # a root admin only
 - An invite code is printed once, and only its hash is kept. Send the link
   to the person; don't post it.
 
+## Transcribe
+
+```sh
+openagents transcribe talk.mp4                    # timestamped segments as text lines; base, English
+openagents transcribe talk.mp4 --srt > talk.srt   # or --vtt, or --json (one object with every segment)
+openagents transcribe memo.m4a --model small --language auto
+openagents transcribe models                      # the models in ~/.cache/openagents/models/whisper
+openagents transcribe fetch medium                # downloads one; transcribe also fetches what it needs
+```
+
+- Any audio or video file works: ffmpeg decodes it to 16 kHz mono first.
+- `--model` is `tiny`, `base` (the default), `small`, `medium`,
+  `large-v3` or `large-v3-turbo`. With `--language en` (the default) the
+  four smaller sizes use their English-only files (`base.en`). Small models
+  mishear names; use `small` or `medium` when names matter.
+- Models are whisper.cpp's ggml files from Hugging Face, kept in
+  `~/.cache/openagents/models/whisper` (`OPENAGENTS_MODEL_CACHE` moves it),
+  never in the checkout.
+- The backend today is whisper.cpp's `whisper-cli` (`brew install
+  whisper-cpp ffmpeg`), labelled interim. Psionic's own Whisper
+  (`psionic/lib/whisper/`) replaces it when it matches whisper.cpp's
+  transcripts; the plan is [psionic/docs/transcribe.md](../../psionic/docs/transcribe.md).
+- A status line (model, backend, milliseconds) goes to stderr; the
+  transcript is the only thing on stdout.
+
 ## Output and exit codes
 
 Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
@@ -256,6 +282,8 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `realm_rules.coax` | `#authority`: slugs, visibilities, flags, counts, keys and account IDs, origins, spec lines, access rows, a plan's board |
 | `project-rules.coax` | `#authority`: hashes, slugs, standing, claims, plans, ranks, the order, relay paging |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
+| `transcribe.coax` | the `transcribe` domain: fetch a model, decode with ffmpeg, run the backend, print the transcript |
+| `transcribe-rules.coax` | model names and files, formats, whisper.cpp's segment lines ([segments.coax](../../psionic/lib/whisper/segments.coax) writes text, SRT, WebVTT and JSON) |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, the host name, process liveness, the executable's path |
 | `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |
 
@@ -271,6 +299,7 @@ coax/bin/coax mutate apps/openagents-cli/rules.coax --library    # 295 mutants, 
 coax/bin/coax test apps/openagents-cli/project-rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/project-rules.coax --library    # 750 mutants, 0 survivors (2026-11-01)
 coax/bin/coax test apps/openagents-cli/account_rules.coax --library
+coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/account_rules.coax --library   # 0 survivors (2026-11-01)
 coax/web/api/cli-auth-test.sh https://staging.openagents.com     # the server side of login, as a Coax program
 ```

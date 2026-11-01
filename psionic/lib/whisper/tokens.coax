@@ -1,0 +1,98 @@
+// Whisper's special tokens, languages and timestamps. The text tokens are
+// GPT-2 byte-level BPE; whisper.cpp's file stores each token's bytes already
+// decoded (ggml.coax, wg_token), so text is those bytes in order. Special
+// token ids follow from the vocabulary size, as whisper.cpp computes them:
+//   n_vocab 51864: English-only (tiny.en ... medium.en)
+//   n_vocab 51865: 99 languages (tiny ... large-v2)
+//   n_vocab 51866: 100 languages (large-v3, large-v3-turbo)
+// A timestamp token t >= beg means (t - beg) * 20 ms from the window start.
+// Design: psionic/docs/transcribe.md.
+
+WtSpecials :: struct {
+  eot: int; sot: int; translate: int; transcribe: int; solm: int; prev: int; nosp: int; no_timestamps: int; beg: int;
+  languages: int; multilingual: bool;
+}
+WT_TIMESTAMP_MS :: 20;
+
+// Language codes in token order: language i is token sot + 1 + i.
+WT_LANGUAGES :: [100] string.["en","zh","de","es","ru","ko","fr","ja","pt","tr","pl","ca","nl","ar","sv","it","id","hi","fi","vi",
+  "he","uk","el","ms","cs","ro","da","hu","ta","no","th","ur","hr","bg","lt","la","mi","ml","cy","sk",
+  "te","fa","lv","bn","sr","az","sl","kn","et","mk","br","eu","is","hy","ne","mn","bs","kk","sq","sw",
+  "gl","mr","pa","si","km","sn","yo","so","af","oc","ka","be","tg","sd","gu","am","yi","lo","uz","fo",
+  "ht","ps","tk","nn","mt","sa","lb","my","bo","tl","mg","as","tt","haw","ln","ha","ba","jw","su","yue"];
+
+// The special ids for a vocabulary size; languages 0 for a size that is not
+// one of the three above.
+wt_specials :: (n_vocab: int) -> WtSpecials {
+  s := WtSpecials.{eot = 50256, sot = 50257, translate = 50357, transcribe = 50358, solm = 50359, prev = 50360,
+    nosp = 50361, no_timestamps = 50362, beg = 50363};
+  if n_vocab < 51864 || n_vocab > 51866 { return s; }
+  s.multilingual = n_vocab >= 51865;
+  s.languages = n_vocab - 51765 - (ifx s.multilingual then 1 else 0);
+  if s.multilingual {
+    dt := s.languages - 98;
+    s.eot += 1; s.sot += 1;
+    s.translate += dt; s.transcribe += dt; s.solm += dt; s.prev += dt; s.nosp += dt; s.no_timestamps += dt; s.beg += dt;
+  }
+  return s;
+}
+// The language token for a code such as "en", or -1. An English-only model
+// has no language tokens.
+wt_language :: (s: WtSpecials, code: string) -> int {
+  if !s.multilingual { return -1; }
+  for i: 0..<s.languages { if WT_LANGUAGES[i] == code { return s.sot + 1 + i; } }
+  return -1;
+}
+// The code of a language token, or "".
+wt_language_code :: (s: WtSpecials, token: int) -> string {
+  i := token - s.sot - 1;
+  if !s.multilingual || i < 0 || i >= s.languages { return ""; }
+  return WT_LANGUAGES[i];
+}
+wt_is_text :: (s: WtSpecials, token: int) -> bool { return token >= 0 && token < s.eot; }
+wt_is_timestamp :: (s: WtSpecials, token: int, n_vocab: int) -> bool { return token >= s.beg && token < n_vocab; }
+wt_timestamp_ms :: (s: WtSpecials, token: int) -> int { return (token - s.beg) * WT_TIMESTAMP_MS; }
+// The prompt that starts a window: sot, the language (multilingual models),
+// transcribe, and no_timestamps when timestamps are off. Returns its length.
+wt_prompt :: (s: WtSpecials, language: int, timestamps: bool, out: [] int) -> int {
+  n := 0;
+  out[n] = s.sot; n += 1;
+  if s.multilingual { out[n] = ifx language >= 0 then language else s.sot + 1; n += 1; out[n] = s.transcribe; n += 1; }
+  if !timestamps { out[n] = s.no_timestamps; n += 1; }
+  return n;
+}
+
+#test "special ids for the three vocabulary sizes" {
+  en := wt_specials(51864);
+  #assert !en.multilingual && en.languages == 99 && en.eot == 50256 && en.sot == 50257 && en.no_timestamps == 50362 && en.beg == 50363;
+  ml := wt_specials(51865);
+  #assert ml.multilingual && ml.languages == 99 && ml.eot == 50257 && ml.sot == 50258 && ml.translate == 50358 && ml.transcribe == 50359;
+  #assert ml.solm == 50360 && ml.prev == 50361 && ml.nosp == 50362 && ml.no_timestamps == 50363 && ml.beg == 50364;
+  v3 := wt_specials(51866);
+  #assert v3.languages == 100 && v3.transcribe == 50360 && v3.no_timestamps == 50364 && v3.beg == 50365;
+  // 1,501 timestamps, 0 to 30 s, fill each vocabulary to its end.
+  #assert 51864 - en.beg == 1501 && 51865 - ml.beg == 1501 && 51866 - v3.beg == 1501;
+  #assert wt_specials(50000).languages == 0;
+}
+#test "languages and timestamps" {
+  ml := wt_specials(51865); en := wt_specials(51864); v3 := wt_specials(51866);
+  #assert wt_language(ml, "en") == 50259 && wt_language(ml, "zh") == 50260 && wt_language(ml, "su") == 50357;
+  #assert wt_language(ml, "yue") == -1 && wt_language(v3, "yue") == 50358 && wt_language(en, "en") == -1 && wt_language(ml, "xx") == -1;
+  #assert wt_language_code(ml, 50259) == "en" && wt_language_code(ml, 50358) == "" && wt_language_code(v3, 50358) == "yue";
+  #assert wt_is_text(en, 0) && wt_is_text(en, 50255) && !wt_is_text(en, 50256) && !wt_is_text(en, -1);
+  #assert wt_is_timestamp(en, 50363, 51864) && wt_is_timestamp(en, 51863, 51864) && !wt_is_timestamp(en, 51864, 51864) && !wt_is_timestamp(en, 50362, 51864);
+  #assert wt_timestamp_ms(en, 50363) == 0 && wt_timestamp_ms(en, 50363 + 170) == 3400 && wt_timestamp_ms(en, 51863) == 30000;
+  #assert WT_LANGUAGES[99] == "yue" && WT_LANGUAGES[98] == "su";
+}
+#test "window prompts" {
+  p: [4] int;
+  ml := wt_specials(51865); en := wt_specials(51864);
+  n := wt_prompt(ml, wt_language(ml, "de"), true, p[..]);
+  #assert n == 3 && p[0] == 50258 && p[1] == 50261 && p[2] == 50359;
+  n = wt_prompt(ml, -1, false, p[..]);
+  #assert n == 4 && p[1] == 50259 && p[3] == 50363;
+  n = wt_prompt(en, -1, true, p[..]);
+  #assert n == 1 && p[0] == 50257;
+  n = wt_prompt(en, -1, false, p[..]);
+  #assert n == 2 && p[1] == 50362;
+}

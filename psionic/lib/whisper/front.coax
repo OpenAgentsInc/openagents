@@ -1,0 +1,133 @@
+// Whisper's log-mel front end, built on chapter 151's transforms
+// (../spectral.coax). Whisper's conventions, as openai/whisper's
+// log_mel_spectrogram writes them:
+//   16 kHz mono; 30 s of zeros appended to the audio;
+//   a periodic Hann window of 400 samples, hop 160 (10 ms), centred with
+//   reflection; power spectrum |X|^2 of 201 bins; the last frame dropped;
+//   80 (or 128) Slaney mels from 0 to 8 kHz with Slaney area normalization;
+//   log10(max(mel, 1e-10)); then max(v, the file's maximum - 8); then
+//   (v + 4) / 4.
+// The maximum is over the whole padded file, so a frame's final value
+// depends on every frame. wf_max is the first pass; wf_window writes one
+// 30 s window of 3,000 frames at any start, so memory stays bounded for an
+// hour of audio. Audio is f32 in [-1, 1]; sums are binary64.
+// Design: psionic/docs/transcribe.md.
+#load "../spectral.coax";
+
+WF_RATE :: 16000;
+WF_N_FFT :: 400;
+WF_HOP :: 160;
+WF_BINS :: 201;
+WF_PAD :: 480000;          // 30 s of zeros after the audio
+WF_WINDOW_FRAMES :: 3000;  // 30 s
+WF_FLOOR :: 0.0000000001;  // 1e-10 before log10
+
+WfStatus :: enum u8 {ok;empty;number;capacity;shape;}
+
+// The spec chapter 151's mel bank needs for Whisper with mels filters.
+wf_spec :: (mels: int) -> SfSpec {
+  return SfSpec.{rate = WF_RATE, n_fft = WF_N_FFT, win_length = WF_N_FFT, hop = WF_HOP, window = SfWindow.hann, periodic = true,
+    center = true, pad = SfPad.reflect, preemphasis = 0, mels = mels, fmin = 0, fmax = 8000, scale = SfScale.slaney,
+    norm = SfNorm.slaney, log = SfLog.clamp, guard = WF_FLOOR, normalize = SfNormalize.none};
+}
+// Frames of an n-sample file: floor((n + 30 s) / hop).
+wf_frames :: (n: int) -> int { return (n + WF_PAD) / WF_HOP; }
+
+// Sample i of the padded file (n samples then WF_PAD zeros), reflected at
+// both ends as torch.stft's centring does.
+wf_sample :: (x: [] f32, i: int) -> f64 {
+  total := x.count + WF_PAD; k := i;
+  if k < 0 { k = -k; }
+  if k >= total { k = 2 * (total - 1) - k; }
+  return ifx k < x.count then cast(f64) x[k] else 0;
+}
+// log10 of frame t's mel energies into out[0..<mels]. window is the
+// periodic Hann window (sf_window), bank sf_mel_bank's output.
+wf_frame :: (x: [] f32, t: int, window: [] f64, bank: [] f64, mels: int, out: [] f64) {
+  re: [WF_N_FFT] f64; im: [WF_N_FFT] f64;
+  start := t * WF_HOP - WF_N_FFT / 2;
+  for j: 0..<WF_N_FFT { re[j] = wf_sample(x, start + j) * window[j]; im[j] = 0; }
+  sf_forward(re[..], im[..]);
+  p: [WF_BINS] f64;
+  for k: 0..<WF_BINS { p[k] = re[k] * re[k] + im[k] * im[k]; }
+  for m: 0..<mels {
+    sum := 0.0;
+    for k: 0..<WF_BINS { sum += bank[m * WF_BINS + k] * p[k]; }
+    out[m] = sf_log(sum, SfLog.clamp, WF_FLOOR) / log(10.0);
+  }
+}
+
+WfFront :: struct { status: WfStatus; mels: int; frames: int; window: [WF_N_FFT] f64; }
+// Checks the audio and the bank and fills the window.
+wf_front :: (x: [] f32, bank: [] f64, mels: int) -> WfFront {
+  f: WfFront; f.mels = mels;
+  if mels != 80 && mels != 128 { f.status = WfStatus.shape; return f; }
+  if bank.count < mels * WF_BINS { f.status = WfStatus.capacity; return f; }
+  if x.count == 0 { f.status = WfStatus.empty; return f; }
+  for v: x { if !(v >= -1 && v <= 1) { f.status = WfStatus.number; return f; } }
+  st := sf_window(SfWindow.hann, true, f.window[..]);
+  f.frames = wf_frames(x.count);
+  return f;
+}
+// The largest log10 energy over every frame of the padded file.
+wf_max :: (x: [] f32, f: WfFront, bank: [] f64) -> f64 {
+  best := -1000.0; v: [128] f64; w := f.window;
+  for t: 0..<f.frames {
+    wf_frame(x, t, w[..], bank, f.mels, v[..]);
+    for m: 0..<f.mels { if v[m] > best { best = v[m]; } }
+  }
+  return best;
+}
+// The 3,000 frames from frame start, mel-major (out[m * 3000 + j]), with the
+// maximum from wf_max. Frames past the file's last are the padding's value.
+wf_window :: (x: [] f32, f: WfFront, bank: [] f64, top: f64, start: int, out: [] f32) -> WfStatus {
+  if out.count < f.mels * WF_WINDOW_FRAMES { return WfStatus.capacity; }
+  if start < 0 || start >= f.frames { return WfStatus.shape; }
+  v: [128] f64; low := top - 8; w := f.window;
+  for j: 0..<WF_WINDOW_FRAMES {
+    t := start + j;
+    if t < f.frames { wf_frame(x, t, w[..], bank, f.mels, v[..]); }
+    else { for m: 0..<f.mels { v[m] = -10; } }
+    for m: 0..<f.mels {
+      e := ifx v[m] < low then low else v[m];
+      out[m * WF_WINDOW_FRAMES + j] = cast(f32) ((e + 4) / 4);
+    }
+  }
+  return WfStatus.ok;
+}
+
+#test "the spec and frame counts" {
+  s := wf_spec(80);
+  #assert sf_spec_ok(s) == SfStatus.ok && s.n_fft == 400 && s.periodic && s.pad == SfPad.reflect;
+  #assert wf_frames(0) == 3000 && wf_frames(16000) == 3100 && wf_frames(159) == 3000 && wf_frames(160) == 3001;
+}
+#test "padding reflects and ends in zeros" {
+  x := [3] f32.[0.25, 0.5, 0.75];
+  #assert wf_sample(x[..], 0) == 0.25 && wf_sample(x[..], 2) == 0.75 && wf_sample(x[..], -1) == 0.5 && wf_sample(x[..], -2) == 0.75;
+  #assert wf_sample(x[..], 3) == 0 && wf_sample(x[..], 480002) == 0 && wf_sample(x[..], 480003) == 0;
+}
+#test "a 1 kHz tone lands in its mel band" #steps 400000000 {
+  bank: [80 * 201] f64; r := sf_mel_bank(wf_spec(80), bank[..]);
+  #assert r.status == SfStatus.ok && r.bins == 201;
+  x: [4000] f32;
+  for i: 0..<4000 { x[i] = cast(f32) (0.5 * sin(2 * SF_PI * 1000 * cast(f64) i / 16000)); }
+  f := wf_front(x[..], bank[..], 80);
+  #assert f.status == WfStatus.ok && f.frames == 3025;
+  v: [80] f64; w := f.window; wf_frame(x[..], 10, w[..], bank[..], 80, v[..]);
+  best := 0; for m: 0..<80 { if v[m] > v[best] { best = m; } }
+  // 1 kHz is Slaney mel 15; the 82 edges are 45.245 / 81 mels apart.
+  // Filter m peaks at edge m + 1, so 1 kHz is between filters 25 and 26.
+  #assert best == 25 || best == 26;
+  // Frames wholly past the audio are silence: log10(1e-10) = -10.
+  wf_frame(x[..], 100, w[..], bank[..], 80, v[..]);
+  for m: 0..<80 { #assert v[m] == -10; }
+}
+#test "refusals" {
+  bank: [80 * 201] f64; x := [2] f32.[0.5, 2];
+  #assert wf_front(x[..], bank[..], 80).status == WfStatus.number;
+  #assert wf_front(x[0..<0], bank[..], 80).status == WfStatus.empty;
+  #assert wf_front(x[0..<1], bank[..], 81).status == WfStatus.shape;
+  #assert wf_front(x[0..<1], bank[0..<100], 80).status == WfStatus.capacity;
+  f := wf_front(x[0..<1], bank[..], 80); out: [10] f32;
+  #assert f.status == WfStatus.ok && wf_window(x[0..<1], f, bank[..], 0, 0, out[..]) == WfStatus.capacity;
+}

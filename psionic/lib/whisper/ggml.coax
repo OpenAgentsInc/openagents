@@ -1,0 +1,210 @@
+// A Whisper model in whisper.cpp's ggml file format, read from bytes in
+// memory. The host maps the file (psionic/platform/whisper-face.c); this
+// file checks every length against the bytes and refuses anything else with
+// a typed status. Nothing here allocates.
+// The layout, in little-endian 32-bit fields:
+//   magic 0x67676d6c ("lmgg" on disk)
+//   n_vocab n_audio_ctx n_audio_state n_audio_head n_audio_layer
+//   n_text_ctx n_text_state n_text_head n_text_layer n_mels ftype
+//   n_mel n_fft, then n_mel * n_fft f32 mel filter weights
+//   count, then count tokens: a u32 length and that many bytes each
+//   tensors until the end: n_dims, name length, type, n_dims sizes
+//   (fastest first), the name, then the data with no padding
+// Design: psionic/docs/transcribe.md.
+
+WgStatus :: enum u8 {ok;format;truncated;shape;capacity;kind;name;}
+WgParams :: struct {
+  n_vocab: int; n_audio_ctx: int; n_audio_state: int; n_audio_head: int; n_audio_layer: int;
+  n_text_ctx: int; n_text_state: int; n_text_head: int; n_text_layer: int; n_mels: int; ftype: int;
+}
+// A tensor's place in the file: data is bytes [begin, end).
+WgTensor :: struct { name: string; kind: int; rank: int; dims: [4] int; elements: int; begin: int; end: int; }
+// filters: n_mel * n_fft f32 values starting at filters_at. vocab_at is the
+// first token's length field; tokens is how many the file lists (special
+// tokens past them have no bytes).
+WgModel :: struct {
+  status: WgStatus; params: WgParams;
+  filter_mels: int; filter_bins: int; filters_at: int;
+  tokens: int; vocab_at: int; tensors_at: int; tensor_count: int;
+}
+
+WG_MAGIC :: 0x67676d6c;
+WG_TENSORS_MAX :: 1024;
+WG_F32 :: 0; WG_F16 :: 1; WG_Q4_0 :: 2; WG_Q4_1 :: 3; WG_Q5_0 :: 6; WG_Q5_1 :: 7; WG_Q8_0 :: 8;
+
+wg_u32 :: (b: [] u8, at: int) -> int {
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+// Two's complement: a field read as u32 above 2^31 is negative.
+wg_i32 :: (b: [] u8, at: int) -> int { v := wg_u32(b, at); return ifx v >= 0x80000000 then v - 0x100000000 else v; }
+
+// Bytes per block and values per block of a tensor type, or 0 for a type
+// this reader does not know.
+wg_block_bytes :: (kind: int) -> int {
+  if kind == WG_F32 { return 4; }
+  if kind == WG_F16 { return 2; }
+  if kind == WG_Q4_0 { return 18; }
+  if kind == WG_Q4_1 { return 20; }
+  if kind == WG_Q5_0 { return 22; }
+  if kind == WG_Q5_1 { return 24; }
+  if kind == WG_Q8_0 { return 34; }
+  return 0;
+}
+wg_block_values :: (kind: int) -> int { return ifx kind == WG_F32 || kind == WG_F16 then 1 else 32; }
+
+wg_params_ok :: (p: WgParams) -> bool {
+  if p.n_vocab < 51864 || p.n_vocab > 51866 { return false; }
+  if p.n_audio_ctx < 1 || p.n_audio_ctx > 1500 || p.n_text_ctx < 1 || p.n_text_ctx > 448 { return false; }
+  if p.n_audio_layer < 1 || p.n_audio_layer > 64 || p.n_text_layer < 1 || p.n_text_layer > 64 { return false; }
+  if p.n_audio_head < 1 || p.n_text_head < 1 || p.n_audio_state < 1 || p.n_text_state < 1 { return false; }
+  if p.n_audio_state % p.n_audio_head != 0 || p.n_text_state % p.n_text_head != 0 { return false; }
+  if p.n_audio_state > 4096 || p.n_text_state > 4096 { return false; }
+  return p.n_mels == 80 || p.n_mels == 128;
+}
+
+// The header, filters and vocabulary, and the tensor directory into
+// tensors. A file with more tensors than tensors.count is refused
+// (capacity); one that ends inside a field, a name or data is truncated.
+wg_read :: (b: [] u8, tensors: [] WgTensor) -> WgModel {
+  m: WgModel; m.status = WgStatus.truncated;
+  if b.count < 48 { return m; }
+  if wg_u32(b, 0) != WG_MAGIC { m.status = WgStatus.format; return m; }
+  p: WgParams;
+  p.n_vocab = wg_i32(b, 4); p.n_audio_ctx = wg_i32(b, 8); p.n_audio_state = wg_i32(b, 12);
+  p.n_audio_head = wg_i32(b, 16); p.n_audio_layer = wg_i32(b, 20); p.n_text_ctx = wg_i32(b, 24);
+  p.n_text_state = wg_i32(b, 28); p.n_text_head = wg_i32(b, 32); p.n_text_layer = wg_i32(b, 36);
+  p.n_mels = wg_i32(b, 40); p.ftype = wg_i32(b, 44);
+  m.params = p;
+  if !wg_params_ok(p) { m.status = WgStatus.shape; return m; }
+  at := 48;
+  if b.count < at + 8 { return m; }
+  m.filter_mels = wg_i32(b, at); m.filter_bins = wg_i32(b, at + 4); at += 8;
+  if m.filter_mels != p.n_mels || m.filter_bins != 201 { m.status = WgStatus.shape; return m; }
+  m.filters_at = at; at += 4 * m.filter_mels * m.filter_bins;
+  if b.count < at + 4 { return m; }
+  m.tokens = wg_i32(b, at); at += 4;
+  if m.tokens < 1 || m.tokens > p.n_vocab { m.status = WgStatus.shape; return m; }
+  m.vocab_at = at;
+  for i: 0..<m.tokens {
+    if b.count < at + 4 { return m; }
+    n := wg_u32(b, at); at += 4;
+    if n > 256 { m.status = WgStatus.shape; return m; }
+    if b.count < at + n { return m; }
+    at += n;
+  }
+  m.tensors_at = at;
+  k := 0;
+  while at < b.count {
+    if b.count < at + 12 { return m; }
+    rank := wg_i32(b, at); name_n := wg_i32(b, at + 4); kind := wg_i32(b, at + 8); at += 12;
+    if rank < 1 || rank > 4 || name_n < 1 || name_n > 128 { m.status = WgStatus.shape; return m; }
+    if wg_block_bytes(kind) == 0 { m.status = WgStatus.kind; return m; }
+    if b.count < at + 4 * rank + name_n { return m; }
+    if k >= tensors.count { m.status = WgStatus.capacity; return m; }
+    t: WgTensor; t.kind = kind; t.rank = rank; t.elements = 1;
+    for d: 0..<4 { t.dims[d] = 1; }
+    for d: 0..<rank {
+      v := wg_i32(b, at + 4 * d);
+      if v < 1 || v > 1 << 24 { m.status = WgStatus.shape; return m; }
+      t.dims[d] = v; t.elements *= v;
+    }
+    at += 4 * rank;
+    if t.elements % wg_block_values(kind) != 0 { m.status = WgStatus.shape; return m; }
+    t.name = cast(string) b[at..<at + name_n]; at += name_n;
+    t.begin = at; t.end = at + (t.elements / wg_block_values(kind)) * wg_block_bytes(kind);
+    if t.end > b.count { return m; }
+    at = t.end;
+    tensors[k] = t; k += 1;
+  }
+  m.tensor_count = k;
+  m.status = WgStatus.ok;
+  return m;
+}
+
+// Token i's bytes, for i < m.tokens; "" for a special token.
+wg_token :: (b: [] u8, m: WgModel, i: int) -> string {
+  if i < 0 || i >= m.tokens { return ""; }
+  at := m.vocab_at;
+  for k: 0..<i { at += 4 + wg_u32(b, at); }
+  n := wg_u32(b, at);
+  return cast(string) b[at + 4..<at + 4 + n];
+}
+// Mel filter weight [mel][bin] as stored (f32).
+wg_filter :: (b: [] u8, m: WgModel, mel: int, bin: int) -> f32 {
+  at := m.filters_at + 4 * (mel * m.filter_bins + bin);
+  return wg_f32_at(b, at);
+}
+wg_f32_at :: (b: [] u8, at: int) -> f32 {
+  bits := cast(u32) wg_u32(b, at);
+  return f32_from_bits(bits);
+}
+// The tensor called name, or -1.
+wg_find :: (tensors: [] WgTensor, count: int, name: string) -> int {
+  for i: 0..<count { if tensors[i].name == name { return i; } }
+  return -1;
+}
+
+// ---- a synthetic file for the checks ----------------------------------------
+
+WgBuild :: struct { b: [] u8; n: int; }
+wg_put32 :: (w: [] WgBuild, v: int) {
+  for k: 0..<4 { w[0].b[w[0].n] = cast(u8) ((v >> (8 * k)) & 255); w[0].n += 1; }
+}
+wg_put_bytes :: (w: [] WgBuild, s: string) { for c: s { w[0].b[w[0].n] = c; w[0].n += 1; } }
+// tiny.en's hyperparameters; filter [mel][bin] is mel + bin/1000; three
+// tokens (the last empty); a 2 x 3 f16 tensor and a 32-value q8_0 vector.
+wg_test_file :: (out: [] u8) -> int {
+  w: [1] WgBuild; w[0].b = out;
+  wg_put32(w[..], WG_MAGIC);
+  for v: [11] int.[51864, 1500, 384, 6, 4, 448, 384, 6, 4, 80, 1] { wg_put32(w[..], v); }
+  wg_put32(w[..], 80); wg_put32(w[..], 201);
+  for mel: 0..<80 { for bin: 0..<201 { x: f32 = cast(f32) mel + cast(f32) bin / 1000; wg_put32(w[..], cast(int) f32_bits(x)); } }
+  wg_put32(w[..], 3);
+  wg_put32(w[..], 1); wg_put_bytes(w[..], "!");
+  wg_put32(w[..], 3); wg_put_bytes(w[..], " th");
+  wg_put32(w[..], 0);
+  // a 2 x 3 f16 tensor, then a 32-value q8_0 vector
+  wg_put32(w[..], 2); wg_put32(w[..], 7); wg_put32(w[..], WG_F16); wg_put32(w[..], 3); wg_put32(w[..], 2); wg_put_bytes(w[..], "a.bias.");
+  for i: 0..<6 { w[0].b[w[0].n] = cast(u8) i; w[0].b[w[0].n + 1] = 0; w[0].n += 2; }
+  wg_put32(w[..], 1); wg_put32(w[..], 1); wg_put32(w[..], WG_Q8_0); wg_put32(w[..], 32); wg_put_bytes(w[..], "q");
+  for i: 0..<34 { w[0].b[w[0].n] = 7; w[0].n += 1; }
+  return w[0].n;
+}
+
+#test "a synthetic model reads exactly" #steps 50000000 {
+  buf: [70000] u8; n := wg_test_file(buf[..]); b := buf[0..<n];
+  t: [4] WgTensor; m := wg_read(b, t[..]);
+  #assert m.status == WgStatus.ok && m.params.n_vocab == 51864 && m.params.n_audio_state == 384 && m.params.ftype == 1;
+  #assert m.filter_mels == 80 && m.filter_bins == 201 && m.filters_at == 56 && m.tokens == 3 && m.tensor_count == 2;
+  #assert wg_token(b, m, 0) == "!" && wg_token(b, m, 1) == " th" && wg_token(b, m, 2) == "" && wg_token(b, m, 3) == "" && wg_token(b, m, -1) == "";
+  #assert wg_filter(b, m, 0, 0) == 0 && wg_filter(b, m, 79, 200) == cast(f32) 79 + cast(f32) 200 / 1000 && wg_filter(b, m, 3, 5) == cast(f32) 3 + cast(f32) 5 / 1000;
+  #assert t[0].name == "a.bias." && t[0].kind == WG_F16 && t[0].rank == 2 && t[0].dims[0] == 3 && t[0].dims[1] == 2 && t[0].dims[2] == 1 && t[0].elements == 6;
+  #assert t[0].end - t[0].begin == 12 && b[t[0].begin + 2] == 1 && t[1].begin == t[0].end + 16 + 1;
+  #assert t[1].name == "q" && t[1].kind == WG_Q8_0 && t[1].elements == 32 && t[1].end == n;
+  #assert wg_find(t[..], m.tensor_count, "q") == 1 && wg_find(t[..], m.tensor_count, "a.bias") == -1;
+}
+#test "every truncation is refused" #steps 400000000 {
+  buf: [70000] u8; n := wg_test_file(buf[..]);
+  t: [4] WgTensor;
+  // every cut inside the header, the vocabulary and the tensors; a cut at
+  // the end of a tensor is a shorter, valid file
+  ends := [3] int.[0, 0, 0]; full := wg_read(buf[0..<n], t[..]); ends[0] = full.tensors_at; ends[1] = t[0].end; ends[2] = n;
+  cuts := [12] int.[0, 3, 47, 48, 55, 60, full.vocab_at, full.vocab_at + 4, full.tensors_at + 3, full.tensors_at + 25, t[0].end - 1, n - 1];
+  for c: cuts { #assert wg_read(buf[0..<c], t[..]).status == WgStatus.truncated; }
+  #assert wg_read(buf[0..<ends[0]], t[..]).status == WgStatus.ok && wg_read(buf[0..<ends[0]], t[..]).tensor_count == 0;
+  #assert wg_read(buf[0..<ends[1]], t[..]).tensor_count == 1;
+}
+#test "bad fields are refused with their status" #steps 50000000 {
+  buf: [70000] u8; n := wg_test_file(buf[..]); b := buf[0..<n];
+  t: [4] WgTensor;
+  buf[0] = 0; #assert wg_read(b, t[..]).status == WgStatus.format; buf[0] = 0x6c;
+  buf[40] = 81; #assert wg_read(b, t[..]).status == WgStatus.shape; buf[40] = 80;
+  buf[4] = 0; #assert wg_read(b, t[..]).status == WgStatus.shape; buf[4] = 0x98;
+  buf[52] = 200; #assert wg_read(b, t[..]).status == WgStatus.shape; buf[52] = 201;
+  #assert wg_read(b, t[0..<1]).status == WgStatus.capacity;
+  m := wg_read(b, t[..]); k := t[1].begin - 1 - 4 - 4;   // the q8_0 tensor's type field
+  buf[k] = 4; #assert wg_read(b, t[..]).status == WgStatus.kind; buf[k] = WG_Q8_0;
+  buf[k + 4] = 31; #assert wg_read(b, t[..]).status == WgStatus.shape; buf[k + 4] = 32;
+  #assert wg_read(b, t[..]).status == WgStatus.ok && m.status == WgStatus.ok;
+  #assert wg_i32(b, 0) == WG_MAGIC && wg_block_bytes(5) == 0 && wg_block_values(WG_Q5_1) == 32;
+}

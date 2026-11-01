@@ -1,0 +1,136 @@
+// The transcribe domain's rules: model names, the cache file each one is,
+// the output format, and the interim whisper.cpp backend's output lines.
+// No effects; transcribe.coax runs the programs. Design:
+// psionic/docs/transcribe.md.
+//   coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
+#load "../../psionic/lib/whisper/segments.coax";
+
+// Sizes the CLI knows, each with an English-only file (SIZE.en) except the
+// large ones.
+TR_SIZES :: [6] string.["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"];
+// Rough download sizes in MB, for the fetch note.
+TR_MB :: [6] int.[78, 148, 488, 1533, 3095, 1624];
+
+TrFormat :: enum u8 {text; srt; vtt; json;}
+
+// The model file name without "ggml-" and ".bin": SIZE.en when the language
+// is English and the size has an English-only model, else SIZE. A name that
+// already ends in .en is kept. "" for an unknown name.
+tr_model_name :: (model: string, language: string, out: [] u8) -> string {
+  m := model; en := false;
+  if m.count > 3 && m[m.count - 3] == '.' && m[m.count - 2] == 'e' && m[m.count - 1] == 'n' {
+    m = cast(string) m[0..<m.count - 3]; en = true;
+  }
+  k := -1;
+  for i: 0..<TR_SIZES.count { if TR_SIZES[i] == m { k = i; } }
+  if k < 0 { return ""; }
+  if en && k >= 4 { return ""; }
+  if en && language != "en" && language != "" { return ""; }
+  if k < 4 && (language == "en" || language == "") { en = true; }
+  n := 0;
+  for c: m { out[n] = c; n += 1; }
+  if en { out[n] = '.'; out[n + 1] = 'e'; out[n + 2] = 'n'; n += 3; }
+  return cast(string) out[0..<n];
+}
+// The download size in MB of a model name from tr_model_name.
+tr_model_mb :: (name: string) -> int {
+  for i: 0..<TR_SIZES.count {
+    s := TR_SIZES[i];
+    if name == s { return TR_MB[i]; }
+    if name.count == s.count + 3 && cast(string) name[0..<s.count] == s { return TR_MB[i]; }
+  }
+  return 0;
+}
+// A language is "auto", "" (English) or two or three lowercase letters.
+tr_language_ok :: (s: string) -> bool {
+  if s == "auto" || s == "" { return true; }
+  if s.count < 2 || s.count > 3 { return false; }
+  for c: s { if c < 'a' || c > 'z' { return false; } }
+  return true;
+}
+// --text, --srt, --vtt, --json: at most one; text when none.
+tr_format :: (text: bool, srt: bool, vtt: bool, json: bool) -> int {
+  n := 0;
+  if text { n += 1; } if srt { n += 1; } if vtt { n += 1; } if json { n += 1; }
+  if n > 1 { return -1; }
+  if srt { return cast(int) TrFormat.srt; }
+  if vtt { return cast(int) TrFormat.vtt; }
+  if json { return cast(int) TrFormat.json; }
+  return cast(int) TrFormat.text;
+}
+
+// ---- whisper.cpp's lines (the interim backend) -----------------------------
+
+// d digits at s[at..]: their value, or -1.
+tr_number :: (s: string, at: int, d: int) -> int {
+  if at + d > s.count { return -1; }
+  v := 0;
+  for i: at..<at + d { c := s[i]; if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// HH:MM:SS.mmm at s[at..] in milliseconds, or -1.
+tr_clock :: (s: string, at: int) -> int {
+  if at + 12 > s.count || s[at + 2] != ':' || s[at + 5] != ':' || s[at + 8] != '.' { return -1; }
+  h := tr_number(s, at, 2); m := tr_number(s, at + 3, 2); sec := tr_number(s, at + 6, 2); ms := tr_number(s, at + 9, 3);
+  if h < 0 || m < 0 || m > 59 || sec < 0 || sec > 59 || ms < 0 { return -1; }
+  return ((h * 60 + m) * 60 + sec) * 1000 + ms;
+}
+// One line of whisper-cli's output, "[00:00:00.000 --> 00:00:03.400]   text",
+// as a segment; ok false for any other line (whisper-cli's notes, blanks).
+TrLine :: struct { ok: bool; seg: WsSegment; }
+tr_whispercpp_line :: (s: string) -> TrLine {
+  r: TrLine;
+  if s.count < 31 || s[0] != '[' || s[30] != ']' || cast(string) s[13..<18] != " --> " { return r; }
+  a := tr_clock(s, 1); b := tr_clock(s, 18);
+  if a < 0 || b < a { return r; }
+  r.ok = true;
+  r.seg = WsSegment.{start_ms = a, end_ms = b, text = wsg_trim(cast(string) s[31..<s.count])};
+  return r;
+}
+// Every segment line of out into segs (text views into out); the count, or
+// -1 when there are more than segs holds.
+tr_whispercpp_segments :: (out: string, segs: [] WsSegment) -> int {
+  n := 0; start := 0;
+  for i: 0..<out.count + 1 {
+    if i < out.count && out[i] != '\n' { continue; }
+    line := cast(string) out[start..<i]; start = i + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = cast(string) line[0..<line.count - 1]; }
+    l := tr_whispercpp_line(line);
+    if !l.ok { continue; }
+    if n >= segs.count { return -1; }
+    segs[n] = l.seg; n += 1;
+  }
+  return n;
+}
+
+#test "model names" {
+  b: [32] u8;
+  #assert tr_model_name("base", "en", b[..]) == "base.en" && tr_model_name("base", "", b[..]) == "base.en";
+  #assert tr_model_name("base", "de", b[..]) == "base" && tr_model_name("base", "auto", b[..]) == "base";
+  #assert tr_model_name("tiny.en", "en", b[..]) == "tiny.en" && tr_model_name("medium.en", "", b[..]) == "medium.en";
+  #assert tr_model_name("small.en", "fr", b[..]) == "" && tr_model_name("large-v3.en", "en", b[..]) == "";
+  #assert tr_model_name("large-v3", "en", b[..]) == "large-v3" && tr_model_name("large-v3-turbo", "auto", b[..]) == "large-v3-turbo";
+  #assert tr_model_name("huge", "en", b[..]) == "" && tr_model_name("", "en", b[..]) == "" && tr_model_name(".en", "en", b[..]) == "";
+  #assert tr_model_mb("base.en") == 148 && tr_model_mb("tiny") == 78 && tr_model_mb("large-v3-turbo") == 1624 && tr_model_mb("x") == 0;
+}
+#test "languages and formats" {
+  #assert tr_language_ok("en") && tr_language_ok("auto") && tr_language_ok("haw") && tr_language_ok("");
+  #assert !tr_language_ok("EN") && !tr_language_ok("e") && !tr_language_ok("engl") && !tr_language_ok("e1");
+  #assert tr_format(false, false, false, false) == cast(int) TrFormat.text && tr_format(true, false, false, false) == cast(int) TrFormat.text;
+  #assert tr_format(false, true, false, false) == cast(int) TrFormat.srt && tr_format(false, false, true, false) == cast(int) TrFormat.vtt;
+  #assert tr_format(false, false, false, true) == cast(int) TrFormat.json && tr_format(true, true, false, false) == -1 && tr_format(false, true, false, true) == -1;
+}
+#test "whisper.cpp lines" {
+  l := tr_whispercpp_line("[00:00:03.400 --> 01:00:05.800]   psionic runs whisper inside the verse ");
+  #assert l.ok && l.seg.start_ms == 3400 && l.seg.end_ms == 3605800 && l.seg.text == "psionic runs whisper inside the verse";
+  #assert !tr_whispercpp_line("").ok && !tr_whispercpp_line("whisper_print_timings: total time = 191.48 ms").ok;
+  #assert !tr_whispercpp_line("[00:00:03.400 --> 00:00:01.000]  backwards").ok;
+  #assert !tr_whispercpp_line("[00:61:03.400 --> 00:62:01.000]  minutes").ok && !tr_whispercpp_line("[00:00:0x.400 --> 00:00:01.000] x").ok;
+  #assert !tr_whispercpp_line("[00:00:00.000 -> 00:00:01.0000] x").ok;
+  e := tr_whispercpp_line("[00:00:00.000 --> 00:00:00.000]");
+  #assert e.ok && e.seg.text == "";
+  out := "load_backend: x\n\n[00:00:00.000 --> 00:00:03.400]   the quick brown fox.\r\n[00:00:03.400 --> 00:00:05.800]   and the dog.\n";
+  segs: [2] WsSegment;
+  #assert tr_whispercpp_segments(out, segs[..]) == 2 && segs[0].text == "the quick brown fox." && segs[1].start_ms == 3400 && segs[1].text == "and the dog.";
+  #assert tr_whispercpp_segments(out, segs[0..<1]) == -1 && tr_whispercpp_segments("", segs[..]) == 0;
+}
