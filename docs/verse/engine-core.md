@@ -161,6 +161,41 @@ gives the same session digests for a recorded walk natively and in wasm.
 Mutation: 321 of 321 (`replay.coax`), 50 of 50 (`rand.coax`), 154 of 154
 (`math.coax`).
 
+## Camera (`aethyr/follow.coax`)
+
+The follow camera behind a walker is one module. A `Follow` holds the turn
+and tilt the look input sets (`follow_look`), the distance the zoom asks for
+(`follow_zoom`, 1 to 20 m), the point the camera looks at with its spring
+velocity, and how far out it is shown.
+
+- `follow_track` is one step of it: the point follows the walker's head on
+  a critically damped spring (time constant 0.1 s) that never overshoots,
+  then the camera pulls in at once to the room it has, never nearer than
+  0.35 m, or backs out by 18% of the gap each 1/60 s. Both are closed forms
+  in the step's time.
+- `follow_room` reads a realm's `Colliders` (chapter 7): boxes and capsules
+  widened by 0.2 m stop the line out from the target. Beside a box, the box
+  holds the camera in only where the line runs into the box itself. It never
+  changes the colliders.
+- `follow_at` and `follow_eye` give what to draw between the last two
+  steps; the eye is never shown further out than the last step.
+- `follow_offset` uses `aethyr/math.coax`, so a step that reads the camera's
+  direction (the walker steers by it) has the same bits on every host.
+
+The walking controller (`verse/player.coax`) keeps its camera fields, which
+the realms' C faces read, and moves them only through these calls; its
+`camera_room` is one `follow_room` call, so Dead Gears asks the same room
+question. The arithmetic is the same as before, so the Grid's pinned session
+digest and its recorded host session are unchanged. Checks:
+`aethyr/follow.coax` (the spring against its closed form, room against hand
+calculations for boxes, capsules, slants and the wall band, pull-in and
+back-out at any step size, tracking leaves the colliders as they were) and
+`verse/gridwalk.coax` ("the Grid's camera follows a walk, a run and a jump
+at 60 FPS without a jump": the eye drawn each frame moves at most 0.177 m,
+its move changes by at most 0.016 m between frames (measured 0.013 m), it
+rises every frame of a jump's rising arc, and drawing the last step instead
+changes its move by more than three times the bound).
+
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 
 The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax

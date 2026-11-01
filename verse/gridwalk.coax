@@ -490,3 +490,39 @@ gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 t
   c.jump.waiting += 1; #assert gw_digest(q, c) != d; c = b;
   c.steps_left += 1; #assert gw_digest(q, c) != d; c = b;
 }
+
+// book:begin smooth
+// The camera follows without a jump (Aethyr's follow, aethyr/follow.coax, book chapter 10): at
+// 60 FPS the 64 Hz steps don't land one to a frame, yet as you walk, run and jump the eye drawn
+// each frame moves no further than you can in a frame, its move changes by at most 0.016 m from
+// one frame to the next (measured 0.013 m), and on a jump's rising arc it rises every frame.
+// Drawing the last step instead changes its move by more than three times that.
+#test "the Grid's camera follows a walk, a run and a jump at 60 FPS without a jump" {
+  g: [1] GridWalk; g[0] = GridWalk.{};
+  gridwalk_place(g[..], 28, 28, -2.35619449, 1.35, 9);
+  frame := 1.0f32 / 60.0;
+  far := sqrt(f32(pc.RUN * pc.RUN + pc.JUMP * pc.JUMP)) * frame;   // 0.177 m: a run and a jump's climb
+  was: pc.Vec3; was_move: pc.Vec3; was_feet := 0.0f32;
+  last: pc.Vec3; last_move: pc.Vec3; lurch := 0.0f32;
+  rising := 0;
+  for f: 0..<240 {
+    gridwalk_frame(g[..], 0, 1, f < 90, f == 120 || f == 190, 0, 0, 0, 1000, 2000, 2, frame, false);
+    eye := gridwalk_eye(g[..]); feet := gridwalk_feet(g[..]).y;
+    move := pc.sub(eye, was);
+    p := g[0].you;
+    shown := pc.add(p.target, pc.times(pc.orbit_offset(p), p.dist));   // the last step, not mixed
+    step_move := pc.sub(shown, last);
+    if f >= 3 {
+      change := pc.sub(move, was_move);
+      #assert sqrt(pc.dot(move, move)) <= far && sqrt(pc.dot(move, move)) > 0;
+      #assert sqrt(pc.dot(change, change)) <= 0.016;
+      if !p.on_ground && feet > was_feet { #assert move.y > 0; rising += 1; }
+      d := pc.sub(step_move, last_move);
+      lurch = pc.hi(lurch, sqrt(pc.dot(d, d)));
+    }
+    was = eye; was_move = move; was_feet = feet; last = shown; last_move = step_move;
+  }
+  #assert rising >= 30;    // both jumps' rising arcs were checked
+  #assert lurch > 3 * 0.016;
+}
+// book:end smooth

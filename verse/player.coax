@@ -35,6 +35,7 @@
 #load "../aethyr/input.coax";
 #load "../aethyr/query.coax";   // the ground under you: one query for every walking realm
 #load "../aethyr/math.coax";    // sine, cosine and powers with the same bits natively and in the browser
+#load "../aethyr/follow.coax";  // the camera: Aethyr's follow, which every realm shares
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -52,13 +53,13 @@ ACCEL :: 60.0;          // m/s^2, speeding up and slowing down alike
 TURN_RATE :: 10.0;      // how fast the character turns to face its way
 RIDE_HEIGHT :: 0.4;     // higher than this above the floor is falling
 STEP_SMOOTH :: 10.0;
-LOOK_AT_HEIGHT :: 1.52; // the camera's target above the feet
-CAM_MAX :: 4.4;
-CAM_WALL_MIN :: 0.35;   // closest a wall pushes the camera in
-CAM_LERP :: 0.18;       // per 1/60 s, as the library tuned it
-SPRING_TIME :: 0.1;
-PHI_MIN :: 0.1;         // the camera's angle down from straight up
-PHI_MAX :: 3.04159265;  // PI - PHI_MIN
+LOOK_AT_HEIGHT :: FOLLOW_HEIGHT; // the camera's target above the feet (aethyr/follow.coax holds the camera's numbers)
+CAM_MAX :: FOLLOW_DIST;
+CAM_WALL_MIN :: FOLLOW_CLOSEST; // closest a wall pushes the camera in
+CAM_LERP :: FOLLOW_EASE;        // per 1/60 s, as the library tuned it
+SPRING_TIME :: FOLLOW_SPRING_TIME;
+PHI_MIN :: FOLLOW_PHI_MIN;      // the camera's angle down from straight up
+PHI_MAX :: FOLLOW_PHI_MAX;      // PI - PHI_MIN
 BEHIND_PHI :: 1.10714872; // atan2(400, 200): behind you and above
 DEAD_ZONE :: INPUT_DEAD_ZONE;   // stick travel that counts as no input (aethyr/input.coax)
 STEP :: 0.015625;       // the fixed gameplay step, 1/64 s: aethyr/loop.coax's LOOP_STEP_NS
@@ -66,7 +67,7 @@ RADIUS :: 0.3;          // your capsule, as aethyr's kRadius
 HEIGHT :: 1.8;
 BODY :: 7;              // numbers per body: one end, the other, the radius
 PASSES :: 3;            // push-outs per step, for bodies that touch
-CAM_CLEAR :: 0.2;       // how far the camera keeps from a body
+CAM_CLEAR :: FOLLOW_CLEAR; // how far the camera keeps from a body
 WALL :: 6;              // numbers per wall: min x, y, z, max x, y, z
 STEP_UP :: QUERY_STEP_UP;     // the highest top you walk onto (aethyr/query.coax holds it)
 FLOOR_PAD :: QUERY_FLOOR_PAD; // how far past a floor's edge your middle may be and it still holds you
@@ -331,65 +332,17 @@ move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
 
 // How far the camera may sit from target along offset (a unit direction)
 // before something is in the way, up to max: the room, and CAM_CLEAR short
-// of the nearest body the line crosses.
+// of the nearest body the line crosses (aethyr/follow.coax follow_room).
 camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 {
-  room := lo(w.room, max);
-  // Walls: where the line enters each, widened by CAM_CLEAR (slabs).
-  for i: 0..<w.walls.count / WALL {
-    b := wall(w, i);
-    if !b.ok { continue; }
-    enter := 0.0f32; leave := max; hit := true;
-    o: [3] f32; d: [3] f32; l: [3] f32; h: [3] f32;
-    o[0] = target.x; o[1] = target.y; o[2] = target.z;
-    d[0] = offset.x; d[1] = offset.y; d[2] = offset.z;
-    l[0] = b.lo.x; l[1] = b.lo.y; l[2] = b.lo.z;
-    h[0] = b.hi.x; h[1] = b.hi.y; h[2] = b.hi.z;
-    for k: 0..<3 {
-      a := l[k] - f32(CAM_CLEAR); z := h[k] + f32(CAM_CLEAR);
-      if abs(d[k]) < 0.000001 {
-        if o[k] < a || o[k] > z { hit = false; }
-      } else {
-        t0 := (a - o[k]) / d[k]; t1 := (z - o[k]) / d[k];
-        enter = hi(enter, lo(t0, t1)); leave = lo(leave, hi(t0, t1));
-      }
-    }
-    if !hit || enter > leave { continue; }
-    if enter > 0 { room = lo(room, enter); continue; }
-    // Hugging it (inside its CAM_CLEAR band): it only holds the camera in
-    // if the line runs into the wall itself, not when it backs away from it
-    // (Dead Gears, 2026-10-31: walking into the hull put the camera in it).
-    real := 0.0f32; out := max; meets := true;
-    for k: 0..<3 {
-      if abs(d[k]) < 0.000001 {
-        if o[k] < l[k] || o[k] > h[k] { meets = false; }
-      } else {
-        t0 := (l[k] - o[k]) / d[k]; t1 := (h[k] - o[k]) / d[k];
-        real = hi(real, lo(t0, t1)); out = lo(out, hi(t0, t1));
-      }
-    }
-    if meets && real <= out { room = lo(room, hi(0, real - f32(CAM_CLEAR))); }
-  }
-  far := add(target, times(offset, max));
-  for i: 0..<w.bodies.count / BODY {
-    bd := body(w, i);
-    if !bd.ok { continue; }
-    c := closest(target, far, bd.a, bd.b);
-    gap := sub(c.p, c.q);
-    d2 := dot(gap, gap);
-    r := bd.r + f32(CAM_CLEAR);
-    if d2 >= r * r { continue; }
-    // The line enters the widened body about this far before the closest
-    // point: further when it crosses the axis at a slant.
-    axis := sub(bd.b, bd.a);
-    size := dot(axis, axis);
-    slant := 1.0f32;
-    if size > 0.000001 {
-      along := dot(axis, offset);
-      slant = sqrt(hi(1 - along * along / size, 0.04));
-    }
-    room = lo(room, hi(c.s * max - sqrt(r * r - d2) / slant, 0));
-  }
-  return room;
+  return follow_room(colliders(w), w.room, wp(target), wp(offset), max);
+}
+
+// The camera as Aethyr's follow (aethyr/follow.coax): the player keeps its camera's fields, as
+// the realms' C faces read them, and each call copies back the fields the follow moved.
+wp :: (v: Vec3) -> WorldPoint { return world_point(v.x, v.y, v.z); }
+vp :: (w: WorldPoint) -> Vec3 { return Vec3.{x = w.x, y = w.y, z = w.z}; }
+follow_of :: (p: Player) -> Follow {
+  return Follow.{theta = p.theta, phi = p.phi, dist = p.dist, max_dist = p.max_dist, target = wp(p.target), vel = wp(p.spring_vel)};
 }
 
 // ---- The controller ----
@@ -397,7 +350,7 @@ camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 {
 look_at :: (p: Player) -> Vec3 { return Vec3.{x = p.pos.x, y = p.pos.y + f32(LOOK_AT_HEIGHT), z = p.pos.z}; }
 
 orbit_offset :: (p: Player) -> Vec3 {
-  return Vec3.{x = math_sin(p.phi) * math_sin(p.theta), y = math_cos(p.phi), z = math_sin(p.phi) * math_cos(p.theta)};
+  return vp(follow_offset(follow_of(p)));
 }
 
 place_in :: (w: World, x: f32, y: f32, z: f32, yaw: f32) -> Player {
@@ -439,8 +392,8 @@ verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32
   next.run = run;
   next.jumps = input_level(p.jumps, jump);
   next.jump_held = jump;
-  if finite(dyaw) { next.theta = wrap_angle(next.theta + dyaw); }
-  if finite(dpitch) { next.phi = clamp(next.phi + dpitch, PHI_MIN, PHI_MAX); }
+  cam := follow_look(follow_of(next), dyaw, dpitch);
+  next.theta = cam.theta; next.phi = cam.phi;
   return next;
 }
 // book:end input
@@ -481,25 +434,8 @@ wish :: (p: Player) -> Wish {
 // The library's spring: a critically damped follow of dest, per axis. It
 // returns the new position in x and the new velocity in y.
 spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 {
-  omega := f32(2.0 / SPRING_TIME);
-  x := omega * dt;
-  e := 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
-  change := cur - dest;
-  temp := (vel + omega * change) * dt;
-  v := (vel - omega * temp) * e;
-  o := dest + (change + temp) * e;
-  if (dest - cur > 0) == (o > dest) { o = dest; v = 0; }
-  return Vec3.{x = o, y = v, z = 0};
-}
-
-spring :: (p: Player, dest: Vec3, dt: f32) -> Player {
-  next := p;
-  a := spring_axis(p.target.x, p.spring_vel.x, dest.x, dt);
-  b := spring_axis(p.target.y, p.spring_vel.y, dest.y, dt);
-  c := spring_axis(p.target.z, p.spring_vel.z, dest.z, dt);
-  next.target = Vec3.{x = a.x, y = b.x, z = c.x};
-  next.spring_vel = Vec3.{x = a.y, y = b.y, z = c.y};
-  return next;
+  a := follow_spring_axis(cur, vel, dest, dt);
+  return Vec3.{x = a.at, y = a.vel, z = 0};
 }
 
 // book:begin take
@@ -577,10 +513,8 @@ step :: (w: World, given: Player, dt: f32) -> Player {
 
   // Follow on the spring, and pull in at once where something is in the
   // way; back out gently.
-  next = spring(next, look_at(next), dt);
-  room := hi(f32(CAM_WALL_MIN), camera_room(w, next.target, orbit_offset(next), next.max_dist));
-  if room < next.dist { next.dist = room; }
-  else { next.dist += (room - next.dist) * (1 - math_pow(f32(1 - CAM_LERP), dt * 60)); }
+  cam := follow_track(follow_of(next), colliders(w), w.room, wp(look_at(next)), dt);
+  next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
 
   if !next.on_ground { next.act = Act.airborne; }
   else if !dir.on { next.act = Act.idle; }
@@ -649,12 +583,9 @@ verse_player_face :: (p: Player) -> f32 #export_c {
 }
 // The camera this frame: what it looks at, and where it is. A wall pulls the
 // camera in at once, so it is never shown further out than the last step.
-verse_player_at :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_target, p.target, alpha(p)); }
+verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(follow_at(wp(p.prev_target), wp(p.target), alpha(p))); }
 verse_player_eye :: (p: Player) -> Vec3 #export_c {
-  at := verse_player_at(p);
-  o := orbit_offset(p);
-  d := lo(mix(p.prev_dist, p.dist, alpha(p)), p.dist);
-  return Vec3.{x = at.x + o.x * d, y = at.y + o.y * d, z = at.z + o.z * d};
+  return vp(follow_eye(wp(verse_player_at(p)), follow_offset(follow_of(p)), p.prev_dist, p.dist, alpha(p)));
 }
 // book:end drawn
 verse_player_act :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.act; }
@@ -1508,7 +1439,7 @@ verse_player_view_at :: (p:Player,mode:int)->Vec3 #export_c {
  if mode==0 {eye:=verse_player_view_eye(p,0);o:=orbit_offset(p);return Vec3.{x=eye.x-o.x,y=eye.y-o.y,z=eye.z-o.z};}
  if mode==2{return verse_player_feet(p);}return verse_player_at(p);
 }
-verse_player_zoom :: (p:Player,delta:f32)->Player #export_c {next:=p;if finite(delta){next.max_dist=clamp(p.max_dist+delta,1,20);}return next;}
+verse_player_zoom :: (p:Player,delta:f32)->Player #export_c {next:=p;next.max_dist=follow_zoom(follow_of(p),delta).max_dist;return next;}
 // Zooming crosses between first and third person. Out from first person
 // past ZOOM_OUT starts third person at its closest; in past the closest
 // third-person distance by ZOOM_IN goes to first person. The push gathers

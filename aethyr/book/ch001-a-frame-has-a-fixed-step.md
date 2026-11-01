@@ -197,7 +197,8 @@ steps_in :: (w: World, p: Player, n: int) -> Player {
 ```
 
 Drawing reads only the last two steps and `α`. This applies to the feet, the
-facing, and the camera.
+facing, and the camera, whose mix is `aethyr/follow.coax`'s `follow_at` and
+`follow_eye` (chapter 10).
 
 <!-- source: verse/player.coax drawn -->
 ```jai
@@ -208,12 +209,9 @@ verse_player_face :: (p: Player) -> f32 #export_c {
 }
 // The camera this frame: what it looks at, and where it is. A wall pulls the
 // camera in at once, so it is never shown further out than the last step.
-verse_player_at :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_target, p.target, alpha(p)); }
+verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(follow_at(wp(p.prev_target), wp(p.target), alpha(p))); }
 verse_player_eye :: (p: Player) -> Vec3 #export_c {
-  at := verse_player_at(p);
-  o := orbit_offset(p);
-  d := lo(mix(p.prev_dist, p.dist, alpha(p)), p.dist);
-  return Vec3.{x = at.x + o.x * d, y = at.y + o.y * d, z = at.z + o.z * d};
+  return vp(follow_eye(wp(verse_player_at(p)), follow_offset(follow_of(p)), p.prev_dist, p.dist, alpha(p)));
 }
 ```
 

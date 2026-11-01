@@ -1,0 +1,476 @@
+// Aethyr's follow camera (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md,
+// book chapter 10): the orbit behind a walker that every realm uses. Its state is a `Follow`:
+// the turn and tilt the look input sets, the distance the zoom sets, the spring-followed point
+// it looks at, and how far out it is shown. One call a step tracks the walker (`follow_track`);
+// it reads the colliders through `follow_room` and never changes them, so a realm's physics is
+// the same with the camera or without it. Drawing mixes the last two steps (`follow_eye`).
+//
+// Only this module eases the camera. The spring and the back-out are closed forms in the time
+// they're given, so a step of 1/64 s eases the same in every realm and at every frame rate.
+//   coax/bin/coax test aethyr/follow.coax --library
+//   coax/bin/coax mutate aethyr/follow.coax
+
+#module "aethyr.follow";
+#load "space.coax";
+#load "query.coax";
+#load "math.coax";
+
+// book:begin follow
+FOLLOW_PI :: 3.14159265;
+FOLLOW_TAU :: 6.2831853;
+FOLLOW_DIST :: 4.4;           // the distance a camera starts at, in metres
+FOLLOW_CLOSEST :: 0.35;      // the nearest a wall or body pulls it in
+FOLLOW_EASE :: 0.18;         // the share of the way back out closed each 1/60 s
+FOLLOW_SPRING_TIME :: 0.1;   // the spring's time constant, in seconds
+FOLLOW_CLEAR :: 0.2;         // how far the camera keeps from a collider
+FOLLOW_PHI_MIN :: 0.1;       // the tilt, down from straight up: never straight up or down
+FOLLOW_PHI_MAX :: 3.04159265;
+FOLLOW_ZOOM_MIN :: 1.0;      // the range the zoom keeps the distance in
+FOLLOW_ZOOM_MAX :: 20.0;
+FOLLOW_HEIGHT :: 1.52;       // the point it looks at, above the walker's feet
+
+// A follow camera: theta around +Y from +Z and phi down from +Y, both in radians; `dist` is how
+// far out it is shown, `max_dist` how far the zoom asks for; `target` is the point it looks at
+// and `vel` that point's spring velocity.
+Follow :: struct {
+  theta: f32 = FOLLOW_PI;
+  phi: f32 = 1.10714872;     // atan2(400, 200): behind and above
+  dist: f32 = FOLLOW_DIST;
+  max_dist: f32 = FOLLOW_DIST;
+  target: WorldPoint = WorldPoint.{x = 0, y = FOLLOW_HEIGHT, z = 0};
+  vel: WorldPoint;
+}
+// book:end follow
+
+follow_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+follow_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+follow_clamp :: (a: f32, low: f32, high: f32) -> f32 { return follow_lo(high, follow_hi(low, a)); }
+follow_finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+// An angle in [-pi, pi).
+follow_wrap :: (a: f32) -> f32 { return a - f32(FOLLOW_TAU) * floor((a + f32(FOLLOW_PI)) / f32(FOLLOW_TAU)); }
+
+// book:begin look
+// The look input turns and tilts the camera (radians; positive turns left and looks up), and
+// the zoom moves it out (metres). A value that isn't a number changes nothing.
+follow_look :: (f: Follow, dyaw: f32, dpitch: f32) -> Follow {
+  next := f;
+  if follow_finite(dyaw) { next.theta = follow_wrap(f.theta + dyaw); }
+  if follow_finite(dpitch) { next.phi = follow_clamp(f.phi + dpitch, FOLLOW_PHI_MIN, FOLLOW_PHI_MAX); }
+  return next;
+}
+follow_zoom :: (f: Follow, delta: f32) -> Follow {
+  next := f;
+  if follow_finite(delta) { next.max_dist = follow_clamp(f.max_dist + delta, FOLLOW_ZOOM_MIN, FOLLOW_ZOOM_MAX); }
+  return next;
+}
+// The unit direction from the target out to the camera. It uses aethyr/math.coax, so a step
+// that reads it has the same bits on every host.
+follow_offset :: (f: Follow) -> WorldPoint {
+  out := math_sin(f.phi);
+  return world_point(out * math_sin(f.theta), math_cos(f.phi), out * math_cos(f.theta));
+}
+// book:end look
+
+// The spring on one axis: a critically damped follow of dest over dt (Game Programming Gems 4,
+// 1.10), which never overshoots. It returns the new position and velocity.
+FollowAxis :: struct { at: f32; vel: f32; }
+follow_spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> FollowAxis {
+  omega := f32(2.0 / FOLLOW_SPRING_TIME);
+  x := omega * dt;
+  e := 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  change := cur - dest;
+  temp := (vel + omega * change) * dt;
+  v := (vel - omega * temp) * e;
+  o := dest + (change + temp) * e;
+  if (dest - cur > 0) == (o > dest) { o = dest; v = 0; }
+  return FollowAxis.{at = o, vel = v};
+}
+follow_spring :: (f: Follow, dest: WorldPoint, dt: f32) -> Follow {
+  next := f;
+  a := follow_spring_axis(f.target.x, f.vel.x, dest.x, dt);
+  b := follow_spring_axis(f.target.y, f.vel.y, dest.y, dt);
+  c := follow_spring_axis(f.target.z, f.vel.z, dest.z, dt);
+  next.target = world_point(a.at, b.at, c.at);
+  next.vel = world_point(a.vel, b.vel, c.vel);
+  return next;
+}
+
+// The closest points of segments p0-p1 and q0-q1 (either may be a point): how far along each,
+// in [0, 1], and the points (Ericson, Real-Time Collision Detection, 5.1.9).
+FollowClosest :: struct { s: f32; t: f32; p: WorldPoint; q: WorldPoint; }
+follow_closest :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoint) -> FollowClosest {
+  d1 := world_sub(p1, p0); d2 := world_sub(q1, q0); r := world_sub(p0, q0);
+  a := world_dot(d1, d1); e := world_dot(d2, d2); f := world_dot(d2, r);
+  out: FollowClosest;
+  tiny := 0.000001f32;
+  if a <= tiny && e <= tiny {
+  } else if a <= tiny {
+    out.t = follow_clamp(f / e, 0, 1);
+  } else {
+    c := world_dot(d1, r);
+    if e <= tiny {
+      out.s = follow_clamp(-c / a, 0, 1);
+    } else {
+      b := world_dot(d1, d2);
+      denom := a * e - b * b;
+      if denom > 0 { out.s = follow_clamp((b * f - c * e) / denom, 0, 1); }   // 0: parallel
+      t := (b * out.s + f) / e;
+      out.t = follow_clamp(t, 0, 1);
+      if out.t != t { out.s = follow_clamp((b * out.t - c) / a, 0, 1); }   // past an end of q: p's nearest to it
+    }
+  }
+  out.p = world_add(p0, world_scale(d1, out.s));
+  out.q = world_add(q0, world_scale(d2, out.t));
+  return out;
+}
+
+// book:begin room
+// How far out along `offset` (a unit direction) from `target` the camera has room, up to `max`
+// and `limit` (a realm's own ceiling on it): boxes and capsules are widened by FOLLOW_CLEAR, and
+// the camera stops where the line enters one. A box the target is already beside (inside its
+// FOLLOW_CLEAR band) holds the camera in only if the line runs into the box itself, so backing
+// away from a wall never puts the camera in it. It reads the colliders and changes nothing.
+follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+  room := follow_lo(limit, max);
+  if c.boxes.count >= QUERY_BOX { room = follow_room_boxes(c, room, target, offset, max); }
+  if c.capsules.count >= QUERY_CAPSULE { room = follow_room_capsules(c, room, target, offset, max); }
+  return room;
+}
+follow_room_boxes :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+  room := start;
+  o := query_axes(target); d := query_axes(offset);
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if !b.ok { continue; }
+    l := query_axes(b.low); h := query_axes(b.high);
+    enter := 0.0f32; leave := max; hit := true;
+    for k: 0..<3 {
+      a := l[k] - f32(FOLLOW_CLEAR); z := h[k] + f32(FOLLOW_CLEAR);
+      if abs(d[k]) < 0.000001 {
+        if o[k] < a || o[k] > z { hit = false; }
+      } else {
+        t0 := (a - o[k]) / d[k]; t1 := (z - o[k]) / d[k];
+        enter = follow_hi(enter, follow_lo(t0, t1)); leave = follow_lo(leave, follow_hi(t0, t1));
+      }
+    }
+    if !hit || enter > leave { continue; }
+    if enter > 0 { room = follow_lo(room, enter); continue; }
+    real := 0.0f32; out := max; meets := true;
+    for k: 0..<3 {
+      if abs(d[k]) < 0.000001 {
+        if o[k] < l[k] || o[k] > h[k] { meets = false; }
+      } else {
+        t0 := (l[k] - o[k]) / d[k]; t1 := (h[k] - o[k]) / d[k];
+        real = follow_hi(real, follow_lo(t0, t1)); out = follow_lo(out, follow_hi(t0, t1));
+      }
+    }
+    if meets && real <= out { room = follow_lo(room, follow_hi(0, real - f32(FOLLOW_CLEAR))); }
+  }
+  return room;
+}
+follow_room_capsules :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+  room := start;
+  far := world_add(target, world_scale(offset, max));
+  for i: 0..<query_capsules(c) {
+    bd := query_capsule(c, i);
+    if !bd.ok { continue; }
+    cl := follow_closest(target, far, bd.a, bd.b);
+    gap := world_sub(cl.p, cl.q);
+    d2 := world_dot(gap, gap);
+    r := bd.r + f32(FOLLOW_CLEAR);
+    if d2 >= r * r { continue; }
+    // The line enters the widened capsule about this far before the closest point: further
+    // when it crosses the axis at a slant.
+    axis := world_sub(bd.b, bd.a);
+    size := world_dot(axis, axis);
+    slant := 1.0f32;
+    if size > 0.000001 {
+      along := world_dot(axis, offset);
+      slant = sqrt(follow_hi(1 - along * along / size, 0.04));
+    }
+    room = follow_lo(room, follow_hi(cl.s * max - sqrt(r * r - d2) / slant, 0));
+  }
+  return room;
+}
+// book:end room
+
+// book:begin track
+// One step of the camera: the target follows `dest` on the spring, then the camera pulls in at
+// once to the room it has (never nearer than FOLLOW_CLOSEST), or backs out toward it by
+// FOLLOW_EASE each 1/60 s, a closed form in dt.
+follow_track :: (f: Follow, c: Colliders, limit: f32, dest: WorldPoint, dt: f32) -> Follow {
+  next := follow_spring(f, dest, dt);
+  room := follow_hi(f32(FOLLOW_CLOSEST), follow_room(c, limit, next.target, follow_offset(next), next.max_dist));
+  next.dist = follow_lo(room, next.dist + (room - next.dist) * (1 - math_pow(f32(1 - FOLLOW_EASE), dt * 60)));
+  return next;
+}
+// book:end track
+
+// book:begin eye
+// Where to draw the camera: the target mixed between the last two steps by `share` (the loop's alpha, in [0, 1]),
+// out along the camera's direction by the mixed distance, but never further than the last step
+// (a wall pulls the camera in at once, and drawing never shows it further out).
+follow_at :: (prev: WorldPoint, cur: WorldPoint, share: f32) -> WorldPoint {
+  return world_point(prev.x + (cur.x - prev.x) * share, prev.y + (cur.y - prev.y) * share, prev.z + (cur.z - prev.z) * share);
+}
+follow_eye :: (at: WorldPoint, offset: WorldPoint, prev_dist: f32, dist: f32, share: f32) -> WorldPoint {
+  d := follow_lo(prev_dist + (dist - prev_dist) * share, dist);
+  return world_point(at.x + offset.x * d, at.y + offset.y * d, at.z + offset.z * d);
+}
+// book:end eye
+
+// ---- Checks ----
+
+follow_near :: (a: f32, b: f32, t: f32) -> bool { return abs(a - b) <= t; }
+
+#test "the look turns, wraps and tilts within its limits, and ignores what isn't a number" {
+  f: Follow;
+  #assert f.theta == f32(FOLLOW_PI) && f.phi == 1.10714872 && f.dist == f32(FOLLOW_DIST) && f.max_dist == f32(FOLLOW_DIST);
+  #assert f.target.y == f32(FOLLOW_HEIGHT) && f.target.x == 0 && f.vel.y == 0;
+  g := follow_look(f, 0.5, 0.25);
+  #assert follow_near(g.theta, f32(FOLLOW_PI) + 0.5 - f32(FOLLOW_TAU), 0.000001) && follow_near(g.phi, 1.35714872, 0.000001);
+  #assert follow_look(f, -0.5, 0).theta == f.theta - 0.5;
+  #assert follow_look(f, 0, 9).phi == f32(FOLLOW_PHI_MAX) && follow_look(f, 0, -9).phi == f32(FOLLOW_PHI_MIN);
+  nan := 0.0f32 / 0.0f32;
+  h := follow_look(f, nan, 2000000.0);
+  #assert h.theta == f.theta && h.phi == f.phi;
+  #assert follow_look(f, 1000000.0, -1000000.0).theta == f.theta && follow_look(f, 999999.0, 0).theta != f.theta;
+  #assert follow_wrap(-f32(FOLLOW_PI)) == -f32(FOLLOW_PI) && follow_wrap(f32(FOLLOW_PI)) < 0;
+}
+
+#test "the zoom keeps the distance from 1 to 20 m and ignores what isn't a number" {
+  f: Follow;
+  #assert follow_near(follow_zoom(f, 1.5).max_dist, 5.9, 0.000001) && follow_zoom(f, 1.5).dist == f.dist;
+  #assert follow_zoom(f, -9).max_dist == 1 && follow_zoom(f, 90).max_dist == 20;
+  #assert follow_zoom(f, 0.0f32 / 0.0f32).max_dist == f.max_dist;
+}
+
+#test "the camera's direction is a unit vector behind and above at the start" {
+  f: Follow;
+  o := follow_offset(f);
+  #assert follow_near(o.x * o.x + o.y * o.y + o.z * o.z, 1, 0.000002);
+  #assert follow_near(o.y, 0.4472136, 0.000001) && follow_near(o.z, -0.8944272, 0.000001) && follow_near(o.x, 0, 0.000001);
+  f.theta = f32(FOLLOW_PI) / 2; f.phi = f32(FOLLOW_PI) / 2;
+  q := follow_offset(f);
+  #assert follow_near(q.x, 1, 0.000001) && follow_near(q.y, 0, 0.000001) && follow_near(q.z, 0, 0.000001);
+}
+
+// The spring against its closed form: a critically damped spring from rest at distance x0
+// closes to x0 (1 + w t) e^(-w t); the step's rational form is within 0.3% of e^(-x) per step.
+#test "the spring closes on its target without overshooting, as the closed form does" {
+  at := 1.0f32; vel := 0.0f32; t := 0.0f32;
+  for k: 0..<32 {
+    s := follow_spring_axis(at, vel, 0, 0.015625);
+    #assert s.at >= 0 && s.at <= at;
+    at = s.at; vel = s.vel; t += 0.015625;
+    w := f32(2.0 / FOLLOW_SPRING_TIME) * t;
+    #assert follow_near(at, (1 + w) * exp(-w), 0.006);
+  }
+  #assert at < 0.01;
+  // past the target in one step, it stops on it
+  s := follow_spring_axis(0, 100, 1, 0.015625);
+  #assert s.at == 1 && s.vel == 0;
+  u := follow_spring_axis(1, -100, 0, 0.015625);
+  #assert u.at == 0 && u.vel == 0;
+  v := follow_spring_axis(0, 0, 1, 0.015625);
+  #assert v.at > 0 && v.at < 1 && v.vel > 0;
+  #assert follow_near(v.at, 0.039549, 0.000002) && follow_near(v.vel, 4.57357, 0.00002);
+  f: Follow;
+  g := follow_spring(f, world_point(1, 2, 3), 0.015625);
+  #assert g.target.x == v.at && g.vel.x == v.vel && g.target.z > g.target.x && g.target.y > f.target.y && g.vel.z > g.vel.y;
+  #assert follow_near(g.target.y, 1.52 + 0.48 * 0.039549, 0.000002);
+}
+
+#test "the closest points of two segments, a segment and a point, and two points" {
+  c := follow_closest(world_point(0, 0, 0), world_point(2, 0, 0), world_point(1, 1, -1), world_point(1, 1, 1));
+  #assert c.s == 0.5 && c.t == 0.5 && c.p.x == 1 && c.q.y == 1 && c.q.z == 0;
+  e := follow_closest(world_point(0, 0, 0), world_point(2, 0, 0), world_point(3, 1, 0), world_point(3, 1, 0));
+  #assert e.s == 1 && e.t == 0 && e.q.x == 3;
+  g := follow_closest(world_point(-1, 0, 0), world_point(-1, 0, 0), world_point(0, 0, 0), world_point(0, 0, 4));
+  #assert g.s == 0 && g.t == 0;
+  h := follow_closest(world_point(-1, 0, 2), world_point(-1, 0, 2), world_point(0, 0, 0), world_point(0, 0, 4));
+  #assert h.t == 0.5 && h.q.z == 2 && h.p.x == -1;
+  n := follow_closest(world_point(1, 0, 0), world_point(1, 0, 0), world_point(0, 0, 0), world_point(0, 0, 0));
+  #assert n.s == 0 && n.t == 0 && n.p.x == 1 && n.q.x == 0;
+  // parallel segments: the second's start, and the nearest point of the first to it
+  p := follow_closest(world_point(0, 0, 0), world_point(2, 0, 0), world_point(1, 1, 0), world_point(5, 1, 0));
+  #assert p.s == 0.5 && p.t == 0 && p.q.x == 1;
+  // past the second's ends, clamped to them
+  a := follow_closest(world_point(0, 0, 0), world_point(0, 0, 4), world_point(1, 0, 5), world_point(3, 0, 6));
+  #assert a.t == 0 && a.s == 1;
+  b := follow_closest(world_point(0, 0, 0), world_point(0, 0, 4), world_point(3, 0, -6), world_point(1, 0, -5));
+  #assert b.t == 1 && b.s == 0;
+  m := follow_closest(world_point(0, 0, 0), world_point(4, 0, 0), world_point(6, 1, 2), world_point(3, 1, 1));
+  #assert m.t == 1 && m.s == 0.75;
+}
+
+// A box ahead, a box beside, a capsule ahead and a capsule beside, each against the distance a
+// hand calculation gives.
+#test "room stops at the first widened box or capsule along the line" {
+  boxes := [6] f32.[-1, 0, -3, 1, 2, -2.5];          // across the line, 2 m out
+  c := Colliders.{boxes = boxes[..]};
+  back := world_point(0, 0, -1);
+  #assert follow_near(follow_room(c, 1000, world_point(0, 1, 0), back, 4.4), 2.3, 0.00001);
+  #assert follow_room(c, 1000, world_point(0, 1, 0), back, 1.5) == 1.5;
+  #assert follow_room(c, 1.2, world_point(0, 1, 0), back, 4.4) == 1.2;
+  #assert follow_room(c, 1000, world_point(0, 3, 0), back, 4.4) == 4.4;   // over it
+  #assert follow_room(c, 1000, world_point(2, 1, 0), back, 4.4) == 4.4;   // beside it
+  #assert follow_room(c, 1000, world_point(0, 1, 0), world_point(0, 0, 1), 4.4) == 4.4;   // away from it
+  #assert follow_near(follow_room(c, 1000, world_point(1.15, 1, 0), back, 4.4), 2.3, 0.00001);   // in its band beside
+  slant := world_point(0.28, 0, -0.96);
+  #assert follow_near(follow_room(c, 1000, world_point(0, 1, 0), slant, 9), 2.3 / 0.96, 0.00002);
+  bad := [6] f32.[1, 0, -3, -1, 2, -2.5];          // inside out: no box
+  #assert follow_room(Colliders.{boxes = bad[..]}, 1000, world_point(0, 1, 0), back, 4.4) == 4.4;
+  caps := [7] f32.[0, 0, -3, 0, 2, -3, 0.5];         // upright, 3 m out
+  k := Colliders.{capsules = caps[..]};
+  #assert follow_near(follow_room(k, 1000, world_point(0, 1, 0), back, 4.4), 2.3, 0.00001);
+  #assert follow_room(k, 1000, world_point(1, 1, 0), back, 4.4) == 4.4;    // passes it by 1 m
+  #assert follow_near(follow_room(k, 1000, world_point(0.6, 1, 0), back, 4.4), 3 - sqrt(0.49 - 0.36), 0.00002);
+  lying := [7] f32.[-2, 1, -3, 2, 1, -3, 0.3];        // lying across the line: the slant is 1
+  #assert follow_near(follow_room(Colliders.{capsules = lying[..]}, 1000, world_point(0, 1, 0), back, 4.4), 2.5, 0.00001);
+  along := [7] f32.[0, 1, -3, 0, 1, -6, 0.3];        // along the line: the slant floors at 0.2
+  #assert follow_near(follow_room(Colliders.{capsules = along[..]}, 1000, world_point(0, 1, 0), back, 4.4), 3 - 0.5 / 0.2, 0.00002);
+  ball := [7] f32.[0, 1, -3, 0, 1, -3, 0.3];         // a sphere: the slant is 1
+  #assert follow_near(follow_room(Colliders.{capsules = ball[..]}, 1000, world_point(0, 1, 0), back, 4.4), 2.5, 0.00001);
+  inside := [7] f32.[0, 0, 0, 0, 2, 0, 0.5];         // the target inside it: no room
+  #assert follow_room(Colliders.{capsules = inside[..]}, 1000, world_point(0, 1, 0), back, 4.4) == 0;
+  thin := [7] f32.[0, 0, -3, 0, 2, -3, 0];           // no radius: no capsule
+  #assert follow_room(Colliders.{capsules = thin[..]}, 1000, world_point(0, 1, 0), back, 4.4) == 4.4;
+  nan := 0.0f32 / 0.0f32;
+  broken := [7] f32.[0, 0, -3, 0, nan, -3, 0.5];
+  #assert follow_room(Colliders.{capsules = broken[..]}, 1000, world_point(0, 1, 0), back, 4.4) == 4.4;
+}
+
+// Dead Gears, 2026-10-31: walking into the hull put the camera in it. Inside a box's band, the
+// box holds the camera in only where the line runs into the box itself.
+#test "beside a wall, the camera backs away from it but never into it" {
+  boxes := [6] f32.[-5, 0, -0.1, 5, 3, 0];          // a wall just behind you, 0.1 m thick
+  c := Colliders.{boxes = boxes[..]};
+  at := world_point(0, 1, 0.1);                     // 0.1 m in front of it: inside its band
+  #assert follow_room(c, 1000, at, world_point(0, 0, 1), 4.4) == 4.4;   // away from it
+  #assert follow_room(c, 1000, at, world_point(0, 0, -1), 4.4) == 0;    // into it
+  up := world_unit(world_point(0, 1, -0.02));
+  #assert follow_room(c, 1000, at, up, 4.4) == 4.4;   // over its top and clear
+  side := world_point(1, 0, 0);
+  #assert follow_room(c, 1000, at, side, 4.4) == 4.4; // along it: the line never meets the wall
+  far := world_point(0, 1, 2);                        // out of its band, looking into it
+  #assert follow_near(follow_room(c, 1000, far, world_point(0, 0, -1), 4.4), 1.8, 0.00001);
+  close := world_point(0, 1, 0.25);                    // 0.25 m in front: inside the band, 0.05 m from its edge
+  #assert follow_near(follow_room(c, 1000, close, world_point(0, 0, -1), 4.4), 0.05, 0.00001);
+  past := world_point(5.1, 1, 0.1);                   // in the band past its end
+  #assert follow_room(c, 1000, past, world_point(0, 0, -1), 4.4) == 4.4;
+  steep := world_unit(world_point(0, 0.5, -1));
+  #assert follow_near(follow_room(c, 1000, world_point(0, 2.9, 0.1), steep, 4.4), 0, 0.00001);
+}
+
+// The pull in is at once; the back out is FOLLOW_EASE a 1/60 s, so two steps of dt/2 back out
+// as far as one of dt.
+#test "the camera pulls in at once and backs out at the same rate for any step" {
+  boxes := [6] f32.[-1, 0, -3, 1, 3, -2.5];
+  c := Colliders.{boxes = boxes[..]};
+  f: Follow; f.theta = f32(FOLLOW_PI); f.phi = f32(FOLLOW_PI) / 2;
+  f.target = world_point(0, 1.52, 0);
+  g := follow_track(f, c, 1000, world_point(0, 1.52, 0), 0.015625);
+  #assert follow_near(g.dist, 2.3, 0.00002) && g.target.y == f.target.y;
+  h := follow_track(g, Colliders.{}, 1000, world_point(0, 1.52, 0), 0.015625);
+  share := 1 - math_pow(f32(1 - FOLLOW_EASE), 0.9375);
+  #assert follow_near(h.dist, 2.3 + (4.4 - 2.3) * share, 0.00002) && h.dist < 4.4;
+  a := follow_track(g, Colliders.{}, 1000, world_point(0, 1.52, 0), 0.03125);
+  b := follow_track(follow_track(g, Colliders.{}, 1000, world_point(0, 1.52, 0), 0.015625), Colliders.{}, 1000, world_point(0, 1.52, 0), 0.015625);
+  #assert follow_near(a.dist, b.dist, 0.00002) && a.dist > h.dist;
+  low := [6] f32.[-1, 0, -0.5, 1, 3, -0.4];          // so close the room is under FOLLOW_CLOSEST
+  q := follow_track(f, Colliders.{boxes = low[..]}, 1000, world_point(0, 1.52, 0), 0.015625);
+  #assert q.dist == f32(FOLLOW_CLOSEST);
+  r := follow_track(f, Colliders.{}, 1000, world_point(1, 1.52, 0), 0.015625);
+  #assert r.target.x > 0 && r.target.x < 1 && r.vel.x > 0 && r.dist == 4.4;
+  zoomed := follow_zoom(f, 2);
+  #assert follow_track(zoomed, Colliders.{}, 1000, world_point(0, 1.52, 0), 0.015625).dist > 4.4;
+  #assert follow_track(zoomed, Colliders.{}, 5, world_point(0, 1.52, 0), 1000).dist == 5;
+}
+
+#test "the eye mixes the last two steps and is never shown further than the last" {
+  at := follow_at(world_point(0, 1, 0), world_point(2, 3, -4), 0.25);
+  #assert at.x == 0.5 && at.y == 1.5 && at.z == -1;
+  o := world_point(0, 0, -1);
+  #assert follow_eye(at, o, 2, 4, 0.5).z == -4;
+  #assert follow_eye(at, o, 4, 2, 0.5).z == -3;           // pulled in: the last step's
+  #assert follow_eye(at, o, 4, 2, 0).z == -3 && follow_eye(at, o, 2, 4, 0).z == -3;
+  e := follow_eye(world_point(1, 2, 3), world_point(0.6, 0.8, 0), 1, 1, 1);
+  #assert e.x == 1.6 && e.y == 2.8 && e.z == 3;
+}
+
+#test "tracking reads the colliders and leaves them as they were" {
+  boxes := [6] f32.[-1, 0, -3, 1, 3, -2.5];
+  caps := [7] f32.[3, 0, 3, 3, 2, 3, 0.4];
+  before := [13] f32.[-1, 0, -3, 1, 3, -2.5, 3, 0, 3, 3, 2, 3, 0.4];
+  c := Colliders.{boxes = boxes[..], capsules = caps[..]};
+  f: Follow;
+  for k: 0..<64 { f = follow_track(follow_look(f, 0.1, 0), c, 1000, world_point(0, 1.52, 0), 0.015625); }
+  for k: 0..<6 { #assert boxes[k] == before[k]; }
+  for k: 0..<7 { #assert caps[k] == before[6 + k]; }
+}
+
+#test "ties: lo and hi keep the second of two equal values, and a million is not finite" {
+  z := 0.0f32; n := -z;
+  #assert f32_bits(follow_lo(n, z)) == 0 && f32_bits(follow_hi(n, z)) == 0 && f32_bits(follow_lo(z, n)) != 0;
+  #assert !follow_finite(-1000000.0) && !follow_finite(1000000.0) && follow_finite(-999999.0);
+  #assert follow_near(1, 1.5, 0.5) && !follow_near(1, 1.5, 0.4);
+  // the spring: already on the target and moving, it moves on; landing exactly on it, it keeps its speed
+  m := follow_spring_axis(1, 5, 1, 0.015625);
+  #assert m.at > 1 && m.vel > 0;
+  x := follow_spring_axis(0, 84, 1, 0.015625);
+  #assert x.at == 1 && x.vel > 0;
+}
+
+// A segment exactly FOLLOW's `tiny` long (squared) counts as a point.
+#test "closest points: skew and nearly parallel segments, ends past the other, and point-like ones" {
+  k := follow_closest(world_point(0, 0, 0), world_point(2, 0, 0), world_point(0, 1, -1), world_point(2, 1, 1));
+  #assert k.s == 0.5 && k.t == 0.5 && k.q.y == 1 && k.q.x == 1 && k.q.z == 0;
+  slim := follow_closest(world_point(0, 0, 0), world_point(1, 0, 0), world_point(0.5, 1, 0), world_point(1.5, 1.01, 0));
+  #assert slim.s > 0.4 && slim.t == 0;
+  par := follow_closest(world_point(0, 0, 0), world_point(2, 0, 0), world_point(-1, 1, 0), world_point(1, 1, 0));
+  #assert par.s == 0 && par.t == 0.5;
+  t := world_point(0.00028, 0.00096, 0);   // its squared length is exactly 0.000001f32
+  both := follow_closest(world_point(0, 0, 5), world_point(0.00028, 0.00096, 5), world_point(-0.00028, -0.00096, 0), world_point(0, 0, 0));
+  #assert both.s == 0 && both.t == 0;
+  first := follow_closest(world_point(0, 0, 0), t, world_point(-1, 1, 0), world_point(1, 1, 0));
+  #assert first.s == 0 && first.t == 0.5;
+  second := follow_closest(world_point(-1, 1, 0), world_point(1, 1, 0), world_point(0, 0, 0), t);
+  #assert second.t == 0 && second.s == 0.5;
+}
+
+// Each case is worked by hand: the slab times are exact in f32.
+#test "room: entering through a near face, grazing an edge, and lines that only just miss or meet" {
+  slab := [6] f32.[-1, 0, -3, 1, 2, -2.5];
+  c := Colliders.{boxes = slab[..]};
+  #assert follow_near(follow_room(c, 1000, world_point(0, 1, -5), world_point(0, 0, 1), 4.4), 1.8, 0.00001);
+  #assert follow_room(c, 1000, world_point(3, 1, 0), world_point(-0.9, 0, -0.436), 9) == 9;   // passes beside it
+  #assert follow_near(follow_room(c, 1000, world_point(3, 1, 0), world_point(-0.6, 0, -0.8), 9), 3, 0.00001);   // its corner's side
+  e := [6] f32.[0.2, 0, 0.2, 0.8, 2, 2.8];          // widened: x 0 to 1, z 0 to 3
+  g := Colliders.{boxes = e[..]};
+  #assert follow_room(g, 1000, world_point(-1, 1, 1), world_point(1, 0, -1), 10) == 1;   // enters as it leaves
+  #assert follow_near(follow_room(g, 1000, world_point(-0.0000005, 1, 1), world_point(0.000001, 0, -1), 10), 0.5, 0.01);
+  #assert follow_near(follow_room(g, 1000, world_point(0, 1, 5), world_point(0, 0, -1), 4.4), 2, 0.00001);   // on the band's face
+  #assert follow_near(follow_room(g, 1000, world_point(1, 1, 5), world_point(0, 0, -1), 4.4), 2, 0.00001);
+  hull := [6] f32.[-5, 0, -0.1, 5, 3, 0];
+  w := Colliders.{boxes = hull[..]};
+  #assert follow_room(w, 1000, world_point(-5, 1, 0.1), world_point(0, 0, -1), 4.4) == 0;   // on its end, in its band
+  #assert follow_room(w, 1000, world_point(5, 1, 0.1), world_point(0, 0, -1), 4.4) == 0;
+  thick := [6] f32.[-5, 0, -1, 0, 3, 0];
+  d := Colliders.{boxes = thick[..]};
+  #assert follow_near(follow_room(d, 1000, world_point(-5.0000005, 1, 0.1), world_point(0.000001, 0, -1), 4.4), 0.277, 0.01);
+  #assert follow_room(d, 1000, world_point(-0.1, 1, 0.1), world_point(1, 0, -1), 4.4) == 0;   // meets it at single point
+  touching := [7] f32.[0.5, 1, -3, 0.5, 1, -3, 0.3];    // the line just touches it, widened
+  #assert follow_room(Colliders.{capsules = touching[..]}, 1000, world_point(0, 1, 0), world_point(0, 0, -1), 4.4) == 4.4;
+  short_axis := [7] f32.[0, 0, 0, 0.00028, 0.00096, 0, 0.3];   // an axis whose squared length is 0.000001f32
+  #assert follow_room(Colliders.{capsules = short_axis[..]}, 1000, world_point(0, -2, 0), world_point(0, 1, 0), 4.4) == 1.5;   // too short to have a slant
+  single := [6] f32.[-1, 0, -3, 1, 2, -2.5];
+  #assert follow_room(Colliders.{boxes = single[..]}, 1000, world_point(0, 1, 0), world_point(0, 0, -1), 4.4) < 4.4;
+  upright := [7] f32.[0, 0, -3, 0, 2, -3, 0.5];
+  #assert follow_room(Colliders.{capsules = upright[..]}, 1000, world_point(0, 1, 0), world_point(0, 0, -1), 4.4) < 4.4;
+  leaning := [7] f32.[0, 2, -3, 0, 0, -1, 0.3];     // at 45 degrees to the line: the slant is 0.707
+  #assert follow_near(follow_room(Colliders.{capsules = leaning[..]}, 1000, world_point(0, 1, 0), world_point(0, 0, -1), 4.4), 2 - 0.5 / sqrt(0.5f32), 0.0001);
+  // the eye's mix is from the previous point
+  a := follow_at(world_point(2, 0, -2), world_point(4, 0, -4), 0.5);
+  #assert a.x == 3 && a.z == -3;
+}

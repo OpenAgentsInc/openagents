@@ -330,8 +330,8 @@ verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32
   next.run = run;
   next.jumps = input_level(p.jumps, jump);
   next.jump_held = jump;
-  if finite(dyaw) { next.theta = wrap_angle(next.theta + dyaw); }
-  if finite(dpitch) { next.phi = clamp(next.phi + dpitch, PHI_MIN, PHI_MAX); }
+  cam := follow_look(follow_of(next), dyaw, dpitch);
+  next.theta = cam.theta; next.phi = cam.phi;
   return next;
 }
 ```

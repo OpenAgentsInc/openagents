@@ -7,8 +7,12 @@
 > Man's swept-sphere boom in `verse/icecream/camera.coax`, and `SpaceCam`'s
 > floating origin in `verse/spacecam.coax`. This chapter plans one follow
 > that reads the interpolated player state and is smoothed in one place.
-> Engine-core task: `ec-camera` (#12609); the engine-core agent fills this
-> chapter in as the module lands. Nothing here runs yet.
+> Engine-core task: `ec-camera` (#12609). The first part has landed:
+> `aethyr/follow.coax` holds the walker's follow camera (look, zoom, the
+> spring, room from the colliders, the eye between steps), and
+> `verse/player.coax` moves its camera only through it. The chapter is
+> filled in with that module's listings next; the other cameras here are
+> still plans.
 
 Camera judder is almost always a timing mismatch. If the camera chases the
 last physics state, it moves in steps of 1/64 s while the screen refreshes
