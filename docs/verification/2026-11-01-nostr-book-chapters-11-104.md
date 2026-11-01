@@ -92,6 +92,11 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      `nip94.coax` refused larger files. `n94_check` now streams through
      `sha256_init`/`update`/`final` in 1 MiB pieces (root-only mutation:
      343 of 343 killed).
+   - Fixed after `ad37e4eb61`: Blossom's `nb7_fetch` and `nb7_upload`
+     (`nipb7.coax`) used the same one-shot hash and refused bodies over
+     1 MiB as `NB7_LIMIT`. Both now stream through `n94_digest`, checked
+     with a 1,100,000-byte body against Python's `hashlib` (root-only
+     mutation, three shards merged: 214 of 214 killed; chapter 57).
    - Fixed in `8cf39a8851`: `nip06_key` derived a key from a phrase with a
      bad checksum. It now refuses and zeroes the key.
    - Fixed in `8cf39a8851`: `bip39_entropy` read 12-word phrases only. It

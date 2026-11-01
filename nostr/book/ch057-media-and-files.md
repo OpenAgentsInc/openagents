@@ -398,8 +398,10 @@ the same hex string from each, and to check that the downloaded bytes hash
 to it.
 
 `nb7_address` takes the URL's last path segment, stops at its first dot,
-and requires exactly 64 lowercase hex digits. `nb7_fetch` is the check;
-`nb7_blob_url` builds the URL on another server.
+and requires exactly 64 lowercase hex digits. `nb7_fetch` is the check: it
+hashes the bytes with `n94_digest`, the streaming hash from the NIP-94
+section, so a blob of any size checks. `nb7_blob_url` builds the URL on
+another server.
 
 <!-- source: coax/lib/nostr/nipb7.coax address -->
 ```jai
@@ -417,9 +419,9 @@ nb7_address :: (url:string)->NB7Blob {
 // Whether bytes fetched from url are the blob it names.
 nb7_fetch :: (url:string,bytes:[]u8)->int {
   b:=nb7_address(url);if !b.ok {return NB7_URL;}
+  // Streamed in 1 MiB pieces (nip94.coax's n94_digest), so any size checks.
   h:[32]u8;
-  if sha256_hash_checked(bytes,h[..],false)!=SHA_OK {return NB7_LIMIT;}
-  return ifx ns_equal32(h,b.hash) then NB7_OK else NB7_MISMATCH;
+  return ifx n94_digest(bytes,CB_MAX_BYTES,h[..])==SHA_OK && ns_equal32(h,b.hash) then NB7_OK else NB7_MISMATCH;
 }
 // The blob's URL on server: server/hex then ext ("" or ".png"). The new
 // length, or -1 when it doesn't fit.
@@ -486,8 +488,9 @@ lists 24242 as "Blobs stored on mediaservers". This chapter follows BUD-02:
 
 `nb7_admit` makes those checks for one request. It refuses any event that
 didn't pass chapter 21's verification, so a forged or altered event never
-reaches the rules. `nb7_upload` hashes the body first, so the blob the
-event must name is the one the server would store.
+reaches the rules. `nb7_upload` hashes the body first, streamed through
+`n94_digest` so a body of any size checks, so the blob the event must name
+is the one the server would store.
 
 <!-- source: coax/lib/nostr/nipb7.coax auth -->
 ```jai
@@ -535,10 +538,16 @@ nb7_admit :: (e:NostrEvent,verb:int,blob:[32]u8,now:int)->int {
   return NB7_HASH;
 }
 // The server's check of an upload: the body's SHA-256 is the blob the
-// event must authorize.
+// event must authorize. The body streams through the hash in 1 MiB
+// pieces, so it may be any size.
 nb7_upload :: (e:NostrEvent,body:[]u8,now:int)->int {
+  return nb7_upload_pieces(e,body,CB_MAX_BYTES,now);
+}
+// The same check with the hash fed in pieces of chunk bytes. A hash that
+// refuses (a chunk under 1 byte) names no blob.
+nb7_upload_pieces :: (e:NostrEvent,body:[]u8,chunk:int,now:int)->int {
   h:[32]u8;
-  if sha256_hash_checked(body,h[..],false)!=SHA_OK {return NB7_LIMIT;}
+  if n94_digest(body,chunk,h[..])!=SHA_OK {return NB7_HASH;}
   return nb7_admit(e,NB7_UPLOAD,h,now);
 }
 ```
@@ -626,8 +635,6 @@ Alice signs a kind 24242 event at `created_at = T0 = 1790000000` with
 
 ## Not built
 
-- Hashing Blossom bodies over 1 MiB: `nb7_fetch` and `nb7_upload` still
-  use the one-shot hash and refuse larger bodies as `NB7_LIMIT`.
 - Matching `imeta` URLs against the content, and NIP-92's kind 0 profile
   rule (an `imeta` tag describes `picture` or `banner` when its `url` is
   equal).
@@ -1008,7 +1015,9 @@ example, every refusal and the tag and entry it names, the 256-byte value
 and 1,024-byte entry bounds at their edges, kind 1063 with each required
 tag missing, the hash check with `x`, `ox` and `size`, a 1,100,000-byte
 file hashed in two pieces against Python's `hashlib`, a 1,000-byte one
-hashed with seven piece sizes, the writers
+hashed with seven piece sizes, a 1,100,000-byte Blossom blob fetched and
+uploaded against the same `hashlib` digest (and fetched again with its last
+byte changed), the writers
 round-tripping through the readers, blob URLs with and without
 extensions, server lists, and the authorization rules at each edge of the
 window, for each verb, with one and several `x` tags.
@@ -1026,7 +1035,10 @@ and all 215 of `nipb7.coax`, with none surviving and none marked
 equivalent. After the streaming hash, `nip94.coax` passed 211 checks and
 `coax mutate --root-only` (two shards, merged) killed all 343 of its
 mutants, none marked equivalent. The 1,100,000-byte check takes about 11
-seconds. The full mutation run (`COAX_MUTATION_FULL=1`) and a mutation
+seconds. After `nb7_fetch` and `nb7_upload` moved to the streaming hash,
+`nipb7.coax` passed 221 checks and `coax mutate --root-only` (three shards,
+merged) killed all 214 of its mutants, none marked equivalent; its two
+1,100,000-byte checks take about 15 and 30 seconds. The full mutation run (`COAX_MUTATION_FULL=1`) and a mutation
 run of the example were not run.
 
 ## Summary
