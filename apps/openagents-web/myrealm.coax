@@ -569,10 +569,21 @@ move_press :: (s: [] MyRealm) {
     return;
   }
   x := s[0].x + PUT_AHEAD * sin(s[0].yaw); z := s[0].z - PUT_AHEAD * cos(s[0].yaw);
+  if !put_clear(s, s[0].moving, x, z) { set_note(s, "Something stands there. Try another spot."); return; }
   b: [16] u8;
   moved := forge_move(s[0].fd[..], tree_key(s[0].moving, b[..]), cm_of(x), cm_of(z));
   s[0].moving = -1; relay(s);
   set_note(s, ifx moved then "Moved. Save keeps it." else "It can't stand there.");
+}
+// A tree may stand at (x, z): on the ground, off the water, clear of everything standing but itself.
+put_clear :: (s: [] MyRealm, i: int, x: f32, z: f32) -> bool {
+  if sqrt(x * x + z * z) > GROUND_R - 1.5 || water_in(s, x, z) > -0.6 { return false; }
+  for k: 0..<s[0].solid_n {
+    if i >= 0 && i < TREES_MOST && s[0].tree_laid[i] && k >= s[0].tree_s0[i] && k < s[0].tree_s1[i] { continue; }
+    ox := x - s[0].solid_x[k]; oz := z - s[0].solid_z[k];
+    if sqrt(ox * ox + oz * oz) < s[0].solid_r[k] + 0.6 { return false; }
+  }
+  return true;
 }
 undo_press :: (s: [] MyRealm) {
   if !forge_owner(s) { return; }
@@ -1994,7 +2005,8 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   tn := put(buf[..], 0, ifx s[0].name_n > 0 then name_text(s) else "A realm"); upper(buf[..], tn);
   title := cast(string) buf[0..<tn];
   sub := ifx !s[0].spec_ready then (ifx s[0].spec_failed then "THIS REALM ISN'T HERE" else "OPENING THE REALM")
-         else ifx s[0].owner then "YOUR REALM" else ifx s[0].slug_n == 0 then "A REALM SOMEONE BUILT" else "A REALM ON THE VERSE";
+         else ifx s[0].owner && s[0].from_n > 0 then "YOUR FORK" else ifx s[0].owner then "YOUR REALM"
+         else ifx s[0].from_n > 0 then "A FORK ON THE VERSE" else ifx s[0].slug_n == 0 then "A REALM SOMEONE BUILT" else "A REALM ON THE VERSE";
   bw := 104 * k;
   tw := hi(measure(title, GAP, SPACE, false) * 11 * k, measure(sub, GAP, SPACE, false) * 7.5 * k) + 32 * k;
   tb := Box.{x0 = g, y0 = g, x1 = lo(g + tw, w - 2 * g - bw), y1 = g + 50 * k};
@@ -3100,6 +3112,14 @@ mist_drawn :: (s: [] MyRealm, t: [] Track, u: [] f32) {
 
 // ---- Aethyrforge (aethyr/forge/edit.coax): move a tree, undo, save from the revision read, publish, fork
 FORGED :: "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\ntool build 0\nfeature trees round 6\nfeature rocks 4\nrev 3\npublished 0\nlisted 0\n";
+// Stands you where PUT IT HERE is clear, facing your way (the first such spot from where you are).
+stand_clear :: (s: [] MyRealm) -> bool {
+  for r: 0..<12 { for a: 0..<12 {
+    x := cast(f32) r * 1.5 * cos(cast(f32) a * 0.52); z := 6 + cast(f32) r * 1.5 * sin(cast(f32) a * 0.52);
+    if put_clear(s, s[0].moving, x + PUT_AHEAD * sin(s[0].yaw), z - PUT_AHEAD * cos(s[0].yaw)) { s[0].x = x; s[0].z = z; return true; }
+  } }
+  return false;
+}
 note_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].note[0..<s[0].note_n] == text; }
 answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   realm_requested(s, id);
@@ -3119,6 +3139,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert s[0].moving == near && realm_probe(s[..], 8) == near && note_is(s[..], "Walk to its new place, then put it here.");
   m := frame_of(s[..], t[..], 2560, 1600);
   s[0].yaw = 0.5;
+  #assert stand_clear(s[..]);
   tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
   c := tree_at(s[..], near);
   #assert s[0].moving < 0 && forge_dirty(s[0].fd[..]) && note_is(s[..], "Moved. Save keeps it.");
@@ -3149,12 +3170,13 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   opened(s[..], t[..], "forge-court", FORGED);
   n := frame_of(s[..], t[..], 2560, 1600);
   tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
-  s[0].x = 1; s[0].z = 2; s[0].yaw = 0;
+  s[0].yaw = 0; #assert stand_clear(s[..]);
   tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
   m := frame_of(s[..], t[..], 2560, 1600);
   tap_box(s[..], t[..], s[0].boxes[BTN_SAVE]);
-  b: [16] u8; key := tree_key(nearest_tree(s[..]), b[..]);
-  want: [200] u8; wn := put(want[..], 0, "{\"rev\":3,\"moved\":[{\"entity\":\""); wn = put(want[..], wn, key); wn = put(want[..], wn, "\",\"x\":1.00,\"z\":-0.50}]}");
+  b: [16] u8; key := forge_move_key(s[0].fd[..], 0);
+  want: [200] u8; wn := put(want[..], 0, "{\"rev\":3,\"moved\":[{\"entity\":\""); wn = put(want[..], wn, key); wn = put(want[..], wn, "\",\"x\":");
+  wn = forge_put_cm(want[..], wn, cm_of(s[0].x)); wn = put(want[..], wn, ",\"z\":"); wn = forge_put_cm(want[..], wn, cm_of(s[0].z - PUT_AHEAD)); wn = put(want[..], wn, "}]}");
   #assert url_is(s[..], "/api/playtest/realms/forge-court/save") && (s[0].req_flags & HTTP_POST) != 0 && body_is(s[..], cast(string) want[0..<wn]);
   answered(s[..], t[..], 5, "200\n{\"rev\": 4, \"sha256\": \"ab\"}");
   #assert !forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 4 && s[0].server_rev == 4 && note_is(s[..], "Saved.") && realm_probe(s[..], 15) == 200;
@@ -3169,7 +3191,8 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   // the same document read again keeps its undo step
   s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
   spec: [512] u8; sn := put(spec[..], 0, "200\n"); sn = put(spec[..], sn, FORGED[0..<FORGED.count - 27]);
-  sn = put(spec[..], sn, "rev 4\npublished 4\nlisted 0\nmoved "); sn = put(spec[..], sn, key); sn = put(spec[..], sn, " 1.00 -0.50\n");
+  sn = put(spec[..], sn, "rev 4\npublished 4\nlisted 0\nmoved "); sn = put(spec[..], sn, key); sn = put(spec[..], sn, " ");
+  sn = forge_put_cm(spec[..], sn, cm_of(s[0].x)); sn = put(spec[..], sn, " "); sn = forge_put_cm(spec[..], sn, cm_of(s[0].z - PUT_AHEAD)); sn = put(spec[..], sn, "\n");
   realm_requested(s[..], 7); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 7, cast(string) spec[0..<sn]);
   #assert forge_can_undo(s[0].fd[..]) && !forge_dirty(s[0].fd[..]) && s[0].published_rev == 4;
   tap_box(s[..], t[..], s[0].boxes[BTN_FORK]);
@@ -3186,7 +3209,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert cast(string) s[0].from[0..<s[0].from_n] == "old-court" && cast(string) s[0].from_name[0..<s[0].from_name_n] == "Old Court";
   n := frame_of(s[..], t[..], 2560, 1600);
   #assert !s[0].shown[BTN_PUBLISH];   // revision 7 is the one published
-  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); #assert stand_clear(s[..]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
   m := frame_of(s[..], t[..], 2560, 1600);
   tap_box(s[..], t[..], s[0].boxes[BTN_SAVE]);
   answered(s[..], t[..], 5, "409\n{\"error\": \"changed since\", \"rev\": 9}");
@@ -3229,7 +3252,7 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "forge-court", FORGED);
   n := frame_of(s[..], t[..], 780, 1688);
-  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]); #assert stand_clear(s[..]); tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
   m := frame_of(s[..], t[..], 780, 1688);
   #assert s[0].shown[BTN_MOVE] && s[0].shown[BTN_UNDO] && s[0].shown[BTN_SAVE] && s[0].shown[BTN_FORK] && s[0].shown[BTN_BUILD];
   for b: BTN_MOVE..<BUTTONS {
@@ -3238,4 +3261,21 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
     #assert s[0].boxes[b].x1 - s[0].boxes[b].x0 >= 88;   // a thumb's width at 2x
   }
   #assert realm_probe(s[..], 100 + 4 * BTN_SAVE) == cast(int) (s[0].boxes[BTN_SAVE].x0 / 2 + 0.5) && realm_probe(s[..], 100 + 4 * BTN_PUBLISH) == -1;
+}
+
+#test "PUT IT HERE won't stand a tree in a rock or the water; the tree stays picked" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  picked := s[0].moving;
+  rock := -1;
+  for k: 0..<s[0].solid_n { if k < s[0].tree_s0[picked] || k >= s[0].tree_s1[picked] { rock = k; } }
+  #assert rock >= 0;
+  s[0].yaw = 0; s[0].x = s[0].solid_x[rock]; s[0].z = s[0].solid_z[rock] + PUT_AHEAD;
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  #assert s[0].moving == picked && !forge_dirty(s[0].fd[..]) && note_is(s[..], "Something stands there. Try another spot.");
+  s[0].x = 0; s[0].z = GROUND_R + 3;   // off the ground
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  #assert s[0].moving == picked && !forge_dirty(s[0].fd[..]);
 }

@@ -198,7 +198,6 @@ realm_ready :: (r: [] Run, c: [] Cdp) -> bool {
   while proc_now_ms() < until && probe(c, 7) <= 0 { proc_sleep(200); }
   if probe(c, 7) <= 0 { return why(r, "no trees were laid out"); }
   if probe(c, 1) != 1 { return why(r, "this session isn't the realm's owner"); }
-  _ := press(c, "Escape", "Escape", 27);   // what a first visit opens over the realm
   proc_sleep(400);
   return true;
 }
@@ -252,10 +251,15 @@ move_once :: (r: [] Run, c: [] Cdp) -> bool {
   t := probe(c, 8);
   if t < 0 { return why(r, "MOVE A TREE picked no tree"); }
   x0 := probe(c, 20 + 2 * t); z0 := probe(c, 21 + 2 * t);
-  if !hold(c, "w", "KeyW", 87, 900) { return why(r, "W wasn't taken"); }
-  proc_sleep(300);
-  if !tap(r, c, R_MOVE) { return false; }
-  if probe(c, 8) != -1 { return why(r, "PUT IT HERE left the tree picked"); }
+  // walk, then PUT IT HERE; where something already stands the page says so and keeps the tree
+  // picked, so walk on (a little to the side) and try again, as a person would
+  for k: 0..<6 {
+    if !hold(c, "w", "KeyW", 87, 900) || (k > 0 && !hold(c, "d", "KeyD", 68, 500)) { return why(r, "the keys weren't taken"); }
+    proc_sleep(300);
+    if !tap(r, c, R_MOVE) { return false; }
+    if probe(c, 8) == -1 { break; }
+  }
+  if probe(c, 8) != -1 { return why(r, "PUT IT HERE never found a clear spot"); }
   x1 := probe(c, 20 + 2 * t); z1 := probe(c, 21 + 2 * t);
   if x1 == x0 && z1 == z0 { return why(r, "the tree didn't move"); }
   if probe(c, 4) != 1 || probe(c, 5) != 1 { return why(r, "a move isn't unsaved and undoable"); }

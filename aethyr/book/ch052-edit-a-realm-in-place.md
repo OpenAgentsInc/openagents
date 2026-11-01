@@ -131,7 +131,7 @@ is shown only when it applies:
 | Control | Shown when | What it does |
 | --- | --- | --- |
 | MOVE A TREE | the realm has trees | Picks the tree nearest you. A tap on another tree picks that one. |
-| PUT IT HERE | a tree is picked | Stands it 2.5 m in front of you, as one undo step. Esc lets it go. |
+| PUT IT HERE | a tree is picked | Stands it 2.5 m in front of you, as one undo step. Where something already stands, or off the ground or in the water, it says so and keeps the tree picked. Esc lets it go. |
 | UNDO | there is a step to undo | Takes the last move back. |
 | SAVE | there are unsaved changes | Saves from the revision read. |
 
