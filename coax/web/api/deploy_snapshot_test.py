@@ -44,6 +44,10 @@ class Snapshot(unittest.TestCase):
  def make_repo(self,root):
   repo=root/'repo';api=repo/'coax/web/api';api.mkdir(parents=True);(api/'migrations').mkdir()
   for f in ('deploy.sh','deploy-command.sh','deploy-rollout.sh','deploy_verify.py'):shutil.copy2(HERE/f,api/f)
+  # deploy.sh compiles the API's Coax modules with the commit's compiler (coax/build.sh, then coax/bin/coax c ...); stub both.
+  (repo/'coax/bin').mkdir(parents=True);(repo/'coax/build.sh').write_text('#!/bin/sh\nexit 0\n');(repo/'coax/build.sh').chmod(0o755)
+  (repo/'coax/bin/coax').write_text('#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = --header ] && { printf "/* h */\\n" > "$2"; }; shift; done\nprintf "/* c */\\n"\n');(repo/'coax/bin/coax').chmod(0o755)
+  for m in ('nip98','mesh-policy','caller-policy'):(api/(m+'.coax')).write_text('fixture\n')
   for f,body in {'fixture.c':'committed source\n','fixture.h':'committed header\n','Dockerfile':'committed Dockerfile\n','admins.conf':'','migrations/fixture.sql':'committed migration\n','test.sh':'#!/bin/sh\nset -eu\ntest "$(git -C "$(dirname "$0")" rev-parse HEAD)" = "$FIXTURE_COMMIT"\nprintf tested > "$FIXTURE_ROOT/tested"\n'}.items():
    p=api/f;p.write_text(body)
   (api/'test.sh').chmod(0o755)
@@ -52,7 +56,7 @@ class Snapshot(unittest.TestCase):
  def run_deploy(self,root,repo,commit,mode='fail'):
   bin=root/'bin';bin.mkdir();(bin/'gcloud').write_text(FAKE_GCLOUD);(bin/'gcloud').chmod(0o755)
   (bin/'curl').write_text(FAKE_CURL);(bin/'curl').chmod(0o755)
-  env={**os.environ,'FIXTURE_ROOT':str(root),'FIXTURE_COMMIT':commit,'FIXTURE_MODE':mode,'PATH':str(bin)+':'+os.environ['PATH']}
+  env={**os.environ,'FIXTURE_ROOT':str(root),'FIXTURE_COMMIT':commit,'FIXTURE_MODE':mode,'OA_API_DEPLOY_TESTS':'1','PATH':str(bin)+':'+os.environ['PATH']}
   return subprocess.run(['bash',str(repo/'coax/web/api/deploy.sh')],env=env,capture_output=True,text=True)
  def test_exact_commit_snapshot_and_failed_staging_stops(self):
   with tempfile.TemporaryDirectory() as tmp:
