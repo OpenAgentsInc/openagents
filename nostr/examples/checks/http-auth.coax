@@ -1,0 +1,112 @@
+// The checks of http-auth.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/http-auth.coax --run-steps 250000000
+#load "../http-auth.coax";
+
+// book:begin check
+// The example's request signed by coax/tests/nostr/nip59_reference.py, a
+// pure-Python BIP-340 signer and NIP-01 serializer that shares no code with
+// Coax: signed(key, aux, 1790000000, 27235, tags, "") with BIP-340 vector 1's
+// key and aux, and the body hash from Python's hashlib.
+PY_BODY_SHA256 :: "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862";
+PY_EVENT :: "{\"id\":\"572b6da44f9013c80638b6898f2c0f8ba2febb29695e07d236ac8e19a9566104\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1790000000,\"kind\":27235,\"tags\":[[\"u\",\"https://example.com/api/notes?limit=2\"],[\"method\",\"POST\"],[\"payload\",\"015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862\"]],\"content\":\"\",\"sig\":\"5c2c982d4fb36d1d75f36a44200083c292f5deb0829e8ad8944de7a08e9eda3c9838e431fae62d3508ea5a70bfdcf165d93714b41631e0b2c302fff27969d2b3\"}";
+// A GET with no payload tag, signed by the same Python with the test key 3
+// and zero aux, then encoded by Python's base64.b64encode.
+PY_GET :: "Nostr eyJpZCI6ImJlYmQ4MTc0NDY4ODc4MDQzMjJkNDg4MjA5OWM3YTZlNTUxMzI1ZWJjMDIzMmYwMDQxOTdmNTk1OWIwMzQxOTgiLCJwdWJrZXkiOiJmOTMwOGEwMTkyNThjMzEwNDkzNDRmODVmODlkNTIyOWI1MzFjODQ1ODM2Zjk5YjA4NjAxZjExM2JjZTAzNmY5IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL2V4YW1wbGUuY29tL2FwaS9ub3RlcyJdLFsibWV0aG9kIiwiR0VUIl1dLCJjb250ZW50IjoiIiwic2lnIjoiMjcxYWM2Y2MwNTg2MTc5ZjE2YTY0YjVkYzI3YmRkMjkwODAyZGFjMzk4ZWIxYzExNmZjZjBlN2I3ZDBkYTU2NmE1M2M2NDk5ZTY0ZWUyYWI4ZDU0NTQ4YzVkZDM3YzAwNTMxNTJjOWJhYzZlYmE5ZjJlZjI3MjhlNTI1ZmMzOTAifQ==";
+// For NIP-98's example event, Python's NIP-01 id of its fields, and the
+// result of Python's BIP-340 verify of its sig over the claimed id: true.
+// The id was signed, but the fields were changed after signing.
+PY_NIP98_ID :: "2dd2dfec3df85dd0d4c32af50241f56a077b0969cb508f987afac1e25b0d4c76";
+
+key_aux :: (key: [] u8, aux: [] u8) { decode_hex(KEY_HEX, key); decode_hex(AUX_HEX, aux); }
+// The decision on a fresh server.
+once :: (header: string, method: string, url: string, body: string, now: int) -> int {
+  seen: [1] Seen; out: [N98_OUT] u8;
+  return decide(seen[..], header, method, url, body, now, out[..]).error;
+}
+// The base64 length of n bytes with padding, written from RFC 4648.
+b64_len :: (n: int) -> int { return (n + 2) / 3 * 4; }
+// RFC 4648's vectors: "", "f", ..., "foobar" encode to "", "Zg==",
+// "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy".
+#test "base64 lengths are RFC 4648's" {
+  want := [7] int.[0, 4, 4, 4, 8, 8, 8];
+  for n: 0..<7 { #assert b64_len(n) == want[n]; }
+}
+
+#test "the client builds Python's event, byte for byte" #steps 2000000000 {
+  hex: [64] u8; body_hash(BODY, hex[..]);
+  #assert cast(string) hex[..] == PY_BODY_SHA256;
+  key: [32] u8; aux: [32] u8; key_aux(key[..], aux[..]);
+  tb: [256] u8; ev: [1024] u8; hb: [2048] u8;
+  event := sign(key[..], aux[..], CREATED, 27235, auth_tags(URL, "POST", BODY, tb[..]), ev[..]);
+  #assert event == PY_EVENT && event.count == 488;
+  header := encode_header(event, hb[..]);
+  #assert header.count == 6 + b64_len(488) && header.count == 658;
+  #assert once(header, "POST", URL, BODY, CREATED + 30) == N98_OK;
+}
+#test "no body, no payload tag" {
+  tb: [256] u8;
+  #assert auth_tags("https://example.com/api/notes", "GET", "", tb[..]) ==
+          "[[\"u\",\"https://example.com/api/notes\"],[\"method\",\"GET\"]]";
+}
+#test "Python's GET verifies; without a payload tag any body passes" #steps 2000000000 {
+  #assert PY_GET.count == 6 + b64_len(400);
+  #assert once(PY_GET, "GET", "https://example.com/api/notes", "", 1790000000) == N98_OK;
+  #assert once(PY_GET, "get", "https://example.com/api/notes", "anything", 1790000060) == N98_OK;
+  #assert once(PY_GET, "GET", "https://example.com/api/notes", "", 1790000061) == N98_TIME;
+  #assert once(PY_GET, "GET", "https://example.com/api/notes", "", 1789999939) == N98_TIME;
+  #assert once(PY_GET, "HEAD", "https://example.com/api/notes", "", 1790000000) == N98_METHOD;
+  #assert once(PY_GET, "GET", "https://example.com/api/notes?", "", 1790000000) == N98_URL;
+  #assert once(PY_GET, "GET", "http://example.com/api/notes", "", 1790000000) == N98_URL;
+}
+#test "each server check refuses, with its own code" #steps 2000000000 {
+  key: [32] u8; aux: [32] u8; key_aux(key[..], aux[..]);
+  tb: [256] u8; ev: [1024] u8; hb: [2048] u8;
+  tags := auth_tags(URL, "POST", BODY, tb[..]);
+  event := sign(key[..], aux[..], CREATED, 27235, tags, ev[..]);
+  h := encode_header(event, hb[..]);
+  #assert once(h, "POST", URL, BODY, CREATED + 60) == N98_OK;
+  #assert once(h, "POST", URL, BODY, CREATED - 60) == N98_OK;
+  #assert once(h, "PUT", URL, BODY, CREATED) == N98_METHOD;
+  #assert once(h, "POST", "https://example.com/api/notes?limit=2&x", BODY, CREATED) == N98_URL;
+  #assert once(h, "POST", URL, "{\"a\":1} ", CREATED) == N98_PAYLOAD;
+  #assert once(h, "POST", URL, "", CREATED) == N98_PAYLOAD;
+  #assert once(h, "POST", URL, BODY, CREATED + 61) == N98_TIME;
+  #assert once(h, "POST", URL, BODY, CREATED - 61) == N98_TIME;
+  #assert once(h[1..<h.count], "POST", URL, BODY, CREATED) == N98_NO_AUTH;
+  #assert once("Nostr ****", "POST", URL, BODY, CREATED) == N98_BASE64;
+  xb: [1024] u8; xh: [2048] u8;
+  #assert once(encode_header(edit(event, event.count - 3, '4', xb[..]), xh[..]), "POST", URL, BODY, CREATED) == N98_SIGNATURE;
+  #assert once(encode_header(edit(event, 7, '6', xb[..]), xh[..]), "POST", URL, BODY, CREATED) == N98_ID;
+  ke: [1024] u8; kh: [2048] u8;
+  #assert once(encode_header(sign(key[..], aux[..], CREATED, 1, tags, ke[..]), kh[..]), "POST", URL, BODY, CREATED) == N98_KIND;
+}
+#test "the same event id refuses the second time; a new id passes" #steps 2000000000 {
+  key: [32] u8; aux: [32] u8; key_aux(key[..], aux[..]);
+  tb: [256] u8; ev: [1024] u8; hb: [2048] u8; e2: [1024] u8; h2: [2048] u8;
+  tags := auth_tags(URL, "POST", BODY, tb[..]);
+  h := encode_header(sign(key[..], aux[..], CREATED, 27235, tags, ev[..]), hb[..]);
+  seen: [1] Seen; out: [N98_OUT] u8;
+  #assert decide(seen[..], h, "POST", URL, BODY, CREATED, out[..]).error == N98_OK;
+  #assert decide(seen[..], h, "POST", URL, BODY, CREATED + 1, out[..]).error == REPLAYED;
+  // A refused request does not use up its id.
+  h2s := encode_header(sign(key[..], aux[..], CREATED + 1, 27235, tags, e2[..]), h2[..]);
+  #assert decide(seen[..], h2s, "GET", URL, BODY, CREATED, out[..]).error == N98_METHOD;
+  #assert decide(seen[..], h2s, "POST", URL, BODY, CREATED, out[..]).error == N98_OK;
+  #assert decide(seen[..], h2s, "POST", URL, BODY, CREATED, out[..]).error == REPLAYED;
+  #assert seen[0].count == 2;
+  // A full list refuses rather than forgetting an id.
+  seen[0].count = 8;
+  #assert decide(seen[..], PY_GET, "GET", "https://example.com/api/notes", "", 1790000000, out[..]).error == FULL;
+}
+#test "NIP-98's example: its claimed id is not its fields' id, so it refuses" {
+  #assert NIP98_HEADER.count == 6 + 550;
+  #assert once(NIP98_HEADER, "GET", NIP98_URL, "", NIP98_CREATED) == N98_ID;
+  work: [N98_WORK] u8; hash: [32] u8;
+  e := n98_parse(NIP98_HEADER, work[..]);
+  #assert e.error == N98_OK && e.kind == 27235 && e.created == NIP98_CREATED;
+  #assert n98_id(e, work[..], hash[..]) == N98_ID;
+  hex: [64] u8; r := hex_encode_checked(cast(string) hash[..], hex[..], false);
+  #assert cast(string) hex[..] == PY_NIP98_ID;
+}
+// book:end check

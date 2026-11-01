@@ -962,7 +962,7 @@
    "number": 49,
    "title": "HTTP auth",
    "file": "ch049-http-auth.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     21,
@@ -971,7 +971,10 @@
    "source": [
     "coax/lib/nostr/nip98-observe.coax",
     "coax/lib/nostr/nip98-tags.coax",
-    "coax/lib/nostr/weblogin.coax"
+    "coax/lib/nostr/weblogin.coax",
+    "coax/web/api/nip98.coax",
+    "nostr/examples/checks/http-auth.coax",
+    "nostr/examples/http-auth.coax"
    ],
    "qualified_targets": [
     "cpu",

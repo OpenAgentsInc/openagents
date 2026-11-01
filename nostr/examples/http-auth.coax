@@ -1,0 +1,178 @@
+// book:begin example
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/base64.coax";
+#load "../../coax/web/api/nip98.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+// Append text to out at n; the new length.
+put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { out[n] = c; n += 1; }
+  return n;
+}
+
+// The client: SHA-256 of the body as hex, into hex (64 bytes).
+body_hash :: (body: string, hex: [] u8) {
+  h: [32] u8; b: [64] u8;
+  for i: 0..<body.count { b[i] = body[i]; }
+  #assert sha256_hash_checked(b[0..<body.count], h[..], false) == SHA_OK;
+  r := hex_encode_checked(cast(string) h[..], hex, false);
+  #assert r.written == 64;
+}
+// The client: the tags for url and method, with a payload tag when the
+// body is not empty, written into out.
+auth_tags :: (url: string, method: string, body: string, out: [] u8) -> string {
+  n := put(out, 0, "[[\"u\",\""); n = put(out, n, url);
+  n = put(out, n, "\"],[\"method\",\""); n = put(out, n, method); n = put(out, n, "\"]");
+  if body.count > 0 {
+    hex: [64] u8; body_hash(body, hex[..]);
+    n = put(out, n, ",[\"payload\",\""); n = put(out, n, cast(string) hex[..]); n = put(out, n, "\"]");
+  }
+  n = put(out, n, "]");
+  return cast(string) out[0..<n];
+}
+// The client: "Nostr <base64 of event>" into header.
+encode_header :: (event: string, header: [] u8) -> string {
+  h := put(header, 0, "Nostr ");
+  e := base64_encode_checked(event, header[h..<header.count], false);
+  #assert e.error == NC_OK;
+  return cast(string) header[0..<h + e.written];
+}
+// The client: sign an event of this kind with empty content into ev.
+sign :: (key: [] u8, aux: [] u8, created_at: int, kind: int, tags: string, ev: [] u8) -> string {
+  work: [1] NostrSignWork; scratch: [1024] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux, created_at, kind, tags, "", work[..], scratch[..], ev, false);
+  }
+  #assert n > 0;
+  return cast(string) ev[0..<n];
+}
+// event with the byte at position at replaced by c, into out.
+edit :: (event: string, at: int, c: u8, out: [] u8) -> string {
+  for i: 0..<event.count { out[i] = event[i]; }
+  out[at] = c;
+  return cast(string) out[0..<event.count];
+}
+
+// The server: the event IDs already used inside the window. A real server
+// keeps them in a shared store (the API's first_use inserts into Postgres);
+// this list is the same rule in memory. A full list refuses: the server
+// never forgets an ID to make room.
+Seen :: struct { ids: [8] [64] u8; count: int; }
+REPLAYED :: 100; FULL :: 101;
+// The server's whole decision for one request: the NIP-98 check, then
+// first use of the event ID. N98_OK, a N98_ refusal, REPLAYED or FULL;
+// on N98_OK, out holds the id, the pubkey and the tags (nip98.coax).
+decide :: (seen: [] Seen, header: string, method: string, url: string, body: string,
+           now: int, out: [] u8) -> Nip98 {
+  work: [N98_WORK] u8; b: [1024] u8;
+  for i: 0..<body.count { b[i] = body[i]; }
+  r := nip98_check_coax(header, method, url, b[0..<body.count], now, work[..], out);
+  if r.error != N98_OK { return r; }
+  for k: 0..<seen[0].count {
+    if cast(string) seen[0].ids[k][..] == cast(string) out[0..<64] { r.error = REPLAYED; return r; }
+  }
+  if seen[0].count == 8 { r.error = FULL; return r; }
+  for i: 0..<64 { seen[0].ids[seen[0].count][i] = out[i]; }
+  seen[0].count += 1;
+  return r;
+}
+// decide, and print the HTTP status and why.
+serve :: (label: string, seen: [] Seen, header: string, method: string, url: string,
+          body: string, now: int) {
+  out: [N98_OUT] u8;
+  r := decide(seen, header, method, url, body, now, out[..]);
+  if r.error == REPLAYED { print("%: 401, event id already used\n", label); return; }
+  if r.error == FULL { print("%: 503, too many event ids in the window\n", label); return; }
+  if r.error != N98_OK { print("%: 401, %\n", label, nip98_error_text(r.error)); return; }
+  print("%: 200, pubkey %..., u %, method %, payload %\n", label,
+        cast(string) out[64..<72], cast(string) out[N98_OUT_U..<N98_OUT_U + r.u],
+        cast(string) out[N98_OUT_METHOD..<N98_OUT_METHOD + r.method],
+        ifx r.payload > 0 then "bound" else "absent");
+}
+
+// BIP-340 vector 1's published test key and aux, as in chapter 21. Never
+// sign with a real key in an example.
+KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+URL :: "https://example.com/api/notes?limit=2";
+BODY :: "{\"a\":1}";
+CREATED :: 1790000000;
+
+main :: () {
+  key: [32] u8; aux: [32] u8;
+  decode_hex(KEY_HEX, key[..]); decode_hex(AUX_HEX, aux[..]);
+
+  print("the client\n");
+  hex: [64] u8; body_hash(BODY, hex[..]);
+  print("sha256(%): %\n", BODY, cast(string) hex[..]);
+  tb: [256] u8; tags := auth_tags(URL, "POST", BODY, tb[..]);
+  print("tags (% bytes): %\n", tags.count, tags);
+  ev: [1024] u8; hb: [2048] u8;
+  event := sign(key[..], aux[..], CREATED, 27235, tags, ev[..]);
+  header := encode_header(event, hb[..]);
+  print("event (% bytes): %\n", event.count, event);
+  print("header value: % bytes\n", header.count);
+  print("header: %...%\n", header[0..<24], header[header.count - 8..<header.count]);
+
+  print("the server, now = created_at + 30\n");
+  seen: [1] Seen;
+  now := CREATED + 30;
+  serve("first use", seen[..], header, "POST", URL, BODY, now);
+  serve("same header again", seen[..], header, "POST", URL, BODY, now);
+  print("refusals, from a second event one second later (a new id)\n");
+  eb: [1024] u8; fb: [2048] u8;
+  second := sign(key[..], aux[..], CREATED + 1, 27235, tags, eb[..]);
+  fresh := encode_header(second, fb[..]);
+  serve("method GET", seen[..], fresh, "GET", URL, BODY, now);
+  serve("query limit=3", seen[..], fresh, "POST", "https://example.com/api/notes?limit=3", BODY, now);
+  serve("path /notes/", seen[..], fresh, "POST", "https://example.com/api/notes/?limit=2", BODY, now);
+  serve("body {\"a\":2}", seen[..], fresh, "POST", URL, "{\"a\":2}", now);
+  serve("now = created_at + 61", seen[..], fresh, "POST", URL, BODY, CREATED + 1 + 61);
+  serve("now = created_at - 61", seen[..], fresh, "POST", URL, BODY, CREATED + 1 - 61);
+  serve("scheme Bearer", seen[..], "Bearer abc", "POST", URL, BODY, now);
+  serve("not base64", seen[..], "Nostr !!!!", "POST", URL, BODY, now);
+  xb: [1024] u8; hx: [2048] u8;
+  last := second.count - 3;
+  serve("last sig digit changed", seen[..],
+        encode_header(edit(second, last, ifx second[last] == '0' then '1' else '0', xb[..]), hx[..]),
+        "POST", URL, BODY, now);
+  serve("first id digit changed", seen[..],
+        encode_header(edit(second, 7, ifx second[7] == '0' then '1' else '0', xb[..]), hx[..]),
+        "POST", URL, BODY, now);
+  ke: [1024] u8; kb: [2048] u8;
+  serve("kind 1, signed", seen[..], encode_header(sign(key[..], aux[..], CREATED, 1, tags, ke[..]), kb[..]),
+        "POST", URL, BODY, now);
+  print("the second event, accepted, then replayed\n");
+  serve("method post, now = created_at + 60", seen[..], fresh, "post", URL, BODY, CREATED + 1 + 60);
+  serve("the same again", seen[..], fresh, "POST", URL, BODY, CREATED + 1 + 60);
+
+  print("NIP-98's example header\n");
+  spec: [1] Seen;
+  print("header value: % bytes\n", NIP98_HEADER.count);
+  serve("at its created_at", spec[..], NIP98_HEADER, "GET", NIP98_URL, "", NIP98_CREATED);
+  work: [N98_WORK] u8; hash: [32] u8;
+  e := n98_parse(NIP98_HEADER, work[..]);
+  print("read: %, kind %, created_at %\n", e.error == N98_OK, e.kind, e.created);
+  print("claimed id : %\n", cast(string) e.id[..]);
+  print("id check: %\n", nip98_error_text(n98_id(e, work[..], hash[..])));
+  print_hex("computed id", hash[..]);
+}
+// book:end example
+
+// The Authorization value printed in nostr/nips/official/98.md, joined onto
+// one line (base64 without padding), and the request it signs.
+NIP98_HEADER :: "Nostr eyJpZCI6ImZlOTY0ZTc1ODkwMzM2MGYyOGQ4NDI0ZDA5MmRhODQ5NGVkMjA3Y2JhODIzMTEwYmUzYTU3ZGZlNGI1Nzg3MzQiLCJwdWJrZXkiOiI2M2ZlNjMxOGRjNTg1ODNjZmUxNjgxMGY4NmRkMDllMThiZmQ3NmFhYmMyNGEwMDgxY2UyODU2ZjMzMDUwNGVkIiwiY29udGVudCI6IiIsImtpbmQiOjI3MjM1LCJjcmVhdGVkX2F0IjoxNjgyMzI3ODUyLCJ0YWdzIjpbWyJ1IiwiaHR0cHM6Ly9hcGkuc25vcnQuc29jaWFsL2FwaS92MS9uNXNwL2xpc3QiXSxbIm1ldGhvZCIsIkdFVCJdXSwic2lnIjoiNWVkOWQ4ZWM5NThiYzg1NGY5OTdiZGMyNGFjMzM3ZDAwNWFmMzcyMzI0NzQ3ZWZlNGEwMGUyNGY0YzMwNDM3ZmY0ZGQ4MzA4Njg0YmVkNDY3ZDlkNmJlM2U1YTUxN2JiNDNiMTczMmNjN2QzMzk0OWEzYWFmODY3MDVjMjIxODQifQ";
+NIP98_URL :: "https://api.snort.social/api/v1/n5sp/list";
+NIP98_CREATED :: 1682327852;

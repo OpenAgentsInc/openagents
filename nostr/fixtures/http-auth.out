@@ -1,0 +1,31 @@
+the client
+sha256({"a":1}): 015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862
+tags (144 bytes): [["u","https://example.com/api/notes?limit=2"],["method","POST"],["payload","015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"]]
+event (488 bytes): {"id":"572b6da44f9013c80638b6898f2c0f8ba2febb29695e07d236ac8e19a9566104","pubkey":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","created_at":1790000000,"kind":27235,"tags":[["u","https://example.com/api/notes?limit=2"],["method","POST"],["payload","015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"]],"content":"","sig":"5c2c982d4fb36d1d75f36a44200083c292f5deb0829e8ad8944de7a08e9eda3c9838e431fae62d3508ea5a70bfdcf165d93714b41631e0b2c302fff27969d2b3"}
+header value: 658 bytes
+header: Nostr eyJpZCI6IjU3MmI2ZG...MmIzIn0=
+the server, now = created_at + 30
+first use: 200, pubkey dff1d77f..., u https://example.com/api/notes?limit=2, method POST, payload bound
+same header again: 401, event id already used
+refusals, from a second event one second later (a new id)
+method GET: 401, the method tag is not this method
+query limit=3: 401, the u tag is not this URL
+path /notes/: 401, the u tag is not this URL
+body {"a":2}: 401, the payload tag is not this body
+now = created_at + 61: 401, created_at is not within 60 s
+now = created_at - 61: 401, created_at is not within 60 s
+scheme Bearer: 401, no Nostr authorization
+not base64: 401, authorization is not base64
+last sig digit changed: 401, signature does not verify
+first id digit changed: 401, id does not match the event
+kind 1, signed: 401, not a kind 27235 event
+the second event, accepted, then replayed
+method post, now = created_at + 60: 200, pubkey dff1d77f..., u https://example.com/api/notes?limit=2, method POST, payload bound
+the same again: 401, event id already used
+NIP-98's example header
+header value: 556 bytes
+at its created_at: 401, id does not match the event
+read: true, kind 27235, created_at 1682327852
+claimed id : fe964e758903360f28d8424d092da8494ed207cba823110be3a57dfe4b578734
+id check: id does not match the event
+computed id: 2dd2dfec3df85dd0d4c32af50241f56a077b0969cb508f987afac1e25b0d4c76
