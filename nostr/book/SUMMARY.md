@@ -67,7 +67,7 @@
 - [36. Match filters with indexes](ch036-match-filters-with-indexes.md) — implemented
 - [37. NIP-11 relay information](ch037-nip-11-relay-information.md) — implemented
 - [38. NIP-42 authentication](ch038-nip-42-authentication.md) — implemented
-- [39. Delete, expire and vanish](ch039-delete-expire-and-vanish.md) — partly implemented
+- [39. Delete, expire and vanish](ch039-delete-expire-and-vanish.md) — implemented
 - [40. Count events](ch040-count-events.md) — design draft
 - [41. Search](ch041-search.md) — design draft
 - [42. Protected events](ch042-protected-events.md) — design draft

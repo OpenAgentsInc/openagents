@@ -457,6 +457,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/delete-expire-vanish.coax",
+      "chapter": "nostr/book/ch039-delete-expire-and-vanish.md",
+      "stdout": "nostr/fixtures/delete-expire-vanish.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

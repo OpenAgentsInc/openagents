@@ -1,0 +1,368 @@
+// NIP-09 deletion requests and NIP-62 requests to vanish over the verified
+// store (store_core.coax). A stored kind 5 or kind 62 event becomes
+// tombstones: an `e` tag becomes "this id, if its author is the signer"; an
+// `a` tag becomes "this kind, author and d, every version up to the
+// request's created_at" (store_policy.coax's ns_delete_id and
+// ns_delete_address decide both); a kind 62 that names this relay (or
+// ALL_RELAYS) becomes "every event by the signer up to its created_at".
+// Each tombstone retires the live records it covers and refuses any later
+// event it covers (NSD_DELETED), so a deleted event cannot come back.
+//
+// Nothing here is durable by itself: the tombstones are derived from the
+// stored requests, so replaying the store's file (store_saved.coax's
+// rsd_replay) through nsd_admit rebuilds them. A deletion request never
+// deletes another deletion request, and kind 5 never deletes a kind 62.
+// Not built: NIP-62's deletion of gift wraps (kind 1059) that p-tag the
+// pubkey, and the relay (coax/relay/relay.coax) does not call this file yet.
+#load "store_core.coax";
+#load "json.coax";
+#authority;
+
+// What a tombstone covers.
+NSD_E :: 0; NSD_A :: 1; NSD_VANISH :: 2;
+// Results beyond store_core's NSS_*: covered by a stored deletion or vanish,
+// and no room for the request's tombstones (nothing stored).
+NSD_DELETED :: 30; NSD_NO_ROOM :: 31;
+NSD_ALL_RELAYS :: "ALL_RELAYS";
+
+// signer is the request's pubkey. E: id. A: the address kind:author:d and
+// until (the request's created_at). VANISH: until.
+NsdTomb :: struct { what: int; signer: [32] u8; id: [32] u8; author: [32] u8; kind: int; d: [256] u8; d_n: int; until: int; }
+// The caller owns t; n are in use.
+// last is how many records the last request nsd_admit stored retired.
+NsdTombs :: struct { n: int; t: [] NsdTomb; last: int; }
+
+// ---- test helpers ------------------------------------------------------------
+
+nsd_t_rec :: (id: u8, author: u8, kind: int, created: int) -> RsdRec {
+  c: RsdRec; c.id[0] = id; c.author[0] = author; c.kind = kind; c.created = created; c.expiry = -1; return c;
+}
+nsd_t_tomb :: (what: int, signer: u8) -> NsdTomb { t: NsdTomb; t.what = what; t.signer[0] = signer; return t; }
+NSD_T_ALICE :: "1111111111111111111111111111111111111111111111111111111111111111";
+NSD_T_BOB :: "2222222222222222222222222222222222222222222222222222222222222222";
+
+// ---- what a tombstone covers -------------------------------------------------
+
+#test "an e tombstone covers only the signer's event with that id, and never kind 5 or 62" {
+  tb: [1] NsdTombs; t: [2] NsdTomb; tb[0].t = t[..];
+  x := nsd_t_tomb(NSD_E, 1); x.id[0] = 7; t[0] = x; tb[0].n = 1;
+  c := nsd_t_rec(7, 1, 1, 10);
+  #assert nsd_covers(tb[..], 0, c);
+  c.author[0] = 2; #assert !nsd_covers(tb[..], 0, c);
+  c.author[0] = 1; c.id[31] = 1; #assert !nsd_covers(tb[..], 0, c);
+  c.id[31] = 0; c.kind = 5; #assert !nsd_covers(tb[..], 0, c);
+  c.kind = 62; #assert !nsd_covers(tb[..], 0, c);
+  c.kind = 30023; #assert nsd_covers(tb[..], 0, c);
+}
+#test "an a tombstone covers versions of its address up to until, by the signer only" {
+  tb: [1] NsdTombs; t: [2] NsdTomb; tb[0].t = t[..];
+  x := nsd_t_tomb(NSD_A, 1); x.author[0] = 1; x.kind = 30023; x.d[0] = 'p'; x.d_n = 1; x.until = 100; t[0] = x; tb[0].n = 1;
+  c := nsd_t_rec(9, 1, 30023, 100); c.d[0] = 'p'; c.d_n = 1;
+  #assert nsd_covers(tb[..], 0, c);
+  c.created = 101; #assert !nsd_covers(tb[..], 0, c);
+  c.created = 0; c.d_n = 0; #assert !nsd_covers(tb[..], 0, c);
+  c.d_n = 1; c.kind = 30024; #assert !nsd_covers(tb[..], 0, c);
+  c.kind = 30023; c.author[0] = 2; #assert !nsd_covers(tb[..], 0, c);
+  // an address naming another author, signed by 1, covers nothing
+  c.author[0] = 2; t[0].author[0] = 2; #assert !nsd_covers(tb[..], 0, c);
+  // a replaceable kind's address has no d
+  t[0].author[0] = 1; t[0].kind = 0; t[0].d_n = 0; c.author[0] = 1; c.kind = 0; c.d_n = 0; #assert nsd_covers(tb[..], 0, c);
+  // a regular kind has no address
+  t[0].kind = 1; c.kind = 1; #assert !nsd_covers(tb[..], 0, c);
+}
+#test "a vanish tombstone covers everything by the signer up to until except kind 62" {
+  tb: [1] NsdTombs; t: [2] NsdTomb; tb[0].t = t[..];
+  x := nsd_t_tomb(NSD_VANISH, 1); x.until = 50; t[0] = x; tb[0].n = 1;
+  c := nsd_t_rec(3, 1, 5, 50);
+  #assert nsd_covers(tb[..], 0, c);
+  c.kind = 30023; c.created = 0; #assert nsd_covers(tb[..], 0, c);
+  c.created = 51; #assert !nsd_covers(tb[..], 0, c);
+  c.created = 50; c.author[0] = 2; #assert !nsd_covers(tb[..], 0, c);
+  c.author[0] = 1; c.kind = 62; #assert !nsd_covers(tb[..], 0, c);
+  c.kind = 61; #assert nsd_covers(tb[..], 0, c); c.kind = 63; #assert nsd_covers(tb[..], 0, c);
+  #assert nsd_blocked(tb[..], c);
+  tb[0].n = 0; #assert !nsd_blocked(tb[..], c);
+}
+#test "blocked looks at every tombstone in use and no further" {
+  tb: [1] NsdTombs; t: [3] NsdTomb; tb[0].t = t[..];
+  a := nsd_t_tomb(NSD_E, 1); a.id[0] = 4; t[0] = a;
+  b := nsd_t_tomb(NSD_E, 1); b.id[0] = 5; t[1] = b;
+  c := nsd_t_tomb(NSD_E, 1); c.id[0] = 6; t[2] = c;
+  tb[0].n = 2;
+  #assert nsd_blocked(tb[..], nsd_t_rec(4, 1, 1, 0)) && nsd_blocked(tb[..], nsd_t_rec(5, 1, 1, 0));
+  #assert !nsd_blocked(tb[..], nsd_t_rec(6, 1, 1, 0));
+}
+
+// book:begin covers
+nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool {
+  t := tb[0].t[k]; r := c;
+  if t.what == NSD_VANISH { return r.kind != 62 && ns_equal32(r.author, t.signer) && r.created <= t.until; }
+  m := NsMeta.{id = r.id, author = r.author, kind = r.kind, created = r.created, identifier = cast(string) r.d[0..<r.d_n]};
+  if t.what == NSD_E { return r.kind != 62 && ns_delete_id(m, t.signer, t.id); }
+  q := NsMeta.{author = t.author, kind = t.kind, created = t.until, identifier = cast(string) t.d[0..<t.d_n]};
+  return ns_delete_address(m, q, t.signer);
+}
+// Whether any tombstone covers c.
+nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool {
+  for k: 0..<tb[0].n { if nsd_covers(tb, k, c) { return true; } }
+  return false;
+}
+// book:end covers
+
+// ---- applying one tombstone ----------------------------------------------------
+
+#test "a tombstone retires every live record it covers and counts them" {
+  arena: [64] u8; recs: [6] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  tb: [1] NsdTombs; t: [2] NsdTomb; tb[0].t = t[..];
+  #assert ns_store_admit(s[..], nsd_t_rec(1, 1, 1, 10), "aa", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s[..], nsd_t_rec(2, 1, 1, 20), "bbb", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s[..], nsd_t_rec(3, 2, 1, 10), "c", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s[..], nsd_t_rec(4, 1, 62, 10), "d", true) == NSS_ACCEPT;
+  v := nsd_t_tomb(NSD_VANISH, 1); v.until = 15;
+  #assert nsd_apply(s[..], tb[..], v) == 1 && tb[0].n == 1;
+  #assert !s[0].recs[0].live && s[0].recs[1].live && s[0].recs[2].live && s[0].recs[3].live;
+  #assert s[0].live == 3 && s[0].bytes == 5;
+  // the same again retires nothing more: retired records are skipped
+  #assert nsd_apply(s[..], tb[..], v) == 0 && tb[0].n == 2 && s[0].live == 3 && s[0].bytes == 5;
+  // no room for a third
+  v.until = 30; #assert nsd_apply(s[..], tb[..], v) == -1 && tb[0].n == 2 && s[0].live == 3;
+}
+
+// book:begin apply
+// Adds t and retires the live records it covers: how many, or -1 (nothing
+// changed) when the table is full.
+nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int {
+  if tb[0].n >= tb[0].t.count { return -1; }
+  k := tb[0].n; tb[0].t[k] = t; tb[0].n += 1;
+  gone := 0;
+  for i: 0..<s[0].n {
+    if s[0].recs[i].live && nsd_covers(tb, k, s[0].recs[i]) { ns_store_retire(s, i); gone += 1; }
+  }
+  return gone;
+}
+// book:end apply
+
+// ---- reading a request's tombstones --------------------------------------------
+
+#test "lowercase hex ids only" {
+  out: [32] u8;
+  #assert nsd_hex32(NSD_T_ALICE, out[..]) && out[0] == 0x11 && out[31] == 0x11;
+  h := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert nsd_hex32(h, out[..]) && out[0] == 0x01 && out[7] == 0xef && out[31] == 0xef;
+  #assert !nsd_hex32("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef", out[..]);
+  #assert !nsd_hex32(h[0..<63], out[..]) && !nsd_hex32("", out[..]);
+  bad: [64] u8; for i: 0..<64 { bad[i] = h[i]; }
+  edges := "/:@`g"; for e: 0..<edges.count { bad[5] = edges[e]; #assert !nsd_hex32(cast(string) bad[..], out[..]); }
+  bad[5] = '9'; #assert nsd_hex32(cast(string) bad[..], out[..]); bad[5] = 'a'; #assert nsd_hex32(cast(string) bad[..], out[..]);
+  bad[5] = '0'; #assert nsd_hex32(cast(string) bad[..], out[..]); bad[5] = 'f'; #assert nsd_hex32(cast(string) bad[..], out[..]);
+}
+nsd_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+nsd_hex32 :: (v: string, out: [] u8) -> bool {
+  if v.count != 64 { return false; }
+  for i: 0..<32 {
+    hi := nsd_nibble(v[2 * i]); lo := nsd_nibble(v[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+
+#test "an a tag value reads as kind:author:d" {
+  t: [1] NsdTomb;
+  #assert nsd_address("30023:2222222222222222222222222222222222222222222222222222222222222222:post", t[..]);
+  #assert t[0].kind == 30023 && t[0].author[0] == 0x22 && t[0].author[31] == 0x22 && t[0].d_n == 4 && cast(string) t[0].d[0..<4] == "post";
+  #assert nsd_address("0:1111111111111111111111111111111111111111111111111111111111111111:", t[..]) && t[0].kind == 0 && t[0].d_n == 0 && t[0].author[0] == 0x11;
+  #assert nsd_address("7:1111111111111111111111111111111111111111111111111111111111111111:a:b", t[..]) && t[0].kind == 7 && t[0].d_n == 3;
+  #assert nsd_address("123456789:1111111111111111111111111111111111111111111111111111111111111111:", t[..]) && t[0].kind == 123456789;
+  #assert !nsd_address("1234567890:1111111111111111111111111111111111111111111111111111111111111111:", t[..]);
+  #assert !nsd_address(":1111111111111111111111111111111111111111111111111111111111111111:", t[..]);
+  #assert !nsd_address("3x:1111111111111111111111111111111111111111111111111111111111111111:", t[..]);
+  #assert !nsd_address("30023:111111111111111111111111111111111111111111111111111111111111111:post", t[..]);
+  #assert !nsd_address("30023:1111111111111111111111111111111111111111111111111111111111111111", t[..]);
+  #assert !nsd_address("30023:1111111111111111111111111111111111111111111111111111111111111111/post", t[..]);
+  #assert !nsd_address("30023", t[..]) && !nsd_address("", t[..]);
+  #assert !nsd_address("30023:111111111111111111111111111111111111111111111111111111111111111G:post", t[..]);
+  #assert !nsd_address("30023/1111111111111111111111111111111111111111111111111111111111111111:post", t[..]);
+  #assert !nsd_address("3:9:1111111111111111111111111111111111111111111111111111111111111111:", t[..]);
+  long: [330] u8; p := "1:1111111111111111111111111111111111111111111111111111111111111111:";
+  for i: 0..<p.count { long[i] = p[i]; }
+  for i: p.count..<330 { long[i] = 'x'; }
+  #assert nsd_address(cast(string) long[0..<p.count + 256], t[..]) && t[0].d_n == 256;
+  #assert !nsd_address(cast(string) long[0..<p.count + 257], t[..]);
+}
+// Reads an `a` tag's value into t's kind, author and d.
+nsd_address :: (v: string, t: [] NsdTomb) -> bool {
+  i := 0; kind := 0;
+  while i < v.count && v[i] >= '0' && v[i] <= '9' {
+    if i >= 9 { return false; }
+    kind = kind * 10 + cast(int) (v[i] - '0'); i += 1;
+  }
+  if i < 1 || i + 66 > v.count || v[i] != ':' || v[i + 65] != ':' { return false; }
+  if !nsd_hex32(v[i + 1..<i + 65], t[0].author[..]) { return false; }
+  d := v[i + 66..<v.count];
+  if d.count > 256 { return false; }
+  for k: 0..<d.count { t[0].d[k] = d[k]; }
+  t[0].d_n = d.count; t[0].kind = kind;
+  return true;
+}
+
+#test "a kind 5 request's e and a tags become tombstones; other tags and bad values do not" {
+  out: [4] NsdTomb; c := nsd_t_rec(1, 0x11, 5, 77);
+  tags := "[[\"e\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"e\"],[\"k\",\"1\",\"x\",\"y\"],[\"a\",\"30023:1111111111111111111111111111111111111111111111111111111111111111:post\",\"wss://x\"],[\"e\",\"zz\"],[\"a\",\"bad\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"e\"]]";
+  c.tags_to = tags.count;
+  #assert nsd_read(tags, c, "wss://r", out[..]) == 2;
+  #assert out[0].what == NSD_E && out[0].id[0] == 0x22 && out[0].signer[0] == 0x11;
+  #assert out[1].what == NSD_A && out[1].kind == 30023 && out[1].author[0] == 0x11 && out[1].until == 77 && out[1].d_n == 4 && out[1].signer[0] == 0x11;
+  #assert nsd_read(tags, c, "wss://r", out[0..<1]) == -1;
+  #assert nsd_read(tags, c, "wss://r", out[0..<2]) == 2;
+  // an escaped value reads as what it means
+  esc := "[[\"\\u0065\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]"; c.tags_to = esc.count;
+  #assert nsd_read(esc, c, "wss://r", out[..]) == 1 && out[0].what == NSD_E;
+  // a value too long for the buffer is skipped
+  long: [600] u8; p := "[[\"a\",\""; for i: 0..<p.count { long[i] = p[i]; } for i: p.count..<590 { long[i] = 'x'; }
+  long[590] = '"'; long[591] = ']'; long[592] = ']'; c.tags_to = 593;
+  #assert nsd_read(cast(string) long[0..<593], c, "wss://r", out[..]) == 0;
+  // tags elsewhere in the text are not read
+  c.tags_from = 1; c.tags_to = tags.count; #assert nsd_read(tags, c, "wss://r", out[..]) == 0;
+  // tags that are not an array have none
+  c.tags_from = 0; c.tags_to = 2; #assert nsd_read("{}", c, "wss://r", out[..]) == 0;
+  c.tags_to = tags.count;
+  // other kinds have none
+  c.tags_from = 0; c.kind = 1; #assert nsd_read(tags, c, "wss://r", out[..]) == 0;
+  c.kind = 4; #assert nsd_read(tags, c, "wss://r", out[..]) == 0;
+  c.kind = 6; #assert nsd_read(tags, c, "wss://r", out[..]) == 0;
+}
+#test "a kind 62 request is one vanish tombstone when it names this relay or ALL_RELAYS" {
+  out: [4] NsdTomb; c := nsd_t_rec(1, 0x22, 62, 90);
+  t1 := "[[\"relay\",\"wss://elsewhere\"],[\"relay\",\"wss://r\"],[\"relay\",\"ALL_RELAYS\"]]"; c.tags_to = t1.count;
+  #assert nsd_read(t1, c, "wss://r", out[..]) == 1 && out[0].what == NSD_VANISH && out[0].until == 90 && out[0].signer[0] == 0x22;
+  #assert nsd_read(t1, c, "wss://q", out[..]) == 1;
+  t2 := "[[\"relay\",\"wss://elsewhere\"],[\"relay\",\"all_relays\"],[\"e\",\"wss://r\"]]"; c.tags_to = t2.count;
+  #assert nsd_read(t2, c, "wss://r", out[..]) == 0;
+  t3 := "[[\"relay\",\"wss://r\"]]"; c.tags_to = t3.count;
+  #assert nsd_read(t3, c, "wss://r", out[0..<0]) == -1 && nsd_read(t3, c, "wss://r/", out[..]) == 0;
+  t4 := "[[\"relay\"],[\"relay\",\"\"]]"; c.tags_to = t4.count;
+  #assert nsd_read(t4, c, "", out[..]) == 1 && nsd_read(t4, c, "x", out[..]) == 0;
+  t5 := "[[\"relay\"]]"; c.tags_to = t5.count; #assert nsd_read(t5, c, "", out[..]) == 0;
+  c.tags_to = t3.count;
+  c.kind = 61; #assert nsd_read(t3, c, "wss://r", out[..]) == 0;
+  c.kind = 63; #assert nsd_read(t3, c, "wss://r", out[..]) == 0;
+}
+
+// The tombstones a stored request c (text its exact original) asks for,
+// into out: the count, or -1 when out is too small. relay is this relay's
+// service URL. Only kinds 5 and 62 have any.
+nsd_read :: (text: string, c: RsdRec, relay: string, out: [] NsdTomb) -> int {
+  if c.kind != 5 && c.kind != 62 { return 0; }
+  j: [1] Json; json_start(j[..], text[c.tags_from..<c.tags_to]);
+  n := 0; buf: [400] u8;
+  if json_next(j[..]) != JSON_ARRAY { return 0; }
+  tag := json_next(j[..]);
+  while tag == JSON_ARRAY {
+    tok := json_next(j[..]); named := -1;
+    if tok == JSON_STRING {
+      if json_is(json_text(j[..]), "e") { named = NSD_E; }
+      if json_is(json_text(j[..]), "a") { named = NSD_A; }
+      if json_is(json_text(j[..]), "relay") { named = NSD_VANISH; }
+      tok = json_next(j[..]);
+    }
+    t: [1] NsdTomb; t[0].what = named; t[0].signer = c.author; t[0].until = c.created;
+    ok := false;
+    if tok == JSON_STRING {
+      n_v := json_unescape(json_text(j[..]), buf[..]);
+      if n_v >= 0 {
+        v := cast(string) buf[0..<n_v];
+        if c.kind == 5 && named == NSD_E { ok = nsd_hex32(v, t[0].id[..]); }
+        if c.kind == 5 && named == NSD_A { ok = nsd_address(v, t[..]); }
+        if c.kind == 62 && named == NSD_VANISH { ok = n == 0 && (v == relay || v == NSD_ALL_RELAYS); }
+      }
+    }
+    while tok == JSON_STRING { tok = json_next(j[..]); }
+    if ok {
+      if n >= out.count { return -1; }
+      out[n] = t[0]; n += 1;
+    }
+    tag = json_next(j[..]);
+  }
+  return n;
+}
+
+// ---- admission ------------------------------------------------------------------
+
+#test "admission: refuse what is covered, store the request, then retire what it covers" {
+  arena: [2048] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  tb: [1] NsdTombs; t: [2] NsdTomb; tb[0].t = t[..]; work: [2] NsdTomb;
+  alice := nsd_t_rec(0, 0x11, 1, 10); for i: 0..<32 { alice.author[i] = 0x11; alice.id[i] = 0x22; }
+  other := nsd_t_rec(0, 0x22, 1, 10); for i: 0..<32 { other.author[i] = 0x22; other.id[i] = 0x22; } other.id[0] = 0x33;
+  req := nsd_t_rec(9, 0x11, 5, 20); for i: 0..<32 { req.author[i] = 0x11; }
+  #assert nsd_admit(s[..], tb[..], alice, "note", true, "wss://r", work[..]) == NSS_ACCEPT;
+  #assert nsd_admit(s[..], tb[..], other, "other", true, "wss://r", work[..]) == NSS_ACCEPT;
+  text := "[[\"e\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]";
+  req.tags_to = text.count;
+  // unverified and malformed requests change nothing
+  #assert nsd_admit(s[..], tb[..], req, text, false, "wss://r", work[..]) == NSS_UNVERIFIED && tb[0].n == 0;
+  #assert nsd_admit(s[..], tb[..], req, text, true, "wss://r", work[0..<0]) == NSD_NO_ROOM && tb[0].n == 0 && s[0].n == 2;
+  #assert nsd_admit(s[..], tb[..], req, text, true, "wss://r", work[..]) == NSS_ACCEPT;
+  #assert tb[0].n == 1 && tb[0].last == 1 && !s[0].recs[0].live && s[0].recs[1].live && s[0].recs[2].live && s[0].live == 2;
+  // the same request again is a duplicate and adds no tombstone
+  #assert nsd_admit(s[..], tb[..], req, text, true, "wss://r", work[..]) == NSS_DUP && tb[0].n == 1;
+  // the deleted event cannot come back, as any bytes
+  #assert nsd_admit(s[..], tb[..], alice, "note", true, "wss://r", work[..]) == NSD_DELETED;
+  #assert nsd_admit(s[..], tb[..], alice, "nota", true, "wss://r", work[..]) == NSD_DELETED;
+  // but an unverified copy is refused as unverified first
+  #assert nsd_admit(s[..], tb[..], alice, "note", false, "wss://r", work[..]) == NSS_UNVERIFIED;
+  // a second request finds the tombstone table full: nothing is stored
+  req.id[0] = 8; #assert nsd_admit(s[..], tb[..], req, text, true, "wss://r", work[..]) == NSS_ACCEPT && tb[0].n == 2 && tb[0].last == 0;
+  req.id[0] = 7; #assert nsd_admit(s[..], tb[..], req, text, true, "wss://r", work[..]) == NSD_NO_ROOM && s[0].n == 4 && tb[0].n == 2;
+  // a request with no tombstones needs no room
+  req.id[0] = 6; req.tags_to = 2; #assert nsd_admit(s[..], tb[..], req, "[]", true, "wss://r", work[..]) == NSS_ACCEPT && s[0].n == 5;
+}
+#test "a request whose store result is not accepted applies nothing" {
+  arena: [32] u8; recs: [1] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  tb: [1] NsdTombs; t: [2] NsdTomb; tb[0].t = t[..]; work: [2] NsdTomb;
+  #assert ns_store_admit(s[..], nsd_t_rec(1, 1, 1, 10), "a", true) == NSS_ACCEPT;
+  req := nsd_t_rec(9, 1, 62, 20); text := "[[\"relay\",\"ALL_RELAYS\"]]"; req.tags_to = text.count;
+  #assert nsd_admit(s[..], tb[..], req, text, true, "wss://r", work[..]) == NSS_FULL && tb[0].n == 0 && s[0].recs[0].live;
+}
+
+#test "last counts what every tombstone of the request retired" {
+  arena: [512] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  tb: [1] NsdTombs; t: [4] NsdTomb; tb[0].t = t[..]; work: [4] NsdTomb;
+  a := nsd_t_rec(0, 0, 1, 10); b := a; for i: 0..<32 { a.author[i] = 0x11; b.author[i] = 0x11; a.id[i] = 0x22; b.id[i] = 0x33; }
+  #assert nsd_admit(s[..], tb[..], a, "a", true, "r", work[..]) == NSS_ACCEPT && nsd_admit(s[..], tb[..], b, "b", true, "r", work[..]) == NSS_ACCEPT;
+  req := a; req.kind = 5; req.created = 20; req.id[0] = 1;
+  text := "[[\"e\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"e\",\"3333333333333333333333333333333333333333333333333333333333333333\"]]";
+  req.tags_to = text.count;
+  #assert nsd_admit(s[..], tb[..], req, text, true, "r", work[..]) == NSS_ACCEPT && tb[0].last == 2 && tb[0].n == 2 && s[0].live == 1;
+}
+
+// book:begin admit
+// One event's admission with deletion and vanish: refuse (NSD_DELETED) what
+// a tombstone covers, refuse (NSD_NO_ROOM) a request whose tombstones don't
+// fit (out is the caller's room to read them into), else store it as
+// ns_store_admit does and, when it was stored, apply its tombstones.
+nsd_admit :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified: bool, relay: string, out: [] NsdTomb) -> int {
+  p := nsd_plan(s, tb, c, text, verified, relay, out);
+  return nsd_apply_plan(s, tb, p, c, text, out);
+}
+// nsd_admit split as ns_store_plan and ns_store_apply are, so a durable file
+// can record the event between them. targets is how many of out the plan
+// read (the request's tombstones).
+NsdPlan :: struct { store: NsPlan; targets: int; }
+nsd_plan :: (s: [] RsdStore, tb: [] NsdTombs, c: RsdRec, text: string, verified: bool, relay: string, out: [] NsdTomb) -> NsdPlan {
+  if !verified { return NsdPlan.{store = NsPlan.{result = NSS_UNVERIFIED}}; }
+  if nsd_blocked(tb, c) { return NsdPlan.{store = NsPlan.{result = NSD_DELETED}}; }
+  n := nsd_read(text, c, relay, out);
+  if n < 0 || tb[0].n + n > tb[0].t.count { return NsdPlan.{store = NsPlan.{result = NSD_NO_ROOM}}; }
+  return NsdPlan.{store = ns_store_plan(s, c, text, true), targets = n};
+}
+nsd_apply_plan :: (s: [] RsdStore, tb: [] NsdTombs, p: NsdPlan, c: RsdRec, text: string, out: [] NsdTomb) -> int {
+  r := ns_store_apply(s, p.store, c, text);
+  if r == NSS_ACCEPT { tb[0].last = 0; for k: 0..<p.targets { tb[0].last += nsd_apply(s, tb, out[k]); } }
+  return r;
+}
+// book:end admit

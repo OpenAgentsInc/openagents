@@ -1,0 +1,103 @@
+// The checks of delete-expire-vanish.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test nostr/examples/checks/delete-expire-vanish.coax --run-steps 250000000
+#load "../delete-expire-vanish.coax";
+
+// The example's events, signed by coax/tests/nostr/nip59_reference.py's
+// pure-Python BIP-340 signer and event writer (hashlib and integers; it
+// shares no code with Coax) with the same keys, aux and fields.
+PY_A1 :: "{\"id\":\"7a83b645155cb87626af1785d72bef347e02485649d95809f2a680534877b54d\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793490900,\"kind\":1,\"tags\":[],\"content\":\"a1\",\"sig\":\"870d7e876c12c76d8debaa0ae917a487ae3302800f27c5e950fa64290e4e26bcf3201d70d1cead80208f7cc8450bb8c8dd89c8761e81cf8ceeb7d2205eb447be\"}";
+PY_A2 :: "{\"id\":\"d7995cd8947c11081335a22ccc9b72b125cb833ae79d479a41d8b971a37ff16c\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491000,\"kind\":1,\"tags\":[],\"content\":\"a2\",\"sig\":\"76319cbbf166b5ed1cf31707c971f27a9ed0385ea88c68e7f61ec6d3b82595c8597d36d395560268a45d4360abdb9150c0551f7c5ee519b607bc281dbfb48a11\"}";
+PY_B1 :: "{\"id\":\"6125f8fefd39814f11b23037958af3367d8024574ceaed40b244aae8dd4c3009\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1793490950,\"kind\":1,\"tags\":[],\"content\":\"b1\",\"sig\":\"734e0e70a2ce4bab9ce5a7dd7553a605fe00d7d073a09ffde81fec132df229cf8c2d545dd64ed741289802dd02232ba1ed5df623d0d6c500ac7007bb9ed4ea05\"}";
+PY_V1 :: "{\"id\":\"7138c561c56b56ccb1430603727b693380a53b6c44a83773a7c295a4b740cf1b\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793490800,\"kind\":30023,\"tags\":[[\"d\",\"post\"]],\"content\":\"post v1\",\"sig\":\"303508eda78adeada50a04e6eb6e9703146f8011e0719a4b25f382257e12eab587cb5e5904d83c393d856e4a56268e1b8d053dc5303b70273fc38a16ce106773\"}";
+PY_D1 :: "{\"id\":\"361b38a4f89ffb232638f946b3b1ce28f766242add56d1f436030e84ba045ce9\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491100,\"kind\":5,\"tags\":[[\"e\",\"7a83b645155cb87626af1785d72bef347e02485649d95809f2a680534877b54d\"],[\"e\",\"6125f8fefd39814f11b23037958af3367d8024574ceaed40b244aae8dd4c3009\"],[\"a\",\"30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:post\"],[\"k\",\"1\"],[\"k\",\"30023\"]],\"content\":\"published by accident\",\"sig\":\"c912acb63687e0ee713f78e2c6130158f272e5ed3ed1808580dde02b6a29180c6d82e6ead534dbb19bf9383081dd627b80794b8427932ba449722089fad3a073\"}";
+PY_V2 :: "{\"id\":\"a8dee98d938d0190ddd18983473c13e8b49b893db5c05e504ec4e84a57174dc4\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491050,\"kind\":30023,\"tags\":[[\"d\",\"post\"]],\"content\":\"post v2\",\"sig\":\"ebe9fc5cb02267aecc537d61568da1ef204c810705c14f8e629ff296146aeedf9843ef2a2e5db8810f0fc1daf05eb6e4686cba03e94a779e12f7fe0a6005f501\"}";
+PY_V3 :: "{\"id\":\"316afb5a9b1420c1a9de8e2e9a5dc6325437971191b24a525dae940eb775a6ed\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491150,\"kind\":30023,\"tags\":[[\"d\",\"post\"]],\"content\":\"post v3\",\"sig\":\"310615c8828d0be4f386bbeb0636f56914bf9757d3335b7311d14a2b1f3c6e408f38531278e8948e208a25e23a6ab44edb77cc287b1930d9a8541a879099ad24\"}";
+PY_DB :: "{\"id\":\"a79267742895db594e2249931a76fdfe056496d99717a7e5cb7eb10e9f2ecbeb\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1793491160,\"kind\":5,\"tags\":[[\"e\",\"d7995cd8947c11081335a22ccc9b72b125cb833ae79d479a41d8b971a37ff16c\"],[\"a\",\"30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:post\"]],\"content\":\"\",\"sig\":\"f7496521a8362e3d87ec6ac54dced3c72d89093554ea6ca442f81f141d9378232ca766e6671f5306a3fd219930d06feb57bed96c361c5363ece8759308d7fd37\"}";
+PY_D2 :: "{\"id\":\"039cce557daf16d69448389ac9e790d0e6403b1b6074ac9f39391354cb291657\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491170,\"kind\":5,\"tags\":[[\"e\",\"361b38a4f89ffb232638f946b3b1ce28f766242add56d1f436030e84ba045ce9\"]],\"content\":\"undo\",\"sig\":\"93af7d29c46367c1860ffe447ef6fde277bf04d07e027fe1defdf832bcd750f39804fe5236352cda5baead49ae7242a1665092ad51ac154363ac7dbb9d3c36e0\"}";
+PY_X60 :: "{\"id\":\"982e604ead6d9a6c32292a35dbd64c886e06680ce3bb3f4619aae7db19ca9a7a\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491180,\"kind\":1,\"tags\":[[\"expiration\",\"1793491260\"]],\"content\":\"gone at NOW+60\",\"sig\":\"6441aed32a05acf69601b0dfe53c44c53aee04ecefb9f434c2ebd7b4837f944c19001fa814f062b10eb668c12d77289738cd5c263888f85366c9884be987dbe8\"}";
+PY_XOLD :: "{\"id\":\"e6412de9e14ac188312d4550633358decbd6d5aef108c9644c458c034cb9c9bc\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491180,\"kind\":1,\"tags\":[[\"expiration\",\"1793491190\"]],\"content\":\"gone at NOW-10\",\"sig\":\"43eaa3b9e6b0f22d081fff500fd9b5ca5875fe87edcb92e5779027ab46ef8cb6353581337c01d2dbf5de52644f3bee0a5045d76d8ed04240ff2f00e92b71e282\"}";
+PY_VE :: "{\"id\":\"ddb1e44233ea6f3f66d9d0bea07e64edc06dd0d5ae1fa0bf33dbda1d03c89cf4\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1793491190,\"kind\":62,\"tags\":[[\"relay\",\"wss://elsewhere.example\"]],\"content\":\"\",\"sig\":\"1070732b0bda690f5d378d552cef9ff7893213fd7029c3568cdfb0f1b050509f0f9e1be2cf87b5dc3b9404688afd860bcfdf1043435c5f6c8e24b7925aa21bd5\"}";
+PY_VN :: "{\"id\":\"bf22268c20a6e830c9583795b1ff020887c5f5b68caadb4272a51f68c9960477\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1793491200,\"kind\":62,\"tags\":[[\"relay\",\"wss://relay.example.com\"]],\"content\":\"forget me\",\"sig\":\"627c82ce4c3d8956280d09d518954bd5d578efd221b6ae3799611cc5355e47d2621dba802f2a40f67a6ba7792b324dece977605c397b9d4e1e00638474b3629a\"}";
+PY_DV :: "{\"id\":\"a80f47bfc251b7c558ed75d4757278a2161ca5bc81abc1d91efd4120b112c87a\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1793491201,\"kind\":5,\"tags\":[[\"e\",\"bf22268c20a6e830c9583795b1ff020887c5f5b68caadb4272a51f68c9960477\"]],\"content\":\"\",\"sig\":\"305c0acdb59b4cfa2ceda36bc4c6fb3b3b9953143a3f6005a2fbd8da2d97e152cdc28a2cc2116c630d15c8d50a3eb5127ac6925cbacba8a8076ef9e823c3ea61\"}";
+PY_B2 :: "{\"id\":\"edeacd106ba4f98933ee44370fd7024833f405215168acb3cbd91af474c9fd4b\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1793491202,\"kind\":1,\"tags\":[],\"content\":\"b2\",\"sig\":\"dc9ad626ed133ffc354ac712c89443ba3b1e4075dce46779e9d577c8b04dc077aa43cd48ef6f6461b669972126ccee85b6e1c1aed981b11748a992252d0140ce\"}";
+
+// book:begin check
+// Steps 1-12 as Python's events, and the verdict worked out by hand for
+// each from NIP-09 and NIP-40, at NOW.
+SESSION :: [12] string.[PY_A1, PY_A2, PY_B1, PY_V1, PY_D1, PY_V2, PY_V3, PY_A1, PY_DB, PY_D2, PY_X60, PY_XOLD];
+HAND :: [12] int.[RS_ACCEPT, RS_ACCEPT, RS_ACCEPT, RS_ACCEPT, RS_ACCEPT, NSD_DELETED, RS_ACCEPT, NSD_DELETED,
+  RS_ACCEPT, RS_ACCEPT, RS_ACCEPT, RS_EXPIRED];
+// The records each request retired: D1 (step 5) two, DB and D2 none.
+RETIRED :: [12] int.[0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0];
+// What the store holds live after step 12, in the order it stored them.
+HELD :: [7] string.[PY_A2, PY_B1, PY_D1, PY_V3, PY_DB, PY_D2, PY_X60];
+// Steps 15-20 at NOW, on the same store: NIP-62.
+VANISH :: [6] string.[PY_VE, PY_VN, PY_B1, PY_DB, PY_DV, PY_B2];
+VANISH_HAND :: [6] int.[RS_ACCEPT, RS_ACCEPT, NSD_DELETED, NSD_DELETED, RS_ACCEPT, RS_ACCEPT];
+FINAL :: [9] string.[PY_A2, PY_D1, PY_V3, PY_D2, PY_X60, PY_VE, PY_VN, PY_DV, PY_B2];
+
+// Whether st holds exactly want live, in index order.
+holds_all :: (st: [] Store, want: [] string) -> bool {
+  k := 0;
+  for i: 0..<st[0].s[0].n {
+    if !st[0].s[0].recs[i].live { continue; }
+    if k >= want.count || rsd_text(st[0].s[..], i) != want[k] { return false; }
+    k += 1;
+  }
+  return k == want.count && st[0].s[0].live == want.count;
+}
+// How many events a REQ {} returns at now; negative when text is one of them.
+serves :: (st: [] Store, now: int, text: string) -> int {
+  f: NostrFilter; idx: [16] int;
+  q := rsd_query(st[0].s[..], f, now, idx[..]);
+  for i: 0..<q { if rsd_text(st[0].s[..], idx[i]) == text { return -q; } }
+  return q;
+}
+
+#test "holds_all refuses a missing, an extra, a different and a retired record" {
+  held := HELD; a: [1] Store; store_init(a[..]); c: RsdRec;
+  for i: 0..<3 { ns_store_append(a[0].s[..], c, held[i]); }
+  #assert holds_all(a[..], held[0..<3]) && !holds_all(a[..], held[0..<2]) && !holds_all(a[..], held[0..<4]);
+  #assert !holds_all(a[..], held[1..<4]);
+  ns_store_retire(a[0].s[..], 1); #assert !holds_all(a[..], held[0..<3]);
+  b: [1] Store; store_init(b[..]);
+  for i: 0..<3 { ns_store_append(b[0].s[..], c, held[i]); }
+  b[0].s[0].live = 4; #assert !holds_all(b[..], held[0..<3]);
+}
+#test "the example's events are Python's bytes" #steps 2000000000 {
+  b: [1024] u8; t: [512] u8;
+  #assert sign(BOB_KEY, NOW - 250, 1, "[]", "b1", b[..]) == PY_B1;
+  n := [5] string.["e", "e", "a", "k", "k"];
+  v := [5] string.[id_hex(PY_A1), id_hex(PY_B1), "30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:post", "1", "30023"];
+  #assert sign(ALICE_KEY, NOW - 100, 5, tags2(t[..], n[..], v[..]), "published by accident", b[..]) == PY_D1;
+  rn := [1] string.["relay"]; rv := [1] string.[RELAY];
+  #assert sign(BOB_KEY, NOW, 62, tags2(t[..], rn[..], rv[..]), "forget me", b[..]) == PY_VN;
+}
+#test "Python's events get the hand verdicts, and the store survives a restart" #steps 4000000000 {
+  nm: [1] Names; held := HELD;
+  a: [1] Store; store_init(a[..]); a[0].nm = nm[..];
+  for i: 0..<12 {
+    #assert admit_at(a[..], SESSION[i], NOW, false) == HAND[i];
+    if i == 4 || i == 8 || i == 9 { #assert a[0].tb[0].last == RETIRED[i]; }
+  }
+  #assert holds_all(a[..], held[..]) && a[0].tb[0].n == 6;
+  #assert serves(a[..], NOW + 59, PY_X60) == -7 && serves(a[..], NOW + 60, PY_X60) == 6;
+  r: [1] Store; store_init(r[..]); r[0].nm = nm[..];
+  for i: 0..<a[0].total { r[0].file[i] = a[0].file[i]; }
+  r[0].total = a[0].total;
+  #assert replay(r[..], NOW + 60) && holds_all(r[..], held[..]) && r[0].tb[0].n == 6;
+  #assert admit_at(r[..], PY_A1, NOW + 60, false) == NSD_DELETED && admit_at(r[..], PY_V2, NOW + 60, false) == NSD_DELETED;
+  #assert serves(r[..], NOW + 60, PY_X60) == 6 && r[0].total == a[0].total;
+}
+#test "a request to vanish removes Bob's events and keeps them out" #steps 4000000000 {
+  nm: [1] Names; final := FINAL;
+  a: [1] Store; store_init(a[..]); a[0].nm = nm[..];
+  for i: 0..<11 { #assert admit_at(a[..], SESSION[i], NOW, false) == HAND[i]; }
+  for i: 0..<6 {
+    #assert admit_at(a[..], VANISH[i], NOW, false) == VANISH_HAND[i];
+    if i == 1 { #assert a[0].tb[0].last == 2; }
+  }
+  #assert holds_all(a[..], final[..]) && a[0].tb[0].n == 8;
+}
+// book:end check

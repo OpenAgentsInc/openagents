@@ -811,14 +811,18 @@
    "number": 39,
    "title": "Delete, expire and vanish",
    "file": "ch039-delete-expire-and-vanish.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     35
    ],
    "source": [
     "coax/lib/nostr/relay_server.coax",
-    "coax/lib/nostr/store_core.coax"
+    "coax/lib/nostr/store_core.coax",
+    "coax/lib/nostr/store_policy.coax",
+    "coax/lib/nostr/store_delete.coax",
+    "nostr/examples/delete-expire-vanish.coax",
+    "nostr/examples/checks/delete-expire-vanish.coax"
    ],
    "qualified_targets": [
     "cpu"

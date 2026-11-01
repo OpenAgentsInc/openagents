@@ -1,0 +1,54 @@
+Alice is BIP-340 vector 1's key dff1d77f..., Bob vector 2's dd308afe...
+D1, Alice's kind 5 at NOW-100: {"id":"361b38a4f89ffb232638f946b3b1ce28f766242add56d1f436030e84ba045ce9","pubkey":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","created_at":1793491100,"kind":5,"tags":[["e","7a83b645155cb87626af1785d72bef347e02485649d95809f2a680534877b54d"],["e","6125f8fefd39814f11b23037958af3367d8024574ceaed40b244aae8dd4c3009"],["a","30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:post"],["k","1"],["k","30023"]],"content":"published by accident","sig":"c912acb63687e0ee713f78e2c6130158f272e5ed3ed1808580dde02b6a29180c6d82e6ead534dbb19bf9383081dd627b80794b8427932ba449722089fad3a073"}
+
+NIP-09: deletion requests
+1. a1 (Alice, kind 1, NOW-300) -> 0 (accepted)
+2. a2 (Alice, kind 1, NOW-200) -> 0 (accepted)
+3. b1 (Bob, kind 1, NOW-250) -> 0 (accepted)
+4. post@-400 (Alice, 30023 d=post) -> 0 (accepted)
+    store: 4 records, 4 live; 0 tombstones
+      live: a1 a2 b1 post@-400
+      retired:
+5. D1 (Alice, kind 5 at NOW-100: e a1, e b1, a 30023:Alice:post) -> 0 (accepted), 3 tombstones, 2 records retired
+    store: 5 records, 3 live; 3 tombstones
+      live: a2 b1 D1
+      retired: a1 post@-400
+6. post@-150 (older than D1) -> 30 (deleted), file unchanged
+7. post@-50 (newer than D1) -> 0 (accepted)
+8. a1 again -> 30 (deleted), file unchanged
+9. DB (Bob, kind 5 at NOW-40: e a2, a 30023:Alice:post) -> 0 (accepted), 2 tombstones, 0 records retired
+10. D2 (Alice, kind 5 at NOW-30: e D1) -> 0 (accepted), 1 tombstones, 0 records retired
+    store: 8 records, 6 live; 6 tombstones
+      live: a2 b1 D1 post@-50 DB D2
+      retired: a1 post@-400
+
+NIP-40: expiration, with the clock fixed
+11. x60 (expiration NOW+60) -> 0 (accepted)
+12. x-10 (expiration NOW-10) -> 9 (expired), file unchanged
+REQ {} at NOW: 7 events, newest first: x60 D2 DB post@-50 D1 a2 b1
+REQ {} at NOW+59: 7 events, newest first: x60 D2 DB post@-50 D1 a2 b1
+REQ {} at NOW+60: 6 events, newest first: D2 DB post@-50 D1 a2 b1
+
+restart: replay the 3713 byte file into an empty store at NOW+60
+replay ok: true
+    store: 9 records, 7 live; 6 tombstones
+      live: a2 b1 D1 post@-50 DB D2 x60
+      retired: a1 post@-400
+13. a1 again, after the restart -> 30 (deleted), file unchanged
+14. post@-150 again, after the restart -> 30 (deleted), file unchanged
+REQ {} at NOW+60: 6 events, newest first: D2 DB post@-50 D1 a2 b1
+
+NIP-62: requests to vanish
+15. V-elsewhere (Bob, kind 62, relay wss://elsewhere.example) -> 0 (accepted)
+16. V (Bob, kind 62 at NOW, relay wss://relay.example.com) -> 0 (accepted), 1 tombstones, 2 records retired
+    store: 11 records, 7 live; 7 tombstones
+      live: a2 D1 post@-50 D2 x60 V-elsewhere V
+      retired: a1 b1 post@-400 DB
+17. b1 again -> 30 (deleted), file unchanged
+18. DB again -> 30 (deleted), file unchanged
+19. DV (Bob, kind 5 at NOW+1: e V) -> 0 (accepted), 1 tombstones, 0 records retired
+20. b2 (Bob, kind 1, NOW+2) -> 0 (accepted)
+    store: 13 records, 9 live; 8 tombstones
+      live: a2 D1 post@-50 D2 x60 V-elsewhere V DV b2
+      retired: a1 b1 post@-400 DB
+REQ {} at NOW: 9 events, newest first: b2 DV V V-elsewhere x60 D2 post@-50 D1 a2

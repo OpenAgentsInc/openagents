@@ -1,0 +1,224 @@
+// book:begin example
+#load "../../coax/lib/nostr/store.coax";
+#load "../../coax/lib/nostr/store_file.coax";
+#load "../../coax/lib/nostr/store_recover.coax";
+#load "../../coax/lib/nostr/store_delete.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relay's clock: 2026-11-01T00:00:00Z, and this relay's service URL.
+NOW :: 1793491200;
+RELAY :: "wss://relay.example.com";
+// BIP-340 vectors 1 and 2: published test keys. Never sign with a real key
+// in an example. Alice is vector 1, Bob vector 2.
+ALICE_KEY :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+BOB_KEY :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+ALICE :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+BOB :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+
+// A store with room for 16 records and 16 tombstones, and its file (a byte
+// buffer here, as in chapter 35's example).
+Store :: struct {
+  arena: [16384] u8; recs: [16] RsdRec; s: [1] RsdStore;
+  tombs: [16] NsdTomb; tb: [1] NsdTombs; work: [16] NsdTomb;
+  file: [16384] u8; total: int;
+  scratch: [8192] u8; text: [2048] u8;
+  nm: [] Names;   // the example's names for event ids
+}
+store_init :: (st: [] Store) {
+  st[0].s[0] = RsdStore.{}; st[0].s[0].arena = st[0].arena[..]; st[0].s[0].recs = st[0].recs[..];
+  st[0].tb[0] = NsdTombs.{}; st[0].tb[0].t = st[0].tombs[..];
+}
+reason_name :: (r: int) -> string {
+  names := [12] string.["accepted", "duplicate", "superseded", "bad event", "bad id", "bad signature",
+    "auth kind", "tags", "time", "expired", "auth required", "full"];
+  if r == NSD_DELETED { return "deleted"; }
+  if r == NSD_NO_ROOM { return "no room for its tombstones"; }
+  return names[r];
+}
+
+// book:begin admit
+// One EVENT as the relay would take it: read and policy at the clock now,
+// the signature, then the tombstones and the store. The plan is decided,
+// the frame appended (only when the plan writes), then the plan applied.
+save :: (st: [] Store, text: string) -> bool {
+  head: [4] u8;
+  if !ns_file_header(text.count, head[..]) || st[0].total + 4 + text.count > st[0].file.count { return false; }
+  for i: 0..<4 { st[0].file[st[0].total + i] = head[i]; }
+  for i: 0..<text.count { st[0].file[st[0].total + 4 + i] = text[i]; }
+  st[0].total += 4 + text.count;
+  return true;
+}
+admit_at :: (st: [] Store, text: string, now: int, replaying: bool) -> int {
+  r := rs_admit_read(text, now, false, false, st[0].scratch[..]);
+  if replaying { r.reason = ns_file_replay_reason(r.reason); }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(text, st[0].scratch[..], false)); }
+  if r.reason != RS_ACCEPT { return r.reason; }
+  c := rsd_rec(r);
+  p := nsd_plan(st[0].s[..], st[0].tb[..], c, text, rsd_verified(r, text), RELAY, st[0].work[..]);
+  if !replaying && p.store.write != NS_W_NONE && !save(st, text) { return RS_FULL; }
+  return nsd_apply_plan(st[0].s[..], st[0].tb[..], p, c, text, st[0].work[..]);
+}
+// book:end admit
+
+// book:begin replay
+// Restart: chapter 35's replay, each frame through the same admission
+// (an event expired since it was saved is kept), so the stored kind 5 and
+// kind 62 requests rebuild the tombstones in file order.
+replay :: (st: [] Store, now: int) -> bool {
+  at := 0;
+  while at < st[0].total {
+    f := ns_file_next(st[0].file[at..<at + 4], at, st[0].total);
+    if f.status != NSF_OK { return false; }
+    for i: f.from..<f.to { st[0].text[i - f.from] = st[0].file[i]; }
+    r := admit_at(st, cast(string) st[0].text[0..<f.to - f.from], now, true);
+    if nsr_replayed(r) != NSR_NEXT { return false; }
+    at = f.to;
+  }
+  return true;
+}
+// book:end replay
+
+// Sign one event with a test key into out; the event's text.
+sign :: (key_hex: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(key_hex, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(AUX_HEX, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// The event's id, as the 64 hex digits in its text.
+id_hex :: (event: string) -> string {
+  key := "\"id\":\"";
+  for i: 0..<event.count - key.count { if event[i..<i + key.count] == key { return event[i + key.count..<i + key.count + 64]; } }
+  return "";
+}
+// Writes a tags array into out: [[name, value], ...].
+tags2 :: (out: [] u8, names: [] string, values: [] string) -> string {
+  n := json_raw(out, 0, "[");
+  for i: 0..<names.count {
+    if i > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "["); n = json_write_string(out, n, names[i]); n = json_raw(out, n, ",");
+    n = json_write_string(out, n, values[i]); n = json_raw(out, n, "]");
+  }
+  n = json_raw(out, n, "]");
+  return cast(string) out[0..<n];
+}
+
+// Names for the events, by id.
+Names :: struct { n: int; ids: [32] string; names: [32] string; }
+label :: (nm: [] Names, event: string, name: string) -> string {
+  nm[0].ids[nm[0].n] = id_hex(event); nm[0].names[nm[0].n] = name; nm[0].n += 1;
+  return event;
+}
+name_of :: (nm: [] Names, id: [32] u8) -> string {
+  digits := "0123456789abcdef"; h: [64] u8;
+  for i: 0..<32 { h[2 * i] = digits[id[i] >> 4]; h[2 * i + 1] = digits[id[i] & 15]; }
+  for k: 0..<nm[0].n { if nm[0].ids[k] == cast(string) h[..] { return nm[0].names[k]; } }
+  return "?";
+}
+show_time :: (t: int) {
+  if t == NOW { print("NOW"); } else if t < NOW { print("NOW-%", NOW - t); } else { print("NOW+%", t - NOW); }
+}
+show_store :: (st: [] Store) {
+  s := st[0].s[..];
+  print("    store: % records, % live; % tombstones\n", s[0].n, s[0].live, st[0].tb[0].n);
+  print("      live:");
+  for i: 0..<s[0].n { if s[0].recs[i].live { print(" %", name_of(st[0].nm, s[0].recs[i].id)); } }
+  print("\n      retired:");
+  for i: 0..<s[0].n { if !s[0].recs[i].live { print(" %", name_of(st[0].nm, s[0].recs[i].id)); } }
+  print("\n");
+}
+send :: (st: [] Store, step: string, text: string, now: int) {
+  before := st[0].total; n := st[0].tb[0].n;
+  r := admit_at(st, text, now, false);
+  print("% -> % (%)", step, r, reason_name(r));
+  if st[0].tb[0].n > n { print(", % tombstones, % records retired", st[0].tb[0].n - n, st[0].tb[0].last); }
+  if st[0].total == before { print(", file unchanged"); }
+  print("\n");
+}
+query :: (st: [] Store, now: int) {
+  f: NostrFilter; idx: [16] int;
+  q := rsd_query(st[0].s[..], f, now, idx[..]);
+  print("REQ {} at "); show_time(now); print(": % events, newest first:", q);
+  for i: 0..<q { print(" %", name_of(st[0].nm, st[0].s[0].recs[idx[i]].id)); }
+  print("\n");
+}
+
+main :: () {
+  nm: [1] Names; b: [16][1024] u8; t: [8][512] u8;
+  a1 := label(nm[..], sign(ALICE_KEY, NOW - 300, 1, "[]", "a1", b[0][..]), "a1");
+  a2 := label(nm[..], sign(ALICE_KEY, NOW - 200, 1, "[]", "a2", b[1][..]), "a2");
+  b1 := label(nm[..], sign(BOB_KEY, NOW - 250, 1, "[]", "b1", b[2][..]), "b1");
+  v1 := label(nm[..], sign(ALICE_KEY, NOW - 400, 30023, "[[\"d\",\"post\"]]", "post v1", b[3][..]), "post@-400");
+  addr := "30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:post";
+  d1_names := [5] string.["e", "e", "a", "k", "k"];
+  d1_values := [5] string.[id_hex(a1), id_hex(b1), addr, "1", "30023"];
+  d1 := label(nm[..], sign(ALICE_KEY, NOW - 100, 5, tags2(t[0][..], d1_names[..], d1_values[..]), "published by accident", b[4][..]), "D1");
+  v2 := label(nm[..], sign(ALICE_KEY, NOW - 150, 30023, "[[\"d\",\"post\"]]", "post v2", b[5][..]), "post@-150");
+  v3 := label(nm[..], sign(ALICE_KEY, NOW - 50, 30023, "[[\"d\",\"post\"]]", "post v3", b[6][..]), "post@-50");
+  db_names := [2] string.["e", "a"]; db_values := [2] string.[id_hex(a2), addr];
+  db := label(nm[..], sign(BOB_KEY, NOW - 40, 5, tags2(t[1][..], db_names[..], db_values[..]), "", b[7][..]), "DB");
+  dd_names := [1] string.["e"]; dd_values := [1] string.[id_hex(d1)];
+  dd := label(nm[..], sign(ALICE_KEY, NOW - 30, 5, tags2(t[2][..], dd_names[..], dd_values[..]), "undo", b[8][..]), "D2");
+  ex := label(nm[..], sign(ALICE_KEY, NOW - 20, 1, "[[\"expiration\",\"1793491260\"]]", "gone at NOW+60", b[9][..]), "x60");
+  old := label(nm[..], sign(ALICE_KEY, NOW - 20, 1, "[[\"expiration\",\"1793491190\"]]", "gone at NOW-10", b[10][..]), "x-10");
+  ve := label(nm[..], sign(BOB_KEY, NOW - 10, 62, "[[\"relay\",\"wss://elsewhere.example\"]]", "", b[11][..]), "V-elsewhere");
+  vn_names := [1] string.["relay"]; vn_values := [1] string.[RELAY];
+  vn := label(nm[..], sign(BOB_KEY, NOW, 62, tags2(t[3][..], vn_names[..], vn_values[..]), "forget me", b[12][..]), "V");
+  du_names := [1] string.["e"]; du_values := [1] string.[id_hex(vn)];
+  du := label(nm[..], sign(BOB_KEY, NOW + 1, 5, tags2(t[4][..], du_names[..], du_values[..]), "", b[13][..]), "DV");
+  b2 := label(nm[..], sign(BOB_KEY, NOW + 2, 1, "[]", "b2", b[14][..]), "b2");
+
+  print("Alice is BIP-340 vector 1's key %..., Bob vector 2's %...\n", ALICE[0..<8], BOB[0..<8]);
+  print("D1, Alice's kind 5 at NOW-100: %\n", d1);
+
+  st: [1] Store; store_init(st[..]); st[0].nm = nm[..];
+  print("\nNIP-09: deletion requests\n");
+  send(st[..], "1. a1 (Alice, kind 1, NOW-300)", a1, NOW);
+  send(st[..], "2. a2 (Alice, kind 1, NOW-200)", a2, NOW);
+  send(st[..], "3. b1 (Bob, kind 1, NOW-250)", b1, NOW);
+  send(st[..], "4. post@-400 (Alice, 30023 d=post)", v1, NOW);
+  show_store(st[..]);
+  send(st[..], "5. D1 (Alice, kind 5 at NOW-100: e a1, e b1, a 30023:Alice:post)", d1, NOW);
+  show_store(st[..]);
+  send(st[..], "6. post@-150 (older than D1)", v2, NOW);
+  send(st[..], "7. post@-50 (newer than D1)", v3, NOW);
+  send(st[..], "8. a1 again", a1, NOW);
+  send(st[..], "9. DB (Bob, kind 5 at NOW-40: e a2, a 30023:Alice:post)", db, NOW);
+  send(st[..], "10. D2 (Alice, kind 5 at NOW-30: e D1)", dd, NOW);
+  show_store(st[..]);
+
+  print("\nNIP-40: expiration, with the clock fixed\n");
+  send(st[..], "11. x60 (expiration NOW+60)", ex, NOW);
+  send(st[..], "12. x-10 (expiration NOW-10)", old, NOW);
+  query(st[..], NOW);
+  query(st[..], NOW + 59);
+  query(st[..], NOW + 60);
+
+  print("\nrestart: replay the % byte file into an empty store at NOW+60\n", st[0].total);
+  r: [1] Store; store_init(r[..]); r[0].nm = nm[..];
+  for i: 0..<st[0].total { r[0].file[i] = st[0].file[i]; }
+  r[0].total = st[0].total;
+  print("replay ok: %\n", replay(r[..], NOW + 60));
+  show_store(r[..]);
+  send(r[..], "13. a1 again, after the restart", a1, NOW + 60);
+  send(r[..], "14. post@-150 again, after the restart", v2, NOW + 60);
+  query(r[..], NOW + 60);
+
+  print("\nNIP-62: requests to vanish\n");
+  send(st[..], "15. V-elsewhere (Bob, kind 62, relay wss://elsewhere.example)", ve, NOW);
+  send(st[..], "16. V (Bob, kind 62 at NOW, relay wss://relay.example.com)", vn, NOW);
+  show_store(st[..]);
+  send(st[..], "17. b1 again", b1, NOW);
+  send(st[..], "18. DB again", db, NOW);
+  send(st[..], "19. DV (Bob, kind 5 at NOW+1: e V)", du, NOW);
+  send(st[..], "20. b2 (Bob, kind 1, NOW+2)", b2, NOW);
+  show_store(st[..]);
+  query(st[..], NOW);
+}
+// book:end example
