@@ -1,0 +1,747 @@
+// Chapter 245: reflective prompt evolution. A prompt is a versioned
+// component: a student's settings plus a set of rule lines from a fixed
+// library, named by one identity digest. A reflector reads the student's
+// failures on a small batch and replies with one edit, "add k" or "drop k";
+// any other reply is refused. A child prompt is kept only when its fields
+// are the seed's, its grader is separate from the student and the reflector
+// and passed chapter 246's gate, the student echoed the child's canary, its
+// answers stayed in the answer space, and it beat its parent on the batch.
+// Kept prompts sit on a Pareto front over per-item scores, and the next
+// parent is drawn by how many items each is tied-best on. Every call is
+// priced, and a step starts only when its worst case fits the budget.
+// Profile evolve-v1: binary64, a seven-rule library, up to 64 items, 16
+// prompts, 8 items a batch and 64 steps; chapter 103's counter-based draws;
+// a stand-in student (stand-in-student-v1) and reflector
+// (stand-in-reflector-v1) whose behavior is written down.
+#load "judge.coax";
+#load "../tests/evolve-checks.coax";   // the checks' helpers and the front's independent oracle
+#authority;
+
+EvStatus :: enum u8 {ok;shape;number;refused;}
+EvReason :: enum u8 {none;accepted;no_gain;perfect;silent;malformed;no_change;field;shared;unproven;canary;drift;budget;full;locked;}
+EvOp :: enum u8 {add;drop;}
+EvEdit :: struct {op:EvOp;rule:int;}
+EvParse :: struct {ok:bool;edit:EvEdit;}
+// student: the model and settings the prompt runs with (its rubric is the
+// rendered prompt); rules: bit k set when rule line k is in the prompt;
+// tools and threshold: the runner's grants and pass mark, fixed by the seed.
+EvCandidate :: struct {student:JgComponent;rules:u8;tools:u8;threshold:f64;parent:int;edit:EvEdit;}
+// kind picks what the item needs (EV_NEED) and what hurts it (EV_CLASH).
+EvItem :: struct {task:int;kind:int;gold:int;}
+EvRead :: struct {rules:u8;seen:bool;canary:[8]u8;}
+// missing: the lowest needed rule absent; clash: the lowest harmful rule
+// present; -1 for none. answer EV_OPTIONS is "unsure".
+EvAnswer :: struct {answer:int;right:bool;missing:int;clash:int;}
+EvMeasure :: struct {right:int;unsure:int;echoed:bool;}
+EvSetup :: struct {grader:JgComponent;judge:JgResult;reflector:JgComponent;world:u64;draw:u64;batch:int;budget:f64;}
+EvStep :: struct {front:int;parent:int;child:int;edit:EvEdit;reason:EvReason;parent_right:int;child_right:int;dev:int;spend:f64;}
+EvRun :: struct {status:EvStatus;reason:EvReason;seed:int;candidates:int;steps:int;best:int;spend:f64;}
+EvHeld :: struct {status:EvStatus;reason:EvReason;seed:f64;final:f64;floor:NsFloor;decision:VdDecision;receipts:int;}
+
+EV_RULES :: 7;
+EV_OPTIONS :: 4;
+EV_KINDS :: 6;
+EV_UNSURE :: 6;
+EV_UNCLEAR :: 5;
+EV_GOOD :: 0.9;
+EV_POOR :: 0.25;
+EV_ITEMS_MAX :: 64;
+EV_POOL_MAX :: 16;
+EV_BATCH_MAX :: 8;
+EV_STEPS_MAX :: 64;
+EV_RUNS_MAX :: 16;
+EV_TEXT_MAX :: 1024;
+EV_HELD_RUN :: 1000;
+EV_BIG :: 1.0e300;
+EV_HEADER :: "You solve tasks from the queue.";
+EV_ANSWER :: "Reply with the letter of one option.";
+EV_RULE :: [7]string.[
+    "Read the whole task before you answer.",
+    "Check the units before you give a number.",
+    "Count the items one at a time.",
+    "Quote the log line that shows the error.",
+    "Give the shortest reply that is correct.",
+    "Explain each step before the answer.",
+    "Say unsure when the task is unclear."];
+// Kinds: count, units, log, short, explain, unclear.
+EV_KIND :: [6]string.["count","units","log","short","explain","unclear"];
+EV_NEED :: [6]u8.[5,3,8,16,32,64];
+EV_CLASH :: [6]u8.[0,0,0,0,16,0];
+EV_VERB :: [2]string.["add ","drop "];
+
+// Checks precede the implementation. The identity digests come from
+// Python's hashlib over the same bytes; the rest are worked by hand in
+// chapter 245. Helpers and the front's independent oracle are in the tests file.
+EV_SEED_TEXT :: "You solve tasks from the queue.\nRead the whole task before you answer.\nReply with the letter of one option.\n";
+#test "a prompt's text and identity" {
+    buf:[EV_TEXT_MAX]u8;n:=ev_render(1,buf[..]);#assert ev_text_is(buf[..],n,EV_SEED_TEXT);
+    n=ev_render(96,buf[..]);
+    #assert ev_text_is(buf[..],n,"You solve tasks from the queue.\nExplain each step before the answer.\nSay unsure when the task is unclear.\nReply with the letter of one option.\n");
+    #assert ev_text_is(buf[..],ev_render(0,buf[..]),"You solve tasks from the queue.\nReply with the letter of one option.\n");
+    #assert ev_text_is(buf[..],ev_render(128,buf[..]),"You solve tasks from the queue.\nReply with the letter of one option.\n");
+    c:=ev_test_seed();
+    #assert jg_hex(ev_identity(c),"99c03de086a4cc6af4ac42a74f3e701c0dfe39ab2511a3f92a1f67fdeace907b");
+    e:=c;e.rules=63;#assert jg_hex(ev_identity(e),"5778acd2af00f70aa5c2399b7ebd770b079a7fe6f3b13af7688a226e1758ab57");
+    e=c;e.tools=3;#assert jg_hex(ev_identity(e),"d693d8dddd04f04246987047916fbe54725a3714e9590975db2f27b5371cb085");
+    e=c;e.threshold=0.4;#assert jg_hex(ev_identity(e),"b7b4a3cae03406f1dc9e33700b67d8e59b068d0eb11d01a8ffa6df685596b1dd");
+    e=c;e.student.temperature=301;#assert !su_same(ev_identity(e),ev_identity(c));
+    // The price is not identity, and the rubric is replaced by the prompt.
+    e=c;e.student.price=9;#assert su_same(ev_identity(e),ev_identity(c));
+    e=c;e.student.rubric="other";#assert su_same(ev_identity(e),ev_identity(c));
+    #assert ev_text8(ev_canary(c),"99c03de0");
+    n=ev_send(c,buf[..]);#assert ev_text_is(buf[..],n,"You solve tasks from the queue.\nRead the whole task before you answer.\nReply with the letter of one option.\ncanary 99c03de0\n");
+    // A malformed candidate has no identity.
+    #assert ev_ok(c);
+    e=c;e.rules=127;#assert ev_ok(e);
+    e.rules=128;#assert !ev_ok(e) && su_same(ev_identity(e),su_zero());
+    e=c;e.threshold=0;#assert ev_ok(e);
+    e.threshold=1;#assert ev_ok(e);
+    e.threshold=-0.25;#assert !ev_ok(e);
+    e.threshold=1.25;#assert !ev_ok(e);
+    e.threshold=0.0/0.0;#assert !ev_ok(e);
+    e=c;e.student.samples=0;#assert !ev_ok(e);
+}
+#test "the stand-in student reads the text it was sent" {
+    c:=ev_test_seed();c.rules=63;buf:[EV_TEXT_MAX]u8;n:=ev_send(c,buf[..]);
+    r:=ev_read(cast(string)buf[0..<n]);#assert r.rules==63 && r.seen && ev_text8(r.canary,"5778acd2");
+    // A rule counts only as a whole line; a canary line is 15 bytes.
+    r=ev_read("You solve tasks from the queue.\nRead the whole task before you answer. \nCount the items one at a time.\ncanary 1234567\ncanary 12345678x\n");
+    #assert r.rules==4 && !r.seen;
+    r=ev_read("You solve tasks from the queue.\nCount the items one at a time.");#assert r.rules==0;
+    // Without the header first, nothing is read.
+    r=ev_read("Count the items one at a time.\nYou solve tasks from the queue.\ncanary abcdefgh\n");#assert r.rules==0 && !r.seen;
+    r=ev_read("You solve tasks from the queue.\ncanary abcdefgh\nSay unsure when the task is unclear.\nx\n");#assert r.seen && r.rules==64 && ev_text8(r.canary,"abcdefgh");
+    #assert ev_low(0)==-1 && ev_low(1)==0 && ev_low(6)==1 && ev_low(64)==6 && ev_low(128)==7 && ev_low(96)==5;
+}
+#test "the student by hand" {
+    count:=EvItem.{kind=0,gold=2};r:=EvRead.{rules=5};
+    a:=ev_answer(r,count,0.89);#assert a.answer==2 && a.right && a.missing==-1 && a.clash==-1;
+    a=ev_answer(r,count,0.9);#assert a.answer==3 && !a.right;
+    r.rules=1;a=ev_answer(r,count,0.24);#assert a.right && a.missing==2;
+    a=ev_answer(r,count,0.25);#assert !a.right && a.answer==3;
+    count.gold=3;a=ev_answer(r,count,0.5);#assert a.answer==0 && !a.right;
+    // Missing rule 0 alone, or rule 0 and rule 2.
+    a=ev_answer(EvRead.{rules=4},count,0.5);#assert !a.right && a.missing==0;
+    a=ev_answer(EvRead.{rules=0},count,0.5);#assert !a.right && a.missing==0;
+    // Rule 4 harms an explain item even when rule 5 is there.
+    explain:=EvItem.{kind=4,gold=1};
+    a=ev_answer(EvRead.{rules=48},explain,0.5);#assert !a.right && a.missing==-1 && a.clash==4;
+    a=ev_answer(EvRead.{rules=32},explain,0.5);#assert a.right && a.clash==-1;
+    a=ev_answer(EvRead.{rules=16},explain,0.2);#assert a.right && a.missing==5 && a.clash==4;
+    // Rule 6 makes an unclear item unsure, outside the four options.
+    unclear:=EvItem.{kind=5,gold=1};
+    a=ev_answer(EvRead.{rules=64},unclear,0.1);#assert a.answer==4 && !a.right && a.missing==-1;
+    a=ev_answer(EvRead.{rules=0},unclear,0.1);#assert a.answer==1 && a.right && a.missing==6;
+    a=ev_answer(EvRead.{rules=67},EvItem.{kind=1,gold=1},0.5);#assert a.answer==1 && a.right;
+    #assert ev_draw(17,3,1)==tb_uniform(17,67) && ev_draw(17,0,0)==tb_uniform(17,0);
+}
+#test "the grader counts, and the canary and the answer space are checked" {
+    items:[64]EvItem;ev_world(17,items[..]);which:=[4]int.[16,17,18,19];
+    c:=ev_test_seed();child:=c;child.rules=33;buf:[EV_TEXT_MAX]u8;out:[4]EvAnswer;
+    // Items 16 to 19 on run 1: unclear, log, explain, count; draws 0.038, 0.528, 0.460, 0.744.
+    m:=ev_measure(cast(string)buf[0..<ev_send(c,buf[..])],ev_canary(c),items[..],which[..],17,1,out[..]);
+    #assert m.right==1 && m.unsure==0 && m.echoed && ev_checked(m)==EvReason.none;
+    #assert out[0].right && out[0].missing==6 && out[1].missing==3 && out[2].missing==5 && out[3].missing==2 && !out[3].right;
+    m=ev_measure(cast(string)buf[0..<ev_send(child,buf[..])],ev_canary(child),items[..],which[..],17,1,out[..]);
+    #assert m.right==2 && m.echoed && out[2].right;
+    // The runner sent the parent's text while the child was under test.
+    m=ev_measure(cast(string)buf[0..<ev_send(c,buf[..])],ev_canary(child),items[..],which[..],17,1,out[..]);
+    #assert m.right==1 && !m.echoed && ev_checked(m)==EvReason.canary;
+    near:=ev_canary(c);near[7]=49;
+    m=ev_measure(cast(string)buf[0..<ev_send(c,buf[..])],near,items[..],which[..],17,1,out[..]);#assert !m.echoed;
+    near=ev_canary(c);near[0]=48;
+    m=ev_measure(cast(string)buf[0..<ev_send(c,buf[..])],near,items[..],which[..],17,1,out[..]);#assert !m.echoed;
+    m=ev_measure(cast(string)buf[0..<ev_render(1,buf[..])],ev_canary(c),items[..],which[..],17,1,out[..]);#assert !m.echoed;
+    // Rule 6 makes item 16 unsure: the answer space moved.
+    six:=c;six.rules=65;
+    m=ev_measure(cast(string)buf[0..<ev_send(six,buf[..])],ev_canary(six),items[..],which[..],17,1,out[..]);
+    #assert m.unsure==1 && m.right==0 && m.echoed && ev_checked(m)==EvReason.drift;
+    #assert ev_checked(EvMeasure.{unsure=1})==EvReason.canary;
+}
+#test "the stand-in reflector by hand, and the only replies accepted" {
+    t:=[4]EvAnswer.[EvAnswer.{right=true,missing=6,clash=-1},EvAnswer.{missing=3,clash=-1},EvAnswer.{missing=5,clash=-1},EvAnswer.{missing=2,clash=-1}];
+    reply:[8]u8;
+    // Votes: add 2, add 3, add 5. u = 0.7458 picks vote 2 of 0, 1, 2.
+    #assert ev_text_is(reply[..],ev_reflect(t[..],0.7457817572627011,reply[..]),"add 5");
+    #assert ev_text_is(reply[..],ev_reflect(t[..],0,reply[..]),"add 2");
+    #assert ev_text_is(reply[..],ev_reflect(t[..],0.34,reply[..]),"add 3");
+    #assert ev_text_is(reply[..],ev_reflect(t[..],0.999,reply[..]),"add 5");
+    both:=[2]EvAnswer.[EvAnswer.{missing=5,clash=4},EvAnswer.{right=true,missing=1,clash=-1}];
+    #assert ev_text_is(reply[..],ev_reflect(both[..],0.49,reply[..]),"add 5");
+    #assert ev_text_is(reply[..],ev_reflect(both[..],0.5,reply[..]),"drop 4");
+    drops:=[2]EvAnswer.[EvAnswer.{missing=-1,clash=4},EvAnswer.{missing=-1,clash=5}];
+    #assert ev_text_is(reply[..],ev_reflect(drops[..],0.75,reply[..]),"drop 5") && ev_text_is(reply[..],ev_reflect(drops[..],0.25,reply[..]),"drop 4");
+    zero:=[1]EvAnswer.[EvAnswer.{missing=-1,clash=0}];#assert ev_text_is(reply[..],ev_reflect(zero[..],0.9,reply[..]),"drop 0");
+    first:=[1]EvAnswer.[EvAnswer.{missing=0,clash=-1}];#assert ev_text_is(reply[..],ev_reflect(first[..],0.9,reply[..]),"add 0");
+    // No vote: every answer right, or every failure bad luck.
+    luck:=[2]EvAnswer.[EvAnswer.{missing=-1,clash=-1},EvAnswer.{right=true,missing=2,clash=4}];
+    #assert ev_reflect(luck[..],0.5,reply[..])==0;
+    p:=ev_parse("add 5");#assert p.ok && p.edit.op==EvOp.add && p.edit.rule==5;
+    p=ev_parse("drop 4");#assert p.ok && p.edit.op==EvOp.drop && p.edit.rule==4;
+    #assert ev_parse("add 0").ok && ev_parse("add 6").ok && ev_parse("drop 0").edit.rule==0;
+    bad:=[11]string.["add 7","add /","add ","drop 45","adds 5","Add 5","dro 4","addx 4","drop 4 ","Sure! Add a rule about units.",""];
+    for x:bad {#assert !ev_parse(x).ok;}
+    #assert ev_apply(1,EvEdit.{op=EvOp.add,rule=5})==33 && ev_apply(33,EvEdit.{op=EvOp.drop,rule=5})==1;
+    #assert ev_apply(1,EvEdit.{op=EvOp.drop,rule=5})==1 && ev_apply(33,EvEdit.{op=EvOp.add,rule=5})==33;
+    #assert ev_apply(127,EvEdit.{op=EvOp.drop,rule=0})==126 && ev_apply(0,EvEdit.{op=EvOp.add,rule=6})==64;
+}
+#test "a child keeps the seed's fields, and its grader is separate and passed" {
+    seed:=ev_test_seed();s:=ev_test_setup();child:=seed;child.rules=33;j:=jg_judges();
+    #assert ev_admit(seed,child,s)==EvReason.none;
+    e:=child;e.student.model=JgModel.mammoth;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.student.weights[5]^=1;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.student.temperature=0;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.student.samples=2;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.student.swap=true;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.student.price=0.5;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.tools=3;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.tools=0;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.threshold=0.4;#assert ev_admit(seed,e,s)==EvReason.field;
+    e=child;e.rules=128;#assert ev_admit(seed,e,s)==EvReason.field;
+    // The rubric field is not compared: the rules are the prompt.
+    e=child;e.student.rubric="something else";#assert ev_admit(seed,e,s)==EvReason.none;
+    t:=s;t.grader=j[0];#assert ev_admit(seed,child,t)==EvReason.shared;
+    t=s;t.grader=s.reflector;#assert ev_admit(seed,child,t)==EvReason.shared;
+    t=s;t.grader.samples=0;#assert ev_admit(seed,child,t)==EvReason.shared;
+    t=s;t.reflector=j[4];t.reflector.rubric="reflect";#assert ev_admit(seed,child,t)==EvReason.shared;
+    t=s;t.judge=JgResult.{verdict=VdVerdict.unverifiable,reason=JgReason.noisy};#assert ev_admit(seed,child,t)==EvReason.unproven;
+    t=s;t.judge=JgResult.{verdict=VdVerdict.failed,reason=JgReason.length};#assert ev_admit(seed,child,t)==EvReason.unproven;
+}
+#test "the Pareto front, its weights and the pick, by hand" {
+    // Four prompts on four items: C is dominated by A, D repeats A.
+    s:=[16]f64.[1,1,0,0, 1,0,1,0, 1,0,0,0, 1,1,0,0];
+    #assert ev_dominates(s[0..<4],s[8..<12]) && !ev_dominates(s[8..<12],s[0..<4]) && !ev_dominates(s[0..<4],s[12..<16]);
+    #assert !ev_dominates(s[0..<4],s[4..<8]) && !ev_dominates(s[4..<8],s[0..<4]) && ev_dominates(s[4..<8],s[8..<12]);
+    keep:[4]bool;#assert ev_front(s[..],4,4,keep[..])==2 && keep[0] && keep[1] && !keep[2] && !keep[3];
+    // Item 0: A and B tie; item 1: A; item 2: B; item 3: everyone at 0 ties.
+    wins:[4]int;for i:0..<4 {wins[i]=9;}
+    #assert ev_wins(s[..],4,4,keep[..],wins[..])==6 && wins[0]==3 && wins[1]==3 && wins[2]==0 && wins[3]==0;
+    #assert ev_pick(wins[..],6,0)==0 && ev_pick(wins[..],6,0.49)==0 && ev_pick(wins[..],6,0.5)==1 && ev_pick(wins[..],6,0.99)==1;
+    gap:=[3]int.[2,0,1];#assert ev_pick(gap[..],3,0.6)==0 && ev_pick(gap[..],3,0.7)==2;
+    #assert ev_best(s[..],4,4)==0;
+    later:=[4]f64.[0,1,1,1];#assert ev_best(later[..],2,2)==1;
+    climb:=[3]f64.[1,3,2];#assert ev_best(climb[..],3,1)==1;
+    // A score of 2 beats 1 on an item: wins count strict leaders out.
+    w:=[6]f64.[2,0, 0,2, 1,1];keep3:[3]bool;wins3:[3]int;
+    #assert ev_front(w[..],3,2,keep3[..])==3 && ev_wins(w[..],3,2,keep3[..],wins3[..])==2 && wins3[2]==0;
+}
+#forall "the front matches an independent sort-and-sweep oracle" a:0..<81,b:0..<81 #steps 400000000 {
+    s:[8]f64;x:=a;y:=b;
+    for k:0..<4 {s[k]=f64(x%3);x/=3;s[4+k]=f64(y%3);y/=3;}
+    keep:[4]bool;want:[4]bool;wins:[4]int;
+    #assert ev_front(s[..],4,2,keep[..])==ev_kung(s[..],4,2,want[..]);
+    total:=ev_wins(s[..],4,2,keep[..],wins[..]);
+    #assert total>=1;
+    for i:0..<4 {
+        #assert keep[i]==want[i];
+        if !keep[i] {#assert wins[i]==0;}
+    }
+}
+#test "the run on the example's world" #steps 2000000000 {
+    items:[64]EvItem;ev_world(17,items[..]);dev:[16]int;feedback:[24]int;held:[24]int;ev_test_parts(dev[..],feedback[..],held[..]);
+    seed:=ev_test_seed();s:=ev_test_setup();pool:[16]EvCandidate;scores:[256]f64;steps:[64]EvStep;
+    r:=ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[..],scores[..],steps[..]);
+    #assert r.status==EvStatus.ok && r.reason==EvReason.budget && r.seed==7 && r.candidates==6 && r.steps==12 && r.best==5 && r.spend==3696;
+    #assert ev_unit(seed,s)==19;
+    reasons:=[12]EvReason.[EvReason.accepted,EvReason.accepted,EvReason.drift,EvReason.drift,EvReason.drift,EvReason.accepted,
+        EvReason.drift,EvReason.drift,EvReason.drift,EvReason.accepted,EvReason.drift,EvReason.accepted];
+    rules:=[6]u8.[1,33,41,45,61,63];edits:=[6]int.[0,5,3,2,4,1];parents:=[6]int.[-1,0,1,2,3,4];devs:=[6]int.[7,8,9,10,13,15];
+    spend:=304.0;
+    for x,t:steps[0..<12] {
+        #assert x.reason==reasons[t];
+        spend+=ev_test_cost(x,19,4,4,16);#assert x.spend==spend;
+    }
+    #assert steps[0].front==1 && steps[0].parent==0 && steps[0].parent_right==1 && steps[0].child_right==2 && steps[0].edit.rule==5 && steps[0].child==1;
+    #assert steps[10].front==2 && steps[10].parent==3 && steps[11].parent==4 && steps[11].edit.op==EvOp.add && steps[11].edit.rule==1;
+    #assert steps[2].child==-1 && steps[2].edit.rule==6 && steps[2].child_right==1;
+    for c,i:pool[0..<6] {
+        #assert c.rules==rules[i] && c.parent==parents[i] && (i==0 || c.edit.rule==edits[i]);
+        t:=0.0;for v:scores[i*16..<(i+1)*16] {t+=v;}#assert t==f64(devs[i]);
+        if i>0 {#assert steps[0].dev==8 && c.edit.op==EvOp.add;}
+    }
+    #assert steps[11].dev==15;
+    // With pool room for three prompts the run stops when the pool is full.
+    q:=ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[0..<3],scores[..],steps[..]);
+    #assert q.status==EvStatus.ok && q.reason==EvReason.full && q.candidates==3 && q.steps==2 && q.best==2;
+    // With room for three steps it stops after them.
+    q=ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<3]);
+    #assert q.status==EvStatus.ok && q.reason==EvReason.none && q.steps==3 && q.candidates==3;
+}
+#test "a batch that needs no reflection, one with nothing to say, and a child with no gain" {
+    // Draws on run 1: item 0 at 0.355, item 3 at 0.944. The seed has rules 0 and 2.
+    // Swap settings don't change a single call's price.
+    items:[4]EvItem;dev:=[1]int.[0];seed:=ev_test_seed();seed.rules=5;seed.student.swap=true;s:=ev_test_setup();s.batch=1;s.reflector.swap=true;
+    pool:[16]EvCandidate;scores:[16]f64;steps:[1]EvStep;
+    one:=[1]int.[0];r:=ev_evolve(seed,s,items[..],dev[..],one[..],pool[..],scores[..],steps[..]);
+    #assert r.steps==1 && steps[0].reason==EvReason.perfect && steps[0].parent_right==1 && r.spend==38 && r.reason==EvReason.none;
+    // A count item missed by bad luck: no vote, no reply.
+    three:=[1]int.[3];r=ev_evolve(seed,s,items[..],dev[..],three[..],pool[..],scores[..],steps[..]);
+    #assert steps[0].reason==EvReason.silent && steps[0].parent_right==0 && r.spend==42 && r.candidates==1;
+    // An explain item: the child gains rule 5 and still misses at 0.944.
+    items[3].kind=4;r=ev_evolve(seed,s,items[..],dev[..],three[..],pool[..],scores[..],steps[..]);
+    #assert steps[0].reason==EvReason.no_gain && steps[0].edit.rule==5 && steps[0].child_right==0 && r.spend==61 && r.candidates==1;
+    // One item, one Pareto item, one feedback item and a batch of one are enough.
+    #assert ev_run_ok(ev_evolve(seed,s,items[0..<1],dev[..],one[..],pool[..],scores[..],steps[..]));
+    // A step runs when its worst case exactly fits: 304 + 460 = 764.
+    big:[64]EvItem;ev_world(17,big[..]);d16:[16]int;f24:[24]int;h24:[24]int;ev_test_parts(d16[..],f24[..],h24[..]);
+    t:=ev_test_setup();t.budget=764;t.reflector.swap=true;more:[4]EvStep;wide:[256]f64;
+    r=ev_evolve(ev_test_seed(),t,big[..],d16[..],f24[..],pool[..],wide[..],more[..]);
+    #assert r.steps==1 && r.spend==764 && r.reason==EvReason.budget;
+    t.budget=763;r=ev_evolve(ev_test_seed(),t,big[..],d16[..],f24[..],pool[..],wide[..],more[..]);
+    #assert r.steps==0 && r.spend==304 && r.reason==EvReason.budget;
+}
+#forall "spending never passes the budget, and every unit is counted" k:0..<12 #steps 2000000000 {
+    items:[64]EvItem;ev_world(17,items[..]);dev:[4]int;feedback:[8]int;held:[1]int;ev_test_parts(dev[..],feedback[..],held[0..<0]);
+    seed:=ev_test_seed();s:=ev_test_setup();s.batch=2;s.budget=f64(60*k);
+    pool:[16]EvCandidate;scores:[64]f64;steps:[64]EvStep;
+    r:=ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[..],scores[..],steps[..]);
+    // An answer costs 19: the Pareto items 76, a step at most 2*38 + 4 + 76 = 156.
+    if s.budget<76 {#assert r.status==EvStatus.refused && r.reason==EvReason.budget && r.spend==0;}
+    else {
+        #assert r.status==EvStatus.ok && r.reason==EvReason.budget && r.spend<=s.budget && r.spend+156>s.budget;
+        spend:=76.0;
+        for x:steps[0..<r.steps] {spend+=ev_test_cost(x,19,2,4,4);#assert x.spend==spend;}
+        #assert spend==r.spend;
+    }
+}
+#test "the loop refuses what it cannot run" {
+    items:[64]EvItem;ev_world(17,items[..]);dev:[16]int;feedback:[24]int;held:[24]int;ev_test_parts(dev[..],feedback[..],held[..]);
+    seed:=ev_test_seed();s:=ev_test_setup();pool:[16]EvCandidate;scores:[256]f64;steps:[65]EvStep;
+    t:=s;t.budget=0;#assert ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]).reason==EvReason.budget;
+    t.budget=303;#assert ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]).reason==EvReason.budget;
+    t.budget=304;r:=ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]);
+    #assert ev_run_ok(r) && r.steps==0 && r.spend==304 && r.candidates==1 && r.best==0 && r.seed==7;
+    t.budget=-1;#assert ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]).status==EvStatus.number;
+    t.budget=0.0/0.0;#assert ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]).status==EvStatus.number;
+    t.budget=1.0e300;#assert ev_run_ok(ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<0]));
+    t.budget=1.0e301;#assert ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<0]).status==EvStatus.number;
+    // A grader that shares weights, or one that did not pass, refuses the whole run.
+    t=s;t.grader=jg_judges()[0];r=ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]);
+    #assert r.status==EvStatus.refused && r.reason==EvReason.shared && r.spend==0;
+    t=s;t.judge=JgResult.{verdict=VdVerdict.unverifiable,reason=JgReason.noisy};
+    #assert ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]).reason==EvReason.unproven;
+    // Shapes.
+    #assert ev_run_shape(ev_evolve(seed,s,items[0..<0],dev[0..<0],feedback[..],pool[..],scores[..],steps[0..<1]));
+    big:[65]EvItem;#assert ev_run_shape(ev_evolve(seed,s,big[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    #assert ev_run_ok(ev_evolve(seed,s,big[0..<64],dev[..],feedback[..],pool[..],scores[..],steps[0..<0]));
+    #assert ev_run_shape(ev_evolve(seed,s,items[..],dev[0..<0],feedback[..],pool[..],scores[..],steps[0..<1]));
+    #assert ev_run_shape(ev_evolve(seed,s,items[..],dev[..],feedback[0..<0],pool[..],scores[..],steps[0..<1]));
+    d:=dev;d[3]=64;#assert ev_run_shape(ev_evolve(seed,s,items[..],d[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    d[3]=-1;#assert ev_run_shape(ev_evolve(seed,s,items[..],d[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    d[3]=63;#assert ev_run_ok(ev_evolve(seed,s,items[..],d[..],feedback[..],pool[..],scores[..],steps[0..<0]));
+    f:=feedback;f[0]=64;#assert ev_run_shape(ev_evolve(seed,s,items[..],dev[..],f[..],pool[..],scores[..],steps[0..<1]));
+    x:=items;x[5].kind=6;#assert ev_run_shape(ev_evolve(seed,s,x[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    x=items;x[5].kind=-1;#assert ev_run_shape(ev_evolve(seed,s,x[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    x=items;x[5].gold=4;#assert ev_run_shape(ev_evolve(seed,s,x[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    x=items;x[5].gold=-1;#assert ev_run_shape(ev_evolve(seed,s,x[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    x=items;x[5].kind=5;x[5].gold=3;#assert ev_run_ok(ev_evolve(seed,s,x[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<0]));
+    t=s;t.batch=0;#assert ev_run_shape(ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    t.batch=9;#assert ev_run_shape(ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    t.batch=8;#assert ev_run_ok(ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<0]));
+    t.batch=4;#assert ev_run_shape(ev_evolve(seed,t,items[..],dev[..],feedback[0..<3],pool[..],scores[..],steps[0..<1]));
+    #assert ev_run_ok(ev_evolve(seed,t,items[..],dev[..],feedback[0..<4],pool[..],scores[..],steps[0..<0]));
+    #assert ev_run_shape(ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[0..<0],scores[..],steps[0..<1]));
+    more:[17]EvCandidate;wide:[272]f64;#assert ev_run_shape(ev_evolve(seed,s,items[..],dev[..],feedback[..],more[..],wide[..],steps[0..<1]));
+    #assert ev_run_ok(ev_evolve(seed,s,items[..],dev[..],feedback[..],more[0..<16],scores[..],steps[0..<0]));
+    #assert ev_run_shape(ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[..],scores[0..<255],steps[0..<1]));
+    #assert ev_run_shape(ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[..],scores[..],steps[..]));
+    #assert ev_run_ok(ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[0..<1],scores[0..<16],steps[0..<64]));
+    bad:=seed;bad.rules=128;#assert ev_run_shape(ev_evolve(bad,s,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    t=s;t.grader.samples=0;#assert ev_run_shape(ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+    t=s;t.reflector.rubric="";#assert ev_run_shape(ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[0..<1]));
+}
+#test "the held-out partition is read once" #steps 2000000000 {
+    items:[64]EvItem;ev_world(17,items[..]);dev:[16]int;feedback:[24]int;held:[24]int;ev_test_parts(dev[..],feedback[..],held[..]);
+    part:[64]int;for i:16..<40 {part[i]=1;}
+    for i:40..<64 {part[i]=2;}
+    suite:=ev_suite(items[..],part[..]);#assert suite.status==SuStatus.ok && suite.mask==4;
+    seed:=ev_test_seed();final:=seed;final.rules=63;store:[3]SuReceipt;
+    h:=ev_held(suite,2,store[..],0,seed,final,items[..],held[..],17,16,4);
+    #assert h.status==EvStatus.ok && h.seed==0.25 && h.final==0.7578125 && h.receipts==1 && su_verify(store[..],1).status==SuStatus.ok;
+    #assert h.floor.status==NsStatus.ok && h.floor.blocks==4 && h.decision.gain.tasks==12 && h.decision.gain.below==0;
+    #assert h.decision.result.verdict==VdVerdict.passed && h.decision.result.reason==VdReason.beyond_floor;
+    // Recorded from the run: the bootstrap's spread and the room under a ceiling of 1.
+    #assert h.decision.gain.se==0.08472926726870482 && h.decision.room.room==0.8229166666666666 && h.floor.sd==0.05031728036871333;
+    // The receipt names the final prompt and records the gain.
+    #assert store[0].partition==2 && store[0].system==jg_seed(ev_identity(final)) && store[0].score==h.decision.gain.gain;
+    // The block means by hand for item 40: runs 1000 to 1003.
+    a:=0.0;b:=0.0;
+    for r:0..<4 {
+        x:=ev_answer(EvRead.{rules=1},items[40],ev_draw(17,40,EV_HELD_RUN+r));y:=ev_answer(EvRead.{rules=63},items[40],ev_draw(17,40,EV_HELD_RUN+r));
+        if x.right {a+=1;}
+        if y.right {b+=1;}
+    }
+    gain:=0.0;
+    // The gain is the mean of the per-item block-mean differences; check it from item sums.
+    for k:0..<24 {
+        for r:0..<4 {
+            u:=ev_draw(17,40+k,EV_HELD_RUN+r);
+            if ev_answer(EvRead.{rules=63},items[40+k],u).right {gain+=0.25;}
+            if ev_answer(EvRead.{rules=1},items[40+k],u).right {gain-=0.25;}
+        }
+    }
+    #assert abs(gain/24-h.decision.gain.gain)<1.0e-12 && a<=4 && b<=4;
+    again:=ev_held(suite,2,store[..],1,seed,seed,items[..],held[..],17,16,4);
+    #assert again.status==EvStatus.refused && again.reason==EvReason.locked && again.receipts==1 && again.final==0;
+    // An open partition can be read again.
+    open:=ev_held(suite,1,store[..],1,seed,final,items[..],feedback[..],17,2,1);#assert open.status==EvStatus.ok && open.receipts==2;
+    #assert ev_held(suite,2,store[..],0,seed,final,items[..],held[0..<0],17,16,4).status==EvStatus.shape;
+    many:[65]int;#assert ev_held(suite,2,store[..],0,seed,final,items[..],many[..],17,16,4).status==EvStatus.shape;
+    every:[64]int;for i:0..<64 {every[i]=i;}
+    #assert ev_held(suite,0,store[..],2,seed,final,items[..],every[..],17,2,1).status==EvStatus.ok;
+    #assert ev_held(suite,0,store[..],0,seed,final,items[..],every[0..<1],17,2,1).status==EvStatus.ok;
+    h2:=held;h2[0]=64;#assert ev_held(suite,2,store[..],0,seed,final,items[..],h2[..],17,16,4).status==EvStatus.shape;
+    #assert ev_held(suite,2,store[..],0,seed,final,items[..],held[..],17,1,1).status==EvStatus.shape;
+    #assert ev_held(suite,2,store[..],0,seed,final,items[..],held[..],17,17,1).status==EvStatus.shape;
+    #assert ev_held(suite,2,store[..],0,seed,final,items[..],held[..],17,16,0).status==EvStatus.shape;
+    #assert ev_held(suite,2,store[..],0,seed,final,items[..],held[..],17,16,3).status==EvStatus.shape;
+    bad:=final;bad.rules=128;
+    #assert ev_held(suite,2,store[..],0,bad,final,items[..],held[..],17,16,4).status==EvStatus.shape;
+    #assert ev_held(suite,2,store[..],0,seed,bad,items[..],held[..],17,16,4).status==EvStatus.shape;
+    full:=ev_held(suite,1,store[..],3,seed,final,items[..],feedback[..],17,2,1);
+    #assert full.status==EvStatus.refused && full.reason==EvReason.full && full.receipts==3;
+    #assert ev_held(suite,1,store[..],2,seed,final,items[..],feedback[..],17,2,1).receipts==3;
+    #assert ev_held(suite,1,store[..],4,seed,final,items[..],feedback[..],17,2,1).status==EvStatus.shape;
+    #assert ev_held(suite,1,store[..],-1,seed,final,items[..],feedback[..],17,2,1).status==EvStatus.shape;
+    #assert ev_held(suite,-1,store[..],0,seed,final,items[..],feedback[..],17,2,1).status==EvStatus.shape;
+    #assert ev_held(suite,64,store[..],0,seed,final,items[..],feedback[..],17,2,1).status==EvStatus.shape;
+    #assert ev_held(suite,63,store[..],0,seed,final,items[..],feedback[..],17,2,1).status==EvStatus.ok;
+    broken:=suite;broken.status=SuStatus.items;
+    #assert ev_held(broken,1,store[..],0,seed,final,items[..],feedback[..],17,2,1).status==EvStatus.shape;
+}
+#test "the example's world and suite" {
+    items:[64]EvItem;ev_world(17,items[..]);
+    for x,i:items {
+        #assert x.task==i/2 && x.kind==cast(int)(tb_bits(17,cast(u64)(2*i))%6) && x.gold==cast(int)(tb_bits(17,cast(u64)(2*i+1))%4);
+    }
+    #assert items[0].kind==3 && items[0].gold==1 && items[16].kind==5 && items[19].kind==0 && items[19].gold==3 && items[63].task==31;
+    part:[64]int;s:=ev_suite(items[..],part[..]);#assert s.status==SuStatus.ok && s.mask==4;
+    // The gate digest from Python's hashlib; the items digest recorded from the run.
+    #assert jg_hex(s.gate,"a185926f718ad22cd912eb72248611347f3e897f54a7023b50bf580ccd6b3e7d");
+    #assert jg_hex(s.items,"7ed4223c846d5c0e4a972acd4c9e16bcbd16d7d901373236104cf532a0120b9b");
+    // The items digest covers kind and gold; the question digest the kinds.
+    other:=items;other[3].gold=(other[3].gold+1)%4;o:=ev_suite(other[..],part[..]);
+    #assert !su_same(s.items,o.items) && su_same(s.questions,o.questions) && su_same(s.gate,o.gate);
+    other=items;other[3].kind=(other[3].kind+1)%6;o=ev_suite(other[..],part[..]);#assert !su_same(s.questions,o.questions);
+    part[9]=2;o=ev_suite(items[..],part[..]);#assert !su_same(s.items,o.items);
+}
+
+// book:begin identity
+ev_line :: (buf:[]u8,at:int,s:string)->int {for i:0..<s.count {buf[at+i]=s[i];}buf[at+s.count]=10;return at+s.count+1;}
+// The prompt's text: the header, the rules present in library order, and
+// the answer line. buf holds EV_TEXT_MAX bytes.
+ev_render :: (rules:u8,buf:[]u8)->int {
+    at:=ev_line(buf,0,EV_HEADER);
+    for k:0..<EV_RULES {if (rules>>cast(u8)k)&1==1 {at=ev_line(buf,at,EV_RULE[k]);}}
+    return ev_line(buf,at,EV_ANSWER);
+}
+ev_ok :: (c:EvCandidate)->bool {return jg_component_ok(c.student) && c.rules<128 && tb_in(c.threshold,0,1);}
+// Chapter 239's encoding under its own tag: the student's identity with the
+// rendered prompt as its rubric (chapter 246), the tool grants and the
+// threshold. Any changed byte of the prompt is a new prompt.
+ev_identity :: (c:EvCandidate)->[32]u8 #export_c {
+    if !ev_ok(c) {return su_zero();}
+    text:[EV_TEXT_MAX]u8;s:=c.student;s.rubric=cast(string)text[0..<ev_render(c.rules,text[..])];
+    buf:[80]u8;at:=su_text(buf[..],0,"psionic.prompt.v1");d:=jg_identity(s);
+    for i:0..<32 {buf[at+i]=d[i];}
+    buf[at+32]=c.tools;at=su_u64(buf[..],at+33,f64_bits(c.threshold));
+    return su_hash(buf[0..<at]);
+}
+// The canary: the identity's first four bytes in hex, sent as the last line.
+ev_canary :: (c:EvCandidate)->[8]u8 {
+    d:=ev_identity(c);digits:="0123456789abcdef";out:[8]u8;
+    for i:0..<4 {out[2*i]=digits[cast(int)(d[i]>>4)];out[2*i+1]=digits[cast(int)(d[i]&15)];}
+    return out;
+}
+ev_send :: (c:EvCandidate,buf:[]u8)->int {
+    at:=ev_render(c.rules,buf);w:=ev_canary(c);
+    for i:0..<7 {buf[at+i]="canary "[i];}
+    for i:0..<8 {buf[at+7+i]=w[i];}
+    buf[at+15]=10;return at+16;
+}
+// book:end identity
+
+// book:begin student
+// stand-in-student-v1. It reads the text it was sent line by line. Text
+// that doesn't start with the header line is not a prompt and is ignored;
+// a line equal to a library rule turns that rule on, and a canary line is
+// echoed.
+ev_read :: (text:string)->EvRead {
+    r:EvRead;start:=0;first:=true;
+    for c,i:text {
+        if c!=10 {continue;}
+        line:=text[start..<i];start=i+1;
+        if first && line!=EV_HEADER {return EvRead.{};}
+        first=false;
+        for k:0..<EV_RULES {if line==EV_RULE[k] {r.rules|=cast(u8)(1<<k);}}
+        if line.count==15 && line[0..<7]=="canary " {r.seen=true;for j:0..<8 {r.canary[j]=line[7+j];}}
+    }
+    return r;
+}
+ev_low :: (mask:u8)->int {
+    k:=0;m:=mask;
+    while m!=0 {if m&1==1 {return k;}m>>=1;k+=1;}
+    return -1;
+}
+// With every needed rule and no harmful one the student is right when the
+// draw u is below 0.9, otherwise below 0.25; a wrong answer is the next
+// option. With rule 6 an unclear item gets "unsure", outside the options.
+ev_answer :: (r:EvRead,item:EvItem,u:f64)->EvAnswer {
+    need:=EV_NEED[item.kind]&(255^r.rules);harm:=EV_CLASH[item.kind]&r.rules;
+    a:=EvAnswer.{missing=ev_low(need),clash=ev_low(harm)};
+    if item.kind==EV_UNCLEAR && (r.rules>>EV_UNSURE)&1==1 {a.answer=EV_OPTIONS;return a;}
+    p:=ifx need==0 && harm==0 then EV_GOOD else EV_POOR;
+    a.answer=ifx u<p then item.gold else (item.gold+1)%EV_OPTIONS;
+    a.right=a.answer==item.gold;
+    return a;
+}
+// The draw for item i on run r, shared by every prompt so that two prompts
+// on one run face the same luck.
+ev_draw :: (world:u64,item:int,run:int)->f64 {return tb_uniform(world,cast(u64)(run*EV_ITEMS_MAX+item));}
+// The grader compares each answer with the gold one. echoed: the student
+// saw a canary and it is the one expected.
+ev_measure :: (text:string,expect:[8]u8,items:[]EvItem,which:[]int,world:u64,run:int,out:[]EvAnswer)->EvMeasure {
+    r:=ev_read(text);m:=EvMeasure.{echoed=r.seen};
+    for j:0..<8 {if r.canary[j]!=expect[j] {m.echoed=false;}}
+    for k:0..<which.count {
+        a:=ev_answer(r,items[which[k]],ev_draw(world,which[k],run));out[k]=a;
+        if a.right {m.right+=1;}
+        if a.answer>=EV_OPTIONS {m.unsure+=1;}
+    }
+    return m;
+}
+// book:end student
+
+// book:begin reflect
+// stand-in-reflector-v1. Each failure votes to add its missing rule and to
+// drop its harmful one; a draw u picks a vote, so an edit is chosen in
+// proportion to the failures that ask for it. No vote, no reply.
+ev_reflect :: (traces:[]EvAnswer,u:f64,reply:[]u8)->int {
+    votes:[14]int;total:=0;
+    for a:traces {
+        if a.right {continue;}
+        if a.missing>=0 {votes[a.missing]+=1;total+=1;}
+        if a.clash>=0 {votes[EV_RULES+a.clash]+=1;total+=1;}
+    }
+    if total==0 {return 0;}
+    target:=cast(int)(u*f64(total));v:=0;
+    while target>=votes[v] {target-=votes[v];v+=1;}
+    verb:=EV_VERB[v/EV_RULES];
+    for i:0..<verb.count {reply[i]=verb[i];}
+    reply[verb.count]=cast(u8)(48+v%EV_RULES);
+    return verb.count+1;
+}
+// The only replies accepted: "add k" or "drop k" with k a rule's number.
+ev_parse :: (reply:string)->EvParse {
+    n:=reply.count;
+    if n<5 {return EvParse.{};}
+    op:=ifx n==5 then EvOp.add else EvOp.drop;
+    k:=cast(int)reply[n-1]-48;
+    if reply[0..<n-1]!=EV_VERB[cast(int)op] || k<0 || k>=EV_RULES {return EvParse.{};}
+    return EvParse.{ok=true,edit=EvEdit.{op=op,rule=k}};
+}
+ev_apply :: (rules:u8,e:EvEdit)->u8 {
+    bit:=cast(u8)(1<<e.rule);
+    return ifx e.op==EvOp.add then rules|bit else rules&(255^bit);
+}
+// book:end reflect
+
+// book:begin admit
+// A child keeps the seed's fields: student, price, tools and threshold;
+// only its rules differ. Its grader must not share weights with the student
+// or the reflector, and must have passed chapter 246's gate.
+ev_admit :: (seed:EvCandidate,child:EvCandidate,s:EvSetup)->EvReason #export_c {
+    a:=seed.student;b:=child.student;a.rubric=EV_HEADER;b.rubric=EV_HEADER;
+    if !ev_ok(child) || !su_same(jg_identity(a),jg_identity(b)) || a.price!=b.price || child.tools!=seed.tools || child.threshold!=seed.threshold {
+        return EvReason.field;
+    }
+    g:=jg_grade(jg_separate(s.grader,b,s.reflector),s.judge,vd(VdVerdict.passed,VdReason.none));
+    if g.reason==JgReason.shared {return EvReason.shared;}
+    if g.reason==JgReason.unproven {return EvReason.unproven;}
+    return EvReason.none;
+}
+// After the batch: the student echoed the canary, and stayed in the answer space.
+ev_checked :: (m:EvMeasure)->EvReason {
+    if !m.echoed {return EvReason.canary;}
+    if m.unsure>0 {return EvReason.drift;}
+    return EvReason.none;
+}
+// book:end admit
+
+// book:begin front
+// a dominates b: at least as good on every item and better on one.
+ev_dominates :: (a:[]f64,b:[]f64)->bool {
+    better:=false;
+    for i:0..<a.count {
+        if a[i]<b[i] {return false;}
+        if a[i]>b[i] {better=true;}
+    }
+    return better;
+}
+// Candidate i is on the front when no candidate dominates it and no earlier
+// one has the same scores. scores is candidate-major, m items each.
+ev_front :: (scores:[]f64,count:int,m:int,keep:[]bool)->int {
+    kept:=0;
+    for i:0..<count {
+        a:=scores[i*m..<(i+1)*m];keep[i]=true;
+        for j:0..<count {
+            b:=scores[j*m..<(j+1)*m];
+            if ev_dominates(b,a) || (j<i && ev_tie(a,b)) {keep[i]=false;}
+        }
+        if keep[i] {kept+=1;}
+    }
+    return kept;
+}
+ev_tie :: (a:[]f64,b:[]f64)->bool {for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+// GEPA's per-item Pareto sampling: a front member's weight is the number of
+// items on which it is tied-best; u in [0, 1) picks in proportion.
+ev_wins :: (scores:[]f64,count:int,m:int,keep:[]bool,wins:[]int)->int {
+    total:=0;
+    for i:0..<count {
+        wins[i]=0;
+        if !keep[i] {continue;}
+        for t:0..<m {
+            top:=true;
+            for j:0..<count {if scores[j*m+t]>scores[i*m+t] {top=false;}}
+            if top {wins[i]+=1;}
+        }
+        total+=wins[i];
+    }
+    return total;
+}
+ev_pick :: (wins:[]int,total:int,u:f64)->int {
+    target:=cast(int)(u*f64(total));i:=0;
+    while target>=wins[i] {target-=wins[i];i+=1;}
+    return i;
+}
+// The final prompt: the highest total on the Pareto items; the earlier wins a tie.
+ev_sum :: (v:[]f64)->f64 {t:=0.0;for x:v {t+=x;}return t;}
+ev_best :: (scores:[]f64,count:int,m:int)->int {
+    best:=0;top:=ev_sum(scores[0..<m]);
+    for i:1..<count {
+        t:=ev_sum(scores[i*m..<i*m+m]);
+        if t>top {top=t;best=i;}
+    }
+    return best;
+}
+// book:end front
+
+// book:begin loop
+ev_index_ok :: (v:[]int,n:int)->bool {for x:v {if x<0 || x>=n {return false;}}return true;}
+ev_setup_ok :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]int,pool:[]EvCandidate,scores:[]f64,steps:[]EvStep)->EvStatus {
+    n:=items.count;
+    if n<1 || n>EV_ITEMS_MAX || dev.count<1 || feedback.count<1 || !ev_index_ok(dev,n) || !ev_index_ok(feedback,n) {return EvStatus.shape;}
+    for x:items {if x.kind<0 || x.kind>=EV_KINDS || x.gold<0 || x.gold>=EV_OPTIONS {return EvStatus.shape;}}
+    if s.batch<1 || s.batch>EV_BATCH_MAX || s.batch>feedback.count || pool.count<1 || pool.count>EV_POOL_MAX {return EvStatus.shape;}
+    if scores.count<pool.count*dev.count || steps.count>EV_STEPS_MAX {return EvStatus.shape;}
+    if !ev_ok(seed) || !jg_component_ok(s.grader) || !jg_component_ok(s.reflector) {return EvStatus.shape;}
+    if !tb_in(s.budget,0,EV_BIG) {return EvStatus.number;}
+    return EvStatus.ok;
+}
+// One answer costs a student call and a grade; a step's worst case is two
+// batches, one reflection and a full pass over the Pareto items.
+ev_unit :: (seed:EvCandidate,s:EvSetup)->f64 {return jg_cost(seed.student,false)+jg_cost(s.grader,false);}
+// A prompt sent with its canary and scored 1 or 0 per item on run r.
+ev_score :: (c:EvCandidate,items:[]EvItem,which:[]int,world:u64,run:int,out:[]f64)->int {
+    text:[EV_TEXT_MAX]u8;answers:[EV_ITEMS_MAX]EvAnswer;
+    m:=ev_measure(cast(string)text[0..<ev_send(c,text[..])],ev_canary(c),items,which,world,run,answers[..]);
+    for k:0..<which.count {out[k]=ifx answers[k].right then 1.0 else 0.0;}
+    return m.right;
+}
+ev_evolve :: (seed:EvCandidate,s:EvSetup,items:[]EvItem,dev:[]int,feedback:[]int,pool:[]EvCandidate,scores:[]f64,steps:[]EvStep)->EvRun #export_c {
+    st:=ev_setup_ok(seed,s,items,dev,feedback,pool,scores,steps);
+    if st!=EvStatus.ok {return EvRun.{status=st};}
+    first:=ev_admit(seed,seed,s);
+    if first!=EvReason.none {return EvRun.{status=EvStatus.refused,reason=first};}
+    m:=dev.count;unit:=ev_unit(seed,s);full:=f64(m)*unit;b:=s.batch;
+    if full>s.budget {return EvRun.{status=EvStatus.refused,reason=EvReason.budget};}
+    pool[0]=seed;pool[0].parent=-1;
+    r:=EvRun.{seed=ev_score(seed,items,dev,s.world,0,scores[0..<m]),candidates=1,spend=full};
+    worst:=2*f64(b)*unit+jg_cost(s.reflector,false)+full;
+    keep:[EV_POOL_MAX]bool;wins:[EV_POOL_MAX]int;which:[EV_BATCH_MAX]int;
+    pa:[EV_BATCH_MAX]EvAnswer;ca:[EV_BATCH_MAX]EvAnswer;text:[EV_TEXT_MAX]u8;reply:[8]u8;
+    while r.steps<steps.count {
+        if r.spend+worst>s.budget {r.reason=EvReason.budget;break;}
+        if r.candidates==pool.count {r.reason=EvReason.full;break;}
+        t:=r.steps;n:=r.candidates;
+        x:=EvStep.{front=ev_front(scores,n,m,keep[..]),child=-1,reason=EvReason.perfect};total:=ev_wins(scores,n,m,keep[..],wins[..]);
+        p:=ev_pick(wins[0..<n],total,tb_uniform(s.draw,cast(u64)(2*t)));
+        for j:0..<b {which[j]=feedback[(t*b+j)%feedback.count];}
+        parent:=pool[p];
+        pm:=ev_measure(cast(string)text[0..<ev_send(parent,text[..])],ev_canary(parent),items,which[0..<b],s.world,1+t,pa[..]);
+        x.parent=p;x.parent_right=pm.right;r.spend+=f64(b)*unit;
+        if pm.right<b {
+            r.spend+=jg_cost(s.reflector,false);
+            e:=ev_parse(cast(string)reply[0..<ev_reflect(pa[0..<b],tb_uniform(s.draw,cast(u64)(2*t+1)),reply[..])]);
+            child:=parent;child.parent=p;child.edit=e.edit;child.rules=ev_apply(parent.rules,e.edit);x.edit=e.edit;
+            x.reason=ifx !e.ok then EvReason.silent else ifx child.rules==parent.rules then EvReason.no_change else ev_admit(seed,child,s);
+            if x.reason==EvReason.none {
+                cm:=ev_measure(cast(string)text[0..<ev_send(child,text[..])],ev_canary(child),items,which[0..<b],s.world,1+t,ca[..]);
+                r.spend+=f64(b)*unit;x.child_right=cm.right;x.reason=ev_checked(cm);
+                if x.reason==EvReason.none && cm.right<=pm.right {x.reason=EvReason.no_gain;}
+                if x.reason==EvReason.none {
+                    pool[n]=child;x.dev=ev_score(child,items,dev,s.world,0,scores[n*m..<n*m+m]);
+                    r.spend+=full;x.child=n;x.reason=EvReason.accepted;r.candidates+=1;
+                }
+            }
+        }
+        x.spend=r.spend;steps[t]=x;r.steps+=1;
+    }
+    r.best=ev_best(scores,r.candidates,m);
+    return r;
+}
+// book:end loop
+
+// book:begin held
+// The held-out partition, read once: seed and final prompt on the same
+// draws for runs 1000 on, the floor from the seed's runs in blocks, chapter
+// 241's decision on the block means, and one receipt in chapter 239's chain.
+// A second read of a locked partition, or a full store, is refused before
+// any result is shown.
+ev_held :: (suite:SuSuite,part:int,store:[]SuReceipt,count:int,seed:EvCandidate,final:EvCandidate,items:[]EvItem,held:[]int,world:u64,runs:int,block:int)->EvHeld #export_c {
+    n:=held.count;
+    if n<1 || n>EV_ITEMS_MAX || !ev_index_ok(held,items.count) || runs<2 || runs>EV_RUNS_MAX || block<1 || runs%block!=0 || !ev_ok(seed) || !ev_ok(final) ||
+        suite.status!=SuStatus.ok || part<0 || part>=SU_PARTITIONS || count<0 || count>store.count {
+        return EvHeld.{status=EvStatus.shape};
+    }
+    a:[EV_RUNS_MAX*EV_ITEMS_MAX]f64;b:[EV_RUNS_MAX*EV_ITEMS_MAX]f64;task:[EV_ITEMS_MAX]int;zero:[EV_ITEMS_MAX]int;
+    h:EvHeld;
+    for r:0..<runs {
+        h.seed+=f64(ev_score(seed,items,held,world,EV_HELD_RUN+r,a[r*n..<r*n+n]));
+        h.final+=f64(ev_score(final,items,held,world,EV_HELD_RUN+r,b[r*n..<r*n+n]));
+    }
+    h.seed/=f64(runs*n);h.final/=f64(runs*n);
+    // Each item's mean over the first block of runs, for seed and final.
+    ma:[EV_ITEMS_MAX]f64;mb:[EV_ITEMS_MAX]f64;
+    for k:0..<n {
+        task[k]=items[held[k]].task;
+        for r:0..<block {ma[k]+=a[r*n+k];mb[k]+=b[r*n+k];}
+        ma[k]/=f64(block);mb[k]/=f64(block);
+    }
+    h.floor=ns_floor(a[0..<runs*n],zero[0..<n],0,runs,block);
+    h.decision=vd_decision(ma[0..<n],mb[0..<n],task[0..<n],zero[0..<n],0,h.floor,1,world,1000);
+    app:=su_append(store,count,su_result(suite,part,jg_seed(ev_identity(final)),h.decision.gain.gain));
+    if app.status!=SuStatus.ok {
+        return EvHeld.{status=EvStatus.refused,reason=ifx app.status==SuStatus.locked then EvReason.locked else EvReason.full,receipts=count};
+    }
+    h.receipts=app.count;
+    return h;
+}
+// book:end held
+
+// The example's world: 64 items, two to a task, kinds and gold answers
+// drawn; items 0 to 15 are the Pareto set, 16 to 39 feed the batches, 40 to
+// 63 are held out in the suite's locked partition 2.
+ev_world :: (seed:u64,items:[]EvItem) {
+    for i:0..<items.count {
+        items[i]=EvItem.{task=i/2,kind=cast(int)(tb_bits(seed,cast(u64)(2*i))%EV_KINDS),gold=cast(int)(tb_bits(seed,cast(u64)(2*i+1))%EV_OPTIONS)};
+    }
+}
+ev_suite :: (items:[]EvItem,part:[]int)->SuSuite {
+    s:[EV_ITEMS_MAX]SuItem;q:[EV_ITEMS_MAX]string;n:=items.count;
+    for i:0..<n {
+        s[i]=SuItem.{id=EV_KIND[items[i].kind],task=items[i].task,partition=part[i],options=EV_OPTIONS,gold=items[i].gold,abstain=-1};
+        q[i]=EV_KIND[items[i].kind];
+    }
+    return su_suite(s[0..<n],q[0..<n],SuGate.{kind=0,clear=40,min_tasks=10,replicates=1000,seed=0},4);
+}

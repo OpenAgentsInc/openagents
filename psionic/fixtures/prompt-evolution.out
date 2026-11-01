@@ -1,0 +1,46 @@
+items: 64 in 32 tasks; Pareto items 0-15 (3 count, 4 units, 2 log, 4 short, 1 explain, 2 unclear), batch items 16-39, held out 40-63
+seed prompt v0, identity 99c03de0:
+    You solve tasks from the queue.
+    Read the whole task before you answer.
+    Reply with the letter of one option.
+grader: judge 4 (Mammoth, passed chapter 246's gate); an answer costs 1.0 + 18.0 = 19.0, a reflection 4.0; budget 4000.0
+v0 on the Pareto items: 7/16; spent 304.0
+step 1: front 1, parent v0 1/4 on items 16-19; reply "add 5"; child 2/4 -> accepted as v1, 8 on the Pareto items; spent 764.0
+step 2: front 1, parent v1 1/4 on items 20-23; reply "add 3"; child 2/4 -> accepted as v2, 9 on the Pareto items; spent 1224.0
+step 3: front 1, parent v2 1/4 on items 24-27; reply "add 6" -> drift; spent 1380.0
+step 4: front 1, parent v2 2/4 on items 28-31; reply "add 6" -> drift; spent 1536.0
+step 5: front 1, parent v2 1/4 on items 32-35; reply "add 6" -> drift; spent 1692.0
+step 6: front 1, parent v2 0/4 on items 36-39; reply "add 2"; child 2/4 -> accepted as v3, 10 on the Pareto items; spent 2152.0
+step 7: front 1, parent v3 3/4 on items 16-19; reply "add 6" -> drift; spent 2308.0
+step 8: front 1, parent v3 3/4 on items 20-23; reply "add 6" -> drift; spent 2464.0
+step 9: front 1, parent v3 0/4 on items 24-27; reply "add 6" -> drift; spent 2620.0
+step 10: front 1, parent v3 3/4 on items 28-31; reply "add 4"; child 4/4 -> accepted as v4, 13 on the Pareto items; spent 3080.0
+step 11: front 2, parent v3 2/4 on items 32-35; reply "add 6" -> drift; spent 3236.0
+step 12: front 2, parent v4 1/4 on items 36-39; reply "add 1"; child 2/4 -> accepted as v5, 15 on the Pareto items; spent 3696.0
+stopped: budget (spent 3696.0 of 4000.0)
+  v0: rules {0}, identity 99c03de0, Pareto 7/16
+  v1: rules {0,5}, from v0 by add 5, identity e16eb8f9, Pareto 8/16
+  v2: rules {0,3,5}, from v1 by add 3, identity 64dbe9ed, Pareto 9/16
+  v3: rules {0,2,3,5}, from v2 by add 2, identity a2c60d02, Pareto 10/16, on the front
+  v4: rules {0,2,3,4,5}, from v3 by add 4, identity eb4c2ffb, Pareto 13/16
+  v5: rules {0,1,2,3,4,5}, from v4 by add 1, identity 5778acd2, Pareto 15/16, on the front
+front: 2 prompts; final: v5 (highest Pareto total)
+    You solve tasks from the queue.
+    Read the whole task before you answer.
+    Check the units before you give a number.
+    Count the items one at a time.
+    Quote the log line that shows the error.
+    Give the shortest reply that is correct.
+    Explain each step before the answer.
+    Reply with the letter of one option.
+held out, 24 items in 12 tasks, 16 runs each: seed 0.25, final 0.7578
+  floor 0.1395 from the seed's 4 blocks of 4 runs; gain 0.5729 on block means, 0 of 1000 replicates at or below the floor -> passed (beyond_floor)
+  receipts: 1, chain ok
+a second read of the held-out partition, for v1: refused (locked)
+reply "Sure! Add a rule about units.": parsed false
+v5 with its tool grants widened: field
+v5 with its threshold lowered: field
+grader judge 0 (Elephant, the student's weights): shared
+grader judge 4 if its gate had said unverifiable: unproven
+the whole run with grader judge 0: refused (shared), spent 0.0
+runner sends v4's text when v5 is under test: canary

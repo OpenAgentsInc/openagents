@@ -1,0 +1,57 @@
+// Helpers and an independent oracle for psionic/lib/evolve.coax (chapter
+// 245). ev_kung finds the Pareto front the other way round: candidates in
+// order of falling total, each kept unless a kept one is at least as good
+// on every item. A dominating candidate has a strictly larger total and an
+// equal one the same total, so a candidate is compared only with those
+// already kept.
+ev_kung :: (scores:[]f64,count:int,m:int,keep:[]bool)->int {
+    order:[16]int;total:[16]f64;
+    for i:0..<count {order[i]=i;total[i]=0;for t:0..<m {total[i]+=scores[i*m+t];}}
+    // Insertion sort by falling total, the earlier first on a tie.
+    for i:1..<count {
+        j:=i;
+        while j>0 && total[order[j]]>total[order[j-1]] {x:=order[j];order[j]=order[j-1];order[j-1]=x;j-=1;}
+    }
+    kept:=0;
+    for i:0..<count {keep[i]=false;}
+    for r:0..<count {
+        c:=order[r];covered:=false;
+        for q:0..<r {
+            k:=order[q];
+            if !keep[k] {continue;}
+            ge:=true;for t:0..<m {if scores[k*m+t]<scores[c*m+t] {ge=false;}}
+            if ge {covered=true;}
+        }
+        if !covered {keep[c]=true;kept+=1;}
+    }
+    return kept;
+}
+ev_text_is :: (buf:[]u8,n:int,want:string)->bool {return cast(string)buf[0..<n]==want;}
+// The example's seed, setup and partitions.
+ev_test_seed :: ()->EvCandidate {
+    j:=jg_judges();s:=j[0];s.rubric="unused";s.swap=false;
+    return EvCandidate.{student=s,rules=1,tools=1,threshold=0.5};
+}
+ev_test_setup :: ()->EvSetup {
+    j:=jg_judges();r:=j[0];r.rubric="Read the failures and reply with one edit: add k or drop k.";r.swap=false;r.price=4;
+    return EvSetup.{grader=j[4],judge=JgResult.{verdict=VdVerdict.passed,reason=JgReason.agrees},reflector=r,world=17,draw=1,batch=4,budget=4000};
+}
+ev_test_parts :: (dev:[]int,feedback:[]int,held:[]int) {
+    for i:0..<dev.count {dev[i]=i;}
+    for i:0..<feedback.count {feedback[i]=dev.count+i;}
+    for i:0..<held.count {held[i]=dev.count+feedback.count+i;}
+}
+// What a step costs by its outcome: a batch, then a reflection, then the
+// child's batch, then the Pareto items.
+ev_test_cost :: (x:EvStep,unit:f64,b:int,reflect:f64,m:int)->f64 {
+    c:=f64(b)*unit;
+    if x.reason==EvReason.perfect {return c;}
+    c+=reflect;
+    if x.reason==EvReason.silent || x.reason==EvReason.no_change || x.reason==EvReason.field || x.reason==EvReason.shared || x.reason==EvReason.unproven {return c;}
+    c+=f64(b)*unit;
+    if x.reason==EvReason.accepted {c+=f64(m)*unit;}
+    return c;
+}
+ev_text8 :: (w:[8]u8,want:string)->bool {for i:0..<8 {if w[i]!=want[i] {return false;}}return true;}
+ev_run_ok :: (r:EvRun)->bool {return r.status==EvStatus.ok;}
+ev_run_shape :: (r:EvRun)->bool {return r.status==EvStatus.shape;}

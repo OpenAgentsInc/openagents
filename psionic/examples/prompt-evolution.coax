@@ -1,0 +1,89 @@
+#import "Basic";
+#load "../lib/evolve.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+show_id :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[8]u8;
+    for i:0..<4 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+show_rules :: (rules:u8) {
+    first:=true;print("{");
+    for k:0..<EV_RULES {if (rules>>cast(u8)k)&1==1 {if !first {print(",");}print("%",k);first=false;}}
+    print("}");
+}
+show_text :: (rules:u8) {
+    text:[EV_TEXT_MAX]u8;n:=ev_render(rules,text[..]);start:=0;
+    for i:0..<n {if text[i]==10 {print("    %\n",cast(string)text[start..<i]);start=i+1;}}
+}
+show_edit :: (e:EvEdit) {print("% %",ifx e.op==EvOp.add then "add" else "drop",e.rule);}
+
+W :: 17;
+// book:begin example
+main :: () {
+    items:[64]EvItem;ev_world(W,items[..]);
+    dev:[16]int;feedback:[24]int;held:[24]int;part:[64]int;
+    for i:0..<16 {dev[i]=i;}
+    for i:0..<24 {feedback[i]=16+i;held[i]=40+i;part[16+i]=1;part[40+i]=2;}
+    count:[6]int;for x:items[0..<16] {count[x.kind]+=1;}
+    print("items: 64 in 32 tasks; Pareto items 0-15 (");
+    for k:0..<EV_KINDS {if k>0 {print(", ");}print("% %",count[k],EV_KIND[k]);}
+    print("), batch items 16-39, held out 40-63\n");
+
+    j:=jg_judges();
+    student:=j[0];student.rubric="unused";student.swap=false;
+    reflector:=j[0];reflector.rubric="Read the failures and reply with one edit: add k or drop k.";reflector.swap=false;reflector.price=4;
+    seed:=EvCandidate.{student=student,rules=1,tools=1,threshold=0.5};
+    passed:=JgResult.{verdict=VdVerdict.passed,reason=JgReason.agrees};
+    s:=EvSetup.{grader=j[4],judge=passed,reflector=reflector,world=W,draw=1,batch=4,budget=4000};
+    print("seed prompt v0, identity ");show_id(ev_identity(seed));print(":\n");show_text(seed.rules);
+    print("grader: judge 4 (Mammoth, passed chapter 246's gate); an answer costs % + % = %, a reflection %; budget %\n",
+        jg_cost(student,false),jg_cost(s.grader,false),ev_unit(seed,s),jg_cost(reflector,false),s.budget);
+
+    pool:[16]EvCandidate;scores:[256]f64;steps:[64]EvStep;
+    r:=ev_evolve(seed,s,items[..],dev[..],feedback[..],pool[..],scores[..],steps[..]);
+    print("v0 on the Pareto items: %/16; spent %\n",r.seed,ev_unit(seed,s)*16);
+    for x,t:steps[0..<r.steps] {
+        print("step %: front %, parent v% %/4 on items %-%",t+1,x.front,x.parent,x.parent_right,16+(4*t)%24,16+(4*t)%24+3);
+        if x.reason!=EvReason.perfect {print("; reply \"");show_edit(x.edit);print("\"");}
+        if x.reason==EvReason.accepted || x.reason==EvReason.no_gain {print("; child %/4",x.child_right);}
+        print(" -> %",x.reason);
+        if x.child>=0 {print(" as v%, % on the Pareto items",x.child,x.dev);}
+        print("; spent %\n",x.spend);
+    }
+    print("stopped: % (spent % of %)\n",r.reason,r.spend,s.budget);
+    keep:[16]bool;kept:=ev_front(scores[..],r.candidates,16,keep[..]);
+    for c,i:pool[0..<r.candidates] {
+        t:=0.0;for v:scores[i*16..<(i+1)*16] {t+=v;}
+        print("  v%: rules ",i);show_rules(c.rules);
+        if i>0 {print(", from v% by ",c.parent);show_edit(c.edit);}
+        print(", identity ");show_id(ev_identity(c));print(", Pareto %/16%\n",cast(int)t,ifx keep[i] then ", on the front" else "");
+    }
+    f:=pool[r.best];
+    print("front: % prompts; final: v% (highest Pareto total)\n",kept,r.best);show_text(f.rules);
+
+    // The held-out partition, read once.
+    suite:=ev_suite(items[..],part[..]);store:[4]SuReceipt;
+    h:=ev_held(suite,2,store[..],0,seed,f,items[..],held[..],W,16,4);
+    print("held out, 24 items in 12 tasks, 16 runs each: seed %, final %\n",r4(h.seed),r4(h.final));
+    d:=h.decision;
+    print("  floor % from the seed's 4 blocks of 4 runs; gain % on block means, % of 1000 replicates at or below the floor -> % (%)\n",
+        r4(h.floor.floor),r4(d.gain.gain),d.gain.below,d.result.verdict,d.result.reason);
+    print("  receipts: %, chain %\n",h.receipts,su_verify(store[..],h.receipts).status);
+    again:=ev_held(suite,2,store[..],h.receipts,seed,pool[1],items[..],held[..],W,16,4);
+    print("a second read of the held-out partition, for v1: % (%)\n",again.status,again.reason);
+
+    // Refusals.
+    print("reply \"Sure! Add a rule about units.\": parsed %\n",ev_parse("Sure! Add a rule about units.").ok);
+    wide:=f;wide.tools=3;print("v% with its tool grants widened: %\n",r.best,ev_admit(seed,wide,s));
+    low:=f;low.threshold=0.4;print("v% with its threshold lowered: %\n",r.best,ev_admit(seed,low,s));
+    t:=s;t.grader=j[0];print("grader judge 0 (Elephant, the student's weights): %\n",ev_admit(seed,f,t));
+    t=s;t.judge=JgResult.{verdict=VdVerdict.unverifiable,reason=JgReason.noisy};
+    print("grader judge 4 if its gate had said unverifiable: %\n",ev_admit(seed,f,t));
+    t=s;t.grader=j[0];q:=ev_evolve(seed,t,items[..],dev[..],feedback[..],pool[..],scores[..],steps[..]);
+    print("the whole run with grader judge 0: % (%), spent %\n",q.status,q.reason,q.spend);
+    text:[EV_TEXT_MAX]u8;answers:[8]EvAnswer;stale:=pool[f.parent];
+    m:=ev_measure(cast(string)text[0..<ev_send(stale,text[..])],ev_canary(f),items[..],feedback[0..<4],W,1,answers[..]);
+    print("runner sends v%'s text when v% is under test: %\n",f.parent,r.best,ev_checked(m));
+}
+// book:end example
