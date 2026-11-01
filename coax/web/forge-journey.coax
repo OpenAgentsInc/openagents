@@ -384,7 +384,7 @@ thing :: (r: [] Run, c: [] Cdp) -> bool {
     n := probe(c, 63);
     for k: 20..<96 {
       kind := probe(c, 1400 + k);
-      if kind > 0 && k != r[0].tree && probe(c, 1200 + 2 * k) > 20 && probe(c, 1201 + 2 * k) > 120 && probe(c, 1200 + 2 * k) < r[0].w - 20 && probe(c, 1201 + 2 * k) < r[0].h - 200 { e = k; break; }
+      if kind > 0 && probe(c, 1200 + 2 * k) > 20 && probe(c, 1201 + 2 * k) > 120 && probe(c, 1200 + 2 * k) < r[0].w - 20 && probe(c, 1201 + 2 * k) < r[0].h - 200 { e = k; break; }
     }
     if e >= 0 || n <= 0 || turn == 40 { break; }
     if !hold(c, "a", "KeyA", 65, 150) { return why(r, "the keys weren't taken"); }
@@ -405,6 +405,7 @@ thing :: (r: [] Run, c: [] Cdp) -> bool {
   }
   if probe(c, 8) != -1 { return why(r, "PUT IT HERE never found a clear spot for it"); }
   r[0].thing = e; r[0].hx = probe(c, 1000 + 2 * e); r[0].hz = probe(c, 1001 + 2 * e);
+  if e == r[0].tree { r[0].tx = r[0].hx; r[0].tz = r[0].hz; }   // MOVE's nearest was this thing: it moved again
   if r[0].hx == x0 && r[0].hz == z0 { return why(r, "it didn't move"); }
   if probe(c, 4) != 1 { return why(r, "the move isn't unsaved"); }
   return true;
