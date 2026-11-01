@@ -5,6 +5,7 @@
  *   psionic/platform/whisper-build.sh OUT
  *   OUT/psionic-whisper info MODEL
  *   OUT/psionic-whisper filters MODEL
+ *   OUT/psionic-whisper pcm WAV          the 16 kHz mono samples, f32le on stdout
  *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto]
  *       [--threads N] [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C] [--gpu]
  * WAV is any PCM (8, 16, 24 or 32-bit) or float WAV; wav.coax mixes it to mono
@@ -235,6 +236,7 @@ static coax_v_u8 map(const char *path) {
 }
 static int usage(void) {
     fputs("usage: psionic-whisper info|filters MODEL\n"
+          "       psionic-whisper pcm WAV\n"
           "       psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto] [--threads N]\n"
           "                       [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C] [--gpu]\n", stderr);
     return 64;
@@ -244,6 +246,20 @@ int main(int argc, char **argv) {
     if (argc < 3) return usage();
     const char *cmd = argv[1];
     double t0 = now_ms();
+    if (strcmp(cmd, "pcm") == 0) {
+        /* the 16 kHz mono samples a WAV becomes, as raw f32le on stdout */
+        coax_v_u8 wav = map(argv[2]);
+        if (!wav.data) { fprintf(stderr, "psionic-whisper: cannot map %s\n", argv[2]); return 1; }
+        coax_t_WvInfo wi = psionic_whisper_wav_info(wav);
+        if (wi.status != COAX_WvStatus_ok) { fprintf(stderr, "psionic-whisper: not a WAV this reads\n"); return 65; }
+        float *mono = malloc((size_t)(wi.frames + 1) * sizeof *mono);
+        int64_t n = psionic_whisper_wav_length(wi.frames, wi.rate);
+        float *out = malloc((size_t)(n + 1) * sizeof *out);
+        if (!mono || !out || psionic_whisper_wav_mono(wav, wi, (coax_v_f32){mono, wi.frames}) != wi.frames) return 1;
+        if (psionic_whisper_resample((coax_v_f32){mono, wi.frames}, wi.rate, (coax_v_f32){out, n}) != n) return 1;
+        fwrite(out, sizeof *out, (size_t)n, stdout);
+        return 0;
+    }
     coax_v_u8 file = map(argv[2]);
     if (!file.data) { fprintf(stderr, "psionic-whisper: cannot map %s\n", argv[2]); return 1; }
     static coax_t_WgTensor tensors[TENSORS];
