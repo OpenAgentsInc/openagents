@@ -1,0 +1,57 @@
+// Chapter 35: one partition, every worker count, the same bytes. Coax has no
+// threads yet, so this program calls the workers one after another, last
+// worker first; the native harness (psionic/tests/cores.sh) runs the same
+// procedures on host threads. Nothing is timed, so the transcript is the
+// same on every machine.
+#import "Basic";
+#load "../lib/cores.coax";
+
+hex :: (bits:u32) {
+    digits:="0123456789abcdef";print("0x");
+    for k:0..<8 {d:=cast(int)((bits>>cast(u32)(28-4*k))&15);print("%",digits[d..<d+1]);}
+}
+// A hash of a run of f32 bytes: FNV-1a over each value's four bytes.
+digest :: (a:[]f32)->u32 {
+    h:u32=2166136261;
+    for v:a {b:=f32_bits(v);for k:0..<4 {h=mul_wrap(h^((b>>cast(u32)(8*k))&255),16777619);}}
+    return h;
+}
+// book:begin example
+main :: () {
+    p:=pc_plan(10,4,4);
+    print("10 items in chunks of 4: % chunks; over 4 workers the runs start at % % % % and end at %\n",
+        p.chunks,pc_first(p,0),pc_first(p,1),pc_first(p,2),pc_first(p,3),pc_first(p,4));
+    print("chunk owners:");for c:0..<p.chunks {print(" %",pc_owner(p,c));}print("\n");
+
+    x:=[4]f32.[100000000,1,-100000000,1];part:[2]f32;done:[2]u8;
+    print("split by workers, workers -> sum: 1 -> %, 2 -> %, 4 -> %\n",pc_sum_split(x[..],1),pc_sum_split(x[..],2),pc_sum_split(x[..],4));
+    print("fixed chunks of 2, workers -> sum:");
+    for workers:[4]int.[1,2,4,8] {
+        q:=pc_plan(4,2,workers);done[0]=0;done[1]=0;
+        for w:0..<workers {#assert pc_sum_worker(q,workers-1-w,x[..],part[..],done[..])==PcStatus.ok;}
+        print(" % -> %",workers,pc_sum_merge(q,part[..],done[..]).value);
+    }
+    print("\n");
+
+    // 4,096 values, a 64 x 64 matrix, 8 heads of width 16 over 32 tokens.
+    big:[4096]f32;for i:0..<big.count {big[i]=pc_value(i,1)+cast(f32)(1000*(i%2));}
+    m:[4096]f32;for i:0..<m.count {m[i]=pc_value(i,2);}
+    q:[128]f32;for i:0..<q.count {q[i]=pc_value(i,3)/1000;}
+    k:[4096]f32;v:[4096]f32;for i:0..<k.count {k[i]=pc_value(i,4)/1000;v[i]=pc_value(i,5);}
+    sums:[64]f32;marks:[64]u8;y:[64]f32;out:[128]f32;
+    for workers:[4]int.[1,2,4,8] {
+        s:=pc_plan(4096,64,workers);for c:0..<64 {marks[c]=0;}
+        for w:0..<workers {#assert pc_sum_worker(s,workers-1-w,big[..],sums[..],marks[..])==PcStatus.ok;}
+        total:=pc_sum_merge(s,sums[..],marks[..]);#assert total.status==PcStatus.ok;
+        r:=pc_plan(64,8,workers);for c:0..<8 {marks[c]=0;}
+        for w:0..<workers {#assert pc_matvec_worker(r,workers-1-w,m[..],big[0..<64],y[..],marks[0..<8])==PcStatus.ok;}
+        #assert pc_publish(r,marks[0..<8])==PcStatus.ok;
+        h:=pc_plan(8,1,workers);for c:0..<8 {marks[c]=0;}
+        for w:0..<workers {#assert pc_heads_worker(h,workers-1-w,q[..],k[..],v[..],out[..],marks[0..<8],32)==PcStatus.ok;}
+        #assert pc_publish(h,marks[0..<8])==PcStatus.ok;
+        print("workers %: sum ",workers);hex(f32_bits(total.value));
+        print(", matvec ");hex(digest(y[..]));print(", heads ");hex(digest(out[..]));
+        print(", split sum ");hex(f32_bits(pc_sum_split(big[..],workers)));print("\n");
+    }
+}
+// book:end example

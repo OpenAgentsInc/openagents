@@ -1,0 +1,27 @@
+// Chapter 35: plans and runs the partition refuses, each with its typed
+// reason, and a cancelled worker whose run is never published.
+#import "Basic";
+#load "../lib/cores.coax";
+
+say :: (label:string,s:PcStatus) {print("%: %\n",label,pc_status_name(s));}
+// book:begin refuse
+main :: () {
+    say("0 workers",pc_plan(4096,64,0).status);
+    say("65 workers",pc_plan(4096,64,65).status);
+    say("a chunk of 0",pc_plan(4096,0,8).status);
+    say("a chunk of 4097 for 4096 items",pc_plan(4096,4097,8).status);
+    say("chunks of 1 for 65537 items",pc_plan(65537,1,8).status);
+    say("0 items",pc_plan(0,1,1).status);
+    x:[4096]f32;part:[64]f32;done:[64]u8;
+    p:=pc_plan(4096,64,4);
+    say("worker 4 of 4",pc_sum_worker(p,4,x[..],part[..],done[..]));
+    say("63 partial slots for 64 chunks",pc_sum_worker(p,0,x[..],part[0..<63],done[..]));
+    // Worker 2 is cancelled: it never runs, so chunks 32 to 47 stay unmarked.
+    for w:[3]int.[0,1,3] {#assert pc_sum_worker(p,w,x[..],part[..],done[..])==PcStatus.ok;}
+    v:=pc_sum_merge(p,part[..],done[..]);
+    say("worker 2 cancelled",v.status);
+    print("published value: %\n",v.value);
+    #assert pc_sum_worker(p,2,x[..],part[..],done[..])==PcStatus.ok;
+    say("after worker 2 runs",pc_sum_merge(p,part[..],done[..]).status);
+}
+// book:end refuse

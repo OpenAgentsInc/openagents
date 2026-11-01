@@ -1,0 +1,377 @@
+// Chapter 35: use every core. Work is cut into fixed chunks that depend only
+// on the shape and a chunk size, never on the worker count. Each worker owns
+// a contiguous run of chunks and writes only their slots; a chunk's own
+// arithmetic runs in index order, and partial sums combine in a fixed
+// pairwise tree over chunk indices. The bytes out therefore do not depend on
+// how many workers ran or which finished first.
+// Coax has no threads yet (Coax chapter 14). The native harness
+// (psionic/platform/cores.c) owns the threads, the barrier and the clock; it
+// calls the worker procedures here on disjoint chunk runs. Every partition,
+// ownership and merge decision is made here.
+// Profile pc-cores-v1: f32 values, one rounding per operation, no
+// contraction; exponentials through f64 exp rounded to f32.
+
+PcStatus :: enum u8 {ok;shape;workers;chunk;worker;size;incomplete;}
+// A partition of items into chunks of chunk items (the last may be short),
+// spread over workers.
+PcPlan :: struct {status:PcStatus;items:int;chunk:int;chunks:int;workers:int;}
+PcValue :: struct {status:PcStatus;value:f32;}
+
+PC_MAX_ITEMS :: 1<<30;
+PC_MAX_WORKERS :: 64;
+PC_MAX_CHUNKS :: 1<<16;
+
+// Checks precede the implementation. Expected values are derived in chapter 35.
+#test "a plan cuts items into fixed chunks and refuses bad sizes" {
+    p:=pc_plan(10,4,2);#assert p.status==PcStatus.ok && p.items==10 && p.chunk==4 && p.chunks==3 && p.workers==2;
+    p=pc_plan(8,4,8);#assert p.status==PcStatus.ok && p.chunks==2 && p.workers==8;
+    p=pc_plan(1,1,1);#assert p.status==PcStatus.ok && p.chunks==1;
+    #assert pc_plan(0,1,1).status==PcStatus.shape && pc_plan(-1,1,1).status==PcStatus.shape && pc_plan(PC_MAX_ITEMS+1,1<<15,1).status==PcStatus.shape;
+    #assert pc_plan(PC_MAX_ITEMS,1<<14,1).status==PcStatus.ok && pc_plan(PC_MAX_ITEMS,1<<14,1).chunks==PC_MAX_CHUNKS;
+    #assert pc_plan(PC_MAX_ITEMS,(1<<14)-1,1).status==PcStatus.chunk && pc_plan(PC_MAX_CHUNKS+1,1,1).status==PcStatus.chunk && pc_plan(PC_MAX_CHUNKS,1,1).status==PcStatus.ok;
+    #assert pc_plan(10,4,0).status==PcStatus.workers && pc_plan(10,4,-2).status==PcStatus.workers && pc_plan(10,4,PC_MAX_WORKERS+1).status==PcStatus.workers;
+    #assert pc_plan(10,4,PC_MAX_WORKERS).status==PcStatus.ok;
+    #assert pc_plan(10,0,1).status==PcStatus.chunk && pc_plan(10,-1,1).status==PcStatus.chunk && pc_plan(10,11,1).status==PcStatus.chunk;
+    #assert pc_plan(10,10,1).status==PcStatus.ok && pc_plan(10,10,1).chunks==1;
+    #assert pc_plan(0,0,0).items==0 && pc_plan(0,0,0).chunks==0;
+    #assert pc_status_name(PcStatus.ok)=="ok" && pc_status_name(PcStatus.incomplete)=="incomplete: a chunk was not published by its owner";
+}
+#test "workers own contiguous runs of chunks, and every chunk has one owner" {
+    p:=pc_plan(10,1,4);   // 10 chunks over 4 workers: 0-1, 2-4, 5-6, 7-9
+    #assert pc_first(p,0)==0 && pc_first(p,1)==2 && pc_first(p,2)==5 && pc_first(p,3)==7 && pc_first(p,4)==10;
+    #assert pc_owner(p,0)==0 && pc_owner(p,1)==0 && pc_owner(p,2)==1 && pc_owner(p,4)==1 && pc_owner(p,5)==2 && pc_owner(p,7)==3 && pc_owner(p,9)==3;
+    q:=pc_plan(8,4,8);    // 2 chunks over 8 workers: workers 3 and 7 own one each
+    #assert pc_first(q,3)==0 && pc_first(q,4)==1 && pc_first(q,7)==1 && pc_first(q,8)==2 && pc_owner(q,0)==3 && pc_owner(q,1)==7;
+    #assert pc_lo(p,3)==3 && pc_hi(p,3)==4;
+    r:=pc_plan(10,4,2);#assert pc_lo(r,2)==8 && pc_hi(r,2)==10 && pc_hi(r,1)==8;
+}
+#forall "chunk owners match a brute-force search, and the runs tile the chunks" chunks:1..<40,workers:1..<12 {
+    p:=pc_plan(chunks,1,workers);#assert p.status==PcStatus.ok;
+    #assert pc_first(p,0)==0 && pc_first(p,workers)==chunks;
+    for w:0..<workers {#assert pc_first(p,w)<=pc_first(p,w+1);}
+    for c:0..<chunks {
+        owner:=-1;for w:0..<workers {if pc_first(p,w)<=c && c<pc_first(p,w+1) {#assert owner==-1;owner=w;}}
+        #assert owner==pc_owner(p,c);
+    }
+}
+#test "the hand trace: a split by workers changes the sum, fixed chunks do not" {
+    x:=[4]f32.[100000000,1,-100000000,1];
+    // One worker: ((1e8 + 1) - 1e8) + 1 = (1e8 - 1e8) + 1 = 1.
+    #assert pc_sum_split(x[..],1)==1;
+    // Two workers: (1e8 + 1) + (-1e8 + 1) = 1e8 + -1e8 = 0.
+    #assert pc_sum_split(x[..],2)==0 && pc_sum_split(x[..],4)==1 && pc_sum_split(x[..],8)==1;
+    #assert pc_sum_split(x[..],0)==0 && pc_sum_split(x[0..<0],1)==0;
+    part:[2]f32;done:[2]u8;
+    for workers:[4]int.[1,2,4,8] {
+        p:=pc_plan(4,2,workers);
+        for w:0..<workers {#assert pc_sum_worker(p,workers-1-w,x[..],part[..],done[..])==PcStatus.ok;}
+        #assert part[0]==100000000 && part[1]==-100000000;
+        v:=pc_sum_merge(p,part[..],done[..]);#assert v.status==PcStatus.ok && v.value==0;
+    }
+}
+#test "the tree adds neighbours, then pairs of pairs" {
+    p:=[5]f32.[1,2,4,8,16];
+    #assert pc_tree(p[..])==31 && p[0]==1 && p[4]==16;
+    // (1 + 1) + 2^24 is exact; in (2^24 + 1) + 1 each 1 rounds away (ties to even).
+    t:=[3]f32.[1,1,16777216];#assert pc_tree(t[..])==16777218;
+    u:=[3]f32.[16777216,1,1];#assert pc_tree(u[..])==16777216;
+    // Four chunks where the order matters: (1e8 + 1) + (-1e8 + 1) = 0, not 1 or 2.
+    q:=[4]f32.[100000000,1,-100000000,1];#assert pc_tree(q[..])==0;
+    r:=[3]f32.[100000000,-100000000,1];#assert pc_tree(r[..])==1;
+    s:=[1]f32.[7];#assert pc_tree(s[..])==7;
+    #assert pc_tree(s[0..<0])==0;
+}
+#forall "the tree equals neighbours first, then pairs of pairs, in place" n:1..<70,seed:0..<4 {
+    a:[70]f32;b:[70]f32;
+    for i:0..<n {a[i]=pc_value(i,seed)*1000;b[i]=a[i];}
+    // The same tree as strides over one array: 1, then 2, then 4.
+    step:=1;
+    while step<n {
+        i:=0;
+        while i+step<n {b[i]+=b[i+step];i+=2*step;}
+        step*=2;
+    }
+    #assert f32_bits(pc_tree(a[0..<n]))==f32_bits(b[0]);
+}
+#test "the test inputs are fixed" {
+    // h = 12345: (339 - 1000) / (1 + 4).
+    #assert pc_value(0,0)==cast(f32)(-661)/5;
+    // h = (2654435761 + 12345) % 1000003 = 440144: (1925 - 1000) / (1 + 5).
+    #assert pc_value(1,0)==cast(f32)925/6;
+    // h = (40503 + 12345) % 1000003 = 52848: (822 - 1000) / (1 + 5).
+    #assert pc_value(0,1)==cast(f32)(-178)/6;
+}
+#test "a worker writes only its own chunks and publishes them under its number" {
+    x:=[10]f32.[1,2,3,4,5,6,7,8,9,10];part:=[3]f32.[-1,-1,-1];done:[3]u8;
+    p:=pc_plan(10,4,2);   // chunks 0..4, 4..8, 8..10; worker 0 owns chunk 0, worker 1 owns 1 and 2
+    #assert pc_sum_worker(p,1,x[..],part[..],done[..])==PcStatus.ok;
+    #assert part[0]==-1 && part[1]==26 && part[2]==19 && done[0]==0 && done[1]==2 && done[2]==2;
+    #assert pc_publish(p,done[..])==PcStatus.incomplete;
+    v:=pc_sum_merge(p,part[..],done[..]);#assert v.status==PcStatus.incomplete && v.value==0 && part[1]==26;
+    #assert pc_sum_worker(p,0,x[..],part[..],done[..])==PcStatus.ok && part[0]==10 && done[0]==1;
+    #assert pc_publish(p,done[..])==PcStatus.ok;
+    // A chunk published by the wrong worker is refused like a missing one.
+    done[2]=1;#assert pc_publish(p,done[..])==PcStatus.incomplete;done[2]=3;#assert pc_publish(p,done[..])==PcStatus.incomplete;
+    done[2]=2;v=pc_sum_merge(p,part[..],done[..]);#assert v.status==PcStatus.ok && v.value==55;
+}
+#test "workers refuse bad indices, plans and buffers" {
+    x:[10]f32;part:[3]f32;done:[3]u8;y:[2]f32;
+    p:=pc_plan(10,4,2);
+    #assert pc_sum_worker(p,-1,x[..],part[..],done[..])==PcStatus.worker && pc_sum_worker(p,2,x[..],part[..],done[..])==PcStatus.worker;
+    #assert pc_sum_worker(pc_plan(10,4,0),0,x[..],part[..],done[..])==PcStatus.workers;
+    #assert pc_sum_worker(p,0,x[0..<9],part[..],done[..])==PcStatus.size && pc_sum_worker(p,0,x[..],part[0..<2],done[..])==PcStatus.size;
+    #assert pc_sum_worker(p,0,x[..],part[..],done[0..<2])==PcStatus.size;
+    #assert pc_publish(p,done[0..<2])==PcStatus.size && pc_publish(pc_plan(10,0,1),done[..])==PcStatus.chunk;
+    #assert pc_sum_merge(p,part[0..<2],done[..]).status==PcStatus.size;
+    #assert pc_sum_merge(pc_plan(0,4,2),part[..],done[..]).status==PcStatus.shape;
+    m:[20]f32;
+    q:=pc_plan(2,1,2);
+    #assert pc_matvec_worker(q,0,m[..],x[..],y[..],done[0..<2])==PcStatus.ok;
+    #assert pc_matvec_worker(q,2,m[..],x[..],y[..],done[0..<2])==PcStatus.worker && pc_matvec_worker(q,-1,m[..],x[..],y[..],done[0..<2])==PcStatus.worker;
+    #assert pc_matvec_worker(pc_plan(2,0,2),0,m[..],x[..],y[..],done[0..<2])==PcStatus.chunk;
+    #assert pc_matvec_worker(q,0,m[0..<19],x[..],y[..],done[0..<2])==PcStatus.size && pc_matvec_worker(q,0,m[..],x[..],y[0..<1],done[0..<2])==PcStatus.size;
+    #assert pc_matvec_worker(q,0,m[..],x[..],y[..],done[..])==PcStatus.size && pc_matvec_worker(q,0,m[0..<18],x[0..<9],y[..],done[0..<2])==PcStatus.ok;
+    #assert pc_matvec_worker(q,0,m[..],x[0..<0],y[..],done[0..<2])==PcStatus.size && pc_matvec_worker(q,0,m[0..<2],x[0..<1],y[..],done[0..<2])==PcStatus.ok;
+    h:=pc_plan(2,1,2);qv:[4]f32;kv:[12]f32;o:[4]f32;
+    #assert pc_heads_worker(h,0,qv[..],kv[..],kv[..],o[..],done[0..<2],3)==PcStatus.ok;
+    #assert pc_heads_worker(h,2,qv[..],kv[..],kv[..],o[..],done[0..<2],3)==PcStatus.worker && pc_heads_worker(h,-1,qv[..],kv[..],kv[..],o[..],done[0..<2],3)==PcStatus.worker;
+    #assert pc_heads_worker(pc_plan(2,3,2),0,qv[..],kv[..],kv[..],o[..],done[0..<2],3)==PcStatus.chunk;
+    #assert pc_heads_worker(h,0,qv[..],kv[..],kv[..],o[..],done[0..<2],0)==PcStatus.size && pc_heads_worker(h,0,qv[0..<3],kv[..],kv[..],o[..],done[0..<2],3)==PcStatus.size;
+    #assert pc_heads_worker(h,0,qv[..],kv[0..<11],kv[..],o[..],done[0..<2],3)==PcStatus.size && pc_heads_worker(h,0,qv[..],kv[..],kv[0..<11],o[..],done[0..<2],3)==PcStatus.size;
+    #assert pc_heads_worker(h,0,qv[..],kv[..],kv[..],o[0..<3],done[0..<2],3)==PcStatus.size && pc_heads_worker(h,0,qv[..],kv[..],kv[..],o[..],done[..],3)==PcStatus.size;
+    #assert pc_heads_worker(h,0,qv[0..<2],kv[0..<6],kv[0..<6],o[0..<2],done[0..<2],3)==PcStatus.ok;
+    // Each test below fails exactly one condition.
+    #assert pc_heads_worker(h,0,qv[..],kv[0..<0],kv[0..<0],o[..],done[0..<2],0)==PcStatus.size;
+    #assert pc_heads_worker(h,0,qv[0..<0],kv[0..<0],kv[0..<0],o[0..<0],done[0..<2],3)==PcStatus.size;
+    #assert pc_heads_worker(h,0,qv[0..<3],kv[0..<6],kv[0..<6],o[0..<3],done[0..<2],3)==PcStatus.size;
+    #assert pc_heads_worker(h,0,qv[..],kv[0..<4],kv[0..<4],o[..],done[0..<2],1)==PcStatus.ok;
+}
+#test "a matrix-vector product, rows in chunks" {
+    m:=[6]f32.[1,2,3,4,5,6];x:=[2]f32.[10,1];y:[3]f32;done:[3]u8;
+    p:=pc_plan(3,1,2);   // rows 0 | 1, 2
+    #assert pc_matvec_worker(p,1,m[..],x[..],y[..],done[..])==PcStatus.ok && y[0]==0 && y[1]==34 && y[2]==56;
+    #assert pc_publish(p,done[..])==PcStatus.incomplete;
+    #assert pc_matvec_worker(p,0,m[..],x[..],y[..],done[..])==PcStatus.ok && y[0]==12 && pc_publish(p,done[..])==PcStatus.ok;
+}
+#test "attention heads: equal scores average the values, a dominant score picks its value" {
+    // Two heads of width 2, three tokens. Head 0 has q = 0, so every score is
+    // 0 and the output is the mean of its values; head 1's query is large
+    // along the second token's key, so the output is that token's value.
+    q:=[4]f32.[0,0,0,100];
+    k:=[12]f32.[1,0,0,0, 0,1,0,1, 0,0,0,-1];
+    v:=[12]f32.[3,6,1,1, 6,3,2,2, 0,0,3,3];
+    o:[4]f32;done:[2]u8;
+    p:=pc_plan(2,1,2);
+    #assert pc_heads_worker(p,1,q[..],k[..],v[..],o[..],done[..],3)==PcStatus.ok && pc_heads_worker(p,0,q[..],k[..],v[..],o[..],done[..],3)==PcStatus.ok;
+    #assert pc_publish(p,done[..])==PcStatus.ok;
+    #assert o[0]==3 && o[1]==3 && o[2]==2 && o[3]==2;
+    // Scores 1 and 0 for one head of width 1: weights e/(e+1) and 1/(e+1).
+    q1:=[1]f32.[1];k1:=[2]f32.[1,0];v1:=[2]f32.[1,0];o1:[1]f32;d1:[1]u8;
+    #assert pc_heads_worker(pc_plan(1,1,1),0,q1[..],k1[..],v1[..],o1[..],d1[..],2)==PcStatus.ok;
+    w:=cast(f32)exp(-1.0);#assert o1[0]==1/(1+w);
+    e:=2.718281828459045;#assert abs(cast(f64)o1[0]-e/(e+1))<0.0000001;
+    // Scores of 200 and 100: subtracting the largest keeps exp finite.
+    k2:=[2]f32.[200,100];#assert pc_heads_worker(pc_plan(1,1,1),0,q1[..],k2[..],v1[..],o1[..],d1[..],2)==PcStatus.ok && o1[0]==1;
+    k3:=[3]f32.[100,200,100];v3:=[3]f32.[0,1,0];o3:[1]f32;
+    #assert pc_heads_worker(pc_plan(1,1,1),0,q1[..],k3[..],v3[..],o3[..],d1[..],3)==PcStatus.ok && o3[0]==1;
+    // One token: its value, whatever the score.
+    #assert pc_heads_worker(pc_plan(1,1,1),0,q1[..],k2[0..<1],v1[0..<1],o1[..],d1[..],1)==PcStatus.ok && o1[0]==1;
+}
+#test "the top score is the first largest" {
+    q:=[2]f32.[1,0];k:=[8]f32.[1,0, 3,0, 3,0, 2,0];
+    #assert pc_top(q[..],k[..],0,1,2,4)==1 && pc_top(q[..],k[..],0,1,2,1)==0 && pc_top(q[..],k[..],0,1,2,2)==1;
+    k2:=[8]f32.[5,0, 3,0, 3,0, 2,0];#assert pc_top(q[..],k2[..],0,1,2,4)==0;
+    // Two heads of width 1: head 1 reads every other key.
+    q3:=[2]f32.[0,1];k3:=[6]f32.[9,1, 0,4, 0,2];#assert pc_top(q3[..],k3[..],1,2,1,3)==1;
+}
+#test "speedup is one worker's time over many workers' time, in thousandths" {
+    #assert pc_speedup(1000,250)==4000 && pc_speedup(1000,3000)==333 && pc_speedup(7,0)==0 && pc_speedup(7,-1)==0 && pc_speedup(10,1)==10000;
+}
+
+// The three kernels run at every worker count with workers called in reverse
+// order; the bytes must equal the one-worker bytes.
+pc_value :: (i:int,seed:int)->f32 {
+    h:=(i*2654435761+seed*40503+12345)%1000003;
+    return cast(f32)(h%2001-1000)/cast(f32)(1+h%7);
+}
+#forall "sum, matrix-vector and attention bytes are equal at 1, 2, 4 and 8 workers" n:1..<97,chunk:1..<9 #steps 100000000 {
+    x:[96]f32;part:[96]f32;done:[96]u8;
+    for i:0..<n {x[i]=pc_value(i,chunk)*cast(f32)(1+(i%3)*997);}
+    sum_bits:u32=0;size:=chunk;if size>n {size=n;}
+    for workers:[4]int.[1,2,4,8] {
+        p:=pc_plan(n,size,workers);#assert p.status==PcStatus.ok;
+        for c:0..<p.chunks {done[c]=0;}
+        for w:0..<workers {#assert pc_sum_worker(p,workers-1-w,x[0..<n],part[0..<p.chunks],done[0..<p.chunks])==PcStatus.ok;}
+        v:=pc_sum_merge(p,part[0..<p.chunks],done[0..<p.chunks]);#assert v.status==PcStatus.ok;
+        if workers==1 {sum_bits=f32_bits(v.value);}
+        #assert f32_bits(v.value)==sum_bits;
+    }
+    // Rows of a 12-column matrix; heads of width 4 over 3 tokens.
+    rows:=1+n%12;m:[144]f32;xv:[12]f32;y1:[12]f32;y:[12]f32;
+    for i:0..<rows*12 {m[i]=pc_value(i,n);}
+    for i:0..<12 {xv[i]=pc_value(i+500,n);}
+    heads:=1+n%8;q:[32]f32;k:[96]f32;vv:[96]f32;o1:[32]f32;o:[32]f32;
+    for i:0..<heads*4 {q[i]=pc_value(i+900,n)/100;}
+    for i:0..<3*heads*4 {k[i]=pc_value(i+1300,n)/100;vv[i]=pc_value(i+1700,n);}
+    for workers:[4]int.[1,2,4,8] {
+        p:=pc_plan(rows,1+chunk%rows,workers);#assert p.status==PcStatus.ok;
+        for c:0..<p.chunks {done[c]=0;}
+        for w:0..<workers {#assert pc_matvec_worker(p,workers-1-w,m[0..<rows*12],xv[..],y[0..<rows],done[0..<p.chunks])==PcStatus.ok;}
+        #assert pc_publish(p,done[0..<p.chunks])==PcStatus.ok;
+        if workers==1 {for r:0..<rows {y1[r]=y[r];}}
+        for r:0..<rows {#assert f32_bits(y[r])==f32_bits(y1[r]);}
+        h:=pc_plan(heads,1+chunk%heads,workers);#assert h.status==PcStatus.ok;
+        for c:0..<h.chunks {done[c]=0;}
+        for w:0..<workers {#assert pc_heads_worker(h,workers-1-w,q[0..<heads*4],k[0..<3*heads*4],vv[0..<3*heads*4],o[0..<heads*4],done[0..<h.chunks],3)==PcStatus.ok;}
+        #assert pc_publish(h,done[0..<h.chunks])==PcStatus.ok;
+        if workers==1 {for i:0..<heads*4 {o1[i]=o[i];}}
+        for i:0..<heads*4 {#assert f32_bits(o[i])==f32_bits(o1[i]);}
+    }
+}
+
+// book:begin plan
+// Cut items into chunks of chunk items. The chunks depend on the shape and
+// the chunk size only; the worker count decides who computes them, never
+// what they are.
+pc_plan :: (items:int,chunk:int,workers:int)->PcPlan #export_c {
+    if items<1 || items>PC_MAX_ITEMS {return PcPlan.{status=PcStatus.shape};}
+    if workers<1 || workers>PC_MAX_WORKERS {return PcPlan.{status=PcStatus.workers};}
+    if chunk<1 || chunk>items {return PcPlan.{status=PcStatus.chunk};}
+    chunks:=(items+chunk-1)/chunk;
+    if chunks>PC_MAX_CHUNKS {return PcPlan.{status=PcStatus.chunk};}
+    return PcPlan.{status=PcStatus.ok,items=items,chunk=chunk,chunks=chunks,workers=workers};
+}
+// Worker w computes chunks pc_first(p, w) up to pc_first(p, w + 1).
+pc_first :: (p:PcPlan,w:int)->int #export_c {return w*p.chunks/p.workers;}
+// The one worker whose run holds chunk c.
+pc_owner :: (p:PcPlan,c:int)->int #export_c {return ((c+1)*p.workers-1)/p.chunks;}
+pc_lo :: (p:PcPlan,c:int)->int {return c*p.chunk;}
+pc_hi :: (p:PcPlan,c:int)->int {if c==p.chunks-1 {return p.items;}return c*p.chunk+p.chunk;}
+// book:end plan
+
+// A worker call is admitted when the plan is, and w names one of its workers.
+pc_admit :: (p:PcPlan,w:int)->PcStatus {
+    if p.status!=PcStatus.ok {return p.status;}
+    if w<0 || w>=p.workers {return PcStatus.worker;}
+    return PcStatus.ok;
+}
+
+// book:begin sum
+// Worker w sums each of its chunks in index order into that chunk's slot and
+// marks the chunk with its number plus one. It touches no other slot.
+pc_sum_worker :: (p:PcPlan,w:int,x:[]f32,part:[]f32,done:[]u8)->PcStatus #export_c {
+    s:=pc_admit(p,w);if s!=PcStatus.ok {return s;}
+    if x.count!=p.items || part.count!=p.chunks || done.count!=p.chunks {return PcStatus.size;}
+    for c:pc_first(p,w)..<pc_first(p,w+1) {
+        t:f32=0;
+        for i:pc_lo(p,c)..<pc_hi(p,c) {t+=x[i];}
+        part[c]=t;done[c]=cast(u8)(w+1);
+    }
+    return PcStatus.ok;
+}
+// Every chunk must be marked by its owner; otherwise a worker failed or was
+// cancelled, and nothing is published.
+pc_publish :: (p:PcPlan,done:[]u8)->PcStatus #export_c {
+    if p.status!=PcStatus.ok {return p.status;}
+    if done.count!=p.chunks {return PcStatus.size;}
+    for c:0..<p.chunks {if cast(int)done[c]!=pc_owner(p,c)+1 {return PcStatus.incomplete;}}
+    return PcStatus.ok;
+}
+// Combine the chunk sums in a fixed tree: split the chunks at the largest
+// power of two below their count, total each side, add the two. Four chunks
+// give (p0 + p1) + (p2 + p3); five give ((p0 + p1) + (p2 + p3)) + p4.
+pc_tree :: (part:[]f32)->f32 {
+    if part.count==0 {return 0;}
+    if part.count==1 {return part[0];}
+    half:=1;while half*2<part.count {half*=2;}
+    return pc_tree(part[0..<half])+pc_tree(part[half..<part.count]);
+}
+pc_sum_merge :: (p:PcPlan,part:[]f32,done:[]u8)->PcValue #export_c {
+    if p.status==PcStatus.ok && part.count!=p.chunks {return PcValue.{status=PcStatus.size};}
+    s:=pc_publish(p,done);if s!=PcStatus.ok {return PcValue.{status=s};}
+    return PcValue.{status=PcStatus.ok,value=pc_tree(part)};
+}
+// book:end sum
+
+// book:begin split
+// What not to do: give each worker an equal share of the items and add the
+// workers' totals. The grouping, and so the rounding, follows the worker count.
+pc_sum_split :: (x:[]f32,workers:int)->f32 #export_c {
+    if workers<1 {return 0;}
+    total:f32=0;
+    for w:0..<workers {
+        t:f32=0;
+        for i:w*x.count/workers..<(w+1)*x.count/workers {t+=x[i];}
+        total+=t;
+    }
+    return total;
+}
+// book:end split
+
+// book:begin matvec
+// y = m x for a row-major m with x.count columns. Chunks are runs of rows;
+// each row's dot product runs in column order, so no merge is needed.
+pc_matvec_worker :: (p:PcPlan,w:int,m:[]f32,x:[]f32,y:[]f32,done:[]u8)->PcStatus #export_c {
+    s:=pc_admit(p,w);if s!=PcStatus.ok {return s;}
+    cols:=x.count;
+    if cols<1 || m.count!=p.items*cols || y.count!=p.items || done.count!=p.chunks {return PcStatus.size;}
+    for c:pc_first(p,w)..<pc_first(p,w+1) {
+        for r:pc_lo(p,c)..<pc_hi(p,c) {
+            t:f32=0;
+            for j:0..<cols {t+=m[r*cols+j]*x[j];}
+            y[r]=t;
+        }
+        done[c]=cast(u8)(w+1);
+    }
+    return PcStatus.ok;
+}
+// book:end matvec
+
+// book:begin heads
+// One query against tokens keys and values per head, laid out
+// [token][head][dim]. Chunks are runs of heads. Softmax subtracts the
+// largest score, then each token's weight multiplies its value in token order.
+pc_heads_worker :: (p:PcPlan,w:int,q:[]f32,k:[]f32,v:[]f32,out:[]f32,done:[]u8,tokens:int)->PcStatus #export_c {
+    s:=pc_admit(p,w);if s!=PcStatus.ok {return s;}
+    heads:=p.items;dim:=q.count/heads;
+    if tokens<1 || dim<1 || q.count!=heads*dim || k.count!=tokens*heads*dim || v.count!=k.count || out.count!=q.count || done.count!=p.chunks {return PcStatus.size;}
+    for c:pc_first(p,w)..<pc_first(p,w+1) {
+        for h:pc_lo(p,c)..<pc_hi(p,c) {
+            top:=pc_score(q,k,h*dim,(pc_top(q,k,h,heads,dim,tokens)*heads+h)*dim,dim);
+            for j:0..<dim {out[h*dim+j]=0;}
+            total:f32=0;
+            for t:0..<tokens {
+                e:=cast(f32)exp(cast(f64)(pc_score(q,k,h*dim,(t*heads+h)*dim,dim)-top));
+                total+=e;
+                for j:0..<dim {out[h*dim+j]+=e*v[(t*heads+h)*dim+j];}
+            }
+            for j:0..<dim {out[h*dim+j]/=total;}
+        }
+        done[c]=cast(u8)(w+1);
+    }
+    return PcStatus.ok;
+}
+// The first token with the largest score for head h.
+pc_top :: (q:[]f32,k:[]f32,h:int,heads:int,dim:int,tokens:int)->int {
+    best:=0;top:=pc_score(q,k,h*dim,h*dim,dim);
+    for t:1..<tokens {e:=pc_score(q,k,h*dim,(t*heads+h)*dim,dim);if e>top {best=t;top=e;}}
+    return best;
+}
+pc_score :: (q:[]f32,k:[]f32,a:int,b:int,dim:int)->f32 {
+    t:f32=0;
+    for j:0..<dim {t+=q[a+j]*k[b+j];}
+    return t;
+}
+// book:end heads
+
+// One worker's time over many workers' time, in thousandths.
+pc_speedup :: (one_ns:int,many_ns:int)->int #export_c {
+    if many_ns<=0 {return 0;}
+    return one_ns*1000/many_ns;
+}
+
+pc_status_name :: (s:PcStatus)->string {
+    names:=[7]string.["ok","shape: items outside 1..2^30","workers: outside 1..64","chunk: size outside 1..items or more than 65536 chunks",
+        "worker: index outside the plan's workers","size: a buffer's length disagrees with the plan","incomplete: a chunk was not published by its owner"];
+    return names[cast(int)s];
+}

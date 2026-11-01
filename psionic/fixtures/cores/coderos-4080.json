@@ -1,0 +1,36 @@
+{
+  "schema": "psionic.cores.v1",
+  "profile": "pc-cores-v1",
+  "host": "coderos-4080",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "hardware_threads": 28,
+  "kernel": "Linux 6.18.49 x86_64",
+  "date": "2026-11-01",
+  "loadavg": "6.63 8.26 10.56 4/1160 2881313",
+  "compiler": "gcc (GCC) 15.2.0",
+  "flags": "coax c --release; -std=c11 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unknown-pragmas -O2 -pthread",
+  "runs": 7,
+  "split_sum_bits": ["0x4fff8cc0", "0x4fff1990", "0x4ffe3320", "0x4ffc6641"],
+  "tree_sum_bits": "0x4ff9fffc",
+  "cancelled_worker": "incomplete",
+  "kernels": [
+    {"kernel": "sum", "shape": "16777216 values", "chunks": 256, "workers": [
+      {"workers": 1, "digest": "c24fc659f37c5980", "best_ns": 7240622, "median_ns": 8516008, "worst_ns": 8570655, "speedup_milli": 1000},
+      {"workers": 2, "digest": "c24fc659f37c5980", "best_ns": 4182045, "median_ns": 4340784, "worst_ns": 6239289, "speedup_milli": 1731},
+      {"workers": 4, "digest": "c24fc659f37c5980", "best_ns": 2802156, "median_ns": 3197583, "worst_ns": 4290009, "speedup_milli": 2583},
+      {"workers": 8, "digest": "c24fc659f37c5980", "best_ns": 1731498, "median_ns": 2447495, "worst_ns": 2647458, "speedup_milli": 4181}
+    ]},
+    {"kernel": "matvec", "shape": "4096 x 4096", "chunks": 64, "workers": [
+      {"workers": 1, "digest": "e53612451bc76349", "best_ns": 7409511, "median_ns": 8647011, "worst_ns": 10120162, "speedup_milli": 1000},
+      {"workers": 2, "digest": "e53612451bc76349", "best_ns": 3768272, "median_ns": 3892846, "worst_ns": 4446077, "speedup_milli": 1966},
+      {"workers": 4, "digest": "e53612451bc76349", "best_ns": 2143160, "median_ns": 2291800, "worst_ns": 3120398, "speedup_milli": 3457},
+      {"workers": 8, "digest": "e53612451bc76349", "best_ns": 1968423, "median_ns": 2303864, "worst_ns": 2778370, "speedup_milli": 3764}
+    ]},
+    {"kernel": "heads", "shape": "32 heads x 128 wide x 2048 tokens", "chunks": 32, "workers": [
+      {"workers": 1, "digest": "3f5a53fa0a946f4d", "best_ns": 23373649, "median_ns": 23574906, "worst_ns": 32015601, "speedup_milli": 1000},
+      {"workers": 2, "digest": "3f5a53fa0a946f4d", "best_ns": 15543740, "median_ns": 16507218, "worst_ns": 17114113, "speedup_milli": 1503},
+      {"workers": 4, "digest": "3f5a53fa0a946f4d", "best_ns": 8624803, "median_ns": 8973529, "worst_ns": 9327174, "speedup_milli": 2710},
+      {"workers": 8, "digest": "3f5a53fa0a946f4d", "best_ns": 5446541, "median_ns": 5964004, "worst_ns": 6592673, "speedup_milli": 4291}
+    ]}
+  ]
+}

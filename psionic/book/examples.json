@@ -1500,6 +1500,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/cores-replay.coax",
+      "chapter": "psionic/book/ch035-use-every-core.md",
+      "stdout": "psionic/fixtures/cores/cores-replay.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/cores-refuse.coax",
+      "chapter": "psionic/book/ch035-use-every-core.md",
+      "stdout": "psionic/fixtures/cores/cores-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

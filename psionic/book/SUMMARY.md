@@ -39,7 +39,7 @@
 
 - [33. Measure the work and plan the memory](ch033-measure-the-work-and-plan-the-memory.md) — partly implemented
 - [34. Benchmark against llama.cpp and cuBLAS](ch034-benchmark-against-llama-cpp-and-cublas.md) — design draft
-- [35. Use every core](ch035-use-every-core.md) — design draft
+- [35. Use every core](ch035-use-every-core.md) — partly implemented
 - [36. Many questions at once](ch036-many-questions-at-once.md)
 - [37. A Coax compute subset](ch037-a-coax-compute-subset.md) — first device chapter
 - [38. A tensor program becomes an execution plan](ch038-a-tensor-program-becomes-an-execution-plan.md)
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

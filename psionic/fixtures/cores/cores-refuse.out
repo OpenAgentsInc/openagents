@@ -1,0 +1,11 @@
+0 workers: workers: outside 1..64
+65 workers: workers: outside 1..64
+a chunk of 0: chunk: size outside 1..items or more than 65536 chunks
+a chunk of 4097 for 4096 items: chunk: size outside 1..items or more than 65536 chunks
+chunks of 1 for 65537 items: chunk: size outside 1..items or more than 65536 chunks
+0 items: shape: items outside 1..2^30
+worker 4 of 4: worker: index outside the plan's workers
+63 partial slots for 64 chunks: size: a buffer's length disagrees with the plan
+worker 2 cancelled: incomplete: a chunk was not published by its owner
+published value: 0.0
+after worker 2 runs: ok

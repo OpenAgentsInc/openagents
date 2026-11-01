@@ -1,0 +1,8 @@
+10 items in chunks of 4: 3 chunks; over 4 workers the runs start at 0 0 1 2 and end at 3
+chunk owners: 1 2 3
+split by workers, workers -> sum: 1 -> 1.0, 2 -> 0.0, 4 -> 1.0
+fixed chunks of 2, workers -> sum: 1 -> 0.0 2 -> 0.0 4 -> 0.0 8 -> 0.0
+workers 1: sum 0x49fa613e, matvec 0x91e6ccc2, heads 0x484b47d4, split sum 0x49fa613c
+workers 2: sum 0x49fa613e, matvec 0x91e6ccc2, heads 0x484b47d4, split sum 0x49fa613d
+workers 4: sum 0x49fa613e, matvec 0x91e6ccc2, heads 0x484b47d4, split sum 0x49fa6140
+workers 8: sum 0x49fa613e, matvec 0x91e6ccc2, heads 0x484b47d4, split sum 0x49fa613e
