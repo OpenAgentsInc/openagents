@@ -1410,14 +1410,22 @@
    "number": 68,
    "title": "Bridges, external IDs and timestamps",
    "file": "ch068-bridges-external-ids-and-timestamps.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22,
     4
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip73.coax",
+    "coax/lib/nostr/nip48.coax",
+    "coax/lib/nostr/nip03.coax",
+    "nostr/examples/bridges-timestamps.coax",
+    "nostr/examples/checks/bridges-timestamps.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

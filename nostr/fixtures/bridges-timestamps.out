@@ -1,0 +1,51 @@
+NIP-73: written forms and their normal forms
+isbn:978-0-7653-8203-0 -> isbn:9780765382030 (k isbn)
+geo:EZS42E44YX96 -> geo:ezs42e44yx96 (k geo)
+iso3166:us-ca -> iso3166:US-CA (k iso3166)
+isan:0000-0000-401A-0000-7-0000-0000-6 -> isan:0000-0000-401A-0000-7 (k isan)
+doi:10.1000/XYZ123 -> doi:10.1000/xyz123 (k doi)
+#Nostr -> #nostr (k #)
+HTTPS://MyBlog.Example.com/post?q=1#comments -> https://myblog.example.com/post?q=1 (k web)
+http://Example.com -> http://example.com/ (k web)
+bitcoin:tx:A1075DB55D416D3CA199F55B6084E2115B9345E16C5CF302FC80E9D5FBF5D48D -> bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d (k bitcoin:tx)
+podcast:guid:C90E609A-DF1E-596A-BD5E-57BCC8AAD6CC -> podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6cc (k podcast:guid)
+isbn:978-0-7653-8203-1 -> bad check digit
+imdb:tt0120737 -> unknown type
+ethereum:1:tx:0x98f7812be496f97f80e2e98d66358d1fc733cf34176a8356d171ea7fbbe97ccd -> not Bitcoin
+geo:ezs42a -> bad shape
+ftp://example.com/file -> unknown type
+signed events
+N, Alice's note: ok, i tags 2, k tags 2, first isbn:9780765382030 (k isbn), i types without a k tag 0
+B, Bob's bridged note: ok, 1 proxy tag, from activitypub https://gleasonator.com/objects/8f6fac53-4f66-4c6e-ac7d-92e5e78c3e79
+N: ok, not bridged
+O, Carol's kind 1040, content 284 bytes of base64, 211 bytes of proof
+O: ok, kind 1, target e71c6ea7..., Bitcoin attestations 1, pending 1
+NIP-03: the short proof replayed by hand
+start, the event id (32 bytes)
+  e71c6ea722987debdb60f81f9ea4f604b5ac0664120dd64fb9d23abc4ec7c323
+append 0123456789abcdef0123456789abcdef (48 bytes)
+  e71c6ea722987debdb60f81f9ea4f604b5ac0664120dd64fb9d23abc4ec7c3230123456789abcdef0123456789abcdef
+sha256 (32 bytes)
+  16e47a8e06f2405557a7a5ce4232678c1474b58171e944f3d1bd4f9d3abb244f
+prepend 1111111111111111111111111111111111111111111111111111111111111111 (64 bytes)
+  111111111111111111111111111111111111111111111111111111111111111116e47a8e06f2405557a7a5ce4232678c1474b58171e944f3d1bd4f9d3abb244f
+sha256 (32 bytes)
+  1c3154ac118df43baa72f6410d0937b5fb8787b431526a55ad67f9882a9a91f9
+the short proof parsed: ok, 4 operations
+  Bitcoin attestation at byte 119: block 810391, merkle root 1c3154ac118df43baa72f6410d0937b5fb8787b431526a55ad67f9882a9a91f9
+    as an explorer prints it f9919a2a88f967ad556a5231b48787fbb537090d41f672aa3bf48d11ac54311c
+the long proof parsed: ok, 9 operations
+  pending attestation at byte 85
+  Bitcoin attestation at byte 198: block 810391, merkle root 83da99158d06a048a526346b27ce2daeebf6081cbe76820135613bd8ca8fb40c
+    as an explorer prints it 0cb48fcad83b6135018276be1c08f6ebae2dce276b3426a548a0068d1599da83
+refusals
+i tag with an unknown type: unknown type at tag 0
+i tag with hyphens in its ISBN: not in normal form at tag 0
+i tag naming an Ethereum address: not Bitcoin at tag 0
+proxy tag with protocol nntp: unknown protocol at tag 0
+proxy tag without a protocol: bad shape at tag 0
+short proof, byte 83 set to 0x09: unknown operation at byte 83
+short proof, byte 83 set to ripemd160: unsupported operation at byte 83
+short proof cut to 100 bytes: truncated at byte 86
+short proof, one bit of the sibling flipped: ok, root daed0701..., not 1c3154ac...
+W, Carol's kind 1040 naming Alice's note: proof is not about this event

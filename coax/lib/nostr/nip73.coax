@@ -1,0 +1,371 @@
+// NIP-73 external content IDs: the i tag names something outside Nostr (a
+// web page, a book, a place, a paper, a podcast, a Bitcoin transaction) and
+// the k tag names its type, so that a client can ask a relay for every event
+// about one thing or one type of thing.
+//
+// Two events about the same book only meet when both write its ISBN the same
+// way, so each type has one normal form. n73_normalize turns an identifier as
+// a person might write it into that form, and n73_tags reads an event's i and
+// k tags and refuses an i tag that is not already in it.
+//
+// What is checked: the prefix, the characters, the length, the case, and for
+// ISBNs the check digit. What is not: whether the thing exists, an ISAN's
+// check characters, a Bitcoin address's checksum (chapter 12 has bech32),
+// percent-encoding in URLs, and lower case beyond ASCII in hashtags.
+// Blockchain IDs other than Bitcoin's are refused (the repository is
+// Bitcoin-only), with their own status.
+#load "nip32.coax";
+
+N73_OK :: 0; N73_EVENT :: 1; N73_TYPE :: 2; N73_SHAPE :: 3; N73_CHECK :: 4;
+N73_CHAIN :: 5; N73_NORMAL :: 6; N73_KIND :: 7; N73_LIMIT :: 8;
+
+N73_NONE :: 0; N73_WEB :: 1; N73_ISBN :: 2; N73_GEO :: 3; N73_ISO3166 :: 4;
+N73_ISAN :: 5; N73_DOI :: 6; N73_HASHTAG :: 7; N73_PODCAST_FEED :: 8;
+N73_PODCAST_ITEM :: 9; N73_PODCAST_PUBLISHER :: 10; N73_BITCOIN_TX :: 11;
+N73_BITCOIN_ADDRESS :: 12; N73_TYPES :: 13;
+
+// book:begin table
+// The i tag's prefix and the k tag of each type. A web URL has no prefix:
+// its scheme, http or https, says what it is.
+N73_PREFIX :: [N73_TYPES] string.["", "", "isbn:", "geo:", "iso3166:", "isan:",
+  "doi:", "#", "podcast:guid:", "podcast:item:guid:", "podcast:publisher:guid:",
+  "bitcoin:tx:", "bitcoin:address:"];
+N73_K :: [N73_TYPES] string.["", "web", "isbn", "geo", "iso3166", "isan", "doi",
+  "#", "podcast:guid", "podcast:item:guid", "podcast:publisher:guid",
+  "bitcoin:tx", "bitcoin:address"];
+// book:end table
+N73_GEOHASH :: "0123456789bcdefghjkmnpqrstuvwxyz";
+N73_BECH32 :: "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+// H: a hex digit, C: a check character, -: itself.
+N73_ISAN_FORM :: "HHHH-HHHH-HHHH-HHHH-C-HHHH-HHHH-C";
+N73_BASE58 :: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+// book:begin record
+N73Id :: struct {status:int=N73_SHAPE; type:int; value:N32Text;}   // value: the normal form
+N73Tags :: struct {
+  status:int=N73_EVENT; at:int=-1;      // the refusing tag
+  ids:int; first:N73Id;                 // i tags, and the first
+  hints:int;                            // i tags with a URL hint
+  kinds:int;                            // k tags
+  i_types:int; k_types:int;             // bit t set: an i or k tag of type t
+  missing_k:int;                        // i types without their k tag
+}
+// book:end record
+
+#test "NIP-73's examples are already in normal form" {
+  examples:=[11]string.["https://myblog.example.com/post/2012-03-27/hello-world", "geo:ezs42e44yx96",
+    "iso3166:VE", "iso3166:US-CA", "isbn:9780765382030",
+    "podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6cc", "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f",
+    "podcast:publisher:guid:18bcbf10-6701-4ffb-b255-bc057390d738", "isan:0000-0000-401A-0000-7",
+    "bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d",
+    "bitcoin:address:1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx"];
+  types:=[11]int.[N73_WEB, N73_GEO, N73_ISO3166, N73_ISO3166, N73_ISBN, N73_PODCAST_FEED, N73_PODCAST_ITEM,
+    N73_PODCAST_PUBLISHER, N73_ISAN, N73_BITCOIN_TX, N73_BITCOIN_ADDRESS];
+  for k:0..<11 {
+    id:=n73_normalize(examples[k]);
+    #assert id.status==N73_OK && id.type==types[k] && n32_is(id.value,examples[k]);
+  }
+}
+#test "written forms become the normal form" {
+  pairs:=[22]string.[
+    "isbn:978-0-7653-8203-0", "isbn:9780765382030",
+    "isbn:0-306-40615-2", "isbn:0306406152",
+    "isbn:0-8044-2957-x", "isbn:080442957X",
+    "geo:EZS42E44YX96", "geo:ezs42e44yx96",
+    "iso3166:us-ca", "iso3166:US-CA",
+    "isan:0000-0000-401a-0000-7-0000-0000-6", "isan:0000-0000-401A-0000-7",
+    "doi:10.1000/XYZ123", "doi:10.1000/xyz123",
+    "#Nostr", "#nostr",
+    "podcast:guid:C90E609A-DF1E-596A-BD5E-57BCC8AAD6CC", "podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6cc",
+    "HTTPS://MyBlog.Example.com/Post?q=A#top", "https://myblog.example.com/Post?q=A",
+    "http://Example.com", "http://example.com/"];
+  for k:0..<11 {
+    id:=n73_normalize(pairs[2*k]);
+    #assert id.status==N73_OK && n32_is(id.value,pairs[2*k+1]);
+  }
+  #assert n32_is(n73_normalize("http://a.example?x#y").value,"http://a.example/?x");
+  #assert n32_is(n73_normalize("bitcoin:tx:A1075DB55D416D3CA199F55B6084E2115B9345E16C5CF302FC80E9D5FBF5D48D").value,"bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d");
+  #assert n32_is(n73_normalize("bitcoin:address:BC1QAR0SRRR7XFKVY5L643LYDNW9RE59GTZZWF5MDQ").value,"bitcoin:address:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+  #assert n32_is(n73_normalize("bitcoin:address:3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy").value,"bitcoin:address:3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy");
+  #assert n73_normalize("isbn:9780765382030").type==N73_ISBN && n73_normalize("#a").type==N73_HASHTAG && n73_normalize("doi:10.1/a").type==N73_DOI;
+  #assert n73_normalize("#a").status==N73_OK && n73_normalize("#!").status==N73_OK && n73_normalize("doi:10.1/a").status==N73_OK && n73_normalize("geo:e").status==N73_OK;
+  #assert n73_normalize("iso3166:US-C").status==N73_OK && n73_normalize("iso3166:US-CAL").status==N73_OK && n73_normalize("iso3166:us-ca1").status==N73_OK;
+  #assert n73_normalize("isan:0000-0000-401A-0000-Z").status==N73_OK && n73_normalize("isan:0000-0000-401A-0000-7-0000-0000-a").status==N73_OK;
+  b32:=[2]string.["bitcoin:address:bc1qqqqqqqqqqq", "bitcoin:address:bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"];
+  for k:0..<2 {id:=n73_normalize(b32[k]);#assert id.status==N73_OK && n32_is(id.value,b32[k]);}
+  #assert n73_normalize("bitcoin:address:bc1qqqqqqqqqq").status==N73_SHAPE && n73_normalize("bitcoin:address:bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq").status==N73_SHAPE;
+  #assert n73_normalize("bitcoin:address:BC1QAR0SRRR7XFKVY5L643LYDNW9RE59GTZZWF5MDQ").status==N73_OK && n73_normalize("bitcoin:address:BC1QaR0SRRR7XFKVY5L643LYDNW9RE59GTZZWF5MDQ").status==N73_SHAPE && n73_normalize("bitcoin:address:bc1bar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq").status==N73_SHAPE;
+  #assert n73_normalize("bitcoin:address:11111111111111111111111111").status==N73_OK && n73_normalize("bitcoin:address:1111111111111111111111111").status==N73_SHAPE;
+  #assert n73_normalize("bitcoin:address:31111111111111111111111111111111111").status==N73_OK && n73_normalize("bitcoin:address:311111111111111111111111111111111111").status==N73_SHAPE;
+}
+#test "refusals: type, shape, check digit, chain, length" {
+  #assert n73_normalize("ftp://example.com").status==N73_TYPE && n73_normalize("").status==N73_TYPE && n73_normalize("imdb:tt0120737").status==N73_TYPE;
+  #assert n73_normalize("ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045").status==N73_CHAIN;
+  #assert n73_normalize("ethereum:100:tx:0x98f7").status==N73_CHAIN && n73_normalize("solana:tx:abc").status==N73_CHAIN;
+  #assert n73_normalize("a:b:tx:").status==N73_TYPE && n73_normalize("x:1a:tx:y").status==N73_TYPE && n73_normalize(":tx:y").status==N73_TYPE;
+  #assert n73_normalize("isbn:9780765382031").status==N73_CHECK && n73_normalize("isbn:0306406153").status==N73_CHECK;
+  #assert n73_normalize("isbn:978076538203").status==N73_SHAPE && n73_normalize("isbn:97807653820x").status==N73_SHAPE && n73_normalize("isbn:X306406152").status==N73_SHAPE && n73_normalize("isbn:978 0765382030").status==N73_SHAPE;
+  #assert n73_normalize("geo:ezs42a").status==N73_SHAPE && n73_normalize("geo:").status==N73_SHAPE && n73_normalize("geo:0123456789bcd").status==N73_SHAPE;
+  #assert n73_normalize("iso3166:V").status==N73_SHAPE && n73_normalize("iso3166:V1").status==N73_SHAPE && n73_normalize("iso3166:US-").status==N73_SHAPE && n73_normalize("iso3166:US-ABCD").status==N73_SHAPE && n73_normalize("iso3166:US_CA").status==N73_SHAPE && n73_normalize("iso3166:US-C!").status==N73_SHAPE && n73_normalize("iso3166:1S").status==N73_SHAPE;
+  #assert n73_normalize("isan:0000-0000-401A-0000").status==N73_SHAPE && n73_normalize("isan:0000-0000-401G-0000-7").status==N73_SHAPE && n73_normalize("isan:0000-0000-401A-0000-7-0000").status==N73_SHAPE && n73_normalize("isan:0000-0000-401A-0000-!").status==N73_SHAPE && n73_normalize("isan:0000.0000-401A-0000-7").status==N73_SHAPE && n73_normalize("isan:0000-0000-401A-0000-7-0000-0000-!").status==N73_SHAPE && n73_normalize("isan:0000-0000-401A-0000-7x0000-0000-6").status==N73_SHAPE;
+  #assert n73_normalize("doi:11.1000/x").status==N73_SHAPE && n73_normalize("doi:10.1000").status==N73_SHAPE && n73_normalize("doi:10.1000/").status==N73_SHAPE && n73_normalize("doi:10./x").status==N73_SHAPE;
+  #assert n73_normalize("geo:aezs").status==N73_SHAPE && n73_normalize("# a").status==N73_SHAPE && n73_normalize("iso3166:US-!A").status==N73_SHAPE;
+  #assert n73_normalize("isbn:030640615X2").status==N73_SHAPE && n73_normalize("isbn:978076538203X").status==N73_SHAPE && n73_normalize("isbn:97807653820301").status==N73_SHAPE;
+  #assert n73_normalize("isbn:9780306406157").status==N73_OK && n73_normalize("isbn:9780306406158").status==N73_CHECK && n73_normalize("isbn:0306406161").status==N73_CHECK;
+  #assert n73_normalize("isbn:0-9752298-0-X").status==N73_OK && n73_normalize("isbn:0975229801").status==N73_CHECK && n73_normalize("isbn:080442957X").status==N73_OK;
+  #assert n73_normalize("isbn:0306406160").status==N73_OK && n73_normalize("doi:10.x/a").status==N73_SHAPE;
+  #assert n73_normalize("#").status==N73_SHAPE && n73_normalize("#a b").status==N73_SHAPE && n73_normalize("#a#b").status==N73_SHAPE;
+  #assert n73_normalize("podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6c").status==N73_SHAPE && n73_normalize("podcast:guid:c90e609a_df1e-596a-bd5e-57bcc8aad6cc").status==N73_SHAPE && n73_normalize("podcast:item:guid:g90e609a-df1e-596a-bd5e-57bcc8aad6cc").status==N73_SHAPE;
+  #assert n73_normalize("bitcoin:tx:a1075d").status==N73_SHAPE && n73_normalize("bitcoin:tx:g1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d").status==N73_SHAPE;
+  #assert n73_normalize("bitcoin:address:bc1Qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq").status==N73_SHAPE && n73_normalize("bitcoin:address:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdb").status==N73_SHAPE && n73_normalize("bitcoin:address:bc1qar0").status==N73_SHAPE;
+  #assert n73_normalize("bitcoin:address:1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbh0").status==N73_SHAPE && n73_normalize("bitcoin:address:2HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx").status==N73_SHAPE && n73_normalize("bitcoin:address:1HQ3Go3ggs8pFnXuHV").status==N73_SHAPE && n73_normalize("bitcoin:address:").status==N73_SHAPE;
+  #assert n73_normalize("https://").status==N73_SHAPE && n73_normalize("https:///x").status==N73_SHAPE && n73_normalize("https://#x").status==N73_SHAPE && n73_normalize("http:/x").status==N73_TYPE;
+  long:[300]u8;n:=json_raw(long[..],0,"#");for i:0..<256 {long[n+i]='a';}
+  #assert n73_normalize(cast(string)long[0..<256]).status==N73_OK && n73_normalize(cast(string)long[0..<257]).status==N73_LIMIT;
+  url:[300]u8;n=json_raw(url[..],0,"http://");for i:0..<249 {url[n+i]='a';}
+  #assert n73_normalize(cast(string)url[0..<256]).status==N73_LIMIT && n73_normalize(cast(string)url[0..<255]).status==N73_OK;
+  url[8]='?';#assert n73_normalize(cast(string)url[0..<256]).status==N73_LIMIT && n73_normalize(cast(string)url[0..<255]).status==N73_OK;
+}
+#test "an event's i and k tags" {
+  t:=n73_tags(n32_event(1,"[[\"i\",\"bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"],[\"k\",\"bitcoin:tx\"],[\"i\",\"isan:0000-0000-401A-0000-7\",\"https://www.imdb.com/title/tt0120737\"]]"));
+  #assert t.status==N73_OK && t.at== -1 && t.ids==2 && t.kinds==1 && t.hints==1 && t.first.type==N73_BITCOIN_TX;
+  #assert t.i_types==((1<<N73_BITCOIN_TX)|(1<<N73_ISAN)) && t.k_types==(1<<N73_BITCOIN_TX) && t.missing_k==(1<<N73_ISAN);
+  t=n73_tags(n32_event(1,"[[\"k\",\"web\"],[\"i\",\"https://myblog.example.com/post/2012-03-27/hello-world\",\"\"],[\"t\",\"x\"]]"));
+  #assert n73_tags(n32_event(1,"[[\"i\",\"#a\",\"h\"]]")).hints==1;
+  #assert t.status==N73_OK && t.missing_k==0 && t.hints==0 && n32_is(t.first.value,"https://myblog.example.com/post/2012-03-27/hello-world");
+  #assert n73_tags(n32_event(1,"[]")).status==N73_OK && n73_tags(n32_event(1,"[]")).ids==0;
+}
+#test "an event's i and k tags: refusals" {
+  t:=n73_tags(n32_event(1,"[[\"k\",\"web\"],[\"i\",\"imdb:tt0120737\"]]"));#assert t.status==N73_TYPE && t.at==1;
+  t=n73_tags(n32_event(1,"[[\"i\",\"isbn:978-0-7653-8203-0\"]]"));#assert t.status==N73_NORMAL && t.at==0;
+  t=n73_tags(n32_event(1,"[[\"i\",\"isbn:9780765382031\"]]"));#assert t.status==N73_CHECK && t.at==0;
+  t=n73_tags(n32_event(1,"[[\"i\"]]"));#assert t.status==N73_TYPE && t.at==0;
+  t=n73_tags(n32_event(1,"[[\"k\",\"imdb\"]]"));#assert t.status==N73_KIND && t.at==0;
+  t=n73_tags(n32_event(1,"[[\"t\",\"x\"],[\"k\",\"ethereum:tx\"]]"));#assert t.status==N73_CHAIN && t.at==1;
+  t=n73_tags(n32_event(1,"[[\"k\",\"ethereum:address\"]]"));#assert t.status==N73_CHAIN;
+  t=n73_tags(n32_event(1,"[[\"k\",\":tx\"]]"));#assert t.status==N73_KIND;
+  t=n73_tags(n32_event(1,"[[\"i\",\"ethereum:1:tx:0x98\"]]"));#assert t.status==N73_CHAIN;
+  none:NostrEvent;#assert n73_tags(none).status==N73_EVENT;
+  b:=n32_event(1,"[]");b.original="[[\"t\"],[\"i\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  t=n73_tags(b);#assert t.status==N73_EVENT && t.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\"],[\"k\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  t=n73_tags(n32_event(1,cast(string)long[0..<n]));#assert t.status==N73_LIMIT && t.at==1;
+}
+#test "helpers" {
+  #assert n73_lower('A')=='a' && n73_lower('Z')=='z' && n73_lower('@')=='@' && n73_lower('[')=='[' && n73_lower('a')=='a';
+  #assert n73_upper('a')=='A' && n73_upper('z')=='Z' && n73_upper('`')=='`' && n73_upper('{')=='{' && n73_upper('A')=='A';
+  #assert n73_hex('0') && n73_hex('9') && n73_hex('a') && n73_hex('f') && n73_hex('A') && n73_hex('F') && !n73_hex('g') && !n73_hex('G') && !n73_hex('/') && !n73_hex(':') && !n73_hex('`') && !n73_hex('@');
+  #assert n73_in("abc",'c') && !n73_in("abc",'d') && n73_starts("abc","ab") && !n73_starts("a","ab") && !n73_starts("abc","b");
+  #assert n73_letter('Z') && n73_letter('z') && n73_letter('A') && n73_letter('a') && !n73_letter('[') && !n73_letter('{') && !n73_letter('@') && !n73_letter('`');
+  #assert n73_chain("a:tx:b") && n73_chain("z:tx:b") && !n73_chain("{:tx:b") && !n73_chain("`:tx:b") && !n73_chain("x:12") && !n73_chain("x::tx:a");
+  #assert n73_chain_kind("a:tx") && n73_chain_kind("z:tx") && !n73_chain_kind("{:tx") && !n73_chain_kind("`:tx") && !n73_chain_kind("Xx:tx");
+  #assert n73_chain("x:1:tx:a") && n73_chain("x:address:a") && !n73_chain("x:1:2:tx:a") && !n73_chain("x:tx") && !n73_chain("bitcoin") && !n73_chain("X:tx:a");
+  #assert n73_chain_kind("ethereum:tx") && n73_chain_kind("x:address") && !n73_chain_kind("x:1:tx") && !n73_chain_kind("tx") && !n73_chain_kind("x:addr");
+}
+
+n73_lower :: (c:u8)->u8 {if c>='A' && c<='Z' {return c+32;}return c;}
+n73_upper :: (c:u8)->u8 {if c>='a' && c<='z' {return c-32;}return c;}
+n73_digit :: (c:u8)->bool {return c>='0' && c<='9';}
+n73_letter :: (c:u8)->bool {return n73_upper(c)>='A' && n73_upper(c)<='Z';}
+n73_hex :: (c:u8)->bool {return n73_digit(c) || (n73_lower(c)>='a' && n73_lower(c)<='f');}
+n73_in :: (set:string,c:u8)->bool {for i:0..<set.count {if set[i]==c {return true;}}return false;}
+n73_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+n73_fail :: (id:N73Id,status:int)->N73Id {r:=id;r.status=status;return r;}
+n73_put :: (id:N73Id,c:u8)->N73Id {r:=id;r.value.b[r.value.n]=c;r.value.n+=1;return r;}
+
+// A blockchain name, an optional chain id, then "tx" or "address": the
+// shape NIP-73 gives every chain. names is the number of colon-separated
+// words the prefix has before the last.
+n73_chain_words :: (s:string,last:string)->bool {
+  i:=0;while i<s.count && s[i]>='a' && s[i]<='z' {i+=1;}
+  if i==0 || i==s.count || s[i]!=':' {return false;}
+  rest:=s[i+1..<s.count];
+  if n73_starts(rest,last) {return true;}
+  j:=0;while j<rest.count && n73_digit(rest[j]) {j+=1;}
+  return j>0 && n73_starts(rest[j..<rest.count],":") && n73_starts(rest[j+1..<rest.count],last);
+}
+n73_chain :: (s:string)->bool {return n73_chain_words(s,"tx:") || n73_chain_words(s,"address:");}
+n73_chain_kind :: (k:string)->bool {
+  i:=0;while i<k.count && k[i]>='a' && k[i]<='z' {i+=1;}
+  if i==0 || i==k.count {return false;}
+  rest:=k[i..<k.count];return rest==":tx" || rest==":address";
+}
+
+// book:begin type
+// The type an identifier's prefix names, or N73_NONE.
+n73_type :: (s:string)->int {
+  scheme:[8]u8;n:=0;
+  while n<s.count && n<8 {scheme[n]=n73_lower(s[n]);n+=1;}
+  if n73_starts(cast(string)scheme[0..<n],"http://") || n73_starts(cast(string)scheme[0..<n],"https://") {return N73_WEB;}
+  for t:N73_ISBN..<N73_TYPES {if n73_starts(s,N73_PREFIX[t]) {return t;}}
+  return N73_NONE;
+}
+// book:end type
+
+// book:begin normalize
+// An identifier in its type's normal form, or the reason it has none.
+n73_normalize :: (raw:string)->N73Id {
+  id:N73Id;id.type=n73_type(raw);
+  if id.type==N73_NONE {return n73_fail(id,ifx n73_chain(raw) then N73_CHAIN else N73_TYPE);}
+  if raw.count>NT_MAX_VALUE {return n73_fail(id,N73_LIMIT);}
+  p:=N73_PREFIX[id.type];
+  for i:0..<p.count {id=n73_put(id,p[i]);}
+  body:=raw[p.count..<raw.count];
+  if id.type==N73_WEB {return n73_web(id,raw);}
+  if id.type==N73_ISBN {return n73_isbn(id,body);}
+  if id.type==N73_ISAN {return n73_isan(id,body);}
+  if id.type==N73_BITCOIN_ADDRESS {return n73_address(id,body);}
+  // Every other type is its body in one case, checked character by character.
+  upper:=id.type==N73_ISO3166;
+  for i:0..<body.count {id=n73_put(id,ifx upper then n73_upper(body[i]) else n73_lower(body[i]));}
+  v:=id.value;s:=cast(string)v.b[p.count..<v.n];
+  ok:bool;
+  if id.type==N73_GEO {ok=s.count>=1 && s.count<=12;for i:0..<s.count {ok=ok && n73_in(N73_GEOHASH,s[i]);}}
+  else if id.type==N73_ISO3166 {ok=n73_iso3166(s);}
+  else if id.type==N73_DOI {ok=n73_doi(s);}
+  else if id.type==N73_HASHTAG {ok=s.count>0;for i:0..<s.count {ok=ok && s[i]>' ' && s[i]!='#';}}
+  else if id.type==N73_BITCOIN_TX {ok=s.count==64;for i:0..<s.count {ok=ok && n73_hex(s[i]);}}
+  else {ok=n73_uuid(s);}
+  if !ok {return n73_fail(id,N73_SHAPE);}
+  return n73_fail(id,N73_OK);
+}
+// book:end normalize
+
+// book:begin isbn
+// An ISBN without hyphens, its check digit checked: ISBN-13 digits weighted
+// 1, 3, 1, 3, ... sum to a multiple of 10; ISBN-10 digits weighted 10, 9,
+// ..., 1 sum to a multiple of 11, where a last X is 10.
+n73_isbn :: (id:N73Id,body:string)->N73Id {
+  r:=id;n:=0;last:int;sum13:=0;sum10:=0;
+  for i:0..<body.count {
+    c:=n73_upper(body[i]);
+    if c=='-' {continue;}
+    x:=c=='X' && n==9 && i==body.count-1;
+    if !n73_digit(c) && !x {return n73_fail(r,N73_SHAPE);}
+    last=ifx x then 10 else cast(int)(c-'0');
+    if n<12 {sum13+=last*(ifx n%2==0 then 1 else 3);}   // every digit but the check digit
+    if n<9 {sum10+=last*(10-n);}
+    n+=1;r=n73_put(r,c);
+  }
+  // The check digit is the one that makes the sum come out even.
+  if n==13 {if (10-sum13%10)%10!=last {return n73_fail(r,N73_CHECK);}}
+  else if n==10 {if (11-sum10%11)%11!=last {return n73_fail(r,N73_CHECK);}}
+  else {return n73_fail(r,N73_SHAPE);}
+  return n73_fail(r,N73_OK);
+}
+// book:end isbn
+
+// An ISAN: the root and episode, four groups of four hex digits, and their
+// check character, in upper case. A version part (two more groups and a
+// check character) is dropped.
+n73_isan :: (id:N73Id,body:string)->N73Id {
+  r:=id;
+  if body.count!=21 && body.count!=N73_ISAN_FORM.count {return n73_fail(r,N73_SHAPE);}
+  for i:0..<body.count {
+    c:=n73_upper(body[i]);f:=N73_ISAN_FORM[i];
+    if f=='H' && !n73_hex(c) {return n73_fail(r,N73_SHAPE);}
+    if f=='C' && !n73_digit(c) && !n73_letter(c) {return n73_fail(r,N73_SHAPE);}
+    if f=='-' && c!='-' {return n73_fail(r,N73_SHAPE);}
+    if i<21 {r=n73_put(r,c);}
+  }
+  return n73_fail(r,N73_OK);
+}
+// Two letters, then optionally a hyphen and one to three letters or digits.
+n73_iso3166 :: (s:string)->bool {
+  if s.count<2 || !n73_letter(s[0]) || !n73_letter(s[1]) {return false;}
+  if s.count==2 {return true;}
+  if s[2]!='-' || s.count<4 || s.count>6 {return false;}
+  for i:3..<s.count {if !n73_letter(s[i]) && !n73_digit(s[i]) {return false;}}
+  return true;
+}
+// 10., a registrant code of digits, a slash and a suffix.
+n73_doi :: (s:string)->bool {
+  if !n73_starts(s,"10.") {return false;}
+  i:=3;while i<s.count && n73_digit(s[i]) {i+=1;}
+  return i>3 && i+1<s.count && s[i]=='/';
+}
+// A UUID: 8-4-4-4-12 hex digits.
+n73_uuid :: (s:string)->bool {
+  if s.count!=36 {return false;}
+  for i:0..<36 {
+    dash:=i==8 || i==13 || i==18 || i==23;
+    if dash != (s[i]=='-') {return false;}
+    if !dash && !n73_hex(s[i]) {return false;}
+  }
+  return true;
+}
+// A Bitcoin address: bech32 (bc1...) in lower case, or base58 (1... or
+// 3...) as written, since base58 is case sensitive.
+n73_address :: (id:N73Id,body:string)->N73Id {
+  r:=id;
+  if n73_starts(body,"bc1") || n73_starts(body,"BC1") {
+    if body.count<14 || body.count>74 {return n73_fail(r,N73_SHAPE);}
+    upper:=body[0]=='B';
+    for i:0..<body.count {
+      c:=body[i];
+      if n73_letter(c) && (c>='a')==upper {return n73_fail(r,N73_SHAPE);}   // mixed case
+      c=n73_lower(c);
+      if i>=3 && !n73_in(N73_BECH32,c) {return n73_fail(r,N73_SHAPE);}
+      r=n73_put(r,c);
+    }
+    return n73_fail(r,N73_OK);
+  }
+  if body.count<26 || body.count>35 || (body[0]!='1' && body[0]!='3') {return n73_fail(r,N73_SHAPE);}
+  for i:0..<body.count {if !n73_in(N73_BASE58,body[i]) {return n73_fail(r,N73_SHAPE);}r=n73_put(r,body[i]);}
+  return n73_fail(r,N73_OK);
+}
+
+// book:begin web
+// A URL: the scheme and host in lower case, a / for an empty path, and no
+// fragment.
+n73_web :: (id:N73Id,raw:string)->N73Id {
+  r:=id;i:=0;
+  while raw[i]!=':' {r=n73_put(r,n73_lower(raw[i]));i+=1;}
+  for k:0..<3 {r=n73_put(r,raw[i]);i+=1;}           // ://
+  host:=i;
+  while i<raw.count && raw[i]!='/' && raw[i]!='?' && raw[i]!='#' {r=n73_put(r,n73_lower(raw[i]));i+=1;}
+  if i==host {return n73_fail(r,N73_SHAPE);}
+  if i==raw.count || raw[i]!='/' {
+    if r.value.n==NT_MAX_VALUE {return n73_fail(r,N73_LIMIT);}
+    r=n73_put(r,'/');
+  }
+  while i<raw.count && raw[i]!='#' {
+    if r.value.n==NT_MAX_VALUE {return n73_fail(r,N73_LIMIT);}
+    r=n73_put(r,raw[i]);i+=1;
+  }
+  return n73_fail(r,N73_OK);
+}
+// book:end web
+
+n73_refuse :: (t:N73Tags,status:int,at:int)->N73Tags {o:=t;o.status=status;o.at=at;return o;}
+
+// book:begin tags
+// An event's i and k tags: every i tag in normal form and of a known type,
+// every k tag a known type, and the i types that have no k tag.
+n73_tags :: (e:NostrEvent)->N73Tags {
+  r:N73Tags;if e.error!=NE_OK {return r;}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n73_refuse(r,N73_LIMIT,i);}
+    if t.error!=NT_OK {return n73_refuse(r,N73_EVENT,i);}
+    v:=t.v[1];value:=cast(string)v.b[0..<v.n];
+    if n32_is(t.v[0],"i") {
+      id:=n73_normalize(value);
+      if id.status!=N73_OK {return n73_refuse(r,id.status,i);}
+      if !n32_is(id.value,value) {return n73_refuse(r,N73_NORMAL,i);}
+      if r.ids==0 {r.first=id;}
+      r.ids+=1;r.i_types|=1<<id.type;
+      if t.v[2].n>0 {r.hints+=1;}
+    } else if n32_is(t.v[0],"k") {
+      kind:=N73_NONE;
+      for k:N73_WEB..<N73_TYPES {if value==N73_K[k] {kind=k;}}
+      if kind==N73_NONE {return n73_refuse(r,ifx n73_chain_kind(value) then N73_CHAIN else N73_KIND,i);}
+      r.kinds+=1;r.k_types|=1<<kind;
+    }
+    i+=1;
+  }
+  r.missing_k=r.i_types & (r.i_types ^ r.k_types);r.status=N73_OK;return r;
+}
+// book:end tags

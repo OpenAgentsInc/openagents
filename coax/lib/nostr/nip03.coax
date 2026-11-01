@@ -1,0 +1,460 @@
+// NIP-03 OpenTimestamps attestations: a kind 1040 event whose content is an
+// .ots file, base64 encoded, that proves an event existed by the time a
+// Bitcoin block was mined. The e tag names the event; the proof's digest
+// must be that event's id.
+//
+// An .ots file is a header (a magic string, a version and the digest it
+// proves) and a tree of operations. Each operation turns a message into the
+// next: sha256 hashes it, append and prepend add bytes after or before it.
+// Starting from the digest, a branch of operations ends at an attestation.
+// A Bitcoin attestation names a block height and says that the message at
+// that point is the block header's merkle root.
+//
+// What this file checks: the file's shape, that its digest is the event id,
+// and every operation, replayed with SHA-256. What it returns: each Bitcoin
+// attestation's height and the merkle root the replay reached. What it does
+// not check: that the block at that height has that merkle root. That needs
+// the block header, which this stack does not fetch, so the caller compares
+// the root with the header's merkle root field (in the header's own byte
+// order, the reverse of how block explorers print it).
+//
+// Built: sha256, append and prepend, which are what Bitcoin attestations
+// need after the file hash. Not built: the sha1, ripemd160 and keccak256
+// operations, and the deprecated reverse and hexlify; a proof that uses one
+// is refused as unsupported, and any other operation byte as unknown.
+#load "nip32.coax";
+#load "base64.coax";
+#load "../crypto/sha256.coax";
+
+N03_OK :: 0; N03_MAGIC :: 1; N03_VERSION :: 2; N03_FILE_OP :: 3; N03_TRUNCATED :: 4;
+N03_OP :: 5; N03_UNSUPPORTED :: 6; N03_LIMIT :: 7; N03_TRAILING :: 8; N03_ATTESTATION :: 9;
+N03_EVENT :: 10; N03_KIND :: 11; N03_TAG :: 12; N03_BASE64 :: 13; N03_DIGEST :: 14; N03_NO_BITCOIN :: 15;
+
+N03_KIND_ATTESTATION :: 1040;
+N03_MAX_MSG :: 4096;       // the longest message or argument, as in OpenTimestamps
+N03_MAX_PAYLOAD :: 8192;   // the longest attestation payload
+N03_MAX_FORKS :: 8;        // forks open at once
+N03_MAX_ATTEST :: 16;      // attestations reported
+
+// book:begin format
+// The magic: a zero byte, "OpenTimestamps", two zeros, "Proof", a zero
+// and eight random bytes.
+N03_HEADER :: [31]u8.[0x00, 0x4f, 0x70, 0x65, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x73, 0x00, 0x00, 0x50, 0x72, 0x6f, 0x6f, 0x66, 0x00, 0xbf, 0x89, 0xe2, 0xe8, 0x84, 0xe8, 0x92, 0x94];
+N03_FORK :: 0xff; N03_ATTEST :: 0x00;
+N03_SHA256 :: 0x08; N03_APPEND :: 0xf0; N03_PREPEND :: 0xf1;
+N03_SHA1 :: 0x02; N03_RIPEMD160 :: 0x03; N03_KECCAK256 :: 0x67;
+N03_REVERSE :: 0xf2; N03_HEXLIFY :: 0xf3;
+N03_TAG_BITCOIN :: [8]u8.[0x05, 0x88, 0x96, 0x0d, 0x73, 0xd7, 0x19, 0x01];
+N03_TAG_PENDING :: [8]u8.[0x83, 0xdf, 0xe3, 0x0d, 0x2e, 0xf9, 0x0c, 0x8e];
+// book:end format
+N03_BITCOIN :: 1; N03_PENDING :: 2; N03_UNKNOWN :: 3;
+
+// book:begin record
+N03Attestation :: struct {
+  type:int;                  // N03_BITCOIN, N03_PENDING or N03_UNKNOWN
+  height:int=-1;             // Bitcoin: the block
+  root:[32]u8;               // Bitcoin: the message there, the claimed merkle root
+  at:int;                    // its offset in the proof
+}
+N03Proof :: struct {
+  status:int=N03_MAGIC; at:int=-1;     // the refusal and its offset
+  digest:[32]u8;                       // what the proof is about
+  ops:int;                             // operations replayed
+  attestations:[N03_MAX_ATTEST]N03Attestation; n:int;
+  bitcoin:int; pending:int; unknown:int;
+}
+N03Event :: struct {
+  status:int=N03_EVENT; tag_error:int;
+  target:[32]u8;                       // the e tag's event id
+  kind:int=-1;                         // the k tag, when present
+  proof:N03Proof;
+}
+// book:end record
+// A message being replayed.
+N03Msg :: struct {b:[N03_MAX_MSG]u8; n:int;}
+// A cursor over the proof.
+N03Read :: struct {p:string; at:int;}
+
+// ---- test values, from a Python script written from the .ots format
+// (it shares no code with Coax): the NIP-03 example's event id, then
+// append, sha256, prepend, sha256 and a Bitcoin attestation at 810391.
+N03_T_ID :: "e71c6ea722987debdb60f81f9ea4f604b5ac0664120dd64fb9d23abc4ec7c323";
+N03_T_SHORT :: "004f70656e54696d657374616d7073000050726f6f6600bf89e2e884e892940108e71c6ea722987debdb60f81f9ea4f604b5ac0664120dd64fb9d23abc4ec7c323f0100123456789abcdef0123456789abcdef08f120111111111111111111111111111111111111111111111111111111111111111108000588960d73d719010397bb31";
+N03_T_SHORT_ROOT :: "1c3154ac118df43baa72f6410d0937b5fb8787b431526a55ad67f9882a9a91f9";
+// The same start, a fork whose first branch is a pending attestation, then
+// a transaction around the message, its id (two sha256), one merkle step
+// (two sha256) and the Bitcoin attestation.
+N03_T_LONG :: "004f70656e54696d657374616d7073000050726f6f6600bf89e2e884e892940108e71c6ea722987debdb60f81f9ea4f604b5ac0664120dd64fb9d23abc4ec7c323f0100123456789abcdef0123456789abcdef08ff0083dfe30d2ef90c8e2e2d68747470733a2f2f616c6963652e6274632e63616c656e6461722e6f70656e74696d657374616d70732e6f7267f10a01000000010000000000f005ffffffff000808f02022222222222222222222222222222222222222222222222222222222222222220808000588960d73d719010397bb31";
+N03_T_LONG_ROOT :: "83da99158d06a048a526346b27ce2daeebf6081cbe76820135613bd8ca8fb40c";
+N03_T_LONG_B64 :: "AE9wZW5UaW1lc3RhbXBzAABQcm9vZgC/ieLohOiSlAEI5xxupyKYfevbYPgfnqT2BLWsBmQSDdZPudI6vE7HwyPwEAEjRWeJq83vASNFZ4mrze8I/wCD3+MNLvkMji4taHR0cHM6Ly9hbGljZS5idGMuY2FsZW5kYXIub3BlbnRpbWVzdGFtcHMub3Jn8QoBAAAAAQAAAAAA8AX/////AAgI8CAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIggIAAWIlg1z1xkBA5e7MQ==";
+
+n03_hex :: (text:string,out:[]u8)->string {
+  r:=hex_decode_checked(text,out,false);#assert r.error==NC_OK;return cast(string)out[0..<r.written];
+}
+n03_same :: (a:[32]u8,hex:string)->bool {b:[32]u8;s:=n03_hex(hex,b[..]);#assert s.count==32;return ns_equal32(a,b);}
+// The proof in hex with the bytes from..<to replaced by the hex in with.
+n03_edit :: (hex:string,from:int,to:int,with:string,out:[]u8)->string {
+  t:[1024]u8;n:=json_raw(t[..],0,hex[0..<2*from]);n=json_raw(t[..],n,with);n=json_raw(t[..],n,hex[2*to..<hex.count]);
+  return n03_hex(cast(string)t[0..<n],out);
+}
+
+#test "the short proof replays to its root" {
+  b:[512]u8;p:=n03_parse(n03_hex(N03_T_SHORT,b[..]));
+  #assert p.status==N03_OK && p.at== -1 && p.ops==4 && p.n==1 && p.bitcoin==1 && p.pending==0 && p.unknown==0;
+  #assert n03_same(p.digest,N03_T_ID) && p.attestations[0].type==N03_BITCOIN && p.attestations[0].height==810391;
+  #assert n03_same(p.attestations[0].root,N03_T_SHORT_ROOT) && p.attestations[0].at==119;
+}
+#test "the long proof: a fork, a pending branch and a Bitcoin branch" {
+  b:[512]u8;p:=n03_parse(n03_hex(N03_T_LONG,b[..]));
+  #assert p.status==N03_OK && p.ops==9 && p.n==2 && p.bitcoin==1 && p.pending==1 && p.unknown==0;
+  #assert p.attestations[0].type==N03_PENDING && p.attestations[0].height== -1;
+  #assert p.attestations[1].type==N03_BITCOIN && p.attestations[1].height==810391 && n03_same(p.attestations[1].root,N03_T_LONG_ROOT);
+}
+#test "an unknown attestation and nested forks" {
+  b:[512]u8;
+  // After the first sha256, message M: three forks. Two branches are
+  // unknown attestations with two-byte payloads, the first after append aa; the third is prepend 01,
+  // sha256 and a Bitcoin attestation at height 1. Then Bitcoin at 2 on M.
+  tail:="fff001aa00010203040506070802aabbff00010203040506070802ccddfff1010108000588960d73d719010101000588960d73d719010102";
+  t:[1024]u8;n:=json_raw(t[..],0,N03_T_SHORT[0..<2*84]);n=json_raw(t[..],n,tail);
+  p:=n03_parse(n03_hex(cast(string)t[0..<n],b[..]));
+  #assert p.status==N03_OK && p.n==4 && p.unknown==2 && p.bitcoin==2 && p.ops==5;
+  #assert p.attestations[0].type==N03_UNKNOWN && p.attestations[1].type==N03_UNKNOWN && p.attestations[2].height==1 && p.attestations[3].height==2;
+  #assert n03_same(p.attestations[2].root,"85849da0de78bf32e433bda70b929e9e409ef177bbf98fd6d7bfa81ddb8c3744") && n03_same(p.attestations[3].root,"16e47a8e06f2405557a7a5ce4232678c1474b58171e944f3d1bd4f9d3abb244f");
+}
+#test "refusals: header" {
+  b:[512]u8;s:=n03_hex(N03_T_SHORT,b[..]);
+  #assert n03_parse("").status==N03_TRUNCATED && n03_parse(s[0..<30]).status==N03_TRUNCATED && n03_parse(s[0..<31]).status==N03_TRUNCATED;
+  #assert n03_parse(s[0..<30]).at==0 && n03_parse(s[0..<31]).at==31 && n03_parse(s[0..<32]).status==N03_TRUNCATED && n03_parse(s[0..<32]).at==32;
+  #assert n03_parse(s[0..<64]).at==33 && n03_parse(s[0..<65]).at==65;
+  c:[512]u8;
+  p:=n03_parse(n03_edit(N03_T_SHORT,1,2,"50",c[..]));#assert p.status==N03_MAGIC && p.at==0;
+  p=n03_parse(n03_edit(N03_T_SHORT,0,1,"01",c[..]));#assert p.status==N03_MAGIC;
+  p=n03_parse(n03_edit(N03_T_SHORT,30,31,"95",c[..]));#assert p.status==N03_MAGIC;
+  p=n03_parse(n03_edit(N03_T_SHORT,31,32,"02",c[..]));#assert p.status==N03_VERSION && p.at==31;
+  p=n03_parse(n03_edit(N03_T_SHORT,31,32,"8101",c[..]));#assert p.status==N03_VERSION;
+  p=n03_parse(n03_edit(N03_T_SHORT,32,33,"02",c[..]));#assert p.status==N03_FILE_OP && p.at==32;
+  p=n03_parse(n03_edit(N03_T_SHORT,32,33,"f0",c[..]));#assert p.status==N03_FILE_OP;
+  #assert n03_parse(s[0..<33]).status==N03_TRUNCATED && n03_parse(s[0..<64]).status==N03_TRUNCATED && n03_parse(s[0..<65]).status==N03_TRUNCATED;
+}
+#test "refusals: operations" {
+  b:[512]u8;s:=n03_hex(N03_T_SHORT,b[..]);c:[512]u8;
+  // The append at 65: its length at 66, its argument; sha256 at 83;
+  // prepend at 84; sha256 at 118; the attestation at 119.
+  p:=n03_parse(n03_edit(N03_T_SHORT,83,84,"03",c[..]));#assert p.status==N03_UNSUPPORTED && p.at==83 && p.ops==1;
+  unsupported:=[5]string.["02","03","67","f2","f3"];
+  for k:0..<5 {#assert n03_parse(n03_edit(N03_T_SHORT,83,84,unsupported[k],c[..])).status==N03_UNSUPPORTED;}
+  unknown:=[5]string.["01","09","66","f4","ef"];
+  for k:0..<5 {p=n03_parse(n03_edit(N03_T_SHORT,83,84,unknown[k],c[..]));#assert p.status==N03_OP && p.at==83;}
+  p=n03_parse(n03_edit(N03_T_SHORT,83,84,"ffff",c[..]));#assert p.status==N03_OP && p.at==84;
+  p=n03_parse(n03_edit(N03_T_SHORT,66,67,"00",c[..]));#assert p.status==N03_LIMIT && p.at==66;
+  p=n03_parse(n03_edit(N03_T_SHORT,66,67,"818001",c[..]));#assert p.status==N03_LIMIT;
+  p=n03_parse(n03_edit(N03_T_SHORT,66,67,"8020",c[..]));#assert p.status==N03_TRUNCATED;
+  p=n03_parse(n03_edit(N03_T_SHORT,66,67,"8120",c[..]));#assert p.status==N03_LIMIT && p.at==66;
+  #assert n03_parse(s[0..<83]).at==83 && n03_parse(s[0..<80]).at==67;
+  for cut:65..<119 {#assert n03_parse(s[0..<cut]).status==N03_TRUNCATED;}
+  #assert n03_parse(s[0..<84]).at==84;
+}
+#test "refusals: attestations and trailing bytes" {
+  b:[512]u8;s:=n03_hex(N03_T_SHORT,b[..]);c:[512]u8;
+  for cut:119..<s.count {#assert n03_parse(s[0..<cut]).status==N03_TRUNCATED;}
+  p:=n03_parse(n03_edit(N03_T_SHORT,s.count,s.count,"00",c[..]));#assert p.status==N03_TRAILING && p.at==s.count;
+  // A Bitcoin payload with a byte after the height, or without a height.
+  p=n03_parse(n03_edit(N03_T_SHORT,128,132,"0497bb3100",c[..]));#assert p.status==N03_ATTESTATION && p.at==119;
+  p=n03_parse(n03_edit(N03_T_SHORT,128,132,"00",c[..]));#assert p.status==N03_ATTESTATION;
+  p=n03_parse(n03_edit(N03_T_SHORT,128,132,"0297bb",c[..]));#assert p.status==N03_ATTESTATION;
+  // A payload over 8192 bytes.
+  p=n03_parse(n03_edit(N03_T_SHORT,128,132,"814001",c[..]));#assert p.status==N03_LIMIT;
+  // Height 0 reads; a tag one byte off Bitcoin's is unknown.
+  p=n03_parse(n03_edit(N03_T_SHORT,128,132,"0100",c[..]));#assert p.status==N03_OK && p.attestations[0].height==0;
+  p=n03_parse(n03_edit(N03_T_SHORT,120,121,"04",c[..]));#assert p.status==N03_OK && p.unknown==1 && p.bitcoin==0;
+  p=n03_parse(n03_edit(N03_T_SHORT,127,128,"00",c[..]));#assert p.status==N03_OK && p.unknown==1;
+  // An unknown attestation's payload of exactly 8192 bytes.
+  big:[8400]u8;n:=n03_put(big[..],0,N03_T_SHORT[0..<2*119]);n=n03_put(big[..],n,"0000000000000000008040");n+=8192;
+  p=n03_parse(cast(string)big[0..<n]);#assert p.status==N03_OK && p.unknown==1;
+  l:[512]u8;ls:=n03_hex(N03_T_LONG,l[..]);p=n03_parse(ls[0..<85]);#assert p.status==N03_TRUNCATED && p.at==85;
+  // A Bitcoin attestation on a message that is not 32 bytes: drop the last sha256.
+  p=n03_parse(n03_edit(N03_T_SHORT,118,119,"",c[..]));#assert p.status==N03_ATTESTATION && p.at==118;
+}
+#test "limits: message length, forks and attestations" {
+  b:[8192]u8;c:[8192]u8;
+  // Append 4064 bytes to the 32-byte digest: 4096 bytes, allowed; 4065: refused.
+  for extra:4064..<4066 {
+    n:=n03_put(b[..],0,N03_T_SHORT[0..<2*65]);
+    b[n]=N03_APPEND;b[n+1]=cast(u8)(0x80|(extra&127));b[n+2]=cast(u8)(extra>>7);n+=3;
+    for i:0..<extra {b[n+i]=9;}n+=extra;
+    n=n03_put(b[..],n,"08000588960d73d719010105");
+    p:=n03_parse(cast(string)b[0..<n]);
+    #assert (p.status==N03_OK)==(extra==4064);
+    if extra==4065 {#assert p.status==N03_LIMIT && p.at==65;}
+  }
+  // Prepend twice to the digest: the bytes move right.
+  n:=n03_put(c[..],0,N03_T_SHORT[0..<2*65]);
+  n=n03_put(c[..],n,"f102aabbf102ccdd00000000000000000000");
+  w:[1]N03Msg;w[0].n=32;for i:0..<32 {w[0].b[i]=c[33+i];}
+  #assert n03_apply(w[..],N03_PREPEND,"\0\0") && w[0].n==34 && w[0].b[0]==0 && w[0].b[2]==c[33] && w[0].b[33]==c[64];
+  #assert n03_apply(w[..],N03_APPEND,"\n") && w[0].n==35 && w[0].b[34]=='\n' && w[0].b[33]==c[64];
+  p:=n03_parse(cast(string)c[0..<n]);#assert p.status==N03_OK && p.unknown==1 && p.ops==2;
+  // Forks inside forks: fork, sha256, fork, sha256, ... then one unknown
+  // attestation per level. Eight open at once: allowed; nine: refused.
+  for forks:8..<10 {
+    n=n03_put(c[..],0,N03_T_SHORT[0..<2*65]);
+    for f:0..<forks {n=n03_put(c[..],n,"ff08");}
+    for f:0..<forks+1 {n=n03_put(c[..],n,"00000000000000000000");}
+    p=n03_parse(cast(string)c[0..<n]);
+    #assert (p.status==N03_OK)==(forks==8) && (p.status==N03_LIMIT)==(forks==9);
+    if forks==8 {#assert p.ops==8 && p.unknown==9;} else {#assert p.at==65+8*2;}
+  }
+  // Forks one after another: sixteen attestations, allowed; seventeen, refused.
+  for count:16..<18 {
+    n=n03_put(c[..],0,N03_T_SHORT[0..<2*65]);
+    for f:0..<count-1 {n=n03_put(c[..],n,"ff00000000000000000000");}
+    n=n03_put(c[..],n,"00000000000000000000");
+    p=n03_parse(cast(string)c[0..<n]);
+    if count==16 {#assert p.status==N03_OK && p.n==16 && p.unknown==16;}
+    else {#assert p.status==N03_LIMIT && p.n==16 && p.at==65+16*11;}
+  }
+}
+#test "a k tag's kind" {
+  text:=[14]string.["0", "9", "10", "65535", "1040", "65536", "123456", "", "00", "01", "/", ":", "1:", "1a"];
+  want:=[14]int.[0, 9, 10, 65535, 1040, -1, -1, -1, -1, -1, -1, -1, -1, -1];
+  for k:0..<14 {#assert n03_kind(text[k])==want[k];}
+}
+#test "varuint" {
+  b:[16]u8;
+  hex:=[11]string.["97bb31", "7f", "8001", "ffffffff0f", "8080808010", "808080808001", "80", "", "808080808000", "00", "8080808000"];
+  want:=[11]int.[810391, 127, 128, 4294967295, -2, -2, -1, -1, -2, 0, 0];
+  for k:0..<11 {
+    r:[1]N03Read;r[0].p=n03_hex(hex[k],b[..]);
+    #assert n03_varuint(r[..])==want[k];
+    if want[k]>=0 {#assert r[0].at==hex[k].count/2;}
+  }
+}
+#test "a kind 1040 event" {
+  out:[2048]u8;buf:[1024]u8;
+  e:=n03_event_for(N03_T_ID,"\"1\"",N03_T_LONG_B64,out[..]);
+  a:=n03_event(e,buf[..]);
+  #assert a.status==N03_OK && a.kind==1 && n03_same(a.target,N03_T_ID) && a.proof.bitcoin==1 && n03_same(a.proof.attestations[1].root,N03_T_LONG_ROOT);
+  e=n03_event_for(N03_T_ID,"",N03_T_LONG_B64,out[..]);a=n03_event(e,buf[..]);#assert a.status==N03_OK && a.kind== -1;
+  e=n03_event_for(N03_T_ID,"\"0\"],[\"k\",\"5\"",N03_T_LONG_B64,out[..]);a=n03_event(e,buf[..]);#assert a.status==N03_OK && a.kind==0;
+  exact:[211]u8;e=n03_event_for(N03_T_ID,"\"1\"",N03_T_LONG_B64,out[..]);#assert n03_event(e,exact[..]).status==N03_OK;
+}
+#test "a kind 1040 event: refusals" {
+  out:[2048]u8;buf:[1024]u8;
+  // The proof is about another event.
+  e:=n03_event_for("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","\"1\"",N03_T_LONG_B64,out[..]);
+  a:=n03_event(e,buf[..]);#assert a.status==N03_DIGEST && a.proof.status==N03_OK;
+  e=n03_event_for(N03_T_ID,"\"x\"",N03_T_LONG_B64,out[..]);#assert n03_event(e,buf[..]).status==N03_TAG;
+  e=n03_event_for(N03_T_ID,"\"\"",N03_T_LONG_B64,out[..]);#assert n03_event(e,buf[..]).status==N03_TAG;
+  e=n03_event_for(N03_T_ID,"1",N03_T_LONG_B64,out[..]);#assert n03_event(e,buf[..]).status==N03_EVENT;
+  e=n03_event_for(N03_T_ID,"\"1\"","AE9w!",out[..]);#assert n03_event(e,buf[..]).status==N03_BASE64;
+  e=n03_event_for(N03_T_ID,"\"1\"","AE9wZW5U",out[..]);a=n03_event(e,buf[..]);#assert a.status==N03_TRUNCATED && a.proof.status==N03_TRUNCATED;
+  small:[100]u8;e=n03_event_for(N03_T_ID,"\"1\"",N03_T_LONG_B64,out[..]);#assert n03_event(e,small[..]).status==N03_LIMIT;
+  // Only a pending attestation: the long proof's first branch alone.
+  b:[512]u8;c:[512]u8;pending:=n03_edit(N03_T_LONG,84,85,"",b[..]);pending=pending[0..<140];
+  t:[512]u8;r:=base64_encode_checked(pending,t[..],false);
+  e=n03_event_for(N03_T_ID,"\"1\"",cast(string)t[0..<r.written],out[..]);a=n03_event(e,buf[..]);
+  #assert a.status==N03_NO_BITCOIN && a.proof.pending==1;
+  e=n03_event_for(N03_T_ID,"\"1\"",N03_T_LONG_B64,out[..]);e.kind=1;#assert n03_event(e,buf[..]).status==N03_KIND;
+  none:NostrEvent;#assert n03_event(none,buf[..]).status==N03_EVENT;
+  f:=n32_event(1040,"[[\"k\",\"1\"]]");#assert n03_event(f,buf[..]).status==N03_TAG;
+  f=n32_event(1040,"[[\"e\",\"aaaa\"]]");a=n03_event(f,buf[..]);#assert a.status==N03_TAG && a.tag_error==NT_HEX;
+  f=n32_event(1040,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]");f.content_from= -1;#assert n03_event(f,buf[..]).status==N03_EVENT;
+  f.content_from=0;f.content_to=f.original.count+1;#assert n03_event(f,buf[..]).status==N03_EVENT;
+  f.content_from=0;f.content_to=f.original.count;#assert n03_event(f,buf[..]).status==N03_BASE64;
+  f.content_from=2;f.content_to=1;#assert n03_event(f,buf[..]).status==N03_EVENT;
+  f.content_from=0;f.content_to=0;#assert n03_event(f,buf[..]).status==N03_TRUNCATED;
+}
+
+// Bytes given in hex written into out at at; the offset after them.
+n03_put :: (out:[]u8,at:int,hex:string)->int {
+  r:=hex_decode_checked(hex,out[at..<out.count],false);#assert r.error==NC_OK;return at+r.written;
+}
+// Whether s at at starts with the bytes of b. The caller has checked
+// that s holds them.
+n03_match :: (s:string,at:int,b:[]u8)->bool {
+  for i:0..<b.count {if s[at+i]!=b[i] {return false;}}
+  return true;
+}
+// A parsed kind 1040 event with an e tag for id, a k tag when k is not
+// empty (k is its JSON value), and this content.
+n03_event_for :: (id:string,k:string,content:string,out:[]u8)->NostrEvent {
+  tags:[256]u8;n:=json_raw(tags[..],0,"[[\"e\",\"");n=json_raw(tags[..],n,id);n=json_raw(tags[..],n,"\",\"wss://r.example\"]");
+  if k.count>0 {n=json_raw(tags[..],n,",[\"k\",");n=json_raw(tags[..],n,k);n=json_raw(tags[..],n,"]");}
+  n=json_raw(tags[..],n,"]");
+  m:=json_raw(out,0,cast(string)tags[0..<n]);m=json_write_string(out,m,content);
+  e:NostrEvent;e.error=NE_OK;e.original=cast(string)out[0..<m];e.tags_to=n;e.content_from=n+1;e.content_to=m-1;e.kind=1040;return e;
+}
+
+// A kind written in decimal, 0 to 65535, without leading zeros; -1 if not.
+n03_kind :: (s:string)->int {
+  if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
+  v:=0;
+  for i:0..<s.count {
+    if s[i]<'0' || s[i]>'9' {return -1;}
+    v=v*10+cast(int)(s[i]-'0');
+    if v>65535 {return -1;}
+  }
+  return v;
+}
+n03_refuse :: (p:N03Proof,status:int,at:int)->N03Proof {o:=p;o.status=status;o.at=at;return o;}
+
+// book:begin varuint
+// An unsigned LEB128 number: seven bits a byte, low bits first, the high
+// bit set on every byte but the last. At most five bytes and 32 bits.
+// -1: the proof ends inside it; -2: too long or too large.
+n03_varuint :: (r:[]N03Read)->int {
+  v:=0;
+  for k:0..<5 {
+    if r[0].at>=r[0].p.count {return -1;}
+    b:=cast(int)r[0].p[r[0].at];r[0].at+=1;
+    v|=(b&127)<<(7*k);
+    if b<128 {return ifx v>0xffffffff then -2 else v;}
+  }
+  return -2;
+}
+// book:end varuint
+
+// book:begin apply
+// One operation on the message m: sha256, or append or prepend arg. False
+// when the result would be too long.
+n03_apply :: (m:[]N03Msg,op:int,arg:string)->bool {
+  if op==N03_SHA256 {
+    h:[32]u8;status:=sha256_hash_checked(m[0].b[0..<m[0].n],h[..],false);
+    #assert status==SHA_OK;
+    for i:0..<32 {m[0].b[i]=h[i];}
+    m[0].n=32;return true;
+  }
+  if m[0].n+arg.count>N03_MAX_MSG {return false;}
+  if op==N03_APPEND {for i:0..<arg.count {m[0].b[m[0].n+i]=arg[i];}}
+  else {
+    i:=m[0].n;while i>0 {i-=1;m[0].b[i+arg.count]=m[0].b[i];}
+    for k:0..<arg.count {m[0].b[k]=arg[k];}
+  }
+  m[0].n+=arg.count;return true;
+}
+// book:end apply
+
+// An attestation at r's offset, after its 0x00: an eight-byte tag and a
+// payload. Bitcoin's payload is the block height, and the message must be
+// 32 bytes. A status, and the attestation in a. A proof that ends inside
+// the tag ends before the payload's length, so the length check catches it.
+n03_attestation :: (r:[]N03Read,m:N03Msg,a:[]N03Attestation)->int {
+  tag:=r[0].at;r[0].at+=8;
+  size:=n03_varuint(r);
+  if size== -1 {return N03_TRUNCATED;}
+  if size<0 || size>N03_MAX_PAYLOAD {return N03_LIMIT;}
+  if r[0].at+size>r[0].p.count {return N03_TRUNCATED;}
+  payload:[1]N03Read;payload[0].p=r[0].p[r[0].at..<r[0].at+size];r[0].at+=size;
+  a[0].type=N03_UNKNOWN;
+  bitcoin:=N03_TAG_BITCOIN;pending:=N03_TAG_PENDING;
+  if n03_match(r[0].p,tag,pending[..]) {a[0].type=N03_PENDING;}
+  if n03_match(r[0].p,tag,bitcoin[..]) {
+    a[0].type=N03_BITCOIN;a[0].height=n03_varuint(payload[..]);
+    if a[0].height<0 || payload[0].at!=size || m.n!=32 {return N03_ATTESTATION;}
+    for i:0..<32 {a[0].root[i]=m.b[i];}
+  }
+  return N03_OK;
+}
+
+// book:begin parse
+// An .ots file: its header, then every branch of its tree replayed from the
+// digest, each ending at an attestation.
+n03_parse :: (proof:string)->N03Proof {
+  p:N03Proof;r:[1]N03Read;r[0].p=proof;
+  header:=N03_HEADER;
+  if proof.count<header.count {return n03_refuse(p,N03_TRUNCATED,0);}
+  if !n03_match(proof,0,header[..]) {return n03_refuse(p,N03_MAGIC,0);}
+  r[0].at=header.count;
+  version:=n03_varuint(r[..]);
+  if version== -1 {return n03_refuse(p,N03_TRUNCATED,r[0].at);}
+  if version!=1 {return n03_refuse(p,N03_VERSION,header.count);}
+  if r[0].at>=proof.count {return n03_refuse(p,N03_TRUNCATED,r[0].at);}
+  if proof[r[0].at]!=N03_SHA256 {return n03_refuse(p,N03_FILE_OP,r[0].at);}
+  r[0].at+=1;
+  if r[0].at+32>proof.count {return n03_refuse(p,N03_TRUNCATED,r[0].at);}
+  m:[1]N03Msg;
+  for i:0..<32 {p.digest[i]=proof[r[0].at+i];m[0].b[i]=p.digest[i];}
+  m[0].n=32;r[0].at+=32;
+  forks:[N03_MAX_FORKS]N03Msg;open:=0;   // the message at each open fork
+  while true {
+    at:=r[0].at;
+    if at>=proof.count {return n03_refuse(p,N03_TRUNCATED,at);}
+    op:=cast(int)proof[at];r[0].at+=1;
+    if op==N03_FORK {
+      // Another branch follows this one: save the message for it.
+      if open==N03_MAX_FORKS {return n03_refuse(p,N03_LIMIT,at);}
+      forks[open].n=m[0].n;for i:0..<m[0].n {forks[open].b[i]=m[0].b[i];}
+      open+=1;at=r[0].at;
+      if at>=proof.count {return n03_refuse(p,N03_TRUNCATED,at);}
+      op=cast(int)proof[at];r[0].at+=1;
+    }
+    if op==N03_ATTEST {
+      a:[1]N03Attestation;a[0].at=at;
+      status:=n03_attestation(r[..],m[0],a[..]);
+      if status!=N03_OK {return n03_refuse(p,status,at);}
+      if p.n==N03_MAX_ATTEST {return n03_refuse(p,N03_LIMIT,at);}
+      p.attestations[p.n]=a[0];p.n+=1;
+      if a[0].type==N03_BITCOIN {p.bitcoin+=1;} else if a[0].type==N03_PENDING {p.pending+=1;} else {p.unknown+=1;}
+      if open==0 {break;}
+      // The branch ends; the next one starts from the fork's message.
+      open-=1;m[0].n=forks[open].n;for i:0..<m[0].n {m[0].b[i]=forks[open].b[i];}
+      continue;
+    }
+    arg:="";
+    if op==N03_APPEND || op==N03_PREPEND {
+      size:=n03_varuint(r[..]);
+      if size== -1 {return n03_refuse(p,N03_TRUNCATED,r[0].at);}
+      if size<1 || size>N03_MAX_MSG {return n03_refuse(p,N03_LIMIT,at+1);}
+      if r[0].at+size>proof.count {return n03_refuse(p,N03_TRUNCATED,r[0].at);}
+      arg=proof[r[0].at..<r[0].at+size];r[0].at+=size;
+    } else if op==N03_SHA1 || op==N03_RIPEMD160 || op==N03_KECCAK256 || op==N03_REVERSE || op==N03_HEXLIFY {
+      return n03_refuse(p,N03_UNSUPPORTED,at);
+    } else if op!=N03_SHA256 {return n03_refuse(p,N03_OP,at);}
+    if !n03_apply(m[..],op,arg) {return n03_refuse(p,N03_LIMIT,at);}
+    p.ops+=1;
+  }
+  if r[0].at!=proof.count {return n03_refuse(p,N03_TRAILING,r[0].at);}
+  p.status=N03_OK;return p;
+}
+// book:end parse
+
+// book:begin event
+// A kind 1040 event: its e tag, its k tag, and its content decoded into buf
+// and parsed. The proof must be about the e tag's event and hold at least
+// one Bitcoin attestation.
+n03_event :: (e:NostrEvent,buf:[]u8)->N03Event {
+  a:N03Event;if e.error!=NE_OK {return a;}
+  if e.kind!=N03_KIND_ATTESTATION {a.status=N03_KIND;return a;}
+  found:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error!=NT_OK {break;}
+    if n32_is(t.v[0],"e") && !found {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {a.tag_error=s.error;a.status=N03_TAG;return a;}
+      found=true;a.target=s.id;
+    }
+    if n32_is(t.v[0],"k") && a.kind<0 {
+      v:=t.v[1];d:=n03_kind(cast(string)v.b[0..<v.n]);
+      if d<0 {a.status=N03_TAG;return a;}
+      a.kind=d;
+    }
+    i+=1;
+  }
+  if n32_tag(e,i).error!=NT_INDEX {return a;}
+  if !found {a.status=N03_TAG;return a;}
+  if e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return a;}
+  text:=e.original[e.content_from..<e.content_to];
+  size:=base64_decode_size(text);
+  if size<0 {a.status=N03_BASE64;return a;}
+  if size>buf.count {a.status=N03_LIMIT;return a;}
+  r:=base64_decode_checked(text,buf,false);
+  #assert r.error==NC_OK;
+  a.proof=n03_parse(cast(string)buf[0..<r.written]);
+  if a.proof.status!=N03_OK {a.status=a.proof.status;return a;}
+  if !ns_equal32(a.proof.digest,a.target) {a.status=N03_DIGEST;return a;}
+  if a.proof.bitcoin==0 {a.status=N03_NO_BITCOIN;return a;}
+  a.status=N03_OK;return a;
+}
+// book:end event

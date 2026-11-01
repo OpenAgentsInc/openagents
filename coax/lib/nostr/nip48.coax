@@ -1,0 +1,110 @@
+// NIP-48 proxy tags: ["proxy", id, protocol] says an event was bridged from
+// another network (ActivityPub, AT Protocol, RSS or the web) and names the
+// source object there. A client can use it to show a link to the source or
+// to merge copies of one post that arrived through two bridges.
+//
+// A proxy tag is a claim by the event's signer, usually a bridge's key. It
+// does not prove that the source object exists or says what the event says;
+// nothing here fetches it. The reader checks that the protocol is one
+// NIP-48 lists and that the id has that protocol's form. Any other protocol
+// is refused: NIP-48 says its list may grow, and a later chapter can add one.
+#load "nip32.coax";
+
+N48_OK :: 0; N48_EVENT :: 1; N48_SHAPE :: 2; N48_PROTOCOL :: 3; N48_ID :: 4; N48_LIMIT :: 5;
+N48_NONE :: 0; N48_ACTIVITYPUB :: 1; N48_ATPROTO :: 2; N48_RSS :: 3; N48_WEB :: 4;
+N48_PROTOCOLS :: [5] string.["", "activitypub", "atproto", "rss", "web"];
+
+// book:begin record
+N48Proxy :: struct {
+  status:int=N48_EVENT; at:int=-1;   // the refusing tag
+  proxies:int;                       // proxy tags: one or more means bridged
+  protocol:int; id:N32Text;          // the first proxy tag's
+}
+// book:end record
+
+#test "NIP-48's four examples read" {
+  ids:=[4]string.["https://gleasonator.com/objects/9f524868-c1a0-4ee7-ad51-aaa23d68b526",
+    "at://did:plc:zhbjlbmir5dganqhueg7y4i3/app.bsky.feed.post/3jt5hlibeol2i",
+    "https://soapbox.pub/rss/feed.xml#https%3A%2F%2Fsoapbox.pub%2Fblog%2Fmostr-fediverse-nostr-bridge",
+    "https://twitter.com/jack/status/20"];
+  for k:0..<4 {#assert n48_id_ok(k+1,ids[k]);}
+  p:=n48_read(n32_event(1,"[[\"proxy\",\"https://gleasonator.com/objects/8f6fac53-4f66-4c6e-ac7d-92e5e78c3e79\",\"activitypub\"]]"));
+  #assert p.status==N48_OK && p.proxies==1 && p.protocol==N48_ACTIVITYPUB && n32_is(p.id,"https://gleasonator.com/objects/8f6fac53-4f66-4c6e-ac7d-92e5e78c3e79") && p.at== -1;
+  p=n48_read(n32_event(1,"[[\"t\",\"x\"],[\"proxy\",\"at://did:plc:x/app.bsky.feed.post/1\",\"atproto\"],[\"proxy\",\"https://x.example/1\",\"web\"]]"));
+  #assert p.status==N48_OK && p.proxies==2 && p.protocol==N48_ATPROTO;
+  p=n48_read(n32_event(1,"[[\"t\",\"x\"]]"));#assert p.status==N48_OK && p.proxies==0 && p.protocol==N48_NONE;
+}
+#test "id forms" {
+  #assert n48_id_ok(N48_WEB,"http://x.example") && !n48_id_ok(N48_WEB,"https://") && !n48_id_ok(N48_WEB,"https:///x") && !n48_id_ok(N48_WEB,"ftp://x") && !n48_id_ok(N48_WEB,"https://x y");
+  #assert !n48_id_ok(N48_ACTIVITYPUB,"at://did:plc:x") && !n48_id_ok(N48_ATPROTO,"https://x") && !n48_id_ok(N48_ATPROTO,"at://") && n48_id_ok(N48_ATPROTO,"at://did:plc:x");
+  #assert !n48_id_ok(N48_RSS,"https://soapbox.pub/rss/feed.xml") && !n48_id_ok(N48_RSS,"https://soapbox.pub/rss/feed.xml#") && !n48_id_ok(N48_RSS,"at://x#y") && n48_id_ok(N48_RSS,"https://x#y");
+  #assert !n48_id_ok(N48_NONE,"https://x") && !n48_id_ok(5,"https://x") && !n48_id_ok(N48_WEB,"https://#x") && !n48_id_ok(N48_WEB,"https://?x") && n48_id_ok(N48_WEB,"https://x?y");
+  #assert n48_id_ok(N48_WEB,"http://x") && n48_id_ok(N48_WEB,"https://x!") && !n48_id_ok(N48_WEB,"https:// x") && n48_id_ok(N48_ATPROTO,"at://d") && !n48_id_ok(N48_ATPROTO,"at:///d") && n48_starts("ab","ab");
+  #assert n48_protocol("web")==N48_WEB && n48_protocol("rss")==N48_RSS && n48_protocol("Web")==N48_NONE && n48_protocol("")==N48_NONE;
+}
+#test "refusals" {
+  p:=n48_read(n32_event(1,"[[\"proxy\",\"https://x.example/1\",\"nntp\"]]"));#assert p.status==N48_PROTOCOL && p.at==0;
+  p=n48_read(n32_event(1,"[[\"t\",\"x\"],[\"proxy\",\"https://x.example/1\"]]"));#assert p.status==N48_SHAPE && p.at==1;
+  p=n48_read(n32_event(1,"[[\"proxy\",\"at://did:plc:x\",\"activitypub\"]]"));#assert p.status==N48_ID && p.at==0;
+  p=n48_read(n32_event(1,"[[\"proxy\",\"https://a.example/1\",\"web\"],[\"proxy\",\"\",\"web\"]]"));#assert p.status==N48_ID && p.at==1;
+  none:NostrEvent;#assert n48_read(none).status==N48_EVENT;
+  b:=n32_event(1,"[]");b.original="[[\"t\"],[\"proxy\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  p=n48_read(b);#assert p.status==N48_EVENT && p.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\"],[\"proxy\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\",\"web\"]]");
+  p=n48_read(n32_event(1,cast(string)long[0..<n]));#assert p.status==N48_LIMIT && p.at==1;
+}
+
+n48_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+n48_protocol :: (s:string)->int {for k:1..<5 {if s==N48_PROTOCOLS[k] {return k;}}return N48_NONE;}
+
+// book:begin id
+// Whether id has the form NIP-48 gives its protocol: an http or https URL
+// with a host for activitypub and web, the same with a fragment (the item's
+// guid) for rss, and an at:// URI for atproto. No spaces in any.
+n48_id_ok :: (protocol:int,id:string)->bool {
+  rest:="";
+  if protocol==N48_ATPROTO {
+    if !n48_starts(id,"at://") {return false;}
+    rest=id[5..<id.count];
+  } else if protocol<N48_ACTIVITYPUB || protocol>N48_WEB {return false;}
+  else if n48_starts(id,"https://") {rest=id[8..<id.count];}
+  else if n48_starts(id,"http://") {rest=id[7..<id.count];}
+  else {return false;}
+  // rest starts with the host (or the DID), never empty.
+  if rest.count==0 || rest[0]=='/' || rest[0]=='?' || rest[0]=='#' {return false;}
+  fragment:=false;
+  for i:0..<rest.count {
+    if rest[i]<=' ' {return false;}
+    if rest[i]=='#' && i+1<rest.count {fragment=true;}
+  }
+  return protocol!=N48_RSS || fragment;
+}
+// book:end id
+
+n48_refuse :: (p:N48Proxy,status:int,at:int)->N48Proxy {o:=p;o.status=status;o.at=at;return o;}
+
+// book:begin read
+// An event's proxy tags: each with an id and a protocol NIP-48 lists, the
+// id in that protocol's form.
+n48_read :: (e:NostrEvent)->N48Proxy {
+  p:N48Proxy;if e.error!=NE_OK {return p;}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n48_refuse(p,N48_LIMIT,i);}
+    if t.error!=NT_OK {return n48_refuse(p,N48_EVENT,i);}
+    if n32_is(t.v[0],"proxy") {
+      if t.values<3 {return n48_refuse(p,N48_SHAPE,i);}
+      v:=t.v[1];w:=t.v[2];
+      kind:=n48_protocol(cast(string)w.b[0..<w.n]);
+      if kind==N48_NONE {return n48_refuse(p,N48_PROTOCOL,i);}
+      if !n48_id_ok(kind,cast(string)v.b[0..<v.n]) {return n48_refuse(p,N48_ID,i);}
+      if p.proxies==0 {p.protocol=kind;p.id=t.v[1];}
+      p.proxies+=1;
+    }
+    i+=1;
+  }
+  p.status=N48_OK;return p;
+}
+// book:end read
