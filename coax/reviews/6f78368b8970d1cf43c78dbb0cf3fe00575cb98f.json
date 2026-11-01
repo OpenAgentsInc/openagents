@@ -1,7 +1,7 @@
 {
   "kind": 1111,
-  "created_at": 1793497005,
-  "content": "Approve with fix 50df43b348. No real diagnostic uses E0000: its only occurrence is the negated SM_diagnostic argument in native-semantics.coax, a \"not this code\" stand-in that is never reported. The blanket discard in tools.py could still hide a future E0000, so the check now skips only that argument; an E0000 in src/ or lib/ fails it (probed both). E0706 is real (shader.cpp, two error_at sites) and its explanation matches. verify.cpp keeps the check name and counterexample in --json text and moves them to notes only under --diagnostics json. diagnostics_json.py 7/7; its .txt records match the pre-flag compiler byte for byte apart from the stale-compiler note. Full tests/run.sh rc 0; tools.py 15/15.",
+  "created_at": 1793497022,
+  "content": "Approve with fix 6ca299ef23. No real diagnostic uses E0000: its only occurrence is the negated SM_diagnostic argument in native-semantics.coax, a \"not this code\" stand-in that is never reported. The blanket discard in tools.py could still hide a future E0000, so the check now skips only that argument; an E0000 in src/ or lib/ fails it (probed both). E0706 is real (shader.cpp, two error_at sites) and its explanation matches. verify.cpp keeps the check name and counterexample in --json text and moves them to notes only under --diagnostics json. diagnostics_json.py 7/7; its .txt records match the pre-flag compiler byte for byte apart from the stale-compiler note. Full tests/run.sh rc 0; tools.py 15/15.",
   "tags": [
     [
       "commit",
@@ -17,6 +17,6 @@
     ]
   ],
   "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
-  "id": "0a1ea2556a80d5c935b6ea9e8bd191734d37a0e0e2219334ddeca4974020c932",
-  "sig": "96d58e64274fcdf646e3e6fb7cb1b1edb31d1baf9c1606eacc354c9d3b390110b0f050ec0d0726b965aa89570114eae09ebaad6b0c1114078a0dcc906396baae"
+  "id": "f6aba9dff5c4885d250b2c7ce725009ba28f569633ccfe8e418d432141a8c3b8",
+  "sig": "7de462f454cee8bc22bfcc9c04c5ff5d96b54a96c67678df3cf2b5d68f84e586df9824cb932370ac676c9c7a209316919bdd4b3081b932e7777b035ffbefcd13"
 }
