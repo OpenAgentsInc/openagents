@@ -9,7 +9,7 @@
 //   8 FORK      FORK: the fork opens, records its parent and the revision; it is moved and saved
 //   9 ORIGINAL  the original's document is byte for byte what it was before the fork
 //
-//   coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX]
+//   coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX] [--board-only]
 //
 // Every step is a typed action (a tap on a button the page says is shown, typed text, a key held)
 // and is checked from the page's state (coaxial.guardProbe: myrealm.coax realm_probe, builder.coax
@@ -86,7 +86,7 @@ origin_of :: (url: string) -> string {
 // ---- the browser
 
 Run :: struct {
-  phone: bool; w: int; h: int;
+  phone: bool; w: int; h: int; board_only: bool;
   origin: [256] u8; origin_n: int;
   slug: [80] u8; slug_n: int; fork: [80] u8; fork_n: int;
   name: [80] u8; name_n: int;
@@ -126,6 +126,8 @@ path_now :: (c: [] Cdp, out: [] u8) -> string { return js_str(c, "location.pathn
 
 // A tap in the middle of button b, where the page says it is: a touch on a phone, a click otherwise.
 tap :: (r: [] Run, c: [] Cdp, b: int) -> bool {
+  until := proc_now_ms() + 8000;   // a button comes with the next frame drawn
+  while proc_now_ms() < until && probe(c, 100 + 4 * b) < 0 { proc_sleep(150); }
   x0 := probe(c, 100 + 4 * b); y0 := probe(c, 101 + 4 * b); x1 := probe(c, 102 + 4 * b); y1 := probe(c, 103 + 4 * b);
   if x0 < 0 || x1 <= x0 || y1 <= y0 { return why_n(r, "the button isn't shown", b); }
   x := (x0 + x1) / 2; y := (y0 + y1) / 2;
@@ -225,6 +227,7 @@ generate :: (r: [] Run, c: [] Cdp, stamp: string) -> bool {
   if !type_text(c, btext(s[..])) || !press(c, "Enter", "Enter", 13) { return why(r, "the sentence wasn't typed"); }
   if !wait_probe(c, 0, PH_BOARD, 120000) { return why_n(r, "no board came back for the sentence", probe(c, 0)); }
   if probe(c, 2) < 0 || probe(c, 3) != 1 { return why(r, "the board has no trees row switched on"); }
+  if r[0].board_only { return true; }
   proc_sleep(500);
   if !tap(r, c, B_MAKE) { return false; }
   r[0].slug_n = went_to(r, c, "/realms/new", r[0].slug[..], 120000);
@@ -386,6 +389,7 @@ tool_main :: () -> int #export_c {
   }
   r: [1] Run;
   r[0].phone = args_has(a[..], "--phone");
+  r[0].board_only = args_has(a[..], "--board-only");   // step 1 up to the board: no realm is made
   r[0].w = ifx r[0].phone then 390 else 1440; r[0].h = ifx r[0].phone then 844 else 900;
   for ch: origin { r[0].origin[r[0].origin_n] = ch; r[0].origin_n += 1; }
   shots := args_value(a[..], "--shots", "");
@@ -407,6 +411,7 @@ tool_main :: () -> int #export_c {
     s := cast(Step) cast(u8) i; t0 := proc_now_ms();
     good := run_step(r[..], c[..], s, stamp);
     print("% %: % (% ms)\n", ifx good then "ok  " else "FAIL", step_name(s), ifx good then "" else cast(string) r[0].fail[0..<r[0].fail_n], proc_now_ms() - t0);
+    if s == Step.GENERATE && good && r[0].board_only { print("     the board came back; --board-only stops here\n"); cdp_close(c[..]); return 0; }
     if s == Step.GENERATE && good { print("     realm /realms/% (%)\n", slug_text(r[..]), cast(string) r[0].name[0..<r[0].name_n]); }
     if s == Step.FORK && good { print("     fork /realms/%\n", fork_text(r[..])); }
     if shots.count > 0 {

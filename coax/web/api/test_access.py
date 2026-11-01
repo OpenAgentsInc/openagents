@@ -2,13 +2,21 @@
 # docs/auth/2026-10-31-realm-invites-and-auth.md). Off (no flag rows), every route answers as before;
 # on, only approved creators and admins plan, make or fork a realm. test.py runs this file; it leaves
 # both flags off for the files after it.
-import tempfile
+import tempfile, time
 
 AC_SIGN = os.environ["SIGN"]
 AC_ADMIN = os.environ["ADMIN_KEY"]
 
 
+AC_SIGNED_AT = {}
 def ac_signed(keyfile, method, path, body=None):
+    # NIP-98 events are signed to the second and a server takes each one once (replay): the same
+    # request signed again within a second is the same event, refused as "log in as an admin".
+    # Wait for the next second instead of letting the check depend on timing.
+    same = (keyfile, method, path, body)
+    while AC_SIGNED_AT.get(same) == int(time.time()):
+        time.sleep(0.05)
+    AC_SIGNED_AT[same] = int(time.time())
     args = [AC_SIGN, "--key", keyfile, method, API + path]
     tmp = None
     if body is not None:
