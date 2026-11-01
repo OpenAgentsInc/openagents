@@ -438,10 +438,29 @@ compiler and the examples have not been run on Linux yet.
   reversed, which would take the compositor down. The Coax version takes
   the upper bound, and the sessions were compared up to the panic.
 
-  Left: the compositor itself, Wayland protocol, DRM output, input and
-  rendering (Smithay in Rust, about 14,000 lines). That needs callbacks
-  and struct access from the compiler (§17.2), or a Wayland server written
-  in Coax on the Unix-socket face.
+  The Wayland server is also Coax now: `os/compositor.coax`, with only
+  sockets, descriptors and shared memory in
+  `coax/platform/wayland-native.c`, and no wlroots or Smithay. It speaks
+  wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output,
+  wl_data_device_manager and xdg-shell, and places every toplevel with
+  `os/wm.coax`. Clients get the US keymap from `os/compositor-us.xkb`,
+  compiled once with `xkbcli`. This first step is headless and runs on its
+  own socket: it reads no input device, draws to no display, and doesn't
+  touch the running session. A test channel on stdin moves the pointer,
+  types, runs policy verbs and writes the composited screen as a PPM.
+
+  On coderos-4080, two unmodified `foot` terminals connected. They tiled
+  at 640x720 each, with their own title bars drawn as subsurfaces. Text
+  typed through the channel ran in the focused shell (`echo hello from
+  coax`, `ls /`), and the unfocused window showed as inactive. Focus moved
+  with `movefocus`. `close` closed the first terminal, and the second took
+  the full 1280x720.
+
+  Left: the compositor's two faces to the machine, DRM/KMS output (the
+  native GPU path already drives KMS) and evdev input with the Super key
+  bindings. Also left: clipboard data, the pointer cursor, and the
+  protocols foot reports missing (xdg-decoration, fractional scale,
+  activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
   integers and floats (a pointer and a length), so a C face can fill a Coax

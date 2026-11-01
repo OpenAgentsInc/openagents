@@ -1,0 +1,723 @@
+// `compositor SOCKET KEYMAP [W H]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
+// wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (no clipboard data
+// moves yet) and xdg_wm_base, and it places every
+// toplevel with os/wm.coax, the CoderOS window policy, on one W x H screen (1280 x 720 when not given).
+// KEYMAP is the XKB keymap text clients get (os/compositor-us.xkb is the US layout, compiled once by
+// `xkbcli compile-keymap --layout us`; it is data, not a tool).
+// This first step is headless: it draws nothing to a display and reads no input device. Its input is
+// a test channel on stdin, one command a line, answered on stdout:
+//   list                     every window: id, desk, rectangle in pixels, focus, app id, title
+//   shot PATH                composites the screen and writes it to PATH as a PPM image
+//   move X Y | click         the pointer: moves (focus follows it, as Hyprland's follow_mouse) or clicks
+//   key CODE | text TEXT     a key by evdev code, or US-layout text, to the focused window
+//   close                    asks the focused window to close
+//   wm OP [ARG]              a window-policy verb: movefocus D, movewindow D, resize D F, togglesplit,
+//                            togglefloating, fullscreen, maximize, switch N, moveto N (D 0..3 left
+//                            right up down, N 0..8)
+//   quit
+// Effects (sockets, descriptors, shared memory) are coax/platform/wayland-native.c; the protocol,
+// every object and every decision is here.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "wm.coax";
+
+cxwl_listen :: (path: [] u8) -> int #foreign;
+cxwl_unlisten :: (path: [] u8) -> int #foreign;
+cxwl_accept :: () -> int #foreign;
+cxwl_recv :: (h: int, out: [] u8) -> int #foreign;
+cxwl_fd_count :: () -> int #foreign;
+cxwl_fd :: (i: int) -> int #foreign;
+cxwl_send :: (h: int, s: [] u8, fd: int) -> int #foreign;
+cxwl_hangup :: (h: int) -> int #foreign;
+cxwl_close_fd :: (fd: int) -> int #foreign;
+cxwl_poll :: (ms: int, watch_stdin: int) -> int #foreign;
+cxwl_map :: (fd: int, size: int) -> int #foreign;
+cxwl_unmap :: (m: int) -> int #foreign;
+cxwl_remap :: (m: int, fd: int, size: int) -> int #foreign;
+cxwl_read :: (m: int, fd: int, offset: int, out: [] u8) -> int #foreign;
+cxwl_memfd :: (s: [] u8) -> int #foreign;
+cxwl_ms :: () -> int #foreign;
+cxwl_stdin :: (out: [] u8) -> int #foreign;
+cxwl_out :: (s: [] u8) -> int #foreign;
+
+CX_CLIENTS :: 32; CX_OBJS :: 4096; CX_SURFS :: 512; CX_POOLS :: 256; CX_BUFS :: 1024; CX_POS :: 128; CX_DUE :: 1024;
+CX_MAXW :: 3840; CX_MAXH :: 2160;
+// What an object id names.
+K_NONE :: 0; K_DISPLAY :: 1; K_REGISTRY :: 2; K_CALLBACK :: 3; K_COMPOSITOR :: 4; K_SUBCOMP :: 5; K_SHM :: 6; K_POOL :: 7;
+K_BUFFER :: 8; K_SURFACE :: 9; K_REGION :: 10; K_SEAT :: 11; K_KEYBOARD :: 12; K_POINTER :: 13; K_OUTPUT :: 14;
+K_WMBASE :: 15; K_XDGSURF :: 16; K_TOPLEVEL :: 17; K_POSITIONER :: 18; K_POPUP :: 19; K_SUBSURF :: 20; K_TOUCH :: 21; K_DDM :: 22; K_DSOURCE :: 23; K_DDEV :: 24;
+// A surface's role.
+R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3;
+
+CxObj :: struct { kind: int; ix: int; ver: int; }
+CxClient :: struct {
+  used: bool; h: int;
+  objs: [CX_OBJS] CxObj;
+  inb: [65536] u8; nin: int;
+  fds: [32] int; nfd: int;
+  kbds: [8] int; nk: int; ptrs: [8] int; npt: int; outs: [8] int; no: int;
+}
+CxPool :: struct { used: bool; client: int; fd: int; map: int; size: int; dead: bool; refs: int; }
+CxBuf :: struct { used: bool; client: int; id: int; pool: int; offset: int; w: int; h: int; stride: int; fmt: int; }
+CxSurf :: struct {
+  used: bool; client: int; id: int;
+  cur: int; pend: int; pend_set: bool;
+  pfr: [16] int; npfr: int;           // frame callbacks waiting for the commit
+  role: int; xdg: int; top: int; popup: int; win: int; configured: bool; entered: bool;
+  parent: int; sx: int; sy: int;      // a subsurface's or popup's parent surface and place
+  gx: int; gy: int; gw: int; gh: int; // the window geometry inside the surface
+  cw: int; ch: int; cstate: int;      // the last size and states sent
+  title: [128] u8; nt: int; app: [128] u8; na: int;
+}
+CxPos :: struct { used: bool; w: int; h: int; ax: int; ay: int; aw: int; ah: int; anchor: int; gravity: int; dx: int; dy: int; }
+CxDue :: struct { client: int; id: int; }
+CxMsg :: struct { b: [16384] u8; n: int; start: int; op: int; }
+Cx :: struct {
+  w: int; h: int;
+  clients: [CX_CLIENTS] CxClient;
+  pools: [CX_POOLS] CxPool; bufs: [CX_BUFS] CxBuf; surfs: [CX_SURFS] CxSurf; pos: [CX_POS] CxPos;
+  win_surf: [WM_WINS] int;
+  due: [CX_DUE] CxDue; ndue: int;
+  serial: int; kfocus: int; pfocus: int; px: int; py: int;
+  wm: [1] Wm;
+  out: [CX_MAXW * CX_MAXH * 3] u8;
+  g: [1] CxMsg;
+  row: [65536] u8;
+  keymap: [262144] u8; nkeymap: int;
+  line: [8192] u8; nline: int;
+  quit: bool;
+}
+
+cx_say :: (s: string) { b: [8192] u8; n := 0; for c: s { if n < 8190 { b[n] = c; n += 1; } } b[n] = '\n'; x := cxwl_out(b[0..<n + 1]); }
+cx_rd :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+cx_rdi :: (b: [] u8, at: int) -> int { v := cx_rd(b, at); return ifx v >= 2147483648 then v - 4294967296 else v; }
+cx_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+cx_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+
+// ---- outgoing messages: begin, arguments, end; then flush to one client
+
+mg_put :: (g: [] CxMsg, v: int) {
+  if g[0].n + 4 > 16384 { return; }
+  for i: 0..<4 { g[0].b[g[0].n + i] = cast,trunc(u8) ((v >> (8 * i)) & 255); }
+  g[0].n += 4;
+}
+mg_begin :: (g: [] CxMsg, obj: int, op: int) { g[0].start = g[0].n; g[0].op = op; mg_put(g, obj); mg_put(g, 0); }
+mg_end :: (g: [] CxMsg) {
+  size := g[0].n - g[0].start; v := (size << 16) | g[0].op;
+  for i: 0..<4 { g[0].b[g[0].start + 4 + i] = cast,trunc(u8) ((v >> (8 * i)) & 255); }
+}
+mg_str :: (g: [] CxMsg, s: string) {
+  mg_put(g, s.count + 1);
+  for c: s { if g[0].n < 16384 { g[0].b[g[0].n] = c; g[0].n += 1; } }
+  pad := (4 - (s.count + 1) % 4) % 4;
+  for i: 0..<pad + 1 { if g[0].n < 16384 { g[0].b[g[0].n] = 0; g[0].n += 1; } }
+}
+mg_flush :: (x: [] Cx, ci: int, fd: int) {
+  if x[0].g[0].n > 0 && x[0].clients[ci].used { r := cxwl_send(x[0].clients[ci].h, x[0].g[0].b[0..<x[0].g[0].n], fd); }
+  x[0].g[0].n = 0;
+}
+cx_serial :: (x: [] Cx) -> int { x[0].serial += 1; return x[0].serial; }
+// The object id leaves the client's table, and the client hears it may reuse it.
+cx_delete :: (x: [] Cx, ci: int, id: int) {
+  if id <= 0 || id >= CX_OBJS { return; }
+  x[0].clients[ci].objs[id].kind = K_NONE;
+  g := x[0].g[..]; mg_begin(g, 1, 1); mg_put(g, id); mg_end(g); mg_flush(x, ci, -1);
+}
+
+// ---- the window policy's view: every toplevel configured to its rectangle, focus to the keyboard
+
+cx_px :: (x: [] Cx, v: f32, full: int) -> int { return cast(int) floor(cast(f64) v * cast(f64) full); }
+cx_send_configure :: (x: [] Cx, s: int, w: int, h: int, state: int) {
+  ci := x[0].surfs[s].client; g := x[0].g[..]; top := x[0].surfs[s].top;
+  ver := x[0].clients[ci].objs[top].ver;
+  mg_begin(g, top, 0); mg_put(g, w); mg_put(g, h);
+  n := 0; for b: 0..<9 { if (state >> b) & 1 == 1 && (b < 5 || ver >= 2) { n += 1; } }
+  mg_put(g, n * 4); for b: 0..<9 { if (state >> b) & 1 == 1 && (b < 5 || ver >= 2) { mg_put(g, b); } }
+  mg_end(g);
+  mg_begin(g, x[0].surfs[s].xdg, 0); mg_put(g, cx_serial(x)); mg_end(g);
+  if !x[0].surfs[s].entered {
+    for i: 0..<x[0].clients[ci].no { mg_begin(g, x[0].surfs[s].id, 0); mg_put(g, x[0].clients[ci].outs[i]); mg_end(g); }
+    x[0].surfs[s].entered = true;
+  }
+  mg_flush(x, ci, -1);
+  x[0].surfs[s].cw = w; x[0].surfs[s].ch = h; x[0].surfs[s].cstate = state; x[0].surfs[s].configured = true;
+}
+cx_keyboards :: (x: [] Cx, s: int, enter: bool) {
+  if s < 0 || !x[0].surfs[s].used { return; }
+  ci := x[0].surfs[s].client; g := x[0].g[..];
+  for i: 0..<x[0].clients[ci].nk {
+    k := x[0].clients[ci].kbds[i];
+    if enter {
+      mg_begin(g, k, 1); mg_put(g, cx_serial(x)); mg_put(g, x[0].surfs[s].id); mg_put(g, 0); mg_end(g);
+      mg_begin(g, k, 4); mg_put(g, cx_serial(x)); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_end(g);
+    } else { mg_begin(g, k, 2); mg_put(g, cx_serial(x)); mg_put(g, x[0].surfs[s].id); mg_end(g); }
+  }
+  mg_flush(x, ci, -1);
+}
+cx_sync :: (x: [] Cx) {
+  m := x[0].wm[..];
+  t: [WM_WINS] WmTile; n := wm_all_windows(m, t[..]);
+  focus := wm_focus(m);
+  for i: 0..<n {
+    s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
+    px0 := cx_px(x, t[i].rect.x, x[0].w); py0 := cx_px(x, t[i].rect.y, x[0].h);
+    w := cx_px(x, t[i].rect.x + t[i].rect.w, x[0].w) - px0; h := cx_px(x, t[i].rect.y + t[i].rect.h, x[0].h) - py0;
+    state := 0;
+    if t[i].id == focus { state |= 1 << 4; }
+    if wm_is_fullscreen(m, t[i].id) { state |= 1 << 2; }
+    if !t[i].floating { state |= (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8); }
+    if !x[0].surfs[s].configured || x[0].surfs[s].cw != w || x[0].surfs[s].ch != h || x[0].surfs[s].cstate != state { cx_send_configure(x, s, w, h, state); }
+  }
+  k := ifx focus != 0 then x[0].win_surf[focus] else -1;
+  if k != x[0].kfocus { cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); }
+}
+// Where window id sits on the screen, in pixels; false when its desk is not shown.
+cx_place :: (x: [] Cx, id: int, out: [] int) -> bool {
+  m := x[0].wm[..];
+  t: [WM_WINS] WmTile; n := wm_tiles_on(m, 0, t[..]);
+  for i: 0..<n {
+    if t[i].id != id { continue; }
+    out[0] = cx_px(x, t[i].rect.x, x[0].w); out[1] = cx_px(x, t[i].rect.y, x[0].h);
+    out[2] = cx_px(x, t[i].rect.x + t[i].rect.w, x[0].w) - out[0]; out[3] = cx_px(x, t[i].rect.y + t[i].rect.h, x[0].h) - out[1];
+    return true;
+  }
+  return false;
+}
+
+// ---- objects
+
+cx_new_surf :: (x: [] Cx, ci: int, id: int) -> int {
+  for i: 0..<CX_SURFS { if !x[0].surfs[i].used { x[0].surfs[i] = CxSurf.{used = true, client = ci, id = id, cur = -1, pend = -1, parent = -1}; return i; } }
+  return -1;
+}
+cx_release :: (x: [] Cx, b: int) {
+  if b < 0 || !x[0].bufs[b].used { return; }
+  g := x[0].g[..]; mg_begin(g, x[0].bufs[b].id, 0); mg_end(g); mg_flush(x, x[0].bufs[b].client, -1);
+}
+cx_pool_drop :: (x: [] Cx, p: int) {
+  if p < 0 || !x[0].pools[p].used || !x[0].pools[p].dead || x[0].pools[p].refs > 0 { return; }
+  r := cxwl_unmap(x[0].pools[p].map); r = cxwl_close_fd(x[0].pools[p].fd); x[0].pools[p].used = false;
+}
+cx_buf_free :: (x: [] Cx, b: int) {
+  for s: 0..<CX_SURFS { if x[0].surfs[s].used { if x[0].surfs[s].cur == b { x[0].surfs[s].cur = -1; } if x[0].surfs[s].pend == b { x[0].surfs[s].pend = -1; } } }
+  p := x[0].bufs[b].pool; x[0].bufs[b].used = false;
+  x[0].pools[p].refs -= 1; cx_pool_drop(x, p);
+}
+// A toplevel leaves the window policy.
+cx_unmap :: (x: [] Cx, s: int) {
+  w := x[0].surfs[s].win;
+  if w != 0 { wm_close(x[0].wm[..], w); x[0].win_surf[w] = -1; x[0].surfs[s].win = 0; }
+  if x[0].kfocus == s { x[0].kfocus = -1; }
+  if x[0].pfocus == s { x[0].pfocus = -1; }
+  x[0].surfs[s].role = R_NONE; x[0].surfs[s].configured = false;
+  cx_sync(x);
+}
+cx_surf_free :: (x: [] Cx, s: int) {
+  if x[0].surfs[s].win != 0 { cx_unmap(x, s); }
+  for i: 0..<CX_SURFS { if x[0].surfs[i].used && x[0].surfs[i].parent == s { x[0].surfs[i].parent = -1; } }
+  if x[0].kfocus == s { x[0].kfocus = -1; }
+  if x[0].pfocus == s { x[0].pfocus = -1; }
+  x[0].surfs[s].used = false;
+}
+cx_drop_client :: (x: [] Cx, ci: int) {
+  for s: 0..<CX_SURFS { if x[0].surfs[s].used && x[0].surfs[s].client == ci { cx_surf_free(x, s); } }
+  for b: 0..<CX_BUFS { if x[0].bufs[b].used && x[0].bufs[b].client == ci { x[0].pools[x[0].bufs[b].pool].dead = true; cx_buf_free(x, b); } }
+  for p: 0..<CX_POOLS { if x[0].pools[p].used && x[0].pools[p].client == ci { x[0].pools[p].dead = true; x[0].pools[p].refs = 0; cx_pool_drop(x, p); } }
+  k := 0; for i: 0..<x[0].ndue { if x[0].due[i].client != ci { x[0].due[k] = x[0].due[i]; k += 1; } } x[0].ndue = k;
+  for i: 0..<x[0].clients[ci].nfd { r := cxwl_close_fd(x[0].clients[ci].fds[i]); }
+  r := cxwl_hangup(x[0].clients[ci].h); x[0].clients[ci].used = false;
+  cx_sync(x);
+}
+// Takes the client's next descriptor, the one an fd argument names.
+cx_take_fd :: (x: [] Cx, ci: int) -> int {
+  if x[0].clients[ci].nfd == 0 { return -1; }
+  fd := x[0].clients[ci].fds[0];
+  for i: 0..<x[0].clients[ci].nfd - 1 { x[0].clients[ci].fds[i] = x[0].clients[ci].fds[i + 1]; }
+  x[0].clients[ci].nfd -= 1;
+  return fd;
+}
+cx_set :: (x: [] Cx, ci: int, id: int, kind: int, ix: int, ver: int) -> bool {
+  if id <= 0 || id >= CX_OBJS { return false; }
+  x[0].clients[ci].objs[id] = CxObj.{kind = kind, ix = ix, ver = ver};
+  return true;
+}
+cx_globals :: (i: int) -> string {
+  if i == 1 { return "wl_compositor"; } if i == 2 { return "wl_subcompositor"; } if i == 3 { return "wl_shm"; }
+  if i == 4 { return "wl_seat"; } if i == 5 { return "wl_output"; } if i == 6 { return "xdg_wm_base"; }
+  if i == 7 { return "wl_data_device_manager"; }
+  return "";
+}
+cx_global_ver :: (i: int) -> int { if i == 1 { return 4; } if i == 7 { return 3; } if i == 4 { return 5; } if i == 5 { return 3; } if i == 6 { return 2; } return 1; }
+cx_global_kind :: (i: int) -> int { if i == 1 { return K_COMPOSITOR; } if i == 2 { return K_SUBCOMP; } if i == 3 { return K_SHM; } if i == 4 { return K_SEAT; } if i == 5 { return K_OUTPUT; } if i == 7 { return K_DDM; } return K_WMBASE; }
+// A popup's place relative to its parent's window geometry (xdg_positioner, without constraints).
+cx_popup_place :: (p: CxPos, out: [] int) {
+  a := p.anchor; gr := p.gravity;
+  ax := ifx a == 3 || a == 5 || a == 6 then p.ax else ifx a == 4 || a == 7 || a == 8 then p.ax + p.aw else p.ax + p.aw / 2;
+  ay := ifx a == 1 || a == 5 || a == 7 then p.ay else ifx a == 2 || a == 6 || a == 8 then p.ay + p.ah else p.ay + p.ah / 2;
+  out[0] = (ifx gr == 3 || gr == 5 || gr == 6 then ax - p.w else ifx gr == 4 || gr == 7 || gr == 8 then ax else ax - p.w / 2) + p.dx;
+  out[1] = (ifx gr == 1 || gr == 5 || gr == 7 then ay - p.h else ifx gr == 2 || gr == 6 || gr == 8 then ay else ay - p.h / 2) + p.dy;
+}
+
+// One request from client ci to object obj.
+cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
+  if obj <= 0 || obj >= CX_OBJS { return; }
+  o := x[0].clients[ci].objs[obj]; g := x[0].g[..];
+  k := o.kind; at := 8;
+  if k == K_DISPLAY {
+    if op == 0 { cb := cx_rd(a, at); mg_begin(g, cb, 0); mg_put(g, cxwl_ms() & 4294967295); mg_end(g); mg_flush(x, ci, -1); cx_delete(x, ci, cb); }
+    else if op == 1 {
+      reg := cx_rd(a, at); r := cx_set(x, ci, reg, K_REGISTRY, 0, 1);
+      for i: 1..<8 { mg_begin(g, reg, 0); mg_put(g, i); mg_str(g, cx_globals(i)); mg_put(g, cx_global_ver(i)); mg_end(g); }
+      mg_flush(x, ci, -1);
+    }
+  } else if k == K_REGISTRY && op == 0 {
+    name := cx_rd(a, at); sl := cx_rd(a, at + 4); at += 8 + sl + (4 - sl % 4) % 4;
+    ver := cx_min(cx_rd(a, at), cx_global_ver(name)); id := cx_rd(a, at + 4);
+    if name < 1 || name > 7 { return; }
+    kind := cx_global_kind(name);
+    if !cx_set(x, ci, id, kind, 0, ver) { return; }
+    if kind == K_SHM { mg_begin(g, id, 0); mg_put(g, 0); mg_end(g); mg_begin(g, id, 0); mg_put(g, 1); mg_end(g); }
+    else if kind == K_SEAT { mg_begin(g, id, 0); mg_put(g, 3); mg_end(g); if ver >= 2 { mg_begin(g, id, 1); mg_str(g, "seat0"); mg_end(g); } }
+    else if kind == K_OUTPUT {
+      mg_begin(g, id, 0); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_str(g, "Coax"); mg_str(g, "headless"); mg_put(g, 0); mg_end(g);
+      mg_begin(g, id, 1); mg_put(g, 3); mg_put(g, x[0].w); mg_put(g, x[0].h); mg_put(g, 60000); mg_end(g);
+      if ver >= 2 { mg_begin(g, id, 3); mg_put(g, 1); mg_end(g); mg_begin(g, id, 2); mg_end(g); }
+      if x[0].clients[ci].no < 8 { x[0].clients[ci].outs[x[0].clients[ci].no] = id; x[0].clients[ci].no += 1; }
+    }
+    mg_flush(x, ci, -1);
+  } else if k == K_COMPOSITOR {
+    if op == 0 { id := cx_rd(a, at); s := cx_new_surf(x, ci, id); if s >= 0 { r := cx_set(x, ci, id, K_SURFACE, s, o.ver); } }
+    else if op == 1 { r := cx_set(x, ci, cx_rd(a, at), K_REGION, 0, o.ver); }
+    else if op == 2 { cx_delete(x, ci, obj); }
+  } else if k == K_REGION || k == K_CALLBACK || k == K_TOUCH {
+    if op == 0 { cx_delete(x, ci, obj); }
+  } else if k == K_SUBCOMP {
+    if op == 0 { cx_delete(x, ci, obj); }
+    else if op == 1 {
+      id := cx_rd(a, at); so := x[0].clients[ci].objs[cx_rd(a, at + 4) % CX_OBJS]; po := x[0].clients[ci].objs[cx_rd(a, at + 8) % CX_OBJS];
+      if so.kind != K_SURFACE || po.kind != K_SURFACE { return; }
+      x[0].surfs[so.ix].role = R_SUB; x[0].surfs[so.ix].parent = po.ix; x[0].surfs[so.ix].sx = 0; x[0].surfs[so.ix].sy = 0;
+      r := cx_set(x, ci, id, K_SUBSURF, so.ix, 1);
+    }
+  } else if k == K_SUBSURF {
+    if op == 0 { x[0].surfs[o.ix].role = R_NONE; x[0].surfs[o.ix].parent = -1; cx_delete(x, ci, obj); }
+    else if op == 1 { x[0].surfs[o.ix].sx = cx_rdi(a, at); x[0].surfs[o.ix].sy = cx_rdi(a, at + 4); }
+  } else if k == K_SHM {
+    if op == 0 {
+      id := cx_rd(a, at); size := cx_rdi(a, at + 4); fd := cx_take_fd(x, ci);
+      m := cxwl_map(fd, size);
+      if m < 0 { r := cxwl_close_fd(fd); return; }
+      for p: 0..<CX_POOLS { if !x[0].pools[p].used { x[0].pools[p] = CxPool.{used = true, client = ci, fd = fd, map = m, size = size}; r := cx_set(x, ci, id, K_POOL, p, 1); return; } }
+      r := cxwl_unmap(m); r = cxwl_close_fd(fd);
+    } else if op == 1 { cx_delete(x, ci, obj); }
+  } else if k == K_POOL {
+    p := o.ix;
+    if op == 0 {
+      id := cx_rd(a, at);
+      for b: 0..<CX_BUFS {
+        if !x[0].bufs[b].used {
+          x[0].bufs[b] = CxBuf.{used = true, client = ci, id = id, pool = p, offset = cx_rdi(a, at + 4), w = cx_rdi(a, at + 8), h = cx_rdi(a, at + 12), stride = cx_rdi(a, at + 16), fmt = cx_rd(a, at + 20)};
+          x[0].pools[p].refs += 1; r := cx_set(x, ci, id, K_BUFFER, b, 1); return;
+        }
+      }
+    } else if op == 1 { x[0].pools[p].dead = true; cx_pool_drop(x, p); cx_delete(x, ci, obj); }
+    else if op == 2 { size := cx_rdi(a, at); if cxwl_remap(x[0].pools[p].map, x[0].pools[p].fd, size) == 0 { x[0].pools[p].size = size; } }
+  } else if k == K_BUFFER {
+    if op == 0 { cx_buf_free(x, o.ix); cx_delete(x, ci, obj); }
+  } else if k == K_SURFACE {
+    s := o.ix;
+    if op == 0 { cx_surf_free(x, s); cx_delete(x, ci, obj); }
+    else if op == 1 {
+      bo := cx_rd(a, at); b := -1;
+      if bo > 0 && bo < CX_OBJS && x[0].clients[ci].objs[bo].kind == K_BUFFER { b = x[0].clients[ci].objs[bo].ix; }
+      x[0].surfs[s].pend = b; x[0].surfs[s].pend_set = true;
+    } else if op == 3 {
+      cb := cx_rd(a, at); r := cx_set(x, ci, cb, K_CALLBACK, 0, 1);
+      if x[0].surfs[s].npfr < 16 { x[0].surfs[s].pfr[x[0].surfs[s].npfr] = cb; x[0].surfs[s].npfr += 1; }
+    } else if op == 6 {
+      if x[0].surfs[s].pend_set {
+        old := x[0].surfs[s].cur; x[0].surfs[s].cur = x[0].surfs[s].pend; x[0].surfs[s].pend_set = false;
+        if old >= 0 && old != x[0].surfs[s].cur { cx_release(x, old); }
+      }
+      for i: 0..<x[0].surfs[s].npfr { if x[0].ndue < CX_DUE { x[0].due[x[0].ndue] = CxDue.{client = ci, id = x[0].surfs[s].pfr[i]}; x[0].ndue += 1; } }
+      x[0].surfs[s].npfr = 0;
+      if x[0].surfs[s].role == R_TOPLEVEL && x[0].surfs[s].win == 0 {
+        w := wm_spawn(x[0].wm[..]); x[0].surfs[s].win = w; x[0].win_surf[w] = s;
+        cx_sync(x);
+      }
+    }
+  } else if k == K_SEAT {
+    if op == 0 { id := cx_rd(a, at); if cx_set(x, ci, id, K_POINTER, 0, o.ver) && x[0].clients[ci].npt < 8 { x[0].clients[ci].ptrs[x[0].clients[ci].npt] = id; x[0].clients[ci].npt += 1; } }
+    else if op == 1 {
+      id := cx_rd(a, at);
+      if !cx_set(x, ci, id, K_KEYBOARD, 0, o.ver) { return; }
+      if x[0].clients[ci].nk < 8 { x[0].clients[ci].kbds[x[0].clients[ci].nk] = id; x[0].clients[ci].nk += 1; }
+      fd := cxwl_memfd(x[0].keymap[0..<x[0].nkeymap + 1]);
+      mg_begin(g, id, 0); mg_put(g, 1); mg_put(g, x[0].nkeymap + 1); mg_end(g); mg_flush(x, ci, fd);
+      if fd >= 0 { r := cxwl_close_fd(fd); }
+      if o.ver >= 4 { mg_begin(g, id, 5); mg_put(g, 25); mg_put(g, 600); mg_end(g); mg_flush(x, ci, -1); }
+      if x[0].kfocus >= 0 && x[0].surfs[x[0].kfocus].client == ci {
+        mg_begin(g, id, 1); mg_put(g, cx_serial(x)); mg_put(g, x[0].surfs[x[0].kfocus].id); mg_put(g, 0); mg_end(g);
+        mg_begin(g, id, 4); mg_put(g, cx_serial(x)); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_end(g); mg_flush(x, ci, -1);
+      }
+    } else if op == 2 { r := cx_set(x, ci, cx_rd(a, at), K_TOUCH, 0, o.ver); }
+    else if op == 3 { cx_delete(x, ci, obj); }
+  } else if k == K_KEYBOARD {
+    if op == 0 { cx_unlist(x[0].clients[ci].kbds[..], x[0].clients[ci].nk, obj); x[0].clients[ci].nk = cx_count_left(x[0].clients[ci].kbds[..], x[0].clients[ci].nk); cx_delete(x, ci, obj); }
+  } else if k == K_POINTER {
+    if op == 1 { cx_unlist(x[0].clients[ci].ptrs[..], x[0].clients[ci].npt, obj); x[0].clients[ci].npt = cx_count_left(x[0].clients[ci].ptrs[..], x[0].clients[ci].npt); cx_delete(x, ci, obj); }
+  } else if k == K_OUTPUT {
+    if op == 0 { cx_delete(x, ci, obj); }
+  } else if k == K_WMBASE {
+    if op == 0 { cx_delete(x, ci, obj); }
+    else if op == 1 { for p: 0..<CX_POS { if !x[0].pos[p].used { x[0].pos[p] = CxPos.{used = true}; r := cx_set(x, ci, cx_rd(a, at), K_POSITIONER, p, o.ver); return; } } }
+    else if op == 2 {
+      id := cx_rd(a, at); so := x[0].clients[ci].objs[cx_rd(a, at + 4) % CX_OBJS];
+      if so.kind != K_SURFACE { return; }
+      x[0].surfs[so.ix].xdg = id; r := cx_set(x, ci, id, K_XDGSURF, so.ix, o.ver);
+    }
+  } else if k == K_XDGSURF {
+    s := o.ix;
+    if op == 0 { cx_delete(x, ci, obj); }
+    else if op == 1 { id := cx_rd(a, at); x[0].surfs[s].role = R_TOPLEVEL; x[0].surfs[s].top = id; r := cx_set(x, ci, id, K_TOPLEVEL, s, o.ver); }
+    else if op == 2 {
+      id := cx_rd(a, at); par := cx_rd(a, at + 4); po := x[0].clients[ci].objs[cx_rd(a, at + 8) % CX_OBJS];
+      x[0].surfs[s].role = R_POPUP; x[0].surfs[s].popup = id; x[0].surfs[s].parent = -1;
+      if par > 0 && par < CX_OBJS && x[0].clients[ci].objs[par].kind == K_XDGSURF { x[0].surfs[s].parent = x[0].clients[ci].objs[par].ix; }
+      r := cx_set(x, ci, id, K_POPUP, s, o.ver);
+      if po.kind != K_POSITIONER { return; }
+      pl: [2] int; cx_popup_place(x[0].pos[po.ix], pl[..]);
+      x[0].surfs[s].sx = pl[0]; x[0].surfs[s].sy = pl[1];
+      mg_begin(g, id, 0); mg_put(g, pl[0]); mg_put(g, pl[1]); mg_put(g, x[0].pos[po.ix].w); mg_put(g, x[0].pos[po.ix].h); mg_end(g);
+      mg_begin(g, obj, 0); mg_put(g, cx_serial(x)); mg_end(g); mg_flush(x, ci, -1);
+    } else if op == 3 { x[0].surfs[s].gx = cx_rdi(a, at); x[0].surfs[s].gy = cx_rdi(a, at + 4); x[0].surfs[s].gw = cx_rdi(a, at + 8); x[0].surfs[s].gh = cx_rdi(a, at + 12); }
+  } else if k == K_TOPLEVEL {
+    s := o.ix;
+    if op == 0 { cx_unmap(x, s); cx_delete(x, ci, obj); }
+    else if op == 2 || op == 3 {
+      sl := cx_rd(a, at); n := cx_min(cx_max(sl - 1, 0), 127);
+      for i: 0..<n { if op == 2 { x[0].surfs[s].title[i] = a[at + 4 + i]; } else { x[0].surfs[s].app[i] = a[at + 4 + i]; } }
+      if op == 2 { x[0].surfs[s].nt = n; } else { x[0].surfs[s].na = n; }
+    } else if op == 11 || op == 12 {
+      w := x[0].surfs[s].win; m := x[0].wm[..];
+      if w != 0 && wm_focus(m) == w && wm_is_fullscreen(m, w) != (op == 11) { wm_fullscreen(m); cx_sync(x); }
+    }
+  } else if k == K_POSITIONER {
+    p := o.ix;
+    if op == 0 { x[0].pos[p].used = false; cx_delete(x, ci, obj); }
+    else if op == 1 { x[0].pos[p].w = cx_rdi(a, at); x[0].pos[p].h = cx_rdi(a, at + 4); }
+    else if op == 2 { x[0].pos[p].ax = cx_rdi(a, at); x[0].pos[p].ay = cx_rdi(a, at + 4); x[0].pos[p].aw = cx_rdi(a, at + 8); x[0].pos[p].ah = cx_rdi(a, at + 12); }
+    else if op == 3 { x[0].pos[p].anchor = cx_rd(a, at); }
+    else if op == 4 { x[0].pos[p].gravity = cx_rd(a, at); }
+    else if op == 6 { x[0].pos[p].dx = cx_rdi(a, at); x[0].pos[p].dy = cx_rdi(a, at + 4); }
+  } else if k == K_DDM {   // the clipboard's objects exist; this first step moves no data between clients
+    if op == 0 { r := cx_set(x, ci, cx_rd(a, at), K_DSOURCE, 0, o.ver); }
+    else if op == 1 { r := cx_set(x, ci, cx_rd(a, at), K_DDEV, 0, o.ver); }
+    else if op == 2 { cx_delete(x, ci, obj); }
+  } else if k == K_DSOURCE {
+    if op == 1 { cx_delete(x, ci, obj); }
+  } else if k == K_DDEV {
+    if op == 2 { cx_delete(x, ci, obj); }
+  } else if k == K_POPUP {
+    if op == 0 { x[0].surfs[o.ix].role = R_NONE; x[0].surfs[o.ix].parent = -1; cx_delete(x, ci, obj); }
+  }
+}
+cx_unlist :: (l: [] int, n: int, id: int) { for i: 0..<n { if l[i] == id { l[i] = 0; } } }
+cx_count_left :: (l: [] int, n: int) -> int { k := 0; for i: 0..<n { if l[i] != 0 { l[k] = l[i]; k += 1; } } return k; }
+
+// Reads what client ci sent and answers every whole request; false when it went away.
+cx_read_client :: (x: [] Cx, ci: int) -> bool {
+  while true {
+    n := x[0].clients[ci].nin;
+    got := cxwl_recv(x[0].clients[ci].h, x[0].clients[ci].inb[n..<65536]);
+    for i: 0..<cxwl_fd_count() {
+      fd := cxwl_fd(i);
+      if x[0].clients[ci].nfd < 32 { x[0].clients[ci].fds[x[0].clients[ci].nfd] = fd; x[0].clients[ci].nfd += 1; } else { r := cxwl_close_fd(fd); }
+    }
+    if got < 0 { return false; }
+    if got == 0 { return true; }
+    x[0].clients[ci].nin += got;
+    at := 0;
+    while x[0].clients[ci].nin - at >= 8 {
+      obj := cx_rd(x[0].clients[ci].inb[..], at); w := cx_rd(x[0].clients[ci].inb[..], at + 4);
+      size := w >> 16; op := w & 65535;
+      if size < 8 || size % 4 != 0 { return false; }
+      if x[0].clients[ci].nin - at < size { break; }
+      msg: [65536] u8; for i: 0..<size { msg[i] = x[0].clients[ci].inb[at + i]; }
+      cx_request(x, ci, obj, op, msg[0..<size]);
+      if !x[0].clients[ci].used { return false; }
+      at += size;
+    }
+    rest := x[0].clients[ci].nin - at;
+    for i: 0..<rest { x[0].clients[ci].inb[i] = x[0].clients[ci].inb[at + i]; }
+    x[0].clients[ci].nin = rest;
+  }
+  return true;
+}
+
+// ---- drawing
+
+cx_draw_surf :: (x: [] Cx, s: int, ox: int, oy: int, cx0: int, cy0: int, cx1: int, cy1: int) {
+  b := x[0].surfs[s].cur;
+  if b >= 0 && x[0].bufs[b].used {
+    bf := x[0].bufs[b]; p := x[0].pools[bf.pool];
+    rowbytes := cx_min(bf.w * 4, 65536);
+    for r: 0..<bf.h {
+      dy := oy + r; if dy < cy0 || dy >= cy1 { continue; }
+      got := cxwl_read(p.map, p.fd, bf.offset + r * bf.stride, x[0].row[0..<rowbytes]);
+      for c: 0..<got / 4 {
+        dx := ox + c; if dx < cx0 || dx >= cx1 { continue; }
+        bb := cast(int) x[0].row[4 * c]; gg := cast(int) x[0].row[4 * c + 1]; rr := cast(int) x[0].row[4 * c + 2]; aa := ifx bf.fmt == 1 then 255 else cast(int) x[0].row[4 * c + 3];
+        at := 3 * (dy * x[0].w + dx);
+        if aa != 255 {   // premultiplied: src + dst * (1 - alpha)
+          rr += cast(int) x[0].out[at] * (255 - aa) / 255; gg += cast(int) x[0].out[at + 1] * (255 - aa) / 255; bb += cast(int) x[0].out[at + 2] * (255 - aa) / 255;
+        }
+        x[0].out[at] = cast,trunc(u8) cx_min(rr, 255); x[0].out[at + 1] = cast,trunc(u8) cx_min(gg, 255); x[0].out[at + 2] = cast,trunc(u8) cx_min(bb, 255);
+      }
+    }
+  }
+  for i: 0..<CX_SURFS {   // subsurfaces over it, then its popups (placed from its window geometry)
+    if !x[0].surfs[i].used || x[0].surfs[i].parent != s { continue; }
+    if x[0].surfs[i].role == R_SUB { cx_draw_surf(x, i, ox + x[0].surfs[i].sx, oy + x[0].surfs[i].sy, cx0, cy0, cx1, cy1); }
+  }
+  for i: 0..<CX_SURFS {
+    if !x[0].surfs[i].used || x[0].surfs[i].parent != s || x[0].surfs[i].role != R_POPUP { continue; }
+    cx_draw_surf(x, i, ox + x[0].surfs[s].gx + x[0].surfs[i].sx - x[0].surfs[i].gx, oy + x[0].surfs[s].gy + x[0].surfs[i].sy - x[0].surfs[i].gy, 0, 0, x[0].w, x[0].h);
+  }
+}
+cx_composite :: (x: [] Cx) {
+  for i: 0..<x[0].w * x[0].h { x[0].out[3 * i] = 24; x[0].out[3 * i + 1] = 26; x[0].out[3 * i + 2] = 32; }
+  t: [WM_WINS] WmTile; n := wm_tiles_on(x[0].wm[..], 0, t[..]);
+  for i: 0..<n {
+    s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
+    r: [4] int; if !cx_place(x, t[i].id, r[..]) { continue; }
+    cx_draw_surf(x, s, r[0] - x[0].surfs[s].gx, r[1] - x[0].surfs[s].gy, r[0], r[1], r[0] + r[2], r[1] + r[3]);
+  }
+}
+cx_shot :: (x: [] Cx, path: string) -> bool {
+  cx_composite(x);
+  head: [64] u8; hn := 0;
+  hs: [3] string; hs[0] = "P6\n";
+  for c: "P6\n" { head[hn] = c; hn += 1; }
+  hn = cx_num_into(head[..], hn, x[0].w); head[hn] = ' '; hn += 1; hn = cx_num_into(head[..], hn, x[0].h);
+  for c: "\n255\n" { head[hn] = c; hn += 1; }
+  n := 3 * x[0].w * x[0].h;
+  // the header goes in front of the pixels, which stay where they are: shift them once
+  i := n - 1; while i >= 0 { x[0].out[i + hn] = x[0].out[i]; i -= 1; }
+  for j: 0..<hn { x[0].out[j] = head[j]; }
+  ok := fs_write(path, cast(string) x[0].out[0..<n + hn]);
+  return ok;
+}
+cx_num_into :: (b: [] u8, at: int, value: int) -> int {
+  v := value; d: [24] u8; k := 0;
+  while true { d[k] = cast,trunc(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  for i: 0..<k { b[at + i] = d[k - 1 - i]; }
+  return at + k;
+}
+
+// ---- input from the test channel
+
+cx_key :: (x: [] Cx, code: int, down: bool) {
+  s := x[0].kfocus; if s < 0 { return; }
+  ci := x[0].surfs[s].client; g := x[0].g[..];
+  for i: 0..<x[0].clients[ci].nk { mg_begin(g, x[0].clients[ci].kbds[i], 3); mg_put(g, cx_serial(x)); mg_put(g, cxwl_ms() & 4294967295); mg_put(g, code); mg_put(g, ifx down then 1 else 0); mg_end(g); }
+  mg_flush(x, ci, -1);
+}
+cx_mods :: (x: [] Cx, dep: int) {
+  s := x[0].kfocus; if s < 0 { return; }
+  ci := x[0].surfs[s].client; g := x[0].g[..];
+  for i: 0..<x[0].clients[ci].nk { mg_begin(g, x[0].clients[ci].kbds[i], 4); mg_put(g, cx_serial(x)); mg_put(g, dep); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_end(g); }
+  mg_flush(x, ci, -1);
+}
+// The evdev key for a character on the US layout, and whether it takes Shift: a fixed table.
+CX_KEYS :: "1234567890-=qwertyuiop[]asdfghjkl;'`\\zxcvbnm,./";
+CX_SHIFTED :: "!@#$%^&*()_+QWERTYUIOP{}ASDFGHJKL:\"~|ZXCVBNM<>?";
+// The keys run in rows: 1..= are 2..13, q..] 16..27, a..` 30..41, \\ 43, z../ 44..53.
+cx_code :: (i: int) -> int { if i < 12 { return i + 2; } if i < 24 { return i + 4; } if i < 36 { return i + 6; } return i + 7; }
+cx_char_key :: (c: u8, shift: [] bool) -> int {
+  shift[0] = false;
+  if c == ' ' { return 57; } if c == '\n' { return 28; } if c == '\t' { return 15; }
+  k := CX_KEYS; for i: 0..<k.count { if k[i] == c { return cx_code(i); } }
+  q := CX_SHIFTED; for i: 0..<q.count { if q[i] == c { shift[0] = true; return cx_code(i); } }
+  return 0;
+}
+cx_pointer :: (x: [] Cx, px: int, py: int) {
+  m := x[0].wm[..];
+  id := wm_focus_at(m, cast(f32) px / cast(f32) x[0].w, cast(f32) py / cast(f32) x[0].h);
+  cx_sync(x);
+  s := ifx id != 0 then x[0].win_surf[id] else -1;
+  g := x[0].g[..];
+  if s != x[0].pfocus && x[0].pfocus >= 0 {
+    pc := x[0].surfs[x[0].pfocus].client;
+    for i: 0..<x[0].clients[pc].npt { p := x[0].clients[pc].ptrs[i]; mg_begin(g, p, 1); mg_put(g, cx_serial(x)); mg_put(g, x[0].surfs[x[0].pfocus].id); mg_end(g); if x[0].clients[pc].objs[p].ver >= 5 { mg_begin(g, p, 5); mg_end(g); } }
+    mg_flush(x, pc, -1);
+  }
+  x[0].px = px; x[0].py = py;
+  if s < 0 { x[0].pfocus = -1; return; }
+  r: [4] int; if !cx_place(x, id, r[..]) { return; }
+  lx := (px - r[0] + x[0].surfs[s].gx) * 256; ly := (py - r[1] + x[0].surfs[s].gy) * 256;
+  ci := x[0].surfs[s].client;
+  for i: 0..<x[0].clients[ci].npt {
+    p := x[0].clients[ci].ptrs[i];
+    if s != x[0].pfocus { mg_begin(g, p, 0); mg_put(g, cx_serial(x)); mg_put(g, x[0].surfs[s].id); mg_put(g, lx); mg_put(g, ly); mg_end(g); }
+    else { mg_begin(g, p, 2); mg_put(g, cxwl_ms() & 4294967295); mg_put(g, lx); mg_put(g, ly); mg_end(g); }
+    if x[0].clients[ci].objs[p].ver >= 5 { mg_begin(g, p, 5); mg_end(g); }
+  }
+  mg_flush(x, ci, -1);
+  x[0].pfocus = s;
+}
+cx_click :: (x: [] Cx) {
+  s := x[0].pfocus; if s < 0 { return; }
+  ci := x[0].surfs[s].client; g := x[0].g[..];
+  for st: 0..<2 {
+    for i: 0..<x[0].clients[ci].npt {
+      p := x[0].clients[ci].ptrs[i];
+      mg_begin(g, p, 3); mg_put(g, cx_serial(x)); mg_put(g, cxwl_ms() & 4294967295); mg_put(g, 272); mg_put(g, 1 - st); mg_end(g);
+      if x[0].clients[ci].objs[p].ver >= 5 { mg_begin(g, p, 5); mg_end(g); }
+    }
+  }
+  mg_flush(x, ci, -1);
+}
+cx_num :: (s: string) -> int {
+  neg := s.count > 0 && s[0] == '-'; v := 0;
+  for c: s[ifx neg then 1 else 0..<s.count] { if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); } }
+  return ifx neg then -v else v;
+}
+cx_list :: (x: [] Cx) {
+  m := x[0].wm[..];
+  t: [WM_WINS] WmTile; n := wm_all_windows(m, t[..]);
+  for i: 0..<n {
+    s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
+    b: [512] u8; k := 0;
+    for c: "win " { b[k] = c; k += 1; } k = cx_num_into(b[..], k, t[i].id); b[k] = ' '; k += 1;
+    for c: "desk " { b[k] = c; k += 1; } k = cx_num_into(b[..], k, t[i].desk); b[k] = ' '; k += 1;
+    w := cx_px(x, t[i].rect.x + t[i].rect.w, x[0].w) - cx_px(x, t[i].rect.x, x[0].w); h := cx_px(x, t[i].rect.y + t[i].rect.h, x[0].h) - cx_px(x, t[i].rect.y, x[0].h);
+    k = cx_num_into(b[..], k, cx_px(x, t[i].rect.x, x[0].w)); b[k] = ','; k += 1; k = cx_num_into(b[..], k, cx_px(x, t[i].rect.y, x[0].h)); b[k] = ' '; k += 1;
+    k = cx_num_into(b[..], k, w); b[k] = 'x'; k += 1; k = cx_num_into(b[..], k, h);
+    if t[i].id == wm_focus(m) { for c: " focused" { b[k] = c; k += 1; } }
+    if t[i].floating { for c: " floating" { b[k] = c; k += 1; } }
+    for c: " app=" { b[k] = c; k += 1; } for j: 0..<x[0].surfs[s].na { b[k] = x[0].surfs[s].app[j]; k += 1; }
+    for c: " title=" { b[k] = c; k += 1; } for j: 0..<x[0].surfs[s].nt { b[k] = x[0].surfs[s].title[j]; k += 1; }
+    cx_say(cast(string) b[0..<k]);
+  }
+  cx_say("end");
+}
+cx_command :: (x: [] Cx, line: string) {
+  w: [8] string; nw := 0; st := 0;
+  for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if nw < 8 && i > st { w[nw] = line[st..<i]; nw += 1; } st = i + 1; } }
+  if nw == 0 { return; }
+  c := w[0]; m := x[0].wm[..];
+  if c == "list" { cx_list(x); }
+  else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, w[1]) then "shot" else "shot failed"); }
+  else if c == "move" && nw == 3 { cx_pointer(x, cx_num(w[1]), cx_num(w[2])); cx_say("ok"); }
+  else if c == "click" { cx_click(x); cx_say("ok"); }
+  else if c == "key" && nw == 2 { cx_key(x, cx_num(w[1]), true); cx_key(x, cx_num(w[1]), false); cx_say("ok"); }
+  else if c == "text" {
+    text := ifx line.count > 5 then line[5..<line.count] else "";
+    for ch: text {
+      sh: [1] bool; code := cx_char_key(ch, sh[..]); if code == 0 { continue; }
+      if sh[0] { cx_key(x, 42, true); cx_mods(x, 1); }
+      cx_key(x, code, true); cx_key(x, code, false);
+      if sh[0] { cx_key(x, 42, false); cx_mods(x, 0); }
+    }
+    cx_say("ok");
+  }
+  else if c == "close" {
+    f := wm_focus(m); s := ifx f != 0 then x[0].win_surf[f] else -1;
+    if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
+    cx_say("ok");
+  }
+  else if c == "wm" && nw >= 2 {
+    v := w[1]; a1 := ifx nw > 2 then cx_num(w[2]) else 0;
+    if v == "movefocus" { wm_movefocus(m, a1); } else if v == "movewindow" { wm_movewindow(m, a1); }
+    else if v == "resize" && nw > 3 { wm_resize(m, a1, cast(f32) cx_num(w[3]) / 100.0); }
+    else if v == "togglesplit" { wm_togglesplit(m); } else if v == "togglefloating" { wm_togglefloating(m); }
+    else if v == "fullscreen" { wm_fullscreen(m); } else if v == "maximize" { wm_maximize(m); }
+    else if v == "switch" { wm_switch_workspace(m, a1); } else if v == "moveto" { wm_movetoworkspace(m, a1); }
+    else { cx_say("unknown wm verb"); return; }
+    cx_sync(x); cx_say("ok");
+  }
+  else if c == "quit" { x[0].quit = true; cx_say("bye"); }
+  else { cx_say("unknown command"); }
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args; ok := args_load(a[..]);
+  if !ok || (args_count(a[..]) != 2 && args_count(a[..]) != 4) { tool_errln("usage: compositor SOCKET KEYMAP [W H]"); return 2; }
+  cc: [1] Cx; x := cc[..];
+  x[0].w = 1280; x[0].h = 720;
+  if args_count(a[..]) == 4 { x[0].w = cx_num(args_at(a[..], 2)); x[0].h = cx_num(args_at(a[..], 3)); }
+  if x[0].w < 64 || x[0].h < 64 || x[0].w > CX_MAXW || x[0].h > CX_MAXH { tool_errln("compositor: the screen is 64x64 to 3840x2160"); return 2; }
+  n := fs_read(args_at(a[..], 1), x[0].keymap[0..<262143]);
+  if n <= 0 { tool_errln("compositor: cannot read the keymap"); return 1; }
+  x[0].nkeymap = n; x[0].keymap[n] = 0;
+  wm_new(x[0].wm[..]);
+  wm_set_screen(x[0].wm[..], 0, wm_screen("headless", 0, 0, x[0].w, x[0].h));
+  for i: 0..<WM_WINS { x[0].win_surf[i] = -1; }
+  x[0].kfocus = -1; x[0].pfocus = -1;
+  sock := args_at(a[..], 0); sp: [256] u8; sn := 0; for c: sock { if sn < 255 { sp[sn] = c; sn += 1; } }
+  r := cxwl_listen(sp[0..<sn]);
+  if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
+  cx_say("ready");
+  last := cxwl_ms(); stdin_open := true;
+  while !x[0].quit {
+    p := cxwl_poll(8, ifx stdin_open then 1 else 0);
+    while true {
+      h := cxwl_accept(); if h == -1 { break; }
+      if h < 0 { continue; }
+      for ci: 0..<CX_CLIENTS {
+        if !x[0].clients[ci].used {
+          x[0].clients[ci].used = true; x[0].clients[ci].h = h; x[0].clients[ci].nin = 0; x[0].clients[ci].nfd = 0;
+          x[0].clients[ci].nk = 0; x[0].clients[ci].npt = 0; x[0].clients[ci].no = 0;
+          for o: 0..<CX_OBJS { x[0].clients[ci].objs[o].kind = K_NONE; }
+          x[0].clients[ci].objs[1] = CxObj.{kind = K_DISPLAY, ver = 1};
+          break;
+        }
+      }
+    }
+    for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used && !cx_read_client(x, ci) { if x[0].clients[ci].used { cx_drop_client(x, ci); } } }
+    if stdin_open {
+      got := cxwl_stdin(x[0].line[x[0].nline..<8192]);
+      if got < 0 { stdin_open = false; }
+      else if got > 0 {
+        x[0].nline += got; st := 0;
+        for i: 0..<x[0].nline { if x[0].line[i] == '\n' { cx_command(x, cast(string) x[0].line[st..<i]); st = i + 1; } }
+        rest := x[0].nline - st; for i: 0..<rest { x[0].line[i] = x[0].line[st + i]; } x[0].nline = rest;
+        if x[0].nline == 8192 { x[0].nline = 0; }
+      }
+    }
+    now := cxwl_ms();
+    if now - last >= 16 {   // the frame clock: every waiting frame callback hears it
+      last = now; g := x[0].g[..];
+      for i: 0..<x[0].ndue {
+        d := x[0].due[i];
+        if !x[0].clients[d.client].used { continue; }
+        mg_begin(g, d.id, 0); mg_put(g, now & 4294967295); mg_end(g); mg_flush(x, d.client, -1); cx_delete(x, d.client, d.id);
+      }
+      x[0].ndue = 0;
+    }
+  }
+  for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used { cx_drop_client(x, ci); } }
+  r = cxwl_unlisten(sp[0..<sn]);
+  return 0;
+}
+
+#test "a popup's place from its positioner" {
+  pl: [2] int;
+  cx_popup_place(CxPos.{w = 100, h = 50, ax = 10, ay = 20, aw = 30, ah = 40, anchor = 8, gravity = 8}, pl[..]); #assert pl[0] == 40 && pl[1] == 60;
+  cx_popup_place(CxPos.{w = 100, h = 50, ax = 10, ay = 20, aw = 30, ah = 40, anchor = 5, gravity = 5, dx = 2, dy = 3}, pl[..]); #assert pl[0] == -88 && pl[1] == -27;
+  cx_popup_place(CxPos.{w = 100, h = 50, ax = 0, ay = 0, aw = 30, ah = 40}, pl[..]); #assert pl[0] == -35 && pl[1] == -5;
+}
+#test "US text to evdev keys" {
+  sh: [1] bool;
+  #assert cx_char_key('a', sh[..]) == 30 && !sh[0] && cx_char_key('A', sh[..]) == 30 && sh[0] && cx_char_key('!', sh[..]) == 2 && sh[0];
+  #assert cx_char_key(' ', sh[..]) == 57 && cx_char_key('\n', sh[..]) == 28 && cx_char_key('/', sh[..]) == 53 && cx_char_key('|', sh[..]) == 43 && sh[0];
+}
+#test "outgoing messages: header size and padded strings" {
+  gg: [1] CxMsg; g := gg[..];
+  mg_begin(g, 7, 2); mg_str(g, "abc"); mg_put(g, 9); mg_end(g);
+  #assert g[0].n == 20 && cx_rd(g[0].b[..], 0) == 7 && cx_rd(g[0].b[..], 4) == (20 << 16) | 2 && cx_rd(g[0].b[..], 8) == 4 && g[0].b[15] == 0 && cx_rd(g[0].b[..], 16) == 9;
+}
