@@ -69,6 +69,27 @@ Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
 144 FPS; mutation 0 survivors) and `verse/player.coax` ("a run and jump has the
 same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
 
+## A realm's frame time is what its clock counts, and no frame runs past 8 steps
+
+No realm keeps its own frame clamp or step accumulator. Every fixed step runs
+on an `aethyr/loop.coax` `FrameClock`, and everything a realm moves outside
+its steps (animation, its room's timing) moves by `loop_counted` or
+`loop_counts`: the frame's time after that clock's refusal, clamp and drop.
+The page faces of the haunted house, Fairy Forest, the Garden, Everglade and
+the villa move their realm by `verse_player_counts` and hand the player the
+frame itself. No clock in a realm runs more steps in one frame than the
+realm's declared budget (`steps = 8`, `aethyr/budget.coax`); time past the
+cap is dropped and counted on the clock, never run later. `aethyr/loop.coax`
+declares no `#export_c` procedure, because realms' libraries load it more
+than once (Everglade's player, debris and river).
+Checks: `aethyr/loop.coax` ("a frame counts for its time, refused, clamped
+and dropped as the steps are"), `verse/player.coax` ("a face's frame time is
+what the player's clock counts, and runs at most 8 steps"),
+`verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are Aethyr's
+clock's ..."), Hold the Stair ("frames run at most its budget's steps,
+fast-forward included"), and Orbit League's and Dead Gears' budget checks,
+which take each frame's steps.
+
 ## Spatial values keep affine role and nominal identity
 
 The initial native-C `Point3`/`Vector3` types contain three raw coordinates,
