@@ -15,6 +15,10 @@ NIP-AUTO scheduled and triggered work.
 - AGENT: name, instructions, runtime ID; private carriage and public agents.
 - SKILL: kind 30188 listings reviewed by openagents.com.
 - SOV: immutable profile, bounded activation, custody, signing and decryption.
+- SOV guardians and treasury: an exact-action quorum the host enforces, and
+  spending limits over a Lightning wallet. Custody of the agent's on-chain
+  coins is NIP-KEYS, built in [chapter
+  104](ch104-agent-treasuries-and-a-network-of-keys.md).
 - AUTO: immutable plans, occurrences, continuation and recovery.
 
 ## What exists today

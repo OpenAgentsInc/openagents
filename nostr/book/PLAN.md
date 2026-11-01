@@ -32,7 +32,7 @@ it implements. Spec files are in [`nostr/nips/`](../nips/README.md), pinned by
 | IX. A relay | 34–44 | A relay with durable storage, indexes, NIP-11, NIP-42, deletion, counts, search, protected events, negentropy and limits. |
 | X. Every NIP | 45–92 | Every pinned NIP, grouped by subject: the official set, the OpenAgents set and the Block set. |
 | XI. Interop and verification | 93–97 | Pinned vectors, differential tests, fuzzing, stated properties and a conformance report. |
-| XII. Nostr in OpenAgents | 98–103 | Projects, sign-in, Pylons, the Verse, agents and the production relay on this stack. |
+| XII. Nostr in OpenAgents | 98–104 | Projects, sign-in, Pylons, the Verse, agents, the production relay and agent treasuries on this stack. |
 
 Parts I–VI form one chain: each chapter uses only earlier ones. Part VII needs
 Part I and SHA-1 for the handshake. Part VIII builds the client and Part IX the
@@ -221,6 +221,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) — design draft | 85, 71, 72, aethyr:49 | Two players see each other's presence through a Coax relay within the latency budget. A zap request over the wallet's limits is refused by the wallet rules. | [OpenAgents NIP-MV](../nips/openagents/NIP-MV.md), [NIP-57](../nips/official/57.md), [NIP-47](../nips/official/47.md) |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) — design draft | 79, 80, 13 | The runner publishes through the Coax stack in staging with the same identities and history. A rollback to the C path is rehearsed. | [OpenAgents NIP-AGENT](../nips/openagents/NIP-AGENT.md), [OpenAgents NIP-CJ](../nips/openagents/NIP-CJ.md) |
 | [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) — design draft | 34, 35, 37, 38, 39, 40, 41, 42, 43, 44, 94 | Event-set equality between the two relays at cutover. A rollback rehearsal restores service from the Rust relay. | [NIP-11](../nips/official/11.md) |
+| [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) — design draft | 13, 46, 79, 83 | Three software key agents on signet sign a 2-of-3 spend from requests carried over a Coax relay, and a PSBT whose outputs differ from its request is refused by every signer. A coordinator outage is recovered from one key agent's copy of the descriptor with an independent wallet tool. | [OpenAgents NIP-KEYS](../nips/openagents/NIP-KEYS.md), [OpenAgents NIP-SOV](../nips/openagents/NIP-SOV.md), [OpenAgents NIP-ATT](../nips/openagents/NIP-ATT.md) |
 
 Dependencies written as `book:N`, such as `coax:18`, are chapters in another
 book.

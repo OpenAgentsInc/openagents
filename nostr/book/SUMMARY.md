@@ -141,3 +141,4 @@
 - [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) — design draft
 - [102. Agents on Nostr](ch102-agents-on-nostr.md) — design draft
 - [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) — design draft
+- [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) — design draft

@@ -41,8 +41,8 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 103 chapters, 12 are implemented, 44 are partly implemented and
-47 are design drafts.
+Of the 104 chapters, 12 are implemented, 44 are partly implemented and
+48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -298,7 +298,7 @@ formal properties and a conformance report.
 | [96. Formal properties](ch096-formal-properties.md) | Unimplemented: design draft | Properties stated and checked with `#forall` and models: signature validity matches BIP-340's definition, filter matching is AND across fields and OR within lists, and indexes never change results. |
 | [97. A conformance report](ch097-a-conformance-report.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | A machine-readable support matrix per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`, `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses to advertise a NIP whose runtime gate is missing. |
 
-### Part XII. Nostr in OpenAgents (chapters 98–103)
+### Part XII. Nostr in OpenAgents (chapters 98–104)
 
 Where projects, the website, Pylons, the Verse, the wallet and agents use the
 stack, and the cutover of relay.openagents.com.
@@ -311,3 +311,4 @@ stack, and the cutover of relay.openagents.com.
 | [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) | Unimplemented: design draft | Presence in realms with NIP-MV pose frames, Verse identities as Nostr keys, and zaps and Wallet Connect over the Spark wallet's existing payment rules. |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) | Unimplemented: design draft | Hosted project agents and Coder publishing with this book's signer and relay client, replacing the C runner's own signing path. |
 | [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) | Unimplemented: design draft | Exporting the Rust relay's Postgres read-only, importing with re-verification of every event, a shadow period comparing both relays, and DNS cutover only with owner sign-off. |
+| [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) | Unimplemented: design draft | NIP-KEYS multisig wallets across independent key agents: descriptors and composition rules, enrollment with possession proofs, PSBT signing requests and receipts, an attested co-signer enforcing a SOV treasury policy, timelocked recovery, rotation sweeps and a hot/cold treasury split. |

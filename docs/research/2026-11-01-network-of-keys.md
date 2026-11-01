@@ -179,16 +179,45 @@ coordination layer: descriptors, PSBT routing and agent co-signers over open
 standards. Any party must be able to leave with the descriptor and recover
 with a different tool.
 
-## Open questions
+## Where our NIPs stand
 
-- Should a sovereign agent's `Custody` grow a Bitcoin adapter (descriptor
-  plus PSBT signer) next to NIP-46, using the same guardian quorum?
-- Can attestation and published signing policy replace the "strong real-world
-  relationship" that makes human key agents hard to impersonate?
-- How do we make the coordinator optional, so descriptors and PSBTs move
-  over Nostr between parties instead of through one service?
-- For small balances, is a fixed operator network (Spark) good enough, with
-  holder-chosen multisig only above a set amount?
+A read of `nostr/nips/openagents/` on 2026-11-01 found that NIP-SOV already
+answers how an agent is stopped: lifecycle stop, revoke and rollback,
+controller fencing, revocation, and a guardian quorum where any denial blocks.
+It also states the essay's independence point strictly: "Different keys held
+by the same operator do not establish independent custody."
+
+It doesn't answer who holds the agent's coins:
+
+- The guardian quorum is an approval rule the host enforces, not keys. A host
+  that skips it can still dispatch.
+- SOV custody covers the agent's Nostr identity key through one NIP-46 signer.
+  Threshold and hardware custody refuse.
+- The treasury sits in one wallet host, Lightning only, with host-enforced
+  limits.
+- Recovery is a single public key field. There are no timelocked paths.
+- Nothing lets a party sell key holding.
+
+[NIP-KEYS](../../nostr/nips/openagents/NIP-KEYS.md) (design draft, added
+2026-11-01) fills these gaps without new event kinds:
+
+| Gap | NIP-KEYS answer |
+|---|---|
+| Quorum enforced by the host | Multisig wallets: Bitcoin script needs *m* of *n* key agents. |
+| No coin custody | Wallet descriptors, key enrollment with BIP-322 possession proofs, PSBT signing requests and receipts. |
+| One party could meet a threshold | Composition rules: no operator meets a threshold alone, and a sovereign agent never holds a primary majority. |
+| Independence only asserted | Signed independence declarations; clients show every attribute keys in one quorum share. |
+| Guardians are policy only | An NIP-ATT attested co-signer enforces the SOV treasury limits and a large-spend delay with its own key. |
+| Single recovery key | Miniscript timelocked recovery paths, liveness and coin refresh. |
+| A failed key agent | Rotation sweeps to a new wallet that excludes it. |
+| No market for key agents | NIP-MKT key-agency terms; reputation from checkable signing receipts. |
+| One wallet host holds everything | Hot/cold split: a capped Lightning balance plus a multisig reserve. |
+
+NIP-SOV now points to NIP-KEYS from its custody, guardian and treasury
+sections. Chapter 104 of *Nostr From Scratch*
+(`nostr/book/ch104-agent-treasuries-and-a-network-of-keys.md`) is the build
+plan. Threshold signatures (MuSig2, FROST) for coins, threshold custody of the
+Nostr identity, and proof of independence remain open.
 
 ## Sources
 
@@ -204,5 +233,7 @@ with a different tool.
   <https://www.nobsbitcoin.com/liana-wallet-v10-0/>
 - Related: `docs/research/2026-10-15-dhruv-bansal-ai-and-bitcoin.md`, our
   analysis of Bansal's What Bitcoin Did interview on AI and Bitcoin.
-- In this repo: `docs/protocol/openagents-protocol-spec.md` §27.3,
+- In this repo: `nostr/nips/openagents/NIP-KEYS.md`,
+  `nostr/nips/openagents/NIP-SOV.md`,
+  `docs/protocol/openagents-protocol-spec.md` §27.3,
   `docs/lightning/breez-spark.md`.

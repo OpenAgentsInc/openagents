@@ -285,6 +285,12 @@ protection, current authority, and actual effect bounds. A signing receipt
 records attributable acceptance/refusal and evidence references without
 recording secret material or decrypted private content.
 
+SOV custody covers the agent's Nostr identity key. Custody of on-chain coins
+is a separate mechanism: [NIP-KEYS](NIP-KEYS.md) specifies `bitcoin-multisig`,
+a wallet whose coins move only when enough independently operated key agents
+sign, so that Bitcoin script, not the host, enforces the quorum. It is a
+design draft and refuses until implemented.
+
 Local custody, remote custody, hardware-protected storage, and threshold
 custody are possible integration profiles. Local custody runs in
 `openagents sov`, and NIP-46 remote custody in `sov-custody`. Hardware and
@@ -306,7 +312,10 @@ already obtained.
 ## Guardians and exact-action approval
 
 SOV supplies an optional application approval policy distinct from threshold
-key custody. `openagents.sovereign-guardian-policy.v1` contains:
+key custody. The host enforces it, so a host that skips the check can still
+dispatch. For coins, a [NIP-KEYS](NIP-KEYS.md) attested co-signer enforces the
+same treasury limits with its own key, and a host cannot produce a signature
+the co-signer withheld. `openagents.sovereign-guardian-policy.v1` contains:
 
 | Field | Type and meaning |
 | --- | --- |
@@ -391,6 +400,13 @@ substitute for that evidence.
 | MKT/LAB | Current paid profile uses fixed-price Bitcoin Lightning settlement after acceptance. The provider's agent identity and the actual worker remain distinct. |
 | X402 | Current profile purchases an exact operation upfront. HTTP, MCP, and explicitly supported native Nostr bindings retain their own identities and replay rules. |
 | [NIP-60](../official/60.md), [NIP-61](../official/61.md), and [NIP-87](../official/87.md) | Wallet, nutzap, and mint discovery references for future supported profiles. Cashu wallet P2PK keys are separate from the agent's Nostr identity key. Mint/federation discovery is not trust, spending authority, or confirmed income. |
+
+A treasury that holds more than a small Lightning balance should split it in
+two: a hot Lightning balance under this treasury policy, capped by a
+`hot_ceiling_msat`, and a reserve in a [NIP-KEYS](NIP-KEYS.md) wallet. A reserve
+spend that tops up the hot balance needs the wallet's primary quorum, so losing
+the wallet host loses at most the hot ceiling. This split is specified in
+NIP-KEYS and is not implemented.
 
 Cashu, Fedimint, BOLT12 offers, and other settlement profiles require their own
 supported contracts, denomination/network binding, verification, consumption,
@@ -514,7 +530,8 @@ and transcripts remain intact in their archives.
    a separately admitted wallet and persistent reservations. Verify earnings,
    fee ceilings, failed payments, unknown outcomes, and reconciliation before
    advertising paid autonomy.
-6. **Additional custody and payment profiles.** Specify and validate threshold,
+6. **Additional custody and payment profiles.** Collaborative on-chain coin
+   custody is specified in [NIP-KEYS](NIP-KEYS.md). Specify and validate threshold,
    hardware, recovery, and other payment integrations independently, including
    their trust assumptions and failure evidence. No profile inherits support
    merely because a relevant official NIP is present in the repository.

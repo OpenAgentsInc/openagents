@@ -17,6 +17,9 @@ negotiated orders and Bitcoin settlement.
   disputes.
 - MKT: offerings, negotiation, admission, completion and fixed-price Bitcoin
   settlement.
+- Key agency as an ongoing MKT service: NIP-KEYS terms for signing policy,
+  response time, fees and exit ([chapter
+  104](ch104-agent-treasuries-and-a-network-of-keys.md)).
 
 ## What exists today
 

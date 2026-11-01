@@ -1783,6 +1783,22 @@
    "source": [],
    "qualified_targets": [],
    "adopted_by": []
+  },
+  {
+   "number": 104,
+   "title": "Agent treasuries and a network of keys",
+   "file": "ch104-agent-treasuries-and-a-network-of-keys.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    13,
+    46,
+    79,
+    83
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
   }
  ]
 }

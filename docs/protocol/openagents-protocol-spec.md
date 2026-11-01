@@ -4170,7 +4170,9 @@ historical SA kinds.
 **Status.** Partial: `openagents sov` local lifecycle, `sov-custody`
 (NIP-46 custody and guardian quorum), `sov-lifecycle` (fenced transfer
 and recovery), `sov-treasury`. The three schema bundles (11, 13 and 18
-defs) map one-to-one.
+defs) map one-to-one. Collaborative custody of the agent's on-chain coins
+(multisig wallets across independent key agents, PSBT signing, recovery and
+rotation) is specified in NIP-KEYS, a design draft with no package yet.
 
 ```proto
 package openagents.sovereign.v1;

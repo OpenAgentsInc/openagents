@@ -15,6 +15,9 @@ data with wraps and key slots.
 - ATT: attestation levels, releases, independent rebuilds and attested
   endpoints.
 - VAULT: vault objects, wraps, system key certificates and key slots.
+- The same attested endpoint key can serve as one co-signer in a NIP-KEYS
+  wallet, with its signing policy pinned by the release ([chapter
+  104](ch104-agent-treasuries-and-a-network-of-keys.md)).
 
 ## What exists today
 
