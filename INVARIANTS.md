@@ -202,6 +202,12 @@ the same whether its camera steps every step, never, or twice a step", "each
 view mode is its own shot of the frame drawn"), `aethyr/shot.coax` and
 `aethyr/follow.coax` (mutation 0 survivors).
 
+An engine module that two libraries a page links both load
+(`aethyr/space.coax` and `aethyr/shot.coax`, which a realm's engine and the
+player both reach) declares no `#export_c` procedure: each library would
+define the symbol, and the page fails to link. Check: the site build
+(`apps/openagents-web/build.sh`) links every realm.
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
