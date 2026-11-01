@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 84 are implemented and 20 are design drafts.
+Of the 104 chapters, 85 are implemented and 19 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -250,7 +250,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [57. Media and files](ch057-media-and-files.md) | Runnable: native C | `imeta` tags (NIP-92) and kind 1063 file metadata (NIP-94) read, written and checked against downloaded bytes' SHA-256; picture, video and voice `imeta` tags; Blossom blob addresses, kind 10063 server lists and kind 24242 upload authorizations; NIP-96 read only. |
 | [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) | Runnable: native C | NIP-52 date (31922) and time (31923) events, calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018); NIP-84 highlights (9802). |
 | [59. Groups and communities](ch059-groups-and-communities.md) | Runnable: native C | The relay side of NIP-29 groups: `h` tags, moderation kinds 9000–9009 by role, join requests with invite codes, `previous` references and the relay-signed 39000–39003 state; and NIP-72's moderator approval check. |
-| [60. Private messages](ch060-private-messages.md) | Unimplemented: design draft | NIP-17 kind 14 chat and kind 15 file messages sent as gift wraps, kind 10050 DM relay lists, NIP-A4 kind 24 public messages, and the unrecommended NIP-EE MLS groups. |
+| [60. Private messages](ch060-private-messages.md) | Runnable: native C | NIP-17 kind 14 chat and kind 15 file messages sent as gift wraps, kind 10050 DM relay lists, NIP-A4 kind 24 public messages, and the unrecommended NIP-EE MLS groups. |
 | [61. Live activities](ch061-live-activities.md) | Runnable: native C | NIP-53 kind 30311 live events with `streaming`, `status` and participant roles, kind 1311 live chat, and kind 30312/30313 meeting spaces and rooms with kind 10312 presence. |
 | [62. Badges and statuses](ch062-badges-and-statuses.md) | Runnable: native C | NIP-58 badge definitions (30009), awards (8) and profile badges (10008, formerly 30008), and NIP-38 kind 30315 user statuses with `expiration`. |
 | [63. Git on Nostr](ch063-git-on-nostr.md) | Runnable: native C | NIP-34 repository announcements (30617), issues (1621), patches (1617) and statuses (1630–1633), with the newest status by the author or a maintainer deciding the state. Repository state (30618), pull requests (1618, 1619) and NIP-C0 snippets (1337) are not built. |

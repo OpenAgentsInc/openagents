@@ -1,0 +1,107 @@
+keys
+alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+carol: 5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc
+dave: acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe
+alice to bob and carol
+plan: ok
+  wrap 0 to bob: wss://inbox.nostr.wine wss://myrelay.nostr1.com
+  wrap 1 to carol: wss://carol.example
+  wrap 2 to alice: wss://alice.example
+send: ok, 3 wraps
+  rumor id: eb4521dd9b5c8e84b55ec8aa59f910613772fb0c7d584ae07cacd9aa2faac811
+  wrap 0: 2213 bytes, created_at 1793210000
+    id: 96a2756d46a71cdeffe0ae578f22978543543dd97c83587e7e97c7775479edef
+    signed by: 774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb
+  wrap 1: 2213 bytes, created_at 1793203000
+    id: fac32add0ca415b9e02809f5211880ecd145d6b0b496af1c185a61098d964ce7
+    signed by: d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a
+  wrap 2: 2213 bytes, created_at 1793196000
+    id: 5f5b46637d1e022b24eee5d861c830e6e410ba77fa5beeb6a6b4b36217ddcb62
+    signed by: f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8
+wrap 0: {"id":"96a2756d46a71cdeffe0ae578f22978543543dd97c83587e7e97c7775479edef","pubkey":"774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb","created_at":1793210000,"kind":1059,"tags":[["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"]],"content":"AhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIS0zG7EgybrcJcMTtjuIp6HoYJz+NleMbyUsl6kSaXtZ1c8q1yvz87/fGdAKvNcL7K9VihCCrCpcXI/ij1wVqyucD/hHCrRiO17xSr7jMNUb8PBvipIb94vTkJTZMHfv6zGOdzEvzz15SCdC3CyvnRkh2DlVkx8mCRMt/12Ns9ga0rPnzkdtTZ23THZQ2cH4beW3TBmLpaEURPqYuOoj3VeLPbJGyQR8Wj1M1KXYiZtWrbwZjS90B6Lddyt5d9uKMKjs16fmRXw6aTTEfLAkldMko/SOIHVjxHC4f+zXyXO+KX36lPwcilADTDqz5mfkKdWqqByssVIOb679VzxXboquYNdhR1TX3TSq+0xnbtnPw1rxFw4wW9VaFxV/cgMYPUl3WdrBZ/oZMAIzv62NlgfKyrN4qPuEJxOzJAwYQX5+PE6T9p+Dz2ARGxh+sNe5QFGCFX0UNYU6ZiH+2Dnmwrm9ljYzv5iqZjkw4k1MJyYksPfl9LrP39h2Fw3+hT/lYQ+FEEy2aqshqOFtvLwy9wZe9EXeoAW+OlSETjdVPaFBquYiysY0Q/hHNJ75RXpATpbLCXoMGkupJ/s/GS039o8oVAAuFkERMN8bgVFhqMrPsaXyshLn3mym3Hfv71ePG4KT689zYaglrunFeXvbbGZwXzHMEi0/5gwqsWak1oWJ5S6g80UWtUzPmK0CQSu/uN8tWfBAkb1XK7KYZpRruAFTbD4yKzQB24PabC/gzfpMGSzJKDddgRcNEigQyc/jc1EBYtMxKINZ/vwhXC9zi/DGwOJ4PGYx3991w+hBqWAX2WaOt4F3+LuEQl3+W6Qj8A6c5n6EskxHVz+x5ZildRzQIRiYxjDvZfupp3JiVWt+UEfX9E2EOO/1B+YvmF2I8tiwFtEm7Ux71kmfRRMezydrxXppWTtZd5QMKFsFmehQzAtgYNmYRT51ordiCkRXm5bMoeOIWIm8gzlJ6Jq47pHxp8zvgdJP4CFlthaxPapiWriTALYrYDBS2xwFUeM3b7JWzkvICaeBrBHGi/lTd1JGujgG38u/13v532Oak0OMZqgzZuDS5W/fJLO/KN3N0WieL7rGveZ+ZhUzANkW18eaE3AwgOwom2TOAJiNtPSGO9j05yn92qqX3gC9MlmRm1FV4fIdRqBtmmHqxZe4D2bOIGQGlF5iBhO51Y7X5RuAj56/orwgueKEkKsnYArnlTtRPHF0GhgQuEH2iyu7FljJKxrUvhnSSsq5NsPfKZs56yzVb6Lfzx/Omwc267wKeNB5QASIf/hNKw3sElXH5qUWjFluiuu4OpOAuJZVajbMYa7i+nJLwYyKL/PhzxjG9tVXTD1eDxNOgWVJPODPr6i4/nKBzb5epxxgBYm9y62WEaibfknJs9PkQFPtGvLrfstflhBAOKqYR0v0oQkF34IiL1LYXvEDWBvsDwGa6re50s1vHgW0FTj/YiOkpaSq7nAhTSJs+PLq62Le3e8tAaeOANqTrWhGGeF8lUXEFgbtyLHZ/NjUq+DOXgN20XByC8IcknjEXVwQLSlzjHWElu5B9ObKK4A/2XzPgS7M9ePz4UBQHx3PLJMOaBBBC9FRUuw9ci2Gi8Y7OruJup++uQMAX1LJxLukkgW6d46m4dC47A8dngxTZh+3KjFn1qYdUOtR8XmRz04/NNGN2lrwiCNbEMquf5Rp28xjXP7FvoLZBKncwiwVr9yA3ZDI/t4IlMM1VX6AgjoIAjzcyV+1ueJyBr","sig":"178c0eab62fc5395aff037f4339d6c35cb76bebc325d36ca533af0581d9fa1d111df48b5bdd148891bcfddc0656a1ca581da95ac078dbd47eb64dd79f645fb8e"}
+bob replies to the room
+plan: ok
+  wrap 0 to alice: wss://alice.example
+  wrap 1 to carol: wss://carol.example
+  wrap 2 to bob: wss://inbox.nostr.wine wss://myrelay.nostr1.com
+send: ok, 3 wraps
+  rumor id: 385eb8c9c4a1d90c4cc63c8e7870467a1d8e440b2e848a9d6a2ba49b120965ea
+  wrap 0: 2213 bytes, created_at 1793209060
+    id: 00a06c6461d57c49014977230fb083054baef77240db3eaec0f6d97ae683a203
+    signed by: d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e
+  wrap 1: 2213 bytes, created_at 1793202060
+    id: df2bbc88f975ee8c4369b17b8b2033976fcf75aa0bbda4c652ba5a2d71b3bf95
+    signed by: e60fce93b59e9ec53011aabc21c23e97b2a31369b87a5ae9c44ee89e2a6dec0a
+  wrap 2: 2213 bytes, created_at 1793195060
+    id: 258c3ac91109800c4f1bb8892eba264c4addadadee071c92f02028d486ef281f
+    signed by: defdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34
+alice to bob alone
+plan: ok
+  wrap 0 to bob: wss://inbox.nostr.wine wss://myrelay.nostr1.com
+  wrap 1 to alice: wss://alice.example
+send: ok, 2 wraps
+  rumor id: e8a203774e2d8cb13eba01dd4d2cc4e4132f36e2bcc736fe5aa6b9107199f490
+  wrap 0: 1701 bytes, created_at 1793208120
+    id: 4add4ac97201710b1b25554633c30733faeeddc2146351ca80a956608ccae9b2
+    signed by: 2b4ea0a797a443d293ef5cff444f4979f06acfebd7e86d277475656138385b6c
+  wrap 1: 1701 bytes, created_at 1793201120
+    id: 1d91f94cb62d7d8da69757b0c3a26ea66a837db2059c79f53d520ed1d2e4bcac
+    signed by: 4ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97
+each addressee opens their copy
+carol opens wrap 1 of the first: ok
+  author: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  kind 14, created_at 1793300000, members 3, content Are you going to the party tonight?
+  room: 845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f
+  subject Party
+alice opens her own copy of the first: ok
+  author: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  kind 14, created_at 1793300000, members 3, content Are you going to the party tonight?
+  room: 845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f
+  subject Party
+alice opens wrap 0 of the reply: ok
+  author: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+  kind 14, created_at 1793300060, members 3, content Yes, at nine.
+  room: 845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f
+  reply to: eb4521dd9b5c8e84b55ec8aa59f910613772fb0c7d584ae07cacd9aa2faac811
+bob opens wrap 0 of the direct message: ok
+  author: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  kind 14, created_at 1793300120, members 2, content Bring the speaker.
+  room: 21ef0f45560edb87008736f810a6a9ad4da6c8cf08afb70f98084559d1b71395
+bob opens his own copy of the reply: ok
+  author: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+  kind 14, created_at 1793300060, members 3, content Yes, at nine.
+  room: 845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f
+  reply to: eb4521dd9b5c8e84b55ec8aa59f910613772fb0c7d584ae07cacd9aa2faac811
+bob opens wrap 0 of the first: ok
+  author: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  kind 14, created_at 1793300000, members 3, content Are you going to the party tonight?
+  room: 845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f
+  subject Party
+bob's rooms
+room: 845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f
+  inbox[2], created_at 1793300000
+  inbox[1], created_at 1793300060
+  subject: Party
+room: 21ef0f45560edb87008736f810a6a9ad4da6c8cf08afb70f98084559d1b71395
+  inbox[0], created_at 1793300120
+  no subject
+refusals
+alice to bob and dave, plan: no list (dave)
+send: no list at participant 1, 0 wraps
+dave's list signed by bob, plan: list author (dave)
+a kind 4 message, send: kind
+nip04_encrypt: retired
+alice's rumor sealed by carol: wrap (identity)
+a signed rumor: wrap (rumor)
+a wrap to dave of a rumor naming only bob: not member
+bob opens carol's wrap: wrap (recipient)
+NIP-17's example
+the receiver opens the first wrap: ok
+  author: 44900586091b284416a0c001f677f9c49f7639a55c3f1e2ec130a8e1a7998e1b
+  kind 14, created_at 1703172058, members 2, content Hola, que tal?
+  room: f883ba14095342f975f3e08f63cabcec3ee8beccc764958910873860a98d1008
+the sender opens the second wrap: ok
+  author: 44900586091b284416a0c001f677f9c49f7639a55c3f1e2ec130a8e1a7998e1b
+  kind 14, created_at 1703172058, members 2, content Hola, que tal?
+  room: f883ba14095342f975f3e08f63cabcec3ee8beccc764958910873860a98d1008

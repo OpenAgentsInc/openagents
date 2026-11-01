@@ -91,7 +91,7 @@
 - [57. Media and files](ch057-media-and-files.md) — implemented
 - [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) — implemented
 - [59. Groups and communities](ch059-groups-and-communities.md) — implemented
-- [60. Private messages](ch060-private-messages.md) — design draft
+- [60. Private messages](ch060-private-messages.md) — implemented
 - [61. Live activities](ch061-live-activities.md) — implemented
 - [62. Badges and statuses](ch062-badges-and-statuses.md) — implemented
 - [63. Git on Nostr](ch063-git-on-nostr.md) — implemented

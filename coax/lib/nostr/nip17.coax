@@ -1,0 +1,690 @@
+// NIP-17 private direct messages. Pinned spec: nostr/nips/official/17.md.
+//
+//   message   an unsigned kind 14 (chat) or 15 (file) rumor by the sender,
+//             with one ["p", <pubkey>] tag per recipient
+//   room      the set of the rumor's pubkey and its p tags; adding or
+//             removing one starts a new room
+//   delivery  the rumor sealed and gift wrapped (NIP-59, nip59.coax) once to
+//             each recipient and once to the sender: N recipients, N+1 wraps
+//   relays    each wrap goes only to the relays in its addressee's kind 10050
+//             list. No list, or a list with no relay, means the user is not
+//             ready to receive messages, and nothing is sent to anyone.
+//
+// The plan (nip17_plan) reads every participant's kind 10050 list before a
+// single wrap exists, so a message to a group with one unready member is
+// refused whole: no member gets a copy of a room another member can't see.
+// A list must be signed by its participant (the caller verifies signatures;
+// relay.coax refuses forged events); a list by anyone else is refused, so a
+// third party can't route another user's mail.
+//
+// Opening (nip17_open) is nip59_unwrap_checked, which already refuses a
+// signed rumor (NIP59_RUMOR) and a seal whose key is not the rumor's pubkey
+// (NIP59_IDENTITY, the impersonation NIP-17 says clients MUST check), then
+// reads the rumor as a NIP-17 message: kind 14 or 15, p tags that read, the
+// reader one of the room's members, and for kind 15 the file tags.
+//
+// The room id is this file's own name for a room: SHA-256 of the members'
+// 32-byte keys in ascending order. It is computed locally and never
+// published; NIP-17 has no public group identifier, on purpose.
+//
+// Not built here: kind 7 reactions and kind 5 deletes inside a room, edits,
+// disappearing messages (an expiration tag on each wrap), the relay-side
+// AUTH rule for serving kind 1059, and the file encryption itself (kind 15
+// carries an AES-GCM key; this stack has no AES-GCM, so a file's bytes are
+// neither encrypted nor decrypted here). Kind 4 (NIP-04) is never sent: the
+// send refuses any kind but 14 and 15, and nip04.coax only reads old ones.
+//
+// Checks: coax test coax/lib/nostr/nip17.coax --run-steps 250000000
+#load "nip59.coax";
+#load "tags.coax";
+#load "../net/relay_uri.coax";
+#load "../crypto/bip32.coax";
+#authority;
+
+N17_OK :: 0;
+N17_INPUT :: 1;       // a key, recipient or fresh view is the wrong size
+N17_KIND :: 2;        // the message is not kind 14 or 15
+N17_MEMBERS :: 3;     // no recipient, more than N17_MOST, one repeated, or the sender
+N17_TAGS :: 4;        // the tags don't read, or the caller's tags hold a p tag
+N17_FILE :: 5;        // a kind 15 without its file tags
+N17_NO_LIST :: 6;     // no kind 10050 list, or one with no relay: not ready to receive
+N17_LIST :: 7;        // the list is not kind 10050, or a relay tag or URL is refused
+N17_LIST_AUTHOR :: 8; // the list is signed by someone other than its participant
+N17_WRAP :: 9;        // nip59 refused; its status is in wrap_error
+N17_OUTPUT :: 10;     // out is too small for every wrap
+N17_NOT_MEMBER :: 11; // the opened message's room does not include the reader
+
+N17_CHAT :: 14;
+N17_FILE_KIND :: 15;
+N17_RELAY_LIST :: 10050;
+N17_MOST :: 10;           // recipients; NIP-17: past ten, use another scheme
+N17_RELAYS_MOST :: 8;     // relays in one list; NIP-17 asks for one to three
+N17_URL_MOST :: 256;
+N17_VALUE_MOST :: 256;
+N17_TAGS_MOST :: 8192;    // the rumor's tags, p tags included
+N17_ABSENT :: -1;         // n17_value: no tag of that name
+N17_BAD :: -2;            // n17_value: the tags don't read, or the tag has no string value
+
+// book:begin records
+// One participant's kind 10050 relays, in tag order, each URL once.
+N17Relays :: struct {
+  error:int=N17_NO_LIST; tag:int;   // tag: the refused tag's index
+  count:int; url:[N17_RELAYS_MOST*N17_URL_MOST]u8; url_n:[N17_RELAYS_MOST]int;
+}
+// Who gets a wrap and where it goes: recipients 0..<recipients, then the
+// sender at index recipients. who names the refused participant.
+N17Plan :: struct {
+  error:int=N17_INPUT; who:int=-1; recipients:int;
+  pub:[(N17_MOST+1)*32]u8; relays:[N17_MOST+1]N17Relays;
+}
+// The wraps in out: wrap i is out[at[i]..<at[i]+n[i]], addressed to plan
+// participant i (the last one is the sender's own copy).
+N17Sent :: struct {
+  error:int=N17_INPUT; who:int=-1; wrap_error:u32; wraps:int;
+  rumor_id:[32]u8; at:[N17_MOST+1]int; n:[N17_MOST+1]int;
+}
+// An opened message. The spans index the rumor JSON in out; content is raw
+// JSON string text. members holds the room's keys, the author first.
+N17Message :: struct {
+  error:int=N17_INPUT; wrap_error:u32; written:int;
+  author:[32]u8; rumor_id:[32]u8; kind:int; created_at:int;
+  members:int; member:[(N17_MOST+1)*32]u8; room:[32]u8;
+  subject_n:int=N17_ABSENT; subject:[N17_VALUE_MOST]u8;
+  has_reply:bool; reply:[32]u8;
+  content_from:int; content_to:int;
+}
+// book:end records
+
+n17_key :: (b:int)->[32]u8 {k:[32]u8;k[0]=cast(u8)b;k[31]=cast(u8)(b+1);return k;}
+n17_list :: (owner:[32]u8,kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;e.public_key=owner;return e;}
+// Whether relay k of the list is exactly the bytes s.
+n17_url :: (r:N17Relays,k:int,s:string)->bool {
+  url:=r.url;return cast(string)url[k*N17_URL_MOST..<k*N17_URL_MOST+r.url_n[k]]==s;
+}
+n17_pub_of :: (p:N17Plan,i:int)->[32]u8 {k:[32]u8;for c:0..<32 {k[c]=p.pub[i*32+c];}return k;}
+n17_keys :: (a:int,b:int,c:int)->[96]u8 {
+  ka:=n17_key(a);kb:=n17_key(b);kc:=n17_key(c);out:[96]u8;
+  for i:0..<32 {out[i]=ka[i];out[32+i]=kb[i];out[64+i]=kc[i];}
+  return out;
+}
+N17_TWO :: "[[\"relay\",\"wss://inbox.nostr.wine\"],[\"relay\",\"wss://myrelay.nostr1.com\"]]";
+
+#test "status values and limits" {
+  #assert N17_OK==0 && N17_NOT_MEMBER==11 && N17_RELAY_LIST==10050 && N17_MOST==10 && N17_ABSENT== -1 && N17_BAD== -2;
+}
+#test "NIP-17's example relay list reads as two relays" {
+  bob:=n17_key(2);
+  r:=n17_relays(n17_list(bob,10050,N17_TWO),bob[..]);
+  #assert r.error==N17_OK && r.tag==0 && r.count==2 && n17_url(r,0,"wss://inbox.nostr.wine") && n17_url(r,1,"wss://myrelay.nostr1.com");
+}
+#test "no list, or a list with no relay, is not ready to receive" {
+  bob:=n17_key(2);none:NostrEvent;
+  #assert n17_relays(none,bob[..]).error==N17_NO_LIST;
+  #assert n17_relays(n17_list(bob,10050,"[]"),bob[..]).error==N17_NO_LIST;
+  r:=n17_relays(n17_list(bob,10050,"[[\"r\",\"wss://a.example\"],[\"p\",\"x\"]]"),bob[..]);
+  #assert r.error==N17_NO_LIST && r.count==0 && r.tag==0;
+}
+#test "a list by someone else, of another kind, or with a bad relay tag is refused" {
+  bob:=n17_key(2);carol:=n17_key(3);
+  r0:=n17_relays(n17_list(carol,10050,N17_TWO),bob[..]);#assert r0.error==N17_LIST_AUTHOR && r0.tag==0;
+  #assert n17_relays(n17_list(bob,10050,N17_TWO),bob[0..<31]).error==N17_LIST_AUTHOR;
+  bob2:=bob;bob2[31]=0;#assert n17_relays(n17_list(bob2,10050,N17_TWO),bob[..]).error==N17_LIST_AUTHOR;
+  r0=n17_relays(n17_list(bob,10002,N17_TWO),bob[..]);#assert r0.error==N17_LIST && r0.tag==0;
+  r:=n17_relays(n17_list(bob,10050,"[[\"relay\",\"wss://a.example\"],[\"relay\"]]"),bob[..]);
+  #assert r.error==N17_LIST && r.tag==1 && r.count==1;
+  #assert n17_relays(n17_list(bob,10050,"[[\"relay\",1]]"),bob[..]).error==N17_LIST;
+  r=n17_relays(n17_list(bob,10050,"[[\"x\"],[\"relay\",\"https://a.example\"]]"),bob[..]);
+  #assert r.error==N17_LIST && r.tag==1;
+  #assert n17_relays(n17_list(bob,10050,"[[\"relay\",\"wss://a\\ud800\"]]"),bob[..]).error==N17_LIST;
+  #assert n17_relays(n17_list(bob,10050,"[[\"relay\",\"wss://a.example\"],7]"),bob[..]).error==N17_LIST;
+  r=n17_relays(n17_list(bob,10050,"[[\"relay\",\"wss://a.example\"],[\"x\",}]]"),bob[..]);#assert r.error==N17_LIST && r.tag==1;
+  r=n17_relays(n17_list(bob,10050,"[[\"relay\",\"wss://a.example\",}]]"),bob[..]);#assert r.error==N17_LIST && r.tag==0;
+  bad:=n17_list(bob,10050,N17_TWO);bad.error=NE_HEX;#assert n17_relays(bad,bob[..]).error==N17_NO_LIST;
+}
+#test "a relay listed twice is one relay; extra values are ignored; nine relays are too many" {
+  bob:=n17_key(2);
+  r:=n17_relays(n17_list(bob,10050,"[[\"relay\",\"wss://a.example\"],[\"relay\",\"wss://b.example\",\"x\"],[\"relay\",\"wss:\\/\\/a.example\"]]"),bob[..]);
+  #assert r.error==N17_OK && r.count==2 && n17_url(r,1,"wss://b.example");
+  buf:[1024]u8;n:=json_raw(buf[..],0,"[");
+  for i:0..<9 {
+    if i>0 {n=json_raw(buf[..],n,",");}
+    n=json_raw(buf[..],n,"[\"relay\",\"wss://r");n=json_write_int(buf[..],n,i);n=json_raw(buf[..],n,".example\"]");
+    if i==7 {m:=json_raw(buf[..],n,"]");r=n17_relays(n17_list(bob,10050,cast(string)buf[0..<m]),bob[..]);#assert r.error==N17_OK && r.count==8;}
+  }
+  n=json_raw(buf[..],n,"]");
+  r=n17_relays(n17_list(bob,10050,cast(string)buf[0..<n]),bob[..]);#assert r.error==N17_LIST && r.tag==8 && r.count==8;
+}
+#test "a URL of 256 bytes is kept; 257 is refused" {
+  bob:=n17_key(2);buf:[400]u8;n:=json_raw(buf[..],0,"[[\"relay\",\"wss://a.test/");
+  for i:0..<243 {buf[n]='a';n+=1;}
+  m:=json_raw(buf[..],n,"\"]]");
+  r:=n17_relays(n17_list(bob,10050,cast(string)buf[0..<m]),bob[..]);#assert r.error==N17_OK && r.url_n[0]==256;
+  buf[n]='a';m=json_raw(buf[..],n+1,"\"]]");
+  #assert n17_relays(n17_list(bob,10050,cast(string)buf[0..<m]),bob[..]).error==N17_LIST;
+}
+#test "the plan reads every participant's list, recipients first, then the sender" {
+  alice:=n17_key(1);bob:=n17_key(2);carol:=n17_key(3);keys:=n17_keys(2,3,9);
+  lists:[3]NostrEvent;
+  lists[0]=n17_list(bob,10050,N17_TWO);
+  lists[1]=n17_list(carol,10050,"[[\"relay\",\"wss://carol.example\"]]");
+  lists[2]=n17_list(alice,10050,"[[\"relay\",\"wss://alice.example\"]]");
+  p:=nip17_plan(alice[..],keys[0..<64],lists[..]);
+  #assert p.error==N17_OK && p.who== -1 && p.recipients==2;
+  #assert p.relays[0].count==2 && n17_url(p.relays[1],0,"wss://carol.example") && n17_url(p.relays[2],0,"wss://alice.example");
+  k:=n17_pub_of(p,0);#assert k[0]==2 && k[31]==3;
+  k=n17_pub_of(p,1);#assert k[0]==3 && k[31]==4;
+  k=n17_pub_of(p,2);#assert k[0]==1 && k[31]==2;
+}
+#test "a recipient without a list stops the whole plan, naming them" {
+  alice:=n17_key(1);bob:=n17_key(2);keys:=n17_keys(2,3,9);
+  lists:[3]NostrEvent;
+  lists[0]=n17_list(bob,10050,N17_TWO);
+  lists[2]=n17_list(alice,10050,"[[\"relay\",\"wss://alice.example\"]]");
+  p:=nip17_plan(alice[..],keys[0..<64],lists[..]);#assert p.error==N17_NO_LIST && p.who==1;
+  carol:=n17_key(3);lists[1]=n17_list(carol,10050,N17_TWO);none:NostrEvent;lists[2]=none;
+  p=nip17_plan(alice[..],keys[0..<64],lists[..]);#assert p.error==N17_NO_LIST && p.who==2;
+  lists[2]=n17_list(bob,10050,N17_TWO);
+  p=nip17_plan(alice[..],keys[0..<64],lists[..]);#assert p.error==N17_LIST_AUTHOR && p.who==2;
+}
+#test "the plan refuses bad views and bad member sets before reading lists" {
+  alice:=n17_key(1);keys:=n17_keys(2,3,1);lists:[12]NostrEvent;
+  #assert nip17_plan(alice[0..<31],keys[0..<64],lists[0..<3]).error==N17_INPUT;
+  #assert nip17_plan(alice[..],keys[0..<63],lists[0..<3]).error==N17_INPUT;
+  #assert nip17_plan(alice[..],keys[0..<64],lists[0..<2]).error==N17_INPUT;
+  #assert nip17_plan(alice[..],keys[0..<64],lists[0..<4]).error==N17_INPUT;
+  p:=nip17_plan(alice[..],keys[0..<0],lists[0..<1]);#assert p.error==N17_MEMBERS && p.who== -1;
+  p=nip17_plan(alice[..],keys[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==2;
+  same:=n17_keys(2,3,2);p=nip17_plan(alice[..],same[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==2;
+  same=n17_keys(2,3,3);p=nip17_plan(alice[..],same[..],lists[0..<4]);#assert p.error==N17_MEMBERS && p.who==2;
+  // Eleven recipients is one more than NIP-17's scheme is for.
+  many:[11*32]u8;for i:0..<11 {many[i*32]=cast(u8)(i+10);}
+  #assert nip17_plan(alice[..],many[..],lists[..]).error==N17_MEMBERS;
+  p=nip17_plan(alice[..],many[0..<320],lists[0..<11]);#assert p.error==N17_NO_LIST && p.who==0;
+}
+#test "the caller's tags: no p tags, and a kind 15 needs its file tags" {
+  #assert n17_extra("[]",14)==N17_OK && n17_extra("[[\"subject\",\"Party\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",14)==N17_OK;
+  #assert n17_extra("[[\"p\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",14)==N17_TAGS;
+  #assert n17_extra("[[\"subject\",\"x\"],[\"p\",\"5c83\"]]",14)==N17_TAGS;
+  #assert n17_extra("[[\"e\",\"5c83\"]]",14)==N17_TAGS && n17_extra("[[\"x\",1]]",14)==N17_TAGS && n17_extra("[",14)==N17_TAGS;
+  #assert n17_extra(" []",14)==N17_TAGS && n17_extra("[] ",14)==N17_TAGS && n17_extra("",14)==N17_TAGS;
+  #assert n17_extra("[ ]",14)==N17_TAGS && n17_extra("[ [\"subject\",\"x\"] ]",14)==N17_OK && n17_extra("[[\"t\",\"a\"],[\"p\"]]",14)==N17_TAGS;
+  #assert n17_extra(N17_FILE_TAGS,15)==N17_OK && n17_extra("[]",15)==N17_FILE;
+}
+N17_FILE_TAGS :: "[[\"file-type\",\"image/jpeg\"],[\"encryption-algorithm\",\"aes-gcm\"],[\"decryption-key\",\"k\"],[\"decryption-nonce\",\"n\"],[\"x\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]";
+#test "file tags: each one present, aes-gcm only, x a lowercase SHA-256" {
+  #assert n17_file(nt_event(N17_FILE_TAGS));
+  drop:=[5]string.["file-type","encryption-algorithm","decryption-key","decryption-nonce","x"];
+  for d:0..<5 {
+    buf:[1024]u8;n:=json_raw(buf[..],0,"[");first:=true;
+    for k:0..<5 {
+      if k==d {continue;}
+      if !first {n=json_raw(buf[..],n,",");}first=false;
+      n=json_raw(buf[..],n,"[\"");n=json_raw(buf[..],n,drop[k]);n=json_raw(buf[..],n,"\",\"");
+      n=json_raw(buf[..],n,ifx k==1 then "aes-gcm" else ifx k==4 then "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36" else "v");
+      n=json_raw(buf[..],n,"\"]");
+    }
+    n=json_raw(buf[..],n,"]");
+    #assert !n17_file(nt_event(cast(string)buf[0..<n]));
+  }
+  #assert !n17_file(nt_event("[[\"file-type\",\"\"],[\"encryption-algorithm\",\"aes-gcm\"],[\"decryption-key\",\"k\"],[\"decryption-nonce\",\"n\"],[\"x\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]"));
+  #assert !n17_file(nt_event("[[\"file-type\",\"a\"],[\"encryption-algorithm\",\"aes-cbc\"],[\"decryption-key\",\"k\"],[\"decryption-nonce\",\"n\"],[\"x\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]"));
+  #assert !n17_file(nt_event("[[\"file-type\",\"a\"],[\"encryption-algorithm\",\"aes-gcm\"],[\"decryption-key\",\"\"],[\"decryption-nonce\",\"n\"],[\"x\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]"));
+  #assert !n17_file(nt_event("[[\"file-type\",\"a\"],[\"encryption-algorithm\",\"aes-gcm\"],[\"decryption-key\",\"k\"],[\"decryption-nonce\",\"\"],[\"x\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]"));
+  #assert !n17_file(nt_event("[[\"file-type\",\"a\"],[\"encryption-algorithm\",\"aes-gcm\"],[\"decryption-key\",\"k\"],[\"decryption-nonce\",\"n\"],[\"x\",\"5C83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]"));
+}
+#test "a tag's first value: the first tag of that name, decoded" {
+  out:[N17_VALUE_MOST]u8;
+  e:=nt_event("[[\"t\",\"x\"],[\"subject\",\"Caf\\u00e9\"],[\"subject\",\"second\"]]");
+  n:=n17_value(e,"subject",out[..]);#assert n==5 && out[3]==0xc3 && out[4]==0xa9;
+  #assert n17_value(e,"t",out[..])==1 && out[0]=='x';
+  #assert n17_value(e,"none",out[..])==N17_ABSENT && n17_value(nt_event("[]"),"t",out[..])==N17_ABSENT;
+  #assert n17_value(nt_event("[[\"subject\"]]"),"subject",out[..])==N17_BAD;
+  #assert n17_value(nt_event("[[\"subject\",1]]"),"subject",out[..])==N17_BAD;
+  #assert n17_value(nt_event("[[\"subject\",\"\\ud800\"]]"),"subject",out[..])==N17_BAD;
+  #assert n17_value(nt_event("[[\"t\",{]]"),"subject",out[..])==N17_BAD;
+  #assert n17_value(nt_event("[7]"),"subject",out[..])==N17_BAD;
+  #assert n17_value(nt_event("[[\"subject\",\"\"]]"),"subject",out[..])==0;
+  bad:=nt_event("[]");bad.error=NE_HEX;#assert n17_value(bad,"t",out[..])==N17_BAD;
+}
+#test "the rumor's tags: one p tag per recipient, then the caller's" {
+  alice:=n17_key(1);bob:=n17_key(2);carol:=n17_key(3);keys:=n17_keys(2,3,9);
+  lists:[3]NostrEvent;lists[0]=n17_list(bob,10050,N17_TWO);lists[1]=n17_list(carol,10050,N17_TWO);lists[2]=n17_list(alice,10050,N17_TWO);
+  p:=nip17_plan(alice[..],keys[0..<64],lists[..]);out:[N17_TAGS_MOST]u8;
+  n:=n17_rumor_tags(p,"[[\"subject\",\"Party\"]]",out[..]);
+  #assert cast(string)out[0..<n]=="[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"p\",\"0300000000000000000000000000000000000000000000000000000000000004\"],[\"subject\",\"Party\"]]";
+  n=n17_rumor_tags(p,"[]",out[..]);
+  #assert cast(string)out[0..<n]=="[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"p\",\"0300000000000000000000000000000000000000000000000000000000000004\"]]";
+  #assert n==147 && n17_rumor_tags(p,"[]",out[0..<146])<0 && n17_rumor_tags(p,"[]",out[0..<147])==147;
+}
+#test "the room id is the same for every order of the same members" {
+  a:=n17_keys(1,2,3);b:=n17_keys(3,1,2);c:=n17_keys(2,3,1);
+  ra:=n17_room(a[..],3);rb:=n17_room(b[..],3);rc:=n17_room(c[..],3);
+  #assert n59_same32(ra[..],rb[..]) && n59_same32(ra[..],rc[..]);
+  d:=n17_keys(1,2,4);rd:=n17_room(d[..],3);#assert !n59_same32(ra[..],rd[..]);
+  r2:=n17_room(a[..],2);#assert !n59_same32(ra[..],r2[..]);
+  // SHA-256 of key(1) || key(2), the two keys already in order.
+  want:[32]u8;#assert sha256_hash_checked(a[0..<64],want[..],false)==SHA_OK;
+  r12:=n17_room(b[32..<96],2);#assert n59_same32(r12[..],want[..]);
+  // Keys that differ only in their last byte still sort.
+  x:=n17_keys(1,1,1);x[31]=9;x[63]=5;sorted:=x;sorted[31]=5;sorted[63]=9;
+  rx:=n17_room(x[..],2);#assert sha256_hash_checked(sorted[0..<64],want[..],false)==SHA_OK && n59_same32(rx[..],want[..]);
+}
+// A rumor JSON as nip59 hands it over, read into the spans Nip59Opened has.
+n17_opened :: (rumor:string)->Nip59Opened {
+  copy:[4096]u8;pre:[4096]u8;o:Nip59Opened;
+  m:=n59_signed_copy(rumor,copy[..]);e:=nostr_event_read(cast(string)copy[0..<m],pre[..],false);
+  o.written=rumor.count;o.author=e.public_key;o.kind=e.kind;o.created_at=e.created_at;
+  o.tags_from=e.tags_from;o.tags_to=e.tags_to;o.content_from=e.content_from;o.content_to=e.content_to;
+  return o;
+}
+N17_RUMOR :: "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"0100000000000000000000000000000000000000000000000000000000000002\",\"created_at\":1793300000,\"kind\":14,\"tags\":[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"p\",\"0300000000000000000000000000000000000000000000000000000000000004\"],[\"subject\",\"Party\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]],\"content\":\"hi\"}";
+N17_PT :: "[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"]]";
+n17_rumor_of :: (kind:int,tags:string,out:[]u8)->string {
+  n:=json_raw(out,0,"{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"0100000000000000000000000000000000000000000000000000000000000002\",\"created_at\":1793300000,\"kind\":");
+  n=json_write_int(out,n,kind);n=json_raw(out,n,",\"tags\":");n=json_raw(out,n,tags);n=json_raw(out,n,",\"content\":\"hi\"}");
+  return cast(string)out[0..<n];
+}
+#test "an opened rumor reads as a message of its room" {
+  bob:=n17_key(2);carol:=n17_key(3);alice:=n17_key(1);dave:=n17_key(4);
+  rumor:=N17_RUMOR;o:=n17_opened(rumor);
+  m:=n17_read(o,rumor,bob[..]);
+  #assert m.error==N17_OK && m.members==3 && m.kind==14 && m.created_at==1793300000 && m.written==rumor.count;
+  #assert m.subject_n==5 && cast(string)m.subject[0..<5]=="Party" && m.has_reply && m.reply[0]==0x5c && m.reply[31]==0x36;
+  #assert rumor[m.content_from..<m.content_to]=="hi" && m.author[0]==1 && m.member[0]==1 && m.member[32]==2 && m.member[64]==3;
+  keys:=n17_keys(3,1,2);want:=n17_room(keys[..],3);#assert n59_same32(m.room[..],want[..]);
+  #assert n17_read(o,rumor,carol[..]).error==N17_OK && n17_read(o,rumor,alice[..]).error==N17_OK;
+  #assert n17_read(o,rumor,dave[..]).error==N17_NOT_MEMBER && n17_read(o,rumor,bob[0..<31]).error==N17_INPUT;
+  o.rumor_id[0]=9;o.rumor_id[31]=8;m=n17_read(o,rumor,bob[..]);#assert m.rumor_id[0]==9 && m.rumor_id[31]==8;
+}
+#test "a repeated p tag or the author's own p tag is one member; no subject or reply is absent" {
+  buf:[2048]u8;bob:=n17_key(2);
+  r:=n17_rumor_of(14,"[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"p\",\"0100000000000000000000000000000000000000000000000000000000000002\"],[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"]]",buf[..]);
+  m:=n17_read(n17_opened(r),r,bob[..]);#assert m.error==N17_OK && m.members==2 && m.subject_n==N17_ABSENT && !m.has_reply;
+}
+#test "an opened rumor of another kind, bad tags, too many members or no file tags is refused" {
+  buf:[4096]u8;bob:=n17_key(2);
+  r:=n17_rumor_of(4,N17_PT,buf[..]);#assert n17_read(n17_opened(r),r,bob[..]).error==N17_KIND;
+  r=n17_rumor_of(1,N17_PT,buf[..]);#assert n17_read(n17_opened(r),r,bob[..]).error==N17_KIND;
+  r=n17_rumor_of(15,N17_PT,buf[..]);#assert n17_read(n17_opened(r),r,bob[..]).error==N17_FILE;
+  r=n17_rumor_of(14,"[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"p\",\"02\"]]",buf[..]);
+  #assert n17_read(n17_opened(r),r,bob[..]).error==N17_TAGS;
+  // A subject the event reader would refuse, read through spans over bare tags.
+  bare:="[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"subject\",\"\\ud800\"]]";
+  ob:Nip59Opened;ob.kind=14;ob.tags_to=bare.count;#assert n17_read(ob,bare,bob[..]).error==N17_TAGS;
+  ob.tags_to=bare.count-23;#assert n17_read(ob,bare,bob[..]).error==N17_TAGS;
+  t:[4096]u8;n:=json_raw(t[..],0,"[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"]");
+  for i:0..<10 {n=json_raw(t[..],n,",[\"p\",\"a");n=json_write_int(t[..],n,i);n=json_raw(t[..],n,"00000000000000000000000000000000000000000000000000000000000000\"]");}
+  n=json_raw(t[..],n,"]");
+  r=n17_rumor_of(14,cast(string)t[0..<n],buf[..]);#assert n17_read(n17_opened(r),r,bob[..]).error==N17_MEMBERS;
+  s:=cast(string)t[0..<n];cut:[4096]u8;c:=json_raw(cut[..],0,s[0..<s.count-74]);c=json_raw(cut[..],c,"]");
+  r=n17_rumor_of(14,cast(string)cut[0..<c],buf[..]);m:=n17_read(n17_opened(r),r,bob[..]);#assert m.error==N17_OK && m.members==11;
+  r=n17_rumor_of(15,"[[\"p\",\"0200000000000000000000000000000000000000000000000000000000000003\"],[\"file-type\",\"a\"],[\"encryption-algorithm\",\"aes-gcm\"],[\"decryption-key\",\"k\"],[\"decryption-nonce\",\"n\"],[\"x\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]",buf[..]);
+  #assert n17_read(n17_opened(r),r,bob[..]).error==N17_OK;
+  o:=n17_opened(N17_RUMOR);o.tags_to=N17_RUMOR.count+1;#assert n17_read(o,N17_RUMOR,bob[..]).error==N17_TAGS;
+}
+#test "a room's messages in time order, ties by rumor id, and its newest subject" {
+  m:[5]N17Message;room:=n17_key(7);other:=n17_key(8);
+  at:=[5]int.[30,10,30,20,5];
+  for i:0..<5 {m[i].error=N17_OK;m[i].room=room;m[i].created_at=at[i];m[i].rumor_id[0]=cast(u8)(9-i);}
+  m[4].room=other;m[1].subject_n=3;m[3].subject_n=0;
+  order:[5]int;
+  n:=nip17_order(m[..],room[..],order[..]);
+  #assert n==4 && order[0]==1 && order[1]==3 && order[2]==2 && order[3]==0;
+  #assert nip17_subject(m[..],order[0..<n])==3 && nip17_subject(m[..],order[0..<1])==1 && nip17_subject(m[..],order[2..<4])== -1;
+  #assert nip17_order(m[..],room[..],order[0..<3])== -1;
+  m[0].error=N17_KIND;n=nip17_order(m[..],room[..],order[..]);#assert n==3 && order[2]==2;
+  m[0].error=N17_OK;m[0].rumor_id[0]=0;m[0].rumor_id[1]=1;m[2].rumor_id[0]=0;
+  n=nip17_order(m[..],room[..],order[..]);#assert n==4 && order[2]==2 && order[3]==0;
+  m[0].rumor_id[1]=0;m[0].rumor_id[31]=1;n=nip17_order(m[..],room[..],order[..]);#assert order[2]==2 && order[3]==0;
+  // The later message with the larger id goes after; the same time and id keeps arrival order.
+  m[2].rumor_id[0]=200;n=nip17_order(m[..],room[..],order[..]);#assert order[2]==0 && order[3]==2;
+  m[2].rumor_id=m[0].rumor_id;n=nip17_order(m[..],room[..],order[..]);#assert order[2]==0 && order[3]==2;
+  o:=n17_key(7);o[31]=0;m[1].room=o;n=nip17_order(m[..],room[..],order[..]);#assert n==3 && order[0]==3;
+}
+#test "send refuses a refused plan, kinds, tags and views before any key work" {
+  alice:=n17_key(1);bob:=n17_key(2);carol:=n17_key(3);keys:=n17_keys(2,3,9);
+  lists:[3]NostrEvent;lists[0]=n17_list(bob,10050,N17_TWO);lists[1]=n17_list(carol,10050,N17_TWO);lists[2]=n17_list(alice,10050,N17_TWO);
+  p:=nip17_plan(alice[..],keys[0..<64],lists[..]);#assert p.error==N17_OK;
+  fresh:[3]Nip59Fresh;for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  work:[NIP59_WORK]u8;out:[64]u8;for i:0..<64 {out[i]=7;}
+  #assert nip17_send(alice[0..<31],p,N59_NOW,14,"[]","x",fresh[..],work[..],out[..],false).error==N17_INPUT;
+  #assert nip17_send(alice[..],p,N59_NOW,14,"[]","x",fresh[0..<2],work[..],out[..],false).error==N17_INPUT;
+  for b:out {#assert b==7;} #assert fresh[0].wrap_key[0]!=0 && fresh[2].wrap_key[0]!=0;
+  s:=nip17_send(alice[..],p,N59_NOW,4,"[]","x",fresh[..],work[..],out[..],false);#assert s.error==N17_KIND && s.wraps==0 && s.who== -1;
+  for i:0..<3 {#assert fresh[i].wrap_key[0]==0 && fresh[i].seal_back==0;}
+  for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  #assert nip17_send(alice[..],p,N59_NOW,1,"[]","x",fresh[..],work[..],out[..],false).error==N17_KIND;
+  for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  s=nip17_send(alice[..],p,N59_NOW,14,"[[\"p\",\"x\"]]","x",fresh[..],work[..],out[..],false);#assert s.error==N17_TAGS && s.who== -1;
+  for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  #assert nip17_send(alice[..],p,N59_NOW,15,"[]","x",fresh[..],work[..],out[..],false).error==N17_FILE;
+  for b:out {#assert b==7;}
+  for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  // Carol has no list: the plan is refused, and so is the send, naming her.
+  none:NostrEvent;lists[1]=none;q:=nip17_plan(alice[..],keys[0..<64],lists[..]);
+  s=nip17_send(alice[..],q,N59_NOW,14,"[]","x",fresh[..],work[..],out[..],false);
+  #assert s.error==N17_NO_LIST && s.who==1 && s.wraps==0 && fresh[1].wrap_key[0]==0;for b:out {#assert b==7;}
+  for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  big:[N17_TAGS_MOST]u8;bn:=json_raw(big[..],0,"[[\"subject\",\"");for i:0..<8100 {big[bn]='a';bn+=1;}bn=json_raw(big[..],bn,"\"]]");
+  s=nip17_send(alice[..],p,N59_NOW,14,cast(string)big[0..<bn],"x",fresh[..],work[..],out[..],false);#assert s.error==N17_TAGS && s.who== -1;
+}
+#test "send refuses a plan whose sender is not the signing key" #steps 400000000 {
+  bob:=n17_key(2);carol:=n17_key(3);me:=N59_ALICE_PUB;keys:=n17_keys(2,3,9);
+  lists:[3]NostrEvent;lists[0]=n17_list(bob,10050,N17_TWO);lists[1]=n17_list(carol,10050,N17_TWO);
+  lists[2]=n17_list(carol,10050,N17_TWO);lists[2].public_key=n17_key(5);
+  five:=n17_key(5);p:=nip17_plan(five[..],keys[0..<64],lists[..]);#assert p.error==N17_OK;
+  alice:=n59_alice();fresh:[3]Nip59Fresh;for i:0..<3 {fresh[i]=n59_fresh(1)[0];}
+  work:[NIP59_WORK]u8;out:[64]u8;
+  s:=nip17_send(alice[..],p,N59_NOW,14,"[]","x",fresh[..],work[..],out[..],false);
+  #assert s.error==N17_MEMBERS && s.who==2 && fresh[0].wrap_key[0]==0;
+  zero:[32]u8;s=nip17_send(zero[..],p,N59_NOW,14,"[]","x",fresh[..],work[..],out[..],false);
+  #assert s.error==N17_WRAP && s.wrap_error==NIP59_KEY && s.who==2;
+}
+
+#test "open: views nip59 refuses come back as its status" {
+  bob:=n59_bob();me:=N59_BOB_PUB;wrap:=N59_TS_WRAP;work:[NIP59_WORK]u8;out:[16]u8;
+  m:=nip17_open(bob[0..<31],me[..],cast(string)wrap[..],work[..],out[..]);#assert m.error==N17_WRAP && m.wrap_error==NIP59_INPUT;
+  m=nip17_open(bob[..],me[..],cast(string)wrap[..],work[..],out[0..<0]);#assert m.error==N17_WRAP && m.wrap_error==NIP59_OUTPUT;
+}
+#test "open: nostr-effect's wrap is Alice's message in Alice and Bob's room" #steps 2000000000 {
+  bob:=n59_bob();me:=N59_BOB_PUB;alice:=N59_ALICE_PUB;wrap:=N59_TS_WRAP;work:[NIP59_WORK]u8;out:[NIP59_REGION]u8;
+  m:=nip17_open(bob[..],me[..],cast(string)wrap[..],work[..],out[..]);
+  #assert m.error==N17_OK && m.kind==14 && m.members==2 && n59_same32(m.author[..],alice[..]);
+  #assert cast(string)out[m.content_from..<m.content_to]=="Bob: the decision job is ready." && m.written>0;
+  keys:[64]u8;for i:0..<32 {keys[i]=me[i];keys[32+i]=alice[i];}
+  room:=n17_room(keys[..],2);#assert n59_same32(m.room[..],room[..]);
+}
+#test "open: a wrapped rumor of kind 1 is refused, and out is cleared" #steps 3000000000 {
+  alice:=n59_alice();bob:=n59_bob();me:=N59_BOB_PUB;fresh:=n59_fresh(2);work:[NIP59_WORK]u8;wrap:[NIP59_REGION]u8;out:[NIP59_REGION]u8;
+  w:=nip59_wrap_checked(alice[..],me[..],N59_NOW,1,N17_BOB_P,"gm",NIP59_WRAP_KIND,fresh[..],work[..],wrap[..],false);
+  #assert w.error==NIP59_OK;
+  m:=nip17_open(bob[..],me[..],cast(string)wrap[0..<w.written],work[..],out[..]);
+  #assert m.error==N17_KIND;for b:out {#assert b==0;}
+}
+#test "send: Alice to Bob is two wraps, Bob's then her own, of one rumor" #steps 3000000000 {
+  alice:=n59_alice();bob:=n59_bob();a:=N59_ALICE_PUB;b:=N59_BOB_PUB;
+  lists:[2]NostrEvent;lists[0]=n17_list(b,10050,N17_TWO);lists[1]=n17_list(a,10050,N17_TWO);
+  p:=nip17_plan(a[..],b[..],lists[..]);#assert p.error==N17_OK;
+  fresh:[2]Nip59Fresh;fresh[0]=n59_fresh(1)[0];fresh[1]=n59_fresh(2)[0];
+  work:[NIP59_WORK]u8;out:[8192]u8;
+  s:=nip17_send(alice[..],p,N59_NOW,14,"[[\"subject\",\"x\"]]","hi",fresh[..],work[..],out[..],false);
+  #assert s.error==N17_OK && s.wraps==2 && s.who== -1 && s.at[0]==0 && s.at[1]==s.n[0] && s.n[0]>1000 && s.n[1]==s.n[0];
+  #assert fresh[0].wrap_key[0]==0 && fresh[1].wrap_key[0]==0;
+  scratch:[NIP59_REGION]u8;w1:=nostr_event_read(cast(string)out[s.at[1]..<s.at[1]+s.n[1]],scratch[..],false);
+  #assert w1.error==NE_OK && w1.kind==1059 && n59_addressed(cast(string)out[s.at[1]+w1.tags_from..<s.at[1]+w1.tags_to],a[..]);
+  rumor:[NIP59_REGION]u8;
+  m:=nip17_open(bob[..],b[..],cast(string)out[0..<s.n[0]],work[..],rumor[..]);
+  #assert m.error==N17_OK && m.members==2 && n59_same32(m.rumor_id[..],s.rumor_id[..]) && m.subject_n==1;
+  // Out holds only the first wrap: the second refuses as output, naming Alice, and out is cleared.
+  fresh[0]=n59_fresh(1)[0];fresh[1]=n59_fresh(2)[0];
+  s=nip17_send(alice[..],p,N59_NOW,14,"[]","hi",fresh[..],work[..],out[0..<s.n[0]],false);
+  #assert s.error==N17_OUTPUT && s.wrap_error==NIP59_OUTPUT && s.who==1 && s.wraps==0;for x:out[0..<1000] {#assert x==0;}
+  fresh[0]=n59_fresh(1)[0];fresh[1]=n59_fresh(2)[0];
+  s=nip17_send(alice[..],p,N59_NOW,14,"[]","hi",fresh[..],work[..],out[..],true);
+  #assert s.error==N17_WRAP && s.wrap_error==NIP59_ALIAS && s.who==0 && fresh[1].wrap_key[0]==0;
+}
+N17_BOB_P :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+
+// ---- the implementation
+
+// book:begin relays
+// A participant's kind 10050 relays. e is the newest list found for owner,
+// or an unparsed NostrEvent when none was found.
+n17_relays :: (e:NostrEvent,owner:[]u8)->N17Relays {
+  r:N17Relays;j:[1]Json;
+  if !nt_start(j[..],e) {return r;}
+  if e.kind!=N17_RELAY_LIST {return n17_list_fail(r,N17_LIST,0);}
+  signer:=e.public_key;
+  if !n17_same(signer[..],owner) {return n17_list_fail(r,N17_LIST_AUTHOR,0);}
+  k:=0;t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_ARRAY {return n17_list_fail(r,N17_LIST,k);}
+    depth:=j[0].depth;t=json_next(j[..]);
+    named:=t==JSON_STRING && json_is(json_text(j[..]),"relay");
+    if named {
+      t=json_next(j[..]);
+      if t!=JSON_STRING {return n17_list_fail(r,N17_LIST,k);}
+      url:[N17_URL_MOST]u8;n:=json_unescape(json_text(j[..]),url[..]);
+      if n== -1 || !relay_uri(cast(string)url[0..<n]).ok {return n17_list_fail(r,N17_LIST,k);}
+      at:=r.count;
+      for i:0..<r.count {if n17_url(r,i,cast(string)url[0..<n]) {at=i;}}
+      if at==N17_RELAYS_MOST {return n17_list_fail(r,N17_LIST,k);}
+      if at==r.count {for i:0..<n {r.url[at*N17_URL_MOST+i]=url[i];}r.url_n[at]=n;r.count+=1;}
+    }
+    // The rest of the tag, whatever it holds.
+    while j[0].depth>=depth {if json_next(j[..])==JSON_ERROR {return n17_list_fail(r,N17_LIST,k);}}
+    k+=1;t=json_next(j[..]);
+  }
+  if r.count==0 {return n17_list_fail(r,N17_NO_LIST,0);}
+  return n17_list_fail(r,N17_OK,0);
+}
+// book:end relays
+n17_list_fail :: (r:N17Relays,error:int,tag:int)->N17Relays {x:=r;x.error=error;x.tag=tag;return x;}
+
+// book:begin plan
+// Who gets a wrap and which relays it goes to. recipients is N 32-byte keys;
+// lists holds N+1 kind 10050 events: the recipients' in order, then the
+// sender's. Any participant without a usable list refuses the whole plan.
+nip17_plan :: (sender_x:[]u8,recipients:[]u8,lists:[]NostrEvent)->N17Plan {
+  p:N17Plan;n:=recipients.count/32;
+  if sender_x.count!=32 || recipients.count%32!=0 || lists.count!=n+1 {return p;}
+  p.error=N17_MEMBERS;
+  if n==0 || n>N17_MOST {return p;}
+  for i:0..<n {
+    for c:0..<32 {p.pub[i*32+c]=recipients[i*32+c];}
+    if n17_same(recipients[i*32..<i*32+32],sender_x) {p.who=i;return p;}
+    for k:0..<i {if n17_same(recipients[i*32..<i*32+32],recipients[k*32..<k*32+32]) {p.who=i;return p;}}
+  }
+  for c:0..<32 {p.pub[n*32+c]=sender_x[c];}
+  p.recipients=n;
+  for i:0..<n+1 {
+    p.relays[i]=n17_relays(lists[i],p.pub[i*32..<i*32+32]);
+    if p.relays[i].error!=N17_OK {p.error=p.relays[i].error;p.who=i;return p;}
+  }
+  p.error=N17_OK;return p;
+}
+// book:end plan
+
+// The first value of the first tag named name, decoded into out: its length,
+// N17_ABSENT, or N17_BAD.
+n17_value :: (e:NostrEvent,name:string,out:[]u8)->int {
+  j:[1]Json;if !nt_start(j[..],e) {return N17_BAD;}
+  t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_ARRAY {return N17_BAD;}
+    depth:=j[0].depth;t=json_next(j[..]);
+    if t==JSON_STRING && json_is(json_text(j[..]),name) {
+      if json_next(j[..])!=JSON_STRING {return N17_BAD;}
+      n:=json_unescape(json_text(j[..]),out);
+      if n<0 {return N17_BAD;}
+      return n;
+    }
+    while j[0].depth>=depth {if json_next(j[..])==JSON_ERROR {return N17_BAD;}}
+    t=json_next(j[..]);
+  }
+  return N17_ABSENT;
+}
+// A kind 15's file tags: a type, the aes-gcm algorithm, a key, a nonce and
+// the encrypted file's SHA-256 as lowercase hex.
+n17_file :: (e:NostrEvent)->bool {
+  v:[N17_VALUE_MOST]u8;x:[32]u8;
+  if n17_value(e,"file-type",v[..])<=0 {return false;}
+  n:=n17_value(e,"encryption-algorithm",v[..]);
+  if n!=7 || cast(string)v[0..<7]!="aes-gcm" {return false;}
+  if n17_value(e,"decryption-key",v[..])<=0 || n17_value(e,"decryption-nonce",v[..])<=0 {return false;}
+  n=n17_value(e,"x",v[..]);
+  return n==64 && ne_lower_hex(cast(string)v[0..<64],x[..]);
+}
+// The caller's own tags for a message: one JSON array that reads, written
+// "[]" when empty, with no p tag (the plan names the room), and a kind 15's
+// file tags.
+n17_extra :: (tags:string,kind:int)->int {
+  if tags.count<2 || tags[0]!='[' || tags[tags.count-1]!=']' {return N17_TAGS;}
+  e:=nt_event(tags);
+  i:=0;t:=nostr_tag(e,0);
+  while t.error!=NT_INDEX {
+    if t.error!=NT_OK || t.type==NT_P {return N17_TAGS;}
+    i+=1;t=nostr_tag(e,i);
+  }
+  if i==0 && tags!="[]" {return N17_TAGS;}
+  if kind==N17_FILE_KIND && !n17_file(e) {return N17_FILE;}
+  return N17_OK;
+}
+// The rumor's tags: ["p", recipient] for each recipient in plan order, then
+// the caller's. Returns the length, or -1 when out is too small.
+n17_rumor_tags :: (plan:N17Plan,extra:string,out:[]u8)->int {
+  p:=plan;n:=json_raw(out,0,"[");
+  for i:0..<p.recipients {
+    hex:[64]u8;h:=hex_encode_checked(cast(string)p.pub[i*32..<i*32+32],hex[..],false);
+    if i>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"[\"p\",\"");n=json_raw(out,n,cast(string)hex[0..<h.written]);n=json_raw(out,n,"\"]");
+  }
+  if extra!="[]" {n=json_raw(out,n,",");n=json_raw(out,n,extra[1..<extra.count-1]);}
+  return json_raw(out,n,"]");
+}
+
+n17_sent :: (s:N17Sent,error:int,who:int,fresh:[]Nip59Fresh)->N17Sent {
+  clean:Nip59Fresh;for i:0..<fresh.count {fresh[i]=clean;}
+  r:N17Sent;r.error=error;r.who=who;r.wrap_error=s.wrap_error;return r;
+}
+
+// book:begin send
+// Seals and wraps one kind 14 or 15 message from sender to every participant
+// of plan: wrap i is for participant i, the last for the sender. fresh holds
+// one record of host entropy per wrap; every admitted return zeroes all of
+// it, and a refusal after the first wrap also zeroes out. tags are the
+// caller's own (subject, e for a reply, kind 15's file tags); the p tags
+// come from the plan.
+nip17_send :: (sender:[]u8,given:N17Plan,now:int,kind:int,tags:string,content:string,fresh:[]Nip59Fresh,work:[]u8,out:[]u8,overlap:bool)->N17Sent {
+  s:N17Sent;plan:=given;
+  if sender.count!=32 || fresh.count!=plan.recipients+1 {return s;}
+  if plan.error!=N17_OK {return n17_sent(s,plan.error,plan.who,fresh);}
+  if kind!=N17_CHAT && kind!=N17_FILE_KIND {return n17_sent(s,N17_KIND,-1,fresh);}
+  e:=n17_extra(tags,kind);
+  if e!=N17_OK {return n17_sent(s,e,-1,fresh);}
+  rtags:[N17_TAGS_MOST]u8;t:=n17_rumor_tags(plan,tags,rtags[..]);
+  if t== -1 {return n17_sent(s,N17_TAGS,-1,fresh);}
+  // The sender's copy must be addressed to the key that signs the seals.
+  sender_index:=plan.recipients;
+  me:[33]u8;
+  if !bip32_public(sender,me[..]) {s.wrap_error=NIP59_KEY;return n17_sent(s,N17_WRAP,sender_index,fresh);}
+  if !n17_same(me[1..<33],plan.pub[sender_index*32..<sender_index*32+32]) {return n17_sent(s,N17_MEMBERS,sender_index,fresh);}
+  at:=0;
+  for i:0..<plan.recipients+1 {
+    w:=nip59_wrap_checked(sender,plan.pub[i*32..<i*32+32],now,kind,cast(string)rtags[0..<t],content,NIP59_WRAP_KIND,
+                          fresh[i..<i+1],work,out[at..<out.count],overlap);
+    if w.error!=NIP59_OK {
+      n59_zero(out);s.wrap_error=w.error;
+      return n17_sent(s,ifx w.error==NIP59_OUTPUT then N17_OUTPUT else N17_WRAP,i,fresh);
+    }
+    s.at[i]=at;s.n[i]=w.written;s.rumor_id=w.rumor_id;at+=w.written;
+  }
+  s.wraps=plan.recipients+1;s.error=N17_OK;return s;
+}
+// book:end send
+
+// book:begin room
+// The room id: SHA-256 of the count members' keys (32 bytes each, in keys)
+// sorted ascending. The same set in any order gives the same id.
+n17_room :: (keys:[]u8,count:int)->[32]u8 {
+  sorted:[(N17_MOST+1)*32]u8;id:[32]u8;
+  for i:0..<count*32 {sorted[i]=keys[i];}
+  for i:1..<count {
+    k:=i;
+    while k>0 && n17_less_at(sorted[..],k,k-1) {
+      for c:0..<32 {b:=sorted[k*32+c];sorted[k*32+c]=sorted[(k-1)*32+c];sorted[(k-1)*32+c]=b;}
+      k-=1;
+    }
+  }
+  if sha256_hash_checked(sorted[0..<count*32],id[..],false)!=SHA_OK {zero:[32]u8;return zero;}
+  return id;
+}
+// book:end room
+// Whether 32-byte key i of keys sorts before key k.
+n17_less_at :: (keys:[]u8,i:int,k:int)->bool {
+  for c:0..<32 {
+    if keys[i*32+c]<keys[k*32+c] {return true;}
+    if keys[i*32+c]>keys[k*32+c] {return false;}
+  }
+  return false;
+}
+// Whether a and b are the same bytes, count included.
+n17_same :: (a:[]u8,b:[]u8)->bool {
+  if a.count!=b.count {return false;}
+  for i:0..<a.count {if a[i]!=b[i] {return false;}}
+  return true;
+}
+
+// book:begin read
+// An opened rumor read as a NIP-17 message for the reader me. rumor is the
+// JSON that nip59_unwrap_checked wrote, and o its result.
+n17_read :: (o:Nip59Opened,rumor:string,me:[]u8)->N17Message {
+  m:N17Message;
+  if me.count!=32 {return m;}
+  if o.kind!=N17_CHAT && o.kind!=N17_FILE_KIND {m.error=N17_KIND;return m;}
+  e:NostrEvent;e.error=NE_OK;e.original=rumor;e.tags_from=o.tags_from;e.tags_to=o.tags_to;
+  m.members=1;for c:0..<32 {m.member[c]=o.author[c];}
+  i:=0;t:=nostr_tag(e,0);
+  while t.error!=NT_INDEX {
+    if t.error!=NT_OK {m.error=N17_TAGS;return m;}
+    if t.type==NT_P {
+      known:=false;
+      for k:0..<m.members {if n17_same(m.member[k*32..<k*32+32],t.pubkey[..]) {known=true;}}
+      if !known {
+        if m.members==N17_MOST+1 {m.error=N17_MEMBERS;return m;}
+        for c:0..<32 {m.member[m.members*32+c]=t.pubkey[c];}
+        m.members+=1;
+      }
+    }
+    if t.type==NT_E && !m.has_reply {m.has_reply=true;m.reply=t.id;}
+    i+=1;t=nostr_tag(e,i);
+  }
+  m.subject_n=n17_value(e,"subject",m.subject[..]);
+  if m.subject_n==N17_BAD {m.error=N17_TAGS;return m;}
+  if o.kind==N17_FILE_KIND && !n17_file(e) {m.error=N17_FILE;return m;}
+  member:=false;
+  for k:0..<m.members {if n17_same(m.member[k*32..<k*32+32],me) {member=true;}}
+  if !member {m.error=N17_NOT_MEMBER;return m;}
+  m.room=n17_room(m.member[..],m.members);
+  m.written=o.written;m.author=o.author;m.rumor_id=o.rumor_id;m.kind=o.kind;m.created_at=o.created_at;
+  m.content_from=o.content_from;m.content_to=o.content_to;m.error=N17_OK;
+  return m;
+}
+// book:end read
+
+// Opens a gift wrap as a NIP-17 message for recipient (secret, x-only key).
+// out receives the rumor JSON, cleared on any refusal.
+nip17_open :: (recipient:[]u8,recipient_x:[]u8,wrap:string,work:[]u8,out:[]u8)->N17Message {
+  o:=nip59_unwrap_checked(recipient,recipient_x,wrap,work,out,false);
+  if o.error!=NIP59_OK {m:N17Message;m.error=N17_WRAP;m.wrap_error=o.error;return m;}
+  m:=n17_read(o,cast(string)out[0..<o.written],recipient_x);
+  if m.error!=N17_OK {n59_zero(out);}
+  return m;
+}
+
+// book:begin order
+// The indexes of the opened messages in room, oldest first; equal times by
+// rumor id. Returns their count, or -1 when order is too small.
+nip17_order :: (m:[]N17Message,room:[]u8,order:[]int)->int {
+  n:=0;
+  for i:0..<m.count {
+    if m[i].error!=N17_OK || !n17_same(m[i].room[..],room) {continue;}
+    if n==order.count {return -1;}
+    k:=n;order[n]=i;n+=1;
+    while k>0 && n17_before(m[order[k]],m[order[k-1]]) {x:=order[k];order[k]=order[k-1];order[k-1]=x;k-=1;}
+  }
+  return n;
+}
+// book:end order
+n17_before :: (a:N17Message,b:N17Message)->bool {
+  if a.created_at<b.created_at {return true;}
+  if a.created_at>b.created_at {return false;}
+  ids:[64]u8;for c:0..<32 {ids[c]=a.rumor_id[c];ids[32+c]=b.rumor_id[c];}
+  return n17_less_at(ids[..],0,1);
+}
+// The message in order whose subject names the room now: the newest one
+// with a subject tag, or -1.
+nip17_subject :: (m:[]N17Message,order:[]int)->int {
+  for k:0..<order.count {i:=order[order.count-1-k];if m[i].subject_n>=0 {return i;}}
+  return -1;
+}

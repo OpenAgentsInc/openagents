@@ -1292,14 +1292,21 @@
    "number": 60,
    "title": "Private messages",
    "file": "ch060-private-messages.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     25,
     32
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip17.coax",
+    "coax/tests/nostr/nip17_reference.py",
+    "nostr/examples/checks/private-messages.coax",
+    "nostr/examples/private-messages.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

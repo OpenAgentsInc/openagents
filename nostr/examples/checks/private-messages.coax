@@ -1,0 +1,120 @@
+// The checks of private-messages.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/private-messages.coax --run-steps 250000000
+#load "../private-messages.coax";
+
+// book:begin check
+// What coax/tests/nostr/nip17_reference.py prints: a pure-Python NIP-17 on
+// top of chapter 25's nip59_reference.py (integers, hashlib, hmac and
+// base64; it shares no code with Coax), given the same test keys, nonces,
+// aux bytes and time draws. Per message: the rumor id, then the wrap ids in
+// plan order (recipients, then the sender's own copy).
+PY_RUMOR :: [3] string.[
+  "eb4521dd9b5c8e84b55ec8aa59f910613772fb0c7d584ae07cacd9aa2faac811",
+  "385eb8c9c4a1d90c4cc63c8e7870467a1d8e440b2e848a9d6a2ba49b120965ea",
+  "e8a203774e2d8cb13eba01dd4d2cc4e4132f36e2bcc736fe5aa6b9107199f490"];
+PY_WRAP_IDS :: [8] string.[
+  "96a2756d46a71cdeffe0ae578f22978543543dd97c83587e7e97c7775479edef",
+  "fac32add0ca415b9e02809f5211880ecd145d6b0b496af1c185a61098d964ce7",
+  "5f5b46637d1e022b24eee5d861c830e6e410ba77fa5beeb6a6b4b36217ddcb62",
+  "00a06c6461d57c49014977230fb083054baef77240db3eaec0f6d97ae683a203",
+  "df2bbc88f975ee8c4369b17b8b2033976fcf75aa0bbda4c652ba5a2d71b3bf95",
+  "258c3ac91109800c4f1bb8892eba264c4addadadee071c92f02028d486ef281f",
+  "4add4ac97201710b1b25554633c30733faeeddc2146351ca80a956608ccae9b2",
+  "1d91f94cb62d7d8da69757b0c3a26ea66a837db2059c79f53d520ed1d2e4bcac"];
+PY_ROOM_PARTY :: "845f26439ac6d8a4a04cf5432f3bbb5e10e3e70ded1a5a85f0dc745396d1862f";
+PY_ROOM_DIRECT :: "21ef0f45560edb87008736f810a6a9ad4da6c8cf08afb70f98084559d1b71395";
+// What the same script reads from NIP-17's two example wraps, with the
+// keys decoded from NIP-17's nsec strings by its own bech32.
+PY_NIP17_AUTHOR :: "44900586091b284416a0c001f677f9c49f7639a55c3f1e2ec130a8e1a7998e1b";
+PY_NIP17_RUMOR_ID :: "cf4d60706f9681a31c1cd5850779bcabe1578c1ae293296be20748c2e0771749";
+PY_NIP17_ROOM :: "f883ba14095342f975f3e08f63cabcec3ee8beccc764958910873860a98d1008";
+
+same_hex :: (bytes: [32] u8, text: string) -> bool {
+  want: [32] u8; decode_hex(text, want[..]);
+  for i: 0..<32 { if bytes[i] != want[i] { return false; } }
+  return true;
+}
+// A relay list record as a relay would hand it over after checking its
+// signature; the plan reads only the kind, the signer and the tags.
+list_of :: (owner: [32] u8, tags: string) -> NostrEvent { e := nt_event(tags); e.kind = N17_RELAY_LIST; e.public_key = owner; return e; }
+// Sends message m and checks every wrap id against Python's, from index first.
+sends_as_python :: (sender: [] u8, to: [] u8, lists: [] NostrEvent, m: int, at: int, tags: string, content: string, first: int) -> bool {
+  me := x_only_key(sender); p := nip17_plan(me[..], to, lists);
+  if p.error != N17_OK { return false; }
+  fresh := fixed_entropy(m, p.recipients + 1); work: [NIP59_WORK] u8; out: [16384] u8;
+  s := nip17_send(sender, p, at, 14, tags, content, fresh[0..<p.recipients + 1], work[..], out[..], false);
+  if s.error != N17_OK || s.wraps != p.recipients + 1 || !same_hex(s.rumor_id, PY_RUMOR[m]) { return false; }
+  for i: 0..<s.wraps {
+    scratch: [NIP59_REGION] u8;
+    e := nostr_event_read(wrap_of(s, out[..], i), scratch[..], false);
+    if e.error != NE_OK || !same_hex(e.id, PY_WRAP_IDS[first + i]) { return false; }
+  }
+  return m != 0 || wrap_of(s, out[..], 0) == PY_WRAP_0;
+}
+
+#test "all eight wraps of the three messages are the Python reference's" #steps 4000000000 {
+  alice := test_key(ALICE_HEX); bob := test_key(BOB_HEX); carol := test_key(CAROL_HEX);
+  a := x_only_key(alice[..]); b := x_only_key(bob[..]); c := x_only_key(carol[..]);
+  la := list_of(a, "[[\"relay\",\"wss://alice.example\"]]"); lb := list_of(b, "[[\"relay\",\"wss://inbox.nostr.wine\"]]");
+  lc := list_of(c, "[[\"relay\",\"wss://carol.example\"]]");
+  to: [64] u8; lists: [3] NostrEvent;
+  for i: 0..<32 { to[i] = b[i]; to[32 + i] = c[i]; } lists[0] = lb; lists[1] = lc; lists[2] = la;
+  #assert sends_as_python(alice[..], to[..], lists[..], 0, NOW, "[[\"subject\",\"Party\"]]", "Are you going to the party tonight?", 0);
+  for i: 0..<32 { to[i] = a[i]; } lists[0] = la; lists[2] = lb;
+  #assert sends_as_python(bob[..], to[..], lists[..], 1, NOW + 60, "[[\"e\",\"eb4521dd9b5c8e84b55ec8aa59f910613772fb0c7d584ae07cacd9aa2faac811\"]]", "Yes, at nine.", 3);
+  lists[0] = lb; lists[1] = la;
+  #assert sends_as_python(alice[..], b[..], lists[0..<2], 2, NOW + 120, "[]", "Bring the speaker.", 6);
+}
+#test "Python's first wrap opens for Bob in Python's room" #steps 1000000000 {
+  bob := test_key(BOB_HEX); me := x_only_key(bob[..]); work: [NIP59_WORK] u8; out: [NIP59_REGION] u8;
+  m := nip17_open(bob[..], me[..], PY_WRAP_0, work[..], out[..]);
+  #assert m.error == N17_OK && m.members == 3 && same_hex(m.room, PY_ROOM_PARTY) && same_hex(m.rumor_id, PY_RUMOR[0]);
+  #assert m.subject_n == 5 && cast(string) m.subject[0..<5] == "Party";
+}
+#test "NIP-17's two example wraps open with its keys to Python's rumor and room" #steps 2000000000 {
+  sender := test_key(NIP17_SENDER_HEX); receiver := test_key(NIP17_RECEIVER_HEX);
+  s := x_only_key(sender[..]); r := x_only_key(receiver[..]); work: [NIP59_WORK] u8; out: [NIP59_REGION] u8;
+  m := nip17_open(receiver[..], r[..], NIP17_EXAMPLE_1, work[..], out[..]);
+  #assert m.error == N17_OK && same_hex(m.author, PY_NIP17_AUTHOR) && same_hex(m.rumor_id, PY_NIP17_RUMOR_ID) && same_hex(m.room, PY_NIP17_ROOM);
+  #assert cast(string) out[m.content_from..<m.content_to] == "Hola, que tal?" && m.created_at == 1703172058;
+  m = nip17_open(sender[..], s[..], NIP17_EXAMPLE_2, work[..], out[..]);
+  #assert m.error == N17_OK && same_hex(m.author, PY_NIP17_AUTHOR) && same_hex(m.rumor_id, PY_NIP17_RUMOR_ID) && same_hex(m.room, PY_NIP17_ROOM);
+  // Each wrap is for one key only.
+  #assert nip17_open(sender[..], s[..], NIP17_EXAMPLE_1, work[..], out[..]).wrap_error == NIP59_RECIPIENT;
+}
+#test "Dave, with no relay list, makes the send write nothing for anyone" #steps 1000000000 {
+  alice := test_key(ALICE_HEX); a := x_only_key(alice[..]); bob := test_key(BOB_HEX); b := x_only_key(bob[..]);
+  dave := test_key(DAVE_HEX); d := x_only_key(dave[..]);
+  to: [64] u8; for i: 0..<32 { to[i] = b[i]; to[32 + i] = d[i]; }
+  lists: [3] NostrEvent; lists[0] = list_of(b, "[[\"relay\",\"wss://inbox.nostr.wine\"]]"); lists[2] = list_of(a, "[[\"relay\",\"wss://alice.example\"]]");
+  p := nip17_plan(a[..], to[..], lists[..]);
+  #assert p.error == N17_NO_LIST && p.who == 1;
+  fresh := fixed_entropy(3, 3); work: [NIP59_WORK] u8; out: [4096] u8;
+  s := nip17_send(alice[..], p, NOW, 14, "[]", "Party?", fresh[0..<3], work[..], out[..], false);
+  #assert s.error == N17_NO_LIST && s.who == 1 && s.wraps == 0;
+  for x: out { #assert x == 0; }
+  for i: 0..<3 { #assert fresh[i].wrap_key[31] == 0 && fresh[i].seal_back == 0; }
+  // An empty list is the same as none.
+  lists[1] = list_of(d, "[]"); #assert nip17_plan(a[..], to[..], lists[..]).error == N17_NO_LIST;
+}
+#test "a rumor by Alice sealed by Carol is refused as identity" #steps 1000000000 {
+  alice := test_key(ALICE_HEX); carol := test_key(CAROL_HEX); bob := test_key(BOB_HEX);
+  a := x_only_key(alice[..]); b := x_only_key(bob[..]);
+  pre: [NIP59_REGION] u8; body: [NIP59_REGION] u8; id: [32] u8; forged: [NIP59_REGION] u8;
+  work: [NIP59_WORK] u8; out: [NIP59_REGION] u8;
+  n := n59_rumor(a[..], NOW, 14, BOB_TAG, "I am Alice.", pre[..], body[..], id[..]);
+  m := nip17_open(bob[..], b[..], forge(carol[..], b[..], body[0..<n], forged[..]), work[..], out[..]);
+  #assert m.error == N17_WRAP && m.wrap_error == NIP59_IDENTITY;
+  for x: out { #assert x == 0; }
+}
+#test "same_hex notices a change in the first or last byte" {
+  b: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert same_hex(b, zero);
+  b[0] = 1; #assert !same_hex(b, zero);
+  b[0] = 0; b[31] = 1; #assert !same_hex(b, zero);
+}
+// book:end check
+
+// Python's wrap of the first message for Bob, byte for byte.
+PY_WRAP_0 :: "{\"id\":\"96a2756d46a71cdeffe0ae578f22978543543dd97c83587e7e97c7775479edef\",\"pubkey\":\"774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb\",\"created_at\":1793210000,\"kind\":1059,\"tags\":[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]],\"content\":\"AhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIS0zG7EgybrcJcMTtjuIp6HoYJz+NleMbyUsl6kSaXtZ1c8q1yvz87/fGdAKvNcL7K9VihCCrCpcXI/ij1wVqyucD/hHCrRiO17xSr7jMNUb8PBvipIb94vTkJTZMHfv6zGOdzEvzz15SCdC3CyvnRkh2DlVkx8mCRMt/12Ns9ga0rPnzkdtTZ23THZQ2cH4beW3TBmLpaEURPqYuOoj3VeLPbJGyQR8Wj1M1KXYiZtWrbwZjS90B6Lddyt5d9uKMKjs16fmRXw6aTTEfLAkldMko/SOIHVjxHC4f+zXyXO+KX36lPwcilADTDqz5mfkKdWqqByssVIOb679VzxXboquYNdhR1TX3TSq+0xnbtnPw1rxFw4wW9VaFxV/cgMYPUl3WdrBZ/oZMAIzv62NlgfKyrN4qPuEJxOzJAwYQX5+PE6T9p+Dz2ARGxh+sNe5QFGCFX0UNYU6ZiH+2Dnmwrm9ljYzv5iqZjkw4k1MJyYksPfl9LrP39h2Fw3+hT/lYQ+FEEy2aqshqOFtvLwy9wZe9EXeoAW+OlSETjdVPaFBquYiysY0Q/hHNJ75RXpATpbLCXoMGkupJ/s/GS039o8oVAAuFkERMN8bgVFhqMrPsaXyshLn3mym3Hfv71ePG4KT689zYaglrunFeXvbbGZwXzHMEi0/5gwqsWak1oWJ5S6g80UWtUzPmK0CQSu/uN8tWfBAkb1XK7KYZpRruAFTbD4yKzQB24PabC/gzfpMGSzJKDddgRcNEigQyc/jc1EBYtMxKINZ/vwhXC9zi/DGwOJ4PGYx3991w+hBqWAX2WaOt4F3+LuEQl3+W6Qj8A6c5n6EskxHVz+x5ZildRzQIRiYxjDvZfupp3JiVWt+UEfX9E2EOO/1B+YvmF2I8tiwFtEm7Ux71kmfRRMezydrxXppWTtZd5QMKFsFmehQzAtgYNmYRT51ordiCkRXm5bMoeOIWIm8gzlJ6Jq47pHxp8zvgdJP4CFlthaxPapiWriTALYrYDBS2xwFUeM3b7JWzkvICaeBrBHGi/lTd1JGujgG38u/13v532Oak0OMZqgzZuDS5W/fJLO/KN3N0WieL7rGveZ+ZhUzANkW18eaE3AwgOwom2TOAJiNtPSGO9j05yn92qqX3gC9MlmRm1FV4fIdRqBtmmHqxZe4D2bOIGQGlF5iBhO51Y7X5RuAj56/orwgueKEkKsnYArnlTtRPHF0GhgQuEH2iyu7FljJKxrUvhnSSsq5NsPfKZs56yzVb6Lfzx/Omwc267wKeNB5QASIf/hNKw3sElXH5qUWjFluiuu4OpOAuJZVajbMYa7i+nJLwYyKL/PhzxjG9tVXTD1eDxNOgWVJPODPr6i4/nKBzb5epxxgBYm9y62WEaibfknJs9PkQFPtGvLrfstflhBAOKqYR0v0oQkF34IiL1LYXvEDWBvsDwGa6re50s1vHgW0FTj/YiOkpaSq7nAhTSJs+PLq62Le3e8tAaeOANqTrWhGGeF8lUXEFgbtyLHZ/NjUq+DOXgN20XByC8IcknjEXVwQLSlzjHWElu5B9ObKK4A/2XzPgS7M9ePz4UBQHx3PLJMOaBBBC9FRUuw9ci2Gi8Y7OruJup++uQMAX1LJxLukkgW6d46m4dC47A8dngxTZh+3KjFn1qYdUOtR8XmRz04/NNGN2lrwiCNbEMquf5Rp28xjXP7FvoLZBKncwiwVr9yA3ZDI/t4IlMM1VX6AgjoIAjzcyV+1ueJyBr\",\"sig\":\"178c0eab62fc5395aff037f4339d6c35cb76bebc325d36ca533af0581d9fa1d111df48b5bdd148891bcfddc0656a1ca581da95ac078dbd47eb64dd79f645fb8e\"}";

@@ -1,0 +1,250 @@
+// Chapter 60: Alice writes to Bob and Carol over NIP-17. Read everyone's
+// kind 10050 relay list, plan three wraps, send, open each copy as its
+// addressee, order Bob's rooms, then show what is refused. Fixed test keys
+// and fixed stand-ins for host entropy, so the output repeats.
+// Run: coax/bin/coax run nostr/examples/private-messages.coax
+// book:begin example
+#load "../../coax/lib/nostr/nip17.coax";
+#load "../../coax/lib/nostr/nip04.coax";
+#import "Basic";
+
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+STATUS :: [12] string.["ok", "input", "kind", "members", "tags", "file", "no list",
+  "list", "list author", "wrap", "output", "not member"];
+WRAP_STATUS :: [17] string.["ok", "input", "alias", "output", "capacity", "key", "fresh",
+  "wrap", "wrap signature", "recipient", "wrap payload", "seal", "seal signature",
+  "seal payload", "rumor", "identity", "internal"];
+
+// Test keys only: Alice k=3, Bob is BIP-340 vector 1's secret key, Carol
+// k=7, Dave k=9. Never put a real key in an example.
+ALICE_HEX :: "0000000000000000000000000000000000000000000000000000000000000003";
+BOB_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+CAROL_HEX :: "0000000000000000000000000000000000000000000000000000000000000007";
+DAVE_HEX :: "0000000000000000000000000000000000000000000000000000000000000009";
+BOB_TAG :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+NOW :: 1793300000;
+
+test_key :: (text: string) -> [32] u8 { k: [32] u8; decode_hex(text, k[..]); return k; }
+small_key :: (n: int) -> [32] u8 { k: [32] u8; k[31] = cast(u8) n; return k; }
+x_only_key :: (secret: [] u8) -> [32] u8 {
+  aux: [32] u8; sw: [1] NostrSignWork; scratch: [256] u8; out: [256] u8;
+  #assert nostr_event_sign_step(secret, aux[..], 0, 1, "[]", "", sw[..], scratch[..], out[..], false) == EVENT_MORE;
+  return sw[0].pub;
+}
+// What a host's random source would supply for wrap i of message m: a
+// one-time key (k = 11 + 4m + i), two NIP-44 nonces, two BIP-340 aux values,
+// and the draws that date the seal and the wrap back.
+fixed_entropy :: (m: int, wraps: int) -> [N17_MOST + 1] Nip59Fresh {
+  f: [N17_MOST + 1] Nip59Fresh;
+  for i: 0..<wraps {
+    b := (16 * (m * 4 + i + 1)) % 256;
+    f[i].wrap_key = small_key(11 + m * 4 + i);
+    for c: 0..<32 {
+      f[i].seal_nonce[c] = cast(u8) (b + 1); f[i].wrap_nonce[c] = cast(u8) (b + 2);
+      f[i].seal_aux[c] = cast(u8) (b + 3); f[i].wrap_aux[c] = cast(u8) (b + 4);
+    }
+    f[i].seal_back = cast(u64) (3600 * (i + 1) + 600 * m);
+    f[i].wrap_back = cast(u64) (90000 + 7000 * i + 1000 * m);
+  }
+  return f;
+}
+
+// A kind 10050 list signed by its owner, verified and parsed. The event
+// keeps pointing into text, so text must outlive it.
+relay_list :: (owner: [] u8, tags: string, text: [] u8) -> NostrEvent {
+  aux: [32] u8; sw: [1] NostrSignWork; scratch: [4096] u8; pre: [4096] u8;
+  n := n59_sign(owner, aux[..], NOW - 86400, N17_RELAY_LIST, tags, "", sw[..], scratch[..], text);
+  e := nostr_event_verify_vartime(cast(string) text[0..<n], pre[..], false);
+  #assert e.verified;
+  return e;
+}
+print_plan :: (p: N17Plan, names: [] string) {
+  print("plan: %", STATUS[p.error]);
+  if p.who >= 0 { print(" (%)", names[p.who]); }
+  print("\n");
+  if p.error != N17_OK { return; }
+  for i: 0..<p.recipients + 1 {
+    print("  wrap % to %:", i, names[i]);
+    r := p.relays[i]; url := r.url;
+    for k: 0..<r.count { print(" %", cast(string) url[k * N17_URL_MOST..<k * N17_URL_MOST + r.url_n[k]]); }
+    print("\n");
+  }
+}
+// Sends one message and prints each wrap's size, time, id and signer.
+send :: (sender: [] u8, p: N17Plan, m: int, at: int, tags: string, content: string, out: [] u8) -> N17Sent {
+  fresh := fixed_entropy(m, p.recipients + 1); work: [NIP59_WORK] u8;
+  s := nip17_send(sender, p, at, 14, tags, content, fresh[0..<p.recipients + 1], work[..], out, false);
+  print("send: %", STATUS[s.error]);
+  if s.error == N17_WRAP { print(" (%)", WRAP_STATUS[s.wrap_error]); }
+  if s.who >= 0 { print(" at participant %", s.who); }
+  print(", % wraps\n", s.wraps);
+  if s.error != N17_OK { return s; }
+  print_hex("  rumor id", s.rumor_id[..]);
+  for i: 0..<s.wraps {
+    scratch: [NIP59_REGION] u8;
+    e := nostr_event_read(cast(string) out[s.at[i]..<s.at[i] + s.n[i]], scratch[..], false);
+    print("  wrap %: % bytes, created_at %\n", i, s.n[i], e.created_at);
+    print_hex("    id", e.id[..]); print_hex("    signed by", e.public_key[..]);
+  }
+  return s;
+}
+wrap_of :: (s: N17Sent, out: [] u8, i: int) -> string { return cast(string) out[s.at[i]..<s.at[i] + s.n[i]]; }
+
+// Opens text as (secret, its public key) and prints the message.
+open_as :: (label: string, secret: [] u8, me: [] u8, text: string) { kept := open_kept(label, secret, me, text); }
+open_kept :: (label: string, secret: [] u8, me: [] u8, text: string) -> N17Message {
+  work: [NIP59_WORK] u8; out: [NIP59_REGION] u8;
+  m := nip17_open(secret, me, text, work[..], out[..]);
+  print("%: %", label, STATUS[m.error]);
+  if m.error == N17_WRAP { print(" (%)", WRAP_STATUS[m.wrap_error]); }
+  print("\n");
+  if m.error == N17_OK {
+    print_hex("  author", m.author[..]);
+    print("  kind %, created_at %, members %, content %\n", m.kind, m.created_at, m.members,
+          cast(string) out[m.content_from..<m.content_to]);
+    print_hex("  room", m.room[..]);
+    if m.subject_n >= 0 { print("  subject %\n", cast(string) m.subject[0..<m.subject_n]); }
+    if m.has_reply { print_hex("  reply to", m.reply[..]); }
+  }
+  return m;
+}
+
+// Seals any rumor bytes with seal_key and wraps the seal for `to` with a
+// one-time key, skipping every rule nip59_wrap_checked enforces.
+forge :: (seal_key: [] u8, to: [] u8, rumor: [] u8, out: [] u8) -> string {
+  one := small_key(99); f := fixed_entropy(5, 1);
+  ck: [32] u8; work: [2 * NIP59_REGION] u8; pay: [NIP59_REGION] u8;
+  scratch: [NIP59_REGION] u8; seal: [NIP59_REGION] u8; tag: [80] u8;
+  #assert n59_ck(seal_key, to, ck[..]) == NIP44_OK;
+  p := nip44_encrypt_checked(NIP44_COMPAT, ck[..], f[0].seal_nonce[..], rumor, work[..], pay[..], false);
+  sw: [1] NostrSignWork;
+  s := n59_sign(seal_key, f[0].seal_aux[..], NOW - 3600, NIP59_SEAL_KIND, "[]",
+                cast(string) pay[0..<p.written], sw[..], scratch[..], seal[..]);
+  #assert s > 0 && n59_ck(one[..], to, ck[..]) == NIP44_OK;
+  q := nip44_encrypt_checked(NIP44_COMPAT, ck[..], f[0].wrap_nonce[..], seal[0..<s], work[..], pay[..], false);
+  hex: [64] u8; h := hex_encode_checked(cast(string) to, hex[..], false);
+  t := json_raw(tag[..], 0, "[[\"p\",\""); t = json_raw(tag[..], t, cast(string) hex[0..<h.written]); t = json_raw(tag[..], t, "\"]]");
+  ww: [1] NostrSignWork;
+  n := n59_sign(one[..], f[0].wrap_aux[..], NOW - 27200, NIP59_WRAP_KIND, cast(string) tag[0..<t],
+                cast(string) pay[0..<q.written], ww[..], scratch[..], out);
+  return cast(string) out[0..<n];
+}
+
+main :: () {
+  alice := test_key(ALICE_HEX); bob := test_key(BOB_HEX); carol := test_key(CAROL_HEX); dave := test_key(DAVE_HEX);
+  alice_pub := x_only_key(alice[..]); bob_pub := x_only_key(bob[..]);
+  carol_pub := x_only_key(carol[..]); dave_pub := x_only_key(dave[..]);
+  print("keys\n");
+  print_hex("alice", alice_pub[..]); print_hex("bob", bob_pub[..]);
+  print_hex("carol", carol_pub[..]); print_hex("dave", dave_pub[..]);
+
+  // Each list is signed by its owner. Dave has published none.
+  bob_text: [1024] u8; carol_text: [1024] u8; alice_text: [1024] u8; forged_text: [1024] u8;
+  bob_list := relay_list(bob[..], "[[\"relay\",\"wss://inbox.nostr.wine\"],[\"relay\",\"wss://myrelay.nostr1.com\"]]", bob_text[..]);
+  carol_list := relay_list(carol[..], "[[\"relay\",\"wss://carol.example\"]]", carol_text[..]);
+  alice_list := relay_list(alice[..], "[[\"relay\",\"wss://alice.example\"]]", alice_text[..]);
+
+  print("alice to bob and carol\n");
+  to: [64] u8; for i: 0..<32 { to[i] = bob_pub[i]; to[32 + i] = carol_pub[i]; }
+  lists: [3] NostrEvent; lists[0] = bob_list; lists[1] = carol_list; lists[2] = alice_list;
+  plan := nip17_plan(alice_pub[..], to[..], lists[..]);
+  names1 := [3] string.["bob", "carol", "alice"]; print_plan(plan, names1[..]);
+  first: [16384] u8;
+  s0 := send(alice[..], plan, 0, NOW, "[[\"subject\",\"Party\"]]", "Are you going to the party tonight?", first[..]);
+  print("wrap 0: %\n", wrap_of(s0, first[..], 0));
+
+  print("bob replies to the room\n");
+  rid := s0.rumor_id; hex: [64] u8; h := hex_encode_checked(cast(string) rid[..], hex[..], false);
+  reply_tags: [128] u8; t := json_raw(reply_tags[..], 0, "[[\"e\",\"");
+  t = json_raw(reply_tags[..], t, cast(string) hex[0..<h.written]); t = json_raw(reply_tags[..], t, "\"]]");
+  for i: 0..<32 { to[i] = alice_pub[i]; to[32 + i] = carol_pub[i]; }
+  lists[0] = alice_list; lists[1] = carol_list; lists[2] = bob_list;
+  plan = nip17_plan(bob_pub[..], to[..], lists[..]);
+  names2 := [3] string.["alice", "carol", "bob"]; print_plan(plan, names2[..]);
+  second: [16384] u8;
+  s1 := send(bob[..], plan, 1, NOW + 60, cast(string) reply_tags[0..<t], "Yes, at nine.", second[..]);
+
+  print("alice to bob alone\n");
+  lists[0] = bob_list; lists[1] = alice_list;
+  plan = nip17_plan(alice_pub[..], bob_pub[..], lists[0..<2]);
+  names3 := [2] string.["bob", "alice"]; print_plan(plan, names3[..]);
+  third: [16384] u8;
+  s2 := send(alice[..], plan, 2, NOW + 120, "[]", "Bring the speaker.", third[..]);
+
+  print("each addressee opens their copy\n");
+  open_as("carol opens wrap 1 of the first", carol[..], carol_pub[..], wrap_of(s0, first[..], 1));
+  open_as("alice opens her own copy of the first", alice[..], alice_pub[..], wrap_of(s0, first[..], 2));
+  open_as("alice opens wrap 0 of the reply", alice[..], alice_pub[..], wrap_of(s1, second[..], 0));
+  // Bob receives his three out of order: the direct message, his own reply, the first.
+  inbox: [3] N17Message;
+  inbox[0] = open_kept("bob opens wrap 0 of the direct message", bob[..], bob_pub[..], wrap_of(s2, third[..], 0));
+  inbox[1] = open_kept("bob opens his own copy of the reply", bob[..], bob_pub[..], wrap_of(s1, second[..], 2));
+  inbox[2] = open_kept("bob opens wrap 0 of the first", bob[..], bob_pub[..], wrap_of(s0, first[..], 0));
+
+  print("bob's rooms\n");
+  rooms := [2] int.[2, 0];
+  for r: 0..<2 {
+    order: [3] int; room := inbox[rooms[r]].room;
+    n := nip17_order(inbox[..], room[..], order[..]);
+    print_hex("room", room[..]);
+    for k: 0..<n { print("  inbox[%], created_at %\n", order[k], inbox[order[k]].created_at); }
+    sub := nip17_subject(inbox[..], order[0..<n]);
+    if sub >= 0 { subject := inbox[sub].subject; print("  subject: %\n", cast(string) subject[0..<inbox[sub].subject_n]); }
+    else { print("  no subject\n"); }
+  }
+
+  print("refusals\n");
+  for i: 0..<32 { to[i] = bob_pub[i]; to[32 + i] = dave_pub[i]; }
+  none: NostrEvent; lists[0] = bob_list; lists[1] = none; lists[2] = alice_list;
+  plan = nip17_plan(alice_pub[..], to[..], lists[..]);
+  print("alice to bob and dave, ");
+  names4 := [3] string.["bob", "dave", "alice"]; print_plan(plan, names4[..]);
+  scrap: [16384] u8;
+  refused := send(alice[..], plan, 3, NOW, "[]", "Party?", scrap[..]);
+  lists[1] = relay_list(bob[..], "[[\"relay\",\"wss://bob.example\"]]", forged_text[..]);
+  print("dave's list signed by bob, ");
+  names5 := [3] string.["bob", "dave", "alice"]; print_plan(nip17_plan(alice_pub[..], to[..], lists[..]), names5[..]);
+  lists[1] = carol_list;
+  for i: 0..<32 { to[32 + i] = carol_pub[i]; }
+  plan = nip17_plan(alice_pub[..], to[..], lists[..]);
+  fresh := fixed_entropy(4, 3); work: [NIP59_WORK] u8;
+  k4 := nip17_send(alice[..], plan, NOW, 4, "[]", "x", fresh[0..<3], work[..], scrap[..], false);
+  print("a kind 4 message, send: %\n", STATUS[k4.error]);
+  shared: [32] u8; legacy: [64] u8;
+  print("nip04_encrypt: %\n", ifx nip04_encrypt(shared[..], "x", legacy[..]).error == NIP04_RETIRED then "retired" else "made");
+
+  pre: [NIP59_REGION] u8; body: [NIP59_REGION] u8; id: [32] u8; forged: [NIP59_REGION] u8;
+  n := n59_rumor(alice_pub[..], NOW, 14, BOB_TAG, "I am Alice.", pre[..], body[..], id[..]);
+  open_as("alice's rumor sealed by carol", bob[..], bob_pub[..], forge(carol[..], bob_pub[..], body[0..<n], forged[..]));
+  aux: [32] u8; sw: [1] NostrSignWork;
+  n = n59_sign(alice[..], aux[..], NOW, 14, BOB_TAG, "signed", sw[..], pre[..], body[..]);
+  open_as("a signed rumor", bob[..], bob_pub[..], forge(alice[..], bob_pub[..], body[0..<n], forged[..]));
+  fresh = fixed_entropy(6, 1);
+  w := nip59_wrap_checked(alice[..], dave_pub[..], NOW, 14, BOB_TAG, "for bob only", NIP59_WRAP_KIND,
+                          fresh[0..<1], work[..], forged[..], false);
+  open_as("a wrap to dave of a rumor naming only bob", dave[..], dave_pub[..], cast(string) forged[0..<w.written]);
+  open_as("bob opens carol's wrap", bob[..], bob_pub[..], wrap_of(s0, first[..], 1));
+
+  print("NIP-17's example\n");
+  sender := test_key(NIP17_SENDER_HEX); receiver := test_key(NIP17_RECEIVER_HEX);
+  sender_pub := x_only_key(sender[..]); receiver_pub := x_only_key(receiver[..]);
+  open_as("the receiver opens the first wrap", receiver[..], receiver_pub[..], NIP17_EXAMPLE_1);
+  open_as("the sender opens the second wrap", sender[..], sender_pub[..], NIP17_EXAMPLE_2);
+}
+// book:end example
+
+// NIP-17's "Examples": the secret keys it publishes as nsec strings
+// (nsec1w8udu59y... sends, nsec12ywtkplv... receives), here as hex, and its
+// two kind 1059 wraps exactly as printed in nostr/nips/official/17.md.
+NIP17_SENDER_HEX :: "71f8de50a46c9996a21123280c6217c48f67d1378ff4fb14d4f7612181a1ebde";
+NIP17_RECEIVER_HEX :: "511cbb07ec2028bd2dcd039c447581a7f754df9d9a0e5c16b19a5422ab391563";
+NIP17_EXAMPLE_1 :: "{\n   \"id\":\"2886780f7349afc1344047524540ee716f7bdc1b64191699855662330bf235d8\",\n   \"pubkey\":\"8f8a7ec43b77d25799281207e1a47f7a654755055788f7482653f9c9661c6d51\",\n   \"created_at\":1703128320,\n   \"kind\":1059,\n   \"tags\":[\n      [\"p\", \"918e2da906df4ccd12c8ac672d8335add131a4cf9d27ce42b3bb3625755f0788\"]\n   ],\n   \"content\":\"AsqzdlMsG304G8h08bE67dhAR1gFTzTckUUyuvndZ8LrGCvwI4pgC3d6hyAK0Wo9gtkLqSr2rT2RyHlE5wRqbCOlQ8WvJEKwqwIJwT5PO3l2RxvGCHDbd1b1o40ZgIVwwLCfOWJ86I5upXe8K5AgpxYTOM1BD+SbgI5jOMA8tgpRoitJedVSvBZsmwAxXM7o7sbOON4MXHzOqOZpALpS2zgBDXSAaYAsTdEM4qqFeik+zTk3+L6NYuftGidqVluicwSGS2viYWr5OiJ1zrj1ERhYSGLpQnPKrqDaDi7R1KrHGFGyLgkJveY/45y0rv9aVIw9IWF11u53cf2CP7akACel2WvZdl1htEwFu/v9cFXD06fNVZjfx3OssKM/uHPE9XvZttQboAvP5UoK6lv9o3d+0GM4/3zP+yO3C0NExz1ZgFmbGFz703YJzM+zpKCOXaZyzPjADXp8qBBeVc5lmJqiCL4solZpxA1865yPigPAZcc9acSUlg23J1dptFK4n3Tl5HfSHP+oZ/QS/SHWbVFCtq7ZMQSRxLgEitfglTNz9P1CnpMwmW/Y4Gm5zdkv0JrdUVrn2UO9ARdHlPsW5ARgDmzaxnJypkfoHXNfxGGXWRk0sKLbz/ipnaQP/eFJv/ibNuSfqL6E4BnN/tHJSHYEaTQ/PdrA2i9laG3vJti3kAl5Ih87ct0w/tzYfp4SRPhEF1zzue9G/16eJEMzwmhQ5Ec7jJVcVGa4RltqnuF8unUu3iSRTQ+/MNNUkK6Mk+YuaJJs6Fjw6tRHuWi57SdKKv7GGkr0zlBUU2Dyo1MwpAqzsCcCTeQSv+8qt4wLf4uhU9Br7F/L0ZY9bFgh6iLDCdB+4iABXyZwT7Ufn762195hrSHcU4Okt0Zns9EeiBOFxnmpXEslYkYBpXw70GmymQfJlFOfoEp93QKCMS2DAEVeI51dJV1e+6t3pCSsQN69Vg6jUCsm1TMxSs2VX4BRbq562+VffchvW2BB4gMjsvHVUSRl8i5/ZSDlfzSPXcSGALLHBRzy+gn0oXXJ/447VHYZJDL3Ig8+QW5oFMgnWYhuwI5QSLEyflUrfSz+Pdwn/5eyjybXKJftePBD9Q+8NQ8zulU5sqvsMeIx/bBUx0fmOXsS3vjqCXW5IjkmSUV7q54GewZqTQBlcx+90xh/LSUxXex7UwZwRnifvyCbZ+zwNTHNb12chYeNjMV7kAIr3cGQv8vlOMM8ajyaZ5KVy7HpSXQjz4PGT2/nXbL5jKt8Lx0erGXsSsazkdoYDG3U\",\n   \"sig\":\"a3c6ce632b145c0869423c1afaff4a6d764a9b64dedaf15f170b944ead67227518a72e455567ca1c2a0d187832cecbde7ed478395ec4c95dd3e71749ed66c480\"\n}";
+NIP17_EXAMPLE_2 :: "{\n   \"id\":\"162b0611a1911cfcb30f8a5502792b346e535a45658b3a31ae5c178465509721\",\n   \"pubkey\":\"626be2af274b29ea4816ad672ee452b7cf96bbb4836815a55699ae402183f512\",\n   \"created_at\":1702711587,\n   \"kind\":1059,\n   \"tags\":[\n      [\"p\", \"44900586091b284416a0c001f677f9c49f7639a55c3f1e2ec130a8e1a7998e1b\"]\n   ],\n   \"content\":\"AsTClTzr0gzXXji7uye5UB6LYrx3HDjWGdkNaBS6BAX9CpHa+Vvtt5oI2xJrmWLen+Fo2NBOFazvl285Gb3HSM82gVycrzx1HUAaQDUG6HI7XBEGqBhQMUNwNMiN2dnilBMFC3Yc8ehCJT/gkbiNKOpwd2rFibMFRMDKai2mq2lBtPJF18oszKOjA+XlOJV8JRbmcAanTbEK5nA/GnG3eGUiUzhiYBoHomj3vztYYxc0QYHOx0WxiHY8dsC6jPsXC7f6k4P+Hv5ZiyTfzvjkSJOckel1lZuE5SfeZ0nduqTlxREGeBJ8amOykgEIKdH2VZBZB+qtOMc7ez9dz4wffGwBDA7912NFS2dPBr6txHNxBUkDZKFbuD5wijvonZDvfWq43tZspO4NutSokZB99uEiRH8NAUdGTiNb25m9JcDhVfdmABqTg5fIwwTwlem5aXIy8b66lmqqz2LBzJtnJDu36bDwkILph3kmvaKPD8qJXmPQ4yGpxIbYSTCohgt2/I0TKJNmqNvSN+IVoUuC7ZOfUV9lOV8Ri0AMfSr2YsdZ9ofV5o82ClZWlWiSWZwy6ypa7CuT1PEGHzywB4CZ5ucpO60Z7hnBQxHLiAQIO/QhiBp1rmrdQZFN6PUEjFDloykoeHe345Yqy9Ke95HIKUCS9yJurD+nZjjgOxZjoFCsB1hQAwINTIS3FbYOibZnQwv8PXvcSOqVZxC9U0+WuagK7IwxzhGZY3vLRrX01oujiRrevB4xbW7Oxi/Agp7CQGlJXCgmRE8Rhm+Vj2s+wc/4VLNZRHDcwtfejogjrjdi8p6nfUyqoQRRPARzRGUnnCbh+LqhigT6gQf3sVilnydMRScEc0/YYNLWnaw9nbyBa7wFBAiGbJwO40k39wj+xT6HTSbSUgFZzopxroO3f/o4+ubx2+IL3fkev22mEN38+dFmYF3zE+hpE7jVxrJpC3EP9PLoFgFPKCuctMnjXmeHoiGs756N5r1Mm1ffZu4H19MSuALJlxQR7VXE/LzxRXDuaB2u9days/6muP6gbGX1ASxbJd/ou8+viHmSC/ioHzNjItVCPaJjDyc6bv+gs1NPCt0qZ69G+JmgHW/PsMMeL4n5bh74g0fJSHqiI9ewEmOG/8bedSREv2XXtKV39STxPweceIOh0k23s3N6+wvuSUAJE7u1LkDo14cobtZ/MCw/QhimYPd1u5HnEJvRhPxz0nVPz0QqL/YQeOkAYk7uzgeb2yPzJ6DBtnTnGDkglekhVzQBFRJdk740LEj6swkJ\",\n   \"sig\":\"c94e74533b482aa8eeeb54ae72a5303e0b21f62909ca43c8ef06b0357412d6f8a92f96e1a205102753777fd25321a58fba3fb384eee114bd53ce6c06a1c22bab\"\n}";
