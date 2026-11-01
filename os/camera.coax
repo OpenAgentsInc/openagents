@@ -1,0 +1,292 @@
+// CoderOS camera: the command side of the camera daemon (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// step 2 row 5), in place of coderos-camera's CLI (crates/coderos-camera, openagents 2ca255550e~1).
+//   coax/web/tool.sh os/camera.coax [--json] status | outputs | record start [<path>] | record stop
+//                                            | hands on | hands off | stop
+// Each verb is one JSON line on the daemon's control socket, $CODEROS_CAMERA_DIR/control.sock (else
+// $XDG_RUNTIME_DIR/coderos-camera/, else ~/.openagents/camera/), and its answer printed as the Rust
+// command printed it; --json prints the answer as JSON in the Rust command's field order. A refusal
+// or an answer this side does not know exits 1. `serve`, the daemon itself, is not ported yet.
+// One difference: an answer that does not parse names what is wrong in words of its own, where
+// the Rust command quoted serde's error with a line and column. The output and exit are the same.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+#load "record-policy.coax";
+
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+
+CAM_USAGE :: "usage: coderos-camera [--json] serve | status | outputs | record start [<path>] | record stop | hands on | hands off | stop";
+CAM_ANSWER_MS :: 60000;
+
+// ---- words to a request
+
+Verb :: struct { ok: bool; type: string; path: string; has_path: bool; }
+// parse_words: the verb the words name; ok false when they name none.
+cam_verb :: (w: [] string) -> Verb {
+  if w.count == 1 {
+    if w[0] == "status" || w[0] == "outputs" || w[0] == "stop" { return Verb.{ok = true, type = w[0]}; }
+  }
+  if w.count == 2 {
+    if w[0] == "record" && w[1] == "start" { return Verb.{ok = true, type = "record_start"}; }
+    if w[0] == "record" && w[1] == "stop" { return Verb.{ok = true, type = "record_stop"}; }
+    if w[0] == "hands" && w[1] == "on" { return Verb.{ok = true, type = "hands_on"}; }
+    if w[0] == "hands" && w[1] == "off" { return Verb.{ok = true, type = "hands_off"}; }
+  }
+  if w.count == 3 && w[0] == "record" && w[1] == "start" { return Verb.{ok = true, type = "record_start", path = w[2], has_path = true}; }
+  return Verb.{};
+}
+// The request line: generation 1, the type, and record_start's path (null when none was given).
+cam_request :: (v: Verb, o: [] Jo) {
+  jo_obj(o); jo_key(o, "generation"); jo_int(o, 1); jo_key(o, "type"); jo_str(o, v.type);
+  if v.type == "record_start" { jo_key(o, "path"); if v.has_path { jo_str(o, v.path); } else { jo_null(o); } }
+  jo_end(o);
+}
+#test "words and requests" {
+  w1 := [1] string.["status"]; w2 := [2] string.["record", "start"]; w3 := [3] string.["record", "start", "/tmp/a.mp4"];
+  w4 := [2] string.["hands", "sideways"]; w5 := [2] string.["hands", "off"];
+  #assert cam_verb(w1[..]).type == "status" && cam_verb(w5[..]).type == "hands_off" && !cam_verb(w4[..]).ok && !cam_verb(w1[0..<0]).ok;
+  b: [256] u8; o: [1] Jo;
+  jo_start(o[..], b[..]); cam_request(cam_verb(w3[..]), o[..]);
+  #assert jo_text(o[..]) == "{\"generation\":1,\"type\":\"record_start\",\"path\":\"/tmp/a.mp4\"}";
+  jo_start(o[..], b[..]); cam_request(cam_verb(w2[..]), o[..]);
+  #assert jo_text(o[..]) == "{\"generation\":1,\"type\":\"record_start\",\"path\":null}";
+  jo_start(o[..], b[..]); cam_request(cam_verb(w1[..]), o[..]);
+  #assert jo_text(o[..]) == "{\"generation\":1,\"type\":\"status\"}";
+}
+
+// ---- an answer to text
+
+// A string field's text (decoded), "" when it is missing or not a string.
+cam_str :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  v := jv_get(d, at, key);
+  if v < 0 || jv_kind(d, v) != JV_STRING { return ""; }
+  m := jv_str(d, v, out); return cast(string) out[0..<ifx m > 0 then m else 0];
+}
+cam_num :: (d: Jv, at: int, key: string) -> string { v := jv_get(d, at, key); return ifx v >= 0 && jv_kind(d, v) == JV_NUMBER then jv_raw(d, v) else "0"; }
+cam_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+// output_line: "NAME TARGET: STATE (N frames, M dropped)", the target left out when there is none.
+cam_output :: (d: Jv, at: int, out: [] u8, n: int) -> int {
+  b: [4096] u8; m := cam_put(out, n, cam_str(d, at, "name", b[..]));
+  t := jv_get(d, at, "target");
+  if t >= 0 && jv_kind(d, t) == JV_STRING { m = cam_put(out, m, " "); m = cam_put(out, m, cam_str(d, at, "target", b[..])); }
+  m = cam_put(out, m, ": "); m = cam_put(out, m, cam_str(d, at, "state", b[..]));
+  m = cam_put(out, m, " ("); m = cam_put(out, m, cam_num(d, at, "frames")); m = cam_put(out, m, " frames, ");
+  m = cam_put(out, m, cam_num(d, at, "dropped")); m = cam_put(out, m, " dropped)");
+  return m;
+}
+cam_outputs :: (d: Jv, list: int, out: [] u8, n: int) -> int {
+  m := n; first := true;
+  c := ifx list >= 0 && jv_kind(d, list) == JV_ARRAY then d.nodes[list].first else -1;
+  while c >= 0 { if !first { m = cam_put(out, m, "\n"); } first = false; m = cam_output(d, c, out, m); c = d.nodes[c].next; }
+  return m;
+}
+CAM_OK :: 0; CAM_REFUSED :: 1;
+Rendered :: struct { text: string; code: int; }
+// render: the answer as the Rust command printed it.
+cam_render :: (d: Jv, out: [] u8) -> Rendered {
+  tb: [64] u8; t := cam_str(d, 0, "type", tb[..]);
+  b: [4096] u8; f: [64] u8; n := 0;
+  if t == "status" {
+    n = cam_put(out, 0, "camera "); n = cam_put(out, n, cam_str(d, 0, "device", b[..])); n = cam_put(out, n, " "); n = cam_put(out, n, cam_str(d, 0, "format", b[..]));
+    n = cam_put(out, n, " "); n = cam_put(out, n, cam_num(d, 0, "width")); n = cam_put(out, n, "x"); n = cam_put(out, n, cam_num(d, 0, "height"));
+    n = cam_put(out, n, ", "); n = cam_put(out, n, cam_num(d, 0, "frames")); n = cam_put(out, n, " frames, ");
+    n = cam_put(out, n, rec_fixed(rec_num(cam_num(d, 0, "fps")), 1, f[..])); n = cam_put(out, n, " a second");
+    outs := jv_get(d, 0, "outputs");
+    if outs >= 0 && d.nodes[outs].first >= 0 { n = cam_put(out, n, "\n"); n = cam_outputs(d, outs, out, n); }
+    n = cam_put(out, n, "\nhands: "); n = cam_put(out, n, cam_str(d, 0, "hands", b[..]));
+    r := jv_get(d, 0, "recording");
+    if r >= 0 && jv_kind(d, r) == JV_STRING { n = cam_put(out, n, "\nrecording: "); n = cam_put(out, n, cam_str(d, 0, "recording", b[..])); }
+    return Rendered.{text = cast(string) out[0..<n], code = CAM_OK};
+  }
+  if t == "outputs" { n = cam_outputs(d, jv_get(d, 0, "outputs"), out, 0); return Rendered.{text = cast(string) out[0..<n], code = CAM_OK}; }
+  if t == "done" { return Rendered.{text = "done", code = CAM_OK}; }
+  if t == "recorded" {
+    n = cam_put(out, 0, "Recording saved: "); n = cam_put(out, n, cam_str(d, 0, "path", b[..])); n = cam_put(out, n, " (");
+    n = cam_put(out, n, rec_fixed(rec_num(cam_num(d, 0, "seconds")), 1, f[..])); n = cam_put(out, n, "s, "); n = cam_put(out, n, cam_num(d, 0, "frames"));
+    n = cam_put(out, n, " frames at "); n = cam_put(out, n, cam_num(d, 0, "fps")); n = cam_put(out, n, " fps)");
+    return Rendered.{text = cast(string) out[0..<n], code = CAM_OK};
+  }
+  if t == "refused" {
+    n = cam_put(out, 0, "refused ("); n = cam_put(out, n, cam_str(d, 0, "code", b[..])); n = cam_put(out, n, "): "); n = cam_put(out, n, cam_str(d, 0, "message", b[..]));
+    return Rendered.{text = cast(string) out[0..<n], code = CAM_REFUSED};
+  }
+  return Rendered.{text = "the daemon answered a reply this build does not know", code = CAM_REFUSED};
+}
+// The answer as serde wrote Answer: generation, type, then the reply's fields in their order.
+cam_json :: (d: Jv, o: [] Jo) {
+  tb: [64] u8; t := cam_str(d, 0, "type", tb[..]);
+  jo_obj(o); jo_key(o, "generation"); jo_int(o, 1);
+  known := t == "status" || t == "outputs" || t == "done" || t == "recorded" || t == "refused";
+  jo_key(o, "type"); jo_str(o, ifx known then t else "unknown");
+  if t == "status" {
+    keys := [9] string.["device", "format", "width", "height", "frames", "fps", "hands", "recording", "outputs"];
+    for k: keys { jo_key(o, k); if k == "outputs" { cam_json_outputs(d, jv_get(d, 0, k), o); } else { cam_json_value(d, jv_get(d, 0, k), o); } }
+  } else if t == "outputs" { jo_key(o, "outputs"); cam_json_outputs(d, jv_get(d, 0, "outputs"), o); }
+  else if t == "recorded" { keys := [4] string.["path", "seconds", "frames", "fps"]; for k: keys { jo_key(o, k); cam_json_value(d, jv_get(d, 0, k), o); } }
+  else if t == "refused" { keys := [2] string.["code", "message"]; for k: keys { jo_key(o, k); cam_json_value(d, jv_get(d, 0, k), o); } }
+  jo_end(o);
+}
+cam_json_outputs :: (d: Jv, list: int, o: [] Jo) {
+  jo_arr(o);
+  c := ifx list >= 0 && jv_kind(d, list) == JV_ARRAY then d.nodes[list].first else -1;
+  keys := [5] string.["name", "target", "state", "frames", "dropped"];
+  while c >= 0 { jo_obj(o); for k: keys { jo_key(o, k); cam_json_value(d, jv_get(d, c, k), o); } jo_end(o); c = d.nodes[c].next; }
+  jo_end(o);
+}
+cam_json_value :: (d: Jv, at: int, o: [] Jo) {
+  if at < 0 { jo_null(o); return; }
+  if jv_kind(d, at) == JV_STRING { b: [65536] u8; m := jv_str(d, at, b[..]); jo_str(o, cast(string) b[0..<ifx m > 0 then m else 0]); return; }
+  jo_raw(o, jv_raw(d, at));
+}
+#test "answers as the Rust command printed them" {
+  nodes: [512] JvNode; d: [1] Jv; b: [4096] u8;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"status\",\"device\":\"/dev/video0\",\"format\":\"MJPG\",\"width\":1280,\"height\":720,\"frames\":905,\"fps\":29.96,\"hands\":\"off\",\"recording\":null,\"outputs\":[{\"name\":\"loopback\",\"target\":\"/dev/video10\",\"state\":\"writing\",\"frames\":900,\"dropped\":5},{\"name\":\"recording\",\"target\":null,\"state\":\"idle\",\"frames\":0,\"dropped\":0}]}", nodes[..]);
+  r := cam_render(d[0], b[..]);
+  #assert r.code == CAM_OK && r.text == "camera /dev/video0 MJPG 1280x720, 905 frames, 30.0 a second\nloopback /dev/video10: writing (900 frames, 5 dropped)\nrecording: idle (0 frames, 0 dropped)\nhands: off";
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"recorded\",\"path\":\"/v/a.mp4\",\"seconds\":12.25,\"frames\":367,\"fps\":30}", nodes[..]);
+  #assert cam_render(d[0], b[..]).text == "Recording saved: /v/a.mp4 (12.2s, 367 frames at 30 fps)";
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"refused\",\"code\":\"no_recording\",\"message\":\"no recording runs\"}", nodes[..]);
+  r = cam_render(d[0], b[..]); #assert r.code == CAM_REFUSED && r.text == "refused (no_recording): no recording runs";
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"streaming\"}", nodes[..]);
+  r = cam_render(d[0], b[..]); #assert r.code == CAM_REFUSED;
+  ob: [1024] u8; o: [1] Jo; jo_start(o[..], ob[..]); cam_json(d[0], o[..]);
+  #assert jo_text(o[..]) == "{\"generation\":1,\"type\":\"unknown\"}";
+}
+
+// Whether the answer has the fields and types serde needs to read it as an Answer (a type this
+// side does not know needs only the generation): "" when it does, else what is wrong.
+cam_check :: (d: Jv) -> string {
+  if !cam_uint(d, 0, "generation") { return "generation is not a u32"; }
+  tb: [64] u8; t := cam_str(d, 0, "type", tb[..]);
+  if jv_kind(d, jv_get(d, 0, "type")) != JV_STRING { return "missing field `type`"; }
+  if t == "status" {
+    ks := [3] string.["device", "format", "hands"];
+    for k: ks { if !cam_is_str(d, 0, k) { return "a status string field is missing or not a string"; } }
+    kn := [3] string.["width", "height", "frames"];
+    for k: kn { if !cam_uint(d, 0, k) { return "a status count is missing or not an unsigned integer"; } }
+    if jv_kind(d, jv_get(d, 0, "fps")) != JV_NUMBER { return "fps is missing or not a number"; }
+    if !cam_str_or_null(d, 0, "recording") { return "recording is not a string or null"; }
+    return cam_check_outputs(d, jv_get(d, 0, "outputs"));
+  }
+  if t == "outputs" { return cam_check_outputs(d, jv_get(d, 0, "outputs")); }
+  if t == "recorded" {
+    if !cam_is_str(d, 0, "path") || jv_kind(d, jv_get(d, 0, "seconds")) != JV_NUMBER || !cam_uint(d, 0, "frames") || !cam_uint(d, 0, "fps") { return "the receipt's fields are missing or of the wrong type"; }
+  }
+  if t == "refused" { if !cam_is_str(d, 0, "code") || !cam_is_str(d, 0, "message") { return "the refusal's fields are missing or not strings"; } }
+  return "";
+}
+cam_check_outputs :: (d: Jv, list: int) -> string {
+  if list < 0 || jv_kind(d, list) != JV_ARRAY { return "outputs is missing or not an array"; }
+  c := d.nodes[list].first;
+  while c >= 0 {
+    if jv_kind(d, c) != JV_OBJECT || !cam_is_str(d, c, "name") || !cam_is_str(d, c, "state") || !cam_str_or_null(d, c, "target") || !cam_uint(d, c, "frames") || !cam_uint(d, c, "dropped") { return "an output's fields are missing or of the wrong type"; }
+    c = d.nodes[c].next;
+  }
+  return "";
+}
+cam_is_str :: (d: Jv, at: int, k: string) -> bool { return jv_kind(d, jv_get(d, at, k)) == JV_STRING; }
+// A field serde reads as Option<String>: a string, null, or missing.
+cam_str_or_null :: (d: Jv, at: int, k: string) -> bool { v := jv_get(d, at, k); return v < 0 || jv_kind(d, v) == JV_STRING || jv_kind(d, v) == JV_NULL; }
+// An unsigned integer: digits only (serde refuses a sign, a point and an exponent for u32 and u64).
+cam_uint :: (d: Jv, at: int, k: string) -> bool {
+  v := jv_get(d, at, k);
+  if v < 0 || jv_kind(d, v) != JV_NUMBER { return false; }
+  t := jv_raw(d, v); if t.count == 0 || t.count > 20 { return false; }
+  for c: t { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+#test "answers serde would refuse" {
+  nodes: [256] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"outputs\",\"outputs\":[{\"name\":\"a\",\"target\":null,\"state\":\"s\",\"frames\":1,\"dropped\":\"x\"}]}", nodes[..]);
+  #assert cam_check(d[0]).count > 0;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"outputs\",\"outputs\":[{\"name\":\"a\",\"state\":\"s\",\"frames\":1,\"dropped\":0}]}", nodes[..]);
+  #assert cam_check(d[0]) == "";
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"recorded\",\"path\":\"p\",\"seconds\":1,\"frames\":-1,\"fps\":30}", nodes[..]);
+  #assert cam_check(d[0]).count > 0;
+  #assert jv_parse(d[..], "{\"type\":\"done\"}", nodes[..]); #assert cam_check(d[0]).count > 0;
+  #assert jv_parse(d[..], "{\"generation\":1,\"type\":\"later\",\"x\":[]}", nodes[..]); #assert cam_check(d[0]) == "";
+}
+
+// ---- the socket
+
+cam_dir :: (out: [] u8) -> string {
+  b: [4096] u8; t := proc_getenv("CODEROS_CAMERA_DIR", b[..]);
+  if t.count > 0 { n := cam_put(out, 0, t); return cast(string) out[0..<n]; }
+  t = proc_getenv("XDG_RUNTIME_DIR", b[..]);
+  if t.count > 0 { n := cam_put(out, 0, t); n = cam_put(out, n, "/coderos-camera"); return cast(string) out[0..<n]; }
+  t = proc_getenv("HOME", b[..]); if t.count == 0 { t = "/tmp"; }
+  n := cam_put(out, 0, t); n = cam_put(out, n, "/.openagents/camera"); return cast(string) out[0..<n];
+}
+// One request line and the first answer line (without its newline): the length, -1 when nothing
+// listens, -2 when the answer stopped coming.
+cam_speak :: (socket: string, line: string, out: [] u8) -> int {
+  for c: socket { r := cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(CAM_ANSWER_MS);
+  if h < 0 { return -1; }
+  for c: line { r := cxsock_write(h, cast(int) c); }
+  r := cxsock_write(h, 10);
+  if cxsock_flush(h, CAM_ANSWER_MS) != 0 { x := cxsock_close(h); return -2; }
+  n := 0;
+  while n < out.count {
+    got := cxsock_read(h, CAM_ANSWER_MS);
+    if got == -1 { break; }
+    if got < 0 { x := cxsock_close(h); return -2; }
+    done := false;
+    for i: 0..<got { c := cxsock_byte(h, i); if c == 10 { done = true; break; } if n < out.count { out[n] = cast,trunc(u8) c; n += 1; } }
+    if done { break; }
+  }
+  x := cxsock_close(h);
+  return n;
+}
+cam_blank :: (s: string) -> bool { for c: s { if c != ' ' && c != '\t' && c != '\r' && c != '\n' { return false; } } return true; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  json := false; words: [64] string; nw := 0;
+  for i: 0..<ifx ok then args_count(a[..]) else 0 {
+    x := args_at(a[..], i);
+    if x == "--json" { json = true; }
+    else if x == "-h" || x == "--help" { print("%\n", CAM_USAGE); return 0; }
+    else if nw < words.count { words[nw] = x; nw += 1; }
+  }
+  if nw > 0 && words[0] == "serve" { tool_errln("coderos-camera: serve is not ported to Coax yet; the Rust daemon serves"); return 1; }
+  v := cam_verb(words[0..<nw]);
+  if !v.ok {
+    if nw == 0 { tool_errln(CAM_USAGE); return 2; }
+    for i: 0..<nw { if i > 0 { tool_err(" "); } tool_err(words[i]); }
+    tool_err(": not a verb\n"); tool_errln(CAM_USAGE);
+    return 2;
+  }
+  db: [4096] u8; sb: [4200] u8;
+  dir := cam_dir(db[..]); n := cam_put(sb[..], 0, dir); n = cam_put(sb[..], n, "/control.sock"); socket := cast(string) sb[0..<n];
+  rb: [1024] u8; ro: [1] Jo; jo_start(ro[..], rb[..]); cam_request(v, ro[..]);
+  ab: [1048576] u8; m := cam_speak(socket, jo_text(ro[..]), ab[..]);
+  if m == -1 {
+    tool_err("coderos-camera: no camera daemon at "); tool_err(socket);
+    tool_err(ifx fs_exists(socket) then ": Connection refused (os error 111)" else ": No such file or directory (os error 2)");
+    tool_errln("; start one with `coderos-camera serve`");
+    return 1;
+  }
+  // the Rust command's read timed out after 60 s with EAGAIN; a broken stream is said the same way
+  if m == -2 { tool_err("coderos-camera: "); tool_err(socket); tool_errln(": Resource temporarily unavailable (os error 11)"); return 1; }
+  line := cast(string) ab[0..<m];
+  if cam_blank(line) { tool_err("coderos-camera: the daemon at "); tool_err(socket); tool_errln(" closed without an answer"); return 1; }
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { tool_errln("coderos-camera: the daemon's answer did not parse: not a JSON object"); return 1; }
+  wrong := cam_check(d[0]);
+  if wrong.count > 0 { tool_err("coderos-camera: the daemon's answer did not parse: "); tool_errln(wrong); return 1; }
+  tb: [1048576] u8; r := cam_render(d[0], tb[..]);
+  if json { jb: [1048576] u8; o: [1] Jo; jo_start(o[..], jb[..]); cam_json(d[0], o[..]); print("%\n", jo_text(o[..])); }
+  else { print("%\n", r.text); }
+  return r.code;
+}

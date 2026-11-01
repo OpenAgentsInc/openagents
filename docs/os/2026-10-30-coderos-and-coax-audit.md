@@ -362,6 +362,20 @@ compiler and the examples have not been run on Linux yet.
   together. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
+- **Step 2 row 5, the camera daemon: started.** `os/camera.coax` is the
+  command side of `coderos-camera`: every verb but `serve`, as one JSON
+  line on the daemon's control socket. On coderos-4080 it matched the Rust
+  command's output, `--json` output, exit status and requests in 33 cases
+  against a stand-in daemon (every reply type, refusals, answers serde
+  would refuse, a daemon that closes or never answers, bad words) and on
+  `status` and `outputs` against the live daemon (read-only verbs only;
+  the camera itself was not opened). Left: `serve` (V4L2 capture through a
+  C face, the loopback, the recording pipe, the hands socket) and the
+  landmark model as a Coax kernel. Checking capture needs the camera,
+  which the running daemon holds, so that check waits for an agreed time.
+  On 2026-10-31 two `coderos-camera serve` processes were running there,
+  and the one that answers reports that another process streams
+  `/dev/video0`.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
   integers and floats (a pointer and a length), so a C face can fill a Coax
