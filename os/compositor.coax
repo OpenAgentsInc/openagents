@@ -105,7 +105,7 @@ CxSurf :: struct {
   gx: int; gy: int; gw: int; gh: int; // the window geometry inside the surface
   cw: int; ch: int; cstate: int;      // the last size and states sent
   title: [128] u8; nt: int; app: [128] u8; na: int;
-  noborder: bool;   // a window rule took its border away
+  noborder: bool; ruled: bool; nofull: bool;   // what a window rule set: no border, matched already, no fullscreen asked by the client
   aspect: f32;      // width over height a resize keeps (keep_aspect_ratio), or 0
 }
 // A clipboard source: the client offering it and the types it offers.
@@ -135,6 +135,7 @@ Cx :: struct {
   asking: int; armed: int; armed_until: int;   // Super+W: the window being asked about, the one a notice armed
   drag: int; drag_left: bool; drag_top: bool;   // Super + a held mouse button: 272 moves a float, 273 resizes
   dmg: [4] int; prev: [4] int; clip: [4] int;   // what changed since the last frame, the frame before's, the box being drawn
+  rules: [1] CxRules;
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
 }
 
@@ -482,10 +483,10 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
       sl := cx_rd(a, at); n := cx_min(cx_max(sl - 1, 0), 127);
       for i: 0..<n { if op == 2 { x[0].surfs[s].title[i] = a[at + 4 + i]; } else { x[0].surfs[s].app[i] = a[at + 4 + i]; } }
       if op == 2 { x[0].surfs[s].nt = n; } else { x[0].surfs[s].na = n; }
-      if op == 2 && x[0].surfs[s].win != 0 && !x[0].surfs[s].noborder { cx_rules(x, s, x[0].surfs[s].win); cx_sync(x); }   // a title set after mapping
+      if x[0].surfs[s].win != 0 && !x[0].surfs[s].ruled { cx_rules(x, s, x[0].surfs[s].win); cx_sync(x); }   // a title or app id set after mapping
     } else if op == 11 || op == 12 {
       w := x[0].surfs[s].win; m := x[0].wm[..];
-      if w != 0 && wm_focus(m) == w && wm_is_fullscreen(m, w) != (op == 11) { wm_fullscreen(m); cx_sync(x); }
+      if w != 0 && !x[0].surfs[s].nofull && wm_focus(m) == w && wm_is_fullscreen(m, w) != (op == 11) { wm_fullscreen(m); cx_sync(x); }
     }
   } else if k == K_POSITIONER {
     p := o.ix;
@@ -862,21 +863,91 @@ cx_close_win :: (x: [] Cx, f: int) {
   s := ifx f > 0 && f < WM_WINS then x[0].win_surf[f] else -1;
   if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
 }
-// The CoderOS window rules (desktop.nix, Hyprland 0.55 `windowrule` lines), matched on the title when
-// the window maps and again when it names itself later. The camera view and the recording HUD float at the size they drew, with no border,
-// pinned so they follow across desks.
+// Window rules: desktop.nix's own (the camera view and the recording HUD float at the size they drew,
+// with no border, pinned so they follow across desks) and then the host's `extraWindowRules`, one a
+// line in LAUNCH-DIR/rules as the system writes them:
+//   title|class [icase] exact=TEXT | prefix=TEXT [holds=TEXT] ... EFFECT...
+// with EFFECT float, tile, center, aspect (keep_aspect_ratio), border=0, pin, nofullscreen
+// (suppress_event maximize fullscreen), and %20 for a space in TEXT. A window is matched when it
+// maps and again when it names itself later; the first time a rule matches, its effects apply.
+CX_RULES :: 32;
+CxPat :: struct { kind: int; a: [64] u8; na: int; b: [64] u8; nb: int; }   // kind 0 exact, 1 prefix, 2 prefix holding b
+CxRule :: struct { by_class: bool; icase: bool; pats: [8] CxPat; np: int; floats: int; center: bool; aspect: bool; noborder: bool; pin: bool; nofull: bool; }
+CxRules :: struct { r: [CX_RULES] CxRule; n: int; }
+CX_BUILTIN_RULES :: "title exact=selfie float aspect border=0 pin\ntitle exact=recording-hud float border=0 pin\n";
+cx_low :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+cx_eq_at :: (t: string, at: int, p: [] u8, n: int, icase: bool) -> bool {
+  if at + n > t.count { return false; }
+  for i: 0..<n { a := t[at + i]; b := p[i]; if icase { a = cx_low(a); b = cx_low(b); } if a != b { return false; } }
+  return true;
+}
+cx_pat_matches :: (pat: CxPat, t: string, icase: bool) -> bool {
+  pp: [1] CxPat; pp[0] = pat; p := pp[0];
+  if p.kind == 0 { return t.count == p.na && cx_eq_at(t, 0, pp[0].a[..], p.na, icase); }
+  if !cx_eq_at(t, 0, pp[0].a[..], p.na, icase) { return false; }
+  if p.kind == 1 { return true; }
+  for at: p.na..<t.count - p.nb + 1 { if cx_eq_at(t, at, pp[0].b[..], p.nb, icase) { return true; } }
+  return false;
+}
+// Reads rule lines into rs: the count read, or -1 at the first line it cannot read.
+cx_rules_parse :: (rs: [] CxRules, text: string) -> int {
+  st := 0; got := 0;
+  for e: 0..<text.count + 1 {
+    if e < text.count && text[e] != '\n' { continue; }
+    line := text[st..<e]; st = e + 1;
+    w: [24] string; nw := 0; ws := 0;
+    for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if i > ws && nw < 24 { w[nw] = line[ws..<i]; nw += 1; } ws = i + 1; } }
+    if nw == 0 || w[0][0] == '#' { continue; }
+    if rs[0].n >= CX_RULES || (w[0] != "title" && w[0] != "class") { return -1; }
+    r: [1] CxRule; r[0].by_class = w[0] == "class"; r[0].floats = -1;
+    for i: 1..<nw {
+      v := w[i];
+      if v == "icase" { r[0].icase = true; } else if v == "float" { r[0].floats = 1; } else if v == "tile" { r[0].floats = 0; }
+      else if v == "center" { r[0].center = true; } else if v == "aspect" { r[0].aspect = true; } else if v == "border=0" { r[0].noborder = true; }
+      else if v == "pin" { r[0].pin = true; } else if v == "nofullscreen" { r[0].nofull = true; }
+      else if v.count > 6 && v[0..<6] == "exact=" && r[0].np < 8 { r[0].pats[r[0].np].kind = 0; r[0].pats[r[0].np].na = cx_unescape(v[6..<v.count], r[0].pats[r[0].np].a[..]); r[0].np += 1; }
+      else if v.count > 7 && v[0..<7] == "prefix=" && r[0].np < 8 { r[0].pats[r[0].np].kind = 1; r[0].pats[r[0].np].na = cx_unescape(v[7..<v.count], r[0].pats[r[0].np].a[..]); r[0].np += 1; }
+      else if v.count > 6 && v[0..<6] == "holds=" && r[0].np > 0 && r[0].pats[r[0].np - 1].kind == 1 { r[0].pats[r[0].np - 1].kind = 2; r[0].pats[r[0].np - 1].nb = cx_unescape(v[6..<v.count], r[0].pats[r[0].np - 1].b[..]); }
+      else { return -1; }
+    }
+    if r[0].np == 0 { return -1; }
+    rs[0].r[rs[0].n] = r[0]; rs[0].n += 1; got += 1;
+  }
+  return got;
+}
+cx_unescape :: (v: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < v.count && n < out.count {
+    if v[i] == '%' && i + 2 < v.count && v[i + 1] == '2' && v[i + 2] == '0' { out[n] = ' '; i += 3; } else { out[n] = v[i]; i += 1; }
+    n += 1;
+  }
+  return n;
+}
+cx_rule_matches :: (r: CxRule, title: string, app: string) -> bool {
+  t := ifx r.by_class then app else title;
+  for i: 0..<r.np { if cx_pat_matches(r.pats[i], t, r.icase) { return true; } }
+  return false;
+}
 cx_rules :: (x: [] Cx, s: int, w: int) {
-  t := cast(string) x[0].surfs[s].title[0..<x[0].surfs[s].nt];
-  if t != "selfie" && t != "recording-hud" { return; }
+  if x[0].surfs[s].ruled { return; }
+  t := cast(string) x[0].surfs[s].title[0..<x[0].surfs[s].nt]; ap := cast(string) x[0].surfs[s].app[0..<x[0].surfs[s].na];
   m := x[0].wm[..];
-  y := wm_set_floating(m, w, true);
-  b := x[0].surfs[s].cur; bw := 320; bh := 320;
-  if x[0].surfs[s].gw > 0 { bw = x[0].surfs[s].gw; bh = x[0].surfs[s].gh; } else if b >= 0 { bw = x[0].bufs[b].w; bh = x[0].bufs[b].h; }
-  fw := cast(f32) bw / cast(f32) x[0].w; fh := cast(f32) bh / cast(f32) x[0].h;
-  y = wm_place_float(m, w, WmRect.{x = (1.0 - fw) * 0.5, y = (1.0 - fh) * 0.5, w = fw, h = fh});
-  y = wm_set_pinned(m, w, true);
-  x[0].surfs[s].noborder = true;
-  if t == "selfie" { x[0].surfs[s].aspect = cast(f32) bw / cast(f32) bh; }   // keep_aspect_ratio on
+  for i: 0..<x[0].rules[0].n {
+    r := x[0].rules[0].r[i];
+    if !cx_rule_matches(r, t, ap) { continue; }
+    x[0].surfs[s].ruled = true;
+    b := x[0].surfs[s].cur; bw := 320; bh := 320;
+    if x[0].surfs[s].gw > 0 { bw = x[0].surfs[s].gw; bh = x[0].surfs[s].gh; } else if b >= 0 { bw = x[0].bufs[b].w; bh = x[0].bufs[b].h; }
+    if r.floats == 1 {
+      y := wm_set_floating(m, w, true);
+      fw := cast(f32) bw / cast(f32) x[0].w; fh := cast(f32) bh / cast(f32) x[0].h;
+      y = wm_place_float(m, w, WmRect.{x = (1.0 - fw) * 0.5, y = (1.0 - fh) * 0.5, w = fw, h = fh});
+    } else if r.floats == 0 { y := wm_set_floating(m, w, false); }
+    if r.pin { y := wm_set_pinned(m, w, true); }
+    if r.noborder { x[0].surfs[s].noborder = true; }
+    if r.aspect { x[0].surfs[s].aspect = cast(f32) bw / cast(f32) bh; }
+    if r.nofull { x[0].surfs[s].nofull = true; }
+  }
 }
 cx_close_focused :: (x: [] Cx) {
   f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
@@ -1130,6 +1201,10 @@ tool_main :: () -> int #export_c {
   for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
+  y := cx_rules_parse(x[0].rules[..], CX_BUILTIN_RULES);
+  rp: [1024] u8; rn := 0; for i: 0..<x[0].nlaunch { rp[rn] = x[0].launch[i]; rn += 1; } for c: "/rules" { rp[rn] = c; rn += 1; }
+  rt: [65536] u8; rl := fs_read(cast(string) rp[0..<rn], rt[..]);
+  if rl > 0 && cx_rules_parse(x[0].rules[..], cast(string) rt[0..<rl]) < 0 { tool_errln("compositor: a line of the rules file cannot be read"); return 2; }
   cx_damage_all(x);
   cx_say("ready");
   // the session's start list (Hyprland's exec-once rows), as one program the system writes
@@ -1209,6 +1284,16 @@ tool_main :: () -> int #export_c {
   #assert cx_bind(57, S).verb == B_FLOAT && cx_bind(32, S).verb == B_FLOAT && cx_bind(36, S).verb == B_SPLIT && cx_program(cx_bind(20, S).arg) == "pane" && cx_program(cx_bind(30, S).arg) == "android";
   #assert cx_bind(30, 0).verb == B_NONE && cx_bind(30, CX_SHIFT).verb == B_NONE;
   #assert cx_program(cx_bind(46, S).arg) == "camera" && cx_bind(18, S | CX_SHIFT).verb == B_QUIT && cx_bind(14, CX_CTRL | CX_ALT).verb == B_QUIT;
+}
+#test "window rules: patterns and the file format" {
+  rs: [1] CxRules;
+  #assert cx_rules_parse(rs[..], CX_BUILTIN_RULES) == 2 && rs[0].r[0].pin && rs[0].r[0].aspect && rs[0].r[0].noborder && rs[0].r[0].floats == 1 && !rs[0].r[1].aspect;
+  #assert cx_rules_parse(rs[..], "# host\nclass icase prefix=Emulator holds=pixel tile\ntitle exact=a%20b exact=c nofullscreen center\n") == 2;
+  e := rs[0].r[2]; t := rs[0].r[3];
+  #assert e.by_class && e.icase && e.floats == 0 && cx_rule_matches(e, "", "emulator-Pixel_7") && !cx_rule_matches(e, "", "emulator") && !cx_rule_matches(e, "emulator-pixel", "x");
+  #assert cx_rule_matches(t, "a b", "") && cx_rule_matches(t, "c", "") && !cx_rule_matches(t, "A b", "") && t.nofull && t.center;
+  #assert cx_rule_matches(rs[0].r[0], "selfie", "") && !cx_rule_matches(rs[0].r[0], "selfie2", "");
+  #assert cx_rules_parse(rs[..], "window exact=x\n") == -1 && cx_rules_parse(rs[..], "title float\n") == -1;
 }
 #test "US text to evdev keys" {
   sh: [1] bool;

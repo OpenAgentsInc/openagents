@@ -519,8 +519,15 @@ compiler and the examples have not been run on Linux yet.
   corner. Headless, a `selfie` window floated borderless, moved by the
   drag (-300, -150), and followed to desk 2. A Super + right drag on it
   keeps its shape (keep_aspect_ratio): a 160 px wider drag gave 480x480.
-  Left: the floats' first size (320 px when the window hasn't drawn yet),
-  and host rules such as the Android emulator's class.
+  Host rules (`extraWindowRules`, such as the Android emulator's) come
+  from `LAUNCH-DIR/rules`, one line each: title or class, exact / prefix /
+  prefix-holding patterns, ignore-case, and the float, tile, center,
+  aspect, border=0, pin and nofullscreen effects. The built-in rules are
+  lines of the same table. A class rule `icase prefix=emulator
+  holds=PIXEL float center aspect` floated a window whose app id was
+  `Emulator-pixel-7`, and a line it can't read stops the compositor at
+  start. Left: the floats' first size (320 px when the window hasn't
+  drawn yet).
 
   The session's start list (Hyprland's `exec-once` rows) is
   `LAUNCH-DIR/start`, run once the socket is up. A start program that
