@@ -1,0 +1,138 @@
+// Chapter 135: the caller's loops for the checks in psionic/lib/fully-sharded.coax
+// and for psionic/examples/fully-sharded.coax. Each rank runs here one after
+// another on this CPU, last rank first; the bits do not depend on that order.
+
+// A run of chapter 115's decoder at the checks' small shape (220 parameters,
+// rows of 8 tokens): why it stopped, the run, steps made, values moved
+// between ranks, every rank's shard (rank r's at r * 220 / ranks) and the losses.
+FsRun :: struct {status:TrStatus;run:TrRun;steps:int;moved:int;p:[220]f64;m:[220]f64;v:[220]f64;losses:[8]f64;}
+
+// book:begin drive
+// Chapter 118's loop, fully sharded. Each rank gathers the parameters,
+// runs the model on its own micro-batches, each gradient in its own slot,
+// and keeps them until the reduce-scatter; then fs_apply makes the step,
+// each rank on its own shard.
+fsc_drive :: (f:TtFix,c:TrConfig,x:FsRun,ranks:int,stop:int)->FsRun {
+    s:=TT_SMALL;y:=x;g:=f;n:=220;plan:=fs_plan(ranks,n,c.accumulate);y.steps=0;
+    if fs_admit(c,plan,g.docs[..],g.tokens[0..<g.n])!=FsStatus.ok {y.status=TrStatus.config;return y;}
+    cs:=fs_size(plan);work:[220]f64;grads:[880]f64;ml:[4]f64;msg:[220]f64;sum:[220]f64;stage:[660]f64;w:[600]f64;dw:[600]f64;rows:[32]u8;none:[1]int;
+    while y.run.revision<stop {
+        b:=tr_next(c,y.run,g.docs[..],g.tokens[0..<g.n],rows[..]);if b.status!=TrStatus.ok {y.status=b.status;return y;}
+        for j:0..<ranks {r:=ranks-1-j;y.moved+=fs_gather(plan,r,y.p[..],work[..]);
+            for mb:fs_first(plan,r)..<fs_first(plan,r+1) {sp:=tr_rows(c,b,mb);
+                d:=tm_decoder_step(s,work[..],rows[sp.first*c.length..<(sp.first+sp.count)*c.length],w[..],dw[..],grads[mb*n..<(mb+1)*n]);
+                if d.status!=TdStatus.ok {y.status=TrStatus.number;return y;}
+                ml[mb]=d.loss;}}
+        for k:0..<ranks {y.moved+=fs_scatter(plan,k,grads[0..<b.micro*n],msg[0..<cs],sum[..]);}
+        t:=TrSum.{micro=b.micro,loss=fs_loss(plan,ml[0..<b.micro])};
+        a:=fs_apply(c,plan,y.run,b,t,y.p[..],y.m[..],y.v[..],sum[..],stage[..],none[0..<0]);
+        if a.status!=TrStatus.ok {y.status=a.status;return y;}
+        y.losses[y.steps]=a.loss;y.run=a.run;y.steps+=1;
+    }
+    return y;
+}
+// book:end drive
+
+// A whole run from chapter 115's initialization, to revision stop.
+fsc_run :: (f:TtFix,c:TrConfig,ranks:int,stop:int)->FsRun {
+    x:FsRun;g:=f;none:[1]int;seed:=td_init(TT_SMALL,CrSeed.{seed=TT_INIT},x.p[..]);
+    x.run=tr_begin(c,220,g.docs[..],g.tokens[0..<g.n],none[0..<0]).run;
+    return fsc_drive(f,c,x,ranks,stop);
+}
+fsc_ids :: (c:TrConfig)->CkIds {return tr_ids(c,tt_model(TT_SMALL),ck_fill(2),ck_fill(3));}
+// A fresh process at `ranks` ranks: only the sharded checkpoint survives.
+// Its buffers start at 7, so a refusal that writes anything shows.
+FsBack :: struct {status:FsStatus;record:CkStatus;shard:int;reads:int;run:TrRun;p:[220]f64;m:[220]f64;v:[220]f64;}
+fsc_resume :: (f:TtFix,c:TrConfig,ranks:int,bytes:[]u8,manifest:[]u8)->FsBack {
+    x:FsBack;g:=f;none:[1]int;for i:0..<220 {x.p[i]=7;x.m[i]=7;x.v[i]=7;}
+    l:=fs_load(c,fsc_ids(c),fs_plan(ranks,220,c.accumulate),manifest,bytes,g.docs[..],g.tokens[0..<g.n],x.p[..],x.m[..],x.v[..],none[0..<0]);
+    x.status=l.status;x.record=l.record;x.shard=l.shard;x.reads=l.reads;x.run=l.run;
+    return x;
+}
+fsc_continue :: (f:TtFix,c:TrConfig,ranks:int,x:FsBack,stop:int)->FsRun {
+    y:FsRun;y.p=x.p;y.m=x.m;y.v=x.v;y.run=x.run;return fsc_drive(f,c,y,ranks,stop);
+}
+// Records a reload at `to` ranks reads, counted pair by pair: new rank r
+// reads old shard s when their ranges overlap.
+fsc_reads :: (n:int,from:int,to:int)->int {
+    a:=n/from;b:=n/to;count:=0;
+    for r:0..<to {for s:0..<from {if r*b<(s+1)*a && s*a<(r+1)*b {count+=1;}}}
+    return count;
+}
+
+// A 12-parameter AdamW step in rows mode: decay on values 2-4 and 9-10,
+// 6 examples in batches of 1, 2 micro-batches a step, shuffled each epoch.
+fsc_adamw :: ()->TrConfig {
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,rate=0.25,beta1=0.9,beta2=0.99,eps=0.00000001,decay=0.1,span_count=2,bound=100,
+        examples=6,batch=1,accumulate=2,epochs=2,shuffle=true,seed=5};
+    c.spans[0]=TrSpan.{first=2,count=3};c.spans[1]=TrSpan.{first=9,count=2};
+    return c;
+}
+fsc_start :: (i:int)->f64 {return f64(i)*0.5-2;}
+fsc_grad :: (i:int)->f64 {return (f64((i*7)%5)*0.3/7-0.1+f64(i)*0.013)*3;}
+// The step from revision 2, the last of epoch 0, on `ranks` ranks (0: chapter
+// 118's tr_apply). Case 1 as it is; 2 and 3: a second moment below zero on
+// the last value or the first; 4: a gradient whose square overflows; 5: a
+// loss that is not finite; 6: a step that stays within the epoch; 7: a first value far beyond the others.
+fsc_apply :: (c:TrConfig,ranks:int,k:int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,order:[]int)->TrStep {
+    for i:0..<12 {w[i]=fsc_start(i);m[i]=0.125;v[i]=0.25;g[i]=fsc_grad(i);}
+    if k==2 {v[11]=-1;}
+    if k==3 {v[0]=-1;}
+    if k==7 {w[0]=-50;}
+    if k==4 {g[5]=1e200;}
+    loss:=1.5;if k==5 {loss=0.0/0.0;}
+    tr_order(c,0,order);
+    run:=TrRun.{cursor=PkCursor.{seed=c.seed,order=4},state=AwState.{step=2},revision=2};
+    b:=TrBatch.{revision=2,micro=2,start=4,after=PkCursor.{seed=c.seed,epoch=1}};
+    if k==6 {b.after=PkCursor.{seed=c.seed,order=6};}
+    s:=TrSum.{micro=2,loss=loss};stage:[36]f64;
+    if ranks==0 {return tr_apply(c,run,b,s,w,m,v,g,stage[..],order);}
+    return fs_apply(c,fs_plan(ranks,12,2),run,b,s,w,m,v,g,stage[..],order);
+}
+// The largest new value of chapter 118's step.
+fsc_bound :: (c:TrConfig)->f64 {
+    w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;a:=fsc_apply(c,0,1,w[..],m[..],v[..],g[..],order[..]);#assert a.status==TrStatus.ok;
+    top:=0.0;for x:w {if abs(x)>top {top=abs(x);}}
+    return top;
+}
+
+// Damage to a 4-rank checkpoint of 220 values. The manifest is re-signed
+// after each change to it, and a changed record is re-signed with its tail
+// and named again in the manifest, so only the check under test can refuse.
+fsc_sign :: (manifest:[]u8) {end:=manifest.count-32;d:=ck_digest("psionic.fully-sharded.v1",manifest[0..<end]);for i:0..<32 {manifest[end+i]=d[i];}}
+fsc_reseal :: (bytes:[]u8,manifest:[]u8,s:int) {
+    size:=tr_size(55);body:=ck_size(55);rec:=bytes[s*size..<(s+1)*size];
+    ck_resign(rec[0..<body]);d:=ck_get(rec,body-32);at:=ck_put(rec,body+48,tr_tail_digest(d,rec[body..<size]));
+    at=ck_put(manifest,32+32*s,d);fsc_sign(manifest);
+}
+fsc_damaged :: (f:TtFix,c:TrConfig,good:[]u8,gm:[]u8,k:int)->FsBack {
+    b:[6640]u8;m:[192]u8;for i:0..<6640 {b[i]=good[i];}for i:0..<192 {m[i]=gm[i];}
+    size:=tr_size(55);body:=ck_size(55);mc:=192;
+    if k==0 {mc=191;}                                   // a manifest one byte short
+    if k==1 {mc=32;}                                    // no room for a shard
+    if k==2 {m[0]=81;fsc_sign(m[..]);}                  // another magic
+    if k==3 {m[7]=1;fsc_sign(m[..]);}                   // another version
+    if k==4 {m[191]^=1;}                                // a broken digest
+    if k==5 {m[8]=3;fsc_sign(m[..]);}                   // 3 ranks named, 4 digests
+    if k==6 {m[16]=221;fsc_sign(m[..]);}                // 221 values named
+    if k==7 {m[8]=3;mc=160;fsc_sign(m[0..<160]);}       // 3 shards of 220 values
+    if k==8 {for i:0..<size {t:=b[size+i];b[size+i]=b[2*size+i];b[2*size+i]=t;}}   // records 1 and 2 swapped
+    if k==9 {b[2*size+300]^=1;}                         // a value of record 2 changed
+    if k==10 {b[3*size+body+8]=1;}                      // record 3's tail changed, not re-signed
+    if k==11 {b[size+136]=1;fsc_reseal(b[..],m[..],1);} // record 1 names another parent
+    if k==12 {b[size+body+8]=1;fsc_reseal(b[..],m[..],1);}  // record 1 counts an evaluation
+    if k==13 {m[24]=3;fsc_sign(m[..]);}                 // the manifest names revision 3
+    if k==14 {for s:0..<4 {b[s*size+216]=1;fsc_reseal(b[..],m[..],s);}}  // every record says a step was skipped
+    if k==15 {b[size+216]=1;fsc_reseal(b[..],m[..],1);} // only record 1 does
+    if k==16 {for i:8..<16 {m[i]=0;}mc=64;fsc_sign(m[0..<64]);}  // a signed manifest of 0 ranks
+    return fsc_resume(f,c,2,b[..],m[0..<mc]);
+}
+fsc_want :: (k:int)->FsLoad {
+    if k<7 || k==16 {return FsLoad.{status=FsStatus.manifest};}
+    if k==7 {return FsLoad.{status=FsStatus.uneven};}
+    if k==9 {return FsLoad.{status=FsStatus.record,record=CkStatus.corrupt,shard=2};}
+    if k==10 {return FsLoad.{status=FsStatus.record,record=CkStatus.corrupt,shard=3};}
+    if k==13 {return FsLoad.{status=FsStatus.shard,shard=0};}
+    if k==14 {return FsLoad.{status=FsStatus.record,record=CkStatus.corrupt};}
+    return FsLoad.{status=FsStatus.shard,shard=1};
+}

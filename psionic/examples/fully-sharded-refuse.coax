@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../lib/fully-sharded.coax";
+
+// book:begin refuse
+// Chapter 135: plans, steps and checkpoints that are refused. A refusal
+// writes nothing.
+main :: () {
+    print("0 ranks: %\n",fs_status(fs_plan(0,220,4).status));
+    print("17 ranks: %\n",fs_status(fs_plan(17,4096,4).status));
+    print("220 parameters over 3 ranks: %\n",fs_status(fs_plan(3,220,4).status));
+    print("0 micro-batches a step: %\n",fs_status(fs_plan(4,220,0).status));
+    c:=fsc_adamw();none:[1]PkDoc;nothing:[1]u8;d:=c;d.optimizer=TrOptimizer.sgd;
+    print("SGD: %\n",fs_status(fs_admit(d,fs_plan(2,12,2),none[0..<0],nothing[0..<0])));
+
+    // One step on 3 ranks with a bound only the last rank's new value exceeds.
+    e:=c;e.bound=fsc_bound(c)*0.999999;w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;
+    a:=fsc_apply(e,3,1,w[..],m[..],v[..],g[..],order[..]);
+    print("a new value beyond the bound on rank 2: status %, revision %, value 11 still %\n",a.status,a.run.revision,w[11]);
+    a=fsc_apply(c,3,2,w[..],m[..],v[..],g[..],order[..]);
+    print("a second moment below zero on rank 2: status %, value 0 on rank 0 still %\n",a.status,w[0]);
+
+    // A checkpoint after step 2 at 4 ranks, damaged before it is reloaded at 2.
+    f:=tt_fix();t:=tm_decoder(TT_SMALL,4);half:=fsc_run(f,t,4,2);good:[6640]u8;gm:[192]u8;
+    s:=fs_save(fsc_ids(t),fs_plan(4,220,4),half.run,half.p[..],half.m[..],half.v[..],good[..],gm[..]);
+    what:=[6]string.["the manifest's digest is broken","the manifest says 3 shards of 220 values","records 1 and 2 are swapped",
+        "a value in record 2 is changed","record 3's tail is changed","every record says a step was skipped"];
+    cases:=[6]int.[4,7,8,9,10,14];
+    for k:0..<6 {x:=fsc_damaged(f,t,good[..],gm[..],cases[k]);
+        print("%: %, record %, shard %; anything written: %\n",what[k],fs_status(x.status),x.record,x.shard,x.p[0]!=7 || x.m[219]!=7 || x.v[100]!=7);}
+    print("reloaded at 3 ranks: %\n",fs_status(fsc_resume(f,t,3,good[..],gm[..]).status));
+}
+// book:end refuse

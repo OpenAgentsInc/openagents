@@ -1,0 +1,521 @@
+// Chapter 135: fully sharded training (fully-sharded-v1).
+// The parameters and both AdamW moments are cut into one contiguous shard a
+// rank, all the same size. Before a step each rank gathers the shards it
+// lacks into a working copy of the whole parameter vector and computes the
+// gradients of its own micro-batches with the model's own code (chapter
+// 134's split). The gradient sum is then reduce-scattered: shard s is summed
+// along the ranks in micro-batch order, the order chapter 118's tr_add
+// uses, and handed to its owner. Each rank updates only its own shard with
+// chapter 124's AdamW. The result is chapter 118's step, bit for bit, at
+// every rank count that divides the parameters.
+//
+// This file decides the plan and its refusals (fs_plan, fs_admit), the
+// order of every addition (fs_scatter, fs_loss, the squares in fs_apply),
+// which ranks must agree before anything is written (fs_apply), the
+// sharded checkpoint and its reload at another rank count (fs_save,
+// fs_load), and, as accounting, each rank's bytes (fs_memory, fs_fit) and
+// the bytes a step moves (fs_comm). Ranks are logical: blocks of one buffer
+// on this CPU.
+#load "trainer-models.coax";
+#load "transformer/budget.coax";
+#load "shard.coax";
+#load "../tests/fully-sharded-checks.coax";  // the checks' loops for chapter 115's decoder
+#authority;
+
+FsStatus :: enum u8 {ok;ranks;shape;uneven;micro;optimizer;config;manifest;record;shard;}
+FS_RANKS :: 16;
+
+fs_status :: (s:FsStatus)->string {
+    if s==FsStatus.ok {return "admitted";}
+    if s==FsStatus.ranks {return "refused: from 1 to 16 ranks";}
+    if s==FsStatus.shape {return "refused: a buffer does not fit the plan, or the parameters are not 1 to 4096 values";}
+    if s==FsStatus.uneven {return "refused: the rank count must divide the parameter count, so every shard is the same size";}
+    if s==FsStatus.micro {return "refused: from 1 to 64 micro-batches a step";}
+    if s==FsStatus.optimizer {return "refused: fully sharded training shards AdamW's moments, and the configuration names SGD";}
+    if s==FsStatus.config {return "refused: chapter 118 refuses the configuration";}
+    if s==FsStatus.manifest {return "refused: the checkpoint's manifest is damaged or names other parameters";}
+    if s==FsStatus.record {return "refused: a shard's record is refused by chapter 122";}
+    return "refused: a shard's record is not the one the manifest names";
+}
+
+// ---- Checks first. The caller's loops are in psionic/tests/fully-sharded-checks.coax.
+#test "plans by hand, and every refusal" {
+    p:=fs_plan(4,220,4);#assert p.status==FsStatus.ok && p.ranks==4 && p.n==220 && p.micro==4 && fs_size(p)==55;
+    // 4 micro-batches over 3 ranks: 0 | 1 | 2, 3; over 5 ranks rank 0 owns none.
+    q:=fs_plan(3,12,4);#assert fs_first(q,0)==0 && fs_first(q,1)==1 && fs_first(q,2)==2 && fs_first(q,3)==4 && fs_size(q)==4;
+    r:=fs_plan(5,220,4);#assert r.status==FsStatus.ok && fs_first(r,1)==0 && fs_first(r,4)==3 && fs_first(r,5)==4;
+    #assert fs_plan(1,1,1).status==FsStatus.ok && fs_plan(16,4096,64).status==FsStatus.ok;
+    #assert fs_plan(0,220,4).status==FsStatus.ranks && fs_plan(17,4096,4).status==FsStatus.ranks;
+    #assert fs_plan(1,0,4).status==FsStatus.shape && fs_plan(1,4097,4).status==FsStatus.shape && fs_plan(4,2,4).status==FsStatus.uneven;
+    #assert fs_plan(3,220,4).status==FsStatus.uneven && fs_plan(8,220,4).status==FsStatus.uneven && fs_plan(11,220,4).status==FsStatus.ok;
+    #assert fs_plan(4,220,0).status==FsStatus.micro && fs_plan(4,220,65).status==FsStatus.micro;
+    names:=[10]string.["admitted","refused: from 1 to 16 ranks","refused: a buffer does not fit the plan, or the parameters are not 1 to 4096 values",
+        "refused: the rank count must divide the parameter count, so every shard is the same size","refused: from 1 to 64 micro-batches a step",
+        "refused: fully sharded training shards AdamW's moments, and the configuration names SGD","refused: chapter 118 refuses the configuration",
+        "refused: the checkpoint's manifest is damaged or names other parameters","refused: a shard's record is refused by chapter 122",
+        "refused: a shard's record is not the one the manifest names"];
+    for k:0..<10 {#assert fs_status(cast(FsStatus)k)==names[k];}
+    // The configuration: the plan, AdamW, and chapter 118's admission.
+    c:=fsc_adamw();none:[1]PkDoc;nothing:[1]u8;
+    #assert fs_admit(c,fs_plan(2,12,2),none[0..<0],nothing[0..<0])==FsStatus.ok;
+    #assert fs_admit(c,fs_plan(5,12,2),none[0..<0],nothing[0..<0])==FsStatus.uneven;
+    d:=c;d.optimizer=TrOptimizer.sgd;#assert fs_admit(d,fs_plan(2,12,2),none[0..<0],nothing[0..<0])==FsStatus.optimizer;
+    d=c;d.beta1=1;#assert fs_admit(d,fs_plan(2,12,2),none[0..<0],nothing[0..<0])==FsStatus.config;
+    #assert fs_admit(c,fs_plan(2,6,2),none[0..<0],nothing[0..<0])==FsStatus.config;
+}
+#forall "every micro-batch has one rank, in order, whatever the rank count" ranks:1..<17,micro:1..<17 {
+    p:=fs_plan(ranks,ranks*3,micro);
+    #assert p.status==FsStatus.ok && fs_first(p,0)==0 && fs_first(p,ranks)==micro && fs_size(p)==3;
+    for r:0..<ranks {#assert fs_first(p,r+1)>=fs_first(p,r) && fs_first(p,r+1)-fs_first(p,r)<=tr_ceil(micro,ranks);}
+}
+#test "the gather and the reduce-scatter by hand" {
+    // 3 micro-batches of 4 values over 2 ranks: rank 0 owns micro-batch 0,
+    // rank 1 owns 1 and 2. Shards of 2 values: rank 0 holds 0-1, rank 1 holds 2-3.
+    p:=fs_plan(2,4,3);w:=[4]f64.[1,2,3,4];work:[4]f64;
+    #assert fs_first(p,1)==1 && fs_gather(p,0,w[..],work[..])==2 && work[0]==1 && work[3]==4;
+    for i:0..<4 {work[i]=0;}#assert fs_gather(p,1,w[..],work[..])==2 && work[0]==1 && work[1]==2 && work[2]==3 && work[3]==4;
+    grads:=[12]f64.[3,6,-9,1.5, 0,3,9,6, 6,-3,0,3];msg:[2]f64;g:[4]f64;
+    // Shard 0: rank 0 sends 3/3 and 6/3, that is 1 and 2; rank 1 adds
+    // 0/3 + 6/3 and 3/3 + -3/3, making 3 and 2, and sends them to rank 0.
+    #assert fs_scatter(p,0,grads[..],msg[..],g[..])==4 && msg[0]==3 && msg[1]==2 && g[0]==3 && g[1]==2;
+    // Shard 1 ends at its owner, rank 1: one hop. -3 + 3 + 0 = 0 and 0.5 + 2 + 1 = 3.5.
+    #assert fs_scatter(p,1,grads[..],msg[..],g[..])==2 && g[2]==0 && g[3]==3.5;
+    want:[4]f64;b:=TrBatch.{micro=3};t:TrSum;losses:=[3]f64.[3,6,1.5];
+    for k:0..<3 {t=tr_add(b,t,losses[k],grads[4*k..<4*k+4],want[..]);}
+    #assert tr_same(g[..],want[..]) && f64_bits(fs_loss(p,losses[..]))==f64_bits(t.loss) && t.loss==3.5;
+    // A rank with no micro-batch passes the sum on unchanged.
+    q:=fs_plan(4,4,3);h:[4]f64;one:[1]f64;
+    #assert fs_first(q,1)==0 && fs_first(q,2)==1;
+    for s:0..<4 {extra:=1;if s==3 {extra=0;}#assert fs_scatter(q,s,grads[..],one[..],h[..])==3+extra;}
+    #assert tr_same(h[..],want[..]) && f64_bits(fs_loss(q,losses[..]))==f64_bits(t.loss);
+    // -0 sums as tr_add sums it: 0 + -0 is +0.
+    z:=[1]f64.[-0.0];zp:=fs_plan(1,1,1);zg:[1]f64;#assert fs_scatter(zp,0,z[..],one[..],zg[..])==0 && f64_bits(zg[0])==0;
+}
+#forall "any rank count gives tr_add's bits, with rounding that depends on order" j:0..<6,micro:1..<9 {
+    rs:=[6]int.[1,2,3,4,6,12];ranks:=rs[j];
+    grads:[96]f64;losses:[8]f64;want:[12]f64;b:=TrBatch.{micro=micro};t:TrSum;
+    for k:0..<96 {grads[k]=f64((k*37)%23-11)/f64(k%7+3)*1e-3*f64(1+(k%5)*1000000);}
+    for k:0..<micro {losses[k]=f64(k*k+1)/7;t=tr_add(b,t,losses[k],grads[12*k..<12*k+12],want[..]);}
+    p:=fs_plan(ranks,12,micro);msg:[12]f64;g:[12]f64;moved:=0;
+    for s:0..<ranks {moved+=fs_scatter(p,s,grads[0..<12*micro],msg[0..<12/ranks],g[..]);}
+    #assert tr_same(g[..],want[..]) && f64_bits(fs_loss(p,losses[0..<micro]))==f64_bits(t.loss);
+    #assert 8*moved==fs_comm(p).scatter;
+}
+#test "a sharded step is chapter 118's step, with clipping, decay spans and an epoch's shuffle" {
+    // 12 parameters, decay on 2-4 and 9-10, clipping at 0.5, rows mode with a shuffle.
+    c:=fsc_adamw();c.clip=0.5;
+    for ranks:[6]int.[1,2,3,4,6,12] {
+        w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;
+        a:=fsc_apply(c,ranks,1,w[..],m[..],v[..],g[..],order[..]);
+        e:[12]f64;em:[12]f64;ev:[12]f64;eg:[12]f64;eo:[6]int;
+        b:=fsc_apply(c,0,1,e[..],em[..],ev[..],eg[..],eo[..]);
+        #assert a.status==TrStatus.ok && b.status==TrStatus.ok && a.norm>0.5 && f64_bits(a.norm)==f64_bits(b.norm) && f64_bits(a.loss)==f64_bits(b.loss) && a.rate==b.rate;
+        #assert tr_same(w[..],e[..]) && tr_same(m[..],em[..]) && tr_same(v[..],ev[..]) && tr_same(g[..],eg[..]);
+        #assert a.run.revision==3 && b.run.revision==3 && a.run.state.step==b.run.state.step && fd_same(a.run.cursor,b.run.cursor) && a.run.cursor.epoch==1;
+        for k:0..<6 {#assert order[k]==eo[k];}
+        // Within an epoch nothing is shuffled.
+        a=fsc_apply(c,ranks,6,w[..],m[..],v[..],g[..],order[..]);b=fsc_apply(c,0,6,e[..],em[..],ev[..],eg[..],eo[..]);
+        #assert a.status==TrStatus.ok && tr_same(w[..],e[..]);for k:0..<6 {#assert order[k]==eo[k];}
+        // Without the shuffle, a new epoch keeps the order.
+        u:=c;u.shuffle=false;a=fsc_apply(u,ranks,1,w[..],m[..],v[..],g[..],order[..]);b=fsc_apply(u,0,1,e[..],em[..],ev[..],eg[..],eo[..]);
+        #assert a.status==TrStatus.ok && tr_same(w[..],e[..]);for k:0..<6 {#assert order[k]==k && eo[k]==k;}
+    }
+    // Without clipping, with the clip above the norm, and with the clip equal
+    // to the norm, the gradient is not scaled; scaling by norm / norm would
+    // change some of its values.
+    w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;d:=c;d.clip=0;
+    n:=fsc_apply(d,3,1,w[..],m[..],v[..],g[..],order[..]).norm;moved:=false;
+    for i:0..<12 {x:=fsc_grad(i);moved=moved || x*n/n!=x;}#assert moved;
+    for clip:[3]f64.[0,100,n] {d.clip=clip;e:[12]f64;em:[12]f64;ev:[12]f64;eg:[12]f64;eo:[6]int;
+        a:=fsc_apply(d,3,1,w[..],m[..],v[..],g[..],order[..]);b:=fsc_apply(d,0,1,e[..],em[..],ev[..],eg[..],eo[..]);
+        #assert a.status==TrStatus.ok && tr_same(w[..],e[..]) && tr_same(g[..],eg[..]);for i:0..<12 {#assert g[i]==fsc_grad(i);}}
+    // Groups by hand: decay on 2-4 and 9-10 of 12 values, shards of 4.
+    groups:[9]AwGroup;
+    #assert fs_groups(c,0.25,0,4,groups[..])==2 && groups[0].first==0 && groups[0].count==2 && groups[0].decay==0 && groups[1].first==2 && groups[1].count==2 && groups[1].decay==c.decay && groups[1].lr==0.25;
+    #assert fs_groups(c,0.25,4,4,groups[..])==2 && groups[0].first==0 && groups[0].count==1 && groups[0].decay==c.decay && groups[1].first==1 && groups[1].count==3 && groups[1].decay==0;
+    #assert fs_groups(c,0.25,8,4,groups[..])==3 && groups[0].count==1 && groups[1].first==1 && groups[1].count==2 && groups[2].first==3 && groups[2].count==1 && groups[2].beta1==c.beta1 && groups[2].beta2==c.beta2 && groups[2].eps==c.eps;
+    #assert fs_groups(c,0.25,0,12,groups[..])==5 && groups[4].first==11 && groups[4].count==1;
+    e:=c;e.span_count=0;#assert fs_groups(e,0.25,4,4,groups[..])==1 && groups[0].first==0 && groups[0].count==4 && groups[0].decay==0;
+    e.span_count=1;e.spans[0]=TrSpan.{first=0,count=12};#assert fs_groups(e,0.25,4,4,groups[..])==1 && groups[0].count==4 && groups[0].decay==e.decay;
+}
+#test "every rank agrees before anything is written" {
+    c:=fsc_adamw();
+    // A parameter bound one rank's new values pass and another's do not.
+    d:=c;d.bound=fsc_bound(c);
+    for ranks:[3]int.[1,3,12] {w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;
+        #assert fsc_apply(d,ranks,1,w[..],m[..],v[..],g[..],order[..]).status==TrStatus.ok;
+        e:=d;e.bound=fsc_bound(c)*0.999999;
+        a:=fsc_apply(e,ranks,1,w[..],m[..],v[..],g[..],order[..]);
+        f:[12]f64;fm:[12]f64;fv:[12]f64;fg:[12]f64;fo:[6]int;b:=fsc_apply(e,0,1,f[..],fm[..],fv[..],fg[..],fo[..]);
+        #assert a.status==TrStatus.bound && b.status==TrStatus.bound && a.run.revision==2;
+        for i:0..<12 {#assert w[i]==fsc_start(i) && m[i]==0.125 && v[i]==0.25;}}
+    // The optimizer refuses one rank's shard (a second moment below zero):
+    // every rank refuses, and the old values beyond the bound do not change that.
+    w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;
+    #assert fsc_start(11)>d.bound;
+    a:=fsc_apply(d,3,2,w[..],m[..],v[..],g[..],order[..]);#assert a.status==TrStatus.optimizer;
+    for i:0..<12 {#assert w[i]==fsc_start(i);}#assert v[11]<0;
+    e:[12]f64;em:[12]f64;ev:[12]f64;eg:[12]f64;eo:[6]int;#assert fsc_apply(d,0,2,e[..],em[..],ev[..],eg[..],eo[..]).status==TrStatus.optimizer;
+    #assert fsc_apply(d,3,3,w[..],m[..],v[..],g[..],order[..]).status==TrStatus.optimizer && w[0]==fsc_start(0);
+    // Only the first value is beyond the bound.
+    #assert fsc_apply(d,3,7,w[..],m[..],v[..],g[..],order[..]).status==TrStatus.bound && fsc_apply(d,0,7,e[..],em[..],ev[..],eg[..],eo[..]).status==TrStatus.bound && w[0]==-50;
+    // A gradient whose squares overflow, or a loss that is not finite.
+    #assert fsc_apply(c,4,4,w[..],m[..],v[..],g[..],order[..]).status==TrStatus.number && fsc_apply(c,0,4,e[..],em[..],ev[..],eg[..],eo[..]).status==TrStatus.number;
+    #assert fsc_apply(c,4,5,w[..],m[..],v[..],g[..],order[..]).status==TrStatus.number;
+    for i:0..<12 {#assert w[i]==fsc_start(i);}
+}
+#test "steps out of order, buffers that do not fit, and a refused plan" {
+    c:=fsc_adamw();p:=fs_plan(3,12,2);run:=TrRun.{revision=4,state=AwState.{step=4}};b:=TrBatch.{revision=4,micro=2};s:=TrSum.{micro=2,loss=1};
+    w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;stage:[36]f64;order:[6]int;
+    for i:0..<12 {w[i]=0.5;g[i]=0.25;}
+    #assert fs_apply(c,p,run,b,s,w[..],m[..],v[..],g[..],stage[..],order[..]).status==TrStatus.ok && w[0]!=0.5;
+    for i:0..<12 {w[i]=0.5;}
+    bad:=[5]TrBatch.[TrBatch.{status=TrStatus.done,revision=4,micro=2},TrBatch.{revision=3,micro=2},TrBatch.{revision=4,micro=1},b,b];
+    sums:=[5]TrSum.[s,s,TrSum.{micro=1,loss=1},TrSum.{status=TrStatus.order,micro=2},TrSum.{micro=1,loss=1}];
+    for k:0..<5 {#assert fs_apply(c,p,run,bad[k],sums[k],w[..],m[..],v[..],g[..],stage[..],order[..]).status==TrStatus.order;}
+    #assert fs_apply(c,p,run,b,s,w[0..<11],m[..],v[..],g[..],stage[..],order[..]).status==TrStatus.shape;
+    #assert fs_apply(c,p,run,b,s,w[..],m[0..<11],v[..],g[..],stage[..],order[..]).status==TrStatus.shape;
+    #assert fs_apply(c,p,run,b,s,w[..],m[..],v[0..<11],g[..],stage[..],order[..]).status==TrStatus.shape;
+    #assert fs_apply(c,p,run,b,s,w[..],m[..],v[..],g[0..<11],stage[..],order[..]).status==TrStatus.shape;
+    #assert fs_apply(c,p,run,b,s,w[..],m[..],v[..],g[..],stage[0..<35],order[..]).status==TrStatus.shape;
+    #assert fs_apply(c,p,run,b,s,w[..],m[..],v[..],g[..],stage[..],order[0..<5]).status==TrStatus.shape;
+    #assert fs_apply(c,fs_plan(5,12,2),run,b,s,w[..],m[..],v[..],g[..],stage[..],order[..]).status==TrStatus.config;
+    d:=c;d.optimizer=TrOptimizer.sgd;#assert fs_apply(d,p,run,b,s,w[..],m[..],v[..],g[..],stage[..],order[..]).status==TrStatus.config;
+    for i:0..<12 {#assert w[i]==0.5;}
+}
+#test "chapter 115's decoder trains fully sharded to chapter 118's bits at every rank count that divides 220" #steps 4000000000 {
+    f:=tt_fix();c:=tm_decoder(TT_SMALL,4);
+    // Chapter 118's own loop.
+    q:[220]f64;qm:[220]f64;qv:[220]f64;got:[4]f64;none:[1]int;held:[1]int;seed:=td_init(TT_SMALL,CrSeed.{seed=TT_INIT},q[..]);
+    st:=tr_begin(c,220,f.docs[..],f.tokens[0..<f.n],none[0..<0]);
+    o:=tm_decoder_drive(TT_SMALL,c,f.docs[..],f.tokens[0..<f.n],held[0..<0],st.run,q[..],qm[..],qv[..],4,got[..]);#assert o.status==TrStatus.ok;
+    for ranks:[6]int.[1,2,4,5,10,11] {r:=fsc_run(f,c,ranks,4);
+        #assert r.status==TrStatus.ok && r.steps==4 && tr_same(r.p[..],q[..]) && tr_same(r.m[..],qm[..]) && tr_same(r.v[..],qv[..]) && tr_same(r.losses[0..<4],got[..]);
+        // What the drive moved is the closed form, step by step.
+        x:=fs_comm(fs_plan(ranks,220,4));#assert 8*r.moved==4*(x.gather+x.scatter);}
+    #assert fsc_run(f,c,3,4).status==TrStatus.config;
+}
+#test "a sharded checkpoint reloads at another rank count and continues to the same bits" #steps 4000000000 {
+    f:=tt_fix();c:=tm_decoder(TT_SMALL,4);whole:=fsc_run(f,c,4,4);
+    half:=fsc_run(f,c,4,2);#assert half.steps==2;
+    ids:=fsc_ids(c);bytes:[7000]u8;manifest:[576]u8;n4:=4*tr_size(55);#assert n4==6640;
+    #assert fs_save(ids,fs_plan(4,220,4),half.run,half.p[..],half.m[..],half.v[..],bytes[0..<n4],manifest[0..<192])==CkStatus.ok;
+    for ranks:[5]int.[4,2,5,1,11] {
+        x:=fsc_resume(f,c,ranks,bytes[0..<n4],manifest[0..<192]);
+        #assert x.status==FsStatus.ok && x.reads==fsc_reads(220,4,ranks) && x.run.revision==2;
+        r:=fsc_continue(f,c,ranks,x,4);
+        #assert r.status==TrStatus.ok && r.steps==2 && tr_same(r.p[..],whole.p[..]) && tr_same(r.m[..],whole.m[..]) && tr_same(r.v[..],whole.v[..]);
+        #assert f64_bits(r.losses[1])==f64_bits(whole.losses[3]);}
+    #assert fsc_reads(220,4,5)==8 && fsc_reads(220,4,2)==4 && fsc_reads(220,4,11)==14;
+    // Saved at 5 ranks and at 1, reloaded at 2 and at 4.
+    five:=fsc_run(f,c,5,2);b5:[7000]u8;m5:[576]u8;s5:=5*tr_size(44);
+    #assert fs_save(ids,fs_plan(5,220,4),five.run,five.p[..],five.m[..],five.v[..],b5[0..<s5],m5[0..<224])==CkStatus.ok;
+    y:=fsc_resume(f,c,2,b5[0..<s5],m5[0..<224]);#assert y.status==FsStatus.ok && y.reads==6;
+    #assert tr_same(y.p[..],half.p[..]) && tr_same(y.m[..],half.m[..]) && tr_same(y.v[..],half.v[..]);
+    #assert fs_save(ids,fs_plan(1,220,4),half.run,half.p[..],half.m[..],half.v[..],b5[0..<tr_size(220)],m5[0..<96])==CkStatus.ok;
+    y=fsc_resume(f,c,4,b5[0..<tr_size(220)],m5[0..<96]);#assert y.status==FsStatus.ok && y.reads==4 && tr_same(y.p[..],half.p[..]) && tr_same(y.v[..],half.v[..]);
+}
+#test "a damaged sharded checkpoint is refused and writes nothing" #steps 4000000000 {
+    f:=tt_fix();c:=tm_decoder(TT_SMALL,4);half:=fsc_run(f,c,4,2);ids:=fsc_ids(c);p:=fs_plan(4,220,4);
+    good:[6640]u8;gm:[192]u8;#assert fs_save(ids,p,half.run,half.p[..],half.m[..],half.v[..],good[..],gm[..])==CkStatus.ok;
+    // The save refuses buffers that do not fit and runs chapter 118 would not write, and writes nothing.
+    b:[6640]u8;mf:[192]u8;
+    #assert fs_save(ids,fs_plan(3,220,4),half.run,half.p[..],half.m[..],half.v[..],b[..],mf[..])==CkStatus.shape;
+    #assert fs_save(ids,p,half.run,half.p[0..<219],half.m[..],half.v[..],b[..],mf[..])==CkStatus.shape;
+    #assert fs_save(ids,p,half.run,half.p[..],half.m[0..<219],half.v[..],b[..],mf[..])==CkStatus.shape;
+    #assert fs_save(ids,p,half.run,half.p[..],half.m[..],half.v[0..<219],b[..],mf[..])==CkStatus.shape;
+    #assert fs_save(ids,p,half.run,half.p[..],half.m[..],half.v[..],b[0..<6639],mf[..])==CkStatus.shape;
+    #assert fs_save(ids,p,half.run,half.p[..],half.m[..],half.v[..],b[..],mf[0..<191])==CkStatus.shape;
+    wild:=half;wild.p[200]=0.0/0.0;#assert fs_save(ids,p,wild.run,wild.p[..],wild.m[..],wild.v[..],b[..],mf[..])==CkStatus.number;
+    lost:=half.run;lost.stale=1;#assert fs_save(ids,p,lost,half.p[..],half.m[..],half.v[..],b[..],mf[..])==CkStatus.corrupt;
+    for i:0..<6640 {#assert b[i]==0;}for i:0..<192 {#assert mf[i]==0;}
+    // Manifests and records damaged one way at a time.
+    for k:0..<17 {x:=fsc_damaged(f,c,good[..],gm[..],k);w:=fsc_want(k);
+        #assert x.status==w.status && x.record==w.record && x.shard==w.shard && x.reads==0;
+        for i:0..<220 {#assert x.p[i]==7 && x.m[i]==7 && x.v[i]==7;}}
+    // The reloading plan and buffers.
+    #assert fsc_resume(f,c,3,good[..],gm[..]).status==FsStatus.uneven;
+    #assert fsc_resume(f,c,2,good[0..<6639],gm[..]).status==FsStatus.record && fsc_resume(f,c,2,good[0..<6639],gm[..]).record==CkStatus.truncated;
+    big:[6641]u8;for i:0..<6640 {big[i]=good[i];}#assert fsc_resume(f,c,2,big[..],gm[..]).record==CkStatus.corrupt;
+    z:[220]f64;none:[1]int;
+    #assert fs_load(c,ids,fs_plan(2,220,4),gm[..],good[..],f.docs[..],f.tokens[0..<f.n],z[0..<219],z[..],z[..],none[0..<0]).status==FsStatus.shape;
+    #assert fs_load(c,ids,fs_plan(2,220,4),gm[..],good[..],f.docs[..],f.tokens[0..<f.n],z[..],z[0..<219],z[..],none[0..<0]).status==FsStatus.shape;
+    #assert fs_load(c,ids,fs_plan(2,220,4),gm[..],good[..],f.docs[..],f.tokens[0..<f.n],z[..],z[..],z[0..<219],none[0..<0]).status==FsStatus.shape;
+    // Another model's identity, and a configuration whose run this is not.
+    other:=ids;other.model=ck_fill(9);
+    y:=fs_load(c,other,fs_plan(2,220,4),gm[..],good[..],f.docs[..],f.tokens[0..<f.n],z[..],z[..],z[..],none[0..<0]);#assert y.status==FsStatus.record && y.record==CkStatus.model && y.shard==0;
+    d:=c;d.steps=1;y=fs_load(d,ids,fs_plan(2,220,4),gm[..],good[..],f.docs[..],f.tokens[0..<f.n],z[..],z[..],z[..],none[0..<0]);#assert y.status==FsStatus.record && y.record==CkStatus.optimizer && y.shard==0;
+    for i:0..<220 {#assert z[i]==0;}
+    // Rows mode: the order is rebuilt for the reloaded epoch.
+    e:=fsc_adamw();w:[12]f64;m:[12]f64;v:[12]f64;g:[12]f64;order:[6]int;
+    a:=fsc_apply(e,3,1,w[..],m[..],v[..],g[..],order[..]);#assert a.status==TrStatus.ok;
+    rb:[3000]u8;rm:[160]u8;r3:=3*tr_size(4);#assert fs_save(fsc_ids(e),fs_plan(3,12,2),a.run,w[..],m[..],v[..],rb[0..<r3],rm[..])==CkStatus.ok;
+    nd:[1]PkDoc;nt:[1]u8;
+    for k:0..<2 {ranks:=2+2*k;w2:[12]f64;m2:[12]f64;v2:[12]f64;o2:[6]int;
+        l:=fs_load(e,fsc_ids(e),fs_plan(ranks,12,2),rm[..],rb[0..<r3],nd[0..<0],nt[0..<0],w2[..],m2[..],v2[..],o2[..]);
+        #assert l.status==FsStatus.ok && l.reads==fsc_reads(12,3,ranks) && l.run.revision==3 && tr_same(w2[..],w[..]) && tr_same(m2[..],m[..]) && tr_same(v2[..],v[..]);
+        for j:0..<6 {#assert o2[j]==order[j];}}
+    #assert fsc_reads(12,3,2)==4 && fsc_reads(12,3,4)==6;
+    w2:[12]f64;o2:[6]int;
+    #assert fs_load(e,fsc_ids(e),fs_plan(2,12,2),rm[0..<128],rb[0..<r3],nd[0..<0],nt[0..<0],w2[..],w2[..],w2[..],o2[..]).status==FsStatus.manifest;
+    #assert fs_load(e,fsc_ids(e),fs_plan(2,12,2),rm[..],rb[0..<r3],nd[0..<0],nt[0..<0],w2[..],w2[..],w2[..],o2[0..<5]).status==FsStatus.record;
+}
+#test "per-rank bytes by hand, against chapter 116's planner" {
+    s:=TT_SMALL;
+    // 220 parameters on 4 ranks, 4 micro-batches of one row: shards of 55.
+    b:=fs_memory(s,4,4,false);
+    #assert b.status==FsStatus.ok && b.parameters==440 && b.moments==880 && b.gradients==440 && b.gathered==1760 && b.held==1760 && b.activations==4800 && b.workspace==4800 && b.total==14880;
+    // One rank: chapter 116's bytes for one row at a time, plus the gathered
+    // copy and a gradient for each micro-batch beyond the first.
+    one:=fs_memory(s,1,4,false);m:=mb_bytes(s,1,false);
+    #assert one.parameters==m.parameters && one.moments==m.moments && one.gradients+8*220==m.gradients && one.held==8*220*4 && one.activations==m.activations && one.workspace==m.workspace;
+    #assert m.total==18400 && fs_memory(s,1,1,false).total==m.total+1760 && fs_memory(s,2,4,false).total==18400 && fs_memory(s,5,4,false).total==14528;
+    // The planner refuses a 15000-byte device for every plan; 4 ranks fit it.
+    #assert mb_plan(s,4,15000).status==MbStatus.budget && mb_plan(s,4,15000).need==18400;
+    x:=fs_fit(s,4,false,15000);#assert x.status==FsStatus.ok && x.ranks==4 && x.bytes.total==14880 && x.need==0;
+    #assert fs_fit(s,4,false,14879).ranks==5 && fs_fit(s,4,false,14528).ranks==5 && fs_fit(s,4,false,18400).ranks==2 && fs_fit(s,4,false,1<<40).ranks==1;
+    y:=fs_fit(s,4,false,1000);#assert y.status==FsStatus.ranks && y.ranks==0 && y.need==fs_memory(s,11,4,false).total && y.need==13760;
+    // Chapter 116's shape, recomputing: 3152 parameters on 4 ranks.
+    t:=MB_TEST_SHAPE;r:=fs_memory(t,4,4,true);
+    #assert r.parameters==8*788 && r.moments==16*788 && r.gradients==8*788 && r.gathered==8*3152 && r.held==8*3152 && r.activations==8*8288 && r.workspace==8*7776 && r.total==204160;
+    #assert mb_plan(t,4,210000).status==MbStatus.budget && fs_fit(t,4,true,210000).ranks==4 && fs_fit(t,4,true,254592).ranks==2;
+    #assert fs_memory(t,16,4,true).held==8*3152 && fs_memory(t,2,4,true).held==16*3152 && fs_memory(t,3,4,true).status==FsStatus.uneven && fs_memory(t,3,4,true).total==0;
+    #assert fs_fit(t,4,true,1<<40).ranks==1 && fs_fit(t,0,true,1<<40).status==FsStatus.micro;
+}
+#test "bytes a step moves, against chapter 133's closed forms" {
+    p:=fs_plan(4,220,4);x:=fs_comm(p);
+    #assert x.gather==5280 && x.gather==sd_cost(220,1,4,sd_shard(0),sd_replicated());
+    // The fixed order costs one more hop for every shard but the last rank's.
+    #assert x.scatter==6600 && x.scatter==sd_cost(220,1,4,sd_partial(),sd_shard(0))+8*165;
+    #assert x.scalars==144 && x.total==12024;
+    // Chapter 134's all-reduce moves 2 (R - 1) n values; this is that plus the hop.
+    #assert x.gather+x.scatter==sd_cost(220,1,4,sd_partial(),sd_replicated())+8*165;
+    o:=fs_comm(fs_plan(1,220,4));#assert o.gather==0 && o.scatter==0 && o.scalars==0 && o.total==0;
+    t:=fs_comm(fs_plan(2,4,3));#assert t.gather==32 && t.scatter==48 && t.scalars==48 && t.total==128;
+}
+
+// book:begin plan
+// n parameters over `ranks` ranks: rank r owns values r*c up to (r+1)*c,
+// c = n / ranks, and micro-batches fs_first(r) up to fs_first(r+1) of each
+// step (chapter 134's split). A rank may own no micro-batch; it still owns
+// its shard. Every shard is the same size: an uneven split is refused.
+FsPlan :: struct {status:FsStatus;ranks:int;n:int;micro:int;}
+fs_plan :: (ranks:int,n:int,micro:int)->FsPlan {
+    p:=FsPlan.{ranks=ranks,n=n,micro=micro};
+    if ranks<1 || ranks>FS_RANKS {p.status=FsStatus.ranks;return p;}
+    if n<1 || n>CK_VALUES {p.status=FsStatus.shape;return p;}
+    if n%ranks!=0 {p.status=FsStatus.uneven;return p;}
+    if micro<1 || micro>TR_ACCUMULATE {p.status=FsStatus.micro;}
+    return p;
+}
+fs_size :: (p:FsPlan)->int {return p.n/p.ranks;}
+fs_first :: (p:FsPlan,r:int)->int {return r*p.micro/p.ranks;}
+// The configuration this file trains: the plan is admitted, it names
+// AdamW, and chapter 118 admits it.
+fs_admit :: (c:TrConfig,p:FsPlan,docs:[]PkDoc,tokens:[]u8)->FsStatus {
+    if p.status!=FsStatus.ok {return p.status;}
+    if c.optimizer!=TrOptimizer.adamw {return FsStatus.optimizer;}
+    if tr_admit(c,p.n,docs,tokens)!=TrStatus.ok {return FsStatus.config;}
+    return FsStatus.ok;
+}
+// book:end plan
+
+// book:begin collectives
+// All-gather: rank r's working copy of the whole vector. Its own shard is
+// copied in place; every other shard comes from its owner. Returns the
+// values rank r received.
+fs_gather :: (p:FsPlan,r:int,w:[]f64,work:[]f64)->int {
+    c:=fs_size(p);moved:=0;
+    for s:0..<p.ranks {for i:s*c..<(s+1)*c {work[i]=w[i];}if s!=r {moved+=c;}}
+    return moved;
+}
+// Reduce-scatter of shard s. grads holds micro-batch m's whole gradient at
+// m*n, on the rank that owns m. Rank 0 starts at zero and adds its
+// micro-batches' values divided by the step's micro-batch count, in order;
+// rank 1 continues from rank 0's sum in msg, and so on: chapter 118's
+// tr_add order. The last rank then sends the sum to the shard's owner, rank
+// s, unless it is rank s. out receives the shard. Returns the values sent.
+fs_scatter :: (p:FsPlan,s:int,grads:[]f64,msg:[]f64,out:[]f64)->int {
+    c:=fs_size(p);count:=f64(p.micro);moved:=0;
+    for r:0..<p.ranks {
+        for i:0..<c {acc:=0.0;if r>0 {acc=msg[i];}
+            for m:fs_first(p,r)..<fs_first(p,r+1) {acc+=grads[m*p.n+s*c+i]/count;}
+            msg[i]=acc;}
+        if r>0 {moved+=c;}
+    }
+    if s!=p.ranks-1 {moved+=c;}
+    for i:0..<c {out[s*c+i]=msg[i];}
+    return moved;
+}
+// The step's loss: each rank adds its micro-batches' losses to the running
+// sum, in micro-batch order.
+fs_loss :: (p:FsPlan,losses:[]f64)->f64 {
+    count:=f64(p.micro);loss:=0.0;
+    for r:0..<p.ranks {for m:fs_first(p,r)..<fs_first(p,r+1) {loss+=losses[m]/count;}}
+    return loss;
+}
+// book:end collectives
+
+// book:begin apply
+// AdamW groups for the shard first..<first+count, counted from its start:
+// a new group wherever weight decay starts or stops (chapter 118 decays
+// the values in its spans only). AdamW treats each value on its own, so
+// these groups give chapter 118's values. Returns how many there are.
+fs_groups :: (c:TrConfig,rate:f64,first:int,count:int,out:[]AwGroup)->int {
+    k:=0;prev:bool;
+    for i:0..<count {d:=tr_decayed(c,first+i);
+        if i==0 || d!=prev {out[k]=AwGroup.{first=i,lr=rate,beta1=c.beta1,beta2=c.beta2,eps=c.eps,decay=ifx d then c.decay else 0};k+=1;prev=d;}
+        out[k-1].count+=1;}
+    return k;
+}
+// One step from the scattered sum. w, m, v and g hold every rank's shard,
+// rank r's at r*c. The ranks first pass two running sums along, rank 0 to
+// the last: the loss (fs_loss) and the gradient's squares, shard by shard,
+// which is chapter 118's order. Each rank clips its own shard by the global
+// norm and stages its AdamW update. Nothing is written until every rank's
+// update is admitted and every new value is within the bound.
+fs_apply :: (c:TrConfig,p:FsPlan,run:TrRun,b:TrBatch,s:TrSum,w:[]f64,m:[]f64,v:[]f64,g:[]f64,stage:[]f64,order:[]int)->TrStep {
+    n:=p.n;fail:=TrStep.{run=run};
+    if p.status!=FsStatus.ok || c.optimizer!=TrOptimizer.adamw {fail.status=TrStatus.config;return fail;}
+    if b.status!=TrStatus.ok || s.status!=TrStatus.ok || b.revision!=run.revision || b.micro!=p.micro || s.micro!=b.micro {fail.status=TrStatus.order;return fail;}
+    if w.count!=n || m.count!=n || v.count!=n || g.count!=n || stage.count!=3*n || (c.source==TrSource.rows && order.count<c.examples) {fail.status=TrStatus.shape;return fail;}
+    cs:=fs_size(p);sum:=0.0;
+    for r:0..<p.ranks {for i:r*cs..<(r+1)*cs {sum+=g[i]*g[i];}}
+    if !tr_finite(s.loss) || !tr_finite(sum) {fail.status=TrStatus.number;return fail;}
+    norm:=sqrt(sum);rate:=tr_rate(c,run.state.step);state:=run.state;bad:=TrStatus.ok;none32:[1]f32;groups:[9]AwGroup;
+    for r:0..<p.ranks {
+        f:=r*cs;sp:=stage[f..<f+cs];sm:=stage[n+f..<n+f+cs];sv:=stage[2*n+f..<2*n+f+cs];gs:=g[f..<f+cs];
+        for i:0..<cs {sp[i]=w[f+i];sm[i]=m[f+i];sv[i]=v[f+i];if c.clip>0 && norm>c.clip {gs[i]=gs[i]*c.clip/norm;}}
+        k:=fs_groups(c,rate,f,cs,groups[..]);
+        a:=aw_step(groups[0..<k],AwPolicy.{},run.state,sp,gs,sm,sv,none32[0..<0],false);
+        if a.status!=AwStatus.ok {bad=TrStatus.optimizer;}
+        state=a.state;
+    }
+    // The vote: the first refusal is the optimizer's, then the bound.
+    if bad==TrStatus.ok {for i:0..<n {if !(abs(stage[i])<=c.bound) {bad=TrStatus.bound;}}}
+    if bad!=TrStatus.ok {fail.status=bad;return fail;}
+    for i:0..<n {w[i]=stage[i];m[i]=stage[n+i];v[i]=stage[2*n+i];}
+    r:=run;r.state=state;r.revision+=1;r.cursor=b.after;
+    if c.source==TrSource.rows && c.shuffle && b.after.epoch>run.cursor.epoch {next:=tr_shuffle(order[0..<c.examples],c.seed,cast(u64)(b.after.epoch*(c.examples-1)));}
+    return TrStep.{run=r,loss=s.loss,rate=rate,norm=norm};
+}
+// book:end apply
+
+// book:begin save
+// A sharded checkpoint: one chapter 118 record a rank (chapter 122's record
+// of its shard, then the trainer tail), and a manifest written last:
+//   "PSFS" u8 version=1, 3 zero bytes; ranks, n, revision (u64 each);
+//   each shard record's digest in rank order; SHA-256 (tag
+//   psionic.fully-sharded.v1) of every byte before it.
+fs_manifest_size :: (ranks:int)->int {return 64+32*ranks;}
+// Writes every record and the manifest, or nothing.
+fs_save :: (ids:CkIds,p:FsPlan,run:TrRun,w:[]f64,m:[]f64,v:[]f64,bytes:[]u8,manifest:[]u8)->CkStatus {
+    c:=fs_size(p);size:=tr_size(c);
+    if p.status!=FsStatus.ok || w.count!=p.n || m.count!=p.n || v.count!=p.n || bytes.count!=p.ranks*size || manifest.count!=fs_manifest_size(p.ranks) {return CkStatus.shape;}
+    stage:[103744]u8;h:[576]u8;pointer:[80]u8;h[0]=80;h[1]=83;h[2]=70;h[3]=83;h[4]=1;
+    at:=ck_put64(h[..],8,cast(u64)p.ranks);at=ck_put64(h[..],at,cast(u64)p.n);at=ck_put64(h[..],at,cast(u64)run.revision);
+    for r:0..<p.ranks {f:=r*c;rec:=stage[r*size..<(r+1)*size];
+        s:=tr_save(ids,run,w[f..<f+c],m[f..<f+c],v[f..<f+c],rec,pointer[..]);if s!=CkStatus.ok {return s;}
+        at=ck_put(h[..],at,ck_get(rec,ck_size(c)-32));}
+    at=ck_put(h[..],at,ck_digest("psionic.fully-sharded.v1",h[0..<at]));
+    for i:0..<bytes.count {bytes[i]=stage[i];}
+    for i:0..<at {manifest[i]=h[i];}
+    return CkStatus.ok;
+}
+// book:end save
+
+// book:begin load
+FsLoad :: struct {status:FsStatus;record:CkStatus;shard:int=-1;reads:int;run:TrRun;}
+// Two shard records of one save agree on everything but their values: the
+// parent, revision, cursor and optimizer state in the head, and the tail.
+fs_agree :: (a:[]u8,b:[]u8,body:int)->bool {
+    for i:136..<CK_HEAD {if a[i]!=b[i] {return false;}}
+    for i:body+8..<body+48 {if a[i]!=b[i] {return false;}}
+    return true;
+}
+// Reloads a checkpoint saved at any admitted rank count into plan p. Each
+// new rank reads only the old shards its range overlaps, and each record
+// must be the one the manifest names and agree with the others. The values
+// are then written as one chapter 118 record and read back by tr_resume,
+// so every check chapter 118 makes on a run holds here too. Refusals write
+// nothing.
+fs_load :: (c:TrConfig,ids:CkIds,p:FsPlan,manifest:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,w:[]f64,m:[]f64,v:[]f64,order:[]int)->FsLoad {
+    a:=fs_admit(c,p,docs,tokens);if a!=FsStatus.ok {return FsLoad.{status=a};}
+    n:=p.n;if w.count!=n || m.count!=n || v.count!=n {return FsLoad.{status=FsStatus.shape};}
+    k:=(manifest.count-64)/32;head:=[8]u8.[80,83,70,83,1,0,0,0];
+    if k<1 || manifest.count!=fs_manifest_size(k) {return FsLoad.{status=FsStatus.manifest};}
+    for i:0..<8 {if manifest[i]!=head[i] {return FsLoad.{status=FsStatus.manifest};}}
+    end:=manifest.count-32;if !ck_equal(ck_digest("psionic.fully-sharded.v1",manifest[0..<end]),ck_get(manifest,end)) {return FsLoad.{status=FsStatus.manifest};}
+    if ck_get64(manifest,8)!=cast(u64)k || ck_get64(manifest,16)!=cast(u64)n {return FsLoad.{status=FsStatus.manifest};}
+    old:=fs_plan(k,n,p.micro);if old.status!=FsStatus.ok {return FsLoad.{status=old.status};}
+    c0:=fs_size(old);size:=tr_size(c0);body:=ck_size(c0);
+    if bytes.count<k*size {return FsLoad.{status=FsStatus.record,record=CkStatus.truncated};}
+    if bytes.count>k*size {return FsLoad.{status=FsStatus.record,record=CkStatus.corrupt};}
+    want:=ids;want.optimizer=tr_identity(c);out:=FsLoad.{};run:TrRun;
+    sp:[4096]f64;sm:[4096]f64;sv:[4096]f64;tp:[4096]f64;tm:[4096]f64;tv:[4096]f64;cn:=fs_size(p);
+    for r:0..<p.ranks {lo:=r*cn;hi:=lo+cn;
+        for s:lo/c0..<(hi-1)/c0+1 {rec:=bytes[s*size..<(s+1)*size];
+            x:=ck_read(rec[0..<body],want,tp[0..<c0],tm[0..<c0],tv[0..<c0],false);
+            if x.status!=CkStatus.ok {return FsLoad.{status=FsStatus.record,record=x.status,shard=s};}
+            t:=tr_tail(rec[body..<size],x.digest,x.meta.revision);
+            if t.status!=CkStatus.ok {return FsLoad.{status=FsStatus.record,record=t.status,shard=s};}
+            if !ck_equal(x.digest,ck_get(manifest,32+32*s)) || ck_get64(manifest,24)!=cast(u64)x.meta.revision || !fs_agree(rec,bytes[0..<size],body) {return FsLoad.{status=FsStatus.shard,shard=s};}
+            run=t.run;run.cursor=x.meta.cursor;run.state=x.meta.state;
+            base:=s*c0;from:=lo+base-tr_min(lo,base);to:=tr_min(hi,base+c0);
+            ps:=sp[lo..<hi];ms:=sm[lo..<hi];vs:=sv[lo..<hi];pt:=tp[0..<c0];mt:=tm[0..<c0];vt:=tv[0..<c0];
+            for at:from..<to {ps[at-lo]=pt[at-base];ms[at-lo]=mt[at-base];vs[at-lo]=vt[at-base];}
+            out.reads+=1;}}
+    // Chapter 118's own reader admits the whole run.
+    whole:[98644]u8;pointer:[80]u8;
+    s:=tr_save(want,run,sp[0..<n],sm[0..<n],sv[0..<n],whole[0..<tr_size(n)],pointer[..]);
+    if s!=CkStatus.ok {return FsLoad.{status=FsStatus.record,record=s};}
+    back:=tr_resume(c,want,pointer[..],whole[0..<tr_size(n)],docs,tokens,w,m,v,order);
+    if back.status!=CkStatus.ok {return FsLoad.{status=FsStatus.record,record=back.status};}
+    out.run=back.run;return out;
+}
+// book:end load
+
+// book:begin memory
+// One rank's bytes for chapter 115's decoder trained fully sharded, one row
+// a micro-batch, binary64 throughout. The shard: parameters, both moments
+// and the scattered gradient, c values each. The working set: the gathered
+// copy of all p parameters, and one whole gradient for each micro-batch the
+// rank owns, held until the reduce-scatter (the fixed order needs each one
+// apart). One row's saved values and scratch at a time, as chapter 116
+// counts them.
+FsBytes :: struct {status:FsStatus;parameters:int;moments:int;gradients:int;gathered:int;held:int;activations:int;workspace:int;total:int;}
+fs_memory :: (s:TdShape,ranks:int,micro:int,recompute:bool)->FsBytes {
+    np:=td_parameter_count(s);p:=fs_plan(ranks,np,micro);b:=FsBytes.{status=p.status};
+    if p.status!=FsStatus.ok {return b;}
+    c:=fs_size(p);b.parameters=8*c;b.moments=16*c;b.gradients=8*c;b.gathered=8*np;b.held=8*np*tr_ceil(micro,ranks);
+    b.activations=8*mb_saved(s,recompute);b.workspace=8*mb_scratch(s,recompute);
+    b.total=b.parameters+b.moments+b.gradients+b.gathered+b.held+b.activations+b.workspace;
+    return b;
+}
+// The fewest ranks whose every rank fits the budget, or a refusal that
+// names the bytes at the most ranks that divide the parameters.
+FsFit :: struct {status:FsStatus;ranks:int;bytes:FsBytes;need:int;}
+fs_fit :: (s:TdShape,micro:int,recompute:bool,budget:int)->FsFit {
+    out:=FsFit.{status=FsStatus.ranks};np:=td_parameter_count(s);ranks:=1;
+    while fs_plan(ranks,np,micro).status!=FsStatus.ranks {b:=fs_memory(s,ranks,micro,recompute);
+        if b.status==FsStatus.micro {out.status=b.status;return out;}
+        if b.status==FsStatus.ok {if b.total<=budget {return FsFit.{ranks=ranks,bytes=b};}out.need=b.total;}
+        ranks+=1;}
+    return out;
+}
+// book:end memory
+
+// book:begin comm
+// Bytes one step moves, 8 a value. The all-gather: each rank receives the
+// n - c values it lacks. The reduce-scatter: each shard makes R - 1 hops
+// along the ranks, then every shard but the last rank's one more to its
+// owner. The scalars: the loss and the squares pass along the ranks and
+// come back (2 values, 2 (R - 1) hops), and the vote on admission does too
+// (1 value).
+FsComm :: struct {gather:int;scatter:int;scalars:int;total:int;}
+fs_comm :: (p:FsPlan)->FsComm {
+    c:=fs_size(p);x:FsComm;r:=p.ranks-1;
+    x.gather=8*r*p.n;x.scatter=8*(r*p.n+r*c);x.scalars=8*3*2*r;x.total=x.gather+x.scatter+x.scalars;
+    return x;
+}
+// book:end comm

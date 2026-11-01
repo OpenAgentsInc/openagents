@@ -1,0 +1,28 @@
+220 parameters and 4 micro-batches over 4 ranks: admitted
+  rank 0 holds values 0 to 54 and owns micro-batch 0
+  rank 1 holds values 55 to 109 and owns micro-batch 1
+  rank 2 holds values 110 to 164 and owns micro-batch 2
+  rank 3 holds values 165 to 219 and owns micro-batch 3
+hand example, 2 ranks: shard 0 is 3.0 2.0 (4 values sent), shard 1 is 0.0 3.5 (2 sent), loss 3.5; equal to tr_add bit for bit: true
+chapter 115's decoder, 220 parameters, chapter 118's loop: 4 steps, losses 2.9360807937186078 2.761001189796394 2.7895427091516334 2.733675497919888
+  1 ranks: parameters, moments and losses equal bit for bit: true; 0 bytes moved a step (gather 0, reduce-scatter 0)
+  2 ranks: parameters, moments and losses equal bit for bit: true; 4400 bytes moved a step (gather 1760, reduce-scatter 2640)
+  4 ranks: parameters, moments and losses equal bit for bit: true; 11880 bytes moved a step (gather 5280, reduce-scatter 6600)
+  5 ranks: parameters, moments and losses equal bit for bit: true; 15488 bytes moved a step (gather 7040, reduce-scatter 8448)
+  10 ranks: parameters, moments and losses equal bit for bit: true; 33264 bytes moved a step (gather 15840, reduce-scatter 17424)
+  11 ranks: parameters, moments and losses equal bit for bit: true; 36800 bytes moved a step (gather 17600, reduce-scatter 19200)
+  3 ranks: refused: the rank count must divide the parameter count, so every shard is the same size
+bytes a step at 4 ranks: gather 5280 (chapter 133: 5280), reduce-scatter 6600 (chapter 133: 5280), scalars 144, total 12024
+one device, chapter 116, one row at a time: 18400 bytes; a 15000-byte device: budget, need 18400
+  1 ranks: shard 1760 + 3520 + 1760, gathered 1760, held 7040, activations 4800, scratch 4800: 25440 bytes a rank
+  2 ranks: shard 880 + 1760 + 880, gathered 1760, held 3520, activations 4800, scratch 4800: 18400 bytes a rank
+  4 ranks: shard 440 + 880 + 440, gathered 1760, held 1760, activations 4800, scratch 4800: 14880 bytes a rank
+  5 ranks: shard 352 + 704 + 352, gathered 1760, held 1760, activations 4800, scratch 4800: 14528 bytes a rank
+  10 ranks: shard 176 + 352 + 176, gathered 1760, held 1760, activations 4800, scratch 4800: 13824 bytes a rank
+  11 ranks: shard 160 + 320 + 160, gathered 1760, held 1760, activations 4800, scratch 4800: 13760 bytes a rank
+  the fewest ranks that fit 15000 bytes: 4, at 14880 bytes a rank
+checkpoint after step 2 at 4 ranks: ok, 4 records of 1660 bytes and a manifest of 192 bytes
+  reloaded at 2 ranks: admitted, 4 records read; steps 3 and 4 losses 2.7895427091516334 2.733675497919888; equal to the uninterrupted run: true
+  reloaded at 5 ranks: admitted, 8 records read; steps 3 and 4 losses 2.7895427091516334 2.733675497919888; equal to the uninterrupted run: true
+  reloaded at 1 ranks: admitted, 4 records read; steps 3 and 4 losses 2.7895427091516334 2.733675497919888; equal to the uninterrupted run: true
+  reloaded at 11 ranks: admitted, 14 records read; steps 3 and 4 losses 2.7895427091516334 2.733675497919888; equal to the uninterrupted run: true

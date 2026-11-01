@@ -2113,6 +2113,28 @@
       "timeout": 300
     },
     {
+      "source": "psionic/examples/fully-sharded.coax",
+      "chapter": "psionic/book/ch135-fully-sharded-training.md",
+      "stdout": "psionic/fixtures/fully-sharded.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
+      "source": "psionic/examples/fully-sharded-refuse.coax",
+      "chapter": "psionic/book/ch135-fully-sharded-training.md",
+      "stdout": "psionic/fixtures/fully-sharded-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "psionic/examples/pretrain.coax",
       "chapter": "psionic/book/ch128-a-complete-pretraining-run.md",
       "stdout": "psionic/fixtures/pretrain.out",

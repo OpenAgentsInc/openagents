@@ -1,0 +1,45 @@
+#import "Basic";
+#load "../lib/fully-sharded.coax";
+
+// book:begin example
+// Chapter 135: chapter 118's trainer, fully sharded. The ranks run one after
+// another on this CPU, last rank first; the bits do not depend on that.
+main :: () {
+    p:=fs_plan(4,220,4);print("220 parameters and 4 micro-batches over 4 ranks: %\n",fs_status(p.status));
+    for r:0..<4 {print("  rank % holds values % to % and owns micro-batch %\n",r,r*fs_size(p),(r+1)*fs_size(p)-1,fs_first(p,r));}
+
+    // The hand example: 3 micro-batches of 4 values over 2 ranks.
+    h:=fs_plan(2,4,3);grads:=[12]f64.[3,6,-9,1.5, 0,3,9,6, 6,-3,0,3];losses:=[3]f64.[3,6,1.5];msg:[2]f64;g:[4]f64;
+    a:=fs_scatter(h,0,grads[..],msg[..],g[..]);b:=fs_scatter(h,1,grads[..],msg[..],g[..]);
+    want:[4]f64;t:TrSum;for k:0..<3 {t=tr_add(TrBatch.{micro=3},t,losses[k],grads[4*k..<4*k+4],want[..]);}
+    print("hand example, 2 ranks: shard 0 is % % (% values sent), shard 1 is % % (% sent), loss %; equal to tr_add bit for bit: %\n",
+        g[0],g[1],a,g[2],g[3],b,fs_loss(h,losses[..]),tr_same(g[..],want[..]) && f64_bits(t.loss)==f64_bits(fs_loss(h,losses[..])));
+
+    // Chapter 115's decoder at the checks' small shape, 4 rows a step.
+    f:=tt_fix();c:=tm_decoder(TT_SMALL,4);
+    q:[220]f64;qm:[220]f64;qv:[220]f64;got:[4]f64;none:[1]int;held:[1]int;seed:=td_init(TT_SMALL,CrSeed.{seed=TT_INIT},q[..]);
+    o:=tm_decoder_drive(TT_SMALL,c,f.docs[..],f.tokens[0..<f.n],held[0..<0],tr_begin(c,220,f.docs[..],f.tokens[0..<f.n],none[0..<0]).run,q[..],qm[..],qv[..],4,got[..]);
+    print("chapter 115's decoder, 220 parameters, chapter 118's loop: % steps, losses % % % %\n",o.steps,got[0],got[1],got[2],got[3]);
+    for ranks:[6]int.[1,2,4,5,10,11] {r:=fsc_run(f,c,ranks,4);x:=fs_comm(fs_plan(ranks,220,4));
+        print("  % ranks: parameters, moments and losses equal bit for bit: %; % bytes moved a step (gather %, reduce-scatter %)\n",ranks,
+            r.status==TrStatus.ok && tr_same(r.p[..],q[..]) && tr_same(r.m[..],qm[..]) && tr_same(r.v[..],qv[..]) && tr_same(r.losses[0..<4],got[..]),8*r.moved/4,x.gather,x.scatter);}
+    print("  3 ranks: %\n",fs_status(fs_plan(3,220,4).status));
+    x:=fs_comm(p);
+    print("bytes a step at 4 ranks: gather % (chapter 133: %), reduce-scatter % (chapter 133: %), scalars %, total %\n",
+        x.gather,sd_cost(220,1,4,sd_shard(0),sd_replicated()),x.scatter,sd_cost(220,1,4,sd_partial(),sd_shard(0)),x.scalars,x.total);
+
+    // Bytes on each rank, against chapter 116's planner on one device.
+    m:=mb_bytes(TT_SMALL,1,false);print("one device, chapter 116, one row at a time: % bytes; a 15000-byte device: %, need %\n",m.total,mb_plan(TT_SMALL,4,15000).status,mb_plan(TT_SMALL,4,15000).need);
+    for ranks:[6]int.[1,2,4,5,10,11] {e:=fs_memory(TT_SMALL,ranks,4,false);
+        print("  % ranks: shard % + % + %, gathered %, held %, activations %, scratch %: % bytes a rank\n",ranks,e.parameters,e.moments,e.gradients,e.gathered,e.held,e.activations,e.workspace,e.total);}
+    fit:=fs_fit(TT_SMALL,4,false,15000);print("  the fewest ranks that fit 15000 bytes: %, at % bytes a rank\n",fit.ranks,fit.bytes.total);
+
+    // A sharded checkpoint after step 2 at 4 ranks, reloaded at other counts.
+    whole:=fsc_run(f,c,4,4);half:=fsc_run(f,c,4,2);bytes:[6640]u8;manifest:[192]u8;
+    s:=fs_save(fsc_ids(c),p,half.run,half.p[..],half.m[..],half.v[..],bytes[..],manifest[..]);
+    print("checkpoint after step 2 at 4 ranks: %, 4 records of % bytes and a manifest of % bytes\n",s,tr_size(55),fs_manifest_size(4));
+    for ranks:[4]int.[2,5,1,11] {y:=fsc_resume(f,c,ranks,bytes[..],manifest[..]);z:=fsc_continue(f,c,ranks,y,4);
+        print("  reloaded at % ranks: %, % records read; steps 3 and 4 losses % %; equal to the uninterrupted run: %\n",ranks,fs_status(y.status),y.reads,z.losses[0],z.losses[1],
+            tr_same(z.p[..],whole.p[..]) && tr_same(z.m[..],whole.m[..]) && tr_same(z.v[..],whole.v[..]));}
+}
+// book:end example

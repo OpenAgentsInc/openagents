@@ -1,0 +1,14 @@
+0 ranks: refused: from 1 to 16 ranks
+17 ranks: refused: from 1 to 16 ranks
+220 parameters over 3 ranks: refused: the rank count must divide the parameter count, so every shard is the same size
+0 micro-batches a step: refused: from 1 to 64 micro-batches a step
+SGD: refused: fully sharded training shards AdamW's moments, and the configuration names SGD
+a new value beyond the bound on rank 2: status bound, revision 2, value 11 still 3.5
+a second moment below zero on rank 2: status optimizer, value 0 on rank 0 still -2.0
+the manifest's digest is broken: refused: the checkpoint's manifest is damaged or names other parameters, record ok, shard -1; anything written: false
+the manifest says 3 shards of 220 values: refused: the rank count must divide the parameter count, so every shard is the same size, record ok, shard -1; anything written: false
+records 1 and 2 are swapped: refused: a shard's record is not the one the manifest names, record ok, shard 1; anything written: false
+a value in record 2 is changed: refused: a shard's record is refused by chapter 122, record corrupt, shard 2; anything written: false
+record 3's tail is changed: refused: a shard's record is refused by chapter 122, record corrupt, shard 3; anything written: false
+every record says a step was skipped: refused: a shard's record is refused by chapter 122, record corrupt, shard -1; anything written: false
+reloaded at 3 ranks: refused: the rank count must divide the parameter count, so every shard is the same size
