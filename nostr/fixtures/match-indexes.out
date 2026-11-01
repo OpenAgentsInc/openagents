@@ -1,0 +1,72 @@
+limits: 32 subscriptions, 16 filters a REQ, max_limit 127, query cost 100000
+
+the store: eight events from two test keys, A (vector 1) and B (vector 2)
+  e1 A kind 1 NOW-300 id 2f95523a tags [["t","nostr"]] -> accepted
+  e2 A kind 1 NOW-200 id 37211f98 tags [["t","coax"]] -> accepted
+  e3 B kind 1 NOW-200 id 09762c70 tags [["t","nostr"],["t","coax"]] -> accepted
+  e4 B kind 7 NOW-100 id 2b76c678 tags [["e","2f95523abd5037b71c5ee5e2cc5057070fa6d3e9ca949bd5a01216acd660dd39"],["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"]] -> accepted
+  e5 A kind 30023 NOW-50 id 9c6986c5 tags [["d","intro"],["t","coax"]] -> accepted
+  e6 B kind 1 NOW id fac797e9 tags [] -> accepted
+  e7 A kind 1 NOW id 9efdbc3f tags [["t","nostr"]] -> accepted
+  e8 B kind 0 NOW-400 id 75e5c061 tags [] -> accepted
+
+the indexes, as record names
+  by id:     e3(0976) e4(2b76) e1(2f95) e2(3721) e8(75e5) e5(9c69) e7(9efd) e6(fac7)
+  by author, kind: e8(B,0) e6(B,1) e3(B,1) e4(B,7) e7(A,1) e2(A,1) e1(A,1) e5(A,30023)
+  by time:   e7 e6 e5 e4 e3 e2 e1 e8
+  9 tag entries: e4 e5 e4 e2 e3 e5 e1 e3 e7 (sorted by key)
+
+1. {"ids":["09762c70b6d92a5e07705263b09b5506fd08f4240a3e1d3aa16bceb47b762463"]}
+    cost 128, limit 127; plan by id, read 1 of 8 records -> 1 events: e3
+    full scan read 8: the same events in the same order: true
+2. {"authors":["dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],"kinds":[1]}
+    cost 516, limit 127; plan by author and kind, read 3 of 8 records -> 3 events: e7 e2 e1
+    full scan read 8: the same events in the same order: true
+3. {"#t":["coax"]}
+    cost 1280, limit 127; plan by tag, read 3 of 8 records -> 3 events: e5 e3 e2
+    full scan read 8: the same events in the same order: true
+4. {"since":1793491000}
+    cost 6350, limit 127; plan by time, read 6 of 8 records -> 6 events: e7 e6 e5 e4 e3 e2
+    full scan read 8: the same events in the same order: true
+5. {"since":1793491000,"limit":2}
+    cost 100, limit 2; plan by time, read 2 of 8 records -> 2 events: e7 e6
+    full scan read 8: the same events in the same order: true
+6. {"kinds":[1],"#t":["nostr"],"limit":2}
+    cost 40, limit 2; plan by tag, read 3 of 8 records -> 2 events: e7 e3
+    full scan read 8: the same events in the same order: true
+7. {"authors":["dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]}
+    cost 2560, limit 127; plan by author, read 4 of 8 records -> 4 events: e6 e4 e3 e8
+    full scan read 8: the same events in the same order: true
+8. {"#e":["2f95523abd5037b71c5ee5e2cc5057070fa6d3e9ca949bd5a01216acd660dd39"],"#p":["dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"]}
+    cost 1290, limit 127; plan by tag, read 1 of 8 records -> 1 events: e4
+    full scan read 8: the same events in the same order: true
+9. {"authors":["dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],"#t":["nostr"]}
+    cost 1290, limit 127; plan by tag, read 3 of 8 records -> 2 events: e7 e1
+    full scan read 8: the same events in the same order: true
+10. {"kinds":[1],"limit":500}
+    cost 2560, limit 127; plan by time, read 8 of 8 records -> 5 events: e7 e6 e3 e2 e1
+    full scan read 8: the same events in the same order: true
+11. {"#t":["rust"]}
+    cost 1280, limit 127; plan by tag, read 0 of 8 records -> 0 events:
+    full scan read 8: the same events in the same order: true
+
+refusals
+e9 (B, kind 1, NOW, #t coax) -> accepted
+query {} on the index built before e9 -> n -1, plan -1 (refused: the store changed)
+rebuild: true
+12. {"#t":["coax"]}
+    cost 1280, limit 127; plan by tag, read 4 of 9 records -> 4 events: e9 e5 e3 e2
+    full scan read 9: the same events in the same order: true
+build with room for 8 records in the time index, 9 stored -> false
+query {} on that index -> n -1, plan -1
+REQ with 8 open filters (8 x 12700 = 101600) -> CLOSED "restricted: query cost exceeds the configured limit"
+REQ with 7 open filters (88900) -> accepted
+REQ with 17 filters -> frame reader error 5 (MS_TOO_MANY is 5): CLOSED "restricted: too many filters"
+
+the Coax project page's five REQs against relay.openagents.com's recording
+237 recorded events, 237 verified and stored; index built: true, 1372 tag entries
+  project (2 recorded): plan by author and kind, read 2 of 237 records, 2 events; recorded ids in recorded order: true; scan agrees: true
+  issues (105 recorded): plan by author and kind, read 105 of 237 records, 105 events; recorded ids in recorded order: true; scan agrees: true
+  comments (121 recorded): plan by author and kind, read 121 of 237 records, 121 events; recorded ids in recorded order: true; scan agrees: true
+  status (8 recorded): plan by author and kind, read 8 of 237 records, 8 events; recorded ids in recorded order: true; scan agrees: true
+  repo (1 recorded): plan by author and kind, read 1 of 237 records, 1 events; recorded ids in recorded order: true; scan agrees: true

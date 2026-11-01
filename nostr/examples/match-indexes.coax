@@ -1,0 +1,226 @@
+// book:begin example
+#load "../../coax/lib/nostr/store_index.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relay's clock for the whole run: 2026-11-01T00:00:00Z.
+NOW :: 1793491200;
+// BIP-340 vectors 1 and 2's published test keys and aux. Never sign with a
+// real key in an example.
+KEY_A :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_A :: "0000000000000000000000000000000000000000000000000000000000000001";
+KEY_B :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+AUX_B :: "c87aa53824b4d7ae2eb035a2b5bbbccc080e76cdc6d1692c4b0b62d798e6d906";
+// Their x-only public keys (BIP-340 test-vectors.csv).
+PUB_A :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+PUB_B :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+
+PLAN :: [6] string.["none", "by id", "by author and kind", "by author", "by tag", "by time"];
+
+// The store, its index and the arrays both own.
+Relay :: struct {
+  arena: [8192] u8; recs: [16] RsdRec; s: [1] RsdStore;
+  by_id: [16] int; by_ak: [16] int; by_time: [16] int; tag_key: [64] int; tag_rec: [64] int;
+  ix: [1] NsiIndex;
+  scratch: [4096] u8;
+}
+relay_init :: (r: [] Relay) {
+  r[0].s[0] = RsdStore.{}; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  r[0].ix[0] = NsiIndex.{by_id = r[0].by_id[..], by_ak = r[0].by_ak[..], by_time = r[0].by_time[..], tag_key = r[0].tag_key[..], tag_rec = r[0].tag_rec[..]};
+}
+// One EVENT through the relay's admission: read, signature, store.
+admit :: (r: [] Relay, text: string) -> int {
+  a := rs_admit_read(text, NOW, false, false, r[0].scratch[..]);
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(text, r[0].scratch[..], false)); }
+  if a.reason != RS_ACCEPT { return a.reason; }
+  return rsd_admit(r[0].s[..], a, text);
+}
+sign :: (key_hex: string, aux_hex: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(key_hex, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(aux_hex, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+to_hex :: (b: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<b.count { out[2 * i] = digits[b[i] >> 4]; out[2 * i + 1] = digits[b[i] & 15]; }
+  return cast(string) out[0..<2 * b.count];
+}
+// Record i's name: records are stored in insertion order, e1 first.
+rec_name :: (i: int) -> string { n := [9] string.["e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8", "e9"]; return n[i]; }
+show_time :: (t: int) { if t == NOW { print("NOW"); } else { print("NOW-%", NOW - t); } }
+
+// book:begin query
+// One filter, answered through the index and by a full scan.
+ask :: (r: [] Relay, label: string, text: string) {
+  strs: [64] string; ints: [64] int; tags: [8] NostrTagFilter; bytes: [1024] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  #assert filter_read(text, f[..], sp[..]) == FR_OK;
+  a: [16] int; b: [16] int;
+  q := nsi_query(r[0].s[..], r[0].ix[..], f[0], NOW, a[..]);
+  n := rsd_query(r[0].s[..], f[0], NOW, b[..]);
+  same := q.n == n;
+  for i: 0..<n { if same && a[i] != b[i] { same = false; } }
+  print("% %\n", label, text);
+  print("    cost %, limit %; plan %, read % of % records -> % events:", rs_cost(f[0]), rs_limit(f[0]), PLAN[q.plan], q.scanned, r[0].s[0].n, q.n);
+  for i: 0..<q.n { print(" %", rec_name(a[i])); }
+  print("\n    full scan read %: the same events in the same order: %\n", r[0].s[0].n, same);
+}
+// book:end query
+
+// book:begin recording
+// What wss://relay.openagents.com (the production Rust relay) sent for the
+// Coax project page's five REQs, recorded on 2026-10-28 by
+// coax/web/project/capture.ts (coax/lib/nostr/fixtures/coax_relay.coax):
+// 237 events, each sub's in the relay's order. The same REQs as
+// coax/tests/nostr/relay_differential.py.
+SUBS :: [5] string.["project", "issues", "comments", "status", "repo"];
+REQS :: [5] string.[
+  "{\"kinds\":[30621,30623],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],\"#d\":[\"coax\"]}",
+  "{\"kinds\":[1621],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],\"#a\":[\"30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax\"]}",
+  "{\"kinds\":[1111],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}",
+  "{\"kinds\":[1630,1631,1632,1633],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}",
+  "{\"kinds\":[30617],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}"];
+// The capture's clock: after the newest recorded event (1793219505).
+CAPTURE :: 1793220000;
+Big :: struct {
+  arena: [400000] u8; recs: [256] RsdRec; s: [1] RsdStore;
+  by_id: [256] int; by_ak: [256] int; by_time: [256] int; tag_key: [4096] int; tag_rec: [4096] int;
+  ix: [1] NsiIndex; scratch: [65536] u8;
+}
+frame_end :: (text: string, from: int) -> int { at := from; while at < text.count && text[at] != '\n' { at += 1; } return at; }
+is_event_frame :: (l: string) -> bool { return l.count > 10 && l[0..<10] == "[\"EVENT\",\""; }
+// An EVENT line's sub, and its event: the bytes after the second comma.
+sub_of :: (l: string) -> string { at := 10; while l[at] != '"' { at += 1; } return l[10..<at]; }
+event_of :: (l: string) -> string { c := 0; at := 0; while c < 2 { if l[at] == ',' { c += 1; } at += 1; } return l[at..<l.count - 1]; }
+
+recording :: (b: [] Big, text: string) {
+  b[0].s[0] = RsdStore.{}; b[0].s[0].arena = b[0].arena[..]; b[0].s[0].recs = b[0].recs[..];
+  b[0].ix[0] = NsiIndex.{by_id = b[0].by_id[..], by_ak = b[0].by_ak[..], by_time = b[0].by_time[..], tag_key = b[0].tag_key[..], tag_rec = b[0].tag_rec[..]};
+  // Admit every recorded event, each signature checked with BIP-340.
+  at := 0; events := 0; ok := 0;
+  while at < text.count {
+    to := frame_end(text, at); l := text[at..<to]; at = to + 1;
+    if !is_event_frame(l) { continue; }
+    t := event_of(l);
+    a := rs_admit_read(t, CAPTURE, false, false, b[0].scratch[..]);
+    if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(t, b[0].scratch[..], false)); }
+    if a.reason == RS_ACCEPT && rsd_admit(b[0].s[..], a, t) == RS_ACCEPT { ok += 1; }
+    events += 1;
+  }
+  built := nsi_build(b[0].s[..], b[0].ix[..]);
+  print("% recorded events, % verified and stored; index built: %, % tag entries\n", events, ok, built, b[0].ix[0].tags);
+  for k: 0..<5 {
+    strs: [64] string; ints: [64] int; tags: [8] NostrTagFilter; bytes: [1024] u8;
+    sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+    f: [1] NostrFilter; #assert filter_read(REQS[k], f[..], sp[..]) == FR_OK;
+    x: [128] int; y: [128] int;
+    q := nsi_query(b[0].s[..], b[0].ix[..], f[0], CAPTURE, x[..]);
+    n := rsd_query(b[0].s[..], f[0], CAPTURE, y[..]);
+    // the recorded ids of this sub, in order, against the index's answer
+    i := 0; same := true; at = 0;
+    while at < text.count {
+      to := frame_end(text, at); l := text[at..<to]; at = to + 1;
+      if !is_event_frame(l) || sub_of(l) != SUBS[k] { continue; }
+      h: [64] u8;
+      if i >= q.n { same = false; } else { id := b[0].recs[x[i]].id; if event_of(l)[7..<71] != to_hex(id[..], h[..]) { same = false; } }
+      i += 1;
+    }
+    scan := q.n == n; for j: 0..<n { if scan && x[j] != y[j] { scan = false; } }
+    print("  % (% recorded): plan %, read % of % records, % events; recorded ids in recorded order: %; scan agrees: %\n",
+      SUBS[k], i, PLAN[q.plan], q.scanned, b[0].s[0].n, q.n, same && i == q.n, scan);
+  }
+}
+// book:end recording
+
+main :: () {
+  r: [1] Relay; relay_init(r[..]);
+  print("limits: % subscriptions, % filters a REQ, max_limit %, query cost %\n\n", RS_MAX_SUBS, RS_MAX_FILTERS, RS_MAX_LIMIT, RS_MAX_COST);
+
+  b1: [1024] u8; e1 := sign(KEY_A, AUX_A, NOW - 300, 1, "[[\"t\",\"nostr\"]]", "hello nostr", b1[..]);
+  scratch: [4096] u8; h: [64] u8;
+  id1 := nostr_event_read(e1, scratch[..], false).id;
+  tags4: [256] u8;
+  t4 := json_raw(tags4[..], 0, "[[\"e\",\""); t4 = json_raw(tags4[..], t4, to_hex(id1[..], h[..]));
+  t4 = json_raw(tags4[..], t4, "\"],[\"p\",\""); t4 = json_raw(tags4[..], t4, PUB_A); t4 = json_raw(tags4[..], t4, "\"]]");
+  b2: [1024] u8; e2 := sign(KEY_A, AUX_A, NOW - 200, 1, "[[\"t\",\"coax\"]]", "coax notes", b2[..]);
+  b3: [1024] u8; e3 := sign(KEY_B, AUX_B, NOW - 200, 1, "[[\"t\",\"nostr\"],[\"t\",\"coax\"]]", "both tags", b3[..]);
+  b4: [1024] u8; e4 := sign(KEY_B, AUX_B, NOW - 100, 7, cast(string) tags4[0..<t4], "+", b4[..]);
+  b5: [1024] u8; e5 := sign(KEY_A, AUX_A, NOW - 50, 30023, "[[\"d\",\"intro\"],[\"t\",\"coax\"]]", "an article", b5[..]);
+  b6: [1024] u8; e6 := sign(KEY_B, AUX_B, NOW, 1, "[]", "plain note", b6[..]);
+  b7: [1024] u8; e7 := sign(KEY_A, AUX_A, NOW, 1, "[[\"t\",\"nostr\"]]", "latest", b7[..]);
+  b8: [1024] u8; e8 := sign(KEY_B, AUX_B, NOW - 400, 0, "[]", "{\"name\":\"b\"}", b8[..]);
+  b9: [1024] u8; e9 := sign(KEY_B, AUX_B, NOW, 1, "[[\"t\",\"coax\"]]", "late", b9[..]);
+
+  print("the store: eight events from two test keys, A (vector 1) and B (vector 2)\n");
+  texts := [8] string.[e1, e2, e3, e4, e5, e6, e7, e8];
+  for i: 0..<8 {
+    result := admit(r[..], texts[i]);
+    rec := r[0].recs[i]; id := rec.id;
+    print("  % % kind % ", rec_name(i), ifx rec.author[0] == 0xdf then "A" else "B", rec.kind); show_time(rec.created);
+    print(" id % tags % -> %\n", to_hex(id[0..<4], h[..]), rsd_text(r[0].s[..], i)[rec.tags_from - rec.from..<rec.tags_to - rec.from], ifx result == RS_ACCEPT then "accepted" else "refused");
+  }
+
+  #assert nsi_build(r[0].s[..], r[0].ix[..]);
+  ix := r[0].ix[0];
+  print("\nthe indexes, as record names\n  by id:    ");
+  for i: 0..<ix.n { id := r[0].recs[ix.by_id[i]].id; print(" %(%)", rec_name(ix.by_id[i]), to_hex(id[0..<2], h[..])); }
+  print("\n  by author, kind:");
+  for i: 0..<ix.n { rec := r[0].recs[ix.by_ak[i]]; print(" %(%,%)", rec_name(ix.by_ak[i]), ifx rec.author[0] == 0xdf then "A" else "B", rec.kind); }
+  print("\n  by time:  ");
+  for i: 0..<ix.n { print(" %", rec_name(ix.by_time[i])); }
+  print("\n  % tag entries:", ix.tags);
+  for i: 0..<ix.tags { print(" %", rec_name(ix.tag_rec[i])); }
+  print(" (sorted by key)\n\n");
+
+  q: [512] u8; n := 0;
+  id3 := r[0].recs[2].id;
+  n = json_raw(q[..], 0, "{\"ids\":[\""); n = json_raw(q[..], n, to_hex(id3[..], h[..])); n = json_raw(q[..], n, "\"]}");
+  ask(r[..], "1.", cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "{\"authors\":[\""); n = json_raw(q[..], n, PUB_A); n = json_raw(q[..], n, "\"],\"kinds\":[1]}");
+  ask(r[..], "2.", cast(string) q[0..<n]);
+  ask(r[..], "3.", "{\"#t\":[\"coax\"]}");
+  ask(r[..], "4.", "{\"since\":1793491000}");
+  ask(r[..], "5.", "{\"since\":1793491000,\"limit\":2}");
+  ask(r[..], "6.", "{\"kinds\":[1],\"#t\":[\"nostr\"],\"limit\":2}");
+  n = json_raw(q[..], 0, "{\"authors\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}");
+  ask(r[..], "7.", cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "{\"#e\":[\""); n = json_raw(q[..], n, to_hex(id1[..], h[..])); n = json_raw(q[..], n, "\"],\"#p\":[\""); n = json_raw(q[..], n, PUB_A); n = json_raw(q[..], n, "\"]}");
+  ask(r[..], "8.", cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "{\"authors\":[\""); n = json_raw(q[..], n, PUB_A); n = json_raw(q[..], n, "\"],\"#t\":[\"nostr\"]}");
+  ask(r[..], "9.", cast(string) q[0..<n]);
+  ask(r[..], "10.", "{\"kinds\":[1],\"limit\":500}");
+  ask(r[..], "11.", "{\"#t\":[\"rust\"]}");
+
+  print("\nrefusals\n");
+  f: NostrFilter; out: [16] int;
+  print("e9 (B, kind 1, NOW, #t coax) -> %\n", ifx admit(r[..], e9) == RS_ACCEPT then "accepted" else "refused");
+  s := nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]);
+  print("query {} on the index built before e9 -> n %, plan % (refused: the store changed)\n", s.n, s.plan);
+  print("rebuild: %\n", nsi_build(r[0].s[..], r[0].ix[..]));
+  ask(r[..], "12.", "{\"#t\":[\"coax\"]}");
+  r[0].ix[0].by_time = r[0].by_time[0..<8];
+  print("build with room for 8 records in the time index, 9 stored -> %\n", nsi_build(r[0].s[..], r[0].ix[..]));
+  s = nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]);
+  print("query {} on that index -> n %, plan %\n", s.n, s.plan);
+  open := "[\"REQ\",\"s\",{},{},{},{},{},{},{},{}]";
+  why := rs_req(ms_read(open), open);
+  print("REQ with 8 open filters (8 x 12700 = 101600) -> CLOSED \"%: %\"\n", rs_prefix(why), rs_text(why));
+  seven := "[\"REQ\",\"s\",{},{},{},{},{},{},{}]";
+  print("REQ with 7 open filters (88900) -> %\n", ifx rs_req(ms_read(seven), seven) == RS_ACCEPT then "accepted" else "refused");
+  many: [256] u8; m := json_raw(many[..], 0, "[\"REQ\",\"s\"");
+  for i: 0..<17 { m = json_raw(many[..], m, ",{\"limit\":1}"); }
+  m = json_raw(many[..], m, "]");
+  msg := ms_read(cast(string) many[0..<m]);
+  print("REQ with 17 filters -> frame reader error % (MS_TOO_MANY is %): CLOSED \"%: %\"\n", msg.error, MS_TOO_MANY, rs_prefix(RS_FILTERS), rs_text(RS_FILTERS));
+
+  print("\nthe Coax project page's five REQs against relay.openagents.com's recording\n");
+  big: [1] Big;
+  recording(big[..], COAX_RELAY);
+}
+// book:end example

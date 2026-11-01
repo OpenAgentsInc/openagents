@@ -747,7 +747,7 @@
    "number": 36,
    "title": "Match filters with indexes",
    "file": "ch036-match-filters-with-indexes.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     23,
@@ -755,7 +755,10 @@
    ],
    "source": [
     "coax/lib/nostr/filter.coax",
-    "coax/lib/nostr/store.coax"
+    "coax/lib/nostr/store.coax",
+    "coax/lib/nostr/store_index.coax",
+    "nostr/examples/match-indexes.coax",
+    "nostr/examples/checks/match-indexes.coax"
    ],
    "qualified_targets": [
     "cpu"

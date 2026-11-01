@@ -1,0 +1,38 @@
+// The checks of match-indexes.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/match-indexes.coax --run-steps 250000000
+#load "../match-indexes.coax";
+
+// book:begin check
+// Records with the example's authors, kinds, times and tags, without signatures.
+add :: (r: [] Relay, i: int, author: u8, kind: int, created: int, tags: string) {
+  c: RsdRec; c.id[0] = cast(u8) (i + 1); c.author[0] = author; c.kind = kind; c.created = created; c.expiry = -1;
+  if kind == 30023 { c.d[0] = 'i'; c.d_n = 1; }
+  c.tags_from = 0; c.tags_to = tags.count;
+  #assert ns_store_admit(r[0].s[..], c, tags, true) == NSS_ACCEPT;
+}
+#test "the example's counts, worked by hand from its event table" {
+  // e1..e8 in the example: by id the index reads 1; A's kind 1 is e1 e2 e7;
+  // #t coax is e2 e3 e5; since NOW-200 is e2..e7; B is e3 e4 e6 e8.
+  r: [1] Relay; relay_init(r[..]);
+  add(r[..], 0, 0xdf, 1, NOW - 300, "[[\"t\",\"nostr\"]]"); add(r[..], 1, 0xdf, 1, NOW - 200, "[[\"t\",\"coax\"]]");
+  add(r[..], 2, 0xdd, 1, NOW - 200, "[[\"t\",\"nostr\"],[\"t\",\"coax\"]]"); add(r[..], 3, 0xdd, 7, NOW - 100, "[[\"p\",\"x\"]]");
+  add(r[..], 4, 0xdf, 30023, NOW - 50, "[[\"d\",\"intro\"],[\"t\",\"coax\"]]"); add(r[..], 5, 0xdd, 1, NOW, "[]");
+  add(r[..], 6, 0xdf, 1, NOW, "[[\"t\",\"nostr\"]]"); add(r[..], 7, 0xdd, 0, NOW - 400, "[]");
+  #assert nsi_build(r[0].s[..], r[0].ix[..]) && r[0].ix[0].tags == 8;
+  f: NostrFilter; out: [16] int; h: [64] u8;
+  a: [32] u8; a[0] = 0xdf; authors := [1] string.[to_hex(a[..], h[..])]; kinds := [1] int.[1];
+  f.has_authors = true; f.authors = authors[..]; f.has_kinds = true; f.kinds = kinds[..];
+  q := nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]);
+  #assert q.plan == NSI_AUTHOR_KIND && q.scanned == 3 && q.n == 3 && out[0] == 6 && out[1] == 1 && out[2] == 0;
+  f = NostrFilter.{}; values := [1] string.["coax"]; tags := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = values[..]}]; f.tags = tags[..];
+  q = nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]);
+  #assert q.plan == NSI_TAG && q.scanned == 3 && q.n == 3 && out[0] == 4;
+  f = NostrFilter.{}; f.has_since = true; f.since = NOW - 200;
+  q = nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]); #assert q.plan == NSI_TIME && q.scanned == 6 && q.n == 6;
+  f.has_limit = true; f.limit = 2;
+  q = nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]); #assert q.scanned == 2 && q.n == 2;
+  f = NostrFilter.{}; a[0] = 0xdd; authors[0] = to_hex(a[..], h[..]); f.has_authors = true; f.authors = authors[..];
+  q = nsi_query(r[0].s[..], r[0].ix[..], f, NOW, out[..]); #assert q.plan == NSI_AUTHOR && q.scanned == 4 && q.n == 4 && out[3] == 7;
+}
+// book:end check

@@ -64,7 +64,7 @@
 
 - [34. Admit an event](ch034-admit-an-event.md) — implemented
 - [35. Store events](ch035-store-events.md) — implemented
-- [36. Match filters with indexes](ch036-match-filters-with-indexes.md) — partly implemented
+- [36. Match filters with indexes](ch036-match-filters-with-indexes.md) — implemented
 - [37. NIP-11 relay information](ch037-nip-11-relay-information.md) — implemented
 - [38. NIP-42 authentication](ch038-nip-42-authentication.md) — implemented
 - [39. Delete, expire and vanish](ch039-delete-expire-and-vanish.md) — partly implemented

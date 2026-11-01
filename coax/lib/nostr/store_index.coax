@@ -1,0 +1,457 @@
+// Indexes over the verified event store (Nostr From Scratch, chapter 36):
+// by id, by (author, kind), by single-letter tag value and by time, built
+// from an RsdStore, and a query that picks one index per filter, reads only
+// that index's candidates, and passes each through filter.coax's nf_match
+// and the store's visibility before ns_store_insert orders it. An index only
+// narrows which records are read, so it never changes which events match:
+// the #forall below compares every answer with store.coax's rsd_query scan.
+//
+// What it is not: the relay still answers REQ with rsd_query's scan. The
+// index is built whole from the store (nsi_build) and is refused once the
+// store changes (any admission or compaction); there is no incremental
+// update. Tag keys are a 31-bit hash of the name and decoded value, so a
+// collision only adds candidates, which nf_match then drops.
+//
+// Like store.coax it is not #authority: loading store.coax brings the
+// relay's whole graph under every mutation run. Its checks are below and in
+// nostr/examples/checks/match-indexes.coax (the five project REQs against
+// relay.openagents.com's recording).
+#load "store.coax";
+
+// Plans: which index answered a filter.
+NSI_REFUSED :: -1; NSI_NONE :: 0; NSI_ID :: 1; NSI_AUTHOR_KIND :: 2; NSI_AUTHOR :: 3; NSI_TAG :: 4; NSI_TIME :: 5;
+NSI_HASH :: 2147483647;
+
+// The caller owns every array. by_id, by_ak and by_time need room for one
+// entry per record; tag_key and tag_rec one per indexed tag.
+NsiIndex :: struct {
+  ok: bool; n: int; used: int; tags: int;
+  by_id: [] int; by_ak: [] int; by_time: [] int; tag_key: [] int; tag_rec: [] int;
+}
+// n results (or -1 refused), the plan, and how many records were read.
+NsiResult :: struct { n: int; plan: int; scanned: int; }
+
+// ---- test helpers ------------------------------------------------------------
+NsiT :: struct {
+  arena: [1024] u8; recs: [16] RsdRec; s: [1] RsdStore;
+  by_id: [16] int; by_ak: [16] int; by_time: [16] int; tag_key: [48] int; tag_rec: [48] int; ix: [1] NsiIndex;
+}
+nsi_t_init :: (t: [] NsiT) {
+  t[0].s[0] = RsdStore.{}; t[0].s[0].arena = t[0].arena[..]; t[0].s[0].recs = t[0].recs[..];
+  t[0].ix[0] = NsiIndex.{by_id = t[0].by_id[..], by_ak = t[0].by_ak[..], by_time = t[0].by_time[..], tag_key = t[0].tag_key[..], tag_rec = t[0].tag_rec[..]};
+}
+nsi_t_hex :: (b: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = digits[cast(int) (b[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (b[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+// A record with the given fields and text as its whole tags array.
+nsi_t_add :: (t: [] NsiT, id: u8, id2: u8, author: u8, kind: int, created: int, expiry: int, tags: string) -> int {
+  c: RsdRec; c.id[0] = id; c.id[1] = id2; c.author[0] = author; c.kind = kind; c.created = created; c.expiry = expiry;
+  if ns_class(kind) == NS_ADDRESSABLE { c.d[0] = cast(u8) ('x' + (id & 1)); c.d_n = 1; }
+  c.tags_from = 0; c.tags_to = tags.count;
+  return ns_store_admit(t[0].s[..], c, tags, true);
+}
+// Whether the index answers f exactly as the scan does: count and order.
+nsi_t_same :: (t: [] NsiT, f: NostrFilter, now: int, room: int) -> bool {
+  a: [32] int; b: [32] int;
+  na := rsd_query(t[0].s[..], f, now, a[0..<room]);
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, now, b[0..<room]);
+  if r.n != na { return false; }
+  for i: 0..<na { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+#test "each plan reads only its candidates and answers what the scan answers" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  #assert nsi_t_add(t[..], 0x10, 0, 1, 1, 100, -1, "[[\"t\",\"a\"]]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 0x20, 0, 1, 1, 200, -1, "[[\"t\",\"b\"]]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 0x30, 0, 2, 1, 200, -1, "[[\"t\",\"a\"],[\"t\",\"b\"]]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 0x40, 0, 2, 7, 300, -1, "[[\"\\u0074\",\"\\u0061\"]]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 0x50, 0, 1, 1, 400, -1, "[]") == NSS_ACCEPT;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].tags == 5;
+  // by time: 0x50 400, 0x40 300, 0x20 200, 0x30 200 (lower id first), 0x10 100
+  #assert t[0].ix[0].by_time[0] == 4 && t[0].ix[0].by_time[1] == 3 && t[0].ix[0].by_time[2] == 1 && t[0].ix[0].by_time[3] == 2 && t[0].ix[0].by_time[4] == 0;
+  f: NostrFilter; out: [8] int; h: [64] u8;
+  id := t[0].recs[2].id; ids := [1] string.[nsi_t_hex(id[..], h[..])]; f.has_ids = true; f.ids = ids[..];
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_ID && r.scanned == 1 && r.n == 1 && out[0] == 2;
+  f = NostrFilter.{}; h2: [64] u8; a := t[0].recs[0].author; authors := [1] string.[nsi_t_hex(a[..], h2[..])];
+  kinds := [1] int.[1]; f.has_authors = true; f.authors = authors[..]; f.has_kinds = true; f.kinds = kinds[..];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_AUTHOR_KIND && r.scanned == 3 && r.n == 3 && out[0] == 4 && out[1] == 1 && out[2] == 0;
+  f.has_kinds = false; f.kinds = kinds[0..<0];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_AUTHOR && r.scanned == 3 && r.n == 3;
+  f = NostrFilter.{}; values := [1] string.["a"]; tags := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = values[..]}]; f.tags = tags[..];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  // the escaped name and value decode to t and a
+  #assert r.plan == NSI_TAG && r.scanned == 3 && r.n == 3 && out[0] == 3 && out[1] == 2 && out[2] == 0;
+  f = NostrFilter.{}; f.has_since = true; f.since = 200; f.has_limit = true; f.limit = 2;
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_TIME && r.scanned == 2 && r.n == 2 && out[0] == 4 && out[1] == 3;
+  f.has_limit = false; f.has_until = true; f.until = 300;
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_TIME && r.scanned == 3 && r.n == 3 && out[0] == 3 && out[1] == 1 && out[2] == 2;
+  f.has_limit = true; f.limit = 0; r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.n == 0 && r.scanned == 0;
+}
+#test "the cheapest index wins and duplicates are read once" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  for i: 0..<6 { #assert nsi_t_add(t[..], cast(u8) (i + 1), 0, 1, 1, 100 + i, -1, ifx i == 2 then "[[\"t\",\"z\"],[\"t\",\"z\"]]" else "[]") == NSS_ACCEPT; }
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  f: NostrFilter; out: [8] int; h: [64] u8; a := t[0].recs[0].author;
+  authors := [2] string.[nsi_t_hex(a[..], h[..]), nsi_t_hex(a[..], h[..])]; f.has_authors = true; f.authors = authors[..];
+  values := [2] string.["z", "z"]; tags := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = values[..]}]; f.tags = tags[..];
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  // authors: 12 entries (two lists of 6); tag z: 4 (two values, two tags); time: 6
+  #assert r.plan == NSI_TAG && r.scanned == 4 && r.n == 1 && out[0] == 2;
+  f.tags = tags[0..<0]; f.has_since = true; f.since = 104;
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_TIME && r.scanned == 2 && r.n == 2 && out[0] == 5 && out[1] == 4;
+  f.has_since = false; f.authors = authors[0..<1];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  // a tie between the author index (6) and time (6) goes to the author index
+  #assert r.plan == NSI_AUTHOR && r.scanned == 6 && r.n == 6;
+  // an invalid filter matches nothing, as in the scan
+  bad := [1] string.["xyz"]; f.authors = bad[..];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.n == 0 && r.plan == NSI_NONE && r.scanned == 0;
+}
+#test "a stale or unbuilt index is refused, and a short array refuses the build" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  f: NostrFilter; out: [8] int;
+  #assert nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]).n == -1;
+  #assert nsi_t_add(t[..], 1, 0, 1, 1, 100, -1, "[[\"t\",\"a\"],[\"e\"],[\"long\",\"x\"]]") == NSS_ACCEPT;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].tags == 1;
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.n == 1 && r.plan == NSI_TIME;
+  #assert nsi_t_add(t[..], 2, 0, 1, 1, 100, -1, "[]") == NSS_ACCEPT;
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.n == -1 && r.plan == NSI_REFUSED && r.scanned == 0;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]); #assert nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]).n == 2;
+  t[0].ix[0].by_time = t[0].by_time[0..<1]; #assert !nsi_build(t[0].s[..], t[0].ix[..]) && !t[0].ix[0].ok;
+  #assert nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]).n == -1;
+  t[0].ix[0].by_time = t[0].by_time[..]; t[0].ix[0].tag_key = t[0].tag_key[0..<0]; #assert !nsi_build(t[0].s[..], t[0].ix[..]);
+  t[0].ix[0].tag_key = t[0].tag_key[..]; t[0].ix[0].by_id = t[0].by_id[0..<1]; #assert !nsi_build(t[0].s[..], t[0].ix[..]);
+  t[0].ix[0].by_id = t[0].by_id[..]; t[0].ix[0].by_ak = t[0].by_ak[0..<1]; #assert !nsi_build(t[0].s[..], t[0].ix[..]);
+  t[0].ix[0].by_ak = t[0].by_ak[..]; t[0].ix[0].tag_rec = t[0].tag_rec[0..<0]; #assert !nsi_build(t[0].s[..], t[0].ix[..]);
+}
+#test "edge letters, empty values and edge kinds are indexed" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  #assert nsi_t_add(t[..], 1, 0, 1, 0, 100, -1, "[[\"a\",\"\"],[\"z\",\"v\"]]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 2, 0, 1, 65535, 101, -1, "[[\"A\",\"v\"],[\"Z\",\"v\"],[\"@\",\"v\"],[\"[\",\"v\"],[\"`\",\"v\"],[\"{\",\"v\"]]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 3, 0, 2, 1, 300, -1, "[]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 4, 0, 2, 1, 301, -1, "[]") == NSS_ACCEPT;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].tags == 4;
+  names := [4] u8.['a', 'z', 'A', 'Z']; empty := [1] string.[""]; v := [1] string.["v"];
+  out: [8] int;
+  for k: 0..<4 {
+    f: NostrFilter; tags := [1] NostrTagFilter.[NostrTagFilter.{name = names[k], values = ifx k == 0 then empty[..] else v[..]}]; f.tags = tags[..];
+    r := nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+    #assert r.plan == NSI_TAG && r.scanned == 1 && r.n == 1 && out[0] == ifx k < 2 then 0 else 1;
+  }
+  f: NostrFilter; h: [64] u8; a := t[0].recs[0].author; authors := [1] string.[nsi_t_hex(a[..], h[..])]; f.has_authors = true; f.authors = authors[..];
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]);
+  #assert r.plan == NSI_AUTHOR && r.scanned == 2 && r.n == 2 && out[0] == 1 && out[1] == 0;
+  kinds := [1] int.[65535]; f.has_kinds = true; f.kinds = kinds[..];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.plan == NSI_AUTHOR_KIND && r.scanned == 1 && r.n == 1 && out[0] == 1;
+  kinds[0] = 0; r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.scanned == 1 && r.n == 1 && out[0] == 0;
+  // until 300 reads 300 and older only; since 101 stops before 100
+  f = NostrFilter.{}; f.has_until = true; f.until = 300; f.has_since = true; f.since = 101;
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.plan == NSI_TIME && r.scanned == 2 && r.n == 2 && out[0] == 2 && out[1] == 1;
+  // an id that is not stored reads nothing
+  f = NostrFilter.{}; z: [32] u8; z[0] = 9; ids := [1] string.[nsi_t_hex(z[..], h[..])]; f.has_ids = true; f.ids = ids[..];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.plan == NSI_ID && r.scanned == 0 && r.n == 0;
+  // the cheaper of two tags wins; on a tie the first
+  f = NostrFilter.{}; two := [2] NostrTagFilter.[NostrTagFilter.{name = 'Z', values = v[..]}, NostrTagFilter.{name = 'z', values = v[..]}]; f.tags = two[..];
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 0, out[..]); #assert r.plan == NSI_TAG && r.scanned == 1 && r.n == 0;
+}
+#test "retired and expired records are read but not served" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  #assert nsi_t_add(t[..], 1, 0, 1, 0, 100, -1, "[]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 2, 0, 1, 0, 200, -1, "[]") == NSS_ACCEPT;
+  #assert nsi_t_add(t[..], 3, 0, 1, 1, 150, 160, "[]") == NSS_ACCEPT;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  f: NostrFilter; out: [8] int;
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, 159, out[..]); #assert r.n == 2 && r.scanned == 3 && out[0] == 1 && out[1] == 2;
+  r = nsi_query(t[0].s[..], t[0].ix[..], f, 160, out[..]); #assert r.n == 1 && out[0] == 1;
+  #assert nsi_t_same(t[..], f, 160, 8);
+}
+
+// The generated property: stores of up to 14 records from a seed (replaceable,
+// addressable and expiring kinds, tied times, escaped tag names), and filters
+// from the same seed, answered by the index and by the scan.
+nsi_t_next :: (r: [] int) -> int { r[0] = (r[0] * 1103515245 + 12345) % 2147483648; return r[0] >> 8; }
+nsi_t_tags :: (r: [] int, out: [] u8) -> string {
+  pieces := [6] string.["[\"t\",\"a\"]", "[\"t\",\"b\"]", "[\"d\",\"a\"]", "[\"\\u0074\",\"c\"]", "[\"t\",\"\\u0061\"]", "[\"e\"]"];
+  n := json_raw(out, 0, "[");
+  k := nsi_t_next(r) % 3;
+  for i: 0..<k { if i > 0 { n = json_raw(out, n, ","); } n = json_raw(out, n, pieces[nsi_t_next(r) % 6]); }
+  n = json_raw(out, n, "]");
+  return cast(string) out[0..<n];
+}
+nsi_t_filter :: (t: [] NsiT, r: [] int, f: [] NostrFilter, ids: [] string, idh: [] u8, authors: [] string, auh: [] u8, kinds: [] int, values: [] string, tags: [] NostrTagFilter) {
+  f[0] = NostrFilter.{};
+  bits := nsi_t_next(r);
+  if bits & 1 != 0 && t[0].s[0].n > 0 {
+    m := 1 + nsi_t_next(r) % 2;
+    for i: 0..<m { id := t[0].recs[nsi_t_next(r) % t[0].s[0].n].id; ids[i] = nsi_t_hex(id[..], idh[i * 64..<i * 64 + 64]); }
+    f[0].has_ids = true; f[0].ids = ids[0..<m];
+  }
+  if bits & 2 != 0 {
+    m := 1 + nsi_t_next(r) % 2;
+    for i: 0..<m { a: [32] u8; a[0] = cast(u8) (nsi_t_next(r) % 4); authors[i] = nsi_t_hex(a[..], auh[i * 64..<i * 64 + 64]); }
+    f[0].has_authors = true; f[0].authors = authors[0..<m];
+  }
+  if bits & 4 != 0 {
+    kk := [5] int.[1, 7, 0, 30023, 2]; m := 1 + nsi_t_next(r) % 2;
+    for i: 0..<m { kinds[i] = kk[nsi_t_next(r) % 5]; }
+    f[0].has_kinds = true; f[0].kinds = kinds[0..<m];
+  }
+  if bits & 8 != 0 {
+    vv := [3] string.["a", "b", "c"]; m := 1 + nsi_t_next(r) % 2;
+    for i: 0..<m { values[i] = vv[nsi_t_next(r) % 3]; }
+    tags[0].name = ifx nsi_t_next(r) % 3 == 0 then 'd' else 't'; tags[0].values = values[0..<m];
+    f[0].tags = tags[0..<1];
+    if bits & 128 != 0 { tags[1].name = 'd'; tags[1].values = values[0..<1]; f[0].tags = tags[0..<2]; }
+  }
+  if bits & 16 != 0 { f[0].has_since = true; f[0].since = 99 + nsi_t_next(r) % 7; }
+  if bits & 32 != 0 { f[0].has_until = true; f[0].until = 99 + nsi_t_next(r) % 7; }
+  if bits & 64 != 0 { f[0].has_limit = true; f[0].limit = nsi_t_next(r) % 5; }
+}
+#forall "indexed and scanned answers are equal on generated stores and filters" seed: 0..<500 #steps 400000000 {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  r := [1] int.[seed * 7919 + 1];
+  kk := [6] int.[1, 1, 7, 0, 30023, 20001];
+  count := 4 + nsi_t_next(r[..]) % 11;
+  buf: [128] u8;
+  for i: 0..<count {
+    kind := kk[nsi_t_next(r[..]) % 6];
+    expiry := ifx nsi_t_next(r[..]) % 6 == 0 then 102 else -1;
+    added := nsi_t_add(t[..], cast(u8) (nsi_t_next(r[..]) % 256), cast(u8) i, cast(u8) (nsi_t_next(r[..]) % 3), kind, 100 + nsi_t_next(r[..]) % 5, expiry, nsi_t_tags(r[..], buf[..]));
+    #assert added == NSS_ACCEPT || added == NSS_SUPERSEDED || added == NSS_DUP;
+  }
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  f: [1] NostrFilter; ids: [2] string; idh: [128] u8; authors: [2] string; auh: [128] u8; kinds: [2] int; values: [2] string; tags: [2] NostrTagFilter;
+  for q: 0..<8 {
+    nsi_t_filter(t[..], r[..], f[..], ids[..], idh[..], authors[..], auh[..], kinds[..], values[..], tags[..]);
+    now := 100 + nsi_t_next(r[..]) % 5;
+    room := 1 + nsi_t_next(r[..]) % 16;
+    #assert nsi_t_same(t[..], f[0], now, room);
+  }
+}
+
+// ---- building ------------------------------------------------------------------
+
+// Whether record a sorts before record b in index mode 0 (id), 1 (author,
+// then kind) or 2 (query order: newest first, then lowest id).
+nsi_less :: (s: [] RsdStore, mode: int, a: int, b: int) -> bool {
+  x := s[0].recs[a]; y := s[0].recs[b];
+  if mode == 0 { return ns_before(x.id, y.id); }
+  if mode == 1 { return ns_before(x.author, y.author) || (ns_equal32(x.author, y.author) && x.kind < y.kind); }
+  return ns_store_newer(x, y);
+}
+// Heapsort of v[0..<n] by nsi_less.
+nsi_sift :: (s: [] RsdStore, mode: int, v: [] int, root: int, n: int) {
+  at := root;
+  while true {
+    child := at * 2 + 1;
+    if child >= n { return; }
+    if child + 1 < n && nsi_less(s, mode, v[child], v[child + 1]) { child += 1; }
+    if !nsi_less(s, mode, v[at], v[child]) { return; }
+    tmp := v[at]; v[at] = v[child]; v[child] = tmp; at = child;
+  }
+}
+nsi_sort :: (s: [] RsdStore, mode: int, v: [] int, n: int) {
+  for i: 0..<n { v[i] = i; }
+  k := n / 2; while k > 0 { k -= 1; nsi_sift(s, mode, v, k, n); }
+  e := n; while e > 1 { e -= 1; tmp := v[0]; v[0] = v[e]; v[e] = tmp; nsi_sift(s, mode, v, 0, e); }
+}
+// Tag entries sort by key, then record.
+nsi_tag_less :: (ix: NsiIndex, a: int, b: int) -> bool {
+  return ix.tag_key[a] < ix.tag_key[b] || (ix.tag_key[a] == ix.tag_key[b] && ix.tag_rec[a] < ix.tag_rec[b]);
+}
+nsi_tag_sift :: (ix: NsiIndex, root: int, n: int) {
+  at := root;
+  while true {
+    child := at * 2 + 1;
+    if child >= n { return; }
+    if child + 1 < n && nsi_tag_less(ix, child, child + 1) { child += 1; }
+    if !nsi_tag_less(ix, at, child) { return; }
+    k := ix.tag_key[at]; ix.tag_key[at] = ix.tag_key[child]; ix.tag_key[child] = k;
+    r := ix.tag_rec[at]; ix.tag_rec[at] = ix.tag_rec[child]; ix.tag_rec[child] = r;
+    at = child;
+  }
+}
+// The key of a tag name and its decoded value.
+nsi_key :: (name: u8, value: string) -> int {
+  h := cast(int) name;
+  for c: value { h = (h * 257 + cast(int) c + 1) % NSI_HASH; }
+  return h;
+}
+// Appends record rec's tag entries from its tags array: one for each tag
+// whose name decodes to one ASCII letter and whose second element is a
+// string of at most 256 decoded bytes (a longer value can match no filter
+// value). The new count, or -1 when tag_key or tag_rec is full.
+nsi_tag_add :: (ix: NsiIndex, text: string, rec: int, at: int) -> int {
+  n := at;
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_ARRAY { return n; }
+  t := json_next(j[..]);
+  while t == JSON_ARRAY {
+    index := 0; name: u8 = 0; v := json_next(j[..]);
+    while v == JSON_STRING {
+      if index == 0 {
+        b: [1] u8;
+        if json_unescape(json_text(j[..]), b[..]) == 1 && ((b[0] >= 'a' && b[0] <= 'z') || (b[0] >= 'A' && b[0] <= 'Z')) { name = b[0]; }
+      }
+      if index == 1 && name != 0 {
+        buf: [256] u8; k := json_unescape(json_text(j[..]), buf[..]);
+        if k >= 0 {
+          if n >= ix.tag_key.count || n >= ix.tag_rec.count { return -1; }
+          ix.tag_key[n] = nsi_key(name, cast(string) buf[0..<k]); ix.tag_rec[n] = rec; n += 1;
+        }
+      }
+      index += 1; v = json_next(j[..]);
+    }
+    if v != JSON_ARRAY_END { return n; }
+    t = json_next(j[..]);
+  }
+  return n;
+}
+// Builds every index over the store's records (live or not: a query checks
+// visibility). False, and the index refused, when an array is too short.
+nsi_build :: (s: [] RsdStore, ix: [] NsiIndex) -> bool {
+  ix[0].ok = false;
+  n := s[0].n;
+  if ix[0].by_id.count < n || ix[0].by_ak.count < n || ix[0].by_time.count < n { return false; }
+  nsi_sort(s, 0, ix[0].by_id, n); nsi_sort(s, 1, ix[0].by_ak, n); nsi_sort(s, 2, ix[0].by_time, n);
+  tags := 0;
+  for i: 0..<n {
+    e := rsd_event(s, i);
+    tags = nsi_tag_add(ix[0], e.original[e.tags_from..<e.tags_to], i, tags);
+    if tags < 0 { return false; }
+  }
+  k := tags / 2; while k > 0 { k -= 1; nsi_tag_sift(ix[0], k, tags); }
+  e := tags;
+  while e > 1 {
+    e -= 1;
+    a := ix[0].tag_key[0]; ix[0].tag_key[0] = ix[0].tag_key[e]; ix[0].tag_key[e] = a;
+    b := ix[0].tag_rec[0]; ix[0].tag_rec[0] = ix[0].tag_rec[e]; ix[0].tag_rec[e] = b;
+    nsi_tag_sift(ix[0], 0, e);
+  }
+  ix[0].tags = tags; ix[0].n = n; ix[0].used = s[0].used; ix[0].ok = true;
+  return true;
+}
+
+// ---- lookups: each returns the first position not before the key -----------------
+
+nsi_hex32 :: (text: string, out: [] u8) {
+  for i: 0..<32 { out[i] = cast(u8) (json_hex(text[2 * i]) * 16 + json_hex(text[2 * i + 1])); }
+}
+nsi_id_lower :: (s: [] RsdStore, ix: NsiIndex, id: [32] u8) -> int {
+  lo := 0; hi := ix.n;
+  while lo < hi { mid := (lo + hi) / 2; if ns_before(s[0].recs[ix.by_id[mid]].id, id) { lo = mid + 1; } else { hi = mid; } }
+  return lo;
+}
+nsi_ak_lower :: (s: [] RsdStore, ix: NsiIndex, author: [32] u8, kind: int) -> int {
+  lo := 0; hi := ix.n;
+  while lo < hi {
+    mid := (lo + hi) / 2; r := s[0].recs[ix.by_ak[mid]];
+    if ns_before(r.author, author) || (ns_equal32(r.author, author) && r.kind < kind) { lo = mid + 1; } else { hi = mid; }
+  }
+  return lo;
+}
+nsi_tag_lower :: (ix: NsiIndex, key: int) -> int {
+  lo := 0; hi := ix.tags;
+  while lo < hi { mid := (lo + hi) / 2; if ix.tag_key[mid] < key { lo = mid + 1; } else { hi = mid; } }
+  return lo;
+}
+// The first position in time order whose record is older than t.
+nsi_time_lower :: (s: [] RsdStore, ix: NsiIndex, t: int) -> int {
+  lo := 0; hi := ix.n;
+  while lo < hi { mid := (lo + hi) / 2; if s[0].recs[ix.by_time[mid]].created >= t { lo = mid + 1; } else { hi = mid; } }
+  return lo;
+}
+// The time-order range [from, to) a filter's since and until allow.
+NsiRange :: struct { from: int; to: int; }
+nsi_time_range :: (s: [] RsdStore, ix: NsiIndex, f: NostrFilter) -> NsiRange {
+  r := NsiRange.{from = 0, to = ix.n};
+  if f.has_until { r.from = nsi_time_lower(s, ix, f.until + 1); }
+  if f.has_since { r.to = nsi_time_lower(s, ix, f.since); }
+  if r.to < r.from { r.to = r.from; }
+  return r;
+}
+
+// ---- choosing and querying ---------------------------------------------------------
+
+// How many entries the author index holds for f's authors (and kinds).
+nsi_author_count :: (s: [] RsdStore, ix: NsiIndex, f: NostrFilter) -> int {
+  c := 0;
+  for a: f.authors {
+    key: [32] u8; nsi_hex32(a, key[..]);
+    if f.has_kinds { for k: f.kinds { c += nsi_ak_lower(s, ix, key, k + 1) - nsi_ak_lower(s, ix, key, k); } }
+    else { c += nsi_ak_lower(s, ix, key, 65536) - nsi_ak_lower(s, ix, key, 0); }
+  }
+  return c;
+}
+nsi_tag_count :: (ix: NsiIndex, t: NostrTagFilter) -> int {
+  c := 0;
+  for v: t.values { key := nsi_key(t.name, v); c += nsi_tag_lower(ix, key + 1) - nsi_tag_lower(ix, key); }
+  return c;
+}
+// book:begin query
+// Reads record i as a candidate: inserted into out in query order when it is
+// visible, matches f and is not already there.
+nsi_take :: (s: [] RsdStore, f: NostrFilter, now: int, i: int, n: int, limit: int, out: [] int) -> int {
+  if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { return n; }
+  for k: 0..<n { if out[k] == i { return n; } }
+  return ns_store_insert(s, i, n, limit, out);
+}
+// Up to rs_limit(f) (and out.count) visible records matching f, newest
+// first, then lowest id, exactly as rsd_query, read through one index.
+nsi_query :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, now: int, out: [] int) -> NsiResult {
+  x := ix[0];
+  if !x.ok || x.n != s[0].n || x.used != s[0].used { return NsiResult.{n = -1, plan = NSI_REFUSED}; }
+  later := ns_store_seen(s, now);
+  limit := rs_limit(f);
+  if !nf_valid(f) || limit == 0 || out.count == 0 { return NsiResult.{}; }
+  res := NsiResult.{plan = NSI_TIME};
+  tag := -1;
+  span := nsi_time_range(s, x, f);
+  best := span.to - span.from;
+  if f.has_ids { res.plan = NSI_ID; }
+  else {
+    if f.has_authors { c := nsi_author_count(s, x, f); if c <= best { best = c; res.plan = ifx f.has_kinds then NSI_AUTHOR_KIND else NSI_AUTHOR; } }
+    for k: 0..<f.tags.count { c := nsi_tag_count(x, f.tags[k]); if c < best || (c == best && res.plan == NSI_TIME) { best = c; tag = k; res.plan = NSI_TAG; } }
+  }
+  n := 0;
+  if res.plan == NSI_ID {
+    for v: f.ids {
+      key: [32] u8; nsi_hex32(v, key[..]);
+      at := nsi_id_lower(s, x, key);
+      while at < x.n && ns_equal32(s[0].recs[x.by_id[at]].id, key) { res.scanned += 1; n = nsi_take(s, f, now, x.by_id[at], n, limit, out); at += 1; }
+    }
+  } else if res.plan == NSI_AUTHOR_KIND || res.plan == NSI_AUTHOR {
+    for a: f.authors {
+      key: [32] u8; nsi_hex32(a, key[..]);
+      if f.has_kinds {
+        for k: f.kinds { to := nsi_ak_lower(s, x, key, k + 1); for at: nsi_ak_lower(s, x, key, k)..<to { res.scanned += 1; n = nsi_take(s, f, now, x.by_ak[at], n, limit, out); } }
+      } else {
+        to := nsi_ak_lower(s, x, key, 65536); for at: nsi_ak_lower(s, x, key, 0)..<to { res.scanned += 1; n = nsi_take(s, f, now, x.by_ak[at], n, limit, out); }
+      }
+    }
+  } else if res.plan == NSI_TAG {
+    t := f.tags[tag];
+    for v: t.values {
+      key := nsi_key(t.name, v); to := nsi_tag_lower(x, key + 1);
+      for at: nsi_tag_lower(x, key)..<to { res.scanned += 1; n = nsi_take(s, f, now, x.tag_rec[at], n, limit, out); }
+    }
+  } else {
+    // time order is the answer's order: stop at the limit
+    at := span.from;
+    while at < span.to && n < limit && n < out.count { res.scanned += 1; n = nsi_take(s, f, now, x.by_time[at], n, limit, out); at += 1; }
+  }
+  res.n = n;
+  return res;
+}
+// book:end query
