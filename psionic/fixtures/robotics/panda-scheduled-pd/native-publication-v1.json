@@ -1,0 +1,132 @@
+{
+  "schema": "psionic.panda-scheduled-pd.native-publication.v1",
+  "passed": true,
+  "packaging_only": true,
+  "no_numeric_rerun": true,
+  "native_qualification": {
+    "bytes": 24367,
+    "sha256": "62ae5e3505ef17efb1829f14c8e281798fbd640af18f49b4837db4bd00181a2e"
+  },
+  "preparation_qualification": {
+    "bytes": 32908,
+    "sha256": "8a2f2850c9db4621f39333cf4812000a4197749b7d40b9fcfc2af4142a51fbbd"
+  },
+  "carry_qualification": {
+    "bytes": 19979,
+    "sha256": "fab74d5a3d77229209adbbec717b18601f2b879f4ded944c78be2be7d4cb3c76"
+  },
+  "lineage": {
+    "bytes": 4014,
+    "sha256": "6fcc3f3daf0b69e6be571d0f5632ce57adda0e5b9a1d3e61503276474211aa90"
+  },
+  "files": {
+    "psionic/fixtures/robotics/panda-scheduled-pd/assessment.bin": {
+      "bytes": 72,
+      "sha256": "b4cbf46a813c1ad534530786a9dae0a0fe834e6aa68763c3dfb43ed1eaca8c11"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/brake-progress.jsonl": {
+      "bytes": 50780,
+      "sha256": "15dfb900ccf5d2fdadeaa4f2008fba2b6ab39f6416ea432cde49c3b5e706cca2"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/cached-gate-routing-qualification.json": {
+      "bytes": 913,
+      "sha256": "da999b9879f1ea032639d42e6d7cc03ca891f566a77d9b8a46a426a362a4791b"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/carry-progress.jsonl": {
+      "bytes": 141420,
+      "sha256": "e3f7a1f7ede21fcde7c442e0a2493e66a7109d39b90cc9c895053da6c02e7566"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/carry-qualification.json": {
+      "bytes": 19979,
+      "sha256": "fab74d5a3d77229209adbbec717b18601f2b879f4ded944c78be2be7d4cb3c76"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/case-scores.bin": {
+      "bytes": 1440,
+      "sha256": "db054472f4445282da0f73e9683cf5985d6489357897b5cfd728a74e61cb6dd1"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/collection-lineage.json": {
+      "bytes": 4014,
+      "sha256": "6fcc3f3daf0b69e6be571d0f5632ce57adda0e5b9a1d3e61503276474211aa90"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/exact-carry-marker.json": {
+      "bytes": 168,
+      "sha256": "331dadb63f995f73c20837fba7a835d20d5e209b359bbc01b58216f4935f5f3d"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/native-qualification.json": {
+      "bytes": 24367,
+      "sha256": "62ae5e3505ef17efb1829f14c8e281798fbd640af18f49b4837db4bd00181a2e"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/one-brake-marker.json": {
+      "bytes": 280,
+      "sha256": "7650aafff3b1c728ada9c9bc2745577a6e0330be0eeabb825b72fb3e0197ac7a"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/own-trace.bin": {
+      "bytes": 3216016,
+      "sha256": "b8b2be33fdc0cefaab9667591cdd89b6dff7e7299df4343a4767dcc08d832648"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/preparation-qualification.json": {
+      "bytes": 32908,
+      "sha256": "8a2f2850c9db4621f39333cf4812000a4197749b7d40b9fcfc2af4142a51fbbd"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/scalar-actual.bin": {
+      "bytes": 2480,
+      "sha256": "3438cbd32bc2c98fd9985a0ba2dd1f1db85ed2cef6a258676004c39a2889f4f4"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd/trace-index.bin": {
+      "bytes": 160,
+      "sha256": "69e34f677cbe7259ceaded1fcf33ee2a758129a09f96d0b0d99d9255b0a42d44"
+    },
+    "psionic/tests/robotics/check-panda-scheduled-pd.sh": {
+      "bytes": 417,
+      "sha256": "72aa5048b421bce2205bde9c40b0388c10007128064024ec03e2749bda27ee66"
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-native-contract.md": {
+      "bytes": 4860,
+      "sha256": "0c80b6d4445efd3865fa0620d5ea47d7ba6ea5781d094d6e0deb05f77e2eec79"
+    },
+    "psionic/tests/robotics/panda_scheduled_pd_cached.py": {
+      "bytes": 4519,
+      "sha256": "d441bb3e38b11f9d8f8198dbaa6665174389117417d1e907d4092b5a4af66ae0"
+    },
+    "psionic/tests/robotics/panda_scheduled_pd_native.c": {
+      "bytes": 21894,
+      "sha256": "f8bd64a9c3246525606e1f4b37b30c2161cc76ce12429024cb0cc146ec6ed4c4"
+    },
+    "psionic/tests/robotics/panda_scheduled_pd_native_reference.py": {
+      "bytes": 18317,
+      "sha256": "273dd7f5edc85d6157d7abf3184809ef8dd8d7d8e1cc1dcdc832c99b21ffaf62"
+    }
+  },
+  "guard_assertions_each": 688,
+  "scalar_probe_assertions_each": 360,
+  "scalar_probes_each": 62,
+  "carry_assertions": 760605,
+  "new_brake_assertions": 202535,
+  "cached_scorer_assertions_each": 381267,
+  "cached_score_modes": 3,
+  "cached_score_modes_byte_identical": true,
+  "original_metric_cases_carried": 3,
+  "old_metric_oracle_reexecuted": false,
+  "assessment": {
+    "local_ID": 0,
+    "valid": true,
+    "all_four_goals_met": true,
+    "terminal": 0.8379269322645729,
+    "brake_terminal": 0.24245121351079701,
+    "PJP_clipped_coordinates": 34,
+    "Pa_control_clipped_coordinates": 0,
+    "Pa_force_clipped_coordinates": 0
+  },
+  "new_brake_steps": 750,
+  "old_plant_steps": 0,
+  "SDK_calls": 0,
+  "C_D_runs": 0,
+  "PartA_reclassified": false,
+  "adapter_qualification": "Additive cached wrapper syntax/plan/stub-routing only; original measured numerical evidence carried. No wrapper numerical rerun.",
+  "limits": [
+    "Original-case owned-model evidence only.",
+    "No new SDK,NN,render/contact,hardware or clock/R14 qualification.",
+    "Future C/D descriptors frozen but not executed.",
+    "Stateless common law; no threshold/gain tuning after outcomes."
+  ]
+}

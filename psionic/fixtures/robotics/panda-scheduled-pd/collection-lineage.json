@@ -1,0 +1,127 @@
+{
+  "schema": "psionic.panda-scheduled-pd.collection-lineage.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 30185,
+    "sha256": "16f8fa543403fc92ec068908292f618a9b7f41593acd179d2586235deb387b74"
+  },
+  "prospective_descriptor": {
+    "bytes": 13233,
+    "sha256": "3755c009214762b5ee864a317a774be0dec6a3d3afd888efb5202b2d8276a37e"
+  },
+  "prospective_seal": {
+    "bytes": 399,
+    "sha256": "89642206df8b715b844ffd0b6a23a695cb121b6e22cc1a7987ca51dbf8074eb5"
+  },
+  "trace": {
+    "bytes": 3216016,
+    "sha256": "b8b2be33fdc0cefaab9667591cdd89b6dff7e7299df4343a4767dcc08d832648"
+  },
+  "index": {
+    "bytes": 160,
+    "sha256": "69e34f677cbe7259ceaded1fcf33ee2a758129a09f96d0b0d99d9255b0a42d44"
+  },
+  "preparation_record": {
+    "bytes": 32908,
+    "sha256": "8a2f2850c9db4621f39333cf4812000a4197749b7d40b9fcfc2af4142a51fbbd"
+  },
+  "carry_record": {
+    "bytes": 19979,
+    "sha256": "fab74d5a3d77229209adbbec717b18601f2b879f4ded944c78be2be7d4cb3c76"
+  },
+  "native_record": {
+    "bytes": 24367,
+    "sha256": "62ae5e3505ef17efb1829f14c8e281798fbd640af18f49b4837db4bd00181a2e"
+  },
+  "reconstructed_exact_carry_trace": {
+    "bytes": 2412016,
+    "sha256": "4ee26bfed2951cebe70e462a77ff71723f83c2647f68d9e79c240c455a745ce4"
+  },
+  "reconstructed_exact_brake_trace": {
+    "bytes": 804040,
+    "sha256": "62c1033d5608bff9e079d0324f12931b422ef7a71568ce294cfde658d5fdd21a"
+  },
+  "reconstruction": "Carry: PSC1,3,750,1072 + first2250 public records. Brake: I64(3,750,750,0,0) + final750 public records. Pure bytecopy/header serialization; no control/plant/scoring recomputed.",
+  "old_profile8_raw_sources": [
+    {
+      "case_id": 0,
+      "source_profile": 8,
+      "source_experiment": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "raw": {
+        "bytes": 780040,
+        "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+      },
+      "source_lineage_entry": {
+        "profile": 8,
+        "case_id": 0,
+        "offset_records": 24000,
+        "records": 750,
+        "stage": 0,
+        "code": 0,
+        "raw": {
+          "bytes": 780040,
+          "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+        },
+        "origin": "newownedtrajectory"
+      },
+      "expected_controller_queries": 750,
+      "new_plant_steps": 0
+    },
+    {
+      "case_id": 1,
+      "source_profile": 8,
+      "source_experiment": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "raw": {
+        "bytes": 780040,
+        "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+      },
+      "source_lineage_entry": {
+        "profile": 8,
+        "case_id": 1,
+        "offset_records": 24750,
+        "records": 750,
+        "stage": 0,
+        "code": 0,
+        "raw": {
+          "bytes": 780040,
+          "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+        },
+        "origin": "newownedtrajectory"
+      },
+      "expected_controller_queries": 750,
+      "new_plant_steps": 0
+    },
+    {
+      "case_id": 2,
+      "source_profile": 8,
+      "source_experiment": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "raw": {
+        "bytes": 780040,
+        "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+      },
+      "source_lineage_entry": {
+        "profile": 8,
+        "case_id": 2,
+        "offset_records": 25500,
+        "records": 750,
+        "stage": 0,
+        "code": 0,
+        "raw": {
+          "bytes": 780040,
+          "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+        },
+        "origin": "newownedtrajectory"
+      },
+      "expected_controller_queries": 750,
+      "new_plant_steps": 0
+    }
+  ],
+  "exact_new_control_queries": 2250,
+  "new_control_bytes_compared_each": 712,
+  "new_fresh_record_bytes_compared_each": 1040,
+  "carried_plant_steps": 0,
+  "new_brake_steps": 750,
+  "SDK_calls": 0,
+  "C_D_runs": 0,
+  "PartA_still_NONE": true
+}
