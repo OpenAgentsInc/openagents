@@ -1,0 +1,51 @@
+{
+  "schema": "psionic.panda-gain-search.cached-adapter-provenance-v2",
+  "passed": true,
+  "original_package_commit": "ee48896a71",
+  "tooling_only": true,
+  "old_adapter": {
+    "bytes": 4491,
+    "sha256": "062ab59fb8587fdc40979a09a565e0aae5fa98669f2a10bc9914345a9043d5d5"
+  },
+  "new_adapter": {
+    "bytes": 5001,
+    "sha256": "a2e76bdc3293952beda29116ca319df4a89fea8946c6cc2f31ba169f4b66a044"
+  },
+  "gate": {
+    "bytes": 406,
+    "sha256": "126f9bb45da75ca9d37324fb7fb1e512559e2f302f727897c3353cd4bf4b397e"
+  },
+  "original_native_qualification": {
+    "bytes": 34314,
+    "sha256": "101480a5223bc2dd2a18e703742ab51fd20e2d29932991b9a7f897e16af162d3"
+  },
+  "original_preparation_qualification": {
+    "bytes": 30166,
+    "sha256": "5d8d0f76f012273bf16cf6e6d672bf65a6cdc863cfd94d8c68ed73813dc4fd51"
+  },
+  "original_native_publication": {
+    "bytes": 5911,
+    "sha256": "594af690fe2280f0695ade572f1e9b1ec3ac0093e49099bb497259c4d5bce9ad"
+  },
+  "source_guard_before_trust": true,
+  "source_guard_after_gate": true,
+  "compiler_identity_after_gate": true,
+  "original_capture_and_cache_identities_after_gate": true,
+  "syntax_checks": [
+    "Pythonpy_compile",
+    "POSIXsh-n"
+  ],
+  "static_plan_checked": true,
+  "routing": [
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_gain_search_cached.py",
+    "--compiler",
+    "/stub/coax",
+    "--output",
+    "/stub/cache-output"
+  ],
+  "numerical_adapter_executed": false,
+  "scorer_calls": 0,
+  "plant_steps": 0,
+  "SDK_calls": 0,
+  "scope": "Additive cached tooling verifies the original measured semantic source graph before trusting outputs, and rechecks compiler/source/capture/cache identities at completion. Original measured drivers/receipts remain byte-exact."
+}
