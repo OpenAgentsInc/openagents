@@ -1,0 +1,136 @@
+// Oracles and fixtures for psionic/lib/darcy.coax (chapter 157). Nothing here
+// calls the solver or the network: the manufactured solution and its
+// right-hand side are written out with sin and cos, and the operator is
+// applied node by node with explicit neighbours.
+DK_PI :: 3.141592653589793;
+
+dk_near :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+dk_worst :: (a:[]f64,b:[]f64)->f64 {w:=0.0;for i:0..<a.count {d:=abs(a[i]-b[i]);if d>w {w=d;}}return w;}
+// A fixed sequence in [-1, 1].
+dk_fill :: (seed:int,v:[]f64) {
+    s:=seed*7919+12345;
+    for i:0..<v.count {s=(s*1103515245+12345)%2147483648;v[i]=f64(s%2001-1000)/1000;}
+}
+
+// The operator applied node by node: each of the four faces is looked up by
+// its coordinates, and a neighbour on the boundary contributes u = 0.
+dk_apply_oracle :: (n:int,ax:[]f64,ay:[]f64,u:[]f64,out:[]f64) {
+    h2:=1.0/f64((n+1)*(n+1));
+    for j:0..<n {for i:0..<n {
+        c:=u[j*n+i];sum:=0.0;
+        for d:0..<4 {
+            di:=0;dj:=0;a:=0.0;
+            if d==0 {di= -1;a=ax[j*(n+1)+i];}
+            if d==1 {di=1;a=ax[j*(n+1)+i+1];}
+            if d==2 {dj= -1;a=ay[j*n+i];}
+            if d==3 {dj=1;a=ay[(j+1)*n+i];}
+            ni:=i+di;nj:=j+dj;v:=0.0;
+            if ni>=0 && ni<n && nj>=0 && nj<n {v=u[nj*n+ni];}
+            sum+=a*(c-v);
+        }
+        out[j*n+i]=sum/h2;
+    }}
+}
+
+// The manufactured solution u = sin(pi x) sin(pi y) with a = 1 + x y, so
+// f = -div(a grad u) = 2 pi^2 (1 + x y) u - pi (y cos(pi x) sin(pi y) + x sin(pi x) cos(pi y)).
+dk_mms_a :: (x:f64,y:f64)->f64 {return 1+x*y;}
+dk_mms_u :: (x:f64,y:f64)->f64 {return sin(DK_PI*x)*sin(DK_PI*y);}
+dk_mms_f :: (x:f64,y:f64)->f64 {
+    return 2*DK_PI*DK_PI*(1+x*y)*dk_mms_u(x,y)-DK_PI*(y*cos(DK_PI*x)*sin(DK_PI*y)+x*sin(DK_PI*x)*cos(DK_PI*y));
+}
+// The largest nodal error of the solver on the manufactured problem.
+dk_mms_error :: (n:int)->f64 {
+    h:=1.0/f64(n+1);ax:[1056]f64;ay:[1056]f64;f:[1024]f64;u:[1024]f64;
+    for j:0..<n {for i:0..<n+1 {ax[j*(n+1)+i]=dk_mms_a((f64(i)+0.5)*h,f64(j+1)*h);}}
+    for j:0..<n+1 {for i:0..<n {ay[j*n+i]=dk_mms_a(f64(i+1)*h,(f64(j)+0.5)*h);}}
+    for j:0..<n {for i:0..<n {f[j*n+i]=dk_mms_f(f64(i+1)*h,f64(j+1)*h);}}
+    s:=dk_solve5(n,ax[0..<(n+1)*n],ay[0..<(n+1)*n],f[0..<n*n],u[0..<n*n]);
+    if s.status!=DkStatus.ok {return 1e9;}
+    worst:=0.0;
+    for j:0..<n {for i:0..<n {e:=abs(u[j*n+i]-dk_mms_u(f64(i+1)*h,f64(j+1)*h));if e>worst {worst=e;}}}
+    return worst;
+}
+
+// Every parameter's gradient against a central difference with step 1e-6:
+// the worst |fd - g| / (1 + |g|). Parameters start from dk_init plus a fixed
+// offset, so no bias is zero.
+dk_gradients :: (net:DkNet,n:int,seed:int)->f64 {
+    P:=dk_params(net);cells:=n*n;p:[600]f64;g:[600]f64;off:[600]f64;x:[75]f64;u:[25]f64;ws:[1000]f64;d:[25]f64;
+    dk_init(net,p[0..<P],cast(u64)seed);dk_fill(seed,off[0..<P]);
+    for t:0..<P {p[t]+=0.2*off[t];}
+    dk_fill(seed+10,x[0..<3*cells]);dk_fill(seed+20,u[0..<cells]);
+    out:=dk_out(net,cells);
+    if dk_forward(net,p[0..<P],n,x[0..<3*cells],ws[..])!=DkStatus.ok {return 1e9;}
+    _l:=dk_loss(ws[out..<out+cells],u[0..<cells],d[0..<cells]);
+    keep_out:[25]f64;for k:0..<cells {keep_out[k]=ws[out+k];}
+    if dk_backward(net,p[0..<P],n,x[0..<3*cells],ws[..],d[0..<cells],g[0..<P])!=DkStatus.ok {return 1e9;}
+    for k:0..<cells {if ws[out+k]!=keep_out[k] {return 1e9;}}
+    worst:=0.0;h:=1e-6;
+    for t:0..<P {
+        keep:=p[t];
+        p[t]=keep+h;_a:=dk_forward(net,p[0..<P],n,x[0..<3*cells],ws[..]);lp:=dk_loss(ws[out..<out+cells],u[0..<cells],d[0..<cells]);
+        p[t]=keep-h;_b:=dk_forward(net,p[0..<P],n,x[0..<3*cells],ws[..]);lm:=dk_loss(ws[out..<out+cells],u[0..<cells],d[0..<cells]);
+        p[t]=keep;
+        e:=abs((lp-lm)/(2*h)-g[t])/(1+abs(g[t]));if e>worst {worst=e;}
+    }
+    return worst;
+}
+
+// Training against the same loop written out with aw_step: batch b holds
+// examples b batch to min((b + 1) batch, count) - 1; the step uses the mean
+// of their gradients at the epoch's rate. The parameters must agree exactly.
+dk_train_matches :: (cfg:DkTrain,count:int)->bool {
+    net:=DkNet.{width=2,layers=1,modes=1,hidden=2};n:=2;cells:=4;P:=dk_params(net);
+    x:[36]f64;u:[12]f64;dk_fill(31,x[0..<3*cells*count]);dk_fill(32,u[0..<cells*count]);
+    pa:[64]f64;ma:[64]f64;va:[64]f64;pb:[64]f64;mb:[64]f64;vb:[64]f64;la:[4]f64;lb:[4]f64;
+    dk_init(net,pa[0..<P],9);for t:0..<P {pb[t]=pa[t];}
+    if dk_train(net,pa[0..<P],ma[0..<P],va[0..<P],n,x[0..<3*cells*count],u[0..<cells*count],cfg,la[0..<cfg.epochs])!=DkStatus.ok {return false;}
+    ws:[200]f64;g:[64]f64;sum:[64]f64;d:[4]f64;state:AwState;out:=dk_out(net,cells);
+    for e:0..<cfg.epochs {
+        total:=0.0;rate:=cfg.lr;for q:0..<(4*e)/cfg.epochs {rate/=2;}
+        group:=[1]AwGroup.[AwGroup.{first=0,count=P,lr=rate,beta1=0.9,beta2=0.999,eps=1e-8,decay=cfg.decay}];
+        for b:0..<(count+cfg.batch-1)/cfg.batch {
+            lo:=b*cfg.batch;hi:=lo+cfg.batch;if hi>count {hi=count;}
+            for t:0..<P {sum[t]=0;}
+            for s:lo..<hi {
+                _f:=dk_forward(net,pb[0..<P],n,x[3*cells*s..<3*cells*(s+1)],ws[..]);
+                total+=dk_loss(ws[out..<out+cells],u[cells*s..<cells*(s+1)],d[..]);
+                _g:=dk_backward(net,pb[0..<P],n,x[3*cells*s..<3*cells*(s+1)],ws[..],d[..],g[0..<P]);
+                for t:0..<P {sum[t]+=g[t]/f64(hi-lo);}
+            }
+            none:[1]f32;r:=aw_step(group[..],AwPolicy.{},state,pb[0..<P],sum[0..<P],mb[0..<P],vb[0..<P],none[0..<0],false);
+            if r.status!=AwStatus.ok {return false;}
+            state=r.state;
+        }
+        lb[e]=total/f64(count);
+        if la[e]!=lb[e] {return false;}
+    }
+    for t:0..<P {if pa[t]!=pb[t] || ma[t]!=mb[t] || va[t]!=vb[t] {return false;}}
+    return true;
+}
+
+// AdamW's first step from zero moments moves each weight by
+// lr g/(|g| + eps) after the decay p (1 - lr decay): with one batch of two
+// examples, g is the mean of their gradients.
+dk_first_step :: ()->bool {
+    net:=DkNet.{width=2,layers=2,modes=1,hidden=2};n:=2;cells:=4;P:=dk_params(net);
+    x:[24]f64;u:[8]f64;dk_fill(41,x[..]);dk_fill(42,u[..]);
+    p:[128]f64;m:[128]f64;v:[128]f64;start:[128]f64;l:[1]f64;
+    dk_init(net,p[0..<P],11);for t:0..<P {start[t]=p[t];}
+    ws:[300]f64;g0:[128]f64;g1:[128]f64;d:[4]f64;out:=dk_out(net,cells);
+    _a:=dk_forward(net,p[0..<P],n,x[0..<12],ws[..]);l0:=dk_loss(ws[out..<out+4],u[0..<4],d[..]);_b:=dk_backward(net,p[0..<P],n,x[0..<12],ws[..],d[..],g0[0..<P]);
+    _c:=dk_forward(net,p[0..<P],n,x[12..<24],ws[..]);l1:=dk_loss(ws[out..<out+4],u[4..<8],d[..]);_e:=dk_backward(net,p[0..<P],n,x[12..<24],ws[..],d[..],g1[0..<P]);
+    if dk_train(net,p[0..<P],m[0..<P],v[0..<P],n,x[..],u[..],DkTrain.{epochs=1,batch=2,lr=0.01,decay=0.5},l[..])!=DkStatus.ok {return false;}
+    if !dk_near(l[0],(l0+l1)/2,1e-15) {return false;}
+    moved:=0;
+    for t:0..<P {
+        gm:=g0[t]/2+g1[t]/2;want:=start[t]*(1-0.005);
+        if gm!=0 {want-=0.01*gm/(abs(gm)+1e-8);moved+=1;}
+        if !dk_near(p[t],want,1e-12) {return false;}
+    }
+    return moved>P/2;
+}
+
+// The solver with a cap of 2,000 iterations, for the checks.
+dk_solve5 :: (n:int,ax:[]f64,ay:[]f64,f:[]f64,u:[]f64)->DkSolve {return dk_solve(n,ax,ay,f,u,2000);}

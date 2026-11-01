@@ -1,0 +1,75 @@
+// Chapter 157: learn Darcy flow. The solver by hand and against a
+// manufactured solution, a seeded dataset, a short training run of a small
+// Fourier neural operator, its held-out error at two grid sizes, and the
+// inputs the solver and the network refuse.
+#import "Basic";
+#load "../lib/darcy.coax";
+
+TRAIN :: 32;
+TEST :: 16;
+EPOCHS :: 20;
+dk_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+// Four significant digits.
+dk_sig :: (v:f64)->f64 {
+    if v==0 {return 0;}
+    s:=1.0;while abs(v)*s<1000 {s*=10;}
+    return floor(v*s+0.5)/s;
+}
+
+// book:begin example
+main :: () {
+    // 1. The solver by hand: one interior point, then nine, with a = 1, f = 1.
+    ax:=[2]f64.[1,1];ay:=[2]f64.[1,1];f:=[1]f64.[1];u:[1]f64;
+    s:=dk_solve(1,ax[..],ay[..],f[..],u[..],2000);print("1 point: u = % (% iteration)\n",u[0],s.iterations);
+    bx:[12]f64;by:[12]f64;g:[9]f64;v:[9]f64;
+    for i:0..<12 {bx[i]=1;by[i]=1;}for i:0..<9 {g[i]=1;}
+    s=dk_solve(3,bx[..],by[..],g[..],v[..],2000);
+    print("9 points: centre % = 9/128, edge % = 7/128, corner % = 11/256 (% iterations)\n",v[4],v[1],v[0],s.iterations);
+
+    // 2. A manufactured solution: the error falls 4 times per halving of h.
+    e1:=dk_mms_error(7);e2:=dk_mms_error(15);e3:=dk_mms_error(31);
+    print("manufactured u, largest error: n = 7: %, n = 15: %, n = 31: %\n",dk_sig(e1),dk_sig(e2),dk_sig(e3));
+    print("observed order: % and %\n",dk_r4(log(e1/e2)/log(2.0)),dk_r4(log(e2/e3)/log(2.0)));
+
+    // 3. Data: training fields from seeds 1000.., held-out fields from 3000...
+    xs:[TRAIN*3*256]f64;us:[TRAIN*256]f64;tx:[TEST*3*256]f64;tu:[TEST*256]f64;fx:[TEST*3*1024]f64;fu:[TEST*1024]f64;
+    most:=0;
+    for k:0..<TRAIN {
+        r:=dk_sample(dk_field(cast(u64)(1000+k)),16,xs[k*768..<(k+1)*768],us[k*256..<(k+1)*256],2000);
+        #assert r.status==DkStatus.ok;if r.iterations>most {most=r.iterations;}
+    }
+    for k:0..<TEST {
+        r:=dk_sample(dk_field(cast(u64)(3000+k)),16,tx[k*768..<(k+1)*768],tu[k*256..<(k+1)*256],2000);#assert r.status==DkStatus.ok;
+        r=dk_sample(dk_field(cast(u64)(3000+k)),32,fx[k*3072..<(k+1)*3072],fu[k*1024..<(k+1)*1024],2000);#assert r.status==DkStatus.ok;
+    }
+    print("% training and % held-out fields at 16 x 16; at most % solver iterations\n",TRAIN,TEST,most);
+    first:=dk_field(1000);print("field 1000: c = % % % ...; u at the centre node: %\n",dk_r4(first.c[0]),dk_r4(first.c[1]),dk_r4(first.c[2]),dk_sig(us[8*16+8]));
+
+    // 4. A short training run.
+    net:=DkNet.{width=4,layers=3,modes=6,hidden=16};P:=dk_params(net);
+    p:[DK_PARAMS_MAX]f64;m:[DK_PARAMS_MAX]f64;w:[DK_PARAMS_MAX]f64;losses:[EPOCHS]f64;
+    dk_init(net,p[0..<P],7);
+    cfg:=DkTrain.{epochs=EPOCHS,batch=8,lr=0.01,decay=0.0001};
+    #assert dk_train(net,p[0..<P],m[0..<P],w[0..<P],16,xs[..],us[..],cfg,losses[..])==DkStatus.ok;
+    print("network: % parameters; % steps\n",P,EPOCHS*TRAIN/8);
+    for e:0..<EPOCHS {if e%5==0 || e==EPOCHS-1 {print("  epoch %: loss %\n",e,dk_sig(losses[e]));}}
+
+    // 5. Held-out relative L2 error, at the training grid and at 32 x 32.
+    ws:[80000]f64;mean16:=0.0;worst16:=0.0;mean32:=0.0;worst32:=0.0;
+    for k:0..<TEST {
+        a:=dk_error(net,p[0..<P],16,tx[k*768..<(k+1)*768],tu[k*256..<(k+1)*256],ws[..]);
+        b:=dk_error(net,p[0..<P],32,fx[k*3072..<(k+1)*3072],fu[k*1024..<(k+1)*1024],ws[..]);
+        mean16+=a/TEST;mean32+=b/TEST;if a>worst16 {worst16=a;}if b>worst32 {worst32=b;}
+    }
+    print("held-out relative L2 at 16 x 16: mean %, worst %\n",dk_r4(mean16),dk_r4(worst16));
+    print("same weights at 32 x 32: mean %, worst %\n",dk_r4(mean32),dk_r4(worst32));
+
+    // 6. Refusals.
+    ax[1]=0;print("a face coefficient of 0: %\n",dk_solve(1,ax[..],ay[..],f[..],u[..],2000).status);ax[1]=1;
+    print("a 33 x 33 grid: %\n",dk_solve(33,ax[..],ay[..],f[..],u[..],2000).status);
+    print("9 modes: %\n",dk_forward(DkNet.{width=4,layers=3,modes=9,hidden=16},p[0..<P],16,tx[0..<768],ws[..]));
+    print("6 modes on an 8 x 8 grid: %\n",dk_forward(net,p[0..<P],8,tx[0..<192],ws[..]));
+    tx[5]=0.0/0.0;print("a NaN in the input: %\n",dk_forward(net,p[0..<P],16,tx[0..<768],ws[..]));
+    bad:=cfg;bad.lr=2;print("a learning rate of 2: %\n",dk_train(net,p[0..<P],m[0..<P],w[0..<P],16,xs[..],us[..],bad,losses[..]));
+}
+// book:end example

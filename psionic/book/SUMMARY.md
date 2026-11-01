@@ -172,7 +172,7 @@
 - [155. Speak the answer](ch155-speak-the-answer.md) — design draft
 
 - [156. A spectral neural operator](ch156-a-spectral-neural-operator.md)
-- [157. Learn Darcy flow](ch157-learn-darcy-flow.md) — design draft
+- [157. Learn Darcy flow](ch157-learn-darcy-flow.md)
 - [158. A field around a shape](ch158-a-field-around-a-shape.md)
 - [159. Learn a scene from its views](ch159-learn-a-scene-from-its-views.md) — design draft
 - [160. Execute DoMINO](ch160-execute-domino.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 156, 158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 156–158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

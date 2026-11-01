@@ -1,0 +1,20 @@
+1 point: u = 0.0625 (1 iteration)
+9 points: centre 0.0703125 = 9/128, edge 0.0546875 = 7/128, corner 0.04296875 = 11/256 (3 iterations)
+manufactured u, largest error: n = 7: 0.01291, n = 15: 0.003209, n = 31: 0.000801
+observed order: 2.0086 and 2.0021
+32 training and 16 held-out fields at 16 x 16; at most 195 solver iterations
+field 1000: c = -1.0606 0.503 0.2187 ...; u at the centre node: 0.07059
+network: 11789 parameters; 80 steps
+  epoch 0: loss 0.1574
+  epoch 5: loss 0.009465
+  epoch 10: loss 0.003695
+  epoch 15: loss 0.002795
+  epoch 19: loss 0.002654
+held-out relative L2 at 16 x 16: mean 0.1328, worst 0.2491
+same weights at 32 x 32: mean 0.1462, worst 0.2655
+a face coefficient of 0: coefficient
+a 33 x 33 grid: size
+9 modes: network
+6 modes on an 8 x 8 grid: size
+a NaN in the input: number
+a learning rate of 2: number

@@ -1,0 +1,13 @@
+training: seeds 1000 to 1127, 16 x 16, 300 epochs of 16 steps, batch 8, rate 0.01 halved each quarter
+network: width 4, 3 Fourier layers, 6 modes, projection 16; 11789 parameters
+  epoch 0: loss 0.07332
+  epoch 50: loss 0.0001204
+  epoch 100: loss 0.00005819
+  epoch 150: loss 0.00004202
+  epoch 200: loss 0.00003846
+  epoch 250: loss 0.00003371
+  epoch 299: loss 0.00003083
+training relative L2 at 16 x 16: mean 0.0127
+held-out (seeds 3000 to 3063) relative L2 at 16 x 16: mean 0.0164, worst 0.0313
+same weights at 32 x 32: mean 0.0685, worst 0.0841
+threshold: mean at 16 x 16 at most 0.05: pass

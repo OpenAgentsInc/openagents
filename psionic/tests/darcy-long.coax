@@ -1,0 +1,50 @@
+// Chapter 157's longer training receipt: 128 training fields, 300 epochs,
+// then the held-out relative L2 error on 64 fields the run never saw, at the
+// training grid (16 x 16) and at 32 x 32. Its output is
+// psionic/fixtures/darcy-long.out; regenerate it with
+//   coax/bin/coax run psionic/tests/darcy-long.coax --release
+// The acceptance threshold (mean held-out error at 16 x 16 at most 0.05) was
+// written into chapter 157 before this program first ran on the test seeds.
+#import "Basic";
+#load "../lib/darcy.coax";
+
+LONG_TRAIN :: 128;
+LONG_TEST :: 64;
+LONG_EPOCHS :: 300;
+LONG_THRESHOLD :: 0.05;
+long_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+long_sig :: (v:f64)->f64 {
+    if v==0 {return 0;}
+    s:=1.0;while abs(v)*s<1000 {s*=10;}
+    return floor(v*s+0.5)/s;
+}
+
+main :: () {
+    xs:[LONG_TRAIN*768]f64;us:[LONG_TRAIN*256]f64;tx:[LONG_TEST*768]f64;tu:[LONG_TEST*256]f64;fx:[LONG_TEST*3072]f64;fu:[LONG_TEST*1024]f64;
+    for k:0..<LONG_TRAIN {
+        r:=dk_sample(dk_field(cast(u64)(1000+k)),16,xs[k*768..<(k+1)*768],us[k*256..<(k+1)*256],2000);#assert r.status==DkStatus.ok;
+    }
+    for k:0..<LONG_TEST {
+        r:=dk_sample(dk_field(cast(u64)(3000+k)),16,tx[k*768..<(k+1)*768],tu[k*256..<(k+1)*256],2000);#assert r.status==DkStatus.ok;
+        r=dk_sample(dk_field(cast(u64)(3000+k)),32,fx[k*3072..<(k+1)*3072],fu[k*1024..<(k+1)*1024],2000);#assert r.status==DkStatus.ok;
+    }
+    net:=DkNet.{width=4,layers=3,modes=6,hidden=16};P:=dk_params(net);
+    p:[DK_PARAMS_MAX]f64;m:[DK_PARAMS_MAX]f64;w:[DK_PARAMS_MAX]f64;losses:[LONG_EPOCHS]f64;
+    dk_init(net,p[0..<P],7);
+    cfg:=DkTrain.{epochs=LONG_EPOCHS,batch=8,lr=0.01,decay=0.0001};
+    #assert dk_train(net,p[0..<P],m[0..<P],w[0..<P],16,xs[..],us[..],cfg,losses[..])==DkStatus.ok;
+    print("training: seeds 1000 to %, 16 x 16, % epochs of % steps, batch 8, rate 0.01 halved each quarter\n",1000+LONG_TRAIN-1,LONG_EPOCHS,LONG_TRAIN/8);
+    print("network: width 4, 3 Fourier layers, 6 modes, projection 16; % parameters\n",P);
+    for e:0..<LONG_EPOCHS {if e%50==0 || e==LONG_EPOCHS-1 {print("  epoch %: loss %\n",e,long_sig(losses[e]));}}
+    ws:[80000]f64;mean16:=0.0;worst16:=0.0;mean32:=0.0;worst32:=0.0;train16:=0.0;
+    for k:0..<LONG_TRAIN {train16+=dk_error(net,p[0..<P],16,xs[k*768..<(k+1)*768],us[k*256..<(k+1)*256],ws[..])/LONG_TRAIN;}
+    for k:0..<LONG_TEST {
+        a:=dk_error(net,p[0..<P],16,tx[k*768..<(k+1)*768],tu[k*256..<(k+1)*256],ws[..]);
+        b:=dk_error(net,p[0..<P],32,fx[k*3072..<(k+1)*3072],fu[k*1024..<(k+1)*1024],ws[..]);
+        mean16+=a/LONG_TEST;mean32+=b/LONG_TEST;if a>worst16 {worst16=a;}if b>worst32 {worst32=b;}
+    }
+    print("training relative L2 at 16 x 16: mean %\n",long_r4(train16));
+    print("held-out (seeds 3000 to %) relative L2 at 16 x 16: mean %, worst %\n",3000+LONG_TEST-1,long_r4(mean16),long_r4(worst16));
+    print("same weights at 32 x 32: mean %, worst %\n",long_r4(mean32),long_r4(worst32));
+    print("threshold: mean at 16 x 16 at most %: %\n",LONG_THRESHOLD,ifx mean16<=LONG_THRESHOLD then "pass" else "fail");
+}

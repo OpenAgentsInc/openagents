@@ -1482,6 +1482,16 @@
       ]
     },
     {
+      "source": "psionic/examples/darcy-flow.coax",
+      "chapter": "psionic/book/ch157-learn-darcy-flow.md",
+      "stdout": "psionic/fixtures/darcy-flow.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/field.coax",
       "chapter": "psionic/book/ch158-a-field-around-a-shape.md",
       "stdout": "psionic/fixtures/field.out",
