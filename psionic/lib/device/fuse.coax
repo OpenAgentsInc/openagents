@@ -1,0 +1,397 @@
+// Chapter 43: the fusion pass. A step is a list of unfused launches over
+// spans of f32 buffers. The pass admits the list, then merges two chains
+// into one launch each: the RMS norm with its scale, and a bias, ReLU and
+// residual add. A chain is merged only when its spans provably do not
+// overlap and no intermediate it removes is read later; otherwise it stays
+// unfused, and the decision says why. The host owns buffers and launches;
+// it obeys this plan and makes no fusion decision of its own.
+#authority;
+#load "fuse-kernels.coax";
+
+// book:begin types
+// count f32 values of buffer `buffer`, from element `offset`.
+FuSpan :: struct {buffer:int;offset:int;count:int;}
+// One launch of kernel `kind` (the numbers in fuse-kernels.coax), reading
+// the spans a, b and c it uses and writing out. keep: out is read after the
+// step, so it may not be removed.
+FuOp :: struct {kind:int;a:FuSpan;b:FuSpan;c:FuSpan;out:FuSpan;keep:bool;}
+FU_RMS :: 0;FU_SCALE :: 1;FU_BIAS :: 2;FU_RELU :: 3;FU_ADD :: 4;
+FU_NORM_SCALE :: 5;FU_BIAS_RELU_ADD :: 6;
+FU_LIMIT :: 65536;
+FuStatus :: enum u8 {ok;shape;kind;span;alias;capacity;}
+FuWhy :: enum u8 {fused;chain;overlap;live;}
+// One merge the pass considered: the ops first ..< first+ops, the fused
+// kernel it would become, and, when it was refused, the two spans that
+// decided it.
+FuDecision :: struct {first:int;ops:int;fused:int;why:FuWhy;p:FuSpan;q:FuSpan;}
+FuPlan :: struct {status:FuStatus;op:int;launches:int;decisions:int;}
+// book:end types
+
+// book:begin admit
+fu_inputs :: (kind:int)->int {
+    if kind==FU_RMS || kind==FU_RELU {return 1;}
+    if kind==FU_SCALE || kind==FU_BIAS_RELU_ADD {return 3;}
+    return 2;
+}
+fu_input :: (op:FuOp,j:int)->FuSpan {if j==0 {return op.a;}if j==1 {return op.b;}return op.c;}
+// The values span j of a kernel holds; j = 3 is the output.
+fu_want :: (kind:int,j:int,rows:int,cols:int)->int {
+    if j==3 {if kind==FU_RMS {return rows;}return rows*cols;}
+    if j==0 || kind==FU_ADD {return rows*cols;}
+    if kind==FU_SCALE && j==1 {return rows;}
+    return cols;
+}
+// Work items: one per row for the norms, one per element otherwise.
+fu_items :: (kind:int,rows:int,cols:int)->int #export_c {
+    if kind==FU_RMS || kind==FU_NORM_SCALE {return rows;}
+    return rows*cols;
+}
+// On the device: threads per block, and threads in all. A norm runs one
+// group of FK_THREADS threads per row; the others one thread per element.
+fu_block :: (kind:int)->int #export_c {
+    if kind==FU_RMS || kind==FU_NORM_SCALE {return FK_THREADS;}
+    return 256;
+}
+fu_threads :: (kind:int,rows:int,cols:int)->int #export_c {
+    if kind==FU_RMS || kind==FU_NORM_SCALE {return rows*FK_THREADS;}
+    return rows*cols;
+}
+fu_inside :: (s:FuSpan,want:int,buffers:[]int)->bool {
+    return s.buffer>=0 && s.buffer<buffers.count && s.offset>=0 && s.count==want && s.offset<=buffers[s.buffer]-s.count;
+}
+fu_overlap :: (p:FuSpan,q:FuSpan)->bool {
+    return p.buffer==q.buffer && p.offset<q.offset+q.count && q.offset<p.offset+p.count;
+}
+fu_same :: (p:FuSpan,q:FuSpan)->bool {return p.buffer==q.buffer && p.offset==q.offset && p.count==q.count;}
+// An unfused launch is admitted when its spans lie inside their buffers with
+// the right sizes and it writes none of its own inputs.
+fu_check :: (op:FuOp,rows:int,cols:int,buffers:[]int)->FuStatus {
+    if op.kind<FU_RMS || op.kind>FU_ADD {return FuStatus.kind;}
+    if !fu_inside(op.out,fu_want(op.kind,3,rows,cols),buffers) {return FuStatus.span;}
+    for j:0..<fu_inputs(op.kind) {if !fu_inside(fu_input(op,j),fu_want(op.kind,j,rows,cols),buffers) {return FuStatus.span;}}
+    for j:0..<fu_inputs(op.kind) {if fu_overlap(op.out,fu_input(op,j)) {return FuStatus.alias;}}
+    return FuStatus.ok;
+}
+// book:end admit
+
+// book:begin decide
+// The chain that starts at op i, by kernel: 2 for norm then scale, 3 for
+// bias, ReLU and add, 0 for none.
+fu_pattern :: (ops:[]FuOp,i:int)->int {
+    if i+1<ops.count && ops[i].kind==FU_RMS && ops[i+1].kind==FU_SCALE {return 2;}
+    if i+2<ops.count && ops[i].kind==FU_BIAS && ops[i+1].kind==FU_RELU && ops[i+2].kind==FU_ADD {return 3;}
+    return 0;
+}
+// The one launch that replaces the chain.
+fu_fuse :: (ops:[]FuOp,i:int,n:int)->FuOp {
+    if n==2 {return FuOp.{kind=FU_NORM_SCALE,a=ops[i].a,b=ops[i+1].c,out=ops[i+1].out,keep=ops[i+1].keep};}
+    return FuOp.{kind=FU_BIAS_RELU_ADD,a=ops[i].a,b=ops[i].b,c=ops[i+2].b,out=ops[i+2].out,keep=ops[i+2].keep};
+}
+fu_refuse :: (i:int,n:int,f:FuOp,why:FuWhy,p:FuSpan,q:FuSpan)->FuDecision {
+    return FuDecision.{first=i,ops=n,fused=f.kind,why=why,p=p,q=q};
+}
+// The spans the chain writes: its output, then its intermediates.
+fu_written :: (ops:[]FuOp,i:int,n:int,k:int)->FuSpan {
+    if k==0 {return ops[i+n-1].out;}
+    return ops[i+k-1].out;
+}
+fu_decide :: (ops:[]FuOp,i:int,n:int)->FuDecision {
+    f:=fu_fuse(ops,i,n);
+    // Each op must read what the one before it wrote: the scale reads the
+    // norm's x and its inverse RMS; the ReLU reads the bias's output and the
+    // add reads the ReLU's.
+    if n==2 {
+        if !fu_same(ops[i+1].b,ops[i].out) {return fu_refuse(i,n,f,FuWhy.chain,ops[i].out,ops[i+1].b);}
+        if !fu_same(ops[i+1].a,ops[i].a) {return fu_refuse(i,n,f,FuWhy.chain,ops[i].a,ops[i+1].a);}
+    } else {
+        for k:1..<n {if !fu_same(ops[i+k].a,ops[i+k-1].out) {return fu_refuse(i,n,f,FuWhy.chain,ops[i+k-1].out,ops[i+k].a);}}
+    }
+    // No span the chain writes may overlap a span the fused kernel reads, or
+    // another span the chain writes: one launch runs every item at once.
+    for k:0..<n {
+        w:=fu_written(ops,i,n,k);
+        for j:0..<fu_inputs(f.kind) {if fu_overlap(w,fu_input(f,j)) {return fu_refuse(i,n,f,FuWhy.overlap,w,fu_input(f,j));}}
+        for m:k+1..<n {v:=fu_written(ops,i,n,m);if fu_overlap(w,v) {return fu_refuse(i,n,f,FuWhy.overlap,w,v);}}
+    }
+    // The fused kernel never writes the intermediates, so nothing may need
+    // them: not the caller, and no later op.
+    for k:0..<n-1 {
+        w:=ops[i+k].out;
+        if ops[i+k].keep {return fu_refuse(i,n,f,FuWhy.live,w,w);}
+        for later:i+n..<ops.count {
+            for j:0..<fu_inputs(ops[later].kind) {if fu_overlap(w,fu_input(ops[later],j)) {return fu_refuse(i,n,f,FuWhy.live,w,fu_input(ops[later],j));}}
+        }
+    }
+    return FuDecision.{first=i,ops=n,fused=f.kind,why=FuWhy.fused};
+}
+// book:end decide
+
+// book:begin plan
+// Admit every op, then copy the ops to `out`, replacing each chain the
+// decision admits by its fused launch. Every chain considered gets a
+// decision. Nothing is planned unless every op is admitted.
+fu_plan :: (ops:[]FuOp,rows:int,cols:int,buffers:[]int,out:[]FuOp,decisions:[]FuDecision)->FuPlan #export_c {
+    if rows<1 || rows>FU_LIMIT || cols<1 || cols>FU_LIMIT {return FuPlan.{status=FuStatus.shape,op=-1};}
+    for i:0..<ops.count {s:=fu_check(ops[i],rows,cols,buffers);if s!=FuStatus.ok {return FuPlan.{status=s,op=i};}}
+    i:=0;n:=0;d:=0;
+    while i<ops.count {
+        next:=ops[i];step:=1;chain:=fu_pattern(ops,i);
+        if chain==2 || chain==3 {
+            if d>=decisions.count {return FuPlan.{status=FuStatus.capacity,op=i};}
+            decisions[d]=fu_decide(ops,i,chain);d+=1;
+            if decisions[d-1].why==FuWhy.fused {next=fu_fuse(ops,i,chain);step=chain;}
+        }
+        if n>=out.count {return FuPlan.{status=FuStatus.capacity,op=i};}
+        out[n]=next;n+=1;i+=step;
+    }
+    return FuPlan.{status=FuStatus.ok,op=-1,launches=n,decisions=d};
+}
+// A recorded step can be replayed with new arguments when the new plan has
+// the same kernels in the same order; otherwise it is recorded again.
+fu_same_kernels :: (a:[]FuOp,b:[]FuOp)->bool #export_c {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if a[i].kind!=b[i].kind {return false;}}
+    return true;
+}
+// book:end plan
+
+fu_why :: (why:FuWhy)->string {
+    if why==FuWhy.fused {return "fused into one launch";}
+    if why==FuWhy.chain {return "kept apart: an op does not read what the op before it wrote";}
+    if why==FuWhy.overlap {return "kept apart: a span the chain writes overlaps another span of the fused kernel";}
+    return "kept apart: an intermediate the fused kernel would not write is still read";
+}
+fu_status :: (s:FuStatus)->string {
+    if s==FuStatus.ok {return "admitted";}
+    if s==FuStatus.shape {return "refused: rows and cols must be 1 to 65536";}
+    if s==FuStatus.kind {return "refused: an op is not an unfused kernel";}
+    if s==FuStatus.span {return "refused: a span lies outside its buffer or has the wrong size";}
+    if s==FuStatus.alias {return "refused: an op writes over one of its own inputs";}
+    return "refused: the plan needs more room than the caller gave";
+}
+
+// ---- The step the chapter uses: rows of cols values in four buffers.
+// Buffer 0 holds x and the residual (x at 0, residual after it), buffer 1
+// the gain and bias (gain at 0, bias at cols), buffer 2 the inverse RMS,
+// buffer 3 the intermediates y, h and r and the output out, one after
+// another.
+fu_span :: (buffer:int,offset:int,count:int)->FuSpan {return FuSpan.{buffer=buffer,offset=offset,count=count};}
+fu_step :: (rows:int,cols:int,ops:[]FuOp) #export_c {
+    n:=rows*cols;
+    x:=fu_span(0,0,n);res:=fu_span(0,n,n);g:=fu_span(1,0,cols);bias:=fu_span(1,cols,cols);inv:=fu_span(2,0,rows);
+    y:=fu_span(3,0,n);h:=fu_span(3,n,n);r:=fu_span(3,2*n,n);out:=fu_span(3,3*n,n);
+    ops[0]=FuOp.{kind=FU_RMS,a=x,out=inv};
+    ops[1]=FuOp.{kind=FU_SCALE,a=x,b=inv,c=g,out=y};
+    ops[2]=FuOp.{kind=FU_BIAS,a=y,b=bias,out=h};
+    ops[3]=FuOp.{kind=FU_RELU,a=h,out=r};
+    ops[4]=FuOp.{kind=FU_ADD,a=r,b=res,out=out,keep=true};
+}
+fu_sizes :: (rows:int,cols:int,buffers:[]int) #export_c {
+    buffers[0]=2*rows*cols;buffers[1]=2*cols;buffers[2]=rows;buffers[3]=4*rows*cols;
+}
+
+// ---- Checks.
+#test "the chapter's step: five launches become two" {
+    ops:[5]FuOp;buffers:[4]int;out:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);
+    #assert buffers[0]==16 && buffers[1]==8 && buffers[2]==2 && buffers[3]==32;
+    #assert fu_same(ops[0].a,fu_span(0,0,8)) && fu_same(ops[4].b,fu_span(0,8,8)) && fu_same(ops[1].c,fu_span(1,0,4)) && fu_same(ops[2].b,fu_span(1,4,4));
+    #assert fu_same(ops[0].out,fu_span(2,0,2)) && fu_same(ops[1].out,fu_span(3,0,8)) && fu_same(ops[2].out,fu_span(3,8,8));
+    #assert fu_same(ops[3].out,fu_span(3,16,8)) && fu_same(ops[4].out,fu_span(3,24,8)) && ops[4].keep && !ops[3].keep;
+    #assert fu_same(ops[1].a,ops[0].a) && fu_same(ops[1].b,ops[0].out) && fu_same(ops[2].a,ops[1].out) && fu_same(ops[3].a,ops[2].out) && fu_same(ops[4].a,ops[3].out);
+    p:=fu_plan(ops[..],2,4,buffers[..],out[..],dec[..]);
+    #assert p.status==FuStatus.ok && p.op==-1 && p.launches==2 && p.decisions==2;
+    #assert dec[0].first==0 && dec[0].ops==2 && dec[0].fused==FU_NORM_SCALE && dec[0].why==FuWhy.fused;
+    #assert dec[1].first==2 && dec[1].ops==3 && dec[1].fused==FU_BIAS_RELU_ADD && dec[1].why==FuWhy.fused;
+    #assert out[0].kind==FU_NORM_SCALE && fu_same(out[0].a,ops[0].a) && fu_same(out[0].b,ops[1].c) && fu_same(out[0].out,ops[1].out) && out[0].c.count==0;
+    #assert out[1].kind==FU_BIAS_RELU_ADD && fu_same(out[1].a,ops[1].out) && fu_same(out[1].b,ops[2].b) && fu_same(out[1].c,ops[4].b) && fu_same(out[1].out,ops[4].out) && out[1].keep;
+    #assert !out[0].keep;
+    #assert fu_items(FU_RMS,2,4)==2 && fu_items(FU_NORM_SCALE,2,4)==2 && fu_items(FU_SCALE,2,4)==8 && fu_items(FU_BIAS_RELU_ADD,2,4)==8;
+    #assert fu_block(FU_RMS)==128 && fu_block(FU_NORM_SCALE)==128 && fu_block(FU_SCALE)==256 && fu_block(FU_BIAS_RELU_ADD)==256;
+    #assert fu_threads(FU_RMS,2,4)==256 && fu_threads(FU_NORM_SCALE,3,4)==384 && fu_threads(FU_ADD,2,4)==8 && fu_threads(FU_BIAS_RELU_ADD,3,5)==15;
+    #assert fu_status(p.status)=="admitted" && fu_why(dec[0].why)=="fused into one launch";
+}
+// Run a plan on the CPU over four buffers.
+fu_view :: (s:FuSpan,b0:[]f32,b1:[]f32,b2:[]f32,b3:[]f32)->[]f32 {
+    if s.buffer==0 {return b0[s.offset..<s.offset+s.count];}
+    if s.buffer==1 {return b1[s.offset..<s.offset+s.count];}
+    if s.buffer==2 {return b2[s.offset..<s.offset+s.count];}
+    return b3[s.offset..<s.offset+s.count];
+}
+fu_run :: (ops:[]FuOp,rows:int,cols:int,eps:f32,b0:[]f32,b1:[]f32,b2:[]f32,b3:[]f32) {
+    for op:ops {
+        a:=fu_view(op.a,b0,b1,b2,b3);b:=fu_view(op.b,b0,b1,b2,b3);c:=fu_view(op.c,b0,b1,b2,b3);o:=fu_view(op.out,b0,b1,b2,b3);
+        for item:0..<fu_items(op.kind,rows,cols) {
+            if op.kind==FU_RMS {fk_rms(item,cols,eps,a,b,c,o);}
+            if op.kind==FU_SCALE {fk_scale(item,cols,eps,a,b,c,o);}
+            if op.kind==FU_BIAS {fk_bias(item,cols,eps,a,b,c,o);}
+            if op.kind==FU_RELU {fk_relu(item,cols,eps,a,b,c,o);}
+            if op.kind==FU_ADD {fk_add(item,cols,eps,a,b,c,o);}
+            if op.kind==FU_NORM_SCALE {fk_norm_scale(item,cols,eps,a,b,c,o);}
+            if op.kind==FU_BIAS_RELU_ADD {fk_bias_relu_add(item,cols,eps,a,b,c,o);}
+        }
+    }
+}
+#test "the chapter's hand trace, planned and run on the CPU" {
+    ops:[5]FuOp;buffers:[4]int;plan:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);p:=fu_plan(ops[..],2,4,buffers[..],plan[..],dec[..]);
+    b0:=[16]f32.[2,2,2,2,1,-1,1,-1,1,1,1,1,1,1,1,1];b1:=[8]f32.[1,2,0.5,-1,0.5,0.5,-1,0];b2:[2]f32;b3:[32]f32;f2:[2]f32;f3:[32]f32;
+    want:=[8]f32.[2.5,3.5,1,1,2.5,1,1,2];
+    fu_run(ops[..],2,4,0,b0[..],b1[..],b2[..],b3[..]);
+    fu_run(plan[0..<p.launches],2,4,0,b0[..],b1[..],f2[..],f3[..]);
+    #assert b2[0]==0.5 && b2[1]==1 && f2[0]==0 && b3[8]==1.5 && b3[16]==1.5 && f3[8]==0;
+    for i:0..<8 {#assert b3[24+i]==want[i] && f3[24+i]==want[i];}
+    // One column: x = 3 and -4, gain 2, bias -1, residual 1.
+    one:[5]FuOp;fu_step(2,1,one[..]);fu_sizes(2,1,buffers[..]);p=fu_plan(one[..],2,1,buffers[..],plan[..],dec[..]);
+    c0:=[4]f32.[3,-4,1,1];c1:=[2]f32.[2,-1];c2:[2]f32;c3:[8]f32;
+    #assert p.status==FuStatus.ok && p.launches==2;
+    fu_run(plan[0..<2],2,1,0,c0[..],c1[..],c2[..],c3[..]);
+    #assert c3[0]==2 && c3[1]==-2 && c3[6]==2 && c3[7]==1;
+}
+#forall "the planned fused step writes the unfused step's output, bit for bit" rows:1..<5 {
+    cols:=3*rows+2;n:=rows*cols;eps:f32=0.0001;
+    ops:[5]FuOp;buffers:[4]int;plan:[5]FuOp;dec:[2]FuDecision;
+    fu_step(rows,cols,ops[..]);fu_sizes(rows,cols,buffers[..]);
+    p:=fu_plan(ops[..],rows,cols,buffers[..],plan[..],dec[..]);#assert p.launches==2;
+    b0:[112]f32;b1:[28]f32;b2:[4]f32;b3:[224]f32;f3:[224]f32;
+    for i:0..<2*n {b0[i]=fk_value(i,rows);}
+    for i:0..<2*cols {b1[i]=fk_value(i+1,rows+4);}
+    fu_run(ops[..],rows,cols,eps,b0[..],b1[..],b2[..],b3[..]);
+    fu_run(plan[0..<p.launches],rows,cols,eps,b0[..],b1[..],b2[..],f3[..]);
+    for i:0..<n {#assert f32_bits(b3[3*n+i])==f32_bits(f3[3*n+i]) && f32_bits(b3[i])==f32_bits(f3[i]);}
+}
+#test "admission refuses shapes, kinds, spans and ops that write their inputs" {
+    ops:[5]FuOp;buffers:[4]int;out:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);
+    #assert fu_plan(ops[..],0,4,buffers[..],out[..],dec[..]).status==FuStatus.shape;
+    #assert fu_plan(ops[..],2,0,buffers[..],out[..],dec[..]).status==FuStatus.shape;
+    #assert fu_plan(ops[0..<1],65536,65536,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    #assert fu_plan(ops[..],65537,4,buffers[..],out[..],dec[..]).status==FuStatus.shape;
+    #assert fu_plan(ops[..],2,65537,buffers[..],out[..],dec[..]).op==-1;
+    bad:=ops;bad[3].kind=FU_NORM_SCALE;p:=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert p.status==FuStatus.kind && p.op==3;
+    bad=ops;bad[2].kind=-1;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.kind;
+    bad=ops;bad[2].kind=FU_ADD;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert p.status==FuStatus.span && p.op==2;
+    // Every span bound: the buffer number, the offset, the size, the end.
+    bad=ops;bad[0].out.buffer=4;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[0].out.buffer=-1;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[0].out.offset=-1;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[0].out.count=3;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[4].out.offset=25;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[4].out.offset=24;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.ok;
+    // Input spans: a, b and c of the scale.
+    bad=ops;bad[1].a.count=7;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert p.status==FuStatus.span && p.op==1;
+    bad=ops;bad[1].b.count=8;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[1].c.count=8;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[4].b.count=4;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    bad=ops;bad[2].b.count=8;#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.span;
+    // An op that writes one of its own inputs, a, b or c.
+    bad=ops;bad[3].out=bad[3].a;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert p.status==FuStatus.alias && p.op==3;
+    bad=ops;bad[4].out=fu_span(3,1,8);bad[4].b=fu_span(3,8,8);#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.alias;
+    bad=ops;bad[1].out=fu_span(1,0,8);#assert fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]).status==FuStatus.alias;
+    #assert fu_status(FuStatus.shape)=="refused: rows and cols must be 1 to 65536";
+    #assert fu_status(FuStatus.kind)=="refused: an op is not an unfused kernel";
+    #assert fu_status(FuStatus.span)=="refused: a span lies outside its buffer or has the wrong size";
+    #assert fu_status(FuStatus.alias)=="refused: an op writes over one of its own inputs";
+    #assert fu_status(FuStatus.capacity)=="refused: the plan needs more room than the caller gave";
+}
+#test "spans overlap when they share an element of one buffer" {
+    #assert fu_overlap(fu_span(1,0,4),fu_span(1,3,4)) && fu_overlap(fu_span(1,3,4),fu_span(1,0,4));
+    #assert !fu_overlap(fu_span(1,0,4),fu_span(1,4,4)) && !fu_overlap(fu_span(1,4,4),fu_span(1,0,4));
+    #assert !fu_overlap(fu_span(1,0,4),fu_span(2,0,4)) && fu_overlap(fu_span(1,0,4),fu_span(1,1,1));
+    #assert fu_same(fu_span(1,2,3),fu_span(1,2,3)) && !fu_same(fu_span(0,2,3),fu_span(1,2,3));
+    #assert !fu_same(fu_span(1,1,3),fu_span(1,2,3)) && !fu_same(fu_span(1,2,4),fu_span(1,2,3));
+}
+#test "a chain that does not link stays apart" {
+    ops:[5]FuOp;buffers:[4]int;out:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);
+    // The scale reads another copy of x (the residual) instead of the norm's.
+    bad:=ops;bad[1].a=fu_span(0,8,8);p:=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert p.launches==3 && dec[0].why==FuWhy.chain && fu_same(dec[0].p,ops[0].a) && fu_same(dec[0].q,bad[1].a) && dec[1].why==FuWhy.fused;
+    #assert out[0].kind==FU_RMS && out[1].kind==FU_SCALE && out[2].kind==FU_BIAS_RELU_ADD;
+    // The scale's inverse RMS comes from elsewhere in buffer 3.
+    bad=ops;bad[1].b=fu_span(3,30,2);p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[0].why==FuWhy.chain && fu_same(dec[0].p,ops[0].out) && fu_same(dec[0].q,bad[1].b);
+    // The add reads y instead of the ReLU's output.
+    bad=ops;bad[4].a=ops[1].out;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert p.launches==4 && dec[1].why==FuWhy.chain && dec[1].first==2 && fu_same(dec[1].p,ops[3].out) && fu_same(dec[1].q,ops[1].out);
+    // The ReLU reads x instead of the bias's output.
+    bad=ops;bad[3].a=fu_span(0,0,8);p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[1].why==FuWhy.chain && fu_same(dec[1].p,ops[2].out);
+    #assert fu_why(FuWhy.chain)=="kept apart: an op does not read what the op before it wrote";
+}
+#test "a fused kernel whose spans overlap stays apart" {
+    ops:[5]FuOp;buffers:[4]int;out:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);buffers[1]=16;buffers[3]=40;
+    // The output one element along from y: each op on its own is fine, but
+    // in one launch an item would read y after another item wrote over it.
+    bad:=ops;bad[4].out=fu_span(3,1,8);
+    p:=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert p.status==FuStatus.ok && p.launches==4 && dec[0].why==FuWhy.fused;
+    #assert dec[1].why==FuWhy.overlap && fu_same(dec[1].p,bad[4].out) && fu_same(dec[1].q,ops[1].out);
+    // The output over the bias.
+    bad=ops;bad[4].out=fu_span(1,1,8);p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[1].why==FuWhy.overlap && fu_same(dec[1].p,bad[4].out) && fu_same(dec[1].q,ops[2].b);
+    // An intermediate over the residual: h, then r.
+    bad=ops;bad[2].out=fu_span(0,8,8);bad[3].a=bad[2].out;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[1].why==FuWhy.overlap && fu_same(dec[1].p,bad[2].out) && fu_same(dec[1].q,ops[4].b);
+    bad=ops;bad[3].out=fu_span(0,8,8);bad[4].a=bad[3].out;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[1].why==FuWhy.overlap && fu_same(dec[1].p,bad[3].out) && fu_same(dec[1].q,ops[4].b);
+    // The norm's inverse RMS over the gain the fused kernel reads.
+    bad=ops;bad[0].out=fu_span(1,0,2);bad[1].b=bad[0].out;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[0].why==FuWhy.overlap && fu_same(dec[0].p,bad[0].out) && fu_same(dec[0].q,ops[1].c);
+    // The output over h, which the chain also writes.
+    bad=ops;bad[2].out=fu_span(3,25,8);bad[3].a=bad[2].out;p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert dec[1].why==FuWhy.overlap && fu_same(dec[1].p,ops[4].out) && fu_same(dec[1].q,bad[2].out);
+    #assert fu_why(FuWhy.overlap)=="kept apart: a span the chain writes overlaps another span of the fused kernel";
+}
+#test "an intermediate that is kept or read later stays apart" {
+    ops:[6]FuOp;buffers:[4]int;out:[6]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);
+    bad:=ops;bad[1].keep=true;p:=fu_plan(bad[0..<5],2,4,buffers[..],out[..],dec[..]);
+    #assert p.launches==2 && dec[0].why==FuWhy.fused && out[0].keep;
+    bad=ops;bad[0].keep=true;p=fu_plan(bad[0..<5],2,4,buffers[..],out[..],dec[..]);
+    #assert p.launches==3 && dec[0].why==FuWhy.live && fu_same(dec[0].p,ops[0].out) && fu_same(dec[0].q,ops[0].out);
+    bad=ops;bad[3].keep=true;p=fu_plan(bad[0..<5],2,4,buffers[..],out[..],dec[..]);
+    #assert p.launches==4 && dec[1].why==FuWhy.live && fu_same(dec[1].p,ops[3].out);
+    // A sixth op reads h, the bias's output, after the chain: a, b or c.
+    bad=ops;bad[5]=FuOp.{kind=FU_RELU,a=fu_span(3,9,8),out=fu_span(2,0,8)};buffers[2]=8;
+    p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);
+    #assert p.launches==5 && dec[1].why==FuWhy.live && fu_same(dec[1].p,ops[2].out) && fu_same(dec[1].q,bad[5].a) && dec[0].why==FuWhy.fused;
+    bad[5]=FuOp.{kind=FU_ADD,a=fu_span(0,0,8),b=fu_span(3,15,8),out=fu_span(2,0,8)};
+    p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert dec[1].why==FuWhy.live && fu_same(dec[1].q,bad[5].b);
+    bad[5]=FuOp.{kind=FU_SCALE,a=fu_span(0,0,8),b=fu_span(0,0,2),c=fu_span(3,17,4),out=fu_span(2,0,8)};
+    p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert dec[1].why==FuWhy.live && fu_same(dec[1].q,bad[5].c);
+    // The sixth op reads the residual after the chain: no intermediate.
+    bad[5]=FuOp.{kind=FU_RELU,a=fu_span(0,8,8),out=fu_span(2,0,8)};
+    p=fu_plan(bad[..],2,4,buffers[..],out[..],dec[..]);#assert p.launches==3 && dec[1].why==FuWhy.fused;
+    #assert fu_why(FuWhy.live)=="kept apart: an intermediate the fused kernel would not write is still read";
+}
+#test "patterns need their whole chain, and the plan respects its room" {
+    ops:[5]FuOp;buffers:[4]int;out:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);
+    #assert fu_pattern(ops[..],0)==2 && fu_pattern(ops[..],2)==3 && fu_pattern(ops[..],1)==0 && fu_pattern(ops[0..<2],0)==2;
+    #assert fu_pattern(ops[0..<1],0)==0 && fu_pattern(ops[0..<4],2)==0 && fu_pattern(ops[1..<5],0)==0;
+    bad:=ops;bad[1].kind=FU_RMS;#assert fu_pattern(bad[..],0)==0;
+    bad=ops;bad[3].kind=FU_BIAS;#assert fu_pattern(bad[..],2)==0;
+    bad=ops;bad[4].kind=FU_RELU;#assert fu_pattern(bad[..],2)==0;
+    // A step of the norm alone, and the bias chain alone.
+    p:=fu_plan(ops[0..<1],2,4,buffers[..],out[..],dec[..]);#assert p.launches==1 && p.decisions==0 && out[0].kind==FU_RMS;
+    p=fu_plan(ops[2..<5],2,4,buffers[..],out[..],dec[..]);#assert p.launches==1 && p.decisions==1;
+    p=fu_plan(ops[..],2,4,buffers[..],out[0..<1],dec[..]);#assert p.status==FuStatus.capacity && p.op==2;
+    p=fu_plan(ops[..],2,4,buffers[..],out[..],dec[0..<1]);#assert p.status==FuStatus.capacity && p.op==2;
+    p=fu_plan(ops[..],2,4,buffers[..],out[0..<2],dec[..]);#assert p.status==FuStatus.ok;
+    p=fu_plan(ops[..],2,4,buffers[..],out[..],dec[0..<0]);#assert p.status==FuStatus.capacity && p.op==0;
+    bad=ops;bad[1].a=fu_span(0,8,8);p=fu_plan(bad[..],2,4,buffers[..],out[0..<4],dec[..]);#assert p.status==FuStatus.ok;
+    p=fu_plan(bad[..],2,4,buffers[..],out[0..<3],dec[..]);#assert p.status==FuStatus.ok;
+    p=fu_plan(bad[..],2,4,buffers[..],out[0..<2],dec[..]);#assert p.status==FuStatus.capacity && p.op==2;
+}
+#test "a recorded step replays when the new plan has the same kernels" {
+    ops:[5]FuOp;buffers:[4]int;a:[5]FuOp;b:[5]FuOp;dec:[2]FuDecision;
+    fu_step(1,4,ops[..]);fu_sizes(1,4,buffers[..]);x:=fu_plan(ops[..],1,4,buffers[..],a[..],dec[..]);
+    fu_step(7,4,ops[..]);fu_sizes(7,4,buffers[..]);y:=fu_plan(ops[..],7,4,buffers[..],b[..],dec[..]);
+    #assert fu_same_kernels(a[0..<x.launches],b[0..<y.launches]) && !fu_same(a[0].a,b[0].a);
+    #assert !fu_same_kernels(a[0..<2],ops[0..<2]) && !fu_same_kernels(a[0..<2],b[0..<1]);
+    #assert fu_same_kernels(a[0..<0],b[0..<0]) && !fu_same_kernels(a[0..<2],a[1..<3]);
+    c:=a;c[1].kind=FU_ADD;#assert !fu_same_kernels(a[0..<2],c[0..<2]);
+    c=a;c[0].kind=FU_ADD;#assert !fu_same_kernels(a[0..<2],c[0..<2]);
+}

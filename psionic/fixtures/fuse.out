@@ -1,0 +1,10 @@
+plan: admitted, 2 launches for 5 ops
+  ops 0-1: fused into one launch (norm_scale)
+  ops 2-4: fused into one launch (bias_relu_add)
+  launch norm_scale over 2 items
+  launch bias_relu_add over 8 items
+inverse RMS (unfused only): 0.5 1.0
+unfused out: 2.5 3.5 1.0 1.0 | 2.5 1.0 1.0 2.0
+fused out:   2.5 3.5 1.0 1.0 | 2.5 1.0 1.0 2.0
+bit-identical outputs: 8 of 8
+7 rows: 2 launches, same kernels as 2 rows: true, items 7 and 28

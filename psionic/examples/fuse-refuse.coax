@@ -1,0 +1,42 @@
+#import "Basic";
+#load "../lib/device/fuse.coax";
+
+// book:begin refuse
+// Chapter 43: chains the pass keeps apart, the result one launch would have
+// given anyway, and steps refused before anything is planned.
+fu_show :: (s:FuSpan) {print("[buffer %, %..<%)",s.buffer,s.offset,s.offset+s.count);}
+fu_say :: (d:FuDecision) {
+    print("  ops %-%: %\n    ",d.first,d.first+d.ops-1,fu_why(d.why));
+    fu_show(d.p);print(" and ");fu_show(d.q);print("\n");
+}
+main :: () {
+    ops:[5]FuOp;buffers:[4]int;plan:[5]FuOp;dec:[2]FuDecision;
+    fu_step(2,4,ops[..]);fu_sizes(2,4,buffers[..]);
+
+    // The output one element along from y, which the add chain reads.
+    bad:=ops;bad[4].out=fu_span(3,1,8);
+    p:=fu_plan(bad[..],2,4,buffers[..],plan[..],dec[..]);
+    print("output over y: %, % launches\n",fu_status(p.status),p.launches);fu_say(dec[1]);
+    b0:=[16]f32.[2,2,2,2,1,-1,1,-1,1,1,1,1,1,1,1,1];b1:=[8]f32.[1,2,0.5,-1,0.5,0.5,-1,0];
+    kept:[2]f32;k3:[32]f32;forced:[2]f32;f3:[32]f32;
+    fu_run(plan[0..<p.launches],2,4,0,b0[..],b1[..],kept[..],k3[..]);
+    // One launch anyway: items run in order on the CPU, so item i reads the
+    // y value that item i-1 has just overwritten.
+    anyway:=[2]FuOp.[plan[0],fu_fuse(bad[..],2,3)];
+    fu_run(anyway[..],2,4,0,b0[..],b1[..],forced[..],f3[..]);
+    print("  kept apart: % % % % % % % %\n",k3[1],k3[2],k3[3],k3[4],k3[5],k3[6],k3[7],k3[8]);
+    print("  one launch: % % % % % % % %\n",f3[1],f3[2],f3[3],f3[4],f3[5],f3[6],f3[7],f3[8]);
+
+    bad=ops;bad[3].keep=true;p=fu_plan(bad[..],2,4,buffers[..],plan[..],dec[..]);
+    print("r kept after the step: % launches\n",p.launches);fu_say(dec[1]);
+    bad=ops;bad[1].a=fu_span(0,8,8);p=fu_plan(bad[..],2,4,buffers[..],plan[..],dec[..]);
+    print("scale reads the residual instead of x: % launches\n",p.launches);fu_say(dec[0]);
+
+    bad=ops;bad[3].out=bad[3].a;p=fu_plan(bad[..],2,4,buffers[..],plan[..],dec[..]);
+    print("relu writes over h: %, op %, % launches\n",fu_status(p.status),p.op,p.launches);
+    bad=ops;bad[4].out.offset=25;p=fu_plan(bad[..],2,4,buffers[..],plan[..],dec[..]);
+    print("output at 25..<33 of 32: %, op %\n",fu_status(p.status),p.op);
+    p=fu_plan(ops[..],0,4,buffers[..],plan[..],dec[..]);
+    print("0 rows: %\n",fu_status(p.status));
+}
+// book:end refuse

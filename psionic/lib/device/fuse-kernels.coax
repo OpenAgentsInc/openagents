@@ -1,0 +1,156 @@
+// Chapter 43: the kernels of one step's elementwise chains, unfused and
+// fused, in the coax cuda subset. Every kernel has the same parameters,
+// (item, cols, eps, a, b, c, out), so a launch is described by its kernel
+// number, its work items and four spans; kernels ignore the views they do
+// not use. Each fused kernel does the same f32 operations in the same order
+// as the unfused kernels it replaces, so fused and unfused results agree bit
+// for bit, on the CPU and on the device (--fmad=false).
+//
+// A step works on `rows` rows of `cols` values (one row per token: a decode
+// step has one row, a prefill chunk has many).
+
+// book:begin unfused
+// The norms are group kernels (chapter 68): one group of 128 threads per
+// row. Thread t adds the squares of columns t, t+128, t+256, ... in that
+// order; then seven phases add the 128 partial sums as a tree, the first
+// half adding the element half places on, as dc_tile_sum does. The RMS norm
+// and the fused norm both reduce this way, so they agree bit for bit.
+FK_THREADS :: 128;
+// Columns thread t visits: t, t+128, ... below cols (none when t >= cols).
+fk_count :: (thread:int,cols:int)->int {return (cols-thread+FK_THREADS-1)/FK_THREADS;}
+fk_live :: (thread:int,half:int)->bool {return thread<half;}
+// 1 / sqrt(mean square + eps), from the row's sum of squares.
+fk_inv :: (sum:f32,cols:int,eps:f32)->f32 {return 1/sqrt(sum/f32(cols)+eps);}
+// max(v, 0), with -0 going to +0.
+fk_relu1 :: (v:f32)->f32 {if v>0 {return v;}return 0;}
+
+// 0: item = row. out[row] = the inverse RMS of row `row` of a.
+fk_rms :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    p:[128]f32;q:[128]f32;
+    for thread:0..<FK_THREADS {
+        s:f32=0;
+        for k:0..<fk_count(thread,cols) {v:=a[item*cols+thread+k*FK_THREADS];s+=v*v;}
+        p[thread]=s;
+    }
+    for step:0..<7 {
+        half:=1<<(6-step);
+        if step%2==0 {
+            for thread:0..<FK_THREADS {s:=p[thread];if fk_live(thread,half) {q[thread]=s+p[thread+half];}}
+        } else {
+            for thread:0..<FK_THREADS {s:=q[thread];if fk_live(thread,half) {p[thread]=s+q[thread+half];}}
+        }
+    }
+    for thread:0..<FK_THREADS {s:=q[thread];if thread==0 {out[item]=fk_inv(s,cols,eps);}}
+}
+// 1: item = element. out = a * b[row] * c[col]: the row's inverse RMS, then
+// the column's gain.
+fk_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    out[item]=a[item]*b[item/cols]*c[item%cols];
+}
+// 2: out = a + b[col], the bias of the element's column.
+fk_bias :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    out[item]=a[item]+b[item%cols];
+}
+// 3: out = max(a, 0).
+fk_relu :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    out[item]=fk_relu1(a[item]);
+}
+// 4: out = a + b, the residual add.
+fk_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    out[item]=a[item]+b[item];
+}
+// book:end unfused
+
+// book:begin fused
+// 5 = 0 then 1: item = row. The same reduction as fk_rms; then every thread
+// reads the row's total and scales its own columns. The inverse RMS stays
+// in registers instead of a buffer. a is x, b is the gain.
+fk_norm_scale :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    p:[128]f32;q:[128]f32;
+    for thread:0..<FK_THREADS {
+        s:f32=0;
+        for k:0..<fk_count(thread,cols) {v:=a[item*cols+thread+k*FK_THREADS];s+=v*v;}
+        p[thread]=s;
+    }
+    for step:0..<7 {
+        half:=1<<(6-step);
+        if step%2==0 {
+            for thread:0..<FK_THREADS {s:=p[thread];if fk_live(thread,half) {q[thread]=s+p[thread+half];}}
+        } else {
+            for thread:0..<FK_THREADS {s:=q[thread];if fk_live(thread,half) {p[thread]=s+q[thread+half];}}
+        }
+    }
+    // Each thread copies the row's total into its own element, then scales
+    // its own columns.
+    for thread:0..<FK_THREADS {p[thread]=q[0];}
+    for thread:0..<FK_THREADS {
+        inv:=fk_inv(p[thread],cols,eps);
+        for k:0..<fk_count(thread,cols) {col:=thread+k*FK_THREADS;at:=item*cols+col;out[at]=a[at]*inv*b[col];}
+    }
+}
+// 6 = 2, 3 then 4: item = element. a is x, b the bias, c the residual.
+fk_bias_relu_add :: (item:int,cols:int,eps:f32,a:[]f32,b:[]f32,c:[]f32,out:[]f32) #export_c {
+    out[item]=fk_relu1(a[item]+b[item%cols])+c[item];
+}
+// book:end fused
+
+// ---- Checks. The oracle in each check is written out as plain loops here,
+// not by calling the kernels.
+fk_value :: (i:int,seed:int)->f32 {return f32((i*37+seed*11)%29-14)*0.0625+f32(i%3)*0.0078125;}
+
+#test "the hand trace: two rows of four values" {
+    // Row 0 = 2,2,2,2: mean square 4, inverse RMS 1/2. Row 1 = 1,-1,1,-1:
+    // mean square 1, inverse RMS 1. eps 0 keeps every value exact.
+    x:=[8]f32.[2,2,2,2,1,-1,1,-1];g:=[4]f32.[1,2,0.5,-1];bias:=[4]f32.[0.5,0.5,-1,0];
+    res:=[8]f32.[1,1,1,1,1,1,1,1];none:[1]f32;
+    inv:[2]f32;y:[8]f32;h:[8]f32;r:[8]f32;out:[8]f32;fused:[8]f32;fy:[8]f32;
+    for i:0..<2 {fk_rms(i,4,0,x[..],none[0..<0],none[0..<0],inv[..]);}
+    #assert inv[0]==0.5 && inv[1]==1;
+    for i:0..<8 {fk_scale(i,4,0,x[..],inv[..],g[..],y[..]);}
+    #assert y[0]==1 && y[1]==2 && y[2]==0.5 && y[3]==-1 && y[4]==1 && y[5]==-2 && y[6]==0.5 && y[7]==1;
+    for i:0..<8 {fk_bias(i,4,0,y[..],bias[..],none[0..<0],h[..]);}
+    #assert h[0]==1.5 && h[1]==2.5 && h[2]==-0.5 && h[3]==-1 && h[5]==-1.5 && h[7]==1;
+    for i:0..<8 {fk_relu(i,4,0,h[..],none[0..<0],none[0..<0],r[..]);}
+    #assert r[0]==1.5 && r[1]==2.5 && r[2]==0 && r[3]==0 && r[5]==0 && r[7]==1;
+    for i:0..<8 {fk_add(i,4,0,r[..],res[..],none[0..<0],out[..]);}
+    want:=[8]f32.[2.5,3.5,1,1,2.5,1,1,2];
+    for i:0..<8 {#assert out[i]==want[i];}
+    for i:0..<2 {fk_norm_scale(i,4,0,x[..],g[..],none[0..<0],fy[..]);}
+    for i:0..<8 {fk_bias_relu_add(i,4,0,fy[..],bias[..],res[..],fused[..]);}
+    for i:0..<8 {#assert fy[i]==y[i] && fused[i]==want[i];}
+}
+#test "relu sends negatives and -0 to +0" {
+    // The test data the checks use, pinned.
+    #assert fk_value(0,0)==-0.875 && fk_value(1,1)==0.3203125 && fk_value(2,0)==0.140625 && fk_value(4,0)==-0.6796875;
+    #assert fk_relu1(1.5)==1.5 && fk_relu1(-2)==0 && f32_bits(fk_relu1(-0.0))==0;
+    #assert f32_bits(fk_relu1(f32_from_bits(1)))==1;
+}
+#forall "fused kernels equal the unfused chain and a plain-loop oracle, bit for bit" seed:0..<6 {
+    // Up to 308 columns: three strides of 128, the last one partial.
+    rows:=1+seed;cols:=3+61*seed;n:=rows*cols;eps:f32=0.00001;none:[1]f32;
+    x:[1848]f32;g:[308]f32;bias:[308]f32;res:[1848]f32;
+    for i:0..<n {x[i]=fk_value(i,seed);res[i]=fk_value(i+7,seed+1);}
+    for i:0..<cols {g[i]=fk_value(i+3,seed+2);bias[i]=fk_value(i+5,seed+3);}
+    inv:[6]f32;y:[1848]f32;h:[1848]f32;r:[1848]f32;out:[1848]f32;fy:[1848]f32;fo:[1848]f32;
+    for i:0..<rows {fk_rms(i,cols,eps,x[..],none[0..<0],none[0..<0],inv[..]);}
+    for i:0..<n {fk_scale(i,cols,eps,x[..],inv[..],g[..],y[..]);}
+    for i:0..<n {fk_bias(i,cols,eps,y[..],bias[..],none[0..<0],h[..]);}
+    for i:0..<n {fk_relu(i,cols,eps,h[..],none[0..<0],none[0..<0],r[..]);}
+    for i:0..<n {fk_add(i,cols,eps,r[..],res[..],none[0..<0],out[..]);}
+    // Fused, rows and elements in reverse order: order does not matter.
+    for k:0..<rows {fk_norm_scale(rows-1-k,cols,eps,x[..],g[..],none[0..<0],fy[..]);}
+    for k:0..<n {fk_bias_relu_add(n-1-k,cols,eps,fy[..],bias[..],res[..],fo[..]);}
+    for row:0..<rows {
+        // Thread t's squares in column order, then the tree, in place.
+        part:[128]f32;
+        for i:0..<cols {part[i%128]+=x[row*cols+i]*x[row*cols+i];}
+        half:=64;while half>0 {for t:0..<half {part[t]+=part[t+half];}half/=2;}
+        s:=1/sqrt(part[0]/f32(cols)+eps);
+        for i:0..<cols {
+            at:=row*cols+i;
+            norm:=x[at]*s*g[i];v:=norm+bias[i];if !(v>0) {v=0;}
+            #assert f32_bits(y[at])==f32_bits(norm) && f32_bits(fy[at])==f32_bits(norm);
+            #assert f32_bits(out[at])==f32_bits(v+res[at]) && f32_bits(fo[at])==f32_bits(v+res[at]);
+        }
+    }
+}

@@ -1760,6 +1760,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/fuse.coax",
+      "chapter": "psionic/book/ch043-fuse-and-replay.md",
+      "stdout": "psionic/fixtures/fuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/fuse-refuse.coax",
+      "chapter": "psionic/book/ch043-fuse-and-replay.md",
+      "stdout": "psionic/fixtures/fuse-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

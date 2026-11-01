@@ -1,0 +1,14 @@
+output over y: admitted, 4 launches
+  ops 2-4: kept apart: a span the chain writes overlaps another span of the fused kernel
+    [buffer 3, 1..<9) and [buffer 3, 0..<8)
+  kept apart: 2.5 3.5 1.0 1.0 2.5 1.0 1.0 2.0
+  one launch: 2.5 4.0 4.0 5.0 6.5 8.0 8.0 9.0
+r kept after the step: 4 launches
+  ops 2-4: kept apart: an intermediate the fused kernel would not write is still read
+    [buffer 3, 16..<24) and [buffer 3, 16..<24)
+scale reads the residual instead of x: 3 launches
+  ops 0-1: kept apart: an op does not read what the op before it wrote
+    [buffer 0, 0..<8) and [buffer 0, 8..<16)
+relu writes over h: refused: an op writes over one of its own inputs, op 3, 0 launches
+output at 25..<33 of 32: refused: a span lies outside its buffer or has the wrong size, op 4
+0 rows: refused: rows and cols must be 1 to 65536
