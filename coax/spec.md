@@ -596,7 +596,11 @@ program may make at most 256 instances (E0339). Instances are evaluated by
 covered like other procedures: under `#authority` a check that calls a
 template through an instance covers it. `coax deps --declarations` lists
 templates, not instances; `--timings` reports `instances` and
-`instance_generated_bytes`.
+`instance_generated_bytes`. C holds only the instances that an emitted
+procedure calls, directly or through another instance: an instance that only
+a check makes is checked and evaluated but not emitted. Likewise a type's
+print helper (`coax_show_T`) and enum conversion (`coax_to_T`) are emitted
+only when emitted code calls them.
 
 **Value parameters (0.36.0).** `$N` as a fixed array length binds a
 compile-time length: `sum :: (a: [$N] int) -> int`, `rev :: (a: [$N] $T) ->
@@ -984,6 +988,30 @@ refund_ok :: (paid: int, refund: int) -> bool {
   was the innermost call (its own steps), their share of the check's steps,
   its steps including the calls it makes (a recursive procedure is counted
   once per outermost call), and its calls. The check's own body is one row.
+- A loaded unit's checks are checked once, in the unit's own `#load`
+  closure, not again in each consumer. When `coax c`, `header`, `build`,
+  `lib`, `run`, `check`, `metal` or `cuda` compiles a program, each loaded
+  unit is first checked on its own, as `coax check UNIT --library` would
+  check it. If that passes, the unit is a library for this compile: its
+  `#test` and `#forall` declarations are left out of the consumer's input,
+  so the consumer neither checks them again nor emits what only they reach.
+  A unit that doesn't check on its own, such as a part that uses names its
+  loader declares, keeps its checks in the consumer, which checks them in
+  place and reports their errors as before. The entry unit's checks, and
+  those of a unit whose closure has an `#authority` unit or an
+  `#import_proto`, always stay. When the program has an `#authority` unit,
+  its compile runs every check, so a library qualifies there only if its
+  checks also pass when run. `coax test`, `mutate`, `query`, `checks-c` and
+  `deps` see every check.
+- The result is kept in `~/.cache/coax-check/` (`$COAX_CHECK_CACHE`) under
+  the SHA-256 of the compiler binary, the options that change checking
+  (`--run-steps`, the profile, arithmetic, `--build-profile`, Metal or CUDA,
+  and whether checks run), and the path relative to the unit and SHA-256 of
+  each unit in its closure. A compile with the cached result emits the same
+  C as one that checks again. `--timings` reports `library_checks`: how many
+  results were reused (`cached`) and how many units were checked
+  (`checked`). The build-only stage0 can't hash itself, so it keeps results
+  only while it runs.
 - `#authority;` marks a file whose rules guard money, signatures or grants.
   Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited
@@ -1503,9 +1531,10 @@ bounds are not a whole-process sandbox or a bound on every compiler allocation.
 
 `#authority` belongs to a physical source unit. Loading an unmarked unit does
 not mark its procedures, and loading a marked unit retains its obligations.
-Any authority unit causes graph checks to run during ordinary compilation;
-actual execution must cover every authority procedure except `main` and
-foreign imports. Tests may cover procedures from another unit. `coax test`
+Any authority unit causes graph checks to run during ordinary compilation,
+except a library's, which ran when the library was checked on its own
+(10.1.1); actual execution must cover every authority procedure except
+`main` and foreign imports. Tests may cover procedures from another unit. `coax test`
 runs graph checks; `coax mutate` mutates reachable procedures and requires
 coverage of the entry unit and authority units. Both accept `--library` for
 units without a program main or native exports. Tests/directives remain

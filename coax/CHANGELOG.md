@@ -24,6 +24,21 @@ Commit: [`9e29938427cba24fd4fa6778812c216f2f3ad1f5`](https://github.com/OpenAgen
   stays unchanged.
 - Apply each check's `#steps` during ABI2 domain preparation; insufficient
   fuel refuses before emitting verification C.
+- Follow-up (`ax-library-check-cache`): a compile checks each loaded unit
+  once, on its own, and caches the result in `~/.cache/coax-check/` under
+  the compiler's SHA-256, the checking options and every unit in the
+  unit's closure. A unit that checks on its own is a library: its `#test`
+  and `#forall` declarations leave the consumer's input, so the consumer
+  doesn't check them again. A part that uses its loader's names, a unit
+  whose closure has an `#authority` unit or `#import_proto`, and the entry
+  file keep their checks. `--timings` reports `library_checks` (cached and
+  checked). C now holds only the generic instances that emitted code calls
+  and the print and enum-conversion helpers it uses, and the parser and
+  checker no longer touch the capacity they reserve but don't use.
+  `psionic/lib/shadow.coax --library` emits 89,083 bytes of C (was
+  140,348), and compiling the Fairy Forest page peaks at 376 MB (was 630
+  MB). The bootstrap seeds lose their unused helpers; `coax test` and
+  `coax mutate` still run every check.
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 

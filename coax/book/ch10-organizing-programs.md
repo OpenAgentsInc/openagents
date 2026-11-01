@@ -95,7 +95,9 @@ loading an authority file does not discard its requirements. Checks from
 another unit can exercise its procedures.
 
 If any unit is authoritative, ordinary compilation runs the graph's checks
-and verifies actual execution of its authority procedures. Dead references
+and verifies actual execution of its authority procedures. The checks of a
+library, described next, already ran when the library was checked on its
+own. Dead references
 and a folded `#run` still do not satisfy execution coverage. Tests remain
 pure; moving a test to another file does not permit native effects in it.
 
@@ -120,6 +122,42 @@ that unit's obligations. Do not remove the directive to avoid those checks.
 These are source-level verification rules, not runtime permissions. An
 author can still edit the files and directives. Chapter 23 explains the
 review and trust boundary.
+
+## Check a library once
+
+A library's checks belong to the library. When you compile a program, the
+compiler first checks each loaded unit on its own, in the unit's own `#load`
+closure. If the unit passes, it's a library for this compile: the compiler
+leaves its `#test` and `#forall` declarations out of your program. Your
+compile doesn't check them again, and the C has none of the generic
+instances or helpers that only those checks reach. Loading
+`coax/lib/bounded.coax`, whose checks instantiate `Bounded` over `int`, `u8`,
+`string` and a record, adds only the instance your program uses.
+
+The result is cached in `~/.cache/coax-check/`, or in `$COAX_CHECK_CACHE`
+when you set it. Its key is the compiler binary's SHA-256, the options that
+change checking, and every unit in the library's closure. Edit the library,
+or any unit it loads, and the next compile checks it again. A cached result
+gives the same C as a fresh check. To see what a compile reused, read
+`library_checks` in its timing report:
+
+```shell
+coax/bin/coax c psionic/lib/shadow.coax --library --timings /tmp/shadow.json > /dev/null
+grep -o '"library_checks":{[^}]*}' /tmp/shadow.json
+```
+
+Some units stay in place:
+
+- The entry file's own checks.
+- A part that uses names its loader declares, so it can't be checked on its
+  own. Your program checks it as before, and reports its errors at the
+  part's lines.
+- A unit whose closure has an `#authority` unit, because its checks may
+  count toward that unit's coverage, or an `#import_proto`.
+
+When your program has an `#authority` unit, every compile runs the checks,
+so a library qualifies only if its checks also pass when run on their own.
+`coax test` and `coax mutate` still run every check in the graph.
 
 ## Inspect the inputs and failures
 
