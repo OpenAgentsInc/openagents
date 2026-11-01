@@ -13,6 +13,34 @@
 #include <string>
 #include <vector>
 
+namespace coax {
+// Storage for the parser's and checker's caller-owned arrays, which are sized
+// to a worst-case capacity and mostly left unused. calloc returns zeroed pages
+// that the system maps only when they are first written, so capacity that is
+// never used costs no resident memory. Elements are plain C records, for which
+// all-zero bytes are their value-initialized state, so default construction
+// writes nothing. Use it only for vectors that grow from empty and never shrink
+// and grow again (ax-library-check-cache).
+template <class T> struct ZeroAlloc {
+  using value_type = T;
+  ZeroAlloc() = default;
+  template <class U> ZeroAlloc(const ZeroAlloc<U> &) {}
+  T *allocate(size_t n) {
+    void *p = calloc(n ? n : 1, sizeof(T));
+    if (!p) throw std::bad_alloc();
+    return (T *)p;
+  }
+  void deallocate(T *p, size_t) { free(p); }
+  template <class U> void construct(U *) {}
+  template <class U, class A, class... More> void construct(U *p, A &&a, More &&...more) {
+    ::new ((void *)p) U(static_cast<A &&>(a), static_cast<More &&>(more)...);
+  }
+  template <class U> bool operator==(const ZeroAlloc<U> &) const { return true; }
+  template <class U> bool operator!=(const ZeroAlloc<U> &) const { return false; }
+};
+template <class T> using zvec = std::vector<T, ZeroAlloc<T>>;
+}  // namespace coax
+
 extern "C" uint64_t CB_default_steps();
 extern "C" uint64_t CB_slot_limit();
 extern "C" uint64_t CB_container_limit();

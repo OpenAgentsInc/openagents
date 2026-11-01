@@ -1,0 +1,6 @@
+// An #authority consumer of pile.coax: its compile runs every check, so the
+// library's verdict here also needs pile.coax's check to pass when run.
+#load "pile.coax";
+#authority;
+room_left :: (n: int) -> int { return 4 - n; }
+#test "room is what is left of four" { #assert room_left(1) == 3; }

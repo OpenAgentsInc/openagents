@@ -45,10 +45,10 @@ static_assert((uint32_t)StmtKind::assert_ == COAX_PS_Tag_stmt_assert_-40, "state
 Loc parser_loc(coax_t_PS_Loc l) {return {(int32_t)l.line,(int32_t)l.column,(int32_t)l.offset};}
 Str parser_str(coax_string s) {return {s.data,(int32_t)s.count};}
 template<class T> T *parser_ref(const std::vector<void*> &objects,int64_t id) {return (T*)objects[(size_t)id];}
-template<class T> Slice<T> parser_values(Arena *arena,const std::vector<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t head) {
+template<class T> Slice<T> parser_values(Arena *arena,const zvec<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t head) {
   std::vector<T> values;for(auto id=head;id;id=nodes[(size_t)id].next) values.push_back(*parser_ref<T>(objects,id));return to_slice(arena,values);
 }
-template<class T> Slice<T*> parser_pointers(Arena *arena,const std::vector<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t head) {
+template<class T> Slice<T*> parser_pointers(Arena *arena,const zvec<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t head) {
   std::vector<T*> values;for(auto id=head;id;id=nodes[(size_t)id].next) values.push_back(parser_ref<T>(objects,id));return to_slice(arena,values);
 }
 }
@@ -65,7 +65,7 @@ std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
 bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File *out,bool development) {
   auto input=parser_tokens(tokens);
   const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
-  std::vector<coax_t_PS_Node> nodes((size_t)caps.nodes);std::vector<uint8_t> message((size_t)caps.message);
+  zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);
   coax_t_PS_State state{};
   const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
       {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);

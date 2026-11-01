@@ -83,11 +83,11 @@ Loc checked_loc(coax_t_CK_Loc l){return {(int32_t)l.line,(int32_t)l.column,(int3
 coax_t_CK_Loc checked_loc(coax_t_PS_Loc l){return {l.line,l.column,l.offset};}
 Str checked_string(Arena *arena,coax_string s){if(!s.count)return {};char *data=(char*)arena_alloc(arena,(size_t)s.count+1);memcpy(data,s.data,(size_t)s.count);data[s.count]=0;return {data,(int32_t)s.count};}
 template<class T> T *checked_ref(const std::vector<void*> &objects,int64_t id){return (T*)objects[(size_t)id];}
-template<class T> Slice<T> checked_values(Arena *arena,const std::vector<coax_t_CK_Node> &nodes,const std::vector<void*> &objects,int64_t head){std::vector<T> values;for(auto id=head;id;id=nodes[(size_t)id].next)values.push_back(*checked_ref<T>(objects,id));return to_slice(arena,values);}
-template<class T> Slice<T*> checked_pointers(Arena *arena,const std::vector<coax_t_CK_Node> &nodes,const std::vector<void*> &objects,int64_t head){std::vector<T*> values;for(auto id=head;id;id=nodes[(size_t)id].next)values.push_back(checked_ref<T>(objects,id));return to_slice(arena,values);}
+template<class T> Slice<T> checked_values(Arena *arena,const zvec<coax_t_CK_Node> &nodes,const std::vector<void*> &objects,int64_t head){std::vector<T> values;for(auto id=head;id;id=nodes[(size_t)id].next)values.push_back(*checked_ref<T>(objects,id));return to_slice(arena,values);}
+template<class T> Slice<T*> checked_pointers(Arena *arena,const zvec<coax_t_CK_Node> &nodes,const std::vector<void*> &objects,int64_t head){std::vector<T*> values;for(auto id=head;id;id=nodes[(size_t)id].next)values.push_back(checked_ref<T>(objects,id));return to_slice(arena,values);}
 }
 struct CheckInput {
-  std::vector<coax_t_CK_Node> nodes;
+  zvec<coax_t_CK_Node> nodes;
   std::vector<void*> objects;
   int64_t used=0;
   // Logical module scopes (0 is the unowned program) and the aliases each scope loads.
@@ -103,7 +103,7 @@ static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
   for(size_t i=1;i<input->modules.size();i++)if(input->modules[i]==unit->module)return (int64_t)i;
   input->modules.push_back(unit->module);return (int64_t)input->modules.size()-1;
 }
-static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t used){
+static void attach_check_input(File *file,const zvec<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t used){
   auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;input->nodes.resize((size_t)used+1);
   input->modules.push_back("");
   for(const auto &u:file->src->units)module_scope(input.get(),u.get());
@@ -133,11 +133,11 @@ static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nod
 bool check(Arena *arena,File *file,bool mutation_lowering){
   if(!file->check_input){error_at(file->src,{1,1,0},"E0381","type checker has no indexed syntax input");return false;}
   auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());const auto extra=CK_meta_capacity({input->nodes.data(),(int64_t)input->nodes.size()},input->used);input->nodes.resize((size_t)(caps.nodes+extra));
-  std::vector<coax_t_CK_Type> records((size_t)caps.types);std::vector<coax_t_CK_Local> locals((size_t)caps.locals);
-  std::vector<coax_t_CK_Error> errors((size_t)caps.errors);std::vector<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
+  zvec<coax_t_CK_Type> records((size_t)caps.types);zvec<coax_t_CK_Local> locals((size_t)caps.locals);
+  zvec<coax_t_CK_Error> errors((size_t)caps.errors);zvec<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
   const auto borrow_caps=CK_borrow_caps(input->used+1);
-  std::vector<coax_t_CK_BorrowQuery> borrow_queries((size_t)borrow_caps.queries);
-  std::vector<coax_t_BS_Origin> borrow_origins((size_t)borrow_caps.origins);
+  zvec<coax_t_CK_BorrowQuery> borrow_queries((size_t)borrow_caps.queries);
+  zvec<coax_t_BS_Origin> borrow_origins((size_t)borrow_caps.origins);
   coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1},
     {input->module_names.data(),(int64_t)input->module_names.size()},{input->aliases.data(),(int64_t)input->aliases.size()},{input->exports.data(),(int64_t)input->exports.size()},
     {borrow_queries.data(),(int64_t)borrow_queries.size()},{borrow_origins.data(),(int64_t)borrow_origins.size()}};

@@ -1,0 +1,2 @@
+lib_two :: () -> int { return 2; }
+#test "two is three" { #assert lib_two() == 3; }

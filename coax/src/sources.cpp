@@ -72,7 +72,7 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
     if(!suppressed || token.kind==Tok::eof)kept.push_back(token);
   }
   input=parser_tokens(kept);caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
-  std::vector<coax_t_PS_Node> nodes((size_t)caps.nodes);std::vector<uint8_t> message((size_t)caps.message);coax_t_PS_State state{};
+  zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);coax_t_PS_State state{};
   auto parsed=PS_parse({source->text.data(),(int64_t)source->text.size()},{input.data(),(int64_t)input.size()},
                        {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()});
   if(!parsed.ok) {

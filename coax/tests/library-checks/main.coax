@@ -1,0 +1,19 @@
+// A consumer of pile.coax and of its own part.
+#import "Basic";
+#load "pile.coax";
+#load "part.coax";
+
+LIMIT :: 3;
+Sum :: struct { total: int; kept: int; }
+
+twice :: (x: $T: numeric) -> $T { return x + x; }
+
+main :: () {
+  p: [1] Pile(int, LIMIT);
+  s := Sum.{};
+  for i: 0..<5 { if part_room(i) && pile_push(p[..], twice(i)) { s.total += i; s.kept += 1; } }
+  print("% %\n", s, pile_top(p[..]));
+}
+
+// The consumer's own check: the only use of twice over f64.
+#test "twice doubles floats" { #assert twice(1.5) == 3.0; }

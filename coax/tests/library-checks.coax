@@ -1,0 +1,126 @@
+// Library checks: a consumer reuses a loaded library's check, and its C
+// leaves out what only checks reach.
+//   coax/web/tool.sh coax/tests/library-checks.coax COMPILER
+// Run from coax/. tests/library-checks/main.coax loads pile.coax, a library
+// whose check instantiates Pile over u8, and part.coax, which uses main's
+// LIMIT and so can't be checked on its own. Each step runs the compiler with
+// its own check cache ($COAX_CHECK_CACHE) and reads --timings for how many
+// library checks were reused and run. Then:
+//   - the first compile runs both standalone checks, the second reuses both,
+//     and both give the same C as a compile with a new cache;
+//   - the C has the int instances main calls, and neither the u8 instances
+//     pile.coax's check makes nor the f64 instance main's own check makes;
+//   - only the printed type keeps its print helper, and the program prints;
+//   - coax test still runs every check, the library's too;
+//   - an edited library is checked again;
+//   - a library check with a type error still fails the consumer's compile;
+//   - an #authority consumer, whose compile runs every check, gets a verdict
+//     that ran the library's check, and a library check that fails when run
+//     still fails it.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Runs body in sh with C the compiler, D a scratch directory and the shell
+// function compile (FUNCTIONS); out gets stdout and stderr.
+run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  err: [1024] u8;
+  return proc_run(argv[..], 120000, out, err[..]);
+}
+
+// compile FILE NAME [CACHE]: FILE's C into $D/NAME.c with the cache $D/CACHE
+// (default $D/cache), then its library_checks counts.
+FUNCTIONS :: "compile() { COAX_CHECK_CACHE=\"$D/${3:-cache}\" \"$C\" c \"$1\" --timings \"$D/$2.json\" > \"$D/$2.c\" 2>&1 || cat \"$D/$2.c\"; grep -o '\"library_checks\":{[^}]*}' \"$D/$2.json\"; }";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: library-checks.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  r := run(compiler, "", "mktemp -d \"${TMPDIR:-/tmp}/coax-library-checks.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("library-checks: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n];
+  if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
+
+  // The first compile checks pile.coax and part.coax on their own; only pile checks.
+  r = run(compiler, dir, "compile tests/library-checks/main.coax first; cat \"$D\"/cache/* | sort | uniq -c | tr -s ' '", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "\"library_checks\":{\"cached\":0,\"checked\":2}"), "the first compile checks both loaded units on their own");
+  bad += check(has(t, " 1 checks") && has(t, " 1 does not check alone"), "the library checks alone; the part does not");
+
+  // The second reuses both verdicts and gives the same C.
+  r = run(compiler, dir, "compile tests/library-checks/main.coax second; cmp \"$D/first.c\" \"$D/second.c\" && echo same", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "\"library_checks\":{\"cached\":2,\"checked\":0}"), "the second compile reuses both verdicts and checks nothing");
+  bad += check(has(t, "same"), "the reused verdicts give the C the first compile gave");
+
+  // A new cache checks again and gives the same C: a cached verdict is the fresh one.
+  r = run(compiler, dir, "compile tests/library-checks/main.coax fresh fresh-cache; cmp \"$D/first.c\" \"$D/fresh.c\" && echo same", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "\"library_checks\":{\"cached\":0,\"checked\":2}") && has(t, "same"), "a fresh check gives the C a cached one gives");
+
+  // What the C holds: what main calls, not what checks alone reach.
+  r = run(compiler, dir, "for n in pile_push__3int2i3 pile_top__3int2i3 twice__3int pile_push__2u82i2 pile_top__2u82i2 twice__3f64 coax_show_t_Sum coax_show_t_PileNote 'coax_show_t_Pile__'; do printf '%s=%s\\n' \"$n\" \"$(grep -c \"$n\" \"$D/first.c\")\"; done", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "pile_push__3int2i3=3") && has(t, "pile_top__3int2i3=3") && has(t, "twice__3int=3"), "the int instances main calls are emitted");
+  bad += check(has(t, "pile_push__2u82i2=0") && has(t, "pile_top__2u82i2=0"), "the u8 instances only the library's check makes are not");
+  bad += check(has(t, "twice__3f64=0"), "the f64 instance only main's own check makes is not");
+  bad += check(has(t, "coax_show_t_Sum=3") && has(t, "coax_show_t_PileNote=0") && has(t, "coax_show_t_Pile__=0"), "only the printed type keeps its print helper");
+
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" run tests/library-checks/main.coax 2>&1", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "Sum.{total = 3, kept = 3} 4"), "the program runs and prints");
+
+  // coax test checks everything, as before.
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" test tests/library-checks/main.coax 2>&1", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "3 checks, 3 passed, 0 failed"), "coax test runs the library's check too");
+
+  // An edited library is a new key: it is checked again.
+  r = run(compiler, dir, "mkdir -p \"$D/edit\" && cp tests/library-checks/*.coax \"$D/edit/\" && printf '\\n// edited\\n' >> \"$D/edit/pile.coax\" && compile \"$D/edit/main.coax\" edited", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "\"library_checks\":{\"cached\":1,\"checked\":1}"), "an edited library is checked again; the unchanged part is reused");
+
+  // A library check with an error fails the consumer, at the error.
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" c tests/library-checks/broken.coax > /dev/null 2> \"$D/broken.err\"; echo \"status=$?\"; cat \"$D/broken.err\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "status=1") && has(t, "broken-lib.coax:2:47: error[E0325]: 'x' is bool but is initialized with int"), "a library check with a type error fails its consumer's compile");
+
+  // An #authority consumer runs every check: the library's verdict there is
+  // that its check passes when run, a separate verdict from the one above.
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" c tests/library-checks/authority.coax --library --timings \"$D/authority.json\" > \"$D/authority.c\" 2>&1; echo \"status=$? u8=$(grep -c __2u82i2 \"$D/authority.c\")\"; grep -o '\"library_checks\":{[^}]*}' \"$D/authority.json\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "status=0 u8=0") && has(t, "\"library_checks\":{\"cached\":0,\"checked\":1}"), "an #authority consumer gets a verdict that runs the library's check");
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" c tests/library-checks/wrong.coax --library > /dev/null 2> \"$D/wrong.err\"; echo \"status=$?\"; cat \"$D/wrong.err\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "status=1") && has(t, "wrong-lib.coax:2:24: error[E0406]: assertion failed") && has(t, "in #test two is three"), "a library check that fails when run still fails an #authority consumer");
+
+  r = run(compiler, dir, "rm -rf \"$D\"", out[..]);
+  if bad == 0 { print("library-checks: ok\n"); return 0; }
+  print("library-checks: % failed\n", bad);
+  return 1;
+}

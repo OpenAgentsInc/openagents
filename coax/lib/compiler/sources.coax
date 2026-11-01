@@ -7,6 +7,9 @@ SU_Scan :: struct {count:int;authority:bool;error:u32;offset:int;balanced:bool=t
 SU_Export :: struct {name:string;at:int;begin:int;end:int;}
 SU_Exports :: struct {count:int;error:u32;offset:int;}
 SU_Visit :: struct {index:int= -1;action:u8;}
+// A file-scope #test or #forall: the indices of its directive and of its
+// block's closing brace in the scanned tokens.
+SU_CheckSpan :: struct {first:int;last:int;}
 
 #test "a top-level load retains its path and source span" {
  t:=[4] SU_Token.[SU_Token.{kind=6,text="load",begin=2,end=7},SU_Token.{kind=5,text="part.coax",begin=8,end=19},SU_Token.{kind=15,begin=19,end=20},SU_Token.{}];
@@ -326,6 +329,39 @@ SU_check_required :: (authority:bool,entry:bool,mutation:bool)->bool #export_c {
  else if variant==8 {#assert r.error==2 && r.offset==5 && r.count==1;}
  else {#assert r.error==1 && r.offset==5 && r.count==0;}
 }
+#test "a file-scope check spans its directive through its block's closing brace" {
+ // #test "a" { { } } x :: (#forall n: 0..<2 { } )
+ t:=[16] SU_Token.[SU_Token.{kind=6,text="test",begin=0},SU_Token.{kind=5,text="a"},SU_Token.{kind=10},SU_Token.{kind=10},SU_Token.{kind=11},
+  SU_Token.{kind=11},SU_Token.{kind=1,text="x"},SU_Token.{kind=8},SU_Token.{kind=6,text="forall"},SU_Token.{kind=1,text="n"},SU_Token.{kind=10},SU_Token.{kind=11},
+  SU_Token.{kind=9},SU_Token.{kind=6,text="forall",begin=30},SU_Token.{kind=10},SU_Token.{kind=11}];
+ out:[3] SU_CheckSpan;
+ #assert SU_check_spans(t[..],out[..])==2;
+ #assert out[0].first==0 && out[0].last==5 && out[1].first==13 && out[1].last==15;
+ // Checks side by side, and a block straight after its directive.
+ u:=[6] SU_Token.[SU_Token.{kind=6,text="test"},SU_Token.{kind=10},SU_Token.{kind=11},SU_Token.{kind=6,text="forall"},SU_Token.{kind=10},SU_Token.{kind=11}];
+ #assert SU_check_spans(u[..],out[..])==2 && out[0].first==0 && out[0].last==2 && out[1].first==3 && out[1].last==5;
+}
+#forall "only file scope holds a check; other directives are not checks" open:0..<3, text:0..<3 {
+ opens:=[3] u32.[8,10,12];names:=[3] string.["test","forall","run"];o:=opens[open];
+ t:=[6] SU_Token.[SU_Token.{kind=o},SU_Token.{kind=6,text=names[text]},SU_Token.{kind=10},SU_Token.{kind=11},SU_Token.{kind=o+1},SU_Token.{kind=6,text=names[text]}];
+ out:[2] SU_CheckSpan;
+ n:=SU_check_spans(t[..],out[..]);
+ // Inside the brackets nothing counts; after them, a check with no block is no span either.
+ #assert n==0;
+ u:=[8] SU_Token.[SU_Token.{kind=o},SU_Token.{kind=o+1},SU_Token.{kind=6,text=names[text]},SU_Token.{kind=10},SU_Token.{kind=11},SU_Token.{kind=o},SU_Token.{kind=o+1},SU_Token.{kind=1}];
+ n=SU_check_spans(u[..],out[..]);
+ if text<2 {#assert n==1 && out[0].first==2 && out[0].last==4;}else {#assert n==0;}
+}
+#test "a check whose block does not close is no span, and full output refuses" {
+ t:=[4] SU_Token.[SU_Token.{kind=6,text="test"},SU_Token.{kind=10},SU_Token.{kind=10},SU_Token.{kind=11}];
+ out:[1] SU_CheckSpan;
+ #assert SU_check_spans(t[..],out[..])==0 && SU_check_spans(t[0..<0],out[..])==0;
+ u:=[6] SU_Token.[SU_Token.{kind=6,text="test"},SU_Token.{kind=10},SU_Token.{kind=11},SU_Token.{kind=6,text="test"},SU_Token.{kind=10},SU_Token.{kind=11}];
+ #assert SU_check_spans(u[..],out[..])== -1 && SU_check_spans(u[0..<3],out[..])==1 && SU_check_spans(u[..],out[0..<0])== -1;
+}
+#forall "a loaded unit's checks leave the consumer only when they checked alone and nothing makes them stay" root:bool, authority:bool, proto:bool, alone:bool {
+ #assert SU_library_checks(root,authority,proto,alone)==(alone && !root && !authority && !proto);
+}
 // Implementations follow only after their checks have been written.
 SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
  r:SU_Scan;stack:[128] u32;depth:=0;i:=0;
@@ -391,6 +427,39 @@ SU_exports :: (tokens:[] SU_Token,out:[] SU_Export)->SU_Exports #export_c {
   i+=1;
  }
  return r;
+}
+// The file-scope #test and #forall declarations in tokens, each from its
+// directive to its block's closing brace, into out; -1 when out is too small.
+// A check with no block, or a block the tokens end inside, is no span: the
+// parser reports it. Each unit balances its own delimiters, so a composed
+// program's tokens scan as well as one unit's.
+SU_check_spans :: (tokens:[] SU_Token,out:[] SU_CheckSpan)->int #export_c {
+ n:=0;depth:=0;i:=0;
+ while i<tokens.count {
+  t:=tokens[i];
+  if depth==0 && t.kind==6 && (t.text=="test" || t.text=="forall") {
+   j:=i+1;inner:=0;
+   while j<tokens.count {
+    if tokens[j].kind==10 {inner+=1;}
+    if tokens[j].kind==11 {inner-=1;if inner==0 {break;}}
+    j+=1;
+   }
+   if j<tokens.count {
+    if n==out.count {return -1;}
+    out[n]=SU_CheckSpan.{first=i,last=j};n+=1;i=j+1;continue;
+   }
+  }
+  if t.kind==8 || t.kind==10 || t.kind==12 {depth+=1;}else if t.kind==9 || t.kind==11 || t.kind==13 {depth-=1;}
+  i+=1;
+ }
+ return n;
+}
+// Whether a loaded unit's checks leave a consumer's input (ax-library-check-cache):
+// never the entry unit's, nor those of a unit whose load closure has an
+// #authority unit (its checks may count toward that unit's coverage) or an
+// #import_proto; otherwise when they checked in the unit's own closure.
+SU_library_checks :: (root:bool,authority:bool,proto:bool,alone:bool)->bool #export_c {
+ return alone && !root && !authority && !proto;
 }
 SU_admit :: (units:int,depth:int,total:int,bytes:int)->bool #export_c {
  return units>=0 && units<128 && depth>=0 && depth<32 && total>=0 && bytes>=0 && bytes<=16777216-total;

@@ -25,6 +25,7 @@ typedef struct coax_t_SU_Scan coax_t_SU_Scan;
 typedef struct coax_t_SU_Export coax_t_SU_Export;
 typedef struct coax_t_SU_Exports coax_t_SU_Exports;
 typedef struct coax_t_SU_Visit coax_t_SU_Visit;
+typedef struct coax_t_SU_CheckSpan coax_t_SU_CheckSpan;
 #ifdef COAX_coax_t_SU_Scan_DEFINED
 #ifndef COAX_SCHEMA_coax_t_SU_Scan_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f53555f5363616e323a3634313a38313a39353a636f756e74373a696e7436345f74313a30393a617574686f72697479353a5f426f6f6c313a38353a6572726f72383a75696e7433325f74323a3132363a6f6666736574373a696e7436345f74323a3136383a62616c616e636564353a5f426f6f6c323a3234363a636c61696d73353a5f426f6f6c323a3235353a6f776e657231313a636f61785f737472696e67323a333231313a6f776e65725f626567696e373a696e7436345f74323a3438393a6f776e65725f656e64373a696e7436345f74323a3536
 #error "incompatible Coax C type coax_t_SU_Scan"
@@ -97,6 +98,24 @@ struct coax_t_SU_Export { coax_string name; int64_t at; int64_t begin; int64_t e
 #define COAX_SCHEMA_coax_v_t_SU_Export_31343a636f61782d632d747970652d7631343a7669657731383a636f61785f765f745f53555f4578706f7274323a3136313a3831363a636f61785f745f53555f4578706f7274
 typedef struct { coax_t_SU_Export *data; int64_t count; } coax_v_t_SU_Export;
 #endif
+#ifdef COAX_coax_t_SU_CheckSpan_DEFINED
+#ifndef COAX_SCHEMA_coax_t_SU_CheckSpan_31343a636f61782d632d747970652d7631363a73747275637431393a636f61785f745f53555f436865636b5370616e323a3136313a38313a32353a6669727374373a696e7436345f74313a30343a6c617374373a696e7436345f74313a38
+#error "incompatible Coax C type coax_t_SU_CheckSpan"
+#endif
+#else
+#define COAX_coax_t_SU_CheckSpan_DEFINED
+#define COAX_SCHEMA_coax_t_SU_CheckSpan_31343a636f61782d632d747970652d7631363a73747275637431393a636f61785f745f53555f436865636b5370616e323a3136313a38313a32353a6669727374373a696e7436345f74313a30343a6c617374373a696e7436345f74313a38
+struct coax_t_SU_CheckSpan { int64_t first; int64_t last; };
+#endif
+#ifdef COAX_coax_v_t_SU_CheckSpan_DEFINED
+#ifndef COAX_SCHEMA_coax_v_t_SU_CheckSpan_31343a636f61782d632d747970652d7631343a7669657732313a636f61785f765f745f53555f436865636b5370616e323a3136313a3831393a636f61785f745f53555f436865636b5370616e
+#error "incompatible Coax C type coax_v_t_SU_CheckSpan"
+#endif
+#else
+#define COAX_coax_v_t_SU_CheckSpan_DEFINED
+#define COAX_SCHEMA_coax_v_t_SU_CheckSpan_31343a636f61782d632d747970652d7631343a7669657732313a636f61785f765f745f53555f436865636b5370616e323a3136313a3831393a636f61785f745f53555f436865636b5370616e
+typedef struct { coax_t_SU_CheckSpan *data; int64_t count; } coax_v_t_SU_CheckSpan;
+#endif
 #ifdef COAX_coax_t_SU_Visit_DEFINED
 #ifndef COAX_SCHEMA_coax_t_SU_Visit_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f53555f5669736974323a3136313a38313a32353a696e646578373a696e7436345f74313a30363a616374696f6e373a75696e74385f74313a38
 #error "incompatible Coax C type coax_t_SU_Visit"
@@ -157,10 +176,15 @@ COAX_LAYOUT(offsetof(coax_t_SU_Exports, offset) == 16, "offset of SU_Exports.off
 COAX_LAYOUT(sizeof(coax_t_SU_Visit) == 16 && COAX_ALIGNOF(coax_t_SU_Visit) == 8, "layout of SU_Visit");
 COAX_LAYOUT(offsetof(coax_t_SU_Visit, index) == 0, "offset of SU_Visit.index");
 COAX_LAYOUT(offsetof(coax_t_SU_Visit, action) == 8, "offset of SU_Visit.action");
+COAX_LAYOUT(sizeof(coax_t_SU_CheckSpan) == 16 && COAX_ALIGNOF(coax_t_SU_CheckSpan) == 8, "layout of SU_CheckSpan");
+COAX_LAYOUT(offsetof(coax_t_SU_CheckSpan, first) == 0, "offset of SU_CheckSpan.first");
+COAX_LAYOUT(offsetof(coax_t_SU_CheckSpan, last) == 8, "offset of SU_CheckSpan.last");
 
 _Bool SU_check_required(_Bool authority, _Bool entry, _Bool mutation);
 coax_t_SU_Scan SU_scan(coax_v_t_SU_Token tokens, coax_v_t_SU_Load out);
 coax_t_SU_Exports SU_exports(coax_v_t_SU_Token tokens, coax_v_t_SU_Export out);
+int64_t SU_check_spans(coax_v_t_SU_Token tokens, coax_v_t_SU_CheckSpan out);
+_Bool SU_library_checks(_Bool root, _Bool authority, _Bool proto, _Bool alone);
 _Bool SU_admit(int64_t units, int64_t depth, int64_t total, int64_t bytes);
 coax_t_SU_Visit SU_visit(coax_v_string paths, coax_v_u8 states, coax_string path);
 _Bool SU_module_valid(coax_string id);

@@ -1,0 +1,4 @@
+// A part of the consumer: its check uses the consumer's own LIMIT, so it
+// can't be checked on its own and the consumer checks it in place.
+part_room :: (n: int) -> bool { return n < LIMIT; }
+#test "the part sees its consumer's limit" { #assert part_room(LIMIT - 1) && !part_room(LIMIT); }

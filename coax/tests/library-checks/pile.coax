@@ -1,0 +1,23 @@
+// A library with a generic store and checks of its own: the checks
+// instantiate it over u8, which the consumer never uses.
+Pile :: struct($T, $N) { items: [$N] $T; count: int; }
+
+pile_push :: (p: [] Pile($T, $N), v: $T) -> bool {
+  if p[0].count == p[0].items.count { return false; }
+  p[0].items[p[0].count] = v;
+  p[0].count += 1;
+  return true;
+}
+
+pile_top :: (p: [] Pile($T, $N)) -> $T { return p[0].items[p[0].count - 1]; }
+
+// Only the checks print or use this record.
+PileNote :: struct { at: int; says: string; }
+
+#test "a pile keeps what it was given and refuses the next" {
+  p: [1] Pile(u8, 2);
+  #assert pile_push(p[..], 7) && pile_push(p[..], 9) && !pile_push(p[..], 1);
+  #assert pile_top(p[..]) == 9 && p[0].count == 2;
+  n := PileNote.{at = 1, says = "top"};
+  #assert n.at == 1 && n.says == "top";
+}

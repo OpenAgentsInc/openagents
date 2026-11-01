@@ -171,15 +171,6 @@ static void coax_show_string(coax_string s) {
 /* Types */
 typedef struct { uint32_t e[6]; } coax_a6_u32;
 
-static void coax_show_a6_u32(const coax_a6_u32 *v);
-static void coax_show_a6_u32(const coax_a6_u32 *v) {
-  fputc('[', stdout);
-  for (int64_t i = 0; i < 6; i++) {
-    if (i) fputs(", ", stdout);
-    coax_print_uint(v->e[i]);
-  }
-  fputc(']', stdout);
-}
 
 _Bool MS_include(_Bool l_root_only, _Bool l_root_source);
 _Bool MS_selective(_Bool l_reference, _Bool l_borrowed_aggregate, _Bool l_string_allocation, _Bool l_unstable_storage);

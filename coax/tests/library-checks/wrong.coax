@@ -1,0 +1,5 @@
+// An #authority consumer of a library whose check type-checks but fails.
+#load "wrong-lib.coax";
+#authority;
+uses_two :: () -> int { return lib_two() * 2; }
+#test "twice two" { #assert uses_two() == 4; }

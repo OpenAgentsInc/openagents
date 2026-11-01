@@ -1,0 +1,2 @@
+lib_one :: () -> int { return 1; }
+#test "a check with a type error" { x: bool = lib_one(); #assert x; }

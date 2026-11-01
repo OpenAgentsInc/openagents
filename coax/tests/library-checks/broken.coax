@@ -1,0 +1,4 @@
+// A consumer of a library whose check has a type error.
+#import "Basic";
+#load "broken-lib.coax";
+main :: () { print("%\n", lib_one()); }

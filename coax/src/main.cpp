@@ -60,6 +60,7 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 extern char **environ;
 
@@ -172,8 +173,10 @@ static void diagnostic_json(const char *severity, const char *code, const std::s
           severity, json_string(code).c_str(), json_string(message).c_str(), span.c_str(), notes.c_str(), fixes.c_str());
 }
 
+static bool g_quiet_errors = false;  // a library's standalone check counts its errors and prints none
 void error_at(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix) {
   g_error_count++;
+  if (g_quiet_errors) { g_pending_notes.clear(); return; }
   std::string reported = message;
   for (const GeneratedRegion &region : src->generated)
     if (loc.offset >= region.start && loc.offset < region.end)
@@ -258,6 +261,7 @@ struct NativeTimings {
   uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
   std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
 } g_timings;
+static size_t g_library_cached = 0, g_library_checked = 0;  // library checks reused and run (ax-library-check-cache)
 
 // Observations of the checked Coax selection and host I/O. Hashing uses the
 // existing Coax SHA-256 implementation, never a native fallback.
@@ -313,7 +317,7 @@ struct TimedPhase {
 static int finish_profile(int status) {
   status=finish_semantic_report(status);
   if(g_timings.path.empty()) return status;
-  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"seconds\":{";
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-g_timings.start).count()<<"}}\n";
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
@@ -827,6 +831,183 @@ static std::string declarations_report(const Source *src, const File *file) {
   return out + "],\"references\":[" + refs.text + "]," + target_json() + "}\n";
 }
 
+// Library checks (ax-library-check-cache). A compile that emits C, a header
+// or nothing (coax c, header, build, lib, run, check, metal, cuda) checks each
+// loaded unit's #test and #forall bodies in that unit's own #load closure, not
+// in every consumer, and records the result. A unit whose checks pass there is
+// a library for this compile: its check bodies are left out of the consumer's
+// input, so the consumer doesn't check them again or emit the instances and
+// types only they reach. A unit that doesn't check on its own (a part that
+// uses its loader's names, or a check with an error) keeps today's behavior:
+// the consumer checks its bodies in place and reports any error there. The
+// root's own checks, and those of a unit whose #load closure has an
+// #authority unit or an #import_proto, are never left out. When the program
+// has an #authority unit, its compile runs every check, so a library's
+// verdict there also requires its checks to pass when run, with the budgets
+// the compile would give them.
+//
+// The verdict for a unit is stored in ~/.cache/coax-check ($COAX_CHECK_CACHE)
+// under the SHA-256 of the compiler binary, the options that change checking,
+// and each closure unit's path relative to the unit and its SHA-256. A
+// standalone check runs in a forked child, so its storage and diagnostics never
+// reach the consumer; the child exits 0 when the unit checks. Build-only stage0
+// can't hash, so it keeps verdicts only while it runs. Either way the verdict is
+// the same, so the emitted C is the same with and without the cache.
+static bool g_library_checks = false;     // set by compile() for C, header and check output
+static std::map<std::string, bool> g_library_verdicts;  // canonical unit -> checks standalone (this process)
+static std::string executable_path();
+static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
+                      bool run_checks, bool mutation_lowering, struct QueryParsed *parsed);
+
+static std::string library_cache_dir() {
+  const char *dir = getenv("COAX_CHECK_CACHE");
+  if (dir && *dir) return dir;
+  const char *home = getenv("HOME");
+  return std::string(home && *home ? home : "/tmp") + "/.cache/coax-check";
+}
+
+// The units unit `at` loads, directly or not, itself first, in a fixed order.
+static std::vector<int32_t> library_closure(const Source *src, int32_t at) {
+  std::vector<int32_t> out{at};
+  std::set<int32_t> seen{at};
+  for (size_t i = 0; i < out.size(); i++)
+    for (int32_t next : src->units[(size_t)out[i]]->loads)
+      if (seen.insert(next).second) out.push_back(next);
+  return out;
+}
+
+// The cache key of unit `at`'s standalone check, or "" when there is none.
+static std::string library_key(const Source *src, int32_t at, const EmitOptions &opts, const std::string &compiler, bool run) {
+  if (compiler.empty()) return "";
+  namespace fs = std::filesystem;
+  const fs::path base = fs::path(src->units[(size_t)at]->canonical).parent_path();
+  std::string text = "coax.library-check.v1\n" + compiler + "\n" + (run ? "run\n" : "check\n");
+  text += "run_steps=" + std::to_string(opts.run_steps) + " development=" + std::to_string(opts.development) +
+          " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
+          " metal=" + std::to_string(opts.metal) + " cuda=" + std::to_string(opts.cuda) + " metal_compute=" +
+          std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) + "\n";
+  for (int32_t u : library_closure(src, at)) {
+    const SourceUnit &unit = *src->units[(size_t)u];
+    const std::string sha = debug_source_hash(unit.text);
+    if (sha.empty()) return "";
+    text += fs::path(unit.canonical).lexically_relative(base).string() + "\t" + sha + "\n";
+  }
+  return debug_source_hash(text);
+}
+
+// Checks unit `at` on its own in a child process: true when it checks (and,
+// with run, when its checks pass).
+static bool library_check_standalone(const Source *src, int32_t at, const EmitOptions &opts, bool run) {
+  fflush(stdout);
+  fflush(stderr);
+  pid_t pid = fork();
+  if (pid < 0) return false;
+  if (pid == 0) {
+    int null = open("/dev/null", O_WRONLY);
+    if (null >= 0) { dup2(null, 1); dup2(null, 2); }
+    g_timings.path.clear();
+    g_timings.source_map.clear();
+    g_semantic.path.clear();
+    g_error_count = 0;
+    g_quiet_errors = true;  // its diagnostics would go nowhere; printing a long line's caret is not free
+    Source s;
+    Arena arena;
+    File file;
+    bool ok = front_end(src->units[(size_t)at]->canonical.c_str(), &s, &arena, &file, opts, 1, false, false, nullptr);
+    if (ok && run) ok = run_all_checks(&file, TEST_STEPS, false);
+    _exit(ok && g_error_count == 0 ? 0 : 1);
+  }
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) if (errno != EINTR) return false;
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+// Which loaded units' check bodies this compile leaves out (library_checks).
+static std::vector<bool> library_units(const Source *src, const std::vector<Token> &tokens, const EmitOptions &opts) {
+  const size_t n = src->units.size();
+  std::vector<bool> out(n, false);
+  if (!g_library_checks || n < 2) return out;
+  bool run = false;
+  for (const auto &unit : src->units) run = run || unit->authority;
+  std::vector<bool> proto(n, false);
+  for (const Token &t : tokens)
+    if (t.kind == Tok::directive && str_eq(t.text, "import_proto"))
+      if (const SourceUnit *u = source_unit_at(src, t.loc))
+        for (size_t i = 0; i < n; i++) if (src->units[i].get() == u) proto[i] = true;
+  std::string compiler;
+#ifndef COAX_BOOTSTRAP_IMPORTER
+  compiler = profile_file_hash(executable_path());
+#endif
+  const std::string dir = library_cache_dir();
+  // Loaded units before their loaders, so a unit's own check reuses its libraries' verdicts.
+  std::vector<int32_t> order;
+  std::vector<uint8_t> state(n, 0);
+  std::function<void(int32_t)> post = [&](int32_t u) {
+    if (state[(size_t)u]) return;
+    state[(size_t)u] = 1;
+    for (int32_t next : src->units[(size_t)u]->loads) post(next);
+    order.push_back(u);
+  };
+  post(0);
+  for (int32_t u : order) {
+    bool authority = false, imports = false;
+    for (int32_t c : library_closure(src, u)) { authority = authority || src->units[(size_t)c]->authority; imports = imports || proto[(size_t)c]; }
+    if (!SU_library_checks(u == 0, authority, imports, true)) continue;  // no check can change the answer
+    const std::string &canonical = src->units[(size_t)u]->canonical;
+    auto known = g_library_verdicts.find(canonical + (run ? "\nrun" : ""));
+    if (known != g_library_verdicts.end()) { out[(size_t)u] = SU_library_checks(false, authority, imports, known->second); continue; }
+    const std::string key = library_key(src, u, opts, compiler, run);
+    std::string record;
+    bool verdict;
+    if (!key.empty() && read_record(dir + "/" + key, &record) && (record == "checks\n" || record == "does not check alone\n")) {
+      verdict = record == "checks\n";
+      g_library_cached++;
+    } else {
+      verdict = library_check_standalone(src, u, opts, run);
+      g_library_checked++;
+      std::error_code ec;
+      if (!key.empty() && (std::filesystem::create_directories(dir, ec), !ec || std::filesystem::is_directory(dir, ec))) {
+        const std::string temp = dir + "/." + key + "." + std::to_string(getpid());
+        if (write_file(temp, verdict ? "checks\n" : "does not check alone\n")) std::rename(temp.c_str(), (dir + "/" + key).c_str());
+      }
+    }
+    g_library_verdicts[canonical + (run ? "\nrun" : "")] = verdict;
+    out[(size_t)u] = SU_library_checks(false, authority, imports, verdict);
+  }
+  return out;
+}
+
+// Removes the tokens of each file-scope #test and #forall (SU_check_spans)
+// in the units library_units chose.
+static void drop_library_checks(const Source *src, const std::vector<bool> &units, std::vector<Token> *tokens) {
+  bool any = false;
+  for (bool u : units) any = any || u;
+  if (!any) return;
+  std::vector<coax_t_SU_Token> records;
+  records.reserve(tokens->size());
+  for (const Token &t : *tokens) {
+    const Str text = t.kind == Tok::string_lit ? t.string_value : t.text;
+    records.push_back({(uint32_t)t.kind, {text.data, text.count}, t.loc.offset, t.loc.offset + t.text.count});
+  }
+  std::vector<coax_t_SU_CheckSpan> spans(tokens->size() / 3 + 1);
+  const int64_t n = SU_check_spans({records.data(), (int64_t)records.size()}, {spans.data(), (int64_t)spans.size()});
+  if (n < 0) return;  // cannot happen: a span holds at least three tokens
+  std::vector<bool> drop(tokens->size(), false);
+  for (int64_t i = 0; i < n; i++) {
+    const Token &first = (*tokens)[(size_t)spans[(size_t)i].first], &last = (*tokens)[(size_t)spans[(size_t)i].last];
+    for (size_t u = 1; u < src->units.size(); u++) {
+      const SourceUnit &unit = *src->units[u];
+      if (!units[u] || first.loc.offset < unit.begin || first.loc.offset >= unit.end) continue;
+      if (last.loc.offset < unit.end)
+        for (int64_t k = spans[(size_t)i].first; k <= spans[(size_t)i].last; k++) drop[(size_t)k] = true;
+    }
+  }
+  std::vector<Token> kept;
+  kept.reserve(tokens->size());
+  for (size_t i = 0; i < tokens->size(); i++) if (!drop[i]) kept.push_back((*tokens)[i]);
+  *tokens = std::move(kept);
+}
+
 // lex, parse, check and evaluate; then produce the requested text.
 // library: no main is required (lib, header, and check of a file that exports).
 // header_path: also write the C header (`coax c FILE --library --header out.h`).
@@ -837,7 +1018,9 @@ static std::string declarations_report(const Source *src, const File *file) {
 struct QueryParsed;
 static void query_snapshot(QueryParsed *parsed, const File *file);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
-                      bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr) {
+                      bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr);
+static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
+                      bool run_checks, bool mutation_lowering, QueryParsed *parsed) {
   {TimedPhase phase{"load"};if (!load_sources(arena, src, path)) return false;}
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
   std::vector<Token> tokens;
@@ -850,6 +1033,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
       TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);
     }
   }
+  if (ok && g_library_checks) {TimedPhase phase{"libraries"};drop_library_checks(src, library_units(src, tokens, opts), &tokens);}
   if(!g_semantic.path.empty()) {
     for(const auto &unit:src->units)g_semantic.sources.emplace_back(unit->canonical,debug_source_hash(unit->text));
     // No report is written when the complete input graph could not be read
@@ -878,6 +1062,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   Source src;
   Arena arena;
   File file;
+  g_library_checks = what == Output::c || what == Output::header || what == Output::none;
   if (!front_end(path, &src, &arena, &file, opts, library)) return false;
   if (opts.cuda || opts.metal_compute) {file.cuda=opts.cuda;if(!compute_admit(&file,opts.metal_compute)) {if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");return false;}}
   TimedPhase phase{"emit"};
