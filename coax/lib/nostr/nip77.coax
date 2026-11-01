@@ -1,0 +1,757 @@
+// NIP-77 Negentropy syncing (Nostr From Scratch, chapter 43): Negentropy
+// protocol V1, range-based set reconciliation, as NIP-77's appendix states
+// it, and the four NIP-77 frames that carry its messages as hex.
+//
+// - Items are (created_at, id) pairs, sorted by timestamp and then by id.
+//   neg_sort sorts them; neg_init refuses a list that isn't strictly
+//   ascending (a duplicate included).
+// - A message is the version byte 0x61 and a list of ranges. Each range is
+//   an upper bound (a timestamp delta and an id prefix), a mode and a
+//   payload: Skip (empty), Fingerprint (16 bytes) or IdList (a count and
+//   32-byte ids). Integers are varints: base 128, most significant digit
+//   first, the high bit set on every byte but the last.
+// - The fingerprint of a range: the ids added as 32-byte little-endian
+//   integers mod 2^256, then the count as a varint, SHA-256, first 16 bytes.
+// - neg_initiate writes the client's first message; neg_reconcile answers
+//   one message, as the client (collecting have and need ids) or as the
+//   server. A client whose answer would be the version byte alone is done:
+//   neg_reconcile returns 0.
+//
+// Where NIP-77 leaves a choice, this file makes the reference
+// implementation's (hoytech/negentropy, js/Negentropy.js): a range of
+// fewer than 32 items is sent as an IdList, a larger one as 16 fingerprinted
+// buckets; a frame limit L (0, or at least 4096) stops a message once it
+// passes L - 200 bytes and sends one fingerprint for the rest. One
+// difference: after such a cut the reference fingerprints the items from
+// the end of the range it dropped, but the range it sends starts at the
+// last bound it wrote; this file fingerprints from there. Without a cut,
+// messages are byte for byte the reference's, as transcribed in
+// coax/tests/nostr/negentropy_ref.py (which makes the same fix).
+//
+// The protocol's infinity timestamp is 2^64 - 1. Here timestamps are ints:
+// NEG_INFINITY (2^63 - 1) stands for infinity, and a decoded timestamp or
+// varint that reaches it is refused (NEG_BOUND, NEG_VARINT). Nostr's
+// created_at values are far below.
+//
+// Not built: the relay's side of NEG-OPEN (holding sessions per connection,
+// NEG-ERR "blocked:" over a record limit, "closed:" on time out) and the
+// wiring into coax/relay/relay.coax. n77_read and n77_write_* are the frames.
+#load "json.coax";
+#load "hex.coax";
+#load "../crypto/sha256.coax";
+
+// book:begin codes
+NEG_V1 :: 0x61;
+NEG_SKIP :: 0; NEG_FINGERPRINT :: 1; NEG_IDLIST :: 2;
+NEG_BUCKETS :: 16;
+NEG_INFINITY :: 9223372036854775807;
+NEG_FRAME_MIN :: 4096;
+// What neg_init, neg_initiate and neg_reconcile refuse.
+NEG_OK :: 0;
+NEG_SHORT :: 1;        // the message ends inside a field, or is empty
+NEG_VARINT :: 2;       // a varint over 2^63 - 2
+NEG_VERSION_BYTE :: 3; // the first byte is not 0x60 to 0x6f
+NEG_VERSION :: 4;      // a version this side can't speak (the client's refusal)
+NEG_MODE :: 5;         // a mode other than 0, 1, 2
+NEG_BOUND :: 6;        // an id prefix over 32 bytes, or a timestamp past the range
+NEG_FRAME :: 7;        // a frame limit from 1 to 4095
+NEG_SPACE :: 8;        // the output, have or need buffer is full
+NEG_ORDER :: 9;        // items not strictly ascending, or a timestamp out of range
+NEG_ROLE :: 10;        // neg_initiate on the server's side
+
+NegItem :: struct { created: int; id: [32] u8; }
+NegId :: struct { b: [32] u8; }
+// A bound: a timestamp and the first n bytes of an id (the rest are zero).
+NegBound :: struct { created: int; n: int; prefix: [32] u8; }
+// One side of a sync. items are sorted; have and need are the client's
+// answers (ids it has and the server lacks, and the reverse).
+Neg :: struct {
+  items: [] NegItem; initiator: bool; frame_limit: int;
+  have: [] NegId; have_n: int; need: [] NegId; need_n: int;
+  error: int;
+}
+// A message being written: the bytes so far and the last timestamp written.
+NegOut :: struct { buf: [] u8; n: int; last: int; full: bool; }
+// A message being read.
+NegIn :: struct { msg: string; at: int; last: int; error: int; }
+// book:end codes
+
+#load "../../tests/nostr/nip77_fixtures.coax";
+
+// ---- varints and bounds ----------------------------------------------------
+#test "varints: the values the Python transcription prints" {
+  values := [9] int.[0, 1, 127, 128, 300, 16383, 16384, 1793491200, NEG_INFINITY - 1];
+  hexes := [9] string.["00", "01", "7f", "8100", "822c", "ff7f", "818000", "86d79a8200", "ffffffffffffffff7e"];
+  for k: 0..<9 {
+    #assert n77_t_varint_is(values[k], hexes[k]);
+    b: [16] u8; n := n77_t_bytes(hexes[k], b[..]);
+    r: [1] NegIn; r[0] = NegIn.{msg = cast(string) b[0..<n]};
+    #assert neg_get_varint(r[..]) == values[k] && r[0].error == NEG_OK && r[0].at == n;
+  }
+}
+#test "varints: refusals" {
+  t: [64] u8;
+  b := [10] u8.[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0];
+  r: [1] NegIn; r[0] = NegIn.{msg = cast(string) b[0..<9]};
+  #assert neg_get_varint(r[..]) == 0 && r[0].error == NEG_VARINT;
+  // 2^63 needs ten digits
+  c := [10] u8.[0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0];
+  r[0] = NegIn.{msg = cast(string) c[..]}; #assert neg_get_varint(r[..]) == 0 && r[0].error == NEG_VARINT;
+  // 2^56 is the most that may be shifted once more
+  d := [9] u8.[0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0];
+  r[0] = NegIn.{msg = cast(string) d[..]}; #assert neg_get_varint(r[..]) == 72057594037927936 && r[0].error == NEG_OK;
+  r[0] = NegIn.{msg = cast(string) c[0..<3]}; #assert neg_get_varint(r[..]) == 0 && r[0].error == NEG_SHORT;
+  r[0] = NegIn.{msg = ""}; #assert neg_get_varint(r[..]) == 0 && r[0].error == NEG_SHORT;
+  // a refused reader stays refused
+  r[0] = NegIn.{msg = n77_t_msg("05", t[..]), error = NEG_MODE}; #assert neg_get_varint(r[..]) == 0 && r[0].error == NEG_MODE && r[0].at == 0;
+  o: [4] u8; w: [1] NegOut; w[0] = NegOut.{buf = o[..]};
+  neg_put_varint(w[..], -1); #assert w[0].full && w[0].n == 0;
+  w[0] = NegOut.{buf = o[0..<1]}; neg_put_varint(w[..], 128); #assert w[0].full && w[0].n == 0;
+  w[0] = NegOut.{buf = o[0..<1]}; neg_put_varint(w[..], 127); neg_put_byte(w[..], 1); #assert w[0].full && w[0].n == 1;
+}
+#test "bounds: timestamps as deltas, infinity as 0, prefixes" {
+  t: [64] u8;
+  o: [128] u8; w: [1] NegOut; w[0] = NegOut.{buf = o[..]};
+  b: NegBound; b.created = 1000; neg_put_bound(w[..], b);           // 1 + 1000: e9 07, prefix 0
+  b.created = 1005; b.n = 2; b.prefix[0] = 0xab; b.prefix[1] = 0xcd; neg_put_bound(w[..], b);   // 1 + 5
+  b.n = 0; b.created = NEG_INFINITY; neg_put_bound(w[..], b);       // 0
+  #assert n77_t_hexeq(o[0..<w[0].n], "8769000602abcd0000") && w[0].last == NEG_INFINITY;
+  r: [1] NegIn; r[0] = NegIn.{msg = cast(string) o[0..<w[0].n]};
+  x := neg_get_bound(r[..]); #assert x.created == 1000 && x.n == 0;
+  y := neg_get_bound(r[..]); #assert y.created == 1005 && y.n == 2 && y.prefix[0] == 0xab && y.prefix[1] == 0xcd && y.prefix[2] == 0;
+  z := neg_get_bound(r[..]); #assert z.created == NEG_INFINITY && r[0].error == NEG_OK && r[0].at == w[0].n;
+  // after infinity every bound is infinity (the reference reads it so)
+  r[0] = NegIn.{msg = n77_t_msg("00000500", t[..])};
+  #assert neg_get_bound(r[..]).created == NEG_INFINITY && neg_get_bound(r[..]).created == NEG_INFINITY && r[0].error == NEG_OK;
+  w[0] = NegOut.{buf = o[0..<1]}; b.created = 5; neg_put_bound(w[..], b); #assert w[0].full;
+}
+#test "bounds: refusals" {
+  t: [64] u8;
+  r: [1] NegIn; m: [40] u8; m[0] = 1; m[1] = 33;
+  r[0] = NegIn.{msg = cast(string) m[0..<40]}; z := neg_get_bound(r[..]); #assert r[0].error == NEG_BOUND;
+  r[0] = NegIn.{msg = n77_t_msg("0102ab", t[..])}; z = neg_get_bound(r[..]); #assert r[0].error == NEG_SHORT;
+  r[0] = NegIn.{msg = n77_t_msg("01", t[..])}; z = neg_get_bound(r[..]); #assert r[0].error == NEG_SHORT;
+  // a delta that would reach infinity
+  big := [11] u8.[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0, 0];
+  r[0] = NegIn.{msg = cast(string) big[0..<10], last = 0}; z = neg_get_bound(r[..]); #assert r[0].error == NEG_VARINT;
+  big[8] = 0x7e;   // code 2^63 - 2, a step of 2^63 - 3: fine from 0 and 1, not from 2
+  r[0] = NegIn.{msg = cast(string) big[0..<10], last = 0}; z = neg_get_bound(r[..]); #assert r[0].error == NEG_OK && z.created == NEG_INFINITY - 2;
+  r[0] = NegIn.{msg = cast(string) big[0..<10], last = 1}; z = neg_get_bound(r[..]); #assert r[0].error == NEG_OK && z.created == NEG_INFINITY - 1;
+  r[0] = NegIn.{msg = cast(string) big[0..<10], last = 2}; z = neg_get_bound(r[..]); #assert r[0].error == NEG_BOUND;
+}
+
+// ---- fingerprints --------------------------------------------------------------
+#test "fingerprints: the hand values and the Python transcription" {
+  v: [3] NegItem;
+  v[0].id[0] = 0xff; v[0].id[1] = 0xff; v[1].id[0] = 1;
+  fp: [16] u8;
+  neg_fingerprint(v[..], 0, 2, fp[..]); #assert n77_t_hexeq(fp[..], "47178f396ea8b5434d8ed8aa88bbbb23");
+  neg_fingerprint(v[..], 1, 1, fp[..]); #assert n77_t_hexeq(fp[..], "7f9c9e31ac8256ca2f258583df262dbc");
+  for i: 0..<32 { v[2].id[i] = 0xff; }
+  neg_fingerprint(v[..], 1, 3, fp[..]); #assert n77_t_hexeq(fp[..], "58cc2f44d3a27866874701fbad573da9");
+  // the sum by hand: ffff + 0001 = 0001 0000, little-endian 00 00 01
+  sum: [32] u8; neg_add(sum[..], v[0].id); neg_add(sum[..], v[1].id);
+  #assert sum[0] == 0 && sum[1] == 0 && sum[2] == 1; for i: 3..<32 { #assert sum[i] == 0; }
+  neg_add(sum[..], v[2].id); #assert sum[0] == 0xff && sum[1] == 0xff && sum[2] == 0 && sum[31] == 0;   // 0x10000 - 1
+}
+
+// ---- items ---------------------------------------------------------------------
+#test "items: sorting, and the order neg_init insists on" {
+  v: [5] NegItem;
+  v[0].created = 7; v[0].id[0] = 2; v[1].created = 3; v[2].created = 7; v[2].id[0] = 1; v[3].created = 7; v[3].id[31] = 9; v[4].created = 0;
+  neg_sort(v[..]);
+  #assert v[0].created == 0 && v[1].created == 3 && v[2].id[31] == 9 && v[3].id[0] == 1 && v[4].id[0] == 2;
+  n: [1] Neg; #assert neg_init(n[..], v[..], true, 0) == NEG_OK;
+  v[4] = v[3]; #assert neg_init(n[..], v[..], true, 0) == NEG_ORDER;
+  v[4].id[0] = 0; #assert neg_init(n[..], v[..], true, 0) == NEG_ORDER;
+  v[4].id[0] = 1; v[4].id[1] = 1; #assert neg_init(n[..], v[..], false, 0) == NEG_OK;
+  v[0].created = -1; #assert neg_init(n[..], v[..], false, 0) == NEG_ORDER;
+  v[0].created = 0; v[4].created = NEG_INFINITY; #assert neg_init(n[..], v[..], false, 0) == NEG_ORDER;
+  v[4].created = NEG_INFINITY - 1; #assert neg_init(n[..], v[..], false, 0) == NEG_OK;
+  #assert neg_init(n[..], v[..], false, 4095) == NEG_FRAME && neg_init(n[..], v[..], false, 1) == NEG_FRAME;
+  #assert n[0].error == NEG_FRAME && neg_init(n[..], v[..], false, 0) == NEG_OK && n[0].error == NEG_OK;
+  t := v[0]; v[0] = v[1]; v[1] = t; #assert neg_init(n[..], v[..], false, 0) == NEG_ORDER && n[0].error == NEG_ORDER;
+  v[1] = v[0]; v[0] = t;
+  #assert neg_init(n[..], v[..], false, -1) == NEG_FRAME && neg_init(n[..], v[..], false, 4096) == NEG_OK;
+  // the lower bound: the first item not below the bound
+  b: NegBound; b.created = 7; #assert neg_lower(v[..], 0, b) == 2 && neg_lower(v[..], 3, b) == 3;
+  b.n = 1; b.prefix[0] = 1; #assert neg_lower(v[..], 0, b) == 3;
+  b.n = 2; b.prefix[1] = 1; #assert neg_lower(v[..], 0, b) == 4;
+  b.prefix[1] = 2; #assert neg_lower(v[..], 0, b) == 4 && neg_lower(v[..], 5, b) == 5;
+  b.created = NEG_INFINITY; #assert neg_lower(v[..], 0, b) == 5;
+  b.created = 0; b.n = 0; #assert neg_lower(v[..], 0, b) == 0;
+  b.created = 1; #assert neg_lower(v[..], 0, b) == 1;
+  // the minimal bound between two neighbours
+  m := neg_between(v[1], v[2]); #assert m.created == 7 && m.n == 0;
+  m = neg_between(v[2], v[3]); #assert m.created == 7 && m.n == 1 && m.prefix[0] == 1;
+  x := v[3]; y := v[3]; y.id[1] = 1;
+  m = neg_between(x, y); #assert m.created == 7 && m.n == 2 && m.prefix[0] == 1 && m.prefix[1] == 1;
+  y.id[1] = 0; y.id[31] = 1; m = neg_between(x, y); #assert m.n == 32 && m.prefix[31] == 1 && m.prefix[0] == 1;
+}
+
+// ---- messages and a whole sync ------------------------------------------------
+#test "the first message for three items, byte for byte the reference's" {
+  v: [3] NegItem; n77_t_small(v[..]);
+  n: [1] Neg; #assert neg_init(n[..], v[..], true, 0) == NEG_OK;
+  o: [256] u8; k := neg_initiate(n[..], o[..]);
+  #assert n77_t_hexeq(o[0..<k], N77_T_SMALL_FIRST);
+  #assert neg_initiate(n[..], o[0..<100]) == -1 && n[0].error == NEG_SPACE;
+  s: [1] Neg; #assert neg_init(s[..], v[..], false, 0) == NEG_OK && neg_initiate(s[..], o[..]) == -1 && s[0].error == NEG_ROLE;
+}
+#test "a small sync: one round of IdLists finds the difference" {
+  a: [3] NegItem; n77_t_small(a[..]);
+  b: [3] NegItem; b[0] = a[1]; b[1] = a[2]; b[2].created = 2000; b[2].id[0] = 7;
+  #assert n77_t_sync(a[..], b[..], 0) == 2;
+  // the server's answer to the client's first message carries its ids
+  c: [1] Neg; s: [1] Neg; #assert neg_init(c[..], a[..], true, 0) == NEG_OK && neg_init(s[..], b[..], false, 0) == NEG_OK;
+  q: [256] u8; r: [256] u8; z: [8] u8;
+  qn := neg_initiate(c[..], q[..]); rn := neg_reconcile(s[..], cast(string) q[0..<qn], r[..]);
+  // 61, infinity (00, prefix 00), IdList (02), 3 ids
+  #assert rn == 1 + 2 + 1 + 1 + 96 && r[0] == NEG_V1 && r[1] == 0 && r[2] == 0 && r[3] == NEG_IDLIST && r[4] == 3;
+  #assert s[0].have_n == 0 && s[0].need_n == 0;
+  have: [4] NegId; need: [4] NegId; c[0].have = have[..]; c[0].need = need[..];
+  #assert neg_reconcile(c[..], cast(string) r[0..<rn], z[..]) == 0 && c[0].error == NEG_OK;
+  #assert c[0].have_n == 1 && c[0].have[0].b[0] == 1 && c[0].need_n == 1 && c[0].need[0].b[0] == 7;
+  // with no room for the answers
+  c[0].have = have[0..<0]; c[0].have_n = 0; c[0].need_n = 0;
+  #assert neg_reconcile(c[..], cast(string) r[0..<rn], z[..]) == -1 && c[0].error == NEG_SPACE;
+  c[0].have = have[..]; c[0].need = need[0..<0]; c[0].have_n = 0; c[0].need_n = 0;
+  #assert neg_reconcile(c[..], cast(string) r[0..<rn], z[..]) == -1 && c[0].error == NEG_SPACE;
+  #assert neg_reconcile(s[..], cast(string) q[0..<qn], r[0..<50]) == -1 && s[0].error == NEG_SPACE;
+}
+#forall "small random sets sync to exactly their symmetric difference" seed: 0..<24 #steps 400000000 {
+  a: [80] NegItem; b: [80] NegItem; na := 0; nb := 0;
+  for i: 0..<80 {
+    x: NegItem; x.created = 100 + (i * 7) % 5; x.id[0] = cast(u8) ((i * 37 + seed * 11) % 256); x.id[1] = cast(u8) i;
+    pick := (i * 13 + seed * 5) % 7;
+    if pick != 0 { a[na] = x; na += 1; }
+    if pick != 1 && (seed % 3 != 0 || pick != 2) { b[nb] = x; nb += 1; }
+  }
+  // sizes over and under the 32-item IdList line, and the frame limit
+  ka := (seed * 9) % (na + 1); kb := na - (seed * 4) % (na + 1);
+  if kb < 0 { kb = 0; }
+  #assert n77_t_sync(a[ka..<na], b[0..<nb], 0) >= 2;
+  #assert n77_t_sync(a[0..<na], b[0..<nb - (seed % 5)], 4096) >= 2;
+}
+#forall "four syncs byte for byte as the Python transcription" c: 0..<4 #steps 2000000000 {
+  #assert n77_t_case(c);
+}
+#test "a fingerprint that differs in any byte is split; an equal one is skipped" {
+  v: [3] NegItem; n77_t_small(v[..]); o: [256] u8;
+  s: [1] Neg; #assert neg_init(s[..], v[..], false, 0) == NEG_OK;
+  m: [21] u8; m[0] = NEG_V1; m[1] = 0; m[2] = 0; m[3] = NEG_FINGERPRINT;
+  fp: [16] u8; neg_fingerprint(v[..], 0, 3, fp[..]);
+  for i: 0..<16 { m[4 + i] = fp[i]; }
+  #assert neg_reconcile(s[..], cast(string) m[0..<20], o[..]) == 1;
+  for k: 0..<16 {
+    m[4 + k] ^= 1;
+    #assert neg_reconcile(s[..], cast(string) m[0..<20], o[..]) == 1 + 4 + 96;
+    m[4 + k] ^= 1;
+  }
+  // an IdList whose count fits the bytes left only if they were miscounted
+  n: [40] u8; n[0] = NEG_V1; n[3] = NEG_IDLIST; n[4] = 1;
+  #assert neg_reconcile(s[..], cast(string) n[0..<36], o[..]) == -1 && s[0].error == NEG_SHORT;
+  #assert neg_reconcile(s[..], cast(string) n[0..<37], o[..]) == 1 + 4 + 96;
+}
+#test "the 32-item line, the frame limit's 200 bytes, exact fits" {
+  v: [32] NegItem; for i: 0..<32 { v[i].created = i; }
+  c: [1] Neg; o: [2048] u8;
+  #assert neg_init(c[..], v[0..<31], true, 0) == NEG_OK && neg_initiate(c[..], o[..]) == 1 + 4 + 31 * 32 && o[3] == NEG_IDLIST;
+  #assert neg_init(c[..], v[..], true, 0) == NEG_OK && neg_initiate(c[..], o[..]) > 0 && o[3] == NEG_FINGERPRINT;
+  // 2 items per bucket: the first bound is item 2's timestamp
+  #assert o[1] == 3 && o[2] == 0;
+  #assert neg_init(c[..], v[..], true, 4096) == NEG_OK;
+  #assert !neg_over(c[..], 3896) && neg_over(c[..], 3897);
+  #assert neg_init(c[..], v[..], true, 0) == NEG_OK && !neg_over(c[..], 1000000);
+  b: [2] u8; w: [1] NegOut; w[0] = NegOut.{buf = b[..]}; neg_put_varint(w[..], 300); #assert !w[0].full && w[0].n == 2;
+  r: [1] NegIn; m: [34] u8; m[0] = 1; m[1] = 32; m[33] = 7;
+  r[0] = NegIn.{msg = cast(string) m[..]}; x := neg_get_bound(r[..]); #assert r[0].error == NEG_OK && x.n == 32 && x.prefix[31] == 7;
+}
+
+#test "refusals: an empty message, a bad version, a mode, a short IdList" {
+  v: [3] NegItem; n77_t_small(v[..]); o: [256] u8;
+  s: [1] Neg; #assert neg_init(s[..], v[..], false, 0) == NEG_OK;
+  #assert n77_t_answer(s[..], "", o[..]) == -1 && s[0].error == NEG_SHORT;
+  #assert n77_t_answer(s[..], "5f", o[..]) == -1 && s[0].error == NEG_VERSION_BYTE;
+  #assert n77_t_answer(s[..], "70", o[..]) == -1 && s[0].error == NEG_VERSION_BYTE;
+  // a server answers a version it can't speak with the one it can
+  #assert n77_t_answer(s[..], "62000001", o[..]) == 1 && o[0] == NEG_V1 && s[0].error == NEG_OK;
+  #assert n77_t_answer(s[..], "6f", o[..]) == 1 && o[0] == NEG_V1;
+  #assert n77_t_answer(s[..], "60", o[..]) == 1 && o[0] == NEG_V1;
+  #assert n77_t_answer(s[..], "62", o[0..<0]) == -1 && s[0].error == NEG_SPACE;
+  c: [1] Neg; #assert neg_init(c[..], v[..], true, 0) == NEG_OK;
+  #assert n77_t_answer(c[..], "62", o[..]) == -1 && c[0].error == NEG_VERSION;
+  #assert n77_t_answer(c[..], "61", o[..]) == 0 && c[0].error == NEG_OK;
+  #assert n77_t_answer(s[..], "61", o[..]) == 1 && o[0] == NEG_V1;
+  #assert n77_t_answer(s[..], "61000003", o[..]) == -1 && s[0].error == NEG_MODE;
+  #assert n77_t_answer(s[..], "6100000100", o[..]) == -1 && s[0].error == NEG_SHORT;
+  #assert n77_t_answer(s[..], "610000020100", o[..]) == -1 && s[0].error == NEG_SHORT;
+  #assert n77_t_answer(s[..], "610000", o[..]) == -1 && s[0].error == NEG_SHORT;
+  #assert n77_t_answer(s[..], "610021", o[..]) == -1 && s[0].error == NEG_BOUND;
+  // a skip to infinity says nothing more: the answer is the version byte
+  #assert n77_t_answer(s[..], "61000000", o[..]) == 1;
+  // a server with nothing in the range answers with an empty IdList
+  e: [1] Neg; #assert neg_init(e[..], v[0..<0], false, 0) == NEG_OK;
+  #assert n77_t_answer(e[..], "6100000200", o[..]) == 5 && o[3] == NEG_IDLIST && o[4] == 0;
+  // an empty IdList for everything: the server sends its three ids
+  #assert n77_t_answer(s[..], "6100000200", o[..]) == 1 + 4 + 96 && o[4] == 3;
+}
+
+#test "every refusal has its own text" {
+  for e: 0..<NEG_ROLE + 1 { #assert neg_text(e).count > 1; for f: 0..<e { #assert neg_text(e) != neg_text(f); } }
+  #assert neg_text(-1) == "unknown" && neg_text(NEG_ROLE + 1) == "unknown" && neg_text(NEG_SHORT) == "the message ends inside a field";
+  #assert neg_text(NEG_OK) == "ok" && neg_text(NEG_ROLE) == "only the client starts";
+}
+
+// ---- NIP-77 frames ---------------------------------------------------------------
+#test "frames: written and read back" {
+  t: [64] u8;
+  o: [512] u8; m: [64] u8; f: N77Frame;
+  k := n77_write_open(o[..], "sync-1", "{\"kinds\":[1]}", n77_t_msg("6100000200", t[..]));
+  #assert cast(string) o[0..<k] == "[\"NEG-OPEN\",\"sync-1\",{\"kinds\":[1]},\"6100000200\"]";
+  f = n77_read(cast(string) o[0..<k], m[..], 64);
+  #assert f.error == N77_OK && f.verb == N77_OPEN && cast(string) f.sub[0..<f.sub_n] == "sync-1" && f.msg_n == 5 && m[0] == 0x61 && m[4] == 0;
+  #assert cast(string) o[f.filter_from..<f.filter_to] == "{\"kinds\":[1]}";
+  k = n77_write_msg(o[..], "sync-1", n77_t_msg("61ab", t[..])); #assert cast(string) o[0..<k] == "[\"NEG-MSG\",\"sync-1\",\"61ab\"]";
+  f = n77_read(cast(string) o[0..<k], m[..], 64); #assert f.error == N77_OK && f.verb == N77_MSG && f.msg_n == 2 && m[1] == 0xab;
+  k = n77_write_close(o[..], "sync-1"); #assert cast(string) o[0..<k] == "[\"NEG-CLOSE\",\"sync-1\"]";
+  f = n77_read(cast(string) o[0..<k], m[..], 64); #assert f.error == N77_OK && f.verb == N77_CLOSE && f.sub_n == 6;
+  k = n77_write_err(o[..], "sync-1", "blocked: this query is too big");
+  #assert cast(string) o[0..<k] == "[\"NEG-ERR\",\"sync-1\",\"blocked: this query is too big\"]";
+  f = n77_read(cast(string) o[0..<k], m[..], 64);
+  #assert f.error == N77_OK && f.verb == N77_ERR && cast(string) o[f.reason_from..<f.reason_to] == "blocked: this query is too big" && f.max_records == -1;
+  f = n77_read("[\"NEG-ERR\",\"a\",\"blocked: too big\",100000]", m[..], 64); #assert f.error == N77_OK && f.max_records == 100000;
+  f = n77_read("[\"NEG-MSG\",\"\\u0061\",\"61AB\"]", m[..], 64); #assert f.error == N77_OK && f.sub[0] == 'a' && f.sub_n == 1 && m[1] == 0xab;
+  #assert n77_write_msg(o[0..<10], "x", n77_t_msg("61", t[..])) == -1 && n77_write_open(o[0..<20], "x", "{}", n77_t_msg("61", t[..])) == -1;
+  #assert n77_write_close(o[0..<5], "x") == -1 && n77_write_err(o[0..<12], "x", "r") == -1;
+  #assert n77_write_msg(o[0..<19], "x", n77_t_msg("61", t[..])) == -1 && n77_write_msg(o[0..<20], "x", n77_t_msg("61", t[..])) == 20;
+}
+#test "frames: refusals" {
+  m: [8] u8;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"61\"", m[..], 8).error == N77_JSON;
+  #assert n77_read("{}", m[..], 8).error == N77_SHAPE && n77_read("[1]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"REQ\",\"a\",{}]", m[..], 8).error == N77_VERB && n77_read("[]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-MSG\",\"\",\"61\"]", m[..], 8).error == N77_SUB;
+  #assert n77_read("[\"NEG-MSG\",1,\"61\"]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-MSG\",\"0123456789012345678901234567890123456789012345678901234567890123x\",\"61\"]", m[..], 8).error == N77_SUB;
+  #assert n77_read("[\"NEG-MSG\",\"0123456789012345678901234567890123456789012345678901234567890123\",\"61\"]", m[..], 8).error == N77_OK;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"611\"]", m[..], 8).error == N77_HEX;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"6g\"]", m[..], 8).error == N77_HEX;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"\\u0036\\u0031\"]", m[..], 8).error == N77_HEX;
+  #assert n77_read("[\"NEG-MSG\",\"a\",61]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-MSG\",\"a\"]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"61\",\"62\"]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-OPEN\",\"a\",[],\"61\"]", m[..], 8).error == N77_FILTER;
+  #assert n77_read("[\"NEG-OPEN\",\"a\",{},\"61\",1]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-OPEN\",\"a\",{}]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-CLOSE\",\"a\",\"61\"]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-ERR\",\"a\"]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-ERR\",\"a\",\"r\",\"x\"]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-ERR\",\"a\",\"r\",1.5]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-ERR\",\"a\",\"r\",-1]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-ERR\",\"a\",\"r\",1,2]", m[..], 8).error == N77_SHAPE;
+  #assert n77_read("[\"NEG-ERR\",\"a\",7]", m[..], 8).error == N77_SHAPE;
+  // the frame limit: a message longer than max bytes, or than the buffer
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"6100000200\"]", m[..], 4).error == N77_FRAME;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"6100000200\"]", m[..], 5).error == N77_OK;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"6100000200\"]", m[0..<4], 64).error == N77_FRAME;
+  // 64 characters of two bytes each fit; 65 don't
+  long: [300] u8; k := json_raw(long[..], 0, "[\"NEG-CLOSE\",\"");
+  for i: 0..<64 { k = json_raw(long[..], k, "é"); }
+  #assert n77_read(cast(string) long[0..<json_raw(long[..], k, "\"]")], m[..], 8).error == N77_OK;
+  k = json_raw(long[..], k, "e");
+  #assert n77_read(cast(string) long[0..<json_raw(long[..], k, "\"]")], m[..], 8).error == N77_SUB;
+  // empty and exact
+  f0 := n77_read("[\"NEG-MSG\",\"a\",\"\"]", m[..], 8); #assert f0.error == N77_OK && f0.msg_n == 0;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"6100000200\"]", m[0..<5], 8).error == N77_OK;
+  #assert n77_read("[\"NEG-MSG\",\"a\",\"\",1]", m[..], 8).error == N77_SHAPE;
+  f0 = n77_read("[\"NEG-ERR\",\"a\",\"r\",0]", m[..], 8); #assert f0.error == N77_OK && f0.max_records == 0;
+  // what was read before the refusal stays, so a relay can answer NEG-ERR
+  f := n77_read("[\"NEG-MSG\",\"s9\",\"6\"]", m[..], 8); #assert f.error == N77_HEX && f.verb == N77_MSG && f.sub_n == 2;
+}
+
+// ---- the code ------------------------------------------------------------------
+// book:begin varint
+neg_put_byte :: (w: [] NegOut, b: int) {
+  if w[0].n >= w[0].buf.count { w[0].full = true; return; }
+  w[0].buf[w[0].n] = cast(u8) b; w[0].n += 1;
+}
+// Base-128 digits, most significant first; the high bit on all but the last.
+neg_put_varint :: (w: [] NegOut, v: int) {
+  if v < 0 { w[0].full = true; return; }
+  d: [10] u8; k := 0; x := v;
+  while true { d[k] = cast(u8) (x & 127); k += 1; x >>= 7; if x == 0 { break; } }
+  if w[0].n + k > w[0].buf.count { w[0].full = true; return; }
+  while k > 1 { k -= 1; neg_put_byte(w, cast(int) d[k] | 128); }
+  neg_put_byte(w, cast(int) d[0]);
+}
+neg_get_varint :: (r: [] NegIn) -> int {
+  v := 0;
+  while r[0].error == NEG_OK {
+    if r[0].at >= r[0].msg.count { r[0].error = NEG_SHORT; break; }
+    c := cast(int) r[0].msg[r[0].at]; r[0].at += 1;
+    if v > (NEG_INFINITY >> 7) { r[0].error = NEG_VARINT; break; }
+    v = (v << 7) | (c & 127);
+    if c < 128 {
+      if v == NEG_INFINITY { r[0].error = NEG_VARINT; break; }
+      return v;
+    }
+  }
+  return 0;
+}
+// book:end varint
+
+// book:begin bound
+// A bound: 0 for infinity, else 1 + the step from the last timestamp
+// written; then the prefix's length and bytes.
+neg_put_bound :: (w: [] NegOut, b: NegBound) {
+  if b.created == NEG_INFINITY { neg_put_varint(w, 0); }
+  else { neg_put_varint(w, b.created - w[0].last + 1); }
+  w[0].last = b.created;
+  neg_put_varint(w, b.n);
+  for i: 0..<b.n { neg_put_byte(w, cast(int) b.prefix[i]); }
+}
+neg_get_bound :: (r: [] NegIn) -> NegBound {
+  b: NegBound;
+  code := neg_get_varint(r);
+  if code == 0 || r[0].last == NEG_INFINITY { b.created = NEG_INFINITY; }
+  else if code - 1 >= NEG_INFINITY - r[0].last { r[0].error = NEG_BOUND; }
+  else { b.created = r[0].last + code - 1; }
+  r[0].last = b.created;
+  b.n = neg_get_varint(r);
+  if b.n > 32 { r[0].error = NEG_BOUND; }
+  if r[0].error != NEG_OK { return b; }
+  if r[0].at + b.n > r[0].msg.count { r[0].error = NEG_SHORT; return b; }
+  for i: 0..<b.n { b.prefix[i] = r[0].msg[r[0].at + i]; }
+  r[0].at += b.n;
+  return b;
+}
+// The shortest bound above a and not above b, neighbours in sort order:
+// b's timestamp alone, or with b's id up to the first byte that differs.
+neg_between :: (a: NegItem, b: NegItem) -> NegBound {
+  m: NegBound; m.created = b.created;
+  if a.created != b.created { return m; }
+  while a.id[m.n] == b.id[m.n] { m.prefix[m.n] = b.id[m.n]; m.n += 1; }
+  m.prefix[m.n] = b.id[m.n]; m.n += 1;
+  return m;
+}
+// book:end bound
+
+// book:begin fingerprint
+// sum += id, both 32-byte little-endian integers, mod 2^256.
+neg_add :: (sum: [] u8, id: [32] u8) {
+  carry := 0;
+  for i: 0..<32 {
+    s := cast(int) sum[i] + cast(int) id[i] + carry;
+    sum[i] = cast(u8) (s & 255); carry = s >> 8;
+  }
+}
+// The first 16 bytes of SHA-256(sum of the ids || varint(count)).
+neg_fingerprint :: (items: [] NegItem, from: int, to: int, out: [] u8) {
+  sum: [32] u8; buf: [42] u8;
+  for i: from..<to { neg_add(sum[..], items[i].id); }
+  for i: 0..<32 { buf[i] = sum[i]; }
+  wb: [1] NegOut; w := wb[..]; w[0] = NegOut.{buf = buf[..], n = 32};
+  neg_put_varint(w, to - from);
+  h: [32] u8;
+  #assert sha256_hash_checked(buf[0..<w[0].n], h[..], false) == SHA_OK;
+  for i: 0..<16 { out[i] = h[i]; }
+}
+// book:end fingerprint
+
+// book:begin items
+neg_less :: (a: NegItem, b: NegItem) -> bool {
+  if a.created < b.created { return true; }
+  if a.created > b.created { return false; }
+  for i: 0..<32 { if a.id[i] < b.id[i] { return true; } if a.id[i] > b.id[i] { return false; } }
+  return false;
+}
+// item < bound: the bound's missing id bytes are zero.
+neg_below :: (a: NegItem, b: NegBound) -> bool {
+  if a.created < b.created { return true; }
+  if a.created > b.created { return false; }
+  for i: 0..<b.n { if a.id[i] < b.prefix[i] { return true; } if a.id[i] > b.prefix[i] { return false; } }
+  return false;
+}
+// The first item at or after from that is not below the bound. Ranges come
+// in ascending order, so one message walks the items once.
+neg_lower :: (items: [] NegItem, from: int, b: NegBound) -> int {
+  i := from;
+  while i < items.count && neg_below(items[i], b) { i += 1; }
+  return i;
+}
+// Heap sort by (created_at, id).
+neg_sift :: (v: [] NegItem, root: int, n: int) {
+  at := root;
+  while 2 * at + 1 < n {
+    c := 2 * at + 1;
+    if c + 1 < n && neg_less(v[c], v[c + 1]) { c += 1; }
+    if !neg_less(v[at], v[c]) { return; }
+    t := v[at]; v[at] = v[c]; v[c] = t; at = c;
+  }
+}
+neg_sort :: (v: [] NegItem) {
+  for k: 0..<v.count / 2 { neg_sift(v, v.count / 2 - 1 - k, v.count); }
+  for k: 1..<v.count { end := v.count - k; t := v[0]; v[0] = v[end]; v[end] = t; neg_sift(v, 0, end); }
+}
+// One side over sorted items. frame_limit is 0 (none) or at least 4096.
+neg_init :: (n: [] Neg, items: [] NegItem, initiator: bool, frame_limit: int) -> int {
+  n[0] = Neg.{items = items, initiator = initiator, frame_limit = frame_limit};
+  if frame_limit != 0 && frame_limit < NEG_FRAME_MIN { n[0].error = NEG_FRAME; return NEG_FRAME; }
+  for i: 0..<items.count {
+    if items[i].created < 0 || items[i].created >= NEG_INFINITY || (i > 0 && !neg_less(items[i - 1], items[i])) {
+      n[0].error = NEG_ORDER; return NEG_ORDER;
+    }
+  }
+  return NEG_OK;
+}
+// book:end items
+
+// book:begin split
+// Items [lo, hi) up to bound ub: an IdList under 32 items, otherwise 16
+// buckets, each with its fingerprint and the bound that ends it.
+neg_split :: (n: [] Neg, lo: int, hi: int, ub: NegBound, w: [] NegOut) {
+  items := n[0].items;
+  count := hi - lo;
+  if count < 2 * NEG_BUCKETS {
+    neg_put_bound(w, ub); neg_put_varint(w, NEG_IDLIST); neg_put_varint(w, count);
+    for i: lo..<hi { for k: 0..<32 { neg_put_byte(w, cast(int) items[i].id[k]); } }
+    return;
+  }
+  per := count / NEG_BUCKETS; extra := count % NEG_BUCKETS; at := lo;
+  for k: 0..<NEG_BUCKETS {
+    size := ifx k < extra then per + 1 else per;
+    fp: [16] u8; neg_fingerprint(items, at, at + size, fp[..]);
+    at += size;
+    b := ub;
+    if at < hi { b = neg_between(items[at - 1], items[at]); }
+    neg_put_bound(w, b); neg_put_varint(w, NEG_FINGERPRINT);
+    for i: 0..<16 { neg_put_byte(w, cast(int) fp[i]); }
+  }
+}
+neg_over :: (n: [] Neg, bytes: int) -> bool { return n[0].frame_limit != 0 && bytes > n[0].frame_limit - 200; }
+// The client's first message: everything, split.
+neg_initiate :: (n: [] Neg, out: [] u8) -> int {
+  if !n[0].initiator { n[0].error = NEG_ROLE; return -1; }
+  wb: [1] NegOut; w := wb[..]; w[0] = NegOut.{buf = out};
+  neg_put_byte(w, NEG_V1);
+  inf: NegBound; inf.created = NEG_INFINITY;
+  neg_split(n, 0, n[0].items.count, inf, w);
+  if w[0].full { n[0].error = NEG_SPACE; return -1; }
+  return w[0].n;
+}
+// book:end split
+
+// book:begin idlist
+// The client's reading of the server's IdList for items [lo, hi): ours not
+// in theirs are have, theirs not in ours are need (each once).
+neg_has :: (ids: string, count: int, id: [32] u8) -> bool {
+  for j: 0..<count {
+    same := true;
+    for k: 0..<32 { if ids[32 * j + k] != id[k] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+neg_compare :: (n: [] Neg, lo: int, hi: int, ids: string, count: int) -> bool {
+  for i: lo..<hi {
+    if !neg_has(ids, count, n[0].items[i].id) {
+      if n[0].have_n >= n[0].have.count { return false; }
+      n[0].have[n[0].have_n].b = n[0].items[i].id; n[0].have_n += 1;
+    }
+  }
+  for j: 0..<count {
+    id: [32] u8; for k: 0..<32 { id[k] = ids[32 * j + k]; }
+    if neg_has(ids, j, id) { continue; }
+    mine := false;
+    for i: lo..<hi { if !mine && neg_has(ids[32 * j..<32 * j + 32], 1, n[0].items[i].id) { mine = true; } }
+    if mine { continue; }
+    if n[0].need_n >= n[0].need.count { return false; }
+    n[0].need[n[0].need_n].b = id; n[0].need_n += 1;
+  }
+  return true;
+}
+// book:end idlist
+
+// book:begin reconcile
+// Answers one message into out: its length; 0 when the client is done; -1
+// with n.error set on a refusal. The client collects have and need.
+neg_reconcile :: (n: [] Neg, msg: string, out: [] u8) -> int {
+  n[0].error = NEG_OK;
+  items := n[0].items;
+  wb: [1] NegOut; w := wb[..]; w[0] = NegOut.{buf = out};
+  rb: [1] NegIn; r := rb[..]; r[0] = NegIn.{msg = msg};
+  neg_put_byte(w, NEG_V1);
+  if msg.count == 0 { return neg_refuse(n, NEG_SHORT); }
+  v := cast(int) msg[0]; r[0].at = 1;
+  if v < 0x60 || v > 0x6f { return neg_refuse(n, NEG_VERSION_BYTE); }
+  if v != NEG_V1 {
+    if n[0].initiator { return neg_refuse(n, NEG_VERSION); }
+    if w[0].full { return neg_refuse(n, NEG_SPACE); }
+    return 1;
+  }
+  prev: NegBound; prev_at: int; skip := false; sent_at: int;
+  while r[0].at < msg.count {
+    mark := w[0].n;
+    b := neg_get_bound(r);
+    mode := neg_get_varint(r);
+    if r[0].error != NEG_OK { return neg_refuse(n, r[0].error); }
+    lo := prev_at; hi := neg_lower(items, prev_at, b);
+    if mode == NEG_SKIP { skip = true; }
+    else if mode == NEG_FINGERPRINT {
+      if r[0].at + 16 > msg.count { return neg_refuse(n, NEG_SHORT); }
+      ours: [16] u8; neg_fingerprint(items, lo, hi, ours[..]);
+      same := true;
+      for i: 0..<16 { if ours[i] != msg[r[0].at + i] { same = false; } }
+      r[0].at += 16;
+      if same { skip = true; }
+      else {
+        if skip { skip = false; neg_put_bound(w, prev); neg_put_varint(w, NEG_SKIP); }
+        neg_split(n, lo, hi, b, w);
+      }
+    } else if mode == NEG_IDLIST {
+      count := neg_get_varint(r);
+      if r[0].error != NEG_OK || count > (msg.count - r[0].at) / 32 { return neg_refuse(n, NEG_SHORT); }
+      ids := msg[r[0].at..<r[0].at + 32 * count];
+      r[0].at += 32 * count;
+      if n[0].initiator {
+        skip = true;
+        if !neg_compare(n, lo, hi, ids, count) { return neg_refuse(n, NEG_SPACE); }
+      } else {
+        if skip { skip = false; neg_put_bound(w, prev); neg_put_varint(w, NEG_SKIP); }
+        // send our ids, as many as the frame limit allows
+        end := b; k := 0;
+        while lo + k < hi && !neg_over(n, mark + 32 * k) { k += 1; }
+        if lo + k < hi {
+          end.created = items[lo + k].created; end.n = 32; end.prefix = items[lo + k].id;
+          hi = lo + k;
+        }
+        neg_put_bound(w, end); neg_put_varint(w, NEG_IDLIST); neg_put_varint(w, k);
+        for i: lo..<hi { for j: 0..<32 { neg_put_byte(w, cast(int) items[i].id[j]); } }
+        mark = w[0].n; sent_at = hi;
+      }
+    } else { return neg_refuse(n, NEG_MODE); }
+    if neg_over(n, w[0].n) {
+      // over the frame limit: drop this range's output and fingerprint
+      // everything from the last bound sent to infinity (an infinite bound
+      // doesn't depend on the last timestamp written)
+      w[0].n = mark;
+      inf: NegBound; inf.created = NEG_INFINITY;
+      fp: [16] u8; neg_fingerprint(items, sent_at, items.count, fp[..]);
+      neg_put_bound(w, inf); neg_put_varint(w, NEG_FINGERPRINT);
+      for i: 0..<16 { neg_put_byte(w, cast(int) fp[i]); }
+      break;
+    }
+    if w[0].n > mark { sent_at = hi; }
+    prev_at = hi; prev = b;
+  }
+  if w[0].full { return neg_refuse(n, NEG_SPACE); }
+  if w[0].n == 1 && n[0].initiator { return 0; }
+  return w[0].n;
+}
+neg_refuse :: (n: [] Neg, e: int) -> int { n[0].error = e; return -1; }
+// book:end reconcile
+// What each refusal means, for a NEG-ERR reason or a log.
+neg_text :: (e: int) -> string {
+  texts := [11] string.["ok", "the message ends inside a field", "a varint is too large",
+    "not a Negentropy version byte", "unsupported Negentropy version", "unknown mode",
+    "bad bound", "frame limit below 4096", "out of space", "items out of order", "only the client starts"];
+  if e < 0 || e > NEG_ROLE { return "unknown"; }
+  return texts[e];
+}
+
+// ---- NIP-77 frames ----------------------------------------------------------------
+// book:begin frames
+N77_OPEN :: 1; N77_MSG :: 2; N77_CLOSE :: 3; N77_ERR :: 4;
+// What n77_read refuses.
+N77_OK :: 0; N77_JSON :: 1; N77_SHAPE :: 2; N77_VERB :: 3; N77_SUB :: 4;
+N77_HEX :: 5; N77_FRAME :: 6; N77_FILTER :: 7;
+N77_SUB_MAX :: 64;
+// A frame as read: the verb, the subscription id, the filter's bytes in the
+// text (NEG-OPEN), the message decoded into the caller's buffer (NEG-OPEN,
+// NEG-MSG), the reason's raw bytes and the optional record limit (NEG-ERR).
+N77Frame :: struct {
+  error: int = N77_SHAPE; verb: int;
+  sub: [256] u8; sub_n: int;
+  filter_from: int; filter_to: int;
+  msg_n: int;
+  reason_from: int; reason_to: int; max_records: int = -1;
+}
+// book:end frames
+
+n77_chars :: (s: []u8) -> int { n := 0; for c: s { if (c & 0xc0) != 0x80 { n += 1; } } return n; }
+n77_fail :: (f: N77Frame, e: int) -> N77Frame { g := f; g.error = e; return g; }
+// A hex string token straight into msg: no escapes, at most max bytes.
+n77_hex :: (raw: string, msg: [] u8, max: int) -> int {
+  if raw.count > 2 * max || raw.count > 2 * msg.count { return -N77_FRAME; }
+  r := hex_decode_checked(raw, msg, false);
+  if r.error != NC_OK { return -N77_HEX; }
+  return r.written;
+}
+
+// book:begin read
+// One NEG-* frame. max is the largest binary message this side accepts.
+n77_read :: (text: string, msg: [] u8, max: int) -> N77Frame {
+  f: N77Frame;
+  if !json_valid(text) { return n77_fail(f, N77_JSON); }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_ARRAY || json_next(j[..]) != JSON_STRING { return f; }
+  verb := json_text(j[..]);
+  if json_is(verb, "NEG-OPEN") { f.verb = N77_OPEN; } else if json_is(verb, "NEG-MSG") { f.verb = N77_MSG; }
+  else if json_is(verb, "NEG-CLOSE") { f.verb = N77_CLOSE; } else if json_is(verb, "NEG-ERR") { f.verb = N77_ERR; }
+  else { return n77_fail(f, N77_VERB); }
+  if json_next(j[..]) != JSON_STRING { return f; }
+  f.sub_n = json_unescape(json_text(j[..]), f.sub[..]);
+  c := n77_chars(f.sub[0..<f.sub_n]);
+  if c < 1 || c > N77_SUB_MAX { return n77_fail(f, N77_SUB); }
+  t := json_next(j[..]);
+  if f.verb == N77_OPEN {
+    if t != JSON_OBJECT { return n77_fail(f, N77_FILTER); }
+    f.filter_from = j[0].from; skipped := json_skip(j[..]); f.filter_to = j[0].to;
+    t = json_next(j[..]);
+  }
+  if f.verb == N77_OPEN || f.verb == N77_MSG {
+    if t != JSON_STRING { return f; }
+    k := n77_hex(json_text(j[..]), msg, max);
+    if k < 0 { return n77_fail(f, -k); }
+    f.msg_n = k; t = json_next(j[..]);
+  }
+  if f.verb == N77_ERR {
+    if t != JSON_STRING { return f; }
+    f.reason_from = j[0].from; f.reason_to = j[0].to; t = json_next(j[..]);
+    if t == JSON_NUMBER {
+      m := json_int(json_text(j[..]));
+      if !m.ok || m.value < 0 { return f; }
+      f.max_records = m.value; t = json_next(j[..]);
+    }
+  }
+  if t != JSON_ARRAY_END { return f; }
+  return n77_fail(f, N77_OK);
+}
+// book:end read
+
+// book:begin write
+n77_head :: (out: [] u8, verb: string, sub: string) -> int {
+  n := json_raw(out, 0, "[\""); n = json_raw(out, n, verb); n = json_raw(out, n, "\",");
+  return json_write_string(out, n, sub);
+}
+n77_put_hex :: (out: [] u8, at: int, msg: string) -> int {
+  n := json_raw(out, at, ",\"");
+  if n == -1 { return -1; }
+  r := hex_encode_checked(msg, out[n..<out.count], false);
+  if r.error != NC_OK { return -1; }
+  return json_raw(out, n + r.written, "\"");
+}
+n77_write_open :: (out: [] u8, sub: string, filter: string, msg: string) -> int {
+  n := n77_head(out, "NEG-OPEN", sub); n = json_raw(out, n, ","); n = json_raw(out, n, filter);
+  return json_raw(out, n77_put_hex(out, n, msg), "]");
+}
+n77_write_msg :: (out: [] u8, sub: string, msg: string) -> int {
+  return json_raw(out, n77_put_hex(out, n77_head(out, "NEG-MSG", sub), msg), "]");
+}
+n77_write_close :: (out: [] u8, sub: string) -> int { return json_raw(out, n77_head(out, "NEG-CLOSE", sub), "]"); }
+n77_write_err :: (out: [] u8, sub: string, reason: string) -> int {
+  n := json_raw(out, n77_head(out, "NEG-ERR", sub), ",");
+  return json_raw(out, json_write_string(out, n, reason), "]");
+}
+// book:end write

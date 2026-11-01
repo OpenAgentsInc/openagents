@@ -1,0 +1,92 @@
+varints, by hand: base 128, most significant digit first
+  0 -> 00
+  127 -> 7f
+  128 -> 8100
+  300 -> 822c
+  16384 -> 818000
+  1793491200 -> 86d79a8200
+
+the fingerprint of two ids, by hand
+  a = ffff0000...  (0xffff little-endian)
+  b = 01000000...  (0x0001)
+  a + b mod 2^256 = 00000100... (0x010000)
+  sha256(sum || varint(2)) = 47178f396ea8b5434d8ed8aa88bbbb2324037414f06a94fcb362280ca5121e50
+  fingerprint = first 16 bytes = 47178f396ea8b5434d8ed8aa88bbbb23
+
+two relays, five signed notes, three on each (A B C D E; X has A B C, Y has C D E)
+  note A created_at 1793491100 id 00cc823a7c0512cfee5c563e73a47895c768309b6604ec156066a5d85225c9b3
+  note B created_at 1793491100 id c6b4df51484211c8101a70258f72ad884f903b399fb18c9706ff2cb3ad0157b1
+  note C created_at 1793491110 id 49cae413bf579f99c2e3075854aebf5401a8a2c3fa7a3b21762c5a1395838ad9
+  note D created_at 1793491110 id ff93c26285153749f7bd6ffbb82b6f16f2413c1f6ed5bdcf2cd818dba7cee481
+  note E created_at 1793491120 id 31db86c7c0eb586469ff288d717b21e54dc9ace6443f0b61d4e0cee2486244cd
+  client -> ["NEG-OPEN","sync-1",{"kinds":[1]},"610000020300cc823a7c0512..."] (101 bytes)
+       range 1: below infinity, IdList of 3 ids
+  relay  -> ["NEG-MSG","sync-1","610000020349cae413bf579f..."] (101 bytes)
+       range 1: below infinity, IdList of 3 ids
+  client -> ["NEG-CLOSE","sync-1"]
+  2 frames, 202 message bytes; have 2, need 2
+  have 00cc823a7c0512cf... (the relay lacks it)
+  have c6b4df51484211c8... (the relay lacks it)
+  need ff93c26285153749... (the client lacks it)
+  need 31db86c7c0eb5864... (the client lacks it)
+
+two relays of generated records: 1,000 ids sha256("negentropy i"), X keeps those whose
+first byte mod 5 is not 0, Y those whose second byte mod 5 is not 0
+frame limit 0:
+  client -> ["NEG-OPEN","sync-1",{"kinds":[1]},"6186d799fe2b01d301b5a235..."] (316 bytes)
+       range 1: below (1793490730, id prefix d3), fingerprint b5a2355016e82bd591c839c29086fb36
+       range 2: below 1793490763, fingerprint 33777e988edf0a65111e635c0d7f56a0
+       range 3: below 1793490795, fingerprint ab2b1c7068272e978467f8a459ee850c
+       range 4: below 1793490826, fingerprint 44167b6f00904fe5fb4e78c2ad5978de
+       ... 16 ranges in all
+  relay  -> ["NEG-MSG","sync-1","6186d799fe0f01d30178ca47..."] (4974 bytes)
+       range 1: below (1793490702, id prefix d3), fingerprint 78ca47d004d8703d19cbd67f7a58b7d5
+       range 2: below 1793490707, fingerprint e0d3f1027a4571109156dc7e9f6f190e
+       range 3: below 1793490709, fingerprint 76fd92a24c842177fd422559d662e776
+       range 4: below 1793490711, fingerprint 835d679a6bc5646181801fd863c93368
+       ... 256 ranges in all
+  client -> ["NEG-MSG","sync-1","6186d799fe0f01d300060002..."] (18817 bytes)
+       range 1: below (1793490702, id prefix d3), Skip
+       range 2: below 1793490707, IdList of 8 ids
+       range 3: below 1793490709, IdList of 3 ids
+       range 4: below 1793490711, IdList of 3 ids
+       ... 236 ranges in all
+  relay  -> ["NEG-MSG","sync-1","6186d799fe0f01d300060002..."] (19873 bytes)
+       range 1: below (1793490702, id prefix d3), Skip
+       range 2: below 1793490707, IdList of 3 ids
+       range 3: below 1793490709, IdList of 3 ids
+       range 4: below 1793490711, IdList of 3 ids
+       ... 236 ranges in all
+  client -> ["NEG-CLOSE","sync-1"]
+  4 frames, 43980 message bytes; have 143, need 176
+  X 771 records, Y 804; a full comparison finds 143 only on X and 176 only on Y
+  have is exactly X - Y: true; need is exactly Y - X: true
+  sha256 of the sorted have ids 834f8d0dcc6b8b6aa6bf955b211d910ab818e328b931f443591499ddeda47eed
+  sha256 of the sorted need ids 92f0c8158da7febf06b8055327a5d34395df2da15d22b6936d89f6d26c83c785
+frame limit 4096:
+  message sizes: 316 3752 3908 3967 352 3798 3886 3921 323 3816 788 3459 318 3710 318 3308
+  16 frames, 39940 message bytes; have 143, need 176
+  X 771 records, Y 804; a full comparison finds 143 only on X and 176 only on Y
+  have is exactly X - Y: true; need is exactly Y - X: true
+  sha256 of the sorted have ids 834f8d0dcc6b8b6aa6bf955b211d910ab818e328b931f443591499ddeda47eed
+  sha256 of the sorted need ids 92f0c8158da7febf06b8055327a5d34395df2da15d22b6936d89f6d26c83c785
+
+refusals: Negentropy messages (the relay's side, then the client's)
+  an empty IdList cut short: 61000002 -> refused, the message ends inside a field
+  a fingerprint cut short: 6100000100112233 -> refused, the message ends inside a field
+  mode 3: 6100000300 -> refused, unknown mode
+  an id prefix of 33 bytes: 610021 -> refused, bad bound
+  a varint past 2^63 - 2: 61ffffffffffffffff7f -> refused, a varint is too large
+  version byte 0x50: 50 -> refused, not a Negentropy version byte
+  version 2 (0x62), to the relay: 62 -> answered 61
+  version 2 (0x62), to the client: 62 -> refused, unsupported Negentropy version
+  a frame limit of 1000: frame limit below 4096
+
+refusals: NIP-77 frames (a relay that takes messages of at most 4 bytes for the last two)
+  odd hex: ["NEG-MSG","s1","610"] -> N77_HEX, relay answers ["NEG-ERR","s1","invalid: bad NEG frame"]
+  not hex: ["NEG-MSG","s1","61zz"] -> N77_HEX, relay answers ["NEG-ERR","s1","invalid: bad NEG frame"]
+  no message: ["NEG-MSG","s1"] -> N77_SHAPE, relay answers ["NEG-ERR","s1","invalid: bad NEG frame"]
+  a filter that is an array: ["NEG-OPEN","s1",[],"61"] -> N77_FILTER, relay answers ["NEG-ERR","s1","invalid: bad NEG frame"]
+  an empty subscription id: ["NEG-CLOSE",""] -> N77_SUB
+  5 bytes: ["NEG-MSG","s1","6100000200"] -> N77_FRAME, relay answers ["NEG-ERR","s1","blocked: message over the frame limit"]
+  4 bytes: ["NEG-MSG","s1","61000000"] -> N77_OK

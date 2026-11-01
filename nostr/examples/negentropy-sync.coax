@@ -1,0 +1,295 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip77.coax";
+#load "../../coax/lib/nostr/store_index.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relays' clock for the whole run: 2026-11-01T00:00:00Z.
+NOW :: 1793491200;
+// BIP-340 vectors 0 to 3's published test keys and aux. Never sign with a
+// real key in an example.
+KEY_A :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_A :: "0000000000000000000000000000000000000000000000000000000000000001";
+KEY_B :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+AUX_B :: "c87aa53824b4d7ae2eb035a2b5bbbccc080e76cdc6d1692c4b0b62d798e6d906";
+KEY_C :: "0000000000000000000000000000000000000000000000000000000000000003";
+AUX_C :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+// A relay: a store of up to 1024 records and its index (chapter 36).
+Relay :: struct {
+  arena: [131072] u8; recs: [1024] RsdRec; s: [1] RsdStore;
+  by_id: [1024] int; by_ak: [1024] int; by_time: [1024] int; tag_key: [2048] int; tag_rec: [2048] int;
+  ix: [1] NsiIndex;
+  scratch: [4096] u8;
+}
+relay_init :: (r: [] Relay) {
+  r[0].s[0] = RsdStore.{}; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  r[0].ix[0] = NsiIndex.{by_id = r[0].by_id[..], by_ak = r[0].by_ak[..], by_time = r[0].by_time[..], tag_key = r[0].tag_key[..], tag_rec = r[0].tag_rec[..]};
+}
+// One EVENT through the relay's admission: read, signature, store.
+admit :: (r: [] Relay, text: string) -> int {
+  a := rs_admit_read(text, NOW, false, false, r[0].scratch[..]);
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(text, r[0].scratch[..], false)); }
+  if a.reason != RS_ACCEPT { return a.reason; }
+  return rsd_admit(r[0].s[..], a, text);
+}
+sign :: (key_hex: string, aux_hex: string, created_at: int, kind: int, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(key_hex, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(aux_hex, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, kind, "[]", content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+to_hex :: (b: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<b.count { out[2 * i] = digits[b[i] >> 4]; out[2 * i + 1] = digits[b[i] & 15]; }
+  return cast(string) out[0..<2 * b.count];
+}
+
+// book:begin items
+// The records of a store that match a NIP-01 filter, as sorted items.
+Side :: struct { items: [1024] NegItem; n: int; neg: [1] Neg; have: [512] NegId; need: [512] NegId; }
+select_items :: (r: [] Relay, filter: string, side: [] Side) -> bool {
+  strs: [64] string; ints: [16] int; tags: [16] NostrTagFilter; bytes: [2048] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  if filter_read(filter, f[..], sp[..]) != FR_OK { return false; }
+  at: [1024] int;
+  q := nsi_query_limit(r[0].s[..], r[0].ix[..], f[0], NOW, 1024, at[..]);
+  if q.n < 0 { return false; }
+  for i: 0..<q.n {
+    side[0].items[i].created = r[0].recs[at[i]].created; side[0].items[i].id = r[0].recs[at[i]].id;
+  }
+  side[0].n = q.n;
+  neg_sort(side[0].items[0..<q.n]);
+  return true;
+}
+// book:end items
+
+// book:begin sync
+// Client x syncs with relay y over NIP-77 frames, with frame limit limit on
+// both sides. Each frame is written, read back by the other side, and
+// answered. Prints one line per frame unless quiet.
+run_sync :: (x: [] Relay, y: [] Relay, filter: string, limit: int, cx: [] Side, sy: [] Side, quiet: bool) -> int {
+  frame: [65536] u8; msg: [32768] u8; got: [32768] u8;
+  #assert select_items(x, filter, cx);
+  #assert neg_init(cx[0].neg[..], cx[0].items[0..<cx[0].n], true, limit) == NEG_OK;
+  cx[0].neg[0].have = cx[0].have[..]; cx[0].neg[0].need = cx[0].need[..];
+  m := neg_initiate(cx[0].neg[..], msg[..]);
+  k := n77_write_open(frame[..], "sync-1", filter, cast(string) msg[0..<m]);
+  frames := 0; sizes := 0;
+  while true {
+    // the relay: a NEG-OPEN starts a session over its own matching records
+    f := n77_read(cast(string) frame[0..<k], got[..], 32768);
+    #assert f.error == N77_OK;
+    frames += 1; sizes += m;
+    show_frame(cast(string) frame[0..<k], cast(string) got[0..<f.msg_n], frames, quiet);
+    if f.verb == N77_OPEN {
+      #assert select_items(y, cast(string) frame[f.filter_from..<f.filter_to], sy);
+      #assert neg_init(sy[0].neg[..], sy[0].items[0..<sy[0].n], false, limit) == NEG_OK;
+    }
+    m = neg_reconcile(sy[0].neg[..], cast(string) got[0..<f.msg_n], msg[..]);
+    #assert m > 0;
+    k = n77_write_msg(frame[..], "sync-1", cast(string) msg[0..<m]);
+    // the client
+    f = n77_read(cast(string) frame[0..<k], got[..], 32768);
+    #assert f.error == N77_OK && f.verb == N77_MSG;
+    frames += 1; sizes += m;
+    show_frame(cast(string) frame[0..<k], cast(string) got[0..<f.msg_n], frames, quiet);
+    m = neg_reconcile(cx[0].neg[..], cast(string) got[0..<f.msg_n], msg[..]);
+    #assert m >= 0;
+    if m == 0 { break; }
+    k = n77_write_msg(frame[..], "sync-1", cast(string) msg[0..<m]);
+  }
+  k = n77_write_close(frame[..], "sync-1");
+  if quiet { print("\n"); } else { print("  client -> %\n", cast(string) frame[0..<k]); }
+  print("  % frames, % message bytes; have %, need %\n", frames, sizes, cx[0].neg[0].have_n, cx[0].neg[0].need_n);
+  return frames;
+}
+// book:end sync
+// A frame, its hex cut to 24 digits, and its first ranges decoded; or,
+// when quiet, only the message's size.
+show_frame :: (frame: string, msg: string, i: int, quiet: bool) {
+  if quiet { if i == 1 { print("  message sizes:"); } print(" %", msg.count); return; }
+  who := ifx i % 2 == 1 then "client" else "relay ";
+  at := frame.count - 3; while frame[at] != '"' { at -= 1; }
+  if frame.count - 2 - (at + 1) > 24 { print("  % -> %...\"] (% bytes)\n", who, cast(string) frame[0..<at + 25], msg.count); }
+  else { print("  % -> % (% bytes)\n", who, frame, msg.count); }
+  explain(msg);
+}
+// book:begin explain
+// The ranges of a message, the first four in full.
+explain :: (msg: string) {
+  r: [1] NegIn; r[0] = NegIn.{msg = msg, at = 1};
+  h: [64] u8; k := 0;
+  while r[0].at < msg.count && r[0].error == NEG_OK {
+    b := neg_get_bound(r[..]); mode := neg_get_varint(r[..]);
+    if k < 4 {
+      print("       range %: below ", k + 1);
+      if b.created == NEG_INFINITY { print("infinity"); } else if b.n == 0 { print("%", b.created); }
+      else { print("(%, id prefix %)", b.created, to_hex(b.prefix[0..<b.n], h[..])); }
+    }
+    if mode == NEG_FINGERPRINT {
+      fp: [16] u8; for i: 0..<16 { fp[i] = msg[r[0].at + i]; }
+      if k < 4 { print(", fingerprint %\n", to_hex(fp[..], h[..])); }
+      r[0].at += 16;
+    } else if mode == NEG_IDLIST {
+      c := neg_get_varint(r[..]);
+      if k < 4 { print(", IdList of % ids\n", c); }
+      r[0].at += 32 * c;
+    } else if k < 4 { print(", Skip\n"); }
+    k += 1;
+  }
+  if k > 4 { print("       ... % ranges in all\n", k); }
+}
+// book:end explain
+// The record i of the generated relays: id sha256("negentropy i").
+gen :: (r: [] Relay, i: int) {
+  c: RsdRec; gen_id(i, c.id[..]);
+  c.author[0] = 1; c.kind = 1; c.created = NOW - (i * 37) % 500; c.expiry = -1; c.tags_to = 2;
+  #assert ns_store_admit(r[0].s[..], c, "[]", true) == NSS_ACCEPT;
+}
+eq32 :: (a: [32] u8, b: [32] u8) -> bool { for k: 0..<32 { if a[k] != b[k] { return false; } } return true; }
+// The ids in a set that the other set lacks, by a full comparison.
+only_in :: (a: [] Side, b: [] Side) -> int {
+  n := 0;
+  for i: 0..<a[0].n {
+    found := false;
+    for j: 0..<b[0].n { if !found && eq32(a[0].items[i].id, b[0].items[j].id) { found = true; } }
+    if !found { n += 1; }
+  }
+  return n;
+}
+same_ids :: (got: [] NegId, n: int, a: [] Side, b: [] Side) -> bool {
+  // every id reported is in a and not in b, and each appears once
+  for i: 0..<n {
+    in_a := false; in_b := false;
+    for j: 0..<a[0].n { if eq32(a[0].items[j].id, got[i].b) { in_a = true; } }
+    for j: 0..<b[0].n { if eq32(b[0].items[j].id, got[i].b) { in_b = true; } }
+    if !in_a || in_b { return false; }
+    for j: 0..<i { if eq32(got[j].b, got[i].b) { return false; } }
+  }
+  return n == only_in(a, b);
+}
+// Digest of the sorted ids, to compare with the Python transcription.
+ids_sha256 :: (got: [] NegId, n: int, out: [] u8) -> string {
+  v: [512] NegItem; for i: 0..<n { v[i].id = got[i].b; }
+  neg_sort(v[0..<n]);
+  bytes: [16384] u8; for i: 0..<n { for k: 0..<32 { bytes[32 * i + k] = v[i].id[k]; } }
+  h: [32] u8; #assert sha256_hash_checked(bytes[0..<32 * n], h[..], false) == SHA_OK;
+  return to_hex(h[..], out);
+}
+neg_refused :: (what: string, n: [] Neg, hex: string) {
+  b: [256] u8; o: [4096] u8;
+  r := hex_decode_checked(hex, b[..], false); #assert r.error == NC_OK;
+  k := neg_reconcile(n, cast(string) b[0..<r.written], o[..]);
+  if k < 0 { print("  %: % -> refused, %\n", what, hex, neg_text(n[0].error)); }
+  else { h: [64] u8; print("  %: % -> answered %\n", what, hex, to_hex(o[0..<k], h[..])); }
+}
+// A relay that refuses a frame answers NEG-ERR, when it has a subscription id.
+frame_refused :: (what: string, text: string, max: int) {
+  m: [64] u8; f := n77_read(text, m[..], max);
+  names := [8] string.["N77_OK", "N77_JSON", "N77_SHAPE", "N77_VERB", "N77_SUB", "N77_HEX", "N77_FRAME", "N77_FILTER"];
+  print("  %: % -> %", what, text, names[f.error]);
+  if f.error != N77_OK && f.sub_n > 0 {
+    o: [256] u8; k := n77_write_err(o[..], cast(string) f.sub[0..<f.sub_n], ifx f.error == N77_FRAME then "blocked: message over the frame limit" else "invalid: bad NEG frame");
+    print(", relay answers %", cast(string) o[0..<k]);
+  }
+  print("\n");
+}
+
+main :: () {
+  h: [64] u8; h2: [64] u8;
+  print("varints, by hand: base 128, most significant digit first\n");
+  vals := [6] int.[0, 127, 128, 300, 16384, NOW];
+  for v: vals {
+    o: [16] u8; w: [1] NegOut; w[0] = NegOut.{buf = o[..]}; neg_put_varint(w[..], v);
+    print("  % -> %\n", v, to_hex(o[0..<w[0].n], h[..]));
+  }
+
+  print("\nthe fingerprint of two ids, by hand\n");
+  two: [2] NegItem; two[0].id[0] = 0xff; two[0].id[1] = 0xff; two[1].id[0] = 0x01;
+  sum: [33] u8; neg_add(sum[0..<32], two[0].id); neg_add(sum[0..<32], two[1].id); sum[32] = 2;
+  print("  a = %...  (0xffff little-endian)\n  b = %...  (0x0001)\n", to_hex(two[0].id[0..<4], h[..]), to_hex(two[1].id[0..<4], h2[..]));
+  print("  a + b mod 2^256 = %... (0x010000)\n", to_hex(sum[0..<4], h[..]));
+  d: [32] u8; #assert sha256_hash_checked(sum[..], d[..], false) == SHA_OK;
+  print("  sha256(sum || varint(2)) = %\n", to_hex(d[..], h2[..]));
+  fp: [16] u8; neg_fingerprint(two[..], 0, 2, fp[..]);
+  print("  fingerprint = first 16 bytes = %\n", to_hex(fp[..], h[..]));
+
+  print("\ntwo relays, five signed notes, three on each (A B C D E; X has A B C, Y has C D E)\n");
+  x: [1] Relay; y: [1] Relay; relay_init(x[..]); relay_init(y[..]);
+  keys := [5] string.[KEY_A, KEY_B, KEY_C, KEY_A, KEY_B];
+  auxs := [5] string.[AUX_A, AUX_B, AUX_C, AUX_A, AUX_B];
+  notes := [5] string.["note A", "note B", "note C", "note D", "note E"];
+  for i: 0..<5 {
+    b: [1024] u8; e := sign(keys[i], auxs[i], NOW - 100 + 10 * (i / 2), 1, notes[i], b[..]);
+    if i <= 2 { #assert admit(x[..], e) == RS_ACCEPT; }
+    if i >= 2 { #assert admit(y[..], e) == RS_ACCEPT; }
+    id := nostr_event_read(e, h[..], false).id;
+    print("  % created_at % id %\n", notes[i], NOW - 100 + 10 * (i / 2), to_hex(id[..], h2[..]));
+  }
+  // a reaction on both relays, outside the filter
+  b7: [1024] u8; r7 := sign(KEY_C, AUX_C, NOW - 5, 7, "+", b7[..]);
+  #assert admit(x[..], r7) == RS_ACCEPT && admit(y[..], r7) == RS_ACCEPT;
+  #assert nsi_build(x[0].s[..], x[0].ix[..]) && nsi_build(y[0].s[..], y[0].ix[..]);
+  cx: [1] Side; sy: [1] Side;
+  frames := run_sync(x[..], y[..], "{\"kinds\":[1]}", 0, cx[..], sy[..], false);
+  for i: 0..<cx[0].neg[0].have_n { print("  have %... (the relay lacks it)\n", to_hex(cx[0].have[i].b[0..<8], h[..])); }
+  for i: 0..<cx[0].neg[0].need_n { print("  need %... (the client lacks it)\n", to_hex(cx[0].need[i].b[0..<8], h[..])); }
+
+  print("\ntwo relays of generated records: 1,000 ids sha256(\"negentropy i\"), X keeps those whose\n");
+  print("first byte mod 5 is not 0, Y those whose second byte mod 5 is not 0\n");
+  relay_init(x[..]); relay_init(y[..]);
+  for i: 0..<1000 {
+    c: [32] u8; gen_id(i, c[..]);
+    if c[0] % 5 != 0 { gen(x[..], i); }
+    if c[1] % 5 != 0 { gen(y[..], i); }
+  }
+  #assert nsi_build(x[0].s[..], x[0].ix[..]) && nsi_build(y[0].s[..], y[0].ix[..]);
+  for limit: [2] int.[0, 4096] {
+    print("frame limit %:\n", limit);
+    frames = run_sync(x[..], y[..], "{\"kinds\":[1]}", limit, cx[..], sy[..], limit != 0);
+    hv := cx[0].neg[0].have_n; nd := cx[0].neg[0].need_n;
+    print("  X % records, Y %; a full comparison finds % only on X and % only on Y\n", cx[0].n, sy[0].n, only_in(cx[..], sy[..]), only_in(sy[..], cx[..]));
+    print("  have is exactly X - Y: %; need is exactly Y - X: %\n", same_ids(cx[0].have[..], hv, cx[..], sy[..]), same_ids(cx[0].need[..], nd, sy[..], cx[..]));
+    print("  sha256 of the sorted have ids %\n", ids_sha256(cx[0].have[..], hv, h[..]));
+    print("  sha256 of the sorted need ids %\n", ids_sha256(cx[0].need[..], nd, h[..]));
+  }
+
+  print("\nrefusals: Negentropy messages (the relay's side, then the client's)\n");
+  srv: [1] Neg; cli: [1] Neg;
+  #assert neg_init(srv[..], sy[0].items[0..<sy[0].n], false, 4096) == NEG_OK;
+  #assert neg_init(cli[..], cx[0].items[0..<cx[0].n], true, 4096) == NEG_OK;
+  neg_refused("an empty IdList cut short", srv[..], "61000002");
+  neg_refused("a fingerprint cut short", srv[..], "6100000100112233");
+  neg_refused("mode 3", srv[..], "6100000300");
+  neg_refused("an id prefix of 33 bytes", srv[..], "610021");
+  neg_refused("a varint past 2^63 - 2", srv[..], "61ffffffffffffffff7f");
+  neg_refused("version byte 0x50", srv[..], "50");
+  neg_refused("version 2 (0x62), to the relay", srv[..], "62");
+  neg_refused("version 2 (0x62), to the client", cli[..], "62");
+  bad: [1] Neg;
+  print("  a frame limit of 1000: %\n", neg_text(neg_init(bad[..], cx[0].items[0..<1], false, 1000)));
+
+  print("\nrefusals: NIP-77 frames (a relay that takes messages of at most 4 bytes for the last two)\n");
+  frame_refused("odd hex", "[\"NEG-MSG\",\"s1\",\"610\"]", 4096);
+  frame_refused("not hex", "[\"NEG-MSG\",\"s1\",\"61zz\"]", 4096);
+  frame_refused("no message", "[\"NEG-MSG\",\"s1\"]", 4096);
+  frame_refused("a filter that is an array", "[\"NEG-OPEN\",\"s1\",[],\"61\"]", 4096);
+  frame_refused("an empty subscription id", "[\"NEG-CLOSE\",\"\"]", 4096);
+  frame_refused("5 bytes", "[\"NEG-MSG\",\"s1\",\"6100000200\"]", 4);
+  frame_refused("4 bytes", "[\"NEG-MSG\",\"s1\",\"61000000\"]", 4);
+}
+gen_id :: (i: int, out: [] u8) {
+  t := "negentropy "; b: [32] u8; n := 0;
+  for c: t { b[n] = c; n += 1; }
+  d: [24] u8; k := 0; x := i;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  while k > 0 { k -= 1; b[n] = d[k]; n += 1; }
+  #assert sha256_hash_checked(b[0..<n], out, false) == SHA_OK;
+}
+// book:end example

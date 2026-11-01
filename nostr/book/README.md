@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 63 are implemented and 41 are design drafts.
+Of the 104 chapters, 64 are implemented and 40 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -225,7 +225,7 @@ negentropy, and limits.
 | [40. Count events](ch040-count-events.md) | Runnable: native C | NIP-45 `COUNT` requests and responses, `approximate` counts, and HyperLogLog with 256 registers whose offset comes from the filter. |
 | [41. Search](ch041-search.md) | Runnable: native C | NIP-50's `search` filter field, a word index over the store, results ordered by a word-count score, `include:spam`, and every other `key:value` extension ignored. |
 | [42. Protected events](ch042-protected-events.md) | Runnable: native C | Events tagged `["-"]` accepted only from their authenticated author, so a third party cannot republish them to this relay. |
-| [43. Negentropy sync](ch043-negentropy-sync.md) | Unimplemented: design draft | NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and `NEG-ERR`, and Negentropy protocol V1: range-based set reconciliation over `(created_at, id)` with fingerprints. |
+| [43. Negentropy sync](ch043-negentropy-sync.md) | Runnable: native C | NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and `NEG-ERR`, and Negentropy protocol V1: range-based set reconciliation over `(created_at, id)` with fingerprints. |
 | [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) | Runnable: native C | Per-connection and global limits, rate limits with `rate-limited:` reasons, storage caps, slowloris timeouts and a write policy that is declared, not implicit. |
 
 ### Part X. Every NIP (chapters 45–92)

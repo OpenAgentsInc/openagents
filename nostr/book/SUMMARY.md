@@ -71,7 +71,7 @@
 - [40. Count events](ch040-count-events.md) — implemented
 - [41. Search](ch041-search.md) — implemented
 - [42. Protected events](ch042-protected-events.md) — implemented
-- [43. Negentropy sync](ch043-negentropy-sync.md) — design draft
+- [43. Negentropy sync](ch043-negentropy-sync.md) — implemented
 - [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — implemented
 
 **X. Every NIP**

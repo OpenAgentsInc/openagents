@@ -915,14 +915,22 @@
    "number": 43,
    "title": "Negentropy sync",
    "file": "ch043-negentropy-sync.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36,
     4
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip77.coax",
+    "coax/tests/nostr/nip77_fixtures.coax",
+    "coax/tests/nostr/negentropy_ref.py",
+    "nostr/examples/negentropy-sync.coax",
+    "nostr/examples/checks/negentropy-sync.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
