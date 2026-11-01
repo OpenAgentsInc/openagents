@@ -1,0 +1,228 @@
+// NIP-23 long-form articles (kind 30023, and the deprecated kind 30024
+// drafts): the metadata tags read and written, an article's `a` coordinate,
+// and the current version of an article among several.
+//
+// An article is an addressable event: kind, author and d tag name it, and a
+// newer event with the same three replaces an older one. The reader takes
+// the first d, title, summary, image and published_at tags. It refuses an
+// article with no d tag or an empty one (NIP-23 asks for an identifier, and
+// without one every article of an author would replace the others), a
+// published_at that is not decimal unix seconds, and a published_at later
+// than created_at: published_at is the first publication and created_at
+// the last update, so the first can't follow the second.
+//
+// The content is Markdown. This file neither parses nor renders it.
+//
+// A reading of the signed tags, not authority: it verifies no signature.
+// nip23_current compares events the caller already verified.
+#load "nip18.coax";
+#load "../../tests/nostr/nip23_fixtures.coax";
+
+N23_OK :: 0; N23_EVENT :: 1; N23_KIND :: 2; N23_NO_D :: 3; N23_PUBLISHED :: 4;
+N23_LATER :: 5; N23_LIMIT :: 6; N23_OUTPUT :: 7;
+N23_ARTICLE :: 30023; N23_DRAFT :: 30024;
+N23_NONE :: -1;
+
+// book:begin record
+// A tag value unescaped into the caller's buffer at [from..<to].
+N23Field :: struct {present:bool; from:int; to:int;}
+N23Article :: struct {
+  error:int=N23_EVENT; kind:int;
+  d:N23Field; title:N23Field; summary:N23Field; image:N23Field;
+  has_published:bool; published_at:int;
+}
+// What the writer puts in the tags. Empty strings and a negative
+// published_at are left out; d is required.
+N23Meta :: struct {d:string; title:string; summary:string; image:string; published_at:int=-1;}
+N23Tags :: struct {error:int=N23_OUTPUT; n:int;}
+// book:end record
+
+N23_NIP_TAGS :: "[[\"d\",\"lorem-ipsum\"],[\"title\",\"Lorem Ipsum\"],[\"published_at\",\"1296962229\"],[\"t\",\"placeholder\"],[\"e\",\"b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87\",\"wss://relay.example.com\"],[\"a\",\"30023:a695f6b60119d9521934a691347d9f78e8770b56da16bb255ee286ddf9fda919:ipsum\",\"wss://relay.nostr.org\"]]";
+N23_KEY_1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+#test "NIP-23's example article reads: d, title, published_at" {
+  e:=n23_event(N23_ARTICLE,1675642635,N23_NIP_TAGS);b:[512]u8;
+  a:=nip23_read(e,b[..]);
+  #assert a.error==N23_OK && a.kind==N23_ARTICLE && n23_text(a.d,b[..])=="lorem-ipsum" && n23_text(a.title,b[..])=="Lorem Ipsum";
+  #assert a.has_published && a.published_at==1296962229 && !a.summary.present && !a.image.present;
+}
+#test "all four metadata tags, escapes decoded, first of each wins" {
+  t:="[[\"d\",\"a\"],[\"image\",\"https://x/i.png\"],[\"summary\",\"line\\nnext\"],[\"title\",\"T\\u00edtulo\"],[\"title\",\"second\"],[\"published_at\",\"0\"]]";
+  b:[512]u8;a:=nip23_read(n23_event(N23_ARTICLE,5,t),b[..]);
+  #assert a.error==N23_OK && n23_text(a.d,b[..])=="a" && n23_text(a.title,b[..])=="Título" && n23_text(a.summary,b[..])=="line\nnext";
+  #assert n23_text(a.image,b[..])=="https://x/i.png" && a.has_published && a.published_at==0;
+  a=nip23_read(n23_event(N23_DRAFT,5,"[[\"d\",\"a\"]]"),b[..]);#assert a.error==N23_OK && a.kind==N23_DRAFT && !a.has_published && !a.title.present;
+  #assert a.title.from==a.title.to;
+}
+#test "published_at at created_at reads; one second later refuses" {
+  b:[256]u8;
+  #assert nip23_read(n23_event(N23_ARTICLE,100,"[[\"d\",\"a\"],[\"published_at\",\"100\"]]"),b[..]).error==N23_OK;
+  #assert nip23_read(n23_event(N23_ARTICLE,100,"[[\"d\",\"a\"],[\"published_at\",\"101\"]]"),b[..]).error==N23_LATER;
+}
+#test "the reader's refusals" {
+  b:[256]u8;
+  #assert nip23_read(n23_event(1,5,"[[\"d\",\"a\"]]"),b[..]).error==N23_KIND;
+  #assert nip23_read(n23_event(30818,5,"[[\"d\",\"a\"]]"),b[..]).error==N23_KIND;
+  #assert nip23_read(n23_event(30022,5,"[[\"d\",\"a\"]]"),b[..]).error==N23_KIND;
+  #assert nip23_read(n23_event(30025,5,"[[\"d\",\"a\"]]"),b[..]).error==N23_KIND;
+  #assert nip23_read(n23_event(N23_ARTICLE,5,"[[\"title\",\"T\"]]"),b[..]).error==N23_NO_D;
+  #assert nip23_read(n23_event(N23_ARTICLE,5,"[[\"d\"]]"),b[..]).error==N23_NO_D;
+  #assert nip23_read(n23_event(N23_ARTICLE,5,"[[\"d\",\"\"]]"),b[..]).error==N23_NO_D;
+  bad:=[8]string.["","x","-1","1.5","01","1e3"," 1","99999999999999999999"];
+  for p:bad {
+    tb:[128]u8;n:=json_raw(tb[..],0,"[[\"d\",\"a\"],[\"published_at\",\"");n=json_raw(tb[..],n,p);n=json_raw(tb[..],n,"\"]]");
+    #assert nip23_read(n23_event(N23_ARTICLE,5,cast(string)tb[0..<n]),b[..]).error==N23_PUBLISHED;
+  }
+  #assert nip23_read(n23_event(N23_ARTICLE,5,"[[\"d\",\"a\"],[\"published_at\"]]"),b[..]).error==N23_PUBLISHED;
+  #assert nip23_read(n23_event(N23_ARTICLE,5,"[[\"d\",\"a\"],[\"title\",1]]"),b[..]).error==N23_EVENT;
+  bad_e:NostrEvent;#assert nip23_read(bad_e,b[..]).error==N23_EVENT;
+}
+#forall "each field refuses a buffer one byte short" cut:0..<5 {
+  t:="[[\"d\",\"dd\"],[\"title\",\"tt\"],[\"summary\",\"ss\"],[\"image\",\"ii\"],[\"published_at\",\"9\"]]";
+  b:[64]u8;e:=n23_event(N23_ARTICLE,9,t);
+  #assert nip23_read(e,b[0..<ifx cut==4 then 8 else 2*cut+1]).error==N23_LIMIT;
+  #assert nip23_read(e,b[0..<9]).error==N23_OK;
+}
+
+#test "the writer makes NIP-23's tags and reads back" {
+  m:N23Meta;m.d="lorem-ipsum";m.title="Lorem Ipsum";m.published_at=1296962229;
+  out:[256]u8;t:=nip23_tags(m,out[..]);
+  #assert t.error==N23_OK && cast(string)out[0..<t.n]=="[[\"d\",\"lorem-ipsum\"],[\"title\",\"Lorem Ipsum\"],[\"published_at\",\"1296962229\"]]";
+  m.summary="A \"quoted\" line";m.image="https://e.x/a.png";m.published_at=0;
+  t=nip23_tags(m,out[..]);
+  #assert t.error==N23_OK && cast(string)out[0..<t.n]=="[[\"d\",\"lorem-ipsum\"],[\"title\",\"Lorem Ipsum\"],[\"summary\",\"A \\\"quoted\\\" line\"],[\"image\",\"https://e.x/a.png\"],[\"published_at\",\"0\"]]";
+  b:[256]u8;a:=nip23_read(n23_event(N23_ARTICLE,0,cast(string)out[0..<t.n]),b[..]);
+  #assert a.error==N23_OK && n23_text(a.summary,b[..])=="A \"quoted\" line" && a.published_at==0;
+}
+#test "the writer refuses an empty d and a short out" {
+  m:N23Meta;out:[64]u8;
+  #assert nip23_tags(m,out[..]).error==N23_NO_D;
+  m.d="x";t:=nip23_tags(m,out[..]);#assert t.error==N23_OK && cast(string)out[0..<t.n]=="[[\"d\",\"x\"]]";
+  #assert nip23_tags(m,out[0..<t.n-1]).error==N23_OUTPUT && nip23_tags(m,out[0..<t.n]).n==t.n;
+}
+
+#test "an article's a coordinate is kind:author:d and reads back as an address" {
+  k:[32]u8;#assert hex_decode_checked(N23_KEY_1,k[..],false).error==NC_OK;
+  out:[200]u8;n:=nip23_address(N23_ARTICLE,k,"lorem-ipsum",out[..]);
+  #assert cast(string)out[0..<n]=="30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:lorem-ipsum";
+  t:=nt_address(cast(string)out[0..<n]);
+  #assert t.error==NT_OK && t.address_kind==30023 && t.pubkey[0]==0x79 && t.pubkey[31]==0x98 && cast(string)t.d[0..<t.d_n]=="lorem-ipsum";
+  #assert nip23_address(30818,k,"wiki",out[..])==75 && nip23_address(39999,k,"",out[..])==71 && nip23_address(30000,k,"",out[..])==71;
+  #assert nip23_address(1,k,"x",out[..])==-1 && nip23_address(10002,k,"",out[..])==-1 && nip23_address(40000,k,"",out[..])==-1;
+  #assert nip23_address(29999,k,"",out[..])==-1 && nip23_address(N23_ARTICLE,k,"lorem-ipsum",out[0..<81])==-1;
+  #assert nip23_address(N23_ARTICLE,k,"lorem-ipsum",out[0..<82])==82;
+}
+
+#test "the current version: newest created_at, then the lowest id" {
+  set:[5]NostrEvent;
+  set[0]=n23_signed(N23_ARTICLE,1,100,0x50,"[[\"d\",\"a\"]]");
+  set[1]=n23_signed(N23_ARTICLE,1,300,0x40,"[[\"d\",\"a\"]]");
+  set[2]=n23_signed(N23_ARTICLE,1,300,0x30,"[[\"d\",\"a\"]]");
+  set[3]=n23_signed(N23_ARTICLE,1,200,0x10,"[[\"d\",\"a\"]]");
+  set[4]=n23_signed(N23_ARTICLE,1,900,0x05,"[[\"d\",\"b\"]]");
+  k:=set[0].public_key;
+  #assert nip23_current(set[..],N23_ARTICLE,k,"a")==2 && nip23_current(set[..],N23_ARTICLE,k,"b")==4;
+  #assert nip23_current(set[0..<2],N23_ARTICLE,k,"a")==1 && nip23_current(set[..],N23_ARTICLE,k,"c")==N23_NONE;
+  #assert nip23_current(set[0..<1],N23_ARTICLE,k,"a")==0 && nip23_current(set[0..<0],N23_ARTICLE,k,"a")==N23_NONE;
+  // One version at time 0 with an all-zero id is still the current one.
+  set[0]=n23_signed(N23_ARTICLE,1,0,0x00,"[[\"d\",\"a\"]]");#assert nip23_current(set[0..<1],N23_ARTICLE,k,"a")==0;
+}
+#test "other authors, kinds, d values and broken events never win" {
+  set:[6]NostrEvent;
+  set[0]=n23_signed(N23_ARTICLE,1,100,0x50,"[[\"d\",\"a\"]]");
+  set[1]=n23_signed(N23_ARTICLE,2,999,0x01,"[[\"d\",\"a\"]]");
+  set[2]=n23_signed(N23_DRAFT,1,999,0x01,"[[\"d\",\"a\"]]");
+  set[3]=n23_signed(N23_ARTICLE,1,999,0x01,"[[\"d\",\"A\"]]");
+  set[4]=n23_signed(N23_ARTICLE,1,999,0x01,"[[\"d\",\"a\"]]");set[4].error=NE_ID;
+  set[5]=n23_signed(N23_ARTICLE,1,999,0x01,"[[\"title\",\"a\"]]");
+  k:=set[0].public_key;
+  #assert nip23_current(set[..],N23_ARTICLE,k,"a")==0;
+  // An article with no d tag has the empty identifier, as relays index it.
+  #assert nip23_current(set[..],N23_ARTICLE,k,"")==5;
+}
+
+// ---- the implementation
+
+n23_text :: (f:N23Field,buf:[]u8)->string {return cast(string)buf[f.from..<f.to];}
+
+// book:begin read
+// A kind 30023 or 30024 article's metadata, unescaped into buf.
+nip23_read :: (e:NostrEvent,buf:[]u8)->N23Article {
+  a:N23Article;at:=0;
+  names:=[5]string.["d","title","summary","image","published_at"];
+  fields:[5]N23Field;
+  // Each field: the first tag with that name, its value unescaped at buf[at..].
+  for i:0..<5 {
+    t:=n10_text(e,names[i],buf[at..<buf.count]);
+    if t.status==N10_LIMIT {a.error=N23_LIMIT;return a;}
+    if t.status!=N10_OK {return a;}
+    fields[i]=N23Field.{present=t.present,from=at,to=at+t.n};at+=t.n;
+  }
+  if e.kind!=N23_ARTICLE && e.kind!=N23_DRAFT {a.error=N23_KIND;return a;}
+  if fields[0].to==fields[0].from {a.error=N23_NO_D;return a;}
+  a.kind=e.kind;a.d=fields[0];a.title=fields[1];a.summary=fields[2];a.image=fields[3];
+  p:=fields[4];
+  if p.present {
+    s:=cast(string)buf[p.from..<p.to];v:=json_int(s);
+    if !v.ok || s[0]=='-' {a.error=N23_PUBLISHED;return a;}
+    if v.value>e.created_at {a.error=N23_LATER;return a;}
+    a.has_published=true;a.published_at=v.value;
+  }
+  a.error=N23_OK;return a;
+}
+// book:end read
+
+// book:begin write
+// The tags of an article, as a JSON array into out.
+nip23_tags :: (m:N23Meta,out:[]u8)->N23Tags {
+  r:N23Tags;
+  if m.d.count==0 {r.error=N23_NO_D;return r;}
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,m.d);n=json_raw(out,n,"]");
+  n=n23_pair(out,n,"title",m.title);n=n23_pair(out,n,"summary",m.summary);n=n23_pair(out,n,"image",m.image);
+  if m.published_at>=0 {
+    num:[24]u8;k:=json_write_int(num[..],0,m.published_at);
+    n=n23_pair(out,n,"published_at",cast(string)num[0..<k]);
+  }
+  n=json_raw(out,n,"]");
+  if n==NE_WRITE_FAILED {return r;}
+  r.error=N23_OK;r.n=n;return r;
+}
+// ,["name","value"] after out[0..<n], unless value is empty.
+n23_pair :: (out:[]u8,n:int,name:string,value:string)->int {
+  if value.count==0 {return n;}
+  m:=json_raw(out,n,",[\"");m=json_raw(out,m,name);m=json_raw(out,m,"\",");
+  m=json_write_string(out,m,value);return json_raw(out,m,"]");
+}
+// book:end write
+
+// book:begin address
+// The a coordinate "kind:author:d" of an addressable event into out: its
+// length, or -1 for a kind outside 30000-39999 or a short out.
+nip23_address :: (kind:int,author:[32]u8,d:string,out:[]u8)->int {
+  if ns_class(kind)!=NS_ADDRESSABLE {return -1;}
+  hx:[64]u8;a:=author;
+  h:=hex_encode_checked(cast(string)a[..],hx[..],false);
+  n:=json_write_int(out,0,kind);n=json_raw(out,n,":");n=json_raw(out,n,cast(string)hx[..]);
+  n=json_raw(out,n,":");n=json_raw(out,n,d);
+  return n;
+}
+// book:end address
+
+// book:begin current
+// Which event in set is the current version of the article kind:author:d:
+// the newest created_at, and on a tie the lowest id (NIP-01's rule, as the
+// store applies it with ns_newer). N23_NONE when no event has that address.
+// An event whose record refused, or whose d tag doesn't read, is skipped.
+nip23_current :: (set:[]NostrEvent,kind:int,author:[32]u8,d:string)->int {
+  best:=N23_NONE;top:NsMeta;
+  for i:0..<set.count {
+    e:=set[i];
+    if e.error!=NE_OK || e.kind!=kind || !ns_equal32(e.public_key,author) {continue;}
+    t:=nostr_tag_d(e);
+    if t.error!=NT_OK || cast(string)t.d[0..<t.d_n]!=d {continue;}
+    m:NsMeta;m.id=e.id;m.created=e.created_at;
+    if best==N23_NONE || ns_newer(m,top) {best=i;top=m;}
+  }
+  return best;
+}
+// book:end current

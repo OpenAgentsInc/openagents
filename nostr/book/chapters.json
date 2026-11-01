@@ -1128,14 +1128,25 @@
    "number": 53,
    "title": "Long-form, drafts and wiki",
    "file": "ch053-long-form-drafts-and-wiki.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22,
     20
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip23.coax",
+    "coax/lib/nostr/nip37.coax",
+    "coax/lib/nostr/nip54.coax",
+    "coax/tests/nostr/nip23_fixtures.coax",
+    "coax/tests/nostr/nip37_fixtures.coax",
+    "coax/tests/nostr/nip54_fixtures.coax",
+    "nostr/examples/long-form.coax",
+    "nostr/examples/checks/long-form.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

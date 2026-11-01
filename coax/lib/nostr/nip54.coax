@@ -1,0 +1,239 @@
+// NIP-54 wiki articles (kind 30818): the d-tag normalization rule and a
+// reader that refuses an article whose d tag isn't normalized.
+//
+// The rule, from NIP-54, applied to each code point of a UTF-8 title:
+//   - letters with a lowercase form become lowercase;
+//   - whitespace becomes "-";
+//   - punctuation and symbols are removed;
+//   - runs of "-" collapse to one, and leading and trailing "-" go;
+//   - other letters (Japanese, Chinese, Arabic, ...) and numbers are kept.
+//
+// Lowercasing covers ASCII, Latin-1, Latin Extended-A, Greek, Cyrillic
+// (U+0400-U+042F) and fullwidth Latin. Other cased scripts (Latin
+// Extended-B and Additional, Armenian, Georgian, Cherokee, Deseret, ...) are
+// kept as written. Removed: ASCII punctuation and symbols, C0 and C1
+// controls, Latin-1 punctuation and signs, general punctuation, zero-width
+// characters, CJK and fullwidth punctuation, arrows through dingbats
+// (U+2190-U+2BFF), variation selectors and emoji (U+1F000-U+1FAFF). Other
+// code points are kept. The hyphen-minus "-" stays a separator; other
+// dashes (U+2010-U+2015) are punctuation and are removed.
+//
+// A reading of the signed tags, not authority: it verifies no signature.
+#load "nip10.coax";
+#load "../../tests/nostr/nip54_fixtures.coax";
+
+N54_OK :: 0; N54_UTF8 :: 1; N54_EMPTY :: 2; N54_OUTPUT :: 3;
+N54_EVENT :: 4; N54_KIND :: 5; N54_NO_D :: 6; N54_NOT_NORMAL :: 7; N54_LIMIT :: 8;
+N54_WIKI :: 30818; N54_MERGE :: 818; N54_REDIRECT :: 30819;
+// What a code point becomes.
+N54_KEEP :: 0; N54_SPACE :: 1; N54_DROP :: 2;
+
+// book:begin record
+// A normalized name: its length in out, or the refusal.
+N54Name :: struct {error:int=N54_OUTPUT; n:int;}
+// A wiki article: its d tag (normalized) and title, unescaped into the
+// caller's buffer at [0..<d_n] and [d_n..<d_n+title_n].
+N54Article :: struct {error:int=N54_EVENT; d_n:int; has_title:bool; title_n:int;}
+// book:end record
+
+#test "NIP-54's eight examples give the stated d values" {
+  ins:=[8]string.["Wiki Article","What's Up?","  Hello  World  ","Article 1","ウィキペディア","Ñoño","Москва","日本語 Article"];
+  outs:=[8]string.["wiki-article","whats-up","hello-world","article-1","ウィキペディア","ñoño","москва","日本語-article"];
+  for i:0..<8 {b:[64]u8;r:=nip54_normalize(ins[i],b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]==outs[i];}
+}
+#test "NIP-54's wikilink targets normalize as the NIP says" {
+  ins:=[6]string.["cryptocurrency","proof of work","Lightning Network","ビットコイン","日本語 記事","Биткойн"];
+  outs:=[6]string.["cryptocurrency","proof-of-work","lightning-network","ビットコイン","日本語-記事","биткойн"];
+  for i:0..<6 {b:[64]u8;r:=nip54_normalize(ins[i],b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]==outs[i];}
+}
+#test "dashes collapse and trim; punctuation inside a word joins it" {
+  b:[64]u8;
+  r:=nip54_normalize("--a - -b--",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="a-b";
+  r=nip54_normalize("Rock & Roll",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="rock-roll";
+  r=nip54_normalize("e.g.",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="eg";
+  r=nip54_normalize("a\tb\nc",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="a-b-c";
+  r=nip54_normalize("x",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="x";
+}
+#test "nothing left, bad UTF-8 and a short out refuse" {
+  b:[64]u8;
+  #assert nip54_normalize("",b[..]).error==N54_EMPTY && nip54_normalize("?!  --",b[..]).error==N54_EMPTY;
+  bad:=[3]u8.['a',0xC3,'b'];#assert nip54_normalize(cast(string)bad[..],b[..]).error==N54_UTF8;
+  cut:=[2]u8.['a',0xE3];#assert nip54_normalize(cast(string)cut[..],b[..]).error==N54_UTF8;
+  #assert nip54_normalize("abc",b[0..<2]).error==N54_OUTPUT && nip54_normalize("abc",b[0..<3]).error==N54_OK;
+  // A kept multibyte letter needs all its bytes in out.
+  #assert nip54_normalize("ñ",b[0..<1]).error==N54_OUTPUT && nip54_normalize("ñ",b[0..<2]).n==2;
+  #assert nip54_normalize("a b",b[0..<2]).error==N54_OUTPUT && nip54_normalize("ab c",b[0..<2]).error==N54_OUTPUT;
+  #assert nip54_normalize("ab c",b[0..<4]).n==4;
+  // A four-byte code point with lead byte F4 (U+100000) is kept as written.
+  p16:=[4]u8.[0xF4,0x80,0x80,0x80];r:=nip54_normalize(cast(string)p16[..],b[..]);
+  #assert r.error==N54_OK && r.n==4 && b[0]==0xF4 && b[1]==0x80 && b[3]==0x80;
+}
+#test "lowercase mapping at each range's edges" {
+  #assert n54_lower('A')=='a' && n54_lower('Z')=='z' && n54_lower('@')=='@' && n54_lower('[')=='[' && n54_lower('a')=='a';
+  #assert n54_lower(0xC0)==0xE0 && n54_lower(0xDE)==0xFE && n54_lower(0xD7)==0xD7 && n54_lower(0xBF)==0xBF && n54_lower(0xDF)==0xDF;
+  #assert n54_lower(0x100)==0x101 && n54_lower(0x101)==0x101 && n54_lower(0x12E)==0x12F && n54_lower(0x130)==0x69;
+  #assert n54_lower(0x132)==0x133 && n54_lower(0x136)==0x137 && n54_lower(0x137)==0x137 && n54_lower(0x138)==0x138;
+  #assert n54_lower(0x139)==0x13A && n54_lower(0x147)==0x148 && n54_lower(0x148)==0x148 && n54_lower(0x149)==0x149;
+  #assert n54_lower(0x14A)==0x14B && n54_lower(0x176)==0x177 && n54_lower(0x177)==0x177 && n54_lower(0x178)==0xFF;
+  #assert n54_lower(0x179)==0x17A && n54_lower(0x17D)==0x17E && n54_lower(0x17E)==0x17E && n54_lower(0x17F)==0x17F;
+  #assert n54_lower(0x386)==0x3AC && n54_lower(0x388)==0x3AD && n54_lower(0x38A)==0x3AF && n54_lower(0x38C)==0x3CC;
+  #assert n54_lower(0x38E)==0x3CD && n54_lower(0x38F)==0x3CE && n54_lower(0x391)==0x3B1 && n54_lower(0x3A1)==0x3C1;
+  #assert n54_lower(0x3A2)==0x3A2 && n54_lower(0x3A3)==0x3C3 && n54_lower(0x3AB)==0x3CB && n54_lower(0x390)==0x390 && n54_lower(0x3AC)==0x3AC;
+  #assert n54_lower(0x400)==0x450 && n54_lower(0x40F)==0x45F && n54_lower(0x410)==0x430 && n54_lower(0x42F)==0x44F && n54_lower(0x430)==0x430;
+  #assert n54_lower(0xFF21)==0xFF41 && n54_lower(0xFF3A)==0xFF5A && n54_lower(0xFF20)==0xFF20 && n54_lower(0xFF3B)==0xFF3B;
+  #assert n54_lower(0x387)==0x387 && n54_lower(0x38B)==0x38B && n54_lower(0x38D)==0x38D && n54_lower(0x3FF)==0x3FF;
+}
+#test "every range's ends, and the code points just outside" {
+  sp:=N54_SPACES;dr:=N54_DROPS;n54_edges(sp[..],N54_SPACE);n54_edges(dr[..],N54_DROP);
+  #assert N54_RANGES.count==3*(N54_SPACES.count/2+N54_DROPS.count/2);
+}
+#test "classes at each range's edges" {
+  sp:=[16]int.[0x09,0x0D,0x20,0x85,0xA0,0x1680,0x2000,0x200A,0x2028,0x2029,0x202F,0x205F,0x3000,0x0B,0x0C,0x0A];
+  for c:sp {#assert n54_class(c)==N54_SPACE;}
+  drop:=[40]int.[0x00,0x08,0x0E,0x1F,0x21,0x2C,0x2E,0x2F,0x3A,0x40,0x5B,0x60,0x7B,0x7E,0x7F,0x80,0x84,0x86,0x9F,0xA1,0xBF,0xD7,0xF7,
+    0x200B,0x2010,0x2027,0x2030,0x205E,0x3001,0x3003,0x3008,0x3011,0x3014,0x301F,0xFF01,0xFF0F,0x2190,0x2BFF,0x1F000,0x1FAFF];
+  for c:drop {#assert n54_class(c)==N54_DROP;}
+  drop2:=[10]int.[0xFF1A,0xFF20,0xFF3B,0xFF40,0xFF5B,0xFF65,0xFE00,0xFE0F,0x2015,0x2026];
+  for c:drop2 {#assert n54_class(c)==N54_DROP;}
+  keep:=[33]int.[0x2D,0x30,0x39,0x41,0x5A,0x61,0x7A,0xAA,0xB2,0xB3,0xB5,0xB9,0xBA,0xBC,0xBE,0xC0,0xFF,0x1FFF,0x2060,0x218F,0x2C00,
+    0x3004,0x3012,0x3013,0x3020,0x3042,0xFDFF,0xFE10,0xFF10,0xFF21,0xFF41,0xFF66,0x1FB00];
+  for c:keep {#assert n54_class(c)==N54_KEEP;}
+  #assert n54_class(0x2B)==N54_DROP && n54_class(0x2C)==N54_DROP;
+  #assert n54_class(0x1680-1)==N54_KEEP && n54_class(0x200A+1)==N54_DROP && n54_class(0x0E00)==N54_KEEP && n54_class(0x3007)==N54_KEEP;
+}
+#forall "normalizing a normalized name changes nothing" i:0..<12 {
+  ins:=[12]string.["Wiki Article","What's Up?","  Hello  World  ","Article 1","ウィキペディア","Ñoño","Москва","日本語 Article","ΆΈΉ Ωμέγα","ĲĿŸŹ","ＡＢＣ　ｄ","İstanbul 🚀 — 2026!"];
+  a:[96]u8;b:[96]u8;r:=nip54_normalize(ins[i],a[..]);#assert r.error==N54_OK;
+  s:=nip54_normalize(cast(string)a[0..<r.n],b[..]);#assert s.error==N54_OK && s.n==r.n && cast(string)b[0..<s.n]==cast(string)a[0..<r.n];
+  #assert nip54_is_normal(cast(string)a[0..<r.n]) && nip54_is_normal(ins[i])==(i==4);
+}
+#test "Greek, Latin Extended-A, fullwidth and emoji titles" {
+  b:[96]u8;
+  r:=nip54_normalize("ΆΈΉ Ωμέγα",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="άέή-ωμέγα";
+  r=nip54_normalize("ĲĿŸŹ",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="ĳŀÿź";
+  r=nip54_normalize("ＡＢＣ　ｄ",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="ａｂｃ-ｄ";
+  r=nip54_normalize("İstanbul 🚀 — 2026!",b[..]);#assert r.error==N54_OK && cast(string)b[0..<r.n]=="istanbul-2026";
+}
+#test "is_normal: normalized and not empty" {
+  #assert nip54_is_normal("wiki-article") && nip54_is_normal("ñoño") && nip54_is_normal("a");
+  #assert !nip54_is_normal("Wiki-Article") && !nip54_is_normal("wiki article") && !nip54_is_normal("-wiki") && !nip54_is_normal("wiki-");
+  #assert !nip54_is_normal("a--b") && !nip54_is_normal("") && !nip54_is_normal("what's") && !nip54_is_normal("Ñoño");
+  long:[300]u8;for i:0..<300 {long[i]='a';} #assert nip54_is_normal(cast(string)long[0..<256]) && !nip54_is_normal(cast(string)long[..]);
+}
+
+#test "the reader takes a wiki article with a normalized d and a title" {
+  e:=n54_event(N54_WIKI,"[[\"d\",\"wiki\"],[\"title\",\"Wiki\"]]");b:[512]u8;
+  a:=nip54_read(e,b[..]);#assert a.error==N54_OK && a.d_n==4 && cast(string)b[0..<4]=="wiki" && a.has_title && a.title_n==4 && cast(string)b[4..<8]=="Wiki";
+  a=nip54_read(n54_event(N54_WIKI,"[[\"d\",\"\\u00f1o\\u00f1o\"]]"),b[..]);#assert a.error==N54_OK && cast(string)b[0..<a.d_n]=="ñoño" && !a.has_title && a.title_n==0;
+}
+#test "the reader refuses other kinds, a missing or unnormalized d, and broken tags" {
+  b:[512]u8;
+  #assert nip54_read(n54_event(30023,"[[\"d\",\"wiki\"]]"),b[..]).error==N54_KIND;
+  #assert nip54_read(n54_event(N54_REDIRECT,"[[\"d\",\"wiki\"]]"),b[..]).error==N54_KIND;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"title\",\"Wiki\"]]"),b[..]).error==N54_NO_D;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\"]]"),b[..]).error==N54_NOT_NORMAL;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\",\"Wiki Article\"]]"),b[..]).error==N54_NOT_NORMAL;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\",\"wiki\"],[\"title\",1]]"),b[..]).error==N54_EVENT;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\",1]]"),b[..]).error==N54_EVENT;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\",\"wiki\"],[\"title\",\"Wiki\"]]"),b[0..<5]).error==N54_LIMIT;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\",\"wiki\"]]"),b[0..<3]).error==N54_LIMIT;
+  #assert nip54_read(n54_event(N54_WIKI,"[[\"d\",\"wiki\"],[\"title\",\"Wiki\"]]"),b[0..<8]).error==N54_OK;
+  bad:NostrEvent;#assert nip54_read(bad,b[..]).error==N54_EVENT;
+}
+
+// ---- the implementation
+
+n54_event :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;return e;}
+
+// book:begin lower
+// The lowercase of cp in the ranges this file maps; cp itself otherwise.
+n54_lower :: (cp:int)->int {
+  if cp>='A' && cp<='Z' {return cp+32;}
+  if cp>=0xC0 && cp<=0xDE && cp!=0xD7 {return cp+32;}
+  // Latin Extended-A: pairs, uppercase first, at even or odd code points.
+  even:=(cp>=0x100 && cp<0x130) || (cp>=0x132 && cp<0x138) || (cp>=0x14A && cp<0x178);
+  odd:=(cp>=0x139 && cp<0x149) || (cp>=0x179 && cp<0x17F);
+  if (even && cp%2==0) || (odd && cp%2==1) {return cp+1;}
+  if cp==0x130 {return 'i';}
+  if cp==0x178 {return 0xFF;}
+  if cp==0x386 {return 0x3AC;}
+  if cp>=0x388 && cp<=0x38A {return cp+37;}
+  if cp==0x38C {return 0x3CC;}
+  if cp==0x38E || cp==0x38F {return cp+63;}
+  if cp>=0x391 && cp<=0x3AB && cp!=0x3A2 {return cp+32;}
+  if cp>=0x400 && cp<=0x40F {return cp+80;}
+  if cp>=0x410 && cp<=0x42F {return cp+32;}
+  if cp>=0xFF21 && cp<=0xFF3A {return cp+32;}
+  return cp;
+}
+// book:end lower
+// book:begin class
+// Code points that become "-" (N54_SPACE) or are removed (N54_DROP), as
+// from, to, class. Everything else is kept. No two ranges overlap; the class
+// is the sum over the ranges that hold cp, so an overlap would give neither.
+N54_RANGES :: [117]int.[
+  0x00,0x08,2, 0x09,0x0D,1, 0x0E,0x1F,2, 0x20,0x20,1, 0x21,0x2C,2, 0x2E,0x2F,2,
+  0x3A,0x40,2, 0x5B,0x60,2, 0x7B,0x84,2, 0x85,0x85,1, 0x86,0x9F,2, 0xA0,0xA0,1,
+  0xA1,0xA9,2, 0xAB,0xB1,2, 0xB4,0xB4,2, 0xB6,0xB8,2, 0xBB,0xBB,2, 0xBF,0xBF,2,
+  0xD7,0xD7,2, 0xF7,0xF7,2, 0x1680,0x1680,1, 0x2000,0x200A,1, 0x200B,0x2027,2,
+  0x2028,0x2029,1, 0x202A,0x202E,2, 0x202F,0x202F,1, 0x2030,0x205E,2, 0x205F,0x205F,1,
+  0x2190,0x2BFF,2, 0x3000,0x3000,1, 0x3001,0x3003,2, 0x3008,0x3011,2, 0x3014,0x301F,2,
+  0xFE00,0xFE0F,2, 0xFF01,0xFF0F,2, 0xFF1A,0xFF20,2, 0xFF3B,0xFF40,2, 0xFF5B,0xFF65,2,
+  0x1F000,0x1FAFF,2];
+// Whether cp is kept, becomes "-", or is removed.
+n54_class :: (cp:int)->int {
+  c:=N54_KEEP;r:=N54_RANGES;i:=0;
+  while i<r.count {if cp>=r[i] && cp<=r[i+1] {c+=r[i+2];}i+=3;}
+  return c;
+}
+// book:end class
+
+// book:begin normalize
+// The NIP-54 d value of a title into out. A "-" is written only before a
+// kept code point that follows something kept, so runs collapse and the
+// ends are trimmed as it goes.
+nip54_normalize :: (title:string,out:[]u8)->N54Name {
+  r:N54Name;n:=0;dash:=false;i:=0;
+  while i<title.count {
+    k:=json_utf8(title,i);if k==0 {r.error=N54_UTF8;return r;}
+    cp:=n54_cp(title,i,k);i+=k;
+    c:=n54_class(cp);
+    if c==N54_SPACE || cp=='-' {dash=n>0;continue;}
+    if c==N54_DROP {continue;}
+    if dash {if n>=out.count {return r;}out[n]='-';n+=1;dash=false;}
+    n=json_put_cp(out,n,n54_lower(cp));if n== -1 {return r;}
+  }
+  if n==0 {r.error=N54_EMPTY;return r;}
+  r.error=N54_OK;r.n=n;return r;
+}
+// book:end normalize
+// The code point of the k-byte UTF-8 sequence at i, which json_utf8 checked.
+n54_cp :: (s:string,i:int,k:int)->int {
+  if k==1 {return cast(int)s[i];}
+  lead:=cast(int)s[i]&(ifx k==2 then 0x1F else ifx k==3 then 0x0F else 0x07);
+  cp:=lead;for m:1..<k {cp=(cp<<6)|(cast(int)s[i+m]&0x3F);}
+  return cp;
+}
+// Whether d is a d value NIP-54 allows: not empty, and its own normal form.
+nip54_is_normal :: (d:string)->bool {
+  b:[NT_MAX_VALUE]u8;r:=nip54_normalize(d,b[..]);
+  return r.error==N54_OK && r.n==d.count && cast(string)b[0..<r.n]==d;
+}
+
+// book:begin read
+// A kind 30818 article: its d tag, which must be normalized, and its title,
+// unescaped into buf.
+nip54_read :: (e:NostrEvent,buf:[]u8)->N54Article {
+  a:N54Article;
+  d:=n10_text(e,"d",buf);
+  if d.status==N10_LIMIT {a.error=N54_LIMIT;return a;}
+  if d.status!=N10_OK {return a;}
+  if e.kind!=N54_WIKI {a.error=N54_KIND;return a;}
+  if !d.present {a.error=N54_NO_D;return a;}
+  if !nip54_is_normal(cast(string)buf[0..<d.n]) {a.error=N54_NOT_NORMAL;return a;}
+  t:=n10_text(e,"title",buf[d.n..<buf.count]);
+  if t.status==N10_LIMIT {a.error=N54_LIMIT;return a;}
+  if t.status!=N10_OK {return a;}
+  a.error=N54_OK;a.d_n=d.n;a.has_title=t.present;a.title_n=t.n;return a;
+}
+// book:end read

@@ -1,0 +1,92 @@
+// The checks of long-form.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/long-form.coax --run-steps 250000000
+#load "../long-form.coax";
+
+// book:begin check
+// NIP-54's normalization examples and wikilink targets, copied from
+// nostr/nips/official/54.md.
+NIP54_IN :: [14] string.["Wiki Article", "What's Up?", "  Hello  World  ", "Article 1", "ウィキペディア", "Ñoño", "Москва", "日本語 Article",
+  "cryptocurrency", "proof of work", "Lightning Network", "ビットコイン", "日本語 記事", "Биткойн"];
+NIP54_OUT :: [14] string.["wiki-article", "whats-up", "hello-world", "article-1", "ウィキペディア", "ñoño", "москва", "日本語-article",
+  "cryptocurrency", "proof-of-work", "lightning-network", "ビットコイン", "日本語-記事", "биткойн"];
+// The three titles the chapter normalizes by hand, and its hand results.
+HAND_IN :: [3] string.["Rock & Roll (1950s)", "Москва — столица!", "  ¿Qué es Nostr?  "];
+HAND_OUT :: [3] string.["rock-roll-1950s", "москва-столица", "qué-es-nostr"];
+// The a coordinate written out by hand: kind, key 1's public key (SEC 2's
+// generator x), d.
+HAND_A :: "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:lorem-ipsum";
+// IDs that Python's hashlib computed from
+// json.dumps([0, pubkey, created_at, kind, tags, content], separators=(",", ":"),
+// ensure_ascii=False). They share no code with Coax.
+PY_V1 :: "e71d4117133381631fbafbd92c1ccd72b69ee07f47f6332458310d74ba856591";
+PY_V2 :: "f9fe58d4fc08bbe74f30053cadd93e4846fc6165f534aec0c99344881eba6350";
+PY_V3 :: "1166786c8fefe9035aa46551909f4e4c2929a306f8c0c73c1cca18c1638bc4e4";
+PY_WRAP :: "94794d50ab04bb1c6731ec03efab1e2a6c3adedae858311465b6248a7ea7642c";
+// A pure-Python NIP-44 v2 (stdlib hmac and hashlib, a hand ChaCha20 and
+// secp256k1, checked first against nip44.vectors.json encrypt_decrypt row
+// 0): key 1's conversation key with itself, key 3's with key 1, and DRAFT
+// sealed by key 1 to itself with NONCE.
+PY_CK_SELF :: "3b4610cb7189beb9cc29eb3716ecc6102f1247e8f3101a03a1787d8908aeb54e";
+PY_CK_3_TO_1 :: "68ace26dd21fd98a8781d65588d0a7bfb3746974cafdfbf8ea797fb42d251b9d";
+PY_PAYLOAD :: "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fbgrW1PBXWEOJoAzWm+GbZ1h8NhsC4kv1spIKwySRhkbzlNV0C/yEB2Q0z53wJ3El8OeWsSy/MRXEh49F54iIyBx9ycGqWVw/uqrKprM3uF37XoWG2opxOVWwqKaClSJ1oezIkS5uDCm5l3qgwXtcvKcIBppcqlhjNji5rHYfeIZpPvbl+TFs7ABan0q0uNi5w9dyzxkokycpdRVevz5fKDd+ZsKc0KNEXbrwCbMqd9Gv2tI1MrZdC9Zuh8s1H623Ekc=";
+
+same_id :: (id: [32] u8, text: string) -> bool {
+  want := bytes_of(text);
+  for i: 0..<32 { if id[i] != want[i] { return false; } }
+  return true;
+}
+d_of :: (title: string, out: [] u8) -> string {
+  r := nip54_normalize(title, out); #assert r.error == N54_OK; return cast(string) out[0..<r.n];
+}
+
+#forall "NIP-54's examples give the stated d values" i: 0..<14 {
+  b: [64] u8; #assert d_of(NIP54_IN[i], b[..]) == NIP54_OUT[i];
+}
+#forall "the chapter's three hand-normalized titles" i: 0..<3 {
+  b: [64] u8; #assert d_of(HAND_IN[i], b[..]) == HAND_OUT[i];
+}
+#test "the article's a coordinate is the hand-written one and reads back" {
+  out: [128] u8; n := nip23_address(N23_ARTICLE, bytes_of("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"), "lorem-ipsum", out[..]);
+  #assert cast(string) out[0..<n] == HAND_A;
+  t := nt_address(HAND_A); #assert t.error == NT_OK && t.address_kind == 30023 && cast(string) t.d[0..<t.d_n] == "lorem-ipsum";
+}
+#test "three versions: Python's ids; the current one is the newest, then the lowest id" #steps 1500000000 {
+  m: N23Meta; m.d = "lorem-ipsum"; m.title = "Lorem Ipsum"; m.summary = "A placeholder article."; m.published_at = PUBLISHED;
+  tb: [256] u8; t := nip23_tags(m, tb[..]); tags := cast(string) tb[0..<t.n];
+  b1: [2048] u8; b2: [2048] u8; b3: [2048] u8; s1: [8192] u8; s2: [8192] u8; s3: [8192] u8;
+  set: [3] NostrEvent;
+  set[0] = nostr_event_verify_vartime(sign(KEY_1, CREATED, N23_ARTICLE, tags, "Lorem ipsum dolor sit amet.", b1[..]), s1[..], false);
+  set[1] = nostr_event_verify_vartime(sign(KEY_1, CREATED + 600, N23_ARTICLE, tags, "Lorem ipsum dolor sit amet, edited.", b2[..]), s2[..], false);
+  set[2] = nostr_event_verify_vartime(sign(KEY_1, CREATED + 600, N23_ARTICLE, tags, "Lorem ipsum dolor sit amet, edited again.", b3[..]), s3[..], false);
+  for i: 0..<3 { #assert set[i].error == NE_OK && set[i].verified; }
+  #assert same_id(set[0].id, PY_V1) && same_id(set[1].id, PY_V2) && same_id(set[2].id, PY_V3);
+  // By hand: 2 and 3 share the newest created_at; 3's id starts 11, 2's f9.
+  key1 := set[0].public_key;
+  #assert nip23_current(set[..], N23_ARTICLE, key1, "lorem-ipsum") == 2;
+}
+#test "the draft: Python's conversation keys, payload and wrap id; key 3 can't read it" #steps 2000000000 {
+  k1 := bytes_of(KEY_1); k3 := bytes_of(KEY_3); nonce := bytes_of(NONCE);
+  pub1 := bytes_of("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  ec: [1] EcdhScratch; ck: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(k1[..], pub1[..], ec[..], ck[..], false) == NIP44_OK && same_id(ck, PY_CK_SELF);
+  #assert nip44_conversation_key_from_keys_checked(k3[..], pub1[..], ec[..], ck[..], false) == NIP44_OK && same_id(ck, PY_CK_3_TO_1);
+  db: [512] u8; for i: 0..<DRAFT.count { db[i] = DRAFT[i]; }
+  work: [4096] u8; pb: [1024] u8; keys: [1] Nip37Keys;
+  sl := nip37_seal(k1[..], nonce[..], db[0..<DRAFT.count], keys[..], work[..], pb[..], false);
+  #assert sl.error == N37_OK && cast(string) pb[0..<sl.written] == PY_PAYLOAD;
+  wt: [128] u8; wn := nip37_tags("lorem-ipsum-draft", 30023, CREATED + 90 * 86400, wt[..]);
+  wb: [2048] u8; s: [8192] u8;
+  w := nostr_event_verify_vartime(sign(KEY_1, CREATED, N37_WRAP, cast(string) wt[0..<wn], PY_PAYLOAD, wb[..]), s[..], false);
+  #assert w.error == NE_OK && w.verified && same_id(w.id, PY_WRAP);
+  ob: [1024] u8;
+  d := nip44_decrypt_checked(NIP44_COMPAT, ck[..], PY_PAYLOAD, work[..], ob[..], false);
+  #assert d.error == NIP44_MAC && d.written == 0;
+}
+#test "same_id notices a change in the first or last byte" {
+  id: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert same_id(id, zero);
+  id[0] = 1; #assert !same_id(id, zero);
+  id[0] = 0; id[31] = 1; #assert !same_id(id, zero);
+}
+// book:end check

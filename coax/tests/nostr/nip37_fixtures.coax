@@ -1,0 +1,56 @@
+// Keys, a nonce, a payload and unsigned wraps for nip37.coax's checks.
+// Keys 1 and 3 are the secret scalars 1 and 3: test keys anyone can sign
+// with, never real ones. Their public keys are x(G) and x(3G).
+// N37_PAYLOAD_1 is the draft below sealed by key 1 to itself with
+// N37_NONCE, as an independent pure-Python NIP-44 v2 (stdlib hmac, hashlib
+// and a hand ChaCha20, checked against nip44.vectors.json encrypt_decrypt
+// row 0) computed it. n37_wrap writes an event whose ID it computes with
+// ne_serialize and SHA-256, so nostr_event_read accepts it; its signature
+// is 64 zero bytes, because nip37_open reads the ID and pubkey and never
+// verifies a signature.
+N37_KEY_1 :: [32]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1];
+N37_NONCE :: [32]u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
+N37_PUB_1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+N37_PUB_1_BYTES :: [32]u8.[0x79,0xbe,0x66,0x7e,0xf9,0xdc,0xbb,0xac,0x55,0xa0,0x62,0x95,0xce,0x87,0x0b,0x07,0x02,0x9b,0xfc,0xdb,0x2d,0xce,0x28,0xd9,0x59,0xf2,0x81,0x5b,0x16,0xf8,0x17,0x98];
+// Key 1's public key with its first or its last byte changed: not points
+// anyone holds, but the reader takes any 64 hex digits as a pubkey.
+N37_PUB_1_FIRST :: "78be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+N37_PUB_1_LAST :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81799";
+N37_PUB_3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+// {"kind":30023,"tags":[["d","x"]],"content":"# Draft"}, sealed by key 1.
+N37_PAYLOAD_1 :: "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fbqzW1PBXWEOJoAzWm+GbZ1hrJRkQtBTKttEawzKCyFOb/8xmWKPaXyMu2ti5J2he77eT9XS/IHq24uJojvj7vXFfIMoA2c/RNariQShWrR5HXyrZcnvnXOfxBXaQeCsSP0w=";
+
+// An unsigned event by pub (hex) with these tags and this content (a JSON
+// string's raw text), its ID computed so nostr_event_read accepts it.
+n37_wrap :: (pub:string,kind:int,tags:string,content:string,out:[]u8)->string {
+  n:=json_raw(out,0,"{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n=json_raw(out,n,pub);n=json_raw(out,n,"\",\"created_at\":1793214821,\"kind\":");
+  n=json_write_int(out,n,kind);n=json_raw(out,n,",\"tags\":");n=json_raw(out,n,tags);
+  n=json_raw(out,n,",\"content\":\"");n=json_raw(out,n,content);
+  n=json_raw(out,n,"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  s:[8192]u8;e:=ne_parse(cast(string)out[0..<n]);#assert e.error==NE_OK;
+  m:=ne_serialize(e,s[..]);id:[32]u8;#assert m>0 && sha256_hash_checked(s[0..<m],id[..],false)==SHA_OK;
+  hx:[64]u8;#assert hex_encode_checked(cast(string)id[..],hx[..],false).error==NC_OK;
+  for i:0..<64 {out[7+i]=hx[i];}
+  return cast(string)out[0..<n];
+}
+// The bytes of s, copied into out.
+n37_bytes :: (s:string,out:[]u8)->[]u8 {
+  for i:0..<s.count {out[i]=s[i];}
+  return out[0..<s.count];
+}
+// {"kind":0}, sealed by key 1 to itself with N37_NONCE, by the same Python.
+N37_PAYLOAD_0 :: "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fbpPW1PBXWEOJoA+bq9OoS3ofRH5jli6R7fN+4R6gsHHGogaI5FR6g5r9qEXMh1W045qytStBUmVnrKiHcF4pI9Os";
+// Key work filled with 165, and whether all of it is back to zero.
+n37_fill :: (keys:[]Nip37Keys) {
+  for i:0..<32 {keys[0].self[i]=165;keys[0].ck[i]=165;keys[0].ec[0].staged[i]=165;}
+  for i:0..<8 {keys[0].ec[0].scalar.limbs[i]=165;}
+  for i:0..<10 {keys[0].ec[0].shared.x.limb[i]=165;keys[0].ec[0].affine.x.limb[i]=165;}
+}
+n37_wiped :: (keys:[]Nip37Keys)->bool {
+  for i:0..<32 {if keys[0].self[i]!=0 || keys[0].ck[i]!=0 || keys[0].ec[0].staged[i]!=0 {return false;}}
+  for i:0..<8 {if keys[0].ec[0].scalar.limbs[i]!=0 {return false;}}
+  for i:0..<10 {if keys[0].ec[0].shared.x.limb[i]!=0 || keys[0].ec[0].affine.x.limb[i]!=0 {return false;}}
+  return true;
+}

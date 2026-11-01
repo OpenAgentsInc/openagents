@@ -1,0 +1,59 @@
+== 1. NIP-54 d values
+  "Wiki Article" -> "wiki-article"
+  "What's Up?" -> "whats-up"
+  "  Hello  World  " -> "hello-world"
+  "Article 1" -> "article-1"
+  "ウィキペディア" -> "ウィキペディア"
+  "Ñoño" -> "ñoño"
+  "Москва" -> "москва"
+  "日本語 Article" -> "日本語-article"
+worked by hand in the chapter:
+  "Rock & Roll (1950s)" -> "rock-roll-1950s"
+  "Москва — столица!" -> "москва-столица"
+  "  ¿Qué es Nostr?  " -> "qué-es-nostr"
+wikilink targets:
+  "proof of work" -> "proof-of-work"
+  "日本語 記事" -> "日本語-記事"
+  "Биткойн" -> "биткойн"
+refused:
+  "?!" -> N54_EMPTY
+  "a\xC3b" -> N54_UTF8
+wiki articles:
+  d "wiki": N54_OK
+  d "Wiki Article": N54_NOT_NORMAL
+  no d tag: N54_NO_D
+
+== 2. A long-form article (kind 30023)
+tags [["d","lorem-ipsum"],["title","Lorem Ipsum"],["summary","A placeholder article."],["published_at","1296962229"]]
+signed by key 1:
+  {"id":"e71d4117133381631fbafbd92c1ccd72b69ee07f47f6332458310d74ba856591","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1675642635,"kind":30023,"tags":[["d","lorem-ipsum"],["title","Lorem Ipsum"],["summary","A placeholder article."],["published_at","1296962229"]],"content":"Lorem ipsum dolor sit amet.","sig":"dd92288ffc7b91cbcc553c07efdd47e988ee9d0669812e80d47a5457a1d3b34572ee0a44c3305e7fe1a0a73a4803b1a4b13536bbdceb5a6c9ac45c94c5072245"}
+  kind 30023, d "lorem-ipsum", title "Lorem Ipsum", summary "A placeholder article.", published_at 1296962229
+a coordinate 30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:lorem-ipsum
+
+== 3. Which version is current
+  version 1: created_at 1675642635, id e71d4117133381631fbafbd92c1ccd72b69ee07f47f6332458310d74ba856591
+  version 2: created_at 1675643235, id f9fe58d4fc08bbe74f30053cadd93e4846fc6165f534aec0c99344881eba6350
+  version 3: created_at 1675643235, id 1166786c8fefe9035aa46551909f4e4c2929a306f8c0c73c1cca18c1638bc4e4
+current: version 3
+versions 1 and 2 only: version 2
+by key 3's address: -1
+
+== 4. A draft wrap (kind 31234), sealed to yourself
+draft {"kind":30023,"created_at":1675650000,"tags":[["d","lorem-ipsum"],["title","Lorem Ipsum, revised"]],"content":"A second draft, not yet published."}
+content (NIP-44, 304 characters) AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fbgrW1PBXWEOJoAzWm+GbZ1h8NhsC4kv1spIKwySRhkbzlNV0C/yEB2Q0z53wJ3El8OeWsSy/MRXEh49F54iIyBx9ycGqWVw/uqrKprM3uF37XoWG2opxOVWwqKaClSJ1oezIkS5uDCm5l3qgwXtcvKcIBppcqlhjNji5rHYfeIZpPvbl+TFs7ABan0q0uNi5w9dyzxkokycpdRVevz5fKDd+ZsKc0KNEXbrwCbMqd9Gv2tI1MrZdC9Zuh8s1H623Ekc=
+tags [["d","lorem-ipsum-draft"],["k","30023"],["expiration","1683418635"]]
+signed by key 1:
+  {"id":"94794d50ab04bb1c6731ec03efab1e2a6c3adedae858311465b6248a7ea7642c","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1675642635,"kind":31234,"tags":[["d","lorem-ipsum-draft"],["k","30023"],["expiration","1683418635"]],"content":"AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fbgrW1PBXWEOJoAzWm+GbZ1h8NhsC4kv1spIKwySRhkbzlNV0C/yEB2Q0z53wJ3El8OeWsSy/MRXEh49F54iIyBx9ycGqWVw/uqrKprM3uF37XoWG2opxOVWwqKaClSJ1oezIkS5uDCm5l3qgwXtcvKcIBppcqlhjNji5rHYfeIZpPvbl+TFs7ABan0q0uNi5w9dyzxkokycpdRVevz5fKDd+ZsKc0KNEXbrwCbMqd9Gv2tI1MrZdC9Zuh8s1H623Ekc=","sig":"06070f9cf6b733410d832b24bcf892695dd895f6b8380ed4f2387e75f4642ba981a11ca822071434d473ee9e8d27c63c99e2d2cfab5142b1d88530b2a0928ac1"}
+key 1 opens it: N37_OK, kind 30023
+  {"kind":30023,"created_at":1675650000,"tags":[["d","lorem-ipsum"],["title","Lorem Ipsum, revised"]],"content":"A second draft, not yet published."}
+key 3 opens it: N37_NOT_SELF
+key 3 decrypts the content with its key and key 1's public key: NIP44 error 4 (NIP44_MAC is 4)
+
+== 5. Broken events
+  nip23_read: N23_NO_D
+  nip23_read: N23_LATER
+  nip23_read: N23_PUBLISHED
+  nip23_read: N23_KIND
+  blanked draft wrap: N37_DELETED
+  draft wrap with no k tag: N37_K
+  draft wrap whose k tag says 1: N37_MISMATCH

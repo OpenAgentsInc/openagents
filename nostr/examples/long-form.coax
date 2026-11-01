@@ -1,0 +1,150 @@
+// book:begin example
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip23.coax";
+#load "../../coax/lib/nostr/nip37.coax";
+#load "../../coax/lib/nostr/nip54.coax";
+#import "Basic";
+
+// Test keys, never real ones. Key 1 is the scalar 1 (public key x(G));
+// key 3 is BIP-340 test vector 0's.
+KEY_1 :: "0000000000000000000000000000000000000000000000000000000000000001";
+KEY_3 :: "0000000000000000000000000000000000000000000000000000000000000003";
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+// NIP-23's example times: created_at (the last update) and published_at.
+CREATED :: 1675642635;
+PUBLISHED :: 1296962229;
+// A fixed NIP-44 nonce, so the output is the same on every run. A client
+// takes 32 fresh random bytes from the host for every seal.
+NONCE :: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+// The draft: an unsigned kind 30023 event, as a client would keep it.
+DRAFT :: "{\"kind\":30023,\"created_at\":1675650000,\"tags\":[[\"d\",\"lorem-ipsum\"],[\"title\",\"Lorem Ipsum, revised\"]],\"content\":\"A second draft, not yet published.\"}";
+
+text_of :: (n: int, out: [] u8) -> string { #assert n > 0; return cast(string) out[0..<n]; }
+hex_of :: (bytes: [32] u8, out: [] u8) -> string {
+  b := bytes; #assert hex_encode_checked(cast(string) b[..], out, false).error == NC_OK;
+  return cast(string) out[0..<64];
+}
+bytes_of :: (hex: string) -> [32] u8 {
+  b: [32] u8; #assert hex_decode_checked(hex, b[..], false).error == NC_OK; return b;
+}
+// Signs one event with a test key into out.
+sign :: (key_hex: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key := bytes_of(key_hex); aux := bytes_of(AUX);
+  work: [1] NostrSignWork; scratch: [4096] u8; k := EVENT_MORE;
+  while k == EVENT_MORE {
+    k = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  return text_of(k, out);
+}
+name54 :: (e: int) -> string {
+  names := [9] string.["N54_OK", "N54_UTF8", "N54_EMPTY", "N54_OUTPUT", "N54_EVENT", "N54_KIND", "N54_NO_D", "N54_NOT_NORMAL", "N54_LIMIT"];
+  return names[e];
+}
+name23 :: (e: int) -> string {
+  names := [8] string.["N23_OK", "N23_EVENT", "N23_KIND", "N23_NO_D", "N23_PUBLISHED", "N23_LATER", "N23_LIMIT", "N23_OUTPUT"];
+  return names[e];
+}
+name37 :: (e: int) -> string {
+  names := [13] string.["N37_OK", "N37_INPUT", "N37_KEY", "N37_EVENT", "N37_KIND", "N37_NOT_SELF", "N37_NO_D", "N37_K",
+    "N37_DELETED", "N37_PAYLOAD", "N37_DRAFT", "N37_MISMATCH", "N37_OUTPUT"];
+  return names[e];
+}
+// A title and its d value, or the refusal. label is how the title prints.
+show_as :: (title: string, label: string) {
+  b: [128] u8; r := nip54_normalize(title, b[..]);
+  if r.error == N54_OK { print("  \"%\" -> \"%\"\n", label, cast(string) b[0..<r.n]); }
+  else { print("  \"%\" -> %\n", label, name54(r.error)); }
+}
+show_d :: (title: string) { show_as(title, title); }
+// A wiki event (unsigned; the reader checks tags, not signatures).
+wiki :: (tags: string) -> string {
+  e := nt_event(tags); e.kind = N54_WIKI; b: [256] u8;
+  a := nip54_read(e, b[..]);
+  if a.error != N54_OK { return name54(a.error); }
+  return "N54_OK";
+}
+// An article read back: its fields, or the refusal.
+show_article :: (event: string) {
+  s: [8192] u8; e := nostr_event_read(event, s[..], false); #assert e.error == NE_OK;
+  b: [512] u8; a := nip23_read(e, b[..]);
+  if a.error != N23_OK { print("  nip23_read: %\n", name23(a.error)); return; }
+  print("  kind %, d \"%\", title \"%\", summary \"%\", published_at %\n", a.kind, n23_text(a.d, b[..]),
+        n23_text(a.title, b[..]), n23_text(a.summary, b[..]), a.published_at);
+}
+
+main :: () {
+  print("== 1. NIP-54 d values\n");
+  ins := [8] string.["Wiki Article", "What's Up?", "  Hello  World  ", "Article 1", "ウィキペディア", "Ñoño", "Москва", "日本語 Article"];
+  for t: ins { show_d(t); }
+  print("worked by hand in the chapter:\n");
+  show_d("Rock & Roll (1950s)"); show_d("Москва — столица!"); show_d("  ¿Qué es Nostr?  ");
+  print("wikilink targets:\n");
+  show_d("proof of work"); show_d("日本語 記事"); show_d("Биткойн");
+  print("refused:\n");
+  show_d("?!"); bad := [3] u8.['a', 0xC3, 'b']; show_as(cast(string) bad[..], "a\\xC3b");
+  print("wiki articles:\n");
+  print("  d \"wiki\": %\n", wiki("[[\"d\",\"wiki\"],[\"title\",\"Wiki\"]]"));
+  print("  d \"Wiki Article\": %\n", wiki("[[\"d\",\"Wiki Article\"]]"));
+  print("  no d tag: %\n", wiki("[[\"title\",\"Wiki\"]]"));
+
+  print("\n== 2. A long-form article (kind 30023)\n");
+  m: N23Meta; m.d = "lorem-ipsum"; m.title = "Lorem Ipsum"; m.summary = "A placeholder article."; m.published_at = PUBLISHED;
+  tb: [256] u8; t := nip23_tags(m, tb[..]); #assert t.error == N23_OK;
+  tags := cast(string) tb[0..<t.n];
+  print("tags %\n", tags);
+  e1b: [2048] u8; v1 := sign(KEY_1, CREATED, N23_ARTICLE, tags, "Lorem ipsum dolor sit amet.", e1b[..]);
+  print("signed by key 1:\n  %\n", v1);
+  show_article(v1);
+  key1 := bytes_of("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
+  ab: [128] u8; an := nip23_address(N23_ARTICLE, key1, "lorem-ipsum", ab[..]);
+  print("a coordinate %\n", text_of(an, ab[..]));
+
+  print("\n== 3. Which version is current\n");
+  e2b: [2048] u8; v2 := sign(KEY_1, CREATED + 600, N23_ARTICLE, tags, "Lorem ipsum dolor sit amet, edited.", e2b[..]);
+  e3b: [2048] u8; v3 := sign(KEY_1, CREATED + 600, N23_ARTICLE, tags, "Lorem ipsum dolor sit amet, edited again.", e3b[..]);
+  s1: [8192] u8; s2: [8192] u8; s3: [8192] u8; hx: [64] u8;
+  set: [3] NostrEvent;
+  set[0] = nostr_event_read(v1, s1[..], false); set[1] = nostr_event_read(v2, s2[..], false); set[2] = nostr_event_read(v3, s3[..], false);
+  for i: 0..<3 { print("  version %: created_at %, id %\n", i + 1, set[i].created_at, hex_of(set[i].id, hx[..])); }
+  cur := nip23_current(set[..], N23_ARTICLE, key1, "lorem-ipsum");
+  print("current: version %\n", cur + 1);
+  print("versions 1 and 2 only: version %\n", nip23_current(set[0..<2], N23_ARTICLE, key1, "lorem-ipsum") + 1);
+  print("by key 3's address: %\n", nip23_current(set[..], N23_ARTICLE, bytes_of("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"), "lorem-ipsum"));
+
+  print("\n== 4. A draft wrap (kind 31234), sealed to yourself\n");
+  k1 := bytes_of(KEY_1); k3 := bytes_of(KEY_3); nonce := bytes_of(NONCE);
+  db: [512] u8; for i: 0..<DRAFT.count { db[i] = DRAFT[i]; }
+  work: [4096] u8; pb: [1024] u8; keys: [1] Nip37Keys;
+  sl := nip37_seal(k1[..], nonce[..], db[0..<DRAFT.count], keys[..], work[..], pb[..], false); #assert sl.error == N37_OK;
+  payload := cast(string) pb[0..<sl.written];
+  print("draft %\n", DRAFT);
+  print("content (NIP-44, % characters) %\n", sl.written, payload);
+  wt: [128] u8; wn := nip37_tags("lorem-ipsum-draft", sl.kind, CREATED + 90 * 86400, wt[..]);
+  wtags := text_of(wn, wt[..]);
+  print("tags %\n", wtags);
+  wb: [2048] u8; wrap := sign(KEY_1, CREATED, N37_WRAP, wtags, payload, wb[..]);
+  print("signed by key 1:\n  %\n", wrap);
+  sc: [8192] u8; ob: [1024] u8;
+  o := nip37_open(k1[..], wrap, keys[..], sc[..], work[..], ob[..], false);
+  print("key 1 opens it: %, kind %\n  %\n", name37(o.error), o.kind, cast(string) ob[0..<o.written]);
+  o3 := nip37_open(k3[..], wrap, keys[..], sc[..], work[..], ob[..], false);
+  print("key 3 opens it: %\n", name37(o3.error));
+  ck: [32] u8; ec: [1] EcdhScratch;
+  #assert nip44_conversation_key_from_keys_checked(k3[..], key1[..], ec[..], ck[..], false) == NIP44_OK;
+  d3 := nip44_decrypt_checked(NIP44_COMPAT, ck[..], payload, work[..], ob[..], false);
+  print("key 3 decrypts the content with its key and key 1's public key: NIP44 error % (NIP44_MAC is %)\n", d3.error, NIP44_MAC);
+
+  print("\n== 5. Broken events\n");
+  bb: [2048] u8;
+  show_article(sign(KEY_1, CREATED, N23_ARTICLE, "[[\"title\",\"No identifier\"]]", "x", bb[..]));
+  show_article(sign(KEY_1, CREATED, N23_ARTICLE, "[[\"d\",\"a\"],[\"published_at\",\"1675642636\"]]", "x", bb[..]));
+  show_article(sign(KEY_1, CREATED, N23_ARTICLE, "[[\"d\",\"a\"],[\"published_at\",\"yesterday\"]]", "x", bb[..]));
+  show_article(sign(KEY_1, CREATED, 1, tags, "x", bb[..]));
+  blank := sign(KEY_1, CREATED + 1, N37_WRAP, wtags, "", bb[..]);
+  print("  blanked draft wrap: %\n", name37(nip37_open(k1[..], blank, keys[..], sc[..], work[..], ob[..], false).error));
+  cb: [2048] u8; nok := sign(KEY_1, CREATED, N37_WRAP, "[[\"d\",\"lorem-ipsum-draft\"]]", payload, cb[..]);
+  print("  draft wrap with no k tag: %\n", name37(nip37_open(k1[..], nok, keys[..], sc[..], work[..], ob[..], false).error));
+  kb: [2048] u8; wrongk := sign(KEY_1, CREATED, N37_WRAP, "[[\"d\",\"lorem-ipsum-draft\"],[\"k\",\"1\"]]", payload, kb[..]);
+  print("  draft wrap whose k tag says 1: %\n", name37(nip37_open(k1[..], wrongk, keys[..], sc[..], work[..], ob[..], false).error));
+}
+// book:end example

@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 65 are implemented and 39 are design drafts.
+Of the 104 chapters, 66 are implemented and 38 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -243,7 +243,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) | Runnable: native C | Kind 1 notes, NIP-10 marked `e` tags (`root`, `reply`, `mention`) with the deprecated positional form, `p` tags for participants, NIP-14 `subject` and NIP-36 `content-warning`. |
 | [51. References inside content](ch051-references-inside-content.md) | Unimplemented: design draft | NIP-27 `nostr:` references in content, the deprecated NIP-08 `#[index]` mentions, and NIP-30 `:shortcode:` custom emoji with `emoji` tags and kind 30030 sets. |
 | [52. Reposts, reactions and comments](ch052-reposts-reactions-and-comments.md) | Runnable: native C | Kind 6 and 16 reposts, kind 7 reactions (`+`, `-`, emoji) and kind 17 website reactions, and NIP-22 kind 1111 comments with uppercase root and lowercase parent scope tags. |
-| [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) | Unimplemented: design draft | Kind 30023 articles and 30024 drafts in Markdown, NIP-37 kind 31234 draft wraps encrypted with NIP-44, and NIP-54 kind 30818 wiki articles with `d`-tag normalization. |
+| [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) | Runnable: native C | Kind 30023 articles and 30024 drafts in Markdown, NIP-37 kind 31234 draft wraps encrypted with NIP-44, and NIP-54 kind 30818 wiki articles with `d`-tag normalization. |
 | [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) | Unimplemented: design draft | NIP-51 standard lists (10000 mutes, 10001 pins, 10003 bookmarks and others) and sets (30000 follow sets and others) with public tags and private items encrypted to self, and NIP-B0 kind 39701 web bookmarks. |
 | [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) | Runnable: native C | NIP-32 kind 1985 labels in `L` namespaces, NIP-56 kind 1984 reports with report types, and NIP-85 kinds 30382–30385 assertions from declared providers (kind 10040). |
 | [56. Proof of work](ch056-proof-of-work.md) | Runnable: native C | NIP-13 difficulty as the number of leading zero bits of the event ID, the `nonce` tag with its target, and relay admission by `pow:` reason. |

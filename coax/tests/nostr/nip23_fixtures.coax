@@ -1,0 +1,10 @@
+// Event records for nip23.coax's checks: tags, kind and time on a parsed
+// record, and for the replacement checks an author byte and an id byte.
+// They live here so that mutation of nip23.coax changes the library, not
+// the checks.
+n23_event :: (kind:int,created_at:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;e.created_at=created_at;return e;}
+// An event record with an author byte, a time and an id byte, for the
+// replacement checks; nothing here reads a signature.
+n23_signed :: (kind:int,author:u8,created_at:int,id:u8,tags:string)->NostrEvent {
+  e:=n23_event(kind,created_at,tags);e.public_key[0]=author;e.id[0]=id;return e;
+}

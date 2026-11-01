@@ -1,0 +1,261 @@
+// NIP-37 draft wraps (kind 31234): an unsigned draft event, JSON-stringified
+// and NIP-44 encrypted to the signer's own public key, in the content of an
+// addressable event with a d tag and a k tag naming the draft's kind.
+//
+// To yourself. The conversation key is NIP-44's for the author's secret and
+// the author's own public key: HKDF-extract("nip44-v2", x(s*P)) with P=s*G,
+// so x(s*s*G). Only the holder of s computes it. nip37_seal derives P from s
+// (an ECDH with the generator, whose x is P's), so a draft can't be sealed to
+// anyone else; nip37_open refuses a wrap whose pubkey isn't the opener's own
+// before it decrypts anything.
+//
+// nip37_open checks, in order: the views; the opener's secret; the wrap is a
+// NIP-01 event whose id is its own (nostr_event_read; the signature is the
+// caller's to verify); its kind is 31234; its pubkey is the opener's; it has
+// a non-empty d tag; it has a k tag with a kind 0-65535; its content is not
+// blank (NIP-37: a blanked content is a deleted draft); the content decrypts;
+// the plaintext is a JSON object with an integer kind; that kind is the k
+// tag's. Only then is the draft JSON in out.
+//
+// Not built: kind 1234 checkpoints, kind 10013 private relay lists, and the
+// NIP-40 expiration a wrap should carry (nip37_tags writes it; nothing here
+// enforces it).
+//
+// Cleanup. The ECDH scratch, the author's public key and the conversation
+// key live in the caller's Nip37Keys, which every return after the views
+// are admitted zeroes; a refusal after decryption zeroes out too. Plain
+// stores, as in nip44-key.coax and nip59.coax.
+#load "nip44-key.coax";
+#load "nip18.coax";
+#load "../../tests/nostr/nip37_fixtures.coax";
+#authority;
+
+N37_OK :: 0; N37_INPUT :: 1; N37_KEY :: 2; N37_EVENT :: 3; N37_KIND :: 4; N37_NOT_SELF :: 5;
+N37_NO_D :: 6; N37_K :: 7; N37_DELETED :: 8; N37_PAYLOAD :: 9; N37_DRAFT :: 10;
+N37_MISMATCH :: 11; N37_OUTPUT :: 12;
+N37_WRAP :: 31234; N37_CHECKPOINT :: 1234; N37_RELAYS :: 10013;
+// The largest content an event carries (event.coax's reader).
+N37_MAX_CONTENT :: 65536;
+
+// book:begin record
+Nip37Sealed :: struct {error:int=N37_INPUT; written:int; kind:int;}
+// out[0..<written] holds the draft JSON; kind is its kind (the k tag's).
+Nip37Opened :: struct {error:int=N37_INPUT; written:int; kind:int;}
+// Key work: the ECDH scratch, your public key and the conversation key.
+Nip37Keys :: struct {ec:[1]EcdhScratch; self:[32]u8; ck:[32]u8;}
+// book:end record
+
+#test "status values" {
+  #assert N37_OK==0 && N37_OUTPUT==12 && N37_WRAP==31234 && N37_CHECKPOINT==1234 && N37_RELAYS==10013;
+}
+#test "a draft is a JSON object with an integer kind 0-65535" {
+  #assert n37_draft_kind("{\"kind\":30023,\"content\":\"x\",\"tags\":[]}")==30023;
+  #assert n37_draft_kind("{\"tags\":[[\"kind\",\"1\"]],\"content\":{\"kind\":2},\"kind\":1}")==1;
+  #assert n37_draft_kind(" {\"kind\":0} ")==0 && n37_draft_kind("{\"kind\":65535}")==65535;
+  #assert n37_draft_kind("{\"kind\":65536}")==-1 && n37_draft_kind("{\"kind\":-1}")==-1 && n37_draft_kind("{\"kind\":1.5}")==-1;
+  #assert n37_draft_kind("{\"kind\":\"1\"}")==-1 && n37_draft_kind("{\"content\":\"x\"}")==-1 && n37_draft_kind("[1]")==-1;
+  #assert n37_draft_kind("{\"kind\":1} x")==-1 && n37_draft_kind("{\"kind\":1")==-1 && n37_draft_kind("")==-1;
+  #assert n37_draft_kind("{\"a\":[1,{\"b\":2}],\"kind\":7}")==7 && n37_draft_kind("{\"a\":[1,}],\"kind\":7}")==-1;
+  #assert n37_draft_kind("{\"kind\":1,\"kind\":2}")==-1;
+}
+#test "the wrap's tags: d, k and an optional expiration" {
+  out:[128]u8;
+  n:=nip37_tags("my-draft",30023,1800000000,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"my-draft\"],[\"k\",\"30023\"],[\"expiration\",\"1800000000\"]]";
+  n=nip37_tags("a\"b",1,-1,out[..]);#assert cast(string)out[0..<n]=="[[\"d\",\"a\\\"b\"],[\"k\",\"1\"]]";
+  n=nip37_tags("x",0,0,out[..]);#assert cast(string)out[0..<n]=="[[\"d\",\"x\"],[\"k\",\"0\"],[\"expiration\",\"0\"]]";
+  #assert nip37_tags("",1,-1,out[..])==-1 && nip37_tags("x",-1,-1,out[..])==-1 && nip37_tags("x",65536,-1,out[..])==-1;
+  #assert nip37_tags("x",65535,-1,out[..])>0 && nip37_tags("x",1,-1,out[0..<20])==-1 && nip37_tags("x",1,-1,out[0..<21])==21;
+}
+#test "seal refuses views, the draft and a bad secret before encrypting; keys are wiped" {
+  k:=N37_KEY_1;nonce:[32]u8;work:[1024]u8;out:[1024]u8;out[0]=7;dk:[16]u8;dq:[16]u8;db:=n37_bytes("{\"kind\":1}",dk[..]);
+  keys:[2]Nip37Keys;
+  #assert nip37_seal(k[0..<31],nonce[..],db,keys[0..<1],work[..],out[..],false).error==N37_INPUT;
+  #assert nip37_seal(k[..],nonce[0..<31],db,keys[0..<1],work[..],out[..],false).error==N37_INPUT;
+  #assert nip37_seal(k[..],nonce[..],db,keys[0..<2],work[..],out[..],false).error==N37_INPUT;
+  #assert nip37_seal(k[..],nonce[..],db,keys[0..<1],work[..],out[..],true).error==N37_INPUT;
+  n37_fill(keys[0..<1]);
+  #assert nip37_seal(k[..],nonce[..],n37_bytes("{\"kind\":\"1\"}",dq[..]),keys[0..<1],work[..],out[..],false).error==N37_DRAFT;
+  #assert n37_wiped(keys[0..<1]);
+  // A kind 0 draft passes the draft check and stops at the key.
+  zero:[32]u8;n37_fill(keys[0..<1]);
+  #assert nip37_seal(zero[..],nonce[..],n37_bytes("{\"kind\":0}",dq[..]),keys[0..<1],work[..],out[..],false).error==N37_KEY;
+  #assert n37_wiped(keys[0..<1]) && out[0]==7;
+}
+#test "open refuses views and a bad secret first; keys are wiped" {
+  k:=N37_KEY_1;s:[4096]u8;work:[1024]u8;out:[1024]u8;keys:[2]Nip37Keys;
+  #assert nip37_open(k[0..<31],"{}",keys[0..<1],s[..],work[..],out[..],false).error==N37_INPUT;
+  #assert nip37_open(k[..],"{}",keys[0..<2],s[..],work[..],out[..],false).error==N37_INPUT;
+  #assert nip37_open(k[..],"{}",keys[0..<1],s[..],work[..],out[..],true).error==N37_INPUT;
+  zero:[32]u8;n37_fill(keys[0..<1]);
+  #assert nip37_open(zero[..],"{}",keys[0..<1],s[..],work[..],out[..],false).error==N37_KEY && n37_wiped(keys[0..<1]);
+}
+#test "NIP-44 refusals map to output or payload" {
+  #assert n37_payload(NIP44_OUTPUT)==N37_OUTPUT && n37_payload(NIP44_CAPACITY)==N37_OUTPUT;
+  #assert n37_payload(NIP44_MAC)==N37_PAYLOAD && n37_payload(NIP44_BASE64)==N37_PAYLOAD && n37_payload(NIP44_OK)==N37_PAYLOAD;
+}
+#test "key 1 seals a draft to itself: Python's payload; a short out refuses; keys are wiped" #steps 2000000000 {
+  k:=N37_KEY_1;nonce:=N37_NONCE;work:[2048]u8;payload:[1024]u8;keys:[1]Nip37Keys;
+  draft:="{\"kind\":30023,\"tags\":[[\"d\",\"x\"]],\"content\":\"# Draft\"}";
+  dd:[128]u8;n37_fill(keys[..]);
+  sl:=nip37_seal(k[..],nonce[..],n37_bytes(draft,dd[..]),keys[..],work[..],payload[..],false);
+  #assert sl.error==N37_OK && sl.kind==30023 && cast(string)payload[0..<sl.written]==N37_PAYLOAD_1 && n37_wiped(keys[..]);
+  n37_fill(keys[..]);
+  short:=nip37_seal(k[..],nonce[..],n37_bytes(draft,dd[..]),keys[..],work[..],payload[0..<10],false);
+  #assert short.error==N37_OUTPUT && short.written==0 && short.kind==0 && n37_wiped(keys[..]);
+}
+#test "key 1 opens its own wraps; the wrap's checks refuse in order" #steps 4000000000 {
+  k:=N37_KEY_1;work:[2048]u8;keys:[1]Nip37Keys;s:[8192]u8;out:[1024]u8;ev:[2048]u8;
+  draft:="{\"kind\":30023,\"tags\":[[\"d\",\"x\"]],\"content\":\"# Draft\"}";
+  w:=n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]);
+  n37_fill(keys[..]);
+  o:=nip37_open(k[..],w,keys[..],s[..],work[..],out[..],false);
+  #assert o.error==N37_OK && o.kind==30023 && cast(string)out[0..<o.written]==draft && n37_wiped(keys[..]);
+  // A kind 0 draft under k "0".
+  o=nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"0\"]]",N37_PAYLOAD_0,ev[..]),keys[..],s[..],work[..],out[..],false);
+  #assert o.error==N37_OK && o.kind==0 && cast(string)out[0..<o.written]=="{\"kind\":0}";
+  // In the order nip37_open checks them.
+  #assert nip37_open(k[..],"{\"id\":1}",keys[..],s[..],work[..],out[..],false).error==N37_EVENT;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,30023,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_KIND;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_3,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_NOT_SELF;
+  // Keys that differ from key 1's only in the first or the last byte.
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1_FIRST,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_NOT_SELF;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1_LAST,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_NOT_SELF;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_NO_D;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_NO_D;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_K;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"x\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_K;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]","",ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_DELETED;
+  bad:[1024]u8;for i:0..<N37_PAYLOAD_1.count {bad[i]=N37_PAYLOAD_1[i];} bad[60]=ifx bad[60]=='A' then cast(u8)'B' else cast(u8)'A';
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",cast(string)bad[0..<N37_PAYLOAD_1.count],ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_PAYLOAD;
+  #assert nip37_open(k[..],w,keys[..],s[..],work[..],out[0..<10],false).error==N37_OUTPUT;
+  // The k tag disagrees with the draft's kind: 1 against 30023, 0 against
+  // 30023, 1 against 0. out is wiped.
+  for i:0..<8 {out[i]=7;}
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"1\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_MISMATCH;
+  for i:0..<8 {#assert out[i]==0;}
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"0\"]]",N37_PAYLOAD_1,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_MISMATCH;
+  #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"1\"]]",N37_PAYLOAD_0,ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_MISMATCH;
+}
+#test "a plaintext that isn't a draft refuses after decryption" #steps 2000000000 {
+  k:=N37_KEY_1;nonce:=N37_NONCE;work:[2048]u8;payload:[1024]u8;keys:[1]Nip37Keys;
+  ck:[32]u8;ec:[1]EcdhScratch;pub:=N37_PUB_1_BYTES;nb:[16]u8;
+  #assert nip44_conversation_key_from_keys_checked(k[..],pub[..],ec[..],ck[..],false)==NIP44_OK;
+  r:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],nonce[..],n37_bytes("not json",nb[..]),work[..],payload[..],false);#assert r.error==NIP44_OK;
+  s:[8192]u8;out:[1024]u8;ev:[2048]u8;
+  w:=n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"1\"]]",cast(string)payload[0..<r.written],ev[..]);
+  #assert nip37_open(k[..],w,keys[..],s[..],work[..],out[..],false).error==N37_DRAFT;
+  for i:0..<8 {#assert out[i]==0;}
+}
+
+// ---- the implementation
+
+// book:begin draft
+// The kind of a draft event's JSON: an object whose one "kind" member is an
+// integer 0-65535. -1 for anything else.
+n37_draft_kind :: (text:string)->int {
+  j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_OBJECT {return -1;}
+  kind:=-1;seen:=false;tok:=json_next(j[..]);
+  while tok==JSON_STRING {
+    named:=json_is(json_text(j[..]),"kind");
+    v:=json_next(j[..]);
+    if named {
+      if seen || v!=JSON_NUMBER {return -1;}
+      seen=true;kind=n18_kind(json_text(j[..]));
+    }
+    if !json_skip(j[..]) {return -1;}
+    tok=json_next(j[..]);
+  }
+  if tok!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return -1;}
+  return kind;
+}
+// book:end draft
+
+// book:begin tags
+// The wrap's tags [["d",d],["k",kind]] and, when expiration >= 0,
+// ["expiration",expiration], into out: its length, or -1.
+nip37_tags :: (d:string,kind:int,expiration:int,out:[]u8)->int {
+  if d.count==0 || kind<0 || kind>65535 {return -1;}
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,d);n=json_raw(out,n,"],[\"k\",\"");
+  n=json_write_int(out,n,kind);n=json_raw(out,n,"\"]");
+  if expiration>=0 {n=json_raw(out,n,",[\"expiration\",\"");n=json_write_int(out,n,expiration);n=json_raw(out,n,"\"]");}
+  return json_raw(out,n,"]");
+}
+// book:end tags
+
+// book:begin keys
+// Your x-only public key into keys.self: x(secret*G), an ECDH with the
+// generator. Then the conversation key from secret to that key into
+// keys.ck. N37_KEY for a secret that is 0 or not below n.
+n37_keys :: (secret:[]u8,keys:[]Nip37Keys)->int {
+  g:=NIP44_KEY_GENERATOR_X;
+  if ecdh_stage(secret,g[..],keys[0].ec[..])!=EC_OK {return N37_KEY;}
+  for i:0..<32 {keys[0].self[i]=keys[0].ec[0].staged[i];}
+  #assert nip44_conversation_key_from_keys_checked(secret,keys[0].self[..],keys[0].ec[..],keys[0].ck[..],false)==NIP44_OK;
+  return N37_OK;
+}
+n37_payload :: (status:u32)->int {
+  if status==NIP44_OUTPUT || status==NIP44_CAPACITY {return N37_OUTPUT;}
+  return N37_PAYLOAD;
+}
+// book:end keys
+
+// book:begin seal
+// The content of a draft wrap: draft (an unsigned event's JSON) NIP-44
+// encrypted with nonce from secret to its own public key, into out. work
+// holds NIP-44's encryption work. overlap: any two views share memory.
+nip37_seal :: (secret:[]u8,nonce:[]u8,draft:[]u8,keys:[]Nip37Keys,work:[]u8,out:[]u8,overlap:bool)->Nip37Sealed {
+  r:Nip37Sealed;
+  if secret.count!=32 || nonce.count!=32 || keys.count!=1 || overlap {return r;}
+  kind:=n37_draft_kind(cast(string)draft);
+  if kind<0 {r.error=N37_DRAFT;}
+  else {r.error=n37_keys(secret,keys);}
+  if r.error==N37_OK {
+    e:=nip44_encrypt_checked(NIP44_COMPAT,keys[0].ck[..],nonce,draft,work,out,false);
+    r.error=ifx e.error==NIP44_OK then N37_OK else n37_payload(e.error);
+    if r.error==N37_OK {r.written=e.written;r.kind=kind;}
+  }
+  keys[0]=Nip37Keys.{};
+  return r;
+}
+// book:end seal
+
+// book:begin open
+// A draft wrap opened by the holder of secret: the draft JSON into out.
+// scratch holds the wrap's serialization; work holds NIP-44's decryption
+// work.
+nip37_open :: (secret:[]u8,text:string,keys:[]Nip37Keys,scratch:[]u8,work:[]u8,out:[]u8,overlap:bool)->Nip37Opened {
+  r:Nip37Opened;
+  if secret.count!=32 || keys.count!=1 || overlap {return r;}
+  r.error=n37_keys(secret,keys);
+  if r.error==N37_OK {r=n37_check(keys[0].self[..],keys[0].ck[..],text,scratch,work,out);}
+  keys[0]=Nip37Keys.{};
+  return r;
+}
+n37_check :: (self:[]u8,ck:[]u8,text:string,scratch:[]u8,work:[]u8,out:[]u8)->Nip37Opened {
+  r:Nip37Opened;
+  e:=nostr_event_read(text,scratch,false);if e.error!=NE_OK {r.error=N37_EVENT;return r;}
+  if e.kind!=N37_WRAP {r.error=N37_KIND;return r;}
+  pub:=e.public_key;
+  for i:0..<32 {if pub[i]!=self[i] {r.error=N37_NOT_SELF;return r;}}
+  tb:[NT_MAX_VALUE]u8;
+  d:=n10_text(e,"d",tb[..]);if !d.present || d.n==0 {r.error=N37_NO_D;return r;}
+  k:=n10_text(e,"k",tb[..]);kind:=-1;
+  if k.present {kind=n18_kind(cast(string)tb[0..<k.n]);}
+  if kind<0 {r.error=N37_K;return r;}
+  if e.content_to==e.content_from {r.error=N37_DELETED;return r;}
+  // Base64 has no characters JSON must escape, but a writer may escape "/".
+  // The reader bounds the content, so it fits.
+  payload:[N37_MAX_CONTENT]u8;
+  n:=json_unescape(e.original[e.content_from..<e.content_to],payload[..]);
+  p:=nip44_decrypt_checked(NIP44_COMPAT,ck,cast(string)payload[0..<n],work,out,false);
+  if p.error!=NIP44_OK {r.error=n37_payload(p.error);return r;}
+  got:=n37_draft_kind(cast(string)out[0..<p.written]);
+  if got<0 || got!=kind {
+    for i:0..<out.count {out[i]=0;}
+    r.error=ifx got<0 then N37_DRAFT else N37_MISMATCH;return r;
+  }
+  r.error=N37_OK;r.written=p.written;r.kind=kind;return r;
+}
+// book:end open

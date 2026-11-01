@@ -84,7 +84,7 @@
 - [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) — implemented
 - [51. References inside content](ch051-references-inside-content.md) — design draft
 - [52. Reposts, reactions and comments](ch052-reposts-reactions-and-comments.md) — implemented
-- [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) — design draft
+- [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) — implemented
 - [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) — design draft
 - [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) — implemented
 - [56. Proof of work](ch056-proof-of-work.md) — implemented
