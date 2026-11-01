@@ -337,7 +337,13 @@ compiler and the examples have not been run on Linux yet.
   be opened or is never there, one that will not stay put, a screen that
   goes away, a scale that will not change, no desk, a given socket, and
   bad options.
-  Left in row 4: `recording-hud` and `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  `os/dictate-toggle.coax` replaces `dictate-toggle`: the recorder, the
+  tone and the watcher that says when the microphone closed by itself.
+  With stand-ins for ffmpeg, pw-play, notify-send, whisper-cli, wtype and
+  curl, fourteen scenarios gave the shell's output, warnings and calls,
+  except that a failed whisper-cli is now reported as a failure (the
+  shell's pipeline reported it as "no speech").
+  Left in row 4: `recording-hud`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.

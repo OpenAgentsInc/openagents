@@ -138,6 +138,9 @@ int64_t cxproc_self_path(coax_v_u8 out) {
   return (int64_t)n;
 }
 
+/* This process's id ($$). */
+int64_t cxproc_self_pid(void) { return (int64_t)getpid(); }
+
 /* This process's real user id (id -u). */
 int64_t cxproc_uid(void) { return (int64_t)getuid(); }
 

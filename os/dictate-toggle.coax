@@ -1,0 +1,307 @@
+// CoderOS dictation: one key opens the microphone, and the next press transcribes what it heard and
+// types it (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 4), in place of
+// os/bin/dictate-toggle (openagents 2ca255550e).
+//   coax/web/tool.sh os/dictate-toggle.coax [toggle|status]
+// The microphone is ffmpeg reading the default PulseAudio source into a 16 kHz WAV, capped at
+// CODEROS_DICTATION_LIMIT seconds; the transcript is whisper.cpp's whisper-cli, typed by wtype.
+// The record file holds the recorder's pid and when it started. A press while it lives stops it
+// and transcribes; any other press starts one, keeping whatever an earlier take left. A short tone
+// marks each press (never during a recording's sound: it plays before the microphone opens and
+// after it closes), and a watcher says so out loud if the microphone closes on its own.
+// The tone and the watcher run as detached runs of this program (`cue`, `watch`), as the shell's
+// background jobs did. Every message is the shell's.
+// One change: a whisper-cli that fails says "the transcription failed" and keeps the audio. The
+// shell's pipeline took sed's status, so it always said "found no speech" instead.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+
+cxproc_wall_us :: () -> int #foreign;
+cxproc_pid_alive :: (pid: int) -> int #foreign;
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_local_stamp :: (out: [] u8) -> int #foreign;
+cxproc_self_pid :: () -> int #foreign;
+
+MODEL_URL :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin";
+
+Dict :: struct { record: string; audio: string; model: string; limit: string; }
+
+// ---- pure pieces
+
+// A field of the record (1: the pid, 2: when it started) as record_field read it: the Nth line,
+// all digits; -1 when it is missing or not a number.
+dt_field :: (text: string, wanted: int) -> int {
+  seen := 0; i := 0;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    seen += 1;
+    if seen == wanted {
+      line := text[i..<j];
+      if line.count == 0 || line.count > 18 { return -1; }
+      v := 0;
+      for c: line { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+      return v;
+    }
+    i = j + 1;
+  }
+  return -1;
+}
+#test "record fields" {
+  #assert dt_field("123\n1700000000\n", 1) == 123 && dt_field("123\n1700000000\n", 2) == 1700000000 && dt_field("123\n1700000000", 2) == 1700000000;
+  #assert dt_field("", 1) == -1 && dt_field("12a\n5\n", 1) == -1 && dt_field("12\n\n", 2) == -1 && dt_field("12\n", 2) == -1 && dt_field("\n5\n", 1) == -1;
+}
+// duration_text: "42s", or "3m 5s" from a minute on.
+dt_duration :: (total: int, out: [] u8) -> string {
+  t := ifx total < 0 then 0 else total;
+  n := 0; ib: [24] u8; jb: [24] u8;
+  if t < 60 { n = dt_cat(out, 0, dt_itoa(t, ib[..])); n = dt_cat(out, n, "s"); return cast(string) out[0..<n]; }
+  n = dt_cat(out, 0, dt_itoa(t / 60, ib[..])); n = dt_cat(out, n, "m "); n = dt_cat(out, n, dt_itoa(t % 60, jb[..])); n = dt_cat(out, n, "s");
+  return cast(string) out[0..<n];
+}
+#test "durations" {
+  b: [32] u8;
+  #assert dt_duration(0, b[..]) == "0s" && dt_duration(59, b[..]) == "59s" && dt_duration(60, b[..]) == "1m 0s" && dt_duration(185, b[..]) == "3m 5s" && dt_duration(-4, b[..]) == "0s";
+}
+// whisper-cli's lines as one line: newlines to spaces, the ends trimmed of space (tr, then sed).
+dt_flatten :: (text: string, out: [] u8) -> string {
+  n := 0;
+  for c: text { if n < out.count { out[n] = ifx c == '\n' then ' ' else c; n += 1; } }
+  a := 0; while a < n && dt_space(out[a]) { a += 1; }
+  e := n; while e > a && dt_space(out[e - 1]) { e -= 1; }
+  return cast(string) out[a..<e];
+}
+dt_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 11 || c == 12; }
+#test "a transcript as one line" {
+  b: [128] u8;
+  #assert dt_flatten("\n Hello there.\n How are you?\n", b[..]) == "Hello there.  How are you?" && dt_flatten("  \n\t", b[..]) == "" && dt_flatten("one", b[..]) == "one";
+}
+// ${AUDIO_FILE%.wav}-STAMP-PID.wav
+dt_kept_name :: (audio: string, stamp: string, pid: int, out: [] u8) -> string {
+  stem := audio;
+  if stem.count >= 4 && stem[stem.count - 4..<stem.count] == ".wav" { stem = stem[0..<stem.count - 4]; }
+  ib: [24] u8;
+  n := dt_cat(out, 0, stem); n = dt_cat(out, n, "-"); n = dt_cat(out, n, stamp); n = dt_cat(out, n, "-"); n = dt_cat(out, n, dt_itoa(pid, ib[..])); n = dt_cat(out, n, ".wav");
+  return cast(string) out[0..<n];
+}
+#test "the kept capture's name" {
+  b: [128] u8;
+  #assert dt_kept_name("/tmp/dictation_input.wav", "20261031-210000", 77, b[..]) == "/tmp/dictation_input-20261031-210000-77.wav";
+  #assert dt_kept_name("/tmp/take", "20261031-210000", 77, b[..]) == "/tmp/take-20261031-210000-77.wav";
+}
+dt_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+dt_itoa :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := 0; if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return cast(string) out[0..<n + k];
+}
+
+// ---- effects
+
+dt_warn :: (s: string) { tool_err("dictate-toggle: "); tool_errln(s); }
+dt_now :: () -> int { return cxproc_wall_us() / 1000000; }
+dt_read :: (path: string, out: [] u8) -> string { n := fs_read(path, out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+dt_pid :: (d: Dict) -> int { b: [256] u8; return ifx fs_exists(d.record) then dt_field(dt_read(d.record, b[..]), 1) else -1; }
+dt_started :: (d: Dict) -> int { b: [256] u8; return ifx fs_exists(d.record) then dt_field(dt_read(d.record, b[..]), 2) else -1; }
+dt_live :: (d: Dict) -> bool { p := dt_pid(d); return p >= 0 && cxproc_pid_alive(p) == 1; }
+// command -v NAME
+dt_installed :: (name: string) -> bool {
+  pb: [16384] u8; path := proc_getenv("PATH", pb[..]);
+  i := 0;
+  while i <= path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    dir := path[i..<j]; if dir.count == 0 { dir = "."; }
+    fb: [4300] u8; n := dt_cat(fb[..], 0, dir); n = dt_cat(fb[..], n, "/"); n = dt_cat(fb[..], n, name);
+    if fs_kind(cast(string) fb[0..<n]) == 1 { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+// A detached run of this program: VERB A B.
+dt_self :: (verb: string, a: string, b: string, quiet: bool) {
+  sb: [4096] u8; n := cxproc_self_path(sb[..]);
+  if n <= 0 { return; }
+  h := proc_new();
+  ok := (!quiet || proc_quiet(h)) && proc_detach(h) && proc_arg(h, cast(string) sb[0..<n]) && proc_arg(h, verb) && proc_arg(h, a) && proc_arg(h, b);
+  if ok { r := proc_start(h); }
+  r := proc_release(h);
+}
+
+dt_notify :: (urgency: string, expire: string, body: string) {
+  if !dt_installed("notify-send") { return; }
+  ub: [64] u8; eb: [64] u8;
+  un := dt_cat(ub[..], 0, "--urgency="); un = dt_cat(ub[..], un, urgency);
+  en := dt_cat(eb[..], 0, "--expire-time="); en = dt_cat(eb[..], en, expire);
+  a := [7] string.["notify-send", "--app-name=Dictation", cast(string) ub[0..<un], cast(string) eb[0..<en], "--hint=string:x-canonical-private-synchronous:dictation", "Dictation", body];
+  o: [4096] u8; e: [4096] u8; r := proc_run(a[..], 30000, o[..], e[..]);
+  if r.started != 0 || r.status != 0 { dt_warn("the dictation notification could not be raised"); }
+}
+// The tone: a detached run of `cue`, so the press returns at once.
+dt_play_cue :: (freq: string, dur: string) { dt_self("cue", freq, dur, false); }
+dt_cue :: (freq: string, dur: string) -> int {
+  if !dt_installed("pw-play") { dt_warn("pw-play is absent, so the dictation tone did not sound"); return 0; }
+  tb: [4096] u8; tmp := proc_getenv("TMPDIR", tb[..]); if tmp.count == 0 { tmp = "/tmp"; }
+  pb: [4300] u8; ib: [24] u8;
+  n := dt_cat(pb[..], 0, tmp); n = dt_cat(pb[..], n, "/dictation-cue."); n = dt_cat(pb[..], n, dt_itoa(cxproc_self_pid(), ib[..])); n = dt_cat(pb[..], n, ".wav");
+  wav := cast(string) pb[0..<n];
+  sb: [128] u8; sn := dt_cat(sb[..], 0, "sine=frequency="); sn = dt_cat(sb[..], sn, freq); sn = dt_cat(sb[..], sn, ":duration="); sn = dt_cat(sb[..], sn, dur);
+  fa := [8] string.["ffmpeg", "-f", "lavfi", "-i", cast(string) sb[0..<sn], "-f", "wav", "-y"];
+  fv: [9] string; for i: 0..<8 { fv[i] = fa[i]; } fv[8] = wav;
+  o: [4096] u8; e: [4096] u8; r := proc_run(fv[..], 30000, o[..], e[..]);
+  pa := [4] string.["pw-play", "--volume", "0.25", wav];
+  po: [8192] u8; pe: [8192] u8; p := proc_run(pa[..], 30000, po[..], pe[..]);
+  x := fs_remove(wav);
+  if p.started != 0 || p.status != 0 {
+    // the shell kept pw-play's stdout and stderr together as the reason
+    rb: [16384] u8; rn := dt_cat(rb[..], 0, cast(string) po[0..<p.out_n]);
+    if p.out_n > 0 && p.err_n > 0 { rn = dt_cat(rb[..], rn, "\n"); }
+    rn = dt_cat(rb[..], rn, cast(string) pe[0..<p.err_n]);
+    while rn > 0 && rb[rn - 1] == '\n' { rn -= 1; }
+    mb: [16500] u8; mn := dt_cat(mb[..], 0, "the dictation tone did not sound");
+    if rn > 0 { mn = dt_cat(mb[..], mn, ": "); mn = dt_cat(mb[..], mn, cast(string) rb[0..<rn]); }
+    dt_warn(cast(string) mb[0..<mn]);
+  }
+  return 0;
+}
+
+// keep_audio: what an earlier take captured, moved aside; "" when there was nothing (or it was empty).
+dt_keep :: (d: Dict, out: [] u8) -> string {
+  if !fs_exists(d.audio) { return ""; }
+  if fs_size(d.audio) <= 0 { x := fs_remove(d.audio); return ""; }
+  sb: [32] u8; sn := cxproc_local_stamp(sb[..]);
+  kept := dt_kept_name(d.audio, ifx sn == 15 then cast(string) sb[0..<15] else "00000000-000000", cxproc_self_pid(), out);
+  mb: [4400] u8;
+  if fs_rename(d.audio, kept) {
+    mn := dt_cat(mb[..], 0, "kept what an earlier recording captured at "); mn = dt_cat(mb[..], mn, kept); dt_warn(cast(string) mb[0..<mn]);
+    return kept;
+  }
+  mn := dt_cat(mb[..], 0, "could not keep what an earlier recording captured at "); mn = dt_cat(mb[..], mn, d.audio); dt_warn(cast(string) mb[0..<mn]);
+  return "";
+}
+dt_sweep :: (d: Dict) {
+  if !fs_exists(d.record) { return; }
+  pid := dt_pid(d);
+  x := fs_remove(d.record);
+  ib: [24] u8; mb: [256] u8;
+  if pid >= 0 { mn := dt_cat(mb[..], 0, "the recorder at pid "); mn = dt_cat(mb[..], mn, dt_itoa(pid, ib[..])); mn = dt_cat(mb[..], mn, " is gone, so this press starts a recording"); dt_warn(cast(string) mb[0..<mn]); }
+  else { dt_warn("the dictation record named no process, so this press starts a recording"); }
+}
+
+// watch PID: until the recorder ends; if the record still names it, the microphone closed on its own.
+dt_watch :: (d: Dict, pid: int) -> int {
+  while cxproc_pid_alive(pid) == 1 { proc_sleep(1000); }
+  held := dt_pid(d);
+  if held < 0 || held != pid { return 0; }
+  started := dt_started(d);
+  rb: [32] u8; ran := ifx started >= 0 then dt_duration(dt_now() - started, rb[..]) else "";
+  x := fs_remove(d.record);
+  kb: [4400] u8; kept := dt_keep(d, kb[..]);
+  wb: [256] u8; wn := dt_cat(wb[..], 0, "the microphone closed"); if ran.count > 0 { wn = dt_cat(wb[..], wn, " after "); wn = dt_cat(wb[..], wn, ran); }
+  dt_warn(cast(string) wb[0..<wn]);
+  nb: [4600] u8; nn := dt_cat(nb[..], 0, "The microphone closed"); if ran.count > 0 { nn = dt_cat(nb[..], nn, " after "); nn = dt_cat(nb[..], nn, ran); }
+  nn = dt_cat(nb[..], nn, ". What it heard is kept"); if kept.count > 0 { nn = dt_cat(nb[..], nn, " at "); nn = dt_cat(nb[..], nn, kept); } nn = dt_cat(nb[..], nn, ".");
+  dt_notify("critical", "0", cast(string) nb[0..<nn]);
+  return 0;
+}
+
+dt_start :: (d: Dict) {
+  dt_play_cue("900", "0.08");
+  kb: [4400] u8; kept := dt_keep(d, kb[..]);
+  x := fs_remove(d.audio);
+  h := proc_new();
+  ok := proc_detach(h);
+  argv := [16] string.["ffmpeg", "-nostats", "-loglevel", "error", "-f", "pulse", "-i", "default", "-ac", "1", "-ar", "16000", "-t", d.limit, "-y", d.audio];
+  for a: argv { ok = ok && proc_arg(h, a); }
+  pid := 0;
+  if ok && proc_start(h) == 0 { pid = proc_pid(h); }
+  r := proc_release(h);
+  ib: [24] u8; jb: [24] u8; lb: [64] u8;
+  n := dt_cat(lb[..], 0, dt_itoa(pid, ib[..])); n = dt_cat(lb[..], n, "\n"); n = dt_cat(lb[..], n, dt_itoa(dt_now(), jb[..])); n = dt_cat(lb[..], n, "\n");
+  x = fs_write(d.record, cast(string) lb[0..<n]);
+  dt_notify("normal", "0", "The microphone is open. Press the dictation key again to transcribe.");
+  if pid > 0 { dt_self("watch", dt_itoa(pid, ib[..]), "", false); }
+}
+dt_wait_exit :: (pid: int) { for i: 0..<40 { if cxproc_pid_alive(pid) != 1 { return; } proc_sleep(50); } }
+dt_stop :: (d: Dict) {
+  pid := dt_pid(d); started := dt_started(d);
+  rb: [32] u8; ran := ifx started >= 0 then dt_duration(dt_now() - started, rb[..]) else "";
+  x := fs_remove(d.record);
+  dt_play_cue("500", "0.08");
+  ib: [24] u8; mb: [256] u8;
+  if pid >= 0 && cxproc_pid_alive(pid) == 1 {
+    r := cxproc_pid_signal(pid, 2);
+    dt_wait_exit(pid);
+    if cxproc_pid_alive(pid) == 1 {
+      mn := dt_cat(mb[..], 0, "the recorder at pid "); mn = dt_cat(mb[..], mn, dt_itoa(pid, ib[..])); mn = dt_cat(mb[..], mn, " did not close on an interrupt, so it is being stopped"); dt_warn(cast(string) mb[0..<mn]);
+      r = cxproc_pid_signal(pid, PROC_SIGTERM);
+      dt_wait_exit(pid);
+    }
+    if cxproc_pid_alive(pid) == 1 {
+      mn := dt_cat(mb[..], 0, "the recorder at pid "); mn = dt_cat(mb[..], mn, dt_itoa(pid, ib[..])); mn = dt_cat(mb[..], mn, " is still running, so the microphone may still be open"); dt_warn(cast(string) mb[0..<mn]);
+      dt_notify("critical", "0", "The recorder did not stop. The microphone may still be open.");
+    }
+  }
+  nb: [256] u8; nn := dt_cat(nb[..], 0, "The microphone is closed"); if ran.count > 0 { nn = dt_cat(nb[..], nn, " after "); nn = dt_cat(nb[..], nn, ran); } nn = dt_cat(nb[..], nn, ".");
+  dt_notify("low", "2000", cast(string) nb[0..<nn]);
+  dt_transcribe(d);
+}
+dt_transcribe :: (d: Dict) {
+  if !fs_exists(d.audio) || fs_size(d.audio) <= 0 { dt_warn("the recording captured no audio, so there is nothing to transcribe"); return; }
+  if fs_size(d.model) <= 0 {
+    x := fs_mkdir(fs_dir(d.model));
+    mb: [4400] u8; mn := dt_cat(mb[..], 0, "fetching the speech model once, to "); mn = dt_cat(mb[..], mn, d.model); dt_warn(cast(string) mb[0..<mn]);
+    ca := [5] string.["curl", "-fsSL", "-o", d.model, MODEL_URL]; o: [4096] u8; e: [65536] u8;
+    r := proc_run(ca[..], -1, o[..], e[..]);
+    tool_err(cast(string) e[0..<r.err_n]);
+  }
+  wa := [8] string.["whisper-cli", "-m", d.model, "-f", d.audio, "--no-timestamps", "--threads", "8"];
+  o: [1048576] u8; e: [4096] u8; kb: [4400] u8;
+  r := proc_run(wa[..], -1, o[..], e[..]);
+  if r.started != 0 || r.status != 0 { dt_warn("the transcription failed, so nothing was typed"); k := dt_keep(d, kb[..]); return; }
+  tb: [1048576] u8; text := dt_flatten(cast(string) o[0..<r.out_n], tb[..]);
+  if text.count == 0 { dt_warn("the transcription found no speech"); k := dt_keep(d, kb[..]); return; }
+  proc_sleep(100);
+  yb: [1048580] u8; yn := dt_cat(yb[..], 0, text); yn = dt_cat(yb[..], yn, " ");
+  ya := [2] string.["wtype", cast(string) yb[0..<yn]]; yo: [4096] u8; ye: [65536] u8;
+  w := proc_run(ya[..], -1, yo[..], ye[..]);
+  tool_err(cast(string) ye[0..<w.err_n]);
+  x := fs_remove(d.audio);
+}
+
+dt_status :: (d: Dict) -> int {
+  if dt_live(d) {
+    pid := dt_pid(d); started := dt_started(d);
+    ib: [24] u8; rb: [32] u8;
+    if started >= 0 { print("Dictation is recording, for %, as pid %.\n", dt_duration(dt_now() - started, rb[..]), dt_itoa(pid, ib[..])); }
+    else { print("Dictation is recording, as pid %.\n", dt_itoa(pid, ib[..])); }
+    return 0;
+  }
+  if fs_exists(d.record) { print("Dictation is not recording. The record at % names a process that is gone.\n", d.record); return 1; }
+  print("Dictation is not recording.\n");
+  return 1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  e: [5] [4096] u8;
+  d := Dict.{record = proc_getenv("CODEROS_DICTATION_PID", e[0][..]), audio = proc_getenv("CODEROS_DICTATION_AUDIO", e[1][..]),
+             model = proc_getenv("CODEROS_WHISPER_MODEL", e[2][..]), limit = proc_getenv("CODEROS_DICTATION_LIMIT", e[3][..])};
+  if d.record.count == 0 { d.record = "/tmp/dictation_recording.pid"; }
+  if d.audio.count == 0 { d.audio = "/tmp/dictation_input.wav"; }
+  if d.limit.count == 0 { d.limit = "180"; }
+  mb: [4300] u8;
+  if d.model.count == 0 { hb: [4096] u8; home := proc_getenv("HOME", hb[..]); n := dt_cat(mb[..], 0, home); n = dt_cat(mb[..], n, "/.cache/whisper.cpp/ggml-base.en.bin"); d.model = cast(string) mb[0..<n]; }
+  verb := ifx ok && args_count(a[..]) > 0 then args_at(a[..], 0) else "toggle";
+  if verb == "toggle" { if dt_live(d) { dt_stop(d); return 0; } dt_sweep(d); dt_start(d); return 0; }
+  if verb == "status" { return dt_status(d); }
+  if verb == "cue" && args_count(a[..]) >= 3 { return dt_cue(args_at(a[..], 1), args_at(a[..], 2)); }
+  if verb == "watch" && args_count(a[..]) >= 2 { p := dt_field(args_at(a[..], 1), 1); return ifx p > 0 then dt_watch(d, p) else 2; }
+  tool_errln("Usage: dictate-toggle [toggle|status]");
+  return 2;
+}
