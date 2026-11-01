@@ -1503,14 +1503,21 @@
    "number": 72,
    "title": "Wallet Connect",
    "file": "ch072-wallet-connect.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     20,
     31
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip47.coax",
+    "coax/tests/nostr/nip47_fixtures.coax",
+    "nostr/examples/wallet-connect.coax",
+    "nostr/examples/checks/wallet-connect.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

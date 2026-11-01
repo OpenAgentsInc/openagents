@@ -1,0 +1,57 @@
+== 1. The connection
+URI: ok, wallet c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+  relay wss://relay.example.com, lud16 alice@example.com
+  secret: 32 bytes, kept and not printed; the client signs as 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+
+== 2. The wallet's info event
+info: ok, nip44_v2 true, nip04 true, commands: pay_invoice make_invoice lookup_invoice get_balance get_info
+  new requests use NIP-44 v2: ok
+  a wallet with no encryption tag (NIP-04 only): not NIP-44 v2
+
+== 3. The pay_invoice request, by hand and by the code
+plaintext (64 bytes): {"method":"pay_invoice","params":{"invoice":"lnbc50n1pexample"}}
+conversation key: c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d
+payload (176 characters): AkdHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHImMtJ/grvDZQgyIIOyzYxTNAnxfFQ/AQ+f1LNGiWMdEY+FRyEgZVNOMcJXahJS8NGAISWKr77CV1OW32Pn6pZKfAL5bFJVfsFKw5Do4UZVHi62dfBELy7AXgF5q/+heVhJ4=
+request id ac198124f08cbe128886dd7f53bf4a50959ab730b0a67216acc74b43359f83f5
+
+== 4. The wallet answers; the budget is 12000 msats a day
+  request event: ok
+  opened: ok, {"method":"pay_invoice","params":{"invoice":"lnbc50n1pexample"}}, method pay_invoice
+  budget: 5000 msats, ok (spent 5000 of 12000 since T0+0)
+  answer: {"result_type":"pay_invoice","error":null,"result":{"preimage":"0101010101010101010101010101010101010101010101010101010101010101","fees_paid":1000}}
+  response id 5d78db41d2af141497f4320e0ca0d58c56d708d3c4038a2acbf11bf5fe752a0c
+  client: opened ok, match ok, preimage 0101010101010101010101010101010101010101010101010101010101010101, fees 1000 msats
+
+== 5. More payments against the same budget
+payment 2 at T0+100:
+  request event: ok
+  opened: ok, {"method":"pay_invoice","params":{"invoice":"lnbc50n1pexample"}}, method pay_invoice
+  budget: 5000 msats, ok (spent 10000 of 12000 since T0+0)
+  answer: {"result_type":"pay_invoice","error":null,"result":{"preimage":"0101010101010101010101010101010101010101010101010101010101010101","fees_paid":1000}}
+  client: opened ok, match ok, preimage 0101010101010101010101010101010101010101010101010101010101010101, fees 1000 msats
+payment 3 at T0+200:
+  request event: ok
+  opened: ok, {"method":"pay_invoice","params":{"invoice":"lnbc50n1pexample"}}, method pay_invoice
+  budget: 5000 msats, over the budget (spent 10000 of 12000 since T0+0)
+  answer: {"result_type":"pay_invoice","error":{"code":"QUOTA_EXCEEDED","message":"over the connection's budget"},"result":null}
+  client: opened ok, match ok, error QUOTA_EXCEEDED "over the connection's budget"
+payment 4 at T0+86400 (the next day):
+  request event: ok
+  opened: ok, {"method":"pay_invoice","params":{"invoice":"lnbc50n1pexample"}}, method pay_invoice
+  budget: 5000 msats, ok (spent 5000 of 12000 since T0+86400)
+  answer: {"result_type":"pay_invoice","error":null,"result":{"preimage":"0101010101010101010101010101010101010101010101010101010101010101","fees_paid":1000}}
+
+== 6. Refusals
+URI with no secret: no secret
+URI with no relay: no relay
+URI with uppercase wallet key: bad wallet key
+URI with secret 0: bad secret
+a NIP-04 payload: not NIP-44 v2
+the wallet reads a request with no encryption tag: not NIP-44 v2
+the response checked against payment 4's request: e names another request
+the response with the client as the wallet: another author
+the response read as a get_balance answer: result_type differs
+invoice 50n with amount 6000: amounts differ
+a payment at T0-1, before the budget starts: before the budget starts
+a request with "amount":-1: bad field
+after n47_forget: 0 relays, secret all zero true

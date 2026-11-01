@@ -1,0 +1,58 @@
+// Records for nip47.coax's checks: NIP-47 plaintexts written by an
+// independent client (Python's json.dumps with separators (",", ":"), keys
+// in the order shown), the NIP's example URI and info event, and helpers.
+// They live here so that mutation of nip47.coax changes the library, not
+// the checks.
+N47_T_INVOICE :: "lnbc50n1pexample";       // 50n: 5000 millisats; not a payable invoice
+N47_T_HASH :: "abababababababababababababababababababababababababababababababab";
+N47_T_PRE :: "0101010101010101010101010101010101010101010101010101010101010101";
+N47_T_WALLET :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";   // secret key 2
+N47_T_CLIENT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";   // secret key 1
+N47_T_REQUESTS :: [7] string.[
+  "{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"lnbc50n1pexample\",\"amount\":5000}}",
+  "{\"method\":\"make_invoice\",\"params\":{\"amount\":21000,\"description\":\"coffee \\\"two\\\"\",\"expiry\":3600}}",
+  "{\"method\":\"lookup_invoice\",\"params\":{\"payment_hash\":\"abababababababababababababababababababababababababababababababab\"}}",
+  "{\"method\":\"lookup_invoice\",\"params\":{\"invoice\":\"lnbc50n1pexample\"}}",
+  "{\"method\":\"get_balance\",\"params\":{}}",
+  "{\"method\":\"get_info\",\"params\":{}}",
+  "{\"method\":\"list_transactions\",\"params\":{\"limit\":10}}"];
+N47_T_RESPONSES :: [7] string.[
+  "{\"result_type\":\"pay_invoice\",\"error\":null,\"result\":{\"preimage\":\"0101010101010101010101010101010101010101010101010101010101010101\",\"fees_paid\":1000}}",
+  "{\"result_type\":\"make_invoice\",\"error\":null,\"result\":{\"invoice\":\"lnbc50n1pexample\",\"amount\":21000,\"description\":\"coffee\",\"payment_hash\":\"abababababababababababababababababababababababababababababababab\",\"type\":\"incoming\",\"state\":\"pending\",\"created_at\":1762000000,\"expires_at\":1762003600}}",
+  "{\"result_type\":\"lookup_invoice\",\"error\":null,\"result\":{\"invoice\":\"lnbc50n1pexample\",\"amount\":5000,\"payment_hash\":\"abababababababababababababababababababababababababababababababab\",\"type\":\"outgoing\",\"state\":\"settled\",\"preimage\":\"0101010101010101010101010101010101010101010101010101010101010101\",\"fees_paid\":1000,\"created_at\":1762000000,\"settled_at\":1762000002}}",
+  "{\"result_type\":\"get_balance\",\"error\":null,\"result\":{\"balance\":10000}}",
+  "{\"result_type\":\"get_info\",\"error\":null,\"result\":{\"alias\":\"Spark\",\"network\":\"mainnet\",\"methods\":[\"pay_invoice\",\"get_balance\",\"get_info\"]}}",
+  "{\"result_type\":\"list_transactions\",\"error\":null,\"result\":{\"transactions\":[]}}",
+  "{\"result_type\":\"pay_invoice\",\"error\":{\"code\":\"QUOTA_EXCEEDED\",\"message\":\"over the budget\"},\"result\":null}"];
+// NIP-47's example connection string, and the public key of its example
+// secret by integer secp256k1 in Python.
+N47_T_NIP_URI :: "nostr+walletconnect://b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4?relay=wss%3A%2F%2Frelay.damus.io&secret=71a8c14c1407c113601079c4302dab36460f0ccd0ad506f1f2dc73b5100e4f3c";
+N47_T_NIP_CLIENT :: "3ba6db4896124383fdaa5f7d42c25f9df1b128a280928baeb3f3fa36d25506f9";
+// NIP-47's appendix info event, with its published id and signature.
+N47_T_NIP_INFO :: "{\"id\":\"df467db0a9f9ec77ffe6f561811714ccaa2e26051c20f58f33c3d66d6c2b4d1c\",\"pubkey\":\"c04ccd5c82fc1ea3499b9c6a5c0a7ab627fbe00a0116110d4c750faeaecba1e2\",\"created_at\":1713883677,\"kind\":13194,\"tags\":[[\"encryption\",\"nip44_v2 nip04\"],[\"extensions\",\"02 03 04 06 07 08\"]],\"content\":\"pay_invoice get_balance get_info make_invoice lookup_invoice\",\"sig\":\"31f57b369459b5306a5353aa9e03be7fbde169bc881c3233625605dd12f53548179def16b9fe1137e6465d7e4d5bb27ce81fd6e75908c46b06269f4233c845d8\"}";
+
+N47_T_NIP_INFO_ID :: "ed220f16a8965aad86c22217a20554137d05526c405271dcd162f66c6f636928";   // Python: the hash of its fields
+n47_t_hex :: (text:string)->[32]u8 {k:[32]u8;r:=hex_decode_checked(text,k[..],false);return k;}
+n47_t_is :: (s:N47Str,text:string)->bool {own:=s;return cast(string)own.b[0..<own.n]==text;}
+// The URI with its query: the NIP's wallet key, then query.
+n47_t_uri :: (query:string,out:[]u8)->string {
+  n:=json_raw(out,0,"nostr+walletconnect://b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4");
+  n=json_raw(out,n,query);
+  return cast(string)out[0..<n];
+}
+// A pay_invoice call for invoice, with amount (-1: none).
+n47_t_pay :: (invoice:string,amount:int)->N47Call {
+  buf:[4096]u8;n:=json_raw(buf[..],0,"{\"method\":\"pay_invoice\",\"params\":{\"invoice\":");
+  n=json_write_string(buf[..],n,invoice);
+  if amount>=0 {n=json_raw(buf[..],n,",\"amount\":");n=json_write_int(buf[..],n,amount);}
+  n=json_raw(buf[..],n,"}}");
+  return n47_request(cast(string)buf[0..<n]);
+}
+// The plaintext read with reader 0 (request) or 1 (response) and written
+// back: whether the bytes are the same.
+n47_t_round :: (text:string,response:bool)->bool {
+  out:[4096]u8;n:=-1;
+  if response {r:=n47_response(text);if r.error==N47_OK {n=n47_response_json(r,out[..]);}}
+  else {c:=n47_request(text);if c.error==N47_OK {n=n47_request_json(c,out[..]);}}
+  return n>0 && cast(string)out[0..<n]==text;
+}

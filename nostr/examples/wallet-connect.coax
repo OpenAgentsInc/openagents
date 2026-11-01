@@ -1,0 +1,192 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip47.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+E47 :: [27] string.["ok", "not a nostr+walletconnect:// URI", "bad wallet key", "no relay", "bad relay",
+  "no secret", "bad secret", "bad escape", "repeated", "limit", "kind", "not NIP-44 v2", "not JSON", "unknown method",
+  "bad field", "missing field", "p names another key", "e names another request", "another author",
+  "result_type differs", "expired", "bad key", "can't decrypt", "no amount", "amounts differ", "over the budget",
+  "before the budget starts"];
+// Secret keys 1 (the client's connection secret) and 2 (the wallet
+// service's key): published test values. Never put a real secret in an
+// example, and never print one.
+CLIENT :: 1; WALLET :: 2;
+PUB :: [3] string.["",
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"];
+URI :: "nostr+walletconnect://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com&secret=0000000000000000000000000000000000000000000000000000000000000001&lud16=alice%40example.com";
+T0 :: 1762000000;
+DAY :: 86400;
+// An invoice's human-readable part with a placeholder data part: 50n is
+// 50 nano-bitcoin. Not a payable invoice; nothing here pays.
+INVOICE :: "lnbc50n1pexample";
+
+key_of :: (who: int) -> [32] u8 { k: [32] u8; r := hex_decode_checked(PUB[who], k[..], false); return k; }
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+say :: (s: N47Str) { own := s; print("%", cast(string) own.b[0..<own.n]); }
+// A nonce of 32 equal bytes, for a reproducible example only: a client
+// takes 32 fresh random bytes for every message.
+nonce_of :: (b: u8) -> [32] u8 { n: [32] u8; for i: 0..<32 { n[i] = b; } return n; }
+
+// Sign an event with secret key who and read it back with its id and
+// signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; key[31] = cast(u8) who;
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [16384] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified && n47_same(e.public_key, key_of(who));
+  return e;
+}
+content_of :: (e: NostrEvent) -> string { return e.original[e.content_from..<e.content_to]; }
+
+// The client's pay_invoice request for INVOICE, sealed and signed at time t
+// with nonce byte nb.
+Sent :: struct { event: NostrEvent; plain: [512] u8; np: int; sealed: [1024] u8; ns: int; buf: [4096] u8; }
+send_pay :: (u: N47Uri, t: int, nb: u8, s: [] Sent) {
+  c: N47Call; c.error = N47_OK; c.method = N47_PAY; c.f.have = F_INVOICE;
+  for i: 0..<INVOICE.count { c.f.str[0].b[i] = INVOICE[i]; }
+  c.f.str[0].n = INVOICE.count;
+  s[0].np = n47_request_json(c, s[0].plain[..]);
+  ck: [32] u8; secret := u.secret;
+  #assert s[0].np > 0 && n47_key(secret[..], u.wallet, ck[..]) == N47_OK;
+  nonce := nonce_of(nb);
+  o := n47_seal(ck[..], nonce[..], cast(string) s[0].plain[0..<s[0].np], s[0].sealed[..]);
+  #assert o.error == N47_OK;
+  s[0].ns = o.n;
+  tags: [512] u8; tn := n47_request_tags(u.wallet, 0, tags[..]);
+  s[0].event = sign(CLIENT, t, N47_REQUEST, cast(string) tags[0..<tn], cast(string) s[0].sealed[0..<o.n], s[0].buf[..]);
+}
+
+// The wallet service: read the request, open it, check the budget, and
+// answer with a preimage or the refusal's error code. The budget after the
+// call is in a[0].spend.budget.
+Answer :: struct {
+  event: NostrEvent; plain: [512] u8; np: int; buf: [4096] u8;
+  read: int; opened: [512] u8; no: int; open: int; method: int; spend: N47Spend;
+}
+serve :: (req: NostrEvent, b: N47Budget, now: int, nb: u8, a: [] Answer) {
+  wallet := key_of(WALLET);
+  a[0].read = n47_request_event(req, wallet, now);
+  secret: [32] u8; secret[31] = WALLET; ck: [32] u8;
+  #assert n47_key(secret[..], req.public_key, ck[..]) == N47_OK;
+  o := n47_open(ck[..], content_of(req), a[0].opened[..]);
+  a[0].open = o.error; a[0].no = o.n;
+  c := n47_request(cast(string) a[0].opened[0..<o.n]);
+  a[0].method = c.method;
+  s := n47_spend(b, now, c); a[0].spend = s;
+  r: N47Reply; r.error = N47_OK; r.method = c.method;
+  if s.error == N47_OK {
+    r.f.have = F_PREIMAGE | F_FEES; r.f.num[9] = 1000;
+    for i: 0..<32 { r.f.hex[1][i] = 1; }       // the wallet's payment would return this
+  } else {
+    r.code = n47_code(s.error); m := "over the connection's budget";
+    for i: 0..<m.count { r.message.b[i] = m[i]; }
+    r.message.n = m.count;
+  }
+  a[0].np = n47_response_json(r, a[0].plain[..]);
+  nonce := nonce_of(nb); sealed: [1024] u8;
+  sr := n47_seal(ck[..], nonce[..], cast(string) a[0].plain[0..<a[0].np], sealed[..]);
+  tags: [512] u8; tn := n47_response_tags(req, tags[..]);
+  a[0].event = sign(WALLET, now + 2, N47_RESPONSE, cast(string) tags[0..<tn], cast(string) sealed[0..<sr.n], a[0].buf[..]);
+}
+show_serve :: (a: [] Answer) -> N47Budget {
+  s := a[0].spend;
+  print("  request event: %\n", E47[a[0].read]);
+  print("  opened: %, %, method %\n", E47[a[0].open], cast(string) a[0].opened[0..<a[0].no], N47_METHODS[a[0].method]);
+  print("  budget: % msats, % (spent % of % since T0+%)\n", s.msats, E47[s.error], s.budget.spent, s.budget.limit, s.budget.start - T0);
+  print("  answer: %\n", cast(string) a[0].plain[0..<a[0].np]);
+  return s.budget;
+}
+
+// The client opens a response and matches it to its request.
+receive :: (u: N47Uri, req: NostrEvent, res: NostrEvent) -> N47Reply {
+  ck: [32] u8; secret := u.secret; k := n47_key(secret[..], u.wallet, ck[..]);
+  opened: [1024] u8; o := n47_open(ck[..], content_of(res), opened[..]);
+  r := n47_response(cast(string) opened[0..<o.n]);
+  print("  client: opened %, match %", E47[o.error], E47[n47_match(req, res, u.wallet, N47_PAY, r)]);
+  if r.code >= 0 { print(", error % \"", N47_CODES[r.code]); say(r.message); print("\"\n"); }
+  else { hex: [64] u8; print(", preimage %, fees % msats\n", hex32(r.f.hex[1], hex[..]), r.f.num[9]); }
+  return r;
+}
+
+main :: () {
+  hex: [64] u8;
+  print("== 1. The connection\n");
+  u := n47_uri(URI);
+  print("URI: %, wallet %\n", E47[u.error], hex32(u.wallet, hex[..]));
+  print("  relay "); say(u.relays[0]); print(", lud16 "); say(u.lud16); print("\n");
+  print("  secret: 32 bytes, kept and not printed; the client signs as %\n", hex32(u.client, hex[..]));
+
+  print("\n== 2. The wallet's info event\n");
+  ib: [4096] u8;
+  info := sign(WALLET, T0 - 60, N47_INFO, "[[\"encryption\",\"nip44_v2 nip04\"]]", "pay_invoice get_balance make_invoice lookup_invoice get_info", ib[..]);
+  i := n47_info(info);
+  print("info: %, nip44_v2 %, nip04 %, commands:", E47[i.error], i.nip44, i.nip04);
+  for m: 0..<N47_METHODS.count { if (i.methods & (1 << m)) != 0 { print(" %", N47_METHODS[m]); } }
+  print("\n  new requests use NIP-44 v2: %\n", E47[n47_encryption(i)]);
+  ob: [4096] u8;
+  old := n47_info(sign(WALLET, T0 - 60, N47_INFO, "[]", "pay_invoice get_balance", ob[..]));
+  print("  a wallet with no encryption tag (NIP-04 only): %\n", E47[n47_encryption(old)]);
+
+  print("\n== 3. The pay_invoice request, by hand and by the code\n");
+  sent: [1] Sent; send_pay(u, T0, 0x47, sent[..]);
+  ck: [32] u8; secret := u.secret; k := n47_key(secret[..], u.wallet, ck[..]);
+  print("plaintext (% bytes): %\n", sent[0].np, cast(string) sent[0].plain[0..<sent[0].np]);
+  print("conversation key: %\n", hex32(ck, hex[..]));
+  print("payload (% characters): %\n", sent[0].ns, cast(string) sent[0].sealed[0..<sent[0].ns]);
+  print("request id %\n", hex32(sent[0].event.id, hex[..]));
+
+  print("\n== 4. The wallet answers; the budget is 12000 msats a day\n");
+  b := N47Budget.{limit = 12000, period = DAY, start = T0};
+  ans: [1] Answer;
+  serve(sent[0].event, b, T0, 0x48, ans[..]); b = show_serve(ans[..]);
+  print("  response id %\n", hex32(ans[0].event.id, hex[..]));
+  r := receive(u, sent[0].event, ans[0].event);
+
+  print("\n== 5. More payments against the same budget\n");
+  for t: 1..<3 {
+    s2: [1] Sent; send_pay(u, T0 + 100 * t, cast(u8) (0x50 + t), s2[..]);
+    print("payment % at T0+%:\n", t + 1, 100 * t);
+    a2: [1] Answer; serve(s2[0].event, b, T0 + 100 * t, cast(u8) (0x60 + t), a2[..]); b = show_serve(a2[..]);
+    r2 := receive(u, s2[0].event, a2[0].event);
+  }
+  s3: [1] Sent; send_pay(u, T0 + DAY, 0x70, s3[..]);
+  print("payment 4 at T0+% (the next day):\n", DAY);
+  a3: [1] Answer; serve(s3[0].event, b, T0 + DAY, 0x71, a3[..]); b = show_serve(a3[..]);
+
+  print("\n== 6. Refusals\n");
+  bad := [4] string.[
+    "nostr+walletconnect://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com",
+    "nostr+walletconnect://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?secret=0000000000000000000000000000000000000000000000000000000000000001",
+    "nostr+walletconnect://C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5?relay=wss%3A%2F%2Frelay.example.com",
+    "nostr+walletconnect://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com&secret=0000000000000000000000000000000000000000000000000000000000000000"];
+  why := [4] string.["no secret", "no relay", "uppercase wallet key", "secret 0"];
+  for k2: 0..<4 { print("URI with %: %\n", why[k2], E47[n47_uri(bad[k2]).error]); }
+  plain: [1024] u8;
+  print("a NIP-04 payload: %\n", E47[n47_open(ck[..], "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==", plain[..]).error]);
+  ab: [4096] u8; xb: [4096] u8;
+  nip04 := sign(CLIENT, T0, N47_REQUEST, "[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]", content_of(sent[0].event), xb[..]);
+  print("the wallet reads a request with no encryption tag: %\n", E47[n47_request_event(nip04, key_of(WALLET), T0)]);
+  print("the response checked against payment 4's request: %\n", E47[n47_match(s3[0].event, ans[0].event, u.wallet, N47_PAY, r)]);
+  print("the response with the client as the wallet: %\n", E47[n47_match(sent[0].event, ans[0].event, u.client, N47_PAY, r)]);
+  print("the response read as a get_balance answer: %\n", E47[n47_match(sent[0].event, ans[0].event, u.wallet, N47_BALANCE, r)]);
+  differ := n47_request("{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"lnbc50n1pexample\",\"amount\":6000}}");
+  print("invoice 50n with amount 6000: %\n", E47[n47_spend(b, T0 + DAY, differ).error]);
+  pay := n47_request(cast(string) sent[0].plain[0..<sent[0].np]);
+  print("a payment at T0-1, before the budget starts: %\n", E47[n47_spend(N47Budget.{limit = 12000, period = DAY, start = T0}, T0 - 1, pay).error]);
+  print("a request with \"amount\":-1: %\n", E47[n47_request("{\"method\":\"make_invoice\",\"params\":{\"amount\":-1}}").error]);
+  forget := [1] N47Uri.[u]; n47_forget(forget[..]);
+  wiped := true; for k3: 0..<32 { if forget[0].secret[k3] != 0 { wiped = false; } }
+  print("after n47_forget: % relays, secret all zero %\n", forget[0].nrelays, wiped);
+}
+// book:end example

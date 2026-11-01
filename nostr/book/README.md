@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 78 are implemented and 26 are design drafts.
+Of the 104 chapters, 79 are implemented and 25 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -262,7 +262,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [69. Small content kinds](ch069-small-content-kinds.md) | Runnable: native C | NIP-35 torrents (2003), NIP-64 chess games in PGN (64), NIP-CC geocaches (37516) and logs (7516, 7517), and NIP-F4 podcasts. |
 | [70. Retired and experimental NIPs](ch070-retired-and-experimental-nips.md) | Runnable: native C | NIP-26 delegation tokens, the NIP-31 `alt` tag and NIP-BE Bluetooth LE transport, each marked `unrecommended` in the pinned text, with what this stack reads and what it never builds. |
 | [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) | Unimplemented: design draft | NIP-57 zap requests (9734) sent to an LNURL server and zap receipts (9735) whose bolt11 description hash commits to the request, and NIP-75 zap goals (9041). |
-| [72. Wallet Connect](ch072-wallet-connect.md) | Unimplemented: design draft | NIP-47 Nostr Wallet Connect: `nostr+walletconnect://` URIs, info (13194), requests (23194) and responses (23195) encrypted with NIP-44, and the commands `pay_invoice`, `make_invoice`, `get_balance` and others. |
+| [72. Wallet Connect](ch072-wallet-connect.md) | Runnable: native C | NIP-47 Nostr Wallet Connect: `nostr+walletconnect://` URIs (secret kept, never printed), the info event (13194) with NIP-04-only wallets refused, every command's request (23194) and response (23195) JSON read and written, NIP-44 v2 under the connection secret, responses matched by author, `p`, `e` and `result_type`, and an `#authority` spending budget that refuses with `QUOTA_EXCEEDED`. |
 | [73. Payment targets](ch073-payment-targets.md) | Runnable: native C | NIP-A3 kind 10133 `payto` tags, with only the Bitcoin and Lightning target types acted on under the repository rule. |
 | [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) | Unimplemented: design draft | NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87 mint discovery, described for reading only; the repository's Bitcoin-only rule excludes Cashu and Fedimint from implementation. |
 | [75. Hosts and reachability](ch075-hosts-and-reachability.md) | Runnable: native C | NIP-HOST grants bound to the original host-signed 3188 envelope and admitted against the host's record (request window, revocation, expiry, epochs, rights, retained replies), and NIP-REACH presence freshness and route generations. Invitations, enrollment, the directory, hint selection and direct channels are not built. |

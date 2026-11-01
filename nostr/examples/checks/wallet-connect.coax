@@ -1,0 +1,79 @@
+// The checks of wallet-connect.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/wallet-connect.coax --run-steps 250000000
+#load "../wallet-connect.coax";
+
+// book:begin check
+// From a Python script written from NIP-01, NIP-44, NIP-47, BIP-340, RFC
+// 5869 and RFC 8439 (it shares no code with Coax): integer secp256k1 for
+// the keys, the shared x and the signatures (32 zero bytes of aux), HMAC
+// and HKDF from hashlib and hmac, ChaCha20 written out from RFC 8439, the
+// plaintexts as json.dumps(..., separators=(",", ":")), and each id as the
+// SHA-256 of json.dumps([0, pubkey, created_at, kind, tags, content]). The
+// same script reproduces NIP-44's published vector (sec1 1, sec2 2, nonce
+// 1, "a") before it computes the values below.
+PY_CK :: "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d";
+PY_CHACHA_KEY :: "8afb2405058392562a3c1db5e9c517a01bf902b5abbcc80540b719f8c1a954ee";
+PY_CHACHA_NONCE :: "727ca6a8114159322c8d921e";
+PY_HMAC_KEY :: "8f626fd55f3de7ae1048d86d33984c658dcfc031b55a41af3c4a0e3f6ff80d43";
+PY_PAYLOAD :: "AkdHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHImMtJ/grvDZQgyIIOyzYxTNAnxfFQ/AQ+f1LNGiWMdEY+FRyEgZVNOMcJXahJS8NGAISWKr77CV1OW32Pn6pZKfAL5bFJVfsFKw5Do4UZVHi62dfBELy7AXgF5q/+heVhJ4=";
+PY_REQUEST_ID :: "ac198124f08cbe128886dd7f53bf4a50959ab730b0a67216acc74b43359f83f5";
+PY_REQUEST_SIG :: "df9a19e243615bd9d7505fe23867eb582617a876328b486c5b6a4c53dec69efe9e01c9715ffd43b7328bbd932d51668f6dcdb37101c56e9ba92f094b3dea9a23";
+PY_RESPONSE_ID :: "5d78db41d2af141497f4320e0ca0d58c56d708d3c4038a2acbf11bf5fe752a0c";
+PY_RESPONSE_SIG :: "89d0120ad93488b48d97a9bd04ad23b09751e81d3759d58b6cb9afd14b7a8edafd658cc9ccb871d2709b923a7272445c68b924726429ef58e530d33170ac9931";
+PY_PLAIN :: "{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"lnbc50n1pexample\"}}";
+
+hex_is :: (bytes: [] u8, text: string) -> bool {
+  out: [128] u8; r := hex_encode_checked(cast(string) bytes, out[..], false);
+  return r.error == NC_OK && cast(string) out[0..<r.written] == text;
+}
+
+#test "by hand: secret 1 makes the shared x the wallet's key, and the conversation key is Python's" #steps 400000000 {
+  u := n47_uri(URI);
+  #assert u.error == N47_OK && hex_is(u.client[..], PUB[CLIENT]);
+  // 1 * W = W: the shared point's x is the wallet's public key itself.
+  work: [1] EcdhScratch; secret := u.secret; wallet := u.wallet;
+  #assert ecdh_stage(secret[..], wallet[..], work[..]) == EC_OK && hex_is(work[0].staged[..], PUB[WALLET]);
+  ck: [32] u8; #assert n47_key(secret[..], wallet, ck[..]) == N47_OK && hex_is(ck[..], PY_CK);
+  // The wallet's side, its secret with the client's key, gives the same key.
+  two: [32] u8; two[31] = 2; ck2: [32] u8;
+  #assert n47_key(two[..], u.client, ck2[..]) == N47_OK && n47_same(ck, ck2);
+  // The message keys for nonce 0x47..47.
+  nonce := nonce_of(0x47); keys: [76] u8;
+  #assert nip44_message_keys_checked(ck[..], nonce[..], keys[..], false) == NIP44_OK;
+  #assert hex_is(keys[0..<32], PY_CHACHA_KEY) && hex_is(keys[32..<44], PY_CHACHA_NONCE) && hex_is(keys[44..<76], PY_HMAC_KEY);
+  // 64 bytes pad to 64; 2 + 64 + 65 = 131 raw bytes are 176 base64 characters.
+  #assert PY_PLAIN.count == 64 && nip44_calc_padded_len(64) == 64 && nip44_payload_size(NIP44_COMPAT, 64) == 176;
+}
+#test "the request and the response are Python's, byte for byte, and the signatures verify" #steps 900000000 {
+  u := n47_uri(URI);
+  sent: [1] Sent; send_pay(u, T0, 0x47, sent[..]);
+  #assert cast(string) sent[0].plain[0..<sent[0].np] == PY_PLAIN && cast(string) sent[0].sealed[0..<sent[0].ns] == PY_PAYLOAD;
+  e := sent[0].event;
+  #assert hex_is(e.id[..], PY_REQUEST_ID) && hex_is(e.signature[..], PY_REQUEST_SIG) && e.verified;
+  ans: [1] Answer;
+  serve(e, N47Budget.{limit = 12000, period = DAY, start = T0}, T0, 0x48, ans[..]);
+  a := ans[0].event;
+  #assert ans[0].read == N47_OK && ans[0].open == N47_OK && ans[0].spend.budget.spent == 5000 && hex_is(a.id[..], PY_RESPONSE_ID) && hex_is(a.signature[..], PY_RESPONSE_SIG) && a.verified;
+  #assert cast(string) ans[0].plain[0..<ans[0].np] == N47_T_RESPONSES[0];
+}
+#test "the budget trace by hand: 5000, 10000, refused at 15000, 5000 the next day" {
+  pay := n47_request(PY_PLAIN);
+  b := N47Budget.{limit = 12000, period = DAY, start = T0};
+  s := n47_spend(b, T0, pay); #assert s.error == N47_OK && s.budget.spent == 5000;
+  s = n47_spend(s.budget, T0 + 100, pay); #assert s.error == N47_OK && s.budget.spent == 10000;
+  t := n47_spend(s.budget, T0 + 200, pay); #assert t.error == N47_QUOTA && 10000 + 5000 > 12000 && t.budget.spent == 10000;
+  #assert N47_CODES[n47_code(t.error)] == "QUOTA_EXCEEDED";
+  d := n47_spend(s.budget, T0 + DAY, pay); #assert d.error == N47_OK && d.budget.start == T0 + DAY && d.budget.spent == 5000;
+}
+#test "NIP-47's own examples: the URI, the requests and responses it shows" #steps 400000000 {
+  u := n47_uri(N47_T_NIP_URI);
+  #assert u.error == N47_OK && n47_t_is(u.relays[0], "wss://relay.damus.io") && hex_is(u.client[..], N47_T_NIP_CLIENT);
+  // The spec's request and response shapes, with its placeholder values.
+  #assert n47_request("{\"method\":\"get_balance\",\"params\":{}}").error == N47_OK;
+  #assert n47_response("{\"result_type\":\"get_balance\",\"result\":{\"balance\":10000}}").f.num[10] == 10000;
+  e := n47_response("{\"result_type\":\"pay_invoice\",\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"human readable error message\"},\"result\":null}");
+  #assert e.error == N47_OK && N47_CODES[e.code] == "UNAUTHORIZED";
+  for k: 0..<N47_CODES.count { #assert n47_word(N47_CODES[k], T_CODES) == k; }
+}
+// book:end check

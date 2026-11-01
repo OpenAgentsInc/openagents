@@ -1,0 +1,902 @@
+// NIP-47 Nostr Wallet Connect, the client's half and the rules both sides
+// share: the nostr+walletconnect:// connection URI, the wallet's info event
+// (kind 13194), the JSON a request (23194) and a response (23195) carry,
+// their NIP-44 v2 encryption under the connection secret, matching a
+// response to its request, and a spending budget per connection.
+//
+// n47_spend decides money: it refuses a pay_invoice whose amount is over
+// what is left of the connection's budget in the current period, against a
+// clock the caller supplies. That makes this an #authority file.
+//
+// Encryption: NIP-47 began on NIP-04. This stack reads NIP-04 only to
+// migrate old messages (chapter 19), so a wallet whose info event offers
+// only NIP-04 (or has no encryption tag, which means NIP-04) is refused for
+// new requests, and a NIP-04 payload is refused, never opened.
+//
+// A reading of signed events, not authority over them: nothing here
+// fetches an event, verifies a signature, checks an invoice's signature or
+// pays. The caller verifies events (chapter 21) and its wallet pays.
+//
+// Checks: coax test coax/lib/nostr/nip47.coax
+#load "nip32.coax";
+#load "nip44-key.coax";
+#load "../crypto/bip32.coax";
+#load "../x402/settle.coax";
+#load "../../tests/nostr/nip90_fixtures.coax";
+#load "../../tests/nostr/nip47_fixtures.coax";
+#authority;
+
+N47_OK :: 0;
+// The URI's refusals.
+N47_SCHEME :: 1; N47_WALLET :: 2; N47_NO_RELAY :: 3; N47_RELAY :: 4;
+N47_NO_SECRET :: 5; N47_SECRET :: 6; N47_ESCAPE :: 7; N47_REPEAT :: 8; N47_LIMIT :: 9;
+// The events' and the JSON's.
+N47_KIND :: 10; N47_ENCRYPTION :: 11; N47_JSON :: 12; N47_METHOD :: 13;
+N47_FIELD :: 14; N47_MISSING :: 15; N47_P :: 16; N47_E :: 17; N47_AUTHOR :: 18;
+N47_RESULT :: 19; N47_EXPIRED :: 20;
+// Keys and payloads.
+N47_KEY :: 21; N47_CIPHER :: 22;
+// The budget's.
+N47_AMOUNT :: 23; N47_AMOUNTS :: 24; N47_QUOTA :: 25; N47_CLOCK :: 26;
+
+N47_INFO :: 13194; N47_REQUEST :: 23194; N47_RESPONSE :: 23195;
+N47_PREFIX :: "nostr+walletconnect://";
+N47_MAX_RELAYS :: 4; N47_MAX_STR :: 2048; N47_MAX_PLAIN :: 4096; N47_WORK :: 16384;
+
+// book:begin names
+// The commands this file reads and writes. The pinned NIP-47 defines the
+// first five; list_transactions comes from the earlier NIP-47 text, now an
+// NWC extension.
+N47_PAY :: 0; N47_MAKE :: 1; N47_LOOKUP :: 2; N47_BALANCE :: 3; N47_GET_INFO :: 4; N47_LIST :: 5;
+N47_METHODS :: [6] string.["pay_invoice", "make_invoice", "lookup_invoice", "get_balance", "get_info", "list_transactions"];
+// The error codes of a response.
+N47_CODES :: [11] string.["RATE_LIMITED", "NOT_IMPLEMENTED", "INSUFFICIENT_BALANCE", "QUOTA_EXCEEDED",
+  "RESTRICTED", "UNAUTHORIZED", "INTERNAL", "UNSUPPORTED_ENCRYPTION", "OTHER", "PAYMENT_FAILED", "NOT_FOUND"];
+N47_C_NOT_IMPLEMENTED :: 1; N47_C_QUOTA :: 3; N47_C_UNSUPPORTED :: 7; N47_C_OTHER :: 8;
+// The fields of params and result objects, in the order the writers put
+// them, each with how its value reads and where it is kept.
+N47_FIELDS :: 18;
+N47_KEYS :: [N47_FIELDS] string.["invoice", "amount", "description", "payment_hash", "expiry", "limit",
+  "type", "state", "preimage", "fees_paid", "balance", "created_at", "expires_at", "settled_at",
+  "alias", "network", "methods", "transactions"];
+K_STR :: 0; K_INT :: 1; K_HEX :: 2; K_TYPE :: 3; K_STATE :: 4; K_NETWORK :: 5; K_METHODS :: 6; K_LIST :: 7;
+N47_KIND_OF :: [N47_FIELDS] int.[K_STR, K_INT, K_STR, K_HEX, K_INT, K_INT, K_TYPE, K_STATE, K_HEX,
+  K_INT, K_INT, K_INT, K_INT, K_INT, K_STR, K_NETWORK, K_METHODS, K_LIST];
+N47_SLOT :: [N47_FIELDS] int.[0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0];
+N47_TYPES :: [2] string.["incoming", "outgoing"];
+N47_STATES :: [5] string.["pending", "settled", "accepted", "expired", "failed"];
+N47_NETWORKS :: [4] string.["mainnet", "testnet", "signet", "regtest"];
+// Field bits: F_INVOICE is 1 << 0, and so on in N47_KEYS order.
+F_INVOICE :: 1; F_AMOUNT :: 2; F_DESCRIPTION :: 4; F_HASH :: 8; F_EXPIRY :: 16; F_LIMIT :: 32;
+F_TYPE :: 64; F_STATE :: 128; F_PREIMAGE :: 256; F_FEES :: 512; F_BALANCE :: 1024; F_CREATED :: 2048;
+F_EXPIRES :: 4096; F_SETTLED :: 8192; F_ALIAS :: 16384; F_NETWORK :: 32768; F_LIST_METHODS :: 65536;
+F_TRANSACTIONS :: 131072;
+// Per command: the params it may carry and must carry, and the same for
+// its result. lookup_invoice needs one of invoice and payment_hash.
+N47_TX :: F_TYPE | F_STATE | F_INVOICE | F_DESCRIPTION | F_HASH | F_AMOUNT | F_FEES | F_CREATED | F_EXPIRES;
+N47_TX_NEEDS :: F_TYPE | F_HASH | F_AMOUNT | F_CREATED;
+N47_PARAMS :: [6] int.[F_INVOICE | F_AMOUNT, F_AMOUNT | F_DESCRIPTION | F_EXPIRY, F_INVOICE | F_HASH, 0, 0, F_LIMIT];
+N47_PARAMS_NEED :: [6] int.[F_INVOICE, F_AMOUNT, 0, 0, 0, 0];
+N47_RESULTS :: [6] int.[F_PREIMAGE | F_FEES, N47_TX, N47_TX | F_PREIMAGE | F_SETTLED, F_BALANCE,
+  F_ALIAS | F_NETWORK | F_LIST_METHODS, F_TRANSACTIONS];
+N47_RESULTS_NEED :: [6] int.[F_PREIMAGE, N47_TX_NEEDS, N47_TX_NEEDS, F_BALANCE, F_LIST_METHODS, F_TRANSACTIONS];
+// book:end names
+
+// book:begin record
+N47Str :: struct {b:[N47_MAX_STR]u8; n:int;}
+// A connection: the wallet service's public key, its relays, the client's
+// secret and the public key it signs with. The caller wipes it with
+// n47_forget when the connection is removed.
+N47Uri :: struct {
+  error:int=N47_SCHEME;
+  wallet:[32]u8;
+  relays:[N47_MAX_RELAYS]N47Str; nrelays:int;
+  secret:[32]u8; client:[32]u8;
+  lud16:N47Str;
+}
+// The params of a request or the result of a response: have says which
+// fields are present, one bit per N47_KEYS entry.
+N47Fields :: struct {
+  have:int;
+  num:[N47_FIELDS]int;                // integers, enum indexes, the methods bits, the transactions count
+  str:[3]N47Str;                      // invoice, description, alias
+  hex:[2][32]u8;                      // payment_hash, preimage
+}
+N47Call :: struct {error:int=N47_JSON; method:int=-1; f:N47Fields;}
+N47Reply :: struct {error:int=N47_JSON; method:int=-1; code:int=-1; message:N47Str; f:N47Fields;}
+// What a wallet's info event offers.
+N47Info :: struct {error:int=N47_KIND; methods:int; unknown:int; tagged:bool; nip44:bool; nip04:bool;}
+N47Out :: struct {error:int; n:int;}
+// A budget: limit millisats per period seconds from start (period 0: one
+// budget that never renews), of which spent are used.
+N47Budget :: struct {limit:int; period:int; start:int; spent:int;}
+N47Spend :: struct {error:int; msats:int; budget:N47Budget;}
+// book:end record
+
+n47_forget :: (u:[]N47Uri) {for i:0..<u.count {u[i]=N47Uri.{};}}
+n47_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
+// The word tables n47_word reads: T_TYPES, T_STATES and T_NETWORKS are the
+// same numbers as K_TYPE, K_STATE and K_NETWORK.
+T_METHODS :: 0; T_CODES :: 1; T_KEYS :: 2; T_TYPES :: 3; T_STATES :: 4; T_NETWORKS :: 5;
+N47_TABLE_SIZE :: [6] int.[6, 11, N47_FIELDS, 2, 5, 4];
+n47_name :: (table:int,k:int)->string {
+  if table==T_METHODS {return N47_METHODS[k];}
+  if table==T_CODES {return N47_CODES[k];}
+  if table==T_KEYS {return N47_KEYS[k];}
+  if table==T_TYPES {return N47_TYPES[k];}
+  if table==T_STATES {return N47_STATES[k];}
+  return N47_NETWORKS[k];
+}
+// Which entry of a table a JSON string token's raw bytes name, or -1.
+n47_word :: (raw:string,table:int)->int {
+  for k:0..<N47_TABLE_SIZE[table] {if json_is(raw,n47_name(table,k)) {return k;}}
+  return -1;
+}
+
+// book:begin uri
+// The value of one query parameter with its %XX escapes decoded into out:
+// its length, or -1 for a broken escape, -2 when it doesn't fit.
+n47_unescape :: (s:string,out:[]u8)->int {
+  n:=0;i:=0;
+  while i<s.count {
+    c:=s[i];
+    if c=='%' {
+      if i+2>=s.count {return -1;}
+      h:=json_hex(s[i+1]);l:=json_hex(s[i+2]);
+      if h<0 || l<0 {return -1;}
+      c=cast(u8)(h*16+l);i+=2;
+    }
+    if n>=out.count {return -2;}
+    out[n]=c;n+=1;i+=1;
+  }
+  return n;
+}
+// A connection URI: the scheme, the wallet's public key as 64 lowercase
+// hex digits, then relay (one or more, ws:// or wss://), secret (once, 64
+// lowercase hex digits, a usable secret key) and an optional lud16. Other
+// parameters are skipped. The secret is kept, never written anywhere.
+n47_uri :: (text:string)->N47Uri {
+  u:N47Uri;p:=N47_PREFIX.count;
+  if text.count<p+64 || text[0..<p]!=N47_PREFIX {return u;}
+  u.error=N47_WALLET;
+  if !ne_lower_hex(text[p..<p+64],u.wallet[..]) {return u;}
+  if text.count>p+64 && text[p+64]!='?' {return u;}
+  has_secret:=false;has_lud16:=false;from:=p+65;
+  for i:from..<text.count+1 {
+    if i<text.count && text[i]!='&' {continue;}
+    part:=text[from..<i];from=i+1;
+    eq:=0;
+    while eq<part.count && part[eq]!='=' {eq+=1;}
+    key:=part[0..<eq];value:=part[ifx eq<part.count then eq+1 else eq..<part.count];
+    if key=="relay" {
+      if u.nrelays==N47_MAX_RELAYS {u.error=N47_LIMIT;return u;}
+      n:=n47_unescape(value,u.relays[u.nrelays].b[..]);
+      u.error=ifx n== -1 then N47_ESCAPE else N47_LIMIT;
+      if n<0 {return u;}
+      u.relays[u.nrelays].n=n;u.error=N47_RELAY;
+      rv:=u.relays[u.nrelays];
+      if !nt_relay_ok(cast(string)rv.b[0..<n]) {return u;}
+      u.nrelays+=1;
+    } else if key=="secret" {
+      u.error=N47_REPEAT;
+      if has_secret {return u;}
+      has_secret=true;u.error=N47_SECRET;
+      if !ne_lower_hex(value,u.secret[..]) {return u;}
+    } else if key=="lud16" {
+      u.error=N47_REPEAT;
+      if has_lud16 {return u;}
+      has_lud16=true;
+      n:=n47_unescape(value,u.lud16.b[..]);
+      u.error=ifx n== -1 then N47_ESCAPE else N47_LIMIT;
+      if n<0 {return u;}
+      u.lud16.n=n;
+    }
+  }
+  u.error=N47_NO_RELAY;
+  if u.nrelays==0 {return u;}
+  u.error=N47_NO_SECRET;
+  if !has_secret {return u;}
+  // The client signs with the secret: it must be a key (not 0, below n).
+  pub:[33]u8;u.error=N47_SECRET;
+  if !bip32_public(u.secret[..],pub[..]) {return u;}
+  for k:0..<32 {u.client[k]=pub[k+1];}
+  u.error=N47_OK;
+  return u;
+}
+// book:end uri
+
+// book:begin info
+// The wallet's info event: the commands its content lists (space
+// separated; unknown ones counted) and the encryption tag's schemes.
+n47_info :: (e:NostrEvent)->N47Info {
+  r:N47Info;
+  if e.error!=NE_OK || e.kind!=N47_INFO {return r;}
+  r.error=N47_LIMIT;
+  content:[1024]u8;n:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);
+  if n<0 {return r;}
+  text:=cast(string)content[0..<n];from:=0;
+  for i:from..<n+1 {
+    if i<n && content[i]!=' ' {continue;}
+    w:=text[from..<i];
+    if i>from {
+      k:=n47_word(w,T_METHODS);
+      if k<0 {r.unknown+=1;} else {r.methods|=1<<k;}
+    }
+    from=i+1;
+  }
+  for t:0..<e.tags {
+    tag:=n32_tag(e,t);r.error=N47_JSON;
+    if tag.error!=NT_OK {return r;}
+    if n32_is(tag.v[0],"encryption") {
+      r.error=N47_REPEAT;
+      if r.tagged {return r;}
+      r.tagged=true;v:=tag.v[1];vt:=cast(string)v.b[0..<v.n];at:=0;
+      for j:at..<v.n+1 {
+        if j<v.n && v.b[j]!=' ' {continue;}
+        w:=vt[at..<j];at=j+1;
+        if w=="nip44_v2" {r.nip44=true;}
+        if w=="nip04" {r.nip04=true;}
+      }
+    }
+  }
+  r.error=N47_OK;
+  return r;
+}
+// Whether the client may send new requests: only over NIP-44 v2. No
+// encryption tag means NIP-04 only, which this stack doesn't write.
+n47_encryption :: (r:N47Info)->int {
+  if r.error!=N47_OK {return r.error;}
+  return ifx r.nip44 then N47_OK else N47_ENCRYPTION;
+}
+// book:end info
+
+// book:begin fields
+// One params or result object, its { already read: every field this file
+// knows, read by its kind; other keys skipped; null as absent.
+n47_fields :: (j:[]Json,f:[]N47Fields)->int {
+  t:=json_next(j);
+  while t==JSON_STRING {
+    k:=n47_word(json_text(j),T_KEYS);
+    v:=json_next(j);
+    if k<0 || v==JSON_NULL {
+      if !json_skip(j) {return N47_JSON;}
+    } else {
+      bit:=1<<k;
+      if (f[0].have&bit)!=0 {return N47_REPEAT;}
+      f[0].have|=bit;
+      kind:=N47_KIND_OF[k];slot:=N47_SLOT[k];raw:=json_text(j);
+      if kind==K_STR {
+        if v!=JSON_STRING {return N47_FIELD;}
+        n:=json_unescape(raw,f[0].str[slot].b[..]);
+        if n<0 {return N47_LIMIT;}
+        f[0].str[slot].n=n;
+      } else if kind==K_INT {
+        x:=json_int(raw);
+        if v!=JSON_NUMBER || !x.ok || x.value<0 {return N47_FIELD;}
+        f[0].num[k]=x.value;
+      } else if kind==K_HEX {
+        if v!=JSON_STRING || !ne_lower_hex(raw,f[0].hex[slot][..]) {return N47_FIELD;}
+      } else if kind==K_METHODS || kind==K_LIST {
+        if v!=JSON_ARRAY {return N47_FIELD;}
+        u:=json_next(j);
+        while u!=JSON_ARRAY_END {
+          if kind==K_METHODS {
+            if u!=JSON_STRING {return N47_FIELD;}
+            m:=n47_word(json_text(j),T_METHODS);
+            if m>=0 {f[0].num[k]|=1<<m;}
+          } else {
+            if u!=JSON_OBJECT || !json_skip(j) {return N47_FIELD;}
+            f[0].num[k]+=1;
+          }
+          u=json_next(j);
+        }
+      } else {
+        w:=n47_word(raw,kind);
+        if v!=JSON_STRING || w<0 {return N47_FIELD;}
+        f[0].num[k]=w;
+      }
+    }
+    t=json_next(j);
+  }
+  return ifx t==JSON_OBJECT_END then N47_OK else N47_JSON;
+}
+// The fields against what a command allows and needs.
+n47_allowed :: (have:int,allowed:int,needed:int)->int {
+  if (have&allowed)!=have {return N47_FIELD;}
+  if (have&needed)!=needed {return N47_MISSING;}
+  return N47_OK;
+}
+n47_params_ok :: (c:N47Call)->int {
+  if c.method<0 {return N47_MISSING;}
+  e:=n47_allowed(c.f.have,N47_PARAMS[c.method],N47_PARAMS_NEED[c.method]);
+  if e==N47_OK && c.method==N47_LOOKUP && (c.f.have&(F_INVOICE|F_HASH))==0 {return N47_MISSING;}
+  return e;
+}
+n47_reply_ok :: (r:N47Reply)->int {
+  if r.method<0 {return N47_MISSING;}
+  if r.code>=0 {return ifx r.f.have==0 then N47_OK else N47_FIELD;}
+  return n47_allowed(r.f.have,N47_RESULTS[r.method],N47_RESULTS_NEED[r.method]);
+}
+// book:end fields
+
+// book:begin read
+// A request's plaintext: {"method": ..., "params": {...}}.
+n47_request :: (text:string)->N47Call {
+  c:N47Call;j:[1]Json;f:[1]N47Fields;json_start(j[..],text);params:=false;
+  if json_next(j[..])!=JSON_OBJECT {return c;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    if json_is(key,"method") {
+      c.error=N47_REPEAT;
+      if c.method>=0 {return c;}
+      c.error=N47_METHOD;c.method=n47_word(json_text(j[..]),T_METHODS);
+      if v!=JSON_STRING || c.method<0 {return c;}
+    } else if json_is(key,"params") {
+      c.error=N47_REPEAT;
+      if params {return c;}
+      params=true;c.error=N47_FIELD;
+      if v!=JSON_OBJECT {return c;}
+      c.error=n47_fields(j[..],f[..]);
+      if c.error!=N47_OK {return c;}
+    } else if !json_skip(j[..]) {c.error=N47_JSON;return c;}
+    t=json_next(j[..]);
+  }
+  c.error=N47_JSON;
+  if t!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return c;}
+  c.f=f[0];c.error=N47_MISSING;
+  if !params {return c;}
+  c.error=n47_params_ok(c);
+  return c;
+}
+// A response's plaintext: {"result_type": ..., "error": null or {"code",
+// "message"}, "result": {...} or null}. Exactly one of error and result.
+n47_response :: (text:string)->N47Reply {
+  r:N47Reply;j:[1]Json;f:[1]N47Fields;json_start(j[..],text);result:=false;failed:=false;
+  if json_next(j[..])!=JSON_OBJECT {return r;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    if json_is(key,"result_type") {
+      r.error=N47_REPEAT;
+      if r.method>=0 {return r;}
+      r.error=N47_METHOD;r.method=n47_word(json_text(j[..]),T_METHODS);
+      if v!=JSON_STRING || r.method<0 {return r;}
+    } else if json_is(key,"error") && v!=JSON_NULL {
+      r.error=N47_FIELD;
+      if v!=JSON_OBJECT || failed {return r;}
+      failed=true;message:=false;
+      u:=json_next(j[..]);
+      while u==JSON_STRING {
+        name:=json_text(j[..]);w:=json_next(j[..]);raw:=json_text(j[..]);
+        if json_is(name,"code") {
+          if w!=JSON_STRING {return r;}
+          r.code=n47_word(raw,T_CODES);
+          if r.code<0 {r.code=N47_C_OTHER;}
+        } else if json_is(name,"message") {
+          if w!=JSON_STRING {return r;}
+          r.message.n=json_unescape(raw,r.message.b[..]);message=true;
+          if r.message.n<0 {r.message.n=0;r.error=N47_LIMIT;return r;}
+        } else if !json_skip(j[..]) {return r;}
+        u=json_next(j[..]);
+      }
+      r.error=N47_MISSING;
+      if u!=JSON_OBJECT_END || r.code<0 || !message {return r;}
+    } else if json_is(key,"result") && v!=JSON_NULL {
+      r.error=N47_FIELD;
+      if v!=JSON_OBJECT || result {return r;}
+      result=true;
+      r.error=n47_fields(j[..],f[..]);
+      if r.error!=N47_OK {return r;}
+    } else if !json_skip(j[..]) {r.error=N47_JSON;return r;}
+    t=json_next(j[..]);
+  }
+  r.error=N47_JSON;
+  if t!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return r;}
+  r.f=f[0];
+  if result==failed {r.error=ifx result then N47_FIELD else N47_MISSING;return r;}
+  r.error=n47_reply_ok(r);
+  return r;
+}
+// book:end read
+
+// book:begin write
+// The present fields as a JSON object, in N47_KEYS order.
+n47_write_fields :: (f:N47Fields,out:[]u8,at:int)->int {
+  n:=json_raw(out,at,"{");first:=true;rest:=f.have;k:=-1;
+  while rest!=0 {
+    k+=1;bit:=rest&1;rest=rest>>1;
+    if bit!=0 {
+      if !first {n=json_raw(out,n,",");}
+      first=false;
+      n=json_write_string(out,n,N47_KEYS[k]);n=json_raw(out,n,":");
+      kind:=N47_KIND_OF[k];slot:=N47_SLOT[k];x:=f.num[k];
+      sv:=f.str[slot];
+      if kind==K_STR {n=json_write_string(out,n,cast(string)sv.b[0..<sv.n]);}
+      else if kind==K_INT {n=json_write_int(out,n,x);}
+      else if kind==K_HEX {
+        hex:[64]u8;own:=f.hex[slot];h:=hex_encode_checked(cast(string)own[..],hex[..],false);
+        n=json_raw(out,n,"\"");n=json_raw(out,n,cast(string)hex[..]);n=json_raw(out,n,"\"");
+      }
+      else if kind==K_METHODS {
+        n=json_raw(out,n,"[");more:=false;
+        for m:0..<N47_METHODS.count {
+          if (x&(1<<m))!=0 {
+            if more {n=json_raw(out,n,",");}
+            more=true;n=json_write_string(out,n,N47_METHODS[m]);
+          }
+        }
+        n=json_raw(out,n,"]");
+      }
+      else if kind==K_LIST {n=ifx x==0 then json_raw(out,n,"[]") else -1;}   // only an empty list is written
+      else {n=json_write_string(out,n,n47_name(kind,x));}
+    }
+  }
+  return json_raw(out,n,"}");
+}
+// A request's plaintext, or -1 when the call isn't one n47_request would
+// accept or out is too small.
+n47_request_json :: (c:N47Call,out:[]u8)->int {
+  if n47_params_ok(c)!=N47_OK {return -1;}
+  n:=json_raw(out,0,"{\"method\":");n=json_write_string(out,n,N47_METHODS[c.method]);
+  n=json_raw(out,n,",\"params\":");n=n47_write_fields(c.f,out,n);
+  return json_raw(out,n,"}");
+}
+// A response's plaintext, or -1 likewise.
+n47_response_json :: (r:N47Reply,out:[]u8)->int {
+  if n47_reply_ok(r)!=N47_OK {return -1;}
+  n:=json_raw(out,0,"{\"result_type\":");n=json_write_string(out,n,N47_METHODS[r.method]);
+  if r.code>=0 {
+    n=json_raw(out,n,",\"error\":{\"code\":");n=json_write_string(out,n,N47_CODES[r.code]);
+    m:=r.message;
+    n=json_raw(out,n,",\"message\":");n=json_write_string(out,n,cast(string)m.b[0..<m.n]);
+    return json_raw(out,n,"},\"result\":null}");
+  }
+  n=json_raw(out,n,",\"error\":null,\"result\":");n=n47_write_fields(r.f,out,n);
+  return json_raw(out,n,"}");
+}
+// book:end write
+
+// book:begin events
+// A request's tags: the encryption it uses, the wallet, and an optional
+// expiration (0: none).
+n47_request_tags :: (wallet:[32]u8,expiration:int,out:[]u8)->int {
+  hex:[64]u8;own:=wallet;h:=hex_encode_checked(cast(string)own[..],hex[..],false);
+  n:=json_raw(out,0,"[[\"encryption\",\"nip44_v2\"],[\"p\",\"");n=json_raw(out,n,cast(string)hex[..]);
+  n=json_raw(out,n,"\"]");
+  if expiration>0 {n=json_raw(out,n,",[\"expiration\",\"");n=json_write_int(out,n,expiration);n=json_raw(out,n,"\"]");}
+  return json_raw(out,n,"]");
+}
+// A response's tags: the client that asked, and the request.
+n47_response_tags :: (request:NostrEvent,out:[]u8)->int {
+  p:[64]u8;e:[64]u8;
+  a:=request.public_key;b:=request.id;
+  x:=hex_encode_checked(cast(string)a[..],p[..],false);y:=hex_encode_checked(cast(string)b[..],e[..],false);
+  n:=json_raw(out,0,"[[\"p\",\"");n=json_raw(out,n,cast(string)p[..]);
+  n=json_raw(out,n,"\"],[\"e\",\"");n=json_raw(out,n,cast(string)e[..]);
+  return json_raw(out,n,"\"]]");
+}
+// The wallet service's reading of a request event at time now: kind
+// 23194, encryption nip44_v2 (no tag means NIP-04: refused), a p tag naming
+// this wallet, and an expiration not passed.
+n47_request_event :: (e:NostrEvent,wallet:[32]u8,now:int)->int {
+  if e.error!=NE_OK || e.kind!=N47_REQUEST {return N47_KIND;}
+  nip44:=false;mine:=false;
+  for i:0..<e.tags {
+    t:=n32_tag(e,i);
+    if t.error!=NT_OK {return N47_JSON;}
+    if n32_is(t.v[0],"encryption") {nip44=n32_is(t.v[1],"nip44_v2");}
+    if n32_is(t.v[0],"p") {k:=nostr_tag(e,i);mine=k.error==NT_OK && n47_same(k.pubkey,wallet);}
+    if n32_is(t.v[0],"expiration") {
+      v:=t.v[1];x:=json_int(cast(string)v.b[0..<v.n]);
+      if !x.ok || x.value<0 {return N47_FIELD;}
+      if now>x.value {return N47_EXPIRED;}
+    }
+  }
+  if !nip44 {return N47_ENCRYPTION;}
+  return ifx mine then N47_OK else N47_P;
+}
+// book:end events
+
+// book:begin match
+// Whether a response event and its opened plaintext answer a request the
+// client sent with method: kind 23195, written by the wallet, p naming the
+// request's author, e naming the request, result_type the request's method.
+n47_match :: (request:NostrEvent,response:NostrEvent,wallet:[32]u8,method:int,reply:N47Reply)->int {
+  if response.error!=NE_OK || response.kind!=N47_RESPONSE {return N47_KIND;}
+  if !n47_same(response.public_key,wallet) {return N47_AUTHOR;}
+  p:=false;e:=false;
+  for i:0..<response.tags {
+    t:=nostr_tag(response,i);
+    if t.error==NT_OK && t.type==NT_P {p=n47_same(t.pubkey,request.public_key);}
+    if t.error==NT_OK && t.type==NT_E {e=n47_same(t.id,request.id);}
+  }
+  if !p {return N47_P;}
+  if !e {return N47_E;}
+  if reply.error!=N47_OK {return reply.error;}
+  return ifx reply.method==method then N47_OK else N47_RESULT;
+}
+// book:end match
+
+// book:begin crypt
+// The conversation key of this side's secret and the other side's public
+// key: the client uses the URI's secret and wallet, the wallet its own
+// secret and the client's key.
+n47_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int {
+  work:[1]EcdhScratch;pub:=peer;
+  r:=nip44_conversation_key_from_keys_checked(secret,pub[..],work[..],out,false);
+  return ifx r==NIP44_OK then N47_OK else N47_KEY;
+}
+// plain encrypted as NIP-44 v2 into out with the caller's fresh nonce.
+n47_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N47Out {
+  o:N47Out;o.error=N47_LIMIT;
+  if plain.count>N47_MAX_PLAIN {return o;}
+  work:[N47_WORK]u8;bytes:[N47_MAX_PLAIN]u8;
+  for i:0..<plain.count {bytes[i]=plain[i];}
+  r:=nip44_encrypt_checked(NIP44_COMPAT,key,nonce,bytes[0..<plain.count],work[..],out,false);
+  o.error=ifx r.error==NIP44_OK then N47_OK else N47_KEY;o.n=r.written;
+  return o;
+}
+// A response's or request's content opened into out. A NIP-04 payload
+// (its ?iv= suffix) is refused; NIP-44's MAC is checked before decryption.
+n47_open :: (key:[]u8,payload:string,out:[]u8)->N47Out {
+  o:N47Out;o.error=N47_ENCRYPTION;
+  for c:payload {if c=='?' {return o;}}
+  work:[N47_WORK]u8;
+  r:=nip44_decrypt_checked(NIP44_COMPAT,key,payload,work[..],out,false);
+  o.error=ifx r.error==NIP44_OK then N47_OK else N47_CIPHER;o.n=r.written;
+  return o;
+}
+// book:end crypt
+
+// book:begin budget
+// The budget at time now: whole periods since start roll it over, so
+// spent starts again at 0 at each period's start.
+n47_roll :: (b:N47Budget,now:int)->N47Budget {
+  r:=b;
+  if b.period>0 && now-b.start>=b.period {r.start=b.start+(now-b.start)/b.period*b.period;r.spent=0;}
+  return r;
+}
+// What a call costs and the budget after it, at time now. Only pay_invoice
+// spends: the invoice's own amount, or the params amount for an invoice
+// without one (both given must agree). A payment over what is left in this
+// period is refused (the wallet answers QUOTA_EXCEEDED); so is a time
+// before the budget's start. A refused call leaves spent as it was.
+n47_spend :: (b:N47Budget,now:int,c:N47Call)->N47Spend {
+  s:N47Spend;s.budget=b;
+  if c.error!=N47_OK || c.method!=N47_PAY {s.error=c.error;return s;}
+  iv:=c.f.str[0];invoice:=x402_bolt11_msat(cast(string)iv.b[0..<iv.n]);
+  s.msats=invoice;
+  if (c.f.have&F_AMOUNT)!=0 {
+    s.msats=c.f.num[1];
+    if invoice!= -1 && invoice!=s.msats {s.error=N47_AMOUNTS;return s;}
+  }
+  if s.msats<=0 {s.error=N47_AMOUNT;return s;}
+  if now<b.start {s.error=N47_CLOCK;return s;}
+  r:=n47_roll(b,now);s.budget=r;
+  if s.msats>r.limit-r.spent {s.error=N47_QUOTA;return s;}
+  s.budget.spent=r.spent+s.msats;
+  return s;
+}
+// The response code a refusal is answered with.
+n47_code :: (error:int)->int {
+  if error==N47_QUOTA {return N47_C_QUOTA;}
+  if error==N47_ENCRYPTION {return N47_C_UNSUPPORTED;}
+  if error==N47_METHOD {return N47_C_NOT_IMPLEMENTED;}
+  return N47_C_OTHER;
+}
+// book:end budget
+
+// ---- checks
+
+#test "the NIP's example URI: wallet, relay, secret and the client's key" #steps 400000000 {
+  u:=n47_uri(N47_T_NIP_URI);
+  #assert u.error==N47_OK && n47_same(u.wallet,n47_t_hex("b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4"));
+  #assert u.nrelays==1 && n47_t_is(u.relays[0],"wss://relay.damus.io") && u.lud16.n==0;
+  #assert n47_same(u.secret,n47_t_hex("71a8c14c1407c113601079c4302dab36460f0ccd0ad506f1f2dc73b5100e4f3c"));
+  #assert n47_same(u.client,n47_t_hex(N47_T_NIP_CLIENT));
+  w:[1]N47Uri;w[0]=u;n47_forget(w[..]);
+  #assert w[0].nrelays==0 && w[0].secret[0]==0 && w[0].error==N47_SCHEME;
+}
+#test "URI: two relays, lud16, skipped parameters and empty parts" #steps 400000000 {
+  b:[4096]u8;
+  u:=n47_uri(n47_t_uri("?x=1&&relay=ws://a.example&name&lud16=me%40example.com&relay=wss%3a%2f%2fb.example&secret=0000000000000000000000000000000000000000000000000000000000000001&",b[..]));
+  #assert u.error==N47_OK && u.nrelays==2 && n47_t_is(u.relays[0],"ws://a.example") && n47_t_is(u.relays[1],"wss://b.example");
+  #assert n47_t_is(u.lud16,"me@example.com") && n47_same(u.client,n47_t_hex(N47_T_CLIENT));
+  four:=n47_uri(n47_t_uri("?relay=ws://a&relay=ws://b&relay=ws://c&relay=ws://d&secret=0000000000000000000000000000000000000000000000000000000000000001",b[..]));
+  #assert four.error==N47_OK && four.nrelays==4;
+}
+#test "URI refusals, each with its code" #steps 400000000 {
+  b:[4096]u8;S:="&secret=0000000000000000000000000000000000000000000000000000000000000001";
+  q:=[18] string.["", "?secret=0000000000000000000000000000000000000000000000000000000000000001",
+    "?relay=https://x.example", "?relay=wss://x%2", "?relay=wss://x%zz", "?relay=wss://x%g0",
+    "?relay=ws://a&relay=ws://b&relay=ws://c&relay=ws://d&relay=ws://e",
+    "?relay=ws://a", "?relay=ws://a&secret=00", "?relay=ws://a&secret=0000000000000000000000000000000000000000000000000000000000000000",
+    "?relay=ws://a&secret=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+    "?relay=ws://a&secret=fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+    "?relay=ws://a&secret=0000000000000000000000000000000000000000000000000000000000000001&secret=0000000000000000000000000000000000000000000000000000000000000001",
+    "?relay=ws://a&lud16=a&lud16=b", "?relay=ws://a&lud16=%4", "x?relay=ws://a", "?relay=", "?lud16=a"];
+  want:=[18] int.[N47_NO_RELAY, N47_NO_RELAY, N47_RELAY, N47_ESCAPE, N47_ESCAPE, N47_ESCAPE, N47_LIMIT,
+    N47_NO_SECRET, N47_SECRET, N47_SECRET, N47_SECRET, N47_SECRET, N47_REPEAT, N47_REPEAT, N47_ESCAPE, N47_WALLET, N47_RELAY, N47_NO_RELAY];
+  for k:0..<18 {#assert n47_uri(n47_t_uri(q[k],b[..])).error==want[k];}
+  #assert n47_uri("nostr+walletconnect://b889").error==N47_SCHEME;
+  #assert n47_uri("nostr+walletconnecx://b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4?relay=ws://a").error==N47_SCHEME;
+  #assert n47_uri("nostr+walletconnect://B889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4?relay=ws://a").error==N47_WALLET;
+  #assert n47_uri("nostr+walletconnect://b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4").error==N47_NO_RELAY;
+  // A relay or lud16 longer than N47_MAX_STR, and one exactly as long.
+  long:[4200]u8;n:=json_raw(long[..],0,"?relay=ws://");
+  for i:0..<N47_MAX_STR {long[n+i]='a';}
+  n+=N47_MAX_STR;
+  #assert n47_uri(n47_t_uri(cast(string)long[0..<n],b[..])).error==N47_LIMIT;
+  m:=json_raw(long[..],0,"?relay=ws://a&lud16=");
+  for i:0..<N47_MAX_STR+1 {long[m+i]='a';}
+  m+=N47_MAX_STR+1;
+  #assert n47_uri(n47_t_uri(cast(string)long[0..<m],b[..])).error==N47_LIMIT;
+  m=json_raw(long[..],0,"?relay=ws://a&lud16=");
+  for i:0..<N47_MAX_STR {long[m+i]='a';}
+  m+=N47_MAX_STR;m=json_raw(long[..],m,S);
+  ok:=n47_uri(n47_t_uri(cast(string)long[0..<m],b[..]));
+  #assert ok.error==N47_OK && ok.lud16.n==N47_MAX_STR;
+  #assert n47_unescape("a%41",long[0..<1])== -2 && n47_unescape("%41",long[0..<1])==1 && long[0]=='A' && n47_unescape("%4",long[..])== -1;
+}
+#test "info: the NIP's appendix event and the encryption choice" {
+  scratch:[4096]u8;
+  // The appendix's id is not the hash of the fields it shows (Python:
+  // ed220f16...), so the event reader refuses it; with that id it reads.
+  #assert nostr_event_read(N47_T_NIP_INFO,scratch[..],false).error==NE_ID;
+  text:[1024]u8;for i:0..<N47_T_NIP_INFO.count {text[i]=N47_T_NIP_INFO[i];}
+  for i:0..<64 {text[7+i]=N47_T_NIP_INFO_ID[i];}
+  e:=nostr_event_read(cast(string)text[0..<N47_T_NIP_INFO.count],scratch[..],false);
+  #assert e.error==NE_OK;
+  r:=n47_info(e);
+  want:=(1<<N47_PAY)|(1<<N47_MAKE)|(1<<N47_LOOKUP)|(1<<N47_BALANCE)|(1<<N47_GET_INFO);
+  #assert r.error==N47_OK && r.methods==want && r.unknown==0 && r.tagged && r.nip44 && r.nip04 && n47_encryption(r)==N47_OK;
+}
+#test "info: NIP-04-only wallets, unknown commands, refusals" {
+  out:[4096]u8;
+  a:=n47_info(n90_t_event(1,1,N47_INFO,"[]","pay_invoice  multi_pay_invoice get_balance ",out[..]));
+  #assert a.error==N47_OK && a.methods==((1<<N47_PAY)|(1<<N47_BALANCE)) && a.unknown==1 && !a.tagged && n47_encryption(a)==N47_ENCRYPTION;
+  b:=n47_info(n90_t_event(1,1,N47_INFO,"[[\"encryption\",\"nip04\"]]","list_transactions",out[..]));
+  #assert b.error==N47_OK && b.tagged && b.nip04 && !b.nip44 && b.methods==(1<<N47_LIST) && n47_encryption(b)==N47_ENCRYPTION;
+  c:=n47_info(n90_t_event(1,1,N47_INFO,"[[\"encryption\",\"nip44_v2\"],[\"encryption\",\"nip44_v2\"]]","",out[..]));
+  #assert c.error==N47_REPEAT && n47_encryption(c)==N47_REPEAT;
+  #assert n47_info(n90_t_event(1,1,N47_INFO,"[[]]","",out[..])).error==N47_JSON;
+  #assert n47_info(n90_t_event(1,1,N47_REQUEST,"[]","",out[..])).error==N47_KIND;
+  bad:NostrEvent;#assert n47_info(bad).error==N47_KIND;
+  long:[1100]u8;for i:0..<1025 {long[i]='a';}
+  #assert n47_info(n90_t_event(1,1,N47_INFO,"[]",cast(string)long[0..<1025],out[..])).error==N47_LIMIT;
+  d:=n47_info(n90_t_event(1,1,N47_INFO,"[[\"p\",\"x\"],[\"encryption\",\"nip04 nip44_v2\"]]",cast(string)long[0..<1024],out[..]));
+  #assert d.error==N47_OK && d.nip44 && d.nip04 && d.unknown==1 && d.methods==0;
+}
+#test "every command's request and response round-trips with the independent client's bytes" {
+  for k:0..<N47_T_REQUESTS.count {#assert n47_t_round(N47_T_REQUESTS[k],false);}
+  for k:0..<N47_T_RESPONSES.count {#assert n47_t_round(N47_T_RESPONSES[k],true);}
+}
+#test "requests read into their fields" {
+  c:=n47_request(N47_T_REQUESTS[0]);
+  #assert c.method==N47_PAY && c.f.have==(F_INVOICE|F_AMOUNT) && n47_t_is(c.f.str[0],N47_T_INVOICE) && c.f.num[1]==5000;
+  m:=n47_request(N47_T_REQUESTS[1]);
+  #assert m.method==N47_MAKE && m.f.num[1]==21000 && n47_t_is(m.f.str[1],"coffee \"two\"") && m.f.num[4]==3600;
+  l:=n47_request(N47_T_REQUESTS[2]);
+  #assert l.method==N47_LOOKUP && l.f.have==F_HASH && n47_same(l.f.hex[0],n47_t_hex(N47_T_HASH));
+  #assert n47_request(N47_T_REQUESTS[6]).f.num[5]==10;
+  // Keys this file doesn't know are skipped, null is absent, any key order.
+  s:=n47_request("{\"params\":{\"metadata\":{\"a\":[1,{\"b\":null}]},\"amount\":null,\"invoice\":\"lnbc1x\"},\"id\":7,\"method\":\"pay_invoice\"}");
+  #assert s.error==N47_OK && s.f.have==F_INVOICE && n47_t_is(s.f.str[0],"lnbc1x");
+}
+#test "request refusals" {
+  t:=[22] string.["[]", "{\"method\":\"pay_keysend\",\"params\":{}}", "{\"method\":1,\"params\":{}}",
+    "{\"method\":\"get_info\",\"method\":\"get_info\",\"params\":{}}", "{\"method\":\"get_info\",\"params\":{},\"params\":{}}",
+    "{\"method\":\"get_info\",\"params\":[]}", "{\"method\":\"get_info\"}", "{\"params\":{}}",
+    "{\"method\":\"get_balance\",\"params\":{\"amount\":1}}", "{\"method\":\"pay_invoice\",\"params\":{\"amount\":1}}",
+    "{\"method\":\"lookup_invoice\",\"params\":{}}", "{\"method\":\"make_invoice\",\"params\":{\"amount\":-1}}",
+    "{\"method\":\"make_invoice\",\"params\":{\"amount\":1.5}}", "{\"method\":\"make_invoice\",\"params\":{\"amount\":\"1\"}}",
+    "{\"method\":\"pay_invoice\",\"params\":{\"invoice\":5}}", "{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"a\",\"invoice\":\"a\"}}",
+    "{\"method\":\"lookup_invoice\",\"params\":{\"payment_hash\":\"ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB\"}}",
+    "{\"method\":\"get_info\",\"params\":{}} x", "{\"method\":\"get_info\",\"params\":{},\"x\":[}",
+    "{\"method\":\"get_info\",\"params\":{\"x\":[}}", "{\"method\":\"get_info\",\"params\":{} ", "{\"method\":\"get_info\",\"params\":{\"limit\":1}"];
+  want:=[22] int.[N47_JSON, N47_METHOD, N47_METHOD, N47_REPEAT, N47_REPEAT, N47_FIELD, N47_MISSING, N47_MISSING,
+    N47_FIELD, N47_MISSING, N47_MISSING, N47_FIELD, N47_FIELD, N47_FIELD, N47_FIELD, N47_REPEAT, N47_FIELD,
+    N47_JSON, N47_JSON, N47_JSON, N47_JSON, N47_JSON];
+  for k:0..<22 {#assert n47_request(t[k]).error==want[k];}
+  long:[2200]u8;n:=json_raw(long[..],0,"{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"");
+  for i:0..<N47_MAX_STR+1 {long[n+i]='a';}
+  n+=N47_MAX_STR+1;n=json_raw(long[..],n,"\"}}");
+  #assert n47_request(cast(string)long[0..<n]).error==N47_LIMIT;
+  // The writer takes only what the reader accepts, and only what fits.
+  c:=n47_request(N47_T_REQUESTS[0]);out:[64]u8;
+  #assert n47_request_json(c,out[0..<10])== -1 && n47_request_json(c,out[..])== -1;
+  c.f.have|=F_LIMIT;big:[256]u8;#assert n47_request_json(c,big[..])== -1;
+  none:N47Call;#assert n47_request_json(none,big[..])== -1;
+}
+#test "responses read into their fields" {
+  p:=n47_response(N47_T_RESPONSES[0]);
+  #assert p.method==N47_PAY && p.code== -1 && n47_same(p.f.hex[1],n47_t_hex(N47_T_PRE)) && p.f.num[9]==1000;
+  m:=n47_response(N47_T_RESPONSES[1]);
+  #assert m.f.num[6]==0 && m.f.num[7]==0 && m.f.num[11]==1762000000 && m.f.num[12]==1762003600;
+  l:=n47_response(N47_T_RESPONSES[2]);
+  #assert l.f.num[6]==1 && l.f.num[7]==1 && l.f.num[13]==1762000002;
+  #assert n47_response(N47_T_RESPONSES[3]).f.num[10]==10000;
+  i:=n47_response(N47_T_RESPONSES[4]);
+  #assert i.f.num[15]==0 && i.f.num[16]==((1<<N47_PAY)|(1<<N47_BALANCE)|(1<<N47_GET_INFO)) && n47_t_is(i.f.str[2],"Spark");
+  q:=n47_response(N47_T_RESPONSES[6]);
+  #assert q.error==N47_OK && q.method==N47_PAY && q.code==N47_C_QUOTA && n47_t_is(q.message,"over the budget") && q.f.have==0;
+  x:=n47_response("{\"result_type\":\"list_transactions\",\"error\":null,\"result\":{\"transactions\":[{\"type\":\"incoming\"},{}]}}");
+  #assert x.error==N47_OK && x.f.num[17]==2;
+  out:[512]u8;#assert n47_response_json(x,out[..])== -1;
+  n:=n47_response("{\"result_type\":\"get_info\",\"result\":{\"network\":\"regtest\",\"methods\":[\"pay_keysend\",\"get_info\"]},\"error\":{\"code\":\"X\",\"message\":\"m\"}}");
+  #assert n.error==N47_FIELD;
+  o:=n47_response("{\"result_type\":\"get_info\",\"result\":null,\"error\":{\"code\":\"SOMETHING_NEW\",\"message\":\"m\",\"data\":[1]}}");
+  #assert o.error==N47_OK && o.code==N47_C_OTHER;
+  s:=n47_response("{\"result_type\":\"get_info\",\"result\":{\"network\":\"signet\",\"methods\":[\"pay_keysend\",\"get_info\"]}}");
+  #assert s.error==N47_OK && s.f.num[15]==2 && s.f.num[16]==(1<<N47_GET_INFO);
+}
+#test "response refusals" {
+  t:=[20] string.["1", "{\"result_type\":\"x\",\"error\":null,\"result\":{}}", "{\"result_type\":2,\"error\":null,\"result\":{}}",
+    "{\"result_type\":\"get_balance\",\"result_type\":\"get_balance\",\"result\":{\"balance\":1}}",
+    "{\"result_type\":\"get_balance\",\"error\":null,\"result\":null}", "{\"error\":null,\"result\":{\"balance\":1}}",
+    "{\"result_type\":\"get_balance\",\"error\":\"bad\"}", "{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\",\"message\":\"m\"},\"error\":{\"code\":\"OTHER\",\"message\":\"m\"}}",
+    "{\"result_type\":\"get_balance\",\"error\":{\"code\":1,\"message\":\"m\"}}", "{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\",\"message\":2}}",
+    "{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\"}}", "{\"result_type\":\"get_balance\",\"error\":{\"message\":\"m\"}}",
+    "{\"result_type\":\"get_balance\",\"result\":[]}", "{\"result_type\":\"get_balance\",\"result\":{\"balance\":1},\"result\":{\"balance\":1}}",
+    "{\"result_type\":\"get_balance\",\"result\":{}}", "{\"result_type\":\"get_balance\",\"result\":{\"balance\":1,\"fees_paid\":1}}",
+    "{\"result_type\":\"get_info\",\"result\":{\"methods\":[1]}}", "{\"result_type\":\"list_transactions\",\"result\":{\"transactions\":[1]}}",
+    "{\"result_type\":\"make_invoice\",\"result\":{\"type\":\"sideways\"}}", "{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\",\"message\":\"m\",\"x\":[}}"];
+  want:=[20] int.[N47_JSON, N47_METHOD, N47_METHOD, N47_REPEAT, N47_MISSING, N47_MISSING, N47_FIELD, N47_FIELD,
+    N47_FIELD, N47_FIELD, N47_MISSING, N47_MISSING, N47_FIELD, N47_FIELD, N47_MISSING, N47_FIELD, N47_FIELD, N47_FIELD, N47_FIELD, N47_FIELD];
+  for k:0..<20 {#assert n47_response(t[k]).error==want[k];}
+  #assert n47_response("{\"result_type\":\"get_balance\",\"result\":{\"balance\":1}} 1").error==N47_JSON;
+  #assert n47_response("{\"result_type\":\"get_balance\",\"result\":{\"balance\":1},\"x\":[}").error==N47_JSON;
+  #assert n47_response("{\"result_type\":\"get_balance\",\"result\":{\"balance\":1}").error==N47_JSON;
+  #assert n47_response("{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\",\"message\":\"m\"},\"result\":{\"balance\":1}}").error==N47_FIELD;
+  long:[2200]u8;n:=json_raw(long[..],0,"{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\",\"message\":\"");
+  for i:0..<N47_MAX_STR+1 {long[n+i]='a';}
+  n+=N47_MAX_STR+1;n=json_raw(long[..],n,"\"}}");
+  r:=n47_response(cast(string)long[0..<n]);
+  #assert r.error==N47_LIMIT && r.message.n==0;
+  // The writer takes only what the reader accepts, and only what fits.
+  q:=n47_response(N47_T_RESPONSES[6]);q.f.have=F_BALANCE;out:[512]u8;
+  #assert n47_response_json(q,out[..])== -1;
+  b:=n47_response(N47_T_RESPONSES[3]);b.method=N47_PAY;#assert n47_response_json(b,out[..])== -1;
+  none:N47Reply;#assert n47_response_json(none,out[..])== -1;
+  g:=n47_response(N47_T_RESPONSES[0]);e:=n47_response(N47_T_RESPONSES[6]);
+  #assert n47_response_json(g,out[0..<40])== -1 && n47_response_json(e,out[0..<40])== -1 && n47_response_json(e,out[0..<70])== -1;
+}
+#test "request and response tags, and the wallet's reading of a request" {
+  out:[512]u8;w:=n47_t_hex(N47_T_WALLET);
+  n:=n47_request_tags(w,0,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"encryption\",\"nip44_v2\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]";
+  n=n47_request_tags(w,1762000060,out[..]);
+  tags:=cast(string)out[0..<n];
+  #assert tags=="[[\"encryption\",\"nip44_v2\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"expiration\",\"1762000060\"]]";
+  ev:[4096]u8;e:=n90_t_event(1,1762000000,N47_REQUEST,tags,"x",ev[..]);
+  #assert n47_request_event(e,w,1762000060)==N47_OK && n47_request_event(e,w,1762000061)==N47_EXPIRED;
+  #assert n47_request_event(e,n47_t_hex(N47_T_CLIENT),0)==N47_P;
+  rt:[512]u8;m:=n47_response_tags(e,rt[..]);
+  expect:[512]u8;id:[64]u8;own:=e.id;h:=hex_encode_checked(cast(string)own[..],id[..],false);
+  k:=json_raw(expect[..],0,"[[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"e\",\"");
+  k=json_raw(expect[..],k,cast(string)id[..]);k=json_raw(expect[..],k,"\"]]");
+  #assert m==k && cast(string)rt[0..<m]==cast(string)expect[0..<k];
+  t:=[6] string.["[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",
+    "[[\"encryption\",\"nip04\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",
+    "[[\"encryption\",\"nip44_v2\"]]", "[[\"encryption\",\"nip44_v2\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"expiration\",\"soon\"]]",
+    "[[\"encryption\",\"nip44_v2\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"expiration\",\"-5\"]]", "[[]]"];
+  want:=[6] int.[N47_ENCRYPTION, N47_ENCRYPTION, N47_P, N47_FIELD, N47_FIELD, N47_JSON];
+  for j:0..<6 {#assert n47_request_event(n90_t_event(1,1,N47_REQUEST,t[j],"x",ev[..]),w,0)==want[j];}
+  #assert n47_request_event(n90_t_event(1,1,N47_RESPONSE,t[0],"x",ev[..]),w,0)==N47_KIND;
+  bad:NostrEvent;#assert n47_request_event(bad,w,0)==N47_KIND;
+}
+#test "a response matches its request by kind, author, p, e and method" {
+  w:=n47_t_hex(N47_T_WALLET);ra:[4096]u8;rb:[4096]u8;
+  req:=n90_t_event(1,1762000000,N47_REQUEST,"[]","x",ra[..]);
+  tags:[512]u8;n:=n47_response_tags(req,tags[..]);
+  // The wallet is author 0xc6... in the real flow; here the response's author is 0x22.
+  wallet:=n90_t_key(0x22);
+  res:=n90_t_event(0x22,1762000002,N47_RESPONSE,cast(string)tags[0..<n],"x",rb[..]);
+  ok:=n47_response(N47_T_RESPONSES[0]);
+  #assert n47_match(req,res,wallet,N47_PAY,ok)==N47_OK;
+  #assert n47_match(req,res,wallet,N47_BALANCE,ok)==N47_RESULT;
+  #assert n47_match(req,res,w,N47_PAY,ok)==N47_AUTHOR;
+  #assert n47_match(req,req,wallet,N47_PAY,ok)==N47_KIND;
+  bad:NostrEvent;#assert n47_match(req,bad,wallet,N47_PAY,ok)==N47_KIND;
+  broken:=n47_response("{}");#assert n47_match(req,res,wallet,N47_PAY,broken)==N47_MISSING;
+  rc:[4096]u8;other:=n90_t_event(1,1762000001,N47_REQUEST,"[]","y",rc[..]);
+  #assert n47_match(other,res,wallet,N47_PAY,ok)==N47_E;
+  rd:[4096]u8;someone:=n90_t_event(3,1762000000,N47_REQUEST,"[]","x",rd[..]);
+  #assert n47_match(someone,res,wallet,N47_PAY,ok)==N47_P;
+  re:[4096]u8;no_e:=n90_t_event(0x22,1,N47_RESPONSE,"[[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"x\"]]","x",re[..]);
+  #assert n47_match(req,no_e,wallet,N47_PAY,ok)==N47_E;
+  rf:[4096]u8;no_p:=n90_t_event(0x22,1,N47_RESPONSE,"[[\"e\",\"aa\"]]","x",rf[..]);
+  #assert n47_match(req,no_p,wallet,N47_PAY,ok)==N47_P;
+}
+#test "NIP-44: the published vector through the connection's key, sealing and opening" #steps 400000000 {
+  // NIP-44's first valid encrypt_decrypt vector: sec1 1, sec2 2, nonce 1, "a".
+  sec1:[32]u8;sec1[31]=1;ck:[32]u8;
+  #assert n47_key(sec1[..],n47_t_hex(N47_T_WALLET),ck[..])==N47_OK && n47_same(ck,n47_t_hex("c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d"));
+  nonce:[32]u8;nonce[31]=1;out:[512]u8;
+  s:=n47_seal(ck[..],nonce[..],"a",out[..]);
+  #assert s.error==N47_OK && cast(string)out[0..<s.n]=="AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb";
+  plain:[512]u8;o:=n47_open(ck[..],cast(string)out[0..<s.n],plain[..]);
+  #assert o.error==N47_OK && o.n==1 && plain[0]=='a';
+  out[60]=ifx out[60]=='A' then 'B' else 'A';
+  #assert n47_open(ck[..],cast(string)out[0..<s.n],plain[..]).error==N47_CIPHER;
+  #assert n47_open(ck[..],"zvv4Ga7FMCWuEJT0pWVf+w==?iv=AAAAAAAAAAAAAAAAAAAAAA==",plain[..]).error==N47_ENCRYPTION;
+  #assert n47_seal(ck[0..<31],nonce[..],"a",out[..]).error==N47_KEY && n47_seal(ck[..],nonce[..],"",out[..]).error==N47_KEY;
+  big:[N47_MAX_PLAIN+1]u8;for i:0..<N47_MAX_PLAIN+1 {big[i]='a';}
+  #assert n47_seal(ck[..],nonce[..],cast(string)big[..],out[..]).error==N47_LIMIT;
+  wide:[8192]u8;#assert n47_seal(ck[..],nonce[..],cast(string)big[0..<N47_MAX_PLAIN],wide[..]).error==N47_OK;
+  notx:[32]u8;for i:0..<32 {notx[i]=0xff;}
+  #assert n47_key(sec1[..],notx,ck[..])==N47_KEY;
+}
+#test "the budget: spend, refuse over what is left, roll over each period" {
+  pay:=n47_t_pay(N47_T_INVOICE,-1);
+  b:=N47Budget.{limit=12000,period=86400,start=1762000000};
+  s:=n47_spend(b,1762000000,pay);
+  #assert s.error==N47_OK && s.msats==5000 && s.budget.spent==5000 && s.budget.start==1762000000;
+  s=n47_spend(s.budget,1762000100,pay);#assert s.error==N47_OK && s.budget.spent==10000;
+  t:=n47_spend(s.budget,1762000200,pay);
+  #assert t.error==N47_QUOTA && t.msats==5000 && t.budget.spent==10000 && n47_code(t.error)==N47_C_QUOTA;
+  // Exactly what is left passes; one more millisat does not.
+  two:=n47_spend(s.budget,1762000200,n47_t_pay("lnbc1pexample",2000));#assert two.error==N47_OK && two.budget.spent==12000;
+  over:=n47_spend(s.budget,1762000200,n47_t_pay("lnbc1pexample",2001));#assert over.error==N47_QUOTA;
+  // One second before the period ends it is the same period; at its end a new one.
+  #assert n47_spend(s.budget,1762086399,pay).error==N47_QUOTA;
+  r:=n47_spend(s.budget,1762086400,pay);#assert r.error==N47_OK && r.budget.start==1762086400 && r.budget.spent==5000;
+  late:=n47_spend(s.budget,1762000000+3*86400+5,pay);#assert late.error==N47_OK && late.budget.start==1762000000+3*86400;
+  #assert n47_roll(s.budget,1762086399).spent==10000 && n47_roll(s.budget,1762172801).start==1762172800;
+  // Period 0: one budget that never renews.
+  once:=N47Budget.{limit=5000,start=0,spent=5000};#assert n47_spend(once,999999999,pay).error==N47_QUOTA && n47_roll(once,999999999).spent==5000;
+  #assert n47_spend(b,1761999999,pay).error==N47_CLOCK;
+}
+#test "the budget: amounts from the invoice or the params, and calls that cost nothing" {
+  b:=N47Budget.{limit=100000,period=60,start=0};
+  #assert n47_spend(b,0,n47_t_pay(N47_T_INVOICE,5000)).msats==5000;
+  #assert n47_spend(b,0,n47_t_pay(N47_T_INVOICE,6000)).error==N47_AMOUNTS;
+  #assert n47_spend(b,0,n47_t_pay("lnbc1pexample",-1)).error==N47_AMOUNT;
+  #assert n47_spend(b,0,n47_t_pay("lnbc1pexample",0)).error==N47_AMOUNT;
+  #assert n47_spend(b,0,n47_t_pay("lntb50n1pexample",-1)).error==N47_AMOUNT;
+  amountless:=n47_spend(b,0,n47_t_pay("lnbc1pexample",7000));#assert amountless.error==N47_OK && amountless.msats==7000 && amountless.budget.spent==7000;
+  bal:=n47_spend(b,0,n47_request(N47_T_REQUESTS[4]));#assert bal.error==N47_OK && bal.msats==0 && bal.budget.spent==0;
+  broken:=n47_spend(b,0,n47_request("{\"method\":\"pay_invoice\",\"params\":{}}"));#assert broken.error==N47_MISSING && broken.budget.spent==0;
+  #assert n47_code(N47_ENCRYPTION)==N47_C_UNSUPPORTED && n47_code(N47_METHOD)==N47_C_NOT_IMPLEMENTED && n47_code(N47_KIND)==N47_C_OTHER;
+}
+#test "edges: first bytes, empty values, code 0 and method 0" #steps 400000000 {
+  a:[32]u8;b:[32]u8;b[0]=1;#assert !n47_same(a,b) && n47_same(a,a);
+  o:[4]u8;#assert n47_unescape("%0a",o[..])==1 && o[0]==10;
+  buf:[4096]u8;
+  #assert n47_uri("nostr+walletconnect://b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4x").error==N47_WALLET;
+  #assert n47_uri(n47_t_uri("?relay&relay=ws://a&secret=0000000000000000000000000000000000000000000000000000000000000001",buf[..])).error==N47_RELAY;
+  e:=n47_uri(n47_t_uri("?relay=ws://a&lud16=&secret=0000000000000000000000000000000000000000000000000000000000000001",buf[..]));
+  #assert e.error==N47_OK && e.lud16.n==0;
+  #assert n47_uri(n47_t_uri("?relay=ws://a&secret",buf[..])).error==N47_SECRET;
+  // Empty strings, code 0 (RATE_LIMITED) and repeats of method 0 (pay_invoice).
+  #assert n47_t_round("{\"method\":\"make_invoice\",\"params\":{\"amount\":1,\"description\":\"\"}}",false);
+  #assert n47_t_round("{\"result_type\":\"get_balance\",\"error\":{\"code\":\"RATE_LIMITED\",\"message\":\"\"},\"result\":null}",true);
+  #assert n47_response("{\"result_type\":\"get_balance\",\"error\":{\"code\":\"RATE_LIMITED\",\"message\":\"m\"}}").code==0;
+  #assert n47_request("{\"method\":\"pay_invoice\",\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"a\"}}").error==N47_REPEAT;
+  #assert n47_response("{\"result_type\":\"pay_invoice\",\"result_type\":\"pay_invoice\",\"result\":{\"preimage\":\"0101010101010101010101010101010101010101010101010101010101010101\"}}").error==N47_REPEAT;
+  #assert n47_response("{\"result_type\":\"get_info\",\"result\":{\"methods\":\"x\"}}").error==N47_FIELD;
+  #assert n47_request("{\"method\":\"get_info\",\"params\":{\"x\":1 \"y\":2}}").error==N47_JSON;
+  #assert n47_response("{\"result_type\":\"get_balance\",\"error\":{\"code\":\"OTHER\",\"message\":\"m\" 1}}").error==N47_MISSING;
+  q:=n47_response(N47_T_RESPONSES[6]);q.f.have=F_BALANCE;#assert n47_reply_ok(q)==N47_FIELD;
+  // An expiration of 1 is written; one of 0 has passed.
+  t:[512]u8;n:=n47_request_tags(n47_t_hex(N47_T_WALLET),1,t[..]);
+  #assert cast(string)t[n-19..<n]=="[\"expiration\",\"1\"]]";
+  ev:[4096]u8;
+  zero:=n90_t_event(1,1,N47_REQUEST,"[[\"encryption\",\"nip44_v2\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"expiration\",\"0\"]]","x",ev[..]);
+  #assert n47_request_event(zero,n47_t_hex(N47_T_WALLET),5)==N47_EXPIRED;
+  // The response's e tag before its p tag.
+  ra:[4096]u8;rb:[4096]u8;req:=n90_t_event(1,1762000000,N47_REQUEST,"[]","x",ra[..]);
+  id:[64]u8;own:=req.id;h:=hex_encode_checked(cast(string)own[..],id[..],false);
+  tg:[512]u8;m:=json_raw(tg[..],0,"[[\"e\",\"");m=json_raw(tg[..],m,cast(string)id[..]);
+  m=json_raw(tg[..],m,"\"],[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"]]");
+  res:=n90_t_event(0x22,1762000002,N47_RESPONSE,cast(string)tg[0..<m],"x",rb[..]);
+  #assert n47_match(req,res,n90_t_key(0x22),N47_PAY,n47_response(N47_T_RESPONSES[0]))==N47_OK;
+  // A one-second period, the budget kept on calls that cost nothing, 1 msat amounts.
+  one:=N47Budget.{limit=5000,period=1,start=0,spent=5000};
+  #assert n47_spend(one,1,n47_t_pay(N47_T_INVOICE,-1)).error==N47_OK;
+  big:=N47Budget.{limit=100000,period=60,start=0};
+  bal:=n47_spend(big,0,n47_request(N47_T_REQUESTS[4]));#assert bal.budget.limit==100000 && bal.budget.period==60;
+  #assert n47_spend(big,0,n47_t_pay("lnbc1pexample",1)).error==N47_OK;
+  #assert n47_spend(big,0,n47_t_pay("lnbc10p1pexample",2)).error==N47_AMOUNTS && n47_spend(big,0,n47_t_pay("lnbc10p1pexample",1)).msats==1;
+}
