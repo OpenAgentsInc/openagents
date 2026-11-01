@@ -1,0 +1,94 @@
+// Block's NIP-WP, the workspace profile: a relay admin or owner sets the
+// workspace icon with a kind 9033 command carrying one ["icon", <url>] tag,
+// and the relay serves the last accepted value in its NIP-11 document's
+// icon field. An empty value or no icon tag clears it.
+//
+// wp_admit decides one command: the signer must hold the admin or owner
+// role in the relay's access state (the caller passes the role it looked
+// up); at most one icon tag; the value an https or http URL of at most 2048
+// bytes, or a data:image/ URL of at most 96 KiB, with no whitespace or
+// control bytes. javascript: and non-image data: URLs refuse. The content
+// field is ignored.
+#load "tags.coax";
+#authority;
+
+WP_OK :: 0; WP_EVENT :: 1; WP_KIND :: 2; WP_ROLE :: 3; WP_SHAPE :: 4;
+WP_SCHEME :: 5; WP_BYTES :: 6; WP_SIZE :: 7;
+WP_SET :: 9033;
+WP_NONE :: 0; WP_MEMBER :: 1; WP_ADMIN :: 2; WP_OWNER :: 3;
+WP_MAX_URL :: 2048; WP_MAX_DATA :: 98304;
+
+// book:begin icon
+WpIcon :: struct {status:int=WP_OK; clear:bool; n:int;}   // the value is out[0..<n]
+wp_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+// An icon value: scheme, bytes, size.
+wp_value :: (s:string)->int {
+  for c:s {if c<=32 || c==127 {return WP_BYTES;}}
+  if wp_starts(s,"https://") || wp_starts(s,"http://") {return ifx s.count<=WP_MAX_URL then WP_OK else WP_SIZE;}
+  if wp_starts(s,"data:image/") {return ifx s.count<=WP_MAX_DATA then WP_OK else WP_SIZE;}
+  return WP_SCHEME;
+}
+// book:end icon
+
+// book:begin admit
+// Decide a verified 9033 from a signer holding role; the icon is decoded
+// into out (at least WP_MAX_DATA bytes for the largest accepted value).
+wp_admit :: (e:NostrEvent,role:int,out:[]u8)->WpIcon {
+  r:WpIcon;
+  if e.error!=NE_OK || !e.verified {r.status=WP_EVENT;return r;}
+  if e.kind!=WP_SET {r.status=WP_KIND;return r;}
+  if role!=WP_ADMIN && role!=WP_OWNER {r.status=WP_ROLE;return r;}
+  j:[1]Json;if !nt_start(j[..],e) {r.status=WP_SHAPE;return r;}
+  icons:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY {
+    v:=json_next(j[..]);at:=0;icon:=false;
+    while v==JSON_STRING {
+      if at==0 && json_is(json_text(j[..]),"icon") {icons+=1;icon=true;}
+      if at==1 && icon {
+        n:=json_unescape(json_text(j[..]),out);if n<0 {r.status=WP_SIZE;return r;}
+        r.n=n;
+      }
+      at+=1;v=json_next(j[..]);
+    }
+    if v!=JSON_ARRAY_END {r.status=WP_SHAPE;return r;}
+    tok=json_next(j[..]);
+  }
+  if icons>1 {r.status=WP_SHAPE;return r;}
+  if r.n==0 {r.clear=true;return r;}
+  r.status=wp_value(cast(string)out[0..<r.n]);return r;
+}
+// book:end admit
+
+#test "icon values: schemes, bytes, sizes" {
+  #assert wp_value("https://example.com/i.png")==WP_OK && wp_value("http://x")==WP_OK && wp_value("data:image/webp;base64,AAAA")==WP_OK;
+  #assert wp_value("javascript:alert(1)")==WP_SCHEME && wp_value("data:text/html,x")==WP_SCHEME && wp_value("ftp://x")==WP_SCHEME && wp_value("https:/x")==WP_SCHEME;
+  #assert wp_value("https://x/a b")==WP_BYTES && wp_value("https://x/\ta")==WP_BYTES && wp_value("https://x/!")==WP_OK;
+  odd:=[2]u8.[127,128];#assert wp_value(cast(string)odd[0..<1])==WP_BYTES && wp_value(cast(string)odd[1..<2])==WP_SCHEME;
+  #assert wp_value("https://x/~")==WP_OK && wp_value("https://x/\0")==WP_BYTES;
+  big:[98400]u8;h:=json_raw(big[..],0,"https://");for i:h..<2049 {big[i]='a';}
+  #assert wp_value(cast(string)big[0..<2048])==WP_OK && wp_value(cast(string)big[0..<2049])==WP_SIZE;
+  d:=json_raw(big[..],0,"data:image/png;base64,");for i:d..<98400 {big[i]='A';}
+  #assert wp_value(cast(string)big[0..<98304])==WP_OK && wp_value(cast(string)big[0..<98305])==WP_SIZE;
+  #assert wp_starts("ab","ab") && wp_starts("ab","a") && !wp_starts("a","ab") && wp_starts("a","") && !wp_starts("ba","a");
+}
+#test "commands: role, kind, one icon tag, clear" {
+  out:[256]u8;
+  r:=wp_admit(wpf_ev(9033,"[[\"icon\",\"https://x/i.png\"]]"),WP_ADMIN,out[..]);#assert r.status==WP_OK && !r.clear && cast(string)out[0..<r.n]=="https://x/i.png";
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",\"https://x/i.png\"]]"),WP_OWNER,out[..]).status==WP_OK;
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",\"https://x/i.png\"]]"),WP_MEMBER,out[..]).status==WP_ROLE && wp_admit(wpf_ev(9033,"[]"),WP_NONE,out[..]).status==WP_ROLE;
+  #assert wp_admit(wpf_ev(9032,"[]"),WP_OWNER,out[..]).status==WP_KIND;
+  r=wp_admit(wpf_ev(9033,"[]"),WP_OWNER,out[..]);#assert r.status==WP_OK && r.clear;
+  r=wp_admit(wpf_ev(9033,"[[\"icon\",\"\"]]"),WP_OWNER,out[..]);#assert r.status==WP_OK && r.clear;
+  r=wp_admit(wpf_ev(9033,"[[\"icon\"]]"),WP_OWNER,out[..]);#assert r.status==WP_OK && r.clear;
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",\"https://a\"],[\"icon\",\"https://b\"]]"),WP_OWNER,out[..]).status==WP_SHAPE;
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",\"\"],[\"icon\",\"\"]]"),WP_OWNER,out[..]).status==WP_SHAPE;
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",\"javascript:x\"]]"),WP_OWNER,out[..]).status==WP_SCHEME;
+  r=wp_admit(wpf_ev(9033,"[[\"name\",\"javascript:x\"],[\"icon\",\"http://i\",\"javascript:y\"],[\"alt\",\"z\"]]"),WP_OWNER,out[..]);#assert r.status==WP_OK && r.n==8;
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",\"https://x/\\u0000\"]]"),WP_OWNER,out[..]).status==WP_BYTES;
+  #assert wp_admit(wpf_ev(9033,"[[\"icon\",1]]"),WP_OWNER,out[..]).status==WP_SHAPE && wp_admit(wpf_ev(9033,"[1]"),WP_OWNER,out[..]).status==WP_OK;
+  small:[4]u8;#assert wp_admit(wpf_ev(9033,"[[\"icon\",\"https://x\"]]"),WP_OWNER,small[..]).status==WP_SIZE;
+  e:=wpf_ev(9033,"[]");e.verified=false;#assert wp_admit(e,WP_OWNER,out[..]).status==WP_EVENT;
+  e.verified=true;e.error=NE_ID;#assert wp_admit(e,WP_OWNER,out[..]).status==WP_EVENT;
+  e=wpf_ev(9033,"[]");e.tags_from= -1;#assert wp_admit(e,WP_OWNER,out[..]).status==WP_SHAPE;
+}
+wpf_ev :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;e.verified=true;return e;}

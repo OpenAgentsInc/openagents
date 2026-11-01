@@ -1,0 +1,20 @@
+// Helpers for nipdv.coax's checks. They live here so that mutation of the
+// library changes the library, not the checks.
+// Viewer 0xaa: DMs dm-ab and dm-ac, a DM dm-old they left, and the stream
+// general; viewer 0xbb: dm-ab.
+dvf_members :: ()->[5]DvMember {
+  return [5]DvMember.[DvMember.{viewer=g29_k(0xaa),channel=g29_text("dm-ab"),dm=true,active=true},
+                      DvMember.{viewer=g29_k(0xbb),channel=g29_text("dm-ab"),dm=true,active=true},
+                      DvMember.{viewer=g29_k(0xaa),channel=g29_text("dm-old"),dm=true,active=false},
+                      DvMember.{viewer=g29_k(0xaa),channel=g29_text("general"),dm=false,active=true},
+                      DvMember.{viewer=g29_k(0xaa),channel=g29_text("dm-ac"),dm=true,active=true}];
+}
+// Is out[0..<n] the text s, with ^a standing for 64 copies of a?
+dvf_is :: (n:int,out:[]u8,s:string)->bool {
+  t:[1024]u8;m:=0;k:=0;
+  while k<s.count {
+    if s[k]=='^' {for c:0..<64 {t[m+c]=s[k+1];}m+=64;k+=2;}
+    else {t[m]=s[k];m+=1;k+=1;}
+  }
+  return n==m && cast(string)out[0..<n]==cast(string)t[0..<m];
+}

@@ -1,0 +1,56 @@
+NIP-CL: Alice creates general with the label team
+create: ok
+the relay's 39000 tags: [["d","general"],["t","stream"],["t","team"],["P","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],["created_at","1790000000"]]
+the signed 39000 (7640cda4…) carries the same tags: true
+a client reads it back:
+  type stream, labels [team], creator 79be667e…, created_at 1790000000
+Bob's create with the label "Team Chat": label
+Bob's create with the label "dm": reserved
+the same 39000 signed by Bob instead of the relay: signer
+Alice creates the system channel agent-cfg: ok, private true
+a plain channel list shows general true and agent-cfg false
+#t system shows agent-cfg to Alice true, to Bob false; #P shows it to Alice true
+oldest of general (1790000000), chat-2 (1789999900), chat-1 (1789999900): chat-1
+NIP-CW: six messages arrive in general
+m1 d14a53f2… at T0+0: ok, depth 0, broadcast false
+m2 1c1bfdde… at T0+60: ok, depth 0, broadcast false
+m3 31048ee3… at T0+60: ok, depth 0, broadcast false
+m4 cc85adb2… at T0+60: ok, depth 0, broadcast false
+r1 971b69e8… at T0+90: ok, depth 1, broadcast false
+r2 4b46ba5c… at T0+120: ok, depth 1, broadcast true
+page 1:
+  rows [4b46ba5c,1c1bfdde]
+  39006 d general:head
+  39006 content {"has_more":true,"next_cursor":{"created_at":1790000060,"id":"1c1bfdde732181ce195077eb6180fdb516a7f62319db107351f4ccb47c7dc8d8"}}
+  the client sees a page
+page 2:
+  rows [31048ee3,cc85adb2]
+  39006 d general:1790000060:1c1bfdde732181ce195077eb6180fdb516a7f62319db107351f4ccb47c7dc8d8
+  39006 content {"has_more":true,"next_cursor":{"created_at":1790000060,"id":"cc85adb2f0de133f9276e88c8973041ac318faeb73418375bef5ee0bd29f7ff3"}}
+  the client sees a page
+page 3:
+  rows [d14a53f2]
+  39006 d general:1790000060:cc85adb2f0de133f9276e88c8973041ac318faeb73418375bef5ee0bd29f7ff3
+  39006 content {"has_more":false,"next_cursor":null}
+  the client sees a page
+thread window under m3: 2 replies, newest first: 4b46ba5c…, 971b69e8…; has_more false
+broken inputs
+until without before_id: cursor
+a before_id of 8 hex digits: cursor
+two channels in #h: channels
+a client-submitted 39006: relay only
+a reader who cannot read general: served false, 0 rows; the client sees no window: fall back to a plain filter
+a channel with no messages: served true, 0 rows, {"has_more":false,"next_cursor":null}; the client sees an empty channel
+that bounds overlay answering another cursor: the client must discard the response
+NIP-DV: Alice hides the DM dm-ab
+hide: republish true
+the snapshot's tags equal the signed 30622 (c7a50ad6…): true
+delivered to Alice true, to Bob false, to Carol false
+Bob's filter {kinds:[30622], #p:[Alice]} passes the gate: false
+Alice's list: 1 of 2 shown (general); Bob's list: 2 of 2 shown
+Carol lists dm-ab false, or names it false; Alice is still a member: true
+a client-submitted 30622: allowed false
+NIP-WP: the workspace icon
+Alice as admin: ok, icon https://example.com/team.png
+the same command from a member: role
+a javascript: icon: scheme

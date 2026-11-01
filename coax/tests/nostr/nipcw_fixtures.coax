@@ -1,0 +1,40 @@
+// Helpers for nipcw.coax's checks. They live here so that mutation of the
+// library changes the library, not the checks. Ids are 32 copies of one byte.
+CWF_ID2 :: "0202020202020202020202020202020202020202020202020202020202020202";
+CWF_ID3 :: "3333333333333333333333333333333333333333333333333333333333333333";
+CWF_ID7 :: "0707070707070707070707070707070707070707070707070707070707070707";
+CWF_ID8 :: "0808080808080808080808080808080808080808080808080808080808080808";
+cwf_id :: (b:u8)->[32]u8 {return g29_k(b);}
+// Ingest kind with id bytes i at created_at, by key 0xaa. In tags, ^x
+// stands for the id whose 32 bytes are 0x0x ("0x" 32 times).
+cwf_add :: (rows:[]CwRow,n:[]int,kind:int,i:u8,at:int,tags:string)->int {
+  t:[1024]u8;m:=0;k:=0;
+  while k<tags.count {
+    if tags[k]=='^' {for c:0..<32 {t[m+2*c]='0';t[m+2*c+1]=tags[k+1];}m+=64;k+=2;}
+    else {t[m]=tags[k];m+=1;k+=1;}
+  }
+  buf:[1024]u8;e:=g29_ev(kind,0xaa,i,cast(string)t[0..<m],buf[..]);e.created_at=at;return cw_ingest(rows,n,e);
+}
+// A reply with id bytes i to parent p.
+cwf_reply :: (rows:[]CwRow,n:[]int,i:u8,p:u8,tags:[]u8)->int {
+  k:=json_raw(tags,0,"[[\"e\",");k=cw_put_hex(tags,k+1,cwf_id(p));tags[k-65]='"';k=json_raw(tags,k,"\",\"\",\"reply\"]]");
+  return cwf_add(rows,n,9,i,1000+cast(int)i,cast(string)tags[0..<k]);
+}
+cwf_aux :: (id:u8,kind:int,target:u8)->CwAux {return CwAux.{id=cwf_id(id),kind=kind,target=cwf_id(target)};}
+// The channel the window checks read: tops 0x01 (100), 0x02 (200),
+// 0x04 (200, kind 40002), 0x05 (300); replies to 0x02: 0x06 (150) and
+// 0x07 (150, broadcast); 0x08 (100) stored before classification; 0x09
+// (160) replies to 0x06; 0x0a (50, kind 1) is deleted.
+cwf_channel :: (rows:[]CwRow)->int {
+  n:[1]int;
+  #assert cwf_add(rows,n[..],9,0x01,100,"[[\"h\",\"c\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],9,0x02,200,"[[\"h\",\"c\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],40002,0x04,200,"[[\"h\",\"c\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],9,0x05,300,"[[\"h\",\"c\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],9,0x06,150,"[[\"h\",\"c\"],[\"e\",\"^2\",\"\",\"reply\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],9,0x07,150,"[[\"h\",\"c\"],[\"e\",\"^2\",\"\",\"reply\"],[\"broadcast\",\"1\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],9,0x08,100,"[[\"h\",\"c\"]]")==CW_OK;rows[6].depth=CW_UNKNOWN;
+  #assert cwf_add(rows,n[..],9,0x09,160,"[[\"h\",\"c\"],[\"e\",\"^6\",\"\",\"reply\"]]")==CW_OK;
+  #assert cwf_add(rows,n[..],1,0x0a,50,"[[\"h\",\"c\"]]")==CW_OK;rows[8].deleted=true;
+  return n[0];
+}

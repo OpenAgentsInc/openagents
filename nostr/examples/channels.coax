@@ -1,0 +1,156 @@
+// Chapter 89: one channel, from its creation to its pages. Alice creates
+// the channel general (NIP-CL), four messages and two replies arrive, and
+// a client pages the top-level timeline two rows at a time (NIP-CW). Then
+// Alice hides a DM (NIP-DV) and sets the workspace icon (NIP-WP). The
+// events were signed by an independent BIP-340 in Python
+// (coax/tests/nostr/channels_vectors.coax). Keys are the scalars 1 (Alice),
+// 2 (Bob) and 3 (the relay): TEST ONLY.
+#load "../../coax/lib/nostr/nipcl.coax";
+#load "../../coax/lib/nostr/nipcw.coax";
+#load "../../coax/lib/nostr/nipdv.coax";
+#load "../../coax/lib/nostr/nipwp.coax";
+#load "../../coax/tests/nostr/channels_vectors.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+CL_WORDS :: [10]string.["ok","shape","label","reserved","too many labels","mixed","type","group","signer","kind"];
+CW_WORDS :: [13]string.["ok","event","shape","parent","depth","root","relay only","full","channels","cursor","limit","kinds","roots"];
+VIEW_WORDS :: [4]string.["a page","an empty channel","no window: fall back to a plain filter","discard the response"];
+
+// book:begin keys
+key_of :: (hex:string)->[32]u8 {k:[32]u8;ok:=ne_lower_hex(hex,k[..]);return k;}
+// A signed event, read and verified (chapter 21).
+verified :: (text:string,out:[]u8)->NostrEvent {return nostr_event_verify_vartime(text,out,false);}
+id8 :: (id:[32]u8,out:[]u8)->string {n:=cw_put_hex(out,0,id);return cast(string)out[0..<8];}
+// book:end keys
+
+// book:begin channel
+show_channel :: (given:ClChannel) {
+  c:=given;
+  labels:[256]u8;n:=0;
+  for i:0..<c.labels_n {if i>0 {n=json_raw(labels[..],n,",");}n=json_raw(labels[..],n,cast(string)c.labels[i].b[0..<c.labels[i].n]);}
+  h:[64]u8;
+  print("  type %, labels [%], creator %…, created_at %\n",cast(string)c.type.b[0..<c.type.n],cast(string)labels[0..<n],id8(c.creator,h[..]),c.created);
+}
+part_cl :: (relay:[32]u8) {
+  print("NIP-CL: Alice creates general with the label team\n");
+  g:[1]G29Group;c:[1]ClChannel;n:[1]int;out:[16384]u8;
+  s:=cl_admit(g[..],c[..],verified(CHV_CREATE,out[..]),relay,T0,n[..]);
+  print("create: %\n",CL_WORDS[s]);
+  tags:[1024]u8;m:=cl_write_metadata(g[0],c[0],tags[..]);
+  print("the relay's 39000 tags: %\n",cast(string)tags[0..<m]);
+  e:=verified(CHV_META,out[..]);
+  same:=cast(string)e.original[e.tags_from..<e.tags_to]==cast(string)tags[0..<m];
+  print("the signed 39000 (%…) carries the same tags: %\n",CHV_META_ID[0..<8],same);
+  print("a client reads it back:\n");show_channel(cl_read(e,relay));
+  h:[1]G29Group;d:[1]ClChannel;
+  print("Bob's create with the label \"Team Chat\": %\n",CL_WORDS[cl_admit(h[..],d[..],verified(CHV_CREATE_SPACE,out[..]),relay,T0,n[..])]);
+  print("Bob's create with the label \"dm\": %\n",CL_WORDS[cl_admit(h[..],d[..],verified(CHV_CREATE_DM_LABEL,out[..]),relay,T0,n[..])]);
+  print("the same 39000 signed by Bob instead of the relay: %\n",CL_WORDS[cl_read(e,key_of(CHV_BOB)).status]);
+  // The system channel and who lists it.
+  sg:[1]G29Group;sc:[1]ClChannel;
+  s=cl_admit(sg[..],sc[..],verified(CHV_CREATE_SYSTEM,out[..]),relay,T0+5,n[..]);
+  print("Alice creates the system channel agent-cfg: %, private %\n",CL_WORDS[s],sg[0].is_private);
+  plain:ClFilter;plain.state_only=true;
+  ask:=plain;ask.t[0]=g29_text("system");ask.t_n=1;
+  by_p:=plain;by_p.has_P=true;
+  print("a plain channel list shows general % and agent-cfg %\n",cl_listed(g[0],c[0],plain,false),cl_listed(sg[0],sc[0],plain,true));
+  print("#t system shows agent-cfg to Alice %, to Bob %; #P shows it to Alice %\n",cl_listed(sg[0],sc[0],ask,true),cl_listed(sg[0],sc[0],ask,false),cl_listed(sg[0],sc[0],by_p,true));
+  // Three channels share Alice's label team: every reader picks the same one.
+  cs:=[3]ClChannel.[c[0],c[0],c[0]];
+  cs[1].id=g29_text("chat-2");cs[1].created=T0-100;cs[2].id=g29_text("chat-1");cs[2].created=T0-100;
+  print("oldest of general (%), chat-2 (%), chat-1 (%): %\n",cs[0].created,cs[1].created,cs[2].created,cast(string)cs[cl_oldest(cs[..])].id.b[0..<6]);
+}
+// book:end channel
+
+// book:begin window
+show_page :: (rows:[]CwRow,p:CwPage,out:[]int) {
+  h:[64]u8;ids:[256]u8;n:=0;
+  for i:0..<p.n {if i>0 {n=json_raw(ids[..],n,",");}n=json_raw(ids[..],n,id8(rows[out[i]].id,h[..]));}
+  d:[160]u8;dn:=cw_bounds_d("general",p,d[..]);b:[200]u8;bn:=cw_bounds_content(p,b[..]);
+  print("  rows [%]\n  39006 d %\n  39006 content %\n",cast(string)ids[0..<n],cast(string)d[0..<dn],cast(string)b[0..<bn]);
+}
+part_cw :: () {
+  print("NIP-CW: six messages arrive in general\n");
+  rows:[16]CwRow;n:[1]int;out:[16384]u8;
+  texts:=[6]string.[CHV_M1,CHV_M2,CHV_M3,CHV_M4,CHV_R1,CHV_R2];
+  names:=[6]string.["m1","m2","m3","m4","r1","r2"];
+  h:[64]u8;
+  for i:0..<6 {
+    e:=verified(texts[i],out[..]);s:=cw_ingest(rows[..],n[..],e);
+    r:=rows[n[0]-1];
+    print("% %… at T0+%: %, depth %, broadcast %\n",names[i],id8(r.id,h[..]),r.created_at-T0,CW_WORDS[s],r.depth,r.broadcast);
+  }
+  q:CwRequest;q.channels=1;q.has_limit=true;q.limit=2;idx:[8]int;
+  bounds:[1]CwBounds;sent:[160]u8;
+  for page:1..<4 {
+    p:=cw_window(rows[..],n[0],q,true,idx[..]);
+    print("page %:\n",page);show_page(rows[..],p,idx[..]);
+    dn:=cw_bounds_d("general",p,sent[..]);b:[200]u8;bn:=cw_bounds_content(p,b[..]);
+    bounds[0]=cw_read_bounds(cast(string)sent[0..<dn],cast(string)b[0..<bn]);
+    print("  the client sees %\n",VIEW_WORDS[cw_view(bounds[..],cast(string)sent[0..<dn],p.head,p.n)]);
+    if !p.has_more {break;}
+    hex:[64]u8;x:=cw_put_hex(hex[..],0,p.next_id);
+    q.has_until=true;q.until=p.next_at;q.has_before=true;q.before=cast(string)hex[0..<64];
+  }
+  t:CwRequest;t.thread=true;t.channels=1;t.roots=1;t.root=rows[2].id;t.kinds[0]=9;t.kinds_n=1;
+  p:=cw_window(rows[..],n[0],t,true,idx[..]);
+  print("thread window under m3: % replies, newest first: %…, %…; has_more %\n",p.n,id8(rows[idx[0]].id,h[..]),id8(rows[idx[1]].id,sent[..]),p.has_more);
+  print("broken inputs\n");
+  half:=q;half.has_before=false;
+  print("until without before_id: %\n",CW_WORDS[cw_window(rows[..],n[0],half,true,idx[..]).status]);
+  bad:=q;bad.before="1c1bfdde";
+  print("a before_id of 8 hex digits: %\n",CW_WORDS[cw_window(rows[..],n[0],bad,true,idx[..]).status]);
+  two:=q;two.channels=2;
+  print("two channels in #h: %\n",CW_WORDS[cw_window(rows[..],n[0],two,true,idx[..]).status]);
+  print("a client-submitted 39006: %\n",CW_WORDS[cw_ingest(rows[..],n[..],cw_fake(39006))]);
+  head:CwRequest;head.channels=1;
+  p=cw_window(rows[..],n[0],head,false,idx[..]);
+  none:=bounds[0..<0];
+  print("a reader who cannot read general: served %, % rows; the client sees %\n",p.served,p.n,VIEW_WORDS[cw_view(none,"general:head",true,0)]);
+  p=cw_window(rows[0..<0],0,head,true,idx[..]);
+  dn:=cw_bounds_d("empty",p,sent[..]);b:[200]u8;bn:=cw_bounds_content(p,b[..]);
+  bounds[0]=cw_read_bounds(cast(string)sent[0..<dn],cast(string)b[0..<bn]);
+  print("a channel with no messages: served %, % rows, %; the client sees %\n",p.served,p.n,cast(string)b[0..<bn],VIEW_WORDS[cw_view(bounds[..],cast(string)sent[0..<dn],true,0)]);
+  print("that bounds overlay answering another cursor: the client must %\n",VIEW_WORDS[cw_view(bounds[..],"empty:1790000060:1c1b",true,0)]);
+}
+// A 39006 a client tries to store, already verified.
+cw_fake :: (kind:int)->NostrEvent {e:=nt_event("[]");e.kind=kind;e.verified=true;return e;}
+// book:end window
+
+// book:begin visibility
+part_dv :: (relay:[32]u8) {
+  print("NIP-DV: Alice hides the DM dm-ab\n");
+  alice:=key_of(CHV_ALICE);bob:=key_of(CHV_BOB);carol:=g29_k(0xcc);
+  ms:=[3]DvMember.[DvMember.{viewer=alice,channel=g29_text("dm-ab"),dm=true,active=true},
+                   DvMember.{viewer=bob,channel=g29_text("dm-ab"),dm=true,active=true},
+                   DvMember.{viewer=alice,channel=g29_text("general"),dm=false,active=true}];
+  print("hide: republish %\n",dv_command(ms[..],alice,DV_HIDE,g29_text("dm-ab"))==DV_OK);
+  tags:[512]u8;m:=dv_snapshot(ms[..],alice,tags[..]);
+  out:[16384]u8;e:=verified(CHV_SNAPSHOT,out[..]);
+  print("the snapshot's tags equal the signed 30622 (%…): %\n",CHV_SNAPSHOT_ID[0..<8],cast(string)e.original[e.tags_from..<e.tags_to]==cast(string)tags[0..<m]);
+  print("delivered to Alice %, to Bob %, to Carol %\n",dv_deliver(e,alice),dv_deliver(e,bob),dv_deliver(e,carol));
+  q:DvQuery;q.may_return=true;q.p[0]=alice;q.p_n=1;
+  print("Bob's filter {kinds:[30622], #p:[Alice]} passes the gate: %\n",dv_query(q,bob));
+  hidden:[4]G29Name;k:=dv_hidden(e,relay,alice,hidden[..]);
+  items:=[2]DvItem.[DvItem.{channel=g29_text("dm-ab"),dm=true},DvItem.{channel=g29_text("general"),dm=false}];
+  shown:[2]int;v:=dv_visible(items[..],hidden[0..<k],shown[..]);
+  print("Alice's list: % of 2 shown (general); Bob's list: % of 2 shown\n",v,dv_visible(items[..],hidden[0..<0],shown[..]));
+  dm:ClChannel;dm.type=g29_text("dm");g:G29Group;g.is_private=true;plain:ClFilter;named:ClFilter;named.names=true;
+  print("Carol lists dm-ab %, or names it %; Alice is still a member: %\n",cl_listed(g,dm,plain,false),cl_listed(g,dm,named,false),cl_listed(g,dm,named,true));
+  print("a client-submitted 30622: allowed %\n",dv_client_kind(DV_SNAPSHOT));
+}
+part_wp :: () {
+  print("NIP-WP: the workspace icon\n");
+  out:[16384]u8;icon:[256]u8;words:=[8]string.["ok","event","kind","role","shape","scheme","bytes","size"];
+  r:=wp_admit(verified(CHV_ICON,out[..]),WP_ADMIN,icon[..]);
+  print("Alice as admin: %, icon %\n",words[r.status],cast(string)icon[0..<r.n]);
+  print("the same command from a member: %\n",words[wp_admit(verified(CHV_ICON,out[..]),WP_MEMBER,icon[..]).status]);
+  print("a javascript: icon: %\n",words[wp_admit(verified(CHV_ICON_SCRIPT,out[..]),WP_OWNER,icon[..]).status]);
+}
+// book:end visibility
+
+main :: () {
+  relay:=key_of(CHV_RELAY);
+  part_cl(relay);part_cw();part_dv(relay);part_wp();
+}

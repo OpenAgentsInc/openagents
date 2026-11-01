@@ -1,0 +1,71 @@
+// The checks of channels.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/channels.coax --run-steps 250000000
+#load "../channels.coax";
+
+// book:begin check
+// From coax/tests/nostr/channels_vectors.py, which signs with
+// nip59_reference.py's integer secp256k1 and BIP-340 (no code shared with
+// Coax), hashes each id as hashlib.sha256 of json.dumps([0, pubkey,
+// created_at, kind, tags, content], separators=(",", ":")), and computes the
+// pages by sorting the top-level messages by (-created_at, id) in Python.
+PY_PAGES :: [3]string.["4b46ba5c,1c1bfdde","31048ee3,cc85adb2","d14a53f2"];
+PY_NEXT :: [3]string.["1790000060:1c1bfdde732181ce195077eb6180fdb516a7f62319db107351f4ccb47c7dc8d8",
+                      "1790000060:cc85adb2f0de133f9276e88c8973041ac318faeb73418375bef5ee0bd29f7ff3","null"];
+
+#test "the event ids and the pages are the Python reference's" #steps 1000000000 {
+  texts:=[6]string.[CHV_M1,CHV_M2,CHV_M3,CHV_M4,CHV_R1,CHV_R2];
+  ids:=[6]string.[CHV_M1_ID,CHV_M2_ID,CHV_M3_ID,CHV_M4_ID,CHV_R1_ID,CHV_R2_ID];
+  rows:[8]CwRow;n:[1]int;out:[16384]u8;h:[64]u8;
+  for i:0..<6 {
+    e:=verified(texts[i],out[..]);#assert e.error==NE_OK && e.verified;
+    x:=cw_put_hex(h[..],0,e.computed_id);#assert cast(string)h[..]==ids[i];
+    #assert cw_ingest(rows[..],n[..],e)==CW_OK;
+  }
+  #assert CHV_PAGE1==PY_PAGES[0] && CHV_PAGE2==PY_PAGES[1] && CHV_PAGE3==PY_PAGES[2];
+  #assert CHV_PAGE1_NEXT==PY_NEXT[0] && CHV_PAGE2_NEXT==PY_NEXT[1] && CHV_PAGE3_NEXT==PY_NEXT[2];
+  q:CwRequest;q.channels=1;q.has_limit=true;q.limit=2;idx:[4]int;
+  for page:0..<3 {
+    p:=cw_window(rows[..],n[0],q,true,idx[..]);
+    got:[64]u8;g:=0;
+    for i:0..<p.n {if i>0 {g=json_raw(got[..],g,",");}g=json_raw(got[..],g,id8(rows[idx[i]].id,h[..]));}
+    #assert cast(string)got[0..<g]==PY_PAGES[page];
+    next:[96]u8;k:=json_raw(next[..],0,"null");
+    if p.has_more {k=cw_put_int(next[..],0,p.next_at);k=json_raw(next[..],k,":");k=cw_put_hex(next[..],k,p.next_id);}
+    #assert cast(string)next[0..<k]==PY_NEXT[page];
+    hex:[64]u8;x:=cw_put_hex(hex[..],0,p.next_id);
+    q.has_until=true;q.until=p.next_at;q.has_before=true;q.before=cast(string)hex[..];
+  }
+  m:=verified(CHV_META,out[..]);#assert m.verified && cl_read(m,key_of(CHV_RELAY)).created==T0;
+  s:=verified(CHV_SNAPSHOT,out[..]);hidden:[2]G29Name;#assert s.verified && dv_hidden(s,key_of(CHV_RELAY),key_of(CHV_ALICE),hidden[..])==1;
+}
+
+// The NIPs' own examples are illustrative: every key and id in them is a
+// placeholder ("<creator public key>", "<64-hex id>", "<viewer-pubkey-hex>"),
+// so none has an event id to compare. Read as printed, each refuses exactly
+// at its first placeholder.
+NIP_CL_TAGS :: "[[\"d\",\"9b353519-f4fe-4757-aef4-bec6cc0ae54c\"],[\"name\",\"agent-config\"],[\"t\",\"stream\"],[\"t\",\"agent-config\"],[\"P\",\"<creator public key>\"],[\"created_at\",\"1759939200\"]]";
+NIP_CW_BOUNDS :: "{\"has_more\":true,\"next_cursor\":{\"created_at\":1751499000,\"id\":\"<64-hex id>\"}}";
+NIP_DV_TAGS :: "[[\"d\",\"<viewer-pubkey-hex>\"],[\"p\",\"<viewer-pubkey-hex>\"],[\"h\",\"<hidden-dm-channel-id>\"],[\"h\",\"<hidden-dm-channel-id>\"]]";
+#test "the NIPs' published examples, as printed" {
+  relay:=g29_k(0xee);
+  e:=nt_event(NIP_CL_TAGS);e.kind=39000;e.verified=true;e.public_key=relay;
+  #assert cl_read(e,relay).status==CL_SHAPE;
+  // With a real key in place of the placeholder, the rest reads as NIP-CL says.
+  fixed:[512]u8;n:=json_raw(fixed[..],0,NIP_CL_TAGS[0..<112]);n=json_raw(fixed[..],n,CHV_ALICE);n=json_raw(fixed[..],n,NIP_CL_TAGS[132..<NIP_CL_TAGS.count]);
+  e=nt_event(cast(string)fixed[0..<n]);e.kind=39000;e.verified=true;e.public_key=relay;
+  c:=cl_read(e,relay);#assert c.status==CL_OK && g29_is(c.type,"stream") && c.labels_n==1 && g29_is(c.labels[0],"agent-config") && c.created==1759939200;
+  #assert !cw_read_bounds("c:head",NIP_CW_BOUNDS).ok;
+  d:=nt_event(NIP_DV_TAGS);d.kind=30622;d.verified=true;d.public_key=relay;hidden:[2]G29Name;
+  #assert dv_hidden(d,relay,key_of(CHV_ALICE),hidden[..])== -DV_SHAPE;
+}
+
+// By hand (the chapter's worked example): the top-level rows are r2 at
+// T0+120, the three messages at T0+60 by id (1c1b < 3104 < cc85) and m1 at
+// T0; r1 is a reply without broadcast. Pages of two cut the T0+60 second
+// between page 1 and page 2, and the composite cursor loses nothing there.
+#test "the worked example's values, by hand" {
+  #assert CHV_R2_ID[0..<8]=="4b46ba5c" && CHV_M2_ID[0..<4]=="1c1b" && CHV_M3_ID[0..<4]=="3104" && CHV_M4_ID[0..<4]=="cc85" && CHV_M1_ID[0..<8]=="d14a53f2";
+  #assert PY_PAGES[0]=="4b46ba5c,1c1bfdde" && PY_PAGES[1]=="31048ee3,cc85adb2" && PY_PAGES[2]=="d14a53f2";
+}
+// book:end check

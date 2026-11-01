@@ -1923,13 +1923,26 @@
    "number": 89,
    "title": "Channels",
    "file": "ch089-channels.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     59
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipcl.coax",
+    "coax/lib/nostr/nipcw.coax",
+    "coax/lib/nostr/nipdv.coax",
+    "coax/lib/nostr/nipwp.coax",
+    "coax/tests/nostr/nipcl_fixtures.coax",
+    "coax/tests/nostr/nipcw_fixtures.coax",
+    "coax/tests/nostr/nipdv_fixtures.coax",
+    "coax/tests/nostr/channels_vectors.coax",
+    "nostr/examples/channels.coax",
+    "nostr/examples/checks/channels.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

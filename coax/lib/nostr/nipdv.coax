@@ -1,0 +1,193 @@
+// Block's NIP-DV, DM visibility. A viewer hides a DM from their own list
+// (kind 41012) without leaving it, and re-opens it (kind 41010). The relay
+// keeps the hide state per (viewer, channel) and publishes it as one
+// relay-signed kind 30622 per viewer: ["d", viewer], ["p", viewer] and one
+// ["h", channel] per hidden DM. The latest snapshot is the whole set.
+//
+// - dv_command: a hide or re-open changes the state of an active DM
+//   membership; it says whether the snapshot must be published again.
+// - dv_snapshot: the snapshot's tags, recomputed from the whole state.
+// - dv_query and dv_deliver: the two read gates. A filter that can return
+//   30622 must have #p equal to the reader alone; and every 30622 is handed
+//   only to the key in its p tag, whatever the filter (an ids filter too).
+// - dv_client_kind: a client may never submit a 30622.
+// - dv_hidden and dv_visible: the client reads its own snapshot (the
+//   relay's key, d and p both the viewer) and drops those DMs from its
+//   list. A non-DM channel is never dropped; no snapshot means none hidden.
+//
+// Hiding changes no membership and deletes nothing: the 39002 member list
+// still names the viewer, and messages are still delivered.
+#load "nip29.coax";
+#load "../../tests/nostr/nipdv_fixtures.coax";
+#authority;
+
+DV_OK :: 0; DV_UNCHANGED :: 1; DV_NOT_MEMBER :: 2; DV_KIND :: 3; DV_SIGNER :: 4;
+DV_SHAPE :: 5; DV_VIEWER :: 6; DV_LIMIT :: 7; DV_EVENT :: 8;
+DV_SNAPSHOT :: 30622; DV_OPEN :: 41010; DV_HIDE :: 41012;
+DV_MAX_HIDDEN :: 16;
+
+// book:begin state
+// One viewer's membership of one channel, as the relay records it.
+DvMember :: struct {viewer:[32]u8; channel:G29Name; dm:bool; active:bool; hidden:bool;}
+// book:end state
+
+// book:begin command
+// Apply a verified hide (41012) or open (41010) by viewer for channel.
+// DV_OK: the hidden set changed, so publish the snapshot again.
+dv_command :: (ms:[]DvMember,viewer:[32]u8,kind:int,channel:G29Name)->int {
+  if kind!=DV_HIDE && kind!=DV_OPEN {return DV_KIND;}
+  for i:0..<ms.count {
+    if !ns_equal32(ms[i].viewer,viewer) || !g29_same(ms[i].channel,channel) {continue;}
+    if !ms[i].dm || !ms[i].active {return DV_NOT_MEMBER;}
+    hide:=kind==DV_HIDE;
+    if ms[i].hidden==hide {return DV_UNCHANGED;}
+    ms[i].hidden=hide;return DV_OK;
+  }
+  return DV_NOT_MEMBER;
+}
+// book:end command
+
+// book:begin snapshot
+// The 30622 tags for viewer: d, p, then each hidden active DM.
+dv_snapshot :: (ms:[]DvMember,viewer:[32]u8,out:[]u8)->int {
+  n:=json_raw(out,0,"[[\"d\",");n=g29_put_key(out,n,viewer);
+  n=json_raw(out,n,"],[\"p\",");n=g29_put_key(out,n,viewer);n=json_raw(out,n,"]");
+  for m:ms {
+    if !ns_equal32(m.viewer,viewer) || !m.dm || !m.active || !m.hidden {continue;}
+    n=json_raw(out,n,",[\"h\",");n=g29_put_name(out,n,m.channel);n=json_raw(out,n,"]");
+  }
+  return json_raw(out,n,"]");
+}
+// book:end snapshot
+
+// book:begin gates
+// A read filter as the 30622 gate sees it: whether it can return a 30622
+// (its kinds include 30622, or it has no kinds), and its #p values.
+DvQuery :: struct {may_return:bool; p:[4][32]u8; p_n:int;}
+// The filter gate: #p must be the reader's key and nothing else.
+dv_query :: (q:DvQuery,reader:[32]u8)->bool {
+  if !q.may_return {return true;}
+  return q.p_n==1 && ns_equal32(q.p[0],reader);
+}
+// The result gate, on every delivery path: a 30622 goes only to its owner.
+dv_deliver :: (e:NostrEvent,reader:[32]u8)->bool {
+  if e.kind!=DV_SNAPSHOT {return true;}
+  r:=g29_read(e);
+  return r.status==G29_OK && r.has_p && ns_equal32(r.p,reader);
+}
+// May a client submit an event of this kind? Never a snapshot.
+dv_client_kind :: (kind:int)->bool {return kind!=DV_SNAPSHOT;}
+// book:end gates
+
+// book:begin client
+// A d or p tag of the snapshot: it must name the viewer.
+dv_viewer_tag :: (t:G29Tag,viewer:[32]u8)->int {
+  key:[32]u8;
+  if t.values<2 || !g29_key(t.v[1],key[..]) {return DV_SHAPE;}
+  return ifx ns_equal32(key,viewer) then DV_OK else DV_VIEWER;
+}
+// The hidden channel ids of viewer's snapshot e, into out: their count, or
+// a negative status. e must be a verified 30622 signed by the relay, with
+// exactly one d and one p, both the viewer. h tags are a set.
+dv_hidden :: (e:NostrEvent,relay:[32]u8,viewer:[32]u8,out:[]G29Name)->int {
+  if e.error!=NE_OK || !e.verified {return -DV_EVENT;}
+  if e.kind!=DV_SNAPSHOT {return -DV_KIND;}
+  if !ns_equal32(e.public_key,relay) {return -DV_SIGNER;}
+  n:=0;ds:=0;ps:=0;k:=0;
+  while true {
+    t:=g29_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return -DV_SHAPE;}
+    if g29_tag_is(t,0,"d") {s:=dv_viewer_tag(t,viewer);if s!=DV_OK {return -s;}ds+=1;}
+    else if g29_tag_is(t,0,"p") {s:=dv_viewer_tag(t,viewer);if s!=DV_OK {return -s;}ps+=1;}
+    else if g29_tag_is(t,0,"h") {
+      one:[1]G29Name;if t.values<2 || t.v[1].n==0 || g29_name(t.v[1],one[..])!=G29_OK {return -DV_SHAPE;}
+      seen:=false;for i:0..<n {if g29_same(out[i],one[0]) {seen=true;}}
+      if seen {continue;}
+      if n==out.count {return -DV_LIMIT;}
+      out[n]=one[0];n+=1;
+    }
+  }
+  if ds!=1 || ps!=1 {return -DV_SHAPE;}
+  return n;
+}
+// One entry of the client's channel list.
+DvItem :: struct {channel:G29Name; dm:bool;}
+// The indexes of the items still shown: every non-DM, and every DM not hidden.
+dv_visible :: (items:[]DvItem,hidden:[]G29Name,out:[]int)->int {
+  m:=0;
+  for i:0..<items.count {
+    drop:=false;
+    if items[i].dm {for h:hidden {if g29_same(h,items[i].channel) {drop=true;}}}
+    if !drop {out[m]=i;m+=1;}
+  }
+  return m;
+}
+// book:end client
+
+// ---- checks (helpers in coax/tests/nostr/nipdv_fixtures.coax)
+#test "hide and re-open change the set; members, kinds and non-DMs" {
+  ms:=dvf_members();a:=g29_k(0xaa);b:=g29_k(0xbb);
+  #assert dv_command(ms[..],a,DV_HIDE,g29_text("dm-ab"))==DV_OK && ms[0].hidden && !ms[1].hidden;
+  #assert dv_command(ms[..],a,DV_HIDE,g29_text("dm-ab"))==DV_UNCHANGED && ms[0].hidden;
+  #assert dv_command(ms[..],a,DV_OPEN,g29_text("dm-ab"))==DV_OK && !ms[0].hidden;
+  #assert dv_command(ms[..],a,DV_OPEN,g29_text("dm-ab"))==DV_UNCHANGED;
+  #assert dv_command(ms[..],a,DV_HIDE,g29_text("general"))==DV_NOT_MEMBER && !ms[3].hidden;
+  #assert dv_command(ms[..],a,DV_HIDE,g29_text("dm-old"))==DV_NOT_MEMBER && dv_command(ms[..],a,DV_HIDE,g29_text("dm-zz"))==DV_NOT_MEMBER;
+  #assert dv_command(ms[..],g29_k(0xcc),DV_HIDE,g29_text("dm-ab"))==DV_NOT_MEMBER;
+  #assert dv_command(ms[..],a,9,g29_text("dm-ab"))==DV_KIND && dv_command(ms[..],a,41011,g29_text("dm-ab"))==DV_KIND;
+  #assert dv_command(ms[..],b,DV_HIDE,g29_text("dm-ab"))==DV_OK && ms[1].hidden && !ms[0].hidden;
+}
+#test "the snapshot: the whole hidden set, nothing else" {
+  ms:=dvf_members();a:=g29_k(0xaa);out:[512]u8;
+  #assert dvf_is(dv_snapshot(ms[..],a,out[..]),out[..],"[[\"d\",\"^a\"],[\"p\",\"^a\"]]");
+  #assert dv_command(ms[..],a,DV_HIDE,g29_text("dm-ab"))==DV_OK && dv_command(ms[..],a,DV_HIDE,g29_text("dm-ac"))==DV_OK;
+  #assert dv_command(ms[..],g29_k(0xbb),DV_HIDE,g29_text("dm-ab"))==DV_OK;
+  #assert dvf_is(dv_snapshot(ms[..],a,out[..]),out[..],"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"dm-ab\"],[\"h\",\"dm-ac\"]]");
+  // A hidden flag on a left DM or a non-DM never reaches the snapshot.
+  ms[2].hidden=true;ms[3].hidden=true;
+  #assert dvf_is(dv_snapshot(ms[..],a,out[..]),out[..],"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"dm-ab\"],[\"h\",\"dm-ac\"]]");
+  small:[16]u8;#assert dv_snapshot(ms[..],a,small[..])== -1;
+}
+#test "gates: only the owner reads a snapshot, and no client writes one" {
+  a:=g29_k(0xaa);b:=g29_k(0xbb);buf:[512]u8;
+  q:DvQuery;q.may_return=true;
+  #assert !dv_query(q,a);
+  q.p[0]=a;q.p_n=1;#assert dv_query(q,a) && !dv_query(q,b);
+  q.p[1]=b;q.p_n=2;#assert !dv_query(q,a) && !dv_query(q,b);
+  other:DvQuery;#assert dv_query(other,b);
+  snap:=g29_ev(DV_SNAPSHOT,0xee,0x01,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"dm-ab\"]]",buf[..]);
+  #assert dv_deliver(snap,a) && !dv_deliver(snap,b);
+  bad:=g29_ev(DV_SNAPSHOT,0xee,0x02,"[[\"d\",\"^a\"]]",buf[..]);#assert !dv_deliver(bad,a);
+  bad=g29_ev(DV_SNAPSHOT,0xee,0x02,"[[\"p\",\"^a\"],[\"p\",\"^a\"]]",buf[..]);#assert !dv_deliver(bad,a);
+  msg:=g29_ev(9,0xaa,0x03,"[[\"h\",\"dm-ab\"]]",buf[..]);#assert dv_deliver(msg,b);
+  #assert !dv_client_kind(DV_SNAPSHOT) && dv_client_kind(DV_HIDE) && dv_client_kind(30621) && dv_client_kind(30623);
+}
+#test "the client: its own snapshot, then the list without hidden DMs" {
+  a:=g29_k(0xaa);relay:=g29_k(0xee);buf:[512]u8;hidden:[4]G29Name;out:[8]int;
+  snap:=g29_ev(DV_SNAPSHOT,0xee,0x01,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"dm-ab\"],[\"h\",\"dm-ab\"],[\"h\",\"general\"]]",buf[..]);
+  n:=dv_hidden(snap,relay,a,hidden[..]);#assert n==2 && g29_is(hidden[0],"dm-ab") && g29_is(hidden[1],"general");
+  items:=[4]DvItem.[DvItem.{channel=g29_text("dm-ab"),dm=true},DvItem.{channel=g29_text("dm-ac"),dm=true},
+                    DvItem.{channel=g29_text("general"),dm=false},DvItem.{channel=g29_text("dm-ad"),dm=true}];
+  m:=dv_visible(items[..],hidden[0..<n],out[..]);#assert m==3 && out[0]==1 && out[1]==2 && out[2]==3;
+  m=dv_visible(items[..],hidden[0..<0],out[..]);#assert m==4 && out[3]==3;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xdd,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SIGNER;
+  #assert dv_hidden(g29_ev(30621,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_KIND;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^b\"],[\"p\",\"^b\"]]",buf[..]),relay,a,hidden[..])== -DV_VIEWER;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^b\"]]",buf[..]),relay,a,hidden[..])== -DV_VIEWER;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"d\",\"^a\"],[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\"],[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^A\"],[\"p\",\"^a\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"^hx\"]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"x\",1]]",buf[..]),relay,a,hidden[..])== -DV_SHAPE;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"x\"],[\"h\",\"y\"]]",buf[..]),relay,a,hidden[0..<1])== -DV_LIMIT;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"h\",\"x\"],[\"h\",\"x\"]]",buf[..]),relay,a,hidden[0..<1])==1;
+  #assert dv_hidden(g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"],[\"name\",\"x\"]]",buf[..]),relay,a,hidden[..])==0;
+  e:=g29_ev(DV_SNAPSHOT,0xee,1,"[[\"d\",\"^a\"],[\"p\",\"^a\"]]",buf[..]);e.verified=false;#assert dv_hidden(e,relay,a,hidden[..])== -DV_EVENT;
+  e.verified=true;e.error=NE_ID;#assert dv_hidden(e,relay,a,hidden[..])== -DV_EVENT;
+}

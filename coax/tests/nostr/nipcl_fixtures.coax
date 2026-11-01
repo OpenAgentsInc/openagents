@@ -1,0 +1,23 @@
+// Helpers for nipcl.coax's checks (and nipcw.coax's and nipdv.coax's). They
+// live here so that mutation of the library changes the library, not the
+// checks. Events come from g29_ev (nip29_fixtures.coax): key bytes a, id
+// bytes i, ^x for 64 copies of x. The relay's key is 0xee.
+CLF_NOW :: 1790000000;
+CLF_CFG_TAGS :: "[[\"d\",\"cfg\"],[\"private\"],[\"hidden\"],[\"t\",\"system\"],[\"t\",\"agent-config\"],[\"t\",\"v2\"],[\"P\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"created_at\",\"1790000000\"]]";
+clf_do :: (g:[]G29Group,c:[]ClChannel,kind:int,a:u8,i:u8,tags:string,n:[]int)->int {
+  buf:[2048]u8;return cl_admit(g,c,g29_ev(kind,a,i,tags,buf[..]),g29_k(G29_T_RELAY),CLF_NOW,n);
+}
+clf_read :: (kind:int,a:u8,tags:string)->ClChannel {
+  buf:[2048]u8;return cl_read(g29_ev(kind,a,0x01,tags,buf[..]),g29_k(G29_T_RELAY));
+}
+clf_ch :: (id:string,has:bool,created:int)->ClChannel {
+  c:ClChannel;c.id=g29_text(id);c.has_created=has;c.created=created;c.has_type=true;c.type=g29_text("stream");return c;
+}
+// A name of n bytes 'a' (n may exceed the 64 bytes held: only n is read then).
+clf_long :: (n:int)->G29Name {t:G29Name;for i:0..<64 {t.b[i]='a';}t.n=n;return t;}
+// An event whose one tag is [name, n bytes 'a'], written to out.
+clf_tag_event :: (name:string,n:int,clf_tag_buf:[]u8)->NostrEvent {
+  k:=json_raw(clf_tag_buf[..],0,"[[\"");k=json_raw(clf_tag_buf[..],k,name);k=json_raw(clf_tag_buf[..],k,"\",\"");
+  for i:0..<n {clf_tag_buf[k+i]='a';}k+=n;k=json_raw(clf_tag_buf[..],k,"\"]]");
+  return nt_event(cast(string)clf_tag_buf[0..<k]);
+}

@@ -120,7 +120,7 @@
 - [86. Lightning payments for requests](ch086-lightning-payments-for-requests.md) — implemented
 - [87. Owner attestation and agent authentication](ch087-owner-attestation-and-agent-authentication.md) — implemented
 - [88. Federated identity](ch088-federated-identity.md) — implemented
-- [89. Channels](ch089-channels.md) — design draft
+- [89. Channels](ch089-channels.md) — implemented
 - [90. Artifacts, archives and reminders](ch090-artifacts-archives-and-reminders.md) — design draft
 - [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) — implemented
 - [92. Private agent state](ch092-private-agent-state.md) — design draft
