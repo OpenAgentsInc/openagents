@@ -1,0 +1,61 @@
+== 1. The tags each kind holds
+  10000: p e t word
+  10001: e
+  10003: e a
+  10006: relay
+  30000: p d title image description
+  30004: e a d title image description
+  39701: t d title published_at
+  3, 10002 and 1: 0 (follows.coax, nip65.coax)
+NIP-51's curation set of yaks: ok, 5 items, set true
+NIP-B0's web bookmark: ok, 5 items, content is private items: false
+
+== 2. The worked mute list, sealed and signed by key 3
+owner        f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+shared x     acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe
+conversation fc5e31fe0006369674bb81fb7aab0a54241d5ac42f631399d51a8ed0f888c300
+public tags  [["p","07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9"],["t","airdrop"]]
+private JSON [["word","giveaway"]] (21 bytes, padded to 32)
+nl_seal: ok, 1 private item, 132 characters
+  AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fRYMpntbEm8lIxWDVpUjP7vsvi6K1v7d9t27sUHTyfzxD09VOvRljzDfiH+hJ3HQg74dTqv+PxewzBEhTBNjlbVa5
+event
+  {"id":"99c1756a16fbb38b86079650a2707df4ce66d57e0365b1ab57986e341961e3af","pubkey":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","created_at":1793214821,"kind":10000,"tags":[["p","07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9"],["t","airdrop"]],"content":"AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fRYMpntbEm8lIxWDVpUjP7vsvi6K1v7d9t27sUHTyfzxD09VOvRljzDfiH+hJ3HQg74dTqv+PxewzBEhTBNjlbVa5","sig":"28e44b017c71ea98641b0ede5d28d5e2cdc68b3380a0d2afdce4c06d6262d451536ca0785ea4df4d6d9ee1d6625734cd6d41f3f106ce3ed154c4656c430ddd2f"}
+
+== 3. Reading it
+signature verifies: true
+anyone: ok, 2 public items, private items encrypted (NIP-44 true), opened false
+the owner: ok, opened true, 2 public + 1 private
+  0  public  p  07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9
+  1  public  t  airdrop
+  2  private word  giveaway
+
+== 4. What the list mutes
+  pubkey 07caba..a3a9          muted
+  pubkey a55c15..dcc4          not muted
+  hashtag #AirDrop             muted (item 1)
+  note "Huge GIVEAWAY tonight" muted (item 2)
+  note "good morning"          not muted
+  a reader without the key: note "Huge GIVEAWAY tonight" -2 (NL_NOT_MUTE_LIST: the list is not opened)
+
+== 5. A list a NIP-04 client wrote
+cipher NIP-04: true
+nl_open, legacy not allowed: NIP-04 content refused
+nl_open, legacy allowed: ok, legacy true, private items [["p","a55c15f5e41d5aebd236eca5e0142789c5385703f1a7485aa4b38d94fd18dcc4"]]
+the next write: NIP-44 true, ok, legacy false, id 8baefb88e1a7cdf398321b797a753276892290fb0c5279df76e6fb0df336eca8
+
+== 6. NIP-51's own example
+claimed id  a92a316b75e44cfdc19986c634049158d4206fcc0b7b9c7ccbcdabe28beebcd0
+computed id a326f2cc4f9524270a008b99634c4ca5d76e763120dd282bc37b32edb4a2c02c
+its fields: ok, 2 public items, cipher NIP-04 true
+nl_open, legacy not allowed: NIP-04 content refused
+nl_open by key 3, legacy allowed: not the list's owner
+
+== 7. Broken lists
+a relay tag in a mute list: tag not held by this kind (item 1)
+an uppercase word: malformed value
+a follow set without d: missing or refused d tag
+nl_seal, a private relay tag: tag not held by this kind (item 2)
+nl_seal, a private d tag: tag not held by this kind
+private items encrypted to key 1: not addressed to the owner's own key
+the worked list opened with key 1's keys: not the list's owner
+one payload character changed (id not checked): not addressed to the owner's own key

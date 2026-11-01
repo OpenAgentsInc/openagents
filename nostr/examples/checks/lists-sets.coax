@@ -1,0 +1,80 @@
+// The checks of lists-sets.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/lists-sets.coax --run-steps 250000000
+#load "../lists-sets.coax";
+
+// book:begin check
+// Values from a Python script that shares no code with Coax: secp256k1 in
+// Python integers, NIP-44 v2 from hashlib, hmac and a ChaCha20 written from
+// RFC 8439, NIP-04 from the openssl command line (enc -aes-256-cbc), and ids
+// from hashlib over json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PY_PADDED :: "00155b5b22776f7264222c226769766561776179225d5d0000000000000000000000";  // 2-byte length, 21 bytes, 11 zeros
+PY_C44 :: "AgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fRYMpntbEm8lIxWDVpUjP7vsvi6K1v7d9t27sUHTyfzxD09VOvRljzDfiH+hJ3HQg74dTqv+PxewzBEhTBNjlbVa5";
+PY_ID_WORKED :: "99c1756a16fbb38b86079650a2707df4ce66d57e0365b1ab57986e341961e3af";    // section 2's event
+PY_ID_LEGACY :: "5ecdf12a19341f77d16b9a25515cbacfe41936fd4722c38c2ee6b72cad0268a7";    // section 5's NIP-04 event
+PY_ID_MOVED :: "8baefb88e1a7cdf398321b797a753276892290fb0c5279df76e6fb0df336eca8";     // section 5's next write
+PY_ID_NIP51 :: "a326f2cc4f9524270a008b99634c4ca5d76e763120dd282bc37b32edb4a2c02c";     // NIP-51's mute list fields
+PY_ID_B0 :: "2453e8020757db78d541c5b34fbbef393ecc9d571f55cf1e229153e8f4f41f8b";        // NIP-B0's bookmark fields
+// The ids the two NIPs print for their examples, copied from
+// nostr/nips/official/51.md and B0.md. Neither is the id of its fields.
+NIP51_CLAIMED :: "a92a316b75e44cfdc19986c634049158d4206fcc0b7b9c7ccbcdabe28beebcd0";
+B0_CLAIMED :: "d7a92714f81d0f712e715556aee69ea6da6bfb287e6baf794a095d301d603ec7";
+B0_EVENT :: "{\"kind\":39701,\"id\":\"d7a92714f81d0f712e715556aee69ea6da6bfb287e6baf794a095d301d603ec7\",\"pubkey\":\"2729620da105979b22acfdfe9585274a78c282869b493abfa4120d3af2061298\",\"created_at\":1738869705,\"tags\":[[\"d\",\"alice.blog/post\"],[\"published_at\",\"1738863000\"],[\"title\",\"Blog insights by Alice\"],[\"t\",\"post\"],[\"t\",\"insight\"]],\"content\":\"A marvelous insight by Alice about the nature of blogs and posts.\",\"sig\":\"36d34e6448fe0223e9999361c39c492a208bc423d2fcdfc2a3404e04df7c22dc65bbbd62dbe8a4373c62e4d29aac285b5aa4bb9b4b8053bd6207a8b45fbd0c98\"}";
+
+same_hex :: (bytes: [32] u8, text: string) -> bool {
+  want := key_of(text);
+  for i: 0..<32 { if bytes[i] != want[i] { return false; } }
+  return true;
+}
+key3 :: (me: [] NlSelf) {
+  secret := key_of(KEY_3); ew: [1] EcdhScratch;
+  #assert nl_self(secret[..], ew[..], me) == NL_OK;
+}
+
+#test "the worked numbers by hand: 21 bytes pad to 32, so the payload is 99 bytes, 132 characters" {
+  #assert PRIVATE.count == 21 && nip44_calc_padded_len(21) == 32;
+  #assert 1 + 32 + (2 + 32) + 32 == 99 && 4 * ((99 + 2) / 3) == 132;
+  #assert PY_PADDED.count == 68 && PY_C44.count == 132;
+  // The padded plaintext's bytes 2..22 are the private JSON itself.
+  b: [34] u8; #assert hex_decode_checked(PY_PADDED, b[..], false).error == NC_OK;
+  #assert b[0] == 0 && b[1] == 21 && cast(string) b[2..<23] == PRIVATE && b[23] == 0 && b[33] == 0;
+}
+#test "section 2: Python's NIP-44 payload and Python's event id" #steps 2000000000 {
+  me: [1] NlSelf; w: [1] NlWork; key3(me[..]);
+  nonce := test_nonce(); out: [512] u8;
+  s := nl_seal(10000, me[0], PUBLIC, PRIVATE, nonce[..], w[..], out[..]);
+  #assert s.error == NL_OK && cast(string) out[0..<s.written] == PY_C44;
+  eb: [1024] u8; sc: [4096] u8;
+  e := nostr_event_verify_vartime(sign(NOW, 10000, PUBLIC, PY_C44, eb[..]), sc[..], false);
+  #assert e.error == NE_OK && e.verified && same_hex(e.id, PY_ID_WORKED);
+  plain: [256] u8; l := nl_open(nl_read(e), e, me[0], false, w[..], plain[..]);
+  #assert l.error == NL_OK && l.public_n == 2 && l.private_n == 1 && l.hidden == PRIVATE;
+}
+#test "section 5: openssl's NIP-04 items open; the migrated list has Python's id" #steps 2000000000 {
+  me: [1] NlSelf; w: [1] NlWork; key3(me[..]);
+  eb: [1024] u8; sc: [4096] u8; plain: [256] u8;
+  o := nostr_event_read(sign(NOW, 10000, PUBLIC, LEGACY, eb[..]), sc[..], false);
+  #assert o.error == NE_OK && same_hex(o.id, PY_ID_LEGACY);
+  l := nl_open(nl_read(o), o, me[0], true, w[..], plain[..]);
+  #assert l.error == NL_OK && l.legacy && l.hidden == "[[\"p\",\"a55c15f5e41d5aebd236eca5e0142789c5385703f1a7485aa4b38d94fd18dcc4\"]]";
+  nonce := test_nonce(); mc: [512] u8; m := nl_seal(10000, me[0], PUBLIC, l.hidden, nonce[..], w[..], mc[..]);
+  nb: [1024] u8; n := nostr_event_read(sign(NOW + 60, 10000, PUBLIC, cast(string) mc[0..<m.written], nb[..]), sc[..], false);
+  #assert n.error == NE_OK && same_hex(n.id, PY_ID_MOVED);
+}
+#test "NIP-51's and NIP-B0's examples: their fields hash to Python's ids, not the ones printed" {
+  sc: [4096] u8;
+  x := nostr_event_read(NIP51, sc[..], false);
+  #assert x.error == NE_ID && same_hex(x.computed_id, PY_ID_NIP51) && same_hex(x.id, NIP51_CLAIMED);
+  y := nostr_event_read(B0_EVENT, sc[..], false);
+  #assert y.error == NE_ID && same_hex(y.computed_id, PY_ID_B0) && same_hex(y.id, B0_CLAIMED);
+  // Their tags read under NIP-51's and NIP-B0's tables all the same.
+  #assert nl_read(ne_parse(NIP51)).error == NL_OK && nl_read(ne_parse(B0_EVENT)).public_n == 5;
+}
+#test "same_hex notices a change in the first or last byte" {
+  id: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert same_hex(id, zero);
+  id[0] = 1; #assert !same_hex(id, zero);
+  id[0] = 0; id[31] = 1; #assert !same_hex(id, zero);
+}
+// book:end check

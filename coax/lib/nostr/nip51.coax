@@ -1,0 +1,393 @@
+// NIP-51 lists and sets, and NIP-B0 web bookmarks: which tags each kind may
+// hold, the public items of a list, and whether a mute list mutes a pubkey,
+// an event, a hashtag or a word. Standard lists (10000 mutes, 10001 pins,
+// 10003 bookmarks, ...) are replaceable; sets (30000 follow sets, ...) are
+// addressable and need a d tag. Private items, a JSON tags array encrypted
+// to the owner's own key in the content, are opened and sealed by
+// nip51-private.coax. Kind 3 is follows.coax's and kind 10002 nip65.coax's.
+// Pinned specs: nostr/nips/official/51.md and B0.md.
+//
+// A list says only what its signer chose to list. A tag's referenced event
+// is not fetched, so a pin's e tag is not checked to be a kind 1 note.
+#load "tags.coax";
+#authority;
+
+NL_OK :: 0;
+NL_EVENT :: 1;   // not a parsed event, or its content span is outside it
+NL_KIND :: 2;    // not a NIP-51 list or set kind, nor NIP-B0's 39701
+NL_TAG :: 3;     // a tag this kind doesn't hold (or a d tag among private items)
+NL_SHAPE :: 4;   // a held tag with a malformed value; tag_error says nostr_tag's status
+NL_D :: 5;       // a set without its d tag, or a d tag its kind refuses
+
+// The tag names, one bit each.
+NL_P :: 1; NL_E :: 2; NL_A :: 4; NL_T :: 8; NL_WORD :: 16; NL_RELAY :: 32;
+NL_GROUP :: 64; NL_R :: 128; NL_EMOJI :: 256; NL_SERVER :: 512; NL_URL :: 1024;
+NL_D_TAG :: 2048; NL_TITLE :: 4096; NL_IMAGE :: 8192; NL_DESCRIPTION :: 16384;
+NL_PUBLISHED_AT :: 32768;
+// Every set may also carry these.
+NL_SET_META :: NL_D_TAG | NL_TITLE | NL_IMAGE | NL_DESCRIPTION;
+NL_KIND_MUTE :: 10000;
+NL_KIND_WEB_BOOKMARK :: 39701;
+
+// The content's encryption, told by its text: none, NIP-44, or NIP-04's
+// "<base64>?iv=<base64>". NIP-51 says to search for "iv"; base64 itself may
+// contain "iv", but never '?', so the search is for "?iv=".
+NL_C_NONE :: 0; NL_C_NIP44 :: 1; NL_C_NIP04 :: 2;
+
+// What a mute check asks about.
+NL_MUTE_PUBKEY :: 0; NL_MUTE_EVENT :: 1; NL_MUTE_HASHTAG :: 2; NL_MUTE_WORD :: 3;
+NL_NOT_MUTE_LIST :: -2;   // nl_muted's answer for a list that is not a read mute list
+NL_MAX_NAME :: 32;
+
+NlList :: struct {
+  error: int = NL_EVENT;
+  kind: int; set: bool; allowed: int;
+  public_n: int;            // items in tags (a set's d, title, image, description included)
+  private_n: int;           // items in the opened content (nip51-private.coax)
+  bad: int = -1;            // the refused item: public index, or public_n + private index
+  bad_private: bool; tag_error: int;
+  cipher: int;              // NL_C_NONE, NL_C_NIP44 or NL_C_NIP04
+  opened: bool;             // the private items were read (or there are none)
+  legacy: bool;             // they were NIP-04; the next write seals them with NIP-44
+  hidden: string;           // the opened JSON tags array, in the caller's buffer
+}
+NlCheck :: struct { error: int; n: int; bad: int = -1; tag_error: int; has_d: bool; d: [NT_MAX_VALUE] u8; d_n: int; }
+NlItem :: struct {
+  error: int = NL_EVENT; is_private: bool;
+  name: [NL_MAX_NAME] u8; name_n: int;
+  value: [NT_MAX_VALUE] u8; value_n: int;   // the first value, decoded
+  tag: NostrTag;                            // nostr_tag's reading (p, e, a typed)
+}
+
+// book:begin table
+// The tag names each kind holds: NIP-51's tables of standard lists and sets,
+// and NIP-B0. 0 is not a list kind.
+nl_allowed :: (kind: int) -> int {
+  if kind == 10000 { return NL_P | NL_T | NL_WORD | NL_E; }      // mutes
+  if kind == 10001 || kind == 10005 { return NL_E; }             // pins, public chats
+  if kind == 10003 { return NL_E | NL_A; }                       // bookmarks
+  if kind == 10004 || kind == 10018 || kind == 10021 || kind == 10992 { return NL_A; }
+  if kind == 10006 || kind == 10007 || kind == 10013 || kind == 10050 || kind == 10102 { return NL_RELAY; }
+  if kind == 10008 { return NL_A | NL_E; }                       // profile badges
+  if kind == 10009 { return NL_GROUP | NL_R; }                   // simple groups
+  if kind == 10012 { return NL_RELAY | NL_A; }                   // relay feeds
+  if kind == 10015 { return NL_T | NL_A; }                       // interests
+  if kind == 10017 || kind == 10020 || kind == 10064 || kind == 10101 { return NL_P; }
+  if kind == 10030 { return NL_EMOJI | NL_A; }                   // emojis
+  if kind == 10054 { return NL_P | NL_URL; }                     // favorite podcasts
+  if kind == 10063 { return NL_SERVER; }                         // Blossom servers
+  // Sets: one per d tag, each with optional title, image and description.
+  if kind == 30000 || kind == 30007 || kind == 39089 || kind == 39092 { return NL_SET_META | NL_P; }
+  if kind == 30002 { return NL_SET_META | NL_RELAY; }
+  if kind == 30003 || kind == 30004 || kind == 30008 || kind == 30063 { return NL_SET_META | NL_E | NL_A; }
+  if kind == 30005 || kind == 30006 { return NL_SET_META | NL_E; }
+  if kind == 30015 { return NL_SET_META | NL_T; }
+  if kind == 30030 { return NL_SET_META | NL_EMOJI; }
+  if kind == 30267 || kind == 31924 { return NL_SET_META | NL_A; }
+  // NIP-B0: one bookmark per d (the URI), with title, published_at and t.
+  if kind == NL_KIND_WEB_BOOKMARK { return NL_D_TAG | NL_TITLE | NL_PUBLISHED_AT | NL_T; }
+  return 0;
+}
+// book:end table
+
+#test "the table: standard lists, sets and NIP-B0" {
+  #assert nl_allowed(10000) == NL_P | NL_T | NL_WORD | NL_E && nl_allowed(10001) == NL_E && nl_allowed(10003) == NL_E | NL_A;
+  #assert nl_allowed(10005) == NL_E && nl_allowed(10004) == NL_A && nl_allowed(10018) == NL_A && nl_allowed(10021) == NL_A && nl_allowed(10992) == NL_A;
+  for k: [5] int.[10006, 10007, 10013, 10050, 10102] { #assert nl_allowed(k) == NL_RELAY; }
+  #assert nl_allowed(10008) == NL_A | NL_E && nl_allowed(10009) == NL_GROUP | NL_R && nl_allowed(10012) == NL_RELAY | NL_A;
+  #assert nl_allowed(10015) == NL_T | NL_A && nl_allowed(10030) == NL_EMOJI | NL_A && nl_allowed(10054) == NL_P | NL_URL && nl_allowed(10063) == NL_SERVER;
+  for k: [4] int.[10017, 10020, 10064, 10101] { #assert nl_allowed(k) == NL_P; }
+  for k: [4] int.[30000, 30007, 39089, 39092] { #assert nl_allowed(k) == NL_SET_META | NL_P; }
+  #assert nl_allowed(30002) == NL_SET_META | NL_RELAY && nl_allowed(30015) == NL_SET_META | NL_T && nl_allowed(30030) == NL_SET_META | NL_EMOJI;
+  for k: [4] int.[30003, 30004, 30008, 30063] { #assert nl_allowed(k) == NL_SET_META | NL_E | NL_A; }
+  #assert nl_allowed(30005) == NL_SET_META | NL_E && nl_allowed(30006) == NL_SET_META | NL_E;
+  #assert nl_allowed(30267) == NL_SET_META | NL_A && nl_allowed(31924) == NL_SET_META | NL_A;
+  #assert nl_allowed(39701) == NL_D_TAG | NL_TITLE | NL_PUBLISHED_AT | NL_T;
+  // Follows and relay lists have their own readers; 30001 is deprecated.
+  for k: [12] int.[0, 1, 3, 10002, 10010, 10014, 30001, 30009, 39700, 39702, 9999, 40000] { #assert nl_allowed(k) == 0; }
+}
+
+// The bit of the tag name in name[0..<n], or 0 (n is -1 for a name too
+// long to read).
+nl_bit :: (name: [] u8, n: int) -> int {
+  names := [16] string.["p", "e", "a", "t", "word", "relay", "group", "r", "emoji", "server", "url", "d", "title", "image", "description", "published_at"];
+  for i: 0..<names.count { if n == names[i].count && cast(string) name[0..<n] == names[i] { return 1 << i; } }
+  return 0;
+}
+nl_bit_of :: (s: string) -> int { b: [NL_MAX_NAME] u8; for i: 0..<s.count { b[i] = s[i]; } return nl_bit(b[..], s.count); }
+#test "every name has its bit, in order; others have none" {
+  #assert nl_bit_of("p") == NL_P && nl_bit_of("e") == NL_E && nl_bit_of("a") == NL_A && nl_bit_of("t") == NL_T && nl_bit_of("word") == NL_WORD;
+  #assert nl_bit_of("relay") == NL_RELAY && nl_bit_of("group") == NL_GROUP && nl_bit_of("r") == NL_R && nl_bit_of("emoji") == NL_EMOJI;
+  #assert nl_bit_of("server") == NL_SERVER && nl_bit_of("url") == NL_URL && nl_bit_of("d") == NL_D_TAG && nl_bit_of("title") == NL_TITLE;
+  #assert nl_bit_of("image") == NL_IMAGE && nl_bit_of("description") == NL_DESCRIPTION && nl_bit_of("published_at") == NL_PUBLISHED_AT;
+  #assert nl_bit_of("P") == 0 && nl_bit_of("") == 0 && nl_bit_of("words") == 0 && nl_bit_of("relays") == 0 && nl_bit_of("wore") == 0;
+  b: [4] u8; b[0] = 'p'; #assert nl_bit(b[..], -1) == 0 && nl_bit(b[..], 1) == NL_P;
+}
+
+// The decoded string at position `at` of tag `index` into out: its length,
+// or -1 when absent or it doesn't fit. nostr_tag has read the tag already.
+nl_text :: (e: NostrEvent, index: int, at: int, out: [] u8) -> int {
+  j: [1] Json; started := nt_start(j[..], e);
+  tok := json_next(j[..]);
+  for k: 0..<index { skipped := json_skip(j[..]); tok = json_next(j[..]); }
+  k := 0; v := json_next(j[..]);
+  while v == JSON_STRING {
+    if k == at { return json_unescape(json_text(j[..]), out); }
+    k += 1; v = json_next(j[..]);
+  }
+  return -1;
+}
+nl_has_upper :: (s: string) -> bool {
+  for i: 0..<s.count { if s[i] >= 'A' && s[i] <= 'Z' { return true; } }
+  return false;
+}
+
+// book:begin check
+// Every tag of a tags array (e's) against the kind's names. Private items
+// may not hold a d tag: the address must stay readable by everyone.
+nl_check :: (e: NostrEvent, allowed: int, is_private: bool) -> NlCheck {
+  c: NlCheck; name: [NL_MAX_NAME] u8; value: [NT_MAX_VALUE] u8;
+  k := 0;
+  while true {
+    t := nostr_tag(e, k);
+    if t.error == NT_INDEX { break; }
+    c.bad = k; c.tag_error = t.error;
+    if t.error != NT_OK { c.error = ifx t.error == NT_EVENT then NL_EVENT else NL_SHAPE; return c; }
+    bit := nl_bit(name[..], nl_text(e, k, 0, name[..]));
+    if (allowed & bit) == 0 || (is_private && bit == NL_D_TAG) { c.error = NL_TAG; return c; }
+    // Every held tag has a value; nostr_tag already checked p, e and a.
+    v := nl_text(e, k, 1, value[..]);
+    if v < 1 { c.error = NL_SHAPE; return c; }
+    s := cast(string) value[0..<v];
+    if bit == NL_WORD && nl_has_upper(s) { c.error = NL_SHAPE; return c; }   // "lowercase string"
+    if bit == NL_RELAY && !nt_relay_ok(s) { c.error = NL_SHAPE; return c; }
+    if bit == NL_D_TAG && !c.has_d { c.has_d = true; for i: 0..<v { c.d[i] = value[i]; } c.d_n = v; }
+    k += 1;
+  }
+  c.bad = -1; c.n = k;
+  return c;
+}
+// book:end check
+
+// The d tag a set's kind requires: 30007's is the muted kind as a decimal
+// string; NIP-B0's is the URI with "https://" left off.
+nl_d_ok :: (kind: int, d: string) -> bool {
+  if kind == 30007 {
+    if d.count > 5 { return false; }
+    for i: 0..<d.count { if d[i] < '0' || d[i] > '9' { return false; } }
+    return true;
+  }
+  if kind == NL_KIND_WEB_BOOKMARK { return !(d.count >= 8 && d[0..<8] == "https://"); }
+  return true;
+}
+#test "d rules: 30007's kind string, NIP-B0's scheme-less URI" {
+  #assert nl_d_ok(30007, "1") && nl_d_ok(30007, "65535") && !nl_d_ok(30007, "655350") && !nl_d_ok(30007, "1a") && !nl_d_ok(30007, "/");
+  #assert !nl_d_ok(30007, ":") && nl_d_ok(30007, "0") && nl_d_ok(30007, "9");
+  #assert nl_d_ok(39701, "alice.blog/post") && !nl_d_ok(39701, "https://alice.blog/post") && nl_d_ok(39701, "http://alice.blog");
+  #assert nl_d_ok(39701, "https:/x") && nl_d_ok(30000, "https://x") && !nl_d_ok(39701, "https://") && nl_d_ok(39701, "https:/");
+}
+
+// The content's encryption, from its raw text.
+nl_cipher :: (content: string) -> int {
+  if content.count == 0 { return NL_C_NONE; }
+  for i: 0..<content.count - 3 { if content[i..<i + 4] == "?iv=" { return NL_C_NIP04; } }
+  return NL_C_NIP44;
+}
+#test "the cipher is told by ?iv=, not by iv alone" {
+  #assert nl_cipher("") == NL_C_NONE && nl_cipher("abc") == NL_C_NIP44 && nl_cipher("Aivx") == NL_C_NIP44;
+  #assert nl_cipher("ab==?iv=cd==") == NL_C_NIP04 && nl_cipher("?iv=") == NL_C_NIP04 && nl_cipher("?iv") == NL_C_NIP44;
+  #assert nl_cipher("x?iv=") == NL_C_NIP04 && nl_cipher("?ivx") == NL_C_NIP44 && nl_cipher("?xv=") == NL_C_NIP44 && nl_cipher("?ix=") == NL_C_NIP44;
+}
+
+nl_fail :: (l: NlList, error: int) -> NlList { r := l; r.error = error; return r; }
+nl_checked :: (l: NlList, c: NlCheck, offset: int, is_private: bool) -> NlList {
+  r := l; r.error = c.error; r.bad = offset + c.bad; r.bad_private = is_private; r.tag_error = c.tag_error;
+  return r;
+}
+// book:begin read
+// A list event's public items, checked against its kind, and how its
+// private items are encrypted. nl_open (nip51-private.coax) reads those.
+nl_read :: (e: NostrEvent) -> NlList {
+  l: NlList;
+  if e.error != NE_OK || e.content_from < 0 || e.content_to > e.original.count || e.content_from > e.content_to { return l; }
+  l.kind = e.kind; l.allowed = nl_allowed(e.kind); l.set = e.kind >= 30000;
+  if l.allowed == 0 { return nl_fail(l, NL_KIND); }
+  c := nl_check(e, l.allowed, false);
+  if c.error != NL_OK { return nl_checked(l, c, 0, false); }
+  l.public_n = c.n;
+  if l.set && (!c.has_d || !nl_d_ok(e.kind, cast(string) c.d[0..<c.d_n])) { return nl_fail(l, NL_D); }
+  l.cipher = nl_cipher(e.original[e.content_from..<e.content_to]);
+  // NIP-B0's content is a description, not private items.
+  if e.kind == NL_KIND_WEB_BOOKMARK { l.cipher = NL_C_NONE; }
+  l.opened = l.cipher == NL_C_NONE;
+  return nl_fail(l, NL_OK);
+}
+// book:end read
+
+// Item index of a read list: public ones first, then the opened private
+// ones (in the buffer nl_open filled).
+nl_item :: (l: NlList, e: NostrEvent, index: int) -> NlItem {
+  item_: NlItem;
+  if l.error != NL_OK || index < 0 || index >= l.public_n + l.private_n { return item_; }
+  src := e; at := index;
+  if index >= l.public_n { src = nt_event(l.hidden); at = index - l.public_n; item_.is_private = true; }
+  item_.tag = nostr_tag(src, at);
+  item_.name_n = nl_text(src, at, 0, item_.name[..]);
+  item_.value_n = nl_text(src, at, 1, item_.value[..]);
+  item_.error = NL_OK;
+  return item_;
+}
+
+nl_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+nl_same_folded :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if nl_lower(a[i]) != nl_lower(b[i]) { return false; } }
+  return true;
+}
+// Whether text contains word, ASCII letters folded.
+nl_contains_folded :: (text: string, word: string) -> bool {
+  for i: 0..<text.count - word.count + 1 { if nl_same_folded(text[i..<i + word.count], word) { return true; } }
+  return false;
+}
+// book:begin muted
+// The first item of a read mute list that mutes value, or -1. A pubkey or
+// event id is its lowercase hex and must match exactly; a hashtag (without
+// '#') matches a t item with ASCII case folded; a note's text is muted when
+// it contains a word item, folded the same way.
+nl_muted :: (l: NlList, e: NostrEvent, what: int, value: string) -> int {
+  if l.error != NL_OK || l.kind != NL_KIND_MUTE || !l.opened { return NL_NOT_MUTE_LIST; }
+  name := ifx what == NL_MUTE_PUBKEY then "p" else ifx what == NL_MUTE_EVENT then "e" else ifx what == NL_MUTE_HASHTAG then "t" else "word";
+  for i: 0..<l.public_n + l.private_n {
+    item_ := nl_item(l, e, i);
+    if cast(string) item_.name[0..<item_.name_n] != name { continue; }
+    item := cast(string) item_.value[0..<item_.value_n];
+    hit := ifx what == NL_MUTE_WORD then nl_contains_folded(value, item)
+      else ifx what == NL_MUTE_HASHTAG then nl_same_folded(value, item) else value == item;
+    if hit { return i; }
+  }
+  return -1;
+}
+// book:end muted
+
+// ---- checks
+
+// A parsed event (zero id and signature) with these fields, for checks.
+nl_event :: (kind: int, tags: string, content: string, buf: [] u8) -> NostrEvent {
+  n := json_raw(buf, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1,\"kind\":");
+  n = json_write_int(buf, n, kind); n = json_raw(buf, n, ",\"tags\":"); n = json_raw(buf, n, tags);
+  n = json_raw(buf, n, ",\"content\":"); n = json_write_string(buf, n, content);
+  n = json_raw(buf, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  return ne_parse(cast(string) buf[0..<n]);
+}
+NL_K07 :: "07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9";
+NL_MUTES :: "[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"],[\"t\",\"airdrop\"],[\"word\",\"giveaway\"],[\"e\",\"d78ba0d5dce22bfff9db0a9e996c9ef27e2c91051de0c4e1da340e0326b4941e\"]]";
+// NIP-51's curation set of yaks, its tags as published.
+NL_YAKS :: "[[\"d\",\"jvdy9i4\"],[\"title\",\"Yaks\"],[\"image\",\"https://cdn.britannica.com/40/188540-050-9AC748DE/Yak-Himalayas-Nepal.jpg\"],[\"description\",\"The domestic yak.\"],[\"a\",\"30023:26dc95542e18b8b7aec2f14610f55c335abebec76f3db9e58c254661d0593a0c:95ODQzw3ajNoZ8SyMDOzQ\"],[\"a\",\"30023:54af95542e18b8b7aec2f14610f55c335abebec76f3db9e58c254661d0593a0c:1-MYP8dAhramH9J5gJWKx\"],[\"a\",\"30023:f8fe95542e18b8b7aec2f14610f55c335abebec76f3db9e58c254661d0593a0c:D2Tbd38bGrFvU0bIbvSMt\"],[\"e\",\"d78ba0d5dce22bfff9db0a9e996c9ef27e2c91051de0c4e1da340e0326b4941e\"]]";
+
+#test "a public mute list reads, and mutes what it lists" {
+  b: [2048] u8; e := nl_event(10000, NL_MUTES, "", b[..]);
+  l := nl_read(e);
+  #assert l.error == NL_OK && l.public_n == 4 && l.private_n == 0 && l.opened && l.cipher == NL_C_NONE && !l.set && l.bad == -1;
+  #assert nl_muted(l, e, NL_MUTE_PUBKEY, NL_K07) == 0;
+  #assert nl_muted(l, e, NL_MUTE_PUBKEY, "07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a8") == -1;
+  #assert nl_muted(l, e, NL_MUTE_HASHTAG, "AirDrop") == 1 && nl_muted(l, e, NL_MUTE_HASHTAG, "airdrops") == -1 && nl_muted(l, e, NL_MUTE_HASHTAG, "giveaway") == -1;
+  #assert nl_muted(l, e, NL_MUTE_WORD, "a free GiveAway today") == 2 && nl_muted(l, e, NL_MUTE_WORD, "giveaway") == 2 && nl_muted(l, e, NL_MUTE_WORD, "give away") == -1;
+  #assert nl_muted(l, e, NL_MUTE_WORD, "airdrop") == -1 && nl_muted(l, e, NL_MUTE_WORD, "giveawa") == -1 && nl_muted(l, e, NL_MUTE_WORD, "") == -1;
+  #assert nl_muted(l, e, NL_MUTE_EVENT, "d78ba0d5dce22bfff9db0a9e996c9ef27e2c91051de0c4e1da340e0326b4941e") == 3 && nl_muted(l, e, NL_MUTE_EVENT, NL_K07) == -1;
+  // A pubkey is not an event, and hex is compared as written (lowercase).
+  #assert nl_muted(l, e, NL_MUTE_EVENT, NL_K07) == -1 && nl_muted(l, e, NL_MUTE_PUBKEY, "07CABA282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9") == -1;
+  item_ := nl_item(l, e, 0);
+  #assert item_.error == NL_OK && !item_.is_private && item_.tag.type == NT_P && item_.tag.pubkey[0] == 0x07 && cast(string) item_.name[0..<item_.name_n] == "p" && item_.value_n == 64;
+  item_ = nl_item(l, e, 2); #assert cast(string) item_.name[0..<item_.name_n] == "word" && cast(string) item_.value[0..<item_.value_n] == "giveaway" && item_.tag.type == NT_OTHER;
+  #assert nl_item(l, e, 4).error == NL_EVENT && nl_item(l, e, -1).error == NL_EVENT;
+}
+#test "nl_muted answers only for a read, opened mute list" {
+  b: [2048] u8; e := nl_event(10000, NL_MUTES, "", b[..]);
+  l := nl_read(e); l.opened = false; #assert nl_muted(l, e, NL_MUTE_PUBKEY, NL_K07) == NL_NOT_MUTE_LIST;
+  l = nl_read(e); l.error = NL_TAG; #assert nl_muted(l, e, NL_MUTE_PUBKEY, NL_K07) == NL_NOT_MUTE_LIST;
+  #assert nl_item(l, e, 0).error == NL_EVENT;
+  b2: [2048] u8; f := nl_event(30000, "[[\"d\",\"x\"],[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"]]", "", b2[..]);
+  s := nl_read(f); #assert s.error == NL_OK && s.set && nl_muted(s, f, NL_MUTE_PUBKEY, NL_K07) == NL_NOT_MUTE_LIST;
+}
+#test "private items count after the public ones" {
+  b: [2048] u8; e := nl_event(10000, "[[\"t\",\"x\"]]", "", b[..]);
+  l := nl_read(e); l.hidden = "[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"],[\"word\",\"y\"]]"; l.private_n = 2;
+  item_ := nl_item(l, e, 1); #assert item_.error == NL_OK && item_.is_private && item_.tag.type == NT_P;
+  item_ = nl_item(l, e, 0); #assert !item_.is_private && cast(string) item_.value[0..<item_.value_n] == "x";
+  #assert nl_muted(l, e, NL_MUTE_PUBKEY, NL_K07) == 1 && nl_muted(l, e, NL_MUTE_WORD, "a y") == 2 && nl_item(l, e, 3).error == NL_EVENT;
+}
+#test "NIP-51's curation set of yaks reads as a set with its d" {
+  b: [2048] u8; e := nl_event(30004, NL_YAKS, "", b[..]);
+  l := nl_read(e); #assert l.error == NL_OK && l.set && l.public_n == 8 && l.opened;
+  #assert nl_item(l, e, 4).tag.type == NT_A && nl_item(l, e, 4).tag.address_kind == 30023;
+  // The same tags as kind 30005 (videos): a tags are not held.
+  l = nl_read(nl_event(30005, NL_YAKS, "", b[..])); #assert l.error == NL_TAG && l.bad == 4 && !l.bad_private;
+}
+#test "refusals: kind, tag not held, malformed value, missing or wrong d" {
+  b: [2048] u8;
+  #assert nl_read(nl_event(1, "[]", "", b[..])).error == NL_KIND && nl_read(nl_event(3, "[]", "", b[..])).error == NL_KIND;
+  l := nl_read(nl_event(10000, "[[\"t\",\"x\"],[\"relay\",\"wss://r.example\"]]", "", b[..]));
+  #assert l.error == NL_TAG && l.bad == 1 && l.kind == 10000;
+  #assert nl_read(nl_event(10000, "[[\"P\",\"x\"]]", "", b[..])).error == NL_TAG;
+  #assert nl_read(nl_event(10000, "[[\"d\",\"x\"]]", "", b[..])).error == NL_TAG;
+  l = nl_read(nl_event(10000, "[[\"word\",\"GiveAway\"]]", "", b[..])); #assert l.error == NL_SHAPE && l.bad == 0 && l.tag_error == NT_OK;
+  #assert nl_read(nl_event(10000, "[[\"word\",\"giveaway\"]]", "", b[..])).error == NL_OK;
+  #assert nl_read(nl_event(10000, "[[\"word\",\"zgiveawaya@\"]]", "", b[..])).error == NL_OK;
+  #assert nl_read(nl_event(10000, "[[\"word\",\"[\"]]", "", b[..])).error == NL_OK && nl_read(nl_event(10000, "[[\"word\",\"Z\"]]", "", b[..])).error == NL_SHAPE;
+  #assert nl_read(nl_event(10000, "[[\"word\",\"A\"]]", "", b[..])).error == NL_SHAPE;
+  #assert nl_read(nl_event(10000, "[[\"t\"]]", "", b[..])).error == NL_SHAPE && nl_read(nl_event(10000, "[[\"t\",\"\"]]", "", b[..])).error == NL_SHAPE;
+  l = nl_read(nl_event(10000, "[[\"p\",\"07CABA282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"]]", "", b[..]));
+  #assert l.error == NL_SHAPE && l.tag_error == NT_HEX;
+  #assert nl_read(nl_event(10006, "[[\"relay\",\"https://r.example\"]]", "", b[..])).error == NL_SHAPE;
+  #assert nl_read(nl_event(10006, "[[\"relay\",\"wss://r.example\"]]", "", b[..])).error == NL_OK;
+  #assert nl_read(nl_event(30000, "[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"]]", "", b[..])).error == NL_D;
+  #assert nl_read(nl_event(30000, "[[\"d\"]]", "", b[..])).error == NL_SHAPE;
+  #assert nl_read(nl_event(30007, "[[\"d\",\"one\"]]", "", b[..])).error == NL_D && nl_read(nl_event(30007, "[[\"d\",\"1\"],[\"d\",\"one\"]]", "", b[..])).error == NL_OK;
+  #assert nl_read(nl_event(39701, "[[\"d\",\"https://alice.blog/post\"]]", "", b[..])).error == NL_D;
+  #assert nl_read(nl_event(39701, "[[\"title\",\"x\"]]", "", b[..])).error == NL_D;
+  bad: NostrEvent; #assert nl_read(bad).error == NL_EVENT;
+  e := nl_event(10000, "[]", "", b[..]); e.content_to = e.original.count + 1; #assert nl_read(e).error == NL_EVENT;
+  e = nl_event(10000, "[]", "", b[..]); e.content_from = -1; #assert nl_read(e).error == NL_EVENT;
+  e = nl_event(10000, "[]", "", b[..]); e.content_from = e.content_to + 1; #assert nl_read(e).error == NL_EVENT;
+}
+#test "NIP-B0's example bookmark reads; its content is a description" {
+  b: [2048] u8;
+  e := nl_event(39701, "[[\"d\",\"alice.blog/post\"],[\"published_at\",\"1738863000\"],[\"title\",\"Blog insights by Alice\"],[\"t\",\"post\"],[\"t\",\"insight\"]]", "A marvelous insight by Alice about the nature of blogs and posts.", b[..]);
+  l := nl_read(e); #assert l.error == NL_OK && l.set && l.public_n == 5 && l.cipher == NL_C_NONE && l.opened;
+  #assert nl_read(nl_event(39701, "[[\"d\",\"x\"],[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"]]", "", b[..])).error == NL_TAG;
+}
+#test "content tells the cipher; a list with private items is not opened yet" {
+  b: [2048] u8;
+  l := nl_read(nl_event(10000, "[]", "TJob1dQr==?iv=S3rFeFr1gsYqmQA7bNnNTQ==", b[..]));
+  #assert l.error == NL_OK && l.cipher == NL_C_NIP04 && !l.opened && l.public_n == 0;
+  l = nl_read(nl_event(10000, "[]", "AgivAAAA", b[..])); #assert l.cipher == NL_C_NIP44 && !l.opened;
+  e := nl_event(10000, "[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"]]", "AgivAAAA", b[..]); l = nl_read(e);
+  #assert nl_muted(l, e, NL_MUTE_PUBKEY, NL_K07) == NL_NOT_MUTE_LIST;
+}
+#test "nl_text: positions, absence and the size bound" {
+  e := nt_event("[[\"a\",\"b\\u0063\"],[\"x\"]]"); out: [4] u8;
+  #assert nl_text(e, 0, 0, out[..]) == 1 && nl_text(e, 0, 1, out[..]) == 2 && out[1] == 'c' && nl_text(e, 0, 2, out[..]) == -1;
+  #assert nl_text(e, 1, 0, out[..]) == 1 && out[0] == 'x' && nl_text(e, 1, 1, out[..]) == -1;
+  small: [1] u8; #assert nl_text(e, 0, 1, small[..]) == -1;
+  // A name over NL_MAX_NAME bytes is no name the table holds.
+  b: [2048] u8;
+  #assert nl_read(nl_event(10000, "[[\"wordwordwordwordwordwordwordwordw\",\"x\"]]", "", b[..])).error == NL_TAG;
+  #assert nl_has_upper("aZ") && !nl_has_upper("a@[`{") && nl_lower('A') == 'a' && nl_lower('Z') == 'z' && nl_lower('@') == '@' && nl_lower('[') == '[';
+  #assert nl_same_folded("Ab", "aB") && !nl_same_folded("ab", "abc") && !nl_same_folded("ab", "ac") && !nl_same_folded("ab", "xb");
+  #assert nl_contains_folded("xxAB", "ab") && nl_contains_folded("ab", "ab") && !nl_contains_folded("a", "ab");
+}
+#test "nl_check: d only in public items, the refused index, a non-string value" {
+  c := nl_check(nt_event("[[\"title\",\"x\"],[\"d\",\"y\"]]"), NL_SET_META, true);
+  #assert c.error == NL_TAG && c.bad == 1 && c.tag_error == NT_OK;
+  c = nl_check(nt_event("[[\"title\",\"x\"],[\"d\",\"y\"]]"), NL_SET_META, false);
+  #assert c.error == NL_OK && c.bad == -1 && c.n == 2 && c.has_d && cast(string) c.d[0..<c.d_n] == "y";
+  c = nl_check(nt_event("[[\"t\",1]]"), NL_T, false); #assert c.error == NL_EVENT && c.tag_error == NT_EVENT && c.bad == 0;
+  c = nl_check(nt_event("[[\"p\",\"x\"]]"), NL_P, false); #assert c.error == NL_SHAPE && c.tag_error == NT_HEX;
+  l: NlList; l = nl_checked(l, c, 3, true); #assert l.error == NL_SHAPE && l.bad == 3 && l.bad_private && l.tag_error == NT_HEX;
+  l = nl_checked(l, c, 3, false); #assert !l.bad_private;
+}
+#test "nl_read takes a content span at either end of the event text" {
+  e := nt_event("[[\"t\",\"x\"]]"); e.kind = 10000;
+  l := nl_read(e); #assert l.error == NL_OK && l.public_n == 1 && l.cipher == NL_C_NONE;
+  e.content_from = e.original.count; e.content_to = e.original.count; #assert nl_read(e).error == NL_OK;
+}

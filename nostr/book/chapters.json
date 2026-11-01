@@ -1153,14 +1153,21 @@
    "number": 54,
    "title": "Lists, sets and bookmarks",
    "file": "ch054-lists-sets-and-bookmarks.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22,
     20
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip51.coax",
+    "coax/lib/nostr/nip51-private.coax",
+    "nostr/examples/lists-sets.coax",
+    "nostr/examples/checks/lists-sets.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

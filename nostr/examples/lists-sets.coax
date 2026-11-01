@@ -1,0 +1,155 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip51-private.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// Test keys, never real ones. Key 3 is BIP-340 test vector 0's secret and
+// owns the lists; key 1's public key is G's x.
+KEY_3 :: "0000000000000000000000000000000000000000000000000000000000000003";
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+NOW :: 1793214821;   // 2026-10-28T19:13:41Z, as in chapters 38 and 42
+SPAMMER :: "07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9";
+FRIEND :: "a55c15f5e41d5aebd236eca5e0142789c5385703f1a7485aa4b38d94fd18dcc4";
+// The worked mute list: two public items, one private.
+PUBLIC :: "[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"],[\"t\",\"airdrop\"]]";
+PRIVATE :: "[[\"word\",\"giveaway\"]]";
+// A legacy client's private items for the same list: NIP-04 (AES-256-CBC
+// under the unhashed shared x to self), made with openssl and iv 10 11 .. 1f.
+LEGACY :: "Oqf7zWp1+jpQG1snq/n0kjns/f89zrtWAUGEYeb1PWS45KViy+0qxvwRmNEKMOSwaLVLxD2Z6dWuBBCnyW39D3uc6Ib3t5MOMDMPJcOwyaM=?iv=EBESExQVFhcYGRobHB0eHw==";
+// NIP-51's own mute list example, compacted.
+NIP51 :: "{\"id\":\"a92a316b75e44cfdc19986c634049158d4206fcc0b7b9c7ccbcdabe28beebcd0\",\"pubkey\":\"854043ae8f1f97430ca8c1f1a090bdde6488bd5115c7a45307a2a212750ae4cb\",\"created_at\":1699597889,\"kind\":10000,\"tags\":[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"],[\"p\",\"a55c15f5e41d5aebd236eca5e0142789c5385703f1a7485aa4b38d94fd18dcc4\"]],\"content\":\"TJob1dQrf2ndsmdbeGU+05HT5GMnBSx3fx8QdDY/g3NvCa7klfzgaQCmRZuo1d3WQjHDOjzSY1+MgTK5WjewFFumCcOZniWtOMSga9tJk1ky00tLoUUzyLnb1v9x95h/iT/KpkICJyAwUZ+LoJBUzLrK52wNTMt8M5jSLvCkRx8C0BmEwA/00pjOp4eRndy19H4WUUehhjfV2/VV/k4hMAjJ7Bb5Hp9xdmzmCLX9+64+MyeIQQjQAHPj8dkSsRahP7KS3MgMpjaF8nL48Bg5suZMxJayXGVp3BLtgRZx5z5nOk9xyrYk+71e2tnP9IDvSMkiSe76BcMct+m7kGVrRcavDI4n62goNNh25IpghT+a1OjjkpXt9me5wmaL7fxffV1pchdm+A7KJKIUU3kLC7QbUifF22EucRA9xiEyxETusNludBXN24O3llTbOy4vYFsq35BeZl4v1Cse7n2htZicVkItMz3wjzj1q1I1VqbnorNXFgllkRZn4/YXfTG/RMnoK/bDogRapOV+XToZ+IvsN0BqwKSUDx+ydKpci6htDRF2WDRkU+VQMqwM0CoLzy2H6A2cqyMMMD9SLRRzBg==?iv=S3rFeFr1gsYqmQA7bNnNTQ==\",\"sig\":\"1173822c53261f8cffe7efbf43ba4a97a9198b3e402c2a1df130f42a8985a2d0d3430f4de350db184141e45ca844ab4e5364ea80f11d720e36357e1853dba6ca\"}";
+// NIP-51's curation set of yaks and NIP-B0's bookmark: their tags.
+YAKS :: "[[\"d\",\"jvdy9i4\"],[\"title\",\"Yaks\"],[\"image\",\"https://cdn.britannica.com/40/188540-050-9AC748DE/Yak-Himalayas-Nepal.jpg\"],[\"a\",\"30023:26dc95542e18b8b7aec2f14610f55c335abebec76f3db9e58c254661d0593a0c:95ODQzw3ajNoZ8SyMDOzQ\"],[\"e\",\"d78ba0d5dce22bfff9db0a9e996c9ef27e2c91051de0c4e1da340e0326b4941e\"]]";
+BOOKMARK :: "[[\"d\",\"alice.blog/post\"],[\"published_at\",\"1738863000\"],[\"title\",\"Blog insights by Alice\"],[\"t\",\"post\"],[\"t\",\"insight\"]]";
+
+text_of :: (n: int, out: [] u8) -> string { #assert n > 0; return cast(string) out[0..<n]; }
+hex_of :: (bytes: [32] u8, out: [] u8) -> string {
+  b := bytes; #assert hex_encode_checked(cast(string) b[..], out, false).error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (hex: string) -> [32] u8 { k: [32] u8; #assert hex_decode_checked(hex, k[..], false).error == NC_OK; return k; }
+// A test nonce, 00 01 .. 1f, so the output is fixed. A real write takes 32
+// fresh random bytes.
+test_nonce :: () -> [32] u8 { n: [32] u8; for i: 0..<32 { n[i] = cast(u8) i; } return n; }
+// Signs one event with key 3 into out.
+sign :: (created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key := key_of(KEY_3); aux := key_of(AUX);
+  work: [1] NostrSignWork; scratch: [4096] u8; k := EVENT_MORE;
+  while k == EVENT_MORE {
+    k = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  return text_of(k, out);
+}
+NAMES :: [16] string.["p", "e", "a", "t", "word", "relay", "group", "r", "emoji", "server", "url", "d", "title", "image", "description", "published_at"];
+print_names :: (allowed: int) {
+  for i: 0..<16 { if (allowed & (1 << i)) != 0 { print(" %", NAMES[i]); } }
+  print("\n");
+}
+ERRORS :: [14] string.["ok", "not a parsed event", "not a list kind", "tag not held by this kind", "malformed value", "missing or refused d tag",
+  "NIP-04 content refused", "not the list's owner", "not addressed to the owner's own key", "malformed payload",
+  "private items are not a tags array", "key", "output too small", "too large"];
+why :: (code: int) -> string { return ERRORS[code]; }
+// Every item of a read list, one per line.
+print_items :: (l: NlList, e: NostrEvent) {
+  for i: 0..<l.public_n + l.private_n {
+    item := nl_item(l, e, i);
+    print("  %  % %  %\n", i, ifx item.is_private then "private" else "public ", cast(string) item.name[0..<item.name_n], cast(string) item.value[0..<item.value_n]);
+  }
+}
+yes :: (i: int) -> string { return ifx i >= 0 then "muted" else "not muted"; }
+
+main :: () {
+  print("== 1. The tags each kind holds\n");
+  kinds := [7] int.[10000, 10001, 10003, 10006, 30000, 30004, 39701];
+  for k: kinds { print("  %:", k); print_names(nl_allowed(k)); }
+  print("  3, 10002 and 1: % (follows.coax, nip65.coax)\n", nl_allowed(3) + nl_allowed(10002) + nl_allowed(1));
+  b: [4096] u8;
+  yaks := nl_read(nl_event(30004, YAKS, "", b[..]));
+  print("NIP-51's curation set of yaks: %, % items, set %\n", why(yaks.error), yaks.public_n, yaks.set);
+  bm := nl_read(nl_event(39701, BOOKMARK, "A marvelous insight by Alice about the nature of blogs and posts.", b[..]));
+  print("NIP-B0's web bookmark: %, % items, content is private items: %\n", why(bm.error), bm.public_n, bm.cipher != NL_C_NONE);
+
+  print("\n== 2. The worked mute list, sealed and signed by key 3\n");
+  w: [1] NlWork;
+  secret := key_of(KEY_3); me: [1] NlSelf; ew: [1] EcdhScratch;
+  #assert nl_self(secret[..], ew[..], me[..]) == NL_OK;
+  hx: [64] u8; h2: [64] u8; h3: [64] u8;
+  print("owner        %\nshared x     %\nconversation %\n", hex_of(me[0].pub, hx[..]), hex_of(me[0].shared_x, h2[..]), hex_of(me[0].ck, h3[..]));
+  print("public tags  %\nprivate JSON % (% bytes, padded to %)\n", PUBLIC, PRIVATE, PRIVATE.count, nip44_calc_padded_len(PRIVATE.count));
+  nonce := test_nonce(); content: [512] u8;
+  s := nl_seal(10000, me[0], PUBLIC, PRIVATE, nonce[..], w[..], content[..]);
+  sealed := cast(string) content[0..<s.written];
+  print("nl_seal: %, % private item, % characters\n  %\n", why(s.error), s.private_n, s.written, sealed);
+  eb: [1024] u8; event := sign(NOW, NL_KIND_MUTE, PUBLIC, sealed, eb[..]);
+  print("event\n  %\n", event);
+
+  print("\n== 3. Reading it\n");
+  sc: [4096] u8; e := nostr_event_verify_vartime(event, sc[..], false);
+  print("signature verifies: %\n", e.error == NE_OK && e.verified);
+  l := nl_read(e);
+  print("anyone: %, % public items, private items encrypted (NIP-44 %), opened %\n", why(l.error), l.public_n, l.cipher == NL_C_NIP44, l.opened);
+  plain: [NL_MAX_PRIVATE] u8;
+  l = nl_open(l, e, me[0], false, w[..], plain[..]);
+  print("the owner: %, opened %, % public + % private\n", why(l.error), l.opened, l.public_n, l.private_n);
+  print_items(l, e);
+
+  print("\n== 4. What the list mutes\n");
+  print("  pubkey 07caba..a3a9          %\n", yes(nl_muted(l, e, NL_MUTE_PUBKEY, SPAMMER)));
+  print("  pubkey a55c15..dcc4          %\n", yes(nl_muted(l, e, NL_MUTE_PUBKEY, FRIEND)));
+  print("  hashtag #AirDrop             % (item %)\n", yes(nl_muted(l, e, NL_MUTE_HASHTAG, "AirDrop")), nl_muted(l, e, NL_MUTE_HASHTAG, "AirDrop"));
+  print("  note \"Huge GIVEAWAY tonight\" % (item %)\n", yes(nl_muted(l, e, NL_MUTE_WORD, "Huge GIVEAWAY tonight")), nl_muted(l, e, NL_MUTE_WORD, "Huge GIVEAWAY tonight"));
+  print("  note \"good morning\"          %\n", yes(nl_muted(l, e, NL_MUTE_WORD, "good morning")));
+  stranger := nl_read(e);
+  print("  a reader without the key: note \"Huge GIVEAWAY tonight\" % (NL_NOT_MUTE_LIST: the list is not opened)\n", nl_muted(stranger, e, NL_MUTE_WORD, "Huge GIVEAWAY tonight"));
+
+  print("\n== 5. A list a NIP-04 client wrote\n");
+  ob: [1024] u8; old := sign(NOW, NL_KIND_MUTE, PUBLIC, LEGACY, ob[..]);
+  o := nostr_event_read(old, sc[..], false); ol := nl_read(o);
+  print("cipher NIP-04: %\n", ol.cipher == NL_C_NIP04);
+  print("nl_open, legacy not allowed: %\n", why(nl_open(ol, o, me[0], false, w[..], plain[..]).error));
+  ol = nl_open(ol, o, me[0], true, w[..], plain[..]);
+  print("nl_open, legacy allowed: %, legacy %, private items %\n", why(ol.error), ol.legacy, ol.hidden);
+  mc: [512] u8; m := nl_seal(10000, me[0], PUBLIC, ol.hidden, nonce[..], w[..], mc[..]);
+  nb: [1024] u8; moved := sign(NOW + 60, NL_KIND_MUTE, PUBLIC, cast(string) mc[0..<m.written], nb[..]);
+  n := nostr_event_read(moved, sc[..], false); nl := nl_open(nl_read(n), n, me[0], false, w[..], plain[..]);
+  print("the next write: NIP-44 %, %, legacy %, id %\n", nl.cipher == NL_C_NIP44, why(nl.error), nl.legacy, hex_of(n.id, hx[..]));
+
+  print("\n== 6. NIP-51's own example\n");
+  x := nostr_event_read(NIP51, sc[..], false);
+  print("claimed id  a92a316b75e44cfdc19986c634049158d4206fcc0b7b9c7ccbcdabe28beebcd0\ncomputed id %\n", hex_of(x.computed_id, hx[..]));
+  xp := ne_parse(NIP51); xl := nl_read(xp);
+  print("its fields: %, % public items, cipher NIP-04 %\n", why(xl.error), xl.public_n, xl.cipher == NL_C_NIP04);
+  print("nl_open, legacy not allowed: %\n", why(nl_open(xl, xp, me[0], false, w[..], plain[..]).error));
+  print("nl_open by key 3, legacy allowed: %\n", why(nl_open(xl, xp, me[0], true, w[..], plain[..]).error));
+
+  print("\n== 7. Broken lists\n");
+  r := nl_read(nl_event(10000, "[[\"t\",\"airdrop\"],[\"relay\",\"wss://relay.example.com\"]]", "", b[..]));
+  print("a relay tag in a mute list: % (item %)\n", why(r.error), r.bad);
+  r = nl_read(nl_event(10000, "[[\"word\",\"GiveAway\"]]", "", b[..]));
+  print("an uppercase word: %\n", why(r.error));
+  r = nl_read(nl_event(30000, "[[\"p\",\"07caba282f76441955b695551c3c5c742e5b9202a3784780f8086fdcdc1da3a9\"]]", "", b[..]));
+  print("a follow set without d: %\n", why(r.error));
+  zc: [512] u8;
+  z := nl_seal(10000, me[0], PUBLIC, "[[\"relay\",\"wss://relay.example.com\"]]", nonce[..], w[..], zc[..]);
+  print("nl_seal, a private relay tag: % (item %)\n", why(z.error), z.bad);
+  z = nl_seal(30000, me[0], "[[\"d\",\"friends\"]]", "[[\"d\",\"secret\"]]", nonce[..], w[..], zc[..]);
+  print("nl_seal, a private d tag: %\n", why(z.error));
+  // The worked items encrypted to key 1 instead of to self.
+  ck1: [32] u8; g := NIP44_KEY_GENERATOR_X;
+  #assert nip44_conversation_key_from_keys_checked(secret[..], g[..], ew[..], ck1[..], false) == NIP44_OK;
+  pt: [32] u8; for i: 0..<PRIVATE.count { pt[i] = PRIVATE[i]; }
+  wk: [1024] u8; tc: [512] u8;
+  t := nip44_encrypt_checked(NIP44_COMPAT, ck1[..], nonce[..], pt[0..<PRIVATE.count], wk[..], tc[..], false);
+  ab: [1024] u8; aimed := sign(NOW, NL_KIND_MUTE, PUBLIC, cast(string) tc[0..<t.written], ab[..]);
+  a := nostr_event_read(aimed, sc[..], false);
+  print("private items encrypted to key 1: %\n", why(nl_open(nl_read(a), a, me[0], false, w[..], plain[..]).error));
+  other := me[0]; other.pub = NIP44_KEY_GENERATOR_X;
+  print("the worked list opened with key 1's keys: %\n", why(nl_open(nl_read(e), e, other, false, w[..], plain[..]).error));
+  at := 0; while event[at] != 'A' || event[at + 1] != 'g' { at += 1; }
+  tb: [1024] u8; for i: 0..<event.count { tb[i] = event[i]; }
+  tb[at + 60] = ifx tb[at + 60] == 'B' then cast(u8) 'C' else cast(u8) 'B';
+  tp := ne_parse(cast(string) tb[0..<event.count]);
+  print("one payload character changed (id not checked): %\n", why(nl_open(nl_read(tp), tp, me[0], false, w[..], plain[..]).error));
+  nl_self_forget(me[..]);
+}
+// book:end example
