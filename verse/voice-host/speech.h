@@ -1,8 +1,10 @@
 // Speech providers and agents behind one interface. Every call here may
 // block on the network, so the host runs them on worker threads only.
 //
-// Providers: "google" (Speech-to-Text v2 chirp_3, Text-to-Speech Chirp 3 HD)
-// and "local" (offline, deterministic, for tests). Agents: "echo" and
+// Providers: "google" (Speech-to-Text v2 chirp_3, Text-to-Speech Chirp 3 HD),
+// "psionic" (Psionic's Whisper on this machine for speech to text, offline;
+// replies use the local tone) and "local" (offline, deterministic, for
+// tests). Agents: "echo" and
 // "gemini" (Vertex AI generateContent).
 #ifndef OA_VOICE_SPEECH_H
 #define OA_VOICE_SPEECH_H
@@ -10,7 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { PROVIDER_LOCAL = 0, PROVIDER_GOOGLE = 1 } speech_provider;
+typedef enum { PROVIDER_LOCAL = 0, PROVIDER_GOOGLE = 1, PROVIDER_PSIONIC = 2 } speech_provider;
 typedef enum { AGENT_ECHO = 0, AGENT_GEMINI = 1 } speech_agent;
 
 typedef struct {
@@ -26,6 +28,8 @@ typedef struct {
   char gcloud_config[512];   // CLOUDSDK_CONFIG for the access token
   char model[64];            // Gemini model, default gemini-2.5-flash
   char cache_dir[512];       // render cache, default ~/.cache/openagents-voice/renders
+  char whisper_model[512];   // psionic: ggml Whisper model, default ~/.cache/openagents/models/whisper/ggml-base.en.bin
+  char whisper_words[256];   // psionic: names to spell as given, default Psionic,Verse,OpenAgents,Coax,Coder
   bool verbose;
 } speech_config;
 
@@ -34,6 +38,10 @@ extern speech_config g_speech;
 void speech_init(void);  // curl_global_init + defaults; call once from main
 // The profile for an id ("" = the default "foreman"); NULL if unknown.
 const speech_profile *speech_find_profile(const char *id);
+
+// Maps the psionic provider's model once (call from main, before threads
+// start). False with err when the model is missing or unreadable.
+bool speech_psionic_open(char *err, size_t errcap);
 
 // True if an access token can be had (google provider usable). Never prints it.
 bool speech_google_ready(char *err, size_t errcap);

@@ -4,6 +4,8 @@
 #   verse/voice-host/test.sh --offline  offline cases only
 # Offline cases run the host with --provider local --agent echo on a random
 # port and stream the committed fixtures through voice-client in real time.
+# When the base.en Whisper model is cached, the psionic cases run the same
+# turns through Psionic's Whisper and check the words it heard.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 offline_only=false
@@ -107,6 +109,21 @@ if [[ $ca -eq 0 && $cb -eq 0 && "$(field "$tmp/conc-a.log" speech_ends)" == 1 &&
 else
   echo "FAIL two-sessions (exit $ca, $cb)"; tail -5 "$tmp/conc-a.log" "$tmp/conc-b.log" | sed 's/^/    | /'
   failures=$((failures + 1))
+fi
+
+whisper="${OA_VOICE_WHISPER_MODEL:-$HOME/.cache/openagents/models/whisper/ggml-base.en.bin}"
+if [[ -f "$whisper" ]] && command -v say > /dev/null; then
+  echo "offline: --provider psionic --agent echo"
+  start_host psionic --provider psionic --agent echo --whisper-model "$whisper" --verbose
+  run_case psionic-hello finals:eq:1 speech_ends:eq:1 errors:eq:0 -- --expect "what are we building today" "$fx/hello-foreman.wav"
+  latency_lines psionic-hello psionic
+  # A name only the word list spells right, in a turn made with macOS say.
+  say -o "$tmp/psionic-name.wav" --data-format=LEI16@16000 "The Psionic engine now hears every word you say inside the Verse."
+  run_case psionic-name finals:eq:1 speech_ends:eq:1 errors:eq:0 -- --expect "the psionic engine now hears every word you say inside the verse" "$tmp/psionic-name.wav"
+  latency_lines psionic-name psionic
+  run_case psionic-barge finals:eq:2 interrupted:ge:1 errors:eq:0 -- --barge "$fx/wait-stop.wav" "$fx/hello-foreman.wav"
+else
+  echo "skip psionic: no Whisper model at $whisper (openagents transcribe fetch base.en)"
 fi
 
 if ! $offline_only; then

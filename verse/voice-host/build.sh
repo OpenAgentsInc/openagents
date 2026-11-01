@@ -4,7 +4,9 @@
 # The Coax engine (verse/voice*.coax) becomes one C library per file with
 # coax/bin/coax, exactly as apps/openagents-ios/generate.sh does for the app;
 # verse/platform/voice.c is the C face over it. libcurl comes from the
-# macOS SDK. #authority files run their checks inside `coax c`, so a failing
+# macOS SDK. The psionic provider links Psionic's Whisper
+# (libpsionic-whisper.a from psionic/platform/whisper-build.sh) and Metal.
+# #authority files run their checks inside `coax c`, so a failing
 # check stops the build.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -48,10 +50,12 @@ for c in "${engine[@]}"; do
 done
 "$cc" "${flags[@]}" -I "$gen" -I verse/platform -c verse/platform/voice.c -o "$out/voice.o"
 objs+=("$out/voice.o")
+psionic="$out/psionic"
+SDKROOT="$sdk" COAX_CC="$cc" psionic/platform/whisper-build.sh "$psionic" > /dev/null
 for c in ws wav speech; do
-  "$cc" "${flags[@]}" -I "$gen" -c "$here/$c.c" -o "$out/$c.o"
+  "$cc" "${flags[@]}" -I "$gen" -I psionic/platform -c "$here/$c.c" -o "$out/$c.o"
 done
 "$cc" "${flags[@]}" -I "$gen" -o "$out/voice-host" "$here/host.c" "$out/ws.o" "$out/wav.o" "$out/speech.o" "${objs[@]}" \
-  -lcurl -lpthread -lm
+  "$psionic/libpsionic-whisper.a" -framework Metal -framework Foundation -lcurl -lpthread -lm
 "$cc" "${flags[@]}" -o "$out/voice-client" "$here/client.c" "$out/ws.o" "$out/wav.o" "${objs[@]}" -lm
 echo "built $out/voice-host and $out/voice-client"

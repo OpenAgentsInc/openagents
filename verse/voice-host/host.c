@@ -40,6 +40,9 @@
 #define TARGET_ROUTE 1          // the floor's id for the session's Hello.route
 
 static speech_provider g_provider = PROVIDER_GOOGLE;
+static const char *provider_name(void) {
+  return g_provider == PROVIDER_GOOGLE ? "google" : g_provider == PROVIDER_PSIONIC ? "psionic" : "local";
+}
 static speech_agent g_agent = AGENT_GEMINI;
 static uint64_t g_budget_msat = 0;
 static bool g_verbose = false;
@@ -1298,7 +1301,7 @@ static void on_hello(session *s, const oa_voice_hello *h) {
   m.u.welcome.session = B(s->sid);
   m.u.welcome.input_sample_rate = in;
   m.u.welcome.output_sample_rate = out;
-  m.u.welcome.provider = B(g_provider == PROVIDER_GOOGLE ? "google" : "local");
+  m.u.welcome.provider = B(provider_name());
   m.u.welcome.has_meter = true;
   oa_voice_meter_report_get(s->acct->m, &m.u.welcome.meter);
   oa_voice_config cfg;
@@ -1577,8 +1580,9 @@ static int listen_on(const char *spec, int *port_out) {
 
 static void usage(void) {
   fprintf(stderr,
-          "usage: voice-host [--listen HOST:PORT] [--provider google|local] [--agent gemini|echo]\n"
+          "usage: voice-host [--listen HOST:PORT] [--provider google|psionic|local] [--agent gemini|echo]\n"
           "                  [--model NAME] [--project ID] [--budget-msat N] [--max-speakers N] [--verbose]\n"
+          "                  [--whisper-model PATH] [--words A,B,C]   (psionic)\n"
           "  default: --listen 127.0.0.1:8787 --provider google --agent gemini\n");
 }
 
@@ -1591,6 +1595,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--provider") && v) {
       if (!strcmp(v, "google")) g_provider = PROVIDER_GOOGLE;
       else if (!strcmp(v, "local")) g_provider = PROVIDER_LOCAL;
+      else if (!strcmp(v, "psionic")) g_provider = PROVIDER_PSIONIC;
       else { usage(); return 2; }
       i++;
     } else if (!strcmp(a, "--agent") && v) {
@@ -1598,7 +1603,9 @@ int main(int argc, char **argv) {
       else if (!strcmp(v, "echo")) g_agent = AGENT_ECHO;
       else { usage(); return 2; }
       i++;
-    } else if (!strcmp(a, "--model") && v) { snprintf(g_speech.model, sizeof g_speech.model, "%s", v); i++; }
+    } else if (!strcmp(a, "--whisper-model") && v) { snprintf(g_speech.whisper_model, sizeof g_speech.whisper_model, "%s", v); i++; }
+    else if (!strcmp(a, "--words") && v) { snprintf(g_speech.whisper_words, sizeof g_speech.whisper_words, "%s", v); i++; }
+    else if (!strcmp(a, "--model") && v) { snprintf(g_speech.model, sizeof g_speech.model, "%s", v); i++; }
     else if (!strcmp(a, "--project") && v) { snprintf(g_speech.project, sizeof g_speech.project, "%s", v); i++; }
     else if (!strcmp(a, "--budget-msat") && v) { g_budget_msat = strtoull(v, NULL, 10); i++; }
     else if (!strcmp(a, "--max-speakers") && v) {
@@ -1612,6 +1619,13 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   speech_init();
   g_speech.verbose = g_verbose;
+  if (g_provider == PROVIDER_PSIONIC) {
+    char err[256];
+    if (!speech_psionic_open(err, sizeof err)) {
+      logf_("%s (%s); fetch it with: openagents transcribe fetch base.en", err, g_speech.whisper_model);
+      return 1;
+    }
+  }
   if (g_provider == PROVIDER_GOOGLE || g_agent == AGENT_GEMINI) {
     char err[256];
     if (!speech_google_ready(err, sizeof err)) {
@@ -1630,7 +1644,7 @@ int main(int argc, char **argv) {
     pthread_detach(t);
   }
   warm();  // token and connections ready before the first turn
-  printf("listening on 127.0.0.1:%d provider=%s agent=%s\n", port, g_provider == PROVIDER_GOOGLE ? "google" : "local",
+  printf("listening on 127.0.0.1:%d provider=%s agent=%s\n", port, provider_name(),
          g_agent == AGENT_GEMINI ? g_speech.model : "echo");
   fflush(stdout);
 

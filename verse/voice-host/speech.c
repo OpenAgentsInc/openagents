@@ -2,6 +2,7 @@
 #include "wav.h"
 #include "ws.h"
 #include "VoiceReply.h"
+#include "psionic-stt.h"
 #ifdef __APPLE__
 #include <CommonCrypto/CommonDigest.h>
 #else
@@ -65,6 +66,35 @@ void speech_init(void) {
     const char *home = getenv("HOME");
     snprintf(g_speech.cache_dir, sizeof g_speech.cache_dir, "%s/.cache/openagents-voice/renders", home ? home : "/tmp");
   }
+  if (!g_speech.whisper_model[0]) {
+    const char *home = getenv("HOME");
+    snprintf(g_speech.whisper_model, sizeof g_speech.whisper_model, "%s/.cache/openagents/models/whisper/ggml-base.en.bin",
+             home ? home : "/tmp");
+  }
+  if (!g_speech.whisper_words[0])
+    snprintf(g_speech.whisper_words, sizeof g_speech.whisper_words, "Psionic,Verse,OpenAgents,Coax,Coder");
+}
+
+// ---------------------------------------------------------------- psionic
+
+static psionic_stt *g_psionic;
+
+bool speech_psionic_open(char *err, size_t errcap) {
+  // The encoder runs on the GPU when there is one: a 5 s turn on base.en
+  // takes about 0.2 s there and 0.6 s on 8 CPU threads.
+  g_psionic = psionic_stt_open(g_speech.whisper_model, 8, 1, err, errcap);
+  if (!g_psionic) return false;
+  if (g_speech.verbose) fprintf(stderr, "voice-host: psionic %s on the %s\n", g_speech.whisper_model, psionic_stt_gpu(g_psionic) ? "GPU" : "CPU");
+  return true;
+}
+
+static bool psionic_recognize(const int16_t *pcm, size_t n, char *out, size_t cap, char *err, size_t errcap) {
+  float *x = malloc((n + 1) * sizeof *x);
+  if (!x) { seterr(err, errcap, "out of memory"); return false; }
+  for (size_t i = 0; i < n; i++) x[i] = pcm[i] / 32768.0f;
+  bool ok = psionic_stt_text(g_psionic, x, (int64_t)n, g_speech.whisper_words, out, cap, err, errcap) != 0;
+  free(x);
+  return ok;
 }
 
 // ---------------------------------------------------------------- access token
@@ -377,6 +407,7 @@ bool speech_recognize(speech_provider p, const int16_t *pcm, size_t n, char *out
     snprintf(out, cap, "I heard %u milliseconds of speech. Thank you.", (unsigned)(n * 1000 / 16000));
     return true;
   }
+  if (p == PROVIDER_PSIONIC) return psionic_recognize(pcm, n, out, cap, err, errcap);
   char *b64 = malloc(4 * ((n * 2 + 2) / 3) + 1);
   if (!b64) { seterr(err, errcap, "out of memory"); return false; }
   ws_base64((const uint8_t *)pcm, n * 2, b64);
@@ -449,7 +480,7 @@ static int16_t *local_tone(const char *text, uint32_t rate, size_t *n) {
 int16_t *speech_synthesize(speech_provider p, const speech_profile *prof, const char *text, uint32_t rate,
                            size_t *n, bool *cached, char *err, size_t errcap) {
   *cached = false;
-  if (p == PROVIDER_LOCAL) {
+  if (p == PROVIDER_LOCAL || p == PROVIDER_PSIONIC) {
     int16_t *pcm = local_tone(text, rate, n);
     if (!pcm) seterr(err, errcap, "out of memory");
     return pcm;

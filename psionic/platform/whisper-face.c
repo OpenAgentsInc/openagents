@@ -10,8 +10,10 @@
  *       [--threads N] [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C] [--gpu]
  * WAV is any PCM (8, 16, 24 or 32-bit) or float WAV; wav.coax mixes it to mono
  * and resamples it to 16 kHz. Exit status 65: not a WAV this reads.
- * Design: psionic/docs/transcribe.md. */
+ * Built with -DPSIONIC_WHISPER_LIBRARY it has no main and is the library
+ * psionic-stt.h declares. Design: psionic/docs/transcribe.md. */
 #include "whisper.h"
+#include "psionic-stt.h"
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -234,6 +236,85 @@ static coax_v_u8 map(const char *path) {
     v.data = p; v.count = st.st_size;
     return v;
 }
+/* ---- the library (psionic-stt.h) ----------------------------------------- */
+struct psionic_stt {
+    coax_v_u8 file; coax_t_WgModel m; coax_t_WeNet net; coax_v_t_WgTensor tv;
+    float *W, *work; double *bank; int64_t *vocab;
+    pthread_mutex_t mu;
+};
+static void stt_err(char *err, size_t cap, const char *msg) { if (err && cap) snprintf(err, cap, "%s", msg); }
+psionic_stt *psionic_stt_open(const char *path, int threads, int gpu, char *err, size_t errcap) {
+    static coax_t_WgTensor tensors[TENSORS];
+    static int64_t offsets[TENSORS];
+    static int opened;
+    if (opened) { stt_err(err, errcap, "psionic: a model is already open"); return 0; }
+    psionic_stt *s = calloc(1, sizeof *s);
+    if (!s) { stt_err(err, errcap, "psionic: out of memory"); return 0; }
+    s->file = map(path);
+    if (!s->file.data) { stt_err(err, errcap, "psionic: cannot read the Whisper model"); free(s); return 0; }
+    s->tv = (coax_v_t_WgTensor){tensors, TENSORS};
+    s->m = psionic_whisper_read(s->file, s->tv);
+    if (s->m.status != COAX_WgStatus_ok) { stt_err(err, errcap, "psionic: not a Whisper ggml file"); free(s); return 0; }
+    coax_t_WgParams p = s->m.params;
+    s->bank = calloc((size_t)(p.n_mels * 201), sizeof *s->bank);
+    s->vocab = malloc((size_t)s->m.tokens * sizeof *s->vocab);
+    if (!s->bank || !s->vocab || psionic_whisper_bank(p.n_mels, (coax_v_f64){s->bank, p.n_mels * 201}) != 0 ||
+        psionic_whisper_vocab(s->file, s->m, (coax_v_s64){s->vocab, s->m.tokens}) != s->m.tokens) { stt_err(err, errcap, "psionic: model tables"); return 0; }
+    s->net = psionic_whisper_net(s->file, s->m, s->tv, (coax_v_s64){offsets, TENSORS}, p.n_audio_ctx);
+    if (s->net.status != COAX_WeStatus_ok) { stt_err(err, errcap, "psionic: model tensors"); return 0; }
+    g_threads = threads < 1 ? 1 : threads > 64 ? 64 : threads;
+    pool_start();
+    g_gpu = gpu && gpu_open();
+    if (g_gpu) {
+        s->W = gpu_alloc(0, (size_t)s->net.weights); s->work = gpu_alloc(1, (size_t)s->net.work.total);
+        if (!gpu_alloc(2, (size_t)(p.n_audio_head * p.n_audio_ctx * p.n_audio_ctx))) s->W = 0;
+    } else { s->W = malloc((size_t)s->net.weights * sizeof *s->W); s->work = calloc((size_t)s->net.work.total, sizeof *s->work); }
+    if (!s->W || !s->work) { stt_err(err, errcap, "psionic: out of memory"); return 0; }
+    if (psionic_whisper_load(s->file, s->tv, s->m.tensor_count, (coax_v_s64){offsets, TENSORS}, (coax_v_f32){s->W, s->net.weights}) != COAX_WeStatus_ok) {
+        stt_err(err, errcap, "psionic: model weights"); return 0;
+    }
+    pthread_mutex_init(&s->mu, 0);
+    opened = 1;
+    return s;
+}
+int psionic_stt_gpu(const psionic_stt *s) { return s && g_gpu; }
+int psionic_stt_text(psionic_stt *s, const float *samples, int64_t n, const char *words, char *out, size_t cap, char *err, size_t errcap) {
+    if (!s || !out || cap == 0) { stt_err(err, errcap, "psionic: no model"); return 0; }
+    out[0] = 0;
+    if (n < 1) return 1;
+    coax_t_WgParams p = s->m.params;
+    int64_t cache_n = psionic_whisper_cache_size(n, p.n_mels);
+    size_t text_cap = 1 << 16;
+    float *cache = malloc((size_t)cache_n * sizeof *cache);
+    uint8_t *text = malloc(text_cap), *line = malloc(text_cap);
+    coax_t_WsSegment *segs = malloc(SEGMENTS * sizeof *segs);
+    int ok = 0;
+    if (!cache || !text || !line || !segs) { stt_err(err, errcap, "psionic: out of memory"); goto done; }
+    coax_t_WeOptions opt = psionic_whisper_options();
+    opt.language = psionic_whisper_language(s->net, (coax_string){"en", 2});
+    opt.prompt = (coax_string){"", 0};
+    opt.words = (coax_string){words ? words : "", words ? (int64_t)strlen(words) : 0};
+    pthread_mutex_lock(&s->mu);
+    coax_t_WeRun run = psionic_whisper_transcribe(s->net, (coax_v_f32){s->W, s->net.weights}, (coax_v_f32){s->work, s->net.work.total}, s->file, s->m,
+                                                  (coax_v_s64){s->vocab, s->m.tokens}, (coax_v_f64){s->bank, p.n_mels * 201}, (coax_v_f32){(float *)samples, n},
+                                                  (coax_v_f32){cache, cache_n}, opt, (coax_v_t_WsSegment){segs, SEGMENTS}, (coax_v_u8){text, (int64_t)text_cap});
+    int64_t k = run.status == COAX_WeStatus_ok
+        ? psionic_whisper_format((coax_v_t_WsSegment){segs, run.segments}, 0, (coax_string){"", 0}, (coax_string){"en", 2}, (coax_v_u8){line, (int64_t)text_cap})
+        : -1;
+    pthread_mutex_unlock(&s->mu);
+    if (k < 0) { stt_err(err, errcap, "psionic: transcription failed"); goto done; }
+    /* one line: the text format ends each segment with a newline */
+    size_t o = 0;
+    for (int64_t i = 0; i < k && o + 1 < cap; i++) out[o++] = line[i] == '\n' ? ' ' : (char)line[i];
+    while (o > 0 && out[o - 1] == ' ') o--;
+    out[o] = 0;
+    ok = 1;
+done:
+    free(cache); free(text); free(line); free(segs);
+    return ok;
+}
+
+#ifndef PSIONIC_WHISPER_LIBRARY
 static int usage(void) {
     fputs("usage: psionic-whisper info|filters MODEL\n"
           "       psionic-whisper pcm WAV\n"
@@ -372,3 +453,4 @@ int main(int argc, char **argv) {
                 (t_end - t_load) - g_prof[0] - g_prof[1] - g_prof[2] - g_prof[3] - g_prof[4] - g_prof[5]);
     return 0;
 }
+#endif
