@@ -1,0 +1,106 @@
+// The checks of relay-info.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/relay-info.coax
+#load "../relay-info.coax";
+
+// book:begin check
+// The document, written out by hand from the NIP-11 field list and the
+// limits chapter 34 traced (frames of 131072 bytes, 256 tags, 900 s ahead)
+// and the REQ limits in relay_server.coax's header comment (32
+// subscriptions, sub ids 1..64, max_limit and default_limit 127).
+HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,11,40,42],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+// The head counted by hand: 17 + 38 + 21 + 32 + 33 + 35 + 19 + 2 = 197 bytes.
+HAND_HEAD :: "HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: 506\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Methods: GET\r\nConnection: close\r\n\r\n";
+
+#test "the served answer is the hand-written head and document, byte for byte" {
+  out: [1024] u8;
+  a := http_answer(NIP11_GET, out[..]);
+  #assert a.status == WSS_NIP11 && a.action == RR_H_NIP11;
+  #assert HAND_HEAD.count == 197 && HAND_DOC.count == 506 && a.n == 703;
+  #assert cast(string) out[0..<197] == HAND_HEAD && cast(string) out[197..<703] == HAND_DOC;
+}
+#test "relay_server.coax's copy of the document is the one relay.coax serves" {
+  #assert RS_NIP11 == RR_NIP11;
+  out: [1024] u8;
+  #assert rs_nip11(out[..]) == 703;
+}
+// RFC 6455 section 1.3's key and accept value.
+#test "routing: NIP-11, upgrade (which wins over NIP-11), refusal or wait" {
+  out: [1024] u8;
+  #assert http_answer(UPGRADE, out[..]).action == RR_H_UPGRADE;
+  a := http_answer(BOTH, out[..]);
+  #assert a.action == RR_H_UPGRADE && a.n == 129;
+  #assert cast(string) out[0..<a.n] == "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+  #assert http_answer("GET / HTTP/1.1\r\n\r\n", out[..]).n == 276;
+  #assert cast(string) out[0..<24] == "HTTP/1.1 400 Bad Request";
+  #assert http_answer("OPTIONS / HTTP/1.1\r\n\r\n", out[..]).action == RR_H_BAD;
+  #assert http_answer("GET / HTTP/1.1\r\nAccept: application/nostr+json\r\n", out[..]).action == RR_H_WAIT;
+}
+// A document Python's json module reads to the same values (json.loads on
+// HAND_DOC; the integers and booleans below were copied from its output).
+#test "the client reads every field the document states" {
+  i := info_read(HAND_DOC);
+  #assert i.error == INFO_OK && i.name == "OpenAgents Coax relay (R1)" && i.version == "r1";
+  #assert i.nips_n == 4 && i.nips[0] == 1 && i.nips[1] == 11 && i.nips[2] == 40 && i.nips[3] == 42;
+  want := [9] int.[131072, 32, 127, 64, 256, 900, 127, 0, 1];
+  for k: 0..<9 { #assert i.limit[k] == want[k]; }
+  #assert info_compare(i, false) == 0;
+}
+#test "every advertised value is the value the relay's code enforces" {
+  want := enforced();
+  hand := [9] int.[131072, 32, 127, 64, 256, 900, 127, 0, 1];
+  for k: 0..<9 { #assert want[k] == hand[k]; }
+}
+#test "each edited field is one mismatch" {
+  d: [1024] u8;
+  edits := [8] string.["131072", "\"max_subscriptions\":32", "\"max_limit\":127", "\"max_subid_length\":64",
+    "256", "900", "\"default_limit\":127", "\"auth_required\":false"];
+  news := [8] string.["131073", "\"max_subscriptions\":33", "\"max_limit\":128", "\"max_subid_length\":65",
+    "257", "901", "\"default_limit\":126", "\"auth_required\":true"];
+  for k: 0..<8 {
+    i := info_read(edited(edits[k], news[k], d[..]));
+    #assert i.error == INFO_OK && info_compare(i, false) == 1;
+  }
+  i := info_read(edited("\"restricted_writes\":true", "\"restricted_writes\":false", d[..]));
+  #assert i.error == INFO_OK && i.limit[8] == 0 && info_compare(i, false) == 1;
+  i = info_read(edited("[1,11,40,42]", "[1,11,40]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("[1,11,40,42]", "[1,11,40,42,45]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("[1,11,40,42]", "[1,11,40,9]", d[..])); #assert info_compare(i, false) == 1;
+  i = info_read(edited("\"default_limit\":127", "\"x\":1", d[..])); #assert i.limit[6] == -1 && info_compare(i, false) == 1;
+}
+#test "the client's refusals" {
+  #assert info_read("").error == INFO_JSON && info_read("{").error == INFO_JSON && info_read("{} x").error == INFO_JSON;
+  #assert info_read("[]").error == INFO_SHAPE && info_read("1").error == INFO_SHAPE;
+  #assert info_read("{}").error == INFO_OK && info_read("{}").limit[0] == -1 && info_read("{}").nips_n == 0;
+  #assert info_read("{\"supported_nips\":1}").error == INFO_NIPS && info_read("{\"supported_nips\":[0]}").error == INFO_NIPS;
+  #assert info_read("{\"supported_nips\":[1.5]}").error == INFO_NIPS && info_read("{\"supported_nips\":[1,]}").error == INFO_JSON;
+  #assert info_read("{\"limitation\":[]}").error == INFO_LIMIT && info_read("{\"limitation\":{\"max_limit\":\"9\"}}").error == INFO_LIMIT;
+  #assert info_read("{\"limitation\":{\"auth_required\":1}}").error == INFO_LIMIT && info_read("{\"limitation\":{\"max_limit\":1e3}}").error == INFO_LIMIT;
+  #assert info_read("{\"limitation\":{\"max_limit\":0}}").limit[2] == 0;
+  // NIP-11: clients MUST ignore fields they don't understand
+  i := info_read("{\"icon\":\"x\",\"fees\":{\"admission\":[{\"amount\":1}]},\"name\":\"n\",\"limitation\":{\"payment_required\":true,\"max_limit\":9},\"supported_nips\":[]}");
+  #assert i.error == INFO_OK && i.name == "n" && i.limit[2] == 9 && i.nips_n == 0;
+  // the name only when it is a string
+  #assert info_read("{\"name\":7}").error == INFO_OK && info_read("{\"name\":7}").name.count == 0;
+  // INFO_MAX_NIPS entries are read; one more is refused
+  long: [256] u8; m := json_raw(long[..], 0, "{\"supported_nips\":[");
+  for k: 0..<INFO_MAX_NIPS { if k > 0 { m = json_raw(long[..], m, ","); } m = json_raw(long[..], m, "1"); }
+  #assert info_read(cast(string) long[0..<json_raw(long[..], m, "]}")]).error == INFO_OK;
+  m = json_raw(long[..], m, ",1]}");
+  #assert info_read(cast(string) long[0..<m]).error == INFO_NIPS;
+}
+#test "each limit is hit at its value and refused one past it" {
+  w: [1] Wire;
+  #assert two_fragments(w[..], 65536, 65536) == WS_EV_MESSAGE && two_fragments(w[..], 65536, 65537) == WS_EV_TOO_BIG;
+  out: [512] u8; q: [512] u8;
+  #assert req_reply(req_with_sub("a", 64, q[..]), out[..]) == "routed to REQ";
+  #assert req_reply(req_with_sub("a", 65, q[..]), out[..]) == "[\"NOTICE\",\"invalid: subscription id must contain 1 to 64 characters\"]";
+  #assert req_reply(req_with_sub("é", 64, q[..]), out[..]) == "routed to REQ";
+  #assert req_reply(req_with_sub("é", 65, q[..]), out[..]) != "routed to REQ";
+  #assert limit_of("{\"limit\":127}") == 127 && limit_of("{\"limit\":128}") == 127 && limit_of("{\"limit\":126}") == 126 && limit_of("{}") == 127;
+  #assert policy_reply(RST_TAGS256, true, out[..]) == "passes to the signature check";
+  #assert policy_reply(RST_EDGE, true, out[..]) == "passes to the signature check";
+  #assert policy_reply(RST_PLAIN, true, out[..]) == "passes to the signature check";
+  #assert policy_reply(RST_PLAIN, false, out[..]) != "passes to the signature check";
+}
+// book:end check

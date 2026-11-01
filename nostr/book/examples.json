@@ -386,6 +386,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/relay-info.coax",
+      "chapter": "nostr/book/ch037-nip-11-relay-information.md",
+      "stdout": "nostr/fixtures/relay-info.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

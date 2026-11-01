@@ -1,0 +1,361 @@
+// book:begin example
+#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../coax/lib/nostr/relay_route.coax";
+#import "Basic";
+
+// The relay's clock for the policy probes: relay_server_fixtures.coax's
+// events (RST_*) are written for now = 1000.
+NOW :: 1000;
+
+// ---- the server side: one request head, one answer -------------------------
+
+// book:begin answer
+// What the relay does with one HTTP request head, as coax/relay/relay.coax's
+// ry_http does it, with the socket replaced by out: wss_request reads the
+// head, rr_http picks the action, and the answer is written into out.
+Answer :: struct { status: int; action: int; n: int; }
+http_answer :: (request: string, out: [] u8) -> Answer {
+  h := wss_request(request);
+  a := Answer.{status = h.status, action = rr_http(h.status)};
+  if a.action == RR_H_WAIT { return a; }
+  if a.action == RR_H_UPGRADE { a.n = wss_accept_write(request[h.key_from..<h.key_to], out); return a; }
+  if a.action == RR_H_NIP11 { a.n = wss_http_write("200 OK", "application/nostr+json", RR_NIP11, out); return a; }
+  a.n = wss_http_write("400 Bad Request", "text/plain", "This is a Nostr relay: connect with a WebSocket, or ask for application/nostr+json.", out);
+  return a;
+}
+// book:end answer
+status_name :: (s: int) -> string {
+  names := [10] string.["OK", "MORE", "TOO_BIG", "METHOD", "HEADER", "UPGRADE", "CONNECTION", "VERSION", "KEY", "NIP11"];
+  return names[s];
+}
+action_name :: (a: int) -> string {
+  names := [4] string.["wait", "upgrade", "NIP-11", "400"];
+  return names[a];
+}
+// Print bytes with each CRLF shown as "\r\n" and a line break.
+show_crlf :: (bytes: string) {
+  line := 0;
+  for c, i: bytes {
+    if c == '\r' && i + 1 < bytes.count && bytes[i + 1] == '\n' { print("  %\\r\\n\n", bytes[line..<i]); line = i + 2; }
+  }
+  if line < bytes.count { print("  %\n", bytes[line..<bytes.count]); }
+}
+show_route :: (label: string, request: string) {
+  out: [1024] u8;
+  a := http_answer(request, out[..]);
+  first := 0; while first < a.n && out[first] != '\r' { first += 1; }
+  print("%: % -> %, answer \"%\"\n", label, status_name(a.status), action_name(a.action), cast(string) out[0..<first]);
+}
+
+// ---- the client side: read a NIP-11 document --------------------------------
+
+// book:begin client
+// What a client reads from a NIP-11 document. An integer field the document
+// leaves out is -1; a boolean is -1 (absent), 0 or 1. NIP-11 says clients
+// MUST ignore fields they don't know, so info_read skips them.
+INFO_OK :: 0; INFO_JSON :: 1; INFO_SHAPE :: 2; INFO_NIPS :: 3; INFO_LIMIT :: 4;
+INFO_MAX_NIPS :: 32;
+LIMIT_NAMES :: [9] string.["max_message_length", "max_subscriptions", "max_limit", "max_subid_length",
+  "max_event_tags", "created_at_upper_limit", "default_limit", "auth_required", "restricted_writes"];
+LIMIT_BOOL :: 7;   // fields from here on are booleans
+RelayInfo :: struct {
+  error: int;
+  name: string; software: string; version: string;   // raw JSON string bytes
+  nips: [INFO_MAX_NIPS] int; nips_n: int;
+  limit: [9] int;
+}
+info_read :: (doc: string) -> RelayInfo {
+  i: RelayInfo; i.error = INFO_JSON;
+  for k: 0..<9 { i.limit[k] = -1; }
+  j: [1] Json; json_start(j[..], doc);
+  t := json_next(j[..]);
+  if t == JSON_ERROR { return i; }
+  if t != JSON_OBJECT { i.error = INFO_SHAPE; return i; }
+  t = json_next(j[..]);
+  while t == JSON_STRING {
+    key := json_text(j[..]);
+    v := json_next(j[..]);
+    if json_is(key, "supported_nips") {
+      if v != JSON_ARRAY { return info_fail(i, v, INFO_NIPS); }
+      v = json_next(j[..]);
+      while v == JSON_NUMBER {
+        n := json_int(json_text(j[..]));
+        if !n.ok || n.value < 1 || i.nips_n >= INFO_MAX_NIPS { i.error = INFO_NIPS; return i; }
+        i.nips[i.nips_n] = n.value; i.nips_n += 1;
+        v = json_next(j[..]);
+      }
+      if v != JSON_ARRAY_END { return info_fail(i, v, INFO_NIPS); }
+    } else if json_is(key, "limitation") {
+      if v != JSON_OBJECT { return info_fail(i, v, INFO_LIMIT); }
+      v = json_next(j[..]);
+      while v == JSON_STRING {
+        name := json_text(j[..]);
+        w := json_next(j[..]);
+        k := 0; while k < 9 && !json_is(name, LIMIT_NAMES[k]) { k += 1; }
+        if k < LIMIT_BOOL {
+          n := json_int(json_text(j[..]));
+          if w != JSON_NUMBER || !n.ok || n.value < 0 { return info_fail(i, w, INFO_LIMIT); }
+          i.limit[k] = n.value;
+        } else if k < 9 {
+          if w != JSON_TRUE && w != JSON_FALSE { return info_fail(i, w, INFO_LIMIT); }
+          i.limit[k] = ifx w == JSON_TRUE then 1 else 0;
+        } else if !json_skip(j[..]) { return i; }
+        v = json_next(j[..]);
+      }
+      if v != JSON_OBJECT_END { return info_fail(i, v, INFO_LIMIT); }
+    } else if v == JSON_STRING && json_is(key, "name") { i.name = json_text(j[..]);
+    } else if v == JSON_STRING && json_is(key, "software") { i.software = json_text(j[..]);
+    } else if v == JSON_STRING && json_is(key, "version") { i.version = json_text(j[..]);
+    } else if !json_skip(j[..]) { return i; }
+    t = json_next(j[..]);
+  }
+  if t != JSON_OBJECT_END || json_next(j[..]) != JSON_END { i.error = INFO_JSON; return i; }
+  i.error = INFO_OK;
+  return i;
+}
+// A refusal while reading: JSON_ERROR stays a JSON error, anything else is
+// the field's error.
+info_fail :: (i: RelayInfo, tok: int, error: int) -> RelayInfo {
+  r := i; r.error = ifx tok == JSON_ERROR then INFO_JSON else error;
+  return r;
+}
+info_has :: (i: RelayInfo, nip: int) -> bool {
+  for k: 0..<i.nips_n { if i.nips[k] == nip { return true; } }
+  return false;
+}
+// book:end client
+INFO_ERRORS :: [5] string.["ok", "not JSON", "not an object", "bad supported_nips", "bad limitation field"];
+
+// ---- what the relay enforces -------------------------------------------------
+
+// book:begin enforced
+// The value of each limitation field as the relay's code enforces it, read
+// from the constants and procedures the relay calls, never typed by hand.
+enforced :: () -> [9] int {
+  big: NostrFilter; big.has_limit = true; big.limit = 1 << 40;
+  none: NostrFilter;
+  v: [9] int;
+  v[0] = RS_MAX_MESSAGE;          // wss_frame_read's limit and ws_take's message buffer
+  v[1] = RS_MAX_SUBS;             // rs_sub_open's cap in ry_req
+  v[2] = rs_limit(big);           // the clamp on a filter's limit
+  v[3] = MS_SUB_MAX;              // ms_read's subscription id length, in characters
+  v[4] = RS_MAX_TAGS;             // rs_admit_policy's tag count
+  v[5] = RS_FUTURE;               // rs_admit_policy's created_at window, seconds ahead
+  v[6] = rs_limit(none);          // a filter with no limit
+  v[7] = 0;                       // REQ and CLOSE never ask rr_authed
+  v[8] = ifx rr_writes_need_auth(true) then 1 else 0;   // EVENT needs a NIP-42 key
+  return v;
+}
+// The NIPs the relay implements, each with the code that implements it.
+RELAY_NIPS :: [4] int.[
+  1,     // message_server.coax, relay_server.coax: EVENT, REQ, CLOSE, OK, EOSE, CLOSED, NOTICE
+  11,    // this chapter: RR_NIP11 on Accept: application/nostr+json
+  40,    // rs_expiration and rs_live: expired events refused and never served
+  42     // nip42.coax and rr_auth: AUTH, and writes need an authenticated key
+];
+// The number of fields where the document disagrees with the relay.
+info_compare :: (i: RelayInfo, say: bool) -> int {
+  want := enforced(); bad := 0;
+  for k: 0..<9 {
+    same := i.limit[k] == want[k];
+    if !same { bad += 1; }
+    if say { print("  %: advertised %, enforced % %\n", LIMIT_NAMES[k], i.limit[k], want[k], ifx same then "ok" else "MISMATCH"); }
+  }
+  nips_same := i.nips_n == RELAY_NIPS.count;
+  for n: RELAY_NIPS { if !info_has(i, n) { nips_same = false; } }
+  if !nips_same { bad += 1; }
+  if say { print("  supported_nips: % listed, relay implements 1, 11, 40, 42 %\n", i.nips_n, ifx nips_same then "ok" else "MISMATCH"); }
+  return bad;
+}
+// book:end enforced
+
+// ---- the limits, hit one at a time --------------------------------------------
+
+// A masked text frame with an all-zero mask key (so the payload is sent as
+// is): fin, opcode, count bytes of 'x'. Its length.
+fragment :: (fin: bool, op: int, count: int, out: [] u8) -> int {
+  out[0] = cast(u8) op; if fin { out[0] += 0x80; }
+  at := 2;
+  if count < 126 { out[1] = cast(u8) (0x80 | count); }
+  else if count < 65536 { out[1] = 0x80 | 126; out[2] = cast,trunc(u8) (count >> 8); out[3] = cast,trunc(u8) count; at = 4; }
+  else { out[1] = 0x80 | 127; for k: 0..<8 { out[2 + k] = cast,trunc(u8) (count >> (8 * (7 - k))); } at = 10; }
+  for k: 0..<4 { out[at + k] = 0; }
+  at += 4;
+  for k: 0..<count { out[at + k] = 'x'; }
+  return at + count;
+}
+// Two fragments, first + second bytes, through ws_take into the relay's
+// message buffer: the event and, on refusal, the close code.
+Wire :: struct { bytes: [65560] u8; payload: [65537] u8; msg: [RS_MAX_MESSAGE] u8; }
+two_fragments :: (w: [] Wire, first: int, second: int) -> int {
+  r: [1] WsReader; ev := 0;
+  for part: 0..<2 {
+    n := fragment(part == 1, ifx part == 0 then WS_OP_TEXT else 0, ifx part == 0 then first else second, w[0].bytes[..]);
+    f := wss_frame_read(cast(string) w[0].bytes[0..<n], RS_MAX_MESSAGE);
+    #assert f.status == WS_FRAME_OK;
+    p := wss_unmask(cast(string) w[0].bytes[0..<n], f, w[0].payload[..]);
+    ev = ws_take(r[..], f, cast(string) w[0].payload[0..<p], w[0].msg[..]);
+  }
+  return ev;
+}
+// A REQ for sub id, one filter, read by ms_read: how the relay routes it and
+// the reply when it refuses, into out.
+req_reply :: (frame: string, out: [] u8) -> string {
+  m := ms_read(frame);
+  route := rr_message(m.error, m.type, m.has_sub);
+  if route.action == RR_REQ { return "routed to REQ"; }
+  sub := m.sub;
+  n := ifx route.action == RR_NOTICE then ms_write_notice(rs_prefix(route.reason), rs_text(route.reason), out)
+    else ms_write_closed(cast(string) sub[0..<m.sub_n], rs_prefix(route.reason), rs_text(route.reason), out);
+  return cast(string) out[0..<n];
+}
+// ["REQ","<count copies of unit>",{}] into out.
+req_with_sub :: (unit: string, count: int, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\"REQ\",\"");
+  for k: 0..<count { n = json_raw(out, n, unit); }
+  n = json_raw(out, n, "\",{}]");
+  return cast(string) out[0..<n];
+}
+// The effective limit of one filter's JSON.
+limit_of :: (filter: string) -> int {
+  strs: [8] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [256] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  #assert filter_read(filter, f[..], sp[..]) == FR_OK;
+  return rs_limit(f[0]);
+}
+// The admission policy's reply to one event before its signature: "passes
+// to the signature check", or the OK false the relay sends.
+policy_reply :: (event: string, authed: bool, out: [] u8) -> string {
+  scratch: [8192] u8;
+  a := rs_admit_read(event, NOW, rr_writes_need_auth(true), authed, scratch[..]);
+  if a.reason == RS_ACCEPT { return "passes to the signature check"; }
+  id := a.e.id;
+  n := ms_write_ok(id[..], false, rs_prefix(a.reason), rs_text(a.reason), out);
+  return cast(string) out[0..<n];
+}
+
+// The relay's own document with one field edited, into out.
+edited :: (old: string, new: string, out: [] u8) -> string {
+  doc := RR_NIP11; at := -1;
+  for i: 0..<doc.count - old.count + 1 { if at < 0 && doc[i..<i + old.count] == old { at = i; } }
+  #assert at >= 0;
+  n := json_raw(out, 0, doc[0..<at]); n = json_raw(out, n, new); n = json_raw(out, n, doc[at + old.count..<doc.count]);
+  return cast(string) out[0..<n];
+}
+
+NIP11_GET :: "GET / HTTP/1.1\r\nHost: relay.example\r\nAccept: application/nostr+json\r\n\r\n";
+UPGRADE :: "GET / HTTP/1.1\r\nHost: relay.example\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+BOTH :: "GET / HTTP/1.1\r\nAccept: application/nostr+json\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+
+main :: () {
+  print("routing: one request head, one answer\n");
+  show_route("1. Accept: application/nostr+json", NIP11_GET);
+  show_route("2. Upgrade: websocket", UPGRADE);
+  show_route("3. both headers", BOTH);
+  show_route("4. a browser's plain GET", "GET / HTTP/1.1\r\nHost: relay.example\r\nAccept: text/html\r\n\r\n");
+  show_route("5. Accept with a list and q", "GET / HTTP/1.1\r\nAccept: text/html, Application/Nostr+JSON;q=0.9\r\n\r\n");
+  show_route("6. Accept: application/nostr+jsonx", "GET / HTTP/1.1\r\nAccept: application/nostr+jsonx\r\n\r\n");
+  show_route("7. OPTIONS", "OPTIONS / HTTP/1.1\r\nAccept: application/nostr+json\r\n\r\n");
+  show_route("8. head not finished", "GET / HTTP/1.1\r\nAccept: application/nostr+json\r\n");
+
+  out: [1024] u8;
+  a := http_answer(NIP11_GET, out[..]);
+  head := 0; while cast(string) out[head..<head + 4] != "\r\n\r\n" { head += 1; }
+  head += 4;
+  print("\nthe NIP-11 answer: % bytes, head % and body %\n", a.n, head, a.n - head);
+  show_crlf(cast(string) out[0..<head]);
+  print("  %\n", cast(string) out[head..<a.n]);
+  b := http_answer("GET / HTTP/1.1\r\n\r\n", out[..]);
+  print("\nthe 400 answer: % bytes\n", b.n);
+  show_crlf(cast(string) out[0..<b.n]);
+
+  print("\nthe client reads the document\n");
+  i := info_read(RR_NIP11);
+  print("  error: %, name \"%\", software \"%\", version \"%\"\n", INFO_ERRORS[i.error], i.name, i.software, i.version);
+  print("  supported_nips:"); for k: 0..<i.nips_n { print(" %", i.nips[k]); } print("\n");
+  print("  NIP-45 COUNT listed: %, NIP-50 search listed: %\n", info_has(i, 45), info_has(i, 50));
+  print("advertised against enforced\n");
+  print("  % mismatches\n", info_compare(i, true));
+
+  print("\neach limit, at the limit and one past it\n");
+  w: [1] Wire;
+  print("max_message_length, one frame:\n");
+  for length: [2] int.[RS_MAX_MESSAGE, RS_MAX_MESSAGE + 1] {
+    h: [14] u8; h[0] = 0x81; h[1] = 0xff;
+    for k: 0..<8 { h[2 + k] = cast,trunc(u8) (length >> (8 * (7 - k))); }
+    fr := rr_frame_read(wss_frame_read(cast(string) h[..], RS_MAX_MESSAGE).status);
+    print("  payload %: %\n", length, ifx fr.action == RR_F_WAIT then "header admitted, waiting for the payload" else "refused, close 1009");
+    #assert fr.action == RR_F_WAIT || fr.code == WS_CLOSE_TOO_BIG;
+  }
+  print("max_message_length, two fragments:\n");
+  wv := w[..];
+  ev := two_fragments(wv, 65536, 65536);
+  print("  65536 + 65536 = 131072: %\n", ifx ev == WS_EV_MESSAGE then "one message" else "refused");
+  ev = two_fragments(wv, 65536, 65537);
+  print("  65536 + 65537 = 131073: %\n", ifx ev == WS_EV_TOO_BIG then "refused, close 1009" else "one message");
+  #assert ws_error_code(ev) == WS_CLOSE_TOO_BIG;
+
+  print("max_subscriptions:\n");
+  subs: [RS_MAX_SUBS] RsSub;
+  sv := subs[..];
+  for k: 0..<RS_MAX_SUBS { sv[k].live = false; }
+  last := 0; text: [64] u8;
+  for k0: 0..<RS_MAX_SUBS + 1 {
+    k := k0 + 1;
+    n := json_raw(text[..], 0, "[\"REQ\",\"s"); n = json_write_int(text[..], n, k); n = json_raw(text[..], n, "\",{}]");
+    t := cast(string) text[0..<n];
+    last = rs_sub_open(sv, ms_read(t), t, RS_MAX_SUBS);
+    if k == RS_MAX_SUBS { print("  s1..s%: slots 0..%, % live\n", k, last, rs_subs_live(sv)); }
+  }
+  c := ms_write_closed("s33", rs_prefix(-last), rs_text(-last), out[..]);
+  print("  s33: %\n", cast(string) out[0..<c]);
+  again := "[\"REQ\",\"s1\",{\"kinds\":[1]}]";
+  print("  s1 again (replaces it): slot %, % live\n", rs_sub_open(sv, ms_read(again), again, RS_MAX_SUBS), rs_subs_live(sv));
+
+  print("max_subid_length:\n");
+  q: [512] u8;
+  print("  64 x \"a\": %\n", req_reply(req_with_sub("a", 64, q[..]), out[..]));
+  print("  65 x \"a\": %\n", req_reply(req_with_sub("a", 65, q[..]), out[..]));
+  print("  64 x \"\\u00e9\" (128 bytes): %\n", req_reply(req_with_sub("é", 64, q[..]), out[..]));
+
+  print("max_limit and default_limit (clamped, never refused):\n");
+  for f: [5] string.["{\"limit\":5}", "{\"limit\":127}", "{\"limit\":128}", "{\"limit\":5000}", "{}"] {
+    print("  %: %\n", f, limit_of(f));
+  }
+
+  print("max_event_tags (now = %):\n", NOW);
+  print("  256 tags: %\n", policy_reply(RST_TAGS256, true, out[..]));
+  print("  257 tags: %\n", policy_reply(RST_TAGS, true, out[..]));
+  print("created_at_upper_limit:\n");
+  print("  created_at 1900: %\n", policy_reply(RST_EDGE, true, out[..]));
+  print("  created_at 1901: %\n", policy_reply(RST_FUTURE, true, out[..]));
+  print("restricted_writes and auth_required:\n");
+  print("  EVENT, no AUTH yet: %\n", policy_reply(RST_PLAIN, false, out[..]));
+  print("  EVENT, authenticated: %\n", policy_reply(RST_PLAIN, true, out[..]));
+  print("  REQ, no AUTH: %\n", req_reply("[\"REQ\",\"open\",{\"kinds\":[1]}]", out[..]));
+  print("supported_nips:\n");
+  print("  NIP-40, expiration 1000 at now 1000: %\n", policy_reply(RST_EXPIRED, true, out[..]));
+  print("  NIP-45 COUNT (not listed): %\n", req_reply("[\"COUNT\",\"c\",{}]", out[..]));
+  sr := "[\"REQ\",\"s\",{\"search\":\"relay\"}]";
+  v := rs_req(ms_read(sr), sr);
+  c = ms_write_closed("s", rs_prefix(v), rs_text(v), out[..]);
+  print("  NIP-50 search (not listed): %\n", cast(string) out[0..<c]);
+
+  print("\nbroken documents\n");
+  d: [1024] u8;
+  i = info_read(edited("131072", "131073", d[..]));
+  print("max_message_length edited to 131073: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
+  want := enforced();
+  print("  max_message_length: advertised %, enforced %\n", i.limit[0], want[0]);
+  i = info_read(edited("\"restricted_writes\":true", "\"restricted_writes\":false", d[..]));
+  print("restricted_writes edited to false: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
+  i = info_read(edited("[1,11,40,42]", "[1,11,40,42,45]", d[..]));
+  print("NIP-45 added to supported_nips: read %, % mismatch\n", INFO_ERRORS[i.error], info_compare(i, false));
+  print("last byte cut: %\n", INFO_ERRORS[info_read(RR_NIP11[0..<RR_NIP11.count - 1]).error]);
+  print("an array: %\n", INFO_ERRORS[info_read("[]").error]);
+  print("\"supported_nips\":[\"11\"]: %\n", INFO_ERRORS[info_read("{\"supported_nips\":[\"11\"]}").error]);
+  print("\"max_limit\":-1: %\n", INFO_ERRORS[info_read("{\"limitation\":{\"max_limit\":-1}}").error]);
+  print("unknown fields skipped: %\n", INFO_ERRORS[info_read("{\"x\":[{\"y\":1}],\"limitation\":{\"z\":{},\"max_limit\":9}}").error]);
+}
+// book:end example

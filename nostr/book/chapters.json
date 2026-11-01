@@ -764,14 +764,16 @@
    "number": 37,
    "title": "NIP-11 relay information",
    "file": "ch037-nip-11-relay-information.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     34
    ],
    "source": [
     "coax/lib/nostr/relay_route.coax",
-    "coax/lib/nostr/relay_server.coax"
+    "coax/lib/nostr/relay_server.coax",
+    "nostr/examples/relay-info.coax",
+    "nostr/examples/checks/relay-info.coax"
    ],
    "qualified_targets": [
     "cpu"

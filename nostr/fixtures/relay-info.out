@@ -1,0 +1,95 @@
+routing: one request head, one answer
+1. Accept: application/nostr+json: NIP11 -> NIP-11, answer "HTTP/1.1 200 OK"
+2. Upgrade: websocket: OK -> upgrade, answer "HTTP/1.1 101 Switching Protocols"
+3. both headers: OK -> upgrade, answer "HTTP/1.1 101 Switching Protocols"
+4. a browser's plain GET: UPGRADE -> 400, answer "HTTP/1.1 400 Bad Request"
+5. Accept with a list and q: NIP11 -> NIP-11, answer "HTTP/1.1 200 OK"
+6. Accept: application/nostr+jsonx: UPGRADE -> 400, answer "HTTP/1.1 400 Bad Request"
+7. OPTIONS: METHOD -> 400, answer "HTTP/1.1 400 Bad Request"
+8. head not finished: MORE -> wait, answer ""
+
+the NIP-11 answer: 703 bytes, head 197 and body 506
+  HTTP/1.1 200 OK\r\n
+  Content-Type: application/nostr+json\r\n
+  Content-Length: 506\r\n
+  Access-Control-Allow-Origin: *\r\n
+  Access-Control-Allow-Headers: *\r\n
+  Access-Control-Allow-Methods: GET\r\n
+  Connection: close\r\n
+  \r\n
+  {"name":"OpenAgents Coax relay (R1)","description":"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.","supported_nips":[1,11,40,42],"software":"https://github.com/OpenAgentsInc/openagents","version":"r1","limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127}}
+
+the 400 answer: 276 bytes
+  HTTP/1.1 400 Bad Request\r\n
+  Content-Type: text/plain\r\n
+  Content-Length: 83\r\n
+  Access-Control-Allow-Origin: *\r\n
+  Access-Control-Allow-Headers: *\r\n
+  Access-Control-Allow-Methods: GET\r\n
+  Connection: close\r\n
+  \r\n
+  This is a Nostr relay: connect with a WebSocket, or ask for application/nostr+json.
+
+the client reads the document
+  error: ok, name "OpenAgents Coax relay (R1)", software "https://github.com/OpenAgentsInc/openagents", version "r1"
+  supported_nips: 1 11 40 42
+  NIP-45 COUNT listed: false, NIP-50 search listed: false
+advertised against enforced
+  max_message_length: advertised 131072, enforced 131072 ok
+  max_subscriptions: advertised 32, enforced 32 ok
+  max_limit: advertised 127, enforced 127 ok
+  max_subid_length: advertised 64, enforced 64 ok
+  max_event_tags: advertised 256, enforced 256 ok
+  created_at_upper_limit: advertised 900, enforced 900 ok
+  default_limit: advertised 127, enforced 127 ok
+  auth_required: advertised 0, enforced 0 ok
+  restricted_writes: advertised 1, enforced 1 ok
+  supported_nips: 4 listed, relay implements 1, 11, 40, 42 ok
+  0 mismatches
+
+each limit, at the limit and one past it
+max_message_length, one frame:
+  payload 131072: header admitted, waiting for the payload
+  payload 131073: refused, close 1009
+max_message_length, two fragments:
+  65536 + 65536 = 131072: one message
+  65536 + 65537 = 131073: refused, close 1009
+max_subscriptions:
+  s1..s32: slots 0..31, 32 live
+  s33: ["CLOSED","s33","restricted: too many active subscriptions"]
+  s1 again (replaces it): slot 0, 32 live
+max_subid_length:
+  64 x "a": routed to REQ
+  65 x "a": ["NOTICE","invalid: subscription id must contain 1 to 64 characters"]
+  64 x "\u00e9" (128 bytes): routed to REQ
+max_limit and default_limit (clamped, never refused):
+  {"limit":5}: 5
+  {"limit":127}: 127
+  {"limit":128}: 127
+  {"limit":5000}: 127
+  {}: 127
+max_event_tags (now = 1000):
+  256 tags: passes to the signature check
+  257 tags: ["OK","1cbac746adff2816c942a3ca190029aa4cb893d89c96c05a33e0b8819a161a9c",false,"invalid: event has too many tags"]
+created_at_upper_limit:
+  created_at 1900: passes to the signature check
+  created_at 1901: ["OK","05e5d33da3af2eabf686cb09e2a8139b68a6e3e831c280396da89097f55eb0e5",false,"invalid: the event's created_at timestamp is too far in the past or the future for this relay"]
+restricted_writes and auth_required:
+  EVENT, no AUTH yet: ["OK","18c059d7cc15e21c516db0807a502f8ab482a23b7e9d64c27ecf4af5b010bc53",false,"auth-required: authenticate before publishing"]
+  EVENT, authenticated: passes to the signature check
+  REQ, no AUTH: routed to REQ
+supported_nips:
+  NIP-40, expiration 1000 at now 1000: ["OK","2428ab7235e4d5085e98c604a8bd041883da188674d85a63a2f808fd6b839c1b",false,"invalid: event has expired"]
+  NIP-45 COUNT (not listed): ["CLOSED","c","error: COUNT is not supported by this relay"]
+  NIP-50 search (not listed): ["CLOSED","s","invalid: malformed filter"]
+
+broken documents
+max_message_length edited to 131073: read ok, 1 mismatch
+  max_message_length: advertised 131073, enforced 131072
+restricted_writes edited to false: read ok, 1 mismatch
+NIP-45 added to supported_nips: read ok, 1 mismatch
+last byte cut: not JSON
+an array: not an object
+"supported_nips":["11"]: bad supported_nips
+"max_limit":-1: bad limitation field
+unknown fields skipped: ok
