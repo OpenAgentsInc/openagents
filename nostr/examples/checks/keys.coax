@@ -1,0 +1,119 @@
+// The checks of keys.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/keys.coax --run-steps 250000000
+#load "../keys.coax";
+
+// book:begin check
+// The BIP-340 test vectors 0 to 3 as (secret key, public key x). Each secret,
+// drawn from a test host, is accepted on the first draw and gives the
+// published x.
+BIP340 :: [8] string.[
+    "0000000000000000000000000000000000000000000000000000000000000003", "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef", "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9", "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+    "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710", "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517"];
+#forall "a drawn BIP-340 secret gives the published public key" i: 0..<4 #steps 1000000000 {
+  h: [1] TestHost; host_add(h[..], BIP340[2 * i]);
+  key: [32] u8; pub: [32] u8; want: [32] u8;
+  d := draw_key(h[..], key[..]);
+  #assert d.status == KEY_OK && d.draws == 1;
+  #assert derive_public_key(key[..], pub[..]);
+  #assert hex_decode_checked(BIP340[2 * i + 1], want[..], false).error == 0;
+  for j: 0..<32 { #assert pub[j] == want[j]; }
+}
+// Hand-derived boundaries: n's limbs, big-endian, are ffffffff ffffffff
+// ffffffff fffffffe baaedce6 af48a03b bfd25e8c d0364141. n minus one in
+// limb i is a valid key; n plus one in limb i (limbs 0 to 3, which are not
+// ffffffff) is not. 0, n, n + 1 and 2^256 - 1 are refused; 1 and n - 1 are
+// accepted.
+N_LIMBS :: [8] u32.[0xd0364141, 0xbfd25e8c, 0xaf48a03b, 0xbaaedce6, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff];
+bytes_of :: (limbs: [8] u32, out: [] u8) {
+  for i: 0..<8 { for j: 0..<4 { out[31 - 4 * i - j] = cast,trunc(u8)(limbs[i] >> (8 * j)); } }
+}
+#forall "one below n in any limb is a key; one above n is not" i: 0..<8 {
+  limbs := N_LIMBS; b: [32] u8;
+  limbs[i] -= 1; bytes_of(limbs, b[..]);
+  #assert key_valid(b[..]);
+  if i < 4 { limbs[i] += 2; bytes_of(limbs, b[..]); #assert !key_valid(b[..]); }
+}
+#test "the edges of the key range" {
+  b: [32] u8;
+  #assert !key_valid(b[..]);
+  b[31] = 1; #assert key_valid(b[..]);
+  bytes_of(N_LIMBS, b[..]); #assert !key_valid(b[..]);
+  b[31] = 0x42; #assert !key_valid(b[..]);
+  b[31] = 0x40; #assert key_valid(b[..]);
+  for i: 0..<32 { b[i] = 0xff; } #assert !key_valid(b[..]);
+  #assert !key_valid(b[0..<31]);
+}
+// Each refused draw costs one draw; the first valid one is kept.
+#forall "refused draws are retried in order" refused: 0..<9 {
+  h: [1] TestHost;
+  bad := [3] string.[ZERO, N_HEX, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"];
+  for r: 0..<refused { host_add(h[..], bad[r % 3]); }
+  if refused < KEY_MAX_DRAWS { host_add(h[..], N_MINUS_1); }
+  key: [32] u8;
+  d := draw_key(h[..], key[..]);
+  if refused < KEY_MAX_DRAWS {
+    want: [32] u8; #assert hex_decode_checked(N_MINUS_1, want[..], false).error == 0;
+    #assert d.status == KEY_OK && d.draws == refused + 1;
+    for j: 0..<32 { #assert key[j] == want[j]; }
+  } else {
+    #assert d.status == KEY_EXHAUSTED && d.draws == KEY_MAX_DRAWS;
+    for b: key { #assert b == 0; }
+  }
+}
+// A failing host refuses on the draw it fails, and the key stays zero.
+#forall "a host failure stops the draw" written: 0..<32 {
+  h: [1] TestHost; h[0].written = written; host_add(h[..], BIP340[2]);
+  key: [32] u8; for j: 0..<32 { key[j] = 0x5a; }
+  d := draw_key(h[..], key[..]);
+  #assert d.status == KEY_ENTROPY && d.draws == 1 && d.entropy == ENTROPY_SHORT;
+  for b: key { #assert b == 0; }
+}
+#test "a host with no source refuses" {
+  h: [1] TestHost; h[0].available = false; host_add(h[..], BIP340[2]);
+  key: [32] u8;
+  d := draw_key(h[..], key[..]);
+  #assert d.status == KEY_ENTROPY && d.entropy == ENTROPY_UNAVAILABLE;
+  pub: [32] u8; #assert !derive_public_key(key[..], pub[..]);
+}
+// The test host itself: at most 8 draws, bad hex is not a draw, and each
+// draw is handed out once, in order.
+#test "the test host hands out its list in order, then zeros" {
+  h: [1] TestHost;
+  host_add(h[..], "not hex");
+  #assert h[0].count == 0;
+  host_add(h[..], "abc");
+  #assert h[0].count == 0;
+  for i: 0..<HOST_DRAWS + 1 { host_add(h[..], BIP340[2 * (i % 4)]); }
+  #assert h[0].count == HOST_DRAWS;
+  out: [32] u8; want: [32] u8;
+  for i: 0..<HOST_DRAWS {
+    #assert host_fill(h[..], out[..]) == ENTROPY_OK;
+    #assert hex_decode_checked(BIP340[2 * (i % 4)], want[..], false).error == 0;
+    for j: 0..<32 { #assert out[j] == want[j]; }
+  }
+  #assert host_fill(h[..], out[..]) == ENTROPY_OK;
+  for b: out { #assert b == 0; }
+}
+// The local slot with the wrong key: vector 0's secret (3) signs a request
+// for vector 1's identity. The signature is valid, but for another pubkey,
+// so the reply check refuses it and the request stays approved.
+#test "a local key that is not the requested identity is refused" #steps 1000000000 {
+  t: [1] SignerTable; scratch: [1024] u8; out: [1024] u8; local: [1] SignerLocal;
+  tags := ES_TAGS; content := ES_CONTENT; pub := ES_PUB; aux := ES_AUX;
+  three: [32] u8; three[31] = 3;
+  #assert signer_local_load(local[..], three[..], aux[..]) == SR_OK;
+  id := signer_ask(t[..], SIGNER_LOCAL, SCOPE_EVENT, pub[..], ES_KIND, ES_CREATED,
+                   cast(string) tags[..], cast(string) content[..], ES_CREATED, 60, scratch[..]).id;
+  #assert signer_approve(t[..], id, ES_CREATED) == SR_OK;
+  n := 0; steps := 0;
+  while n == 0 && steps < 100 {
+    n = signer_local_step(t[..], local[..], id, cast(string) tags[..], cast(string) content[..], ES_CREATED, scratch[..], out[..]);
+    steps += 1;
+  }
+  #assert n == -SR_IDENTITY && signer_state(t[..], id) == SLOT_APPROVED;
+  for b: out { #assert b == 0; }
+}
+// book:end check

@@ -22,7 +22,7 @@
 - [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) — implemented
 - [10. Scalar multiplication](ch010-scalar-multiplication.md) — implemented
 - [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — partly implemented
-- [12. Keys and randomness](ch012-keys-and-randomness.md) — partly implemented
+- [12. Keys and randomness](ch012-keys-and-randomness.md) — implemented
 - [13. Sign with Schnorr](ch013-sign-with-schnorr.md) — partly implemented
 - [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — partly implemented
 

@@ -1,0 +1,189 @@
+// book:begin example
+#load "../../coax/lib/crypto/entropy.coax";
+#load "../../coax/lib/crypto/secp_mult_base_native.coax";
+#load "../../coax/lib/nostr/keys.coax";
+#import "Basic";
+
+// A test host. It hands out fixed 32-byte draws in order, through the same
+// completion policy (entropy_finish) that the Mac, Linux, iOS and browser
+// hosts use. A real host fills scratch from the OS; this one copies the next
+// fixed draw, or zeros once the list runs out. written is what the host
+// reports, so a test can make it short.
+HOST_DRAWS :: 8;
+TestHost :: struct {
+  pool: [256] u8;   // HOST_DRAWS draws of 32 bytes
+  count: int;       // how many draws the list holds
+  next: int;        // the next draw to hand out
+  available: bool = true;
+  written: int = 32;
+}
+// Adds one draw, given as 64 hex digits. A full list or bad hex adds nothing.
+host_add :: (h: [] TestHost, text: string) {
+  b: [32] u8;
+  if h[0].count >= HOST_DRAWS || hex_decode_checked(text, b[..], false).error != 0 { return; }
+  for i: 0..<32 { h[0].pool[32 * h[0].count + i] = b[i]; }
+  h[0].count += 1;
+}
+// One 32-byte request. Returns an ENTROPY_ code; on any error out is untouched.
+host_fill :: (h: [] TestHost, out: [] u8) -> u32 {
+  scratch: [32] u8;
+  if h[0].next < h[0].count {
+    for i: 0..<32 { scratch[i] = h[0].pool[32 * h[0].next + i]; }
+  }
+  h[0].next += 1;
+  r := entropy_finish(32, out, scratch[..], true, false, h[0].available, true, h[0].written);
+  return r.error;
+}
+
+// Key generation: draw 32 bytes, keep them only if 0 < k < n, else draw
+// again. A bounded number of draws turns a broken host (one that returns
+// zeros forever) into a refusal instead of a hang.
+KEY_OK :: 0; KEY_ENTROPY :: 1; KEY_EXHAUSTED :: 2;
+KEY_MAX_DRAWS :: 8;
+KeyDraw :: struct { status: int = KEY_OK; draws: int; entropy: u32; }
+key_valid :: (bytes: [] u8) -> bool {
+  l := sc_load(bytes);   // ok is false when the value is n or more
+  return l.ok && !sc_is_zero(l.value);
+}
+draw_key :: (h: [] TestHost, key: [] u8) -> KeyDraw {
+  r: KeyDraw;
+  for d: 0..<KEY_MAX_DRAWS {
+    r.draws = d + 1;
+    r.entropy = host_fill(h, key);
+    if r.entropy != ENTROPY_OK { for i: 0..<key.count { key[i] = 0; } r.status = KEY_ENTROPY; return r; }
+    if key_valid(key) { return r; }
+  }
+  for i: 0..<key.count { key[i] = 0; }
+  r.status = KEY_EXHAUSTED; return r;
+}
+// The x-only public key: the x coordinate of k·G, as 32 bytes.
+derive_public_key :: (key: [] u8, out: [] u8) -> bool {
+  l := sc_load(key);
+  if !l.ok || sc_is_zero(l.value) { return false; }
+  // For 0 < k < n, k·G is a finite point, so its affine x always exists.
+  a := sg_to_affine(smb_multiply_native(l.value));
+  return sf_store(a.value.x, out);
+}
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [256] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Say why one 32-byte value is or is not a secret key.
+classify :: (label: string, text: string) {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == 0;
+  l := sc_load(b[..]);
+  why := ifx !l.ok then "n or more, refused" else ifx sc_is_zero(l.value) then "zero, refused" else "valid";
+  print("%: %\n", label, why);
+}
+SR_NAMES :: [16] string.["OK", "INPUT", "SCOPE", "FULL", "UNKNOWN", "UNAPPROVED", "DUPLICATE", "LATE",
+                         "CLOSED", "MALFORMED", "TAMPERED", "IDENTITY", "BODY", "SIGNATURE", "TARGET", "STATE"];
+show_reply :: (label: string, status: int) { print("%: %\n", label, SR_NAMES[status]); }
+KEY_NAMES :: [3] string.["KEY_OK", "KEY_ENTROPY", "KEY_EXHAUSTED"];
+ENTROPY_NAMES :: [8] string.["OK", "COUNT", "CAPACITY", "SPAN", "ALIAS", "UNAVAILABLE", "FAILED", "SHORT"];
+show_draw :: (label: string, d: KeyDraw) {
+  print("%: %, draws made %", label, KEY_NAMES[d.status], d.draws);
+  if d.status == KEY_ENTROPY { print(", ENTROPY_%", ENTROPY_NAMES[d.entropy]); }
+  print("\n");
+}
+
+ZERO      :: "0000000000000000000000000000000000000000000000000000000000000000";
+N_HEX     :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+N_MINUS_1 :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140";
+ABOVE     :: "fffffffffffffffffffffffffffffffebaaedce6af48a03c0000000000000000";
+BELOW     :: "fffffffffffffffffffffffffffffffebaaedce6af48a03affffffffffffffff";
+// BIP-340 test vector 1's secret key: a published test key, never a real one.
+VECTOR_1  :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+
+main :: () {
+  // Which 32-byte values are secret keys.
+  classify("0", ZERO);
+  classify("n", N_HEX);
+  classify("n - 1", N_MINUS_1);
+  classify("above (limb 2 is af48a03c)", ABOVE);
+  classify("below (limb 2 is af48a03a)", BELOW);
+
+  // Draw a key from a host whose first three draws are refused.
+  h: [1] TestHost;
+  host_add(h[..], ZERO); host_add(h[..], N_HEX); host_add(h[..], ABOVE); host_add(h[..], VECTOR_1);
+  key: [32] u8;
+  d := draw_key(h[..], key[..]);
+  show_draw("draw", d);
+  vector: [32] u8;
+  #assert hex_decode_checked(VECTOR_1, vector[..], false).error == 0;
+  same := true; for i: 0..<32 { if key[i] != vector[i] { same = false; } }
+  print("the key is BIP-340 vector 1's secret: %\n", same);
+  pub: [32] u8;
+  print("public key derived: %\n", derive_public_key(key[..], pub[..]));
+  show("x-only public key", pub[..]);
+
+  // Hosts that fail.
+  bad: [32] u8;
+  zeros: [1] TestHost;
+  d = draw_key(zeros[..], bad[..]);
+  show_draw("host that returns only zeros", d);
+  wiped := true; for b: bad { if b != 0 { wiped = false; } }
+  print("key buffer left zero: %\n", wiped);
+  short: [1] TestHost; short[0].written = 31; host_add(short[..], VECTOR_1);
+  d = draw_key(short[..], bad[..]);
+  show_draw("host that writes 31 of 32 bytes", d);
+  gone: [1] TestHost; gone[0].available = false;
+  d = draw_key(gone[..], bad[..]);
+  show_draw("host with no source", d);
+
+  // A signer request for the drawn identity and the vector's body.
+  t: [1] SignerTable; scratch: [1024] u8;
+  tags := ES_TAGS; content := ES_CONTENT;
+  a := signer_ask(t[..], SIGNER_NIP07, SCOPE_EVENT, pub[..], ES_KIND, ES_CREATED,
+                  cast(string) tags[..], cast(string) content[..], ES_CREATED, 60, scratch[..]);
+  print("ask: % id %\n", SR_NAMES[a.status], a.id);
+  show("expected event id", t[0].slots[0].expect[..]);
+  good := ES_EVENT;
+  show_reply("reply before approval", signer_reply(t[..], a.id, cast(string) good[..], ES_CREATED, scratch[..]));
+  show_reply("approve", signer_approve(t[..], a.id, ES_CREATED));
+
+  // Refused replies. None of them closes the request.
+  show_reply("reply {}", signer_reply(t[..], a.id, "{}", ES_CREATED, scratch[..]));
+  tampered := ES_EVENT; c := ne_parse(cast(string) tampered[..]).content_from;
+  tampered[c] = ifx tampered[c] == 'l' then 'L' else 'l';
+  show_reply("reply with one content byte changed", signer_reply(t[..], a.id, cast(string) tampered[..], ES_CREATED, scratch[..]));
+  forged := ES_EVENT; last := forged.count - 3;   // the signature's last hex digit
+  forged[last] = ifx forged[last] == '0' then '1' else '0';
+  show_reply("reply with one signature digit changed", signer_reply(t[..], a.id, cast(string) forged[..], ES_CREATED, scratch[..]));
+  other := signer_ask(t[..], SIGNER_NIP07, SCOPE_EVENT, pub[..], ES_KIND, ES_CREATED,
+                      cast(string) tags[..], "other", ES_CREATED, 60, scratch[..]).id;
+  #assert signer_approve(t[..], other, ES_CREATED) == SR_OK;
+  show_reply("reply to a request for other content", signer_reply(t[..], other, cast(string) good[..], ES_CREATED, scratch[..]));
+  g: [32] u8;   // x of G, the public key of the secret 1
+  #assert hex_decode_checked("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", g[..], false).error == 0;
+  stranger := signer_ask(t[..], SIGNER_NIP07, SCOPE_EVENT, g[..], ES_KIND, ES_CREATED,
+                         cast(string) tags[..], cast(string) content[..], ES_CREATED, 60, scratch[..]).id;
+  #assert signer_approve(t[..], stranger, ES_CREATED) == SR_OK;
+  show_reply("reply to a request for another key", signer_reply(t[..], stranger, cast(string) good[..], ES_CREATED, scratch[..]));
+  print("request still approved: %\n", signer_state(t[..], a.id) == SLOT_APPROVED);
+
+  // The right reply, then the same reply again.
+  show_reply("reply with the vector event", signer_reply(t[..], a.id, cast(string) good[..], ES_CREATED, scratch[..]));
+  show_reply("the same reply again", signer_reply(t[..], a.id, cast(string) good[..], ES_CREATED, scratch[..]));
+
+  // The local slot signs with the drawn key; its output goes through the
+  // same reply check.
+  local: [1] SignerLocal; aux := ES_AUX; out: [1024] u8;
+  #assert signer_local_load(local[..], key[..], aux[..]) == SR_OK;
+  l := signer_ask(t[..], SIGNER_LOCAL, SCOPE_EVENT, pub[..], ES_KIND, ES_CREATED,
+                  cast(string) tags[..], cast(string) content[..], ES_CREATED, 60, scratch[..]).id;
+  #assert signer_approve(t[..], l, ES_CREATED) == SR_OK;
+  n := 0; steps := 0;
+  while n == 0 && steps < 100 {
+    n = signer_local_step(t[..], local[..], l, cast(string) tags[..], cast(string) content[..], ES_CREATED, scratch[..], out[..]);
+    steps += 1;
+  }
+  signer_local_forget(local[..]);
+  print("local signer: % bytes, request signed %\n", n, signer_state(t[..], l) == SLOT_SIGNED);
+  equal := n == good.count; for i: 0..<good.count { if equal && out[i] != good[i] { equal = false; } }
+  print("local event equals the vector event: %\n", equal);
+}
+// book:end example

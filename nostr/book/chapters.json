@@ -241,7 +241,7 @@
    "number": 12,
    "title": "Keys and randomness",
    "file": "ch012-keys-and-randomness.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     8,
@@ -249,7 +249,9 @@
    ],
    "source": [
     "coax/lib/crypto/entropy.coax",
-    "coax/lib/nostr/keys.coax"
+    "coax/lib/nostr/keys.coax",
+    "nostr/examples/keys.coax",
+    "nostr/examples/checks/keys.coax"
    ],
    "qualified_targets": [
     "cpu",

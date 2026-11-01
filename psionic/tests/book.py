@@ -99,6 +99,8 @@ def check(name="psionic"):
         assert item["modes"] == ["debug", "release"], "both build modes are required"
         steps = item.get("run_steps")
         assert steps is None or (type(steps) is int and 1 <= steps <= 250000000), f"run_steps is 1 to 250000000: {source}"
+        limit = item.get("timeout")
+        assert limit is None or (type(limit) is int and 60 <= limit <= 600), f"timeout is 60 to 600 seconds: {source}"
     print(f"{name} book structure: {len(examples)} programs, {listings} source-linked listings, local links pass")
     return examples
 
@@ -159,7 +161,8 @@ def run_one(compiler, item, mode):
     # A program whose compile-time tables need more than the default budget.
     if "run_steps" in item:
         cmd += ["--run-steps", str(item["run_steps"])]
-    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=60)
+    # A program that loads the whole signer compiles for longer than a minute.
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60))
     assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
     assert not result.stderr, f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
     assert result.stdout == path(item["stdout"]).read_bytes(), f"transcript drift: {cmd}\n{result.stdout.decode()}"

@@ -1,0 +1,27 @@
+0: zero, refused
+n: n or more, refused
+n - 1: valid
+above (limb 2 is af48a03c): n or more, refused
+below (limb 2 is af48a03a): valid
+draw: KEY_OK, draws made 4
+the key is BIP-340 vector 1's secret: true
+public key derived: true
+x-only public key: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+host that returns only zeros: KEY_EXHAUSTED, draws made 8
+key buffer left zero: true
+host that writes 31 of 32 bytes: KEY_ENTROPY, draws made 1, ENTROPY_SHORT
+host with no source: KEY_ENTROPY, draws made 1, ENTROPY_UNAVAILABLE
+ask: OK id 1
+expected event id: c2a51f7bfd1bddf835bcd3e1a0c9157eba6aa1234c322d93384e1f9446772c87
+reply before approval: UNAPPROVED
+approve: OK
+reply {}: MALFORMED
+reply with one content byte changed: TAMPERED
+reply with one signature digit changed: SIGNATURE
+reply to a request for other content: BODY
+reply to a request for another key: IDENTITY
+request still approved: true
+reply with the vector event: OK
+the same reply again: DUPLICATE
+local signer: 589 bytes, request signed true
+local event equals the vector event: true
