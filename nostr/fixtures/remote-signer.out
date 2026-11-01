@@ -1,0 +1,56 @@
+== 1. The bunker token and the three keys
+URI: ok, remote signer c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+  relay wss://relay.example.com; secret: 6 bytes, kept and not printed
+  client key 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+  user key   f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9 (learned by get_public_key)
+
+== 2. connect, then get_public_key
+request c1 (145 bytes): connect, params [the signer's key, the secret, "sign_event:1,sign_event:4"]
+  the signer: ok, session 0, granted kinds 1 (it offered 1 and 7; the client asked for 1 and 4)
+response: {"id":"c1","result":"ack"}
+  client -> ok, client connected
+response: {"id":"k1","result":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"}
+  client -> ok, client ready
+  the user's key is the client's key: false; is the signer's key: false
+
+== 3. sign_event, by hand and by the code
+chapter 12: request 1, approved ok, expected id c12bdb20e95e5fef04d90dc20dbf353d840152939c9ba32d017bfd133caac907
+plaintext (133 bytes): {"id":"s1","method":"sign_event","params":["{\"kind\":1,\"created_at\":1762000000,\"tags\":[],\"content\":\"hello from a bunker\"}"]}
+conversation key: c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d
+payload (304 characters): AkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGPveWFooJ5gTeFF72e2bMrC0it/WhLD89S7E98cOCdJvP9W7nbfYlslmwWRiFMqT0swE0LZD9r98tftDbuo+IZSSCohUuweK7rGMAyEu9HrH+DjQo014i82RWsCfKKjhrICSSNc4qQFptHOWCR5/afRojWelhcCIYzQkZG/Qr72k5OeXgTFUQihwsTiCT9b3U3l+OQjuP0tcO6c9KFsgs1xuvhXoBsu46TrOocUDR7WsoxmPqfiP18NCWHCK53ljCZXk=
+request event id 574edf34e6bf0d063cccb4f9c12fc90f7373f09af3d8ef0052daffdf3fd66513, tags [["p","c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"]]
+  the signer: ok, kind 1
+response (406 bytes): {"id":"s1","result":"{\"id\":\"c12bdb20e95e5fef04d90dc20dbf353d840152939c9ba32d017bfd133caac907\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1762000000,\"kind\":1,\"tags\":[],\"content\":\"hello from a bunker\",\"sig\":\"08489dfb50ed3d512a20c9feb7b543ae7c7dd9c5f63beb52d731c9e53b899cc893a1d4fd082809efeaad22be4b75f2edcd1d71d7ceff8fe47a048a2f45b03546\"}"}
+response event id 4d46758978ffcdbe707d6ee2104f0ee1d36818997b8b37c5a65bd74846439f31
+  client -> ok, client ready
+  chapter 12's signer_reply on the result: ok, state signed true
+
+== 4. The same client and an independent bunker
+request s2 sent: ok
+Python's response event: verified true, id c24cfeb25376bab1ad4223ddc91a35c6764c40c43396d2d535c513a72ee05ea2
+  client -> ok, client ready
+  chapter 12's signer_reply on the result: ok
+
+== 5. The client's own nostrconnect token
+URI: ok, client 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798, name Coax, perms: 1 kind(s)
+  the signer accepts the pasted token: ok
+  a connect response with "ack" -> the secret is not echoed, client connecting
+  a connect response echoing the secret -> ok, client connected
+  the signer is the response's author: true
+
+== 6. Refusals
+a bunker URI with no secret: no secret
+a bunker URI with no relay: no relay
+an uppercase client key: bad key
+connect again with the used secret, from another client: the secret was used
+connect with a wrong secret: bad secret
+sign_event for kind 4: the signer says not allowed; response {"id":"s4","error":"not allowed"}
+  client -> the signer answered an error, client ready, error "not allowed"
+a sign_event request from a key with no session: not allowed
+the client asks nip04_encrypt: NIP-04 methods are refused
+a response to an id the client never sent: no request has this id
+ping p1 at T0+12, waiting 30 s, answered by another key: another author
+  answered at T0+43: late
+a bunker that signs another content: chapter 12 says another body
+a NIP-04 payload: not NIP-44 v2
+after n46_forget: 0 relays, secret all zero true

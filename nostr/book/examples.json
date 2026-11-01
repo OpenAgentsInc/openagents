@@ -901,6 +901,18 @@
         "release"
       ],
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/remote-signer.coax",
+      "chapter": "nostr/book/ch048-signers-outside-the-app.md",
+      "stdout": "nostr/fixtures/remote-signer.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

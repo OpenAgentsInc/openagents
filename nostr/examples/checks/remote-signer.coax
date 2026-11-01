@@ -1,0 +1,103 @@
+// The checks of remote-signer.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/remote-signer.coax --run-steps 250000000
+#load "../remote-signer.coax";
+
+// book:begin check
+// From a Python script written from NIP-01, NIP-44, NIP-46, BIP-340, RFC
+// 5869 and RFC 8439 (it shares no code with Coax): integer secp256k1 for
+// the keys, the shared x and the signatures (32 zero bytes of aux), HMAC
+// and HKDF from hashlib and hmac, ChaCha20 written out from RFC 8439, the
+// plaintexts as json.dumps(..., separators=(",", ":")), and each id as the
+// SHA-256 of json.dumps([0, pubkey, created_at, kind, tags, content]). The
+// same script reproduces NIP-44's published vector (sec1 1, sec2 2, nonce
+// 1, "a") before it computes the values below.
+PY_CK :: "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d";
+PY_CHACHA_KEY :: "1dc398224d0be74c85d302e3ff47f371c809cedbe558bff993c018be325dd9db";
+PY_CHACHA_NONCE :: "7557c544fed256b621631bab";
+PY_HMAC_KEY :: "97ab69e765d6ba1a3a3591a6a5bcfba21a4c7affbae634424d3ebe8e6879772b";
+PY_PLAIN :: "{\"id\":\"s1\",\"method\":\"sign_event\",\"params\":[\"{\\\"kind\\\":1,\\\"created_at\\\":1762000000,\\\"tags\\\":[],\\\"content\\\":\\\"hello from a bunker\\\"}\"]}";
+PY_PAYLOAD :: "AkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGPveWFooJ5gTeFF72e2bMrC0it/WhLD89S7E98cOCdJvP9W7nbfYlslmwWRiFMqT0swE0LZD9r98tftDbuo+IZSSCohUuweK7rGMAyEu9HrH+DjQo014i82RWsCfKKjhrICSSNc4qQFptHOWCR5/afRojWelhcCIYzQkZG/Qr72k5OeXgTFUQihwsTiCT9b3U3l+OQjuP0tcO6c9KFsgs1xuvhXoBsu46TrOocUDR7WsoxmPqfiP18NCWHCK53ljCZXk=";
+PY_REQUEST_ID :: "574edf34e6bf0d063cccb4f9c12fc90f7373f09af3d8ef0052daffdf3fd66513";
+PY_REQUEST_SIG :: "19d7182bc3a67f057d0857976b5c66735473df92129085abe3b6c1989e2d286460a5f2b6f639f423ec6a4ab3ae0d633beca9bb0f4f927ff55274dde12b6098b0";
+PY_SIGNED :: "{\"id\":\"c12bdb20e95e5fef04d90dc20dbf353d840152939c9ba32d017bfd133caac907\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1762000000,\"kind\":1,\"tags\":[],\"content\":\"hello from a bunker\",\"sig\":\"08489dfb50ed3d512a20c9feb7b543ae7c7dd9c5f63beb52d731c9e53b899cc893a1d4fd082809efeaad22be4b75f2edcd1d71d7ceff8fe47a048a2f45b03546\"}";
+PY_RESPONSE_ID :: "4d46758978ffcdbe707d6ee2104f0ee1d36818997b8b37c5a65bd74846439f31";
+PY_RESPONSE_SIG :: "7d1df34d9884d82839e27446346def8e434afe79fdfebd6462a7525b7edaf6e16ab7ec6c6ddcf7824de5de8ee1a68a6b05cbfb1a788f97d425f31b9dc996f56c";
+PY_BUNKER_INNER_ID :: "d654f1a5b09bbaa97507de43f9e89a41974f581a36d405c502030f9ac2672385";
+// NIP-46's example flow: the event its sign_event asks for, under its
+// user key fa984bd7... The NIP shows no event ids or ciphertexts, so this
+// id and its nostrconnect:// URI are the values it lets you check.
+PY_NIP_EXAMPLE_ID :: "20e27c4e6634733358d9ca2ae9c023506851cdcc8672794ad271f3b4c8cb75c1";
+NIP_USER :: "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+
+hex_is :: (bytes: [] u8, text: string) -> bool {
+  out: [128] u8; r := hex_encode_checked(cast(string) bytes, out[..], false);
+  return r.error == NC_OK && cast(string) out[0..<r.written] == text;
+}
+// A client and a bunker past connect and get_public_key, as the example's
+// sections 1 and 2 leave them.
+ready :: (c: [] N46Client, b: [] N46Bunker) {
+  u := n46_uri(BUNKER); c[0] = n46_client(u, T0 - 10, 60);
+  b[0].key = key_of(SIGNER); b[0].secret = u.secret; b[0].offer = n46_perms("sign_event:1,sign_event:7,nip44_encrypt");
+  q: [1] Msg; s: [1] Msg; g: [1] Got; sec := u.secret;
+  connect := [3] string.[PUB[SIGNER], cast(string) sec.b[0..<sec.n], "sign_event:1,sign_event:4"];
+  #assert send(c, M_CONNECT, "c1", connect[..], T0 - 10, 0x41, q[..]) == N46_OK;
+  #assert serve(b, q[0].event, T0 - 10, 0x42, s[..]).error == N46_OK;
+  receive(c, s[0].event, T0 - 9, g[..]);
+  none: [1] string;
+  #assert send(c, M_PUBKEY, "k1", none[0..<0], T0 - 5, 0x43, q[..]) == N46_OK;
+  #assert serve(b, q[0].event, T0 - 5, 0x44, s[..]).error == N46_OK;
+  receive(c, s[0].event, T0 - 4, g[..]);
+  #assert c[0].state == C_READY && n46_same(c[0].user, key_of(USER));
+}
+
+#test "by hand: the conversation key, the message keys, 133 bytes padded to 160, 304 characters" #steps 400000000 {
+  ck: [32] u8; one := secret_of(CLIENT); two := secret_of(SIGNER); ck2: [32] u8;
+  #assert n46_key(one[..], key_of(SIGNER), ck[..]) == N46_OK && hex_is(ck[..], PY_CK);
+  #assert n46_key(two[..], key_of(CLIENT), ck2[..]) == N46_OK && n46_same(ck, ck2);
+  nonce := nonce_of(0x46); keys: [76] u8;
+  #assert nip44_message_keys_checked(ck[..], nonce[..], keys[..], false) == NIP44_OK;
+  #assert hex_is(keys[0..<32], PY_CHACHA_KEY) && hex_is(keys[32..<44], PY_CHACHA_NONCE) && hex_is(keys[44..<76], PY_HMAC_KEY);
+  // 133 bytes: the next power of two is 256, so chunks of 32; 5 chunks are 160.
+  // 1 + 32 + (2 + 160) + 32 = 227 raw bytes are 304 base64 characters.
+  #assert PY_PLAIN.count == 133 && nip44_calc_padded_len(133) == 160 && nip44_payload_size(NIP44_COMPAT, 133) == 304;
+}
+#test "sign_event through the Coax bunker: request, signed event and response are Python's, byte for byte" #steps 2000000000 {
+  c: [1] N46Client; b: [1] N46Bunker; ready(c[..], b[..]);
+  tm: [256] u8; tn := n46_sign_params(1, T0, "[]", "hello from a bunker", tm[..]);
+  sp := [1] string.[cast(string) tm[0..<tn]]; q: [1] Msg; s: [1] Msg; g: [1] Got;
+  #assert send(c[..], M_SIGN, "s1", sp[..], T0, 0x46, q[..]) == N46_OK;
+  #assert cast(string) q[0].plain[0..<q[0].np] == PY_PLAIN && cast(string) q[0].sealed[0..<q[0].ns] == PY_PAYLOAD;
+  #assert hex_is(q[0].event.id[..], PY_REQUEST_ID) && hex_is(q[0].event.signature[..], PY_REQUEST_SIG);
+  a := serve(b[..], q[0].event, T0, 0x47, s[..]);
+  #assert a.error == N46_OK && a.kind == 1 && hex_is(s[0].event.id[..], PY_RESPONSE_ID) && hex_is(s[0].event.signature[..], PY_RESPONSE_SIG);
+  receive(c[..], s[0].event, T0 + 1, g[..]);
+  own := g[0].reply.result;
+  #assert g[0].take.error == N46_OK && g[0].take.method == M_SIGN && cast(string) own.b[0..<own.n] == PY_SIGNED;
+  t: [1] SignerTable; user := key_of(USER); scratch: [16384] u8;
+  ask := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, user[..], 1, T0, "[]", "hello from a bunker", T0, 60, scratch[..]);
+  #assert signer_approve(t[..], ask.id, T0) == SR_OK && signer_reply(t[..], ask.id, PY_SIGNED, T0 + 1, scratch[..]) == SR_OK;
+}
+#test "sign_event through an independent bunker: Python's response event is accepted" #steps 2000000000 {
+  c: [1] N46Client; b: [1] N46Bunker; ready(c[..], b[..]);
+  tm: [256] u8; tn := n46_sign_params(1, T0 + 2, "[[\"t\",\"nip46\"]]", "hello from Python", tm[..]);
+  sp := [1] string.[cast(string) tm[0..<tn]]; q: [1] Msg; g: [1] Got;
+  #assert send(c[..], M_SIGN, "s2", sp[..], T0 + 2, 0x48, q[..]) == N46_OK;
+  check: [16384] u8; py := nostr_event_verify_vartime(PY_BUNKER_EVENT, check[..], false);
+  #assert py.verified;
+  receive(c[..], py, T0 + 3, g[..]);
+  #assert g[0].take.error == N46_OK && g[0].take.method == M_SIGN;
+  own := g[0].reply.result; inner := nostr_event_verify_vartime(cast(string) own.b[0..<own.n], check[..], false);
+  #assert inner.verified && hex_is(inner.id[..], PY_BUNKER_INNER_ID) && n46_same(inner.public_key, key_of(USER));
+  // The same response again: its request is answered, so its id is unknown.
+  #assert n46_take(c[..], py.public_key, g[0].reply, T0 + 4).error == N46_UNKNOWN;
+}
+#test "NIP-46's own examples: the nostrconnect URI and the example template's event id" {
+  u := n46_uri(N46_T_NIP_URI);
+  #assert u.error == N46_OK && u.nrelays == 2 && u.perms.nkinds == 3 && n46_is(u.secret, "0s8j2djs");
+  m := n46_template(N46_T_TEMPLATE); #assert m.error == N46_OK && m.kind == 1 && m.created_at == 1714078911;
+  t: [1] SignerTable; nip: [32] u8; r := hex_decode_checked(NIP_USER, nip[..], false); scratch: [16384] u8;
+  ask := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, nip[..], 1, 1714078911, "[]", "Hello, I'm signing remotely", 0, 60, scratch[..]);
+  #assert ask.status == SR_OK && hex_is(t[0].slots[0].expect[..], PY_NIP_EXAMPLE_ID);
+}
+// book:end check

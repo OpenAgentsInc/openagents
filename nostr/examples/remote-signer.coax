@@ -1,0 +1,249 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip46.coax";
+#load "../../coax/lib/nostr/keys.coax";
+#import "Basic";
+
+E46 :: [32] string.["ok", "not a bunker:// or nostrconnect:// URI", "bad key", "no relay", "bad relay",
+  "no secret", "bad secret", "bad escape", "repeated", "limit", "bad perms", "not JSON", "bad id",
+  "unknown method", "bad params", "bad field", "kind", "p names another key", "another author",
+  "can't decrypt", "not NIP-44 v2", "not in this state", "table full", "no request has this id",
+  "late", "the secret is not echoed", "auth challenge: wait", "the signer answered an error", "bad wait",
+  "the secret was used", "not allowed", "NIP-04 methods are refused"];
+SR :: [16] string.["ok", "input", "scope", "full", "unknown", "unapproved", "duplicate", "late", "closed",
+  "malformed", "tampered", "signed by another key", "another body", "bad signature", "target", "state"];
+// Secret keys 1 (the client), 2 (the remote signer) and 3 (the user):
+// published test values. Never put a real secret in an example, and never
+// print one.
+CLIENT :: 1; SIGNER :: 2; USER :: 3;
+PUB :: [4] string.["",
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"];
+BUNKER :: "bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com&secret=s3cret";
+CONNECT :: "nostrconnect://79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798?relay=wss%3A%2F%2Frelay.example.com&secret=0s8j2djs&perms=sign_event%3A1&name=Coax";
+T0 :: 1762000000;
+// The independent bunker's answer to request s2: a Python script written
+// from NIP-01, NIP-44, NIP-46 and BIP-340 signed the user's event (secret 3)
+// and the response (secret 2) and sealed it with nonce 0x50 repeated.
+PY_BUNKER_EVENT :: "{\"id\":\"c24cfeb25376bab1ad4223ddc91a35c6764c40c43396d2d535c513a72ee05ea2\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1762000003,\"kind\":24133,\"tags\":[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]],\"content\":\"AlBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQ4BMgW2giNOp+ZBgqpgTDGSe6k6rpi+KhDLmlmFu+JuXg3N2xuwbPwcBdfcVZ+WlSXA18czGmogiMCgEO9COSg/chapvY+P/MBiQ3+WyqCJ/xIw7N0ZL76PFPw22t1cMiv6U7ktyys/dIZxeHW9CfhMEIgKJGMQC54T8pm+/cdc2NOkaluDygDrd7FHu4otJZrmH4f1gNX8kSyk/+yw4EZApXNtwDEZwX7+RAPes/9LfUqE7b7LM5lJRGnTLysWa6DM3MUCkKwnEoAEhl2GGhhd44H0/1CWfcvTpj649MZ8/ysh7n0gXrbgn057wqxNWeBUR9+XJBHuC2XlUh7TR1RDW4Afs+x8bARvaZaAisfZUFS39amvUa4EAwmV4xPPRFx+j1bzn3Z50VcQpAh1UQAGuhX9yoDXVYFdsGSb+X7tz5Aa10aDjcybndkzFrI0G73NXIKqK3QzRhvvoHi2paAoq85rLEGHPpBFBCcLXmbyGQDPYn7B5LxobV8Nq0uYsTAfwTP8V+xTN1L7lFbmTv8YE44q2Y2n4PQXgRFwy+7kXCYEKqmBa0/lIWoDMa52zCpkgCTkwXKSlff+N+pox8ZuQKonYwbtaoV118lr1qwFY2s6107/nkCq++oESU9Y5M2GQ=\",\"sig\":\"2fd6c0d9c25228076842b870e26cd2e270a340731e86736c1ae6e3534caec3587d8fe9a9f35e9cf700483ca488b5ab123df52cccf2e8586ed00aaa8decadadb2\"}";
+
+key_of :: (who: int) -> [32] u8 { k: [32] u8; r := hex_decode_checked(PUB[who], k[..], false); return k; }
+secret_of :: (who: int) -> [32] u8 { k: [32] u8; k[31] = cast(u8) who; return k; }
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+say :: (s: N46Str) { own := s; print("%", cast(string) own.b[0..<own.n]); }
+of :: (t: string) -> N46Str { s: N46Str; for i: 0..<t.count { s.b[i] = t[i]; } s.n = t.count; return s; }
+// A nonce of 32 equal bytes, for a reproducible example only: each side
+// takes 32 fresh random bytes for every message.
+nonce_of :: (b: u8) -> [32] u8 { n: [32] u8; for i: 0..<32 { n[i] = b; } return n; }
+content_of :: (e: NostrEvent) -> string { return e.original[e.content_from..<e.content_to]; }
+
+// Sign an event with secret key who (aux all zero) and read it back with
+// its id and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key := secret_of(who); aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [16384] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified && n46_same(e.public_key, key_of(who));
+  return e;
+}
+
+// One kind 24133 message: its plaintext, payload and signed event.
+Msg :: struct { plain: [8192] u8; np: int; sealed: [12288] u8; ns: int; buf: [16384] u8; event: NostrEvent; }
+// Seal plain from secret key from to key to with nonce byte nb, and sign
+// the event at time t.
+seal :: (from: int, to: [32] u8, plain: string, t: int, nb: u8, m: [] Msg) {
+  for i: 0..<plain.count { m[0].plain[i] = plain[i]; }
+  m[0].np = plain.count;
+  ck: [32] u8; sk := secret_of(from); nonce := nonce_of(nb);
+  #assert n46_key(sk[..], to, ck[..]) == N46_OK;
+  o := n46_seal(ck[..], nonce[..], plain, m[0].sealed[..]);
+  #assert o.error == N46_OK;
+  m[0].ns = o.n;
+  tags: [256] u8; tn := n46_tags(to, tags[..]);
+  m[0].event = sign(from, t, N46_EVENT, cast(string) tags[0..<tn], cast(string) m[0].sealed[0..<o.n], m[0].buf[..]);
+}
+// The client records request id and sends it with params at time t.
+send :: (c: [] N46Client, method: int, id: string, params: [] string, t: int, nb: u8, m: [] Msg) -> int {
+  e := n46_ask(c, method, id, t, 60);
+  if e != N46_OK { return e; }
+  call: N46Call; call.error = N46_OK; call.method = method; call.nparams = params.count;
+  for i: 0..<id.count { call.id.b[i] = id[i]; }
+  call.id.n = id.count;
+  for k: 0..<params.count { call.params[k] = of(params[k]); }
+  plain: [8192] u8; n := n46_request_json(call, plain[..]);
+  seal(CLIENT, c[0].signer, cast(string) plain[0..<n], t, nb, m);
+  return N46_OK;
+}
+
+// The remote signer reads a request event, opens it, decides, does what is
+// allowed and answers at t + 1. A refusal is answered with an error.
+serve :: (b: [] N46Bunker, req: NostrEvent, t: int, nb: u8, m: [] Msg) -> N46Admit {
+  a: N46Admit; a.error = n46_event(req, b[0].key);
+  if a.error != N46_OK { return a; }
+  ck: [32] u8; sk := secret_of(SIGNER); k := n46_key(sk[..], req.public_key, ck[..]);
+  opened: [8192] u8; o := n46_open(ck[..], content_of(req), opened[..]);
+  call := n46_request(cast(string) opened[0..<o.n]);
+  a = n46_admit(b, req.public_key, call);
+  r: N46Reply; r.id = call.id; r.has_result = a.error == N46_OK; r.failed = !r.has_result;
+  inner: [4096] u8; hex: [64] u8;
+  if a.error != N46_OK { r.message = of(E46[a.error]); }
+  else if a.method == M_CONNECT || a.method == M_LOGOUT { r.result = of("ack"); }
+  else if a.method == M_PING { r.result = of("pong"); }
+  else if a.method == M_PUBKEY { r.result = of(hex32(key_of(USER), hex[..])); }
+  else if a.method == M_SIGN {
+    // Sign the template's event with the user's key.
+    own := call.params[0]; p := cast(string) own.b[0..<own.n]; tm := n46_template(p); content: [4096] u8;
+    cn := json_unescape(p[tm.content_from..<tm.content_to], content[..]);
+    e := sign(USER, tm.created_at, tm.kind, p[tm.tags_from..<tm.tags_to], cast(string) content[0..<cn], inner[..]);
+    r.result = of(e.original);
+  }
+  plain: [8192] u8; n := n46_response_json(r, plain[..]);
+  seal(SIGNER, req.public_key, cast(string) plain[0..<n], t + 1, nb, m);
+  return a;
+}
+
+// The client reads a response event at time t: its own p tag, the
+// payload opened, the reply matched to its request.
+Got :: struct { take: N46Take; reply: N46Reply; }
+receive :: (c: [] N46Client, res: NostrEvent, t: int, g: [] Got) {
+  g[0].take.error = n46_event(res, key_of(CLIENT));
+  if g[0].take.error != N46_OK { return; }
+  ck: [32] u8; sk := secret_of(CLIENT); k := n46_key(sk[..], res.public_key, ck[..]);
+  opened: [8192] u8; o := n46_open(ck[..], content_of(res), opened[..]);
+  g[0].reply = n46_response(cast(string) opened[0..<o.n]);
+  g[0].take = n46_take(c, res.public_key, g[0].reply, t);
+}
+STATES :: [5] string.["idle", "connecting", "connected", "ready", "closed"];
+show :: (what: string, c: [] N46Client, g: [] Got) {
+  print("% -> %, client %", what, E46[g[0].take.error], STATES[c[0].state]);
+  if g[0].reply.failed { print(", error \""); say(g[0].reply.message); print("\""); }
+  print("\n");
+}
+
+main :: () {
+  hex: [64] u8; scratch: [16384] u8;
+  print("== 1. The bunker token and the three keys\n");
+  u := n46_uri(BUNKER);
+  print("URI: %, remote signer %\n", E46[u.error], hex32(u.peer, hex[..]));
+  print("  relay "); say(u.relays[0]); print("; secret: % bytes, kept and not printed\n", u.secret.n);
+  print("  client key %\n  user key   % (learned by get_public_key)\n", PUB[CLIENT], PUB[USER]);
+  b: [1] N46Bunker; b[0].key = key_of(SIGNER); b[0].secret = u.secret;
+  b[0].offer = n46_perms("sign_event:1,sign_event:7,nip44_encrypt");
+  c := [1] N46Client.[n46_client(u, T0 - 10, 60)];
+
+  print("\n== 2. connect, then get_public_key\n");
+  q: [1] Msg; s: [1] Msg; g: [1] Got;
+  // connect carries the signer's key, the token's secret and the perms asked for.
+  sec := u.secret; connect := [3] string.[PUB[SIGNER], cast(string) sec.b[0..<sec.n], "sign_event:1,sign_event:4"];
+  e := send(c[..], M_CONNECT, "c1", connect[..], T0 - 10, 0x41, q[..]);
+  // Its plaintext holds the secret, so only its shape is printed.
+  print("request c1 (% bytes): connect, params [the signer's key, the secret, \"%\"]\n", q[0].np, connect[2]);
+  a := serve(b[..], q[0].event, T0 - 10, 0x42, s[..]);
+  print("  the signer: %, session %, granted kinds", E46[a.error], a.session);
+  gr := b[0].sessions[a.session].perms;
+  for k: 0..<gr.nkinds { print(" %", gr.kinds[k]); }
+  print(" (it offered 1 and 7; the client asked for 1 and 4)\n");
+  print("response: %\n", cast(string) s[0].plain[0..<s[0].np]);
+  receive(c[..], s[0].event, T0 - 9, g[..]); show("  client", c[..], g[..]);
+  none: [1] string;
+  e = send(c[..], M_PUBKEY, "k1", none[0..<0], T0 - 5, 0x43, q[..]);
+  a = serve(b[..], q[0].event, T0 - 5, 0x44, s[..]);
+  print("response: %\n", cast(string) s[0].plain[0..<s[0].np]);
+  receive(c[..], s[0].event, T0 - 4, g[..]); show("  client", c[..], g[..]);
+  print("  the user's key is the client's key: %; is the signer's key: %\n", n46_same(c[0].user, key_of(CLIENT)), n46_same(c[0].user, key_of(SIGNER)));
+
+  print("\n== 3. sign_event, by hand and by the code\n");
+  // Chapter 12's contract first: the request fixes the event's id.
+  t: [1] SignerTable; user := key_of(USER);
+  ask := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, user[..], 1, T0, "[]", "hello from a bunker", T0, 60, scratch[..]);
+  ok := signer_approve(t[..], ask.id, T0);
+  print("chapter 12: request %, approved %, expected id %\n", ask.id, SR[ok], hex32(t[0].slots[0].expect, hex[..]));
+  tm: [256] u8; tn := n46_sign_params(1, T0, "[]", "hello from a bunker", tm[..]);
+  sp := [1] string.[cast(string) tm[0..<tn]];
+  e = send(c[..], M_SIGN, "s1", sp[..], T0, 0x46, q[..]);
+  ck: [32] u8; sk := secret_of(CLIENT); k := n46_key(sk[..], key_of(SIGNER), ck[..]);
+  print("plaintext (% bytes): %\n", q[0].np, cast(string) q[0].plain[0..<q[0].np]);
+  print("conversation key: %\n", hex32(ck, hex[..]));
+  print("payload (% characters): %\n", q[0].ns, cast(string) q[0].sealed[0..<q[0].ns]);
+  print("request event id %, tags %\n", hex32(q[0].event.id, hex[..]), q[0].event.original[q[0].event.tags_from..<q[0].event.tags_to]);
+  a = serve(b[..], q[0].event, T0, 0x47, s[..]);
+  print("  the signer: %, kind %\n", E46[a.error], a.kind);
+  print("response (% bytes): %\n", s[0].np, cast(string) s[0].plain[0..<s[0].np]);
+  print("response event id %\n", hex32(s[0].event.id, hex[..]));
+  receive(c[..], s[0].event, T0 + 1, g[..]); show("  client", c[..], g[..]);
+  own := g[0].reply.result; result := cast(string) own.b[0..<own.n];
+  print("  chapter 12's signer_reply on the result: %, state signed %\n", SR[signer_reply(t[..], ask.id, result, T0 + 1, scratch[..])], signer_state(t[..], ask.id) == SLOT_SIGNED);
+
+  print("\n== 4. The same client and an independent bunker\n");
+  ask2 := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, user[..], 1, T0 + 2, "[[\"t\",\"nip46\"]]", "hello from Python", T0 + 2, 60, scratch[..]);
+  ok = signer_approve(t[..], ask2.id, T0 + 2);
+  tn = n46_sign_params(1, T0 + 2, "[[\"t\",\"nip46\"]]", "hello from Python", tm[..]);
+  sp[0] = cast(string) tm[0..<tn];
+  e = send(c[..], M_SIGN, "s2", sp[..], T0 + 2, 0x48, q[..]);
+  print("request s2 sent: %\n", E46[e]);
+  check: [16384] u8;
+  py := nostr_event_verify_vartime(PY_BUNKER_EVENT, check[..], false);
+  print("Python's response event: verified %, id %\n", py.verified, hex32(py.id, hex[..]));
+  receive(c[..], py, T0 + 3, g[..]); show("  client", c[..], g[..]);
+  own = g[0].reply.result;
+  print("  chapter 12's signer_reply on the result: %\n", SR[signer_reply(t[..], ask2.id, cast(string) own.b[0..<own.n], T0 + 3, scratch[..])]);
+
+  print("\n== 5. The client's own nostrconnect token\n");
+  v := n46_uri(CONNECT);
+  print("URI: %, client %, name ", E46[v.error], hex32(v.peer, hex[..])); say(v.name); print(", perms: % kind(s)\n", v.perms.nkinds);
+  d := [1] N46Client.[n46_client(v, T0, 120)];
+  print("  the signer accepts the pasted token: %\n", E46[n46_accept(b[..], v)]);
+  wrong: [1] Msg; seal(SIGNER, key_of(CLIENT), "{\"id\":\"r9\",\"result\":\"ack\"}", T0 + 5, 0x49, wrong[..]);
+  receive(d[..], wrong[0].event, T0 + 6, g[..]); show("  a connect response with \"ack\"", d[..], g[..]);
+  // The signer echoes the token's secret: the plaintext is built from it, never printed.
+  echo: N46Reply; echo.id.b[0] = 'r'; echo.id.b[1] = '1'; echo.id.n = 2; echo.has_result = true;
+  for i: 0..<v.secret.n { echo.result.b[i] = v.secret.b[i]; }
+  echo.result.n = v.secret.n;
+  ep: [256] u8; en := n46_response_json(echo, ep[..]);
+  right: [1] Msg; seal(SIGNER, key_of(CLIENT), cast(string) ep[0..<en], T0 + 7, 0x4a, right[..]);
+  receive(d[..], right[0].event, T0 + 8, g[..]); show("  a connect response echoing the secret", d[..], g[..]);
+  print("  the signer is the response's author: %\n", n46_same(d[0].signer, key_of(SIGNER)));
+
+  print("\n== 6. Refusals\n");
+  bad := [3] string.[
+    "bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com",
+    "bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?secret=s3cret",
+    "nostrconnect://79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798?relay=wss%3A%2F%2Frelay.example.com&secret=x"];
+  why := [3] string.["a bunker URI with no secret", "a bunker URI with no relay", "an uppercase client key"];
+  for i: 0..<3 { print("%: %\n", why[i], E46[n46_uri(bad[i]).error]); }
+  other := n90_t_key(0x22);
+  c2 := n46_request("{\"id\":\"c9\",\"method\":\"connect\",\"params\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"s3cret\"]}");
+  print("connect again with the used secret, from another client: %\n", E46[n46_admit(b[..], other, c2).error]);
+  c3 := n46_request("{\"id\":\"c9\",\"method\":\"connect\",\"params\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"guess\"]}");
+  print("connect with a wrong secret: %\n", E46[n46_admit(b[..], other, c3).error]);
+  tn = n46_sign_params(4, T0, "[]", "a direct message", tm[..]);
+  sp[0] = cast(string) tm[0..<tn];
+  e = send(c[..], M_SIGN, "s4", sp[..], T0 + 10, 0x4b, q[..]);
+  a = serve(b[..], q[0].event, T0 + 10, 0x4c, s[..]);
+  print("sign_event for kind 4: the signer says %; response %\n", E46[a.error], cast(string) s[0].plain[0..<s[0].np]);
+  receive(c[..], s[0].event, T0 + 11, g[..]); show("  client", c[..], g[..]);
+  print("a sign_event request from a key with no session: %\n", E46[n46_admit(b[..], other, n46_request(cast(string) q[0].plain[0..<q[0].np])).error]);
+  print("the client asks nip04_encrypt: %\n", E46[n46_ask(c[..], M_NIP04_ENC, "x", T0 + 12, 60)]);
+  print("a response to an id the client never sent: %\n", E46[n46_take(c[..], key_of(SIGNER), n46_response("{\"id\":\"zz\",\"result\":\"pong\"}"), T0 + 12).error]);
+  e = n46_ask(c[..], M_PING, "p1", T0 + 12, 30);
+  print("ping p1 at T0+12, waiting 30 s, answered by another key: %\n", E46[n46_take(c[..], key_of(USER), n46_response("{\"id\":\"p1\",\"result\":\"pong\"}"), T0 + 13).error]);
+  print("  answered at T0+43: %\n", E46[n46_take(c[..], key_of(SIGNER), n46_response("{\"id\":\"p1\",\"result\":\"pong\"}"), T0 + 43).error]);
+  ask3 := signer_ask(t[..], SIGNER_PHONE, SCOPE_EVENT, user[..], 1, T0, "[]", "hello from a bunker", T0 + 20, 60, scratch[..]);
+  ok = signer_approve(t[..], ask3.id, T0 + 20);
+  other_body: [4096] u8; ob := sign(USER, T0, 1, "[]", "hello from a bunker!", other_body[..]);
+  print("a bunker that signs another content: chapter 12 says %\n", SR[signer_reply(t[..], ask3.id, ob.original, T0 + 21, scratch[..])]);
+  plain: [256] u8;
+  print("a NIP-04 payload: %\n", E46[n46_open(ck[..], "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==", plain[..]).error]);
+  forget := [1] N46Uri.[u]; n46_forget(forget[..]);
+  wiped := forget[0].secret.n == 0; for i: 0..<N46_MAX_ID { if forget[0].secret.b[i] != 0 { wiped = false; } }
+  print("after n46_forget: % relays, secret all zero %\n", forget[0].nrelays, wiped);
+}
+// book:end example

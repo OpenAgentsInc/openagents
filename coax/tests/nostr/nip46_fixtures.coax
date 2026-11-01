@@ -1,0 +1,70 @@
+// Records for nip46.coax's checks: NIP-46 plaintexts written by an
+// independent client (Python's json.dumps with separators (",", ":"), keys
+// in the order shown), the NIP's nostrconnect example, and helpers. They
+// live here so that mutation of nip46.coax changes the library, not the
+// checks.
+N46_T_SIGNER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";   // secret key 2: the remote signer
+N46_T_CLIENT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";   // secret key 1: the client
+N46_T_USER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";     // secret key 3: the user
+N46_T_BUNKER :: "bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Frelay.example.com&secret=s3cret";
+N46_T_CONNECT :: "nostrconnect://79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798?relay=wss%3A%2F%2Frelay.example.com&secret=0s8j2djs&perms=sign_event%3A1";
+// NIP-46's nostrconnect:// example, verbatim, and its client key.
+N46_T_NIP_URI :: "nostrconnect://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5?relay=wss%3A%2F%2Frelay1.example.com&perms=nip44_encrypt%2Cnip44_decrypt%2Csign_event%3A13%2Csign_event%3A14%2Csign_event%3A1059&name=My+Client&secret=0s8j2djs&relay=wss%3A%2F%2Frelay2.example2.com";
+N46_T_NIP_CLIENT :: "83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5";
+// NIP-46's example sign_event template, in the key order it shows.
+N46_T_TEMPLATE :: "{\"content\":\"Hello, I'm signing remotely\",\"kind\":1,\"tags\":[],\"created_at\":1714078911}";
+N46_T_REQUESTS :: [9] string.[
+  "{\"id\":\"c1\",\"method\":\"connect\",\"params\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"s3cret\",\"sign_event:1,nip44_encrypt\"]}",
+  "{\"id\":\"8f2c\",\"method\":\"sign_event\",\"params\":[\"{\\\"content\\\":\\\"Hello, I'm signing remotely\\\",\\\"kind\\\":1,\\\"tags\\\":[],\\\"created_at\\\":1714078911}\"]}",
+  "{\"id\":\"p\",\"method\":\"ping\",\"params\":[]}",
+  "{\"id\":\"k\",\"method\":\"get_public_key\",\"params\":[]}",
+  "{\"id\":\"e\",\"method\":\"nip44_encrypt\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"hello \\\"you\\\"\"]}",
+  "{\"id\":\"d\",\"method\":\"nip44_decrypt\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"AgAA\"]}",
+  "{\"id\":\"r\",\"method\":\"switch_relays\",\"params\":[]}",
+  "{\"id\":\"l\",\"method\":\"logout\",\"params\":[]}",
+  "{\"id\":\"c2\",\"method\":\"connect\",\"params\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"s3cret\",\"\",\"{\\\"name\\\":\\\"Coax\\\"}\"]}"];
+N46_T_RESPONSES :: [5] string.[
+  "{\"id\":\"c1\",\"result\":\"ack\"}",
+  "{\"id\":\"k\",\"result\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"}",
+  "{\"id\":\"8f2c\",\"error\":\"not allowed: kind 4\"}",
+  "{\"id\":\"8f2c\",\"result\":\"auth_url\",\"error\":\"https://signer.example/auth?id=8f2c\"}",
+  "{\"id\":\"p\",\"result\":\"pong\"}"];
+N46_T_AUTH_K :: "{\"id\":\"k\",\"result\":\"auth_url\",\"error\":\"https://signer.example/auth?id=k\"}";
+
+n46_t_hex :: (text:string)->[32]u8 {k:[32]u8;r:=hex_decode_checked(text,k[..],false);return k;}
+n46_t_is :: (s:N46Str,text:string)->bool {own:=s;return cast(string)own.b[0..<own.n]==text;}
+// The NIP's client key as a nostrconnect:// URI, then query.
+n46_t_uri :: (query:string,out:[]u8)->string {
+  n:=json_raw(out,0,"nostrconnect://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5");
+  n=json_raw(out,n,query);
+  return cast(string)out[0..<n];
+}
+// A response with this id and result.
+n46_t_reply :: (id:string,result:string)->N46Reply {
+  b:[512]u8;n:=json_raw(b[..],0,"{\"id\":");n=json_write_string(b[..],n,id);
+  n=json_raw(b[..],n,",\"result\":");n=json_write_string(b[..],n,result);n=json_raw(b[..],n,"}");
+  return n46_response(cast(string)b[0..<n]);
+}
+// A request with id "1" and the params up to the last one not empty.
+n46_t_call :: (method:int,p0:string,p1:string,p2:string)->N46Call {
+  ps:=[3] string.[p0,p1,p2];count:=0;
+  for k:0..<3 {if ps[k].count>0 {count=k+1;}}
+  b:[1024]u8;n:=json_raw(b[..],0,"{\"id\":\"1\",\"method\":");n=json_write_string(b[..],n,N46_METHODS[method]);
+  n=json_raw(b[..],n,",\"params\":[");
+  for k:0..<count {if k>0 {n=json_raw(b[..],n,",");} n=json_write_string(b[..],n,ps[k]);}
+  n=json_raw(b[..],n,"]}");
+  return n46_request(cast(string)b[0..<n]);
+}
+// A sign_event request for an event of this kind.
+n46_t_sign :: (kind:int)->N46Call {
+  t:[256]u8;n:=json_raw(t[..],0,"{\"kind\":");n=json_write_int(t[..],n,kind);
+  n=json_raw(t[..],n,",\"created_at\":1,\"tags\":[],\"content\":\"x\"}");
+  return n46_t_call(M_SIGN,cast(string)t[0..<n],"","");
+}
+// The remote signer of secret key 2 with secret "s3cret" and this offer.
+n46_t_bunker :: (offer:string)->N46Bunker {
+  b:N46Bunker;b.key=n46_t_hex(N46_T_SIGNER);s:="s3cret";
+  for i:0..<s.count {b.secret.b[i]=s[i];}
+  b.secret.n=s.count;b.offer=n46_perms(offer);
+  return b;
+}

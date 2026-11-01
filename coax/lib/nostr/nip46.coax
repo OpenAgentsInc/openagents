@@ -1,0 +1,962 @@
+// NIP-46 remote signing: the bunker:// and nostrconnect:// connection
+// URIs, the JSON-RPC-like request and response a kind 24133 event carries,
+// their NIP-44 v2 encryption between the client's key and the remote
+// signer's key, the client's table of requests waiting for an answer
+// (matched by id, with a fixed deadline), the connect secret, and the
+// remote signer's permission check.
+//
+// n46_admit decides what a client may have signed or encrypted with the
+// user's key: which methods it may call and which event kinds it may have
+// signed. That makes this an #authority file.
+//
+// Stricter than NIP-46, by choice: a bunker:// URI without a secret is
+// refused (anyone who sees it could connect), a connect secret works once,
+// the legacy NIP-04 methods are always refused, and the client sends
+// sign_event and nip44_* only after get_public_key has told it the user's
+// key. A response to the client's nostrconnect:// URI must echo its secret.
+//
+// A reading of messages, not a signer: nothing here fetches an event,
+// verifies a signature or signs. The caller verifies events (chapter 21),
+// hands a sign_event result to chapter 12's signer_reply, and its signer
+// signs.
+//
+// Checks: coax test coax/lib/nostr/nip46.coax
+#load "tags.coax";
+#load "nip44-key.coax";
+#load "../../tests/nostr/nip90_fixtures.coax";
+#load "../../tests/nostr/nip46_fixtures.coax";
+#authority;
+
+N46_OK :: 0;
+// The URI's refusals.
+N46_SCHEME :: 1; N46_KEY :: 2; N46_NO_RELAY :: 3; N46_RELAY :: 4; N46_NO_SECRET :: 5;
+N46_SECRET :: 6; N46_ESCAPE :: 7; N46_REPEAT :: 8; N46_LIMIT :: 9; N46_PERMS :: 10;
+// The messages'.
+N46_JSON :: 11; N46_ID :: 12; N46_METHOD :: 13; N46_PARAMS :: 14; N46_FIELD :: 15;
+// The events' and the payloads'.
+N46_KIND :: 16; N46_P :: 17; N46_AUTHOR :: 18; N46_CIPHER :: 19; N46_ENCRYPTION :: 20;
+// The client's.
+N46_STATE :: 21; N46_FULL :: 22; N46_UNKNOWN :: 23; N46_LATE :: 24; N46_ECHO :: 25;
+N46_AUTH :: 26; N46_ERROR :: 27; N46_WAIT :: 28;
+// The remote signer's.
+N46_USED :: 29; N46_DENIED :: 30; N46_LEGACY :: 31;
+
+N46_EVENT :: 24133;
+N46_MAX_STR :: 4096; N46_MAX_ID :: 64; N46_MAX_RELAYS :: 4; N46_MAX_KINDS :: 16;
+N46_MAX_PLAIN :: 8192; N46_WORK :: 32768;
+N46_SLOTS :: 8; N46_SESSIONS :: 8; N46_MAX_WAIT :: 300;
+
+// book:begin names
+// The methods, in the NIP's table order.
+M_CONNECT :: 0; M_SIGN :: 1; M_PING :: 2; M_PUBKEY :: 3; M_NIP04_ENC :: 4; M_NIP04_DEC :: 5;
+M_NIP44_ENC :: 6; M_NIP44_DEC :: 7; M_SWITCH :: 8; M_LOGOUT :: 9;
+N46_METHODS :: [10] string.["connect", "sign_event", "ping", "get_public_key", "nip04_encrypt",
+  "nip04_decrypt", "nip44_encrypt", "nip44_decrypt", "switch_relays", "logout"];
+// How many string params each method takes: connect takes the signer's key
+// and up to three optional ones (secret, perms, client metadata).
+N46_LEAST :: [10] int.[1, 1, 0, 0, 2, 2, 2, 2, 0, 0];
+N46_MOST :: [10] int.[4, 1, 0, 0, 2, 2, 2, 2, 0, 0];
+// The two flows: the remote signer's bunker:// token, or the client's
+// nostrconnect:// token.
+N46_BUNKER :: 1; N46_NOSTRCONNECT :: 2;
+// The client's states.
+C_IDLE :: 0; C_CONNECTING :: 1; C_CONNECTED :: 2; C_READY :: 3; C_CLOSED :: 4;
+// A waiting request's.
+P_FREE :: 0; P_WAIT :: 1; P_AUTH :: 2;
+// book:end names
+
+// book:begin record
+N46Str :: struct {b:[N46_MAX_STR]u8; n:int;}
+N46Id :: struct {b:[N46_MAX_ID]u8; n:int;}
+// Permissions: methods allowed for any params (one bit per N46_METHODS
+// entry; the sign_event bit means any kind), and the kinds sign_event may
+// have signed besides. unknown counts entries this file doesn't grant.
+N46Perms :: struct {error:int; methods:int; kinds:[N46_MAX_KINDS]int; nkinds:int; unknown:int;}
+// A connection token. peer is the remote signer's key in a bunker:// URI
+// and the client's key in a nostrconnect:// one. The secret is kept, never
+// written anywhere but the connect message.
+N46Uri :: struct {
+  error:int=N46_SCHEME; flow:int; peer:[32]u8;
+  relays:[N46_MAX_RELAYS]N46Str; nrelays:int;
+  secret:N46Id; perms:N46Perms; name:N46Str;
+}
+// A request: {"id", "method", "params": [strings]}.
+N46Call :: struct {error:int=N46_JSON; id:N46Id; method:int=-1; params:[4]N46Str; nparams:int;}
+// A response: {"id", "result", "error"}; error present means it failed.
+N46Reply :: struct {error:int=N46_JSON; id:N46Id; result:N46Str; has_result:bool; failed:bool; message:N46Str;}
+// An unsigned event as sign_event's param carries it: spans into its text.
+N46Template :: struct {error:int=N46_FIELD; kind:int; created_at:int; tags_from:int; tags_to:int; content_from:int; content_to:int;}
+N46Out :: struct {error:int; n:int;}
+// The client: its flow, the signer once known, the user's key once
+// get_public_key answered, and the requests waiting for answers.
+N46Pending :: struct {state:int; id:N46Id; method:int; deadline:int;}
+N46Client :: struct {
+  state:int; flow:int; signer:[32]u8; user:[32]u8; secret:N46Id; deadline:int;
+  pending:[N46_SLOTS]N46Pending;
+}
+N46Take :: struct {error:int; method:int=-1; slot:int=-1;}
+// The remote signer: its own key, the one-use secret of its bunker:// URI,
+// what its user offers a client, and the connected clients.
+N46Session :: struct {live:bool; client:[32]u8; perms:N46Perms;}
+N46Bunker :: struct {key:[32]u8; secret:N46Id; used:bool; offer:N46Perms; sessions:[N46_SESSIONS]N46Session;}
+N46Admit :: struct {error:int; method:int=-1; kind:int=-1; session:int=-1;}
+// book:end record
+
+n46_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
+n46_is :: (s:N46Id,text:string)->bool {own:=s;return cast(string)own.b[0..<own.n]==text;}
+n46_eq :: (a:N46Id,b:N46Id)->bool {own:=b;return n46_is(a,cast(string)own.b[0..<own.n]);}
+// An id or a secret: 1 to 64 printable ASCII bytes, no spaces. A reader
+// unescapes into t and sets n to json_unescape's result, -1 or -2 on failure.
+n46_printable :: (t:N46Id)->bool {
+  ok:=t.n>0;
+  for i:0..<t.n {if t.b[i]<0x21 || t.b[i]>0x7e {ok=false;}}
+  return ok;
+}
+n46_token :: (s:string,out:[]N46Id)->bool {
+  if s.count>N46_MAX_ID {return false;}
+  for i:0..<s.count {out[0].b[i]=s[i];}
+  out[0].n=s.count;return n46_printable(out[0]);
+}
+n46_word :: (raw:string)->int {
+  for k:0..<N46_METHODS.count {if json_is(raw,N46_METHODS[k]) {return k;}}
+  return -1;
+}
+n46_legacy :: (method:int)->bool {return method==M_NIP04_ENC || method==M_NIP04_DEC;}
+
+// book:begin perms
+// A comma-separated perms list, "method[:param]": sign_event:<kind> grants
+// one kind, a bare method grants it for any params. Unknown methods and
+// params on other methods are counted, not granted; the NIP-04 methods are
+// never granted. An empty list grants nothing.
+n46_perms :: (text:string)->N46Perms {
+  p:N46Perms;from:=0;
+  if text.count==0 {return p;}
+  for i:0..<text.count+1 {
+    if i<text.count && text[i]!=',' {continue;}
+    entry:=text[from..<i];from=i+1;colon:=0;
+    while colon<entry.count && entry[colon]!=':' {colon+=1;}
+    name:=entry[0..<colon];m:=-1;
+    for k:0..<N46_METHODS.count {if name==N46_METHODS[k] {m=k;}}
+    p.error=N46_PERMS;
+    if colon==0 {return p;}
+    if colon==entry.count && m>=0 && !n46_legacy(m) {p.methods|=1<<m;}
+    else if m==M_SIGN {
+      x:=json_int(entry[colon+1..<entry.count]);
+      if !x.ok || x.value<0 || x.value>65535 {return p;}
+      known:=false;
+      for k:0..<p.nkinds {if p.kinds[k]==x.value {known=true;}}
+      p.error=N46_LIMIT;
+      if !known && p.nkinds==N46_MAX_KINDS {return p;}
+      if !known {p.kinds[p.nkinds]=x.value;p.nkinds+=1;}
+    } else {p.unknown+=1;}
+    p.error=N46_OK;
+  }
+  return p;
+}
+// Whether perms let a session call method (with kind, for sign_event).
+// ping, get_public_key, switch_relays and logout need only a session.
+n46_allow :: (p:N46Perms,method:int,kind:int)->bool {
+  if method==M_PING || method==M_PUBKEY || method==M_SWITCH || method==M_LOGOUT {return true;}
+  if (p.methods&(1<<method))!=0 {return true;}
+  if method!=M_SIGN {return false;}
+  for k:0..<p.nkinds {if p.kinds[k]==kind {return true;}}
+  return false;
+}
+// What a session gets: what the user offers and the client asked for.
+n46_meet :: (offer:N46Perms,asked:N46Perms)->N46Perms {
+  g:N46Perms;g.methods=offer.methods&asked.methods;
+  for k:0..<offer.nkinds {
+    // An offered kind the client asked for (by kind, or by any kind).
+    if n46_allow(asked,M_SIGN,offer.kinds[k]) {g.kinds[g.nkinds]=offer.kinds[k];g.nkinds+=1;}
+  }
+  if (g.methods&(1<<M_SIGN))!=0 {return g;}
+  for k:0..<asked.nkinds {
+    // An asked kind the user offers by any kind and not yet granted.
+    if (offer.methods&(1<<M_SIGN))!=0 && !n46_allow(g,M_SIGN,asked.kinds[k]) {g.kinds[g.nkinds]=asked.kinds[k];g.nkinds+=1;}
+  }
+  return g;
+}
+// book:end perms
+
+// book:begin uri
+// One query value with %XX escapes and + (a space) decoded: its length,
+// -1 for a broken escape, -2 when it doesn't fit.
+n46_unescape :: (s:string,out:[]u8)->int {
+  n:=0;i:=0;
+  while i<s.count {
+    c:=s[i];
+    if c=='+' {c=' ';}
+    if c=='%' {
+      if i+2>=s.count {return -1;}
+      h:=json_hex(s[i+1]);l:=json_hex(s[i+2]);
+      if h<0 || l<0 {return -1;}
+      c=cast(u8)(h*16+l);i+=2;
+    }
+    if n>=out.count {return -2;}
+    out[n]=c;n+=1;i+=1;
+  }
+  return n;
+}
+// bunker://<remote-signer key>?relay=...&secret=... or
+// nostrconnect://<client key>?relay=...&secret=...&perms=...&name=...:
+// the key as 64 lowercase hex digits, one to four ws:// or wss:// relays,
+// one secret (both flows here), and for nostrconnect optional perms and
+// name. Other parameters are skipped.
+n46_uri :: (text:string)->N46Uri {
+  u:N46Uri;p:=0;
+  if text.count>=73 && text[0..<9]=="bunker://" {u.flow=N46_BUNKER;p=9;}
+  if text.count>=79 && text[0..<15]=="nostrconnect://" {u.flow=N46_NOSTRCONNECT;p=15;}
+  if p==0 {return u;}
+  u.error=N46_KEY;
+  if !ne_lower_hex(text[p..<p+64],u.peer[..]) {return u;}
+  if text.count>p+64 && text[p+64]!='?' {return u;}
+  has_secret:=false;has_perms:=false;has_name:=false;from:=p+65;
+  buf:[N46_MAX_STR]u8;
+  for i:from..<text.count+1 {
+    if i<text.count && text[i]!='&' {continue;}
+    part:=text[from..<i];from=i+1;eq:=0;
+    while eq<part.count && part[eq]!='=' {eq+=1;}
+    key:=part[0..<eq];
+    n:=n46_unescape(part[ifx eq<part.count then eq+1 else eq..<part.count],buf[..]);
+    known:=key=="relay" || key=="secret" || (u.flow==N46_NOSTRCONNECT && (key=="perms" || key=="name"));
+    if n<0 {
+      u.error=ifx n== -1 then N46_ESCAPE else N46_LIMIT;
+      if known {return u;}
+      continue;
+    }
+    value:=cast(string)buf[0..<n];
+    if key=="relay" {
+      u.error=N46_LIMIT;
+      if u.nrelays==N46_MAX_RELAYS {return u;}
+      u.error=N46_RELAY;
+      if !nt_relay_ok(value) {return u;}
+      for k:0..<n {u.relays[u.nrelays].b[k]=buf[k];}
+      u.relays[u.nrelays].n=n;u.nrelays+=1;
+    } else if key=="secret" {
+      u.error=N46_REPEAT;
+      if has_secret {return u;}
+      has_secret=true;u.error=N46_SECRET;
+      s:[1]N46Id;
+      if !n46_token(value,s[..]) {return u;}
+      u.secret=s[0];
+    } else if key=="perms" && u.flow==N46_NOSTRCONNECT {
+      u.error=N46_REPEAT;
+      if has_perms {return u;}
+      has_perms=true;u.perms=n46_perms(value);u.error=u.perms.error;
+      if u.error!=N46_OK {return u;}
+    } else if key=="name" && u.flow==N46_NOSTRCONNECT {
+      u.error=N46_REPEAT;
+      if has_name {return u;}
+      has_name=true;
+      for k:0..<n {u.name.b[k]=buf[k];}
+      u.name.n=n;
+    }
+  }
+  u.error=N46_NO_RELAY;
+  if u.nrelays==0 {return u;}
+  u.error=ifx has_secret then N46_OK else N46_NO_SECRET;
+  return u;
+}
+// Wipes a token, its secret with it, when the connection is removed.
+n46_forget :: (u:[]N46Uri) {for i:0..<u.count {u[i]=N46Uri.{};}}
+// book:end uri
+
+// book:begin read
+// A request's plaintext. The id is read even when the method is unknown,
+// so that the remote signer can answer with an error under that id.
+n46_request :: (text:string)->N46Call {
+  c:N46Call;j:[1]Json;json_start(j[..],text);has_id:=false;has_method:=false;has_params:=false;
+  if json_next(j[..])!=JSON_OBJECT {return c;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);raw:=json_text(j[..]);
+    if json_is(key,"id") {
+      c.error=N46_REPEAT;
+      if has_id {return c;}
+      has_id=true;c.error=N46_ID;c.id.n=json_unescape(raw,c.id.b[..]);
+      if v!=JSON_STRING || !n46_printable(c.id) {return c;}
+    } else if json_is(key,"method") {
+      c.error=N46_REPEAT;
+      if has_method {return c;}
+      has_method=true;c.error=N46_METHOD;
+      if v!=JSON_STRING {return c;}
+      c.method=n46_word(raw);
+    } else if json_is(key,"params") {
+      c.error=N46_REPEAT;
+      if has_params {return c;}
+      has_params=true;c.error=N46_PARAMS;
+      if v!=JSON_ARRAY {return c;}
+      u:=json_next(j[..]);
+      while u!=JSON_ARRAY_END {
+        c.error=N46_PARAMS;
+        if u!=JSON_STRING || c.nparams==4 {return c;}
+        c.error=N46_LIMIT;
+        n:=json_unescape(json_text(j[..]),c.params[c.nparams].b[..]);
+        if n<0 {return c;}
+        c.params[c.nparams].n=n;c.nparams+=1;
+        u=json_next(j[..]);
+      }
+    } else if !json_skip(j[..]) {c.error=N46_JSON;return c;}
+    t=json_next(j[..]);
+  }
+  c.error=N46_JSON;
+  if t!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return c;}
+  c.error=N46_ID;
+  if !has_id {return c;}
+  c.error=N46_METHOD;
+  if c.method<0 {return c;}
+  c.error=N46_PARAMS;
+  if !has_params || c.nparams<N46_LEAST[c.method] || c.nparams>N46_MOST[c.method] {return c;}
+  c.error=N46_OK;
+  return c;
+}
+// A response's plaintext: result a string (or null, absent), error a
+// string when the call failed. One of the two must be there.
+n46_response :: (text:string)->N46Reply {
+  r:N46Reply;j:[1]Json;json_start(j[..],text);has_id:=false;seen_result:=false;seen_error:=false;
+  if json_next(j[..])!=JSON_OBJECT {return r;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);raw:=json_text(j[..]);
+    r.error=N46_REPEAT;
+    if json_is(key,"id") {
+      if has_id {return r;}
+      has_id=true;r.error=N46_ID;r.id.n=json_unescape(raw,r.id.b[..]);
+      if v!=JSON_STRING || !n46_printable(r.id) {return r;}
+    } else if json_is(key,"result") {
+      if seen_result {return r;}
+      seen_result=true;r.error=N46_FIELD;
+      if v!=JSON_STRING && v!=JSON_NULL {return r;}
+      if v==JSON_STRING {
+        r.has_result=true;r.error=N46_LIMIT;r.result.n=json_unescape(raw,r.result.b[..]);
+        if r.result.n<0 {r.result.n=0;return r;}
+      }
+    } else if json_is(key,"error") {
+      if seen_error {return r;}
+      seen_error=true;r.error=N46_FIELD;
+      if v!=JSON_STRING && v!=JSON_NULL {return r;}
+      if v==JSON_STRING {
+        r.failed=true;r.error=N46_LIMIT;r.message.n=json_unescape(raw,r.message.b[..]);
+        if r.message.n<0 {r.message.n=0;return r;}
+      }
+    } else if !json_skip(j[..]) {r.error=N46_JSON;return r;}
+    t=json_next(j[..]);
+  }
+  r.error=N46_JSON;
+  if t!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return r;}
+  r.error=N46_ID;
+  if !has_id {return r;}
+  r.error=ifx r.has_result || r.failed then N46_OK else N46_FIELD;
+  return r;
+}
+// An auth challenge: result "auth_url", the URL to show in error.
+n46_auth :: (r:N46Reply)->bool {
+  own:=r.result;
+  return r.error==N46_OK && r.failed && r.has_result && cast(string)own.b[0..<own.n]=="auth_url";
+}
+// sign_event's param: {"kind", "created_at", "tags", "content"} in any
+// order, other keys skipped.
+n46_template :: (text:string)->N46Template {
+  m:N46Template;j:[1]Json;json_start(j[..],text);have:=0;
+  if json_next(j[..])!=JSON_OBJECT {return m;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);x:=json_int(json_text(j[..]));bit:=0;
+    if json_is(key,"kind") {bit=1;if v!=JSON_NUMBER || !x.ok || x.value<0 || x.value>65535 {return m;} m.kind=x.value;}
+    else if json_is(key,"created_at") {bit=2;if v!=JSON_NUMBER || !x.ok || x.value<0 {return m;} m.created_at=x.value;}
+    else if json_is(key,"tags") {bit=4;s:=ne_tags(j[..]);if !s.ok {return m;} m.tags_from=s.from;m.tags_to=s.to;}
+    else if json_is(key,"content") {bit=8;if v!=JSON_STRING {return m;} m.content_from=j[0].from;m.content_to=j[0].to;}
+    else if !json_skip(j[..]) {return m;}
+    if (have&bit)!=0 {return m;}
+    have|=bit;
+    t=json_next(j[..]);
+  }
+  if t!=JSON_OBJECT_END || json_next(j[..])!=JSON_END || have!=15 {return m;}
+  m.error=N46_OK;
+  return m;
+}
+// book:end read
+
+// book:begin write
+// A request's plaintext, or -1 when it isn't one n46_request would accept
+// or out is too small.
+n46_request_json :: (c:N46Call,out:[]u8)->int {
+  if c.method<0 || c.id.n==0 || c.nparams<N46_LEAST[c.method] || c.nparams>N46_MOST[c.method] {return -1;}
+  id:=c.id;
+  n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,cast(string)id.b[0..<id.n]);
+  n=json_raw(out,n,",\"method\":");n=json_write_string(out,n,N46_METHODS[c.method]);
+  n=json_raw(out,n,",\"params\":[");
+  for k:0..<c.nparams {
+    if k>0 {n=json_raw(out,n,",");}
+    p:=c.params[k];n=json_write_string(out,n,cast(string)p.b[0..<p.n]);
+  }
+  return json_raw(out,n,"]}");
+}
+// A response's plaintext: id, then result and error when present.
+n46_response_json :: (r:N46Reply,out:[]u8)->int {
+  if r.id.n==0 || (!r.has_result && !r.failed) {return -1;}
+  id:=r.id;res:=r.result;msg:=r.message;
+  n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,cast(string)id.b[0..<id.n]);
+  if r.has_result {n=json_raw(out,n,",\"result\":");n=json_write_string(out,n,cast(string)res.b[0..<res.n]);}
+  if r.failed {n=json_raw(out,n,",\"error\":");n=json_write_string(out,n,cast(string)msg.b[0..<msg.n]);}
+  return json_raw(out,n,"}");
+}
+// sign_event's param for an event: kind, created_at, tags, content, the
+// order chapter 12's signer_template writes for NIP-07.
+n46_sign_params :: (kind:int,created_at:int,tags:string,content:string,out:[]u8)->int {
+  decoded:[N46_MAX_STR]u8;
+  if kind<0 || kind>65535 || created_at<0 {return -1;}
+  n:=json_raw(out,0,"{\"kind\":");n=json_write_int(out,n,kind);
+  n=json_raw(out,n,",\"created_at\":");n=json_write_int(out,n,created_at);
+  n=json_raw(out,n,",\"tags\":");n=ne_write_tags(tags,out,n,decoded[..]);
+  n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,content);
+  return json_raw(out,n,"}");
+}
+// book:end write
+
+// book:begin events
+// Both directions carry one p tag: the key the event is for.
+n46_tags :: (peer:[32]u8,out:[]u8)->int {
+  hex:[64]u8;own:=peer;h:=hex_encode_checked(cast(string)own[..],hex[..],false);
+  n:=json_raw(out,0,"[[\"p\",\"");n=json_raw(out,n,cast(string)hex[..]);
+  return json_raw(out,n,"\"]]");
+}
+// The reading of an event by the key me: kind 24133 and a p tag naming me.
+n46_event :: (e:NostrEvent,me:[32]u8)->int {
+  if e.error!=NE_OK || e.kind!=N46_EVENT {return N46_KIND;}
+  for i:0..<e.tags {
+    t:=nostr_tag(e,i);
+    if t.error==NT_OK && t.type==NT_P && n46_same(t.pubkey,me) {return N46_OK;}
+  }
+  return N46_P;
+}
+// The conversation key of this side's secret and the other side's key.
+n46_key :: (secret:[]u8,peer:[32]u8,out:[]u8)->int {
+  work:[1]EcdhScratch;pub:=peer;
+  r:=nip44_conversation_key_from_keys_checked(secret,pub[..],work[..],out,false);
+  return ifx r==NIP44_OK then N46_OK else N46_KEY;
+}
+// plain encrypted as NIP-44 v2 with the caller's fresh nonce.
+n46_seal :: (key:[]u8,nonce:[]u8,plain:string,out:[]u8)->N46Out {
+  o:N46Out;o.error=N46_LIMIT;
+  if plain.count>N46_MAX_PLAIN {return o;}
+  work:[N46_WORK]u8;bytes:[N46_MAX_PLAIN]u8;
+  for i:0..<plain.count {bytes[i]=plain[i];}
+  r:=nip44_encrypt_checked(NIP44_COMPAT,key,nonce,bytes[0..<plain.count],work[..],out,false);
+  o.error=ifx r.error==NIP44_OK then N46_OK else N46_KEY;o.n=r.written;
+  return o;
+}
+// An event's content opened. A NIP-04 payload (its ?iv= suffix) is
+// refused; NIP-44's MAC is checked before decryption.
+n46_open :: (key:[]u8,payload:string,out:[]u8)->N46Out {
+  o:N46Out;o.error=N46_ENCRYPTION;
+  for c:payload {if c=='?' {return o;}}
+  work:[N46_WORK]u8;
+  r:=nip44_decrypt_checked(NIP44_COMPAT,key,payload,work[..],out,false);
+  o.error=ifx r.error==NIP44_OK then N46_OK else N46_CIPHER;o.n=r.written;
+  return o;
+}
+// book:end events
+
+// book:begin client
+// A client for a token: for bunker:// it knows the signer and sends
+// connect; for its own nostrconnect:// it waits, until now + wait, for the
+// signer's connect response.
+n46_client :: (u:N46Uri,now:int,wait:int)->N46Client {
+  c:N46Client;c.state=C_CLOSED;
+  if u.error!=N46_OK || wait<1 || wait>N46_MAX_WAIT {return c;}
+  c.flow=u.flow;c.secret=u.secret;c.state=C_IDLE;
+  if u.flow==N46_BUNKER {c.signer=u.peer;return c;}
+  c.state=C_CONNECTING;c.deadline=now+wait;
+  return c;
+}
+// Records a request with the caller's random id, answered by now + wait.
+// connect only from a bunker:// token before connecting; get_public_key,
+// ping, switch_relays and logout once connected; sign_event and nip44_*
+// once the user's key is known; the NIP-04 methods never.
+n46_ask :: (c:[]N46Client,method:int,id:string,now:int,wait:int)->int {
+  if method<0 || method>=N46_METHODS.count || wait<1 || wait>N46_MAX_WAIT {return N46_WAIT;}
+  if n46_legacy(method) {return N46_LEGACY;}
+  s:=c[0].state;
+  need:=ifx method==M_SIGN || method==M_NIP44_ENC || method==M_NIP44_DEC then s==C_READY else s==C_CONNECTED || s==C_READY;
+  if method==M_CONNECT {need=s==C_IDLE && c[0].flow==N46_BUNKER;}
+  if !need {return N46_STATE;}
+  t:[1]N46Id;
+  if !n46_token(id,t[..]) {return N46_ID;}
+  free:=-1;
+  for k:0..<N46_SLOTS {
+    q:=c[0].pending[k];
+    if q.state!=P_FREE && n46_eq(q.id,t[0]) {return N46_REPEAT;}
+    if q.state==P_FREE && free<0 {free=k;}
+  }
+  if free<0 {return N46_FULL;}
+  c[0].pending[free]=N46Pending.{state=P_WAIT,id=t[0],method=method,deadline=now+wait};
+  if method==M_CONNECT {c[0].state=C_CONNECTING;}
+  return N46_OK;
+}
+// Frees a slot; a connect that ended without success leaves the client idle.
+n46_end :: (c:[]N46Client,k:int) {
+  if c[0].pending[k].method==M_CONNECT {c[0].state=C_IDLE;}
+  c[0].pending[k]=N46Pending.{};
+}
+// Marks every request past its deadline expired; returns how many.
+n46_expire :: (c:[]N46Client,now:int)->int {
+  n:=0;
+  for k:0..<N46_SLOTS {if c[0].pending[k].state!=P_FREE && now>c[0].pending[k].deadline {n46_end(c,k);n+=1;}}
+  if c[0].flow==N46_NOSTRCONNECT && c[0].state==C_CONNECTING && now>c[0].deadline {c[0].state=C_CLOSED;n+=1;}
+  return n;
+}
+// An opened response from author at time now. The waiting request with its
+// id takes it: an auth challenge keeps it waiting (N46_AUTH), an error
+// frees it (N46_ERROR), a result frees it. connect must answer "ack" or
+// the secret; for a nostrconnect:// token the response comes unasked and
+// must echo the secret, and its author becomes the signer.
+n46_take :: (c:[]N46Client,author:[32]u8,r:N46Reply,now:int)->N46Take {
+  k:N46Take;k.error=r.error;
+  if r.error!=N46_OK {return k;}
+  res:=r.result;result:=cast(string)res.b[0..<res.n];sec:=c[0].secret;
+  echo:=r.has_result && !r.failed && result==cast(string)sec.b[0..<sec.n];
+  if c[0].flow==N46_NOSTRCONNECT && c[0].state==C_CONNECTING {
+    k.error=N46_LATE;
+    if now>c[0].deadline {c[0].state=C_CLOSED;return k;}
+    k.error=N46_ECHO;
+    if !echo {return k;}
+    c[0].signer=author;c[0].state=C_CONNECTED;k.error=N46_OK;k.method=M_CONNECT;
+    return k;
+  }
+  k.error=N46_AUTHOR;
+  if c[0].state==C_CLOSED || !n46_same(author,c[0].signer) {return k;}
+  for i:0..<N46_SLOTS {if c[0].pending[i].state!=P_FREE && n46_eq(c[0].pending[i].id,r.id) {k.slot=i;}}
+  k.error=N46_UNKNOWN;
+  if k.slot<0 {return k;}
+  q:=c[0].pending[k.slot];k.method=q.method;k.error=N46_LATE;
+  if now>q.deadline {n46_end(c,k.slot);return k;}
+  k.error=N46_AUTH;
+  if n46_auth(r) {c[0].pending[k.slot].state=P_AUTH;return k;}
+  k.error=N46_ERROR;
+  if r.failed {n46_end(c,k.slot);return k;}
+  k.error=N46_FIELD;
+  if q.method==M_CONNECT && !echo && result!="ack" {n46_end(c,k.slot);return k;}
+  if q.method==M_PUBKEY && !ne_lower_hex(result,c[0].user[..]) {n46_end(c,k.slot);return k;}
+  if q.method==M_PING && result!="pong" {n46_end(c,k.slot);return k;}
+  if q.method==M_LOGOUT && result!="ack" {n46_end(c,k.slot);return k;}
+  c[0].pending[k.slot]=N46Pending.{};
+  if q.method==M_CONNECT {c[0].state=C_CONNECTED;}
+  if q.method==M_PUBKEY {c[0].state=C_READY;}
+  if q.method==M_LOGOUT {c[0].state=C_CLOSED;}
+  k.error=N46_OK;
+  return k;
+}
+// book:end client
+
+// book:begin signer
+// The session of a client key, or -1.
+n46_session :: (b:N46Bunker,client:[32]u8)->int {
+  for i:0..<N46_SESSIONS {if b.sessions[i].live && n46_same(b.sessions[i].client,client) {return i;}}
+  return -1;
+}
+// A session for client with perms: its old one replaced, else a free one.
+n46_open_session :: (b:[]N46Bunker,client:[32]u8,perms:N46Perms)->int {
+  at:=n46_session(b[0],client);
+  for i:0..<N46_SESSIONS {if at<0 && !b[0].sessions[i].live {at=i;}}
+  if at>=0 {b[0].sessions[at]=N46Session.{live=true,client=client,perms=perms};}
+  return at;
+}
+// The remote signer's decision on a request from client: connect checks
+// the signer's key and the one-use secret and opens a session with what
+// the user offers and the client asked for; every other method needs a
+// session and its permission; logout ends the session; the NIP-04 methods
+// are refused. A refusal is answered with an error under the request's id.
+n46_admit :: (b:[]N46Bunker,client:[32]u8,c:N46Call)->N46Admit {
+  a:N46Admit;a.error=c.error;a.method=c.method;
+  if c.error!=N46_OK {return a;}
+  a.error=N46_LEGACY;
+  if n46_legacy(c.method) {return a;}
+  p0:=c.params[0];first:=cast(string)p0.b[0..<p0.n];
+  if c.method==M_CONNECT {
+    key:[32]u8;a.error=N46_KEY;
+    if !ne_lower_hex(first,key[..]) || !n46_same(key,b[0].key) {return a;}
+    // Params past nparams are empty: the reader leaves them so.
+    p1:=c.params[1];a.error=N46_NO_SECRET;
+    if p1.n==0 {return a;}
+    sec:=b[0].secret;a.error=N46_SECRET;
+    if cast(string)p1.b[0..<p1.n]!=cast(string)sec.b[0..<sec.n] {return a;}
+    a.error=N46_USED;
+    if b[0].used {return a;}
+    p2:=c.params[2];asked:=n46_perms(cast(string)p2.b[0..<p2.n]);a.error=asked.error;
+    if asked.error!=N46_OK {return a;}
+    a.session=n46_open_session(b,client,n46_meet(b[0].offer,asked));a.error=N46_FULL;
+    if a.session<0 {return a;}
+    b[0].used=true;a.error=N46_OK;
+    return a;
+  }
+  a.session=n46_session(b[0],client);a.error=N46_DENIED;
+  if a.session<0 {return a;}
+  if c.method==M_SIGN {
+    m:=n46_template(first);a.error=N46_PARAMS;
+    if m.error!=N46_OK {return a;}
+    a.kind=m.kind;
+  }
+  if c.method==M_NIP44_ENC || c.method==M_NIP44_DEC {
+    peer:[32]u8;a.error=N46_PARAMS;
+    if !ne_lower_hex(first,peer[..]) {return a;}
+  }
+  a.error=N46_DENIED;
+  if !n46_allow(b[0].sessions[a.session].perms,c.method,a.kind) {return a;}
+  if c.method==M_LOGOUT {b[0].sessions[a.session]=N46Session.{};}
+  a.error=N46_OK;
+  return a;
+}
+// The signer's side of a nostrconnect:// token its user pasted: a session
+// for the client's key with what the user offers and the token asked for.
+// The signer then answers connect with the token's secret as its result.
+n46_accept :: (b:[]N46Bunker,u:N46Uri)->int {
+  if u.error!=N46_OK || u.flow!=N46_NOSTRCONNECT {return N46_SCHEME;}
+  return ifx n46_open_session(b,u.peer,n46_meet(b[0].offer,u.perms))<0 then N46_FULL else N46_OK;
+}
+// book:end signer
+
+// ---- checks
+
+#test "the NIP's nostrconnect example: two relays, perms, name and secret" {
+  u:=n46_uri(N46_T_NIP_URI);
+  #assert u.error==N46_OK && u.flow==N46_NOSTRCONNECT && n46_same(u.peer,n46_t_hex(N46_T_NIP_CLIENT));
+  #assert u.nrelays==2 && n46_t_is(u.relays[0],"wss://relay1.example.com") && n46_t_is(u.relays[1],"wss://relay2.example2.com");
+  #assert n46_is(u.secret,"0s8j2djs") && n46_t_is(u.name,"My Client");
+  #assert u.perms.methods==((1<<M_NIP44_ENC)|(1<<M_NIP44_DEC)) && u.perms.nkinds==3 && u.perms.kinds[0]==13 && u.perms.kinds[2]==1059;
+  w:[1]N46Uri;w[0]=u;n46_forget(w[..]);
+  #assert w[0].secret.n==0 && w[0].secret.b[0]==0 && w[0].nrelays==0 && w[0].error==N46_SCHEME;
+}
+#test "bunker URIs: relays, the secret, skipped parameters" {
+  b:=n46_uri("bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=wss%3A%2F%2Fr.example&x=1&&secret=s%2B1&perms=sign_event&name=n");
+  #assert b.error==N46_OK && b.flow==N46_BUNKER && n46_same(b.peer,n46_t_hex(N46_T_SIGNER)) && n46_is(b.secret,"s+1");
+  #assert b.perms.methods==0 && b.name.n==0 && n46_t_is(b.relays[0],"wss://r.example");
+  four:=n46_uri("bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?relay=ws://a&relay=ws://b&relay=ws://c&relay=ws://d&secret=a&perms=%zz&name=%4");
+  #assert four.error==N46_OK && four.nrelays==4;
+  #assert n46_uri("bunker://c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5?secret=a&relay=ws://a&").error==N46_OK;
+}
+#test "URI refusals, each with its code" {
+  b:[4096]u8;
+  q:=[20] string.["", "?secret=a", "?relay=https://x", "?relay=wss://x%2", "?relay=wss://x%zz", "?relay=wss://x%g0",
+    "?relay=ws://a&relay=ws://b&relay=ws://c&relay=ws://d&relay=ws://e", "?relay=ws://a", "?relay=ws://a&secret=",
+    "?relay=ws://a&secret=a%20b", "?relay=ws://a&secret=a&secret=a", "?relay=ws://a&secret=a&perms=x&perms=y",
+    "?relay=ws://a&secret=a&name=x&name=y", "?relay=ws://a&secret=a&perms=,sign_event", "?relay=ws://a&secret=a&perms=sign_event:x",
+    "?relay=ws://a&secret=a&perms=sign_event:65536", "?relay=ws://a&secret=a&perms=sign_event:-1", "?relay=ws://a&secret=%4",
+    "x?relay=ws://a&secret=a", "?relay=ws://a&secret=a&name=%2"];
+  want:=[20] int.[N46_NO_RELAY, N46_NO_RELAY, N46_RELAY, N46_ESCAPE, N46_ESCAPE, N46_ESCAPE, N46_LIMIT, N46_NO_SECRET,
+    N46_SECRET, N46_SECRET, N46_REPEAT, N46_REPEAT, N46_REPEAT, N46_PERMS, N46_PERMS, N46_PERMS, N46_PERMS, N46_ESCAPE, N46_KEY, N46_ESCAPE];
+  for k:0..<20 {#assert n46_uri(n46_t_uri(q[k],b[..])).error==want[k];}
+  #assert n46_uri("nostrconnect://83f3").error==N46_SCHEME && n46_uri("bunker://").error==N46_SCHEME;
+  #assert n46_uri("bunkers://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5?relay=ws://a&secret=a").error==N46_SCHEME;
+  #assert n46_uri("nostrconnect://83F3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5?relay=ws://a&secret=a").error==N46_KEY;
+  #assert n46_uri("bunker://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5").error==N46_NO_RELAY;
+  // A secret of 64 bytes reads; 65 doesn't. A relay that doesn't fit is a limit.
+  s64:[200]u8;n:=json_raw(s64[..],0,"?relay=ws://a&secret=");
+  for i:0..<64 {s64[n+i]='z';}
+  #assert n46_uri(n46_t_uri(cast(string)s64[0..<n+64],b[..])).secret.n==64;
+  s64[n+64]='z';#assert n46_uri(n46_t_uri(cast(string)s64[0..<n+65],b[..])).error==N46_SECRET;
+  long:[4400]u8;m:=json_raw(long[..],0,"?relay=ws://");
+  for i:0..<N46_MAX_STR {long[m+i]='a';}
+  big:[4600]u8;#assert n46_uri(n46_t_uri(cast(string)long[0..<m+N46_MAX_STR],big[..])).error==N46_LIMIT;
+  o:[2]u8;#assert n46_unescape("a%41",o[0..<1])== -2 && n46_unescape("%41+",o[..])==2 && o[0]=='A' && o[1]==' ' && n46_unescape("%0a",o[..])==1 && o[0]==10;
+}
+#test "perms: kinds, any kind, unknown entries, the NIP-04 methods and the limit" {
+  p:=n46_perms("sign_event:1,sign_event:1,nip44_encrypt,nip04_encrypt,ping:x,teleport,get_public_key");
+  #assert p.error==N46_OK && p.nkinds==1 && p.kinds[0]==1 && p.methods==((1<<M_NIP44_ENC)|(1<<M_PUBKEY)) && p.unknown==3;
+  #assert n46_allow(p,M_SIGN,1) && !n46_allow(p,M_SIGN,4) && n46_allow(p,M_NIP44_ENC,-1) && !n46_allow(p,M_NIP44_DEC,-1);
+  #assert !n46_allow(p,M_NIP04_ENC,-1) && n46_allow(p,M_PING,-1) && n46_allow(p,M_LOGOUT,-1) && n46_allow(p,M_SWITCH,-1);
+  any:=n46_perms("sign_event");#assert any.error==N46_OK && n46_allow(any,M_SIGN,30023) && any.nkinds==0;
+  #assert n46_perms("").error==N46_OK && n46_perms("sign_event,").error==N46_PERMS && n46_perms(":1").error==N46_PERMS;
+  b:[1024]u8;n:=0;
+  for k:0..<N46_MAX_KINDS {if k>0 {n=json_raw(b[..],n,",");} n=json_raw(b[..],n,"sign_event:");n=json_write_int(b[..],n,k);}
+  full:=n46_perms(cast(string)b[0..<n]);#assert full.error==N46_OK && full.nkinds==N46_MAX_KINDS && full.kinds[15]==15;
+  again:=json_raw(b[..],n,",sign_event:3");#assert n46_perms(cast(string)b[0..<again]).nkinds==N46_MAX_KINDS;
+  n=json_raw(b[..],n,",sign_event:16");#assert n46_perms(cast(string)b[0..<n]).error==N46_LIMIT;
+  #assert n46_perms("sign_event:65535").kinds[0]==65535 && n46_perms("sign_event:0").nkinds==1;
+}
+#test "perms: what a session gets is what is offered and asked" {
+  offer:=n46_perms("sign_event:1,sign_event:7,nip44_encrypt");
+  g:=n46_meet(offer,n46_perms("sign_event:7,sign_event:4,nip44_encrypt,nip44_decrypt"));
+  #assert g.methods==(1<<M_NIP44_ENC) && g.nkinds==1 && g.kinds[0]==7;
+  a:=n46_meet(offer,n46_perms("sign_event"));#assert g.error==N46_OK && a.nkinds==2 && a.kinds[1]==7 && (a.methods&(1<<M_SIGN))==0;
+  open:=n46_perms("sign_event,nip44_decrypt");
+  h:=n46_meet(open,n46_perms("sign_event:4,sign_event:4,sign_event:9"));#assert h.nkinds==2 && h.kinds[0]==4 && h.kinds[1]==9 && h.methods==0;
+  all:=n46_meet(open,open);#assert all.methods==open.methods && all.nkinds==0;
+  none:N46Perms;#assert n46_meet(offer,none).methods==0 && n46_meet(offer,none).nkinds==0 && n46_meet(none,open).nkinds==0;
+  mix:=n46_meet(n46_perms("sign_event,sign_event:2"),n46_perms("sign_event:2,sign_event:5"));#assert mix.nkinds==2 && mix.kinds[0]==2 && mix.kinds[1]==5;
+}
+#test "requests: every method's plaintext round-trips with the independent client's bytes" {
+  for k:0..<N46_T_REQUESTS.count {
+    c:=n46_request(N46_T_REQUESTS[k]);out:[4096]u8;n:=n46_request_json(c,out[..]);
+    #assert c.error==N46_OK && n>0 && cast(string)out[0..<n]==N46_T_REQUESTS[k];
+  }
+  s:=n46_request(N46_T_REQUESTS[1]);
+  #assert s.method==M_SIGN && n46_is(s.id,"8f2c") && s.nparams==1 && n46_t_is(s.params[0],N46_T_TEMPLATE);
+  x:=n46_request("{\"params\":[],\"x\":{\"y\":[1]},\"method\":\"ping\",\"id\":\"\\u0041\"}");
+  #assert x.error==N46_OK && n46_is(x.id,"A") && x.method==M_PING;
+}
+#test "request refusals, and the id kept for an unknown method" {
+  t:=[20] string.["[]", "{\"id\":\"1\",\"method\":\"sign_message\",\"params\":[]}", "{\"id\":\"1\",\"method\":1,\"params\":[]}",
+    "{\"id\":\"1\",\"id\":\"1\",\"method\":\"ping\",\"params\":[]}", "{\"id\":\"1\",\"method\":\"ping\",\"method\":\"ping\",\"params\":[]}",
+    "{\"id\":\"1\",\"method\":\"ping\",\"params\":[],\"params\":[]}", "{\"id\":1,\"method\":\"ping\",\"params\":[]}",
+    "{\"id\":\"\",\"method\":\"ping\",\"params\":[]}", "{\"id\":\"a b\",\"method\":\"ping\",\"params\":[]}", "{\"method\":\"ping\",\"params\":[]}",
+    "{\"id\":\"1\",\"params\":[]}", "{\"id\":\"1\",\"method\":\"ping\"}", "{\"id\":\"1\",\"method\":\"ping\",\"params\":{}}",
+    "{\"id\":\"1\",\"method\":\"ping\",\"params\":[\"x\"]}", "{\"id\":\"1\",\"method\":\"sign_event\",\"params\":[]}",
+    "{\"id\":\"1\",\"method\":\"connect\",\"params\":[\"a\",\"b\",\"c\",\"d\",\"e\"]}", "{\"id\":\"1\",\"method\":\"nip44_encrypt\",\"params\":[\"a\",2]}",
+    "{\"id\":\"1\",\"method\":\"ping\",\"params\":[]} 1", "{\"id\":\"1\",\"method\":\"ping\",\"params\":[],\"x\":[}", "{\"id\":\"1\",\"method\":\"ping\",\"params\":[]"];
+  want:=[20] int.[N46_JSON, N46_METHOD, N46_METHOD, N46_REPEAT, N46_REPEAT, N46_REPEAT, N46_ID, N46_ID, N46_ID, N46_ID,
+    N46_METHOD, N46_PARAMS, N46_PARAMS, N46_PARAMS, N46_PARAMS, N46_PARAMS, N46_PARAMS, N46_JSON, N46_JSON, N46_JSON];
+  for k:0..<20 {#assert n46_request(t[k]).error==want[k];}
+  u:=n46_request(t[1]);#assert u.method== -1 && n46_is(u.id,"1");
+  long:[4200]u8;n:=json_raw(long[..],0,"{\"id\":\"1\",\"method\":\"sign_event\",\"params\":[\"");
+  for i:0..<N46_MAX_STR+1 {long[n+i]='a';}
+  n+=N46_MAX_STR+1;n=json_raw(long[..],n,"\"]}");
+  #assert n46_request(cast(string)long[0..<n]).error==N46_LIMIT;
+  // The writer takes only what the reader accepts, and only what fits.
+  c:=n46_request(N46_T_REQUESTS[1]);out:[32]u8;
+  #assert n46_request_json(c,out[..])== -1;
+  c.nparams=0;big:[512]u8;#assert n46_request_json(c,big[..])== -1;
+  c.nparams=2;#assert n46_request_json(c,big[..])== -1;
+  none:N46Call;#assert n46_request_json(none,big[..])== -1;
+  noid:=n46_request(N46_T_REQUESTS[0]);noid.id.n=0;#assert n46_request_json(noid,big[..])== -1;
+}
+#test "responses: results, errors, auth challenges, round trips" {
+  for k:0..<N46_T_RESPONSES.count {
+    r:=n46_response(N46_T_RESPONSES[k]);out:[4096]u8;n:=n46_response_json(r,out[..]);
+    #assert r.error==N46_OK && n>0 && cast(string)out[0..<n]==N46_T_RESPONSES[k];
+  }
+  a:=n46_response(N46_T_RESPONSES[3]);
+  #assert n46_auth(a) && n46_t_is(a.message,"https://signer.example/auth?id=8f2c") && !n46_auth(n46_response(N46_T_RESPONSES[2]));
+  e:=n46_response(N46_T_RESPONSES[2]);#assert e.failed && !e.has_result && n46_t_is(e.message,"not allowed: kind 4");
+  nul:=n46_response("{\"result\":null,\"error\":\"x\",\"id\":\"1\",\"z\":[1]}");#assert nul.error==N46_OK && !nul.has_result && nul.failed;
+  ok:=n46_response("{\"id\":\"1\",\"result\":\"pong\",\"error\":null}");#assert ok.error==N46_OK && !ok.failed && !n46_auth(ok);
+  fake:=n46_response("{\"id\":\"1\",\"result\":\"auth_url\"}");#assert !n46_auth(fake);
+  other:=n46_response("{\"id\":\"1\",\"result\":\"ack\",\"error\":\"u\"}");#assert !n46_auth(other);
+  bad:N46Reply;bad.has_result=true;bad.failed=true;#assert !n46_auth(bad);
+}
+#test "response refusals" {
+  t:=[14] string.["1", "{\"result\":\"x\"}", "{\"id\":\"1\"}", "{\"id\":\"1\",\"result\":null}", "{\"id\":2,\"result\":\"x\"}",
+    "{\"id\":\"1\",\"id\":\"1\",\"result\":\"x\"}", "{\"id\":\"1\",\"result\":\"x\",\"result\":\"x\"}", "{\"id\":\"1\",\"error\":\"x\",\"error\":\"x\"}",
+    "{\"id\":\"1\",\"result\":[\"wss://a\"]}", "{\"id\":\"1\",\"error\":{\"code\":1}}", "{\"id\":\"1\",\"result\":\"x\"} 1",
+    "{\"id\":\"1\",\"result\":\"x\",\"y\":[}", "{\"id\":\"1\",\"result\":\"x\"", "{\"id\":\"\",\"result\":\"x\"}"];
+  want:=[14] int.[N46_JSON, N46_ID, N46_FIELD, N46_FIELD, N46_ID, N46_REPEAT, N46_REPEAT, N46_REPEAT, N46_FIELD, N46_FIELD,
+    N46_JSON, N46_JSON, N46_JSON, N46_ID];
+  for k:0..<14 {#assert n46_response(t[k]).error==want[k];}
+  long:[4200]u8;n:=json_raw(long[..],0,"{\"id\":\"1\",\"result\":\"");
+  for i:0..<N46_MAX_STR+1 {long[n+i]='a';}
+  m:=json_raw(long[..],n+N46_MAX_STR+1,"\"}");
+  r:=n46_response(cast(string)long[0..<m]);#assert r.error==N46_LIMIT && r.result.n==0;
+  n=json_raw(long[..],0,"{\"id\":\"1\",\"error\":\"");
+  for i:0..<N46_MAX_STR+1 {long[n+i]='a';}
+  m=json_raw(long[..],n+N46_MAX_STR+1,"\"}");
+  s:=n46_response(cast(string)long[0..<m]);#assert s.error==N46_LIMIT && s.message.n==0;
+  out:[512]u8;none:N46Reply;#assert n46_response_json(none,out[..])== -1;
+  idonly:=n46_response(N46_T_RESPONSES[0]);idonly.has_result=false;#assert n46_response_json(idonly,out[..])== -1;
+  idonly.has_result=true;idonly.id.n=0;#assert n46_response_json(idonly,out[..])== -1;
+}
+#test "sign_event's template: read in any order, written in one" {
+  m:=n46_template(N46_T_TEMPLATE);
+  #assert m.error==N46_OK && m.kind==1 && m.created_at==1714078911;
+  #assert N46_T_TEMPLATE[m.tags_from..<m.tags_to]=="[]" && N46_T_TEMPLATE[m.content_from..<m.content_to]=="Hello, I'm signing remotely";
+  out:[512]u8;n:=n46_sign_params(1,1714078911,"[]","Hello, I'm signing remotely",out[..]);
+  w:=n46_template(cast(string)out[0..<n]);#assert w.error==N46_OK && w.kind==1 && w.created_at==1714078911;
+  #assert cast(string)out[0..<n]=="{\"kind\":1,\"created_at\":1714078911,\"tags\":[],\"content\":\"Hello, I'm signing remotely\"}";
+  #assert n46_template("{\"kind\":0,\"created_at\":0,\"tags\":[[\"p\",\"x\"]],\"content\":\"\",\"pubkey\":\"z\"}").error==N46_OK;
+  #assert n46_template("{\"kind\":65535,\"created_at\":0,\"tags\":[],\"content\":\"\"}").kind==65535;
+  t:=[12] string.["[]", "{\"kind\":1,\"created_at\":1,\"tags\":[]}", "{\"kind\":-1,\"created_at\":1,\"tags\":[],\"content\":\"\"}",
+    "{\"kind\":65536,\"created_at\":1,\"tags\":[],\"content\":\"\"}", "{\"kind\":\"1\",\"created_at\":1,\"tags\":[],\"content\":\"\"}",
+    "{\"kind\":1,\"created_at\":-1,\"tags\":[],\"content\":\"\"}", "{\"kind\":1,\"created_at\":\"1\",\"tags\":[],\"content\":\"\"}",
+    "{\"kind\":1,\"created_at\":1,\"tags\":[1],\"content\":\"\"}", "{\"kind\":1,\"created_at\":1,\"tags\":[],\"content\":1}",
+    "{\"kind\":1,\"kind\":1,\"created_at\":1,\"tags\":[],\"content\":\"\"}", "{\"kind\":1,\"created_at\":1,\"tags\":[],\"content\":\"\",\"x\":[}",
+    "{\"kind\":1,\"created_at\":1,\"tags\":[],\"content\":\"\"} 1"];
+  for k:0..<12 {#assert n46_template(t[k]).error==N46_FIELD;}
+  #assert n46_sign_params(-1,1,"[]","",out[..])== -1 && n46_sign_params(65536,1,"[]","",out[..])== -1 && n46_sign_params(1,-1,"[]","",out[..])== -1;
+  #assert n46_sign_params(65535,0,"[]","",out[..])>0 && n46_sign_params(1,0,"[1]","",out[..])<0;
+}
+#test "events: the p tag, the kind, and the NIP-44 published vector through the connection's key" #steps 400000000 {
+  out:[256]u8;n:=n46_tags(n46_t_hex(N46_T_SIGNER),out[..]);
+  #assert cast(string)out[0..<n]=="[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]";
+  ev:[4096]u8;e:=n90_t_event(1,1,N46_EVENT,cast(string)out[0..<n],"x",ev[..]);
+  #assert n46_event(e,n46_t_hex(N46_T_SIGNER))==N46_OK && n46_event(e,n46_t_hex(N46_T_CLIENT))==N46_P;
+  two:=n90_t_event(1,1,N46_EVENT,"[[\"e\",\"x\"],[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]","x",ev[..]);
+  #assert n46_event(two,n46_t_hex(N46_T_SIGNER))==N46_OK;
+  #assert n46_event(n90_t_event(1,1,24134,cast(string)out[0..<n],"x",ev[..]),n46_t_hex(N46_T_SIGNER))==N46_KIND;
+  bad:NostrEvent;#assert n46_event(bad,n46_t_hex(N46_T_SIGNER))==N46_KIND;
+  sec1:[32]u8;sec1[31]=1;ck:[32]u8;
+  #assert n46_key(sec1[..],n46_t_hex(N46_T_SIGNER),ck[..])==N46_OK && n46_same(ck,n46_t_hex("c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d"));
+  nonce:[32]u8;nonce[31]=1;sealed:[512]u8;
+  s:=n46_seal(ck[..],nonce[..],"a",sealed[..]);
+  #assert s.error==N46_OK && cast(string)sealed[0..<s.n]=="AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb";
+  plain:[512]u8;o:=n46_open(ck[..],cast(string)sealed[0..<s.n],plain[..]);
+  #assert o.error==N46_OK && o.n==1 && plain[0]=='a';
+  sealed[60]=ifx sealed[60]=='A' then 'B' else 'A';
+  #assert n46_open(ck[..],cast(string)sealed[0..<s.n],plain[..]).error==N46_CIPHER;
+  #assert n46_open(ck[..],"zvv4Ga7FMCWuEJT0pWVf+w==?iv=AAAAAAAAAAAAAAAAAAAAAA==",plain[..]).error==N46_ENCRYPTION;
+  #assert n46_seal(ck[0..<31],nonce[..],"a",sealed[..]).error==N46_KEY;
+  big:[N46_MAX_PLAIN+1]u8;for i:0..<N46_MAX_PLAIN+1 {big[i]='a';}
+  #assert n46_seal(ck[..],nonce[..],cast(string)big[..],sealed[..]).error==N46_LIMIT;
+  wide:[16384]u8;#assert n46_seal(ck[..],nonce[..],cast(string)big[0..<N46_MAX_PLAIN],wide[..]).error==N46_OK;
+  notx:[32]u8;for i:0..<32 {notx[i]=0xff;}
+  #assert n46_key(sec1[..],notx,ck[..])==N46_KEY;
+}
+#test "the client over a bunker token: connect, get_public_key, sign_event, a fixed deadline" {
+  c:=[1] N46Client.[n46_client(n46_uri(N46_T_BUNKER),100,30)];
+  signer:=n46_t_hex(N46_T_SIGNER);
+  #assert c[0].state==C_IDLE && n46_same(c[0].signer,signer);
+  #assert n46_ask(c[..],M_SIGN,"s",100,30)==N46_STATE && n46_ask(c[..],M_PUBKEY,"k",100,30)==N46_STATE;
+  #assert n46_ask(c[..],M_CONNECT,"c",100,30)==N46_OK && c[0].state==C_CONNECTING;
+  #assert n46_ask(c[..],M_CONNECT,"d",100,30)==N46_STATE;
+  // Another author, an unknown id, an id that isn't a token.
+  #assert n46_take(c[..],n46_t_hex(N46_T_CLIENT),n46_t_reply("c","ack"),101).error==N46_AUTHOR;
+  #assert n46_take(c[..],signer,n46_t_reply("z","ack"),101).error==N46_UNKNOWN;
+  #assert n46_take(c[..],signer,n46_response("{}"),101).error==N46_ID;
+  t:=n46_take(c[..],signer,n46_t_reply("c","ack"),130);
+  #assert t.error==N46_OK && t.method==M_CONNECT && c[0].state==C_CONNECTED && c[0].pending[t.slot].state==P_FREE;
+  #assert n46_ask(c[..],M_SIGN,"s",130,30)==N46_STATE && n46_ask(c[..],M_PUBKEY,"k",130,30)==N46_OK;
+  #assert n46_ask(c[..],M_PING,"k",130,30)==N46_REPEAT;
+  #assert n46_take(c[..],signer,n46_t_reply("k","XY"),131).error==N46_FIELD && c[0].state==C_CONNECTED;
+  #assert n46_ask(c[..],M_PUBKEY,"k",131,30)==N46_OK;
+  u:=n46_take(c[..],signer,n46_t_reply("k",N46_T_USER),131);
+  #assert u.error==N46_OK && c[0].state==C_READY && n46_same(c[0].user,n46_t_hex(N46_T_USER));
+  #assert n46_ask(c[..],M_SIGN,"s",131,30)==N46_OK && n46_ask(c[..],M_NIP04_ENC,"e",131,30)==N46_LEGACY && n46_ask(c[..],M_NIP04_DEC,"e",131,30)==N46_LEGACY;
+  // One second past the deadline the answer is late, and the slot is free.
+  #assert n46_take(c[..],signer,n46_t_reply("s","{}"),162).error==N46_LATE && c[0].pending[0].state==P_FREE;
+  #assert n46_ask(c[..],M_SIGN,"s",200,30)==N46_OK;
+  #assert n46_take(c[..],signer,n46_t_reply("s","{}"),230).error==N46_OK;
+}
+#test "the client: auth challenges, errors, ping, logout, expiry and a full table" {
+  c:=[1] N46Client.[n46_client(n46_uri(N46_T_BUNKER),0,10)];signer:=n46_t_hex(N46_T_SIGNER);
+  #assert n46_ask(c[..],M_CONNECT,"c",0,10)==N46_OK;
+  #assert n46_take(c[..],signer,n46_t_reply("c","nope"),1).error==N46_FIELD && c[0].state==C_IDLE;
+  #assert n46_ask(c[..],M_CONNECT,"c",1,10)==N46_OK;
+  #assert n46_take(c[..],signer,n46_response("{\"id\":\"c\",\"error\":\"denied\"}"),2).error==N46_ERROR && c[0].state==C_IDLE;
+  #assert n46_ask(c[..],M_CONNECT,"c",2,10)==N46_OK;
+  // The bunker may answer connect with the secret itself.
+  #assert n46_take(c[..],signer,n46_t_reply("c","s3cret"),3).error==N46_OK && c[0].state==C_CONNECTED;
+  #assert n46_ask(c[..],M_PUBKEY,"k",3,10)==N46_OK;
+  auth:=n46_take(c[..],signer,n46_response(N46_T_AUTH_K),4);
+  #assert auth.error==N46_AUTH && c[0].pending[auth.slot].state==P_AUTH;
+  #assert n46_take(c[..],signer,n46_t_reply("k",N46_T_USER),13).error==N46_OK && c[0].state==C_READY;
+  #assert n46_ask(c[..],M_PING,"p",13,10)==N46_OK && n46_take(c[..],signer,n46_t_reply("p","ping"),14).error==N46_FIELD;
+  #assert n46_ask(c[..],M_PING,"p",14,10)==N46_OK && n46_take(c[..],signer,n46_t_reply("p","pong"),14).error==N46_OK;
+  for k:0..<N46_SLOTS {id:=[8] string.["0","1","2","3","4","5","6","7"];#assert n46_ask(c[..],M_PING,id[k],20,k+1)==N46_OK;}
+  #assert n46_ask(c[..],M_PING,"8",20,10)==N46_FULL;
+  #assert n46_expire(c[..],20)==0 && n46_expire(c[..],22)==1 && n46_expire(c[..],28)==6 && n46_expire(c[..],29)==1;
+  #assert n46_ask(c[..],M_PING,"x",20,0)==N46_WAIT && n46_ask(c[..],M_PING,"x",20,N46_MAX_WAIT+1)==N46_WAIT && n46_ask(c[..],-1,"x",20,1)==N46_WAIT;
+  #assert n46_ask(c[..],10,"x",20,1)==N46_WAIT && n46_ask(c[..],M_PING,"",20,1)==N46_ID && n46_ask(c[..],M_PING,"x",20,N46_MAX_WAIT)==N46_OK;
+  #assert n46_ask(c[..],M_LOGOUT,"l",30,10)==N46_OK && n46_take(c[..],signer,n46_t_reply("l","no"),30).error==N46_FIELD;
+  #assert n46_ask(c[..],M_LOGOUT,"l",30,10)==N46_OK && n46_take(c[..],signer,n46_t_reply("l","ack"),30).error==N46_OK && c[0].state==C_CLOSED;
+  #assert n46_ask(c[..],M_PING,"q",30,10)==N46_STATE && n46_take(c[..],signer,n46_t_reply("x","pong"),30).error==N46_AUTHOR;
+  // An expired connect leaves the client idle.
+  d:=[1] N46Client.[n46_client(n46_uri(N46_T_BUNKER),0,10)];
+  #assert n46_ask(d[..],M_CONNECT,"c",0,5)==N46_OK && n46_expire(d[..],6)==1 && d[0].state==C_IDLE;
+  #assert n46_ask(d[..],M_CONNECT,"c",0,5)==N46_OK && n46_take(d[..],signer,n46_t_reply("c","ack"),6).error==N46_LATE && d[0].state==C_IDLE;
+  #assert n46_client(n46_uri(N46_T_BUNKER),0,0).state==C_CLOSED && n46_client(n46_uri(N46_T_BUNKER),0,N46_MAX_WAIT+1).state==C_CLOSED;
+  #assert n46_client(n46_uri("bunker://x"),0,10).state==C_CLOSED && n46_client(n46_uri(N46_T_BUNKER),0,N46_MAX_WAIT).state==C_IDLE;
+}
+#test "the client over its nostrconnect token: the signer's response must echo the secret" {
+  c:=[1] N46Client.[n46_client(n46_uri(N46_T_CONNECT),100,60)];
+  #assert c[0].state==C_CONNECTING && c[0].flow==N46_NOSTRCONNECT && c[0].deadline==160;
+  #assert n46_ask(c[..],M_CONNECT,"c",100,10)==N46_STATE;
+  signer:=n46_t_hex(N46_T_SIGNER);
+  #assert n46_take(c[..],signer,n46_t_reply("r1","ack"),101).error==N46_ECHO && c[0].state==C_CONNECTING;
+  #assert n46_take(c[..],signer,n46_response("{\"id\":\"r1\",\"result\":\"0s8j2djs\",\"error\":\"x\"}"),101).error==N46_ECHO;
+  #assert n46_take(c[..],signer,n46_t_reply("r1","0s8j2djs"),160).error==N46_OK && c[0].state==C_CONNECTED && n46_same(c[0].signer,signer);
+  late:=[1] N46Client.[n46_client(n46_uri(N46_T_CONNECT),100,60)];
+  #assert n46_take(late[..],signer,n46_t_reply("r1","0s8j2djs"),161).error==N46_LATE && late[0].state==C_CLOSED;
+  quiet:=[1] N46Client.[n46_client(n46_uri(N46_T_CONNECT),100,60)];
+  #assert n46_expire(quiet[..],160)==0 && n46_expire(quiet[..],161)==1 && quiet[0].state==C_CLOSED;
+}
+#test "the remote signer: connect with the one-use secret, then permissions by method and kind" {
+  b:=[1] N46Bunker.[n46_t_bunker("sign_event:1,nip44_encrypt")];
+  me:=n46_t_hex(N46_T_CLIENT);other:=n46_t_hex(N46_T_USER);
+  #assert n46_admit(b[..],me,n46_t_call(M_PING,"","","")).error==N46_DENIED;
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_USER,"s3cret","")).error==N46_KEY;
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,"zz","s3cret","")).error==N46_KEY;
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_SIGNER,"","")).error==N46_NO_SECRET;
+  one:=n46_request("{\"id\":\"1\",\"method\":\"connect\",\"params\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]}");
+  #assert n46_admit(b[..],me,one).error==N46_NO_SECRET;
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_SIGNER,"guess","")).error==N46_SECRET;
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_SIGNER,"s3cret","sign_event:x")).error==N46_PERMS;
+  two:=n46_request("{\"id\":\"1\",\"method\":\"connect\",\"params\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"s3cret\"]}");
+  a:=n46_admit(b[..],me,two);
+  #assert a.error==N46_OK && a.session==0 && b[0].used && b[0].sessions[0].perms.methods==0 && b[0].sessions[0].perms.nkinds==0;
+  // The secret is used: the same connect again, from anyone, refuses.
+  #assert n46_admit(b[..],other,two).error==N46_USED && n46_admit(b[..],me,two).error==N46_USED;
+  b[0].used=false;
+  c:=n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_SIGNER,"s3cret","sign_event:1,sign_event:4,nip44_encrypt,nip04_decrypt"));
+  #assert c.error==N46_OK && c.session==0 && b[0].sessions[0].perms.nkinds==1 && b[0].sessions[0].perms.methods==(1<<M_NIP44_ENC);
+  #assert n46_admit(b[..],me,n46_t_call(M_PING,"","","")).error==N46_OK && n46_admit(b[..],me,n46_t_call(M_PUBKEY,"","","")).error==N46_OK;
+  s1:=n46_admit(b[..],me,n46_t_sign(1));#assert s1.error==N46_OK && s1.kind==1 && s1.method==M_SIGN;
+  #assert n46_admit(b[..],me,n46_t_sign(4)).error==N46_DENIED;
+  #assert n46_admit(b[..],me,n46_t_call(M_SIGN,"{\"kind\":1}","","")).error==N46_PARAMS;
+  #assert n46_admit(b[..],me,n46_t_call(M_NIP44_ENC,N46_T_USER,"hi","")).error==N46_OK;
+  #assert n46_admit(b[..],me,n46_t_call(M_NIP44_DEC,N46_T_USER,"x","")).error==N46_DENIED;
+  #assert n46_admit(b[..],me,n46_t_call(M_NIP44_ENC,"USER","hi","")).error==N46_PARAMS;
+  #assert n46_admit(b[..],me,n46_t_call(M_NIP04_ENC,N46_T_USER,"hi","")).error==N46_LEGACY;
+  #assert n46_admit(b[..],other,n46_t_sign(1)).error==N46_DENIED;
+  bad:=n46_request("{\"id\":\"9\",\"method\":\"sign_message\",\"params\":[]}");
+  r:=n46_admit(b[..],me,bad);#assert r.error==N46_METHOD && r.method== -1;
+  #assert n46_admit(b[..],me,n46_t_call(M_LOGOUT,"","","")).error==N46_OK && !b[0].sessions[0].live;
+  #assert n46_admit(b[..],me,n46_t_sign(1)).error==N46_DENIED;
+}
+#test "the remote signer: sessions replaced, a full table, a pasted nostrconnect token" {
+  b:=[1] N46Bunker.[n46_t_bunker("sign_event,nip44_decrypt")];
+  for k:0..<N46_SESSIONS {
+    who:=n90_t_key(cast(u8)(k+1));b[0].used=false;
+    #assert n46_admit(b[..],who,n46_t_call(M_CONNECT,N46_T_SIGNER,"s3cret","sign_event:7")).session==k;
+  }
+  b[0].used=false;
+  #assert n46_admit(b[..],n90_t_key(99),n46_t_call(M_CONNECT,N46_T_SIGNER,"s3cret","")).error==N46_FULL && !b[0].used;
+  again:=n46_admit(b[..],n90_t_key(3),n46_t_call(M_CONNECT,N46_T_SIGNER,"s3cret","nip44_decrypt"));
+  #assert again.error==N46_OK && again.session==2 && b[0].sessions[2].perms.nkinds==0 && b[0].sessions[2].perms.methods==(1<<M_NIP44_DEC);
+  #assert n46_admit(b[..],n90_t_key(1),n46_t_sign(7)).error==N46_OK && n46_admit(b[..],n90_t_key(3),n46_t_sign(7)).error==N46_DENIED;
+  c:=[1] N46Bunker.[n46_t_bunker("sign_event:13,sign_event:1059,nip44_encrypt")];
+  #assert n46_accept(c[..],n46_uri(N46_T_NIP_URI))==N46_OK && c[0].sessions[0].live && !c[0].used;
+  g:=c[0].sessions[0].perms;#assert g.nkinds==2 && g.kinds[1]==1059 && g.methods==(1<<M_NIP44_ENC);
+  #assert n46_accept(c[..],n46_uri(N46_T_BUNKER))==N46_SCHEME && n46_accept(c[..],n46_uri("x"))==N46_SCHEME;
+  #assert n46_accept(b[..],n46_uri(N46_T_NIP_URI))==N46_FULL;
+  #assert n46_session(b[0],n90_t_key(8))==7 && n46_session(b[0],n90_t_key(9))== -1;
+}
+#test "edges: first bytes, printable bounds, method 0, empty strings, exact lengths" {
+  a:[32]u8;b:[32]u8;b[0]=1;#assert !n46_same(a,b) && n46_same(a,a);
+  t:[1]N46Id;del:[1]u8;del[0]=0x7f;
+  #assert n46_token("!~",t[..]) && t[0].n==2 && !n46_token(" ",t[..]) && !n46_token(cast(string)del[..],t[..]) && !n46_token("",t[..]);
+  #assert n46_perms("connect").methods==1 && n46_perms("connect:x").unknown==1;
+  // connect in perms is a method bit like any other; it is not sign_event.
+  g:=n46_meet(n46_perms("connect,sign_event"),n46_perms("connect,sign_event:5"));#assert g.methods==1 && g.nkinds==1 && g.kinds[0]==5;
+  h:=n46_meet(n46_perms("connect,sign_event:1"),n46_perms("sign_event:5"));#assert h.nkinds==0;
+  // A key and nothing after it, or one byte after it.
+  #assert n46_uri("nostrconnect://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5").error==N46_NO_RELAY;
+  #assert n46_uri("nostrconnect://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f5x").error==N46_KEY;
+  #assert n46_uri("bunker://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f").error==N46_SCHEME;
+  #assert n46_uri("nostrconnect://83f3b2ae6aa368e8275397b9c26cf550101d63ebaab900d19dd4a4429f5ad8f").error==N46_SCHEME;
+  // Empty result and error strings, a one-byte id.
+  r:=n46_response("{\"id\":\"1\",\"result\":\"\"}");#assert r.error==N46_OK && r.has_result && r.result.n==0;
+  e:=n46_response("{\"id\":\"1\",\"error\":\"\"}");#assert e.error==N46_OK && e.failed && e.message.n==0;
+  #assert n46_request("{\"id\":\"1\",\"method\":\"connect\",\"params\":[\"x\"]}").method==M_CONNECT;
+  out:[256]u8;#assert n46_sign_params(0,0,"[]","",out[..])>0;
+  // A p tag naming me with a broken relay hint is no p tag for me.
+  ev:[4096]u8;
+  #assert n46_event(n90_t_event(1,1,N46_EVENT,"[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"http://x\"]]","x",ev[..]),n46_t_hex(N46_T_SIGNER))==N46_P;
+}
+#test "edges: the client's waits, states and slots" {
+  #assert n46_client(n46_uri(N46_T_BUNKER),0,1).state==C_IDLE;
+  c:=[1] N46Client.[n46_client(n46_uri(N46_T_BUNKER),0,10)];signer:=n46_t_hex(N46_T_SIGNER);
+  #assert n46_ask(c[..],M_CONNECT,"c",0,5)==N46_OK && c[0].pending[0].state==P_WAIT && c[0].pending[1].state==P_FREE;
+  // The bunker flow has no connect deadline of its own: only the request's.
+  #assert n46_expire(c[..],3)==0 && c[0].state==C_CONNECTING;
+  #assert n46_take(c[..],signer,n46_t_reply("c","ack"),4).error==N46_OK;
+  #assert n46_ask(c[..],M_NIP44_ENC,"e",4,5)==N46_STATE && n46_ask(c[..],M_NIP44_DEC,"d",4,5)==N46_STATE && n46_ask(c[..],M_SWITCH,"w",4,5)==N46_OK;
+  #assert n46_ask(c[..],M_PUBKEY,"k",4,5)==N46_OK && c[0].pending[1].state==P_WAIT;
+  #assert n46_take(c[..],signer,n46_t_reply("k",N46_T_USER),5).error==N46_OK && c[0].state==C_READY;
+  #assert n46_ask(c[..],M_NIP44_ENC,"e",5,5)==N46_OK && n46_ask(c[..],M_NIP44_DEC,"d",5,5)==N46_OK;
+  #assert n46_take(c[..],signer,n46_t_reply("e","x"),11).error==N46_LATE && c[0].state==C_READY;
+  #assert n46_expire(c[..],11)==2 && c[0].state==C_READY;
+  d:=[1] N46Client.[n46_client(n46_uri(N46_T_CONNECT),0,10)];
+  t:=n46_take(d[..],signer,n46_t_reply("r","0s8j2djs"),1);#assert t.error==N46_OK && t.method==M_CONNECT;
+  b:=[1] N46Bunker.[n46_t_bunker("sign_event:1")];me:=n46_t_hex(N46_T_CLIENT);
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_SIGNER,"","sign_event:1")).error==N46_NO_SECRET;
+  #assert n46_admit(b[..],me,n46_t_call(M_CONNECT,N46_T_SIGNER,"s3cret","")).error==N46_OK;
+  #assert n46_admit(b[..],me,n46_t_call(M_NIP44_DEC,"USER","x","")).error==N46_PARAMS;
+}

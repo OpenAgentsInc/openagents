@@ -1033,15 +1033,22 @@
    "number": 48,
    "title": "Signers outside the app",
    "file": "ch048-signers-outside-the-app.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     12,
     20,
     31
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip46.coax",
+    "coax/tests/nostr/nip46_fixtures.coax",
+    "nostr/examples/remote-signer.coax",
+    "nostr/examples/checks/remote-signer.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
