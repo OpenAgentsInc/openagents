@@ -783,6 +783,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/markets-orders.coax",
+      "chapter": "nostr/book/ch066-markets-and-orders.md",
+      "stdout": "nostr/fixtures/markets-orders.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

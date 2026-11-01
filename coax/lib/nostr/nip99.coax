@@ -1,0 +1,332 @@
+// NIP-99 classified listings read from parsed events: kind 30402 (active)
+// and 30403 (draft or inactive), addressable by their d tag, with title,
+// summary, published_at, location, status and a price tag
+// ["price", amount, currency, frequency?]. Then the amount a buyer could be
+// asked to pay for one.
+//
+// Bitcoin only. A price in any currency reads and is shown as written, but
+// only a price in BTC or sats becomes an amount in satoshis. Nothing here
+// knows an exchange rate, so a price in USD or EUR is never converted, and
+// a recurring price is shown but not settled. The amount is a decimal
+// string: digits, with an optional point and more digits; a sign, an
+// exponent, a comma or a space is refused. A BTC amount has at most eight
+// decimals (whole sats), and no amount is over 21 million bitcoin.
+//
+// A listing is a statement by its signer; nothing here fetches or verifies
+// a signature.
+#load "nip32.coax";
+#authority;
+
+N99_OK :: 0; N99_EVENT :: 1; N99_KIND :: 2; N99_TAG :: 3; N99_MISSING :: 4;
+N99_PRICE :: 5; N99_TIME :: 6; N99_LIMIT :: 7;
+N99_KIND_LISTING :: 30402; N99_KIND_DRAFT :: 30403;
+N99_UNIT_BAD :: -1; N99_UNIT_OTHER :: 0; N99_UNIT_BTC :: 1; N99_UNIT_SAT :: 2;
+N99_STATE_NONE :: 0; N99_STATE_ACTIVE :: 1; N99_STATE_SOLD :: 2; N99_STATE_OTHER :: 3;
+N99_DUE_OK :: 0; N99_DUE_LISTING :: 1; N99_DUE_DRAFT :: 2; N99_DUE_SOLD :: 3;
+N99_DUE_NO_PRICE :: 4; N99_DUE_RATE :: 5; N99_DUE_RECURRING :: 6;
+N99_MAX_DIGITS :: 16;
+N99_SATS_PER_BTC :: 100000000;
+N99_MAX_BTC :: 21000000;
+N99_MAX_SATS :: 2100000000000000;
+
+// book:begin record
+// A decimal string: whole.frac, with frac_digits digits after the point.
+N99Decimal :: struct {ok:bool; whole:int; frac:int; frac_digits:int;}
+N99Price :: struct {
+  status:int=N99_PRICE;
+  amount:N32Text; currency:N32Text;   // as written
+  frequency:N32Text;                  // empty: a one-time price
+  decimal:N99Decimal; unit:int;       // N99_UNIT_BTC, _SAT or _OTHER
+  sats:int=-1;                        // BTC or sats only, else -1
+}
+N99Listing :: struct {
+  status:int=N99_EVENT; at:int=-1;    // the refusing tag
+  draft:bool;                         // kind 30403
+  d:N32Text; title:N32Text; summary:N32Text; location:N32Text;
+  published_at:int=-1;
+  prices:int; price:N99Price;         // the first price tag
+  state:int;                          // N99_STATE_*
+  topics:int; images:int;             // t and image tags
+}
+N99Due :: struct {status:int=N99_DUE_LISTING; sats:int=-1;}
+// book:end record
+
+// A tag value past the second, which n32_tag counts but does not read.
+N99Value :: struct {error:int=NT_EVENT; v:N32Text;}
+
+n99_ev :: (kind:int,tags:string,out:[]u8)->NostrEvent {return n32_event_in(kind,tags,out);}
+n99_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+
+#test "decimal strings: digits, an optional point and digits" {
+  d:=n99_decimal("50");#assert d.ok && d.whole==50 && d.frac==0 && d.frac_digits==0;
+  d=n99_decimal("0.00012");#assert d.ok && d.whole==0 && d.frac==12 && d.frac_digits==5;
+  d=n99_decimal("15.50");#assert d.ok && d.whole==15 && d.frac==50 && d.frac_digits==2;
+  d=n99_decimal("9999999999999999.9999999999999999");#assert d.ok && d.whole==9999999999999999 && d.frac==9999999999999999 && d.frac_digits==16;
+  #assert !n99_decimal("99999999999999999").ok && !n99_decimal("1.99999999999999999").ok;
+  #assert !n99_decimal("").ok && !n99_decimal(".5").ok && !n99_decimal("5.").ok && !n99_decimal("50,000").ok;
+  #assert !n99_decimal("-5").ok && !n99_decimal("1e3").ok && !n99_decimal("1.2.3").ok && !n99_decimal(" 5").ok && !n99_decimal("5 ").ok;
+  #assert !n99_decimal("1.5x").ok && !n99_decimal("+1").ok;
+}
+#forall "a decimal byte is a digit or refused" c:0..<256 {
+  b:[3]u8;b[0]='4';b[1]=cast(u8)c;b[2]='2';
+  d:=n99_decimal(cast(string)b[0..<2]);
+  if c>='0' && c<='9' {#assert d.ok && d.whole==40+(c-'0');} else {#assert !d.ok;}
+  d=n99_decimal(cast(string)b[..]);
+  if c>='0' && c<='9' {#assert d.ok && d.whole==402+10*(c-'0') && d.frac_digits==0;}
+  else if c=='.' {#assert d.ok && d.whole==4 && d.frac==2 && d.frac_digits==1;}
+  else {#assert !d.ok;}
+}
+#test "units: BTC and sats, any case; others are data; 3 or 4 letters" {
+  #assert n99_unit(n99_text("BTC"))==N99_UNIT_BTC && n99_unit(n99_text("btc"))==N99_UNIT_BTC && n99_unit(n99_text("bTc"))==N99_UNIT_BTC;
+  #assert n99_unit(n99_text("SAT"))==N99_UNIT_SAT && n99_unit(n99_text("sats"))==N99_UNIT_SAT && n99_unit(n99_text("SATS"))==N99_UNIT_SAT;
+  #assert n99_unit(n99_text("USD"))==N99_UNIT_OTHER && n99_unit(n99_text("eth"))==N99_UNIT_OTHER && n99_unit(n99_text("USDT"))==N99_UNIT_OTHER;
+  #assert n99_unit(n99_text("BT"))==N99_UNIT_BAD && n99_unit(n99_text("SATSS"))==N99_UNIT_BAD && n99_unit(n99_text(""))==N99_UNIT_BAD;
+  #assert n99_unit(n99_text("U$D"))==N99_UNIT_BAD && n99_unit(n99_text("US1"))==N99_UNIT_BAD && n99_unit(n99_text("BTC "))==N99_UNIT_BAD;
+  #assert n99_unit(n99_text("btcs"))==N99_UNIT_OTHER && n99_unit(n99_text("sat@"))==N99_UNIT_BAD;
+}
+#forall "a unit byte is a letter or refused" c:0..<256 {
+  b:[3]u8;b[0]='B';b[1]='T';b[2]=cast(u8)c;
+  u:=n99_unit(n99_text(cast(string)b[..]));
+  if c=='C' || c=='c' {#assert u==N99_UNIT_BTC;}
+  else if (c>='A' && c<='Z') || (c>='a' && c<='z') {#assert u==N99_UNIT_OTHER;}
+  else {#assert u==N99_UNIT_BAD;}
+}
+#test "sats: BTC to eight decimals, sats whole, at most 21 million bitcoin" {
+  #assert n99_sats(n99_decimal("0.0001"),N99_UNIT_BTC)==10000 && n99_sats(n99_decimal("1"),N99_UNIT_BTC)==100000000;
+  #assert n99_sats(n99_decimal("0.00000001"),N99_UNIT_BTC)==1 && n99_sats(n99_decimal("0.000000001"),N99_UNIT_BTC)== -1;
+  #assert n99_sats(n99_decimal("21000000"),N99_UNIT_BTC)==N99_MAX_SATS && n99_sats(n99_decimal("21000000.00000001"),N99_UNIT_BTC)== -1;
+  #assert n99_sats(n99_decimal("21000001"),N99_UNIT_BTC)== -1 && n99_sats(n99_decimal("20999999.99999999"),N99_UNIT_BTC)==N99_MAX_SATS-1;
+  #assert n99_sats(n99_decimal("1.5"),N99_UNIT_BTC)==150000000 && n99_sats(n99_decimal("12.34567891"),N99_UNIT_BTC)==1234567891;
+  #assert n99_sats(n99_decimal("15000"),N99_UNIT_SAT)==15000 && n99_sats(n99_decimal("15000.000"),N99_UNIT_SAT)==15000;
+  #assert n99_sats(n99_decimal("1.5"),N99_UNIT_SAT)== -1 && n99_sats(n99_decimal("2100000000000000"),N99_UNIT_SAT)==N99_MAX_SATS;
+  #assert n99_sats(n99_decimal("2100000000000001"),N99_UNIT_SAT)== -1 && n99_sats(n99_decimal("0"),N99_UNIT_SAT)==0;
+  #assert n99_sats(n99_decimal("50"),N99_UNIT_OTHER)== -1 && n99_sats(n99_decimal("50"),N99_UNIT_BAD)== -1 && n99_sats(n99_decimal("x"),N99_UNIT_SAT)== -1;
+  #assert n99_sats(n99_decimal("x"),N99_UNIT_BTC)== -1;
+}
+#test "every price form in NIP-99, and BTC and sats" {
+  buf:[512]u8;
+  e:=n99_ev(30402,"[[\"price\",\"50\",\"USD\"],[\"price\",\"15\",\"EUR\",\"month\"],[\"price\",\"50000\",\"GBP\",\"year\"],[\"price\",\"100\",\"USD\"],[\"price\",\"0.0005\",\"btc\"],[\"price\",\"21000\",\"SAT\",\"week\"]]",buf[..]);
+  p:=n99_price(e,0);#assert p.status==N99_OK && n32_is(p.amount,"50") && n32_is(p.currency,"USD") && p.frequency.n==0 && p.unit==N99_UNIT_OTHER && p.sats== -1 && p.decimal.whole==50;
+  p=n99_price(e,1);#assert p.status==N99_OK && n32_is(p.amount,"15") && n32_is(p.currency,"EUR") && n32_is(p.frequency,"month") && p.sats== -1;
+  p=n99_price(e,2);#assert p.status==N99_OK && p.decimal.whole==50000 && n32_is(p.currency,"GBP") && n32_is(p.frequency,"year");
+  p=n99_price(e,3);#assert p.status==N99_OK && p.decimal.whole==100;
+  p=n99_price(e,4);#assert p.status==N99_OK && p.unit==N99_UNIT_BTC && p.sats==50000 && p.frequency.n==0;
+  p=n99_price(e,5);#assert p.status==N99_OK && p.unit==N99_UNIT_SAT && p.sats==21000 && n32_is(p.frequency,"week");
+}
+#test "price refusals" {
+  buf:[512]u8;
+  e:=n99_ev(30402,"[[\"price\",\"50,000\",\"USD\"],[\"price\",\"50\"],[\"price\",\"50\",\"USD\",\"month\",\"x\"],[\"price\",\"50\",\"US\"],[\"price\",\"5\",\"EUR\",\"\"],[\"price\",\"0.000000001\",\"BTC\"],[\"title\",\"5\",\"USD\"],[\"price\",\"1.5\",\"sats\"],[\"price\",\"-5\",\"USD\"]]",buf[..]);
+  for i:0..<9 {p:=n99_price(e,i);#assert p.status==N99_PRICE;}
+  #assert n99_price(e,9).status==N99_PRICE;
+  none:NostrEvent;#assert n99_price(none,0).status==N99_PRICE;
+}
+#test "a value past the second" {
+  buf:[512]u8;
+  e:=n99_ev(1,"[[\"price\",\"1\",\"USD\",\"month\"],[\"x\"],[\"y\",1],[\"z\",\"\"]]",buf[..]);
+  v0:=n99_value(e,3,1);#assert v0.error==NT_OK && v0.v.n==0;
+  v:=n99_value(e,0,3);#assert v.error==NT_OK && n32_is(v.v,"month");
+  v=n99_value(e,0,0);#assert v.error==NT_OK && n32_is(v.v,"price");
+  v=n99_value(e,0,2);#assert v.error==NT_OK && n32_is(v.v,"USD");
+  #assert n99_value(e,0,4).error==NT_INDEX && n99_value(e,1,1).error==NT_INDEX && n99_value(e,4,0).error==NT_INDEX && n99_value(e,-1,0).error==NT_INDEX;
+  #assert n99_value(e,2,1).error==NT_EVENT && n99_value(e,2,0).error==NT_OK && n99_value(e,2,2).error==NT_EVENT;
+  none:NostrEvent;#assert n99_value(none,0,0).error==NT_EVENT;
+  #assert n99_value(n99_ev(1,"[1]",buf[..]),0,0).error==NT_EVENT;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"p\",\"a\",\"b\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n99_value(nt_event(cast(string)long[0..<n]),0,3).error==NT_LIMIT;
+}
+#test "NIP-99's example event reads" {
+  buf:[1024]u8;
+  e:=n99_ev(30402,"[[\"d\",\"lorem-ipsum\"],[\"title\",\"Lorem Ipsum\"],[\"published_at\",\"1296962229\"],[\"t\",\"electronics\"],[\"image\",\"https://url.to.img\",\"256x256\"],[\"summary\",\"More lorem ipsum that is a little more than the title\"],[\"location\",\"NYC\"],[\"price\",\"100\",\"USD\"],[\"e\",\"b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87\",\"wss://relay.example.com\"],[\"a\",\"30023:a695f6b60119d9521934a691347d9f78e8770b56da16bb255ee286ddf9fda919:ipsum\",\"wss://relay.nostr.org\"]]",buf[..]);
+  l:=n99_listing(e);
+  #assert l.status==N99_OK && l.at== -1 && !l.draft && n32_is(l.d,"lorem-ipsum") && n32_is(l.title,"Lorem Ipsum") && l.published_at==1296962229;
+  #assert n32_is(l.summary,"More lorem ipsum that is a little more than the title") && n32_is(l.location,"NYC");
+  #assert l.prices==1 && l.price.status==N99_OK && n32_is(l.price.currency,"USD") && l.state==N99_STATE_NONE && l.topics==1 && l.images==1;
+  d:=n99_due(l);#assert d.status==N99_DUE_RATE && d.sats== -1;
+}
+#test "listings: first values win, states, drafts and what is due" {
+  buf:[1024]u8;
+  e:=n99_ev(30403,"[[\"d\",\"bike\"],[\"title\",\"Bike\"],[\"title\",\"Other\"],[\"summary\",\"a\"],[\"summary\",\"b\"],[\"location\",\"x\"],[\"location\",\"y\"],[\"status\",\"sold\"],[\"status\",\"active\"],[\"price\",\"0.001\",\"BTC\"],[\"price\",\"5\",\"USD\"],[\"t\",\"a\"],[\"t\",\"b\"],[\"d\",\"two\"],[\"published_at\",\"5\"],[\"published_at\",\"6\"]]",buf[..]);
+  l:=n99_listing(e);
+  #assert l.status==N99_OK && l.draft && n32_is(l.d,"bike") && n32_is(l.title,"Bike") && n32_is(l.summary,"a") && n32_is(l.location,"x");
+  #assert l.state==N99_STATE_SOLD && l.prices==2 && l.price.sats==100000 && l.topics==2 && l.images==0 && l.published_at==5;
+  #assert n99_due(l).status==N99_DUE_DRAFT;
+  e.kind=30402;l=n99_listing(e);#assert !l.draft && n99_due(l).status==N99_DUE_SOLD;
+  e=n99_ev(30402,"[[\"d\",\"bike\"],[\"status\",\"active\"],[\"price\",\"0.001\",\"BTC\"]]",buf[..]);
+  l=n99_listing(e);#assert l.state==N99_STATE_ACTIVE;d:=n99_due(l);#assert d.status==N99_DUE_OK && d.sats==100000;
+  e=n99_ev(30402,"[[\"d\",\"bike\"],[\"status\",\"reserved\"],[\"price\",\"21000\",\"sats\",\"month\"]]",buf[..]);
+  l=n99_listing(e);#assert l.state==N99_STATE_OTHER;d=n99_due(l);#assert d.status==N99_DUE_RECURRING && d.sats== -1;
+  e=n99_ev(30402,"[[\"d\",\"bike\"],[\"price\",\"5\",\"sat\",\"d\"]]",buf[..]);#assert n99_due(n99_listing(e)).status==N99_DUE_RECURRING;
+  e=n99_ev(30402,"[[\"d\",\"free\"],[\"price\",\"0\",\"sat\"]]",buf[..]);d=n99_due(n99_listing(e));#assert d.status==N99_DUE_OK && d.sats==0;
+  e=n99_ev(30402,"[[\"d\",\"bike\"]]",buf[..]);d=n99_due(n99_listing(e));#assert d.status==N99_DUE_NO_PRICE && d.sats== -1;
+  bad:N99Listing;#assert n99_due(bad).status==N99_DUE_LISTING;
+  e=n99_ev(30402,"[[\"d\",\"\"],[\"d\",\"late\"],[\"title\",\"\"],[\"title\",\"T\"]]",buf[..]);l=n99_listing(e);
+  #assert l.status==N99_MISSING && l.at== -1;
+}
+#test "listing refusals" {
+  buf:[1024]u8;
+  #assert n99_listing(n99_ev(30402,"[[\"title\",\"x\"]]",buf[..])).status==N99_MISSING;
+  l:=n99_listing(n99_ev(30401,"[[\"d\",\"x\"]]",buf[..]));#assert l.status==N99_KIND && l.at== -1;
+  #assert n99_listing(n99_ev(30404,"[[\"d\",\"x\"]]",buf[..])).status==N99_KIND;
+  l=n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"price\",\"50,000\",\"USD\"]]",buf[..]));#assert l.status==N99_PRICE && l.at==1;
+  l=n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"price\",\"5\",\"USD\"],[\"price\",\"5\"]]",buf[..]));#assert l.status==N99_PRICE && l.at==2;
+  l=n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"published_at\",\"soon\"]]",buf[..]));#assert l.status==N99_TIME && l.at==1;
+  l=n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"published_at\",\"1.5\"]]",buf[..]));#assert l.status==N99_TIME && l.at==1;
+  l=n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"t\",\"a\"],[\"e\",\"b3\"]]",buf[..]));#assert l.status==N99_TAG && l.at==2;
+  #assert n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"p\",\"zz\"]]",buf[..])).status==N99_TAG;
+  #assert n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"a\",\"1:2:3\"]]",buf[..])).status==N99_TAG;
+  l=n99_listing(n99_ev(30402,"[[\"d\",\"x\"],[\"t\",1]]",buf[..]));#assert l.status==N99_EVENT && l.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"x\"],[\"title\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  l=n99_listing(n32_event(30402,cast(string)long[0..<n]));#assert l.status==N99_LIMIT && l.at==1;
+  none:NostrEvent;#assert n99_listing(none).status==N99_EVENT;
+}
+
+n99_refuse :: (r:N99Listing,status:int,at:int)->N99Listing {o:=r;o.status=status;o.at=at;return o;}
+n99_digit :: (c:u8)->bool {return c>='0' && c<='9';}
+
+// book:begin price
+// A decimal string: one to 16 digits, then optionally a point and one to
+// 16 more. Anything else is refused.
+n99_decimal :: (s:string)->N99Decimal {
+  d:N99Decimal;i:=0;
+  while i<s.count && n99_digit(s[i]) {
+    if i==N99_MAX_DIGITS {return d;}
+    d.whole=d.whole*10+cast(int)(s[i]-'0');i+=1;
+  }
+  if i==0 {return d;}
+  if i<s.count {
+    if s[i]!='.' {return d;}
+    i+=1;
+    while i<s.count && n99_digit(s[i]) {
+      if d.frac_digits==N99_MAX_DIGITS {return d;}
+      d.frac=d.frac*10+cast(int)(s[i]-'0');d.frac_digits+=1;i+=1;
+    }
+    if d.frac_digits==0 || i<s.count {return d;}
+  }
+  d.ok=true;return d;
+}
+// A currency code: three or four ASCII letters, any case. BTC and SAT or
+// SATS are bitcoin; any other code is shown as data.
+n99_unit :: (t:N32Text)->int {
+  own:=t;lower:[4]u8;
+  if own.n<3 || own.n>4 {return N99_UNIT_BAD;}
+  for i:0..<own.n {
+    c:=own.b[i]|32;   // a letter in lower case
+    if c<'a' || c>'z' {return N99_UNIT_BAD;}
+    lower[i]=c;
+  }
+  s:=cast(string)lower[0..<own.n];
+  if s=="btc" {return N99_UNIT_BTC;}
+  if s=="sat" || s=="sats" {return N99_UNIT_SAT;}
+  return N99_UNIT_OTHER;
+}
+// The amount in satoshis, or -1: not bitcoin, not whole sats, or over 21
+// million bitcoin.
+n99_sats :: (d:N99Decimal,unit:int)->int {
+  if !d.ok {return -1;}
+  if unit==N99_UNIT_SAT {
+    if d.frac!=0 || d.whole>N99_MAX_SATS {return -1;}
+    return d.whole;
+  }
+  if unit!=N99_UNIT_BTC || d.frac_digits>8 || d.whole>N99_MAX_BTC {return -1;}
+  f:=d.frac;for k:d.frac_digits..<8 {f*=10;}
+  if d.whole==N99_MAX_BTC && f>0 {return -1;}
+  return d.whole*N99_SATS_PER_BTC+f;
+}
+// The k'th value of the index'th tag (0 is its name).
+n99_value :: (e:NostrEvent,index:int,k:int)->N99Value {
+  r:N99Value;j:[1]Json;if !nt_start(j[..],e) {return r;}
+  i:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY && i<index {skipped:=json_skip(j[..]);i+=1;tok=json_next(j[..]);}
+  if index<0 || tok==JSON_ARRAY_END {r.error=NT_INDEX;return r;}
+  if tok!=JSON_ARRAY {return r;}
+  at:=0;v:=json_next(j[..]);
+  while v==JSON_STRING {
+    if at==k {
+      n:=json_unescape(json_text(j[..]),r.v.b[..]);
+      if n<0 {r.error=NT_LIMIT;return r;}
+      r.v.n=n;r.error=NT_OK;return r;
+    }
+    at+=1;v=json_next(j[..]);
+  }
+  if v==JSON_ARRAY_END {r.error=NT_INDEX;}
+  return r;
+}
+// The index'th tag as a price: ["price", amount, currency] or with a
+// fourth value, the frequency. A bitcoin price must be whole sats.
+n99_price :: (e:NostrEvent,index:int)->N99Price {
+  p:N99Price;t:=n32_tag(e,index);
+  if t.error!=NT_OK || !n32_is(t.v[0],"price") || t.values<3 || t.values>4 {return p;}
+  p.amount=t.v[1];p.currency=t.v[2];
+  if t.values==4 {
+    f:=n99_value(e,index,3);
+    if f.error!=NT_OK || f.v.n==0 {return p;}
+    p.frequency=f.v;
+  }
+  a:=p.amount;p.decimal=n99_decimal(cast(string)a.b[0..<a.n]);p.unit=n99_unit(p.currency);
+  if !p.decimal.ok || p.unit==N99_UNIT_BAD {return p;}
+  p.sats=n99_sats(p.decimal,p.unit);
+  if p.unit!=N99_UNIT_OTHER && p.sats<0 {return p;}
+  p.status=N99_OK;return p;
+}
+// book:end price
+
+// book:begin listing
+// A classified listing. The first d, title, summary, location, status,
+// published_at and price tags are read; later ones are counted or ignored.
+n99_listing :: (e:NostrEvent)->N99Listing {
+  l:N99Listing;if e.error!=NE_OK {return l;}
+  if e.kind!=N99_KIND_LISTING && e.kind!=N99_KIND_DRAFT {return n99_refuse(l,N99_KIND,-1);}
+  l.draft=e.kind==N99_KIND_DRAFT;
+  seen:[6]bool;   // d, title, summary, location, status, published_at
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n99_refuse(l,N99_LIMIT,i);}
+    if t.error!=NT_OK {return n99_refuse(l,N99_EVENT,i);}
+    name:=t.v[0];v:=t.v[1];
+    if n32_is(name,"d") && !seen[0] {seen[0]=true;l.d=v;}
+    if n32_is(name,"title") && !seen[1] {seen[1]=true;l.title=v;}
+    if n32_is(name,"summary") && !seen[2] {seen[2]=true;l.summary=v;}
+    if n32_is(name,"location") && !seen[3] {seen[3]=true;l.location=v;}
+    if n32_is(name,"status") && !seen[4] {
+      seen[4]=true;
+      l.state=ifx n32_is(v,"active") then N99_STATE_ACTIVE else ifx n32_is(v,"sold") then N99_STATE_SOLD else N99_STATE_OTHER;
+    }
+    if n32_is(name,"published_at") && !seen[5] {
+      seen[5]=true;d:=n99_decimal(cast(string)v.b[0..<v.n]);
+      if !d.ok || d.frac_digits>0 {return n99_refuse(l,N99_TIME,i);}
+      l.published_at=d.whole;
+    }
+    if n32_is(name,"price") {
+      p:=n99_price(e,i);if p.status!=N99_OK {return n99_refuse(l,N99_PRICE,i);}
+      if l.prices==0 {l.price=p;}
+      l.prices+=1;
+    }
+    if n32_is(name,"t") {l.topics+=1;}
+    if n32_is(name,"image") {l.images+=1;}
+    if n32_is(name,"e") || n32_is(name,"p") || n32_is(name,"a") {
+      if nostr_tag(e,i).error!=NT_OK {return n99_refuse(l,N99_TAG,i);}
+    }
+    i+=1;
+  }
+  if l.d.n==0 {return n99_refuse(l,N99_MISSING,-1);}
+  l.status=N99_OK;return l;
+}
+// book:end listing
+
+// book:begin due
+// What a buyer could be asked to pay for a listing, in sats. A price in
+// another currency is shown as written and never converted; a recurring
+// price is shown and not settled here.
+n99_due :: (l:N99Listing)->N99Due {
+  d:N99Due;
+  if l.status!=N99_OK {return d;}
+  d.status=N99_DUE_DRAFT;if l.draft {return d;}
+  d.status=N99_DUE_SOLD;if l.state==N99_STATE_SOLD {return d;}
+  d.status=N99_DUE_NO_PRICE;if l.prices==0 {return d;}
+  d.status=N99_DUE_RATE;if l.price.unit==N99_UNIT_OTHER {return d;}
+  d.status=N99_DUE_RECURRING;if l.price.frequency.n>0 {return d;}
+  d.status=N99_DUE_OK;d.sats=l.price.sats;return d;
+}
+// book:end due

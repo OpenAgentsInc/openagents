@@ -1366,13 +1366,21 @@
    "number": 66,
    "title": "Markets and orders",
    "file": "ch066-markets-and-orders.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip99.coax",
+    "coax/lib/nostr/nip69.coax",
+    "coax/lib/nostr/nip15.coax",
+    "nostr/examples/markets-orders.coax",
+    "nostr/examples/checks/markets-orders.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

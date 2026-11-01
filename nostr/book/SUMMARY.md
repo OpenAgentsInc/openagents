@@ -97,7 +97,7 @@
 - [63. Git on Nostr](ch063-git-on-nostr.md) — implemented
 - [64. App data and handlers](ch064-app-data-and-handlers.md) — design draft
 - [65. Data vending machines](ch065-data-vending-machines.md) — design draft
-- [66. Markets and orders](ch066-markets-and-orders.md) — design draft
+- [66. Markets and orders](ch066-markets-and-orders.md) — implemented
 - [67. Relay discovery, access and management](ch067-relay-discovery-access-and-management.md) — design draft
 - [68. Bridges, external IDs and timestamps](ch068-bridges-external-ids-and-timestamps.md) — design draft
 - [69. Small content kinds](ch069-small-content-kinds.md) — design draft

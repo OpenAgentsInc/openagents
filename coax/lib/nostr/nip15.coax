@@ -1,0 +1,759 @@
+// NIP-15 marketplace, read only where the NIP is merely unrecommended and
+// built only where money is Bitcoin: stalls (kind 30017) and products
+// (kind 30018), whose content is a JSON object, and the three checkout
+// messages a customer and a merchant exchange in direct messages: a new
+// order (type 0), a payment request (type 1) and a status update (type 2).
+// Then an order's total in satoshis.
+//
+// Bitcoin only. A stall or product in any currency reads and is shown, but
+// a total is computed only when the stall and every product are priced in
+// BTC or sats; nothing here knows an exchange rate, so a stall in USD has
+// no total. A payment request's options read whatever their type, but only
+// btc (an on-chain address), ln (a Lightning invoice) and lnurl are ever
+// chosen or written; url (a payment page that could take any rail) and any
+// other type are shown and refused. Prices and costs are JSON numbers
+// written as plain decimals: a sign or an exponent is refused, and a BTC
+// amount has at most eight decimals.
+//
+// Content is checked as one JSON object without duplicate keys (the shared
+// admission policy), so a message cannot carry two prices or two ids. The
+// messages travel inside NIP-04 (or better, NIP-17) encryption; this file
+// reads and writes the plaintext. Nothing here fetches, decrypts or
+// verifies a signature, and nothing checks that an invoice's amount is the
+// total (chapter 71 decodes invoices).
+#load "nip99.coax";
+#authority;
+
+N15_OK :: 0; N15_EVENT :: 1; N15_KIND :: 2; N15_JSON :: 3; N15_FIELD :: 4; N15_MISSING :: 5;
+N15_ID :: 6; N15_LIMIT :: 7; N15_TYPE :: 8; N15_DUPLICATE :: 9;
+N15_KIND_STALL :: 30017; N15_KIND_PRODUCT :: 30018;
+N15_NEW_ORDER :: 0; N15_PAYMENT_REQUEST :: 1; N15_STATUS_UPDATE :: 2;
+N15_RAIL_NONE :: 0; N15_RAIL_ONCHAIN :: 1; N15_RAIL_LIGHTNING :: 2; N15_RAIL_LNURL :: 3;
+N15_TOTAL_OK :: 0; N15_TOTAL_INPUT :: 1; N15_TOTAL_RATE :: 2; N15_TOTAL_ZONE :: 3;
+N15_TOTAL_PRODUCT :: 4; N15_TOTAL_STOCK :: 5; N15_TOTAL_AMOUNT :: 6; N15_TOTAL_LIMIT :: 7;
+N15_W_FULL :: -1; N15_W_RAIL :: -2; N15_W_SHAPE :: -3;
+N15_MAX_ZONES :: 4; N15_MAX_ITEMS :: 8; N15_MAX_OPTIONS :: 4;
+
+// book:begin record
+N15Zone :: struct {id:N32Text; cost:N32Text; decimal:N99Decimal;}   // cost as written
+N15Stall :: struct {
+  status:int=N15_EVENT;
+  id:N32Text; name:N32Text; currency:N32Text; unit:int;
+  zones:[N15_MAX_ZONES]N15Zone; zones_n:int;          // shipping: base cost per zone
+}
+N15Product :: struct {
+  status:int=N15_EVENT;
+  id:N32Text; stall_id:N32Text; name:N32Text; currency:N32Text; unit:int;
+  price:N32Text; decimal:N99Decimal;
+  quantity:int=-1;                                    // -1: null, unlimited
+  extras:[N15_MAX_ZONES]N15Zone; extras_n:int;        // extra cost per unit, per zone
+}
+N15Item :: struct {product_id:N32Text; quantity:int;}
+N15Order :: struct {
+  status:int=N15_EVENT;
+  id:N32Text; nostr:N32Text; address:N32Text;         // nostr: contact key, hex
+  items:[N15_MAX_ITEMS]N15Item; items_n:int;
+  shipping_id:N32Text;
+}
+N15Option :: struct {type:N32Text; rail:int; from:int; to:int;}   // link: raw bytes in the text
+N15Request :: struct {
+  status:int=N15_EVENT; id:N32Text;
+  options:[N15_MAX_OPTIONS]N15Option; options_n:int;
+  bitcoin:int;                                        // options with a Bitcoin rail
+}
+N15Update :: struct {status:int=N15_EVENT; id:N32Text; paid:bool; shipped:bool;}
+N15Total :: struct {
+  status:int=N15_TOTAL_INPUT; at:int=-1;              // the refusing item
+  goods:int; shipping:int; sats:int=-1;
+}
+// book:end record
+
+N15ZoneRead :: struct {status:int=N15_FIELD; zone:N15Zone;}
+N15Count :: struct {status:int; n:int;}
+
+// ---- checks
+N15_STALL :: "{\"id\":\"s1\",\"name\":\"Alice's stall\",\"description\":\"x\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"eu\",\"name\":\"Europe\",\"cost\":2000,\"regions\":[\"DE\",\"FR\"]},{\"id\":\"us\",\"cost\":5000.0,\"regions\":[]}]}";
+N15_P1 :: "{\"id\":\"p1\",\"stall_id\":\"s1\",\"name\":\"Mug\",\"images\":[\"https://x\"],\"currency\":\"sat\",\"price\":15000,\"quantity\":5,\"specs\":[[\"size\",\"big\"]],\"shipping\":[{\"id\":\"eu\",\"cost\":500}]}";
+N15_P2 :: "{\"id\":\"p2\",\"stall_id\":\"s1\",\"name\":\"Ebook\",\"currency\":\"BTC\",\"price\":0.0001,\"quantity\":null}";
+N15_ORDER_TEXT :: "{\"id\":\"o1\",\"type\":0,\"name\":\"Bob\",\"address\":\"1 Main St\",\"message\":\"hi\",\"contact\":{\"nostr\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"email\":\"b@x\"},\"items\":[{\"product_id\":\"p1\",\"quantity\":2},{\"product_id\":\"p2\",\"quantity\":1}],\"shipping_id\":\"eu\"}";
+
+n15_raw :: (text:string,o:N15Option)->string {return text[o.from..<o.to];}
+n15_all :: (out:[]N15Product) {out[0]=n15_product_parse(N15_P1);out[1]=n15_product_parse(N15_P2);}
+// text with the first from replaced by to.
+n15_swap :: (text:string,from:string,to:string,out:[]u8)->string {
+  for i:0..<text.count-from.count+1 {
+    if text[i..<i+from.count]==from {
+      n:=json_raw(out,0,text[0..<i]);n=json_raw(out,n,to);n=json_raw(out,n,text[i+from.count..<text.count]);
+      return cast(string)out[0..<n];
+    }
+  }
+  return "";
+}
+
+#test "the swap helper" {
+  out:[8]u8;#assert n15_swap("ab","a","x",out[..])=="xb" && n15_swap("ab","b","",out[..])=="a" && n15_swap("ab","c","x",out[..])=="";
+}
+#test "a stall and two products read" {
+  s:=n15_stall_parse(N15_STALL);
+  #assert s.status==N15_OK && n32_is(s.id,"s1") && n32_is(s.name,"Alice's stall") && n32_is(s.currency,"sat") && s.unit==N99_UNIT_SAT;
+  #assert s.zones_n==2 && n32_is(s.zones[0].id,"eu") && n32_is(s.zones[0].cost,"2000") && s.zones[0].decimal.whole==2000;
+  #assert n32_is(s.zones[1].id,"us") && n32_is(s.zones[1].cost,"5000.0") && s.zones[1].decimal.frac_digits==1;
+  p:=n15_product_parse(N15_P1);
+  #assert p.status==N15_OK && n32_is(p.id,"p1") && n32_is(p.stall_id,"s1") && n32_is(p.name,"Mug") && p.unit==N99_UNIT_SAT;
+  #assert n32_is(p.price,"15000") && p.decimal.whole==15000 && p.quantity==5 && p.extras_n==1 && n32_is(p.extras[0].id,"eu") && p.extras[0].decimal.whole==500;
+  p=n15_product_parse(N15_P2);
+  #assert p.status==N15_OK && p.unit==N99_UNIT_BTC && n32_is(p.price,"0.0001") && p.quantity== -1 && p.extras_n==0 && n32_is(p.currency,"BTC");
+  s=n15_stall_parse("{\"id\":\"s\",\"name\":\"\",\"currency\":\"USD\"}");#assert s.status==N15_OK && s.unit==N99_UNIT_OTHER && s.zones_n==0;
+  p=n15_product_parse("{\"id\":\"p\",\"stall_id\":\"s\",\"name\":\"n\",\"currency\":\"sat\",\"price\":0,\"quantity\":0}");#assert p.status==N15_OK && p.quantity==0;
+}
+#test "stall and product refusals" {
+  #assert n15_stall_parse("[]").status==N15_JSON && n15_stall_parse("{").status==N15_JSON && n15_stall_parse("").status==N15_JSON;
+  #assert n15_stall_parse("{\"id\":\"a\",\"id\":\"b\",\"name\":\"n\",\"currency\":\"sat\"}").status==N15_DUPLICATE;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\"}").status==N15_MISSING;
+  #assert n15_stall_parse("{\"id\":\"a\",\"currency\":\"sat\"}").status==N15_MISSING;
+  #assert n15_stall_parse("{\"name\":\"n\",\"currency\":\"sat\"}").status==N15_MISSING;
+  #assert n15_stall_parse("{\"id\":\"\",\"name\":\"n\",\"currency\":\"sat\"}").status==N15_MISSING;
+  #assert n15_stall_parse("{\"id\":1,\"name\":\"n\",\"currency\":\"sat\"}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"$\"}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":{}}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[1]}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"z\"}]}").status==N15_MISSING;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"cost\":1}]}").status==N15_MISSING;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"z\",\"cost\":\"1\"}]}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"z\",\"cost\":-1}]}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"z\",\"cost\":1e3}]}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":2,\"cost\":1}]}").status==N15_FIELD;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"z\",\"cost\":1},{\"id\":\"z\",\"cost\":2}]}").status==N15_DUPLICATE;
+  #assert n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"1\",\"cost\":1},{\"id\":\"2\",\"cost\":1},{\"id\":\"3\",\"cost\":1},{\"id\":\"4\",\"cost\":1},{\"id\":\"5\",\"cost\":1}]}").status==N15_LIMIT;
+  s:=n15_stall_parse("{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"1\",\"cost\":1},{\"id\":\"2\",\"cost\":1},{\"id\":\"3\",\"cost\":1},{\"id\":\"4\",\"cost\":1}]}");#assert s.status==N15_OK && s.zones_n==4;
+  long:[400]u8;n:=json_raw(long[..],0,"{\"id\":\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\",\"name\":\"n\",\"currency\":\"sat\"}");
+  #assert n15_stall_parse(cast(string)long[0..<n]).status==N15_LIMIT;
+  n=json_raw(long[..],0,"{\"id\":\"a\",\"name\":\"n\",\"currency\":\"sat\",\"shipping\":[{\"id\":\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\",\"cost\":1}]}");
+  #assert n15_stall_parse(cast(string)long[0..<n]).status==N15_LIMIT;
+  buf:[512]u8;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"price\":15000","\"price\":-1",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"price\":15000","\"price\":\"15000\"",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"price\":15000,","",buf[..])).status==N15_MISSING;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":1.5",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":-1",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":\"5\"",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"stall_id\":\"s1\",","",buf[..])).status==N15_MISSING;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"id\":\"p1\",","",buf[..])).status==N15_MISSING;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"id\":\"p1\"","\"id\":\"\"",buf[..])).status==N15_MISSING;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"name\":\"Mug\",","",buf[..])).status==N15_MISSING;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"currency\":\"sat\",","",buf[..])).status==N15_MISSING;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"currency\":\"sat\"","\"currency\":\"s\"",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"name\":\"Mug\"","\"name\":7",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"cost\":500","\"cost\":0.5e1",buf[..])).status==N15_FIELD;
+  #assert n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":5,\"price\":1",buf[..])).status==N15_DUPLICATE;
+  #assert n15_product_parse("7").status==N15_JSON;
+}
+#test "stall and product events: kind, content and the d tag" {
+  out:[1024]u8;buf:[1024]u8;
+  e:=n15_event(N15_KIND_STALL,"[[\"d\",\"s1\"]]",N15_STALL,out[..]);
+  s:=n15_stall(e,buf[..]);#assert s.status==N15_OK && s.zones_n==2;
+  #assert n15_stall(e,buf[0..<20]).status==N15_LIMIT;
+  e.kind=N15_KIND_PRODUCT;#assert n15_stall(e,buf[..]).status==N15_KIND;
+  e=n15_event(N15_KIND_STALL,"[[\"d\",\"s2\"]]",N15_STALL,out[..]);#assert n15_stall(e,buf[..]).status==N15_ID;
+  e=n15_event(N15_KIND_STALL,"[[\"t\",\"x\"]]",N15_STALL,out[..]);#assert n15_stall(e,buf[..]).status==N15_ID;
+  e=n15_event(N15_KIND_STALL,"[[\"d\",\"s1x\"]]",N15_STALL,out[..]);#assert n15_stall(e,buf[..]).status==N15_ID;
+  e=n15_event(N15_KIND_STALL,"[[\"d\",\"s\"]]",N15_STALL,out[..]);#assert n15_stall(e,buf[..]).status==N15_ID;
+  e=n15_event(N15_KIND_STALL,"[[\"d\",\"s1\"]]","{}",out[..]);#assert n15_stall(e,buf[..]).status==N15_MISSING;
+  e=n15_event(N15_KIND_PRODUCT,"[[\"d\",\"p1\"],[\"t\",\"mugs\"]]",N15_P1,out[..]);
+  p:=n15_product(e,buf[..]);#assert p.status==N15_OK && p.quantity==5;
+  #assert n15_product(e,buf[0..<20]).status==N15_LIMIT;
+  e.kind=N15_KIND_STALL;#assert n15_product(e,buf[..]).status==N15_KIND;
+  e=n15_event(N15_KIND_PRODUCT,"[[\"d\",\"p2\"]]",N15_P1,out[..]);#assert n15_product(e,buf[..]).status==N15_ID;
+  e=n15_event(N15_KIND_PRODUCT,"[[\"d\",\"p1\"]]","[]",out[..]);#assert n15_product(e,buf[..]).status==N15_JSON;
+  // Forged spans and records.
+  e=n15_event(N15_KIND_STALL,"[[\"d\",\"s1\"]]",N15_STALL,out[..]);
+  f:=e;f.content_from= -1;#assert n15_stall(f,buf[..]).status==N15_EVENT && n15_product(f,buf[..]).status==N15_EVENT;
+  f=e;f.content_to=e.original.count+1;#assert n15_stall(f,buf[..]).status==N15_EVENT;
+  f=e;f.content_from=f.content_to+1;#assert n15_stall(f,buf[..]).status==N15_EVENT;
+  f=e;f.content_to=e.original.count;f.content_from=e.original.count;#assert n15_stall(f,buf[..]).status==N15_JSON && n15_product(f,buf[..]).status==N15_KIND;
+  f.kind=N15_KIND_PRODUCT;#assert n15_product(f,buf[..]).status==N15_JSON;
+  f=e;f.content_from=0;#assert n15_stall(f,buf[..]).status==N15_JSON;
+  f=e;f.error=NE_ID;#assert n15_stall(f,buf[..]).status==N15_EVENT && n15_product(f,buf[..]).status==N15_EVENT;
+}
+#test "a new order reads and writes back the same" {
+  o:=n15_order_parse(N15_ORDER_TEXT);
+  #assert o.status==N15_OK && n32_is(o.id,"o1") && n32_is(o.address,"1 Main St") && n32_is(o.nostr,"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659");
+  #assert o.items_n==2 && n32_is(o.items[0].product_id,"p1") && o.items[0].quantity==2 && n32_is(o.items[1].product_id,"p2") && o.items[1].quantity==1 && n32_is(o.shipping_id,"eu");
+  #assert n15_type(N15_ORDER_TEXT)==N15_NEW_ORDER;
+  out:[1024]u8;n:=n15_write_order(out[..],o);
+  #assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":0,\"address\":\"1 Main St\",\"contact\":{\"nostr\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"},\"items\":[{\"product_id\":\"p1\",\"quantity\":2},{\"product_id\":\"p2\",\"quantity\":1}],\"shipping_id\":\"eu\"}";
+  back:=n15_order_parse(cast(string)out[0..<n]);#assert back.status==N15_OK && back.items_n==2 && back.items[1].quantity==1;
+  #assert n15_write_order(out[0..<n-1],o)==N15_W_FULL;
+  m:=n15_order_parse("{\"id\":\"o\",\"type\":0,\"items\":[{\"product_id\":\"p\",\"quantity\":1}],\"shipping_id\":\"z\"}");
+  #assert m.status==N15_OK && m.nostr.n==0 && m.address.n==0;
+  n=n15_write_order(out[..],m);#assert cast(string)out[0..<n]=="{\"id\":\"o\",\"type\":0,\"items\":[{\"product_id\":\"p\",\"quantity\":1}],\"shipping_id\":\"z\"}";
+  bad:N15Order;#assert n15_write_order(out[..],bad)==N15_W_SHAPE;
+  m.address=n99_text("x");m.nostr=n99_text("a");n=n15_write_order(out[..],m);
+  #assert cast(string)out[0..<n]=="{\"id\":\"o\",\"type\":0,\"address\":\"x\",\"contact\":{\"nostr\":\"a\"},\"items\":[{\"product_id\":\"p\",\"quantity\":1}],\"shipping_id\":\"z\"}";
+}
+#test "order refusals" {
+  buf:[1024]u8;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"type\":0","\"type\":1",buf[..])).status==N15_TYPE;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"type\":0","\"type\":\"0\"",buf[..])).status==N15_TYPE;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"type\":0,","",buf[..])).status==N15_TYPE;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"id\":\"o1\",","",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"id\":\"o1\"","\"id\":\"\"",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,",\"shipping_id\":\"eu\"","",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"shipping_id\":\"eu\"","\"shipping_id\":3",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"quantity\":2","\"quantity\":0",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"quantity\":2","\"quantity\":-2",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"quantity\":2","\"quantity\":2.0",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"quantity\":2","\"quantity\":\"2\"",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"quantity\":2","\"q\":2",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"product_id\":\"p1\"","\"product_id\":\"p2\"",buf[..])).status==N15_DUPLICATE;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"product_id\":\"p1\"","\"product_id\":1",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"product_id\":\"p1\",","",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"product_id\":\"p1\"","\"product_id\":\"\"",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"[{\"product_id\":\"p1\",\"quantity\":2},{\"product_id\":\"p2\",\"quantity\":1}]","[]",buf[..])).status==N15_MISSING;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"[{\"product_id\":\"p1\",\"quantity\":2},","[2,",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"[{\"product_id\":\"p1\",\"quantity\":2},{\"product_id\":\"p2\",\"quantity\":1}]","{}",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"contact\":{","\"contact\":{\"x\":[1],",buf[..])).status==N15_OK;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"dff1","\"Dff1",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"dff1","\"ff1",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"nostr\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"","\"nostr\":1",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"contact\":{","\"contact\":[{",buf[..])).status==N15_JSON;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"contact\":{\"nostr\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"email\":\"b@x\"}","\"contact\":\"x\"",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"address\":\"1 Main St\"","\"address\":1",buf[..])).status==N15_FIELD;
+  #assert n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"id\":\"o1\"","\"id\":\"o1\",\"id\":\"o2\"",buf[..])).status==N15_DUPLICATE;
+  #assert n15_order_parse("{").status==N15_JSON;
+  // Eight items fit; a ninth is over the bound.
+  many:[1024]u8;n:=json_raw(many[..],0,"{\"id\":\"o\",\"type\":0,\"shipping_id\":\"z\",\"items\":[");
+  for k:0..<9 {
+    if k>0 {n=json_raw(many[..],n,",");}
+    n=json_raw(many[..],n,"{\"product_id\":\"p");n=json_write_int(many[..],n,k);n=json_raw(many[..],n,"\",\"quantity\":1}");
+    end:[1024]u8;m:=json_raw(end[..],0,cast(string)many[0..<n]);m=json_raw(end[..],m,"]}");
+    o:=n15_order_parse(cast(string)end[0..<m]);
+    if k<8 {#assert o.status==N15_OK && o.items_n==k+1;} else {#assert o.status==N15_LIMIT;}
+  }
+  long:[600]u8;n=json_raw(long[..],0,"{\"id\":\"o\",\"type\":0,\"shipping_id\":\"z\",\"items\":[{\"product_id\":\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\",\"quantity\":1}]}");
+  #assert n15_order_parse(cast(string)long[0..<n]).status==N15_LIMIT;
+}
+#test "message types" {
+  #assert n15_type("{\"type\":2}")==2 && n15_type("{\"id\":\"x\",\"type\":1}")==1 && n15_type("{\"a\":[{\"type\":1}],\"type\":0}")==0;
+  #assert n15_type("{\"type\":\"1\"}")== -1 && n15_type("{\"type\":1.5}")== -1 && n15_type("{}")== -1 && n15_type("[]")== -1 && n15_type("{\"type\":-1}")== -1;
+  #assert n15_type("{\"a\":\"type\",\"type\":2}")==2 && n15_type("{\"type\":0}")==0;
+  #assert n15_type("{\"type\":3}")== -1 && n15_type("{\"type\":1,\"type\":2}")== -1;
+}
+#test "payment requests: only Bitcoin options are chosen" {
+  text:="{\"id\":\"o1\",\"type\":1,\"message\":\"pay\",\"payment_options\":[{\"type\":\"url\",\"link\":\"https://pay.example\"},{\"type\":\"cashu\",\"link\":\"cashuA\"},{\"type\":\"ln\",\"link\":\"lnbc430u1x\"},{\"type\":\"btc\",\"link\":\"bc1qx\"}]}";
+  r:=n15_request_parse(text);
+  #assert r.status==N15_OK && n32_is(r.id,"o1") && r.options_n==4 && r.bitcoin==2 && n15_choice(r)==2;
+  #assert r.options[0].rail==N15_RAIL_NONE && n32_is(r.options[0].type,"url") && n15_raw(text,r.options[0])=="https://pay.example";
+  #assert r.options[1].rail==N15_RAIL_NONE && r.options[2].rail==N15_RAIL_LIGHTNING && n15_raw(text,r.options[2])=="lnbc430u1x" && r.options[3].rail==N15_RAIL_ONCHAIN;
+  #assert n15_type(text)==N15_PAYMENT_REQUEST;
+  r=n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":\"lnurl\",\"link\":\"lnurl1x\"}]}");#assert r.status==N15_OK && r.options[0].rail==N15_RAIL_LNURL && n15_choice(r)==0;
+  r=n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":\"url\",\"link\":\"u\"},{\"type\":\"LN\",\"link\":\"x\"}]}");#assert r.status==N15_OK && r.bitcoin==0 && n15_choice(r)== -1;
+  bad:N15Request;#assert n15_choice(bad)== -1;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":2,\"payment_options\":[{\"type\":\"ln\",\"link\":\"x\"}]}").status==N15_TYPE;
+  #assert n15_request_parse("{\"id\":\"o\",\"payment_options\":[{\"type\":\"ln\",\"link\":\"x\"}]}").status==N15_TYPE;
+  #assert n15_request_parse("{\"type\":1,\"payment_options\":[{\"type\":\"ln\",\"link\":\"x\"}]}").status==N15_MISSING;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[]}").status==N15_MISSING;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1}").status==N15_MISSING;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":\"ln\"}]}").status==N15_MISSING;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"link\":\"x\"}]}").status==N15_MISSING;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":\"ln\",\"link\":1}]}").status==N15_FIELD;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":1,\"link\":\"x\"}]}").status==N15_FIELD;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[[]]}").status==N15_FIELD;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":{}}").status==N15_FIELD;
+  #assert n15_request_parse("{\"id\":2,\"type\":1,\"payment_options\":[{\"type\":\"ln\",\"link\":\"x\"}]}").status==N15_FIELD;
+  #assert n15_request_parse("{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":\"ln\",\"link\":\"x\",\"memo\":{}}]}").status==N15_OK;
+  #assert n15_request_parse("[").status==N15_JSON;
+  five:="{\"id\":\"o\",\"type\":1,\"payment_options\":[{\"type\":\"ln\",\"link\":\"x\"},{\"type\":\"ln\",\"link\":\"x\"},{\"type\":\"ln\",\"link\":\"x\"},{\"type\":\"ln\",\"link\":\"x\"},{\"type\":\"ln\",\"link\":\"x\"}]}";
+  #assert n15_request_parse(five).status==N15_LIMIT;
+  #assert n15_request_parse(five[0..<five.count-29]).status==N15_JSON;
+  four:[512]u8;n:=json_raw(four[..],0,five[0..<five.count-27]);n=json_raw(four[..],n,"]}");
+  r=n15_request_parse(cast(string)four[0..<n]);#assert r.status==N15_OK && r.options_n==4 && r.bitcoin==4;
+}
+#test "writing a payment request refuses any rail but Bitcoin's" {
+  out:[512]u8;
+  types:=[2] string.["ln", "btc"];links:=[2] string.["lnbc430u1x", "bc1qx"];
+  n:=n15_write_request(out[..],"o1","pay \"now\"",types[..],links[..]);
+  #assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":1,\"message\":\"pay \\\"now\\\"\",\"payment_options\":[{\"type\":\"ln\",\"link\":\"lnbc430u1x\"},{\"type\":\"btc\",\"link\":\"bc1qx\"}]}";
+  r:=n15_request_parse(cast(string)out[0..<n]);#assert r.status==N15_OK && r.bitcoin==2;
+  #assert n15_write_request(out[0..<n-1],"o1","pay \"now\"",types[..],links[..])==N15_W_FULL;
+  n=n15_write_request(out[..],"o1","m",types[1..<2],links[1..<2]);#assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":1,\"message\":\"m\",\"payment_options\":[{\"type\":\"btc\",\"link\":\"bc1qx\"}]}";
+  n=n15_write_request(out[..],"o1","",types[1..<2],links[1..<2]);#assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":1,\"payment_options\":[{\"type\":\"btc\",\"link\":\"bc1qx\"}]}";
+  bad:=[2] string.["ln", "url"];#assert n15_write_request(out[..],"o1","",bad[..],links[..])==N15_W_RAIL;
+  bad[0]="cashu";bad[1]="ln";#assert n15_write_request(out[..],"o1","",bad[..],links[..])==N15_W_RAIL;
+  bad[0]="ln";bad[1]="cashu";#assert n15_write_request(out[..],"o1","",bad[..],links[..])==N15_W_RAIL;
+  bad[0]="lnurl";bad[1]="usdt";#assert n15_write_request(out[..],"o1","",bad[..],links[..])==N15_W_RAIL;
+  #assert n15_write_request(out[..],"o1","",types[0..<0],links[0..<0])==N15_W_SHAPE;
+  #assert n15_write_request(out[..],"o1","",types[..],links[0..<1])==N15_W_SHAPE;
+  #assert n15_write_request(out[..],"","",types[..],links[..])==N15_W_SHAPE;
+  #assert n15_write_request(out[..],"o1","",types[..],links[0..<1])==N15_W_SHAPE;
+  five:=[5] string.["ln", "ln", "ln", "ln", "ln"];#assert n15_write_request(out[..],"o1","",five[..],five[..])==N15_W_SHAPE;
+  #assert n15_write_request(out[..],"o1","",five[0..<4],five[0..<4])>0;
+  #assert n15_rail("btc")==N15_RAIL_ONCHAIN && n15_rail("ln")==N15_RAIL_LIGHTNING && n15_rail("lnurl")==N15_RAIL_LNURL;
+  #assert n15_rail("url")==N15_RAIL_NONE && n15_rail("BTC")==N15_RAIL_NONE && n15_rail("")==N15_RAIL_NONE;
+}
+#test "status updates read and write" {
+  out:[256]u8;
+  n:=n15_write_update(out[..],"o1","shipped today",true,true);
+  #assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":2,\"message\":\"shipped today\",\"paid\":true,\"shipped\":true}";
+  u:=n15_update_parse(cast(string)out[0..<n]);#assert u.status==N15_OK && n32_is(u.id,"o1") && u.paid && u.shipped;
+  n=n15_write_update(out[..],"o1","",true,false);#assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":2,\"message\":\"\",\"paid\":true,\"shipped\":false}";
+  u=n15_update_parse(cast(string)out[0..<n]);#assert u.status==N15_OK && u.paid && !u.shipped;
+  n=n15_write_update(out[..],"o1","",false,true);#assert cast(string)out[0..<n]=="{\"id\":\"o1\",\"type\":2,\"message\":\"\",\"paid\":false,\"shipped\":true}";
+  u=n15_update_parse(cast(string)out[0..<n]);#assert u.status==N15_OK && !u.paid && u.shipped;
+  #assert n15_write_update(out[0..<n-1],"o1","",false,true)==N15_W_FULL && n15_write_update(out[..],"","",false,true)==N15_W_SHAPE;
+  #assert n15_type(cast(string)out[0..<n])==N15_STATUS_UPDATE;
+  #assert n15_update_parse("{\"id\":\"o\",\"type\":2,\"paid\":true}").status==N15_MISSING;
+  #assert n15_update_parse("{\"id\":\"o\",\"type\":2,\"shipped\":true}").status==N15_MISSING;
+  #assert n15_update_parse("{\"type\":2,\"paid\":true,\"shipped\":true}").status==N15_MISSING;
+  #assert n15_update_parse("{\"id\":\"o\",\"type\":2,\"paid\":1,\"shipped\":true}").status==N15_FIELD;
+  #assert n15_update_parse("{\"id\":\"o\",\"type\":2,\"paid\":true,\"shipped\":null}").status==N15_FIELD;
+  #assert n15_update_parse("{\"id\":\"o\",\"type\":0,\"paid\":true,\"shipped\":true}").status==N15_TYPE;
+  #assert n15_update_parse("{\"id\":[],\"type\":2,\"paid\":true,\"shipped\":true}").status==N15_FIELD;
+  #assert n15_update_parse("{\"id\":\"o\",\"type\":2,\"paid\":true,\"shipped\":true,\"x\":{}}").status==N15_OK;
+  #assert n15_update_parse("1").status==N15_JSON;
+  #assert n15_update_parse("{\"id\":\"o\",\"paid\":true,\"shipped\":true}").status==N15_TYPE;
+}
+#test "the worked total: two products and a shipping zone, in sats" {
+  s:=n15_stall_parse(N15_STALL);ps:[2]N15Product;n15_all(ps[..]);o:=n15_order_parse(N15_ORDER_TEXT);
+  // 2 x 15000 + 1 x 10000 = 40000; 2000 base + 2 x 500 = 3000.
+  t:=n15_total(s,ps[..],o);#assert t.status==N15_TOTAL_OK && t.goods==40000 && t.shipping==3000 && t.sats==43000 && t.at== -1;
+  // To the us zone: no extra for the mug there.
+  buf:[1024]u8;o=n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"shipping_id\":\"eu\"","\"shipping_id\":\"us\"",buf[..]));
+  t=n15_total(s,ps[..],o);#assert t.status==N15_TOTAL_OK && t.goods==40000 && t.shipping==5000 && t.sats==45000;
+  // The order's products in another order in the list.
+  rev:[3]N15Product;rev[0]=ps[1];rev[1]=n15_product_parse(n15_swap(N15_P1,"\"stall_id\":\"s1\"","\"stall_id\":\"s9\"",buf[..]));rev[2]=ps[0];
+  t=n15_total(s,rev[..],n15_order_parse(N15_ORDER_TEXT));#assert t.status==N15_TOTAL_OK && t.sats==43000;
+  // A stall in BTC: its costs are BTC too.
+  b:=n15_stall_parse(n15_swap(N15_STALL,"\"currency\":\"sat\",\"shipping\":[{\"id\":\"eu\",\"name\":\"Europe\",\"cost\":2000","\"currency\":\"BTC\",\"shipping\":[{\"id\":\"eu\",\"name\":\"Europe\",\"cost\":0.00002",buf[..]));
+  #assert b.status==N15_OK && b.unit==N99_UNIT_BTC;
+  t=n15_total(b,ps[..],n15_order_parse(N15_ORDER_TEXT));#assert t.status==N15_TOTAL_OK && t.goods==40000 && t.shipping==2000+2*50000000000 && t.sats==t.goods+t.shipping;
+}
+#test "total refusals" {
+  s:=n15_stall_parse(N15_STALL);ps:[2]N15Product;n15_all(ps[..]);o:=n15_order_parse(N15_ORDER_TEXT);buf:[1024]u8;
+  bad:N15Stall;#assert n15_total(bad,ps[..],o).status==N15_TOTAL_INPUT;
+  nobody:N15Order;t:=n15_total(s,ps[..],nobody);#assert t.status==N15_TOTAL_INPUT && t.sats== -1;
+  usd:=n15_stall_parse(n15_swap(N15_STALL,"\"currency\":\"sat\"","\"currency\":\"USD\"",buf[..]));t=n15_total(usd,ps[..],o);#assert t.status==N15_TOTAL_RATE && t.at== -1 && t.sats== -1;
+  t=n15_total(s,ps[..],n15_order_parse(n15_swap(N15_ORDER_TEXT,"\"shipping_id\":\"eu\"","\"shipping_id\":\"mars\"",buf[..])));#assert t.status==N15_TOTAL_ZONE;
+  frac:=n15_stall_parse(n15_swap(N15_STALL,"\"cost\":2000","\"cost\":2000.5",buf[..]));t=n15_total(frac,ps[..],o);#assert t.status==N15_TOTAL_AMOUNT && t.at== -1;
+  t=n15_total(s,ps[0..<1],o);#assert t.status==N15_TOTAL_PRODUCT && t.at==1 && t.sats== -1;
+  other:[2]N15Product;other[0]=ps[0];other[1]=n15_product_parse(n15_swap(N15_P2,"\"stall_id\":\"s1\"","\"stall_id\":\"s2\"",buf[..]));
+  t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_PRODUCT && t.at==1;
+  other[1]=ps[1];other[1].status=N15_FIELD;t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_PRODUCT && t.at==1;
+  other[1]=n15_product_parse(n15_swap(N15_P2,"\"currency\":\"BTC\"","\"currency\":\"EUR\"",buf[..]));t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_RATE && t.at==1;
+  other[1]=n15_product_parse(n15_swap(N15_P2,"\"price\":0.0001","\"price\":0.000000001",buf[..]));t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_AMOUNT && t.at==1;
+  other[0]=n15_product_parse(n15_swap(N15_P1,"\"cost\":500","\"cost\":0.5",buf[..]));other[1]=ps[1];t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_AMOUNT && t.at==0;
+  other[0]=n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":1",buf[..]));t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_STOCK && t.at==0;
+  other[0]=n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":0",buf[..]));t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_STOCK && t.at==0;
+  other[0]=n15_product_parse(n15_swap(N15_P1,"\"quantity\":5","\"quantity\":2",buf[..]));t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_OK && t.sats==43000;
+  // Over 21 million bitcoin, in any one step or in the sum.
+  big:=[4] string.["1049999999998500", "1049999999998501", "1049999999993500", "1049999999993501"];
+  want:=[4] int.[N15_TOTAL_LIMIT, N15_TOTAL_LIMIT, N15_TOTAL_OK, N15_TOTAL_LIMIT];at:=[4] int.[1, 0, -1, 1];
+  for k:0..<4 {
+    price:[64]u8;m:=json_raw(price[..],0,"\"price\":");m=json_raw(price[..],m,big[k]);
+    other[0]=n15_product_parse(n15_swap(N15_P1,"\"price\":15000",cast(string)price[0..<m],buf[..]));other[0].quantity= -1;
+    t=n15_total(s,other[..],o);#assert t.status==want[k] && t.at==at[k];
+    if k==2 {#assert t.sats==N99_MAX_SATS && t.goods==N99_MAX_SATS-3000;} else {#assert t.sats== -1;}
+  }
+  other[0]=n15_product_parse(n15_swap(N15_P1,"\"cost\":500","\"cost\":1050000000000000",buf[..]));
+  t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_LIMIT && t.at==0;
+  // One sat each: the bound is exact.
+  one:[1]N15Product;one[0]=n15_product_parse("{\"id\":\"c\",\"stall_id\":\"s1\",\"name\":\"n\",\"currency\":\"sat\",\"price\":1,\"quantity\":null}");
+  qs:=[3] int.[N99_MAX_SATS-2000, N99_MAX_SATS-1999, 3000000000000000];
+  for k:0..<3 {
+    ot:[256]u8;m:=json_raw(ot[..],0,"{\"id\":\"o\",\"type\":0,\"shipping_id\":\"eu\",\"items\":[{\"product_id\":\"c\",\"quantity\":");
+    m=json_write_int(ot[..],m,qs[k]);m=json_raw(ot[..],m,"}]}");
+    t=n15_total(s,one[..],n15_order_parse(cast(string)ot[0..<m]));
+    if k==0 {#assert t.status==N15_TOTAL_OK && t.sats==N99_MAX_SATS;} else {#assert t.status==N15_TOTAL_LIMIT && t.at==0;}
+  }
+  free:=n15_stall_parse(n15_swap(N15_STALL,"\"cost\":2000","\"cost\":0",buf[..]));t=n15_total(free,ps[..],o);#assert t.status==N15_TOTAL_OK && t.shipping==1000 && t.sats==41000;
+  other[0]=n15_product_parse(n15_swap(N15_P1,"\"price\":15000","\"price\":0",buf[..]));other[0].extras[0].decimal=n99_decimal("0");
+  t=n15_total(s,other[..],o);#assert t.status==N15_TOTAL_OK && t.goods==10000 && t.shipping==2000;
+}
+
+n15_err :: (v:N99Value)->int {return ifx v.error==NT_LIMIT then N15_LIMIT else N15_FIELD;}
+// The string value just read, decoded.
+n15_string :: (j:[]Json,tok:int)->N99Value {
+  r:N99Value;if tok!=JSON_STRING {return r;}
+  n:=json_unescape(json_text(j),r.v.b[..]);
+  if n<0 {r.error=NT_LIMIT;return r;}
+  r.v.n=n;r.error=NT_OK;return r;
+}
+// The number value just read, as a plain decimal.
+n15_number :: (j:[]Json,tok:int)->N99Decimal {
+  d:N99Decimal;if tok!=JSON_NUMBER {return d;}
+  return n99_decimal(json_text(j));
+}
+// The integer value just read, 0 or more, or -1.
+n15_int :: (j:[]Json,tok:int)->int {
+  if tok!=JSON_NUMBER {return -1;}
+  v:=json_int(json_text(j));
+  if !v.ok || v.value<0 {return -1;}
+  return v.value;
+}
+// Opens text as one JSON object without duplicate keys.
+n15_start :: (j:[]Json,text:string)->int {
+  a:=ja_admit(text,ja_policy(0),text.count,0);
+  if a==JA_DUPLICATE {return N15_DUPLICATE;}
+  if a!=JA_OK {return N15_JSON;}
+  json_start(j,text);
+  if json_next(j)!=JSON_OBJECT {return N15_JSON;}
+  return N15_OK;
+}
+n15_same :: (a:N32Text,b:N32Text)->bool {x:=a;y:=b;return cast(string)x.b[0..<x.n]==cast(string)y.b[0..<y.n];}
+// A shipping zone, its { just read: id and cost; other fields skipped.
+n15_zone :: (j:[]Json)->N15ZoneRead {
+  r:N15ZoneRead;has_id:=false;has_cost:=false;
+  t:=json_next(j);
+  while t==JSON_STRING {
+    key:=json_text(j);v:=json_next(j);
+    if json_is(key,"id") {
+      s:=n15_string(j,v);if s.error!=NT_OK {r.status=n15_err(s);return r;}
+      r.zone.id=s.v;has_id=true;
+    } else if json_is(key,"cost") {
+      r.zone.decimal=n15_number(j,v);if !r.zone.decimal.ok {return r;}
+      r.zone.cost=n99_text(json_text(j));has_cost=true;
+    } else {skipped:=json_skip(j);}
+    t=json_next(j);
+  }
+  r.status=ifx has_id && has_cost then N15_OK else N15_MISSING;
+  return r;
+}
+// An array of shipping zones, its first token read, into out.
+n15_zones :: (j:[]Json,tok:int,out:[]N15Zone)->N15Count {
+  c:N15Count;if tok!=JSON_ARRAY {c.status=N15_FIELD;return c;}
+  t:=json_next(j);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_OBJECT {c.status=N15_FIELD;return c;}
+    if c.n==out.count {c.status=N15_LIMIT;return c;}
+    z:=n15_zone(j);if z.status!=N15_OK {c.status=z.status;return c;}
+    for k:0..<c.n {if n15_same(out[k].id,z.zone.id) {c.status=N15_DUPLICATE;return c;}}
+    out[c.n]=z.zone;c.n+=1;t=json_next(j);
+  }
+  return c;
+}
+// The event's content decoded into buf: its length, or -1 for a forged
+// record, -2 when buf is too small.
+n15_content :: (e:NostrEvent,buf:[]u8)->int {
+  if e.error!=NE_OK || e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return -1;}
+  n:=json_unescape(e.original[e.content_from..<e.content_to],buf);
+  if n<0 {return -2;}
+  return n;
+}
+n15_d_is :: (e:NostrEvent,id:N32Text)->bool {
+  d:=nostr_tag_d(e);own:=id;
+  return d.error==NT_OK && cast(string)d.d[0..<d.d_n]==cast(string)own.b[0..<own.n];
+}
+// A parsed event with these tags and this content, for checks.
+n15_event :: (kind:int,tags:string,content:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,tags);n=json_write_string(out,n,content);
+  e:NostrEvent;e.error=NE_OK;e.original=cast(string)out[0..<n];e.tags_to=tags.count;e.content_from=tags.count+1;e.content_to=n-1;e.kind=kind;return e;
+}
+
+// book:begin stall
+// A stall's content: id, name and currency, and its shipping zones.
+n15_stall_parse :: (text:string)->N15Stall {
+  s:N15Stall;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {s.status=st;return s;}
+  has:[3]bool;
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    w:=ifx json_is(key,"id") then 0 else ifx json_is(key,"name") then 1 else ifx json_is(key,"currency") then 2 else -1;
+    if w>=0 {
+      r:=n15_string(j[..],v);if r.error!=NT_OK {s.status=n15_err(r);return s;}
+      has[w]=true;   // the id is checked by its length
+      if w==0 {s.id=r.v;} else if w==1 {s.name=r.v;} else {s.currency=r.v;}
+    } else if json_is(key,"shipping") {
+      c:=n15_zones(j[..],v,s.zones[..]);if c.status!=N15_OK {s.status=c.status;return s;}
+      s.zones_n=c.n;
+    } else {skipped:=json_skip(j[..]);}
+    t=json_next(j[..]);
+  }
+  if !has[1] || !has[2] || s.id.n==0 {s.status=N15_MISSING;return s;}
+  s.unit=n99_unit(s.currency);if s.unit==N99_UNIT_BAD {s.status=N15_FIELD;return s;}
+  s.status=N15_OK;return s;
+}
+// A kind 30017 event: its content, with the d tag the same as the id.
+n15_stall :: (e:NostrEvent,buf:[]u8)->N15Stall {
+  s:N15Stall;n:=n15_content(e,buf);if n== -1 {return s;}
+  if e.kind!=N15_KIND_STALL {s.status=N15_KIND;return s;}
+  if n<0 {s.status=N15_LIMIT;return s;}
+  s=n15_stall_parse(cast(string)buf[0..<n]);
+  if s.status==N15_OK && !n15_d_is(e,s.id) {s.status=N15_ID;}
+  return s;
+}
+// book:end stall
+
+// book:begin product
+// A product's content: id, stall, name, currency, price, quantity (null:
+// unlimited) and extra shipping costs per zone.
+n15_product_parse :: (text:string)->N15Product {
+  p:N15Product;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {p.status=st;return p;}
+  has:[5]bool;
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    w:=ifx json_is(key,"id") then 0 else ifx json_is(key,"stall_id") then 1 else ifx json_is(key,"name") then 2 else ifx json_is(key,"currency") then 3 else -1;
+    if w>=0 {
+      r:=n15_string(j[..],v);if r.error!=NT_OK {p.status=n15_err(r);return p;}
+      has[w]=true;
+      if w==0 {p.id=r.v;} else if w==1 {p.stall_id=r.v;} else if w==2 {p.name=r.v;} else {p.currency=r.v;}
+    } else if json_is(key,"price") {
+      p.decimal=n15_number(j[..],v);if !p.decimal.ok {p.status=N15_FIELD;return p;}
+      p.price=n99_text(json_text(j[..]));has[4]=true;
+    } else if json_is(key,"quantity") {
+      if v!=JSON_NULL {p.quantity=n15_int(j[..],v);if p.quantity<0 {p.status=N15_FIELD;return p;}}
+    } else if json_is(key,"shipping") {
+      c:=n15_zones(j[..],v,p.extras[..]);if c.status!=N15_OK {p.status=c.status;return p;}
+      p.extras_n=c.n;
+    } else {skipped:=json_skip(j[..]);}
+    t=json_next(j[..]);
+  }
+  // has[0] is never read: an absent id and an empty one are both length 0.
+  for k:1..<5 {if !has[k] {p.status=N15_MISSING;return p;}}
+  if p.id.n==0 {p.status=N15_MISSING;return p;}
+  p.unit=n99_unit(p.currency);if p.unit==N99_UNIT_BAD {p.status=N15_FIELD;return p;}
+  p.status=N15_OK;return p;
+}
+// A kind 30018 event: its content, with the d tag the same as the id.
+n15_product :: (e:NostrEvent,buf:[]u8)->N15Product {
+  p:N15Product;n:=n15_content(e,buf);if n== -1 {return p;}
+  if e.kind!=N15_KIND_PRODUCT {p.status=N15_KIND;return p;}
+  if n<0 {p.status=N15_LIMIT;return p;}
+  p=n15_product_parse(cast(string)buf[0..<n]);
+  if p.status==N15_OK && !n15_d_is(e,p.id) {p.status=N15_ID;}
+  return p;
+}
+// book:end product
+
+// book:begin checkout
+// A checkout message's type: 0, 1 or 2, or -1.
+n15_type :: (text:string)->int {
+  j:[1]Json;if n15_start(j[..],text)!=N15_OK {return -1;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    if json_is(key,"type") {
+      k:=n15_int(j[..],v);
+      return ifx k<=N15_STATUS_UPDATE then k else -1;
+    }
+    skipped:=json_skip(j[..]);t=json_next(j[..]);
+  }
+  return -1;
+}
+// A customer's new order (type 0): id, contact key, address, items and the
+// shipping zone. A product named twice is refused.
+n15_order_parse :: (text:string)->N15Order {
+  o:N15Order;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {o.status=st;return o;}
+  typed:=false;
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    w:=ifx json_is(key,"id") then 0 else ifx json_is(key,"address") then 1 else ifx json_is(key,"shipping_id") then 2 else -1;
+    if w>=0 {
+      r:=n15_string(j[..],v);if r.error!=NT_OK {o.status=n15_err(r);return o;}
+      if w==0 {o.id=r.v;} else if w==1 {o.address=r.v;} else if w==2 {o.shipping_id=r.v;}
+    } else if json_is(key,"type") {
+      typed=n15_int(j[..],v)==N15_NEW_ORDER;
+    } else if json_is(key,"contact") {
+      if v!=JSON_OBJECT {o.status=N15_FIELD;return o;}
+      c:=json_next(j[..]);
+      while c==JSON_STRING {
+        ckey:=json_text(j[..]);cv:=json_next(j[..]);
+        if json_is(ckey,"nostr") {
+          r:=n15_string(j[..],cv);key32:[32]u8;
+          if r.error!=NT_OK || !ne_lower_hex(cast(string)r.v.b[0..<r.v.n],key32[..]) {o.status=N15_FIELD;return o;}
+          o.nostr=r.v;
+        } else {skipped:=json_skip(j[..]);}
+        c=json_next(j[..]);
+      }
+    } else if json_is(key,"items") {
+      if v!=JSON_ARRAY {o.status=N15_FIELD;return o;}
+      el:=json_next(j[..]);
+      while el!=JSON_ARRAY_END {
+        if el!=JSON_OBJECT {o.status=N15_FIELD;return o;}
+        if o.items_n==N15_MAX_ITEMS {o.status=N15_LIMIT;return o;}
+        item:N15Item;
+        f:=json_next(j[..]);
+        while f==JSON_STRING {
+          ikey:=json_text(j[..]);iv:=json_next(j[..]);
+          if json_is(ikey,"product_id") {
+            r:=n15_string(j[..],iv);if r.error!=NT_OK {o.status=n15_err(r);return o;}
+            item.product_id=r.v;
+          } else if json_is(ikey,"quantity") {
+            item.quantity=n15_int(j[..],iv);if item.quantity<1 {o.status=N15_FIELD;return o;}
+          } else {skipped:=json_skip(j[..]);}
+          f=json_next(j[..]);
+        }
+        if item.product_id.n==0 || item.quantity==0 {o.status=N15_MISSING;return o;}
+        for k:0..<o.items_n {if n15_same(o.items[k].product_id,item.product_id) {o.status=N15_DUPLICATE;return o;}}
+        o.items[o.items_n]=item;o.items_n+=1;el=json_next(j[..]);
+      }
+    } else {skipped:=json_skip(j[..]);}
+    t=json_next(j[..]);
+  }
+  if !typed {o.status=N15_TYPE;return o;}
+  if o.id.n==0 || o.items_n==0 || o.shipping_id.n==0 {o.status=N15_MISSING;return o;}
+  o.status=N15_OK;return o;
+}
+// A merchant's payment request (type 1): the order id and its payment
+// options, each marked with its rail. Options on another rail are kept
+// and never chosen.
+n15_rail :: (type:string)->int {
+  if type=="btc" {return N15_RAIL_ONCHAIN;}
+  if type=="ln" {return N15_RAIL_LIGHTNING;}
+  if type=="lnurl" {return N15_RAIL_LNURL;}
+  return N15_RAIL_NONE;
+}
+n15_request_parse :: (text:string)->N15Request {
+  r:N15Request;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {r.status=st;return r;}
+  typed:=false;
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    if json_is(key,"id") {
+      s:=n15_string(j[..],v);if s.error!=NT_OK {r.status=n15_err(s);return r;}
+      r.id=s.v;
+    } else if json_is(key,"type") {
+      typed=n15_int(j[..],v)==N15_PAYMENT_REQUEST;
+    } else if json_is(key,"payment_options") {
+      if v!=JSON_ARRAY {r.status=N15_FIELD;return r;}
+      el:=json_next(j[..]);
+      while el!=JSON_ARRAY_END {
+        if el!=JSON_OBJECT {r.status=N15_FIELD;return r;}
+        if r.options_n==N15_MAX_OPTIONS {r.status=N15_LIMIT;return r;}
+        op:N15Option;has_link:=false;
+        f:=json_next(j[..]);
+        while f==JSON_STRING {
+          okey:=json_text(j[..]);ov:=json_next(j[..]);
+          if json_is(okey,"type") {
+            s:=n15_string(j[..],ov);if s.error!=NT_OK {r.status=n15_err(s);return r;}
+            op.type=s.v;
+          } else if json_is(okey,"link") {
+            if ov!=JSON_STRING {r.status=N15_FIELD;return r;}
+            op.from=j[0].from;op.to=j[0].to;has_link=true;
+          } else {skipped:=json_skip(j[..]);}
+          f=json_next(j[..]);
+        }
+        if op.type.n==0 || !has_link {r.status=N15_MISSING;return r;}
+        op.rail=n15_rail(cast(string)op.type.b[0..<op.type.n]);
+        if op.rail!=N15_RAIL_NONE {r.bitcoin+=1;}
+        r.options[r.options_n]=op;r.options_n+=1;el=json_next(j[..]);
+      }
+    } else {skipped:=json_skip(j[..]);}
+    t=json_next(j[..]);
+  }
+  if !typed {r.status=N15_TYPE;return r;}
+  if r.id.n==0 || r.options_n==0 {r.status=N15_MISSING;return r;}
+  r.status=N15_OK;return r;
+}
+// The first option on a Bitcoin rail, or -1.
+n15_choice :: (r:N15Request)->int {
+  if r.status!=N15_OK {return -1;}
+  for k:0..<r.options_n {if r.options[k].rail!=N15_RAIL_NONE {return k;}}
+  return -1;
+}
+// A merchant's status update (type 2): paid and shipped.
+n15_update_parse :: (text:string)->N15Update {
+  u:N15Update;j:[1]Json;st:=n15_start(j[..],text);if st!=N15_OK {u.status=st;return u;}
+  typed:=false;has:[2]bool;
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    w:=ifx json_is(key,"paid") then 0 else ifx json_is(key,"shipped") then 1 else -1;
+    if json_is(key,"id") {
+      s:=n15_string(j[..],v);if s.error!=NT_OK {u.status=n15_err(s);return u;}
+      u.id=s.v;
+    } else if json_is(key,"type") {
+      typed=n15_int(j[..],v)==N15_STATUS_UPDATE;
+    } else if w>=0 {
+      if v!=JSON_TRUE && v!=JSON_FALSE {u.status=N15_FIELD;return u;}
+      has[w]=true;
+      if w==0 {u.paid=v==JSON_TRUE;} else {u.shipped=v==JSON_TRUE;}
+    } else {skipped:=json_skip(j[..]);}
+    t=json_next(j[..]);
+  }
+  if !typed {u.status=N15_TYPE;return u;}
+  if u.id.n==0 || !has[0] || !has[1] {u.status=N15_MISSING;return u;}
+  u.status=N15_OK;return u;
+}
+// book:end checkout
+
+// book:begin write
+n15_put :: (out:[]u8,at:int,t:N32Text)->int {own:=t;return json_write_string(out,at,cast(string)own.b[0..<own.n]);}
+// A new order from a record that reads: N15_W_SHAPE when it doesn't,
+// N15_W_FULL when out is too small.
+n15_write_order :: (out:[]u8,o:N15Order)->int {
+  if o.status!=N15_OK {return N15_W_SHAPE;}
+  n:=json_raw(out,0,"{\"id\":");n=n15_put(out,n,o.id);n=json_raw(out,n,",\"type\":0");
+  if o.address.n>0 {n=json_raw(out,n,",\"address\":");n=n15_put(out,n,o.address);}
+  if o.nostr.n>0 {n=json_raw(out,n,",\"contact\":{\"nostr\":");n=n15_put(out,n,o.nostr);n=json_raw(out,n,"}");}
+  n=json_raw(out,n,",\"items\":[");
+  for k:0..<o.items_n {
+    if k>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"{\"product_id\":");n=n15_put(out,n,o.items[k].product_id);
+    n=json_raw(out,n,",\"quantity\":");n=json_write_int(out,n,o.items[k].quantity);n=json_raw(out,n,"}");
+  }
+  n=json_raw(out,n,"],\"shipping_id\":");n=n15_put(out,n,o.shipping_id);
+  return json_raw(out,n,"}");
+}
+// A payment request offering only Bitcoin rails: N15_W_RAIL when any type
+// is not btc, ln or lnurl.
+n15_write_request :: (out:[]u8,id:string,message:string,types:[]string,links:[]string)->int {
+  if id.count==0 || types.count==0 || types.count!=links.count || types.count>N15_MAX_OPTIONS {return N15_W_SHAPE;}
+  for k:0..<types.count {if n15_rail(types[k])==N15_RAIL_NONE {return N15_W_RAIL;}}
+  n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,id);n=json_raw(out,n,",\"type\":1");
+  if message.count>0 {n=json_raw(out,n,",\"message\":");n=json_write_string(out,n,message);}
+  n=json_raw(out,n,",\"payment_options\":[");
+  for k:0..<types.count {
+    if k>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"{\"type\":");n=json_write_string(out,n,types[k]);
+    n=json_raw(out,n,",\"link\":");n=json_write_string(out,n,links[k]);n=json_raw(out,n,"}");
+  }
+  return json_raw(out,n,"]}");
+}
+n15_write_update :: (out:[]u8,id:string,message:string,paid:bool,shipped:bool)->int {
+  if id.count==0 {return N15_W_SHAPE;}
+  n:=json_raw(out,0,"{\"id\":");n=json_write_string(out,n,id);
+  n=json_raw(out,n,",\"type\":2,\"message\":");n=json_write_string(out,n,message);
+  n=json_raw(out,n,ifx paid then ",\"paid\":true" else ",\"paid\":false");
+  n=json_raw(out,n,ifx shipped then ",\"shipped\":true}" else ",\"shipped\":false}");
+  return n;
+}
+// book:end write
+
+// book:begin total
+// An order's total in sats: each item's price times its quantity, the
+// zone's base shipping cost, and each item's extra cost for that zone
+// times its quantity. Only when the stall and every product are priced in
+// BTC or sats; no exchange rate is ever used.
+n15_total :: (s:N15Stall,products:[]N15Product,o:N15Order)->N15Total {
+  r:N15Total;
+  if s.status!=N15_OK || o.status!=N15_OK {return r;}
+  r.status=N15_TOTAL_RATE;if s.unit==N99_UNIT_OTHER {return r;}
+  zone:=-1;
+  for z:0..<s.zones_n {if n15_same(s.zones[z].id,o.shipping_id) {zone=z;}}
+  r.status=N15_TOTAL_ZONE;if zone<0 {return r;}
+  base:=n99_sats(s.zones[zone].decimal,s.unit);
+  r.status=N15_TOTAL_AMOUNT;if base<0 {return r;}
+  r.shipping=base;
+  for k:0..<o.items_n {
+    item:=o.items[k];r.at=k;p:=-1;
+    for i:0..<products.count {
+      c:=products[i];
+      if c.status==N15_OK && n15_same(c.id,item.product_id) && n15_same(c.stall_id,s.id) {p=i;}
+    }
+    r.status=N15_TOTAL_PRODUCT;if p<0 {return r;}
+    c:=products[p];
+    r.status=N15_TOTAL_RATE;if c.unit==N99_UNIT_OTHER {return r;}
+    price:=n99_sats(c.decimal,c.unit);extra:=0;
+    for z:0..<c.extras_n {if n15_same(c.extras[z].id,o.shipping_id) {extra=n99_sats(c.extras[z].decimal,s.unit);}}
+    r.status=N15_TOTAL_AMOUNT;if price<0 || extra<0 {return r;}
+    r.status=N15_TOTAL_STOCK;if c.quantity>=0 && item.quantity>c.quantity {return r;}
+    // Each step stays within 21 million bitcoin, so nothing overflows.
+    each:=price+extra;
+    r.status=N15_TOTAL_LIMIT;if each>0 && item.quantity>(N99_MAX_SATS-r.goods-r.shipping)/each {return r;}
+    r.goods+=item.quantity*price;r.shipping+=item.quantity*extra;
+  }
+  r.at= -1;r.sats=r.goods+r.shipping;r.status=N15_TOTAL_OK;return r;
+}
+// book:end total

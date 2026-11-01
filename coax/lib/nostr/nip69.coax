@@ -1,0 +1,207 @@
+// NIP-69 peer-to-peer order events read from parsed events: kind 38383,
+// addressable by its d tag, an offer to buy or sell bitcoin for a fiat
+// amount. Then whether this stack may take part in settling one.
+//
+// Bitcoin only. Every order reads and is shown, whatever its layer, but
+// only an order on Bitcoin's own chain (layer onchain), Lightning or Spark
+// is ever settled here; liquid or any other layer is shown and refused.
+// Settling also needs mainnet, a pending order and an amount in sats: an
+// amt of 0 means the sats come from an exchange rate, and this stack has
+// none.
+//
+// Required here: d, k, f, s, amt, fa, pm, premium, network and layer. The
+// NIP also marks expires_at, expiration, y and z as mandatory; they are
+// read when present and not required, so an order from a platform that
+// leaves one out is still shown. An order is a statement by its signer;
+// nothing here fetches or verifies a signature.
+#load "nip99.coax";
+#authority;
+
+N69_OK :: 0; N69_EVENT :: 1; N69_KIND :: 2; N69_MISSING :: 3; N69_VALUE :: 4; N69_LIMIT :: 5;
+N69_KIND_ORDER :: 38383;
+N69_BUY :: 0; N69_SELL :: 1;
+N69_PENDING :: 0; N69_CANCELED :: 1; N69_IN_PROGRESS :: 2; N69_SUCCESS :: 3; N69_EXPIRED :: 4;
+N69_LAYER_OTHER :: 0; N69_LAYER_ONCHAIN :: 1; N69_LAYER_LIGHTNING :: 2; N69_LAYER_SPARK :: 3;
+N69_SETTLE_OK :: 0; N69_SETTLE_ORDER :: 1; N69_SETTLE_LAYER :: 2; N69_SETTLE_NETWORK :: 3;
+N69_SETTLE_STATUS :: 4; N69_SETTLE_RATE :: 5;
+N69_REQUIRED :: [10] string.["d", "k", "f", "s", "amt", "fa", "pm", "premium", "network", "layer"];
+N69_STATES :: [5] string.["pending", "canceled", "in-progress", "success", "expired"];
+
+// book:begin record
+N69Order :: struct {
+  status:int=N69_EVENT; at:int=-1;    // the refusing tag
+  missing:int=-1;                     // the first required tag absent, in N69_REQUIRED
+  d:N32Text; side:int; fiat:N32Text; state:int;
+  sats:int;                           // amt; 0: from an exchange rate
+  fa:[2]N32Text; range:bool;          // the fiat amount, or a minimum and maximum
+  methods:int; method:N32Text;        // pm: how many, and the first
+  premium:N32Text; network:N32Text;
+  layer:int; layer_name:N32Text;
+  expires_at:int=-1; expiration:int=-1;
+}
+// book:end record
+
+N69_EXAMPLE :: "[[\"d\",\"ede61c96-4c13-4519-bf3a-dcf7f1e9d842\"],[\"k\",\"sell\"],[\"f\",\"VES\"],[\"s\",\"pending\"],[\"amt\",\"0\"],[\"fa\",\"100\"],[\"pm\",\"face to face\",\"bank transfer\"],[\"premium\",\"1\"],[\"rating\",\"{\\\"total_reviews\\\":1,\\\"total_rating\\\":3.0,\\\"last_rating\\\":3,\\\"max_rate\\\":5,\\\"min_rate\\\":1}\"],[\"source\",\"https://t.me/p2plightning/xxxxxxx\"],[\"network\",\"mainnet\"],[\"layer\",\"lightning\"],[\"name\",\"Nakamoto\"],[\"g\",\"<geohash>\"],[\"bond\",\"0\"],[\"expires_at\",\"1719391096\"],[\"expiration\",\"1719995896\"],[\"y\",\"lnp2pbot\"],[\"z\",\"order\"]]";
+// An order with the given amt, status, network and layer.
+n69_with :: (amt:string,s:string,network:string,layer:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[[\"d\",\"o1\"],[\"k\",\"buy\"],[\"f\",\"EUR\"],[\"s\",\"");n=json_raw(out,n,s);
+  n=json_raw(out,n,"\"],[\"amt\",\"");n=json_raw(out,n,amt);
+  n=json_raw(out,n,"\"],[\"fa\",\"10\",\"20.5\"],[\"pm\",\"SEPA\"],[\"premium\",\"-1.5\"],[\"network\",\"");n=json_raw(out,n,network);
+  n=json_raw(out,n,"\"],[\"layer\",\"");n=json_raw(out,n,layer);n=json_raw(out,n,"\"]]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=N69_KIND_ORDER;return e;
+}
+
+#test "NIP-69's example order reads, and is not settled: its sats need a rate" {
+  buf:[1024]u8;
+  o:=n69_order(n99_ev(N69_KIND_ORDER,N69_EXAMPLE,buf[..]));
+  #assert o.status==N69_OK && o.at== -1 && o.missing== -1 && n32_is(o.d,"ede61c96-4c13-4519-bf3a-dcf7f1e9d842") && o.side==N69_SELL;
+  #assert n32_is(o.fiat,"VES") && o.state==N69_PENDING && o.sats==0 && n32_is(o.fa[0],"100") && !o.range && o.fa[1].n==0;
+  #assert o.methods==2 && n32_is(o.method,"face to face") && n32_is(o.premium,"1") && n32_is(o.network,"mainnet");
+  #assert o.layer==N69_LAYER_LIGHTNING && n32_is(o.layer_name,"lightning") && o.expires_at==1719391096 && o.expiration==1719995896;
+  #assert n69_settle(o)==N69_SETTLE_RATE;
+}
+#test "settling: Bitcoin layers on mainnet, pending, with sats" {
+  buf:[1024]u8;
+  o:=n69_order(n69_with("50000","pending","mainnet","lightning",buf[..]));
+  #assert o.status==N69_OK && o.side==N69_BUY && o.sats==50000 && o.range && n32_is(o.fa[0],"10") && n32_is(o.fa[1],"20.5") && o.methods==1;
+  #assert n32_is(o.premium,"-1.5") && o.expires_at== -1 && o.expiration== -1 && n69_settle(o)==N69_SETTLE_OK;
+  o=n69_order(n69_with("50000","pending","mainnet","onchain",buf[..]));#assert o.layer==N69_LAYER_ONCHAIN && n69_settle(o)==N69_SETTLE_OK;
+  o=n69_order(n69_with("50000","pending","mainnet","spark",buf[..]));#assert o.layer==N69_LAYER_SPARK && n69_settle(o)==N69_SETTLE_OK;
+  // Another layer is shown and never settled, whatever else holds.
+  o=n69_order(n69_with("50000","pending","mainnet","liquid",buf[..]));
+  #assert o.status==N69_OK && o.layer==N69_LAYER_OTHER && n32_is(o.layer_name,"liquid") && n69_settle(o)==N69_SETTLE_LAYER;
+  o=n69_order(n69_with("50000","pending","mainnet","Lightning",buf[..]));#assert o.layer==N69_LAYER_OTHER && n69_settle(o)==N69_SETTLE_LAYER;
+  o=n69_order(n69_with("0","success","testnet","liquid",buf[..]));#assert n69_settle(o)==N69_SETTLE_LAYER;
+  o=n69_order(n69_with("50000","pending","testnet","lightning",buf[..]));#assert n69_settle(o)==N69_SETTLE_NETWORK;
+  o=n69_order(n69_with("0","success","testnet","lightning",buf[..]));#assert n69_settle(o)==N69_SETTLE_NETWORK;
+  o=n69_order(n69_with("0","success","mainnet","lightning",buf[..]));#assert n69_settle(o)==N69_SETTLE_STATUS;
+  for k:1..<5 {
+    o=n69_order(n69_with("50000",N69_STATES[k],"mainnet","lightning",buf[..]));
+    #assert o.status==N69_OK && o.state==k && n69_settle(o)==N69_SETTLE_STATUS;
+  }
+  o=n69_order(n69_with("0","pending","mainnet","spark",buf[..]));#assert n69_settle(o)==N69_SETTLE_RATE;
+  bad:N69Order;#assert n69_settle(bad)==N69_SETTLE_ORDER;
+  o=n69_order(n69_with("50000","pending","mainnet","lightning",buf[..]));o.status=N69_VALUE;#assert n69_settle(o)==N69_SETTLE_ORDER;
+}
+#test "order refusals: values" {
+  buf:[1024]u8;
+  bad:=[8] string.["x", "0.5", "-1", "2100000000000001", "", "1,000", "1e3", " 1"];
+  for k:0..<bad.count {
+    o:=n69_order(n69_with(bad[k],"pending","mainnet","lightning",buf[..]));#assert o.status==N69_VALUE && o.at==4;
+  }
+  o:=n69_order(n69_with("2100000000000000","pending","mainnet","lightning",buf[..]));#assert o.status==N69_OK && o.sats==2100000000000000;
+  o=n69_order(n69_with("1","open","mainnet","lightning",buf[..]));#assert o.status==N69_VALUE && o.at==3;
+  o=n69_order(n69_with("1","pending","","lightning",buf[..]));#assert o.status==N69_VALUE && o.at==8;
+  o=n69_order(n69_with("1","pending","mainnet","",buf[..]));#assert o.status==N69_VALUE && o.at==9;
+  tags:=[11] string.[
+    "[[\"d\",\"\"]]", "[[\"k\",\"swap\"]]", "[[\"f\",\"EU\"]]", "[[\"fa\"]]", "[[\"fa\",\"1\",\"2\",\"3\"]]",
+    "[[\"fa\",\"ten\"]]", "[[\"fa\",\"1\",\"x\"]]", "[[\"pm\"]]", "[[\"pm\",\"\"]]", "[[\"premium\",\"x\"]]", "[[\"premium\",\"--1\"]]"];
+  for k:0..<tags.count {
+    o=n69_order(n99_ev(N69_KIND_ORDER,tags[k],buf[..]));#assert o.status==N69_VALUE && o.at==0;
+  }
+  more:=[6] string.["[[\"fa\",\"x5\"]]", "[[\"fa\",\".5\"]]", "[[\"premium\",\"-\"]]", "[[\"expires_at\",\"soon\"]]", "[[\"expiration\",\"1.5\"]]", "[[\"premium\",\"\"]]"];
+  for k:0..<more.count {o=n69_order(n99_ev(N69_KIND_ORDER,more[k],buf[..]));#assert o.status==N69_VALUE && o.at==0;}
+  o=n69_order(n99_ev(N69_KIND_ORDER,"[[\"premium\",\"-0.5\"],[\"premium\",\"x\"]]",buf[..]));#assert o.status==N69_MISSING && o.missing==0;
+}
+#test "order refusals: kind, missing tags, broken tags" {
+  buf:[1024]u8;
+  o:=n69_order(n99_ev(38384,N69_EXAMPLE,buf[..]));#assert o.status==N69_KIND && o.at== -1;
+  for k:0..<10 {
+    // The example without required tag k.
+    out:[1024]u8;n:=json_raw(out[..],0,"[[\"y\",\"bot\"],[\"expires_at\",\"0\"],[\"expiration\",\"0\"],");first:=true;
+    for t:0..<10 {
+      if t==k {continue;}
+      if !first {n=json_raw(out[..],n,",");}
+      first=false;n=json_raw(out[..],n,"[\"");n=json_raw(out[..],n,N69_REQUIRED[t]);n=json_raw(out[..],n,"\",\"");
+      v:=[10] string.["o", "buy", "EUR", "pending", "5", "10", "SEPA", "0", "mainnet", "lightning"];
+      n=json_raw(out[..],n,v[t]);n=json_raw(out[..],n,"\"]");
+    }
+    n=json_raw(out[..],n,"]");
+    o=n69_order(n99_ev(N69_KIND_ORDER,cast(string)out[0..<n],buf[..]));#assert o.status==N69_MISSING && o.missing==k && o.at== -1 && o.expires_at==0 && o.expiration==0;
+  }
+  o=n69_order(n99_ev(N69_KIND_ORDER,"[[\"d\",\"x\"],[\"k\",1]]",buf[..]));#assert o.status==N69_EVENT && o.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"x\"],[\"name\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  o=n69_order(n32_event(N69_KIND_ORDER,cast(string)long[0..<n]));#assert o.status==N69_LIMIT && o.at==1;
+  none:NostrEvent;#assert n69_order(none).status==N69_EVENT;
+  // A second required tag is ignored, even when its value is bad.
+  e:=n69_with("5","pending","mainnet","lightning",buf[..]);
+  two:[1024]u8;n=json_raw(two[..],0,e.original[0..<e.original.count-1]);n=json_raw(two[..],n,",[\"layer\",\"liquid\"],[\"k\",\"swap\"],[\"amt\",\"x\"]]");
+  o=n69_order(n32_event(N69_KIND_ORDER,cast(string)two[0..<n]));#assert o.status==N69_OK && o.layer==N69_LAYER_LIGHTNING && o.side==N69_BUY && o.sats==5;
+}
+
+n69_refuse :: (r:N69Order,status:int,at:int)->N69Order {o:=r;o.status=status;o.at=at;return o;}
+// A whole number of one to 16 digits, or -1.
+n69_whole :: (t:N32Text)->int {
+  own:=t;d:=n99_decimal(cast(string)own.b[0..<own.n]);
+  if !d.ok || d.frac_digits>0 {return -1;}
+  return d.whole;
+}
+
+// book:begin order
+// A peer-to-peer order. The first of each tag is read; later ones are
+// ignored.
+n69_order :: (e:NostrEvent)->N69Order {
+  o:N69Order;if e.error!=NE_OK {return o;}
+  if e.kind!=N69_KIND_ORDER {return n69_refuse(o,N69_KIND,-1);}
+  seen:[12]bool;   // the required tags, then expires_at and expiration
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n69_refuse(o,N69_LIMIT,i);}
+    if t.error!=NT_OK {return n69_refuse(o,N69_EVENT,i);}
+    name:=t.v[0];v:=t.v[1];which:=-1;
+    for k:0..<10 {if n32_is(name,N69_REQUIRED[k]) {which=k;}}
+    if n32_is(name,"expires_at") {which=10;}
+    if n32_is(name,"expiration") {which=11;}
+    if which>=0 && !seen[which] {
+      seen[which]=true;
+      if v.n==0 {return n69_refuse(o,N69_VALUE,i);}
+      ok:=true;
+      if which==0 {o.d=v;}
+      if which==1 {ok=n32_is(v,"buy") || n32_is(v,"sell");o.side=ifx n32_is(v,"sell") then N69_SELL else N69_BUY;}
+      if which==2 {ok=n99_unit(v)!=N99_UNIT_BAD;o.fiat=v;}
+      if which==3 {
+        ok=false;
+        for k:0..<5 {if n32_is(v,N69_STATES[k]) {ok=true;o.state=k;}}
+      }
+      if which==4 {o.sats=n69_whole(v);ok=o.sats>=0 && o.sats<=N99_MAX_SATS;}
+      if which==5 {
+        o.range=t.values==3;o.fa[0]=v;o.fa[1]=t.v[2];
+        a:=n99_decimal(cast(string)v.b[0..<v.n]);b:=n99_decimal(cast(string)o.fa[1].b[0..<o.fa[1].n]);
+        ok=t.values<4 && a.ok && (!o.range || b.ok);
+      }
+      if which==6 {o.methods=t.values-1;o.method=v;}
+      if which==7 {
+        o.premium=v;s:=1;if v.b[0]=='-' {s=0;}
+        ok=n99_decimal(cast(string)v.b[1-s..<v.n]).ok;
+      }
+      if which==8 {o.network=v;}
+      if which==9 {
+        o.layer_name=v;
+        o.layer=ifx n32_is(v,"onchain") then N69_LAYER_ONCHAIN else ifx n32_is(v,"lightning") then N69_LAYER_LIGHTNING else ifx n32_is(v,"spark") then N69_LAYER_SPARK else N69_LAYER_OTHER;
+      }
+      if which==10 {o.expires_at=n69_whole(v);ok=o.expires_at>=0;}
+      if which==11 {o.expiration=n69_whole(v);ok=o.expiration>=0;}
+      if !ok {return n69_refuse(o,N69_VALUE,i);}
+    }
+    i+=1;
+  }
+  for k:0..<10 {if !seen[k] {o.missing=k;return n69_refuse(o,N69_MISSING,-1);}}
+  o.status=N69_OK;return o;
+}
+// book:end order
+
+// book:begin settle
+// Whether this stack may settle an order: on Bitcoin's chain, Lightning or
+// Spark, on mainnet, still pending, with its amount in sats. The layer is
+// checked first: an order on any other layer is shown and never settled.
+n69_settle :: (o:N69Order)->int {
+  if o.status!=N69_OK {return N69_SETTLE_ORDER;}
+  if o.layer==N69_LAYER_OTHER {return N69_SETTLE_LAYER;}
+  if !n32_is(o.network,"mainnet") {return N69_SETTLE_NETWORK;}
+  if o.state!=N69_PENDING {return N69_SETTLE_STATUS;}
+  if o.sats==0 {return N69_SETTLE_RATE;}
+  return N69_SETTLE_OK;
+}
+// book:end settle

@@ -1,0 +1,104 @@
+// The checks of markets-orders.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/markets-orders.coax --run-steps 250000000
+#load "../markets-orders.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01, NIP-15, NIP-99 and
+// NIP-69 (it shares no code with Coax): hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False), over the same events.
+PY_ID :: [EVENTS] string.[
+  "0138c11ffbf8659e778310639bd557f30e67dbb45629300933b4e9e617d08215",
+  "80ddaa2ec11c5370a5d69871b9b1a86c810dae31f9ba80fbd9964334f77264a3",
+  "2f97d3698fa40530e1a5741184036bd810a8b3526875574f0acdc9ede83360de",
+  "0ffd847bcb617478cc823606e4113816cb85d2c382e283420f7c266cb8372a44",
+  "e12f228eeca119e2d9f6e132b6c0cce99e1742cb2a5dede4111cb524226fe6af",
+  "d82f6068921cedfd5ba1bee50c2616b5ce36be1c35140682b796d8037db85892",
+  "4c97ab70b368c95933dc35e3ac8bdc98f317011b7589e5b9519b2bff8a947888",
+  "65fc586b2d4d6000c263543aa5efe8f532c6f5f302e4a44dbb6ca8fd399d7355",
+  "4b7e3fcfd9298e8fdd2f1586e371163bd9fe046a81f924eca04fbe8003f25704",
+  "2a94f91f53946a64469f7b0ca81827fa9ad5240d76a98d3ebd3d063de6aaa89f"];
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked.
+py :: (k: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, TAGS[k]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's" {
+  buf: [2048] u8; scratch: [4096] u8;
+  for k: 0..<EVENTS { e := py(k, buf[..], scratch[..]); #assert e.error == NE_OK && ns_equal32(e.computed_id, e.id); }
+}
+
+// The worked total by hand. The mug: 15000 sat, two of them, 30000. The
+// ebook: 0.0001 BTC = 0.0001 x 100000000 = 10000 sat, one of them. Goods
+// 40000. Shipping to eu: the stall's base 2000, plus the mug's extra 500
+// per unit for eu, twice: 3000. Total 43000 sats. To us: base 5000 and
+// no extra for the mug there: 45000.
+#test "the total matches the hand values" {
+  buf: [2048] u8; scratch: [4096] u8; content: [3][2048] u8;
+  stall := n15_stall(py(0, buf[..], scratch[..]), content[0][..]);
+  ps: [2] N15Product;
+  ps[0] = n15_product(py(1, buf[..], scratch[..]), content[1][..]);
+  ps[1] = n15_product(py(2, buf[..], scratch[..]), content[2][..]);
+  #assert stall.status == N15_OK && ps[0].status == N15_OK && ps[1].status == N15_OK;
+  #assert n99_sats(ps[1].decimal, ps[1].unit) == 10000;
+  t := n15_total(stall, ps[..], bob_order());
+  #assert t.status == N15_TOTAL_OK && t.goods == 2 * 15000 + 10000 && t.shipping == 2000 + 2 * 500 && t.sats == 43000;
+  us := bob_order(); us.shipping_id = n99_text("us");
+  t = n15_total(stall, ps[..], us); #assert t.status == N15_TOTAL_OK && t.sats == 45000;
+  // The order Bob writes reads back the same.
+  out: [1024] u8; n := n15_write_order(out[..], bob_order());
+  o := n15_order_parse(cast(string) out[0..<n]);
+  t = n15_total(stall, ps[..], o); #assert t.sats == 43000;
+}
+
+// NIP-99's three price examples and its example event; NIP-69's example
+// order. The listing's d, title and price are the NIP's; the order reads
+// with VES, amt 0 and lightning, and is not settled: its sats would come
+// from an exchange rate.
+#test "the NIPs' examples read as the NIPs say" {
+  b: [2048] u8;
+  e := unsigned(30402, "[[\"price\",\"50\",\"USD\"],[\"price\",\"15\",\"EUR\",\"month\"],[\"price\",\"50000\",\"GBP\",\"year\"]]", b[..]);
+  p := n99_price(e, 0); #assert p.status == N99_OK && n32_is(p.amount, "50") && n32_is(p.currency, "USD") && p.frequency.n == 0 && p.sats == -1;
+  p = n99_price(e, 1); #assert p.status == N99_OK && n32_is(p.currency, "EUR") && n32_is(p.frequency, "month");
+  p = n99_price(e, 2); #assert p.status == N99_OK && p.decimal.whole == 50000 && n32_is(p.frequency, "year");
+  e = unsigned(30402, "[[\"d\",\"lorem-ipsum\"],[\"title\",\"Lorem Ipsum\"],[\"published_at\",\"1296962229\"],[\"t\",\"electronics\"],[\"image\",\"https://url.to.img\",\"256x256\"],[\"summary\",\"More lorem ipsum that is a little more than the title\"],[\"location\",\"NYC\"],[\"price\",\"100\",\"USD\"],[\"e\",\"b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87\",\"wss://relay.example.com\"],[\"a\",\"30023:a695f6b60119d9521934a691347d9f78e8770b56da16bb255ee286ddf9fda919:ipsum\",\"wss://relay.nostr.org\"]]", b[..]);
+  l := n99_listing(e);
+  #assert l.status == N99_OK && n32_is(l.d, "lorem-ipsum") && n32_is(l.title, "Lorem Ipsum") && l.published_at == 1296962229 && n32_is(l.location, "NYC") && l.topics == 1 && l.images == 1;
+  #assert n99_due(l).status == N99_DUE_RATE;
+  o := n69_order(unsigned(38383, N69_EXAMPLE, b[..]));
+  #assert o.status == N69_OK && o.side == N69_SELL && n32_is(o.fiat, "VES") && o.sats == 0 && o.methods == 2 && o.layer == N69_LAYER_LIGHTNING;
+  #assert n69_settle(o) == N69_SETTLE_RATE;
+}
+
+// Done means: an order on any layer but onchain, lightning or spark is
+// shown (it reads) and never settled, whatever its other fields say.
+#test "an order on another layer is shown and never settled" {
+  b: [4096] u8;
+  layers := [6] string.["liquid", "rsk", "tron", "ethereum", "Lightning", "on-chain"];
+  for k: 0..<layers.count {
+    t: [1024] u8; n := json_raw(t[..], 0, "[[\"d\",\"x\"],[\"k\",\"sell\"],[\"f\",\"EUR\"],[\"s\",\"pending\"],[\"amt\",\"5000\"],[\"fa\",\"3\"],[\"pm\",\"SEPA\"],[\"premium\",\"0\"],[\"network\",\"mainnet\"],[\"layer\",\"");
+    n = json_raw(t[..], n, layers[k]); n = json_raw(t[..], n, "\"]]");
+    o := n69_order(unsigned(38383, cast(string) t[0..<n], b[..]));
+    #assert o.status == N69_OK && o.layer == N69_LAYER_OTHER && n69_settle(o) == N69_SETTLE_LAYER;
+  }
+  good := [3] string.["onchain", "lightning", "spark"];
+  for k: 0..<good.count {
+    t: [1024] u8; n := json_raw(t[..], 0, "[[\"d\",\"x\"],[\"k\",\"sell\"],[\"f\",\"EUR\"],[\"s\",\"pending\"],[\"amt\",\"5000\"],[\"fa\",\"3\"],[\"pm\",\"SEPA\"],[\"premium\",\"0\"],[\"network\",\"mainnet\"],[\"layer\",\"");
+    n = json_raw(t[..], n, good[k]); n = json_raw(t[..], n, "\"]]");
+    o := n69_order(unsigned(38383, cast(string) t[0..<n], b[..]));
+    #assert o.status == N69_OK && o.layer == k + 1 && n69_settle(o) == N69_SETTLE_OK;
+  }
+}
+// book:end check

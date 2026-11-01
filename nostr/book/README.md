@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 70 are implemented and 34 are design drafts.
+Of the 104 chapters, 71 are implemented and 33 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -256,7 +256,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [63. Git on Nostr](ch063-git-on-nostr.md) | Runnable: native C | NIP-34 repository announcements (30617), issues (1621), patches (1617) and statuses (1630–1633), with the newest status by the author or a maintainer deciding the state. Repository state (30618), pull requests (1618, 1619) and NIP-C0 snippets (1337) are not built. |
 | [64. App data and handlers](ch064-app-data-and-handlers.md) | Unimplemented: design draft | NIP-78 kind 30078 application data, NIP-89 handler recommendations (31989) and announcements (31990), NIP-5A static websites (35128 and 15128 manifests), and NIP-CD slash commands (31992, 10992). |
 | [65. Data vending machines](ch065-data-vending-machines.md) | Unimplemented: design draft | NIP-90 job requests (5000–5999), results (6000–6999) and feedback (7000), job chaining, and why the pinned text marks it `unrecommended`. |
-| [66. Markets and orders](ch066-markets-and-orders.md) | Unimplemented: design draft | NIP-99 classified listings (30402 and 30403 drafts) with `price` in a currency and frequency, NIP-69 peer-to-peer order events (38383), and the unrecommended NIP-15 marketplace. |
+| [66. Markets and orders](ch066-markets-and-orders.md) | Runnable: native C | NIP-99 classified listings (30402 and 30403 drafts) with `price` in a currency and frequency, NIP-69 peer-to-peer order events (38383), and the unrecommended NIP-15 marketplace. |
 | [67. Relay discovery, access and management](ch067-relay-discovery-access-and-management.md) | Unimplemented: design draft | NIP-66 relay discovery (30166) and monitor announcements (10166), NIP-43 membership lists (13534) and join and leave requests (28934–28936), and the NIP-86 JSON-RPC management API over HTTP with NIP-98 auth. |
 | [68. Bridges, external IDs and timestamps](ch068-bridges-external-ids-and-timestamps.md) | Unimplemented: design draft | NIP-48 `proxy` tags for bridged events, NIP-73 `i` and `k` tags for external content IDs (URLs, ISBNs, podcasts, geohashes), and NIP-03 kind 1040 OpenTimestamps attestations. |
 | [69. Small content kinds](ch069-small-content-kinds.md) | Unimplemented: design draft | NIP-35 torrents (2003), NIP-64 chess games in PGN (64), NIP-CC geocaches (37516) and logs (7516, 7517), and NIP-F4 podcasts. |

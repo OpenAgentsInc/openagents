@@ -1,0 +1,49 @@
+each event's id
+ST: 0138c11ffbf8659e778310639bd557f30e67dbb45629300933b4e9e617d08215, verified true
+P1: 80ddaa2ec11c5370a5d69871b9b1a86c810dae31f9ba80fbd9964334f77264a3, verified true
+P2: 2f97d3698fa40530e1a5741184036bd810a8b3526875574f0acdc9ede83360de, verified true
+L1: 0ffd847bcb617478cc823606e4113816cb85d2c382e283420f7c266cb8372a44, verified true
+L2: e12f228eeca119e2d9f6e132b6c0cce99e1742cb2a5dede4111cb524226fe6af, verified true
+L3: d82f6068921cedfd5ba1bee50c2616b5ce36be1c35140682b796d8037db85892, verified true
+L4: 4c97ab70b368c95933dc35e3ac8bdc98f317011b7589e5b9519b2bff8a947888, verified true
+O1: 65fc586b2d4d6000c263543aa5efe8f532c6f5f302e4a44dbb6ca8fd399d7355, verified true
+O2: 4b7e3fcfd9298e8fdd2f1586e371163bd9fe046a81f924eca04fbe8003f25704, verified true
+O3: 2a94f91f53946a64469f7b0ca81827fa9ad5240d76a98d3ebd3d063de6aaa89f, verified true
+Alice's stall and products (NIP-15)
+ST: ok, s1 "Alice's stall" in sat, zones eu 2000, us 5000.0
+P1: ok, p1 "Mug" 15000 sat, quantity 5, extra per unit eu 500
+P2: ok, p2 "Ebook" 0.0001 BTC, quantity unlimited
+classified listings (NIP-99)
+L1: ok, d bike, "Road bike", price 250000 sat = 250000 sats, status active; due 250000 sats
+L2: ok, d desk, "Desk", price 50 USD; not in bitcoin: shown, never converted
+L3: ok (draft), d room, "Room", price 15 EUR per month; draft: not for sale
+L4: ok, d job, "Rust engineer", price 50000 GBP per year; not in bitcoin: shown, never converted
+peer-to-peer orders (NIP-69)
+O1: ok, sell 50000 sats for 30 EUR by SEPA on lightning (mainnet): may settle
+O2: ok, buy 20000 sats for 10 to 20 USD by cash on liquid (mainnet): layer is not Bitcoin, Lightning or Spark: shown, never settled
+O3: ok, sell 0 sats for 100 VES by face to face on lightning (mainnet): sats come from an exchange rate, which this stack does not use
+checkout (NIP-15 messages, the plaintext of Bob's and Alice's DMs)
+Bob's new order, type 0: {"id":"o1","type":0,"address":"1 Main St, Berlin","contact":{"nostr":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"},"items":[{"product_id":"p1","quantity":2},{"product_id":"p2","quantity":1}],"shipping_id":"eu"}
+Alice reads it: ok, o1, 2 items, ship to eu
+total: ok, goods 40000 + shipping 3000 = 43000 sats
+Alice's payment request, type 1: {"id":"o1","type":1,"message":"43000 sats, please","payment_options":[{"type":"ln","link":"lnbc430u1p5example"},{"type":"btc","link":"bc1qexampleaddress"}]}
+a request offering three options: ok, 1 on a Bitcoin rail
+  option 0: url, refused: not a Bitcoin rail
+  option 1: cashu, refused: not a Bitcoin rail
+  option 2: ln, Lightning
+  Bob pays with option 2: lnbc430u1p5example
+Alice's status update, type 2: {"id":"o1","type":2,"message":"Paid. Shipped today.","paid":true,"shipped":true}
+Bob reads it: ok, paid true, shipped true
+refusals
+listing priced "50,000": bad price at tag 1
+listing priced in 1/10 sat: bad price at tag 1
+listing published "soon": bad published_at at tag 1
+order without a layer: missing tag (layer): order does not read
+order to swap: bad value at tag 1: order does not read
+the same order from a stall in USD: not priced in bitcoin: no exchange rate
+six mugs, five in stock: not enough in stock at item 0
+shipping to mars: no such shipping zone
+writing a request with a cashu option: refused, not a Bitcoin rail
+an order naming the mug twice: duplicate
+a product with two prices: duplicate
+a stall event whose d is not its id: d tag is not the id

@@ -1,0 +1,218 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip15.coax";
+#load "../../coax/lib/nostr/nip69.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS15 :: [10] string.["ok", "event", "kind", "not JSON", "bad field", "missing field", "d tag is not the id", "limit", "wrong type", "duplicate"];
+TOTAL :: [8] string.["ok", "stall or order does not read", "not priced in bitcoin: no exchange rate", "no such shipping zone", "no such product in this stall", "not enough in stock", "not whole sats", "over 21 million bitcoin"];
+RAIL :: [4] string.["refused: not a Bitcoin rail", "on-chain", "Lightning", "LNURL"];
+STATUS99 :: [8] string.["ok", "event", "kind", "bad tag", "missing d", "bad price", "bad published_at", "limit"];
+DUE :: [7] string.["", "listing does not read", "draft: not for sale", "sold", "no price", "not in bitcoin: shown, never converted", "recurring: shown, not settled here"];
+STATE99 :: [4] string.["none", "active", "sold", "other"];
+STATUS69 :: [6] string.["ok", "event", "kind", "missing tag", "bad value", "limit"];
+SETTLE :: [6] string.["may settle", "order does not read", "layer is not Bitcoin, Lightning or Spark: shown, never settled", "not mainnet", "not pending", "sats come from an exchange rate, which this stack does not use"];
+// BIP-340 test vectors 0 to 2's public keys.
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+// Their secret keys: published test values. Never sign with a real key in
+// an example.
+SECRET :: [3] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+T0 :: 1761686400;
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// The events: who signs, when (after T0), the kind, the tags and the content.
+EVENTS :: 10;
+NAME :: [EVENTS] string.["ST", "P1", "P2", "L1", "L2", "L3", "L4", "O1", "O2", "O3"];
+WHO :: [EVENTS] int.[ALICE, ALICE, ALICE, ALICE, CAROL, CAROL, CAROL, BOB, BOB, BOB];
+AT :: [EVENTS] int.[0, 60, 120, 180, 240, 300, 360, 420, 480, 540];
+KIND :: [EVENTS] int.[30017, 30018, 30018, 30402, 30402, 30403, 30402, 38383, 38383, 38383];
+TAGS :: [EVENTS] string.[
+  "[[\"d\",\"s1\"]]",
+  "[[\"d\",\"p1\"],[\"t\",\"mugs\"]]",
+  "[[\"d\",\"p2\"],[\"t\",\"books\"]]",
+  "[[\"d\",\"bike\"],[\"title\",\"Road bike\"],[\"summary\",\"Steel frame, 56 cm\"],[\"published_at\",\"1761686580\"],[\"location\",\"Berlin\"],[\"price\",\"250000\",\"sat\"],[\"status\",\"active\"],[\"t\",\"bikes\"]]",
+  "[[\"d\",\"desk\"],[\"title\",\"Desk\"],[\"price\",\"50\",\"USD\"]]",
+  "[[\"d\",\"room\"],[\"title\",\"Room\"],[\"price\",\"15\",\"EUR\",\"month\"]]",
+  "[[\"d\",\"job\"],[\"title\",\"Rust engineer\"],[\"price\",\"50000\",\"GBP\",\"year\"]]",
+  "[[\"d\",\"o-ln\"],[\"k\",\"sell\"],[\"f\",\"EUR\"],[\"s\",\"pending\"],[\"amt\",\"50000\"],[\"fa\",\"30\"],[\"pm\",\"SEPA\"],[\"premium\",\"0\"],[\"network\",\"mainnet\"],[\"layer\",\"lightning\"],[\"y\",\"example\"],[\"z\",\"order\"]]",
+  "[[\"d\",\"o-lq\"],[\"k\",\"buy\"],[\"f\",\"USD\"],[\"s\",\"pending\"],[\"amt\",\"20000\"],[\"fa\",\"10\",\"20\"],[\"pm\",\"cash\",\"face to face\"],[\"premium\",\"-1.5\"],[\"network\",\"mainnet\"],[\"layer\",\"liquid\"],[\"y\",\"example\"],[\"z\",\"order\"]]",
+  N69_EXAMPLE];
+CONTENT :: [EVENTS] string.[N15_STALL, N15_P1, N15_P2, "A good bike.", "Oak.", "Near the park.", "Remote.", "", "", ""];
+
+show_zones :: (label: string, z: [] N15Zone) {
+  for k: 0..<z.count { print("%", ifx k == 0 then label else ", "); say(z[k].id); print(" "); say(z[k].cost); }
+}
+show_stall :: (label: string, s: N15Stall) {
+  print("%: %", label, STATUS15[s.status]);
+  if s.status == N15_OK { print(", "); say(s.id); print(" \""); say(s.name); print("\" in "); say(s.currency); own := s; show_zones(", zones ", own.zones[0..<own.zones_n]); }
+  print("\n");
+}
+show_product :: (label: string, p: N15Product) {
+  print("%: %", label, STATUS15[p.status]);
+  if p.status == N15_OK {
+    print(", "); say(p.id); print(" \""); say(p.name); print("\" "); say(p.price); print(" "); say(p.currency);
+    if p.quantity < 0 { print(", quantity unlimited"); } else { print(", quantity %", p.quantity); }
+    own := p; show_zones(", extra per unit ", own.extras[0..<own.extras_n]);
+  }
+  print("\n");
+}
+show_listing :: (label: string, e: NostrEvent) {
+  l := n99_listing(e);
+  print("%: %", label, STATUS99[l.status]);
+  if l.at >= 0 { print(" at tag %", l.at); }
+  if l.status != N99_OK { print("\n"); return; }
+  if l.draft { print(" (draft)"); }
+  print(", d "); say(l.d); print(", \""); say(l.title); print("\"");
+  p := l.price; print(", price "); say(p.amount); print(" "); say(p.currency);
+  if p.frequency.n > 0 { print(" per "); say(p.frequency); }
+  if p.sats >= 0 { print(" = % sats", p.sats); }
+  if l.state != N99_STATE_NONE { print(", status %", STATE99[l.state]); }
+  d := n99_due(l);
+  if d.status == N99_DUE_OK { print("; due % sats\n", d.sats); } else { print("; %\n", DUE[d.status]); }
+}
+show_order :: (label: string, e: NostrEvent) {
+  o := n69_order(e);
+  print("%: %", label, STATUS69[o.status]);
+  if o.at >= 0 { print(" at tag %", o.at); }
+  if o.missing >= 0 { print(" (%)", N69_REQUIRED[o.missing]); }
+  if o.status == N69_OK {
+    print(", % % sats for ", ifx o.side == N69_SELL then "sell" else "buy", o.sats); say(o.fa[0]);
+    if o.range { print(" to "); say(o.fa[1]); }
+    print(" "); say(o.fiat); print(" by "); say(o.method); print(" on "); say(o.layer_name); print(" ("); say(o.network); print(")");
+  }
+  print(": %\n", SETTLE[n69_settle(o)]);
+}
+show_total :: (label: string, s: N15Stall, products: [] N15Product, o: N15Order) {
+  t := n15_total(s, products, o);
+  print("%: %", label, TOTAL[t.status]);
+  if t.at >= 0 { print(" at item %", t.at); }
+  if t.status == N15_TOTAL_OK { print(", goods % + shipping % = % sats", t.goods, t.shipping, t.sats); }
+  print("\n");
+}
+// An unsigned event by Carol with these tags, parsed but not verified: its
+// id and sig are zeros. Used for the refusals, which no signer here would
+// write.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[CAROL]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"x\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+// Bob's order: two mugs and the ebook, shipped to the eu zone.
+bob_order :: () -> N15Order {
+  o: N15Order; o.status = N15_OK; o.id = n99_text("o1"); o.nostr = n99_text(PUB[BOB]);
+  o.address = n99_text("1 Main St, Berlin"); o.shipping_id = n99_text("eu");
+  o.items[0] = N15Item.{product_id = n99_text("p1"), quantity = 2};
+  o.items[1] = N15Item.{product_id = n99_text("p2"), quantity = 1};
+  o.items_n = 2;
+  return o;
+}
+
+main :: () {
+  all: [EVENTS] NostrEvent; buf: [EVENTS][4096] u8;
+  for k: 0..<EVENTS { all[k] = sign(WHO[k], T0 + AT[k], KIND[k], TAGS[k], CONTENT[k], buf[k][..]); }
+  print("each event's id\n");
+  for k: 0..<EVENTS { hex: [64] u8; print("%: %, verified %\n", NAME[k], hex32(all[k].id, hex[..]), all[k].verified); }
+
+  print("Alice's stall and products (NIP-15)\n");
+  content: [3][2048] u8;
+  stall := n15_stall(all[0], content[0][..]); show_stall("ST", stall);
+  products: [2] N15Product;
+  products[0] = n15_product(all[1], content[1][..]); show_product("P1", products[0]);
+  products[1] = n15_product(all[2], content[2][..]); show_product("P2", products[1]);
+
+  print("classified listings (NIP-99)\n");
+  for k: 3..<7 { show_listing(NAME[k], all[k]); }
+
+  print("peer-to-peer orders (NIP-69)\n");
+  for k: 7..<10 { show_order(NAME[k], all[k]); }
+
+  print("checkout (NIP-15 messages, the plaintext of Bob's and Alice's DMs)\n");
+  msg: [1024] u8;
+  n := n15_write_order(msg[..], bob_order());
+  text := cast(string) msg[0..<n];
+  print("Bob's new order, type %: %\n", n15_type(text), text);
+  o := n15_order_parse(text);
+  print("Alice reads it: %, ", STATUS15[o.status]); say(o.id); print(", % items, ship to ", o.items_n); say(o.shipping_id); print("\n");
+  show_total("total", stall, products[..], o);
+  types := [2] string.["ln", "btc"];
+  links := [2] string.["lnbc430u1p5example", "bc1qexampleaddress"];
+  req: [1024] u8;
+  n = n15_write_request(req[..], "o1", "43000 sats, please", types[..], links[..]);
+  print("Alice's payment request, type %: %\n", n15_type(cast(string) req[0..<n]), cast(string) req[0..<n]);
+  mixed := "{\"id\":\"o1\",\"type\":1,\"payment_options\":[{\"type\":\"url\",\"link\":\"https://pay.example/o1\"},{\"type\":\"cashu\",\"link\":\"cashuAexample\"},{\"type\":\"ln\",\"link\":\"lnbc430u1p5example\"}]}";
+  r := n15_request_parse(mixed);
+  print("a request offering three options: %, % on a Bitcoin rail\n", STATUS15[r.status], r.bitcoin);
+  for k: 0..<r.options_n { print("  option %: ", k); say(r.options[k].type); print(", %\n", RAIL[r.options[k].rail]); }
+  c := n15_choice(r);
+  print("  Bob pays with option %: %\n", c, n15_raw(mixed, r.options[c]));
+  up: [256] u8;
+  n = n15_write_update(up[..], "o1", "Paid. Shipped today.", true, true);
+  u := n15_update_parse(cast(string) up[0..<n]);
+  print("Alice's status update, type %: %\n", n15_type(cast(string) up[0..<n]), cast(string) up[0..<n]);
+  print("Bob reads it: %, paid %, shipped %\n", STATUS15[u.status], u.paid, u.shipped);
+
+  print("refusals\n");
+  bad: [4096] u8;
+  show_listing("listing priced \"50,000\"", unsigned(30402, "[[\"d\",\"x\"],[\"price\",\"50,000\",\"USD\"]]", bad[..]));
+  show_listing("listing priced in 1/10 sat", unsigned(30402, "[[\"d\",\"x\"],[\"price\",\"0.000000001\",\"BTC\"]]", bad[..]));
+  show_listing("listing published \"soon\"", unsigned(30402, "[[\"d\",\"x\"],[\"published_at\",\"soon\"]]", bad[..]));
+  show_order("order without a layer", unsigned(38383, "[[\"d\",\"x\"],[\"k\",\"buy\"],[\"f\",\"EUR\"],[\"s\",\"pending\"],[\"amt\",\"1\"],[\"fa\",\"1\"],[\"pm\",\"SEPA\"],[\"premium\",\"0\"],[\"network\",\"mainnet\"]]", bad[..]));
+  show_order("order to swap", unsigned(38383, "[[\"d\",\"x\"],[\"k\",\"swap\"]]", bad[..]));
+  usd := n15_stall_parse("{\"id\":\"s1\",\"name\":\"Alice's stall\",\"currency\":\"USD\",\"shipping\":[{\"id\":\"eu\",\"cost\":20}]}");
+  show_total("the same order from a stall in USD", usd, products[..], o);
+  six := bob_order(); six.items[0].quantity = 6;
+  show_total("six mugs, five in stock", stall, products[..], six);
+  far := bob_order(); far.shipping_id = n99_text("mars");
+  show_total("shipping to mars", stall, products[..], far);
+  bad_types := [2] string.["ln", "cashu"];
+  print("writing a request with a cashu option: %\n", ifx n15_write_request(req[..], "o1", "", bad_types[..], links[..]) == N15_W_RAIL then "refused, not a Bitcoin rail" else "written");
+  print("an order naming the mug twice: %\n", STATUS15[n15_order_parse("{\"id\":\"o\",\"type\":0,\"items\":[{\"product_id\":\"p1\",\"quantity\":1},{\"product_id\":\"p1\",\"quantity\":1}],\"shipping_id\":\"eu\"}").status]);
+  print("a product with two prices: %\n", STATUS15[n15_product_parse("{\"id\":\"p\",\"stall_id\":\"s1\",\"name\":\"n\",\"currency\":\"sat\",\"price\":1,\"price\":0}").status]);
+  print("a stall event whose d is not its id: %\n", STATUS15[n15_stall(unsigned_content(N15_KIND_STALL, "[[\"d\",\"s2\"]]", N15_STALL, bad[..]), content[0][..]).status]);
+}
+// An unsigned event by Carol with these tags and this content.
+unsigned_content :: (kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[CAROL]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+// book:end example
