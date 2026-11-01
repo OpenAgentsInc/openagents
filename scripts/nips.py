@@ -78,7 +78,7 @@ def write_lane(path, files, name):
 
 
 def read_manifest(root):
-    manifest = json.loads((root/'nips/manifest.json').read_text())
+    manifest = json.loads((root/'nostr/nips/manifest.json').read_text())
     rows = manifest['sources']
     expected = [(name, repo, subdir, branch) for name, repo, subdir, branch in SOURCES]
     if [(r['name'], r['repo'], r['subdir'], r['branch']) for r in rows] != expected:
@@ -88,14 +88,14 @@ def read_manifest(root):
 
 def offline(root):
     manifest = read_manifest(root)
-    lock = json.loads((root/'nips/upstream-lock.json').read_text())
+    lock = json.loads((root/'nostr/nips/upstream-lock.json').read_text())
     if lock['schema'] != 1 or set(lock['sources']) != {r['name'] for r in manifest['sources']}:
         raise ValueError('Unexpected NIP lock schema/lanes')
     for row in manifest['sources']:
         name = row['name']; entry = lock['sources'][name]
         if entry['commit'] != row['commit'] or len(entry['files']) != row['files']:
             raise ValueError('Pin/lock mismatch: ' + name)
-        actual = lane_files(root/'nips'/name)
+        actual = lane_files(root/'nostr/nips'/name)
         compare(hashes(actual), entry['files'], name)
         count = sum(p.endswith('.md') and p != 'README.md' for p in entry['files'])
         if count != row['specifications']: raise ValueError('Specification count mismatch: ' + name)
@@ -134,7 +134,7 @@ def main():
                 subprocess.run(['git','-C',str(repo),'fetch','--quiet','--depth','1',row['repo'],commit],check=True)
             files = read_tree(repo, commit, row['subdir'])
             if a.mode == 'check':
-                compare(lane_files(ROOT/'nips'/name), files, name)
+                compare(lane_files(ROOT/'nostr/nips'/name), files, name)
                 if a.latest and commit != latest: raise ValueError(name + ': a newer upstream commit is available: ' + latest)
                 print(name + ': pinned upstream bytes match' + ('; latest branch head confirmed' if a.latest else ''))
                 continue
@@ -144,9 +144,9 @@ def main():
             lock['sources'][name] = {'commit':commit, 'files':hashes(files)}
             prepared.append((name, files))
         if a.mode == 'sync':
-            for name, files in prepared: write_lane(ROOT/'nips'/name, files, name)
-            (ROOT/'nips/manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-            (ROOT/'nips/upstream-lock.json').write_text(json.dumps(lock,indent=2)+'\n')
+            for name, files in prepared: write_lane(ROOT/'nostr/nips'/name, files, name)
+            (ROOT/'nostr/nips/manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+            (ROOT/'nostr/nips/upstream-lock.json').write_text(json.dumps(lock,indent=2)+'\n')
             offline(ROOT)
             if (ROOT/'proto/nostr/MANIFEST.json').exists():
                 result=subprocess.run([sys.executable,str(ROOT/'proto/tools/check_nostr_sources.py')])

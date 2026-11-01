@@ -1,6 +1,6 @@
 # NIP-17: Private messages
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/17.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/17.md)
 
 Private messages compose signed and encrypted envelopes. Relays transport ciphertext rather than a public plaintext conversation.
 

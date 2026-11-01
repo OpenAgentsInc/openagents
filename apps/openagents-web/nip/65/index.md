@@ -1,6 +1,6 @@
 # NIP-65: Relay list metadata
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/65.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/65.md)
 
 A user can publish the relays they read from and write to, so peers know where to look.
 

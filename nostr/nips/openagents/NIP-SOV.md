@@ -2,13 +2,13 @@
 
 `draft` `optional` — v1, 2026-09-26. **Partly implemented:** `openagents sov` validates
 profiles and runs a finite local lifecycle with explicit local-key custody.
-[`sov-custody`](../../crates/sov-custody/README.md) implements NIP-46 remote
+[`sov-custody`](../../../crates/sov-custody/README.md) implements NIP-46 remote
 custody and guardian quorum admission (see the
 [Rust custody profile](#rust-custody-profile)), and
-[`sov-lifecycle`](../../crates/sov-lifecycle/README.md) implements fenced
+[`sov-lifecycle`](../../../crates/sov-lifecycle/README.md) implements fenced
 two-host transfer and bounded recovery (see the
 [Rust lifecycle profile](#rust-lifecycle-profile)).
-[`sov-treasury`](../../crates/sov-treasury/README.md) implements the treasury
+[`sov-treasury`](../../../crates/sov-treasury/README.md) implements the treasury
 binding over the existing ledger, wallet, and X402 owners (see the
 [Rust treasury profile](#rust-treasury-profile)). Hardware and threshold
 custody and real-money qualification remain unfinished
@@ -426,7 +426,7 @@ Retain ordered, attributable evidence for admitted goals, context references,
 typed decisions, tools, observations, delegated work, approvals, resource and
 payment attempts, outcomes, unknowns, costs, and timing. Use RUN's controller
 chain and gap/fork rules. Link full authorized local trajectories through
-[ATIF](../../docs/coder/runtime/traces.md), carried as [NIP-ATIF](NIP-ATIF.md) specifies; preserve source identities and
+[ATIF](../../../docs/coder/runtime/traces.md), carried as [NIP-ATIF](NIP-ATIF.md) specifies; preserve source identities and
 distinguish recorded timestamps from estimates. A digest of an unordered set
 of events is not a replayable history. Hidden model reasoning is not required;
 observable decisions and supporting evidence are the contract.
@@ -530,7 +530,7 @@ unresolved liabilities; retained plaintext after license revocation; and
 training reuse without permission. Include complete successful recovery and
 no-spend operation as well as refusals.
 
-The [implementation plan](../../docs/protocol/implementation-plan.md) tracks
+The [implementation plan](../../../docs/protocol/implementation-plan.md) tracks
 this work. Generic Nostr signing, private envelope support, local scheduling,
 an existing agent loop, and offline invoice validation do not establish SOV
 conformance. Publish only the roles supported by retained evidence, with

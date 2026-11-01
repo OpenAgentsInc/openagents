@@ -81,7 +81,7 @@ def generate():
             note='''\n## The event verification demo\n\nThe original /nip/01 pipeline remains: REAL verifies a captured kind 30617 event; ID and TEXT refuse at the id check; SIG refuses at BIP-340; KIND refuses during parsing. Select with keys 1 to 5 or the buttons. PARTS (6) lists the implementation. Signing, typed tags, metadata and message codecs are now on main. The Coax signer uses a fixed-work self-check, but production keys still await review. The project pages read live relay traffic but do not yet locally verify every kept event.\n'''
         text=f'''# NIP-{number:02}: {r['title']}
 
-[All implemented NIPs](/nip) · [Pinned specification]({link(f'nips/official/{number:02}.md')})
+[All implemented NIPs](/nip) · [Pinned specification]({link(f'nostr/nips/official/{number:02}.md')})
 
 {r['summary']}
 

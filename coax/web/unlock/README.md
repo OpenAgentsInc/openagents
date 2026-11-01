@@ -9,7 +9,7 @@ readable in the page.
 - **Sealing** (`seal.ts`): a deck is written as Markdown (`parseDeck` in
   `lib.ts`), put inline in an OpenAgents private artifact (kind 3188 with an
   `openagents.artifact-envelope.v1` body whose JCS bytes match its digest; see
-  `nips/openagents/contracts.md`), NIP-44 v2 encrypted to the recipient,
+  `nostr/nips/openagents/contracts.md`), NIP-44 v2 encrypted to the recipient,
   sealed by the author (kind 13) and gift-wrapped from a throwaway key
   (kind 1059, NIP-59). The wrap goes to relay.openagents.com, which serves it
   only to its recipient after NIP-42 AUTH.

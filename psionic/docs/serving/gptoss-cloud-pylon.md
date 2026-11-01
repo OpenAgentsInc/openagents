@@ -59,7 +59,7 @@ runtime dependency. Its generated C and owned network/TLS/entropy effects can
 be compiled inside the managed Debian watcher image.
 
 Prompts are public NIP-90 inline text. The supported subset and result tags
-are defined in [NIP-PYLON](../../../nips/openagents/NIP-PYLON.md). The private
+are defined in [NIP-PYLON](../../../nostr/nips/openagents/NIP-PYLON.md). The private
 Responses bearer stays in mode 0600 files and is read by the Coax host; it is
 absent from argv, public events and receipts. Model and buyer HTTP services
 remain on loopback.

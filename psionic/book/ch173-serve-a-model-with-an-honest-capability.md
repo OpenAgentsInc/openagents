@@ -40,4 +40,4 @@ You build the shared System One protocol integration here. Every later serving c
 
 - [Chapter plan](PLAN.md)
 - [Inference Engineering notes](../docs/serving/inference-engineering.md)
-- [NIP-DEC](../../nips/openagents/NIP-DEC.md)
+- [NIP-DEC](../../nostr/nips/openagents/NIP-DEC.md)

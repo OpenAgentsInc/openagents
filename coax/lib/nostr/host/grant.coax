@@ -1,7 +1,7 @@
 // HOST access: bind a projected grant (openagents.host.v1.Access.grant) to
 // the original host-signed, device-encrypted envelope ri was read from
 // (Access.authorization, the exact event JSON). NIP-HOST "Grants, epochs, and
-// revocation"; envelope: nips/openagents/contracts.md "Private artifact
+// revocation"; envelope: nostr/nips/openagents/contracts.md "Private artifact
 // envelope".
 //
 // A plaintext or projection supplied beside an envelope is not evidence that

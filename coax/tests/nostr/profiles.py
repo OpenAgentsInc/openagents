@@ -197,15 +197,15 @@ int main(void) {
         run(self.dir/'release')
 
     def test_source_pins_and_real_evidence(self):
-        lock = json.loads((ROOT/'nips/upstream-lock.json').read_text())
+        lock = json.loads((ROOT/'nostr/nips/upstream-lock.json').read_text())
         for source in self.matrix['sources']:
             if source['name'] in lock['sources']:
                 self.assertEqual(source['pin'], lock['sources'][source['name']]['commit'])
                 for name, digest in lock['sources'][source['name']]['files'].items():
-                    self.assertEqual(hashlib.sha256((ROOT/'nips'/source['name']/name).read_bytes()).hexdigest(), digest)
+                    self.assertEqual(hashlib.sha256((ROOT/'nostr/nips'/source['name']/name).read_bytes()).hexdigest(), digest)
             else:
                 h = hashlib.sha256()
-                for p in sorted((ROOT/'nips/openagents').rglob('*')):
+                for p in sorted((ROOT/'nostr/nips/openagents').rglob('*')):
                     if p.is_file(): h.update(str(p.relative_to(ROOT)).encode()+b'\0'+p.read_bytes()+b'\0')
                 self.assertEqual(source['pin'], h.hexdigest())
         for evidence in self.matrix['evidence']:

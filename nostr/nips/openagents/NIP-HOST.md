@@ -4,7 +4,7 @@
 [connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),
 the [local operator socket](#local-operator-socket), and
 [nearby approval](#nearby-approval-planned) for the
-[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md), and
+[QR pairing design](../../../docs/coder/design/2026-09-29-auto-pairing.md), and
 2026-09-30 with the [thread operations](#operations) (`thread.list`,
 `thread.read`, `thread.send`, `thread.stop`, `thread.run`) that carry the
 host's chat threads to a phone and start Coder from an offer on one, and
@@ -490,7 +490,7 @@ public tags reveal a relationship between keys, not its state.
 ## Account key link by QR (planned)
 
 `planned` — 2026-10-17, for the
-[Nostr-only identity plan](../../docs/audits/2026-10-17-nostr-only-identity.md#multi-device);
+[Nostr-only identity plan](../../../docs/audits/2026-10-17-nostr-only-identity.md#multi-device);
 desktop [#11998](https://github.com/OpenAgentsInc/openagents/issues/11998),
 phone [#12000](https://github.com/OpenAgentsInc/openagents/issues/12000), and
 the account routes in
@@ -504,7 +504,7 @@ One scan of a [connect code](#connect-codes) does two things: it pairs the
 phone with the computer's host, as above, and it links the computer's
 **account key** to the phone's OpenAgents account. The account key is the
 Nostr key the computer signs in to OpenAgents with
-([key sign-in](../../docs/auth/README.md#sign-in-with-a-nostr-key-planned)).
+([key sign-in](../../../docs/auth/README.md#sign-in-with-a-nostr-key-planned)).
 It is distinct from the host key, the owner key, and every device key in
 this profile, and it holds no HOST right. Linking it adds a `nostr:`
 principal to the account, so the computer's own key then signs in to the
@@ -694,7 +694,7 @@ redeems what it receives.
 
 Tailnet admission is kept as an optional admission path alongside
 [nearby approval](#nearby-approval-planned) and QR pairing; see the
-[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md#names-one-surface).
+[QR pairing design](../../../docs/coder/design/2026-09-29-auto-pairing.md#names-one-surface).
 
 ## Local operator socket
 
@@ -1033,7 +1033,7 @@ as 64 lowercase hex characters, and returns `verse_private`:
 `{placements}`, the owner's private Verse placements file
 (`openagents.verse.private-placements.v1`, at most 65,536 bytes) as the
 host's Verse home holds it, or `null` when it holds none
-([Private assets](../../docs/verse/private-assets.md#phones)). The host
+([Private assets](../../../docs/verse/private-assets.md#phones)). The host
 notes the world key so its owner can grant it; the answer grants nothing,
 because only an asset's manifest names who may load its pack. A host
 without a Verse home refuses it as `unsupported`, and a placements file it
@@ -1042,7 +1042,7 @@ can't read as `unavailable`. Like `thread.list`, its reply is not retained.
 threads to a device: the conversations with OpenAgents that the host keeps
 in its own chat store, which the owner starts in the desktop app or with
 `openagents chat` on that computer
-([glossary](../../docs/glossary.md), Thread). Thread and send IDs are 32
+([glossary](../../../docs/glossary.md), Thread). Thread and send IDs are 32
 lowercase hex characters. `thread.list` carries nothing and returns
 `threads`: `{threads}`, at most 128 rows, newest first, with archived threads
 left out; each row is `{thread, title, started, updated, pinned, coder}`, a
@@ -1151,7 +1151,7 @@ exact approved pending handoff under the epoch lock and delivers after releasing
 it; an already admitted unknown outcome remains unknown across restart.
 
 The `studio.*` operations carry the
-[Agent Studio](../../docs/verse/agent-studio.md#the-client-is-a-view): the
+[Agent Studio](../../../docs/verse/agent-studio.md#the-client-is-a-view): the
 host's studio coordinator is the source of truth, and a device sends
 intents and draws what the host answers. The wire types are
 `coder_access::studio`. A studio task, goal, or decision identity is 1 to
@@ -1348,7 +1348,7 @@ predates it refuses it as `malformed` or `unsupported`.
 agent on the host asks and the owner approves each payment on the phone; the
 formats are `openagents.spend-grant.v1`, `openagents.spend-request.v1`, and
 `openagents.spend-receipt.v1` in
-[the spend protocol](../../docs/breez/spend-protocol.md). `spend.list`
+[the spend protocol](../../../docs/breez/spend-protocol.md). `spend.list`
 carries `{grant}`, the device's current spend grant for this host; the host
 refuses it as `forbidden` unless the grant's `issuer` is the requesting key
 and its `grantee` is the host, and as `stale` when its epoch is below the
@@ -1615,20 +1615,20 @@ behaviors tested, in NIP-11 `supported_extensions`, not a numeric
 
 ## Implementation status
 
-[`crates/coder-access`](../../crates/coder-access/README.md) implements the
+[`crates/coder-access`](../../../crates/coder-access/README.md) implements the
 host store, the direct artifact binding, the portable client, and a CLI. Its
 behavior tests run over a synthetic NIP-42 relay. The wire fixtures in
-[`crates/coder-access/fixtures/nip-host.json`](../../crates/coder-access/fixtures/nip-host.json)
+[`crates/coder-access/fixtures/nip-host.json`](../../../crates/coder-access/fixtures/nip-host.json)
 give a valid body for every artifact and every operation, and invalid bodies
 with the refusal code each must produce; `crates/coder-access/tests/wire.rs`
 checks them.
-[`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
+[`crates/coder-host`](../../../crates/coder-host/README.md) is the resident host
 (`coder host serve`): it serves the direct artifact binding and the
 direct-channel binding, and dispatches `task.create`, `task.steer`,
 `task.cancel`, `task.command`, and `task.queue` to the durable task inbox and `terminal.open` to its terminal
 host, answers nudges, and keeps agent spend requests for `spend.list` and
 `spend.settle` beside its access store (`coder host spend`). It records each device's last-seen time for `device.list`. The
-[Computers screens](../../crates/coder-computers/README.md) are its
+[Computers screens](../../../crates/coder-computers/README.md) are its
 interface on iOS, Android, and the terminal: their live service redeems
 invitations, lists devices, creates narrowed invitations, and revokes
 devices through `coder_host::client`.
@@ -1636,12 +1636,12 @@ devices through `coder_host::client`.
 The resident host also serves the CAP/CJ binding. `coder host serve`
 publishes the `host-access` definition as a `30180` on every relay it serves
 and answers `25920` requests through the same admission path as the other
-bindings. [`coder_access::cj`](../../crates/coder-access/src/cj.rs) builds the
+bindings. [`coder_access::cj`](../../../crates/coder-access/src/cj.rs) builds the
 definition and checks the binding fields, and its client sends an operation
 over CJ. The schemas are
 [`host-call.v1.json`](schemas/host-call.v1.json) and
 [`host-answer.v1.json`](schemas/host-answer.v1.json), and
-[`crates/coder-access/fixtures/host-access-capability.json`](../../crates/coder-access/fixtures/host-access-capability.json)
+[`crates/coder-access/fixtures/host-access-capability.json`](../../../crates/coder-access/fixtures/host-access-capability.json)
 is a reference definition that the NIP-CAP validator accepts.
 `crates/coder-host/tests/cj.rs` shows, over a synthetic relay, that both
 bindings give the same outcome for a granted operation, a missing right, a
@@ -1650,10 +1650,10 @@ revoked grant, a stale epoch, and a reused request ID.
 [Connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),
 the [local operator socket](#local-operator-socket), and
 [renewal](#renewal) are implemented.
-[`crates/openagents-connect`](../../crates/openagents-connect) owns the
+[`crates/openagents-connect`](../../../crates/openagents-connect) owns the
 connect code parser and its fixtures, the ALPNs, and the control protocol.
 `coder host serve --iroh --control` (the resident host in
-[`crates/coder-host`](../../crates/coder-host)) serves the enroll ALPN
+[`crates/coder-host`](../../../crates/coder-host)) serves the enroll ALPN
 through the same redemption as the direct artifact binding, the reach ALPN
 through the same direct-channel session as TCP, and the socket with the
 peer user check; `openagents connect` is its command-line client. The
@@ -1693,7 +1693,7 @@ the socket as the desktop and `openagents chat read` do, the next message
 is answered in full, and an `observe`-only device is refused the stop. The OpenAgents phone lists each paired computer's
 threads beside its own, labelled with the computer, opens one to read its
 turns as the reply streams, and sends a follow-up through the computer
-([`crates/openagents-chat-app/src/host_threads.rs`](../../crates/openagents-chat-app/src/host_threads.rs)).
+([`crates/openagents-chat-app/src/host_threads.rs`](../../../crates/openagents-chat-app/src/host_threads.rs)).
 When a thread opens, the phone sends the no-op `thread.stop` under a fresh
 send ID, once per computer while it runs; only after a `dispatched` answer
 does its composer carry a stop while a reply streams, and the stop names
@@ -1922,4 +1922,4 @@ The WebSocket baseline uses a direct RPC socket, without the production device
 room, TLS, network delay, or model inference. These numbers measure local
 transport overhead. They do not establish which deployed route is faster.
 The default remains WebSocket; lane 0 records the production comparison in
-[After-close checks](../../docs/audits/2026-10-16-master-delegation.md#after-close-checks).
+[After-close checks](../../../docs/audits/2026-10-16-master-delegation.md#after-close-checks).

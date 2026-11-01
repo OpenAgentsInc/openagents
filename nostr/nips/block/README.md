@@ -33,7 +33,7 @@ at `24a370606044c0c7be787cc2fd98ec0bfe1d606b`. Pins and file hashes are recorded
 [NIP-MP.fold-fixtures.json](NIP-MP.fold-fixtures.json) are upstream test data,
 not OpenAgents-authored schemas. Their bytes are checked with the specs.
 
-The [sync review](../../docs/protocol/2026-10-27-upstream-nip-sync.md) explains
+The [sync review](../../../docs/protocol/2026-10-27-upstream-nip-sync.md) explains
 what changed. No runtime conformance is claimed by this source mirror. In
 particular, PMA remains a reservation subject to its privacy and transactional
 gates; AR/CL/FA and the revised AP/FI contracts need actual consumer work.

@@ -46,4 +46,4 @@ floor, which is unverifiable.
 
 - [Chapter plan](PLAN.md), Part XXIV.
 - [Measure, then improve](../docs/self-improvement.md).
-- [NIP-OPT](../../nips/openagents/NIP-OPT.md).
+- [NIP-OPT](../../nostr/nips/openagents/NIP-OPT.md).

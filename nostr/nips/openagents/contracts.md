@@ -9,7 +9,7 @@ MUST validate the complete required contract before any effect. Signatures
 establish authorship; hashes establish identity; neither grants permission or
 proves execution, safety, calibration, or continued availability.
 
-Test-time capabilities: the lock is what makes [capability admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission) exact, its digest recorded in every run and every report as the claim's subject; the effects object is the vocabulary a grant, an [effective authority](#effects-requirements-and-enforcement) bound, and a [reproduced claim](../../docs/essays/2026-09-29-test-time-capabilities.md#7-reproduced-capability-claim)'s reliance set are stated in ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: the lock is what makes [capability admission](../../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission) exact, its digest recorded in every run and every report as the claim's subject; the effects object is the vocabulary a grant, an [effective authority](#effects-requirements-and-enforcement) bound, and a [reproduced claim](../../../docs/essays/2026-09-29-test-time-capabilities.md#7-reproduced-capability-claim)'s reliance set are stated in ([mapping](../../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Domain scope
 
@@ -407,5 +407,5 @@ authority and they are not fetched from the network while a document is checked.
 SOV's profile, activation, checkpoint, and guardian policy are **Designed**.
 They have no schema validators or admitted host implementation yet. REACH's
 current narrower implementation is recorded in the
-[coverage report](../../docs/protocol/2026-09-26-nip-implementation-coverage.md);
+[coverage report](../../../docs/protocol/2026-09-26-nip-implementation-coverage.md);
 neither contract inherits conformance from shared envelope support.

@@ -141,7 +141,7 @@ is useful, and a good held-out score is not evidence of numerical parity.
 Mammoth and Elephant become something people and agents can call. This part
 builds the first production deployment on purpose small: one model resident
 in one process, one decision at a time, behind the same `/v1/systemone`
-contract the decision jobs use ([NIP-DEC](../../nips/openagents/NIP-DEC.md)).
+contract the decision jobs use ([NIP-DEC](../../nostr/nips/openagents/NIP-DEC.md)).
 It establishes how to measure a decision and how to make the numbers move;
 Part XIX later grows the same service into batching, caching, autoscaling and
 rollout.
@@ -164,8 +164,8 @@ operational evidence in the [Part III record](../../docs/verification/psionic-pa
 
 The same API fans out to connected machines. A Pylon is one provider machine
 that opted in; it advertises what it serves and takes jobs over Nostr, as
-specified in [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) and the decision
-jobs of [NIP-DEC](../../nips/openagents/NIP-DEC.md). This part routes whole
+specified in [NIP-PYLON](../../nostr/nips/openagents/NIP-PYLON.md) and the decision
+jobs of [NIP-DEC](../../nostr/nips/openagents/NIP-DEC.md). This part routes whole
 decisions to whole machines. Splitting one model across machines waits for
 Part XXII.
 

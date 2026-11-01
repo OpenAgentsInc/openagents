@@ -1,6 +1,6 @@
 # NIP-98: Authenticate an HTTP request
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/98.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/98.md)
 
 A signed kind 27235 event can bind an HTTP method, URL, timestamp and optional body digest to a request.
 

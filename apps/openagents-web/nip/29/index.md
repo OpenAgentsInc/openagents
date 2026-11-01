@@ -1,6 +1,6 @@
 # NIP-29: Relay-based groups
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/29.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/29.md)
 
 A relay can host groups with membership, moderation and group-specific rules.
 

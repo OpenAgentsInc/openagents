@@ -4,7 +4,7 @@ This mirror has **21 alpha schemas**: shared NIP-01 event/filter types in two
 versions, NIP-42 authentication, and 18 external agent, identity, channel,
 project, git-signature, push-lease and read-state projections.
 All live under root `proto/nostr/`, with one versioned namespace per source.
-They mirror the current pins in [`nips/`](../../nips/README.md); the original
+They mirror the current pins in [`nostr/nips/`](../../nostr/nips/README.md); the original
 Nostr/HTTP/JWS protocols remain unchanged. The v1alpha2 event profile adds an inclusive
 0..65535 kind constraint; the published v1alpha1 profile continues to accept
 its previous uint32 domain. The legacy `owned` and `nostr` aggregate descriptor

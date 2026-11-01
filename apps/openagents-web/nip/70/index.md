@@ -1,6 +1,6 @@
 # NIP-70: Protected events
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/70.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/70.md)
 
 A protected event may only be published by its authenticated author, when a relay supports accepting it.
 

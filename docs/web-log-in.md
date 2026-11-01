@@ -225,14 +225,14 @@ Since this spec was written, the owner changed what gets built first:
 
 ## Pylons earn XP, and the site shows it
 
-[NIP-XP](../nips/openagents/NIP-XP.md) already describes everything needed:
+[NIP-XP](../nostr/nips/openagents/NIP-XP.md) already describes everything needed:
 - the `pylon-check` rule, which gives XP for compute work a trusted checker
   verified;
 - key links, so a person's other keys add up to one level;
 - trainer profiles, the key's opt-in to having its level shown.
 
 The pieces it builds on, the Pylon's receipts and check verdicts, are in
-[NIP-PYLON](../nips/openagents/NIP-PYLON.md). This section connects them to
+[NIP-PYLON](../nostr/nips/openagents/NIP-PYLON.md). This section connects them to
 the Oct 30 Pylons and the words account. Spec only: nothing here is built.
 Its conformance implementation was the Rust `crates/nostr` `xp` module,
 deleted in `0b401561a0`, so every piece below is new Coax.

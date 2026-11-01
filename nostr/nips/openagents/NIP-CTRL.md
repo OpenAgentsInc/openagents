@@ -4,8 +4,8 @@
 > OpenAgents desktop and mobile apps are Loro documents in rooms on
 > `coder-sync`. NIP-HOST grants are the authority, and NIP-HOST/REACH carry
 > the device channel. This profile is being revised to describe those rooms.
-> See [AGENTS.md](../../AGENTS.md) "One OpenAgents desktop app and one mobile
-> app" and the [merge plan](../../docs/audits/2026-10-16-coder-desktop-monorepo-merge.md).
+> See [AGENTS.md](../../../AGENTS.md) "One OpenAgents desktop app and one mobile
+> app" and the [merge plan](../../../docs/audits/2026-10-16-coder-desktop-monorepo-merge.md).
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile binds additional clients to an existing task

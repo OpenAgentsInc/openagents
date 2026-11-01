@@ -1,6 +1,6 @@
 # NIP-10: Replies and threads
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/10.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/10.md)
 
 An e tag can mark a root, reply or mention. These markers describe the thread rather than granting authority.
 

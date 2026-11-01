@@ -83,7 +83,7 @@ run an original model or train a small model), see
   - New schemas are alpha.
   - Coax reads selected descriptors with `#import_proto` and generates bounded
     codecs from them.
-- **Nostr** is the open transport. [`nips/`](nips/README.md) pins the
+- **Nostr** is the open transport. [`nostr/nips/`](nostr/nips/README.md) pins the
   official and external NIPs we follow, next to our own.
 - **openagents.com** ([`apps/openagents-web/`](apps/openagents-web/README.md))
   runs on **Coaxial**, the Coax web framework ([design](coax/web.md),
@@ -150,7 +150,7 @@ run an original model or train a small model), see
 - **Agents that moonlight**: point your agent at our docs, set your price
   and hours, and it works overnight for Bitcoin.
 - **An open metaverse protocol on Nostr**
-  ([NIP-MV](nips/openagents/NIP-MV.md)), so anyone can build realms without asking
+  ([NIP-MV](nostr/nips/openagents/NIP-MV.md)), so anyone can build realms without asking
   our permission, and a store that pays makers residuals when people use
   or remix their work.
 - **Verification** grows with the code

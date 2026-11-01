@@ -9,7 +9,7 @@ HOST/REACH admission, or introduce generated Nostr protobuf messages.
 | Official | `b82211e96c6dad616ed2ea43034c1c621256b745` | `400d157c53264b8e58c7b3cdbd21ef546fb7a157` | 100 specs plus upstream README |
 | External | `781d39510cf23cfe224e8f521ae06a23377e06de` | `24a370606044c0c7be787cc2fd98ec0bfe1d606b` | 20 specs plus two JSON fixtures |
 
-Exact source links are in `nips/manifest.json`. The pre-reset recovery record
+Exact source links are in `nostr/nips/manifest.json`. The pre-reset recovery record
 is unchanged and describes the historical tree, not the current upstreams.
 The 36 OpenAgents-authored NIPs and their shared contracts/schemas are unchanged.
 

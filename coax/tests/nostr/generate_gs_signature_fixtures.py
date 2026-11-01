@@ -10,7 +10,7 @@ assert subprocess.check_output([protoc,'--version']).strip()==b'libprotoc 29.3'
 subprocess.run([protoc,'-I'+str(R/'proto'),'--python_out='+str(gen),*[str(R/'proto'/x) for x in ['openagents/options/v1alpha1/options.proto','nostr/block/oa/v1alpha1/owner.proto','nostr/block/gs/v1alpha1/signature.proto']]],check=True)
 sys.path.insert(0,str(gen))
 from nostr.block.gs.v1alpha1.signature_pb2 import GitSignature
-nip=(R/'nips/block/NIP-GS.md').read_text()
+nip=(R/'nostr/nips/block/NIP-GS.md').read_text()
 PK='f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9'
 SIG='c35062148d95b820068c18ab9cf69a8dd2322c606890366d084df7617570b96b7a1aca0a8fcabb2eb4032ebbdf5b43e6bf8633e0d85bcecce28a9e08705b875f'
 OSIG_PK='79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'

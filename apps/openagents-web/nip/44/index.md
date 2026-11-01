@@ -1,6 +1,6 @@
 # NIP-44: Version 2 encryption
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/44.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/44.md)
 
 A conversation key derives message keys. The receiver checks the MAC before releasing decrypted plaintext.
 

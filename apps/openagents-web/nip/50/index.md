@@ -1,6 +1,6 @@
 # NIP-50: Search a relay
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/50.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/50.md)
 
 A search filter asks a relay to match text according to its supported search behavior.
 

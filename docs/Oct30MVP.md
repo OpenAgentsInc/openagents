@@ -135,7 +135,7 @@ Kinds 30200 (beacons) and 10002 are stored.
 ### Docs
 
 - Chapter 24: `psionic/book/ch024-a-pylon-answers-decisions.md`.
-- The wire formats: `nips/openagents/NIP-PYLON.md` and `NIP-DEC.md`. NIP-DEC
+- The wire formats: `nostr/nips/openagents/NIP-PYLON.md` and `NIP-DEC.md`. NIP-DEC
   states that decision events are ephemeral (20000–29999), so relays store
   none. Buyers resend missed jobs, and the Pylon resends its kept answer for
   a repeated job id.

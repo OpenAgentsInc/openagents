@@ -1,6 +1,6 @@
 # NIP-94: File metadata
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/94.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/94.md)
 
 A signed file-metadata event describes a file and its location, hash, type and related hints.
 

@@ -1,6 +1,6 @@
 # NIP-42: Authenticate to a relay
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/42.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/42.md)
 
 A relay sends a fresh challenge. The client signs a kind 22242 event bound to that relay and connection.
 

@@ -41,7 +41,7 @@ def jwt(claims,typ='nip-fi+jwt'):
 class NostrTests(unittest.TestCase):
     def test_real_source_event_id_and_protobuf_fixture(self):
         raw=(FIXTURES/'owner-attested.event.json').read_bytes();value=signed(raw)
-        examples=re.findall(r'```(?:json|jsonc)\n(.*?)```',(ROOT.parent/'nips/block/NIP-OA.md').read_text(),re.S)
+        examples=re.findall(r'```(?:json|jsonc)\n(.*?)```',(ROOT.parent/'nostr/nips/block/NIP-OA.md').read_text(),re.S)
         self.assertIn(raw,[(item.rstrip()+'\n').encode() for item in examples])
         self.assertEqual(from_common(to_common(value)),value)
         self.assertEqual(value.event.id,event_id(value))
@@ -203,11 +203,11 @@ class NostrTests(unittest.TestCase):
     def test_source_pin_drift_is_blocked(self):
         check_sources(ROOT.parent)
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory);(root/'proto/nostr').mkdir(parents=True);(root/'nips/official').mkdir(parents=True)
+            root=Path(directory);(root/'proto/nostr').mkdir(parents=True);(root/'nostr/nips/official').mkdir(parents=True)
             (root/'proto/nostr/test.proto').write_text('syntax="proto3";')
-            (root/'nips/official/01.md').write_bytes(b'changed')
-            (root/'nips/manifest.json').write_text(json.dumps({'sources':[{'name':'official','commit':'a'*40}]}))
-            (root/'proto/nostr/MANIFEST.json').write_text(json.dumps({'schema':1,'packages':[{'package':'nostr','proto':'nostr/test.proto','status':'alpha','sources':[{'path':'nips/official/01.md','commit':'a'*40,'sha256':'0'*64}]}]}))
+            (root/'nostr/nips/official/01.md').write_bytes(b'changed')
+            (root/'nostr/nips/manifest.json').write_text(json.dumps({'sources':[{'name':'official','commit':'a'*40}]}))
+            (root/'proto/nostr/MANIFEST.json').write_text(json.dumps({'schema':1,'packages':[{'package':'nostr','proto':'nostr/test.proto','status':'alpha','sources':[{'path':'nostr/nips/official/01.md','commit':'a'*40,'sha256':'0'*64}]}]}))
             with self.assertRaises(ValueError):check_sources(root)
 
     def test_profiles_exclude_unrelated_protocols(self):

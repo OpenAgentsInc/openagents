@@ -4,7 +4,7 @@
 [NIP-MKT](NIP-MKT.md) are normative. This is the
 `openagents.labor.v1` market profile, with a bounded Rust host and explicit
 paid fulfillment in `crates/coder-labor`. See the
-[runtime guide](../../docs/coder/runtime/free-labor.md) for fixture limits.
+[runtime guide](../../../docs/coder/runtime/free-labor.md) for fixture limits.
 The delivery roles after execution (independently operated worker,
 reviewer, buyer and resolver hosts, bounded nonzero rework, resolver
 adjudication, cancellation, an unavailable buyer, rights, and obligations
@@ -23,7 +23,7 @@ froze that wire for compatibility and proposed an LBR v2 without allocating
 kinds. LAB keeps a distinct name for `openagents.labor.v1`, using private
 `3188` artifacts, MKT agreements, and CJ/RUN execution. It does not claim
 legacy wire compatibility or upgrade old records. The
-[upstream sync review](../../docs/protocol/2026-09-26-upstream-nip-sync.md)
+[upstream sync review](../../../docs/protocol/2026-09-26-upstream-nip-sync.md)
 records the naming assessment.
 
 An agent performs a bounded task for an agreed deliverable. Coding is the

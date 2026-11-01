@@ -2,7 +2,7 @@
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 Rust implements bounded offerings, negotiated orders, and explicit paid
-fulfillment in `crates/coder-labor`; the [runtime guide](../../docs/coder/runtime/free-labor.md)
+fulfillment in `crates/coder-labor`; the [runtime guide](../../../docs/coder/runtime/free-labor.md)
 states its supported roles and fixture limits. Wider market roles and live
 commercial qualification remain unfinished. This does not reproduce the earlier Immortal wire.
 

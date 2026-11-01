@@ -7,7 +7,7 @@ specialization. These specifications describe how agents share capabilities,
 workflows, context, and work across tools, models, and machines, and how they
 improve their behavior through measured, bounded optimization.
 
-The [agent labor integration plan](../../docs/agents/market-infrastructure.md)
+The [agent labor integration plan](../../../docs/agents/market-infrastructure.md)
 is the next market application: agents negotiate bounded work and earn Bitcoin
 for accepted results. The existing contracts supply capability, execution,
 evidence, and authority. [NIP-MKT](NIP-MKT.md) now specifies negotiated
@@ -15,7 +15,7 @@ offerings, orders, and payment evidence; [NIP-LAB](NIP-LAB.md) specifies
 bounded agent labor and acceptance. [NIP-CTRL](NIP-CTRL.md) adds scoped task
 control from another client. Rust supports bounded MKT/LAB orders and a local-owner CTRL bridge;
 independent market and complete client roles remain unfinished. The
-[coverage review](../../docs/protocol/2026-09-26-openagents-gap-review.md)
+[coverage review](../../../docs/protocol/2026-09-26-openagents-gap-review.md)
 explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
 266–267, and 275–281 are design inputs, not wire contracts.
 
@@ -23,19 +23,19 @@ explains the gaps and reuse across all three NIP lanes. Episodes 213–215,
 implementations in `crates/x402`, with durable proof consumption, spending
 policy, and recovery. Pylon exercises the native binding with fake funds.
 Deployment and live-wallet evidence are separate from these supported roles;
-see the [payment guide](../../docs/payments/agent-payments.md).
+see the [payment guide](../../../docs/payments/agent-payments.md).
 
 LAB keeps its name because OpenAgents already published a different
 [NIP-LBR v1 contract](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)
 over NIP-90 kinds `5934`/`6934`/`7000`. The current `openagents.labor.v1`
 profile uses private `3188` artifacts with MKT/CJ/RUN and claims no legacy
 wire compatibility. See [LAB's provenance note](NIP-LAB.md) and the
-[upstream sync review](../../docs/protocol/2026-09-26-upstream-nip-sync.md).
+[upstream sync review](../../../docs/protocol/2026-09-26-upstream-nip-sync.md).
 
 [NIP-SOV](NIP-SOV.md) has profile validation and a bounded local lifecycle in
 `openagents sov`: local-key custody, signed admission, finite activation, and
 checkpoints. Treasury, guardians, remote custody, and portable recovery remain
-unfinished. See the [CLI guide](../../docs/cli/README.md#sovereign-agents-nip-sov).
+unfinished. See the [CLI guide](../../../docs/cli/README.md#sovereign-agents-nip-sov).
 
 [NIP-PYLON](NIP-PYLON.md) has beacon, service receipt, pool, checker, text-job,
 and decision-job implementations in `crates/nostr` and `crates/pylon`, with
@@ -51,25 +51,25 @@ records with two regular kinds, `3198` and `3199`. `crates/atif-nostr` and
 `openagents trajectory` implement bounded public/private carriage and verification.
 
 [NIP-REG](NIP-REG.md) has Rust publisher, mirror, and reader roles in
-[`plugin-registry`](../../crates/plugin-registry/README.md).
+[`plugin-registry`](../../../crates/plugin-registry/README.md).
 A curator publishes an inert EXT catalog that pins original publishers' releases.
 Nostr relays and GitHub/HTTPS mirrors carry the same signed events and artifact
 bytes. Readers choose trust per registry; discovery does not install, enable,
 or admit a plugin. `openagents registry` manages enrollment, bounded refresh,
 comparison, and exact member selection. It allocates no new kinds.
 
-The [81-document teardown review](../../docs/protocol/2026-09-26-teardown-coverage.md)
+The [81-document teardown review](../../../docs/protocol/2026-09-26-teardown-coverage.md)
 adds six draft profiles: persistent engine sessions (SESS), workspace resources
 and synchronized views (WS), tracked work (WORK), bounded automation (AUTO),
 environment leases (ENV), and live media/device interaction (LIVE). It also
 extends POL's learned-preference lifecycle and EXT's imports and host component
 sets. These reuse private artifacts and existing execution kinds. The
-[Coder integration plan](../../docs/coder/design/teardown-nostr-integration.md)
+[Coder integration plan](../../../docs/coder/design/teardown-nostr-integration.md)
 defines implementation order and the evidence required before shipping them.
 
 [NIP-WORK](NIP-WORK.md) has native authority, command client, reader, scoped
 WS views, attention, bounded pure CJ execution, and independent check roles in
-[`work-host`](../../crates/work-host/README.md). `openagents work` keeps its
+[`work-host`](../../../crates/work-host/README.md). `openagents work` keeps its
 Issue view on that same history. The existing tracker/project adapter supplies
 GitHub observations, and an explicitly mounted `coder-labor` book validates
 commercial linkage. External writes, session controls, and effectful executors
@@ -77,7 +77,7 @@ keep their owning admission paths.
 
 [NIP-COORD](NIP-COORD.md) has native coordinator, CJ client/worker, checker,
 conditional Git integration, and finite background-observation roles in
-[`coordination-host`](../../crates/coordination-host/README.md) and
+[`coordination-host`](../../../crates/coordination-host/README.md) and
 `coordination-host`. Shared call reservations survive restart and
 unknown outcomes. Other effect adapters, paid workers, and controller migration
 require separate admission.
@@ -235,11 +235,11 @@ tests run with and without the exact component, against a stated baseline
 under a stated grant and rule. A component with no such claim is a
 candidate; a claim reproduced by another trainer and externally validated on
 tests its author didn't write is what adoption decides on. The
-[essay that proposes the term](../../docs/essays/2026-09-29-test-time-capabilities.md)
+[essay that proposes the term](../../../docs/essays/2026-09-29-test-time-capabilities.md)
 states the concept in Part I; its
-[Part II](../../docs/essays/2026-09-29-test-time-capabilities.md#part-ii-our-implementation)
+[Part II](../../../docs/essays/2026-09-29-test-time-capabilities.md#part-ii-our-implementation)
 covers the OpenAgents implementation, including the full
-[mapping of terms and lifecycle stages to kinds and fields](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities).
+[mapping of terms and lifecycle stages to kinds and fields](../../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities).
 In short, which NIP is for what:
 
 | Stage | NIP | For |
@@ -269,11 +269,11 @@ These contracts are drafts; individual records declare their versions.
 The SOV economic statement uses v2 to preserve unknown fees as null while
 readers retain v1 support. The contracts define protocol behavior;
 conformance requires validation and enforcement for each advertised role.
-The [Dhruv conformance matrix](../../docs/research/dhruv/conformance-matrix.md)
+The [Dhruv conformance matrix](../../../docs/research/dhruv/conformance-matrix.md)
 lists the implemented roles with the exact Rust test behind each, checked by
 `cargo test -p dhruv-conformance`; fixture support there is not live
 qualification.
-The [2026-10-16 composition evidence](../../docs/research/dhruv/conformance-evidence-2026-10-16.md)
+The [2026-10-16 composition evidence](../../../docs/research/dhruv/conformance-evidence-2026-10-16.md)
 adds LAB income through durable credit, actual ENV/COORD/SESS execution, and
 a synthetic vault run with a verified Google-attested HPKE endpoint.
 
@@ -296,19 +296,19 @@ a synthetic vault run with a verified Google-attested HPKE endpoint.
 | [NIP-KB](NIP-KB.md) | Shared knowledge entries, the fourth kind of contributed capability: immutable versions, current-version heads, withdrawals, and evidence as EVAL publications. Trust is per reader. | `3190`, `30190`, `3191`; evidence on EVAL `3189`. |
 | [NIP-XP](NIP-XP.md) | Frozen quest versions, referee awards of verified accepted outcomes bound to KB entries and EVAL evidence, revocations, and per-reader XP ledgers; the `eval-check` and `eval-adopt` rules (implemented in `crates/nostr`) credit extension evaluations. XP is never spendable; sats settle separately. | `30193`, `3193`, `3194`; playtest session records `3196` and reports `3197`; achievements as NIP-32 `1985` labels. |
 | [NIP-CTRL](NIP-CTRL.md) | Client pairing, task-scoped control rights, revocation, acknowledged commands, and bounded catch-up. | Shared `3188`; registered CAP operations over CJ execution. |
-| [NIP-HOST](NIP-HOST.md) | Host-wide device enrollment by invitation or approved short code, closed scoped rights, delegation, revocation epochs, device listing, and typed task creation, steering, and cancellation. Draft with a bounded host and client in `crates/coder-access`, served by the resident host in [`coder-host`](../../crates/coder-host/README.md) over relay artifacts, direct channels, and CAP operations over CJ execution. The 2026-09-29 amendment designs, but does not implement, `openagents-connect:` QR codes, enrollment over an iroh ALPN, the local operator socket, and planned nearby approval. | Shared `3188`; direct artifacts, or CAP operations over CJ. |
+| [NIP-HOST](NIP-HOST.md) | Host-wide device enrollment by invitation or approved short code, closed scoped rights, delegation, revocation epochs, device listing, and typed task creation, steering, and cancellation. Draft with a bounded host and client in `crates/coder-access`, served by the resident host in [`coder-host`](../../../crates/coder-host/README.md) over relay artifacts, direct channels, and CAP operations over CJ execution. The 2026-09-29 amendment designs, but does not implement, `openagents-connect:` QR codes, enrollment over an iroh ALPN, the local operator socket, and planned nearby approval. | Shared `3188`; direct artifacts, or CAP operations over CJ. |
 | [NIP-MKT](NIP-MKT.md) | Immutable offerings, private negotiation, accepted orders, cancellation, and attributable Bitcoin settlement. | `3192`, `30192`; private records on shared `3188`. |
 | [NIP-LAB](NIP-LAB.md) | Agent-labor terms, execution linkage, deliverables, verification, acceptance, rework, disputes, and rights. | Shared `3188`; MKT agreements and CJ/RUN execution. |
 | [NIP-X402](NIP-X402.md) | Partially implemented Lightning-paid operations: standard HTTP/MCP bindings, an opt-in native Nostr binding, spending admission, private evidence, and recovery. | No new kinds; CAP discovery and shared `3188` native records with POL/CJ/RUN admission. |
-| [NIP-SESS](NIP-SESS.md) | Retained-history observer (`coder-connect`) and managed sessions in [`session-host`](../../crates/session-host/README.md): exact feature matrices, ENV-bound opening and turns, durable queues, native/emulated steering, interactions, child links, and history export/import. Built-in Rust loop profiles and an optional bounded Codex SDK connector are implemented; the standalone CLI installs loop engines and supplies an SSH client. Managed children execute through separate ENV attachments and shared COORD claims. Claude Code and ACP mappings remain unsupported. | Shared `3188`; CAP/CJ operations and RUN records. |
+| [NIP-SESS](NIP-SESS.md) | Retained-history observer (`coder-connect`) and managed sessions in [`session-host`](../../../crates/session-host/README.md): exact feature matrices, ENV-bound opening and turns, durable queues, native/emulated steering, interactions, child links, and history export/import. Built-in Rust loop profiles and an optional bounded Codex SDK connector are implemented; the standalone CLI installs loop engines and supplies an SSH client. Managed children execute through separate ENV attachments and shared COORD claims. Claude Code and ACP mappings remain unsupported. | Shared `3188`; CAP/CJ operations and RUN records. |
 | [NIP-WS](NIP-WS.md) | Rust Git document owner, conditional changes, checkpoints/restoration, bounded native projections/client, core resource/worktree contracts, and activity summaries. Other domain adapters and the full workbench remain separate. | Shared `3188`; CAP/CJ operations and RUN records; external PL wakes. |
 | [NIP-WORK](NIP-WORK.md) | Tracked objectives, planning relations, assignments, revision admission, disposition, source imports, and attention. | Shared `3188`; CAP/CJ operations and WS projections. |
 | [NIP-AUTO](NIP-AUTO.md) | Native finite profile: `automation-host` implements signed schedules, Git watches, and independently checked continuation through pinned CAP/CJ roles, fenced worker intake, durable budgets, cancellation, and exact saved-result recovery (#11735). Unknown effects retain their holds. The profile refuses effectful session/environment bindings. | Shared `3188`; CAP/CJ operations and RUN/COORD admission. |
-| [NIP-ENV](NIP-ENV.md) | Rust allocator in [`env-host`](../../crates/env-host/README.md): signed leases, exact local materialization, participant admission, one bound attachment before dispatch, expiry, and accounted cleanup; SSH-launched hosts via [`coder-ssh`](../../crates/coder-ssh/README.md). Cloud placement and bootstrap remain. | Shared `3188`; CAP/CJ operations and RUN records. |
-| [NIP-LIVE](NIP-LIVE.md) | Native text profiles in [`live-host`](../../crates/live-host/README.md): participant consent, scoped credentials and media epochs, input/speaking floors, signed resident clients, real text mailbox delivery, capture/transcript expiry, and source-owned Git capture with exact POL-approved conditional input. Audio/video, public activity discovery, and physical device adapters are outside these profiles. | Shared `3188`; CAP/CJ operations and admitted media transports. |
-| [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests over TCP and WebSocket; [`coder-host`](../../crates/coder-host/README.md) publishes presence and hints and serves TCP and WebSocket direct channels, `ws` or TLS-terminated `wss`, with the real grant store. The 2026-09-29 amendment designs, but does not implement, `iroh` hints in a v2 hints record and the channel over an iroh stream. | Shared `3188`; no new kinds. |
-| [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../crates/coder-pty/README.md) with real-PTY tests on macOS; [`coder-host`](../../crates/coder-host/README.md) wires NIP-HOST rights, NIP-REACH channels, and `3188` sealing. | Shared `3188` or NIP-REACH data frames; no new kinds. |
-| [NIP-SOV](NIP-SOV.md) | Partially implemented successor to historical SA: durable agent identity, a bounded local lifecycle (`openagents sov`), NIP-46 remote custody and guardian quorum admission ([`sov-custody`](../../crates/sov-custody/README.md)), fenced two-host transfer and recovery ([`sov-lifecycle`](../../crates/sov-lifecycle/README.md)), and the treasury binding over existing ledger/wallet/X402 owners ([`sov-treasury`](../../crates/sov-treasury/README.md)); real-money qualification and broader market participation remain. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
+| [NIP-ENV](NIP-ENV.md) | Rust allocator in [`env-host`](../../../crates/env-host/README.md): signed leases, exact local materialization, participant admission, one bound attachment before dispatch, expiry, and accounted cleanup; SSH-launched hosts via [`coder-ssh`](../../../crates/coder-ssh/README.md). Cloud placement and bootstrap remain. | Shared `3188`; CAP/CJ operations and RUN records. |
+| [NIP-LIVE](NIP-LIVE.md) | Native text profiles in [`live-host`](../../../crates/live-host/README.md): participant consent, scoped credentials and media epochs, input/speaking floors, signed resident clients, real text mailbox delivery, capture/transcript expiry, and source-owned Git capture with exact POL-approved conditional input. Audio/video, public activity discovery, and physical device adapters are outside these profiles. | Shared `3188`; CAP/CJ operations and admitted media transports. |
+| [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../../crates/coder-reach/README.md) with synthetic loopback-socket tests over TCP and WebSocket; [`coder-host`](../../../crates/coder-host/README.md) publishes presence and hints and serves TCP and WebSocket direct channels, `ws` or TLS-terminated `wss`, with the real grant store. The 2026-09-29 amendment designs, but does not implement, `iroh` hints in a v2 hints record and the channel over an iroh stream. | Shared `3188`; no new kinds. |
+| [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../../crates/coder-pty/README.md) with real-PTY tests on macOS; [`coder-host`](../../../crates/coder-host/README.md) wires NIP-HOST rights, NIP-REACH channels, and `3188` sealing. | Shared `3188` or NIP-REACH data frames; no new kinds. |
+| [NIP-SOV](NIP-SOV.md) | Partially implemented successor to historical SA: durable agent identity, a bounded local lifecycle (`openagents sov`), NIP-46 remote custody and guardian quorum admission ([`sov-custody`](../../../crates/sov-custody/README.md)), fenced two-host transfer and recovery ([`sov-lifecycle`](../../../crates/sov-lifecycle/README.md)), and the treasury binding over existing ledger/wallet/X402 owners ([`sov-treasury`](../../../crates/sov-treasury/README.md)); real-money qualification and broader market participation remain. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
 | [NIP-ATIF](NIP-ATIF.md) | Implemented public/private carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps external AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; Verse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
 | [NIP-PYLON](NIP-PYLON.md) | Partially implemented compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and proof-free seller/broker payment acknowledgments, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
@@ -331,7 +331,7 @@ MKT and LAB define a new OpenAgents profile, not compatibility with the
 historical Immortal market stack. Swaps, escrow, credit, and a general royalty
 market are not implied. CTRL reuses current task contracts rather than
 treating external read-state sync or live telemetry as durable task control.
-The [implementation plan](../../docs/protocol/implementation-plan.md) tracks
+The [implementation plan](../../../docs/protocol/implementation-plan.md) tracks
 the role-specific validators, host work, and fixtures still required.
 
 ## Kind registry
@@ -407,7 +407,7 @@ NIP-32 `1985` labels or external `24200` frames, aren't claims.
 
 ## Current implementation evidence
 
-The [September 26 implementation coverage report](../../docs/protocol/2026-09-26-nip-implementation-coverage.md)
+The [September 26 implementation coverage report](../../../docs/protocol/2026-09-26-nip-implementation-coverage.md)
 tracks each contract's actual role. Shared private artifacts now have encrypted
 open/seal and relay privacy paths. MKT/LAB have strict free-negotiation and terms
 validators, and X402 has offline invoice/request-binding verification. These
@@ -416,16 +416,16 @@ admission, execution, acceptance, and recovery remain explicit work.
 
 The [SESS retained-history observer](NIP-SESS.md#read-only-observation-of-retained-foreign-history)
 has a narrower application implementation in
-[`coder-history`](../../crates/coder-history/README.md),
-[`coder-connect`](../../crates/coder-connect/README.md), and the
-[read-only iOS reader](../../docs/coder/guides/mobile-readonly.md). A five-minute QR or pasted invitation can bind the first redeeming phone
+[`coder-history`](../../../crates/coder-history/README.md),
+[`coder-connect`](../../../crates/coder-connect/README.md), and the
+[read-only iOS reader](../../../docs/coder/guides/mobile-readonly.md). A five-minute QR or pasted invitation can bind the first redeeming phone
 without copying its public key first; the manual explicit-key path remains.
 Local pairing binds selected Codex/Claude roots, host and client keys, relay,
 and expiry. Finite catalog/transcript reads use NIP-42 authentication and
 signed encrypted private `3188` artifacts, with exact request binding,
 revocation checks, bounded raw records, and source-change refusals.
-The [reader receipt](../../docs/coder/verification/2026-09-26-mobile-reader.md)
-and [QR bootstrap receipt](../../docs/coder/verification/2026-09-26-world-pairing.md)
+The [reader receipt](../../../docs/coder/verification/2026-09-26-mobile-reader.md)
+and [QR bootstrap receipt](../../../docs/coder/verification/2026-09-26-world-pairing.md)
 record synthetic and native evidence and remaining acceptance.
 This implements no managed engine-session admission, input queue, submit,
 steering, interruption, approval, or CTRL task control. It allocates no new

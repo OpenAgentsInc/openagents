@@ -2,7 +2,7 @@
 
 Chapter 14 answered one decision from a C harness. Callers do not link a
 harness; they send `POST /v1/systemone` with the decision body that
-[NIP-DEC](../../nips/openagents/NIP-DEC.md) defines, the same body a decision
+[NIP-DEC](../../nostr/nips/openagents/NIP-DEC.md) defines, the same body a decision
 job carries over Nostr. This chapter puts the chapter-14 path behind that
 route.
 
@@ -143,7 +143,7 @@ SvCode :: enum u8 {none;malformed;invalid_request;too_many_questions;too_many_op
 | 524 | `timeout` | The decision did not finish before its deadline |
 
 The statuses of NIP-DEC's codes are the table in its
-["Refusals and HTTP status"](../../nips/openagents/NIP-DEC.md#refusals-and-http-status)
+["Refusals and HTTP status"](../../nostr/nips/openagents/NIP-DEC.md#refusals-and-http-status)
 section. A code only this server defines keeps its own status, as NIP-DEC
 allows for gateway codes.
 
@@ -159,7 +159,7 @@ SvWork :: struct {prep:PrWorkspace;tokens:[]int;state:[]f32;work:[]f32;prob:[]f6
 
 Every answer names the served identity, `name@sha256:<digest>`, in
 `service.identity`, and `response.model` is the name before `@`, the form
-[NIP-PYLON](../../nips/openagents/NIP-PYLON.md#decision-services) uses. The
+[NIP-PYLON](../../nostr/nips/openagents/NIP-PYLON.md#decision-services) uses. The
 digest is the SHA-256 of the single checkpoint file that the session
 authenticated before the server accepted any connection. It is the loaded
 file's digest, not a digest computed over tensor payloads alone, so a file that

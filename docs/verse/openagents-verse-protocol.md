@@ -535,7 +535,7 @@ No Verse implementation phase depends on a new canonical encoder.
 
 ### 8.2 Nostr mirror packages
 
-A new `proto/nostr/` tree mirrors the pinned NIPs the way `nips/official/`
+A new `proto/nostr/` tree mirrors the pinned NIPs the way `nostr/nips/official/`
 mirrors their text. It is outside `openagents.*`, because Nostr is not ours.
 Its package is `nostr.*`, which signals a mirror. If a community schema for
 Nostr appears, we adopt or align with it.
@@ -569,7 +569,7 @@ Rules:
   `nostr.nip<NN>.v1`. Examples: `nip29` group metadata, `nip94` file
   metadata, `nip53` live activities, `nip32` labels. External NIPs we pin get
   `nostr.block.<id>.v1`: `oa` owner attestation, `ae` engrams, `ap`
-  personas. Pins come from `nips/manifest.json`.
+  personas. Pins come from `nostr/nips/manifest.json`.
 - The Verse uses these official NIPs: 01, 02 (planned buddies), 17, 24,
   29, 32, 42, 44, 53, 59, 65, 67, 94, C7. It also uses external OA, AA, AE,
   AP, AM, IA, MP and RS. Those packages are built first (§16, phase V1).
@@ -2273,7 +2273,7 @@ we keep a reader for old records for as long as such records exist.
 
 | Current | Where | Becomes | Keeps |
 | --- | --- | --- | --- |
-| NIP-MV `33300` world definition | `nips/openagents/NIP-MV.md` | `world.v1.WorldDefinition` + `SceneBinding` | NIP-MV JSON on relays (mapped) |
+| NIP-MV `33300` world definition | `nostr/nips/openagents/NIP-MV.md` | `world.v1.WorldDefinition` + `SceneBinding` | NIP-MV JSON on relays (mapped) |
 | NIP-MV `33301` entity state (avatar, agent, object, bodies) | `verse-net/src/mv.rs`, `web/grid-session.js` | `presence.v1.EntityState` | NIP-MV JSON (mapped) |
 | NIP-MV `23300` pose frame | same | `presence.v1.PoseFrame` | same |
 | NIP-MV `23301` gesture | same | `presence.v1.Gesture` | same |
@@ -2581,10 +2581,10 @@ until answered.
 
 - `docs/glossary.md`, in particular Verse, Voyager, and Nostr and shared
   protocols
-- `nips/README.md`, `nips/manifest.json`
-- `nips/openagents/README.md` (kind registry) and
-  `nips/openagents/contracts.md`
-- `nips/openagents/NIP-MV.md`, NIP-XP, NIP-EVAL, NIP-PYLON, NIP-REACH,
+- `nostr/nips/README.md`, `nostr/nips/manifest.json`
+- `nostr/nips/openagents/README.md` (kind registry) and
+  `nostr/nips/openagents/contracts.md`
+- `nostr/nips/openagents/NIP-MV.md`, NIP-XP, NIP-EVAL, NIP-PYLON, NIP-REACH,
   NIP-HOST, NIP-AGENT, NIP-LIVE, NIP-TERM
 
 **Verse documentation.** The Verse README, status and runtime contract:

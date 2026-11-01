@@ -8,7 +8,7 @@ import sys
 
 def check(root):
     proto=root/'proto';manifest=json.loads((proto/'nostr/MANIFEST.json').read_text())
-    upstream=json.loads((root/'nips/manifest.json').read_text())
+    upstream=json.loads((root/'nostr/nips/manifest.json').read_text())
     commits={row['name']:row['commit'] for row in upstream['sources']}
     schemas={p.relative_to(proto).as_posix() for p in (proto/'nostr').rglob('*.proto')}
     packages=manifest['packages']
@@ -22,9 +22,9 @@ def check(root):
         names.add(expected)
         for source in row['sources']:
             path=Path(source['path'])
-            if len(path.parts)<3 or path.parts[0]!='nips' or path.parts[1] not in commits or '..' in path.parts:
+            if len(path.parts)<4 or path.parts[:2]!=('nostr','nips') or path.parts[2] not in commits or '..' in path.parts:
                 raise ValueError('Invalid NIP source path')
-            if source['commit']!=commits[path.parts[1]] or hashlib.sha256((root/path).read_bytes()).hexdigest()!=source['sha256']:
+            if source['commit']!=commits[path.parts[2]] or hashlib.sha256((root/path).read_bytes()).hexdigest()!=source['sha256']:
                 raise ValueError('Stale Nostr mirror: '+expected+'; review source '+str(path))
     print(f'Nostr source pins/hashes: {len(packages)} alpha packages checked')
 

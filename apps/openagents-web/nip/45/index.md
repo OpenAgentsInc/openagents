@@ -1,6 +1,6 @@
 # NIP-45: Count matching events
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/45.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/45.md)
 
 A COUNT request asks a relay how many events match a filter without downloading every event.
 

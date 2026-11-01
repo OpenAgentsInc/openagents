@@ -19,7 +19,7 @@ declares it. Readers also accept `ATIF-v1.0` through `ATIF-v1.7`, because
 every 1.x revision is additive; logs recorded before 2026-09-28 declare
 `ATIF-v1.7` and are carried and verified as they were recorded, never
 relabeled. `crates/atif` writes what
-[Coder traces](../../docs/coder/runtime/traces.md) describe: an append-only
+[Coder traces](../../../docs/coder/runtime/traces.md) describe: an append-only
 `.atif.jsonl` log, one JSON record per line, from which the ATIF document is
 rendered on read. Coder task attempts write the same log as
 `<task>.<attempt>.atif.jsonl`.
@@ -30,7 +30,7 @@ recovery, EVAL decides whether a result passed, and POL decides what may be
 disclosed. A signature on a trajectory proves who published it, not that
 the recording is complete, honest, or correct.
 
-Test-time capabilities: this NIP carries the trajectory of each with-and-without eval run and of each [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) through `parent` and `children` ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: this NIP carries the trajectory of each with-and-without eval run and of each [test-time delegation](../../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) through `parent` and `children` ([mapping](../../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Status
 
@@ -38,7 +38,7 @@ Test-time capabilities: this NIP carries the trajectory of each with-and-without
 artifact sharing, exact retrieval, bounded chunking, byte and rendered ATIF
 verification, and parent/child and continued-segment checks. The main CLI
 exposes it as `openagents trajectory`; the standalone binary uses the same
-implementation. See the [runtime guide](../../crates/atif-nostr/README.md).
+implementation. See the [runtime guide](../../../crates/atif-nostr/README.md).
 
 Private sharing is the default. Public publication requires an explicit action
 and does not redact input automatically. Callers separately admit each

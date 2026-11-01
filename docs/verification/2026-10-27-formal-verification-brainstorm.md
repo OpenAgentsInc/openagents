@@ -20,7 +20,7 @@ It is grounded in what this repository holds:
 - the [OpenAgents Protocol](../protocol/openagents-protocol-spec.md)
   (§7.4 canonical bytes, §26 money, §35 conformance);
 - `proto/` and its frozen baselines;
-- the NIP mirrors in `nips/`;
+- the NIP mirrors in `nostr/nips/`;
 - `coax/`, the compiler;
 - `verse/`, the native home.
 
@@ -299,7 +299,7 @@ and we model their observable outcomes: succeeded, failed or unknown.
 - **Event IDs and signatures.** An event ID is SHA-256 of the NIP-01
   serialization. Keep a pinned vector file of events with expected IDs
   and signature results, generated once and hashed like
-  `nips/upstream-lock.json`. Include hostile strings: escapes, unicode,
+  `nostr/nips/upstream-lock.json`. Include hostile strings: escapes, unicode,
   control bytes. Coax tests read it with `#embed`, the way Bitcoin Core
   reads `sighash.json`. Signatures are verified over the bytes that
   arrived, never a re-serialization (§35.4); a test changes the
@@ -644,7 +644,7 @@ tiebreaker and no external toolchains, the answers are:
 4. **How are reference implementations for Nostr pinned?** We don't run
    them in tests. Like `src/test/data/`, we keep pinned vector files,
    generated once, with their source and hash recorded, alongside the
-   NIP text pins in `nips/upstream-lock.json`. Tests read them through
+   NIP text pins in `nostr/nips/upstream-lock.json`. Tests read them through
    `#embed`.
 5. **Is a Lean model of Coax worth it?** No. Bitcoin Core relies on tests,
    fuzzing and review for its compiler-adjacent risk. We do the same with

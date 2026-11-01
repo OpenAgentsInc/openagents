@@ -4,7 +4,7 @@
 2026-10-15. Beacons are v1; a model group's beacons are v2, 2026-10-20. Declared
 deadlines (`pylon.deadline.v1`), 2026-10-21. **Partly implemented**:
 see [Implementation status](#implementation-status). The [shared contracts](contracts.md) are
-normative. The [Verse compute vision and spec](../../docs/compute/verse-compute.md)
+normative. The [Verse compute vision and spec](../../../docs/compute/verse-compute.md)
 is the design this profile serves.
 
 This NIP lets a compute provider say in public that a machine is online and
@@ -602,7 +602,7 @@ A reader refuses:
 
 ## Implementation status
 
-Phase P1 of the [Verse compute plan](../../docs/compute/verse-compute.md#phased-plan),
+Phase P1 of the [Verse compute plan](../../../docs/compute/verse-compute.md#phased-plan),
 for free work (2026-10-07):
 
 - `crates/nostr` (`nostr::pylon`) builds and verifies beacons, receipts,

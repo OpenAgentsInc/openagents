@@ -9,7 +9,7 @@ explicitly labeled custody profile: the wrap in `oa-vault` and the audited
 custody service in `crates/vault-operator`.
 The [shared contracts](contracts.md) are normative. The design, the threat
 model and the honest limits are in the
-[sensitive data vault](../../docs/security/sensitive-data-vault.md).
+[sensitive data vault](../../../docs/security/sensitive-data-vault.md).
 
 This NIP defines how a client stores a person's sensitive files so that a
 storage operator holds only ciphertext. The files are then opened either:

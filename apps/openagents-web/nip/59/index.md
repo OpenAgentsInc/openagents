@@ -1,6 +1,6 @@
 # NIP-59: Gift wraps
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/59.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/59.md)
 
 Gift wraps layer a rumor, a signed seal and an outer encrypted envelope, using fresh wrapping keys.
 

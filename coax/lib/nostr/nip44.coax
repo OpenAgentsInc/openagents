@@ -1,5 +1,5 @@
 // NIP-44 version 2 payload encryption over a caller-supplied conversation key.
-// Pinned spec: nips/official/44.md (nostr-protocol/nips 400d157c). The MAC
+// Pinned spec: nostr/nips/official/44.md (nostr-protocol/nips 400d157c). The MAC
 // over nonce||ciphertext is checked in constant time before any ciphertext is
 // decrypted, and caller output is written only after the padding is valid.
 //

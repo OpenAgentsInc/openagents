@@ -1,4 +1,4 @@
-// x402 v2 over HTTP, the client's half (nips/openagents/NIP-X402.md): the
+// x402 v2 over HTTP, the client's half (nostr/nips/openagents/NIP-X402.md): the
 // three headers are base64 of JSON. PAYMENT-REQUIRED carries the terms
 // (x402_read_required), PAYMENT-SIGNATURE the retry's proof
 // (x402_signature), PAYMENT-RESPONSE the settlement (x402_read_response).

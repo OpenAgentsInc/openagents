@@ -8,7 +8,7 @@ events: definitions, edge cases, common mistakes, and how environments and
 commands behave. A reader fetches entries from relays, checks them, and decides
 for itself which to trust. A knowledge entry is one of the four kinds of
 capability a contributor adds
-([one vocabulary](../../docs/glossary.md#one-vocabulary-what-you-can-add)),
+([one vocabulary](../../../docs/glossary.md#one-vocabulary-what-you-can-add)),
 shipped as an entry version here rather than in a NIP-EXT package. `docs/coder/design/knowledge-base.md` describes
 the knowledge base this carries; `crates/nostr` (`kb`) is the conformance
 implementation and `microcoder kb publish` and `kb sync` use it.
@@ -17,7 +17,7 @@ An entry is reference text. It never runs, never grants anything, and never
 overrides an instruction. A signature proves who wrote an entry, not that
 the entry is right.
 
-Test-time capabilities: an entry is a knowledge-sourced [test-time capability](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap), and its [evidence](#evidence-3189) is a with-and-without report ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: an entry is a knowledge-sourced [test-time capability](../../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap), and its [evidence](#evidence-3189) is a with-and-without report ([mapping](../../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Kinds
 

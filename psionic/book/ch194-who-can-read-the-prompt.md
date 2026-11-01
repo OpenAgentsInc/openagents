@@ -10,7 +10,7 @@ The levels come from the earlier private-inference design and the review of Dark
 
 - **A peer reads what it serves.** Any peer that serves a request can read it.
 - **Hardened is not private.** A hardened process on a machine its owner controls is harder to snoop on, but root can read its memory.
-- **Only an attested enclave is private.** An attested hardware enclave running a logged release is the only private level. Attestation says which code ran, not that the answer is right. See [NIP-ATT](../../nips/openagents/NIP-ATT.md).
+- **Only an attested enclave is private.** An attested hardware enclave running a logged release is the only private level. Attestation says which code ran, not that the answer is right. See [NIP-ATT](../../nostr/nips/openagents/NIP-ATT.md).
 - **A plaintext middle breaks the claim.** If a coordinator decrypts a request to route or bill it, no downstream privacy claim holds.
 - **Routing by sensitivity.** Each request declares a sensitivity. It routes only to machines at the required trust level and fails closed rather than falling back.
 - **Weight checks fail closed.** A weight-hash mismatch stops serving.
@@ -35,4 +35,4 @@ The levels come from the earlier private-inference design and the review of Dark
 
 - [Chapter plan](PLAN.md)
 - [Inference across a mesh](../docs/serving/mesh.md)
-- [NIP-ATT](../../nips/openagents/NIP-ATT.md)
+- [NIP-ATT](../../nostr/nips/openagents/NIP-ATT.md)

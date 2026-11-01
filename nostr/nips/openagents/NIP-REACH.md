@@ -3,7 +3,7 @@
 `draft` `optional` — v1, 2026-09-26; amended 2026-09-29 with
 [iroh hints](#iroh-hints) and the [iroh mapping](#iroh-mapping) of the direct
 channel, for the
-[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md). The
+[QR pairing design](../../../docs/coder/design/2026-09-29-auto-pairing.md). The
 [shared contracts](contracts.md) are normative. This profile lets a client find every host its owner runs,
 judge which hosts are online and compatible, try routes in a safe order, and
 open a direct channel that authenticates both Nostr keys before any data
@@ -511,7 +511,7 @@ replaceable private kind and check the OpenAgents kind table for collisions.
 
 ## Implementation status
 
-[`crates/coder-reach`](../../crates/coder-reach/README.md) implements the
+[`crates/coder-reach`](../../../crates/coder-reach/README.md) implements the
 three schemas, sealing and opening through the shared private artifact
 functions, freshness and compatibility, hint validation and selection, the
 handshake and frame format over any ordered byte stream, the WebSocket
@@ -525,7 +525,7 @@ implemented. `coder_reach::hints::v2` reads and writes the v2 record and its
 stream; and the resident host, with `--iroh`, serves `openagents/reach/1`
 through the same session as TCP and publishes the v2 record beside v1.
 
-[`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
+[`crates/coder-host`](../../../crates/coder-host/README.md) is the resident host
 and its client. The host seals presence and hints to each enrolled device,
 serves TCP direct channels and, when configured, WebSocket direct channels,
 as `ws` or as `wss` with the operator's certificate and key, with the real
@@ -539,20 +539,20 @@ CPU count, the one-minute load average per CPU as CPU use, and the kernel's
 share of available memory, each as a whole number, or `null` when the host
 cannot read a value or its operator turns telemetry off.
 
-The [Computers screens](../../crates/coder-computers/README.md) show each
+The [Computers screens](../../../crates/coder-computers/README.md) show each
 host's supervised status, route class, and compatibility from this presence.
 Their live service applies the owner-authority rules above: it holds the
 owner key only as described, lists directory hosts with their labels and
 weights beside enrolled hosts, shows an unenrolled directory host as not
 enrolled, publishes the next revision when the owner adds an enrolled host,
 and feeds directory weights to placement. The
-[reach verification record](../../docs/coder/verification/2026-09-26-host-reach.md),
-the [host serve record](../../docs/coder/verification/2026-09-26-host-serve.md),
+[reach verification record](../../../docs/coder/verification/2026-09-26-host-reach.md),
+the [host serve record](../../../docs/coder/verification/2026-09-26-host-serve.md),
 the
-[WebSocket channel record](../../docs/coder/verification/2026-09-27-websocket-channels.md),
-the [host `wss` record](../../docs/coder/verification/2026-09-27-host-wss.md),
+[WebSocket channel record](../../../docs/coder/verification/2026-09-27-websocket-channels.md),
+the [host `wss` record](../../../docs/coder/verification/2026-09-27-host-wss.md),
 and the
-[client directory and SSH record](../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
+[client directory and SSH record](../../../docs/coder/verification/2026-09-27-client-directory-and-ssh.md)
 list the checks that ran and their limits.
 
 ## Conformance
@@ -574,7 +574,7 @@ v2 record with two `iroh` hints, an `iroh` hint with an uppercase or short
 closed without a close frame.
 
 The wire fixtures in
-[`crates/coder-reach/fixtures/nip-reach.json`](../../crates/coder-reach/fixtures/nip-reach.json)
+[`crates/coder-reach/fixtures/nip-reach.json`](../../../crates/coder-reach/fixtures/nip-reach.json)
 give valid directory, presence, and hint bodies; invalid bodies with the
 refusal code each must produce; placement vectors with each candidate's
 assessment and the chosen host; a transcript vector with the exact SHA-256

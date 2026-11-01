@@ -13,8 +13,8 @@ NP_SAFE_INTEGER :: 9007199254740991;
 NP_OFFICIAL_PIN :: "400d157c53264b8e58c7b3cdbd21ef546fb7a157";
 NP_BLOCK_PIN :: "24a370606044c0c7be787cc2fd98ec0bfe1d606b";
 // SHA-256 of sorted relative path + NUL + bytes + NUL for every file in
-// nips/openagents/. Unlike an upstream branch, this is a local corpus pin.
-NP_OWNED_DIGEST :: "820c5daf961868efe0a16b9ceca09726667c57713f8e711a4ea00a6c387d9a0e";
+// nostr/nips/openagents/. Unlike an upstream branch, this is a local corpus pin.
+NP_OWNED_DIGEST :: "2fb1f51f2c3b737e44f5811148ef4ca8ac7d4a106f4a0460a98ffa7f2c2a6f39";
 NP_CAPABILITY_NAMES :: [15] string.["wire-codec", "json-shape", "event-verify", "event-sign", "encryption", "socket-pipe", "relay-protocol", "nip19", "key-custody", "http-auth", "host-authority", "block-identity", "channel-policy", "agent-privacy", "key-backup"];
 NP_MEASURE_NAMES :: [NP_MEASURES] string.["frame_bytes", "original_json_bytes", "decoded_content_bytes", "raw_string_bytes", "tag_count", "values_per_tag", "depth", "output_bytes", "pending_verification", "stored_events", "stored_bytes", "protobuf_bytes"];
 NP_EVIDENCE_SOURCE :: [3] string.["coax/lib/proto/importer.coax", "coax/lib/nostr/json.coax", "apps/openagents-web/project-live.coax"];

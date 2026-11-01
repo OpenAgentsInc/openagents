@@ -5,7 +5,7 @@
     "slug": "lab-x402",
     "title": "The Lab pays for inference with Lightning (x402 over Spark)",
     "body": "Open `POST /api/v1/inference` beyond admin keys: any Nostr key buys credit over Lightning with x402, received by a server Spark wallet, and spends it on the Lab's inference. Coax and the C API hold our logic; the Breez Spark SDK is the wallet engine behind a narrow boundary.",
-    "spec": "nips/openagents/NIP-X402.md",
+    "spec": "nostr/nips/openagents/NIP-X402.md",
     "labels": [
       "x402",
       "lightning"
@@ -30,9 +30,9 @@
         "spark",
         "spec"
       ],
-      "body": "Add `openagents:spark-receiver:1` to `nips/openagents/NIP-X402.md`: settlement is proved by the receiver's own Spark wallet record of that exact invoice paid, plus the preimage hashing to its payment hash; the request binding (invoice to request digest) lives in the server's database, issued only by us, because Spark's shared SSP node signs every invoice and `receivePayment` takes a memo, not a description hash. State the trust: SSP and operators, small balances, sweep policy. Fix the stale claim that Rust `crates/x402` implements the NIP (deleted in 0b401561a0). Add the policy to INVARIANTS.md.",
+      "body": "Add `openagents:spark-receiver:1` to `nostr/nips/openagents/NIP-X402.md`: settlement is proved by the receiver's own Spark wallet record of that exact invoice paid, plus the preimage hashing to its payment hash; the request binding (invoice to request digest) lives in the server's database, issued only by us, because Spark's shared SSP node signs every invoice and `receivePayment` takes a memo, not a description hash. State the trust: SSP and operators, small balances, sweep policy. Fix the stale claim that Rust `crates/x402` implements the NIP (deleted in 0b401561a0). Add the policy to INVARIANTS.md.",
       "files": [
-        "nips/openagents/NIP-X402.md",
+        "nostr/nips/openagents/NIP-X402.md",
         "INVARIANTS.md",
         "docs/lightning/breez-spark.md"
       ],

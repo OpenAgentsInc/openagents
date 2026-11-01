@@ -26,7 +26,7 @@ not independently authenticated identities. Optional beacon owner auth does
 not establish verified ownership here. The page never requests a signing key.
 
 The **XP** panel is a reader's ledger under
-[NIP-XP](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-XP.md):
+[NIP-XP](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/openagents/NIP-XP.md):
 XP only from OpenAgents' referee key, counted from its signed awards whose
 quest the page holds, with revoked and conflicting awards left out. Below it,
 Pylon work: signed `3201` receipts and checker rerun labels, the work a

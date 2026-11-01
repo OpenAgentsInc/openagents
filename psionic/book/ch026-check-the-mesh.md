@@ -119,7 +119,7 @@ The checker signs a kind `1985` NIP-32 label naming the receipt and original
 provider. Its `x` commits the exact complete replay-result plaintext when
 one was admitted. If no replay result exists, it instead hashes the precise
 JCS `openagents.psionic.mesh-inconclusive.v1` observation specified in
-[NIP-PYLON](../../nips/openagents/NIP-PYLON.md); the inert method text identifies
+[NIP-PYLON](../../nostr/nips/openagents/NIP-PYLON.md); the inert method text identifies
 that observation and reason. It is not represented as a model result.
 The runtime exposes the owned child's public checker key and verifies its
 final signed label before reporting progress. A pool must still pin that

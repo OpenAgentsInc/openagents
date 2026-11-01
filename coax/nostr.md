@@ -17,7 +17,7 @@ roadmap remains the project's first initiative; this is its Nostr initiative.
 
 | Evidence | What it establishes | What it does not establish |
 | --- | --- | --- |
-| `nips/manifest.json`, `nips/upstream-lock.json` | Pinned source inventory: 100 official, 20 Block, 36 OpenAgents NIPs | Runtime support for every specification |
+| `nostr/nips/manifest.json`, `nostr/nips/upstream-lock.json` | Pinned source inventory: 100 official, 20 Block, 36 OpenAgents NIPs | Runtime support for every specification |
 | `proto/nostr/README.md`, descriptors, generated Coax codecs | 16 alpha schemas, bounded wire views, presence/oneofs/repeats, unknown retention and protoc interoperability | Signature verification, decryption, membership or executable authority |
 | `coax/lib/proto/fingerprint.coax` | Checked SHA-256 for compiler fingerprints | A qualified streaming crypto API or approved signing path |
 | `coax/web/project/{publish,model,snapshot,relay}.ts` | Real signed project events, NIP-42, verified build-time snapshots, task comments/plans/statuses | Coax crypto, independently authenticated workers or fenced claims |

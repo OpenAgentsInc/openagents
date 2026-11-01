@@ -20,8 +20,8 @@ XP is evidence of verified accepted work. It is never a balance: it can't
 be spent, transferred, sold, or converted into sats, compute credits, or
 any permission. It is awarded once per accepted outcome, never per token,
 command, commit, run, or unit of time. These are the rules of the
-[Verse economy](../../docs/verse/gdd.md#economy) and of the
-[Minecraft guild design](../../docs/minecraft/economy.md#xp-and-winning);
+[Verse economy](../../../docs/verse/gdd.md#economy) and of the
+[Minecraft guild design](../../../docs/minecraft/economy.md#xp-and-winning);
 this NIP is their transport.
 
 Sats are out of scope. A quest purse that pays sats for an accepted
@@ -30,7 +30,7 @@ completion settles through the agent-labor and payment contracts
 migration package M18), after acceptance and separately from it. Paying a
 purse never creates XP, and XP never unlocks a purse.
 
-Test-time capabilities: the [`eval-check`](#eval-check) and [`eval-adopt`](#eval-adopt) rules carry [capability credit](../../docs/essays/2026-09-29-test-time-capabilities.md#10-capability-credit): credit for verification work, not for agreement, so a protocol-following dispute pays as a confirmation does, and adoption needs a confirming check and an [externally validating result](../../docs/essays/2026-09-29-test-time-capabilities.md#8-externally-validated-capability-claim) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: the [`eval-check`](#eval-check) and [`eval-adopt`](#eval-adopt) rules carry [capability credit](../../../docs/essays/2026-09-29-test-time-capabilities.md#10-capability-credit): credit for verification work, not for agreement, so a protocol-following dispute pays as a confirmation does, and adoption needs a confirming check and an [externally validating result](../../../docs/essays/2026-09-29-test-time-capabilities.md#8-externally-validated-capability-claim) ([mapping](../../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Kinds
 
@@ -290,7 +290,7 @@ referee's word lists the reproducers it trusts.
 ### `playtest`
 
 A playtest quest is completed by a contribution to the OpenAgents app's
-playtest program ([`docs/game/playtesting.md`](../../docs/game/playtesting.md))
+playtest program ([`docs/game/playtesting.md`](../../../docs/game/playtesting.md))
 that a triager accepted. Joining, installing, or opening a build is never a
 contribution, so no quest exists for them.
 

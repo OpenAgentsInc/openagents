@@ -114,7 +114,7 @@ Swift host plays what Coax decided.
 
 **Protocol** pieces exist but carry no audio:
 
-- [NIP-LIVE](../../nips/openagents/NIP-LIVE.md) and `openagents.live.v1`
+- [NIP-LIVE](../../nostr/nips/openagents/NIP-LIVE.md) and `openagents.live.v1`
   (spec §23.6, status Partial). It separates whose microphone reaches an
   agent (input floors) from when the agent may speak (speaking floors).
   It also defines consent records, media epochs that fence stale audio

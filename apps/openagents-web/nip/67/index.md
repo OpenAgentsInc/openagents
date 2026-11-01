@@ -1,6 +1,6 @@
 # NIP-67: Relay pagination metadata
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/67.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/67.md)
 
 A relay can attach metadata to EOSE so a client can distinguish more available history from a finished page.
 

@@ -6,7 +6,7 @@ Task `nostr-envelope`, worker `codex-nostr-codecs`, 2026-10-28.
 
 `coax/lib/nostr/envelope.coax` builds and consumes the selected inline body of
 `openagents.artifact-envelope.v1` from the pinned
-[`contracts.md`](../../nips/openagents/contracts.md). The memory bridge observes
+[`contracts.md`](../../nostr/nips/openagents/contracts.md). The memory bridge observes
 physical overlap; Coax owns schema shape, feature policy, budgets, canonical
 serialization, digest binding and failure results. C/Wasm test faces only move
 public fixtures and expose scalar observations.

@@ -1,6 +1,6 @@
 # NIP-40: Event expiration
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/40.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/40.md)
 
 An expiration tag limits how long a relay should serve an event. The exact expiry second is already expired.
 

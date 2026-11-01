@@ -10,7 +10,7 @@ Mesh-LLM encrypts peer traffic end to end over QUIC and discovers public meshes 
 
 - **Encrypted peer connections.** Each connection records whether its path is direct or relayed, with the latency measured. A relay forwards ciphertext only.
 - **Private meshes by invitation.** A private mesh is joined only with an invitation.
-- **Public discovery through beacons.** Public meshes are found through Part IV's [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) beacons. A model group advertises a head and its stages.
+- **Public discovery through beacons.** Public meshes are found through Part IV's [NIP-PYLON](../../nostr/nips/openagents/NIP-PYLON.md) beacons. A model group advertises a head and its stages.
 - **An owner control plane.** Owner commands travel on a lane separate from the inference plane.
 - **Limits of encryption.** Encrypted transport protects the link. A peer that serves a request still reads it; [chapter 194](ch194-who-can-read-the-prompt.md) handles that.
 
@@ -36,4 +36,4 @@ Mesh-LLM encrypts peer traffic end to end over QUIC and discovers public meshes 
 
 - [Chapter plan](PLAN.md)
 - [Inference across a mesh](../docs/serving/mesh.md)
-- [NIP-PYLON](../../nips/openagents/NIP-PYLON.md)
+- [NIP-PYLON](../../nostr/nips/openagents/NIP-PYLON.md)

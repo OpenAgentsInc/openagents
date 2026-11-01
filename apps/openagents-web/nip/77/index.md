@@ -1,6 +1,6 @@
 # NIP-77: Efficient synchronization
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/77.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/77.md)
 
 Negentropy helps peers find differences between event sets without downloading the whole shared history.
 

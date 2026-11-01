@@ -13,7 +13,7 @@ Existing native wire codecs and JSON shape, and the Wasm socket probe, are parti
 components; none proves cryptography, domain admission or production approval.
 The live project fold in `2ace224626` does not add event-verification evidence.
 
-Upstream Git pins match `nips/upstream-lock.json`, including per-file SHA-256
+Upstream Git pins match `nostr/nips/upstream-lock.json`, including per-file SHA-256
 checks. The OpenAgents-authored corpus has a local SHA-256 pin over sorted
 repository-relative UTF-8 path, NUL, exact file bytes, NUL. Evidence records bind
 source paths to commits and source hashes; they are references to bounded checks,

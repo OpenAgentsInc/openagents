@@ -15,7 +15,7 @@ loopback, and every event was signed with relay_session.py's test-only keys.
 `${TMPDIR:-/tmp}/coax-rust-relay` and must be outside the repository):
 
 - **extract** (no network): `git archive 0b401561a0^` of `crates/nostr-relay`,
-  `crates/nostr`, `crates/agent-contract`, `migrations/`, `nips/` and
+  `crates/nostr`, `crates/agent-contract`, `migrations/`, `nostr/nips/` and
   `tests/fixtures/` (files that the crates read at compile time with
   `include_str!`), plus the old `Cargo.lock`, into `SCRATCH/src`. Nothing is
   restored into the tree. The old workspace (about 1,900 packages) is replaced

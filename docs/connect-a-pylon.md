@@ -137,7 +137,7 @@ A signed-in browser on OpenAgents can POST the same JSON to `/api/v1/systemone` 
 
 A custom agent can use NIP-98 directly: sign a kind-27235 event with an empty content string and a current Unix timestamp. Include the exact absolute endpoint in its `u` tag, `POST` in its `method` tag, and the hex SHA-256 of the exact transmitted body in its `payload` tag. Send the complete signed event's JSON, Base64-encoded, as `Authorization: Nostr <base64-event-json>`. Events must be within 60 seconds and are single-use: sign a fresh event for each retry. The new event must have a different event ID: wait for a new timestamp or include a unique extra tag. Changing only the signature does not change the ID. A changed body, URL or method needs a newly signed event.
 
-[Read NIP-98](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/98.md)
+[Read NIP-98](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/98.md)
 
 ## Confidential CPU proof
 

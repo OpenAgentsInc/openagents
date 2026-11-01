@@ -1,6 +1,6 @@
 # NIP-49: Encrypted key backup foundations
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/49.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/49.md)
 
 Password-protected key backup needs a costly KDF, a complete encrypted format, and careful memory and key handling.
 

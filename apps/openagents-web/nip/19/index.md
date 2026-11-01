@@ -1,6 +1,6 @@
 # NIP-19: Names people can share
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/19.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/19.md)
 
 npub, note, nprofile, nevent and naddr turn keys and references into checksummed strings.
 

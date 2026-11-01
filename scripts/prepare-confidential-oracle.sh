@@ -13,7 +13,7 @@ command -v jq >/dev/null 2>&1 || { echo 'install jq for context metadata' >&2; e
 mkdir -p "$out/oracle"
 git -C "$root" archive "$source_commit" crates/oa-att crates/nostr crates/nostr-transport \
   crates/receipts crates/agent-contract crates/psionic/vendor/openagents-workspace-hack \
-  nips/openagents/schemas LICENSE > "$out/source.tar"
+  nostr/nips/openagents/schemas LICENSE > "$out/source.tar"
 tar -xf "$out/source.tar" -C "$out/oracle"
 cat > "$out/oracle/Cargo.toml" <<'EOF'
 [workspace]

@@ -7,7 +7,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-AA.md",
+          "path": "nostr/nips/block/NIP-AA.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "d759c3de0afcee58fdf2d851d24e80a8f3225bd4344be3ee072a5557560f4cdb"
         }
@@ -19,7 +19,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-AE.md",
+          "path": "nostr/nips/block/NIP-AE.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "62012ebf6f07e64d4fc25c658a4d9b88766274c298ea2c29561d7c4c28925d39"
         }
@@ -31,7 +31,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-AM.md",
+          "path": "nostr/nips/block/NIP-AM.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "767b175cb3d78d0c67134afda4fce8807b21eca360c3288124a7ecd9d54dfd4b"
         }
@@ -43,7 +43,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-AO.md",
+          "path": "nostr/nips/block/NIP-AO.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "60bf7931bea81ec80bd533b76ebb1cf5547b621e1d259b6ec69320f82f05fb8b"
         }
@@ -55,17 +55,17 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-AP.md",
+          "path": "nostr/nips/block/NIP-AP.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "161cbd49d55022bf07052e18e1f80ec775bf5946e34d1b76f22c5d37e90bb9e2"
         },
         {
-          "path": "nips/block/NIP-AR.md",
+          "path": "nostr/nips/block/NIP-AR.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "a94e70741d38c537377892b138679323fdacbef05bec28da066f0893592285a2"
         },
         {
-          "path": "nips/block/NIP-CL.md",
+          "path": "nostr/nips/block/NIP-CL.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "c87cda99e66b6b951513aad0c3c5d1eb9f4a73a2a3d0f8686599a790c69f2650"
         }
@@ -77,7 +77,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-AR.md",
+          "path": "nostr/nips/block/NIP-AR.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "a94e70741d38c537377892b138679323fdacbef05bec28da066f0893592285a2"
         }
@@ -89,7 +89,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-CL.md",
+          "path": "nostr/nips/block/NIP-CL.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "c87cda99e66b6b951513aad0c3c5d1eb9f4a73a2a3d0f8686599a790c69f2650"
         }
@@ -101,7 +101,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-CW.md",
+          "path": "nostr/nips/block/NIP-CW.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "95484fc5aaa8c088ae22c2b213607502d90475924ea171f3f344d19ac7063ca4"
         }
@@ -113,7 +113,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-DV.md",
+          "path": "nostr/nips/block/NIP-DV.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "4b319473d899154429fdc635b0b3f6b4be950cb4ed2d55618cf11f7f6b5af96f"
         }
@@ -125,7 +125,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-FA.md",
+          "path": "nostr/nips/block/NIP-FA.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "0d413c8907b18e4f9658cbfd602caf70586fc0b03d2dbc3c38f6e8377ddd08f0"
         }
@@ -137,7 +137,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-FI.md",
+          "path": "nostr/nips/block/NIP-FI.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "cee5ba68e122f53a330a74d9f2370e8a657d0cf0fb7424c10f6ee8916e3b8cd9"
         }
@@ -149,7 +149,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-IA.md",
+          "path": "nostr/nips/block/NIP-IA.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "d94e2467a9fbb4845ee9e91faff1762ee4fcb0f85e8f30373766f82fba2888a6"
         }
@@ -161,7 +161,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-GS.md",
+          "path": "nostr/nips/block/NIP-GS.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "d1cc73bbfc7fc8ef54afd509c868500938a43857726deafcb48e181e8abbc894"
         }
@@ -173,17 +173,17 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-MP.md",
+          "path": "nostr/nips/block/NIP-MP.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "e1645ab34f9a6720361c38922e55beca09d68ebb39794fc2ff7e5795ef698442"
         },
         {
-          "path": "nips/block/NIP-MP.fixtures.json",
+          "path": "nostr/nips/block/NIP-MP.fixtures.json",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "bda8cb81410c65511d4bce1c6f3d05e82337bb481c67b3398d3abc60bc8b1848"
         },
         {
-          "path": "nips/block/NIP-MP.fold-fixtures.json",
+          "path": "nostr/nips/block/NIP-MP.fold-fixtures.json",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "aff4fd713e0ceadf691547d028cc47dbb70ca3c082dae926057364393e6a3ac6"
         }
@@ -195,7 +195,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-OA.md",
+          "path": "nostr/nips/block/NIP-OA.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "cfe7288c96e4a9edd88e5f2970cfec6fc22c57f7840a8ecb77e326a6cc32c74b"
         }
@@ -207,7 +207,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-PL.md",
+          "path": "nostr/nips/block/NIP-PL.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "1e793eb8ccada7cb2dafc07b5de6745143052babd21ed2cc42319edd6b87bf72"
         }
@@ -219,7 +219,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-RS.md",
+          "path": "nostr/nips/block/NIP-RS.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "d7279c8bac746e925ba57b091e988052051f3abad21dfaa4f6b5f329aadeed2d"
         }
@@ -231,7 +231,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/block/NIP-WP.md",
+          "path": "nostr/nips/block/NIP-WP.md",
           "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
           "sha256": "172b8302497abfcb90e736d67d5b4489d07b468cf28d7e63efba6fa47f8e1e84"
         }
@@ -243,17 +243,17 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/official/01.md",
+          "path": "nostr/nips/official/01.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "d5c5ce2b5639eee440b5d342dbe81af42008838cb260ec04acaffaffd29dcaf7"
         },
         {
-          "path": "nips/official/42.md",
+          "path": "nostr/nips/official/42.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "176458314bb0cd3b9c673b43b6bf05e4cb2354f5d56880d8d6627713d6fd4f87"
         },
         {
-          "path": "nips/official/50.md",
+          "path": "nostr/nips/official/50.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "64c393e0146f11564505ba8dd73e4798a34762b0d35a02663dd678a98941240e"
         }
@@ -265,17 +265,17 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/official/01.md",
+          "path": "nostr/nips/official/01.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "d5c5ce2b5639eee440b5d342dbe81af42008838cb260ec04acaffaffd29dcaf7"
         },
         {
-          "path": "nips/official/42.md",
+          "path": "nostr/nips/official/42.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "176458314bb0cd3b9c673b43b6bf05e4cb2354f5d56880d8d6627713d6fd4f87"
         },
         {
-          "path": "nips/official/50.md",
+          "path": "nostr/nips/official/50.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "64c393e0146f11564505ba8dd73e4798a34762b0d35a02663dd678a98941240e"
         }
@@ -287,7 +287,7 @@
       "status": "alpha",
       "sources": [
         {
-          "path": "nips/official/42.md",
+          "path": "nostr/nips/official/42.md",
           "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
           "sha256": "176458314bb0cd3b9c673b43b6bf05e4cb2354f5d56880d8d6627713d6fd4f87"
         }

@@ -1,6 +1,6 @@
 // NIP-44 v2 get_conversation_key from two keys: HKDF-extract(salt "nip44-v2",
 // IKM = the raw unhashed 32-byte shared x) with the x from ecdh.coax's
-// validated x-only ECDH. Pinned spec: nips/official/44.md.
+// validated x-only ECDH. Pinned spec: nostr/nips/official/44.md.
 //
 // A separate unit so the checks here stay few: the 35 valid and 8 invalid
 // upstream get_conversation_key rows and the encrypt/decrypt rows run end to

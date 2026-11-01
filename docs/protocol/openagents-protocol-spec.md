@@ -66,7 +66,7 @@ build. It covers:
 - every money concept: markets, labor, x402, Lightning, payment evidence,
   ledgers, billing, earnings, compute balance and Pylon settlement, on
   Bitcoin and Bitcoin-based stablecoins only;
-- the whole Nostr protocol as typed mirrors, the way `nips/official/`
+- the whole Nostr protocol as typed mirrors, the way `nostr/nips/official/`
   vendors the NIP text;
 - Lightning Labs' protocols, vendored byte-exact the way
   `proto/third_party/lightninglabs/` now does.
@@ -146,7 +146,7 @@ OpenAgents already speaks dozens of protocols. Each was written well for its
 own product, and they do not share a schema language:
 
 - **36 OpenAgents NIPs** with JSON bodies, 10 JSON Schema bundles, and 23
-  single-record schemas under `nips/openagents/schemas/`. Most NIP records
+  single-record schemas under `nostr/nips/openagents/schemas/`. Most NIP records
   have no machine-readable schema at all (§2.3).
 - **Five OpenAPI documents** for the HTTP surfaces: first-party, App,
   Computers, Labs, System One, plus the Decisions API's YAML.
@@ -216,8 +216,8 @@ limits.
 
 ### 2.2 NIPs
 
-`nips/` has three lanes, described in `nips/README.md` and
-`nips/manifest.json`:
+`nostr/nips/` has three lanes, described in `nostr/nips/README.md` and
+`nostr/nips/manifest.json`:
 
 - **`official/`**: 100 NIP specs plus the index, pinned to
   nostr-protocol/nips at `400d157c…`.
@@ -234,7 +234,7 @@ the official protocol.
 
 ### 2.3 JSON Schemas and schema IDs
 
-`nips/openagents/schemas/` holds 33 files, about 475 KB:
+`nostr/nips/openagents/schemas/` holds 33 files, about 475 KB:
 
 - **23 single-record schemas**: `artifact-ref`, `atif-chunk`,
   `atif-manifest`, `cj-card`, `eval-case`, `eval-draft`, `ext-eval`,
@@ -544,7 +544,7 @@ proto/nostr/
                         CLOSED, NOTICE, AUTH, COUNT, NEG-*)
   nip<NN>/v1/           one package per official NIP with a structured body (§11.3)
   block/<id>/v1/        one package per external NIP with a structured body (§11.4)
-  MANIFEST.json         pins: nips/manifest.json commits, per-package source digest
+  MANIFEST.json         pins: nostr/nips/manifest.json commits, per-package source digest
 
 proto/third_party/
   lightninglabs/
@@ -981,7 +981,7 @@ carriage.
   keys, `v`, enum spellings, decimal-string amounts, `null` handling and
   `meta`. Its output is what gets signed or encrypted. It is generated from
   descriptor options and tested against every example in the NIP text and
-  every fixture in `nips/openagents/schemas/` and `docs/protocol/fixtures/`.
+  every fixture in `nostr/nips/openagents/schemas/` and `docs/protocol/fixtures/`.
 - The **HTTP JSON mapper** produces the OpenAPI body. For records that are
   also NIP bodies, it is the NIP mapper. For HTTP-only records, it follows
   the `api.v1` conventions (§10): `snake_case`, `object` discriminator,
@@ -1542,7 +1542,7 @@ message Upload { optional string id = 1; optional uint64 bytes = 2; optional uin
 ## 11. `nostr.*`: the whole Nostr protocol as typed mirrors
 
 The target is to represent structured Nostr contracts as proto projections,
-the way `nips/` vendors source specifications. `proto/nostr/` currently covers
+the way `nostr/nips/` vendors source specifications. `proto/nostr/` currently covers
 the selected alpha slice below, not all vendored NIPs. NIP text and original
 signed bytes stay authoritative; every implemented mirror is pinned to its
 source commit and hash.
@@ -1582,7 +1582,7 @@ authorized operation are four different levels of support.
    marked `deprecated = true` at file level. They exist for reading old
    data and never become the base for new OpenAgents design.
 6. **Pins.** `proto/nostr/MANIFEST.json` records, for each package, the
-   NIP file, the `nips/manifest.json` commit and the SHA-256 of the NIP
+   NIP file, the `nostr/nips/manifest.json` commit and the SHA-256 of the NIP
    text it was written from. `scripts/sync-nips.sh` should flag any package whose
    source text changed.
 
@@ -1831,7 +1831,7 @@ from a pin, a parsed DTO or a successful descriptor build.
 ### 12.1 Kind registry → package
 
 Every OpenAgents event kind has exactly one owning package. The registry
-in `nips/openagents/README.md` and `crates/nostr/src/kinds.rs` stays the
+in `nostr/nips/openagents/README.md` and `crates/nostr/src/kinds.rs` stays the
 source of truth for kind numbers. The proposed generator must check that each (kind, topic/profile) binding
 has one owner; shared carrier kinds such as 3188 and 3201 are not unique
 record discriminators by themselves.
@@ -3852,7 +3852,7 @@ three places:
    `nostr.nip61` or `nostr.nip87` (Cashu and Fedimint mirrors). Those
    packages exist for reading and refusing only.
 
-**Conflict to resolve.** `nips/openagents/schemas/payment-receipt.v1.json`
+**Conflict to resolve.** `nostr/nips/openagents/schemas/payment-receipt.v1.json`
 lists `rail ∈ {lightning, evm, solana, tempo, card, ecash}` and
 `protocol ∈ {x402, mpp, l402, cashu, acp, ucp, ap2, stripe-checkout, zap}`.
 No NIP references it. This spec does not carry those values forward:
@@ -4563,7 +4563,7 @@ or fixed with a deprecation note.
 
 ### 32.4 JSON Schemas
 
-The 33 files in `nips/openagents/schemas/` stay authoritative for JSON
+The 33 files in `nostr/nips/openagents/schemas/` stay authoritative for JSON
 validation until the generator emits equivalent JSON Schema from proto
 (§33.2) and the two validate the same fixtures identically. Then the
 schema files become generated output, checked in, with a header naming
@@ -4575,10 +4575,10 @@ their source package. `payment-receipt.v1.json` is superseded by
 These are corrections to existing documents. They are tracked in phase P1
 and fixed in the same change that lands the relevant package:
 
-- `nips/README.md` says the OpenAgents lane has 33 NIPs. There are 36.
-- `nips/README.md` still calls ATIF, REG, VAULT and ATT "Designed" and
+- `nostr/nips/README.md` says the OpenAgents lane has 33 NIPs. There are 36.
+- `nostr/nips/README.md` still calls ATIF, REG, VAULT and ATT "Designed" and
   says "No registry client is implemented". The NIPs and
-  `nips/openagents/README.md` say they are implemented.
+  `nostr/nips/openagents/README.md` say they are implemented.
 - NIP-WORK says it is "not an implemented issue tracker", while
   `work-host` roles are implemented.
 - Kind 30440 (livehost) is used but not registered.
@@ -4834,10 +4834,10 @@ retain their wire encodings until separately reviewed migrations pass.
 
 ## 40. Sources
 
-- `nips/openagents/contracts.md`, `nips/openagents/README.md`, all 36
-  `nips/openagents/NIP-*.md`, `nips/openagents/schemas/`
-- `nips/README.md`, `nips/manifest.json`, `nips/official/` (99 specs),
-  `nips/block/` (17 specs)
+- `nostr/nips/openagents/contracts.md`, `nostr/nips/openagents/README.md`, all 36
+  `nostr/nips/openagents/NIP-*.md`, `nostr/nips/openagents/schemas/`
+- `nostr/nips/README.md`, `nostr/nips/manifest.json`, `nostr/nips/official/` (99 specs),
+  `nostr/nips/block/` (17 specs)
 - `proto/README.md`, `proto/openagents/{engine,common,host,reach}/v1/`,
   `crates/engine-proto/`, `crates/phone-host/`, shipped descriptor baselines
 - `crates/space-key-broker/proto/`, `crates/lnd-sdk/proto/` and its

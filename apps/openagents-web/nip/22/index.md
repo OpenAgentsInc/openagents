@@ -1,6 +1,6 @@
 # NIP-22: Comments with explicit scope
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/22.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/22.md)
 
 A comment names its root and parent. Uppercase scope tags and lowercase parent tags make that relationship explicit.
 

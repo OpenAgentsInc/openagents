@@ -2083,7 +2083,7 @@ signature-domain refusal in `proto/tools/test_contracts.py`.
 The NIP recovery source/tree identity is recorded in `proto/nostr/recovery.json`;
 restoring historical text does not restore its retired implementation mandates.
 Current official/external mirrors may advance beyond that historical tree only
-with exact upstream pins and per-file hashes; `nips/openagents` is not synced.
+with exact upstream pins and per-file hashes; `nostr/nips/openagents` is not synced.
 Check both online pin parity (`scripts/check-nips-pin.sh --latest`) and offline
 inventory/hash parity (`--offline`), including non-Markdown fixtures.
 

@@ -1,6 +1,6 @@
 # NIP-09: Deletion requests
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/09.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/09.md)
 
 Authors can ask relays to delete their own events. A deletion request is a signed event, not a command from any reader.
 

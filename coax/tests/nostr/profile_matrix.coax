@@ -4,9 +4,9 @@
 #import "Basic";
 main :: () {
   print("{\"schema\":%,\"safe_integer\":%,\"targets\":[\"native-c11\",\"ios-arm64\",\"wasm32\"],", NP_SCHEMA, NP_SAFE_INTEGER);
-  print("\"sources\":[{\"name\":\"official\",\"mask\":1,\"kind\":\"git\",\"pin\":\"%\",\"manifest\":\"nips/upstream-lock.json\"},", NP_OFFICIAL_PIN);
-  print("{\"name\":\"block\",\"mask\":2,\"kind\":\"git\",\"pin\":\"%\",\"manifest\":\"nips/upstream-lock.json\"},", NP_BLOCK_PIN);
-  print("{\"name\":\"openagents\",\"mask\":4,\"kind\":\"sha256-path-nul-bytes-nul\",\"pin\":\"%\",\"manifest\":\"nips/openagents/\"}],", NP_OWNED_DIGEST);
+  print("\"sources\":[{\"name\":\"official\",\"mask\":1,\"kind\":\"git\",\"pin\":\"%\",\"manifest\":\"nostr/nips/upstream-lock.json\"},", NP_OFFICIAL_PIN);
+  print("{\"name\":\"block\",\"mask\":2,\"kind\":\"git\",\"pin\":\"%\",\"manifest\":\"nostr/nips/upstream-lock.json\"},", NP_BLOCK_PIN);
+  print("{\"name\":\"openagents\",\"mask\":4,\"kind\":\"sha256-path-nul-bytes-nul\",\"pin\":\"%\",\"manifest\":\"nostr/nips/openagents/\"}],", NP_OWNED_DIGEST);
   print("\"capabilities\":[");
   for i: 0..<15 {
     if i > 0 { print(","); }

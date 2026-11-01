@@ -8,8 +8,8 @@ WebAssembly), `crates/pylon` (`serve --attested`), and the live demo at
 SEV-SNP reports and NRAS GPU evidence is in `crates/att-platforms`
 (fixture-tested, not yet hardware-qualified).
 The [shared contracts](contracts.md) are normative. The designs this profile
-serves are the [sensitive data vault](../../docs/security/sensitive-data-vault.md)
-and [private inference](../../docs/security/private-inference.md).
+serves are the [sensitive data vault](../../../docs/security/sensitive-data-vault.md)
+and [private inference](../../../docs/security/private-inference.md).
 
 This NIP lets a client check, before it sends anything, that a remote program
 is an exact, publicly logged build running inside a hardware trusted execution
@@ -550,7 +550,7 @@ the sealed-job receipt form and registers `3203`.
 Not yet: an attested workload image that emits raw quotes or NRAS
 evidence or serves HPKE carriage, collateral fetching from Intel PCS, AMD
 KDS and NRAS, publishing a real release to Rekor, and these checks in the
-gateway and apps. The [private inference](../../docs/security/private-inference.md)
+gateway and apps. The [private inference](../../../docs/security/private-inference.md)
 milestones P2–P4 track them.
 
 ## Conformance

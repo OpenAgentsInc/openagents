@@ -8,7 +8,7 @@ It condenses pre-reset work, readable with `git show 0b401561a0^:<path>`:
   self-improving-codebases audit and the training-system audit under
   `docs/audits/2026-10-10-*`.
 - **Coder One's studies:** `crates/coder-one/src/study/`, plus
-  `docs/optimization/` and `nips/openagents/NIP-OPT.md`.
+  `docs/optimization/` and `nostr/nips/openagents/NIP-OPT.md`.
 - **Transcripts:** 237, 242, 243, 271 and 287 in `docs/transcripts/`.
 
 The numbers are historical, not Psionic results.

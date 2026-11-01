@@ -11,5 +11,5 @@ by that profile. See NIP-PYLON's Coax free mesh implementation profile.
 The separate original GPT-OSS20B text profile uses existing signed Nostr events
 and the existing NIP-90 `5050` request, `6050` result and `7000` feedback kinds.
 Its beacon declares `nip90-5050`. The public-text subset is specified in
-`nips/openagents/NIP-PYLON.md`; it introduces no replacement event envelope or
+`nostr/nips/openagents/NIP-PYLON.md`; it introduces no replacement event envelope or
 SystemOne message version. Original event bytes remain authoritative.

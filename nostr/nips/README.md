@@ -1,8 +1,8 @@
 # NIP sources
 
 Source copies of the Nostr Implementation Possibilities used to design
-OpenAgents' protocol. The [root protocol specification](../docs/protocol/openagents-protocol-spec.md)
-and [proto tree](../proto/README.md) define OpenAgents interchange; vendoring a
+OpenAgents' protocol. The [root protocol specification](../../docs/protocol/openagents-protocol-spec.md)
+and [proto tree](../../proto/README.md) define OpenAgents interchange; vendoring a
 NIP does not implement its behavior or grant authority to a decoded message.
 
 | Lane | Upstream | Current inventory |
@@ -48,7 +48,7 @@ the upstream for its current branch head.
 
 ## Review and provenance
 
-The [2026-10-27 sync review](../docs/protocol/2026-10-27-upstream-nip-sync.md)
+The [2026-10-27 sync review](../../docs/protocol/2026-10-27-upstream-nip-sync.md)
 records the changes and implications for future Coax consumers. Runtime
 admission, original signed bytes, privacy, permission checks and compatibility
 vectors remain separate implementation gates. Never advertise a feature just
@@ -56,7 +56,7 @@ because its specification is present. Official and external names remain separat
 lanes; matching draft identifiers do not merge their meanings.
 
 The original 191-file pre-reset recovery remains identified by
-[its historical Git tree](../proto/nostr/recovery.json). That record is preserved;
+[its historical Git tree](../../proto/nostr/recovery.json). That record is preserved;
 the current official/external lanes intentionally advance beyond it. The
 OpenAgents-authored lane remains unchanged by this sync. Historical text in
 that lane may describe deleted Rust services, old tools and former deployment

@@ -1,6 +1,6 @@
 # NIP-34: Git repositories and issues
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/34.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/34.md)
 
 Repository announcements, issues and status events let development work travel as signed Nostr records.
 

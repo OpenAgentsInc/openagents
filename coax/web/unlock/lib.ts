@@ -1,7 +1,7 @@
 // Hidden presentations: a deck sealed for one recipient key and published as
 // a Nostr gift wrap (NIP-59). Inside the wrap is a seal from the author, and
 // inside that an OpenAgents private artifact (kind 3188, NIP-44 v2 content,
-// nips/openagents/contracts.md) whose envelope carries the deck inline.
+// nostr/nips/openagents/contracts.md) whose envelope carries the deck inline.
 // The same code runs in the sealer (bun) and in the page (bundled).
 //
 // The seal and wrap are built here from nostr-effect's NIP-44 v2 and event

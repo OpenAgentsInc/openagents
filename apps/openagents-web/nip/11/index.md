@@ -1,6 +1,6 @@
 # NIP-11: Relay information
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/11.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/11.md)
 
 Before subscribing, a client can ask a relay which protocols and limits it declares.
 

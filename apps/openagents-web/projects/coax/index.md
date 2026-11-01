@@ -725,7 +725,7 @@ Waits on: #5923 RFC 8785 canonical JSON for contract digests (open)
 
 Event: `fdce7d97951b382e2d14adec11c47a90ddfad1987a5c19d9cfef0619d30f637f`
 
-coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (inline body, digest = SHA-256 of JCS bytes, 1 MiB cap) per nips/openagents/contracts.md.
+coax/lib/nostr/envelope.coax: build and check openagents.artifact-envelope.v1 (inline body, digest = SHA-256 of JCS bytes, 1 MiB cap) per nostr/nips/openagents/contracts.md.
 
 ## Acceptance
 
@@ -1529,7 +1529,7 @@ Verify original signed invitations/grants with explicit selected signature/JOSE 
 
 - `coax/lib/nostr/host/`
 - `proto/openagents/host/`
-- `nips/openagents/NIP-HOST.md`
+- `nostr/nips/openagents/NIP-HOST.md`
 
 ### #62d9 Block OA owner proofs and AA agent membership
 
@@ -1633,7 +1633,7 @@ Validate route/advertisement generation and epoch monotonicity, expiry, rollback
 
 - `coax/lib/nostr/host/`
 - `proto/openagents/reach/`
-- `nips/openagents/NIP-REACH.md`
+- `nostr/nips/openagents/NIP-REACH.md`
 
 ### #8bf1 Bounded task delegation, progress, result and PR evidence
 

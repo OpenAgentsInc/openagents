@@ -18,7 +18,7 @@ class NipPages(unittest.TestCase):
         self.assertLessEqual({1,10,11,19,22,34,40,42,44,49,67,98}, set(numbers))
         for row in rows:
             with self.subTest(nip=row['number']):
-                self.assertTrue((ROOT/f"nips/official/{row['number']:02}.md").is_file())
+                self.assertTrue((ROOT/f"nostr/nips/official/{row['number']:02}.md").is_file())
                 for path in row['sources']+row['evidence']:
                     self.assertTrue((ROOT/path).exists(), path)
                 self.assertEqual(len(row['cases']), 3)

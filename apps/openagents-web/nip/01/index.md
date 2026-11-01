@@ -1,6 +1,6 @@
 # NIP-01: Events and relay messages
 
-[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/01.md)
+[All implemented NIPs](/nip) · [Pinned specification](https://github.com/OpenAgentsInc/openagents/blob/main/nostr/nips/official/01.md)
 
 The signed event is the common language of Nostr. Parse it, recompute its id, then check its signature.
 

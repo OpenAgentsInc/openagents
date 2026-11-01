@@ -2424,7 +2424,7 @@
       "files": [
         "coax/lib/nostr/host/",
         "proto/openagents/host/",
-        "nips/openagents/NIP-HOST.md"
+        "nostr/nips/openagents/NIP-HOST.md"
       ],
       "acceptance": [
         "Wrong host/audience/scope, expired/revoked/replayed grant and unavailable policy refuse before effect",
@@ -2659,7 +2659,7 @@
       "files": [
         "coax/lib/nostr/host/",
         "proto/openagents/reach/",
-        "nips/openagents/NIP-REACH.md"
+        "nostr/nips/openagents/NIP-REACH.md"
       ],
       "acceptance": [
         "Reordered old routes, rolled-back epochs, expired advert and wrong peer identity refuse",

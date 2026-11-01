@@ -7,7 +7,7 @@ compiler=os.environ.get('COAX_TEST_BIN',str(R/'coax/bin/coax'))
 protoc=os.environ.get('PROTOC','protoc')
 def run(*args,**kw):return subprocess.run(list(map(str,args)),check=True,**kw)
 if run(protoc,'--version',capture_output=True).stdout.strip()!=b'libprotoc 29.3':raise SystemExit('requires protoc 29.3')
-fixture=json.loads((R/'nips/block/NIP-MP.fixtures.json').read_text())
+fixture=json.loads((R/'nostr/nips/block/NIP-MP.fixtures.json').read_text())
 byname={x['name']:x['template'] for x in fixture['cases']}
 with tempfile.TemporaryDirectory(prefix='coax-mp-adapter-') as tmp:
  d=pathlib.Path(tmp);gen=d/'gen';gen.mkdir()

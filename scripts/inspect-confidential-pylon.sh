@@ -9,7 +9,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/oa-att-oracle.XXXXXXXX")
 trap 'rm -rf "$work"' EXIT
 git -C "$root" archive "$source" crates/oa-att crates/nostr crates/nostr-transport \
   crates/receipts crates/agent-contract crates/psionic/vendor/openagents-workspace-hack \
-  nips/openagents/schemas | tar -x -C "$work"
+  nostr/nips/openagents/schemas | tar -x -C "$work"
 cat > "$work/Cargo.toml" <<'EOF'
 [workspace]
 resolver = "2"

@@ -1,5 +1,5 @@
 // NIP-59 rumor, seal and gift wrap. Pinned spec:
-// coax/tests/vectors/upstream/nips/59.md (nips/official/59.md).
+// coax/tests/vectors/upstream/nips/59.md (nostr/nips/official/59.md).
 //
 //   rumor  an unsigned event: id, pubkey, created_at, kind, tags, content
 //   seal   kind 13 by the rumor's author, tags [], content the rumor JSON

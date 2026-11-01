@@ -12,7 +12,7 @@ def run(*args, data=None):
  if p.returncode:raise RuntimeError(f'{args[0]} failed {p.returncode}: {p.stderr[-2000:].decode(errors="replace")}')
  return p.stdout
 if run(PROTOC,'--version').strip()!=b'libprotoc 29.3':raise RuntimeError('requires pinned protoc 29.3')
-fixtures=json.loads((ROOT/'nips/block/NIP-MP.fixtures.json').read_text())
+fixtures=json.loads((ROOT/'nostr/nips/block/NIP-MP.fixtures.json').read_text())
 byname={case['name']:case for case in fixtures['cases']}
 with tempfile.TemporaryDirectory(prefix='coax-mp-') as tmp:
  d=Path(tmp);gen=d/'python';gen.mkdir()
