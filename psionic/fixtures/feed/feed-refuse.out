@@ -1,0 +1,14 @@
+0 workers: workers: outside 1..64
+65 workers: workers: outside 1..64
+rows of 1 token: length: outside 2..256
+65 rows: rows: outside 1..64
+a ring of 9: depth: outside 1..8
+2 slots of 2 x 8 in 31 bytes: budget: depth * rows * length is over the budget
+2 cursors for 2 rows: buffer: a buffer's length disagrees with the plan
+a cursor past its document: cursor: outside the dataset, or the stream ends inside the batch
+a 15-byte batch: buffer: a buffer's length disagrees with the plan
+worker 2 of 2: worker: index outside the plan's workers
+worker 1 cancelled: incomplete: a row was not marked by its owner
+taking from an empty ring: empty: no batch is ready
+a third batch in 2 slots: full: the ring holds depth batches
+1 compute time, 2 load times: shape: times disagree in count, are negative, or are empty

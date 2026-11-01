@@ -1690,6 +1690,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/feed.coax",
+      "chapter": "psionic/book/ch121-feed-the-accelerator.md",
+      "stdout": "psionic/fixtures/feed/feed.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/feed-refuse.coax",
+      "chapter": "psionic/book/ch121-feed-the-accelerator.md",
+      "stdout": "psionic/fixtures/feed/feed-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

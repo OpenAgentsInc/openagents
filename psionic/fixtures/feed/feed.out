@@ -1,0 +1,9 @@
+batch 0: 15 14 0 13 1 15 13 12 1 0 15 6 5 4 15 11 
+36 of 36 runs (workers 1, 2, 4, 8; depth 1, 2, 4; three patterns) equal the reference
+ring of 4 batches of 2 x 8: 64 bytes
+stopped: produced 6, consumed 3; producer at epoch 5 order 0 offset 1, consumer at epoch 2 order 2 offset 0
+resume: first difference at token 48 (batch 3)
+resume: all 96 tokens equal the reference
+depth 1: total 32 idle 20 (625 per thousand), steady step 8
+depth 2: total 23 idle 11 (478 per thousand), steady step 5
+depth 4: total 23 idle 11 (478 per thousand), steady step 5

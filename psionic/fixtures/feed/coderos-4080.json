@@ -1,0 +1,33 @@
+{
+  "schema": "psionic.feed.v1",
+  "profile": "psionic-feed-v1",
+  "device": "cpu stand-in: one thread, 768 x 768 f32 matrix-vector product per batch; no GPU",
+  "host": "coderos-4080",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "hardware_threads": 28,
+  "kernel": "Linux 6.18.49 x86_64",
+  "date": "2026-11-01",
+  "loadavg": "32.22 27.11 23.84 17/1223 3281311",
+  "compiler": "gcc (GCC) 15.2.0",
+  "flags": "coax c --release; -std=c11 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable -Wno-unknown-pragmas -O2 -pthread",
+  "runs": 3,
+  "dataset": {"documents": 64, "training": 48, "tokens": 4028},
+  "batch": {"rows": 64, "length": 256, "bytes": 16384, "steps": 64},
+  "stream_digest": "2fb0c754fea21f9a",
+  "reference_ns": 7568990,
+  "resume": {"stopped_after": 21, "produced": 24, "consumer_resume": "equal", "producer_resume_first_difference": 344064},
+  "runs_by_config": [
+    {"workers": 1, "depth": 1, "ring_bytes": 16384, "stream": "equal", "load_mean_ns": 141324, "compute_mean_ns": 286288, "total_ns": 27816059, "idle_ns": 9438592, "idle_per_mille": 339, "model_total_ns": 27367252, "steady_step_ns": 427612},
+    {"workers": 1, "depth": 2, "ring_bytes": 32768, "stream": "equal", "load_mean_ns": 233243, "compute_mean_ns": 300592, "total_ns": 19430725, "idle_ns": 141381, "idle_per_mille": 7, "model_total_ns": 19372462, "steady_step_ns": 300592},
+    {"workers": 1, "depth": 4, "ring_bytes": 65536, "stream": "equal", "load_mean_ns": 233192, "compute_mean_ns": 296015, "total_ns": 19170742, "idle_ns": 158630, "idle_per_mille": 8, "model_total_ns": 19089548, "steady_step_ns": 296015},
+    {"workers": 2, "depth": 1, "ring_bytes": 16384, "stream": "equal", "load_mean_ns": 120786, "compute_mean_ns": 419620, "total_ns": 35293665, "idle_ns": 8350204, "idle_per_mille": 236, "model_total_ns": 34586035, "steady_step_ns": 540406},
+    {"workers": 2, "depth": 2, "ring_bytes": 32768, "stream": "equal", "load_mean_ns": 128888, "compute_mean_ns": 424401, "total_ns": 27571085, "idle_ns": 309020, "idle_per_mille": 11, "model_total_ns": 27281012, "steady_step_ns": 424401},
+    {"workers": 2, "depth": 4, "ring_bytes": 65536, "stream": "equal", "load_mean_ns": 140886, "compute_mean_ns": 510832, "total_ns": 32988416, "idle_ns": 172464, "idle_per_mille": 5, "model_total_ns": 32851839, "steady_step_ns": 510832},
+    {"workers": 4, "depth": 1, "ring_bytes": 16384, "stream": "equal", "load_mean_ns": 78711, "compute_mean_ns": 348577, "total_ns": 27992001, "idle_ns": 5575225, "idle_per_mille": 199, "model_total_ns": 27346475, "steady_step_ns": 427288},
+    {"workers": 4, "depth": 2, "ring_bytes": 32768, "stream": "equal", "load_mean_ns": 92198, "compute_mean_ns": 298126, "total_ns": 19299390, "idle_ns": 153835, "idle_per_mille": 7, "model_total_ns": 19222163, "steady_step_ns": 298126},
+    {"workers": 4, "depth": 4, "ring_bytes": 65536, "stream": "equal", "load_mean_ns": 89167, "compute_mean_ns": 507314, "total_ns": 32710545, "idle_ns": 134398, "idle_per_mille": 4, "model_total_ns": 32580554, "steady_step_ns": 507314},
+    {"workers": 8, "depth": 1, "ring_bytes": 16384, "stream": "equal", "load_mean_ns": 59766, "compute_mean_ns": 370827, "total_ns": 28090477, "idle_ns": 4284544, "idle_per_mille": 152, "model_total_ns": 27558024, "steady_step_ns": 430593},
+    {"workers": 8, "depth": 2, "ring_bytes": 32768, "stream": "equal", "load_mean_ns": 58469, "compute_mean_ns": 297031, "total_ns": 19137171, "idle_ns": 67245, "idle_per_mille": 3, "model_total_ns": 19063687, "steady_step_ns": 297031},
+    {"workers": 8, "depth": 4, "ring_bytes": 65536, "stream": "equal", "load_mean_ns": 62895, "compute_mean_ns": 314026, "total_ns": 20254776, "idle_ns": 95620, "idle_per_mille": 4, "model_total_ns": 20181402, "steady_step_ns": 314026}
+  ]
+}

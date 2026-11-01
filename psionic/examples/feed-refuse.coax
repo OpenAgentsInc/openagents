@@ -1,0 +1,32 @@
+// Chapter 121: plans, buffers and rings the loader refuses, each with its
+// typed reason, and a batch with a missing row that is never published.
+#import "Basic";
+#load "../lib/data/feed.coax";
+
+say :: (label:string,s:FdStatus) {print("%: %\n",label,fd_status_name(s));}
+// book:begin refuse
+main :: () {
+    say("0 workers",fd_plan(2,8,0,2,64).status);
+    say("65 workers",fd_plan(2,8,65,2,64).status);
+    say("rows of 1 token",fd_plan(2,1,2,2,64).status);
+    say("65 rows",fd_plan(65,8,2,2,FD_BYTES).status);
+    say("a ring of 9",fd_plan(2,8,2,9,FD_BYTES).status);
+    say("2 slots of 2 x 8 in 31 bytes",fd_plan(2,8,2,2,31).status);
+    docs:[14]PkDoc;tokens:[51]u8;fd_split(docs[..],tokens[..]);p:=fd_plan(2,8,2,2,32);
+    cur:[3]PkCursor;batch:[16]u8;done:[2]u8;
+    say("2 cursors for 2 rows",fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=3},cur[0..<2]).status);
+    say("a cursor past its document",fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=3,offset=40},cur[..]).status);
+    #assert fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=3},cur[..]).status==FdStatus.ok;
+    say("a 15-byte batch",fd_worker(docs[..],tokens[..],p,0,cur[..],batch[0..<15],done[..]));
+    say("worker 2 of 2",fd_worker(docs[..],tokens[..],p,2,cur[..],batch[..],done[..]));
+    // Worker 1 is cancelled: row 1 stays unmarked.
+    #assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[..])==FdStatus.ok;
+    say("worker 1 cancelled",fd_publish(p,done[..]));
+    r:=fd_ring(p,PkCursor.{seed=3}).ring;
+    say("taking from an empty ring",fd_consume(r).status);
+    r=fd_produce(r,cur[2]).ring;r=fd_produce(r,cur[2]).ring;
+    say("a third batch in 2 slots",fd_produce(r,cur[2]).status);
+    one:=[1]int.[3];two:=[2]int.[5,5];
+    say("1 compute time, 2 load times",fd_overlap(one[..],two[..],2).status);
+}
+// book:end refuse

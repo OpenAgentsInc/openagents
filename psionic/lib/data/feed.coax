@@ -1,0 +1,435 @@
+// Chapter 121: feed the accelerator (psionic-feed-v1). Batches of packed rows
+// from chapter 122's stream (pk_next), cut by chapter 120's leak-free split
+// (sp_docs). Each batch's row cursors are found first by seeking through
+// document lengths alone (fd_seek), so the rows can then be filled by any
+// number of workers in any order: worker w fills the rows chapter 35's
+// partition gives it (pc_first) and marks them; a batch is published only when
+// every row is marked by its owner. Filled batches wait in a ring of depth
+// slots. The producer may run at most depth batches ahead of the consumer
+// (backpressure), so the loader never holds more than depth*rows*length
+// bytes. The consumer's cursor, after the last batch it took, is the resume
+// point; batches prefetched but not taken are thrown away and refilled.
+// Coax has no threads yet. The native harness (psionic/platform/feed.c) owns
+// the threads, locks and clock and calls these procedures; every partition,
+// admission and ring decision is made here.
+#load "split.coax";
+#load "../cores.coax";
+FdStatus :: enum u8 {ok;rows;length;workers;depth;budget;buffer;dataset;cursor;worker;incomplete;full;empty;shape;}
+FdPlan :: struct {status:FdStatus;rows:int;length:int;workers:int;depth:int;bytes:int;cores:PcPlan;}
+FdNext :: struct {status:FdStatus;cursor:PkCursor;}
+FdRing :: struct {depth:int;produced:int;consumed:int;resume:PkCursor;after:[8]PkCursor;}
+FdTurn :: struct {status:FdStatus;slot:int;ring:FdRing;}
+FdTime :: struct {status:FdStatus;total:int;idle:int;}
+FD_ROWS :: 64;
+FD_DEPTH :: 8;
+FD_BYTES :: 131072;
+
+// Checks precede the implementation. Expected values are derived in chapter 121.
+#test "a plan admits its sizes and refuses each one just outside" {
+    p:=fd_plan(4,8,2,2,64);#assert p.status==FdStatus.ok && p.rows==4 && p.length==8 && p.workers==2 && p.depth==2 && p.bytes==64;
+    #assert p.cores.status==PcStatus.ok && p.cores.chunks==4 && p.cores.workers==2;
+    #assert fd_plan(4,8,2,2,63).status==FdStatus.budget;
+    #assert fd_plan(0,8,2,2,64).status==FdStatus.rows && fd_plan(65,8,2,2,FD_BYTES).status==FdStatus.rows && fd_plan(64,8,2,2,FD_BYTES).status==FdStatus.ok;
+    #assert fd_plan(4,1,2,2,64).status==FdStatus.length && fd_plan(4,257,2,2,FD_BYTES).status==FdStatus.length && fd_plan(4,256,2,2,FD_BYTES).status==FdStatus.ok && fd_plan(4,2,2,2,64).status==FdStatus.ok;
+    #assert fd_plan(4,8,0,2,64).status==FdStatus.workers && fd_plan(4,8,65,2,64).status==FdStatus.workers && fd_plan(4,8,64,2,64).status==FdStatus.ok && fd_plan(4,8,1,2,64).status==FdStatus.ok;
+    #assert fd_plan(4,8,2,0,64).status==FdStatus.depth && fd_plan(4,8,2,9,FD_BYTES).status==FdStatus.depth && fd_plan(4,8,2,8,FD_BYTES).status==FdStatus.ok && fd_plan(4,8,2,1,32).status==FdStatus.ok;
+    // The largest plan holds exactly the stated bound, 8 * 64 * 256 bytes.
+    big:=fd_plan(64,256,64,8,FD_BYTES);#assert big.status==FdStatus.ok && big.bytes==FD_BYTES;
+    #assert fd_plan(64,256,64,8,FD_BYTES-1).status==FdStatus.budget;
+    #assert fd_status_name(FdStatus.ok)=="ok" && fd_status_name(FdStatus.shape)=="shape: times disagree in count, are negative, or are empty";
+}
+#test "seeking by document lengths lands where the packed stream does" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);row:[48]u8;
+    // Training documents of 3, 2 and 4 tokens give 4, 3 and 5 stream positions per epoch: 12.
+    for n:0..<48 {
+        a:=fd_seek(docs[..],PkCursor.{seed=7},n);
+        b:=PkCursor.{seed=7};if n>0 {r:=pk_next(docs[..],tokens[..],b,row[0..<n],false);if n>=2 {#assert r.status==PkStatus.ok;b=r.cursor;}}
+        if n>=2 {#assert a.status==FdStatus.ok && fd_same(a.cursor,b);}
+    }
+    e:=fd_seek(docs[..],PkCursor.{seed=7},12);#assert e.status==FdStatus.ok && e.cursor.epoch==1 && e.cursor.order==0 && e.cursor.offset==0;
+    e=fd_seek(docs[..],PkCursor.{seed=7},11);#assert e.cursor.epoch==0 && e.cursor.order==2;
+    z:=fd_seek(docs[..],PkCursor.{seed=7,epoch=2,order=1,offset=1},0);#assert z.status==FdStatus.ok && z.cursor.epoch==2 && z.cursor.order==1 && z.cursor.offset==1;
+    // The last epoch ends the stream: 12 positions from its start would wrap.
+    last:=fd_seek(docs[..],PkCursor.{seed=7,epoch=1048575},12);#assert last.status==FdStatus.cursor && last.cursor.epoch==1048575 && last.cursor.offset==0;
+    #assert fd_seek(docs[..],PkCursor.{seed=7,epoch=1048575},11).status==FdStatus.ok;
+}
+#test "cursors for a batch are admitted before any write" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);p:=fd_plan(3,5,2,2,30);cur:[4]PkCursor;
+    n:=fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=7},cur[..]);
+    #assert n.status==FdStatus.ok && fd_same(cur[0],PkCursor.{seed=7}) && fd_same(n.cursor,cur[3]) && fd_same(cur[2],fd_seek(docs[..],PkCursor.{seed=7},10).cursor);
+    cur[0].offset=9;
+    #assert fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=7},cur[0..<3]).status==FdStatus.buffer && cur[0].offset==9;
+    #assert fd_cursors(docs[..],tokens[..],fd_plan(0,5,2,2,30),PkCursor.{seed=7},cur[..]).status==FdStatus.rows && cur[0].offset==9;
+    #assert fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=7,offset=99},cur[..]).status==FdStatus.cursor && cur[0].offset==9;
+    tokens[0]=15;#assert fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=7},cur[..]).status==FdStatus.dataset && cur[0].offset==9;tokens[0]=0;
+    // A batch that would run past the last epoch is refused whole.
+    #assert fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=7,epoch=1048575},cur[..]).status==FdStatus.cursor && cur[0].offset==9;
+    #assert fd_cursors(docs[..],tokens[..],fd_plan(2,5,2,2,30),PkCursor.{seed=7,epoch=1048575},cur[0..<3]).status==FdStatus.ok;
+}
+#test "workers fill only their own rows, and a batch is published only when every row is marked by its owner" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);want:=PK_STREAM_7;
+    p:=fd_plan(3,5,2,2,30);cur:[4]PkCursor;#assert fd_cursors(docs[..],tokens[..],p,PkCursor.{seed=7},cur[..]).status==FdStatus.ok;
+    batch:[15]u8;for i:0..<15 {batch[i]=99;}done:[3]u8;
+    // Three rows over two workers: worker 0 owns row 0, worker 1 rows 1 and 2.
+    #assert fd_worker(docs[..],tokens[..],p,1,cur[..],batch[..],done[..])==FdStatus.ok;
+    #assert batch[0]==99 && batch[4]==99 && done[0]==0 && done[1]==2 && done[2]==2;
+    for i:5..<15 {#assert batch[i]==want[i];}
+    #assert fd_publish(p,done[..])==FdStatus.incomplete;
+    #assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[..])==FdStatus.ok && fd_publish(p,done[..])==FdStatus.ok;
+    for i:0..<15 {#assert batch[i]==want[i];}
+    done[2]=1;#assert fd_publish(p,done[..])==FdStatus.incomplete;done[2]=2;
+    #assert fd_publish(p,done[0..<2])==FdStatus.buffer && fd_publish(fd_plan(3,5,2,0,30),done[..])==FdStatus.depth;
+    // Refusals: worker index, buffers, a cursor list that disagrees with the stream.
+    #assert fd_worker(docs[..],tokens[..],p,2,cur[..],batch[..],done[..])==FdStatus.worker && fd_worker(docs[..],tokens[..],p,-1,cur[..],batch[..],done[..])==FdStatus.worker;
+    #assert fd_worker(docs[..],tokens[..],fd_plan(3,5,0,2,30),0,cur[..],batch[..],done[..])==FdStatus.workers;
+    #assert fd_worker(docs[..],tokens[..],p,0,cur[0..<3],batch[..],done[..])==FdStatus.buffer;
+    #assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[0..<14],done[..])==FdStatus.buffer;
+    #assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[0..<2])==FdStatus.buffer;
+    done[0]=0;cur[1].offset+=1;#assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[..])==FdStatus.cursor && done[0]==0;cur[1].offset-=1;
+    cur[0].offset=99;#assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[..])==FdStatus.cursor && done[0]==0;cur[0].offset=0;
+    tokens[0]=15;#assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[..])==FdStatus.dataset;tokens[0]=0;
+    #assert fd_worker(docs[..],tokens[..],p,0,cur[..],batch[..],done[..])==FdStatus.ok && done[0]==1;
+}
+#test "the ring holds at most depth batches and resumes from the consumer's cursor" {
+    p:=fd_plan(3,5,2,2,30);t:=fd_ring(p,PkCursor.{seed=7});#assert t.status==FdStatus.ok;r:=t.ring;
+    #assert fd_free(r)==0 && fd_ready(r)==-1 && fd_consume(r).status==FdStatus.empty;
+    a:=PkCursor.{seed=7,offset=1};b:=PkCursor.{seed=7,offset=2};c:=PkCursor.{seed=7,offset=3};
+    t=fd_produce(r,a);#assert t.status==FdStatus.ok && t.slot==0;r=t.ring;
+    t=fd_produce(r,b);#assert t.status==FdStatus.ok && t.slot==1;r=t.ring;
+    // Full: a third batch waits, and the ring is unchanged.
+    #assert fd_free(r)==-1;t=fd_produce(r,c);#assert t.status==FdStatus.full && t.ring.produced==2 && t.slot==-1;
+    #assert fd_ready(r)==0;t=fd_consume(r);#assert t.status==FdStatus.ok && t.slot==0 && fd_same(t.ring.resume,a);r=t.ring;
+    #assert fd_free(r)==0 && fd_ready(r)==1;t=fd_produce(r,c);#assert t.slot==0;r=t.ring;
+    t=fd_consume(r);#assert t.slot==1 && fd_same(t.ring.resume,b);r=t.ring;
+    t=fd_consume(r);#assert t.slot==0 && fd_same(t.ring.resume,c);r=t.ring;
+    #assert t.ring.produced==3 && t.ring.consumed==3 && fd_consume(r).status==FdStatus.empty && fd_consume(r).slot==-1;
+    #assert fd_ring(fd_plan(3,5,2,9,FD_BYTES),a).status==FdStatus.depth && fd_ring(fd_plan(3,5,2,9,FD_BYTES),a).slot==-1 && fd_ring(p,a).slot==-1;
+    bad:=r;bad.depth=0;#assert fd_free(bad)==-1 && fd_produce(bad,a).status==FdStatus.depth && fd_consume(bad).status==FdStatus.depth && fd_ready(bad)==-1;
+    #assert fd_produce(bad,a).slot==-1 && fd_consume(bad).slot==-1;
+    bad.depth=9;#assert fd_produce(bad,a).status==FdStatus.depth && fd_consume(bad).status==FdStatus.depth && fd_free(bad)==-1;
+    bad.produced=4;#assert fd_ready(bad)==-1;
+    one:=fd_ring(fd_plan(3,5,2,1,15),a).ring;#assert fd_free(one)==0;one=fd_produce(one,b).ring;#assert fd_free(one)==-1 && fd_ready(one)==0;
+    // Driving to the end of the stream: prefetching past the last batch asked
+    // for stops quietly; asking for a batch past the end is refused.
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);out:[16]u8;q:=fd_plan(1,4,1,2,8);last:=PkCursor.{seed=7,epoch=1048575};
+    // The last epoch has 12 positions; a batch may not end exactly at its end,
+    // so two batches of 4 fit and a third is refused.
+    d:=fd_drive(docs[..],tokens[..],q,last,2,0xffffffffffffffff,out[0..<8]);#assert d.status==FdStatus.ok && d.ring.produced==2 && d.ring.consumed==2;
+    #assert fd_drive(docs[..],tokens[..],q,last,3,1,out[0..<12]).status==FdStatus.cursor && fd_drive(docs[..],tokens[..],q,last,3,1,out[0..<12]).slot==-1;
+    #assert fd_drive(docs[..],tokens[..],q,last,2,1,out[..]).status==FdStatus.buffer && fd_drive(docs[..],tokens[..],q,last,-1,1,out[0..<0]).status==FdStatus.buffer;
+    #assert fd_drive(docs[..],tokens[..],q,last,2,1,out[..]).slot==-1;
+    #assert fd_drive(docs[..],tokens[..],fd_plan(1,4,1,0,8),last,2,1,out[0..<8]).status==FdStatus.depth;
+    #assert fd_drive(docs[..],tokens[..],q,last,0,1,out[0..<0]).status==FdStatus.ok;
+    eight:=fd_ring(fd_plan(1,2,1,8,16),a).ring;for i:0..<8 {s:=fd_produce(eight,b);#assert s.status==FdStatus.ok && s.slot==i;eight=s.ring;}#assert fd_free(eight)==-1 && fd_ready(eight)==0;
+    #assert fd_consume(eight).status==FdStatus.ok && fd_consume(eight).slot==0;
+}
+#test "the drive follows its pattern: fill when the bit is set and a slot is free" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);want:=PK_STREAM_7;out:[12]u8;start:=PkCursor.{seed=7};
+    four:=fd_plan(1,4,2,4,16);one:=fd_plan(1,4,2,1,4);
+    // All ones: fill four, then take and fill in turn until three are taken.
+    d:=fd_drive(docs[..],tokens[..],four,start,3,0xffffffffffffffff,out[..]);#assert d.status==FdStatus.ok && d.slot==-1 && d.ring.produced==6 && d.ring.consumed==3;
+    for i:0..<12 {#assert out[i]==want[i];}
+    #assert fd_same(d.ring.resume,fd_seek(docs[..],start,12).cursor) && fd_same(d.ring.after[1],fd_seek(docs[..],start,24).cursor);
+    // Bit 0 clear: the first turn must fill anyway, as nothing is ready.
+    #assert fd_drive(docs[..],tokens[..],four,start,3,0xfffffffffffffffe,out[..]).ring.produced==6;
+    // No bits: fill one, take one.
+    #assert fd_drive(docs[..],tokens[..],four,start,3,0,out[..]).ring.produced==3;
+    // One slot: never ahead, whatever the pattern.
+    #assert fd_drive(docs[..],tokens[..],one,start,3,0xffffffffffffffff,out[..]).ring.produced==3;
+    // Bits 0 and 1, one batch: fill, fill, take.
+    #assert fd_drive(docs[..],tokens[..],four,start,1,3,out[0..<4]).ring.produced==2;
+    // Bit 1 only: turns 0 and 1 fill, then forced fills and takes alternate,
+    // so odd turns take with one batch ready. Turn 65 reads bit 1 again and
+    // fills a second batch ahead, before the 33rd is taken.
+    many:[132]u8;e:=fd_drive(docs[..],tokens[..],fd_plan(1,4,1,2,8),start,33,2,many[..]);#assert e.ring.produced==34;
+    e=fd_drive(docs[..],tokens[..],fd_plan(1,4,1,2,8),start,33,1,many[..]);#assert e.ring.produced==33;
+}
+#test "cursors are equal only when every field is" {
+    a:=PkCursor.{seed=1,epoch=2,order=3,offset=4};#assert fd_same(a,a);
+    b:=a;b.seed=9;#assert !fd_same(a,b);b=a;b.epoch=9;#assert !fd_same(a,b);b=a;b.order=9;#assert !fd_same(a,b);b=a;b.offset=9;#assert !fd_same(a,b);
+}
+#test "the hand trace of the stall model" {
+    c:=[4]int.[3,3,3,3];l:=[4]int.[5,5,5,5];
+    // One slot: load and compute take turns, 4 * (3 + 5) = 32, idle 4 * 5.
+    t:=fd_overlap(c[..],l[..],1);#assert t.status==FdStatus.ok && t.total==32 && t.idle==20;
+    // Two slots: the loader never stops; 5 + 3 + 3 * 5 = 23, idle 5 + 3 * 2.
+    t=fd_overlap(c[..],l[..],2);#assert t.total==23 && t.idle==11;
+    t=fd_overlap(c[..],l[..],8);#assert t.total==23 && t.idle==11;
+    // Compute slower than loading: only the first load is waited for.
+    t=fd_overlap(l[..],c[..],2);#assert t.total==23 && t.idle==3;
+    t=fd_overlap(l[..],c[..],1);#assert t.total==32 && t.idle==12;
+    // A slow load in the middle: a deeper ring absorbs it when loads ran ahead.
+    c2:=[4]int.[4,4,4,4];l2:=[4]int.[1,1,9,1];
+    #assert fd_overlap(c2[..],l2[..],2).total==22 && fd_overlap(c2[..],l2[..],2).idle==6;
+    #assert fd_overlap(c2[..],l2[..],3).total==19 && fd_overlap(c2[..],l2[..],3).idle==3;
+    #assert fd_steady(3,5,1)==8 && fd_steady(3,5,2)==5 && fd_steady(5,3,2)==5 && fd_steady(5,3,8)==5;
+    #assert fd_lost(FdTime.{total=23,idle=11})==478 && fd_lost(FdTime.{total=0,idle=0})==0 && fd_lost(FdTime.{total=1,idle=1})==1000;
+    #assert fd_max(3,5)==5 && fd_max(5,3)==5 && fd_max(4,4)==4 && fd_max(0,0)==0;
+    #assert fd_overlap(c[..],l[0..<3],2).status==FdStatus.shape && fd_overlap(c[0..<0],l[0..<0],2).status==FdStatus.shape;
+    #assert fd_overlap(c[..],l[..],0).status==FdStatus.depth && fd_overlap(c[..],l[..],9).status==FdStatus.depth;
+    n:=[4]int.[3,-1,3,3];#assert fd_overlap(n[..],l[..],2).status==FdStatus.shape && fd_overlap(c[..],n[..],2).status==FdStatus.shape;
+    n[1]=3;n[0]=-1;#assert fd_overlap(n[..],l[..],2).status==FdStatus.shape && fd_overlap(c[..],n[..],2).status==FdStatus.shape;
+    zero:=[1]int.[0];#assert fd_overlap(zero[..],zero[..],1).status==FdStatus.ok && fd_overlap(zero[..],zero[..],1).total==0;
+}
+#forall "constant times follow the closed forms, and an endless ring follows the load prefix sums" c:0..<7,l:0..<7,n:1..<20 {
+    cs:[20]int;ls:[20]int;for i:0..<n {cs[i]=c;ls[i]=l;}
+    one:=fd_overlap(cs[0..<n],ls[0..<n],1);#assert one.total==n*(c+l) && one.idle==n*l;
+    for depth:2..<9 {
+        t:=fd_overlap(cs[0..<n],ls[0..<n],depth);
+        hi:=c;if l>c {hi=l;}
+        #assert t.total==l+c+(n-1)*hi && t.idle==t.total-n*c;
+    }
+    // Varying times, a ring as deep as the run: compute i starts once load i
+    // (the prefix sum of loads) and compute i - 1 are both done.
+    for i:0..<n {cs[i]=(c*(i+3)+l)%7;ls[i]=(l*(i+5)+c*i)%9;}
+    end:=0;loaded:=0;busy:=0;
+    for i:0..<n {loaded+=ls[i];start:=end;if loaded>start {start=loaded;}end=start+cs[i];busy+=cs[i];}
+    if n<=8 {t:=fd_overlap(cs[0..<n],ls[0..<n],8);#assert t.total==end && t.idle==end-busy;}
+    // More slots never make a run slower.
+    for depth:2..<9 {#assert fd_overlap(cs[0..<n],ls[0..<n],depth).total<=fd_overlap(cs[0..<n],ls[0..<n],depth-1).total;}
+}
+
+// An independent stream: every epoch's order written out in full, BOS then
+// the document's tokens, with no cursor arithmetic.
+fd_oracle :: (docs:[]PkDoc,tokens:[]u8,seed:u64,first:int,out:[]u8) {
+    at:=0;epoch:=first;order:[64]int;n:=pk_trains(docs);
+    while at<out.count {
+        pk_order(docs,seed,epoch,order[..]);
+        for k:0..<n {d:=docs[order[k]];
+            if at<out.count {out[at]=PK_BOS;at+=1;}
+            for i:0..<d.count {if at<out.count {out[at]=tokens[d.first+i];at+=1;}}
+        }
+        epoch+=1;
+    }
+}
+#test "the oracle stream is chapter 122's recorded stream" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);want:=PK_STREAM_7;out:[48]u8;
+    // Cut inside a document and at an epoch's end.
+    for n:[3]int.[47,13,12] {for i:0..<48 {out[i]=99;}fd_oracle(docs[..],tokens[..],7,0,out[0..<n]);for i:0..<48 {if i<n {#assert out[i]==want[i];} else {#assert out[i]==99;}}}
+    // From epoch 2: the recorded stream from position 24.
+    fd_oracle(docs[..],tokens[..],7,2,out[0..<24]);for i:0..<24 {#assert out[i]==want[24+i];}
+}
+#forall "every worker count, ring depth and schedule gives the reference batches, and a resume continues them" seed:0..<12 #steps 400000000 {
+    docs:[14]PkDoc;tokens:[51]u8;fd_split(docs[..],tokens[..]);
+    rows:=1+seed%5;length:=2+(seed*7)%9;steps:=6;
+    // Starts inside an epoch, a document and a row: seed * 5 positions in.
+    start:=fd_seek(docs[..],PkCursor.{seed=cast(u64)(seed+1),epoch=seed%3},seed*5).cursor;
+    want:[1000]u8;fd_oracle_from(docs[..],tokens[..],start,want[0..<rows*length*steps]);
+    for workers:[4]int.[1,2,4,8] {for depth:1..<5 {
+        p:=fd_plan(rows,length,workers,depth,FD_BYTES);#assert p.status==FdStatus.ok;
+        got:[1000]u8;d:=fd_drive(docs[..],tokens[..],p,start,steps,cr_bits(cast(u64)seed,cast(u64)(workers*5+depth)),got[0..<rows*length*steps]);
+        #assert d.status==FdStatus.ok && d.ring.consumed==steps && d.slot==-1;
+        for i:0..<rows*length*steps {#assert got[i]==want[i];}
+        // Stop after k batches, keep only the consumer's cursor, and run the rest.
+        k:=1+seed%(steps-1);first:=fd_drive(docs[..],tokens[..],p,start,k,cr_bits(cast(u64)seed,99),got[0..<rows*length*k]);
+        rest:=fd_drive(docs[..],tokens[..],p,first.ring.resume,steps-k,cr_bits(cast(u64)seed,100),got[rows*length*k..<rows*length*steps]);
+        #assert rest.status==FdStatus.ok;
+        for i:0..<rows*length*steps {#assert got[i]==want[i];}
+    }}
+}
+// The oracle stream from any admitted cursor: the stream from its epoch's
+// start, with the positions before the cursor skipped.
+fd_oracle_from :: (docs:[]PkDoc,tokens:[]u8,c:PkCursor,out:[]u8) {
+    order:[64]int;pk_order(docs,c.seed,c.epoch,order[..]);skip:=c.offset;for k:0..<c.order {skip+=docs[order[k]].count+1;}
+    all:[4096]u8;fd_oracle(docs,tokens,c.seed,c.epoch,all[0..<skip+out.count]);
+    for i:0..<out.count {out[i]=all[skip+i];}
+}
+#test "the measured host's dataset" {
+    docs:[64]PkDoc;tokens:[4096]u8;n:=fd_synthetic(docs[..],tokens[..]);
+    #assert n==4028 && pk_dataset(docs[..],tokens[0..<n])==PkStatus.ok && pk_trains(docs[..])==48;
+    // Document 0 holds (j * j) % 15 for j = 0, 1, ...; document 1 starts at 31 with (7 + j * j) % 15.
+    #assert tokens[0]==0 && tokens[3]==9 && tokens[4]==1 && tokens[31]==7 && tokens[33]==11 && docs[1].first==31 && docs[2].count==31+58;
+    #assert docs[3].split==PkSplit.validation && docs[4].split==PkSplit.train && docs[63].id==63 && docs[63].first+docs[63].count==4028;
+}
+
+// book:begin plan
+// A batch is rows packed rows of length tokens. Rows are cut among workers by
+// chapter 35's partition, one row per chunk. The ring holds depth batches,
+// depth*rows*length bytes, and must fit the stated budget.
+fd_plan :: (rows:int,length:int,workers:int,depth:int,budget:int)->FdPlan #export_c {
+    if rows<1 || rows>FD_ROWS {return FdPlan.{status=FdStatus.rows};}
+    if length<2 || length>PK_ROW {return FdPlan.{status=FdStatus.length};}
+    cores:=pc_plan(rows,1,workers);if cores.status!=PcStatus.ok {return FdPlan.{status=FdStatus.workers};}
+    if depth<1 || depth>FD_DEPTH {return FdPlan.{status=FdStatus.depth};}
+    bytes:=depth*rows*length;if bytes>budget {return FdPlan.{status=FdStatus.budget};}
+    return FdPlan.{rows=rows,length=length,workers=workers,depth=depth,bytes=bytes,cores=cores};
+}
+// book:end plan
+
+// book:begin seek
+// The cursor n positions further along the packed stream, found from document
+// lengths alone: a training document fills count + 1 positions, its BOS and
+// its tokens. Reads no token. The cursor must be admitted.
+fd_seek :: (docs:[]PkDoc,cursor:PkCursor,n:int)->FdNext {
+    order:[64]int;pk_order(docs,cursor.seed,cursor.epoch,order[..]);trains:=pk_trains(docs);c:=cursor;left:=n;
+    while left>0 {
+        rest:=docs[order[c.order]].count+1-c.offset;
+        if left<rest {c.offset+=left;left=0;}
+        else {
+            left-=rest;c.offset=0;c.order+=1;
+            if c.order==trains {c.order=0;c.epoch+=1;if c.epoch==PK_EPOCHS {return FdNext.{status=FdStatus.cursor,cursor=cursor};}pk_order(docs,c.seed,c.epoch,order[..]);}
+        }
+    }
+    return FdNext.{cursor=c};
+}
+// Row r of a batch starts at cursors[r]; cursors[rows] is where the next
+// batch starts. Nothing is written unless the whole batch is in the stream.
+fd_cursors :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,start:PkCursor,cursors:[]PkCursor)->FdNext #export_c {
+    if p.status!=FdStatus.ok {return FdNext.{status=p.status,cursor=start};}
+    if cursors.count!=p.rows+1 {return FdNext.{status=FdStatus.buffer,cursor=start};}
+    if pk_dataset(docs,tokens)!=PkStatus.ok {return FdNext.{status=FdStatus.dataset,cursor=start};}
+    if !pk_cursor(docs,start) {return FdNext.{status=FdStatus.cursor,cursor=start};}
+    stage:[65]PkCursor;stage[0]=start;
+    for r:0..<p.rows {s:=fd_seek(docs,stage[r],p.length);if s.status!=FdStatus.ok {return FdNext.{status=s.status,cursor=start};}stage[r+1]=s.cursor;}
+    for r:0..<p.rows+1 {cursors[r]=stage[r];}
+    return FdNext.{cursor=stage[p.rows]};
+}
+// book:end seek
+
+// book:begin worker
+// Worker w fills each row it owns with pk_next from that row's cursor,
+// checks that the row ends where the next one starts, and marks it w + 1.
+// It touches no other row.
+fd_worker :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,w:int,cursors:[]PkCursor,batch:[]u8,done:[]u8)->FdStatus #export_c {
+    if p.status!=FdStatus.ok {return p.status;}
+    if w<0 || w>=p.workers {return FdStatus.worker;}
+    if cursors.count!=p.rows+1 || batch.count!=p.rows*p.length || done.count!=p.rows {return FdStatus.buffer;}
+    for r:pc_first(p.cores,w)..<pc_first(p.cores,w+1) {
+        n:=pk_next(docs,tokens,cursors[r],batch[r*p.length..<(r+1)*p.length],false);
+        if n.status==PkStatus.cursor {return FdStatus.cursor;}
+        if n.status!=PkStatus.ok {return FdStatus.dataset;}
+        if !fd_same(n.cursor,cursors[r+1]) {return FdStatus.cursor;}
+        done[r]=cast(u8)(w+1);
+    }
+    return FdStatus.ok;
+}
+// A batch is published only when every row is marked by its owner.
+fd_publish :: (p:FdPlan,done:[]u8)->FdStatus #export_c {
+    if p.status!=FdStatus.ok {return p.status;}
+    s:=pc_publish(p.cores,done);
+    if s==PcStatus.size {return FdStatus.buffer;}
+    if s!=PcStatus.ok {return FdStatus.incomplete;}
+    return FdStatus.ok;
+}
+// book:end worker
+fd_same :: (a:PkCursor,b:PkCursor)->bool {return a.seed==b.seed && a.epoch==b.epoch && a.order==b.order && a.offset==b.offset;}
+
+// book:begin ring
+// The producer fills slot fd_free and commits it with the cursor after the
+// batch; the consumer reads slot fd_ready and releases it. The producer may
+// be at most depth batches ahead, so a fast loader waits instead of growing.
+// resume is the cursor after the last batch the consumer took.
+fd_ring :: (p:FdPlan,start:PkCursor)->FdTurn #export_c {
+    if p.status!=FdStatus.ok {return FdTurn.{status=p.status,slot=-1};}
+    return FdTurn.{slot=-1,ring=FdRing.{depth=p.depth,resume=start}};
+}
+fd_free :: (r:FdRing)->int #export_c {
+    if r.depth<1 || r.depth>FD_DEPTH || r.produced-r.consumed>=r.depth {return -1;}
+    return r.produced%r.depth;
+}
+fd_ready :: (r:FdRing)->int #export_c {
+    if r.depth<1 || r.depth>FD_DEPTH || r.consumed==r.produced {return -1;}
+    return r.consumed%r.depth;
+}
+fd_produce :: (r:FdRing,after:PkCursor)->FdTurn #export_c {
+    if r.depth<1 || r.depth>FD_DEPTH {return FdTurn.{status=FdStatus.depth,slot=-1,ring=r};}
+    slot:=fd_free(r);if slot<0 {return FdTurn.{status=FdStatus.full,slot=-1,ring=r};}
+    q:=r;q.after[slot]=after;q.produced+=1;return FdTurn.{slot=slot,ring=q};
+}
+fd_consume :: (r:FdRing)->FdTurn #export_c {
+    if r.depth<1 || r.depth>FD_DEPTH {return FdTurn.{status=FdStatus.depth,slot=-1,ring=r};}
+    slot:=fd_ready(r);if slot<0 {return FdTurn.{status=FdStatus.empty,slot=-1,ring=r};}
+    q:=r;q.resume=r.after[slot];q.consumed+=1;return FdTurn.{slot=slot,ring=q};
+}
+// book:end ring
+
+// book:begin drive
+// One thread playing producer, workers and consumer. Turn k fills a batch
+// (its workers called last to first) when bit k % 64 of pattern is set and
+// a slot is free, and takes one otherwise; with nothing ready it must fill.
+// It stops once steps batches are taken; the producer may have filled up to
+// depth more. The batches taken, in order, go to out. The threaded harness
+// must give the same bytes.
+fd_drive :: (docs:[]PkDoc,tokens:[]u8,p:FdPlan,start:PkCursor,steps:int,pattern:u64,out:[]u8)->FdTurn {
+    t:=fd_ring(p,start);if t.status!=FdStatus.ok {return t;}
+    if out.count!=steps*p.rows*p.length {return FdTurn.{status=FdStatus.buffer,slot=-1,ring=t.ring};}
+    r:=t.ring;slots:[131072]u8;next:=start;ended:=false;turn:u64=0;size:=p.rows*p.length;
+    while r.consumed<steps {
+        fill:=((pattern>>(turn&63))&1)==1;turn+=1;
+        if ended || fd_free(r)<0 {fill=false;}
+        if r.consumed==r.produced {fill=true;}
+        if fill {
+            slot:=fd_free(r);cur:[65]PkCursor;done:[64]u8;
+            n:=fd_cursors(docs,tokens,p,next,cur[0..<p.rows+1]);
+            if n.status!=FdStatus.ok {
+                // Past the batches asked for, the end of the stream only stops prefetching.
+                if r.produced<steps {return FdTurn.{status=n.status,slot=-1,ring=r};}
+                ended=true;continue;
+            }
+            for k:0..<p.workers {
+                #assert fd_worker(docs,tokens,p,p.workers-1-k,cur[0..<p.rows+1],slots[slot*size..<(slot+1)*size],done[0..<p.rows])==FdStatus.ok;
+            }
+            #assert fd_publish(p,done[0..<p.rows])==FdStatus.ok;
+            next=n.cursor;r=fd_produce(r,next).ring;
+        } else {
+            slot:=fd_ready(r);at:=r.consumed*size;
+            for i:0..<size {out[at+i]=slots[slot*size+i];}
+            r=fd_consume(r).ring;
+        }
+    }
+    return FdTurn.{slot=-1,ring=r};
+}
+// book:end drive
+
+// book:begin overlap
+// Device idle time for steps whose compute and load times are given, with a
+// ring of depth slots. Batch i loads once batch i - 1 is loaded and its slot
+// is free (batch i - depth's compute has ended); compute i starts once
+// compute i - 1 has ended and batch i is loaded. Depth 1 runs them in turn.
+fd_overlap :: (compute:[]int,load:[]int,depth:int)->FdTime #export_c {
+    if compute.count<1 || compute.count!=load.count {return FdTime.{status=FdStatus.shape};}
+    if depth<1 || depth>FD_DEPTH {return FdTime.{status=FdStatus.depth};}
+    for i:0..<compute.count {if compute[i]<0 || load[i]<0 {return FdTime.{status=FdStatus.shape};}}
+    ends:[8]int;loaded:=0;end:=0;idle:=0;
+    for i:0..<compute.count {
+        begin:=loaded;if i>=depth {begin=fd_max(begin,ends[(i-depth)%8]);}
+        loaded=begin+load[i];
+        start:=fd_max(end,loaded);idle+=start-end;
+        end=start+compute[i];ends[i%8]=end;
+    }
+    return FdTime.{total=end,idle=idle};
+}
+// The steady per-step time: compute plus load with one slot, the larger of
+// the two with two or more.
+fd_steady :: (compute:int,load:int,depth:int)->int #export_c {
+    if depth==1 {return compute+load;}
+    return fd_max(compute,load);
+}
+fd_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+// Idle time as thousandths of the run.
+fd_lost :: (t:FdTime)->int #export_c {if t.total<=0 {return 0;}return t.idle*1000/t.total;}
+// book:end overlap
+
+// Chapter 120's grouped split as packed documents: four training documents.
+fd_split :: (docs:[]PkDoc,tokens:[]u8) {
+    rows:[14]SpRow;cells:[28]SpCell;sp_fixture(rows[..],tokens,cells[..]);splits:[14]PkSplit;
+    #assert sp_assign(rows[..],tokens,SP_PLAN,splits[..])==SpStatus.ok && sp_docs(rows[..],tokens,splits[..],docs)==SpStatus.ok;
+}
+// The measured host's dataset: 64 documents of 31 to 95 tokens; every fourth
+// is held out. Returns the token count.
+fd_synthetic :: (docs:[]PkDoc,tokens:[]u8)->int #export_c {
+    at:=0;
+    for i:0..<64 {
+        n:=31+(i*29)%65;split:=PkSplit.train;if i%4==3 {split=PkSplit.validation;}
+        docs[i]=PkDoc.{id=i,split=split,first=at,count=n};
+        for j:0..<n {tokens[at+j]=cast(u8)((i*7+j*j)%15);}at+=n;
+    }
+    return at;
+}
+fd_status_name :: (s:FdStatus)->string {
+    names:=[14]string.["ok","rows: outside 1..64","length: outside 2..256","workers: outside 1..64","depth: outside 1..8",
+        "budget: depth * rows * length is over the budget","buffer: a buffer's length disagrees with the plan","dataset: refused by chapter 122's admission",
+        "cursor: outside the dataset, or the stream ends inside the batch","worker: index outside the plan's workers","incomplete: a row was not marked by its owner",
+        "full: the ring holds depth batches","empty: no batch is ready","shape: times disagree in count, are negative, or are empty"];
+    return names[cast(int)s];
+}
