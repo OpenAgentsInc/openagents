@@ -1,0 +1,559 @@
+// Whisper end to end on the CPU: the weights decoded from the mapped ggml
+// file, the encoder, the decoder with its key and value caches, greedy
+// search with whisper.cpp's logit rules, and segments. The host
+// (psionic/platform/whisper-face.c) maps the files and allocates the two
+// arenas this file lays out: W, every weight as f32, and work, every
+// activation. Nothing here allocates or does I/O.
+// Profile psionic-whisper-cpu-v1: f32 storage; dot products in f32 with four
+// partial sums; LayerNorm statistics, softmax sums and GELU in binary64;
+// GELU in ggml's tanh form (whisper.cpp's, not PyTorch's erf form).
+// Design: psionic/docs/transcribe.md.
+#load "ggml.coax";
+#load "tokens.coax";
+#load "front.coax";
+#load "segments.coax";
+
+WE_LAYERS_MAX :: 32;
+WE_TOKENS_MAX :: 224;     // tokens decoded per window: n_text_ctx / 2
+WE_EPS :: 0.00001;
+WeStatus :: enum u8 {ok;model;missing;shape;kind;number;capacity;audio;}
+
+// A block's tensors as offsets into W (-1: none). Encoder blocks leave the
+// cross-attention fields at -1.
+WeBlock :: struct {
+  ln1_w: int; ln1_b: int; q_w: int; q_b: int; k_w: int; v_w: int; v_b: int; o_w: int; o_b: int;
+  lnx_w: int; lnx_b: int; xq_w: int; xq_b: int; xk_w: int; xv_w: int; xv_b: int; xo_w: int; xo_b: int;
+  ln2_w: int; ln2_b: int; fc1_w: int; fc1_b: int; fc2_w: int; fc2_b: int;
+}
+// Offsets into work for one run.
+WeWork :: struct {
+  mel: int; c1: int; x: int; h: int; q: int; k: int; v: int; a: int; m: int; s: int;
+  ck: int; cv: int; sk: int; sv: int; dx: int; dh: int; dq: int; da: int; dm: int; logits: int; total: int;
+}
+WeNet :: struct {
+  status: WeStatus; params: WgParams; sp: WtSpecials; space: int; ctx: int;
+  e_pos: int; c1_w: int; c1_b: int; c2_w: int; c2_b: int; e_ln_w: int; e_ln_b: int;
+  d_pos: int; d_emb: int; d_ln_w: int; d_ln_b: int;
+  enc: [WE_LAYERS_MAX] WeBlock; dec: [WE_LAYERS_MAX] WeBlock;
+  weights: int; work: WeWork;
+}
+WeRun :: struct { status: WeStatus; segments: int; text: int; windows: int; tokens: int; }
+
+// ---- weights ----------------------------------------------------------------
+
+// An IEEE half as f32, exactly; ok false for infinities and NaN.
+WeHalf :: struct { ok: bool; value: f32; }
+we_half :: (h: int) -> WeHalf {
+  sign := (h >> 15) & 1; e := (h >> 10) & 31; mant := h & 1023;
+  if e == 31 { return WeHalf.{ok = false}; }
+  v: f32 = 0;
+  if e == 0 { v = cast(f32) mant * f32_from_bits(0x33800000); }   // mant * 2^-24
+  else { v = f32_from_bits(cast(u32) (((e - 15 + 127) << 23) | (mant << 13))); }
+  if sign == 1 { v = -v; }
+  return WeHalf.{ok = true, value = v};
+}
+// Each tensor's offset in W, in file order; the total element count.
+we_layout :: (tensors: [] WgTensor, count: int, offsets: [] int) -> int {
+  at := 0;
+  for i: 0..<count { offsets[i] = at; at += tensors[i].elements; }
+  return at;
+}
+// Every tensor decoded into W: f32 copied, f16 decoded. Quantized types are
+// refused for now (kind); an infinite or NaN weight is refused (number).
+we_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus {
+  for i: 0..<count {
+    t := tensors[i]; at := offsets[i];
+    if at + t.elements > w.count { return WeStatus.capacity; }
+    if t.kind == WG_F32 {
+      for j: 0..<t.elements { v := wg_f32_at(b, t.begin + 4 * j); if !(v >= -3.0e38 && v <= 3.0e38) { return WeStatus.number; } w[at + j] = v; }
+    } else if t.kind == WG_F16 {
+      for j: 0..<t.elements {
+        p := t.begin + 2 * j;
+        h := we_half(cast(int) b[p] | (cast(int) b[p + 1] << 8));
+        if !h.ok { return WeStatus.number; }
+        w[at + j] = h.value;
+      }
+    } else { return WeStatus.kind; }
+  }
+  return WeStatus.ok;
+}
+
+// The offset of the tensor called PREFIX.N.SUFFIX (N < 0: PREFIX.SUFFIX)
+// with the given element count; -1 when missing, -2 when its size differs.
+we_named :: (tensors: [] WgTensor, count: int, offsets: [] int, prefix: string, n: int, suffix: string, elements: int) -> int {
+  buf: [160] u8; w: [1] WsOut; w[0].buf = buf[..];
+  wsg_put(w[..], prefix); wsg_byte(w[..], '.');
+  if n >= 0 { wsg_digits(w[..], n, 1); wsg_byte(w[..], '.'); }
+  wsg_put(w[..], suffix);
+  k := wg_find(tensors, count, cast(string) buf[0..<w[0].n]);
+  if k < 0 { return -1; }
+  if tensors[k].elements != elements { return -2; }
+  return offsets[k];
+}
+WeFind :: struct { tensors: [] WgTensor; count: int; offsets: [] int; bad: bool; }
+we_get :: (f: [] WeFind, prefix: string, n: int, suffix: string, elements: int) -> int {
+  at := we_named(f[0].tensors, f[0].count, f[0].offsets, prefix, n, suffix, elements);
+  if at < 0 { f[0].bad = true; }
+  return at;
+}
+we_block :: (f: [] WeFind, prefix: string, i: int, d: int, cross: bool) -> WeBlock {
+  b: WeBlock;
+  b.ln1_w = we_get(f, prefix, i, "attn_ln.weight", d); b.ln1_b = we_get(f, prefix, i, "attn_ln.bias", d);
+  b.q_w = we_get(f, prefix, i, "attn.query.weight", d * d); b.q_b = we_get(f, prefix, i, "attn.query.bias", d);
+  b.k_w = we_get(f, prefix, i, "attn.key.weight", d * d);
+  b.v_w = we_get(f, prefix, i, "attn.value.weight", d * d); b.v_b = we_get(f, prefix, i, "attn.value.bias", d);
+  b.o_w = we_get(f, prefix, i, "attn.out.weight", d * d); b.o_b = we_get(f, prefix, i, "attn.out.bias", d);
+  b.lnx_w = -1; b.lnx_b = -1; b.xq_w = -1; b.xq_b = -1; b.xk_w = -1; b.xv_w = -1; b.xv_b = -1; b.xo_w = -1; b.xo_b = -1;
+  if cross {
+    b.lnx_w = we_get(f, prefix, i, "cross_attn_ln.weight", d); b.lnx_b = we_get(f, prefix, i, "cross_attn_ln.bias", d);
+    b.xq_w = we_get(f, prefix, i, "cross_attn.query.weight", d * d); b.xq_b = we_get(f, prefix, i, "cross_attn.query.bias", d);
+    b.xk_w = we_get(f, prefix, i, "cross_attn.key.weight", d * d);
+    b.xv_w = we_get(f, prefix, i, "cross_attn.value.weight", d * d); b.xv_b = we_get(f, prefix, i, "cross_attn.value.bias", d);
+    b.xo_w = we_get(f, prefix, i, "cross_attn.out.weight", d * d); b.xo_b = we_get(f, prefix, i, "cross_attn.out.bias", d);
+  }
+  b.ln2_w = we_get(f, prefix, i, "mlp_ln.weight", d); b.ln2_b = we_get(f, prefix, i, "mlp_ln.bias", d);
+  b.fc1_w = we_get(f, prefix, i, "mlp.0.weight", 4 * d * d); b.fc1_b = we_get(f, prefix, i, "mlp.0.bias", 4 * d);
+  b.fc2_w = we_get(f, prefix, i, "mlp.2.weight", 4 * d * d); b.fc2_b = we_get(f, prefix, i, "mlp.2.bias", d);
+  return b;
+}
+// Resolves every tensor and lays out work for an audio context of ctx
+// positions (1 to n_audio_ctx; 1,500 is a full 30 s window).
+we_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] int, ctx: int) -> WeNet {
+  net: WeNet; net.status = WeStatus.model;
+  if m.status != WgStatus.ok { return net; }
+  p := m.params; net.params = p; net.sp = wt_specials(p.n_vocab);
+  if p.n_audio_layer > WE_LAYERS_MAX || p.n_text_layer > WE_LAYERS_MAX || p.n_audio_state != p.n_text_state { net.status = WeStatus.shape; return net; }
+  if ctx < 1 || ctx > p.n_audio_ctx { net.status = WeStatus.shape; return net; }
+  net.ctx = ctx;
+  net.weights = we_layout(tensors, m.tensor_count, offsets);
+  d := p.n_audio_state;
+  f: [1] WeFind; f[0].tensors = tensors; f[0].count = m.tensor_count; f[0].offsets = offsets;
+  net.e_pos = we_whole(f[..], "encoder.positional_embedding", p.n_audio_ctx * d);
+  net.c1_w = we_whole(f[..], "encoder.conv1.weight", 3 * p.n_mels * d); net.c1_b = we_whole(f[..], "encoder.conv1.bias", d);
+  net.c2_w = we_whole(f[..], "encoder.conv2.weight", 3 * d * d); net.c2_b = we_whole(f[..], "encoder.conv2.bias", d);
+  net.e_ln_w = we_whole(f[..], "encoder.ln_post.weight", d); net.e_ln_b = we_whole(f[..], "encoder.ln_post.bias", d);
+  net.d_pos = we_whole(f[..], "decoder.positional_embedding", p.n_text_ctx * d);
+  net.d_emb = we_whole(f[..], "decoder.token_embedding.weight", p.n_vocab * d);
+  net.d_ln_w = we_whole(f[..], "decoder.ln.weight", d); net.d_ln_b = we_whole(f[..], "decoder.ln.bias", d);
+  for i: 0..<p.n_audio_layer { net.enc[i] = we_block(f[..], "encoder.blocks", i, d, false); }
+  for i: 0..<p.n_text_layer { net.dec[i] = we_block(f[..], "decoder.blocks", i, d, true); }
+  if f[0].bad { net.status = WeStatus.missing; return net; }
+  // " " is the blank token suppressed at a window's start.
+  net.space = -1;
+  for i: 0..<m.tokens { if wg_token(b, m, i) == " " { net.space = i; break; } }
+  // work
+  k: WeWork; at := 0; L := p.n_text_layer; T := ctx;
+  k.mel = at; at += p.n_mels * WF_WINDOW_FRAMES;
+  k.c1 = at; at += d * 2 * T;
+  k.x = at; at += T * d; k.h = at; at += T * d; k.q = at; at += T * d; k.k = at; at += T * d; k.v = at; at += T * d; k.a = at; at += T * d;
+  k.m = at; at += T * 4 * d;
+  k.s = at; at += ifx T > p.n_text_ctx then T else p.n_text_ctx;
+  k.ck = at; at += L * T * d; k.cv = at; at += L * T * d;
+  k.sk = at; at += L * p.n_text_ctx * d; k.sv = at; at += L * p.n_text_ctx * d;
+  k.dx = at; at += d; k.dh = at; at += d; k.dq = at; at += d; k.da = at; at += d; k.dm = at; at += 4 * d;
+  k.logits = at; at += p.n_vocab;
+  k.total = at;
+  net.work = k;
+  net.status = WeStatus.ok;
+  return net;
+}
+we_whole :: (f: [] WeFind, name: string, elements: int) -> int {
+  k := wg_find(f[0].tensors, f[0].count, name);
+  if k < 0 || f[0].tensors[k].elements != elements { f[0].bad = true; return -1; }
+  return f[0].offsets[k];
+}
+
+// ---- kernels ------------------------------------------------------------------
+
+// y[r][o] = b[o] + sum_i x[r][i] w[o][i] for rows r; b may be empty.
+we_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) {
+  for r: 0..<rows {
+    xr := x[r * n_in..<(r + 1) * n_in];
+    for o: 0..<n_out {
+      wr := w[o * n_in..<(o + 1) * n_in];
+      s0: f32 = 0; s1: f32 = 0; s2: f32 = 0; s3: f32 = 0; i := 0;
+      while i + 4 <= n_in { s0 += xr[i] * wr[i]; s1 += xr[i + 1] * wr[i + 1]; s2 += xr[i + 2] * wr[i + 2]; s3 += xr[i + 3] * wr[i + 3]; i += 4; }
+      while i < n_in { s0 += xr[i] * wr[i]; i += 1; }
+      s := (s0 + s1) + (s2 + s3);
+      if b.count > 0 { s += b[o]; }
+      y[r * n_out + o] = s;
+    }
+  }
+}
+// LayerNorm of each row: (x - mean) / sqrt(var + 1e-5) * g + b, population variance.
+we_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) {
+  for r: 0..<rows {
+    xr := x[r * d..<(r + 1) * d];
+    s := 0.0; for v: xr { s += cast(f64) v; }
+    mean := s / cast(f64) d;
+    q := 0.0; for v: xr { e := cast(f64) v - mean; q += e * e; }
+    inv := 1 / sqrt(q / cast(f64) d + WE_EPS);
+    for i: 0..<d { y[r * d + i] = cast(f32) ((cast(f64) xr[i] - mean) * inv) * g[i] + b[i]; }
+  }
+}
+// ggml's GELU: 0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3))).
+we_gelu :: (x: f32) -> f32 {
+  v := cast(f64) x;
+  u := 0.7978845608028654 * (v + 0.044715 * v * v * v);
+  t := 1 - 2 / (exp(2 * u) + 1);
+  if u > 20 { t = 1; } else if u < -20 { t = -1; }
+  return cast(f32) (0.5 * v * (1 + t));
+}
+we_gelu_all :: (x: [] f32) { for i: 0..<x.count { x[i] = we_gelu(x[i]); } }
+// Attention of nq query rows over nk key rows for every head: out[t] =
+// softmax(q[t] k^T / sqrt(dh)) v. Causal: query t sees keys 0..first+t.
+we_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, s: [] f32, out: [] f32) {
+  dh := d / heads; scale := 1 / sqrt(cast(f64) dh);
+  for h: 0..<heads {
+    for t: 0..<nq {
+      qr := q[t * d + h * dh..<t * d + (h + 1) * dh];
+      n := ifx causal then first + t + 1 else nk;
+      best := -1.0e300;
+      for j: 0..<n {
+        kr := k[j * d + h * dh..<j * d + (h + 1) * dh];
+        a: f32 = 0; for i: 0..<dh { a += qr[i] * kr[i]; }
+        e := cast(f64) a * scale; s[j] = cast(f32) e;
+        if e > best { best = e; }
+      }
+      sum := 0.0;
+      for j: 0..<n { e := exp(cast(f64) s[j] - best); s[j] = cast(f32) e; sum += e; }
+      o := out[t * d + h * dh..<t * d + (h + 1) * dh];
+      for i: 0..<dh { o[i] = 0; }
+      for j: 0..<n {
+        pj := cast(f32) (cast(f64) s[j] / sum);
+        vr := v[j * d + h * dh..<j * d + (h + 1) * dh];
+        for i: 0..<dh { o[i] += pj * vr[i]; }
+      }
+    }
+  }
+}
+
+// ---- encoder ------------------------------------------------------------------
+
+// The encoder over net.ctx positions of the mel window at work.mel
+// (mels x 3000, mel-major). Leaves the encoded frames at work.x (ctx x d)
+// and each decoder layer's cross-attention keys and values at work.ck, cv.
+we_encode :: (net: WeNet, W: [] f32, work: [] f32) {
+  p := net.params; d := p.n_audio_state; T := net.ctx; T2 := 2 * T; k := net.work; mels := p.n_mels;
+  mel := work[k.mel..<k.mel + mels * WF_WINDOW_FRAMES];
+  c1 := work[k.c1..<k.c1 + d * T2];
+  // conv1: width 3, stride 1, padding 1, over the first 2T frames; GELU.
+  w1 := W[net.c1_w..<net.c1_w + 3 * mels * d]; b1 := W[net.c1_b..<net.c1_b + d];
+  for o: 0..<d {
+    row := c1[o * T2..<(o + 1) * T2];
+    for t: 0..<T2 { row[t] = b1[o]; }
+    for i: 0..<mels {
+      src := mel[i * WF_WINDOW_FRAMES..<i * WF_WINDOW_FRAMES + T2];
+      w0 := w1[(o * mels + i) * 3]; wa := w1[(o * mels + i) * 3 + 1]; wb := w1[(o * mels + i) * 3 + 2];
+      for t: 0..<T2 {
+        s := wa * src[t];
+        if t > 0 { s += w0 * src[t - 1]; }
+        if t + 1 < T2 { s += wb * src[t + 1]; }
+        row[t] += s;
+      }
+    }
+    we_gelu_all(row);
+  }
+  // conv2: width 3, stride 2, padding 1; GELU; plus positions; time-major.
+  x := work[k.x..<k.x + T * d];
+  w2 := W[net.c2_w..<net.c2_w + 3 * d * d]; b2 := W[net.c2_b..<net.c2_b + d]; pos := W[net.e_pos..<net.e_pos + p.n_audio_ctx * d];
+  acc := work[k.h..<k.h + T];
+  for o: 0..<d {
+    for t: 0..<T { acc[t] = b2[o]; }
+    for i: 0..<d {
+      src := c1[i * T2..<(i + 1) * T2];
+      w0 := w2[(o * d + i) * 3]; wa := w2[(o * d + i) * 3 + 1]; wb := w2[(o * d + i) * 3 + 2];
+      for t: 0..<T {
+        c := 2 * t;
+        s := wa * src[c] + wb * src[c + 1];
+        if c > 0 { s += w0 * src[c - 1]; }
+        acc[t] += s;
+      }
+    }
+    for t: 0..<T { x[t * d + o] = we_gelu(acc[t]) + pos[t * d + o]; }
+  }
+  h := work[k.h..<k.h + T * d]; q := work[k.q..<k.q + T * d]; kk := work[k.k..<k.k + T * d]; v := work[k.v..<k.v + T * d];
+  a := work[k.a..<k.a + T * d]; mm := work[k.m..<k.m + T * 4 * d]; s := work[k.s..<k.s + T];
+  none: [1] f32;
+  for l: 0..<p.n_audio_layer {
+    bl := net.enc[l];
+    we_norm(x, T, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
+    we_linear(h, T, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
+    we_linear(h, T, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, kk);
+    we_linear(h, T, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, v);
+    we_attend(q, T, kk, v, T, d, p.n_audio_head, 0, false, s, a);
+    we_linear(a, T, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
+    for i: 0..<T * d { x[i] += h[i]; }
+    we_norm(x, T, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
+    we_linear(h, T, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
+    we_gelu_all(mm);
+    we_linear(mm, T, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
+    for i: 0..<T * d { x[i] += h[i]; }
+  }
+  we_norm(x, T, d, W[net.e_ln_w..<net.e_ln_w + d], W[net.e_ln_b..<net.e_ln_b + d], h);
+  for i: 0..<T * d { x[i] = h[i]; }
+  // cross-attention keys and values for every decoder layer
+  for l: 0..<p.n_text_layer {
+    bl := net.dec[l];
+    we_linear(x, T, d, W[bl.xk_w..<bl.xk_w + d * d], none[0..<0], d, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d]);
+    we_linear(x, T, d, W[bl.xv_w..<bl.xv_w + d * d], W[bl.xv_b..<bl.xv_b + d], d, work[k.cv + l * T * d..<k.cv + (l + 1) * T * d]);
+  }
+}
+
+// ---- decoder ------------------------------------------------------------------
+
+// One token at position pos; the logits at work.logits. Self-attention keys
+// and values for positions before pos must already be in the cache.
+we_step :: (net: WeNet, W: [] f32, work: [] f32, token: int, pos: int) {
+  p := net.params; d := p.n_text_state; k := net.work; T := net.ctx; C := p.n_text_ctx;
+  x := work[k.dx..<k.dx + d]; h := work[k.dh..<k.dh + d]; q := work[k.dq..<k.dq + d]; a := work[k.da..<k.da + d];
+  mm := work[k.dm..<k.dm + 4 * d]; s := work[k.s..<k.s + (ifx T > C then T else C)];
+  emb := W[net.d_emb..<net.d_emb + p.n_vocab * d]; dpos := W[net.d_pos..<net.d_pos + C * d];
+  for i: 0..<d { x[i] = emb[token * d + i] + dpos[pos * d + i]; }
+  none: [1] f32;
+  for l: 0..<p.n_text_layer {
+    bl := net.dec[l];
+    sk := work[k.sk + l * C * d..<k.sk + (l + 1) * C * d]; sv := work[k.sv + l * C * d..<k.sv + (l + 1) * C * d];
+    we_norm(x, 1, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
+    we_linear(h, 1, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
+    we_linear(h, 1, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, sk[pos * d..<(pos + 1) * d]);
+    we_linear(h, 1, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, sv[pos * d..<(pos + 1) * d]);
+    we_attend(q, 1, sk, sv, pos + 1, d, p.n_text_head, pos, true, s, a);
+    we_linear(a, 1, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
+    for i: 0..<d { x[i] += h[i]; }
+    we_norm(x, 1, d, W[bl.lnx_w..<bl.lnx_w + d], W[bl.lnx_b..<bl.lnx_b + d], h);
+    we_linear(h, 1, d, W[bl.xq_w..<bl.xq_w + d * d], W[bl.xq_b..<bl.xq_b + d], d, q);
+    we_attend(q, 1, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d], work[k.cv + l * T * d..<k.cv + (l + 1) * T * d], T, d, p.n_text_head, 0, false, s, a);
+    we_linear(a, 1, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, h);
+    for i: 0..<d { x[i] += h[i]; }
+    we_norm(x, 1, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
+    we_linear(h, 1, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
+    we_gelu_all(mm);
+    we_linear(mm, 1, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
+    for i: 0..<d { x[i] += h[i]; }
+  }
+  we_norm(x, 1, d, W[net.d_ln_w..<net.d_ln_w + d], W[net.d_ln_b..<net.d_ln_b + d], h);
+  we_linear(h, 1, d, emb, none[0..<0], p.n_vocab, work[k.logits..<k.logits + p.n_vocab]);
+}
+
+// ---- search -------------------------------------------------------------------
+
+WE_NEG :: -1.0e30;
+// whisper.cpp's whisper_process_logits for greedy decoding with timestamps,
+// then the argmax. toks are this window's sampled tokens so far; last_ts the
+// last sampled timestamp's index (-1: none).
+we_pick :: (net: WeNet, logits: [] f32, toks: [] int, n: int, last_ts: int) -> int {
+  sp := net.sp; V := net.params.n_vocab;
+  logits[sp.no_timestamps] = WE_NEG; logits[sp.sot] = WE_NEG; logits[sp.nosp] = WE_NEG; logits[sp.solm] = WE_NEG;
+  logits[sp.translate] = WE_NEG; logits[sp.transcribe] = WE_NEG; logits[sp.prev] = WE_NEG;
+  if sp.multilingual { for i: 0..<sp.languages { logits[sp.sot + 1 + i] = WE_NEG; } }
+  if n == 0 { logits[sp.eot] = WE_NEG; if net.space >= 0 { logits[net.space] = WE_NEG; } }
+  // timestamps come in pairs, except directly before EOT
+  last := n > 0 && toks[n - 1] >= sp.beg;
+  penult := n < 2 || toks[n - 2] >= sp.beg;
+  if last {
+    if penult { for i: sp.beg..<V { logits[i] = WE_NEG; } }
+    else { for i: 0..<sp.eot { logits[i] = WE_NEG; } }
+  }
+  // the first timestamp is at most 1.0 s
+  if n == 0 { for i: sp.beg + 50 + 1..<V { logits[i] = WE_NEG; } }
+  // timestamps never go back
+  if last_ts >= 0 { for i: sp.beg..<sp.beg + last_ts { logits[i] = WE_NEG; } }
+  // log-softmax; when the timestamps together are likelier than any text token, only a timestamp may follow
+  best := -1.0e300; for v: logits { if cast(f64) v > best { best = cast(f64) v; } }
+  z := 0.0; for v: logits { z += exp(cast(f64) v - best); }
+  lz := best + log(z);
+  ts := 0.0; for i: sp.beg..<V { ts += exp(cast(f64) logits[i] - best); }
+  ts_lp := ifx ts > 0 then best + log(ts) - lz else -1.0e300;
+  text_lp := -1.0e300; for i: 0..<sp.beg { e := cast(f64) logits[i] - lz; if e > text_lp { text_lp = e; } }
+  if ts_lp > text_lp { for i: 0..<sp.beg { logits[i] = WE_NEG; } }
+  arg := 0; for i: 1..<V { if logits[i] > logits[arg] { arg = i; } }
+  return arg;
+}
+
+// ---- a whole file ---------------------------------------------------------------
+
+// 16 kHz mono f32 audio to segments, window by window as whisper.cpp seeks:
+// a window starts at seek (in 10 ms frames), the decoded timestamps say how
+// far it got, and the next window starts there. Segment texts are written
+// into text and segs point into it. bank is sf_mel_bank(wf_spec(mels)).
+we_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, bank: [] f64, audio: [] f32,
+                  language: int, segs: [] WsSegment, text: [] u8) -> WeRun {
+  run: WeRun; run.status = WeStatus.audio;
+  if net.status != WeStatus.ok || work.count < net.work.total || W.count < net.weights { run.status = WeStatus.capacity; return run; }
+  f := wf_front(audio, bank, net.params.n_mels);
+  if f.status != WfStatus.ok { return run; }
+  top := wf_max(audio, f, bank);
+  seek := 0; seek_end := audio.count / WF_HOP; tn := 0; ns := 0;
+  sp := net.sp; k := net.work;
+  prompt: [4] int; pn := wt_prompt(sp, language, true, prompt[..]);
+  toks: [WE_TOKENS_MAX] int;
+  while seek + 100 < seek_end {
+    st := wf_window(audio, f, bank, top, seek, work[k.mel..<k.mel + net.params.n_mels * WF_WINDOW_FRAMES]);
+    if st != WfStatus.ok { return run; }
+    we_encode(net, W, work);
+    run.windows += 1;
+    pos := 0;
+    for i: 0..<pn { we_step(net, W, work, prompt[i], pos); pos += 1; }
+    // whisper.cpp's greedy loop: seek_delta (frames) follows the last
+    // timestamp; result_len ends at it, so text after the last timestamp is
+    // decoded again by the next window.
+    n := 0; last_ts := -1; seek_delta := WF_WINDOW_FRAMES; result_len := 0; has_ts := false;
+    while true {
+      if n >= WE_TOKENS_MAX || pos >= net.params.n_text_ctx { if result_len == 0 { result_len = n; } break; }
+      t := we_pick(net, work[k.logits..<k.logits + net.params.n_vocab], toks[..], n, last_ts);
+      if t > sp.beg {
+        seek_delta = 2 * (t - sp.beg); result_len = n + 1; has_ts = true;
+      }
+      if t >= sp.beg { last_ts = t - sp.beg; }
+      if t == sp.eot || (has_ts && seek + seek_delta + 10 >= seek_end) {
+        if t != sp.eot { toks[n] = t; n += 1; }
+        if result_len == 0 { result_len = n; }
+        break;
+      }
+      toks[n] = t; n += 1;
+      we_step(net, W, work, t, pos); pos += 1;
+    }
+    run.tokens += result_len;
+    // segments as whisper.cpp cuts them: a timestamp after text ends a
+    // segment there, and the next segment starts at that time
+    t0 := seek; if result_len > 0 && toks[0] >= sp.beg { t0 = seek + 2 * (toks[0] - sp.beg); }
+    text_at := tn; i := 0;
+    while i < result_len {
+      t := toks[i];
+      if t < sp.eot {
+        piece := wg_token(b, m, t);
+        if tn + piece.count > text.count { run.status = WeStatus.capacity; return run; }
+        for c: piece { text[tn] = c; tn += 1; }
+      }
+      if t > sp.beg {
+        t1 := seek + 2 * (t - sp.beg);
+        if tn > text_at {
+          if ns < segs.count { segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * t1, text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1; }
+          text_at = tn;
+          while i < result_len && toks[i] > sp.beg { i += 1; }
+          i -= 1;
+          t0 = t1;
+        }
+      }
+      i += 1;
+    }
+    if tn > text_at && ns < segs.count {
+      segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * (seek + seek_delta), text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1;
+    }
+    seek += seek_delta;
+  }
+  run.status = WeStatus.ok; run.segments = ns; run.text = tn;
+  return run;
+}
+
+// ---- the host's entry points ----------------------------------------------------
+
+psionic_whisper_read :: (b: [] u8, tensors: [] WgTensor) -> WgModel #export_c { return wg_read(b, tensors); }
+psionic_whisper_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] int, ctx: int) -> WeNet #export_c {
+  return we_net(b, m, tensors, offsets, ctx);
+}
+psionic_whisper_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus #export_c {
+  return we_load(b, tensors, count, offsets, w);
+}
+psionic_whisper_bank :: (mels: int, bank: [] f64) -> int #export_c { return cast(int) sf_mel_bank(wf_spec(mels), bank).status; }
+// The largest difference between our mel filters and the file's.
+psionic_whisper_filter_diff :: (b: [] u8, m: WgModel, bank: [] f64) -> f64 #export_c {
+  worst := 0.0;
+  for i: 0..<m.filter_mels { for j: 0..<m.filter_bins {
+    e := abs(bank[i * m.filter_bins + j] - cast(f64) wg_filter(b, m, i, j));
+    if e > worst { worst = e; }
+  } }
+  return worst;
+}
+psionic_whisper_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, bank: [] f64, audio: [] f32,
+                               language: int, segs: [] WsSegment, text: [] u8) -> WeRun #export_c {
+  return we_transcribe(net, W, work, b, m, bank, audio, language, segs, text);
+}
+// segs written as text (0), SRT (1), WebVTT (2) or JSON (3); the byte count, or -1 when out is too small.
+psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, language: string, out: [] u8) -> int #export_c {
+  w: [1] WsOut; w[0].buf = out;
+  if format == 1 { wsg_srt(segs, w[..]); }
+  else if format == 2 { wsg_vtt(segs, w[..]); }
+  else if format == 3 { wsg_json(segs, model, "psionic", language, w[..]); }
+  else { wsg_text(segs, w[..]); }
+  return ifx w[0].full then -1 else w[0].n;
+}
+// 16-bit little-endian PCM samples at b[at..] as f32 in [-1, 1).
+psionic_whisper_pcm16 :: (b: [] u8, at: int, n: int, out: [] f32) -> int #export_c {
+  if at < 0 || at + 2 * n > b.count || out.count < n { return -1; }
+  for i: 0..<n {
+    v := cast(int) b[at + 2 * i] | (cast(int) b[at + 2 * i + 1] << 8);
+    if v >= 32768 { v -= 65536; }
+    out[i] = cast(f32) v / 32768;
+  }
+  return n;
+}
+// A 16 kHz mono 16-bit PCM WAV's data chunk: its offset, and its sample
+// count in .tokens (reused), or status format. Full WAV reading is #12615.
+WeWav :: struct { ok: bool; at: int; samples: int; }
+psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
+  r: WeWav;
+  if b.count < 12 || cast(string) b[0..<4] != "RIFF" || cast(string) b[8..<12] != "WAVE" { return r; }
+  at := 12; fmt_ok := false;
+  while at + 8 <= b.count {
+    id := cast(string) b[at..<at + 4]; size := wg_u32(b, at + 4); body := at + 8;
+    if body + size > b.count { return r; }
+    if id == "fmt " {
+      if size < 16 { return r; }
+      format := cast(int) b[body] | (cast(int) b[body + 1] << 8); channels := cast(int) b[body + 2] | (cast(int) b[body + 3] << 8);
+      rate := wg_u32(b, body + 4); bits := cast(int) b[body + 14] | (cast(int) b[body + 15] << 8);
+      fmt_ok = (format == 1 || format == 0xFFFE) && channels == 1 && rate == 16000 && bits == 16;
+    }
+    if id == "data" {
+      if !fmt_ok { return r; }
+      r.ok = true; r.at = body; r.samples = size / 2; return r;
+    }
+    at = body + size + (size & 1);
+  }
+  return r;
+}
+
+#test "halves decode exactly" #steps 200000000 {
+  #assert we_half(0x3c00).value == 1 && we_half(0xc000).value == -2 && we_half(0x0000).value == 0 && we_half(0x7bff).value == 65504;
+  #assert we_half(0x0001).value == f32_from_bits(0x33800000) && we_half(0x03ff).value == cast(f32) 1023 * f32_from_bits(0x33800000);
+  #assert we_half(0x3555).value == f32_from_bits(0x3eaaa000) && !we_half(0x7c00).ok && !we_half(0xfe00).ok;
+  // every finite pattern: the f32 value rounds back to the same half (checked through its bits)
+  for h: 0..<65536 {
+    e := (h >> 10) & 31;
+    r := we_half(h);
+    #assert r.ok == (e != 31);
+    if !r.ok { continue; }
+    bits := cast(int) f32_bits(r.value);
+    if e != 0 { #assert (bits & 0x1fff) == 0 && ((bits >> 13) & 1023) == (h & 1023); }
+    #assert ((bits >> 31) & 1) == ((h >> 15) & 1);
+  }
+}
+#test "kernels by hand" {
+  x := [4] f32.[1, 2, 3, 4]; w := [8] f32.[1, 0, 0, 0, 1, 1, 1, 1]; bias := [2] f32.[0.5, -1]; y: [2] f32;
+  we_linear(x[..], 1, 4, w[..], bias[..], 2, y[..]);
+  #assert y[0] == 1.5 && y[1] == 9;
+  g := [4] f32.[1, 1, 1, 1]; z := [4] f32.[0, 0, 0, 0]; n: [4] f32;
+  we_norm(x[..], 1, 4, g[..], z[..], n[..]);
+  #assert abs(n[0] + 1.3416355) < 0.00001 && abs(n[3] - 1.3416355) < 0.00001;
+  #assert we_gelu(0) == 0 && abs(we_gelu(1) - 0.841192) < 0.00001 && abs(we_gelu(-3) + 0.003637) < 0.00001;
+  // one head, two keys: equal scores average the values
+  q := [2] f32.[0, 0]; k := [4] f32.[1, 0, 0, 1]; v := [4] f32.[2, 4, 6, 8]; s: [2] f32; o: [2] f32;
+  we_attend(q[..], 1, k[..], v[..], 2, 2, 1, 0, false, s[..], o[..]);
+  #assert o[0] == 4 && o[1] == 6;
+  we_attend(q[..], 1, k[..], v[..], 2, 2, 1, 0, true, s[..], o[..]);
+  #assert o[0] == 2 && o[1] == 4;
+}
+#test "a WAV header" {
+  h: [48] u8; w: [1] WgBuild; w[0].b = h[..];
+  wg_put_bytes(w[..], "RIFF"); wg_put32(w[..], 40); wg_put_bytes(w[..], "WAVE");
+  wg_put_bytes(w[..], "fmt "); wg_put32(w[..], 16); wg_put32(w[..], 1 | (1 << 16)); wg_put32(w[..], 16000); wg_put32(w[..], 32000); wg_put32(w[..], 2 | (16 << 16));
+  wg_put_bytes(w[..], "data"); wg_put32(w[..], 4); h[44] = 0; h[45] = 0x80; h[46] = 0xff; h[47] = 0x7f;
+  r := psionic_whisper_wav(h[..]);
+  #assert r.ok && r.at == 44 && r.samples == 2;
+  out: [2] f32; #assert psionic_whisper_pcm16(h[..], 44, 2, out[..]) == 2 && out[0] == -1 && out[1] == cast(f32) 32767 / 32768;
+  h[24] = 0x44; #assert !psionic_whisper_wav(h[..]).ok;
+}
+// The language token for a code on this model, or -1 (English-only models
+// have none; "auto" is not detected yet and also gives -1).
+psionic_whisper_language :: (net: WeNet, code: string) -> int #export_c { return wt_language(net.sp, code); }
