@@ -2302,6 +2302,22 @@ E0381. Optional reports expose only a committed used prefix, with count zero on
 any rejected compilation, including later authority/backend rejection. Disabled
 reports add no semantic work. Private staged rows and unused tails have no
 published-value or C-padding contract.
+
+Retained whole writes stream aggregate descriptor leaves individually under
+that shared budget. Aggregate width has no separate 64-leaf/element cutoff;
+the per-leaf 64-term/128-pair, per-procedure 64-effect and eight-step path limits
+remain. A cold structural scan meters every field. A private per-execution
+shape cache may reuse a complete validated immediate-field layout; warm reuse
+meters its selected retaining-field validation and recursive visits. Shapes
+hold at most eight immediate retaining fields; wider layouts keep full streamed
+traversal. Type/declaration/head identity and captured maximum field/type IDs
+preserve committed-prefix bounds. The graph and unvisited scalar links/types
+remain frozen for that execution; this is not authentication of arbitrary
+within-run mutation. After a child query rejects, structural traversal and
+later retained-store stages stop. A1 query-internal diagnostic collection is
+unchanged. A late
+local witness or exhausted workspace cannot publish earlier staged reports.
+This replaces the initial B1 breadth profile; A1 returned-value limits remain.
 Check: [verification profile](coax/verification-retain-policy.md) and
 [actual root-mutation/native evidence](docs/verification/coax-retained-borrow-policy-2026-11-01/record.json):
 128/128 root mutants killed and LP64 O0/O2/ASan+UBSan, using the earlier

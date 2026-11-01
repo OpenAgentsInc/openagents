@@ -521,6 +521,14 @@
         "sha256": "b3b4efee5aa940b1a591f0231ce4dc37e2cc69ebf58d475404a7c2d4441798d1",
         "case_id": "caller-owned-chain"
       }
+    },
+    {
+      "id": "positive-wide-caller-local",
+      "source": "positive/wide-caller-local.coax",
+      "outcome": "accept",
+      "scope": "A whole129-descriptor caller-backed record/array copy stays in current-frame inline storage and returns only a scalar. Two repeated source queries fit the unchanged workspace; no external per-procedure effect limit is relaxed. The authored check expects65*3+64=259 bytes.",
+      "diagnostics": [],
+      "authored_source_sha256": "ca57b8c1572c50f4a60053a53f2055ccb48df8e31f3e0fde1532685ae63eeb9f"
     }
   ],
   "support": [

@@ -1,0 +1,38 @@
+// Both string parameters refer to caller-owned backing. The wide copy stays here.
+// Repeated sources use two distinct queries; no escaping effect limit is relaxed.
+WideCallerStrings :: struct {slots:[129]string;}
+
+wide_caller_count :: (longer:string,shorter:string)->int {
+  copy:WideCallerStrings;
+  copy=WideCallerStrings.{slots=[129]string.[
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer,shorter,longer,shorter,longer,shorter,longer,shorter,
+    longer
+  ]};
+  total:=0;
+  for value:copy.slots {total+=value.count;}
+  return total;
+}
+
+#test "a wide caller-backed aggregate stays in local inline storage" {
+  longer:=[3]u8.[97,98,99];
+  shorter:=[1]u8.[122];
+  // 65 three-byte strings and 64 one-byte strings, backed by this caller.
+  #assert wide_caller_count(cast(string)longer[..],cast(string)shorter[..])==259;
+}
+
+main :: () {}
