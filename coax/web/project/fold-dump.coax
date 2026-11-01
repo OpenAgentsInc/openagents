@@ -12,7 +12,7 @@
 FD_INPUT :: 33554432;
 
 fd_ref :: (s: [] Store, r: Ref) -> string { return ifx r.len <= 0 then "" else str(s, r); }
-fd_ev :: (s: [] Store, e: int) -> string { return ifx e < 0 then "-" else event_id(s, e); }
+fd_ev :: (s: [] Store, e: int) -> string { return ifx e < 0 then "-" else stored_id(s, e); }
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -34,13 +34,13 @@ tool_main :: () -> int #export_c {
   print("project % order % repo %\n", fd_ev(s[..], f[0].project), fd_ev(s[..], f[0].order), fd_ev(s[..], f[0].repo));
   print("issues %\n", f[0].n);
   for r: 0..<f[0].n {
-    print("issue % slug % kind % status % at % status_ev % revision % fields %\n", event_id(s[..], f[0].root[r]), slug_of(s[..], f[0].root[r]),
-      f[0].kind[r], STATUS_NAME[f[0].status[r]], f[0].status_at[r], fd_ev(s[..], f[0].status_ev[r]), fd_ev(s[..], f[0].revised[r]), event_id(s[..], f[0].fields[r]));
+    print("issue % slug % kind % status % at % status_ev % revision % fields %\n", stored_id(s[..], f[0].root[r]), slug_of(s[..], f[0].root[r]),
+      f[0].kind[r], STATUS_NAME[f[0].status[r]], f[0].status_at[r], fd_ev(s[..], f[0].status_ev[r]), fd_ev(s[..], f[0].revised[r]), stored_id(s[..], f[0].fields[r]));
     print("  claimed '%' at % commit '%' rank '%' alias %\n", fd_ref(s[..], f[0].claimed[r]), f[0].claimed_at[r], fd_ref(s[..], f[0].commit[r]),
       ifx f[0].rank[r].len < 0 then "<none>" else fd_ref(s[..], f[0].rank[r]), f[0].alias[r]);
     print("  plan % by '%' steps % done % note % notes %\n", fd_ev(s[..], f[0].plan[r]), fd_ref(s[..], f[0].plan_by[r]), f[0].steps[r], f[0].steps_done[r],
       fd_ev(s[..], f[0].note[r]), f[0].note_cnt[r]);
-    for c: 0..<f[0].note_cnt[r] { j := f[0].note_from[r] + c; print("    note % by '%'\n", event_id(s[..], f[0].notes_ev[j]), fd_ref(s[..], f[0].notes_by[j])); }
+    for c: 0..<f[0].note_cnt[r] { j := f[0].note_from[r] + c; print("    note % by '%'\n", stored_id(s[..], f[0].notes_ev[j]), fd_ref(s[..], f[0].notes_by[j])); }
   }
   print("log %\n", f[0].log_n);
   for k: 0..<f[0].log_n {

@@ -6,7 +6,7 @@
 #
 # The drawn project page (/projects/<slug>) already reads its relay live
 # (project-live.coax): a claim, a plan step, a note, a done or a move shows
-# there within seconds of `publish.ts`, with no release and no data push.
+# there within seconds of `openagents project`, with no release and no data push.
 # What the page's build bakes in goes stale instead: the Markdown agents read
 # (/projects/<slug>/index.md), the projects list's (/projects/index.md) and
 # their sections of /llms-full.txt. This regenerates those from the relay

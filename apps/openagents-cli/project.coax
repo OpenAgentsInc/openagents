@@ -1,0 +1,694 @@
+// The project domain: a project's public work queue on Nostr, the queue at
+// openagents.com/projects/SLUG (docs/protocol/2026-10-28-projects.md,
+// coax/web/project/QUEUE.md). It reads the project's events from its relay,
+// folds them the way the project page does (apps/openagents-web/project-fold.coax),
+// and signs claims, notes, plans, statuses, the order and the work itself
+// with the project's key. project-rules.coax decides; this file does the I/O.
+//
+//   openagents project list [--project SLUG]
+//   openagents project show SLUG
+//   openagents project plan SLUG [set|add|start|check|uncheck|drop|file ...]
+//   openagents project claim|release|note|done|status|move|respread|publish ...
+//
+// The project is apps/openagents-web/projects/SLUG (project.json and work/*.json)
+// in the openagents checkout the command runs in, or --dir DIR. Its key is
+// ~/work/.secrets/openagents-project-SLUG.key (64 hex digits), or --key FILE;
+// its public key must be project.json's pubkey.
+#load "../openagents-web/project-fold.coax";
+#load "../openagents-web/project-names.coax";
+#load "../../coax/lib/json/json.coax";
+#load "project-rules.coax";
+#load "project-write.coax";
+#load "project-publish.coax";
+#load "project-review.coax";
+
+project_usage :: () {
+  print("%\n", "Projects (the queue at openagents.com/projects/SLUG; --project SLUG, default coax):");
+  print("%\n", "  project list                     the queue: ready, then waiting, then done");
+  print("%\n", "  project show SLUG                a task's body, checks, claim, plan and notes");
+  print("%\n", "  project claim SLUG --by NAME     take a task (one at a time)");
+  print("%\n", "  project plan SLUG [set|add \"step\"... | start N | check N... | uncheck N... | drop N... | file PATH|-]");
+  print("%\n", "  project note SLUG \"text\" [--by NAME]");
+  print("%\n", "  project done SLUG --commit HASH  a full hash already on origin/main");
+  print("%\n", "  project release SLUG             let go of a task");
+  print("%\n", "  project status SLUG open|resolved|closed|draft");
+  print("%\n", "  project move SLUG --before SLUG | --after SLUG");
+  print("%\n", "  project respread [--seed | --order FILE]");
+  print("%\n", "  project publish [--dry-run]      the work files, as issues, revisions, statuses and the order");
+  print("%\n", "  project check                    check the work files without the relay");
+  print("%\n", "  project review COMMIT --key FILE an independent review of COMMIT, signed with the reviewer's own key");
+  print("%\n", "  (--dir DIR the project's folder, --key FILE its key, --relay URL, --forget)");
+  print("%\n", "");
+}
+
+// ---- strings we keep -------------------------------------------------------------
+
+// A line being written, printed whole.
+PJ_LINE :: 262144;
+Ln :: struct { b: [PJ_LINE] u8; n: int; }
+ln_s :: (l: [] Ln, s: string) { for c: s { if l[0].n < PJ_LINE { l[0].b[l[0].n] = c; l[0].n += 1; } } }
+ln_c :: (l: [] Ln, c: u8) { if l[0].n < PJ_LINE { l[0].b[l[0].n] = c; l[0].n += 1; } }
+ln_pad :: (l: [] Ln, s: string, w: int) { ln_s(l, s); for i: s.count..<w { ln_c(l, ' '); } }
+ln_i :: (l: [] Ln, v: int) { t: [24] u8; ln_s(l, int_text(v, t[..])); }
+ln_text :: (l: [] Ln) -> string { return cast(string) l[0].b[0..<l[0].n]; }
+ln_out :: (l: [] Ln) { print("%\n", ln_text(l)); l[0].n = 0; }
+ln_time :: (l: [] Ln, t: int) { b: [64] u8; n := chicago_zone_into(b[..], 0, t); ln_s(l, cast(string) b[0..<n]); }
+
+// ---- the project's config (project.json) ---------------------------------------
+
+PJ_CFG_BYTES :: 65536; PJ_MAINT :: 32;
+PCfg :: struct {
+  buf: [PJ_CFG_BYTES] u8; used: int; bad: bool;
+  slug: Ref; name: Ref; description: Ref; relay: Ref; path: Ref; contributions: Ref; license: Ref; visibility: Ref; pubkey: Ref;
+  repo_d: Ref; repo_name: Ref; repo_description: Ref; web: Ref; clone: Ref; euc: Ref;
+  maint_n: int; maint: [PJ_MAINT] Ref;
+}
+pc :: (c: [] PCfg, r: Ref) -> string { return cast(string) c[0].buf[r.from..<r.from + r.len]; }
+pc_keep :: (c: [] PCfg, d: Jv, at: int) -> Ref {
+  r := Ref.{from = c[0].used, len = 0};
+  if at < 0 { return r; }
+  n := jv_str(d, at, c[0].buf[c[0].used..<PJ_CFG_BYTES]);
+  if n < 0 { c[0].bad = true; return r; }
+  c[0].used += n; r.len = n;
+  return r;
+}
+pc_add :: (c: [] PCfg, s: string) -> Ref {
+  r := Ref.{from = c[0].used, len = 0};
+  if c[0].used + s.count > PJ_CFG_BYTES { c[0].bad = true; return r; }
+  for i: 0..<s.count { c[0].buf[c[0].used + i] = s[i]; }
+  c[0].used += s.count; r.len = s.count;
+  return r;
+}
+// Reads dir/project.json. "" when it is fine, else what is wrong.
+pc_load :: (c: [] PCfg, dir: string) -> string {
+  c[0].used = 0; c[0].bad = false; c[0].maint_n = 0;
+  pb: [2048] u8;
+  text: [PJ_CFG_BYTES] u8;
+  n := fs_read(fs_join(dir, "project.json", pb[..]), text[..]);
+  if n < 0 { return "no project.json there (--project SLUG, or --dir DIR)"; }
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { return "project.json is not JSON"; }
+  v := d[0];
+  c[0].slug = pc_keep(c, v, jv_get(v, 0, "slug")); c[0].name = pc_keep(c, v, jv_get(v, 0, "name"));
+  c[0].description = pc_keep(c, v, jv_get(v, 0, "description")); c[0].relay = pc_keep(c, v, jv_get(v, 0, "relay"));
+  c[0].path = pc_keep(c, v, jv_get(v, 0, "path")); c[0].contributions = pc_keep(c, v, jv_get(v, 0, "contributions"));
+  c[0].license = pc_keep(c, v, jv_get(v, 0, "license")); c[0].visibility = pc_keep(c, v, jv_get(v, 0, "visibility"));
+  c[0].pubkey = pc_keep(c, v, jv_get(v, 0, "pubkey"));
+  repo := jv_get(v, 0, "repo");
+  c[0].repo_d = pc_keep(c, v, jv_get(v, repo, "d")); c[0].repo_name = pc_keep(c, v, jv_get(v, repo, "name"));
+  c[0].repo_description = pc_keep(c, v, jv_get(v, repo, "description")); c[0].web = pc_keep(c, v, jv_get(v, repo, "web"));
+  c[0].clone = pc_keep(c, v, jv_get(v, repo, "clone")); c[0].euc = pc_keep(c, v, jv_get(v, repo, "euc"));
+  m := jv_get(v, 0, "maintainers");
+  for i: 0..<jv_len(v, m) {
+    if c[0].maint_n >= PJ_MAINT { return "project.json has too many maintainers"; }
+    c[0].maint[c[0].maint_n] = pc_keep(c, v, jv_at(v, m, i)); c[0].maint_n += 1;
+  }
+  if c[0].bad { return "project.json is too big"; }
+  if !pr_slug_ok(pc(c, c[0].slug)) || pc(c, c[0].repo_d).count == 0 { return "project.json needs a slug and a repo.d"; }
+  rl := pc(c, c[0].relay);
+  if !((rl.count > 6 && rl[0..<6] == "wss://") || (rl.count > 5 && rl[0..<5] == "ws://")) { return "project.json's relay is not a ws:// or wss:// URL"; }
+  return "";
+}
+
+// ---- a project, read ---------------------------------------------------------------
+
+PJ_ROOT :: 1024;
+PJ_SENT :: 64;
+Proj :: struct {
+  cfg: [1] PCfg;
+  root: [PJ_ROOT] u8; root_n: int;     // the openagents checkout, or empty
+  dir: [PJ_ROOT] u8; dir_n: int;       // the project's folder
+  slug: [80] u8; slug_n: int;
+  key: [32] u8; keyed: bool;
+  pk: [64] u8;                          // project.json's pubkey (the key's, when keyed)
+  relay: [512] u8; relay_n: int;
+  c: [1] CliRelay; connected: bool;
+  s: [1] Store; f: [1] Fold;
+  last: int;                            // the newest created_at the project's key signed
+  last_id: [64] u8;                     // the id of the last event signed
+  outside: [FOLD_ISSUES] bool;          // waits on another project's work not done
+  dry: bool; forget: bool;
+  sent: int; sent_what: [PJ_SENT] Ref; sent_buf: [8192] u8; sent_used: int;
+  why: [512] u8; why_n: int;
+}
+pj_root :: (p: [] Proj) -> string { return cast(string) p[0].root[0..<p[0].root_n]; }
+pj_dir :: (p: [] Proj) -> string { return cast(string) p[0].dir[0..<p[0].dir_n]; }
+pj_slug :: (p: [] Proj) -> string { return cast(string) p[0].slug[0..<p[0].slug_n]; }
+pj_pk :: (p: [] Proj) -> string { return cast(string) p[0].pk[..]; }
+pj_url :: (p: [] Proj) -> string { return cast(string) p[0].relay[0..<p[0].relay_n]; }
+pj_cfg_relay :: (p: [] Proj) -> string { return pc(p[0].cfg[..], p[0].cfg[0].relay); }
+pj_why :: (p: [] Proj) -> string { return cast(string) p[0].why[0..<p[0].why_n]; }
+pj_say :: (p: [] Proj, a: string, b: string, c: string) {
+  p[0].why_n = 0;
+  for s: [3] string.[a, b, c] { for ch: s { if p[0].why_n < 512 { p[0].why[p[0].why_n] = ch; p[0].why_n += 1; } } }
+}
+
+// The checkout: the first folder up from here that holds apps/openagents-web/projects.
+pj_find_root :: (p: [] Proj) -> bool {
+  cw: [PJ_ROOT] u8;
+  at := fs_cwd(cw[..]);
+  while at.count > 0 {
+    jb: [2048] u8;
+    if fs_kind(fs_join(at, "apps/openagents-web/projects", jb[..])) == FS_DIR {
+      p[0].root_n = copy(at, p[0].root[..]);
+      return p[0].root_n > 0;
+    }
+    up := fs_dir(at);
+    if up.count == 0 || up == at { return false; }
+    at = up;
+  }
+  return false;
+}
+
+// The project from the flags: its folder, config, key and relay. "" when it is fine.
+pj_open :: (p: [] Proj, a: [] Args) -> string {
+  p[0].dry = args_has(a, "--dry-run"); p[0].forget = args_has(a, "--forget");
+  slug := args_value(a, "--project", "coax");
+  if !pr_slug_ok(slug) { return "--project is a project slug"; }
+  p[0].slug_n = copy(slug, p[0].slug[..]);
+  found := pj_find_root(p);
+  if args_has(a, "--dir") {
+    p[0].dir_n = copy(args_value(a, "--dir", ""), p[0].dir[..]);
+  } else {
+    if !found { return "run this inside the openagents checkout, or give --dir DIR"; }
+    jb: [2048] u8; kb: [2048] u8;
+    p[0].dir_n = copy(fs_join(fs_join(pj_root(p), "apps/openagents-web/projects", jb[..]), slug, kb[..]), p[0].dir[..]);
+  }
+  if p[0].dir_n <= 0 { return "--dir is too long"; }
+  bad := pc_load(p[0].cfg[..], pj_dir(p));
+  if bad.count > 0 { return bad; }
+  cfg := p[0].cfg[..];
+  if pc(cfg, cfg[0].slug) != slug && !args_has(a, "--dir") { return "project.json's slug is not --project"; }
+  p[0].slug_n = copy(pc(cfg, cfg[0].slug), p[0].slug[..]);
+  url := relay_flag(a, pc(cfg, cfg[0].relay));
+  if url == "" { return "--relay is a ws:// or wss:// URL"; }
+  p[0].relay_n = copy(url, p[0].relay[..]);
+  // the key: --key FILE, else the project's key file; without one the project is read only
+  hb: [1024] u8; kf: [2048] u8; ks: [2048] u8;
+  path := args_value(a, "--key", "");
+  if path == "" {
+    n := copy("openagents-project-", ks[..]);
+    m := copy(pj_slug(p), ks[n..<2048]);
+    o := copy(".key", ks[n + m..<2048]);
+    path = fs_join(fs_join(home(hb[..]), "work/.secrets", kf[..]), cast(string) ks[0..<n + m + o], ks[1024..<2048]);
+  }
+  text: [256] u8;
+  kn := fs_read(path, text[..]);
+  want := pc(cfg, cfg[0].pubkey);
+  if kn > 0 {
+    hex := trimmed(cast(string) text[0..<kn]);
+    if hex.count != 64 || hex_decode_checked(hex, p[0].key[..], false).error != NC_OK { wipe(text[..]); return "the project key file is not 64 hex digits"; }
+    wipe(text[..]);
+    if !pubkey_hex(p[0].key[..], p[0].pk[..]) { return "the project key is not a secp256k1 key"; }
+    p[0].keyed = true;
+    if want.count > 0 && want != pj_pk(p) { wipe(p[0].key[..]); return "the project key is not project.json's pubkey"; }
+  } else {
+    if args_has(a, "--key") { return "can't read --key"; }
+    if want.count != 64 || !hex_lower(want) { return "no project key, and project.json has no pubkey"; }
+    for i: 0..<64 { p[0].pk[i] = want[i]; }
+  }
+  return "";
+}
+pj_close :: (p: [] Proj) {
+  if p[0].connected { cr_close(p[0].c[..]); p[0].connected = false; }
+  wipe(p[0].key[..]);
+}
+
+// ---- the relay -------------------------------------------------------------------
+
+PJ_TRIES :: 5;
+PJ_REQ_MS :: 20000;
+pj_connect :: (p: [] Proj) -> bool {
+  if p[0].connected { return true; }
+  p[0].connected = cr_open(p[0].c[..], pj_url(p), ifx p[0].keyed then p[0].key[..] else p[0].key[0..<0]);
+  if !p[0].connected { cr_close(p[0].c[..]); }
+  return p[0].connected;
+}
+pj_reconnect :: (p: [] Proj, attempt: int) {
+  if p[0].connected { cr_close(p[0].c[..]); p[0].connected = false; }
+  wait := 1000; for i: 1..<attempt { wait *= 2; }
+  tool_err("openagents: the relay didn't answer; trying again\n");
+  proc_sleep(ifx wait > 15000 then 15000 else wait);
+}
+
+PJ_FILTER :: 16384;
+// One page of filter (an object without its closing brace) into store s: the
+// events it got, their oldest time and whether the relay said finish; got -1
+// when the request failed (refused, timed out, cut off).
+PjGot :: struct { got: int; oldest: int; finish: bool; }
+pj_page :: (p: [] Proj, s: [] Store, signer_key: string, filter: string, until: int, has_until: bool) -> PjGot {
+  g := PjGot.{got = -1, oldest = -1};
+  fb: [PJ_FILTER + 64] u8;
+  n := copy(filter, fb[..]);
+  if n < 0 { return g; }
+  t: [24] u8;
+  tail := ",\"limit\":200";
+  m := copy(tail, fb[n..<fb.count]); n += m;
+  if has_until { m = copy(",\"until\":", fb[n..<fb.count]); n += m; m = copy(int_text(until, t[..]), fb[n..<fb.count]); n += m; }
+  m = copy("}", fb[n..<fb.count]); n += m;
+  if !pj_connect(p) || !cr_req(p[0].c[..], cast(string) fb[0..<n]) { return g; }
+  got := 0; oldest := -1;
+  deadline := cxsock_now_ms() + PJ_REQ_MS;
+  while true {
+    k := cr_next(p[0].c[..], deadline);
+    if k == CR_EVENT {
+      fr := read_frame(s, cr_frame(p[0].c[..]), signer_key);
+      got += 1;
+      e := fr.event;
+      at := ifx e >= 0 then s[0].at[e] else pj_created_at(cr_event(p[0].c[..]));
+      if oldest < 0 || at < oldest { oldest = at; }
+      continue;
+    }
+    if k == CR_EOSE { g.finish = cr_finish(p[0].c[..]); cr_req_end(p[0].c[..]); g.got = got; g.oldest = oldest; return g; }
+    if k == CR_CLOSED { pj_say(p, "the relay refused a read: ", cr_message(p[0].c[..]), ""); }
+    cr_req_end(p[0].c[..]);
+    if k != CR_CLOSED { cr_close(p[0].c[..]); p[0].connected = false; }
+    return g;
+  }
+  return g;
+}
+pj_created_at :: (event: string) -> int {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], event, nodes[..]) { return -1; }
+  return jv_int(d[0], jv_get(d[0], 0, "created_at"), -1);
+}
+// Every stored event for the filter, paged back in time, into s; retried
+// when the relay fails. False (with the reason) rather than a short answer.
+pj_all :: (p: [] Proj, s: [] Store, signer_key: string, filter: string) -> bool {
+  until := 0; has_until := false;
+  for round: 0..<PR_PAGE_ROUNDS {
+    g: PjGot;
+    for attempt: 1..<PJ_TRIES + 1 {
+      g = pj_page(p, s, signer_key, filter, until, has_until);
+      if g.got >= 0 { break; }
+      if attempt < PJ_TRIES { pj_reconnect(p, attempt); }
+    }
+    if g.got < 0 { if p[0].why_n == 0 { pj_say(p, "the relay at ", pj_url(p), " did not answer"); } return false; }
+    pg := pr_page(g.got, g.oldest, until, has_until, g.finish);
+    if pg.state == PR_PAGE_END { return true; }
+    if pg.state == PR_PAGE_BAD { pj_say(p, "the relay returned a bad page time", "", ""); return false; }
+    if pg.state == PR_PAGE_COHORT { pj_say(p, "the relay cut a page inside one second; refusing a partial read", "", ""); return false; }
+    until = pg.until; has_until = true;
+  }
+  pj_say(p, "the relay kept paging; refusing a partial read", "", "");
+  return false;
+}
+
+// A filter object (without its closing brace): kinds, the author, and one tag's values.
+PjFilter :: struct { b: [PJ_FILTER] u8; n: int; }
+pf_start :: (f: [] PjFilter, kinds: [] int, author: string) {
+  f[0].n = 0;
+  pf_s(f, "{\"kinds\":[");
+  t: [24] u8;
+  for k: 0..<kinds.count { if k > 0 { pf_s(f, ","); } pf_s(f, int_text(kinds[k], t[..])); }
+  pf_s(f, "]");
+  if author.count > 0 { pf_s(f, ",\"authors\":[\""); pf_s(f, author); pf_s(f, "\"]"); }
+}
+pf_s :: (f: [] PjFilter, s: string) { for c: s { if f[0].n < PJ_FILTER { f[0].b[f[0].n] = c; f[0].n += 1; } } }
+// ,"NAME":["v1","v2",...] with each value JSON-quoted.
+pf_tag :: (f: [] PjFilter, name: string, values: [] string) {
+  pf_s(f, ",\""); pf_s(f, name); pf_s(f, "\":[");
+  for k: 0..<values.count {
+    if k > 0 { pf_s(f, ","); }
+    q: [1] Rep; rep_quoted(q[..], values[k]); pf_s(f, cast(string) q[0].buf[0..<q[0].n]);
+  }
+  pf_s(f, "]");
+}
+pf_text :: (f: [] PjFilter) -> string { return cast(string) f[0].b[0..<f[0].n]; }
+
+// The project folded from the relay: its repository, project and order, its
+// issues, then what hangs off each issue (fifty at a time).
+pj_read :: (p: [] Proj) -> bool {
+  s := p[0].s[..];
+  store_clear(s);
+  cfg := p[0].cfg[..];
+  pk := pj_pk(p);
+  f: [1] PjFilter;
+  coord: [256] u8;
+  cn := pj_coord(p, KIND_PROJECT, coord[..]);
+  repo_k := [1] int.[KIND_REPO]; proj_k := [2] int.[KIND_PROJECT, KIND_ORDER]; issue_k := [1] int.[KIND_ISSUE];
+  rd := [1] string.[pc(cfg, cfg[0].repo_d)]; sd := [1] string.[pj_slug(p)]; ca := [1] string.[cast(string) coord[0..<cn]];
+  pf_start(f[..], repo_k[..], pk); pf_tag(f[..], "#d", rd[..]);
+  if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+  pf_start(f[..], proj_k[..], pk); pf_tag(f[..], "#d", sd[..]);
+  if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+  pf_start(f[..], issue_k[..], pk); pf_tag(f[..], "#a", ca[..]);
+  if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+  // the follow-ups: revisions, workers' comments and statuses by issue id
+  ids: [64] string; n := 0;
+  issues := s[0].n;
+  com_k := [1] int.[KIND_COMMENT]; st_k := [4] int.[1630, 1631, 1632, 1633];
+  for e: 0..<issues {
+    if s[0].kind[e] != KIND_ISSUE { continue; }
+    ids[n] = stored_id(s, e); n += 1;
+    if n == 50 || e == issues - 1 {
+      pf_start(f[..], com_k[..], pk); pf_tag(f[..], "#E", ids[0..<n]);
+      if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+      pf_start(f[..], st_k[..], pk); pf_tag(f[..], "#e", ids[0..<n]);
+      if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+      n = 0;
+    }
+  }
+  if n > 0 {
+    pf_start(f[..], com_k[..], pk); pf_tag(f[..], "#E", ids[0..<n]);
+    if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+    pf_start(f[..], st_k[..], pk); pf_tag(f[..], "#e", ids[0..<n]);
+    if !pj_all(p, s, pk, pf_text(f[..])) { return false; }
+  }
+  if s[0].overflow { pj_say(p, "the project has more events than the CLI holds", "", ""); return false; }
+  fold(s, p[0].f[..], pj_slug(p));
+  if p[0].f[0].n >= FOLD_ISSUES { pj_say(p, "the project has more issues than the CLI holds", "", ""); return false; }
+  for e: 0..<s[0].n { if s[0].at[e] > p[0].last { p[0].last = s[0].at[e]; } }
+  return true;
+}
+// kind:pubkey:d of the project (KIND_PROJECT) or its repository (KIND_REPO).
+pj_coord :: (p: [] Proj, kind: int, out: [] u8) -> int {
+  cfg := p[0].cfg[..];
+  t: [24] u8;
+  l: [1] Ln;
+  ln_s(l[..], int_text(kind, t[..])); ln_c(l[..], ':'); ln_s(l[..], pj_pk(p)); ln_c(l[..], ':');
+  ln_s(l[..], ifx kind == KIND_REPO then pc(cfg, cfg[0].repo_d) else pj_slug(p));
+  return copy(ln_text(l[..]), out);
+}
+
+// The issues the last run saw (~/.openagents/cli/projects/SLUG.ids, "slug id"
+// lines): a fold that misses one is read again, then refused, so a relay that
+// answers short never makes it look unpublished.
+pj_cache_path :: (p: [] Proj, out: [] u8) -> string {
+  d: [1024] u8; j: [1024] u8; nm: [128] u8;
+  n := copy(pj_slug(p), nm[..]); m := copy(".ids", nm[n..<128]);
+  return fs_join(fs_join(cli_dir(d[..]), "projects", j[..]), cast(string) nm[0..<n + m], out);
+}
+PJ_CACHE :: 262144;
+pj_lost :: (p: [] Proj, first: [] u8) -> int {
+  pb: [2048] u8; text: [PJ_CACHE] u8;
+  n := fs_read(pj_cache_path(p, pb[..]), text[..]);
+  if n <= 0 { return 0; }
+  t := cast(string) text[0..<n];
+  lost := 0; i := 0;
+  while i < n {
+    e := i; while e < n && t[e] != 10 { e += 1; }
+    line := t[i..<e];
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    if sp < line.count && fold_issue_of(p[0].s[..], p[0].f[..], line[sp + 1..<line.count]) < 0 {
+      if lost == 0 { k := copy(line[0..<sp], first[0..<first.count - 1]); if k >= 0 { first[k] = 0; } }
+      lost += 1;
+    }
+    i = e + 1;
+  }
+  return lost;
+}
+pj_cache_write :: (p: [] Proj) {
+  s := p[0].s[..]; f := p[0].f[..];
+  out: [PJ_CACHE] u8; n := 0;
+  for r: 0..<f[0].n {
+    line: [1] Ln; ln_s(line[..], str(s, f[0].slug[r])); ln_c(line[..], ' '); ln_s(line[..], stored_id(s, f[0].root[r])); ln_c(line[..], 10);
+    m := copy(ln_text(line[..]), out[n..<PJ_CACHE]);
+    if m < 0 { return; }
+    n += m;
+  }
+  pb: [2048] u8; tb: [2100] u8; db: [1024] u8; jb: [1024] u8;
+  path := pj_cache_path(p, pb[..]);
+  ok := fs_mkdir(fs_join(cli_dir(db[..]), "projects", jb[..]));
+  // many workers run at once: write aside and rename, so no one reads half a file
+  k := copy(path, tb[..]); t: [24] u8; m := copy(".", tb[k..<2100]); o := copy(int_text(cxcli_now_s() % 1000000 + cxsock_now_ms() % 1000, t[..]), tb[k + m..<2100]);
+  tmp := cast(string) tb[0..<k + m + o];
+  if fs_write(tmp, cast(string) out[0..<n]) { ok = fs_rename(tmp, path); }
+}
+// The project, read and checked against what the last run saw.
+pj_load :: (p: [] Proj) -> bool {
+  for n: 1..<4 {
+    if !pj_read(p) { return false; }
+    first: [128] u8;
+    lost := pj_lost(p, first[..]);
+    if lost == 0 || p[0].forget { pj_cache_write(p); pj_outside(p); return true; }
+    k := 0; while k < 127 && first[k] != 0 { k += 1; }
+    t: [24] u8;
+    if n == 3 {
+      pj_say(p, "the relay didn't return known issues (first: ", cast(string) first[0..<k], "); refusing to continue (--forget drops them from the cache)");
+      return false;
+    }
+    tool_err("openagents: the relay didn't return "); tool_err(int_text(lost, t[..])); tool_err(" known issue(s); reading it again\n");
+    proc_sleep(1500 * n);
+  }
+  return false;
+}
+
+// ---- where each task stands ---------------------------------------------------------
+
+// The fields event's tags as the NIP-34 reader reads them.
+pj_ev :: (p: [] Proj, r: int) -> NtEvent { return store_nt(p[0].s[..], p[0].f[0].fields[r]); }
+// Whether one of r's blockers is not finished (a blocker the project doesn't hold counts as finished).
+pj_blocked :: (p: [] Proj, r: int) -> bool {
+  ev := pj_ev(p, r);
+  for k: 0..<nt_tags(ev, "blocked-by") {
+    t := nt_tag(ev, "blocked-by", k);
+    if t.values < 1 { continue; }
+    b := fold_issue_of(p[0].s[..], p[0].f[..], nt_raw(ev, t.v[0]));
+    if b >= 0 && !done_issue(p[0].f[..], b) { return true; }
+  }
+  return false;
+}
+pj_needs :: (p: [] Proj, r: int, out: [] N34Need) -> int { return n34_needs(pj_ev(p, r), out); }
+pj_task :: (p: [] Proj, r: int) -> bool { return p[0].f[0].kind[r] == FK_TASK; }
+pj_status :: (p: [] Proj, r: int) -> string { return STATUS_NAME[p[0].f[0].status[r]]; }
+pj_standing :: (p: [] Proj, r: int) -> int { return pr_standing(pj_task(p, r), pj_status(p, r), p[0].outside[r], pj_blocked(p, r)); }
+
+// Which tasks wait on other projects' issues still open: a need counts until
+// its issue, by its own key, is resolved or closed.
+pj_outside :: (p: [] Proj) {
+  f := p[0].f[..];
+  ids: [512] string; n := 0;
+  ns: [64] N34Need;
+  for r: 0..<f[0].n {
+    p[0].outside[r] = false;
+    k := pj_needs(p, r, ns[..]);
+    ev := pj_ev(p, r);
+    for i: 0..<k { if n < 512 { ids[n] = nt_raw(ev, ns[i].id); n += 1; } }
+  }
+  if n == 0 { return; }
+  far: [1] Store; store_clear(far[..]);
+  iss_k := [1] int.[KIND_ISSUE]; st_k := [4] int.[1630, 1631, 1632, 1633];
+  fl: [1] PjFilter;
+  ok := true;
+  for at: 0..<(n + 49) / 50 {
+    hi := ifx at * 50 + 50 < n then at * 50 + 50 else n;
+    pf_start(fl[..], iss_k[..], ""); pf_tag(fl[..], "ids", ids[at * 50..<hi]);
+    ok = ok && pj_all(p, far[..], ANY_KEY, pf_text(fl[..]));
+    pf_start(fl[..], st_k[..], ""); pf_tag(fl[..], "#e", ids[at * 50..<hi]);
+    ok = ok && pj_all(p, far[..], ANY_KEY, pf_text(fl[..]));
+  }
+  for r: 0..<f[0].n {
+    k := pj_needs(p, r, ns[..]);
+    ev := pj_ev(p, r);
+    for i: 0..<k { if !pj_far_done(far[..], nt_raw(ev, ns[i].id)) { p[0].outside[r] = true; } }
+  }
+}
+pj_far_done :: (s: [] Store, id: string) -> bool {
+  root := store_find(s, id);
+  if root < 0 || s[0].kind[root] != KIND_ISSUE { return false; }
+  last := -1;
+  for e: 0..<s[0].n {
+    k := s[0].kind[e];
+    if k < 1630 || k > 1633 || !equal(author_of(s, e), author_of(s, root)) || !tag_has(s, e, "e", id) { continue; }
+    if newer(s, e, last) { last = e; }
+  }
+  return last >= 0 && (s[0].kind[last] == 1631 || s[0].kind[last] == 1632);
+}
+
+// An item by slug or alias (with or without its #), or -1.
+pj_find :: (p: [] Proj, what: string) -> int {
+  s := p[0].s[..]; f := p[0].f[..];
+  w := ifx what.count > 0 && what[0] == '#' then what[1..<what.count] else what;
+  for r: 0..<f[0].n { if equal(str(s, f[0].slug[r]), w) { return r; } }
+  for r: 0..<f[0].n { if equal(stored_id(s, f[0].root[r])[0..<f[0].alias[r]], w) { return r; } }
+  return -1;
+}
+pj_alias :: (p: [] Proj, r: int) -> string { return stored_id(p[0].s[..], p[0].f[0].root[r])[0..<p[0].f[0].alias[r]]; }
+pj_item_slug :: (p: [] Proj, r: int) -> string { return str(p[0].s[..], p[0].f[0].slug[r]); }
+pj_title :: (p: [] Proj, r: int) -> string { return str(p[0].s[..], p[0].f[0].subject[r]); }
+pj_rank :: (p: [] Proj, r: int) -> string { rk := p[0].f[0].rank[r]; return ifx rk.len > 0 then str(p[0].s[..], rk) else ""; }
+pj_claimed :: (p: [] Proj, r: int) -> string { return str(p[0].s[..], p[0].f[0].claimed[r]); }
+pj_commit :: (p: [] Proj, r: int) -> string { return str(p[0].s[..], p[0].f[0].commit[r]); }
+pj_id :: (p: [] Proj, r: int) -> string { return stored_id(p[0].s[..], p[0].f[0].root[r]); }
+pj_body :: (p: [] Proj, r: int) -> string { return content_of(p[0].s[..], p[0].f[0].fields[r]); }
+
+// The project's naddr (kind 30621, its d, the config's relay, the key).
+pj_naddr :: (p: [] Proj, out: [] u8) -> string {
+  n := name_naddr(KIND_PROJECT, pj_pk(p), pj_slug(p), pj_cfg_relay(p), out);
+  return cast(string) out[0..<n];
+}
+
+// ---- list, show, plan -----------------------------------------------------------------
+
+PJ_WORD :: [4] string.["ready", "waiting", "done", ""];
+// The rows in the queue's order: by standing, then rank (none last), else as folded.
+pj_rows :: (p: [] Proj, rows: [] int, st: [] int) {
+  f := p[0].f[..];
+  for r: 0..<f[0].n { st[r] = pj_standing(p, r); }
+  for r: 0..<f[0].n {
+    k := r;
+    while k > 0 && (st[r] < st[rows[k - 1]] || (st[r] == st[rows[k - 1]] && rank_before(p[0].s[..], f, r, rows[k - 1]))) { rows[k] = rows[k - 1]; k -= 1; }
+    rows[k] = r;
+  }
+}
+pj_state :: (p: [] Proj, r: int, st: int, l: [] Ln) {
+  if pj_claimed(p, r).count > 0 { ln_s(l, "on:"); ln_s(l, pj_claimed(p, r)); return; }
+  ln_s(l, ifx st < 3 then PJ_WORD[st] else pj_status(p, r));
+}
+project_list :: (p: [] Proj, r: [] Rep) -> int {
+  f := p[0].f[..];
+  rows: [FOLD_ISSUES] int; st: [FOLD_ISSUES] int;
+  pj_rows(p, rows[..], st[..]);
+  nb: [512] u8;
+  naddr := pj_naddr(p, nb[..]);
+  l: [1] Ln;
+  if r[0].json { print("%", "{\"items\":["); }
+  for k: 0..<f[0].n {
+    i := rows[k];
+    state: [1] Ln; pj_state(p, i, st[i], state[..]);
+    commit := pj_commit(p, i);
+    if r[0].json {
+      o: [1] Jo; jb: [8192] u8; jo_start(o[..], jb[..]);
+      jo_obj(o[..]);
+      jo_key(o[..], "alias"); jo_str(o[..], pj_alias(p, i)); jo_key(o[..], "slug"); jo_str(o[..], pj_item_slug(p, i));
+      jo_key(o[..], "rank"); jo_str(o[..], pj_rank(p, i)); jo_key(o[..], "state"); jo_str(o[..], ln_text(state[..]));
+      jo_key(o[..], "status"); jo_str(o[..], pj_status(p, i)); jo_key(o[..], "kind"); jo_str(o[..], KIND_NAMES[f[0].kind[i]]);
+      jo_key(o[..], "title"); jo_str(o[..], pj_title(p, i)); jo_key(o[..], "claimed_by"); jo_str(o[..], pj_claimed(p, i));
+      jo_key(o[..], "commit"); jo_str(o[..], commit); jo_key(o[..], "id"); jo_str(o[..], pj_id(p, i));
+      jo_end(o[..]);
+      if k > 0 { print("%", ","); }
+      print("%", jo_text(o[..]));
+      continue;
+    }
+    ln_c(l[..], '#'); ln_s(l[..], pj_alias(p, i)); ln_s(l[..], "  ");
+    ln_pad(l[..], pj_rank(p, i), 6); ln_c(l[..], ' ');
+    ln_pad(l[..], ln_text(state[..]), 16); ln_c(l[..], ' ');
+    ln_pad(l[..], KIND_NAMES[f[0].kind[i]], 10); ln_c(l[..], ' ');
+    ln_s(l[..], pj_item_slug(p, i)); ln_s(l[..], "  "); ln_s(l[..], pj_title(p, i));
+    if st[i] == PR_DONE && commit.count > 0 { ln_s(l[..], "  ("); ln_s(l[..], commit[0..<ifx commit.count < 10 then commit.count else 10]); ln_c(l[..], ')'); }
+    ln_out(l[..]);
+  }
+  t: [24] u8;
+  if r[0].json {
+    print("],\"count\":%,\"project\":\"%\",\"ok\":true}\n", int_text(f[0].n, t[..]), naddr);
+    return EXIT_OK;
+  }
+  ln_i(l[..], f[0].n); ln_s(l[..], " items "); ln_c(l[..], 0xc2); ln_c(l[..], 0xb7); ln_s(l[..], " project "); ln_s(l[..], naddr);
+  ln_out(l[..]);
+  return EXIT_OK;
+}
+
+// "#ALIAS slug (status)" for an issue id, else its first 8 digits.
+pj_name :: (p: [] Proj, l: [] Ln, id: string) {
+  b := fold_issue_of(p[0].s[..], p[0].f[..], id);
+  if b < 0 { ln_s(l, id[0..<ifx id.count < 8 then id.count else 8]); return; }
+  ln_c(l, '#'); ln_s(l, pj_alias(p, b)); ln_c(l, ' '); ln_s(l, pj_item_slug(p, b)); ln_s(l, " ("); ln_s(l, pj_status(p, b)); ln_c(l, ')');
+}
+PJ_MARK_WORD :: "x";
+pj_print_plan :: (p: [] Proj, i: int, l: [] Ln) {
+  f := p[0].f[..]; s := p[0].s[..];
+  if f[0].plan[i] < 0 { ln_s(l, pj_item_slug(p, i)); ln_s(l, " has no plan yet"); ln_out(l); return; }
+  ln_s(l, pj_item_slug(p, i)); ln_s(l, ": "); ln_i(l, f[0].steps_done[i]); ln_s(l, " of "); ln_i(l, f[0].steps[i]); ln_s(l, " done");
+  by := str(s, f[0].plan_by[i]);
+  if by.count > 0 { ln_s(l, ", by "); ln_s(l, by); }
+  ln_s(l, ", "); ln_time(l, s[0].at[f[0].plan[i]]);
+  ln_out(l);
+  content := content_of(s, f[0].plan[i]);
+  for k: 0..<f[0].steps[i] {
+    stp := plan_step(content, k);
+    pj_step_line(l, k + 1, stp.mark, stp.text, false);
+  }
+}
+pj_step_line :: (l: [] Ln, k: int, mark: u8, text: string, word: bool) {
+  if k < 100 { ln_c(l, ' '); } if k < 10 { ln_c(l, ' '); }
+  ln_i(l, k); ln_s(l, ". ["); ln_c(l, mark); ln_s(l, "] "); ln_s(l, text);
+  if word { ln_s(l, ifx mark == 'x' then "  (done)" else ifx mark == '>' then "  (doing)" else "  (to do)"); }
+  ln_out(l);
+}
+project_show :: (p: [] Proj, r: [] Rep, what: string) -> int {
+  i := pj_find(p, what);
+  if i < 0 { return fail(r, EXIT_NOT_FOUND, "no item by that slug or alias"); }
+  f := p[0].f[..]; s := p[0].s[..];
+  st := pj_standing(p, i);
+  if r[0].json {
+    rep_str(r, "alias", pj_alias(p, i)); rep_str(r, "slug", pj_item_slug(p, i)); rep_str(r, "id", pj_id(p, i));
+    rep_str(r, "kind", KIND_NAMES[f[0].kind[i]]); rep_str(r, "state", ifx st < 3 then PJ_WORD[st] else pj_status(p, i));
+    rep_str(r, "status", pj_status(p, i)); rep_str(r, "title", pj_title(p, i)); rep_str(r, "rank", pj_rank(p, i));
+    rep_str(r, "claimed_by", pj_claimed(p, i)); rep_str(r, "commit", pj_commit(p, i)); rep_str(r, "body", trimmed(pj_body(p, i)));
+    if f[0].plan[i] >= 0 { rep_str(r, "plan", content_of(s, f[0].plan[i])); }
+    return rep_done(r, EXIT_OK);
+  }
+  l: [1] Ln;
+  ln_c(l[..], '#'); ln_s(l[..], pj_alias(p, i)); ln_c(l[..], ' '); ln_s(l[..], pj_item_slug(p, i));
+  ln_s(l[..], " · "); ln_s(l[..], KIND_NAMES[f[0].kind[i]]); ln_s(l[..], " · "); ln_s(l[..], ifx st < 3 then PJ_WORD[st] else pj_status(p, i));
+  if f[0].size[i].len > 0 { ln_s(l[..], " · size "); ln_s(l[..], str(s, f[0].size[i])); }
+  ln_out(l[..]);
+  ln_s(l[..], pj_title(p, i)); ln_out(l[..]);
+  if f[0].parent[i].len > 0 { ln_s(l[..], "in "); pj_name(p, l[..], str(s, f[0].parent[i])); ln_out(l[..]); }
+  ev := pj_ev(p, i);
+  nb := nt_tags(ev, "blocked-by");
+  if nb > 0 {
+    ln_s(l[..], "waits on ");
+    for k: 0..<nb { if k > 0 { ln_s(l[..], ", "); } t := nt_tag(ev, "blocked-by", k); if t.values > 0 { pj_name(p, l[..], nt_raw(ev, t.v[0])); } }
+    ln_out(l[..]);
+  }
+  ns: [64] N34Need;
+  nn := pj_needs(p, i, ns[..]);
+  if nn > 0 {
+    ln_s(l[..], "needs from other projects: ");
+    for k: 0..<nn {
+      if k > 0 { ln_s(l[..], ", "); }
+      c := nt_raw(ev, ns[k].coord); id := nt_raw(ev, ns[k].id);
+      ln_s(l[..], ifx c.count > 71 then c[71..<c.count] else c); ln_c(l[..], ' '); ln_s(l[..], id[0..<8]);
+    }
+    ln_s(l[..], ifx p[0].outside[i] then " (not done yet)" else " (all done)");
+    ln_out(l[..]);
+  }
+  if pj_claimed(p, i).count > 0 { ln_s(l[..], "claimed by "); ln_s(l[..], pj_claimed(p, i)); ln_s(l[..], " at "); ln_time(l[..], f[0].claimed_at[i]); }
+  else { ln_s(l[..], "not claimed"); }
+  ln_out(l[..]);
+  if pj_commit(p, i).count > 0 { ln_s(l[..], "done in "); ln_s(l[..], pj_commit(p, i)); ln_out(l[..]); }
+  print("\n%\n\n", trimmed(pj_body(p, i)));
+  if f[0].plan[i] >= 0 { print("%\n\n", "## Plan"); pj_print_plan(p, i, l[..]); print("%", "\n"); }
+  if f[0].note_cnt[i] > 0 {
+    print("%\n\n", "## Notes");
+    for k: f[0].note_from[i]..<f[0].note_from[i] + f[0].note_cnt[i] {
+      e := f[0].notes_ev[k]; by := f[0].notes_by[k];
+      ln_s(l[..], "- "); ln_time(l[..], s[0].at[e]); ln_c(l[..], ' ');
+      if by.len > 0 { ln_s(l[..], str(s, by)); ln_s(l[..], ": "); }
+      ln_s(l[..], trimmed(content_of(s, e)));
+      ln_out(l[..]);
+    }
+  }
+  return EXIT_OK;
+}
+
+// ---- dispatch -----------------------------------------------------------------------
+
+project_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
+  if verb == "" || verb == "help" { project_usage(); return ifx verb == "" then EXIT_USAGE else EXIT_OK; }
+  if verb == "review" { return project_review(a, r); }
+  known := [12] string.["list", "show", "plan", "claim", "release", "note", "done", "status", "move", "respread", "publish", "check"];
+  ok := false;
+  for k: known { if verb == k { ok = true; } }
+  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review (openagents project help)"); }
+  what := positional(a, 2);
+  needs_item := verb == "show" || verb == "plan" || verb == "claim" || verb == "release" || verb == "note" || verb == "done" || verb == "status" || verb == "move";
+  if needs_item && what == "" { return fail(r, EXIT_USAGE, "which item? (openagents project help)"); }
+  p: [1] Proj;
+  bad := pj_open(p[..], a);
+  if bad.count > 0 { pj_close(p[..]); return fail(r, EXIT_USAGE, bad); }
+  writes := verb != "list" && verb != "show" && !(verb == "plan" && positional(a, 3) == "") && verb != "check";
+  if writes && !p[0].keyed { pj_close(p[..]); return fail(r, EXIT_AUTH, "no project key (~/work/.secrets/openagents-project-SLUG.key, or --key FILE)"); }
+  code := EXIT_OK;
+  if verb == "check" || verb == "publish" {
+    code = project_publish(p[..], a, r, verb == "check");
+  } else if !pj_load(p[..]) {
+    code = fail(r, EXIT_FAIL, pj_why(p[..]));
+  } else if verb == "list" { code = project_list(p[..], r);
+  } else if verb == "show" { code = project_show(p[..], r, what);
+  } else { code = project_write(p[..], a, r, verb, what); }
+  pj_close(p[..]);
+  return code;
+}

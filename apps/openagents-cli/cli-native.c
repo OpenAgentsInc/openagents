@@ -4,6 +4,7 @@
    - cxcli_now_s: wall-clock seconds (Nostr created_at).
    - cxcli_isatty: whether fd 0, 1 or 2 is a terminal.
    - cxcli_read_line: one line from stdin into a borrowed view, echo off on a terminal.
+   - cxcli_read_stdin: all of stdin to its end (a plan file piped in).
    - cxcli_write_private: a file written mode 0600 through a temporary file and rename.
    - cxcli_mkdir_private: a directory (and its parents) mode 0700.
    - cxcli_alive: whether a process id exists (kill 0).
@@ -184,4 +185,19 @@ int64_t cxcli_keychain_remove(coax_v_u8 account) {
   (void)account;
   return -2;
 #endif
+}
+
+/* All of stdin to its end into a borrowed view: the bytes read, or -1 when
+   it is more than the view holds (or a read fails). */
+int64_t cxcli_read_stdin(coax_v_u8 out) {
+  int64_t n = 0;
+  for (;;) {
+    unsigned char c;
+    ssize_t r = read(0, &c, 1);
+    if (r < 0 && errno == EINTR) continue;
+    if (r < 0) return -1;
+    if (r == 0) return n;
+    if (n >= out.count) return -1;
+    out.data[n++] = c;
+  }
 }

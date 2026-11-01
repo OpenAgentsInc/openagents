@@ -1,0 +1,503 @@
+// The project domain's publisher: puts a project's work files on Nostr and
+// keeps them there, as coax/web/project/publish.ts did. It reads
+// apps/openagents-web/projects/SLUG/work/*.json (openagents.project-work-seed.v1
+// and openagents.project-work.v1), checks them, folds the relay first, and
+// publishes only what changed: a new item is a new issue, an edit is a
+// revision (a NIP-22 comment), a status is a status event, and the queue's
+// order is one replaceable event. A second run publishes nothing.
+
+WORK_SCHEMA :: "openagents.project-work.v1";
+SEED_SCHEMA :: "openagents.project-work-seed.v1";
+ISSUE_REVISION_MARK :: "openagents.issue-revision.v1";
+
+// ---- the work files, read ------------------------------------------------------------
+
+WK_ITEMS :: 2048; WK_REFS :: 16384; WK_BYTES :: 8388608; WK_FILE :: 1048576; WK_NODES :: 262144;
+Work :: struct {
+  n: int;
+  slug: [WK_ITEMS] Ref; title: [WK_ITEMS] Ref; body: [WK_ITEMS] Ref; size: [WK_ITEMS] Ref; parent: [WK_ITEMS] Ref; status: [WK_ITEMS] Ref;
+  kind: [WK_ITEMS] int; sats: [WK_ITEMS] int;
+  lab_from: [WK_ITEMS] int; lab_n: [WK_ITEMS] int;
+  blk_from: [WK_ITEMS] int; blk_n: [WK_ITEMS] int;
+  need_from: [WK_ITEMS] int; need_n: [WK_ITEMS] int;
+  refs: [WK_REFS] Ref; refs_n: int;
+  // per need ref: the other project's issue id and project coordinate, found on the relay
+  need_id: [WK_REFS] Ref; need_coord: [WK_REFS] Ref;
+  // per item: the issue it is (its id), once known
+  id: [WK_ITEMS] Ref;
+  order: [WK_ITEMS] int;     // topological: parents and blockers first
+  bytes: [WK_BYTES] u8; used: int; bad: bool;
+  file: [WK_FILE] u8;
+  nodes: [WK_NODES] JvNode;
+}
+wk :: (w: [] Work, r: Ref) -> string { return cast(string) w[0].bytes[r.from..<r.from + r.len]; }
+wk_add :: (w: [] Work, s: string) -> Ref {
+  r := Ref.{from = w[0].used, len = 0};
+  if w[0].used + s.count > WK_BYTES { w[0].bad = true; return r; }
+  for i: 0..<s.count { w[0].bytes[w[0].used + i] = s[i]; }
+  w[0].used += s.count; r.len = s.count;
+  return r;
+}
+// A string node, unescaped, kept; "" for a missing or non-string node.
+wk_str :: (w: [] Work, d: Jv, at: int) -> Ref {
+  r := Ref.{from = w[0].used, len = 0};
+  if jv_kind(d, at) != JV_STRING { return r; }
+  n := jv_str(d, at, w[0].bytes[w[0].used..<WK_BYTES]);
+  if n < 0 { w[0].bad = true; return r; }
+  w[0].used += n; r.len = n;
+  return r;
+}
+// Grows the last kept string with s (it must be the arena's end).
+wk_more :: (w: [] Work, r: Ref, s: string) -> Ref {
+  x := wk_add(w, s);
+  return Ref.{from = r.from, len = r.len + x.len};
+}
+// An array of strings at, as refs: the first ref's index.
+wk_list :: (w: [] Work, d: Jv, at: int, n: [] int) -> int {
+  from := w[0].refs_n; n[0] = 0;
+  for i: 0..<jv_len(d, at) {
+    if w[0].refs_n >= WK_REFS { w[0].bad = true; return from; }
+    w[0].refs[w[0].refs_n] = wk_str(w, d, jv_at(d, at, i)); w[0].refs_n += 1; n[0] += 1;
+  }
+  return from;
+}
+wk_ref :: (w: [] Work, k: int) -> string { return wk(w, w[0].refs[k]); }
+wk_kind :: (name: string) -> int {
+  if name == "initiative" { return FK_INITIATIVE; }
+  if name == "milestone" { return FK_MILESTONE; }
+  if name == "task" { return FK_TASK; }
+  return -1;
+}
+wk_new :: (w: [] Work) -> int {
+  if w[0].n >= WK_ITEMS { w[0].bad = true; return -1; }
+  k := w[0].n; w[0].n += 1;
+  w[0].slug[k] = Ref.{}; w[0].title[k] = Ref.{}; w[0].body[k] = Ref.{}; w[0].size[k] = Ref.{}; w[0].parent[k] = Ref.{}; w[0].status[k] = Ref.{};
+  w[0].kind[k] = FK_TASK; w[0].sats[k] = 0; w[0].lab_n[k] = 0; w[0].blk_n[k] = 0; w[0].need_n[k] = 0; w[0].id[k] = Ref.{};
+  w[0].lab_from[k] = w[0].refs_n; w[0].blk_from[k] = w[0].refs_n; w[0].need_from[k] = w[0].refs_n;
+  return k;
+}
+wk_lists :: (w: [] Work, d: Jv, at: int, k: int) {
+  c: [1] int;
+  w[0].lab_from[k] = wk_list(w, d, jv_get(d, at, "labels"), c[..]); w[0].lab_n[k] = c[0];
+  w[0].blk_from[k] = wk_list(w, d, jv_get(d, at, "blocked_by"), c[..]); w[0].blk_n[k] = c[0];
+  w[0].need_from[k] = wk_list(w, d, jv_get(d, at, "needs"), c[..]); w[0].need_n[k] = c[0];
+}
+
+// One seed file's items (model.ts seedItems): a task's acceptance checks and
+// the files it writes go in its body, where an agent reads them.
+wk_seed :: (w: [] Work, d: Jv) {
+  i := jv_get(d, 0, "initiative");
+  k := wk_new(w); if k < 0 { return; }
+  init_slug := wk_str(w, d, jv_get(d, i, "slug"));
+  w[0].slug[k] = init_slug; w[0].kind[k] = FK_INITIATIVE;
+  w[0].title[k] = wk_str(w, d, jv_get(d, i, "title"));
+  b := wk_str(w, d, jv_get(d, i, "body"));
+  spec := jv_get(d, i, "spec");
+  if jv_kind(d, spec) == JV_STRING {
+    b = wk_more(w, b, "\n\nSpecification: `");
+    sp := wk_str(w, d, spec); b.len += sp.len;
+    b = wk_more(w, b, "` in the openagents repository.");
+  }
+  w[0].body[k] = b;
+  c: [1] int;
+  w[0].lab_from[k] = wk_list(w, d, jv_get(d, i, "labels"), c[..]); w[0].lab_n[k] = c[0];
+  ms := jv_get(d, 0, "milestones");
+  for j: 0..<jv_len(d, ms) {
+    m := jv_at(d, ms, j);
+    k = wk_new(w); if k < 0 { return; }
+    w[0].slug[k] = wk_str(w, d, jv_get(d, m, "slug")); w[0].kind[k] = FK_MILESTONE;
+    w[0].title[k] = wk_str(w, d, jv_get(d, m, "title")); w[0].body[k] = wk_str(w, d, jv_get(d, m, "body"));
+    w[0].lab_from[k] = wk_list(w, d, jv_get(d, m, "labels"), c[..]); w[0].lab_n[k] = c[0];
+    w[0].parent[k] = ifx jv_kind(d, jv_get(d, m, "parent")) == JV_STRING then wk_str(w, d, jv_get(d, m, "parent")) else init_slug;
+  }
+  ts := jv_get(d, 0, "tasks");
+  tmp: [262144] u8;
+  for j: 0..<jv_len(d, ts) {
+    t := jv_at(d, ts, j);
+    k = wk_new(w); if k < 0 { return; }
+    w[0].slug[k] = wk_str(w, d, jv_get(d, t, "slug")); w[0].kind[k] = FK_TASK;
+    w[0].title[k] = wk_str(w, d, jv_get(d, t, "title"));
+    w[0].parent[k] = wk_str(w, d, jv_get(d, t, "parent")); w[0].size[k] = wk_str(w, d, jv_get(d, t, "size"));
+    w[0].status[k] = wk_str(w, d, jv_get(d, t, "status"));
+    w[0].sats[k] = jv_int(d, jv_get(d, t, "sats"), 0);
+    n := jv_str(d, jv_get(d, t, "body"), tmp[..]);
+    body := wk_add(w, trimmed(cast(string) tmp[0..<ifx n > 0 then n else 0]));
+    acc := jv_get(d, t, "acceptance");
+    if jv_len(d, acc) > 0 {
+      body = wk_more(w, body, "\n\n## Acceptance\n\n");
+      for q: 0..<jv_len(d, acc) {
+        if q > 0 { body = wk_more(w, body, "\n"); }
+        body = wk_more(w, body, "- ");
+        x := wk_str(w, d, jv_at(d, acc, q)); body.len += x.len;
+      }
+    }
+    fl := jv_get(d, t, "files");
+    if jv_len(d, fl) > 0 {
+      body = wk_more(w, body, "\n\n## Files\n\n");
+      for q: 0..<jv_len(d, fl) {
+        if q > 0 { body = wk_more(w, body, "\n"); }
+        body = wk_more(w, body, "- `");
+        x := wk_str(w, d, jv_at(d, fl, q)); body.len += x.len;
+        body = wk_more(w, body, "`");
+      }
+    }
+    w[0].body[k] = body;
+    w[0].lab_from[k] = wk_list(w, d, jv_get(d, t, "labels"), c[..]); w[0].lab_n[k] = c[0];
+    w[0].blk_from[k] = wk_list(w, d, jv_get(d, t, "blocked_by"), c[..]); w[0].blk_n[k] = c[0];
+    w[0].need_from[k] = wk_list(w, d, jv_get(d, t, "needs"), c[..]); w[0].need_n[k] = c[0];
+  }
+}
+// One work file's items, already normalized.
+wk_items :: (w: [] Work, d: Jv) -> string {
+  its := jv_get(d, 0, "items");
+  for j: 0..<jv_len(d, its) {
+    t := jv_at(d, its, j);
+    k := wk_new(w); if k < 0 { return ""; }
+    w[0].slug[k] = wk_str(w, d, jv_get(d, t, "slug"));
+    kb: [32] u8; kn := jv_str(d, jv_get(d, t, "kind"), kb[..]);
+    w[0].kind[k] = wk_kind(cast(string) kb[0..<ifx kn > 0 then kn else 0]);
+    if w[0].kind[k] < 0 { return "bad kind"; }
+    w[0].title[k] = wk_str(w, d, jv_get(d, t, "title")); w[0].body[k] = wk_str(w, d, jv_get(d, t, "body"));
+    w[0].parent[k] = wk_str(w, d, jv_get(d, t, "parent")); w[0].size[k] = wk_str(w, d, jv_get(d, t, "size"));
+    w[0].status[k] = wk_str(w, d, jv_get(d, t, "status"));
+    w[0].sats[k] = jv_int(d, jv_get(d, t, "sats"), 0);
+    wk_lists(w, d, t, k);
+  }
+  return "";
+}
+
+// The project's work files, sorted by name, read and checked. "" when they
+// are fine, else what is wrong (and where).
+work_read :: (w: [] Work, dir: string) -> string {
+  w[0].n = 0; w[0].refs_n = 0; w[0].used = 0; w[0].bad = false;
+  jb: [2048] u8;
+  wdir := fs_join(dir, "work", jb[..]);
+  ls: [1] FsList;
+  if fs_list(wdir, ls[..]) < 0 { return ""; }
+  for e: 0..<ls[0].n {
+    name := fs_entry(ls[..], e);
+    if name.count < 6 || name[name.count - 5..<name.count] != ".json" { continue; }
+    pb: [4096] u8;
+    n := fs_read(fs_join(wdir, name, pb[..]), w[0].file[..]);
+    if n < 0 { return wk_why(w, name, ": can't read it (at most 1 MB)", ""); }
+    d: [1] Jv;
+    if !jv_parse(d[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) { return wk_why(w, name, ": not JSON", ""); }
+    v := jv_get(d[0], 0, "v");
+    if jv_raw(d[0], v) == SEED_SCHEMA { wk_seed(w, d[0]); }
+    else if jv_raw(d[0], v) == WORK_SCHEMA && jv_kind(d[0], jv_get(d[0], 0, "items")) == JV_ARRAY {
+      bad := wk_items(w, d[0]);
+      if bad.count > 0 { return wk_why(w, name, ": ", bad); }
+    } else { return wk_why(w, name, ": not ", "openagents.project-work-seed.v1 or openagents.project-work.v1"); }
+    if w[0].bad { return "the work files are bigger than the CLI holds"; }
+  }
+  return work_check(w);
+}
+wk_why :: (w: [] Work, a: string, b: string, c: string) -> string {
+  // the reason goes in the arena's end, which nothing else reads after a failure
+  r := wk_add(w, a); x := wk_add(w, b); y := wk_add(w, c);
+  return cast(string) w[0].bytes[r.from..<r.from + r.len + x.len + y.len];
+}
+// The index of the item with this slug, or -1.
+wk_find :: (w: [] Work, slug: string) -> int {
+  for k: 0..<w[0].n { if equal(wk(w, w[0].slug[k]), slug) { return k; } }
+  return -1;
+}
+// Where slug stands in the work files: among all items, or among tasks only (tasks true); -1 when absent.
+work_pos :: (w: [] Work, slug: string, tasks: bool) -> int {
+  n := 0;
+  for k: 0..<w[0].n {
+    if tasks && w[0].kind[k] != FK_TASK { continue; }
+    if equal(wk(w, w[0].slug[k]), slug) { return n; }
+    n += 1;
+  }
+  return -1;
+}
+
+// model.ts checkWork: unique slugs, known kinds, short titles with no order
+// numbers, known parents and blockers, needs as PROJECT:SLUG, no cycles.
+work_check :: (w: [] Work) -> string {
+  for k: 0..<w[0].n {
+    s := wk(w, w[0].slug[k]);
+    if !pr_slug_ok(s) { return wk_why(w, "bad slug \"", s, "\""); }
+    for o: 0..<k { if equal(wk(w, w[0].slug[o]), s) { return wk_why(w, "duplicate slug ", s, ""); } }
+    if !pr_title_ok(wk(w, w[0].title[k])) { return wk_why(w, s, ": title missing, too long, or with an order number in it", ""); }
+    st := wk(w, w[0].status[k]);
+    if st.count > 0 && pj_state_of(st) < 0 { return wk_why(w, s, ": bad status ", st); }
+  }
+  for k: 0..<w[0].n {
+    s := wk(w, w[0].slug[k]);
+    par := wk(w, w[0].parent[k]);
+    if par.count > 0 && wk_find(w, par) < 0 { return wk_why(w, s, ": unknown parent ", par); }
+    for j: 0..<w[0].blk_n[k] { b := wk_ref(w, w[0].blk_from[k] + j); if wk_find(w, b) < 0 { return wk_why(w, s, ": unknown blocker ", b); } }
+    for j: 0..<w[0].need_n[k] { nd := wk_ref(w, w[0].need_from[k] + j); if !pr_need_ok(nd) { return wk_why(w, s, ": bad need (project:slug) ", nd); } }
+  }
+  // topological order: each item after its parent and its blockers
+  state: [WK_ITEMS] int; on := 0;
+  for k: 0..<w[0].n { state[k] = 0; }
+  for k: 0..<w[0].n {
+    c := wk_visit(w, k, state[..], on);
+    if c < 0 { return wk_why(w, "cycle through ", wk(w, w[0].slug[-c - 1]), ""); }
+    on = c;
+  }
+  return "";
+}
+// Visits item k: the new count placed, or -(item + 1) on a cycle through it.
+wk_visit :: (w: [] Work, k: int, state: [] int, on: int) -> int {
+  if state[k] == 2 { return on; }
+  if state[k] == 1 { return -(k + 1); }
+  state[k] = 1;
+  n := on;
+  par := wk(w, w[0].parent[k]);
+  if par.count > 0 { n = wk_visit(w, wk_find(w, par), state, n); if n < 0 { return n; } }
+  for j: 0..<w[0].blk_n[k] { n = wk_visit(w, wk_find(w, wk_ref(w, w[0].blk_from[k] + j)), state, n); if n < 0 { return n; } }
+  state[k] = 2;
+  w[0].order[n] = k;
+  return n + 1;
+}
+
+// ---- fields: wanted and published -----------------------------------------------------
+
+// The id of the issue with this slug: published (the fold's, by slug alone) or just sent.
+pj_by_slug :: (p: [] Proj, slug: string) -> int {
+  for r: 0..<p[0].f[0].n { if equal(pj_item_slug(p, r), slug) { return r; } }
+  return -1;
+}
+wk_id_of :: (p: [] Proj, w: [] Work, slug: string) -> string {
+  k := wk_find(w, slug);
+  if k >= 0 && w[0].id[k].len == 64 { return wk(w, w[0].id[k]); }
+  r := pj_by_slug(p, slug);
+  return ifx r >= 0 then pj_id(p, r) else "";
+}
+// model.ts fieldTags for item k as the work files say it.
+wk_field_tags :: (p: [] Proj, w: [] Work, k: int, t: [] TagList) {
+  tl_clear(t);
+  tl_2(t, "subject", wk(w, w[0].title[k]));
+  if w[0].kind[k] != FK_TASK { tl_2(t, "t", KIND_NAMES[w[0].kind[k]]); }
+  for j: 0..<w[0].lab_n[k] { tl_2(t, "t", wk_ref(w, w[0].lab_from[k] + j)); }
+  if w[0].size[k].len > 0 { tl_2(t, "size", wk(w, w[0].size[k])); }
+  if w[0].parent[k].len > 0 { tl_2(t, "parent", wk_id_of(p, w, wk(w, w[0].parent[k]))); }
+  for j: 0..<w[0].blk_n[k] { tl_2(t, "blocked-by", wk_id_of(p, w, wk_ref(w, w[0].blk_from[k] + j))); }
+  for j: 0..<w[0].need_n[k] { q := w[0].need_from[k] + j; tl_3(t, "needs", wk(w, w[0].need_id[q]), wk(w, w[0].need_coord[q])); }
+  for j: 0..<w[0].need_n[k] {
+    q := w[0].need_from[k] + j; c := wk(w, w[0].need_coord[q]);
+    seen := false;
+    for x: 0..<j { if equal(wk(w, w[0].need_coord[w[0].need_from[k] + x]), c) { seen = true; } }
+    if !seen { tl_2(t, "q", c); }
+  }
+}
+// The same for a published issue's fields event (model.ts fieldsFrom, then fieldTags).
+pj_field_tags :: (p: [] Proj, e: int, t: [] TagList) -> int {
+  s := p[0].s[..];
+  tl_clear(t);
+  sub := tag_value(s, e, "subject");
+  tl_2(t, "subject", ifx sub.ok then str(s, sub.ref) else "");
+  kind := FK_TASK;
+  for g: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[g] < 2 || !equal(element(s, g, 0), "t") { continue; }
+    v := element(s, g, 1);
+    if equal(v, "initiative") { kind = FK_INITIATIVE; }
+    else if equal(v, "milestone") && kind != FK_INITIATIVE { kind = FK_MILESTONE; }
+  }
+  if kind != FK_TASK { tl_2(t, "t", KIND_NAMES[kind]); }
+  for g: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[g] < 2 || !equal(element(s, g, 0), "t") { continue; }
+    v := element(s, g, 1);
+    if !equal(v, "initiative") && !equal(v, "milestone") { tl_2(t, "t", v); }
+  }
+  size := tag_value(s, e, "size"); if size.ok && size.ref.len > 0 { tl_2(t, "size", str(s, size.ref)); }
+  par := tag_value(s, e, "parent"); if par.ok && par.ref.len > 0 { tl_2(t, "parent", str(s, par.ref)); }
+  for g: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[g] >= 2 && equal(element(s, g, 0), "blocked-by") { tl_2(t, "blocked-by", element(s, g, 1)); }
+  }
+  c0 := t[0].n;
+  for g: s[0].tag0[e]..<s[0].tag0[e] + s[0].tags[e] {
+    if s[0].tag_len[g] < 3 || !equal(element(s, g, 0), "needs") { continue; }
+    id := element(s, g, 1); c := element(s, g, 2);
+    if id.count == 64 && hex_lower(id) && pj_coord_ok(c) { tl_3(t, "needs", id, c); }
+  }
+  c1 := t[0].n;
+  for k: c0..<c1 {
+    c := tl_get(t, k, 2); seen := false;
+    for x: c0..<k { if equal(tl_get(t, x, 2), c) { seen = true; } }
+    if !seen { tl_2(t, "q", c); }
+  }
+  rw := tag_value(s, e, "reward");
+  return ifx rw.ok then text_int(str(s, rw.ref)) else 0;
+}
+// 30621:<64 hex>:<slug>
+pj_coord_ok :: (c: string) -> bool {
+  return c.count > 71 && starts(c, "30621:") && hex_lower(c[6..<70]) && c[70] == ':' && pr_slug_ok(c[71..<c.count]);
+}
+tl_eq :: (a: [] TagList, b: [] TagList) -> bool {
+  if a[0].bad || b[0].bad || a[0].n != b[0].n { return false; }
+  for k: 0..<a[0].n {
+    if a[0].count[k] != b[0].count[k] { return false; }
+    for j: 0..<a[0].count[k] { if !equal(tl_get(a, k, j), tl_get(b, k, j)) { return false; } }
+  }
+  return true;
+}
+
+// Every PROJECT:SLUG the work needs, as that project's issue id and address, from the relay.
+pj_far :: (p: [] Proj, w: [] Work) -> bool {
+  any := false;
+  for k: 0..<w[0].n { if w[0].need_n[k] > 0 { any = true; } }
+  if !any { return true; }
+  far: [1] Store; store_clear(far[..]);
+  iss_k := [1] int.[KIND_ISSUE];
+  projects := fs_dir(pj_dir(p));
+  for k: 0..<w[0].n {
+    for j: 0..<w[0].need_n[k] {
+      q := w[0].need_from[k] + j;
+      nd := wk_ref(w, q);
+      colon := 0; while nd[colon] != ':' { colon += 1; }
+      other := nd[0..<colon]; slug := nd[colon + 1..<nd.count];
+      if equal(other, pj_slug(p)) { pj_say(p, "a need on ", other, " is in this project: use blocked_by"); return false; }
+      oc: [1] PCfg; jb: [2048] u8;
+      bad := pc_load(oc[..], fs_join(projects, other, jb[..]));
+      if bad.count > 0 { pj_say(p, other, ": ", bad); return false; }
+      opk := pc(oc[..], oc[0].pubkey);
+      if opk.count != 64 || !hex_lower(opk) { pj_say(p, other, "/project.json has no pubkey", ""); return false; }
+      if !equal(pc(oc[..], oc[0].relay), pj_url(p)) { pj_say(p, other, " is on another relay; needs across relays aren't supported", ""); return false; }
+      coord: [1] Ln; ln_s(coord[..], "30621:"); ln_s(coord[..], opk); ln_c(coord[..], ':'); ln_s(coord[..], other);
+      cs := [1] string.[ln_text(coord[..])];
+      fl: [1] PjFilter; pf_start(fl[..], iss_k[..], opk); pf_tag(fl[..], "#a", cs[..]);
+      if !pj_all(p, far[..], ANY_KEY, pf_text(fl[..])) { return false; }
+      // one issue per slug: the first published wins
+      best := -1;
+      for e: 0..<far[0].n {
+        if far[0].kind[e] != KIND_ISSUE || !equal(author_of(far[..], e), opk) || !tag_has(far[..], e, "a", ln_text(coord[..])) { continue; }
+        sv := tag_value(far[..], e, "slug");
+        if !sv.ok || !equal(str(far[..], sv.ref), slug) { continue; }
+        if best < 0 || older(far[..], e, best) { best = e; }
+      }
+      if best < 0 { pj_say(p, "no issue ", nd, " on the relay (publish that project first)"); return false; }
+      w[0].need_id[q] = wk_add(w, stored_id(far[..], best));
+      w[0].need_coord[q] = wk_add(w, ln_text(coord[..]));
+    }
+  }
+  return true;
+}
+
+// ---- the events ------------------------------------------------------------------------
+
+pj_repo_tags :: (p: [] Proj, t: [] TagList) {
+  c := p[0].cfg[..]; tl_clear(t);
+  tl_2(t, "d", pc(c, c[0].repo_d)); tl_2(t, "name", pc(c, c[0].repo_name)); tl_2(t, "description", pc(c, c[0].repo_description));
+  tl_2(t, "web", pc(c, c[0].web)); tl_2(t, "clone", pc(c, c[0].clone)); tl_2(t, "relays", pc(c, c[0].relay)); tl_3(t, "r", pc(c, c[0].euc), "euc");
+}
+pj_project_tags :: (p: [] Proj, t: [] TagList) {
+  c := p[0].cfg[..]; tl_clear(t);
+  rc: [256] u8; rn := pj_coord(p, KIND_REPO, rc[..]); repo := cast(string) rc[0..<rn];
+  tl_2(t, "d", pj_slug(p)); tl_2(t, "name", pc(c, c[0].name)); tl_2(t, "description", pc(c, c[0].description));
+  tl_3(t, "a", repo, pc(c, c[0].relay)); tl_3(t, "path", repo, pc(c, c[0].path));
+  tl_2(t, "contributions", pc(c, c[0].contributions)); tl_2(t, "license", pc(c, c[0].license));
+  vis := pc(c, c[0].visibility);
+  if vis.count > 0 { tl_2(t, "visibility", vis); }
+  tl_2(t, "buzz-visibility", ifx vis.count == 0 || vis == "public" then "listed" else "unlisted");
+  for m: 0..<c[0].maint_n { tl_4(t, "p", pc(c, c[0].maint[m]), "", "maintainer"); }
+}
+
+// The queue's order (rank.ts queueOrder) over the folded tasks: rows (fold
+// issue numbers) and their ranks. The count, or -1.
+pj_ordered :: (p: [] Proj, w: [] Work, rows: [] int, rs: [] PrRanks) -> int {
+  f := p[0].f[..];
+  task: [FOLD_ISSUES] int; ranks: [FOLD_ISSUES] string; status: [FOLD_ISSUES] string; pos: [FOLD_ISSUES] int; tn := 0;
+  for r: 0..<f[0].n {
+    if !pj_task(p, r) { continue; }
+    task[tn] = r; ranks[tn] = pj_rank(p, r); status[tn] = pj_status(p, r); pos[tn] = work_pos(w, pj_item_slug(p, r), true);
+    tn += 1;
+  }
+  idx: [FOLD_ISSUES] int;
+  n := pr_queue_order(ranks[0..<tn], status[0..<tn], pos[0..<tn], idx[..], rs);
+  for k: 0..<n { rows[k] = task[idx[k]]; }
+  return n;
+}
+
+// ---- publish ----------------------------------------------------------------------------
+
+project_publish :: (p: [] Proj, a: [] Args, r: [] Rep, check: bool) -> int {
+  w: [1] Work;
+  bad := work_read(w[..], pj_dir(p));
+  if bad.count > 0 { return fail(r, EXIT_USAGE, bad); }
+  if check {
+    nb: [48] u8;
+    tasks := 0; for k: 0..<w[0].n { if w[0].kind[k] == FK_TASK { tasks += 1; } }
+    if r[0].json { rep_int(r, "items", w[0].n); rep_int(r, "tasks", tasks); return rep_done(r, EXIT_OK); }
+    print("% work items (% tasks), checked\n", int_text(w[0].n, nb[0..<24]), int_text(tasks, nb[24..<48]));
+    return EXIT_OK;
+  }
+  if !pj_load(p) { return fail(r, EXIT_FAIL, pj_why(p)); }
+  s := p[0].s[..]; f := p[0].f[..];
+  t: [1] TagList; have: [1] TagList; l: [1] Ln; wh: [1] Ln;
+  pj_repo_tags(p, t[..]);
+  if !tl_same(t[..], s, f[0].repo) { if !pj_send(p, KIND_REPO, t[..], "", pj_join(wh[..], "repository ", pc(p[0].cfg[..], p[0].cfg[0].repo_d), "")) { return pj_fail(p, r); } }
+  pj_project_tags(p, t[..]);
+  if !tl_same(t[..], s, f[0].project) { if !pj_send(p, KIND_PROJECT, t[..], "", pj_join(wh[..], "project ", pj_slug(p), "")) { return pj_fail(p, r); } }
+  if !pj_far(p, w[..]) { return pj_fail(p, r); }
+  rc: [256] u8; rn := pj_coord(p, KIND_REPO, rc[..]); repo := cast(string) rc[0..<rn];
+  pcd: [256] u8; pn := pj_coord(p, KIND_PROJECT, pcd[..]); proj := cast(string) pcd[0..<pn];
+  cfg := p[0].cfg[..]; relay := pj_cfg_relay(p);
+  sb: [24] u8;
+  fresh := 0;
+  for o: 0..<w[0].n {
+    k := w[0].order[o];
+    slug := wk(w[..], w[0].slug[k]);
+    body: [1] Ln; ln_s(body[..], trimmed(wk(w[..], w[0].body[k]))); ln_c(body[..], 10);
+    want := wk(w[..], w[0].status[k]);
+    i := pj_by_slug(p, slug);
+    if i < 0 {
+      wk_field_tags(p, w[..], k, have[..]);
+      tl_clear(t[..]);
+      tl_3(t[..], "a", repo, relay); tl_3(t[..], "a", proj, relay); tl_2(t[..], "p", pj_pk(p)); tl_2(t[..], "slug", slug);
+      for g: 0..<have[0].n {
+        tl_tag(t[..]);
+        for j: 0..<have[0].count[g] { tl_el(t[..], tl_get(have[..], g, j)); }
+      }
+      al: [1] Ln; ln_s(al[..], "A "); ln_s(al[..], KIND_NAMES[w[0].kind[k]]); ln_s(al[..], " in the "); ln_s(al[..], pc(cfg, cfg[0].name));
+      ln_s(al[..], " project: "); ln_s(al[..], wk(w[..], w[0].title[k]));
+      tl_2(t[..], "alt", ln_text(al[..]));
+      if !pj_send(p, KIND_ISSUE, t[..], ln_text(body[..]), pj_join(wh[..], "issue ", slug, "")) { return pj_fail(p, r); }
+      w[0].id[k] = wk_add(w[..], cast(string) p[0].last_id[..]);
+      fresh += 1;
+      st := pj_state_of(want);
+      if st > 0 { if !pj_status_event(p, wk(w[..], w[0].id[k]), st, pj_join(wh[..], slug, " ", want)) { return pj_fail(p, r); } }
+      continue;
+    }
+    wk_field_tags(p, w[..], k, t[..]);
+    sats := pj_field_tags(p, f[0].fields[i], have[..]);
+    if !tl_eq(t[..], have[..]) || !equal(content_of(s, f[0].fields[i]), ln_text(body[..])) || sats != w[0].sats[k] {
+      rv: [1] TagList; pj_comment_head(p, rv[..], i);
+      tl_2(rv[..], "revision", ISSUE_REVISION_MARK);
+      for g: 0..<t[0].n { tl_tag(rv[..]); for j: 0..<t[0].count[g] { tl_el(rv[..], tl_get(t[..], g, j)); } }
+      tl_2(rv[..], "alt", pj_join(l[..], "Revision of an issue: ", wk(w[..], w[0].title[k]), ""));
+      if !pj_send(p, KIND_COMMENT, rv[..], ln_text(body[..]), pj_join(wh[..], "revision of ", slug, "")) { return pj_fail(p, r); }
+    }
+    if want.count > 0 && !equal(want, pj_status(p, i)) {
+      if !pj_status_event(p, pj_id(p, i), pj_state_of(want), pj_join(wh[..], slug, " ", want)) { return pj_fail(p, r); }
+    }
+  }
+  // the order, over the issues as the relay holds them now
+  if p[0].dry && fresh > 0 {
+    print("dry run: % events; the order follows the new issues once they are published\n", int_text(p[0].sent, sb[0..<24]));
+    return pj_published(p, r);
+  }
+  if !p[0].dry && p[0].sent > 0 && !pj_load(p) { return pj_fail(p, r); }
+  rows: [FOLD_ISSUES] int; rs: [1] PrRanks;
+  n := pj_ordered(p, w[..], rows[..], rs[..]);
+  if n < 0 { pj_say(p, "the order's ranks are not ranks", "", ""); return pj_fail(p, r); }
+  if !pj_order_tags(p, t[..], rows[..], rs[..], n) { return pj_fail(p, r); }
+  if !tl_same(t[..], p[0].s[..], p[0].f[0].order) {
+    wh[0].n = 0; ln_s(wh[..], "order of "); ln_i(wh[..], n);
+    if !pj_send(p, KIND_ORDER, t[..], "", ln_text(wh[..])) { return pj_fail(p, r); }
+  }
+  if p[0].dry { print("dry run: % events\n", int_text(p[0].sent, sb[0..<24])); }
+  else if p[0].sent == 0 { print("%\n", "nothing changed"); }
+  return pj_published(p, r);
+}
+pj_published :: (p: [] Proj, r: [] Rep) -> int {
+  nb: [512] u8;
+  naddr := pj_naddr(p, nb[..]);
+  if r[0].json { rep_int(r, "sent", p[0].sent); rep_bool(r, "dry_run", p[0].dry); rep_str(r, "project", naddr); return rep_done(r, EXIT_OK); }
+  print("project %\n", naddr);
+  return EXIT_OK;
+}

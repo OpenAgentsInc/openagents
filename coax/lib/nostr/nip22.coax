@@ -81,7 +81,7 @@ n22_comment :: (e:NtEvent)->N22Comment #export_c {
 }
 
 N22_HEX :: "09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af";
-// An issue comment's scope tags, as publish.ts writes them, then extra.
+// An issue comment's scope tags, as the project CLI writes them, then extra.
 n22_event :: (out:[]u8,extra:string)->NtEvent {
  n:=json_raw(out,0,"[[\"E\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\",\"wss://r\",\"");n=json_raw(out,n,N22_HEX);
  n=json_raw(out,n,"\"],[\"K\",\"1621\"],[\"P\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\"],[\"e\",\"");n=json_raw(out,n,N22_HEX);

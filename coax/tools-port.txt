@@ -426,16 +426,11 @@ coax/web/project/links.test.ts
 coax/web/project/links.ts
 coax/web/project/list.ts
 coax/web/project/live-catchup.test.ts
-coax/web/project/local-relay.ts
 coax/web/project/model.ts
 coax/web/project/nip19.test.ts
 coax/web/project/nostr-plan.test.ts
 coax/web/project/publish-data.sh
-coax/web/project/publish.test.ts
-coax/web/project/publish.ts
 coax/web/project/pylons.ts
-coax/web/project/rank.test.ts
-coax/web/project/rank.ts
 coax/web/project/relay.test.ts
 coax/web/project/relay.ts
 coax/web/project/snapshot.ts

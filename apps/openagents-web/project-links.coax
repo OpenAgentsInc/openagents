@@ -60,7 +60,7 @@ link_roots :: (ls: [] Store, ours: string, lr: [] LinkRoots) {
     lr[0].root[k] = e; lr[0].coord[k] = t; lr[0].fields[k] = e; lr[0].status[k] = -1;
   }
   for k: 0..<lr[0].n {
-    e := lr[0].root[k]; me := author_of(ls, e); id := event_id(ls, e);
+    e := lr[0].root[k]; me := author_of(ls, e); id := stored_id(ls, e);
     revised := false;
     for x: 0..<ls[0].n {
       if !equal(author_of(ls, x), me) { continue; }
@@ -73,17 +73,17 @@ link_roots :: (ls: [] Store, ours: string, lr: [] LinkRoots) {
   }
   // aliases among the roots of the same project: four hex digits, more on a clash
   for k: 0..<lr[0].n {
-    n := 4; a := event_id(ls, lr[0].root[k]);
+    n := 4; a := stored_id(ls, lr[0].root[k]);
     for o: 0..<lr[0].n {
       if o == k || !equal(element(ls, lr[0].coord[o], 1), element(ls, lr[0].coord[k], 1)) { continue; }
-      b := event_id(ls, lr[0].root[o]);
+      b := stored_id(ls, lr[0].root[o]);
       while n < 64 && equal(a[0..<n], b[0..<n]) { n += 1; }
     }
     lr[0].alias[k] = n;
   }
 }
 link_find :: (ls: [] Store, lr: [] LinkRoots, id: string) -> int {
-  for k: 0..<lr[0].n { if equal(event_id(ls, lr[0].root[k]), id) { return k; } }
+  for k: 0..<lr[0].n { if equal(stored_id(ls, lr[0].root[k]), id) { return k; } }
   return -1;
 }
 link_d :: (ls: [] Store, lr: [] LinkRoots, k: int) -> string { c := element(ls, lr[0].coord[k], 1); return c[71..<c.count]; }
@@ -101,7 +101,7 @@ link_needs :: (ls: [] Store, lr: [] LinkRoots, k: int, id: string, ours: string)
 // One row's tail: | d | alias | status | title, then the newline.
 link_row :: (ls: [] Store, lr: [] LinkRoots, k: int, out: [] u8, at: int) -> int {
   m := json_raw(out, at, "|"); m = json_raw(out, m, link_d(ls, lr, k));
-  m = json_raw(out, m, "|"); m = json_raw(out, m, event_id(ls, lr[0].root[k])[0..<lr[0].alias[k]]);
+  m = json_raw(out, m, "|"); m = json_raw(out, m, stored_id(ls, lr[0].root[k])[0..<lr[0].alias[k]]);
   m = json_raw(out, m, "|"); m = json_raw(out, m, link_status(ls, lr, k));
   title := tag_value(ls, lr[0].fields[k], "subject");
   m = json_raw(out, m, "|"); m = cell_into(out, m, ifx title.ok then str(ls, title.ref) else "");
@@ -118,7 +118,7 @@ write_links :: (s: [] Store, f: [] Fold, order: [] int, ls: [] Store, pubkey: st
   link_roots(ls, ours, lr);
   m := 0;
   for k: 0..<f[0].n {
-    r := order[k]; fe := f[0].fields[r]; id := event_id(s, f[0].root[r]);
+    r := order[k]; fe := f[0].fields[r]; id := stored_id(s, f[0].root[r]);
     for t: s[0].tag0[fe]..<s[0].tag0[fe] + s[0].tags[fe] {
       if !is_need(s, t) { continue; }
       m = alias_into(s, f, out, m, r); m = json_raw(out, m, "|needs");
@@ -145,7 +145,7 @@ write_links :: (s: [] Store, f: [] Fold, order: [] int, ls: [] Store, pubkey: st
 link_before :: (ls: [] Store, lr: [] LinkRoots, a: int, b: int) -> bool {
   x := link_d(ls, lr, a); y := link_d(ls, lr, b);
   if !equal(x, y) { return before_text(x, y); }
-  return before_text(event_id(ls, lr[0].root[a]), event_id(ls, lr[0].root[b]));
+  return before_text(stored_id(ls, lr[0].root[a]), stored_id(ls, lr[0].root[b]));
 }
 before_text :: (a: string, b: string) -> bool {
   n := ifx a.count < b.count then a.count else b.count;

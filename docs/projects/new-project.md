@@ -17,11 +17,11 @@ moves onto the website, it comes out of Part 1.
 | 4 | Write the design document | `<path>/README.md` (for example `verse/planetary-villa/README.md`) | The owner's own words, with open questions for them. Agents build from it. A project's folder goes under the area it belongs to (a Verse world under `verse/`), never at the repository root |
 | 5 | Write the roadmap as a work seed | `projects/<slug>/work/<initiative>.json` | Schema in `projects/coax/work/README.md`: one initiative, milestones, tasks with acceptance checks, sizes, files, `blocked_by`. Every mechanic in the design doc is a task |
 | 6 | Link work another project must do first | both projects' work seeds | The waiting task lists `needs: ["<project>:<slug>"]` and says so in its body. The other project's task says who needs it. See below |
-| 7 | Publish to Nostr | `cd coax/web/project && bun publish.ts publish --project <slug>` | Publishes the project (kind 30621), its issues (1621) and their order (30623). Use `--dry-run` first |
+| 7 | Publish to Nostr | `openagents project publish --project <slug>` | Publishes the project (kind 30621), its issues (1621) and their order (30623). Use `--dry-run` first |
 | 8 | Add the page | `apps/openagents-web/projects/<slug>/index.html` | Copy `projects/verse/index.html`; change the title, the description and `data-text` to `"<pubkey> <slug>"`. That's all: the build finds every `project.json` beside an `index.html`, snapshots it from the relay, bakes its commits (from `path`) and its owner, and the shared project app draws `/projects/<slug>` (`coax/web/project/baked.ts`). No Coax or build edits |
 | 9 | Smoke it | `coax/web/smoke.sh` | Nothing to add: the smoke checks `/projects/<slug>` and its `index.md` for every page the checkout has. Check the build locally with `apps/openagents-web/build.sh` |
 | 10 | Release | `coax/web/release.sh` | Staging, smoke, production, smoke. The project appears on `/projects` and its page goes live |
-| 11 | Tell the owner how to work it | `coax/web/project/QUEUE.md` | Workers claim, plan, note and finish tasks with `publish.ts`, and the page shows it live |
+| 11 | Tell the owner how to work it | `coax/web/project/QUEUE.md` | Workers claim, plan, note and finish tasks with `openagents project`, and the page shows it live |
 | 12 | Hand ownership to the owner's account | `project.json` `owner_pubkey` | Once the owner has a Nostr identity (phone sign-in), their key becomes the project's maintainer |
 
 **Private projects** skip steps 7–10. Their contents never go on the public

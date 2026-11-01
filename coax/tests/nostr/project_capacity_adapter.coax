@@ -29,7 +29,7 @@ project_capacity_live_refused :: (lv:[]Live,w:[]Work,oversized:bool)->bool #expo
   lv[0].tables[0].details[0]='d';lv[0].tables[0].details_n=1;
   lv[0].tables[0].log[0]='l';lv[0].tables[0].log_n=1;
   lv[0].candidate[0].complete=oversized;
-  lv[0].candidate[0].items_n=ifx oversized then 321 else 1;
+  lv[0].candidate[0].items_n=ifx oversized then MAX_ITEMS + 1 else 1;
   for i:0..<lv[0].candidate[0].items_n {lv[0].candidate[0].items[i]='\n';}
   lv[0].fold[0].project= -1;lv[0].fold[0].repo= -1;
   live_apply(lv,w);

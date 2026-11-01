@@ -215,6 +215,21 @@ cr_next :: (c: [] CliRelay, deadline_ms: int) -> int {
   }
   return CR_FAIL;
 }
+// The frame cr_next just read, whole: the EVENT for CR_EVENT, the EOSE for CR_EOSE.
+cr_frame :: (c: [] CliRelay) -> string { return cast(string) c[0].conn[0].text[0..<c[0].conn[0].text_n]; }
+// Whether the EOSE cr_next just returned carries the relay's NIP-67 "finish"
+// word (["EOSE", SUB, ["finish"]]): nothing older is left to page for.
+cr_finish :: (c: [] CliRelay) -> bool {
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cr_frame(c), nodes[..]) { return false; }
+  hints := jv_at(d[0], 0, 2);
+  if jv_kind(d[0], hints) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(d[0], hints) {
+    h := jv_at(d[0], hints, i);
+    if jv_kind(d[0], h) == JV_STRING && jv_raw(d[0], h) == "finish" { return true; }
+  }
+  return false;
+}
 // Ends the request (a CLOSE goes out with the next send).
 cr_req_end :: (c: [] CliRelay) {
   if c[0].sub >= 0 { ok := rl_unsubscribe(c[0].rl[..], c[0].sub); ok = cr_flush(c); }

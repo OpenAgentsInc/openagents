@@ -11,6 +11,7 @@ import { launch as launchChrome } from '../chrome'
 import { Relay } from './relay'
 
 const root=join(import.meta.dir,'../../..'), app=join(root,'apps/openagents-web')
+const CAP=Number(readFileSync(join(app,'project.coax'),'utf8').match(/MAX_ITEMS :: (\d+);/)![1]) // the page and fold row capacity
 const temp=mkdtempSync(join(tmpdir(),'coax-live-catchup-'))
 const sk=new Uint8Array(32);sk[31]=3 // public BIP-340 test key only
 const pk=getPublicKey(sk)
@@ -81,7 +82,7 @@ int probe_op(Probe*p,int k){return p->live.pipe.e[0].op.e[k];}int probe_cmd_len(
 void probe_drained(Probe*p){p->live.pipe.e[0].n=0;p->live.pipe.e[0].used=0;}
 int probe_rows_fit(const char*text,int64_t length,int64_t maximum){return project_rows_fit((coax_string){text,length},maximum);}
 int probe_count_fits(int64_t count,int64_t maximum){return project_row_count_fits(count,maximum);}
-int probe_choose_refused(Probe*p){char items[321];memset(items,10,sizeof items);return project_capacity_choose_refused((coax_v_t_Tree){&p->tree,1},(coax_v_t_Work){&p->work,1},lv(p),(coax_string){items,sizeof items});}
+int probe_choose_refused(Probe*p){char items[${CAP+1}];memset(items,10,sizeof items);return project_capacity_choose_refused((coax_v_t_Tree){&p->tree,1},(coax_v_t_Work){&p->work,1},lv(p),(coax_string){items,sizeof items});}
 int probe_live_refused(Probe*p,int oversized){return project_capacity_live_refused(lv(p),(coax_v_t_Work){&p->work,1},oversized!=0);}
 `
 function run(command:string[],cwd=root){const r=Bun.spawnSync(command,{cwd,stdout:'pipe',stderr:'pipe'});if(r.exitCode!==0)throw Error(new TextDecoder().decode(r.stderr));return r.stdout}
@@ -413,11 +414,11 @@ test('inventory capacity keeps 262 and 263 signed roots with hierarchy and resol
   }
 })
 
-test('inventory capacity accepts exactly 320 roots and refuses 321 without replacing any complete table',()=>{
-  const accepted=capacityInventory(320),overflow=capacityInventory(321),ui=new NativeUI()
-  expect(overflow.roots.slice(0,320).map(e=>e.id)).toEqual(accepted.roots.map(e=>e.id))
-  // All 321 events are valid to the independent unbounded verified TS fold.
-  expect(expected(overflow.rows).by.size).toBe(321)
+test('inventory capacity accepts exactly MAX_ITEMS roots and refuses one more without replacing any complete table',()=>{
+  const accepted=capacityInventory(CAP),overflow=capacityInventory(CAP+1),ui=new NativeUI()
+  expect(overflow.roots.slice(0,CAP).map(e=>e.id)).toEqual(accepted.roots.map(e=>e.id))
+  // All CAP+1 events are valid to the independent unbounded verified TS fold.
+  expect(expected(overflow.rows).by.size).toBe(CAP+1)
   try {
     ui.connect();ui.pump(accepted.rows,{cap:37})
     expectCapacityView(ui,accepted)
@@ -425,13 +426,13 @@ test('inventory capacity accepts exactly 320 roots and refuses 321 without repla
     ui.reconnect();ui.pump(overflow.rows,{cap:37})
     expect(ui.info(0)).toBe(4)
     expect(ui.info(3)).toBe(5)
-    expect(ui.info(1)).toBe(320)
+    expect(ui.info(1)).toBe(CAP)
     expect(Array.from({length:5},(_,k)=>ui.text(k))).toEqual(previous)
-    expect(ui.text(2)).not.toContain(overflow.roots[320].id)
+    expect(ui.text(2)).not.toContain(overflow.roots[CAP].id)
   } finally {ui.close()}
 })
 
-test('homepage LandingReader Wasm accepts 320 known roots, refuses 321 and recovers without partial JSON',async()=>{
+test('homepage LandingReader Wasm accepts MAX_ITEMS known roots, refuses one more and recovers without partial JSON',async()=>{
   const cachePath=join(app,'build/landing-reader.wasm.json'),artifactPath=join(app,'build/landing-reader.wasm')
   let previousCache:any
   try {previousCache=JSON.parse(readFileSync(cachePath,'utf8'))} catch {}
@@ -439,25 +440,25 @@ test('homepage LandingReader Wasm accepts 320 known roots, refuses 321 and recov
   // validation rebuilds the reader when the shared Fold source changed.
   const {reader:landing,LandingReader}=await import('./landing-reader')
   expect(landing).toBeInstanceOf(LandingReader)
-  const accepted=capacityInventory(320),overflow=capacityInventory(321),known=accepted.roots.map(e=>e.id)
+  const accepted=capacityInventory(CAP),overflow=capacityInventory(CAP+1),known=accepted.roots.map(e=>e.id)
   const authoritative=fold(pk,config,accepted.rows)
   const expectedIssues=authoritative.issues.map(i=>({id:i.id,kind:i.kind,status:i.status,title:i.title,parent:i.parent,
     rank:i.rank||'~',claimed_by:i.claimed_by,claimed_at:i.claimed_at,commit:i.commit,status_at:i.status_at})).sort((a,b)=>a.id.localeCompare(b.id))
   const selected=(result:{issues:any[]})=>[...result.issues].sort((a,b)=>a.id.localeCompare(b.id))
   const first=landing.fold(accepted.rows,pk,'coax',known)
-  expect(first.issues.length).toBe(320)
+  expect(first.issues.length).toBe(CAP)
   expect(selected(first)).toEqual(expectedIssues)
-  expect(expected(overflow.rows).by.size).toBe(321)
+  expect(expected(overflow.rows).by.size).toBe(CAP+1)
   expect(()=>landing.fold(overflow.rows,pk,'coax',known)).toThrow('Coax refused complete project fold')
   expect(landing.x.nl_output_len()).toBe(0)
   expect(landing.output()).toBe('')
   const recovered=landing.fold(accepted.rows,pk,'coax',known)
-  expect(recovered.issues.length).toBe(320)
+  expect(recovered.issues.length).toBe(CAP)
   expect(selected(recovered)).toEqual(expectedIssues)
   const hash=(path:string)=>new Bun.CryptoHasher('sha256').update(readFileSync(path)).digest('hex')
   const cache=JSON.parse(readFileSync(cachePath,'utf8')),wasm=hash(artifactPath)
   expect(cache.wasm).toBe(wasm)
-  writeFileSync('/tmp/coax-capacity-prep/landing-reader-320.json',JSON.stringify({accepted:320,rejected:321,known:known.length,
+  writeFileSync('/tmp/coax-capacity-prep/landing-reader-capacity.json',JSON.stringify({accepted:CAP,rejected:CAP+1,known:known.length,
     recovered:recovered.issues.length,metadataParity:true,partialOutputBytes:0,normalArtifactCache:true,
     cacheSourceChanged:previousCache?.source!==cache.source,artifactSource:cache.source,wasm,
     sources:{projectFold:hash(join(app,'project-fold.coax')),landingFold:hash(join(import.meta.dir,'landing-fold.coax')),

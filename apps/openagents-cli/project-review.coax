@@ -1,0 +1,78 @@
+// project review: an independent review of a commit that weakens a check
+// together with the code it checks (coax/web/project/QUEUE.md, Rules).
+//
+//   openagents project review COMMIT --key FILE [--why TEXT]
+//
+// The review agent signs a kind 1111 event with its own key, never an author
+// key (coax/reviews/authors.json), tagged commit=<full hash>, t=coax-review and
+// review=approve, and writes it to coax/reviews/<full hash>.json. You commit
+// and push that file. release.sh's report (review.ts report) verifies it. The
+// command publishes nothing to a relay.
+
+REVIEW_KIND :: 1111;
+
+// Whether pubkey (64 hex) is one of authors.json's pubkeys; -1 when the file
+// is not the authors list.
+pj_author_key :: (text: string, pubkey: string) -> int {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return -1; }
+  keys := jv_get(d[0], 0, "pubkeys");
+  if jv_kind(d[0], keys) != JV_ARRAY { return -1; }
+  for i: 0..<jv_len(d[0], keys) {
+    k: [128] u8;
+    n := jv_str(d[0], jv_at(d[0], keys, i), k[..]);
+    if n == 64 && cast(string) k[0..<n] == pubkey { return 1; }
+  }
+  return 0;
+}
+
+project_review :: (a: [] Args, r: [] Rep) -> int {
+  what := positional(a, 2);
+  file := args_value(a, "--key", "");
+  if what == "" || file == "" { return fail(r, EXIT_USAGE, "project review COMMIT --key FILE [--why TEXT] (the reviewer's own key)"); }
+  p: [1] Proj;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run it inside the openagents checkout"); }
+  root := pj_root(p[..]);
+  // the full hash of what was named, as git knows it
+  spec: [1] Ln; ln_s(spec[..], what); ln_s(spec[..], "^{commit}");
+  out: [4096] u8; err: [4096] u8;
+  rev := [6] string.["git", "-C", root, "rev-parse", "--verify", ln_text(spec[..])];
+  got := proc_run(rev[..], 60000, out[..], err[..]);
+  if got.status != 0 { return fail(r, EXIT_NOT_FOUND, "no such commit"); }
+  commit := trimmed(cast(string) out[0..<got.out_n]);
+  if !pr_full_hash(commit) { return fail(r, EXIT_FAIL, "git did not answer a full commit hash"); }
+  // the reviewer's key, which must not be an author key
+  text: [256] u8; key: [32] u8; pk: [64] u8;
+  kn := fs_read(file, text[..]);
+  if kn <= 0 { return fail(r, EXIT_USAGE, "can't read --key"); }
+  hex := trimmed(cast(string) text[0..<kn]);
+  if hex.count != 64 || hex_decode_checked(hex, key[..], false).error != NC_OK { wipe(text[..]); return fail(r, EXIT_USAGE, "the key file is not 64 hex digits"); }
+  wipe(text[..]);
+  if !pubkey_hex(key[..], pk[..]) { wipe(key[..]); return fail(r, EXIT_USAGE, "the key is not a secp256k1 key"); }
+  ab: [2048] u8; at: [65536] u8;
+  an := fs_read(fs_join(root, "coax/reviews/authors.json", ab[..]), at[..]);
+  author := ifx an > 0 then pj_author_key(cast(string) at[0..<an], cast(string) pk[..]) else -1;
+  if author < 0 { wipe(key[..]); return fail(r, EXIT_FAIL, "can't read coax/reviews/authors.json"); }
+  if author > 0 { wipe(key[..]); return fail(r, EXIT_CONFLICT, "that key is an author key; a review needs the reviewer's own key"); }
+  t: [1] TagList; tl_clear(t[..]);
+  tl_2(t[..], "commit", commit); tl_2(t[..], "t", "coax-review"); tl_2(t[..], "review", "approve");
+  tags: [4096] u8;
+  tn := tl_json(t[..], tags[..]);
+  ev: [PJ_EVENT] u8;
+  n := ifx tn > 0 then sign_event(key[..], REVIEW_KIND, cast(string) tags[0..<tn], args_value(a, "--why", "reviewed"), ev[..]) else -1;
+  wipe(key[..]);
+  if n <= 0 { return fail(r, EXIT_FAIL, "could not sign the review (at most 64 KB an event)"); }
+  ev[n] = '\n';
+  name: [1] Ln; ln_s(name[..], "coax/reviews/"); ln_s(name[..], commit); ln_s(name[..], ".json");
+  pb: [2048] u8; tb: [2048] u8;
+  path := fs_join(root, ln_text(name[..]), pb[..]);
+  tl: [1] Ln; ln_s(tl[..], ln_text(name[..])); ln_s(tl[..], ".part");
+  tmp := fs_join(root, ln_text(tl[..]), tb[..]);
+  if !fs_write(tmp, cast(string) ev[0..<n + 1]) || !fs_rename(tmp, path) { return fail(r, EXIT_FAIL, "can't write the review file"); }
+  if r[0].json {
+    rep_str(r, "file", ln_text(name[..])); rep_str(r, "commit", commit); rep_str(r, "reviewer", cast(string) pk[..]);
+    return rep_done(r, EXIT_OK);
+  }
+  print("signed % as %\n", ln_text(name[..]), cast(string) pk[..]);
+  return EXIT_OK;
+}

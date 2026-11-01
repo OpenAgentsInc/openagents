@@ -170,7 +170,7 @@ live_collect_known :: (l: [] Live) -> bool {
   st := l[0].store[..]; order := -1; roots := 0;
   for e: 0..<st[0].n {
     if st[0].kind[e] == KIND_ORDER && addressed(st, e, live_slug(l)) && newer(st, e, order) { order = e; }
-    if live_scoped_issue(l, e) { roots += 1; if roots > FOLD_ISSUES || !live_known_add(l, event_id(st, e)) { return false; } }
+    if live_scoped_issue(l, e) { roots += 1; if roots > FOLD_ISSUES || !live_known_add(l, stored_id(st, e)) { return false; } }
   }
   if order < 0 { return false; }
   for t: st[0].tag0[order]..<st[0].tag0[order] + st[0].tags[order] {
@@ -288,7 +288,7 @@ live_message :: (l: [] Live, kind: int, length: int) {
     at := l[0].store[0].at[fr.event];
     if l[0].query == 2 {
       admitted := false;
-      for k: 0..<l[0].batch_n { if equal(event_id(l[0].store[..], fr.event), live_known_id(l, l[0].batch[k])) { admitted = true; } }
+      for k: 0..<l[0].batch_n { if equal(stored_id(l[0].store[..], fr.event), live_known_id(l, l[0].batch[k])) { admitted = true; } }
       if !admitted || !live_scoped_issue(l, fr.event) { live_incomplete(l, 1); return; }
     } else {
       k := ifx l[0].stage == 0 then SUB_ISSUES else ifx l[0].stage == 1 then SUB_COMMENTS else SUB_STATUS;
@@ -367,7 +367,7 @@ live_links_more :: (l: [] Live) {
   mn := 0;
   for e: 0..<ls[0].n {
     if equal(author_of(ls, e), live_key(l)) { continue; }
-    if ls[0].kind[e] == KIND_ISSUE { link_add(x[..], event_id(ls, e), false); continue; }
+    if ls[0].kind[e] == KIND_ISSUE { link_add(x[..], stored_id(ls, e), false); continue; }
     if ls[0].kind[e] != KIND_COMMENT || !tag_has(ls, e, "revision", ISSUE_REVISION) { continue; }
     tg := tag_named(ls, e, "E");
     if tg < 0 || ls[0].tag_len[tg] < 2 { continue; }

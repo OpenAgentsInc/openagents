@@ -294,11 +294,11 @@
   #assert same(cast(string) buf[0..<n], "PLANETARY VILLA") && same(far_label("missing"), "NOT FOUND") && !link_open("resolved") && link_open("missing");
 }
 
-#test "all 320 physical rows fit the private Work parser" {
-  w:[1]Work;bytes:[320]u8;
+#test "all MAX_ITEMS physical rows fit the private Work parser" {
+  w:[1]Work;bytes:[MAX_ITEMS]u8;
   for i:0..<bytes.count {bytes[i]='\n';}
   read_work(w[..],cast(string)bytes[..]);
-  #assert w[0].n==320 && w[0].tasks==320 && w[0].queued==320;
+  #assert w[0].n==MAX_ITEMS && w[0].tasks==MAX_ITEMS && w[0].queued==MAX_ITEMS;
 }
 
 // ---- from project-links.coax

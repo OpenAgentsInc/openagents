@@ -1,0 +1,673 @@
+// The project queue's decisions, with no host calls (project.coax does the
+// I/O): which commit hashes `done` takes, which slugs, needs and titles a
+// work file may hold, where a task stands, who may claim it, how a plan
+// changes, when an event is signed, and the queue's ranks (fractional keys;
+// the order rules of docs/protocol/2026-10-28-projects.md and
+// coax/web/project/QUEUE.md).
+//   coax/bin/coax test apps/openagents-cli/project-rules.coax --library
+//   coax/bin/coax mutate apps/openagents-cli/project-rules.coax --library
+#authority;
+
+// ---- commits -----------------------------------------------------------------
+
+// `done` takes only a full commit hash: 40 lowercase hex digits. Whether it is
+// on origin/main is the host's question to git (project.coax).
+#test "a done hash is 40 lowercase hex digits" {
+  #assert pr_full_hash("0123456789abcdef0123456789abcdef01234567");
+  #assert pr_full_hash("ffffffffffffffffffffffffffffffffffffffff");
+  #assert !pr_full_hash("0123456789abcdef0123456789abcdef0123456");
+  #assert !pr_full_hash("0123456789abcdef0123456789abcdef012345678");
+  #assert !pr_full_hash("0123456789ABCDEF0123456789abcdef01234567");
+  #assert !pr_full_hash("0123456789abcdeg0123456789abcdef01234567");
+  #assert !pr_full_hash("d9d10565") && !pr_full_hash("");
+  #assert !pr_full_hash("/123456789abcdef0123456789abcdef01234567") && !pr_full_hash(":123456789abcdef0123456789abcdef01234567");
+  #assert !pr_full_hash("`123456789abcdef0123456789abcdef01234567");
+}
+pr_full_hash :: (h: string) -> bool {
+  if h.count != 40 { return false; }
+  for c: h { if !(pr_is_digit(c) || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+
+// ---- work files --------------------------------------------------------------
+
+// A slug: 1 to 64 of a-z, 0-9 and '-', starting with a letter or digit.
+#test "slugs" {
+  #assert pr_slug_ok("a") && pr_slug_ok("cli-relay") && pr_slug_ok("9") && pr_slug_ok("z0-") && pr_slug_ok("a-b") && pr_slug_ok("0az9");
+  #assert pr_slug_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd");
+  #assert !pr_slug_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde");
+  #assert !pr_slug_ok("") && !pr_slug_ok("-a") && !pr_slug_ok("A") && !pr_slug_ok("a_b") && !pr_slug_ok("a b") && !pr_slug_ok("a:b");
+  #assert !pr_slug_ok("a/") && !pr_slug_ok("a`") && !pr_slug_ok("a{") && !pr_slug_ok("a,") && !pr_slug_ok("a.");
+}
+pr_slug_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 64 { return false; }
+  first := true;
+  for c: s {
+    ok := pr_lower(c) || pr_is_digit(c) || (!first && c == '-');
+    if !ok { return false; }
+    first = false;
+  }
+  return true;
+}
+pr_lower :: (c: u8) -> bool { return c >= 'a' && c <= 'z'; }
+pr_is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+pr_word_byte :: (c: u8) -> bool { return pr_lower(c) || (c >= 'A' && c <= 'Z') || pr_is_digit(c) || c == '_'; }
+// The byte at k, or 0 outside the text.
+pr_at :: (t: string, k: int) -> u8 { return ifx k >= 0 && k < t.count then t[k] else 0; }
+#test "letters, digits and bytes" {
+  #assert pr_lower('a') && pr_lower('z') && !pr_lower('`') && !pr_lower('{') && !pr_lower('A');
+  #assert pr_is_digit('0') && pr_is_digit('9') && !pr_is_digit('/') && !pr_is_digit(':');
+  #assert pr_word_byte('a') && pr_word_byte('z') && pr_word_byte('A') && pr_word_byte('Z') && pr_word_byte('0') && pr_word_byte('9') && pr_word_byte('_');
+  #assert !pr_word_byte('-') && !pr_word_byte(' ') && !pr_word_byte('@') && !pr_word_byte('[') && !pr_word_byte('`') && !pr_word_byte('{') && !pr_word_byte('/') && !pr_word_byte(':') && !pr_word_byte('^');
+  #assert pr_at("ab", 0) == 'a' && pr_at("ab", 1) == 'b' && pr_at("ab", 2) == 0 && pr_at("ab", -1) == 0 && pr_at("", 0) == 0;
+  #assert pr_space(' ') && pr_space(9) && pr_space(13) && !pr_space(8) && !pr_space(14) && !pr_space('a');
+}
+
+// A need on another project's work: PROJECT:SLUG, both slugs.
+#test "needs name a project and a slug" {
+  #assert pr_need_ok("coax:cli-relay") && pr_need_ok("a:b") && pr_need_ok("ab:cd");
+  #assert !pr_need_ok("coax") && !pr_need_ok(":a") && !pr_need_ok("a:") && !pr_need_ok("a:b:c") && !pr_need_ok("A:b") && !pr_need_ok("a:B") && !pr_need_ok("");
+}
+pr_need_ok :: (s: string) -> bool {
+  i := 0;
+  for c: s {
+    if c == ':' { return pr_slug_ok(s[0..<i]) && pr_slug_ok(s[i + 1..<s.count]); }
+    i += 1;
+  }
+  return false;
+}
+
+// A title: 1 to 200 characters (UTF-8 code points), with no order numbers
+// (a word CX12, CX-12, M3 or M-3).
+#test "titles" {
+  #assert pr_title_ok("Read a project's queue from the CLI") && pr_title_ok("x") && pr_title_ok("a12") && pr_title_ok("C") && pr_title_ok("abc C");
+  #assert !pr_title_ok("") && !pr_title_ok("CX12 something") && !pr_title_ok("do M-3 now") && !pr_title_ok("M3") && !pr_title_ok("a CX-7");
+  #assert pr_title_ok("CXS12") && pr_title_ok("AM3") && pr_title_ok("M3a") && pr_title_ok("M_3") && pr_title_ok("CX-") && pr_title_ok("M") && pr_title_ok("xM3");
+  #assert pr_title_ok("M3_") && pr_title_ok("9M3") && !pr_title_ok("(M3)") && !pr_title_ok("-M3-") && pr_title_ok("CX foo") && pr_title_ok("M:") && pr_title_ok("M/");
+  #assert !pr_title_ok("M0") && !pr_title_ok("M9") && !pr_title_ok("CX1") && !pr_title_ok("x CX-12") && pr_title_ok("CY1") && pr_title_ok("XC1");
+  long: [201] u8;
+  for i: 0..<201 { long[i] = 'a'; }
+  #assert !pr_title_ok(cast(string) long[..]) && pr_title_ok(cast(string) long[0..<200]);
+  // code points, not bytes: 200 two-byte letters are a title
+  wide: [400] u8;
+  for i: 0..<200 { wide[2 * i] = 0xc3; wide[2 * i + 1] = 0xa9; }
+  #assert pr_title_ok(cast(string) wide[..]) && pr_code_points(cast(string) wide[..]) == 200;
+  odd := [3] u8.[0x80, 0xbf, 0xc0];
+  #assert pr_code_points(cast(string) odd[..]) == 1;
+}
+pr_code_points :: (s: string) -> int {
+  n := 0;
+  for c: s { if (c & 0xc0) != 0x80 { n += 1; } }
+  return n;
+}
+pr_title_ok :: (t: string) -> bool {
+  n := pr_code_points(t);
+  if n < 1 || n > 200 { return false; }
+  // a word that starts CX or M, then an optional '-', then digits to the word's end
+  i := 0;
+  for c: t {
+    j := i;
+    i += 1;
+    if pr_word_byte(pr_at(t, j - 1)) { continue; }
+    if pr_at(t, j) == 'C' && pr_at(t, j + 1) == 'X' { j += 2; } else if pr_at(t, j) == 'M' { j += 1; } else { continue; }
+    if pr_at(t, j) == '-' { j += 1; }
+    d := j;
+    while pr_is_digit(pr_at(t, j)) { j += 1; }
+    if j > d && !pr_word_byte(pr_at(t, j)) { return false; }
+  }
+  return true;
+}
+
+// ---- where a task stands -----------------------------------------------------
+
+// The list's order of states: ready (every blocker finished), waiting (a draft,
+// an open blocker, or another project's work it needs not done), done, and
+// not a task at all.
+PR_READY :: 0; PR_WAITING :: 1; PR_DONE :: 2; PR_NOT_TASK :: 3;
+#test "where a task stands" {
+  #assert pr_standing(false, "open", false, false) == PR_NOT_TASK && pr_standing(false, "resolved", false, false) == PR_NOT_TASK;
+  #assert pr_standing(true, "resolved", true, true) == PR_DONE && pr_standing(true, "closed", false, false) == PR_DONE;
+  #assert pr_standing(true, "draft", false, false) == PR_WAITING && pr_standing(true, "open", true, false) == PR_WAITING;
+  #assert pr_standing(true, "open", false, true) == PR_WAITING && pr_standing(true, "open", false, false) == PR_READY;
+  #assert pr_finished("resolved") && pr_finished("closed") && !pr_finished("open") && !pr_finished("draft");
+}
+pr_finished :: (status: string) -> bool { return status == "resolved" || status == "closed"; }
+// outside: another project's issue it needs is not done; blocked: one of its blockers is not finished.
+pr_standing :: (task: bool, status: string, outside: bool, blocked: bool) -> int {
+  if !task { return PR_NOT_TASK; }
+  if pr_finished(status) { return PR_DONE; }
+  if status == "draft" || outside || blocked { return PR_WAITING; }
+  return PR_READY;
+}
+
+// Who may claim: only tasks, only unfinished ones, and not one somebody else holds.
+PR_CLAIM :: 0; PR_CLAIM_NOT_TASK :: 1; PR_CLAIM_FINISHED :: 2; PR_CLAIM_TAKEN :: 3; PR_CLAIM_MINE :: 4;
+#test "claims" {
+  #assert pr_claim(true, "open", "", "codex-1") == PR_CLAIM && pr_claim(true, "draft", "", "a") == PR_CLAIM;
+  #assert pr_claim(false, "open", "", "a") == PR_CLAIM_NOT_TASK && pr_claim(true, "resolved", "", "a") == PR_CLAIM_FINISHED;
+  #assert pr_claim(true, "closed", "a", "a") == PR_CLAIM_FINISHED && pr_claim(true, "open", "b", "a") == PR_CLAIM_TAKEN;
+  #assert pr_claim(true, "open", "a", "a") == PR_CLAIM_MINE;
+}
+pr_claim :: (task: bool, status: string, holder: string, by: string) -> int {
+  if !task { return PR_CLAIM_NOT_TASK; }
+  if pr_finished(status) { return PR_CLAIM_FINISHED; }
+  if holder.count > 0 && holder != by { return PR_CLAIM_TAKEN; }
+  if holder == by { return PR_CLAIM_MINE; }
+  return PR_CLAIM;
+}
+
+// A worker's name as it appears on the page: 1 to 64 printable ASCII
+// characters, no spaces at either end.
+#test "worker names" {
+  #assert pr_name_ok("claude-queue-1") && pr_name_ok("a") && pr_name_ok("Chris D") && pr_name_ok("~") && pr_name_ok("!");
+  #assert !pr_name_ok("") && !pr_name_ok(" a") && !pr_name_ok("a ") && !pr_name_ok("a\nb") && !pr_name_ok("\t");
+  del := [2] u8.['a', 127]; us := [2] u8.['a', 31];
+  #assert !pr_name_ok(cast(string) del[..]) && !pr_name_ok(cast(string) us[..]);
+  long: [65] u8;
+  for i: 0..<65 { long[i] = 'n'; }
+  #assert !pr_name_ok(cast(string) long[..]) && pr_name_ok(cast(string) long[0..<64]);
+}
+pr_name_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 64 || s[0] == ' ' || s[s.count - 1] == ' ' { return false; }
+  for c: s { if c < 32 || c > 126 { return false; } }
+  return true;
+}
+
+// ---- signing times -------------------------------------------------------------
+
+// Events are signed with strictly increasing created_at, never at or before
+// the newest the project already has: a status or an order signed in the
+// same second as the one before could otherwise tie and lose.
+#test "signing times only go up" {
+  #assert pr_next_at(100, 50) == 100 && pr_next_at(100, 100) == 101 && pr_next_at(100, 200) == 201 && pr_next_at(100, 99) == 100;
+}
+pr_next_at :: (now: int, last: int) -> int { return ifx now > last then now else last + 1; }
+
+// ---- plans -------------------------------------------------------------------
+
+// A worker's plan: steps marked 'x' done, '>' doing, ' ' to do. Every change
+// publishes the whole list again (model.ts planText).
+PR_STEPS :: 64; PR_PLAN_BYTES :: 16384;
+PrPlan :: struct { n: int; mark: [PR_STEPS] u8; from: [PR_STEPS] int; len: [PR_STEPS] int; bytes: [PR_PLAN_BYTES] u8; used: int; bad: bool; }
+pr_step :: (p: [] PrPlan, k: int) -> string { return cast(string) p[0].bytes[p[0].from[k]..<p[0].from[k] + p[0].len[k]]; }
+pr_space :: (c: u8) -> bool { return c == ' ' || (c >= 9 && c <= 13); }
+pr_plan_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && pr_space(s[a]) { a += 1; }
+  while b > a && pr_space(s[b - 1]) { b -= 1; }
+  return s[a..<b];
+}
+// Adds a step (trimmed); an empty one is skipped, as model.ts drops them.
+pr_plan_add :: (p: [] PrPlan, mark: u8, text: string) {
+  t := pr_plan_trim(text);
+  if t.count == 0 { return; }
+  if p[0].n >= PR_STEPS || p[0].used + t.count > PR_PLAN_BYTES { p[0].bad = true; return; }
+  for i: 0..<t.count { p[0].bytes[p[0].used + i] = t[i]; }
+  p[0].from[p[0].n] = p[0].used; p[0].len[p[0].n] = t.count; p[0].mark[p[0].n] = mark;
+  p[0].used += t.count; p[0].n += 1;
+}
+#test "plans: add, start, check, uncheck, drop and the text" {
+  p: [1] PrPlan;
+  pr_plan_add(p[..], ' ', " read the task ");
+  pr_plan_add(p[..], ' ', "   ");
+  pr_plan_add(p[..], ' ', "build it");
+  pr_plan_add(p[..], ' ', "ship it");
+  #assert p[0].n == 3 && pr_step(p[..], 0) == "read the task" && !p[0].bad;
+  #assert pr_plan_mark(p[..], PR_START, 1) && p[0].mark[0] == '>';
+  #assert pr_plan_mark(p[..], PR_START, 2) && p[0].mark[0] == ' ' && p[0].mark[1] == '>';
+  #assert pr_plan_mark(p[..], PR_START, 3) && p[0].mark[1] == ' ' && p[0].mark[2] == '>';
+  #assert pr_plan_mark(p[..], PR_CHECK, 1) && p[0].mark[0] == 'x' && pr_plan_done(p[..]) == 1;
+  #assert pr_plan_mark(p[..], PR_UNCHECK, 1) && p[0].mark[0] == ' ' && pr_plan_done(p[..]) == 0;
+  #assert pr_plan_mark(p[..], PR_CHECK, 1) && pr_plan_mark(p[..], PR_CHECK, 2);
+  #assert !pr_plan_mark(p[..], PR_CHECK, 0) && !pr_plan_mark(p[..], PR_CHECK, 4) && !pr_plan_mark(p[..], 99, 1);
+  out: [256] u8;
+  #assert pr_plan_text(p[..], out[..]) == "- [x] read the task\n- [x] build it\n- [>] ship it";
+  #assert pr_plan_drop(p[..], 2) && p[0].n == 2 && pr_step(p[..], 1) == "ship it" && p[0].mark[1] == '>';
+  #assert !pr_plan_drop(p[..], 3) && !pr_plan_drop(p[..], 0);
+  #assert pr_plan_text(p[..], out[..]) == "- [x] read the task\n- [>] ship it" && pr_plan_done(p[..]) == 1;
+  #assert pr_plan_drop(p[..], 1) && pr_plan_drop(p[..], 1) && p[0].n == 0 && pr_plan_text(p[..], out[..]) == "";
+  // the text fits exactly, or not at all
+  q: [1] PrPlan;
+  pr_plan_add(q[..], 'x', "ab");
+  #assert pr_plan_text(q[..], out[0..<8]) == "- [x] ab" && pr_plan_text(q[..], out[0..<7]) == "";
+  pr_plan_add(q[..], '>', "c");
+  #assert pr_plan_text(q[..], out[0..<16]) == "- [x] ab\n- [>] c" && pr_plan_text(q[..], out[0..<15]) == "";
+  full: [1] PrPlan;
+  for i: 0..<PR_STEPS { pr_plan_add(full[..], ' ', "s"); }
+  #assert full[0].n == PR_STEPS && !full[0].bad;
+  pr_plan_add(full[..], ' ', "one more");
+  #assert full[0].bad && full[0].n == PR_STEPS;
+  big: [1] PrPlan; long: [PR_PLAN_BYTES] u8;
+  for i: 0..<PR_PLAN_BYTES { long[i] = 'a'; }
+  pr_plan_add(big[..], ' ', cast(string) long[..]);
+  #assert !big[0].bad && big[0].n == 1;
+  pr_plan_add(big[..], ' ', "b");
+  #assert big[0].bad;
+  #assert pr_plan_trim("\t a \r\n") == "a" && pr_plan_trim("\ra") == "a" && pr_plan_trim("a\t") == "a" && pr_plan_trim("   ") == "";
+  vt := [3] u8.[11, 12, 'b']; bs := [3] u8.[8, 'c', 8]; so := [3] u8.[14, 'c', 14];
+  #assert pr_plan_trim(cast(string) vt[..]) == "b" && pr_plan_trim(cast(string) bs[..]).count == 3 && pr_plan_trim(cast(string) so[..]).count == 3;
+}
+PR_START :: 1; PR_CHECK :: 2; PR_UNCHECK :: 3;
+// Marks step k (from 1): start makes it the one being done (one at a time),
+// check marks it done, uncheck to do. False when there is no step k.
+pr_plan_mark :: (p: [] PrPlan, op: int, k: int) -> bool {
+  if k < 1 || k > p[0].n { return false; }
+  if op == PR_START {
+    for i: 0..<p[0].n { if p[0].mark[i] == '>' { p[0].mark[i] = ' '; } }
+    p[0].mark[k - 1] = '>';
+    return true;
+  }
+  if op == PR_CHECK { p[0].mark[k - 1] = 'x'; return true; }
+  if op == PR_UNCHECK { p[0].mark[k - 1] = ' '; return true; }
+  return false;
+}
+pr_plan_drop :: (p: [] PrPlan, k: int) -> bool {
+  if k < 1 || k > p[0].n { return false; }
+  for i: k..<p[0].n { p[0].mark[i - 1] = p[0].mark[i]; p[0].from[i - 1] = p[0].from[i]; p[0].len[i - 1] = p[0].len[i]; }
+  p[0].n -= 1;
+  return true;
+}
+pr_plan_done :: (p: [] PrPlan) -> int {
+  n := 0;
+  for i: 0..<p[0].n { if p[0].mark[i] == 'x' { n += 1; } }
+  return n;
+}
+// "- [m] text" a line; "" when out is too small.
+pr_plan_text :: (p: [] PrPlan, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<p[0].n {
+    t := pr_step(p, i);
+    sep := ifx i > 0 then 1 else 0;
+    if n + sep + 6 + t.count > out.count { return ""; }
+    if sep == 1 { out[n] = '\n'; n += 1; }
+    out[n] = '-'; out[n + 1] = ' '; out[n + 2] = '['; out[n + 3] = p[0].mark[i]; out[n + 4] = ']'; out[n + 5] = ' '; n += 6;
+    for c: t { out[n] = c; n += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- ranks ---------------------------------------------------------------------
+
+// A rank is base-62 digits (ASCII order, so comparing bytes compares ranks)
+// read as a fraction, never ending in "0". Between two ranks there is always
+// another, so a move rewrites one rank (David Greenspan, "Implementing
+// Fractional Indexing"); a key over PR_LONG digits respreads the list.
+PR_DIGITS :: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+PR_BASE :: 62;
+PR_LONG :: 10;
+PR_RANK :: 256;              // the longest rank we write
+PR_RELAY_MAX_TAGS :: 256;    // the relay's tag limit (RS_MAX_TAGS, coax/lib/nostr/relay_server.coax)
+PR_ORDER_FIXED_TAGS :: 3;    // an order's d, a and alt tags
+
+#test "rank digits and comparison" {
+  #assert pr_digit('0') == 0 && pr_digit('9') == 9 && pr_digit('A') == 10 && pr_digit('Z') == 35 && pr_digit('a') == 36 && pr_digit('z') == 61;
+  #assert pr_digit('/') == -1 && pr_digit(':') == -1 && pr_digit('@') == -1 && pr_digit('[') == -1 && pr_digit('`') == -1 && pr_digit('{') == -1;
+  #assert pr_rank_ok("1") && pr_rank_ok("zz") && pr_rank_ok("V5") && !pr_rank_ok("") && !pr_rank_ok("10") && !pr_rank_ok("1-") && !pr_rank_ok("0") && !pr_rank_ok("-1");
+  #assert pr_before("1", "2") && pr_before("1", "11") && !pr_before("11", "1") && !pr_before("1", "1") && pr_before("", "1") && !pr_before("a", "Z");
+  #assert pr_before("11", "12") && !pr_before("12", "11") && !pr_before("", "") && pr_before("1a", "1b");
+}
+pr_digit :: (c: u8) -> int {
+  if pr_is_digit(c) { return cast(int) (c - '0'); }
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A') + 10; }
+  if pr_lower(c) { return cast(int) (c - 'a') + 36; }
+  return -1;
+}
+pr_rank_ok :: (r: string) -> bool {
+  if r.count == 0 || r[r.count - 1] == '0' { return false; }
+  for c: r { if pr_digit(c) == -1 { return false; } }
+  return true;
+}
+// Bytewise a < b.
+pr_before :: (a: string, b: string) -> bool {
+  for i: 0..<a.count {
+    if i >= b.count { return false; }
+    if a[i] < b[i] { return true; }
+    if a[i] > b[i] { return false; }
+  }
+  return a.count < b.count;
+}
+
+// The rank strictly between a ("" for the start) and b (when has_b; else the
+// end), written at out[at..]: the new length, or -1 when the ranks are bad,
+// out of order or don't fit.
+#test "a rank lies strictly between its neighbours, at the ends too" {
+  out: [PR_RANK] u8;
+  as := [11] string.["", "", "V", "1", "1", "1z", "az", "0001", "y", "z", ""];
+  bs := [11] string.["", "V", "", "2", "11", "2", "b", "0002", "z", "", "01"];
+  has := [11] bool.[false, true, false, true, true, true, true, true, true, false, true];
+  want := [11] string.["V", "G", "l", "1V", "10V", "1zV", "azV", "0001V", "yV", "zV", "00V"];
+  for i: 0..<11 {
+    n := pr_between(as[i], bs[i], has[i], out[..], 0);
+    #assert n > 0 && cast(string) out[0..<n] == want[i];
+  }
+  #assert pr_between("2", "1", true, out[..], 0) == -1 && pr_between("1", "1", true, out[..], 0) == -1 && pr_between("0", "", false, out[..], 0) == -1;
+  #assert pr_between("10", "", false, out[..], 0) == -1 && pr_between("", "10", true, out[..], 0) == -1 && pr_between("", "", true, out[..], 0) == -1;
+  #assert pr_between("1", "", false, out[0..<0], 0) == -1 && pr_between("", "", false, out[0..<0], 0) == -1;
+  #assert pr_between("1z", "2", true, out[0..<2], 0) == -1 && pr_between("11", "12", true, out[0..<1], 0) == -1;
+  #assert pr_between("1z1", "1z2", true, out[0..<1], 0) == -1 && pr_between("1z1", "1z2", true, out[0..<3], 0) == -1 && pr_between("1z1", "1z2", true, out[0..<4], 0) == 4;
+  #assert pr_between("", "2", true, out[0..<0], 0) == -1 && pr_between("1", "2", true, out[0..<1], 0) == -1 && pr_between("", "12", true, out[0..<0], 0) == -1;
+  // written after what is already there
+  out[0] = 'q';
+  #assert pr_between("", "", false, out[..], 1) == 2 && out[1] == 'V' && out[0] == 'q';
+  // the digit itself rounds half up: between 0 and 3 is 2
+  #assert pr_between("", "3", true, out[..], 0) == 1 && out[0] == '2';
+  #assert pr_between("1", "4", true, out[..], 0) == 1 && out[0] == '3' && pr_between("1", "3", true, out[..], 0) == 1 && out[0] == '2';
+  #assert pr_between("", "", false, out[..], -1) == -1;
+  // adjacent digits where b goes on: b's first digit alone
+  #assert pr_between("1", "21", true, out[..], 0) == 1 && out[0] == '2' && pr_between("1", "211", true, out[..], 0) == 1 && out[0] == '2';
+  #assert pr_pad("1", 0) == '1' && pr_pad("1", 1) == '0' && pr_pad("", 0) == '0';
+  #assert pr_put(out[0..<1], 0, 'z') && out[0] == 'z' && !pr_put(out[0..<1], 1, 'z');
+}
+pr_between :: (a: string, b: string, has_b: bool, out: [] u8, at: int) -> int {
+  if a.count > 0 && !pr_rank_ok(a) { return -1; }
+  if has_b && (!pr_rank_ok(b) || !pr_before(a, b)) { return -1; }
+  if at < 0 { return -1; }
+  return pr_mid(a, 0, b, 0, has_b, out, at);
+}
+// a's digit k, reading a as padded with zeros.
+pr_pad :: (a: string, k: int) -> u8 { return ifx k < a.count then a[k] else cast(u8) '0'; }
+pr_put :: (out: [] u8, at: int, c: u8) -> bool {
+  if at >= out.count { return false; }
+  out[at] = c;
+  return true;
+}
+// The midpoint of a[ai..] and b[bi..] (a < b); positions, not slices.
+pr_mid :: (a: string, ai: int, b: string, bi: int, has_b: bool, out: [] u8, at: int) -> int {
+  if has_b {
+    // the common prefix (it ends before b does: a < b)
+    n := 0;
+    while pr_pad(a, ai + n) == pr_at(b, bi + n) { n += 1; }
+    if n > 0 {
+      for i: 0..<n { if !pr_put(out, at + i, b[bi + i]) { return -1; } }
+      return pr_mid(a, ai + n, b, bi + n, true, out, at + n);
+    }
+  }
+  da := pr_digit(pr_pad(a, ai));
+  db := ifx has_b then pr_digit(b[bi]) else PR_BASE;
+  if db - da > 1 { return ifx pr_put(out, at, PR_DIGITS[(da + db + 1) / 2]) then at + 1 else -1; }
+  // adjacent digits: b's first digit alone is between, if b goes on
+  if has_b && b.count - bi > 1 { return ifx pr_put(out, at, b[bi]) then at + 1 else -1; }
+  if !pr_put(out, at, PR_DIGITS[da]) { return -1; }
+  return pr_mid(a, ai + 1, b, bi, false, out, at + 1);
+}
+
+// Ranks in order, in one buffer.
+PR_RANKS :: 1024; PR_RANK_BYTES :: 16384;
+PrRanks :: struct { n: int; from: [PR_RANKS] int; len: [PR_RANKS] int; bytes: [PR_RANK_BYTES] u8; used: int; bad: bool; }
+pr_rank :: (rs: [] PrRanks, i: int) -> string { return cast(string) rs[0].bytes[rs[0].from[i]..<rs[0].from[i] + rs[0].len[i]]; }
+pr_ranks_clear :: (rs: [] PrRanks) { rs[0].n = 0; rs[0].used = 0; rs[0].bad = false; }
+pr_ranks_push :: (rs: [] PrRanks, r: string) {
+  if rs[0].n >= PR_RANKS || rs[0].used + r.count > PR_RANK_BYTES { rs[0].bad = true; return; }
+  for i: 0..<r.count { rs[0].bytes[rs[0].used + i] = r[i]; }
+  rs[0].from[rs[0].n] = rs[0].used; rs[0].len[rs[0].n] = r.count; rs[0].used += r.count; rs[0].n += 1;
+}
+#test "a rank list holds PR_RANKS ranks and PR_RANK_BYTES bytes" {
+  rs: [1] PrRanks;
+  pr_ranks_push(rs[..], "abc");
+  rs[0].bad = true;
+  pr_ranks_clear(rs[..]);
+  #assert rs[0].n == 0 && !rs[0].bad;
+  for i: 0..<PR_RANKS { pr_ranks_push(rs[..], "1"); }
+  #assert rs[0].n == PR_RANKS && !rs[0].bad && pr_rank(rs[..], PR_RANKS - 1) == "1";
+  pr_ranks_push(rs[..], "1");
+  #assert rs[0].bad && rs[0].n == PR_RANKS;
+  pr_ranks_clear(rs[..]);
+  kb: [1024] u8;
+  for i: 0..<1024 { kb[i] = 'k'; }
+  for i: 0..<16 { pr_ranks_push(rs[..], cast(string) kb[..]); }
+  #assert !rs[0].bad && rs[0].n == 16 && pr_rank(rs[..], 15).count == 1024;
+  pr_ranks_push(rs[..], "1");
+  #assert rs[0].bad && rs[0].n == 16;
+}
+
+// The i-th (from 1) of n evenly spread ranks, as short as they can be, at
+// out[0..]: its length, or -1.
+#test "spread gives sorted, distinct, short ranks" {
+  out: [16] u8; prev: [16] u8;
+  ns := [7] int.[1, 2, 5, 61, 62, 200, 5000];
+  for n: ns {
+    pn := 0;
+    for i: 1..<n + 1 {
+      k := pr_spread_at(n, i, out[..]);
+      r := cast(string) out[0..<k];
+      #assert k >= 1 && k <= 4 && pr_rank_ok(r);
+      if i > 1 { #assert pr_before(cast(string) prev[0..<pn], r); }
+      for j: 0..<k { prev[j] = out[j]; }
+      pn = k;
+    }
+  }
+  #assert pr_spread_width(1) == 1 && pr_spread_width(14) == 1 && pr_spread_width(15) == 2 && pr_spread_width(61) == 2;
+  #assert pr_spread_width(960) == 2 && pr_spread_width(961) == 3 && pr_spread_width(5000) == 3;
+  #assert pr_spread_at(1, 1, out[..]) == 1 && out[0] == 'V' && pr_spread_at(3, 1, out[..]) == 1 && out[0] == 'F';
+  #assert pr_spread_at(15, 1, out[..]) == 2 && out[0] == '3' && out[1] == 's' && pr_spread_at(15, 1, out[0..<2]) == 2 && pr_spread_at(15, 1, out[0..<1]) == -1;
+  #assert pr_spread_at(61, 30, out[..]) == 1 && out[0] == 'U' && pr_spread_at(30, 15, out[..]) == 1;
+  #assert pr_spread_at(3, 2, out[..]) == 1 && out[0] == 'V';
+  #assert pr_spread_at(0, 1, out[..]) == -1 && pr_spread_at(2, 3, out[..]) == -1 && pr_spread_at(2, 0, out[..]) == -1;
+  #assert pr_spread_at(1000000, 1, out[..]) == 4 && pr_spread_at(1000001, 1, out[..]) == -1;
+}
+// The narrowest width that leaves room between neighbours: 62^width at least 4 (n + 1).
+pr_spread_width :: (n: int) -> int {
+  width := 1; p := PR_BASE;
+  while p < 4 * (n + 1) { width += 1; p *= PR_BASE; }
+  return width;
+}
+pr_spread_at :: (n: int, i: int, out: [] u8) -> int {
+  if n < 1 || n > 1000000 || i < 1 || i > n { return -1; }
+  width := pr_spread_width(n);
+  if out.count < width { return -1; }
+  p := 1;
+  for k: 0..<width { p *= PR_BASE; }
+  v := i * p / (n + 1);
+  for k: 0..<width { out[width - 1 - k] = PR_DIGITS[v % PR_BASE]; v /= PR_BASE; }
+  // trailing zeros go; v is at least 4, so a digit stays
+  m := width;
+  while out[m - 1] == '0' { m -= 1; }
+  return m;
+}
+// n spread ranks into rs.
+pr_spread :: (n: int, rs: [] PrRanks) {
+  pr_ranks_clear(rs);
+  out: [16] u8;
+  for i: 1..<n + 1 {
+    k := pr_spread_at(n, i, out[..]);
+    if k == -1 { rs[0].bad = true; return; }
+    pr_ranks_push(rs, cast(string) out[0..<k]);
+  }
+}
+#test "spreading n ranks" {
+  rs: [1] PrRanks;
+  pr_ranks_push(rs[..], "zz");
+  pr_spread(3, rs[..]);
+  #assert rs[0].n == 3 && !rs[0].bad && pr_rank(rs[..], 0) == "F" && pr_rank(rs[..], 2) == "k";
+  pr_spread(1000001, rs[..]);
+  #assert rs[0].bad && rs[0].n == 0;
+}
+
+// k ranks evenly between a and b (exclusive), by halving, appended to rs.
+#test "a batch appended at the end stays short" {
+  rs: [1] PrRanks;
+  pr_spread_between("V", "", false, 60, rs[..]);
+  #assert rs[0].n == 60 && !rs[0].bad && pr_before("V", pr_rank(rs[..], 0));
+  for i: 1..<60 { #assert pr_before(pr_rank(rs[..], i - 1), pr_rank(rs[..], i)) && pr_rank(rs[..], i).count <= 3; }
+  #assert pr_rank(rs[..], 0).count <= 3;
+  e: [1] PrRanks;
+  pr_spread_between("1", "2", true, 0, e[..]);
+  #assert e[0].n == 0;
+  pr_spread_between("", "", false, 3, e[..]);
+  #assert e[0].n == 3 && pr_rank(e[..], 0) == "G" && pr_rank(e[..], 1) == "V" && pr_rank(e[..], 2) == "l";
+  bad: [1] PrRanks;
+  pr_spread_between("2", "1", true, 1, bad[..]);
+  #assert bad[0].bad;
+}
+pr_spread_between :: (a: string, b: string, has_b: bool, k: int, rs: [] PrRanks) {
+  if k <= 0 { return; }
+  mid: [PR_RANK] u8;
+  n := pr_between(a, b, has_b, mid[..], 0);
+  if n == -1 { rs[0].bad = true; return; }
+  m := cast(string) mid[0..<n];
+  left := (k - 1) / 2;
+  pr_spread_between(a, m, true, left, rs);
+  pr_ranks_push(rs, m);
+  pr_spread_between(m, b, has_b, k - 1 - left, rs);
+}
+
+// Whether a list needs respreading: some rank is longer than PR_LONG.
+#test "rebalance only when a key grew long" {
+  rs: [1] PrRanks;
+  pr_ranks_push(rs[..], "1"); pr_ranks_push(rs[..], "2"); pr_ranks_push(rs[..], "0000000001");
+  #assert !pr_long(rs[..]);
+  pr_ranks_push(rs[..], "00000000001");
+  #assert pr_long(rs[..]);
+  pr_rebalance(rs[..]);
+  #assert rs[0].n == 4 && pr_rank(rs[..], 0) == "C" && !pr_long(rs[..]);
+  s: [1] PrRanks;
+  pr_ranks_push(s[..], "00000000001"); pr_ranks_push(s[..], "1");
+  #assert pr_long(s[..]);
+  pr_spread(10, s[..]);
+  #assert !pr_long(s[..]) && s[0].n == 10;
+  pr_rebalance(s[..]);
+  #assert pr_rank(s[..], 0) == "5" && s[0].n == 10;
+}
+pr_long :: (rs: [] PrRanks) -> bool {
+  for i: 0..<rs[0].n { if rs[0].len[i] > PR_LONG { return true; } }
+  return false;
+}
+pr_rebalance :: (rs: [] PrRanks) {
+  if pr_long(rs) { pr_spread(rs[0].n, rs); }
+}
+
+// The rank for a task moved just before or after neighbour k of the sorted
+// ranks (the moving task already left out), at out[0..]: its length or -1.
+#test "a move places one rank, at either end too" {
+  rs: [1] PrRanks;
+  pr_ranks_push(rs[..], "F"); pr_ranks_push(rs[..], "V"); pr_ranks_push(rs[..], "k");
+  out: [PR_RANK] u8;
+  n := pr_placed(rs[..], 0, true, out[..]);
+  #assert cast(string) out[0..<n] == "8";
+  n = pr_placed(rs[..], 1, true, out[..]);
+  #assert cast(string) out[0..<n] == "N";
+  n = pr_placed(rs[..], 1, false, out[..]);
+  #assert cast(string) out[0..<n] == "d";
+  n = pr_placed(rs[..], 2, false, out[..]);
+  #assert cast(string) out[0..<n] == "s";
+  #assert pr_placed(rs[..], 3, false, out[..]) == -1 && pr_placed(rs[..], -1, true, out[..]) == -1;
+}
+pr_placed :: (rs: [] PrRanks, k: int, before: bool, out: [] u8) -> int {
+  if k < 0 || k >= rs[0].n { return -1; }
+  if before { return pr_between(ifx k > 0 then pr_rank(rs, k - 1) else "", pr_rank(rs, k), true, out, 0); }
+  more := k + 1 < rs[0].n;
+  return pr_between(pr_rank(rs, k), ifx more then pr_rank(rs, k + 1) else "", more, out, 0);
+}
+
+// The queue's order (rank.ts queueOrder): unfinished tasks only. Ranked
+// ones by rank, then unranked ones in work-file order (pos: the task's place
+// in the work files, -1 when no work file names it, and then it is left out),
+// spread after the last rank; respread when a key grew long. rank[i] is
+// task i's rank ("" for none). Into idx (task numbers) and rs: the count, or -1.
+#test "the order leaves finished items out and appends new work in work-file order" {
+  ranks := [6] string.["V", "", "F", "", "k", ""];
+  status := [6] string.["open", "open", "resolved", "open", "open", "closed"];
+  pos := [6] int.[0, 4, 1, 3, -1, 2];
+  idx: [8] int; rs: [1] PrRanks;
+  n := pr_queue_order(ranks[..], status[..], pos[..], idx[..], rs[..]);
+  // ranked V (0), k (4); then unranked open by work order: 3 (pos 3), 1 (pos 4)
+  #assert n == 4 && idx[0] == 0 && idx[1] == 4 && idx[2] == 3 && idx[3] == 1;
+  #assert pr_rank(rs[..], 0) == "V" && pr_rank(rs[..], 1) == "k" && pr_rank(rs[..], 2) == "s" && pr_rank(rs[..], 3) == "w";
+  // a long key respreads all of them
+  ranks2 := [3] string.["00000000001", "1", ""];
+  st2 := [3] string.["open", "open", "open"];
+  pos2 := [3] int.[0, 1, 2];
+  n = pr_queue_order(ranks2[..], st2[..], pos2[..], idx[..], rs[..]);
+  #assert n == 3 && idx[0] == 0 && idx[1] == 1 && idx[2] == 2 && pr_rank(rs[..], 0) == "F" && pr_rank(rs[..], 2) == "k";
+  // nothing open: nothing ordered
+  st3 := [3] string.["resolved", "closed", "resolved"];
+  #assert pr_queue_order(ranks2[..], st3[..], pos2[..], idx[..], rs[..]) == 0;
+  // too many for idx, ranked or not
+  #assert pr_queue_order(ranks2[..], st2[..], pos2[..], idx[0..<2], rs[..]) == -1;
+  r3 := [3] string.["1", "2", "3"];
+  #assert pr_queue_order(r3[..], st2[..], pos2[..], idx[0..<2], rs[..]) == -1 && pr_queue_order(r3[..], st2[..], pos2[..], idx[0..<3], rs[..]) == 3;
+  // drafts are unfinished: they keep their place
+  st4 := [2] string.["draft", "open"];
+  r4 := [2] string.["V", "F"];
+  p4 := [2] int.[0, 1];
+  #assert pr_queue_order(r4[..], st4[..], p4[..], idx[..], rs[..]) == 2 && idx[0] == 1 && idx[1] == 0;
+  // the first task unranked at place 0 comes after the one ranked task, ranked after it
+  r5 := [2] string.["", "V"];
+  p5 := [2] int.[0, 5];
+  #assert pr_queue_order(r5[..], st4[..], p5[..], idx[..], rs[..]) == 2 && idx[0] == 1 && idx[1] == 0 && pr_rank(rs[..], 1) == "l";
+  // unranked ones sort among themselves only, ties keep their order
+  r6 := [4] string.["V", "", "", ""];
+  s6 := [4] string.["open", "open", "open", "open"];
+  p6 := [4] int.[9, 2, 1, 1];
+  #assert pr_queue_order(r6[..], s6[..], p6[..], idx[..], rs[..]) == 4 && idx[0] == 0 && idx[1] == 2 && idx[2] == 3 && idx[3] == 1;
+  // a rank that is no rank refuses the order
+  r7 := [2] string.["10", ""];
+  #assert pr_queue_order(r7[..], st4[..], p4[..], idx[..], rs[..]) == -1;
+  // the order event's size against the relay's tag limit
+  #assert pr_order_fits(253) && !pr_order_fits(254) && pr_order_fits(0);
+}
+pr_queue_order :: (ranks: [] string, status: [] string, pos: [] int, idx: [] int, rs: [] PrRanks) -> int {
+  pr_ranks_clear(rs);
+  n := 0;
+  // ranked, by rank (stable)
+  for i: 0..<ranks.count {
+    if pr_finished(status[i]) || ranks[i].count == 0 { continue; }
+    if n >= idx.count { return -1; }
+    k := n; n += 1;
+    while k > 0 && pr_before(ranks[i], ranks[idx[k - 1]]) { idx[k] = idx[k - 1]; k -= 1; }
+    idx[k] = i;
+  }
+  for k: 0..<n { pr_ranks_push(rs, ranks[idx[k]]); }
+  last := ifx n > 0 then ranks[idx[n - 1]] else "";
+  // unranked, by work-file place (stable)
+  first := n;
+  for i: 0..<ranks.count {
+    if pr_finished(status[i]) || ranks[i].count > 0 || pos[i] < 0 { continue; }
+    if n >= idx.count { return -1; }
+    k := n; n += 1;
+    while k > first && pos[i] < pos[idx[k - 1]] { idx[k] = idx[k - 1]; k -= 1; }
+    idx[k] = i;
+  }
+  pr_spread_between(last, "", false, n - first, rs);
+  pr_rebalance(rs);
+  return ifx rs[0].bad then -1 else n;
+}
+pr_order_fits :: (items: int) -> bool { return items + PR_ORDER_FIXED_TAGS <= PR_RELAY_MAX_TAGS; }
+
+// ---- reading a relay in pages ---------------------------------------------------
+
+// Relays cap what one REQ returns, so every filter is read back in time,
+// PR_PAGE events at a time (relay.ts all): after a page of got events whose
+// oldest is oldest, the next page asks until that time. A short page is not
+// the end; only an empty page or the relay's "finish" word is. until is
+// inclusive, so a page that ends at the same second again moves one second
+// back, and more than one event in that second could hide a cohort the relay
+// cut, so the read is refused rather than answered short.
+PR_PAGE :: 200; PR_PAGE_ROUNDS :: 100;
+PR_PAGE_MORE :: 0; PR_PAGE_END :: 1; PR_PAGE_BAD :: 2; PR_PAGE_COHORT :: 3;
+PrPage :: struct { state: int; until: int; }
+#test "paging back in time" {
+  #assert pr_page(0, 0, 0, false, false).state == PR_PAGE_END && pr_page(5, 10, 0, false, true).state == PR_PAGE_END;
+  p := pr_page(200, 1000, 0, false, false);
+  #assert p.state == PR_PAGE_MORE && p.until == 1000;
+  p = pr_page(200, 900, 1000, true, false);
+  #assert p.state == PR_PAGE_MORE && p.until == 900;
+  p = pr_page(1, 1000, 1000, true, false);
+  #assert p.state == PR_PAGE_MORE && p.until == 999;
+  #assert pr_page(2, 1000, 1000, true, false).state == PR_PAGE_COHORT && pr_page(1, 0, 0, true, false).state == PR_PAGE_END;
+  #assert pr_page(1, 1001, 1000, true, false).state == PR_PAGE_BAD && pr_page(1, -1, 0, false, false).state == PR_PAGE_BAD;
+  #assert pr_page(3, 0, 0, false, false).state == PR_PAGE_MORE && pr_page(3, 0, 5, true, false).until == 0;
+}
+pr_page :: (got: int, oldest: int, until: int, has_until: bool, finish: bool) -> PrPage {
+  p := PrPage.{state = PR_PAGE_END, until = until};
+  if got == 0 || finish { return p; }
+  if oldest < 0 || (has_until && oldest > until) { p.state = PR_PAGE_BAD; return p; }
+  if has_until && oldest == until {
+    if got > 1 { p.state = PR_PAGE_COHORT; return p; }
+    if oldest == 0 { return p; }
+    p.state = PR_PAGE_MORE; p.until = oldest - 1;
+    return p;
+  }
+  p.state = PR_PAGE_MORE; p.until = oldest;
+  return p;
+}

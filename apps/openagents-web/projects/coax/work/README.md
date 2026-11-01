@@ -28,7 +28,7 @@ numbered by hand.
 }
 ```
 
-Publish with `bun coax/web/project/publish.ts publish` (the project key is
+Publish with `openagents project publish` (the project key is
 at `~/work/.secrets/openagents-project-coax.key`). Each item becomes a
 NIP-34 kind-1621 issue. The protocol doc has the event model.
 

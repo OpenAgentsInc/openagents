@@ -277,7 +277,7 @@ project with LINK A PHONE or by opening an invite link on the phone. See
 - Work file: `apps/openagents-web/projects/coax/work/nostr.json` (schema in
   that directory's `README.md`). The Coax roadmap (R0–R28) is a separate
   initiative in `coax.json` and stays with the `codex-coax` worker.
-- Tools: `coax/web/project/` (`publish.ts`, `snapshot.ts`, `details.ts`).
+- Tools: `openagents project` (apps/openagents-cli) for the queue; `coax/web/project/` (`snapshot.ts`, `details.ts`) for the page build.
   `QUEUE.md` there is the worker loop. Every verb takes a slug or alias.
 - Project key: `~/work/.secrets/openagents-project-coax.key`. Never print or
   commit it.
@@ -344,7 +344,7 @@ These Nostr-side tasks are ready: #993f crypto-bytes, #ef11
 crypto-vectors-pinned, #5c3a nostr-hex-base64, #2265 secp-libsecp-harness,
 #5923 nostr-jcs, #d0d7 host-random-import, #44fe host-storage-pipe and #503d
 coax-qr-encoder. The intrinsics #0ad5 (wrapping ops) and #cead (mul_wide) gate
-the secp field work. The rest waits on these. `bun publish.ts list` is the
+the secp field work. The rest waits on these. `openagents project list` is the
 truth.
 
 ### Known problems
@@ -376,6 +376,6 @@ truth.
   browsers.
 - **Bitcoin-only rails:** no WorkOS. Sign-in is Nostr with phone QR (m9).
 - **No hand edits to order:** never renumber or reorder the work file by
-  hand. Use `publish.ts move` and `respread`.
+  hand. Use `openagents project move` and `respread`.
 - **Done means checked:** mark a task done only when its acceptance checks
   pass. Otherwise note why and leave it open.

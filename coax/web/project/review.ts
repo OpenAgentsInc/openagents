@@ -5,8 +5,6 @@
 //       every commit in BASE..REF that weakens a check together with the code
 //       it checks, and whether an independent review covers it. --note posts
 //       an unreviewed one on its queue task (the "#xxxx" in its subject).
-//   bun review.ts sign COMMIT --key FILE [--why TEXT]
-//       the review agent signs coax/reviews/<commit>.json with its own key.
 //   bun review.ts keygen FILE
 //       a reviewer key (mode 600); prints only the public key.
 //
@@ -21,13 +19,15 @@
 // A review is independent when it is a valid signed Nostr event (kind 1111,
 // tags commit=<full hash>, t=coax-review) whose key is not an author key
 // (coax/reviews/authors.json: the project key every agent publishes with).
-// It is checked outside the compiler, on this machine, by release.sh.
-// Firm reason it is TypeScript, not Coax (coax/tools-in-coax.md): Schnorr
-// verification is nostr-effect's until Coax's own signing lands, as for
-// publish.ts.
+// It is checked outside the compiler, on this machine, by release.sh. The
+// review agent signs one with the Coax CLI:
+//   openagents project review COMMIT --key FILE [--why TEXT]
+// (apps/openagents-cli/project-review.coax). signReview stays here only as
+// the tests' fixture signer. The report is TypeScript, not Coax, until it is
+// ported (coax/tools-port.txt).
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, type Event } from "nostr-effect/pure"
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils"
-import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 const ROOT = join(import.meta.dir, "../../..")
@@ -146,6 +146,13 @@ function git(...args: string[]): string {
   return p.stdout.toString()
 }
 
+// The openagents CLI, built once if this tree has none.
+function cli(): string {
+  const bin = join(ROOT, "apps/openagents-cli/build/openagents")
+  if (!existsSync(bin)) Bun.spawnSync([join(ROOT, "apps/openagents-cli/build.sh")], { stdout: "ignore", stderr: "ignore" })
+  return bin
+}
+
 async function report(from: string, to: string, note: boolean, json: boolean) {
   const commits = git("rev-list", "--reverse", "--no-merges", `${from}..${to}`).split("\n").filter(Boolean)
   const rows = []
@@ -167,8 +174,8 @@ async function report(from: string, to: string, note: boolean, json: boolean) {
   if (note) for (const r of rows) {
     if (r.review === "independent") continue
     for (const task of r.tasks) {
-      const text = `Review flag (report only): ${r.commit.slice(0, 10)} weakens a check together with the code it checks (${r.findings.map((f) => `${f.file}: ${f.why}`).slice(0, 3).join("; ")}) and has no independent review. A review agent signs one with: bun coax/web/project/review.ts sign ${r.commit} --key ITS_KEY`
-      Bun.spawnSync(["bun", "publish.ts", "note", task, text, "--by", "coax-review", "--project", "coax"], { cwd: import.meta.dir, stdout: "ignore", stderr: "ignore" })
+      const text = `Review flag (report only): ${r.commit.slice(0, 10)} weakens a check together with the code it checks (${r.findings.map((f) => `${f.file}: ${f.why}`).slice(0, 3).join("; ")}) and has no independent review. A review agent signs one with: openagents project review ${r.commit} --key ITS_KEY`
+      Bun.spawnSync([cli(), "project", "note", task, text, "--by", "coax-review", "--project", "coax"], { cwd: ROOT, stdout: "ignore", stderr: "ignore" })
     }
   }
 }
@@ -177,22 +184,14 @@ if (import.meta.main) {
   const [cmd, ...rest] = process.argv.slice(2)
   const flag = (n: string) => { const i = rest.indexOf(`--${n}`); return i >= 0 ? rest[i + 1] : undefined }
   if (cmd === "report") await report(flag("from") ?? "origin/main~20", flag("to") ?? "HEAD", rest.includes("--note"), rest.includes("--json"))
-  else if (cmd === "sign") {
-    const commit = git("rev-parse", `${rest[0]}^{commit}`).trim()
-    const keyFile = flag("key")
-    if (!keyFile) throw new Error("sign needs --key FILE (the reviewer's own key)")
-    const ev = signReview(commit, hexToBytes(readFileSync(keyFile, "utf8").trim()), flag("why") ?? "reviewed", authors())
-    mkdirSync(REVIEWS, { recursive: true })
-    writeFileSync(join(REVIEWS, `${commit}.json`), JSON.stringify(ev, null, 2) + "\n")
-    console.log(`signed coax/reviews/${commit}.json as ${ev.pubkey}`)
-  } else if (cmd === "keygen") {
+  else if (cmd === "keygen") {
     const file = rest[0]
     if (!file || existsSync(file)) throw new Error("keygen FILE: FILE must be a new path")
     writeFileSync(file, bytesToHex(generateSecretKey()) + "\n", { mode: 0o600 })
     chmodSync(file, 0o600)
     console.log(getPublicKey(hexToBytes(readFileSync(file, "utf8").trim())))
   } else {
-    console.error("usage: bun review.ts report --from BASE --to REF [--note] [--json] | sign COMMIT --key FILE [--why TEXT] | keygen FILE")
+    console.error("usage: bun review.ts report --from BASE --to REF [--note] [--json] | keygen FILE (to sign: openagents project review COMMIT --key FILE)")
     process.exit(2)
   }
 }

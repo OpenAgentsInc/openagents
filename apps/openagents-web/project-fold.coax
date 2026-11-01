@@ -34,7 +34,7 @@ STORE_EVENTS :: 8192;
 STORE_BYTES :: 6291456;   // the strings, unescaped, and every event's tags array verbatim
 STORE_TAGS :: 65536;
 STORE_ELEMS :: 131072;
-FOLD_ISSUES :: 320;
+FOLD_ISSUES :: 512;
 FOLD_LOG :: 16384;
 PLAN_STEPS :: 24;      // steps a task's plan shows, as snapshot.ts
 ACTIVITY :: 40;        // rows of activity, as snapshot.ts
@@ -109,7 +109,7 @@ span_str :: (s: [] Store, e: int, sp: NtSpan) -> string {
 // A string in the arena.
 Ref :: struct { from: int; len: int; }
 str :: (s: [] Store, r: Ref) -> string { return cast(string) s[0].bytes[r.from..<r.from + r.len]; }
-event_id :: (s: [] Store, e: int) -> string { return cast(string) s[0].bytes[s[0].id[e]..<s[0].id[e] + 64]; }
+stored_id :: (s: [] Store, e: int) -> string { return cast(string) s[0].bytes[s[0].id[e]..<s[0].id[e] + 64]; }
 content_of :: (s: [] Store, e: int) -> string { return cast(string) s[0].bytes[s[0].content[e]..<s[0].content[e] + s[0].content_n[e]]; }
 element :: (s: [] Store, t: int, k: int) -> string { return str(s, element_ref(s, t, k)); }
 element_ref :: (s: [] Store, t: int, k: int) -> Ref {
@@ -136,7 +136,7 @@ equal :: (a: string, b: string) -> bool {
 store_find :: (s: [] Store, id: string) -> int {
   if id.count != 64 { return -1; }
   key := hex_key(id);
-  for e: 0..<s[0].n { if s[0].key[e] == key && equal(event_id(s, e), id) { return e; } }
+  for e: 0..<s[0].n { if s[0].key[e] == key && equal(stored_id(s, e), id) { return e; } }
   return -1;
 }
 
@@ -236,7 +236,7 @@ store_event :: (s: [] Store, j: [] Json, pubkey: string) -> int {
   }
   kind := s[0].kind[e];
   wanted := kind == KIND_REPO || kind == KIND_PROJECT || kind == KIND_ISSUE || kind == KIND_COMMENT || kind == KIND_ORDER || (kind >= 1630 && kind <= 1633);
-  duplicate := ifx ok && (have & 31) == 31 then store_find(s, event_id(s, e)) else -1;
+  duplicate := ifx ok && (have & 31) == 31 then store_find(s, stored_id(s, e)) else -1;
   if !ok || (have & 31) != 31 || !wanted || duplicate >= 0 {
     // already kept, or refused: the arena gives the bytes back
     if !ok || (have & 31) != 31 || !wanted { s[0].dropped += 1; }
@@ -296,7 +296,7 @@ older :: (s: [] Store, a: int, b: int) -> bool {
   return id_before(s, a, b);
 }
 id_before :: (s: [] Store, a: int, b: int) -> bool {
-  x := event_id(s, a); y := event_id(s, b);
+  x := stored_id(s, a); y := stored_id(s, b);
   for i: 0..<64 { if x[i] != y[i] { return x[i] < y[i]; } }
   return false;
 }
@@ -353,7 +353,7 @@ C_OK :: 1; C_REVISED :: 2; C_REVISION :: 4; C_PLANNED :: 8; C_CLAIM :: 16; C_REL
 fold_issue_of :: (s: [] Store, f: [] Fold, id: string) -> int {
   if id.count != 64 { return -1; }
   key := hex_key(id);
-  for r: 0..<f[0].n { if s[0].key[f[0].root[r]] == key && equal(event_id(s, f[0].root[r]), id) { return r; } }
+  for r: 0..<f[0].n { if s[0].key[f[0].root[r]] == key && equal(stored_id(s, f[0].root[r]), id) { return r; } }
   return -1;
 }
 
@@ -498,7 +498,7 @@ fold :: (s: [] Store, f: [] Fold, slug: string) {
     n := 4;
     for o: 0..<f[0].n {
       if o == r { continue; }
-      a := event_id(s, f[0].root[r]); b := event_id(s, f[0].root[o]);
+      a := stored_id(s, f[0].root[r]); b := stored_id(s, f[0].root[o]);
       while n < 64 && equal(a[0..<n], b[0..<n]) { n += 1; }
     }
     f[0].alias[r] = n;
@@ -515,7 +515,7 @@ is_coord :: (a: string, slug: string) -> bool {
 slug_of :: (s: [] Store, e: int) -> string {
   ev := store_nt(s, e); i := n34_issue(ev);
   if i.slug.n > 0 { return span_str(s, e, i.slug.v[0]); }
-  return event_id(s, e)[0..<8];
+  return stored_id(s, e)[0..<8];
 }
 // The fields of event e (an issue or a revision over one), when its reader admits them.
 Fields :: struct { ok: bool; kind: int; subject: Ref; size: Ref; parent: Ref; }
@@ -561,7 +561,7 @@ fold_one :: (s: [] Store, f: [] Fold, r: int) {
   // its rank: the order's last item for it (model.ts's Map keeps the last)
   for k: 0..<f[0].items_n {
     ev := store_nt(s, f[0].order);
-    if equal(nt_raw(ev, f[0].items[k].id), event_id(s, root)) { f[0].rank[r] = span_val(s, f[0].order, f[0].items[k].rank); }
+    if equal(nt_raw(ev, f[0].items[k].id), stored_id(s, root)) { f[0].rank[r] = span_val(s, f[0].order, f[0].items[k].rank); }
   }
   log_push(f, s[0].at[root], LOG_OPEN, r, root, Ref.{});
   if revision >= 0 { log_push(f, s[0].at[revision], LOG_REVISE, r, revision, Ref.{}); }
@@ -774,7 +774,7 @@ rank_before :: (s: [] Store, f: [] Fold, a: int, b: int) -> bool {
   return x.count < y.count;
 }
 alias_into :: (s: [] Store, f: [] Fold, out: [] u8, n: int, r: int) -> int {
-  return json_raw(out, n, event_id(s, f[0].root[r])[0..<f[0].alias[r]]);
+  return json_raw(out, n, stored_id(s, f[0].root[r])[0..<f[0].alias[r]]);
 }
 KIND_NAMES :: [3] string.["initiative", "milestone", "task"];
 
@@ -1125,7 +1125,7 @@ write_details :: (s: [] Store, f: [] Fold, t: [] Tables) {
     r := t[0].order[k];
     row := m;
     m = alias_into(s, f, out, m, r); m = json_raw(out, m, "|");
-    m = json_raw(out, m, event_id(s, f[0].root[r])); m = json_raw(out, m, "|");
+    m = json_raw(out, m, stored_id(s, f[0].root[r])); m = json_raw(out, m, "|");
     if f[0].claimed[r].len > 0 && f[0].claimed_at[r] != 0 { m = chicago_zone_into(out, m, f[0].claimed_at[r]); }
     m = json_raw(out, m, "|");
     if !split_acceptance(t, content_of(s, f[0].fields[r])) { m = -1; }

@@ -61,9 +61,9 @@ The [delivery roadmap](roadmap.md) prioritizes Elephant and Mammoth independentl
 From the repository root, use the trusted publisher and snapshot tools:
 
 ```sh
-bun coax/web/project/publish.ts list --project psionic
-bun coax/web/project/publish.ts publish --project psionic --dry-run
-bun coax/web/project/publish.ts publish --project psionic
+openagents project list --project psionic
+openagents project publish --project psionic --dry-run
+openagents project publish --project psionic
 bun coax/web/project/snapshot.ts --project psionic
 ```
 

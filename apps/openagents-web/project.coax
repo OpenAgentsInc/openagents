@@ -369,7 +369,7 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 // ones by rank; the latest finished tasks are kept apart.
 // A task ranked above an open blocker is shown with a warning: it moved
 // ahead of what it waits on, and stays waiting until that's done.
-MAX_ITEMS :: 320;   // bounded combined roadmap + Nostr queue; seed check prevents truncation
+MAX_ITEMS :: 512;   // bounded combined roadmap + Nostr queue; seed check prevents truncation
 #assert MAX_ITEMS == FOLD_ISSUES; // a live fold cannot silently exceed the page's row capacity
 RECENT :: 3;
 KIND_INITIATIVE :: 0; KIND_MILESTONE :: 1; KIND_TASK :: 2;

@@ -1,0 +1,454 @@
+// The project domain's writes: claims, releases, notes, plans, done,
+// statuses and moves, each one Nostr event signed with the project's key, as
+// coax/web/project/publish.ts signed them (the same kinds and tags, so the
+// page and every reader fold them the same). project-rules.coax decides who
+// may claim, what a plan becomes, which hash `done` takes and when an event
+// is signed; this file builds the events and sends them.
+
+// ---- tags, built and compared ----------------------------------------------------
+
+TL_TAGS :: 1024; TL_ELS :: 4096; TL_BYTES :: 262144;
+TagList :: struct {
+  n: int; el_n: int; used: int; bad: bool;
+  first: [TL_TAGS] int; count: [TL_TAGS] int;
+  from: [TL_ELS] int; len: [TL_ELS] int;
+  bytes: [TL_BYTES] u8;
+}
+tl_clear :: (t: [] TagList) { t[0].n = 0; t[0].el_n = 0; t[0].used = 0; t[0].bad = false; }
+tl_tag :: (t: [] TagList) {
+  if t[0].n >= TL_TAGS { t[0].bad = true; return; }
+  t[0].first[t[0].n] = t[0].el_n; t[0].count[t[0].n] = 0; t[0].n += 1;
+}
+tl_el :: (t: [] TagList, s: string) {
+  if t[0].bad || t[0].n == 0 || t[0].el_n >= TL_ELS || t[0].used + s.count > TL_BYTES { t[0].bad = true; return; }
+  for i: 0..<s.count { t[0].bytes[t[0].used + i] = s[i]; }
+  t[0].from[t[0].el_n] = t[0].used; t[0].len[t[0].el_n] = s.count;
+  t[0].used += s.count; t[0].el_n += 1; t[0].count[t[0].n - 1] += 1;
+}
+tl_1 :: (t: [] TagList, a: string) { tl_tag(t); tl_el(t, a); }
+tl_2 :: (t: [] TagList, a: string, b: string) { tl_tag(t); tl_el(t, a); tl_el(t, b); }
+tl_3 :: (t: [] TagList, a: string, b: string, c: string) { tl_tag(t); tl_el(t, a); tl_el(t, b); tl_el(t, c); }
+tl_4 :: (t: [] TagList, a: string, b: string, c: string, d: string) { tl_tag(t); tl_el(t, a); tl_el(t, b); tl_el(t, c); tl_el(t, d); }
+tl_get :: (t: [] TagList, k: int, j: int) -> string {
+  e := t[0].first[k] + j;
+  return cast(string) t[0].bytes[t[0].from[e]..<t[0].from[e] + t[0].len[e]];
+}
+// The tags as a JSON array, into out: its length, or -1.
+tl_json :: (t: [] TagList, out: [] u8) -> int {
+  if t[0].bad { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_arr(o[..]);
+  for k: 0..<t[0].n {
+    jo_arr(o[..]);
+    for j: 0..<t[0].count[k] { jo_str(o[..], tl_get(t, k, j)); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// Whether stored event e's tags are exactly these (JSON.stringify equal).
+tl_same :: (t: [] TagList, s: [] Store, e: int) -> bool {
+  if e < 0 || t[0].bad || s[0].tags[e] != t[0].n { return false; }
+  for k: 0..<t[0].n {
+    g := s[0].tag0[e] + k;
+    if s[0].tag_len[g] != t[0].count[k] { return false; }
+    for j: 0..<t[0].count[k] { if !equal(element(s, g, j), tl_get(t, k, j)) { return false; } }
+  }
+  return true;
+}
+
+// ---- signing and sending ---------------------------------------------------------
+
+PJ_EVENT :: 70000;
+// Signs an event at the next time the project's key may use and sends it
+// (or, with --dry-run, says what it would send). False with the reason.
+pj_send :: (p: [] Proj, kind: int, t: [] TagList, content: string, what: string) -> bool {
+  tags: [TL_BYTES + 16] u8;
+  tn := tl_json(t, tags[..]);
+  if tn < 0 { pj_say(p, "too many tags for ", what, ""); return false; }
+  at := pr_next_at(cxcli_now_s(), p[0].last);
+  ev: [PJ_EVENT] u8;
+  n := sign_event_at(p[0].key[..], at, kind, cast(string) tags[0..<tn], content, ev[..]);
+  if n <= 0 { pj_say(p, "could not sign ", what, " (at most 64 KB an event)"); return false; }
+  p[0].last = at;
+  for k: 0..<64 { p[0].last_id[k] = ev[7 + k]; }
+  ln: [1] Ln; t24: [24] u8;
+  if p[0].dry {
+    ln_s(ln[..], "would publish kind "); ln_i(ln[..], kind); ln_s(ln[..], ": "); ln_s(ln[..], what); ln_out(ln[..]);
+    pj_sent(p, what);
+    return true;
+  }
+  event := cast(string) ev[0..<n];
+  for attempt: 1..<PJ_TRIES + 1 {
+    if pj_connect(p) {
+      if cr_publish(p[0].c[..], event, cxsock_now_ms() + 15000) { break; }
+      m := cr_message(p[0].c[..]);
+      // a retry sends the same signed event, so the relay keeps it once
+      if starts(m, "duplicate:") { break; }
+      if m.count > 0 && !starts(m, "rate-limited:") && !starts(m, "error:") && !starts(m, "auth-required:") {
+        pj_say(p, what, " refused: ", m); return false;
+      }
+    }
+    if attempt == PJ_TRIES { pj_say(p, "the relay did not take ", what, ""); return false; }
+    pj_reconnect(p, attempt);
+  }
+  ln_s(ln[..], "published kind "); ln_i(ln[..], kind); ln_s(ln[..], ": "); ln_s(ln[..], what);
+  ln_s(ln[..], " ("); ln_s(ln[..], event[7..<15]); ln_c(ln[..], ')'); ln_out(ln[..]);
+  pj_sent(p, what);
+  return true;
+}
+pj_sent :: (p: [] Proj, what: string) {
+  if p[0].sent >= PJ_SENT || p[0].sent_used + what.count > 8192 { p[0].sent += 1; return; }
+  r := Ref.{from = p[0].sent_used, len = what.count};
+  for i: 0..<what.count { p[0].sent_buf[p[0].sent_used + i] = what[i]; }
+  p[0].sent_used += what.count; p[0].sent_what[p[0].sent] = r; p[0].sent += 1;
+}
+// A failure, and what already went out, so a re-run knows where it stands.
+pj_fail :: (p: [] Proj, r: [] Rep) -> int {
+  if p[0].sent > 0 && !p[0].dry {
+    tool_err("openagents: sent before the error: ");
+    for k: 0..<p[0].sent {
+      if k >= PJ_SENT { break; }
+      if k > 0 { tool_err("; "); }
+      rf := p[0].sent_what[k];
+      tool_err(cast(string) p[0].sent_buf[rf.from..<rf.from + rf.len]);
+    }
+    tool_err(" (re-running the command is safe)\n");
+  }
+  return fail(r, EXIT_FAIL, pj_why(p));
+}
+
+// The tags every comment on issue i starts with (NIP-22 root and parent: the issue).
+pj_comment_head :: (p: [] Proj, t: [] TagList, i: int) {
+  tl_clear(t);
+  id := pj_id(p, i); rl := pj_cfg_relay(p); pk := pj_pk(p);
+  tl_4(t, "E", id, rl, pk); tl_2(t, "K", "1621"); tl_2(t, "P", pk);
+  tl_4(t, "e", id, rl, pk); tl_2(t, "k", "1621"); tl_2(t, "p", pk);
+}
+// "{a}{b}{c}" for an alt or a content, into l.
+pj_join :: (l: [] Ln, a: string, b: string, c: string) -> string { l[0].n = 0; ln_s(l, a); ln_s(l, b); ln_s(l, c); return ln_text(l); }
+pj_comment :: (p: [] Proj, t: [] TagList, i: int, content: string, alt: string, what: string) -> bool {
+  tl_2(t, "alt", alt);
+  return pj_send(p, KIND_COMMENT, t, content, what);
+}
+pj_status_event :: (p: [] Proj, id: string, state: int, what: string) -> bool {
+  t: [1] TagList; tl_clear(t[..]);
+  cfg := p[0].cfg[..];
+  rc: [256] u8; rn := pj_coord(p, KIND_REPO, rc[..]);
+  tl_4(t[..], "e", id, "", "root"); tl_2(t[..], "p", pj_pk(p)); tl_3(t[..], "a", cast(string) rc[0..<rn], pj_cfg_relay(p)); tl_2(t[..], "r", pc(cfg, cfg[0].euc));
+  return pj_send(p, 1630 + state, t[..], "", what);
+}
+pj_state_of :: (name: string) -> int {
+  for k: 0..<4 { if name == STATUS_NAME[k] { return k; } }
+  return -1;
+}
+
+// ---- the verbs ---------------------------------------------------------------------
+
+project_write :: (p: [] Proj, a: [] Args, r: [] Rep, verb: string, what: string) -> int {
+  if verb == "move" || verb == "respread" { return project_order(p, a, r, verb, what); }
+  i := pj_find(p, what);
+  if i < 0 { return fail(r, EXIT_NOT_FOUND, "no item by that slug or alias"); }
+  if verb == "claim" { return pj_claim(p, a, r, i); }
+  if verb == "release" { return pj_release(p, r, i); }
+  if verb == "note" { return pj_note(p, a, r, i); }
+  if verb == "done" { return pj_done(p, a, r, i); }
+  if verb == "status" { return pj_set_status(p, a, r, i); }
+  if verb == "plan" { return pj_plan(p, a, r, i); }
+  return fail(r, EXIT_USAGE, "openagents project help");
+}
+
+pj_claim :: (p: [] Proj, a: [] Args, r: [] Rep, i: int) -> int {
+  by := args_value(a, "--by", "");
+  if !pr_name_ok(by) { return fail(r, EXIT_USAGE, "project claim SLUG --by NAME (1 to 64 printable characters)"); }
+  slug := pj_item_slug(p, i); l: [1] Ln;
+  c := pr_claim(pj_task(p, i), pj_status(p, i), pj_claimed(p, i), by);
+  if c == PR_CLAIM_NOT_TASK { return fail(r, EXIT_USAGE, pj_join(l[..], slug, " is not a task; only tasks are claimed", "")); }
+  if c == PR_CLAIM_FINISHED { return fail(r, EXIT_CONFLICT, pj_join(l[..], slug, " is already ", pj_status(p, i))); }
+  if c == PR_CLAIM_TAKEN { return fail(r, EXIT_CONFLICT, pj_join(l[..], slug, " is claimed by ", pj_claimed(p, i))); }
+  if c == PR_CLAIM_MINE { print("% is already yours\n", slug); return pj_ok(p, r, i); }
+  for o: 0..<p[0].f[0].n { if o != i && pj_claimed(p, o) == by { print("warning: % also holds %; one task at a time\n", by, pj_item_slug(p, o)); } }
+  if pj_standing(p, i) == PR_WAITING { print("warning: % still waits on an open blocker\n", slug); }
+  t: [1] TagList; pj_comment_head(p, t[..], i);
+  tl_2(t[..], "claim", by);
+  ct: [1] Ln; al: [1] Ln; wh: [1] Ln;
+  al[0].n = 0; ln_s(al[..], by); ln_s(al[..], " claimed a task: "); ln_s(al[..], pj_title(p, i));
+  if !pj_comment(p, t[..], i, pj_join(ct[..], by, " is working on this.", ""), ln_text(al[..]), pj_join(wh[..], slug, " claimed by ", by)) { return pj_fail(p, r); }
+  return pj_ok(p, r, i);
+}
+
+pj_release :: (p: [] Proj, r: [] Rep, i: int) -> int {
+  who := pj_claimed(p, i);
+  if who.count == 0 { print("% isn't claimed\n", pj_item_slug(p, i)); return pj_ok(p, r, i); }
+  t: [1] TagList; pj_comment_head(p, t[..], i);
+  tl_1(t[..], "release"); tl_2(t[..], "by", who);
+  ct: [1] Ln; al: [1] Ln; wh: [1] Ln;
+  if !pj_comment(p, t[..], i, pj_join(ct[..], who, " let go of this.", ""), pj_join(al[..], "A task was released: ", pj_title(p, i), ""),
+    pj_join(wh[..], pj_item_slug(p, i), " released", "")) { return pj_fail(p, r); }
+  return pj_ok(p, r, i);
+}
+
+pj_note :: (p: [] Proj, a: [] Args, r: [] Rep, i: int) -> int {
+  text := trimmed(positional(a, 3));
+  if text.count == 0 { return fail(r, EXIT_USAGE, "project note SLUG \"text\" [--by NAME]"); }
+  by := args_value(a, "--by", "");
+  if by.count > 0 && !pr_name_ok(by) { return fail(r, EXIT_USAGE, "--by is 1 to 64 printable characters"); }
+  who := ifx by.count > 0 then by else pj_claimed(p, i);
+  // a re-run after a failed try must not post the same note twice
+  f := p[0].f[..]; s := p[0].s[..];
+  for k: f[0].note_from[i]..<f[0].note_from[i] + f[0].note_cnt[i] {
+    e := f[0].notes_ev[k];
+    nb := ifx f[0].notes_by[k].len > 0 then str(s, f[0].notes_by[k]) else "";
+    if equal(trimmed(content_of(s, e)), text) && equal(nb, who) && cxcli_now_s() - s[0].at[e] < 3600 {
+      print("the same note is already on %\n", pj_item_slug(p, i)); return pj_ok(p, r, i);
+    }
+  }
+  t: [1] TagList; pj_comment_head(p, t[..], i);
+  if who.count > 0 { tl_2(t[..], "by", who); }
+  al: [1] Ln; wh: [1] Ln;
+  if !pj_comment(p, t[..], i, text, pj_join(al[..], "A note on a task: ", pj_title(p, i), ""), pj_join(wh[..], "note on ", pj_item_slug(p, i), "")) { return pj_fail(p, r); }
+  return pj_ok(p, r, i);
+}
+
+// Whether hash is a commit on origin/main in the checkout (fetching once when it isn't yet).
+pj_on_main :: (p: [] Proj, hash: string) -> bool {
+  root := ifx p[0].root_n > 0 then pj_root(p) else pj_dir(p);
+  out: [4096] u8; err: [4096] u8;
+  check := [7] string.["git", "-C", root, "merge-base", "--is-ancestor", hash, "origin/main"];
+  if proc_run(check[..], 60000, out[..], err[..]).status == 0 { return true; }
+  fetch := [6] string.["git", "-C", root, "fetch", "-q", "origin"];
+  f := proc_run(fetch[..], 120000, out[..], err[..]);
+  return proc_run(check[..], 60000, out[..], err[..]).status == 0;
+}
+
+pj_done :: (p: [] Proj, a: [] Args, r: [] Rep, i: int) -> int {
+  hash := args_value(a, "--commit", "");
+  if !pr_full_hash(hash) { return fail(r, EXIT_USAGE, "project done SLUG --commit HASH (the full 40-digit commit hash)"); }
+  slug := pj_item_slug(p, i); l: [1] Ln;
+  if done_issue(p[0].f[..], i) { return fail(r, EXIT_CONFLICT, pj_join(l[..], slug, " is already ", pj_status(p, i))); }
+  if !pj_on_main(p, hash) { return fail(r, EXIT_CONFLICT, pj_join(l[..], hash, " is not on origin/main: push it first", "")); }
+  who := pj_claimed(p, i);
+  cfg := p[0].cfg[..];
+  web := pc(cfg, cfg[0].web);
+  if web.count > 0 && web[web.count - 1] == '/' { web = web[0..<web.count - 1]; }
+  url: [1] Ln; ln_s(url[..], web); ln_s(url[..], "/commit/"); ln_s(url[..], hash);
+  // a re-run after the status failed sends only the status
+  if pj_commit(p, i) != hash {
+    t: [1] TagList; pj_comment_head(p, t[..], i);
+    tl_2(t[..], "commit", hash); tl_2(t[..], "r", ln_text(url[..]));
+    if who.count > 0 { tl_2(t[..], "by", who); }
+    ct: [1] Ln; ln_s(ct[..], "Done in "); ln_s(ct[..], hash[0..<10]); ln_s(ct[..], ": "); ln_s(ct[..], ln_text(url[..]));
+    al: [1] Ln; wh: [1] Ln;
+    if !pj_comment(p, t[..], i, ln_text(ct[..]), pj_join(al[..], "A task was finished: ", pj_title(p, i), ""), pj_join(wh[..], slug, " done in ", hash[0..<10])) { return pj_fail(p, r); }
+  }
+  wh: [1] Ln;
+  if !pj_status_event(p, pj_id(p, i), ST_RESOLVED, pj_join(wh[..], slug, " resolved", "")) { return pj_fail(p, r); }
+  return pj_ok(p, r, i);
+}
+
+pj_set_status :: (p: [] Proj, a: [] Args, r: [] Rep, i: int) -> int {
+  st := pj_state_of(positional(a, 3));
+  if st < 0 { return fail(r, EXIT_USAGE, "project status SLUG open|resolved|closed|draft"); }
+  wh: [1] Ln;
+  if !pj_status_event(p, pj_id(p, i), st, pj_join(wh[..], pj_item_slug(p, i), " ", STATUS_NAME[st])) { return pj_fail(p, r); }
+  return pj_ok(p, r, i);
+}
+
+// What a write reports: the item and what went out.
+pj_ok :: (p: [] Proj, r: [] Rep, i: int) -> int {
+  if !r[0].json { return EXIT_OK; }
+  rep_str(r, "slug", pj_item_slug(p, i)); rep_str(r, "id", pj_id(p, i)); rep_int(r, "sent", p[0].sent); rep_bool(r, "dry_run", p[0].dry);
+  return rep_done(r, EXIT_OK);
+}
+
+// ---- plans ----------------------------------------------------------------------------
+
+// The plan's step numbers from the 5th argument on (1 to n), into ks: how many, or -1.
+pj_plan_nums :: (a: [] Args, n: int, ks: [] int) -> int {
+  c := 0;
+  while c < ks.count {
+    w := positional(a, 4 + c);
+    if w == "" { break; }
+    v := text_int(w);
+    if v < 1 || v > n { return -1; }
+    ks[c] = v; c += 1;
+  }
+  return ifx c == 0 then -1 else c;
+}
+pj_plan :: (p: [] Proj, a: [] Args, r: [] Rep, i: int) -> int {
+  op := positional(a, 3);
+  f := p[0].f[..]; s := p[0].s[..];
+  l: [1] Ln;
+  if op == "" { pj_print_plan(p, i, l[..]); return EXIT_OK; }
+  slug := pj_item_slug(p, i);
+  if !pj_task(p, i) { return fail(r, EXIT_USAGE, pj_join(l[..], slug, " is not a task; plans are for tasks", "")); }
+  if done_issue(f, i) { print("warning: % is already %\n", slug, pj_status(p, i)); }
+  pl: [1] PrPlan;
+  if f[0].plan[i] >= 0 {
+    content := content_of(s, f[0].plan[i]);
+    k := 0;
+    while true { st := plan_step(content, k); if !st.ok { break; } pr_plan_add(pl[..], st.mark, st.text); k += 1; }
+  }
+  old: [PR_PLAN_BYTES + 512] u8;
+  was := pr_plan_text(pl[..], old[..]);
+  had := f[0].plan[i] >= 0;
+  ks: [64] int;
+  if op == "set" || op == "add" {
+    if op == "set" { pl[0].n = 0; pl[0].used = 0; pl[0].bad = false; }
+    k := 0;
+    while positional(a, 4 + k) != "" { pr_plan_add(pl[..], ' ', positional(a, 4 + k)); k += 1; }
+  } else if op == "start" || op == "check" || op == "uncheck" {
+    c := pj_plan_nums(a, pl[0].n, ks[..]);
+    if c < 0 { return fail(r, EXIT_USAGE, "steps count from 1 to the plan's last"); }
+    if op == "start" { c = 1; }
+    for j: 0..<c { ok := pr_plan_mark(pl[..], ifx op == "start" then PR_START else ifx op == "check" then PR_CHECK else PR_UNCHECK, ks[j]); }
+  } else if op == "drop" {
+    c := pj_plan_nums(a, pl[0].n, ks[..]);
+    if c < 0 { return fail(r, EXIT_USAGE, "steps count from 1 to the plan's last"); }
+    // highest first, so the numbers stay put
+    for j: 0..<c { for m: j + 1..<c { if ks[m] > ks[j] { x := ks[j]; ks[j] = ks[m]; ks[m] = x; } } }
+    for j: 0..<c { if j == 0 || ks[j] != ks[j - 1] { ok := pr_plan_drop(pl[..], ks[j]); } }
+  } else if op == "file" {
+    src := positional(a, 4);
+    text: [PR_PLAN_BYTES * 2] u8; n := -1;
+    if src == "" || src == "-" {
+      n = cxcli_read_stdin(text[..]);
+    } else { n = fs_read(src, text[..]); }
+    if n < 0 { return fail(r, EXIT_USAGE, "can't read the plan file (at most 32 KB)"); }
+    pl[0].n = 0; pl[0].used = 0; pl[0].bad = false;
+    t := cast(string) text[0..<n]; at := 0;
+    while at <= n {
+      e := at; while e < n && t[e] != 10 { e += 1; }
+      st := plan_line(t[at..<e]);
+      if st.ok { pr_plan_add(pl[..], st.mark, st.text); }
+      at = e + 1;
+    }
+  } else { return fail(r, EXIT_USAGE, "project plan SLUG [set|add|start|check|uncheck|drop|file] ..."); }
+  if pl[0].bad { return fail(r, EXIT_USAGE, "a plan holds at most 64 steps"); }
+  if pl[0].n == 0 { return fail(r, EXIT_USAGE, "a plan needs at least one step"); }
+  by := args_value(a, "--by", "");
+  if by.count > 0 && !pr_name_ok(by) { return fail(r, EXIT_USAGE, "--by is 1 to 64 printable characters"); }
+  who := ifx by.count > 0 then by else pj_claimed(p, i);
+  out: [PR_PLAN_BYTES + 512] u8;
+  now := pr_plan_text(pl[..], out[..]);
+  if had && equal(now, was) && equal(str(s, f[0].plan_by[i]), who) {
+    print("the plan for % is already this\n", slug);
+  } else {
+    t: [1] TagList; pj_comment_head(p, t[..], i);
+    tl_2(t[..], "plan", TASK_PLAN);
+    if who.count > 0 { tl_2(t[..], "by", who); }
+    al: [1] Ln; wh: [1] Ln;
+    ln_s(wh[..], "plan for "); ln_s(wh[..], slug); ln_s(wh[..], " ("); ln_i(wh[..], pr_plan_done(pl[..])); ln_c(wh[..], '/'); ln_i(wh[..], pl[0].n); ln_c(wh[..], ')');
+    if !pj_comment(p, t[..], i, now, pj_join(al[..], "A worker's plan for a task: ", pj_title(p, i), ""), ln_text(wh[..])) { return pj_fail(p, r); }
+  }
+  for k: 0..<pl[0].n { pj_step_line(l[..], k + 1, pl[0].mark[k], pr_step(pl[..], k), true); }
+  return pj_ok(p, r, i);
+}
+
+// ---- the order -------------------------------------------------------------------------
+
+// The order's tags for entries (issue rows) with ranks rs. False when the
+// relay would refuse an event that size.
+pj_order_tags :: (p: [] Proj, t: [] TagList, rows: [] int, rs: [] PrRanks, n: int) -> bool {
+  if !pr_order_fits(n) { pj_say(p, "too many open tasks for one order event (the relay's tag limit); close or split the project", "", ""); return false; }
+  tl_clear(t);
+  pc_: [256] u8; cn := pj_coord(p, KIND_PROJECT, pc_[..]);
+  cfg := p[0].cfg[..];
+  tl_2(t, "d", pj_slug(p)); tl_3(t, "a", cast(string) pc_[0..<cn], pj_cfg_relay(p));
+  for k: 0..<n { tl_3(t, "item", pj_id(p, rows[k]), pr_rank(rs, k)); }
+  al: [1] Ln; ln_s(al[..], "The "); ln_s(al[..], pc(cfg, cfg[0].name)); ln_s(al[..], " project's task order");
+  tl_2(t, "alt", ln_text(al[..]));
+  return true;
+}
+
+project_order :: (p: [] Proj, a: [] Args, r: [] Rep, verb: string, what: string) -> int {
+  w: [1] Work;
+  bad := work_read(w[..], pj_dir(p));
+  if bad.count > 0 { return fail(r, EXIT_USAGE, bad); }
+  rows: [FOLD_ISSUES] int; rs: [1] PrRanks;
+  n := pj_ordered(p, w[..], rows[..], rs[..]);
+  if n < 0 { return fail(r, EXIT_FAIL, "the order's ranks are not ranks"); }
+  t: [1] TagList; l: [1] Ln; wh: [1] Ln;
+  if verb == "move" {
+    before := args_has(a, "--before");
+    other := args_value(a, ifx before then "--before" else "--after", "");
+    if other == "" { return fail(r, EXIT_USAGE, "project move SLUG --before SLUG | --after SLUG"); }
+    m := pj_find(p, what); o := pj_find(p, other);
+    if m < 0 || o < 0 { return fail(r, EXIT_NOT_FOUND, "no item by that slug or alias"); }
+    if !pj_task(p, m) || !pj_task(p, o) { return fail(r, EXIT_USAGE, "only tasks are in the order"); }
+    if m == o { return fail(r, EXIT_USAGE, "an item can't move relative to itself"); }
+    at := -1; mine := -1;
+    for k: 0..<n { if rows[k] == m { mine = k; } if rows[k] == o { at = k; } }
+    if mine < 0 || at < 0 { return fail(r, EXIT_USAGE, "only unfinished tasks are in the order"); }
+    // the others in order, then the moving one placed by its neighbour
+    rest: [FOLD_ISSUES] int; rr: [1] PrRanks; rn := 0;
+    for k: 0..<n { if k != mine { rest[rn] = rows[k]; pr_ranks_push(rr[..], pr_rank(rs[..], k)); rn += 1; } }
+    anchor := ifx at > mine then at - 1 else at;
+    nr: [PR_RANK] u8;
+    kn := pr_placed(rr[..], anchor, before, nr[..]);
+    if kn < 0 { return fail(r, EXIT_FAIL, "no rank fits there"); }
+    // insert at its sorted place
+    out: [FOLD_ISSUES] int; orr: [1] PrRanks; on := 0; put := false;
+    for k: 0..<rn {
+      if !put && pr_before(cast(string) nr[0..<kn], pr_rank(rr[..], k)) { out[on] = m; pr_ranks_push(orr[..], cast(string) nr[0..<kn]); on += 1; put = true; }
+      out[on] = rest[k]; pr_ranks_push(orr[..], pr_rank(rr[..], k)); on += 1;
+    }
+    if !put { out[on] = m; pr_ranks_push(orr[..], cast(string) nr[0..<kn]); on += 1; }
+    pr_rebalance(orr[..]);
+    if !pj_order_tags(p, t[..], out[..], orr[..], on) { return pj_fail(p, r); }
+    wh[0].n = 0; ln_s(wh[..], pj_item_slug(p, m)); ln_s(wh[..], ifx before then " before " else " after "); ln_s(wh[..], pj_item_slug(p, o));
+    if !pj_send(p, KIND_ORDER, t[..], "", ln_text(wh[..])) { return pj_fail(p, r); }
+    // a task moved above one it waits on is allowed, and said
+    ev := pj_ev(p, m);
+    for k: 0..<nt_tags(ev, "blocked-by") {
+      bt := nt_tag(ev, "blocked-by", k); if bt.values < 1 { continue; }
+      b := fold_issue_of(p[0].s[..], p[0].f[..], nt_raw(ev, bt.v[0]));
+      if b < 0 || pj_status(p, b) != "open" { continue; }
+      bp := -1; mp := -1;
+      for q: 0..<on { if out[q] == b { bp = q; } if out[q] == m { mp = q; } }
+      if bp > mp { print("warning: % is now above %, which it waits on; it stays blocked until that resolves\n", pj_item_slug(p, m), pj_item_slug(p, b)); }
+    }
+    return pj_ok(p, r, m);
+  }
+  // respread: even ranks again, keeping the order; --seed: work-file order; --order FILE: its slugs first
+  key: [FOLD_ISSUES] int;
+  for k: 0..<n { key[k] = 0; }
+  how := " in the current order";
+  if args_has(a, "--order") {
+    path := args_value(a, "--order", "");
+    text: [262144] u8;
+    tn := fs_read(path, text[..]);
+    if tn < 0 { return fail(r, EXIT_USAGE, "can't read --order FILE"); }
+    for k: 0..<n { key[k] = 1000000; }
+    tx := cast(string) text[0..<tn]; at := 0; line := 0;
+    while at <= tn {
+      e := at; while e < tn && tx[e] != 10 { e += 1; }
+      s := trimmed(tx[at..<e]);
+      if s.count > 0 {
+        q := -1;
+        for x: 0..<p[0].f[0].n { if equal(pj_item_slug(p, x), s) { q = x; } }
+        if q < 0 { return fail(r, EXIT_NOT_FOUND, pj_join(l[..], "no item ", s, " (in --order FILE)")); }
+        if !pj_task(p, q) { return fail(r, EXIT_USAGE, pj_join(l[..], "order files hold only tasks: ", s, "")); }
+        for k: 0..<n { if rows[k] == q && key[k] == 1000000 { key[k] = line; } }
+        line += 1;
+      }
+      at = e + 1;
+    }
+    how = " in the order of --order FILE";
+  } else if args_has(a, "--seed") {
+    for k: 0..<n { key[k] = work_pos(w[..], pj_item_slug(p, rows[k]), false); if key[k] < 0 { key[k] = 1000000; } }
+    how = " in work-file order";
+  }
+  // a stable sort by key
+  for k: 1..<n {
+    j := k; x := rows[k]; y := key[k];
+    while j > 0 && key[j - 1] > y { rows[j] = rows[j - 1]; key[j] = key[j - 1]; j -= 1; }
+    rows[j] = x; key[j] = y;
+  }
+  pr_spread(n, rs[..]);
+  if rs[0].bad || !pj_order_tags(p, t[..], rows[..], rs[..], n) { return pj_fail(p, r); }
+  wh[0].n = 0; ln_s(wh[..], "respread "); ln_i(wh[..], n); ln_s(wh[..], how);
+  if !pj_send(p, KIND_ORDER, t[..], "", ln_text(wh[..])) { return pj_fail(p, r); }
+  if r[0].json { rep_int(r, "items", n); rep_int(r, "sent", p[0].sent); return rep_done(r, EXIT_OK); }
+  return EXIT_OK;
+}

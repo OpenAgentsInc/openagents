@@ -2,8 +2,9 @@
 
 The OpenAgents command line, in Coax. The plan for v1.0.0 is
 [docs/cli/2026-11-01-openagents-cli-v1.md](../../docs/cli/2026-11-01-openagents-cli-v1.md).
-Today it has two domains: `nostr`, your NIP-06 identity and a relay client,
-and `pylon`, which starts and stops this computer's Pylon.
+Today it has three domains: `nostr`, your NIP-06 identity and a relay client;
+`pylon`, which starts and stops this computer's Pylon; and `project`, the
+project queue at openagents.com/projects/SLUG.
 
 ## Build
 
@@ -102,10 +103,46 @@ openagents pylon list [--mine] [--relay URL] # the network's Pylons from their b
   digest, schema) and fresh by this computer's clock, as the homepage
   reads them. `--mine` keeps the Pylons whose newest link names you.
 
+## Projects
+
+```sh
+openagents project list [--project SLUG]       # the queue, in the page's order
+openagents project show SLUG                   # body, checks, claim, plan, notes
+openagents project claim SLUG --by NAME
+openagents project plan SLUG set "step" "step" # add, start N, check N, uncheck N, drop N, file PATH|-
+openagents project note SLUG "text"
+openagents project done SLUG --commit HASH     # a full hash already on origin/main
+openagents project release SLUG
+openagents project status SLUG open|resolved|closed|draft
+openagents project move SLUG --before SLUG     # or --after SLUG; respread [--seed | --order FILE]
+openagents project check                       # the work files' rules, no relay
+openagents project publish [--dry-run]         # the work files, as events
+openagents project review COMMIT --key FILE    # an independent review, coax/reviews/COMMIT.json
+```
+
+How to work the queue is [coax/web/project/QUEUE.md](../../coax/web/project/QUEUE.md);
+the events are [docs/protocol/2026-10-28-projects.md](../../docs/protocol/2026-10-28-projects.md).
+
+- The project is `apps/openagents-web/projects/SLUG/` in the checkout the
+  command runs in (`--project`, default `coax`; `--dir DIR` for another
+  folder). Reading needs no key. Writing signs with the project key,
+  `~/work/.secrets/openagents-project-SLUG.key` or `--key FILE`, whose
+  public key must be `project.json`'s.
+- A read pages through the relay (200 events a page, retried with
+  reconnects) and folds the events with
+  [project-fold.coax](../openagents-web/project-fold.coax), the page's own
+  fold, so `list` shows what the page shows. It keeps the ids it has seen in
+  `~/.openagents/cli/projects/SLUG.ids` and reads again when the relay loses
+  one (`--forget` drops the file).
+- `done` refuses a short hash and a commit that is not an ancestor of
+  `origin/main`.
+- `review` signs with the reviewer's own key and refuses an author key
+  (`coax/reviews/authors.json`). It writes the file and publishes nothing.
+
 ## Output and exit codes
 
 Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
-0 done, 1 failed, 2 usage, 3 no identity, 6 not found.
+0 done, 1 failed, 2 usage, 3 no identity or key, 5 conflict, 6 not found.
 
 ## Files
 
@@ -117,6 +154,11 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `relay.coax` | the relay client: connect, NIP-42 AUTH, one REQ to EOSE, publish and OK |
 | `pylon.coax` | the `pylon` domain: start, stop, status, logs; claim, unclaim and list over the relay ([xp_keys.coax](../../coax/lib/nostr/xp_keys.coax) and [beacon.coax](../../psionic/lib/pylon/beacon.coax) decide) |
 | `account.coax` | HTTPS calls through `coax/lib/net/http.coax`; the hidden `http METHOD URL` check |
+| `project.coax` | the `project` domain: the config, the key, reading and folding the relay, `list` and `show` |
+| `project-write.coax` | claim, release, note, plan, done, status, move and respread, signed with the project key |
+| `project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
+| `project-review.coax` | `review`: an independent review file signed with the reviewer's key |
+| `project-rules.coax` | `#authority`: hashes, slugs, standing, claims, plans, ranks, the order, relay paging |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, process liveness, the executable's path |
 | `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |
@@ -130,4 +172,6 @@ A new domain goes in its own file with a `DOMAIN_main` dispatch, one
 ```sh
 coax/bin/coax test apps/openagents-cli/rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/rules.coax --library    # 295 mutants, 0 survivors (2026-11-01)
+coax/bin/coax test apps/openagents-cli/project-rules.coax --library
+coax/bin/coax mutate apps/openagents-cli/project-rules.coax --library    # 750 mutants, 0 survivors (2026-11-01)
 ```
