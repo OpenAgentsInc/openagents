@@ -1,0 +1,1011 @@
+{
+  "schema": "psionic.locomotion-gaussian.publication.v1",
+  "passed": true,
+  "scope": "Chapter171 normalized scalar Gaussian density/scores, finite-top53 sampling and admitted log-ratio composition. A learner and gait remain planned.",
+  "source_commit_before_rebase": "8db686d71d19c5c217a298d802594134f2b014b0",
+  "rebased_source_and_book_commit": "61a76f1e32012ab0c3d88edce3dc0946e655d7fe",
+  "original_receipts": {
+    "contract.md": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/contract.md",
+      "bytes": 11462,
+      "sha256": "7652688126ab36722ba4e1783ceb701dc860561c4f92a7d396a412f5cdefea8d"
+    },
+    "experiment.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/experiment.json",
+      "bytes": 6131,
+      "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+    },
+    "input-freeze.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/input-freeze.json",
+      "bytes": 346,
+      "sha256": "101141351dda8abb047c8d045afbdd8b1bef58a7dbbbb3c39e338d58211d8ff8"
+    },
+    "source-qualification.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/source-qualification.json",
+      "bytes": 6512,
+      "sha256": "e339cb9442821f8c3aad99d0ad1be91b63912359d03902313bd459db330ba153"
+    },
+    "unit-refusals.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/unit-refusals.json",
+      "bytes": 1907,
+      "sha256": "06e850348d9e6f39fbaf94e1f2da185befc350c395cbb2c2446d678edacb930a"
+    },
+    "sampling-call-closure-carry.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/sampling-call-closure-carry.json",
+      "bytes": 2725,
+      "sha256": "ffbbc9660e271ad7f9572e73f7c9146b0015afea8d9036f708453f333c53ec98"
+    },
+    "reference.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/reference.json",
+      "bytes": 2701,
+      "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+    },
+    "independent-publication.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/independent-publication.json",
+      "bytes": 6943,
+      "sha256": "42fca7240d1ab590f23086bb31799df3e4b94cd47dcd8b1b76b2e19bafa456d9"
+    },
+    "native-qualification.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/native-qualification.json",
+      "bytes": 35280,
+      "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+    },
+    "native-publication.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/native-publication.json",
+      "bytes": 2751,
+      "sha256": "b779810ca5e26c4c253bdc0f60ee0b0b8926eef3938ea97d75ac273c2958683a"
+    },
+    "example-qualification.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/example-qualification.json",
+      "bytes": 2859,
+      "sha256": "2eece0dbe83325da2ba06c262919eb6c8b9f3c319563d4002b302ce6c867eb54"
+    },
+    "gate-plan-qualification.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/gate-plan-qualification.json",
+      "bytes": 11594,
+      "sha256": "6c80f829a40951a29c3c489498275581709133e734fd29a861f25cc4a4647eb7"
+    },
+    "gate-qualification.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/gate-qualification.json",
+      "bytes": 1742,
+      "sha256": "ca50339cff947de1e4f3aa25a093826992c9c6a653b4dabf784e27f25bb2b963"
+    },
+    "coefficient-correction.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/coefficient-correction.json",
+      "bytes": 1830,
+      "sha256": "8810935ce8a6783ebb49e63dea65a5924f4fc5f3f538aa15f9e633d976975aa2"
+    },
+    "endpoint-enclosure-v1.json": {
+      "path": "psionic/fixtures/robotics/locomotion-gaussian/endpoint-enclosure-v1.json",
+      "bytes": 3143,
+      "sha256": "93b6df1ec5b6d1d8c5d4235fc17c86a191cc1d01a35682b6419a57744beb91e4"
+    }
+  },
+  "unchanged_published_inventory": {
+    "psionic/lib/robotics/locomotion/gaussian-types.coax": {
+      "bytes": 689,
+      "sha256": "bb4d00afba9f37887455a44491febaa2d582381436c295dfc0d37ac802bb720c"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-fixtures.coax": {
+      "bytes": 1342,
+      "sha256": "5df76b04fbeab70f88ffe72fe78b2faf50f52265e9d177d8839467db3653ea6f"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-density.coax": {
+      "bytes": 4500,
+      "sha256": "68d012f2f3e38c75e2905ba0ad3300722e24dc7e5cec87b545e384a091a08f18"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-sampling.coax": {
+      "bytes": 6944,
+      "sha256": "abcd98010519a83c02a38ba60c2b287ce4ff6f35d360013655d38ab7ec746483"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-ratio.coax": {
+      "bytes": 6780,
+      "sha256": "a50570d463033b569ebfc866d96236203faaf4429c2f3d7dc9dd388f15c65bd6"
+    },
+    "psionic/lib/robotics/locomotion-gaussian.coax": {
+      "bytes": 205,
+      "sha256": "cac2b51ef0c77c9705dc686560a25dbb470843628fa73c73acdb00cd30b55d9e"
+    },
+    "psionic/tests/robotics/locomotion-gaussian-native.coax": {
+      "bytes": 1205,
+      "sha256": "b7b7d92f310427ea6dc970ca8955f339a64b40f7d02fe2e48f6b330d5a3eec77"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_bad_logstd.coax": {
+      "bytes": 209,
+      "sha256": "6e25d7b15cc31eb47b86b63658ee0addeea53c7487efbb323d36aaf89d76a196"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_bad_action.coax": {
+      "bytes": 206,
+      "sha256": "0dd2fb22371ac5c0967aa7afb96005ee25f968d3beca1791ba58da6896cd2a80"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_bad_uniform.coax": {
+      "bytes": 266,
+      "sha256": "fc255ca35b7326bbdc6d6569cabf3331e14d28200103f770d1fec50d14af5b81"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_bad_logprob.coax": {
+      "bytes": 283,
+      "sha256": "82de97434dfd937425adebb48abf4ae932cea42ed092cc96f2e3a700d0d6827f"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/source-qualification.json": {
+      "bytes": 6512,
+      "sha256": "e339cb9442821f8c3aad99d0ad1be91b63912359d03902313bd459db330ba153"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/unit-refusals.json": {
+      "bytes": 1907,
+      "sha256": "06e850348d9e6f39fbaf94e1f2da185befc350c395cbb2c2446d678edacb930a"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/unit-logstd.log": {
+      "bytes": 460,
+      "sha256": "515901d7a42b490a46a800548934401450fe7ee67d34eb047fbc73e1922d8631"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/unit-action.log": {
+      "bytes": 424,
+      "sha256": "d677d52ea7eb7f894352f0727f94bdc4f31815bc1b8a11eaf497eddf9d6bd65a"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/unit-uniform.log": {
+      "bytes": 582,
+      "sha256": "e734b5deea542209756cad5891ee8680e4e175f12e3d4b1a73945ce07905fd5e"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/unit-logprob.log": {
+      "bytes": 589,
+      "sha256": "4723c3242d124813247c4ae505f08b7773f408b0204ff868473519083727ea7a"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/sampling-call-closure-carry.json": {
+      "bytes": 2725,
+      "sha256": "ffbbc9660e271ad7f9572e73f7c9146b0015afea8d9036f708453f333c53ec98"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/README.md": {
+      "bytes": 5028,
+      "sha256": "76eeee08c236d264f2d9157a759dcdf7cd1897a1ccb1ba61f6b180bb09c20699"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/example-qualification.json": {
+      "bytes": 2859,
+      "sha256": "2eece0dbe83325da2ba06c262919eb6c8b9f3c319563d4002b302ce6c867eb54"
+    },
+    "psionic/examples/locomotion-gaussian.coax": {
+      "bytes": 2055,
+      "sha256": "8dd9f596363fbe4fc25d5197cd92e994c89eb2e15104a57b0b2211a3e93b2d94"
+    },
+    "psionic/examples/locomotion-gaussian.out": {
+      "bytes": 506,
+      "sha256": "e627f52effd9b6b5d96a1e6af4f72571c7a55158fa4eec3c516c1674a9abff3b"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_native.c": {
+      "bytes": 11478,
+      "sha256": "78fb3522b7ee0d0782578e47f48c8e27dccc036813e15c3d3c10e5961f0fe5c4"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_native_reference.py": {
+      "bytes": 21038,
+      "sha256": "5f3105a02ffb54625910403dc297af56e8924b7f6a2e971a628241843777d230"
+    },
+    "psionic/tests/robotics/check-locomotion-gaussian.sh": {
+      "bytes": 421,
+      "sha256": "560eb6130fa8c63c86271e65267da93739e7be9b1a822d35871efd429bc6c544"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-qualification.json": {
+      "bytes": 35280,
+      "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-density.bin": {
+      "bytes": 38400,
+      "sha256": "bd8c068a151579425175e90bd7acf3e2ea2dd40d6b24ed9a9f831654199067f5"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-uniform.bin": {
+      "bytes": 32256,
+      "sha256": "f2f5c925a7cb0d9778de15ac18e3305860fbec625c4a9ed3e03668eb4b084b22"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-seeded.bin": {
+      "bytes": 6400,
+      "sha256": "2189134bc09a66a5c680d4186865d265f64f77bac93b522052284023182437b5"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-ratio.bin": {
+      "bytes": 40960,
+      "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-ratio-exp.bin": {
+      "bytes": 5120,
+      "sha256": "ab98eec86add3e006da8468728e45333cd2430104c2c844eb7b39543553b93a9"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/native-publication.json": {
+      "bytes": 2751,
+      "sha256": "b779810ca5e26c4c253bdc0f60ee0b0b8926eef3938ea97d75ac273c2958683a"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/gate-plan-qualification.json": {
+      "bytes": 11594,
+      "sha256": "6c80f829a40951a29c3c489498275581709133e734fd29a861f25cc4a4647eb7"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/gate-qualification.json": {
+      "bytes": 1742,
+      "sha256": "ca50339cff947de1e4f3aa25a093826992c9c6a653b4dabf784e27f25bb2b963"
+    },
+    "psionic/tests/robotics/locomotion_gaussian_reference.py": {
+      "bytes": 18680,
+      "sha256": "3dd9db3908796a040b31b25183a61ab92f0e42194a0ff91fe863d4da76a1641b"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/experiment.json": {
+      "bytes": 6131,
+      "sha256": "89c762bbb8154e86fdaf69ea3e686f5b4a5b35479e6a726c19a7822ba02b1eb7"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/input-freeze.json": {
+      "bytes": 346,
+      "sha256": "101141351dda8abb047c8d045afbdd8b1bef58a7dbbbb3c39e338d58211d8ff8"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/contract.md": {
+      "bytes": 11462,
+      "sha256": "7652688126ab36722ba4e1783ceb701dc860561c4f92a7d396a412f5cdefea8d"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/density-inputs.f64": {
+      "bytes": 23040,
+      "sha256": "4738114d5e6b6c64f8b280fa847175ee1b30a04575b4280207c48dc5b86ab0eb"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/uniform-inputs.f64": {
+      "bytes": 43008,
+      "sha256": "1306206441194d6803106b1a6ec62217ee2e12bb0d57ea861f10491696198787"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/seeded-inputs.bin": {
+      "bytes": 5120,
+      "sha256": "f99dd000022e383d223d78c3ad83af1505e6184b99971103246b2716e23f1d9f"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-inputs.f64": {
+      "bytes": 20480,
+      "sha256": "a7d495ce56a0c11bf201129f1985efcdc23d61a3c02f87854893d27f8e9e1388"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-dlog.f64": {
+      "bytes": 5120,
+      "sha256": "cf40abbcb0ff923a42229ef3caf613c36d59e55e4467d7167d287912b052ce36"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-eligibility.u8": {
+      "bytes": 640,
+      "sha256": "1a131c791cc0d1f5bc560cdfdec412b0fd9673cc628432a0c74cb2aeb05991de"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/reference.json": {
+      "bytes": 2701,
+      "sha256": "176e9a04cd6b7be27e9acb7423c59404a9c583032c5f16e458c0a4288228fef5"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/density-expected.bin": {
+      "bytes": 38400,
+      "sha256": "6501cfd4bbf221435e7f7fcce7570f8fb00cf800d776b3609fa677e93a02245a"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/uniform-expected.bin": {
+      "bytes": 32256,
+      "sha256": "251cd2914619de19252deb6a8b5e1aefb670336283b553e4866fdc866e48fdd3"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/seeded-expected.bin": {
+      "bytes": 6400,
+      "sha256": "d64e2f964998729d49775d46b740dbf5014b428c5cb38c45755db13d3d979f2d"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/ratio-expected.bin": {
+      "bytes": 40960,
+      "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/density-exact.u8": {
+      "bytes": 960,
+      "sha256": "7999c8273862d22588d0ee9f4a309e0161e333c55d1adf5a697d8e36511e7d0e"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/uniform-exact.u8": {
+      "bytes": 1344,
+      "sha256": "ad760a503cd4b077e2f3b1bbb9b3bab6f16e9ca43395e18cfe3cc4be4eac7f81"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/seeded-exact.u8": {
+      "bytes": 160,
+      "sha256": "d45d001c091a7c41ad947a2f3ac711008eaad6c1c6f8cbfa497c660cf9769dab"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.py": {
+      "bytes": 1016,
+      "sha256": "ff02a7cd7bf99488d2d17667cebff2cd7aafe1f014edaae78cacf119130a64bd"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-original-output.json": {
+      "bytes": 3851,
+      "sha256": "31c18231e0d1306006c164ae8dadea5ee3a72c2e44ea9e68c9fa9dd50e172e28"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-derivation.json": {
+      "bytes": 867,
+      "sha256": "710f7626d8557413da74fda74dddb239b43a7fa41d4a5df5b01bfa991657f057"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-archive-scope-v1.json": {
+      "bytes": 834,
+      "sha256": "0a0c65c0d483eb081c765b2825f6a8806fec23ad268dad10bf9232333a4dde92"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/endpoint-enclosure-v1.json": {
+      "bytes": 3143,
+      "sha256": "93b6df1ec5b6d1d8c5d4235fc17c86a191cc1d01a35682b6419a57744beb91e4"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/coefficient-correction.json": {
+      "bytes": 1830,
+      "sha256": "8810935ce8a6783ebb49e63dea65a5924f4fc5f3f538aa15f9e633d976975aa2"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/coefficient-inline.py": {
+      "bytes": 496,
+      "sha256": "ed0df66032ff3c4e567757ddd68ad64f1dc5f79741cd2e20101b653490595834"
+    },
+    "psionic/fixtures/robotics/locomotion-gaussian/independent-publication.json": {
+      "bytes": 6943,
+      "sha256": "42fca7240d1ab590f23086bb31799df3e4b94cd47dcd8b1b76b2e19bafa456d9"
+    }
+  },
+  "source_proofs": {
+    "public_math_roots": 3,
+    "public_math_groups": 15,
+    "public_math_actual_emitted_sites": 130,
+    "public_math_killed": 130,
+    "test_transport_groups": 1,
+    "test_transport_actual_emitted_sites": 7,
+    "test_transport_killed": 7,
+    "survivors": 0,
+    "equivalence_waivers": 0,
+    "load_only_aggregate_body_sites": 0,
+    "aggregate_mutation_runs": 0,
+    "new_role_refusals": 4
+  },
+  "native_first": {
+    "identity": {
+      "bytes": 35280,
+      "sha256": "cb3cc9471580816ff26d1ebee93244bccac505ec1b1495a8b26ace788eab7aa1"
+    },
+    "seconds": 2.104494957951829,
+    "compiler": {
+      "bytes": 3012376,
+      "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+    },
+    "all_mode_output_bytes_exact": true,
+    "reader_guards": {
+      "passed": true,
+      "poisoned_records": 59,
+      "old_gates_models_environments": 0
+    },
+    "canonical_debug": {
+      "native": {
+        "assertions": 32579,
+        "refusal_queries": 250,
+        "alias_observations": 56,
+        "IEEE_patterns": 65,
+        "probe_calls": 536,
+        "density_rows": 960,
+        "uniform_rows": 1344,
+        "seeded_rows": 160,
+        "ratio_rows": 640,
+        "fpcr_zero": true
+      },
+      "comparison": {
+        "passed": true,
+        "maximum_absolute_errors": {
+          "density": [
+            7.450580596923828e-09,
+            5.820766091346741e-11,
+            7.450580596923828e-09,
+            0.0
+          ],
+          "uniform": [
+            3.469446951953614e-18,
+            1.1102230246251565e-16
+          ],
+          "seeded": [
+            1.7763568394002505e-15,
+            2.220446049250313e-16
+          ]
+        },
+        "maximum_fraction_of_frozen_budget": {
+          "density": [
+            0.05321648706295267,
+            0.027456970127840284,
+            0.04841602760871788,
+            0.0
+          ],
+          "uniform": [
+            4.3306182263438095e-05,
+            0.0013058163493244812
+          ],
+          "seeded": [
+            0.01838163903706536,
+            0.002335559551375224
+          ]
+        },
+        "exact_smooth_field_words": {
+          "density": 1344,
+          "uniform": 1280,
+          "seeded": 6
+        },
+        "statuses": {
+          "density": {
+            "0": 960
+          },
+          "uniform": {
+            "0": 1344
+          },
+          "seeded": {
+            "0": 112,
+            "4": 48
+          },
+          "ratio": {
+            "0": 536,
+            "3": 104
+          }
+        },
+        "probe_rows": 536,
+        "probe_max_relative_error": 0.0,
+        "conditional_ratio_successes": 536,
+        "conditional_ratio_scope": "Independent Decimal exp accuracy followed by exact Fraction/RN Rcp on observed rho; not correctly-rounded-libm proof.",
+        "density_zero_sign_checks": 192,
+        "all_seed_counter_transitions_exact": true,
+        "all_finite_before_maxima": true
+      },
+      "C": {
+        "bytes": 62406,
+        "sha256": "0ef265a07fe25c65a26c46b78670fec12a020a3c66b0c7e310c1b9486348ecc9"
+      },
+      "header": {
+        "bytes": 17311,
+        "sha256": "def541191d6508e970bb966f59c4d7be542604de815ebb3126a93f95b2dcc6e9"
+      },
+      "object": {
+        "bytes": 31040,
+        "sha256": "06b822f6dc3fe7a3cc2c2bfaca4d95ec7fb16d5810a85421fb83f8554efb1358"
+      },
+      "binary": {
+        "bytes": 75192,
+        "sha256": "8508fc6b6681341ce105a2fd6d6e6827752c1bf31043f6065a22d4789eb34b51"
+      },
+      "outputs": {
+        "density-actual.bin": {
+          "bytes": 38400,
+          "sha256": "bd8c068a151579425175e90bd7acf3e2ea2dd40d6b24ed9a9f831654199067f5"
+        },
+        "uniform-actual.bin": {
+          "bytes": 32256,
+          "sha256": "f2f5c925a7cb0d9778de15ac18e3305860fbec625c4a9ed3e03668eb4b084b22"
+        },
+        "seeded-actual.bin": {
+          "bytes": 6400,
+          "sha256": "2189134bc09a66a5c680d4186865d265f64f77bac93b522052284023182437b5"
+        },
+        "ratio-actual.bin": {
+          "bytes": 40960,
+          "sha256": "540fa43da541582e5fcb30d53f6510ef33a387dc9a1b8d179f8db1b05e310469"
+        },
+        "ratio-exp.bin": {
+          "bytes": 5120,
+          "sha256": "ab98eec86add3e006da8468728e45333cd2430104c2c844eb7b39543553b93a9"
+        }
+      }
+    }
+  },
+  "registration": {
+    "schema": "psionic.locomotion-gaussian.registration.v1",
+    "passed": true,
+    "sources": {
+      "psionic/check.sh": {
+        "bytes": 45303,
+        "sha256": "9179aaf3f332a6ecd4cb5387f6a397ec714a9e40b17da2d3a2d01c893d0cc063"
+      },
+      "psionic/tests/robotics/check.sh": {
+        "bytes": 23048,
+        "sha256": "06120f11c20936c5e63c5600febf21387238b3b7dcdb5e36b8b37c707011cc2a"
+      }
+    },
+    "scope": "Only NEW path/source/mixed dispatcher spy contexts. No actual Coax/C/native/numeric/old gate/model/SDK/NN execution.",
+    "commands": [
+      {
+        "label": "syntax-psionic-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/check.sh"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "syntax-psionic-tests-robotics-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "density",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/locomotion/gaussian-density"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "sampling",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/locomotion/gaussian-sampling"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "ratio",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/locomotion/gaussian-ratio"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "public-group",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/locomotion-gaussian"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "04fa6ff06fb67bc7202ac770691d12da08f87ba916b16c3b67b7f2d133a68cef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "public-no-mutation",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/locomotion-gaussian"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "04fa6ff06fb67bc7202ac770691d12da08f87ba916b16c3b67b7f2d133a68cef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "deduplicated",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/locomotion-gaussian",
+          "robotics/locomotion/gaussian-ratio",
+          "robotics/locomotion/gaussian-density"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "04fa6ff06fb67bc7202ac770691d12da08f87ba916b16c3b67b7f2d133a68cef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-density",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/locomotion/gaussian-density",
+          "--jobs",
+          "3"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-sampling",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/locomotion/gaussian-sampling",
+          "--jobs",
+          "3"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-ratio",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/locomotion/gaussian-ratio",
+          "--jobs",
+          "3"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "90cc795cb85c180a4754112e8cbdb52d38fa073a4a8d3cf8a955a47e95d2a6d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-public",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/locomotion-gaussian",
+          "--jobs",
+          "3"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "04fa6ff06fb67bc7202ac770691d12da08f87ba916b16c3b67b7f2d133a68cef"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "mixed-offline",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-owned-query-neural",
+          "robotics/locomotion-gaussian"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 119,
+          "sha256": "f379434540eb45cb90a22be714b7f1935624561f935786cf3c39d8d3a155b34d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "default-list",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--list",
+          "all"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 2913,
+          "sha256": "5041b32ac60b5e0203d9be623f3752bb93064e0bb2538e3f9dabaa028c205900"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "unknown",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/locomotion/gaussian-unknown"
+        ],
+        "returncode": 2,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 60,
+          "sha256": "46d946ac48edb964190d7983901db40d909dccab94377d86e6e2097927b07f12"
+        }
+      },
+      {
+        "label": "whitelist",
+        "argv": [
+          "bash",
+          "/tmp/locomotion-gaussian-registration-first/whitelist.sh",
+          "robotics/locomotion/gaussian-density",
+          "robotics/locomotion/gaussian-sampling",
+          "robotics/locomotion/gaussian-ratio",
+          "robotics/locomotion-gaussian",
+          "psionic/lib/robotics/locomotion/gaussian-density.coax",
+          "psionic/lib/robotics/locomotion/gaussian-sampling.coax",
+          "psionic/lib/robotics/locomotion/gaussian-ratio.coax",
+          "psionic/lib/robotics/locomotion-gaussian.coax",
+          "robotics/locomotion/gaussian-unknown"
+        ],
+        "returncode": 0,
+        "stdout": {
+          "bytes": 35,
+          "sha256": "710d7016e599920c7274aae1b12cc54da7ad2a6e0edec235462ed404b3e605ec"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "cases": [
+      {
+        "name": "density",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 0,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "sampling",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-sampling"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 0,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "ratio",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 0,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "public-group",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density",
+          "locomotion/gaussian-sampling",
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 1,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "public-no-mutation",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density",
+          "locomotion/gaussian-sampling",
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 1,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "deduplicated",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density",
+          "locomotion/gaussian-sampling",
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 1,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "top-density",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 0,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "top-sampling",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-sampling"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 0,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "top-ratio",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 0,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "top-public",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density",
+          "locomotion/gaussian-sampling",
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 1,
+        "offline_gate_spies": 0
+      },
+      {
+        "name": "mixed-offline",
+        "actual_Coax_roots": [
+          "locomotion/gaussian-density",
+          "locomotion/gaussian-sampling",
+          "locomotion/gaussian-ratio"
+        ],
+        "aggregate_Coax_commands": 0,
+        "native_gate_spies": 1,
+        "offline_gate_spies": 1
+      }
+    ],
+    "actual_Coax_C_native_model_calls": 0,
+    "public_aggregate_source_sites_expected": 0,
+    "old_gates_repeated": false,
+    "seconds": 3.789834499999415
+  },
+  "book_structure": {
+    "passed": true,
+    "returncode": 0,
+    "seconds": 0.3604266250040382,
+    "source": {
+      "psionic/book/ch171-learn-a-gait-in-many-worlds.md": "90e1b678346aee53947ced5fd39c71342978fa78e910ffb97233fe9141ff823b",
+      "psionic/book/PLAN.md": "ea3981387dd8908fcd1abdc95394483b7b262aed9fddaecf1fa9ad9b96de23f7",
+      "psionic/book/README.md": "8b1c6ac2d5a42a55e66944299f5cfc3f1a96f07cc583208c69340656aa728628",
+      "psionic/book/SUMMARY.md": "638b574085ba386781ca2710b7cdca049709e11f5b295dd630d3899a23941ca5",
+      "psionic/book/chapters.json": "cdd06a784b30e652c401a49099041ece10ef9ff1b490f407239aa9900293ba33",
+      "psionic/book/examples.json": "f45e3f050492e30b902c0b9819ce7a5561001eea877cbff27ddbef574789592c",
+      "psionic/tests/book.py": "b11541e899f4d629a638c6fd8cd9b2a1a5fe32694b5d881499745e5414dc2f37",
+      "coax/book/capability-claims.json": "331dbf29e127c3f78333703ac1c43802e13abf410a0eb8e11035e938cc6098d6"
+    },
+    "first_failed_context": {
+      "passed": false,
+      "returncode": 1,
+      "seconds": 0.4540591660188511,
+      "source": {
+        "psionic/book/ch171-learn-a-gait-in-many-worlds.md": "90e1b678346aee53947ced5fd39c71342978fa78e910ffb97233fe9141ff823b",
+        "psionic/book/PLAN.md": "ea3981387dd8908fcd1abdc95394483b7b262aed9fddaecf1fa9ad9b96de23f7",
+        "psionic/book/README.md": "e6a83bb3e3bb2051f66672bf1c53a84e867d6c5ae58695b9d7ea46c58ac9c319",
+        "psionic/book/SUMMARY.md": "638b574085ba386781ca2710b7cdca049709e11f5b295dd630d3899a23941ca5",
+        "psionic/book/chapters.json": "cdd06a784b30e652c401a49099041ece10ef9ff1b490f407239aa9900293ba33",
+        "psionic/book/examples.json": "f45e3f050492e30b902c0b9819ce7a5561001eea877cbff27ddbef574789592c",
+        "psionic/tests/book.py": "b11541e899f4d629a638c6fd8cd9b2a1a5fe32694b5d881499745e5414dc2f37",
+        "coax/book/capability-claims.json": "331dbf29e127c3f78333703ac1c43802e13abf410a0eb8e11035e938cc6098d6"
+      },
+      "claim_evidence_updates": [
+        {
+          "claim": "psionic.execution.current",
+          "path": "psionic/book/SUMMARY.md",
+          "before": "54f2c2b7d8c4a1818bc3df71057f112661d64e1cd8931b528fac73f434de34eb",
+          "after": "638b574085ba386781ca2710b7cdca049709e11f5b295dd630d3899a23941ca5"
+        },
+        {
+          "claim": "psionic.execution.current",
+          "path": "psionic/book/examples.json",
+          "before": "083f86f98d9fc3e0c418cbf6bea842a8f3a9be31a7a39e15540e72d7c225e4b3",
+          "after": "f45e3f050492e30b902c0b9819ce7a5561001eea877cbff27ddbef574789592c"
+        },
+        {
+          "claim": "psionic.gpu.current",
+          "path": "psionic/book/SUMMARY.md",
+          "before": "54f2c2b7d8c4a1818bc3df71057f112661d64e1cd8931b528fac73f434de34eb",
+          "after": "638b574085ba386781ca2710b7cdca049709e11f5b295dd630d3899a23941ca5"
+        },
+        {
+          "claim": "psionic.gpu.current",
+          "path": "psionic/book/examples.json",
+          "before": "083f86f98d9fc3e0c418cbf6bea842a8f3a9be31a7a39e15540e72d7c225e4b3",
+          "after": "f45e3f050492e30b902c0b9819ce7a5561001eea877cbff27ddbef574789592c"
+        }
+      ],
+      "numeric_or_model_calls": 0
+    },
+    "correction": "Only two missing executable-source Markdown links added in own171 README row. All source, oracle, numeric, claims and dispatcher evidence carried.",
+    "numeric_or_model_calls": 0
+  },
+  "book_counts": {
+    "programs": 136,
+    "source_linked_listings": 483
+  },
+  "current_emitter": {
+    "carried_build_and_binding": {
+      "path": "docs/verification/coax-locomotion-emitter-binding-2026-11-01.json",
+      "bytes": 18912,
+      "sha256": "37e56bd73c8ae7e87d4b276b6e7c53ccf0c4151629e44edf88644065cb810694"
+    },
+    "source_fingerprint": "908b63638f485a67f68f4d0c147ed6ab0ebcf7668e62ee0ac85e06558707f339",
+    "all_77_compiler_inputs_byte_exact_after_rebase": true,
+    "native_emitted_with_same_exact_private_binary": true,
+    "additional_emissions_or_rebuilds": 0,
+    "scope": "First Gaussian debug/release emission was measured with the carried current private908 normal-C emitter. Numerical proof is direct, not a duplicate compile/run. Prior private build is not full bootstrap/release qualification."
+  },
+  "history": [
+    "Root corrected its one-ULP Gaussian coefficient error before expected/native comparison; first nonfinal42-site density context preserved. Only coefficient-dependent density proof was refreshed.",
+    "Sampling48 proof carries exact used helper/body identities across the coefficient-only reconstruction; reconstruction is explicitly not a preexecution source snapshot.",
+    "Four initial ratio observation survivors closed with independent pre-exp domain observations; no equivalent waivers.",
+    "First book structure found missing Markdown links to both programs; only own171 README links changed before the passing136-program context."
+  ],
+  "old_standalone_RNG_GAE_PPO_tape_or_model_gates_repeated": 0,
+  "model_SDK_environment_optimizer_training_calls": 0,
+  "new_seeded_sampling_composition_executed": true,
+  "limits": [
+    "Normalized scalar coordinates; physical scales and density Jacobians remain separate.",
+    "Finite top53 Box\u2013Muller is a deterministic finite-grid numerical transform, not exact continuous sampling or an RNG-independence certificate.",
+    "Named Darwin-arm64 scalar-libm profile; mixed smooth-field budgets are not an owned-libm or cross-target correctness proof.",
+    "Ratio composition is exact conditional on independently bounded observed rho; no universal correctly-rounded-exp claim.",
+    "No actor/critic graph, optimizer update, learning run, gait, terrain, teacher/student transfer or hardware.",
+    "General Quantity-operator provenance and compiler R14/R20/R21/R23 remain open."
+  ],
+  "next_component": "Owned F64 tape/AdamW actor update and separately frozen scalar-LQR PPO learning experiment, with an explicitly nominal continuous-Gaussian analytic critic."
+}
