@@ -1,9 +1,8 @@
 {
   "schema": "psionic.panda-euler.publication-binding.v1",
   "passed": true,
-  "input_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
-  "compiler_sha256": "127ce60127de2ad863e2e9e5fa92253a7e5b59fa9f76e9e599ff2902aac9c77e",
-  "compiler_guard_carried_from_model_binding_sha256": "bb0611c713de239e880d1db97e2cdbe50354ab2ed3da77b707d9159366385e2c",
+  "input_fingerprint": "d6c0e6e364379757a25221beb63b1b581aa9a87adf3a40918654d4594cf660e6",
+  "compiler_sha256": "3483fd2cd7d48335274d342b4f34494236dbec56b8c76fea87fbe1b746511b60",
   "compiler_cache_verify_repeated": false,
   "current_source_fingerprint_guard": true,
   "emissions": [
@@ -40,7 +39,7 @@
   "SDK_calls": 0,
   "example_reruns": 0,
   "mutation_reruns": 0,
-  "component_commit": "8b4e39ce6fa3366ace91995b14922631531d1794",
+  "component_commit": "59f0251b82fb6e557a1957c5861e4e83eeb2fe85",
   "original_component_commit": "c5175d54825527487ba45b5c7b34a5b2d9460d1e",
   "seconds": 2.4627629999886267,
   "qualified_native_receipt_sha256": "e83e9c80ffc76496e8794da8f5da652322627f6d092b0bd7d197b2630501679c",
@@ -118,5 +117,30 @@
     "psionic/lib/robotics/panda-euler-math.coax": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
     "psionic/lib/robotics/panda-euler-types.coax": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb",
     "psionic/lib/robotics/panda-euler.coax": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893"
-  }
+  },
+  "previous_compiler_context": {
+    "fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
+    "compiler_sha256": "127ce60127de2ad863e2e9e5fa92253a7e5b59fa9f76e9e599ff2902aac9c77e",
+    "private_binding_receipt_sha256": "41e83ffedbb0ce9f019680ac42696e2a9ae61e010ff88f3f0caa205390d4b920",
+    "all_four_artifacts_already_matched": true
+  },
+  "historical_compiler_input_model_binding_sha256": "bb0611c713de239e880d1db97e2cdbe50354ab2ed3da77b707d9159366385e2c",
+  "new_current_cache_verify": {
+    "passed": true,
+    "exit": 0,
+    "stderr_bytes": 0,
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "record_sha256": "99dafbfe2889867cbf5a7b5aa1982ebad69716c54aefeec7d158681a749daf6d",
+    "helper_sha256": "599ff14bac4690d477b8452639d390193b01a88f38007115d87dc9643bf02b31"
+  },
+  "upstream_compiler_delta": {
+    "commit": "4ce4e425525adc13723b7721144ab7f5930b2796",
+    "changed_compiler_inputs": [
+      "coax/build.sh",
+      "coax/src/main.cpp"
+    ],
+    "review": "Added source-digest subcommand and a stale-build note after failing commands. Successful compilation path and authored parser/checker/emitter/math are unchanged; exact current C/header binding is qualified below.",
+    "model_arithmetic_or_native_gates_repeated": false
+  },
+  "rebased_parent": "4ce4e425525adc13723b7721144ab7f5930b2796"
 }
