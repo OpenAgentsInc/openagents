@@ -1,0 +1,125 @@
+// `wm-check FILE`: runs a file of window commands through os/wm.coax and prints the whole state after
+// each, in the format of the Rust driver that runs them through crates/coder-wm (2ca255550e~1), so the
+// two can be compared line for line. Floats in the file and the output are f32 bit patterns.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "wm.coax";
+
+WcOut :: struct { b: [33554432] u8; n: int; }
+wc_add :: (o: [] WcOut, s: string) { for c: s { if o[0].n < 33554432 { o[0].b[o[0].n] = c; o[0].n += 1; } } }
+wc_int :: (o: [] WcOut, value: int) {
+  v := value;
+  if v < 0 { wc_add(o, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast,trunc(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  for i: 0..<k { b: [1] u8; b[0] = d[k - 1 - i]; wc_add(o, cast(string) b[..]); }
+}
+wc_bits :: (o: [] WcOut, v: f32) { wc_int(o, cast(int) f32_bits(v)); }
+wc_tile :: (o: [] WcOut, tag: string, desk: int, t: WmTile) {
+  wc_add(o, tag); wc_add(o, " "); wc_int(o, desk); wc_add(o, " "); wc_int(o, t.id); wc_add(o, " ");
+  wc_bits(o, t.rect.x); wc_add(o, " "); wc_bits(o, t.rect.y); wc_add(o, " "); wc_bits(o, t.rect.w); wc_add(o, " "); wc_bits(o, t.rect.h);
+  wc_add(o, ifx t.focused then " 1" else " 0"); wc_add(o, ifx t.floating then " 1\n" else " 0\n");
+}
+wc_state :: (m: [] Wm, o: [] WcOut) {
+  wc_add(o, "ws "); wc_int(o, wm_workspace(m)); wc_add(o, " scr "); wc_int(o, m[0].screen); wc_add(o, " focus "); wc_int(o, wm_focus(m));
+  wc_add(o, ifx wm_focused_is_floating(m) then " ff 1\n" else " ff 0\n");
+  t: [WM_WINS] WmTile; n := wm_all_windows(m, t[..]);
+  for i: 0..<n {
+    wc_tile(o, "win", t[i].desk, t[i]);
+    wc_add(o, "  of "); wc_int(o, wm_desk_of(m, t[i].id)); wc_add(o, ifx wm_is_fullscreen(m, t[i].id) then " fs 1" else " fs 0");
+    wc_add(o, ifx wm_is_floating(m, t[i].id) then " fl 1" else " fl 0"); wc_add(o, ifx wm_is_pinned(m, t[i].id) then " pin 1\n" else " pin 0\n");
+  }
+  n = wm_all_tiles(m, t[..]);
+  for i: 0..<n { wc_tile(o, "tile", t[i].desk, t[i]); }
+  for s: 0..<m[0].ns {
+    wc_add(o, "screen "); wc_int(o, s); wc_add(o, " desk "); wc_int(o, m[0].screens[s].desk); wc_add(o, "\n");
+    k := wm_tiles_on(m, s, t[..]); for i: 0..<k { wc_tile(o, "on", s, t[i]); }
+  }
+  for d: 0..<9 { wc_int(o, m[0].desk_screen[d]); wc_add(o, " "); }
+  wc_add(o, "\n");
+}
+wc_num :: (s: string) -> int {
+  neg := s.count > 0 && s[0] == '-'; v := 0;
+  for c: s[ifx neg then 1 else 0..<s.count] { v = v * 10 + cast(int) (c - '0'); }
+  return ifx neg then -v else v;
+}
+wc_f :: (s: string) -> f32 { return f32_from_bits(cast(u32) wc_num(s)); }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args; ok := args_load(a[..]);
+  if !ok || args_count(a[..]) != 1 { tool_errln("usage: wm-check FILE"); return 2; }
+  text: [4194304] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  if n < 0 { tool_errln("wm-check: cannot read the file"); return 1; }
+  mm: [1] Wm; m := mm[..]; wm_new(m);
+  oo: [1] WcOut; o := oo[..];
+  at := 0;
+  while at < n {
+    e := at; while e < n && text[e] != '\n' { e += 1; }
+    line := cast(string) text[at..<e]; at = e + 1;
+    if line.count == 0 { continue; }
+    w: [8] string; nw := 0; s := 0;
+    for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if nw < 8 { w[nw] = line[s..<i]; nw += 1; } s = i + 1; } }
+    v: [1] WcOut; r := v[..]; r[0].n = 0;
+    c := w[0];
+    if c == "spawn" { wc_int(r, wm_spawn(m)); }
+    else if c == "close" { wm_close(m, wc_num(w[1])); }
+    else if c == "focus_id" { wc_int(r, ifx wm_focus_id(m, wc_num(w[1])) then 1 else 0); }
+    else if c == "focus_at" { wc_int(r, wm_focus_at(m, wc_f(w[1]), wc_f(w[2]))); }
+    else if c == "tile_at" { t: [1] WmTile; if wm_tile_at(m, wc_f(w[1]), wc_f(w[2]), t[..]) { wc_int(r, t[0].id); wc_add(r, " "); wc_bits(r, t[0].rect.x); } else { wc_add(r, "none"); } }
+    else if c == "movefocus" { wm_movefocus(m, wc_num(w[1])); }
+    else if c == "movewindow" { wm_movewindow(m, wc_num(w[1])); }
+    else if c == "resize" { wm_resize(m, wc_num(w[1]), wc_f(w[2])); }
+    else if c == "togglesplit" { wm_togglesplit(m); }
+    else if c == "togglefloating" { wm_togglefloating(m); }
+    else if c == "fullscreen" { wm_fullscreen(m); }
+    else if c == "maximize" { wm_maximize(m); }
+    else if c == "switch" { wm_switch_workspace(m, wc_num(w[1])); }
+    else if c == "moveto" { wm_movetoworkspace(m, wc_num(w[1])); }
+    else if c == "drag" { wm_drag_float(m, wc_f(w[1]), wc_f(w[2])); }
+    else if c == "grab" { wm_resize_grab(m, wc_f(w[1]), wc_f(w[2]), w[3] == "1", w[4] == "1"); }
+    else if c == "set_floating" { wc_int(r, ifx wm_set_floating(m, wc_num(w[1]), w[2] == "1") then 1 else 0); }
+    else if c == "set_pinned" { wc_int(r, ifx wm_set_pinned(m, wc_num(w[1]), w[2] == "1") then 1 else 0); }
+    else if c == "place" { wc_int(r, ifx wm_place(m, wc_num(w[1]), wc_num(w[2])) then 1 else 0); }
+    else if c == "place_float" { wc_int(r, ifx wm_place_float(m, wc_num(w[1]), WmRect.{x = wc_f(w[2]), y = wc_f(w[3]), w = wc_f(w[4]), h = wc_f(w[5])}) then 1 else 0); }
+    else if c == "raise" { wc_int(r, ifx wm_raise(m, wc_num(w[1])) then 1 else 0); }
+    else if c == "rect_of" { q: [1] WmRect; if wm_rect_of(m, wc_num(w[1]), q[..]) { wc_bits(r, q[0].x); wc_add(r, " "); wc_bits(r, q[0].y); wc_add(r, " "); wc_bits(r, q[0].w); wc_add(r, " "); wc_bits(r, q[0].h); } else { wc_add(r, "none"); } }
+    else if c == "add_screen" { wc_int(r, wm_add_screen(m, wm_screen("s", wc_num(w[1]), wc_num(w[2]), wc_num(w[3]), wc_num(w[4])))); }
+    else if c == "set_screen" { wm_set_screen(m, wc_num(w[1]), wm_screen("s", wc_num(w[2]), wc_num(w[3]), wc_num(w[4]), wc_num(w[5]))); }
+    else if c == "focus_screen" { wc_int(r, ifx wm_focus_screen(m, wc_num(w[1])) then 1 else 0); }
+    else if c == "move_to_screen" { wc_int(r, ifx wm_move_to_screen(m, wc_num(w[1]), wc_num(w[2])) then 1 else 0); }
+    else if c == "move_desk" { wc_int(r, ifx wm_move_desk_to_screen(m, wc_num(w[1])) then 1 else 0); }
+    else { wc_add(r, "?"); }
+    wc_add(o, "> "); wc_add(o, line); wc_add(o, " = "); wc_add(o, cast(string) r[0].b[0..<r[0].n]); wc_add(o, "\n");
+    wc_state(m, o);
+  }
+  print("%", cast(string) o[0].b[0..<o[0].n]);
+  return 0;
+}
+
+#test "the Rust crate's screen tests" {
+  mm: [1] Wm; m := mm[..];
+  // a second screen takes a hidden desk
+  wm_new(m); wm_switch_workspace(m, 2);
+  #assert wm_add_screen(m, wm_screen("right", 1920, 0, 1920, 1080)) == 1 && m[0].screens[1].desk == 0 && m[0].desk_screen[0] == 1 && m[0].screens[0].desk == 2 && m[0].desk_screen[2] == 0;
+  // focus_screen moves focus across screens
+  wm_new(m); wm_set_screen(m, 0, wm_screen("left", 0, 0, 1920, 1080)); x := wm_add_screen(m, wm_screen("right", 1920, 0, 1920, 1080));
+  a := wm_spawn(m); #assert wm_focus_screen(m, WM_RIGHT); b := wm_spawn(m);
+  #assert wm_focus(m) == b && m[0].screen == 1 && wm_focus_screen(m, WM_LEFT) && wm_focus(m) == a && m[0].screen == 0 && !wm_focus_screen(m, WM_LEFT);
+  // move_to_screen lands whole on the next screen
+  wm_new(m); wm_set_screen(m, 0, wm_screen("left", 0, 0, 1920, 1080)); x = wm_add_screen(m, wm_screen("right", 1920, 0, 1920, 1080));
+  a = wm_spawn(m); #assert wm_move_to_screen(m, a, WM_RIGHT);
+  t: [16] WmTile; #assert wm_tiles_on(m, 0, t[..]) == 0 && wm_tiles_on(m, 1, t[..]) == 1 && t[0].id == a && t[0].rect.w == 1 && t[0].focused && m[0].screen == 1;
+  // move_desk_to_screen twice restores the map
+  wm_new(m); wm_set_screen(m, 0, wm_screen("left", 0, 0, 1920, 1080)); x = wm_add_screen(m, wm_screen("right", 1920, 0, 1920, 1080));
+  a = wm_spawn(m); #assert wm_move_desk_to_screen(m, WM_RIGHT); y := wm_focus_screen(m, WM_LEFT); #assert wm_move_desk_to_screen(m, WM_RIGHT);
+  #assert m[0].desk_screen[0] == 0 && m[0].screens[0].desk == 0 && m[0].screens[1].desk == 1;
+}
+#test "dwindle: a wide pane splits left and right, then the tall half top and bottom" {
+  mm: [1] Wm; m := mm[..]; wm_new(m);
+  a := wm_spawn(m); b := wm_spawn(m); c := wm_spawn(m);
+  t: [16] WmTile; n := wm_tiles(m, t[..]);
+  #assert n == 3 && t[0].id == a && t[0].rect.w == 0.5 && t[1].id == b && t[1].rect.h == 0.5 && t[2].id == c && t[2].rect.y == 0.5 && t[2].focused;
+  wm_close(m, c); #assert wm_tiles(m, t[..]) == 2 && wm_focus(m) == a;
+}

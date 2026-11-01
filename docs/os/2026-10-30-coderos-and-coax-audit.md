@@ -422,6 +422,26 @@ compiler and the examples have not been run on Linux yet.
   On 2026-10-31 two `coderos-camera serve` processes were running there,
   and the one that answers reports that another process streams
   `/dev/video0`.
+- **Step 2 row 6, the compositor: started with its window policy.**
+  `os/wm.coax` is `coder-wm`: dwindle tiling as the Hyprland session lays
+  it out, nine desks over several screens, floats, fullscreen, monocle and
+  pinned windows. Rust's boxed tree becomes a pool of nodes changed in
+  place. `os/wm-check.coax` runs a file of window commands through it and
+  prints the whole state after each one: every window's desk and
+  rectangle as f32 bits, focus, the tiles each screen draws, and which
+  screen shows which desk. A Rust driver linking the original crate prints
+  the same. Over 1,300 random sessions (390,565 commands) the two matched
+  line for line, bit for bit.
+
+  In 18 of those sessions Rust panicked. Super+right-drag on a float
+  placed near the right or bottom edge calls `f32::clamp` with its bounds
+  reversed, which would take the compositor down. The Coax version takes
+  the upper bound, and the sessions were compared up to the panic.
+
+  Left: the compositor itself, Wayland protocol, DRM output, input and
+  rendering (Smithay in Rust, about 14,000 lines). That needs callbacks
+  and struct access from the compiler (§17.2), or a Wayland server written
+  in Coax on the Unix-socket face.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
   integers and floats (a pointer and a length), so a C face can fill a Coax

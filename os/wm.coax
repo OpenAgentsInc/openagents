@@ -1,0 +1,569 @@
+// CoderOS window policy in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 6), from
+// crates/coder-wm/src/{lib,screen}.rs (openagents 2ca255550e~1): dwindle tiling as the CoderOS
+// Hyprland session lays it out, nine desks over one or more screens, floating windows, fullscreen,
+// monocle and pinned windows. The compositor asks it where every window goes; it draws nothing.
+// Rust held each desk's tree as boxed nodes rebuilt on every change. Here the nodes live in one pool
+// and are changed in place, which gives the same trees: every procedure below answers what its
+// Rust namesake answers, and the f32 sums run in the same order, so rectangles match bit for bit.
+// A window id is a number from 1; 0 means none (Rust's Option<WinId>). Where Rust's f32::clamp
+// would panic (a lower bound above the upper one) this takes the upper bound.
+
+WM_NODES :: 1024; WM_FLOATS :: 128; WM_WINS :: 256;
+WM_LEFT :: 0; WM_RIGHT :: 1; WM_UP :: 2; WM_DOWN :: 3;
+WM_H :: 0; WM_V :: 1;          // Split: a left/right pair, a top/bottom pair
+WM_NEXT :: 4; WM_PREVIOUS :: 5; // ScreenSel beyond the four directions
+
+WmRect :: struct { x: f32; y: f32; w: f32; h: f32; }
+WmTile :: struct { id: int; rect: WmRect; focused: bool; floating: bool; desk: int; }
+WmNode :: struct { used: bool; leaf: bool; id: int; split: int; ratio: f32; a: int; b: int; }
+WmFloat :: struct { id: int; rect: WmRect; }
+WmSpace :: struct { tree: int; floating: [WM_FLOATS] WmFloat; nf: int; fullscreen: int; maximize: int; focus: int; next_split: int; split_forced: bool; }
+WmScreen :: struct { name: [64] u8; nn: int; x: int; y: int; w: int; h: int; scale: f32; desk: int; }
+Wm :: struct {
+  spaces: [9] WmSpace;
+  screens: [9] WmScreen; ns: int;   // each desk lives on one screen, and a screen shows one of its desks
+  desk_screen: [9] int;             // the screen each desk lives on
+  screen: int;                      // the focused screen
+  next_id: int;
+  pinned: [WM_WINS] int; np: int;   // windows that follow the desk you switch to
+  nodes: [WM_NODES] WmNode;
+}
+
+wm_full :: () -> WmRect { return WmRect.{x = 0, y = 0, w = 1, h = 1}; }
+wm_clamp :: (v: f32, lo: f32, hi: f32) -> f32 { return ifx v < lo then (ifx lo > hi then hi else lo) else ifx v > hi then hi else v; }
+wm_max :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+wm_min :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+wm_abs :: (a: f32) -> f32 { return ifx a < 0 then -a else a; }
+wm_matches :: (split: int, dir: int) -> bool { return (split == WM_H && (dir == WM_LEFT || dir == WM_RIGHT)) || (split == WM_V && (dir == WM_UP || dir == WM_DOWN)); }
+wm_split_rect :: (r: WmRect, split: int, ratio: f32, second: bool) -> WmRect {
+  t := wm_clamp(ratio, 0.1, 0.9);
+  if split == WM_H {
+    if !second { return WmRect.{x = r.x, y = r.y, w = r.w * t, h = r.h}; }
+    return WmRect.{x = r.x + r.w * t, y = r.y, w = r.w * (1.0 - t), h = r.h};
+  }
+  if !second { return WmRect.{x = r.x, y = r.y, w = r.w, h = r.h * t}; }
+  return WmRect.{x = r.x, y = r.y + r.h * t, w = r.w, h = r.h * (1.0 - t)};
+}
+wm_in :: (r: WmRect, px: f32, py: f32) -> bool { return px >= r.x && py >= r.y && px < r.x + r.w && py < r.y + r.h; }
+// Whether x, y in 0..1 hits a tile's title strip, title_h high.
+wm_title_contains :: (t: WmTile, x: f32, y: f32, title_h: f32) -> bool {
+  h := wm_max(wm_min(title_h, t.rect.h * 0.35), 0.0);
+  return x >= t.rect.x && x < t.rect.x + t.rect.w && y >= t.rect.y && y < t.rect.y + h;
+}
+
+// An empty session on desk 1, one screen.
+wm_new :: (m: [] Wm) {
+  for i: 0..<9 { m[0].spaces[i].tree = -1; m[0].spaces[i].nf = 0; m[0].spaces[i].fullscreen = 0; m[0].spaces[i].maximize = 0; m[0].spaces[i].focus = 0; m[0].spaces[i].next_split = WM_H; m[0].spaces[i].split_forced = false; m[0].desk_screen[i] = 0; }
+  m[0].ns = 1; m[0].screens[0] = WmScreen.{scale = 1}; m[0].screen = 0; m[0].next_id = 1; m[0].np = 0;
+  for i: 0..<WM_NODES { m[0].nodes[i].used = false; }
+}
+
+// ---- the tree
+
+wm_alloc :: (m: [] Wm) -> int { for i: 0..<WM_NODES { if !m[0].nodes[i].used { m[0].nodes[i] = WmNode.{used = true}; return i; } } return -1; }
+wm_leaf :: (m: [] Wm, id: int) -> int { n := wm_alloc(m); if n >= 0 { m[0].nodes[n].leaf = true; m[0].nodes[n].id = id; } return n; }
+wm_branch :: (m: [] Wm, split: int, ratio: f32, a: int, b: int) -> int {
+  n := wm_alloc(m); if n >= 0 { m[0].nodes[n].split = split; m[0].nodes[n].ratio = ratio; m[0].nodes[n].a = a; m[0].nodes[n].b = b; } return n;
+}
+wm_contains :: (m: [] Wm, n: int, focus: int) -> bool {
+  if focus == 0 || n < 0 { return false; }
+  if m[0].nodes[n].leaf { return m[0].nodes[n].id == focus; }
+  return wm_contains(m, m[0].nodes[n].a, focus) || wm_contains(m, m[0].nodes[n].b, focus);
+}
+// The new window beside the focused one, in a pair split as asked; at the end of the tree when the
+// focus is not in it.
+wm_insert :: (m: [] Wm, n: int, focus: int, id: int, split: int) -> int {
+  if !wm_contains(m, n, focus) || m[0].nodes[n].leaf { return wm_branch(m, split, 0.5, n, wm_leaf(m, id)); }
+  if wm_contains(m, m[0].nodes[n].a, focus) { a := wm_insert(m, m[0].nodes[n].a, focus, id, split); m[0].nodes[n].a = a; }
+  else { b := wm_insert(m, m[0].nodes[n].b, focus, id, split); m[0].nodes[n].b = b; }
+  return n;
+}
+// The tree without id: -1 when nothing is left; a pair that loses one side becomes the other side.
+wm_remove :: (m: [] Wm, n: int, id: int) -> int {
+  if n < 0 { return -1; }
+  if m[0].nodes[n].leaf { if m[0].nodes[n].id == id { m[0].nodes[n].used = false; return -1; } return n; }
+  a := wm_remove(m, m[0].nodes[n].a, id); b := wm_remove(m, m[0].nodes[n].b, id);
+  if a < 0 && b < 0 { m[0].nodes[n].used = false; return -1; }
+  if a < 0 || b < 0 { m[0].nodes[n].used = false; return ifx a < 0 then b else a; }
+  m[0].nodes[n].a = a; m[0].nodes[n].b = b;
+  return n;
+}
+wm_first_leaf :: (m: [] Wm, n: int) -> int {
+  if n < 0 { return 0; }
+  if m[0].nodes[n].leaf { return m[0].nodes[n].id; }
+  return wm_first_leaf(m, m[0].nodes[n].a);
+}
+wm_collect :: (m: [] Wm, n: int, r: WmRect, focus: int, out: [] WmTile, k: int) -> int {
+  if n < 0 { return k; }
+  if m[0].nodes[n].leaf {
+    if k < out.count { out[k] = WmTile.{id = m[0].nodes[n].id, rect = r, focused = focus == m[0].nodes[n].id, floating = false}; }
+    return k + 1;
+  }
+  s := m[0].nodes[n].split; t := m[0].nodes[n].ratio;
+  j := wm_collect(m, m[0].nodes[n].a, wm_split_rect(r, s, t, false), focus, out, k);
+  return wm_collect(m, m[0].nodes[n].b, wm_split_rect(r, s, t, true), focus, out, j);
+}
+// The other window of the first pair of two windows that holds id.
+wm_sibling_leaf :: (m: [] Wm, n: int, id: int) -> int {
+  if n < 0 || m[0].nodes[n].leaf { return 0; }
+  a := m[0].nodes[n].a; b := m[0].nodes[n].b;
+  if m[0].nodes[a].leaf && m[0].nodes[b].leaf {
+    if m[0].nodes[a].id == id { return m[0].nodes[b].id; }
+    if m[0].nodes[b].id == id { return m[0].nodes[a].id; }
+  }
+  s := wm_sibling_leaf(m, a, id);
+  return ifx s != 0 then s else wm_sibling_leaf(m, b, id);
+}
+wm_siblings_match_dir :: (m: [] Wm, n: int, x: int, y: int, dir: int) -> bool {
+  if n < 0 || m[0].nodes[n].leaf { return false; }
+  a := m[0].nodes[n].a; b := m[0].nodes[n].b;
+  pair := m[0].nodes[a].leaf && m[0].nodes[b].leaf && ((m[0].nodes[a].id == x && m[0].nodes[b].id == y) || (m[0].nodes[a].id == y && m[0].nodes[b].id == x));
+  return (pair && wm_matches(m[0].nodes[n].split, dir)) || wm_siblings_match_dir(m, a, x, y, dir) || wm_siblings_match_dir(m, b, x, y, dir);
+}
+// The target's leaf becomes a pair of it and the new window, on the side dir names.
+wm_insert_at :: (m: [] Wm, n: int, target: int, id: int, dir: int) -> int {
+  if n < 0 { return n; }
+  if m[0].nodes[n].leaf {
+    if m[0].nodes[n].id != target { return n; }
+    split := ifx dir == WM_LEFT || dir == WM_RIGHT then WM_H else WM_V;
+    m[0].nodes[n].used = false;
+    first := ifx dir == WM_RIGHT || dir == WM_DOWN then target else id; second := ifx dir == WM_RIGHT || dir == WM_DOWN then id else target;
+    a := wm_leaf(m, first); b := wm_leaf(m, second);
+    return wm_branch(m, split, 0.5, a, b);
+  }
+  if wm_contains(m, m[0].nodes[n].a, target) { a := wm_insert_at(m, m[0].nodes[n].a, target, id, dir); m[0].nodes[n].a = a; }
+  else if wm_contains(m, m[0].nodes[n].b, target) { b := wm_insert_at(m, m[0].nodes[n].b, target, id, dir); m[0].nodes[n].b = b; }
+  return n;
+}
+wm_swap_ids :: (m: [] Wm, n: int, x: int, y: int) {
+  if n < 0 { return; }
+  if m[0].nodes[n].leaf { if m[0].nodes[n].id == x { m[0].nodes[n].id = y; } else if m[0].nodes[n].id == y { m[0].nodes[n].id = x; } return; }
+  wm_swap_ids(m, m[0].nodes[n].a, x, y); wm_swap_ids(m, m[0].nodes[n].b, x, y);
+}
+// The innermost split along dir that holds the focus moves its divider by delta.
+wm_resize_along :: (m: [] Wm, n: int, focus: int, dir: int, delta: f32) -> bool {
+  if n < 0 || m[0].nodes[n].leaf { return false; }
+  if wm_resize_along(m, m[0].nodes[n].a, focus, dir, delta) || wm_resize_along(m, m[0].nodes[n].b, focus, dir, delta) { return true; }
+  if !wm_matches(m[0].nodes[n].split, dir) { return false; }
+  in_first := wm_contains(m, m[0].nodes[n].a, focus); in_second := wm_contains(m, m[0].nodes[n].b, focus);
+  if !in_first && !in_second { return false; }
+  sign: f32 = ifx dir == WM_LEFT || dir == WM_UP then (ifx in_first then -1.0 else 1.0) else (ifx in_first then 1.0 else -1.0);
+  m[0].nodes[n].ratio = wm_clamp(m[0].nodes[n].ratio + sign * delta, 0.1, 0.9);
+  return true;
+}
+wm_toggle_parent_split :: (m: [] Wm, n: int, focus: int) -> bool {
+  if n < 0 || m[0].nodes[n].leaf { return false; }
+  a := m[0].nodes[n].a; b := m[0].nodes[n].b;
+  if (m[0].nodes[a].leaf && m[0].nodes[a].id == focus) || (m[0].nodes[b].leaf && m[0].nodes[b].id == focus) {
+    m[0].nodes[n].split = 1 - m[0].nodes[n].split; return true;
+  }
+  return wm_toggle_parent_split(m, a, focus) || wm_toggle_parent_split(m, b, focus);
+}
+wm_tree_holds :: (m: [] Wm, n: int, id: int) -> bool { return n >= 0 && id != 0 && wm_contains(m, n, id); }
+
+// ---- desks
+
+wm_workspace :: (m: [] Wm) -> int { return m[0].screens[m[0].screen].desk; }
+wm_focus :: (m: [] Wm) -> int { return m[0].spaces[wm_workspace(m)].focus; }
+wm_float_at :: (m: [] Wm, s: int, id: int) -> int { for i: 0..<m[0].spaces[s].nf { if m[0].spaces[s].floating[i].id == id { return i; } } return -1; }
+wm_float_remove :: (m: [] Wm, s: int, at: int) -> WmFloat {
+  f := m[0].spaces[s].floating[at];
+  for i: at..<m[0].spaces[s].nf - 1 { m[0].spaces[s].floating[i] = m[0].spaces[s].floating[i + 1]; }
+  m[0].spaces[s].nf -= 1;
+  return f;
+}
+wm_float_push :: (m: [] Wm, s: int, id: int, r: WmRect) { if m[0].spaces[s].nf < WM_FLOATS { m[0].spaces[s].floating[m[0].spaces[s].nf] = WmFloat.{id = id, rect = r}; m[0].spaces[s].nf += 1; } }
+wm_space_holds :: (m: [] Wm, s: int, id: int) -> bool {
+  return wm_float_at(m, s, id) >= 0 || (id != 0 && (m[0].spaces[s].fullscreen == id || m[0].spaces[s].maximize == id)) || wm_tree_holds(m, m[0].spaces[s].tree, id);
+}
+// The window a closed one's desk focuses next: the first tiled one, else the first float.
+wm_refocus :: (m: [] Wm, s: int) -> int {
+  f := wm_first_leaf(m, m[0].spaces[s].tree);
+  if f != 0 { return f; }
+  return ifx m[0].spaces[s].nf > 0 then m[0].spaces[s].floating[0].id else 0;
+}
+// Gives id the focus, showing its desk on the screen that holds it.
+wm_focus_id :: (m: [] Wm, id: int) -> bool {
+  for s: 0..<9 {
+    if wm_space_holds(m, s, id) { m[0].screen = m[0].desk_screen[s]; m[0].screens[m[0].screen].desk = s; m[0].spaces[s].focus = id; return true; }
+  }
+  return false;
+}
+// The tiles desk s draws, in 0..1 of its screen: a fullscreen or monocle window alone, else the
+// tree and the floats over it.
+wm_tiles_of :: (m: [] Wm, s: int, out: [] WmTile) -> int {
+  cover := ifx m[0].spaces[s].fullscreen != 0 then m[0].spaces[s].fullscreen else m[0].spaces[s].maximize;
+  focus := m[0].spaces[s].focus;
+  if cover != 0 { if out.count > 0 { out[0] = WmTile.{id = cover, rect = wm_full(), focused = focus == cover, floating = false}; } return 1; }
+  k := wm_collect(m, m[0].spaces[s].tree, wm_full(), focus, out, 0);
+  for i: 0..<m[0].spaces[s].nf {
+    f := m[0].spaces[s].floating[i];
+    if k < out.count { out[k] = WmTile.{id = f.id, rect = f.rect, focused = focus == f.id, floating = true}; }
+    k += 1;
+  }
+  return k;
+}
+wm_tiles :: (m: [] Wm, out: [] WmTile) -> int { return wm_tiles_of(m, wm_workspace(m), out); }
+// Every tile every desk draws, each with its desk 1..9.
+wm_all_tiles :: (m: [] Wm, out: [] WmTile) -> int {
+  k := 0;
+  for s: 0..<9 {
+    t: [WM_WINS] WmTile; n := wm_tiles_of(m, s, t[..]);
+    for i: 0..<n { if k < out.count { out[k] = t[i]; out[k].desk = s + 1; } k += 1; }
+  }
+  return k;
+}
+// Every window on every desk, a covered one included, with the covering one at the full rect.
+wm_all_windows :: (m: [] Wm, out: [] WmTile) -> int {
+  k := 0;
+  for s: 0..<9 {
+    cover := ifx m[0].spaces[s].fullscreen != 0 then m[0].spaces[s].fullscreen else m[0].spaces[s].maximize;
+    focus := m[0].spaces[s].focus;
+    t: [WM_WINS] WmTile; n := wm_collect(m, m[0].spaces[s].tree, wm_full(), focus, t[..], 0);
+    for i: 0..<m[0].spaces[s].nf { f := m[0].spaces[s].floating[i]; if n < WM_WINS { t[n] = WmTile.{id = f.id, rect = f.rect, focused = focus == f.id, floating = true}; } n += 1; }
+    for i: 0..<n {
+      if k < out.count { out[k] = t[i]; out[k].desk = s + 1; if cover != 0 && cover == t[i].id { out[k].rect = wm_full(); } }
+      k += 1;
+    }
+  }
+  return k;
+}
+// Hyprland dwindle: a wide pane splits left/right, a tall one top/bottom; Super+J on a lone pane
+// forces the next spawn's axis.
+wm_spawn_split :: (m: [] Wm) -> int {
+  s := wm_workspace(m);
+  if m[0].spaces[s].split_forced { m[0].spaces[s].split_forced = false; return m[0].spaces[s].next_split; }
+  focus := m[0].spaces[s].focus;
+  if focus == 0 { return WM_H; }
+  t: [WM_WINS] WmTile; n := wm_tiles(m, t[..]);
+  for i: 0..<n {
+    if t[i].id == focus && !t[i].floating { return ifx t[i].rect.w + 0.0001 >= t[i].rect.h then WM_H else WM_V; }
+  }
+  return WM_H;
+}
+wm_put :: (m: [] Wm, s: int, beside: int, id: int, split: int) {
+  m[0].spaces[s].tree = ifx m[0].spaces[s].tree < 0 then wm_leaf(m, id) else wm_insert(m, m[0].spaces[s].tree, beside, id, split);
+}
+// A new window tiled on the desk in view.
+wm_spawn :: (m: [] Wm) -> int {
+  split := wm_spawn_split(m);
+  id := m[0].next_id; m[0].next_id += 1;
+  s := wm_workspace(m);
+  m[0].spaces[s].fullscreen = 0; m[0].spaces[s].maximize = 0;
+  wm_put(m, s, m[0].spaces[s].focus, id, split);
+  m[0].spaces[s].focus = id;
+  return id;
+}
+wm_unpin :: (m: [] Wm, id: int) { k := 0; for i: 0..<m[0].np { if m[0].pinned[i] != id { m[0].pinned[k] = m[0].pinned[i]; k += 1; } } m[0].np = k; }
+wm_is_pinned :: (m: [] Wm, id: int) -> bool { for i: 0..<m[0].np { if m[0].pinned[i] == id { return true; } } return false; }
+// Removes id from one desk, leaving the others as they are.
+wm_close_on :: (m: [] Wm, s: int, id: int) {
+  if id == 0 { return; }   // no window is 0, and 0 is also "no focus"
+  k := 0; for i: 0..<m[0].spaces[s].nf { if m[0].spaces[s].floating[i].id != id { m[0].spaces[s].floating[k] = m[0].spaces[s].floating[i]; k += 1; } } m[0].spaces[s].nf = k;
+  if m[0].spaces[s].fullscreen == id { m[0].spaces[s].fullscreen = 0; }
+  if m[0].spaces[s].maximize == id { m[0].spaces[s].maximize = 0; }
+  m[0].spaces[s].tree = wm_remove(m, m[0].spaces[s].tree, id);
+  if m[0].spaces[s].focus == id { m[0].spaces[s].focus = wm_refocus(m, s); }
+}
+// Removes id from every desk; each desk that focused it focuses another.
+wm_close :: (m: [] Wm, id: int) { wm_unpin(m, id); for s: 0..<9 { wm_close_on(m, s, id); } }
+// The tile under x, y in 0..1, floats on top: focus it (Hyprland follow_mouse = 1).
+wm_focus_at :: (m: [] Wm, x: f32, y: f32) -> int {
+  t: [WM_WINS] WmTile; n := wm_tiles(m, t[..]);
+  i := n - 1;
+  while i >= 0 { if wm_in(t[i].rect, x, y) { m[0].spaces[wm_workspace(m)].focus = t[i].id; return t[i].id; } i -= 1; }
+  return 0;
+}
+wm_tile_at :: (m: [] Wm, x: f32, y: f32, out: [] WmTile) -> bool {
+  t: [WM_WINS] WmTile; n := wm_tiles(m, t[..]);
+  i := n - 1;
+  while i >= 0 { if wm_in(t[i].rect, x, y) { out[0] = t[i]; return true; } i -= 1; }
+  return false;
+}
+// The nearest tile whose centre lies in dir and that overlaps cur across it.
+wm_neighbor :: (t: [] WmTile, cur: WmTile, dir: int) -> int {
+  cx := cur.rect.x + cur.rect.w * 0.5; cy := cur.rect.y + cur.rect.h * 0.5;
+  best := 0; bd: f32 = 0;
+  for x: t {
+    if x.id == cur.id { continue; }
+    tx := x.rect.x + x.rect.w * 0.5; ty := x.rect.y + x.rect.h * 0.5;
+    ox := cur.rect.x < x.rect.x + x.rect.w && x.rect.x < cur.rect.x + cur.rect.w;
+    oy := cur.rect.y < x.rect.y + x.rect.h && x.rect.y < cur.rect.y + cur.rect.h;
+    ok := false; d: f32 = 0;
+    if dir == WM_LEFT && tx < cx && oy { ok = true; d = cx - tx; }
+    else if dir == WM_RIGHT && tx > cx && oy { ok = true; d = tx - cx; }
+    else if dir == WM_UP && ty < cy && ox { ok = true; d = cy - ty; }
+    else if dir == WM_DOWN && ty > cy && ox { ok = true; d = ty - cy; }
+    if ok && (best == 0 || d < bd) { best = x.id; bd = d; }
+  }
+  return best;
+}
+// Super+arrows.
+wm_movefocus :: (m: [] Wm, dir: int) {
+  t: [WM_WINS] WmTile; n := wm_tiles(m, t[..]);
+  focus := wm_focus(m); if focus == 0 { return; }
+  for i: 0..<n { if t[i].id == focus { next := wm_neighbor(t[0..<n], t[i], dir); if next != 0 { m[0].spaces[wm_workspace(m)].focus = next; } return; } }
+}
+// Super+Shift+arrows: swap with the neighbour, or nudge a float.
+wm_movewindow :: (m: [] Wm, dir: int) {
+  focus := wm_focus(m); if focus == 0 { return; }
+  s := wm_workspace(m);
+  at := wm_float_at(m, s, focus);
+  if at >= 0 {
+    step: f32 = 0.05; r := m[0].spaces[s].floating[at].rect;
+    if dir == WM_LEFT { r.x = wm_max(r.x - step, 0.0); } else if dir == WM_RIGHT { r.x = wm_min(r.x + step, 1.0 - r.w); }
+    else if dir == WM_UP { r.y = wm_max(r.y - step, 0.0); } else { r.y = wm_min(r.y + step, 1.0 - r.h); }
+    m[0].spaces[s].floating[at].rect = r;
+    return;
+  }
+  t: [WM_WINS] WmTile; n := wm_collect(m, m[0].spaces[s].tree, wm_full(), focus, t[..], 0);
+  for i: 0..<n {
+    if t[i].id != focus { continue; }
+    other := wm_neighbor(t[0..<n], t[i], dir);
+    if other == 0 { other = wm_sibling_leaf(m, m[0].spaces[s].tree, focus); }
+    if other == 0 { return; }
+    if wm_siblings_match_dir(m, m[0].spaces[s].tree, focus, other, dir) { wm_swap_ids(m, m[0].spaces[s].tree, focus, other); return; }
+    if m[0].spaces[s].tree >= 0 {
+      rest := wm_remove(m, m[0].spaces[s].tree, focus);
+      if rest < 0 { rest = wm_leaf(m, other); }
+      m[0].spaces[s].tree = wm_insert_at(m, rest, other, focus, dir);
+    }
+    return;
+  }
+}
+// Super+Ctrl+arrows; delta is a fraction of the parent split.
+wm_resize :: (m: [] Wm, dir: int, delta: f32) {
+  focus := wm_focus(m); if focus == 0 { return; }
+  s := wm_workspace(m); at := wm_float_at(m, s, focus);
+  if at >= 0 {
+    r := m[0].spaces[s].floating[at].rect;
+    if dir == WM_LEFT { r.w = wm_max(r.w - delta, 0.1); } else if dir == WM_RIGHT { r.w = wm_min(r.w + delta, 1.0 - r.x); }
+    else if dir == WM_UP { r.h = wm_max(r.h - delta, 0.1); } else { r.h = wm_min(r.h + delta, 1.0 - r.y); }
+    m[0].spaces[s].floating[at].rect = r;
+    return;
+  }
+  x := wm_resize_along(m, m[0].spaces[s].tree, focus, dir, delta);
+}
+// Super+J: flips the focused pair; on a lone pane, the next spawn takes the other axis.
+wm_togglesplit :: (m: [] Wm) {
+  s := wm_workspace(m); focus := m[0].spaces[s].focus;
+  if focus != 0 && m[0].spaces[s].tree >= 0 && wm_toggle_parent_split(m, m[0].spaces[s].tree, focus) { return; }
+  m[0].spaces[s].next_split = 1 - m[0].spaces[s].next_split; m[0].spaces[s].split_forced = true;
+}
+// Super+Space.
+wm_togglefloating :: (m: [] Wm) {
+  focus := wm_focus(m); if focus == 0 { return; }
+  s := wm_workspace(m); at := wm_float_at(m, s, focus);
+  if at >= 0 {
+    f := wm_float_remove(m, s, at);
+    split := wm_spawn_split(m);
+    wm_put(m, wm_workspace(m), m[0].spaces[wm_workspace(m)].focus, f.id, split);
+    return;
+  }
+  r := WmRect.{x = 0.2, y = 0.2, w = 0.5, h = 0.5};
+  t: [WM_WINS] WmTile; n := wm_tiles(m, t[..]);
+  for i: 0..<n { if t[i].id == focus { r = t[i].rect; break; } }
+  m[0].spaces[s].tree = wm_remove(m, m[0].spaces[s].tree, focus);
+  wm_float_push(m, s, focus, r);
+}
+// Super+F (Hyprland fullscreen 0) and Super+Ctrl+F (fullscreen 1, monocle).
+wm_fullscreen :: (m: [] Wm) {
+  s := wm_workspace(m); focus := m[0].spaces[s].focus;
+  if focus == 0 { return; }
+  if m[0].spaces[s].fullscreen == focus { m[0].spaces[s].fullscreen = 0; return; }
+  m[0].spaces[s].maximize = 0; m[0].spaces[s].fullscreen = focus;
+}
+wm_maximize :: (m: [] Wm) {
+  s := wm_workspace(m); focus := m[0].spaces[s].focus;
+  if focus == 0 { return; }
+  if m[0].spaces[s].maximize == focus { m[0].spaces[s].maximize = 0; return; }
+  m[0].spaces[s].fullscreen = 0; m[0].spaces[s].maximize = focus;
+}
+// Super+1..9, index 0..8: the pinned windows come along, and focus lands on the desk's screen.
+wm_switch_workspace :: (m: [] Wm, index: int) {
+  if index < 0 || index >= 9 || index == wm_workspace(m) { return; }
+  from := wm_workspace(m);
+  held: [WM_WINS] int; nh := m[0].np; for i: 0..<nh { held[i] = m[0].pinned[i]; }
+  for i: 0..<nh {
+    id := held[i]; at := wm_float_at(m, from, id);
+    if at < 0 { continue; }
+    f := wm_float_remove(m, from, at);
+    if m[0].spaces[from].focus == id { m[0].spaces[from].focus = wm_refocus(m, from); m[0].spaces[index].focus = id; }
+    wm_float_push(m, index, f.id, f.rect);
+  }
+  m[0].screen = m[0].desk_screen[index]; m[0].screens[m[0].screen].desk = index;
+}
+// The window lands on desk dest with the focus: a float stays a float, a tiled one goes beside the
+// desk's focus split as asked.
+wm_land :: (m: [] Wm, dest: int, id: int, beside: int, split: int, floating: bool, r: WmRect) {
+  m[0].spaces[dest].focus = id; m[0].spaces[dest].fullscreen = 0; m[0].spaces[dest].maximize = 0;
+  if floating { wm_float_push(m, dest, id, r); } else { wm_put(m, dest, beside, id, split); }
+}
+// Super+Shift+1..9.
+wm_movetoworkspace :: (m: [] Wm, index: int) {
+  if index < 0 || index >= 9 { return; }
+  focus := wm_focus(m); if focus == 0 || index == wm_workspace(m) { return; }
+  desk := wm_workspace(m); at := wm_float_at(m, desk, focus);
+  r := ifx at >= 0 then m[0].spaces[desk].floating[at].rect else wm_full();
+  wm_close_on(m, desk, focus);
+  m[0].screen = m[0].desk_screen[index]; m[0].screens[m[0].screen].desk = index;
+  beside := m[0].spaces[index].focus; split := wm_spawn_split(m);
+  wm_land(m, index, focus, beside, split, at >= 0, r);
+}
+wm_focused_is_floating :: (m: [] Wm) -> bool { f := wm_focus(m); return f != 0 && wm_float_at(m, wm_workspace(m), f) >= 0; }
+// Super+mouse drag on a float, dx and dy in 0..1.
+wm_drag_float :: (m: [] Wm, dx: f32, dy: f32) {
+  f := wm_focus(m); if f == 0 { return; }
+  s := wm_workspace(m); at := wm_float_at(m, s, f); if at < 0 { return; }
+  r := m[0].spaces[s].floating[at].rect;
+  r.x = wm_clamp(r.x + dx, 0.0, 1.0 - r.w); r.y = wm_clamp(r.y + dy, 0.0, 1.0 - r.h);
+  m[0].spaces[s].floating[at].rect = r;
+}
+// Super+right-mouse drag: a float keeps the edge opposite the grab; a tiled window resizes along it.
+wm_resize_grab :: (m: [] Wm, dx: f32, dy: f32, from_left: bool, from_top: bool) {
+  f := wm_focus(m); if f == 0 { return; }
+  s := wm_workspace(m); at := wm_float_at(m, s, f);
+  if at >= 0 {
+    r := m[0].spaces[s].floating[at].rect;
+    if from_left { right := r.x + r.w; r.x = wm_clamp(r.x + dx, 0.0, right - 0.1); r.w = right - r.x; }
+    else { r.w = wm_clamp(r.w + dx, 0.1, 1.0 - r.x); }
+    if from_top { bottom := r.y + r.h; r.y = wm_clamp(r.y + dy, 0.0, bottom - 0.1); r.h = bottom - r.y; }
+    else { r.h = wm_clamp(r.h + dy, 0.1, 1.0 - r.y); }
+    m[0].spaces[s].floating[at].rect = r;
+    return;
+  }
+  if wm_abs(dx) >= wm_abs(dy) { if dx > 0 { wm_resize(m, WM_RIGHT, dx); } else if dx < 0 { wm_resize(m, WM_LEFT, -dx); } }
+  else if dy > 0 { wm_resize(m, WM_DOWN, dy); } else if dy < 0 { wm_resize(m, WM_UP, -dy); }
+}
+// The desk id sits on, 1..9, or 0.
+wm_desk_of :: (m: [] Wm, id: int) -> int { for s: 0..<9 { if wm_space_holds(m, s, id) { return s + 1; } } return 0; }
+wm_is_fullscreen :: (m: [] Wm, id: int) -> bool { for s: 0..<9 { if id != 0 && (m[0].spaces[s].fullscreen == id || m[0].spaces[s].maximize == id) { return true; } } return false; }
+wm_is_floating :: (m: [] Wm, id: int) -> bool { for s: 0..<9 { if wm_float_at(m, s, id) >= 0 { return true; } } return false; }
+wm_rect_of :: (m: [] Wm, id: int, out: [] WmRect) -> bool {
+  t: [WM_WINS] WmTile; n := wm_all_windows(m, t[..]);
+  for i: 0..<n { if t[i].id == id { out[0] = t[i].rect; return true; } }
+  return false;
+}
+// Floats id, or puts it back in the tree (losing its pin). false when no desk holds it.
+wm_set_floating :: (m: [] Wm, id: int, floating: bool) -> bool {
+  desk := wm_desk_of(m, id); if desk == 0 { return false; }
+  s := desk - 1;
+  if wm_is_floating(m, id) == floating { return true; }
+  if floating {
+    r: [1] WmRect; if !wm_rect_of(m, id, r[..]) { r[0] = WmRect.{x = 0.2, y = 0.2, w = 0.5, h = 0.5}; }
+    if m[0].spaces[s].fullscreen == id { m[0].spaces[s].fullscreen = 0; }
+    if m[0].spaces[s].maximize == id { m[0].spaces[s].maximize = 0; }
+    m[0].spaces[s].tree = wm_remove(m, m[0].spaces[s].tree, id);
+    wm_float_push(m, s, id, r[0]);
+    return true;
+  }
+  wm_unpin(m, id);
+  split := ifx s == wm_workspace(m) then wm_spawn_split(m) else WM_H;
+  k := 0; for i: 0..<m[0].spaces[s].nf { if m[0].spaces[s].floating[i].id != id { m[0].spaces[s].floating[k] = m[0].spaces[s].floating[i]; k += 1; } } m[0].spaces[s].nf = k;
+  beside := ifx m[0].spaces[s].focus != id then m[0].spaces[s].focus else 0;
+  wm_put(m, s, beside, id, split);
+  return true;
+}
+// Pins id to every desk (floating it and bringing it here), or unpins it.
+wm_set_pinned :: (m: [] Wm, id: int, pinned: bool) -> bool {
+  if wm_desk_of(m, id) == 0 { return false; }
+  if !pinned { wm_unpin(m, id); return true; }
+  x := wm_set_floating(m, id, true);
+  if !wm_is_pinned(m, id) && m[0].np < WM_WINS { m[0].pinned[m[0].np] = id; m[0].np += 1; }
+  if wm_desk_of(m, id) != wm_workspace(m) + 1 { y := wm_place(m, id, wm_workspace(m)); }
+  return true;
+}
+// Moves id to desk index 0..8 without changing the desk in view.
+wm_place :: (m: [] Wm, id: int, index: int) -> bool {
+  if index < 0 || index >= 9 { return false; }
+  desk := wm_desk_of(m, id); if desk == 0 { return false; }
+  if desk - 1 == index { return true; }
+  at := wm_float_at(m, desk - 1, id); r := ifx at >= 0 then m[0].spaces[desk - 1].floating[at].rect else wm_full();
+  wm_close_on(m, desk - 1, id);
+  wm_land(m, index, id, m[0].spaces[index].focus, WM_H, at >= 0, r);
+  return true;
+}
+// Moves a float's rectangle; false when id does not float.
+wm_place_float :: (m: [] Wm, id: int, r: WmRect) -> bool {
+  for s: 0..<9 {
+    at := wm_float_at(m, s, id);
+    if at >= 0 {
+      w := wm_clamp(r.w, 0.05, 1.0); h := wm_clamp(r.h, 0.05, 1.0);
+      m[0].spaces[s].floating[at].rect = WmRect.{x = wm_clamp(r.x, 0.0, 1.0 - w), y = wm_clamp(r.y, 0.0, 1.0 - h), w = w, h = h};
+      return true;
+    }
+  }
+  return false;
+}
+// Draws a float over the others on its desk; false when id does not float.
+wm_raise :: (m: [] Wm, id: int) -> bool {
+  for s: 0..<9 { at := wm_float_at(m, s, id); if at >= 0 { f := wm_float_remove(m, s, at); wm_float_push(m, s, f.id, f.rect); return true; } }
+  return false;
+}
+
+// ---- screens (screen.rs)
+
+wm_screen :: (name: string, x: int, y: int, w: int, h: int) -> WmScreen {
+  s := WmScreen.{x = x, y = y, w = w, h = h, scale = 1};
+  for c: name { if s.nn < 64 { s.name[s.nn] = c; s.nn += 1; } }
+  return s;
+}
+// Adds a screen showing the lowest desk no screen shows: its index, or -1 when every desk shows.
+wm_add_screen :: (m: [] Wm, sc: WmScreen) -> int {
+  desk := -1;
+  for d: 0..<9 { free := true; for i: 0..<m[0].ns { if m[0].screens[i].desk == d { free = false; } } if free { desk = d; break; } }
+  if desk < 0 { return -1; }
+  m[0].screens[m[0].ns] = sc; m[0].screens[m[0].ns].desk = desk;
+  m[0].desk_screen[desk] = m[0].ns; m[0].ns += 1;
+  return m[0].ns - 1;
+}
+// A screen's new name and geometry; the desk it shows stays.
+wm_set_screen :: (m: [] Wm, index: int, sc: WmScreen) {
+  if index < 0 || index >= m[0].ns { return; }
+  desk := m[0].screens[index].desk; m[0].screens[index] = sc; m[0].screens[index].desk = desk;
+}
+wm_tiles_on :: (m: [] Wm, screen: int, out: [] WmTile) -> int { return wm_tiles_of(m, m[0].screens[screen].desk, out); }
+// The screen whose centre lies in dir from screen from's, nearest first, or -1.
+wm_screen_in_dir :: (m: [] Wm, from: int, dir: int) -> int {
+  c := m[0].screens[from];
+  cx := cast(f64) c.x + cast(f64) c.w * 0.5; cy := cast(f64) c.y + cast(f64) c.h * 0.5;
+  best := -1; bd := 0.0;
+  for i: 0..<m[0].ns {
+    if i == from { continue; }
+    s := m[0].screens[i];
+    tx := cast(f64) s.x + cast(f64) s.w * 0.5; ty := cast(f64) s.y + cast(f64) s.h * 0.5;
+    aimed := ifx dir == WM_LEFT then tx < cx else ifx dir == WM_RIGHT then tx > cx else ifx dir == WM_UP then ty < cy else ty > cy;
+    d := sqrt((tx - cx) * (tx - cx) + (ty - cy) * (ty - cy));
+    if aimed && (best < 0 || d < bd) { best = i; bd = d; }
+  }
+  return best;
+}
+// Super+Alt+arrows and Ctrl+Alt+Tab: sel is a direction, WM_NEXT or WM_PREVIOUS.
+wm_focus_screen :: (m: [] Wm, sel: int) -> bool {
+  t := 0;
+  if sel == WM_NEXT { t = (m[0].screen + 1) % m[0].ns; }
+  else if sel == WM_PREVIOUS { t = (m[0].screen + m[0].ns - 1) % m[0].ns; }
+  else { t = wm_screen_in_dir(m, m[0].screen, sel); if t < 0 { return false; } }
+  m[0].screen = t;
+  return true;
+}
+// Super+Shift+Alt+arrows: id joins the desk the screen in dir shows, and focus follows.
+wm_move_to_screen :: (m: [] Wm, id: int, dir: int) -> bool {
+  desk := wm_desk_of(m, id) - 1; if desk < 0 { return false; }
+  target := wm_screen_in_dir(m, m[0].desk_screen[desk], dir); if target < 0 { return false; }
+  at := wm_float_at(m, desk, id); r := ifx at >= 0 then m[0].spaces[desk].floating[at].rect else wm_full();
+  wm_close_on(m, desk, id);
+  m[0].screen = target;
+  dest := m[0].screens[target].desk; beside := m[0].spaces[dest].focus; split := wm_spawn_split(m);
+  wm_land(m, dest, id, beside, split, at >= 0, r);
+  return true;
+}
+// Super+Ctrl+Alt+arrows: the desk in view swaps screens with the one the screen in dir shows.
+wm_move_desk_to_screen :: (m: [] Wm, dir: int) -> bool {
+  other := wm_screen_in_dir(m, m[0].screen, dir); if other < 0 { return false; }
+  here := m[0].screens[m[0].screen].desk; there := m[0].screens[other].desk;
+  m[0].screens[m[0].screen].desk = there; m[0].screens[other].desk = here;
+  m[0].desk_screen[here] = other; m[0].desk_screen[there] = m[0].screen;
+  m[0].screen = other;
+  return true;
+}
