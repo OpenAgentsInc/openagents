@@ -219,7 +219,7 @@
    "number": 11,
    "title": "Verify a Schnorr signature",
    "file": "ch011-verify-a-schnorr-signature.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     4,
@@ -229,7 +229,9 @@
    "source": [
     "coax/lib/crypto/schnorr.coax",
     "coax/lib/crypto/schnorr_admission.coax",
-    "coax/lib/crypto/schnorr_fast.coax"
+    "coax/lib/crypto/schnorr_fast.coax",
+    "nostr/examples/schnorr-verify.coax",
+    "nostr/examples/checks/schnorr-verify.coax"
    ],
    "qualified_targets": [
     "cpu",

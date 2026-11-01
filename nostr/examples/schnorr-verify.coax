@@ -1,0 +1,177 @@
+// book:begin example
+#load "../../coax/lib/crypto/schnorr.coax";
+#load "../../coax/lib/crypto/schnorr_fast.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [64] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+show_field :: (label: string, f: SecpField) {
+  b: [32] u8;
+  if sf_store(f, b[..]) { show(label, b[..]); }
+}
+show_scalar :: (label: string, s: ScScalar) {
+  b: [32] u8;
+  if sc_store(s, b[..]) { show(label, b[..]); }
+}
+// Decode hex into out and return the number of bytes written. Every literal
+// here is valid hex, so a decoding error stops the program.
+decode :: (text: string, out: [] u8) -> int {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return r.written;
+}
+// Row i of the table at the end of this file, decoded into fixed buffers.
+Vector :: struct {
+  public_key: [32] u8; signature: [64] u8; message: [100] u8;
+  length: int; expected: bool; comment: string;
+}
+vector :: (i: int) -> Vector {
+  v: Vector;
+  #assert decode(VECTOR_HEX[4 * i], v.public_key[..]) == 32;
+  v.length = decode(VECTOR_HEX[4 * i + 1], v.message[..]);
+  #assert decode(VECTOR_HEX[4 * i + 2], v.signature[..]) == 64;
+  v.expected = VECTOR_HEX[4 * i + 3] == "1";
+  v.comment = VECTOR_COMMENT[i];
+  return v;
+}
+// The final equation alone, for small numbers: s, the challenge e, the point
+// P and the point whose x is r. It skips the hash, so it shows the algebra;
+// it is not a signature verification.
+equation :: (s: u32, e: u32, p: SgPoint, r: SgPoint) -> bool {
+  prepared: SvPrepared;
+  prepared.s = sc_small(s); prepared.negative_e = sc_negate(sc_small(e));
+  prepared.point = p; prepared.r = sg_to_affine(r).value.x; prepared.ready = true;
+  return sv_prepared_matches_vartime(prepared);
+}
+// k·G by repeated addition, with chapter 9's group law.
+times :: (k: int) -> SgPoint {
+  r := sg_infinity();
+  for i: 0..<k { r = sg_add(r, sg_generator()).value; }
+  return r;
+}
+even_y :: (p: SgPoint) -> bool { return (sg_to_affine(p).value.y.limb[0] & 1) == 0; }
+
+main :: () {
+  // Vector 0, one step at a time.
+  v := vector(0);
+  m := v.message[0..<v.length]; pk := v.public_key[..]; sig := v.signature[..];
+  print("vector 0, step by step\n");
+  show("public key", pk);
+  lifted := sg_lift_x_public(pk);
+  print("lift_x: ok %, y even %\n", lifted.ok, even_y(lifted.value));
+  show_field("P.y", sg_to_affine(lifted.value).value.y);
+  r := sf_load_strict(sig[0..<32]); s := sc_load(sig[32..<64]);
+  print("r < p: %\n", r.ok);
+  print("s < n: %\n", s.ok);
+  tag: [32] u8; digest := SV_TAG_HASH;
+  #assert sha256_emit(digest.words[..], tag[..]) == SHA_OK;
+  show("SHA-256(\"BIP0340/challenge\")", tag[..]);
+  e := sv_challenge_vartime(m, pk, sig[0..<32]);
+  show_scalar("e", e.value);
+  big_r := ecmult_vartime(s.value, lifted.value, sc_negate(e.value));
+  print("R = s*G - e*P: ok %\n", big_r.ok);
+  show_field("x(R)", sg_to_affine(big_r.value).value.x);
+  print("y(R) even: %\n", even_y(big_r.value));
+  print("x(R) = r: %\n", sf_equal_mask(sg_to_affine(big_r.value).value.x, r.value) == CB_MAX64);
+  print("schnorr_verify_vartime: %\n", schnorr_verify_vartime(m, pk, sig));
+  print("schnorr_fast_verify_vartime: %\n", schnorr_fast_verify_vartime(m, pk, sig));
+
+  // The same equation with small numbers: d = 3, k = 5, e = 2, s = 11.
+  print("small numbers, P = 3G, e = 2\n");
+  print("y even: 3G %, 4G %, 5G %, 6G %\n", even_y(times(3)), even_y(times(4)), even_y(times(5)), even_y(times(6)));
+  print("s = 11, r = x(5G): %\n", equation(11, 2, times(3), times(5)));
+  print("s = 12, r = x(6G): %\n", equation(12, 2, times(3), times(6)));
+  print("s = 11, r = x(4G): %\n", equation(11, 2, times(3), times(4)));
+
+  // All 19 rows of test-vectors.csv. A refusal happens either while
+  // preparing (lengths, r, s, lift_x) or in the final equation.
+  print("all 19 BIP-340 vectors\n");
+  agree := 0;
+  for i: 0..<VECTORS {
+    t := vector(i);
+    tm := t.message[0..<t.length];
+    reference := schnorr_verify_vartime(tm, t.public_key[..], t.signature[..]);
+    fast := schnorr_fast_verify_vartime(tm, t.public_key[..], t.signature[..]);
+    stage := "accepted";
+    if !reference {
+      stage = ifx sv_prepare_vartime(tm, t.public_key[..], t.signature[..]).ready then "refused in the equation" else "refused in preparation";
+    }
+    print("%: message % bytes, expected %, reference %, fast %, %", i, t.length, t.expected, reference, fast, stage);
+    if t.comment.count > 0 { print(": %", t.comment); }
+    print("\n");
+    if reference == t.expected && fast == t.expected { agree += 1; }
+  }
+  print("% of % rows give the expected result on both paths\n", agree, VECTORS);
+
+  // Refusals. The Nostr wrapper takes exactly 32 bytes of event ID.
+  print("refusals\n");
+  id: [33] u8;
+  for i: 0..<32 { id[i] = m[i]; }
+  print("nostr_verify_vartime, 32-byte ID: %\n", nostr_verify_vartime(id[0..<32], pk, sig));
+  print("nostr_verify_vartime, 31-byte ID: %\n", nostr_verify_vartime(id[0..<31], pk, sig));
+  print("nostr_verify_vartime, 33-byte ID: %\n", nostr_verify_vartime(id[..], pk, sig));
+  print("nostr_fast_verify_vartime, 31-byte ID: %\n", nostr_fast_verify_vartime(id[0..<31], pk, sig));
+  print("message of % bytes admitted: %\n", SV_MAX_MESSAGE + 1, sv_lengths_vartime(SV_MAX_MESSAGE + 1, 32, 64));
+  t12 := vector(12);
+  print("vector 12, r = p: sf_load_strict ok %\n", sf_load_strict(t12.signature[0..<32]).ok);
+  t13 := vector(13);
+  print("vector 13, s = n: sc_load ok %\n", sc_load(t13.signature[32..<64]).ok);
+  t5 := vector(5);
+  print("vector 5, key not on the curve: lift_x ok %\n", sg_lift_x_public(t5.public_key[..]).ok);
+  t14 := vector(14);
+  print("vector 14, key x = p + 1: lift_x ok %\n", sg_lift_x_public(t14.public_key[..]).ok);
+  changed := v.message; changed[31] ^= 1;
+  print("vector 0, last message bit flipped: %\n", schnorr_verify_vartime(changed[0..<32], pk, sig));
+}
+// book:end example
+
+// The rows of coax/tests/vectors/upstream/bip340/test-vectors.csv: public
+// key, message, signature and the expected result ("1" for TRUE), in
+// lowercase hex, and the upstream comment. The secret keys and auxiliary
+// randomness are left out: verification doesn't use them.
+VECTORS :: 19;
+VECTOR_HEX :: [76] string.[
+    "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "0000000000000000000000000000000000000000000000000000000000000000", "e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0", "1",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "6896bd60eeae296db48a229ff71dfe071bde413e6d43f917dc8dcf8c78de33418906d11ac976abccb20b091292bff4ea897efcb639ea871cfa95f6de339e4b0a", "1",
+    "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8", "7e2d58d8b3bcdf1abadec7829054f90dda9805aab56c77333024b9d0a508b75c", "5831aaeed7b44bb74e5eab94ba9d4294c49bcf2a60728d8b4c200f50dd313c1bab745879a5ad954a72c45a91c3a51d3c7adea98d82f8481e0e1e03674a6f3fb7", "1",
+    "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "7eb0509757e246f19449885651611cb965ecc1a187dd51b64fda1edc9637d5ec97582b9cb13db3933705b32ba982af5af25fd78881ebb32771fc5922efc66ea3", "1",
+    "d69c3509bb99e412e68b0fe8544e72837dfa30746d8be2aa65975f29d22dc7b9", "4df3c3f68fcc83b27e9d42c90431a72499f17875c81a599b566c9889b9696703", "00000000000000000000003b78ce563f89a0ed9414f5aa28ad0d96d6795f9c6376afb1548af603b3eb45c9f8207dee1060cb71c04e80f593060b07d28308d7f4", "1",
+    "eefdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e17776969e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a14602975563cc27944640ac607cd107ae10923d9ef7a73c643e166be5ebeafa34b1ac553e2", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "1fa62e331edbc21c394792d2ab1100a7b432b013df3f6ff4f99fcb33e0e1515f28890b3edb6e7189b630448b515ce4f8622a954cfe545735aaea5134fccdb2bd", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e177769961764b3aa9b2ffcb6ef947b6887a226e8d7c93e00c5ed0c1834ff0d0c2e6da6", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "0000000000000000000000000000000000000000000000000000000000000000123dda8328af9c23a94c1feecfd123ba4fb73476f0d594dcb65c6425bd186051", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "00000000000000000000000000000000000000000000000000000000000000017615fbaf5ae28864013c099742deadb4dba87f11ac6754f93780d5a1837cf197", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "4a298dacae57395a15d0795ddbfd1dcb564da82b0f269bc70a74f8220429ba1d69e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f69e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b", "0",
+    "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e177769fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", "0",
+    "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "6cff5c3ba86c69ea4b7376f31a9bcb4f74c1976089b2d9963da2e5543e17776969e89b4c5564d00349106b8497785dd7d1d713a8ae82b32fa79d5f7fc407d39b", "0",
+    "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117", "", "71535db165ecd9fbbc046e5ffaea61186bb6ad436732fccc25291a55895464cf6069ce26bf03466228f19a3a62db8a649f2d560fac652827d1af0574e427ab63", "1",
+    "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117", "11", "08a20a0afef64124649232e0693c583ab1b9934ae63b4c3511f3ae1134c6a303ea3173bfea6683bd101fa5aa5dbc1996fe7cacfc5a577d33ec14564cec2bacbf", "1",
+    "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117", "0102030405060708090a0b0c0d0e0f1011", "5130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a5", "1",
+    "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117", "99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999", "403b12b0d8555a344175ea7ec746566303321e5dbfa8be6f091635163eca79a8585ed3e3170807e7c03b720fc54c7b23897fcba0e9d0b4a06894cfd249f22367", "1"];
+VECTOR_COMMENT :: [19] string.[
+    "",
+    "",
+    "",
+    "test fails if msg is reduced modulo p or n",
+    "",
+    "public key not on the curve",
+    "has_even_y(R) is false",
+    "negated message",
+    "negated s value",
+    "sG - eP is infinite. Test fails in single verification if has_even_y(inf) is defined as true and x(inf) as 0",
+    "sG - eP is infinite. Test fails in single verification if has_even_y(inf) is defined as true and x(inf) as 1",
+    "sig[0:32] is not an X coordinate on the curve",
+    "sig[0:32] is equal to field size",
+    "sig[32:64] is equal to curve order",
+    "public key is not a valid X coordinate because it exceeds the field size",
+    "message of size 0 (added 2022-12)",
+    "message of size 1 (added 2022-12)",
+    "message of size 17 (added 2022-12)",
+    "message of size 100 (added 2022-12)"];

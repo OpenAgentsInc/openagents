@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 14 are implemented, 42 are partly implemented and
+Of the 104 chapters, 15 are implemented, 41 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -144,7 +144,7 @@ official vectors, keys from host randomness, signing, and x-only ECDH.
 | [8. Scalars mod n](ch008-scalars-mod-n.md) | Runnable: native C and wasm | Scalars mod the group order n: reduction of 32-byte inputs, addition, multiplication and negation, with the s < n and key-range checks BIP-340 needs. |
 | [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) | Runnable: native C and wasm | Points on y² = x³ + 7 in affine and Jacobian coordinates, doubling and complete addition with the point at infinity and the P + (−P) case handled. |
 | [10. Scalar multiplication](ch010-scalar-multiplication.md) | Runnable: native C and wasm | Three multiplications: a variable-time public path for verification, a fixed-base table for k·G, and a constant-time variable-base path for ECDH, each checked against an oracle. |
-| [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | BIP-340 verification over byte-view messages, checked against all 19 rows of the official `test-vectors.csv`, including messages of 0, 1, 17 and 100 bytes, with a Nostr wrapper that requires 32-byte event IDs. |
+| [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) | Runnable: native C and wasm | BIP-340 verification over byte-view messages, checked against all 19 rows of the official `test-vectors.csv`, including messages of 0, 1, 17 and 100 bytes, with a Nostr wrapper that requires 32-byte event IDs. |
 | [12. Keys and randomness](ch012-keys-and-randomness.md) | Runnable: native C and wasm | Private keys from host entropy with rejection of 0 and values at least n, the entropy contract per host, and one signer-request contract for a local key, a NIP-07 browser signer and a phone over NIP-46. |
 | [13. Sign with Schnorr](ch013-sign-with-schnorr.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | BIP-340 signing with auxiliary randomness, a nonce that never repeats for different messages, and fixed-work self-verification before a signature is released. |
 | [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | x-only ECDH that validates the peer key and returns the raw shared x, checked against labelled Wycheproof secp256k1 inputs, for NIP-44 conversation keys. |

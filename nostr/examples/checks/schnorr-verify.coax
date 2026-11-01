@@ -1,0 +1,79 @@
+// The checks of schnorr-verify.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/schnorr-verify.coax
+#load "../schnorr-verify.coax";
+
+// book:begin check
+// Every row of the pinned test-vectors.csv gives its published result on
+// the reference path and on the fast path.
+#forall "both paths give every vector's published result" i: 0..<VECTORS #steps 4000000000 {
+  t := vector(i);
+  tm := t.message[0..<t.length];
+  #assert schnorr_verify_vartime(tm, t.public_key[..], t.signature[..]) == t.expected;
+  #assert schnorr_fast_verify_vartime(tm, t.public_key[..], t.signature[..]) == t.expected;
+}
+equal32 :: (a: [32] u8, b: [32] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+#test "equal32 notices a change in the first or last byte" {
+  a: [32] u8; b := a;
+  #assert equal32(a, b);
+  b[0] = 1; #assert !equal32(a, b);
+  b = a; b[31] = 1; #assert !equal32(a, b);
+}
+// Vector 0's intermediate values, computed with Python's hashlib and
+// arbitrary-precision integers. They share no code with the Coax SHA-256,
+// field or scalar arithmetic.
+#test "vector 0 intermediates match hand-computed values" #steps 1000000000 {
+  v := vector(0);
+  m := v.message[0..<v.length];
+  want: [32] u8; got: [32] u8;
+  #assert decode("7bb52d7a9fef58323eb1bf7a407db382d2f3f2d81bb1224f49fe518f6d48d37c", want[..]) == 32;
+  digest := SV_TAG_HASH;
+  #assert sha256_emit(digest.words[..], got[..]) == SHA_OK && equal32(got, want);
+  #assert decode("6bb6b93a91f2ecc0cd924f4f9baabb5e6eb21745bb00f2cebdaac908bb5d86ce", want[..]) == 32;
+  e := sv_challenge_vartime(m, v.public_key[..], v.signature[0..<32]);
+  #assert e.ok && sc_store(e.value, got[..]) && equal32(got, want);
+  #assert decode("388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672", want[..]) == 32;
+  lifted := sg_lift_x_public(v.public_key[..]);
+  #assert lifted.ok && sf_store(sg_to_affine(lifted.value).value.y, got[..]) && equal32(got, want);
+}
+// Eight signatures made by a Python transcription of BIP-340's reference
+// signing algorithm, with seeded random keys, auxiliary randomness and
+// messages of 0, 1, 5, 32, 32, 33, 64 and 100 bytes: public key, message,
+// signature. Both paths accept each one and refuse it after a one-bit change
+// to the message, r or s.
+RANDOM :: 8;
+RANDOM_HEX :: [24] string.[
+    "284f0583b915c1587d121420417894f41591c2584bc96b062bd8356a34c3fc32", "", "a95d29425f08da0a1ec5c44dda6f3f1ce7aeb1865ab7fad7746b0138f9b4208fb6b5ab4327d7928f03412a1de59fe334c50ec542b2e272c6eb11175c23239317",
+    "2dc4442cd743a86ac4ab5498e46852132718490759d2af32542741c954f3798f", "a1", "58274ae82f60f9c1ffdc35f270776bca60225d3e0b759d1b7dd9c64f9c7243a6de750f5a8394efde50464b6944a4da4c09cbdacccfb857f44cbd570ab0a17629",
+    "ca1b3e80f78818190b77740d05fbfba8717e932e92865cdeef016e4263235566", "60e56143d6", "f336f886f98da08c45149b040ee08569fbe473277e73824a7e610d6686125b70d3adaf37fbe3531b2064c17687d432dde2e51e7181251bc2f2762b8849f4c644",
+    "0a376d0fb88c281bc332677626ed6ef8afd019f5634b26756b06c86929df3fcd", "5d4e9f747f615164c6f728d718353713827ac883d7fb9659234074f5258f6c68", "2dfeea101d15820e1c6523b9ff0297231212a494e752a347b96a43193fda1e995ce00f2adfb0e8c5941890dfeedcdb14681a743bacb616aad589e37ddaeaa000",
+    "ac7947c312607ecee46e039f009f50797946278320294d4ba9dab79c4d7ef74c", "42aeb42bf227d50fff07c3c20624292e3b83d5a9c6eae1ec2a0f9e2cf60b7539", "34c8dd13c37c764305d0ba2549d78bdabd65ba6150786c896286742e9d7d20a6423e4c5e64b57c3f7d0ca83148996c1c93f22f6d3fd6352f6abc7ac8b5b85c72",
+    "357f69fe754160e1ce84c2286668bf8872e314909cd44d7eea178f0c14035591", "c3fca1e7a426108e158fb59e0945cfe8610c887948183be437bc276566f3835b05", "8f9e5a45e25404247cfe739c246a996b5d95d8fcd8cb10bf70e1862f1945652f110383e7514a515df67d3e810942f8bb7d5d5254dcff164d0fd0f1288cc2fd91",
+    "6e44888733f283debaafbc0c3a160d49f8e039b0993f14e73be5c6fa570e3446", "8cf90e6f20db1158ab47f04ce1fc2c71e09454839fc36a9b488bfe66d23a02c10e16cd3efb2f5521ead3ce897ef2fc41addef3a23762d60f85420b12634f7406", "9ff6261b0a657545725a24363358501d3426dcf16c505d658fabb264f63f8954e1284dcd92b54b200d5d97b6fbf2acdd3ea5224cd6c6869714304c8b9b44eef6",
+    "a3397f97ac57bd0bc444af282c9299f5164b6f7868c418ead77a5cce02a5c063", "4066ce093166b7b83baf6024f6360c13f64b615e3a68585090301f44ec2731a7c8efdab5dc6bbf0614665cd0e8b8bdcf63543007a52bcf61ae848f3b51cf44a8bddd5ccf695e24ae9af03305b619768b99ac6ecf5d27c7fe6d3dca0b3a377983e3cd1964", "cf165ab3600c16cd738e275d9ab136575541ef94877792927ba80455f445f5b5e06cf5c9795d0ee0e5e30b52a0bcd58374164313b0b5ac6eda457c85646a8e98"];
+// Both paths give want for this input.
+both :: (m: [] u8, key: [] u8, sig: [] u8, want: bool) {
+  #assert schnorr_verify_vartime(m, key, sig) == want;
+  #assert schnorr_fast_verify_vartime(m, key, sig) == want;
+}
+#forall "both paths accept fresh signatures and refuse one-bit changes" i: 0..<RANDOM #steps 4000000000 {
+  key: [32] u8; sig: [64] u8; message: [100] u8;
+  #assert decode(RANDOM_HEX[3 * i], key[..]) == 32;
+  length := decode(RANDOM_HEX[3 * i + 1], message[..]);
+  #assert decode(RANDOM_HEX[3 * i + 2], sig[..]) == 64;
+  m := message[0..<length];
+  both(m, key[..], sig[..], true);
+  // One one-bit change per signature, in turn: the message, r, then s.
+  changed := message; bad := sig;
+  if i % 3 == 0 && length > 0 { changed[0] ^= 1; }
+  else if i % 3 == 1 { bad[31] ^= 1; }
+  else { bad[63] ^= 1; }
+  both(changed[0..<length], key[..], bad[..], false);
+  // The Nostr wrappers accept only the 32-byte messages.
+  #assert nostr_verify_vartime(m, key[..], sig[..]) == (length == 32);
+  #assert nostr_fast_verify_vartime(m, key[..], sig[..]) == (length == 32);
+}
+// book:end check

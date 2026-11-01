@@ -143,6 +143,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/schnorr-verify.coax",
+      "chapter": "nostr/book/ch011-verify-a-schnorr-signature.md",
+      "stdout": "nostr/fixtures/schnorr-verify.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

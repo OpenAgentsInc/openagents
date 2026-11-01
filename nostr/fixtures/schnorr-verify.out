@@ -1,0 +1,51 @@
+vector 0, step by step
+public key: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+lift_x: ok true, y even true
+P.y: 388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672
+r < p: true
+s < n: true
+SHA-256("BIP0340/challenge"): 7bb52d7a9fef58323eb1bf7a407db382d2f3f2d81bb1224f49fe518f6d48d37c
+e: 6bb6b93a91f2ecc0cd924f4f9baabb5e6eb21745bb00f2cebdaac908bb5d86ce
+R = s*G - e*P: ok true
+x(R): e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca8215
+y(R) even: true
+x(R) = r: true
+schnorr_verify_vartime: true
+schnorr_fast_verify_vartime: true
+small numbers, P = 3G, e = 2
+y even: 3G true, 4G true, 5G true, 6G false
+s = 11, r = x(5G): true
+s = 12, r = x(6G): false
+s = 11, r = x(4G): false
+all 19 BIP-340 vectors
+0: message 32 bytes, expected true, reference true, fast true, accepted
+1: message 32 bytes, expected true, reference true, fast true, accepted
+2: message 32 bytes, expected true, reference true, fast true, accepted
+3: message 32 bytes, expected true, reference true, fast true, accepted: test fails if msg is reduced modulo p or n
+4: message 32 bytes, expected true, reference true, fast true, accepted
+5: message 32 bytes, expected false, reference false, fast false, refused in preparation: public key not on the curve
+6: message 32 bytes, expected false, reference false, fast false, refused in the equation: has_even_y(R) is false
+7: message 32 bytes, expected false, reference false, fast false, refused in the equation: negated message
+8: message 32 bytes, expected false, reference false, fast false, refused in the equation: negated s value
+9: message 32 bytes, expected false, reference false, fast false, refused in the equation: sG - eP is infinite. Test fails in single verification if has_even_y(inf) is defined as true and x(inf) as 0
+10: message 32 bytes, expected false, reference false, fast false, refused in the equation: sG - eP is infinite. Test fails in single verification if has_even_y(inf) is defined as true and x(inf) as 1
+11: message 32 bytes, expected false, reference false, fast false, refused in the equation: sig[0:32] is not an X coordinate on the curve
+12: message 32 bytes, expected false, reference false, fast false, refused in preparation: sig[0:32] is equal to field size
+13: message 32 bytes, expected false, reference false, fast false, refused in preparation: sig[32:64] is equal to curve order
+14: message 32 bytes, expected false, reference false, fast false, refused in preparation: public key is not a valid X coordinate because it exceeds the field size
+15: message 0 bytes, expected true, reference true, fast true, accepted: message of size 0 (added 2022-12)
+16: message 1 bytes, expected true, reference true, fast true, accepted: message of size 1 (added 2022-12)
+17: message 17 bytes, expected true, reference true, fast true, accepted: message of size 17 (added 2022-12)
+18: message 100 bytes, expected true, reference true, fast true, accepted: message of size 100 (added 2022-12)
+19 of 19 rows give the expected result on both paths
+refusals
+nostr_verify_vartime, 32-byte ID: true
+nostr_verify_vartime, 31-byte ID: false
+nostr_verify_vartime, 33-byte ID: false
+nostr_fast_verify_vartime, 31-byte ID: false
+message of 1048577 bytes admitted: false
+vector 12, r = p: sf_load_strict ok false
+vector 13, s = n: sc_load ok false
+vector 5, key not on the curve: lift_x ok false
+vector 14, key x = p + 1: lift_x ok false
+vector 0, last message bit flipped: false
