@@ -2732,7 +2732,8 @@ checkout paths do not participate. A conflicting public spelling fails with
 
 Each type has its own guard, so repeated includes work without a basename
 guard hiding another library's exports. C names, layouts, procedure bodies
-and plain C emission remain unchanged. Related headers must be regenerated
+and plain C emission remain unchanged. Library C and headers add only the
+`coax_default_T` state constructors below. Related headers must be regenerated
 together; this does not establish logical module identity, ownership, public
 protocol identity or semantic interchangeability. Encoded identifiers are
 qualified with the tested Clang C11/C++17 toolchains, not a guarantee for C
@@ -2744,6 +2745,27 @@ rejects equal-size and enum conflicts, and exercises repeated/same-basename
 headers. Bootstrap regenerates the explicit header seeds while retaining
 byte-identical C seeds. The real iOS Haunt/Cast/HUD headers compose without
 the old fixed-array macro rename.
+
+## Hosts construct Coax state with the compiler's defaults
+
+A `--library` unit defines, and its header declares, `coax_default_T(T *p)`
+for each header struct or fixed array that has a declared default, directly
+or in a field or element. It writes zeros and then the declared defaults in
+place, so the result has the bytes `s: [1] T` has natively, whatever `*p`
+held. It is weak because every unit that uses the type defines it the same
+way. A host that allocates Coax state (a browser engine's WebAssembly state,
+which starts as zeros, or a C face's globals) calls it before the first use.
+No build step edits generated C to apply defaults; `coax/web/defaults.py` no
+longer exists.
+
+Checks: `coax/tests/state_defaults.py` (in-place defaults over 0xab bytes
+match native `coax_init`, natively and in WebAssembly; two libraries sharing
+a defaulted type link; a program emits none) and
+`coax/web/state-defaults.test.ts`, which boots every engine
+`apps/openagents-web/build.sh` makes from zeroed memory, compares each
+defaulted state with native `coax_init` byte for byte, compares every face
+global of a defaulted type natively, and fails when a zeroed state would
+pass. The iOS app's Swift host doesn't call it yet.
 
 ## CPU reflection lowers to bounded ordinary values
 
