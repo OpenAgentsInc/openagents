@@ -5,8 +5,8 @@
   "original_component_commit": "bd08543dbb",
   "compiler_binding": {
     "passed": true,
-    "input_fingerprint": "fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3",
-    "compiler_sha256": "ac8e535598afff1f13b56c6e9b2f065238b1f2e8563e9488a0183be9c8455ba6",
+    "input_fingerprint": "d2dc9ad0d9150c90bacbe70b3de98e70ab44dd44054cb47b14a620c67f036742",
+    "compiler_sha256": "ada298dc4af4a6c8d6503b4979848afae7f73688a510f626ae68676748771017",
     "emissions": [
       {
         "mode": "debug",
@@ -40,42 +40,35 @@
     "commands": [
       {
         "argv": [
-          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "/Users/christopherdavid/.cache/coax-release/d2dc9ad0d9150c90bacbe70b3de98e70ab44dd44054cb47b14a620c67f036742/coax",
           "c",
           "psionic/tests/robotics/panda-nullspace-native.coax",
           "--library",
           "--header",
-          "/tmp/panda-nullspace-main-binding-first/debug/panda-nullspace.h"
+          "/tmp/panda-nullspace-rebase-binding-first/debug/panda-nullspace.h"
         ],
         "exit": 0,
-        "seconds": 0.06205254199448973,
+        "seconds": 0.24025708303088322,
         "stderr_bytes": 0
       },
       {
         "argv": [
-          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "/Users/christopherdavid/.cache/coax-release/d2dc9ad0d9150c90bacbe70b3de98e70ab44dd44054cb47b14a620c67f036742/coax",
           "c",
           "psionic/tests/robotics/panda-nullspace-native.coax",
           "--library",
           "--release",
           "--header",
-          "/tmp/panda-nullspace-main-binding-first/release/panda-nullspace.h"
+          "/tmp/panda-nullspace-rebase-binding-first/release/panda-nullspace.h"
         ],
         "exit": 0,
-        "seconds": 0.05911345803178847,
+        "seconds": 0.05525016598403454,
         "stderr_bytes": 0
       }
     ],
     "numerical_reruns": 0,
     "new_source_inventory_exact": true,
     "frozen_native_input_files": 41
-  },
-  "compiler_provenance_carried": {
-    "record": "docs/verification/psionic-panda-pose-solve-2026-11-01.json",
-    "sha256": "854d8665068a4a896e3478fceecc045b176acd3b3eb36bfc57da0827d7321110",
-    "same_input_fingerprint": true,
-    "same_compiler_artifact": true,
-    "old_verification_not_repeated": true
   },
   "receipts": {
     "psionic/fixtures/robotics/panda-nullspace/checks-qualification.json": "f29c6202662bd807562d7524ac0b750080df6c9e32d2289f0e4a961f62a2a29c",
@@ -240,7 +233,8 @@
     "stdout_sha256": "1999849fc5f6885c40295e6d273795e31b66b96ed9679c66279b592b090b5f5d",
     "stderr_bytes": 0,
     "programs": 129,
-    "source_linked_listings": 476
+    "source_linked_listings": 476,
+    "carried_after_rebase": "Main diagnostics/process changes do not change this already-passing Psionic structural checker, book inputs or claim bindings."
   },
   "registration": {
     "schema": "psionic.panda-nullspace.registration.v1",
@@ -663,5 +657,97 @@
   "SDK_calls": 0,
   "NN_calls": 0,
   "old_gates_repeated": false,
-  "quantity_operator_token_gap_retained": true
+  "quantity_operator_token_gap_retained": true,
+  "initial_main_compiler_binding": {
+    "passed": true,
+    "input_fingerprint": "fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3",
+    "compiler_sha256": "ac8e535598afff1f13b56c6e9b2f065238b1f2e8563e9488a0183be9c8455ba6",
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "panda-nullspace.c",
+        "bytes": 135516,
+        "sha256": "5df5a7cbbb9c853b8ecdd8e24fbe670648385ee0c28bf996b8f9ddf607f102b8",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "panda-nullspace.h",
+        "bytes": 23209,
+        "sha256": "07d2aba516e089d7baa71b7251ead3f3e0a77430777614a25a0166f926d46351",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-nullspace.c",
+        "bytes": 134222,
+        "sha256": "2c17a44c189cecd5db668d14cb1d333b55bc78bc824821ec1ca388a7f9954553",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-nullspace.h",
+        "bytes": 23209,
+        "sha256": "07d2aba516e089d7baa71b7251ead3f3e0a77430777614a25a0166f926d46351",
+        "exact_native_context_match": true
+      }
+    ],
+    "commands": [
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/tests/robotics/panda-nullspace-native.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-nullspace-main-binding-first/debug/panda-nullspace.h"
+        ],
+        "exit": 0,
+        "seconds": 0.06205254199448973,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/tests/robotics/panda-nullspace-native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-nullspace-main-binding-first/release/panda-nullspace.h"
+        ],
+        "exit": 0,
+        "seconds": 0.05911345803178847,
+        "stderr_bytes": 0
+      }
+    ],
+    "numerical_reruns": 0,
+    "new_source_inventory_exact": true,
+    "frozen_native_input_files": 41
+  },
+  "initial_main_compiler_provenance_carried": {
+    "record": "docs/verification/psionic-panda-pose-solve-2026-11-01.json",
+    "sha256": "854d8665068a4a896e3478fceecc045b176acd3b3eb36bfc57da0827d7321110",
+    "same_input_fingerprint": true,
+    "same_compiler_artifact": true,
+    "old_verification_not_repeated": true
+  },
+  "compiler_provenance": {
+    "passed": true,
+    "new_context_verified_once": true,
+    "command": [
+      "bash",
+      "coax/provenance.sh",
+      "verify",
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+      "/Users/christopherdavid/.cache/coax-release/d2dc9ad0d9150c90bacbe70b3de98e70ab44dd44054cb47b14a620c67f036742/coax",
+      "/Users/christopherdavid/.cache/coax-release/d2dc9ad0d9150c90bacbe70b3de98e70ab44dd44054cb47b14a620c67f036742/provenance-check",
+      "/Users/christopherdavid/.cache/coax-release/d2dc9ad0d9150c90bacbe70b3de98e70ab44dd44054cb47b14a620c67f036742/provenance.record"
+    ],
+    "exit": 0,
+    "seconds": 0.815257584,
+    "provenance_record_sha256": "2dc0c5f063c6308848ee077953f0e225dd4f895b05c4542dc9354d8cff43628e",
+    "provenance_checker_sha256": "c6563cbbd46a040edb7d096d874a9338117e8bcd8e8fba95fd4203d22f3c9ec4",
+    "source_delta_review": "Main added structured diagnostic formatting and process-id effects. Default successful C lowering and scalar arithmetic unchanged; new component C/H are raw-byte identical to original native proof in both modes. No numerical or previous gate reruns."
+  }
 }
