@@ -1,0 +1,41 @@
+the server's 402
+accepts entry: 425 bytes
+PAYMENT-REQUIRED: 736 bytes, eyJ4NDAyVmVyc2lvbiI6Miwi...
+the client reads it
+read: ok
+amount: 50000 msat, maxTimeoutSeconds 600
+invoice: lnbc500n1p4wfve5pp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztys
+invoice amount (500n): 50000 msat
+invoice check: the terms' amount
+p field: ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9
+p field is paymentHash: true
+the wallet pays and returns the preimage
+preimage: 0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20
+sha256(preimage) is the payment hash: true
+sha256(zeros) is the payment hash: false
+the retry
+PAYMENT-SIGNATURE: 836 bytes, decodes to 625 bytes
+accepted entry unchanged: true
+then: "payload":{"paymentHash":"ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9","preimage":"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"}
+a preimage that is not 64 hex digits: -1
+the server settles
+paid, preimage sent: 200, settled
+paid, no preimage sent: 200, settled
+paid, at expiry + 60 s: 200, settled
+PAYMENT-RESPONSE for this hash: true
+PAYMENT-RESPONSE for another hash: false
+refused settlements
+at expiry + 61 s: 402, the invoice has expired
+not paid yet: 402, payment_pending
+paid 49999 msat: 402, invalid_payment: less than the invoice
+wallet preimage zeros: 402, invalid_payment: the preimage does not hash to the payment hash
+payer preimage zeros: 402, invalid_payment: the payer's preimage is not the invoice's
+refused terms
+x402 version 1: not x402 version 2
+scheme upto: not the exact scheme
+testnet: not Bitcoin mainnet Lightning
+an EVM network: not Bitcoin mainnet Lightning
+asset USDC: not a bolt11 payment in BTC
+amount 50.5: the amount is not a msat string
+amount 60000, invoice 500n: read ok, then the invoice's amount is not the terms' amount
+amount 60000, invoice 500n, paid: 402, the invoice's amount is not the terms' amount

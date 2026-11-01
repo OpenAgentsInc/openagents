@@ -735,8 +735,8 @@
     "coax/lib/nostr/store_file.coax",
     "coax/lib/nostr/store_recover.coax",
     "coax/lib/nostr/store_snapshot.coax",
-   "nostr/examples/store-events.coax",
-   "nostr/examples/checks/store-events.coax"
+    "nostr/examples/store-events.coax",
+    "nostr/examples/checks/store-events.coax"
    ],
    "qualified_targets": [
     "cpu"
@@ -1546,14 +1546,17 @@
    "number": 86,
    "title": "Lightning payments for requests",
    "file": "ch086-lightning-payments-for-requests.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     49,
     71
    ],
    "source": [
-    "coax/lib/x402/x402.coax"
+    "coax/lib/x402/settle.coax",
+    "coax/lib/x402/x402.coax",
+    "nostr/examples/checks/lightning-requests.coax",
+    "nostr/examples/lightning-requests.coax"
    ],
    "qualified_targets": [
     "cpu"

@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 53 are implemented, 3 are partly implemented and
+Of the 104 chapters, 54 are implemented, 2 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -277,7 +277,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) | Unimplemented: design draft | NIP-ATT attested workload releases (3202), release heads (30202), rebuilds (3203) and endpoints, and NIP-VAULT sealed personal data with wraps and key slots. |
 | [84. Knowledge and workspaces](ch084-knowledge-and-workspaces.md) | Unimplemented: design draft | NIP-KB knowledge entries (3190), heads (30190), withdrawals (3191) and evidence, and NIP-WS workspaces with documents, ranges, worktrees and checkpoints. |
 | [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) | Unimplemented: design draft | NIP-LIVE voice, camera and screen sessions, NIP-MV 3D-world presence (world 33300, entity 33301, pose frames 23300), and NIP-XP quests (30193), awards (3193) and revocations (3194). |
-| [86. Lightning payments for requests](ch086-lightning-payments-for-requests.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | NIP-X402: x402 v2 over HTTP with the three base64 JSON headers, Bitcoin mainnet Lightning with a bolt11 invoice in millisats, and the `openagents:spark-receiver:1` settlement profile. |
+| [86. Lightning payments for requests](ch086-lightning-payments-for-requests.md) | Runnable: native C | NIP-X402: x402 v2 over HTTP with the three base64 JSON headers, Bitcoin mainnet Lightning with a bolt11 invoice in millisats, and the `openagents:spark-receiver:1` settlement profile. |
 | [87. Owner attestation and agent authentication](ch087-owner-attestation-and-agent-authentication.md) | Unimplemented: design draft | Block's NIP-OA `auth` tag by which an owner key authorizes an agent key, and NIP-AA agent authentication to relays with virtual member privileges and revocation. |
 | [88. Federated identity](ch088-federated-identity.md) | Runnable: native C and wasm | NIP-FI stateless assertions verified offline: bounded compact JWS, RS256 only, a closed JWKS, exact `kid`, and issuer, audience, community, token-class and clock binding. Fetching the JWKS, NIP-42 pairing, sessions and NIP-FA are not built. |
 | [89. Channels](ch089-channels.md) | Unimplemented: design draft | NIP-CL channel identity and discovery (44100, 44101), NIP-DV DM visibility, NIP-CW channel and thread windows with composite cursors, and NIP-WP workspace profiles. |

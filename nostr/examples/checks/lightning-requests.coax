@@ -1,0 +1,69 @@
+// The checks of lightning-requests.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/lightning-requests.coax --run-steps 250000000
+#load "../lightning-requests.coax";
+
+// book:begin check
+// Values from Python's hashlib, base64 and json modules, which share no code
+// with Coax. The challenge and the retry are the example's JSON, built in
+// Python, base64-encoded by base64.b64encode; the constants are the length
+// and the SHA-256 of that base64 text.
+PY_SHA256_PREIMAGE :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";   // sha256(bytes(range(1, 33)))
+PY_SHA256_ZEROS    :: "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925";   // sha256(bytes(32))
+PY_REQUIRED_LEN :: 736;
+PY_REQUIRED_SHA :: "36f7863c0ad1a5d05a049e04ac0db60198c682be444139e48f5cdda10cc2b678";
+PY_SIGNATURE_LEN :: 836;
+PY_SIGNATURE_SHA :: "ad83676b2033a7cd4d5146c2a96970c77ee38fec978b6e77fc48c18ae5b39e4f";
+
+// SHA-256 of text as lowercase hex.
+sha_hex :: (text: string, out: [] u8) -> string {
+  b: [1000] u8; h: [32] u8; digits := "0123456789abcdef";
+  for i: 0..<text.count { b[i] = text[i]; }
+  #assert sha256_hash_checked(b[0..<text.count], h[..], false) == SHA_OK;
+  for i: 0..<32 { out[2 * i] = digits[h[i] >> 4]; out[2 * i + 1] = digits[h[i] & 15]; }
+  return cast(string) out[0..<64];
+}
+
+#test "the fixture's payment hash is Python's SHA-256 of the preimage" {
+  #assert HASH == PY_SHA256_PREIMAGE;
+  #assert x402_preimage_matches(PREIMAGE, PY_SHA256_PREIMAGE);
+  #assert x402_preimage_matches(ZEROS, PY_SHA256_ZEROS) && !x402_preimage_matches(ZEROS, PY_SHA256_PREIMAGE);
+}
+
+#test "the invoice's p field decodes to the payment hash" {
+  pb: [64] u8;
+  #assert p_field(INVOICE, pb[..]) == PY_SHA256_PREIMAGE;
+}
+
+#test "PAYMENT-REQUIRED and PAYMENT-SIGNATURE are Python's base64 of the same JSON" {
+  tb: [1200] u8; jb: [3000] u8; hb: [4000] u8; w: [64] u8;
+  entry := entry_json("50000", "exact", X402_MAINNET, "BTC", tb[..]);
+  header := challenge(entry, "2", jb[..], hb[..]);
+  #assert header.count == PY_REQUIRED_LEN && sha_hex(header, w[..]) == PY_REQUIRED_SHA;
+  o: [1] X402Offer; s: [3000] u8; sig: [6000] u8;
+  #assert x402_read_required(header, o[..], s[..]) == "";
+  n := x402_signature(o[..], PREIMAGE, sig[..]);
+  #assert n == PY_SIGNATURE_LEN && sha_hex(cast(string) sig[0..<n], w[..]) == PY_SIGNATURE_SHA;
+}
+
+// BOLT #11's example invoices, their human-readable parts: 2500u is
+// 250,000 sat, 20m is 0.02 BTC, 9678785340p is 0.00967878534 BTC, and
+// lnbc1... (the donation example) has no amount.
+#test "BOLT #11 example amounts" {
+  #assert x402_bolt11_msat("lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq") == 250_000_000;
+  #assert x402_bolt11_msat("lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq") == 2_000_000_000;
+  #assert x402_bolt11_msat("lnbc9678785340p1pwmna7lpp5gc3xfm08u9qy06djf8dfflhugl6p7lgza6dsjxq454gxhj9t7a0s") == 967_878_534;
+  #assert x402_bolt11_msat("lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq") == -1;
+}
+
+// The hand values of the chapter's worked example.
+#test "the worked example's numbers" {
+  #assert x402_bolt11_msat(INVOICE) == 500 * 100;            // 500n: 500 * 10^-9 BTC * 10^11 msat/BTC
+  #assert (550 + 2) / 3 * 4 == PY_REQUIRED_LEN;              // 550 JSON bytes
+  #assert (625 + 2) / 3 * 4 == PY_SIGNATURE_LEN;             // 625 JSON bytes
+  o: [1] X402Offer; r: [1] X402Record; tb: [1200] u8; jb: [3000] u8; hb: [4000] u8; s: [3000] u8;
+  #assert x402_read_required(challenge(entry_json("50000", "exact", X402_MAINNET, "BTC", tb[..]), "2", jb[..], hb[..]), o[..], s[..]) == "";
+  #assert x402_settle(o[..], record(r[..], true, 50000, PREIMAGE), "", ISSUED, ISSUED + 600 + 60) == "";
+  #assert x402_settle(o[..], record(r[..], true, 50000, PREIMAGE), "", ISSUED, ISSUED + 600 + 61) == "the invoice has expired";
+}
+// book:end check

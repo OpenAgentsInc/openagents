@@ -580,6 +580,18 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "nostr/examples/lightning-requests.coax",
+      "chapter": "nostr/book/ch086-lightning-payments-for-requests.md",
+      "stdout": "nostr/fixtures/lightning-requests.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

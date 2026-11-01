@@ -1,0 +1,194 @@
+// x402 v2 settlement rules for Lightning (nostr/nips/openagents/NIP-X402.md),
+// the decisions that x402.coax, the client codec, leaves out:
+//
+//   x402_bolt11_msat       the amount in a bolt11 invoice's human-readable part
+//   x402_check_invoice     the invoice's face amount is the terms' amount
+//   x402_preimage_matches  SHA-256 of the preimage is the payment hash
+//   x402_settle            the receiver profile's order: invoice, expiry plus
+//                          60 s skew, paid, amount, preimage, payer's preimage
+//
+// x402_settle follows inference.topup_settle (coax/web/api/migrations/
+// 0066_inference_credit.sql) and its refusal words, with the invoice and
+// expiry checks of the NIP's shared rules in front. It reads only the
+// human-readable part of the invoice: the BOLT11 signature, the tagged fields
+// and the checksum are not verified here. Bitcoin only; x402_read_required has
+// already refused any other asset or network.
+//
+// Checks: coax test coax/lib/x402/settle.coax --library
+#load "x402.coax";
+#load "../crypto/sha256.coax";
+#authority;
+
+X402_SKEW_S :: 60;                       // the paid-retry grace after the invoice ends
+X402_MSAT_PER_BTC :: 100_000_000_000;
+
+// book:begin amount
+// Where a bolt11 invoice's human-readable part ends: the index of its last
+// '1', the separator, when that is past "lnbc" and at least one more
+// character; s.count when there is none.
+x402_bolt11_sep :: (s: string) -> int {
+  i := s.count;
+  while i > 5 { i -= 1; if s[i] == '1' { return i; } }
+  return s.count;
+}
+
+// The amount in a mainnet bolt11 invoice's human-readable part, in msat:
+// "lnbc", digits, then m (10^-3 BTC), u (10^-6), n (10^-9), p (10^-12) or
+// nothing (whole BTC), then the separator. -1 for no amount, another prefix,
+// a leading zero, a p amount that is not whole msat (its last digit must be
+// 0), more than 21 million BTC, or, in the p unit, more than 2.1 * 10^17 msat
+// (2.1 million BTC), which keeps the arithmetic inside 64 bits.
+x402_bolt11_msat :: (invoice: string) -> int {
+  sep := x402_bolt11_sep(invoice);
+  if sep == invoice.count || invoice[0..<4] != "lnbc" { return -1; }
+  hrp := invoice[4..<sep];
+  unit := X402_MSAT_PER_BTC; cap := 21_000_000; end := hrp.count;
+  last := hrp[end - 1];
+  if last == 'm' { unit = 100_000_000; cap = 21_000_000_000; end -= 1; }
+  else if last == 'u' { unit = 100_000; cap = 21_000_000_000_000; end -= 1; }
+  else if last == 'n' { unit = 100; cap = 21_000_000_000_000_000; end -= 1; }
+  else if last == 'p' && invoice[sep - 2] == '0' { unit = 1; cap = 210_000_000_000_000_000; end -= 2; }   // 10p is 1 msat
+  if end == 0 || hrp[0] == '0' { return -1; }
+  v := 0;
+  for i: 0..<end {
+    c := hrp[i];
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+    if v > cap { return -1; }
+  }
+  return v * unit;
+}
+
+// book:end amount
+
+// book:begin settle
+// The offer's invoice states exactly the terms' amount: "" or why not.
+x402_check_invoice :: (o: [] X402Offer) -> string {
+  m := x402_bolt11_msat(cast(string) o[0].invoice[0..<o[0].ni]);
+  if m == -1 { return "the invoice states no amount"; }
+  if m != o[0].msat { return "the invoice's amount is not the terms' amount"; }
+  return "";
+}
+
+// One lowercase hex digit already checked by x402_is_hex64.
+x402_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+
+// Whether the 64-digit hex preimage hashes, by SHA-256 of its 32 bytes, to the
+// 64-digit hex payment hash.
+x402_preimage_matches :: (preimage: string, hash: string) -> bool {
+  if !x402_is_hex64(preimage) || !x402_is_hex64(hash) { return false; }
+  b: [32] u8; h: [32] u8;
+  for i: 0..<32 { b[i] = cast(u8) (x402_nibble(preimage[2 * i]) * 16 + x402_nibble(preimage[2 * i + 1])); }
+  same := sha256_hash_checked(b[..], h[..], false) == SHA_OK;
+  for i: 0..<32 {
+    if cast(int) h[i] != x402_nibble(hash[2 * i]) * 16 + x402_nibble(hash[2 * i + 1]) { same = false; }
+  }
+  return same;
+}
+
+// The receiver's wallet's record of the offer's invoice.
+X402Record :: struct {
+  paid: bool;              // a completed receive
+  msat: int;               // what it received
+  preimage: [64] u8; np: int;   // the invoice's preimage, hex
+}
+
+// Whether the paid retry for o settles: "" or why not, in the receiver
+// profile's order. issued_s is when the invoice was made; it ends
+// maxTimeoutSeconds later and a paid retry has X402_SKEW_S more, inclusive.
+// rec is one record; payer is the preimage the payer sent, or "".
+x402_settle :: (o: [] X402Offer, rec: [] X402Record, payer: string, issued_s: int, now_s: int) -> string {
+  why := x402_check_invoice(o);
+  if why != "" { return why; }
+  if now_s > issued_s + o[0].timeout_s + X402_SKEW_S { return "the invoice has expired"; }
+  if !rec[0].paid { return "payment_pending"; }
+  if rec[0].msat < o[0].msat { return "invalid_payment: less than the invoice"; }
+  pre := cast(string) rec[0].preimage[0..<rec[0].np];
+  if !x402_preimage_matches(pre, cast(string) o[0].hash[0..<o[0].nh]) { return "invalid_payment: the preimage does not hash to the payment hash"; }
+  if payer != "" && payer != pre { return "invalid_payment: the payer's preimage is not the invoice's"; }
+  return "";
+}
+// book:end settle
+
+// ---- checks
+
+// Preimage 01 02 ... 20 and its SHA-256 (Python hashlib); the invoice's p
+// field is that hash in bech32. A fixture: no signature, no checksum.
+X402_FIX_PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+X402_FIX_HASH :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+X402_FIX_INVOICE :: "lnbc500n1p4wfve5pp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztys";
+
+x402_fix_offer :: (o: [] X402Offer, invoice: string, msat: int) {
+  for i: 0..<invoice.count { o[0].invoice[i] = invoice[i]; }
+  o[0].ni = invoice.count;
+  for i: 0..<64 { o[0].hash[i] = X402_FIX_HASH[i]; }
+  o[0].nh = 64; o[0].msat = msat; o[0].timeout_s = 600;
+}
+x402_fix_record :: (r: [] X402Record, paid: bool, msat: int, preimage: string) -> [] X402Record {
+  r[0].paid = paid; r[0].msat = msat;
+  for i: 0..<preimage.count { r[0].preimage[i] = preimage[i]; }
+  r[0].np = preimage.count;
+  return r;
+}
+
+#test "bolt11 amounts: each multiplier, whole msat only, mainnet only" {
+  #assert x402_bolt11_msat(X402_FIX_INVOICE) == 50000;
+  #assert x402_bolt11_msat("lnbc2500u1pvjluez") == 250_000_000;
+  #assert x402_bolt11_msat("lnbc20m1pvjluez") == 2_000_000_000;
+  #assert x402_bolt11_msat("lnbc9678785340p1pwmna7l") == 967_878_534;
+  #assert x402_bolt11_msat("lnbc10p1x") == 1 && x402_bolt11_msat("lnbc15p1x") == -1;
+  #assert x402_bolt11_msat("lnbc31x") == 300_000_000_000 && x402_bolt11_msat("lnbc2500u1") == 250_000_000;
+  // each unit's ceiling, and one more
+  #assert x402_bolt11_msat("lnbc210000001x") == X402_MAX_MSAT && x402_bolt11_msat("lnbc210000011x") == -1;
+  #assert x402_bolt11_msat("lnbc21000000000m1x") == X402_MAX_MSAT && x402_bolt11_msat("lnbc21000000001m1x") == -1;
+  #assert x402_bolt11_msat("lnbc21000000000000u1x") == X402_MAX_MSAT && x402_bolt11_msat("lnbc21000000000001u1x") == -1;
+  #assert x402_bolt11_msat("lnbc21000000000000000n1x") == X402_MAX_MSAT && x402_bolt11_msat("lnbc21000000000000001n1x") == -1;
+  #assert x402_bolt11_msat("lnbc2100000000000000000p1x") == 210_000_000_000_000_000 && x402_bolt11_msat("lnbc2100000000000000010p1x") == -1;
+  #assert x402_bolt11_msat("lnbcp1x") == -1 && x402_bolt11_msat("lnbc0p1x") == -1 && x402_bolt11_msat("lnbc100p1x") == 10;
+  #assert x402_bolt11_msat("lnbc99999999999999999999999n1x") == -1;
+  // no amount, a leading zero, not digits, not mainnet, no separator
+  #assert x402_bolt11_msat("lnbc1pvjluez") == -1 && x402_bolt11_msat("lnbcn1x") == -1;
+  #assert x402_bolt11_msat("lnbc0500n1x") == -1 && x402_bolt11_msat("lnbc5x0n1x") == -1 && x402_bolt11_msat("lnbc5:0n1x") == -1;
+  #assert x402_bolt11_msat("lnbc5/0n1x") == -1;
+  #assert x402_bolt11_msat("lntb500n1x") == -1 && x402_bolt11_msat("lnbc500n") == -1 && x402_bolt11_msat("lnbc1") == -1;
+  #assert x402_bolt11_msat("") == -1 && x402_bolt11_msat("lnbc5n") == -1;
+}
+
+#test "the invoice's face amount must be the terms' amount" {
+  o: [1] X402Offer;
+  x402_fix_offer(o[..], X402_FIX_INVOICE, 50000);
+  #assert x402_check_invoice(o[..]).count == 0;
+  o[0].msat = 50001;
+  #assert x402_check_invoice(o[..]) == "the invoice's amount is not the terms' amount";
+  x402_fix_offer(o[..], "lnbc1p4wfve5", 50000);
+  #assert x402_check_invoice(o[..]) == "the invoice states no amount";
+}
+
+#test "a preimage matches only its own payment hash" {
+  #assert x402_preimage_matches(X402_FIX_PREIMAGE, X402_FIX_HASH);
+  zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert x402_preimage_matches(zero, "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925");
+  #assert !x402_preimage_matches(zero, X402_FIX_HASH);
+  #assert !x402_preimage_matches(X402_FIX_PREIMAGE, "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c8");
+  #assert !x402_preimage_matches(X402_FIX_PREIMAGE, "be216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9");
+  #assert !x402_preimage_matches("0102", X402_FIX_HASH) && !x402_preimage_matches(X402_FIX_PREIMAGE, "ae21");
+}
+
+#test "settlement: every refusal in order, and the grace boundary inclusive" {
+  o: [1] X402Offer;
+  x402_fix_offer(o[..], X402_FIX_INVOICE, 50000);
+  g: [1] X402Record; r: [1] X402Record;
+  good := x402_fix_record(g[..], true, 50000, X402_FIX_PREIMAGE);
+  t := 1790000000;
+  #assert x402_settle(o[..], good, "", t, t + 30).count == 0;
+  #assert x402_settle(o[..], good, X402_FIX_PREIMAGE, t, t + 660).count == 0;
+  #assert x402_settle(o[..], good, "", t, t + 661) == "the invoice has expired";
+  #assert x402_settle(o[..], x402_fix_record(r[..], true, 60000, X402_FIX_PREIMAGE), "", t, t).count == 0;
+  #assert x402_settle(o[..], x402_fix_record(r[..], false, 50000, X402_FIX_PREIMAGE), "", t, t) == "payment_pending";
+  #assert x402_settle(o[..], x402_fix_record(r[..], true, 49999, X402_FIX_PREIMAGE), "", t, t) == "invalid_payment: less than the invoice";
+  zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert x402_settle(o[..], x402_fix_record(r[..], true, 50000, zero), "", t, t) == "invalid_payment: the preimage does not hash to the payment hash";
+  #assert x402_settle(o[..], good, zero, t, t) == "invalid_payment: the payer's preimage is not the invoice's";
+  o[0].msat = 40000;
+  #assert x402_settle(o[..], good, "", t, t) == "the invoice's amount is not the terms' amount";
+}
