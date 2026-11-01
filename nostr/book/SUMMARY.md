@@ -62,7 +62,7 @@
 
 **IX. A relay**
 
-- [34. Admit an event](ch034-admit-an-event.md) — partly implemented
+- [34. Admit an event](ch034-admit-an-event.md) — implemented
 - [35. Store events](ch035-store-events.md) — partly implemented
 - [36. Match filters with indexes](ch036-match-filters-with-indexes.md) — partly implemented
 - [37. NIP-11 relay information](ch037-nip-11-relay-information.md) — partly implemented

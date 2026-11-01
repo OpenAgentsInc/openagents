@@ -1,0 +1,170 @@
+// book:begin example
+#load "../../coax/lib/nostr/store.coax";
+#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relay's clock for the whole session: 2026-11-01T00:00:00Z.
+NOW :: 1793491200;
+// BIP-340 vector 1's published test key and aux. Never sign with a real key
+// in an example.
+KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+
+REASON :: [27] string.["accept", "duplicate", "superseded", "bad event", "bad id", "bad signature",
+  "auth kind", "tags", "time", "expired", "auth required", "full", "subid", "filters", "subs",
+  "empty", "hex e", "hex p", "cost", "filter", "sub space", "frame", "verb", "binary", "auth off",
+  "count", "too big"];
+
+// What the relay holds for one connection and for the whole relay.
+Relay :: struct {
+  auth: [1] RrAuth;                 // the connection's authenticated keys
+  arena: [16384] u8; recs: [5] RsdRec;
+  store: [1] RsdStore;              // room for five events
+  scratch: [65536] u8;              // the id preimage
+  out: [512] u8;                    // one reply
+}
+relay_init :: (r: [] Relay) { r[0].store[0].arena = r[0].arena[..]; r[0].store[0].recs = r[0].recs[..]; }
+
+// book:begin admit
+// One text message from a client, handled as coax/relay/relay.coax's
+// ry_message and ry_event handle it, with the socket and the clock replaced:
+// the reply the relay sends.
+relay_message :: (r: [] Relay, frame: string, now: int) -> string {
+  out := r[0].out[..];
+  m := ms_read(frame);
+  route := rr_message(m.error, m.type, m.has_sub);
+  if route.action == RR_NOTICE { return reply_of(ms_write_notice(rs_prefix(route.reason), rs_text(route.reason), out), out); }
+  if route.action != RR_EVENT { return "(not an EVENT: this example sends only EVENT)"; }
+  event := frame[m.event_from..<m.event_to];
+  // 1. Read the event and recompute its id; 2. the policy, cheapest first.
+  a := rs_admit_read(event, now, rr_writes_need_auth(true), rr_authed(r[0].auth[..]), r[0].scratch[..]);
+  if a.reason == RS_BAD_EVENT { return reply_of(ms_write_notice(rs_prefix(RS_BAD_EVENT), rs_text(RS_BAD_EVENT), out), out); }
+  // 3. The signature, only for an event the policy accepted.
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(event, r[0].scratch[..], false)); }
+  // 4. The store: new, duplicate, superseded or full.
+  reason := a.reason;
+  if reason == RS_ACCEPT { reason = rsd_admit(r[0].store[..], a, event); }
+  id := a.e.id;
+  return reply_of(ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), out), out);
+}
+// book:end admit
+reply_of :: (n: int, out: [] u8) -> string {
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// Sign one event with the test key into out; the event's text.
+sign :: (created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(KEY_HEX, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(AUX_HEX, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// ["EVENT",<event>] into out.
+frame_of :: (event: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\"EVENT\","); n = json_raw(out, n, event); n = json_raw(out, n, "]");
+  return reply_of(n, out);
+}
+// text with the first occurrence of old replaced by new, into out.
+replace :: (text: string, old: string, new: string, out: [] u8) -> string {
+  at := -1;
+  for i: 0..<text.count - old.count + 1 { if at < 0 && text[i..<i + old.count] == old { at = i; } }
+  #assert at >= 0;
+  n := json_raw(out, 0, text[0..<at]); n = json_raw(out, n, new); n = json_raw(out, n, text[at + old.count..<text.count]);
+  return reply_of(n, out);
+}
+// The event with the last hex digit of its signature changed (the event
+// ends with that digit, a quote and a brace).
+break_sig :: (event: string, out: [] u8) -> string {
+  for i: 0..<event.count { out[i] = event[i]; }
+  at := event.count - 3;
+  out[at] = ifx out[at] == '0' then '1' else '0';
+  return cast(string) out[0..<event.count];
+}
+// count copies of ["t","x"] as a tags array, into out.
+many_tags :: (count: int, out: [] u8) -> string {
+  n := json_raw(out, 0, "[");
+  for i: 0..<count { if i > 0 { n = json_raw(out, n, ","); } n = json_raw(out, n, "[\"t\",\"x\"]"); }
+  return reply_of(json_raw(out, n, "]"), out);
+}
+// Send one EVENT frame and print the reply.
+send :: (r: [] Relay, label: string, event: string) {
+  f: [8192] u8;
+  print("%\n  <- %\n", label, relay_message(r, frame_of(event, f[..]), NOW));
+}
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  h := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<h.written]);
+}
+
+main :: () {
+  r: [1] Relay; relay_init(r[..]);
+  b1: [1024] u8;
+  e1 := sign(NOW, 1, "[]", "hello relay", b1[..]);
+
+  print("the wire: a WebSocket frame's length is checked before its payload\n");
+  // A masked text frame's header with the 8-byte length form: 0x81, 0xff,
+  // the length big-endian, then a 4-byte mask key.
+  for length: [2] int.[RS_MAX_MESSAGE, RS_MAX_MESSAGE + 1] {
+    head: [14] u8; head[0] = 0x81; head[1] = 0xff;
+    for k: 0..<8 { head[2 + k] = cast,trunc(u8) (length >> (8 * (7 - k))); }
+    fr := rr_frame_read(wss_frame_read(cast(string) head[..], RS_MAX_MESSAGE).status);
+    print("  payload % bytes: ", length);
+    if fr.action == RR_F_WAIT { print("header admitted, waiting for the payload\n"); }
+    if fr.action == RR_F_CLOSE {
+      c: [4] u8; n := wss_close_write(fr.code, c[..]);
+      print("refused, "); print_hex("close frame", c[0..<n]);
+    }
+  }
+
+  print("\nworked frame, step by step\n");
+  f1: [1024] u8; frame := frame_of(e1, f1[..]);
+  print("frame (% bytes): %\n", frame.count, frame);
+  m := ms_read(frame);
+  print("ms_read: verb EVENT %, event object bytes %..%\n", m.type == MS_EVENT, m.event_from, m.event_to);
+  event := frame[m.event_from..<m.event_to];
+  e := nostr_event_read(event, r[0].scratch[..], false);
+  print("preimage (% bytes): %\n", e.written, cast(string) r[0].scratch[0..<e.written]);
+  print_hex("claimed id ", e.id[..]);
+  print_hex("computed id", e.computed_id[..]);
+  print("kind %, created_at %, tags %\n", e.kind, e.created_at, e.tags);
+  print("policy, not authenticated: %\n", REASON[rs_admit_policy(e, -1, NOW, true, false)]);
+  pub := e.public_key;
+  #assert rr_auth(r[0].auth[..], RR_N42_OK, pub[..]) == RR_A_OK;   // as if NIP-42 AUTH had succeeded
+  print("policy, authenticated: %\n", REASON[rs_admit_policy(e, -1, NOW, true, true)]);
+  v := nostr_event_verify_vartime(event, r[0].scratch[..], false);
+  print("signature verified: %\n", v.verified);
+  rr_auth_reset(r[0].auth[..]);
+
+  print("\nthe session\n");
+  send(r[..], "1. the worked event before AUTH", e1);
+  #assert rr_auth(r[0].auth[..], RR_N42_OK, pub[..]) == RR_A_OK;
+  print("   (the connection authenticates with NIP-42; chapter 38)\n");
+  send(r[..], "2. the worked event", e1);
+  send(r[..], "3. the same event again", e1);
+  b2: [1024] u8; send(r[..], "4. content changed after signing", replace(e1, "hello relay", "hello Relay", b2[..]));
+  b3: [1024] u8; send(r[..], "5. last signature digit changed", break_sig(e1, b3[..]));
+  b4: [1024] u8; send(r[..], "6. created_at now + 900", sign(NOW + 900, 1, "[]", "edge", b4[..]));
+  b5: [1024] u8; future := sign(NOW + 901, 1, "[]", "early", b5[..]);
+  send(r[..], "7. created_at now + 901", future);
+  b6: [1024] u8; send(r[..], "8. now + 901 and a broken signature", break_sig(future, b6[..]));
+  b7: [1024] u8; send(r[..], "9. kind 22242 (a NIP-42 AUTH event)", sign(NOW, 22242, "[[\"relay\",\"ws://127.0.0.1:7777\"],[\"challenge\",\"c\"]]", "", b7[..]));
+  t1: [4096] u8; b8: [4096] u8; send(r[..], "10. 257 tags", sign(NOW, 1, many_tags(257, t1[..]), "", b8[..]));
+  t2: [4096] u8; b9: [4096] u8; send(r[..], "11. 256 tags", sign(NOW, 1, many_tags(256, t2[..]), "", b9[..]));
+  b10: [1024] u8; send(r[..], "12. expiration now (NIP-40)", sign(NOW - 60, 1, "[[\"expiration\",\"1793491200\"]]", "gone", b10[..]));
+  b11: [1024] u8; send(r[..], "13. kind 20001, ephemeral", sign(NOW, 20001, "[]", "typing", b11[..]));
+  b12: [1024] u8; send(r[..], "14. kind 0 profile", sign(NOW, 0, "[]", "{\"name\":\"new\"}", b12[..]));
+  b13: [1024] u8; send(r[..], "15. kind 0, one second older", sign(NOW - 1, 0, "[]", "{\"name\":\"old\"}", b13[..]));
+  b14: [1024] u8; send(r[..], "16. a fifth new event", sign(NOW, 1, "[]", "one more", b14[..]));
+  b15: [1024] u8; send(r[..], "17. a sixth new event", sign(NOW, 1, "[]", "no room", b15[..]));
+  print("18. [\"EVENT\",{}]\n  <- %\n", relay_message(r[..], "[\"EVENT\",{}]", NOW));
+  print("19. [\"EVENT\",\"x\"]\n  <- %\n", relay_message(r[..], "[\"EVENT\",\"x\"]", NOW));
+  print("stored: % events, % live\n", r[0].store[0].n, r[0].store[0].live);
+}
+// book:end example

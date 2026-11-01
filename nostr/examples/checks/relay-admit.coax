@@ -1,0 +1,110 @@
+// The checks of relay-admit.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/relay-admit.coax --run-steps 250000000
+#load "../relay-admit.coax";
+
+// The session's events, signed by coax/tests/nostr/nip59_reference.py's
+// pure-Python BIP-340 signer and event writer (hashlib and integers; it
+// shares no code with Coax) with the same key, aux and fields as the
+// example: signed(key, aux, created_at, kind, tags, content).
+PY_WORKED :: "{\"id\":\"0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"hello relay\",\"sig\":\"025bc40033dfbca3ef4e8e50f83799d8ed3090bf79083ec74c32ad187cdddb178707c7dbde6224f0c4af344669b033b93b6c61dfa8f59927016decdc735f6d7a\"}";
+PY_EDGE :: "{\"id\":\"39c49b2b67c1d83c2b96d97b8da63bf25e5b7d74779eaa63c50087f3831615cb\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793492100,\"kind\":1,\"tags\":[],\"content\":\"edge\",\"sig\":\"7602f074f3b44488325a8cbc0aa219f1489b9b850227f6c33079f9176cb6401234cc0db2edde4e4964e77332106f458a219cfd8d3e6c7d6856884acfcc888721\"}";
+PY_FUTURE :: "{\"id\":\"64cb2f8c3ec65ae79800cf23d3b7abf1301d7d15b55b82378e236381416f7173\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793492101,\"kind\":1,\"tags\":[],\"content\":\"early\",\"sig\":\"1b9e3070cb9fb75ce17875caf955098954c8f914c7366ec50c66a3c41b4848fcc50ae5495b25a5c7c17b708d57ed4a175b8532c4acdfd5fcd8788307962738c1\"}";
+PY_AUTH :: "{\"id\":\"b2cbcf494538d05be55b66d37484b2f47f7edd3e5a15c37e43a5486087ef6db9\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":22242,\"tags\":[[\"relay\",\"ws://127.0.0.1:7777\"],[\"challenge\",\"c\"]],\"content\":\"\",\"sig\":\"84d9dd0b179b38d4ce2b9e2ce394444897c1c69877e1ebf333da5f8ff506826efadf02e3da418fcf48f10995844f928b3e97ede5363d337a275aae45a083e583\"}";
+PY_EXPIRED :: "{\"id\":\"8f3e5212002db0bed22938b6303cef64560015027171e1c2ae5549ee9ab3a63a\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491140,\"kind\":1,\"tags\":[[\"expiration\",\"1793491200\"]],\"content\":\"gone\",\"sig\":\"91e0bebc2fa329b51e651850e2605d3f1f6eb21ee917d90ecec96661f69acd7c3f5e6080290317df9b3883981ba0fa674019386096a748a3597ac70cf1d27c89\"}";
+PY_EPHEMERAL :: "{\"id\":\"f032419da3fccec2680604b493d9ea451bed31b941a51d169d34359510be5dde\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":20001,\"tags\":[],\"content\":\"typing\",\"sig\":\"807d46d4dd98fbd6b15826bc94b50d833ecee9c786a9fdaa803764740ef4db5ee5c94f201837e285f1a42cb8b55f29919b82f05378460c1c8f4a72bac609295d\"}";
+PY_PROFILE_NEW :: "{\"id\":\"3df0dfbcbbf71ddb7b7008929de734d949e12b2981c8acd97912df09736ce5f7\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"new\\\"}\",\"sig\":\"e7b6c3b3d06442e1eaa3cac0a8e5c5fbce5e9a0fbc6c212cb3609f35bcd8c794dcbd63d65c71f7ec0839b2ac4881a975fbd95f34adaa818d5e2241ea728e54f1\"}";
+PY_PROFILE_OLD :: "{\"id\":\"548e2f52e61bd0eb04eed5fa68e61d0bb9c414262edd286152a2a29f6f1cdabb\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491199,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"old\\\"}\",\"sig\":\"a9817cd49a8f2b6fbedf57592e81fb8dcc1b18a76748fcfce3c2e87190a28ed01708351b5a000ce217ed7de63039b476608ad10e91982103bf84e2af43461793\"}";
+PY_FIFTH :: "{\"id\":\"dc296123dad01c9b89b97b6ff9556b10dd82cfa4279ef982f17174f41f5e3451\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"one more\",\"sig\":\"b69ea317db68f09d1cfe5c3d4aecc70b5851e57228a5c36c0bcedf85a313403116294e9731b03d888bf4eec4e22d3c819fbf9a92eb8b57b1a88c71a5ac0e48fc\"}";
+PY_SIXTH :: "{\"id\":\"2f18b69b09b2a168f497ab8623fb7685dc04395d92a2b4c520d714cd5711b746\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"no room\",\"sig\":\"f34f8a619f2f0b6073989374f6b85199a83af1531c399882f84d38d7d42cb615b4c9bb4bdf852e4457e639f3d1f5a9e26be4f578f4b60b791921d2f7aab8ec74\"}";
+
+// book:begin check
+// Python's SHA-256 ids of the 256- and 257-tag events (["t","x"] repeated,
+// created_at NOW, kind 1, content "").
+PY_TAGS256_ID :: "eae890592b1a5566fcd14cb48ed9970646f5b42cdf30a96a5bca6756f5751844";
+PY_TAGS257_ID :: "c5fecb919cddba11664f4adeeaf7fc83094ba099264b76eb9dc5f4437069f68a";
+// BIP-340 test-vectors.csv row 1: the public key of the example's secret key.
+BIP340_PUB1 :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ZERO_SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// An event with Python's id and an all-zero signature: the id matches, so
+// only the policy or the signature can refuse it.
+unsigned_tags :: (count: int, id: string, out: [] u8) -> string {
+  t: [4096] u8;
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, id);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, BIP340_PUB1);
+  n = json_raw(out, n, "\",\"created_at\":1793491200,\"kind\":1,\"tags\":"); n = json_raw(out, n, many_tags(count, t[..]));
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\""); n = json_raw(out, n, ZERO_SIG);
+  return reply_of(json_raw(out, n, "\"}"), out);
+}
+// The OK frame worked out by hand from an id, a verdict and a message.
+ok_frame :: (id: string, accepted: bool, message: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\"OK\",\""); n = json_raw(out, n, id); n = json_raw(out, n, "\",");
+  n = json_raw(out, n, ifx accepted then "true" else "false"); n = json_raw(out, n, ",\"");
+  n = json_raw(out, n, message);
+  return reply_of(json_raw(out, n, "\"]"), out);
+}
+expect_reply :: (r: [] Relay, event: string, id: string, accepted: bool, message: string) {
+  f: [8192] u8; want: [512] u8;
+  #assert relay_message(r, frame_of(event, f[..]), NOW) == ok_frame(id, accepted, message, want[..]);
+}
+TIME :: "invalid: the event's created_at timestamp is too far in the past or the future for this relay";
+
+#test "the worked event signs to the Python signer's bytes" #steps 400000000 {
+  b: [1024] u8;
+  #assert sign(NOW, 1, "[]", "hello relay", b[..]) == PY_WORKED;
+  s: [256] u8;
+  e := nostr_event_read(PY_WORKED, s[..], false);
+  pub := e.public_key; want: [32] u8;
+  #assert hex_decode_checked(BIP340_PUB1, want[..], false).error == NC_OK && cast(string) pub[..] == cast(string) want[..];
+}
+// The preimage of the worked trace, written by hand from NIP-01.
+#test "the worked event's preimage is the hand serialization" {
+  s: [256] u8;
+  e := nostr_event_read(PY_WORKED, s[..], false);
+  #assert e.error == NE_OK && e.written == 100;
+  #assert cast(string) s[0..<e.written] == "[0,\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",1793491200,1,[],\"hello relay\"]";
+}
+// The verdicts and prefixes are the Rust relay's, as the 2026-10-30
+// differential recorded them (docs/verification/
+// 2026-10-30-coax-relay-r1-rust-differential.md); the texts after the
+// prefix are rs_text's.
+#test "Python-signed events get the replies worked out by hand" #steps 2000000000 {
+  r: [1] Relay; relay_init(r[..]);
+  r[0].store[0].recs = r[0].recs[0..<4];   // room for four events
+  w := "0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60";
+  expect_reply(r[..], PY_WORKED, w, false, "auth-required: authenticate before publishing");
+  pub: [32] u8; #assert hex_decode_checked(BIP340_PUB1, pub[..], false).error == NC_OK;
+  #assert rr_auth(r[0].auth[..], RR_N42_OK, pub[..]) == RR_A_OK;
+  expect_reply(r[..], PY_WORKED, w, true, "");
+  expect_reply(r[..], PY_WORKED, w, true, "duplicate: already have this event");
+  b: [1024] u8;
+  expect_reply(r[..], replace(PY_WORKED, "hello relay", "hello Relay", b[..]), w, false, "invalid: event id does not match its content");
+  expect_reply(r[..], break_sig(PY_WORKED, b[..]), w, false, "invalid: bad signature");
+  expect_reply(r[..], PY_EDGE, "39c49b2b67c1d83c2b96d97b8da63bf25e5b7d74779eaa63c50087f3831615cb", true, "");
+  fid := "64cb2f8c3ec65ae79800cf23d3b7abf1301d7d15b55b82378e236381416f7173";
+  expect_reply(r[..], PY_FUTURE, fid, false, TIME);
+  expect_reply(r[..], break_sig(PY_FUTURE, b[..]), fid, false, TIME);
+  expect_reply(r[..], PY_AUTH, "b2cbcf494538d05be55b66d37484b2f47f7edd3e5a15c37e43a5486087ef6db9", false, "invalid: authentication events cannot be published");
+  t: [4096] u8;
+  expect_reply(r[..], unsigned_tags(257, PY_TAGS257_ID, t[..]), PY_TAGS257_ID, false, "invalid: event has too many tags");
+  expect_reply(r[..], unsigned_tags(256, PY_TAGS256_ID, t[..]), PY_TAGS256_ID, false, "invalid: bad signature");
+  expect_reply(r[..], PY_EXPIRED, "8f3e5212002db0bed22938b6303cef64560015027171e1c2ae5549ee9ab3a63a", false, "invalid: event has expired");
+  expect_reply(r[..], PY_EPHEMERAL, "f032419da3fccec2680604b493d9ea451bed31b941a51d169d34359510be5dde", true, "");
+  expect_reply(r[..], PY_PROFILE_NEW, "3df0dfbcbbf71ddb7b7008929de734d949e12b2981c8acd97912df09736ce5f7", true, "");
+  expect_reply(r[..], PY_PROFILE_OLD, "548e2f52e61bd0eb04eed5fa68e61d0bb9c414262edd286152a2a29f6f1cdabb", true, "duplicate: newer replaceable event already stored");
+  expect_reply(r[..], PY_FIFTH, "dc296123dad01c9b89b97b6ff9556b10dd82cfa4279ef982f17174f41f5e3451", true, "");
+  expect_reply(r[..], PY_SIXTH, "2f18b69b09b2a168f497ab8623fb7685dc04395d92a2b4c520d714cd5711b746", false, "error: relay storage is full");
+  #assert r[0].store[0].n == 4 && r[0].store[0].live == 4;
+  #assert relay_message(r[..], "[\"EVENT\",{}]", NOW) == "[\"NOTICE\",\"invalid: malformed event\"]";
+  #assert relay_message(r[..], "[\"EVENT\",\"x\"]", NOW) == "[\"NOTICE\",\"invalid: malformed message\"]";
+}
+// A WebSocket header announcing 131073 bytes is refused before the payload.
+#test "frame lengths: 131072 waits for its payload, 131073 gets close 1009" {
+  head: [14] u8; head[0] = 0x81; head[1] = 0xff; head[7] = 0x02;   // 0x020000 = 131072
+  #assert rr_frame_read(wss_frame_read(cast(string) head[..], RS_MAX_MESSAGE).status).action == RR_F_WAIT;
+  head[9] = 1;
+  f := rr_frame_read(wss_frame_read(cast(string) head[..], RS_MAX_MESSAGE).status);
+  #assert f.action == RR_F_CLOSE && f.code == 1009;
+}
+// book:end check

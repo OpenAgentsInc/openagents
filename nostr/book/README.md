@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 34 are implemented, 22 are partly implemented and
+Of the 104 chapters, 35 are implemented, 21 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -217,7 +217,7 @@ negentropy, and limits.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [34. Admit an event](ch034-admit-an-event.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | The relay's EVENT admission: verify ID and signature, check size, tag and time limits, answer `OK` with the standard prefixes, and route each frame from one connection. |
+| [34. Admit an event](ch034-admit-an-event.md) | Runnable: native C | The relay's EVENT admission: verify ID and signature, check size, tag and time limits, answer `OK` with the standard prefixes, and route each frame from one connection. |
 | [35. Store events](ch035-store-events.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Verified originals with one copy per ID, replaceable and addressable replacement with the same-second lowest-ID rule, an fsync before `OK`, and crash recovery that cuts only a partial last write. |
 | [36. Match filters with indexes](ch036-match-filters-with-indexes.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Answering REQ from the store newest first with query cost limits, then indexes by ID, author, kind and tag that never change which events match. |
 | [37. NIP-11 relay information](ch037-nip-11-relay-information.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | The relay information document served on `Accept: application/nostr+json`: name, pubkey, `supported_nips`, software, version and `limitation` fields that match what the relay enforces. |

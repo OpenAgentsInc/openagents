@@ -1,0 +1,56 @@
+the wire: a WebSocket frame's length is checked before its payload
+  payload 131072 bytes: header admitted, waiting for the payload
+  payload 131073 bytes: refused, close frame: 880203f1
+
+worked frame, step by step
+frame (363 bytes): ["EVENT",{"id":"0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60","pubkey":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","created_at":1793491200,"kind":1,"tags":[],"content":"hello relay","sig":"025bc40033dfbca3ef4e8e50f83799d8ed3090bf79083ec74c32ad187cdddb178707c7dbde6224f0c4af344669b033b93b6c61dfa8f59927016decdc735f6d7a"}]
+ms_read: verb EVENT true, event object bytes 9..362
+preimage (100 bytes): [0,"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",1793491200,1,[],"hello relay"]
+claimed id : 0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60
+computed id: 0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60
+kind 1, created_at 1793491200, tags 0
+policy, not authenticated: auth required
+policy, authenticated: accept
+signature verified: true
+
+the session
+1. the worked event before AUTH
+  <- ["OK","0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60",false,"auth-required: authenticate before publishing"]
+   (the connection authenticates with NIP-42; chapter 38)
+2. the worked event
+  <- ["OK","0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60",true,""]
+3. the same event again
+  <- ["OK","0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60",true,"duplicate: already have this event"]
+4. content changed after signing
+  <- ["OK","0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60",false,"invalid: event id does not match its content"]
+5. last signature digit changed
+  <- ["OK","0753e8ad491d16259792761362658889e960a29e0829af2aefe981bdf8560b60",false,"invalid: bad signature"]
+6. created_at now + 900
+  <- ["OK","39c49b2b67c1d83c2b96d97b8da63bf25e5b7d74779eaa63c50087f3831615cb",true,""]
+7. created_at now + 901
+  <- ["OK","64cb2f8c3ec65ae79800cf23d3b7abf1301d7d15b55b82378e236381416f7173",false,"invalid: the event's created_at timestamp is too far in the past or the future for this relay"]
+8. now + 901 and a broken signature
+  <- ["OK","64cb2f8c3ec65ae79800cf23d3b7abf1301d7d15b55b82378e236381416f7173",false,"invalid: the event's created_at timestamp is too far in the past or the future for this relay"]
+9. kind 22242 (a NIP-42 AUTH event)
+  <- ["OK","b2cbcf494538d05be55b66d37484b2f47f7edd3e5a15c37e43a5486087ef6db9",false,"invalid: authentication events cannot be published"]
+10. 257 tags
+  <- ["OK","c5fecb919cddba11664f4adeeaf7fc83094ba099264b76eb9dc5f4437069f68a",false,"invalid: event has too many tags"]
+11. 256 tags
+  <- ["OK","eae890592b1a5566fcd14cb48ed9970646f5b42cdf30a96a5bca6756f5751844",true,""]
+12. expiration now (NIP-40)
+  <- ["OK","8f3e5212002db0bed22938b6303cef64560015027171e1c2ae5549ee9ab3a63a",false,"invalid: event has expired"]
+13. kind 20001, ephemeral
+  <- ["OK","f032419da3fccec2680604b493d9ea451bed31b941a51d169d34359510be5dde",true,""]
+14. kind 0 profile
+  <- ["OK","3df0dfbcbbf71ddb7b7008929de734d949e12b2981c8acd97912df09736ce5f7",true,""]
+15. kind 0, one second older
+  <- ["OK","548e2f52e61bd0eb04eed5fa68e61d0bb9c414262edd286152a2a29f6f1cdabb",true,"duplicate: newer replaceable event already stored"]
+16. a fifth new event
+  <- ["OK","dc296123dad01c9b89b97b6ff9556b10dd82cfa4279ef982f17174f41f5e3451",true,""]
+17. a sixth new event
+  <- ["OK","2f18b69b09b2a168f497ab8623fb7685dc04395d92a2b4c520d714cd5711b746",false,"error: relay storage is full"]
+18. ["EVENT",{}]
+  <- ["NOTICE","invalid: malformed event"]
+19. ["EVENT","x"]
+  <- ["NOTICE","invalid: malformed message"]
+stored: 5 events, 5 live

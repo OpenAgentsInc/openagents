@@ -136,7 +136,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [34. Admit an event](ch034-admit-an-event.md) — partly implemented | 21, 24, 27, coax:24 | Forged and malformed events refuse with the expected reason. The differential sessions against the Rust relay match or have a recorded explanation. | [NIP-01](../nips/official/01.md) |
+| [34. Admit an event](ch034-admit-an-event.md) — implemented | 21, 24, 27, coax:24 | Forged and malformed events refuse with the expected reason. The differential sessions against the Rust relay match or have a recorded explanation. | [NIP-01](../nips/official/01.md) |
 | [35. Store events](ch035-store-events.md) — partly implemented | 34, 22 | A SIGKILL at any write leaves a store that restarts with every acknowledged event. Replacement order matches the NIP-01 rules on tied timestamps. | [NIP-01](../nips/official/01.md) |
 | [36. Match filters with indexes](ch036-match-filters-with-indexes.md) — partly implemented | 23, 35 | A `#forall` property: for generated stores and filters, indexed and scanned results are equal. The five project REQs match relay.openagents.com's recording. | [NIP-01](../nips/official/01.md) |
 | [37. NIP-11 relay information](ch037-nip-11-relay-information.md) — partly implemented | 34 | Every advertised limit has a test that hits it. `supported_nips` equals the set of NIP chapters marked done for the relay. | [NIP-11](../nips/official/11.md) |

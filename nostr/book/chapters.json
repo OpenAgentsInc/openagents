@@ -693,7 +693,7 @@
    "number": 34,
    "title": "Admit an event",
    "file": "ch034-admit-an-event.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     21,
@@ -705,7 +705,9 @@
     "coax/lib/nostr/relay_route.coax",
     "coax/lib/nostr/relay_server.coax",
     "coax/lib/nostr/store_admit.coax",
-    "coax/relay/relay.coax"
+    "coax/relay/relay.coax",
+    "nostr/examples/relay-admit.coax",
+    "nostr/examples/checks/relay-admit.coax"
    ],
    "qualified_targets": [
     "cpu"
