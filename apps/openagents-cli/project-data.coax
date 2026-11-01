@@ -1,0 +1,481 @@
+// A project's data on openagents.com without a release, a hand-made
+// project's key handed to the site, and the relay transcript the fold's
+// checks read.
+//
+//   openagents project publish-data [SLUG...] [--dry-run]
+//       Regenerates the Markdown the page's build bakes in (projects/SLUG/
+//       index.md, projects/index.md, and their sections of /llms-full.txt)
+//       from the relay, in a clean worktree of origin/main so no checkout's
+//       files change, writes just those to the staging and production
+//       buckets, and checks production answers the new snapshot. --dry-run
+//       stops before the first write and leaves the files in a folder it names.
+//   openagents project adopt SLUG [--api URL] [--key FILE]
+//       Gives the site a hand-made project's key, so a member's drop on its
+//       page can grow it (coax/web/api/migrations/0041_project_grow.sql,
+//       docs/projects/new-project.md Part 2). NIP-98 signed with that same
+//       key; nothing here prints it.
+//   openagents project capture [--project SLUG] [--tables]
+//       What the relay sends the project page's five subscriptions, frame by
+//       frame, into coax/lib/nostr/fixtures/SLUG_relay.jsonl and .coax.
+//       --tables also writes SLUG_relay_tables.coax from the page's fold.
+//
+// The drawn page (/projects/SLUG) reads its relay live (project-live.coax),
+// so a claim, plan step, note, done or move shows there within seconds with
+// no data push. What the build bakes in goes stale instead; publish-data
+// refreshes that. The page's first paint (its baked tables) and the commit
+// history are code: they move with the next release. A release promoting at
+// the same moment can put its own, minutes older, Markdown back; run this
+// again after it if the newest events matter.
+//
+// These replace coax/web/project/publish-data.sh, adopt.ts and capture.ts
+// (docs/verification/2026-11-01-project-page-coax.md).
+
+PD_BUCKETS :: [2] string.["openagentsgemini-openagents-web-staging", "openagentsgemini-openagents-web"];
+PD_SEP :: "\n\n---\n\nSource: ";
+PD_SITE :: "https://openagents.com/";
+
+// ---- /llms-full.txt -------------------------------------------------------------
+
+// The index of the first needle in hay at or after from, or -1.
+pd_index :: (hay: string, needle: string, from: int) -> int {
+  i := from;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+// Text appended to out at n[0]; n[0] = -1 once it doesn't fit.
+pd_put :: (out: [] u8, n: [] int, s: string) {
+  if n[0] < 0 { return; }
+  if n[0] + s.count > out.count { n[0] = -1; return; }
+  for i: 0..<s.count { out[n[0] + i] = s[i]; }
+  n[0] += s.count;
+}
+// Each llms-full.txt section after "Source: <URL>" whose page is one of
+// files (paths like "projects/coax/index.md", their text in texts) gets that
+// text in place of its old one. The new file goes into out, its length into
+// n[0] (-1 when it doesn't fit). Returns how many sections changed.
+pd_splice :: (text: string, files: [] string, texts: [] string, out: [] u8, n: [] int) -> int {
+  n[0] = 0; changed := 0;
+  at := pd_index(text, PD_SEP, 0);
+  pd_put(out, n, ifx at < 0 then text else text[0..<at]);
+  while at >= 0 {
+    from := at + PD_SEP.count;
+    next := pd_index(text, PD_SEP, from);
+    part := ifx next < 0 then text[from..<text.count] else text[from..<next];
+    pd_put(out, n, PD_SEP);
+    nl := pd_index(part, "\n", 0);
+    // the URL: up to the first newline (with none, the TS's slice(0, -1) dropped the last character)
+    url := ifx nl >= 0 then part[0..<nl] else (ifx part.count > 0 then part[0..<part.count - 1] else part);
+    pb: [4096] u8; pn: [1] int; pn[0] = 0;
+    k := pd_index(url, PD_SITE, 0);
+    if k >= 0 { pd_put(pb[..], pn[..], url[0..<k]); pd_put(pb[..], pn[..], url[k + PD_SITE.count..<url.count]); } else { pd_put(pb[..], pn[..], url); }
+    pd_put(pb[..], pn[..], "/index.md");
+    hit := -1;
+    if pn[0] > 0 { for f: 0..<files.count { if files[f] == cast(string) pb[0..<pn[0]] { hit = f; } } }
+    if hit >= 0 && hit < texts.count { pd_put(out, n, url); pd_put(out, n, "\n\n"); pd_put(out, n, texts[hit]); changed += 1; }
+    else { pd_put(out, n, part); }
+    at = next;
+  }
+  return changed;
+}
+#test "llms-full.txt sections are replaced by their page's Markdown" {
+  files := [2] string.["projects/coax/index.md", "projects/index.md"];
+  texts := [2] string.["# Coax\nnew\n", "# Projects\n"];
+  out: [512] u8; n: [1] int;
+  c := pd_splice("head\n\n---\n\nSource: https://openagents.com/projects/coax\n\nold\n\n---\n\nSource: https://openagents.com/other\n\nkeep\n\n---\n\nSource: https://openagents.com/projects\n\nold list", files[..], texts[..], out[..], n[..]);
+  #assert c == 2;
+  #assert cast(string) out[0..<n[0]] == "head\n\n---\n\nSource: https://openagents.com/projects/coax\n\n# Coax\nnew\n\n\n---\n\nSource: https://openagents.com/other\n\nkeep\n\n---\n\nSource: https://openagents.com/projects\n\n# Projects\n";
+  c = pd_splice("no sections", files[..], texts[..], out[..], n[..]);
+  #assert c == 0 && cast(string) out[0..<n[0]] == "no sections";
+  small: [8] u8;
+  c = pd_splice("no sections", files[..], texts[..], small[..], n[..]);
+  #assert n[0] == -1;
+}
+
+// ---- running other programs -----------------------------------------------------------
+
+// A program's run: its exit status (-1 when it couldn't start), stdout into out.
+pd_run :: (argv: [] string, ms: int, out: [] u8, n: [] int) -> int {
+  err: [16384] u8;
+  got := proc_run(argv, ms, out, err[..]);
+  n[0] = got.out_n;
+  if got.err_n > 0 { tool_err(cast(string) err[0..<got.err_n]); if err[got.err_n - 1] != 10 { tool_err("\n"); } }
+  return ifx got.started != 0 then -1 else got.status;
+}
+// gcloud, on the automation account's isolated config unless CLOUDSDK_CONFIG says otherwise.
+pd_gcloud :: (args: [] string, cfg: string) -> bool {
+  argv: [16] string; n := 0;
+  argv[0] = "env"; n = 1;
+  e: [1] Ln; ln_s(e[..], "CLOUDSDK_CONFIG="); ln_s(e[..], cfg);
+  argv[n] = ln_text(e[..]); n += 1; argv[n] = "gcloud"; n += 1;
+  for s: args { if n < 16 { argv[n] = s; n += 1; } }
+  out: [4096] u8; on: [1] int; err: [16384] u8;
+  got := proc_run(argv[0..<n], 600000, out[..], err[..]);
+  return got.started == 0 && got.status == 0;
+}
+pd_slug_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 64 { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (i > 0 && c == '-');
+    if !ok { return false; }
+  }
+  return true;
+}
+#test "publish-data slugs" {
+  #assert pd_slug_ok("coax") && pd_slug_ok("belt-2200") && pd_slug_ok("9") && pd_slug_ok("a-");
+  #assert !pd_slug_ok("") && !pd_slug_ok("-a") && !pd_slug_ok("A") && !pd_slug_ok("a_b") && !pd_slug_ok("../x");
+  #assert !pd_slug_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcde");
+}
+// The first line of text that starts with prefix, or "".
+pd_line :: (text: string, prefix: string) -> string {
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    if starts(text[i..<e], prefix) { return text[i..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+
+project_publish_data :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run it inside the openagents checkout"); }
+  repo := pj_root(p[..]);
+  dry := args_has(a, "--dry-run");
+  cb: [2048] u8; hb: [1024] u8;
+  cfg := proc_getenv("CLOUDSDK_CONFIG", cb[..]);
+  if cfg.count == 0 { cfg = fs_join(home(hb[..]), "work/.secrets/gcloud-sa-config", cb[..]); }
+  exe: [4096] u8; en := cxcli_exe_path(exe[..]);
+  if en <= 0 { return fail(r, EXIT_FAIL, "publish-data: can't find this program's path"); }
+  self := cast(string) exe[0..<en];
+  // a clean worktree of origin/main
+  o: [65536] u8; on: [1] int;
+  fetch := [6] string.["git", "-C", repo, "fetch", "-q", "origin"];
+  fa := [7] string.[fetch[0], fetch[1], fetch[2], fetch[3], fetch[4], fetch[5], "main"];
+  if pd_run(fa[..], 300000, o[..], on[..]) != 0 { return fail(r, EXIT_FAIL, "publish-data: git fetch failed"); }
+  mk := [2] string.["mktemp", "-d"];
+  if pd_run(mk[..], 10000, o[..], on[..]) != 0 { return fail(r, EXIT_FAIL, "publish-data: mktemp failed"); }
+  tb: [2048] u8; k := copy(trimmed(cast(string) o[0..<on[0]]), tb[..]);
+  if k <= 0 { return fail(r, EXIT_FAIL, "publish-data: mktemp failed"); }
+  base := cast(string) tb[0..<k];
+  wb: [2048] u8; tree := fs_join(base, "data", wb[..]);
+  add := [8] string.["git", "-C", repo, "worktree", "add", "-q", "--detach", tree];
+  aa := [9] string.[add[0], add[1], add[2], add[3], add[4], add[5], add[6], add[7], "origin/main"];
+  code := EXIT_FAIL;
+  if pd_run(aa[..], 300000, o[..], on[..]) == 0 { code = pd_publish(a, r, tree, base, self, cfg, dry); }
+  else { tool_errln("publish-data: git worktree add failed"); }
+  if !dry {
+    rm := [7] string.["git", "-C", repo, "worktree", "remove", "--force", tree];
+    done := pd_run(rm[..], 120000, o[..], on[..]);
+    rr := [3] string.["rm", "-rf", base];
+    done = pd_run(rr[..], 120000, o[..], on[..]);
+  } else {
+    tool_err("publish-data: --dry-run: the files are in "); tool_err(tree); tool_errln(" (remove with git worktree remove --force)");
+  }
+  return code;
+}
+// Runs this program in the worktree (its root is found from the working directory), its output indented.
+pd_self :: (tree: string, self: string, args: [] string) -> bool {
+  argv: [12] string; n := 0;
+  argv[0] = "bash"; argv[1] = "-c"; argv[2] = "cd \"$0\" && exec \"$@\""; argv[3] = tree; argv[4] = self; n = 5;
+  for s: args { if n < 12 { argv[n] = s; n += 1; } }
+  out: [1] Pg; on: [1] int;
+  st := pd_run(argv[0..<n], 600000, out[0].b[..], on[..]);
+  text := cast(string) out[0].b[0..<on[0]]; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    l: [1] Ln; ln_s(l[..], "  "); ln_s(l[..], text[i..<e]); print("%\n", ln_text(l[..]));
+    i = e + 1;
+  }
+  return st == 0;
+}
+pd_publish :: (a: [] Args, r: [] Rep, tree: string, base: string, self: string, cfg: string, dry: bool) -> int {
+  sb: [2048] u8; site := fs_join(tree, "apps/openagents-web/projects", sb[..]);
+  ab: [2048] u8; app := fs_join(tree, "apps/openagents-web", ab[..]);
+  list: [1] PgSite;
+  slugs: [64] string; n := 0;
+  for k: 2..<66 { s := positional(a, k); if s.count == 0 { break; } slugs[n] = s; n += 1; }
+  if n == 0 {
+    if !pg_site(site, list[..]) { return fail(r, EXIT_FAIL, "publish-data: can't read the project folders"); }
+    for k: 0..<list[0].n { if n < 64 { slugs[n] = list[0].slug[k]; n += 1; } }
+  }
+  for k: 0..<n {
+    slug := slugs[k];
+    pb: [2048] u8; jb: [2048] u8;
+    if !pd_slug_ok(slug) || !fs_exists(fs_join(fs_join(site, slug, pb[..]), "project.json", jb[..])) {
+      tool_err("publish-data: no project "); tool_errln(slug); return EXIT_USAGE;
+    }
+    args := [4] string.["project", "snapshot", "--project", slug];
+    if !pd_self(tree, self, args[..]) { tool_err("publish-data: snapshot failed for "); tool_errln(slug); return EXIT_FAIL; }
+  }
+  ia := [2] string.["project", "index"];
+  if !pd_self(tree, self, ia[..]) { return fail(r, EXIT_FAIL, "publish-data: the projects list failed"); }
+  // the files, and their text
+  names: [1] Pg;   // "projects/SLUG/index.md" one after another
+  files: [65] string; texts: [65] string; fn := 0;
+  store_: [1] Pg; store := store_[..];
+  for k: -1..<n {
+    at := names[0].n;
+    if k < 0 { pg_s(names[..], "projects/index.md"); } else { pg_s(names[..], "projects/"); pg_s(names[..], slugs[k]); pg_s(names[..], "/index.md"); }
+    files[fn] = cast(string) names[0].b[at..<names[0].n];
+    fb: [2048] u8; from := store[0].n;
+    m := fs_read(fs_join(app, files[fn], fb[..]), store[0].b[from..<PG_BIG]);
+    if m < 0 { tool_err("publish-data: can't read "); tool_errln(files[fn]); return EXIT_FAIL; }
+    store[0].n += m;
+    texts[fn] = cast(string) store[0].b[from..<from + m];
+    fn += 1;
+  }
+  t: [24] u8;
+  for b: PD_BUCKETS {
+    if !dry {
+      for f: 0..<fn {
+        lb: [2048] u8; gs: [1] Ln; ln_s(gs[..], "gs://"); ln_s(gs[..], b); ln_c(gs[..], '/'); ln_s(gs[..], files[f]);
+        cp := [9] string.["storage", "cp", fs_join(app, files[f], lb[..]), ln_text(gs[..]), "--content-type", "text/markdown; charset=utf-8", "--cache-control", "no-cache", "--quiet"];
+        if !pd_gcloud(cp[..], cfg) { tool_err("publish-data: couldn't write "); tool_errln(ln_text(gs[..])); return EXIT_FAIL; }
+      }
+    }
+    gs: [1] Ln; ln_s(gs[..], "gs://"); ln_s(gs[..], b); ln_s(gs[..], "/llms-full.txt");
+    lb: [2048] u8; nm: [1] Ln; ln_s(nm[..], b); ln_s(nm[..], "-llms-full.txt");
+    local := fs_join(base, ln_text(nm[..]), lb[..]);
+    changed: [1] int; changed[0] = 0;
+    down := [5] string.["storage", "cp", ln_text(gs[..]), local, "--quiet"];
+    if pd_gcloud(down[..], cfg) {
+      old_: [1] Pg; old := old_[..];
+      m := fs_read(local, old[0].b[..]);
+      if m < 0 || m >= PG_BIG { tool_err("publish-data: can't read "); tool_errln(local); return EXIT_FAIL; }
+      new_: [1] Pg; nw := new_[..];
+      nn: [1] int;
+      changed[0] = pd_splice(cast(string) old[0].b[0..<m], files[0..<fn], texts[0..<fn], nw[0].b[..], nn[..]);
+      if nn[0] < 0 || !fs_write(local, cast(string) nw[0].b[0..<nn[0]]) { tool_err("publish-data: can't write "); tool_errln(local); return EXIT_FAIL; }
+      up := [9] string.["storage", "cp", local, ln_text(gs[..]), "--content-type", "text/plain; charset=utf-8", "--cache-control", "no-cache", "--quiet"];
+      if !dry && !pd_gcloud(up[..], cfg) { tool_err("publish-data: couldn't write "); tool_errln(ln_text(gs[..])); return EXIT_FAIL; }
+    }
+    l: [1] Ln; ln_s(l[..], "  "); ln_s(l[..], b); ln_s(l[..], ": "); ln_s(l[..], int_text(fn, t[..])); ln_s(l[..], " files, ");
+    ln_s(l[..], int_text(changed[0], t[..])); ln_s(l[..], " llms-full.txt sections"); if dry { ln_s(l[..], " (dry run: nothing written)"); }
+    print("%\n", ln_text(l[..]));
+  }
+  if dry { return EXIT_OK; }
+  // Production answers what was just written.
+  for k: 0..<n {
+    slug := slugs[k];
+    want := pd_line(texts[k + 1], "Snapshot of the project");
+    url: [1] Ln; ln_s(url[..], "https://openagents.com/projects/"); ln_s(url[..], slug); ln_s(url[..], "/index.md");
+    w: [1] HttpWork; body: [HTTP_BODY_MAX] u8;
+    hs := [1] string.["cache-control: no-cache"];
+    res := http_do(w[..], "GET", ln_text(url[..]), hs[..], "", 30000, 0, body[..]);
+    got := ifx res.error == HTTP_OK && res.code < 400 then pd_line(cast(string) body[0..<res.n], "Snapshot of the project") else "";
+    if got != want {
+      tool_err("publish-data: "); tool_err(ln_text(url[..])); tool_err(" answers \""); tool_err(got); tool_err("\", not \""); tool_err(want); tool_errln("\"");
+      return EXIT_FAIL;
+    }
+    ta := pd_index(want, "taken ", 0);
+    rest := ifx ta >= 0 then want[ta + 6..<want.count] else want;
+    fr := pd_index(rest, " from", 0);
+    l: [1] Ln; ln_s(l[..], "publish-data "); ln_s(l[..], slug); ln_s(l[..], ": live on "); ln_s(l[..], ln_text(url[..]));
+    ln_s(l[..], " (snapshot "); ln_s(l[..], ifx fr >= 0 then rest[0..<fr] else rest); ln_s(l[..], ")");
+    print("%\n", ln_text(l[..]));
+  }
+  return EXIT_OK;
+}
+
+// ---- adopt ---------------------------------------------------------------------------
+
+// A string as JSON.stringify writes it.
+pd_json :: (out: [] u8, n: [] int, s: string) {
+  digits := "0123456789abcdef";
+  pd_put(out, n, "\"");
+  for c: s {
+    if c == '"' { pd_put(out, n, "\\\""); } else if c == '\\' { pd_put(out, n, "\\\\"); }
+    else if c == 10 { pd_put(out, n, "\\n"); } else if c == 13 { pd_put(out, n, "\\r"); } else if c == 9 { pd_put(out, n, "\\t"); }
+    else if c == 8 { pd_put(out, n, "\\b"); } else if c == 12 { pd_put(out, n, "\\f"); }
+    else if c < 32 { h := [2] u8.[digits[cast(int) (c >> 4)], digits[cast(int) (c & 15)]]; pd_put(out, n, "\\u00"); pd_put(out, n, cast(string) h[..]); }
+    else { one := [1] u8.[c]; pd_put(out, n, cast(string) one[..]); }
+  }
+  pd_put(out, n, "\"");
+}
+// The body as the API reads it (drops.c's str_of: a '": "' after each name).
+pd_adopt_body :: (slug: string, name: string, key: string, members: [] string, out: [] u8, n: [] int) {
+  n[0] = 0;
+  pd_put(out, n, "{\"slug\": "); pd_json(out, n, slug); pd_put(out, n, ", \"name\": "); pd_json(out, n, name);
+  pd_put(out, n, ", \"key\": "); pd_json(out, n, key); pd_put(out, n, ", \"members\": [");
+  for i: 0..<members.count { if i > 0 { pd_put(out, n, ","); } pd_json(out, n, members[i]); }
+  pd_put(out, n, "]}");
+}
+#test "the adopt body is written as the API reads it" {
+  out: [512] u8; n: [1] int; m := [2] string.["aa", "bb"];
+  pd_adopt_body("x", "The \"X\"\n\t\\", "k", m[..], out[..], n[..]);
+  #assert cast(string) out[0..<n[0]] == "{\"slug\": \"x\", \"name\": \"The \\\"X\\\"\\n\\t\\\\\", \"key\": \"k\", \"members\": [\"aa\",\"bb\"]}";
+  cc := [3] u8.[1, 31, 127];
+  n[0] = 0; pd_json(out[..], n[..], cast(string) cc[..]);
+  #assert n[0] == 15 && cast(string) out[0..<13] == "\"\\u0001\\u001f" && out[13] == 127 && out[14] == '"';
+  pd_adopt_body("x", "", "k", m[0..<0], out[..], n[..]);
+  #assert cast(string) out[0..<n[0]] == "{\"slug\": \"x\", \"name\": \"\", \"key\": \"k\", \"members\": []}";
+}
+project_adopt :: (a: [] Args, r: [] Rep) -> int {
+  slug := positional(a, 2);
+  ok := slug.count >= 1 && slug.count <= 80;
+  for c: slug { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { ok = false; } }
+  if !ok { return fail(r, EXIT_USAGE, "project adopt SLUG [--api URL] [--key FILE]"); }
+  p: [1] Proj;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run it inside the openagents checkout"); }
+  root := pj_root(p[..]);
+  api := args_value(a, "--api", "https://openagents.com");
+  pb: [2048] u8; db: [2048] u8; jb: [2048] u8;
+  dir := fs_join(fs_join(root, "apps/openagents-web/projects", pb[..]), slug, db[..]);
+  cfg_text: [65536] u8;
+  cn := fs_read(fs_join(dir, "project.json", jb[..]), cfg_text[..]);
+  if cn < 0 { return fail(r, EXIT_NOT_FOUND, "no project.json for that slug"); }
+  nodes: [2048] JvNode; d_: [1] Jv;
+  if !jv_parse(d_[..], cast(string) cfg_text[0..<cn], nodes[..]) { return fail(r, EXIT_FAIL, "project.json is not JSON"); }
+  d := d_[0];
+  // the key: --key FILE, or ~/work/.secrets/openagents-project-SLUG.key
+  kb: [2048] u8; hb: [1024] u8; kn: [1] Ln;
+  ln_s(kn[..], "work/.secrets/openagents-project-"); ln_s(kn[..], slug); ln_s(kn[..], ".key");
+  keyfile := args_value(a, "--key", fs_join(home(hb[..]), ln_text(kn[..]), kb[..]));
+  text: [256] u8; key: [32] u8; pk: [64] u8;
+  n := fs_read(keyfile, text[..]);
+  if n <= 0 { return fail(r, EXIT_USAGE, "can't read the project key"); }
+  hex := trimmed(cast(string) text[0..<n]);
+  if hex.count != 64 || hex_decode_checked(hex, key[..], false).error != NC_OK || !pubkey_hex(key[..], pk[..]) { wipe(text[..]); wipe(key[..]); return fail(r, EXIT_USAGE, "the key file is not 64 hex digits of a key"); }
+  want: [128] u8; wn := jv_str(d, jv_get(d, 0, "pubkey"), want[..]);
+  if wn != 64 || cast(string) want[0..<64] != cast(string) pk[..] {
+    wipe(text[..]); wipe(key[..]);
+    tool_err("the key file is not "); tool_err(slug); tool_errln("'s key");
+    return EXIT_FAIL;
+  }
+  // members: the owner, then the maintainers, each 64 hex
+  mb: [8192] u8; mu := 0; members: [33] string; mn := 0;
+  ob: [128] u8; on := jv_str(d, jv_get(d, 0, "owner_pubkey"), ob[..]);
+  if on == 64 && hex_lower(cast(string) ob[0..<64]) { for i: 0..<64 { mb[mu + i] = ob[i]; } members[mn] = cast(string) mb[mu..<mu + 64]; mu += 64; mn += 1; }
+  ms := jv_get(d, 0, "maintainers");
+  e := ifx jv_kind(d, ms) == JV_ARRAY then d.nodes[ms].first else -1;
+  while e != -1 && mn < 33 {
+    vb: [128] u8; vn := jv_str(d, e, vb[..]);
+    if vn == 64 && hex_lower(cast(string) vb[0..<64]) && mu + 64 <= 8192 { for i: 0..<64 { mb[mu + i] = vb[i]; } members[mn] = cast(string) mb[mu..<mu + 64]; mu += 64; mn += 1; }
+    e = d.nodes[e].next;
+  }
+  nb: [4096] u8; nl := jv_str(d, jv_get(d, 0, "name"), nb[..]);
+  bb: [16384] u8; bn: [1] int;
+  pd_adopt_body(slug, ifx nl < 0 then "" else cast(string) nb[0..<nl], hex, members[0..<mn], bb[..], bn[..]);
+  if bn[0] < 0 { wipe(text[..]); wipe(key[..]); wipe(bb[..]); return fail(r, EXIT_FAIL, "project.json's name is too long"); }
+  body := bb[0..<bn[0]];
+  wipe(text[..]);
+  url: [1] Ln; ln_s(url[..], api); ln_s(url[..], "/api/drops/adopt");
+  aux: [32] u8; nonce: [16] u8; auth: [N98S_HEADER + 16] u8;
+  pre := copy("Authorization: ", auth[..]);
+  if cxrand_draw(aux[..], 32) != 0 || cxrand_draw(nonce[..], 16) != 0 { wipe(key[..]); wipe(bb[..]); return fail(r, EXIT_FAIL, "no entropy from the system"); }
+  an := n98s_header(key[..], aux[..], nonce[..], cxcli_now_s(), ln_text(url[..]), "POST", body, true, auth[pre..<auth.count]);
+  wipe(key[..]); wipe(aux[..]);
+  if an < 0 { wipe(bb[..]); return fail(r, EXIT_FAIL, "could not sign the request"); }
+  hs := [2] string.[cast(string) auth[0..<pre + an], "Content-Type: application/json"];
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8;
+  res := http_do(w[..], "POST", ln_text(url[..]), hs[..], cast(string) body, 30000, 0, out[..]);
+  wipe(bb[..]);
+  if res.error != HTTP_OK { return fail(r, EXIT_FAIL, http_error_text(res.error)); }
+  t: [24] u8; l: [1] Pg;
+  pg_s(l[..], int_text(res.code, t[..])); pg_c(l[..], ' '); pg_s(l[..], cast(string) out[0..<res.n]);
+  print("%\n", pg_text(l[..]));
+  return ifx res.code >= 200 && res.code < 300 then EXIT_OK else EXIT_FAIL;
+}
+
+// ---- capture ----------------------------------------------------------------------------
+
+// Text as a Coax string literal's body: backslash, quote, CR, tab and newline escaped.
+pd_lit :: (g: [] Pg, s: string) {
+  for c: s {
+    if c == '\\' { pg_s(g, "\\\\"); } else if c == '"' { pg_s(g, "\\\""); } else if c == 13 { pg_s(g, "\\r"); } else if c == 9 { pg_s(g, "\\t"); }
+    else if c == 10 { pg_s(g, "\\n"); } else { pg_c(g, c); }
+  }
+}
+pd_table :: (g: [] Pg, name: string, s: string) { pg_s(g, name); pg_s(g, " :: \""); pd_lit(g, s); pg_s(g, "\";\n"); }
+// A string's length as JavaScript counts it (UTF-16 code units), for capture's report.
+pd_js_length :: (s: string) -> int {
+  n := 0;
+  for c: s { if (c & 192) != 128 { n += ifx c >= 240 then 2 else 1; } }
+  return n;
+}
+#test "capture counts a frame as JavaScript does" {
+  cc := [6] u8.[195, 169, 240, 159, 152, 128];
+  #assert pd_js_length("abc") == 3 && pd_js_length(cast(string) cc[0..<2]) == 1 && pd_js_length(cast(string) cc[..]) == 3;
+}
+project_capture :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  p[0].public_only = true;
+  bad := pj_open(p[..], a);
+  if bad.count > 0 { pj_close(p[..]); return fail(r, EXIT_USAGE, bad); }
+  slug := pj_slug(p[..]); pk := pj_pk(p[..]); relay := pj_cfg_relay(p[..]);
+  cfg := p[0].cfg[..];
+  name := pc(cfg, cfg[0].name);
+  root := pj_root(p[..]);
+  // the page's own five single-filter REQs (project-live.coax live_req)
+  reqs_: [1] Pg; reqs := reqs_[..]; starts_at: [6] int;
+  starts_at[0] = 0;
+  pg_s(reqs, "[\"REQ\",\"project\",{\"kinds\":[30621,30623],\"authors\":[\""); pg_s(reqs, pk); pg_s(reqs, "\"],\"#d\":[\""); pg_s(reqs, slug); pg_s(reqs, "\"]}]"); starts_at[1] = reqs[0].n;
+  pg_s(reqs, "[\"REQ\",\"issues\",{\"kinds\":[1621],\"authors\":[\""); pg_s(reqs, pk); pg_s(reqs, "\"],\"#a\":[\"30621:"); pg_s(reqs, pk); pg_c(reqs, ':'); pg_s(reqs, slug); pg_s(reqs, "\"]}]"); starts_at[2] = reqs[0].n;
+  pg_s(reqs, "[\"REQ\",\"comments\",{\"kinds\":[1111],\"authors\":[\""); pg_s(reqs, pk); pg_s(reqs, "\"]}]"); starts_at[3] = reqs[0].n;
+  pg_s(reqs, "[\"REQ\",\"status\",{\"kinds\":[1630,1631,1632,1633],\"authors\":[\""); pg_s(reqs, pk); pg_s(reqs, "\"]}]"); starts_at[4] = reqs[0].n;
+  pg_s(reqs, "[\"REQ\",\"repo\",{\"kinds\":[30617],\"authors\":[\""); pg_s(reqs, pk); pg_s(reqs, "\"]}]"); starts_at[5] = reqs[0].n;
+  c_: [1] RelayConn; c := c_[..];
+  if !relay_conn_open(c, pj_url(p[..])) { pj_close(p[..]); tool_err(relay); tool_errln(": unreachable"); return EXIT_FAIL; }
+  for i: 0..<5 {
+    if !relay_conn_send(c, cast(string) reqs[0].b[starts_at[i]..<starts_at[i + 1]]) { ok := relay_conn_close(c, WS_CLOSE_NORMAL); pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: the relay closed"); }
+  }
+  frames_: [1] Pg; frames := frames_[..]; count := 0; ended := 0; bytes := 0;
+  deadline := cxsock_now_ms() + 20000;
+  while ended < 5 {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { ok := relay_conn_close(c, WS_CLOSE_NORMAL); pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: timed out"); }
+    got := relay_conn_poll(c, ifx left < 250 then left else 250);
+    if got == RC_NONE { continue; }
+    if got != RC_TEXT { pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: the relay closed"); }
+    s := cast(string) c[0].text[0..<c[0].text_n];
+    for ch: s { if ch == 10 { ok := relay_conn_close(c, WS_CLOSE_NORMAL); pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: a frame with a raw newline"); } }
+    if count > 0 { pg_c(frames, 10); }
+    pg_s(frames, s); count += 1; bytes += pd_js_length(s);
+    m := nostr_message_read(s);
+    if m.error == NM_OK && m.type == NM_EOSE { ended += 1; }
+  }
+  ok := relay_conn_close(c, WS_CLOSE_NORMAL);
+  if frames[0].bad { pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: the frames are too big"); }
+  fb: [2048] u8; dir := fs_join(root, "coax/lib/nostr/fixtures", fb[..]);
+  up: [80] u8; for i: 0..<slug.count { ch := slug[i]; up[i] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; }
+  NAME := cast(string) up[0..<slug.count];
+  jl_: [1] Pg; jl := jl_[..]; pg_s(jl, pg_text(frames)); pg_c(jl, 10);
+  nb: [1] Ln; ln_s(nb[..], slug); ln_s(nb[..], "_relay.jsonl");
+  pb: [2048] u8;
+  if jl[0].bad || !pg_write(fs_join(dir, ln_text(nb[..]), pb[..]), pg_text(jl)) { pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: can't write the frames"); }
+  cx_: [1] Pg; cx := cx_[..];
+  pg_s(cx, "// Generated by `openagents project capture`: what "); pg_s(cx, relay); pg_s(cx, " sent for the "); pg_s(cx, name); pg_c(cx, 10);
+  pg_s(cx, "// project's five subscriptions, "); ld_utc(cx, cxcli_now_s()); pg_ln(cx, "Z, a frame a line. Do not edit.");
+  pg_s(cx, NAME); pg_s(cx, "_RELAY_FRAMES :: "); pg_i(cx, count); pg_ln(cx, ";");
+  pg_s(cx, NAME); pg_s(cx, "_RELAY :: \""); pd_lit(cx, pg_text(frames)); pg_ln(cx, "\\n\";");
+  ln_s(nb[..], ""); nb[0].n = 0; ln_s(nb[..], slug); ln_s(nb[..], "_relay.coax");
+  if cx[0].bad || !pg_write(fs_join(dir, ln_text(nb[..]), pb[..]), pg_text(cx)) { pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: can't write the frames"); }
+  if args_has(a, "--tables") {
+    // the page's own fold over the same frames: what project-checks.coax compares
+    g_: [1] PgSnap; g := g_[..];
+    s := g[0].s[..]; f := g[0].f[..]; t := g[0].t[..];
+    text := pg_text(frames); i := 0;
+    while i < text.count {
+      e := i; while e < text.count && text[e] != 10 { e += 1; }
+      fr := read_frame(s, text[i..<e], pk);
+      i = e + 1;
+    }
+    fold(s, f, slug); write_tables(s, f, t);
+    tt_: [1] Pg; tt := tt_[..];
+    pg_s(tt, "// Generated by `openagents project capture --tables`: the page's fold (project-fold.coax)\n// over "); pg_s(tt, slug); pg_ln(tt, "_relay.coax's events. Do not edit.");
+    nm: [1] Ln;
+    nm[0].n = 0; ln_s(nm[..], NAME); ln_s(nm[..], "_RELAY_ITEMS"); pd_table(tt, ln_text(nm[..]), cast(string) t[0].items[0..<t[0].items_n]);
+    nm[0].n = 0; ln_s(nm[..], NAME); ln_s(nm[..], "_RELAY_LOG"); pd_table(tt, ln_text(nm[..]), cast(string) t[0].log[0..<t[0].log_n]);
+    nm[0].n = 0; ln_s(nm[..], NAME); ln_s(nm[..], "_RELAY_PLANS"); pd_table(tt, ln_text(nm[..]), cast(string) t[0].plans[0..<t[0].plans_n]);
+    nm[0].n = 0; ln_s(nm[..], NAME); ln_s(nm[..], "_RELAY_PLAN_INFO"); pd_table(tt, ln_text(nm[..]), cast(string) t[0].info[0..<t[0].info_n]);
+    nm[0].n = 0; ln_s(nm[..], NAME); ln_s(nm[..], "_RELAY_DETAILS"); pd_table(tt, ln_text(nm[..]), cast(string) t[0].details[0..<t[0].details_n]);
+    nb[0].n = 0; ln_s(nb[..], slug); ln_s(nb[..], "_relay_tables.coax");
+    if tt[0].bad || !pg_write(fs_join(dir, ln_text(nb[..]), pb[..]), pg_text(tt)) { pj_close(p[..]); return fail(r, EXIT_FAIL, "capture: can't write the tables"); }
+  }
+  pj_close(p[..]);
+  t2: [24] u8; l: [1] Ln;
+  ln_s(l[..], "capture: "); ln_s(l[..], int_text(count, t2[..])); ln_s(l[..], " frames, "); ln_s(l[..], int_text(bytes, t2[..])); ln_s(l[..], " bytes");
+  print("%\n", ln_text(l[..]));
+  return EXIT_OK;
+}
