@@ -1,0 +1,25 @@
+// Helpers and data for nip66.coax's checks. They live here so that mutation
+// of nip66.coax changes the library, not the checks.
+// NIP-66's two examples' tags, copied verbatim (whitespace removed). The
+// 10166 example is missing the comma before its g tag, so it is not JSON;
+// N66_T_MONITOR_FIXED adds that one comma.
+N66_T_RELAY :: "[[\"d\",\"wss://some.relay/\"],[\"n\",\"clearnet\"],[\"N\",\"40\"],[\"N\",\"33\"],[\"R\",\"!payment\"],[\"R\",\"auth\"],[\"g\",\"ww8p1r4t8\"],[\"l\",\"en\",\"ISO-639-1\"],[\"t\",\"nsfw\"],[\"rtt-open\",\"234\"]]";
+N66_T_MONITOR :: "[[\"timeout\",\"open\",\"5000\"],[\"timeout\",\"read\",\"3000\"],[\"timeout\",\"write\",\"3000\"],[\"timeout\",\"nip11\",\"3000\"],[\"frequency\",\"3600\"],[\"c\",\"ws\"],[\"c\",\"nip11\"],[\"c\",\"ssl\"],[\"c\",\"dns\"],[\"c\",\"geo\"][\"g\",\"ww8p1r4t8\"]]";
+N66_T_MONITOR_FIXED :: "[[\"timeout\",\"open\",\"5000\"],[\"timeout\",\"read\",\"3000\"],[\"timeout\",\"write\",\"3000\"],[\"timeout\",\"nip11\",\"3000\"],[\"frequency\",\"3600\"],[\"c\",\"ws\"],[\"c\",\"nip11\"],[\"c\",\"ssl\"],[\"c\",\"dns\"],[\"c\",\"geo\"],[\"g\",\"ww8p1r4t8\"]]";
+// A verified event of this kind by the key of 32 bytes a, at time at.
+n66_ev :: (kind:int,a:u8,at:int,tags:string)->NostrEvent {
+  e:=n32_at(n32_event(kind,tags),a,a);e.verified=true;e.created_at=at;return e;
+}
+n66_k :: (b:u8)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=b;}return k;}
+n66_text ::(s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+n66_rtt :: (tags:string)->int {return n66_read_relay(n66_ev(30166,1,0,tags)).rtt[0];}
+n66_status :: (tags:string)->int {return n66_read_relay(n66_ev(30166,1,0,tags)).status;}
+n66_mstatus :: (tags:string)->int {return n66_read_monitor(n66_ev(10166,1,0,tags)).status;}
+// The status of an event of this kind whose tags are head, then n bytes
+// of x, then "]].
+n66_long :: (kind:int,head:string,n:int)->int {
+  buf:[400]u8;k:=json_raw(buf[..],0,head);for i:0..<n {buf[k]='x';k+=1;}k=json_raw(buf[..],k,"\"]]");
+  e:=n66_ev(kind,1,0,cast(string)buf[0..<k]);
+  return ifx kind==30166 then n66_read_relay(e).status else n66_read_monitor(e).status;
+}
+n66_wrote ::(n:int,out:[]u8,s:string)->bool {return n==s.count && cast(string)out[0..<n]==s;}

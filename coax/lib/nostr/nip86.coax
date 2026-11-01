@@ -1,0 +1,473 @@
+// NIP-86 relay management, the relay's side: one HTTP request in, one
+// HTTP status and JSON reply out, and the policy that relay admission
+// consults. A management request is a POST with Content-Type
+// application/nostr+json+rpc whose body is {"method": ..., "params": [...]}
+// and whose Authorization header is a NIP-98 event (chapter 49) with the
+// payload tag required. n86_serve refuses, in this order:
+//
+// - another Content-Type (415) or another HTTP method (405);
+// - an Authorization that nip98_check_coax refuses: not base64, a bad
+//   event, ID or signature, not kind 27235, outside 60 s, another u, method
+//   or body (401);
+// - a valid event without a payload tag, so the body is not bound (401);
+// - a signer that is not one of the relay's admin keys (403);
+// - an event ID already used (401), or a full list of used IDs (503).
+//
+// Only then is the body read. The event ID is used up even when the body
+// then refuses. A body that is not one request object refuses as 400, an
+// unknown method or wrong params as 400, a full list as 503.
+//
+// The methods built are supportedmethods, banpubkey, unbanpubkey,
+// listbannedpubkeys, allowpubkey, unallowpubkey, listallowedpubkeys,
+// banevent, unbanevent, listbannedevents, allowkind, disallowkind,
+// listallowedkinds, listdisallowedkinds and changerelayname. Banning a key
+// takes it off the allow list and allowing takes it off the ban list, as
+// NIP-86 says; allowkind and disallowkind do the same for kinds (this
+// relay's choice). Roles, claims, IP blocks, event allow lists and
+// moderation queues are not built and refuse as unknown methods.
+//
+// The relay URL compared with the u tag, the clock and the admin keys are
+// the caller's. Storing the policy and wiring n86_admit into the relay's
+// EVENT path are the relay's.
+#load "event.coax";
+#load "../../web/api/nip98.coax";
+#load "../../tests/nostr/nip86_fixtures.coax";
+#authority;
+
+N86_OK :: 0; N86_CONTENT_TYPE :: 1; N86_HTTP_METHOD :: 2; N86_AUTH :: 3; N86_NO_PAYLOAD :: 4;
+N86_NOT_ADMIN :: 5; N86_REPLAYED :: 6; N86_SEEN_FULL :: 7; N86_JSON :: 8; N86_UNKNOWN :: 9;
+N86_PARAMS :: 10; N86_LIST_FULL :: 11;
+N86_STATUS :: [12]int.[200,415,405,401,401,403,401,503,400,400,400,503];
+N86_TEXT :: [12]string.["ok","Content-Type is not application/nostr+json+rpc","not a POST",
+  "unauthorized","the NIP-98 event has no payload tag","not an admin key","event id already used",
+  "too many event ids in the window","not a request object","unknown method","invalid params","the list is full"];
+N86_TYPE :: "application/nostr+json+rpc";
+N86_MAX_LIST :: 8; N86_MAX_TEXT :: 64; N86_MAX_ADMINS :: 4; N86_SEEN :: 8; N86_MOST_PARAMS :: 4;
+N86_OUT :: 4096;
+
+// book:begin methods
+N86_METHODS :: [15]string.["supportedmethods","banpubkey","unbanpubkey","listbannedpubkeys",
+  "allowpubkey","unallowpubkey","listallowedpubkeys","banevent","unbanevent","listbannedevents",
+  "allowkind","disallowkind","listallowedkinds","listdisallowedkinds","changerelayname"];
+// The params each method takes: 0 none, 1 a 64-digit hex key or id and an
+// optional reason, 2 one kind number from 0 to 65535, 3 one string.
+N86_SHAPES :: [15]int.[0,1,1,0,1,1,0,1,1,0,2,2,0,0,3];
+// book:end methods
+
+// book:begin policy
+N86Text :: struct {b:[N86_MAX_TEXT]u8; n:int;}
+N86Entry :: struct {key:[32]u8; reason:N86Text;}
+N86List :: struct {e:[N86_MAX_LIST]N86Entry; n:int;}
+N86Kinds :: struct {k:[N86_MAX_LIST]int; n:int;}
+// The relay's management state: who may call, the lists admission
+// consults, the relay's name, and the NIP-98 event IDs already used.
+N86Policy :: struct {
+  admins:[N86_MAX_ADMINS][32]u8; admins_n:int;
+  banned:N86List; allowed:N86List; banned_events:N86List;
+  allowed_kinds:N86Kinds; disallowed_kinds:N86Kinds;
+  name:N86Text;
+  seen:[N86_SEEN][64]u8; seen_n:int;
+}
+// book:end policy
+N86Param :: struct {is_text:bool; text:N86Text; number:int;}
+N86Request :: struct {error:int=N86_JSON; method:int=-1; n:int; p:[N86_MOST_PARAMS]N86Param;}
+// http: the status; code: an N86_ code; detail: the N98_ code when code is
+// N86_AUTH; n: the reply body's length in out.
+N86Reply :: struct {http:int; code:int; detail:int; n:int;}
+
+n86_rfail :: (r:N86Request,error:int)->N86Request {o:=r;o.error=error;return o;}
+// A 64-digit lowercase hex key or id from a param, into out.
+n86_key :: (t:N86Text,out:[]u8)->bool {c:=t;return ne_lower_hex(cast(string)c.b[0..<c.n],out);}
+n86_hex :: (b:[32]u8,out:[]u8)->string {
+  d:="0123456789abcdef";
+  for i:0..<32 {out[2*i]=d[b[i]>>4];out[2*i+1]=d[b[i]&15];}
+  return cast(string)out[0..<64];
+}
+// ASCII letters compared without case, for the Content-Type's media type.
+n86_same_fold :: (a:string,b:string)->bool {
+  if a.count!=b.count {return false;}
+  for i:0..<a.count {
+    x:=a[i];if x>='A' && x<='Z' {x+=32;}
+    if x!=b[i] {return false;}
+  }
+  return true;
+}
+
+// book:begin request
+// The body as one request: the method's index and its params, checked
+// against the method's shape. Other keys are skipped.
+n86_request :: (body:string)->N86Request {
+  r:N86Request;j:[1]Json;json_start(j[..],body);has_method:=false;has_params:=false;
+  if json_next(j[..])!=JSON_OBJECT {return r;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);raw:=json_text(j[..]);
+    if json_is(key,"method") {
+      if has_method || v!=JSON_STRING {return r;}
+      has_method=true;
+      for k:0..<N86_METHODS.count {if json_is(raw,N86_METHODS[k]) {r.method=k;}}
+    } else if json_is(key,"params") {
+      if has_params || v!=JSON_ARRAY {return r;}
+      has_params=true;u:=json_next(j[..]);
+      while u!=JSON_ARRAY_END {
+        if u==JSON_ERROR {return r;}
+        if r.n==N86_MOST_PARAMS {return n86_rfail(r,N86_PARAMS);}
+        if u==JSON_STRING {
+          m:=json_unescape(json_text(j[..]),r.p[r.n].text.b[..]);
+          if m<0 {return n86_rfail(r,N86_PARAMS);}
+          r.p[r.n].text.n=m;r.p[r.n].is_text=true;
+        } else if u==JSON_NUMBER {
+          x:=json_int(json_text(j[..]));
+          if !x.ok {return n86_rfail(r,N86_PARAMS);}
+          r.p[r.n].number=x.value;
+        } else {return n86_rfail(r,N86_PARAMS);}
+        r.n+=1;u=json_next(j[..]);
+      }
+    } else if !json_skip(j[..]) {return r;}
+    t=json_next(j[..]);
+  }
+  if t!=JSON_OBJECT_END || json_next(j[..])!=JSON_END || !has_method || !has_params {return r;}
+  if r.method<0 {return n86_rfail(r,N86_UNKNOWN);}
+  if !n86_shape_ok(r) {return n86_rfail(r,N86_PARAMS);}
+  return n86_rfail(r,N86_OK);
+}
+// book:end request
+n86_shape_ok :: (r:N86Request)->bool {
+  s:=N86_SHAPES[r.method];
+  if s==0 {return r.n==0;}
+  if s==2 {return r.n==1 && !r.p[0].is_text && r.p[0].number>=0 && r.p[0].number<=65535;}
+  if s==3 {return r.n==1 && r.p[0].is_text;}
+  if r.n<1 || r.n>2 || !r.p[0].is_text || (r.n==2 && !r.p[1].is_text) {return false;}
+  key:[32]u8;return n86_key(r.p[0].text,key[..]);
+}
+
+// ---- the lists
+n86_find :: (l:N86List,key:[32]u8)->int {
+  c:=l;
+  k:=key;for i:0..<c.n {if cast(string)c.e[i].key[..]==cast(string)k[..] {return i;}}
+  return -1;
+}
+// Full: key is not listed and there is no room for it.
+n86_full :: (l:N86List,key:[32]u8)->bool {return n86_find(l,key)<0 && l.n==N86_MAX_LIST;}
+// l with key added with reason, or with the reason of a key already listed
+// replaced; l itself when it is full.
+n86_add :: (l:N86List,key:[32]u8,reason:N86Text)->N86List {
+  r:=l;i:=n86_find(r,key);
+  if i<0 {if n86_full(r,key) {return r;}i=r.n;r.n+=1;r.e[i].key=key;}
+  r.e[i].reason=reason;return r;
+}
+// l without key; the order of the others is kept.
+n86_remove :: (l:N86List,key:[32]u8)->N86List {
+  r:=l;i:=n86_find(r,key);if i<0 {return r;}
+  for k:i..<r.n-1 {r.e[k]=r.e[k+1];}
+  r.n-=1;r.e[r.n]=N86Entry.{};return r;
+}
+n86_kind_at :: (l:N86Kinds,kind:int)->int {c:=l;for i:0..<c.n {if c.k[i]==kind {return i;}}return -1;}
+n86_kind_full :: (l:N86Kinds,kind:int)->bool {return n86_kind_at(l,kind)<0 && l.n==N86_MAX_LIST;}
+n86_kind_add :: (l:N86Kinds,kind:int)->N86Kinds {
+  r:=l;if !n86_kind_full(r,kind) && n86_kind_at(r,kind)<0 {r.k[r.n]=kind;r.n+=1;}return r;
+}
+n86_kind_remove :: (l:N86Kinds,kind:int)->N86Kinds {
+  r:=l;i:=n86_kind_at(r,kind);if i<0 {return r;}
+  for k:i..<r.n-1 {r.k[k]=r.k[k+1];}
+  r.n-=1;r.k[r.n]=0;return r;
+}
+
+// ---- the replies
+// {"result":null,"error":"<text>"}.
+n86_fail :: (code:int,out:[]u8)->N86Reply {
+  n:=json_raw(out,0,"{\"result\":null,\"error\":\"");n=json_raw(out,n,N86_TEXT[code]);
+  return N86Reply.{http=N86_STATUS[code],code=code,n=json_raw(out,n,"\"}")};
+}
+// A NIP-98 refusal, with the check that refused after a colon.
+n86_unauthorized :: (detail:int,out:[]u8)->N86Reply {
+  n:=json_raw(out,0,"{\"result\":null,\"error\":\"unauthorized: ");n=json_raw(out,n,nip98_error_text(detail));
+  return N86Reply.{http=401,code=N86_AUTH,detail=detail,n=json_raw(out,n,"\"}")};
+}
+n86_write_list :: (out:[]u8,at:int,l:N86List,field:string)->int {
+  c:=l;n:=json_raw(out,at,"[");hex:[64]u8;
+  for i:0..<c.n {
+    if i>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"{\"");n=json_raw(out,n,field);n=json_raw(out,n,"\":\"");
+    n=json_raw(out,n,n86_hex(c.e[i].key,hex[..]));n=json_raw(out,n,"\"");
+    if c.e[i].reason.n>0 {rs:=c.e[i].reason;n=json_raw(out,n,",\"reason\":");n=json_write_string(out,n,cast(string)rs.b[0..<rs.n]);}
+    n=json_raw(out,n,"}");
+  }
+  return json_raw(out,n,"]");
+}
+n86_write_kinds :: (out:[]u8,at:int,l:N86Kinds)->int {
+  c:=l;n:=json_raw(out,at,"[");
+  for i:0..<c.n {if i>0 {n=json_raw(out,n,",");}n=json_write_int(out,n,c.k[i]);}
+  return json_raw(out,n,"]");
+}
+
+// book:begin dispatch
+// Apply one read request to the policy and write its reply. A refused
+// request changes nothing.
+n86_dispatch :: (p:[]N86Policy,r:N86Request,out:[]u8)->N86Reply {
+  if r.error!=N86_OK {return n86_fail(r.error,out);}
+  m:=r.method;key:[32]u8;
+  if N86_SHAPES[m]==1 {decoded:=n86_key(r.p[0].text,key[..]);}
+  reason:N86Text;if r.n==2 {reason=r.p[1].text;}
+  kind:=r.p[0].number;
+  n:=json_raw(out,0,"{\"result\":");
+  if m==0 {
+    n=json_raw(out,n,"[");
+    for k:1..<N86_METHODS.count {if k>1 {n=json_raw(out,n,",");}n=json_write_string(out,n,N86_METHODS[k]);}
+    n=json_raw(out,n,"]");
+  }
+  else if m==3 {n=n86_write_list(out,n,p[0].banned,"pubkey");}
+  else if m==6 {n=n86_write_list(out,n,p[0].allowed,"pubkey");}
+  else if m==9 {n=n86_write_list(out,n,p[0].banned_events,"id");}
+  else if m==12 {n=n86_write_kinds(out,n,p[0].allowed_kinds);}
+  else if m==13 {n=n86_write_kinds(out,n,p[0].disallowed_kinds);}
+  else {
+    full:=false;q:=p[0];
+    if m==1 {full=n86_full(q.banned,key);q.banned=n86_add(q.banned,key,reason);q.allowed=n86_remove(q.allowed,key);}
+    else if m==2 {q.banned=n86_remove(q.banned,key);}
+    else if m==4 {full=n86_full(q.allowed,key);q.allowed=n86_add(q.allowed,key,reason);q.banned=n86_remove(q.banned,key);}
+    else if m==5 {q.allowed=n86_remove(q.allowed,key);}
+    else if m==7 {full=n86_full(q.banned_events,key);q.banned_events=n86_add(q.banned_events,key,reason);}
+    else if m==8 {q.banned_events=n86_remove(q.banned_events,key);}
+    else if m==10 {full=n86_kind_full(q.allowed_kinds,kind);q.allowed_kinds=n86_kind_add(q.allowed_kinds,kind);q.disallowed_kinds=n86_kind_remove(q.disallowed_kinds,kind);}
+    else if m==11 {full=n86_kind_full(q.disallowed_kinds,kind);q.disallowed_kinds=n86_kind_add(q.disallowed_kinds,kind);q.allowed_kinds=n86_kind_remove(q.allowed_kinds,kind);}
+    else {q.name=r.p[0].text;}
+    // A full list refuses before q is stored, so nothing changes.
+    if full {return n86_fail(N86_LIST_FULL,out);}
+    p[0]=q;n=json_raw(out,n,"true");
+  }
+  return N86Reply.{http=200,code=N86_OK,n=json_raw(out,n,"}")};
+}
+// book:end dispatch
+
+// book:begin serve
+// The whole management endpoint for one HTTP request.
+n86_serve :: (p:[]N86Policy,http_method:string,content_type:string,authorization:string,
+              url:string,body:[]u8,now:int,out:[]u8)->N86Reply {
+  if !n86_same_fold(content_type,N86_TYPE) {return n86_fail(N86_CONTENT_TYPE,out);}
+  if http_method!="POST" {return n86_fail(N86_HTTP_METHOD,out);}
+  work:[N98_WORK]u8;a:[N98_OUT]u8;
+  v:=nip98_check_coax(authorization,"POST",url,body,now,work[..],a[..]);
+  if v.error!=N98_OK {return n86_unauthorized(v.error,out);}
+  if v.payload==0 {return n86_fail(N86_NO_PAYLOAD,out);}
+  // a holds the event id and the signer's pubkey as lowercase hex.
+  id:=cast(string)a[0..<64];signer:=cast(string)a[64..<128];
+  admin:=false;hex:[64]u8;
+  for i:0..<p[0].admins_n {if n86_hex(p[0].admins[i],hex[..])==signer {admin=true;}}
+  if !admin {return n86_fail(N86_NOT_ADMIN,out);}
+  for i:0..<p[0].seen_n {if cast(string)p[0].seen[i][..]==id {return n86_fail(N86_REPLAYED,out);}}
+  if p[0].seen_n==N86_SEEN {return n86_fail(N86_SEEN_FULL,out);}
+  for i:0..<64 {p[0].seen[p[0].seen_n][i]=a[i];}
+  p[0].seen_n+=1;
+  return n86_dispatch(p,n86_request(cast(string)body),out);
+}
+// book:end serve
+
+// book:begin admit
+// What relay admission asks of the policy for one event: N86_ADMIT_OK or
+// the first rule that refuses it. A non-empty allow list admits only its
+// keys; a non-empty allowed-kinds list admits only its kinds.
+N86_ADMIT_OK :: 0; N86_ADMIT_BANNED :: 1; N86_ADMIT_NOT_ALLOWED :: 2;
+N86_ADMIT_EVENT :: 3; N86_ADMIT_KIND :: 4; N86_ADMIT_KIND_NOT_ALLOWED :: 5;
+n86_admit :: (p:N86Policy,pubkey:[32]u8,id:[32]u8,kind:int)->int {
+  if n86_find(p.banned,pubkey)>=0 {return N86_ADMIT_BANNED;}
+  if p.allowed.n>0 && n86_find(p.allowed,pubkey)<0 {return N86_ADMIT_NOT_ALLOWED;}
+  if n86_find(p.banned_events,id)>=0 {return N86_ADMIT_EVENT;}
+  if n86_kind_at(p.disallowed_kinds,kind)>=0 {return N86_ADMIT_KIND;}
+  if p.allowed_kinds.n>0 && n86_kind_at(p.allowed_kinds,kind)<0 {return N86_ADMIT_KIND_NOT_ALLOWED;}
+  return N86_ADMIT_OK;
+}
+// book:end admit
+
+// ---- checks (helpers and Python-signed headers in coax/tests/nostr/nip86_fixtures.coax)
+#test "the request reader: methods, params and shapes" {
+  r:=n86_request(N86_T_BAN_BODY);
+  #assert r.error==N86_OK && r.method==1 && r.n==2 && r.p[0].is_text && n86_is(r.p[1].text,"spam");
+  r=n86_request("{\"params\":[1],\"id\":\"x\",\"method\":\"allowkind\"}");
+  #assert r.error==N86_OK && r.method==10 && r.n==1 && !r.p[0].is_text && r.p[0].number==1;
+  #assert n86_request("{\"method\":\"supportedmethods\",\"params\":[]}").error==N86_OK;
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[\"a\\\"b\"]}").p[0].text.n==3;
+  // Not one request object.
+  bad:=[11]string.["","[]","{}","{\"method\":\"banpubkey\"}","{\"params\":[]}","{\"method\":1,\"params\":[]}",
+    "{\"method\":\"supportedmethods\",\"params\":{}}","{\"method\":\"supportedmethods\",\"params\":[]} x",
+    "{\"method\":\"supportedmethods\",\"method\":\"supportedmethods\",\"params\":[]}",
+    "{\"method\":\"supportedmethods\",\"params\":[],\"params\":[]}","{\"method\":\"supportedmethods\",\"params\":[,]}"];
+  for b:bad {#assert n86_request(b).error==N86_JSON;}
+  #assert n86_request("{\"method\":\"supportedmethods\",\"params\":[],\"x\":{\"y\":[1,}}").error==N86_JSON;
+  #assert n86_request("{\"method\":\"supportedmethods\",\"params\":[],\"x\":{\"y\":[1]}}").error==N86_OK;
+  #assert n86_request("{\"method\":\"Banpubkey\",\"params\":[]}").error==N86_UNKNOWN;
+  #assert n86_request("{\"method\":\"createclaim\",\"params\":[\"x\"]}").error==N86_UNKNOWN;
+  // Wrong params for the method; % stands for Mallory's key.
+  params:=[13]string.["[\"x\"]","[]","[\"%\",\"a\",\"b\"]","[1]","[\"%\",2]","[true]",
+    "[\"F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9\"]","[\"f9308a\"]",
+    "[\"%\",\"a\",\"b\",\"c\",\"d\"]","[1.5]","[-1]","[65536]","[{}]"];
+  methods:=[13]string.["supportedmethods","banpubkey","banpubkey","banpubkey","banpubkey","banpubkey",
+    "banpubkey","banpubkey","banpubkey","allowkind","allowkind","disallowkind","allowkind"];
+  for i:0..<13 {
+    buf:[400]u8;n:=json_raw(buf[..],0,"{\"method\":\"");n=json_raw(buf[..],n,methods[i]);n=json_raw(buf[..],n,"\",\"params\":");
+    for c:params[i] {if c=='%' {n=json_raw(buf[..],n,N86_T_MALLORY);} else {buf[n]=c;n+=1;}}
+    n=json_raw(buf[..],n,"}");
+    #assert n86_request(cast(string)buf[0..<n]).error==N86_PARAMS;
+  }
+  #assert n86_request("{\"method\":\"allowkind\",\"params\":[65535]}").error==N86_OK;
+  #assert n86_request("{\"method\":\"allowkind\",\"params\":[0]}").error==N86_OK;
+  #assert n86_request("{\"method\":\"allowkind\",\"params\":[\"1\"]}").error==N86_PARAMS;
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[\"\"]}").error==N86_OK;
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[1]}").error==N86_PARAMS;
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[]}").error==N86_PARAMS;
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[\"a\",\"b\"]}").error==N86_PARAMS;
+  // A 64-byte name fits; 65 bytes do not.
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[\"0123456789012345678901234567890123456789012345678901234567890123\"]}").error==N86_OK;
+  #assert n86_request("{\"method\":\"changerelayname\",\"params\":[\"01234567890123456789012345678901234567890123456789012345678901234\"]}").error==N86_PARAMS;
+}
+#test "ban, allow, list: each call and its reply" {
+  p:=[1]N86Policy.[n86_policy()];
+  #assert n86_call(p[..],N86_T_BAN_BODY,"{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],N86_T_LIST_BODY,"{\"result\":[{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"reason\":\"spam\"}]}")==N86_OK;
+  // Banning again replaces the reason; an empty reason is not written.
+  #assert n86_call(p[..],"{\"method\":\"banpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],N86_T_LIST_BODY,"{\"result\":[{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"}]}")==N86_OK;
+  #assert p[0].banned.n==1;
+  // Allowing takes the key off the ban list, and banning off the allow list.
+  #assert n86_call(p[..],"{\"method\":\"allowpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"a\\nb\"]}","{\"result\":true}")==N86_OK;
+  #assert p[0].banned.n==0 && p[0].allowed.n==1;
+  #assert n86_call(p[..],"{\"method\":\"listallowedpubkeys\",\"params\":[]}","{\"result\":[{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"reason\":\"a\\nb\"}]}")==N86_OK;
+  #assert n86_call(p[..],N86_T_BAN_BODY,"{\"result\":true}")==N86_OK;
+  #assert p[0].banned.n==1 && p[0].allowed.n==0;
+  // Unban does not allow; unallow does not ban; removing an absent key is true.
+  #assert n86_call(p[..],N86_T_MAL_BODY,"{\"result\":true}")==N86_OK && p[0].banned.n==0 && p[0].allowed.n==0;
+  #assert n86_call(p[..],N86_T_MAL_BODY,"{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"allowpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"unallowpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]}","{\"result\":true}")==N86_OK;
+  #assert p[0].banned.n==0 && p[0].allowed.n==0;
+  #assert n86_call(p[..],"{\"method\":\"listallowedpubkeys\",\"params\":[]}","{\"result\":[]}")==N86_OK;
+  // Events.
+  #assert n86_call(p[..],"{\"method\":\"banevent\",\"params\":[\"0101010101010101010101010101010101010101010101010101010101010101\",\"x\"]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"banevent\",\"params\":[\"0202020202020202020202020202020202020202020202020202020202020202\"]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listbannedevents\",\"params\":[]}","{\"result\":[{\"id\":\"0101010101010101010101010101010101010101010101010101010101010101\",\"reason\":\"x\"},{\"id\":\"0202020202020202020202020202020202020202020202020202020202020202\"}]}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"unbanevent\",\"params\":[\"0101010101010101010101010101010101010101010101010101010101010101\"]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listbannedevents\",\"params\":[]}","{\"result\":[{\"id\":\"0202020202020202020202020202020202020202020202020202020202020202\"}]}")==N86_OK;
+  #assert p[0].banned_events.n==1 && p[0].banned_events.e[1].key[0]==0;
+  // Kinds: allowing takes a kind off the disallowed list and the reverse.
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[1]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[7]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[1]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listallowedkinds\",\"params\":[]}","{\"result\":[1,7]}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"disallowkind\",\"params\":[1]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listallowedkinds\",\"params\":[]}","{\"result\":[7]}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listdisallowedkinds\",\"params\":[]}","{\"result\":[1]}")==N86_OK;
+  #assert p[0].allowed_kinds.k[1]==0;
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[1]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listdisallowedkinds\",\"params\":[]}","{\"result\":[]}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"listallowedkinds\",\"params\":[]}","{\"result\":[7,1]}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"changerelayname\",\"params\":[\"Coax relay\"]}","{\"result\":true}")==N86_OK;
+  #assert n86_is(p[0].name,"Coax relay");
+  #assert n86_call(p[..],"{\"method\":\"supportedmethods\",\"params\":[]}","{\"result\":[\"banpubkey\",\"unbanpubkey\",\"listbannedpubkeys\",\"allowpubkey\",\"unallowpubkey\",\"listallowedpubkeys\",\"banevent\",\"unbanevent\",\"listbannedevents\",\"allowkind\",\"disallowkind\",\"listallowedkinds\",\"listdisallowedkinds\",\"changerelayname\"]}")==N86_OK;
+  // Refusals change nothing.
+  #assert n86_call(p[..],"{\"method\":\"deleterole\",\"params\":[\"x\"]}","{\"result\":null,\"error\":\"unknown method\"}")==N86_UNKNOWN;
+  #assert n86_call(p[..],"{\"method\":\"banpubkey\",\"params\":[]}","{\"result\":null,\"error\":\"invalid params\"}")==N86_PARAMS;
+  #assert n86_call(p[..],"nope","{\"result\":null,\"error\":\"not a request object\"}")==N86_JSON;
+}
+#test "a full list refuses and changes nothing" {
+  p:=[1]N86Policy.[n86_policy()];
+  for i:0..<N86_MAX_LIST {
+    b:=n86_b(cast(u8)(i+1));q:=p[0];
+    p[0].banned=n86_add(q.banned,b,q.name);
+    p[0].banned_events=n86_add(q.banned_events,b,q.name);
+    p[0].allowed_kinds=n86_kind_add(q.allowed_kinds,i+100);
+    p[0].disallowed_kinds=n86_kind_add(q.disallowed_kinds,i+200);
+  }
+  #assert p[0].banned.n==8 && n86_full(p[0].banned,n86_k(N86_T_MALLORY)) && !n86_full(p[0].banned,n86_b(3));
+  #assert n86_call(p[..],N86_T_BAN_BODY,"{\"result\":null,\"error\":\"the list is full\"}")==N86_LIST_FULL;
+  #assert n86_call(p[..],"{\"method\":\"banevent\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]}","{\"result\":null,\"error\":\"the list is full\"}")==N86_LIST_FULL;
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[1]}","{\"result\":null,\"error\":\"the list is full\"}")==N86_LIST_FULL;
+  #assert n86_call(p[..],"{\"method\":\"disallowkind\",\"params\":[1]}","{\"result\":null,\"error\":\"the list is full\"}")==N86_LIST_FULL;
+  #assert p[0].banned.n==8 && p[0].banned_events.n==8 && p[0].allowed_kinds.n==8 && p[0].disallowed_kinds.n==8;
+  #assert n86_find(p[0].banned,n86_k(N86_T_MALLORY))<0 && n86_kind_at(p[0].allowed_kinds,1)<0;
+  #assert n86_find(p[0].banned_events,n86_k(N86_T_MALLORY))<0 && n86_kind_at(p[0].disallowed_kinds,1)<0;
+  // An entry already listed still updates; allowing a member of a full list moves it.
+  #assert n86_call(p[..],"{\"method\":\"banpubkey\",\"params\":[\"0303030303030303030303030303030303030303030303030303030303030303\",\"r\"]}","{\"result\":true}")==N86_OK;
+  #assert p[0].banned.n==8 && n86_is(p[0].banned.e[2].reason,"r");
+  #assert n86_call(p[..],"{\"method\":\"banpubkey\",\"params\":[\"0101010101010101010101010101010101010101010101010101010101010101\",\"s\"]}","{\"result\":true}")==N86_OK;
+  #assert p[0].banned.n==8 && n86_is(p[0].banned.e[0].reason,"s");
+  // A full allow list refuses too.
+  q:=p[0];for i:0..<N86_MAX_LIST {q.allowed=n86_add(q.allowed,n86_b(cast(u8)(i+0x41)),q.name);}
+  s:=[1]N86Policy.[q];
+  #assert n86_call(s[..],N86_T_BAN_BODY,"{\"result\":null,\"error\":\"the list is full\"}")==N86_LIST_FULL;
+  #assert n86_call(s[..],"{\"method\":\"allowpubkey\",\"params\":[\"0101010101010101010101010101010101010101010101010101010101010101\"]}","{\"result\":null,\"error\":\"the list is full\"}")==N86_LIST_FULL;
+  #assert s[0].banned.n==8 && s[0].allowed.n==8;
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[100]}","{\"result\":true}")==N86_OK;
+  #assert n86_call(p[..],"{\"method\":\"disallowkind\",\"params\":[200]}","{\"result\":true}")==N86_OK;
+  #assert p[0].disallowed_kinds.n==8 && p[0].allowed_kinds.n==8;
+  // A kind moves between the lists when the other has room.
+  p[0].allowed_kinds.n=7;
+  #assert n86_call(p[..],"{\"method\":\"allowkind\",\"params\":[203]}","{\"result\":true}")==N86_OK;
+  #assert p[0].allowed_kinds.n==8 && p[0].allowed_kinds.k[7]==203 && p[0].disallowed_kinds.n==7 && p[0].disallowed_kinds.k[3]==204;
+  #assert n86_call(p[..],"{\"method\":\"disallowkind\",\"params\":[101]}","{\"result\":true}")==N86_OK;
+  #assert p[0].allowed_kinds.n==7 && p[0].disallowed_kinds.n==8 && p[0].disallowed_kinds.k[7]==101;
+  #assert n86_call(p[..],"{\"method\":\"allowpubkey\",\"params\":[\"0808080808080808080808080808080808080808080808080808080808080808\"]}","{\"result\":true}")==N86_OK;
+  #assert p[0].banned.n==7 && p[0].allowed.n==1 && p[0].banned.e[6].key[0]==7 && p[0].banned.e[7].reason.n==0 && p[0].banned.e[7].key[0]==0;
+  #assert n86_kind_full(p[0].disallowed_kinds,1) && !n86_kind_full(p[0].disallowed_kinds,200) && !n86_kind_full(p[0].allowed_kinds,1);
+}
+#test "admission consults the policy" {
+  p:=n86_policy();a:=n86_b(0xa1);m:=n86_k(N86_T_MALLORY);id:=n86_b(1);x:=n86_b(2);
+  #assert n86_admit(p,m,id,1)==N86_ADMIT_OK;
+  p.banned=n86_add(p.banned,m,p.name);
+  #assert n86_admit(p,m,id,1)==N86_ADMIT_BANNED && n86_admit(p,a,id,1)==N86_ADMIT_OK;
+  p.allowed=n86_add(p.allowed,a,p.name);
+  #assert n86_admit(p,a,id,1)==N86_ADMIT_OK && n86_admit(p,n86_b(0xa2),id,1)==N86_ADMIT_NOT_ALLOWED;
+  p.banned_events=n86_add(p.banned_events,x,p.name);
+  #assert n86_admit(p,a,x,1)==N86_ADMIT_EVENT && n86_admit(p,a,id,1)==N86_ADMIT_OK;
+  p.disallowed_kinds=n86_kind_add(p.disallowed_kinds,4);
+  #assert n86_admit(p,a,id,4)==N86_ADMIT_KIND && n86_admit(p,a,id,1)==N86_ADMIT_OK;
+  p.allowed_kinds=n86_kind_add(p.allowed_kinds,1);
+  #assert n86_admit(p,a,id,1)==N86_ADMIT_OK && n86_admit(p,a,id,7)==N86_ADMIT_KIND_NOT_ALLOWED;
+  // The order of the rules: a banned key refuses before anything else.
+  p.banned=n86_add(p.banned,a,p.name);#assert n86_admit(p,a,x,4)==N86_ADMIT_BANNED;
+}
+#test "the endpoint: Content-Type, method, NIP-98, payload, admin, replay" #steps 2000000000 {
+  p:=[1]N86Policy.[n86_policy()];out:[N86_OUT]u8;
+  r:=n86_try(p[..],"text/plain",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]);
+  #assert r.http==415 && r.code==N86_CONTENT_TYPE && p[0].seen_n==0 && cast(string)out[0..<r.n]=="{\"result\":null,\"error\":\"Content-Type is not application/nostr+json+rpc\"}";
+  #assert n86_try(p[..],"application/nostr+json+rpc; charset=utf-8",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  #assert n86_try(p[..],"application/nostr+json",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  #assert n86_try(p[..],"application/nostr+json+rpb",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  #assert n86_try(p[..],"Application/Nostr+JSON+RPB",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  #assert n86_try(p[..],"application/nostr+json+rp@",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  #assert n86_try(p[..],"application/nostr+json+rp[",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  #assert n86_try(p[..],"bpplication/nostr+json+rpc",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]).code==N86_CONTENT_TYPE;
+  // The case fold itself: A to Z only.
+  #assert n86_same_fold("AZaz","azaz") && !n86_same_fold("[","{") && !n86_same_fold("@","`") && !n86_same_fold("a","b");
+  b:[200]u8;for i:0..<N86_T_BAN_BODY.count {b[i]=N86_T_BAN_BODY[i];}
+  r=n86_serve(p[..],"GET",N86_TYPE,N86_T_BAN,N86_T_URL,b[0..<N86_T_BAN_BODY.count],N86_T_NOW,out[..]);
+  #assert r.http==405 && r.code==N86_HTTP_METHOD;
+  // Each NIP-98 refusal is 401 and names the check.
+  r=n86_try(p[..],N86_TYPE,N86_T_BAN,N86_T_LIST_BODY,N86_T_NOW,out[..]);
+  #assert r.http==401 && r.code==N86_AUTH && r.detail==N98_PAYLOAD && cast(string)out[0..<r.n]=="{\"result\":null,\"error\":\"unauthorized: the payload tag is not this body\"}";
+  #assert n86_try(p[..],N86_TYPE,N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW+61,out[..]).detail==N98_TIME;
+  #assert n86_try(p[..],N86_TYPE,"",N86_T_BAN_BODY,N86_T_NOW,out[..]).detail==N98_NO_AUTH;
+  r=n86_serve(p[..],"POST",N86_TYPE,N86_T_BAN,"wss://relay.example.com",b[0..<N86_T_BAN_BODY.count],N86_T_NOW,out[..]);
+  #assert r.code==N86_AUTH && r.detail==N98_URL;
+  r=n86_try(p[..],N86_TYPE,N86_T_NOPAY,N86_T_BAN_BODY,N86_T_NOW,out[..]);
+  #assert r.http==401 && r.code==N86_NO_PAYLOAD && cast(string)out[0..<r.n]=="{\"result\":null,\"error\":\"the NIP-98 event has no payload tag\"}";
+  r=n86_try(p[..],N86_TYPE,N86_T_MAL,N86_T_MAL_BODY,N86_T_NOW,out[..]);
+  #assert r.http==403 && r.code==N86_NOT_ADMIN && r.detail==0 && p[0].seen_n==0 && cast(string)out[0..<r.n]=="{\"result\":null,\"error\":\"not an admin key\"}";
+  #assert p[0].banned.n==0;
+  // The admin's request, with the media type in capitals: applied once,
+  // then refused as a replay.
+  r=n86_try(p[..],"Application/Nostr+JSON+RPC",N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW+60,out[..]);
+  #assert r.http==200 && r.code==N86_OK && cast(string)out[0..<r.n]=="{\"result\":true}" && p[0].banned.n==1 && p[0].seen_n==1;
+  r=n86_try(p[..],N86_TYPE,N86_T_BAN,N86_T_BAN_BODY,N86_T_NOW,out[..]);
+  #assert r.http==401 && r.code==N86_REPLAYED && p[0].seen_n==1;
+  // Mallory as the second of two admins: her call passes the admin check.
+  p[0].admins[1]=n86_k(N86_T_MALLORY);p[0].admins_n=2;
+  r=n86_try(p[..],N86_TYPE,N86_T_MAL,N86_T_MAL_BODY,N86_T_NOW,out[..]);
+  #assert r.code==N86_OK && p[0].banned.n==0 && p[0].seen_n==2;
+  // A full list of used ids refuses with 503 and forgets nothing.
+  p[0].seen_n=N86_SEEN;
+  r=n86_try(p[..],N86_TYPE,N86_T_LIST,N86_T_LIST_BODY,N86_T_NOW,out[..]);
+  #assert r.http==503 && r.code==N86_SEEN_FULL;
+  p[0].seen_n=2;
+  r=n86_try(p[..],N86_TYPE,N86_T_LIST,N86_T_LIST_BODY,N86_T_NOW,out[..]);
+  #assert r.code==N86_OK && p[0].seen_n==3 && cast(string)p[0].seen[2][0..<8]=="22439fd7" && cast(string)out[0..<r.n]=="{\"result\":[]}";
+}

@@ -1,0 +1,318 @@
+// NIP-66 relay discovery. A monitor probes relays and publishes one
+// kind 30166 event per relay: the d tag is the relay's normalized URL,
+// rtt-open, rtt-read and rtt-write are round-trip times in milliseconds,
+// n is the network, N a supported NIP and R a requirement ("auth", or
+// "!auth" for false). A monitor announces itself with kind 10166: how often
+// it publishes (frequency, in seconds), its timeouts and the checks it runs
+// (c tags).
+//
+// NIP-66 warns that a monitor can be wrong or lie, and that clients should
+// not trust one source. n66_median takes the 30166 events of several
+// monitors, keeps those signed by keys the caller trusts, keeps each
+// monitor's newest event for the relay, and returns the median of their
+// round-trip times.
+//
+// The readers take the first two values of each tag (nip32.coax's n32_tag)
+// and refuse a repeated d, rtt or frequency tag, a number that is not 1 to
+// 7 decimal digits, and more N, R, c or timeout tags than they keep. The
+// t, k, g, l and T tags are not read. NIP-66's prose puts a timeout's
+// milliseconds at index 1 and the check at index 2, but its example puts
+// the check first; the reader takes whichever value is the number as the
+// milliseconds, and the writer follows the example. URLs are compared byte
+// for byte: the caller normalizes them (chapter 56).
+#load "nip32.coax";
+#load "../../tests/nostr/nip66_fixtures.coax";
+
+N66_OK :: 0; N66_EVENT :: 1; N66_KIND :: 2; N66_NO_D :: 3; N66_NUMBER :: 4;
+N66_REPEAT :: 5; N66_SHAPE :: 6; N66_LIMIT :: 7; N66_NO_FREQUENCY :: 8; N66_NONE :: 9;
+N66_DISCOVERY :: 30166; N66_MONITOR :: 10166;
+N66_MAX_LIST :: 8; N66_MAX_MONITORS :: 8;
+N66_OPEN :: 0; N66_READ :: 1; N66_WRITE :: 2;
+N66_RTT :: [3]string.["rtt-open","rtt-read","rtt-write"];
+
+// book:begin relay
+N66Relay :: struct {
+  status:int=N66_EVENT; url:N32Text; rtt:[3]int; network:N32Text;
+  nips:[N66_MAX_LIST]int; nips_n:int; reqs:[N66_MAX_LIST]N32Text; reqs_n:int;
+}
+N66Timeout :: struct {check:N32Text; ms:int;}
+N66Monitor :: struct {
+  status:int=N66_EVENT; frequency:int=-1;
+  timeouts:[N66_MAX_LIST]N66Timeout; timeouts_n:int; checks:[N66_MAX_LIST]N32Text; checks_n:int;
+}
+// book:end relay
+N66Median :: struct {status:int=N66_NONE; rtt:int=-1; monitors:int;}
+
+// A decimal number of 1 to 7 digits without a leading zero; -1 otherwise.
+n66_number :: (t:N32Text)->int {
+  c:=t;if c.n<1 || c.n>7 || (c.b[0]=='0' && c.n>1) {return -1;}
+  v:=0;
+  for i:0..<c.n {
+    if c.b[i]<'0' || c.b[i]>'9' {return -1;}
+    v=v*10+cast(int)(c.b[i]-'0');
+  }
+  return v;
+}
+n66_refuse :: (r:N66Relay,status:int)->N66Relay {o:=r;o.status=status;return o;}
+n66_mrefuse :: (m:N66Monitor,status:int)->N66Monitor {o:=m;o.status=status;return o;}
+// A tag that did not read: the end (NT_INDEX), or N66_LIMIT or N66_SHAPE.
+n66_tag_status :: (t:N32Tag)->int {return ifx t.error==NT_LIMIT then N66_LIMIT else N66_SHAPE;}
+
+// book:begin read
+// A verified kind 30166 event as one relay's record. Absent round-trip
+// times are -1.
+n66_read_relay :: (e:NostrEvent)->N66Relay {
+  r:N66Relay;r.rtt[0]=-1;r.rtt[1]=-1;r.rtt[2]=-1;
+  if e.error!=NE_OK || !e.verified {return r;}
+  if e.kind!=N66_DISCOVERY {return n66_refuse(r,N66_KIND);}
+  has_d:=false;k:=0;
+  while true {
+    t:=n32_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return n66_refuse(r,n66_tag_status(t));}
+    if t.values<2 {continue;}
+    if n32_is(t.v[0],"d") {
+      if has_d {return n66_refuse(r,N66_REPEAT);}
+      has_d=true;r.url=t.v[1];
+    } else if n32_is(t.v[0],"n") {r.network=t.v[1];}
+    else if n32_is(t.v[0],"N") {
+      if r.nips_n==N66_MAX_LIST {return n66_refuse(r,N66_LIMIT);}
+      v:=n66_number(t.v[1]);if v<0 {return n66_refuse(r,N66_NUMBER);}
+      r.nips[r.nips_n]=v;r.nips_n+=1;
+    } else if n32_is(t.v[0],"R") {
+      if r.reqs_n==N66_MAX_LIST {return n66_refuse(r,N66_LIMIT);}
+      r.reqs[r.reqs_n]=t.v[1];r.reqs_n+=1;
+    } else {
+      for w:0..<3 {
+        if n32_is(t.v[0],N66_RTT[w]) {
+          if r.rtt[w]>=0 {return n66_refuse(r,N66_REPEAT);}
+          r.rtt[w]=n66_number(t.v[1]);if r.rtt[w]<0 {return n66_refuse(r,N66_NUMBER);}
+        }
+      }
+    }
+  }
+  if !has_d || r.url.n==0 {return n66_refuse(r,N66_NO_D);}
+  return n66_refuse(r,N66_OK);
+}
+// book:end read
+
+// A verified kind 10166 event as a monitor's announcement.
+n66_read_monitor :: (e:NostrEvent)->N66Monitor {
+  m:N66Monitor;
+  if e.error!=NE_OK || !e.verified {return m;}
+  if e.kind!=N66_MONITOR {return n66_mrefuse(m,N66_KIND);}
+  k:=0;
+  while true {
+    t:=n32_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return n66_mrefuse(m,n66_tag_status(t));}
+    if t.values<2 {continue;}
+    if n32_is(t.v[0],"frequency") {
+      if m.frequency>=0 {return n66_mrefuse(m,N66_REPEAT);}
+      m.frequency=n66_number(t.v[1]);if m.frequency<0 {return n66_mrefuse(m,N66_NUMBER);}
+    } else if n32_is(t.v[0],"c") {
+      if m.checks_n==N66_MAX_LIST {return n66_mrefuse(m,N66_LIMIT);}
+      m.checks[m.checks_n]=t.v[1];m.checks_n+=1;
+    } else if n32_is(t.v[0],"timeout") {
+      if m.timeouts_n==N66_MAX_LIST {return n66_mrefuse(m,N66_LIMIT);}
+      // ["timeout", ms] for every check, ["timeout", ms, check] or ["timeout", check, ms].
+      // n32_tag leaves the values it did not find empty, and an empty
+      // value is no number.
+      at:=m.timeouts_n;ms:=n66_number(t.v[1]);
+      if ms>=0 {m.timeouts[at].check=t.v[2];}
+      else {ms=n66_number(t.v[2]);m.timeouts[at].check=t.v[1];}
+      if ms<0 {return n66_mrefuse(m,N66_NUMBER);}
+      m.timeouts[at].ms=ms;m.timeouts_n+=1;
+    }
+  }
+  if m.frequency<0 {return n66_mrefuse(m,N66_NO_FREQUENCY);}
+  return n66_mrefuse(m,N66_OK);
+}
+
+// ---- the writers: the tags of the event a monitor signs
+n66_pair :: (out:[]u8,at:int,first:bool,name:string,value:string)->int {
+  n:=at;if !first {n=json_raw(out,n,",");}
+  n=json_raw(out,n,"[");n=json_write_string(out,n,name);n=json_raw(out,n,",");
+  n=json_write_string(out,n,value);return json_raw(out,n,"]");
+}
+n66_digits :: (v:int,buf:[]u8)->string {n:=json_write_int(buf,0,v);return cast(string)buf[0..<n];}
+n66_str :: (t:N32Text,buf:[]u8)->string {c:=t;for i:0..<c.n {buf[i]=c.b[i];}return cast(string)buf[0..<c.n];}
+// book:begin write
+// A relay's record as kind 30166 tags: d, n, each N, each R, then the
+// round-trip times that are present. The length, or -1 when out is small.
+n66_write_relay :: (r:N66Relay,out:[]u8)->int {
+  c:=r;s:[NT_MAX_VALUE]u8;d:[24]u8;
+  n:=json_raw(out,0,"[");n=n66_pair(out,n,true,"d",n66_str(c.url,s[..]));
+  if c.network.n>0 {n=n66_pair(out,n,false,"n",n66_str(c.network,s[..]));}
+  for i:0..<c.nips_n {n=n66_pair(out,n,false,"N",n66_digits(c.nips[i],d[..]));}
+  for i:0..<c.reqs_n {n=n66_pair(out,n,false,"R",n66_str(c.reqs[i],s[..]));}
+  for w:0..<3 {if c.rtt[w]>=0 {n=n66_pair(out,n,false,N66_RTT[w],n66_digits(c.rtt[w],d[..]));}}
+  return json_raw(out,n,"]");
+}
+// book:end write
+// A monitor's announcement as kind 10166 tags: each timeout as
+// ["timeout", check, ms] (NIP-66's example order), frequency, each c.
+n66_write_monitor :: (m:N66Monitor,out:[]u8)->int {
+  c:=m;s:[NT_MAX_VALUE]u8;d:[24]u8;n:=json_raw(out,0,"[");
+  for i:0..<c.timeouts_n {
+    if i>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"[\"timeout\",");
+    if c.timeouts[i].check.n>0 {n=json_write_string(out,n,n66_str(c.timeouts[i].check,s[..]));n=json_raw(out,n,",");}
+    n=json_write_string(out,n,n66_digits(c.timeouts[i].ms,d[..]));n=json_raw(out,n,"]");
+  }
+  n=n66_pair(out,n,c.timeouts_n==0,"frequency",n66_digits(c.frequency,d[..]));
+  for i:0..<c.checks_n {n=n66_pair(out,n,false,"c",n66_str(c.checks[i],s[..]));}
+  return json_raw(out,n,"]");
+}
+
+// How many of v are below x.
+n66_below :: (v:[]int,x:int)->int {c:=0;for y:v {if y<x {c+=1;}}return c;}
+// The k'th smallest of v, counting from 0: the x with fewer than k+1 values
+// below it and more than k values at or below it.
+n66_kth :: (v:[]int,k:int)->int {
+  i:=0;
+  while n66_below(v,v[i])>k || n66_below(v,v[i]+1)<=k {i+=1;}
+  return v[i];
+}
+// book:begin median
+// The median round-trip time (which: N66_OPEN, N66_READ or N66_WRITE) for
+// the relay at url, over the newest event of each trusted monitor that
+// reports it. Events that do not read, are signed by other keys, describe
+// another relay or lack that time are skipped. With an even count the
+// median is the mean of the middle two, rounded down.
+n66_median :: (events:[]NostrEvent,trusted:[][32]u8,url:string,which:int)->N66Median {
+  m:N66Median;keys:[N66_MAX_MONITORS][32]u8;at:[N66_MAX_MONITORS]int;rtt:[N66_MAX_MONITORS]int;
+  for e:events {
+    r:=n66_read_relay(e);
+    if r.status!=N66_OK || !n32_trusted(trusted,e.public_key) || !n32_is(r.url,url) || r.rtt[which]<0 {continue;}
+    i:=0;while i<m.monitors && !ns_equal32(keys[i],e.public_key) {i+=1;}
+    if i==m.monitors {
+      if i==N66_MAX_MONITORS {m.status=N66_LIMIT;return m;}
+      m.monitors+=1;keys[i]=e.public_key;at[i]=e.created_at;rtt[i]=r.rtt[which];
+    } else if e.created_at>at[i] {at[i]=e.created_at;rtt[i]=r.rtt[which];}
+  }
+  if m.monitors==0 {return m;}
+  v:=rtt[0..<m.monitors];h:=m.monitors/2;
+  m.rtt=ifx m.monitors%2==1 then n66_kth(v,h) else (n66_kth(v,h-1)+n66_kth(v,h))/2;
+  m.status=N66_OK;return m;
+}
+// book:end median
+
+// ---- checks (helpers in coax/tests/nostr/nip66_fixtures.coax)
+#test "NIP-66's 30166 example reads" {
+  r:=n66_read_relay(n66_ev(30166,1,0,N66_T_RELAY));
+  #assert r.status==N66_OK && n32_is(r.url,"wss://some.relay/") && n32_is(r.network,"clearnet");
+  #assert r.nips_n==2 && r.nips[0]==40 && r.nips[1]==33 && r.reqs_n==2 && n32_is(r.reqs[0],"!payment") && n32_is(r.reqs[1],"auth");
+  #assert r.rtt[0]==234 && r.rtt[1]== -1 && r.rtt[2]== -1;
+  // Written back: d, n, N, R and rtt-open; the g, l and t tags are not kept.
+  out:[512]u8;
+  #assert n66_wrote(n66_write_relay(r,out[..]),out[..],"[[\"d\",\"wss://some.relay/\"],[\"n\",\"clearnet\"],[\"N\",\"40\"],[\"N\",\"33\"],[\"R\",\"!payment\"],[\"R\",\"auth\"],[\"rtt-open\",\"234\"]]");
+  small:[20]u8;#assert n66_write_relay(r,small[..])== -1;
+}
+#test "NIP-66's 10166 example is not JSON; with its comma added it reads" {
+  #assert n66_mstatus(N66_T_MONITOR)==N66_SHAPE;
+  m:=n66_read_monitor(n66_ev(10166,1,0,N66_T_MONITOR_FIXED));
+  #assert m.status==N66_OK && m.frequency==3600 && m.timeouts_n==4 && m.checks_n==5;
+  #assert n32_is(m.timeouts[0].check,"open") && m.timeouts[0].ms==5000 && n32_is(m.timeouts[3].check,"nip11") && m.timeouts[3].ms==3000;
+  #assert n32_is(m.checks[0],"ws") && n32_is(m.checks[4],"geo");
+  out:[512]u8;
+  #assert n66_wrote(n66_write_monitor(m,out[..]),out[..],"[[\"timeout\",\"open\",\"5000\"],[\"timeout\",\"read\",\"3000\"],[\"timeout\",\"write\",\"3000\"],[\"timeout\",\"nip11\",\"3000\"],[\"frequency\",\"3600\"],[\"c\",\"ws\"],[\"c\",\"nip11\"],[\"c\",\"ssl\"],[\"c\",\"dns\"],[\"c\",\"geo\"]]");
+  // The prose order, and one timeout for every check.
+  m=n66_read_monitor(n66_ev(10166,1,0,"[[\"timeout\",\"2000\",\"open\"],[\"timeout\",\"700\"],[\"frequency\",\"60\"]]"));
+  #assert m.status==N66_OK && m.timeouts_n==2 && n32_is(m.timeouts[0].check,"open") && m.timeouts[0].ms==2000 && m.timeouts[1].check.n==0 && m.timeouts[1].ms==700;
+  #assert n66_wrote(n66_write_monitor(m,out[..]),out[..],"[[\"timeout\",\"open\",\"2000\"],[\"timeout\",\"700\"],[\"frequency\",\"60\"]]");
+  m=n66_read_monitor(n66_ev(10166,1,0,"[[\"frequency\",\"0\"],[\"c\",\"open\"]]"));
+  #assert m.status==N66_OK && n66_wrote(n66_write_monitor(m,out[..]),out[..],"[[\"frequency\",\"0\"],[\"c\",\"open\"]]");
+  small:[10]u8;#assert n66_write_monitor(m,small[..])== -1;
+}
+#test "the readers refuse" {
+  #assert n66_status("[[\"rtt-open\",\"1\"]]")==N66_NO_D && n66_status("[[\"d\",\"\"]]")==N66_NO_D && n66_status("[[\"d\"]]")==N66_NO_D;
+  #assert n66_status("[[\"d\",\"a\"],[\"d\",\"b\"]]")==N66_REPEAT;
+  #assert n66_status("[[\"d\",\"a\"],[\"rtt-read\",\"1\"],[\"rtt-read\",\"2\"]]")==N66_REPEAT;
+  #assert n66_status("[[\"d\",\"a\"],[\"rtt-write\",\"0\"],[\"rtt-write\",\"0\"]]")==N66_REPEAT;
+  bad:=[9]string.["","-1","01","1.5","12345678"," 1","1a","x","1:"];
+  for b:bad {
+    buf:[100]u8;n:=json_raw(buf[..],0,"[[\"d\",\"a\"],[\"rtt-open\",\"");n=json_raw(buf[..],n,b);n=json_raw(buf[..],n,"\"]]");
+    #assert n66_status(cast(string)buf[0..<n])==N66_NUMBER;
+  }
+  #assert n66_rtt("[[\"d\",\"a\"],[\"rtt-open\",\"9999999\"]]")==9999999 && n66_rtt("[[\"d\",\"a\"],[\"rtt-open\",\"0\"]]")==0;
+  #assert n66_rtt("[[\"d\",\"a\"],[\"rtt-open\",\"90\"]]")==90 && n66_rtt("[[\"d\",\"a\"],[\"rtt-open\"]]")== -1;
+  #assert n66_status("[[\"d\",\"a\"],[\"N\",\"x\"]]")==N66_NUMBER && n66_status("[[\"d\",\"a\"],[\"N\",\"9\"]]")==N66_OK && n66_status("[[\"d\",\"a\"],[\"N\",\"0\"]]")==N66_OK;
+  out:[200]u8;r0:=n66_read_relay(n66_ev(30166,1,0,"[[\"d\",\"a\"],[\"rtt-read\",\"0\"],[\"n\",\"x\"]]"));
+  #assert n66_wrote(n66_write_relay(r0,out[..]),out[..],"[[\"d\",\"a\"],[\"n\",\"x\"],[\"rtt-read\",\"0\"]]");
+  r0=n66_read_relay(n66_ev(30166,1,0,"[[\"d\",\"a\"]]"));#assert n66_wrote(n66_write_relay(r0,out[..]),out[..],"[[\"d\",\"a\"]]");
+  mo:=n66_read_monitor(n66_ev(10166,1,0,"[[\"frequency\",\"1\"],[\"timeout\",\"a\",\"0\"],[\"timeout\",\"0\",\"b\"]]"));
+  #assert mo.status==N66_OK && mo.timeouts[0].ms==0 && mo.timeouts[1].ms==0 && n66_wrote(n66_write_monitor(mo,out[..]),out[..],"[[\"timeout\",\"a\",\"0\"],[\"timeout\",\"b\",\"0\"],[\"frequency\",\"1\"]]");
+  #assert n66_mstatus("[[\"frequency\",\"0\"],[\"frequency\",\"0\"]]")==N66_REPEAT && n66_mstatus("[[\"frequency\",\"1\"],[\"timeout\",\"x\",\"y\"]]")==N66_NUMBER;
+  #assert n66_status("[[\"d\",\"a\"],[]]")==N66_SHAPE && n66_status("[[\"d\",\"a\"],[\"n\",1]]")==N66_SHAPE;
+  #assert n66_long(30166,"[[\"d\",\"a\"],[\"n\",\"",256)==N66_OK && n66_long(30166,"[[\"d\",\"a\"],[\"n\",\"",257)==N66_LIMIT;
+  e:=n66_ev(30166,1,0,"[[\"d\",\"a\"]]");
+  #assert n66_read_relay(e).status==N66_OK;
+  x:=e;x.verified=false;#assert n66_read_relay(x).status==N66_EVENT;
+  x=e;x.error=NE_ID;#assert n66_read_relay(x).status==N66_EVENT;
+  x=e;x.kind=10166;#assert n66_read_relay(x).status==N66_KIND;
+  // Eight N and eight R tags are kept; a ninth refuses.
+  t:="[[\"d\",\"a\"],[\"N\",\"1\"],[\"N\",\"2\"],[\"N\",\"3\"],[\"N\",\"4\"],[\"N\",\"5\"],[\"N\",\"6\"],[\"N\",\"7\"],[\"N\",\"8\"],[\"R\",\"a\"],[\"R\",\"b\"],[\"R\",\"c\"],[\"R\",\"d\"],[\"R\",\"e\"],[\"R\",\"f\"],[\"R\",\"g\"],[\"R\",\"h\"]]";
+  r:=n66_read_relay(n66_ev(30166,1,0,t));#assert r.status==N66_OK && r.nips[7]==8 && n32_is(r.reqs[7],"h");
+  #assert n66_status("[[\"d\",\"a\"],[\"N\",\"1\"],[\"N\",\"2\"],[\"N\",\"3\"],[\"N\",\"4\"],[\"N\",\"5\"],[\"N\",\"6\"],[\"N\",\"7\"],[\"N\",\"8\"],[\"N\",\"9\"]]")==N66_LIMIT;
+  #assert n66_status("[[\"d\",\"a\"],[\"R\",\"1\"],[\"R\",\"2\"],[\"R\",\"3\"],[\"R\",\"4\"],[\"R\",\"5\"],[\"R\",\"6\"],[\"R\",\"7\"],[\"R\",\"8\"],[\"R\",\"9\"]]")==N66_LIMIT;
+  // The monitor reader.
+  #assert n66_mstatus("[[\"c\",\"open\"]]")==N66_NO_FREQUENCY && n66_mstatus("[[\"frequency\",\"1\"],[\"frequency\",\"1\"]]")==N66_REPEAT;
+  #assert n66_mstatus("[[\"frequency\",\"x\"]]")==N66_NUMBER && n66_mstatus("[[\"frequency\"]]")==N66_NO_FREQUENCY;
+  #assert n66_mstatus("[[\"frequency\",\"1\"],[\"timeout\",\"open\"]]")==N66_NUMBER && n66_mstatus("[[\"frequency\",\"1\"],[\"timeout\",\"open\",\"x\"]]")==N66_NUMBER;
+  #assert n66_mstatus("[[\"frequency\",\"1\"],[]]")==N66_SHAPE;
+  #assert n66_long(10166,"[[\"frequency\",\"1\"],[\"c\",\"",256)==N66_OK && n66_long(10166,"[[\"frequency\",\"1\"],[\"c\",\"",257)==N66_LIMIT;
+  #assert n66_mstatus("[[\"frequency\",\"1\"],[\"c\",\"1\"],[\"c\",\"2\"],[\"c\",\"3\"],[\"c\",\"4\"],[\"c\",\"5\"],[\"c\",\"6\"],[\"c\",\"7\"],[\"c\",\"8\"]]")==N66_OK;
+  #assert n66_mstatus("[[\"frequency\",\"1\"],[\"c\",\"1\"],[\"c\",\"2\"],[\"c\",\"3\"],[\"c\",\"4\"],[\"c\",\"5\"],[\"c\",\"6\"],[\"c\",\"7\"],[\"c\",\"8\"],[\"c\",\"9\"]]")==N66_LIMIT;
+  #assert n66_mstatus("[[\"frequency\",\"1\"],[\"timeout\",\"1\"],[\"timeout\",\"2\"],[\"timeout\",\"3\"],[\"timeout\",\"4\"],[\"timeout\",\"5\"],[\"timeout\",\"6\"],[\"timeout\",\"7\"],[\"timeout\",\"8\"]]")==N66_OK;
+  #assert n66_mstatus("[[\"frequency\",\"1\"],[\"timeout\",\"1\"],[\"timeout\",\"2\"],[\"timeout\",\"3\"],[\"timeout\",\"4\"],[\"timeout\",\"5\"],[\"timeout\",\"6\"],[\"timeout\",\"7\"],[\"timeout\",\"8\"],[\"timeout\",\"9\"]]")==N66_LIMIT;
+  m:=n66_ev(10166,1,0,"[[\"frequency\",\"1\"]]");
+  #assert n66_read_monitor(m).status==N66_OK;
+  y:=m;y.verified=false;#assert n66_read_monitor(y).status==N66_EVENT;
+  y=m;y.error=NE_ID;#assert n66_read_monitor(y).status==N66_EVENT;
+  y=m;y.kind=30166;#assert n66_read_monitor(y).status==N66_KIND;
+}
+#test "the median over trusted monitors" {
+  t:=[3][32]u8.[n66_k(1),n66_k(2),n66_k(3)];
+  ev:=[7]NostrEvent.[
+    n66_ev(30166,1,100,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"300\"]]"),
+    n66_ev(30166,2,100,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"120\"],[\"rtt-read\",\"50\"]]"),
+    n66_ev(30166,3,100,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"200\"]]"),
+    n66_ev(30166,4,100,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"1\"]]"),            // not trusted
+    n66_ev(30166,1,90,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"5\"]]"),             // older than monitor 1's
+    n66_ev(30166,2,100,"[[\"d\",\"wss://other/\"],[\"rtt-open\",\"7\"]]"),        // another relay
+    n66_ev(30166,3,100,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"x\"]]")];           // does not read
+  m:=n66_median(ev[..],t[..],"wss://r/",N66_OPEN);
+  #assert m.status==N66_OK && m.monitors==3 && m.rtt==200;
+  m=n66_median(ev[..],t[0..<2],"wss://r/",N66_OPEN);#assert m.monitors==2 && m.rtt==210;
+  m=n66_median(ev[..],t[..],"wss://r/",N66_READ);#assert m.monitors==1 && m.rtt==50;
+  m=n66_median(ev[..],t[..],"wss://r/",N66_WRITE);#assert m.status==N66_NONE && m.monitors==0 && m.rtt== -1;
+  m=n66_median(ev[..],t[..],"wss://other/",N66_OPEN);#assert m.rtt==7;
+  // A newer event from the same monitor replaces its older one, in either order.
+  e2:=[3]NostrEvent.[ev[4],ev[0],n66_ev(30166,1,100,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"9\"]]")];
+  m=n66_median(e2[..],t[..],"wss://r/",N66_OPEN);#assert m.monitors==1 && m.rtt==300;
+  e3:=[2]NostrEvent.[ev[0],ev[4]];m=n66_median(e3[..],t[..],"wss://r/",N66_OPEN);#assert m.rtt==300;
+  e4:=[2]NostrEvent.[ev[4],ev[0]];m=n66_median(e4[..],t[..],"wss://r/",N66_OPEN);#assert m.rtt==300;
+  // A tie keeps the first; a zero time counts.
+  e6:=[3]NostrEvent.[n66_ev(30166,1,0,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"4\"]]"),n66_ev(30166,1,0,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"8\"]]"),n66_ev(30166,2,0,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"0\"]]")];
+  m=n66_median(e6[..],t[..],"wss://r/",N66_OPEN);#assert m.monitors==2 && m.rtt==2;
+  // The k'th smallest, in ascending order, with ties and neighbours.
+  up:=[4]int.[60,70,80,90];#assert n66_kth(up[..],0)==60 && n66_kth(up[..],1)==70 && n66_kth(up[..],3)==90;
+  nb:=[4]int.[6,5,5,7];#assert n66_kth(nb[..],0)==5 && n66_kth(nb[..],1)==5 && n66_kth(nb[..],2)==6 && n66_kth(nb[..],3)==7;
+  #assert n66_below(nb[..],6)==2 && n66_below(nb[..],5)==0;
+  e5:=[1]NostrEvent.[n66_ev(30166,1,0,"[[\"d\",\"wss://r/\"],[\"rtt-open\",\"4\"]]")];m=n66_median(e5[..],t[..],"wss://r/",N66_OPEN);#assert m.rtt==4;
+  // Sorting: values given in descending order, and an even count.
+  many:[9][32]u8;for i:0..<9 {many[i]=n66_k(cast(u8)(i+1));}
+  bufs:[9][64]u8;es:[9]NostrEvent;
+  for i:0..<9 {
+    n:=json_raw(bufs[i][..],0,"[[\"d\",\"a\"],[\"rtt-open\",\"");n=json_write_int(bufs[i][..],n,90-10*i);n=json_raw(bufs[i][..],n,"\"]]");
+    es[i]=n66_ev(30166,cast(u8)(i+1),5,cast(string)bufs[i][0..<n]);
+  }
+  m=n66_median(es[0..<4],many[..],"a",N66_OPEN);#assert m.rtt==75;     // 60 70 80 90
+  m=n66_median(es[0..<5],many[..],"a",N66_OPEN);#assert m.rtt==70;
+  m=n66_median(es[0..<8],many[..],"a",N66_OPEN);#assert m.monitors==8 && m.rtt==55;
+  m=n66_median(es[..],many[..],"a",N66_OPEN);#assert m.status==N66_LIMIT;
+  m=n66_median(es[..],many[0..<8],"a",N66_OPEN);#assert m.status==N66_OK && m.monitors==8;
+  odd:=[3]NostrEvent.[es[2],es[0],es[1]];m=n66_median(odd[..],many[..],"a",N66_OPEN);#assert m.rtt==80;
+  two:=[2]NostrEvent.[es[0],es[1]];m=n66_median(two[..],many[..],"a",N66_OPEN);#assert m.rtt==85;
+}

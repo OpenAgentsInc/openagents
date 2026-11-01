@@ -1,0 +1,151 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip86.coax";
+#load "../../coax/lib/nostr/nip66.coax";
+#load "../../coax/lib/nostr/nip43.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/base64.coax";
+#import "Basic";
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+// Append text to out at n; the new length.
+put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { out[n] = c; n += 1; }
+  return n;
+}
+
+// The client: the body's SHA-256 as hex, into hex (64 bytes).
+body_hash :: (body: string, hex: [] u8) {
+  h: [32] u8; b: [256] u8;
+  for i: 0..<body.count { b[i] = body[i]; }
+  #assert sha256_hash_checked(b[0..<body.count], h[..], false) == SHA_OK;
+  r := hex_encode_checked(cast(string) h[..], hex, false);
+  #assert r.written == 64;
+}
+// The client: the NIP-98 tags for a POST of body to url, payload included.
+auth_tags :: (url: string, body: string, out: [] u8) -> string {
+  hex: [64] u8; body_hash(body, hex[..]);
+  n := put(out, 0, "[[\"u\",\""); n = put(out, n, url);
+  n = put(out, n, "\"],[\"method\",\"POST\"],[\"payload\",\""); n = put(out, n, cast(string) hex[..]);
+  n = put(out, n, "\"]]");
+  return cast(string) out[0..<n];
+}
+// The client: sign a kind 27235 event with empty content into ev.
+sign :: (key: [] u8, aux: [] u8, created_at: int, tags: string, ev: [] u8) -> string {
+  work: [1] NostrSignWork; scratch: [1024] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux, created_at, 27235, tags, "", work[..], scratch[..], ev, false);
+  }
+  #assert n > 0;
+  return cast(string) ev[0..<n];
+}
+// The client: "Nostr <base64 of event>" into header.
+encode_header :: (event: string, header: [] u8) -> string {
+  h := put(header, 0, "Nostr ");
+  e := base64_encode_checked(event, header[h..<header.count], false);
+  #assert e.error == NC_OK;
+  return cast(string) header[0..<h + e.written];
+}
+
+// The relay: serve one request and print its status and reply.
+serve :: (label: string, p: [] N86Policy, content_type: string, header: string, body: string, now: int) {
+  b: [256] u8; out: [N86_OUT] u8;
+  for i: 0..<body.count { b[i] = body[i]; }
+  r := n86_serve(p, "POST", content_type, header, RELAY, b[0..<body.count], now, out[..]);
+  print("%: % %\n", label, r.http, cast(string) out[0..<r.n]);
+}
+ADMIT :: [6] string.["admitted", "banned key", "key not on the allow list", "banned event",
+                     "kind disallowed", "kind not on the allowed list"];
+N66_WORDS :: [10] string.["ok", "not a verified event", "wrong kind", "no d tag", "not a number",
+                          "repeated tag", "a tag does not read", "too many tags", "no frequency", "none"];
+N43_WORDS :: [11] string.["ok", "not a verified event", "wrong kind", "not signed by self", "no - tag",
+                          "a tag does not read", "too many members", "bad hex", "outside 300 s", "no claim", "no p tag"];
+
+// BIP-340 vector 1's published test key and aux, as in chapter 49. Never
+// sign with a real key in an example.
+KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+RELAY :: "wss://relay.example.com/";
+CREATED :: 1790000000;
+BAN :: "{\"method\":\"banpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"]}";
+DELETEROLE :: "{\"method\":\"deleterole\",\"params\":[\"king\"]}";
+
+main :: () {
+  key: [32] u8; aux: [32] u8;
+  decode_hex(KEY_HEX, key[..]); decode_hex(AUX_HEX, aux[..]);
+
+  print("NIP-86: one banpubkey call, the client\n");
+  hex: [64] u8; body_hash(BAN, hex[..]);
+  print("body (% bytes): %\n", BAN.count, BAN);
+  print("sha256(body): %\n", cast(string) hex[..]);
+  tb: [256] u8; tags := auth_tags(RELAY, BAN, tb[..]);
+  print("tags (% bytes): %\n", tags.count, tags);
+  ev: [1024] u8; hb: [2048] u8;
+  event := sign(key[..], aux[..], CREATED, tags, ev[..]);
+  header := encode_header(event, hb[..]);
+  print("event (% bytes): %\n", event.count, event);
+  print("header value: % bytes, %...%\n", header.count, header[0..<24], header[header.count - 8..<header.count]);
+
+  print("the relay, now = created_at + 30, one admin key\n");
+  p: [1] N86Policy; decode_hex(N86_T_ADMIN, p[0].admins[0][..]); p[0].admins_n = 1;
+  now := CREATED + 30;
+  serve("banpubkey by the admin", p[..], N86_TYPE, header, BAN, now);
+  serve("the same request again", p[..], N86_TYPE, header, BAN, now);
+  serve("listbannedpubkeys by the admin", p[..], N86_TYPE, N86_T_LIST, N86_T_LIST_BODY, now);
+  mallory: [32] u8; decode_hex(N86_T_MALLORY, mallory[..]);
+  id: [32] u8;
+  print("admission of a kind 1 event by mallory: %\n", ADMIT[n86_admit(p[0], mallory, id, 1)]);
+  print("admission of a kind 1 event by the admin: %\n", ADMIT[n86_admit(p[0], p[0].admins[0], id, 1)]);
+
+  print("refusals\n");
+  serve("unbanpubkey signed by mallory", p[..], N86_TYPE, N86_T_MAL, N86_T_MAL_BODY, now);
+  serve("the ban header with another body", p[..], N86_TYPE, header, N86_T_LIST_BODY, now);
+  serve("a ban event without a payload tag", p[..], N86_TYPE, N86_T_NOPAY, BAN, now);
+  serve("Content-Type text/plain", p[..], "text/plain", header, BAN, now);
+  db: [256] u8; de: [1024] u8; dh: [2048] u8;
+  serve("deleterole by the admin", p[..], N86_TYPE,
+        encode_header(sign(key[..], aux[..], CREATED + 1, auth_tags(RELAY, DELETEROLE, db[..]), de[..]), dh[..]),
+        DELETEROLE, now);
+  print("banned keys: %, used event ids: %\n", p[0].banned.n, p[0].seen_n);
+
+  print("NIP-66: relay discovery\n");
+  r := n66_read_relay(n66_ev(30166, 1, 0, N66_T_RELAY));
+  print("NIP-66's example: d %, rtt-open %, % N tags, % R tags\n",
+        cast(string) r.url.b[0..<r.url.n], r.rtt[N66_OPEN], r.nips_n, r.reqs_n);
+  trusted := [3][32]u8.[n66_k(0xa1), n66_k(0xa2), n66_k(0xa3)];
+  reports := [5]NostrEvent.[
+    n66_ev(30166, 0xa1, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"120\"]]"),
+    n66_ev(30166, 0xa2, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"300\"]]"),
+    n66_ev(30166, 0xa3, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"200\"]]"),
+    n66_ev(30166, 0xa1, 40, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"900\"]]"),
+    n66_ev(30166, 0xb0, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"5\"]]")];
+  m := n66_median(reports[..], trusted[..], RELAY, N66_OPEN);
+  print("median rtt-open over % trusted monitors: % ms\n", m.monitors, m.rtt);
+  m = n66_median(reports[..], trusted[0..<2], RELAY, N66_OPEN);
+  print("over the first two only: % monitors, % ms\n", m.monitors, m.rtt);
+  out: [512] u8; mine: N66Relay; mine.url = n66_text(RELAY); mine.network = n66_text("clearnet");
+  mine.nips[0] = 11; mine.nips[1] = 86; mine.nips_n = 2; mine.rtt[N66_OPEN] = 200; mine.rtt[N66_READ] = -1; mine.rtt[N66_WRITE] = -1;
+  n := n66_write_relay(mine, out[..]);
+  print("30166 tags: %\n", cast(string) out[0..<n]);
+  print("NIP-66's 10166 example, as printed: %\n", N66_WORDS[n66_read_monitor(n66_ev(10166, 0xa1, 0, N66_T_MONITOR)).status]);
+  print("with the missing comma added: frequency % s, % timeouts, % checks\n", n66_read_monitor(n66_ev(10166, 0xa1, 0, N66_T_MONITOR_FIXED)).frequency,
+        n66_read_monitor(n66_ev(10166, 0xa1, 0, N66_T_MONITOR_FIXED)).timeouts_n, n66_read_monitor(n66_ev(10166, 0xa1, 0, N66_T_MONITOR_FIXED)).checks_n);
+
+  print("NIP-43: membership\n");
+  self: [32] u8;
+  print("self from NIP-11: %\n", n43_self(N43_T_NIP11, self[..]));
+  list := n43_members(self, n43_ev(13534, 0xee, 0, N43_T_LIST));
+  print("13534 signed by self: %, % members, second role %\n", N43_WORDS[list.status], list.n,
+        cast(string) list.roles[1].b[0..<list.roles[1].n]);
+  forged := n43_members(self, n43_ev(13534, 0xaa, 0, N43_T_LIST));
+  print("the same list signed by another key: % (ignored), % members\n", N43_WORDS[forged.status], forged.n);
+  j := n43_request(n43_ev(28934, 0x33, 1000, "[[\"-\"],[\"claim\",\"pizza-42\"]]"), 1000);
+  print("join request: %, claim %\n", N43_WORDS[j.status], cast(string) j.claim.b[0..<j.claim.n]);
+  print("the same request 301 s later: %\n", N43_WORDS[n43_request(n43_ev(28934, 0x33, 1000, "[[\"-\"],[\"claim\",\"pizza-42\"]]"), 1301).status]);
+  print("a leave request without the - tag: %\n", N43_WORDS[n43_request(n43_ev(28936, 0x33, 1000, "[]"), 1000).status]);
+}
+// book:end example

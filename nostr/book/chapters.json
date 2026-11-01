@@ -1437,15 +1437,23 @@
    "number": 67,
    "title": "Relay discovery, access and management",
    "file": "ch067-relay-discovery-access-and-management.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     37,
     38,
     49
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip86.coax",
+    "coax/lib/nostr/nip66.coax",
+    "coax/lib/nostr/nip43.coax",
+    "nostr/examples/relay-management.coax",
+    "nostr/examples/checks/relay-management.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

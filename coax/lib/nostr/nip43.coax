@@ -1,0 +1,210 @@
+// NIP-43 relay access: the relay publishes who its members are, and users
+// ask to join or leave. The relay's own key is the self field of its NIP-11
+// document (chapter 37). A kind 13534 member list, and the kind 8000 add and
+// 8001 remove events, count only when that key signed them and they carry
+// NIP-70's "-" tag; a list signed by any other key is ignored. A user's
+// kind 28934 join request carries the "-" tag and a claim tag with an
+// invite code; a kind 28936 leave request carries the "-" tag. Both must be
+// signed within N43_WINDOW seconds of the relay's clock ("plus or minus a
+// few minutes"; five here).
+//
+// NIP-43 calls the 13534 list neither exhaustive nor authoritative: a
+// client should also read the member's own kind 10010 list. This file
+// reads the relay's side only. Role definitions (33534), invites (28935)
+// and checking a claim against the relay's invite codes are not built; the
+// caller verifies each event (e.verified, from event.coax).
+#load "nip32.coax";
+#load "../../tests/nostr/nip43_fixtures.coax";
+#authority;
+
+N43_OK :: 0; N43_EVENT :: 1; N43_KIND :: 2; N43_NOT_SELF :: 3; N43_UNPROTECTED :: 4;
+N43_SHAPE :: 5; N43_LIMIT :: 6; N43_HEX :: 7; N43_TIME :: 8; N43_NO_CLAIM :: 9; N43_NO_P :: 10;
+N43_MEMBERS_KIND :: 13534; N43_ADD :: 8000; N43_REMOVE :: 8001; N43_JOIN :: 28934; N43_LEAVE :: 28936;
+N43_MAX_MEMBERS :: 8; N43_WINDOW :: 300;
+
+N43Members :: struct {status:int=N43_EVENT; n:int; keys:[N43_MAX_MEMBERS][32]u8; roles:[N43_MAX_MEMBERS]N32Text;}
+N43Change :: struct {status:int=N43_EVENT; add:bool; key:[32]u8;}
+N43Request :: struct {status:int=N43_EVENT; join:bool; claim:N32Text;}
+
+// book:begin self
+// The self field of a NIP-11 document: the relay's key, 64 lowercase hex
+// digits. False when the document has none or it does not read.
+n43_self :: (nip11:string,out:[]u8)->bool {
+  j:[1]Json;json_start(j[..],nip11);found:=false;
+  if json_next(j[..])!=JSON_OBJECT {return false;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    if json_is(key,"self") {
+      if found || v!=JSON_STRING {return false;}
+      buf:[64]u8;n:=json_unescape(json_text(j[..]),buf[..]);
+      if n!=64 || !ne_lower_hex(cast(string)buf[0..<64],out) {return false;}
+      found=true;
+    } else if !json_skip(j[..]) {return false;}
+    t=json_next(j[..]);
+  }
+  return found && t==JSON_OBJECT_END && json_next(j[..])==JSON_END;
+}
+// book:end self
+
+n43_status :: (t:N32Tag)->int {return ifx t.error==NT_LIMIT then N43_LIMIT else N43_SHAPE;}
+// Whether e carries the "-" tag; N43_OK, N43_UNPROTECTED, or a tag error.
+n43_protected :: (e:NostrEvent)->int {
+  k:=0;t:=n32_tag(e,0);
+  while t.error==NT_OK && !(t.values==1 && n32_is(t.v[0],"-")) {k+=1;t=n32_tag(e,k);}
+  if t.error==NT_OK {return N43_OK;}
+  return ifx t.error==NT_INDEX then N43_UNPROTECTED else n43_status(t);
+}
+// The checks every relay-signed event shares: verified, this kind, signed
+// by self, and protected.
+n43_relay_event :: (self:[32]u8,e:NostrEvent,kind:int,alt:int)->int {
+  if e.error!=NE_OK || !e.verified {return N43_EVENT;}
+  if e.kind!=kind && e.kind!=alt {return N43_KIND;}
+  if !ns_equal32(e.public_key,self) {return N43_NOT_SELF;}
+  return n43_protected(e);
+}
+
+// book:begin members
+// The relay's member list, when self signed it: each member tag's key and
+// its first role (empty when none).
+n43_members :: (self:[32]u8,e:NostrEvent)->N43Members {
+  m:N43Members;m.status=n43_relay_event(self,e,N43_MEMBERS_KIND,N43_MEMBERS_KIND);
+  if m.status!=N43_OK {return m;}
+  k:=0;
+  while true {
+    t:=n32_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {m.status=n43_status(t);return m;}
+    if !n32_is(t.v[0],"member") {continue;}
+    if t.values<2 {m.status=N43_SHAPE;return m;}
+    if m.n==N43_MAX_MEMBERS {m.status=N43_LIMIT;return m;}
+    c:=t.v[1];
+    if !ne_lower_hex(cast(string)c.b[0..<c.n],m.keys[m.n][..]) {m.status=N43_HEX;return m;}
+    m.roles[m.n]=t.v[2];   // n32_tag leaves a missing value empty
+    m.n+=1;
+  }
+  return m;
+}
+// book:end members
+n43_is_member :: (m:N43Members,key:[32]u8)->bool {
+  c:=m;for i:0..<c.n {if ns_equal32(c.keys[i],key) {return true;}}
+  return false;
+}
+
+// A kind 8000 (add) or 8001 (remove) event, when self signed it: the
+// member in its first p tag.
+n43_change :: (self:[32]u8,e:NostrEvent)->N43Change {
+  r:N43Change;r.status=n43_relay_event(self,e,N43_ADD,N43_REMOVE);
+  if r.status!=N43_OK {return r;}
+  r.add=e.kind==N43_ADD;k:=0;
+  while true {
+    t:=n32_tag(e,k);k+=1;
+    if t.error==NT_INDEX {r.status=N43_NO_P;return r;}
+    if t.error!=NT_OK {r.status=n43_status(t);return r;}
+    if t.values>=2 && n32_is(t.v[0],"p") {
+      c:=t.v[1];
+      r.status=ifx ne_lower_hex(cast(string)c.b[0..<c.n],r.key[..]) then N43_OK else N43_HEX;
+      return r;
+    }
+  }
+  return r;
+}
+
+// book:begin request
+// A user's join (28934, with a claim) or leave (28936) request.
+n43_request :: (e:NostrEvent,now:int)->N43Request {
+  r:N43Request;
+  if e.error!=NE_OK || !e.verified {return r;}
+  r.status=N43_KIND;
+  if e.kind!=N43_JOIN && e.kind!=N43_LEAVE {return r;}
+  r.status=N43_TIME;
+  if e.created_at<now-N43_WINDOW || e.created_at>now+N43_WINDOW {return r;}
+  r.status=n43_protected(e);
+  if r.status!=N43_OK {return r;}
+  r.join=e.kind==N43_JOIN;
+  if !r.join {return r;}
+  k:=0;
+  while true {
+    t:=n32_tag(e,k);k+=1;
+    if t.error==NT_INDEX {r.status=N43_NO_CLAIM;return r;}
+    if t.error!=NT_OK {r.status=n43_status(t);return r;}
+    if t.values>=2 && n32_is(t.v[0],"claim") && t.v[1].n>0 {r.claim=t.v[1];return r;}
+  }
+  return r;
+}
+// book:end request
+
+// ---- checks (helpers in coax/tests/nostr/nip43_fixtures.coax)
+#test "the relay's key from its NIP-11 document" {
+  k:[32]u8;#assert n43_self(N43_T_NIP11,k[..]) && ns_equal32(k,n43_k(0xee));
+  #assert n43_self_ok("{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}");
+  #assert n43_self_ok("{\"self\":\"\\u0065eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}");
+  bad:=[10]string.["","[]","{}","{\"name\":\"r\"}","{\"self\":1}",
+    "{\"self\":\"EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE\"}",
+    "{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}",
+    "{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}",
+    "{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}",
+    "{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"} x"];
+  for b:bad {#assert !n43_self_ok(b);}
+  #assert !n43_self_ok("{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"x\":[}");
+  #assert !n43_self_ok("{\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"");
+}
+#test "a member list counts only from the relay's key" {
+  m:=n43_members(n43_k(0xee),n43_ev(13534,0xee,0,N43_T_LIST));
+  #assert m.status==N43_OK && m.n==2 && m.keys[0][0]==0xc3 && m.keys[1][31]==0x58 && m.roles[0].n==0 && n32_is(m.roles[1],"28b7e50f");
+  k:[32]u8;r:=hex_decode_checked("ee1d336e13779e4d4c527b988429d96de16088f958cbf6c074676ac9cfd9c958",k[..],false);
+  #assert n43_is_member(m,k) && n43_is_member(m,m.keys[0]) && !n43_is_member(m,n43_k(0xee));
+  long:[400]u8;n0:=json_raw(long[..],0,"[[\"t\",\"");for i:0..<257 {long[n0]='x';n0+=1;}n0=json_raw(long[..],n0,"\"],[\"-\"]]");
+  #assert n43_mstatus(cast(string)long[0..<n0])==N43_LIMIT;
+  // Signed by another key: ignored.
+  x:=n43_members(n43_k(0xee),n43_ev(13534,0xaa,0,N43_T_LIST));#assert x.status==N43_NOT_SELF && x.n==0 && !n43_is_member(x,k);
+  e:=n43_ev(13534,0xee,0,N43_T_LIST);
+  y:=e;y.verified=false;#assert n43_members(n43_k(0xee),y).status==N43_EVENT;
+  y=e;y.error=NE_ID;#assert n43_members(n43_k(0xee),y).status==N43_EVENT;
+  y=e;y.kind=13535;#assert n43_members(n43_k(0xee),y).status==N43_KIND;
+  #assert n43_mstatus("[[\"member\",\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"]]")==N43_UNPROTECTED;
+  #assert n43_mstatus("[[\"-\",\"x\"]]")==N43_UNPROTECTED && n43_mstatus("[[\"-\"]]")==N43_OK;
+  #assert n43_mstatus("[[\"-\"],[\"member\"]]")==N43_SHAPE && n43_mstatus("[[\"-\"],[\"member\",\"EE\"]]")==N43_HEX;
+  #assert n43_mstatus("[[\"-\"],[]]")==N43_SHAPE && n43_mstatus("[[],[\"-\"]]")==N43_SHAPE && n43_mstatus("[[\"-\"],[\"p\",1]]")==N43_SHAPE;
+  #assert n43_mstatus("[[\"p\",\"x\"],[\"-\"],[\"t\",\"y\"]]")==N43_OK;
+  m=n43_members(n43_k(0xee),n43_ev(13534,0xee,0,"[[\"member\",\"0101010101010101010101010101010101010101010101010101010101010101\",\"a\"],[\"-\"]]"));
+  #assert m.status==N43_OK && m.n==1 && n32_is(m.roles[0],"a");
+  // Eight members are kept; a ninth refuses.
+  buf:[1024]u8;n:=json_raw(buf[..],0,"[[\"-\"]");
+  for i:0..<9 {
+    n=json_raw(buf[..],n,",[\"member\",\"");for c:0..<64 {buf[n]=cast(u8)('1'+i);n+=1;}n=json_raw(buf[..],n,"\"]");
+    buf[n]=']';s:=n43_mstatus(cast(string)buf[0..<n+1]);
+    if i<8 {#assert s==N43_OK;} else {#assert s==N43_LIMIT;}
+  }
+}
+#test "add and remove events" {
+  c:=n43_change(n43_k(0xee),n43_ev(8000,0xee,0,"[[\"-\"],[\"p\",\"c308e1f882c1f1dff2a43d4294239ddeec04e575f2d1aad1fa21ea7684e61fb5\"]]"));
+  #assert c.status==N43_OK && c.add && c.key[0]==0xc3 && c.key[31]==0xb5;
+  c=n43_change(n43_k(0xee),n43_ev(8001,0xee,0,"[[\"-\"],[\"t\",\"x\"],[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"],[\"p\",\"0202020202020202020202020202020202020202020202020202020202020202\"]]"));
+  #assert c.status==N43_OK && !c.add && c.key[0]==1;
+  c=n43_change(n43_k(0xee),n43_ev(8000,0xee,0,"[[\"p\",\"0303030303030303030303030303030303030303030303030303030303030303\"],[\"-\"]]"));
+  #assert c.status==N43_OK && c.key[0]==3;
+  #assert n43_change(n43_k(0xee),n43_ev(8000,0xaa,0,"[[\"-\"],[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"]]")).status==N43_NOT_SELF;
+  #assert n43_cstatus(8002,"[[\"-\"]]")==N43_KIND && n43_cstatus(7999,"[[\"-\"]]")==N43_KIND;
+  #assert n43_cstatus(8000,"[[\"p\",\"0101010101010101010101010101010101010101010101010101010101010101\"]]")==N43_UNPROTECTED;
+  #assert n43_cstatus(8000,"[[\"-\"]]")==N43_NO_P && n43_cstatus(8000,"[[\"-\"],[\"p\"]]")==N43_NO_P;
+  #assert n43_cstatus(8000,"[[\"-\"],[\"p\",\"01\"]]")==N43_HEX && n43_cstatus(8000,"[[\"-\"],[\"p\",1]]")==N43_SHAPE;
+  e:=n43_ev(8000,0xee,0,"[[\"-\"]]");e.verified=false;#assert n43_change(n43_k(0xee),e).status==N43_EVENT;
+}
+#test "join and leave requests" {
+  r:=n43_request(n43_ev(28934,1,1000,"[[\"-\"],[\"claim\",\"pizza-42\"]]"),1000);
+  #assert r.status==N43_OK && r.join && n32_is(r.claim,"pizza-42");
+  r=n43_request(n43_ev(28936,1,1000,"[[\"-\"]]"),1000);#assert r.status==N43_OK && !r.join && r.claim.n==0;
+  // The window: 300 s either side.
+  e:=n43_ev(28936,1,1000,"[[\"-\"]]");
+  #assert n43_request(e,1300).status==N43_OK && n43_request(e,700).status==N43_OK;
+  #assert n43_request(e,1301).status==N43_TIME && n43_request(e,699).status==N43_TIME;
+  #assert n43_rstatus(28934,"[[\"-\"]]")==N43_NO_CLAIM && n43_rstatus(28934,"[[\"-\"],[\"claim\",\"\"]]")==N43_NO_CLAIM;
+  #assert n43_rstatus(28934,"[[\"-\"],[\"claim\"]]")==N43_NO_CLAIM && n43_rstatus(28934,"[[\"-\"],[\"c\",\"x\"]]")==N43_NO_CLAIM;
+  #assert n43_rstatus(28934,"[[\"claim\",\"x\"]]")==N43_UNPROTECTED && n43_rstatus(28936,"[]")==N43_UNPROTECTED;
+  #assert n43_rstatus(28934,"[[\"-\"],[\"claim\",1]]")==N43_SHAPE;
+  #assert n43_rstatus(28935,"[[\"-\"]]")==N43_KIND && n43_rstatus(28933,"[[\"-\"]]")==N43_KIND && n43_rstatus(28937,"[[\"-\"]]")==N43_KIND;
+  r=n43_request(n43_ev(28934,1,1000,"[[\"claim\",\"a\"],[\"-\"],[\"claim\",\"b\"]]"),1000);#assert r.status==N43_OK && n32_is(r.claim,"a");
+  x:=e;x.verified=false;#assert n43_request(x,1000).status==N43_EVENT;
+  x=e;x.error=NE_ID;#assert n43_request(x,1000).status==N43_EVENT;
+}

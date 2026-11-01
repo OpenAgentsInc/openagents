@@ -1,0 +1,33 @@
+NIP-86: one banpubkey call, the client
+body (107 bytes): {"method":"banpubkey","params":["f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","spam"]}
+sha256(body): d731279ebacd6e5bf9edb3d0355adfd839f78b7a5c08f375712eca6c8880bb94
+tags (131 bytes): [["u","wss://relay.example.com/"],["method","POST"],["payload","d731279ebacd6e5bf9edb3d0355adfd839f78b7a5c08f375712eca6c8880bb94"]]
+event (475 bytes): {"id":"343f4fd7b7b52d6ee4c3b10f0adbe3453b90183616b75e24b16c5d5ece8fba24","pubkey":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","created_at":1790000000,"kind":27235,"tags":[["u","wss://relay.example.com/"],["method","POST"],["payload","d731279ebacd6e5bf9edb3d0355adfd839f78b7a5c08f375712eca6c8880bb94"]],"content":"","sig":"8e83d819ac7498df4256089bac800667927e0972b75017abbfeb2d6732a4833b97391ca0617c195b36ca8ea3f7c8e859139bda6d9299e02e9bd42e5e054c829b"}
+header value: 642 bytes, Nostr eyJpZCI6IjM0M2Y0Zm...OWIifQ==
+the relay, now = created_at + 30, one admin key
+banpubkey by the admin: 200 {"result":true}
+the same request again: 401 {"result":null,"error":"event id already used"}
+listbannedpubkeys by the admin: 200 {"result":[{"pubkey":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","reason":"spam"}]}
+admission of a kind 1 event by mallory: banned key
+admission of a kind 1 event by the admin: admitted
+refusals
+unbanpubkey signed by mallory: 403 {"result":null,"error":"not an admin key"}
+the ban header with another body: 401 {"result":null,"error":"unauthorized: the payload tag is not this body"}
+a ban event without a payload tag: 401 {"result":null,"error":"the NIP-98 event has no payload tag"}
+Content-Type text/plain: 415 {"result":null,"error":"Content-Type is not application/nostr+json+rpc"}
+deleterole by the admin: 400 {"result":null,"error":"unknown method"}
+banned keys: 1, used event ids: 3
+NIP-66: relay discovery
+NIP-66's example: d wss://some.relay/, rtt-open 234, 2 N tags, 2 R tags
+median rtt-open over 3 trusted monitors: 200 ms
+over the first two only: 2 monitors, 210 ms
+30166 tags: [["d","wss://relay.example.com/"],["n","clearnet"],["N","11"],["N","86"],["rtt-open","200"]]
+NIP-66's 10166 example, as printed: a tag does not read
+with the missing comma added: frequency 3600 s, 4 timeouts, 5 checks
+NIP-43: membership
+self from NIP-11: true
+13534 signed by self: ok, 2 members, second role 28b7e50f
+the same list signed by another key: not signed by self (ignored), 0 members
+join request: ok, claim pizza-42
+the same request 301 s later: outside 300 s
+a leave request without the - tag: no - tag

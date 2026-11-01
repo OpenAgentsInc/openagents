@@ -1,0 +1,43 @@
+// Helpers and data for nip86.coax's checks. They live here so that mutation
+// of nip86.coax changes the library, not the checks.
+//
+// The headers were signed by coax/tests/nostr/nip59_reference.py, a
+// pure-Python BIP-340 signer and NIP-01 serializer that shares no code with
+// Coax, and encoded by Python's base64.b64encode. Each is a kind 27235 event
+// at created_at 1790000000 with u "wss://relay.example.com/" and method POST:
+// - N86_T_BAN: the admin (BIP-340 vector 1's key, aux 1), payload of N86_T_BAN_BODY.
+// - N86_T_NOPAY: the admin (aux 2), the same request without a payload tag.
+// - N86_T_MAL: Mallory (secret key 3, aux 0), payload of N86_T_MAL_BODY.
+// - N86_T_LIST: the admin (aux 4), payload of N86_T_LIST_BODY.
+N86_T_URL :: "wss://relay.example.com/";
+N86_T_NOW :: 1790000000;
+N86_T_ADMIN :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+N86_T_MALLORY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+N86_T_BAN_BODY :: "{\"method\":\"banpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"]}";
+N86_T_MAL_BODY :: "{\"method\":\"unbanpubkey\",\"params\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]}";
+N86_T_LIST_BODY :: "{\"method\":\"listbannedpubkeys\",\"params\":[]}";
+N86_T_BAN :: "Nostr eyJpZCI6IjM0M2Y0ZmQ3YjdiNTJkNmVlNGMzYjEwZjBhZGJlMzQ1M2I5MDE4MzYxNmI3NWUyNGIxNmM1ZDVlY2U4ZmJhMjQiLCJwdWJrZXkiOiJkZmYxZDc3ZjJhNjcxYzVmMzYxODM3MjZkYjIzNDFiZTU4ZmVhZTFkYTJkZWNlZDg0MzI0MGY3YjUwMmJhNjU5IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJ3c3M6Ly9yZWxheS5leGFtcGxlLmNvbS8iXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCJkNzMxMjc5ZWJhY2Q2ZTViZjllZGIzZDAzNTVhZGZkODM5Zjc4YjdhNWMwOGYzNzU3MTJlY2E2Yzg4ODBiYjk0Il1dLCJjb250ZW50IjoiIiwic2lnIjoiOGU4M2Q4MTlhYzc0OThkZjQyNTYwODliYWM4MDA2Njc5MjdlMDk3MmI3NTAxN2FiYmZlYjJkNjczMmE0ODMzYjk3MzkxY2EwNjE3YzE5NWIzNmNhOGVhM2Y3YzhlODU5MTM5YmRhNmQ5Mjk5ZTAyZTliZDQyZTVlMDU0YzgyOWIifQ==";
+N86_T_NOPAY :: "Nostr eyJpZCI6IjA5MTc2NzE5ODAxM2U1ZGFhOWE2ZWMyMDg2NjAwNzBiMGQ4NGEzNTJmZDZjMWFhZTg5OGY3MGI1MjM0YWY0ODciLCJwdWJrZXkiOiJkZmYxZDc3ZjJhNjcxYzVmMzYxODM3MjZkYjIzNDFiZTU4ZmVhZTFkYTJkZWNlZDg0MzI0MGY3YjUwMmJhNjU5IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJ3c3M6Ly9yZWxheS5leGFtcGxlLmNvbS8iXSxbIm1ldGhvZCIsIlBPU1QiXV0sImNvbnRlbnQiOiIiLCJzaWciOiI0ZjlkZjM3YmE1NGUyMTRmZDU0MjVkYzRjMDgyODg3ZDIzZTI3NmEzMWQxMTRkM2NiMjZmMzhkNWExYjNlNmQ4ZjUwMGJmMjBmODY5Mzk2MTkxODYyY2I3YTg1NGEzNjEwZTJmMTQ3NzJmN2YyMTYxODI4OGJhZjM4YWZkMTRkYSJ9";
+N86_T_MAL :: "Nostr eyJpZCI6IjFkNTdhOTM3YzZlMmI5N2UxMmJlZmRmMDIwMzc3OGIyOTZjOWI1NWUyNjBmZWNiMmQzYTAxZTFjMTUzYWFjZDMiLCJwdWJrZXkiOiJmOTMwOGEwMTkyNThjMzEwNDkzNDRmODVmODlkNTIyOWI1MzFjODQ1ODM2Zjk5YjA4NjAxZjExM2JjZTAzNmY5IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJ3c3M6Ly9yZWxheS5leGFtcGxlLmNvbS8iXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCJlZTRjYzVhZmJhNjBhM2ZjYmY0MmY2YjU1YjEwODRlM2JiNWE5MGJhYTM2YmM4OGQ1MzA1ZjEyNDk4YjQxNDlhIl1dLCJjb250ZW50IjoiIiwic2lnIjoiM2NkYzIwZTk4NGNjNmQ3YjViNjAzM2I3MmZmM2UwMmJjM2VmOWQzYmVmOTRmNjQ0NmRmYTViMWFlNmIxMGRiOTE5OWIxM2U1NDRiYmU4NTBlNjdiODIyYmFhYmE4NDc2ZmRhM2U1YjFjMjgyNzA4NGI1YWFlOTJjNTY3OTM2MDEifQ==";
+N86_T_LIST :: "Nostr eyJpZCI6IjIyNDM5ZmQ3NGExODg2NmIzZTJhNDUxZDhmYjVjYWU4NjNhNmMzMTBjOGEyYzU1MWFlZTVkYzE5OTBiM2QzZmEiLCJwdWJrZXkiOiJkZmYxZDc3ZjJhNjcxYzVmMzYxODM3MjZkYjIzNDFiZTU4ZmVhZTFkYTJkZWNlZDg0MzI0MGY3YjUwMmJhNjU5IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJ3c3M6Ly9yZWxheS5leGFtcGxlLmNvbS8iXSxbIm1ldGhvZCIsIlBPU1QiXSxbInBheWxvYWQiLCJlZDk1NzEzZWY1NzcwNWUzYTI3MzczZTQwZjgzOGNmMDIxNzZmMTc0MDJhNjJjZjcyOTY3ZGUxNjJiN2I1NDhlIl1dLCJjb250ZW50IjoiIiwic2lnIjoiZWVjYmE4NDNkYTU2MjRhYTkzZTc0Mjc1ZjljMGIxNTE3NjNmYTQ1NzcyNzUwMTk2NjE0ZGJjNjBiOTNmODI2Nzk4OGZlYzBlOTNlMWViNWQ3ZDFlMjQzMDYyZDRhZjlkNjA0MDFhZDZjNTQ1YjhkMjAyMjBhZmYxZmM3NGQ4ZDkifQ==";
+
+// 32 bytes from 64 hex digits the checks supply.
+n86_k :: (hex:string)->[32]u8 {k:[32]u8;r:=hex_decode_checked(hex,k[..],false);#assert r.error==NC_OK;return k;}
+// Is the text s?
+n86_is :: (t:N86Text,s:string)->bool {c:=t;return cast(string)c.b[0..<c.n]==s;}
+// 32 copies of b.
+n86_b :: (b:u8)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=b;}return k;}
+// A policy whose one admin is the test admin.
+n86_policy :: ()->N86Policy {p:N86Policy;p.admins[0]=n86_k(N86_T_ADMIN);p.admins_n=1;return p;}
+// Run one call through the request reader and the dispatcher (no NIP-98),
+// and compare the reply's body with want.
+n86_call :: (p:[]N86Policy,body:string,want:string)->int {
+  out:[N86_OUT]u8;r:=n86_dispatch(p,n86_request(body),out[..]);
+  #assert r.n==want.count && cast(string)out[0..<r.n]==want;
+  return r.code;
+}
+// The whole server on one request; the reply's code, and its body in out.
+n86_try :: (p:[]N86Policy,content_type:string,auth:string,body:string,now:int,out:[]u8)->N86Reply {
+  b:[512]u8;for i:0..<body.count {b[i]=body[i];}
+  return n86_serve(p,"POST",content_type,auth,N86_T_URL,b[0..<body.count],now,out);
+}

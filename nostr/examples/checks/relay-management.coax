@@ -1,0 +1,52 @@
+// book:begin check
+#load "../relay-management.coax";
+
+// The worked example's request signed by coax/tests/nostr/nip59_reference.py,
+// a pure-Python BIP-340 signer and NIP-01 serializer that shares no code
+// with Coax: signed(key, aux, 1790000000, 27235, tags, "") with BIP-340
+// vector 1's key and aux; the body hash from Python's hashlib and the header
+// from Python's base64.b64encode (N86_T_BAN in nip86_fixtures.coax).
+PY_BODY_SHA256 :: "d731279ebacd6e5bf9edb3d0355adfd839f78b7a5c08f375712eca6c8880bb94";
+PY_EVENT :: "{\"id\":\"343f4fd7b7b52d6ee4c3b10f0adbe3453b90183616b75e24b16c5d5ece8fba24\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1790000000,\"kind\":27235,\"tags\":[[\"u\",\"wss://relay.example.com/\"],[\"method\",\"POST\"],[\"payload\",\"d731279ebacd6e5bf9edb3d0355adfd839f78b7a5c08f375712eca6c8880bb94\"]],\"content\":\"\",\"sig\":\"8e83d819ac7498df4256089bac800667927e0972b75017abbfeb2d6732a4833b97391ca0617c195b36ca8ea3f7c8e859139bda6d9299e02e9bd42e5e054c829b\"}";
+// Python's statistics.median of the trusted monitors' times, and of the
+// first two: 200 and 210.0.
+PY_MEDIAN_3 :: 200; PY_MEDIAN_2 :: 210;
+
+#test "the client builds Python's event and header, byte for byte" #steps 2000000000 {
+  hex: [64] u8; body_hash(BAN, hex[..]);
+  #assert cast(string) hex[..] == PY_BODY_SHA256;
+  key: [32] u8; aux: [32] u8; decode_hex(KEY_HEX, key[..]); decode_hex(AUX_HEX, aux[..]);
+  tb: [256] u8; ev: [1024] u8; hb: [2048] u8;
+  tags := auth_tags(RELAY, BAN, tb[..]);
+  #assert tags.count == 131;
+  event := sign(key[..], aux[..], CREATED, tags, ev[..]);
+  #assert event == PY_EVENT && event.count == 475;
+  header := encode_header(event, hb[..]);
+  #assert header == N86_T_BAN && header.count == 6 + (475 + 2) / 3 * 4;
+}
+#test "the relay's decisions on the worked example" #steps 2000000000 {
+  p: [1] N86Policy; decode_hex(N86_T_ADMIN, p[0].admins[0][..]); p[0].admins_n = 1;
+  out: [N86_OUT] u8; b: [256] u8;
+  for i: 0..<BAN.count { b[i] = BAN[i]; }
+  body := b[0..<BAN.count];
+  #assert n86_serve(p[..], "POST", N86_TYPE, N86_T_BAN, RELAY, body, CREATED + 30, out[..]).http == 200;
+  #assert n86_serve(p[..], "POST", N86_TYPE, N86_T_BAN, RELAY, body, CREATED + 30, out[..]).code == N86_REPLAYED;
+  // Each refusal named in the chapter, on a fresh relay.
+  q: [1] N86Policy; decode_hex(N86_T_ADMIN, q[0].admins[0][..]); q[0].admins_n = 1;
+  #assert n86_serve(q[..], "POST", N86_TYPE, N86_T_MAL, RELAY, body, CREATED, out[..]).detail == N98_PAYLOAD;
+  #assert n86_serve(q[..], "POST", N86_TYPE, N86_T_NOPAY, RELAY, body, CREATED, out[..]).code == N86_NO_PAYLOAD;
+  #assert n86_serve(q[..], "POST", "text/plain", N86_T_BAN, RELAY, body, CREATED, out[..]).http == 415;
+  #assert n86_serve(q[..], "PUT", N86_TYPE, N86_T_BAN, RELAY, body, CREATED, out[..]).http == 405;
+  #assert n86_serve(q[..], "POST", N86_TYPE, N86_T_BAN, RELAY, body, CREATED - 61, out[..]).detail == N98_TIME;
+  #assert q[0].seen_n == 0 && q[0].banned.n == 0;
+}
+#test "the median matches Python's statistics.median" {
+  trusted := [3][32]u8.[n66_k(0xa1), n66_k(0xa2), n66_k(0xa3)];
+  reports := [3]NostrEvent.[
+    n66_ev(30166, 0xa1, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"120\"]]"),
+    n66_ev(30166, 0xa2, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"300\"]]"),
+    n66_ev(30166, 0xa3, 100, "[[\"d\",\"wss://relay.example.com/\"],[\"rtt-open\",\"200\"]]")];
+  #assert n66_median(reports[..], trusted[..], RELAY, N66_OPEN).rtt == PY_MEDIAN_3;
+  #assert n66_median(reports[..], trusted[0..<2], RELAY, N66_OPEN).rtt == PY_MEDIAN_2;
+}
+// book:end check

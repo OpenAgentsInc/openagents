@@ -961,6 +961,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 400
+    },
+    {
+      "source": "nostr/examples/relay-management.coax",
+      "chapter": "nostr/book/ch067-relay-discovery-access-and-management.md",
+      "stdout": "nostr/fixtures/relay-management.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 300
     }
   ]
 }

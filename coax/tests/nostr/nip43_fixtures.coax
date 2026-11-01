@@ -1,0 +1,14 @@
+// Helpers and data for nip43.coax's checks. They live here so that mutation
+// of nip43.coax changes the library, not the checks.
+// NIP-43's 13534 example tags, copied verbatim.
+N43_T_LIST :: "[[\"-\"],[\"member\",\"c308e1f882c1f1dff2a43d4294239ddeec04e575f2d1aad1fa21ea7684e61fb5\"],[\"member\",\"ee1d336e13779e4d4c527b988429d96de16088f958cbf6c074676ac9cfd9c958\",\"28b7e50f\"]]";
+N43_T_NIP11 :: "{\"name\":\"r\",\"self\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"supported_nips\":[1,43]}";
+// A verified event of this kind by the key of 32 bytes a, at time at.
+n43_ev :: (kind:int,a:u8,at:int,tags:string)->NostrEvent {
+  e:=n32_at(n32_event(kind,tags),a,a);e.verified=true;e.created_at=at;return e;
+}
+n43_k :: (b:u8)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=b;}return k;}
+n43_mstatus :: (tags:string)->int {return n43_members(n43_k(0xee),n43_ev(13534,0xee,0,tags)).status;}
+n43_rstatus :: (kind:int,tags:string)->int {return n43_request(n43_ev(kind,1,1000,tags),1000).status;}
+n43_cstatus :: (kind:int,tags:string)->int {return n43_change(n43_k(0xee),n43_ev(kind,0xee,0,tags)).status;}
+n43_self_ok :: (doc:string)->bool {k:[32]u8;return n43_self(doc,k[..]);}
