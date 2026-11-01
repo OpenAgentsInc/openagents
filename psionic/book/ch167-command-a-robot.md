@@ -7,10 +7,12 @@ compensation, and short experiments on our owned nonlinear Panda dynamics.
 IK returns source-limited coordinates; posture returns a delta, timing returns
 reference samples, and PD returns explicit force terms. A 250-step prefix and
 four new hold/track/pulse/brake cases compare owned feedback with MuJoCo.
-Numerical agreement passes; the four-case nominal final-error and brake-recovery
-goals remain unmet. A separately frozen nine-profile owned-plant gain study
-finds no feasible family, so it selects no winner and runs no held-out SDK
-validation. General stability and the broader planning tools remain work.
+Numerical agreement passes; the original baseline misses its nominal final-error
+and brake-recovery goals. A separately frozen nine-profile owned-plant gain
+study finds no feasible family and selects no winner. A new common damping law
+then qualifies all four original owned cases using exact command carry and one
+new brake trajectory. Prospective C/D assessment and SDK validation have not
+run. General stability and the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Meeting broader tracking and
@@ -1072,17 +1074,81 @@ and runs only scorer/selector contexts. Its additive adapter was syntax/plan/
 stub-routing checked here; original measured numerical evidence is carried
 unchanged, with no canonical-grid or baseline rerun.
 
+## One common rate-error damping law
+
+The frozen nine-pair study remains a no-winner result. This is a separate hypothesis, sealed before new braking data: use one common gain law for every original scenario. Kp is `[240,240,240,240,160,80,40]`; the first six Kd coefficients are `[16,16,16,16,10,6]`. There is no legacy brake override. Joint 7 always uses the same law based on **reference-rate error**, not speed alone.
+
+For `e = reference_rate7 - actual_rate7`, let `s = abs(e)`, in rad/s. Kd7 is 4 J·s/rad² at `s <= 0.1`, 20 at `s >= 0.5`, and otherwise exactly `4 + 16 * ((s - 0.1) / (0.5 - 0.1))`. The F64 denominator/order is fixed and native contraction is disabled. The absolute diagnostic clears the sign bit, including signed zero; the signed error retains the subtraction result. Regime comes from the thresholds, not the rounded gain.
+
+The gain cap of 20 does not cap the incremental derivative-force slope at 20. For the underlying real-valued interpolation, the derivative force is `D(e)=Kd(abs(e))*e`, with slope `Kd(s)+s*Kd'(s)` between knots. In the declared coefficient basis the ramp slope is approximately `80*s`, approaching 40 J·s/rad² from below; the mathematical knot has distinct one-sided slopes. This is an interpretation of the underlying curve, not a derivative of the quantized output map. Stored F64 knots, operation order and rounding remain normative for the implementation. A nonnegative scalar damping coefficient is not a proof of whole-plant passivity or nonlinear stability: moving references, coupled dynamics, torque saturation and discrete integration still matter.
+
+<!-- source: psionic/examples/panda-scheduled-pd.coax psd-schedule -->
+```jai
+ // Angular rates are rad/s; damping is J*s/rad^2. These are scalar fixtures.
+ schedule:[1]PsdSchedule;
+ for error:[3]f64.[0.05,0.3,2] {
+  #assert psd_schedule_raw(error,0,schedule[..])==PjpStatus.ok;
+  print("error (micro-rad/s): %; Kd7 (micro-J*s/rad^2): %; regime %\n",psd_example_micro(schedule[0].signed_error.value),psd_example_micro(schedule[0].damping.value),schedule[0].regime);
+ }
+ negative_zero:=f64_from_bits(0x8000000000000000);
+ #assert psd_schedule_raw(negative_zero,0,schedule[..])==PjpStatus.ok;
+ print("zero diagnostics: negative signed zero %; absolute bits %\n",(ifx f64_bits(schedule[0].signed_error.value)==0x8000000000000000 then 1 else 0),f64_bits(schedule[0].absolute_error.value));
+ gains:[1]PsdGains;#assert psd_gains_raw(2,0,gains[..])==PjpStatus.ok;
+ print("same law for every case: joint7 Kp/Kd %/%\n",cast(int)gains[0].gains.kp[6].value,cast(int)gains[0].gains.kd[6].value);
+ old:=schedule[0];status:=psd_schedule_raw(21,0,schedule[..]);#assert status==PjpStatus.range;psd_schedule_same(schedule[0],old);
+ print("rate outside numerical box: range; complete schedule unchanged\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-scheduled-pd.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-panda-scheduled-pd.sh /tmp/new-panda-scheduled-cached
+```
+
+The example executes scalar schedule and gain queries only: no force, plant, SDK or NN. Its fixtures and prewritten transcript are separate from the measurements below.
+
+`psd_schedule` and `psd_gains` have typed angular-rate inputs and explicit raw-coefficient adapters. `psd_force` returns all five PD/gravity vectors with the schedule; its inputs carry radian/metre/rate quantities. Every view shape is checked before indexing, then both scheduling rates are checked finite before either ±20 rad/s numerical bound. Scheduled-force admission precedes the unchanged Pjp input admission. Complete outputs publish only on success. The [new command/step consumer](../tests/robotics/panda-scheduled-pd.coax) snapshots raw `q9/v9`, carries stage plus underlying status, and keeps controller versus actuator clipping distinct. It never reads the old case factory's Kp/Kd fields.
+
+The scalar law is a source-visible helper requiring finite rate error within ±40 rad/s. The fixed-reference and staged-apply helpers are also unsealed and require their declared coherent inputs; returned PODs are not control authority or goal-proof certificates. Scoring uses the immutable earlier reductions under **scheduled-v1/local ID0**, not old grid profile 0 or profile 8. There is no nine-candidate selector in this experiment.
+
+The source qualifies eleven new groups, 233 actual emitted root sites (117 control/116 public), and four meaningful unit refusals. Initial source-depth and observational failures are retained; only new load placement was flattened, with no compiler budget change or old source edit. Counts do not claim full Quantity-token mutation coverage or compiler-enforced bounded control.
+
+The carry condition is stronger than matching gain constants. At every cached original state in cases 0..2, compute a **new complete command** and compare all 712 base-command bytes with authenticated old profile-8 data: 2,250 comparisons must pass before any brake step. Only then may those three unchanged trajectories be reused. A carry mismatch stops the phase; there is no fallback simulation. Extra signed/absolute error, damping and regime diagnostics are separately observed. Only the brake contributes 750 genuinely new plant updates; subsequent native scalar/command/metric checks use cached observations and do not repeat it.
+
+All 2,250 new ordinary-case commands match the authenticated 712-byte base commands exactly, and all their 1,040-byte old records carry without change. No ordinary-case physics is simulated. Only after this passes does one release-mode brake run complete 750 new steps, with 202,535 assertions. Three cached native metric/assessment profiles then each pass 381,267 assertions and produce exact bytes, without repeating the brake. The three unchanged old metric cards carry their original proofs with only the explicit new local-ID remap.
+
+**All four original-case goal sets pass under this new law.** The worst normalized terminal error is 0.8379269323, below one; total IAE is 0.1049563997 rad·s. The new brake's terminal ratio is 0.2424512135, with 34 controller-clipped coordinates and no actuator-stage clips.
+
+| Original scenario | Worst terminal normalized error | Goal set |
+| --- | --- | --- |
+| Hold, exact carry | 0.0001732912 | Pass |
+| Nominal tracking, exact carry | 0.8280275411 | Pass |
+| Pulse tracking, exact carry | 0.8379269323 | Pass |
+| New brake | 0.2424512135 | Pass |
+
+The brake's final maximum position/rate errors are 0.00126465 rad and 0.0106499 rad/s. Across the complete final 125-state window, peak errors are 0.00242451 rad and 0.0106920 rad/s. A first 25-state band is observed at states 363 through 387. Treat this as an observed window, not permanent settling or an independently checked never-leaves suffix. The later full terminal window626..750 is the actual acceptance criterion and independently passes. Neither observation establishes asymptotic or permanent settling outside this finite horizon.
+
+Independent auditing checks all 3,000 diagnostic tuples exactly and retains the exact command/record carry. The 32 fresh brake metrics differ by at most 4.22e−15 and all 26,250 fresh PD fields by at most 4.62e−14. Twenty-three reader poisons are refused. The observed regimes total 2,714 low, 253 ramp and 33 high samples; the carried ordinary cases contribute 2,250 of the low samples. The scalar schedule, gain and ABI probes already pass in all three native host modes. No source law, gain, criterion or prospective descriptor changes follow these observations.
+
+The original four scenarios retain the strict whole terminal window: every joint/state626..750 must satisfy both 0.01 rad and 0.05 rad/s error, with full-run hold drift ≤0.005 rad and nominal SSE better than its analytic stationary comparator. Reference limits do not bound actual motion. C/D assessment descriptors were sealed prospectively but are **not executed in this slice**; passing these original cases would remain implementation evidence, not prospective validation. The old Part-A NONE outcome is immutable. No SDK, contact, hardware, global stability, collision/RRT, finite nullspace integration or compiler real-time qualification follows from this component.
+
+The [component evidence](../fixtures/robotics/panda-scheduled-pd/README.md)
+links the sealed descriptor, independent scalar table, exact command carry,
+single-brake and independent metric/force audit. The additive default gate uses
+committed cached observations only; it performs no brake collection or SDK
+execution. Its wrapper/adapter is syntax/plan/stub-routing checked here while
+the first measured numerical evidence is carried unchanged.
+
 ## The remaining control and planning layers
 
 The following sections are design work; the position and force queries above
 do not qualify these complete control and planning tools.
 
 
-- Meeting broader nonlinear tracking/recovery goals, including the retained
-  nominal final-error and brake-recovery misses, with systematic gain,
-  disturbance and saturation analysis beyond the four measured cases. The
-  frozen nine-pair study finds no family satisfying every terminal goal; a
-  new hypothesis requires a separate freeze, not an expanded search here.
+- Prospective C/D assessment and broader nonlinear gain, disturbance and
+  saturation acceptance beyond the four original cases. The baseline misses
+  and nine-pair no-winner result remain historical evidence; the separate
+  common schedule passes the original-case goals without qualifying unseen
+  geometry, SDK parity, stability or hardware.
 - Finite, range-preserving nullspace steps and their integration with pose IK,
   beyond the delivered linearized posture projection.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
@@ -1095,8 +1161,9 @@ do not qualify these complete control and planning tools.
 The typed PD query supplies this force equation. The isolated rotor above
 qualifies its sampled constant-inertia response. The four nonlinear cases use
 the owned coupled dynamics at a declared 0.002-second step. The bounded gain
-study above reports no feasible family; broader gain analysis and acceptable
-tracking/recovery profiles remain work:
+study above reports no feasible family, while the separate common schedule
+passes the original-case goal set. Prospective assessment and broader gain/
+tracking acceptance remain work:
 
 ```jai
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
@@ -1139,10 +1206,10 @@ goals remain planned.
 
 - Broader nonlinear PD holding/tracking acceptance under declared disturbance
   and saturation profiles. The measured four-case hold passes its drift goal,
-  while nominal final error and brake recovery miss their goals. The fixed
-  nine-profile study has no feasible family and does not trigger held-out
-  validation. The isolated rotor response and computed Jury diagnostic remain
-  separate evidence.
+  while its baseline nominal final error and brake recovery miss their goals.
+  The fixed nine-profile study still has no feasible family. The separate common
+  schedule passes all four original cases; prospective C/D and SDK validation
+  remain unexecuted. The isolated rotor/Jury result remains separate evidence.
 - Finite nullspace-step policy and pose-IK integration, plus broader behavior
   near singularities and the principal cut. The delivered posture query has
   explicit numerical rank/residual refusal; it does not qualify a finite motion.
