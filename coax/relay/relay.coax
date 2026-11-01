@@ -23,6 +23,12 @@
 // plaintext bytes; only the default relay URL's scheme (wss://) and the
 // check that --url agrees with it change here.
 //
+// Rate limits (chapter 44, relay_rate.coax): EVENTs and REQs per connection
+// a minute, and EVENTs per key a minute across connections (--rate, else
+// the Rust relay's 120, 120 and 60). An EVENT is charged once its signature
+// holds; a refusal is OK false "rate-limited: ...", a REQ's CLOSED. The
+// served NIP-11 document carries the same three limits (rt_nip11).
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -35,6 +41,7 @@
 #load "../lib/nostr/relay_store.coax";
 #load "../lib/nostr/nip42-event.coax";
 #load "../lib/nostr/relay_route.coax";
+#load "../lib/nostr/relay_rate.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
 #load "../lib/nostr/message_agree.coax";
 
@@ -70,6 +77,8 @@ ry_host_address_byte :: (i: int) -> int #foreign;
 ry_host_random :: () -> int #foreign;
 ry_host_store :: () -> int #foreign;
 ry_host_tls :: () -> int #foreign;
+ry_host_rate :: (i: int) -> int #foreign;
+ry_host_pow :: () -> int #foreign;
 
 // RY_IN holds one partial frame (at most RS_MAX_MESSAGE + 14 bytes) plus one
 // transport read (socket-server-native.h's CXSRV_MAX_IN, 65536), so a client
@@ -81,6 +90,7 @@ RyConn :: struct {
   h: int = -1; ws: bool; gen: int;
   since: int;   // accepted, or the last complete frame taken (rr_deadline)
   n42: [1] Nip42; auth: [1] RrAuth;
+  rt: [1] RtConn;                 // this connection's EVENT and REQ windows
   inb: [RY_IN] u8; used: int;
   rd: [1] WsReader;
   msg: [RS_MAX_MESSAGE] u8;
@@ -94,6 +104,9 @@ RyWork :: struct {
   sent: [RY_SENT] int;
   n42: [1] Nip42;                 // the relay URL, copied into each connection
   gen: int;                       // the last connection generation
+  rate: RtConfig;                 // --rate, or relay_rate.coax's defaults
+  keys: [1] RtKeys;               // the per-key EVENT windows
+  nip11: [4096] u8; nip11_n: int; // RR_NIP11 with the rate limits (rt_nip11)
 }
 
 ry_send_raw :: (c: [] RyConn, bytes: string) -> bool {
@@ -111,7 +124,7 @@ ry_text :: (c: [] RyConn, w: [] RyWork, n: int) -> bool {
 ry_shut :: (c: [] RyConn) {
   if c[0].h >= 0 { r := cxsrv_close(c[0].h); }
   c[0].h = -1; c[0].ws = false; c[0].used = 0; c[0].rd[0] = WsReader.{};
-  rr_auth_reset(c[0].auth[..]);
+  rr_auth_reset(c[0].auth[..]); c[0].rt[0] = RtConn.{};
   for i: 0..<RS_MAX_SUBS { c[0].subs[i].live = false; }
 }
 ry_close :: (c: [] RyConn, w: [] RyWork, code: int) {
@@ -143,11 +156,16 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
   if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
   if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
+  id := r.e.id;
+  if r.reason == RS_ACCEPT {
+    key := r.e.public_key;
+    rt := rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());
+    if rt != RT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
+  }
   reason := r.reason;
   if reason == RS_ACCEPT {
     reason = rd_admit(store, r, event);
   }
-  id := r.e.id;
   prefix := ifx rr_store_extra(reason) then rr_store_prefix(reason) else rs_prefix(reason);
   why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), prefix, why, w[0].body[..]));
@@ -156,6 +174,8 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
 ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg) {
   mm := m;
   sub := cast(string) mm.sub[0..<mm.sub_n];
+  rt := rt_req(c[0].rt[..], w[0].rate, cxsrv_now_s());
+  if rt != RT_OK { ok := ry_text(c, w, ms_write_closed(sub, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
   v := rr_req_filters(m.filters);
   if v == RS_ACCEPT { v = rs_req(m, text); }
   if v != RS_ACCEPT { ok := ry_closed(c, w, sub, v); return; }
@@ -235,7 +255,7 @@ ry_http :: (c: [] RyConn, w: [] RyWork) {
     if !ry_challenge(c, w) { ry_close(c, w, WS_CLOSE_GOING_AWAY); }
     return;
   }
-  n := ifx a == RR_H_NIP11 then wss_http_write("200 OK", "application/nostr+json", RR_NIP11, w[0].out[..])
+  n := ifx a == RR_H_NIP11 then wss_http_write("200 OK", "application/nostr+json", cast(string) w[0].nip11[0..<w[0].nip11_n], w[0].out[..])
     else wss_http_write("400 Bad Request", "text/plain", "This is a Nostr relay: connect with a WebSocket, or ask for application/nostr+json.", w[0].out[..]);
   if n > 0 { ok := ry_send_raw(c, cast(string) w[0].out[0..<n]); }
   ry_shut(c);
@@ -272,6 +292,7 @@ ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RdStore) {
       w[0].gen = rr_next_gen(w[0].gen);
       conns[slot].h = h; conns[slot].ws = false; conns[slot].used = 0; conns[slot].rd[0] = WsReader.{};
       conns[slot].gen = w[0].gen; rr_auth_reset(conns[slot].auth[..]); conns[slot].since = cxsrv_now_s();
+      conns[slot].rt[0] = RtConn.{};
     }
     now := cxsrv_now_s();
     for i: 0..<conns.count {
@@ -324,6 +345,11 @@ ry_url :: (port: int, out: [] u8) -> int {
   while d > 0 { d -= 1; out[k] = digits[d]; k += 1; }
   return k;
 }
+// --rate's limits, or relay_rate.coax's defaults (the Rust relay's).
+ry_rate :: () -> RtConfig {
+  if ry_host_rate(0) < 0 { return rt_default(); }
+  return RtConfig.{events = ry_host_rate(0), reqs = ry_host_rate(1), key_events = ry_host_rate(2)};
+}
 main :: () {
   if cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
   conns: [RY_CONNS] RyConn;
@@ -341,6 +367,9 @@ main :: () {
     if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
   }
+  w[0].rate = ry_rate();
+  w[0].nip11_n = rt_nip11(RR_NIP11, w[0].rate, w[0].nip11[..]);
+  if w[0].nip11_n < 0 { print("relay: --rate needs three limits from 1 to %\n", RT_LIMIT_MAX); return; }
   print("relay: listening on port %\n", cxsrv_bound_port());
   ry_serve(conns[..], w[..], store[..]);
 }

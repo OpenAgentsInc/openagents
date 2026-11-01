@@ -279,7 +279,7 @@ def main():
     if store.exists(): store.unlink()
     env = dict(os.environ, ASAN_OPTIONS='detect_leaks=0')
     log = open(out / 'relay.log', 'w')
-    relay = subprocess.Popen([binary, '--listen', a.listen, '--port', str(port), '--url', url, '--store', str(store)],
+    relay = subprocess.Popen([binary, '--listen', a.listen, '--port', str(port), '--url', url, '--store', str(store), '--rate', '1000000,1000000,1000000'],
                              stdout=log, stderr=subprocess.STDOUT, env=env)
     try:
         run(a, relay, port, url, out)

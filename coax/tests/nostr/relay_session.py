@@ -160,8 +160,8 @@ class Ws:
         self.s.close()
 
 
-def start(exe, log, store=None):
-    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--store', str(store)] if store else []) + TLS_ARGS
+def start(exe, log, store=None, rate='1000,1000,1000'):
+    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--rate', rate] if rate else []) + (['--store', str(store)] if store else []) + TLS_ARGS
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=log, text=True,
                          env={**os.environ, 'ASAN_OPTIONS': 'abort_on_error=0:halt_on_error=1:detect_leaks=0',
                               'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'})
@@ -401,6 +401,57 @@ def deletion(port):
     return ev[0], ev[2]
 
 
+def rate_limits(exe, log):
+    """relay_rate.coax: --rate 3,2,2 on a fresh relay, and the defaults."""
+    refused_start(exe, ['--rate', '0,1,1'], 'a zero rate limit', 'three limits')
+    refused_start(exe, ['--rate', '1,2'], 'two rate limits', 'EVENTS,REQS,KEY_EVENTS')
+    p, port = start(exe, log, rate='3,2,2')
+    try:
+        doc = info(port)
+        lim = doc['limitation']
+        check(lim['events_per_minute'] == 3 and lim['reqs_per_minute'] == 2 and lim['events_per_minute_per_key'] == 2,
+              'rate: NIP-11 carries the configured limits')
+        now = int(time.time())
+        ev = sign([{"kind": 1, "created_at": now - 10 + i, "tags": [], "content": "r%d" % i} for i in range(3)])
+        other = sign([{"kind": 1, "created_at": now - 10, "tags": [], "content": "other key"}], 'coax relay r1 second test key')[0]
+        w = Ws(port)
+        check(w.auth()[2] is True, 'rate: AUTH')
+        check(publish(w, ev[0])[2] is True and publish(w, ev[1])[2] is True, 'rate: two EVENTs from one key are accepted')
+        check(publish(w, ev[2]) == ['OK', ev[2]['id'], False, 'rate-limited: event rate exceeded for this key'],
+              'rate: the third from that key in a minute is refused')
+        check(publish(w, other) == ['OK', other['id'], False, 'rate-limited: event rate exceeded'], 'rate: the connection has used its 3 EVENTs')
+        w2 = Ws(port)
+        check(w2.auth()[2] is True and publish(w2, other)[2] is True, 'rate: another connection, another key: accepted')
+        check(publish(w2, ev[2])[3] == 'rate-limited: event rate exceeded for this key', 'rate: the key window holds across connections')
+        for i in range(2):
+            w2.send(['REQ', 'q%d' % i, {'kinds': [1]}])
+            w2.until_eose('q%d' % i)
+        w2.send(['REQ', 'q2', {'kinds': [1]}])
+        check(w2.recv() == ['CLOSED', 'q2', 'rate-limited: REQ rate exceeded'], 'rate: the third REQ in a minute is CLOSED')
+        w.close(); w2.close()
+    finally:
+        p.terminate(); p.wait(10)
+    p, port = start(exe, log, rate=None)
+    try:
+        lim = info(port)['limitation']
+        check(lim['events_per_minute'] == 120 and lim['reqs_per_minute'] == 120 and lim['events_per_minute_per_key'] == 60,
+              "rate: without --rate, the Rust relay's 120, 120 and 60")
+    finally:
+        p.terminate(); p.wait(10)
+
+
+def info(port):
+    s = connect(port)
+    s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
+    data = b''
+    while True:
+        c = s.recv(65536)
+        if not c:
+            break
+        data += c
+    return json.loads(data.split(b'\r\n\r\n', 1)[1])
+
+
 def nip11(port):
     s = connect(port)
     s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
@@ -578,6 +629,7 @@ def main():
                 w.close()
             finally:
                 p.terminate(); p.wait(10)
+            rate_limits(exe, log)
             if tls:
                 tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()

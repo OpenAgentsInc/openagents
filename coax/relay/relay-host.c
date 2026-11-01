@@ -2,7 +2,7 @@
    compiled with -Dmain=coax_relay_main) on a thread with a 512 MiB stack,
    since its connection, frame and store buffers are Coax locals.
      relay --listen 127.0.0.1 --port 7447 [--url ws://name:7447] [--store FILE]
-           [--tls-cert CHAIN.pem --tls-key KEY.pem]
+           [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS]
    (port 0 picks a free one). --url is the relay URL NIP-42 AUTH events
    must name; without it the relay uses ws://ADDRESS:PORT, or
    wss://ADDRESS:PORT with TLS. --tls-cert and --tls-key (both, PEM) make
@@ -10,7 +10,11 @@
    must be 0600 or 0400 and owned by this user, and nothing about it is
    ever printed. Challenges take
    32 bytes from getentropy. --store FILE keeps events in FILE (append-only,
-   replayed on start); without it they are in memory only. Effects only; every relay decision is Coax. */
+   replayed on start); without it they are in memory only. --rate sets the
+   per-minute limits (EVENTs and REQs per connection, EVENTs per key;
+   relay_rate.coax's defaults 120,120,60 without it) and --pow the NIP-13
+   difficulty an EVENT needs (0, off, without it); relay.coax checks both
+   values. Effects only; every relay decision is Coax. */
 #define _DEFAULT_SOURCE /* getentropy */
 #include "socket-server-native.h"
 #include "store-file-native.h"
@@ -31,6 +35,8 @@ static const char *address = "127.0.0.1";
 static const char *url = "";
 static int store = 0;
 static int tls = 0;
+static long long rate[3] = {-1, -1, -1};
+static long long pow_bits = -1;
 
 int64_t ry_host_port(void) { return port; }
 int64_t ry_host_url_count(void) { return (int64_t)strlen(url); }
@@ -40,6 +46,10 @@ int64_t ry_host_address_byte(int64_t i) { return (unsigned char)address[i]; }
 /* One byte of OS entropy, or -1. */
 int64_t ry_host_store(void) { return store; }
 int64_t ry_host_tls(void) { return tls; }
+/* --rate's three values (EVENTS, REQS, KEY_EVENTS), or -1 without --rate. */
+int64_t ry_host_rate(int64_t i) { return i >= 0 && i < 3 ? (int64_t)rate[i] : -1; }
+/* --pow's difficulty, or -1 without --pow. */
+int64_t ry_host_pow(void) { return (int64_t)pow_bits; }
 int64_t ry_host_random(void) {
   unsigned char b;
   return getentropy(&b, 1) == 0 ? b : -1;
@@ -67,11 +77,19 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--tls-cert") && i + 1 < argc) cert = argv[++i];
     else if (!strcmp(argv[i], "--tls-key") && i + 1 < argc) key = argv[++i];
     else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = strtoll(argv[++i], NULL, 10);
+    else if (!strcmp(argv[i], "--rate") && i + 1 < argc) {
+      char tail = 0;
+      if (sscanf(argv[++i], "%lld,%lld,%lld%c", &rate[0], &rate[1], &rate[2], &tail) != 3) { fprintf(stderr, "relay: --rate takes EVENTS,REQS,KEY_EVENTS\n"); return 2; }
+    }
+    else if (!strcmp(argv[i], "--pow") && i + 1 < argc) {
+      char tail = 0;
+      if (sscanf(argv[++i], "%lld%c", &pow_bits, &tail) != 1) { fprintf(stderr, "relay: --pow takes a number of bits\n"); return 2; }
+    }
     else if (!strcmp(argv[i], "--store") && i + 1 < argc) {
       if (cxstore_set_path(argv[++i]) != 0) { fprintf(stderr, "relay: bad --store path\n"); return 2; }
       store = 1;
     }
-    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--tls-cert CHAIN.pem --tls-key KEY.pem]\n"); return 2; }
+    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS]\n"); return 2; }
   }
   if ((cert == NULL) != (key == NULL)) { fprintf(stderr, "relay: --tls-cert and --tls-key go together\n"); return 2; }
   if (cert != NULL) {

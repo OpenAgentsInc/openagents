@@ -40,9 +40,11 @@ once and shows what the relay does when each budget runs out.
 | [relay_poll_budget.coax](../../coax/lib/net/relay_poll_budget.coax) | `rcp_step` | the client side: a bound on the work one poll may do (`#authority`) |
 | [relay.coax](../../coax/relay/relay.coax) | `ry_serve`, `ry_req`, `ry_event` | the R1 relay program, which calls the procedures above |
 
-`relay.coax` doesn't call `relay_rate.coax` yet. The running R1 relay has
-every limit in the table below except the three rate limits. See "What
-isn't built".
+`relay.coax` calls `relay_rate.coax`: each connection has an `RtConn`, the
+relay one `RtKeys`, `ry_event` charges an EVENT once its signature holds
+(`rt_event`), `ry_req` charges a REQ before `rs_req` (`rt_req`), and the
+served document is `rt_nip11(RR_NIP11, ...)`. The limits are the relay's
+`--rate EVENTS,REQS,KEY_EVENTS` flag, or `rt_default()` without it.
 
 ## Every limit in one table
 
@@ -735,14 +737,12 @@ No other library file changed.
 
 ### What isn't built
 
-- `relay.coax` doesn't call `relay_rate.coax`. Wiring it in means a
-  `RtConn` per connection, one `RtKeys` for the relay, a check in `ry_event`
-  after `rs_admit_read` and before the signature, and one in `ry_req` before
-  `rs_req`. The served document would then be `rt_nip11(RR_NIP11, ...)`.
-  The flood driver `relay_flood.py`, which stores 2,100 events on one
-  connection, would have to spread its events over connections.
-- The limits aren't relay flags. They are an `RtConfig` value; the program
-  that serves them would pass its own.
+- An EVENT is charged after its signature check, not before it, so a
+  client that sends forged events pays for their verification without
+  using its window. The flood driver `relay_flood.py`, which stores 2,100
+  events on one connection, passes `--rate` with the largest limits.
+- A connection stands in for an IP address: the C host gives the relay no
+  peer address.
 - Per-address limits need the C host to report each connection's peer.
 - There is no per-kind write table.
 
