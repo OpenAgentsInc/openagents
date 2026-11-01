@@ -69,8 +69,11 @@ supplies owned storage; it does not decide borrow origins.
 Memo lookups follow only the queried declaration's chain, so independent
 procedures do not consume work scanning one another's queries. Query rows stay
 append-only, and an active recursive row remains incomplete. The checker
-rebuilds the invocation's heads over the actual used-node prefix before any
-query; a second check cannot reuse an earlier invocation's scratch results.
+rebuilds the invocation's heads for procedures, parameters, local declarations
+and iteration bindings before any query; a second check cannot reuse an earlier
+invocation's scratch results. Initialization scans the admitted node prefix,
+clearing and charging only declarations that can own queries. Inapplicable
+expression nodes create no memo work.
 These memo links and workspace tails are internal scratch, not a published
 summary format. The query, origin and work limits are unchanged.
 

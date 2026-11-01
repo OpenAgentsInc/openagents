@@ -334,10 +334,31 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_ov
 }
 
 #test "return borrow repeated checking includes a queryable final used declaration" {
- nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[0..<9],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
  nodes[1]=CK_Node.{kind=CK_Tag.file,head=8};nodes[8]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=2};nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};
  #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[8].borrow_status==1;
  #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[8].borrow_status==1 && nodes[2].borrow_binding==3;
+}
+
+#test "return borrow repeated checking rebuilds local descriptor declaration queries" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_var,name="copy",a=8,next=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};nodes[9]=CK_Node.{kind=CK_Tag.stmt_return,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,name="copy"};
+ #assert CK_run(c,10,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1;
+ #assert CK_run(c,10,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1 && nodes[10].borrow_binding==7;
+}
+
+#test "return borrow repeated iteration copies caller string descriptors from a by-value array" {
+ nodes:[32]CK_Node;types:[32]CK_Type;locals:[8]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="first",head=3,a=8,b=9};nodes[3]=CK_Node.{kind=CK_Tag.param,name="values",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_array,a=5,b=6};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,value=2};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[8]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[9]=CK_Node.{kind=CK_Tag.stmt_block,head=10};nodes[10]=CK_Node.{kind=CK_Tag.stmt_each,name="value",a=11,c=12,next=15};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,name="values"};nodes[12]=CK_Node.{kind=CK_Tag.stmt_block,head=13};nodes[13]=CK_Node.{kind=CK_Tag.stmt_return,a=14};nodes[14]=CK_Node.{kind=CK_Tag.expr_ident,name="value"};nodes[15]=CK_Node.{kind=CK_Tag.stmt_return,a=16};nodes[16]=CK_Node.{kind=CK_Tag.expr_string,name=""};
+ #assert CK_run(c,16,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1;
+ #assert CK_run(c,16,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1 && nodes[14].borrow_binding==10;
+}
+
+#forall "return borrow head preparation spends query work only on eligible declarations" expression:0..<4 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=1048575}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=4,loc=CK_Loc.{line=12,column=3}};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=7,loc=CK_Loc.{line=13,column=3}};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_expr,a=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=1};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=2};
+ if expression==1 {nodes[3].kind=CK_Tag.expr_bool;nodes[3].type=2;nodes[3].value=1;}if expression==2 {nodes[3].kind=CK_Tag.expr_string;nodes[3].type=3;nodes[3].name="static";}if expression==3 {nodes[3].kind=CK_Tag.expr_binary;nodes[3].op=34;nodes[3].a=6;nodes[3].b=7;}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};#assert CB_reset_heads(b) && !state[0].fatal && state[0].error_count==0;
 }
 
 #test "return borrow cached default empty remains complete at an empty origin prefix" {
@@ -81380,8 +81401,9 @@ CB_walk :: (b:CB_Context,head:int,instances:bool) {
 CB_workspace_admitted :: (query_count:int,origin_count:int)->bool {return query_count>=128 && query_count<=16384 && origin_count>=1024 && origin_count<=65536;}
 CB_reset_heads :: (b:CB_Context)->bool {
  c:=b.c;if c.state[0].used<1 || c.state[0].used>=c.nodes.count {CK_resource(c,CK_Loc.{line=1,column=1});return false;}
- // Scratch heads live for this invocation only; all concrete cloning is over.
- for id:2..<c.state[0].used+1 {if !CB_tick(b,c.nodes[id].loc) {return false;}c.nodes[id].borrow_query=0;}
+ // Only declarations can own memo chains; expression scanning spends no query work.
+ // All concrete cloning is over, and these heads live for this invocation only.
+ for id:2..<c.state[0].used+1 {tag:=c.nodes[id].kind;if tag==CK_Tag.proc || tag==CK_Tag.param || tag==CK_Tag.stmt_var || tag==CK_Tag.stmt_each {if !CB_tick(b,c.nodes[id].loc) {return false;}c.nodes[id].borrow_query=0;}}
  return true;
 }
 CB_run :: (c:CK_Context,queries:[]CK_BorrowQuery,origins:[]BS_Origin) {
