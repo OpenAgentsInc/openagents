@@ -1460,6 +1460,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/field.coax",
+      "chapter": "psionic/book/ch158-a-field-around-a-shape.md",
+      "stdout": "psionic/fixtures/field.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/field-refuse.coax",
+      "chapter": "psionic/book/ch158-a-field-around-a-shape.md",
+      "stdout": "psionic/fixtures/field-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

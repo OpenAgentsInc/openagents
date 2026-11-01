@@ -1,0 +1,22 @@
+sphere at (4, 4, 0): d 3.0 grad (0.6, 0.8, 0.0)
+box at (-4, -5, 0.5): d 5.0 grad (-0.6, -0.8, 0.0)
+box at (0, -0.75, 0.5): d -0.25 grad (0.0, -1.0, 0.0)
+capsule at (0, 7, 4): d 4.0 grad (0.0, 0.6, 0.8)
+cube mesh: ok (area 6.0, volume 1.0)
+mesh at (1, 0, 0): d 0.5 grad (1.0, 0.0, 0.0)
+mesh at (1, 1, 0): d 0.7071067811865476 grad (0.7071067811865475, 0.7071067811865475, 0.0)
+mesh at (0.25, 0, 0.375): d -0.125 grad (0.0, 0.0, 1.0)
+winding number at (0.1, 0.2, -0.3): 0.9999999999999997, at (2, 0.2, -0.3): -2.208718528794109e-18
+surface samples: 1024
+largest |d| at a surface sample: 1.6711069443220838e-16
+box samples: 512
+inside the cube: 66 of 512 (one eighth is 64); mesh and box signs agree on 512
+grid: 4096 points, 16 x 16 x 16 cells
+8 nearest of 256 points: grid equals brute force for 256, distances computed 55760 against 1048576
+within 0.1 of (0.1, -0.2, 0.3): grid 3 (133 visited), brute force 3 (4096 visited)
+  point 600, distance 0.013767311189304743
+  point 2129, distance 0.07277768313210642
+  point 3771, distance 0.08635929580227118
+mean: ok 0.375, 0.125
+max: ok 0.75, 0.25
+max gradient for dout (0, 1): w (-0.5, 0.0, 0.0, 0.5), b 1.0, features (2.0, 0.0)

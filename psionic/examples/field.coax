@@ -1,0 +1,75 @@
+// Chapter 158: signed distances for three shapes and a cube mesh, samples on
+// the surface and in a box, grid neighbourhoods against brute force, and a
+// point convolution with its gradient checked by finite differences.
+#import "Basic";
+#load "../lib/field.coax";
+
+show :: (name:string,d:FdDistance) {print("%: d % grad (%, %, %)\n",name,d.d,d.grad[0],d.grad[1],d.grad[2]);}
+
+main :: () {
+    // book:begin shapes
+    sphere:=FdShape.{kind=FdKind.sphere,a=[3]f64.[1,0,0],r=2};
+    box:=FdShape.{kind=FdKind.box,a=[3]f64.[-1,-1,-1],b=[3]f64.[1,1,1]};
+    capsule:=FdShape.{kind=FdKind.capsule,a=[3]f64.[0,0,0],b=[3]f64.[0,4,0],r=1};
+    show("sphere at (4, 4, 0)",fd_shape_distance(sphere,[3]f64.[4,4,0]));
+    show("box at (-4, -5, 0.5)",fd_shape_distance(box,[3]f64.[-4,-5,0.5]));
+    show("box at (0, -0.75, 0.5)",fd_shape_distance(box,[3]f64.[0,-0.75,0.5]));
+    show("capsule at (0, 7, 4)",fd_shape_distance(capsule,[3]f64.[0,7,4]));
+    // book:end shapes
+
+    // book:begin mesh
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;
+    m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
+    print("cube mesh: % (area %, volume %)\n",m.status,m.area,m.volume);
+    show("mesh at (1, 0, 0)",fd_mesh_distance(m,[3]f64.[1,0,0]));
+    show("mesh at (1, 1, 0)",fd_mesh_distance(m,[3]f64.[1,1,0]));
+    show("mesh at (0.25, 0, 0.375)",fd_mesh_distance(m,[3]f64.[0.25,0,0.375]));
+    print("winding number at (0.1, 0.2, -0.3): %, at (2, 0.2, -0.3): %\n",
+        fd_winding(m,[3]f64.[0.1,0.2,-0.3]),fd_winding(m,[3]f64.[2,0.2,-0.3]));
+    // book:end mesh
+
+    // book:begin samples
+    surface:[3072]f64;normals:[3072]f64;
+    print("surface samples: %\n",fd_sample_surface(m,5,surface[..],normals[..]).written);
+    worst:=0.0;for i:0..<1024 {d:=abs(fd_mesh_distance(m,fd_at(surface[..],i)).d);if d>worst {worst=d;}}
+    print("largest |d| at a surface sample: %\n",worst);
+    cloud:[1536]f64;print("box samples: %\n",fd_sample_box([3]f64.[-1,-1,-1],[3]f64.[1,1,1],9,cloud[..]).written);
+    inside:=0;agree:=0;
+    for i:0..<512 {
+        p:=fd_at(cloud[..],i);mesh:=fd_mesh_distance(m,p).d<0;
+        if mesh {inside+=1;}if mesh==(fd_shape_distance(FdShape.{kind=FdKind.box,a=[3]f64.[-0.5,-0.5,-0.5],b=[3]f64.[0.5,0.5,0.5]},p).d<0) {agree+=1;}
+    }
+    print("inside the cube: % of 512 (one eighth is 64); mesh and box signs agree on %\n",inside,agree);
+    // book:end samples
+
+    // book:begin neighbours
+    points:[12288]f64;fd_cloud(3,4096,points[..]);start:[32769]int;order:[4096]int;
+    g:=fd_grid_build(points[..],0.125,start[..],order[..]);
+    print("grid: % points, % x % x % cells\n",g.n,g.side[0],g.side[1],g.side[2]);
+    a:[64]int;b:[64]int;same:=0;grid_work:=0;brute_work:=0;
+    for i:0..<256 {
+        q:=fd_at(points[..],i*16);
+        x:=fd_knn(g,q,8,a[..]);y:=fd_knn_brute(points[..],q,8,b[..]);
+        equal:=x.status==FdStatus.ok && y.status==FdStatus.ok;for j:0..<8 {if a[j]!=b[j] {equal=false;}}
+        if equal {same+=1;}grid_work+=x.visited;brute_work+=y.visited;
+    }
+    print("8 nearest of 256 points: grid equals brute force for %, distances computed % against %\n",same,grid_work,brute_work);
+    q:=[3]f64.[0.1,-0.2,0.3];
+    x:=fd_radius(g,q,0.1,a[..]);y:=fd_radius_brute(points[..],q,0.1,b[..]);
+    print("within 0.1 of (0.1, -0.2, 0.3): grid % (% visited), brute force % (% visited)\n",x.count,x.visited,y.count,y.visited);
+    for j:0..<x.count {print("  point %, distance %\n",a[j],sqrt(fd_d2(points[..],a[j],q)));}
+    // book:end neighbours
+
+    // book:begin conv
+    two:=[6]f64.[0,0,0, 1,0,0];feat:=[2]f64.[0.5,-1];nbr:=[4]int.[0,1, 1,0];counts:=[2]int.[2,2];
+    w:=[4]f64.[1,0,0,2];bias:=[1]f64.[-0.25];out:[2]f64;
+    c:=FdConv.{channels=1,outputs=1,radius=2};
+    r:=fd_conv_forward(c,two[..],feat[..],nbr[..],counts[..],2,w[..],bias[..],out[..]);
+    print("mean: % %, %\n",r.status,out[0],out[1]);
+    c.aggregate=FdAggregate.max;r=fd_conv_forward(c,two[..],feat[..],nbr[..],counts[..],2,w[..],bias[..],out[..]);
+    print("max: % %, %\n",r.status,out[0],out[1]);
+    dout:=[2]f64.[0,1];dw:[4]f64;db:[1]f64;df:[2]f64;
+    r=fd_conv_backward(c,two[..],feat[..],nbr[..],counts[..],2,w[..],bias[..],dout[..],dw[..],db[..],df[..]);
+    print("max gradient for dout (0, 1): w (%, %, %, %), b %, features (%, %)\n",dw[0],dw[1],dw[2],dw[3],db[0],df[0],df[1]);
+    // book:end conv
+}

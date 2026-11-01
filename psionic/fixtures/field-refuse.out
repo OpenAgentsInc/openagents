@@ -1,0 +1,31 @@
+23 coordinates: shape
+a NaN vertex: number
+vertex index 8 of 8: shape
+a triangle 0, 2, 0: degenerate
+one face missing: open
+one triangle turned over: open
+every triangle turned over: inside_out
+distance at (0, inf, 0): number
+distance at x = 2,000,000: number
+distance on a mesh never admitted: shape
+a sphere of radius 0: parameter
+a box with low z = high z: parameter
+sampling box low x = high x: parameter
+5 numbers for sample points: shape
+4,097 sample points: limit
+sample values still -7: 6 of 6
+cell size 0: parameter
+33 cells a side: limit
+27 cells, 27 starts: capacity
+radius 0: parameter
+3 neighbours, room for 2: capacity
+k = 4 of 3 points: parameter
+k = 65: limit
+more than 64 neighbours within 0.5: limit
+neighbour slots still -7: -7 -7 -7 -7
+3 weights for 4: shape
+neighbour index 2 of 2 points: shape
+3 neighbours in 2 slots: shape
+a NaN radius: parameter
+an infinite feature: number
+outputs still -7: -7.0 -7.0

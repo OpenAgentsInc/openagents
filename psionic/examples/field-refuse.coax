@@ -1,0 +1,53 @@
+// Chapter 158: broken meshes, points, bounds, grids, queries and layers,
+// each refused with its status before anything is written.
+#import "Basic";
+#load "../lib/field.coax";
+
+// book:begin refuse
+main :: () {
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;
+    print("23 coordinates: %\n",fd_mesh_admit(FdMesh.{vertices=v[0..<23],triangles=t[..]}).status);
+    w:=v;w[5]=0.0/0.0;print("a NaN vertex: %\n",fd_mesh_admit(FdMesh.{vertices=w[..],triangles=t[..]}).status);
+    u:=t;u[7]=8;print("vertex index 8 of 8: %\n",fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status);
+    u=t;u[2]=0;print("a triangle 0, 2, 0: %\n",fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status);
+    print("one face missing: %\n",fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[0..<30]}).status);
+    u=t;u[1]=3;u[2]=2;print("one triangle turned over: %\n",fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status);
+    u=t;for k:0..<12 {s:=u[3*k+1];u[3*k+1]=u[3*k+2];u[3*k+2]=s;}
+    print("every triangle turned over: %\n",fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status);
+    m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
+    print("distance at (0, inf, 0): %\n",fd_mesh_distance(m,[3]f64.[0,1.0/0.0,0]).status);
+    print("distance at x = 2,000,000: %\n",fd_mesh_distance(m,[3]f64.[2000000,0,0]).status);
+    none:FdChecked;print("distance on a mesh never admitted: %\n",fd_mesh_distance(none,[3]f64.[0,0,0]).status);
+    print("a sphere of radius 0: %\n",fd_shape_distance(FdShape.{kind=FdKind.sphere,r=0},[3]f64.[1,0,0]).status);
+    print("a box with low z = high z: %\n",fd_shape_distance(FdShape.{kind=FdKind.box,b=[3]f64.[1,1,0]},[3]f64.[1,0,0]).status);
+
+    points:=[6]f64.[-7,-7,-7,-7,-7,-7];normals:[6]f64;
+    print("sampling box low x = high x: %\n",fd_sample_box([3]f64.[1,0,0],[3]f64.[1,1,1],1,points[..]).status);
+    print("5 numbers for sample points: %\n",fd_sample_surface(m,1,points[0..<5],normals[0..<5]).status);
+    many:[12291]f64;print("4,097 sample points: %\n",fd_sample_box([3]f64.[0,0,0],[3]f64.[1,1,1],1,many[..]).status);
+    left:=0;for x:points {if x==-7 {left+=1;}}print("sample values still -7: % of 6\n",left);
+
+    p:=[9]f64.[0,0,0, 1,1,1, 0.5,0.5,0.5];start:[40000]int;order:[3]int;
+    print("cell size 0: %\n",fd_grid_build(p[..],0,start[..],order[..]).status);
+    print("33 cells a side: %\n",fd_grid_build(p[..],1.0/32,start[..],order[..]).status);
+    print("27 cells, 27 starts: %\n",fd_grid_build(p[..],0.5,start[0..<27],order[..]).status);
+    g:=fd_grid_build(p[..],1,start[..],order[..]);out:=[4]int.[-7,-7,-7,-7];
+    print("radius 0: %\n",fd_radius(g,[3]f64.[0,0,0],0,out[..]).status);
+    print("3 neighbours, room for 2: %\n",fd_radius(g,[3]f64.[0,0,0],2,out[0..<2]).status);
+    print("k = 4 of 3 points: %\n",fd_knn(g,[3]f64.[0,0,0],4,out[..]).status);
+    print("k = 65: %\n",fd_knn(g,[3]f64.[0,0,0],65,out[..]).status);
+    cloud:[12288]f64;fd_cloud(3,4096,cloud[..]);big:[32769]int;all:[4096]int;
+    dense:=fd_grid_build(cloud[..],0.125,big[..],all[..]);
+    print("more than 64 neighbours within 0.5: %\n",fd_radius(dense,[3]f64.[0,0,0],0.5,out[..]).status);
+    print("neighbour slots still -7: % % % %\n",out[0],out[1],out[2],out[3]);
+
+    two:=[6]f64.[0,0,0, 1,0,0];feat:=[2]f64.[0.5,-1];nbr:=[4]int.[0,1, 1,0];counts:=[2]int.[2,2];
+    wt:=[4]f64.[1,0,0,2];bias:=[1]f64.[-0.25];y:=[2]f64.[-7,-7];c:=FdConv.{channels=1,outputs=1,radius=2};
+    print("3 weights for 4: %\n",fd_conv_forward(c,two[..],feat[..],nbr[..],counts[..],2,wt[0..<3],bias[..],y[..]).status);
+    bad:=nbr;bad[1]=2;print("neighbour index 2 of 2 points: %\n",fd_conv_forward(c,two[..],feat[..],bad[..],counts[..],2,wt[..],bias[..],y[..]).status);
+    k:=counts;k[0]=3;print("3 neighbours in 2 slots: %\n",fd_conv_forward(c,two[..],feat[..],nbr[..],k[..],2,wt[..],bias[..],y[..]).status);
+    c.radius=0.0/0.0;print("a NaN radius: %\n",fd_conv_forward(c,two[..],feat[..],nbr[..],counts[..],2,wt[..],bias[..],y[..]).status);
+    c.radius=2;f:=feat;f[1]=1.0/0.0;print("an infinite feature: %\n",fd_conv_forward(c,two[..],f[..],nbr[..],counts[..],2,wt[..],bias[..],y[..]).status);
+    print("outputs still -7: % %\n",y[0],y[1]);
+}
+// book:end refuse

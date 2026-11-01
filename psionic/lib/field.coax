@@ -1,0 +1,1023 @@
+// Chapter 158: a field around a shape. Signed distances for a sphere, a box,
+// a capsule and a closed triangle mesh; points sampled on a surface and in a
+// box; radius and k-nearest-neighbour queries on a uniform grid, equal to
+// brute force; and a point convolution with mean or max aggregation and its
+// gradients by hand.
+// Profile psionic-field-v1: binary64, one CPU core, plain sums in a fixed
+// order; at most 4,096 points, 1,024 vertices, 1,024 triangles, 64
+// neighbours a point, 32 grid cells a side and 16 channels.
+#load "counter-rng.coax";
+#load "../tests/field-checks.coax";   // the checks' oracles and fixtures
+
+// book:begin types
+FdStatus :: enum u8 {ok;shape;limit;number;parameter;capacity;degenerate;open;inside_out;}
+FdKind :: enum u8 {sphere;box;capsule;}
+// A sphere: centre a, radius r. A box: low corner a, high corner b. A
+// capsule: the segment from a to b, grown by r.
+FdShape :: struct {kind:FdKind;a:[3]f64;b:[3]f64;r:f64;}
+// d is negative inside, zero on the surface and positive outside. grad is
+// the outward unit gradient, or zero where the field has none.
+FdDistance :: struct {status:FdStatus;d:f64;grad:[3]f64;closest:[3]f64;triangle:int=-1;}
+// Three coordinates a vertex; three vertex indices a triangle, counter-
+// clockwise seen from outside.
+FdMesh :: struct {vertices:[]f64;triangles:[]int;}
+// A mesh that passed admission, with its surface area and enclosed volume.
+FdChecked :: struct {status:FdStatus=FdStatus.shape;mesh:FdMesh;area:f64;volume:f64;}
+// Points bucketed by cell: cell k holds order[start[k] ..< start[k+1]].
+FdGrid :: struct {status:FdStatus=FdStatus.shape;points:[]f64;n:int;low:[3]f64;cell:f64;side:[3]int;start:[]int;order:[]int;}
+// count neighbours written; visited is how many distances the search computed.
+FdFound :: struct {status:FdStatus;count:int;visited:int;}
+FdAggregate :: enum u8 {mean;max;}
+// Each output channel: relu(w . [(p_j - p_i) / radius, f_j] + b), then the
+// mean or the max over the neighbours j of point i.
+FdConv :: struct {channels:int;outputs:int;radius:f64;aggregate:FdAggregate;}
+FdResult :: struct {status:FdStatus;written:int;}
+// book:end types
+
+// book:begin bounds
+FD_COORD_MAX :: 1000000.0;      // a coordinate this large is refused
+FD_POINTS_MAX :: 4096;
+FD_VERTICES_MAX :: 1024;
+FD_TRIANGLES_MAX :: 1024;
+FD_NEIGHBORS_MAX :: 64;
+FD_SIDE_MAX :: 32;              // grid cells along one axis
+FD_CHANNELS_MAX :: 16;
+FD_FLAT :: 8.673617379884035e-19;  // 2^-60: a triangle whose corner angle has sin^2 below this is flat
+FD_PI :: 3.141592653589793;
+// book:end bounds
+
+// Checks precede the implementation. Expected values are worked by hand in
+// chapter 158, or come from an independent oracle written in the check.
+fd_cube :: (lo:f64,hi:f64)->[24]f64 {
+    v:[24]f64;for i:0..<8 {v[3*i]=ifx i%2==1 then hi else lo;v[3*i+1]=ifx (i/2)%2==1 then hi else lo;v[3*i+2]=ifx i/4==1 then hi else lo;}
+    return v;
+}
+// Vertex i is corner (i & 1, i & 2, i & 4); two triangles a face, outward.
+FD_CUBE :: [36]int.[0,2,3, 0,3,1, 4,5,7, 4,7,6, 0,1,5, 0,5,4, 2,6,7, 2,7,3, 0,4,6, 0,6,2, 1,3,7, 1,7,5];
+// The octahedron |x| + |y| + |z| = 1: vertices +x, -x, +y, -y, +z, -z.
+FD_OCTA_V :: [18]f64.[1,0,0, -1,0,0, 0,1,0, 0,-1,0, 0,0,1, 0,0,-1];
+FD_OCTA :: [24]int.[0,2,4, 2,1,4, 1,3,4, 3,0,4, 2,0,5, 1,2,5, 3,1,5, 0,3,5];
+// Test points come from splitmix64 on a counter, a stream apart from the samplers' seeds.
+fd_lcg :: (r:[]u64)->f64 {r[0]+=1;return f64(cr_bits(9001,r[0])>>11)/9007199254740992.0;}
+
+#test "the arctangent: known angles, every quadrant and the axes" {
+    #assert fd_atan2(0,0)==0 && fd_atan2(0,1)==0 && fd_atan2(0,-1)==FD_PI;
+    #assert fd_atan2(1,0)==FD_PI/2 && fd_atan2(-1,0)==-FD_PI/2;
+    #assert fd_near(fd_atan2(1,1),FD_PI/4,2e-16) && fd_near(fd_atan2(-1,-1),-3*FD_PI/4,5e-16);
+    // Within two units in the last place of the rounded angle.
+    #assert fd_near(fd_atan2(1,-1),3*FD_PI/4,5e-16) && fd_near(fd_atan2(-1,1),-FD_PI/4,2e-16);
+    #assert fd_near(fd_atan2(1,sqrt(3.0)),FD_PI/6,2.3e-16) && fd_near(fd_atan2(sqrt(3.0),1),FD_PI/3,4.5e-16);
+    #assert fd_near(fd_atan2(-sqrt(3.0),-1),-2*FD_PI/3,5e-16) && fd_near(fd_atan2(2-sqrt(3.0),1),FD_PI/12,2.3e-16);
+    #assert fd_near(fd_atan2(1,-sqrt(3.0)),5*FD_PI/6,5e-16) && fd_near(fd_atan2(-1,-sqrt(3.0)),-5*FD_PI/6,5e-16);
+    #assert fd_near(fd_atan2(-sqrt(3.0),1),-FD_PI/3,3e-16) && fd_near(fd_atan2(sqrt(3.0),-1),2*FD_PI/3,5e-16);
+    // Values from Python's math.atan, to the last bit or one away.
+    #assert fd_near(fd_atan_unit(0.1),0.09966865249116204,2e-17) && fd_near(fd_atan_unit(0.5),0.4636476090008061,6e-17);
+    #assert fd_near(fd_atan_unit(-0.9),-0.7328151017865066,2.3e-16) && fd_near(fd_atan_unit(1),0.7853981633974483,2.3e-16);
+    #assert fd_atan_unit(0)==0 && fd_atan_unit(1e-300)==1e-300;
+}
+#forall "the arctangent: atan(z) + atan(1/z) is a quarter turn, and the series is sharp" k:1..<40 {
+    z:=f64(k)/40;#assert fd_near(fd_atan_unit(z)+fd_atan2(1,z),FD_PI/2,4e-16);
+    #assert fd_near(fd_atan_unit(z),fd_atan_oracle(z),7e-16);
+}
+#test "shapes by hand" {
+    s:=FdShape.{kind=FdKind.sphere,a=[3]f64.[1,0,0],r=2};
+    d:=fd_shape_distance(s,[3]f64.[4,4,0]);#assert d.status==FdStatus.ok && d.d==3 && d.grad[0]==0.6 && d.grad[1]==0.8 && d.grad[2]==0;
+    d=fd_shape_distance(s,[3]f64.[1,0,0]);#assert d.d==-2 && d.grad[0]==0 && d.grad[1]==0 && d.grad[2]==0;
+    d=fd_shape_distance(s,[3]f64.[1,0,-1]);#assert d.d==-1 && d.grad[2]==-1;
+    b:=FdShape.{kind=FdKind.box,a=[3]f64.[-1,-1,-1],b=[3]f64.[1,1,1]};
+    d=fd_shape_distance(b,[3]f64.[2,0,0]);#assert d.d==1 && d.grad[0]==1 && d.grad[1]==0 && d.grad[2]==0;
+    d=fd_shape_distance(b,[3]f64.[-4,-5,0.5]);#assert d.d==5 && d.grad[0]==-0.6 && d.grad[1]==-0.8 && d.grad[2]==0;
+    d=fd_shape_distance(b,[3]f64.[0.5,0,0]);#assert d.d==-0.5 && d.grad[0]==1 && d.grad[1]==0;
+    d=fd_shape_distance(b,[3]f64.[0,-0.75,0.5]);#assert d.d==-0.25 && d.grad[1]==-1 && d.grad[0]==0 && d.grad[2]==0;
+    d=fd_shape_distance(b,[3]f64.[0.5,0.75,0]);#assert d.d==-0.25 && d.grad[1]==1 && d.grad[0]==0;
+    d=fd_shape_distance(b,[3]f64.[0,0.25,-0.75]);#assert d.d==-0.25 && d.grad[2]==-1 && d.grad[1]==0;
+    // At the centre every face is 1 away; the first axis wins, on the + side.
+    d=fd_shape_distance(b,[3]f64.[0,0,0]);#assert d.d==-1 && d.grad[0]==1 && d.grad[1]==0 && d.grad[2]==0;
+    d=fd_shape_distance(b,[3]f64.[1,0.5,0]);#assert d.d==0 && d.grad[0]==1;
+    off:=FdShape.{kind=FdKind.box,a=[3]f64.[1,2,3],b=[3]f64.[3,6,4]};
+    d=fd_shape_distance(off,[3]f64.[2,4,6]);#assert d.d==2 && d.grad[2]==1;
+    d=fd_shape_distance(off,[3]f64.[2,4,3.25]);#assert d.d==-0.25 && d.grad[2]==-1;
+    c:=FdShape.{kind=FdKind.capsule,a=[3]f64.[0,0,0],b=[3]f64.[0,4,0],r=1};
+    d=fd_shape_distance(c,[3]f64.[3,2,0]);#assert d.d==2 && d.grad[0]==1;
+    d=fd_shape_distance(c,[3]f64.[0,7,4]);#assert d.d==4 && d.grad[1]==0.6 && d.grad[2]==0.8;
+    d=fd_shape_distance(c,[3]f64.[-3,-4,0]);#assert d.d==4 && d.grad[0]==-0.6 && d.grad[1]==-0.8;
+    d=fd_shape_distance(c,[3]f64.[0,1,0]);#assert d.d==-1 && d.grad[0]==0 && d.grad[1]==0;
+    dot:=FdShape.{kind=FdKind.capsule,a=[3]f64.[0,1,0],b=[3]f64.[0,1,0],r=0.5};
+    d=fd_shape_distance(dot,[3]f64.[0,1,2]);#assert d.d==1.5 && d.grad[2]==1;
+}
+#test "shapes refuse bad parameters and points" {
+    good:=FdShape.{kind=FdKind.sphere,r=1};p:=[3]f64.[0,0,0];
+    #assert fd_shape_check(good)==FdStatus.ok;
+    for k:0..<3 {
+        s:=good;s.kind=cast(FdKind)k;if k==1 {s.b=[3]f64.[1,1,1];}
+        #assert fd_shape_check(s)==FdStatus.ok;
+        for i:0..<3 {
+            t:=s;t.a[i]=0.0/0.0;#assert fd_shape_check(t)==FdStatus.number;
+            t=s;t.b[i]=FD_COORD_MAX*2;#assert fd_shape_check(t)==FdStatus.number;
+            q:=p;q[i]=-1.0/0.0;#assert fd_shape_distance(s,q).status==FdStatus.number;
+        }
+        t:=s;t.r=1.0/0.0;#assert fd_shape_check(t)==FdStatus.number;
+    }
+    for f:0..<2 {s:=good;if f==1 {s.kind=FdKind.capsule;}s.r=0;#assert fd_shape_check(s)==FdStatus.parameter;s.r=-1;#assert fd_shape_check(s)==FdStatus.parameter;}
+    b:=FdShape.{kind=FdKind.box,b=[3]f64.[1,1,1]};#assert fd_shape_check(b)==FdStatus.ok;
+    for i:0..<3 {t:=b;t.b[i]=0;#assert fd_shape_check(t)==FdStatus.parameter;t.b[i]=-1;#assert fd_shape_check(t)==FdStatus.parameter;}
+    b.r=-5;#assert fd_shape_check(b)==FdStatus.ok;
+    bad:=good;bad.r=0;d:=fd_shape_distance(bad,p);#assert d.status==FdStatus.parameter && d.d==0;
+    #assert fd_finite(FD_COORD_MAX) && fd_finite(-FD_COORD_MAX) && !fd_finite(1000000.0000000001) && !fd_finite(-1000000.0000000001);
+}
+// Central differences of each shape's field against its gradient.
+#forall "shape gradients match finite differences" seed:0..<24 {
+    r:=[1]u64.[cast(u64)seed+1];
+    shapes:=[3]FdShape.[FdShape.{kind=FdKind.sphere,a=[3]f64.[0.2,-0.1,0.3],r=0.7},
+        FdShape.{kind=FdKind.box,a=[3]f64.[-0.6,-0.4,-0.5],b=[3]f64.[0.5,0.7,0.3]},
+        FdShape.{kind=FdKind.capsule,a=[3]f64.[-0.5,0,0.1],b=[3]f64.[0.4,0.3,-0.2],r=0.35}];
+    for s:shapes {
+        p:=[3]f64.[fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5];
+        d:=fd_shape_distance(s,p);#assert d.status==FdStatus.ok;
+        #assert fd_near(fd_norm(d.grad),1,1e-12);
+        for i:0..<3 {
+            h:=1e-6;a:=p;a[i]+=h;z:=p;z[i]-=h;
+            g:=(fd_shape_distance(s,a).d-fd_shape_distance(s,z).d)/(2*h);#assert fd_near(g,d.grad[i],1e-6);
+        }
+    }
+}
+#test "the closest point on a triangle, region by region" {
+    a:=[3]f64.[0,0,0];b:=[3]f64.[4,0,0];c:=[3]f64.[0,4,0];
+    // Seven regions: the face, three edges, three corners.
+    want:=[42]f64.[1,1,5, 1,1,0, -1,-1,2, 0,0,0, 5,-1,0, 4,0,0, -1,5,1, 0,4,0,
+        2,-3,1, 2,0,0, -2,3,0, 0,3,0, 3,3,-2, 2,2,0];
+    for k:0..<7 {
+        q:=fd_closest_triangle([3]f64.[want[6*k],want[6*k+1],want[6*k+2]],a,b,c);
+        for i:0..<3 {#assert q[i]==want[6*k+3+i];}
+    }
+}
+// The closest point is no farther than any point of a fine barycentric grid
+// over the triangle, and at most the grid's spacing nearer.
+#forall "the closest point beats a brute-force barycentric grid" seed:0..<24 {
+    r:=[1]u64.[cast(u64)seed+101];
+    v:[12]f64;for i:0..<12 {v[i]=fd_lcg(r[..])*4-2;}
+    a:=[3]f64.[v[0],v[1],v[2]];b:=[3]f64.[v[3],v[4],v[5]];c:=[3]f64.[v[6],v[7],v[8]];p:=[3]f64.[v[9]*2,v[10]*2,v[11]*2];
+    q:=fd_closest_triangle(p,a,b,c);best:=fd_norm(fd_sub(p,q));
+    n:=30;low:=1e300;
+    for i:0..<n+1 {for j:0..<n+1-i {
+        x:=fd_add(fd_add(fd_scale(a,f64(n-i-j)/f64(n)),fd_scale(b,f64(i)/f64(n))),fd_scale(c,f64(j)/f64(n)));
+        e:=fd_norm(fd_sub(p,x));if e<low {low=e;}
+    }}
+    edge:=fd_norm(fd_sub(a,b));e2:=fd_norm(fd_sub(b,c));e3:=fd_norm(fd_sub(a,c));if e2>edge {edge=e2;}if e3>edge {edge=e3;}
+    #assert best<=low+1e-12 && low<=best+edge/f64(n);
+}
+#test "a cube mesh: admission, area, volume and its field by hand" {
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
+    #assert m.status==FdStatus.ok && m.area==6 && m.volume==1;
+    d:=fd_mesh_distance(m,[3]f64.[1,0,0]);#assert d.status==FdStatus.ok && d.d==0.5 && d.grad[0]==1 && d.closest[0]==0.5;
+    #assert d.triangle==10;
+    d=fd_mesh_distance(m,[3]f64.[0,0,0]);#assert d.d==-0.5 && d.triangle==0 && d.grad[2]==-1;
+    d=fd_mesh_distance(m,[3]f64.[1,1,0]);#assert d.d==sqrt(0.5) && fd_near(d.grad[0],sqrt(0.5),2e-16);
+    d=fd_mesh_distance(m,[3]f64.[0.5,0.25,0.25]);#assert d.d==0 && d.grad[0]==1 && d.grad[1]==0;
+    d=fd_mesh_distance(m,[3]f64.[0.25,0,0.375]);#assert d.d==-0.125 && d.grad[2]==1 && d.triangle==2;
+    #assert fd_near(fd_winding(m,[3]f64.[0.1,0.2,-0.3]),1,1e-14) && fd_near(fd_winding(m,[3]f64.[2,0.2,-0.3]),0,1e-14);
+    #assert fd_mesh_distance(m,[3]f64.[0,0.0/0.0,0]).status==FdStatus.number;
+    none:FdChecked;#assert fd_mesh_distance(none,[3]f64.[0,0,0]).status==FdStatus.shape;
+    // The octahedron's area is 8 equilateral triangles of side sqrt 2; volume 4/3.
+    o:=FD_OCTA_V;ot:=FD_OCTA;q:=fd_mesh_admit(FdMesh.{vertices=o[..],triangles=ot[..]});
+    #assert q.status==FdStatus.ok && fd_near(q.area,4*sqrt(3.0),1e-14) && fd_near(q.volume,4.0/3,1e-15);
+    d=fd_mesh_distance(q,[3]f64.[1,1,1]);#assert fd_near(d.d,2/sqrt(3.0),1e-15) && fd_near(d.grad[1],1/sqrt(3.0),1e-15);
+    d=fd_mesh_distance(q,[3]f64.[0,0,0]);#assert fd_near(d.d,-1/sqrt(3.0),1e-15);
+    d=fd_mesh_distance(q,[3]f64.[2,0,0]);#assert d.d==1 && d.closest[0]==1 && d.grad[0]==1;
+}
+// The box mesh's field is the box's field: the same surface, so the same
+// distances, signs and gradients, to rounding.
+#forall "the cube mesh agrees with the analytic box" seed:0..<32 {
+    r:=[1]u64.[cast(u64)seed+7];
+    v:=fd_cube(-0.5,0.5);v[3]=0.75;v[9]=0.75;v[15]=0.75;v[21]=0.75;v[7]=0.25;v[10]=0.25;v[19]=0.25;v[22]=0.25;
+    t:=FD_CUBE;m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});#assert m.status==FdStatus.ok && fd_near(m.volume,1.25*0.75,1e-15);
+    box:=FdShape.{kind=FdKind.box,a=[3]f64.[-0.5,-0.5,-0.5],b=[3]f64.[0.75,0.25,0.5]};
+    for k:0..<8 {
+        p:=[3]f64.[fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5];
+        d:=fd_mesh_distance(m,p);e:=fd_shape_distance(box,p);
+        #assert fd_near(d.d,e.d,1e-15);
+        for i:0..<3 {#assert fd_near(d.grad[i],e.grad[i],1e-12);}
+    }
+}
+// Signs from the winding number match the octahedron's own test, and no
+// sampled surface point is nearer than the mesh distance.
+#forall "the octahedron against inside tests and brute-force nearest samples" seed:0..<8 {
+    o:=FD_OCTA_V;ot:=FD_OCTA;m:=fd_mesh_admit(FdMesh.{vertices=o[..],triangles=ot[..]});
+    pts:[768]f64;nrm:[768]f64;#assert fd_sample_surface(m,77,pts[..],nrm[..]).written==256;
+    r:=[1]u64.[cast(u64)seed+31];
+    for k:0..<4 {
+        p:=[3]f64.[fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5];
+        d:=fd_mesh_distance(m,p);#assert d.status==FdStatus.ok;
+        #assert (d.d<0)==(abs(p[0])+abs(p[1])+abs(p[2])<1);
+        n:=fd_at(nrm[..],k);#assert fd_near(fd_norm(n),1,2e-16) && fd_near(abs(n[0]),1/sqrt(3.0),2e-16);
+        low:=1e300;for j:0..<256 {e:=fd_norm(fd_sub(p,fd_at(pts[..],j)));if e<low {low=e;}}
+        #assert abs(d.d)<=low+1e-12 && low<=abs(d.d)+0.3;
+        for i:0..<3 {
+            h:=1e-6;a:=p;a[i]+=h;z:=p;z[i]-=h;
+            #assert fd_near((fd_mesh_distance(m,a).d-fd_mesh_distance(m,z).d)/(2*h),d.grad[i],1e-6);
+        }
+    }
+}
+#test "mesh admission refuses, in order" {
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[0..<0],triangles=t[..]}).status==FdStatus.shape;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[0..<0]}).status==FdStatus.shape;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[0..<23],triangles=t[..]}).status==FdStatus.shape;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[0..<35]}).status==FdStatus.shape;
+    big:[3075]f64;#assert fd_mesh_admit(FdMesh.{vertices=big[..],triangles=t[..]}).status==FdStatus.limit;
+    #assert fd_mesh_admit(FdMesh.{vertices=big[0..<3072],triangles=t[..]}).status!=FdStatus.limit;
+    many:[3075]int;#assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=many[..]}).status==FdStatus.limit;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=many[0..<3072]}).status==FdStatus.degenerate;
+    w:=v;w[5]=0.0/0.0;#assert fd_mesh_admit(FdMesh.{vertices=w[..],triangles=t[..]}).status==FdStatus.number;
+    w=v;w[23]=2e6;#assert fd_mesh_admit(FdMesh.{vertices=w[..],triangles=t[..]}).status==FdStatus.number;
+    u:=t;u[7]=8;#assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status==FdStatus.shape;
+    u=t;u[35]=-1;#assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status==FdStatus.shape;
+    // A repeated corner, then a sliver: both flat.
+    u=t;u[2]=0;#assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status==FdStatus.degenerate;
+    w=v;w[9]=w[6];w[10]=w[7];w[11]=w[8]+1e-12;
+    #assert fd_mesh_admit(FdMesh.{vertices=w[..],triangles=t[..]}).status==FdStatus.degenerate;
+    // An open box: the last face's two triangles removed. Then the same, with
+    // each triangle along the hole turned to start at its open edge.
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[0..<30]}).status==FdStatus.open;
+    u=t;u[3]=3;u[4]=1;u[5]=0;u[21]=7;u[22]=3;u[23]=2;u[6]=5;u[7]=7;u[8]=4;u[12]=1;u[13]=5;u[14]=0;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[0..<30]}).status==FdStatus.open;
+    // One triangle alone, and one vertex alone.
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[33..<36]}).status==FdStatus.open;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[0..<3],triangles=many[0..<3]}).status==FdStatus.degenerate;
+    // One triangle turned over: its edges run the same way as a neighbour's.
+    u=t;u[1]=3;u[2]=2;#assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status==FdStatus.open;
+    // The cube plus a stray triangle repeating one face: an edge used three times.
+    extra:[39]int;for i:0..<36 {extra[i]=t[i];}extra[36]=0;extra[37]=2;extra[38]=3;
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=extra[..]}).status==FdStatus.open;
+    // Every triangle turned over: closed, but the volume is -1.
+    u=t;for k:0..<12 {s:=u[3*k+1];u[3*k+1]=u[3*k+2];u[3*k+2]=s;}
+    #assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]}).status==FdStatus.inside_out;
+    // A triangle and its reverse: closed, with no volume.
+    two:=[6]int.[0,1,2, 0,2,1];#assert fd_mesh_admit(FdMesh.{vertices=v[..],triangles=two[..]}).status==FdStatus.inside_out;
+    r:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=u[..]});#assert r.area==0 && r.volume==0 && r.mesh.vertices.count==0;
+}
+#test "a flat triangle is one whose corner angle has sine squared at most 2^-60" {
+    a:=[3]f64.[0,0,0];b:=[3]f64.[1,0,0];
+    #assert fd_flat(a,b,[3]f64.[1,0.000000000931322574615478515625,0]);
+    #assert !fd_flat(a,b,[3]f64.[1,0.00000000093132258,0]);
+    #assert fd_flat(a,b,a) && fd_flat(a,a,b) && fd_flat(a,b,b) && !fd_flat(a,b,[3]f64.[0,1,0]);
+}
+#test "surface samples lie on the surface with outward normals" {
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
+    pts:[3072]f64;nrm:[3072]f64;r:=fd_sample_surface(m,5,pts[..],nrm[..]);#assert r.status==FdStatus.ok && r.written==1024;
+    // The same seed gives the same points: a single draw is the first of 1,024.
+    one:[3]f64;n1:[3]f64;#assert fd_sample_surface(m,5,one[..],n1[..]).written==1;for k:0..<3 {#assert one[k]==pts[k] && n1[k]==nrm[k];}
+    faces:[6]int;
+    for i:0..<1024 {
+        p:=fd_at(pts[..],i);n:=fd_at(nrm[..],i);d:=fd_mesh_distance(m,p);
+        #assert abs(d.d)<=1e-15;axis:=-1;
+        for k:0..<3 {if abs(n[k])==1 {axis=k;#assert abs(p[k]-0.5*n[k])<=1e-15;} else {#assert n[k]==0 && abs(p[k])<=0.5;}}
+        #assert axis>=0;faces[2*axis+(ifx n[axis]>0 then 1 else 0)]+=1;
+    }
+    // Equal areas: each face gets about a sixth.
+    for f:faces {#assert f>=130 && f<=210;}
+    #assert faces[0]==166 && faces[5]==150;
+    // A thin slab: area-weighted, so the big faces take nearly all the points.
+    w:=fd_cube(0,1);for i:0..<8 {w[3*i+2]*=0.01;}s:=fd_mesh_admit(FdMesh.{vertices=w[..],triangles=t[..]});
+    #assert fd_sample_surface(s,5,pts[..],nrm[..]).written==1024;
+    big:=0;for i:0..<1024 {if abs(nrm[3*i+2])==1 {big+=1;}}#assert big>=990 && big==1001;
+}
+#test "sampling refuses before it writes" {
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
+    pts:=[6]f64.[-7,-7,-7,-7,-7,-7];nrm:[6]f64;none:FdChecked;
+    #assert fd_sample_surface(none,1,pts[..],nrm[..]).status==FdStatus.shape;
+    #assert fd_sample_surface(m,1,pts[0..<5],nrm[0..<5]).status==FdStatus.shape;
+    #assert fd_sample_surface(m,1,pts[0..<0],nrm[0..<0]).status==FdStatus.shape;
+    #assert fd_sample_surface(m,1,pts[..],nrm[0..<3]).status==FdStatus.shape;
+    big:[12291]f64;#assert fd_sample_surface(m,1,big[..],big[..]).status==FdStatus.limit;
+    #assert fd_sample_box([3]f64.[0,0,0],[3]f64.[1,1,0],1,pts[..]).status==FdStatus.parameter;
+    #assert fd_sample_box([3]f64.[0,2,0],[3]f64.[1,1,1],1,pts[..]).status==FdStatus.parameter;
+    #assert fd_sample_box([3]f64.[1,0,0],[3]f64.[1,1,1],1,pts[..]).status==FdStatus.parameter;
+    #assert fd_sample_box([3]f64.[0,0,0],[3]f64.[0.0/0.0,1,1],1,pts[..]).status==FdStatus.number;
+    #assert fd_sample_box([3]f64.[-2e6,0,0],[3]f64.[1,1,1],1,pts[..]).status==FdStatus.number;
+    #assert fd_sample_box([3]f64.[0,0,0],[3]f64.[1,1,1],1,pts[0..<4]).status==FdStatus.shape;
+    #assert fd_sample_box([3]f64.[0,0,0],[3]f64.[1,1,1],1,pts[0..<0]).status==FdStatus.shape;
+    #assert fd_sample_box([3]f64.[0,0,0],[3]f64.[1,1,1],1,big[..]).status==FdStatus.limit;
+    for x:pts {#assert x==-7;}
+    #assert fd_sample_box([3]f64.[0,0,0],[3]f64.[1,1,1],1,big[0..<12288]).written==4096;
+}
+// Points drawn in a box land inside the cube about as often as the volumes
+// say, and the mesh's sign agrees with the analytic box's on every point.
+#test "volume samples: the mesh's sign is the box's sign" {
+    v:=fd_cube(-0.5,0.5);t:=FD_CUBE;m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
+    box:=FdShape.{kind=FdKind.box,a=[3]f64.[-0.5,-0.5,-0.5],b=[3]f64.[0.5,0.5,0.5]};
+    pts:[1536]f64;#assert fd_sample_box([3]f64.[-1,-1,-1],[3]f64.[1,1,1],9,pts[..]).written==512;
+    inside:=0;
+    for i:0..<512 {
+        p:=fd_at(pts[..],i);for k:0..<3 {#assert p[k]>=-1 && p[k]<1;}
+        d:=fd_mesh_distance(m,p);#assert (d.d<0)==(fd_shape_distance(box,p).d<0);if d.d<0 {inside+=1;}
+    }
+    // One eighth of 512 is 64, give or take 3 standard deviations (22).
+    #assert inside>=42 && inside<=86 && inside==66;
+}
+fd_cloud :: (seed:int,n:int,out:[]f64) {r:=[1]u64.[cast(u64)seed];for i:0..<3*n {out[i]=fd_lcg(r[..])*2-1;}}
+#test "a grid by hand" {
+    p:=[15]f64.[0,0,0, 0.9,0,0, 0.1,0.2,0, 2,1,0.5, 0.95,0.05,0];
+    start:[64]int;order:[5]int;for k:0..<64 {start[k]=-7;}
+    g:=fd_grid_build(p[..],1,start[..],order[..]);
+    #assert g.status==FdStatus.ok && g.n==5 && g.side[0]==3 && g.side[1]==2 && g.side[2]==1 && g.cell==1;
+    // Cell 0 holds points 0, 1, 2, 4; cell 5 (x 2, y 1) holds point 3.
+    #assert g.start[0]==0 && g.start[1]==4 && g.start[5]==4 && g.start[6]==5;
+    #assert order[0]==0 && order[1]==1 && order[2]==2 && order[3]==4 && order[4]==3;
+    c:=fd_cell(g,[3]f64.[-5,0.99,9]);#assert c[0]==0 && c[1]==0 && c[2]==0;
+    c=fd_cell(g,[3]f64.[2.5,1,0.5]);#assert c[0]==2 && c[1]==1 && c[2]==0;
+    out:[8]int;
+    f:=fd_radius(g,[3]f64.[0.9,0,0],0.1,out[..]);#assert f.status==FdStatus.ok && f.count==2 && out[0]==1 && out[1]==4;
+    f=fd_radius(g,[3]f64.[0,0,0],1,out[..]);#assert f.count==4 && out[0]==0 && out[1]==2 && out[2]==1 && out[3]==4;
+    f=fd_knn(g,[3]f64.[2,2,2],2,out[..]);#assert f.status==FdStatus.ok && f.count==2 && out[0]==3 && out[1]==4;
+    // From (0.5, 0, 0): point 1 at 0.16, then point 2 at 0.2 just ahead of point 4 at 0.205.
+    f=fd_knn(g,[3]f64.[0.5,0,0],2,out[..]);#assert out[0]==1 && out[1]==2;
+    tie:=[6]f64.[1,0,0, -1,0,0];o2:[2]int;s2:[64]int;
+    g2:=fd_grid_build(tie[..],0.5,s2[..],o2[..]);#assert g2.side[0]==5;
+    f=fd_knn(g2,[3]f64.[0,0,0],1,out[..]);#assert out[0]==0;
+    f=fd_radius(g2,[3]f64.[0,0,0],1,out[..]);#assert f.count==2 && out[0]==0 && out[1]==1;
+    f=fd_radius_brute(tie[..],[3]f64.[0,0,0],1,out[..]);#assert f.count==2 && out[0]==0 && out[1]==1;
+    f=fd_knn_brute(tie[..],[3]f64.[0,0,0],1,out[..]);#assert out[0]==0;
+    f=fd_radius(g2,[3]f64.[0,0,0],0.9999999999999999,out[..]);#assert f.status==FdStatus.ok && f.count==0;
+}
+#forall "grid queries equal brute force exactly" seed:1..<7 {
+    n:=24*seed;pts:[720]f64;fd_cloud(seed,n,pts[..]);
+    if seed%3==0 {for i:0..<n {pts[3*i+2]*=0.01;}}
+    if seed%4==0 {for i:0..<n/2 {pts[3*i]=pts[3*(i+n/2)];pts[3*i+1]=pts[3*(i+n/2)+1];pts[3*i+2]=pts[3*(i+n/2)+2];}}
+    start:[10000]int;order:[240]int;cell:=0.1+0.05*f64(seed%5);
+    g:=fd_grid_build(pts[0..<3*n],cell,start[..],order[..]);#assert g.status==FdStatus.ok;
+    r:=[1]u64.[cast(u64)seed*7];
+    for k:0..<8 {
+        q:=[3]f64.[fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5,fd_lcg(r[..])*3-1.5];
+        if k<4 {q=fd_at(pts[..],k*seed%n);}
+        a:[64]int;b:[64]int;
+        rad:=0.05+0.1*f64(k%4);
+        x:=fd_radius(g,q,rad,a[..]);y:=fd_radius_brute(pts[0..<3*n],q,rad,b[..]);
+        #assert x.status==y.status && x.count==y.count;
+        if x.status==FdStatus.ok {for i:0..<x.count {#assert a[i]==b[i];}}
+        if k>=4 {#assert x.visited<=y.visited;}
+        kk:=1+(k*5+seed)%16;if kk>n {kk=n;}
+        x=fd_knn(g,q,kk,a[..]);y=fd_knn_brute(pts[0..<3*n],q,kk,b[..]);
+        #assert x.status==FdStatus.ok && y.status==FdStatus.ok && x.count==kk && y.count==kk && y.visited==n;
+        for i:0..<kk {#assert a[i]==b[i];}
+    }
+}
+#test "the grid saves distance computations" {
+    pts:[12288]f64;fd_cloud(3,4096,pts[..]);start:[32769]int;order:[4096]int;
+    g:=fd_grid_build(pts[..],0.125,start[..],order[..]);#assert g.status==FdStatus.ok && g.side[0]==16;
+    a:[64]int;b:[64]int;q:=[3]f64.[0.1,-0.2,0.3];
+    x:=fd_knn(g,q,8,a[..]);y:=fd_knn_brute(pts[..],q,8,b[..]);
+    #assert y.visited==4096 && x.visited==379;for i:0..<8 {#assert a[i]==b[i];}
+    x=fd_radius(g,q,0.1,a[..]);y=fd_radius_brute(pts[..],q,0.1,b[..]);
+    #assert x.count==y.count && x.count==3 && x.visited==133 && y.visited==4096;
+    // More than 64 neighbours is refused, by both.
+    #assert fd_radius(g,q,0.5,a[..]).status==FdStatus.limit && fd_radius_brute(pts[..],q,0.5,b[..]).status==FdStatus.limit;
+}
+#test "grids and queries refuse, in order" {
+    p:=[9]f64.[0,0,0, 1,1,1, 0.5,0.5,0.5];start:[28]int;order:[3]int;
+    #assert fd_grid_build(p[..],1,start[..],order[..]).status==FdStatus.ok;
+    #assert fd_grid_build(p[0..<0],1,start[..],order[..]).status==FdStatus.shape;
+    #assert fd_grid_build(p[0..<8],1,start[..],order[..]).status==FdStatus.shape;
+    big:[12291]f64;bo:[4097]int;#assert fd_grid_build(big[..],1,start[..],bo[..]).status==FdStatus.limit;
+    #assert fd_grid_build(big[0..<12288],1,start[..],bo[..]).status==FdStatus.ok;
+    q:=p;q[4]=0.0/0.0;#assert fd_grid_build(q[..],1,start[..],order[..]).status==FdStatus.number;
+    #assert fd_grid_build(p[..],0,start[..],order[..]).status==FdStatus.parameter;
+    #assert fd_grid_build(p[..],-1,start[..],order[..]).status==FdStatus.parameter;
+    #assert fd_grid_build(p[..],1.0/0.0,start[..],order[..]).status==FdStatus.parameter;
+    #assert fd_grid_build(p[..],0.0/0.0,start[..],order[..]).status==FdStatus.parameter;
+    // A span of 31.5 cells needs 32 a side; a span of 32 cells needs 33.
+    wide:[35938]int;
+    #assert fd_grid_build(p[..],1.0/31.5,wide[..],order[..]).status==FdStatus.ok;
+    #assert fd_grid_build(p[..],1.0/32,wide[..],order[..]).status==FdStatus.limit;
+    #assert fd_grid_build(p[..],0.5,start[0..<27],order[..]).status==FdStatus.capacity;
+    #assert fd_grid_build(p[..],0.5,start[0..<28],order[..]).status==FdStatus.ok;
+    #assert fd_grid_build(p[..],1,start[..],order[0..<2]).status==FdStatus.capacity;
+    g:=fd_grid_build(p[..],1,start[..],order[..]);out:=[4]int.[-7,-7,-7,-7];none:FdGrid;
+    #assert fd_radius(none,p0(),1,out[..]).status==FdStatus.shape && fd_knn(none,p0(),1,out[..]).status==FdStatus.shape;
+    #assert fd_radius(g,[3]f64.[0,1.0/0.0,0],1,out[..]).status==FdStatus.number && fd_knn(g,[3]f64.[0.0/0.0,0,0],1,out[..]).status==FdStatus.number;
+    #assert fd_radius(g,p0(),0,out[..]).status==FdStatus.parameter && fd_radius(g,p0(),2e6,out[..]).status==FdStatus.parameter;
+    #assert fd_radius(g,p0(),2,out[0..<2]).status==FdStatus.capacity && fd_radius(g,p0(),2,out[0..<3]).count==3;
+    #assert fd_knn(g,p0(),0,out[..]).status==FdStatus.parameter && fd_knn(g,p0(),4,out[..]).status==FdStatus.parameter;
+    #assert fd_knn(g,p0(),3,out[0..<2]).status==FdStatus.capacity && fd_knn(g,p0(),3,out[..]).count==3 && out[3]==-7;
+    #assert fd_knn(g,p0(),65,out[..]).status==FdStatus.limit && fd_knn_brute(p[..],p0(),65,out[..]).status==FdStatus.limit;
+    #assert fd_radius_brute(p[0..<8],p0(),1,out[..]).status==FdStatus.shape && fd_knn_brute(p[0..<0],p0(),1,out[..]).status==FdStatus.shape;
+    #assert fd_radius_brute(big[..],p0(),1,out[..]).status==FdStatus.limit && fd_knn_brute(big[..],p0(),1,out[..]).status==FdStatus.limit;
+    #assert fd_radius_brute(q[..],p0(),1,out[..]).status==FdStatus.number && fd_knn_brute(q[..],p0(),1,out[..]).status==FdStatus.number;
+    #assert fd_radius_brute(p[..],[3]f64.[0,0,1.0/0.0],1,out[..]).status==FdStatus.number && fd_knn_brute(p[..],[3]f64.[0,0,1.0/0.0],1,out[..]).status==FdStatus.number;
+    #assert fd_radius_brute(p[..],p0(),-1,out[..]).status==FdStatus.parameter && fd_knn_brute(p[..],p0(),0,out[..]).status==FdStatus.parameter;
+    #assert fd_knn_brute(p[..],p0(),4,out[..]).status==FdStatus.parameter && fd_knn_brute(p[..],p0(),3,out[0..<2]).status==FdStatus.capacity;
+    #assert fd_radius_brute(p[..],p0(),2,out[0..<2]).status==FdStatus.capacity;
+}
+#test "a point convolution by hand" {
+    // Two points 1 apart on x; one channel; radius 2; w = [1, 0, 0, 2], b = -0.25.
+    pts:=[6]f64.[0,0,0, 1,0,0];feat:=[2]f64.[0.5,-1];nbr:=[4]int.[0,1, 1,0];counts:=[2]int.[2,2];
+    w:=[4]f64.[1,0,0,2];b:=[1]f64.[-0.25];out:=[3]f64.[-7,-7,-7];
+    c:=FdConv.{channels=1,outputs=1,radius=2};
+    // Point 0: from itself 0 + 1 - 0.25 = 0.75; from point 1, 0.5 - 2 - 0.25 < 0, so 0. Mean 0.375.
+    // Point 1: from itself -2.25, so 0; from point 0, -0.5 + 1 - 0.25 = 0.25. Mean 0.125.
+    r:=fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]);
+    #assert r.status==FdStatus.ok && r.written==2 && out[0]==0.375 && out[1]==0.125 && out[2]==-7;
+    c.aggregate=FdAggregate.max;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2;
+    #assert out[0]==0.75 && out[1]==0.25;
+    // A point with no neighbours outputs 0.
+    counts[1]=0;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2 && out[1]==0;
+    c.aggregate=FdAggregate.mean;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2 && out[1]==0 && out[0]==0.375;
+    // With no neighbours, max ignores the row's unused slots.
+    other:=[4]int.[0,1, 0,1];none:=[2]int.[2,0];c.aggregate=FdAggregate.max;
+    #assert fd_conv_forward(c,pts[..],feat[..],other[..],none[..],2,w[..],b[..],out[..]).written==2 && out[0]==0.75 && out[1]==0;
+    c.aggregate=FdAggregate.mean;
+    // Its gradient for dout = [1, 0]: only point 0's own term is active, at weight 1/2.
+    counts[1]=2;dout:=[2]f64.[1,0];dw:[4]f64;db:[1]f64;df:[2]f64;
+    #assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[..],df[..]).written==7;
+    #assert dw[0]==0 && dw[1]==0 && dw[2]==0 && dw[3]==0.25 && db[0]==0.5 && df[0]==1 && df[1]==0;
+    dout=[2]f64.[0,1];#assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[..],df[..]).written==7;
+    #assert dw[0]==-0.25 && dw[3]==0.25 && db[0]==0.5 && df[0]==1 && df[1]==0;
+    c.aggregate=FdAggregate.max;#assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[..],df[..]).written==7;
+    #assert dw[0]==-0.5 && dw[3]==0.5 && db[0]==1 && df[0]==2 && df[1]==0;
+    // Max takes the first of equal values; with every value 0 nothing flows back.
+    b[0]=-9;dout=[2]f64.[1,1];#assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[..],df[..]).written==7;
+    for x:dw {#assert x==0;}#assert db[0]==0 && df[0]==0 && df[1]==0;
+}
+#forall "point convolution equals a direct loop" seed:0..<12 {
+    f:=fd_conv_fixture(seed);
+    for agg:0..<2 {
+        c:=FdConv.{channels=2,outputs=3,radius=0.9,aggregate=cast(FdAggregate)agg};out:[30]f64;
+        #assert fd_conv_forward(c,f.pts[..],f.feat[..],f.nbr[..],f.counts[..],10,f.w[..],f.b[..],out[..]).written==30;
+        for i:0..<10 {for o:0..<3 {#assert fd_near(out[i*3+o],fd_conv_direct(c,f,i,o),1e-14);}}
+    }
+}
+#forall "point convolution gradients match finite differences" seed:0..<4 {
+    f:=fd_conv_fixture(seed);r:=[1]u64.[cast(u64)seed+50];dout:[30]f64;for i:0..<30 {dout[i]=fd_lcg(r[..])*2-1;}
+    for agg:0..<2 {
+        c:=FdConv.{channels=2,outputs=3,radius=0.9,aggregate=cast(FdAggregate)agg};
+        dw:[15]f64;db:[3]f64;df:[20]f64;
+        #assert fd_conv_backward(c,f.pts[..],f.feat[..],f.nbr[..],f.counts[..],10,f.w[..],f.b[..],dout[..],dw[..],db[..],df[..]).written==38;
+        h:=1e-6;
+        for i:0..<15 {g:=f;g.w[i]+=h;l:=f;l.w[i]-=h;#assert fd_near((fd_conv_loss(c,g,dout[..])-fd_conv_loss(c,l,dout[..]))/(2*h),dw[i],1e-7);}
+        for i:0..<3 {g:=f;g.b[i]+=h;l:=f;l.b[i]-=h;#assert fd_near((fd_conv_loss(c,g,dout[..])-fd_conv_loss(c,l,dout[..]))/(2*h),db[i],1e-7);}
+        for i:0..<20 {g:=f;g.feat[i]+=h;l:=f;l.feat[i]-=h;#assert fd_near((fd_conv_loss(c,g,dout[..])-fd_conv_loss(c,l,dout[..]))/(2*h),df[i],1e-7);}
+    }
+}
+#test "neighbour tables by hand and their refusals" {
+    p:=[9]f64.[0,0,0, 0.5,0,0, 3,0,0];start:[8]int;order:[3]int;g:=fd_grid_build(p[..],1,start[..],order[..]);
+    nbr:=[7]int.[-7,-7,-7,-7,-7,-7,-7];counts:=[4]int.[-7,-7,-7,-7];
+    r:=fd_radius_table(g,1,2,nbr[..],counts[..]);
+    #assert r.status==FdStatus.ok && r.written==3 && counts[0]==2 && counts[1]==2 && counts[2]==1 && counts[3]==-7;
+    #assert nbr[0]==0 && nbr[1]==1 && nbr[2]==1 && nbr[3]==0 && nbr[4]==2 && nbr[5]==-1 && nbr[6]==-7;
+    // A third neighbour within 4 does not fit in two slots.
+    #assert fd_radius_table(g,4,2,nbr[..],counts[..]).status==FdStatus.capacity;
+    #assert fd_radius_table(g,1,0,nbr[..],counts[..]).status==FdStatus.parameter;
+    #assert fd_radius_table(g,1,65,nbr[..],counts[..]).status==FdStatus.limit;
+    #assert fd_radius_table(g,1,2,nbr[0..<5],counts[..]).status==FdStatus.capacity;
+    #assert fd_radius_table(g,1,2,nbr[..],counts[0..<2]).status==FdStatus.capacity;
+    #assert fd_radius_table(g,-1,2,nbr[..],counts[..]).status==FdStatus.parameter;
+    none:FdGrid;#assert fd_radius_table(none,1,2,nbr[..],counts[..]).status==FdStatus.shape;
+    // Only the first point has three neighbours within 0.6.
+    q:=[12]f64.[0,0,0, 0.5,0,0, -0.5,0,0, 3,0,0];s4:[8]int;o4:[4]int;g4:=fd_grid_build(q[..],1,s4[..],o4[..]);
+    n4:=[12]int.[-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7];c4:=[4]int.[-7,-7,-7,-7];
+    #assert fd_radius_table(g4,0.6,2,n4[0..<8],c4[..]).status==FdStatus.capacity && n4[0]==-7 && c4[0]==-7 && c4[3]==-7;
+    #assert fd_radius_table(g4,0.6,3,n4[..],c4[..]).written==4 && c4[0]==3 && c4[3]==1 && n4[9]==3 && n4[10]==-1;
+    #assert nbr[0]==0 && counts[2]==1;
+}
+#test "point convolution refuses, in order" {
+    pts:=[6]f64.[0,0,0, 1,0,0];feat:=[2]f64.[0.5,-1];nbr:=[4]int.[0,1, 1,0];counts:=[2]int.[2,2];
+    w:=[4]f64.[1,0,0,2];b:=[1]f64.[-0.25];out:=[2]f64.[-7,-7];c:=FdConv.{channels=1,outputs=1,radius=2};
+    dout:=[2]f64.[1,1];dw:[4]f64;db:[1]f64;df:[2]f64;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.ok;
+    #assert fd_conv_check(c,pts[0..<5],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.shape;
+    #assert fd_conv_check(c,pts[0..<0],feat[0..<0],nbr[0..<0],counts[0..<0],2,w[..],b[..])==FdStatus.shape;
+    big:[12291]f64;#assert fd_conv_check(c,big[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.limit;
+    bad:=c;bad.channels=-1;#assert fd_conv_check(bad,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.parameter;
+    bad=c;bad.channels=17;#assert fd_conv_check(bad,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.parameter;
+    bad=c;bad.outputs=0;#assert fd_conv_check(bad,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.parameter;
+    bad=c;bad.outputs=17;#assert fd_conv_check(bad,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.parameter;
+    bad=c;bad.radius=0;#assert fd_conv_check(bad,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.parameter;
+    bad=c;bad.radius=0.0/0.0;#assert fd_conv_check(bad,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.parameter;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],0,w[..],b[..])==FdStatus.parameter;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],65,w[..],b[..])==FdStatus.limit;
+    #assert fd_conv_check(c,pts[..],feat[0..<1],nbr[..],counts[..],2,w[..],b[..])==FdStatus.shape;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[0..<1],2,w[..],b[..])==FdStatus.shape;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[0..<3],counts[..],2,w[..],b[..])==FdStatus.shape;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],2,w[0..<3],b[..])==FdStatus.shape;
+    #assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[0..<0])==FdStatus.shape;
+    x:=pts;x[4]=0.0/0.0;#assert fd_conv_check(c,x[..],feat[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.number;
+    e:=feat;e[1]=1.0/0.0;#assert fd_conv_check(c,pts[..],e[..],nbr[..],counts[..],2,w[..],b[..])==FdStatus.number;
+    v:=w;v[3]=0.0/0.0;#assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],2,v[..],b[..])==FdStatus.number;
+    u:=b;u[0]=-1.0/0.0;#assert fd_conv_check(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],u[..])==FdStatus.number;
+    k:=counts;k[1]=3;#assert fd_conv_check(c,pts[..],feat[..],nbr[..],k[..],2,w[..],b[..])==FdStatus.shape;
+    k[1]=-1;#assert fd_conv_check(c,pts[..],feat[..],nbr[..],k[..],2,w[..],b[..])==FdStatus.shape;
+    k[1]=2;k[0]=3;#assert fd_conv_check(c,pts[..],feat[..],nbr[..],k[..],2,w[..],b[..])==FdStatus.shape;
+    k[0]=2;m0:=nbr;m0[0]=2;#assert fd_conv_check(c,pts[..],feat[..],m0[..],k[..],2,w[..],b[..])==FdStatus.shape;
+    k[1]=1;m:=nbr;m[3]=5;#assert fd_conv_check(c,pts[..],feat[..],m[..],k[..],2,w[..],b[..])==FdStatus.ok;
+    m[2]=2;#assert fd_conv_check(c,pts[..],feat[..],m[..],k[..],2,w[..],b[..])==FdStatus.shape;
+    m[2]=-1;#assert fd_conv_check(c,pts[..],feat[..],m[..],k[..],2,w[..],b[..])==FdStatus.shape;
+    #assert fd_conv_forward(c,x[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).status==FdStatus.number;
+    #assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[0..<1]).status==FdStatus.capacity;
+    #assert out[0]==-7 && out[1]==-7;
+    #assert fd_conv_backward(c,x[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[..],df[..]).status==FdStatus.number;
+    #assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[0..<1],dw[..],db[..],df[..]).status==FdStatus.shape;
+    o:=dout;o[0]=0.0/0.0;#assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],o[..],dw[..],db[..],df[..]).status==FdStatus.number;
+    #assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[0..<3],db[..],df[..]).status==FdStatus.capacity;
+    #assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[0..<0],df[..]).status==FdStatus.capacity;
+    #assert fd_conv_backward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],dout[..],dw[..],db[..],df[0..<1]).status==FdStatus.capacity;
+    #assert dw[0]==0 && db[0]==0 && df[0]==0;
+    // No feature channels: positions alone.
+    z:=FdConv.{channels=0,outputs=1,radius=2};w3:=[3]f64.[1,0,0];
+    #assert fd_conv_forward(z,pts[..],feat[0..<0],nbr[..],counts[..],2,w3[..],b[..],out[..]).written==2 && out[0]==0.125 && out[1]==0;
+}
+
+#test "limits include their edges" {
+    // 64 neighbours fit; k = 64 and room for exactly k are accepted.
+    pts:[195]f64;for i:0..<65 {pts[3*i]=f64(i)/64;}start:[64]int;order:[65]int;
+    g:=fd_grid_build(pts[..],0.5,start[..],order[..]);out:[64]int;
+    #assert fd_radius(g,[3]f64.[0,0,0],63.0/64,out[..]).count==64 && fd_radius(g,[3]f64.[0,0,0],1,out[..]).status==FdStatus.limit;
+    #assert fd_radius_brute(pts[..],[3]f64.[0,0,0],63.0/64,out[..]).count==64;
+    f:=fd_knn(g,[3]f64.[1,0,0],64,out[..]);#assert f.status==FdStatus.ok && out[0]==64 && out[63]==1;
+    #assert fd_knn(g,[3]f64.[0,0,0],2,out[0..<2]).count==2 && fd_knn_brute(pts[..],[3]f64.[0,0,0],2,out[0..<2]).count==2;
+    nbr:[4160]int;counts:[65]int;
+    #assert fd_radius_table(g,0.01,64,nbr[..],counts[..]).written==65 && counts[0]==1 && nbr[1]==-1;
+    #assert fd_radius_table(g,0.01,1,nbr[0..<65],counts[..]).written==65 && nbr[64]==64;
+    // A grid of one cell along each axis, and a query beyond its far side.
+    one:=[6]f64.[0,0,0, 0.5,0.5,0.5];s1:[2]int;o1:[2]int;h:=fd_grid_build(one[..],1,s1[..],o1[..]);
+    #assert h.side[0]==1 && h.side[2]==1 && fd_knn(h,[3]f64.[3,3,3],1,out[..]).count==1 && out[0]==1;
+    // Grids stretched along y and then z need as many rings as their longest side.
+    line:=[6]f64.[0,0,0, 0,0,3];s2:[5]int;o2:[2]int;l:=fd_grid_build(line[..],1,s2[..],o2[..]);#assert l.side[2]==4;
+    #assert fd_knn(l,[3]f64.[0,0,0],2,out[..]).count==2 && out[0]==0 && out[1]==1;
+    #assert fd_knn(l,[3]f64.[0,0,3],2,out[..]).count==2 && out[0]==1 && out[1]==0;
+    line[4]=3;line[5]=0;l=fd_grid_build(line[..],1,s2[..],o2[..]);#assert l.side[1]==4;
+    #assert fd_knn(l,[3]f64.[0,0,0],2,out[..]).count==2 && out[1]==1;
+    // 16 channels in and out are accepted; the count of slots is checked against the points.
+    c:=FdConv.{channels=16,outputs=16,radius=1};two:=[6]f64.[0,0,0, 1,0,0];feat:[32]f64;nb:=[2]int.[0,1];cn:=[2]int.[1,1];
+    w:[304]f64;b:[16]f64;y:[32]f64;
+    #assert fd_conv_forward(c,two[..],feat[..],nb[..],cn[..],1,w[..],b[..],y[..]).written==32;
+    #assert fd_conv_check(c,two[..],feat[..],nb[..],cn[..],1,w[..],b[..])==FdStatus.ok;
+    wide:[128]int;#assert fd_conv_check(c,two[..],feat[..],wide[..],cn[..],64,w[..],b[..])==FdStatus.ok;
+    // Gradients flow only through positive activations: at exactly 0, none.
+    z:=FdConv.{channels=1,outputs=1,radius=2};f1:=[2]f64.[0.5,-1];w1:=[4]f64.[0,0,0,1];b1:=[1]f64.[-0.5];
+    dout:=[2]f64.[1,1];dw:[4]f64;db:[1]f64;df:[2]f64;nb2:=[2]int.[0,1];
+    #assert fd_conv_backward(z,two[..],f1[..],nb2[..],cn[..],1,w1[..],b1[..],dout[..],dw[..],db[..],df[..]).written==7 && db[0]==0 && df[0]==0;
+    // Max with two equal activations sends the gradient to the first.
+    pair:=[4]int.[1,0, 0,1];both:=[2]int.[2,2];same:=[2]f64.[1,1];w2:=[4]f64.[0,0,0,1];b2:=[1]f64.[0];
+    z.aggregate=FdAggregate.max;
+    #assert fd_conv_backward(z,two[..],same[..],pair[..],both[..],2,w2[..],b2[..],dout[..],dw[..],db[..],df[..]).written==7;
+    #assert df[0]==1 && df[1]==1 && db[0]==2;
+    dout[1]=0;#assert fd_conv_backward(z,two[..],same[..],pair[..],both[..],2,w2[..],b2[..],dout[..],dw[..],db[..],df[..]).written==7;
+    #assert df[0]==0 && df[1]==1;
+}
+
+// book:begin vectors
+fd_finite :: (x:f64)->bool {return x==x && x<=FD_COORD_MAX && x>=-FD_COORD_MAX;}
+fd_point :: (p:[3]f64)->bool {return fd_finite(p[0]) && fd_finite(p[1]) && fd_finite(p[2]);}
+fd_at :: (xs:[]f64,i:int)->[3]f64 {return [3]f64.[xs[3*i],xs[3*i+1],xs[3*i+2]];}
+fd_sub :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+fd_add :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+fd_scale :: (a:[3]f64,s:f64)->[3]f64 {return [3]f64.[a[0]*s,a[1]*s,a[2]*s];}
+fd_dot :: (a:[3]f64,b:[3]f64)->f64 {return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+fd_cross :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+fd_norm :: (a:[3]f64)->f64 {return sqrt(fd_dot(a,a));}
+fd_div :: (a:[3]f64,s:f64)->[3]f64 {return [3]f64.[a[0]/s,a[1]/s,a[2]/s];}
+// book:end vectors
+
+// book:begin shapes
+fd_shape_check :: (s:FdShape)->FdStatus {
+    if !fd_point(s.a) || !fd_point(s.b) || !fd_finite(s.r) {return FdStatus.number;}
+    if s.kind==FdKind.box {for i:0..<3 {if !(s.a[i]<s.b[i]) {return FdStatus.parameter;}}return FdStatus.ok;}
+    if !(s.r>0) {return FdStatus.parameter;}
+    return FdStatus.ok;
+}
+// v from the nearest point of the core (centre or segment) to p: d = |v| - r.
+fd_round :: (v:[3]f64,r:f64)->FdDistance {
+    out:FdDistance;l:=fd_norm(v);out.d=l-r;
+    if l>0 {out.grad=fd_div(v,l);}
+    return out;
+}
+fd_shape_distance :: (s:FdShape,p:[3]f64)->FdDistance #export_c {
+    out:FdDistance;out.status=fd_shape_check(s);
+    if out.status==FdStatus.ok && !fd_point(p) {out.status=FdStatus.number;}
+    if out.status!=FdStatus.ok {return out;}
+    if s.kind==FdKind.sphere {out=fd_round(fd_sub(p,s.a),s.r);}
+    else if s.kind==FdKind.capsule {
+        ab:=fd_sub(s.b,s.a);l2:=fd_dot(ab,ab);t:=0.0;
+        if l2>0 {t=fd_dot(fd_sub(p,s.a),ab)/l2;if t<0 {t=0;}if t>1 {t=1;}}
+        out=fd_round(fd_sub(p,fd_add(s.a,fd_scale(ab,t))),s.r);
+    } else {
+        // q > 0 on an axis where p is past a face. Outside, the distance is
+        // |max(q, 0)|; inside, it is the largest q (the nearest face).
+        u:[3]f64;q:[3]f64;o:=0.0;
+        for i:0..<3 {u[i]=p[i]-(s.a[i]+s.b[i])/2;q[i]=abs(u[i])-(s.b[i]-s.a[i])/2;if q[i]>0 {o+=q[i]*q[i];}}
+        if o>0 {
+            o=sqrt(o);out.d=o;
+            for i:0..<3 {if q[i]>0 {out.grad[i]=ifx u[i]<0 then -q[i]/o else q[i]/o;}}
+        } else {
+            k:=0;if q[1]>q[k] {k=1;}if q[2]>q[k] {k=2;}
+            out.d=q[k];out.grad[k]=ifx u[k]<0 then -1.0 else 1.0;
+        }
+    }
+    return out;
+}
+// book:end shapes
+
+// book:begin closest
+// The point of triangle abc nearest p (Ericson, Real-Time Collision
+// Detection, 5.1.5): test the corner regions, then the edges, then the face.
+fd_closest_triangle :: (p:[3]f64,a:[3]f64,b:[3]f64,c:[3]f64)->[3]f64 {
+    ab:=fd_sub(b,a);ac:=fd_sub(c,a);ap:=fd_sub(p,a);
+    d1:=fd_dot(ab,ap);d2:=fd_dot(ac,ap);
+    if d1<=0 && d2<=0 {return a;}
+    bp:=fd_sub(p,b);d3:=fd_dot(ab,bp);d4:=fd_dot(ac,bp);
+    if d3>=0 && d4<=d3 {return b;}
+    vc:=d1*d4-d3*d2;
+    if vc<=0 && d1>=0 && d3<=0 {return fd_add(a,fd_scale(ab,d1/(d1-d3)));}
+    cp:=fd_sub(p,c);d5:=fd_dot(ab,cp);d6:=fd_dot(ac,cp);
+    if d6>=0 && d5<=d6 {return c;}
+    vb:=d5*d2-d1*d6;
+    if vb<=0 && d2>=0 && d6<=0 {return fd_add(a,fd_scale(ac,d2/(d2-d6)));}
+    va:=d3*d6-d5*d4;
+    if va<=0 && d4-d3>=0 && d5-d6>=0 {return fd_add(b,fd_scale(fd_sub(c,b),(d4-d3)/((d4-d3)+(d5-d6))));}
+    s:=va+vb+vc;
+    return fd_add(a,fd_add(fd_scale(ab,vb/s),fd_scale(ac,vc/s)));
+}
+// book:end closest
+
+// book:begin atan
+// atan z for |z| <= 1: three halvings, atan z = 2 atan(z / (1 + sqrt(1 + z^2))),
+// bring |z| below tan(pi/32) = 0.0985; then eight terms of z - z^3/3 + z^5/5 ...
+fd_atan_unit :: (x:f64)->f64 {
+    z:=x;for k:0..<3 {z=z/(1+sqrt(1+z*z));}
+    z2:=z*z;s:=0.0;
+    for k:0..<8 {j:=7-k;term:=1/f64(2*j+1);s=s*z2+(ifx j%2==1 then -term else term);}
+    return 8*z*s;
+}
+fd_atan2 :: (y:f64,x:f64)->f64 {
+    if x==0 && y==0 {return 0;}
+    if abs(y)<=abs(x) {
+        t:=fd_atan_unit(y/x);if x>0 {return t;}
+        return ifx y>=0 then t+FD_PI else t-FD_PI;
+    }
+    t:=fd_atan_unit(x/y);
+    return ifx y>0 then FD_PI/2-t else -FD_PI/2-t;
+}
+// book:end atan
+
+// book:begin mesh
+fd_corner :: (m:FdMesh,t:int,k:int)->[3]f64 {return fd_at(m.vertices,m.triangles[3*t+k]);}
+// sin^2 of the angle at a, times |ab|^2 |ac|^2, is |ab x ac|^2.
+fd_flat :: (a:[3]f64,b:[3]f64,c:[3]f64)->bool {
+    e1:=fd_sub(b,a);e2:=fd_sub(c,a);n:=fd_cross(e1,e2);
+    return fd_dot(n,n)<=FD_FLAT*fd_dot(e1,e1)*fd_dot(e2,e2);
+}
+fd_mesh_admit :: (m:FdMesh)->FdChecked #export_c {
+    out:FdChecked;nv:=m.vertices.count/3;nt:=m.triangles.count/3;
+    if nv==0 || nt==0 || m.vertices.count%3!=0 || m.triangles.count%3!=0 {return out;}
+    if nv>FD_VERTICES_MAX || nt>FD_TRIANGLES_MAX {out.status=FdStatus.limit;return out;}
+    for x:m.vertices {if !fd_finite(x) {out.status=FdStatus.number;return out;}}
+    for k:m.triangles {if k<0 || k>=nv {return out;}}
+    for t:0..<nt {if fd_flat(fd_corner(m,t,0),fd_corner(m,t,1),fd_corner(m,t,2)) {out.status=FdStatus.degenerate;return out;}}
+    // Closed and consistently turned: each directed edge u -> v appears
+    // once, and so does v -> u, in the triangle across it.
+    for t:0..<nt {for e:0..<3 {
+        u:=m.triangles[3*t+e];v:=m.triangles[3*t+(e+1)%3];same:=0;back:=0;
+        for s:0..<nt {for f:0..<3 {
+            x:=m.triangles[3*s+f];y:=m.triangles[3*s+(f+1)%3];
+            if x==u && y==v {same+=1;}if x==v && y==u {back+=1;}
+        }}
+        if same!=1 || back!=1 {out.status=FdStatus.open;return out;}
+    }}
+    // Area, and volume by the divergence theorem: the sum of a . (b x c) / 6.
+    area:=0.0;volume:=0.0;
+    for t:0..<nt {
+        a:=fd_corner(m,t,0);b:=fd_corner(m,t,1);c:=fd_corner(m,t,2);
+        area+=fd_norm(fd_cross(fd_sub(b,a),fd_sub(c,a)))/2;volume+=fd_dot(a,fd_cross(b,c))/6;
+    }
+    if !(volume>0) {out.status=FdStatus.inside_out;return out;}
+    out.status=FdStatus.ok;out.mesh=m;out.area=area;out.volume=volume;return out;
+}
+// book:end mesh
+
+// book:begin winding
+// The solid angle triangle abc covers seen from p (Van Oosterom and
+// Strackee), summed over the mesh and divided by 4 pi: 1 inside, 0 outside.
+fd_winding :: (m:FdChecked,p:[3]f64)->f64 {
+    sum:=0.0;
+    for t:0..<m.mesh.triangles.count/3 {
+        x:=fd_sub(fd_corner(m.mesh,t,0),p);y:=fd_sub(fd_corner(m.mesh,t,1),p);z:=fd_sub(fd_corner(m.mesh,t,2),p);
+        lx:=fd_norm(x);ly:=fd_norm(y);lz:=fd_norm(z);
+        num:=fd_dot(x,fd_cross(y,z));
+        den:=lx*ly*lz+fd_dot(x,y)*lz+fd_dot(x,z)*ly+fd_dot(y,z)*lx;
+        sum+=2*fd_atan2(num,den);
+    }
+    return sum/(4*FD_PI);
+}
+// book:end winding
+
+// book:begin distance
+fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c {
+    out:FdDistance;out.status=m.status;
+    if out.status==FdStatus.ok && !fd_point(p) {out.status=FdStatus.number;}
+    if out.status!=FdStatus.ok {return out;}
+    best:=0.0;
+    for t:0..<m.mesh.triangles.count/3 {
+        q:=fd_closest_triangle(p,fd_corner(m.mesh,t,0),fd_corner(m.mesh,t,1),fd_corner(m.mesh,t,2));
+        v:=fd_sub(p,q);d2:=fd_dot(v,v);
+        if out.triangle<0 || d2<best {best=d2;out.triangle=t;out.closest=q;}
+    }
+    dist:=sqrt(best);
+    if dist==0 {
+        a:=fd_corner(m.mesh,out.triangle,0);n:=fd_cross(fd_sub(fd_corner(m.mesh,out.triangle,1),a),fd_sub(fd_corner(m.mesh,out.triangle,2),a));
+        out.grad=fd_div(n,fd_norm(n));return out;
+    }
+    // Inside, the field grows toward the surface: the gradient points from p to it.
+    if fd_winding(m,p)>0.5 {out.d=-dist;out.grad=fd_div(fd_sub(out.closest,p),dist);}
+    else {out.d=dist;out.grad=fd_div(fd_sub(p,out.closest),dist);}
+    return out;
+}
+// book:end distance
+
+// book:begin sample
+fd_draw :: (r:[]CrSeed)->f64 {d:=cr_draw(r[0]);r[0]=d.next;return d.value;}
+fd_sample_count :: (points:[]f64)->FdStatus {
+    if points.count==0 || points.count%3!=0 {return FdStatus.shape;}
+    if points.count/3>FD_POINTS_MAX {return FdStatus.limit;}
+    return FdStatus.ok;
+}
+// Area-weighted: one draw picks a triangle, two more a point in it, uniform
+// by area (the square root keeps points from crowding corner a).
+fd_sample_surface :: (m:FdChecked,seed:u64,points:[]f64,normals:[]f64)->FdResult {
+    out:FdResult;out.status=m.status;
+    if out.status==FdStatus.ok {out.status=fd_sample_count(points);}
+    if out.status==FdStatus.ok && normals.count!=points.count {out.status=FdStatus.shape;}
+    if out.status!=FdStatus.ok {return out;}
+    r:=[1]CrSeed.[CrSeed.{seed=seed}];nt:=m.mesh.triangles.count/3;
+    for i:0..<points.count/3 {
+        u:=fd_draw(r[..])*m.area;t:=nt-1;acc:=0.0;
+        for s:0..<nt {
+            a:=fd_corner(m.mesh,s,0);acc+=fd_norm(fd_cross(fd_sub(fd_corner(m.mesh,s,1),a),fd_sub(fd_corner(m.mesh,s,2),a)))/2;
+            if u<acc {t=s;break;}
+        }
+        a:=fd_corner(m.mesh,t,0);b:=fd_corner(m.mesh,t,1);c:=fd_corner(m.mesh,t,2);
+        s:=sqrt(fd_draw(r[..]));v:=fd_draw(r[..]);
+        p:=fd_add(fd_add(fd_scale(a,1-s),fd_scale(b,s*(1-v))),fd_scale(c,s*v));
+        n:=fd_cross(fd_sub(b,a),fd_sub(c,a));n=fd_div(n,fd_norm(n));
+        for k:0..<3 {points[3*i+k]=p[k];normals[3*i+k]=n[k];}
+    }
+    out.written=points.count/3;return out;
+}
+fd_sample_box :: (low:[3]f64,high:[3]f64,seed:u64,points:[]f64)->FdResult {
+    out:FdResult;
+    if !fd_point(low) || !fd_point(high) {out.status=FdStatus.number;return out;}
+    for k:0..<3 {if !(low[k]<high[k]) {out.status=FdStatus.parameter;return out;}}
+    out.status=fd_sample_count(points);if out.status!=FdStatus.ok {return out;}
+    r:=[1]CrSeed.[CrSeed.{seed=seed}];
+    for i:0..<points.count {k:=i%3;points[i]=low[k]+(high[k]-low[k])*fd_draw(r[..]);}
+    out.written=points.count/3;return out;
+}
+// book:end sample
+
+// book:begin grid
+fd_points_status :: (points:[]f64)->FdStatus {
+    status:=fd_sample_count(points);if status!=FdStatus.ok {return status;}
+    for x:points {if !fd_finite(x) {return FdStatus.number;}}
+    return FdStatus.ok;
+}
+fd_grid_build :: (points:[]f64,cell:f64,start:[]int,order:[]int)->FdGrid {
+    g:FdGrid;g.status=fd_points_status(points);
+    if g.status==FdStatus.ok && !(cell>0 && fd_finite(cell)) {g.status=FdStatus.parameter;}
+    if g.status!=FdStatus.ok {return g;}
+    n:=points.count/3;g.low=fd_at(points,0);high:=g.low;
+    for i:1..<n {for k:0..<3 {x:=points[3*i+k];if x<g.low[k] {g.low[k]=x;}if x>high[k] {high[k]=x;}}}
+    cells:=1;
+    for k:0..<3 {
+        span:=floor((high[k]-g.low[k])/cell);
+        if span>=FD_SIDE_MAX {g.status=FdStatus.limit;return g;}
+        g.side[k]=cast(int)span+1;cells*=g.side[k];
+    }
+    if start.count<cells+1 || order.count<n {g.status=FdStatus.capacity;return g;}
+    g.points=points;g.n=n;g.cell=cell;g.start=start;g.order=order;
+    // Counting sort: count each cell, turn counts into starts, place points
+    // in index order, then shift the advanced starts back by one cell.
+    for k:0..<cells+1 {start[k]=0;}
+    for i:0..<n {start[fd_cell_index(g,fd_cell(g,fd_at(points,i)))+1]+=1;}
+    for k:0..<cells {start[k+1]+=start[k];}
+    for i:0..<n {k:=fd_cell_index(g,fd_cell(g,fd_at(points,i)));order[start[k]]=i;start[k]+=1;}
+    for j:0..<cells {k:=cells-j;start[k]=start[k-1];}
+    start[0]=0;return g;
+}
+// The cell holding p, clamped into the grid: a far query lands on the edge.
+fd_cell :: (g:FdGrid,p:[3]f64)->[3]int {
+    c:[3]int;
+    for k:0..<3 {x:=floor((p[k]-g.low[k])/g.cell);if x<0 {x=0;}if x>f64(g.side[k]-1) {x=f64(g.side[k]-1);}c[k]=cast(int)x;}
+    return c;
+}
+fd_cell_index :: (g:FdGrid,c:[3]int)->int {return (c[2]*g.side[1]+c[1])*g.side[0]+c[0];}
+// book:end grid
+
+// book:begin order
+// Neighbours are ordered by squared distance, then by index: one answer for
+// the grid and for brute force, ties included.
+fd_before :: (da:f64,ia:int,db:f64,ib:int)->bool {return da<db || (da==db && ia<ib);}
+// Insert (d, i) into the sorted list of count entries, keeping at most keep.
+fd_insert :: (idx:[]int,ds:[]f64,count:int,keep:int,i:int,d:f64)->int {
+    pos:=count;while pos>0 && fd_before(d,i,ds[pos-1],idx[pos-1]) {pos-=1;}
+    if pos>=keep {return count;}
+    last:=ifx count<keep then count else keep-1;
+    j:=last;while j>pos {idx[j]=idx[j-1];ds[j]=ds[j-1];j-=1;}
+    idx[pos]=i;ds[pos]=d;
+    return ifx count<keep then count+1 else count;
+}
+fd_d2 :: (points:[]f64,i:int,q:[3]f64)->f64 {v:=fd_sub(fd_at(points,i),q);return fd_dot(v,v);}
+// book:end order
+
+// book:begin radius
+FdHits :: struct {idx:[64]int;ds:[64]f64;count:int;found:int;visited:int;}
+fd_radius_hit :: (h:[]FdHits,points:[]f64,i:int,q:[3]f64,r2:f64) {
+    d:=fd_d2(points,i,q);h[0].visited+=1;
+    if d<=r2 {h[0].found+=1;h[0].count=fd_insert(h[0].idx[..],h[0].ds[..],h[0].count,FD_NEIGHBORS_MAX,i,d);}
+}
+fd_hits_out :: (h:FdHits,out:[]int)->FdFound {
+    f:=FdFound.{visited=h.visited};
+    if h.found>FD_NEIGHBORS_MAX {f.status=FdStatus.limit;return f;}
+    if h.count>out.count {f.status=FdStatus.capacity;return f;}
+    for i:0..<h.count {out[i]=h.idx[i];}
+    f.count=h.count;return f;
+}
+fd_query_status :: (q:[3]f64,r:f64)->FdStatus {
+    if !fd_point(q) {return FdStatus.number;}
+    if !(r>0 && fd_finite(r)) {return FdStatus.parameter;}
+    return FdStatus.ok;
+}
+// Every point within r of q (distance squared at most r^2), nearest first.
+// The cells searched reach one past q - r and q + r on each axis, so a point
+// rounding into a neighbouring cell is still seen.
+fd_radius :: (g:FdGrid,q:[3]f64,r:f64,out:[]int)->FdFound {
+    f:FdFound;f.status=g.status;
+    if f.status==FdStatus.ok {f.status=fd_query_status(q,r);}
+    if f.status!=FdStatus.ok {return f;}
+    lo:=fd_cell(g,fd_sub(q,[3]f64.[r,r,r]));hi:=fd_cell(g,fd_add(q,[3]f64.[r,r,r]));
+    for k:0..<3 {if lo[k]>0 {lo[k]-=1;}if hi[k]<g.side[k]-1 {hi[k]+=1;}}
+    h:[1]FdHits;
+    for z:lo[2]..<hi[2]+1 {for y:lo[1]..<hi[1]+1 {for x:lo[0]..<hi[0]+1 {
+        k:=fd_cell_index(g,[3]int.[x,y,z]);
+        for s:g.start[k]..<g.start[k+1] {fd_radius_hit(h[..],g.points,g.order[s],q,r*r);}
+    }}}
+    return fd_hits_out(h[0],out);
+}
+fd_radius_brute :: (points:[]f64,q:[3]f64,r:f64,out:[]int)->FdFound {
+    f:FdFound;f.status=fd_points_status(points);
+    if f.status==FdStatus.ok {f.status=fd_query_status(q,r);}
+    if f.status!=FdStatus.ok {return f;}
+    h:[1]FdHits;for i:0..<points.count/3 {fd_radius_hit(h[..],points,i,q,r*r);}
+    return fd_hits_out(h[0],out);
+}
+// book:end radius
+
+// book:begin knn
+fd_knn_status :: (n:int,q:[3]f64,k:int,out:[]int)->FdStatus {
+    if !fd_point(q) {return FdStatus.number;}
+    if k>FD_NEIGHBORS_MAX {return FdStatus.limit;}
+    if k<1 || k>n {return FdStatus.parameter;}
+    if out.count<k {return FdStatus.capacity;}
+    return FdStatus.ok;
+}
+// The k nearest points: visit rings of cells around q's cell, nearest ring
+// first. After ring R, every point not yet visited is at least R cells from
+// q, less rounding. The search stops once the k-th distance is under R - 1
+// cells, a full cell of margin; reach * |reach| keeps the sign of R - 1, so
+// rings 0 and 1 never stop it.
+fd_knn_visit :: (h:[]FdHits,g:FdGrid,x:int,y:int,z:int,q:[3]f64,k:int) {
+    if x<0 || x>=g.side[0] {return;}
+    cell:=fd_cell_index(g,[3]int.[x,y,z]);
+    for s:g.start[cell]..<g.start[cell+1] {
+        i:=g.order[s];h[0].visited+=1;h[0].count=fd_insert(h[0].idx[..],h[0].ds[..],h[0].count,k,i,fd_d2(g.points,i,q));
+    }
+}
+fd_knn :: (g:FdGrid,q:[3]f64,k:int,out:[]int)->FdFound {
+    f:FdFound;f.status=g.status;
+    if f.status==FdStatus.ok {f.status=fd_knn_status(g.n,q,k,out);}
+    if f.status!=FdStatus.ok {return f;}
+    c:=fd_cell(g,q);h:[1]FdHits;
+    rings:=g.side[0];if g.side[1]>rings {rings=g.side[1];}if g.side[2]>rings {rings=g.side[2];}
+    for ring:0..<rings {
+        lo:[3]int;hi:[3]int;
+        for a:0..<3 {lo[a]=c[a]-ring;if lo[a]<0 {lo[a]=0;}hi[a]=c[a]+ring;if hi[a]>g.side[a]-1 {hi[a]=g.side[a]-1;}}
+        for z:lo[2]..<hi[2]+1 {for y:lo[1]..<hi[1]+1 {
+            // On the ring's y or z faces every x belongs to it; inside them, only its two x ends.
+            if z==c[2]-ring || z==c[2]+ring || y==c[1]-ring || y==c[1]+ring {for x:lo[0]..<hi[0]+1 {fd_knn_visit(h[..],g,x,y,z,q,k);}}
+            else {fd_knn_visit(h[..],g,c[0]-ring,y,z,q,k);fd_knn_visit(h[..],g,c[0]+ring,y,z,q,k);}
+        }}
+        reach:=f64(ring-1)*g.cell;
+        if h[0].count==k && h[0].ds[k-1]<reach*abs(reach) {break;}
+    }
+    for i:0..<k {out[i]=h[0].idx[i];}
+    f.count=k;f.visited=h[0].visited;return f;
+}
+
+fd_knn_brute :: (points:[]f64,q:[3]f64,k:int,out:[]int)->FdFound {
+    f:FdFound;f.status=fd_points_status(points);
+    if f.status==FdStatus.ok {f.status=fd_knn_status(points.count/3,q,k,out);}
+    if f.status!=FdStatus.ok {return f;}
+    idx:[64]int;ds:[64]f64;count:=0;
+    for i:0..<points.count/3 {f.visited+=1;count=fd_insert(idx[..],ds[..],count,k,i,fd_d2(points,i,q));}
+    for i:0..<k {out[i]=idx[i];}
+    f.count=k;return f;
+}
+// book:end knn
+
+// book:begin table
+// Each point's radius neighbours, nearest first, in rows of width slots;
+// unused slots hold -1.
+fd_radius_table :: (g:FdGrid,r:f64,width:int,nbr:[]int,counts:[]int)->FdResult {
+    out:FdResult;out.status=g.status;
+    if out.status==FdStatus.ok && width>FD_NEIGHBORS_MAX {out.status=FdStatus.limit;}
+    if out.status==FdStatus.ok && width<1 {out.status=FdStatus.parameter;}
+    if out.status==FdStatus.ok && (nbr.count<g.n*width || counts.count<g.n) {out.status=FdStatus.capacity;}
+    if out.status!=FdStatus.ok {return out;}
+    // Every row is asked first, so a refusal (a bad radius, too many
+    // neighbours) leaves the table untouched.
+    row:[64]int;
+    for i:0..<g.n {
+        f:=fd_radius(g,fd_at(g.points,i),r,row[0..<width]);
+        if f.status!=FdStatus.ok {out.status=f.status;return out;}
+    }
+    for i:0..<g.n {
+        f:=fd_radius(g,fd_at(g.points,i),r,row[0..<width]);counts[i]=f.count;
+        for s:0..<width {nbr[i*width+s]=ifx s<f.count then row[s] else -1;}
+    }
+    out.written=g.n;return out;
+}
+// book:end table
+
+// book:begin conv
+fd_conv_check :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64)->FdStatus {
+    status:=fd_sample_count(points);if status!=FdStatus.ok {return status;}
+    n:=points.count/3;
+    if c.channels<0 || c.channels>FD_CHANNELS_MAX || c.outputs<1 || c.outputs>FD_CHANNELS_MAX || !(c.radius>0 && fd_finite(c.radius)) || width<1 {return FdStatus.parameter;}
+    if width>FD_NEIGHBORS_MAX {return FdStatus.limit;}
+    if features.count!=n*c.channels || counts.count!=n || nbr.count!=n*width || w.count!=c.outputs*(3+c.channels) || b.count!=c.outputs {return FdStatus.shape;}
+    for x:points {if !fd_finite(x) {return FdStatus.number;}}
+    for x:features {if !fd_finite(x) {return FdStatus.number;}}
+    for x:w {if !fd_finite(x) {return FdStatus.number;}}
+    for x:b {if !fd_finite(x) {return FdStatus.number;}}
+    for i:0..<n {
+        if counts[i]<0 || counts[i]>width {return FdStatus.shape;}
+        for s:0..<counts[i] {j:=nbr[i*width+s];if j<0 || j>=n {return FdStatus.shape;}}
+    }
+    return FdStatus.ok;
+}
+// Pre-activation of output o for centre i and neighbour j.
+fd_conv_h :: (c:FdConv,points:[]f64,features:[]f64,w:[]f64,b:[]f64,i:int,j:int,o:int)->f64 {
+    row:=o*(3+c.channels);h:=b[o];
+    for d:0..<3 {h+=w[row+d]*(points[3*j+d]-points[3*i+d])/c.radius;}
+    for ch:0..<c.channels {h+=w[row+3+ch]*features[j*c.channels+ch];}
+    return h;
+}
+// The neighbour slot whose activation is largest, the first on ties.
+fd_conv_argmax :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,i:int,o:int)->int {
+    best:=0;top:=0.0;
+    for s:0..<counts[i] {h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o);a:=ifx h>0 then h else 0.0;if s==0 || a>top {best=s;top=a;}}
+    return best;
+}
+fd_conv_forward :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,out:[]f64)->FdResult {
+    r:FdResult;r.status=fd_conv_check(c,points,features,nbr,counts,width,w,b);
+    n:=points.count/3;
+    if r.status==FdStatus.ok && out.count<n*c.outputs {r.status=FdStatus.capacity;}
+    if r.status!=FdStatus.ok {return r;}
+    for i:0..<n {for o:0..<c.outputs {
+        v:=0.0;
+        if counts[i]>0 && c.aggregate==FdAggregate.max {
+            h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+fd_conv_argmax(c,points,features,nbr,counts,width,w,b,i,o)],o);
+            if h>0 {v=h;}
+        } else if counts[i]>0 {
+            for s:0..<counts[i] {h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o);if h>0 {v+=h;}}
+            v/=f64(counts[i]);
+        }
+        out[i*c.outputs+o]=v;
+    }}
+    r.written=n*c.outputs;return r;
+}
+// Gradients of sum(dout * out) with respect to w, b and the features. Each
+// active term (h > 0) passes its share g of dout: 1/count for the mean, 1
+// for the max's chosen neighbour.
+fd_conv_backward :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,
+        dout:[]f64,dw:[]f64,db:[]f64,dfeatures:[]f64)->FdResult {
+    r:FdResult;r.status=fd_conv_check(c,points,features,nbr,counts,width,w,b);n:=points.count/3;
+    if r.status==FdStatus.ok && dout.count!=n*c.outputs {r.status=FdStatus.shape;}
+    if r.status==FdStatus.ok {for x:dout {if !fd_finite(x) {r.status=FdStatus.number;}}}
+    if r.status==FdStatus.ok && (dw.count<w.count || db.count<c.outputs || dfeatures.count<features.count) {r.status=FdStatus.capacity;}
+    if r.status!=FdStatus.ok {return r;}
+    for k:0..<w.count {dw[k]=0;}for k:0..<c.outputs {db[k]=0;}for k:0..<features.count {dfeatures[k]=0;}
+    for i:0..<n {for o:0..<c.outputs {
+        if counts[i]==0 {continue;}
+        first:=0;last:=counts[i];g:=dout[i*c.outputs+o]/f64(counts[i]);
+        if c.aggregate==FdAggregate.max {first=fd_conv_argmax(c,points,features,nbr,counts,width,w,b,i,o);last=first+1;g=dout[i*c.outputs+o];}
+        row:=o*(3+c.channels);
+        for s:first..<last {
+            j:=nbr[i*width+s];
+            if !(fd_conv_h(c,points,features,w,b,i,j,o)>0) {continue;}
+            db[o]+=g;
+            for d:0..<3 {dw[row+d]+=g*(points[3*j+d]-points[3*i+d])/c.radius;}
+            for ch:0..<c.channels {dw[row+3+ch]+=g*features[j*c.channels+ch];dfeatures[j*c.channels+ch]+=g*w[row+3+ch];}
+        }
+    }}
+    r.written=w.count+c.outputs+features.count;return r;
+}
+// book:end conv

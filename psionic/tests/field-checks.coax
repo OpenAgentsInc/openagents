@@ -1,0 +1,39 @@
+// Chapter 158's check oracles and fixtures, loaded by psionic/lib/field.coax:
+// a tolerance test, a second arctangent series, a small point cloud with
+// features, and the point convolution written as one direct loop.
+fd_near :: (a:f64,b:f64,tol:f64)->bool {return abs(a-b)<=tol;}
+// Euler's series, a different expansion: atan z = sum over n of
+// (2n)!! / (2n+1)!! * z^(2n+1) / (1 + z^2)^(n+1), each term at most half the last.
+fd_atan_oracle :: (z:f64)->f64 {
+    x:=z*z/(1+z*z);term:=z/(1+z*z);s:=term;
+    for n:1..<80 {term*=x*f64(2*n)/f64(2*n+1);s+=term;}
+    return s;
+}
+p0 :: ()->[3]f64 {return [3]f64.[0,0,0];}
+// A small cloud with features, and its radius neighbourhoods.
+FdConvFixture :: struct {pts:[30]f64;feat:[20]f64;nbr:[100]int;counts:[10]int;w:[15]f64;b:[3]f64;}
+fd_conv_fixture :: (seed:int)->FdConvFixture {
+    f:FdConvFixture;fd_cloud(seed,10,f.pts[..]);r:=[1]u64.[cast(u64)seed+3];
+    for i:0..<20 {f.feat[i]=fd_lcg(r[..])*2-1;}for i:0..<15 {f.w[i]=fd_lcg(r[..])*2-1;}for i:0..<3 {f.b[i]=fd_lcg(r[..])-0.25;}
+    start:[1000]int;order:[10]int;g:=fd_grid_build(f.pts[..],0.4,start[..],order[..]);
+    #assert fd_radius_table(g,0.9,10,f.nbr[..],f.counts[..]).status==FdStatus.ok;
+    return f;
+}
+// The layer restated as one direct loop over every pair within the radius.
+fd_conv_direct :: (c:FdConv,fixture:FdConvFixture,i:int,o:int)->f64 {
+    f:=fixture;
+    best:=0.0;sum:=0.0;n:=0;
+    for j:0..<10 {
+        if fd_dot(fd_sub(fd_at(f.pts[..],j),fd_at(f.pts[..],i)),fd_sub(fd_at(f.pts[..],j),fd_at(f.pts[..],i)))>c.radius*c.radius {continue;}
+        h:=f.b[o];for d:0..<3 {h+=f.w[o*5+d]*(f.pts[3*j+d]-f.pts[3*i+d])/c.radius;}
+        for ch:0..<2 {h+=f.w[o*5+3+ch]*f.feat[j*2+ch];}
+        a:=ifx h>0 then h else 0.0;sum+=a;n+=1;if a>best {best=a;}
+    }
+    if c.aggregate==FdAggregate.max {return best;}
+    return ifx n==0 then 0.0 else sum/f64(n);
+}
+fd_conv_loss :: (c:FdConv,fixture:FdConvFixture,dout:[]f64)->f64 {
+    f:=fixture;
+    out:[30]f64;#assert fd_conv_forward(c,f.pts[..],f.feat[..],f.nbr[..],f.counts[..],10,f.w[..],f.b[..],out[..]).written==30;
+    s:=0.0;for i:0..<30 {s+=out[i]*dout[i];}return s;
+}
