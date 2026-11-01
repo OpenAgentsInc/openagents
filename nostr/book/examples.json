@@ -1104,6 +1104,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "nostr/examples/artifacts.coax",
+      "chapter": "nostr/book/ch090-artifacts-archives-and-reminders.md",
+      "stdout": "nostr/fixtures/artifacts.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

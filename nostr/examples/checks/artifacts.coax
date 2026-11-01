@@ -1,0 +1,103 @@
+// The checks of artifacts.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/artifacts.coax
+#load "../artifacts.coax";
+
+// book:begin check
+// From coax/tests/nostr/artifacts_vectors.py, which signs with
+// nip59_reference.py's integer secp256k1, BIP-340 and NIP-44 (no code
+// shared with Coax), hashes each id as hashlib.sha256 of json.dumps([0,
+// pubkey, created_at, kind, tags, content], separators=(",", ":")), applies
+// NIP-AR's prev rule to the submissions in order, and picks the reminder
+// heads (highest created_at, then lowest id) and the pending ones due at a
+// clock.
+PY_OUTCOMES :: "ok,ok,conflict,ok,ok,ok,again,taken";
+
+#test "the artifact's ids and outcomes are the Python reference's" #steps 2000000000 {
+  texts:=[8]string.[ARV_CREATE,ARV_UPDATE_ALICE,ARV_UPDATE_BOB,ARV_MOVE,ARV_DELETE,ARV_RESTORE,ARV_UPDATE_ALICE,ARV_CREATE_AGAIN];
+  ids:=[8]string.[ARV_CREATE_ID,ARV_UPDATE_ALICE_ID,ARV_UPDATE_BOB_ID,ARV_MOVE_ID,ARV_DELETE_ID,ARV_RESTORE_ID,ARV_UPDATE_ALICE_ID,ARV_CREATE_AGAIN_ID];
+  words:=[17]string.["ok","again","","","","","","","taken","","","","","conflict","","",""];
+  all:=[2]ArText.[uuid("9b353519-f4fe-4757-aef4-bec6cc0ae54c"),uuid("17cfe3ca-b3d0-4a76-a2a4-4eaf0d3a4109")];
+  arts:[2]ArArtifact;n:[1]int;out:[16384]u8;h:[80]u8;got:[128]u8;g:=0;
+  for i:0..<8 {
+    e:=verified(texts[i],out[..]);#assert e.error==NE_OK && e.verified;
+    k:=g29_put_key(h[..],0,e.computed_id);#assert cast(string)h[1..<65]==ids[i];
+    if i>0 {g=json_raw(got[..],g,",");}
+    g=json_raw(got[..],g,words[ar_submit(arts[..],n[..],e,all[..]).status]);
+  }
+  #assert cast(string)got[0..<g]==PY_OUTCOMES && PY_OUTCOMES==ARV_OUTCOMES;
+  k:=g29_put_key(h[..],0,arts[0].current);#assert cast(string)h[1..<65]==ARV_CURRENT;
+}
+
+#test "the reminders due at each clock are the Python reference's" #steps 2000000000 {
+  texts:=[5]string.[ERV_A,ERV_B1,ERV_B2,ERV_C1,ERV_C2];ids:=[5]string.[ERV_A_ID,ERV_B1_ID,ERV_B2_ID,ERV_C1_ID,ERV_C2_ID];
+  heads:[4]ErReminder;n:[1]int;out:[16384]u8;h:[80]u8;
+  for i:0..<5 {
+    e:=verified(texts[i],out[..]);#assert e.verified;
+    k:=g29_put_key(h[..],0,e.computed_id);#assert cast(string)h[1..<65]==ids[i];
+    #assert er_store(heads[..],n[..],er_read(e))==ER_OK;
+  }
+  secret:[32]u8;secret[31]=1;me:[1]NlSelf;ec:[1]EcdhScratch;#assert nl_self(secret[..],ec[..],me[..])==NL_OK;
+  heads_text:=[3]string.[ERV_A,ERV_B2,ERV_C2];names:=[3]string.["A","B2","C2"];
+  plain:[512]u8;work:[1]NlWork;
+  for clock:0..<2 {
+    now:=ifx clock==0 then NOW else LATER;due:[16]u8;d:=0;
+    for i:0..<3 {
+      m:=er_open(verified(heads_text[i],out[..]),me[0],work[..],plain[..]);
+      if er_fire(heads[i],er_content(cast(string)plain[0..<m]),now)==ER_FIRE {if d>0 {d=json_raw(due[..],d,",");}d=json_raw(due[..],d,names[i]);}
+    }
+    #assert cast(string)due[0..<d]==(ifx clock==0 then ERV_DUE_NOW else ERV_DUE_LATER);
+  }
+}
+
+// NIP-IA publishes five real test vectors. Their ids and signatures are
+// correct: Coax verifies each event and finds the published id, and the
+// relay's own 8002, 13535 and 8003 tags equal the published ones byte for
+// byte.
+#test "NIP-IA's published vectors" #steps 2000000000 {
+  texts:=[5]string.[IAV_1,IAV_2,IAV_3,IAV_4,IAV_5];ids:=[5]string.[IAV_1_ID,IAV_2_ID,IAV_3_ID,IAV_4_ID,IAV_5_ID];
+  out:[16384]u8;h:[80]u8;
+  for i:0..<5 {
+    e:=verified(texts[i],out[..]);#assert e.error==NE_OK && e.verified;
+    k:=g29_put_key(h[..],0,e.computed_id);#assert cast(string)h[1..<65]==ids[i];
+  }
+  nk:[1][32]u8;none:=nk[0..<0];np:[1]NostrEvent;s:[1]IaState;tags:[1024]u8;
+  r:=ia_decide(verified(IAV_1,out[..]),1713956401,none,false,np[0..<0]);#assert r.consent==IA_OWNER && ia_apply(s[..],r)==IA_OK;
+  m:=ia_delta(r,tags[..]);#assert cast(string)tags[0..<m]==IAV_2_TAGS;
+  m=ia_snapshot(s[0],tags[..]);#assert cast(string)tags[0..<m]==IAV_3_TAGS;
+  r=ia_decide(verified(IAV_4,out[..]),1713956501,none,false,np[0..<0]);#assert r.consent==IA_SELF && ia_apply(s[..],r)==IA_OK;
+  m=ia_delta(r,tags[..]);#assert cast(string)tags[0..<m]==IAV_5_TAGS;
+}
+
+// NIP-AR's and NIP-ER's examples are illustrative: NIP-AR's task has no
+// pubkey, id or signature, and NIP-ER's events carry "<author-pubkey>",
+// "<event-id>" and "<nip44-ciphertext>" placeholders, so neither has an id
+// to compare. Their tags read as the NIPs say.
+NIP_AR_TAGS :: "[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"9b353519-f4fe-4757-aef4-bec6cc0ae54c\"],[\"type\",\"buzz.task\"],[\"title\",\"Fix the payment timeout\"],[\"op\",\"create\"],[\"assignee\",\"<assignee-pubkey>\"],[\"project\",\"17cfe3ca-b3d0-4a76-a2a4-4eaf0d3a4109\"]]";
+NIP_ER_CREATE :: "[[\"d\",\"a3f8c2e1b4d79600e5d2f1a8c3b6094d\"],[\"not_before\",\"1770000000\"],[\"alt\",\"Encrypted reminder\"]]";
+NIP_ER_SNOOZE :: "[[\"d\",\"a3f8c2e1b4d79600e5d2f1a8c3b6094d\"],[\"not_before\",\"1770086400\"],[\"alt\",\"Encrypted reminder\"]]";
+NIP_ER_DONE :: "[[\"d\",\"a3f8c2e1b4d79600e5d2f1a8c3b6094d\"],[\"alt\",\"Encrypted reminder\"],[\"expiration\",\"1777542730\"]]";
+NIP_ER_PLAIN :: "{\"target\":{\"a\":\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:proposal\",\"id\":\"7b4f3c2a1e9d8c7061524334aabbccddeeff00112233445566778899aabbccdd\",\"relays\":[\"wss://relay.example\"],\"preview\":\"Can you review this before Friday?\"},\"status\":\"pending\",\"note\":\"Follow up before planning\"}";
+#test "the NIPs' published examples, as printed" {
+  e:=nt_event(NIP_AR_TAGS);e.kind=45010;e.verified=true;
+  env:=ar_envelope(e);#assert env.status==AR_OK && env.op==AR_CREATE && !env.has_prev;
+  c:=nt_event(NIP_ER_CREATE);c.kind=30300;c.verified=true;c.created_at=1769990000;
+  s:=nt_event(NIP_ER_SNOOZE);s.kind=30300;s.verified=true;s.created_at=1770000100;
+  d:=nt_event(NIP_ER_DONE);d.kind=30300;d.verified=true;d.created_at=1770086410;
+  heads:[1]ErReminder;n:[1]int;
+  #assert er_store(heads[..],n[..],er_read(c))==ER_OK && heads[0].nb==1770000000;
+  #assert er_store(heads[..],n[..],er_read(s))==ER_OK && heads[0].nb==1770086400;
+  #assert er_store(heads[..],n[..],er_read(d))==ER_OK && !heads[0].has_nb && heads[0].exp==1777542730 && n[0]==1;
+  p:=er_content(NIP_ER_PLAIN);#assert p.status==ER_OK && p.has_a && p.has_id && p.state==ER_PENDING;
+  #assert er_content("{\"status\":\"pending\",\"note\":\"Submit travel receipt\"}").status==ER_OK;
+}
+
+// By hand (the chapter's worked example): at 1770000000 the heads are A
+// (pending, not_before 1770000000: due, not_before <= now), B2 (pending,
+// not_before 1770086400: 86400 s early, more than the 60 s window) and C2
+// (cancelled, no not_before). Only A notifies; at 1770086400 B2 does.
+#test "the worked example's values, by hand" {
+  #assert NOW==1770000000 && LATER-NOW==86400 && ERV_DUE_NOW=="A" && ERV_DUE_LATER=="A,B2";
+  #assert ARV_CURRENT==ARV_RESTORE_ID && ARV_OUTCOMES=="ok,ok,conflict,ok,ok,ok,again,taken";
+}
+// book:end check

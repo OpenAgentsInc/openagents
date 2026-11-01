@@ -1949,13 +1949,25 @@
    "number": 90,
    "title": "Artifacts, archives and reminders",
    "file": "ch090-artifacts-archives-and-reminders.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     89
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipar.coax",
+    "coax/lib/nostr/nipia.coax",
+    "coax/lib/nostr/niper.coax",
+    "coax/tests/nostr/nipar_fixtures.coax",
+    "coax/tests/nostr/nipia_fixtures.coax",
+    "coax/tests/nostr/niper_fixtures.coax",
+    "coax/tests/nostr/artifacts_vectors.coax",
+    "nostr/examples/artifacts.coax",
+    "nostr/examples/checks/artifacts.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

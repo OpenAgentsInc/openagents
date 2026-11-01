@@ -1,0 +1,11 @@
+// Helpers for niper.coax's checks. They live here so that mutation of the
+// library changes the library, not the checks. Events are built in the
+// caller's buffer out; ^x in tags stands for 64 copies of x (g29_ev).
+#load "artifacts_vectors.coax";
+erf_v :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+// A 30300 by author a with id bytes i, at created_at.
+erf_ev :: (a:u8,i:u8,at:int,tags:string,out:[]u8)->NostrEvent {e:=g29_ev(30300,a,i,tags,out);e.created_at=at;return e;}
+// A reminder head read from tags, by author 0xa1.
+erf_r :: (i:u8,at:int,tags:string)->ErReminder {b:[1024]u8;return er_read(erf_ev(0xa1,i,at,tags,b[..]));}
+ERF_PENDING :: "{\"status\":\"pending\",\"note\":\"x\"}";
+erf_c :: (s:string)->ErContent {return er_content(s);}

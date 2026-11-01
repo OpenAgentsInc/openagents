@@ -1,0 +1,382 @@
+// Block's NIP-ER, event reminders: encrypted, author-only reminders as
+// kind 30300 addressable events. The one public fact is the not_before tag,
+// the time a pending reminder becomes due; the target, the note and the
+// status are NIP-44 encrypted to the author's own key.
+//
+// - er_number reads a not_before (or expiration): ASCII digits only, no
+//   sign or leading zero except "0", at most 9007199254740991, never
+//   through floating point.
+// - er_read checks the outer event: a verified 30300 with exactly one
+//   nonempty d, at most one valid not_before, and an expiration, when both
+//   are present, later than not_before. A future not_before is never a
+//   reason to refuse.
+// - er_store keeps only the head of each (author, d) address: the highest
+//   created_at, ties to the lowest id (NIP-01). An older version is
+//   ER_OLDER and dropped, and its due delivery with it.
+// - er_visible and er_gate are the relay's author-only read rules.
+// - er_open decrypts the content (base64, read as written) with the author's own NIP-44 conversation
+//   key (nl_self, chapter 51); er_content checks the plaintext: one JSON
+//   object, no duplicate member names, a known status, target.id 64
+//   lowercase hex, target.a a valid address, preview and note strings, and
+//   a pending reminder with a target reference or a nonempty note.
+// - er_fire is the client's local check at its clock; er_deliver and
+//   er_tick are the stateless notification path: every delivery replaces
+//   what is held for its address, a delivery more than ER_WINDOW seconds
+//   early is discarded, a held reminder notifies at not_before, and an
+//   event id notifies once.
+#load "nip29.coax";
+#load "nip51-private.coax";
+#load "../../tests/nostr/niper_fixtures.coax";
+#authority;
+
+ER_OK :: 0; ER_EVENT :: 1; ER_KIND :: 2; ER_D :: 3; ER_NOT_BEFORE :: 4; ER_EXPIRATION :: 5;
+ER_SHAPE :: 6; ER_OLDER :: 7; ER_FULL :: 8; ER_CONTENT :: 9; ER_NOT_OWNER :: 10; ER_CIPHER :: 11;
+ER_PENDING :: 1; ER_DONE :: 2; ER_CANCELLED :: 3;
+ER_FIRE :: 20; ER_WAIT :: 21; ER_TERMINAL :: 22; ER_BOOKMARK :: 23; ER_HELD :: 24; ER_DISCARD :: 25;
+ER_ALLOW :: 30; ER_AUTH_REQUIRED :: 31; ER_RESTRICTED :: 32; ER_OMIT :: 33;
+ER_KIND_REMINDER :: 30300; ER_MAX_SAFE :: 9007199254740991; ER_WINDOW :: 60;
+ER_MAX_HELD :: 8; ER_MAX_FIRED :: 16; ER_MAX_MEMBERS :: 16; ER_MAX_NAME :: 32;
+
+// book:begin number
+// A decimal Unix time: its value, or -1.
+er_number :: (s:N32Text)->int {
+  c:=s;if c.n==0 || (c.b[0]=='0' && c.n>1) {return -1;}
+  v:=0;
+  for i:0..<c.n {
+    d:=c.b[i];
+    if d<'0' || d>'9' {return -1;}
+    v=v*10+cast(int)(d-'0');
+    if v>ER_MAX_SAFE {return -1;}
+  }
+  return v;
+}
+// book:end number
+
+// book:begin read
+ErReminder :: struct {
+  status:int=ER_EVENT; id:[32]u8; author:[32]u8; created_at:int; d:N32Text;
+  has_nb:bool; nb:int; has_exp:bool; exp:int;
+}
+er_fail :: (r:ErReminder,status:int)->ErReminder {o:=r;o.status=status;return o;}
+er_read :: (e:NostrEvent)->ErReminder {
+  r:ErReminder;
+  if e.error!=NE_OK || !e.verified {return r;}
+  if e.kind!=ER_KIND_REMINDER {return er_fail(r,ER_KIND);}
+  r.id=e.id;r.author=e.public_key;r.created_at=e.created_at;
+  ds:=0;nbs:=0;k:=0;
+  while true {
+    t:=g29_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return er_fail(r,ER_SHAPE);}
+    if g29_tag_is(t,0,"d") {ds+=1;if t.values>=2 {r.d=t.v[1];}}
+    else if g29_tag_is(t,0,"not_before") {
+      nbs+=1;r.has_nb=true;r.nb=ifx t.values>=2 then er_number(t.v[1]) else -1;
+      if r.nb<0 {return er_fail(r,ER_NOT_BEFORE);}
+    }
+    else if g29_tag_is(t,0,"expiration") && t.values>=2 && !r.has_exp {
+      r.has_exp=true;r.exp=er_number(t.v[1]);
+      if r.exp<0 {return er_fail(r,ER_SHAPE);}
+    }
+  }
+  if ds!=1 || r.d.n==0 {return er_fail(r,ER_D);}
+  if nbs>1 {return er_fail(r,ER_NOT_BEFORE);}
+  if r.has_nb && r.has_exp && r.exp<=r.nb {return er_fail(r,ER_EXPIRATION);}
+  return er_fail(r,ER_OK);
+}
+// book:end read
+
+// book:begin store
+er_same :: (a:ErReminder,b:ErReminder)->bool {x:=b;return ns_equal32(a.author,b.author) && n32_is(a.d,cast(string)x.d.b[0..<x.d.n]);}
+er_lower :: (a:[32]u8,b:[32]u8)->bool {
+  for i:0..<32 {if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
+  return false;
+}
+// Does a replace b at the same address? Later created_at, then lower id.
+er_wins :: (a:ErReminder,b:ErReminder)->bool {
+  if a.created_at>b.created_at {return true;}
+  if a.created_at<b.created_at {return false;}
+  return er_lower(a.id,b.id);
+}
+// The relay keeps one head per address: ER_OK when r is stored (new, or it
+// replaced the head), ER_OLDER when the head stays.
+er_store :: (heads:[]ErReminder,n:[]int,r:ErReminder)->int {
+  if r.status!=ER_OK {return r.status;}
+  for i:0..<n[0] {
+    if !er_same(heads[i],r) {continue;}
+    if !er_wins(r,heads[i]) {return ER_OLDER;}
+    heads[i]=r;return ER_OK;
+  }
+  if n[0]==heads.count {return ER_FULL;}
+  heads[n[0]]=r;n[0]+=1;return ER_OK;
+}
+// book:end store
+
+// book:begin gate
+// Only the authenticated author sees a reminder, on every path.
+er_visible :: (r:ErReminder,authed:bool,reader:[32]u8)->bool {return authed && ns_equal32(r.author,reader);}
+// A filter that can return 30300: allowed only for the authenticated
+// author's own reminders. A filter for 30300 alone is closed (auth-required
+// or restricted); a mixed-kind filter goes on with the 30300 matches omitted.
+er_gate :: (authed:bool,reader:[32]u8,authors:[][32]u8,only:bool)->int {
+  mine:=authed && authors.count>0;
+  for a:authors {if !ns_equal32(a,reader) {mine=false;}}
+  if mine {return ER_ALLOW;}
+  if !only {return ER_OMIT;}
+  return ifx authed then ER_RESTRICTED else ER_AUTH_REQUIRED;
+}
+// Is a stored head due for the relay's push? It reads only not_before.
+er_relay_due :: (r:ErReminder,now:int)->bool {return r.status==ER_OK && r.has_nb && r.nb<=now;}
+// book:end gate
+
+// book:begin content
+ErContent :: struct {status:int=ER_CONTENT; state:int; has_id:bool; id:[32]u8; has_a:bool; note_n:int;}
+// Each member name of one object, unescaped, must be new.
+ErNames :: struct {b:[ER_MAX_MEMBERS][ER_MAX_NAME]u8; n:[ER_MAX_MEMBERS]int; count:int;}
+er_name :: (names:[]ErNames,raw:string)->bool {
+  if names[0].count==ER_MAX_MEMBERS {return false;}
+  i:=names[0].count;m:=json_unescape(raw,names[0].b[i][..]);
+  if m<0 {return false;}
+  for k:0..<i {if names[0].n[k]==m && cast(string)names[0].b[k][0..<m]==cast(string)names[0].b[i][0..<m] {return false;}}
+  names[0].n[i]=m;names[0].count+=1;return true;
+}
+// A target.id or target.a as written: escapes are refused, so the text
+// is compared byte for byte.
+er_plain :: (raw:string)->bool {for c:raw {if c=='\\' {return false;}}return true;}
+// The target object, its opening brace just read. Every member is read to
+// the end; ok says whether all of them were valid.
+er_target :: (j:[]Json,c:[]ErContent)->bool {
+  names:[1]ErNames;ok:=true;tok:=json_next(j);
+  while tok==JSON_STRING {
+    key:=json_text(j);if !er_name(names[..],key) {ok=false;}
+    v:=json_next(j);s:=v==JSON_STRING && er_plain(json_text(j));
+    if json_is(key,"id") {
+      if s && ne_lower_hex(json_text(j),c[0].id[..]) {c[0].has_id=true;} else {ok=false;}
+    } else if json_is(key,"a") {
+      if s && nt_address(json_text(j)).error==NT_OK {c[0].has_a=true;} else {ok=false;}
+    } else if json_is(key,"relays") {
+      if v!=JSON_ARRAY {ok=false;}
+    } else if json_is(key,"preview") {
+      if v!=JSON_STRING {ok=false;}
+    }
+    // A refused skip leaves the reader in its sticky error: the loop ends
+    // on it and the object refuses below.
+    skipped:=json_skip(j);
+    tok=json_next(j);
+  }
+  return ok && tok==JSON_OBJECT_END;
+}
+er_content :: (plain:string)->ErContent {
+  c:[1]ErContent;bad:ErContent;names:[1]ErNames;
+  j:[1]Json;json_start(j[..],plain);
+  if json_next(j[..])!=JSON_OBJECT {return bad;}
+  tok:=json_next(j[..]);
+  while tok==JSON_STRING {
+    key:=json_text(j[..]);if !er_name(names[..],key) {return bad;}
+    v:=json_next(j[..]);
+    if json_is(key,"status") {
+      if v!=JSON_STRING {return bad;}
+      s:=json_text(j[..]);
+      if json_is(s,"pending") {c[0].state=ER_PENDING;}
+      else if json_is(s,"done") {c[0].state=ER_DONE;}
+      else if json_is(s,"cancelled") {c[0].state=ER_CANCELLED;}
+      else {return bad;}
+    } else if json_is(key,"note") {
+      if v!=JSON_STRING {return bad;}
+      c[0].note_n=json_text(j[..]).count;
+    } else if json_is(key,"target") {
+      if v!=JSON_OBJECT || !er_target(j[..],c[..]) {return bad;}
+    } else if !json_skip(j[..]) {return bad;}
+    tok=json_next(j[..]);
+  }
+  if tok!=JSON_OBJECT_END || json_next(j[..])!=JSON_END || c[0].state==0 {return bad;}
+  if c[0].state==ER_PENDING && !c[0].has_id && !c[0].has_a && c[0].note_n==0 {return bad;}
+  c[0].status=ER_OK;return c[0];
+}
+// book:end content
+
+// book:begin open
+// The plaintext of the author's own reminder, into plain: its length, or a
+// negative status. me holds the author's keys (nl_self).
+er_open :: (e:NostrEvent,me:NlSelf,work:[]NlWork,plain:[]u8)->int {
+  if e.error!=NE_OK || !e.verified {return -ER_EVENT;}
+  if !me.ok || work.count!=1 || !ns_equal32(me.pub,e.public_key) {return -ER_NOT_OWNER;}
+  // A NIP-44 payload is base64, so the JSON string is read as written.
+  ck:=me.ck;
+  r:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],e.original[e.content_from..<e.content_to],work[0].cipher[..],plain,false);
+  work[0]=NlWork.{};
+  return ifx r.error==NIP44_OK then r.written else -ER_CIPHER;
+}
+// book:end open
+
+// book:begin fire
+// The client's local check for the head r with plaintext c at its clock.
+er_fire :: (r:ErReminder,c:ErContent,now:int)->int {
+  if r.status!=ER_OK || c.status!=ER_OK {return ER_SHAPE;}
+  if c.state!=ER_PENDING {return ER_TERMINAL;}
+  if !r.has_nb {return ER_BOOKMARK;}
+  return ifx r.nb<=now then ER_FIRE else ER_WAIT;
+}
+// The notification path: what is held per address, and the ids notified.
+ErNotifier :: struct {held:[ER_MAX_HELD]ErReminder; held_n:int; fired:[ER_MAX_FIRED][32]u8; fired_n:int;}
+er_deliver :: (nt:[]ErNotifier,r:ErReminder,c:ErContent,now:int)->int {
+  if r.status!=ER_OK {return r.status;}
+  k:=0;
+  for i:0..<nt[0].held_n {if !er_same(nt[0].held[i],r) {nt[0].held[k]=nt[0].held[i];k+=1;}}
+  nt[0].held_n=k;
+  f:=er_fire(r,c,now);
+  if f!=ER_FIRE && f!=ER_WAIT {return f;}
+  if r.nb>now+ER_WINDOW {return ER_DISCARD;}
+  if k==ER_MAX_HELD {return ER_FULL;}
+  nt[0].held[k]=r;nt[0].held_n+=1;return ER_HELD;
+}
+// At now, the held reminders that are due: their ids into out, each id once
+// ever; they leave the held set.
+er_tick :: (nt:[]ErNotifier,now:int,out:[][32]u8)->int {
+  m:=0;k:=0;
+  for i:0..<nt[0].held_n {
+    h:=nt[0].held[i];
+    if h.nb>now {nt[0].held[k]=h;k+=1;continue;}
+    seen:=false;for f:0..<nt[0].fired_n {if ns_equal32(nt[0].fired[f],h.id) {seen=true;}}
+    if seen || m==out.count || nt[0].fired_n==ER_MAX_FIRED {continue;}
+    out[m]=h.id;m+=1;nt[0].fired[nt[0].fired_n]=h.id;nt[0].fired_n+=1;
+  }
+  nt[0].held_n=k;return m;
+}
+// book:end fire
+
+// ---- checks (helpers in coax/tests/nostr/niper_fixtures.coax)
+#test "not_before: decimal digits only, up to 2^53 - 1" {
+  #assert er_number(erf_v("0"))==0 && er_number(erf_v("1770000000"))==1770000000 && er_number(erf_v("9007199254740991"))==ER_MAX_SAFE;
+  #assert er_number(erf_v("9007199254740992"))== -1 && er_number(erf_v("99999999999999999"))== -1 && er_number(erf_v("9999999999999999"))== -1;
+  #assert er_number(erf_v(""))== -1 && er_number(erf_v("01"))== -1 && er_number(erf_v("00"))== -1 && er_number(erf_v("+1"))== -1 && er_number(erf_v("-1"))== -1;
+  #assert er_number(erf_v("1.0"))== -1 && er_number(erf_v(" 1"))== -1 && er_number(erf_v("1e3"))== -1 && er_number(erf_v("1/"))== -1 && er_number(erf_v("1:"))== -1;
+  #assert er_number(erf_v("10"))==10 && er_number(erf_v("9"))==9 && er_number(erf_v("99999999999999999999"))== -1;
+}
+#test "the outer event: d, not_before, expiration" {
+  b:[1024]u8;
+  r:=erf_r(0x01,100,"[[\"d\",\"abc\"],[\"not_before\",\"200\"],[\"alt\",\"Encrypted reminder\"]]");
+  #assert r.status==ER_OK && r.has_nb && r.nb==200 && !r.has_exp && n32_is(r.d,"abc") && r.created_at==100 && r.id[0]==0x01 && r.author[0]==0xa1;
+  r=erf_r(0x01,100,"[[\"d\",\"abc\"],[\"expiration\",\"300\"],[\"expiration\",\"x\"]]");#assert r.status==ER_OK && !r.has_nb && r.has_exp && r.exp==300;
+  #assert erf_r(0x01,100,"[[\"d\",\"abc\"],[\"not_before\",\"200\"],[\"expiration\",\"201\"]]").status==ER_OK;
+  #assert erf_r(0x01,100,"[[\"d\",\"abc\"],[\"not_before\",\"200\"],[\"expiration\",\"200\"]]").status==ER_EXPIRATION;
+  #assert erf_r(0x01,100,"[[\"d\",\"abc\"],[\"expiration\",\"1\"],[\"not_before\",\"200\"]]").status==ER_EXPIRATION;
+  #assert erf_r(0x01,100,"[[\"d\",\"abc\"],[\"expiration\",\"01\"]]").status==ER_SHAPE && erf_r(0x01,100,"[[\"d\",\"abc\"],[\"expiration\"]]").status==ER_OK;
+  #assert erf_r(0x01,100,"[[\"d\",\"abc\"],[\"not_before\",\"01770000000\"]]").status==ER_NOT_BEFORE && erf_r(0x01,100,"[[\"d\",\"abc\"],[\"not_before\"]]").status==ER_NOT_BEFORE;
+  #assert erf_r(0x01,100,"[[\"d\",\"abc\"],[\"not_before\",\"5\"],[\"not_before\",\"5\"]]").status==ER_NOT_BEFORE;
+  #assert erf_r(0x01,100,"[[\"not_before\",\"5\"]]").status==ER_D && erf_r(0x01,100,"[[\"d\",\"\"]]").status==ER_D && erf_r(0x01,100,"[[\"d\"]]").status==ER_D;
+  #assert erf_r(0x01,100,"[[\"d\",\"a\"],[\"d\",\"b\"]]").status==ER_D && erf_r(0x01,100,"[[\"d\",\"a\"],[\"x\",1]]").status==ER_SHAPE;
+  r=erf_r(0x01,100,"[[\"d\",\"a\"],[\"not_before\",\"0\"],[\"expiration\",\"1\"]]");#assert r.status==ER_OK && r.nb==0 && r.exp==1;
+  r=erf_r(0x01,100,"[[\"d\",\"a\"],[\"expiration\",\"0\"]]");#assert r.status==ER_OK && r.has_exp && r.exp==0;
+  // A not_before far in the future is never refused.
+  #assert erf_r(0x01,100,"[[\"d\",\"a\"],[\"not_before\",\"9007199254740991\"]]").status==ER_OK;
+  e:=erf_ev(0xa1,1,100,"[[\"d\",\"a\"]]",b[..]);e.kind=30301;#assert er_read(e).status==ER_KIND;
+  e.kind=30300;e.verified=false;#assert er_read(e).status==ER_EVENT;
+  e.verified=true;e.error=NE_ID;#assert er_read(e).status==ER_EVENT;
+}
+#test "one head per address: later created_at, then the lower id" {
+  heads:[2]ErReminder;n:[1]int;
+  a1:=erf_r(0x05,100,"[[\"d\",\"a\"],[\"not_before\",\"200\"]]");
+  #assert er_store(heads[..],n[..],a1)==ER_OK && n[0]==1;
+  #assert er_store(heads[..],n[..],erf_r(0x04,99,"[[\"d\",\"a\"],[\"not_before\",\"150\"]]"))==ER_OLDER && heads[0].nb==200;
+  #assert er_store(heads[..],n[..],erf_r(0x06,100,"[[\"d\",\"a\"],[\"not_before\",\"150\"]]"))==ER_OLDER && heads[0].nb==200;
+  #assert er_store(heads[..],n[..],a1)==ER_OLDER;
+  #assert er_store(heads[..],n[..],erf_r(0x03,100,"[[\"d\",\"a\"],[\"not_before\",\"300\"]]"))==ER_OK && heads[0].nb==300 && n[0]==1;
+  #assert er_store(heads[..],n[..],erf_r(0x09,101,"[[\"d\",\"a\"]]"))==ER_OK && !heads[0].has_nb;
+  #assert er_store(heads[..],n[..],erf_r(0x09,50,"[[\"d\",\"b\"]]"))==ER_OK && n[0]==2;
+  #assert er_store(heads[..],n[..],erf_r(0x09,50,"[[\"d\",\"c\"]]"))==ER_FULL;
+  #assert er_store(heads[..],n[..],erf_r(0x09,50,"[[\"d\",\"\"]]"))==ER_D;
+  other:=erf_r(0x01,10,"[[\"d\",\"a\"]]");other.author[0]=0xb2;#assert er_store(heads[..],n[..],other)==ER_FULL;
+  x:[32]u8;y:[32]u8;y[31]=1;#assert er_lower(x,y) && !er_lower(y,x) && !er_lower(x,x);
+  y[31]=0;y[0]=1;x[1]=9;#assert er_lower(x,y);
+  #assert er_same(erf_r(1,1,"[[\"d\",\"ab\"]]"),erf_r(2,2,"[[\"d\",\"ab\"]]")) && !er_same(erf_r(1,1,"[[\"d\",\"ab\"]]"),erf_r(2,2,"[[\"d\",\"a\"]]"));
+}
+#test "author-only reads and the relay's due push" {
+  me:=g29_k(0xa1);you:=g29_k(0xb2);r:=erf_r(1,100,"[[\"d\",\"a\"],[\"not_before\",\"200\"]]");
+  #assert er_visible(r,true,me) && !er_visible(r,false,me) && !er_visible(r,true,you);
+  mine:=[1][32]u8.[me];both:=[2][32]u8.[me,you];none:=mine[0..<0];
+  #assert er_gate(true,me,mine[..],true)==ER_ALLOW && er_gate(true,me,mine[..],false)==ER_ALLOW;
+  #assert er_gate(false,me,mine[..],true)==ER_AUTH_REQUIRED && er_gate(false,me,mine[..],false)==ER_OMIT;
+  #assert er_gate(true,you,mine[..],true)==ER_RESTRICTED && er_gate(true,you,mine[..],false)==ER_OMIT;
+  #assert er_gate(true,me,both[..],true)==ER_RESTRICTED && er_gate(true,me,none,true)==ER_RESTRICTED && er_gate(true,me,none,false)==ER_OMIT;
+  #assert !er_relay_due(r,199) && er_relay_due(r,200) && er_relay_due(r,201);
+  #assert !er_relay_due(erf_r(1,100,"[[\"d\",\"a\"]]"),300) && !er_relay_due(erf_r(1,100,"[[\"d\",\"a\"],[\"not_before\",\"1\"],[\"not_before\",\"1\"]]"),300);
+}
+#test "plaintext: status, target, note, duplicates" {
+  c:=erf_c("{\"status\":\"pending\",\"note\":\"Submit travel receipt\"}");#assert c.status==ER_OK && c.state==ER_PENDING && c.note_n==21 && !c.has_id && !c.has_a;
+  c=erf_c("{\"target\":{\"a\":\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:proposal\",\"id\":\"7b4f3c2a1e9d8c7061524334aabbccddeeff00112233445566778899aabbccdd\",\"relays\":[\"wss://relay.example\",1],\"preview\":\"p\",\"x\":{\"y\":[1]}},\"status\":\"pending\"}");
+  #assert c.status==ER_OK && c.has_a && c.has_id && c.id[0]==0x7b && c.note_n==0;
+  #assert erf_c("{\"target\":{\"id\":\"7b4f3c2a1e9d8c7061524334aabbccddeeff00112233445566778899aabbccdd\"},\"status\":\"pending\"}").status==ER_OK;
+  #assert erf_c("{\"status\":\"done\"}").state==ER_DONE && erf_c("{\"status\":\"cancelled\",\"extra\":[1,{}]}").state==ER_CANCELLED;
+  #assert erf_c("{\"status\":\"pending\"}").status==ER_CONTENT && erf_c("{\"status\":\"pending\",\"note\":\"\"}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"pending\",\"target\":{\"preview\":\"p\"}}").status==ER_CONTENT && erf_c("{\"note\":\"x\"}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"snoozed\",\"note\":\"x\"}").status==ER_CONTENT && erf_c("{\"status\":1,\"note\":\"x\"}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"pending\",\"note\":1}").status==ER_CONTENT && erf_c("[\"status\"]").status==ER_CONTENT && erf_c("{\"status\":\"done\"} x").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"status\":\"done\"}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"st\\u0061tus\":\"done\"}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"a\":1,\"a\":2}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"a\":1,\"a\":1}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"id\":\"7B4F3c2a1e9d8c7061524334aabbccddeeff00112233445566778899aabbccdd\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"id\":\"7b4f\"}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"id\":7}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"a\":\"1:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:x\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"a\":5}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"relays\":\"wss://x\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"preview\":2}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":[]}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"x\":[}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"x\":[}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"relays\":[}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"p\":1 \"q\":2}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"a\":\"\\ud800\"}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"id\":\"\\ud800\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{}}").status==ER_OK && erf_c("{\"status\":\"done\"").status==ER_CONTENT;
+  long:="{\"status\":\"done\",\"k01\":1,\"k02\":1,\"k03\":1,\"k04\":1,\"k05\":1,\"k06\":1,\"k07\":1,\"k08\":1,\"k09\":1,\"k10\":1,\"k11\":1,\"k12\":1,\"k13\":1,\"k14\":1,\"k15\":1}";
+  #assert erf_c(long).status==ER_OK && erf_c("{\"status\":\"done\",\"k01\":1,\"k02\":1,\"k03\":1,\"k04\":1,\"k05\":1,\"k06\":1,\"k07\":1,\"k08\":1,\"k09\":1,\"k10\":1,\"k11\":1,\"k12\":1,\"k13\":1,\"k14\":1,\"k15\":1,\"k16\":1}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":1}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":1}").status==ER_OK;
+  #assert erf_c("{\"status\":\"done\",\"\":1}").status==ER_OK && erf_c("{\"status\":\"done\",\"target\":{\"q\":1,\"q\":\"zz\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"id\":{\"q\":\"zz\"}}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"a\":[\"zz\"]}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"preview\":[\"zz\"]}}").status==ER_CONTENT && erf_c("{\"status\":\"done\",\"target\":{\"relays\":{\"q\":\"zz\"}}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"id\":\"\\u0037b4f3c2a1e9d8c7061524334aabbccddeeff00112233445566778899aabbccd\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"a\":\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:\\u0041\"}}").status==ER_CONTENT;
+  #assert erf_c("{\"status\":\"done\",\"target\":{\"a\":\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:x\"}}").status==ER_OK;
+  #assert er_plain("ab") && !er_plain("a\\b") && er_plain("");
+  #assert erf_c("{\"status\":\"done\",\"ab\":1,\"a\":1}").status==ER_OK && erf_c("{\"status\":\"done\",\"ab\":1,\"ac\":1}").status==ER_OK;
+}
+#test "the client fires a due pending reminder, never a terminal one" {
+  p:=erf_c(ERF_PENDING);d:=erf_c("{\"status\":\"done\"}");r:=erf_r(1,100,"[[\"d\",\"a\"],[\"not_before\",\"200\"]]");
+  #assert er_fire(r,p,199)==ER_WAIT && er_fire(r,p,200)==ER_FIRE && er_fire(r,d,500)==ER_TERMINAL;
+  #assert er_fire(erf_r(1,100,"[[\"d\",\"a\"]]"),p,500)==ER_BOOKMARK && er_fire(erf_r(1,100,"[[\"d\",\"\"]]"),p,500)==ER_SHAPE;
+  #assert er_fire(r,erf_c("{}"),500)==ER_SHAPE;
+}
+#test "the notification path: hold, supersede, discard, notify once" {
+  nt:[1]ErNotifier;out:[4][32]u8;p:=erf_c(ERF_PENDING);c:=erf_c("{\"status\":\"cancelled\"}");
+  a:=erf_r(0x0a,100,"[[\"d\",\"a\"],[\"not_before\",\"1000\"]]");
+  #assert er_deliver(nt[..],a,p,939)==ER_DISCARD && nt[0].held_n==0;
+  #assert er_deliver(nt[..],a,p,940)==ER_HELD && nt[0].held_n==1;
+  #assert er_tick(nt[..],999,out[..])==0 && nt[0].held_n==1;
+  #assert er_tick(nt[..],1000,out[..])==1 && out[0][0]==0x0a && nt[0].held_n==0;
+  // The relay sends it again: held again, never notified twice.
+  #assert er_deliver(nt[..],a,p,1001)==ER_HELD && er_tick(nt[..],1001,out[..])==0 && nt[0].held_n==0;
+  // A snooze replaces the held version; a cancel drops it.
+  b1:=erf_r(0x0b,100,"[[\"d\",\"b\"],[\"not_before\",\"1010\"]]");b2:=erf_r(0x0c,101,"[[\"d\",\"b\"],[\"not_before\",\"5000\"]]");
+  #assert er_deliver(nt[..],b1,p,1000)==ER_HELD && er_deliver(nt[..],b2,p,1000)==ER_DISCARD && nt[0].held_n==0;
+  #assert er_deliver(nt[..],b1,p,1000)==ER_HELD && er_deliver(nt[..],b1,c,1000)==ER_TERMINAL && nt[0].held_n==0;
+  #assert er_deliver(nt[..],erf_r(0x0d,1,"[[\"d\",\"e\"]]"),p,1000)==ER_BOOKMARK && er_deliver(nt[..],erf_r(0x0d,1,"[[\"e\",\"e\"]]"),p,1000)==ER_D;
+  // Two held at once; the other stays held when one is superseded.
+  x:=erf_r(0x11,100,"[[\"d\",\"x\"],[\"not_before\",\"2000\"]]");y:=erf_r(0x12,100,"[[\"d\",\"y\"],[\"not_before\",\"2001\"]]");
+  #assert er_deliver(nt[..],y,p,1990)==ER_HELD && er_deliver(nt[..],x,p,1990)==ER_HELD && er_deliver(nt[..],y,p,1990)==ER_HELD && nt[0].held_n==2 && nt[0].held[0].nb==2000;
+  #assert er_tick(nt[..],2000,out[..])==1 && out[0][0]==0x11 && nt[0].held_n==1 && nt[0].held[0].nb==2001;
+  #assert er_tick(nt[..],2001,out[0..<0])==0 && nt[0].held_n==0;
+  full:[1]ErNotifier;full[0].held_n=ER_MAX_HELD;
+  for i:0..<ER_MAX_HELD {full[0].held[i]=erf_r(cast(u8)(0x40+i),1,"[[\"d\",\"q\"],[\"not_before\",\"1\"]]");full[0].held[i].d.b[0]=cast(u8)('A'+i);}
+  #assert er_deliver(full[..],x,p,1990)==ER_FULL && full[0].held_n==ER_MAX_HELD;
+  done:[1]ErNotifier;done[0].fired_n=ER_MAX_FIRED;#assert er_deliver(done[..],x,p,2000)==ER_HELD && er_tick(done[..],2000,out[..])==0;
+  m:[1]ErNotifier;#assert er_deliver(m[..],x,p,2000)==ER_HELD && er_deliver(m[..],y,p,2001)==ER_HELD && er_tick(m[..],2001,out[0..<1])==1 && m[0].held_n==0 && m[0].fired_n==1;
+}
+#test "opening the author's own reminder" #steps 2000000000 {
+  b:[16384]u8;plain:[512]u8;work:[1]NlWork;ec:[1]EcdhScratch;me:[1]NlSelf;secret:[32]u8;secret[31]=1;
+  #assert nl_self(secret[..],ec[..],me[..])==NL_OK;
+  e:=nostr_event_read(ERV_A,b[..],false);e.verified=true;
+  n:=er_open(e,me[0],work[..],plain[..]);
+  for i:0..<64 {#assert work[0].cipher[i]==0;}
+  #assert n>0 && cast(string)plain[0..<n]=="{\"status\":\"pending\",\"note\":\"Submit travel receipt\"}";
+  other:=me[0];other.pub[0]^=1;#assert er_open(e,other,work[..],plain[..])== -ER_NOT_OWNER;
+  wrong:=me[0];wrong.ck[0]^=1;#assert er_open(e,wrong,work[..],plain[..])== -ER_CIPHER;
+  off:=me[0];off.ok=false;#assert er_open(e,off,work[..],plain[..])== -ER_NOT_OWNER;
+  #assert er_open(e,me[0],work[0..<0],plain[..])== -ER_NOT_OWNER;
+  f:=e;f.verified=false;#assert er_open(f,me[0],work[..],plain[..])== -ER_EVENT;
+  f=e;f.error=NE_ID;#assert er_open(f,me[0],work[..],plain[..])== -ER_EVENT;
+  g:=e;g.content_to=g.content_from+1;#assert er_open(g,me[0],work[..],plain[..])== -ER_CIPHER;
+}

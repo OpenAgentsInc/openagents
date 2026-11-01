@@ -1,0 +1,46 @@
+NIP-AR: a task in channel 9b353519…
+Alice creates it: ok, current d9c279bf…
+Alice updates from the create: ok, current 2eb4cede…
+Bob updates from the create: conflict
+Alice moves it to 17cfe3ca…: ok, current b7ea4baa…; a removal notice goes to 9b353519… for 2eb4cede…
+Alice deletes it: ok, current 3137d815…
+Alice restores it: ok, current 30a81354…
+Alice resends her update: accepted before: success, not applied
+Bob creates the same d: taken
+current revision 30a81354…, 5 accepted revisions, deleted false
+a reader of 9b353519… sees it in current state false; of 17cfe3ca… true
+history: revision 1 (in 9b353519…) readable from 17cfe3ca… false, from 9b353519… true
+NIP-IA: the owner archives a zombie agent
+vector 1, a 9035 from the owner: ok, consent owner
+apply: ok; again: same
+the relay's 8002 tags: equal to the published tags true
+the relay's 13535 tags: equal to the published tags true
+a client reads vector 3: 1 archived, c6047f94…
+NIP-IA: the agent unarchives itself
+vector 4, a 9036 from the agent: ok, consent self; apply: ok
+the relay's 8003 tags: equal to the published tags true
+the new 13535 tags: [["-"]]
+broken inputs
+vector 1 replayed 1000 s later: stale
+vector 4 from a banned agent: banned
+vector 3 checked against Alice's key as the relay: signer
+NIP-ER: Alice's three reminders at the clock 1770000000
+relay stores A: stored
+relay stores B1: stored
+relay stores B2: stored
+relay stores C1: stored
+relay stores C2: stored
+B1 arrives again: older: dropped; 3 addresses held
+A opens to {"status":"pending","note":"Submit travel receipt"}
+  local check: fire; notification path: held
+B2 opens to {"target":{"a":"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:proposal","id":"7b4f3c2a1e9d8c7061524334aabbccddeeff00112233445566778899aabbccdd","relays":["wss://relay.example"],"preview":"Can you review this before Friday?"},"status":"pending","note":"Follow up before planning"}
+  local check: wait; notification path: discard
+C2 opens to {"status":"cancelled","note":"Call the bank"}
+  local check: terminal; notification path: terminal
+at 1770000000: 1 notification, 870b47fb…
+the relay sends A again: held; notifications: 0
+at 1770086400: the relay pushes B2: true; client: held; notifications: 1, fc26031f…
+broken inputs
+a not_before of "01770000000": invalid: malformed not_before
+Bob asks for Alice's reminders: restricted:; an unauthenticated reader: auth-required:
+Bob opens A with his own keys: not the owner

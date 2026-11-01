@@ -1,0 +1,286 @@
+// Block's NIP-IA, identity archival: a relay-scoped way to hide a retired
+// pubkey from active-member and autocomplete surfaces on one relay while
+// its history stays. A user asks with a kind 9035 (archive) or 9036
+// (unarchive) request; the relay answers with a relay-signed 8002 or 8003
+// delta and a fresh 13535 snapshot of every archived pubkey.
+//
+// - ia_read checks a request's form (the relay processing algorithm's
+//   steps 1 to 5): a verified 9035 or 9036, exactly one NIP-70 ["-"] tag,
+//   exactly one p tag naming the target in lowercase hex, and a
+//   replaced-by, when present, that is lowercase hex and not the target.
+// - ia_decide adds freshness (120 seconds either way) and picks the consent
+//   path: self when the actor is the target (an auth tag is then ignored),
+//   admin when the relay's policy lists the actor, owner when the actor
+//   proves owner-of-agent authority with NIP-OA. An owner proves it with an
+//   auth tag on the request, signed over the target's preimage and with
+//   its time clauses checked against the request (kind= clauses never deny),
+//   or with the auth tag in the target's latest kind 0, where no clause is
+//   evaluated. A banned target can't self-unarchive.
+// - ia_apply changes the archive set idempotently: archiving an archived
+//   key or unarchiving one that isn't archived is IA_SAME, and the relay
+//   then publishes nothing.
+// - ia_delta and ia_snapshot write the tags of the 8002/8003 and 13535.
+// - ia_list is the client's side: only a 13535 signed by the relay's NIP-11
+//   self key, with exactly one ["-"], counts; an invalid p entry is skipped.
+//
+// Archival is not revocation: nothing here bans, kicks or deletes. Access
+// control is NIP-43's (nip43.coax).
+#load "nipoa.coax";
+#load "nip29.coax";
+#load "../../tests/nostr/nipia_fixtures.coax";
+#authority;
+
+IA_OK :: 0; IA_SAME :: 1; IA_EVENT :: 2; IA_KIND :: 3; IA_PROTECTED :: 4; IA_TARGET :: 5;
+IA_REPLACED :: 6; IA_STALE :: 7; IA_DENIED :: 8; IA_BANNED :: 9; IA_FULL :: 10; IA_SHAPE :: 11;
+IA_SIGNER :: 12;
+IA_ARCHIVE :: 9035; IA_UNARCHIVE :: 9036; IA_ARCHIVED :: 8002; IA_UNARCHIVED :: 8003; IA_LIST :: 13535;
+IA_NONE :: 0; IA_SELF :: 1; IA_OWNER :: 2; IA_ADMIN :: 3;
+IA_PATHS :: [4]string.["","self","owner","admin"];
+IA_FRESH :: 120; IA_MAX :: 32;
+
+// book:begin request
+IaRequest :: struct {
+  status:int=IA_EVENT; archive:bool; id:[32]u8; actor:[32]u8; target:[32]u8;
+  has_replaced:bool; replaced:[32]u8; has_reason:bool; reason:N32Text;
+  consent:int; by:[32]u8;                       // the path and the key it names
+  proof:bool; proof_id:[32]u8;                  // the target's kind 0, on the profile path
+}
+ia_fail :: (r:IaRequest,status:int)->IaRequest {o:=r;o.status=status;return o;}
+ia_read :: (e:NostrEvent)->IaRequest {
+  r:IaRequest;
+  if e.error!=NE_OK || !e.verified {return r;}
+  if e.kind!=IA_ARCHIVE && e.kind!=IA_UNARCHIVE {return ia_fail(r,IA_KIND);}
+  r.archive=e.kind==IA_ARCHIVE;r.id=e.id;r.actor=e.public_key;
+  dash:=0;ps:=0;rb:=0;k:=0;
+  while true {
+    t:=g29_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return ia_fail(r,IA_SHAPE);}
+    if g29_tag_is(t,0,"-") {dash+=1;}
+    else if g29_tag_is(t,0,"p") {ps+=1;if t.values<2 || !g29_key(t.v[1],r.target[..]) {return ia_fail(r,IA_TARGET);}}
+    else if g29_tag_is(t,0,"replaced-by") {rb+=1;r.has_replaced=true;if t.values<2 || !g29_key(t.v[1],r.replaced[..]) {return ia_fail(r,IA_REPLACED);}}
+    else if g29_tag_is(t,0,"reason") && t.values>=2 && !r.has_reason {r.has_reason=true;r.reason=t.v[1];}
+  }
+  if dash!=1 {return ia_fail(r,IA_PROTECTED);}
+  if ps!=1 {return ia_fail(r,IA_TARGET);}
+  if rb>1 || (r.has_replaced && ns_equal32(r.replaced,r.target)) {return ia_fail(r,IA_REPLACED);}
+  return ia_fail(r,IA_OK);
+}
+// book:end request
+
+// book:begin owner
+// The request's own auth tag: exactly one, four elements, the owner is the
+// actor, the owner signed the target's NIP-OA preimage, and the request's
+// created_at meets the time clauses. kind= clauses are not evaluated.
+ia_auth :: (e:NostrEvent,target:[32]u8)->bool {
+  k:=0;n:=0;t:G29Tag;
+  while true {
+    s:=g29_tag(e,k);k+=1;
+    if s.error==NT_INDEX {break;}
+    if s.error==NT_OK && g29_tag_is(s,0,"auth") {n+=1;t=s;}
+  }
+  owner:[32]u8;sig:[64]u8;hash:[32]u8;
+  if n!=1 || t.values!=4 || !g29_key(t.v[1],owner[..]) || !ns_equal32(owner,e.public_key) {return false;}
+  c:=t.v[2];s:=t.v[3];
+  if !ne_lower_hex(cast(string)s.b[0..<s.n],sig[..]) {return false;}
+  conditions:=cast(string)c.b[0..<c.n];
+  h:=noa_conditions(conditions,NoaFacts.{created_at=e.created_at});
+  if !h.read || !h.times || !noa_hash(target,conditions,hash[..]) {return false;}
+  return nostr_verify_vartime(hash[..],owner[..],sig[..]);
+}
+// The target's latest kind 0 as standing proof: authored by the target, one
+// auth tag naming the actor as owner, the owner's signature valid. No
+// clause is evaluated on this path.
+ia_profile :: (p:NostrEvent,target:[32]u8,actor:[32]u8)->bool {
+  if p.kind!=0 || !ns_equal32(p.public_key,target) {return false;}
+  c:=noa_read(p);
+  return c.status==NOA_UNCHECKED && ns_equal32(c.owner,actor) && noa_signed(c);
+}
+// book:end owner
+
+// book:begin decide
+// A request at the relay's clock now: its form, freshness, and the consent
+// path. admins is the relay's admin policy; banned says the target is barred
+// by access control; profile holds the target's latest kind 0, if any.
+ia_decide :: (e:NostrEvent,now:int,admins:[][32]u8,banned:bool,profile:[]NostrEvent)->IaRequest {
+  r:=ia_read(e);
+  if r.status!=IA_OK {return r;}
+  if e.created_at<now-IA_FRESH || e.created_at>now+IA_FRESH {return ia_fail(r,IA_STALE);}
+  if ns_equal32(r.actor,r.target) {
+    if !r.archive && banned {return ia_fail(r,IA_BANNED);}
+    r.consent=IA_SELF;r.by=r.target;return r;
+  }
+  r.by=r.actor;
+  for a:admins {if ns_equal32(a,r.actor) {r.consent=IA_ADMIN;return r;}}
+  if ia_auth(e,r.target) {r.consent=IA_OWNER;return r;}
+  if profile.count==1 && ia_profile(profile[0],r.target,r.actor) {r.consent=IA_OWNER;r.proof=true;r.proof_id=profile[0].id;return r;}
+  return ia_fail(r,IA_DENIED);
+}
+// book:end decide
+
+// book:begin state
+// The relay's archive set.
+IaState :: struct {keys:[IA_MAX][32]u8; n:int;}
+ia_find :: (s:IaState,key:[32]u8)->int {for i:0..<s.n {if ns_equal32(s.keys[i],key) {return i;}}return -1;}
+// Apply an accepted request: IA_OK when the set changed (publish the delta
+// and a snapshot), IA_SAME when it already held.
+ia_apply :: (s:[]IaState,r:IaRequest)->int {
+  if r.status!=IA_OK || r.consent==IA_NONE {return IA_DENIED;}
+  i:=ia_find(s[0],r.target);
+  if r.archive {
+    if i>=0 {return IA_SAME;}
+    if s[0].n==IA_MAX {return IA_FULL;}
+    s[0].keys[s[0].n]=r.target;s[0].n+=1;return IA_OK;
+  }
+  if i<0 {return IA_SAME;}
+  for k:i..<s[0].n-1 {s[0].keys[k]=s[0].keys[k+1];}
+  s[0].n-=1;return IA_OK;
+}
+// book:end state
+
+// book:begin publish
+// The tags of the 8002 or 8003 for an accepted request.
+ia_delta :: (r:IaRequest,out:[]u8)->int {
+  n:=json_raw(out,0,"[[\"-\"],[\"p\",");n=g29_put_key(out,n,r.target);
+  n=json_raw(out,n,"],[\"consent\",\"");n=json_raw(out,n,IA_PATHS[r.consent]);n=json_raw(out,n,"\",");n=g29_put_key(out,n,r.by);
+  n=json_raw(out,n,"],[\"e\",");n=g29_put_key(out,n,r.id);n=json_raw(out,n,"]");
+  if r.proof {n=json_raw(out,n,",[\"e\",");n=g29_put_key(out,n,r.proof_id);n=json_raw(out,n,",\"\",\"proof\",");n=g29_put_key(out,n,r.target);n=json_raw(out,n,"]");}
+  if r.has_reason {c:=r.reason;n=json_raw(out,n,",[\"reason\",");n=json_write_string(out,n,cast(string)c.b[0..<c.n]);n=json_raw(out,n,"]");}
+  if r.archive && r.has_replaced {n=json_raw(out,n,",[\"replaced-by\",");n=g29_put_key(out,n,r.replaced);n=json_raw(out,n,"]");}
+  return json_raw(out,n,"]");
+}
+// The tags of the 13535: the marker, then one bare p per archived key.
+ia_snapshot :: (s:IaState,out:[]u8)->int {
+  n:=json_raw(out,0,"[[\"-\"]");
+  for i:0..<s.n {n=json_raw(out,n,",[\"p\",");n=g29_put_key(out,n,s.keys[i]);n=json_raw(out,n,"]");}
+  return json_raw(out,n,"]");
+}
+// book:end publish
+
+// book:begin client
+// The archived keys of a 13535 from the relay's self key, into out: their
+// count, or a negative status. Invalid p entries are skipped.
+ia_list :: (e:NostrEvent,relay:[32]u8,out:[][32]u8)->int {
+  if e.error!=NE_OK || !e.verified {return -IA_EVENT;}
+  if e.kind!=IA_LIST {return -IA_KIND;}
+  if !ns_equal32(e.public_key,relay) {return -IA_SIGNER;}
+  n:=0;dash:=0;k:=0;
+  while true {
+    t:=g29_tag(e,k);k+=1;
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return -IA_SHAPE;}
+    if g29_tag_is(t,0,"-") {dash+=1;continue;}
+    key:[32]u8;
+    if !g29_tag_is(t,0,"p") || t.values<2 || !g29_key(t.v[1],key[..]) {continue;}
+    if n==out.count {return -IA_FULL;}
+    out[n]=key;n+=1;
+  }
+  return ifx dash==1 then n else -IA_PROTECTED;
+}
+// book:end client
+
+// ---- checks (helpers in coax/tests/nostr/nipia_fixtures.coax)
+#test "requests: kinds, the marker, one target, replaced-by" {
+  b:[2048]u8;
+  r:=ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"reason\",\"rotated\"],[\"reason\",\"x\"],[\"replaced-by\",\"^c\"]]",b[..]));
+  #assert r.status==IA_OK && r.archive && r.target[0]==0xbb && r.actor[0]==0xa1 && r.id[0]==0x01 && r.has_replaced && r.replaced[0]==0xcc && r.has_reason && n32_is(r.reason,"rotated");
+  r=ia_read(iaf_ev(9036,0xa1,"[[\"p\",\"^b\"],[\"-\"]]",b[..]));#assert r.status==IA_OK && !r.archive && !r.has_replaced && !r.has_reason;
+  #assert ia_read(iaf_ev(9037,0xa1,"[[\"-\"],[\"p\",\"^b\"]]",b[..])).status==IA_KIND && ia_read(iaf_ev(9034,0xa1,"[[\"-\"],[\"p\",\"^b\"]]",b[..])).status==IA_KIND;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"p\",\"^b\"]]",b[..])).status==IA_PROTECTED && ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"-\"],[\"p\",\"^b\"]]",b[..])).status==IA_PROTECTED;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"]]",b[..])).status==IA_TARGET && ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"p\",\"^c\"]]",b[..])).status==IA_TARGET;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^B\"]]",b[..])).status==IA_TARGET && ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\"]]",b[..])).status==IA_TARGET;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"replaced-by\",\"^b\"]]",b[..])).status==IA_REPLACED;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"replaced-by\",\"xy\"]]",b[..])).status==IA_REPLACED;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"replaced-by\"]]",b[..])).status==IA_REPLACED;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"replaced-by\",\"^c\"],[\"replaced-by\",\"^d\"]]",b[..])).status==IA_REPLACED;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"x\",1]]",b[..])).status==IA_SHAPE;
+  #assert ia_read(iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"],[\"reason\"]]",b[..])).has_reason==false;
+  e:=iaf_ev(9035,0xa1,"[[\"-\"],[\"p\",\"^b\"]]",b[..]);e.verified=false;#assert ia_read(e).status==IA_EVENT;
+  e.verified=true;e.error=NE_ID;#assert ia_read(e).status==IA_EVENT;
+}
+#test "consent: self, admin, freshness, bans, denial" {
+  b:[2048]u8;admins:=[1][32]u8.[g29_k(0xad)];none:=admins[0..<0];np:[1]NostrEvent;
+  e:=iaf_ev(9035,0xbb,"[[\"-\"],[\"p\",\"^b\"],[\"auth\",\"^a\",\"\",\"^0^0\"]]",b[..]);
+  r:=ia_decide(e,IAF_T,none,false,np[0..<0]);#assert r.status==IA_OK && r.consent==IA_SELF && r.by[0]==0xbb && !r.proof;
+  #assert ia_decide(e,IAF_T+120,none,false,np[0..<0]).status==IA_OK && ia_decide(e,IAF_T-120,none,false,np[0..<0]).status==IA_OK;
+  #assert ia_decide(e,IAF_T+121,none,false,np[0..<0]).status==IA_STALE && ia_decide(e,IAF_T-121,none,false,np[0..<0]).status==IA_STALE;
+  #assert ia_decide(e,IAF_T,none,true,np[0..<0]).status==IA_OK;
+  u:=iaf_ev(9036,0xbb,"[[\"-\"],[\"p\",\"^b\"]]",b[..]);
+  #assert ia_decide(u,IAF_T,none,true,np[0..<0]).status==IA_BANNED && ia_decide(u,IAF_T,none,false,np[0..<0]).consent==IA_SELF;
+  a:=iaf_ev(9035,0xad,"[[\"-\"],[\"p\",\"^b\"]]",b[..]);
+  r=ia_decide(a,IAF_T,admins[..],false,np[0..<0]);#assert r.status==IA_OK && r.consent==IA_ADMIN && r.by[0]==0xad;
+  #assert ia_decide(a,IAF_T,none,false,np[0..<0]).status==IA_DENIED && ia_decide(a,IAF_T,none,false,np[0..<0]).consent==IA_NONE;
+  #assert ia_decide(iaf_ev(9035,0xad,"[[\"p\",\"^b\"]]",b[..]),IAF_T,admins[..],false,np[0..<0]).status==IA_PROTECTED;
+}
+#test "the archive set: idempotent, and the snapshot follows it" {
+  s:[1]IaState;out:[1024]u8;
+  r:=IaRequest.{status=IA_OK,archive=true,consent=IA_SELF};r.target=g29_k(0xbb);
+  #assert ia_apply(s[..],r)==IA_OK && s[0].n==1 && ia_apply(s[..],r)==IA_SAME && s[0].n==1;
+  r2:=r;r2.target=g29_k(0xcc);r3:=r;r3.target=g29_k(0xdd);
+  #assert ia_apply(s[..],r2)==IA_OK && ia_apply(s[..],r3)==IA_OK && s[0].n==3;
+  #assert iaf_is(ia_snapshot(s[0],out[..]),out[..],"[[\"-\"],[\"p\",\"^b\"],[\"p\",\"^c\"],[\"p\",\"^d\"]]");
+  u:=r;u.archive=false;
+  #assert ia_apply(s[..],u)==IA_OK && s[0].n==2 && ia_apply(s[..],u)==IA_SAME && ia_find(s[0],g29_k(0xbb))== -1 && ia_find(s[0],g29_k(0xdd))==1;
+  #assert iaf_is(ia_snapshot(s[0],out[..]),out[..],"[[\"-\"],[\"p\",\"^c\"],[\"p\",\"^d\"]]");
+  bad:=r;bad.status=IA_DENIED;#assert ia_apply(s[..],bad)==IA_DENIED;
+  bad=r;bad.consent=IA_NONE;#assert ia_apply(s[..],bad)==IA_DENIED && s[0].n==2;
+  e:IaState;#assert iaf_is(ia_snapshot(e,out[..]),out[..],"[[\"-\"]]");
+  full:[1]IaState;full[0].n=IA_MAX;#assert ia_apply(full[..],r)==IA_FULL && full[0].n==IA_MAX;
+  full[0].keys[0]=g29_k(0xbb);u2:=r;u2.archive=false;#assert ia_apply(full[..],u2)==IA_OK && full[0].n==IA_MAX-1;
+  last:[1]IaState;last[0].n=IA_MAX-1;#assert ia_apply(last[..],r)==IA_OK && last[0].n==IA_MAX;
+}
+#test "deltas carry the path, the request, the reason and the replacement" {
+  out:[1024]u8;
+  r:=IaRequest.{status=IA_OK,archive=true,consent=IA_SELF,has_replaced=true};r.target=g29_k(0xbb);r.by=g29_k(0xbb);r.id=g29_k(0x11);r.replaced=g29_k(0xcc);
+  r.has_reason=true;r.reason=iaf_text("rotated");
+  #assert iaf_is(ia_delta(r,out[..]),out[..],"[[\"-\"],[\"p\",\"^b\"],[\"consent\",\"self\",\"^b\"],[\"e\",\"^1\"],[\"reason\",\"rotated\"],[\"replaced-by\",\"^c\"]]");
+  r.archive=false;r.consent=IA_ADMIN;r.by=g29_k(0xad);r.has_reason=false;
+  #assert iaf_is(ia_delta(r,out[..]),out[..],"[[\"-\"],[\"p\",\"^b\"],[\"consent\",\"admin\",\"^a\"],[\"e\",\"^1\"]]") == false;
+  #assert iaf_is(ia_delta(r,out[..]),out[..],"[[\"-\"],[\"p\",\"^b\"],[\"consent\",\"admin\",\"adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad\"],[\"e\",\"^1\"]]");
+  r.consent=IA_OWNER;r.proof=true;r.proof_id=g29_k(0x22);
+  #assert iaf_is(ia_delta(r,out[..]),out[..],"[[\"-\"],[\"p\",\"^b\"],[\"consent\",\"owner\",\"adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad\"],[\"e\",\"^1\"],[\"e\",\"^2\",\"\",\"proof\",\"^b\"]]");
+}
+#test "the client's snapshot: the relay's key, the marker, valid entries" {
+  b:[2048]u8;relay:=g29_k(0xee);keys:[4][32]u8;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"-\"],[\"p\",\"^b\"],[\"p\",\"^B\"],[\"p\"],[\"t\",\"^c\"],[\"p\",\"^c\",\"x\"]]",b[..]),relay,keys[..])==2 && keys[0][0]==0xbb && keys[1][0]==0xcc;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"-\"]]",b[..]),relay,keys[..])==0;
+  #assert ia_list(iaf_ev(13535,0xed,"[[\"-\"],[\"p\",\"^b\"]]",b[..]),relay,keys[..])== -IA_SIGNER;
+  #assert ia_list(iaf_ev(10000,0xee,"[[\"-\"],[\"p\",\"^b\"]]",b[..]),relay,keys[..])== -IA_KIND;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"p\",\"^b\"]]",b[..]),relay,keys[..])== -IA_PROTECTED;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"-\"],[\"-\"],[\"p\",\"^b\"]]",b[..]),relay,keys[..])== -IA_PROTECTED;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"-\"],[\"p\",\"^b\"],[\"x\",2]]",b[..]),relay,keys[..])== -IA_SHAPE;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"-\"],[\"p\",\"^b\"],[\"p\",\"^c\"]]",b[..]),relay,keys[0..<1])== -IA_FULL;
+  #assert ia_list(iaf_ev(13535,0xee,"[[\"-\"],[\"p\",\"^b\"]]",b[..]),relay,keys[0..<1])==1;
+  e:=iaf_ev(13535,0xee,"[[\"-\"]]",b[..]);e.verified=false;#assert ia_list(e,relay,keys[..])== -IA_EVENT;
+  e.verified=true;e.error=NE_ID;#assert ia_list(e,relay,keys[..])== -IA_EVENT;
+}
+#test "owner of agent: refusals before any signature is checked" {
+  b:[2048]u8;p:[2048]u8;nk:[1][32]u8;none:=nk[0..<0];np:[1]NostrEvent;agent:=iaf_key(IAF_AGENT);owner:=iaf_key(IAF_OWNER);
+  // Vector 1's credential ends at created_at<1713957000: a request at that second is outside it.
+  #assert !ia_auth(iaf_owner(1713957000,IAF_A_TAG,b[..]),agent) && !ia_auth(iaf_owner(1713956400,IAF_A_EXPIRED,b[..]),agent);
+  #assert !ia_auth(iaf_owner(1713956400,IAF_A_LEAD,b[..]),agent);
+  #assert !ia_auth(iaf_owner(1713956400,IAF_A_TWICE,b[..]),agent) && !ia_auth(iaf_owner(1713956400,IAF_A_SHORT,b[..]),agent);
+  #assert !ia_auth(iaf_owner(1713956400,IAF_A_BADCOND,b[..]),agent) && !ia_auth(iaf_owner(1713956400,IAF_A_OWNER,b[..]),agent);
+  #assert !ia_auth(iaf_owner(1713956400,IAF_A_SIGHEX,b[..]),agent) && !ia_auth(iaf_owner(1713956400,IAF_A_NONE,b[..]),agent);
+  #assert ia_decide(iaf_owner(1713956400,IAF_A_NONE,b[..]),1713956401,none,false,np[0..<0]).status==IA_DENIED;
+  np[0]=iaf_profile(0,IAF_A_TAG,p[..]);
+  #assert !ia_profile(np[0],agent,iaf_key(IAF_RELAY)) && !ia_profile(np[0],iaf_key(IAF_RELAY),owner);
+  #assert !ia_profile(iaf_profile(1,IAF_A_TAG,p[..]),agent,owner) && !ia_profile(iaf_profile(0,IAF_A_TWICE,p[..]),agent,owner);
+  q:=iaf_profile(0,IAF_A_TAG,p[..]);q.verified=false;#assert !ia_profile(q,agent,owner);
+  q.verified=true;q.error=NE_ID;#assert !ia_profile(q,agent,owner);
+  np[0]=iaf_profile(0,IAF_A_NONE,p[..]);#assert ia_decide(iaf_owner(1713999000,IAF_A_NONE,b[..]),1713999000,none,false,np[..]).status==IA_DENIED;
+}
+#test "owner of agent: the signed credential, on the request and in the profile" #steps 2000000000 {
+  b:[2048]u8;p:[2048]u8;nk:[1][32]u8;none:=nk[0..<0];np:[1]NostrEvent;agent:=iaf_key(IAF_AGENT);owner:=iaf_key(IAF_OWNER);
+  // NIP-IA's vector 1 tag: the owner (key 1) signed agent key 2's preimage
+  // with kind=1&created_at<1713957000; a 9035 is not kind 1, which never denies.
+  r:=ia_decide(iaf_owner(1713956400,IAF_A_TAG,b[..]),1713956401,none,false,np[0..<0]);
+  #assert r.status==IA_OK && r.consent==IA_OWNER && r.by[0]==0x79 && !r.proof;
+  #assert !ia_auth(iaf_owner(1713956400,IAF_A_BADSIG,b[..]),agent);
+  // A credential for key 3 is valid only with key 3 as the target.
+  #assert ia_auth(iaf_owner(1713956400,IAF_A_AGENT,b[..]),iaf_key(IAF_RELAY));
+  // The agent's kind 0 carries the same tag: its time clauses are not evaluated.
+  np[0]=iaf_profile(0,IAF_A_TAG,p[..]);
+  r=ia_decide(iaf_owner(1713999000,IAF_A_NONE,b[..]),1713999000,none,false,np[..]);#assert r.status==IA_OK && r.consent==IA_OWNER && r.proof && r.proof_id[0]==0x02;
+  #assert !ia_profile(iaf_profile(0,IAF_A_BADSIG,p[..]),agent,owner);
+}

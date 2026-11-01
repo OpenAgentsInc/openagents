@@ -1,0 +1,128 @@
+// Chapter 90: artifacts, archives and reminders. A task artifact goes
+// through create, two competing edits, a move, a delete and a restore
+// (NIP-AR); the relay archives a zombie agent and the agent unarchives
+// itself, from NIP-IA's own test vectors; and Alice's three reminders meet
+// a fixed clock (NIP-ER). The NIP-AR and NIP-ER events were signed and
+// encrypted by an independent BIP-340 and NIP-44 in Python
+// (coax/tests/nostr/artifacts_vectors.coax). Keys are the scalars 1
+// (Alice, the owner), 2 (Bob, the agent) and 3 (the relay): TEST ONLY.
+#load "../../coax/lib/nostr/nipar.coax";
+#load "../../coax/lib/nostr/nipia.coax";
+#load "../../coax/lib/nostr/niper.coax";
+#import "Basic";
+
+AR_WORDS :: [17]string.["ok","accepted before: success, not applied","event","kind","shape","version","tags","limit","taken","unknown","denied","type","state","conflict","home","root","full"];
+IA_WORDS :: [13]string.["ok","same","event","kind","protected","target","replaced","stale","denied","banned","full","shape","signer"];
+NOW :: 1770000000; LATER :: 1770086400;
+
+// book:begin keys
+key_of :: (hex:string)->[32]u8 {k:[32]u8;ok:=ne_lower_hex(hex,k[..]);return k;}
+// A signed event, read and verified (chapter 21).
+verified :: (text:string,out:[]u8)->NostrEvent {return nostr_event_verify_vartime(text,out,false);}
+id8 :: (id:[32]u8,out:[]u8)->string {n:=g29_put_key(out,0,id);return cast(string)out[1..<9];}
+uuid :: (s:string)->ArText {t:ArText;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+// book:end keys
+
+// book:begin artifacts
+part_ar :: () {
+  print("NIP-AR: a task in channel 9b353519…\n");
+  h1:=uuid("9b353519-f4fe-4757-aef4-bec6cc0ae54c");h2:=uuid("17cfe3ca-b3d0-4a76-a2a4-4eaf0d3a4109");
+  alice:=[2]ArText.[h1,h2];bob:=[1]ArText.[h1];
+  arts:[2]ArArtifact;n:[1]int;out:[16384]u8;h:[80]u8;
+  names:=[8]string.["Alice creates it","Alice updates from the create","Bob updates from the create","Alice moves it to 17cfe3ca…","Alice deletes it","Alice restores it","Alice resends her update","Bob creates the same d"];
+  texts:=[8]string.[ARV_CREATE,ARV_UPDATE_ALICE,ARV_UPDATE_BOB,ARV_MOVE,ARV_DELETE,ARV_RESTORE,ARV_UPDATE_ALICE,ARV_CREATE_AGAIN];
+  who:=[8]bool.[true,true,false,true,true,true,true,false];
+  for i:0..<8 {
+    e:=verified(texts[i],out[..]);
+    r:=ar_submit(arts[..],n[..],e,ifx who[i] then alice[..] else bob[..]);
+    print("%: %",names[i],AR_WORDS[r.status]);
+    if r.status==AR_OK {print(", current %…",id8(arts[0].current,h[..]));}
+    if r.moved {print("; a removal notice goes to %… for %…",cast(string)r.from.b[0..<8],id8(r.replaced,h[..]));}
+    print("\n");
+  }
+  a:=arts[0];
+  print("current revision %…, % accepted revisions, deleted %\n",id8(a.current,h[..]),a.ids_n,a.deleted);
+  print("a reader of 9b353519… sees it in current state %; of 17cfe3ca… %\n",ar_current(a,bob[..]),ar_current(a,alice[1..<2]));
+  print("history: revision 1 (in 9b353519…) readable from 17cfe3ca… %, from 9b353519… %\n",ar_revision_visible(a,1,alice[1..<2]),ar_revision_visible(a,1,bob[..]));
+}
+// book:end artifacts
+
+// book:begin archive
+show_tags :: (label:string,mine:string,published:string) {
+  print("%: equal to the published tags %\n",label,mine==published);
+}
+part_ia :: (relay:[32]u8) {
+  print("NIP-IA: the owner archives a zombie agent\n");
+  out:[16384]u8;tags:[1024]u8;nk:[1][32]u8;none:=nk[0..<0];np:[1]NostrEvent;
+  s:[1]IaState;
+  e:=verified(IAV_1,out[..]);
+  r:=ia_decide(e,1713956401,none,false,np[0..<0]);
+  print("vector 1, a 9035 from the owner: %, consent %\n",IA_WORDS[r.status],IA_PATHS[r.consent]);
+  print("apply: %; again: %\n",IA_WORDS[ia_apply(s[..],r)],IA_WORDS[ia_apply(s[..],r)]);
+  m:=ia_delta(r,tags[..]);show_tags("the relay's 8002 tags",cast(string)tags[0..<m],IAV_2_TAGS);
+  m=ia_snapshot(s[0],tags[..]);show_tags("the relay's 13535 tags",cast(string)tags[0..<m],IAV_3_TAGS);
+  keys:[4][32]u8;h:[80]u8;
+  k:=ia_list(verified(IAV_3,out[..]),relay,keys[..]);
+  print("a client reads vector 3: % archived, %…\n",k,id8(keys[0],h[..]));
+  print("NIP-IA: the agent unarchives itself\n");
+  e=verified(IAV_4,out[..]);
+  r=ia_decide(e,1713956501,none,false,np[0..<0]);
+  print("vector 4, a 9036 from the agent: %, consent %; apply: %\n",IA_WORDS[r.status],IA_PATHS[r.consent],IA_WORDS[ia_apply(s[..],r)]);
+  m=ia_delta(r,tags[..]);show_tags("the relay's 8003 tags",cast(string)tags[0..<m],IAV_5_TAGS);
+  m=ia_snapshot(s[0],tags[..]);print("the new 13535 tags: %\n",cast(string)tags[0..<m]);
+  print("broken inputs\n");
+  print("vector 1 replayed 1000 s later: %\n",IA_WORDS[ia_decide(verified(IAV_1,out[..]),1713957400,none,false,np[0..<0]).status]);
+  print("vector 4 from a banned agent: %\n",IA_WORDS[ia_decide(verified(IAV_4,out[..]),1713956501,none,true,np[0..<0]).status]);
+  print("vector 3 checked against Alice's key as the relay: %\n",IA_WORDS[-ia_list(verified(IAV_3,out[..]),key_of(ARV_ALICE),keys[..])]);
+}
+// book:end archive
+
+// book:begin reminders
+ER_WORD :: (s:int)->string {
+  words:=[6]string.["fire","wait","terminal","bookmark","held","discard"];
+  if s>=ER_FIRE && s<=ER_DISCARD {return words[s-ER_FIRE];}
+  if s==ER_OLDER {return "older: dropped";}
+  if s==ER_NOT_BEFORE {return "invalid: malformed not_before";}
+  if s==ER_AUTH_REQUIRED {return "auth-required:";}
+  if s==ER_RESTRICTED {return "restricted:";}
+  return ifx s==ER_OK then "stored" else "refused";
+}
+part_er :: () {
+  print("NIP-ER: Alice's three reminders at the clock %\n",NOW);
+  alice:=key_of(ARV_ALICE);secret:[32]u8;secret[31]=1;
+  me:[1]NlSelf;ec:[1]EcdhScratch;s:=nl_self(secret[..],ec[..],me[..]);
+  heads:[4]ErReminder;n:[1]int;out:[16384]u8;
+  names:=[5]string.["A","B1","B2","C1","C2"];texts:=[5]string.[ERV_A,ERV_B1,ERV_B2,ERV_C1,ERV_C2];
+  for i:0..<5 {
+    r:=er_read(verified(texts[i],out[..]));
+    print("relay stores %: %\n",names[i],ER_WORD(er_store(heads[..],n[..],r)));
+  }
+  print("B1 arrives again: %; % addresses held\n",ER_WORD(er_store(heads[..],n[..],er_read(verified(ERV_B1,out[..])))),n[0]);
+  // The relay's heads, in the order it stored them: A, B, C.
+  heads_text:=[3]string.[ERV_A,ERV_B2,ERV_C2];head_names:=[3]string.["A","B2","C2"];
+  plain:[512]u8;work:[1]NlWork;contents:[3]ErContent;
+  nt:[1]ErNotifier;fired:[4][32]u8;h:[80]u8;
+  for i:0..<3 {
+    e:=verified(heads_text[i],out[..]);
+    m:=er_open(e,me[0],work[..],plain[..]);
+    contents[i]=er_content(cast(string)plain[0..<m]);
+    print("% opens to %\n  local check: %; notification path: %\n",head_names[i],cast(string)plain[0..<m],
+          ER_WORD(er_fire(heads[i],contents[i],NOW)),ER_WORD(er_deliver(nt[..],heads[i],contents[i],NOW)));
+  }
+  k:=er_tick(nt[..],NOW,fired[..]);
+  print("at %: % notification, %…\n",NOW,k,id8(fired[0],h[..]));
+  print("the relay sends A again: %; notifications: %\n",ER_WORD(er_deliver(nt[..],heads[0],contents[0],NOW+5)),er_tick(nt[..],NOW+5,fired[..]));
+  print("at %: the relay pushes B2: %; client: %; notifications: %",LATER,er_relay_due(heads[1],LATER),
+        ER_WORD(er_deliver(nt[..],heads[1],contents[1],LATER)),er_tick(nt[..],LATER,fired[..]));
+  print(", %…\n",id8(fired[0],h[..]));
+  print("broken inputs\n");
+  print("a not_before of \"01770000000\": %\n",ER_WORD(er_read(verified(ERV_BAD_NB,out[..])).status));
+  bob:=key_of(ARV_BOB);mine:=[1][32]u8.[alice];
+  print("Bob asks for Alice's reminders: %; an unauthenticated reader: %\n",ER_WORD(er_gate(true,bob,mine[..],true)),ER_WORD(er_gate(false,bob,mine[..],true)));
+  print("Bob opens A with his own keys: %\n",ifx er_open(verified(ERV_A,out[..]),NlSelf.{ok=true},work[..],plain[..])== -ER_NOT_OWNER then "not the owner" else "opened");
+}
+// book:end reminders
+
+main :: () {
+  part_ar();part_ia(key_of("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"));part_er();
+}

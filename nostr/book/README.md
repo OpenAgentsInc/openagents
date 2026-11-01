@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 97 are implemented and 7 are design drafts.
+Of the 104 chapters, 98 are implemented and 6 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -280,7 +280,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [87. Owner attestation and agent authentication](ch087-owner-attestation-and-agent-authentication.md) | Runnable: native C | Block's NIP-OA `auth` tag by which an owner key authorizes an agent key, and NIP-AA agent authentication to relays with virtual member privileges and revocation. |
 | [88. Federated identity](ch088-federated-identity.md) | Runnable: native C and wasm | NIP-FI stateless assertions verified offline: bounded compact JWS, RS256 only, a closed JWKS, exact `kid`, and issuer, audience, community, token-class and clock binding. Fetching the JWKS, NIP-42 pairing, sessions and NIP-FA are not built. |
 | [89. Channels](ch089-channels.md) | Runnable: native C | NIP-CL identity tags, labels, the oldest-channel rule and the legacy-type listing rule for system channels and 44100/44101 notices; NIP-CW channel and thread windows with composite cursors, exact `has_more` and the client rule that a response without its bounds is never an empty channel; NIP-DV snapshots readable only by their owner; NIP-WP icon commands. Summaries, 39007 binding and overlay signing are not built. |
-| [90. Artifacts, archives and reminders](ch090-artifacts-archives-and-reminders.md) | Unimplemented: design draft | NIP-AR channel artifacts (45010) with compare-and-swap revisions, NIP-IA identity archival with consent, and NIP-ER event reminders (30300). |
+| [90. Artifacts, archives and reminders](ch090-artifacts-archives-and-reminders.md) | Runnable: native C | NIP-AR channel artifacts (45010) with compare-and-swap revisions: a stale `prev` conflicts, an accepted event again succeeds unapplied, writes need the home channel and a move both; NIP-IA archive and unarchive requests with self, admin and owner-of-agent consent, checked against NIP-IA's published vectors; NIP-ER reminders (30300) with one head per address, author-only reads and a notification path that fires each reminder once at its `not_before`. Query limits, redaction and building reminders are not built. |
 | [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) | Runnable: native C | NIP-GS signing hashes, signatures and armor reproducing both published vectors; the NIP-MP ingest rules and fold over all 31 ingest and 12 fold fixtures; the NIP-PL expiration window and replacement order; the NIP-RS max-merge and ciphertext vector; and the four envelope projections. The signing program, lease plaintexts and the read-state override layer are not built. |
 | [92. Private agent state](ch092-private-agent-state.md) | Unimplemented: design draft | NIP-AE engrams (30174), NIP-AP personas (30175–30178), NIP-AO ephemeral observation (24200), NIP-AM turn metrics (44200) and the NIP-PMA private managed-agent aggregate reservation. |
 

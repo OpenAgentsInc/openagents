@@ -1,0 +1,311 @@
+// Block's NIP-AR, channel artifacts: editable records of kind 45010. Each
+// event is a complete snapshot; the relay keeps identity, access and the
+// current revision. An artifact is identified by its d tag (a UUID) within
+// the community; d and type never change.
+//
+// - ar_envelope reads the envelope tags: ar "1", d and h (lowercase
+//   hyphenated non-nil UUIDs), type (dot-separated lowercase components),
+//   title (nonblank; absent on delete), op (create, update, move, delete,
+//   restore), root and prev (64 lowercase hex). Each has exactly two
+//   elements and occurs once; prev is absent on create and required
+//   otherwise; more than 256 tags refuse. A delete carries empty content and
+//   only envelope and auth tags.
+// - ar_submit is the relay's compare-and-swap. A create needs an unused d.
+//   Every later revision names the current accepted revision in prev; a
+//   stale prev is AR_CONFLICT, so of two edits from the same revision only
+//   the first succeeds, whatever their timestamps. An event the relay
+//   already accepted succeeds again without being applied (AR_AGAIN).
+//   Writing needs write permission in the home channel, and a move needs it
+//   in both channels. update, delete and restore keep h; a move changes it.
+//   After a delete only restore is accepted.
+// - ar_current, ar_lookup and ar_revision_visible are the read rules: the
+//   current-state view omits deleted artifacts; every read needs read
+//   permission in the channel the revision belongs to, so a move never lets
+//   the destination read the source's revisions.
+//
+// The caller verifies each event (event.coax), and passes the channels the
+// sender may write (the same check as a kind-9 post) or read.
+#load "nip29.coax";
+#load "../../tests/nostr/nipar_fixtures.coax";
+#authority;
+
+AR_OK :: 0; AR_AGAIN :: 1; AR_EVENT :: 2; AR_KIND :: 3; AR_SHAPE :: 4; AR_VERSION :: 5;
+AR_TAGS :: 6; AR_LIMIT :: 7; AR_TAKEN :: 8; AR_UNKNOWN :: 9; AR_DENIED :: 10;
+AR_TYPE :: 11; AR_STATE :: 12; AR_CONFLICT :: 13; AR_HOME :: 14; AR_ROOT :: 15; AR_FULL :: 16;
+AR_KIND_ARTIFACT :: 45010;
+AR_CREATE :: 1; AR_UPDATE :: 2; AR_MOVE :: 3; AR_DELETE :: 4; AR_RESTORE :: 5;
+AR_MAX_TAGS :: 256; AR_MAX_TYPE :: 128; AR_MAX_REVISIONS :: 16;
+AR_NAMES :: [8]string.["ar","d","h","type","title","op","root","prev"];
+AR_OPS :: [5]string.["create","update","move","delete","restore"];
+
+// book:begin envelope
+ArText :: struct {b:[AR_MAX_TYPE]u8; n:int;}
+ArEnvelope :: struct {
+  status:int=AR_OK;
+  d:ArText; h:ArText; type:ArText; op:int;
+  has_root:bool; root:[32]u8; has_prev:bool; prev:[32]u8;
+}
+ar_text :: (v:N32Text)->ArText {c:=v;t:ArText;for i:0..<c.n {t.b[i]=c.b[i];}t.n=c.n;return t;}
+ar_same :: (a:ArText,b:ArText)->bool {x:=a;y:=b;return cast(string)x.b[0..<x.n]==cast(string)y.b[0..<y.n];}
+ar_fail :: (r:ArEnvelope,status:int)->ArEnvelope {o:=r;o.status=status;return o;}
+ar_lowhex :: (c:u8)->bool {return (c>='0' && c<='9') || (c>='a' && c<='f');}
+// A lowercase hyphenated UUID other than the nil UUID.
+ar_uuid :: (v:N32Text)->bool {
+  c:=v;if c.n!=36 {return false;}
+  nonzero:=false;
+  for i:0..<36 {
+    b:=c.b[i];
+    if i==8 || i==13 || i==18 || i==23 {if b!='-' {return false;}continue;}
+    if !ar_lowhex(b) {return false;}
+    if b!='0' {nonzero=true;}
+  }
+  return nonzero;
+}
+// Dot-separated components, each a lowercase letter then letters, digits,
+// _ or -, at most 128 bytes in all.
+ar_type :: (v:N32Text)->bool {
+  c:=v;if c.n==0 || c.n>AR_MAX_TYPE {return false;}
+  start:=true;
+  for i:0..<c.n {
+    b:=c.b[i];
+    if b=='.' {if start {return false;}start=true;continue;}
+    letter:=b>='a' && b<='z';
+    if start && !letter {return false;}
+    if !letter && !(b>='0' && b<='9') && b!='_' && b!='-' {return false;}
+    start=false;
+  }
+  return !start;
+}
+ar_blank :: (v:N32Text)->bool {c:=v;for i:0..<c.n {b:=c.b[i];if b!=' ' && b!='\t' && b!='\n' && b!='\r' {return false;}}return true;}
+// book:end envelope
+
+// book:begin read
+ar_envelope :: (e:NostrEvent)->ArEnvelope {
+  r:ArEnvelope;seen:[8]int;k:=0;others:=false;
+  while true {
+    t:=g29_tag(e,k);
+    if t.error==NT_INDEX {break;}
+    k+=1;
+    if k>AR_MAX_TAGS {return ar_fail(r,AR_TAGS);}
+    if t.error==NT_LIMIT {return ar_fail(r,AR_LIMIT);}
+    if t.error!=NT_OK {return ar_fail(r,AR_SHAPE);}
+    w:=-1;for i:0..<8 {if g29_tag_is(t,0,AR_NAMES[i]) {w=i;}}
+    if w<0 {if !g29_tag_is(t,0,"auth") {others=true;}continue;}
+    seen[w]+=1;
+    if seen[w]>1 || t.values!=2 {return ar_fail(r,AR_SHAPE);}
+    v:=t.v[1];ok:=true;
+    if w==0 {if !n32_is(v,"1") {return ar_fail(r,AR_VERSION);}}
+    else if w==1 {ok=ar_uuid(v);r.d=ar_text(v);}
+    else if w==2 {ok=ar_uuid(v);r.h=ar_text(v);}
+    else if w==3 {ok=ar_type(v);r.type=ar_text(v);}
+    else if w==4 {ok=!ar_blank(v);}
+    else if w==5 {for i:0..<5 {if n32_is(v,AR_OPS[i]) {r.op=i+1;}}ok=r.op!=0;}
+    else if w==6 {r.has_root=true;ok=g29_key(v,r.root[..]);}
+    else {r.has_prev=true;ok=g29_key(v,r.prev[..]);}
+    if !ok {return ar_fail(r,AR_SHAPE);}
+  }
+  if seen[0]!=1 || seen[1]!=1 || seen[2]!=1 || seen[3]!=1 || seen[5]!=1 {return ar_fail(r,AR_SHAPE);}
+  del:=r.op==AR_DELETE;
+  if (seen[4]==1)==del || r.has_prev==(r.op==AR_CREATE) {return ar_fail(r,AR_SHAPE);}
+  if del && (others || e.content_to!=e.content_from) {return ar_fail(r,AR_SHAPE);}
+  return r;
+}
+// book:end read
+
+// book:begin state
+// One artifact as the relay holds it: its identity, current home and root,
+// the current revision, and every accepted revision with the channel it
+// was accepted in.
+ArArtifact :: struct {
+  d:ArText; h:ArText; type:ArText; has_root:bool; root:[32]u8;
+  current:[32]u8; deleted:bool;
+  ids:[AR_MAX_REVISIONS][32]u8; homes:[AR_MAX_REVISIONS]ArText; ids_n:int;
+}
+// What a submission did. A move also names the source channel and the
+// revision it replaced, for the relay's removal notice there.
+ArResult :: struct {status:int; index:int=-1; moved:bool; from:ArText; replaced:[32]u8;}
+ar_can :: (channels:[]ArText,h:ArText)->bool {for c:channels {if ar_same(c,h) {return true;}}return false;}
+ar_result :: (status:int,index:int)->ArResult {return ArResult.{status=status,index=index};}
+// book:end state
+
+// book:begin submit
+ar_submit :: (arts:[]ArArtifact,n:[]int,e:NostrEvent,writable:[]ArText)->ArResult {
+  if e.error!=NE_OK || !e.verified {return ar_result(AR_EVENT,-1);}
+  if e.kind!=AR_KIND_ARTIFACT {return ar_result(AR_KIND,-1);}
+  env:=ar_envelope(e);
+  if env.status!=AR_OK {return ar_result(env.status,-1);}
+  i:=-1;for k:0..<n[0] {if ar_same(arts[k].d,env.d) {i=k;}}
+  if i>=0 {for k:0..<arts[i].ids_n {if ns_equal32(arts[i].ids[k],e.id) {return ar_result(AR_AGAIN,i);}}}
+  if env.op==AR_CREATE {
+    if i>=0 {return ar_result(AR_TAKEN,-1);}
+    if !ar_can(writable,env.h) {return ar_result(AR_DENIED,-1);}
+    if n[0]==arts.count {return ar_result(AR_FULL,-1);}
+    i=n[0];n[0]+=1;
+    arts[i]=ArArtifact.{d=env.d,type=env.type};
+  } else {
+    if i<0 {return ar_result(AR_UNKNOWN,-1);}
+    a:=arts[i];
+    if !ar_can(writable,a.h) || (env.op==AR_MOVE && !ar_can(writable,env.h)) {return ar_result(AR_DENIED,i);}
+    if !ar_same(a.type,env.type) {return ar_result(AR_TYPE,i);}
+    if a.deleted!=(env.op==AR_RESTORE) {return ar_result(AR_STATE,i);}
+    if !ns_equal32(a.current,env.prev) {return ar_result(AR_CONFLICT,i);}
+    if ar_same(a.h,env.h)==(env.op==AR_MOVE) {return ar_result(AR_HOME,i);}
+    if env.op==AR_DELETE && (a.has_root!=env.has_root || !ns_equal32(a.root,env.root)) {return ar_result(AR_ROOT,i);}
+    if a.ids_n==AR_MAX_REVISIONS {return ar_result(AR_FULL,i);}
+  }
+  r:=ar_result(AR_OK,i);
+  if env.op==AR_MOVE {r.moved=true;r.from=arts[i].h;r.replaced=arts[i].current;}
+  arts[i].h=env.h;arts[i].has_root=env.has_root;arts[i].root=env.root;
+  arts[i].current=e.id;arts[i].deleted=env.op==AR_DELETE;
+  arts[i].ids[arts[i].ids_n]=e.id;arts[i].homes[arts[i].ids_n]=env.h;arts[i].ids_n+=1;
+  return r;
+}
+// book:end submit
+
+// book:begin access
+// In current-state queries: not deleted, and the reader can read its home.
+ar_current :: (a:ArArtifact,readable:[]ArText)->bool {return !a.deleted && ar_can(readable,a.h);}
+// A lookup by d: the current revision, a deletion included.
+ar_lookup :: (a:ArArtifact,readable:[]ArText)->bool {return ar_can(readable,a.h);}
+// The k'th accepted revision, under the access of the channel it was in.
+ar_revision_visible :: (a:ArArtifact,k:int,readable:[]ArText)->bool {return k>=0 && k<a.ids_n && ar_can(readable,a.homes[k]);}
+// book:end access
+
+// ---- checks (helpers in coax/tests/nostr/nipar_fixtures.coax)
+#test "uuids, types and blank titles" {
+  b:[4096]u8;
+  #assert ar_uuid(arf_v(ARF_D)) && ar_uuid(arf_v(ARF_H1)) && !ar_uuid(arf_v("00000000-0000-0000-0000-000000000000"));
+  #assert ar_uuid(arf_v("00000000-0000-0000-0000-000000000001")) && ar_uuid(arf_v("f0000000-0000-0000-0000-000000000000"));
+  #assert !ar_uuid(arf_v("04737C81-e5e8-4412-bb47-f446813cfeba")) && !ar_uuid(arf_v("04737c81e5e8-4412-bb47-f446813cfeba-"));
+  #assert !ar_uuid(arf_v("04737c81-e5e8-4412-bb47-f446813cfeb")) && !ar_uuid(arf_v("04737c81-e5e8-4412-bb47-f446813cfebag"));
+  #assert !ar_uuid(arf_v("04737c81-e5e8-4412-bb47-f446813cfebg")) && !ar_uuid(arf_v("04737c81-e5e8-4412-bb47_f446813cfeba"));
+  #assert !ar_uuid(arf_v("04737c81-e5e8-4412_bb47-f446813cfeba")) && !ar_uuid(arf_v("04737c81-e5e8_4412-bb47-f446813cfeba")) && !ar_uuid(arf_v("04737c81_e5e8-4412-bb47-f446813cfeba"));
+  #assert !ar_uuid(arf_v("04737c81-e5e8-4412-bb47-f446813cfe/a")) && !ar_uuid(arf_v("04737c81-e5e8-4412-bb47-f446813cfe:a")) && !ar_uuid(arf_v("04737c81-e5e8-4412-bb47-f446813cfe`a"));
+  #assert ar_type(arf_v("buzz.task")) && ar_type(arf_v("a")) && ar_type(arf_v("x.y_z-9.w")) && ar_type(arf_v("a0"));
+  #assert !ar_type(arf_v("")) && !ar_type(arf_v(".a")) && !ar_type(arf_v("a.")) && !ar_type(arf_v("a..b")) && !ar_type(arf_v("Buzz.task"));
+  #assert !ar_type(arf_v("9a")) && !ar_type(arf_v("a._b")) && !ar_type(arf_v("a b")) && !ar_type(arf_v("a.b{")) && !ar_type(arf_v("a.b`")) && !ar_type(arf_v("_a"));
+  #assert ar_type(arf_v("az")) && !ar_type(arf_v("a/")) && !ar_type(arf_v("a:")) && ar_type(arf_v("a-_"));
+  long:[200]u8;for i:0..<200 {long[i]='a';}
+  #assert ar_type(arf_v(cast(string)long[0..<128])) && !ar_type(arf_v(cast(string)long[0..<129]));
+  #assert ar_blank(arf_v("")) && ar_blank(arf_v(" \t\r\n")) && !ar_blank(arf_v(" x ")) && !ar_blank(arf_v("x"));
+  #assert ar_text(arf_v("ab")).b[0]=='a' && ar_text(arf_v("ab")).n==2;
+  #assert ar_same(ar_text(arf_v("ab")),ar_text(arf_v("ab"))) && !ar_same(ar_text(arf_v("ab")),ar_text(arf_v("a"))) && !ar_same(ar_text(arf_v("ab")),ar_text(arf_v("ac")));
+}
+#test "envelopes: every rule in the tag table" {
+  b:[4096]u8;
+  #assert arf_env("create",ARF_H1,0,"").status==AR_OK && arf_env("update",ARF_H1,'a',"").status==AR_OK && arf_env("delete",ARF_H1,'a',"").status==AR_OK;
+  r:=arf_env("move",ARF_H2,'c',",[\"root\",\"^d\"],[\"auth\",\"x\",\"y\",\"z\"],[\"assignee\",\"b\"]");
+  #assert r.status==AR_OK && r.op==AR_MOVE && r.has_prev && r.prev[0]==0xcc && r.has_root && r.root[31]==0xdd && ar_same(r.h,ar_text(arf_v(ARF_H2))) && ar_same(r.d,ar_text(arf_v(ARF_D))) && ar_same(r.type,ar_text(arf_v("buzz.task")));
+  #assert arf_env("restore",ARF_H1,'a',"").op==AR_RESTORE && arf_env("create",ARF_H1,0,"").op==AR_CREATE && arf_env("update",ARF_H1,'a',"").op==AR_UPDATE && arf_env("delete",ARF_H1,'a',"").op==AR_DELETE;
+  #assert !arf_env("create",ARF_H1,0,"").has_prev && !arf_env("create",ARF_H1,0,"").has_root;
+  #assert arf_env("create",ARF_H1,'a',"").status==AR_SHAPE && arf_env("update",ARF_H1,0,"").status==AR_SHAPE;
+  #assert arf_env("archive",ARF_H1,'a',"").status==AR_SHAPE && arf_env("create","nope",0,"").status==AR_SHAPE;
+  #assert arf_env("create",ARF_H1,0,",[\"root\",\"^D\"]").status==AR_SHAPE && arf_env("update",ARF_H1,'A',"").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"2\"],[\"d\",\"^u\"]]").status==AR_VERSION && arf_raw("[[\"ar\",\"1\",\"x\"]]").status==AR_SHAPE && arf_raw("[[\"ar\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"ar\",\"1\"]]").status==AR_SHAPE && arf_raw("[[\"ar\",\"1\"],[\"x\",1]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"]]").status==AR_SHAPE;
+  #assert arf_env("create",ARF_H1,0,",[\"root\",\"^d\"],[\"root\",\"^d\"]").status==AR_SHAPE && arf_env("update",ARF_H1,'a',",[\"prev\",\"^a\"]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfebZ\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  // Each required tag missing.
+  #assert arf_raw("[[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_OK;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"A\"],[\"title\",\"t\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\" \"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"op\",\"create\"]]").status==AR_SHAPE;
+  #assert arf_raw("[[\"ar\",\"1\"],[\"d\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"h\",\"04737c81-e5e8-4412-bb47-f446813cfeba\"],[\"type\",\"a\"],[\"title\",\"t\"],[\"op\",\"delete\"],[\"prev\",\"^a\"]]").status==AR_SHAPE;
+  // A delete: empty content, envelope and auth tags only.
+  #assert arf_env("delete",ARF_H1,'a',",[\"auth\",\"o\",\"\",\"s\"]").status==AR_OK && arf_env("delete",ARF_H1,'a',",[\"assignee\",\"b\"]").status==AR_SHAPE;
+  e:=arf_ev("delete",ARF_H1,'a',0x01,"",b[..]);e.content_to=e.content_from+1;#assert ar_envelope(e).status==AR_SHAPE;
+  e=arf_ev("update",ARF_H1,'a',0x01,"",b[..]);e.content_to=e.content_from+1;#assert ar_envelope(e).status==AR_OK;
+  // A title over the reader's 256 bytes refuses as a limit; 256 tags pass, 257 refuse.
+  big:[300]u8;for i:0..<300 {big[i]='t';}
+  #assert ar_envelope(arf_ev_title(cast(string)big[0..<256],b[..])).status==AR_OK && ar_envelope(arf_ev_title(cast(string)big[0..<257],b[..])).status==AR_LIMIT;
+  f:=nt_event("[]");f.tags_from= -1;#assert ar_envelope(f).status==AR_SHAPE;
+}
+#test "envelopes: 256 tags pass, 257 refuse" #steps 1000000000 {
+  b:[16384]u8;
+  #assert ar_envelope(arf_many(256-6,b[..])).status==AR_OK && ar_envelope(arf_many(257-6,b[..])).status==AR_TAGS;
+}
+#test "submit: create, compare-and-swap, again, taken" {
+  b:[4096]u8;
+  arts:[4]ArArtifact;n:[1]int;w:=arf_both();
+  r:=ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0xaa,"",b[..]),w[..]);#assert r.status==AR_OK && r.index==0 && n[0]==1 && !r.moved;
+  #assert arts[0].current[0]==0xaa && arts[0].ids_n==1 && ar_same(arts[0].homes[0],ar_text(arf_v(ARF_H1))) && !arts[0].deleted;
+  // Two edits from revision a: the first wins; the second is a conflict.
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,'a',0xbb,"",b[..]),w[..]).status==AR_OK && arts[0].current[0]==0xbb;
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,'a',0xcc,"",b[..]),w[..]).status==AR_CONFLICT && arts[0].current[0]==0xbb && arts[0].ids_n==2;
+  // Already accepted: success, nothing applied, even after a later revision.
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,'b',0xdd,"",b[..]),w[..]).status==AR_OK;
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0x11,"",b[..]),w[..]).index== -1;
+  r=ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,'a',0xbb,"",b[..]),w[..]);#assert r.status==AR_AGAIN && r.index==0 && arts[0].current[0]==0xdd && arts[0].ids_n==3;
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0xaa,"",b[..]),w[..]).status==AR_AGAIN;
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0x11,"",b[..]),w[..]).status==AR_TAKEN && n[0]==1;
+  // Another d creates a second artifact.
+  r=ar_submit(arts[..],n[..],arf_ev_d("create",ARF_H2,0,0x22,"",b[..]),w[..]);#assert r.status==AR_OK && r.index==1 && n[0]==2;
+  #assert ar_submit(arts[..],n[..],arf_ev_d("update",ARF_H2,'2',0x23,"",b[..]),w[..]).status==AR_OK && arts[1].current[0]==0x23 && arts[0].current[0]==0xdd;
+  #assert ar_submit(arts[..],n[..],arf_ev_d("update",ARF_H2,'d',0x24,"",b[..]),w[..]).status==AR_CONFLICT;
+  // Refusals before anything changes.
+  e:=arf_ev("update",ARF_H1,'d',0x31,"",b[..]);e.verified=false;#assert ar_submit(arts[..],n[..],e,w[..]).status==AR_EVENT && ar_submit(arts[..],n[..],e,w[..]).index== -1;
+  e.verified=true;e.error=NE_ID;#assert ar_submit(arts[..],n[..],e,w[..]).status==AR_EVENT;
+  e=arf_ev("update",ARF_H1,'d',0x31,"",b[..]);e.kind=45011;#assert ar_submit(arts[..],n[..],e,w[..]).status==AR_KIND && ar_submit(arts[..],n[..],e,w[..]).index== -1;
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,0,0x31,"",b[..]),w[..]).index== -1;
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,0,0x31,"",b[..]),w[..]).status==AR_SHAPE && arts[0].current[0]==0xdd;
+  full:[1]ArArtifact;m:[1]int;
+  #assert ar_submit(full[..],m[..],arf_ev("create",ARF_H1,0,0xaa,"",b[..]),w[..]).status==AR_OK;
+  #assert ar_submit(full[..],m[..],arf_ev_d("create",ARF_H1,0,0x22,"",b[..]),w[..]).status==AR_FULL && m[0]==1;
+  #assert ar_submit(full[..],m[..],arf_ev_d("create",ARF_H1,0,0x22,"",b[..]),w[..]).index== -1 && ar_submit(full[..],m[..],arf_ev_d("update",ARF_H1,'2',0x23,"",b[..]),w[..]).index== -1;
+  #assert ar_submit(full[..],m[..],arf_ev_d("update",ARF_H1,'2',0x23,"",b[..]),w[..]).status==AR_UNKNOWN;
+}
+#test "submit: access, type, home, root, delete and restore" {
+  b:[4096]u8;
+  arts:[2]ArArtifact;n:[1]int;w:=arf_both();h1:=arf_one(ARF_H1);h2:=arf_one(ARF_H2);
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0xaa,"",b[..]),h2[..]).status==AR_DENIED && n[0]==0;
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0xaa,"",b[..]),h2[..]).index== -1;
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0xaa,",[\"root\",\"^e\"]",b[..]),h1[..]).status==AR_OK;
+  #assert arts[0].has_root && arts[0].root[0]==0xee;
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H1,'a',0xbb,"",b[..]),h2[..]).status==AR_DENIED;
+  // A move needs write in both channels, and must change h; an update keeps it.
+  #assert ar_submit(arts[..],n[..],arf_ev("move",ARF_H2,'a',0xbb,"",b[..]),h1[..]).status==AR_DENIED;
+  #assert ar_submit(arts[..],n[..],arf_ev("move",ARF_H2,'a',0xbb,"",b[..]),h2[..]).status==AR_DENIED;
+  #assert ar_submit(arts[..],n[..],arf_ev("move",ARF_H1,'a',0xbb,"",b[..]),w[..]).status==AR_HOME;
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H2,'a',0xbb,"",b[..]),w[..]).status==AR_HOME;
+  #assert ar_submit(arts[..],n[..],arf_ev_type("update",ARF_H1,'a',0xbb,"buzz.project",b[..]),w[..]).status==AR_TYPE;
+  #assert ar_submit(arts[..],n[..],arf_ev("restore",ARF_H1,'a',0xbb,"",b[..]),w[..]).status==AR_STATE;
+  r:=ar_submit(arts[..],n[..],arf_ev("move",ARF_H2,'a',0xbb,"",b[..]),w[..]);
+  #assert r.status==AR_OK && r.moved && ar_same(r.from,ar_text(arf_v(ARF_H1))) && r.replaced[0]==0xaa && ar_same(arts[0].h,ar_text(arf_v(ARF_H2)));
+  #assert !arts[0].has_root;
+  // A delete keeps the root as it is: none here.
+  #assert ar_submit(arts[..],n[..],arf_ev("delete",ARF_H2,'b',0xcc,",[\"root\",\"^e\"]",b[..]),w[..]).status==AR_ROOT;
+  #assert ar_submit(arts[..],n[..],arf_ev("delete",ARF_H2,'b',0xcc,"",b[..]),w[..]).status==AR_OK && arts[0].deleted;
+  #assert ar_submit(arts[..],n[..],arf_ev("update",ARF_H2,'c',0xdd,"",b[..]),w[..]).status==AR_STATE;
+  #assert ar_submit(arts[..],n[..],arf_ev("restore",ARF_H1,'c',0xdd,"",b[..]),w[..]).status==AR_HOME;
+  #assert ar_submit(arts[..],n[..],arf_ev("restore",ARF_H2,'b',0xdd,"",b[..]),w[..]).status==AR_CONFLICT;
+  #assert ar_submit(arts[..],n[..],arf_ev("restore",ARF_H2,'c',0xdd,"",b[..]),w[..]).status==AR_OK && !arts[0].deleted && arts[0].current[0]==0xdd;
+  // A delete with the same root as the artifact is accepted.
+  bb:[2]ArArtifact;m:[1]int;
+  #assert ar_submit(bb[..],m[..],arf_ev("create",ARF_H1,0,0xaa,",[\"root\",\"^e\"]",b[..]),w[..]).status==AR_OK;
+  #assert ar_submit(bb[..],m[..],arf_ev("delete",ARF_H1,'a',0xbb,",[\"root\",\"^f\"]",b[..]),w[..]).status==AR_ROOT;
+  #assert ar_submit(bb[..],m[..],arf_ev("delete",ARF_H1,'a',0xbb,"",b[..]),w[..]).status==AR_ROOT;
+  #assert ar_submit(bb[..],m[..],arf_ev("delete",ARF_H1,'a',0xbb,",[\"root\",\"^e\"]",b[..]),w[..]).status==AR_OK;
+}
+#test "reads: current state, lookups, history after a move; the revision limit" {
+  b:[4096]u8;
+  arts:[1]ArArtifact;n:[1]int;w:=arf_both();h1:=arf_one(ARF_H1);h2:=arf_one(ARF_H2);none:=h1[0..<0];
+  #assert ar_submit(arts[..],n[..],arf_ev("create",ARF_H1,0,0xaa,"",b[..]),w[..]).status==AR_OK;
+  #assert ar_current(arts[0],h1[..]) && !ar_current(arts[0],h2[..]) && ar_lookup(arts[0],h1[..]) && !ar_lookup(arts[0],none);
+  #assert ar_submit(arts[..],n[..],arf_ev("move",ARF_H2,'a',0xbb,"",b[..]),w[..]).status==AR_OK;
+  #assert ar_current(arts[0],h2[..]) && !ar_current(arts[0],h1[..]);
+  #assert ar_revision_visible(arts[0],0,h1[..]) && !ar_revision_visible(arts[0],0,h2[..]) && ar_revision_visible(arts[0],1,h2[..]) && !ar_revision_visible(arts[0],1,h1[..]);
+  #assert !ar_revision_visible(arts[0],2,w[..]) && !ar_revision_visible(arts[0],-1,w[..]);
+  emp:=[1]ArText.[ArText.{}];#assert !ar_revision_visible(arts[0],2,emp[..]);
+  #assert ar_submit(arts[..],n[..],arf_ev("delete",ARF_H2,'b',0xcc,"",b[..]),w[..]).status==AR_OK;
+  #assert !ar_current(arts[0],h2[..]) && ar_lookup(arts[0],h2[..]);
+  c:[1]ArArtifact;m:[1]int;
+  #assert ar_submit(c[..],m[..],arf_ev("create",ARF_H1,0,0x01,"",b[..]),w[..]).status==AR_OK;
+  for i:1..<AR_MAX_REVISIONS {#assert ar_submit(c[..],m[..],arf_ev_n(cast(u8)i,cast(u8)(i+1),b[..]),w[..]).status==AR_OK;}
+  #assert c[0].ids_n==AR_MAX_REVISIONS && ar_submit(c[..],m[..],arf_ev_n(cast(u8)AR_MAX_REVISIONS,cast(u8)(AR_MAX_REVISIONS+1),b[..]),w[..]).status==AR_FULL;
+}

@@ -1,0 +1,63 @@
+// Helpers for nipia.coax's checks. They live here so that mutation of the
+// library changes the library, not the checks. Events are built in the
+// caller's buffer out; ^x in tags stands for 64 copies of x (g29_ev).
+#load "artifacts_vectors.coax";
+IAF_T :: 1713956400;
+IAF_OWNER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+IAF_AGENT :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+IAF_RELAY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+IAF_COND :: "kind=1&created_at<1713957000";
+// NIP-IA's NIP-OA tag (from NIP-OA's vectors): key 1 authorizes key 2.
+IAF_SIG :: "8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369";
+IAF_SIG_FLIP :: "8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b36a";
+IAF_A_NONE :: 0; IAF_A_TAG :: 1; IAF_A_TWICE :: 2; IAF_A_SHORT :: 3; IAF_A_BADSIG :: 4; IAF_A_BADCOND :: 5;
+IAF_A_OWNER :: 6; IAF_A_SIGHEX :: 7; IAF_A_EXPIRED :: 8; IAF_A_AGENT :: 9; IAF_A_LEAD :: 10;
+iaf_key :: (hex:string)->[32]u8 {k:[32]u8;ok:=ne_lower_hex(hex,k[..]);return k;}
+iaf_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+iaf_ev :: (kind:int,a:u8,tags:string,out:[]u8)->NostrEvent {e:=g29_ev(kind,a,0x01,tags,out);e.created_at=IAF_T;return e;}
+iaf_put :: (out:[]u8,n:int,owner:string,cond:string,sig:string)->int {
+  m:=json_raw(out,n,"[\"auth\",\"");m=json_raw(out,m,owner);m=json_raw(out,m,"\",\"");m=json_raw(out,m,cond);
+  m=json_raw(out,m,"\",\"");m=json_raw(out,m,sig);return json_raw(out,m,"\"]");
+}
+// One of the auth tag variants, written at n (with a leading comma when lead).
+iaf_auth :: (which:int,lead:bool,out:[]u8,n:int)->int {
+  if which==IAF_A_NONE {return n;}
+  m:=ifx lead then json_raw(out,n,",") else n;
+  if which==IAF_A_TAG {return iaf_put(out,m,IAF_OWNER,IAF_COND,IAF_SIG);}
+  if which==IAF_A_TWICE {m=iaf_put(out,m,IAF_OWNER,IAF_COND,IAF_SIG);m=json_raw(out,m,",");return iaf_put(out,m,IAF_OWNER,IAF_COND,IAF_SIG);}
+  if which==IAF_A_SHORT {m=json_raw(out,m,"[\"auth\",\"");m=json_raw(out,m,IAF_OWNER);return json_raw(out,m,"\",\"\"]");}
+  if which==IAF_A_BADSIG {return iaf_put(out,m,IAF_OWNER,IAF_COND,IAF_SIG_FLIP);}
+  if which==IAF_A_BADCOND {return iaf_put(out,m,IAF_OWNER,"kind=1&&",IAV_SIG_BADCOND);}
+  if which==IAF_A_OWNER {return iaf_put(out,m,IAF_RELAY,IAF_COND,IAF_SIG);}
+  if which==IAF_A_SIGHEX {return iaf_put(out,m,IAF_OWNER,IAF_COND,IAF_SIG[0..<126]);}
+  if which==IAF_A_EXPIRED {return iaf_put(out,m,IAF_OWNER,"created_at<1713956000",IAV_SIG_EXPIRED);}
+  return iaf_put(out,m,IAF_OWNER,IAF_COND,IAV_SIG_OTHER_AGENT);
+}
+// A 9035 from the owner (key 1) for the agent (key 2) at created_at.
+iaf_owner :: (created_at:int,which:int,out:[]u8)->NostrEvent {
+  t:[1024]u8;n:=json_raw(t[..],0,"[");
+  // IAF_A_LEAD: the valid tag first and last, so the request carries two.
+  if which==IAF_A_LEAD {n=iaf_auth(IAF_A_TAG,false,t[..],n);n=json_raw(t[..],n,",");}
+  n=json_raw(t[..],n,"[\"-\"],[\"p\",\"");n=json_raw(t[..],n,IAF_AGENT);n=json_raw(t[..],n,"\"]");
+  n=iaf_auth(ifx which==IAF_A_LEAD then IAF_A_TAG else which,true,t[..],n);n=json_raw(t[..],n,"]");
+  for i:0..<n {out[i]=t[i];}
+  e:=nt_event(cast(string)out[0..<n]);e.kind=IA_ARCHIVE;e.verified=true;e.created_at=created_at;
+  e.public_key=iaf_key(IAF_OWNER);for i:0..<32 {e.id[i]=0x01;}
+  return e;
+}
+// The agent's profile (kind as given), carrying the variant's auth tag.
+iaf_profile :: (kind:int,which:int,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[");n=iaf_auth(which,false,out,n);n=json_raw(out,n,"]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=kind;e.verified=true;e.created_at=IAF_T;
+  e.public_key=iaf_key(IAF_AGENT);for i:0..<32 {e.id[i]=0x02;}
+  return e;
+}
+// Is out[0..<n] the text s, with ^a standing for 64 copies of a?
+iaf_is :: (n:int,out:[]u8,s:string)->bool {
+  t:[2048]u8;m:=0;k:=0;
+  while k<s.count {
+    if s[k]=='^' {for c:0..<64 {t[m+c]=s[k+1];}m+=64;k+=2;}
+    else {t[m]=s[k];m+=1;k+=1;}
+  }
+  return n==m && cast(string)out[0..<n]==cast(string)t[0..<m];
+}
