@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "source_fingerprint": "3cbfb56709b208e51ce4d3dc598bfa6c2c3c600a4276c434fa85a11cd00fe46d",
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/3cbfb56709b208e51ce4d3dc598bfa6c2c3c600a4276c434fa85a11cd00fe46d/coax",
+    "sha256": "959386f716e72643eebef63898efb720d630d8c5fbf172216dc52b57e1fb385d"
+  },
+  "helper_sha256": "6aa001156a797190813a361bce635052d641e6c4198f6eac99eaf72841e4d63a",
+  "record_sha256": "2c8ad4551a54cd2898b6cd95a438d96bf23090d8eb602c35b0f4396306a7d114",
+  "record_text": "coax-provenance-v1\n3cbfb56709b208e51ce4d3dc598bfa6c2c3c600a4276c434fa85a11cd00fe46d\n959386f716e72643eebef63898efb720d630d8c5fbf172216dc52b57e1fb385d\n6aa001156a797190813a361bce635052d641e6c4198f6eac99eaf72841e4d63a\n",
+  "argv": [
+    "coax/provenance.sh",
+    "verify",
+    ".",
+    "/Users/christopherdavid/.cache/coax-release/3cbfb56709b208e51ce4d3dc598bfa6c2c3c600a4276c434fa85a11cd00fe46d/coax",
+    "/Users/christopherdavid/.cache/coax-release/3cbfb56709b208e51ce4d3dc598bfa6c2c3c600a4276c434fa85a11cd00fe46d/provenance-check",
+    "/Users/christopherdavid/.cache/coax-release/3cbfb56709b208e51ce4d3dc598bfa6c2c3c600a4276c434fa85a11cd00fe46d/provenance.record"
+  ],
+  "returncode": 0,
+  "seconds": 1.1196150840260088,
+  "scope": "Existing cache consistency verified once for the NEW compiler input context; no rebuild, compiler tests, mutation gates or model/numerical reruns. This binds recorded inputs/binary/helper, not a fresh compiler release qualification.",
+  "reviewed_delta": "Per-check #steps/parser/verification evaluation profiling and release catalogue metadata; C emitter body unchanged. New aggregate C/H will be compared exactly with original native artifacts."
+}
