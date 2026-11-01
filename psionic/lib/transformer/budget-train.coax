@@ -1,0 +1,321 @@
+// Chapter 116: train within a memory budget (mb-train-cpu-f64-v1).
+// Chapter 115's training step run under a plan from budget.coax: rows in
+// micro-batches whose gradients add into one sum (gradient accumulation), and
+// a backward pass that keeps only layer inputs and rebuilds each layer before
+// its gradients (recomputation). Both change where values live, not what is
+// computed, so a planned step equals chapter 115's step bit for bit. An
+// optional gradient policy rounds each row's gradient to binary16 under a
+// dynamic loss scale; that one changes the numbers, within a stated bound.
+#load "train.coax";
+#load "budget.coax";
+MbTrain :: enum u8 {ok;plan;capacity;scale;data;model;optimizer;}
+MbRow :: struct {status:TdStatus;loss:f64;evaluations:int;}
+MbHalf :: struct {overflow:bool;underflow:int;}
+MbPolicy :: struct {half:bool;scale:f64;}
+MbStep :: struct {status:MbTrain;run:RsRun;loss:f64;evaluations:int;floats:int;skipped:bool;underflow:int;scale:f64;}
+MB_HALF_MAX :: 65504.0;
+MB_SCALE_MAX :: 16777216.0;
+
+// The one-layer decoder whose work layout is the region a layer is rebuilt in.
+mb_one :: (s:TdShape)->TdShape {one:=s;one.layers=1;return one;}
+// book:begin layer
+// Layer l at position t, computed in the one-layer region: the same values,
+// in the same order, as chapter 113's td_advance, reading the layer's input
+// from its slot and writing its output where the head reads.
+mb_layer :: (s:TdShape,p:[]f64,w:[]f64,l:int,t:int) {
+    one:=mb_one(s);d:=s.width;e:=s.head_width;q:=s.heads*e;k:=s.kv_heads*e;group:=s.heads/s.kv_heads;scale:=1/sqrt(f64(e));
+    b:=td_block(s,l);o:=td_slot(one,0,t);n1:=o+d;r:=o+2*d;qs:=r+2;cs:=qs+q;m:=cs+q;n2:=m+d;u:=n2+d;a:=u+s.hidden;
+    key:=td_keys(one,0)+t*k;value:=td_values(one,0)+t*k;
+    w[r]=td_norm(w,o,p,b.norm1,d,w,n1);
+    td_matvec(p,b.wq,q,d,w,n1,w,qs);td_matvec(p,b.wk,k,d,w,n1,w,key);td_matvec(p,b.wv,k,d,w,n1,w,value);
+    td_rope(w,qs,s.heads,e,f64(t));td_rope(w,key,s.kv_heads,e,f64(t));
+    for h:0..<s.heads {g:=h/group;row:=a+h*s.context;top:=0.0;
+        for j:0..<t+1 {score:=0.0;for x:0..<e {score+=w[qs+h*e+x]*w[td_keys(one,0)+j*k+g*e+x];}w[row+j]=score*scale;}
+        // The largest score, the value td_advance's running maximum finds.
+        top=w[row+td_argmax(w[row..<row+t+1])];
+        total:=0.0;for j:0..<t+1 {w[row+j]=exp(w[row+j]-top);total+=w[row+j];}for j:0..<t+1 {w[row+j]/=total;}
+        for x:0..<e {acc:=0.0;for j:0..<t+1 {acc+=w[row+j]*w[td_values(one,0)+j*k+g*e+x];}w[cs+h*e+x]=acc;}
+    }
+    td_matvec(p,b.wo,d,q,w,cs,w,m);for i:0..<d {w[m+i]+=w[o+i];}
+    w[r+1]=td_norm(w,m,p,b.norm2,d,w,n2);td_matvec(p,b.w1,s.hidden,d,w,n2,w,u);
+    next:=td_final(one,t);
+    // (z + |z|) / 2 is the ReLU without a branch: z itself above zero, else
+    // zero, whose square adds nothing to the sum.
+    for i:0..<d {acc:=0.0;for f:0..<s.hidden {z:=(w[u+f]+abs(w[u+f]))/2;acc+=p[b.w2+i*s.hidden+f]*z*z;}w[next+i]=w[m+i]+acc;}
+}
+// book:end layer
+// The final norm and the logits at position t.
+mb_head :: (s:TdShape,p:[]f64,w:[]f64,t:int) {
+    d:=s.width;f:=td_final(mb_one(s),t);w[f+2*d]=td_norm(w,f,p,td_final_norm(s),d,w,f+d);td_matvec(p,td_unembed(s),s.vocab,d,w,f+d,w,f+2*d+1);
+}
+// The head's backward pass for n positions, as in td_gradients.
+mb_head_back :: (s:TdShape,p:[]f64,w:[]f64,dw:[]f64,tokens:[]int,grads:[]f64) {
+    n:=tokens.count;d:=s.width;one:=mb_one(s);
+    for t:0..<n-1 {f:=td_final(one,t);z:=f+2*d+1;top:=w[z+td_argmax(w[z..<z+s.vocab])];sum:=0.0;for v:0..<s.vocab {sum+=exp(w[z+v]-top);}
+        for v:0..<s.vocab {dw[z+v]=exp(w[z+v]-top)/sum/f64(n-1);}dw[z+tokens[t+1]]-=1/f64(n-1);
+        td_matvec_back(p,td_unembed(s),s.vocab,d,w,f+d,dw,z,grads,dw,f+d);td_norm_back(dw,f+d,w,f,w[f+2*d],p,td_final_norm(s),d,grads,dw,f);}
+}
+// Layer l's backward pass for n positions in the one-layer region, as in
+// td_gradients. The gradient at the layer's output is read where the head's
+// input gradient sits; the gradient at its input is left in its slots.
+mb_layer_back :: (s:TdShape,p:[]f64,w:[]f64,dw:[]f64,l:int,n:int,grads:[]f64) {
+    d:=s.width;e:=s.head_width;q:=s.heads*e;k:=s.kv_heads*e;group:=s.heads/s.kv_heads;scale:=1/sqrt(f64(e));
+    one:=mb_one(s);b:=td_block(s,l);keys:=td_keys(one,0);values:=td_values(one,0);
+    for t:0..<n {o:=td_slot(one,0,t);r:=o+2*d;qs:=r+2;cs:=qs+q;m:=cs+q;n2:=m+d;u:=n2+d;a:=u+s.hidden;next:=td_final(one,t);
+        for i:0..<d {dw[m+i]+=dw[next+i];}
+        for f:0..<s.hidden {z:=(w[u+f]+abs(w[u+f]))/2;g:=0.0;for i:0..<d {grads[b.w2+i*s.hidden+f]+=dw[next+i]*z*z;g+=p[b.w2+i*s.hidden+f]*dw[next+i];}dw[u+f]=2*z*g;}
+        td_matvec_back(p,b.w1,s.hidden,d,w,n2,dw,u,grads,dw,n2);td_norm_back(dw,n2,w,m,w[r+1],p,b.norm2,d,grads,dw,m);
+        td_matvec_back(p,b.wo,d,q,w,cs,dw,m,grads,dw,cs);
+        for h:0..<s.heads {g:=h/group;row:=a+h*s.context;mean:=0.0;
+            for j:0..<t+1 {dp:=0.0;for x:0..<e {dp+=dw[cs+h*e+x]*w[values+j*k+g*e+x];dw[values+j*k+g*e+x]+=w[row+j]*dw[cs+h*e+x];}dw[row+j]=dp;mean+=w[row+j]*dp;}
+            for j:0..<t+1 {ds:=w[row+j]*(dw[row+j]-mean)*scale;for x:0..<e {dw[qs+h*e+x]+=ds*w[keys+j*k+g*e+x];dw[keys+j*k+g*e+x]+=ds*w[qs+h*e+x];}}
+        }
+    }
+    for t:0..<n {o:=td_slot(one,0,t);n1:=o+d;r:=o+2*d;qs:=r+2;m:=qs+2*q;key:=keys+t*k;value:=values+t*k;
+        td_rope(dw,qs,s.heads,e,-f64(t));td_rope(dw,key,s.kv_heads,e,-f64(t));
+        td_matvec_back(p,b.wq,q,d,w,n1,dw,qs,grads,dw,n1);td_matvec_back(p,b.wk,k,d,w,n1,dw,key,grads,dw,n1);td_matvec_back(p,b.wv,k,d,w,n1,dw,value,grads,dw,n1);
+        for i:0..<d {dw[o+i]+=dw[m+i];}td_norm_back(dw,n1,w,o,w[r],p,b.norm1,d,grads,dw,o);
+    }
+}
+// Copies the d floats at each position's slot input between the region and
+// a saved layer input (save) or back (restore).
+mb_inputs :: (s:TdShape,w:[]f64,saves:[]f64,l:int,n:int,save:bool) {
+    d:=s.width;for t:0..<n {o:=td_slot(mb_one(s),0,t);at:=(l*s.context+t)*d;for i:0..<d {if save {saves[at+i]=w[o+i];}else {w[o+i]=saves[at+i];}}}
+}
+// Copies each position's d floats from where the head reads to the slot
+// input (forward), or from the slot input to where the head reads (back).
+mb_carry :: (s:TdShape,w:[]f64,n:int,forward:bool) {
+    d:=s.width;one:=mb_one(s);for t:0..<n {o:=td_slot(one,0,t);f:=td_final(one,t);for i:0..<d {if forward {w[o+i]=w[f+i];}else {w[f+i]=w[o+i];}}}
+}
+// book:begin recompute
+// One row's loss and gradients with recomputation: w and dw hold one region,
+// saves holds the input of every layer but the last. The forward pass saves
+// those inputs and keeps only the last layer; the backward pass rebuilds
+// each earlier layer from its input just before its gradients.
+mb_gradients :: (s:TdShape,p:[]f64,tokens:[]int,saves:[]f64,w:[]f64,dw:[]f64,grads:[]f64)->MbRow {
+    if !td_valid(s) || p.count!=td_parameter_count(s) || grads.count!=p.count {return MbRow.{status=TdStatus.shape};}
+    for x:p {if !(x>=-TD_NUMBER && x<=TD_NUMBER) {return MbRow.{status=TdStatus.number};}}
+    status:=td_tokens(s,tokens);if status!=TdStatus.ok {return MbRow.{status=status};}if tokens.count<2 {return MbRow.{status=TdStatus.shape};}
+    region:=mb_region(s);if w.count<region || dw.count<region || saves.count<(s.layers-1)*s.context*s.width {return MbRow.{status=TdStatus.capacity};}
+    n:=tokens.count;d:=s.width;one:=mb_one(s);evaluations:=0;
+    for t:0..<n {o:=td_slot(one,0,t);for i:0..<d {w[o+i]=p[tokens[t]*d+i];}}
+    for l:0..<s.layers {
+        if l>0 {mb_carry(s,w,n,true);}if l+1<s.layers {mb_inputs(s,w,saves,l,n,true);}
+        for t:0..<n {mb_layer(s,p,w,l,t);evaluations+=1;}
+    }
+    for t:0..<n {mb_head(s,p,w,t);}loss:=td_loss(one,w,tokens);
+    for i:0..<grads.count {grads[i]=0;}for i:td_layer_size(one)..<region {dw[i]=0;}
+    mb_head_back(s,p,w,dw,tokens,grads);
+    l:=s.layers;
+    while l>0 {l-=1;
+        if l+1<s.layers {mb_inputs(s,w,saves,l,n,false);for t:0..<n {mb_layer(s,p,w,l,t);evaluations+=1;}}
+        for i:0..<td_layer_size(one) {dw[i]=0;}
+        mb_layer_back(s,p,w,dw,l,n,grads);
+        // This layer's input gradient is the next (earlier) layer's output gradient.
+        mb_carry(s,dw,n,false);
+    }
+    for t:0..<n {f:=td_final(one,t);for i:0..<d {grads[tokens[t]*d+i]+=dw[f+i];}}
+    return MbRow.{status=TdStatus.ok,loss=loss,evaluations=evaluations};
+}
+// book:end recompute
+
+// book:begin half
+// Rounds to the nearest binary16 value, ties to even. Magnitudes from 65520
+// up round to infinity, as a hardware cast does; below 2^-14 the spacing is
+// the subnormal step 2^-24, and below 2^-25 values flush to zero.
+mb_f16 :: (x:f64)->f64 {
+    if !(x<65520 && x>-65520) {return x/0.0;}
+    // The binade's exponent from the bits, never below -14: under 2^-14 the
+    // spacing stays 2^-24.
+    a:=abs(x);e:=-nx_min(1023-cast(int)((f64_bits(a)>>52)&2047),14);
+    // Adding and removing 1.5 x 2^52 rounds a value below 2^51 to an integer, ties to even.
+    ulp:=pow(2.0,f64(e-10));r:=(a/ulp+6755399441055744.0)-6755399441055744.0;
+    if x<0 {return -r*ulp;}return r*ulp;
+}
+// A loss scale is a power of two from 1 to 2^24, so unscaling is exact.
+mb_scale_ok :: (x:f64)->bool {return x>=1 && x<=MB_SCALE_MAX && (f64_bits(x)&0xfffffffffffff)==0;}
+// Adds one row's gradient, scaled, rounded to binary16 and unscaled, divided
+// by the batch, into total. Overflow stops at the first infinite value; an
+// underflow is a nonzero gradient that rounds to zero.
+mb_half :: (g:[]f64,scale:f64,batch:int,total:[]f64)->MbHalf {
+    h:MbHalf;
+    for i:0..<g.count {x:=mb_f16(g[i]*scale);if !(x<=MB_HALF_MAX && x>=-MB_HALF_MAX) {h.overflow=true;return h;}if x==0 && g[i]!=0 {h.underflow+=1;}total[i]+=x/scale/f64(batch);}
+    return h;
+}
+// The scale's rule after a step: overflow halves it (not below 1) and the
+// step is skipped; any underflow doubles it (not above 2^24); otherwise it stays.
+mb_next_scale :: (scale:f64,h:MbHalf)->f64 {
+    if h.overflow {if scale>1 {return scale/2;}return scale;}
+    if h.underflow>0 && scale<MB_SCALE_MAX {return scale*2;}
+    return scale;
+}
+// book:end half
+
+// book:begin step
+// Floats one step under the plan needs from the caller's arena: each held
+// row's gradient, saved values (with the saved layer inputs) and scratch.
+mb_floats :: (s:TdShape,plan:MbPlan)->int {return plan.micro*(td_parameter_count(s)+mb_saved(s,plan.recompute)+mb_scratch(s,plan.recompute));}
+// Chapter 115's step under a plan: the batch's rows in micro-batches of
+// plan.micro, each row's gradient divided by the whole batch and added in
+// row order, one AdamW update after the last micro-batch. Under the half
+// policy each row's gradient goes through mb_half, an overflow skips the
+// update (the rows are still consumed) and the scale follows mb_next_scale.
+mb_step :: (s:TdShape,plan:MbPlan,policy:MbPolicy,docs:[]PkDoc,tokens:[]u8,run:RsRun,steps:int,p:[]f64,m:[]f64,v:[]f64,arena:[]f64,total:[]f64)->MbStep {
+    refused:=MbStep.{run=run,scale=policy.scale};
+    if plan.status!=MbStatus.ok || plan.batch%plan.micro!=0 || p.count!=td_parameter_count(s) || total.count!=p.count {refused.status=MbTrain.plan;return refused;}
+    if policy.half && !mb_scale_ok(policy.scale) {refused.status=MbTrain.scale;return refused;}
+    floats:=mb_floats(s,plan);if arena.count<floats {refused.status=MbTrain.capacity;return refused;}
+    c:=run.cursor;n:=s.context;rows:[4096]int;bytes:[64]u8;
+    for b:0..<plan.batch {next:=pk_next(docs,tokens,c,bytes[0..<n],false);if next.status!=PkStatus.ok {refused.status=MbTrain.data;return refused;}c=next.cursor;for t:0..<n {rows[b*n+t]=cast(int)bytes[t];}}
+    np:=p.count;saved:=mb_saved(s,plan.recompute);scratch:=mb_scratch(s,plan.recompute);each:=np+saved+scratch;
+    loss:=0.0;evaluations:=0;half:MbHalf;losses:[64]f64;
+    for i:0..<np {total[i]=0;}
+    for first:0..<plan.batch/plan.micro {
+        for j:0..<plan.micro {b:=first*plan.micro+j;at:=j*each;g:=arena[at..<at+np];w:=arena[at+np..<at+np+saved];dw:=arena[at+np+saved..<at+each];row:=rows[b*n..<b*n+n];
+            if plan.recompute {
+                region:=mb_region(s);r:=mb_gradients(s,p,row,w[region..<saved],w[0..<region],dw,g);if r.status!=TdStatus.ok {refused.status=MbTrain.model;return refused;}
+                losses[j]=r.loss;evaluations+=r.evaluations;
+            } else {
+                r:=td_gradients(s,p,row,w,dw,g,false);if r.status!=TdStatus.ok {refused.status=MbTrain.model;return refused;}
+                losses[j]=r.loss;evaluations+=n*s.layers;
+            }
+        }
+        for j:0..<plan.micro {at:=j*each;g:=arena[at..<at+np];loss+=losses[j]/f64(plan.batch);
+            if policy.half {h:=mb_half(g,policy.scale,plan.batch,total);half.underflow+=h.underflow;if h.overflow {half.overflow=true;}}
+            else {for i:0..<np {total[i]+=g[i]/f64(plan.batch);}}}
+    }
+    next:=RsRun.{cursor=c,state=run.state,revision=run.revision+1};scale:=mb_next_scale(policy.scale,half);
+    if half.overflow {next.state.skipped+=1;return MbStep.{run=next,loss=loss,evaluations=evaluations,floats=floats,skipped=true,underflow=half.underflow,scale=scale};}
+    groups:=[1]AwGroup.[AwGroup.{first=0,count=np,lr=tt_rate(run.state.step,steps),beta1=0.9,beta2=0.99,eps=0.00000001,decay=0}];none:[1]f32;
+    a:=aw_step(groups[..],AwPolicy.{},run.state,p,total,m,v,none[0..<0],false);if a.status!=AwStatus.ok {refused.status=MbTrain.optimizer;return refused;}
+    next.state=a.state;
+    return MbStep.{run=next,loss=loss,evaluations=evaluations,floats=floats,underflow=half.underflow,scale=scale};
+}
+// book:end step
+
+// Two layers at the checks' small width, so recomputation rebuilds one layer.
+MB_SMALL :: TdShape.{vocab=16,width=4,heads=2,kv_heads=1,head_width=2,hidden=4,layers=2,context=8};
+mb_test_same :: (a:[]f64,b:[]f64)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if f64_bits(a[i])!=f64_bits(b[i]) {return false;}}return true;}
+// binary16 by its bits: the oracle mb_f16 is checked against.
+mb_test_f16_value :: (bits:int)->f64 {e:=(bits>>10)&31;f:=bits&1023;if e==0 {return f64(f)*pow(2.0,-24.0);}return f64(1024+f)*pow(2.0,f64(e-25));}
+
+#test "recomputed gradients equal chapter 113's bit for bit" #steps 4000000000 {
+    for which:0..<5 {s:=TD_TINY;if which==1 {s=MB_SMALL;}if which==2 {s=TT_SHAPE;}if which==3 {s=MB_SMALL;s.layers=3;}if which==4 {s=MB_SMALL;s.heads=4;s.kv_heads=2;s.width=8;}
+        np:=td_parameter_count(s);p:[3152]f64;seed:=td_init(s,CrSeed.{seed=cast(u64)(40+which)},p[0..<np]);
+        rows:[32]int;state:=CrSeed.{seed=cast(u64)(7+which)};for i:0..<s.context {d:=cr_draw(state);state=d.next;rows[i]=cast(int)(d.value*f64(s.vocab));}n:=s.context;if which==1 {n=5;}
+        w:[13984]f64;dw:[13984]f64;g:[3152]f64;r:=td_gradients(s,p[0..<np],rows[0..<n],w[..],dw[..],g[0..<np],false);#assert r.status==TdStatus.ok;
+        region:=mb_region(s);keep:=(s.layers-1)*s.context*s.width;cw:[7776]f64;cd:[7776]f64;saves:[512]f64;h:[3152]f64;for i:0..<np {h[i]=9;}for i:0..<7776 {cw[i]=9;cd[i]=9;}
+        q:=mb_gradients(s,p[0..<np],rows[0..<n],saves[0..<keep],cw[0..<region],cd[0..<region],h[0..<np]);
+        #assert q.status==TdStatus.ok && f64_bits(q.loss)==f64_bits(r.loss) && mb_test_same(h[0..<np],g[0..<np]) && q.evaluations==n*(2*s.layers-1);
+        // Two symbols, the shortest row with a prediction.
+        q=mb_gradients(s,p[0..<np],rows[0..<2],saves[0..<keep],cw[0..<region],cd[0..<region],h[0..<np]);r=td_gradients(s,p[0..<np],rows[0..<2],w[..],dw[..],g[0..<np],false);
+        #assert q.status==TdStatus.ok && f64_bits(q.loss)==f64_bits(r.loss) && mb_test_same(h[0..<np],g[0..<np]);
+    }
+}
+#test "recomputation refuses before it writes" #steps 4000000000 {
+    s:=MB_SMALL;np:=td_parameter_count(s);p:[308]f64;seed:=td_init(s,CrSeed.{seed=3},p[0..<np]);rows:[8]int;state:=CrSeed.{seed=4};for i:0..<8 {d:=cr_draw(state);state=d.next;rows[i]=cast(int)(d.value*f64(s.vocab));}
+    region:=mb_region(s);w:[600]f64;dw:[600]f64;saves:[32]f64;g:[308]f64;for i:0..<308 {g[i]=5;}
+    #assert mb_gradients(s,p[0..<np],rows[..],saves[..],w[0..<region],dw[0..<region],g[0..<np]).status==TdStatus.ok;for i:0..<np {g[i]=5;}
+    bad:=s;bad.width=3;#assert mb_gradients(bad,p[0..<np],rows[..],saves[..],w[..],dw[..],g[0..<np]).status==TdStatus.shape;
+    #assert mb_gradients(s,p[0..<np-1],rows[..],saves[..],w[..],dw[..],g[0..<np-1]).status==TdStatus.shape && mb_gradients(s,p[0..<np],rows[..],saves[..],w[..],dw[..],g[0..<np-1]).status==TdStatus.shape;
+    old:=p[3];p[3]=2*TD_NUMBER;#assert mb_gradients(s,p[0..<np],rows[..],saves[..],w[..],dw[..],g[0..<np]).status==TdStatus.number;
+    p[3]=TD_NUMBER;#assert mb_gradients(s,p[0..<np],rows[..],saves[..],w[..],dw[..],g[0..<np]).status==TdStatus.ok;p[3]=-TD_NUMBER;#assert mb_gradients(s,p[0..<np],rows[..],saves[..],w[..],dw[..],g[0..<np]).status==TdStatus.ok;p[3]=old;
+    for i:0..<np {g[i]=5;}
+    rows[2]=16;#assert mb_gradients(s,p[0..<np],rows[..],saves[..],w[..],dw[..],g[0..<np]).status==TdStatus.token;rows[2]=0;
+    #assert mb_gradients(s,p[0..<np],rows[0..<1],saves[..],w[..],dw[..],g[0..<np]).status==TdStatus.shape;
+    #assert mb_gradients(s,p[0..<np],rows[..],saves[..],w[0..<region-1],dw[..],g[0..<np]).status==TdStatus.capacity && mb_gradients(s,p[0..<np],rows[..],saves[..],w[..],dw[0..<region-1],g[0..<np]).status==TdStatus.capacity;
+    #assert mb_gradients(s,p[0..<np],rows[..],saves[0..<31],w[..],dw[..],g[0..<np]).status==TdStatus.capacity;
+    for i:0..<np {#assert g[i]==5;}
+}
+#test "binary16 rounding matches the bit-pattern oracle at every value and midpoint" #steps 4000000000 {
+    for k:0..<31743 {a:=mb_test_f16_value(k);b:=mb_test_f16_value(k+1);mid:=(a+b)/2;
+        #assert mb_f16(a)==a && mb_f16(-a)==-a && mb_f16(b)==b;
+        if k%2==0 {#assert mb_f16(mid)==a && mb_f16(-mid)==-a;}else {#assert mb_f16(mid)==b;}
+        #assert mb_f16(mid+(b-a)/1024)==b && mb_f16(mid-(b-a)/1024)==a;}
+    #assert mb_test_f16_value(31743)==MB_HALF_MAX && mb_f16(65519.99)==MB_HALF_MAX && mb_f16(65520)>MB_HALF_MAX && mb_f16(-65520)< -MB_HALF_MAX;
+    #assert f64_bits(mb_f16(0.0))==0 && mb_f16(65520)>1e300 && mb_f16(-65520)< -1e300 && mb_f16(-65519.99)==-MB_HALF_MAX;
+    #assert mb_f16(pow(2.0,-25.0))==0 && mb_f16(pow(2.0,-25.0)*1.0001)==pow(2.0,-24.0) && mb_f16(1.0/3)==1365*pow(2.0,-12.0) && mb_f16(-0.1)==-1638*pow(2.0,-14.0);
+    nan:=0.0/0.0;#assert !(mb_f16(nan)==mb_f16(nan));
+}
+#test "overflow and underflow fixtures move the scale as specified" {
+    #assert mb_scale_ok(1) && mb_scale_ok(MB_SCALE_MAX) && mb_scale_ok(1024) && !mb_scale_ok(MB_SCALE_MAX*2) && !mb_scale_ok(0.5) && !mb_scale_ok(3) && !mb_scale_ok(1.5);
+    // Overflow: 0.01 x 2^24 = 167772 is past 65504; the step is skipped and the scale halves.
+    g:=[3]f64.[0.01,-0.000000001,0.5];total:=[3]f64.[7,7,7];h:=mb_half(g[..],MB_SCALE_MAX,2,total[..]);
+    #assert h.overflow && h.underflow==0 && mb_next_scale(MB_SCALE_MAX,h)==MB_SCALE_MAX/2 && mb_next_scale(1,h)==1 && mb_next_scale(2,h)==1;
+    // At 2^16 the largest is 0.5 x 65536 = 32768: finite. 1e-9 x 65536 is 6.6e-5, kept.
+    total=[3]f64.[0,0,0];h=mb_half(g[..],65536,2,total[..]);#assert !h.overflow && h.underflow==0 && mb_next_scale(65536,h)==65536;
+    #assert total[0]==mb_f16(655.36)/65536/2 && total[2]==0.25 && total[1]==mb_f16(-0.000000001*65536)/65536/2 && total[1]<0;
+    // Underflow: at scale 1, 1e-9 is below 2^-25 and flushes to zero; the scale doubles.
+    total=[3]f64.[0,0,0];h=mb_half(g[..],1,1,total[..]);#assert !h.overflow && h.underflow==1 && total[1]==0 && total[2]==0.5 && mb_next_scale(1,h)==2 && mb_next_scale(MB_SCALE_MAX,h)==MB_SCALE_MAX;
+    edge:=[2]f64.[MB_HALF_MAX,-MB_HALF_MAX];total=[3]f64.[0,0,0];h=mb_half(edge[..],1,1,total[..]);#assert !h.overflow && total[0]==MB_HALF_MAX && total[1]==-MB_HALF_MAX;
+    z:=[2]f64.[0,1];total=[3]f64.[0,0,0];h=mb_half(z[..],1,1,total[..]);#assert h.underflow==0;
+    // An overflow on the last row still skips: the step looks at every row.
+    two:=[2]f64.[1,70000];total=[3]f64.[0,0,0];h=mb_half(two[..],1,1,total[..]);#assert h.overflow && total[0]==1 && total[1]==0;
+    big:=[1]f64.[1.0/0.0];h=mb_half(big[..],1,1,total[..]);#assert h.overflow;
+}
+// Shared setup for the step checks.
+MbFix :: struct {f:TtFix;p:[308]f64;m:[308]f64;v:[308]f64;}
+mb_fix :: (seed:u64)->MbFix {x:MbFix;x.f=tt_fix();s:=td_init(MB_SMALL,CrSeed.{seed=seed},x.p[..]);return x;}
+#test "every plan's steps equal chapter 115's, and the arena is what the plan counts" #steps 4000000000 {
+    s:=MB_SMALL;x:=mb_fix(TT_INIT);f:=x.f;#assert td_parameter_count(s)==308;
+    y:[308]f64;seed:=td_init(s,CrSeed.{seed=115},y[..]);#assert mb_test_same(y[..],x.p[..]);
+    a1:=[2]f64.[1,2];b1:=[2]f64.[0,2];c:=[2]f64.[1,-0.0];e0:=[2]f64.[1,0.0];#assert mb_test_same(a1[..],a1[..]) && !mb_test_same(a1[..],b1[..]) && !mb_test_same(a1[0..<1],a1[..]) && !mb_test_same(e0[..],c[..]) && mb_test_same(c[..],c[..]);
+    // The reference: chapter 115's step, three times.
+    rp:=x.p;rm:=x.m;rv:=x.v;w:[1500]f64;dw:[1500]f64;g:[308]f64;total:[308]f64;run:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};losses:[3]f64;
+    for k:0..<3 {r:=tt_step(s,f.docs[..],f.tokens[0..<f.n],run,3,rp[..],rm[..],rv[..],w[..],dw[..],g[..],total[..]);#assert r.status==TtStatus.ok;run=r.run;losses[k]=r.loss;}
+    arena:[12000]f64;
+    micros:=[3]int.[4,2,1];
+    for which:0..<6 {micro:=micros[which%3];recompute:=which>=3;b:=mb_bytes(s,micro,recompute);plan:=MbPlan.{batch=TT_BATCH,micro=micro,recompute=recompute,bytes=b};
+        floats:=mb_floats(s,plan);#assert 8*floats==b.gradients-8*308+b.activations+b.workspace;
+        p:=x.p;m:=x.m;v:=x.v;for i:0..<12000 {arena[i]=3;}for i:0..<308 {total[i]=3;}
+        q:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};
+        for k:0..<3 {r:=mb_step(s,plan,MbPolicy.{},f.docs[..],f.tokens[0..<f.n],q,3,p[..],m[..],v[..],arena[0..<floats],total[..]);
+            #assert r.status==MbTrain.ok && f64_bits(r.loss)==f64_bits(losses[k]) && r.floats==floats && !r.skipped && r.underflow==0;
+            #assert r.evaluations==mb_evaluations(s,TT_BATCH,recompute);q=r.run;}
+        #assert mb_test_same(p[..],rp[..]) && mb_test_same(m[..],rm[..]) && mb_test_same(v[..],rv[..]);
+        #assert q.revision==run.revision && q.state.step==3 && q.state.skipped==0 && q.cursor.order==run.cursor.order && q.cursor.offset==run.cursor.offset;
+    }
+}
+#test "a refused step changes nothing" #steps 4000000000 {
+    s:=MB_SMALL;x:=mb_fix(TT_INIT);f:=x.f;p:=x.p;m:=x.m;v:=x.v;total:[308]f64;arena:[12000]f64;run:=RsRun.{cursor=PkCursor.{seed=TT_ORDER},revision=5};
+    plan:=mb_plan(s,TT_BATCH,1<<40);half:=MbPolicy.{half=true,scale=4};
+    r:=mb_step(s,mb_plan(s,TT_BATCH,0),MbPolicy.{},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]);#assert r.status==MbTrain.plan && r.run.revision==5;
+    odd:=plan;odd.micro=3;#assert mb_step(s,odd,MbPolicy.{},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]).status==MbTrain.plan;
+    #assert mb_step(s,plan,MbPolicy.{},f.docs[..],f.tokens[0..<f.n],run,3,p[0..<307],m[..],v[..],arena[..],total[0..<307]).status==MbTrain.plan;
+    #assert mb_step(s,plan,MbPolicy.{},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[0..<307]).status==MbTrain.plan;
+    bad:=half;bad.scale=3;r=mb_step(s,plan,bad,f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]);#assert r.status==MbTrain.scale && r.scale==3;
+    #assert mb_step(s,plan,MbPolicy.{scale=3},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[0..<0],total[..]).status==MbTrain.capacity;
+    floats:=mb_floats(s,plan);#assert mb_step(s,plan,half,f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[0..<floats-1],total[..]).status==MbTrain.capacity;
+    far:=run;far.cursor.order=38;#assert mb_step(s,plan,half,f.docs[..],f.tokens[0..<f.n],far,3,p[..],m[..],v[..],arena[..],total[..]).status==MbTrain.data;
+    late:=run;late.state.step=-1;#assert mb_step(s,plan,half,f.docs[..],f.tokens[0..<f.n],late,3,p[..],m[..],v[..],arena[..],total[..]).status==MbTrain.optimizer;
+    keep:=p[9];p[9]=2*TD_NUMBER;#assert mb_step(s,plan,half,f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]).status==MbTrain.model;
+    re:=mb_plan(s,TT_BATCH,mb_bytes(s,1,true).total);#assert re.recompute && mb_step(s,re,half,f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]).status==MbTrain.model;p[9]=keep;
+    #assert mb_test_same(p[..],x.p[..]);for i:0..<308 {#assert m[i]==0 && v[i]==0;}
+}
+#test "the half policy skips on overflow, grows on underflow and stays near the reference" #steps 4000000000 {
+    s:=MB_SMALL;x:=mb_fix(TT_INIT);f:=x.f;rp:=x.p;rm:=x.m;rv:=x.v;p:=x.p;m:=x.m;v:=x.v;total:[308]f64;arena:[12000]f64;plan:=mb_plan(s,TT_BATCH,1<<40);
+    w:[1500]f64;dw:[1500]f64;g:[308]f64;ref:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};run:=ref;
+    // 2^24 overflows these gradients: the step is skipped, the rows consumed, the scale halved.
+    r:=mb_step(s,plan,MbPolicy.{half=true,scale=MB_SCALE_MAX},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]);
+    #assert r.status==MbTrain.ok && r.skipped && r.scale==MB_SCALE_MAX/2 && r.run.state.step==0 && r.run.state.skipped==1 && r.run.revision==1 && r.run.cursor.offset!=0;
+    #assert mb_test_same(p[..],x.p[..]);for i:0..<308 {#assert m[i]==0 && v[i]==0;}
+    // At 2^10 nothing overflows or underflows; the update is the reference's within the bound.
+    t:=tt_step(s,f.docs[..],f.tokens[0..<f.n],ref,3,rp[..],rm[..],rv[..],w[..],dw[..],g[..],total[..]);#assert t.status==TtStatus.ok;
+    r=mb_step(s,plan,MbPolicy.{half=true,scale=1024},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]);
+    #assert r.status==MbTrain.ok && !r.skipped && r.scale==1024 && r.underflow==0 && r.loss==t.loss && r.run.state.step==1;
+    // binary16 keeps 11 bits: each first moment is within 2^-11 of the reference's, relatively.
+    // Each row's gradient is within half a binary16 step of its own: 2^-11
+    // relatively, or 2^-25 / 1024 below the normal range. The rows are still
+    // in the arena; the first moment is a tenth of their mean.
+    each:=308+2*1000;
+    for i:0..<308 {bound:=0.0;for j:0..<4 {bound+=abs(arena[j*each+i])/2048+pow(2.0,-35.0);}#assert abs(m[i]-rm[i])<=0.1*bound/4*1.000001+1e-18;}
+    // At scale 1 no gradient of this model is below 2^-25 either: the scale
+    // stays. (The fixtures above show underflow.)
+    p=x.p;m=x.m;v=x.v;r=mb_step(s,plan,MbPolicy.{half=true,scale=1},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]);
+    #assert r.status==MbTrain.ok && !r.skipped && r.underflow==0 && r.scale==1 && r.run.state.step==1;
+    // With the unembedding a billionth of its size, the block gradients fall
+    // below 2^-25 at scale 1: they flush, the update still happens, the scale doubles.
+    p=x.p;m=x.m;v=x.v;for i:0..<16*4 {p[td_unembed(s)+i]*=0.000000001;}
+    r=mb_step(s,plan,MbPolicy.{half=true,scale=1},f.docs[..],f.tokens[0..<f.n],run,3,p[..],m[..],v[..],arena[..],total[..]);
+    #assert r.status==MbTrain.ok && !r.skipped && r.underflow>0 && r.scale==2 && r.run.state.step==1;
+}

@@ -1,0 +1,43 @@
+#import "Basic";
+#load "../lib/transformer/budget-train.coax";
+MB_STEPS :: 12;
+nx_maxf :: (a:f64,b:f64)->f64 {if b>a {return b;}return a;}
+mb_say :: (b:MbBytes) {print("parameters %, moments %, gradients %, saved %, scratch %: total %",b.parameters,b.moments,b.gradients,b.activations,b.workspace,b.total);}
+mb_way :: (micro:int,recompute:bool) {if recompute {print("% row(s) at a time, recomputed",micro);}else {print("% row(s) at a time",micro);}}
+// book:begin example
+main :: () {
+    s:=TT_SHAPE;rows:[47]SpRow;tokens:[4096]u8;n:=tt_corpus(rows[..],tokens[..]);docs:[47]PkDoc;
+    #assert tt_docs(rows[..],tokens[0..<n],docs[..])==SpStatus.ok;
+    print("chapter 115's decoder: % parameters, batch of % rows of %\n",td_parameter_count(s),TT_BATCH,s.context);
+    micros:=[3]int.[4,2,1];
+    for recompute:[2]bool.[false,true] {for micro:micros {mb_way(micro,recompute);print(": ");mb_say(mb_bytes(s,micro,recompute));print(" bytes; % layer evaluations\n",mb_evaluations(s,TT_BATCH,recompute));}}
+    // The reference: chapter 115's step, unchanged.
+    rp:[3152]f64;rm:[3152]f64;rv:[3152]f64;w:[13984]f64;dw:[13984]f64;g:[3152]f64;total:[3152]f64;losses:[12]f64;
+    seed:=td_init(s,CrSeed.{seed=TT_INIT},rp[..]);start:=rp;run:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};
+    for k:0..<MB_STEPS {r:=tt_step(s,docs[..],tokens[0..<n],run,TT_STEPS,rp[..],rm[..],rv[..],w[..],dw[..],g[..],total[..]);#assert r.status==TtStatus.ok;run=r.run;losses[k]=r.loss;}
+    print("reference: % steps, loss % then %\n",MB_STEPS,losses[0],losses[MB_STEPS-1]);
+    arena:[124480]f64;full:=mb_bytes(s,TT_BATCH,false);
+    for cap:[3]int.[1100000,400000,300000] {
+        plan:=mb_plan(s,TT_BATCH,cap);#assert plan.status==MbStatus.ok;
+        print("cap % bytes: ",cap);mb_way(plan.micro,plan.recompute);print(", % bytes (% saved), % layer evaluations per step (% extra)\n",plan.bytes.total,full.total-plan.bytes.total,plan.evaluations,plan.evaluations-mb_evaluations(s,TT_BATCH,false));
+        p:=start;m:[3152]f64;v:[3152]f64;q:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};same:=0;floats:=0;counted:=0;
+        for k:0..<MB_STEPS {r:=mb_step(s,plan,MbPolicy.{},docs[..],tokens[0..<n],q,TT_STEPS,p[..],m[..],v[..],arena[..],total[..]);#assert r.status==MbTrain.ok;q=r.run;floats=r.floats;counted=r.evaluations;if r.loss==losses[k] {same+=1;}}
+        print("  arena % bytes, % evaluations counted; % of % losses identical, weights and moments identical: %\n",8*floats,counted,same,MB_STEPS,tt_same(p[..],rp[..]) && tt_same(m[..],rm[..]) && tt_same(v[..],rv[..]));
+    }
+    // Broken inputs: a cap below every plan, and an arena one float short.
+    low:=mb_plan(s,TT_BATCH,250000);print("cap 250000 bytes: %, smallest budget that fits % bytes\n",low.status,low.need);
+    plan:=mb_plan(s,TT_BATCH,300000);short:=mb_step(s,plan,MbPolicy.{},docs[..],tokens[0..<n],run,TT_STEPS,rp[..],rm[..],rv[..],arena[0..<mb_floats(s,plan)-1],total[..]);
+    print("arena of % floats for a plan that needs %: %\n",mb_floats(s,plan)-1,mb_floats(s,plan),short.status);
+    // The half policy: each row's gradient rounded to binary16 under a loss
+    // scale. The first step starts too high and retries its rows until it applies.
+    plan=mb_plan(s,TT_BATCH,1100000);p:=start;m:[3152]f64;v:[3152]f64;q:=RsRun.{cursor=PkCursor.{seed=TT_ORDER}};policy:=MbPolicy.{half=true,scale=MB_SCALE_MAX};
+    first:=mb_step(s,plan,policy,docs[..],tokens[0..<n],q,TT_STEPS,p[..],m[..],v[..],arena[..],total[..]);print("half policy, step 1: scale %",policy.scale);
+    while first.skipped {policy.scale=first.scale;print(" overflows, %",policy.scale);first=mb_step(s,plan,policy,docs[..],tokens[0..<n],q,TT_STEPS,p[..],m[..],v[..],arena[..],total[..]);}
+    print(" applies\n");q=first.run;policy.scale=first.scale;worst:=abs(first.loss-losses[0]);skipped:=0;
+    for k:1..<MB_STEPS {r:=mb_step(s,plan,policy,docs[..],tokens[0..<n],q,TT_STEPS,p[..],m[..],v[..],arena[..],total[..]);#assert r.status==MbTrain.ok;
+        if r.skipped {skipped+=1;}q=r.run;policy.scale=r.scale;worst=nx_maxf(worst,abs(r.loss-losses[k]));}
+    far:=0.0;for i:0..<3152 {far=nx_maxf(far,abs(p[i]-rp[i]));}
+    print("  % more steps, % skipped, scale now %; largest loss difference from the reference %, largest weight difference %\n",MB_STEPS-1,skipped,policy.scale,worst,far);
+    #assert skipped==0 && worst<0.001;
+}
+// book:end example

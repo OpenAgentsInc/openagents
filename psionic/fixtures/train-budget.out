@@ -1,0 +1,18 @@
+chapter 115's decoder: 3152 parameters, batch of 4 rows of 32
+4 row(s) at a time: parameters 25216, moments 50432, gradients 126080, saved 447488, scratch 447488: total 1096704 bytes; 256 layer evaluations
+2 row(s) at a time: parameters 25216, moments 50432, gradients 75648, saved 223744, scratch 223744: total 598784 bytes; 256 layer evaluations
+1 row(s) at a time: parameters 25216, moments 50432, gradients 50432, saved 111872, scratch 111872: total 349824 bytes; 256 layer evaluations
+4 row(s) at a time, recomputed: parameters 25216, moments 50432, gradients 126080, saved 265216, scratch 248832: total 715776 bytes; 384 layer evaluations
+2 row(s) at a time, recomputed: parameters 25216, moments 50432, gradients 75648, saved 132608, scratch 124416: total 408320 bytes; 384 layer evaluations
+1 row(s) at a time, recomputed: parameters 25216, moments 50432, gradients 50432, saved 66304, scratch 62208: total 254592 bytes; 384 layer evaluations
+reference: 12 steps, loss 2.9069731002090147 then 2.5653537089008
+cap 1100000 bytes: 4 row(s) at a time, 1096704 bytes (0 saved), 256 layer evaluations per step (0 extra)
+  arena 995840 bytes, 256 evaluations counted; 12 of 12 losses identical, weights and moments identical: true
+cap 400000 bytes: 1 row(s) at a time, 349824 bytes (746880 saved), 256 layer evaluations per step (0 extra)
+  arena 248960 bytes, 256 evaluations counted; 12 of 12 losses identical, weights and moments identical: true
+cap 300000 bytes: 1 row(s) at a time, recomputed, 254592 bytes (842112 saved), 384 layer evaluations per step (128 extra)
+  arena 153728 bytes, 384 evaluations counted; 12 of 12 losses identical, weights and moments identical: true
+cap 250000 bytes: budget, smallest budget that fits 254592 bytes
+arena of 19215 floats for a plan that needs 19216: capacity
+half policy, step 1: scale 16777216.0 overflows, 8388608.0 overflows, 4194304.0 overflows, 2097152.0 overflows, 1048576.0 overflows, 524288.0 overflows, 262144.0 overflows, 131072.0 applies
+  11 more steps, 0 skipped, scale now 131072.0; largest loss difference from the reference 5.193791967617045e-06, largest weight difference 0.00005972980462903843

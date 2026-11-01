@@ -1,0 +1,97 @@
+// Chapter 116: train within a memory budget (mb-plan-v1).
+// Exact byte accounting for one training step of chapter 113's decoder as
+// chapter 115 trains it (binary64 parameters, AdamW moments and gradients,
+// rows the model's context long), and a planner that fits the step under a
+// byte budget by gradient accumulation and layer recomputation, or refuses
+// and names the smallest budget that would fit. Nothing is allocated here.
+#load "decoder.coax";
+#authority;
+MbStatus :: enum u8 {ok;shape;batch;budget;}
+MbBytes :: struct {parameters:int;moments:int;gradients:int;activations:int;workspace:int;total:int;}
+MbPlan :: struct {status:MbStatus;batch:int;micro:int;recompute:bool;bytes:MbBytes;evaluations:int;need:int;}
+MB_BATCH :: 64;
+
+// book:begin bytes
+// The floats of one layer's saved values plus the final head's: the region a
+// recomputed layer is rebuilt in, laid out as a one-layer decoder's.
+mb_region :: (s:TdShape)->int {one:=s;one.layers=1;return td_work_count(one);}
+// Floats one row saves for the backward pass. Recomputation keeps the input
+// of every layer but the last (context x width each) and one region.
+mb_saved :: (s:TdShape,recompute:bool)->int {
+    if recompute {return (s.layers-1)*s.context*s.width+mb_region(s);}
+    return td_work_count(s);
+}
+// Floats of the backward pass's own scratch (the gradients of the saved
+// values) for one row.
+mb_scratch :: (s:TdShape,recompute:bool)->int {if recompute {return mb_region(s);}return td_work_count(s);}
+// Bytes of one step that holds `micro` rows at once. Parameters and both
+// AdamW moments live for the whole run; the step's gradient sum lives for
+// one step; each held row has its own gradient, saved values and scratch,
+// which live for one micro-batch. Every value is binary64: 8 bytes.
+mb_bytes :: (s:TdShape,micro:int,recompute:bool)->MbBytes {
+    p:=td_parameter_count(s);b:MbBytes;
+    b.parameters=8*p;b.moments=16*p;b.gradients=8*p*(1+micro);
+    b.activations=8*micro*mb_saved(s,recompute);b.workspace=8*micro*mb_scratch(s,recompute);
+    b.total=b.parameters+b.moments+b.gradients+b.activations+b.workspace;
+    return b;
+}
+// Layer evaluations per step: every row runs every layer at every position
+// once, and recomputation runs every layer but the last a second time.
+mb_evaluations :: (s:TdShape,batch:int,recompute:bool)->int {
+    e:=s.layers;if recompute {e+=s.layers-1;}return batch*s.context*e;
+}
+// book:end bytes
+
+// book:begin plan
+// The fastest plan that fits: no recomputation before recomputation, then
+// the largest micro-batch that divides the batch. Accumulation costs no
+// arithmetic on this path, recomputation does. A refusal names the smallest
+// budget any plan needs: one row with recomputation, since bytes grow with
+// the micro-batch and recomputation never saves more than it keeps.
+mb_plan :: (s:TdShape,batch:int,budget:int)->MbPlan {
+    if !td_valid(s) {return MbPlan.{status=MbStatus.shape};}
+    if batch<1 || batch>MB_BATCH {return MbPlan.{status=MbStatus.batch};}
+    for recompute:[2]bool.[false,true] {
+        for j:0..<batch {micro:=batch-j;
+            if batch%micro==0 {b:=mb_bytes(s,micro,recompute);
+                if b.total<=budget {return MbPlan.{batch=batch,micro=micro,recompute=recompute,bytes=b,evaluations=mb_evaluations(s,batch,recompute)};}}}}
+    return MbPlan.{status=MbStatus.budget,batch=batch,need=mb_bytes(s,1,true).total};
+}
+// book:end plan
+
+MB_TEST_SHAPE :: TdShape.{vocab=16,width=16,heads=2,kv_heads=1,head_width=8,hidden=16,layers=2,context=32};
+#test "bytes counted by hand for chapter 115's decoder" {
+    s:=MB_TEST_SHAPE;
+    // One layer slot: 4 x 16 + 2 + 2 x 16 + 16 + 2 x 32 = 178 floats; a layer
+    // is 32 x (178 + 2 x 8) = 6208; the head is 32 x (2 x 16 + 1 + 16) = 1568.
+    #assert mb_region(s)==6208+1568 && mb_saved(s,false)==2*6208+1568 && mb_scratch(s,false)==13984;
+    #assert mb_saved(s,true)==32*16+7776 && mb_scratch(s,true)==7776;
+    b:=mb_bytes(s,4,false);
+    #assert b.parameters==25216 && b.moments==50432 && b.gradients==8*3152*5 && b.activations==4*8*13984 && b.workspace==4*8*13984 && b.total==1096704;
+    c:=mb_bytes(s,1,true);
+    #assert c.parameters==25216 && c.moments==50432 && c.gradients==50432 && c.activations==8*8288 && c.workspace==8*7776 && c.total==254592;
+    #assert mb_bytes(s,2,false).total==598784 && mb_bytes(s,1,false).total==349824 && mb_bytes(s,4,true).total==715776 && mb_bytes(s,2,true).total==408320;
+    #assert mb_evaluations(s,4,false)==256 && mb_evaluations(s,4,true)==384 && mb_evaluations(s,3,true)==288;
+    // One layer: recomputation keeps nothing extra and rebuilds nothing.
+    one:=s;one.layers=1;#assert mb_saved(one,true)==mb_saved(one,false) && mb_scratch(one,true)==mb_scratch(one,false) && mb_evaluations(one,4,true)==128;
+    three:=s;three.layers=3;#assert mb_saved(three,true)==2*512+7776 && mb_evaluations(three,1,true)==32*5;
+}
+#test "the planner picks the fastest plan that fits and refuses with the smallest budget" {
+    s:=MB_TEST_SHAPE;
+    p:=mb_plan(s,4,1096704);#assert p.status==MbStatus.ok && p.batch==4 && p.micro==4 && !p.recompute && p.bytes.total==1096704 && p.evaluations==256 && p.need==0;
+    p=mb_plan(s,4,1096703);#assert p.status==MbStatus.ok && p.micro==2 && !p.recompute && p.bytes.total==598784;
+    p=mb_plan(s,4,598783);#assert p.micro==1 && !p.recompute && p.bytes.total==349824 && p.bytes.moments==50432;
+    // Accumulation alone no longer fits: recomputation with the largest micro-batch.
+    p=mb_plan(s,4,349823);#assert p.status==MbStatus.ok && p.micro==1 && p.recompute && p.bytes.total==254592 && p.evaluations==384;
+    p=mb_plan(s,4,408320);#assert p.micro==1 && !p.recompute;
+    p=mb_plan(s,4,254591);#assert p.status==MbStatus.budget && p.need==254592 && p.batch==4 && p.micro==0 && p.bytes.total==0;
+    #assert mb_plan(s,4,-1).need==254592 && mb_plan(s,4,254592).status==MbStatus.ok;
+    // Micro-batches divide the batch: 3 rows cannot be split as 2 + 1.
+    p=mb_plan(s,3,mb_bytes(s,2,false).total);#assert p.status==MbStatus.ok && p.micro==1 && !p.recompute;
+    p=mb_plan(s,6,mb_bytes(s,5,false).total);#assert p.micro==3;
+    p=mb_plan(s,6,mb_bytes(s,4,true).total);#assert p.micro==2 && !p.recompute;
+    // The named budget is the smallest of every plan.
+    for batch:[3]int.[1,4,6] {for micro:1..<batch+1 {for k:0..<2 {#assert mb_bytes(s,micro,k==1).total>=mb_plan(s,batch,0).need;}}}
+    #assert mb_plan(s,0,1<<40).status==MbStatus.batch && mb_plan(s,65,1<<40).status==MbStatus.batch && mb_plan(s,64,1<<40).status==MbStatus.ok && mb_plan(s,1,1<<40).micro==1;
+    bad:=s;bad.width=15;#assert mb_plan(bad,4,1<<40).status==MbStatus.shape;
+}

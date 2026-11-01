@@ -1890,6 +1890,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/train-budget.coax",
+      "chapter": "psionic/book/ch116-train-within-a-memory-budget.md",
+      "stdout": "psionic/fixtures/train-budget.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
