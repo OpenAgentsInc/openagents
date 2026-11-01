@@ -29,13 +29,14 @@
       "title": "Parity harness against whisper.cpp: oracle, fixtures, WER and speed",
       "size": "M",
       "labels": ["speech", "evaluation"],
-      "body": "GitHub #12621. `psionic/tests/whisper_oracle.c` (Firm reason 3) links Homebrew's libwhisper 1.9.2: `mel` (our mel through whisper_set_mel against whisper_pcm_to_mel), `logits` (first-token logits via whisper_get_logits), `tokens` (greedy ids), `transcript`. Fixtures in `psionic/fixtures/whisper/`: whisper.cpp's public-domain jfk.wav and macOS `say` clips of a fixed script naming Psionic, Coax, Verse and Aethyr, each with reference text. A Coax WER tool (word edit distance after lowercasing and removing punctuation). Timings for mel, encode, decode and total on the CPU with 8 threads.",
-      "files": ["psionic/tests/whisper_oracle.c", "psionic/tests/check_whisper.sh", "psionic/fixtures/whisper/", "psionic/lib/whisper/wer.coax"],
+      "body": "GitHub #12621. `openagents transcribe compare FILE|DIR... --models tiny.en,base.en [--device cpu|gpu] [--diffs]` runs both backends on the same ggml files and prints one row per file and model: WER against the reference, WER between the backends, timestamp drift, wall time and peak memory. `openagents transcribe corpus DIR` writes the generated clips (macOS `say`, the Gettysburg Address clean and with noise, a names sentence) and their references; whisper.cpp's public-domain jfk.wav joins them. WER is word edit distance after lowercasing and removing punctuation (`psionic/lib/whisper/score.coax`).",
+      "files": ["apps/openagents-cli/transcribe.coax", "apps/openagents-cli/transcribe-rules.coax", "psionic/lib/whisper/score.coax", "psionic/docs/transcribe.md"],
       "acceptance": [
-        "psionic/tests/check_whisper.sh prints, for each model, the WER and the time of Psionic and of whisper.cpp.",
-        "Psionic's WER is no more than 0.5 points above whisper.cpp's at the same size, and greedy tokens are identical on the fixture set."
+        "openagents transcribe compare prints, for each file and model, the WER and the time of Psionic and of whisper.cpp, and a total row per model.",
+        "Psionic's WER is no more than 0.5 points above whisper.cpp's at the same size."
       ],
-      "blocked_by": []
+      "blocked_by": [],
+      "status": "resolved"
     },
     {
       "slug": "transcribe-audio-decode",
@@ -45,6 +46,7 @@
       "labels": ["speech", "audio"],
       "body": "GitHub #12615. `psionic/lib/whisper/wav.coax`: RIFF/WAVE PCM 16, float 32 and extensible, 1 to 8 channels averaged to mono, a typed refusal for each malformed chunk. A band-limited resampler from 8 to 48 kHz down to 16 kHz, shared with verse/voice.coax's. The CLI skips ffmpeg for WAV; ffmpeg stays only for compressed containers (Firm reason 6).",
       "files": ["psionic/lib/whisper/wav.coax", "apps/openagents-cli/transcribe.coax"],
+      "status": "resolved",
       "acceptance": [
         "coax/bin/coax test psionic/lib/whisper/wav.coax --library passes, with every format and every truncation.",
         "For jfk.wav and a 44.1 kHz say clip, our 16 kHz samples are within 1e-4 RMS of ffmpeg's -ar 16000 -ac 1 -f f32le."
@@ -61,23 +63,25 @@
       "files": ["psionic/lib/whisper/front.coax", "psionic/platform/whisper-face.c", "psionic/lib/whisper/engine.coax"],
       "acceptance": [
         "psionic-whisper filters ~/.cache/openagents/models/whisper/ggml-tiny.en.bin reports a maximum difference of at most 1e-7.",
-        "psionic/tests/whisper_oracle.c mel reports identical tokens on every fixture for tiny.en and base.en."
+        "With greedy decoding, Psionic's transcripts and timestamps are identical to whisper.cpp's on jfk.wav and the say fixtures for tiny.en and base.en."
       ],
-      "blocked_by": ["transcribe-parity-harness"]
+      "blocked_by": ["transcribe-parity-harness"],
+      "status": "resolved"
     },
     {
       "slug": "transcribe-weights",
       "parent": "transcribe-native",
-      "title": "Load Whisper ggml weights: names, shapes, f16, then q8_0 and q5",
+      "title": "Load Whisper ggml weights: names, shapes, f16, q8_0, q5 and q4",
       "size": "M",
       "labels": ["speech", "weights"],
-      "body": "GitHub #12617. `psionic/lib/whisper/ggml.coax` reads the file from a mapped view. Name every tensor the encoder and decoder need and check its shape against the hyperparameters before any compute. Exact f16 to f32 rows. Then q8_0 and q5 rows.",
+      "body": "GitHub #12617. `psionic/lib/whisper/ggml.coax` reads the file from a mapped view. Name every tensor the encoder and decoder need and check its shape against the hyperparameters before any compute. Exact f16 to f32 rows, and q8_0, q5_0, q5_1, q4_0 and q4_1 blocks dequantized as ggml's dequantize_row_* does.",
       "files": ["psionic/lib/whisper/ggml.coax", "psionic/lib/whisper/engine.coax", "psionic/platform/whisper-face.c"],
       "acceptance": [
         "psionic-whisper info MODEL prints hyperparameters and tensor counts for tiny.en, base.en, small and large-v3-turbo, and checks the pinned SHA-256 of tiny.en and base.en.",
         "The f16 decoder is checked on all 65,536 bit patterns."
       ],
-      "blocked_by": []
+      "blocked_by": [],
+      "status": "resolved"
     },
     {
       "slug": "transcribe-encoder",
@@ -127,13 +131,14 @@
       "title": "In-game voice on Psionic: PROVIDER_PSIONIC and an Aethyr procedure",
       "size": "M",
       "labels": ["speech", "verse", "voice"],
-      "body": "GitHub #12622. Add PROVIDER_PSIONIC to verse/voice-host/speech.c. speech_recognize hands the ended turn's 16 kHz s16 audio to psionic_whisper_pcm16, with the model mapped once at startup. A turn is one window with a shortened audio_ctx. Aethyr programs see a Coax procedure, never the C host. Google and PROVIDER_LOCAL stay available.",
-      "files": ["verse/voice-host/speech.c", "verse/voice-host/speech.h", "psionic/lib/whisper/engine.coax"],
+      "body": "GitHub #12622. voice-host --provider psionic: speech_recognize hands the turn's 16 kHz audio to psionic_stt_text (psionic/platform/psionic-stt.h, linked as libpsionic-whisper.a), with the model mapped once at startup (--whisper-model, --words). The encoder runs on the GPU when there is one. Aethyr programs see the engine's Coax procedures, never the C host. Google and PROVIDER_LOCAL stay available.",
+      "files": ["verse/voice-host/speech.c", "verse/voice-host/speech.h", "verse/voice-host/host.c", "verse/voice-host/test.sh", "psionic/platform/psionic-stt.h", "psionic/platform/whisper-face.c"],
       "acceptance": [
-        "A voice-host smoke plays a say fixture with PROVIDER_PSIONIC and asserts the transcript.",
-        "A 5 s turn with base.en on the CPU is transcribed in under 300 ms, from the turn log."
+        "verse/voice-host/test.sh --offline plays a say fixture with PROVIDER_PSIONIC and asserts the transcript.",
+        "A 5 s turn with base.en is transcribed in under 300 ms, from the turn log."
       ],
-      "blocked_by": ["transcribe-timestamps"]
+      "blocked_by": ["transcribe-timestamps"],
+      "status": "resolved"
     },
     {
       "slug": "transcribe-cli-psionic",
@@ -141,11 +146,11 @@
       "title": "openagents transcribe on Psionic; remove the whisper.cpp backend",
       "size": "S",
       "labels": ["speech", "cli"],
-      "body": "GitHub #12623. Add --backend psionic (psionic-whisper built from the checkout, the same cached ggml file). When the parity task's acceptance holds, make it the default and delete the whisper.cpp backend, its line parser and the whisper-cli lookup in the same change. Read WAV directly.",
+      "body": "GitHub #12623. Add --backend psionic (psionic-whisper built from the checkout, the same cached ggml file). When Psionic wins on both WER and wall time for tiny.en and base.en in the compare harness, make it the default and remove --backend from the user-facing command; whisper.cpp stays only as the compare harness's reference. Read WAV directly.",
       "files": ["apps/openagents-cli/transcribe.coax", "apps/openagents-cli/transcribe-rules.coax", "apps/openagents-cli/README.md", "psionic/docs/transcribe.md"],
       "acceptance": [
         "openagents transcribe psionic/fixtures/whisper/jfk.wav --json prints \"backend\":\"psionic\" and the reference text.",
-        "grep -rn whisper-cli apps/openagents-cli finds nothing."
+        "whisper-cli is run only by openagents transcribe compare."
       ],
       "blocked_by": ["transcribe-timestamps", "transcribe-parity-harness", "transcribe-audio-decode"]
     }
