@@ -38,6 +38,11 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
     static const char access_url[] = "/api/playtest/access";
     coaxial_realms_access_sent(at(state), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
   }
+  // the public realms people made (realms-listed.coax): asked once, a GET whose answer comes back
+  if (coaxial_realms_listed_wants(at(state))) {
+    static const char listed_url[] = "/api/playtest/realms/listed";
+    coaxial_realms_listed_sent(at(state), coaxial_http((uint32_t)(uintptr_t)listed_url, sizeof listed_url - 1, 0, 0, 4));
+  }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }

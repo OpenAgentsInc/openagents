@@ -17,6 +17,8 @@
 //   GET  /api/playtest/realms/<slug>/card              -> text/plain "want" (take its picture) or "no"
 //   POST /api/playtest/realms/<slug>/card  (image/jpeg) -> 200 {image}; 400 not a 1200x630 JPEG, 413, 403, 404
 //   GET  /api/playtest/realms/made                     -> text/plain, the newest made realms as /og's rows
+//   GET  /api/playtest/realms/listed                   -> text/plain, "total N" then the newest public made realms as
+//        /realms' rows SLUG|TITLE|LINE|YYYY-MM-DDTHH:MM|STYLE (migrations/0101_realm_list.sql), at most 60
 //   GET  /api/playtest/realms/mine                     -> the caller's made realms: {realms: [{slug, name, rev, published,
 //        listed, visibility}]}, or ?as=lines "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" (published 0: never); none is {realms: []} or ""
 //   POST /api/playtest/realms/<slug>/visibility {visibility}   -> 200 {slug, visibility, was, page}; 400, 403, 404 (0099:
@@ -805,6 +807,14 @@ bool realms_route(const request *q) {
   if (!strcmp(rest, "made")) {   // /og's rows ("made" is a reserved address: no realm has it)
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the rows\"}"); return true; }
     char *rows = sql_one(db, "SELECT verse.builder_og_rows(60)", 0, NULL);
+    if (rows) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, rows, strlen(rows));
+    else api_json(q->fd, 500, "{\"error\":\"not read\"}");
+    free(rows);
+    return true;
+  }
+  if (!strcmp(rest, "listed")) {   // /realms' rows of public made realms (0101; "listed" is reserved too)
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the rows\"}"); return true; }
+    char *rows = sql_one(db, "SELECT verse.realm_list_rows(60)", 0, NULL);
     if (rows) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, rows, strlen(rows));
     else api_json(q->fd, 500, "{\"error\":\"not read\"}");
     free(rows);

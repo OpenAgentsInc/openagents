@@ -249,21 +249,29 @@ ca_visibility_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, adm: [] CaKey, has
   ca_check(t, "visibility: a made realm", slug.count > 0);
   rn := ca_put(row[..], 0, "/realms/"); rn = ca_put(row[..], rn, slug); rn = ca_put(row[..], rn, "|");
   listed := cast(string) row[0..<rn];
+  lrow: [80] u8;
+  ln := ca_put(lrow[..], 0, "\n"); ln = ca_put(lrow[..], ln, slug); ln = ca_put(lrow[..], ln, "|");
+  on_page := cast(string) lrow[0..<ln];   // its row on /realms' list
   ca_check(t, "visibility: a new realm is private: its owner sees it", ca_signed(t, a, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nvisibility private\n"));
   ca_check(t, "visibility: private: another key gets 404", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 404);
   ca_check(t, "visibility: private: nobody gets 404", ca_call(t, "GET", ca_path_of(slug, "", p[..]), "", false, "", "") == 404);
   ca_check(t, "visibility: private: its document is 404 too", ca_call(t, "GET", ca_path_of(slug, "/doc", p[..]), "", false, "", "") == 404);
   ca_check(t, "visibility: private: another key can't fork it", ca_signed(t, b, "POST", ca_path_of(slug, "/fork", p[..]), "{\"rules\":[]}") == 404);
   ca_check(t, "visibility: private: not on /og's rows", ca_call(t, "GET", "/api/playtest/realms/made", "", false, "", "") == 200 && !ca_has(ca_body(t), listed));
+  ca_check(t, "visibility: private: not on /realms' list", ca_call(t, "GET", "/api/playtest/realms/listed", "", false, "", "") == 200 && ca_has(ca_body(t), "total ") && !ca_has(ca_body(t), on_page));
   ca_check(t, "visibility: mine says private", ca_signed(t, a, "GET", "/api/playtest/realms/mine?as=lines", "") == 200 && ca_has(ca_body(t), "|private\n"));
   ca_check(t, "visibility: another key can't change it (it is not there for them)", ca_vis(t, b, slug, "public") == 404);
   ca_check(t, "visibility: a word not a visibility is 400", ca_vis(t, a, slug, "secret") == 400);
   ca_check(t, "visibility: its owner makes it unlisted", ca_vis(t, a, slug, "unlisted") == 200 && ca_has(ca_body(t), "unlisted"));
   ca_check(t, "visibility: unlisted: another key reaches it by its slug", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 200);
   ca_check(t, "visibility: unlisted: still not on /og's rows", ca_call(t, "GET", "/api/playtest/realms/made", "", false, "", "") == 200 && !ca_has(ca_body(t), listed));
+  ca_check(t, "visibility: unlisted: still not on /realms' list", ca_call(t, "GET", "/api/playtest/realms/listed", "", false, "", "") == 200 && !ca_has(ca_body(t), on_page));
   ca_check(t, "visibility: another key still can't change it", ca_vis(t, b, slug, "private") == 403);
   ca_check(t, "visibility: public: on /og's rows", ca_vis(t, a, slug, "public") == 200 && ca_call(t, "GET", "/api/playtest/realms/made", "", false, "", "") == 200 && ca_has(ca_body(t), listed));
+  ca_check(t, "visibility: public: on /realms' list", ca_call(t, "GET", "/api/playtest/realms/listed", "", false, "", "") == 200 && ca_has(ca_body(t), on_page));
   ca_check(t, "visibility: back to private: 404 to others again", ca_vis(t, a, slug, "private") == 200 && ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 404);
+  ca_check(t, "visibility: back to private: off /realms' list", ca_call(t, "GET", "/api/playtest/realms/listed", "", false, "", "") == 200 && !ca_has(ca_body(t), on_page));
+  ca_check(t, "visibility: /realms' list takes no POST", ca_call(t, "POST", "/api/playtest/realms/listed", "{}", false, "", "") == 405);
   if !has_admin { return; }
 
   ca_check(t, "visibility: a site admin sees a private realm", ca_signed(t, adm, "GET", ca_path_of(slug, "", p[..]), "") == 200);

@@ -11,6 +11,10 @@
 // counted without our team or automation (coax/web/api/analytics.c). Until
 // they come, POPULAR and PLAYED keep the table's order and show "-".
 // The sort is the location's hash: #popular, #recent, #played or #az.
+// After them come the public realms people made: the face asks GET /api/playtest/realms/listed
+// once (realms-listed.coax decides the rows), and they join the list and the grid in the
+// server's order, newest first, as many as fit in MAX_REALMS; the list's note says "+N MORE"
+// for the rest. Until the answer, and on any failure, the page is the table alone.
 // MAKE A REALM, at the header's top right, opens /realms/new; it hides while realm making is invite
 // only and this visitor isn't an approved creator (access.coax: GET /api/playtest/access once).
 
@@ -19,6 +23,7 @@
 #load "realms/list.coax";
 #load "analytics.coax";
 #load "access.coax";
+#load "realms-listed.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 60000;
@@ -29,6 +34,7 @@ GAP :: 0.34;
 SPACE :: 0.95;
 MAX_REALMS :: 64;
 INBOX :: 16384;
+TABLE :: 16384;      // the table's rows and the made realms' (realms-listed.coax)
 OUTBOX :: 256;
 
 // the rows' columns
@@ -65,6 +71,11 @@ RealmsState :: struct {
   inbox: [INBOX] u8;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   acc: [1] Access;                   // who may make a realm: MAKE A REALM hides on make 0
+  listed: [1] ListedAsk;             // the public made realms, asked once
+  table: [TABLE] u8; table_n: int;   // REALMS_ROWS, then those rows once they came
+  cells: [MAX_REALMS * 10] int;      // each row's five fields, as start and end in table
+  count: int; indexed: bool;         // rows indexed (at most MAX_REALMS)
+  more: int;                         // public realms left out for room
 }
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -171,9 +182,17 @@ rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light
 }
 
 // A rule with the parts inside any of the first n boxes left out (a label's plate kept clear).
+// Boxes the segment's bounds miss are passed over in a loop, so the calls go only as deep as
+// the boxes it crosses (a grid of 64 towers has 128 plates).
 rule_clear :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light: f32, clear: [] Box, n: int) -> int {
-  if n <= 0 { return rule(out, at, ax, ay, bx, by, k, light); }
-  c := clear[n - 1];
+  m := n;
+  while m > 0 {
+    c := clear[m - 1];
+    if lo(ax, bx) <= c.x1 && hi(ax, bx) >= c.x0 && lo(ay, by) <= c.y1 && hi(ay, by) >= c.y0 { break; }
+    m -= 1;
+  }
+  if m <= 0 { return rule(out, at, ax, ay, bx, by, k, light); }
+  c := clear[m - 1];
   // where the segment is inside c, as t0..t1 along it (Liang-Barsky)
   t0 := 0.0f32; t1 := 1.0f32;
   dx := bx - ax; dy := by - ay;
@@ -184,10 +203,10 @@ rule_clear :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink,
     r := qs[i] / ps[i];
     if ps[i] < 0 { t0 = hi(t0, r); } else { t1 = lo(t1, r); }
   }
-  if t0 >= t1 { return rule_clear(out, at, ax, ay, bx, by, k, light, clear, n - 1); }
+  if t0 >= t1 { return rule_clear(out, at, ax, ay, bx, by, k, light, clear, m - 1); }
   v := at;
-  if t0 > 0.001 { v = rule_clear(out, v, ax, ay, ax + dx * t0, ay + dy * t0, k, light, clear, n - 1); }
-  if t1 < 0.999 { v = rule_clear(out, v, ax + dx * t1, ay + dy * t1, bx, by, k, light, clear, n - 1); }
+  if t0 > 0.001 { v = rule_clear(out, v, ax, ay, ax + dx * t0, ay + dy * t0, k, light, clear, m - 1); }
+  if t1 < 0.999 { v = rule_clear(out, v, ax + dx * t1, ay + dy * t1, bx, by, k, light, clear, m - 1); }
   return v;
 }
 
@@ -280,7 +299,45 @@ parse :: (text: string) -> int {
   for i: 0..<text.count { if text[i] >= '0' && text[i] <= '9' { n = n * 10 + cast(int) (text[i] - '0'); } }
   return n;
 }
-realm_count :: () -> int { n := rows(REALMS_ROWS); return ifx n > MAX_REALMS then MAX_REALMS else n; }
+// The rows on the page: the table's, then the public made realms' once they came. Each row's
+// fields are indexed once (cells), so a frame reads them without scanning the text.
+index_rows :: (s: [] RealmsState) {
+  if s[0].table_n == 0 {
+    n := put_text(s[0].table[..], 0, REALMS_ROWS);
+    if n > 0 && s[0].table[n - 1] != '\n' { s[0].table[n] = '\n'; n += 1; }
+    s[0].table_n = n;
+  }
+  r := 0; col := 0; at := 0;
+  for i: 0..<s[0].table_n {
+    if r >= MAX_REALMS { break; }
+    c := s[0].table[i];
+    if c != '|' && c != '\n' { continue; }
+    if col < 5 { s[0].cells[r * 10 + col * 2] = at; s[0].cells[r * 10 + col * 2 + 1] = i; }
+    col += 1; at = i + 1;
+    if c == '\n' {
+      for k: col..<5 { s[0].cells[r * 10 + k * 2] = i; s[0].cells[r * 10 + k * 2 + 1] = i; }
+      r += 1; col = 0;
+    }
+  }
+  s[0].count = r; s[0].indexed = true;
+}
+realm_count :: (s: [] RealmsState) -> int { if !s[0].indexed { index_rows(s); } return s[0].count; }
+// Row r's field col.
+cell :: (s: [] RealmsState, r: int, col: int) -> string {
+  if !s[0].indexed { index_rows(s); }
+  if r < 0 || r >= s[0].count || col < 0 || col >= 5 { return ""; }
+  return cast(string) s[0].table[s[0].cells[r * 10 + col * 2]..<s[0].cells[r * 10 + col * 2 + 1]];
+}
+// The listed answer: the table, then the rows that fit after it. Nothing taken: the table alone.
+take_listed :: (s: [] RealmsState, answer: string) {
+  s[0].listed[0].done = true;
+  n := put_text(s[0].table[..], 0, REALMS_ROWS);
+  if n > 0 && s[0].table[n - 1] != '\n' { s[0].table[n] = '\n'; n += 1; }
+  got := listed_read(answer, s[0].table[n..<TABLE], MAX_REALMS - rows(REALMS_ROWS));
+  s[0].table_n = n + got.n;
+  s[0].more = ifx got.more > 0 then got.more else 0;
+  index_rows(s);
+}
 
 fold :: (c: u8) -> int { if c >= 'a' && c <= 'z' { return cast(int) c - 32; } return cast(int) c; }
 // a before b: -1, the same 0, after 1 (bytes, letters folded to capitals)
@@ -305,16 +362,16 @@ goes_before :: (s: [] RealmsState, sort: int, a: int, b: int) -> bool {
   } else if sort == SORT_PLAYED {
     c = stat(s, b, N_MINUTES) - stat(s, a, N_MINUTES);
   } else if sort == SORT_RECENT {
-    c = compare(field(REALMS_ROWS, b, C_ADDED), field(REALMS_ROWS, a, C_ADDED));
+    c = compare(cell(s, b, C_ADDED), cell(s, a, C_ADDED));
   } else {
-    c = compare(field(REALMS_ROWS, a, C_TITLE), field(REALMS_ROWS, b, C_TITLE));
+    c = compare(cell(s, a, C_TITLE), cell(s, b, C_TITLE));
   }
   if c != 0 { return c < 0; }
   return a < b;
 }
 // The rows in the sort's order; returns how many.
 sorted :: (s: [] RealmsState, sort: int, out: [] int) -> int {
-  n := realm_count();
+  n := realm_count(s);
   if n > out.count { n = out.count; }
   for i: 0..<n {
     j := i;
@@ -531,7 +588,7 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
     ty := sy(k, x - HALF, y - HALF, h) - 6 * d;
     lab := ink(p, ifx on then INK_ACCENT else INK_DIM);
     if shows[r] {
-      v = put_center(out, v, field(REALMS_ROWS, r, C_TITLE), sx(k, x, y), ty, name_cap, ifx on then ink(p, INK_PALE) else ink(p, INK_DIM));
+      v = put_center(out, v, cell(s, r, C_TITLE), sx(k, x, y), ty, name_cap, ifx on then ink(p, INK_PALE) else ink(p, INK_DIM));
       v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty - name_cap - 7 * d, 6 * d, lab);
     } else {
       v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty, 6 * d, lab);
@@ -542,7 +599,7 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
   lit_rank := ifx s[0].hot >= 0 && s[0].hot < n then s[0].hot else s[0].sel;
   if lit_rank >= 0 && lit_rank < n && !shows[order[lit_rank]] {
     {
-      v = put_center(out, v, field(REALMS_ROWS, order[lit_rank], C_TITLE), (b.x0 + b.x1) * 0.5, b.y1 - 12 * d, 8 * d, ink(p, INK_PALE));
+      v = put_center(out, v, cell(s, order[lit_rank], C_TITLE), (b.x0 + b.x1) * 0.5, b.y1 - 12 * d, 8 * d, ink(p, INK_PALE));
     }
   }
   return frame(out, v, b, 10 * d, p);
@@ -552,7 +609,7 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
 name_plate :: (s: [] RealmsState, k: Iso, r: int, cap: f32, p: Pen) -> Box {
   d := p.d; pad := 3 * d;
   cx := sx(k, s[0].gx[r], s[0].gy[r]); ty := sy(k, s[0].gx[r] - HALF, s[0].gy[r] - HALF, s[0].gh[r]) - 6 * d;
-  nw := ink_width(field(REALMS_ROWS, r, C_TITLE), cap, GAP, SPACE, ink(p, INK_DIM));
+  nw := ink_width(cell(s, r, C_TITLE), cap, GAP, SPACE, ink(p, INK_DIM));
   return Box.{x0 = cx - nw * 0.5 - pad, y0 = ty - cap - 13 * d - pad, x1 = cx + nw * 0.5 + pad, y1 = ty + cap * 0.35 + pad};
 }
 overlaps :: (a: Box, b: Box) -> bool { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
@@ -639,14 +696,14 @@ draw_row :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, b: Box, r: int,
   x += 22 * d;
   vis: [24] u8; vn := put_count(vis[..], 0, stat(s, r, N_VISITORS), counted);
   mins: [24] u8; mn := put_minutes(mins[..], 0, stat(s, r, N_MINUTES), counted);
-  day: [16] u8; dn := put_day(day[..], 0, field(REALMS_ROWS, r, C_ADDED));
+  day: [16] u8; dn := put_day(day[..], 0, cell(s, r, C_ADDED));
   vals := [3] string.[cast(string) vis[0..<vn], cast(string) mins[0..<mn], cast(string) day[0..<dn]];
   if l.wide {
     total := 0.0f32;
     for c: 0..<3 { total += WIDTHS[c] * d; }
     left := right - total;
-    v = put_fit(out, v, field(REALMS_ROWS, r, C_TITLE), x, b.y0 + 22 * d, 10 * d, nk, left - x - 12 * d);
-    v = put_fit(out, v, field(REALMS_ROWS, r, C_LINE), x, b.y0 + 39 * d, 6.5 * d, dim, left - x - 12 * d);
+    v = put_fit(out, v, cell(s, r, C_TITLE), x, b.y0 + 22 * d, 10 * d, nk, left - x - 12 * d);
+    v = put_fit(out, v, cell(s, r, C_LINE), x, b.y0 + 39 * d, 6.5 * d, dim, left - x - 12 * d);
     cx := left;
     sorted_col := ifx s[0].sort == SORT_POPULAR then 0 else (ifx s[0].sort == SORT_PLAYED then 1 else (ifx s[0].sort == SORT_RECENT then 2 else -1));
     for c: 0..<3 {
@@ -660,8 +717,8 @@ draw_row :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, b: Box, r: int,
     if which == 0 && counted { tn += put_text(tag[..], tn, ifx stat(s, r, N_VISITORS) == 1 then " VISITOR" else " VISITORS"); }
     big := cast(string) tag[0..<tn];
     v = put_right(out, v, big, right, b.y0 + 20 * d, 7 * d, white);
-    v = put_fit(out, v, field(REALMS_ROWS, r, C_TITLE), x, b.y0 + 20 * d, 10 * d, nk, right - x - ink_width(big, 7 * d, GAP, SPACE, white) - 12 * d);
-    v = put_fit(out, v, field(REALMS_ROWS, r, C_LINE), x, b.y0 + 36 * d, 6.5 * d, dim, right - x);
+    v = put_fit(out, v, cell(s, r, C_TITLE), x, b.y0 + 20 * d, 10 * d, nk, right - x - ink_width(big, 7 * d, GAP, SPACE, white) - 12 * d);
+    v = put_fit(out, v, cell(s, r, C_LINE), x, b.y0 + 36 * d, 6.5 * d, dim, right - x);
     meta: [64] u8; mt := 0;
     for c: 0..<3 {
       if c == which { continue; }
@@ -680,6 +737,7 @@ draw_list :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order:
   buf: [48] u8;
   c := put_int(buf[..], 0, n);
   c += put_text(buf[..], c, ifx n == 1 then " REALM" else " REALMS");
+  if s[0].more > 0 { c += put_text(buf[..], c, "  +"); c += put_int(buf[..], c, s[0].more); c += put_text(buf[..], c, " MORE"); }
   if l.wide { c += put_text(buf[..], c, "  -  ENTER OPENS"); }
   v := titled(out, at, b, "ALL REALMS", cast(string) buf[0..<c], p);
   dim := ink(p, INK_DIM);
@@ -770,7 +828,7 @@ open_rank :: (s: [] RealmsState, k: int) {
   if k < 0 || k >= n { return; }
   buf: [96] u8;
   m := put_text(buf[..], 0, "/realms/");
-  m += put_text(buf[..], m, field(REALMS_ROWS, order[k], C_SLUG));
+  m += put_text(buf[..], m, cell(s, order[k], C_SLUG));
   navigate(s, cast(string) buf[0..<m]);
 }
 choose :: (s: [] RealmsState, sort: int) {
@@ -820,7 +878,7 @@ realms_pointer :: (s: [] RealmsState, x: f32, y: f32, phase: int, kind: int) -> 
 realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool {
   if s.count < 1 { return false; }
   if tk_command(key, mods) != TK_KEY { return false; }
-  n := realm_count();
+  n := realm_count(s);
   if key == K_DOWN { s[0].sel = ifx s[0].sel < 0 then 0 else (ifx s[0].sel + 1 < n then s[0].sel + 1 else n - 1); }
   else if key == K_UP { s[0].sel = ifx s[0].sel <= 0 then 0 else s[0].sel - 1; }
   else if key == K_HOME { s[0].sel = 0; }
@@ -845,14 +903,15 @@ realms_key :: (s: [] RealmsState, key: int, mods: int) -> bool {
 realms_message :: (s: [] RealmsState, kind: int, length: int) {
   if s.count < 1 || length < 0 || length > INBOX { return; }
   if access_take(s[0].acc[..], kind, cast(string) s[0].inbox[0..<length]) { return; }
+  if listed_is(s[0].listed[..], ACCESS_ANSWER, kind) { take_listed(s, cast(string) s[0].inbox[0..<length]); return; }
   if kind != MSG_VISITS { return; }
   text := cast(string) s[0].inbox[0..<length];
   for i: 0..<MAX_REALMS * 3 { s[0].stats[i] = 0; }
-  n := realm_count();
+  n := realm_count(s);
   for line: 0..<rows(text) {
     slug := field(text, line, 0);
     for r: 0..<n {
-      if !same(slug, field(REALMS_ROWS, r, C_SLUG)) { continue; }
+      if !same(slug, cell(s, r, C_SLUG)) { continue; }
       s[0].stats[r * 3 + N_VISITORS] = parse(field(text, line, 1));
       s[0].stats[r * 3 + N_VISITS] = parse(field(text, line, 2));
       s[0].stats[r * 3 + N_MINUTES] = parse(field(text, line, 3));
@@ -882,6 +941,9 @@ coaxial_realms_hash :: (s: [] RealmsState, length: int) #export_c { realms_hash(
 // The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
 coaxial_realms_access_wants :: (s: [] RealmsState) -> bool #export_c { return s.count > 0 && access_wants(s[0].acc[..]); }
 coaxial_realms_access_sent :: (s: [] RealmsState, id: int) #export_c { if s.count > 0 { access_sent(s[0].acc[..], id); } }
+// And GET /api/playtest/realms/listed once (realms-listed.coax).
+coaxial_realms_listed_wants :: (s: [] RealmsState) -> bool #export_c { return s.count > 0 && listed_wants(s[0].listed[..]); }
+coaxial_realms_listed_sent :: (s: [] RealmsState, id: int) #export_c { if s.count > 0 { listed_sent(s[0].listed[..], id); } }
 coaxial_realms_cursor :: (s: [] RealmsState) -> int #export_c {
   if s.count < 1 { return 0; }
   return ifx s[0].hot != HIT_NONE then 1 else 0;
@@ -911,12 +973,12 @@ visits :: (s: [] RealmsState, text: string) {
 rank_of :: (s: [] RealmsState, slug: string) -> int {
   order: [MAX_REALMS] int;
   n := sorted(s, s[0].sort, order[..]);
-  for k: 0..<n { if same(field(REALMS_ROWS, order[k], C_SLUG), slug) { return k; } }
+  for k: 0..<n { if same(cell(s, order[k], C_SLUG), slug) { return k; } }
   return -1;
 }
 
 #test "every listed realm is a row with a slug, a title, a line and when it opened" {
-  n := realm_count();
+  n := rows(REALMS_ROWS);
   #assert n >= 2 && n <= MAX_REALMS;
   for r: 0..<n {
     #assert field(REALMS_ROWS, r, C_SLUG).count > 0 && field(REALMS_ROWS, r, C_TITLE).count > 0 && field(REALMS_ROWS, r, C_LINE).count > 0;
@@ -1011,7 +1073,7 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
   }
 }
 
-#test "the page fits a desktop, a tablet and a 320 px phone, with numbers and without" {
+#test "the page fits a desktop, a tablet and a 320 px phone, with numbers and without" #steps 200000000 {
   sizes := [8] f32.[1440, 900, 1080, 760, 390, 844, 320, 568];
   dprs := [4] f32.[1, 2, 3, 2];
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
@@ -1118,5 +1180,66 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
     #assert (hit(s[..], x, y) == HIT_MAKE) == (z != 0);
     act(s[..], HIT_MAKE);
     #assert (s[0].action == ACT_NAVIGATE) == (z != 0);
+  }
+}
+
+// A listed answer of n made realms (total said: total), as the face hands it: its kind and the inbox.
+listed_answer :: (s: [] RealmsState, status: string, n: int, total: int) {
+  coaxial_realms_listed_sent(s, 7);
+  m := put_text(s[0].inbox[..], 0, status);
+  m += put_text(s[0].inbox[..], m, "\ntotal ");
+  m += put_int(s[0].inbox[..], m, total);
+  m += put_text(s[0].inbox[..], m, "\n");
+  for i: 0..<n {
+    m += put_text(s[0].inbox[..], m, "made-realm-");
+    m += put_int(s[0].inbox[..], m, i);
+    m += put_text(s[0].inbox[..], m, "|A Realm Someone Made Number ");
+    m += put_int(s[0].inbox[..], m, i);
+    m += put_text(s[0].inbox[..], m, "|A meadow by day with a red barn, a windmill and a herd of six horses. A realm built on the Verse.|2026-10-31T09:");
+    m += put_int(s[0].inbox[..], m, 10 + i % 50);
+    m += put_text(s[0].inbox[..], m, "|lowpoly\n");
+  }
+  realms_message(s, ACCESS_ANSWER + 7, m);
+}
+
+#test "the public made realms join the list after the table's, as many as fit, and say how many more" #steps 300000000 {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  built := rows(REALMS_ROWS);
+  // asked once; a refusal leaves the table alone
+  a: [1] RealmsState;
+  #assert coaxial_realms_listed_wants(a[..]);
+  listed_answer(a[..], "404", 3, 3);
+  #assert !coaxial_realms_listed_wants(a[..]) && realm_count(a[..]) == built && a[0].more == 0;
+  // a few: after the table's, in the server's order
+  b: [1] RealmsState;
+  listed_answer(b[..], "200", 3, 3);
+  #assert realm_count(b[..]) == built + 3 && b[0].more == 0;
+  #assert same(cell(b[..], built, C_SLUG), "made-realm-0") && same(cell(b[..], built + 2, C_TITLE), "A Realm Someone Made Number 2");
+  #assert same(cell(b[..], 0, C_SLUG), field(REALMS_ROWS, 0, C_SLUG));
+  // its answer again (another id) changes nothing
+  realms_message(b[..], ACCESS_ANSWER + 8, 4);
+  #assert realm_count(b[..]) == built + 3;
+  // too many: MAX_REALMS in all, the rest said; the page still fits, and a made realm's row opens its page
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for z: 0..<2 {
+    s: [1] RealmsState;
+    listed_answer(s[..], "200", 60, 75);
+    #assert realm_count(s[..]) == MAX_REALMS && s[0].more == 75 - (MAX_REALMS - built);
+    w := sizes[z * 2] * 2; h := sizes[z * 2 + 1] * 2;
+    for sort: 0..<SORTS {
+      s[0].sort = sort; s[0].hot = 0;
+      v := realms_frame(s[..], out[..], uniforms[..], w, h, 2, 0, true);
+      #assert v > 600 && v < MAX_VERTICES && on_canvas(out[..], v, w, h, 2);
+    }
+    s[0].sort = SORT_RECENT;
+    #assert realms_frame(s[..], out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    order: [MAX_REALMS] int;
+    n := sorted(s[..], SORT_RECENT, order[..]);
+    k := -1;
+    for i: 0..<n { if same(cell(s[..], order[i], C_SLUG), "made-realm-0") { k = i; } }
+    #assert k >= 0;
+    open_rank(s[..], k);
+    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/realms/made-realm-0");
   }
 }
