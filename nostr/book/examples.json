@@ -90,6 +90,17 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/scalar-mult.coax",
+      "chapter": "nostr/book/ch010-scalar-multiplication.md",
+      "stdout": "nostr/fixtures/scalar-mult.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000
     }
   ]
 }

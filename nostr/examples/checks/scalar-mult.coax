@@ -1,0 +1,92 @@
+// The checks of scalar-mult.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/scalar-mult.coax --run-steps 250000000
+#load "../scalar-mult.coax";
+
+// book:begin check
+// k·G for 10 scalars as (k, x, y) hex, computed with Python's
+// arbitrary-precision integers by affine double-and-add. They share no code
+// with the three multiplications.
+POINTS :: 10;
+POINT_HEX :: [30] string.[
+    "0000000000000000000000000000000000000000000000000000000000000001", "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+    "0000000000000000000000000000000000000000000000000000000000000002", "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5", "1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a",
+    "0000000000000000000000000000000000000000000000000000000000000007", "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc", "6aebca40ba255960a3178d6d861a54dba813d0b813fde7b5a5082628087264da",
+    "0000000000000000000000000000000000000000000000000000000000000008", "2f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01", "5c4da8a741539949293d082a132d13b4c2e213d6ba5b7617b5da2cb76cbde904",
+    "0000000000000000000000000000000000000000000000000000000000000011", "defdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34", "4211ab0694635168e997b0ead2a93daeced1f4a04a95c0f6cfb199f69e56eb77",
+    "00000000000000000000000000000000000000000000000000000000000000c8", "cd5a3be41717d65683fe7a9de8ae5b4b8feced69f26a8b55eeefbcc2e74b75fb", "fd6381eaf29657fdb1373fbba578001efa92c34b1f38c89f9c0b605ba95832a5",
+    "0000000000000000000000000000000000000000000000000000000100000001", "0ed7ffde4cb4fd27164ae5f435e4a3ae1905ba30e9f06eccab50fcbd9f341f81", "731e74549045132626c4b20dd9971afffdcf3a400e12b2dd7f887edfb8b205a8",
+    "8000000000000000000000000000000000000000000000000000000000000000", "b23790a42be63e1b251ad6c94fdef07271ec0aada31db6c3e8bd32043f8be384", "fc6b694919d55edbe8d50f88aa81f94517f004f4149ecb58d10a473deb19880e",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140", "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "b7c52588d95c3b9aa25b0403f1eef75702e84bb7597aabe663b82f6f04ef2777",
+    "766bad0734c2da8003cc0f2793fdcab87b89296c6dcbac5008577eb1924770d4", "77dead7787a849d25f81bf8924141e3833a7b963a5cb4feb2b14e9fdd088418b", "9da5f512cf7ec3a9d50aa239691dda54589022e7f32f62673af93e4c0c19b98f"];
+oracle_point :: (i: int) -> SgPoint {
+  b: [32] u8; a: SgAffine;
+  #assert hex_decode_checked(POINT_HEX[3 * i + 1], b[..], false).error == 0; a.x = sf_load(b[..]).value;
+  #assert hex_decode_checked(POINT_HEX[3 * i + 2], b[..], false).error == 0; a.y = sf_load(b[..]).value;
+  return sg_from_affine(a).value;
+}
+// The fixed-base comb, the ladder and the public window-5 path.
+#forall "every route gives the oracle's point" i: 0..<POINTS #steps 1000000000 {
+  k := scalar_of(POINT_HEX[3 * i]);
+  want := oracle_point(i);
+  #assert same_point(smb_multiply_native(k), want);
+  ladder := smc_multiply(k, sg_generator());
+  #assert ladder.ok && same_point(ladder.value, want);
+  public := ecmult_vartime(sc_small(0), sg_generator(), k);
+  #assert public.ok && same_point(public.value, want);
+}
+// The BIP-340 test vectors 0 to 3: each secret key times G has the
+// published public key as its x. These also run the web comb and the
+// public window-2 path for G.
+BIP340 :: [8] string.[
+    "0000000000000000000000000000000000000000000000000000000000000003", "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef", "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+    "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9", "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+    "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710", "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517"];
+#forall "secret keys give the BIP-340 public keys" i: 0..<4 #steps 1000000000 {
+  k := scalar_of(BIP340[2 * i]);
+  b: [32] u8;
+  #assert hex_decode_checked(BIP340[2 * i + 1], b[..], false).error == 0;
+  lifted := sg_lift_x_public(b[..]);
+  #assert lifted.ok;
+  // The published key is x only: k·G is the lifted point or its negative.
+  got := smb_multiply_native(k);
+  #assert same_point(got, lifted.value) || same_point(got, sg_negate(lifted.value).value);
+  #assert same_point(smb_multiply_web(k), got);
+  public := ecmult_vartime(k, sg_infinity(), sc_small(0));
+  #assert public.ok && same_point(public.value, got);
+}
+// Repeated addition uses only the group law of chapter 9.
+times :: (k: int, p: SgPoint) -> SgPoint {
+  r := sg_infinity();
+  for i: 0..<k { r = sg_add(r, p).value; }
+  return r;
+}
+// Small multiples of a peer P = 7G.
+#forall "k·P matches repeated addition" k: 0..<6 #steps 1000000000 {
+  p := times(7, sg_generator());
+  want := times(k, p);
+  ladder := smc_multiply(sc_small(cast(u32) k), p);
+  #assert ladder.ok && same_point(ladder.value, want);
+  public := ecmult_vartime(sc_small(0), p, sc_small(cast(u32) k));
+  #assert public.ok && same_point(public.value, want);
+}
+// a·G + b·P with P = 5G equals (a + 5b)G.
+#forall "the dual sum adds both terms" a: 0..<6, b: 0..<6 #steps 1000000000 {
+  g := sg_generator();
+  got := ecmult_vartime(sc_small(cast(u32) a), times(5, g), sc_small(cast(u32) b));
+  #assert got.ok && same_point(got.value, times(a + 5 * b, g));
+}
+// One-hot scalars 2^bit against bit doublings of G. The bits sit at the
+// first and last rows of the native comb's teeth (32 apart) and the web
+// comb's teeth (37 apart).
+BITS :: [10] int.[0, 31, 32, 36, 37, 63, 111, 222, 224, 255];
+#forall "2^bit G matches bit doublings" i: 0..<10 #steps 1000000000 {
+  bit := BITS[i];
+  want := sg_generator();
+  for j: 0..<bit { want = sg_double(want).value; }
+  k: ScScalar; k.limbs[bit / 32] = cast(u32) 1 << (bit % 32);
+  #assert same_point(smb_multiply_native(k), want);
+  #assert same_point(smb_multiply_web(k), want);
+}
+// book:end check

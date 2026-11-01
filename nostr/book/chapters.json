@@ -195,7 +195,7 @@
    "number": 10,
    "title": "Scalar multiplication",
    "file": "ch010-scalar-multiplication.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     8,
@@ -205,7 +205,9 @@
    "source": [
     "coax/lib/crypto/secp_mult.coax",
     "coax/lib/crypto/secp_mult_base.coax",
-    "coax/lib/crypto/secp_mult_const.coax"
+    "coax/lib/crypto/secp_mult_const.coax",
+    "nostr/examples/scalar-mult.coax",
+    "nostr/examples/checks/scalar-mult.coax"
    ],
    "qualified_targets": [
     "cpu",

@@ -1,0 +1,126 @@
+// book:begin example
+#load "../../coax/lib/crypto/secp_mult.coax";
+#load "../../coax/lib/crypto/secp_mult_base_native.coax";
+#load "../../coax/lib/crypto/secp_mult_base_web.coax";
+#load "../../coax/lib/crypto/secp_mult_const.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [80] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a point's affine x, or "infinity".
+show_x :: (label: string, p: SgPoint) {
+  a := sg_to_affine(p);
+  if !a.ok { print("%: not a valid point\n", label); return; }
+  if a.value.infinity != 0 { print("%: infinity\n", label); return; }
+  b: [32] u8;
+  if sf_store(a.value.x, b[..]) { show(label, b[..]); }
+}
+// Decode 64 hex digits into a scalar; the value may be n or more.
+scalar_of :: (text: string) -> ScScalar {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == 0;
+  return sc_reduce_bytes(b[..]).value;
+}
+// The same 32 bytes without reduction, for the raw recoding.
+raw_scalar_of :: (text: string) -> ScScalar {
+  b: [32] u8; r: ScScalar;
+  #assert hex_decode_checked(text, b[..], false).error == 0;
+  for i: 0..<32 { r.limbs[i / 4] |= cast(u32) b[31 - i] << (8 * (i % 4)); }
+  return r;
+}
+// True when two points are the same valid point.
+same_point :: (a: SgPoint, b: SgPoint) -> bool { return sg_equal_mask(a, b) == CB_MAX64; }
+// Print the nonzero digits of a wNAF as "position:digit".
+show_wnaf :: (label: string, w: SmWnaf) {
+  print("%: length %, digits", label, w.length);
+  for i: 0..<w.length { if w.digits[i] != 0 { print(" %:%", i, w.digits[i]); } }
+  print("\n");
+}
+// Print the nonzero signed radix-16 digits as "position:digit".
+show_radix16 :: (label: string, d: SmcDigits) {
+  print("%: digits", label);
+  for i: 0..<65 {
+    if d.magnitude[i] != 0 {
+      sign := ifx d.negative[i] != 0 then "-" else "";
+      print(" %:%", i, sign); print("%", d.magnitude[i]);
+    }
+  }
+  print("\n");
+}
+// The comb's table index for one row of the native profile.
+comb_index :: (k: ScScalar, row: int) -> u64 {
+  wide: [9] u32;
+  for i: 0..<8 { wide[i] = k.limbs[i]; }
+  return smb_index(wide, smb_native_width(), smb_native_spacing(), row);
+}
+// k·G by all four routes; true when every route gives the same point.
+all_agree :: (k: ScScalar) -> bool {
+  g := sg_generator();
+  native := smb_multiply_native(k);
+  web := smb_multiply_web(k);
+  ladder := smc_multiply(k, g);
+  public := ecmult_vartime(k, sg_infinity(), sc_small(0));
+  return ladder.ok && public.ok && same_point(native, web) &&
+         same_point(native, ladder.value) && same_point(native, public.value);
+}
+
+N_MINUS_1 :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140";
+N_HEX     :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+
+main :: () {
+  g := sg_generator();
+  inf := sg_infinity();
+
+  // The three recodings of k = 200 = 0xc8.
+  k := sc_small(200);
+  show_wnaf("wNAF w=5 of 200", sm_wnaf_vartime(k, 5));
+  show_wnaf("wNAF w=2 of 200", sm_wnaf_vartime(k, 2));
+  show_radix16("radix 16 of 200", smc_recode(k));
+  print("comb rows of 200:");
+  for row: 0..<32 { if comb_index(k, row) != 0 { print(" %:%", row, comb_index(k, row)); } }
+  print("\n");
+  teeth := sc_small(1); teeth.limbs[1] = 1;
+  print("comb row 0 of 2^32 + 1: index %\n", comb_index(teeth, 0));
+
+  // k·G for small and edge scalars; every route must agree.
+  show_x("200G", smb_multiply_native(k));
+  print("200G, all routes agree: %\n", all_agree(k));
+  show_x("(2^32 + 1)G", smb_multiply_native(teeth));
+  print("(2^32 + 1)G, all routes agree: %\n", all_agree(teeth));
+  minus := scalar_of(N_MINUS_1);
+  print("(n - 1)G = -G: %\n", same_point(smb_multiply_native(minus), sg_negate(g).value));
+  print("(n - 1)G, all routes agree: %\n", all_agree(minus));
+  print("0G is infinity: %\n", same_point(smb_multiply_native(sc_small(0)), inf));
+  print("0G, all routes agree: %\n", all_agree(sc_small(0)));
+  print("nG is infinity on every route: %\n",
+        all_agree(raw_scalar_of(N_HEX)) && same_point(smb_multiply_native(raw_scalar_of(N_HEX)), inf));
+
+  // A verification-shaped sum: s·G - e·P with P = 3G, e = 2, s = 11.
+  p := smc_multiply(sc_small(3), g).value;
+  e := sc_small(2);
+  r := ecmult_vartime(sc_small(11), p, sc_negate(e));
+  print("11G - 2(3G): ok %\n", r.ok);
+  show_x("11G - 2(3G)", r.value);
+  print("equal to 5G: %\n", same_point(r.value, smb_multiply_native(sc_small(5))));
+
+  // A BIP-340 secret key and its public key x.
+  key := scalar_of("b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef");
+  show_x("BIP-340 vector 1 key times G", smb_multiply_native(key));
+
+  // Refusals.
+  off: SgPoint; off.x.limb[0] = 1; off.y.limb[0] = 1; off.z.limb[0] = 1;
+  refused := ecmult_vartime(sc_small(1), off, sc_small(1));
+  print("ecmult_vartime with (1, 1): ok %, value is infinity %\n", refused.ok, same_point(refused.value, inf));
+  refused = smc_multiply(sc_small(1), off);
+  print("smc_multiply with (1, 1): ok %, value is infinity %\n", refused.ok, same_point(refused.value, inf));
+  wide := g; wide.x.limb[0] = CB_MAX64;
+  refused = smc_multiply(sc_small(1), wide);
+  print("smc_multiply with an oversized limb: ok %\n", refused.ok);
+  print("wNAF with window 6: ok %\n", sm_wnaf_vartime(k, 6).ok);
+}
+// book:end example

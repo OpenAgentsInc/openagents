@@ -97,6 +97,8 @@ def check(name="psionic"):
         assert source in linked and chapter in linked, f"unlinked example/chapter: {source}"
         assert type(item["exit_status"]) is int and 0 <= item["exit_status"] <= 255
         assert item["modes"] == ["debug", "release"], "both build modes are required"
+        steps = item.get("run_steps")
+        assert steps is None or (type(steps) is int and 1 <= steps <= 250000000), f"run_steps is 1 to 250000000: {source}"
     print(f"{name} book structure: {len(examples)} programs, {listings} source-linked listings, local links pass")
     return examples
 
@@ -154,6 +156,9 @@ def run_one(compiler, item, mode):
     cmd = [compiler, "run", str(path(item["source"]))]
     if mode == "release":
         cmd.append("--release")
+    # A program whose compile-time tables need more than the default budget.
+    if "run_steps" in item:
+        cmd += ["--run-steps", str(item["run_steps"])]
     result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=60)
     assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
     assert not result.stderr, f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"

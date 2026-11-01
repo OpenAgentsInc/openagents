@@ -1,0 +1,22 @@
+wNAF w=5 of 200: length 9, digits 3:-7 8:1
+wNAF w=2 of 200: length 9, digits 3:1 6:-1 8:1
+radix 16 of 200: digits 0:-8 1:-3 2:1
+comb rows of 200: 3:1 6:1 7:1
+comb row 0 of 2^32 + 1: index 3
+200G: cd5a3be41717d65683fe7a9de8ae5b4b8feced69f26a8b55eeefbcc2e74b75fb
+200G, all routes agree: true
+(2^32 + 1)G: 0ed7ffde4cb4fd27164ae5f435e4a3ae1905ba30e9f06eccab50fcbd9f341f81
+(2^32 + 1)G, all routes agree: true
+(n - 1)G = -G: true
+(n - 1)G, all routes agree: true
+0G is infinity: true
+0G, all routes agree: true
+nG is infinity on every route: true
+11G - 2(3G): ok true
+11G - 2(3G): 2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4
+equal to 5G: true
+BIP-340 vector 1 key times G: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+ecmult_vartime with (1, 1): ok false, value is infinity true
+smc_multiply with (1, 1): ok false, value is infinity true
+smc_multiply with an oversized limb: ok false
+wNAF with window 6: ok false
