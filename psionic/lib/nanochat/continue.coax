@@ -1,0 +1,281 @@
+// Chapter 137: continued pretraining of chapter 128's model on a new domain
+// (nanochat-continue-cpu-f64-v1). A continued plan names its base by the
+// plan chapter 128 trained under and the digest of the checkpoint that plan
+// ended with; anything else is refused before a step. Each step mixes a
+// stated number of domain windows with rehearsal windows from the base's
+// own training stream. The leak audit runs over both corpora as one split.
+// The verdict compares the base and the continued model on the same frozen
+// targets, the domain's held-out gain and the general held-out forgetting
+// reported separately, under a rule frozen here before any run.
+#load "pretrain.coax";
+#authority;
+
+CtStatus :: enum u8 {ok;config;budget;data;digest;base;unfinished;}
+CtVerdict :: enum u8 {unverifiable;passed;failed;}
+CtReason :: enum u8 {cleared;number;mismatch;few_targets;small_gain;forgot;both;}
+// book:begin plan
+// A continued run names its base completely: base is the plan chapter 128
+// trained under and digest the checkpoint that plan ended with. run is a
+// chapter 128 plan for the new steps over the same model; its init must be
+// 0, since every weight comes from the base. Of run.batch windows a step,
+// domain come from the domain's training stream and the rest rehearse the
+// base's training stream.
+CtPlan :: struct {base:NpPlan;digest:[32]u8;run:NpPlan;domain:int;}
+// book:end plan
+CtBase :: struct {status:CtStatus;check:NpCheck;}
+CtJudge :: struct {verdict:CtVerdict;reason:CtReason;gain:f64;forget:f64;}
+// book:begin accept
+// The promotion rule, frozen before the first run. On the same targets as
+// the base, the continued model must gain at least CT_GAIN bits per byte on
+// the domain's held-out text and lose at most CT_FORGET on chapter 128's
+// held-out text. Each evaluation needs CT_TARGETS targets; fewer, different
+// targets or a failed evaluation make the verdict unverifiable.
+CT_GAIN :: 0.2;
+CT_FORGET :: 0.05;
+CT_TARGETS :: 500;
+ct_judge :: (base_general:NpEval,base_domain:NpEval,general:NpEval,domain:NpEval)->CtJudge {
+    r:=CtJudge.{};all:=[4]NpEval.[base_general,base_domain,general,domain];
+    for e:all {if e.status!=NpStatus.ok || !aw_finite(e.bpb) {r.reason=CtReason.number;return r;}}
+    if general.targets!=base_general.targets || general.bytes!=base_general.bytes || domain.targets!=base_domain.targets || domain.bytes!=base_domain.bytes {r.reason=CtReason.mismatch;return r;}
+    if base_general.targets<CT_TARGETS || base_domain.targets<CT_TARGETS {r.reason=CtReason.few_targets;return r;}
+    r.gain=base_domain.bpb-domain.bpb;r.forget=general.bpb-base_general.bpb;
+    small:=r.gain<CT_GAIN;forgot:=r.forget>CT_FORGET;r.verdict=CtVerdict.failed;
+    if small && forgot {r.reason=CtReason.both;} else if small {r.reason=CtReason.small_gain;} else if forgot {r.reason=CtReason.forgot;}
+    else {r.verdict=CtVerdict.passed;}
+    return r;
+}
+// book:end accept
+
+#test "admission refuses each field just outside its range" {
+    p:=CT_TEST;#assert ct_admit(p,1,1)==CtStatus.ok && ct_admit(p,0,1)==CtStatus.data && ct_admit(p,1,0)==CtStatus.data;
+    bad:[9]CtPlan;for k:0..<9 {bad[k]=p;}
+    bad[0].run.model.width=48;bad[1].run.model.layers=2;bad[2].run.init=1;bad[3].domain=0;bad[4].domain=3;
+    bad[5].run.steps=0;bad[6].base.batch=0;bad[7].base.budget=1;bad[8].run.embed=0;
+    for k:0..<9 {#assert ct_admit(bad[k],9,9)==CtStatus.config;}
+    e:=p;e.run.budget=np_flops(p.run)-1;#assert ct_admit(e,9,9)==CtStatus.budget;e.run.budget=np_flops(p.run);#assert ct_admit(e,9,9)==CtStatus.ok;
+    // No rehearsal at all needs no general windows; the batch's limit still holds.
+    all:=p;all.domain=2;#assert ct_admit(all,2,0)==CtStatus.ok && ct_admit(all,1,9)==CtStatus.data;
+    big:=p;big.run.batch=NP_BATCH;big.domain=NP_BATCH;#assert ct_admit(big,NP_BATCH,0)==CtStatus.ok && ct_admit(big,NP_BATCH-1,0)==CtStatus.data;
+    big.run.batch=NP_BATCH+1;#assert ct_admit(big,99,99)==CtStatus.config;
+    // The base plan's own fields are its identity, not this run's: a base with other rates is fine.
+    o:=p;o.base.embed=0.5;o.base.seed=99;#assert ct_admit(o,1,1)==CtStatus.ok;
+}
+#test "the plan identity sees every field" {
+    p:=CT_TEST;d:[32]u8;d2:=d;d2[31]=1;ids:[6][32]u8;
+    for k:0..<5 {q:=p;
+        if k==1 {q.base.seed=99;}if k==2 {q.digest[0]^=1;}if k==3 {q.run.steps=5;}if k==4 {q.domain=2;}
+        ids[k]=ct_plan_id(q,d);for j:0..<k {#assert !ck_equal(ids[j],ids[k]);}}
+    ids[5]=ct_plan_id(p,d2);for j:0..<5 {#assert !ck_equal(ids[j],ids[5]);}
+    // By hand: the tag over the four identities and the domain count.
+    b:[136]u8;at:=ck_put(b[..],0,np_plan_id(p.base));at=ck_put(b[..],at,p.digest);at=ck_put(b[..],at,np_plan_id(p.run));
+    at=ck_put64(b[..],at,1);at=ck_put(b[..],at,d);#assert at==136 && ck_equal(ct_plan_id(p,d),ck_digest("psionic.continue-plan.v1",b[..]));
+}
+#test "the base is the named, finished checkpoint, or nothing is written" #steps 4000000000 {
+    p:=CT_TEST;c:=p.base.model;train:[40]int;for i:0..<40 {train[i]=(7*i*i+3*i)%11+20;}
+    a:[10216]f64;am:[10216]f64;av:[10216]f64;np_init(c,p.base.init,a[..]);g:[10216]f64;total:[10216]f64;tape:[6000]f64;logits:[320]f64;
+    order:[6]int;order[5]=-1;run:=NpRun.{};val:=[8]int.[1,2,3,4,5,6,7,8];
+    pid:=np_plan_id(p.base);did:=np_data_id(train[..],val[..]);mid:[245316]u8;fin:[245316]u8;
+    for s:0..<6 {run=np_step(p.base,run,train[..],order[..],a[..],am[..],av[..],g[..],total[..],tape[..],logits[..]).run;
+        if s==2 {#assert np_save(pid,did,run,a[..],am[..],av[..],mid[..])==NpCheck.ok;}}
+    #assert np_save(pid,did,run,a[..],am[..],av[..],fin[..])==NpCheck.ok;
+    p.digest=ck_get(fin[..],fin.count-32);
+    w:[10216]f64;m:[10216]f64;v:[10216]f64;for i:0..<10216 {w[i]=-1;m[i]=-1;v[i]=-1;}
+    // The named record: the base's weights, and fresh moments.
+    b:=ct_base(p,did,fin[..],w[..],m[..],v[..]);#assert b.status==CtStatus.ok && b.check==NpCheck.ok && np_same(w[..],a[..]);
+    for i:0..<10216 {#assert m[i]==0 && v[i]==0;}
+    keep:[10216]f64;for i:0..<10216 {keep[i]=-1;}
+    q:=p;q.digest[17]^=4;#assert ct_base(q,did,fin[..],keep[..],keep[..],keep[..]).status==CtStatus.digest;
+    // The checkpoint after step 3, named by its own digest, is not a finished base.
+    q=p;q.digest=ck_get(mid[..],mid.count-32);#assert ct_base(q,did,mid[..],keep[..],keep[..],keep[..]).status==CtStatus.unfinished;
+    // A bit flipped inside the named record, its tail intact.
+    bad:=fin;bad[5000]^=1;b=ct_base(p,did,bad[..],keep[..],keep[..],keep[..]);#assert b.status==CtStatus.base && b.check==NpCheck.corrupt;
+    q=p;q.base.seed=99;b=ct_base(q,did,fin[..],keep[..],keep[..],keep[..]);#assert b.status==CtStatus.base && b.check==NpCheck.plan;
+    b=ct_base(p,np_data_id(train[0..<39],val[..]),fin[..],keep[..],keep[..],keep[..]);#assert b.status==CtStatus.base && b.check==NpCheck.data;
+    b=ct_base(p,did,fin[..],keep[0..<10215],keep[0..<10215],keep[0..<10215]);#assert b.status==CtStatus.base && b.check==NpCheck.shape;
+    for x:keep {#assert x==-1;}
+    // Fewer than 32 bytes name nothing; exactly 32 are compared, then read.
+    z:[100]u8;q=p;q.digest=ck_get(z[..],0);#assert ct_base(q,did,z[0..<31],keep[..],keep[..],keep[..]).status==CtStatus.digest;
+    b=ct_base(q,did,z[0..<32],keep[..],keep[..],keep[..]);#assert b.status==CtStatus.base && b.check==NpCheck.shape;
+    // A header's worth of bytes has a step to read: 0, not 6.
+    #assert ct_base(q,did,z[..],keep[..],keep[..],keep[..]).status==CtStatus.unfinished && ct_base(q,did,z[0..<99],keep[..],keep[..],keep[..]).status==CtStatus.base;
+    // The finished record of a 6-step base is unfinished for a 7-step plan.
+    q=p;q.base.steps=7;#assert ct_base(q,did,fin[..],keep[..],keep[..],keep[..]).status==CtStatus.unfinished;
+    for x:keep {#assert x==-1;}
+}
+#test "the audit spans both corpora as one split" {
+    general:=[3]string.["alpha beta.\n\ngamma.","held out prose.\n\nshared.","delta.\n\n"];gs:=[3]int.[1,8,2];
+    domain:=[3]string.["x := 1;\n\ny := 2;","held := 3;\n\nshared.","z := 4;"];ds:=[3]int.[3,16,9];
+    docs:[8]string;sources:[8]int;hashes:[16]u64;
+    a:=ct_audit(general[..],gs[..],domain[..],ds[..],docs[..],sources[..],hashes[..]);
+    // Both held-out documents carry "shared.": held-out against held-out is no leak.
+    #assert a.status==NpStatus.ok && a.train_docs==4 && a.val_docs==2 && a.paragraphs==10 && a.shared==0;
+    #assert docs[0]==general[0] && docs[3]==domain[0] && sources[2]==2 && sources[4]==16 && sources[5]==9;
+    // A domain training paragraph that is general held-out text, and the reverse.
+    domain[0]="held out prose.";#assert ct_audit(general[..],gs[..],domain[..],ds[..],docs[..],sources[..],hashes[..]).status==NpStatus.leak;
+    domain[0]="x := 1;";domain[1]="delta.";a=ct_audit(general[..],gs[..],domain[..],ds[..],docs[..],sources[..],hashes[..]);#assert a.status==NpStatus.leak && a.shared==1;
+    domain[1]="held := 3;";
+    // The domain needs both sides of its own split.
+    one:=[3]int.[3,5,9];#assert ct_audit(general[..],gs[..],domain[..],one[..],docs[..],sources[..],hashes[..]).status==NpStatus.data;
+    eight:=[3]int.[8,16,24];#assert ct_audit(general[..],gs[..],domain[..],eight[..],docs[..],sources[..],hashes[..]).status==NpStatus.data;
+    two:=[3]int.[8,16,3];#assert ct_audit(general[..],gs[..],domain[..],two[..],docs[..],sources[..],hashes[..]).status==NpStatus.data;
+    #assert ct_audit(general[..],gs[..],domain[0..<2],ds[0..<2],docs[..],sources[..],hashes[..]).status==NpStatus.ok;
+    #assert ct_audit(general[..],gs[..],domain[..],ds[..],docs[0..<5],sources[..],hashes[..]).status==NpStatus.data;
+    #assert ct_audit(general[..],gs[..],domain[..],ds[..],docs[0..<6],sources[0..<5],hashes[..]).status==NpStatus.data;
+    #assert ct_audit(general[..],gs[..],domain[..],ds[0..<2],docs[..],sources[..],hashes[..]).status==NpStatus.data;
+    #assert ct_audit(general[..],gs[..],domain[..],ds[..],docs[0..<6],sources[0..<6],hashes[..]).status==NpStatus.ok;
+}
+#test "a mixed step by hand, and runs repeat bit for bit" #steps 4000000000 {
+    p:=CT_TEST;p.run.clip=0;q:=p.run;c:=q.model;general:[40]int;domain:[48]int;for i:0..<40 {general[i]=(7*i*i+3*i)%11+20;}for i:0..<48 {domain[i]=(5*i+1)%13;}
+    base:[10216]f64;np_init(c,1281,base[..]);w:[10216]f64;m:[10216]f64;v:[10216]f64;g:[10216]f64;g1:[10216]f64;total:[10216]f64;want:[10216]f64;tape:[6000]f64;logits:[320]f64;
+    // Step s of one domain and one rehearsal window: domain window s of the run's
+    // order, and rehearsal window s of the order under seed + 1; each half the step.
+    gp:=q;gp.seed=q.seed+1;
+    for s:[2]int.[0,3] {dor:[7]int;dor[6]=-1;gor:[6]int;gor[5]=-1;
+        wd:=np_window(q,6,s,dor[..]);wg:=np_window(gp,5,s,gor[..]);
+        l0:=nb_gradient(c,base[..],domain[8*wd..<8*wd+8],g[..],tape[0..<nb_tape_count(c,8)],logits[..],false).loss;
+        l1:=nb_gradient(c,base[..],general[8*wg..<8*wg+8],g1[..],tape[0..<nb_tape_count(c,8)],logits[..],false).loss;
+        sum:=0.0;for i:0..<10216 {want[i]=0;want[i]+=g[i]/2;want[i]+=g1[i]/2;sum+=want[i]*want[i];}
+        w=base;for i:0..<10216 {m[i]=0;v[i]=0;}dor[6]=-1;gor[5]=-1;
+        r:=ct_step(p,NpRun.{step=s,state=AwState.{step=s}},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+        #assert r.status==NpStatus.ok && r.loss==l0/2+l1/2 && r.norm==sqrt(sum) && r.scale==np_scale(q,s) && r.run.step==s+1 && r.run.state.step==s+1;
+        #assert np_same(total[..],want[..]) && !np_same(w[..],base[..]);
+    }
+    // Two domain windows and no rehearsal: domain windows 2 and 3 of the order at step 1;
+    // the general stream is never read, so tokens outside the vocabulary there are harmless.
+    all:=p;all.domain=2;bad:=general;for i:0..<40 {bad[i]=99;}dor:[7]int;dor[6]=-1;gor:[6]int;gor[5]=-1;
+    w0:=np_window(q,6,2,dor[..]);w1:=np_window(q,6,3,dor[..]);
+    #assert nb_gradient(c,base[..],domain[8*w0..<8*w0+8],g[..],tape[0..<nb_tape_count(c,8)],logits[..],false).status==NcStatus.ok;
+    #assert nb_gradient(c,base[..],domain[8*w1..<8*w1+8],g1[..],tape[0..<nb_tape_count(c,8)],logits[..],false).status==NcStatus.ok;
+    for i:0..<10216 {want[i]=0;want[i]+=g[i]/2;want[i]+=g1[i]/2;}
+    w=base;for i:0..<10216 {m[i]=0;v[i]=0;}dor[6]=-1;
+    r:=ct_step(all,NpRun.{step=1,state=AwState.{step=1}},domain[..],bad[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+    #assert r.status==NpStatus.ok && np_same(total[..],want[..]) && gor[5]==-1;
+    // Clipping: the step leaves with norm clip, or untouched at 0.
+    cl:=p;cl.run.clip=0.001;w=base;for i:0..<10216 {m[i]=0;v[i]=0;}
+    r=ct_step(cl,NpRun.{},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+    sum:=0.0;for x:total {sum+=x*x;}#assert r.status==NpStatus.ok && r.norm>0.01 && abs(sqrt(sum)-0.001)<1e-15;
+    cl.run.clip=0;w=base;for i:0..<10216 {m[i]=0;v[i]=0;}
+    r=ct_step(cl,NpRun.{},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);
+    sum=0;for x:total {sum+=x*x;}#assert r.status==NpStatus.ok && sqrt(sum)==r.norm && r.norm>0.01;
+    // Clipping exactly at the norm scales nothing.
+    w=base;for i:0..<10216 {m[i]=0;v[i]=0;}dor[6]=-1;gor[5]=-1;
+    r=ct_step(cl,NpRun.{},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);want=total;
+    cl.run.clip=r.norm;w=base;for i:0..<10216 {m[i]=0;v[i]=0;}dor[6]=-1;gor[5]=-1;
+    r=ct_step(cl,NpRun.{},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert np_same(total[..],want[..]);
+    // Refusals, each before anything moves.
+    w=base;
+    #assert ct_step(p,NpRun.{step=6,state=AwState.{step=6}},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.config;
+    #assert ct_step(p,NpRun.{},domain[0..<7],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.data;
+    #assert ct_step(p,NpRun.{},domain[..],general[0..<7],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.data;
+    #assert ct_step(p,NpRun.{},domain[..],bad[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.data;
+    #assert ct_step(p,NpRun.{state=AwState.{step=-1}},domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.optimizer;
+    #assert np_same(w[..],base[..]);
+    // Exactly enough windows in each stream.
+    dor[1]=-1;dor[6]=-1;gor[1]=-1;
+    #assert ct_step(p,NpRun.{},domain[0..<8],general[0..<8],dor[0..<2],gor[0..<2],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]).status==NpStatus.ok;
+    // Six steps twice from the same base are identical; another seed is not.
+    runs:[3][10216]f64;
+    for k:0..<3 {x:=p;if k==2 {x.run.seed=6;}w=base;for i:0..<10216 {m[i]=0;v[i]=0;}dor[6]=-1;gor[5]=-1;run:=NpRun.{};
+        for s:0..<6 {r=ct_step(x,run,domain[..],general[..],dor[..],gor[..],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;}
+        runs[k]=w;}
+    #assert np_same(runs[0][..],runs[1][..]) && !np_same(runs[0][..],runs[2][..]);
+}
+#test "verdicts by hand" {
+    e:=NpEval.{targets=600,bytes=900,bpb=3};d:=NpEval.{targets=700,bytes=800,bpb=4};
+    // Gain 4 - 3.8 = 0.2 exactly at the line; forgetting 3.05 - 3 = 0.05 at the line.
+    g:=e;g.bpb=3.05;x:=d;x.bpb=3.75;
+    j:=ct_judge(e,d,g,x);#assert j.verdict==CtVerdict.passed && j.reason==CtReason.cleared && j.gain==0.25 && j.forget==3.05-3.0;
+    x.bpb=3.8;#assert ct_judge(e,d,e,x).verdict==CtVerdict.passed;
+    // Exactly at both lines in binary64: 0.4 - 0.2 is 0.2 and 0.1 - 0.05 is 0.05.
+    e0:=e;e0.bpb=0.05;d0:=d;d0.bpb=0.4;g0:=e;g0.bpb=0.1;x0:=d;x0.bpb=0.2;j=ct_judge(e0,d0,g0,x0);
+    #assert j.verdict==CtVerdict.passed && j.gain==CT_GAIN && j.forget==CT_FORGET;
+    x.bpb=3.8000001;j=ct_judge(e,d,e,x);#assert j.verdict==CtVerdict.failed && j.reason==CtReason.small_gain;
+    x.bpb=3;g.bpb=3.0500001;j=ct_judge(e,d,g,x);#assert j.verdict==CtVerdict.failed && j.reason==CtReason.forgot && j.gain==1;
+    x.bpb=4.5;j=ct_judge(e,d,g,x);#assert j.verdict==CtVerdict.failed && j.reason==CtReason.both && j.gain==-0.5;
+    // Unverifiable: a failed or meaningless evaluation, other targets, too few.
+    x.bpb=3;bad:=[4]NpEval.[e,d,e,x];
+    for k:0..<4 {b:=bad;b[k].status=NpStatus.number;j=ct_judge(b[0],b[1],b[2],b[3]);#assert j.verdict==CtVerdict.unverifiable && j.reason==CtReason.number && j.gain==0;
+        b=bad;b[k].bpb=0.0/0.0;#assert ct_judge(b[0],b[1],b[2],b[3]).reason==CtReason.number;
+        b=bad;b[k].bpb=1.0/0.0;#assert ct_judge(b[0],b[1],b[2],b[3]).reason==CtReason.number;}
+    for k:2..<4 {b:=bad;b[k].targets+=1;#assert ct_judge(b[0],b[1],b[2],b[3]).reason==CtReason.mismatch;b=bad;b[k].bytes-=1;#assert ct_judge(b[0],b[1],b[2],b[3]).reason==CtReason.mismatch;}
+    for k:0..<2 {b:=bad;b[k].targets=499;b[k+2].targets=499;j=ct_judge(b[0],b[1],b[2],b[3]);#assert j.verdict==CtVerdict.unverifiable && j.reason==CtReason.few_targets;
+        b[k].targets=500;b[k+2].targets=500;#assert ct_judge(b[0],b[1],b[2],b[3]).verdict==CtVerdict.passed;}
+}
+
+// book:begin admit
+// The continued run's refusals, before any work: the same model as the base,
+// no initialization of its own, at least one domain window a step, both
+// plans admitted by chapter 128's rules, and enough windows in each stream.
+ct_admit :: (p:CtPlan,domain:int,general:int)->CtStatus {
+    same:=p.base;same.model=p.run.model;
+    if !ck_equal(np_plan_id(same),np_plan_id(p.base)) || p.run.init!=0 || p.domain<1 || p.domain>p.run.batch {return CtStatus.config;}
+    if np_admit(p.base,p.base.batch)!=NpStatus.ok {return CtStatus.config;}
+    s:=np_admit(p.run,p.run.batch);if s==NpStatus.budget {return CtStatus.budget;}if s!=NpStatus.ok {return CtStatus.config;}
+    if domain<p.domain || general<p.run.batch-p.domain {return CtStatus.data;}
+    return CtStatus.ok;
+}
+// The continued plan's identity: the base plan, the base checkpoint, the
+// run's plan, the domain count and the domain data, digested together.
+ct_plan_id :: (p:CtPlan,domain:[32]u8)->[32]u8 {
+    b:[136]u8;at:=ck_put(b[..],0,np_plan_id(p.base));at=ck_put(b[..],at,p.digest);at=ck_put(b[..],at,np_plan_id(p.run));
+    at=ck_put64(b[..],at,cast,trunc(u64)p.domain);at=ck_put(b[..],at,domain);
+    return ck_digest("psionic.continue-plan.v1",b[0..<at]);
+}
+// book:end admit
+// book:begin base
+// The base: the record's trailing digest must be the one the plan names,
+// chapter 128's resume must admit the whole record under the base plan and
+// data, and the base run must have finished. The weights are kept; the
+// optimizer starts fresh, its moments zero. A refusal writes nothing.
+ct_base :: (p:CtPlan,data:[32]u8,bytes:[]u8,w:[]f64,m:[]f64,v:[]f64)->CtBase {
+    if bytes.count<32 || !ck_equal(ck_get(bytes,bytes.count-32),p.digest) {return CtBase.{status=CtStatus.digest};}
+    if bytes.count>=NP_HEAD && ck_get64(bytes,72)!=cast,trunc(u64)p.base.steps {return CtBase.{status=CtStatus.unfinished};}
+    r:=np_resume(p.base,np_plan_id(p.base),data,bytes,w,m,v);if r.status!=NpCheck.ok {return CtBase.{status=CtStatus.base,check=r.status};}
+    for i:0..<m.count {m[i]=0;v[i]=0;}
+    return CtBase.{};
+}
+// book:end base
+// book:begin audit
+// Chapter 128's audit over both corpora as one split: every training
+// paragraph, general or domain, against every held-out paragraph. Held-out
+// text may repeat held-out text. The domain must hold out at least one
+// document and no more than it trains on.
+ct_audit :: (general:[]string,gs:[]int,domain:[]string,ds:[]int,docs:[]string,sources:[]int,hashes:[]u64)->NpData {
+    n:=general.count+domain.count;
+    if gs.count!=general.count || ds.count!=domain.count || docs.count<n || sources.count<n {return NpData.{status=NpStatus.data};}
+    held:=0;for s:ds {if np_holdout(s) {held+=1;}}
+    if held==0 || 2*held>ds.count {return NpData.{status=NpStatus.data};}
+    for i:0..<general.count {docs[i]=general[i];sources[i]=gs[i];}
+    for i:0..<domain.count {docs[general.count+i]=domain[i];sources[general.count+i]=ds[i];}
+    return np_audit(docs[0..<n],sources[0..<n],hashes);
+}
+// book:end audit
+// book:begin step
+// One continued step: domain windows from the domain stream in the run's
+// order, then rehearsal windows from the general stream in the order under
+// seed + 1, each stream's position advancing by its own count per step. The
+// rest is chapter 128's step: mean, norm, clipping, schedule and AdamW.
+ct_step :: (p:CtPlan,run:NpRun,domain:[]int,general:[]int,dorder:[]int,gorder:[]int,w:[]f64,m:[]f64,v:[]f64,g:[]f64,total:[]f64,tape:[]f64,logits:[]f64)->NpStep {
+    q:=p.run;c:=q.model;L:=c.sequence_len;dw:=domain.count/L;gw:=general.count/L;rehearse:=q.batch-p.domain;n:=w.count;fail:=NpStep.{run=run};
+    if run.step>=q.steps {fail.status=NpStatus.config;return fail;}
+    if dw<p.domain || gw<rehearse {fail.status=NpStatus.data;return fail;}
+    gp:=q;gp.seed=q.seed+1;for i:0..<n {total[i]=0;}loss:=0.0;k:=f64(q.batch);
+    for j:0..<q.batch {s:=ifx j<p.domain then domain else general;
+        at:=L*(ifx j<p.domain then np_window(q,dw,run.step*p.domain+j,dorder) else np_window(gp,gw,run.step*rehearse+j-p.domain,gorder));
+        r:=nb_gradient(c,w,s[at..<at+L],g,tape[0..<nb_tape_count(c,L)],logits[0..<L*c.vocab],false);
+        if r.status!=NcStatus.ok {fail.status=NpStatus.data;return fail;}
+        for i:0..<n {total[i]+=g[i]/k;}loss+=r.loss/k;
+    }
+    sum:=0.0;for x:total {sum+=x*x;}norm:=sqrt(sum);
+    if q.clip>0 && norm>q.clip {for i:0..<n {total[i]=total[i]*q.clip/norm;}}
+    scale:=np_scale(q,run.step);groups:[5]AwGroup;np_groups(q,scale,groups[..]);none:[1]f32;
+    a:=aw_step(groups[..],AwPolicy.{},run.state,w,total,m,v,none[0..<0],false);
+    if a.status!=AwStatus.ok {fail.status=NpStatus.optimizer;return fail;}
+    return NpStep.{run=NpRun.{step=run.step+1,state=a.state},loss=loss,norm=norm,scale=scale};
+}
+// book:end step
+
+// The checks' plan: chapter 128's test plan as the base, and the same
+// schedule for two windows a step, one of them from the domain.
+CT_TEST :: CtPlan.{base=NP_TEST,run=NpPlan.{model=NcConfig.{sequence_len=8,vocab=40,layers=1,heads=2,kv_heads=1,width=24,pattern=0,pattern_len=1,context=8},
+    batch=2,steps=6,warmup=2,warmdown=2,final=0.5,embed=0.05,matrix=0.02,head=0.02,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=5,init=0,budget=1e12},domain=1};

@@ -2079,6 +2079,18 @@
         "release"
       ],
       "timeout": 180
+    },
+    {
+      "source": "psionic/examples/continue.coax",
+      "chapter": "psionic/book/ch137-continued-pretraining-and-task-adaptation.md",
+      "stdout": "psionic/fixtures/continue.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "stack_kib": 65536
     }
   ]
 }

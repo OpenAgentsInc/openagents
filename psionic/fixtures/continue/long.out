@@ -1,0 +1,21 @@
+audit over both corpora: 168 documents, 24 held out (sources divisible by 8), 1370 paragraphs, shared paragraphs: 0
+general (chapter 128): 3109 training windows; held out: 34564 tokens, 256 frozen windows
+domain (Coax source, chapter 128's tokenizer): 43 files, 149963 bytes, 125080 tokens, 1954 windows; held out: 7 files, 24689 bytes, 20448 tokens, 319 frozen windows
+base: chapter 128's plan, 1000 steps x 8 windows; final checkpoint digest 41deb06ca31e88f2..., the one the plans name: true
+base model: general held-out 2.533604422311366 bits per byte (16121 targets), domain held-out 5.846832642738594 bits per byte (20091 targets)
+promotion rule (frozen before the runs): domain gain at least 0.2, general forgetting at most 0.05 bits per byte
+run 1: 300 steps, 8 domain + 0 rehearsal windows a step, plan b1ab359307dbc12f...
+  step 100: loss 2.7986807652315777, gradient norm 0.5675973046616911, rate scale 1.0
+  step 200: loss 2.378771619529852, gradient norm 0.5638495231064203, rate scale 1.0
+  step 300: loss 2.2563547458804676, gradient norm 0.45846232504308354, rate scale 0.01
+  general 3.4647864701230495 (forgetting 0.9311820478116837), domain 3.162510574076871 (gain 2.684322068661723): failed (forgot)
+run 2: 300 steps, 6 domain + 2 rehearsal windows a step, plan f9b313b21d539504...
+  step 100: loss 2.260640691198524, gradient norm 0.5106953892450838, rate scale 1.0
+  step 200: loss 2.5114921239448185, gradient norm 0.5052495464491579, rate scale 1.0
+  step 300: loss 2.269970270442076, gradient norm 0.4758145214543546, rate scale 0.01
+  general 2.861932479517296 (forgetting 0.32832805720593017), domain 3.1368671308267952 (gain 2.7099655119117987): failed (forgot)
+run 3: 300 steps, 4 domain + 4 rehearsal windows a step, plan 82c6102661526e41...
+  step 100: loss 2.5565292603721748, gradient norm 0.5677504449289382, rate scale 1.0
+  step 200: loss 2.5760981770547353, gradient norm 0.5067604015324989, rate scale 1.0
+  step 300: loss 2.6201400738516543, gradient norm 0.443649281742207, rate scale 0.01
+  general 2.689961217134595 (forgetting 0.15635679482322917), domain 3.2631918302225467 (gain 2.5836408125160473): failed (forgot)

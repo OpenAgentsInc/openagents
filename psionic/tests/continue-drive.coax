@@ -1,0 +1,73 @@
+// Chapter 137's driving loop, shared by the short example
+// (psionic/examples/continue.coax) and the recorded long run
+// (psionic/tests/continue-long.coax). Every decision is in
+// psionic/lib/nanochat/continue.coax; this file holds the buffers and prints.
+#load "pretrain-drive.coax";
+#load "../lib/nanochat/continue.coax";
+#load "../fixtures/continue/domain.coax";
+CT_DOMAIN_MAX :: 200000;
+CT_HELD_MAX :: 40000;
+ct_eval :: (c:NcConfig,w:[]f64,val:[]int,lengths:[]int,windows:int)->NpEval {
+    cache:[4128]f64;work:[12544]f64;logits:[20480]f64;e:=np_eval(c,w,val,lengths,windows,cache[..],work[..],logits[..]);#assert e.status==NpStatus.ok;return e;
+}
+// book:begin drive
+// The base run of chapter 128 to its last step and its final checkpoint; the
+// continued plans resumed from that checkpoint, each trained and judged
+// against the base on the same targets: gwin windows of chapter 128's
+// held-out text and dwin windows of the domain's.
+ct_drive :: (plans:[]CtPlan,gwin:int,dwin:int,report:int,refusals:bool) {
+    base:=plans[0].base;c:=base.model;L:=c.sequence_len;
+    docs:=NP_CORPUS;sources:=NP_CORPUS_SOURCES;dd:=CT_DOMAIN;ds:=CT_DOMAIN_SOURCES;classes:=PT_TOY;packed:[65536]u8;scratch:[65536]u8;
+    t:=np_tokenizer(classes[..],docs[..],sources[..],NP_MERGES,packed[..],scratch[..]);#assert t.status==NpStatus.ok && t.vocab==c.vocab;
+    bos:=t.vocab-1;lengths:[320]int;#assert np_lengths(packed[0..<t.written],bos,lengths[..])==NpStatus.ok;
+    hashes:[NP_PARAGRAPHS]u64;both:[256]string;bs:[256]int;
+    a:=ct_audit(docs[..],sources[..],dd[..],ds[..],both[..],bs[..],hashes[..]);#assert a.status==NpStatus.ok;
+    print("audit over both corpora: % documents, % held out (sources divisible by %), % paragraphs, shared paragraphs: %\n",a.train_docs+a.val_docs,a.val_docs,NP_HOLDOUT,a.paragraphs,a.shared);
+    train:[NP_TRAIN_MAX]int;val:[NP_VAL_MAX]int;dtrain:[CT_DOMAIN_MAX]int;dval:[CT_HELD_MAX]int;
+    d:=np_data(packed[0..<t.written],docs[..],sources[..],bos,hashes[..],train[..],val[..]);#assert d.status==NpStatus.ok;
+    e:=np_data(packed[0..<t.written],dd[..],ds[..],bos,hashes[..],dtrain[..],dval[..]);#assert e.status==NpStatus.ok;
+    tr:=train[0..<d.train];va:=val[0..<d.val];dtr:=dtrain[0..<e.train];dva:=dval[0..<e.val];
+    print("general (chapter 128): % training windows; held out: % tokens, % frozen windows\n",d.train/L,d.val,gwin);
+    print("domain (Coax source, chapter 128's tokenizer): % files, % bytes, % tokens, % windows; held out: % files, % bytes, % tokens, % frozen windows\n",
+        e.train_docs,e.train_bytes,e.train,e.train/L,e.val_docs,e.val_bytes,e.val,dwin);
+    // The base, exactly as chapter 128 trains it.
+    #assert np_admit(base,d.train/L)==NpStatus.ok;n:=nc_parameter_count(c);#assert n==NP_PARAMETERS;
+    w:[NP_PARAMETERS]f64;m:[NP_PARAMETERS]f64;v:[NP_PARAMETERS]f64;g:[NP_PARAMETERS]f64;total:[NP_PARAMETERS]f64;
+    tape:[101040]f64;logits:[20480]f64;order:[NP_TRAIN_MAX/64+1]int;order[d.train/L]=-1;
+    np_init(c,base.init,w[..]);pid:=np_plan_id(base);did:=np_data_id(tr,va);fin:[1156212]u8;mid:[1156212]u8;run:=NpRun.{};
+    while run.step<base.steps {r:=np_step(base,run,tr,order[0..<d.train/L+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;
+        if run.step==base.steps/2 {#assert np_save(pid,did,run,w[..],m[..],v[..],mid[..])==NpCheck.ok;}}
+    #assert np_save(pid,did,run,w[..],m[..],v[..],fin[..])==NpCheck.ok;
+    print("base: chapter 128's plan, % steps x % windows; final checkpoint digest ",base.steps,base.batch);np_hex(ck_get(fin[..],fin.count-32));
+    print("..., the one the plans name: %\n",ck_equal(ck_get(fin[..],fin.count-32),plans[0].digest));
+    // Fresh buffers hold only what the checkpoint gives.
+    x:[NP_PARAMETERS]f64;xm:[NP_PARAMETERS]f64;xv:[NP_PARAMETERS]f64;
+    b:=ct_base(plans[0],did,fin[..],x[..],xm[..],xv[..]);#assert b.status==CtStatus.ok;
+    bg:=ct_eval(c,x[..],va,lengths[..],gwin);bd:=ct_eval(c,x[..],dva,lengths[..],dwin);
+    print("base model: general held-out % bits per byte (% targets), domain held-out % bits per byte (% targets)\n",bg.bpb,bg.targets,bd.bpb,bd.targets);
+    print("promotion rule (frozen before the runs): domain gain at least %, general forgetting at most % bits per byte\n",CT_GAIN,CT_FORGET);
+    did2:=np_data_id(dtr,dva);
+    for k:0..<plans.count {p:=plans[k];
+        #assert ct_admit(p,e.train/L,d.train/L)==CtStatus.ok && ck_equal(p.digest,plans[0].digest);
+        print("run %: % steps, % domain + % rehearsal windows a step, plan ",k+1,p.run.steps,p.domain,p.run.batch-p.domain);np_hex(ct_plan_id(p,did2));print("...\n");
+        y:=x;ym:=xm;yv:=xv;dor:[CT_DOMAIN_MAX/64+1]int;dor[e.train/L]=-1;gor:[NP_TRAIN_MAX/64+1]int;gor[d.train/L]=-1;cr:=NpRun.{};
+        while cr.step<p.run.steps {r:=ct_step(p,cr,dtr,tr,dor[0..<e.train/L+1],gor[0..<d.train/L+1],y[..],ym[..],yv[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;cr=r.run;
+            if cr.step%report==0 {print("  step %: loss %, gradient norm %, rate scale %\n",cr.step,r.loss,r.norm,r.scale);}}
+        rg:=ct_eval(c,y[..],va,lengths[..],gwin);rd:=ct_eval(c,y[..],dva,lengths[..],dwin);j:=ct_judge(bg,bd,rg,rd);
+        print("  general % (forgetting %), domain % (gain %): % (%)\n",rg.bpb,j.forget,rd.bpb,j.gain,j.verdict,j.reason);
+        if k==plans.count-1 && refusals {
+            // The same model judged on too few domain targets.
+            sd:=ct_eval(c,x[..],dva,lengths[..],4);sy:=ct_eval(c,y[..],dva,lengths[..],4);j=ct_judge(bg,sd,rg,sy);
+            print("run %, judged on 4 domain windows (% targets): % (%)\n",k+1,sd.targets,j.verdict,j.reason);
+        }
+    }
+    if !refusals {return;}
+    // Broken inputs, each refused before a step.
+    q:=plans[0];q.digest[0]^=1;print("a plan naming another checkpoint: %\n",ct_base(q,did,fin[..],x[..],xm[..],xv[..]).status);
+    q=plans[0];q.digest=ck_get(mid[..],mid.count-32);print("the base's checkpoint after step %, named by its digest: %\n",base.steps/2,ct_base(q,did,mid[..],x[..],xm[..],xv[..]).status);
+    q=plans[0];q.base.seed+=1;b=ct_base(q,did,fin[..],x[..],xm[..],xv[..]);print("the right checkpoint under a base plan with another seed: % (%)\n",b.status,b.check);
+    q=plans[0];q.run.init=base.init;print("a continued run that draws its own initialization: %\n",ct_admit(q,e.train/L,d.train/L));
+    leaky:=dd;for i:0..<dd.count {if np_holdout(ds[i]) {leaky[i]=docs[0];break;}}a=ct_audit(docs[..],sources[..],leaky[..],ds[..],both[..],bs[..],hashes[..]);
+    print("a held-out domain file that repeats a general training document: %, % shared paragraphs\n",a.status,a.shared);
+}
+// book:end drive

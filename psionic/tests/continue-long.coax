@@ -1,0 +1,18 @@
+#load "continue-drive.coax";
+// Chapter 137's recorded runs (release only; psionic/tests/check_continue.sh
+// compares the transcript with psionic/fixtures/continue/long.out): chapter
+// 128's recorded 1000-step run as the base, named by its final checkpoint's
+// digest, then three continued runs of 300 steps over eight windows each,
+// with 8, 6 and 4 of them from the domain, judged on 256 frozen windows of
+// chapter 128's held-out text and every whole window of the domain's.
+// book:begin long
+// Chapter 128's recorded plan (psionic/tests/pretrain-long.coax), unchanged.
+CT_BASE :: NpPlan.{model=NP_MODEL,batch=8,steps=1000,warmup=40,warmdown=300,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1281,budget=2e11};
+CT_LONG_BASE :: [32]u8.[65,222,176,108,163,30,136,242,155,229,186,160,220,183,165,76,126,212,16,134,190,239,117,174,79,246,248,12,63,193,12,61];
+CT_LONG_RUN :: NpPlan.{model=NP_MODEL,batch=8,steps=300,warmup=30,warmdown=100,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=0,budget=1e11};
+CT_LONG :: [3]CtPlan.[CtPlan.{base=CT_BASE,digest=CT_LONG_BASE,run=CT_LONG_RUN,domain=8},CtPlan.{base=CT_BASE,digest=CT_LONG_BASE,run=CT_LONG_RUN,domain=6},
+    CtPlan.{base=CT_BASE,digest=CT_LONG_BASE,run=CT_LONG_RUN,domain=4}];
+main :: () {plans:=CT_LONG;ct_drive(plans[..],256,319,100,false);}
+// book:end long

@@ -1,0 +1,15 @@
+#load "../tests/continue-drive.coax";
+// book:begin example
+// Chapter 128's short run as the base, named by its final checkpoint's
+// digest; then two continued runs of 8 steps over four windows each, all
+// from the domain or three domain and one rehearsal, judged on the first 16
+// frozen windows of each held-out stream.
+// Chapter 128's example plan (psionic/examples/pretrain.coax), unchanged.
+CT_BASE :: NpPlan.{model=NP_MODEL,batch=4,steps=24,warmup=4,warmdown=8,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1281,budget=1e10};
+CT_DEMO_BASE :: [32]u8.[76,25,188,79,245,21,219,87,186,196,126,234,146,229,237,37,7,31,66,20,220,235,230,208,230,249,132,131,248,229,134,186];
+CT_DEMO_RUN :: NpPlan.{model=NP_MODEL,batch=4,steps=8,warmup=2,warmdown=4,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=0,budget=1e10};
+CT_DEMO :: [2]CtPlan.[CtPlan.{base=CT_BASE,digest=CT_DEMO_BASE,run=CT_DEMO_RUN,domain=4},CtPlan.{base=CT_BASE,digest=CT_DEMO_BASE,run=CT_DEMO_RUN,domain=3}];
+main :: () {plans:=CT_DEMO;ct_drive(plans[..],16,16,4,true);}
+// book:end example
