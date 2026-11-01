@@ -1,0 +1,59 @@
+// The checks of web-sign-in.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/web-sign-in.coax --run-steps 250000000
+#load "../web-sign-in.coax";
+
+// book:begin check
+// NIP-06's first vector, as published in nostr/nips/official/06.md.
+NIP06_PUBKEY :: "17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917";
+NIP06_NPUB :: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
+// The same login made by a Python script that shares no code with Coax:
+// BIP-39's seed with hashlib.pbkdf2_hmac, BIP-32 with hmac and integer
+// arithmetic, then coax/tests/nostr/nip59_reference.py's BIP-340 signer and
+// NIP-01 serializer, with aux all zero, and base64.b64encode.
+PY_HEADER :: "Nostr eyJpZCI6ImE1NDE0ZmI3ODUwNTVlYjU4NWE5MWQ5YmFjMjUyY2ExZGNhYTM1YzE2ZWZhOGEwMDJiZDRlMTQxNzk0NmNlOTQiLCJwdWJrZXkiOiIxNzE2MmM5MjFkYzRkMjUxOGY5YTEwMWRiMzM2OTVkZjFhZmI1NmFiODJmNWZmM2U1ZGE2ZWVjM2NhNWNkOTE3IiwiY3JlYXRlZF9hdCI6MTc5MDAwMDAwMCwia2luZCI6MjcyMzUsInRhZ3MiOltbInUiLCJodHRwczovL29wZW5hZ2VudHMuY29tL2FwaS9hdXRoL2tleSJdLFsibWV0aG9kIiwiUE9TVCJdLFsicGF5bG9hZCIsIjUzNzE0ODlkZDEwMDE3ODI0MDc3MDNmYzg4YzMwMWFjYTM4YmUyODY0OWFhN2YxZjY4YmRiNTJjZjU3NjAxNGEiXV0sImNvbnRlbnQiOiIiLCJzaWciOiJmODkzODNjMzJlZGMxZDg4ZTVkOGU1MDFkOGZlMjEwNWY4ZDMzNzA3ZTJjMTMzYTI2NzEzYThkMjExZDUxMzFjYmRkNTI2YjM5YzViYmY3Nzk2ZGFkZDYyZTFhZjkwZmM0MDY0ODg1MmQ3OGEzODY2MzQwYWY0NWE2NWYzNjI1YyJ9";
+// SHA-256 of {"kind":"login"}, from Python's hashlib.
+PY_LOGIN_SHA256 :: "5371489dd1001782407703fc88c301aca38be28649aa7f1f68bdb52cf576014a";
+
+once :: (header: string, now: int) -> int {
+  s: [1] Server; t: [32] u8;
+  return login(s[..], ORIGIN, header, LOGIN_BODY, now, t[..]).status;
+}
+
+#test "the words give NIP-06's published key, and the login matches Python's byte for byte" #steps 4000000000 {
+  c := client_words(MNEMONIC);
+  #assert c.ok && cast(string) c.npub[0..<c.nnpub] == NIP06_NPUB;
+  #assert cast(string) c.words[0..<c.nwords] == MNEMONIC;
+  hb: [1024] u8;
+  header := client_sign(c, LOGIN_URL, CREATED, LOGIN_BODY, hb[..]);
+  #assert header == PY_HEADER;
+  ev: [1024] u8;
+  d := base64_decode_checked(header[6..<header.count], ev[..], false);
+  #assert d.error == NC_OK && d.written == 486 && header.count == 654;
+  // the pubkey and payload hash sit at fixed places in the event
+  #assert cast(string) ev[83..<147] == NIP06_PUBKEY;
+  #assert cast(string) ev[268..<332] == PY_LOGIN_SHA256;
+}
+#test "the 60-second window, both edges, on a fresh server each time" #steps 4000000000 {
+  #assert once(PY_HEADER, CREATED - 60) == 200 && once(PY_HEADER, CREATED + 60) == 200;
+  #assert once(PY_HEADER, CREATED - 61) == 401 && once(PY_HEADER, CREATED + 61) == 401;
+}
+#test "one login, one session; a replay and every refusal leave the store as it was" #steps 4000000000 {
+  s: [1] Server; t: [32] u8; u: [32] u8;
+  t[0] = 1; u[0] = 2;
+  #assert login(s[..], ORIGIN, PY_HEADER, LOGIN_BODY, CREATED, t[..]).status == 200;
+  #assert login(s[..], ORIGIN, PY_HEADER, LOGIN_BODY, CREATED, u[..]).status == 401;
+  #assert s[0].nseen == 1 && s[0].nsessions == 1;
+  #assert session(s[..], t[..], CREATED) == NIP06_PUBKEY && session(s[..], u[..], CREATED) == "";
+  #assert login(s[..], "http://openagents.com", PY_HEADER, LOGIN_BODY, CREATED, u[..]).status == 403;
+  #assert login(s[..], ORIGIN, PY_HEADER, "{\"kind\": \"login\"}", CREATED, u[..]).status == 400;
+  #assert s[0].nseen == 1 && s[0].nsessions == 1;
+  #assert session(s[..], t[..], CREATED + SESSION_SECONDS - 1) == NIP06_PUBKEY;
+  #assert session(s[..], t[..], CREATED + SESSION_SECONDS) == "";
+}
+#test "a wrong checksum signs nothing" #steps 4000000000 {
+  c := client_words("leader monkey parrot ring guide accident before fence cannon height naive naive");
+  hb: [1024] u8;
+  #assert !c.ok && client_sign(c, LOGIN_URL, CREATED, LOGIN_BODY, hb[..]) == "";
+}
+// book:end check

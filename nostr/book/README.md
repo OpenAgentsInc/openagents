@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 51 are implemented, 5 are partly implemented and
+Of the 104 chapters, 52 are implemented, 4 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -306,7 +306,7 @@ stack, and the cutover of relay.openagents.com.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [98. Projects on Nostr](ch098-projects-on-nostr.md) | Runnable: native C and wasm | OpenAgents' project pages fold NIP-34 repositories, issues and statuses and NIP-22 comments from the relay, verify each event in the browser, and replace a snapshot only with a complete bounded capture. |
-| [99. The website and sign-in](ch099-the-website-and-sign-in.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | Logging in to openagents.com with a NIP-98 signed request from a words account (NIP-06) or a browser signer (NIP-07), and the cutover of the C verifier to Coax. |
+| [99. The website and sign-in](ch099-the-website-and-sign-in.md) | Runnable: native C and wasm | Logging in to openagents.com with a NIP-98 signed request from a words account (NIP-06) or a browser signer (NIP-07), and the cutover of the C verifier to Coax. |
 | [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Pylons authenticate to the relay with NIP-42, announce beacons, and answer sealed NIP-44 decision requests; the mesh opens encrypted channels with this book's primitives. |
 | [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) | Unimplemented: design draft | Presence in realms with NIP-MV pose frames, Verse identities as Nostr keys, and zaps and Wallet Connect over the Spark wallet's existing payment rules. |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) | Unimplemented: design draft | Hosted project agents and Coder publishing with this book's signer and relay client, replacing the C runner's own signing path. |

@@ -60,6 +60,7 @@ weblogin_check :: (typed: string, hex: [] u8) -> bool #export_c {
   for i: 0..<16 { e[i] = 0; }
   return ok;
 }
+// book:begin sign
 // "Nostr <base64 kind-27235 event>" for POST url with body, signed by the entropy's key; its length or -1.
 weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: [] u8, out: [] u8) -> int #export_c {
   if url.count < 10 || url.count > 200 || aux.count != 32 || created_at < 0 { return -1; }
@@ -91,6 +92,7 @@ weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: 
   if e.error != NC_OK { return -1; }
   return n + e.written;
 }
+// book:end sign
 
 #test "typed words: the checksum, and refusals" {
   hex: [32] u8; words: [160] u8; npub: [80] u8; out: [64] u8; aux: [32] u8;

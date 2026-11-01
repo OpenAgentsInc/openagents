@@ -1,0 +1,175 @@
+// Chapter 99: signing in to openagents.com with the words account. The
+// client is the website's own Coax (coax/lib/nostr/weblogin.coax); the
+// server's NIP-98 check is the API's own Coax (coax/web/api/nip98.coax).
+// The route and session rules are private.c's auth_route and the SQL of
+// migrations 0019 and 0067, written here in memory with a fixed clock.
+// book:begin client
+#load "../../coax/lib/nostr/weblogin.coax";
+#load "../../coax/web/api/nip98.coax";
+#import "Basic";
+
+// NIP-06's first published vector. A published test mnemonic: never sign
+// with words you use anywhere else.
+MNEMONIC :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
+ORIGIN :: "https://openagents.com";
+LOGIN_URL :: "https://openagents.com/api/auth/key";
+LOGIN_BODY :: "{\"kind\":\"login\"}";
+CREATED :: 1790000000;
+
+// The page's steps: check the typed words and keep their entropy as hex,
+// then derive the words and npub. Each weblogin call derives the key it
+// needs and zeroes it before it returns.
+Client :: struct { hex: [32] u8; words: [160] u8; nwords: int; npub: [80] u8; nnpub: int; ok: bool; }
+client_words :: (typed: string) -> Client {
+  c: Client;
+  if !weblogin_check(typed, c.hex[..]) { return c; }
+  both := weblogin_derive(cast(string) c.hex[..], c.words[..], c.npub[..]);
+  if both <= 0 { return c; }
+  c.nwords = both / 256; c.nnpub = both % 256; c.ok = true;
+  return c;
+}
+// "Nostr <base64>" for POST url with body at created_at, signed with aux
+// all zero (the page passes 32 random bytes), into out; "" when refused.
+client_sign :: (c: Client, url: string, created_at: int, body: string, out: [] u8) -> string {
+  aux: [32] u8;
+  h := c.hex;
+  n := weblogin_sign(cast(string) h[..], url, created_at, body, aux[..], out);
+  if n <= 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+// book:end client
+
+// book:begin route
+// The server's state: event IDs already used (the API's projects.seen) and
+// site sessions (signin.sessions: the token's SHA-256, the pubkey, the expiry).
+Session :: struct { token_sha: [32] u8; pubkey: [64] u8; expires: int; }
+Server :: struct { seen: [8] [64] u8; nseen: int; sessions: [4] Session; nsessions: int; }
+SESSION_SECONDS :: 30 * 86400;
+Answer :: struct { status: int; why: string; }
+
+// One POST /api/auth/key, in auth_route's order: the Origin and the
+// Authorization scheme, the body, NIP-98 with a payload tag, first use of
+// the event ID. On 200 it stores a session for token, the cookie's value.
+login :: (s: [] Server, origin: string, authorization: string, body: string, now: int,
+          token: [] u8) -> Answer {
+  a: Answer;
+  if origin != ORIGIN || authorization.count < 6 || authorization[0..<6] != "Nostr " {
+    a.status = 403; a.why = "{\"error\":\"cross-site\"}"; return a;
+  }
+  if body != LOGIN_BODY { a.status = 400; a.why = "{\"error\":\"not a login\"}"; return a; }
+  work: [N98_WORK] u8; out: [N98_OUT] u8; b: [64] u8;
+  for i: 0..<body.count { b[i] = body[i]; }
+  r := nip98_check_coax(authorization, "POST", LOGIN_URL, b[0..<body.count], now, work[..], out[..]);
+  if r.error != N98_OK { a.status = 401; a.why = nip98_error_text(r.error); return a; }
+  if r.payload == 0 { a.status = 401; a.why = "no payload tag"; return a; }
+  for k: 0..<s[0].nseen {
+    if cast(string) s[0].seen[k][..] == cast(string) out[0..<64] { a.status = 401; a.why = "event id already used"; return a; }
+  }
+  if s[0].nseen == 8 || s[0].nsessions == 4 { a.status = 503; a.why = "store full"; return a; }
+  for i: 0..<64 { s[0].seen[s[0].nseen][i] = out[i]; }
+  s[0].nseen += 1;
+  // signin.api('key'): a new session bound to the event's pubkey, 30 days
+  k := s[0].nsessions;
+  #assert sha256_hash_checked(token, s[0].sessions[k].token_sha[..], false) == SHA_OK;
+  for i: 0..<64 { s[0].sessions[k].pubkey[i] = out[64 + i]; }
+  s[0].sessions[k].expires = now + SESSION_SECONDS;
+  s[0].nsessions += 1;
+  a.status = 200; a.why = "signed-in";
+  return a;
+}
+// signin.session(token): the pubkey of an unexpired session, or "".
+session :: (s: [] Server, token: [] u8, now: int) -> string {
+  h: [32] u8;
+  #assert sha256_hash_checked(token, h[..], false) == SHA_OK;
+  for k: 0..<s[0].nsessions {
+    if cast(string) s[0].sessions[k].token_sha[..] == cast(string) h[..] && s[0].sessions[k].expires > now {
+      return cast(string) s[0].sessions[k].pubkey[..];
+    }
+  }
+  return "";
+}
+// signin.api('logout'): the cookie's session ends.
+logout :: (s: [] Server, token: [] u8) {
+  h: [32] u8;
+  #assert sha256_hash_checked(token, h[..], false) == SHA_OK;
+  for k: 0..<s[0].nsessions {
+    if cast(string) s[0].sessions[k].token_sha[..] == cast(string) h[..] { s[0].sessions[k].expires = 0; }
+  }
+}
+// book:end route
+
+// Print one request's answer.
+show :: (label: string, s: [] Server, origin: string, authorization: string, body: string, now: int, token: [] u8) {
+  a := login(s, origin, authorization, body, now, token);
+  // a refused login answers {"error":"not signed"}; the reason stays on the server
+  if a.status == 401 { print("%: 401, {\"error\":\"not signed\"} (%)\n", label, a.why); return; }
+  print("%: %, %\n", label, a.status, a.why);
+}
+// A signed kind-27235 event from this client with other tags, as a header,
+// for a refusal that weblogin_sign never produces.
+sign_tags :: (c: Client, tags: string, created_at: int, ev: [] u8, out: [] u8) -> string {
+  words: [160] u8; key: [32] u8; aux: [32] u8;
+  h := c.hex;
+  #assert wl_key(cast(string) h[..], words[..], key[..]) > 0;
+  work: [1] NostrSignWork; scratch: [1024] u8; r := EVENT_MORE;
+  while r == EVENT_MORE {
+    r = nostr_event_sign_step(key[..], aux[..], created_at, WL_LOGIN_KIND, tags, "", work[..], scratch[..], ev, false);
+  }
+  for i: 0..<32 { key[i] = 0; }
+  #assert r > 0;
+  n := wl_put(out, 0, "Nostr ");
+  e := base64_encode_checked(cast(string) ev[0..<r], out[n..<out.count], false);
+  return cast(string) out[0..<n + e.written];
+}
+
+// book:begin main
+main :: () {
+  print("the words\n");
+  c := client_words(MNEMONIC);
+  print("checksum: %, entropy: %\n", c.ok, cast(string) c.hex[..]);
+  print("npub: %\n", cast(string) c.npub[0..<c.nnpub]);
+  bad := client_words("leader monkey parrot ring guide accident before fence cannon height naive naive");
+  print("last word naive: checksum %\n", bad.ok);
+
+  print("the login\n");
+  hb: [1024] u8;
+  header := client_sign(c, LOGIN_URL, CREATED, LOGIN_BODY, hb[..]);
+  ev: [1024] u8;
+  d := base64_decode_checked(header[6..<header.count], ev[..], false);
+  print("event (% bytes): %\n", d.written, cast(string) ev[0..<d.written]);
+  print("header value: % bytes\n", header.count);
+
+  print("the server, now = created_at + 30\n");
+  s: [1] Server; now := CREATED + 30;
+  t1: [32] u8; for i: 0..<32 { t1[i] = cast(u8) (i + 1); }   // the server's projects.token(), fixed here
+  show("first use", s[..], ORIGIN, header, LOGIN_BODY, now, t1[..]);
+  print("session: %...\n", session(s[..], t1[..], now)[0..<16]);
+  show("same header again", s[..], ORIGIN, header, LOGIN_BODY, now, t1[..]);
+  show("same header at created_at + 61", s[..], ORIGIN, header, LOGIN_BODY, CREATED + 61, t1[..]);
+
+  print("refusals, on a fresh server\n");
+  f: [1] Server;
+  show("Origin https://evil.example", f[..], "https://evil.example", header, LOGIN_BODY, now, t1[..]);
+  show("no Authorization", f[..], ORIGIN, "", LOGIN_BODY, now, t1[..]);
+  show("body {\"kind\":\"logout\"}", f[..], ORIGIN, header, "{\"kind\":\"logout\"}", now, t1[..]);
+  sb: [1024] u8;
+  staging := client_sign(c, "https://staging.openagents.com/api/auth/key", CREATED, LOGIN_BODY, sb[..]);
+  show("signed for staging", f[..], ORIGIN, staging, LOGIN_BODY, now, t1[..]);
+  e2: [1024] u8; nb: [2048] u8;
+  nopay := sign_tags(c, "[[\"u\",\"https://openagents.com/api/auth/key\"],[\"method\",\"POST\"]]", CREATED, e2[..], nb[..]);
+  show("no payload tag", f[..], ORIGIN, nopay, LOGIN_BODY, now, t1[..]);
+  print("the original, after those refusals: %\n", login(f[..], ORIGIN, header, LOGIN_BODY, now, t1[..]).status);
+  print("client refusals\n");
+  qb: [1024] u8;
+  print("url with a quote: \"%\"\n", client_sign(c, "https://x\"y/api/auth/key", CREATED, LOGIN_BODY, qb[..]));
+  print("entropy 7f7f: derive %\n", weblogin_derive("7f7f", c.words[..], c.npub[..]));
+
+  print("the session\n");
+  t2: [32] u8; for i: 0..<32 { t2[i] = cast(u8) (100 + i); }
+  print("a cookie the server never issued: \"%\"\n", session(s[..], t2[..], now));
+  print("29 days later: %...\n", session(s[..], t1[..], now + 29 * 86400)[0..<16]);
+  print("30 days later: \"%\"\n", session(s[..], t1[..], now + SESSION_SECONDS));
+  logout(s[..], t1[..]);
+  print("after logout: \"%\"\n", session(s[..], t1[..], now + 60));
+}
+// book:end main

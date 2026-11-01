@@ -1796,7 +1796,7 @@
    "number": 99,
    "title": "The website and sign-in",
    "file": "ch099-the-website-and-sign-in.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     46,
@@ -1804,7 +1804,9 @@
    ],
    "source": [
     "apps/openagents-web/nip01-verify.coax",
-    "coax/lib/nostr/weblogin.coax"
+    "coax/lib/nostr/weblogin.coax",
+    "nostr/examples/web-sign-in.coax",
+    "nostr/examples/checks/web-sign-in.coax"
    ],
    "qualified_targets": [
     "cpu",

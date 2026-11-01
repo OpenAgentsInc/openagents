@@ -1,0 +1,27 @@
+the words
+checksum: true, entropy: 7e91e681dd067802c50aa8216d564a89
+npub: npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu
+last word naive: checksum false
+the login
+event (486 bytes): {"id":"a5414fb785055eb585a91d9bac252ca1dcaa35c16efa8a002bd4e1417946ce94","pubkey":"17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917","created_at":1790000000,"kind":27235,"tags":[["u","https://openagents.com/api/auth/key"],["method","POST"],["payload","5371489dd1001782407703fc88c301aca38be28649aa7f1f68bdb52cf576014a"]],"content":"","sig":"f89383c32edc1d88e5d8e501d8fe2105f8d33707e2c133a26713a8d211d5131cbdd526b39c5bbf7796dadd62e1af90fc40648852d78a3866340af45a65f3625c"}
+header value: 654 bytes
+the server, now = created_at + 30
+first use: 200, signed-in
+session: 17162c921dc4d251...
+same header again: 401, {"error":"not signed"} (event id already used)
+same header at created_at + 61: 401, {"error":"not signed"} (created_at is not within 60 s)
+refusals, on a fresh server
+Origin https://evil.example: 403, {"error":"cross-site"}
+no Authorization: 403, {"error":"cross-site"}
+body {"kind":"logout"}: 400, {"error":"not a login"}
+signed for staging: 401, {"error":"not signed"} (the u tag is not this URL)
+no payload tag: 401, {"error":"not signed"} (no payload tag)
+the original, after those refusals: 200
+client refusals
+url with a quote: ""
+entropy 7f7f: derive -1
+the session
+a cookie the server never issued: ""
+29 days later: 17162c921dc4d251...
+30 days later: ""
+after logout: ""
