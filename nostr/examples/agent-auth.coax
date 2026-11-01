@@ -1,0 +1,170 @@
+// book:begin example
+#load "../../coax/lib/nostr/nipaa.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex_of :: (bytes: [] u8, out: [] u8) -> string {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+// A secret key of 31 zero bytes and then b: NIP-OA's test keys are 1 and 2.
+// Never sign with a real key in an example.
+test_key :: (b: u8) -> [32] u8 { k: [32] u8; k[31] = b; return k; }
+// The x-only public key of a secret: x(k·G).
+public_x :: (secret: [] u8) -> [32] u8 {
+  k := sc_reduce_bytes(secret).value;
+  a := sg_to_affine(smc_multiply(k, sg_generator()).value).value;
+  b: [32] u8;
+  #assert sf_store(a.x, b[..]);
+  return b;
+}
+// BIP-340 signing of a 32-byte message with chapter 13's signer.
+sign_hash :: (key: [] u8, aux: [] u8, message: [] u8, out: [] u8) {
+  work: [1] SignWork; status := SIGN_MORE;
+  while status == SIGN_MORE { status = schnorr_sign_step(key, aux, message, work[..], out, false); }
+  #assert status == SIGN_DONE;
+}
+// A signed event with these fields, into ev.
+sign_event :: (key: [] u8, aux: [] u8, created_at: int, kind: int, tags: string, content: string, ev: [] u8) -> string {
+  work: [1] NostrSignWork; scratch: [2048] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux, created_at, kind, tags, content, work[..], scratch[..], ev, false);
+  }
+  #assert n > 0;
+  return cast(string) ev[0..<n];
+}
+// Append text to out at n; the new length.
+put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { out[n] = c; n += 1; }
+  return n;
+}
+// [["relay",RELAY],["challenge",challenge]] and then the extra tags.
+auth_tags :: (challenge: string, extra: string, out: [] u8) -> string {
+  n := put(out, 0, "[[\"relay\",\""); n = put(out, n, RELAY); n = put(out, n, "\"],[\"challenge\",\"");
+  n = put(out, n, challenge); n = put(out, n, "\"]"); n = put(out, n, extra); n = put(out, n, "]");
+  return cast(string) out[0..<n];
+}
+NOA_WORDS :: [11] string.["ok", "not a verified event", "no auth tag", "more than one auth tag", "not four elements",
+                          "not lowercase hex", "the owner is the event's own key", "the conditions don't read",
+                          "not the owner's signature", "outside the conditions", "unchecked"];
+// The NIP-OA check on a signed event's JSON.
+check :: (label: string, text: string) {
+  scratch: [2048] u8;
+  e := nostr_event_verify_vartime(text, scratch[..], false);
+  print("%: %\n", label, NOA_WORDS[noa_check(e).status]);
+}
+// The agent answers a challenge on a connection; the relay decides.
+login :: (label: string, conn: [] NaaConnection, m: NaaMembers, challenge: string, created_at: int, now: int, extra: string) -> NaaAuth {
+  agent := test_key(2); aux: [32] u8;
+  n: [1] Nip42; frame: [64] u8;
+  #assert nip42_init(n[..], RELAY) == N42_OK && nip42_issue(n[..], 1, challenge, frame[..]).error == N42_OK;
+  tb: [1024] u8; ev: [2048] u8; scratch: [2048] u8; out: [256] u8;
+  text := sign_event(agent[..], aux[..], created_at, 22242, auth_tags(challenge, extra, tb[..]), "", ev[..]);
+  a := naa_auth(conn, m, n[..], 1, now, text, scratch[..]);
+  e := nostr_event_read(text, scratch[..], false); hex: [64] u8;
+  k := naa_reply(a, hex_of(e.id[..], hex[..]), out[..]);
+  print("%: %\n", label, cast(string) out[0..<k]);
+  if a.code == NAA_CREDENTIAL { print("  the tag: %\n", NOA_WORDS[a.detail]); }
+  return a;
+}
+E_WORDS :: [4] string.["accepted", "restricted: not authenticated", "restricted: kind not in the credential", "restricted: virtual member"];
+
+RELAY :: "wss://relay.example.com";
+CONDS :: "kind=1&created_at<1713957000";
+T :: 1713956400;
+// NIP-OA's published signature and signed event example.
+NIP_SIG :: "8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369";
+NIP_EVENT :: "{\"id\":\"d892a65e7677e0554ebb70ee16deeb6a0727dba46450fb4bc001291d7bff971b\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1713956400,\"kind\":1,\"tags\":[[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1&created_at<1713957000\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]],\"content\":\"owner-attested agent event\",\"sig\":\"7fd38992b70b5e9e113644e51b4c8ee2227f3bdd402b1855f8786c0600394ab3ec2621742a7bad0b0000b93d4d1ae6e39525f286a3c1029f43f46c3359a6c76f\"}";
+
+main :: () {
+  owner_key := test_key(1); agent_key := test_key(2); other_key := test_key(3); aux: [32] u8;
+  owner := public_x(owner_key[..]); agent := public_x(agent_key[..]);
+  other := public_x(other_key[..]);
+  h1: [64] u8; h2: [64] u8; h3: [64] u8;
+  print("NIP-OA: the owner's attestation\n");
+  print("owner (secret 1): %\n", hex_of(owner[..], h1[..]));
+  print("agent (secret 2): %\n", hex_of(agent[..], h2[..]));
+  pre: [NOA_TEXT_MAX] u8; n := noa_preimage(agent, CONDS, pre[..]);
+  print("preimage (% bytes): %\n", n, cast(string) pre[0..<n]);
+  hash: [32] u8; #assert noa_hash(agent, CONDS, hash[..]);
+  print("sha256(preimage): %\n", hex_of(hash[..], h3[..]));
+  nip_sig: [64] u8; decode_hex(NIP_SIG, nip_sig[..]);
+  print("NIP-OA's auth_sig verifies under the owner: %\n", nostr_verify_vartime(hash[..], owner[..], nip_sig[..]));
+  mine: [64] u8; sign_hash(owner_key[..], aux[..], hash[..], mine[..]); s: [128] u8;
+  print("the owner signs again, aux 0: %\n", hex_of(mine[..], s[..]));
+  print("that signature verifies too: %\n", nostr_verify_vartime(hash[..], owner[..], mine[..]));
+  tag: [512] u8; t := noa_write_tag(owner, CONDS, nip_sig, tag[..], 0);
+  print("tag (% bytes): %\n", t, cast(string) tag[0..<t]);
+
+  print("NIP-OA's signed event example\n");
+  scratch: [2048] u8; e := nostr_event_verify_vartime(NIP_EVENT, scratch[..], false);
+  print("id and sig verify: %\n", e.verified);
+  a := noa_attribute(e);
+  print("auth tag: %\n", NOA_WORDS[a.status]);
+  print("author: %\n", hex_of(a.author[..], h1[..]));
+  print("authorized by: %\n", hex_of(a.owner[..], h1[..]));
+
+  print("refusals, each event signed by the agent\n");
+  ev: [2048] u8; tb: [1024] u8; k := 0;
+  k = put(tb[..], 0, "[[\"auth\",\""); k = put(tb[..], k, hex_of(owner[..], h1[..]));
+  k = put(tb[..], k, "\",\"kind=1&created_at<1713957001\",\""); k = put(tb[..], k, NIP_SIG); k = put(tb[..], k, "\"]]");
+  check("conditions changed to created_at<1713957001", sign_event(agent_key[..], aux[..], T, 1, cast(string) tb[0..<k], "x", ev[..]));
+  k = put(tb[..], 0, "[[\"auth\",\""); k = put(tb[..], k, hex_of(owner[..], h1[..]));
+  k = put(tb[..], k, "\",\"created_at<1713957000&kind=1\",\""); k = put(tb[..], k, NIP_SIG); k = put(tb[..], k, "\"]]");
+  check("the same clauses reordered", sign_event(agent_key[..], aux[..], T, 1, cast(string) tb[0..<k], "x", ev[..]));
+  k = put(tb[..], 0, "["); k = put(tb[..], k, cast(string) tag[0..<t]); k = put(tb[..], k, "]");
+  good := cast(string) tb[0..<k];
+  check("the tag on a kind 7 event", sign_event(agent_key[..], aux[..], T, 7, good, "x", ev[..]));
+  check("the tag on a kind 1 event at 1713957000", sign_event(agent_key[..], aux[..], 1713957000, 1, good, "x", ev[..]));
+  two: [1024] u8; k = put(two[..], 0, "["); k = put(two[..], k, cast(string) tag[0..<t]); k = put(two[..], k, ",");
+  k = put(two[..], k, cast(string) tag[0..<t]); k = put(two[..], k, "]");
+  check("two auth tags", sign_event(agent_key[..], aux[..], T, 1, cast(string) two[0..<k], "x", ev[..]));
+  check("three elements", sign_event(agent_key[..], aux[..], T, 1, "[[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1\"]]", "x", ev[..]));
+  check("conditions kind=1&", sign_event(agent_key[..], aux[..], T, 1, "[[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1&\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]]", "x", ev[..]));
+  check("conditions kind=01", sign_event(agent_key[..], aux[..], T, 1, "[[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=01\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]]", "x", ev[..]));
+  check("the owner's tag on an event the owner signs", sign_event(owner_key[..], aux[..], T, 1, good, "x", ev[..]));
+  changed: [1024] u8; for i: 0..<NIP_EVENT.count { changed[i] = NIP_EVENT[i]; }
+  changed[NIP_EVENT.count - 150] = 'O';   // "owner-attested" becomes "Owner-attested"
+  check("NIP-OA's example with one content byte changed", cast(string) changed[0..<NIP_EVENT.count]);
+
+  print("NIP-AA: the agent logs in to %, the owner a member\n", RELAY);
+  m: [1] NaaMembers; #assert naa_add(m[..], owner);
+  conn: [1] NaaConnection; extra: [512] u8; k = put(extra[..], 0, ","); k = put(extra[..], k, cast(string) tag[0..<t]);
+  with_tag := cast(string) extra[0..<k];
+  tb2: [1024] u8; text := sign_event(agent_key[..], aux[..], T, 22242, auth_tags("challenge-87", with_tag, tb2[..]), "", ev[..]);
+  print("AUTH event (% bytes): %\n", text.count, text);
+  print("NIP-OA's own check of that event: %\n", NOA_WORDS[noa_check(nostr_event_verify_vartime(text, scratch[..], false)).status]);
+  g := login("relay clock 1713956430", conn[..], m[0], "challenge-87", T, T + 30, with_tag);
+  print("the agent's kind 1 event: %\n", E_WORDS[naa_event(conn[0], agent, 1, false)]);
+  print("its kind 7 event: %\n", E_WORDS[naa_event(conn[0], agent, 7, false)]);
+  print("its kind 7 event, kind clauses enforced: %\n", E_WORDS[naa_event(conn[0], agent, 7, true)]);
+  print("its membership change request: %\n", E_WORDS[naa_admin(conn[0], agent)]);
+
+  print("refusals\n");
+  r: [1] NaaConnection;
+  g = login("an AUTH event 121 s old", r[..], m[0], "challenge-87", T, T + 121, with_tag);
+  g = login("created_at 1713957001, against created_at<1713957000", r[..], m[0], "challenge-87", 1713957001, 1713957001, with_tag);
+  g = login("no auth tag", r[..], m[0], "challenge-87", T, T + 30, "");
+  k = put(extra[..], 0, ","); k = put(extra[..], k, cast(string) tag[0..<t]); k = put(extra[..], k, ","); k = put(extra[..], k, cast(string) tag[0..<t]);
+  g = login("two auth tags", r[..], m[0], "challenge-87", T, T + 30, cast(string) extra[0..<k]);
+  osig: [64] u8; sign_hash(other_key[..], aux[..], hash[..], osig[..]);
+  ot: [512] u8; k = noa_write_tag(other, CONDS, osig, ot[..], 1); ot[0] = ',';
+  g = login("signed by an owner who is not a member", r[..], m[0], "challenge-87", T, T + 30, cast(string) ot[0..<k]);
+  print("keys admitted on that connection: %\n", r[0].n);
+
+  print("revocation\n");
+  #assert naa_remove(m[..], owner);
+  print("the operator removes the owner: % members\n", m[0].n);
+  fresh: [1] NaaConnection;
+  g = login("the agent's next AUTH, new connection", fresh[..], m[0], "challenge-88", T + 60, T + 70, with_tag);
+  print("the old connection still holds % key; its kind 1 event: %\n", conn[0].n, E_WORDS[naa_event(conn[0], agent, 1, false)]);
+  print("sessions ended by owner: %; its kind 1 event: %\n", naa_end(conn[..], owner), E_WORDS[naa_event(conn[0], agent, 1, false)]);
+}
+// book:end example

@@ -1,0 +1,42 @@
+// Helpers and data for nipoa.coax's and nipaa.coax's checks. They live here
+// so that mutation of those files changes the library, not the checks.
+
+// NIP-OA's test keys: the owner's secret is 1, the agent's is 2.
+NOA_T_OWNER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+NOA_T_AGENT :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+// The public key of secret 3, a second owner.
+NOA_T_OTHER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+// NIP-OA's test vector, copied verbatim.
+NOA_T_CONDS :: "kind=1&created_at<1713957000";
+NOA_T_HASH :: "08cdecd55af4c28d3801fd69615dcf5cc04fab3bc134b38a840bf157197069a6";
+NOA_T_SIG :: "8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369";
+NOA_T_TIME :: 1713956400;
+
+noa_k :: (hex:string)->[32]u8 {k:[32]u8;#assert ne_lower_hex(hex,k[..]);return k;}
+// A verified event by signer, of this kind and time, whose original text
+// is its tags array.
+noa_ev :: (signer:string,kind:int,created_at:int,tags:string)->NostrEvent {
+  e:=nt_event(tags);e.kind=kind;e.created_at=created_at;e.verified=true;
+  e.public_key=noa_k(signer);
+  return e;
+}
+// [["auth",owner,conditions,sig]] into out.
+noa_tags :: (owner:string,conditions:string,sig:string,out:[]u8)->string {
+  n:=json_raw(out,0,"[[\"auth\",");n=json_write_string(out,n,owner);n=json_raw(out,n,",");
+  n=json_write_string(out,n,conditions);n=json_raw(out,n,",");n=json_write_string(out,n,sig);
+  n=json_raw(out,n,"]]");return cast(string)out[0..<n];
+}
+// The status of the agent's kind 1 event at NOA_T_TIME with these tags,
+// read without checking the signature.
+noa_rstatus :: (tags:string)->int {return noa_read(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,tags)).status;}
+// noa_conditions as one status: NOA_CONDITIONS when it doesn't read,
+// NOA_OUTSIDE when a clause that counts breaks, else NOA_OK.
+noa_eval :: (text:string,kind:int,created_at:int,kinds:bool,times:bool)->int {
+  h:=noa_conditions(text,NoaFacts.{kind=kind,created_at=created_at});
+  if !h.read {return NOA_CONDITIONS;}
+  if (kinds && !h.kinds) || (times && !h.times) {return NOA_OUTSIDE;}
+  return NOA_OK;
+}
+noa_cstatus :: (conditions:string)->int {
+  buf:[1024]u8;return noa_rstatus(noa_tags(NOA_T_OWNER,conditions,NOA_T_SIG,buf[..]));
+}

@@ -1,0 +1,40 @@
+// Helpers and data for nipaa.coax's checks. They live here so that mutation
+// of nipaa.coax changes the library, not the checks.
+
+NAA_T_RELAY :: "wss://relay.example.com";
+NAA_T_CHALLENGE :: "challenge-87";
+NAA_T_NOW :: 1713956430;   // the relay's clock: 30 s after the AUTH event
+// The agent's AUTH event for NAA_T_CHALLENGE, created at NOA_T_TIME and
+// carrying NIP-OA's tag, signed by coax/tests/nostr/nipoa_reference.py
+// (pure-Python BIP-340 and NIP-01, no Coax code) with the agent's secret 2
+// and 32 zero aux bytes.
+NAA_T_AUTH :: "{\"id\":\"0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1713956400,\"kind\":22242,\"tags\":[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"challenge-87\"],[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1&created_at<1713957000\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]],\"content\":\"\",\"sig\":\"9a9d2adcb322e80713fa0a040a43b5c86fef224aff3303439e7144b3991d90934c38c272b904ce59ba52f62de899db363bfb65c2e21495db6968a958470730dc\"}";
+
+// A relay's NIP-42 state for one connection, with NAA_T_CHALLENGE issued
+// in generation 1.
+naa_n42 :: ()->Nip42 {
+  n:[1]Nip42;out:[64]u8;
+  #assert nip42_init(n[..],NAA_T_RELAY)==N42_OK && nip42_issue(n[..],1,NAA_T_CHALLENGE,out[..]).error==N42_OK;
+  return n[0];
+}
+// [["relay",..],["challenge",..]] followed by more (",[...]" or "").
+naa_tags :: (challenge:string,more:string,out:[]u8)->string {
+  n:=json_raw(out,0,"[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",");n=json_write_string(out,n,challenge);
+  n=json_raw(out,n,"]");n=json_raw(out,n,more);n=json_raw(out,n,"]");return cast(string)out[0..<n];
+}
+// ,["auth",owner,conditions,NOA_T_SIG]
+naa_auth_tag :: (owner:string,conditions:string,out:[]u8)->string {
+  n:=json_raw(out,0,",[\"auth\",");n=json_write_string(out,n,owner);n=json_raw(out,n,",");
+  n=json_write_string(out,n,conditions);n=json_raw(out,n,",");n=json_write_string(out,n,NOA_T_SIG);
+  return cast(string)out[0..<json_raw(out,n,"]")];
+}
+NAA_T_TAG :: ",[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1&created_at<1713957000\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]";
+// A verified kind 22242 event by signer at created_at with these tags.
+naa_ev :: (signer:string,created_at:int,tags:string)->NostrEvent {return noa_ev(signer,22242,created_at,tags);}
+// One AUTH attempt on conn with a signature verdict for its auth tag.
+naa_try :: (conn:[]NaaConnection,m:NaaMembers,e:NostrEvent,signed:bool,now:int)->NaaAuth {
+  n:[1]Nip42;n[0]=naa_n42();
+  return naa_auth_fields(conn,m,n[..],1,now,e,noa_read(e),signed);
+}
+naa_m1 :: (a:string)->NaaMembers {m:[1]NaaMembers;#assert naa_add(m[..],noa_k(a));return m[0];}
+naa_m2 :: (a:string,b:string)->NaaMembers {m:[1]NaaMembers;m[0]=naa_m1(a);#assert naa_add(m[..],noa_k(b));return m[0];}

@@ -1,0 +1,46 @@
+NIP-OA: the owner's attestation
+owner (secret 1): 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+agent (secret 2): c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+preimage (110 bytes): nostr:agent-auth:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:kind=1&created_at<1713957000
+sha256(preimage): 08cdecd55af4c28d3801fd69615dcf5cc04fab3bc134b38a840bf157197069a6
+NIP-OA's auth_sig verifies under the owner: true
+the owner signs again, aux 0: 4fd007535ff75b35b6fa4696d4b1e04144d512b9ff74baca09dd9a1cac4c759d63d9c3645e1b8d86ab9198d21813d1f405d17327f0c99970df4bb9cded69fd76
+that signature verifies too: true
+tag (237 bytes): ["auth","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kind=1&created_at<1713957000","8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369"]
+NIP-OA's signed event example
+id and sig verify: true
+auth tag: ok
+author: c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+authorized by: 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+refusals, each event signed by the agent
+conditions changed to created_at<1713957001: not the owner's signature
+the same clauses reordered: not the owner's signature
+the tag on a kind 7 event: outside the conditions
+the tag on a kind 1 event at 1713957000: outside the conditions
+two auth tags: more than one auth tag
+three elements: not four elements
+conditions kind=1&: the conditions don't read
+conditions kind=01: the conditions don't read
+the owner's tag on an event the owner signs: the owner is the event's own key
+NIP-OA's example with one content byte changed: not a verified event
+NIP-AA: the agent logs in to wss://relay.example.com, the owner a member
+AUTH event (648 bytes): {"id":"0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1713956400,"kind":22242,"tags":[["relay","wss://relay.example.com"],["challenge","challenge-87"],["auth","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","kind=1&created_at<1713957000","8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369"]],"content":"","sig":"9a9d2adcb322e80713fa0a040a43b5c86fef224aff3303439e7144b3991d90934c38c272b904ce59ba52f62de899db363bfb65c2e21495db6968a958470730dc"}
+NIP-OA's own check of that event: outside the conditions
+relay clock 1713956430: ["OK","0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189",true,""]
+the agent's kind 1 event: accepted
+its kind 7 event: accepted
+its kind 7 event, kind clauses enforced: restricted: kind not in the credential
+its membership change request: restricted: virtual member
+refusals
+an AUTH event 121 s old: ["OK","0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189",false,"invalid: created_at is not within 120 seconds"]
+created_at 1713957001, against created_at<1713957000: ["OK","501bbed96f7a12eb0ce0ebc4644b936edbdb11699e13d6ce7c218966f89cd97c",false,"restricted: the auth tag is not valid for this AUTH event"]
+  the tag: outside the conditions
+no auth tag: ["OK","b9566f955a3597cdb82d73a3b1229aa342e00fc5594616776349d563fcbaffca",false,"restricted: no auth tag and not a member"]
+two auth tags: ["OK","e529311374cc64ffbe63d8c94d77f6c98976a124551b19c59d9131afb26a8afa",false,"restricted: more than one auth tag"]
+signed by an owner who is not a member: ["OK","4d1a8c63abcaf88ed6f926de99c7f3fc3dcefec709f4df7ab97160a6c23c21cc",false,"restricted: the owner is not a member"]
+keys admitted on that connection: 0
+revocation
+the operator removes the owner: 0 members
+the agent's next AUTH, new connection: ["OK","aadd4a545395ed8aa8bad122e58616a2130592833e752afbfb1669747da25e1e",false,"restricted: the owner is not a member"]
+the old connection still holds 1 key; its kind 1 event: accepted
+sessions ended by owner: 1; its kind 1 event: restricted: not authenticated

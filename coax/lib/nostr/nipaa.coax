@@ -1,0 +1,325 @@
+// NIP-AA agent authentication (Block). Pinned spec: nostr/nips/block/NIP-AA.md.
+//
+// A relay that keeps a member list (NIP-43) lets an agent in without
+// enrolling it: the agent answers the NIP-42 challenge with a kind 22242
+// event that carries its owner's NIP-OA auth tag (nipoa.coax). When the tag
+// verifies and the owner is an active member, the agent's key gets virtual
+// membership on this connection. Nothing about the agent is stored beyond
+// the connection, so removing the owner from the member list refuses the
+// agent's next AUTH.
+//
+// naa_auth_fields runs NIP-AA's steps in order; the first failure answers:
+//   1. NIP-42 (nip42.coax's nip42_admit_fields: verified, kind 22242, this
+//      relay, this connection's challenge), and created_at within
+//      NAA_WINDOW seconds of the relay's clock: "invalid:".
+//   2. The signer is an active member: admitted as a member, no tag read.
+//   3. Exactly one auth tag: "restricted:".
+//   4. The tag reads, the owner signed it, and the AUTH event meets its
+//      created_at clauses. kind= clauses are read but not evaluated (the
+//      AUTH event is kind 22242): "restricted:".
+//   5. The owner is an active member: "restricted:".
+//   6. Virtual membership for the signer's key on this connection, with the
+//      owner and the conditions kept. A new AUTH by the same key replaces
+//      its entry; a failed AUTH leaves every entry as it was.
+//
+// Active members are the relay's own state (NaaMembers), not a 13534
+// event. Virtual members pass the relay-level membership check for events
+// and subscriptions; naa_admin refuses them relay administration and
+// membership changes. Per-event kind= enforcement is the relay's option
+// (naa_event's enforce). Connections and the member list are the caller's
+// memory; nothing here does I/O or reads a clock.
+#load "nipoa.coax";
+#load "nip42.coax";
+#load "../../tests/nostr/nipaa_fixtures.coax";
+#authority;
+
+NAA_MEMBER :: 0;      // step 2: the signer is an active member
+NAA_VIRTUAL :: 1;     // step 6: virtual membership granted
+NAA_NIP42 :: 2;       // step 1: NIP-42 refuses (detail: its N42_ result)
+NAA_STALE :: 3;       // step 1: created_at outside NAA_WINDOW
+NAA_NO_AUTH :: 4;     // step 3: not a member and no auth tag
+NAA_REPEATED :: 5;    // step 3: more than one auth tag
+NAA_CREDENTIAL :: 6;  // step 4: the tag doesn't verify (detail: its NOA_ status)
+NAA_OWNER :: 7;       // step 5: the owner is not an active member
+NAA_FULL :: 8;        // the connection already holds NAA_MAX_KEYS other keys
+NAA_WINDOW :: 120;    // NIP-AA's recommended freshness, seconds either way
+NAA_MAX_MEMBERS :: 8; NAA_MAX_KEYS :: 4;
+// The OK message's reason for each result; "invalid: " for step 1,
+// "restricted: " after it.
+NAA_REASONS :: [9]string.["","","invalid: the AUTH event fails NIP-42","invalid: created_at is not within 120 seconds",
+  "restricted: no auth tag and not a member","restricted: more than one auth tag","restricted: the auth tag is not valid for this AUTH event",
+  "restricted: the owner is not a member","restricted: too many keys on this connection"];
+// naa_event's and naa_admin's results.
+NAA_E_OK :: 0; NAA_E_UNAUTHENTICATED :: 1; NAA_E_KIND :: 2; NAA_E_VIRTUAL :: 3;
+
+// book:begin record
+// The relay's active members: its authoritative state.
+NaaMembers :: struct {keys:[NAA_MAX_MEMBERS][32]u8; n:int;}
+// One authenticated key on a connection: a member, or a virtual member with
+// the owner and the conditions of the tag that admitted it.
+NaaKey :: struct {key:[32]u8; derived:bool; owner:[32]u8; conditions:[NOA_MAX_CONDITIONS]u8; n:int;}
+NaaConnection :: struct {k:[NAA_MAX_KEYS]NaaKey; n:int;}
+// One AUTH's answer: the result, the step's detail, and the keys.
+NaaAuth :: struct {code:int; detail:int; agent:[32]u8; owner:[32]u8;}
+// book:end record
+
+#test "the member list adds once, removes, and refuses when full" {
+  m:[1]NaaMembers;a:=noa_k(NOA_T_OWNER);b:=noa_k(NOA_T_OTHER);
+  #assert naa_add(m[..],a) && naa_add(m[..],a) && m[0].n==1 && naa_member(m[0],a) && !naa_member(m[0],b);
+  #assert naa_add(m[..],b) && m[0].n==2 && naa_member(m[0],b);
+  #assert naa_remove(m[..],a) && !naa_member(m[0],a) && naa_member(m[0],b) && m[0].n==1 && !naa_remove(m[..],a);
+  for i:0..<NAA_MAX_MEMBERS-1 {k:[32]u8;k[0]=cast(u8)(i+1);#assert naa_add(m[..],k);}
+  #assert m[0].n==NAA_MAX_MEMBERS && !naa_add(m[..],a) && m[0].n==NAA_MAX_MEMBERS && naa_add(m[..],b);
+  #assert naa_remove(m[..],b) && m[0].n==NAA_MAX_MEMBERS-1;
+  k:[32]u8;k[0]=7;#assert naa_member(m[0],k);   // the last key moved into the gap
+}
+#test "NIP-AA's accept example: virtual membership, the owner and conditions kept" {
+  conn:[1]NaaConnection;m:=naa_m1(NOA_T_OWNER);buf:[512]u8;
+  a:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW);
+  agent:=noa_k(NOA_T_AGENT);owner:=noa_k(NOA_T_OWNER);
+  #assert a.code==NAA_VIRTUAL && a.detail==NOA_OK && conn[0].n==1 && conn[0].k[0].derived;
+  for i:0..<32 {#assert a.agent[i]==agent[i] && a.owner[i]==owner[i] && conn[0].k[0].key[i]==agent[i] && conn[0].k[0].owner[i]==owner[i];}
+  #assert cast(string)conn[0].k[0].conditions[0..<conn[0].k[0].n]==NOA_T_CONDS;
+}
+#test "a member is admitted at step 2, whatever its tags" {
+  conn:[1]NaaConnection;m:=naa_m2(NOA_T_OWNER,NOA_T_AGENT);buf:[512]u8;
+  a:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),false,NAA_T_NOW);
+  #assert a.code==NAA_MEMBER && conn[0].n==1 && !conn[0].k[0].derived && conn[0].k[0].key[0]==0xc6 && a.owner[0]==0;
+  b:=naa_try(conn[..],m,naa_ev(NOA_T_OWNER,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,",[\"auth\"],[\"auth\"]",buf[..])),false,NAA_T_NOW);
+  #assert b.code==NAA_MEMBER && conn[0].n==2 && conn[0].k[1].key[0]==0x79;
+}
+#test "step 1: NIP-42 and the 120-second window" {
+  conn:[1]NaaConnection;m:=naa_m1(NOA_T_OWNER);buf:[512]u8;
+  tags:=naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..]);
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NAA_T_NOW-120,tags),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NAA_T_NOW+120,tags),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  a:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NAA_T_NOW-121,tags),true,NAA_T_NOW);
+  #assert a.code==NAA_STALE && a.detail==N42_OK && a.agent[0]==0;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NAA_T_NOW+121,tags),true,NAA_T_NOW).code==NAA_STALE;
+  // NIP-42's own window is 600 s, so it refuses only past that.
+  b:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NAA_T_NOW-601,tags),true,NAA_T_NOW);
+  #assert b.code==NAA_NIP42 && b.detail==N42_TIME;
+  // Another challenge, another kind, an unverified event.
+  c:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags("challenge-86",NAA_T_TAG,buf[..])),true,NAA_T_NOW);
+  #assert c.code==NAA_NIP42 && c.detail==N42_CHALLENGE;
+  e:=naa_ev(NOA_T_AGENT,NOA_T_TIME,tags);e.kind=1;
+  #assert naa_try(conn[..],m,e,true,NAA_T_NOW).detail==N42_KIND;
+  e=naa_ev(NOA_T_AGENT,NOA_T_TIME,tags);e.verified=false;
+  #assert naa_try(conn[..],m,e,true,NAA_T_NOW).detail==N42_EVENT;
+  e=naa_ev(NOA_T_AGENT,NOA_T_TIME,tags);e.error=NE_SIGNATURE;
+  #assert naa_try(conn[..],m,e,true,NAA_T_NOW).detail==N42_EVENT;
+  // The two that passed are one entry: the same key replaces itself.
+  #assert conn[0].n==1;
+}
+#test "steps 3 to 5 refuse in order, and a refusal changes nothing" {
+  conn:[1]NaaConnection;m:=naa_m1(NOA_T_OWNER);buf:[1024]u8;tag:[512]u8;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW).code==NAA_NO_AUTH;
+  two:[600]u8;n:=json_raw(two[..],0,NAA_T_TAG);n=json_raw(two[..],n,NAA_T_TAG);
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,cast(string)two[0..<n],buf[..])),true,NAA_T_NOW).code==NAA_REPEATED;
+  a:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),false,NAA_T_NOW);
+  #assert a.code==NAA_CREDENTIAL && a.detail==NOA_SIGNATURE && a.owner[0]==0 && a.agent[0]==0xc6;
+  // NIP-AA's reject table: self-attestation, a malformed conditions string,
+  // created_at 1713957001 against created_at<1713957000.
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,naa_auth_tag(NOA_T_AGENT,NOA_T_CONDS,tag[..]),buf[..])),true,NAA_T_NOW).detail==NOA_SELF;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,naa_auth_tag(NOA_T_OWNER,"kind=01",tag[..]),buf[..])),true,NAA_T_NOW).detail==NOA_CONDITIONS;
+  late:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,1713957001,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,1713957001);
+  #assert late.code==NAA_CREDENTIAL && late.detail==NOA_OUTSIDE;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,1713957000,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,1713957000).detail==NOA_OUTSIDE;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,1713956999,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,1713956999).code==NAA_VIRTUAL;
+  conn[0].n=0;
+  // An owner that isn't a member.
+  o:=naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,naa_auth_tag(NOA_T_OTHER,NOA_T_CONDS,tag[..]),buf[..])),true,NAA_T_NOW);
+  #assert o.code==NAA_OWNER && o.detail==NOA_OK && o.owner[0]==0xf9 && conn[0].n==0;
+}
+#test "a revoked owner's agent is refused on its next AUTH; sessions end by owner" {
+  m:[1]NaaMembers;m[0]=naa_m2(NOA_T_OWNER,NOA_T_OTHER);buf:[512]u8;tag:[512]u8;
+  old:[1]NaaConnection;
+  #assert naa_try(old[..],m[0],naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert naa_try(old[..],m[0],naa_ev(NOA_T_OTHER,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW).code==NAA_MEMBER;
+  #assert naa_remove(m[..],noa_k(NOA_T_OWNER));
+  fresh:[1]NaaConnection;
+  a:=naa_try(fresh[..],m[0],naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW);
+  #assert a.code==NAA_OWNER && fresh[0].n==0;
+  // On the old connection a failed AUTH leaves the earlier grant; the
+  // operator ends it by owner.
+  #assert naa_try(old[..],m[0],naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW).code==NAA_OWNER;
+  #assert old[0].n==2 && naa_event(old[0],noa_k(NOA_T_AGENT),1,false)==NAA_E_OK;
+  #assert naa_end(old[..],noa_k(NOA_T_OWNER))==1 && old[0].n==1 && naa_event(old[0],noa_k(NOA_T_AGENT),1,false)==NAA_E_UNAUTHENTICATED;
+  #assert naa_event(old[0],noa_k(NOA_T_OTHER),1,false)==NAA_E_OK && naa_end(old[..],noa_k(NOA_T_OWNER))==0;
+  // Ending a member's key ends its own entry and its agents'.
+  #assert naa_try(old[..],m[0],naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,naa_auth_tag(NOA_T_OTHER,NOA_T_CONDS,tag[..]),buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert old[0].n==2 && naa_end(old[..],noa_k(NOA_T_OTHER))==2 && old[0].n==0 && !naa_read(old[0]);
+}
+#test "ending by owner skips no entry and ends only that owner's" {
+  m:=naa_m2(NOA_T_OWNER,NOA_T_OTHER);buf:[512]u8;tag:[512]u8;conn:[1]NaaConnection;
+  // The second owner's key first, then the agent under the first owner.
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_OTHER,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW).code==NAA_MEMBER;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert naa_end(conn[..],noa_k(NOA_T_OWNER))==1 && conn[0].n==1 && conn[0].k[0].key[0]==0xf9;
+  // The agent under the second owner survives the first owner's end.
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,naa_auth_tag(NOA_T_OTHER,NOA_T_CONDS,tag[..]),buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert naa_end(conn[..],noa_k(NOA_T_OWNER))==0 && conn[0].n==2;
+}
+#test "re-authenticating replaces the entry; a full connection refuses" {
+  conn:[1]NaaConnection;m:=naa_m2(NOA_T_OWNER,NOA_T_OTHER);buf:[512]u8;tag:[512]u8;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,naa_auth_tag(NOA_T_OTHER,"kind=7",tag[..]),buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  #assert conn[0].n==1 && conn[0].k[0].owner[0]==0xf9 && cast(string)conn[0].k[0].conditions[0..<conn[0].k[0].n]=="kind=7";
+  #assert naa_event(conn[0],noa_k(NOA_T_AGENT),7,true)==NAA_E_OK && naa_event(conn[0],noa_k(NOA_T_AGENT),1,true)==NAA_E_KIND;
+  // A virtual entry replaced by a member's: the owner and conditions go.
+  m2:=naa_m2(NOA_T_OWNER,NOA_T_AGENT);
+  #assert naa_try(conn[..],m2,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW).code==NAA_MEMBER;
+  #assert conn[0].n==1 && !conn[0].k[0].derived && conn[0].k[0].owner[0]==0 && conn[0].k[0].n==0;
+  // Fill the connection with other keys.
+  for i:1..<NAA_MAX_KEYS {conn[0].k[i].key[0]=cast(u8)i;}
+  conn[0].n=NAA_MAX_KEYS;
+  #assert naa_try(conn[..],m2,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW).code==NAA_MEMBER;
+  f:=naa_try(conn[..],m,naa_ev(NOA_T_OTHER,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW);
+  #assert f.code==NAA_FULL && conn[0].n==NAA_MAX_KEYS && conn[0].k[3].key[0]==3;
+}
+#test "virtual member privileges: events, kind enforcement, reads and admin" {
+  conn:[1]NaaConnection;m:=naa_m1(NOA_T_OWNER);buf:[512]u8;
+  #assert !naa_read(conn[0]) && naa_event(conn[0],noa_k(NOA_T_AGENT),1,false)==NAA_E_UNAUTHENTICATED;
+  #assert naa_admin(conn[0],noa_k(NOA_T_OWNER))==NAA_E_UNAUTHENTICATED;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_AGENT,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,buf[..])),true,NAA_T_NOW).code==NAA_VIRTUAL;
+  agent:=noa_k(NOA_T_AGENT);
+  // NIP-AA's kind enforcement table, with kind=1&created_at<1713957000.
+  #assert naa_event(conn[0],agent,1,false)==NAA_E_OK && naa_event(conn[0],agent,7,false)==NAA_E_OK;
+  #assert naa_event(conn[0],agent,1,true)==NAA_E_OK && naa_event(conn[0],agent,7,true)==NAA_E_KIND;
+  // created_at clauses are not evaluated again per event.
+  #assert naa_read(conn[0]) && naa_admin(conn[0],agent)==NAA_E_VIRTUAL;
+  // The owner's key is not authenticated on this connection.
+  #assert naa_event(conn[0],noa_k(NOA_T_OWNER),1,false)==NAA_E_UNAUTHENTICATED;
+  #assert naa_try(conn[..],m,naa_ev(NOA_T_OWNER,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,"",buf[..])),true,NAA_T_NOW).code==NAA_MEMBER;
+  #assert naa_admin(conn[0],noa_k(NOA_T_OWNER))==NAA_E_OK && naa_event(conn[0],noa_k(NOA_T_OWNER),7,true)==NAA_E_OK;
+}
+#test "the OK message for each answer" {
+  out:[256]u8;id:="0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189";
+  n:=naa_reply(NaaAuth.{code=NAA_VIRTUAL},id,out[..]);
+  #assert cast(string)out[0..<n]=="[\"OK\",\"0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189\",true,\"\"]";
+  n=naa_reply(NaaAuth.{code=NAA_MEMBER},id,out[..]);#assert n==81 && out[73]=='t';
+  n=naa_reply(NaaAuth.{code=NAA_STALE},id,out[..]);
+  #assert cast(string)out[0..<n]=="[\"OK\",\"0f4f3fd0ac4d12ad62601fc9b832633be644c9ff10f07aea706c1351bbdce189\",false,\"invalid: created_at is not within 120 seconds\"]";
+  n=naa_reply(NaaAuth.{code=NAA_OWNER},id,out[..]);
+  #assert cast(string)out[73..<n]=="false,\"restricted: the owner is not a member\"]";
+  n=naa_reply(NaaAuth.{code=NAA_NIP42},id,out[..]);#assert out[73]=='f';
+  #assert naa_reply(NaaAuth.{code=NAA_FULL},id,out[0..<80])== -1;
+}
+#test "a whole AUTH event, signed in Python, verified here" #steps 2000000000 {
+  conn:[1]NaaConnection;m:=naa_m1(NOA_T_OWNER);n:[1]Nip42;n[0]=naa_n42();scratch:[2048]u8;
+  a:=naa_auth(conn[..],m,n[..],1,NAA_T_NOW,NAA_T_AUTH,scratch[..]);
+  #assert a.code==NAA_VIRTUAL && a.owner[0]==0x79 && conn[0].n==1;
+  // One byte of the event changed: its id no longer matches.
+  bad:[1024]u8;for i:0..<NAA_T_AUTH.count {bad[i]=NAA_T_AUTH[i];}bad[8]='e';
+  #assert naa_auth(conn[..],m,n[..],1,NAA_T_NOW,cast(string)bad[0..<NAA_T_AUTH.count],scratch[..]).detail==N42_EVENT;
+}
+
+// book:begin members
+naa_find_member :: (m:NaaMembers,key:[32]u8)->int {
+  c:=m;for i:0..<c.n {if ns_equal32(c.keys[i],key) {return i;}}
+  return -1;
+}
+naa_member :: (m:NaaMembers,key:[32]u8)->bool {return naa_find_member(m,key)>=0;}
+// Adds key once; false when the list is full.
+naa_add :: (m:[]NaaMembers,key:[32]u8)->bool {
+  if naa_member(m[0],key) {return true;}
+  if m[0].n==NAA_MAX_MEMBERS {return false;}
+  m[0].keys[m[0].n]=key;m[0].n+=1;return true;
+}
+// Revokes key's membership; false when it wasn't a member.
+naa_remove :: (m:[]NaaMembers,key:[32]u8)->bool {
+  i:=naa_find_member(m[0],key);
+  if i<0 {return false;}
+  m[0].n-=1;m[0].keys[i]=m[0].keys[m[0].n];return true;
+}
+// book:end members
+
+// book:begin auth
+naa_find :: (c:NaaConnection,key:[32]u8)->int {
+  d:=c;for i:0..<d.n {if ns_equal32(d.k[i].key,key) {return i;}}
+  return -1;
+}
+// Step 6 (and step 2's record): the key's entry replaced, or added.
+naa_grant :: (conn:[]NaaConnection,a:NaaAuth,entry:NaaKey,code:int)->NaaAuth {
+  r:=a;i:=naa_find(conn[0],entry.key);
+  if i<0 {
+    if conn[0].n==NAA_MAX_KEYS {r.code=NAA_FULL;return r;}
+    i=conn[0].n;conn[0].n+=1;
+  }
+  conn[0].k[i]=entry;r.code=code;return r;
+}
+// One AUTH event on a connection: e is the event (verified by event.coax),
+// c is noa_read(e), and signed is noa_signed(c). naa_auth passes them.
+naa_auth_fields :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,e:NostrEvent,c:NoaClaim,signed:bool)->NaaAuth {
+  a:NaaAuth;a.code=NAA_NIP42;key:=e.public_key;
+  x:=nip42_admit_fields(n,gen,now,e.error==NE_OK && e.verified,e.kind,e.created_at,e.original[e.tags_from..<e.tags_to],key[..]);
+  a.detail=x.error;
+  if x.error!=N42_OK {return a;}
+  a.code=NAA_STALE;
+  if e.created_at<now-NAA_WINDOW || e.created_at>now+NAA_WINDOW {return a;}
+  a.agent=key;entry:NaaKey;entry.key=key;
+  if naa_member(m,key) {return naa_grant(conn,a,entry,NAA_MEMBER);}
+  a.code=NAA_NO_AUTH;
+  if c.status==NOA_NONE {return a;}
+  a.code=NAA_REPEATED;
+  if c.status==NOA_REPEATED {return a;}
+  a.code=NAA_CREDENTIAL;a.detail=noa_decide(c,signed,e.kind,e.created_at,false,true);
+  if a.detail!=NOA_OK {return a;}
+  a.code=NAA_OWNER;a.owner=c.owner;
+  if !naa_member(m,c.owner) {return a;}
+  entry.derived=true;entry.owner=c.owner;entry.conditions=c.conditions;entry.n=c.n;
+  return naa_grant(conn,a,entry,NAA_VIRTUAL);
+}
+// The relay side for an AUTH event's JSON: event.coax checks its id and
+// signature, nipoa.coax reads its auth tag and checks the owner's
+// signature, then naa_auth_fields decides. scratch holds the id preimage.
+naa_auth :: (conn:[]NaaConnection,m:NaaMembers,n:[]Nip42,gen:int,now:int,text:string,scratch:[]u8)->NaaAuth {
+  e:=nostr_event_verify_vartime(text,scratch,false);c:=noa_read(e);
+  return naa_auth_fields(conn,m,n,gen,now,e,c,noa_signed(c));
+}
+// ["OK",<id>,true,""] or ["OK",<id>,false,<reason>] into out: its length,
+// or -1 when out is small.
+naa_reply :: (a:NaaAuth,id_hex:string,out:[]u8)->int {
+  k:=json_raw(out,0,"[\"OK\",");k=json_write_string(out,k,id_hex);
+  k=json_raw(out,k,ifx a.code<=NAA_VIRTUAL then ",true," else ",false,");
+  k=json_write_string(out,k,NAA_REASONS[a.code]);return json_raw(out,k,"]");
+}
+// book:end auth
+
+// book:begin privileges
+// An EVENT whose pubkey is key, of this kind: the key must be authenticated
+// on the connection (as a member or a virtual member). With enforce, a
+// virtual member's event must meet every kind= clause of its credential;
+// created_at clauses were evaluated at admission and are not again.
+naa_event :: (c:NaaConnection,key:[32]u8,kind:int,enforce:bool)->int {
+  i:=naa_find(c,key);
+  if i<0 {return NAA_E_UNAUTHENTICATED;}
+  d:=c;k:=d.k[i];
+  if enforce && !noa_conditions(cast(string)k.conditions[0..<k.n],NoaFacts.{kind=kind}).kinds {return NAA_E_KIND;}
+  return NAA_E_OK;
+}
+// REQ, COUNT and other reads: at least one key on the connection holds
+// active or virtual membership.
+naa_read :: (c:NaaConnection)->bool {return c.n>0;}
+// Relay administration and membership changes: never by a virtual member.
+// NAA_E_OK only for an authenticated member key; whether that member is an
+// admin is the relay's own list.
+naa_admin :: (c:NaaConnection,key:[32]u8)->int {
+  i:=naa_find(c,key);
+  if i<0 {return NAA_E_UNAUTHENTICATED;}
+  d:=c;return ifx d.k[i].derived then NAA_E_VIRTUAL else NAA_E_OK;
+}
+// Ends every entry on the connection that owner's membership admitted: its
+// own, and its agents'. The count removed. The relay calls it on each open
+// connection when it revokes owner and wants sessions to end now.
+naa_end :: (conn:[]NaaConnection,owner:[32]u8)->int {
+  removed:=0;i:=0;
+  while i<conn[0].n {
+    k:=conn[0].k[i];
+    if ns_equal32(k.key,owner) || (k.derived && ns_equal32(k.owner,owner)) {
+      conn[0].n-=1;conn[0].k[i]=conn[0].k[conn[0].n];removed+=1;
+    } else {i+=1;}
+  }
+  return removed;
+}
+// book:end privileges

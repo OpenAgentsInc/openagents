@@ -1,0 +1,49 @@
+// book:begin check
+#load "../agent-auth.coax";
+
+// Values from coax/tests/nostr/nipoa_reference.py, a pure-Python BIP-340
+// signer and NIP-01 serializer that shares no code with Coax. It also
+// confirms NIP-OA's published hash, auth_sig, tag bytes, event id and event
+// sig: all six are correct.
+PY_HASH :: "08cdecd55af4c28d3801fd69615dcf5cc04fab3bc134b38a840bf157197069a6";
+// sign(owner secret 1, sha256(preimage), 32 zero aux bytes).
+PY_OWNER_SIG :: "4fd007535ff75b35b6fa4696d4b1e04144d512b9ff74baca09dd9a1cac4c759d63d9c3645e1b8d86ab9198d21813d1f405d17327f0c99970df4bb9cded69fd76";
+// The same for the second owner (secret 3).
+PY_OTHER_SIG :: "c3e7657e3886b13a00b61f97549aeff0fee7df532fab8ed9d3f6769e9f1defd934dc59f1ca12565782ef1cd0725fbc18c866d8007b358a355a69497332c1b8b8";
+
+#test "the preimage and its hash are NIP-OA's and Python's" {
+  two := test_key(2); agent := public_x(two[..]); out: [NOA_TEXT_MAX] u8; h: [32] u8; hex: [64] u8;
+  #assert noa_preimage(agent, CONDS, out[..]) == 17 + 64 + 1 + 28;
+  #assert noa_hash(agent, CONDS, h[..]) && hex_of(h[..], hex[..]) == PY_HASH;
+}
+#test "the owners' signatures are Python's, byte for byte" #steps 2000000000 {
+  two := test_key(2); agent := public_x(two[..]); h: [32] u8; #assert noa_hash(agent, CONDS, h[..]);
+  aux: [32] u8; sig: [64] u8; hex: [128] u8;
+  one := test_key(1); sign_hash(one[..], aux[..], h[..], sig[..]);
+  #assert hex_of(sig[..], hex[..]) == PY_OWNER_SIG;
+  three := test_key(3); sign_hash(three[..], aux[..], h[..], sig[..]);
+  #assert hex_of(sig[..], hex[..]) == PY_OTHER_SIG;
+}
+#test "the agent's AUTH event is Python's, byte for byte" #steps 2000000000 {
+  key := test_key(2); aux: [32] u8; ev: [2048] u8;
+  text := sign_event(key[..], aux[..], T, 22242, "[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"challenge-87\"],[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1&created_at<1713957000\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]]", "", ev[..]);
+  #assert text == NAA_T_AUTH && text.count == 648;
+}
+#test "NIP-OA's signed event: id, sig and tag verify; the agent is the author" #steps 2000000000 {
+  scratch: [2048] u8; e := nostr_event_verify_vartime(NIP_EVENT, scratch[..], false);
+  #assert e.verified;
+  a := noa_attribute(e); hex: [64] u8;
+  #assert a.status == NOA_OK && a.authorized && hex_of(a.author[..], hex[..]) == NOA_T_AGENT;
+  #assert hex_of(a.owner[..], hex[..]) == NOA_T_OWNER;
+}
+#test "the relay on Python's AUTH event: virtual, then refused once the owner is revoked" #steps 2000000000 {
+  m: [1] NaaMembers; #assert naa_add(m[..], noa_k(NOA_T_OWNER));
+  n: [1] Nip42; n[0] = naa_n42(); scratch: [2048] u8;
+  conn: [1] NaaConnection;
+  #assert naa_auth(conn[..], m[0], n[..], 1, NAA_T_NOW, NAA_T_AUTH, scratch[..]).code == NAA_VIRTUAL;
+  #assert naa_remove(m[..], noa_k(NOA_T_OWNER));
+  fresh: [1] NaaConnection;
+  a := naa_auth(fresh[..], m[0], n[..], 1, NAA_T_NOW, NAA_T_AUTH, scratch[..]);
+  #assert a.code == NAA_OWNER && fresh[0].n == 0 && conn[0].n == 1;
+}
+// book:end check

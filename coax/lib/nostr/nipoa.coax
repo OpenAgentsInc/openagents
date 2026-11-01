@@ -1,0 +1,336 @@
+// NIP-OA owner attestation (Block). Pinned spec: nostr/nips/block/NIP-OA.md.
+//
+// An owner key authorizes an agent key with a tag on the agent's event:
+// ["auth", owner, conditions, sig]. sig is the owner's BIP-340 signature of
+// sha256("nostr:agent-auth:" + agent's hex pubkey + ":" + conditions). The
+// agent stays the event's only author: noa_attribute names event.pubkey as
+// the author whatever the tag says, and reports the owner only as "authorized
+// by" when the tag verifies. NIP-26's tag (nip26.coax) has the same shape and
+// a different domain string; this file never reads it as delegation.
+//
+// Conditions: the empty string, or clauses joined by '&', each kind=N
+// (0 to 65535), created_at<T or created_at>T (0 to 4294967295), N and T
+// canonical decimal (no sign, no leading zero except "0"). Every clause must
+// hold, so kind=1&kind=7 authorizes no event. Anything else refuses: an empty
+// clause, whitespace, another field or operator, a number out of range. The
+// conditions are hashed exactly as the tag carries them (after JSON
+// unescaping), never reordered or normalized.
+//
+// Order of the checks (NIP-AA step 4 uses the same order): exactly one auth
+// tag of exactly four elements; the owner key and the signature are
+// lowercase hex of 32 and 64 bytes; the owner is not the signer; the
+// conditions read; the signature verifies; then the event meets the
+// clauses. noa_read does everything up to the signature, so a caller can
+// decide which clauses to evaluate (NIP-AA evaluates no kind= clause at
+// admission); noa_check is the whole NIP-OA check on one event.
+//
+// The caller passes an event from nostr_event_verify_vartime: NIP-OA says
+// an auth tag on an event whose id or sig is invalid establishes nothing,
+// so an event that isn't verified refuses as NOA_EVENT. Nothing here reads
+// a clock: created_at clauses constrain the event's own created_at.
+#load "tags.coax";
+#load "nip34-event.coax";
+#load "../../tests/nostr/nipoa_fixtures.coax";
+#authority;
+
+NOA_OK :: 0;          // the owner's signature verifies and the event meets every clause
+NOA_EVENT :: 1;       // not a verified event, or its tags don't read
+NOA_NONE :: 2;        // no auth tag
+NOA_REPEATED :: 3;    // more than one auth tag
+NOA_SHAPE :: 4;       // not exactly four elements
+NOA_HEX :: 5;         // the owner or the signature is not lowercase hex of 32 or 64 bytes
+NOA_SELF :: 6;        // the owner is the event's own pubkey
+NOA_CONDITIONS :: 7;  // the conditions don't read, or are longer than NOA_MAX_CONDITIONS
+NOA_SIGNATURE :: 8;   // not the owner's signature of the preimage
+NOA_OUTSIDE :: 9;     // the signature verifies, the event breaks a clause
+NOA_UNCHECKED :: 10;  // noa_read: everything reads, the signature is not checked yet
+NOA_MAX_CONDITIONS :: 256; NOA_TEXT_MAX :: 17+65+NOA_MAX_CONDITIONS;  // prefix, hex, colon, conditions
+NOA_PREFIX :: "nostr:agent-auth:";
+NOA_MAX_KIND :: 65535; NOA_MAX_TIME :: 4294967295;
+
+// book:begin record
+NoaClaim :: struct {
+  status:int=NOA_EVENT;
+  owner:[32]u8;                            // whom the tag names
+  sig:[64]u8;                              // the owner's claimed signature
+  conditions:[NOA_MAX_CONDITIONS]u8; n:int;  // exactly as signed
+  hash:[32]u8;                             // sha256 of the preimage
+}
+// The author is always the agent. owner is set only when the tag verifies.
+NoaAttribution :: struct {author:[32]u8; authorized:bool; owner:[32]u8; status:int;}
+// The event fields clauses are evaluated against, and what held.
+NoaFacts :: struct {kind:int; created_at:int;}
+NoaHeld :: struct {read:bool; kinds:bool; times:bool;}
+// book:end record
+
+#test "conditions: every clause holds, strictly; kinds and times can be skipped" {
+  #assert noa_eval(NOA_T_CONDS,1,1713956999,true,true)==NOA_OK && noa_eval(NOA_T_CONDS,1,0,true,true)==NOA_OK;
+  #assert noa_eval(NOA_T_CONDS,1,1713957000,true,true)==NOA_OUTSIDE && noa_eval(NOA_T_CONDS,7,1,true,true)==NOA_OUTSIDE;
+  #assert noa_eval(NOA_T_CONDS,7,1,false,true)==NOA_OK && noa_eval(NOA_T_CONDS,1,1713957000,true,false)==NOA_OK;
+  #assert noa_eval(NOA_T_CONDS,7,1713957000,false,false)==NOA_OK;
+  #assert noa_eval("kind=1&kind=7",1,1,true,true)==NOA_OUTSIDE && noa_eval("kind=1&kind=7",7,1,true,true)==NOA_OUTSIDE;
+  #assert noa_eval("kind=1&kind=7",7,1,false,true)==NOA_OK;
+  #assert noa_eval("created_at>5",9,6,true,true)==NOA_OK && noa_eval("created_at>5",9,5,true,true)==NOA_OUTSIDE;
+  #assert noa_eval("created_at>5",9,5,true,false)==NOA_OK;
+  #assert noa_eval("",7,99,true,true)==NOA_OK && noa_eval("kind=0",0,9,true,true)==NOA_OK;
+  #assert noa_eval("kind=65535",65535,1,true,true)==NOA_OK && noa_eval("created_at<4294967295",1,4294967294,true,true)==NOA_OK;
+  #assert noa_eval("created_at<0",1,0,true,true)==NOA_OUTSIDE && noa_eval("created_at>4294967295",1,4294967296,true,true)==NOA_OK;
+  #assert noa_eval("created_at<5&created_at>1",1,3,true,true)==NOA_OK && noa_eval("created_at<5&created_at>1",1,1,true,true)==NOA_OUTSIDE;
+}
+#test "conditions that don't read refuse, whether or not they are evaluated" {
+  bad:=[28]string.["kind=1:","created_at>4294967296","created_at<1:","&","kind=1&","&kind=1","kind=1&&created_at<5","kind<1","created_at=5","kinds=1","kind=","kind=01",
+    "kind=-1","kind=65536","created_at<4294967296","created_at<99999999999999999999","created_at>1a","Kind=1","kind =1",
+    " kind=1","created_at","kind=1 ","created_at<=5","ind=1","kind=1/","kind=+1","created_at<00","kind==1"];
+  for s:bad {
+    #assert noa_eval(s,1,1,true,true)==NOA_CONDITIONS && noa_eval(s,1,1,false,false)==NOA_CONDITIONS;
+  }
+  #assert noa_eval("kind=0&created_at<1",1,0,true,true)==NOA_OUTSIDE && noa_eval("created_at<0",1,0,false,true)==NOA_OUTSIDE;
+  #assert noa_eval("created_at>0",1,1,true,true)==NOA_OK && noa_eval("created_at<0",1,0,true,false)==NOA_OK;
+  // 34 kind clauses and one created_at clause: 256 bytes read, 257 don't.
+  text:[300]u8;n:=0;
+  for i:0..<34 {n=json_raw(text[..],n,"kind=1&");}
+  n=json_raw(text[..],n,"created_at<1234567");
+  #assert n==256 && noa_eval(cast(string)text[0..<n],1,9,true,true)==NOA_OK;
+  agent:=noa_k(NOA_T_AGENT);h:[32]u8;
+  #assert noa_hash(agent,cast(string)text[0..<n],h[..]);
+  n=json_raw(text[..],n,"8");
+  #assert !noa_hash(agent,cast(string)text[0..<n],h[..]);
+}
+#test "the preimage and its hash: NIP-OA's test vector" {
+  agent:=noa_k(NOA_T_AGENT);out:[400]u8;
+  n:=noa_preimage(agent,NOA_T_CONDS,out[..]);
+  #assert n==110 && cast(string)out[0..<n]=="nostr:agent-auth:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:kind=1&created_at<1713957000";
+  small:[109]u8;#assert noa_preimage(agent,NOA_T_CONDS,small[..])== -1;
+  exact:[110]u8;#assert noa_preimage(agent,NOA_T_CONDS,exact[..])==110 && exact[81]==':' && exact[80]=='5' && exact[109]=='0';
+  #assert noa_preimage(agent,"",out[..])==82 && out[81]==':';
+  h:[32]u8;want:=noa_k(NOA_T_HASH);
+  #assert noa_hash(agent,NOA_T_CONDS,h[..]);
+  for i:0..<32 {#assert h[i]==want[i];}
+  #assert !noa_hash(agent,NOA_T_CONDS,h[0..<31]);
+  long:[257]u8;for i:0..<257 {long[i]='k';}
+  #assert !noa_hash(agent,cast(string)long[..],h[..]);
+}
+#test "reading a tag: everything up to the signature" {
+  buf:[1024]u8;tags:=noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  c:=noa_read(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,tags));
+  owner:=noa_k(NOA_T_OWNER);want:=noa_k(NOA_T_HASH);
+  #assert c.status==NOA_UNCHECKED && cast(string)c.conditions[0..<c.n]==NOA_T_CONDS && c.sig[0]==0x8b && c.sig[63]==0x69;
+  for i:0..<32 {#assert c.owner[i]==owner[i] && c.hash[i]==want[i];}
+  // An escaped spelling of the same strings is the same tag.
+  esc:="[[\"auth\",\"\\u0037\\u0039be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1\\u0026created_at<1713957000\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]]";
+  d:=noa_read(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,esc));
+  #assert d.status==NOA_UNCHECKED && d.owner[0]==0x79 && d.n==28;
+  for i:0..<32 {#assert d.hash[i]==want[i];}
+  // The empty conditions string reads.
+  #assert noa_rstatus(noa_tags(NOA_T_OWNER,"",NOA_T_SIG,buf[..]))==NOA_UNCHECKED;
+  // Reading evaluates no clause: a kind 7 event, a time past the window.
+  #assert noa_read(noa_ev(NOA_T_AGENT,7,1713957000,tags)).status==NOA_UNCHECKED;
+  #assert noa_rstatus(noa_tags(NOA_T_OWNER,"created_at>1713956400",NOA_T_SIG,buf[..]))==NOA_UNCHECKED;
+  // A value longer than any key unescapes past the buffer and refuses.
+  long:[200]u8;for i:0..<200 {long[i]='a';}
+  #assert noa_rstatus(noa_tags(NOA_T_OWNER,NOA_T_CONDS,cast(string)long[..],buf[..]))==NOA_HEX;
+  #assert noa_rstatus(noa_tags(cast(string)long[..],NOA_T_CONDS,NOA_T_SIG,buf[..]))==NOA_HEX;
+}
+#test "NIP-OA's invalid vectors and the other refusals, before the signature" {
+  buf:[1024]u8;tags:=noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  // Two auth tags.
+  two:[2048]u8;n:=json_raw(two[..],0,tags[0..<tags.count-1]);n=json_raw(two[..],n,",");n=json_raw(two[..],n,tags[1..<tags.count]);
+  #assert noa_rstatus(cast(string)two[0..<n])==NOA_REPEATED;
+  // Fewer or more than four elements.
+  #assert noa_rstatus("[[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1\"]]")==NOA_SHAPE;
+  #assert noa_rstatus("[[\"auth\"]]")==NOA_SHAPE && noa_rstatus("[[\"auth\",\"a\",\"b\",\"c\",\"d\"]]")==NOA_SHAPE;
+  // A trailing delimiter, a leading zero.
+  #assert noa_cstatus("kind=1&")==NOA_CONDITIONS && noa_cstatus("kind=01")==NOA_CONDITIONS;
+  // Self-attestation.
+  self:=noa_tags(NOA_T_AGENT,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  #assert noa_rstatus(self)==NOA_SELF;
+  // An event that isn't verified, or isn't parsed.
+  e:=noa_ev(NOA_T_AGENT,1,NOA_T_TIME,tags);e.verified=false;#assert noa_read(e).status==NOA_EVENT;
+  e.verified=true;e.error=NE_ID;#assert noa_read(e).status==NOA_EVENT;
+  #assert noa_rstatus(tags[0..<tags.count-1])==NOA_EVENT && noa_rstatus("[[\"auth\",1,2,3]]")==NOA_EVENT;
+  // No auth tag; a NIP-26 delegation tag is not one.
+  #assert noa_rstatus("[]")==NOA_NONE && noa_rstatus("[[\"delegation\",\"a\",\"b\",\"c\"],[\"authx\",\"a\"]]")==NOA_NONE;
+  // Hex: uppercase, short, long, a short signature.
+  #assert noa_rstatus(noa_tags("79BE667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",NOA_T_CONDS,NOA_T_SIG,buf[..]))==NOA_HEX;
+  #assert noa_rstatus(noa_tags(NOA_T_OWNER[0..<62],NOA_T_CONDS,NOA_T_SIG,buf[..]))==NOA_HEX;
+  #assert noa_rstatus(noa_tags("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",NOA_T_CONDS,NOA_T_SIG,buf[..]))==NOA_HEX;
+  #assert noa_rstatus(noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG[0..<126],buf[..]))==NOA_HEX;
+  #assert noa_rstatus(noa_tags(NOA_T_OWNER,NOA_T_CONDS,"",buf[..]))==NOA_HEX;
+  // The hex checks come before self and conditions.
+  #assert noa_rstatus(noa_tags(NOA_T_AGENT,"kind=01",NOA_T_SIG[0..<2],buf[..]))==NOA_HEX;
+  #assert noa_rstatus(noa_tags(NOA_T_AGENT,"kind=01",NOA_T_SIG,buf[..]))==NOA_SELF;
+  // Conditions past the limit.
+  long:[257]u8;for i:0..<257 {long[i]='k';}
+  big:[1024]u8;c:=noa_read(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,noa_tags(NOA_T_OWNER,cast(string)long[..],NOA_T_SIG,big[..])));
+  #assert c.status==NOA_CONDITIONS && c.n==0;
+}
+#test "deciding a read claim with a signature verdict" {
+  buf:[1024]u8;tags:=noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  c:=noa_read(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,tags));
+  #assert noa_decide(c,true,1,NOA_T_TIME,true,true)==NOA_OK && noa_decide(c,false,1,NOA_T_TIME,true,true)==NOA_SIGNATURE;
+  #assert noa_decide(c,true,7,NOA_T_TIME,true,true)==NOA_OUTSIDE && noa_decide(c,true,7,NOA_T_TIME,false,true)==NOA_OK;
+  #assert noa_decide(c,true,1,1713957000,true,true)==NOA_OUTSIDE && noa_decide(c,true,1,1713957000,true,false)==NOA_OK;
+  #assert noa_decide(c,false,7,1713957000,true,true)==NOA_SIGNATURE;
+  s:=noa_read(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,noa_tags(NOA_T_AGENT,NOA_T_CONDS,NOA_T_SIG,buf[..])));
+  #assert noa_decide(s,true,1,NOA_T_TIME,true,true)==NOA_SELF;
+}
+#test "the owner's tag is NIP-OA's tag line, byte for byte" {
+  owner:=noa_k(NOA_T_OWNER);sig:[64]u8;#assert ne_lower_hex(NOA_T_SIG,sig[..]);
+  out:[400]u8;n:=noa_write_tag(owner,NOA_T_CONDS,sig,out[..],0);
+  #assert n==237 && cast(string)out[0..<n]=="[\"auth\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind=1&created_at<1713957000\",\"8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369\"]";
+  out[0]='[';#assert noa_write_tag(owner,NOA_T_CONDS,sig,out[..],1)==238 && out[1]=='[' && out[2]=='"';
+  #assert noa_write_tag(owner,"",sig,out[..],0)==209 && noa_write_tag(owner,"kind=01",sig,out[..],0)== -1;
+  #assert noa_write_tag(owner,NOA_T_CONDS,sig,out[0..<236],0)== -1;
+}
+#test "NIP-OA's tag verifies on the agent's kind 1 event; altered conditions refuse" #steps 2000000000 {
+  buf:[1024]u8;tags:=noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  a:=noa_attribute(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,tags));
+  agent:=noa_k(NOA_T_AGENT);owner:=noa_k(NOA_T_OWNER);
+  #assert a.status==NOA_OK && a.authorized;
+  for i:0..<32 {#assert a.author[i]==agent[i] && a.owner[i]==owner[i];}
+  // The agent stretches its window by one second: the owner never signed that.
+  b:=noa_attribute(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,noa_tags(NOA_T_OWNER,"kind=1&created_at<1713957001",NOA_T_SIG,buf[..])));
+  #assert b.status==NOA_SIGNATURE && !b.authorized && b.owner[0]==0;
+  for i:0..<32 {#assert b.author[i]==agent[i];}
+}
+#test "outside the clauses, and before the signature, nothing is authorized" #steps 2000000000 {
+  buf:[1024]u8;tags:=noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  #assert noa_check(noa_ev(NOA_T_AGENT,7,NOA_T_TIME,tags)).status==NOA_OUTSIDE;
+  #assert noa_check(noa_ev(NOA_T_AGENT,1,1713957000,tags)).status==NOA_OUTSIDE;
+  a:=noa_attribute(noa_ev(NOA_T_AGENT,1,NOA_T_TIME,"[]"));
+  #assert a.status==NOA_NONE && !a.authorized && a.author[0]==0xc6 && a.owner[0]==0;
+}
+
+// book:begin conditions
+// s as a canonical decimal number from 0 to max, or -1.
+noa_number :: (s:string,max:int)->int {
+  if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
+  v:=0;
+  for c:s {
+    if c<'0' || c>'9' {return -1;}
+    v=v*10+cast(int)(c-'0');
+    if v>max {return -1;}
+  }
+  return v;
+}
+// Whether the conditions read, and whether an event of facts' kind and
+// created_at meets every kind= clause and every created_at clause. Every
+// clause is read; the caller decides which kinds of clause count.
+noa_conditions :: (text:string,facts:NoaFacts)->NoaHeld {
+  h:=NoaHeld.{read=true,kinds=true,times=true};bad:NoaHeld;
+  if text.count==0 {return h;}
+  from:=0;
+  while from<=text.count {
+    i:=from;while i<text.count && text[i]!='&' {i+=1;}
+    c:=text[from..<i];from=i+1;
+    // The name ends at the first operator.
+    p:=0;while p<c.count && c[p]!='=' && c[p]!='<' && c[p]!='>' {p+=1;}
+    if p==c.count {return bad;}
+    name:=c[0..<p];op:=c[p];max:=NOA_MAX_TIME;
+    if name=="kind" && op=='=' {max=NOA_MAX_KIND;}
+    else if name!="created_at" || op=='=' {return bad;}
+    v:=noa_number(c[p+1..<c.count],max);
+    if v<0 {return bad;}
+    if op=='=' {if facts.kind!=v {h.kinds=false;}}
+    else if op=='<' {if facts.created_at>=v {h.times=false;}}
+    else if facts.created_at<=v {h.times=false;}
+  }
+  return h;
+}
+// book:end conditions
+
+// book:begin preimage
+// "nostr:agent-auth:<agent hex>:<conditions>" into out: its length, or -1.
+noa_preimage :: (agent:[32]u8,conditions:string,out:[]u8)->int {
+  if out.count<NOA_PREFIX.count+65+conditions.count {return -1;}
+  key:=agent;hex:[64]u8;h:=hex_encode_checked(cast(string)key[..],hex[..],false);
+  for i:0..<NOA_PREFIX.count {out[i]=NOA_PREFIX[i];}
+  n:=NOA_PREFIX.count;
+  for i:0..<64 {out[n+i]=hex[i];}
+  n+=64;out[n]=':';n+=1;
+  for i:0..<conditions.count {out[n+i]=conditions[i];}
+  return n+conditions.count;
+}
+// The message the owner signs: sha256 of the preimage, into out (32
+// bytes). False when the conditions are longer than NOA_MAX_CONDITIONS.
+noa_hash :: (agent:[32]u8,conditions:string,out:[]u8)->bool {
+  if conditions.count>NOA_MAX_CONDITIONS {return false;}
+  text:[NOA_TEXT_MAX]u8;
+  n:=noa_preimage(agent,conditions,text[..]);
+  return sha256_hash_checked(text[0..<n],out,false)==SHA_OK;
+}
+// book:end preimage
+
+// book:begin read
+// A tag value unescaped and read as lowercase hex of out.count bytes.
+noa_hex :: (raw:string,out:[]u8)->bool {
+  buf:[128]u8;n:=json_unescape(raw,buf[..]);
+  return n!=-1 && ne_lower_hex(cast(string)buf[0..<n],out);
+}
+noa_status :: (c:NoaClaim,status:int)->NoaClaim {r:=c;r.status=status;return r;}
+// The event's auth tag read and checked up to the signature: NOA_UNCHECKED
+// with the owner, the signature, the conditions and the hash, or the first
+// refusal.
+noa_read :: (e:NostrEvent)->NoaClaim {
+  c:NoaClaim;
+  if e.error!=NE_OK || !e.verified {return c;}
+  ev:=nt_event_of(e);
+  count:=nt_tags(ev,"auth");
+  if count<0 {return c;}
+  if count==0 {return noa_status(c,NOA_NONE);}
+  if count>1 {return noa_status(c,NOA_REPEATED);}
+  t:=nt_tag(ev,"auth",0);
+  if t.values!=3 {return noa_status(c,NOA_SHAPE);}
+  if !noa_hex(nt_raw(ev,t.v[0]),c.owner[..]) || !noa_hex(nt_raw(ev,t.v[2]),c.sig[..]) {return noa_status(c,NOA_HEX);}
+  if ns_equal32(c.owner,e.public_key) {return noa_status(c,NOA_SELF);}
+  c.n=json_unescape(nt_raw(ev,t.v[1]),c.conditions[..]);
+  if c.n<0 {c.n=0;return noa_status(c,NOA_CONDITIONS);}
+  conditions:=cast(string)c.conditions[0..<c.n];
+  if !noa_conditions(conditions,NoaFacts.{}).read {return noa_status(c,NOA_CONDITIONS);}
+  if !noa_hash(e.public_key,conditions,c.hash[..]) {return c;}
+  return noa_status(c,NOA_UNCHECKED);
+}
+// book:end read
+
+// book:begin decide
+// A read claim decided with the signature's verdict (signed) against an
+// event of this kind and time; kinds and times say which clauses count.
+noa_decide :: (c:NoaClaim,signed:bool,kind:int,created_at:int,kinds:bool,times:bool)->int {
+  if c.status!=NOA_UNCHECKED {return c.status;}
+  if !signed {return NOA_SIGNATURE;}
+  d:=c;h:=noa_conditions(cast(string)d.conditions[0..<d.n],NoaFacts.{kind=kind,created_at=created_at});
+  if (kinds && !h.kinds) || (times && !h.times) {return NOA_OUTSIDE;}
+  return NOA_OK;
+}
+// Whether the owner signed the claim's hash. Only a claim that read.
+noa_signed :: (c:NoaClaim)->bool {
+  d:=c;return d.status==NOA_UNCHECKED && nostr_verify_vartime(d.hash[..],d.owner[..],d.sig[..]);
+}
+// The whole NIP-OA check on one verified event: every clause evaluated.
+noa_check :: (e:NostrEvent)->NoaClaim {
+  c:=noa_read(e);
+  return noa_status(c,noa_decide(c,noa_signed(c),e.kind,e.created_at,true,true));
+}
+// The event's author is its signer. The owner is reported only as the key
+// that authorized it, and only when the tag verifies.
+noa_attribute :: (e:NostrEvent)->NoaAttribution {
+  c:=noa_check(e);a:=NoaAttribution.{author=e.public_key,status=c.status};
+  if c.status==NOA_OK {a.authorized=true;a.owner=c.owner;}
+  return a;
+}
+// book:end decide
+
+// book:begin write
+// ["auth",owner,conditions,sig] into out at n, for an owner who signed
+// noa_hash's message: the new length, or -1 when the conditions don't read
+// or out is small.
+noa_write_tag :: (owner:[32]u8,conditions:string,sig:[64]u8,out:[]u8,at:int)->int {
+  if !noa_conditions(conditions,NoaFacts.{}).read {return -1;}
+  o:=owner;s:=sig;ohex:[64]u8;shex:[128]u8;
+  h:=hex_encode_checked(cast(string)o[..],ohex[..],false);
+  h=hex_encode_checked(cast(string)s[..],shex[..],false);
+  n:=json_raw(out,at,"[\"auth\",\"");n=json_raw(out,n,cast(string)ohex[..]);n=json_raw(out,n,"\",");
+  n=json_write_string(out,n,conditions);
+  n=json_raw(out,n,",\"");n=json_raw(out,n,cast(string)shex[..]);return json_raw(out,n,"\"]");
+}
+// book:end write

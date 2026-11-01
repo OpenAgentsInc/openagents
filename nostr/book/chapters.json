@@ -1815,13 +1815,20 @@
    "number": 87,
    "title": "Owner attestation and agent authentication",
    "file": "ch087-owner-attestation-and-agent-authentication.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     38
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipoa.coax",
+    "coax/lib/nostr/nipaa.coax",
+    "nostr/examples/agent-auth.coax",
+    "nostr/examples/checks/agent-auth.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
