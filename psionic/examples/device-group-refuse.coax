@@ -1,0 +1,27 @@
+#import "Basic";
+#load "../lib/transformer/device-group.coax";
+
+// book:begin refuse
+// Chapter 132: groups the plan refuses, and steps the gather refuses. A
+// refused step writes no parameter or moment and leaves the run where it
+// was; the same batch retried with every device in time is the step that
+// was never interrupted.
+main :: () {
+    print("0 devices: %\n",dg_status(dg_plan(0,4,DgCollective.chain).status));
+    print("5 devices for 4 rows: %\n",dg_status(dg_plan(5,4,DgCollective.chain).status));
+    print("a tree over 3 devices: %\n",dg_status(dg_plan(3,4,DgCollective.tree).status));
+    print("a ring over 4 devices: %\n",dg_status(dg_plan(4,4,DgCollective.ring).status));
+
+    f:=tt_fix();c:=gt_config(TT_SMALL,4,3);run:=gt_start(c,f,220);x:=dg_small();p:=dg_plan(4,4,DgCollective.chain);
+    whole:=dg_small_run(c,f,p,run,1,x,false);rows:[32]u8;b:=gt_next(c,run,f.docs[..],f.tokens[0..<f.n],rows[..]);
+    what:=[4]string.["device 2's report is lost","device 1 reports 100 ticks late","device 3 reports twice","device 0 reports a failure"];
+    faults:=[4]DgFault.[DgFault.{device=2,lost=true},DgFault.{device=1,delay=100},DgFault.{device=3,again=true},DgFault.{device=0,failed=true}];
+    for k:0..<4 {s:=dg_small_step(c,p,run,b,rows[..],x,faults[k]);
+        print("%: %, device %; revision %, parameters and moments unchanged: %\n",what[k],dg_status(s.step.status),s.step.device,s.step.step.run.revision,
+            tr_same(s.x.p[..],x.p[..]) && tr_same(s.x.m[..],x.m[..]) && tr_same(s.x.v[..],x.v[..]));
+        r:=dg_small_step(c,p,run,b,rows[..],s.x,DgFault.{});
+        print("  retried with every device in time: %, revision %, equal to the uninterrupted step: %\n",dg_status(r.step.status),r.step.step.run.revision,tr_same(r.x.p[..],whole.x.p[..]) && tr_same(r.x.v[..],whole.x.v[..]));}
+    old:=b;old.revision=1;s:=dg_small_step(c,p,run,old,rows[..],x,DgFault.{});
+    print("every device computed a batch of revision 1 while the run is at 0: %, device %\n",dg_status(s.step.status),s.step.device);
+}
+// book:end refuse

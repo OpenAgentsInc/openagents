@@ -1,0 +1,13 @@
+0 devices: refused: from 1 to 64 devices
+5 devices for 4 rows: refused: from 1 to 64 rows a step, at least one a device
+a tree over 3 devices: refused: this all-reduce's additions would depend on the device count
+a ring over 4 devices: refused: this all-reduce's additions would depend on the device count
+device 2's report is lost: refused: a device did not report, device 2; revision 0, parameters and moments unchanged: true
+  retried with every device in time: admitted, revision 1, equal to the uninterrupted step: true
+device 1 reports 100 ticks late: refused: a device reported after the deadline, device 1; revision 0, parameters and moments unchanged: true
+  retried with every device in time: admitted, revision 1, equal to the uninterrupted step: true
+device 3 reports twice: refused: a device reported twice, device 3; revision 0, parameters and moments unchanged: true
+  retried with every device in time: admitted, revision 1, equal to the uninterrupted step: true
+device 0 reports a failure: refused: a device reported a failure, device 0; revision 0, parameters and moments unchanged: true
+  retried with every device in time: admitted, revision 1, equal to the uninterrupted step: true
+every device computed a batch of revision 1 while the run is at 0: refused: a device reported for another step or other rows, device 0

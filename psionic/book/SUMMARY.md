@@ -143,7 +143,7 @@
 - [129. Train a whole model on one GPU](ch129-train-a-whole-model-on-one-gpu.md) — partly implemented
 - [130. Profile a training step](ch130-profile-a-training-step.md) — partly implemented
 - [131. Train the same model eager and compiled](ch131-train-the-same-model-eager-and-compiled.md) — partly implemented
-- [132. Train across devices](ch132-train-across-devices.md) — design draft
+- [132. Train across devices](ch132-train-across-devices.md) — partly implemented
 - [133. A tensor spread over devices](ch133-a-tensor-spread-over-devices.md) — design draft
 - [134. Data-parallel training](ch134-data-parallel-training.md) — design draft
 - [135. Fully sharded training](ch135-fully-sharded-training.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–131, 137, 140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 180, 188, 195, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–132, 137, 140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 180, 188, 195, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

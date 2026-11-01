@@ -2047,6 +2047,28 @@
       "timeout": 300
     },
     {
+      "source": "psionic/examples/device-group.coax",
+      "chapter": "psionic/book/ch132-train-across-devices.md",
+      "stdout": "psionic/fixtures/device-group.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
+      "source": "psionic/examples/device-group-refuse.coax",
+      "chapter": "psionic/book/ch132-train-across-devices.md",
+      "stdout": "psionic/fixtures/device-group-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "psionic/examples/pretrain.coax",
       "chapter": "psionic/book/ch128-a-complete-pretraining-run.md",
       "stdout": "psionic/fixtures/pretrain.out",

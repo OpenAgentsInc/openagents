@@ -1,0 +1,27 @@
+4 rows over 3 devices: admitted
+  device 0 owns rows 0 to 0
+  device 1 owns rows 1 to 1
+  device 2 owns rows 2 to 3
+one all-reduce of 3152 binary64 values, 5000 ns a hop, 25000 bytes a microsecond:
+  2 devices, chain: 2 hops, 50432 bytes on the longest path, 50432 bytes in all, 12017 ns
+  2 devices, tree: 2 hops, 50432 bytes on the longest path, 50432 bytes in all, 12017 ns
+  2 devices, ring: 2 hops, 25216 bytes on the longest path, 50432 bytes in all, 11008 ns
+  4 devices, chain: 6 hops, 151296 bytes on the longest path, 151296 bytes in all, 36051 ns
+  4 devices, tree: 4 hops, 100864 bytes on the longest path, 151296 bytes in all, 24034 ns
+  4 devices, ring: 6 hops, 37824 bytes on the longest path, 151296 bytes in all, 31512 ns
+  8 devices, chain: 14 hops, 353024 bytes on the longest path, 353024 bytes in all, 84120 ns
+  8 devices, tree: 6 hops, 151296 bytes on the longest path, 353024 bytes in all, 36051 ns
+  8 devices, ring: 14 hops, 44128 bytes on the longest path, 353024 bytes in all, 71765 ns
+the same at a billion values, 8 devices:
+  chain: 4480070000 ns
+  tree: 1920030000 ns
+  ring: 560070000 ns
+three steps at the checks' small shape, 4 rows a step; chapter 129's single-device losses: 2.9360807937186078 2.761001189796394 2.7893926020018047
+  chain, 1 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
+  chain, 2 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
+  chain, 3 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
+  chain, 4 devices: admitted, losses, parameters and moments equal chapter 129's bit for bit: true
+  tree, 1 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 7 of 220 differ in bits, 0 past the tolerance
+  tree, 2 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 7 of 220 differ in bits, 0 past the tolerance
+  tree, 4 devices: parameters equal the 1-device tree's bit for bit: true; against chapter 129's, 7 of 220 differ in bits, 0 past the tolerance
+saved at 4 devices after step 2 (ok), resumed at 3 devices: step 3 loss 2.7893926020018047, weights equal the uninterrupted run: true

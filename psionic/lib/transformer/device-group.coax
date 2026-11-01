@@ -1,0 +1,348 @@
+// Chapter 132: train across devices (device-group-v1). A device group is N
+// logical devices that split each step's rows: device d computes the
+// gradients of a contiguous run of rows with chapter 129's row kernel
+// (gk_rows), reports that it is done, and an all-reduce in a fixed order
+// turns the rows' gradients into the step's mean gradient. The rest of the
+// step is chapter 129's: the norm, gt_decide, AdamW into the stage, the
+// admission flags and gt_commit. Every parameter, moment and the run are
+// replicated: each device ends the step with the same values.
+//
+// This file decides who owns which rows (dg_plan, dg_first), whether every
+// device's report is admitted (dg_gather), the order of every addition in
+// the all-reduce (dg_chain, dg_tree) and whether a step commits. A step with
+// a missing, late, repeated or stale report never commits: the run, the
+// parameters and the moments stay as they were. dg_step_cpu runs the
+// devices one after another on the CPU in any arrival order; the bits do not
+// depend on that order. dg_cost is the communication model.
+#load "gpu-train.coax";
+#load "../../tests/device-group-checks.coax";  // the checks' buffers and runs
+#authority;
+
+DgStatus :: enum u8 {ok;devices;rows;collective;missing;twice;stale;late;failed;}
+DgCollective :: enum u8 {chain;tree;ring;}
+DG_MAX_DEVICES :: 64;
+DG_MAX_ROWS :: 64;
+
+// ---- Checks first. Their buffers and runs are in psionic/tests/device-group-checks.coax.
+#test "plans by hand, and every refusal" {
+    p:=dg_plan(3,4,DgCollective.chain);#assert p.status==DgStatus.ok && p.devices==3 && p.rows==4 && p.collective==DgCollective.chain;
+    // 4 rows over 3 devices: 0 | 1 | 2, 3.
+    #assert dg_first(p,0)==0 && dg_first(p,1)==1 && dg_first(p,2)==2 && dg_first(p,3)==4;
+    #assert dg_owner(p,0)==0 && dg_owner(p,1)==1 && dg_owner(p,2)==2 && dg_owner(p,3)==2 && dg_owner(p,4)==-1 && dg_owner(p,-1)==-1;
+    #assert dg_plan(1,1,DgCollective.chain).status==DgStatus.ok && dg_plan(DG_MAX_DEVICES,DG_MAX_ROWS,DgCollective.chain).status==DgStatus.ok;
+    #assert dg_plan(0,4,DgCollective.chain).status==DgStatus.devices && dg_plan(DG_MAX_DEVICES+1,DG_MAX_ROWS,DgCollective.chain).status==DgStatus.devices;
+    #assert dg_plan(1,0,DgCollective.chain).status==DgStatus.rows && dg_plan(1,DG_MAX_ROWS+1,DgCollective.chain).status==DgStatus.rows && dg_plan(5,4,DgCollective.chain).status==DgStatus.rows;
+    #assert dg_plan(4,4,DgCollective.chain).status==DgStatus.ok;
+    // The tree needs power-of-two device and row counts, so every device's rows are one subtree.
+    #assert dg_plan(4,8,DgCollective.tree).status==DgStatus.ok && dg_plan(1,1,DgCollective.tree).status==DgStatus.ok && dg_plan(2,2,DgCollective.tree).status==DgStatus.ok;
+    #assert dg_plan(3,4,DgCollective.tree).status==DgStatus.collective && dg_plan(2,6,DgCollective.tree).status==DgStatus.collective && dg_plan(4,12,DgCollective.tree).status==DgStatus.collective;
+    // The ring is a cost model only: its additions depend on the device count.
+    #assert dg_plan(4,4,DgCollective.ring).status==DgStatus.collective && dg_plan(4,4,DgCollective.ring).devices==4;
+    #assert dg_log2(1)==0 && dg_log2(2)==1 && dg_log2(3)==2 && dg_log2(4)==2 && dg_log2(5)==3 && dg_log2(64)==6;
+    #assert dg_power(1) && dg_power(2) && dg_power(64) && !dg_power(0) && !dg_power(3) && !dg_power(6) && !dg_power(-4);
+    #assert dg_status(DgStatus.ok)=="admitted" && dg_status(DgStatus.late)=="refused: a device reported after the deadline" && dg_status(DgStatus.missing)=="refused: a device did not report";
+    #assert dg_status(DgStatus.twice)=="refused: a device reported twice" && dg_status(DgStatus.stale)=="refused: a device reported for another step or other rows";
+    #assert dg_status(DgStatus.failed)=="refused: a device reported a failure" && dg_status(DgStatus.devices)=="refused: from 1 to 64 devices";
+    #assert dg_status(DgStatus.rows)=="refused: from 1 to 64 rows a step, at least one a device" && byte_at(dg_status(DgStatus.collective),9)==116;
+}
+#forall "row owners match a brute-force search, and the runs tile the rows" rows:1..<20,devices:1..<20 {
+    p:=dg_plan(devices,rows,DgCollective.chain);
+    if devices>rows {#assert p.status==DgStatus.rows;}
+    else {#assert p.status==DgStatus.ok && dg_first(p,0)==0 && dg_first(p,devices)==rows;
+        for d:0..<devices {#assert dg_first(p,d)<dg_first(p,d+1);}
+        for r:0..<rows {owner:=-1;for d:0..<devices {if dg_first(p,d)<=r && r<dg_first(p,d+1) {#assert owner==-1;owner=d;}}#assert owner==dg_owner(p,r);}}
+}
+#test "the chain by hand: each device continues the running sum" {
+    // Three rows of two parameters over two devices, rows 0 | 1, 2; the mean of each column.
+    g:=[6]f64.[2,-4,4,0,6,1];p:=dg_plan(2,3,DgCollective.chain);msgs:=[4]f64.[9,9,9,9];t:=[2]f64.[9,9];
+    dg_chain(p,0,2,g[..],msgs[..]);#assert msgs[0]==2.0/3 && msgs[1]==-4.0/3 && msgs[2]==9;
+    dg_chain(p,1,2,g[..],msgs[..]);#assert msgs[2]==2.0/3+4.0/3+6.0/3 && msgs[3]==-4.0/3+0.0/3+1.0/3;
+    dg_reduce(p,2,g[..],msgs[..],t[..]);#assert t[0]==msgs[2] && t[1]==msgs[3];
+    // The order where it matters: (1e16/4 + 1/4) - 1e16/4 + 1/4 is chapter 129's order, not 1/4 + 1/4.
+    h:=[4]f64.[1e16,1,-1e16,1];one:[1]f64;all:[4]f64;
+    for d:1..<5 {q:=dg_plan(d,4,DgCollective.chain);dg_reduce(q,1,h[..],all[0..<d],one[..]);#assert one[0]==1e16/4+1.0/4-1e16/4+1.0/4 && one[0]==0.25;}
+    gk_mean(0,4,1,h[..],one[..]);#assert one[0]==0.25;
+}
+#test "the tree by hand: rows in pairs, then pairs of pairs, at every device count" {
+    // (1e16/4 + 1/4) + (-1e16/4 + 1/4) = 0: the tree's own bits, not the chain's 0.25.
+    h:=[4]f64.[1e16,1,-1e16,1];one:[1]f64;part:[4]f64;
+    for d:[3]int.[1,2,4] {q:=dg_plan(d,4,DgCollective.tree);one[0]=9;dg_reduce(q,1,h[..],part[0..<d],one[..]);#assert one[0]==0;}
+    // Two parameters, eight rows, by hand.
+    g:=[16]f64.[1,8,2,7,3,6,4,5,5,4,6,3,7,2,8,1];t:[2]f64;
+    for d:[4]int.[1,2,4,8] {q:=dg_plan(d,8,DgCollective.tree);all:[16]f64;dg_reduce(q,2,g[..],all[0..<2*d],t[..]);
+        #assert t[0]==((1.0/8+2.0/8)+(3.0/8+4.0/8))+((5.0/8+6.0/8)+(7.0/8+8.0/8)) && t[1]==((8.0/8+7.0/8)+(6.0/8+5.0/8))+((4.0/8+3.0/8)+(2.0/8+1.0/8));}
+    // A device writes only its own slot.
+    q:=dg_plan(2,8,DgCollective.tree);s:=[4]f64.[9,9,9,9];dg_tree(q,1,2,g[..],s[..]);#assert s[0]==9 && s[1]==9 && s[2]==(5.0/8+6.0/8)+(7.0/8+8.0/8) && s[3]==(4.0/8+3.0/8)+(2.0/8+1.0/8);
+}
+#forall "the chain is chapter 129's mean at every device count; the tree's bits do not depend on the count" rows:1..<17,seed:0..<3 {
+    g:[48]f64;for i:0..<3*rows {g[i]=dg_value(i,seed);}
+    want:[3]f64;for i:0..<3 {gk_mean(i,rows,3,g[0..<3*rows],want[..]);}
+    for d:1..<rows+1 {p:=dg_plan(d,rows,DgCollective.chain);msgs:[48]f64;t:[3]f64;dg_reduce(p,3,g[0..<3*rows],msgs[0..<3*d],t[..]);#assert tr_same(t[..],want[..]);}
+    if dg_power(rows) {first:[3]f64;
+        for d:1..<rows+1 {if dg_power(d) {p:=dg_plan(d,rows,DgCollective.tree);part:[48]f64;t:[3]f64;dg_reduce(p,3,g[0..<3*rows],part[0..<3*d],t[..]);
+            if d==1 {first=t;}#assert tr_same(t[..],first[..]) && gt_gap(t[..],want[..],GT_TOLERANCE).far==0;}}}
+}
+#test "reports are admitted only when every device reported once, in time, for this step's rows" {
+    p:=dg_plan(3,4,DgCollective.chain);run:=TrRun.{revision=5};
+    good:=[3]DgReport.[dg_report(p,run,0,1),dg_report(p,run,1,4),dg_report(p,run,2,9)];
+    #assert good[2].first==2 && good[2].count==2 && good[2].revision==5 && good[2].device==2 && good[2].at==9 && good[0].count==1 && !good[1].failed;
+    a:=dg_gather(p,run,good[..],9);#assert a.status==DgStatus.ok && a.device==-1;
+    // Arrival order does not matter.
+    back:=[3]DgReport.[good[2],good[0],good[1]];#assert dg_gather(p,run,back[..],9).status==DgStatus.ok;
+    // Late: device 2 after a deadline of 8; exactly at the deadline is in time.
+    l:=dg_gather(p,run,good[..],8);#assert l.status==DgStatus.late && l.device==2;
+    // Missing: device 1 never reported.
+    m:=[2]DgReport.[good[0],good[2]];g:=dg_gather(p,run,m[..],9);#assert g.status==DgStatus.missing && g.device==1;
+    // Twice: device 0 reported again, even with the others all present.
+    t:=[4]DgReport.[good[0],good[1],good[2],good[0]];g=dg_gather(p,run,t[..],9);#assert g.status==DgStatus.twice && g.device==0;
+    // Stale: another revision, or other rows.
+    s:=good;s[1].revision=4;g=dg_gather(p,run,s[..],9);#assert g.status==DgStatus.stale && g.device==1;
+    s=good;s[2].first=3;#assert dg_gather(p,run,s[..],9).status==DgStatus.stale;s=good;s[2].count=1;#assert dg_gather(p,run,s[..],9).status==DgStatus.stale;
+    // A device that is not in the plan, or a failure the device reported itself.
+    s=good;s[1].device=3;g=dg_gather(p,run,s[..],9);#assert g.status==DgStatus.stale && g.device==3;s[1].device=-1;#assert dg_gather(p,run,s[..],9).status==DgStatus.stale;
+    s=good;s[0].failed=true;g=dg_gather(p,run,s[..],9);#assert g.status==DgStatus.failed && g.device==0;
+    // Several problems: the lowest device is named, whatever order the reports came in.
+    two:=good;two[0].failed=true;two[2].at=20;w:=[3]DgReport.[two[2],two[1],two[0]];g=dg_gather(p,run,w[..],9);#assert g.status==DgStatus.failed && g.device==0;
+    late:=good;late[1].at=10;late[2].at=10;g=dg_gather(p,run,late[..],9);#assert g.status==DgStatus.late && g.device==1;
+    // Sixty-four devices all in time; one report more is a repeat. A refused plan.
+    big:=dg_plan(64,64,DgCollective.chain);many:[65]DgReport;for d:0..<64 {many[d]=dg_report(big,run,d,1);}many[64]=many[63];
+    #assert dg_gather(big,run,many[0..<64],1).status==DgStatus.ok && dg_gather(big,run,many[..],1).status==DgStatus.twice && dg_gather(big,run,many[..],1).device==63;
+    #assert dg_gather(dg_plan(0,4,DgCollective.chain),run,good[..],9).status==DgStatus.devices;
+}
+#test "the group step on the CPU is chapter 129's step, bit for bit, at every device count and arrival order" #steps 4000000000 {
+    f:=tt_fix();c:=gt_config(TT_SMALL,4,3);run:=gt_start(c,f,220);x:=gt_small();
+    one:=gt_small_run(c,f,run,3,x);#assert one.step.status==TrStatus.ok && one.step.run.revision==3;
+    for d:1..<5 {r:=dg_small_run(c,f,dg_plan(d,4,DgCollective.chain),run,3,dg_small(),true);
+        #assert r.step.status==DgStatus.ok && r.step.step.status==TrStatus.ok && r.step.step.run.revision==3 && fd_same(r.step.step.run.cursor,one.step.run.cursor);
+        #assert tr_same(r.x.losses[0..<3],one.x.losses[0..<3]) && tr_same(r.x.p[0..<220],one.x.p[..]) && tr_same(r.x.m[0..<220],one.x.m[..]) && tr_same(r.x.v[0..<220],one.x.v[..]);}
+    // Clipped: the same agreement.
+    k:=c;k.clip=0.25;a:=gt_small_run(k,f,run,2,x);b:=dg_small_run(k,f,dg_plan(3,4,DgCollective.chain),run,2,dg_small(),false);
+    #assert b.step.status==DgStatus.ok && tr_same(b.x.p[0..<220],a.x.p[..]) && tr_same(b.x.v[0..<220],a.x.v[..]);
+}
+#test "the tree step has the same bits at 1, 2 and 4 devices, within the tolerance of chapter 129's" #steps 4000000000 {
+    f:=tt_fix();c:=gt_config(TT_SMALL,4,3);run:=gt_start(c,f,220);one:=gt_small_run(c,f,run,3,gt_small());
+    t1:=dg_small_run(c,f,dg_plan(1,4,DgCollective.tree),run,3,dg_small(),false);#assert t1.step.status==DgStatus.ok && t1.step.step.run.revision==3;
+    for d:[2]int.[2,4] {t:=dg_small_run(c,f,dg_plan(d,4,DgCollective.tree),run,3,dg_small(),true);#assert t.step.status==DgStatus.ok && tr_same(t.x.p[..],t1.x.p[..]) && tr_same(t.x.v[..],t1.x.v[..]) && tr_same(t.x.losses[0..<3],t1.x.losses[0..<3]);}
+    g:=gt_gap(t1.x.p[0..<220],one.x.p[..],GT_TOLERANCE);#assert g.far==0 && g.differ>0 && !tr_same(t1.x.p[0..<220],one.x.p[..]);
+    #assert gt_gap(t1.x.losses[0..<3],one.x.losses[0..<3],GT_TOLERANCE).far==0;
+}
+#test "a step with a late, missing or repeated device commits nothing, and the retry is the uninterrupted step" #steps 4000000000 {
+    f:=tt_fix();c:=gt_config(TT_SMALL,4,3);run:=gt_start(c,f,220);x:=dg_small();p:=dg_plan(4,4,DgCollective.chain);
+    whole:=dg_small_run(c,f,p,run,1,x,false);#assert whole.step.status==DgStatus.ok;
+    rows:[32]u8;b:=gt_next(c,run,f.docs[..],f.tokens[0..<f.n],rows[..]);
+    faults:=[3]DgFault.[DgFault.{device=2,lost=true},DgFault.{device=1,delay=100},DgFault.{device=3,again=true}];want:=[3]DgStatus.[DgStatus.missing,DgStatus.late,DgStatus.twice];
+    for k:0..<3 {y:=x;s:=dg_small_step(c,p,run,b,rows[..],y,faults[k]);
+        #assert s.step.status==want[k] && s.step.device==faults[k].device && s.step.step.run.revision==0 && s.step.step.status==TrStatus.order;
+        #assert tr_same(s.x.p[..],x.p[..]) && tr_same(s.x.m[..],x.m[..]) && tr_same(s.x.v[..],x.v[..]) && s.x.stage[0]==0;
+        // The same batch again with every device in time: the uninterrupted step.
+        r:=dg_small_step(c,p,run,b,rows[..],s.x,DgFault.{});#assert r.step.status==DgStatus.ok && r.step.step.run.revision==1 && tr_same(r.x.p[..],whole.x.p[..]) && tr_same(r.x.m[..],whole.x.m[..]);}
+    // A device that reports a failure, and a batch the plan does not cover.
+    y:=x;s:=dg_small_step(c,p,run,b,rows[..],y,DgFault.{device=0,failed=true});#assert s.step.status==DgStatus.failed && tr_same(s.x.p[..],x.p[..]);
+    s=dg_small_step(c,dg_plan(2,2,DgCollective.chain),run,b,rows[..],y,DgFault.{});#assert s.step.status==DgStatus.rows && s.x.work[0]==0;
+    s=dg_small_step(c,dg_plan(5,2,DgCollective.chain),run,b,rows[..],y,DgFault.{});#assert s.step.status==DgStatus.rows;
+    bad:=b;bad.status=TrStatus.data;s=dg_small_step(c,p,run,bad,rows[..],y,DgFault.{});#assert s.step.status==DgStatus.ok && s.step.step.status==TrStatus.order && s.x.work[0]==0;
+    // Device rows outside the plan are not computed.
+    for d:[2]int.[-1,4] {z:=x;r:=dg_rows(TT_SMALL,p,d,b,rows[..],z.rope[..],z.p[..],z.work[..],z.dwork[..],z.grads[..],z.rowloss[..]);#assert r.failed && z.work[0]==0 && z.rowloss[3]==0;}
+    z:=x;ok:=dg_rows(TT_SMALL,p,3,b,rows[..],z.rope[..],z.p[..],z.work[..],z.dwork[..],z.grads[..],z.rowloss[..]);#assert !ok.failed && ok.first==3 && ok.count==1 && z.rowloss[3]>0 && z.rowloss[2]==0;
+    // Through dg_step_cpu: the third device to finish is past the deadline.
+    order:=[4]int.[3,2,1,0];at:=[4]int.[1,2,9,3];z=x;
+    q:=dg_step_cpu(TT_SMALL,c,p,run,b,rows[..],z.rope[..],z.p[..],z.m[..],z.v[..],z.stage[..],z.total[..],z.grads[..],z.work[..],z.dwork[..],z.rowloss[..],z.scalars[..],z.slots[..],order[..],at[..],4,z.reports[..]);
+    #assert q.status==DgStatus.late && q.device==1 && tr_same(z.p[..],x.p[..]);
+    // A rate AdamW refuses: gt_decide's refusal, nothing written.
+    fast:=c;fast.rate=2;s=dg_small_step(fast,p,run,b,rows[..],y,DgFault.{});#assert s.step.status==DgStatus.ok && s.step.step.status==TrStatus.optimizer && tr_same(s.x.p[..],x.p[..]) && s.x.stage[0]==0;
+    // A step the trainer refuses after the gather (a bound the first move crosses) also changes nothing.
+    hot:=c;hot.bound=0.5;s=dg_small_step(hot,p,run,b,rows[..],y,DgFault.{});#assert s.step.status==DgStatus.ok && s.step.step.status==TrStatus.bound && tr_same(s.x.p[..],x.p[..]) && s.x.scalars[2]==1;
+    // A batch of another revision is computed, gathered as stale, and refused.
+    old:=b;old.revision=1;s=dg_small_step(c,p,run,old,rows[..],y,DgFault.{});#assert s.step.status==DgStatus.stale && s.step.device==0 && s.step.step.status==TrStatus.order && tr_same(s.x.p[..],x.p[..]);
+}
+#test "a group run saved and resumed at another device count finishes with the uninterrupted bits" #steps 4000000000 {
+    f:=tt_fix();c:=gt_config(TT_SMALL,4,4);run:=gt_start(c,f,220);
+    whole:=dg_small_run(c,f,dg_plan(4,4,DgCollective.chain),run,4,dg_small(),false);half:=dg_small_run(c,f,dg_plan(4,4,DgCollective.chain),run,2,dg_small(),false);
+    ids:=gt_ids(TT_SMALL,c,f.docs[..],f.tokens[0..<f.n]);bytes:[5620]u8;pointer:[80]u8;
+    #assert gt_save(ids,half.step.step.run,half.x.p[..],half.x.m[..],half.x.v[..],bytes[..],pointer[..])==CkStatus.ok;
+    y:=dg_small();for i:0..<220 {y.p[i]=7;y.m[i]=7;y.v[i]=7;}none:[1]int;
+    back:=gt_resume(c,ids,pointer[..],bytes[..],f.docs[..],f.tokens[0..<f.n],y.p[..],y.m[..],y.v[..],none[0..<0]);#assert back.status==CkStatus.ok && back.run.revision==2;
+    rest:=dg_small_run(c,f,dg_plan(3,4,DgCollective.chain),back.run,2,y,true);
+    #assert rest.step.status==DgStatus.ok && rest.step.step.run.revision==4 && tr_same(rest.x.p[..],whole.x.p[..]) && tr_same(rest.x.v[..],whole.x.v[..]) && tr_same(rest.x.losses[0..<2],whole.x.losses[2..<4]);
+}
+#test "communication by hand: 3152 parameters, 4 devices, 5 microseconds a hop, 25000 bytes a microsecond" {
+    n:=3152;x:=dg_cost(DgCollective.chain,4,n,5000,25000);
+    #assert x.hops==6 && x.path==6*3152*8 && x.bytes==6*3152*8 && x.ns==30000+151296*1000/25000 && x.ns==36051;
+    t:=dg_cost(DgCollective.tree,4,n,5000,25000);#assert t.hops==4 && t.path==4*3152*8 && t.bytes==6*3152*8 && t.ns==24034;
+    r:=dg_cost(DgCollective.ring,4,n,5000,25000);#assert r.hops==6 && r.path==6*788*8 && r.bytes==6*4*788*8 && r.ns==30000+37824*1000/25000 && r.ns==31512;
+    // One device sends nothing; a ring's chunks round up.
+    for k:[3]DgCollective.[DgCollective.chain,DgCollective.tree,DgCollective.ring] {o:=dg_cost(k,1,n,5000,25000);#assert o.hops==0 && o.bytes==0 && o.ns==0 && o.path==0;}
+    #assert dg_cost(DgCollective.ring,3,10,0,8000).path==4*4*8 && dg_cost(DgCollective.ring,3,10,0,8000).bytes==4*3*4*8 && dg_cost(DgCollective.tree,8,10,1,1000).hops==6;
+    #assert dg_cost(DgCollective.tree,2,10,7,1000).ns==2*7+2*80 && dg_cost(DgCollective.chain,2,10,7,1000).ns==2*7+2*80;
+    // A billion parameters: the ring's path is a quarter of the others' at 8 devices... and the tree's latency is the least.
+    b:=dg_cost(DgCollective.ring,8,1000000000,5000,25000);c:=dg_cost(DgCollective.tree,8,1000000000,5000,25000);
+    #assert b.path==14*125000000*8 && c.path==6*1000000000*8 && b.ns<c.ns && dg_cost(DgCollective.tree,8,10,5000,25000).ns<dg_cost(DgCollective.ring,8,10,5000,25000).ns;
+    // One byte a microsecond is a bandwidth; none is refused as -1.
+    #assert dg_cost(DgCollective.chain,2,10,0,1).ns==2*80*1000 && dg_cost(DgCollective.chain,2,10,0,1).hops==2;
+    // No devices to talk to; no bandwidth.
+    #assert dg_cost(DgCollective.chain,0,n,5000,25000).hops==0 && dg_cost(DgCollective.chain,4,n,5000,0).ns==-1;
+}
+
+// book:begin plan
+// Rows of a step over devices: device d owns rows dg_first(d) up to
+// dg_first(d+1), a contiguous run, and every device owns at least one.
+DgPlan :: struct {status:DgStatus;devices:int;rows:int;collective:DgCollective;}
+dg_power :: (n:int)->bool {return n>0 && (n&(n-1))==0;}
+// The levels of a pairwise tree over n leaves: the least l with 2^l >= n.
+dg_log2 :: (n:int)->int {l:=0;while (1<<l)<n {l+=1;}return l;}
+dg_plan :: (devices:int,rows:int,collective:DgCollective)->DgPlan #export_c {
+    p:=DgPlan.{devices=devices,rows=rows,collective=collective};
+    if devices<1 || devices>DG_MAX_DEVICES {p.status=DgStatus.devices;return p;}
+    if rows<1 || rows>DG_MAX_ROWS || devices>rows {p.status=DgStatus.rows;return p;}
+    // The tree adds rows in pairs, then pairs of pairs. Each device's rows
+    // must be one whole subtree, or the device count would change the tree.
+    if collective==DgCollective.ring || (collective==DgCollective.tree && !(dg_power(devices) && dg_power(rows))) {p.status=DgStatus.collective;}
+    return p;
+}
+dg_first :: (p:DgPlan,d:int)->int #export_c {return d*p.rows/p.devices;}
+dg_owner :: (p:DgPlan,row:int)->int {
+    if row<0 || row>=p.rows {return -1;}
+    d:=row*p.devices/p.rows;while dg_first(p,d+1)<=row {d+=1;}
+    return d;
+}
+// book:end plan
+dg_status :: (s:DgStatus)->string {
+    if s==DgStatus.ok {return "admitted";}
+    if s==DgStatus.devices {return "refused: from 1 to 64 devices";}
+    if s==DgStatus.rows {return "refused: from 1 to 64 rows a step, at least one a device";}
+    if s==DgStatus.collective {return "refused: this all-reduce's additions would depend on the device count";}
+    if s==DgStatus.missing {return "refused: a device did not report";}
+    if s==DgStatus.twice {return "refused: a device reported twice";}
+    if s==DgStatus.stale {return "refused: a device reported for another step or other rows";}
+    if s==DgStatus.late {return "refused: a device reported after the deadline";}
+    return "refused: a device reported a failure";
+}
+
+// book:begin gather
+// What a device says when its rows' gradients are written: who it is, the
+// run revision and rows it computed, when it finished (in the clock the
+// deadline uses) and whether it failed.
+DgReport :: struct {device:int;revision:int;first:int;count:int;at:int;failed:bool;}
+DgGather :: struct {status:DgStatus;device:int=-1;}
+dg_report :: (p:DgPlan,run:TrRun,d:int,at:int)->DgReport {
+    lo:=dg_first(p,d);return DgReport.{device=d,revision=run.revision,first=lo,count=dg_first(p,d+1)-lo,at=at};
+}
+// Admits a step's reports, which may arrive in any order. Every device must
+// report exactly once, for this revision and its own rows, by the deadline,
+// without a failure. A refusal names the lowest device at fault, so the
+// answer does not depend on the arrival order either.
+dg_gather :: (p:DgPlan,run:TrRun,reports:[]DgReport,deadline:int)->DgGather {
+    if p.status!=DgStatus.ok {return DgGather.{status=p.status};}
+    seen:[64]int;g:DgGather;
+    for r:reports {
+        if r.device<0 || r.device>=p.devices {return DgGather.{status=DgStatus.stale,device=r.device};}
+        seen[r.device]+=1;
+    }
+    for d:0..<p.devices {g.device=d;
+        if seen[d]==0 {g.status=DgStatus.missing;return g;}
+        if seen[d]>1 {g.status=DgStatus.twice;return g;}
+        for r:reports {if r.device==d {
+            if r.failed {g.status=DgStatus.failed;return g;}
+            if r.revision!=run.revision || r.first!=dg_first(p,d) || r.count!=dg_first(p,d+1)-dg_first(p,d) {g.status=DgStatus.stale;return g;}
+            if r.at>deadline {g.status=DgStatus.late;return g;}}}
+    }
+    g.device=-1;return g;
+}
+// book:end gather
+
+// book:begin reduce
+// The chain all-reduce. Device d receives the running sum from device d-1
+// (device 0 starts at zero), adds its rows' gradients divided by the row
+// count in row order, and sends the sum on in its slot of msgs. The last
+// slot is the step's gradient, which goes back to every device. The
+// additions are chapter 129's gk_mean, in the same order, at any device
+// count.
+dg_chain :: (p:DgPlan,d:int,n:int,grads:[]f64,msgs:[]f64) {
+    k:=f64(p.rows);
+    for i:0..<n {acc:=0.0;if d>0 {acc=msgs[(d-1)*n+i];}
+        for r:dg_first(p,d)..<dg_first(p,d+1) {acc+=grads[r*n+i]/k;}
+        msgs[d*n+i]=acc;}
+}
+// The tree all-reduce. Device d adds its rows in pairs, then pairs of pairs,
+// into its slot; then the devices' slots combine the same way: at stride s,
+// device d adds the slot of device d+s. With power-of-two counts this is one
+// fixed tree over the rows, whatever the device count.
+dg_tree :: (p:DgPlan,d:int,n:int,grads:[]f64,part:[]f64) {
+    k:=f64(p.rows);lo:=dg_first(p,d);count:=dg_first(p,d+1)-lo;
+    for i:0..<n {x:[64]f64;for r:0..<count {x[r]=grads[(lo+r)*n+i]/k;}
+        for level:0..<dg_log2(count) {s:=1<<level;for j:0..<count/(2*s) {x[2*s*j]+=x[2*s*j+s];}}
+        part[d*n+i]=x[0];}
+}
+dg_reduce :: (p:DgPlan,n:int,grads:[]f64,slots:[]f64,total:[]f64) {
+    if p.collective==DgCollective.chain {
+        for d:0..<p.devices {dg_chain(p,d,n,grads,slots);}
+        for i:0..<n {total[i]=slots[(p.devices-1)*n+i];}
+        return;
+    }
+    for d:0..<p.devices {dg_tree(p,d,n,grads,slots);}
+    for level:0..<dg_log2(p.devices) {s:=1<<level;for j:0..<p.devices/(2*s) {d:=2*s*j;for i:0..<n {slots[d*n+i]+=slots[(d+s)*n+i];}}}
+    for i:0..<n {total[i]=slots[i];}
+}
+// book:end reduce
+
+// book:begin step
+DgStep :: struct {status:DgStatus;device:int=-1;step:TrStep;}
+// Device d's part of a step: chapter 129's row kernel on each of its rows,
+// writing only those rows' slices of work, dwork, grads and losses. The
+// caller (a thread, a GPU's host, or the CPU loop below) stamps the report
+// with the time it finished. A batch the plan does not cover is not computed.
+dg_rows :: (s:TdShape,p:DgPlan,d:int,b:TrBatch,rows:[]u8,rope:[]f64,pm:[]f64,work:[]f64,dwork:[]f64,grads:[]f64,losses:[]f64)->DgReport #export_c {
+    lo:=dg_first(p,d);hi:=dg_first(p,d+1);r:=DgReport.{device=d,revision=b.revision,first=lo,count=hi-lo};
+    if p.status!=DgStatus.ok || b.status!=TrStatus.ok || b.micro!=p.rows || d<0 || d>=p.devices {r.failed=true;return r;}
+    sh:[8]int;gt_shape(s,sh[..]);
+    for k:lo..<hi {gk_rows(k,sh[..],pm,rows,rope,work,dwork,grads,losses);}
+    return r;
+}
+// The rest of the step, once reports are in. Only a gathered step reaches
+// the all-reduce; then chapter 129's step runs on every device's copy, and
+// only an admitted step is committed.
+dg_finish :: (c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,reports:[]DgReport,deadline:int,pm:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,losses:[]f64,scalars:[]f64,slots:[]f64)->DgStep #export_c {
+    fail:=DgStep.{status=p.status,step=TrStep.{status=TrStatus.order,run=run}};
+    if p.status!=DgStatus.ok {return fail;}
+    if b.micro!=p.rows {fail.status=DgStatus.rows;return fail;}
+    if b.status!=TrStatus.ok {return fail;}
+    g:=dg_gather(p,run,reports,deadline);if g.status!=DgStatus.ok {fail.status=g.status;fail.device=g.device;return fail;}
+    n:=pm.count;dg_reduce(p,n,grads,slots,total);
+    gk_squares(0,n,total,scalars);
+    d:=gt_decide(c,run,b,losses[0..<p.rows],scalars[0]);if d.status!=TrStatus.ok {fail.step.status=d.status;return fail;}
+    if d.clip {for i:0..<n {gk_clip(i,c.clip,d.norm,total);}}
+    for i:0..<n {gk_adamw(i,n,d.rate,c.beta1,c.beta2,c.eps,0,d.c1,d.c2,pm,total,m,v,stage);}
+    gk_admit(0,n,c.bound,stage,scalars[1..<3]);
+    st:=gt_commit(c,run,b,d,scalars[1..<3]);
+    if st.status==TrStatus.ok {for i:0..<n {gk_commit(i,n,stage,pm,m,v);}}
+    return DgStep.{step=st};
+}
+// One step with every device on this CPU, run one after another in `order`
+// and stamped with the matching time in `at`. reports holds order.count.
+dg_step_cpu :: (s:TdShape,c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,rows:[]u8,rope:[]f64,pm:[]f64,m:[]f64,v:[]f64,stage:[]f64,total:[]f64,grads:[]f64,work:[]f64,dwork:[]f64,losses:[]f64,scalars:[]f64,slots:[]f64,
+        order:[]int,at:[]int,deadline:int,reports:[]DgReport)->DgStep {
+    for k:0..<order.count {reports[k]=dg_rows(s,p,order[k],b,rows,rope,pm,work,dwork,grads,losses);reports[k].at=at[k];}
+    return dg_finish(c,p,run,b,reports[0..<order.count],deadline,pm,m,v,stage,total,grads,losses,scalars,slots);
+}
+// book:end step
+
+// book:begin cost
+// What one all-reduce of n binary64 values sends, at `devices` devices with
+// `latency` nanoseconds a hop and `bandwidth` bytes a microsecond on every
+// link. hops is the hops in a row on the longest path; path the bytes along
+// it; bytes all bytes sent; ns = hops * latency + path / bandwidth.
+//   chain: d-1 hops to sum, d-1 to send the sum back, n values each.
+//   tree:  log2(d) levels to sum, log2(d) to send back, n values each.
+//   ring:  d-1 steps to sum, d-1 to share, each moving one d-th of the values
+//          (rounded up) between every neighbour pair at once.
+DgCost :: struct {hops:int;path:int;bytes:int;ns:int;}
+dg_cost :: (k:DgCollective,devices:int,n:int,latency:int,bandwidth:int)->DgCost #export_c {
+    c:DgCost;if devices<2 {return c;}
+    if bandwidth<1 {c.ns=-1;return c;}
+    if k==DgCollective.chain {c.hops=2*(devices-1);c.path=c.hops*n*8;c.bytes=c.path;}
+    else if k==DgCollective.tree {c.hops=2*dg_log2(devices);c.path=c.hops*n*8;c.bytes=2*(devices-1)*n*8;}
+    else {piece:=(n+devices-1)/devices;c.hops=2*(devices-1);c.path=c.hops*piece*8;c.bytes=c.path*devices;}
+    c.ns=c.hops*latency+c.path*1000/bandwidth;
+    return c;
+}
+// book:end cost

@@ -1,0 +1,37 @@
+#import "Basic";
+#load "../lib/transformer/device-group.coax";
+
+// book:begin example
+// Chapter 132: a step's rows split over a group of devices, the all-reduce
+// in a fixed order, and what it costs to send. The devices run one after
+// another on this CPU, last device first; the bits do not depend on that.
+// psionic/tests/check_device_group.sh runs them as threads and with the GPU.
+main :: () {
+    p:=dg_plan(3,4,DgCollective.chain);print("4 rows over 3 devices: %\n",dg_status(p.status));
+    for d:0..<3 {print("  device % owns rows % to %\n",d,dg_first(p,d),dg_first(p,d+1)-1);}
+
+    print("one all-reduce of 3152 binary64 values, 5000 ns a hop, 25000 bytes a microsecond:\n");
+    names:=[3]string.["chain","tree","ring"];kinds:=[3]DgCollective.[DgCollective.chain,DgCollective.tree,DgCollective.ring];
+    for d:[3]int.[2,4,8] {for k:0..<3 {x:=dg_cost(kinds[k],d,3152,5000,25000);print("  % devices, %: % hops, % bytes on the longest path, % bytes in all, % ns\n",d,names[k],x.hops,x.path,x.bytes,x.ns);}}
+    print("the same at a billion values, 8 devices:\n");
+    for k:0..<3 {x:=dg_cost(kinds[k],8,1000000000,5000,25000);print("  %: % ns\n",names[k],x.ns);}
+
+    f:=tt_fix();c:=gt_config(TT_SMALL,4,3);run:=gt_start(c,f,220);one:=gt_small_run(c,f,run,3,gt_small());
+    print("three steps at the checks' small shape, 4 rows a step; chapter 129's single-device losses: % % %\n",one.x.losses[0],one.x.losses[1],one.x.losses[2]);
+    for d:1..<5 {r:=dg_small_run(c,f,dg_plan(d,4,DgCollective.chain),run,3,dg_small(),true);
+        same:=tr_same(r.x.losses[0..<3],one.x.losses[0..<3]) && tr_same(r.x.p[..],one.x.p[..]) && tr_same(r.x.m[..],one.x.m[..]) && tr_same(r.x.v[..],one.x.v[..]);
+        print("  chain, % devices: %, losses, parameters and moments equal chapter 129's bit for bit: %\n",d,dg_status(r.step.status),same);}
+    t1:=dg_small_run(c,f,dg_plan(1,4,DgCollective.tree),run,3,dg_small(),true);
+    for d:[3]int.[1,2,4] {t:=dg_small_run(c,f,dg_plan(d,4,DgCollective.tree),run,3,dg_small(),true);g:=gt_gap(t.x.p[..],one.x.p[..],GT_TOLERANCE);
+        print("  tree, % devices: parameters equal the 1-device tree's bit for bit: %; against chapter 129's, % of 220 differ in bits, % past the tolerance\n",d,tr_same(t.x.p[..],t1.x.p[..]),g.differ,g.far);}
+
+    // Two steps at 4 devices, saved; resumed into fresh buffers at 3 devices.
+    whole:=dg_small_run(c,f,dg_plan(4,4,DgCollective.chain),run,3,dg_small(),false);half:=dg_small_run(c,f,dg_plan(4,4,DgCollective.chain),run,2,dg_small(),false);
+    ids:=gt_ids(TT_SMALL,c,f.docs[..],f.tokens[0..<f.n]);bytes:[5620]u8;pointer:[80]u8;none:[1]int;
+    saved:=gt_save(ids,half.step.step.run,half.x.p[..],half.x.m[..],half.x.v[..],bytes[..],pointer[..]);
+    y:=dg_small();back:=gt_resume(c,ids,pointer[..],bytes[..],f.docs[..],f.tokens[0..<f.n],y.p[..],y.m[..],y.v[..],none[0..<0]);
+    rest:=dg_small_run(c,f,dg_plan(3,4,DgCollective.chain),back.run,1,y,true);
+    print("saved at 4 devices after step 2 (%), resumed at 3 devices: step 3 loss %, weights equal the uninterrupted run: %\n",
+        saved,rest.x.losses[0],tr_same(rest.x.p[..],whole.x.p[..]) && tr_same(rest.x.v[..],whole.x.v[..]));
+}
+// book:end example

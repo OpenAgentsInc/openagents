@@ -1,0 +1,38 @@
+// Chapter 132: helpers for the checks in psionic/lib/transformer/device-group.coax.
+// Every buffer of a TT_SMALL run (220 parameters, 600 work values a row, 8
+// tokens a row) with four rows a step, over at most four devices.
+DgSmall :: struct {rows:[32]u8;rope:[16]f64;p:[220]f64;m:[220]f64;v:[220]f64;stage:[660]f64;total:[220]f64;grads:[880]f64;work:[2400]f64;dwork:[2400]f64;rowloss:[4]f64;scalars:[3]f64;losses:[8]f64;slots:[880]f64;reports:[8]DgReport;}
+DgSmallRun :: struct {step:DgStep;x:DgSmall;}
+dg_small :: ()->DgSmall {x:DgSmall;gt_rope(TT_SMALL,x.rope[..]);gt_init(TT_SMALL,x.p[..]);return x;}
+// count steps of the group, devices running in reverse order (or in order),
+// device k of the order finishing at time k+1 with the deadline at the device count.
+dg_small_run :: (c:TrConfig,f:TtFix,p:DgPlan,run:TrRun,count:int,x:DgSmall,reverse:bool)->DgSmallRun {
+    y:=x;g:=f;r:=run;order:[8]int;at:[8]int;
+    for k:0..<p.devices {order[k]=k;if reverse {order[k]=p.devices-1-k;}at[k]=k+1;}
+    for k:0..<count {
+        b:=gt_next(c,r,g.docs[..],g.tokens[0..<g.n],y.rows[..]);if b.status!=TrStatus.ok {return DgSmallRun.{step=DgStep.{step=TrStep.{status=b.status,run=r}},x=y};}
+        st:=dg_step_cpu(TT_SMALL,c,p,r,b,y.rows[..],y.rope[..],y.p[..],y.m[..],y.v[..],y.stage[..],y.total[..],y.grads[..],y.work[..],y.dwork[..],y.rowloss[..],y.scalars[..],y.slots[..],
+            order[0..<p.devices],at[0..<p.devices],p.devices,y.reports[..]);
+        if st.status!=DgStatus.ok || st.step.status!=TrStatus.ok {return DgSmallRun.{step=st,x=y};}
+        r=st.step.run;y.losses[k]=st.step.loss;
+    }
+    return DgSmallRun.{step=DgStep.{step=TrStep.{run=r}},x=y};
+}
+// A fault in one step: the device's report is lost, arrives delay late,
+// arrives twice, or says the device failed.
+DgFault :: struct {device:int=-1;lost:bool;delay:int;again:bool;failed:bool;}
+// One step of the batch b (rows already filled), devices in reverse order,
+// with the fault applied to the reports before the gather.
+dg_small_step :: (c:TrConfig,p:DgPlan,run:TrRun,b:TrBatch,rows:[]u8,x:DgSmall,fault:DgFault)->DgSmallRun {
+    y:=x;n:=0;devices:=p.devices;if devices>4 {devices=4;}
+    for k:0..<devices {d:=devices-1-k;r:=dg_rows(TT_SMALL,p,d,b,rows,y.rope[..],y.p[..],y.work[..],y.dwork[..],y.grads[..],y.rowloss[..]);r.at=k+1;
+        if d==fault.device {r.at+=fault.delay;r.failed=r.failed || fault.failed;if fault.lost {continue;}if fault.again {y.reports[n]=r;n+=1;}}
+        y.reports[n]=r;n+=1;}
+    st:=dg_finish(c,p,run,b,y.reports[0..<n],p.devices,y.p[..],y.m[..],y.v[..],y.stage[..],y.total[..],y.grads[..],y.rowloss[..],y.scalars[..],y.slots[..]);
+    return DgSmallRun.{step=st,x=y};
+}
+// Fixed test values with a spread of magnitudes and signs.
+dg_value :: (i:int,seed:int)->f64 {
+    h:=(i*2654435761+seed*40503+12345)%1000003;
+    return f64(h%2001-1000)/f64(1+h%7)*f64(1+(i%5)*997);
+}
