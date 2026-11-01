@@ -40,8 +40,11 @@ class Tools(unittest.TestCase):
                 continue
             used |= set(re.findall(r'"(E0\d{3})"', source.read_text()))
         for source in (ROOT / "lib").rglob("*.coax"):
-            used |= set(re.findall(r'"(E0\d{3})"', source.read_text()))
-        used.discard("E0000")  # a check's stand-in for "not this code", never reported
+            # A negated SM_diagnostic argument is a stand-in for "not this
+            # code" and is never reported. Only that argument is skipped; any
+            # other use of a code, E0000 included, needs an explanation.
+            text = re.sub(r'!SM_diagnostic\(\w+,"E0\d{3}"', "", source.read_text())
+            used |= set(re.findall(r'"(E0\d{3})"', text))
         listed = set(re.findall(r"^(E0\d{3}):", coax("explain", "--all").stdout, re.M))
         self.assertFalse(used - listed, f"codes without an explanation: {sorted(used - listed)}")
         result = coax("explain", "E0350")
