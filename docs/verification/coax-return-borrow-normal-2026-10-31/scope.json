@@ -1,0 +1,239 @@
+{
+  "schema": "coax.normal-v10.finished-qualified-part.v1",
+  "outcome": "passed-finished-normal-part",
+  "source_revision": "4c173f0a4555b9f109304c0c0653fe4af7388379",
+  "admitted_main": "8b8b480de350244b49f09b0390a65210c8064b3d",
+  "fingerprint": "cf94a8f3f71fe9f06da1897a2af362bf4a003bedd4a329c07ffdb1c675191f27",
+  "image_sha256": "854d63b4e132a12fef1b1857ce2d06e0bb07c0a342b8c23211a5ad443060d05a",
+  "normal_qualification_sha256": "a29813ef67b10af1a152b882647dc8a4138c65a40ca98abd702c4ffaee38a2e3",
+  "required_and_passed_steps": 163,
+  "full_checker_mutation": {
+    "mutants": 8147,
+    "killed": 8147,
+    "survived": 0,
+    "scope": "Original full-source eight-shard inventory plus authoritative merge; not helper-only feedback."
+  },
+  "final_artifacts": {
+    "coax": {
+      "member": "qualified-artifacts/coax",
+      "sha256": "854d63b4e132a12fef1b1857ce2d06e0bb07c0a342b8c23211a5ad443060d05a",
+      "bytes": 3021688
+    },
+    "provenance-check": {
+      "member": "qualified-artifacts/provenance-check",
+      "sha256": "7bb16778b0304d34855977553a659f72a60aa539f6275770d121f98faf136a54",
+      "bytes": 34320
+    },
+    "provenance.record": {
+      "member": "qualified-artifacts/provenance.record",
+      "sha256": "5dcec165e0804e60c10f6aa73bb558b269b1fe03b63b7444140819ab1a452644",
+      "bytes": 214
+    },
+    "check-domains.c": {
+      "member": "qualified-artifacts/check-domains.c",
+      "sha256": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+      "bytes": 26948
+    },
+    "check-domains.h": {
+      "member": "qualified-artifacts/check-domains.h",
+      "sha256": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+      "bytes": 7256
+    },
+    "lexer.c": {
+      "member": "qualified-artifacts/lexer.c",
+      "sha256": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+      "bytes": 93997
+    },
+    "lexer.h": {
+      "member": "qualified-artifacts/lexer.h",
+      "sha256": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+      "bytes": 18459
+    },
+    "parser.c": {
+      "member": "qualified-artifacts/parser.c",
+      "sha256": "161adbb5b13d3188f14731368ccbc140735f371db5f1c0de7801bd884326dcd0",
+      "bytes": 169380
+    },
+    "parser.h": {
+      "member": "qualified-artifacts/parser.h",
+      "sha256": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+      "bytes": 26166
+    },
+    "checker.c": {
+      "member": "qualified-artifacts/checker.c",
+      "sha256": "aae330c1d1528416f48aba6250d885a4afce0e692d7ca61fda9373594cbf40cb",
+      "bytes": 955469
+    },
+    "checker.h": {
+      "member": "qualified-artifacts/checker.h",
+      "sha256": "446918cf9cfff085d17a149d42669cc7ea244a2f9b71480eb89f19caede3ef33",
+      "bytes": 95026
+    },
+    "sources.c": {
+      "member": "qualified-artifacts/sources.c",
+      "sha256": "cbb409049de14ffc3e70a087c54d3ed376d878241e9ebafe5e0ea5957973c1da",
+      "bytes": 50931
+    },
+    "sources.h": {
+      "member": "qualified-artifacts/sources.h",
+      "sha256": "7b42c1a235dc3290952eaa151d08ad65f64c86a7a37ec5683f80cdb30930b587",
+      "bytes": 12992
+    },
+    "proto_runtime.inc": {
+      "member": "qualified-artifacts/proto_runtime.inc",
+      "sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+      "bytes": 350900
+    },
+    "proto_importer.c": {
+      "member": "qualified-artifacts/proto_importer.c",
+      "sha256": "f9d134f3fe36d559c35bef5f0a743497f61ba4e99c4afd97b3d43e7a681cd55f",
+      "bytes": 2116413
+    },
+    "proto_importer.h": {
+      "member": "qualified-artifacts/proto_importer.h",
+      "sha256": "b2fc9848a513f7b97afa37237126e45468d785eebdd46c1ea96cb9f8734e82ef",
+      "bytes": 263084
+    },
+    "mutation-survivors": {
+      "member": "qualified-artifacts/mutation-survivors",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "shard_records": [
+    {
+      "index": 1,
+      "member": "normal/checker-shards/1.rec",
+      "sha256": "35b9ed14edbee66681a9aa4308ff8cafecaec379dc78ac4f84a5bc89421d3089"
+    },
+    {
+      "index": 2,
+      "member": "normal/checker-shards/2.rec",
+      "sha256": "2da340da477763c6998ebf2d30252b84e63b0c5f36b4181dd15f9dcf85b7d925"
+    },
+    {
+      "index": 3,
+      "member": "normal/checker-shards/3.rec",
+      "sha256": "6816461133cf5db03199fa35c7d3190bd1df5656ec576769faeb9052aa748ec8"
+    },
+    {
+      "index": 4,
+      "member": "normal/checker-shards/4.rec",
+      "sha256": "b8f04e90615a2b61e2843b92097f65cac963bf9cd2130ca9626c1becad12a591"
+    },
+    {
+      "index": 5,
+      "member": "normal/checker-shards/5.rec",
+      "sha256": "5b48fba884ee222bacb60b4a25c90a733dfa65fca4a529fbef212aff5829d099"
+    },
+    {
+      "index": 6,
+      "member": "normal/checker-shards/6.rec",
+      "sha256": "f2cfef8ffc600f1fe25e3dc633bfbd9206d512405118c550849a763181c485b5"
+    },
+    {
+      "index": 7,
+      "member": "normal/checker-shards/7.rec",
+      "sha256": "953c81d8711412da018b78655abf8c0a68edb529ee2fa5dd0f0d55a3aad42b29"
+    },
+    {
+      "index": 8,
+      "member": "normal/checker-shards/8.rec",
+      "sha256": "86bb15d7d6efaf7556f9e2b64c8b70b519ae9410156a60e550235b692e7ac5db"
+    }
+  ],
+  "source_patch": {
+    "member": "candidate/candidate.patch.gz",
+    "base": "8b8b480de350244b49f09b0390a65210c8064b3d",
+    "source": "4c173f0a4555b9f109304c0c0653fe4af7388379",
+    "trees": {
+      "8b8b480de350244b49f09b0390a65210c8064b3d": "13a17ab0a24ef2bb5dcb66cf18bd2dba343cf45a",
+      "4c173f0a4555b9f109304c0c0653fe4af7388379": "e4afd38ae8517df7643e2c1dfd215f8713aa851c"
+    },
+    "raw_diff_bytes": 2316195,
+    "raw_diff_sha256": "eced4cfc5ff810d8d3184e56123868a73979fa605f0cb09351a0ebc2d9dd0dd1",
+    "gzip_sha256": "7be1889e384548494da9103adbf9186dfd9dc28aa3d53708c568f39093c4112f",
+    "changed_paths": [
+      "INVARIANTS.md",
+      "coax/CHANGELOG.md",
+      "coax/README.md",
+      "coax/ROADMAP.md",
+      "coax/STATUS.md",
+      "coax/book/appendix-a-keywords.md",
+      "coax/book/appendix-b-error-codes.md",
+      "coax/book/ch01-getting-started.md",
+      "coax/book/ch06-memory.md",
+      "coax/book/ch10-organizing-programs.md",
+      "coax/book/ch27-inside-coax0.md",
+      "coax/book/ch28-road-ahead.md",
+      "coax/bootstrap/checker.c",
+      "coax/bootstrap/checker.h",
+      "coax/bootstrap/parser.c",
+      "coax/generated/current.md",
+      "coax/generated/version-example.md",
+      "coax/lib/compiler/checker.coax",
+      "coax/lib/compiler/parser.coax",
+      "coax/release-status.json",
+      "coax/release.coax",
+      "coax/spec.md",
+      "coax/src/check.cpp",
+      "coax/src/release.h",
+      "coax/tests/borrow-query-work/many-independent-returns.coax",
+      "coax/tests/borrow-summaries/fixtures.json",
+      "coax/tests/borrow-summaries/helpers/escaping.coax",
+      "coax/tests/borrow-summaries/helpers/identity.coax",
+      "coax/tests/borrow-summaries/manual/call-projected-local-write.coax",
+      "coax/tests/borrow-summaries/manual/helper-alias-local-state.coax",
+      "coax/tests/borrow-summaries/manual/helper-local-state.coax",
+      "coax/tests/borrow-summaries/manual/record-held-helper-state.coax",
+      "coax/tests/borrow-summaries/manual/recursive-only.coax",
+      "coax/tests/borrow-summaries/negative/alias-local-field-write.coax",
+      "coax/tests/borrow-summaries/negative/array-field-write.coax",
+      "coax/tests/borrow-summaries/negative/array-of-borrows.coax",
+      "coax/tests/borrow-summaries/negative/borrow-leaves-65.coax",
+      "coax/tests/borrow-summaries/negative/by-value-array-copy.coax",
+      "coax/tests/borrow-summaries/negative/by-value-array.coax",
+      "coax/tests/borrow-summaries/negative/by-value-record-copy.coax",
+      "coax/tests/borrow-summaries/negative/by-value-record.coax",
+      "coax/tests/borrow-summaries/negative/conditional-helper.coax",
+      "coax/tests/borrow-summaries/negative/dynamic-alias-local-write.coax",
+      "coax/tests/borrow-summaries/negative/forward-chain.coax",
+      "coax/tests/borrow-summaries/negative/generic-chain.coax",
+      "coax/tests/borrow-summaries/negative/helper-local.coax",
+      "coax/tests/borrow-summaries/negative/loaded-chain.coax",
+      "coax/tests/borrow-summaries/negative/loaded-diagnostic.coax",
+      "coax/tests/borrow-summaries/negative/local-and-unknown-call.coax",
+      "coax/tests/borrow-summaries/negative/mixed-field.coax",
+      "coax/tests/borrow-summaries/negative/nested-field-write.coax",
+      "coax/tests/borrow-summaries/negative/owned-helper-slice.coax",
+      "coax/tests/borrow-summaries/negative/self-referential-copy.coax",
+      "coax/tests/borrow-summaries/negative/sibling-names.coax",
+      "coax/tests/borrow-summaries/negative/struct-literal.coax",
+      "coax/tests/borrow-summaries/positive/alias-mixed-field.coax",
+      "coax/tests/borrow-summaries/positive/borrow-leaves-64.coax",
+      "coax/tests/borrow-summaries/positive/by-value-descriptors.coax",
+      "coax/tests/borrow-summaries/positive/caller-views.coax",
+      "coax/tests/borrow-summaries/positive/generic-forward.coax",
+      "coax/tests/borrow-summaries/positive/loaded-helper.coax",
+      "coax/tests/borrow-summaries/positive/mixed-field.coax",
+      "coax/tests/borrow-summaries/positive/nested-aggregate.coax",
+      "coax/tests/borrow-summaries/positive/owned-copy.coax",
+      "coax/tests/borrow-summaries/positive/scratch-copy.coax",
+      "coax/tests/borrow-summaries/positive/sibling-names.coax",
+      "coax/tests/borrow-summaries/positive/unused-local-argument.coax",
+      "coax/tests/borrow-summary-return/systemone-native.c",
+      "coax/tests/borrow-summary-return/systemone.coax",
+      "coax/tests/borrow_query_work.py",
+      "coax/tests/borrow_summaries.py",
+      "coax/tests/borrow_summary_systemone.py",
+      "coax/tests/checker.py",
+      "coax/tests/run.sh",
+      "coax/verification-borrow-origins.md",
+      "coax/verification-local-borrows.md",
+      "coax/verification-return-borrows.md"
+    ],
+    "scope": "Exact local Git binary diff for reconstructing the4c candidate atop admitted8b8. Archived source only; not applied/installed/published language code."
+  },
+  "scope_limit": "Historical qualified normal only at4c/cf94. Not query-merged current main; no native9/source39/SystemOne/visual/publication claim. A1 remains open; incoming query integration requires its own qualification.",
+  "proof_limits": "Native compiler/SDK tool identities are retained in raw binding/receipts, not copied toolchain binaries. The patch requires the admitted base Git object. Prior diagnostic/precondition metadata remains historical, not a relabeled pass."
+}

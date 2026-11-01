@@ -1,5 +1,17 @@
 # Owner actions
 
+## Coax 0.46 publication: local cloud reauthentication (2026-10-31)
+
+Run `gcloud auth login` locally on this Mac, then confirm it finished. Do not
+send credentials in chat or commit them. The installed CLI has an active
+account, but token acquisition exits 1 with reauthentication required. The
+read-only publication preflight stopped before its first GCS request; no
+staging or production bytes changed. Compiler verification and the remaining
+ordered language work continue independently.
+
+Diagnostic receipt: `/tmp/coax-return-borrows-A1/publication-v2-credential-diagnostic/diagnostic.json`,
+SHA-256 `674f1704ea8cd4aa0d09a1c6e5f13949ffd42cfd9325a3cfc28f351a66c87a9f`.
+
 ## GR00T chapter168: gated backbone tokenizer/processor (2026-10-31)
 
 The selected robotics artifact is NVIDIA

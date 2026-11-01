@@ -18,6 +18,11 @@ E0303: name already declared; no shadowing
 Codes are stable: a code keeps its meaning, and a retired code is never
 reused, so the tables include the retired ones too.
 
+The `E0413` description below refers to the default `checks-c` ABI1.
+Explicit `checks-c --verification-abi 2` supports admitted finite `#forall`
+properties. Unsupported bodies still refuse, and both ABIs retain authority
+checks.
+
 The first two digits after the `E` give the stage that reports the error:
 
 | Prefix | Stage | Where to read more |
