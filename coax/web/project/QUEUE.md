@@ -80,7 +80,7 @@ queue holds (`~/work/.secrets/openagents-project-SLUG.key`, or
    ACTIVITY, within seconds. Never run `coax/web/release.sh` just to show a
    claim, a plan, a note or a done. For the Markdown agents read
    (`/projects/<slug>/index.md`, `/projects/index.md`, `/llms-full.txt`),
-   run `coax/web/project/publish-data.sh SLUG` (seconds; it writes only
+   run `openagents project publish-data SLUG` (seconds; it writes only
    those files and checks production answers them). The baked first paint
    catches up with the next code release, whoever runs it.
 9. **Before pushing a change to a page** (an app's `.coax`, `.wgsl`, face,
