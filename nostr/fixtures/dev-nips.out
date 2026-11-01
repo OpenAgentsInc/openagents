@@ -1,0 +1,66 @@
+agent public key: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+payload: 170 bytes
+preimage: 194 bytes
+signing hash: a11a32173aa35125aaefaad8854f2eda5a144268a4a355905c841f79ff44aa18
+signature with aux = 0 equals the NIP's: true
+armor: 369 bytes, base64 line equals the NIP's: true
+[GNUPG:] SIG_CREATED D 8 1 00 1700000000 f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+[GNUPG:] NEWSIG
+[GNUPG:] GOODSIG f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9 f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+[GNUPG:] VALIDSIG f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9 2023-11-14 1700000000 0 - - - - - f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+[GNUPG:] TRUST_FULLY 0 shell
+NIP-OA preimage: 82 bytes
+NIP-OA hash: 05113b24677b87bedf6498a3addad720003e6af36820e859a26814f149f5a837
+owner signature equals the NIP's: true
+preimage with oa: 389 bytes
+signing hash with oa: b61f1658836a4f63a2d2f5d621014a064435dde0765dd9c1dc79c9530fe879f0
+signature with oa equals the NIP's: true
+armor with oa: 649 bytes
+payload edited:
+[GNUPG:] NEWSIG
+[GNUPG:] BADSIG f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9 f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+oa stripped:
+[GNUPG:] NEWSIG
+[GNUPG:] BADSIG f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9 f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+GS projection, NIP vector: consistent
+GS projection, a space in the JSON: refused
+GS projection, oa[0] equals pk: refused
+valid_full: accept
+valid_member_dtag_contains_colon: accept
+valid_member_cap_boundary (64 members): accept
+invalid_member_cap_exceeded (65 members): member-cap
+invalid_member_tag_arity_four_elements: member-tag-arity
+invalid_member_duplicate_differing_relay_hints: member-duplicate
+MP projection, matching original: consistent
+MP projection, d differs from the original: refused
+stranger only: [borrowed: buzz] cards: buzz
+owner and stranger: [platform: buzz] [borrowed: buzz] cards:
+owner's project unlisted: cards: buzz
+member resolves to nothing: [platform: ghost (unavailable)] cards:
+composite cursor: 5 of 5 heads
+until only, stepping to oldest - 1: 4 of 5 heads: buzz buzz-infra platform mobile
+lease window: (1769989100, 1772582000]
+expiration 1769989100: invalid: lease already expired
+expiration 1769989101: ok
+expiration 1769993600: ok
+expiration 1772582000: ok
+expiration 1772582001: invalid: lease ttl too long
+newer created_at, generation 4 over 3: ok
+same created_at, lower id: ok
+same created_at, higher id: invalid: stale replacement
+newer created_at, generation 3 again: invalid: stale generation
+PL projection, d, expiration, exec and alt: consistent
+PL projection, expiration with a leading zero: refused
+PL projection, an extra public tag: refused
+merged: group:general 1700001200 group:dev 1700000500 group:random 1700000800
+merge(B, A) equals merge(A, B): true
+merge(AB, AB) equals AB: true
+conversation key with itself: 3b4610cb7189beb9cc29eb3716ecc6102f1247e8f3101a03a1787d8908aeb54e
+decrypt: ok true, 103 bytes, equals the NIP's plaintext: true
+decrypt with one key bit flipped: refused true
+own slot holds client-B, I am client-A: may publish false
+created_at, clock 1700001200, fetched up to 1700001500: 1700001501
+created_at, clock 1700002000, fetched up to 1700001500: 1700002000
+RS projection, one d and one read-state t: consistent
+RS projection, uppercase slot: refused
+RS projection, two read-state t tags: refused

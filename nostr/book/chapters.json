@@ -1629,7 +1629,7 @@
    "number": 91,
    "title": "Git signing, projects, leases and read state",
    "file": "ch091-git-signing-projects-leases-and-read-state.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     63,
@@ -1639,7 +1639,9 @@
     "coax/lib/nostr/adapters/gs-projection.coax",
     "coax/lib/nostr/adapters/mp-projection.coax",
     "coax/lib/nostr/adapters/pl-projection.coax",
-    "coax/lib/nostr/adapters/rs-projection.coax"
+    "coax/lib/nostr/adapters/rs-projection.coax",
+    "nostr/examples/dev-nips.coax",
+    "nostr/examples/checks/dev-nips.coax"
    ],
    "qualified_targets": [
     "cpu"

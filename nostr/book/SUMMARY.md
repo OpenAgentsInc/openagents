@@ -122,7 +122,7 @@
 - [88. Federated identity](ch088-federated-identity.md) — implemented
 - [89. Channels](ch089-channels.md) — design draft
 - [90. Artifacts, archives and reminders](ch090-artifacts-archives-and-reminders.md) — design draft
-- [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) — partly implemented
+- [91. Git signing, projects, leases and read state](ch091-git-signing-projects-leases-and-read-state.md) — implemented
 - [92. Private agent state](ch092-private-agent-state.md) — design draft
 
 **XI. Interop and verification**

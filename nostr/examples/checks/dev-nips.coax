@@ -1,0 +1,740 @@
+// The checks of dev-nips.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/dev-nips.coax --run-steps 250000000
+#load "../dev-nips.coax";
+
+// book:begin check
+// Fold results compare as sets: the containers, each container's members
+// (with their render state) and the implicit cards.
+same_members :: (a: MpContainer, b: MpContainer) -> bool {
+  if a.project != b.project || a.count != b.count { return false; }
+  for i: 0..<a.count {
+    found := false;
+    for j: 0..<b.count { if a.members[i].coordinate == b.members[j].coordinate && a.members[i].resolved == b.members[j].resolved { found = true; } }
+    if !found { return false; }
+  }
+  return true;
+}
+same_collection :: (got: MpCollection, want: MpCollection) -> bool {
+  if got.count != want.count || got.card_count != want.card_count { return false; }
+  for i: 0..<want.count {
+    found := false;
+    for j: 0..<got.count { if same_members(got.containers[j], want.containers[i]) { found = true; } }
+    if !found { return false; }
+  }
+  for i: 0..<want.card_count {
+    found := false;
+    for j: 0..<got.card_count { if got.cards[j] == want.cards[i] { found = true; } }
+    if !found { return false; }
+  }
+  return true;
+}
+// The pagination fixture: serve every head sorted by (created_at descending,
+// coordinate ascending) in pages, gather them with the composite cursor, and
+// count how often each repository and project arrived. The fold then reads only
+// those.
+Seen :: struct { repo: [8] int; project: [8] int; pages: int; heads: int; }
+paged :: (repos: [] MpRepo, projects: [] MpProject, size: int) -> Seen {
+  heads: [16] MpHead; n := 0;
+  for i: 0..<repos.count { heads[n] = MpHead.{created_at = repos[i].created_at, coordinate = repos[i].coordinate}; n += 1; }
+  for i: 0..<projects.count { heads[n] = MpHead.{created_at = projects[i].created_at, coordinate = projects[i].coordinate}; n += 1; }
+  for i: 1..<n {
+    j := i;
+    while j > 0 && mp_before(heads[j], heads[j - 1]) { t := heads[j]; heads[j] = heads[j - 1]; heads[j - 1] = t; j -= 1; }
+  }
+  // The first page: everything at or below the newest second, after "".
+  s: Seen; until := heads[0].created_at; after := "";
+  while true {
+    page: [8] MpHead;
+    got := mp_page(heads[0..<n], size, true, until, after, page[..]);
+    s.pages += 1; s.heads += got;
+    for k: 0..<got {
+      for i: 0..<repos.count { if repos[i].coordinate == page[k].coordinate { s.repo[i] += 1; } }
+      for i: 0..<projects.count { if projects[i].coordinate == page[k].coordinate { s.project[i] += 1; } }
+    }
+    if got < size { break; }
+    until = page[got - 1].created_at; after = page[got - 1].coordinate;
+  }
+  return s;
+}
+
+#test "GS: both NIP vectors, signed again and checked through the projection" #steps 200000000 {
+  // The second vector's full JSON from the NIP, armored by the projection's own writers.
+  owner := GsOwner.{present = true, key = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", conditions = "", signature = OA_SIG};
+  pk: [32] u8; unhex("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", pk[..]);
+  sig: [64] u8; unhex(GS_OA_SIG, sig[..]);
+  hash: [32] u8; #assert gs_hash(1700000000, owner, GS_PAYLOAD, hash[..]) == 13 + 10 + 1 + 64 + 1 + 0 + 1 + 128 + 1 + 170;
+  #assert schnorr_verify_vartime(hash[..], pk[..], sig[..]);
+  oa: [32] u8; #assert oa_hash("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "", oa[..]) == 82;
+  owner_pk: [32] u8; unhex(owner.key, owner_pk[..]);
+  osig: [64] u8; unhex(OA_SIG, osig[..]);
+  #assert schnorr_verify_vartime(oa[..], owner_pk[..], osig[..]);
+  // The armor our writer builds is the one the protoc fixture carries.
+  armor: [GSA_ARMOR_MAX] u8; n := gs_armor(pk[..], sig[..], 1700000000, owner, armor[..]);
+  fixture := GS_FIX_OWNER; r := gsa_read(fixture[..]);
+  #assert r.consistent && r.owner && dn_same(r.armor, armor[0..<n]);
+  plain := GS_FIX_OK; p := gsa_read(plain[..]);
+  none: GsOwner; sig1: [64] u8; unhex(GS_SIG, sig1[..]);
+  m := gs_armor(pk[..], sig1[..], 1700000000, none, armor[..]);
+  #assert p.consistent && dn_same(p.armor, armor[0..<m]);
+  // t = 0 and the largest t spell as "0" and "4294967295".
+  #assert gs_hash(0, none, "", hash[..]) == 15 && gs_hash(4294967295, none, "", hash[..]) == 24;
+}
+#test "GS VALIDSIG dates, against Python's datetime" {
+  d: [10] u8;
+  #assert gs_date(1700000000, d[..]) == "2023-11-14" && gs_date(0, d[..]) == "1970-01-01";
+  #assert gs_date(951782400, d[..]) == "2000-02-29" && gs_date(951868800, d[..]) == "2000-03-01";
+  #assert gs_date(4107456000, d[..]) == "2100-02-28" && gs_date(4107542400, d[..]) == "2100-03-01";
+  #assert gs_date(4294967295, d[..]) == "2106-02-07" && gs_date(1704067199, d[..]) == "2023-12-31";
+}
+#test "MP coordinates split on the first two colons" {
+  #assert mp_coordinate(ALICE) && mp_coordinate("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:a:b:c");
+  #assert !mp_coordinate("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:");
+  #assert !mp_coordinate("30618:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  #assert !mp_coordinate("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  #assert !mp_coordinate("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaG:buzz");
+  #assert !mp_coordinate("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/:buzz");
+  #assert !mp_coordinate("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`:buzz");
+}
+#test "MP until-only paging loses a tied head; the composite cursor does not" {
+  heads := [5] MpHead.[MpHead.{created_at = 1000, coordinate = "a"}, MpHead.{created_at = 1000, coordinate = "b"},
+                       MpHead.{created_at = 1000, coordinate = "c"}, MpHead.{created_at = 900, coordinate = "d"},
+                       MpHead.{created_at = 900, coordinate = "e"}];
+  got: [8] MpHead;
+  #assert mp_enumerate(heads[..], 2, true, got[..]) == 5 && got[2].coordinate == "c";
+  #assert mp_enumerate(heads[..], 2, false, got[..]) == 4 && got[2].coordinate == "d";
+  #assert mp_enumerate(heads[..], 5, false, got[..]) == 5;
+}
+#test "PL window edges and replacement order" {
+  #assert pl_replace(5, "b", 1, 5, "b", 2) == "invalid: stale replacement";
+  #assert pl_replace(5, "b", 1, 4, "a", 9) == "invalid: stale replacement";
+  #assert pl_replace(5, "ab", 1, 5, "aa", 2) == "ok";
+  #assert pl_replace(5, "b", 7, 6, "c", 7) == "invalid: stale generation";
+}
+#test "RS: the NIP's merged state, and the merge is a join" {
+  a: RsState; a = rs_put(a, "group:general", 1700001000); a = rs_put(a, "group:dev", 1700000500);
+  b: RsState; b = rs_put(b, "group:general", 1700001200); b = rs_put(b, "group:random", 1700000800);
+  ab := rs_merge(a, b); ba := rs_merge(b, a);
+  #assert rs_get(ab, "group:general") == 1700001200 && rs_get(ab, "group:dev") == 1700000500 && rs_get(ab, "group:random") == 1700000800 && ab.count == 3;
+  #assert rs_same(ab, ba) && rs_same(rs_merge(ab, ab), ab) && rs_same(rs_merge(rs_merge(a, b), a), rs_merge(a, rs_merge(b, a)));
+  #assert rs_created_at(1700001200, 1700001500) == 1700001501 && rs_created_at(1700001500, 1700001500) == 1700001501 && rs_created_at(1700001501, 1700001500) == 1700001501;
+  #assert !rs_may_publish("client-A", "client-B") && rs_may_publish("client-A", "client-A");
+}
+#forall "PL accepts exactly now - skew < expiration <= now + max_ttl" now: 1000..<1040, e: 950..<2100 {
+  #assert (pl_window(now, e, 15, 1000) == "ok") == (now - 15 < e && e <= now + 1000);
+}
+#forall "RS keeps the larger of two timestamps for one context, in either order" x: 0..<20, y: 0..<20 {
+  s: RsState; s = rs_put(s, "c", x); s = rs_put(s, "c", y);
+  t: RsState; t = rs_put(t, "c", y); t = rs_put(t, "c", x);
+  #assert rs_get(s, "c") == (ifx x > y then x else y) && rs_same(s, t);
+}
+#test "RS: the ciphertext vector decrypts with key 1 to itself" #steps 200000000 {
+  k1: [32] u8; unhex("0000000000000000000000000000000000000000000000000000000000000001", k1[..]);
+  p1 := public_x(k1[..]);
+  scratch: [1] EcdhScratch; ck: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(k1[..], p1[..], scratch[..], ck[..], false) == NIP44_OK;
+  work: [512] u8; plain: [256] u8;
+  r := nip44_decrypt_checked(NIP44_COMPAT, ck[..], RS_CIPHER, work[..], plain[..], false);
+  #assert r.error == NIP44_OK && cast(string) plain[0..<r.written] == RS_PLAIN;
+}
+
+#test "MP the comparison helpers tell collections apart" {
+  a: MpContainer; a.project = "p"; a.count = 2;
+  a.members[0] = MpPlaced.{coordinate = "x", resolved = true}; a.members[1] = MpPlaced.{coordinate = "y", resolved = false};
+  b := a; b.members[0] = a.members[1]; b.members[1] = a.members[0];
+  #assert same_members(a, b);
+  c := a; c.project = "q"; #assert !same_members(a, c);
+  c = a; c.count = 1; #assert !same_members(a, c);
+  c = a; c.members[1].resolved = true; #assert !same_members(a, c);
+  c = a; c.members[1].coordinate = "z"; #assert !same_members(a, c);
+  c = a; c.members[0].coordinate = "z"; #assert !same_members(c, a);
+  c = a; c.members[0].resolved = false; #assert !same_members(c, a);
+  w: MpCollection; w.count = 2; w.containers[0] = a; w.containers[1] = a; w.containers[1].project = "q";
+  w.card_count = 2; w.cards[0] = "x"; w.cards[1] = "y";
+  g := w; g.containers[0] = w.containers[1]; g.containers[1] = w.containers[0]; g.cards[0] = "y"; g.cards[1] = "x";
+  #assert same_collection(g, w);
+  g = w; g.count = 1; #assert !same_collection(g, w);
+  g = w; g.count = 3; g.containers[2] = a; #assert !same_collection(g, w);
+  g = w; g.card_count = 1; #assert !same_collection(g, w);
+  g = w; g.card_count = 3; g.cards[2] = "x"; #assert !same_collection(g, w);
+  g = w; g.containers[0].project = "r"; #assert !same_collection(g, w);
+  g = w; g.cards[0] = "z"; #assert !same_collection(g, w);
+  g = w; g.containers[1].project = "r"; #assert !same_collection(g, w);
+  g = w; g.cards[1] = "z"; #assert !same_collection(g, w);
+}
+#test "MP paging sorts what it serves and sees every head once" {
+  repos: [3] MpRepo;
+  repos[0] = mp_repo("30617:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:buzz-mobile"); repos[0].created_at = 1000;
+  repos[1] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:old"); repos[1].created_at = 800;
+  repos[2] = mp_repo(ALICE); repos[2].created_at = 1000;
+  projects: [2] MpProject;
+  projects[0] = mp_project("30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:mobile", BOB_KEY); projects[0].created_at = 900;
+  projects[1] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", ALICE_KEY); projects[1].created_at = 1100;
+  seen := paged(repos[..], projects[..], 2);
+  #assert seen.pages == 3 && seen.heads == 5;
+  for i: 0..<3 { #assert seen.repo[i] == 1; }
+  for i: 0..<2 { #assert seen.project[i] == 1; }
+  one := paged(repos[..], projects[..], 1);
+  #assert one.pages == 6 && one.heads == 5;
+  // The first two out of order, and nothing later to carry them past each other.
+  pair := [2] MpRepo.[repos[1], repos[2]];
+  two := paged(pair[..], projects[0..<0], 1);
+  #assert two.heads == 2 && two.repo[0] == 1 && two.repo[1] == 1;
+}
+// book:end check
+// Every case of nostr/nips/block/NIP-MP.fixtures.json, transcribed: its
+// tags and its expected outcome (accept, or the one rule it names).
+#test "MP ingest fixture valid_minimal" {
+  tags := [1] MpTag.[
+    mp_tag("d", "platform")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_full" {
+  tags := [7] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("name", "Platform"),
+    mp_tag("description", "Relay, desktop, and mobile for the platform team."),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"),
+    mp_tag("a", "30617:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:buzz-infra"),
+    mp_tag("buzz-channel", "3580ca9b-47b4-4af9-b22a-1068778f26c6"),
+    mp_tag("buzz-visibility", "listed")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_zero_members" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("name", "Platform")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_unlisted" {
+  tags := [3] MpTag.[
+    mp_tag("d", "skunkworks"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"),
+    mp_tag("buzz-visibility", "unlisted")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_member_cap_boundary" {
+  tags := [65] MpTag.[
+    mp_tag("d", "wide"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-00"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-01"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-02"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-03"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-04"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-05"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-06"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-07"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-08"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-09"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-10"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-11"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-12"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-13"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-14"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-15"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-16"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-17"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-18"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-19"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-20"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-21"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-22"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-23"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-24"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-25"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-26"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-27"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-28"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-29"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-30"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-31"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-32"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-33"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-34"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-35"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-36"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-37"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-38"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-39"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-40"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-41"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-42"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-43"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-44"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-45"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-46"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-47"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-48"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-49"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-50"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-51"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-52"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-53"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-54"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-55"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-56"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-57"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-58"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-59"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-60"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-61"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-62"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-63")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_same_dtag_two_owners" {
+  tags := [3] MpTag.[
+    mp_tag("d", "forks"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"),
+    mp_tag("a", "30617:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:buzz")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_member_dtag_contains_colon" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz:infra")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_uninterpreted_metadata_values" {
+  tags := [3] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("buzz-channel", "not-a-uuid"),
+    mp_tag("buzz-visibility", "chartreuse")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_unknown_tag_ignored" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("future-metadata", "preserve-me")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_member_relay_hint" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag3("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", "wss://relay.example.com")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture valid_non_empty_content" {
+  tags := [1] MpTag.[
+    mp_tag("d", "platform")];
+  #assert mp_ingest(tags[..]) == "accept";
+}
+#test "MP ingest fixture invalid_d_missing" {
+  tags := [1] MpTag.[
+    mp_tag("name", "Platform")];
+  #assert mp_ingest(tags[..]) == "d-cardinality";
+}
+#test "MP ingest fixture invalid_d_multiple" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("d", "infra")];
+  #assert mp_ingest(tags[..]) == "d-cardinality";
+}
+#test "MP ingest fixture invalid_d_empty" {
+  tags := [1] MpTag.[
+    mp_tag("d", "")];
+  #assert mp_ingest(tags[..]) == "d-empty";
+}
+#test "MP ingest fixture invalid_member_duplicate" {
+  tags := [3] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz")];
+  #assert mp_ingest(tags[..]) == "member-duplicate";
+}
+#test "MP ingest fixture invalid_member_duplicate_differing_relay_hints" {
+  tags := [3] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag3("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", "wss://relay-one.example.com"),
+    mp_tag3("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", "wss://relay-two.example.com")];
+  #assert mp_ingest(tags[..]) == "member-duplicate";
+}
+#test "MP ingest fixture invalid_member_cap_exceeded" {
+  tags := [66] MpTag.[
+    mp_tag("d", "wide"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-00"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-01"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-02"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-03"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-04"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-05"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-06"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-07"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-08"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-09"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-10"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-11"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-12"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-13"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-14"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-15"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-16"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-17"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-18"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-19"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-20"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-21"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-22"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-23"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-24"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-25"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-26"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-27"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-28"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-29"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-30"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-31"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-32"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-33"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-34"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-35"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-36"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-37"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-38"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-39"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-40"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-41"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-42"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-43"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-44"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-45"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-46"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-47"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-48"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-49"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-50"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-51"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-52"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-53"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-54"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-55"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-56"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-57"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-58"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-59"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-60"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-61"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-62"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-63"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-64")];
+  #assert mp_ingest(tags[..]) == "member-cap";
+}
+#test "MP ingest fixture invalid_member_cap_exceeded_by_duplicates" {
+  tags := [66] MpTag.[
+    mp_tag("d", "wide"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-00"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-00"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-01"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-01"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-02"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-02"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-03"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-03"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-04"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-04"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-05"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-05"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-06"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-06"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-07"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-07"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-08"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-08"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-09"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-09"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-10"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-10"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-11"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-11"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-12"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-12"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-13"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-13"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-14"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-14"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-15"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-15"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-16"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-16"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-17"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-17"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-18"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-18"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-19"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-19"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-20"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-20"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-21"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-21"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-22"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-22"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-23"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-23"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-24"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-24"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-25"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-25"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-26"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-26"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-27"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-27"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-28"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-28"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-29"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-29"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-30"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-30"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-31"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-31"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:repo-32")];
+  #assert mp_ingest(tags[..]) == "member-cap";
+}
+#test "MP ingest fixture invalid_member_tag_arity_four_elements" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag4("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", "wss://relay.example.com", "unexpected")];
+  #assert mp_ingest(tags[..]) == "member-tag-arity";
+}
+#test "MP ingest fixture invalid_member_kind_prefix" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30618:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz")];
+  #assert mp_ingest(tags[..]) == "member-coordinate-malformed";
+}
+#test "MP ingest fixture invalid_member_owner_not_hex" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz:buzz")];
+  #assert mp_ingest(tags[..]) == "member-coordinate-malformed";
+}
+#test "MP ingest fixture invalid_member_owner_uppercase" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:buzz")];
+  #assert mp_ingest(tags[..]) == "member-coordinate-malformed";
+}
+#test "MP ingest fixture invalid_member_owner_wrong_length" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz")];
+  #assert mp_ingest(tags[..]) == "member-coordinate-malformed";
+}
+#test "MP ingest fixture invalid_member_dtag_empty" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:")];
+  #assert mp_ingest(tags[..]) == "member-coordinate-malformed";
+}
+#test "MP ingest fixture invalid_member_missing_segment" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")];
+  #assert mp_ingest(tags[..]) == "member-coordinate-malformed";
+}
+#test "MP ingest fixture invalid_metadata_duplicate_name" {
+  tags := [3] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("name", "Platform"),
+    mp_tag("name", "Infra")];
+  #assert mp_ingest(tags[..]) == "metadata-cardinality";
+}
+#test "MP ingest fixture invalid_metadata_duplicate_channel" {
+  tags := [3] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("buzz-channel", "3580ca9b-47b4-4af9-b22a-1068778f26c6"),
+    mp_tag("buzz-channel", "00000000-0000-0000-0000-000000000000")];
+  #assert mp_ingest(tags[..]) == "metadata-cardinality";
+}
+#test "MP ingest fixture invalid_metadata_name_too_long" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("name", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")];
+  #assert mp_ingest(tags[..]) == "metadata-length";
+}
+#test "MP ingest fixture invalid_metadata_description_too_long" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("description", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")];
+  #assert mp_ingest(tags[..]) == "metadata-length";
+}
+#test "MP ingest fixture invalid_metadata_channel_too_long" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("buzz-channel", "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")];
+  #assert mp_ingest(tags[..]) == "metadata-length";
+}
+#test "MP ingest fixture invalid_metadata_visibility_too_long" {
+  tags := [2] MpTag.[
+    mp_tag("d", "platform"),
+    mp_tag("buzz-visibility", "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")];
+  #assert mp_ingest(tags[..]) == "metadata-length";
+}
+
+// Every case of nostr/nips/block/NIP-MP.fold-fixtures.json, transcribed.
+#test "MP fold fixture owner_project_claims_own_repository" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 1; want.card_count = 0;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture stranger_project_does_not_claim" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:borrowed", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 1; want.card_count = 1;
+  want.containers[0].project = "30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:borrowed"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  want.cards[0] = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz";
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture maintainer_signer_claims" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  repos[0].maintainers[0] = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc:platform", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 1; want.card_count = 0;
+  want.containers[0].project = "30621:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc:platform"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture two_claiming_projects_both_render_member" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [2] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  projects[1] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:infra", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[1].unlisted = false; projects[1].live = true; projects[1].hidden = false; projects[1].created_at = 0;
+  projects[1] = with_member(projects[1], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 2; want.card_count = 0;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  want.containers[1].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:infra"; want.containers[1].count = 1;
+  want.containers[1].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture repository_removed_from_every_project" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  want: MpCollection; want.count = 1; want.card_count = 1;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 0;
+  want.cards[0] = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz";
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture unlisted_project_absent_member_falls_back" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:skunkworks", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = true; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 0; want.card_count = 1;
+  want.cards[0] = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz";
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture locally_hidden_project_absent_member_falls_back" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = true; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 0; want.card_count = 1;
+  want.cards[0] = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz";
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture viewer_hidden_repository_absent_everywhere" {
+  repos: [2] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = true; repos[0].created_at = 0;
+  repos[1] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz-infra"); repos[1].live = true; repos[1].hidden = false; repos[1].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz-infra");
+  want: MpCollection; want.count = 1; want.card_count = 0;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz-infra", resolved = true};
+  #assert same_collection(mp_fold(repos[0..<2], projects[..]), want);
+}
+#test "MP fold fixture unresolvable_member_renders_unavailable" {
+  repos: [1] MpRepo;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:ghost");
+  want: MpCollection; want.count = 1; want.card_count = 0;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:ghost", resolved = false};
+  #assert same_collection(mp_fold(repos[0..<0], projects[..]), want);
+}
+#test "MP fold fixture deleted_project_absent_member_falls_back" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [1] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = false; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 0; want.card_count = 1;
+  want.cards[0] = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz";
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture authorized_and_unauthorized_projects_share_member" {
+  repos: [1] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 0;
+  projects: [2] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 0;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  projects[1] = mp_project("30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:borrowed", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  projects[1].unlisted = false; projects[1].live = true; projects[1].hidden = false; projects[1].created_at = 0;
+  projects[1] = with_member(projects[1], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  want: MpCollection; want.count = 2; want.card_count = 0;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 1;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  want.containers[1].project = "30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:borrowed"; want.containers[1].count = 1;
+  want.containers[1].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  #assert same_collection(mp_fold(repos[0..<1], projects[..]), want);
+}
+#test "MP fold fixture exhaustive_enumeration_across_pages_with_tied_timestamps" {
+  repos: [3] MpRepo;
+  repos[0] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz"); repos[0].live = true; repos[0].hidden = false; repos[0].created_at = 1000;
+  repos[1] = mp_repo("30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz-infra"); repos[1].live = true; repos[1].hidden = false; repos[1].created_at = 1000;
+  repos[2] = mp_repo("30617:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:buzz-mobile"); repos[2].live = true; repos[2].hidden = false; repos[2].created_at = 1000;
+  projects: [2] MpProject;
+  projects[0] = mp_project("30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  projects[0].unlisted = false; projects[0].live = true; projects[0].hidden = false; projects[0].created_at = 900;
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz");
+  projects[0] = with_member(projects[0], "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz-infra");
+  projects[1] = mp_project("30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:mobile", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  projects[1].unlisted = false; projects[1].live = true; projects[1].hidden = false; projects[1].created_at = 900;
+  projects[1] = with_member(projects[1], "30617:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:buzz-mobile");
+  want: MpCollection; want.count = 2; want.card_count = 0;
+  want.containers[0].project = "30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:platform"; want.containers[0].count = 2;
+  want.containers[0].members[0] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz", resolved = true};
+  want.containers[0].members[1] = MpPlaced.{coordinate = "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:buzz-infra", resolved = true};
+  want.containers[1].project = "30621:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:mobile"; want.containers[1].count = 1;
+  want.containers[1].members[0] = MpPlaced.{coordinate = "30617:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:buzz-mobile", resolved = true};
+  // Served in pages of 2 and gathered with the composite cursor first.
+  seen := paged(repos[0..<3], projects[..], 2);
+  #assert seen.pages == 3 && seen.heads == 5;
+  for i: 0..<3 { repos[i].live = repos[i].live && seen.repo[i] == 1; }
+  for i: 0..<2 { projects[i].live = projects[i].live && seen.project[i] == 1; }
+  #assert same_collection(mp_fold(repos[0..<3], projects[..]), want);
+}
