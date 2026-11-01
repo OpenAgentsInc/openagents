@@ -91,15 +91,19 @@ gate_key() {
 }
 # A mutation gate that fails only on survivors is judged by mutation-gate.sh
 # against COAX_MUTATION_CHANGED (the lines changed since a base, from
-# coax/build.sh; unset or "strict": every survivor gates). Survivors on other
-# lines are listed in bin/mutation-survivors and do not stop the build. Their
+# coax/build.sh; unset or "strict": every survivor gates). A survivor gates on
+# a changed line, or when the change removed a check from its file or from the
+# gate's mutated file. Other survivors are listed in bin/mutation-survivors and
+# do not stop the build. Their
 # gate result is kept with its survivors, and judged again on reuse.
 mutation_changed="${COAX_MUTATION_CHANGED:-strict}"
 : > "$work/mutation-survivors"
 judge() {   # judge LABEL SURVIVORS: 0 when none of them gates
   local gating
-  if gating="$(./mutation-gate.sh verdict "$mutation_changed" "$2")"; then
-    echo "coax bootstrap: $(wc -l < "$2" | tr -d ' ') survivor(s) on unchanged lines, reported, not gating: $1"
+  # Labelled, so a check removed from the mutated file gates its survivors.
+  sed "s|^|$1: |" "$2" > "$work/survivors.labelled"
+  if gating="$(./mutation-gate.sh verdict "$mutation_changed" "$work/survivors.labelled")"; then
+    echo "coax bootstrap: $(wc -l < "$2" | tr -d ' ') survivor(s) the change did not cause, reported, not gating: $1"
     sed "s|^|$1: |" "$2" >> "$work/mutation-survivors"
     return 0
   fi

@@ -43,18 +43,14 @@ else
   fi
 fi
 export COAX_MUTATION_CHANGED="$mutation_changed"
-# The survivors a cached build tolerated, as PATH:LINE, must not gate here.
+# The survivors a cached build tolerated ("GATE: PATH:LINE") must not gate here.
 survivors_allowed() {
-  local list
   [[ -s "$1/mutation-survivors" ]] || return 0
-  list="$(mktemp "${TMPDIR:-/tmp}/coax-survivors.XXXXXXXX")"
-  sed 's/^.*: //' "$1/mutation-survivors" > "$list"
-  if ./mutation-gate.sh verdict "$mutation_changed" "$list" > /dev/null; then rm -f "$list"; return 0; fi
-  rm -f "$list"; return 1
+  ./mutation-gate.sh verdict "$mutation_changed" "$1/mutation-survivors" > /dev/null
 }
 report_survivors() {
   [[ -s bin/mutation-survivors ]] || return 0
-  echo "coax/build.sh: $(wc -l < bin/mutation-survivors | tr -d ' ') surviving mutant(s) on unchanged lines, reported in coax/bin/mutation-survivors, not gating (the full check: COAX_MUTATION_FULL=1 coax/build.sh)" >&2
+  echo "coax/build.sh: $(wc -l < bin/mutation-survivors | tr -d ' ') surviving mutant(s) that this checkout's changes didn't cause, reported in coax/bin/mutation-survivors, not gating (the full check: COAX_MUTATION_FULL=1 coax/build.sh)" >&2
 }
 
 # The C artifacts beside the compiler (native tests link them). A cached build

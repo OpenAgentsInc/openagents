@@ -208,13 +208,23 @@ compiler() {
 # gates on all of them, outside releases. Without a production commit, or for
 # a commit older than this rule, every survivor gates.
 mutation_changed=strict
-survivors_allowed() {   # the survivors a cached build tolerated must not be on changed lines
-  local list ok=0
+survivors_allowed() {   # the survivors a cached build tolerated ("GATE: PATH:LINE") must not gate
   [[ -s "$1/mutation-survivors" ]] || return 0
   [[ "$mutation_changed" != strict && -x "$repo/coax/mutation-gate.sh" ]] || return 1
-  list="$(mktemp)"; sed 's/^.*: //' "$1/mutation-survivors" > "$list"
-  "$repo/coax/mutation-gate.sh" verdict "$mutation_changed" "$list" > /dev/null || ok=1
-  rm -f "$list"; return $ok
+  "$repo/coax/mutation-gate.sh" verdict "$mutation_changed" "$1/mutation-survivors" > /dev/null
+}
+# changed_since_production COMMIT: the lines changed since production's
+# release, for the commit this release builds (the default ref can move
+# while a release waits for the lock, so it is computed again for the
+# release's own commit).
+changed_since_production() {
+  local production
+  mutation_changed=strict
+  production="$(live)"
+  if [[ -n "$production" && -x "$repo/coax/mutation-gate.sh" ]] && git -C "$repo" merge-base --is-ancestor "${production%% *}" "$1" 2> /dev/null; then
+    mutation_changed="$(mktemp)"
+    "$repo/coax/mutation-gate.sh" changed "$repo" "${production%% *}" "$1" > "$mutation_changed" || mutation_changed=strict
+  fi
 }
 survivors_to() { if [[ -s "$1/mutation-survivors" ]]; then cp "$1/mutation-survivors" "$2/coax/bin/mutation-survivors"; else rm -f "$2/coax/bin/mutation-survivors"; fi; }
 
@@ -251,11 +261,7 @@ fi
 # Make sure the compiler for the commit is built before queueing, so a
 # bootstrap never holds the lock (and the releases behind it) for minutes.
 if [[ -n "${wanted:-}" ]] || wanted="$(git -C "$repo" rev-parse --verify -q "$ref^{commit}")"; then
-  production="$(live)"
-  if [[ -n "$production" && -x "$repo/coax/mutation-gate.sh" ]] && git -C "$repo" merge-base --is-ancestor "${production%% *}" "$wanted" 2> /dev/null; then
-    mutation_changed="$(mktemp)"
-    "$repo/coax/mutation-gate.sh" changed "$repo" "${production%% *}" "$wanted" > "$mutation_changed" || mutation_changed=strict
-  fi
+  changed_since_production "$wanted"
   inputs="$(mktemp -d)"
   git -C "$repo" archive "$wanted" coax scripts/coax-release.sh | tar -x -C "$inputs"
   compiler "$inputs" "$inputs" || true   # checked again on the release's own tree below
@@ -300,10 +306,11 @@ echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 # Use only a snapshot whose checked build record matches this target tree.
 # Input/binary consistency is not a signature against a hostile local writer.
 t=$(now)
+changed_since_production "$full"
 compiler "$tree" "$tree" || exit 1
 lap compiler "$t"
 if [[ -s "$tree/coax/bin/mutation-survivors" ]]; then
-  echo "  mutation   $(wc -l < "$tree/coax/bin/mutation-survivors" | tr -d ' ') surviving mutant(s) on compiler lines unchanged since production: reported in releases/<time>/MUTATION, not gating"
+  echo "  mutation   $(wc -l < "$tree/coax/bin/mutation-survivors" | tr -d ' ') surviving mutant(s) that no change since production caused: reported in releases/<time>/MUTATION, not gating"
 fi
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax"
 

@@ -43,7 +43,9 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   `coax/web/release.sh`. Other survivors are listed in
   `coax/bin/mutation-survivors` and `releases/<time>/MUTATION`.
   `COAX_MUTATION_FULL=1 coax/build.sh` is the full check, which gates on
-  every survivor.
+  every survivor. A survivor also stops the build when the change removed or
+  edited a check in its file or in the file its gate mutates, and untracked
+  `.coax` files count as changed.
 - Follow-up (`ax-stale-compiler`): `coax source-digest ROOT` prints one hash
   of the compiler sources under `ROOT/coax`, and `coax/build.sh` writes it to
   `coax/bin/source-digest`. A failing command run from `ROOT/coax/bin/coax`
