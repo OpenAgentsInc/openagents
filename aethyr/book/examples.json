@@ -110,6 +110,36 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/push-out.coax",
+      "chapter": "aethyr/book/ch008-ground-and-collision.md",
+      "stdout": "aethyr/fixtures/push-out.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/run-and-jump.coax",
+      "chapter": "aethyr/book/ch009-a-character-moves.md",
+      "stdout": "aethyr/fixtures/run-and-jump.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/follow-a-wall.coax",
+      "chapter": "aethyr/book/ch010-the-camera-follows.md",
+      "stdout": "aethyr/fixtures/follow-a-wall.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

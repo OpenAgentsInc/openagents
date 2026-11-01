@@ -1,0 +1,30 @@
+// book:begin example
+#load "../follow.coax";
+#import "Basic";
+
+// The follow camera on its own: its target chasing a point 1 m away on the spring, a wall
+// 2.5 m behind it, and backing out once the wall is gone, in steps of four sizes.
+main :: () {
+  f: Follow; f.phi = f32(FOLLOW_PI) / 2;                  // level, looking along +Z, out to -Z
+  f.target = world_point(0, 0, 0);
+  g := f;
+  for k: 1..<9 {
+    g = follow_spring(g, world_point(1, 0, 0), 0.015625);
+    if k == 1 || k == 2 || k == 4 || k == 8 {
+      x := 20 * f32(k) * 0.015625;                          // omega t, omega = 2 / 0.1 s
+      print("spring at step %: % m left; (1 + wt) e^-wt = %\n", k, 1 - g.target.x, (1 + x) * exp(-x));
+    }
+  }
+  wall := [6] f32.[-1, 0, -3, 1, 3, -2.5];               // its face 2.5 m behind the target
+  c := Colliders.{boxes = wall[..]};
+  near := follow_track(f, c, 1000, f.target, 0.015625);
+  print("with the wall: % m out\n", near.dist);
+  for hz: [4] int.[30, 60, 120, 144] {
+    h := near;
+    for k: 0..<hz / 2 { h = follow_track(h, Colliders.{}, 1000, f.target, 1 / f32(hz)); }
+    print("0.5 s after it goes, at % Hz: % m out\n", hz, h.dist);
+  }
+  print("closed form: 4.4 - 2.1 * 0.82^30 = %\n", 4.4 - 2.1 * pow(0.82, 30));
+  print("drawn halfway from 4.4 m to 2.3 m: % m out\n", -follow_eye(world_point(0, 0, 0), world_point(0, 0, -1), 4.4, near.dist, 0.5).z);
+}
+// book:end example

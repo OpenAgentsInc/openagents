@@ -185,6 +185,7 @@ ground_spot :: (g: Ground, x: f32, z: f32) -> Spot {
   return s;
 }
 
+// book:begin height
 // The height of the drawn surface at x, z (the edge's beyond it).
 verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c {
   if g.n < 1 || g.cell <= 0 { return 0; }
@@ -193,7 +194,8 @@ verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #exp
   h01 := ground_point(g, heights, s.i, s.j + 1); h11 := ground_point(g, heights, s.i + 1, s.j + 1);
   if s.fx >= s.fz { return h00 + (h10 - h00) * s.fx + (h11 - h10) * s.fz; }
   return h00 + (h11 - h01) * s.fx + (h01 - h00) * s.fz;
-}
+}// book:end height
+
 
 // The surface's upward normal at x, z.
 verse_terrain_normal :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c {

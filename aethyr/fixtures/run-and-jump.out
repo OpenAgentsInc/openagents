@@ -1,0 +1,5 @@
+from rest to RUN: 8 steps, 0.125 s
+standing jump: peak 1.1132812 m after 19 steps; JUMP^2 / (2 GRAVITY) = 1.171875 m
+landed after 40 steps, feet at 0.0, falling 0.0
+50.0 degrees: after 2 s at (2.0, 2.383507), sliding false, on the ground true
+60.0 degrees: after 2 s at (-0.14296108, 0.0), sliding false, on the ground true

@@ -1,0 +1,11 @@
+spring at step 1: 0.96045023 m left; (1 + wt) e^-wt = 0.9602455
+spring at step 2: 0.8701707 m left; (1 + wt) e^-wt = 0.86979985
+spring at step 4: 0.64518565 m left; (1 + wt) e^-wt = 0.6446358
+spring at step 8: 0.2877878 m left; (1 + wt) e^-wt = 0.2872975
+with the wall: 2.3 m out
+0.5 s after it goes, at 30 Hz: 4.394547 m out
+0.5 s after it goes, at 60 Hz: 4.3945465 m out
+0.5 s after it goes, at 120 Hz: 4.394547 m out
+0.5 s after it goes, at 144 Hz: 4.394547 m out
+closed form: 4.4 - 2.1 * 0.82^30 = 4.394547007928371
+drawn halfway from 4.4 m to 2.3 m: 2.3 m out

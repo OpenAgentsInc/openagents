@@ -1,0 +1,34 @@
+// book:begin example
+#load "../../verse/player.coax";
+#import "Basic";
+
+// A walker meets a realm's colliders: a 0.1 m wall it runs into, two steps 0.55 m and 0.56 m
+// high, a post (a capsule), and a wall whose corners are reversed. Each run is 2 s of holding
+// forward (+Z) from z = 0, on the 1/64 s step.
+walk :: (w: World, run: bool) -> Player {
+  p := verse_player_place(0, 0, 0, 0);
+  for k: 0..<128 { p = step(w, verse_player_input(p, 0, 1, 0, 0, run, false, 0, 0), STEP); }
+  return p;
+}
+show :: (what: string, p: Player) {
+  print("%: feet at (%, %, %), speed into it %\n", what, p.pos.x, p.pos.y, p.pos.z, p.vel.z);
+}
+main :: () {
+  thin := [6] f32.[-2, 0, 3, 2, 2, 3.1];         // a 0.1 m wall whose face is at z = 3
+  a: World; a.walls = thin[..];
+  show("run into a 0.1 m wall", walk(a, true));
+  print("a step's travel at RUN: % m, the capsule's width: % m\n", f32(RUN) * f32(STEP), 2 * f32(RADIUS));
+  low := [6] f32.[-2, 0, 3, 2, 0.55, 20];
+  high := [6] f32.[-2, 0, 3, 2, 0.56, 20];
+  b: World; b.walls = low[..];
+  c: World; c.walls = high[..];
+  show("walk onto a 0.55 m step", walk(b, false));
+  show("walk into a 0.56 m step", walk(c, false));
+  pole := [7] f32.[0, 0, 3, 0, 2, 3, 0.4];       // upright, radius 0.4 m, on the line you walk
+  d: World; d.bodies = pole[..];
+  show("walk into a post", walk(d, false));
+  reversed := [6] f32.[2, 2, 3.1, -2, 0, 3];     // the first wall with its corners swapped
+  e: World; e.walls = reversed[..];
+  show("run at a wall with reversed corners", walk(e, true));
+}
+// book:end example

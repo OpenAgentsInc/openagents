@@ -40,6 +40,7 @@
 PI :: 3.14159265;
 TAU :: 6.2831853;
 
+// book:begin tuning
 WALK :: 3.5;            // m/s
 RUN :: 7.5;
 // The one setting for how you move (the owner's, 2026-10-29; meant to become
@@ -53,6 +54,7 @@ ACCEL :: 60.0;          // m/s^2, speeding up and slowing down alike
 TURN_RATE :: 10.0;      // how fast the character turns to face its way
 RIDE_HEIGHT :: 0.4;     // higher than this above the floor is falling
 STEP_SMOOTH :: 10.0;
+// book:end tuning
 LOOK_AT_HEIGHT :: FOLLOW_HEIGHT; // the camera's target above the feet (aethyr/follow.coax holds the camera's numbers)
 CAM_MAX :: FOLLOW_DIST;
 CAM_WALL_MIN :: FOLLOW_CLOSEST; // closest a wall pushes the camera in
@@ -210,6 +212,7 @@ off_floors :: (w: World, from: Player, p: Player) -> Player {
   return next;
 }
 
+// book:begin walls
 // Pushes p sideways out of every wall too high to stand on, zeroing the
 // speed that went into it; from inside a footprint, out the nearest side.
 out_of_walls :: (w: World, p: Player) -> Player {
@@ -236,6 +239,7 @@ out_of_walls :: (w: World, p: Player) -> Player {
   }
   return next;
 }
+// book:end walls
 
 v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
 add :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
@@ -290,6 +294,7 @@ closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest {
 shin :: (feet: Vec3) -> Vec3 { return v3(feet.x, feet.y + f32(RADIUS), feet.z); }
 crown :: (feet: Vec3) -> Vec3 { return v3(feet.x, feet.y + f32(HEIGHT - RADIUS), feet.z); }
 
+// book:begin across
 // Moves p horizontally by (dx, dz), then out of every body it overlaps,
 // sideways, and zeroes the part of its velocity going into one. Standing
 // right under or on a body's axis, you go back the way you came (or to -Z).
@@ -329,6 +334,7 @@ move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
   }
   return next;
 }
+// book:end across
 
 // How far the camera may sit from target along offset (a unit direction)
 // before something is in the way, up to max: the room, and CAM_CLEAR short
@@ -449,6 +455,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
     p.on_ground = false;
   }
 // book:end take
+// book:begin move
   next := p;
   dir := wish(p);
   speed := (ifx p.run then f32(RUN) else f32(WALK)) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
@@ -522,6 +529,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
   else { next.act = Act.walking; }
   return next;
 }
+// book:end move
 
 // book:begin advance
 // Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
