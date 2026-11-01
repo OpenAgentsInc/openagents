@@ -1,0 +1,68 @@
+== 1. Keys
+owner 1G    79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+agent 2G    c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+buyer 3G    f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+reviewer 4G e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13
+stranger 7G 5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc
+
+== 2. NIP-OA: the owner attests the agent
+preimage (103 bytes): nostr:agent-auth:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:created_at<1790086400
+sha256: 8aef2f5a49c479e813dbba1b9f08abc865eda3d1c6c04f00ddb4de75533c3dad
+owner's signature, aux 0: 1d9a9a58b4a5059b73c3e3afd5360176338f4343e3a01b4a77d9d9e1deacac5318db1f78c734620c7e59d7c8ba431e22bbb46ff924f52b2c8020958423649079
+
+== 3. NIP-42 and NIP-AA: the agent logs in, the owner a member
+AUTH (22242) at T0, 646 bytes, id ce9b500ee1da0e6af2562292f1a55c616d028f5025c8a2bafa5a2a04d32d294d
+tags [["relay","wss://relay.example.com"],["challenge","agent-challenge-1"],["auth","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at<1790086400","1d9a9a58b4a5059b73c3e3afd5360176338f4343e3a01b4a77d9d9e1deacac5318db1f78c734620c7e59d7c8ba431e22bbb46ff924f52b2c8020958423649079"]]
+relay at T0 + 5: virtual member
+the agent's 26920 and 27020 events: accepted, accepted
+
+== 4. MKT: the agent quotes, the buyer orders
+T0 + 10 buyer asks, limit 60000 msat: accepted
+T0 + 20 agent quotes 50000 msat, worker 2G, reviewer 4G: accepted
+T0 + 30 buyer orders quote A: accepted
+T0 + 40 agent confirms: accepted
+
+== 5. CJ: the buyer seals an execution job to the agent
+conversation key (3, 2G) dd8a0fe7f326cfcdd3c2cdce6da9a142a5655ad68bfa46a3a8aa1ddaa958d2c1; (2, 3G) is the same: true
+execute body: 299 bytes, padded to 320
+25920 at T0 + 60, 516 characters of content, id b1e227cdeedce259e39cb684d1fc61bbf22a9d49ad77a372f6f3f62af04e8cd6
+the agent: verified true, one p naming it true
+opened, the execute body: true
+
+== 6. COORD: the agent claims req-1 attempt 1 before any effect
+T0 + 61 claim cj:req-1#1, expected revision 0: ok, token 1, revision 1
+
+== 7. RUN: the journal, and the accepted answer
+seq 0 created: sha256:62525f0425bae66575b2bee9628d7726d652ba05b43a4d479216ba59ff8dfdf9
+seq 1 admitted: sha256:12412cd290a943cb10c878413417de80b46e7d4f06bbf1ad20783829e019b914
+seq 2 dispatched: sha256:0cdde7fc8007dd49d1d1a44a4999dded6412a5a2099e067f0775f84ca2d84c3e
+27020 at T0 + 62, id c860164fac739a555345d415056870eae428fc0a78bbba1088bdbf678d8e6d34
+
+== 8. The work ends; the agent answers
+seq 3 resolved: sha256:39512c3be4c291cb227896c5a52b96c4b4a5c6b1a09e003798eb4c3fc33e288b
+T0 + 92 the fence before publishing, token 1: ok
+26920 at T0 + 92, id c0ab882a59256db05d0f70deae8f3d31555b906b8b548a124cd5891f362febe8
+buyer: 27020 answers the request
+buyer: 26920 answers the request
+buyer opens it: {"v":"openagents.execution.v1","requires":[],"type":"result","request":"req-1","attempt":1,"run":"2222222222222222222222222222222222222222222222222222222222222222","status":"succeeded","output":{"summary":"one sentence"},"record":"sha256:39512c3be4c291cb227896c5a52b96c4b4a5c6b1a09e003798eb4c3fc33e288b"}
+
+== 9. MKT: delivery, review, acceptance, payment
+T0 + 95 agent submits: accepted
+T0 + 100 reviewer 4G records passed: accepted
+T0 + 110 buyer accepts: accepted; amount due 50000 msat
+T0 + 120 agent's invoice lnbc500n1...: accepted
+T0 + 130 buyer records attempt 1: accepted
+T0 + 140 wallet: confirmed, preimage 0102...20: accepted; paid 50000 msat
+seq 4 settled: sha256:d0eb6cf4574c573a359da166b74ef9f25a93006433dcb3e989a55b6cfe7bc633
+replay: ok, head seq 4, settled true
+
+== 10. Refusals
+7G logs in with no auth tag: no auth tag; its 26920: restricted: not authenticated
+7G copies the agent's auth tag: the tag doesn't verify, not the owner's signature
+a second claim of cj:req-1#1, expected revision 0: stale
+the same at the current revision 1: conflict; token 1, revision 1
+26920 from 7G with the agent's tags and content: refused: not the worker the request named
+the agent asks 60000 msat: amount: not the accepted price
+confirmed with another preimage: no proof: the preimage does not hash to the payment hash
+confirmed for 49000 msat: amount: not the accepted price
+paid on that copy: 0 msat

@@ -748,6 +748,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/agents-on-nostr.coax",
+      "chapter": "nostr/book/ch102-agents-on-nostr.md",
+      "stdout": "nostr/fixtures/agents-on-nostr.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 400
+    },
+    {
       "source": "nostr/examples/proof-of-work.coax",
       "chapter": "nostr/book/ch056-proof-of-work.md",
       "stdout": "nostr/fixtures/proof-of-work.out",

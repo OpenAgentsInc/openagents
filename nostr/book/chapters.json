@@ -2211,15 +2211,29 @@
    "number": 102,
    "title": "Agents on Nostr",
    "file": "ch102-agents-on-nostr.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     79,
     80,
-    13
+    13,
+    87,
+    78,
+    76
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipaa.coax",
+    "coax/lib/nostr/cj/result.coax",
+    "coax/lib/nostr/mkt/order.coax",
+    "coax/lib/nostr/coord/claim.coax",
+    "coax/lib/nostr/run/journal.coax",
+    "coax/tests/nostr/agents_on_nostr_vectors.py",
+    "nostr/examples/agents-on-nostr.coax",
+    "nostr/examples/checks/agents-on-nostr.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

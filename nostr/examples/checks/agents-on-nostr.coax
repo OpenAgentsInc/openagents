@@ -1,0 +1,137 @@
+// The checks of agents-on-nostr.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/agents-on-nostr.coax --run-steps 250000000
+#load "../agents-on-nostr.coax";
+#load "../../../coax/tests/nostr/agents_on_nostr_vectors.coax";
+
+// book:begin check
+// The PY_ values come from coax/tests/nostr/agents_on_nostr_vectors.py:
+// Python integers and hashlib, BIP-340, NIP-44 v2 and NIP-01 written from
+// the specifications (nip59_reference.py), sharing no code with Coax. Each
+// test builds its piece of the sequence with the example's procedures and
+// compares every id, signature and digest with Python's.
+hex_is :: (bytes: [] u8, want: string) -> bool { h: [256] u8; return hex_of(bytes, h[..]) == want; }
+sig_of :: (event: string) -> string { return event[event.count - 130..<event.count - 2]; }
+
+#test "the five keys and the owner's attestation are Python's" #steps 2000000000 {
+  b: [64] u8;
+  #assert public_of(OWNER_SK, b[..]) == PY_OWNER && public_of(AGENT_SK, b[..]) == PY_AGENT;
+  #assert public_of(BUYER_SK, b[..]) == PY_BUYER && public_of(STRANGER_SK, b[..]) == PY_STRANGER;
+  #assert REVIEWER == PY_REVIEWER && AGENT_X == PY_AGENT && BUYER_X == PY_BUYER;
+  // 17 + 64 + 1 + 21 = 103 bytes: prefix, agent hex, colon, conditions.
+  pre: [NOA_TEXT_MAX] u8; #assert noa_preimage(bytes_of(PY_AGENT), CONDS, pre[..]) == 103;
+  hash: [32] u8; #assert noa_hash(bytes_of(PY_AGENT), CONDS, hash[..]) && hex_is(hash[..], PY_ATTEST_HASH);
+  sig: [64] u8; sign_hash(OWNER_SK, hash[..], sig[..]);
+  #assert hex_is(sig[..], PY_ATTEST_SIG);
+}
+// The attested AUTH event: its id is Python's, the relay admits the agent
+// as a virtual member, and every refusal of the chapter holds.
+#test "the AUTH event and NIP-AA's answers" #steps 2000000000 {
+  sig := bytes_of(PY_ATTEST_SIG[0..<64]); s2 := bytes_of(PY_ATTEST_SIG[64..<128]); full: [64] u8;
+  for i: 0..<32 { full[i] = sig[i]; full[32 + i] = s2[i]; }
+  tag: [512] u8; tn := noa_write_tag(bytes_of(PY_OWNER), CONDS, full, tag[..], 1); tag[0] = ',';
+  attested := cast(string) tag[0..<tn];
+  m: [1] NaaMembers; #assert naa_add(m[..], bytes_of(PY_OWNER));
+  conn: [1] NaaConnection; ab: [2048] u8;
+  l := login(AGENT_SK, attested, conn[..], m[0], T0, T0 + 5, ab[..]);
+  #assert id_of(l.text) == PY_AUTH_ID && l.text.count == 646 && l.a.code == NAA_VIRTUAL;
+  #assert naa_event(conn[0], bytes_of(PY_AGENT), 26920, true) == NAA_E_OK;
+  r: [1] NaaConnection; sb: [2048] u8;
+  #assert login(STRANGER_SK, "", r[..], m[0], T0, T0 + 5, sb[..]).a.code == NAA_NO_AUTH;
+  copied := login(STRANGER_SK, attested, r[..], m[0], T0, T0 + 5, sb[..]).a;
+  #assert copied.code == NAA_CREDENTIAL && copied.detail == NOA_SIGNATURE && r[0].n == 0;
+  // The relay's 120-second window, and the owner's created_at clause.
+  #assert login(AGENT_SK, attested, r[..], m[0], T0, T0 + 121, sb[..]).a.code == NAA_STALE;
+  #assert login(AGENT_SK, attested, r[..], m[0], 1790086400, 1790086400, sb[..]).a.code == NAA_CREDENTIAL;
+}
+#test "the job: conversation key, sealed body, id and signature are Python's" #steps 2000000000 {
+  ck := conv_key(BUYER_SK, PY_AGENT); ck2 := conv_key(AGENT_SK, PY_BUYER);
+  #assert hex_is(ck[..], PY_CK) && hex_is(ck2[..], PY_CK) && EXECUTE == PY_EXECUTE;
+  // 299 bytes pad to 320; 1 + 32 + 2 + 320 + 32 = 387 bytes, 516 base64 characters.
+  #assert EXECUTE.count == 299 && nip44_calc_padded_len(299) == 320;
+  pr: [4096] u8; payload := seal(ck[..], NONCE_REQUEST, EXECUTE, pr[..]);
+  #assert payload.count == 516;
+  rt: [256] u8; rb: [8192] u8; request := sign(BUYER_SK, T0 + 60, 25920, request_tags(PY_AGENT, rt[..]), payload, rb[..]);
+  #assert id_of(request) == PY_REQUEST_ID && sig_of(request) == PY_REQUEST_SIG;
+}
+#test "the RUN digests are Python's and the journal replays to settled" #steps 2000000000 {
+  rs: [5] RunRecord; store: [355] u8;
+  record(rs[..], store[..], 0, RN_CREATED, "", T0 + 61, "{}");
+  record(rs[..], store[..], 1, RN_ADMITTED, "", T0 + 61, "{}");
+  record(rs[..], store[..], 2, RN_DISPATCHED, "execute", T0 + 62, "{}");
+  record(rs[..], store[..], 3, RN_RESOLVED, "execute", T0 + 90, "{\"outcome\":\"succeeded\"}");
+  record(rs[..], store[..], 4, RN_SETTLED, "", T0 + 141, "{\"paid_msat\":50000}");
+  #assert rs[0].digest == PY_RUN_0 && rs[1].digest == PY_RUN_1 && rs[2].digest == PY_RUN_2;
+  #assert rs[3].digest == PY_RUN_3 && rs[4].digest == PY_RUN_4;
+  t: [5] RunSubject; w: [4096] u8; h := run_replay(rs[..], PY_AGENT, t[..], w[..]);
+  #assert h.error == RN_OK && h.seq == 4 && h.settled;
+  // The stranger cannot append to the agent's journal.
+  x := rs; x[4].signer = PY_STRANGER;
+  #assert run_replay(x[..], PY_AGENT, t[..], w[..]).error == RN_NOT_ADMITTED;
+}
+#test "the answers are Python's; only the named worker answers" #steps 2000000000 {
+  ck := conv_key(AGENT_SK, PY_BUYER);
+  at: [256] u8; tags := answer_tags_of(PY_REQUEST_ID, at[..]);
+  acc: [1024] u8; pa: [4096] u8; eb: [8192] u8;
+  accepted := sign(AGENT_SK, T0 + 62, 27020, tags, seal(ck[..], NONCE_ACCEPTED, accepted_of(PY_RUN_1, acc[..]), pa[..]), eb[..]);
+  #assert id_of(accepted) == PY_ACCEPTED_ID && sig_of(accepted) == PY_ACCEPTED_SIG;
+  res: [1024] u8; ps: [4096] u8; xb: [8192] u8; payload := seal(ck[..], NONCE_RESULT, result_of(PY_RUN_3, res[..]), ps[..]);
+  result := sign(AGENT_SK, T0 + 92, 26920, tags, payload, xb[..]);
+  #assert id_of(result) == PY_RESULT_ID && sig_of(result) == PY_RESULT_SIG;
+  ib: [8192] u8; impostor := sign(STRANGER_SK, T0 + 92, 26920, tags, payload, ib[..]);
+  #assert id_of(impostor) == PY_IMPOSTOR_ID;
+  // The request rebuilt, then the buyer's check of each answer.
+  cb := conv_key(BUYER_SK, PY_AGENT); pr: [4096] u8; rt: [256] u8; rb: [8192] u8;
+  request := sign(BUYER_SK, T0 + 60, 25920, request_tags(PY_AGENT, rt[..]), seal(cb[..], NONCE_REQUEST, EXECUTE, pr[..]), rb[..]);
+  s1: [8192] u8; s2: [8192] u8; req := verify(request, s1[..]);
+  #assert cj_answer(req, verify(accepted, s2[..])) == CJ_OK && cj_answer(req, verify(result, s2[..])) == CJ_OK;
+  #assert cj_answer(req, verify(impostor, s2[..])) == CJ_SIGNER;
+}
+// A claim moves the revision: after the agent's claim at 0 only revision
+// 1 is current, and the job's resource is held, so every second claim of
+// it is refused: stale at any other revision, conflict at 1.
+#forall "a second claim of the job is never granted" r: 0..<4 {
+  st := [1] CoordState.[CoordState.{owner = PY_AGENT, epoch = 1, revision = 0, max_lease = 3600}];
+  claims: [4] CoordClaim; holds: [4] CoordHold;
+  want := [1] CoordWant.[CoordWant.{resource = CLAIM, write = true}];
+  q := CoordRequest.{proposal = PY_REQUEST_ID, worker = PY_AGENT, expected_revision = 0, requested_until = T0 + 3600};
+  #assert coord_claim(st[..], claims[..], holds[..], q, want[..], T0 + 61) == CO_OK && st[0].revision == 1 && st[0].token == 1;
+  q.expected_revision = r;
+  got := coord_claim(st[..], claims[..], holds[..], q, want[..], T0 + 63);
+  #assert got == (ifx r == 1 then CO_CONFLICT else CO_STALE) && st[0].revision == 1 && st[0].token == 1;
+  #assert coord_fence(st[..], claims[..], holds[..], PY_AGENT, CLAIM, 1, 1, T0 + 92) == CO_OK;
+  #assert coord_fence(st[..], claims[..], holds[..], PY_STRANGER, CLAIM, 1, 1, T0 + 92) == CO_NOT_ADMITTED;
+}
+// The market through payment, from a state that has accepted and been
+// instructed, so each proof is tried against the same obligation.
+instructed :: (m: [] MktMarket, q: [] MktTerms) {
+  o := MktOffering.{provider = PY_AGENT, valid_until = T0 + 86400, profiles = MKT_LIGHTNING, networks = MKT_BITCOIN};
+  m[0] = MktMarket.{market = "m-1", buyer = PY_BUYER, provider = PY_AGENT};
+  t: MktTerms; t.quote_id = "A"; t.digest = TERMS; t.worker = PY_AGENT; t.reviewer = PY_REVIEWER;
+  t.price_msat = 50000; t.fee_limit_msat = 1000; t.profile = MKT_LIGHTNING; t.network = MKT_BITCOIN;
+  t.quote_expires_at = T0 + 600; t.order_confirm_by = T0 + 900; t.delivery_due_at = T0 + 3600;
+  t.review_due_at = T0 + 7200; t.payment_due_at = T0 + 86400; t.retain_until = T0 + 30 * 86400;
+  #assert mkt_rfq(m, o, PY_BUYER, 60000, T0 + 300, T0 + 40 * 86400, T0 + 10) == MKT_OK;
+  #assert mkt_quote(m, q, t, PY_AGENT, T0 + 20) == MKT_OK && mkt_order(m, q, PY_BUYER, "A", TERMS, "order-1", T0 + 30) == MKT_OK;
+  #assert mkt_ack(m, q, PY_AGENT, true, T0 + 40) == MKT_OK && mkt_submit(m, q, PY_AGENT, T0 + 95) == MKT_OK;
+  #assert mkt_verify(m, q, PY_REVIEWER, MKT_PASSED) == MKT_OK && mkt_accept(m, q, PY_BUYER, T0 + 100, T0 + 110) == MKT_OK;
+  #assert mkt_instruct(m, q, PY_AGENT, "ob-1", 60000, INVOICE, HASH, T0 + 5000, T0 + 120) == MKT_AMOUNT;
+  #assert mkt_instruct(m, q, PY_AGENT, "ob-1", 50000, INVOICE, HASH, T0 + 5000, T0 + 120) == MKT_OK;
+  #assert mkt_attempt(m, q, PY_BUYER, 1, 1000, T0 + 130) == MKT_OK;
+}
+#test "the payment hash is Python's SHA-256 of the preimage" {
+  #assert HASH == PY_PAYMENT_HASH;
+  m: [1] MktMarket; q: [2] MktTerms; instructed(m[..], q[..]);
+  p := MktProof.{rail = MKT_RAIL_LIGHTNING, state = MKT_PAY_CONFIRMED, amount_msat = 50000, preimage = PREIMAGE};
+  #assert mkt_result(m[..], PY_BUYER, p) == MKT_OK && m[0].paid_msat == 50000;
+  #assert mkt_result(m[..], PY_BUYER, p) == MKT_PAID;
+}
+// Any one hex digit of the preimage changed: no proof, nothing paid.
+#forall "a preimage with one digit changed proves nothing" i: 0..<64 {
+  m: [1] MktMarket; q: [2] MktTerms; instructed(m[..], q[..]);
+  b: [64] u8; for k: 0..<64 { b[k] = PREIMAGE[k]; }
+  b[i] = ifx PREIMAGE[i] == 'f' then cast(u8) '0' else cast(u8) 'f';
+  p := MktProof.{rail = MKT_RAIL_LIGHTNING, state = MKT_PAY_CONFIRMED, amount_msat = 50000, preimage = cast(string) b[..]};
+  #assert mkt_result(m[..], PY_BUYER, p) == MKT_PROOF && m[0].paid_msat == 0 && m[0].payment == MKT_PAY_PENDING;
+}
+// book:end check

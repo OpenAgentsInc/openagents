@@ -1,0 +1,306 @@
+// book:begin example
+// Chapter 102: one OpenAgents agent on the Nostr stack, end to end, offline.
+// The owner (key 1) attests the agent (key 2); the agent logs in to a relay
+// with NIP-42 and NIP-AA, quotes a labor order (MKT) to a buyer (key 3),
+// takes the buyer's execution job (CJ), claims it (COORD), keeps a run
+// journal (RUN), answers, and is paid against a Lightning preimage. Key 4
+// reviews the delivery; key 7 is attested by nobody. Published test keys,
+// zero BIP-340 aux and fixed NIP-44 nonces, so every byte is the same on
+// every run: TEST ONLY. Never sign with a real key in an example.
+#load "../../coax/lib/nostr/nipaa.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip44-key.coax";
+#load "../../coax/lib/nostr/cj/result.coax";
+#load "../../coax/lib/nostr/mkt/order.coax";
+#load "../../coax/lib/nostr/coord/claim.coax";
+#load "../../coax/lib/nostr/run/journal.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+OWNER_SK :: "0000000000000000000000000000000000000000000000000000000000000001";
+AGENT_SK :: "0000000000000000000000000000000000000000000000000000000000000002";
+BUYER_SK :: "0000000000000000000000000000000000000000000000000000000000000003";
+STRANGER_SK :: "0000000000000000000000000000000000000000000000000000000000000007";
+REVIEWER :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";   // 4G
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+NONCE_REQUEST :: "0101010101010101010101010101010101010101010101010101010101010101";
+NONCE_ACCEPTED :: "0202020202020202020202020202020202020202020202020202020202020202";
+NONCE_RESULT :: "0303030303030303030303030303030303030303030303030303030303030303";
+RELAY :: "wss://relay.example.com";
+CHALLENGE :: "agent-challenge-1";
+// The owner's conditions: any kind, created before T0 + 86400.
+CONDS :: "created_at<1790086400";
+RUN :: "2222222222222222222222222222222222222222222222222222222222222222";
+CLAIM :: "cj:req-1#1";   // NIP-CJ's idempotency key: request req-1, attempt 1
+TERMS :: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+// x402's 50,000 msat invoice; its payment hash is SHA-256 of 01 02 ... 20.
+INVOICE :: "lnbc500n1p4wfve5pp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztys";
+HASH :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+WRONG_PREIMAGE :: "2001020304050607080910111213141516171819202122232425262728293031";
+EXECUTE :: "{\"v\":\"openagents.execution.v1\",\"requires\":[\"openagents.labor-binding.v1\"],\"type\":\"execute\",\"request\":\"req-1\",\"attempt\":1,\"run\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"target\":\"op:summarize\",\"input\":{\"text\":\"one paragraph\"},\"deadline\":1790003600,\"retain_until\":1790086400}";
+
+bytes_of :: (text: string) -> [32] u8 {
+  b: [32] u8;
+  #assert hex_decode_checked(text, b[..], false).error == NC_OK;
+  return b;
+}
+hex_of :: (bytes: [] u8, out: [] u8) -> string {
+  r := hex_encode_checked(cast(string) bytes, out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+// One event signed with a test key by chapter 13's signer (event_sign.coax).
+sign :: (secret: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key := bytes_of(secret); aux := bytes_of(AUX);
+  work: [1] NostrSignWork; scratch: [16384] u8; k := EVENT_MORE;
+  while k == EVENT_MORE {
+    k = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert k > 0;
+  return cast(string) out[0..<k];
+}
+// The x-only public key of a test secret: an event signed and read back.
+public_of :: (secret: string, out: [] u8) -> string {
+  s: [1024] u8; w: [1024] u8; e := nostr_event_read(sign(secret, 0, 1, "[]", "", s[..]), w[..], false);
+  key := e.public_key;
+  return hex_of(key[..], out);
+}
+// BIP-340 over a 32-byte hash: the owner's attestation signature.
+sign_hash :: (secret: string, message: [] u8, out: [] u8) {
+  key := bytes_of(secret); aux := bytes_of(AUX); work: [1] SignWork; status := SIGN_MORE;
+  while status == SIGN_MORE { status = schnorr_sign_step(key[..], aux[..], message, work[..], out, false); }
+  #assert status == SIGN_DONE;
+}
+conv_key :: (secret: string, peer: string) -> [32] u8 {
+  key := bytes_of(secret); x := bytes_of(peer); ecdh: [1] EcdhScratch; ck: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(key[..], x[..], ecdh[..], ck[..], false) == NIP44_OK;
+  return ck;
+}
+bytes_in :: (s: string, out: [] u8) -> [] u8 {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return out[0..<s.count];
+}
+seal :: (ck: [] u8, nonce_hex: string, plaintext: string, out: [] u8) -> string {
+  nonce := bytes_of(nonce_hex); work: [8192] u8; pt: [4096] u8; n := plaintext.count;
+  r := nip44_encrypt_checked(NIP44_COMPAT, ck, nonce[..], bytes_in(plaintext, pt[..]),
+         work[0..<nip44_encrypt_work_size(NIP44_COMPAT, n)], out[0..<nip44_payload_size(NIP44_COMPAT, n)], false);
+  #assert r.error == NIP44_OK;
+  return cast(string) out[0..<r.written];
+}
+open_content :: (ck: [] u8, ev: NostrEvent, out: [] u8) -> string {
+  raw := ev.original[ev.content_from..<ev.content_to]; payload: [4096] u8;
+  k := json_unescape(raw, payload[..]);
+  work: [8192] u8; size := nip44_decrypt_work_size(NIP44_COMPAT, k);
+  r := nip44_decrypt_checked(NIP44_COMPAT, ck, cast(string) payload[0..<k], work[0..<size], out, false);
+  if r.error != NIP44_OK { return ""; }
+  return cast(string) out[0..<r.written];
+}
+verify :: (text: string, scratch: [] u8) -> NostrEvent { return nostr_event_verify_vartime(text, scratch, false); }
+put :: (out: [] u8, at: int, text: string) -> int { n := at; for c: text { out[n] = c; n += 1; } return n; }
+id_of :: (event: string) -> string { return event[7..<71]; }
+
+NAA_WORDS :: [9] string.["member", "virtual member", "NIP-42 refuses", "stale", "no auth tag", "more than one auth tag",
+                         "the tag doesn't verify", "the owner is not a member", "connection full"];
+NOA_WORDS :: [11] string.["ok", "not a verified event", "no auth tag", "more than one auth tag", "not four elements",
+                          "not lowercase hex", "the owner is the event's own key", "the conditions don't read",
+                          "not the owner's signature", "outside the conditions", "unchecked"];
+E_WORDS :: [4] string.["accepted", "restricted: not authenticated", "restricted: kind not in the credential", "restricted: virtual member"];
+MKT_WORDS :: [21] string.["accepted","malformed","not_admitted","identity_mismatch","stale","conflict",
+  "limit_exceeded","unsupported_profile","quote_expired","quote_consumed","confirmation_expired",
+  "price_exceeded","content_unavailable","idempotency_conflict","not accepted: nothing to pay against",
+  "amount: not the accepted price","no proof: the preimage does not hash to the payment hash",
+  "already paid","pending: an earlier attempt is unresolved","late","not passed by the reviewer"];
+CJ_WORDS :: [8] string.["answers the request","refused: the event does not verify","refused: kind",
+  "refused: another family","refused: tags","refused: not the worker the request named",
+  "refused: p is not the caller","refused: e is not the request"];
+CO_WORDS :: [8] string.["ok", "malformed", "limit", "stale", "conflict", "not_admitted", "expired", "closed"];
+RN_WORDS :: [12] string.["ok","incomplete: a gap","conflict: a fork","broken chain","digest mismatch",
+  "not_admitted","stale","order","unfenced handoff","closed: after settled","malformed","limit_exceeded"];
+// book:end example
+
+// book:begin login
+// The agent (or any key) answers the relay's challenge on a fresh
+// connection; the relay runs NIP-AA under its own clock, now.
+Login :: struct { a: NaaAuth; text: string; }
+login :: (secret: string, extra: string, conn: [] NaaConnection, m: NaaMembers, created_at: int, now: int, out: [] u8) -> Login {
+  relay: [1] Nip42; frame: [64] u8;
+  #assert nip42_init(relay[..], RELAY) == N42_OK && nip42_issue(relay[..], 1, CHALLENGE, frame[..]).error == N42_OK;
+  tb: [1024] u8; n := put(tb[..], 0, "[[\"relay\",\""); n = put(tb[..], n, RELAY);
+  n = put(tb[..], n, "\"],[\"challenge\",\""); n = put(tb[..], n, CHALLENGE); n = put(tb[..], n, "\"]");
+  n = put(tb[..], n, extra); n = put(tb[..], n, "]");
+  text := sign(secret, created_at, 22242, cast(string) tb[0..<n], "", out);
+  scratch: [4096] u8;
+  return Login.{a = naa_auth(conn, m, relay[..], 1, now, text, scratch[..]), text = text};
+}
+// book:end login
+
+// book:begin bodies
+// The job's tags: one p naming the worker, and NIP-40's expiration
+// mirroring the body's deadline.
+request_tags :: (worker: string, out: [] u8) -> string {
+  n := put(out, 0, "[[\"p\",\""); n = put(out, n, worker); n = put(out, n, "\"],[\"expiration\",\"1790003600\"]]");
+  return cast(string) out[0..<n];
+}
+// Every answer: one p naming the caller (the buyer, 3G) and one e naming
+// the exact request.
+answer_tags_of :: (request_id: string, out: [] u8) -> string {
+  n := put(out, 0, "[[\"p\",\""); n = put(out, n, BUYER_X); n = put(out, n, "\"],[\"e\",\"");
+  n = put(out, n, request_id); n = put(out, n, "\"]]");
+  return cast(string) out[0..<n];
+}
+// The 27020 accepted body: it names the RUN record that admitted the job.
+accepted_of :: (admitted: string, out: [] u8) -> string {
+  n := put(out, 0, "{\"v\":\"openagents.execution.v1\",\"requires\":[],\"type\":\"accepted\",\"request\":\"req-1\",\"attempt\":1,\"run\":\"");
+  n = put(out, n, RUN); n = put(out, n, "\",\"record\":\""); n = put(out, n, admitted);
+  n = put(out, n, "\",\"controller\":\""); n = put(out, n, AGENT_X); n = put(out, n, "\",\"retain_until\":1790086400}");
+  return cast(string) out[0..<n];
+}
+// The 26920 result body: it names the RUN record that resolved the step.
+result_of :: (resolved: string, out: [] u8) -> string {
+  n := put(out, 0, "{\"v\":\"openagents.execution.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"req-1\",\"attempt\":1,\"run\":\"");
+  n = put(out, n, RUN); n = put(out, n, "\",\"status\":\"succeeded\",\"output\":{\"summary\":\"one sentence\"},\"record\":\"");
+  n = put(out, n, resolved); n = put(out, n, "\"}");
+  return cast(string) out[0..<n];
+}
+// book:end bodies
+
+// book:begin journal
+// One RUN record, chained onto the one before it: the agent is the only
+// controller, generation 0.
+record :: (rs: [] RunRecord, store: [] u8, seq: int, type: int, step: string, time: int, data: string) {
+  r: RunRecord; r.run = RUN; r.seq = seq; r.controller = AGENT_X; r.signer = AGENT_X; r.type = type;
+  r.iteration = -1; r.step = step; r.attempt = ifx step.count == 0 then 0 else 1; r.time = time; r.data = data;
+  r.previous = ifx seq == 0 then "" else rs[seq - 1].digest;
+  work: [4096] u8; d := store[seq * 71..<seq * 71 + 71];
+  #assert run_digest(r, work[..], d) == RN_OK;
+  r.digest = cast(string) d; rs[seq] = r;
+}
+// book:end journal
+AGENT_X :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";   // 2G
+BUYER_X :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";   // 3G
+
+// book:begin main
+main :: () {
+  print("== 1. Keys\n");
+  h1: [64] u8; h2: [64] u8; h3: [64] u8; h7: [64] u8;
+  owner := public_of(OWNER_SK, h1[..]); agent := public_of(AGENT_SK, h2[..]);
+  buyer := public_of(BUYER_SK, h3[..]); stranger := public_of(STRANGER_SK, h7[..]);
+  print("owner 1G    %\nagent 2G    %\nbuyer 3G    %\nreviewer 4G %\nstranger 7G %\n", owner, agent, buyer, REVIEWER, stranger);
+  #assert agent == AGENT_X && buyer == BUYER_X;
+
+  print("\n== 2. NIP-OA: the owner attests the agent\n");
+  ax := bytes_of(agent); ox := bytes_of(owner);
+  pre: [NOA_TEXT_MAX] u8; pn := noa_preimage(ax, CONDS, pre[..]);
+  print("preimage (% bytes): %\n", pn, cast(string) pre[0..<pn]);
+  hash: [32] u8; #assert noa_hash(ax, CONDS, hash[..]);
+  hh: [64] u8; print("sha256: %\n", hex_of(hash[..], hh[..]));
+  sig: [64] u8; sign_hash(OWNER_SK, hash[..], sig[..]);
+  sh: [128] u8; print("owner's signature, aux 0: %\n", hex_of(sig[..], sh[..]));
+  tag: [512] u8; tn := noa_write_tag(ox, CONDS, sig, tag[..], 1); tag[0] = ',';
+  attested := cast(string) tag[0..<tn];
+
+  print("\n== 3. NIP-42 and NIP-AA: the agent logs in, the owner a member\n");
+  m: [1] NaaMembers; #assert naa_add(m[..], ox);
+  conn: [1] NaaConnection; ab: [2048] u8;
+  l := login(AGENT_SK, attested, conn[..], m[0], T0, T0 + 5, ab[..]);
+  print("AUTH (22242) at T0, % bytes, id %\n", l.text.count, id_of(l.text));
+  print("tags %\n", l.text[text_find(l.text, "\"tags\":") + 7..<text_find(l.text, ",\"content\"")]);
+  print("relay at T0 + 5: %\n", NAA_WORDS[l.a.code]);
+  print("the agent's 26920 and 27020 events: %, %\n", E_WORDS[naa_event(conn[0], ax, 26920, true)], E_WORDS[naa_event(conn[0], ax, 27020, true)]);
+
+  print("\n== 4. MKT: the agent quotes, the buyer orders\n");
+  o := MktOffering.{provider = agent, valid_until = T0 + 86400, profiles = MKT_LIGHTNING, networks = MKT_BITCOIN};
+  mk := [1] MktMarket.[MktMarket.{market = "m-1", buyer = buyer, provider = agent}]; q: [2] MktTerms;
+  t: MktTerms; t.quote_id = "A"; t.digest = TERMS; t.worker = agent; t.reviewer = REVIEWER;
+  t.price_msat = 50000; t.fee_limit_msat = 1000; t.profile = MKT_LIGHTNING; t.network = MKT_BITCOIN;
+  t.quote_expires_at = T0 + 600; t.order_confirm_by = T0 + 900; t.delivery_due_at = T0 + 3600;
+  t.review_due_at = T0 + 7200; t.payment_due_at = T0 + 86400; t.retain_until = T0 + 30 * 86400;
+  print("T0 + 10 buyer asks, limit 60000 msat: %\n", MKT_WORDS[mkt_rfq(mk[..], o, buyer, 60000, T0 + 300, T0 + 40 * 86400, T0 + 10)]);
+  print("T0 + 20 agent quotes 50000 msat, worker 2G, reviewer 4G: %\n", MKT_WORDS[mkt_quote(mk[..], q[..], t, agent, T0 + 20)]);
+  print("T0 + 30 buyer orders quote A: %\n", MKT_WORDS[mkt_order(mk[..], q[..], buyer, "A", TERMS, "order-1", T0 + 30)]);
+  print("T0 + 40 agent confirms: %\n", MKT_WORDS[mkt_ack(mk[..], q[..], agent, true, T0 + 40)]);
+
+  print("\n== 5. CJ: the buyer seals an execution job to the agent\n");
+  ck_buyer := conv_key(BUYER_SK, agent); ck_agent := conv_key(AGENT_SK, buyer);
+  ch: [64] u8; print("conversation key (3, 2G) %; (2, 3G) is the same: %\n", hex_of(ck_buyer[..], ch[..]), cj_same(ck_buyer, ck_agent));
+  print("execute body: % bytes, padded to %\n", EXECUTE.count, nip44_calc_padded_len(EXECUTE.count));
+  pr: [4096] u8; payload := seal(ck_buyer[..], NONCE_REQUEST, EXECUTE, pr[..]);
+  rt: [256] u8; rb: [8192] u8; request := sign(BUYER_SK, T0 + 60, 25920, request_tags(agent, rt[..]), payload, rb[..]);
+  print("25920 at T0 + 60, % characters of content, id %\n", payload.count, id_of(request));
+  rs1: [8192] u8; req := verify(request, rs1[..]);
+  print("the agent: verified %, one p naming it %\n", req.verified, cj_tags(req).np == 1 && cj_same(cj_tags(req).p, ax));
+  ob: [4096] u8; opened := open_content(ck_agent[..], req, ob[..]);
+  print("opened, the execute body: %\n", opened == EXECUTE);
+
+  print("\n== 6. COORD: the agent claims req-1 attempt 1 before any effect\n");
+  st := [1] CoordState.[CoordState.{owner = agent, epoch = 1, revision = 0, max_lease = 3600}];
+  claims: [4] CoordClaim; holds: [4] CoordHold;
+  want := [1] CoordWant.[CoordWant.{resource = CLAIM, write = true}];
+  cq := CoordRequest.{proposal = id_of(request), worker = agent, expected_revision = 0, requested_until = T0 + 3600};
+  print("T0 + 61 claim %, expected revision 0: %, token %, revision %\n", CLAIM, CO_WORDS[coord_claim(st[..], claims[..], holds[..], cq, want[..], T0 + 61)], st[0].token, st[0].revision);
+
+  print("\n== 7. RUN: the journal, and the accepted answer\n");
+  rs: [5] RunRecord; store: [355] u8;
+  record(rs[..], store[..], 0, RN_CREATED, "", T0 + 61, "{}");
+  record(rs[..], store[..], 1, RN_ADMITTED, "", T0 + 61, "{}");
+  record(rs[..], store[..], 2, RN_DISPATCHED, "execute", T0 + 62, "{}");
+  for i: 0..<3 { print("seq % %: %\n", i, RN_NAMES[rs[i].type], rs[i].digest); }
+  acc: [1024] u8; accepted_body := accepted_of(rs[1].digest, acc[..]);
+  at: [256] u8; answer_tags := answer_tags_of(id_of(request), at[..]);
+  pa: [4096] u8; eb: [8192] u8;
+  accepted := sign(AGENT_SK, T0 + 62, 27020, answer_tags, seal(ck_agent[..], NONCE_ACCEPTED, accepted_body, pa[..]), eb[..]);
+  print("27020 at T0 + 62, id %\n", id_of(accepted));
+
+  print("\n== 8. The work ends; the agent answers\n");
+  record(rs[..], store[..], 3, RN_RESOLVED, "execute", T0 + 90, "{\"outcome\":\"succeeded\"}");
+  print("seq 3 resolved: %\n", rs[3].digest);
+  res: [1024] u8; result_body := result_of(rs[3].digest, res[..]);
+  print("T0 + 92 the fence before publishing, token 1: %\n", CO_WORDS[coord_fence(st[..], claims[..], holds[..], agent, CLAIM, 1, 1, T0 + 92)]);
+  ps: [4096] u8; xb: [8192] u8; result_payload := seal(ck_agent[..], NONCE_RESULT, result_body, ps[..]);
+  result := sign(AGENT_SK, T0 + 92, 26920, answer_tags, result_payload, xb[..]);
+  print("26920 at T0 + 92, id %\n", id_of(result));
+  vs: [8192] u8; v1 := verify(accepted, vs[..]); print("buyer: 27020 %\n", CJ_WORDS[cj_answer(req, v1)]);
+  v2 := verify(result, vs[..]); print("buyer: 26920 %\n", CJ_WORDS[cj_answer(req, v2)]);
+  bo: [4096] u8; print("buyer opens it: %\n", open_content(ck_buyer[..], v2, bo[..]));
+
+  print("\n== 9. MKT: delivery, review, acceptance, payment\n");
+  print("T0 + 95 agent submits: %\n", MKT_WORDS[mkt_submit(mk[..], q[..], agent, T0 + 95)]);
+  print("T0 + 100 reviewer 4G records passed: %\n", MKT_WORDS[mkt_verify(mk[..], q[..], REVIEWER, MKT_PASSED)]);
+  print("T0 + 110 buyer accepts: %; amount due % msat\n", MKT_WORDS[mkt_accept(mk[..], q[..], buyer, T0 + 100, T0 + 110)], mk[0].amount_due);
+  print("T0 + 120 agent's invoice lnbc500n1...: %\n", MKT_WORDS[mkt_instruct(mk[..], q[..], agent, "ob-1", 50000, INVOICE, HASH, T0 + 5000, T0 + 120)]);
+  print("T0 + 130 buyer records attempt 1: %\n", MKT_WORDS[mkt_attempt(mk[..], q[..], buyer, 1, 1000, T0 + 130)]);
+  pf := MktProof.{rail = MKT_RAIL_LIGHTNING, state = MKT_PAY_CONFIRMED, amount_msat = 50000, preimage = PREIMAGE};
+  print("T0 + 140 wallet: confirmed, preimage 0102...20: %; paid % msat\n", MKT_WORDS[mkt_result(mk[..], buyer, pf)], mk[0].paid_msat);
+  record(rs[..], store[..], 4, RN_SETTLED, "", T0 + 141, "{\"paid_msat\":50000}");
+  t5: [5] RunSubject; w5: [4096] u8; head := run_replay(rs[..], agent, t5[..], w5[..]);
+  print("seq 4 settled: %\nreplay: %, head seq %, settled %\n", rs[4].digest, RN_WORDS[head.error], head.seq, head.settled);
+
+  print("\n== 10. Refusals\n");
+  r1: [1] NaaConnection; sb: [2048] u8;
+  l = login(STRANGER_SK, "", r1[..], m[0], T0, T0 + 5, sb[..]);
+  print("7G logs in with no auth tag: %; its 26920: %\n", NAA_WORDS[l.a.code], E_WORDS[naa_event(r1[0], bytes_of(stranger), 26920, true)]);
+  l = login(STRANGER_SK, attested, r1[..], m[0], T0, T0 + 5, sb[..]);
+  print("7G copies the agent's auth tag: %, %\n", NAA_WORDS[l.a.code], NOA_WORDS[l.a.detail]);
+  cq2 := cq; cq2.proposal = "a second delivery of the job";
+  print("a second claim of %, expected revision 0: %\n", CLAIM, CO_WORDS[coord_claim(st[..], claims[..], holds[..], cq2, want[..], T0 + 63)]);
+  cq2.expected_revision = 1;
+  print("the same at the current revision 1: %; token %, revision %\n", CO_WORDS[coord_claim(st[..], claims[..], holds[..], cq2, want[..], T0 + 63)], st[0].token, st[0].revision);
+  ib: [8192] u8; impostor := sign(STRANGER_SK, T0 + 92, 26920, answer_tags, result_payload, ib[..]);
+  v3 := verify(impostor, vs[..]); print("26920 from 7G with the agent's tags and content: %\n", CJ_WORDS[cj_answer(req, v3)]);
+  m2 := [1] MktMarket.[mk[0]]; m2[0].obligation = ""; m2[0].payment = MKT_NONE; m2[0].attempts = 0; m2[0].paid_msat = 0;
+  print("the agent asks 60000 msat: %\n", MKT_WORDS[mkt_instruct(m2[..], q[..], agent, "ob-1", 60000, INVOICE, HASH, T0 + 5000, T0 + 120)]);
+  #assert mkt_instruct(m2[..], q[..], agent, "ob-1", 50000, INVOICE, HASH, T0 + 5000, T0 + 120) == MKT_OK;
+  #assert mkt_attempt(m2[..], q[..], buyer, 1, 1000, T0 + 130) == MKT_OK;
+  bad := pf; bad.preimage = WRONG_PREIMAGE;
+  print("confirmed with another preimage: %\n", MKT_WORDS[mkt_result(m2[..], buyer, bad)]);
+  bad = pf; bad.amount_msat = 49000;
+  print("confirmed for 49000 msat: %\n", MKT_WORDS[mkt_result(m2[..], buyer, bad)]);
+  print("paid on that copy: % msat\n", m2[0].paid_msat);
+}
+// book:end main
+// The index of the first occurrence of what in text.
+text_find :: (text: string, what: string) -> int {
+  for i: 0..<text.count - what.count + 1 { if text[i..<i + what.count] == what { return i; } }
+  return -1;
+}
