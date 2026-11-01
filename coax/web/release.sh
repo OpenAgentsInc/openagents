@@ -474,8 +474,8 @@ echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s
 # Unreviewed ones are noted on their queue task too.
 if [[ -n "${passed:-}" ]] && git -C "$repo" merge-base --is-ancestor "${passed%% *}" "$full" 2>/dev/null; then
   review="$(mktemp)"
-  [[ -e "$tree/coax/web/project/node_modules" || ! -d "$here/project/node_modules" ]] || ln -s "$here/project/node_modules" "$tree/coax/web/project/node_modules"
-  ( cd "$tree/coax/web/project" && bounded 180 bun review.ts report --from "${passed%% *}" --to "$full" --note ) > "$review" 2>&1 || echo "review: the report did not finish (report only)" >> "$review"
+  [[ -x "$tree/apps/openagents-cli/build/openagents" ]] || "$tree/apps/openagents-cli/build.sh" > /dev/null 2>&1 || true
+  ( cd "$tree" && bounded 180 "$tree/apps/openagents-cli/build/openagents" project review report --from "${passed%% *}" --to "$full" --notes ) > "$review" 2>&1 || echo "review: the report did not finish (report only)" >> "$review"
   head -1 "$review" | sed "s/^/release $commit: /"
   gcloud storage cp "$review" "gs://$prod_bucket/releases/$stamp/REVIEW" --quiet > /dev/null 2>&1 || true
 fi

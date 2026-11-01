@@ -20,6 +20,7 @@
 #load "project-rules.coax";
 #load "project-write.coax";
 #load "project-publish.coax";
+#load "review-rules.coax";
 #load "project-review.coax";
 #load "project-page.coax";
 #load "project-landing.coax";
@@ -39,6 +40,8 @@ project_usage :: () {
   print("%\n", "  project publish [--dry-run]      the work files, as issues, revisions, statuses and the order");
   print("%\n", "  project check                    check the work files without the relay");
   print("%\n", "  project review COMMIT --key FILE an independent review of COMMIT, signed with the reviewer's own key");
+  print("%\n", "  project review report [--from BASE --to REF] [--notes]  commits that weaken a check with its code, and their reviews");
+  print("%\n", "  project review keygen FILE       a reviewer key (mode 600); prints only its public key");
   print("%\n", "  project snapshot [--if-older MIN] the page's work.coax, index.md and index.html from the relay");
   print("%\n", "  project index                    the projects list (projects/list.coax and index.md)");
   print("%\n", "  project bake [--list]            baked.coax and each project's commits.coax for the page");

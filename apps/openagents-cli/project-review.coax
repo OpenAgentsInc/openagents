@@ -6,7 +6,7 @@
 // The review agent signs a kind 1111 event with its own key, never an author
 // key (coax/reviews/authors.json), tagged commit=<full hash>, t=coax-review and
 // review=approve, and writes it to coax/reviews/<full hash>.json. You commit
-// and push that file. release.sh's report (review.ts report) verifies it. The
+// and push that file. release.sh's report (`openagents project review report`) verifies it. The
 // command publishes nothing to a relay.
 
 REVIEW_KIND :: 1111;
@@ -28,6 +28,8 @@ pj_author_key :: (text: string, pubkey: string) -> int {
 
 project_review :: (a: [] Args, r: [] Rep) -> int {
   what := positional(a, 2);
+  if what == "report" { return project_review_report(a, r); }
+  if what == "keygen" { return project_review_keygen(a, r); }
   file := args_value(a, "--key", "");
   if what == "" || file == "" { return fail(r, EXIT_USAGE, "project review COMMIT --key FILE [--why TEXT] (the reviewer's own key)"); }
   p: [1] Proj;
@@ -74,5 +76,194 @@ project_review :: (a: [] Args, r: [] Rep) -> int {
     return rep_done(r, EXIT_OK);
   }
   print("signed % as %\n", ln_text(name[..]), cast(string) pk[..]);
+  return EXIT_OK;
+}
+
+// ---- the review report and reviewer keys ---------------------------------------------
+//
+//   openagents project review report [--from BASE] [--to REF] [--notes] [--json]
+//       every commit in BASE..REF (default origin/main~20..HEAD) that weakens a
+//       check together with the code it checks (review-rules.coax), and
+//       whether an independent review covers it. --notes posts an unreviewed
+//       one on its queue task (the "#xxxx" in its subject). Report only:
+//       release.sh runs it after a release is live, and it never stops one.
+//   openagents project review keygen FILE
+//       a reviewer key (mode 600); prints only the public key.
+
+// A git command's whole stdout into out (its length), or -1. It goes through
+// a temporary file: diffs can hold lines longer than proc_run's 64 KiB.
+rv_git :: (root: string, args: [] string, out: [] u8) -> int {
+  tb: [512] u8; tn: [24] u8; dir: [512] u8;
+  tmpdir := proc_getenv("TMPDIR", dir[..]);
+  k := copy(ifx tmpdir.count > 0 then tmpdir else "/tmp", tb[..]);
+  k += copy("/openagents-review-", tb[k..<512]); k += copy(int_text(cxcli_now_s() % 100000000, tn[..]), tb[k..<512]);
+  k += copy("-", tb[k..<512]); k += copy(int_text(cxsock_now_ms() % 1000000, tn[..]), tb[k..<512]); k += copy(".out", tb[k..<512]);
+  tmp := cast(string) tb[0..<k];
+  argv: [16] string; n := 0;
+  argv[0] = "bash"; argv[1] = "-c"; argv[2] = "out=$1; shift; exec git \"$@\" > \"$out\""; argv[3] = "bash"; argv[4] = tmp; argv[5] = "-C"; argv[6] = root; n = 7;
+  for s: args { if n < 16 { argv[n] = s; n += 1; } }
+  err: [4096] u8; quiet: [16] u8;
+  got := proc_run(argv[0..<n], 120000, quiet[..], err[..]);
+  m := ifx got.status == 0 then fs_read(tmp, out) else -1;
+  gone := fs_remove(tmp);
+  return ifx m >= out.count then -1 else m;
+}
+// Whether the commit's copy of path has a line that starts with "#authority;".
+rv_has_authority :: (root: string, commit: string, path: string) -> bool {
+  spec: [1] Ln; ln_s(spec[..], commit); ln_c(spec[..], ':'); ln_s(spec[..], path);
+  text: [1] Pg;
+  args := [2] string.["show", ln_text(spec[..])];
+  n := rv_git(root, args[..], text[0].b[..]);
+  if n < 0 { return false; }
+  s := cast(string) text[0].b[0..<n]; i := 0;
+  while i < s.count {
+    if rv_starts(s[i..<s.count], "#authority;") { return true; }
+    while i < s.count && s[i] != 10 { i += 1; }
+    i += 1;
+  }
+  return false;
+}
+// At most n characters of s (UTF-8 sequences kept whole).
+rv_chars :: (s: string, n: int) -> string {
+  i := 0; c := 0;
+  while i < s.count && c < n {
+    i += 1;
+    while i < s.count && (s[i] & 0xc0) == 0x80 { i += 1; }
+    c += 1;
+  }
+  return s[0..<i];
+}
+RV_DIFF :: 134217728;   // the largest commit diff the report reads (128 MiB)
+RvBytes :: struct { b: [RV_DIFF] u8; }
+RvLines :: struct { line: [RV_LINES] string; added: [RV_LINES] bool; }
+project_review_report :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run it inside the openagents checkout"); }
+  root := pj_root(p[..]);
+  from := args_value(a, "--from", "origin/main~20"); to := args_value(a, "--to", "HEAD");
+  json := r[0].json || args_has(a, "--json");
+  range: [1] Ln; ln_s(range[..], from); ln_s(range[..], ".."); ln_s(range[..], to);
+  list_: [1] Pg; list := list_[..];
+  ra := [4] string.["rev-list", "--reverse", "--no-merges", ln_text(range[..])];
+  ln := rv_git(root, ra[..], list[0].b[..]);
+  if ln < 0 { return fail(r, EXIT_FAIL, "review: git rev-list failed"); }
+  revs := cast(string) list[0].b[0..<ln];
+  ab: [2048] u8; at: [65536] u8;
+  an := fs_read(fs_join(root, "coax/reviews/authors.json", ab[..]), at[..]);
+  authors := ifx an > 0 then cast(string) at[0..<an] else "";
+  diff_: [1] RvBytes; d_: [1] RvDiff; d := d_[..]; o_: [1] RvFindings; o := o_[..];
+  lines_: [1] RvLines; d[0].line = lines_[0].line[..]; d[0].added = lines_[0].added[..];
+  rows_: [1] Pg; rows := rows_[..];      // the text report's rows
+  js_: [1] Pg; js := js_[..];            // the JSON report's rows
+  notes_: [1] Pg; notes := notes_[..];   // "TASK\tTEXT\n" for each note to post
+  commits := 0; flagged := 0;
+  i := 0;
+  while i < revs.count {
+    e := i; while e < revs.count && revs[e] != 10 { e += 1; }
+    c := revs[i..<e]; i = e + 1;
+    if c.count == 0 { continue; }
+    commits += 1;
+    sa := [5] string.["show", "--format=", "-U0", "--no-renames", c];
+    dn := rv_git(root, sa[..], diff_[0].b[..]);
+    if dn < 0 { tool_err("review: can't read the diff of "); tool_errln(c); continue; }
+    rv_parse(cast(string) diff_[0].b[0..<dn], d);
+    if d[0].full { tool_err("review: the diff of "); tool_err(c); tool_errln(" is too large to read"); continue; }
+    auth: [RV_FILES] int; for f: 0..<d[0].nf { auth[f] = -1; }
+    rv_weakenings(d, auth[..], o);
+    while o[0].need >= 0 { auth[o[0].need] = ifx rv_has_authority(root, c, d[0].path[o[0].need]) then 1 else 0; rv_weakenings(d, auth[..], o); }
+    if o[0].n == 0 || !rv_changes_code(d) { continue; }
+    sub_: [8192] u8;
+    la := [4] string.["log", "-1", "--format=%s", c];
+    sn := rv_git(root, la[..], sub_[..]);
+    subject := ifx sn > 0 then rv_trim(cast(string) sub_[0..<sn]) else "";
+    review := "none";
+    nb: [1] Ln; ln_s(nb[..], "coax/reviews/"); ln_s(nb[..], c); ln_s(nb[..], ".json");
+    fb: [2048] u8; rt: [65536] u8;
+    rn := fs_read(fs_join(root, ln_text(nb[..]), fb[..]), rt[..]);
+    if rn >= 0 { review = ifx rn >= 65536 then "invalid: not JSON" else rv_review_of(cast(string) rt[0..<rn], c, authors); }
+    tasks: [16] string; tn := rv_tasks(subject, tasks[..]);
+    flagged += 1;
+    short := ifx c.count > 10 then c[0..<10] else c;
+    // text
+    pg_s(rows, "  "); pg_s(rows, short); pg_c(rows, ' ');
+    if review == "independent" { pg_s(rows, "reviewed"); } else { pg_s(rows, "NOT REVIEWED ("); pg_s(rows, review); pg_c(rows, ')'); }
+    pg_s(rows, ": "); pg_s(rows, subject); pg_c(rows, 10);
+    for k: 0..<(ifx o[0].n < 5 then o[0].n else 5) {
+      pg_s(rows, "    "); pg_s(rows, o[0].file[k]); pg_s(rows, ": "); pg_s(rows, o[0].why[k]); pg_s(rows, ": "); pg_s(rows, rv_chars(o[0].line[k], 100)); pg_c(rows, 10);
+    }
+    // JSON, as JSON.stringify(..., null, 2) writes it
+    if flagged > 1 { pg_c(js, ','); }
+    pg_s(js, "\n    {\n      \"commit\": "); pg_lit(js, c); pg_s(js, ",\n      \"subject\": "); pg_lit(js, subject);
+    pg_s(js, ",\n      \"review\": "); pg_lit(js, review); pg_s(js, ",\n      \"findings\": [");
+    for k: 0..<o[0].n {
+      if k > 0 { pg_c(js, ','); }
+      pg_s(js, "\n        {\n          \"file\": "); pg_lit(js, o[0].file[k]); pg_s(js, ",\n          \"why\": "); pg_lit(js, o[0].why[k]);
+      pg_s(js, ",\n          \"line\": "); pg_lit(js, o[0].line[k]); pg_s(js, "\n        }");
+    }
+    pg_s(js, ifx o[0].n > 0 then "\n      ],\n      \"tasks\": [" else "],\n      \"tasks\": [");
+    for k: 0..<tn { if k > 0 { pg_c(js, ','); } pg_s(js, "\n        "); pg_lit(js, tasks[k]); }
+    pg_s(js, ifx tn > 0 then "\n      ]\n    }" else "]\n    }");
+    // the notes
+    if review != "independent" {
+      for k: 0..<tn {
+        pg_s(notes, tasks[k]); pg_c(notes, 9);
+        pg_s(notes, "Review flag (report only): "); pg_s(notes, short);
+        pg_s(notes, " weakens a check together with the code it checks (");
+        for x: 0..<(ifx o[0].n < 3 then o[0].n else 3) { if x > 0 { pg_s(notes, "; "); } pg_s(notes, o[0].file[x]); pg_s(notes, ": "); pg_s(notes, o[0].why[x]); }
+        pg_s(notes, ") and has no independent review. A review agent signs one with: openagents project review "); pg_s(notes, c); pg_s(notes, " --key ITS_KEY");
+        pg_c(notes, 10);
+      }
+    }
+  }
+  t: [24] u8;
+  if json {
+    out_: [1] Pg; out := out_[..];
+    pg_s(out, "{\n  \"schema\": \"coax.review-report.v1\",\n  \"from\": "); pg_lit(out, from); pg_s(out, ",\n  \"to\": "); pg_lit(out, to);
+    pg_s(out, ",\n  \"commits\": "); pg_i(out, commits); pg_s(out, ",\n  \"flagged\": [");
+    pg_s(out, pg_text(js)); pg_s(out, ifx flagged > 0 then "\n  ]\n}" else "]\n}");
+    print("%\n", pg_text(out));
+  } else {
+    head: [1] Ln; ln_s(head[..], "review: "); ln_s(head[..], int_text(commits, t[..])); ln_s(head[..], " commits, ");
+    ln_s(head[..], int_text(flagged, t[..])); ln_s(head[..], " weaken a check together with its code (report only)");
+    print("%\n", ln_text(head[..]));
+    if rows[0].n > 0 { print("%", pg_text(rows)); }
+  }
+  if args_has(a, "--notes") {
+    exe: [4096] u8; en := cxcli_exe_path(exe[..]);
+    nt := pg_text(notes); j := 0;
+    while en > 0 && j < nt.count {
+      e := j; while e < nt.count && nt[e] != 10 { e += 1; }
+      line := nt[j..<e]; j = e + 1;
+      tab := 0; while tab < line.count && line[tab] != 9 { tab += 1; }
+      if tab >= line.count { continue; }
+      argv := [9] string.[cast(string) exe[0..<en], "project", "note", line[0..<tab], line[tab + 1..<line.count], "--by", "coax-review", "--project", "coax"];
+      err: [4096] u8; quiet: [4096] u8;
+      got := proc_run(argv[..], 120000, quiet[..], err[..]);
+    }
+  }
+  return EXIT_OK;
+}
+project_review_keygen :: (a: [] Args, r: [] Rep) -> int {
+  file := positional(a, 3);
+  if file == "" || fs_exists(file) { return fail(r, EXIT_USAGE, "project review keygen FILE: FILE must be a new path"); }
+  key: [32] u8; pk: [64] u8;
+  made := false;
+  for tries: 0..<4 {
+    if !made {
+      if cxrand_draw(key[..], 32) != 0 { return fail(r, EXIT_FAIL, "no entropy from the system"); }
+      made = pubkey_hex(key[..], pk[..]);
+    }
+  }
+  if !made { wipe(key[..]); return fail(r, EXIT_FAIL, "could not make a key"); }
+  line: [65] u8; digits := "0123456789abcdef";
+  for i: 0..<32 { line[2 * i] = digits[cast(int) (key[i] >> 4)]; line[2 * i + 1] = digits[cast(int) (key[i] & 15)]; }
+  line[64] = 10;
+  wipe(key[..]);
+  pb: [4096] u8; k := copy(file, pb[..]);
+  ok := k > 0 && cxcli_write_private(pb[0..<k], line[..]) == 0;
+  wipe(line[..]);
+  if !ok { return fail(r, EXIT_FAIL, "can't write the key file"); }
+  if r[0].json { rep_str(r, "pubkey", cast(string) pk[..]); return rep_done(r, EXIT_OK); }
+  print("%\n", cast(string) pk[..]);
   return EXIT_OK;
 }
