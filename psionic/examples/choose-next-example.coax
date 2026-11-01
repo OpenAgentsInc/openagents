@@ -1,0 +1,86 @@
+// Chapter 108: four ways to choose which labels to buy, at the same budget,
+// over 16 seeds, and whether any beats random selection beyond the noise.
+#import "Basic";
+#load "../lib/acquire.coax";
+
+r3 :: (v:f64)->f64 {return floor(v*1000+0.5)/1000;}
+RULES :: [4]string.["random","uncertainty","diversity","mixture"];
+REASONS :: [7]string.["none","beyond the floor","within the floor","near the floor","no headroom","no floor","few tasks"];
+VERDICTS :: [3]string.["unverifiable","passed","failed"];
+STATUS :: [4]string.["ok","shape","budget","pool"];
+
+POOL :: 240;
+HELD :: 400;
+SEEDS :: 16;        // seeds for every rule
+FLOOR_SEEDS :: 64;  // random selection's seeds, four blocks of 16 for the floor
+SEALED :: 4;        // seeds whose runs are repeated with hidden labels flipped
+EPOCHS :: 200;
+
+// book:begin example
+main :: () {
+    px:[480]f64;py:[240]f64;hx:[800]f64;hy:[400]f64;group:[400]int;
+    s:=aq_world(1,0,px[..],py[..]);s=aq_world(1,AQ_HELD_FIRST,hx[..],hy[..]);
+    for i:0..<HELD {group[i]=i/10;}
+    inside:=0;held_inside:=0;ones:=0;
+    for i:0..<POOL {if aq_pocket(px[2*i],px[2*i+1]) {inside+=1;}if py[i]==1 {ones+=1;}}
+    for i:0..<HELD {if aq_pocket(hx[2*i],hx[2*i+1]) {held_inside+=1;}}
+    print("pool: % points, % labeled 1 by the checker, % in the pocket\n",POOL,ones,inside);
+    print("held out: % points in 40 groups of 10, % in the pocket\n",HELD,held_inside);
+    print("budget: 8 random labels, then 4 a round to 40; seeds 1 to %, and random on seeds 1 to % for the floor\n",SEEDS,FLOOR_SEEDS);
+
+    random:[25600]f64;chosen:[3][6400]f64;
+    for r:0..<4 {
+        acc:[16][9]f64;pocket:=0;pocket_right:=0.0;steps:=0;predictions:=0;distances:=0;sealed:=true;
+        seeds:=ifx r==0 then FLOOR_SEEDS else SEEDS;
+        for k:0..<seeds {
+            c:=AqConfig.{rule=cast(AqRule)r,initial=8,batch=4,budget=40,epochs=EPOCHS,seed=cast(u64)(k+1)};
+            run:=aq_run(c,px[..],py[..],hx[..],hy[..]);
+            for i:0..<HELD {
+                if r==0 {random[k*HELD+i]=run.correct[i];}else {chosen[r-1][k*HELD+i]=run.correct[i];}
+            }
+            if k>=SEEDS {continue;}
+            // Everything reported below is over seeds 1 to 16, for every rule.
+            for b:0..<9 {acc[k][b]=run.accuracy[b];}
+            for i:0..<HELD {if aq_pocket(hx[2*i],hx[2*i+1]) {pocket_right+=run.correct[i];}}
+            for q:8..<run.count {if aq_pocket(px[2*run.queries[q]],px[2*run.queries[q]+1]) {pocket+=1;}}
+            steps+=run.steps;predictions+=run.predictions;distances+=run.distances;
+            if k<SEALED && !aq_sealed(c,px[..],py[..],hx[..],hy[..],run) {sealed=false;}
+            if r==1 && k==0 {
+                print("uncertainty, seed 1, labels 9 to 16 (point=label):");
+                for q:8..<16 {print(" %=%",run.queries[q],run.labels[q]);}
+                print("\n");
+            }
+        }
+        print("%: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over % seeds:\n ",RULES[r],SEEDS);
+        for b:0..<9 {
+            if b%2==1 {continue;}
+            m:=0.0;for k:0..<SEEDS {m+=acc[k][b];}m/=SEEDS;
+            v:=0.0;for k:0..<SEEDS {v+=(acc[k][b]-m)*(acc[k][b]-m);}
+            print(" % (%)",r3(m),r3(sqrt(v/(SEEDS-1))));
+        }
+        print("\n  pocket: % of % bought labels, held-out pocket accuracy %\n",pocket,32*SEEDS,r3(pocket_right/f64(SEEDS*held_inside)));
+        print("  cost: % training steps, % predictions, % distances; seeds 1 to % sealed: %\n",steps,predictions,distances,SEALED,sealed);
+    }
+    for r:1..<4 {
+        d:=aq_compare(random[..],chosen[r-1][..],group[..],241,1000);
+        g:=d.decision.gain;
+        print("% against random at 40 labels: gain % over a floor of %, room %; % of 1000 replicates at or under the floor: % (%)\n",
+            RULES[r],r3(g.gain),r3(d.floor.floor),r3(d.decision.room.room),g.below,VERDICTS[cast(int)d.decision.result.verdict],REASONS[cast(int)d.decision.result.reason]);
+    }
+
+    // Broken requests, each refused before a label is bought.
+    ok:=AqConfig.{rule=AqRule.mixture,initial=8,batch=4,budget=40,epochs=EPOCHS,seed=1};
+    c:=ok;c.budget=42;
+    print("budget 42 in rounds of 4 after 8: %\n",STATUS[cast(int)aq_run(c,px[..],py[..],hx[..],hy[..]).status]);
+    c=ok;c.budget=40;
+    print("budget 40 from a pool of 32: %\n",STATUS[cast(int)aq_run(c,px[0..<64],py[0..<32],hx[..],hy[..]).status]);
+    c.initial=1;c.budget=41;
+    print("1 initial label: %\n",STATUS[cast(int)aq_run(c,px[..],py[..],hx[..],hy[..]).status]);
+    py[3]=0.5;
+    print("a pool label of 0.5: %\n",STATUS[cast(int)aq_run(ok,px[..],py[..],hx[..],hy[..]).status]);
+    py[3]=aq_truth(px[6],px[7]);px[6]=3;
+    print("a pool point outside the square: %\n",STATUS[cast(int)aq_run(ok,px[..],py[..],hx[..],hy[..]).status]);
+    px[6]=0;
+    print("no held-out points: %\n",STATUS[cast(int)aq_run(ok,px[..],py[..],hx[0..<0],hy[0..<0]).status]);
+}
+// book:end example

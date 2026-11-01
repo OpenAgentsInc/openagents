@@ -462,6 +462,16 @@
       ]
     },
     {
+      "source": "psionic/examples/choose-next-example.coax",
+      "chapter": "psionic/book/ch108-choose-the-next-example-to-learn-from.md",
+      "stdout": "psionic/fixtures/choose-next-example.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/model-router.coax",
       "chapter": "psionic/book/ch225-learn-which-model-to-call.md",
       "stdout": "psionic/fixtures/model-router.out",

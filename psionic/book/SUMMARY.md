@@ -117,7 +117,7 @@
 - [105. Make a model fail, then find out why](ch105-make-a-model-fail-then-find-out-why.md)
 - [106. Differentiate any tensor program](ch106-differentiate-any-tensor-program.md)
 - [107. Transform functions, not just tensors](ch107-transform-functions-not-just-tensors.md) — composable graph-function derivatives and batching
-- [108. Choose the next example to learn from](ch108-choose-the-next-example-to-learn-from.md) — design draft
+- [108. Choose the next example to learn from](ch108-choose-the-next-example-to-learn-from.md) — uncertainty, diversity and mixed label buying against random selection, judged by a noise floor
 - [109. Learn a physical system](ch109-learn-a-physical-system.md) — own RK4 dynamics, learned surrogate and held-out rollouts
 - [110. A grid world that learns, plans and recovers](ch110-a-grid-world-that-learns-plans-and-recovers.md) — design draft
 - [111. Recover the physics from the motion](ch111-recover-the-physics-from-the-motion.md) — exact-solver gradients and identifiable motion
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 156–158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 156–158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

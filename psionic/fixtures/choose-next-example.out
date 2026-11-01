@@ -1,0 +1,29 @@
+pool: 240 points, 98 labeled 1 by the checker, 15 in the pocket
+held out: 400 points in 40 groups of 10, 20 in the pocket
+budget: 8 random labels, then 4 a round to 40; seeds 1 to 16, and random on seeds 1 to 64 for the floor
+random: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
+  0.797 (0.104) 0.844 (0.061) 0.874 (0.054) 0.872 (0.065) 0.892 (0.047)
+  pocket: 38 of 512 bought labels, held-out pocket accuracy 0.428
+  cost: 92800 training steps, 0 predictions, 0 distances; seeds 1 to 4 sealed: true
+uncertainty, seed 1, labels 9 to 16 (point=label): 156=0.0 96=1.0 59=1.0 51=1.0 44=0.0 195=0.0 228=0.0 105=0.0
+uncertainty: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
+  0.797 (0.104) 0.882 (0.092) 0.897 (0.073) 0.914 (0.04) 0.927 (0.03)
+  pocket: 24 of 512 bought labels, held-out pocket accuracy 0.138
+  cost: 92800 training steps, 27904 predictions, 0 distances; seeds 1 to 4 sealed: true
+diversity: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
+  0.797 (0.104) 0.885 (0.028) 0.907 (0.034) 0.913 (0.02) 0.923 (0.012)
+  pocket: 17 of 512 bought labels, held-out pocket accuracy 0.038
+  cost: 92800 training steps, 0 predictions, 2561280 distances; seeds 1 to 4 sealed: true
+mixture: held-out accuracy at 8, 16, 24, 32 and 40 labels, mean (sd) over 16 seeds:
+  0.797 (0.104) 0.893 (0.035) 0.92 (0.022) 0.93 (0.014) 0.925 (0.034)
+  pocket: 35 of 512 bought labels, held-out pocket accuracy 0.241
+  cost: 92800 training steps, 27904 predictions, 2561280 distances; seeds 1 to 4 sealed: true
+uncertainty against random at 40 labels: gain 0.035 over a floor of 0.025, room 0.108; 33 of 1000 replicates at or under the floor: unverifiable (near the floor)
+diversity against random at 40 labels: gain 0.031 over a floor of 0.025, room 0.108; 144 of 1000 replicates at or under the floor: unverifiable (near the floor)
+mixture against random at 40 labels: gain 0.033 over a floor of 0.025, room 0.108; 29 of 1000 replicates at or under the floor: unverifiable (near the floor)
+budget 42 in rounds of 4 after 8: budget
+budget 40 from a pool of 32: budget
+1 initial label: budget
+a pool label of 0.5: pool
+a pool point outside the square: pool
+no held-out points: shape

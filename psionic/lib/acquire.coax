@@ -1,0 +1,533 @@
+// Chapter 108: choose the next example to learn from. An owned pool of 2-D
+// points whose labels only an independent checker knows, chapter 103's
+// classifier trained on the labels bought so far, and four ways to choose
+// the next labels: at random, by uncertainty, by diversity, and by a mixture
+// of both. Chapter 240's noise floor over seed blocks and chapter 241's
+// decision gate say whether a rule beats random selection at equal budgets.
+// Profile cpu-f64-acquire-v1: binary64, chapter 103's models and trainer,
+// pools of 2 to 256 points with 2 features, 1 to 512 held-out points,
+// budgets of at most 64 labels counting the initial ones, batches of 1 to 16.
+#load "verdict.coax";
+
+AqStatus :: enum u8 {ok;shape;budget;pool;}
+AqRule :: enum u8 {random;uncertainty;diversity;mixture;}
+// A run: the rule, the initial random labels, the labels bought per round,
+// the total budget (initial labels included), training epochs per round,
+// and the run's seed.
+AqConfig :: struct {rule:AqRule;initial:int;batch:int;budget:int;epochs:int;seed:u64;}
+// What one run did. queries[q] and labels[q] are the q-th label bought, in
+// order; accuracy[r] is held-out accuracy after training on the first
+// initial + r * batch labels; correct is per held-out item for the last model.
+AqRun :: struct {
+    status:AqStatus;
+    count:int;
+    queries:[64]int;
+    labels:[64]f64;
+    rounds:int;
+    accuracy:[64]f64;
+    correct:[512]f64;
+    predictions:int;   // model outputs computed to choose (uncertainty, mixture)
+    distances:int;     // point-to-point distances computed to choose (diversity, mixture)
+    steps:int;         // training steps, over every round
+}
+
+AQ_D :: 2;
+AQ_POOL_MAX :: 256;
+AQ_HELD_MAX :: 512;
+AQ_BUDGET_MAX :: 64;
+AQ_BATCH_MAX :: 16;
+// Held-out points come from counters far past any pool point's.
+AQ_HELD_FIRST :: 1000000;
+// Random scores for round r use counters from AQ_RANDOM_COUNTER + r * 256.
+AQ_RANDOM_COUNTER :: (cast(u64)4294967296);
+AQ_MODEL :: TbModel.{features=2,hidden=4,logistic=true};
+AQ_TRAIN :: TbConfig.{batch=8,rate=2};
+
+// Checks precede the implementation. Expected values are derived in chapter 108.
+// The tiny pool: points 0 and 1 are labeled; 2 to 5 are candidates.
+AQ_TINY_X :: [12]f64.[0,0, 4,0, 0,3, 2,0, 4,3, 2,1.5];
+AQ_TINY_P :: [6]f64.[0.5,0.5, 0.875,0.5,0.75,0.625];
+tiny :: (rule:AqRule,k:int,picks:[]int)->int {
+    x:=AQ_TINY_X;p:=AQ_TINY_P;have:=[2]int.[0,1];
+    c:=aq_pick(rule,x[..],p[..],have[..],k,7,0,picks);
+    return k;
+}
+#test "acquisition scores on the tiny pool by hand" {
+    x:=AQ_TINY_X;have:=[2]int.[0,1];
+    // Uncertainty 1 - |2p - 1|.
+    #assert aq_uncertainty(0.875)==0.25 && aq_uncertainty(0.5)==1 && aq_uncertainty(0.75)==0.5 && aq_uncertainty(0.625)==0.75;
+    #assert aq_uncertainty(0)==0 && aq_uncertainty(1)==0 && aq_uncertainty(0.25)==0.5;
+    // Distance to the nearest labeled point: 3, 2, 3 and 2.5, the earliest labeled point on a tie.
+    #assert aq_distance(x[..],1,4)==3 && aq_distance(x[..],2,4)==4 && aq_distance(x[..],0,4)==5 && aq_distance(x[..],4,0)==5;
+    a:=aq_nearest(x[..],2,have[..]);#assert a.at==0 && a.distance==3;
+    a=aq_nearest(x[..],3,have[..]);#assert a.at==0 && a.distance==2;
+    a=aq_nearest(x[..],4,have[..]);#assert a.at==1 && a.distance==3;
+    a=aq_nearest(x[..],5,have[..]);#assert a.at==0 && a.distance==2.5;
+    back:=[2]int.[1,0];a=aq_nearest(x[..],5,back[..]);#assert a.at==1 && a.distance==2.5;
+    a=aq_nearest(x[..],2,back[..]);#assert a.at==0 && a.distance==3;
+    a=aq_nearest(x[..],2,have[0..<0]);#assert a.at==-1;
+    #assert aq_score(AqRule.uncertainty,0.75,3,1,9,0)==0.5 && aq_score(AqRule.diversity,0.75,3,1,9,0)==3 && aq_score(AqRule.mixture,0.75,3,1,9,0)==3.5;
+    #assert aq_score(AqRule.random,0.75,3,7,9,2)==tb_uniform(9,AQ_RANDOM_COUNTER+cast(u64)(2*256+7));
+}
+#test "greedy picks on the tiny pool, with the lowest index winning a tie" {
+    picks:[2]int;
+    // Uncertainty: 3 (1), then 5 (0.75).
+    #assert tiny(AqRule.uncertainty,2,picks[..])==2 && picks[0]==3 && picks[1]==5;
+    // Diversity: 2 and 4 tie at 3, so 2; then 4 (still 3).
+    #assert tiny(AqRule.diversity,2,picks[..])==2 && picks[0]==2 && picks[1]==4;
+    // Mixture: 4 (3.5); then 2 and 5 tie at 3.25, so 2.
+    #assert tiny(AqRule.mixture,2,picks[..])==2 && picks[0]==4 && picks[1]==2;
+    // Random: the two largest uniform draws, recomputed here.
+    best:=-1;second:=-1;
+    for i:2..<6 {
+        s:=tb_uniform(7,AQ_RANDOM_COUNTER+cast(u64)i);
+        if best<0 || s>tb_uniform(7,AQ_RANDOM_COUNTER+cast(u64)best) {second=best;best=i;}
+        else if second<0 || s>tb_uniform(7,AQ_RANDOM_COUNTER+cast(u64)second) {second=i;}
+    }
+    #assert tiny(AqRule.random,2,picks[..])==2 && picks[0]==best && picks[1]==second;
+    // Four picks take every candidate; the tie order holds all the way.
+    four:[4]int;#assert tiny(AqRule.uncertainty,4,four[..])==4 && four[0]==3 && four[1]==5 && four[2]==4 && four[3]==2;
+    #assert tiny(AqRule.diversity,4,four[..])==4 && four[0]==2 && four[1]==4 && four[2]==5 && four[3]==3;
+    // Equal scores everywhere: lowest indices first.
+    x:=AQ_TINY_X;flat:=[6]f64.[0.5,0.5,0.5,0.5,0.5,0.5];have:=[2]int.[0,1];
+    c:=aq_pick(AqRule.uncertainty,x[..],flat[..],have[..],4,7,0,four[..]);
+    #assert four[0]==2 && four[1]==3 && four[2]==4 && four[3]==5;
+    // Point 0 can be a candidate and win: its index is not confused with "none yet".
+    late:=[2]int.[1,4];c=aq_pick(AqRule.uncertainty,x[..],flat[..],late[..],4,7,0,four[..]);
+    #assert four[0]==0 && four[1]==2 && four[2]==3 && four[3]==5;
+    // From {1, 4}, point 0 is 4 away, point 2 is 4, point 3 is 2 and point 5 is 2.5: 0 wins the tie.
+    c=aq_pick(AqRule.diversity,x[..],flat[..],late[..],1,7,0,four[..]);
+    #assert four[0]==0;
+}
+#test "what choosing costs" {
+    x:=AQ_TINY_X;p:=AQ_TINY_P;picks:[4]int;have:=[2]int.[0,1];
+    for r:0..<4 {
+        c:=aq_pick(cast(AqRule)r,x[..],p[..],have[..],2,7,0,picks[0..<2]);
+        // Uncertainty reads the 4 candidates' probabilities; diversity measures 4 x 2, then 3 x 3.
+        #assert c.predictions==ifx r==1 || r==3 then 4 else 0;
+        #assert c.distances==ifx r>=2 then 17 else 0;
+        // Four picks: 4 x 2 + 3 x 3 + 2 x 4 + 1 x 5.
+        c=aq_pick(cast(AqRule)r,x[..],p[..],have[..],4,7,0,picks[..]);
+        #assert c.distances==ifx r>=2 then 30 else 0;
+    }
+}
+
+#forall "a greedy batch equals the brute-force argmax, pick by pick" seed: 0..<24, rule: 0..<4 {
+    // Twelve points on a coarse grid, so that ties happen; probabilities in eighths.
+    x:[24]f64;p:[12]f64;
+    for i:0..<12 {
+        x[2*i]=f64(tb_bits(cast(u64)seed,cast(u64)(3*i))%4);x[2*i+1]=f64(tb_bits(cast(u64)seed,cast(u64)(3*i+1))%4);
+        p[i]=f64(tb_bits(cast(u64)seed,cast(u64)(3*i+2))%9)/8;
+    }
+    have:=[2]int.[3,8];picks:[6]int;
+    c:=aq_pick(cast(AqRule)rule,x[..],p[..],have[..],6,cast(u64)seed,3,picks[..]);
+    for k:0..<6 {
+        // The labeled set before pick k, and every candidate's score from its
+        // definition, the nearest labeled point found over that whole set.
+        labeled:[8]int;labeled[0]=3;labeled[1]=8;for j:0..<k {labeled[2+j]=picks[j];}
+        score:[12]f64;open:[12]bool;
+        for i:0..<12 {
+            open[i]=true;for j:0..<2+k {if labeled[j]==i {open[i]=false;}}
+            d:=-1.0;
+            for j:0..<2+k {
+                h:=labeled[j];dx:=x[2*i]-x[2*h];dy:=x[2*i+1]-x[2*h+1];e:=sqrt(dx*dx+dy*dy);
+                if d<0 || e<d {d=e;}
+            }
+            u:=1-abs(2*p[i]-1);
+            if rule==0 {score[i]=tb_uniform(cast(u64)seed,AQ_RANDOM_COUNTER+cast(u64)(3*256+i));}
+            if rule==1 {score[i]=u;}
+            if rule==2 {score[i]=d;}
+            if rule==3 {score[i]=u+d;}
+        }
+        // The pick is open, scores at least as high as every open point, and
+        // strictly higher than every open point before it.
+        w:=picks[k];#assert open[w];
+        for i:0..<12 {
+            if !open[i] {continue;}
+            #assert score[w]>=score[i];
+            if i<w {#assert score[w]>score[i];}
+        }
+    }
+}
+
+#test "the world and its checker" {
+    x:[8]f64;y:[4]f64;
+    #assert aq_world(5,10,x[..],y[..])==AqStatus.ok;
+    for i:0..<4 {
+        a:=4*tb_uniform(5,cast(u64)(2*(10+i)))-2;b:=4*tb_uniform(5,cast(u64)(2*(10+i)+1))-2;
+        #assert x[2*i]==a && x[2*i+1]==b && y[i]==aq_truth(a,b);
+    }
+    // The checker: above the diagonal is 1, except in the pocket around (1.25, 1.25).
+    #assert aq_truth(1,0.5)==1 && aq_truth(-1,0.5)==0 && aq_truth(0.5,-0.5)==0 && aq_truth(0.25,-0.25)==0;
+    #assert aq_truth(1.25,1.25)==0 && aq_truth(1.25,1.74)==0 && aq_truth(1.25,1.75)==1 && aq_truth(0.76,1.25)==0 && aq_truth(0.75,1.25)==1;
+    #assert aq_pocket(1.25,1.74) && !aq_pocket(1.25,1.75) && !aq_pocket(1.25,0.75) && aq_pocket(1.25,0.76);
+    #assert aq_world(5,10,x[0..<7],y[..])==AqStatus.shape && aq_world(5,10,x[..],y[0..<3])==AqStatus.shape && aq_world(5,-1,x[..],y[..])==AqStatus.shape;
+    #assert aq_world(5,0,x[..],y[..])==AqStatus.ok && x[0]==4*tb_uniform(5,0)-2;
+}
+
+#test "probabilities and held-out scores" {
+    x:=AQ_TINY_X;p:[6]f64;params:[17]f64;
+    for s:0..<17 {params[s]=f64(s%5)/8-0.25;}
+    for i:0..<6 {p[i]=7;}
+    aq_probabilities(params[..],x[..],p[..]);
+    for i:0..<6 {#assert p[i]==tb_sigmoid(tb_output(AQ_MODEL,params[..],x[2*i..<2*i+2]));}
+    // A logit of exactly 0, from all-zero parameters, predicts class 1.
+    zero:[17]f64;y:=[6]f64.[1,0,1,1,0,0];right:[6]f64;for i:0..<6 {right[i]=7;}
+    #assert aq_score_held(zero[..],x[..],y[..],right[..])==0.5;
+    for i:0..<6 {#assert right[i]==y[i];}
+}
+
+small :: (rule:AqRule)->AqConfig {return AqConfig.{rule=rule,initial=4,batch=2,budget=10,epochs=6,seed=3};}
+#test "a run records every query and its checked label" {
+    px:[80]f64;py:[40]f64;hx:[80]f64;hy:[40]f64;
+    #assert aq_world(1,0,px[..],py[..])==AqStatus.ok && aq_world(1,AQ_HELD_FIRST,hx[..],hy[..])==AqStatus.ok;
+    // The initial labels: the four largest round-0 draws, the same for every rule.
+    draw:[40]f64;for i:0..<40 {draw[i]=tb_uniform(3,AQ_RANDOM_COUNTER+cast(u64)i);}
+    for r:0..<4 {
+        run:=aq_run(small(cast(AqRule)r),px[..],py[..],hx[..],hy[..]);
+        #assert run.status==AqStatus.ok && run.count==10 && run.rounds==3;
+        ones:=0;
+        for q:0..<10 {
+            #assert run.labels[q]==py[run.queries[q]];
+            if run.labels[q]==1 {ones+=1;}
+            for e:0..<q {#assert run.queries[e]!=run.queries[q];}
+        }
+        #assert ones>0 && ones<10;
+        for q:0..<4 {
+            w:=run.queries[q];
+            for i:0..<40 {
+                later:=true;for e:0..<q {if run.queries[e]==i {later=false;}}
+                if later {#assert draw[w]>=draw[i];}
+            }
+        }
+        // The last accuracy is the mean of the last model's per-item scores.
+        right:=0.0;for i:0..<40 {#assert run.correct[i]==0 || run.correct[i]==1;right+=run.correct[i];}
+        #assert run.accuracy[run.rounds]==right/40;
+        // Trained on 4, 6, 8 and 10 labels, 8 a step for 6 epochs: 1, 1, 1 and 2 steps an epoch.
+        #assert run.steps==6*5;
+        // Choosing at 4, 6 and 8 labels of 40: probabilities of 36, 34 and 32
+        // candidates; distances (40 - L) L + (39 - L) (L + 1) for each L.
+        #assert run.predictions==ifx r==1 || r==3 then 36+34+32 else 0;
+        #assert run.distances==ifx r>=2 then 36*4+35*5+34*6+33*7+32*8+31*9 else 0;
+    }
+}
+retrain :: (px:[]f64,run:AqRun,n:int,p:[]f64) {
+    tx:[20]f64;ty:[10]f64;rows:[10]int;order:[10]int;
+    for q:0..<n {tx[2*q]=px[2*run.queries[q]];tx[2*q+1]=px[2*run.queries[q]+1];ty[q]=run.labels[q];rows[q]=q;}
+    c:=AQ_TRAIN;c.epochs=6;c.init_seed=3;c.shuffle_seed=4;
+    t:=tb_train(AQ_MODEL,c,tx[0..<2*n],ty[0..<n],rows[0..<n],p,order[..],false);
+}
+#test "every round's model, accuracy and picks, recomputed" {
+    px:[80]f64;py:[40]f64;hx:[80]f64;hy:[40]f64;
+    #assert aq_world(1,0,px[..],py[..])==AqStatus.ok && aq_world(1,AQ_HELD_FIRST,hx[..],hy[..])==AqStatus.ok;
+    for rule:0..<4 {
+        run:=aq_run(small(cast(AqRule)rule),px[..],py[..],hx[..],hy[..]);
+        for r:0..<4 {
+            n:=4+2*r;p:[17]f64;retrain(px[..],run,n,p[..]);
+            right:=0;
+            for i:0..<40 {
+                yes:=tb_output(AQ_MODEL,p[..],hx[2*i..<2*i+2])>=0;
+                if yes==(hy[i]==1) {right+=1;}
+                if r==3 {#assert run.correct[i]==ifx yes==(hy[i]==1) then 1.0 else 0.0;}
+            }
+            #assert run.accuracy[r]==f64(right)/40;
+            // The next round's picks, from this round's model.
+            if r==3 {continue;}
+            prob:[40]f64;for i:0..<40 {prob[i]=tb_sigmoid(tb_output(AQ_MODEL,p[..],px[2*i..<2*i+2]));}
+            picks:[2]int;
+            c:=aq_pick(cast(AqRule)rule,px[..],prob[..],run.queries[0..<n],2,3,r+1,picks[..]);
+            #assert picks[0]==run.queries[n] && picks[1]==run.queries[n+1];
+        }
+    }
+}
+#test "no held-out label and no unqueried label reaches the selector" {
+    px:[80]f64;py:[40]f64;hx:[80]f64;hy:[40]f64;
+    #assert aq_world(1,0,px[..],py[..])==AqStatus.ok && aq_world(1,AQ_HELD_FIRST,hx[..],hy[..])==AqStatus.ok;
+    for r:0..<4 {
+        run:=aq_run(small(cast(AqRule)r),px[..],py[..],hx[..],hy[..]);
+        #assert aq_sealed(small(cast(AqRule)r),px[..],py[..],hx[..],hy[..],run);
+        // A record that differs in one query, or in one held-out score, is not sealed.
+        bad:=run;bad.queries[9]=run.queries[0];#assert !aq_sealed(small(cast(AqRule)r),px[..],py[..],hx[..],hy[..],bad);
+        bad=run;bad.correct[0]=1-run.correct[0];#assert !aq_sealed(small(cast(AqRule)r),px[..],py[..],hx[..],hy[..],bad);
+        bad=run;bad.correct[39]=1-run.correct[39];#assert !aq_sealed(small(cast(AqRule)r),px[..],py[..],hx[..],hy[..],bad);
+        // A label that was queried does change what follows.
+        if r==1 {
+            flip:[40]f64;for i:0..<40 {flip[i]=py[i];}
+            for q:4..<6 {flip[run.queries[q]]=1-flip[run.queries[q]];}
+            other:=aq_run(small(cast(AqRule)r),px[..],flip[..],hx[..],hy[..]);
+            #assert !aq_same_queries(run,other);
+        }
+    }
+    a:AqRun;b:AqRun;a.count=2;b.count=2;a.queries[1]=3;#assert !aq_same_queries(a,b);b.queries[1]=3;#assert aq_same_queries(a,b);
+    a.queries[0]=5;#assert !aq_same_queries(a,b);a.queries[0]=0;
+    b.count=1;#assert !aq_same_queries(a,b);
+}
+#test "refusals for budget and pool errors" {
+    px:[80]f64;py:[40]f64;hx:[80]f64;hy:[40]f64;
+    #assert aq_world(1,0,px[..],py[..])==AqStatus.ok && aq_world(1,AQ_HELD_FIRST,hx[..],hy[..])==AqStatus.ok;
+    ok:=small(AqRule.uncertainty);
+    #assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c:=ok;c.initial=1;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.budget;
+    c.initial=2;c.budget=10;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c=ok;c.initial=11;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.budget;
+    c.initial=10;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c=ok;c.batch=0;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.budget;
+    c.batch=1;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c.batch=17;c.budget=4+17;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.budget;
+    c.batch=16;c.budget=4+16;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c=ok;c.budget=11;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.budget;
+    c.budget=40;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c.budget=42;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.budget;
+    big:[512]f64;bigy:[256]f64;
+    #assert aq_world(1,0,big[..],bigy[..])==AqStatus.ok;
+    c=ok;c.batch=1;c.budget=64;#assert aq_admit(c,big[..],bigy[..],hx[..],hy[..])==AqStatus.ok;
+    c.budget=65;#assert aq_admit(c,big[..],bigy[..],hx[..],hy[..])==AqStatus.budget;
+    // Pools: 2 to 256 points of 2 coordinates in the square, labels 0 or 1.
+    #assert aq_admit(ok,px[0..<79],py[..],hx[..],hy[..])==AqStatus.pool && aq_admit(ok,px[0..<78],py[..],hx[..],hy[..])==AqStatus.pool;
+    bx:[514]f64;by:[257]f64;#assert aq_admit(ok,bx[..],by[..],hx[..],hy[..])==AqStatus.pool;
+    two:=ok;two.initial=2;two.budget=2;
+    #assert aq_admit(two,px[0..<4],py[0..<2],hx[..],hy[..])==AqStatus.ok && aq_admit(two,px[0..<2],py[0..<1],hx[..],hy[..])==AqStatus.pool;
+    py[7]=0.5;#assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.pool;py[7]=aq_truth(px[14],px[15]);
+    px[9]=2.5;#assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.pool;px[9]=-2;#assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    px[9]=0.0/0.0;#assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.pool;px[9]=2;
+    // The held-out set: 1 to 512 points in the square, labels 0 or 1.
+    #assert aq_admit(ok,px[..],py[..],hx[0..<78],hy[..])==AqStatus.shape && aq_admit(ok,px[..],py[..],hx[0..<0],hy[0..<0])==AqStatus.shape;
+    #assert aq_admit(ok,px[..],py[..],hx[0..<2],hy[0..<1])==AqStatus.ok;
+    hb:[1026]f64;hby:[513]f64;#assert aq_admit(ok,px[..],py[..],hb[..],hby[..])==AqStatus.shape;
+    #assert aq_admit(ok,px[..],py[..],hb[0..<1024],hby[0..<512])==AqStatus.ok;
+    hy[3]=2;#assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.shape;hy[3]=0;
+    hx[5]=-2.5;#assert aq_admit(ok,px[..],py[..],hx[..],hy[..])==AqStatus.shape;hx[5]=2;
+    // Epochs: chapter 103's 1 to 512.
+    c=ok;c.epochs=0;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.shape;
+    c.epochs=513;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.shape;
+    c.epochs=512;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    c.epochs=1;#assert aq_admit(c,px[..],py[..],hx[..],hy[..])==AqStatus.ok;
+    // A refused run buys nothing.
+    c=ok;c.budget=41;r:=aq_run(c,px[..],py[..],hx[..],hy[..]);
+    #assert r.status==AqStatus.budget && r.count==0 && r.rounds==0 && r.steps==0;
+}
+#test "the comparison against random selection" {
+    // Random over four seeds of 40 held-out items in 10 groups. It gets item
+    // i wrong when i % 4 is the seed, and seed 0 also gets items 1 and 5
+    // wrong: seeds score 0.7, 0.75, 0.75, 0.75. A rule run on two seeds is
+    // compared with random's first two; the floor is for blocks of two
+    // seeds: 0.725 and 0.75, sd 0.025 / sqrt(2), floor 1.96 x 0.025 = 0.049.
+    a:[160]f64;b:[80]f64;task:[40]int;
+    for s:0..<4 {for i:0..<40 {a[s*40+i]=ifx i%4==s then 0.0 else 1.0;}}
+    for i:0..<80 {b[i]=1;}
+    a[1]=0;a[5]=0;
+    for i:0..<40 {task[i]=i/4;}
+    d:=aq_compare(a[..],b[..],task[..],9,200);
+    #assert d.decision.status==VdStatus.ok && d.floor.blocks==2 && d.floor.mean[0]==0.725 && d.floor.mean[1]==0.75;
+    #assert abs(d.floor.floor-0.049)<1e-12;
+    // A rule right everywhere gains 1 - 0.725 in every replicate: passed.
+    #assert vd_is(d.decision.result,VdVerdict.passed,VdReason.beyond_floor) && d.decision.gain.gain==0.275 && d.decision.gain.below==0;
+    #assert d.decision.room.room==0.275;
+    // Random's own first two seeds against it gain 0: within the floor.
+    e:=aq_compare(a[..],a[0..<80],task[..],9,200);
+    #assert vd_is(e.decision.result,VdVerdict.failed,VdReason.within_floor) && e.decision.gain.gain==0 && e.decision.gain.below==200;
+    // Shapes: whole seeds of scores, at least two blocks, a group per item.
+    #assert aq_compare(a[..],b[0..<79],task[..],9,200).decision.status==VdStatus.shape;
+    #assert aq_compare(a[0..<159],b[..],task[..],9,200).decision.status==VdStatus.shape;
+    #assert aq_compare(a[0..<120],b[..],task[..],9,200).decision.status==VdStatus.shape;
+    #assert aq_compare(a[0..<80],b[..],task[..],9,200).decision.status==VdStatus.shape;
+    #assert aq_compare(a[..],b[0..<0],task[..],9,200).decision.status==VdStatus.shape;
+    #assert aq_compare(a[0..<120],b[0..<40],task[..],9,200).decision.status==VdStatus.ok;
+    #assert aq_compare(a[..],b[..],task[0..<39],9,200).decision.status==VdStatus.shape;
+    #assert aq_compare(a[0..<0],b[0..<0],task[0..<0],9,200).decision.status==VdStatus.shape;
+    // One held-out item is a shape the gate can judge, though not pass.
+    one:=aq_compare(a[0..<4],b[0..<2],task[0..<1],9,200);
+    #assert one.decision.status==VdStatus.ok && one.decision.result.verdict==VdVerdict.unverifiable;
+    // At most 512 items.
+    wide:[1026]f64;many:[514]int;for i:0..<514 {many[i]=i/8;}
+    #assert aq_compare(wide[0..<1024],wide[0..<512],many[0..<512],9,200).decision.status!=VdStatus.shape;
+    #assert aq_compare(wide[0..<1026],wide[0..<513],many[0..<513],9,200).decision.status==VdStatus.shape;
+    // Scores: chapter 240 refuses anything not finite.
+    b[7]=0.0/0.0;#assert aq_compare(a[..],b[..],task[..],9,200).decision.status==VdStatus.number;b[7]=1;
+    a[7]=0.0/0.0;#assert aq_compare(a[..],b[..],task[..],9,200).decision.status==VdStatus.number;
+}
+
+// book:begin world
+// The owned pool: point i is uniform in the square [-2, 2]^2 at counters
+// 2i and 2i + 1. The checker labels it; only the loop's oracle calls it.
+aq_pocket :: (a:f64,b:f64)->bool {return (a-1.25)*(a-1.25)+(b-1.25)*(b-1.25)<0.25;}
+aq_truth :: (a:f64,b:f64)->f64 {
+    above:=a+b>0;
+    if aq_pocket(a,b) {above=false;}
+    return ifx above then 1.0 else 0.0;
+}
+aq_world :: (seed:u64,first:int,x:[]f64,y:[]f64)->AqStatus {
+    if first<0 || x.count!=2*y.count {return AqStatus.shape;}
+    for i:0..<y.count {
+        c:=cast(u64)(2*(first+i));
+        x[2*i]=4*tb_uniform(seed,c)-2;x[2*i+1]=4*tb_uniform(seed,c+1)-2;
+        y[i]=aq_truth(x[2*i],x[2*i+1]);
+    }
+    return AqStatus.ok;
+}
+// book:end world
+
+// book:begin scores
+// Higher is chosen first. p is the model's probability of class 1.
+aq_uncertainty :: (p:f64)->f64 {return 1-abs(2*p-1);}
+aq_distance :: (x:[]f64,i:int,j:int)->f64 {
+    dx:=x[2*i]-x[2*j];dy:=x[2*i+1]-x[2*j+1];
+    return sqrt(dx*dx+dy*dy);
+}
+// The labeled point nearest to point i, the earliest in `have` on a tie.
+AqNear :: struct {at:int;distance:f64;}
+aq_nearest :: (x:[]f64,i:int,have:[]int)->AqNear {
+    r:=AqNear.{at=-1};
+    for h:have {
+        e:=aq_distance(x,i,h);
+        if r.at<0 || e<r.distance {r=AqNear.{at=h,distance=e};}
+    }
+    return r;
+}
+// Random selection is a score too: a fresh uniform draw per point and round.
+aq_score :: (rule:AqRule,p:f64,nearest:f64,i:int,seed:u64,round:int)->f64 {
+    if rule==AqRule.uncertainty {return aq_uncertainty(p);}
+    if rule==AqRule.diversity {return nearest;}
+    if rule==AqRule.mixture {return aq_uncertainty(p)+nearest;}
+    return tb_uniform(seed,AQ_RANDOM_COUNTER+cast(u64)(round*AQ_POOL_MAX+i));
+}
+// book:end scores
+
+// book:begin pick
+AqCost :: struct {predictions:int;distances:int;}
+// Choose k points, one at a time: the highest score among the points not
+// yet labeled, the lowest index on a tie. Each pick joins the labeled set
+// at once, so diversity measures from it for the next pick. The selector
+// sees the points, the model's probabilities and which points are labeled.
+// It never sees a label.
+aq_pick :: (rule:AqRule,x:[]f64,p:[]f64,have:[]int,k:int,seed:u64,round:int,picks:[]int)->AqCost {
+    n:=x.count/AQ_D;cost:AqCost;
+    chosen:[AQ_POOL_MAX]int;taken:[AQ_POOL_MAX]bool;
+    for h,j:have {chosen[j]=h;taken[h]=true;}
+    spatial:=rule==AqRule.diversity || rule==AqRule.mixture;
+    if rule==AqRule.uncertainty || rule==AqRule.mixture {cost.predictions=n-have.count;}
+    for q:0..<k {
+        labeled:=have.count+q;best:=-1;top:=0.0;
+        for i:0..<n {
+            if taken[i] {continue;}
+            near:=0.0;
+            if spatial {near=aq_nearest(x,i,chosen[0..<labeled]).distance;cost.distances+=labeled;}
+            s:=aq_score(rule,p[i],near,i,seed,round);
+            if best<0 || s>top {best=i;top=s;}
+        }
+        taken[best]=true;chosen[labeled]=best;picks[q]=best;
+    }
+    return cost;
+}
+// book:end pick
+
+aq_box :: (x:[]f64)->bool {for v:x {if !tb_in(v,-2,2) {return false;}}return true;}
+aq_labels :: (y:[]f64)->bool {for v:y {if v!=0 && v!=1 {return false;}}return true;}
+// book:begin admit
+// Every refusal, before any label is bought.
+aq_admit :: (c:AqConfig,px:[]f64,py:[]f64,hx:[]f64,hy:[]f64)->AqStatus {
+    n:=py.count;
+    if n<2 || n>AQ_POOL_MAX || px.count!=AQ_D*n || !aq_box(px) || !aq_labels(py) {return AqStatus.pool;}
+    if hy.count<1 || hy.count>AQ_HELD_MAX || hx.count!=AQ_D*hy.count || !aq_box(hx) || !aq_labels(hy) {return AqStatus.shape;}
+    if c.initial<2 || c.batch<1 || c.batch>AQ_BATCH_MAX || c.budget<c.initial {return AqStatus.budget;}
+    if c.budget>AQ_BUDGET_MAX || c.budget>n || (c.budget-c.initial)%c.batch!=0 {return AqStatus.budget;}
+    if c.epochs<1 || c.epochs>TB_EPOCHS_MAX {return AqStatus.shape;}
+    return AqStatus.ok;
+}
+// book:end admit
+
+// Chapter 103's classifier on the labels bought so far: 2 inputs, 4 tanh
+// units, a logistic output; 8 labels a step at rate 2.
+aq_fit :: (c:AqConfig,px:[]f64,queries:[]int,labels:[]f64,params:[]f64)->TbTrain {
+    tx:[128]f64;ty:[64]f64;rows:[64]int;order:[64]int;n:=queries.count;
+    for q:0..<n {tx[2*q]=px[2*queries[q]];tx[2*q+1]=px[2*queries[q]+1];ty[q]=labels[q];rows[q]=q;}
+    t:=AQ_TRAIN;t.epochs=c.epochs;t.init_seed=c.seed;t.shuffle_seed=c.seed+1;
+    return tb_train(AQ_MODEL,t,tx[0..<2*n],ty[0..<n],rows[0..<n],params,order[..],false);
+}
+aq_probabilities :: (params:[]f64,x:[]f64,p:[]f64) {
+    for i:0..<x.count/AQ_D {p[i]=tb_sigmoid(tb_output(AQ_MODEL,params,x[2*i..<2*i+2]));}
+}
+// 1 for each held-out point whose predicted class is right; a logit of
+// exactly 0 predicts class 1. Returns the accuracy.
+aq_score_held :: (params:[]f64,hx:[]f64,hy:[]f64,correct:[]f64)->f64 {
+    right:=0;
+    for i:0..<hy.count {
+        yes:=tb_output(AQ_MODEL,params,hx[2*i..<2*i+2])>=0;
+        correct[i]=ifx yes==(hy[i]==1) then 1.0 else 0.0;
+        if correct[i]==1 {right+=1;}
+    }
+    return f64(right)/f64(hy.count);
+}
+
+// book:begin run
+// One run. Round 0 picks the initial labels at random, the same points
+// for every rule with the same seed. Every round then buys the labels it
+// picked, trains on every label bought so far, and scores the held-out
+// points; the next round picks by the rule, until the budget is spent.
+// Only the oracle line reads py, and only at points just picked.
+aq_run :: (c:AqConfig,px:[]f64,py:[]f64,hx:[]f64,hy:[]f64)->AqRun {
+    admitted:=aq_admit(c,px,py,hx,hy);
+    if admitted!=AqStatus.ok {return AqRun.{status=admitted};}
+    run:AqRun;p:[AQ_POOL_MAX]f64;params:[17]f64;
+    rule:=AqRule.random;k:=c.initial;
+    while true {
+        cost:=aq_pick(rule,px,p[..],run.queries[0..<run.count],k,c.seed,run.rounds,run.queries[run.count..<run.count+k]);
+        run.predictions+=cost.predictions;run.distances+=cost.distances;
+        // The oracle: the checker's label for each point just picked, and no other.
+        for q:run.count..<run.count+k {run.labels[q]=py[run.queries[q]];}
+        run.count+=k;
+        t:=aq_fit(c,px,run.queries[0..<run.count],run.labels[0..<run.count],params[..]);run.steps+=t.steps;
+        run.accuracy[run.rounds]=aq_score_held(params[..],hx,hy,run.correct[..]);
+        if run.count==c.budget {break;}
+        run.rounds+=1;rule=c.rule;k=c.batch;
+        if rule==AqRule.uncertainty || rule==AqRule.mixture {aq_probabilities(params[..],px,p[..]);}
+    }
+    return run;
+}
+// book:end run
+
+// book:begin sealed
+aq_same_queries :: (a:AqRun,b:AqRun)->bool {
+    if a.count!=b.count {return false;}
+    for q:0..<a.count {if a.queries[q]!=b.queries[q] {return false;}}
+    return true;
+}
+// The run again with every unqueried pool label and every held-out label
+// flipped. If either reached the selector, the queries would change. The
+// model is the same, so every held-out score must flip.
+aq_sealed :: (c:AqConfig,px:[]f64,py:[]f64,hx:[]f64,hy:[]f64,run:AqRun)->bool {
+    fy:[AQ_POOL_MAX]f64;fh:[AQ_HELD_MAX]f64;asked:[AQ_POOL_MAX]bool;
+    for q:0..<run.count {asked[run.queries[q]]=true;}
+    for v,i:py {fy[i]=ifx asked[i] then v else 1-v;}
+    for v,i:hy {fh[i]=1-v;}
+    again:=aq_run(c,px,fy[0..<py.count],hx,fh[0..<hy.count]);
+    if !aq_same_queries(run,again) {return false;}
+    for v,i:hy {if again.correct[i]!=1-run.correct[i] {return false;}}
+    return true;
+}
+// book:end sealed
+
+// book:begin compare
+// A rule against random selection. Scores are seed-major: seed s's per-item
+// scores fill [s*items..<(s+1)*items]. The rule ran on some seeds; random
+// ran on those seeds and more, so that its runs fill at least two blocks
+// the rule's size. The floor is chapter 240's over those blocks, the
+// difference two blocks of that many seeds reach by chance. The rule is
+// compared with random's first block, by chapter 241's decision gate,
+// drawing whole held-out groups again.
+AqCompare :: struct {floor:NsFloor;decision:VdDecision;}
+aq_compare :: (random:[]f64,rule:[]f64,group:[]int,seed:u64,replicates:int)->AqCompare {
+    items:=group.count;r:AqCompare;
+    r.decision.status=VdStatus.shape;
+    if items<1 || items>AQ_HELD_MAX || rule.count<items || rule.count%items!=0 || random.count%items!=0 {return r;}
+    seeds:=rule.count/items;part:[512]int;a:[512]f64;b:[512]f64;
+    r.floor=ns_floor(random,part[0..<items],0,random.count/items,seeds);
+    if r.floor.status==NsStatus.shape {return r;}
+    r.decision.status=VdStatus.number;
+    if r.floor.status!=NsStatus.ok || ns_means(rule,items,0,seeds,b[0..<items],false)!=NsStatus.ok {return r;}
+    // The floor already checked random's scores, so its means cannot refuse.
+    means:=ns_means(random,items,0,seeds,a[0..<items],false);
+    r.decision=vd_decision(a[0..<items],b[0..<items],group,part[0..<items],0,r.floor,1,seed,replicates);
+    return r;
+}
+// book:end compare
