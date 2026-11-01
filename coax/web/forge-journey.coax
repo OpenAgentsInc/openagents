@@ -254,7 +254,8 @@ move_once :: (r: [] Run, c: [] Cdp) -> bool {
   // walk, then PUT IT HERE; where something already stands the page says so and keeps the tree
   // picked, so walk on (a little to the side) and try again, as a person would
   for k: 0..<6 {
-    if !hold(c, "w", "KeyW", 87, 900) || (k > 0 && !hold(c, "d", "KeyD", 68, 500)) { return why(r, "the keys weren't taken"); }
+    // turn a little first, so you don't walk into the tree you picked
+    if !hold(c, "d", "KeyD", 68, 450) || !hold(c, "w", "KeyW", 87, 900) { return why(r, "the keys weren't taken"); }
     proc_sleep(300);
     if !tap(r, c, R_MOVE) { return false; }
     if probe(c, 8) == -1 { break; }

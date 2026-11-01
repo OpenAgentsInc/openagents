@@ -569,6 +569,8 @@ move_press :: (s: [] MyRealm) {
     return;
   }
   x := s[0].x + PUT_AHEAD * sin(s[0].yaw); z := s[0].z - PUT_AHEAD * cos(s[0].yaw);
+  now := tree_at(s, s[0].moving);
+  if abs(now.x - x) < 0.3 && abs(now.z - z) < 0.3 { set_note(s, "It stands there now. Walk to a new place."); return; }
   if !put_clear(s, s[0].moving, x, z) { set_note(s, "Something stands there. Try another spot."); return; }
   b: [16] u8;
   moved := forge_move(s[0].fd[..], tree_key(s[0].moving, b[..]), cm_of(x), cm_of(z));
@@ -3278,4 +3280,8 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   s[0].x = 0; s[0].z = GROUND_R + 3;   // off the ground
   tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
   #assert s[0].moving == picked && !forge_dirty(s[0].fd[..]);
+  // where it already stands: said so, still picked
+  c := tree_at(s[..], picked); s[0].x = c.x; s[0].z = c.z + PUT_AHEAD;
+  tap_box(s[..], t[..], s[0].boxes[BTN_MOVE]);
+  #assert s[0].moving == picked && !forge_dirty(s[0].fd[..]) && note_is(s[..], "It stands there now. Walk to a new place.");
 }
