@@ -1,0 +1,771 @@
+// A client's state that survives restarts: an append-only journal over a
+// caller-owned byte buffer, which the host keeps in a file.
+//
+// The journal holds what a client must not forget when it is killed:
+//
+// - the relays it uses, numbered in the order they were added
+// - each event it publishes, as the exact signed bytes, and which relays
+//   have answered OK (accepted, duplicate or refused) and which are pending
+// - each event it delivered to the application, as the exact bytes the
+//   relay sent, so the journal is also the client's store; its ids are the
+//   dedup set, and nothing is delivered twice
+// - per subscription and relay, the newest created_at delivered or seen
+//   (the cursor a REQ resumes from with since=)
+// - NIP-09 tombstones: an id and the key that asked to delete it
+//
+// Format: a 36-byte header ("NCJ", version 1, the owner's 32-byte public
+// key), then records. A record is a 2-byte big-endian length n of its type
+// byte and body, the same length complemented (n xor 0xffff), the type and
+// body, and the first 4 bytes of SHA-256 over the type and body. Every
+// writer appends one whole record and applies it with the same procedure
+// replay uses (cj_apply), so a replayed journal is the state the writers
+// left. The host appends the new bytes (buf[old len ..< len]) and syncs
+// before it acts on the result: it sends nothing to a relay and shows
+// nothing to the user before that.
+//
+// Replay (cj_open) re-reads every record. A crash during an append leaves
+// the file ending inside the last record, or ending in zeros, or with a
+// last record whose check fails; replay cuts that record off. Any damage
+// with a whole record after it is corruption of committed bytes, and replay
+// refuses the journal: skipping a record could resurrect a deleted event or
+// deliver an event twice. A header from another version or another key is
+// refused. The check finds damage; it is not a signature, and anyone who
+// can write the file can write a journal that replays.
+//
+// Ordering rules that make a restart exact:
+//
+// - A publish is journaled (QUEUE) before it is sent, and its OK after the
+//   OK arrives. A crash between them resends the same bytes; the relay
+//   answers "duplicate:" and keeps one copy.
+// - A kind 5's tombstones (DELETE) are journaled before the kind 5 itself
+//   (EVENT), so a crash between them leaves the kind 5 undelivered: the
+//   relay sends it again and the tombstones already exist.
+// - An event is delivered by appending it (EVENT): the application reads
+//   the journal, so delivery and the cursor move together.
+//
+// Checks: coax test coax/lib/nostr/client_journal.coax
+#load "outbox.coax";
+#authority;
+
+CJ_HEADER :: 36; CJ_VERSION :: 1;
+CJ_SUBS :: 8; CJ_PUBS :: 16; CJ_EVENTS :: 64; CJ_TOMBS :: 32;
+// The most bytes a record's type and body hold, and the fixed part of the
+// two records that carry an event's bytes.
+CJ_RECORD_MOST :: 4096; CJ_QUEUE_FIXED :: 41; CJ_EVENT_FIXED :: 75;
+// Record types.
+CJ_R_RELAY :: 1; CJ_R_QUEUE :: 2; CJ_R_OK :: 3; CJ_R_EVENT :: 4; CJ_R_CURSOR :: 5; CJ_R_DELETE :: 6;
+// What cj_open found: the whole journal replayed, a crash's last record
+// cut, a new journal; or a refusal.
+CJO_DONE :: 0; CJO_CUT :: 1; CJO_NEW :: 2;
+CJO_MAGIC :: 3; CJO_VERSION :: 4; CJO_OWNER :: 5; CJO_CORRUPT :: 6; CJO_RECORD :: 7; CJO_SMALL :: 8;
+// Writer errors, returned negated.
+CJ_FULL :: 1; CJ_ARG :: 2; CJ_SHUT :: 3;
+// What cj_deliver decided.
+CJD_NEW :: 0; CJD_DUP :: 1; CJD_DELETED :: 2;
+// A relay's OK, as the caller read it: true, true with "duplicate:", or
+// false with a final reason. A transient refusal ("auth-required:",
+// "rate-limited:") is not journaled: the publish stays pending.
+CJ_ACCEPTED :: 0; CJ_DUPLICATE :: 1; CJ_REFUSED :: 2;
+// What cj_ok decided.
+CJK_ACKED :: 0; CJK_UNKNOWN :: 1;
+
+// A publish: the signed bytes are buf[from ..< to].
+CjPub :: struct { id: [32] u8; from: int; to: int; relays: u64; pending: u64; accepted: u64; refused: u64; }
+// A stored event: buf[from ..< to]. sub and relay are -1 for your own.
+CjEvent :: struct { id: [32] u8; author: [32] u8; from: int; to: int; sub: int; relay: int; created_at: int; }
+CjTomb :: struct { id: [32] u8; signer: [32] u8; }
+Cj :: struct {
+  open: bool; owner: [32] u8; len: int; records: int;
+  pool: [1] Outbox;
+  pubs: int; pub: [CJ_PUBS] CjPub;
+  events: int; event: [CJ_EVENTS] CjEvent;
+  tombs: int; tomb: [CJ_TOMBS] CjTomb;
+  // cursor[sub * OB_RELAYS + relay], valid when bit relay of has[sub] is set.
+  has: [CJ_SUBS] u64; cursor: [CJ_SUBS * OB_RELAYS] int;
+}
+// at: the bytes of the file to keep. The host truncates the file to at,
+// then writes buf[at ..< len] (a new header after CJO_NEW or a torn header).
+CjOpen :: struct { status: int; at: int; records: int; }
+
+// ---- check fixtures ---------------------------------------------------------
+cj_t_id :: (b: int) -> [32] u8 { k: [32] u8; k[0] = cast(u8) b; k[31] = 0xee; return k; }
+CJ_T_R1 :: "wss://r1.example"; CJ_T_R2 :: "wss://r2.example"; CJ_T_R3 :: "wss://r3.example";
+cj_t_open :: (j: [] Cj, buf: [] u8, total: int) -> int { return cj_open(j, buf, total, cj_t_id(9)).status; }
+// A new journal with relays r1 r2 r3.
+cj_t_three :: (j: [] Cj, buf: [] u8) {
+  s := cj_t_open(j, buf, 0);
+  a := cj_relay(j, buf, CJ_T_R1); b := cj_relay(j, buf, CJ_T_R2); c := cj_relay(j, buf, CJ_T_R3);
+}
+// A record of any type and body, checked but not applied: what another
+// writer, or a bug, might have left.
+cj_t_raw :: (j: [] Cj, buf: [] u8, type: int, body: [] u8) {
+  at := cj_begin(j, buf, type, 1 + body.count);
+  for i: 0..<body.count { buf[at + i] = body[i]; }
+  cj_seal(buf, j[0].len, 1 + body.count); j[0].len += 9 + body.count;
+}
+cj_t_bytes :: "{\"id\":\"..\"}";
+
+#test "a new journal is its header; it reopens with no records" {
+  j: [1] Cj; buf: [256] u8;
+  o := cj_open(j[..], buf[..], 0, cj_t_id(9));
+  #assert o.status == CJO_NEW && o.at == 0 && o.records == 0 && j[0].open && j[0].len == 36;
+  #assert buf[0] == 'N' && buf[1] == 'C' && buf[2] == 'J' && buf[3] == 1 && buf[4] == 9 && buf[34] == 0 && buf[35] == 0xee;
+  k: [1] Cj; o = cj_open(k[..], buf[..], 36, cj_t_id(9));
+  #assert o.status == CJO_DONE && o.at == 36 && k[0].len == 36 && k[0].open && k[0].owner[0] == 9;
+}
+#test "another program, version or key: refused, nothing written" {
+  j: [1] Cj; buf: [256] u8; s := cj_t_open(j[..], buf[..], 0);
+  buf[2] = 'X'; o := cj_open(j[..], buf[..], 36, cj_t_id(9)); #assert o.status == CJO_MAGIC && o.at == 0 && !j[0].open && buf[2] == 'X';
+  buf[2] = 'J'; buf[0] = 'n'; #assert cj_t_open(j[..], buf[..], 36) == CJO_MAGIC;
+  buf[0] = 'N'; buf[3] = 2; #assert cj_t_open(j[..], buf[..], 36) == CJO_VERSION && buf[3] == 2;
+  buf[3] = 1; #assert cj_open(j[..], buf[..], 36, cj_t_id(8)).status == CJO_OWNER;
+  other := cj_t_id(9); other[31] = 0; #assert cj_open(j[..], buf[..], 36, other).status == CJO_OWNER;
+  #assert cj_t_open(j[..], buf[..], 36) == CJO_DONE;
+  // A refused journal takes no writes.
+  #assert cj_t_open(j[..], buf[..], 3) == CJO_CUT;
+  buf[3] = 7; #assert cj_t_open(j[..], buf[..], 36) == CJO_VERSION && j[0].len == 0;
+  #assert cj_relay(j[..], buf[..], CJ_T_R1) == -CJ_SHUT && cj_queue(j[..], buf[..], cj_t_id(1), 1, cj_t_bytes) == -CJ_SHUT;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 0, CJ_ACCEPTED) == -CJ_SHUT;
+  nz: [1] [32] u8; none := nz[0..<0]; #assert cj_deliver(j[..], buf[..], 0, 0, 1, cj_t_id(1), cj_t_id(2), cj_t_bytes, none) == -CJ_SHUT && j[0].len == 0;
+}
+#test "a torn header is cut to nothing and written again; a wrong one is refused" {
+  for total: 1..<36 {
+    j: [1] Cj; buf: [64] u8; s := cj_t_open(j[..], buf[..], 0);
+    for i: total..<36 { buf[i] = 0; }
+    o := cj_open(j[..], buf[..], total, cj_t_id(9));
+    #assert o.status == CJO_CUT && o.at == 0 && j[0].len == 36 && buf[35] == 0xee && j[0].open;
+  }
+  j: [1] Cj; buf: [64] u8; buf[0] = 'N'; buf[1] = 'C'; buf[2] = 'K';
+  #assert cj_t_open(j[..], buf[..], 3) == CJO_MAGIC && cj_t_open(j[..], buf[..], 2) == CJO_CUT;
+}
+#test "a buffer too small for the header, or a size outside it, is refused" {
+  j: [1] Cj; small: [35] u8; buf: [40] u8;
+  #assert cj_t_open(j[..], small[..], 0) == CJO_SMALL && small[0] == 0 && !j[0].open;
+  #assert cj_t_open(j[..], buf[..], 41) == CJO_SMALL && cj_t_open(j[..], buf[..], -1) == CJO_SMALL;
+  #assert cj_t_open(j[..], buf[..], 40) == CJO_MAGIC && cj_t_open(j[..], buf[..], 0) == CJO_NEW;
+}
+#test "relays are numbered once, journaled, and replayed in order" {
+  j: [1] Cj; buf: [512] u8; cj_t_three(j[..], buf[..]);
+  #assert j[0].pool[0].relays == 3 && j[0].records == 3 && j[0].len == 36 + 3 * 25;
+  #assert cj_relay(j[..], buf[..], CJ_T_R2) == 1 && cj_relay(j[..], buf[..], CJ_T_R1) == 0 && j[0].len == 111;
+  #assert cj_relay(j[..], buf[..], "https://r4.example") == -CJ_ARG && cj_relay(j[..], buf[..], "") == -CJ_ARG && j[0].len == 111;
+  // The first record: length 17 and its complement, type 1, the URL, then the check.
+  #assert buf[36] == 0 && buf[37] == 17 && buf[38] == 0xff && buf[39] == 0xee && buf[40] == CJ_R_RELAY && buf[41] == 'w';
+  k: [1] Cj; o := cj_open(k[..], buf[..], j[0].len, cj_t_id(9));
+  #assert o.status == CJO_DONE && o.records == 3 && cj_same(j[..], k[..]) && ob_is(k[0].pool[..], 2, CJ_T_R3);
+  long: [257] u8; s := "wss://a.test/"; for i: 0..<257 { long[i] = ifx i < s.count then s[i] else 'a'; }
+  #assert cj_relay(j[..], buf[..], cast(string) long[..]) == -CJ_ARG && cj_relay(j[..], buf[..], cast(string) long[0..<256]) == 3 && j[0].len == 376;
+}
+#test "a publish is journaled once, then each relay's OK" {
+  j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]);
+  at := j[0].len;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 7, cj_t_bytes) == 0 && j[0].len == at + 8 + 41 + 11;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 7, "other") == 0 && j[0].len == at + 60 && j[0].pubs == 1;
+  p := j[0].pub[0];
+  #assert p.relays == 7 && p.pending == 7 && cast(string) buf[p.from..<p.to] == cj_t_bytes && cj_find(j[..], cj_t_id(1)) == 0;
+  #assert j[0].events == 1 && j[0].event[0].sub == -1 && j[0].event[0].relay == -1 && j[0].event[0].author[0] == 9 && j[0].event[0].from == p.from;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 0, CJ_ACCEPTED) == CJK_ACKED && j[0].pub[0].pending == 6 && j[0].pub[0].accepted == 1;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 0, CJ_ACCEPTED) == CJK_UNKNOWN && cj_ok(j[..], buf[..], cj_t_id(2), 1, CJ_ACCEPTED) == CJK_UNKNOWN;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 1, CJ_DUPLICATE) == CJK_ACKED && j[0].pub[0].accepted == 3;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 2, 3) == -CJ_ARG && cj_ok(j[..], buf[..], cj_t_id(1), 2, -1) == -CJ_ARG;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 3, CJ_ACCEPTED) == CJK_UNKNOWN && cj_ok(j[..], buf[..], cj_t_id(1), 64, CJ_ACCEPTED) == CJK_UNKNOWN && cj_ok(j[..], buf[..], cj_t_id(1), -1, CJ_ACCEPTED) == CJK_UNKNOWN;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 2, CJ_REFUSED) == CJK_ACKED && j[0].pub[0].pending == 0 && j[0].pub[0].refused == 4 && j[0].pub[0].accepted == 3;
+  #assert j[0].records == 7 && j[0].len == at + 60 + 3 * 43;
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(j[..], k[..]);
+}
+#test "a publish needs known relays and bytes that fit one record" {
+  j: [1] Cj; buf: [8192] u8; cj_t_three(j[..], buf[..]); was := j[0].len;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 0, cj_t_bytes) == -CJ_ARG && cj_queue(j[..], buf[..], cj_t_id(1), 8, cj_t_bytes) == -CJ_ARG;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), cast(u64) 1 << 63, cj_t_bytes) == -CJ_ARG && cj_queue(j[..], buf[..], cj_t_id(1), 1, "") == -CJ_ARG;
+  big: [4056] u8; for i: 0..<4056 { big[i] = 'x'; }
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 1, cast(string) big[..]) == -CJ_ARG && j[0].len == was;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 1, cast(string) big[0..<4055]) == 0 && j[0].len == was + 8 + 4096;
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(j[..], k[..]);
+}
+#test "deliver: new once, then duplicates move only the cursor" {
+  j: [1] Cj; buf: [2048] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8; none := nz[0..<0]; al := cj_t_id(2);
+  #assert cj_since(j[..], 0, 0) == -1;
+  at := j[0].len;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 10, cj_t_id(1), al, cj_t_bytes, none) == CJD_NEW && j[0].len == at + 8 + 75 + 11;
+  e := j[0].event[0];
+  #assert j[0].events == 1 && cj_since(j[..], 0, 0) == 10 && e.sub == 0 && e.relay == 0 && e.created_at == 10 && e.author[0] == 2 && cast(string) buf[e.from..<e.to] == cj_t_bytes;
+  at = j[0].len;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 10, cj_t_id(1), al, cj_t_bytes, none) == CJD_DUP && j[0].len == at;
+  #assert cj_deliver(j[..], buf[..], 0, 1, 10, cj_t_id(1), al, cj_t_bytes, none) == CJD_DUP && j[0].len == at + 19 && cj_since(j[..], 0, 1) == 10;
+  #assert cj_deliver(j[..], buf[..], 0, 1, 9, cj_t_id(1), al, cj_t_bytes, none) == CJD_DUP && j[0].len == at + 19 && cj_since(j[..], 0, 1) == 10;
+  #assert cj_deliver(j[..], buf[..], 3, 1, 0, cj_t_id(1), al, cj_t_bytes, none) == CJD_DUP && cj_since(j[..], 3, 1) == 0 && j[0].len == at + 38;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 5, cj_t_id(3), al, cj_t_bytes, none) == CJD_NEW && cj_since(j[..], 0, 0) == 10 && j[0].events == 2;
+  #assert cj_deliver(j[..], buf[..], 7, 2, 11, cj_t_id(4), al, cj_t_bytes, none) == CJD_NEW && cj_since(j[..], 7, 2) == 11 && j[0].has[7] == 4;
+  #assert cj_since(j[..], 8, 0) == -1 && cj_since(j[..], -1, 0) == -1 && cj_since(j[..], 0, 64) == -1 && cj_since(j[..], 0, -1) == -1;
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(j[..], k[..]);
+}
+#test "deliver refuses a bad subscription, relay, time or size" {
+  j: [1] Cj; buf: [8192] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8; none := nz[0..<0]; was := j[0].len;
+  #assert cj_deliver(j[..], buf[..], 8, 0, 1, cj_t_id(1), cj_t_id(2), cj_t_bytes, none) == -CJ_ARG;
+  #assert cj_deliver(j[..], buf[..], -1, 0, 1, cj_t_id(1), cj_t_id(2), cj_t_bytes, none) == -CJ_ARG;
+  #assert cj_deliver(j[..], buf[..], 0, 3, 1, cj_t_id(1), cj_t_id(2), cj_t_bytes, none) == -CJ_ARG;
+  #assert cj_deliver(j[..], buf[..], 0, -1, 1, cj_t_id(1), cj_t_id(2), cj_t_bytes, none) == -CJ_ARG;
+  #assert cj_deliver(j[..], buf[..], 0, 0, -1, cj_t_id(1), cj_t_id(2), cj_t_bytes, none) == -CJ_ARG;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 1, cj_t_id(1), cj_t_id(2), "", none) == -CJ_ARG && j[0].len == was;
+  big: [4022] u8; for i: 0..<4022 { big[i] = 'x'; }
+  #assert cj_deliver(j[..], buf[..], 0, 0, 1, cj_t_id(1), cj_t_id(2), cast(string) big[..], none) == -CJ_ARG;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 1, cj_t_id(1), cj_t_id(2), cast(string) big[0..<4021], none) == CJD_NEW && j[0].len == was + 8 + 4096;
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(j[..], k[..]);
+}
+#test "a kind 5's tombstones come first and hide the author's event" {
+  j: [1] Cj; buf: [2048] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8; none := nz[0..<0]; al := cj_t_id(2); mal := cj_t_id(3);
+  #assert cj_deliver(j[..], buf[..], 0, 0, 10, cj_t_id(1), al, cj_t_bytes, none) == CJD_NEW && cj_live(j[..], 0);
+  // Mallory's kind 5 names alice's event: a tombstone for mallory, which hides nothing of alice's.
+  targets := [2] [32] u8.[cj_t_id(1), cj_t_id(5)];
+  at := j[0].len;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 20, cj_t_id(6), mal, cj_t_bytes, targets[0..<1]) == CJD_NEW && j[0].tombs == 1 && cj_live(j[..], 0);
+  #assert buf[at + 4] == CJ_R_DELETE && buf[at + 8 + 65 + 4] == CJ_R_EVENT;
+  // Alice's kind 5 names her event and one not seen yet.
+  #assert cj_deliver(j[..], buf[..], 0, 1, 25, cj_t_id(7), al, cj_t_bytes, targets[..]) == CJD_NEW && j[0].tombs == 3 && !cj_live(j[..], 0) && cj_live(j[..], 1);
+  #assert cj_find(j[..], cj_t_id(1)) == 0 && cj_live(j[..], 2) && !cj_live(j[..], 3) && !cj_live(j[..], -1);
+  // The deleted id comes back from a relay that still has it: refused, cursor moved.
+  at = j[0].len;
+  #assert cj_deliver(j[..], buf[..], 0, 2, 10, cj_t_id(1), al, cj_t_bytes, none) == CJD_DELETED && j[0].len == at + 19 && cj_since(j[..], 0, 2) == 10;
+  #assert cj_deliver(j[..], buf[..], 0, 2, 30, cj_t_id(5), al, cj_t_bytes, none) == CJD_DELETED && j[0].events == 3;
+  // The same id from another key is a different claim: delivered.
+  #assert cj_deliver(j[..], buf[..], 0, 2, 31, cj_t_id(5), mal, cj_t_bytes, none) == CJD_NEW && cj_live(j[..], 3);
+  // A repeated kind 5 adds no tombstone.
+  #assert cj_deliver(j[..], buf[..], 0, 2, 25, cj_t_id(7), al, cj_t_bytes, targets[..]) == CJD_DUP && j[0].tombs == 3;
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(j[..], k[..]) && !cj_live(k[..], 0);
+}
+#test "a cut at every byte of the last record replays the state before it" {
+  j: [1] Cj; buf: [2048] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8; none := nz[0..<0];
+  q := cj_queue(j[..], buf[..], cj_t_id(1), 7, cj_t_bytes);
+  before: [1] Cj; before[0] = j[0];
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 1, CJ_ACCEPTED) == CJK_ACKED;
+  for total: before[0].len..<j[0].len {
+    k: [1] Cj; copy := buf;
+    o := cj_open(k[..], copy[..], total, cj_t_id(9));
+    #assert o.at == before[0].len && o.records == 4 && cj_same(before[..], k[..]) && k[0].open;
+    #assert o.status == ifx total == before[0].len then CJO_DONE else CJO_CUT;
+  }
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && k[0].pub[0].pending == 5;
+}
+#test "a damaged last record is cut; damage with a record after it is refused" #steps 2000000000 {
+  j: [1] Cj; buf: [2048] u8; cj_t_three(j[..], buf[..]);
+  q := cj_queue(j[..], buf[..], cj_t_id(1), 7, cj_t_bytes); last := j[0].len;
+  ok := cj_ok(j[..], buf[..], cj_t_id(1), 1, CJ_ACCEPTED); end := j[0].len;
+  // A crash writes the right length or zeros: a wrong non-zero length is damage.
+  for at: last..<end {
+    c := buf; c[at] ^= 0x10; k: [1] Cj; o := cj_open(k[..], c[..], end, cj_t_id(9));
+    if at < last + 4 { #assert o.status == CJO_CORRUPT && o.at == last; } else { #assert o.status == CJO_CUT && o.at == last && k[0].pub[0].pending == 7; }
+  }
+  for at: 36..<last {
+    c := buf; c[at] ^= 0x10; k: [1] Cj; o := cj_open(k[..], c[..], end, cj_t_id(9));
+    #assert o.status == CJO_CORRUPT && !k[0].open && o.at >= 36 && o.at < last;
+  }
+  // The third relay record's length damaged: refused at that record.
+  c := buf; c[87] = 18; k: [1] Cj; o := cj_open(k[..], c[..], end, cj_t_id(9)); #assert o.status == CJO_CORRUPT && o.at == 86;
+  // The file grew but the last record's bytes are zeros: cut.
+  z := buf; for i: last..<end { z[i] = 0; } o = cj_open(k[..], z[..], end, cj_t_id(9)); #assert o.status == CJO_CUT && o.at == last;
+  z[end - 1] = 1; o = cj_open(k[..], z[..], end, cj_t_id(9)); #assert o.status == CJO_CORRUPT && o.at == last;
+  // A length over the bound with its complement right, or a zero length: refused; all zeros: cut.
+  w := buf; w[last] = 0x10; w[last + 1] = 1; w[last + 2] = 0xef; w[last + 3] = 0xfe; for i: last + 4..<end { w[i] = 0; }
+  #assert cj_open(k[..], w[..], end, cj_t_id(9)).status == CJO_CORRUPT;
+  w[last] = 0; w[last + 1] = 0; w[last + 2] = 0xff; w[last + 3] = 0xff; #assert cj_open(k[..], w[..], end, cj_t_id(9)).status == CJO_CORRUPT;
+  w[last + 2] = 0; w[last + 3] = 0; o = cj_open(k[..], w[..], end, cj_t_id(9)); #assert o.status == CJO_CUT && o.at == last;
+}
+#test "the length bound is exact" {
+  j: [1] Cj; buf: [16384] u8; cj_t_three(j[..], buf[..]); at := j[0].len;
+  most: [4095] u8; for i: 0..<4095 { most[i] = 'x'; }
+  cj_t_raw(j[..], buf[..], 9, most[..]);
+  k: [1] Cj; o := cj_open(k[..], buf[..], j[0].len, cj_t_id(9)); #assert o.status == CJO_RECORD && o.at == at;
+  // One more byte: the length is not a record's, and bytes follow.
+  buf[at] = 0x10; buf[at + 1] = 1; buf[at + 2] = 0xef; buf[at + 3] = 0xfe;
+  #assert cj_open(k[..], buf[..], j[0].len + 1, cj_t_id(9)).status == CJO_CORRUPT;
+}
+#test "a record that checks but cannot apply is refused" {
+  bodies: [12] [80] u8; sizes: [12] int; id1 := cj_t_id(1);
+  // 0: unknown type 9. 1: a relay already numbered. 2: a relay URL refused.
+  // 3: OK for nothing pending. 4: a queue to an unknown relay. 5: a queue
+  // with no bytes. 6: an event from an unknown relay. 7: an event for
+  // subscription 8. 8: a cursor of the wrong size. 9: a delete of the
+  // wrong size. 10: OK with outcome 3. 11: an event with a negative time.
+  types := [12] int.[9, CJ_R_RELAY, CJ_R_RELAY, CJ_R_OK, CJ_R_QUEUE, CJ_R_QUEUE, CJ_R_EVENT, CJ_R_EVENT, CJ_R_CURSOR, CJ_R_DELETE, CJ_R_OK, CJ_R_EVENT];
+  for i: 0..<16 { bodies[1][i] = CJ_T_R2[i]; } sizes[1] = 16;
+  bodies[2][0] = 'h'; sizes[2] = 1;
+  for i: 0..<32 { bodies[3][i] = id1[i]; } bodies[3][32] = 1; sizes[3] = 34;
+  bodies[4][39] = 8; bodies[4][40] = 'x'; sizes[4] = 41;
+  bodies[5][39] = 1; sizes[5] = 40;
+  bodies[6][1] = 3; sizes[6] = 75; bodies[7][0] = 8; sizes[7] = 75; sizes[8] = 9; sizes[9] = 63;
+  sizes[0] = 1;
+  for i: 0..<32 { bodies[10][i] = id1[i]; } bodies[10][32] = 1; bodies[10][33] = 3; sizes[10] = 34;
+  bodies[11][2] = 0x80; sizes[11] = 75;
+  for t: 0..<12 {
+    j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]);
+    q := cj_queue(j[..], buf[..], id1, 3, "x");
+    if t == 3 { ok := cj_ok(j[..], buf[..], id1, 1, CJ_ACCEPTED); }
+    at := j[0].len; cj_t_raw(j[..], buf[..], types[t], bodies[t][0..<sizes[t]]);
+    k: [1] Cj; o := cj_open(k[..], buf[..], j[0].len, cj_t_id(9));
+    #assert o.status == CJO_RECORD && o.at == at && !k[0].open;
+  }
+}
+#test "replay refuses what the writers never write: a second copy" {
+  j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]); id1 := cj_t_id(1); nz: [1] [32] u8; none := nz[0..<0];
+  q := cj_queue(j[..], buf[..], id1, 1, "x"); at := j[0].len;
+  body: [76] u8; body[0] = 0; body[1] = 1; for i: 0..<32 { body[10 + i] = id1[i]; } body[75] = 'x';
+  cj_t_raw(j[..], buf[..], CJ_R_EVENT, body[..]);
+  k: [1] Cj; o := cj_open(k[..], buf[..], j[0].len, cj_t_id(9)); #assert o.status == CJO_RECORD && o.at == at;
+  j[0].len = at; qb: [42] u8; for i: 0..<32 { qb[i] = id1[i]; } qb[39] = 1; qb[40] = 'y'; qb[41] = 'z';
+  cj_t_raw(j[..], buf[..], CJ_R_QUEUE, qb[..]); o = cj_open(k[..], buf[..], j[0].len, cj_t_id(9)); #assert o.status == CJO_RECORD && o.at == at;
+  // A stored event deleted later is fine; a deleted id stored after its tombstone is not.
+  m: [1] Cj; b2: [1024] u8; cj_t_three(m[..], b2[..]); t := [1] [32] u8.[id1];
+  #assert cj_deliver(m[..], b2[..], 0, 0, 5, cj_t_id(2), cj_t_id(3), "k", t[..]) == CJD_NEW;
+  at = m[0].len; eb: [76] u8; a3 := cj_t_id(3); for i: 0..<32 { eb[10 + i] = id1[i]; eb[42 + i] = a3[i]; } eb[75] = 'x';
+  cj_t_raw(m[..], b2[..], CJ_R_EVENT, eb[..]); o = cj_open(k[..], b2[..], m[0].len, cj_t_id(9)); #assert o.status == CJO_RECORD && o.at == at;
+  eb[42] = 4; m[0].len = at; cj_t_raw(m[..], b2[..], CJ_R_EVENT, eb[..]); #assert cj_open(k[..], b2[..], m[0].len, cj_t_id(9)).status == CJO_DONE;
+}
+#test "full: the buffer, the publishes, the store and the tombstones" {
+  j: [1] Cj; buf: [200] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8; none := nz[0..<0]; was := j[0].len;
+  #assert was == 111 && cj_queue(j[..], buf[..], cj_t_id(1), 1, "01234567890123456789012345678901234567890") == -CJ_FULL && j[0].len == was && j[0].pubs == 0;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 1, "0123456789012345678901234567890123456789") == 0 && j[0].len == 200;
+  #assert cj_relay(j[..], buf[..], "wss://r4.example") == -CJ_FULL && cj_ok(j[..], buf[..], cj_t_id(1), 0, CJ_ACCEPTED) == -CJ_FULL;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 1, cj_t_id(2), cj_t_id(3), "x", none) == -CJ_FULL && j[0].events == 1 && j[0].len == 200;
+  p: [1] Cj; big: [32768] u8; cj_t_three(p[..], big[..]);
+  for i: 0..<16 { #assert cj_queue(p[..], big[..], cj_t_id(i), 1, "x") == i; }
+  #assert cj_queue(p[..], big[..], cj_t_id(16), 1, "x") == -CJ_FULL && p[0].pubs == 16;
+  for i: 16..<64 { #assert cj_deliver(p[..], big[..], 0, 0, i, cj_t_id(i), cj_t_id(3), "x", none) == CJD_NEW; }
+  was = p[0].len;
+  #assert cj_deliver(p[..], big[..], 0, 0, 64, cj_t_id(64), cj_t_id(3), "x", none) == -CJ_FULL && p[0].events == 64 && p[0].len == was;
+  // A full store still moves cursors.
+  #assert cj_deliver(p[..], big[..], 0, 1, 64, cj_t_id(5), cj_t_id(3), "x", none) == CJD_DUP && cj_since(p[..], 0, 1) == 64;
+  // Your own publish needs a place in the store too.
+  q: [1] Cj; cj_t_three(q[..], big[..]);
+  for i: 0..<64 { #assert cj_deliver(q[..], big[..], 0, 0, i, cj_t_id(i), cj_t_id(3), "x", none) == CJD_NEW; }
+  #assert cj_queue(q[..], big[..], cj_t_id(64), 1, "x") == -CJ_FULL && q[0].pubs == 0;
+  // ...unless it is already there, delivered from a relay.
+  #assert cj_queue(q[..], big[..], cj_t_id(3), 1, "x") == 0 && q[0].pubs == 1 && q[0].events == 64;
+  // Tombstones: 32, then a kind 5 that needs one more is refused whole... after the ones that fit.
+  t: [1] Cj; cj_t_three(t[..], big[..]); many: [33] [32] u8; for i: 0..<33 { many[i] = cj_t_id(100 + i); }
+  #assert cj_deliver(t[..], big[..], 0, 0, 1, cj_t_id(1), cj_t_id(3), "x", many[..]) == -CJ_FULL && t[0].tombs == 32 && t[0].events == 0;
+  #assert cj_deliver(t[..], big[..], 0, 0, 1, cj_t_id(1), cj_t_id(3), "x", many[0..<32]) == CJD_NEW && t[0].tombs == 32;
+  k: [1] Cj; #assert cj_open(k[..], big[..], t[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(t[..], k[..]);
+  // A cursor that no longer fits in the buffer.
+  c: [1] Cj; small: [213] u8; cj_t_three(c[..], small[..]);
+  #assert cj_deliver(c[..], small[..], 0, 0, 1, cj_t_id(1), cj_t_id(3), "x", none) == CJD_NEW && c[0].len == 195;
+  #assert cj_deliver(c[..], small[..], 0, 1, 1, cj_t_id(1), cj_t_id(3), "x", none) == -CJ_FULL && cj_since(c[..], 0, 1) == -1;
+  #assert cj_deliver(c[..], small[..], 0, 0, 1, cj_t_id(1), cj_t_id(3), "x", none) == CJD_DUP;
+  s: [214] u8; for i: 0..<195 { s[i] = small[i]; } d: [1] Cj; #assert cj_open(d[..], s[..], 195, cj_t_id(9)).status == CJO_DONE;
+  #assert cj_deliver(d[..], s[..], 0, 1, 1, cj_t_id(1), cj_t_id(3), "x", none) == CJD_DUP && d[0].len == 214;
+}
+
+// A journal with r1 r2 r3, your event 1 queued to r1 r2, and subscription
+// 0's cursor on r1 at 10; then one record that checks: is it refused at
+// that record?
+cj_t_refused :: (type: int, body: [] u8) -> bool {
+  j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8;
+  q := cj_queue(j[..], buf[..], cj_t_id(1), 3, "x");
+  two := cj_t_id(2); d := cj_deliver(j[..], buf[..], 0, 0, 10, two, two, "y", nz[0..<0]);
+  at := j[0].len; cj_t_raw(j[..], buf[..], type, body);
+  k: [1] Cj; o := cj_open(k[..], buf[..], j[0].len, cj_t_id(9));
+  if o.status != CJO_RECORD { return false; }
+  #assert o.at == at; #assert o.records == 5; #assert !k[0].open;
+  return true;
+}
+#test "more records that check but that the writers never write" {
+  b: [80] u8; id1 := cj_t_id(1);
+  for i: 0..<32 { b[i] = id1[i]; }
+  b[32] = 1; #assert cj_t_refused(CJ_R_OK, b[0..<33]) && cj_t_refused(CJ_R_OK, b[0..<35]) && !cj_t_refused(CJ_R_OK, b[0..<34]);
+  b[32] = 64; #assert cj_t_refused(CJ_R_OK, b[0..<34]);   // relay 64 is no relay, though relay 0 is pending
+  b[32] = 255; #assert cj_t_refused(CJ_R_OK, b[0..<34]);
+  b[32] = 1; b[0] ^= 1; #assert cj_t_refused(CJ_R_OK, b[0..<34]);   // an id never published
+  // A queue to no relay.
+  q: [41] u8; q[40] = 'z'; #assert cj_t_refused(CJ_R_QUEUE, q[..]); q[39] = 4; #assert !cj_t_refused(CJ_R_QUEUE, q[..]);
+  // Events and cursors: too short, subscription 8, relay 3, a time with the top bit set.
+  e: [75] u8; e[74] = 'e'; e[11] = 7;
+  #assert cj_t_refused(CJ_R_EVENT, e[0..<74]) && !cj_t_refused(CJ_R_EVENT, e[..]);
+  two := cj_t_id(2); for i: 0..<32 { e[10 + i] = two[i]; } #assert cj_t_refused(CJ_R_EVENT, e[..]);
+  c: [10] u8; c[9] = 11;
+  #assert !cj_t_refused(CJ_R_CURSOR, c[..]);
+  c[0] = 8; #assert cj_t_refused(CJ_R_CURSOR, c[..]); c[0] = 7; #assert !cj_t_refused(CJ_R_CURSOR, c[..]);
+  c[1] = 3; #assert cj_t_refused(CJ_R_CURSOR, c[..]); c[1] = 2; #assert !cj_t_refused(CJ_R_CURSOR, c[..]);
+  c[0] = 0; c[1] = 1; c[2] = 0x80; c[9] = 0; #assert cj_t_refused(CJ_R_CURSOR, c[..]); c[1] = 0;
+  // A cursor that does not move: equal to the one there, or older.
+  c[2] = 0; c[9] = 10; #assert cj_t_refused(CJ_R_CURSOR, c[..]); c[9] = 9; #assert cj_t_refused(CJ_R_CURSOR, c[..]);
+  c[9] = 10; c[1] = 1; #assert !cj_t_refused(CJ_R_CURSOR, c[..]);
+  // A tombstone written twice.
+  t: [64] u8; #assert !cj_t_refused(CJ_R_DELETE, t[..]);
+  j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]); cj_t_raw(j[..], buf[..], CJ_R_DELETE, t[..]); at := j[0].len; cj_t_raw(j[..], buf[..], CJ_R_DELETE, t[..]);
+  k: [1] Cj; o := cj_open(k[..], buf[..], j[0].len, cj_t_id(9)); #assert o.status == CJO_RECORD && o.at == at;
+  // The smallest record, a type and nothing else: whole, checked, and no record the writers write.
+  #assert cj_t_refused(CJ_R_RELAY, b[0..<0]) && cj_t_refused(CJ_R_EVENT, b[0..<0]);
+}
+#test "the check is SHA-256 of the type and body" {
+  j: [1] Cj; buf: [512] u8; cj_t_three(j[..], buf[..]);
+  rec: [17] u8; rec[0] = CJ_R_RELAY; for i: 0..<16 { rec[1 + i] = CJ_T_R1[i]; }
+  h: [32] u8; s := sha256_hash_checked(rec[..], h[..], false);
+  for i: 0..<4 { #assert buf[57 + i] == h[i]; }
+  for i: 0..<17 { #assert buf[40 + i] == rec[i]; }
+}
+#test "a tail shorter than a record is cut, even at the end of the buffer" {
+  j: [1] Cj; buf: [512] u8; cj_t_three(j[..], buf[..]); end := j[0].len;
+  for tail: 1..<9 {
+    exact: [512] u8; for i: 0..<end { exact[i] = buf[i]; } for i: end..<end + tail { exact[i] = 0x41; }
+    k: [1] Cj; o := cj_open(k[..], exact[0..<end + tail], end + tail, cj_t_id(9));
+    #assert o.status == CJO_CUT && o.at == end && k[0].pool[0].relays == 3;
+  }
+  // A buffer of exactly the header.
+  h: [36] u8; k: [1] Cj; #assert cj_t_open(k[..], h[..], 0) == CJO_NEW && cj_t_open(k[..], h[..], 36) == CJO_DONE;
+}
+#test "a pool of 64 relays: every one of them can be published to" {
+  j: [1] Cj; buf: [4096] u8; s := cj_t_open(j[..], buf[..], 0); u: [64] u8;
+  for r: 0..<64 {
+    n := json_raw(u[..], 0, "wss://p"); n = json_write_int(u[..], n, r); n = json_raw(u[..], n, ".example");
+    #assert cj_relay(j[..], buf[..], cast(string) u[0..<n]) == r;
+  }
+  #assert cj_relay(j[..], buf[..], "wss://p64.example") == -CJ_FULL && cj_relay(j[..], buf[..], "wss://p0.example") == 0;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 1 | (cast(u64) 1 << 63), "x") == 0;
+  #assert cj_ok(j[..], buf[..], cj_t_id(1), 63, CJ_ACCEPTED) == CJK_ACKED && j[0].pub[0].pending == 1;
+  k: [1] Cj; #assert cj_open(k[..], buf[..], j[0].len, cj_t_id(9)).status == CJO_DONE && cj_same(j[..], k[..]);
+}
+#test "your own event already delivered is stored once" {
+  j: [1] Cj; buf: [1024] u8; cj_t_three(j[..], buf[..]); nz: [1] [32] u8;
+  #assert cj_deliver(j[..], buf[..], 0, 0, 10, cj_t_id(1), cj_t_id(9), "x", nz[0..<0]) == CJD_NEW;
+  #assert cj_queue(j[..], buf[..], cj_t_id(1), 1, "x") == 0 && j[0].events == 1 && j[0].pubs == 1 && j[0].event[0].sub == 0;
+  #assert cj_queue(j[..], buf[..], cj_t_id(2), 1, "yz") == 1 && j[0].events == 2 && j[0].event[1].created_at == 0;
+  #assert j[0].event[1].from == j[0].pub[1].from && j[0].event[1].to == j[0].pub[1].to && j[0].event[1].to == j[0].len - 4;
+}
+#test "same: every field counts" {
+  j: [1] Cj; buf: [2048] u8; cj_t_three(j[..], buf[..]); t := [1] [32] u8.[cj_t_id(5)];
+  q := cj_queue(j[..], buf[..], cj_t_id(1), 3, "x"); ok := cj_ok(j[..], buf[..], cj_t_id(1), 0, CJ_ACCEPTED);
+  ok = cj_ok(j[..], buf[..], cj_t_id(1), 1, CJ_REFUSED);
+  d := cj_deliver(j[..], buf[..], 2, 1, 10, cj_t_id(2), cj_t_id(3), "y", t[..]);
+  #assert cj_same(j[..], j[..]);
+  for f: 0..<28 {
+    k: [1] Cj; k[0] = j[0];
+    if f == 0 { k[0].len += 1; } if f == 1 { k[0].records += 1; } if f == 2 { k[0].pubs += 1; } if f == 3 { k[0].events += 1; }
+    if f == 4 { k[0].tombs += 1; } if f == 5 { k[0].pool[0].relays += 1; } if f == 6 { k[0].pub[0].id[3] = 1; } if f == 7 { k[0].pub[0].from += 1; }
+    if f == 8 { k[0].pub[0].to += 1; } if f == 9 { k[0].pub[0].relays = 7; } if f == 10 { k[0].pub[0].pending = 1; } if f == 11 { k[0].pub[0].accepted = 3; }
+    if f == 12 { k[0].pub[0].refused = 3; } if f == 13 { k[0].event[1].id[3] = 1; } if f == 14 { k[0].event[1].author[3] = 1; } if f == 15 { k[0].event[1].from += 1; }
+    if f == 16 { k[0].event[1].to += 1; } if f == 17 { k[0].event[1].sub = 1; } if f == 18 { k[0].event[1].relay = 0; } if f == 19 { k[0].event[1].created_at = 9; }
+    if f == 20 { k[0].tomb[0].id[3] = 1; } if f == 21 { k[0].tomb[0].signer[3] = 1; } if f == 22 { k[0].has[2] = 3; } if f == 23 { k[0].cursor[2 * OB_RELAYS + 1] = 11; }
+    if f == 24 { k[0].event[0].sub = 0; } if f == 25 { k[0].has[7] = 1; } if f == 26 { k[0].has[0] = 5; } if f == 27 { k[0].cursor[0] = 3; }
+    #assert !cj_same(j[..], k[..]) && !cj_same(k[..], j[..]);
+  }
+}
+
+#test "each record fits the buffer to the byte" {
+  j: [1] Cj; nz: [1] [32] u8; t := [1] [32] u8.[cj_t_id(5)];
+  b61: [61] u8; s := cj_t_open(j[..], b61[..], 0);
+  #assert cj_relay(j[..], b61[..], CJ_T_R1) == 0 && j[0].len == 61 && cj_relay(j[..], b61[..], CJ_T_R2) == -CJ_FULL;
+  b204: [204] u8; cj_t_three(j[..], b204[..]); q := cj_queue(j[..], b204[..], cj_t_id(1), 3, "x");
+  #assert cj_ok(j[..], b204[..], cj_t_id(1), 0, CJ_ACCEPTED) == CJK_ACKED && j[0].len == 204 && cj_ok(j[..], b204[..], cj_t_id(1), 1, CJ_ACCEPTED) == -CJ_FULL;
+  b183: [183] u8; cj_t_three(j[..], b183[..]);
+  #assert cj_deliver(j[..], b183[..], 0, 0, 1, cj_t_id(2), cj_t_id(3), "x", t[..]) == -CJ_FULL && j[0].tombs == 0 && j[0].len == 111;
+  b184: [184] u8; cj_t_three(j[..], b184[..]);
+  #assert cj_deliver(j[..], b184[..], 0, 0, 1, cj_t_id(2), cj_t_id(3), "x", t[..]) == -CJ_FULL && j[0].tombs == 1 && j[0].len == 184 && j[0].events == 0;
+  b268: [268] u8; cj_t_three(j[..], b268[..]);
+  #assert cj_deliver(j[..], b268[..], 0, 0, 1, cj_t_id(2), cj_t_id(3), "x", t[..]) == CJD_NEW && j[0].len == 268;
+}
+
+// ---- bytes ---------------------------------------------------------------------
+cj_eq :: (a: [32] u8, b: [32] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+cj_not :: (x: u64) -> u64 { return x ^ 0xffffffffffffffff; }
+cj_put :: (buf: [] u8, at: int, v: u64, n: int) {
+  for i: 0..<n { buf[at + i] = cast(u8) ((v >> cast(u64) (8 * (n - 1 - i))) & 255); }
+}
+cj_get :: (buf: [] u8, at: int, n: int) -> u64 {
+  v: u64 = 0;
+  for i: 0..<n { v = (v << 8) | cast(u64) buf[at + i]; }
+  return v;
+}
+cj_id :: (buf: [] u8, at: int) -> [32] u8 {
+  id: [32] u8;
+  for i: 0..<32 { id[i] = buf[at + i]; }
+  return id;
+}
+cj_put_id :: (buf: [] u8, at: int, id: [32] u8) { for i: 0..<32 { buf[at + i] = id[i]; } }
+cj_header_byte :: (owner: [32] u8, i: int) -> u8 {
+  if i < 3 { return "NCJ"[i]; }
+  if i == 3 { return CJ_VERSION; }
+  return owner[i - 4];
+}
+
+// ---- what the journal knows --------------------------------------------------------
+// The store index of an id, or -1.
+cj_find :: (j: [] Cj, id: [32] u8) -> int {
+  for k: 0..<j[0].events { if cj_eq(j[0].event[k].id, id) { return k; } }
+  return -1;
+}
+cj_pub_of :: (j: [] Cj, id: [32] u8) -> int {
+  for k: 0..<j[0].pubs { if cj_eq(j[0].pub[k].id, id) { return k; } }
+  return -1;
+}
+// signer asked to delete id.
+cj_tombed :: (j: [] Cj, id: [32] u8, signer: [32] u8) -> bool {
+  for k: 0..<j[0].tombs { if cj_eq(j[0].tomb[k].id, id) && cj_eq(j[0].tomb[k].signer, signer) { return true; } }
+  return false;
+}
+// Stored event k is shown: its author has not asked to delete it.
+cj_live :: (j: [] Cj, k: int) -> bool {
+  return k >= 0 && k < j[0].events && !cj_tombed(j, j[0].event[k].id, j[0].event[k].author);
+}
+// The since= for subscription sub on relay r: the newest created_at
+// delivered or seen there, or -1 when none (ask without since).
+cj_since :: (j: [] Cj, sub: int, r: int) -> int {
+  if !cj_sub_ok(sub) || r < 0 || r >= OB_RELAYS || (j[0].has[sub] & (cast(u64) 1 << r)) == 0 { return -1; }
+  return j[0].cursor[sub * OB_RELAYS + r];
+}
+cj_sub_ok :: (sub: int) -> bool { return sub >= 0 && sub < CJ_SUBS; }
+cj_relay_ok :: (j: [] Cj, r: int) -> bool { return r >= 0 && r < j[0].pool[0].relays; }
+cj_known :: (j: [] Cj) -> u64 {
+  n := j[0].pool[0].relays;
+  if n == OB_RELAYS { return cj_not(0); }
+  return (cast(u64) 1 << n) - 1;
+}
+
+// Two states are the same: every field the writers and replay set.
+cj_same :: (a: [] Cj, b: [] Cj) -> bool {
+  x := a[0]; y := b[0];
+  if x.len != y.len || x.records != y.records || x.pubs != y.pubs || x.events != y.events || x.tombs != y.tombs || x.pool[0].relays != y.pool[0].relays { return false; }
+  for k: 0..<x.pubs {
+    if !cj_eq(x.pub[k].id, y.pub[k].id) || x.pub[k].from != y.pub[k].from || x.pub[k].to != y.pub[k].to { return false; }
+    if x.pub[k].relays != y.pub[k].relays || x.pub[k].pending != y.pub[k].pending || x.pub[k].accepted != y.pub[k].accepted || x.pub[k].refused != y.pub[k].refused { return false; }
+  }
+  for k: 0..<x.events {
+    e := x.event[k]; f := y.event[k];
+    if !cj_eq(e.id, f.id) || !cj_eq(e.author, f.author) || e.from != f.from || e.to != f.to || e.sub != f.sub || e.relay != f.relay || e.created_at != f.created_at { return false; }
+  }
+  for k: 0..<x.tombs { if !cj_eq(x.tomb[k].id, y.tomb[k].id) || !cj_eq(x.tomb[k].signer, y.tomb[k].signer) { return false; } }
+  for s: 0..<CJ_SUBS { if x.has[s] != y.has[s] { return false; } }
+  for i: 0..<CJ_SUBS * OB_RELAYS { if x.cursor[i] != y.cursor[i] { return false; } }
+  return true;
+}
+
+// ---- applying a record ----------------------------------------------------------------
+// book:begin apply
+// Applies the record whose type is buf[at] and whose body is the n - 1
+// bytes after it. False, changing nothing, when the record is not one the
+// writers write: replay refuses the journal then.
+cj_apply :: (j: [] Cj, buf: [] u8, at: int, n: int) -> bool {
+  t := buf[at]; b := at + 1; m := n - 1;
+  // A relay record numbers a new relay: ob_relay returns an older number
+  // for a URL already in the pool, and -1 for one relay_uri refuses.
+  if t == CJ_R_RELAY { before := j[0].pool[0].relays; return ob_relay(j[0].pool[..], cast(string) buf[b..<b + m]) == before; }
+  if t == CJ_R_QUEUE {
+    if m < CJ_QUEUE_FIXED { return false; }
+    id := cj_id(buf, b); relays := cj_get(buf, b + 32, 8); stored := cj_find(j, id) >= 0;
+    if relays == 0 || (relays & cj_not(cj_known(j))) != 0 || cj_pub_of(j, id) >= 0 || j[0].pubs == CJ_PUBS || (!stored && j[0].events == CJ_EVENTS) { return false; }
+    j[0].pub[j[0].pubs] = CjPub.{id = id, from = b + 40, to = at + n, relays = relays, pending = relays};
+    j[0].pubs += 1;
+    if !stored { cj_store(j, id, j[0].owner, b + 40, at + n, -1, -1, 0); }
+    return true;
+  }
+  if t == CJ_R_OK {
+    if m != 34 { return false; }
+    k := cj_pub_of(j, cj_id(buf, b)); r := cast(int) buf[b + 32]; outcome := cast(int) buf[b + 33];
+    if k < 0 || r >= OB_RELAYS || (j[0].pub[k].pending & (cast(u64) 1 << r)) == 0 || outcome > CJ_REFUSED { return false; }
+    bit := cast(u64) 1 << r;
+    j[0].pub[k].pending &= cj_not(bit);
+    if outcome == CJ_REFUSED { j[0].pub[k].refused |= bit; } else { j[0].pub[k].accepted |= bit; }
+    return true;
+  }
+  if t == CJ_R_EVENT {
+    if m < CJ_EVENT_FIXED { return false; }
+    sub := cast(int) buf[b]; r := cast(int) buf[b + 1]; at_s := cj_get(buf, b + 2, 8);
+    id := cj_id(buf, b + 10); author := cj_id(buf, b + 42);
+    if !cj_sub_ok(sub) || !cj_relay_ok(j, r) || at_s >= cast(u64) 1 << 63 || cj_find(j, id) >= 0 || j[0].events == CJ_EVENTS || cj_tombed(j, id, author) { return false; }
+    cj_store(j, id, author, b + 74, at + n, sub, r, cast(int) at_s);
+    moved := cj_advance(j, sub, r, cast(int) at_s);
+    return true;
+  }
+  if t == CJ_R_CURSOR {
+    if m != 10 { return false; }
+    sub := cast(int) buf[b]; r := cast(int) buf[b + 1]; at_s := cj_get(buf, b + 2, 8);
+    // The writers journal a cursor only when it moves.
+    return cj_sub_ok(sub) && cj_relay_ok(j, r) && at_s < cast(u64) 1 << 63 && cj_advance(j, sub, r, cast(int) at_s);
+  }
+  if t == CJ_R_DELETE {
+    if m != 64 { return false; }
+    id := cj_id(buf, b); signer := cj_id(buf, b + 32);
+    if cj_tombed(j, id, signer) || j[0].tombs == CJ_TOMBS { return false; }
+    j[0].tomb[j[0].tombs] = CjTomb.{id = id, signer = signer}; j[0].tombs += 1;
+    return true;
+  }
+  return false;
+}
+// book:end apply
+cj_store :: (j: [] Cj, id: [32] u8, author: [32] u8, from: int, to: int, sub: int, r: int, at_s: int) {
+  j[0].event[j[0].events] = CjEvent.{id = id, author = author, from = from, to = to, sub = sub, relay = r, created_at = at_s};
+  j[0].events += 1;
+}
+// Moves subscription sub's cursor on relay r to at_s when that is newer:
+// true when it moved.
+cj_advance :: (j: [] Cj, sub: int, r: int, at_s: int) -> bool {
+  bit := cast(u64) 1 << r; i := sub * OB_RELAYS + r;
+  if (j[0].has[sub] & bit) != 0 && at_s <= j[0].cursor[i] { return false; }
+  j[0].cursor[i] = at_s; j[0].has[sub] |= bit;
+  return true;
+}
+
+// ---- appending ---------------------------------------------------------------------------
+// The buffer has room for a record of n bytes of type and body.
+cj_room :: (j: [] Cj, buf: [] u8, n: int) -> bool { return j[0].len + 8 + n <= buf.count; }
+// Writes a record's length, its complement and its type at len; returns
+// where its body goes.
+cj_begin :: (j: [] Cj, buf: [] u8, type: int, n: int) -> int {
+  at := j[0].len;
+  cj_put(buf, at, cast(u64) n, 2); cj_put(buf, at + 2, cast(u64) (n ^ 0xffff), 2);
+  buf[at + 4] = cast(u8) type;
+  return at + 5;
+}
+// The check of the record at `at` with n bytes of type and body.
+cj_check :: (buf: [] u8, at: int, n: int) -> [32] u8 {
+  h: [32] u8; s := sha256_hash_checked(buf[at + 4..<at + 4 + n], h[..], false);
+  return h;
+}
+cj_seal :: (buf: [] u8, at: int, n: int) {
+  h := cj_check(buf, at, n);
+  for i: 0..<4 { buf[at + 4 + n + i] = h[i]; }
+}
+// Seals the record begun at len and applies it: false, leaving len where
+// it was, when the state has no room for it.
+cj_commit :: (j: [] Cj, buf: [] u8, n: int) -> bool {
+  at := j[0].len; cj_seal(buf, at, n);
+  if !cj_apply(j, buf, at + 4, n) { return false; }
+  j[0].len = at + 8 + n; j[0].records += 1;
+  return true;
+}
+cj_status :: (ok: bool, value: int) -> int { return ifx ok then value else -CJ_FULL; }
+
+// ---- opening ------------------------------------------------------------------------------
+cj_header :: (buf: [] u8, total: int, owner: [32] u8) -> int {
+  for i: 0..<CJ_HEADER {
+    if i < total && buf[i] != cj_header_byte(owner, i) {
+      if i < 3 { return CJO_MAGIC; }
+      return ifx i == 3 then CJO_VERSION else CJO_OWNER;
+    }
+  }
+  return CJO_DONE;
+}
+cj_zeros :: (buf: [] u8, from: int, total: int) -> bool {
+  for i: from..<total { if buf[i] != 0 { return false; } }
+  return true;
+}
+cj_opened :: (j: [] Cj, status: int, at: int, records: int) -> CjOpen {
+  j[0].open = true; j[0].len = at; j[0].records = records;
+  return CjOpen.{status = status, at = at, records = records};
+}
+// book:begin open
+// Replays the journal buf[0 ..< total] for owner: the state into j, and
+// what to keep of the file. total 0 starts a new journal.
+cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen {
+  fresh: Cj; j[0] = fresh; j[0].owner = owner;
+  if buf.count < CJ_HEADER || total < 0 || total > buf.count { return CjOpen.{status = CJO_SMALL}; }
+  h := cj_header(buf, total, owner);
+  if h != CJO_DONE { return CjOpen.{status = h}; }
+  if total < CJ_HEADER {
+    // New, or torn while the header was written: write it (again).
+    for i: 0..<CJ_HEADER { buf[i] = cj_header_byte(owner, i); }
+    o := cj_opened(j, ifx total == 0 then CJO_NEW else CJO_CUT, 0, 0);
+    j[0].len = CJ_HEADER;
+    return o;
+  }
+  p := CJ_HEADER; records := 0;
+  while p < total {
+    // Fewer bytes than the smallest record (a length, a type, a check):
+    // a torn append, with nothing committed after it.
+    if total - p < 9 { return cj_opened(j, CJO_CUT, p, records); }
+    n := cast(int) cj_get(buf, p, 2); c := cast(int) cj_get(buf, p + 2, 2);
+    if n + c != 0xffff || n < 1 || n > CJ_RECORD_MOST {
+      // Not a length: a crash's zeros, or damage.
+      if cj_zeros(buf, p, total) { return cj_opened(j, CJO_CUT, p, records); }
+      return CjOpen.{status = CJO_CORRUPT, at = p, records = records};
+    }
+    end := p + 8 + n;
+    if end > total { return cj_opened(j, CJO_CUT, p, records); }
+    sum := cj_check(buf, p, n);
+    if cj_get(sum[..], 0, 4) != cj_get(buf, p + 4 + n, 4) {
+      // A last record that fails its check is a partial append; any other is damage.
+      if end == total { return cj_opened(j, CJO_CUT, p, records); }
+      return CjOpen.{status = CJO_CORRUPT, at = p, records = records};
+    }
+    if !cj_apply(j, buf, p + 4, n) { return CjOpen.{status = CJO_RECORD, at = p, records = records}; }
+    records += 1; p = end;
+  }
+  return cj_opened(j, CJO_DONE, p, records);
+}
+// book:end open
+
+// ---- the writers ----------------------------------------------------------------------------
+// The number of a relay, journaled the first time it is added.
+cj_relay :: (j: [] Cj, buf: [] u8, url: string) -> int {
+  if !j[0].open { return -CJ_SHUT; }
+  for r: 0..<j[0].pool[0].relays { if ob_is(j[0].pool[..], r, url) { return r; } }
+  if url.count > N65_URL_MOST || !relay_uri(url).ok { return -CJ_ARG; }
+  if !cj_room(j, buf, 1 + url.count) { return -CJ_FULL; }
+  b := cj_begin(j, buf, CJ_R_RELAY, 1 + url.count);
+  for i: 0..<url.count { buf[b + i] = url[i]; }
+  return cj_status(cj_commit(j, buf, 1 + url.count), j[0].pool[0].relays - 1);
+}
+// book:begin publish
+// Journals your signed event (bytes, with this id) for the relays in the
+// set, before anything is sent: its publish slot. The same id again
+// returns the same slot and writes nothing, so an application that retries
+// after a restart cannot publish twice.
+cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> int {
+  if !j[0].open { return -CJ_SHUT; }
+  k := cj_pub_of(j, id);
+  if k >= 0 { return k; }
+  if relays == 0 || (relays & cj_not(cj_known(j))) != 0 || bytes.count < 1 || bytes.count > CJ_RECORD_MOST - CJ_QUEUE_FIXED { return -CJ_ARG; }
+  n := CJ_QUEUE_FIXED + bytes.count;
+  if !cj_room(j, buf, n) { return -CJ_FULL; }
+  b := cj_begin(j, buf, CJ_R_QUEUE, n);
+  cj_put_id(buf, b, id); cj_put(buf, b + 32, relays, 8);
+  for i: 0..<bytes.count { buf[b + 40 + i] = bytes[i]; }
+  return cj_status(cj_commit(j, buf, n), j[0].pubs - 1);
+}
+// Journals relay r's OK for your event id: CJK_ACKED when the publish was
+// pending there, CJK_UNKNOWN (nothing written) otherwise.
+cj_ok :: (j: [] Cj, buf: [] u8, id: [32] u8, r: int, outcome: int) -> int {
+  if !j[0].open { return -CJ_SHUT; }
+  k := cj_pub_of(j, id);
+  if k < 0 || r < 0 || r >= OB_RELAYS || (j[0].pub[k].pending & (cast(u64) 1 << r)) == 0 { return CJK_UNKNOWN; }
+  if outcome < CJ_ACCEPTED || outcome > CJ_REFUSED { return -CJ_ARG; }
+  if !cj_room(j, buf, 35) { return -CJ_FULL; }
+  b := cj_begin(j, buf, CJ_R_OK, 35);
+  cj_put_id(buf, b, id); buf[b + 32] = cast(u8) r; buf[b + 33] = cast(u8) outcome;
+  return cj_status(cj_commit(j, buf, 35), CJK_ACKED);
+}
+// book:end publish
+// book:begin deliver
+// An event relay r sent for subscription sub, already verified: its
+// created_at, id, author and exact bytes, and for a kind 5 the ids its e
+// tags name. CJD_NEW: journaled and delivered (the tombstones first).
+// CJD_DUP: stored already. CJD_DELETED: its author asked to delete it.
+// Either of the last two moves the cursor when the event is newer.
+cj_deliver :: (j: [] Cj, buf: [] u8, sub: int, r: int, created_at: int, id: [32] u8, author: [32] u8, bytes: string, deletes: [] [32] u8) -> int {
+  if !j[0].open { return -CJ_SHUT; }
+  if !cj_sub_ok(sub) || !cj_relay_ok(j, r) || created_at < 0 || bytes.count < 1 || bytes.count > CJ_RECORD_MOST - CJ_EVENT_FIXED { return -CJ_ARG; }
+  seen := ifx cj_tombed(j, id, author) then CJD_DELETED else ifx cj_find(j, id) >= 0 then CJD_DUP else CJD_NEW;
+  if seen != CJD_NEW {
+    if cj_since(j, sub, r) >= created_at { return seen; }
+    if !cj_room(j, buf, 11) { return -CJ_FULL; }
+    b := cj_begin(j, buf, CJ_R_CURSOR, 11);
+    buf[b] = cast(u8) sub; buf[b + 1] = cast(u8) r; cj_put(buf, b + 2, cast(u64) created_at, 8);
+    return cj_status(cj_commit(j, buf, 11), seen);
+  }
+  for target: deletes {
+    if cj_tombed(j, target, author) { continue; }
+    if !cj_room(j, buf, 65) { return -CJ_FULL; }
+    b := cj_begin(j, buf, CJ_R_DELETE, 65);
+    cj_put_id(buf, b, target); cj_put_id(buf, b + 32, author);
+    if !cj_commit(j, buf, 65) { return -CJ_FULL; }
+  }
+  n := CJ_EVENT_FIXED + bytes.count;
+  if !cj_room(j, buf, n) { return -CJ_FULL; }
+  b := cj_begin(j, buf, CJ_R_EVENT, n);
+  buf[b] = cast(u8) sub; buf[b + 1] = cast(u8) r; cj_put(buf, b + 2, cast(u64) created_at, 8);
+  cj_put_id(buf, b + 10, id); cj_put_id(buf, b + 42, author);
+  for i: 0..<bytes.count { buf[b + 74 + i] = bytes[i]; }
+  return cj_status(cj_commit(j, buf, n), CJD_NEW);
+}
+// book:end deliver

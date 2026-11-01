@@ -1,0 +1,95 @@
+// The checks of restarts.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/restarts.coax --run-steps 250000000
+#load "../restarts.coax";
+
+// book:begin check
+// The x coordinates of 1G and 2G on secp256k1, as published (SEC 2 gives
+// G; 2G is its well-known double). Key 1 is you and key 2 is alice.
+G1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+G2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+#test "the signers are 1G and 2G" #steps 2000000000 {
+  ev := sign_events(); g1: [32] u8; g2: [32] u8;
+  a := hex_decode_checked(G1, g1[..], false); b := hex_decode_checked(G2, g2[..], false);
+  #assert cj_eq(ev[MINE].author, g1) && cj_eq(ev[A1].author, g2) && cj_eq(ev[K5].author, g2);
+}
+
+// NIP-01's serialization of a signed event, counted by hand: 339 fixed
+// bytes ({"id":"…","pubkey":"…","created_at":…,"kind":,"tags":,
+// "content":"…","sig":"…"} with a 64-digit id and key, a 10-digit time and
+// a 128-digit signature), plus the kind's digits, the tags and the content.
+HAND_LENGTHS :: [4] int.[352, 353, 431, 375];
+// Where each record of the first session starts, from the hand table:
+// RELAY 8 + 1 + 16, EVENT 8 + 75 + n, DELETE 8 + 65, CURSOR 8 + 11,
+// QUEUE 8 + 41 + n, OK 8 + 35.
+HAND_STARTS :: [13] int.[36, 61, 86, 111, 546, 982, 1055, 1569, 1588, 1607, 2031, 2074, 2117];
+#test "event lengths and record offsets match the hand table" #steps 2000000000 {
+  ev := sign_events();
+  contents := [4] int.[10, 11, 17, 33]; tags := [4] int.[2, 2, 74, 2];
+  for i: 0..<4 { #assert ev[i].n == HAND_LENGTHS[i] && ev[i].n == 339 + 1 + tags[i] + contents[i]; }
+  sizes := [12] int.[25, 25, 25, 83 + 352, 83 + 353, 73, 83 + 431, 19, 19, 49 + 375, 43, 43];
+  at := 36; for k: 0..<12 { #assert HAND_STARTS[k] == at; at += sizes[k]; } #assert at == HAND_STARTS[12];
+  s: [1] Session; whole_first(s[..], ev[..]);
+  b := record_bounds(s[0].buf[..], s[0].j[0].len);
+  #assert b.n == 12 && s[0].j[0].len == 2117;
+  for k: 0..<13 { #assert b.starts[k] == HAND_STARTS[k]; }
+}
+
+// The hand rule for a file cut to L bytes: 0 is a new journal, 1 to 35 a
+// torn header, a record boundary replays whole, and anything else is cut
+// back to the last boundary at or before L.
+hand_open :: (cut: int) -> CjOpen {
+  if cut == 0 { return CjOpen.{status = CJO_NEW}; }
+  if cut < 36 { return CjOpen.{status = CJO_CUT}; }
+  k := 0; while k < 12 && HAND_STARTS[k + 1] <= cut { k += 1; }
+  return CjOpen.{status = ifx HAND_STARTS[k] == cut then CJO_DONE else CJO_CUT, at = HAND_STARTS[k], records = k};
+}
+#test "cuts open as the hand rule says" #steps 2000000000 {
+  ev := sign_events(); s: [1] Session; whole_first(s[..], ev[..]);
+  for cut: 0..<2118 {
+    // Every boundary and the bytes beside it, and every byte of the last two records.
+    near := false; for k: 0..<13 { if cut >= HAND_STARTS[k] - 1 && cut <= HAND_STARTS[k] + 1 { near = true; } }
+    if cut < 38 { near = true; }
+    if !near && cut < HAND_STARTS[10] { continue; }
+    j: [1] Cj; o := cj_open(j[..], s[0].buf[..], cut, you_key(ev[..])); h := hand_open(cut);
+    #assert o.status == h.status && o.at == h.at && o.records == h.records;
+  }
+}
+
+// After the chapter's crash at 2095 bytes: the hand trace's state, and the
+// second session's five records (three cursors on r3, r2's duplicate OK,
+// r3's OK) ending at 2217.
+#test "the restart after the crash at 2095 matches the hand trace" #steps 2000000000 {
+  ev := sign_events();
+  t: [1] Session; t[0].crash = 2095; tr := relays_at_start(); first_session(t[..], tr[..], ev[..]);
+  o := cj_open(t[0].j[..], t[0].buf[..], 2095, you_key(ev[..]));
+  #assert o.status == CJO_CUT && o.at == 2074 && o.records == 11;
+  j := t[0].j[..];
+  #assert cj_since(j, 0, 0) == T0 + 25 && cj_since(j, 0, 1) == T0 + 25 && cj_since(j, 0, 2) == -1;
+  #assert j[0].pub[0].pending == 6 && j[0].pub[0].accepted == 1 && j[0].events == 4 && j[0].tombs == 1;
+  #assert !cj_live(j, 0) && cj_live(j, 1) && cj_live(j, 2) && cj_live(j, 3);
+  r := crash_and_restart(ev[..], 2095, false);
+  #assert r.opened == CJO_CUT && r.at == 2074 && r.reopened && r.pending == 0;
+  #assert r.received[0] == 1 && r.received[1] == 2 && r.received[2] == 1;
+  for q: 0..<3 { #assert r.copies[q] == 1; }
+  s: [1] Session; s[0].crash = 2095; sr := relays_at_start(); first_session(s[..], sr[..], ev[..]);
+  x := second_session(s[..], sr[..], ev[..], 2095);
+  b := record_bounds(s[0].buf[..], s[0].j[0].len);
+  types := [5] int.[CJ_R_CURSOR, CJ_R_CURSOR, CJ_R_CURSOR, CJ_R_OK, CJ_R_OK];
+  #assert b.n == 16 && s[0].j[0].len == 2217;
+  for k: 0..<5 { #assert b.types[11 + k] == types[k]; }
+}
+
+// N reaches a relay twice only when the crash cuts the OK of a relay that
+// already stored it: L from 2031 (r1's OK) to 2116 (inside r2's OK).
+#test "N is sent a fourth time only after a cut OK" #steps 2000000000 {
+  ev := sign_events();
+  cuts := [14] int.[0, 35, 36, 1606, 1607, 1608, 2030, 2031, 2052, 2073, 2074, 2095, 2116, 2117];
+  for cut: cuts {
+    r := crash_and_restart(ev[..], cut, false);
+    want := ifx cut >= 2031 && cut < 2117 then 4 else 3;
+    #assert r.received[0] + r.received[1] + r.received[2] == want && r.pending == 0 && r.reopened;
+    #assert !r.live[A1] && r.live[A2] && r.live[K5] && r.live[MINE] && r.stored[A2] == 1 && r.stored[K5] == 1 && r.stored[MINE] == 1;
+  }
+}
+// book:end check

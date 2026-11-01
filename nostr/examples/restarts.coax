@@ -1,0 +1,302 @@
+// book:begin setup
+#load "../../coax/lib/nostr/client_journal.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+T0 :: 1793300000;
+OPENED :: [9] string.["replayed", "cut", "new", "magic", "version", "owner", "corrupt", "record", "small"];
+DELIVERED :: [3] string.["new", "duplicate", "deleted"];
+RELAYS :: [3] string.["wss://r1.example", "wss://r2.example", "wss://r3.example"];
+// The four events: alice's two notes, her kind 5 deleting the first, and
+// your note. NAMES[i] prints event i.
+NAMES :: [4] string.["a1", "a2", "k5", "N"];
+A1 :: 0; A2 :: 1; K5 :: 2; MINE :: 3;
+
+// A signed event: its exact bytes, id, author and created_at.
+Ev :: struct { bytes: [512] u8; n: int; id: [32] u8; author: [32] u8; at: int; }
+ev_text :: (ev: [] Ev, i: int) -> string { return cast(string) ev[i].bytes[0..<ev[i].n]; }
+
+// Signs with secret key k (1 is you, 2 is alice; k*G is the public key)
+// and zero aux, so the output repeats. Never sign with a real key in an
+// example.
+sign_ev :: (k: int, at: int, kind: int, tags: string, content: string) -> Ev {
+  key: [32] u8; key[31] = cast(u8) k; aux: [32] u8;
+  sw: [1] NostrSignWork; scratch: [4096] u8; e: Ev;
+  r := EVENT_MORE;
+  while r == EVENT_MORE { r = nostr_event_sign_step(key[..], aux[..], at, kind, tags, content, sw[..], scratch[..], e.bytes[..], false); }
+  #assert r > 0;
+  e.n = r; e.at = at;
+  v := nostr_event_read(cast(string) e.bytes[0..<r], scratch[..], false);
+  #assert v.error == NE_OK;
+  e.id = v.id; e.author = v.public_key;
+  return e;
+}
+sign_events :: () -> [4] Ev {
+  out: [4] Ev;
+  out[A1] = sign_ev(2, T0 + 10, 1, "[]", "first note");
+  out[A2] = sign_ev(2, T0 + 20, 1, "[]", "second note");
+  hex: [64] u8; h := hex_encode_checked(cast(string) out[A1].id[..], hex[..], false);
+  tags: [96] u8; n := json_raw(tags[..], 0, "[[\"e\",\""); n = json_raw(tags[..], n, cast(string) hex[..]); n = json_raw(tags[..], n, "\"]]");
+  out[K5] = sign_ev(2, T0 + 25, 5, cast(string) tags[0..<n], "posted by mistake");
+  out[MINE] = sign_ev(1, T0 + 30, 1, "[]", "hello from a client that restarts");
+  return out;
+}
+you_key :: (ev: [] Ev) -> [32] u8 { return ev[MINE].author; }
+short_id :: (id: [32] u8, out: [] u8) -> string {
+  head: [4] u8; for i: 0..<4 { head[i] = id[i]; }
+  r := hex_encode_checked(cast(string) head[..], out, false);
+  return cast(string) out[0..<r.written];
+}
+name_of :: (ev: [] Ev, id: [32] u8) -> string {
+  for i: 0..<4 { if cj_eq(ev[i].id, id) { return NAMES[i]; } }
+  return "?";
+}
+// book:end setup
+
+// book:begin relays
+// A scripted relay: which of the four events it holds, how many times it
+// was sent your event, and whether it is reachable. It answers EVENT as a
+// NIP-01 relay does: OK true, or OK true "duplicate:" when it already has
+// the id, and never stores a second copy.
+Scripted :: struct { holds: [4] bool; received: int; up: bool; }
+relays_at_start :: () -> [3] Scripted {
+  s: [3] Scripted;
+  s[0].holds = [4] bool.[true, true, true, false]; s[1].holds = [4] bool.[false, true, true, false]; s[2].holds = [4] bool.[true, true, true, false];
+  for r: 0..<3 { s[r].up = true; }
+  return s;
+}
+// The relay's answer to your EVENT: CJ_ACCEPTED or CJ_DUPLICATE.
+relay_event :: (s: [] Scripted, r: int) -> int {
+  s[r].received += 1;
+  if s[r].holds[MINE] { return CJ_DUPLICATE; }
+  s[r].holds[MINE] = true;
+  return CJ_ACCEPTED;
+}
+// book:end relays
+
+// A session: the journal's buffer and how far the host's file got. When
+// the journal grows past `crash` bytes, the process dies: the file keeps
+// `crash` bytes and nothing after that happens.
+Session :: struct { j: [1] Cj; buf: [8192] u8; crash: int; dead: bool; loud: bool; }
+// After each writer call: did the process die during that append?
+died :: (s: [] Session) -> bool {
+  if !s[0].dead && s[0].j[0].len > s[0].crash { s[0].dead = true; }
+  return s[0].dead;
+}
+// book:begin deliver
+// Relay r answers subscription 0's REQ, with since= from the journal: every
+// event it holds that alice wrote at or after since, oldest first. Each
+// goes through cj_deliver; a kind 5 names the id its e tag carries.
+resubscribe :: (s: [] Session, sr: [] Scripted, ev: [] Ev, r: int) {
+  since := cj_since(s[0].j[..], 0, r);
+  if s[0].loud {
+    if since < 0 { print("  REQ to r% (no since)\n", r + 1); } else { print("  REQ to r% since t0+%\n", r + 1, since - T0); }
+  }
+  for i: 0..<3 {
+    if !sr[r].holds[i] || ev[i].at < since { continue; }
+    targets: [1] [32] u8; targets[0] = ev[A1].id; deletes := targets[0..<0];
+    if i == K5 { deletes = targets[..]; }
+    d := cj_deliver(s[0].j[..], s[0].buf[..], 0, r, ev[i].at, ev[i].id, ev[i].author, ev_text(ev, i), deletes);
+    if died(s) { return; }
+    if s[0].loud { print("    EVENT % (t0+%): %, journal % bytes\n", NAMES[i], ev[i].at - T0, DELIVERED[d], s[0].j[0].len); }
+  }
+}
+// book:end deliver
+// book:begin publish
+// Sends your event to each relay where it is pending and journals each OK.
+// The relay stores the event before its OK reaches the journal.
+resend :: (s: [] Session, sr: [] Scripted, ev: [] Ev, slot: int) {
+  for r: 0..<3 {
+    if (s[0].j[0].pub[slot].pending & (cast(u64) 1 << r)) == 0 { continue; }
+    if !sr[r].up { if s[0].loud { print("  r% is down: nothing sent\n", r + 1); } continue; }
+    answer := relay_event(sr, r);
+    k := cj_ok(s[0].j[..], s[0].buf[..], ev[MINE].id, r, answer);
+    if died(s) { if s[0].loud { print("  EVENT N to r%: OK true%, then the process dies while journaling it\n", r + 1, ifx answer == CJ_DUPLICATE then " \"duplicate:\"" else ""); } return; }
+    if s[0].loud { print("  EVENT N to r%: OK true%, journal % bytes\n", r + 1, ifx answer == CJ_DUPLICATE then " \"duplicate: already have this event\"" else "", s[0].j[0].len); }
+  }
+}
+// Journals your event for r1 r2 r3 before anything is sent.
+publish :: (s: [] Session, sr: [] Scripted, ev: [] Ev) {
+  slot := cj_queue(s[0].j[..], s[0].buf[..], ev[MINE].id, 7, ev_text(ev, MINE));
+  if died(s) { return; }
+  if s[0].loud { print("  publish N to r1 r2 r3: slot %, journal % bytes\n", slot, s[0].j[0].len); }
+  resend(s, sr, ev, slot);
+}
+// book:end publish
+
+// book:begin sessions
+// The first session, from a new journal: the relays, alice's events from
+// r1 then r2 (r3 is down), then your note. It dies when the journal grows
+// past s.crash.
+first_session :: (s: [] Session, sr: [] Scripted, ev: [] Ev) {
+  o := cj_open(s[0].j[..], s[0].buf[..], 0, you_key(ev));
+  if died(s) { return; }
+  for r: 0..<3 { n := cj_relay(s[0].j[..], s[0].buf[..], RELAYS[r]); if died(s) { return; } }
+  if s[0].loud { print("  open: %; relays r1 r2 r3 numbered 0 1 2, journal % bytes\n", OPENED[o.status], s[0].j[0].len); }
+  sr[2].up = false;
+  resubscribe(s, sr, ev, 0); if s[0].dead { return; }
+  resubscribe(s, sr, ev, 1); if s[0].dead { return; }
+  publish(s, sr, ev);
+}
+// The second session, after a restart from the file's `total` bytes: the
+// application asks again for every publish whose call never returned (the
+// same id: cj_queue writes nothing when it is journaled), the subscription
+// resumes on every relay from its cursor, and pending publishes are sent.
+second_session :: (s: [] Session, sr: [] Scripted, ev: [] Ev, total: int) -> CjOpen {
+  s[0].crash = 1 << 40; s[0].dead = false;
+  for r: 0..<3 { sr[r].up = true; }
+  o := cj_open(s[0].j[..], s[0].buf[..], total, you_key(ev));
+  if o.status > CJO_NEW { return o; }
+  if s[0].loud { print("  open: %, file kept to % bytes, % records\n", OPENED[o.status], o.at, o.records); }
+  for r: 0..<3 { n := cj_relay(s[0].j[..], s[0].buf[..], RELAYS[r]); }
+  slot := cj_queue(s[0].j[..], s[0].buf[..], ev[MINE].id, 7, ev_text(ev, MINE));
+  if s[0].loud { print("  the application publishes N again: slot %, journal % bytes\n", slot, s[0].j[0].len); }
+  for r: 0..<3 { resubscribe(s, sr, ev, r); }
+  resend(s, sr, ev, slot);
+  return o;
+}
+// book:end sessions
+
+print_state :: (s: [] Session, ev: [] Ev) {
+  j := s[0].j[..];
+  print("  store:");
+  for k: 0..<j[0].events { print(" %", name_of(ev, j[0].event[k].id)); if !cj_live(j, k) { print(" (deleted)"); } }
+  print("\n  cursors for subscription 0:");
+  for r: 0..<3 { c := cj_since(j, 0, r); if c < 0 { print(" r% none", r + 1); } else { print(" r% t0+%", r + 1, c - T0); } }
+  print("\n");
+  for k: 0..<j[0].pubs {
+    print("  publish %: pending", NAMES[MINE]);
+    first := true;
+    for r: 0..<3 { if (j[0].pub[k].pending & (cast(u64) 1 << r)) != 0 { print(" r%", r + 1); first = false; } }
+    if first { print(" none"); }
+    print(", acknowledged");
+    first = true;
+    for r: 0..<3 { if (j[0].pub[k].accepted & (cast(u64) 1 << r)) != 0 { print(" r%", r + 1); first = false; } }
+    if first { print(" none"); }
+    print("\n");
+  }
+}
+// The record boundaries of a journal: starts[k] is where record k begins.
+Bounds :: struct { n: int; starts: [32] int; types: [32] int; }
+record_bounds :: (buf: [] u8, total: int) -> Bounds {
+  b: Bounds; p := CJ_HEADER;
+  while p < total { b.starts[b.n] = p; b.types[b.n] = cast(int) buf[p + 4]; b.n += 1; p += 8 + cast(int) cj_get(buf, p, 2); }
+  b.starts[b.n] = p;
+  return b;
+}
+TYPES :: [7] string.["", "RELAY", "QUEUE", "OK", "EVENT", "CURSOR", "DELETE"];
+
+// What one crash and restart ended with, for the summary and the checks.
+Outcome :: struct {
+  opened: int; at: int;
+  copies: [3] int; received: [3] int;   // copies of N each relay holds, times it was sent N
+  stored: [4] int; live: [4] bool;      // copies of each event in the store, and shown
+  pending: u64; reopened: bool;
+}
+// Runs the first session dying at `crash` bytes, then the second.
+crash_and_restart :: (ev: [] Ev, crash: int, loud: bool) -> Outcome {
+  s: [1] Session; s[0].crash = crash; sr := relays_at_start();
+  first_session(s[..], sr[..], ev);
+  s[0].loud = loud;
+  total := ifx s[0].j[0].len < crash then s[0].j[0].len else crash;
+  o := second_session(s[..], sr[..], ev, total);
+  out := Outcome.{opened = o.status, at = o.at};
+  for r: 0..<3 { out.copies[r] = ifx sr[r].holds[MINE] then 1 else 0; out.received[r] = sr[r].received; }
+  for k: 0..<s[0].j[0].events {
+    for i: 0..<4 { if cj_eq(s[0].j[0].event[k].id, ev[i].id) { out.stored[i] += 1; out.live[i] = cj_live(s[0].j[..], k); } }
+  }
+  out.pending = s[0].j[0].pub[0].pending;
+  k: [1] Cj; again := cj_open(k[..], s[0].buf[..], s[0].j[0].len, you_key(ev));
+  out.reopened = again.status == CJO_DONE && cj_same(k[..], s[0].j[..]);
+  if loud { print_state(s[..], ev); }
+  return out;
+}
+// The journal the first session writes when nothing kills it.
+whole_first :: (s: [] Session, ev: [] Ev) {
+  s[0].crash = 1 << 40; sr := relays_at_start(); first_session(s[..], sr[..], ev);
+}
+
+// book:begin example
+main :: () {
+  ev := sign_events();
+  print("Four signed events\n");
+  for i: 0..<4 {
+    sb: [8] u8;
+    print("  %: id %..., % bytes, t0+%, by %\n", NAMES[i], short_id(ev[i].id, sb[..]), ev[i].n, ev[i].at - T0, ifx i == MINE then "you" else "alice");
+  }
+
+  print("\nThe first session, killed while journaling r2's OK\n");
+  s: [1] Session; whole_first(s[..], ev[..]);
+  b := record_bounds(s[0].buf[..], s[0].j[0].len);
+  for k: 0..<b.n { print("  record %: % at %, % bytes\n", k + 1, TYPES[b.types[k]], b.starts[k], b.starts[k + 1] - b.starts[k]); }
+  last := b.starts[b.n - 1]; end := s[0].j[0].len;
+  mid := (last + end) / 2;
+  print("  the process dies when the journal reaches % bytes (record % ends at %)\n", mid, b.n, end);
+  t: [1] Session; t[0].crash = mid; t[0].loud = true; tr := relays_at_start(); first_session(t[..], tr[..], ev[..]);
+  o := cj_open(t[0].j[..], t[0].buf[..], mid, you_key(ev[..]));
+  print("\nReplay of the % bytes: %, file kept to % bytes, % records\n", mid, OPENED[o.status], o.at, o.records);
+  print_state(t[..], ev[..]);
+
+  print("\nA crash at every byte of the last record\n");
+  same := 0;
+  for cut: last..<end + 1 {
+    k: [1] Cj; c := cj_open(k[..], s[0].buf[..], cut, you_key(ev[..]));
+    if cj_same(k[..], t[0].j[..]) && c.at == last && c.status == ifx cut == last then CJO_DONE else CJO_CUT { same += 1; }
+  }
+  k: [1] Cj; c := cj_open(k[..], s[0].buf[..], end, you_key(ev[..]));
+  print("  cuts at % to %: % of % replay to the state above (cut at %; at % nothing to cut)\n", last + 1, end - 1, same - 1, end - last - 1, last, last);
+  print("  the whole % bytes: %, publish N pending on", end, OPENED[c.status]);
+  for r: 0..<3 { if (k[0].pub[0].pending & (cast(u64) 1 << r)) != 0 { print(" r%", r + 1); } }
+  print("\n");
+
+  print("\nThe restart from those % bytes\n", mid);
+  out := crash_and_restart(ev[..], mid, true);
+  print("  copies of N: r1 % r2 % r3 %; times sent: r1 % r2 % r3 %; reopened the same: %\n",
+        out.copies[0], out.copies[1], out.copies[2], out.received[0], out.received[1], out.received[2], out.reopened);
+
+  print("\nA crash at every byte of the first session's journal, 0 to %\n", end);
+  runs := 0; good := 0; by: [3] int; sent: [8] int;
+  for cut: 0..<end + 1 {
+    r := crash_and_restart(ev[..], cut, false); runs += 1; by[r.opened] += 1;
+    ok := r.reopened && r.pending == 0 && !r.live[A1] && r.live[A2] && r.live[K5] && r.live[MINE];
+    for i: 0..<4 { ok = ok && r.stored[i] <= 1; }
+    for x: 1..<4 { ok = ok && r.stored[x] == 1; }
+    for q: 0..<3 { ok = ok && r.copies[q] == 1; }
+    if ok { good += 1; }
+    sent[r.received[0] + r.received[1] + r.received[2]] += 1;
+  }
+  print("  % restarts: % new, % cut, % replayed whole\n", runs, by[CJO_NEW], by[CJO_CUT], by[CJO_DONE]);
+  print("  % of % end with N once on r1 r2 r3, nothing pending, a1 hidden, a2 k5 N shown, no event stored twice\n", good, runs);
+  print("  N sent 3 times in % restarts, 4 times in % (none sent it more often: %)\n", sent[3], sent[4], runs - sent[3] - sent[4]);
+
+  print("\nRefusals\n");
+  refuse(s[..], ev[..]);
+}
+// book:end example
+
+// book:begin refuse
+refuse :: (s: [] Session, ev: [] Ev) {
+  end := s[0].j[0].len; k: [1] Cj;
+  alice := ev[A1].author;
+  o := cj_open(k[..], s[0].buf[..], end, alice);
+  print("  your journal opened as alice's: %\n", OPENED[o.status]);
+  c := s[0].buf; c[3] = 2; o = cj_open(k[..], c[..], end, you_key(ev));
+  print("  version byte 2: %\n", OPENED[o.status]);
+  b := record_bounds(s[0].buf[..], end);
+  c = s[0].buf; c[b.starts[4] + 100] ^= 1; o = cj_open(k[..], c[..], end, you_key(ev));
+  print("  one bit flipped inside record 5 (EVENT a2): % at %, % records before it\n", OPENED[o.status], o.at, o.records);
+  last := b.starts[b.n - 1];
+  c = s[0].buf; c[last + 20] ^= 1; o = cj_open(k[..], c[..], end, you_key(ev));
+  print("  one bit flipped inside the last record: %, kept to % bytes\n", OPENED[o.status], o.at);
+  c = s[0].buf; c[b.starts[1] + 1] = 0; o = cj_open(k[..], c[..], end, you_key(ev));
+  print("  record 2's length changed to 0: % at %\n", OPENED[o.status], o.at);
+  c = s[0].buf; c[0] = 0; o = cj_open(k[..], c[..], end, you_key(ev));
+  print("  a file that does not start \"NCJ\": %\n", OPENED[o.status]);
+  o = cj_open(k[..], s[0].buf[..], end, you_key(ev));
+  none: [1] [32] u8;
+  d := cj_deliver(k[..], s[0].buf[..], 0, 3, ev[A2].at, ev[A2].id, ev[A2].author, ev_text(ev, A2), none[0..<0]);
+  print("  an event from relay 3 (r4, never added): %\n", ifx d == -CJ_ARG then "argument" else "?");
+  d = cj_queue(k[..], s[0].buf[..], ev[A2].id, 8, ev_text(ev, A2));
+  print("  a publish to relay set {3}: %\n", ifx d == -CJ_ARG then "argument" else "?");
+}
+// book:end refuse

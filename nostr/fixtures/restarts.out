@@ -1,0 +1,73 @@
+Four signed events
+  a1: id 33f19dfb..., 352 bytes, t0+10, by alice
+  a2: id a2c7833a..., 353 bytes, t0+20, by alice
+  k5: id e3878191..., 431 bytes, t0+25, by alice
+  N: id 7f77f19b..., 375 bytes, t0+30, by you
+
+The first session, killed while journaling r2's OK
+  record 1: RELAY at 36, 25 bytes
+  record 2: RELAY at 61, 25 bytes
+  record 3: RELAY at 86, 25 bytes
+  record 4: EVENT at 111, 435 bytes
+  record 5: EVENT at 546, 436 bytes
+  record 6: DELETE at 982, 73 bytes
+  record 7: EVENT at 1055, 514 bytes
+  record 8: CURSOR at 1569, 19 bytes
+  record 9: CURSOR at 1588, 19 bytes
+  record 10: QUEUE at 1607, 424 bytes
+  record 11: OK at 2031, 43 bytes
+  record 12: OK at 2074, 43 bytes
+  the process dies when the journal reaches 2095 bytes (record 12 ends at 2117)
+  open: new; relays r1 r2 r3 numbered 0 1 2, journal 111 bytes
+  REQ to r1 (no since)
+    EVENT a1 (t0+10): new, journal 546 bytes
+    EVENT a2 (t0+20): new, journal 982 bytes
+    EVENT k5 (t0+25): new, journal 1569 bytes
+  REQ to r2 (no since)
+    EVENT a2 (t0+20): duplicate, journal 1588 bytes
+    EVENT k5 (t0+25): duplicate, journal 1607 bytes
+  publish N to r1 r2 r3: slot 0, journal 2031 bytes
+  EVENT N to r1: OK true, journal 2074 bytes
+  EVENT N to r2: OK true, then the process dies while journaling it
+
+Replay of the 2095 bytes: cut, file kept to 2074 bytes, 11 records
+  store: a1 (deleted) a2 k5 N
+  cursors for subscription 0: r1 t0+25 r2 t0+25 r3 none
+  publish N: pending r2 r3, acknowledged r1
+
+A crash at every byte of the last record
+  cuts at 2075 to 2116: 42 of 42 replay to the state above (cut at 2074; at 2074 nothing to cut)
+  the whole 2117 bytes: replayed, publish N pending on r3
+
+The restart from those 2095 bytes
+  open: cut, file kept to 2074 bytes, 11 records
+  the application publishes N again: slot 0, journal 2074 bytes
+  REQ to r1 since t0+25
+    EVENT k5 (t0+25): duplicate, journal 2074 bytes
+  REQ to r2 since t0+25
+    EVENT k5 (t0+25): duplicate, journal 2074 bytes
+  REQ to r3 (no since)
+    EVENT a1 (t0+10): deleted, journal 2093 bytes
+    EVENT a2 (t0+20): duplicate, journal 2112 bytes
+    EVENT k5 (t0+25): duplicate, journal 2131 bytes
+  EVENT N to r2: OK true "duplicate: already have this event", journal 2174 bytes
+  EVENT N to r3: OK true, journal 2217 bytes
+  store: a1 (deleted) a2 k5 N
+  cursors for subscription 0: r1 t0+25 r2 t0+25 r3 t0+25
+  publish N: pending none, acknowledged r1 r2 r3
+  copies of N: r1 1 r2 1 r3 1; times sent: r1 1 r2 2 r3 1; reopened the same: true
+
+A crash at every byte of the first session's journal, 0 to 2117
+  2118 restarts: 1 new, 2104 cut, 13 replayed whole
+  2118 of 2118 end with N once on r1 r2 r3, nothing pending, a1 hidden, a2 k5 N shown, no event stored twice
+  N sent 3 times in 2032 restarts, 4 times in 86 (none sent it more often: 0)
+
+Refusals
+  your journal opened as alice's: owner
+  version byte 2: version
+  one bit flipped inside record 5 (EVENT a2): corrupt at 546, 4 records before it
+  one bit flipped inside the last record: cut, kept to 2074 bytes
+  record 2's length changed to 0: corrupt at 61
+  a file that does not start "NCJ": magic
+  an event from relay 3 (r4, never added): argument
+  a publish to relay set {3}: argument

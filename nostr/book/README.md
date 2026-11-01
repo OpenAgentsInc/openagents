@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 61 are implemented and 43 are design drafts.
+Of the 104 chapters, 62 are implemented and 42 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -206,7 +206,7 @@ restarts.
 | [30. Subscriptions and EOSE](ch030-subscriptions-and-eose.md) | Runnable: native C | Subscription IDs that name a slot and its serial, EOSE as the end of stored events and never a completeness claim, NIP-67 completeness hints, and paginated catch-up. |
 | [31. Publish and wait for OK](ch031-publish-and-wait-for-ok.md) | Runnable: native C | Publishing with acknowledgement deadlines, the distinction between published, acknowledged, refused and unknown, and requeue after AUTH. |
 | [32. Many relays and the outbox model](ch032-many-relays-and-the-outbox-model.md) | Runnable: native C | NIP-65 relay lists (kind 10002 with `r` tags marked `read` or `write`), reading from an author's write relays, writing to your write relays and the tagged users' read relays. |
-| [33. A client that survives restarts](ch033-a-client-that-survives-restarts.md) | Unimplemented: design draft | A durable client store of verified originals, an offline outbox that sends each event once after a restart, and deletions that are never resurrected on reconnect. |
+| [33. A client that survives restarts](ch033-a-client-that-survives-restarts.md) | Runnable: native C | A durable client journal that stores verified originals, an offline outbox that sends each event again after a restart without a second copy anywhere, subscriptions that resume with `since`, and deletions that are never resurrected on reconnect. |
 
 ### Part IX. A relay (chapters 34–44)
 

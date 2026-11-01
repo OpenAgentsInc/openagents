@@ -696,14 +696,20 @@
    "number": 33,
    "title": "A client that survives restarts",
    "file": "ch033-a-client-that-survives-restarts.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     32,
     31
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/client_journal.coax",
+    "nostr/examples/restarts.coax",
+    "nostr/examples/checks/restarts.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

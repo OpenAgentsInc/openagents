@@ -58,7 +58,7 @@
 - [30. Subscriptions and EOSE](ch030-subscriptions-and-eose.md) — implemented
 - [31. Publish and wait for OK](ch031-publish-and-wait-for-ok.md) — implemented
 - [32. Many relays and the outbox model](ch032-many-relays-and-the-outbox-model.md) — implemented
-- [33. A client that survives restarts](ch033-a-client-that-survives-restarts.md) — design draft
+- [33. A client that survives restarts](ch033-a-client-that-survives-restarts.md) — implemented
 
 **IX. A relay**
 
