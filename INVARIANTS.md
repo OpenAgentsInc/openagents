@@ -208,6 +208,19 @@ player both reach) declares no `#export_c` procedure: each library would
 define the symbol, and the page fails to link. Check: the site build
 (`apps/openagents-web/build.sh`) links every realm.
 
+## A realm's frame stays within its declared budget
+
+Every realm's engine file in `apps/openagents-web/` declares a
+`FrameBudget` (`aethyr/budget.coax`): the steps, vertices, draw records and
+host bytes one frame may use. Its vertex limit is below the realm's vertex
+buffer, so a frame the quad writers clip at a full buffer is over budget. A
+`BudgetMeter` takes a request whole or refuses it; a frame that passes any
+limit fails the realm's check. A realm that outgrows its budget raises the
+declaration, or its buffer, in the same change; it never clips silently.
+Checks: each realm's "... frames fit its declared budget" (three frames at
+each of three screens), and `aethyr/budget.coax`'s planted overflow
+(mutation 0 survivors).
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
