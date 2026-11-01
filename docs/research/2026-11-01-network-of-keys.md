@@ -202,5 +202,7 @@ with a different tool.
   <https://delvingbitcoin.org/t/using-op-vault-for-recovery/150>
 - Liana v10.0 release notes:
   <https://www.nobsbitcoin.com/liana-wallet-v10-0/>
+- Related: `docs/research/2026-10-15-dhruv-bansal-ai-and-bitcoin.md`, our
+  analysis of Bansal's What Bitcoin Did interview on AI and Bitcoin.
 - In this repo: `docs/protocol/openagents-protocol-spec.md` §27.3,
   `docs/lightning/breez-spark.md`.
