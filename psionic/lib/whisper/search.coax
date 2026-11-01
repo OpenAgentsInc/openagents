@@ -1,0 +1,510 @@
+// Search: how Psionic's Whisper turns logits into text, window by window.
+// The rules follow whisper.cpp 1.9.2's whisper_full (MIT):
+// - per window, temperatures 0, 0.2, ... 1.0; at 0 a beam search (5 beams),
+//   above 0 five samples; a window falls back to the next temperature when
+//   its best result repeats itself (token entropy under 2.4 over its last 32
+//   tokens) or is unlikely (average log probability under -1) while the
+//   window is not silence (no-speech probability under 0.6);
+// - the previous windows' text is the prompt (up to 223 tokens) below
+//   temperature 0.5, and an initial prompt starts it;
+// - the logit rules: special tokens suppressed, timestamps in pairs and
+//   never going back, the first one at most 1 s, and a timestamp forced when
+//   the timestamps together are likelier than any text token.
+// Two things whisper.cpp does not do:
+// - beam search keeps the true top tokens of each beam (whisper.cpp 1.9.2
+//   draws its beam candidates at random from each beam's distribution);
+// - words to listen for (--words): they are carried as a prompt in every
+//   window, and a decoder that has started one of them is pushed to finish
+//   it, so names such as Psionic or Nostr come out spelled right.
+// Language detection: the first window, the start-of-transcript token, and
+// the likeliest language token. Design: psionic/docs/transcribe.md.
+//   coax/bin/coax test psionic/lib/whisper/search.coax --library
+#load "engine.coax";
+
+WE_TOKENS_MAX :: 224;
+WE_STEPS_MAX :: 220;       // n_text_ctx / 2 - 4 tokens per window
+WE_PAST_MAX :: 448;
+WE_BIAS_MAX :: 32;
+WE_BIAS_LEN :: 12;
+
+// How to decode. language: a language token, -1 (an English-only model, or
+// English), or -2 (detect it from the first window).
+WeOptions :: struct {
+  beam: int = 5; best_of: int = 5; fallback: bool = true;
+  language: int = -1;
+  prompt: string; words: string;
+  word_first: f64 = 2.0; word_next: f64 = 6.0;
+  entropy_thold: f64 = 2.4; logprob_thold: f64 = -1.0; no_speech_thold: f64 = 0.6;
+}
+// One decoder: its tokens with their log probabilities, and whisper.cpp's
+// per-decoder state.
+WeDec :: struct {
+  toks: [WE_TOKENS_MAX] int; plog: [WE_TOKENS_MAX] f64; n: int; result_len: int;
+  seek_delta: int; has_ts: bool; failed: bool; completed: bool; sum_all: f64; slot: int;
+  avg: f64; score: f64; entropy: f64; rng: CrSeed;
+}
+// Words to listen for, as token sequences.
+WeBias :: struct { n: int; len: [WE_BIAS_MAX] int; seq: [WE_BIAS_MAX * WE_BIAS_LEN] int; first: f64; next: f64; }
+WeRun :: struct { status: WeStatus; segments: int; text: int; windows: int; tokens: int; language: int; fallbacks: int; }
+
+// ---- the vocabulary ------------------------------------------------------------
+
+// Each token's byte offset in the file, so a token is found at once.
+we_vocab :: (b: [] u8, m: WgModel, offs: [] int) -> int {
+  if offs.count < m.tokens { return -1; }
+  at := m.vocab_at;
+  for i: 0..<m.tokens { offs[i] = at; at += 4 + wg_u32(b, at); }
+  return m.tokens;
+}
+we_piece :: (b: [] u8, offs: [] int, i: int) -> string {
+  if i < 0 || i >= offs.count { return ""; }
+  at := offs[i]; n := wg_u32(b, at);
+  return cast(string) b[at + 4..<at + 4 + n];
+}
+// The token whose bytes are s, or -1.
+we_find :: (b: [] u8, offs: [] int, text_tokens: int, s: string) -> int {
+  for i: 0..<text_tokens {
+    at := offs[i];
+    if wg_u32(b, at) != s.count { continue; }
+    same := true;
+    for j: 0..<s.count { if b[at + 4 + j] != s[j] { same = false; break; } }
+    if same { return i; }
+  }
+  return -1;
+}
+we_alpha :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+we_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+we_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 11 || c == 12; }
+// The length of the piece starting at s[i], as whisper.cpp's tokenizer splits
+// text: 's 't 're 've 'm 'll 'd, " ?letters", " ?digits", " ?other",
+// spaces not before a word, spaces.
+we_split :: (s: string, i: int) -> int {
+  n := s.count; c := s[i];
+  if c == '\'' && i + 1 < n {
+    d := s[i + 1];
+    if d == 's' || d == 't' || d == 'm' || d == 'd' { return 2; }
+    if i + 2 < n && ((d == 'r' && s[i + 2] == 'e') || (d == 'v' && s[i + 2] == 'e') || (d == 'l' && s[i + 2] == 'l')) { return 3; }
+  }
+  j := i; if c == ' ' && i + 1 < n && !we_space(s[i + 1]) { j = i + 1; }
+  if !we_space(s[j]) {
+    e := j + 1;
+    if we_alpha(s[j]) { while e < n && we_alpha(s[e]) { e += 1; } }
+    else if we_digit(s[j]) { while e < n && we_digit(s[e]) { e += 1; } }
+    else { while e < n && !we_space(s[e]) && !we_alpha(s[e]) && !we_digit(s[e]) { e += 1; } }
+    return e - i;
+  }
+  e := i; while e < n && we_space(s[e]) { e += 1; }
+  if e < n && e - i > 1 { return e - i - 1; }
+  return e - i;
+}
+// text as tokens, as whisper.cpp's whisper_tokenize: each piece by the
+// longest prefixes that are tokens; a byte no token starts with is skipped.
+// The count, or -1 when out is too small.
+we_tokenize :: (b: [] u8, offs: [] int, text_tokens: int, text: string, out: [] int) -> int {
+  n := 0; i := 0;
+  while i < text.count {
+    e := i + we_split(text, i);
+    a := i;
+    while a < e {
+      j := e; found := false;
+      while j > a {
+        t := we_find(b, offs, text_tokens, cast(string) text[a..<j]);
+        if t >= 0 { if n >= out.count { return -1; } out[n] = t; n += 1; a = j; found = true; break; }
+        j -= 1;
+      }
+      if !found { a += 1; }
+    }
+    i = e;
+  }
+  return n;
+}
+// The words (separated by commas) as " Word" token sequences, and the
+// carried prompt " Word, Word." into prompt; prompt's length.
+we_bias :: (b: [] u8, offs: [] int, text_tokens: int, words: string, o: WeOptions, bias: [] WeBias, prompt: [] int) -> int {
+  bias[0].n = 0; bias[0].first = o.word_first; bias[0].next = o.word_next;
+  buf: [1024] u8; pn := 0; i := 0;
+  pb: [2048] u8; pl := 0;
+  while i < words.count {
+    e := i; while e < words.count && words[e] != ',' { e += 1; }
+    w := wsg_trim(cast(string) words[i..<e]); i = e + 1;
+    if w.count == 0 || w.count + 1 > buf.count || bias[0].n >= WE_BIAS_MAX { continue; }
+    buf[0] = ' '; for k: 0..<w.count { buf[k + 1] = w[k]; }
+    seq: [WE_BIAS_LEN] int;
+    n := we_tokenize(b, offs, text_tokens, cast(string) buf[0..<w.count + 1], seq[..]);
+    if n < 1 { continue; }
+    k := bias[0].n;
+    bias[0].len[k] = n;
+    for j: 0..<n { bias[0].seq[k * WE_BIAS_LEN + j] = seq[j]; }
+    bias[0].n += 1;
+    if pl + w.count + 3 < pb.count {
+      if pl > 0 { pb[pl] = ','; pl += 1; }
+      pb[pl] = ' '; pl += 1;
+      for c: w { pb[pl] = c; pl += 1; }
+    }
+  }
+  if pl == 0 { return 0; }
+  pb[pl] = '.'; pl += 1;
+  pn = we_tokenize(b, offs, text_tokens, cast(string) pb[0..<pl], prompt);
+  return ifx pn < 0 then 0 else pn;
+}
+
+// ---- the logit rules -------------------------------------------------------------
+
+WE_NEG :: -1.0e30;
+we_dead :: (v: f32) -> bool { return v < -1.0e29; }
+// The decoder's next-token log probabilities into lp, from its logits row:
+// temperature, whisper.cpp's rules, the word push, then the timestamp rule.
+we_rules :: (net: WeNet, logits: [] f32, d: WeDec, temperature: f64, bias: WeBias, lp: [] f32) {
+  sp := net.sp; V := net.params.n_vocab; n := d.n;
+  inv := ifx temperature > 0 then cast(f32) (1 / temperature) else 1;
+  for i: 0..<V { lp[i] = logits[i] * inv; }
+  if n == 0 { lp[sp.eot] = WE_NEG; if net.space >= 0 { lp[net.space] = WE_NEG; } }
+  lp[sp.no_timestamps] = WE_NEG; lp[sp.sot] = WE_NEG; lp[sp.nosp] = WE_NEG; lp[sp.solm] = WE_NEG;
+  lp[sp.translate] = WE_NEG; lp[sp.transcribe] = WE_NEG; lp[sp.prev] = WE_NEG;
+  if sp.multilingual { for i: 0..<sp.languages { lp[sp.sot + 1 + i] = WE_NEG; } }
+  // words: the first token of each a little likelier; the next token of one
+  // already started much likelier
+  for w: 0..<bias.n {
+    L := bias.len[w]; at := w * WE_BIAS_LEN;
+    first := bias.seq[at];
+    if !we_dead(lp[first]) { lp[first] += cast(f32) bias.first; }
+    k := ifx L - 1 < n then L - 1 else n;
+    while k >= 1 {
+      same := true;
+      for j: 0..<k { if d.toks[n - k + j] != bias.seq[at + j] { same = false; break; } }
+      if same { t := bias.seq[at + k]; if !we_dead(lp[t]) { lp[t] += cast(f32) bias.next; } break; }
+      k -= 1;
+    }
+  }
+  // timestamps come in pairs, except directly before EOT
+  last := n > 0 && d.toks[n - 1] >= sp.beg;
+  penult := n < 2 || d.toks[n - 2] >= sp.beg;
+  if last {
+    if penult { for i: sp.beg..<V { lp[i] = WE_NEG; } }
+    else { for i: 0..<sp.eot { lp[i] = WE_NEG; } }
+  }
+  // the first timestamp is at most 1.0 s
+  if n == 0 { for i: sp.beg + 50 + 1..<V { lp[i] = WE_NEG; } }
+  // timestamps never go back
+  if d.has_ts { for i: sp.beg..<sp.beg + d.seek_delta / 2 { lp[i] = WE_NEG; } }
+  // log-softmax
+  best := -1.0e300; for i: 0..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > best { best = cast(f64) lp[i]; } }
+  z := 0.0; for i: 0..<V { if !we_dead(lp[i]) { z += exp(cast(f64) lp[i] - best); } }
+  lz := best + log(z);
+  for i: 0..<V { if !we_dead(lp[i]) { lp[i] = cast(f32) (cast(f64) lp[i] - lz); } }
+  // when the timestamps together are likelier than any text token, only a timestamp may follow
+  tmax := -1.0e300; for i: sp.beg..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > tmax { tmax = cast(f64) lp[i]; } }
+  ts := -1.0e300;
+  if tmax > -1.0e300 {
+    s := 0.0; for i: sp.beg..<V { if !we_dead(lp[i]) { s += exp(cast(f64) lp[i] - tmax); } }
+    ts = tmax + log(s);
+  }
+  text := -1.0e300; for i: 0..<sp.beg { if !we_dead(lp[i]) && cast(f64) lp[i] > text { text = cast(f64) lp[i]; } }
+  if ts > text { for i: 0..<sp.beg { lp[i] = WE_NEG; } }
+}
+we_argmax :: (lp: [] f32) -> int { a := 0; for i: 1..<lp.count { if lp[i] > lp[a] { a = i; } } return a; }
+// The k likeliest tokens (best first) into ids; how many there are.
+we_topk :: (lp: [] f32, k: int, ids: [] int) -> int {
+  n := 0;
+  for i: 0..<lp.count {
+    if we_dead(lp[i]) { continue; }
+    if n == k && lp[i] <= lp[ids[n - 1]] { continue; }
+    j := ifx n < k then n else k - 1;
+    if n < k { n += 1; }
+    while j > 0 && lp[ids[j - 1]] < lp[i] { ids[j] = ids[j - 1]; j -= 1; }
+    ids[j] = i;
+  }
+  return n;
+}
+// A token drawn from exp(lp) with the decoder's generator.
+we_sample :: (lp: [] f32, d: [] WeDec) -> int {
+  total := 0.0; for v: lp { if !we_dead(v) { total += exp(cast(f64) v); } }
+  r := cr_draw(d[0].rng); d[0].rng = r.next;
+  u := r.value * total; acc := 0.0; last := 0;
+  for i: 0..<lp.count {
+    if we_dead(lp[i]) { continue; }
+    acc += exp(cast(f64) lp[i]); last = i;
+    if acc > u { return i; }
+  }
+  return last;
+}
+
+// ---- one window --------------------------------------------------------------------
+
+WeCand :: struct { parent: int; token: int; lp: f64; sum: f64; }
+WeWin :: struct { best: int; no_speech: f64; prompt_n: int; init_n: int; carried: int; fallbacks: int; }
+we_append :: (d: [] WeDec, t: int, lp: f64) {
+  if d[0].n >= WE_TOKENS_MAX { return; }
+  d[0].toks[d[0].n] = t; d[0].plog[d[0].n] = lp; d[0].n += 1; d[0].sum_all += lp;
+}
+// whisper.cpp's end, failure and seek rules after a decoder's token i.
+we_update :: (net: WeNet, d: [] WeDec, i: int, seek: int, seek_end: int) {
+  sp := net.sp; t := d[0].toks[d[0].n - 1];
+  if t > sp.beg {
+    nd := 2 * (t - sp.beg);
+    if d[0].has_ts && d[0].seek_delta > nd && d[0].result_len < i { d[0].failed = true; return; }
+    d[0].seek_delta = nd; d[0].result_len = i + 1; d[0].has_ts = true;
+  }
+  if t == sp.eot || (d[0].has_ts && seek + d[0].seek_delta + 10 >= seek_end) {
+    if d[0].result_len == 0 {
+      if seek + d[0].seek_delta + 10 >= seek_end { d[0].result_len = i + 1; } else { d[0].failed = true; return; }
+    }
+    d[0].completed = true; return;
+  }
+  if i == WE_STEPS_MAX - 1 && (d[0].result_len == 0 || d[0].seek_delta < 1500) { d[0].failed = true; }
+}
+// Score as whisper.cpp: the mean log probability of the kept tokens; the
+// entropy of the last 32 kept tokens' frequencies.
+we_score :: (d: [] WeDec) {
+  n := d[0].result_len;
+  d[0].avg = -1.0e300; d[0].score = -1.0e300; d[0].entropy = 0;
+  if n == 0 { return; }
+  s := 0.0; for i: 0..<n { s += d[0].plog[i]; }
+  d[0].avg = s / cast(f64) n; d[0].score = d[0].avg;
+  a := ifx n > 32 then n - 32 else 0; cnt := n - a; e := 0.0;
+  for i: a..<n {
+    seen := false; for j: a..<i { if d[0].toks[j] == d[0].toks[i] { seen = true; break; } }
+    if seen { continue; }
+    c := 0; for j: i..<n { if d[0].toks[j] == d[0].toks[i] { c += 1; } }
+    p := cast(f64) c / cast(f64) cnt; e -= p * log(p);
+  }
+  d[0].entropy = e;
+}
+
+// Decodes the encoded window at seek with every temperature it needs;
+// decs[best] holds the result. carry: tokens every prompt starts with
+// (--words), past/np: the previous text.
+we_window :: (net: WeNet, W: [] f32, work: [] f32, o: WeOptions, bias: WeBias, init: [] int, carry: [] int, past: [] int, np: int,
+              seek: int, seek_end: int, decs: [] WeDec, nds: [] WeDec, prompt: [] int) -> WeWin {
+  win: WeWin; sp := net.sp; V := net.params.n_vocab; k := net.work;
+  lp := work[k.lp..<k.lp + V];
+  temps := ifx o.fallback then 6 else 1;
+  for ti: 0..<temps {
+    t := 0.2 * cast(f64) ti;
+    beam := t == 0 && o.beam > 1;
+    nd := ifx t == 0 then (ifx o.beam > 1 then o.beam else 1) else (ifx o.best_of > 1 then o.best_of else 1);
+    if nd > WE_SLOTS { nd = WE_SLOTS; }
+    for j: 0..<nd {
+      decs[j].n = 0; decs[j].result_len = 0; decs[j].sum_all = 0; decs[j].seek_delta = 3000;
+      decs[j].failed = false; decs[j].completed = false; decs[j].has_ts = false; decs[j].slot = j;
+      decs[j].avg = -1.0e300; decs[j].score = -1.0e300; decs[j].entropy = 0;
+    }
+    // the prompt: previous text (below temperature 0.5), then sot, language, task
+    P := 0;
+    if t < 0.5 && (carry.count > 0 || np > 0) {
+      prompt[P] = sp.prev; P += 1;
+      for c: carry { prompt[P] = c; P += 1; }
+      take := 223 - carry.count; if take > np { take = np; } if take < 0 { take = 0; }
+      for i: np - take..<np { prompt[P] = past[i]; P += 1; }
+    }
+    win.carried = carry.count;
+    for c: init { prompt[P] = c; P += 1; }
+    win.prompt_n = P; win.init_n = init.count;
+    zero := [1] int.[0]; s0 := [1] int.[0];
+    we_forward(net, W, work, prompt[0..<P], P, zero[..], s0[..], true);
+    // no-speech probability from the raw logits
+    row0 := work[k.logits..<k.logits + V];
+    best := -1.0e300; for v: row0 { if cast(f64) v > best { best = cast(f64) v; } }
+    z := 0.0; for v: row0 { z += exp(cast(f64) v - best); }
+    win.no_speech = exp(cast(f64) row0[sp.nosp] - best) / z;
+    for j: 1..<nd {
+      we_slot_copy(net, work, 0, j, P);
+      rj := work[k.logits + j * V..<k.logits + (j + 1) * V];
+      for i: 0..<V { rj[i] = row0[i]; }
+    }
+    // the steps
+    toks: [WE_SLOTS] int; poss: [WE_SLOTS] int; slots: [WE_SLOTS] int; rowof: [WE_SLOTS] int;
+    for j: 0..<nd { rowof[j] = j; }
+    cands: [WE_SLOTS * WE_SLOTS] WeCand; ids: [WE_SLOTS] int;
+    for i: 0..<WE_STEPS_MAX {
+      if beam {
+        nc := 0;
+        for j: 0..<nd {
+          if decs[j].completed || decs[j].failed || (i == 0 && j > 0) { continue; }
+          we_rules(net, work[k.logits + rowof[j] * V..<k.logits + (rowof[j] + 1) * V], decs[j], t, bias, lp);
+          m := we_topk(lp, nd, ids[..]);
+          for c: 0..<m {
+            cand := WeCand.{parent = j, token = ids[c], lp = cast(f64) lp[ids[c]], sum = decs[j].sum_all + cast(f64) lp[ids[c]]};
+            // keep cands sorted: higher sum first, then lower parent, then rank
+            q := nc; nc += 1;
+            while q > 0 && cands[q - 1].sum < cand.sum { cands[q] = cands[q - 1]; q -= 1; }
+            cands[q] = cand;
+          }
+        }
+        if nc > 0 {
+          // reassign: the first child of a parent keeps its slot; others get a free one
+          claimed: [WE_SLOTS] bool; c := 0;
+          for j: 0..<nd {
+            if decs[j].completed || decs[j].failed { continue; }
+            if c >= nc { c = 0; }
+            cd := cands[c]; c += 1;
+            nds[j] = decs[cd.parent];
+            ps := decs[cd.parent].slot;
+            if !claimed[ps] { claimed[ps] = true; nds[j].slot = ps; } else { nds[j].slot = -1; nds[j].rng.counter = cast(u64) ps; }
+            we_append(nds[j..<j + 1], cd.token, cd.lp);
+          }
+          for j: 0..<nd {
+            if decs[j].completed || decs[j].failed || nds[j].slot >= 0 { continue; }
+            from := cast(int) nds[j].rng.counter; to := -1;
+            for s: 0..<WE_SLOTS { if !claimed[s] { to = s; break; } }
+            claimed[to] = true; we_slot_copy(net, work, from, to, P + i); nds[j].slot = to; nds[j].rng = decs[j].rng;
+          }
+          for j: 0..<nd { if !(decs[j].completed || decs[j].failed) { decs[j] = nds[j]; } }
+        }
+      } else {
+        for j: 0..<nd {
+          if decs[j].completed || decs[j].failed { continue; }
+          we_rules(net, work[k.logits + rowof[j] * V..<k.logits + (rowof[j] + 1) * V], decs[j], t, bias, lp);
+          tok := ifx t == 0 then we_argmax(lp) else we_sample(lp, decs[j..<j + 1]);
+          we_append(decs[j..<j + 1], tok, cast(f64) lp[tok]);
+        }
+      }
+      for j: 0..<nd { if !(decs[j].completed || decs[j].failed) { we_update(net, decs[j..<j + 1], i, seek, seek_end); } }
+      rows := 0;
+      for j: 0..<nd {
+        if decs[j].completed || decs[j].failed { continue; }
+        toks[rows] = decs[j].toks[decs[j].n - 1]; poss[rows] = P + i; slots[rows] = decs[j].slot; rowof[j] = rows; rows += 1;
+      }
+      if rows == 0 || P + i + 1 >= net.params.n_text_ctx { break; }
+      we_forward(net, W, work, toks[0..<rows], rows, poss[0..<rows], slots[0..<rows], false);
+    }
+    best_score := -1.0e300;
+    for j: 0..<nd {
+      if decs[j].failed { continue; }
+      we_score(decs[j..<j + 1]);
+      if decs[j].result_len > 32 && decs[j].entropy < o.entropy_thold { decs[j].failed = true; continue; }
+      if best_score < decs[j].score { best_score = decs[j].score; win.best = j; }
+    }
+    if ti == temps - 1 { break; }
+    b := decs[win.best];
+    if !(b.failed || (b.avg < o.logprob_thold && win.no_speech < o.no_speech_thold)) { break; }
+    win.fallbacks += 1;
+  }
+  return win;
+}
+
+// ---- a whole file ------------------------------------------------------------------
+
+// 16 kHz mono f32 audio to segments, window by window as whisper.cpp seeks:
+// a window starts at seek (in 10 ms frames), the best decoder's last
+// timestamp says how far it got, and the next window starts there. Segment
+// texts go into text and segs point into it. bank is sf_mel_bank(wf_spec(mels)).
+// cache, when it holds every frame (wf_frames(audio.count) * mels), keeps
+// each frame's log energies so a frame is transformed once. vocab is
+// we_vocab's offsets.
+we_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, vocab: [] int, bank: [] f64, audio: [] f32, cache: [] f32,
+                  o: WeOptions, segs: [] WsSegment, text: [] u8) -> WeRun {
+  run: WeRun; run.status = WeStatus.audio; run.language = o.language;
+  if net.status != WeStatus.ok || work.count < net.work.total || W.count < net.weights || vocab.count < m.tokens { run.status = WeStatus.capacity; return run; }
+  f := wf_front(audio, bank, net.params.n_mels);
+  if f.status != WfStatus.ok { return run; }
+  cached := cache.count >= f.frames * f.mels;
+  top := 0.0;
+  if cached { w := f.window; r := cxwh_mel(audio, w[..], bank, f.mels, cache, f.frames); top = wf_cache_max(f, cache); }
+  else { top = wf_max(audio, f, bank); }
+  seek := 0; seek_end := audio.count / WF_HOP; tn := 0; ns := 0;
+  sp := net.sp; k := net.work;
+  mel := work[k.mel..<k.mel + net.params.n_mels * WF_WINDOW_FRAMES];
+  // the language
+  language := o.language;
+  if !sp.multilingual { language = -1; }
+  else if language == -2 {
+    st := ifx cached then wf_cache_window(f, cache, top, 0, mel) else wf_window(audio, f, bank, top, 0, mel);
+    if st != WfStatus.ok { return run; }
+    we_encode(net, W, work);
+    sot := [1] int.[sp.sot]; zero := [1] int.[0];
+    we_forward(net, W, work, sot[..], 1, zero[..], zero[..], true);
+    best := sp.sot + 1;
+    for i: 0..<sp.languages { if work[k.logits + sp.sot + 1 + i] > work[k.logits + best] { best = sp.sot + 1 + i; } }
+    language = best;
+  }
+  run.language = language;
+  init: [4] int; ni := wt_prompt(sp, language, true, init[..]);
+  // words and the initial prompt
+  bias_: [1] WeBias; carry: [64] int; nc := 0;
+  if o.words.count > 0 { nc = we_bias(b, vocab, sp.eot, o.words, o, bias_[..], carry[..]); }
+  past: [WE_PAST_MAX] int; np := 0;
+  if o.prompt.count > 0 { got := we_tokenize(b, vocab, sp.eot, o.prompt, past[..]); np = ifx got < 0 then 0 else got; }
+  decs_: [WE_SLOTS] WeDec; nds_: [WE_SLOTS] WeDec; prompt: [WE_ROWS_MAX] int;
+  for j: 0..<WE_SLOTS { decs_[j].rng = CrSeed.{seed = cast(u64) j, counter = 0}; }
+  while seek + 10 < seek_end {
+    st := ifx cached then wf_cache_window(f, cache, top, seek, mel) else wf_window(audio, f, bank, top, seek, mel);
+    if st != WfStatus.ok { return run; }
+    we_encode(net, W, work);
+    run.windows += 1;
+    // a short tail is decoded without the previous text, which makes it repeat
+    if seek > 0 && seek + 500 >= seek_end { np = 0; }
+    win := we_window(net, W, work, o, bias_[0], init[0..<ni], carry[0..<nc], past[..], np, seek, seek_end, decs_[..], nds_[..], prompt[..]);
+    run.fallbacks += win.fallbacks;
+    d := decs_[win.best];
+    no_speech := win.no_speech > o.no_speech_thold && d.avg < o.logprob_thold;
+    // the next window's previous text: what this prompt held, then this window's tokens
+    newp: [WE_PAST_MAX] int; nn := 0;
+    if win.prompt_n > win.init_n && prompt[0] == sp.prev {
+      for i: 1 + win.carried..<win.prompt_n - win.init_n { newp[nn] = prompt[i]; nn += 1; }
+    }
+    if !no_speech { for i: 0..<d.result_len { if nn < WE_PAST_MAX { newp[nn] = d.toks[i]; nn += 1; } } }
+    for i: 0..<nn { past[i] = newp[i]; } np = nn;
+    run.tokens += d.result_len;
+    if !no_speech && d.result_len > 0 {
+      // segments as whisper.cpp cuts them
+      t0 := seek; if d.toks[0] >= sp.beg { t0 = seek + 2 * (d.toks[0] - sp.beg); }
+      text_at := tn; i := 0;
+      while i < d.result_len {
+        t := d.toks[i];
+        if t < sp.eot {
+          piece := we_piece(b, vocab, t);
+          if tn + piece.count > text.count { run.status = WeStatus.capacity; return run; }
+          for c: piece { text[tn] = c; tn += 1; }
+        }
+        if t > sp.beg {
+          t1 := seek + 2 * (t - sp.beg);
+          if tn > text_at {
+            if ns < segs.count { segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * t1, text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1; }
+          }
+          text_at = tn; t0 = t1;
+          while i + 1 < d.result_len && d.toks[i + 1] > sp.beg { i += 1; t0 = seek + 2 * (d.toks[i] - sp.beg); }
+        }
+        i += 1;
+      }
+      if tn > text_at && ns < segs.count {
+        segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * (seek + d.seek_delta), text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1;
+      }
+    }
+    seek += d.seek_delta;
+  }
+  run.status = WeStatus.ok; run.segments = ns; run.text = tn;
+  return run;
+}
+
+// ---- the host's entry points ----------------------------------------------------
+
+psionic_whisper_vocab :: (b: [] u8, m: WgModel, offs: [] int) -> int #export_c { return we_vocab(b, m, offs); }
+psionic_whisper_options :: () -> WeOptions #export_c { o: WeOptions; return o; }
+psionic_whisper_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, vocab: [] int, bank: [] f64, audio: [] f32, cache: [] f32,
+                               o: WeOptions, segs: [] WsSegment, text: [] u8) -> WeRun #export_c {
+  return we_transcribe(net, W, work, b, m, vocab, bank, audio, cache, o, segs, text);
+}
+// The code of a language token ("" for none).
+psionic_whisper_language_code :: (net: WeNet, token: int) -> string #export_c { return wt_language_code(net.sp, token); }
+
+#test "the tokenizer's pieces" {
+  s := "Hello, world's  big 2024 test!? ok";
+  // pieces: "Hello" "," " world" "'s" " " " big" " 2024" " test" "!?" " ok"
+  at := 0; lens: [16] int; n := 0;
+  while at < s.count { l := we_split(s, at); lens[n] = l; n += 1; at += l; }
+  #assert n == 10 && lens[0] == 5 && lens[1] == 1 && lens[2] == 6 && lens[3] == 2 && lens[4] == 1 && lens[5] == 4 && lens[6] == 5 && lens[7] == 5 && lens[8] == 2 && lens[9] == 3;
+  #assert we_split("\tx", 0) == 1 && we_split("  ", 0) == 2 && we_split("'re", 0) == 3 && we_split("'x", 0) == 1;
+}
+#test "top k and scores" {
+  lp := [6] f32.[-3, -1, WE_NEG, -0.5, -2, -1];
+  ids: [3] int;
+  #assert we_topk(lp[..], 3, ids[..]) == 3 && ids[0] == 3 && ids[1] == 1 && ids[2] == 5;
+  #assert we_argmax(lp[..]) == 3;
+  d: [1] WeDec;
+  for i: 0..<40 { d[0].toks[i] = i % 2; d[0].plog[i] = -0.5; }
+  d[0].n = 40; d[0].result_len = 40;
+  we_score(d[..]);
+  #assert d[0].avg == -0.5 && abs(d[0].entropy - log(2.0)) < 1.0e-12;
+  d[0].result_len = 0; we_score(d[..]); #assert d[0].avg < -1.0e299;
+}

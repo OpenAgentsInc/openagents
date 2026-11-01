@@ -5,7 +5,8 @@
  *   psionic/platform/whisper-build.sh OUT
  *   OUT/psionic-whisper info MODEL
  *   OUT/psionic-whisper filters MODEL
- *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json] [--language CODE] [--threads N] [--name NAME]
+ *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto]
+ *       [--threads N] [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C]
  * WAV is 16 kHz mono 16-bit PCM (`ffmpeg -i IN -ar 16000 -ac 1 OUT.wav`).
  * Design: psionic/docs/transcribe.md. */
 #include "whisper.h"
@@ -87,7 +88,8 @@ static coax_v_u8 map(const char *path) {
 }
 static int usage(void) {
     fputs("usage: psionic-whisper info|filters MODEL\n"
-          "       psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json] [--language CODE] [--threads N] [--name NAME]\n", stderr);
+          "       psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto] [--threads N]\n"
+          "                       [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C]\n", stderr);
     return 64;
 }
 
@@ -116,7 +118,8 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(cmd, "transcribe") != 0 || argc < 4) return usage();
-    int format = 0; const char *lang = "en", *name_arg = 0; long ctx = p.n_audio_ctx;
+    int format = 0; const char *lang = "en", *name_arg = 0, *prompt = "", *words = ""; long ctx = p.n_audio_ctx;
+    coax_t_WeOptions opt = psionic_whisper_options();
     for (int i = 4; i < argc; i++) {
         if (strcmp(argv[i], "--text") == 0) format = 0;
         else if (strcmp(argv[i], "--srt") == 0) format = 1;
@@ -126,6 +129,11 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--language") == 0 && i + 1 < argc) lang = argv[++i];
         else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) name_arg = argv[++i];
         else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc) g_threads = (int)strtol(argv[++i], 0, 10);
+        else if (strcmp(argv[i], "--beam") == 0 && i + 1 < argc) opt.beam = strtol(argv[++i], 0, 10);
+        else if (strcmp(argv[i], "--best-of") == 0 && i + 1 < argc) opt.best_of = strtol(argv[++i], 0, 10);
+        else if (strcmp(argv[i], "--no-fallback") == 0) opt.fallback = 0;
+        else if (strcmp(argv[i], "--prompt") == 0 && i + 1 < argc) prompt = argv[++i];
+        else if (strcmp(argv[i], "--words") == 0 && i + 1 < argc) words = argv[++i];
         else return usage();
     }
     static int64_t offsets[TENSORS];
@@ -147,22 +155,31 @@ int main(int argc, char **argv) {
     int64_t cache_n = psionic_whisper_cache_size(wh.samples, p.n_mels);
     float *cache = malloc((size_t)cache_n * sizeof *cache);
     if (!cache) return 1;
-    int64_t language = psionic_whisper_language(*net, (coax_string){lang, (int64_t)strlen(lang)});
+    int64_t *vocab = malloc((size_t)m.tokens * sizeof *vocab);
+    if (!vocab || psionic_whisper_vocab(file, m, (coax_v_s64){vocab, m.tokens}) != m.tokens) return 1;
+    opt.language = strcmp(lang, "auto") == 0 ? -2 : psionic_whisper_language(*net, (coax_string){lang, (int64_t)strlen(lang)});
+    opt.prompt = (coax_string){prompt, (int64_t)strlen(prompt)};
+    opt.words = (coax_string){words, (int64_t)strlen(words)};
     static coax_t_WsSegment segs[SEGMENTS];
     size_t text_cap = 1 << 22;
     uint8_t *text = malloc(text_cap), *out = malloc(text_cap * 2);
     if (!text || !out) return 1;
     coax_t_WeRun run = psionic_whisper_transcribe(*net, (coax_v_f32){W, net->weights}, (coax_v_f32){work, net->work.total}, file, m,
-                                                  (coax_v_f64){bank, p.n_mels * 201}, (coax_v_f32){audio, wh.samples}, (coax_v_f32){cache, cache_n}, language,
+                                                  (coax_v_s64){vocab, m.tokens}, (coax_v_f64){bank, p.n_mels * 201}, (coax_v_f32){audio, wh.samples},
+                                                  (coax_v_f32){cache, cache_n}, opt,
                                                   (coax_v_t_WsSegment){segs, SEGMENTS}, (coax_v_u8){text, (int64_t)text_cap});
     double t_end = now_ms();
     if (run.status != COAX_WeStatus_ok) { fprintf(stderr, "psionic-whisper: transcribe (status %d)\n", (int)run.status); return 1; }
     const char *name = strrchr(argv[2], '/'); name = name_arg ? name_arg : name ? name + 1 : argv[2];
+    coax_string code = psionic_whisper_language_code(*net, run.language);
+    if (code.count > 0) lang = code.data; else if (strcmp(lang, "auto") == 0) lang = "en";
+    int64_t lang_n = code.count > 0 ? code.count : (int64_t)strlen(lang);
     int64_t n = psionic_whisper_format((coax_v_t_WsSegment){segs, run.segments}, format, (coax_string){name, (int64_t)strlen(name)},
-                                       (coax_string){lang, (int64_t)strlen(lang)}, (coax_v_u8){out, (int64_t)text_cap * 2});
+                                       (coax_string){lang, lang_n}, (coax_v_u8){out, (int64_t)text_cap * 2});
     if (n < 0) { fputs("psionic-whisper: output too long\n", stderr); return 1; }
     fwrite(out, 1, (size_t)n, stdout);
-    fprintf(stderr, "psionic-whisper: %.0f ms load, %.0f ms transcribe (%d threads, %lld windows, %lld tokens, %.1f s audio)\n",
-            t_load - t0, t_end - t_load, g_threads, (long long)run.windows, (long long)run.tokens, wh.samples / 16000.0);
+    fprintf(stderr, "psionic-whisper: %.0f ms load, %.0f ms transcribe (%d threads, %lld windows, %lld tokens, %lld fallbacks, %.*s, %.1f s audio)\n",
+            t_load - t0, t_end - t_load, g_threads, (long long)run.windows, (long long)run.tokens, (long long)run.fallbacks, (int)lang_n, lang,
+            wh.samples / 16000.0);
     return 0;
 }

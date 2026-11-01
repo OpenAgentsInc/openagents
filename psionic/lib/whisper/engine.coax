@@ -12,9 +12,9 @@
 #load "tokens.coax";
 #load "front.coax";
 #load "segments.coax";
+#load "../counter-rng.coax";
 
 WE_LAYERS_MAX :: 32;
-WE_TOKENS_MAX :: 224;     // tokens decoded per window: n_text_ctx / 2
 WE_EPS :: 0.00001;
 WeStatus :: enum u8 {ok;model;missing;shape;kind;number;capacity;audio;}
 
@@ -28,7 +28,7 @@ WeBlock :: struct {
 // Offsets into work for one run.
 WeWork :: struct {
   mel: int; c1: int; x: int; h: int; q: int; k: int; v: int; a: int; m: int; s: int;
-  ck: int; cv: int; sk: int; sv: int; dx: int; dh: int; dq: int; da: int; dm: int; logits: int; total: int;
+  ck: int; cv: int; sk: int; sv: int; dx: int; dh: int; dq: int; da: int; dk: int; dv: int; dm: int; logits: int; lp: int; total: int;
 }
 WeNet :: struct {
   status: WeStatus; params: WgParams; sp: WtSpecials; space: int; ctx: int;
@@ -37,7 +37,6 @@ WeNet :: struct {
   enc: [WE_LAYERS_MAX] WeBlock; dec: [WE_LAYERS_MAX] WeBlock;
   weights: int; work: WeWork;
 }
-WeRun :: struct { status: WeStatus; segments: int; text: int; windows: int; tokens: int; }
 
 // ---- weights ----------------------------------------------------------------
 
@@ -149,9 +148,11 @@ we_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] int, ctx: int
   k.m = at; at += T * 4 * d;
   k.s = at; at += ifx T > p.n_text_ctx then T else p.n_text_ctx;
   k.ck = at; at += L * T * d; k.cv = at; at += L * T * d;
-  k.sk = at; at += L * p.n_text_ctx * d; k.sv = at; at += L * p.n_text_ctx * d;
-  k.dx = at; at += d; k.dh = at; at += d; k.dq = at; at += d; k.da = at; at += d; k.dm = at; at += 4 * d;
-  k.logits = at; at += p.n_vocab;
+  k.sk = at; at += L * WE_SLOTS * p.n_text_ctx * d; k.sv = at; at += L * WE_SLOTS * p.n_text_ctx * d;
+  R := WE_ROWS_MAX;
+  k.dx = at; at += R * d; k.dh = at; at += R * d; k.dq = at; at += R * d; k.da = at; at += R * d;
+  k.dk = at; at += R * d; k.dv = at; at += R * d; k.dm = at; at += R * 4 * d;
+  k.logits = at; at += WE_SLOTS * p.n_vocab; k.lp = at; at += p.n_vocab;
   k.total = at;
   net.work = k;
   net.status = WeStatus.ok;
@@ -344,156 +345,82 @@ we_encode :: (net: WeNet, W: [] f32, work: [] f32) {
 
 // ---- decoder ------------------------------------------------------------------
 
-// One token at position pos; the logits at work.logits. Self-attention keys
-// and values for positions before pos must already be in the cache.
-we_step :: (net: WeNet, W: [] f32, work: [] f32, token: int, pos: int) {
-  p := net.params; d := p.n_text_state; k := net.work; T := net.ctx; C := p.n_text_ctx;
-  x := work[k.dx..<k.dx + d]; h := work[k.dh..<k.dh + d]; q := work[k.dq..<k.dq + d]; a := work[k.da..<k.da + d];
-  mm := work[k.dm..<k.dm + 4 * d];
-  emb := W[net.d_emb..<net.d_emb + p.n_vocab * d]; dpos := W[net.d_pos..<net.d_pos + C * d];
-  for i: 0..<d { x[i] = emb[token * d + i] + dpos[pos * d + i]; }
+// Decoders running side by side (beams, or samples at a temperature), each
+// with its own self-attention cache slot; rows a decoder call handles at once
+// (a whole prompt: the previous-text prompt is at most n_text_ctx / 2 tokens).
+WE_SLOTS :: 5;
+WE_ROWS_MAX :: 232;
+// Layer l's self-attention keys (values: we_slot_v) in slot s: n_text_ctx rows of d.
+we_slot_k :: (net: WeNet, work: [] f32, l: int, s: int) -> [] f32 {
+  C := net.params.n_text_ctx; d := net.params.n_text_state; at := net.work.sk + (l * WE_SLOTS + s) * C * d;
+  return work[at..<at + C * d];
+}
+we_slot_v :: (net: WeNet, work: [] f32, l: int, s: int) -> [] f32 {
+  C := net.params.n_text_ctx; d := net.params.n_text_state; at := net.work.sv + (l * WE_SLOTS + s) * C * d;
+  return work[at..<at + C * d];
+}
+// Copies positions 0..n of slot from into slot to, in every layer.
+we_slot_copy :: (net: WeNet, work: [] f32, from: int, to: int, n: int) {
+  if from == to { return; }
+  d := net.params.n_text_state;
+  for l: 0..<net.params.n_text_layer {
+    ka := we_slot_k(net, work, l, from); kb := we_slot_k(net, work, l, to);
+    va := we_slot_v(net, work, l, from); vb := we_slot_v(net, work, l, to);
+    for i: 0..<n * d { kb[i] = ka[i]; vb[i] = va[i]; }
+  }
+}
+
+// The decoder over rows tokens. prefill: the rows are one sequence at
+// positions pos[0], pos[0] + 1, ... in slot slots[0], and only the last row's
+// logits are made (at logits row 0). Otherwise row r is one decoder's next
+// token at position pos[r] in its slot slots[r], and every row's logits are
+// made (logits row r). Self-attention keys and values of the rows go into
+// the slots first, so a row sees itself and everything before it.
+we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos: [] int, slots: [] int, prefill: bool) {
+  p := net.params; d := p.n_text_state; k := net.work; T := net.ctx; V := p.n_vocab;
+  x := work[k.dx..<k.dx + rows * d]; h := work[k.dh..<k.dh + rows * d]; q := work[k.dq..<k.dq + rows * d];
+  a := work[k.da..<k.da + rows * d]; kn := work[k.dk..<k.dk + rows * d]; vn := work[k.dv..<k.dv + rows * d];
+  mm := work[k.dm..<k.dm + rows * 4 * d];
+  emb := W[net.d_emb..<net.d_emb + V * d]; dpos := W[net.d_pos..<net.d_pos + p.n_text_ctx * d];
+  for r: 0..<rows {
+    at := ifx prefill then pos[0] + r else pos[r];
+    for i: 0..<d { x[r * d + i] = emb[toks[r] * d + i] + dpos[at * d + i]; }
+  }
   none: [1] f32;
   for l: 0..<p.n_text_layer {
     bl := net.dec[l];
-    sk := work[k.sk + l * C * d..<k.sk + (l + 1) * C * d]; sv := work[k.sv + l * C * d..<k.sv + (l + 1) * C * d];
-    we_norm(x, 1, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
-    we_mm(h, 1, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
-    we_mm(h, 1, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, sk[pos * d..<(pos + 1) * d]);
-    we_mm(h, 1, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, sv[pos * d..<(pos + 1) * d]);
-    we_att(q, 1, sk, sv, pos + 1, d, p.n_text_head, pos, true, a);
-    we_mm(a, 1, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
-    for i: 0..<d { x[i] += h[i]; }
-    we_norm(x, 1, d, W[bl.lnx_w..<bl.lnx_w + d], W[bl.lnx_b..<bl.lnx_b + d], h);
-    we_mm(h, 1, d, W[bl.xq_w..<bl.xq_w + d * d], W[bl.xq_b..<bl.xq_b + d], d, q);
-    we_att(q, 1, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d], work[k.cv + l * T * d..<k.cv + (l + 1) * T * d], T, d, p.n_text_head, 0, false, a);
-    we_mm(a, 1, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, h);
-    for i: 0..<d { x[i] += h[i]; }
-    we_norm(x, 1, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
-    we_mm(h, 1, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
+    we_norm(x, rows, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
+    we_mm(h, rows, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
+    we_mm(h, rows, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, kn);
+    we_mm(h, rows, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, vn);
+    for r: 0..<rows {
+      s := ifx prefill then slots[0] else slots[r]; at := ifx prefill then pos[0] + r else pos[r];
+      sk := we_slot_k(net, work, l, s); sv := we_slot_v(net, work, l, s);
+      for i: 0..<d { sk[at * d + i] = kn[r * d + i]; sv[at * d + i] = vn[r * d + i]; }
+    }
+    if prefill {
+      we_att(q, rows, we_slot_k(net, work, l, slots[0]), we_slot_v(net, work, l, slots[0]), pos[0] + rows, d, p.n_text_head, pos[0], true, a);
+    } else {
+      for r: 0..<rows {
+        we_att(q[r * d..<(r + 1) * d], 1, we_slot_k(net, work, l, slots[r]), we_slot_v(net, work, l, slots[r]), pos[r] + 1, d, p.n_text_head, pos[r], true, a[r * d..<(r + 1) * d]);
+      }
+    }
+    we_mm(a, rows, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
+    for i: 0..<rows * d { x[i] += h[i]; }
+    we_norm(x, rows, d, W[bl.lnx_w..<bl.lnx_w + d], W[bl.lnx_b..<bl.lnx_b + d], h);
+    we_mm(h, rows, d, W[bl.xq_w..<bl.xq_w + d * d], W[bl.xq_b..<bl.xq_b + d], d, q);
+    we_att(q, rows, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d], work[k.cv + l * T * d..<k.cv + (l + 1) * T * d], T, d, p.n_text_head, 0, false, a);
+    we_mm(a, rows, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, h);
+    for i: 0..<rows * d { x[i] += h[i]; }
+    we_norm(x, rows, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
+    we_mm(h, rows, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
     we_gelu_all(mm);
-    we_mm(mm, 1, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
-    for i: 0..<d { x[i] += h[i]; }
+    we_mm(mm, rows, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
+    for i: 0..<rows * d { x[i] += h[i]; }
   }
-  we_norm(x, 1, d, W[net.d_ln_w..<net.d_ln_w + d], W[net.d_ln_b..<net.d_ln_b + d], h);
-  we_mm(h, 1, d, emb, none[0..<0], p.n_vocab, work[k.logits..<k.logits + p.n_vocab]);
-}
-
-// ---- search -------------------------------------------------------------------
-
-WE_NEG :: -1.0e30;
-// whisper.cpp's whisper_process_logits for greedy decoding with timestamps,
-// then the argmax. toks are this window's sampled tokens so far; last_ts the
-// last sampled timestamp's index (-1: none).
-we_pick :: (net: WeNet, logits: [] f32, toks: [] int, n: int, last_ts: int) -> int {
-  sp := net.sp; V := net.params.n_vocab;
-  logits[sp.no_timestamps] = WE_NEG; logits[sp.sot] = WE_NEG; logits[sp.nosp] = WE_NEG; logits[sp.solm] = WE_NEG;
-  logits[sp.translate] = WE_NEG; logits[sp.transcribe] = WE_NEG; logits[sp.prev] = WE_NEG;
-  if sp.multilingual { for i: 0..<sp.languages { logits[sp.sot + 1 + i] = WE_NEG; } }
-  if n == 0 { logits[sp.eot] = WE_NEG; if net.space >= 0 { logits[net.space] = WE_NEG; } }
-  // timestamps come in pairs, except directly before EOT
-  last := n > 0 && toks[n - 1] >= sp.beg;
-  penult := n < 2 || toks[n - 2] >= sp.beg;
-  if last {
-    if penult { for i: sp.beg..<V { logits[i] = WE_NEG; } }
-    else { for i: 0..<sp.eot { logits[i] = WE_NEG; } }
-  }
-  // the first timestamp is at most 1.0 s
-  if n == 0 { for i: sp.beg + 50 + 1..<V { logits[i] = WE_NEG; } }
-  // timestamps never go back
-  if last_ts >= 0 { for i: sp.beg..<sp.beg + last_ts { logits[i] = WE_NEG; } }
-  // log-softmax; when the timestamps together are likelier than any text token, only a timestamp may follow
-  best := -1.0e300; for v: logits { if cast(f64) v > best { best = cast(f64) v; } }
-  z := 0.0; for v: logits { z += exp(cast(f64) v - best); }
-  lz := best + log(z);
-  ts := 0.0; for i: sp.beg..<V { ts += exp(cast(f64) logits[i] - best); }
-  ts_lp := ifx ts > 0 then best + log(ts) - lz else -1.0e300;
-  text_lp := -1.0e300; for i: 0..<sp.beg { e := cast(f64) logits[i] - lz; if e > text_lp { text_lp = e; } }
-  if ts_lp > text_lp { for i: 0..<sp.beg { logits[i] = WE_NEG; } }
-  arg := 0; for i: 1..<V { if logits[i] > logits[arg] { arg = i; } }
-  return arg;
-}
-
-// ---- a whole file ---------------------------------------------------------------
-
-// 16 kHz mono f32 audio to segments, window by window as whisper.cpp seeks:
-// a window starts at seek (in 10 ms frames), the decoded timestamps say how
-// far it got, and the next window starts there. Segment texts are written
-// into text and segs point into it. bank is sf_mel_bank(wf_spec(mels)).
-// cache, when it holds every frame (wf_frames(audio.count) * mels), keeps
-// each frame's log energies so a frame is transformed once; the host may
-// split that work across threads.
-we_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, bank: [] f64, audio: [] f32, cache: [] f32,
-                  language: int, segs: [] WsSegment, text: [] u8) -> WeRun {
-  run: WeRun; run.status = WeStatus.audio;
-  if net.status != WeStatus.ok || work.count < net.work.total || W.count < net.weights { run.status = WeStatus.capacity; return run; }
-  f := wf_front(audio, bank, net.params.n_mels);
-  if f.status != WfStatus.ok { return run; }
-  cached := cache.count >= f.frames * f.mels;
-  top := 0.0;
-  if cached { w := f.window; r := cxwh_mel(audio, w[..], bank, f.mels, cache, f.frames); top = wf_cache_max(f, cache); }
-  else { top = wf_max(audio, f, bank); }
-  seek := 0; seek_end := audio.count / WF_HOP; tn := 0; ns := 0;
-  sp := net.sp; k := net.work;
-  prompt: [4] int; pn := wt_prompt(sp, language, true, prompt[..]);
-  toks: [WE_TOKENS_MAX] int;
-  while seek + 100 < seek_end {
-    mel := work[k.mel..<k.mel + net.params.n_mels * WF_WINDOW_FRAMES];
-    st := ifx cached then wf_cache_window(f, cache, top, seek, mel) else wf_window(audio, f, bank, top, seek, mel);
-    if st != WfStatus.ok { return run; }
-    we_encode(net, W, work);
-    run.windows += 1;
-    pos := 0;
-    for i: 0..<pn { we_step(net, W, work, prompt[i], pos); pos += 1; }
-    // whisper.cpp's greedy loop: seek_delta (frames) follows the last
-    // timestamp; result_len ends at it, so text after the last timestamp is
-    // decoded again by the next window.
-    n := 0; last_ts := -1; seek_delta := WF_WINDOW_FRAMES; result_len := 0; has_ts := false;
-    while true {
-      if n >= WE_TOKENS_MAX || pos >= net.params.n_text_ctx { if result_len == 0 { result_len = n; } break; }
-      t := we_pick(net, work[k.logits..<k.logits + net.params.n_vocab], toks[..], n, last_ts);
-      if t > sp.beg {
-        seek_delta = 2 * (t - sp.beg); result_len = n + 1; has_ts = true;
-      }
-      if t >= sp.beg { last_ts = t - sp.beg; }
-      if t == sp.eot || (has_ts && seek + seek_delta + 10 >= seek_end) {
-        if t != sp.eot { toks[n] = t; n += 1; }
-        if result_len == 0 { result_len = n; }
-        break;
-      }
-      toks[n] = t; n += 1;
-      we_step(net, W, work, t, pos); pos += 1;
-    }
-    run.tokens += result_len;
-    // segments as whisper.cpp cuts them: a timestamp after text ends a
-    // segment there, and the next segment starts at that time
-    t0 := seek; if result_len > 0 && toks[0] >= sp.beg { t0 = seek + 2 * (toks[0] - sp.beg); }
-    text_at := tn; i := 0;
-    while i < result_len {
-      t := toks[i];
-      if t < sp.eot {
-        piece := wg_token(b, m, t);
-        if tn + piece.count > text.count { run.status = WeStatus.capacity; return run; }
-        for c: piece { text[tn] = c; tn += 1; }
-      }
-      if t > sp.beg {
-        t1 := seek + 2 * (t - sp.beg);
-        if tn > text_at {
-          if ns < segs.count { segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * t1, text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1; }
-          text_at = tn;
-          while i < result_len && toks[i] > sp.beg { i += 1; }
-          i -= 1;
-          t0 = t1;
-        }
-      }
-      i += 1;
-    }
-    if tn > text_at && ns < segs.count {
-      segs[ns] = WsSegment.{start_ms = 10 * t0, end_ms = 10 * (seek + seek_delta), text = wsg_trim(cast(string) text[text_at..<tn])}; ns += 1;
-    }
-    seek += seek_delta;
-  }
-  run.status = WeStatus.ok; run.segments = ns; run.text = tn;
-  return run;
+  r0 := ifx prefill then rows - 1 else 0; n := ifx prefill then 1 else rows;
+  we_norm(x[r0 * d..<(r0 + n) * d], n, d, W[net.d_ln_w..<net.d_ln_w + d], W[net.d_ln_b..<net.d_ln_b + d], h[0..<n * d]);
+  we_mm(h[0..<n * d], n, d, emb, none[0..<0], V, work[k.logits..<k.logits + n * V]);
 }
 
 // ---- the host's entry points ----------------------------------------------------
@@ -514,10 +441,6 @@ psionic_whisper_filter_diff :: (b: [] u8, m: WgModel, bank: [] f64) -> f64 #expo
     if e > worst { worst = e; }
   } }
   return worst;
-}
-psionic_whisper_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, bank: [] f64, audio: [] f32, cache: [] f32,
-                               language: int, segs: [] WsSegment, text: [] u8) -> WeRun #export_c {
-  return we_transcribe(net, W, work, b, m, bank, audio, cache, language, segs, text);
 }
 // segs written as text (0), SRT (1), WebVTT (2) or JSON (3); the byte count, or -1 when out is too small.
 psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, language: string, out: [] u8) -> int #export_c {
