@@ -1,7 +1,6 @@
 // `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screen] [--input FILE]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
 // step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
-// wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (no clipboard data
-// moves yet) and xdg_wm_base, and it places every
+// wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (the clipboard) and xdg_wm_base, and it places every
 // toplevel with os/wm.coax, the CoderOS window policy, on one W x H screen (1280 x 720 when not given).
 // The CoderOS key bindings run first (Super+Return opens Coder, Super+arrows move the focus, and the
 // rest of Omarchy's tiling keys); a binding that starts a program runs LAUNCH-DIR/NAME with NAME one
@@ -77,7 +76,9 @@ CxClient :: struct {
   objs: [CX_OBJS] CxObj;
   inb: [16384] u8; nin: int;
   fds: [32] int; nfd: int;
-  kbds: [8] int; nk: int; ptrs: [8] int; npt: int; outs: [8] int; no: int;
+  kbds: [8] int; nk: int; ddevs: [8] int; nd: int;
+  offers: [64] int; next_offer: int;   // server-made wl_data_offer k (id CX_SERVER_ID + k): its source, or -1
+  ptrs: [8] int; npt: int; outs: [8] int; no: int;
 }
 CxPool :: struct { used: bool; client: int; fd: int; map: int; size: int; dead: bool; refs: int; }
 CxBuf :: struct { used: bool; client: int; id: int; pool: int; offset: int; w: int; h: int; stride: int; fmt: int; }
@@ -91,6 +92,9 @@ CxSurf :: struct {
   cw: int; ch: int; cstate: int;      // the last size and states sent
   title: [128] u8; nt: int; app: [128] u8; na: int;
 }
+// A clipboard source: the client offering it and the types it offers.
+CxSource :: struct { used: bool; client: int; id: int; mimes: [8] [64] u8; ml: [8] int; nm: int; }
+CX_SOURCES :: 64; CX_SERVER_ID :: 4278190080;   // 0xff000000: ids the server makes start here
 CxPos :: struct { used: bool; w: int; h: int; ax: int; ay: int; aw: int; ah: int; anchor: int; gravity: int; dx: int; dy: int; }
 CxDue :: struct { client: int; id: int; }
 // The composited screen, RGB, with room for a PPM header in front.
@@ -110,6 +114,7 @@ Cx :: struct {
   line: [8192] u8; nline: int;
   held: [256] bool; swallowed: [256] bool;   // keys down, and presses a binding took
   sock: [256] u8; nsock: int; launch: [512] u8; nlaunch: int;
+  sources: [CX_SOURCES] CxSource; sel: int;   // the selection: a source, or -1
   quit: bool; dirty: bool; screen: bool;
 }
 
@@ -194,7 +199,7 @@ cx_sync :: (x: [] Cx) {
     if !x[0].surfs[s].configured || x[0].surfs[s].cw != w || x[0].surfs[s].ch != h || x[0].surfs[s].cstate != state { cx_send_configure(x, s, w, h, state); }
   }
   k := ifx focus != 0 then x[0].win_surf[focus] else -1;
-  if k != x[0].kfocus { cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); }
+  if k != x[0].kfocus { cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); } }
 }
 // Where window id sits on the screen, in pixels; false when its desk is not shown.
 cx_place :: (x: [] Cx, id: int, out: [] int) -> bool {
@@ -250,6 +255,7 @@ cx_drop_client :: (x: [] Cx, ci: int) {
   for p: 0..<CX_POOLS { if x[0].pools[p].used && x[0].pools[p].client == ci { x[0].pools[p].dead = true; x[0].pools[p].refs = 0; cx_pool_drop(x, p); } }
   k := 0; for i: 0..<x[0].ndue { if x[0].due[i].client != ci { x[0].due[k] = x[0].due[i]; k += 1; } } x[0].ndue = k;
   for i: 0..<x[0].clients[ci].nfd { r := cxwl_close_fd(x[0].clients[ci].fds[i]); }
+  for q: 0..<CX_SOURCES { if x[0].sources[q].used && x[0].sources[q].client == ci { x[0].sources[q].used = false; if x[0].sel == q { x[0].sel = -1; } } }
   r := cxwl_hangup(x[0].clients[ci].h); x[0].clients[ci].used = false;
   cx_sync(x);
 }
@@ -285,6 +291,7 @@ cx_popup_place :: (p: CxPos, out: [] int) {
 
 // One request from client ci to object obj.
 cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
+  if obj >= CX_SERVER_ID && obj < CX_SERVER_ID + 64 { cx_offer_request(x, ci, obj - CX_SERVER_ID, op, a); return; }
   if obj <= 0 || obj >= CX_OBJS { return; }
   o := x[0].clients[ci].objs[obj]; g := x[0].g[..];
   k := o.kind; at := 8;
@@ -435,17 +442,61 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
     else if op == 3 { x[0].pos[p].anchor = cx_rd(a, at); }
     else if op == 4 { x[0].pos[p].gravity = cx_rd(a, at); }
     else if op == 6 { x[0].pos[p].dx = cx_rdi(a, at); x[0].pos[p].dy = cx_rdi(a, at + 4); }
-  } else if k == K_DDM {   // the clipboard's objects exist; this first step moves no data between clients
-    if op == 0 { r := cx_set(x, ci, cx_rd(a, at), K_DSOURCE, 0, o.ver); }
-    else if op == 1 { r := cx_set(x, ci, cx_rd(a, at), K_DDEV, 0, o.ver); }
+  } else if k == K_DDM {   // the clipboard: one selection, offered to the client with the keyboard
+    if op == 0 {
+      id := cx_rd(a, at);
+      for q: 0..<CX_SOURCES { if !x[0].sources[q].used { x[0].sources[q].used = true; x[0].sources[q].client = ci; x[0].sources[q].id = id; x[0].sources[q].nm = 0; r := cx_set(x, ci, id, K_DSOURCE, q, o.ver); return; } }
+    }
+    else if op == 1 { id := cx_rd(a, at); if cx_set(x, ci, id, K_DDEV, 0, o.ver) && x[0].clients[ci].nd < 8 { x[0].clients[ci].ddevs[x[0].clients[ci].nd] = id; x[0].clients[ci].nd += 1; } }
     else if op == 2 { cx_delete(x, ci, obj); }
   } else if k == K_DSOURCE {
-    if op == 1 { cx_delete(x, ci, obj); }
+    q := o.ix;
+    if op == 0 {
+      sl := cx_rd(a, at); n := cx_min(cx_max(sl - 1, 0), 63); j := x[0].sources[q].nm;
+      if j < 8 { for i: 0..<n { x[0].sources[q].mimes[j][i] = a[at + 4 + i]; } x[0].sources[q].ml[j] = n; x[0].sources[q].nm += 1; }
+    } else if op == 1 {
+      x[0].sources[q].used = false; cx_delete(x, ci, obj);
+      if x[0].sel == q { x[0].sel = -1; if x[0].kfocus >= 0 { cx_offer_selection(x, x[0].surfs[x[0].kfocus].client); } }
+    }
   } else if k == K_DDEV {
-    if op == 2 { cx_delete(x, ci, obj); }
+    if op == 1 {
+      so := cx_rd(a, at); q := -1;
+      if so > 0 && so < CX_OBJS && x[0].clients[ci].objs[so].kind == K_DSOURCE { q = x[0].clients[ci].objs[so].ix; }
+      if q != x[0].sel && x[0].sel >= 0 { old := x[0].sources[x[0].sel]; mg_begin(g, old.id, 2); mg_end(g); mg_flush(x, old.client, -1); }   // cancelled
+      x[0].sel = q;
+      if x[0].kfocus >= 0 { cx_offer_selection(x, x[0].surfs[x[0].kfocus].client); }
+    }
+    else if op == 2 { cx_unlist(x[0].clients[ci].ddevs[..], x[0].clients[ci].nd, obj); x[0].clients[ci].nd = cx_count_left(x[0].clients[ci].ddevs[..], x[0].clients[ci].nd); cx_delete(x, ci, obj); }
   } else if k == K_POPUP {
     if op == 0 { x[0].surfs[o.ix].role = R_NONE; x[0].surfs[o.ix].parent = -1; cx_delete(x, ci, obj); }
   }
+}
+// The selection, as a new wl_data_offer on each of client ci's data devices (or none).
+cx_offer_selection :: (x: [] Cx, ci: int) {
+  if ci < 0 || !x[0].clients[ci].used { return; }
+  g := x[0].g[..]; q := x[0].sel;
+  for d: 0..<x[0].clients[ci].nd {
+    dev := x[0].clients[ci].ddevs[d];
+    if q < 0 || !x[0].sources[q].used { mg_begin(g, dev, 5); mg_put(g, 0); mg_end(g); continue; }
+    k := x[0].clients[ci].next_offer % 64; x[0].clients[ci].next_offer += 1;
+    x[0].clients[ci].offers[k] = q; id := CX_SERVER_ID + k;
+    mg_begin(g, dev, 0); mg_put(g, id); mg_end(g);
+    for j: 0..<x[0].sources[q].nm { mg_begin(g, id, 0); mg_str(g, cast(string) x[0].sources[q].mimes[j][0..<x[0].sources[q].ml[j]]); mg_end(g); }
+    mg_begin(g, dev, 5); mg_put(g, id); mg_end(g);
+  }
+  mg_flush(x, ci, -1);
+}
+// A request to offer k: receive hands the reader's pipe to the source's client, which writes the data.
+cx_offer_request :: (x: [] Cx, ci: int, k: int, op: int, a: [] u8) {
+  if op == 1 {
+    fd := cx_take_fd(x, ci); q := x[0].clients[ci].offers[k];
+    if fd < 0 { return; }
+    if q >= 0 && q < CX_SOURCES && x[0].sources[q].used {
+      sl := cx_rd(a, 8); n := cx_min(cx_max(sl - 1, 0), 255); mime: [256] u8; for i: 0..<n { mime[i] = a[12 + i]; }
+      g := x[0].g[..]; mg_begin(g, x[0].sources[q].id, 1); mg_str(g, cast(string) mime[0..<n]); mg_end(g); mg_flush(x, x[0].sources[q].client, fd);
+    }
+    r := cxwl_close_fd(fd);
+  } else if op == 2 { x[0].clients[ci].offers[k] = -1; }   // a server-made id: no delete_id
 }
 cx_unlist :: (l: [] int, n: int, id: int) { for i: 0..<n { if l[i] == id { l[i] = 0; } } }
 cx_count_left :: (l: [] int, n: int) -> int { k := 0; for i: 0..<n { if l[i] != 0 { l[k] = l[i]; k += 1; } } return k; }
@@ -846,7 +897,7 @@ tool_main :: () -> int #export_c {
   wm_new(x[0].wm[..]);
   wm_set_screen(x[0].wm[..], 0, wm_screen("headless", 0, 0, x[0].w, x[0].h));
   for i: 0..<WM_WINS { x[0].win_surf[i] = -1; }
-  x[0].kfocus = -1; x[0].pfocus = -1;
+  x[0].kfocus = -1; x[0].pfocus = -1; x[0].sel = -1;
   sock := pos[0]; sp: [256] u8; sn := 0; for c: sock { if sn < 255 { sp[sn] = c; sn += 1; } }
   for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);
@@ -861,7 +912,8 @@ tool_main :: () -> int #export_c {
       for ci: 0..<CX_CLIENTS {
         if !x[0].clients[ci].used {
           x[0].clients[ci].used = true; x[0].clients[ci].h = h; x[0].clients[ci].nin = 0; x[0].clients[ci].nfd = 0;
-          x[0].clients[ci].nk = 0; x[0].clients[ci].npt = 0; x[0].clients[ci].no = 0;
+          x[0].clients[ci].nk = 0; x[0].clients[ci].npt = 0; x[0].clients[ci].no = 0; x[0].clients[ci].nd = 0; x[0].clients[ci].next_offer = 0;
+          for k: 0..<64 { x[0].clients[ci].offers[k] = -1; }
           for o: 0..<CX_OBJS { x[0].clients[ci].objs[o].kind = K_NONE; }
           x[0].clients[ci].objs[1] = CxObj.{kind = K_DISPLAY, ver = 1};
           break;
