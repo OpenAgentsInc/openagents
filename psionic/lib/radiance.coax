@@ -1,0 +1,888 @@
+// Chapter 159: learn a scene from its views. A pinhole camera's rays; volume
+// rendering by quadrature (densities, transmittance, the composited colour
+// and depth) and its gradient written by hand; a ground-truth scene of
+// chapter 158's analytic shapes with exact ray hits; and a radiance field
+// stored on a voxel grid, fitted to rendered views with chapter 124's AdamW
+// and measured on cameras it never saw.
+// Profile psionic-radiance-v1: binary64, one CPU core, plain sums in a fixed
+// order; images at most 64 x 64, at most 256 samples a ray, at most 8 shapes,
+// a grid at most 32 vertices a side, at most 32 views and a batch of at most
+// 4,096 rays.
+#load "field.coax";
+#load "optim/adamw.coax";
+#load "../tests/radiance-checks.coax";   // the checks' oracles
+
+// book:begin types
+RfStatus :: enum u8 {ok;camera;sampling;number;shape;limit;scene;}
+// A pinhole camera at eye looking at target, with up giving the roll. The
+// focal length is in pixels: a ray through a pixel centre at column i, row j
+// leaves along x right + y up + forward, x = (i + 0.5 - width/2) / focal,
+// y = (height/2 - j - 0.5) / focal.
+RfCamera :: struct {eye:[3]f64;target:[3]f64;up:[3]f64;width:int;height:int;focal:f64;}
+RfRay :: struct {status:RfStatus;origin:[3]f64;dir:[3]f64;}
+// count samples at the midpoints of equal steps from near to far.
+RfSampling :: struct {near:f64;far:f64;count:int;}
+// depth is the sum of w_k t_k; opacity is 1 - T, the share the samples absorbed.
+RfPixel :: struct {status:RfStatus;rgb:[3]f64;depth:f64;opacity:f64;}
+// Spheres and boxes with one colour each (three numbers a shape). The density
+// at a point is density / (1 + exp(d / width)), d the nearest shape's signed
+// distance; the colour is that shape's.
+RfScene :: struct {shapes:[]FdShape;colors:[]f64;density:f64;width:f64;}
+// side^3 vertices evenly spaced from low to high; four numbers a vertex:
+// raw density (softplus gives sigma) and raw red, green, blue (sigmoid).
+RfGrid :: struct {side:int;low:[3]f64;high:[3]f64;}
+RfFit :: struct {steps:int;batch:int;lr:f64;seed:u64;}
+RfResult :: struct {status:RfStatus;written:int;}
+// book:end types
+
+// book:begin bounds
+RF_PIXELS_MAX :: 64;
+RF_SAMPLES_MAX :: 256;
+RF_SHAPES_MAX :: 8;
+RF_SIDE_MAX :: 32;
+RF_VIEWS_MAX :: 32;
+RF_BATCH_MAX :: 4096;
+RF_STEPS_MAX :: 100000;
+RF_PARALLEL :: 0.000000000001;   // sin^2 of the angle between forward and up below this: no roll
+// book:end bounds
+
+// Checks precede the implementation. Expected values are worked by hand in
+// chapter 159, or come from an oracle in psionic/tests/radiance-checks.coax.
+rf_front :: ()->RfCamera {return RfCamera.{eye=[3]f64.[0,0,3],up=[3]f64.[0,1,0],width=2,height=2,focal=1};}
+
+#test "rays by hand" {
+    c:=rf_front();#assert rf_camera_check(c)==RfStatus.ok;
+    b:=rf_basis(c);#assert b[0]==1 && b[1]==0 && b[2]==0 && b[3]==0 && b[4]==1 && b[5]==0 && b[6]==0 && b[7]==0 && b[8]==-1;
+    // Pixel (0, 0) is up and to the left: (-0.5, 0.5, -1) / sqrt(1.5).
+    r:=rf_ray(c,0,0);#assert r.status==RfStatus.ok && r.origin[2]==3;
+    #assert rf_near(r.dir[0],-0.4082482904638631,1e-16) && rf_near(r.dir[1],0.4082482904638631,1e-16) && rf_near(r.dir[2],-0.8164965809277261,1e-16);
+    r=rf_ray(c,1,1);#assert rf_near(r.dir[0],0.4082482904638631,1e-16) && rf_near(r.dir[1],-0.4082482904638631,1e-16);
+    r=rf_ray(c,1,0);#assert r.dir[0]>0 && r.dir[1]>0;
+    // From +x looking at the origin, right is -z and up is +y; a 1 x 1 image's ray is forward.
+    s:=RfCamera.{eye=[3]f64.[3,0,0],up=[3]f64.[0,2,0],width=1,height=1,focal=5};
+    b=rf_basis(s);#assert b[0]==0 && b[1]==0 && b[2]==-1 && b[3]==0 && b[4]==1 && b[6]==-1;
+    r=rf_ray(s,0,0);#assert r.dir[0]==-1 && r.dir[1]==0 && r.dir[2]==0;
+    // A wider image and a longer focal length: column 3 of 4 at focal 2 is x = 0.75.
+    w:=RfCamera.{eye=[3]f64.[0,0,3],up=[3]f64.[0,1,0],width=4,height=1,focal=2};
+    r=rf_ray(w,3,0);#assert rf_near(r.dir[0]/-r.dir[2],0.75,1e-15) && r.dir[1]==0;
+    r=rf_ray(w,0,0);#assert rf_near(r.dir[0]/-r.dir[2],-0.75,1e-15);
+    t:=RfCamera.{eye=[3]f64.[0,0,3],up=[3]f64.[0,1,0],width=1,height=4,focal=2};
+    r=rf_ray(t,0,3);#assert rf_near(r.dir[1]/-r.dir[2],-0.75,1e-15) && r.dir[0]==0;
+}
+#forall "every ray projects back to its own pixel" seed:0..<32 {
+    g:=[1]u64.[cast(u64)seed+1];
+    c:RfCamera;c.width=1+cast(int)(rf_lcg(g[..])*63);c.height=1+cast(int)(rf_lcg(g[..])*63);c.focal=0.5+rf_lcg(g[..])*80;
+    for k:0..<3 {c.eye[k]=rf_lcg(g[..])*8-4;c.target[k]=rf_lcg(g[..])*2-1;c.up[k]=rf_lcg(g[..])*2-1;}
+    #assert rf_camera_check(c)==RfStatus.ok;
+    i:=cast(int)(rf_lcg(g[..])*f64(c.width));j:=cast(int)(rf_lcg(g[..])*f64(c.height));
+    r:=rf_ray(c,i,j);#assert r.status==RfStatus.ok && rf_near(fd_norm(r.dir),1,1e-15);
+    q:=rf_project(c,fd_add(r.origin,fd_scale(r.dir,2.5)));
+    #assert rf_near(q[0],f64(i),1e-9) && rf_near(q[1],f64(j),1e-9);
+    // The basis is orthonormal and right-handed: right x up = forward.
+    b:=rf_basis(c);o:=rf_oracle_basis(c);
+    for k:0..<9 {#assert rf_near(b[k],o[k],1e-12);}
+}
+#test "cameras refuse" {
+    c:=rf_front();
+    for k:0..<3 {
+        d:=c;d.eye[k]=0.0/0.0;#assert rf_camera_check(d)==RfStatus.number;
+        d=c;d.target[k]=1.0/0.0;#assert rf_camera_check(d)==RfStatus.number;
+        d=c;d.up[k]=-2e6;#assert rf_camera_check(d)==RfStatus.number;
+    }
+    d:=c;d.focal=0;#assert rf_camera_check(d)==RfStatus.camera;
+    d.focal=-1;#assert rf_camera_check(d)==RfStatus.camera;
+    d.focal=0.0/0.0;#assert rf_camera_check(d)==RfStatus.number;
+    d=c;d.width=0;#assert rf_camera_check(d)==RfStatus.camera;
+    d=c;d.height=0;#assert rf_camera_check(d)==RfStatus.camera;
+    d=c;d.width=65;#assert rf_camera_check(d)==RfStatus.limit;
+    d=c;d.height=65;#assert rf_camera_check(d)==RfStatus.limit;
+    d.height=64;d.width=64;#assert rf_camera_check(d)==RfStatus.ok;
+    d=c;d.target=d.eye;#assert rf_camera_check(d)==RfStatus.camera;
+    d=c;d.up=[3]f64.[0,0,1];#assert rf_camera_check(d)==RfStatus.camera;
+    d=c;d.up=[3]f64.[0,0,0];#assert rf_camera_check(d)==RfStatus.camera;
+    // Nearly parallel: sin^2 = 1e-12 is refused, a little more is not.
+    d=c;d.up=[3]f64.[0,0.000001,1];#assert rf_camera_check(d)==RfStatus.camera;
+    d.up[1]=0.0000011;#assert rf_camera_check(d)==RfStatus.ok;
+    #assert rf_ray(c,2,0).status==RfStatus.camera && rf_ray(c,0,2).status==RfStatus.camera;
+    #assert rf_ray(c,-1,0).status==RfStatus.camera && rf_ray(c,0,-1).status==RfStatus.camera;
+    d=c;d.focal=0;#assert rf_ray(d,0,0).status==RfStatus.camera;
+}
+#test "two samples composited by hand" {
+    s:=RfSampling.{near=0,far=1,count=2};
+    sigma:=[2]f64.[1,2];color:=[6]f64.[1,0,0, 0,1,0];bg:=[3]f64.[0,0,1];
+    p:=rf_composite(s,sigma[..],color[..],bg);#assert p.status==RfStatus.ok;
+    #assert rf_near(p.rgb[0],0.3934693402873666,1e-16) && rf_near(p.rgb[1],0.3834004995642036,1e-16) && rf_near(p.rgb[2],0.22313016014842985,1e-16);
+    #assert rf_near(p.depth,0.38591770974499434,1e-16) && rf_near(p.opacity,0.7768698398515701,1e-16);
+    // An empty ray shows the background; a zero step count is refused, not divided by.
+    z:=[2]f64.[0,0];p=rf_composite(s,z[..],color[..],bg);#assert p.rgb[2]==1 && p.rgb[0]==0 && p.opacity==0 && p.depth==0;
+    // An opaque first sample hides the second.
+    o:=[2]f64.[800,2];p=rf_composite(s,o[..],color[..],bg);#assert p.rgb[0]==1 && p.rgb[1]<1e-170 && p.rgb[2]<1e-170 && p.depth==0.25 && p.opacity==1;
+    #assert rf_delta(s)==0.5 && rf_t(s,0)==0.25 && rf_t(s,1)==0.75;
+}
+// A slab of constant density sigma and thickness d between two sample
+// boundaries absorbs exactly 1 - exp(-sigma d), whatever the step count.
+#forall "a constant-density slab matches its closed form" seed:0..<32 {
+    g:=[1]u64.[cast(u64)seed+50];
+    n:=2+cast(int)(rf_lcg(g[..])*30);a:=cast(int)(rf_lcg(g[..])*f64(n));b:=a+1+cast(int)(rf_lcg(g[..])*f64(n-a));if b>n {b=n;}
+    s:=RfSampling.{near=0.5,far=0.5+rf_lcg(g[..])*4+0.1,count=n};sig:=rf_lcg(g[..])*6;
+    col:=[3]f64.[rf_lcg(g[..]),rf_lcg(g[..]),rf_lcg(g[..])];bg:=[3]f64.[rf_lcg(g[..]),rf_lcg(g[..]),rf_lcg(g[..])];
+    sigma:[32]f64;color:[96]f64;
+    for k:0..<n {if k>=a && k<b {sigma[k]=sig;}for c:0..<3 {color[3*k+c]=col[c];}}
+    p:=rf_composite(s,sigma[0..<n],color[0..<3*n],bg);#assert p.status==RfStatus.ok;
+    d:=f64(b-a)*(s.far-s.near)/f64(n);e:=exp(-sig*d);
+    #assert rf_near(p.opacity,1-e,1e-14);
+    for c:0..<3 {#assert rf_near(p.rgb[c],col[c]*(1-e)+bg[c]*e,1e-14);}
+    // The same against the definition, sample by sample.
+    for k:0..<n {sigma[k]=rf_lcg(g[..])*4;for c:0..<3 {color[3*k+c]=rf_lcg(g[..]);}}
+    p=rf_composite(s,sigma[0..<n],color[0..<3*n],bg);o:=rf_oracle_composite(s,sigma[0..<n],color[0..<3*n],bg);
+    for c:0..<3 {#assert rf_near(p.rgb[c],o[c],1e-14);}
+    #assert rf_near(p.depth,o[3],1e-13) && rf_near(p.opacity,o[4],1e-14);
+}
+// The gradient of L = g . rgb + h depth against central differences.
+#forall "compositing gradients match finite differences" seed:0..<24 {
+    r:=[1]u64.[cast(u64)seed+90];n:=1+seed%7;
+    s:=RfSampling.{near=0.2,far=0.2+rf_lcg(r[..])*3+0.5,count=n};
+    sigma:[8]f64;color:[24]f64;bg:=[3]f64.[rf_lcg(r[..]),rf_lcg(r[..]),rf_lcg(r[..])];
+    for k:0..<n {sigma[k]=rf_lcg(r[..])*3;for c:0..<3 {color[3*k+c]=rf_lcg(r[..]);}}
+    g:=[3]f64.[rf_lcg(r[..])*2-1,rf_lcg(r[..])*2-1,rf_lcg(r[..])*2-1];h:=rf_lcg(r[..])*2-1;
+    ds:[8]f64;dc:[24]f64;
+    #assert rf_composite_backward(s,sigma[0..<n],color[0..<3*n],bg,g,h,ds[0..<n],dc[0..<3*n])==RfStatus.ok;
+    e:=0.000001;
+    for k:0..<n {
+        a:=sigma;a[k]+=e;z:=sigma;z[k]-=e;
+        pa:=rf_composite(s,a[0..<n],color[0..<3*n],bg);pz:=rf_composite(s,z[0..<n],color[0..<3*n],bg);
+        fd:=(fd_dot(g,pa.rgb)+h*pa.depth-fd_dot(g,pz.rgb)-h*pz.depth)/(2*e);
+        #assert rf_near(ds[k],fd,1e-8);
+        for c:0..<3 {
+            a2:=color;a2[3*k+c]+=e;z2:=color;z2[3*k+c]-=e;
+            qa:=rf_composite(s,sigma[0..<n],a2[0..<3*n],bg);qz:=rf_composite(s,sigma[0..<n],z2[0..<3*n],bg);
+            #assert rf_near(dc[3*k+c],(fd_dot(g,qa.rgb)+h*qa.depth-fd_dot(g,qz.rgb)-h*qz.depth)/(2*e),1e-8);
+        }
+    }
+}
+#test "compositing refuses before it writes" {
+    s:=RfSampling.{near=0,far=1,count=2};sigma:=[2]f64.[1,2];color:=[6]f64.[1,0,0, 0,1,0];bg:=[3]f64.[0,0,1];
+    #assert rf_sampling_check(s)==RfStatus.ok;
+    t:=s;t.count=0;#assert rf_composite(t,sigma[0..<0],color[0..<0],bg).status==RfStatus.sampling;
+    t.count=257;#assert rf_sampling_check(t)==RfStatus.limit;t.count=256;#assert rf_sampling_check(t)==RfStatus.ok;
+    t=s;t.far=0;#assert rf_sampling_check(t)==RfStatus.sampling;t.near=-0.5;t.far=1;#assert rf_sampling_check(t)==RfStatus.sampling;
+    t=s;t.far=1.0/0.0;#assert rf_sampling_check(t)==RfStatus.number;t=s;t.near=0.0/0.0;#assert rf_sampling_check(t)==RfStatus.number;
+    t=s;t.far=0.5;t.near=0.5;#assert rf_sampling_check(t)==RfStatus.sampling;
+    #assert rf_composite(s,sigma[0..<1],color[..],bg).status==RfStatus.shape;
+    #assert rf_composite(s,sigma[..],color[0..<5],bg).status==RfStatus.shape;
+    n:=sigma;n[1]=-0.5;#assert rf_composite(s,n[..],color[..],bg).status==RfStatus.number;
+    n[1]=0.0/0.0;#assert rf_composite(s,n[..],color[..],bg).status==RfStatus.number;
+    n[0]=1.0/0.0;n[1]=2;#assert rf_composite(s,n[..],color[..],bg).status==RfStatus.number;
+    k:=color;k[4]=0.0/0.0;#assert rf_composite(s,sigma[..],k[..],bg).status==RfStatus.number;
+    b:=bg;b[1]=1.0/0.0;#assert rf_composite(s,sigma[..],color[..],b).status==RfStatus.number;
+    ds:=[2]f64.[-7,-7];dc:=[6]f64.[-7,-7,-7,-7,-7,-7];g:=[3]f64.[1,1,1];
+    #assert rf_composite_backward(s,sigma[..],color[..],bg,g,1,ds[0..<1],dc[..])==RfStatus.shape;
+    #assert rf_composite_backward(s,sigma[..],color[..],bg,g,1,ds[..],dc[0..<5])==RfStatus.shape;
+    #assert rf_composite_backward(s,n[..],color[..],bg,g,1,ds[..],dc[..])==RfStatus.number;
+    g[2]=0.0/0.0;#assert rf_composite_backward(s,sigma[..],color[..],bg,g,1,ds[..],dc[..])==RfStatus.number;
+    g[2]=1;#assert rf_composite_backward(s,sigma[..],color[..],bg,g,1.0/0.0,ds[..],dc[..])==RfStatus.number;
+    for x:ds {#assert x==-7;}for x:dc {#assert x==-7;}
+    #assert rf_composite_backward(s,sigma[..],color[..],bg,g,1,ds[..],dc[..])==RfStatus.ok && dc[0]==1-exp(-0.5);
+}
+rf_two :: (shapes:[]FdShape,colors:[]f64)->RfScene {
+    shapes[0]=FdShape.{kind=FdKind.sphere,a=[3]f64.[0,0,0],r=0.5};
+    shapes[1]=FdShape.{kind=FdKind.box,a=[3]f64.[1,-0.25,-0.25],b=[3]f64.[1.5,0.25,0.25]};
+    for k:0..<6 {colors[k]=ifx k==0 || k==5 then 1.0 else 0.0;}
+    return RfScene.{shapes=shapes,colors=colors,density=20,width=0.05};
+}
+#test "the scene by hand" {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);#assert rf_scene_check(sc)==RfStatus.ok;
+    // On the sphere's surface the density is half; at its centre d = -0.5.
+    p:=rf_scene_at(sc,[3]f64.[0.5,0,0]);#assert p[0]==10 && p[1]==1 && p[2]==0 && p[3]==0;
+    p=rf_scene_at(sc,[3]f64.[0,0,0]);#assert rf_near(p[0],20/(1+exp(-10.0)),1e-14);
+    // Nearer the box: its colour, and d = 0.1 outside it.
+    p=rf_scene_at(sc,[3]f64.[0.9,0,0]);#assert rf_near(p[0],20/(1+exp(2.0)),1e-14) && p[1]==0 && p[3]==1;
+    // Equally near both (d = 0.25 at x = 0.75): the first shape listed.
+    p=rf_scene_at(sc,[3]f64.[0.75,0,0]);#assert p[1]==1 && p[3]==0;
+    // Hits: straight down the z axis onto the sphere, along x onto the box from inside the sphere.
+    #assert rf_hit(sc,[3]f64.[0,0,3],[3]f64.[0,0,-1])==2.5;
+    #assert rf_hit(sc,[3]f64.[1.25,0,3],[3]f64.[0,0,-1])==2.75;
+    #assert rf_hit(sc,[3]f64.[0,0,0],[3]f64.[1,0,0])==0.5;
+    #assert rf_hit(sc,[3]f64.[0.7,0,0],[3]f64.[1,0,0])==0.30000000000000004;
+    #assert rf_hit(sc,[3]f64.[0,2,3],[3]f64.[0,0,-1])==-1;
+    #assert rf_hit(sc,[3]f64.[0,0,3],[3]f64.[0,0,1])==-1;
+    #assert rf_hit(sc,[3]f64.[1.25,0.1,3],[3]f64.[0,0,1])==-1;
+    // Inside the box, the ray leaves through the far face; parallel to a slab outside it, a miss.
+    #assert rf_hit(sc,[3]f64.[1.25,0,0],[3]f64.[0,1,0])==0.25;
+    #assert rf_hit(sc,[3]f64.[1.25,0.5,3],[3]f64.[0,0,-1])==-1;
+    #assert rf_hit(sc,[3]f64.[1.25,0,3],[3]f64.[0,0.6,-0.8])==-1;
+    #assert rf_near(rf_hit(sc,[3]f64.[1.25,-0.2,0.5],[3]f64.[0,0.6,-0.8]),0.3125,1e-15);
+}
+// An exact hit lies on the surface by chapter 158's signed distance, and a
+// step back along the ray is still outside every shape.
+#forall "ray hits lie on the shapes' surfaces" seed:0..<32 {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);r:=[1]u64.[cast(u64)seed+200];
+    o:=[3]f64.[rf_lcg(r[..])*6-3,rf_lcg(r[..])*6-3,rf_lcg(r[..])*6-3];
+    // Aim at a point inside the sphere (even seeds) or the box (odd seeds).
+    tgt:=[3]f64.[1.25*f64(seed%2)+rf_lcg(r[..])*0.4-0.2,rf_lcg(r[..])*0.4-0.2,rf_lcg(r[..])*0.4-0.2];
+    d:=rf_unit(fd_sub(tgt,o));t:=rf_hit(sc,o,d);
+    near:=1e300;for s:sh {e:=fd_shape_distance(s,o).d;if e<near {near=e;}}
+    if near>0 {
+        #assert t>0;q:=fd_add(o,fd_scale(d,t));
+        hit:=1e300;for s:sh {e:=abs(fd_shape_distance(s,q).d);if e<hit {hit=e;}}#assert hit<=1e-12;
+        b:=fd_add(o,fd_scale(d,t*0.999));for s:sh {#assert fd_shape_distance(s,b).d>0;}
+    }
+}
+#test "scenes refuse" {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);
+    t:=sc;t.shapes=sh[0..<0];t.colors=co[0..<0];#assert rf_scene_check(t)==RfStatus.shape;
+    t.shapes=sh[0..<1];t.colors=co[0..<3];#assert rf_scene_check(t)==RfStatus.ok;
+    eight:[8]FdShape;for k:0..<8 {eight[k]=sh[k%2];}ec:[24]f64;t.shapes=eight[..];t.colors=ec[..];#assert rf_scene_check(t)==RfStatus.ok;
+    many:[9]FdShape;mc:[27]f64;t.shapes=many[..];t.colors=mc[..];#assert rf_scene_check(t)==RfStatus.limit;
+    t=sc;t.colors=co[0..<5];#assert rf_scene_check(t)==RfStatus.shape;
+    c2:=co;c2[2]=1.5;t=sc;t.colors=c2[..];#assert rf_scene_check(t)==RfStatus.number;
+    c2[2]=-0.1;#assert rf_scene_check(t)==RfStatus.number;c2[2]=0.0/0.0;#assert rf_scene_check(t)==RfStatus.number;
+    t=sc;t.density=0;#assert rf_scene_check(t)==RfStatus.scene;t.density=1.0/0.0;#assert rf_scene_check(t)==RfStatus.number;
+    t=sc;t.width=0;#assert rf_scene_check(t)==RfStatus.scene;t.width=0.0/0.0;#assert rf_scene_check(t)==RfStatus.number;
+    s2:=sh;s2[1].kind=FdKind.capsule;t=sc;t.shapes=s2[..];#assert rf_scene_check(t)==RfStatus.scene;
+    s2=sh;s2[0].r=0;t.shapes=s2[..];#assert rf_scene_check(t)==RfStatus.scene;
+}
+#test "a grid field by hand" {
+    g:=RfGrid.{side=2,low=[3]f64.[0,0,0],high=[3]f64.[1,1,1]};params:[32]f64;
+    #assert rf_grid_check(g,params[..])==RfStatus.ok;
+    // Raw density 1 + x + 2y + 4z at the corners: trilinear interpolation is exact for it.
+    for v:0..<8 {params[4*v]=f64(1+v);params[4*v+1]=0;params[4*v+2]=f64(v%2);params[4*v+3]=-3;}
+    r:=rf_field_raw(g,params[..],[3]f64.[0.25,0.5,0.75]);
+    #assert r.inside && r.raw[0]==5.25 && r.raw[1]==0 && r.raw[2]==0.25 && r.raw[3]==-3;
+    x:=rf_field_at(g,params[..],[3]f64.[0,0,0]);#assert x[0]==log(1+exp(1.0)) && x[1]==0.5 && x[2]==0.5;
+    #assert rf_near(x[3],1/(1+exp(3.0)),1e-17);
+    // The far corner is inside; just beyond it, nothing.
+    x=rf_field_at(g,params[..],[3]f64.[1,1,1]);#assert rf_near(x[0],8.000335406372896,1e-14);
+    x=rf_field_at(g,params[..],[3]f64.[1,1,1.0000001]);#assert x[0]==0 && x[1]==0 && x[2]==0 && x[3]==0;
+    x=rf_field_at(g,params[..],[3]f64.[-0.0001,0.5,0.5]);#assert x[0]==0;
+    #assert rf_softplus(0)==log(2.0) && rf_softplus(40)==40 && rf_softplus(-40)==log(1+exp(-40.0)) && rf_sigmoid(0)==0.5;
+    #assert rf_softplus(30)==log(1+exp(30.0)) && rf_softplus(30.5)==30.5;
+    // A wider grid: vertex (1, 2, 0) of 3 a side holds the value at (0.5, 1, 0).
+    w:=RfGrid.{side=3,low=[3]f64.[0,0,0],high=[3]f64.[1,1,1]};big:[108]f64;big[4*7]=5;
+    #assert rf_field_raw(w,big[..],[3]f64.[0.5,1,0]).raw[0]==5 && rf_field_raw(w,big[..],[3]f64.[0.75,1,0]).raw[0]==2.5;
+    #assert rf_field_raw(w,big[..],[3]f64.[0.5,0.75,0]).raw[0]==2.5 && rf_field_raw(w,big[..],[3]f64.[0.5,1,0.25]).raw[0]==2.5;
+}
+#forall "trilinear interpolation reproduces any linear field" seed:0..<16 {
+    r:=[1]u64.[cast(u64)seed+300];side:=2+seed%4;
+    g:=RfGrid.{side=side,low=[3]f64.[-1,-0.5,-2],high=[3]f64.[1,1.5,0.5]};params:[500]f64;
+    a:=[4]f64.[rf_lcg(r[..]),rf_lcg(r[..]),rf_lcg(r[..]),rf_lcg(r[..])];
+    for z:0..<side {for y:0..<side {for x:0..<side {
+        v:=(z*side+y)*side+x;p:=[3]f64.[-1+2*f64(x)/f64(side-1),-0.5+2*f64(y)/f64(side-1),-2+2.5*f64(z)/f64(side-1)];
+        params[4*v+1]=a[0]+a[1]*p[0]+a[2]*p[1]+a[3]*p[2];
+    }}}
+    for k:0..<8 {
+        p:=[3]f64.[rf_lcg(r[..])*2-1,rf_lcg(r[..])*2-0.5,rf_lcg(r[..])*2.5-2];
+        #assert rf_near(rf_field_raw(g,params[0..<4*side*side*side],p).raw[1],a[0]+a[1]*p[0]+a[2]*p[1]+a[3]*p[2],1e-13);
+    }
+}
+#test "grids refuse" #steps 100000000 {
+    g:=RfGrid.{side=2,low=[3]f64.[0,0,0],high=[3]f64.[1,1,1]};params:[32]f64;
+    #assert rf_grid_check(g,params[0..<31])==RfStatus.shape;
+    t:=g;t.side=1;#assert rf_grid_check(t,params[0..<4])==RfStatus.shape;
+    full:[131072]f64;t.side=32;#assert rf_grid_check(t,full[..])==RfStatus.ok;
+    t=g;t.high[0]=-1;#assert rf_grid_check(t,params[..])==RfStatus.shape;
+    t.side=33;#assert rf_grid_check(t,params[..])==RfStatus.limit;
+    t=g;t.low[2]=1;#assert rf_grid_check(t,params[..])==RfStatus.shape;
+    t=g;t.high[0]=0.0/0.0;#assert rf_grid_check(t,params[..])==RfStatus.number;
+    t=g;t.low[1]=-1.0/0.0;#assert rf_grid_check(t,params[..])==RfStatus.number;
+    p:=params;p[9]=0.0/0.0;#assert rf_grid_check(g,p[..])==RfStatus.number;
+    p[9]=1e300;#assert rf_grid_check(g,p[..])==RfStatus.number;
+}
+// The squared error of one ray, differentiated through the composite and
+// the trilinear field, against central differences in every parameter.
+#forall "gradients through the renderer match finite differences" seed:0..<8 #steps 100000000 {
+    r:=[1]u64.[cast(u64)seed+400];
+    g:=RfGrid.{side=3,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};params:[108]f64;
+    for i:0..<108 {params[i]=rf_lcg(r[..])*4-2;}
+    c:=RfCamera.{eye=[3]f64.[rf_lcg(r[..])-0.5,rf_lcg(r[..])-0.5,3],up=[3]f64.[0,1,0],width=4,height=4,focal=4};
+    ray:=rf_ray(c,cast(int)(rf_lcg(r[..])*4),cast(int)(rf_lcg(r[..])*4));
+    s:=RfSampling.{near=2.1,far=4.5,count=12};bg:=[3]f64.[0.2,0.3,0.4];tg:=[3]f64.[rf_lcg(r[..]),rf_lcg(r[..]),rf_lcg(r[..])];
+    grads:[108]f64;loss:=rf_ray_grad(g,params[..],ray,s,bg,tg,0.5,grads[..]);#assert loss>0;
+    e:=0.000001;
+    for i:0..<108 {
+        a:=params;a[i]+=e;z:=params;z[i]-=e;
+        fd:=(rf_ray_grad(g,a[..],ray,s,bg,tg,0,grads[0..<0])-rf_ray_grad(g,z[..],ray,s,bg,tg,0,grads[0..<0]))/(2*e);
+        #assert rf_near(grads[i],0.5*fd,1e-8);
+    }
+}
+#test "renders: the scene and an untrained field" {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);cams:[2]RfCamera;rf_views(2,3,8,0,cams[..]);
+    s:=RfSampling.{near=1,far=5,count=64};bg:=[3]f64.[0,0,0];rgb:[192]f64;depth:[64]f64;op:[64]f64;
+    #assert rf_render_scene(sc,cams[0],s,bg,rgb[..],depth[..],op[..]).written==64;
+    // The camera at (0, 1.2, 3): its pixel (3, 3) looks at the red sphere,
+    // pixel (7, 4) at the blue box, and pixel (0, 0) past both. The soft
+    // density starts absorbing a little before the exact surface.
+    k:=27;#assert op[k]>0.9999 && rf_near(rgb[3*k],op[k],1e-15) && rgb[3*k+1]==0 && rgb[3*k+2]==0;
+    ray:=rf_ray(cams[0],3,3);t:=rf_hit(sc,ray.origin,ray.dir);#assert t>0 && depth[k]<t && rf_near(depth[k],t,0.02);
+    #assert op[39]>0.999 && rf_near(rgb[119],op[39],1e-9) && rgb[117]<1e-9 && rgb[118]==0;
+    ray=rf_ray(cams[0],7,4);t=rf_hit(sc,ray.origin,ray.dir);#assert t>0 && depth[39]<t && rf_near(depth[39],t,0.02);
+    #assert op[0]<0.000001 && rgb[0]<0.000001 && rf_hit(sc,cams[0].eye,rf_ray(cams[0],0,0).dir)==-1;
+    g:=RfGrid.{side=3,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};params:[108]f64;rf_init(g,params[..],-1);
+    #assert params[0]==-1 && params[1]==0 && params[4]==-1 && params[107]==0;
+    #assert rf_render_field(g,params[..],cams[0],s,bg,rgb[..],depth[..],op[..]).written==64;
+    // Constant raw values: an untrained field is grey, as opaque as its path through the cube.
+    #assert rgb[3*k]==rgb[3*k+1] && rf_near(rgb[3*k]/op[k],0.5,1e-15) && op[k]>0.4 && op[k]<0.6 && op[0]==0 && depth[0]==0 && depth[k]>0;
+    a:=[2]f64.[0.5,0.25];b:=[2]f64.[0.4,0.35];#assert rf_near(rf_psnr(a[..],b[..]),20,1e-13);
+    #assert rf_render_scene(sc,cams[0],s,bg,rgb[0..<191],depth[..],op[..]).status==RfStatus.shape;
+    #assert rf_render_scene(sc,cams[0],s,bg,rgb[..],depth[0..<63],op[..]).status==RfStatus.shape;
+    #assert rf_render_field(g,params[..],cams[0],s,bg,rgb[..],depth[..],op[0..<63]).status==RfStatus.shape;
+    #assert rf_render_field(g,params[0..<107],cams[0],s,bg,rgb[..],depth[..],op[..]).status==RfStatus.shape;
+    bad:=cams[0];bad.focal=0;#assert rf_render_scene(sc,bad,s,bg,rgb[..],depth[..],op[..]).status==RfStatus.camera;
+    #assert rf_render_field(g,params[..],bad,s,bg,rgb[..],depth[..],op[..]).status==RfStatus.camera;
+    t2:=s;t2.count=257;#assert rf_render_field(g,params[..],cams[0],t2,bg,rgb[..],depth[..],op[..]).status==RfStatus.limit;
+    #assert rf_render_scene(sc,cams[0],t2,bg,rgb[..],depth[..],op[..]).status==RfStatus.limit;
+    t2.count=0;#assert rf_render_field(g,params[..],cams[0],t2,bg,rgb[..],depth[..],op[..]).status==RfStatus.sampling;
+    #assert rf_render_scene(sc,cams[0],t2,bg,rgb[..],depth[..],op[..]).status==RfStatus.sampling;
+    nb:=bg;nb[0]=0.0/0.0;#assert rf_render_scene(sc,cams[0],s,nb,rgb[..],depth[..],op[..]).status==RfStatus.number;
+    #assert rf_render_field(g,params[..],cams[0],s,nb,rgb[..],depth[..],op[..]).status==RfStatus.number;
+    ns:=sc;ns.width=0;#assert rf_render_scene(ns,cams[0],s,bg,rgb[..],depth[..],op[..]).status==RfStatus.scene;
+}
+#test "a small fit: exact losses, and refusals before any step" #steps 400000000 {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);cams:[2]RfCamera;rf_views(2,3,4,0,cams[..]);
+    s:=RfSampling.{near=1,far=5,count=16};bg:=[3]f64.[0,0,0];img:[96]f64;depth:[16]f64;op:[16]f64;
+    for v:0..<2 {#assert rf_render_scene(sc,cams[v],s,bg,img[48*v..<48*(v+1)],depth[..],op[..]).written==16;}
+    g:=RfGrid.{side=3,low=[3]f64.[-1,-1,-1],high=[3]f64.[1.5,1,1]};params:[108]f64;m:[108]f64;v:[108]f64;grads:[108]f64;
+    rf_init(g,params[..],-1);cfg:=RfFit.{steps=6,batch=8,lr=0.1,seed=7};losses:[6]f64;
+    #assert rf_fit(g,params[..],m[..],v[..],grads[..],cams[..],img[..],s,bg,cfg,losses[..])==RfStatus.ok;
+    fresh:=params;rf_init(g,fresh[..],-1);m2:[108]f64;v2:[108]f64;
+    bad:=cfg;bad.steps=0;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,bad,losses[0..<0])==RfStatus.shape;
+    bad=cfg;bad.batch=0;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,bad,losses[..])==RfStatus.shape;
+    bad.batch=4097;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,bad,losses[..])==RfStatus.limit;
+    bad=cfg;bad.steps=100001;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,bad,losses[..])==RfStatus.limit;
+    #assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,cfg,losses[0..<5])==RfStatus.shape;
+    #assert rf_fit(g,fresh[..],m2[0..<107],v2[..],grads[..],cams[..],img[..],s,bg,cfg,losses[..])==RfStatus.shape;
+    #assert rf_fit(g,fresh[..],m2[..],v2[0..<107],grads[..],cams[..],img[..],s,bg,cfg,losses[..])==RfStatus.shape;
+    #assert rf_fit(g,fresh[..],m2[..],v2[..],grads[0..<107],cams[..],img[..],s,bg,cfg,losses[..])==RfStatus.shape;
+    #assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[0..<0],img[0..<0],s,bg,cfg,losses[..])==RfStatus.shape;
+    #assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[0..<95],s,bg,cfg,losses[..])==RfStatus.shape;
+    other:=cams;other[1].width=3;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],other[..],img[..],s,bg,cfg,losses[..])==RfStatus.shape;
+    other=cams;other[1].height=3;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],other[..],img[..],s,bg,cfg,losses[..])==RfStatus.shape;
+    other=cams;other[0].height=3;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],other[..],img[0..<84],s,bg,cfg,losses[..])==RfStatus.shape;
+    other=cams;other[1].focal=0;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],other[..],img[..],s,bg,cfg,losses[..])==RfStatus.camera;
+    im:=img;im[7]=1.5;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],im[..],s,bg,cfg,losses[..])==RfStatus.number;
+    im[7]=-0.01;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],im[..],s,bg,cfg,losses[..])==RfStatus.number;
+    im[7]=0.0/0.0;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],im[..],s,bg,cfg,losses[..])==RfStatus.number;
+    t:=s;t.count=0;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],t,bg,cfg,losses[..])==RfStatus.sampling;
+    nb:=bg;nb[2]=1.0/0.0;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,nb,cfg,losses[..])==RfStatus.number;
+    bad=cfg;bad.lr=2;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,bad,losses[..])==RfStatus.number;
+    np:=fresh;np[3]=0.0/0.0;#assert rf_fit(g,np[..],m2[..],v2[..],grads[..],cams[..],img[..],s,bg,cfg,losses[..])==RfStatus.number;
+    many:[33]RfCamera;#assert rf_fit(g,fresh[..],m2[..],v2[..],grads[..],many[..],img[..],s,bg,cfg,losses[..])==RfStatus.limit;
+    #assert losses[0]==0.057704471936021635 && losses[5]==0.034202175319376985 && losses[2]==0.045375479632113726;
+    for i:0..<108 {#assert fresh[i]==ifx i%4==0 then -1.0 else 0.0;#assert m2[i]==0 && v2[i]==0;}
+}
+#test "occupancy agreement" {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);
+    g:=RfGrid.{side=2,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};params:[32]f64;rf_init(g,params[..],-1);
+    pts:=[12]f64.[0,0,0, 0.9,0.9,0.9, 1.25,0,0, 0.5,0,0];
+    // sigma = softplus(-1) = 0.313 everywhere in the cube: occupied at level
+    // 0.3, not at 0.4 nor at exactly softplus(-1). The third point is inside
+    // the box but outside the grid, so empty; the fourth is on the sphere's
+    // surface, which is not inside.
+    o:=rf_occupancy(g,params[..],sc,pts[..],0.3);#assert o.agree==1 && o.inside==2;
+    o=rf_occupancy(g,params[..],sc,pts[..],0.4);#assert o.agree==2 && o.inside==2;
+    o=rf_occupancy(g,params[..],sc,pts[..],rf_softplus(-1));#assert o.agree==2;
+    #assert rf_occupancy(g,params[..],sc,pts[0..<3],0.3).agree==1 && rf_occupancy(g,params[..],sc,pts[0..<3],0.4).agree==0;
+    #assert rf_occupancy(g,params[..],sc,pts[3..<6],0.4).agree==1 && rf_occupancy(g,params[..],sc,pts[3..<6],0.3).agree==0;
+}
+#test "exact hits at tangents, faces and edges" {
+    ball:=FdShape.{kind=FdKind.sphere,a=[3]f64.[0,0,0],r=0.5};
+    box:=FdShape.{kind=FdKind.box,a=[3]f64.[1,-0.25,-0.25],b=[3]f64.[1.5,0.25,0.25]};
+    // Tangent: the ray grazes the sphere at one point, t = 3.
+    #assert rf_hit_sphere(ball,[3]f64.[0.5,0,3],[3]f64.[0,0,-1])==3;
+    // Starting on the surface: going in, the far side; going out, nothing.
+    #assert rf_hit_sphere(ball,[3]f64.[0,0,0.5],[3]f64.[0,0,-1])==1;
+    #assert rf_hit_sphere(ball,[3]f64.[0,0,0.5],[3]f64.[0,0,1])==RF_MISS;
+    // Along a face plane counts as inside that slab, at either face.
+    #assert rf_hit_box(box,[3]f64.[1,0,3],[3]f64.[0,0,-1])==2.75 && rf_hit_box(box,[3]f64.[1.5,0,3],[3]f64.[0,0,-1])==2.75;
+    // Through an edge: entering one slab exactly where it leaves another.
+    #assert rf_hit_box(box,[3]f64.[0.75,0,0],[3]f64.[1,0,1])==0.25;
+    // Starting on the exit face going out: nothing. On the entry face going in: the far face.
+    #assert rf_hit_box(box,[3]f64.[1.5,0,0],[3]f64.[1,0,0])==RF_MISS;
+    #assert rf_hit_box(box,[3]f64.[1,0,0],[3]f64.[1,0,0])==0.5;
+}
+#test "depth errors count opaque pixels on exact hits" {
+    sh:[2]FdShape;co:[6]f64;sc:=rf_two(sh[..],co[..]);
+    // A 1 x 1 camera on +z looking at the sphere: its ray hits at t = 2.5.
+    c:=RfCamera.{eye=[3]f64.[0,0,3],up=[3]f64.[0,1,0],width=1,height=1,focal=1};
+    d:=[1]f64.[2.25];o:=[1]f64.[0.5];
+    r:=rf_depth_error(sc,c,d[..],o[..],0);#assert r.count==1 && r.sum==0.25 && rf_mean(r)==0.25;
+    o[0]=0.4999;r=rf_depth_error(sc,c,d[..],o[..],0);#assert r.count==0 && r.sum==0 && rf_mean(r)==0;
+    // Looking away from everything: an opaque pixel there is not counted.
+    away:=c;away.target=[3]f64.[0,0,6];o[0]=1;r=rf_depth_error(sc,away,d[..],o[..],0);#assert r.count==0;
+    // Two pixels, the second on the box.
+    two:=RfCamera.{eye=[3]f64.[0.625,0,3],target=[3]f64.[0.625,0,0],up=[3]f64.[0,1,0],width=2,height=1,focal=1.6};
+    d2:=[2]f64.[2.6,2.7];o2:=[2]f64.[1,1];r=rf_depth_error(sc,two,d2[..],o2[..],0);
+    t0:=rf_hit(sc,two.eye,rf_ray(two,0,0).dir);t1:=rf_hit(sc,two.eye,rf_ray(two,1,0).dir);
+    #assert t0>2.6 && t1>2.8 && r.count==2 && rf_near(r.sum,abs(2.6-t0)+abs(2.7-t1),1e-15);
+    r=rf_depth_error(sc,c,d2[..],o2[..],1);#assert r.count==1 && rf_near(r.sum,0.2,1e-15);
+    #assert rf_mean(RfDepth.{sum=3,count=2})==1.5;
+    #assert rf_near(rf_sq(d2[..],o2[..]),1.6*1.6+1.7*1.7,1e-15) && rf_near(rf_db(1,10),10,1e-14);
+}
+#test "experiment cameras and admission" {
+    cfg:=RfRun.{views=8,held=2,size=4};h:[2]RfCamera;rf_held(cfg,h[..]);t:[16]RfCamera;rf_views(16,3,4,0,t[..]);
+    // Held camera 1 sits where camera 9 of 16 would: halfway between training cameras 4 and 5 of 8.
+    for k:0..<3 {#assert rf_near(h[1].eye[k],t[9].eye[k],1e-15) && rf_near(h[0].eye[k],t[1].eye[k],1e-15);}
+    #assert h[1].width==4 && h[1].focal==4;
+    img:[12288]f64;
+    one:=RfRun.{views=1,held=1,size=1};#assert rf_run_check(one,img[0..<3])==RfStatus.ok;
+    big:=RfRun.{views=32,held=8,size=1};#assert rf_run_check(big,img[0..<96])==RfStatus.ok;
+    wide:=RfRun.{views=1,held=1,size=64};#assert rf_run_check(wide,img[..])==RfStatus.ok;
+    wide.size=65;#assert rf_run_check(wide,img[..])==RfStatus.limit;
+    big.views=33;#assert rf_run_check(big,img[0..<99])==RfStatus.limit;
+    big.views=32;big.held=9;#assert rf_run_check(big,img[0..<96])==RfStatus.limit;
+    one.views=0;#assert rf_run_check(one,img[0..<0])==RfStatus.shape;
+    one.views=1;one.held=0;#assert rf_run_check(one,img[0..<3])==RfStatus.shape;
+    one.held=1;one.size=0;#assert rf_run_check(one,img[0..<0])==RfStatus.shape;
+    one.size=1;#assert rf_run_check(one,img[0..<4])==RfStatus.shape;
+}
+#test "fit admission at its edges" #steps 100000000 {
+    g:=RfGrid.{side=2,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};p:[32]f64;m:[32]f64;v:[32]f64;d:[32]f64;
+    c:=rf_front();c.width=1;c.height=1;cams:[32]RfCamera;for k:0..<32 {cams[k]=c;}
+    img:[96]f64;for i:0..<96 {img[i]=1;}s:=RfSampling.{near=1,far=5,count=4};bg:[3]f64;long:[100000]f64;
+    #assert rf_fit_check(g,p[..],m[..],v[..],d[..],cams[..],img[..],s,bg,RfFit.{steps=100000,batch=4096,lr=0.1},long[..])==RfStatus.ok;
+    #assert rf_fit_check(g,p[..],m[..],v[..],d[..],cams[0..<1],img[0..<3],s,bg,RfFit.{steps=1,batch=1,lr=0.1},long[0..<1])==RfStatus.ok;
+    // One camera, one step of one ray, to a white pixel: the loss is the untrained field's error.
+    rgb:[3]f64;dep:[1]f64;op:[1]f64;#assert rf_render_field(g,p[..],c,s,bg,rgb[..],dep[..],op[..]).written==1;
+    #assert rf_fit(g,p[..],m[..],v[..],d[..],cams[0..<1],img[0..<3],s,bg,RfFit.{steps=1,batch=1,lr=0.1},long[0..<1])==RfStatus.ok;
+    #assert rf_near(long[0],rf_sq(rgb[..],img[0..<3])/3,1e-15) && long[0]>0.1 && p[0]!=0;
+}
+
+#test "the experiment end to end, small, with exact numbers and refusals" #steps 600000000 {
+    cfg:=RfRun.{views=2,held=2,size=8,side=3,samples=8,truth=16,steps=20,batch=8,lr=0.3,seed=3};
+    w:[108]f64;m:[108]f64;v:[108]f64;dw:[108]f64;images:[384]f64;losses:[20]f64;
+    o:=rf_run(cfg,w[..],m[..],v[..],dw[..],images[..],losses[..]);
+    #assert o.status==RfStatus.ok && o.params==108 && o.rendered==256 && o.points==4096 && o.inside==330 && o.covered==10 && o.truth_covered==12;
+    #assert o.train==16.152104339531856 && o.held==15.303186549707773 && o.grey==16.303967314282357 && o.blank==15.423960864815827;
+    #assert o.depth==0.3971652031480951 && o.truth_depth==0.04308919000727277 && o.agree==3766 && o.agree_low==3774;
+    #assert losses[0]==0.0027556864505699696 && losses[19]==0.03438805875451051 && w[0]==-2.2863510219353724;
+    // Pixel (5, 1) of the first view, green: its ray passes above both shapes.
+    #assert images[40]==5.773159728050812e-16;
+    bad:=cfg;bad.views=33;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]).status==RfStatus.limit;
+    bad=cfg;bad.held=9;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]).status==RfStatus.limit;
+    bad=cfg;bad.views=0;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[0..<0],losses[..]).status==RfStatus.shape;
+    bad=cfg;bad.held=0;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]).status==RfStatus.shape;
+    bad=cfg;bad.size=0;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[0..<0],losses[..]).status==RfStatus.shape;
+    bad=cfg;bad.size=65;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]).status==RfStatus.limit;
+    #assert rf_run(cfg,w[..],m[..],v[..],dw[..],images[0..<383],losses[..]).status==RfStatus.shape;
+    bad=cfg;bad.truth=0;#assert rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]).status==RfStatus.sampling;
+    // Refused before any rendering: nothing measured.
+    bad=cfg;bad.samples=257;r:=rf_run(bad,w[..],m[..],v[..],dw[..],images[..],losses[..]);#assert r.status==RfStatus.limit && r.params==0 && r.points==0;
+    r=rf_run(cfg,w[0..<107],m[..],v[..],dw[..],images[..],losses[..]);#assert r.status==RfStatus.shape && r.params==0;
+    np:=w;np[5]=0.0/0.0;bad=cfg;bad.side=2;r=rf_run(bad,np[0..<32],m[0..<32],v[0..<32],dw[0..<32],images[..],losses[..]);#assert r.status==RfStatus.ok;
+    #assert rf_run(cfg,w[..],m[..],v[..],dw[..],images[..],losses[0..<19]).status==RfStatus.shape;
+    #assert o.level==20;
+}
+
+// book:begin camera
+rf_finite :: (x:f64)->bool {return fd_finite(x);}
+rf_camera_check :: (c:RfCamera)->RfStatus {
+    if !fd_point(c.eye) || !fd_point(c.target) || !fd_point(c.up) || !rf_finite(c.focal) {return RfStatus.number;}
+    if c.width>RF_PIXELS_MAX || c.height>RF_PIXELS_MAX {return RfStatus.limit;}
+    if c.width<1 || c.height<1 || !(c.focal>0) {return RfStatus.camera;}
+    // sin^2 of the angle between forward and up, from |f x up|^2. A target
+    // at the eye has no forward direction: 0 / 0 makes x NaN, which no
+    // comparison passes.
+    f:=fd_sub(c.target,c.eye);x:=fd_cross(fd_div(f,fd_norm(f)),c.up);
+    if !(fd_dot(x,x)>RF_PARALLEL*fd_dot(c.up,c.up)) {return RfStatus.camera;}
+    return RfStatus.ok;
+}
+// Right, up and forward, three numbers each.
+rf_basis :: (c:RfCamera)->[9]f64 {
+    f:=fd_sub(c.target,c.eye);f=fd_div(f,fd_norm(f));
+    r:=fd_cross(f,c.up);r=fd_div(r,fd_norm(r));u:=fd_cross(r,f);
+    return [9]f64.[r[0],r[1],r[2],u[0],u[1],u[2],f[0],f[1],f[2]];
+}
+rf_ray :: (c:RfCamera,i:int,j:int)->RfRay {
+    out:RfRay;out.status=rf_camera_check(c);
+    if out.status==RfStatus.ok && (i<0 || j<0 || i>=c.width || j>=c.height) {out.status=RfStatus.camera;}
+    if out.status!=RfStatus.ok {return out;}
+    b:=rf_basis(c);
+    x:=(f64(i)+0.5-f64(c.width)/2)/c.focal;y:=(f64(c.height)/2-f64(j)-0.5)/c.focal;
+    d:[3]f64;for k:0..<3 {d[k]=x*b[k]+y*b[3+k]+b[6+k];}
+    out.origin=c.eye;out.dir=fd_div(d,fd_norm(d));return out;
+}
+// book:end camera
+
+// book:begin composite
+rf_sampling_check :: (s:RfSampling)->RfStatus {
+    if !rf_finite(s.near) || !rf_finite(s.far) {return RfStatus.number;}
+    if s.count>RF_SAMPLES_MAX {return RfStatus.limit;}
+    if s.count<1 || s.near<0 || !(s.far>s.near) {return RfStatus.sampling;}
+    return RfStatus.ok;
+}
+rf_delta :: (s:RfSampling)->f64 {return (s.far-s.near)/f64(s.count);}
+rf_t :: (s:RfSampling,k:int)->f64 {return s.near+(f64(k)+0.5)*rf_delta(s);}
+rf_inputs :: (s:RfSampling,sigma:[]f64,color:[]f64,bg:[3]f64)->RfStatus {
+    status:=rf_sampling_check(s);if status!=RfStatus.ok {return status;}
+    if sigma.count!=s.count || color.count!=3*s.count {return RfStatus.shape;}
+    for x:sigma {if !(x>=0) || !rf_finite(x) {return RfStatus.number;}}
+    for x:color {if !rf_finite(x) {return RfStatus.number;}}
+    if !fd_point(bg) {return RfStatus.number;}
+    return RfStatus.ok;
+}
+// Sample k absorbs alpha_k = 1 - exp(-sigma_k delta) of the light that
+// reaches it, T_k; its weight is w_k = T_k alpha_k, and the light past it is
+// T_(k+1) = T_k exp(-sigma_k delta). What passes every sample shows the
+// background.
+rf_composite :: (s:RfSampling,sigma:[]f64,color:[]f64,bg:[3]f64)->RfPixel {
+    out:RfPixel;out.status=rf_inputs(s,sigma,color,bg);if out.status!=RfStatus.ok {return out;}
+    d:=rf_delta(s);T:=1.0;
+    for k:0..<s.count {
+        e:=exp(-sigma[k]*d);w:=T*(1-e);
+        for c:0..<3 {out.rgb[c]+=w*color[3*k+c];}
+        out.depth+=w*rf_t(s,k);T*=e;
+    }
+    for c:0..<3 {out.rgb[c]+=T*bg[c];}
+    out.opacity=1-T;return out;
+}
+// For L = g . rgb + h depth: dL/dc_k = w_k g, and
+// dL/dsigma_k = delta (T_(k+1) (g . c_k + h t_k) - rest_(k+1)), where
+// rest_(k+1) is what everything after sample k adds to L. One pass forward
+// keeps each T_k; one pass backward keeps the rest.
+rf_composite_backward :: (s:RfSampling,sigma:[]f64,color:[]f64,bg:[3]f64,g:[3]f64,h:f64,dsigma:[]f64,dcolor:[]f64)->RfStatus {
+    status:=rf_inputs(s,sigma,color,bg);if status!=RfStatus.ok {return status;}
+    if dsigma.count!=s.count || dcolor.count!=3*s.count {return RfStatus.shape;}
+    if !fd_point(g) || !rf_finite(h) {return RfStatus.number;}
+    d:=rf_delta(s);T:[RF_SAMPLES_MAX+1]f64;T[0]=1;
+    for k:0..<s.count {T[k+1]=T[k]*exp(-sigma[k]*d);}
+    rest:=T[s.count]*fd_dot(g,bg);
+    k:=s.count-1;
+    while k>=0 {
+        w:=T[k]-T[k+1];
+        own:=h*rf_t(s,k);for c:0..<3 {own+=g[c]*color[3*k+c];dcolor[3*k+c]=w*g[c];}
+        dsigma[k]=d*(T[k+1]*own-rest);
+        rest+=w*own;k-=1;
+    }
+    return RfStatus.ok;
+}
+// book:end composite
+
+// book:begin scene
+rf_scene_check :: (sc:RfScene)->RfStatus {
+    if sc.shapes.count>RF_SHAPES_MAX {return RfStatus.limit;}
+    if sc.shapes.count<1 || sc.colors.count!=3*sc.shapes.count {return RfStatus.shape;}
+    for x:sc.colors {if !(x>=0 && x<=1) {return RfStatus.number;}}
+    if !rf_finite(sc.density) || !rf_finite(sc.width) {return RfStatus.number;}
+    if !(sc.density>0) || !(sc.width>0) {return RfStatus.scene;}
+    for s:sc.shapes {if s.kind==FdKind.capsule || fd_shape_check(s)!=FdStatus.ok {return RfStatus.scene;}}
+    return RfStatus.ok;
+}
+// (sigma, r, g, b) at p.
+rf_scene_at :: (sc:RfScene,p:[3]f64)->[4]f64 {
+    best:=0;d:=fd_shape_distance(sc.shapes[0],p).d;
+    for i:1..<sc.shapes.count {e:=fd_shape_distance(sc.shapes[i],p).d;if e<d {d=e;best=i;}}
+    return [4]f64.[sc.density/(1+exp(d/sc.width)),sc.colors[3*best],sc.colors[3*best+1],sc.colors[3*best+2]];
+}
+// The first t > 0 where o + t d meets a shape's surface, or RF_MISS: a
+// quadratic for a sphere (d a unit vector), three slabs for a box.
+// Independent of the signed distances: the checks compare the two.
+RF_MISS :: 1e300;
+rf_hit_sphere :: (s:FdShape,o:[3]f64,d:[3]f64)->f64 {
+    v:=fd_sub(o,s.a);b:=fd_dot(d,v);c:=fd_dot(v,v)-s.r*s.r;q:=b*b-c;
+    if q<0 {return RF_MISS;}
+    q=sqrt(q);if -b-q>0 {return -b-q;}if -b+q>0 {return -b+q;}
+    return RF_MISS;
+}
+// The ray is inside slab k for t between its two crossings; inside the box
+// for t in [lo, hi], the overlap of all three.
+rf_hit_box :: (s:FdShape,o:[3]f64,d:[3]f64)->f64 {
+    lo:=-RF_MISS;hi:=RF_MISS;
+    for k:0..<3 {
+        if d[k]==0 {if o[k]<s.a[k] || o[k]>s.b[k] {return RF_MISS;}}
+        else {
+            t1:=(s.a[k]-o[k])/d[k];t2:=(s.b[k]-o[k])/d[k];
+            lo=fd_max(lo,fd_min(t1,t2));hi=fd_min(hi,fd_max(t1,t2));
+        }
+    }
+    if lo>hi || !(hi>0) {return RF_MISS;}
+    return ifx lo>0 then lo else hi;
+}
+// The nearest hit over every shape, or -1 for none.
+rf_hit :: (sc:RfScene,o:[3]f64,d:[3]f64)->f64 {
+    best:=RF_MISS;
+    for s:sc.shapes {best=fd_min(best,ifx s.kind==FdKind.sphere then rf_hit_sphere(s,o,d) else rf_hit_box(s,o,d));}
+    return ifx best<RF_MISS then best else -1.0;
+}
+// book:end scene
+
+// book:begin grid
+rf_softplus :: (x:f64)->f64 {return ifx x>30 then x else log(1+exp(x));}
+rf_sigmoid :: (x:f64)->f64 {return 1/(1+exp(-x));}
+rf_grid_check :: (g:RfGrid,params:[]f64)->RfStatus {
+    if !fd_point(g.low) || !fd_point(g.high) {return RfStatus.number;}
+    if g.side>RF_SIDE_MAX {return RfStatus.limit;}
+    if g.side<2 || params.count!=4*g.side*g.side*g.side {return RfStatus.shape;}
+    for k:0..<3 {if !(g.low[k]<g.high[k]) {return RfStatus.shape;}}
+    for x:params {if !rf_finite(x) {return RfStatus.number;}}
+    return RfStatus.ok;
+}
+rf_init :: (g:RfGrid,params:[]f64,density:f64) {for i:0..<params.count {params[i]=ifx i%4==0 then density else 0.0;}}
+// Where p falls among the vertices: the lower corner of its cell and the
+// fractions across it. Outside the box, nothing.
+RfCell :: struct {inside:bool;base:[3]int;frac:[3]f64;raw:[4]f64;}
+rf_cell :: (g:RfGrid,p:[3]f64)->RfCell {
+    out:RfCell;n:=f64(g.side-1);
+    for k:0..<3 {
+        u:=(p[k]-g.low[k])/(g.high[k]-g.low[k])*n;
+        if !(u>=0 && u<=n) {return out;}
+        b:=fd_imin(cast(int)floor(u),g.side-2);
+        out.base[k]=b;out.frac[k]=u-f64(b);
+    }
+    out.inside=true;return out;
+}
+// The weight of corner (x, y, z), each 0 or 1, and its vertex.
+rf_corner :: (g:RfGrid,c:RfCell,x:int,y:int,z:int)->int {return ((c.base[2]+z)*g.side+c.base[1]+y)*g.side+c.base[0]+x;}
+rf_weight :: (c:RfCell,x:int,y:int,z:int)->f64 {
+    w:=1.0;q:=[3]int.[x,y,z];
+    for k:0..<3 {w*=ifx q[k]==1 then c.frac[k] else 1-c.frac[k];}
+    return w;
+}
+rf_field_raw :: (g:RfGrid,params:[]f64,p:[3]f64)->RfCell {
+    c:=rf_cell(g,p);if !c.inside {return c;}
+    for z:0..<2 {for y:0..<2 {for x:0..<2 {
+        w:=rf_weight(c,x,y,z);v:=rf_corner(g,c,x,y,z);
+        for ch:0..<4 {c.raw[ch]+=w*params[4*v+ch];}
+    }}}
+    return c;
+}
+// (sigma, r, g, b): zero outside the grid.
+rf_field_at :: (g:RfGrid,params:[]f64,p:[3]f64)->[4]f64 {
+    c:=rf_field_raw(g,params,p);out:[4]f64;if !c.inside {return out;}
+    out[0]=rf_softplus(c.raw[0]);for ch:1..<4 {out[ch]=rf_sigmoid(c.raw[ch]);}
+    return out;
+}
+// Adds the gradient of (sigma, r, g, b) at p, weighted by dout, to grads.
+rf_field_back :: (g:RfGrid,params:[]f64,p:[3]f64,dout:[4]f64,grads:[]f64) {
+    c:=rf_field_raw(g,params,p);if !c.inside {return;}
+    draw:[4]f64;draw[0]=dout[0]*rf_sigmoid(c.raw[0]);
+    for ch:1..<4 {s:=rf_sigmoid(c.raw[ch]);draw[ch]=dout[ch]*s*(1-s);}
+    for z:0..<2 {for y:0..<2 {for x:0..<2 {
+        w:=rf_weight(c,x,y,z);v:=rf_corner(g,c,x,y,z);
+        for ch:0..<4 {grads[4*v+ch]+=w*draw[ch];}
+    }}}
+}
+// book:end grid
+
+// book:begin render
+rf_point :: (r:RfRay,s:RfSampling,k:int)->[3]f64 {return fd_add(r.origin,fd_scale(r.dir,rf_t(s,k)));}
+// One ray's samples from the scene (field false) or the grid (field true).
+rf_samples :: (field:bool,sc:RfScene,g:RfGrid,params:[]f64,r:RfRay,s:RfSampling,sigma:[]f64,color:[]f64) {
+    for k:0..<s.count {
+        p:=rf_point(r,s,k);
+        x:=ifx field then rf_field_at(g,params,p) else rf_scene_at(sc,p);
+        sigma[k]=x[0];for c:0..<3 {color[3*k+c]=x[1+c];}
+    }
+}
+// Colour, depth (where the absorbed light stopped, on average; 0 if none
+// was) and opacity for every pixel, row by row.
+rf_render :: (field:bool,sc:RfScene,g:RfGrid,params:[]f64,cam:RfCamera,s:RfSampling,bg:[3]f64,rgb:[]f64,depth:[]f64,opacity:[]f64)->RfResult {
+    out:RfResult;out.status=rf_camera_check(cam);
+    if out.status==RfStatus.ok {out.status=rf_sampling_check(s);}
+    n:=cam.width*cam.height;
+    if out.status==RfStatus.ok && (rgb.count!=3*n || depth.count!=n || opacity.count!=n) {out.status=RfStatus.shape;}
+    if out.status!=RfStatus.ok {return out;}
+    sigma:[RF_SAMPLES_MAX]f64;color:[3*RF_SAMPLES_MAX]f64;
+    for j:0..<cam.height {for i:0..<cam.width {
+        r:=rf_ray(cam,i,j);rf_samples(field,sc,g,params,r,s,sigma[..],color[..]);
+        p:=rf_composite(s,sigma[0..<s.count],color[0..<3*s.count],bg);
+        if p.status!=RfStatus.ok {out.status=p.status;return out;}
+        k:=j*cam.width+i;for c:0..<3 {rgb[3*k+c]=p.rgb[c];}
+        depth[k]=ifx p.opacity>0 then p.depth/p.opacity else 0.0;opacity[k]=p.opacity;
+    }}
+    out.written=n;return out;
+}
+rf_render_scene :: (sc:RfScene,cam:RfCamera,s:RfSampling,bg:[3]f64,rgb:[]f64,depth:[]f64,opacity:[]f64)->RfResult {
+    status:=rf_scene_check(sc);
+    if status!=RfStatus.ok {return RfResult.{status=status};}
+    g:RfGrid;return rf_render(false,sc,g,rgb,cam,s,bg,rgb,depth,opacity);
+}
+rf_render_field :: (g:RfGrid,params:[]f64,cam:RfCamera,s:RfSampling,bg:[3]f64,rgb:[]f64,depth:[]f64,opacity:[]f64)->RfResult {
+    status:=rf_grid_check(g,params);
+    if status!=RfStatus.ok {return RfResult.{status=status};}
+    sc:RfScene;return rf_render(true,sc,g,params,cam,s,bg,rgb,depth,opacity);
+}
+// book:end render
+
+// book:begin fit
+// One ray's squared colour error against target; when scale is not zero,
+// adds scale times its gradient to grads. Inputs are checked by the caller.
+rf_ray_grad :: (g:RfGrid,params:[]f64,r:RfRay,s:RfSampling,bg:[3]f64,target:[3]f64,scale:f64,grads:[]f64)->f64 {
+    sigma:[RF_SAMPLES_MAX]f64;color:[3*RF_SAMPLES_MAX]f64;sc:RfScene;n:=s.count;
+    rf_samples(true,sc,g,params,r,s,sigma[..],color[..]);
+    p:=rf_composite(s,sigma[0..<n],color[0..<3*n],bg);
+    loss:=0.0;e:[3]f64;for c:0..<3 {e[c]=p.rgb[c]-target[c];loss+=e[c]*e[c];}
+    if scale==0 {return loss;}
+    ds:[RF_SAMPLES_MAX]f64;dc:[3*RF_SAMPLES_MAX]f64;
+    status:=rf_composite_backward(s,sigma[0..<n],color[0..<3*n],bg,fd_scale(e,2*scale),0,ds[0..<n],dc[0..<3*n]);
+    if status!=RfStatus.ok {return 0.0/0.0;}
+    for k:0..<n {rf_field_back(g,params,rf_point(r,s,k),[4]f64.[ds[k],dc[3*k],dc[3*k+1],dc[3*k+2]],grads);}
+    return loss;
+}
+rf_fit_check :: (g:RfGrid,params:[]f64,m:[]f64,v:[]f64,grads:[]f64,cams:[]RfCamera,images:[]f64,s:RfSampling,bg:[3]f64,cfg:RfFit,losses:[]f64)->RfStatus {
+    status:=rf_grid_check(g,params);if status!=RfStatus.ok {return status;}
+    if m.count!=params.count || v.count!=params.count || grads.count!=params.count {return RfStatus.shape;}
+    if cams.count>RF_VIEWS_MAX || cfg.batch>RF_BATCH_MAX || cfg.steps>RF_STEPS_MAX {return RfStatus.limit;}
+    if cams.count<1 || cfg.batch<1 || cfg.steps<1 || losses.count!=cfg.steps {return RfStatus.shape;}
+    for c:cams {
+        status=rf_camera_check(c);if status!=RfStatus.ok {return status;}
+        if c.width!=cams[0].width || c.height!=cams[0].height {return RfStatus.shape;}
+    }
+    if images.count!=3*cams.count*cams[0].width*cams[0].height {return RfStatus.shape;}
+    for x:images {if !(x>=0 && x<=1) {return RfStatus.number;}}
+    status=rf_sampling_check(s);if status!=RfStatus.ok {return status;}
+    if !fd_point(bg) {return RfStatus.number;}
+    return RfStatus.ok;
+}
+// Each step draws batch rays from every view's pixels by a counter hash,
+// averages the squared error per colour channel, and takes one AdamW step.
+rf_fit :: (g:RfGrid,params:[]f64,m:[]f64,v:[]f64,grads:[]f64,cams:[]RfCamera,images:[]f64,s:RfSampling,bg:[3]f64,cfg:RfFit,losses:[]f64)->RfStatus {
+    status:=rf_fit_check(g,params,m,v,grads,cams,images,s,bg,cfg,losses);if status!=RfStatus.ok {return status;}
+    pixels:=cams[0].width*cams[0].height;rays:=cast(u64)(cams.count*pixels);scale:=1/f64(3*cfg.batch);
+    group:=[1]AwGroup.[AwGroup.{first=0,count=params.count,lr=cfg.lr,beta1=0.9,beta2=0.99,eps=0.00000001,decay=0}];
+    state:AwState;none:[1]f32;
+    for step:0..<cfg.steps {
+        for i:0..<grads.count {grads[i]=0;}
+        total:=0.0;
+        for b:0..<cfg.batch {
+            idx:=cast(int)(cr_bits(cfg.seed,cast(u64)(step*cfg.batch+b))%rays);view:=idx/pixels;px:=idx%pixels;
+            c:=cams[view];r:=rf_ray(c,px%c.width,px/c.width);t:=fd_at(images,idx);
+            total+=rf_ray_grad(g,params,r,s,bg,t,scale,grads);
+        }
+        losses[step]=total*scale;
+        a:=aw_step(group[..],AwPolicy.{},state,params,grads,m,v,none[0..<0],false);
+        if a.status!=AwStatus.ok {return RfStatus.number;}
+        state=a.state;
+    }
+    return RfStatus.ok;
+}
+// book:end fit
+
+// book:begin measure
+rf_sq :: (a:[]f64,b:[]f64)->f64 {e:=0.0;for i:0..<a.count {d:=a[i]-b[i];e+=d*d;}return e;}
+// Peak signal-to-noise ratio for values in [0, 1]: 10 log10 (count / squared error).
+rf_db :: (sum:f64,count:int)->f64 {return 10*log(f64(count)/sum)/log(10.0);}
+rf_psnr :: (a:[]f64,b:[]f64)->f64 {return rf_db(rf_sq(a,b),a.count);}
+// Depth error summed over the pixels whose ray hits a shape exactly and
+// that are at least half opaque, and how many there were. depth and
+// opacity hold one number a pixel of cam, row by row, from index first.
+RfDepth :: struct {sum:f64;count:int;}
+rf_depth_error :: (sc:RfScene,cam:RfCamera,depth:[]f64,opacity:[]f64,first:int)->RfDepth {
+    out:RfDepth;
+    for i:0..<cam.width*cam.height {
+        r:=rf_ray(cam,i%cam.width,i/cam.width);t:=rf_hit(sc,r.origin,r.dir);
+        if opacity[first+i]>=0.5 && t!=-1.0 {out.sum+=abs(depth[first+i]-t);out.count+=1;}
+    }
+    return out;
+}
+rf_mean :: (d:RfDepth)->f64 {return ifx d.count>0 then d.sum/f64(d.count) else 0.0;}
+// inside: how many points the scene's shapes contain (signed distance below
+// 0). agree: how many the field calls occupied (sigma above level) exactly
+// when the shapes contain them.
+RfOccupancy :: struct {agree:int;inside:int;}
+rf_occupancy :: (g:RfGrid,params:[]f64,sc:RfScene,points:[]f64,level:f64)->RfOccupancy {
+    out:RfOccupancy;
+    for i:0..<points.count/3 {
+        p:=fd_at(points,i);inside:=false;
+        for s:sc.shapes {if fd_shape_distance(s,p).d<0 {inside=true;}}
+        if inside {out.inside+=1;}
+        if (rf_field_at(g,params,p)[0]>level)==inside {out.agree+=1;}
+    }
+    return out;
+}
+// book:end measure
+
+// book:begin experiment
+// count cameras on a circle of the given radius at height 1.2, every one
+// looking at the origin; camera k sits at angle (k + offset) / count turns.
+rf_views :: (count:int,radius:f64,size:int,offset:f64,out:[]RfCamera) {
+    for k:0..<count {
+        a:=(f64(k)+offset)*2*FD_PI/f64(count);
+        out[k]=RfCamera.{eye=[3]f64.[radius*sin(a),1.2,radius*cos(a)],up=[3]f64.[0,1,0],width=size,height=size,focal=f64(size)};
+    }
+}
+// The chapter's scene: a red sphere and a blue box inside the cube from -1 to 1.
+rf_demo :: (shapes:[]FdShape,colors:[]f64)->RfScene {
+    shapes[0]=FdShape.{kind=FdKind.sphere,a=[3]f64.[-0.35,0,0],r=0.45};
+    shapes[1]=FdShape.{kind=FdKind.box,a=[3]f64.[0.15,-0.4,-0.3],b=[3]f64.[0.75,0.2,0.3]};
+    c:=[6]f64.[0.9,0.25,0.15, 0.15,0.4,0.9];for k:0..<6 {colors[k]=c[k];}
+    return RfScene.{shapes=shapes,colors=colors,density=40,width=0.02};
+}
+// views training cameras and held cameras halfway between training cameras;
+// truth samples a ray for the ground-truth views, samples for the field.
+RfRun :: struct {views:int;held:int;size:int;side:int;samples:int;truth:int;steps:int;batch:int;lr:f64;seed:u64;}
+// PSNR in dB: of the fitted field on the training and held-out views, of
+// the untrained field (grey) and of an all-background image (blank) on the
+// held-out views. Depth errors are means over rf_depth_error's pixels.
+// Occupancy is read at level (the scene's surface, density / 2) and at 1.
+// rendered counts the pixels of the fitted field's renders.
+RfReport :: struct {status:RfStatus;params:int;rendered:int;train:f64;held:f64;grey:f64;blank:f64;depth:f64;truth_depth:f64;covered:int;truth_covered:int;level:f64;agree:int;agree_low:int;inside:int;points:int;}
+RF_HELD_MAX :: 8;
+RF_OCCUPANCY_POINTS :: 4096;
+RF_AREA :: RF_PIXELS_MAX*RF_PIXELS_MAX;
+rf_run_check :: (cfg:RfRun,images:[]f64)->RfStatus {
+    if cfg.views>RF_VIEWS_MAX || cfg.held>RF_HELD_MAX || cfg.size>RF_PIXELS_MAX {return RfStatus.limit;}
+    if cfg.views<1 || cfg.held<1 || cfg.size<1 || images.count!=3*cfg.views*cfg.size*cfg.size {return RfStatus.shape;}
+    return RfStatus.ok;
+}
+// Held camera k sits halfway between training cameras k views / held and the next.
+rf_held :: (cfg:RfRun,out:[]RfCamera) {
+    for k:0..<cfg.held {one:[1]RfCamera;rf_views(1,3,cfg.size,(f64(k*cfg.views/cfg.held)+0.5)/f64(cfg.views),one[..]);out[k]=one[0];}
+}
+// The scene from each camera, n pixels each, into its share of rgb, depth
+// and opacity.
+rf_truth :: (sc:RfScene,cams:[]RfCamera,n:int,s:RfSampling,bg:[3]f64,rgb:[]f64,depth:[]f64,opacity:[]f64)->RfStatus {
+    for k:0..<cams.count {
+        r:=rf_render_scene(sc,cams[k],s,bg,rgb[3*n*k..<3*n*(k+1)],depth[n*k..<n*(k+1)],opacity[n*k..<n*(k+1)]);
+        if r.status!=RfStatus.ok {return r.status;}
+    }
+    return RfStatus.ok;
+}
+// The field from each camera: its squared error against want, its depth
+// error, and how many pixels it rendered. The caller has checked the inputs.
+RfScore :: struct {pixels:int;sq:f64;depth:RfDepth;}
+rf_score :: (g:RfGrid,params:[]f64,sc:RfScene,cams:[]RfCamera,n:int,s:RfSampling,bg:[3]f64,want:[]f64)->RfScore {
+    out:RfScore;rgb:[3*RF_AREA]f64;depth:[RF_AREA]f64;op:[RF_AREA]f64;
+    for k:0..<cams.count {
+        out.pixels+=rf_render_field(g,params,cams[k],s,bg,rgb[0..<3*n],depth[0..<n],op[0..<n]).written;
+        out.sq+=rf_sq(rgb[0..<3*n],want[3*n*k..<3*n*(k+1)]);
+        d:=rf_depth_error(sc,cams[k],depth[..],op[..],0);out.depth.sum+=d.sum;out.depth.count+=d.count;
+    }
+    return out;
+}
+rf_run :: (cfg:RfRun,params:[]f64,m:[]f64,v:[]f64,grads:[]f64,images:[]f64,losses:[]f64)->RfReport {
+    out:RfReport;out.status=rf_run_check(cfg,images);if out.status!=RfStatus.ok {return out;}
+    s:=RfSampling.{near=1.5,far=4.5,count=cfg.samples};out.status=rf_sampling_check(s);if out.status!=RfStatus.ok {return out;}
+    g:=RfGrid.{side=cfg.side,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};rf_init(g,params,-2);
+    out.status=rf_grid_check(g,params);if out.status!=RfStatus.ok {return out;}
+    out.params=params.count;
+    sh:[2]FdShape;co:[6]f64;sc:=rf_demo(sh[..],co[..]);
+    cams:[RF_VIEWS_MAX]RfCamera;rf_views(cfg.views,3,cfg.size,0,cams[..]);held:[RF_HELD_MAX]RfCamera;rf_held(cfg,held[..]);
+    train:=cams[0..<cfg.views];test:=held[0..<cfg.held];
+    truth:=RfSampling.{near=1.5,far=4.5,count=cfg.truth};bg:[3]f64;
+    // Ground truth for the training views, then for the held-out views.
+    n:=cfg.size*cfg.size;depth:[RF_VIEWS_MAX*RF_AREA]f64;op:[RF_VIEWS_MAX*RF_AREA]f64;
+    want:[RF_HELD_MAX*3*RF_AREA]f64;td:[RF_HELD_MAX*RF_AREA]f64;top:[RF_HELD_MAX*RF_AREA]f64;
+    w:=want[0..<3*n*cfg.held];
+    out.status=rf_truth(sc,train,n,truth,bg,images,depth[..],op[..]);
+    if out.status==RfStatus.ok {out.status=rf_truth(sc,test,n,truth,bg,w,td[..],top[..]);}
+    if out.status!=RfStatus.ok {return out;}
+    tdepth:RfDepth;
+    for k:0..<cfg.held {d:=rf_depth_error(sc,test[k],td[..],top[..],n*k);tdepth.sum+=d.sum;tdepth.count+=d.count;}
+    blank:=0.0;for x:w {blank+=x*x;}
+    // The untrained field on the held-out views, then the fit.
+    grey:=rf_score(g,params,sc,test,n,s,bg,w);
+    out.status=rf_fit(g,params,m,v,grads,train,images,s,bg,RfFit.{steps=cfg.steps,batch=cfg.batch,lr=cfg.lr,seed=cfg.seed},losses);
+    if out.status!=RfStatus.ok {return out;}
+    a:=rf_score(g,params,sc,train,n,s,bg,images);b:=rf_score(g,params,sc,test,n,s,bg,w);
+    out.rendered=a.pixels+b.pixels;out.train=rf_db(a.sq,images.count);out.held=rf_db(b.sq,w.count);
+    out.grey=rf_db(grey.sq,w.count);out.blank=rf_db(blank,w.count);
+    out.depth=rf_mean(b.depth);out.covered=b.depth.count;
+    out.truth_depth=rf_mean(tdepth);out.truth_covered=tdepth.count;
+    // The scene's surface is where its density is half its peak; the field
+    // is also read at sigma = 1, a level a fitted field reaches far more often.
+    pts:[3*RF_OCCUPANCY_POINTS]f64;out.points=fd_sample_box(g.low,g.high,11,pts[..]).written;
+    out.level=sc.density/2;o:=rf_occupancy(g,params,sc,pts[..],out.level);
+    out.agree=o.agree;out.inside=o.inside;out.agree_low=rf_occupancy(g,params,sc,pts[..],1).agree;
+    return out;
+}
+// book:end experiment

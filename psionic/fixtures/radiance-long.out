@@ -1,0 +1,16 @@
+status ok
+training: 16 views of 24 x 24, ground truth 192 samples a ray; field 48 samples a ray
+grid: 24 vertices a side, 55296 parameters (1327104 bytes for parameters and AdamW moments)
+fit: 3000 steps of 256 rays, rate 0.05
+  step 0: loss 0.0304
+  step 500: loss 0.0001226
+  step 1000: loss 0.00001278
+  step 1500: loss 6.507e-06
+  step 2000: loss 8.722e-06
+  step 2500: loss 4.663e-06
+  step 2999: loss 5.048e-06
+training views: PSNR 52.14 dB
+held-out views (4, halfway between training cameras): PSNR 38.0 dB; untrained field 15.66 dB, all-background image 14.48 dB
+held-out depth error: 0.0998 over 232 pixels; the ground-truth render's own: 0.0273 over 232 pixels
+occupancy: 330 of 4096 box points inside the shapes; the field agrees on 3766 at sigma 20 (the scene's surface level), 3878 at sigma 1
+threshold: held-out PSNR at least 20.0 dB: pass

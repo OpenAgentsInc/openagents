@@ -1,0 +1,21 @@
+pixel (0, 0): direction (-0.4082, 0.4082, -0.8165)
+pixel (1, 0): direction (0.4082, 0.4082, -0.8165)
+pixel (0, 1): direction (-0.4082, -0.4082, -0.8165)
+pixel (1, 1): direction (0.4082, -0.4082, -0.8165)
+two samples: rgb (0.3934693402873666, 0.3834004995642036, 0.22313016014842985), depth 0.38591770974499434, opacity 0.7768698398515701
+d red / d sigma: (0.3032653298563167, 0.0), d red / d red_k: (0.3934693402873666, 0.3834004995642036)
+slab of sigma 2, thickness 1: opacity 0.8646647167633873 against 1 - exp(-2) = 0.8646647167633873
+one ray: loss 0.2738; 108 gradients against central differences, all within 1e-8: true
+hit from (0, 0, 3) straight down -z: 2.7171572875253807
+hit from (-0.35, 0, 3) straight down -z: 2.5499999999999994
+hit from (0.45, 3, 0) straight down -y: 2.8
+hit from (0, 3, 0) straight down -y: 2.7171572875253807
+fit: ok, 6912 parameters, 300 steps of 64 rays
+  step 0: loss 0.0334
+  step 100: loss 0.0047
+  step 200: loss 0.001
+  step 299: loss 0.0003
+training views: PSNR 31.99 dB
+held-out views: PSNR 26.11 dB (untrained 15.25 dB, all background 14.03 dB)
+held-out depth error 0.1131 over 33 pixels (ground truth's own 0.03 over 33)
+occupancy: 330 of 4096 points inside the shapes; the field agrees on 3766 at sigma 20, 3798 at sigma 1

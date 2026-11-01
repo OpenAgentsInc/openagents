@@ -1,0 +1,45 @@
+// Chapter 159: broken cameras, sample counts, densities, scenes, grids and
+// fits, each refused with its status before anything is written.
+#import "Basic";
+#load "../lib/radiance.coax";
+
+// book:begin refuse
+main :: () {
+    c:=RfCamera.{eye=[3]f64.[0,0,3],up=[3]f64.[0,1,0],width=2,height=2,focal=1};
+    d:=c;d.focal=0;print("focal length 0: %\n",rf_camera_check(d));
+    d=c;d.target=d.eye;print("target at the eye: %\n",rf_camera_check(d));
+    d=c;d.up=[3]f64.[0,0,1];print("up along the view: %\n",rf_camera_check(d));
+    d=c;d.width=65;print("65 pixels wide: %\n",rf_camera_check(d));
+    d=c;d.eye[1]=0.0/0.0;print("a NaN eye: %\n",rf_camera_check(d));
+    print("pixel (2, 0) of a 2 x 2 image: %\n",rf_ray(c,2,0).status);
+
+    s:=RfSampling.{near=0,far=1,count=2};sigma:=[2]f64.[1,2];color:=[6]f64.[1,0,0, 0,1,0];bg:=[3]f64.[0,0,1];
+    t:=s;t.count=0;print("0 samples: %\n",rf_composite(t,sigma[0..<0],color[0..<0],bg).status);
+    t.count=257;print("257 samples: %\n",rf_sampling_check(t));
+    t=s;t.far=0;print("far before near: %\n",rf_sampling_check(t));
+    n:=sigma;n[1]=-0.5;print("a negative density: %\n",rf_composite(s,n[..],color[..],bg).status);
+    n[1]=1.0/0.0;print("an infinite density: %\n",rf_composite(s,n[..],color[..],bg).status);
+    three:=[3]f64.[1,2,3];print("3 densities for 2 samples: %\n",rf_composite(s,three[..],color[..],bg).status);
+    nan:=[2]f64.[0.0/0.0,1];ds:=[2]f64.[-7,-7];dc:=[6]f64.[-7,-7,-7,-7,-7,-7];
+    print("backward with a NaN density: %\n",rf_composite_backward(s,nan[..],color[..],bg,[3]f64.[1,1,1],0,ds[..],dc[..]));
+    print("gradient slots still -7: % %\n",ds[0],dc[5]);
+
+    sh:[2]FdShape;co:[6]f64;sc:=rf_demo(sh[..],co[..]);
+    bad:=sc;bad.density=0;print("a scene with density 0: %\n",rf_scene_check(bad));
+    caps:=sh;caps[1].kind=FdKind.capsule;bad=sc;bad.shapes=caps[..];print("a capsule in the scene: %\n",rf_scene_check(bad));
+    bright:=co;bright[0]=1.5;bad=sc;bad.colors=bright[..];print("a colour of 1.5: %\n",rf_scene_check(bad));
+
+    g:=RfGrid.{side=2,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};params:[32]f64;
+    print("31 numbers for a 2-vertex grid: %\n",rf_grid_check(g,params[0..<31]));
+    big:=g;big.side=33;print("33 vertices a side: %\n",rf_grid_check(big,params[..]));
+    flat:=g;flat.high[2]=-1;print("a grid with no depth: %\n",rf_grid_check(flat,params[..]));
+
+    cams:[1]RfCamera;cams[0]=c;img:[12]f64;m:[32]f64;v:[32]f64;grads:[32]f64;losses:[4]f64;
+    rf_init(g,params[..],-1);cfg:=RfFit.{steps=4,batch=2,lr=0.1,seed=1};
+    hot:=img;hot[5]=1.5;print("a target colour of 1.5: %\n",rf_fit(g,params[..],m[..],v[..],grads[..],cams[..],hot[..],s,bg,cfg,losses[..]));
+    print("11 numbers for a 2 x 2 view: %\n",rf_fit(g,params[..],m[..],v[..],grads[..],cams[..],img[0..<11],s,bg,cfg,losses[..]));
+    fast:=cfg;fast.lr=2;print("a learning rate of 2: %\n",rf_fit(g,params[..],m[..],v[..],grads[..],cams[..],img[..],s,bg,fast,losses[..]));
+    wide:=cfg;wide.batch=4097;print("a batch of 4,097 rays: %\n",rf_fit(g,params[..],m[..],v[..],grads[..],cams[..],img[..],s,bg,wide,losses[..]));
+    print("parameters still -1 and 0: % %, moments still 0: % %\n",params[0],params[1],m[0],v[0]);
+}
+// book:end refuse

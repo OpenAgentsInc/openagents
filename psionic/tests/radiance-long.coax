@@ -1,0 +1,40 @@
+// Chapter 159's longer fit: 16 training views of 24 x 24, a 24-vertex grid,
+// 3,000 AdamW steps of 256 rays, then four held-out cameras halfway between
+// training cameras. Its output is psionic/fixtures/radiance-long.out;
+// regenerate it with
+//   coax/bin/coax run psionic/tests/radiance-long.coax --release
+// The acceptance threshold (held-out PSNR at least 20 dB) was written into
+// chapter 159 and this file before the program first ran.
+#import "Basic";
+#load "../lib/radiance.coax";
+
+LONG_VIEWS :: 16;
+LONG_SIZE :: 24;
+LONG_SIDE :: 24;
+LONG_STEPS :: 3000;
+LONG_THRESHOLD :: 20.0;
+long_r2 :: (v:f64)->f64 {return floor(v*100+0.5)/100;}
+long_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+long_sig :: (v:f64)->f64 {
+    if v==0 {return 0;}
+    s:=1.0;while abs(v)*s<1000 {s*=10;}
+    return floor(v*s+0.5)/s;
+}
+
+main :: () {
+    cfg:=RfRun.{views=LONG_VIEWS,held=4,size=LONG_SIZE,side=LONG_SIDE,samples=48,truth=192,steps=LONG_STEPS,batch=256,lr=0.05,seed=159};
+    P:=4*LONG_SIDE*LONG_SIDE*LONG_SIDE;
+    p:[4*LONG_SIDE*LONG_SIDE*LONG_SIDE]f64;m:[4*LONG_SIDE*LONG_SIDE*LONG_SIDE]f64;v:[4*LONG_SIDE*LONG_SIDE*LONG_SIDE]f64;g:[4*LONG_SIDE*LONG_SIDE*LONG_SIDE]f64;
+    images:[3*LONG_VIEWS*LONG_SIZE*LONG_SIZE]f64;losses:[LONG_STEPS]f64;
+    r:=rf_run(cfg,p[..],m[..],v[..],g[..],images[..],losses[..]);
+    print("status %\n",r.status);
+    print("training: % views of % x %, ground truth % samples a ray; field % samples a ray\n",cfg.views,cfg.size,cfg.size,cfg.truth,cfg.samples);
+    print("grid: % vertices a side, % parameters (% bytes for parameters and AdamW moments)\n",cfg.side,P,P*8*3);
+    print("fit: % steps of % rays, rate %\n",cfg.steps,cfg.batch,cfg.lr);
+    for s:0..<LONG_STEPS {if s%500==0 || s==LONG_STEPS-1 {print("  step %: loss %\n",s,long_sig(losses[s]));}}
+    print("training views: PSNR % dB\n",long_r2(r.train));
+    print("held-out views (4, halfway between training cameras): PSNR % dB; untrained field % dB, all-background image % dB\n",long_r2(r.held),long_r2(r.grey),long_r2(r.blank));
+    print("held-out depth error: % over % pixels; the ground-truth render's own: % over % pixels\n",long_r4(r.depth),r.covered,long_r4(r.truth_depth),r.truth_covered);
+    print("occupancy: % of % box points inside the shapes; the field agrees on % at sigma 20 (the scene's surface level), % at sigma 1\n",r.inside,r.points,r.agree,r.agree_low);
+    print("threshold: held-out PSNR at least % dB: %\n",LONG_THRESHOLD,ifx r.held>=LONG_THRESHOLD then "pass" else "fail");
+}

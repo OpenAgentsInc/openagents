@@ -1,0 +1,37 @@
+// Chapter 159's check oracles, loaded by psionic/lib/radiance.coax. Nothing
+// here calls the renderer: the camera basis comes from Gram-Schmidt instead
+// of cross products, a pixel is found by projecting a point back through the
+// pinhole, and transmittance is exp of a running sum of optical depth rather
+// than a running product of per-sample factors.
+rf_near :: (a:f64,b:f64,tol:f64)->bool {return abs(a-b)<=tol;}
+rf_unit :: (v:[3]f64)->[3]f64 {return fd_div(v,fd_norm(v));}
+
+// Forward f toward the target; up made perpendicular to f by Gram-Schmidt;
+// right is the remaining axis, f x up, which for this pair is already unit.
+rf_oracle_basis :: (c:RfCamera)->[9]f64 {
+    f:=rf_unit(fd_sub(c.target,c.eye));
+    u:=rf_unit(fd_sub(c.up,fd_scale(f,fd_dot(c.up,f))));
+    r:=fd_cross(f,u);
+    return [9]f64.[r[0],r[1],r[2],u[0],u[1],u[2],f[0],f[1],f[2]];
+}
+// The pixel coordinates (column, row, measured to pixel centres) where the
+// point q lands: perspective divide by the depth along f.
+rf_project :: (c:RfCamera,q:[3]f64)->[2]f64 {
+    b:=rf_oracle_basis(c);v:=fd_sub(q,c.eye);
+    x:=b[0]*v[0]+b[1]*v[1]+b[2]*v[2];y:=b[3]*v[0]+b[4]*v[1]+b[5]*v[2];z:=b[6]*v[0]+b[7]*v[1]+b[8]*v[2];
+    return [2]f64.[f64(c.width)/2+c.focal*x/z-0.5,f64(c.height)/2-c.focal*y/z-0.5];
+}
+// Composite by the definition: T_k = exp(-delta * (sigma_0 + ... + sigma_(k-1))),
+// w_k = T_k - T_(k+1); out = (r, g, b, depth, opacity).
+rf_oracle_composite :: (s:RfSampling,sigma:[]f64,color:[]f64,bg:[3]f64)->[5]f64 {
+    d:=(s.far-s.near)/f64(s.count);sum:=0.0;out:[5]f64;
+    for k:0..<s.count {
+        before:=exp(-d*sum);sum+=sigma[k];after:=exp(-d*sum);w:=before-after;
+        for c:0..<3 {out[c]+=w*color[3*k+c];}
+        out[3]+=w*(s.near+(f64(k)+0.5)*d);
+    }
+    for c:0..<3 {out[c]+=exp(-d*sum)*bg[c];}
+    out[4]=1-exp(-d*sum);return out;
+}
+// A splitmix64 stream in [0, 1), apart from the renderer's seeds.
+rf_lcg :: (r:[]u64)->f64 {r[0]+=1;return f64(cr_bits(4242,r[0])>>11)/9007199254740992.0;}

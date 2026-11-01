@@ -1,0 +1,25 @@
+focal length 0: camera
+target at the eye: camera
+up along the view: camera
+65 pixels wide: limit
+a NaN eye: number
+pixel (2, 0) of a 2 x 2 image: camera
+0 samples: sampling
+257 samples: limit
+far before near: sampling
+a negative density: number
+an infinite density: number
+3 densities for 2 samples: shape
+backward with a NaN density: number
+gradient slots still -7: -7.0 -7.0
+a scene with density 0: scene
+a capsule in the scene: scene
+a colour of 1.5: number
+31 numbers for a 2-vertex grid: shape
+33 vertices a side: limit
+a grid with no depth: shape
+a target colour of 1.5: number
+11 numbers for a 2 x 2 view: shape
+a learning rate of 2: number
+a batch of 4,097 rays: limit
+parameters still -1 and 0: -1.0 0.0, moments still 0: 0.0 0.0

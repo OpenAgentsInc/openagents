@@ -1612,6 +1612,26 @@
       ]
     },
     {
+      "source": "psionic/examples/radiance.coax",
+      "chapter": "psionic/book/ch159-learn-a-scene-from-its-views.md",
+      "stdout": "psionic/fixtures/radiance.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/radiance-refuse.coax",
+      "chapter": "psionic/book/ch159-learn-a-scene-from-its-views.md",
+      "stdout": "psionic/fixtures/radiance-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/residency-plan.coax",
       "chapter": "psionic/book/ch033-measure-the-work-and-plan-the-memory.md",
       "stdout": "psionic/fixtures/residency/residency-plan.out",

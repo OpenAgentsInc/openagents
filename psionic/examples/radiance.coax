@@ -1,0 +1,71 @@
+// Chapter 159: rays from a pinhole camera, two samples composited by hand,
+// a constant-density slab against its closed form, gradients against finite
+// differences, exact hits on the ground-truth scene, and a small radiance
+// field fitted to eight rendered views and measured on two it never saw.
+#import "Basic";
+#load "../lib/radiance.coax";
+
+round2 :: (v:f64)->f64 {return floor(v*100+0.5)/100;}
+round4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+
+main :: () {
+    // book:begin rays
+    c:=RfCamera.{eye=[3]f64.[0,0,3],up=[3]f64.[0,1,0],width=2,height=2,focal=1};
+    for j:0..<2 {for i:0..<2 {
+        r:=rf_ray(c,i,j);
+        print("pixel (%, %): direction (%, %, %)\n",i,j,round4(r.dir[0]),round4(r.dir[1]),round4(r.dir[2]));
+    }}
+    // book:end rays
+
+    // book:begin composite
+    s:=RfSampling.{near=0,far=1,count=2};
+    sigma:=[2]f64.[1,2];color:=[6]f64.[1,0,0, 0,1,0];bg:=[3]f64.[0,0,1];
+    p:=rf_composite(s,sigma[..],color[..],bg);
+    print("two samples: rgb (%, %, %), depth %, opacity %\n",p.rgb[0],p.rgb[1],p.rgb[2],p.depth,p.opacity);
+    ds:[2]f64;dc:[6]f64;
+    st:=rf_composite_backward(s,sigma[..],color[..],bg,[3]f64.[1,0,0],0,ds[..],dc[..]);
+    print("d red / d sigma: (%, %), d red / d red_k: (%, %)\n",ds[0],ds[1],dc[0],dc[3]);
+    // book:end composite
+
+    // book:begin slab
+    slab:=RfSampling.{near=1,far=3,count=8};thick:[8]f64;grey:[24]f64;
+    for k:0..<8 {if k>=2 && k<6 {thick[k]=2;}for q:0..<3 {grey[3*k+q]=0.5;}}
+    q:=rf_composite(slab,thick[..],grey[..],[3]f64.[0,0,0]);
+    print("slab of sigma 2, thickness 1: opacity % against 1 - exp(-2) = %\n",q.opacity,1-exp(-2.0));
+    // book:end slab
+
+    // book:begin gradients
+    // Every parameter of a 3 x 3 x 3 grid, one ray, central differences.
+    g:=RfGrid.{side=3,low=[3]f64.[-1,-1,-1],high=[3]f64.[1,1,1]};params:[108]f64;grads:[108]f64;
+    for i:0..<108 {params[i]=sin(f64(i)*1.7)*2;}
+    ray:=rf_ray(RfCamera.{eye=[3]f64.[0.2,-0.1,3],up=[3]f64.[0,1,0],width=4,height=4,focal=4},1,2);
+    rs:=RfSampling.{near=1.5,far=4.5,count=12};tg:=[3]f64.[0.3,0.6,0.1];
+    loss:=rf_ray_grad(g,params[..],ray,rs,bg,tg,1,grads[..]);worst:=0.0;
+    for i:0..<108 {
+        a:=params;a[i]+=0.000001;z:=params;z[i]-=0.000001;
+        fd:=(rf_ray_grad(g,a[..],ray,rs,bg,tg,0,grads[0..<0])-rf_ray_grad(g,z[..],ray,rs,bg,tg,0,grads[0..<0]))/0.000002;
+        if abs(fd-grads[i])>worst {worst=abs(fd-grads[i]);}
+    }
+    print("one ray: loss %; 108 gradients against central differences, all within 1e-8: %\n",round4(loss),worst<=0.00000001);
+    // book:end gradients
+
+    // book:begin hits
+    sh:[2]FdShape;co:[6]f64;sc:=rf_demo(sh[..],co[..]);
+    print("hit from (0, 0, 3) straight down -z: %\n",rf_hit(sc,[3]f64.[0,0,3],[3]f64.[0,0,-1]));
+    print("hit from (-0.35, 0, 3) straight down -z: %\n",rf_hit(sc,[3]f64.[-0.35,0,3],[3]f64.[0,0,-1]));
+    print("hit from (0.45, 3, 0) straight down -y: %\n",rf_hit(sc,[3]f64.[0.45,3,0],[3]f64.[0,-1,0]));
+    print("hit from (0, 3, 0) straight down -y: %\n",rf_hit(sc,[3]f64.[0,3,0],[3]f64.[0,-1,0]));
+    // book:end hits
+
+    // book:begin fit
+    cfg:=RfRun.{views=8,held=2,size=12,side=12,samples=24,truth=96,steps=300,batch=64,lr=0.05,seed=159};
+    w:[6912]f64;m:[6912]f64;v:[6912]f64;dw:[6912]f64;images:[3456]f64;losses:[300]f64;
+    out:=rf_run(cfg,w[..],m[..],v[..],dw[..],images[..],losses[..]);
+    print("fit: %, % parameters, % steps of % rays\n",out.status,out.params,cfg.steps,cfg.batch);
+    for k:0..<300 {if k%100==0 || k==299 {print("  step %: loss %\n",k,round4(losses[k]));}}
+    print("training views: PSNR % dB\n",round2(out.train));
+    print("held-out views: PSNR % dB (untrained % dB, all background % dB)\n",round2(out.held),round2(out.grey),round2(out.blank));
+    print("held-out depth error % over % pixels (ground truth's own % over %)\n",round4(out.depth),out.covered,round4(out.truth_depth),out.truth_covered);
+    print("occupancy: % of % points inside the shapes; the field agrees on % at sigma 20, % at sigma 1\n",out.inside,out.points,out.agree,out.agree_low);
+    // book:end fit
+}
