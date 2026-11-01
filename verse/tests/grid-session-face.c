@@ -10,3 +10,5 @@ EXPORT("grid_mark") int64_t mark(int64_t k) { return gridwalk_mark(gv(), k); }
 EXPORT("grid_session") int64_t session(void) { return gridwalk_session(gv()); }
 EXPORT("grid_records") int64_t records(void) { return g.records; }
 EXPORT("grid_replayed") int64_t replayed(void) { return gridwalk_replay(gv(), (coax_v_t_GridWalk){&again, 1}) ? 1 : 0; }
+// The globals' declared defaults (coax_default_T, from the compiler), as native has them.
+__attribute__((constructor)) static void coaxial_face_defaults(void) { coax_default_t_GridWalk(&g); coax_default_t_GridWalk(&again); }
