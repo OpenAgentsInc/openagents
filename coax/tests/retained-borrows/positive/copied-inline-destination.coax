@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+Inline :: struct { slots: [1]Slot; }
+inspect_copy :: (value: Inline, out: []u8) -> int {
+  copy := value;
+  copy.slots[0].view = out;
+  return copy.slots[0].view.count;
+}
+main :: () {}

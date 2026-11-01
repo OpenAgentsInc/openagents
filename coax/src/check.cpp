@@ -135,12 +135,17 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());const auto extra=CK_meta_capacity({input->nodes.data(),(int64_t)input->nodes.size()},input->used);input->nodes.resize((size_t)(caps.nodes+extra));
   zvec<coax_t_CK_Type> records((size_t)caps.types);zvec<coax_t_CK_Local> locals((size_t)caps.locals);
   zvec<coax_t_CK_Error> errors((size_t)caps.errors);zvec<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
+  state.retain_report_count=0;
   const auto borrow_caps=CK_borrow_caps(input->used+1);
   zvec<coax_t_CK_BorrowQuery> borrow_queries((size_t)borrow_caps.queries);
   zvec<coax_t_BS_Origin> borrow_origins((size_t)borrow_caps.origins);
+  const auto retain_caps=CK_retain_caps(input->used+1);
+  zvec<coax_t_CK_RetainEffect> retain_effects((size_t)retain_caps.effects);
   coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1},
     {input->module_names.data(),(int64_t)input->module_names.size()},{input->aliases.data(),(int64_t)input->aliases.size()},{input->exports.data(),(int64_t)input->exports.size()},
     {borrow_queries.data(),(int64_t)borrow_queries.size()},{borrow_origins.data(),(int64_t)borrow_origins.size()}};
+  context.retain_effects={retain_effects.data(),(int64_t)retain_effects.size()};
+  context.retain_reports={nullptr,0};
   bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
   if(ok && mutation_lowering)ok=CK_prepare_spatial_mutations(context);
   if(ok)CK_lower_effects(context);

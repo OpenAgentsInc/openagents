@@ -1,0 +1,10 @@
+Holder :: struct { a: [4] u8; }
+Slot :: struct { view: [] u8; }
+main :: () {}
+put :: (dst: [] Slot, src: [] Holder) {
+  dst[0].view = src[0].a[..];
+}
+leak :: (dst: [] Slot) {
+  local: [1] Holder;
+  put(dst, local[..]);
+}

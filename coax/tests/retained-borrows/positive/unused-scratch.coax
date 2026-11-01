@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+Sources :: struct { chosen: []u8; unused: []u8; }
+retain :: (dst: []Slot, sources: Sources) { dst[0].view = sources.chosen; }
+through :: (dst: []Slot, out: []u8) {
+  scratch: [4]u8;
+  retain(dst, Sources.{chosen = out, unused = scratch[..]});
+}
+main :: () {}

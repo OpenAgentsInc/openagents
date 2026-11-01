@@ -1,0 +1,7 @@
+Slot :: struct { view: []u8; }
+store :: (dst: []Slot, input: []u8) { dst[0].view = input; }
+bad :: (dst: []Slot) {
+  local: [4]u8;
+  store(dst, local[..]);
+}
+main :: () {}

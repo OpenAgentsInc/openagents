@@ -1,0 +1,589 @@
+{
+  "schema": "coax.B1.publication-input-identity.v1",
+  "source_revision": "b83517e3f071cc8227347568d18bc3bfd1a3751b",
+  "rebased_on": "96eabf76f002945fbbeac57a80c78dbf558f2bee",
+  "fingerprint": "1fb5436c6168362ea395419b8951aed1d98d04973d7e1e84f4c24f0acee2b32e",
+  "all145_identical": true,
+  "repository_inputs": [
+    {
+      "path": "coax/bootstrap/checker.h",
+      "sha256": "883aac6a7c74ad5c943cff13aeb9db3fb6e78258730582e96fb7e88fdffae1e8"
+    },
+    {
+      "path": "coax/bootstrap/parser.h",
+      "sha256": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef"
+    },
+    {
+      "path": "coax/lib/compiler/borrow-summary.coax",
+      "sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429"
+    },
+    {
+      "path": "coax/lib/compiler/budget.coax",
+      "sha256": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b"
+    },
+    {
+      "path": "coax/lib/compiler/check-domains.coax",
+      "sha256": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db"
+    },
+    {
+      "path": "coax/lib/compiler/checker.coax",
+      "sha256": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895"
+    },
+    {
+      "path": "coax/lib/compiler/compiler.coax",
+      "sha256": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b"
+    },
+    {
+      "path": "coax/lib/compiler/compute.coax",
+      "sha256": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3"
+    },
+    {
+      "path": "coax/lib/compiler/effects.coax",
+      "sha256": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86"
+    },
+    {
+      "path": "coax/lib/compiler/lexer.coax",
+      "sha256": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94"
+    },
+    {
+      "path": "coax/lib/compiler/mutation-schedule.coax",
+      "sha256": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1"
+    },
+    {
+      "path": "coax/lib/compiler/native-checks.coax",
+      "sha256": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1"
+    },
+    {
+      "path": "coax/lib/compiler/native-execution.coax",
+      "sha256": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df"
+    },
+    {
+      "path": "coax/lib/compiler/native-semantics.coax",
+      "sha256": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6"
+    },
+    {
+      "path": "coax/lib/compiler/parser.coax",
+      "sha256": "4e6dc146ace9f28f56573971de8526cd584d73758ce341521bda936e59635433"
+    },
+    {
+      "path": "coax/lib/compiler/profiles.coax",
+      "sha256": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba"
+    },
+    {
+      "path": "coax/lib/compiler/provenance.coax",
+      "sha256": "1f021275b37151ff515174e1f42d7f081f03608638c03379c6dd4f952ee78456"
+    },
+    {
+      "path": "coax/lib/compiler/quantified-execution.coax",
+      "sha256": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436"
+    },
+    {
+      "path": "coax/lib/compiler/quantity.coax",
+      "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+    },
+    {
+      "path": "coax/lib/compiler/retain-policy.coax",
+      "sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785"
+    },
+    {
+      "path": "coax/lib/compiler/shader.coax",
+      "sha256": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98"
+    },
+    {
+      "path": "coax/lib/compiler/sources.coax",
+      "sha256": "d1dc9c4228ca877e8e4c227a85a34fdda4e8317aaeb9609f67c030a3f7d6968b"
+    },
+    {
+      "path": "coax/lib/compiler/spatial-mutation.coax",
+      "sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+    },
+    {
+      "path": "coax/lib/compiler/spatial-policy.coax",
+      "sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536"
+    },
+    {
+      "path": "coax/lib/compiler/spirv.coax",
+      "sha256": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970"
+    },
+    {
+      "path": "coax/lib/compiler/unit-algebra.coax",
+      "sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780"
+    },
+    {
+      "path": "coax/lib/compiler/unit-forms.coax",
+      "sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33"
+    },
+    {
+      "path": "coax/lib/compiler/wgsl.coax",
+      "sha256": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5"
+    },
+    {
+      "path": "coax/lib/crypto/sha256-kernel.coax",
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+    },
+    {
+      "path": "coax/lib/proto/fingerprint.coax",
+      "sha256": "257f1224ca907bb8b0ed313b0b1800605d023f393eb1178fc69c5db9e02d6878"
+    },
+    {
+      "path": "coax/lib/proto/importer.coax",
+      "sha256": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da"
+    },
+    {
+      "path": "coax/tests/borrow-query-work/many-independent-returns.coax",
+      "sha256": "c5863051853094f387b9a7395410fe349a3f63a508c1e47b06d171c228461c72"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/fixtures.json",
+      "sha256": "0bf532f1fc0d5f4197ab52e38cc4d4ebd26f1e7887346a4607bffcf322266192"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/helpers/escaping.coax",
+      "sha256": "9498f561c5acf9b6fc62307949b9c49bab9ef601d861ca7bfe412fe4ebcbaeb7"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/helpers/identity.coax",
+      "sha256": "02118cacbce5e2e59e8c637ec1e839efa08931ff4906c2139531b3553c47a48b"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/manual/call-projected-local-write.coax",
+      "sha256": "dc8e0162799f9317cd650967cc9086a98823a2f3edebc9113861b9f43897700f"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/manual/helper-alias-local-state.coax",
+      "sha256": "04cd320000f0d02c05f1af443c3c721eeaa189a124b65597f3e5aa28093db32a"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/manual/helper-local-state.coax",
+      "sha256": "44da1eab41b6ad34ce1d1f5d43629d5b866cd824fec75564dfb7cb57a756ef44"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/manual/record-held-helper-state.coax",
+      "sha256": "897108ad307f075cd54854d7d816927e620450d075d0a3b7bac563ff8c637caa"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/manual/recursive-only.coax",
+      "sha256": "50fdc8ff2680f6b260a4a30034eefce850250db93ef306b3c86433eff4cc1e3c"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/alias-local-field-write.coax",
+      "sha256": "ecca3119c15d8963f705d7b538edc0e36d6ae0288f852c79afefc3f96200b1b9"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/array-field-write.coax",
+      "sha256": "301e6174942d0eee5245358e64c76beed14c033b3692d226a0388530f21622ae"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/array-of-borrows.coax",
+      "sha256": "0ded89e0d311e397f32e4b118622e778c46a1681df5fd2107f17bd9210372291"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/borrow-leaves-65.coax",
+      "sha256": "d1154bdb9c33eba3054cf007a2206c010d7b045933851b4e183fb2ec7b9bb61d"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/by-value-array-copy.coax",
+      "sha256": "102964df18079acec7fe4da9985057c3717df9727ace7ada7e980114cc23e034"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/by-value-array.coax",
+      "sha256": "811534729623dc4bb23a9e2ff62f0af392f8b095773c7a8e1a24a597089ec632"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/by-value-record-copy.coax",
+      "sha256": "1c2e8181c04faae94860399069dbed7e3f3e818b907097c47cfaaf654217b037"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/by-value-record.coax",
+      "sha256": "ac1b6dcb29f86e293973bf3ea4620140d1795c9002cd3fa98f397200d1f4fe23"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/conditional-helper.coax",
+      "sha256": "eb430832678d711050608ced6abd5dad76a53677bde28245dbe24a20b921b40c"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/dynamic-alias-local-write.coax",
+      "sha256": "4af1f72178c542329ca22e6afefbf56d209aeaf1c7d662f9750d5c6fc0033f23"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/forward-chain.coax",
+      "sha256": "bd3b33e796a696bdec0de3b08c4730220f64cfa7fb27091cde9e0299aec166b5"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/generic-chain.coax",
+      "sha256": "37a3e8ab3a15185ed1accd56b429225652c3ece45fc00610a1e5f77b88a980d3"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/helper-local.coax",
+      "sha256": "1bfc27972d5eb05ab88b916089b4278ce2f5d4728ebe5c07fd55f43537b64504"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/loaded-chain.coax",
+      "sha256": "f5cea344347264465413401e9fdc80348fac4f3b6ee1747a10d7eea0e4193dfc"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/loaded-diagnostic.coax",
+      "sha256": "4ca35ed7530619cd5fdaf2f16461270d0b2f106d59e1ff37109ae7004519ff8d"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/local-and-unknown-call.coax",
+      "sha256": "0fb3403b1d8a9d261e8c60943cb7c33f87959412e328256641dd91153c8980d8"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/mixed-field.coax",
+      "sha256": "6c743a3de40225f45f936d302764ae4cdce1afedba46a1bde1535a6674be629b"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/nested-field-write.coax",
+      "sha256": "03b210ec6bdc1412c47c03c60bbf081bfb34a8b19b63be8f8074c9f75cf64c8a"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/owned-helper-slice.coax",
+      "sha256": "90e7dcb013721feece5445e43957cac5b9091297096c7d4663858f60630a5f27"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/passed-on-local-slice.coax",
+      "sha256": "139dbe0ca7962dcdb8095b7f13c487c954af49c9584a5f3b939b61acf61301e7"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/passed-on-local-text.coax",
+      "sha256": "29a73fc3d279f81a552a3cb2faadac6552968a84d0a8844a088b3f212fb90c08"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/self-referential-copy.coax",
+      "sha256": "c40bc86e1aa60fa32ce4d3e2be51b399e5ba0de7e193625a2cf6a1bf4640cf1d"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/sibling-names.coax",
+      "sha256": "d0f96c41bc45509905ccd53e92737d3931a5beb3cbc7cfcfd7b34986af580bdb"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/negative/struct-literal.coax",
+      "sha256": "e2630365626f2c8d7f603b58f7db0c397542d2b8f316c766fc197fb1b4442d54"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/alias-mixed-field.coax",
+      "sha256": "ac5efcdcf27b6acd8ca8a04c590f1cac3f64dfd506cf1692b2f0ca2d18f16cc3"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/borrow-leaves-64.coax",
+      "sha256": "255149152c6299e13ec302ec786e9f6d4862e2b5b7b602fc8b51c9841d0fa167"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/by-value-descriptors.coax",
+      "sha256": "3e5ba7c2dfd17802454239f78243c64b2590147e2d888847321ab1679c901da4"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/caller-views.coax",
+      "sha256": "3970033179f31ddd86057efd2f7ec3cb61f0fb880f3623f94b2041eb5a32350c"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/generic-forward.coax",
+      "sha256": "368a7c7b02e46e0463a39e235ce14b50d72858b83e9672211909d659d73a14c8"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/loaded-helper.coax",
+      "sha256": "f57e4765985807474a4868ff29abfa2a0411da51af51ddcac5896ea6783d2f48"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/many-static-strings.coax",
+      "sha256": "c007c682381b52a632a09e1c725f7ecf6ccfb04f44c985fae1d7e29691769bac"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/mixed-field.coax",
+      "sha256": "c22327e420a85e21ebe01a085f07cee0cd4e529209dd64e3ea7fcb2ee1cbe5fb"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/nested-aggregate.coax",
+      "sha256": "d65d875674c6fdc8a907f21c417c61f1eec7a79f5080dccb4c0eb86ac08817df"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/owned-copy.coax",
+      "sha256": "524ab0d6c11accad9c345f7cb69fdf7c1a61a6f3721f0f69686e562bdb4fd3c2"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/passed-on-helper-slice.coax",
+      "sha256": "82022aa8747b373d63d5d77aa273065dcbfa175b26d6b532020b8e50970552e1"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/passed-on-helper-text.coax",
+      "sha256": "3caf00cdfd0957d8eecffb29ca511f868c140e4ddd17ce0ecfcb4a163850c84d"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/scratch-copy.coax",
+      "sha256": "258b501965693e9f8593ee258dfc5f72ac982a3b5f2661bfb263eec16a28c579"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/sibling-names.coax",
+      "sha256": "b5f4231ff6df14bab35e5747e3e5db8c479d9d186106c263777c8f56b8028142"
+    },
+    {
+      "path": "coax/tests/borrow-summaries/positive/unused-local-argument.coax",
+      "sha256": "3285ad41b46a2ddbb5fce9204782907b37a22f72aa2d3a13dcfb705f34008121"
+    },
+    {
+      "path": "coax/tests/borrow-summary-return/systemone-native.c",
+      "sha256": "b85c31ed324241b32be7e10395654dc09bff22ef3230387f0924b9606b13272d"
+    },
+    {
+      "path": "coax/tests/borrow-summary-return/systemone.coax",
+      "sha256": "a8a546a174478cae149d0610f396e66b95d4b77e8146aa1a0eb340dc6bafad0a"
+    },
+    {
+      "path": "coax/tests/borrow_query_work.py",
+      "sha256": "5d27449fd4c2b51b9569b2ed2c5d493f3c2645327d750ae97d89a92c4befb87d"
+    },
+    {
+      "path": "coax/tests/borrow_summaries.py",
+      "sha256": "a751e9ec850a4c961963c8f8a7bd68bf9cad8f9309e8feb076db41883c0b4edd"
+    },
+    {
+      "path": "coax/tests/borrow_summary_systemone.py",
+      "sha256": "6d2884bba179c517ab822ca9bd774144678bbfaa5acc3a2630440546714b954d"
+    },
+    {
+      "path": "coax/tests/checker.py",
+      "sha256": "eb148f6d424a89fe31b880d89a1641ed0525e1a15268ac7f8d503067c5e43b1e"
+    },
+    {
+      "path": "coax/tests/diagnostics/checker.coax",
+      "sha256": "d9ce0a2eb34105112c3ee9f875b0cdac2f8d80b8b324ba38256d4ae65a9771ec"
+    },
+    {
+      "path": "coax/tests/diagnostics/checker.jsonl",
+      "sha256": "28f591db54dd053fcc9a382b2bacb261b5998fc327386190cb51f3502f6d8582"
+    },
+    {
+      "path": "coax/tests/diagnostics/checker.txt",
+      "sha256": "fb773d38d1014d4be5788c491b41c66c6cc45bbbdefbf4b9fc05c24ef1953ba5"
+    },
+    {
+      "path": "coax/tests/diagnostics/lexer.coax",
+      "sha256": "607e27f32fd827a6a9627fa865754c49aadc89a443e5d6456b139ecfa0f02f92"
+    },
+    {
+      "path": "coax/tests/diagnostics/lexer.jsonl",
+      "sha256": "21a773d76173456c6592b19aa041e6455bdf83e9bc9cea86fd722a3d6d1df782"
+    },
+    {
+      "path": "coax/tests/diagnostics/lexer.txt",
+      "sha256": "2bb1f7e731a600dd66e2edebf9ba445c359301ce7e9c7aba676b6b80115e7c53"
+    },
+    {
+      "path": "coax/tests/diagnostics/parser.coax",
+      "sha256": "f5f637b33ad02de2a0fd855b19f3d1e65584ac67587f5abd2048191b5312c579"
+    },
+    {
+      "path": "coax/tests/diagnostics/parser.jsonl",
+      "sha256": "2ca1aa2b827f43f982bafef7f42f52c98eb803dc5defbab56d66c02de360645d"
+    },
+    {
+      "path": "coax/tests/diagnostics/parser.txt",
+      "sha256": "eb5e82fab71a7daa59baccc06ab931a99c322ca5752f01f83673dcbeb4b9100f"
+    },
+    {
+      "path": "coax/tests/diagnostics/survivor.coax",
+      "sha256": "aa59a0091fbff6f2eaa41964f4f56de54447ec1da43c6be6894d8f87576a3914"
+    },
+    {
+      "path": "coax/tests/diagnostics/survivor.jsonl",
+      "sha256": "e1e008b718a851fc17afbfeb4e45053464f54e3f4577c545f64bb318f5b8e061"
+    },
+    {
+      "path": "coax/tests/diagnostics/test-failure.coax",
+      "sha256": "93155d7849fea1f2b1000f7a7db71853586a4ec406f15d5015181fbccff76fe6"
+    },
+    {
+      "path": "coax/tests/diagnostics/test-failure.jsonl",
+      "sha256": "d530a5b7e42b67ed9604ce3f95173f0ab1a433f9c851d08bddab5690dd723798"
+    },
+    {
+      "path": "coax/tests/diagnostics/test-failure.txt",
+      "sha256": "b2fb9b305e2d0b07904f3642711644ecad7aa28841a81d4f3fa8fe212bf326ea"
+    },
+    {
+      "path": "coax/tests/diagnostics_json.py",
+      "sha256": "487f4a064d7c2159d53586a5cd66861dff04c54e12c780ccf27c0ae80e7cfcdf"
+    },
+    {
+      "path": "coax/tests/lexer.py",
+      "sha256": "86f34fdce647e978683411af3f6c0498aa30d7bf2f4af6cb877ad2ef5b9de8bb"
+    },
+    {
+      "path": "coax/tests/parser.py",
+      "sha256": "31a4fa04e7bbd01082f2dd0b8aa16ca4bb182e0f0d2a5fbdbc36c750a28afc14"
+    },
+    {
+      "path": "coax/tests/quiet_crash.py",
+      "sha256": "546bf7e16ba8ace17c12884466af2c22e6938586923c37c7b779b1efe55b39b4"
+    },
+    {
+      "path": "coax/tests/retained-borrows-native.c",
+      "sha256": "eb67a0f9651d0d3bd3333788c9edc276bba7b3aabbca9601a937f2d5cb3c17d4"
+    },
+    {
+      "path": "coax/tests/retained-borrows/fixtures.json",
+      "sha256": "fe407cd390ea3009eab14d20023334a76fc7142f36f14ce19ec6d5a9c5e2e999"
+    },
+    {
+      "path": "coax/tests/retained-borrows/manual/helper-local-local.coax",
+      "sha256": "0ba8f25c250d9882ee1562a4a7324912431bf5abc4f7c0bc6e1182a3c7996585"
+    },
+    {
+      "path": "coax/tests/retained-borrows/manual/nested-block-region.coax",
+      "sha256": "65de09b4eeef04f152a68bfb1b80f4b04d076b8c1c77e084935768f5bce1bc54"
+    },
+    {
+      "path": "coax/tests/retained-borrows/manual/unknown-destination.coax",
+      "sha256": "7cc18b0b40f5a83dc4a7fc4f07b6dcf71bd9fbd0cbc7dc13c8619d94f6cb5643"
+    },
+    {
+      "path": "coax/tests/retained-borrows/manual/unknown-source.coax",
+      "sha256": "5d79e57ab670c617991b9dc3cee0bf441236d98b1b093c7f8b4db1779e74f8e0"
+    },
+    {
+      "path": "coax/tests/retained-borrows/native-expectations.json",
+      "sha256": "ddae9a38f79b0116ac39aeac8f1ba43be0f21811bdfc56cdde14e6ca33f02b67"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/callee-local.coax",
+      "sha256": "c25e909f6ffc2656ea4e9aa78d35e42bd7c0230e886c2e813da357c8c84601de"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/conditional-destination.coax",
+      "sha256": "0046019d6857d0d36cde66ed3f5ee187844c4c128b3e65faa9d08b2a75215948"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/context-descriptor-local.coax",
+      "sha256": "3599057a918c7df9c76fdc37ea7665d52972fb0c1fa24e455f313aa57208f221"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/copied-inline-parameter.coax",
+      "sha256": "c7ddc8ae5bf2117f5238b2c69c996b1b07ff68fd7b2871dbe91be21df81e31f4"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/destination-helper-choice.coax",
+      "sha256": "cb21f434cce32b4248b764d8443fa12faa33912b5a1390b852a011c431a0ca55"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/direct-external.coax",
+      "sha256": "75f33d1f6553dbb0b6440f5746e0e0104be31bc9100de32d851cb2050e7e1ce2"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/formal-array-local-source.coax",
+      "sha256": "d94e6c7fa85b2c37b6feaee87241a3fe7cd576f6c28aa0ef050d0663d8e610a3"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/forward-helper-local.coax",
+      "sha256": "1d304e02c85a798a937bcffced921689bc7ab4f7c9f561b59e3f8b190b9efa73"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/generic-helper-local.coax",
+      "sha256": "62345d81209f163ddb3ce32b05c0423cee0f601091e5d5a3dd4543eb8990e1bc"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/helper-local.coax",
+      "sha256": "ec993ed64d0c852b7496910436d40e088471d170bb45c2ed92c4a720136ca08c"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/known-external-and-unknown-destination.coax",
+      "sha256": "6aab92895606df2d087c1badfe7e7907d57902950bc9d865e00e66c0b7bf3920"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/loaded-definition-local.coax",
+      "sha256": "ae90df713de468221562533cab8c80e45df5b0745eb0471f3e589cb574686f46"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/loaded-helper-local.coax",
+      "sha256": "01d3b9fba35e007b6b6c223d5cf74325016695e0c55bebfb9bc1e5760a8e4300"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/local-plus-unknown.coax",
+      "sha256": "77832d425c3df33939e5e713aa1775d05459520fe698ac76aeaff0fb99812ffe"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/multiple-writes.coax",
+      "sha256": "e1bdae55c581cc2338b98dff2132fbcb5780e7989b3f525c7d50b80136d9ebe6"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/view-of-view.coax",
+      "sha256": "e647d6f0ce5b22295fde283c5b48b8b57a294ab098d891d87bc88fc57f333287"
+    },
+    {
+      "path": "coax/tests/retained-borrows/negative/whole-aggregate.coax",
+      "sha256": "7a2bcf1e46ea6f06d98d0057c4065f853642922aca6d0f06d2c52bc041b0f42b"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/caller-descriptors.coax",
+      "sha256": "dadb982d9f16a572870d565a8e2fa99333f249010405f811d647d9f1e1c0eb3d"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/copied-inline-destination.coax",
+      "sha256": "27efd0033b062d1bb1e105ae21cb57e257cf6b9e4a177133f3736ad09286f487"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/default-empty-and-static.coax",
+      "sha256": "93be95eeb0a0fa8941fcb566cb3f75a880369a1a5ee79a8e415d62ccc1c4aa24"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/defaults-and-static.coax",
+      "sha256": "c1f200ab388358c9adc6a5f68f0c9cfd115a4424dfa4283b32c6643018eabf64"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/formal-array-caller-owned.coax",
+      "sha256": "a6b6105580a77c24f7751a1c83128d94319cf2842481d7f6410dbf31903801c8"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/formal-array-forward.coax",
+      "sha256": "8f6af458f657a01f778bd4994e4e382d82f4343784aa3cbceb679e6acdb5fdb8"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/generic-helper-caller.coax",
+      "sha256": "a37b4ca814f8ad0ff55c6fc32d93750b2084ef1c9257827b596b499712d065fe"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/helper-local-holder.coax",
+      "sha256": "9d2ec210e381ea1d23e47d4eedf797624f19cc66ca428fc64d7893409bd7f40c"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/loaded-helper-caller.coax",
+      "sha256": "5df1d601b8c57f992dbb1a6d4536df1b846ea7d796b4d430154a58df54ab353a"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/same-formal-pending.coax",
+      "sha256": "a2db12ccafe0a8421181a7c062a3c65df69825d38d1ab7527c998ba7f260183f"
+    },
+    {
+      "path": "coax/tests/retained-borrows/positive/unused-scratch.coax",
+      "sha256": "34f03a3b8a7ed159801e5c11d7ad2ff5cae22430683130d8eef8a9035c9b0c26"
+    },
+    {
+      "path": "coax/tests/retained-borrows/precedence/immutable-inline-parameter.coax",
+      "sha256": "047d1ad7f0d5e7c1f44de74b5fcfd49a3df7b78b0d85b8d65a6eaebefac327ee"
+    },
+    {
+      "path": "coax/tests/retained-borrows/support/escaping-module.coax",
+      "sha256": "4d529fc5defde341687a7de245354598ee0a883a67a6fdf212f93ce92554e842"
+    },
+    {
+      "path": "coax/tests/retained-borrows/support/store-module.coax",
+      "sha256": "ac22a761283b2022e5678de60bfe0c87eb87da72d47cfebdb7deee049c83526e"
+    },
+    {
+      "path": "coax/tests/retained_borrows.py",
+      "sha256": "96f7bb28d0a69438753feb01d27596b9cb7638622718eed3dd572fcc02d39174"
+    },
+    {
+      "path": "coax/tests/retained_borrows_native.py",
+      "sha256": "ec8c560c2e7d76ec0be2759aac74974aec500e9ef2594fdab01abb9c81082bce"
+    },
+    {
+      "path": "coax/tests/spatial/frame-parser-cases.json",
+      "sha256": "ec7c0a420317731c3d19600dbbf0457b53f8184b8eac5c89a98141ba6b9b5a4b"
+    },
+    {
+      "path": "coax/tools/bounded_process.py",
+      "sha256": "c9adf3596ad777a40a06537e6ebb3c59fae05f6412a5a82e90ac0627372bbf41"
+    }
+  ]
+}

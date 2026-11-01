@@ -1,0 +1,4 @@
+#module "borrow.store.review";
+#export Slot, store;
+Slot :: struct { view: []u8; }
+store :: (dst: []Slot, input: []u8) { dst[0].view = input; }

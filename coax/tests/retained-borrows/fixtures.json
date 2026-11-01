@@ -1,0 +1,568 @@
+{
+  "schema": "coax.retained-borrows.fixtures.v1",
+  "scope": "B1 original-source store/call diagnostics and source acceptance. Native effect completeness/pending observations require separate actual CK report ABI gate. Source acceptance is not host lifetime safety. B2 read-after-write and B3 lifecycle remain deferred.",
+  "witness_convention": "Original RHS node location for definition-local stores (existing parser uses slice opening bracket); original CALL callee position for substituted violations; existing E0366 precedence. New E0383 locations derived from existing parser source before B1 output, not calibrated from new diagnostics.",
+  "cases": [
+    {
+      "id": "negative-direct-external",
+      "source": "negative/direct-external.coax",
+      "outcome": "reject",
+      "scope": "Void, uncalled procedure still checked. Addressed caller storage is not the old descriptor pointee.",
+      "diagnostics": [
+        {
+          "file": "negative/direct-external.coax",
+          "line": 4,
+          "col": 22,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "75f33d1f6553dbb0b6440f5746e0e0104be31bc9100de32d851cb2050e7e1ce2"
+    },
+    {
+      "id": "negative-callee-local",
+      "source": "negative/callee-local.coax",
+      "outcome": "reject",
+      "scope": "Callee-local bytes cannot survive even in a caller-local holder; definition store is already forbidden.",
+      "diagnostics": [
+        {
+          "file": "negative/callee-local.coax",
+          "line": 4,
+          "col": 22,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "c25e909f6ffc2656ea4e9aa78d35e42bd7c0230e886c2e813da357c8c84601de"
+    },
+    {
+      "id": "negative-helper-local",
+      "source": "negative/helper-local.coax",
+      "outcome": "reject",
+      "scope": "Latent parameter-to-parameter obligation substitutes once at the caller; short local reaches external state.",
+      "diagnostics": [
+        {
+          "file": "negative/helper-local.coax",
+          "line": 5,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "CALL",
+        "text": "store(",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "ec993ed64d0c852b7496910436d40e088471d170bb45c2ed92c4a720136ca08c"
+    },
+    {
+      "id": "negative-forward-helper-local",
+      "source": "negative/forward-helper-local.coax",
+      "outcome": "reject",
+      "scope": "Forward call graph, source provenance and concrete declaration identities.",
+      "diagnostics": [
+        {
+          "file": "negative/forward-helper-local.coax",
+          "line": 4,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "CALL",
+        "text": "relay(",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "1d304e02c85a798a937bcffced921689bc7ab4f7c9f561b59e3f8b190b9efa73"
+    },
+    {
+      "id": "negative-loaded-helper-local",
+      "source": "negative/loaded-helper-local.coax",
+      "outcome": "reject",
+      "scope": "Loaded module exports and qualified nominal target type; do not substitute by display name.",
+      "diagnostics": [
+        {
+          "file": "negative/loaded-helper-local.coax",
+          "line": 4,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "CALL",
+        "text": "api.store(",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "01d3b9fba35e007b6b6c223d5cf74325016695e0c55bebfb9bc1e5760a8e4300"
+    },
+    {
+      "id": "negative-generic-helper-local",
+      "source": "negative/generic-helper-local.coax",
+      "outcome": "reject",
+      "scope": "Concrete instantiated u8 helper, not template metadata. Syntax/instantiation admission must be preflighted before relying on this negative.",
+      "diagnostics": [
+        {
+          "file": "negative/generic-helper-local.coax",
+          "line": 5,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "CALL",
+        "text": "store(",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "62345d81209f163ddb3ce32b05c0423cee0f601091e5d5a3dd4543eb8990e1bc"
+    },
+    {
+      "id": "negative-context-descriptor-local",
+      "source": "negative/context-descriptor-local.coax",
+      "outcome": "reject",
+      "scope": "By-value Context owns its descriptor copy, but the dereferenced slots are still external storage.",
+      "diagnostics": [
+        {
+          "file": "negative/context-descriptor-local.coax",
+          "line": 6,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "CALL",
+        "text": "retain(",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "3599057a918c7df9c76fdc37ea7665d52972fb0c1fa24e455f313aa57208f221"
+    },
+    {
+      "id": "negative-copied-inline-parameter",
+      "source": "negative/copied-inline-parameter.coax",
+      "outcome": "reject",
+      "scope": "Copied inline array is callee-owned storage, not caller descriptor origin.",
+      "diagnostics": [
+        {
+          "file": "negative/copied-inline-parameter.coax",
+          "line": 5,
+          "col": 26,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "copy.data[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "c7ddc8ae5bf2117f5238b2c69c996b1b07ff68fd7b2871dbe91be21df81e31f4"
+    },
+    {
+      "id": "precedence-immutable-inline-parameter",
+      "source": "precedence/immutable-inline-parameter.coax",
+      "outcome": "reject",
+      "scope": "Existing immutable by-value inline-array slicing precedence must remain; do not widen parameter mutation to force E0383.",
+      "diagnostics": [
+        {
+          "file": "precedence/immutable-inline-parameter.coax",
+          "line": 4,
+          "col": 27,
+          "code": "E0366"
+        }
+      ],
+      "witness": {
+        "role": "existing immutable-inline expression",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "value.data[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "047d1ad7f0d5e7c1f44de74b5fcfd49a3df7b78b0d85b8d65a6eaebefac327ee"
+    },
+    {
+      "id": "negative-whole-aggregate",
+      "source": "negative/whole-aggregate.coax",
+      "outcome": "reject",
+      "scope": "Whole record assignment expands descriptor leaves; omitted static/default fields cannot hide a local source.",
+      "diagnostics": [
+        {
+          "file": "negative/whole-aggregate.coax",
+          "line": 4,
+          "col": 12,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "Slot.{",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "7a2bcf1e46ea6f06d98d0057c4065f853642922aca6d0f06d2c52bc041b0f42b"
+    },
+    {
+      "id": "negative-view-of-view",
+      "source": "negative/view-of-view.coax",
+      "outcome": "reject",
+      "scope": "A descriptor element store needs no named record field to retain memory.",
+      "diagnostics": [
+        {
+          "file": "negative/view-of-view.coax",
+          "line": 3,
+          "col": 17,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "e647d6f0ce5b22295fde283c5b48b8b57a294ab098d891d87bc88fc57f333287"
+    },
+    {
+      "id": "negative-local-plus-unknown",
+      "source": "negative/local-plus-unknown.coax",
+      "outcome": "reject",
+      "scope": "Known forbidden local remains observable beside recursion/manual incompleteness. Never execute the recursive branch.",
+      "diagnostics": [
+        {
+          "file": "negative/local-plus-unknown.coax",
+          "line": 5,
+          "col": 17,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "ifx choose",
+        "authored_before_observation": true
+      },
+      "authored_source_sha256": "77832d425c3df33939e5e713aa1775d05459520fe698ac76aeaff0fb99812ffe"
+    },
+    {
+      "id": "negative-conditional-destination",
+      "source": "negative/conditional-destination.coax",
+      "outcome": "reject",
+      "scope": "A known external destination possibility must survive union with local addressed storage.",
+      "diagnostics": [
+        {
+          "file": "negative/conditional-destination.coax",
+          "line": 6,
+          "col": 27,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "0046019d6857d0d36cde66ed3f5ee187844c4c128b3e65faa9d08b2a75215948"
+    },
+    {
+      "id": "negative-multiple-writes",
+      "source": "negative/multiple-writes.coax",
+      "outcome": "reject",
+      "scope": "Bounded may-effect scope has no last-write proof: a later good write cannot erase a witnessed forbidden external store.",
+      "diagnostics": [
+        {
+          "file": "negative/multiple-writes.coax",
+          "line": 5,
+          "col": 22,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "e1bdae55c581cc2338b98dff2132fbcb5780e7989b3f525c7d50b80136d9ebe6"
+    },
+    {
+      "id": "negative-destination-helper-choice",
+      "source": "negative/destination-helper-choice.coax",
+      "outcome": "reject",
+      "scope": "Destination helper chooses only its second formal; local unrelated first target cannot hide external state.",
+      "diagnostics": [
+        {
+          "file": "negative/destination-helper-choice.coax",
+          "line": 6,
+          "col": 45,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "cb21f434cce32b4248b764d8443fa12faa33912b5a1390b852a011c431a0ca55"
+    },
+    {
+      "id": "positive-caller-descriptors",
+      "source": "positive/caller-descriptors.coax",
+      "outcome": "accept",
+      "scope": "Keep parameter outlives addressed state as a caller obligation; this source is not a full lifetime qualification.",
+      "diagnostics": [],
+      "native_intent": "store and retain have complete facts, relation incomplete and one pending parameter obligation each.",
+      "authored_source_sha256": "dadb982d9f16a572870d565a8e2fa99333f249010405f811d647d9f1e1c0eb3d"
+    },
+    {
+      "id": "positive-unused-scratch",
+      "source": "positive/unused-scratch.coax",
+      "outcome": "accept",
+      "scope": "Only chosen source projection is retained; do not union the unused local descriptor into the effect.",
+      "diagnostics": [],
+      "authored_source_sha256": "34f03a3b8a7ed159801e5c11d7ad2ff5cae22430683130d8eef8a9035c9b0c26"
+    },
+    {
+      "id": "positive-copied-inline-destination",
+      "source": "positive/copied-inline-destination.coax",
+      "outcome": "accept",
+      "scope": "Assignment touches only owned inline copy, not caller storage merely because the original record was a formal.",
+      "diagnostics": [],
+      "authored_source_sha256": "27efd0033b062d1bb1e105ae21cb57e257cf6b9e4a177133f3736ad09286f487"
+    },
+    {
+      "id": "positive-defaults-and-static",
+      "source": "positive/defaults-and-static.coax",
+      "outcome": "accept",
+      "scope": "Whole-record default/static descriptor leaves are complete; selected view has explicit caller outlives obligation.",
+      "diagnostics": [],
+      "authored_source_sha256": "c1f200ab388358c9adc6a5f68f0c9cfd115a4424dfa4283b32c6643018eabf64"
+    },
+    {
+      "id": "manual-unknown-source",
+      "source": "manual/unknown-source.coax",
+      "outcome": "accept-manual",
+      "scope": "Unknown-only source must remain incomplete, not a lifetime-qualified zero-effect summary. Never execute recursion.",
+      "diagnostics": [],
+      "native_intent": "Explicit incomplete facts; unknown is not complete-empty or lifetime-safe.",
+      "authored_source_sha256": "5d79e57ab670c617991b9dc3cee0bf441236d98b1b093c7f8b4db1779e74f8e0"
+    },
+    {
+      "id": "manual-unknown-destination",
+      "source": "manual/unknown-destination.coax",
+      "outcome": "accept-manual",
+      "scope": "Unknown destination cannot be declared safe empty; no concrete external target is proved. Any conservative refusal must be explicit. Never execute recursion.",
+      "diagnostics": [],
+      "native_intent": "Explicit incomplete facts; unknown is not complete-empty or lifetime-safe.",
+      "authored_source_sha256": "7cc18b0b40f5a83dc4a7fc4f07b6dcf71bd9fbd0cbc7dc13c8619d94f6cb5643"
+    },
+    {
+      "id": "manual-nested-block-region",
+      "source": "manual/nested-block-region.coax",
+      "outcome": "accept-manual",
+      "scope": "Do not claim safe lifetime from same-procedure storage when source leaves an inner lexical scope. Not a runtime test.",
+      "diagnostics": [],
+      "authored_source_sha256": "65de09b4eeef04f152a68bfb1b80f4b04d076b8c1c77e084935768f5bce1bc54"
+    },
+    {
+      "id": "negative-loaded-definition-local",
+      "source": "negative/loaded-definition-local.coax",
+      "outcome": "reject",
+      "scope": "Uncalled loaded void body rejects its original definition-local store.",
+      "diagnostics": [
+        {
+          "file": "support/escaping-module.coax",
+          "line": 6,
+          "col": 22,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "loaded definition RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "ae90df713de468221562533cab8c80e45df5b0745eb0471f3e589cb574686f46"
+    },
+    {
+      "id": "positive-helper-local-holder",
+      "source": "positive/helper-local-holder.coax",
+      "outcome": "accept",
+      "scope": "Applying a parameter-source obligation to caller-local holder is clear; no read-after-write return.",
+      "diagnostics": [],
+      "native_intent": "store remains latent; through/call has complete facts and relations, zero pending obligations.",
+      "authored_source_sha256": "9d2ec210e381ea1d23e47d4eedf797624f19cc66ca428fc64d7893409bd7f40c"
+    },
+    {
+      "id": "manual-helper-local-local",
+      "source": "manual/helper-local-local.coax",
+      "outcome": "accept-manual",
+      "scope": "Local bytes into same-frame local holder have explicit manual lexical relation, not host lifetime proof.",
+      "diagnostics": [],
+      "native_intent": "through/call has complete facts but manual local/local relation, zero invented external pending obligations.",
+      "authored_source_sha256": "0ba8f25c250d9882ee1562a4a7324912431bf5abc4f7c0bc6e1182a3c7996585"
+    },
+    {
+      "id": "positive-loaded-helper-caller",
+      "source": "positive/loaded-helper-caller.coax",
+      "outcome": "accept",
+      "scope": "Loaded helper caller-parameter retention stays latent and source accepted.",
+      "diagnostics": [],
+      "authored_source_sha256": "5df1d601b8c57f992dbb1a6d4536df1b846ea7d796b4d430154a58df54ab353a"
+    },
+    {
+      "id": "positive-generic-helper-caller",
+      "source": "positive/generic-helper-caller.coax",
+      "outcome": "accept",
+      "scope": "Actual u8 generic instance keeps parameter obligation; templates are not concrete facts.",
+      "diagnostics": [],
+      "authored_source_sha256": "a37b4ca814f8ad0ff55c6fc32d93750b2084ef1c9257827b596b499712d065fe"
+    },
+    {
+      "id": "positive-same-formal-pending",
+      "source": "positive/same-formal-pending.coax",
+      "outcome": "accept",
+      "scope": "Same formal source/destination does not discharge a pending external-store relation.",
+      "diagnostics": [],
+      "native_intent": "retain_self complete facts, relation incomplete, one pending obligation despite same formal ordinal.",
+      "authored_source_sha256": "a2db12ccafe0a8421181a7c062a3c65df69825d38d1ab7527c998ba7f260183f"
+    },
+    {
+      "id": "positive-default-empty-and-static",
+      "source": "positive/default-empty-and-static.coax",
+      "outcome": "accept",
+      "scope": "Whole-record default-empty descriptor and static text have no source backing obligation.",
+      "diagnostics": [],
+      "authored_source_sha256": "93be95eeb0a0fa8941fcb566cb3f75a880369a1a5ee79a8e415d62ccc1c4aa24"
+    },
+    {
+      "id": "negative-known-external-and-unknown-destination",
+      "source": "negative/known-external-and-unknown-destination.coax",
+      "outcome": "reject",
+      "scope": "Known external destination survives recursive unknown alternative; never run recursive body.",
+      "diagnostics": [
+        {
+          "file": "negative/known-external-and-unknown-destination.coax",
+          "line": 6,
+          "col": 27,
+          "code": "E0383"
+        }
+      ],
+      "witness": {
+        "role": "RHS",
+        "text": "[..]",
+        "authored_before_observation": true,
+        "rhs_source_text": "local[..]",
+        "anchor_rule": "Existing PS_postfix constructs expr_slice at the opening square bracket (parser.coax). Authored before B1 diagnostic outputs."
+      },
+      "authored_source_sha256": "6aab92895606df2d087c1badfe7e7907d57902950bc9d865e00e66c0b7bf3920"
+    },
+    {
+      "id": "positive-formal-array-forward",
+      "source": "positive/formal-array-forward.coax",
+      "outcome": "accept",
+      "scope": "Forward caller-owned source array storage through view/helper parameters as latent B1 obligations; no local-carrier read-after-write or B2 claim.",
+      "diagnostics": [],
+      "authored_source_sha256": "8f6af458f657a01f778bd4994e4e382d82f4343784aa3cbceb679e6acdb5fdb8",
+      "preauthored_oracle": {
+        "sha256": "b3b4efee5aa940b1a591f0231ce4dc37e2cc69ebf58d475404a7c2d4441798d1",
+        "case_id": "forward-view-parameter"
+      }
+    },
+    {
+      "id": "negative-formal-array-local-source",
+      "source": "negative/formal-array-local-source.coax",
+      "outcome": "reject",
+      "scope": "Original local Holder array passed to helper cannot populate external Slot descriptor; reject at original CALL.",
+      "diagnostics": [
+        {
+          "file": "negative/formal-array-local-source.coax",
+          "line": 9,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "authored_source_sha256": "d94e6c7fa85b2c37b6feaee87241a3fe7cd576f6c28aa0ef050d0663d8e610a3",
+      "preauthored_oracle": {
+        "sha256": "b3b4efee5aa940b1a591f0231ce4dc37e2cc69ebf58d475404a7c2d4441798d1",
+        "case_id": "reject-local-holder"
+      },
+      "witness": {
+        "role": "CALL",
+        "text": "put(",
+        "authored_before_observation": true,
+        "anchor_rule": "Original put CALL at line9,column3, authored in the private oracle before the actual development result. Only physical file path changes on registration."
+      }
+    },
+    {
+      "id": "positive-formal-array-caller-owned",
+      "source": "positive/formal-array-caller-owned.coax",
+      "outcome": "accept",
+      "scope": "Forward caller-owned source array storage through view/helper parameters as latent B1 obligations; no local-carrier read-after-write or B2 claim.",
+      "diagnostics": [],
+      "authored_source_sha256": "a6b6105580a77c24f7751a1c83128d94319cf2842481d7f6410dbf31903801c8",
+      "preauthored_oracle": {
+        "sha256": "b3b4efee5aa940b1a591f0231ce4dc37e2cc69ebf58d475404a7c2d4441798d1",
+        "case_id": "caller-owned-chain"
+      }
+    }
+  ],
+  "support": [
+    "support/store-module.coax",
+    "support/escaping-module.coax"
+  ],
+  "deferred": [
+    {
+      "original_name": "positive/local-container.coax",
+      "child": "B2",
+      "reason": "Selected read-after-write return composition through local carrier.",
+      "proposal_sha256": "3aaef1dea4c8f6bbbf0a89387ce825cfd30db979b88f5a76fc7d3780059ed784"
+    },
+    {
+      "original_name": "positive/context-descriptor.coax",
+      "child": "B2",
+      "reason": "Selected read-after-write return composition through Context carrier.",
+      "proposal_sha256": "64b60f92ba4f7de44545c96cd7a5a40a3df8ec8c678ee9776714ddd77a865453"
+    },
+    {
+      "original_name": "positive/separate-fields.coax",
+      "child": "B2",
+      "reason": "Selected returned field excludes unrelated local scratch.",
+      "proposal_sha256": "73b35ef31e30bfae48aa22b09346bfb4859c4e65380c9483f61f8cca1964a684"
+    },
+    {
+      "original_name": "actual/systemone-post-completeness.coax",
+      "child": "B2",
+      "reason": "Actual SoPost precise returned descriptor composition.",
+      "proposal_sha256": "da7336b23e487166312921fcb5a84e4bffca93162bd96af1a880174bfd159220"
+    },
+    {
+      "original_name": "actual/systemone-local-output.coax",
+      "child": "B2",
+      "reason": "Actual SoPost caller-local returned-output rejection.",
+      "proposal_sha256": "99b0658f2fcaf5f94ff8829ef6b7c2dee966a67e7c4cc9ec27f9df00c1450148"
+    },
+    {
+      "original_name": "limits/copied-active-handle.coax",
+      "child": "B3",
+      "reason": "Copied live handle ownership and lifecycle limits.",
+      "proposal_sha256": "d13869920aa785d697ae72396c544c49af1425c569bde57297b9f6b09f52954c"
+    }
+  ]
+}

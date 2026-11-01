@@ -1,0 +1,7 @@
+Slot :: struct { view: []u8; }
+recursive :: (input: []u8) -> []u8 { return recursive(input); }
+bad :: (dst: []Slot, out: []u8, choose: bool) {
+  local: [4]u8;
+  dst[0].view = ifx choose then recursive(out) else local[..];
+}
+main :: () {}

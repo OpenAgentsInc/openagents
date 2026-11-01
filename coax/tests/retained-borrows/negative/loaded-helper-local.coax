@@ -1,0 +1,6 @@
+#load "../support/store-module.coax" as api;
+bad :: (dst: []api.Slot) {
+  local: [4]u8;
+  api.store(dst, local[..]);
+}
+main :: () {}

@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+bad :: (dst: []Slot, out: []u8) {
+  local: [4]u8;
+  dst[0].view = out;
+  dst[0].view = local[..];
+  dst[0].view = out;
+}
+main :: () {}

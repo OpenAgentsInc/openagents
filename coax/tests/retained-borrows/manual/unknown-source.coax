@@ -1,0 +1,4 @@
+Slot :: struct { view: []u8; }
+recursive :: (input: []u8) -> []u8 { return recursive(input); }
+through :: (dst: []Slot, out: []u8) { dst[0].view = recursive(out); }
+main :: () {}

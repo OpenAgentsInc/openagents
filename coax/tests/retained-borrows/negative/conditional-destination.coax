@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+bad :: (dst: []Slot, choose: bool) {
+  local_state: [1]Slot;
+  selected := ifx choose then dst else local_state[..];
+  local: [4]u8;
+  selected[0].view = local[..];
+}
+main :: () {}

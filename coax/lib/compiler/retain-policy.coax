@@ -1,6 +1,6 @@
-// B0 supplied retained-store facts. Unloaded; no checker or lifetime resolver.
+// Supplied retained-store classification; checked graph integration is separate.
 // Valid immutable inputs are disjoint from writable output for this call.
-#load "../lib/compiler/borrow-summary.coax";
+#load "borrow-summary.coax";
 #authority;
 
 RP_MAX_TERMS :: BS_MAX_SET;

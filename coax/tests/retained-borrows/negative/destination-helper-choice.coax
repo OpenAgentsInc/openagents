@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+pick :: (unused: []Slot, selected: []Slot) -> []Slot { return selected; }
+bad :: (dst: []Slot) {
+  local_state: [1]Slot;
+  local: [4]u8;
+  pick(local_state[..], dst)[0].view = local[..];
+}
+main :: () {}

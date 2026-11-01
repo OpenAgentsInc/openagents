@@ -1,0 +1,3 @@
+Slot :: struct { view: []u8; text: string = "resident"; }
+clear :: (dst: []Slot) { dst[0] = Slot.{}; }
+main :: () {}

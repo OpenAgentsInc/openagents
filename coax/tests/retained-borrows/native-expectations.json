@@ -1,0 +1,401 @@
+{
+  "schema": "coax.retained-borrows.native-oracles.v1",
+  "scope": "Independent literal single-source CK result, physical witness and explicit observation-prefix expectations, authored before B1 outputs. No report order/cache layout, host lifetime or B2 read-after-write return oracle. Unknown-only known-pair relation is vacuously complete independently of incomplete facts.",
+  "cases": [
+    {
+      "id": "positive-caller-descriptors",
+      "source": "positive/caller-descriptors.coax",
+      "authored_source_sha256": "dadb982d9f16a572870d565a8e2fa99333f249010405f811d647d9f1e1c0eb3d",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "store",
+          "site_line": 2,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        },
+        {
+          "kind": 1,
+          "owner_name": "retain",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        }
+      ]
+    },
+    {
+      "id": "positive-helper-local-holder",
+      "source": "positive/helper-local-holder.coax",
+      "authored_source_sha256": "9d2ec210e381ea1d23e47d4eedf797624f19cc66ca428fc64d7893409bd7f40c",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "through",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": true,
+          "forbidden": false,
+          "pending": 0
+        },
+        {
+          "kind": 2,
+          "owner_name": "through",
+          "site_line": 5,
+          "site_col": 3,
+          "facts_complete": true,
+          "relation_complete": true,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "manual-helper-local-local",
+      "source": "manual/helper-local-local.coax",
+      "authored_source_sha256": "0ba8f25c250d9882ee1562a4a7324912431bf5abc4f7c0bc6e1182a3c7996585",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "through",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 0
+        },
+        {
+          "kind": 2,
+          "owner_name": "through",
+          "site_line": 6,
+          "site_col": 3,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "manual-unknown-source",
+      "source": "manual/unknown-source.coax",
+      "authored_source_sha256": "5d79e57ab670c617991b9dc3cee0bf441236d98b1b093c7f8b4db1779e74f8e0",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "through",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": false,
+          "relation_complete": true,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "manual-unknown-destination",
+      "source": "manual/unknown-destination.coax",
+      "authored_source_sha256": "7cc18b0b40f5a83dc4a7fc4f07b6dcf71bd9fbd0cbc7dc13c8619d94f6cb5643",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "through",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": false,
+          "relation_complete": true,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "manual-nested-block-region",
+      "source": "manual/nested-block-region.coax",
+      "authored_source_sha256": "65de09b4eeef04f152a68bfb1b80f4b04d076b8c1c77e084935768f5bce1bc54",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "through",
+          "site_line": 2,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "positive-copied-inline-destination",
+      "source": "positive/copied-inline-destination.coax",
+      "authored_source_sha256": "27efd0033b062d1bb1e105ae21cb57e257cf6b9e4a177133f3736ad09286f487",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "inspect_copy",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": true,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "positive-defaults-and-static",
+      "source": "positive/defaults-and-static.coax",
+      "authored_source_sha256": "c1f200ab388358c9adc6a5f68f0c9cfd115a4424dfa4283b32c6643018eabf64",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "retain",
+          "site_line": 2,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        }
+      ]
+    },
+    {
+      "id": "positive-default-empty-and-static",
+      "source": "positive/default-empty-and-static.coax",
+      "authored_source_sha256": "93be95eeb0a0fa8941fcb566cb3f75a880369a1a5ee79a8e415d62ccc1c4aa24",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "clear",
+          "site_line": 2,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": true,
+          "forbidden": false,
+          "pending": 0
+        }
+      ]
+    },
+    {
+      "id": "positive-same-formal-pending",
+      "source": "positive/same-formal-pending.coax",
+      "authored_source_sha256": "a2db12ccafe0a8421181a7c062a3c65df69825d38d1ab7527c998ba7f260183f",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "retain_self",
+          "site_line": 2,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        }
+      ]
+    },
+    {
+      "id": "positive-unused-scratch",
+      "source": "positive/unused-scratch.coax",
+      "authored_source_sha256": "34f03a3b8a7ed159801e5c11d7ad2ff5cae22430683130d8eef8a9035c9b0c26",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "retain",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        },
+        {
+          "kind": 1,
+          "owner_name": "through",
+          "site_line": 4,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        }
+      ]
+    },
+    {
+      "id": "positive-generic-helper-caller",
+      "source": "positive/generic-helper-caller.coax",
+      "authored_source_sha256": "a37b4ca814f8ad0ff55c6fc32d93750b2084ef1c9257827b596b499712d065fe",
+      "expected_success": true,
+      "diagnostics": [],
+      "reports": [
+        {
+          "kind": 1,
+          "owner_name": "retain",
+          "site_line": 3,
+          "site_col": 1,
+          "facts_complete": true,
+          "relation_complete": false,
+          "forbidden": false,
+          "pending": 1
+        }
+      ]
+    },
+    {
+      "id": "negative-direct-external",
+      "source": "negative/direct-external.coax",
+      "authored_source_sha256": "75f33d1f6553dbb0b6440f5746e0e0104be31bc9100de32d851cb2050e7e1ce2",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "negative/direct-external.coax",
+          "line": 4,
+          "col": 22,
+          "code": "E0383"
+        }
+      ],
+      "reports": []
+    },
+    {
+      "id": "negative-helper-local",
+      "source": "negative/helper-local.coax",
+      "authored_source_sha256": "ec993ed64d0c852b7496910436d40e088471d170bb45c2ed92c4a720136ca08c",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "negative/helper-local.coax",
+          "line": 5,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "reports": []
+    },
+    {
+      "id": "negative-whole-aggregate",
+      "source": "negative/whole-aggregate.coax",
+      "authored_source_sha256": "7a2bcf1e46ea6f06d98d0057c4065f853642922aca6d0f06d2c52bc041b0f42b",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "negative/whole-aggregate.coax",
+          "line": 4,
+          "col": 12,
+          "code": "E0383"
+        }
+      ],
+      "reports": []
+    },
+    {
+      "id": "negative-local-plus-unknown",
+      "source": "negative/local-plus-unknown.coax",
+      "authored_source_sha256": "77832d425c3df33939e5e713aa1775d05459520fe698ac76aeaff0fb99812ffe",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "negative/local-plus-unknown.coax",
+          "line": 5,
+          "col": 17,
+          "code": "E0383"
+        }
+      ],
+      "reports": []
+    },
+    {
+      "id": "negative-known-external-and-unknown-destination",
+      "source": "negative/known-external-and-unknown-destination.coax",
+      "authored_source_sha256": "6aab92895606df2d087c1badfe7e7907d57902950bc9d865e00e66c0b7bf3920",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "negative/known-external-and-unknown-destination.coax",
+          "line": 6,
+          "col": 27,
+          "code": "E0383"
+        }
+      ],
+      "reports": []
+    },
+    {
+      "id": "negative-generic-helper-local",
+      "source": "negative/generic-helper-local.coax",
+      "authored_source_sha256": "62345d81209f163ddb3ce32b05c0423cee0f601091e5d5a3dd4543eb8990e1bc",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "negative/generic-helper-local.coax",
+          "line": 5,
+          "col": 3,
+          "code": "E0383"
+        }
+      ],
+      "reports": []
+    },
+    {
+      "id": "precedence-immutable-inline-parameter",
+      "source": "precedence/immutable-inline-parameter.coax",
+      "authored_source_sha256": "047d1ad7f0d5e7c1f44de74b5fcfd49a3df7b78b0d85b8d65a6eaebefac327ee",
+      "expected_success": false,
+      "diagnostics": [
+        {
+          "file": "precedence/immutable-inline-parameter.coax",
+          "line": 4,
+          "col": 27,
+          "code": "E0366"
+        }
+      ],
+      "reports": []
+    }
+  ],
+  "guard_controls": {
+    "reports_disabled": "Repeat positive/helper-local-holder with absent reports; same source success/admission and committed count0.",
+    "short_report": "Same positive source with requested report capacity1; explicit E0381 and committed count0.",
+    "rejection": "Every negative CK_run failure retains exact authored original diagnostic and committed reportcount0; never read failed prefix."
+  },
+  "abi_expectations": {
+    "scope": "Derived from approved declarations and LP64 only; not an observed layout until fresh emitted-header compile guard.",
+    "RetainEffect_size": 368,
+    "RetainEffect_source_storage_offset": 360,
+    "RetainObservation_size": 40,
+    "RetainCaps_size": 24,
+    "RetainObservation_offsets": {
+      "kind": 0,
+      "owner": 8,
+      "site": 16,
+      "facts_complete": 24,
+      "relation_complete": 25,
+      "forbidden": 26,
+      "pending": 32
+    }
+  },
+  "producer_scope": "Later actual producer and fresh source/header hashes must be retained by the native gate; old5c preflight is source RED only."
+}

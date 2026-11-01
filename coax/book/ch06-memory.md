@@ -472,10 +472,20 @@ Acceptance of those paths is not proof of safe lifetimes; a known local origin
 still causes E0383 when another arm is unknown. Direct views of immutable
 by-value array parameters retain E0366. An owned array can be copied out, while
 a returned view of a local copy is E0383. Analysis limits refuse with E0381.
-Retained caller-state stores, completion/cancellation, general fixed points
-and shorter nested-block regions remain separate work. The
+Known local backing retained in caller or static storage is also rejected,
+including stores in void and uncalled bodies. The checker uses addressed
+storage, not the old descriptor value, and projects helper parameter
+obligations at actual callers. A violation names the original RHS or call.
+Local inline copies remain distinct from contained views, and a later safe
+write cannot erase an earlier forbidden may-store. Unknown, recursive and
+same-frame local ordering remain explicit manual relations.
+
+Local-carrier helper writes followed by returned-field reads,
+completion/cancellation ownership, general fixed points and shorter
+nested-block regions remain separate work. The
 [recorded return-summary boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-return-borrows.md)
-does not claim general lifetime safety.
+and [retained-store boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-retained-stores.md) do not claim
+general lifetime safety.
 
 The fix is to decide who owns the storage. If the result is small and fixed,
 return the array itself, `-> [4] int`, which copies it out. If the caller
@@ -904,6 +914,7 @@ changes that. Here is what's actually checked.
 | A view can't escape compile time | Enforced (`E0409`) |
 | Integer overflow traps in development builds | Enforced (wraps in `--release`) |
 | Known local borrows returned directly, through supported helpers or inside aggregates | Rejected (`E0383`); recursive/helper-write summaries can remain manual, and general lifetime safety is not established |
+| Known callee-local descriptor backing retained in caller/static storage, directly or through checked calls | Rejected (`E0383`) in the bounded store profile; pending caller obligations and unsupported relations are separate |
 | Handles with generation checks for long-lived references | Planned |
 | Explicit owners and reset points; debug poisoning of freed memory | Planned |
 | Allocation as a checked effect | Planned |

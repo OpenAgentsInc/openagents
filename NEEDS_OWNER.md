@@ -236,7 +236,7 @@ Passing the audit is **not** approval for production keys. The Pylon refuses `--
 
 Until then, demo Pylons use fresh random throwaway keys (`docs/Oct30MVP.md`, §3).
 
-## B1 qualification: task time-limit decision (2026-11-01)
+## B1 qualification: task time-limit decision — resolved (2026-11-01)
 
 The resumed B1 task began at 06:38:49 UTC; the AGENTS.md two-hour limit ends
 at 08:38:49 UTC. The analysis cost is fixed within unchanged limits, but the
@@ -245,3 +245,8 @@ whether to continue beyond the two-hour limit until B1 is fully qualified,
 pushed and closed, or stop at the limit and record the remaining work.
 No extension is assumed while the owner decision is pending. No credentials
 or local UI action are needed.
+
+Resolved: the owner stated that the two-hour task limit was never approved
+and directed its removal on 2026-11-01. Commit `099d3575b0` removes it from
+`AGENTS.md`. B1 implementation and qualification continue, followed by the
+next Coax book chapter. No owner action is pending for this item.

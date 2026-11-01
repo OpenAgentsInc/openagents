@@ -1,0 +1,5 @@
+bad :: (dst: [][]u8) {
+  local: [4]u8;
+  dst[0] = local[..];
+}
+main :: () {}

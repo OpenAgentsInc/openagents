@@ -1,0 +1,3 @@
+Node :: struct { next: []Node; }
+retain_self :: (input: []Node) { input[0].next = input; }
+main :: () {}

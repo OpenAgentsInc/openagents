@@ -1,0 +1,165 @@
+{
+  "schema": "coax.B1.final-qualification.v1",
+  "outcome": "passed",
+  "source_revision": "b83517e3f071cc8227347568d18bc3bfd1a3751b",
+  "checker_sha256": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+  "fingerprint": "1fb5436c6168362ea395419b8951aed1d98d04973d7e1e84f4c24f0acee2b32e",
+  "actual_compiler_sha256": "3b2b62250751bc21f23566cff2dd8305c82185534da9d4966b4e4f155734abfa",
+  "normal": {
+    "path": "/tmp/coax-retained-borrows-B1-finish/normal165/qualification.json",
+    "sha256": "c3743c5d3790bc50d569e3049c7000619d81d943a1d55223b0030a51a6bf1a28",
+    "steps": 165,
+    "proof": {
+      "kind": "normal",
+      "fingerprint": "1fb5436c6168362ea395419b8951aed1d98d04973d7e1e84f4c24f0acee2b32e",
+      "image_sha256": "3b2b62250751bc21f23566cff2dd8305c82185534da9d4966b4e4f155734abfa",
+      "binding_sha256": "93e6fa9ee785e4a671a09ec78f147edbc68407d8653c8cdd62dd07396f1572fa",
+      "final_receipt_sha256": "13c912a4ade2c04f921f1b65e76b50ae1bd16af9206681c04f8fdf18f8923d58",
+      "source_revision": "b83517e3f071cc8227347568d18bc3bfd1a3751b"
+    }
+  },
+  "mutation": {
+    "scope": "actual final whole source, all loaded authorities, eight shards+actual merge",
+    "inventory": 9253,
+    "killed": 9253,
+    "survivors": 0,
+    "equivalence_waivers": 0,
+    "budget_increases": 0
+  },
+  "authored_checks": 984,
+  "self_analysis": {
+    "path": "/tmp/coax-retained-borrows-B1-finish/cost-984-final/process.json",
+    "sha256": "80686668047d28cdcfa2a079ebee6f437dd56172d8984dbe253a302507987c1d",
+    "producer_scope": "matching development image; independent normal qualification above",
+    "counters": {
+      "depth": 0,
+      "origins": 8251,
+      "queries": 14561,
+      "work": 1047475
+    },
+    "work_limit": 1048576,
+    "query_limit": 16384,
+    "origin_limit": 65536
+  },
+  "final_whole_gates": {
+    "b1-source": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/b1-source/qualification.json",
+      "sha256": "5e3c1e65c2457eaddf662b4b145d64ded36e83ef39d93e6061f6724c666d889e",
+      "elapsed_s": 2.323550458997488,
+      "cases": 33,
+      "tests_run": null,
+      "cases_per_profile": null,
+      "profiles": null,
+      "independent_procedures": null
+    },
+    "a1-source": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/a1-source/qualification.json",
+      "sha256": "a5cb6dec4d03f2d8060bd4d1c033bb19eab5e1c05fb923132beb708d5ac6efd8",
+      "elapsed_s": 2.7742733749910258,
+      "cases": 44,
+      "tests_run": null,
+      "cases_per_profile": null,
+      "profiles": null,
+      "independent_procedures": null
+    },
+    "b1-native": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/b1-native/qualification.json",
+      "sha256": "c9fd52d78be926b6f106d68948fe8d17e8648a66cc4de134cda77a4b775eb47c",
+      "elapsed_s": 16.413059082988184,
+      "cases": null,
+      "tests_run": null,
+      "cases_per_profile": 21,
+      "profiles": 3,
+      "independent_procedures": null
+    },
+    "legacy-checker": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/legacy-checker/qualification.json",
+      "sha256": "28bd97d4f160911b222c12c0cfd69a0da90d85430643ca480f223b46a5655f18",
+      "elapsed_s": 16.111837916017976,
+      "cases": null,
+      "tests_run": 10,
+      "cases_per_profile": null,
+      "profiles": null,
+      "independent_procedures": null
+    },
+    "systemone": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/systemone/qualification.json",
+      "sha256": "fe81acd270e97a834c247719535dd976e36a64e5b75d5b834e3ff9ef25d86814",
+      "elapsed_s": 2.3547742089722306,
+      "cases": null,
+      "tests_run": 3,
+      "cases_per_profile": null,
+      "profiles": 3,
+      "independent_procedures": null
+    },
+    "memo1000": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/memo1000/qualification.json",
+      "sha256": "326f9956d216a815b9b244306c5dbf88e86acc22ca3ec2e9a16c30368adef7ee",
+      "elapsed_s": 0.9114228750113398,
+      "cases": null,
+      "tests_run": null,
+      "cases_per_profile": null,
+      "profiles": null,
+      "independent_procedures": 1000
+    },
+    "diagnostics-json": {
+      "path": "/tmp/coax-retained-borrows-B1-finish/final-bindings-b83517e3/gates/diagnostics-json/qualification.json",
+      "sha256": "8b27964cd16827709f0f9046dbf7238e1d48b51c885d7e1b09b2a57856e19a4a",
+      "elapsed_s": 1.5465062499861233,
+      "cases": null,
+      "tests_run": 8,
+      "cases_per_profile": null,
+      "profiles": null,
+      "independent_procedures": null
+    }
+  },
+  "package": {
+    "coax": "3b2b62250751bc21f23566cff2dd8305c82185534da9d4966b4e4f155734abfa",
+    "provenance-check": "4e60b43e90dc8a2b499416a0eec2fe89d02fc3659c8a4fea0bb04f72a8ec8392",
+    "provenance.record": "7bc9bc3ddaf91c41223ca8d63904f5d0ed48e70a1ab7ec696ed3f73503966c1b",
+    "check-domains.c": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014",
+    "check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "lexer.c": "23d7217e02bfcd56b6870958b72324f73c8620ca40fca2d354ac1265ca5c9086",
+    "lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+    "parser.c": "52b62d2b0ec4a3a447efe96fde16623323256aa424d2a640d876b7b1667be081",
+    "parser.h": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+    "checker.c": "5b3cb00aa129a0dae1c5bb04b52f994dac8d2c14180d6496f3e3843b14cbe2a7",
+    "checker.h": "883aac6a7c74ad5c943cff13aeb9db3fb6e78258730582e96fb7e88fdffae1e8",
+    "sources.c": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a",
+    "sources.h": "0495835277054e2fc5518680c43810ef089f5a69c7dc93fe9e3b5cfb73a63c3f",
+    "proto_runtime.inc": "19ba5ddbd2936d00ee94e38c45a2020ba2c33d0cff0654b056641bec08278922",
+    "proto_importer.c": "0ed55a0780d03ee9d2fb29162d74af91b840f3f8722a97b158c1570adbf4e47e",
+    "proto_importer.h": "a8d139b4ac1d20f61c31cdbad8f7083c0ea1ff8ea70dc210f8abc7304da11189",
+    "mutation-survivors": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "layout_scope": "Two unchanged headers retain actual21-record/198-offset guards via explicit Root-reviewed continuity; final native profiles independently compile fresh header guards.",
+  "review": {
+    "path": "/tmp/coax-retained-borrows-B1-finish/independent-review/review.json",
+    "sha256": "c3f81c5155c11336384b9afa73a79f4abb9261f36ba17246af7506655180c003"
+  },
+  "remaining_boundaries": [
+    "B2 local-carrier/helper write-to-return composition",
+    "B3 request defaults/owner/completion/cancellation and all borrowed-result uses",
+    "general ownership/foreign retention/nested-region/recursive fixedpoint guarantees"
+  ],
+  "scope": "Actual B1 source/mutation/bootstrap/fixedpoint/native/consumer evidence. Does not close parent retained-request or B2/B3. No prior partial observation is retagged.",
+  "publication_scope": "Qualified sourceb835 integrated and rebased on origin/main 96eabf76f002945fbbeac57a80c78dbf558f2bee. Compiler fingerprint and all145 repository inputs from final gate collection match byte-for-byte; see publication-inputs.json. Final publication commit is recorded by the project completion event.",
+  "proof_archive": {
+    "path": "raw/proof.tar.xz",
+    "bytes": 7598428,
+    "sha256": "85f952605f258ef92d2a4fe05f498c23b5947f7b2c4e2091fcd095c70b31f933",
+    "manifest": {
+      "path": "raw/manifest.json",
+      "sha256": "fb5570c7fdc4e6f0ebcc7de563c12cea80ed2603497964c62aecadbda9dc02d9"
+    },
+    "assembly_record": {
+      "path": "raw/record.json",
+      "sha256": "428b85f1ac33f647ff95d66e3d143c7b0503cd19b6f9b90746dd5ac89519bd0b"
+    },
+    "members_verified": 11029,
+    "uncompressed_member_bytes": 1303877673,
+    "before_after_identity": true,
+    "every_member_readback_verified": true,
+    "qualification_claim_by_assembler": false
+  }
+}

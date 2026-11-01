@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+Context :: struct { slots: []Slot; }
+retain :: (context: Context, input: []u8) { context.slots[0].view = input; }
+bad :: (dst: []Slot) {
+  local: [4]u8;
+  retain(Context.{slots = dst}, local[..]);
+}
+main :: () {}

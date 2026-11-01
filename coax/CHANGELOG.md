@@ -50,6 +50,12 @@ Commit: [`9e29938427cba24fd4fa6778812c216f2f3ad1f5`](https://github.com/OpenAgen
   prints each surviving mutant as an `E0414` `coax.diagnostic.v1` object at
   the mutated token, and each procedure no check reaches as `E0415` at its
   name. The summary line stays on stdout, and the text output is unchanged.
+- Follow-up 2026-11-01: check descriptor stores in concrete bodies, including
+  void and uncalled procedures, and project helper outlives obligations at
+  actual callers. Known callee-local backing retained in caller/static
+  storage is E0383 at the original RHS or call; unknown and unsupported
+  relations remain manual. Local-carrier return composition and request
+  completion/cancellation ownership remain separate work.
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 

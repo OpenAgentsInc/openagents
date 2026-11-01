@@ -1,0 +1,8 @@
+Slot :: struct { view: []u8; }
+bad :: (dst: []Slot) {
+  local: [4]u8;
+  relay(dst, local[..]);
+}
+relay :: (dst: []Slot, input: []u8) { store(dst, input); }
+store :: (dst: []Slot, input: []u8) { dst[0].view = input; }
+main :: () {}

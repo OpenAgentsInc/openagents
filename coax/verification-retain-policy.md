@@ -1,11 +1,16 @@
 # Supplied retained-store policy (B0)
 
-[retain-policy.coax](policy/retain-policy.coax) classifies one descriptor-leaf
-store from supplied checked facts. It is a standalone, unloaded Coax policy:
-it does not traverse source, resolve types, infer aliases, issue a compiler
-diagnostic or prove host lifetime safety. Its origin/path carriers come from
+[retain-policy.coax](lib/compiler/retain-policy.coax) classifies one descriptor-leaf
+store from supplied checked facts. B0 originally delivered it as a standalone,
+unloaded policy at `coax/policy/retain-policy.coax`; the evidence below retains
+that source identity and scope. B1 moves the policy into the compiler's recursive
+input inventory and loads it from the checker. The policy itself does not
+traverse source, resolve types, infer aliases, issue a compiler diagnostic or
+prove host lifetime safety. Its origin/path carriers come from
 [borrow-summary.coax](lib/compiler/borrow-summary.coax). Compiler return
 summaries remain the separate [A1 profile](verification-return-borrows.md).
+The B1 checker derives and substitutes addressed-store facts; B2 local-carrier
+read-after-write composition and B3 request ownership remain separate work.
 
 ## Supplied values and addressed storage
 

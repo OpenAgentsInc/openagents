@@ -2242,8 +2242,9 @@ storage at that place, so a passed-on slice of a caller's array keeps its
 caller (or local, E0383) origin. Static origins never decide a returned
 borrow: a constant is one, and static origins alone that would overflow a set
 collapse to one per type; local and parameter origins never collapse.
-Retained caller-state stores, completion/cancellation, general fixed points
-and nested-block regions remain work; this is not general ownership safety.
+Retained stores have the separate bounded B1 profile below. Completion/cancellation,
+general fixed points and nested-block regions remain work; this is not general
+ownership safety.
 Check: checker authority/mutation and seeds, original-source diagnostics,
 internal summary status and native/sanitizer buffer-return profiles in
 `coax/verification-return-borrows.md`; the initial direct-local profile remains
@@ -2251,19 +2252,56 @@ in `coax/verification-local-borrows.md`.
 
 ## Supplied retained-store facts do not prove lifetimes
 
-`coax/policy/retain-policy.coax` is a standalone, unloaded supplied-fact
-policy. Descriptor backing and addressed storage have separate checked keys;
-nonstatic terms belong to the supplied current frame, static terms to frame 0.
-Fact completeness is independent of known-relation completeness, forbidden
-witnesses and pending outlives obligations. Unknown alternatives never erase
-known pairs; complete-empty descriptor facts are not an ordinary zero-length
-view of an owner. Canonical pending rows have 64-term/128-pair/8-path bounds
-and atomic logical publication, without a C-padding contract. This directory
-is outside the compiler input fingerprint; qualification by its earlier
-producer does not create a new accepted-source/compiler seal. Before B1 loads
-it, the compiler fingerprint/bootstrap inventory and snapshot closure must
-include it. B1 traversal and substitution, B2 local-carrier helper composition
-and B3 request ownership remain work; the A1 retained-store/lifecycle limitation above stays.
+B0 originally delivered `coax/policy/retain-policy.coax` as a standalone,
+unloaded supplied-fact policy. Its historical qualification remains bound to
+that earlier source and producer. B1 moves it into `coax/lib/compiler/`, which
+is included in the recursive compiler fingerprint and build snapshot, and
+loads it from the checker. Descriptor backing and addressed storage have
+separate checked keys; nonstatic terms belong to the supplied current frame,
+static terms to frame 0. Fact completeness is independent of known-relation
+completeness, forbidden witnesses and pending outlives obligations. Unknown
+alternatives never erase known pairs; complete-empty descriptor facts are not
+an ordinary zero-length view of an owner. Canonical pending rows retain the
+64-term/128-pair/8-path bounds and atomic logical publication, without a
+C-padding contract.
+
+B1 examines typed writes in concrete checked procedures, including uncalled
+void procedures, concrete instances and the separate hidden check procedures.
+Known local backing stored into caller/static addressed storage is E0383 at
+the original RHS. Parameter-backed external stores remain latent obligations;
+actual caller substitution can reject them at the original call or discharge
+known caller backing. Same-formal ordinals alone do not discharge obligations.
+Addressed storage is derived independently of its previous descriptor value.
+After crossing a view, LOCAL/STATIC ELEMENT wildcards describe frame ownership
+only; they provide no exact element/field alias or strong-update proof.
+Recursive and foreign/intrinsic effects, unsupported helper writes and local
+region ordering remain explicit incomplete/manual facts. Known bad alternatives
+survive those incomplete alternatives. B2 local-carrier read-after-write return
+composition, B3 request ownership and general lifetime safety remain work.
+
+B1 source-only queries canonicalize STATIC lifetime classes while keeping LOCAL
+and PARAMETER identities, descriptor types and roles. Their memo keys include
+the mode. A1 return and addressed-storage queries do not enable this B1 source
+projection; their existing static-origin rules still apply. The source projection
+supplies no alias/value identity proof. Completed raw facts may serve source-class
+queries; STATIC/mixed spans use the existing normalization in a temporary result
+before output publication. Class-to-raw value reuse, active and incomplete rows
+remain unsupported. Direct storage paths without dereferences compute the
+owned-slot fact without a separate origin-query row/span.
+
+Frozen concrete field layouts use a B1-only type/ordinal cache. Type-owned
+kind4 query rows hold eight lazy field positions, stay separate from declaration-
+owned origin queries, and share the existing query capacity. Rows and slots
+publish only successful lookups. A1 contexts keep
+their ordinary field walk. Selecting an inline array behind a source view
+parameter substitutes the actual storage at that path, preserving local witnesses.
+
+The pass shares A1's existing 1,048,576-step work budget and memo workspace.
+Its bounded effect/report capacities do not enlarge that budget; exhaustion is
+E0381. Optional reports expose only a committed used prefix, with count zero on
+any rejected compilation, including later authority/backend rejection. Disabled
+reports add no semantic work. Private staged rows and unused tails have no
+published-value or C-padding contract.
 Check: [verification profile](coax/verification-retain-policy.md) and
 [actual root-mutation/native evidence](docs/verification/coax-retained-borrow-policy-2026-11-01/record.json):
 128/128 root mutants killed and LP64 O0/O2/ASan+UBSan, using the earlier

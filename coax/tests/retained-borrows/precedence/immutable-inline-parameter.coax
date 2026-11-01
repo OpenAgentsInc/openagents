@@ -1,0 +1,6 @@
+Slot :: struct { view: []u8; }
+Bytes :: struct { data: [4]u8; }
+bad :: (dst: []Slot, value: Bytes) {
+  dst[0].view = value.data[..];
+}
+main :: () {}

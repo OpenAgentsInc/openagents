@@ -1,0 +1,36 @@
+# Bounded retained-store checking (B1)
+
+The compiler checks descriptor stores in every concrete procedure body, including void, uncalled, hidden check and instantiated generic bodies. It uses existing resolved declarations, types, calls and fields. The Coax policy is loaded from [retain-policy.coax](lib/compiler/retain-policy.coax), within the compiler fingerprint/bootstrap inventory. [B0](verification-retain-policy.md) records its earlier standalone foundation.
+
+A write addresses storage; it does not address the previous descriptor's pointee. Current-frame inline copies and local descriptor slots remain local. Crossing a contained view resolves that descriptor prefix's backing. Parameter paths retain selected fields and wildcard dereferences. Normalized local/static array owners use the existing wildcard element sentinel for frame-relative classification, without exact element identity or a strong-update claim.
+
+B1 source queries collapse static origins to their lifetime class, preserving descriptor type and role. Local and parameter identities stay exact. The B1 source-class mode stays disabled for addressed-storage and A1 return queries; their existing static-origin rules still apply. The shared query cache keys the source-class mode separately. Complete validated raw facts may serve source-class queries. Raw static/mixed spans pass through the existing source normalization into a temporary result before output publication. Class-to-raw value reuse, active rows and incomplete rows remain unsupported. Direct storage paths without dereferences compute their owned-slot fact without allocating a separate origin-query row or span. This projection proves only the static lifetime relation, without an alias or value-identity claim.
+
+Known callee-local backing retained through caller/static storage reports E0383 at the original RHS, including definitions that are never called. Parameter-to-external stores retain sparse outlives obligations. Actual checked calls project only the referenced source and destination paths once into their caller namespace. A known local violation reports at the original call; unused scratch does not become an origin. When a retained source path selects an inline array behind a view parameter, caller substitution reads the actual array storage at that path. Its formal storage classification is computed once when the frozen canonical effect is published; each caller still resolves its actual source and destination. Source and destination known alternatives survive unknown arms. Later safe stores do not erase earlier may-effects.
+
+Complete default-empty source descriptors differ from zero-length views of an owner and unknown facts. An unavailable helper return query or unrepresented dereferenced address stays manual; it does not become a complete-empty asserted destination. Value constructors lowered away from calls are not runtime call effects. Unmodeled foreign/intrinsic retention and active recursive dependencies remain explicit incomplete facts. There is no general recursive fixed point.
+
+## Native observations and bounds
+
+Optional observations expose procedure/call owner and site, independent fact/relation completeness, forbidden status and pending count. Consumers read only `CK_State.retain_report_count` after successful `CK_run`. Type, store, authority, Metal and resource rejection leave count zero. Accepted manual/pending rows are explicit. Raw report capacity and private cache tails are not an admitted result.
+
+Existing query/origin/path/depth limits and the single shared 1,048,576 work counter remain. B1 separately memoizes borrow presence and mutable-descriptor discovery only after type instantiation, resets both private type caches once per run, and charges reset and discovery to the same work counter. Resolved direct local slots use their already-checked path and leaf type; view crossings retain the raw backing analysis. A separate B1 field cache indexes frozen concrete types and field ordinals in the existing query pool. Type-owned kind4 rows hold eight lazy field positions and stay separate from declaration-owned value/storage rows; reset, probe and miss work stay within the same budget. Failed lookups do not publish rows or fill slots. A1 contexts retain their ordinary field walk. Zero-depth B1 discovery queries reuse the corresponding frozen type fact; A1 and positive-depth discovery keep their existing traversal. Query misses reuse the type projection already validated before lookup. Sets and per-procedure effects are bounded at 64, logical paths at 8, and each supplied store at 128 raw pairs. A direct write visits at most 64 descriptor leaves; borrowed inline arrays are bounded at 64 elements. Coax computes an additional bounded effect workspace, clamped from twice the authored node count to 128..16,384 rows. Native code allocates/transports it. Observations are disabled normally and add no report work then; an explicitly requested short output refuses E0381 with zero committed count.
+
+## Verification record
+
+The [evidence record](../docs/verification/coax-retained-stores-2026-11-01/record.json) binds actual source, producer, raw outcomes and artifact identities. Check-first history retains 16 forbidden programs accepted by the earlier compiler, typed-graph assertion REDs, the original failed 909-check baseline and affected continuations. The record distinguishes Coax program observations on the earlier qualified producer from qualification of a new compiler image, and retains the analysis-cost attribution that motivated the frozen field cache.
+
+Final qualification passed: all 165 fresh strict normal statements, 9,253 full-scope mutants killed with zero survivors, 984 authored checks, deterministic C/header and compiler fixed points, all 33 source cases and the 19-case native corpus plus disabled/short controls at O0/O2/ASan+UBSan. The seven whole final-image gates also passed the 44 returned-borrow sources, legacy checker, actual System One consumer, 1,000 independent returns and diagnostic-schema checks. Each receipt retains its actual producer; earlier results are not renamed as current observations. The matching-image compiler analysis used 1,047,475 of the unchanged 1,048,576 work steps; subsequent growth needs measured cost reduction.
+
+Run the source and native gates with the explicitly selected compiler:
+
+```sh
+python3 coax/tests/retained_borrows.py --compiler /absolute/path/to/coax
+python3 coax/tests/retained_borrows_native.py --compiler /absolute/path/to/coax
+```
+
+These drivers also run in the ordinary compiler test chain. They are maintenance tooling and introduce no runtime dependency.
+
+## Remaining boundary
+
+B2 local-carrier helper writes followed by returned-field reads, including precise actual SoPost composition, remain separate. B3 request defaults, active-owner admission, completion/cancellation, all result uses and backing-buffer reclamation remain separate. Host-entry outlives obligations are not automatically discharged. Foreign retention, ownership transfer, nested-block/loop lifetimes and copied handles have no general proof. This bounded diagnostic is not general ownership safety.

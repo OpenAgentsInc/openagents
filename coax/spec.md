@@ -327,18 +327,28 @@ aggregate descriptor fields can remain returnable; an owned fixed-array value
 can be copied out. Direct slices of immutable by-value array parameters retain
 E0366; copying into a local and returning its slice is E0383.
 
+The retained-store pass also visits concrete void and uncalled bodies. It
+distinguishes addressed storage from the descriptor previously stored there.
+Known callee-local backing stored through caller or static storage is E0383
+at the original RHS. Parameter-to-external stores retain outlives obligations;
+actual checked calls project only their referenced source and destination
+fields, with a violated obligation diagnosed at the original call. Locally
+copied inline storage is distinct from crossing a contained view. Earlier
+bad may-stores survive later safe writes and unknown alternatives.
+
 This remains a bounded diagnostic, not general lifetime safety. Recursive
-queries and unsupported mutation through helpers retain an explicit
+queries and unsupported helper-write-to-return composition retain an explicit
 incomplete/manual summary. Their acceptance does not prove safe lifetimes or
 complete empty provenance. Query, projection, depth and workspace exhaustion
 refuse with E0381; static origins, which never decide a returned borrow,
-collapse to one per type before a set overflows. Retention by callees, stores
-into longer-lived caller storage, general recursive/loop fixed points and
-shorter nested-block lifetimes remain work. Assignment, passing and returning
-a view copy only its descriptor; the caller must keep backing storage alive for
-every use. No owning value
+collapse to one per type before a set overflows. General foreign retention,
+ownership through request completion/cancellation, recursive/loop fixed points
+and shorter nested-block lifetimes remain work. Same-frame local storage
+ordering stays manual. Assignment, passing and returning a view copy only its
+descriptor; the caller must keep backing storage alive for every use. No owning value
 transfer or destruction semantics are introduced. The current boundary and
-verification profiles are in [return-borrow summaries](verification-return-borrows.md).
+verification profiles are in [return-borrow summaries](verification-return-borrows.md)
+and [retained stores](verification-retained-stores.md).
 
 Implemented scalar extensions in 0.3.0 are specified in the
 [compiler reference](README.md#native-libraries-and-metal): explicit casts,

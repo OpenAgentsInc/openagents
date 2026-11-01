@@ -1,0 +1,7 @@
+Slot :: struct { view: []u8; }
+through :: () -> int {
+  call: [1]Slot;
+  { local: [4]u8; call[0].view = local[..]; }
+  return call[0].view.count;
+}
+main :: () {}

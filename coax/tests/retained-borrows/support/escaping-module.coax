@@ -1,0 +1,7 @@
+#module "retained.definition";
+#export Slot, bad_store;
+Slot :: struct { view: []u8; }
+bad_store :: (dst: []Slot) {
+  local: [4]u8;
+  dst[0].view = local[..];
+}

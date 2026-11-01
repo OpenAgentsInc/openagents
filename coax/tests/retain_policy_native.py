@@ -14,7 +14,7 @@ from quiet_crash import command as quiet_command
 from retain_policy_vectors import ORACLE, generate as generate_vectors
 
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'policy/retain-policy.coax'
+SOURCE=ROOT/'lib/compiler/retain-policy.coax'
 DEPENDENCY=ROOT/'lib/compiler/borrow-summary.coax'
 DRIVER=Path(__file__).with_name('retain-policy-native.c')
 VECTOR_ADAPTER=Path(__file__).with_name('retain_policy_vectors.py')

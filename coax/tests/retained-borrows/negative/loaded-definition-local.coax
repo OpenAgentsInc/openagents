@@ -1,0 +1,2 @@
+#load "../support/escaping-module.coax" as api;
+main :: () {}

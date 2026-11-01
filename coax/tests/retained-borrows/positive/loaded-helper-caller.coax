@@ -1,0 +1,3 @@
+#load "../support/store-module.coax" as api;
+retain :: (dst: []api.Slot, input: []u8) { api.store(dst, input); }
+main :: () {}
