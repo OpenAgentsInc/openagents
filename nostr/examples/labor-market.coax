@@ -1,0 +1,108 @@
+// book:begin example
+// Chapter 80: one labor order from request for quote to paid, at a fixed
+// clock, amounts in millisatoshis. The buyer is key 1, the provider key 2,
+// the worker key 3, the reviewer key 4; key 7 belongs to none of them. Keys
+// are the x-only public keys of those scalars: TEST ONLY. The CJ events were
+// signed and encrypted by coax/tests/nostr/cj_result_vectors.py.
+#load "../../coax/lib/nostr/cj/result.coax";
+#load "../../coax/lib/nostr/mkt/order.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+BUYER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+PROVIDER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+WORKER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+REVIEWER :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
+KEY_7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+TERMS_A :: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+TERMS_B :: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+// A 50,000 msat (500n) invoice whose payment hash is SHA-256 of the
+// preimage 01 02 ... 20: x402's fixture (coax/lib/x402/settle.coax).
+INVOICE :: "lnbc500n1p4wfve5pp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztys";
+HASH :: "ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+ZERO :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+MKT_WORDS :: [21]string.["accepted","malformed","not_admitted","identity_mismatch","stale","conflict",
+  "limit_exceeded","unsupported_profile","quote_expired","quote_consumed","confirmation_expired",
+  "price_exceeded","content_unavailable","idempotency_conflict","not accepted: nothing to pay against",
+  "amount: not the accepted price","no proof: the preimage does not hash to the payment hash",
+  "already paid","pending: an earlier attempt is unresolved","late","not passed by the reviewer"];
+CJ_WORDS :: [8]string.["answers the request","refused: the event does not verify","refused: kind",
+  "refused: another family","refused: tags","refused: not the worker the request named",
+  "refused: p is not the caller","refused: e is not the request"];
+
+say :: (at:int,what:string,r:int) {print("T0 + %: %: %\n",at,what,MKT_WORDS[r]);}
+quote_terms :: (id:string,digest:string,price:int)->MktTerms {
+  t:MktTerms;t.quote_id=id;t.digest=digest;t.worker=WORKER;t.reviewer=REVIEWER;
+  t.price_msat=price;t.fee_limit_msat=1000;t.profile=MKT_LIGHTNING;t.network=MKT_BITCOIN;
+  t.quote_expires_at=T0+600;t.order_confirm_by=T0+900;t.delivery_due_at=T0+3600;
+  t.review_due_at=T0+7200;t.payment_due_at=T0+86400;t.retain_until=T0+30*86400;return t;
+}
+proof :: (rail:int,state:int,amount:int,preimage:string)->MktProof {
+  p:MktProof;p.rail=rail;p.state=state;p.amount_msat=amount;p.preimage=preimage;return p;
+}
+verify :: (text:string,scratch:[]u8)->NostrEvent {return nostr_event_verify_vartime(text,scratch,false);}
+show_answer :: (request:NostrEvent,what:string,text:string) {
+  scratch:[4096]u8;e:=verify(text,scratch[..]);
+  print("  %: %\n",what,CJ_WORDS[cj_answer(request,e)]);
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("offering: provider key 2, Lightning on bitcoin, valid until T0 + 86400\n");
+  o:=MktOffering.{provider=PROVIDER,valid_until=T0+86400,profiles=MKT_LIGHTNING,networks=MKT_BITCOIN};
+  m:=[1]MktMarket.[MktMarket.{market="1111",buyer=BUYER,provider=PROVIDER}];q:[4]MktTerms;
+
+  print("negotiation\n");
+  say(0,"buyer asks for quotes, limit 60000 msat, answers due T0 + 300",mkt_rfq(m[..],o,BUYER,60000,T0+300,T0+40*86400,T0));
+  say(100,"provider quotes A: 50000 msat, fee limit 1000 msat, worker key 3, reviewer key 4",mkt_quote(m[..],q[..],quote_terms("A",TERMS_A,50000),PROVIDER,T0+100));
+  say(120,"provider quotes B: 70000 msat",mkt_quote(m[..],q[..],quote_terms("B",TERMS_B,70000),PROVIDER,T0+120));
+  say(150,"key 7 quotes C",mkt_quote(m[..],q[..],quote_terms("C",TERMS_B,40000),KEY_7,T0+150));
+  say(300,"buyer orders quote Z",mkt_order(m[..],q[..],BUYER,"Z",TERMS_A,"order-1",T0+300));
+  say(300,"buyer orders A naming terms bbbb...",mkt_order(m[..],q[..],BUYER,"A",TERMS_B,"order-1",T0+300));
+  say(300,"buyer orders A naming terms aaaa...",mkt_order(m[..],q[..],BUYER,"A",TERMS_A,"order-1",T0+300));
+  say(301,"buyer orders A again",mkt_order(m[..],q[..],BUYER,"A",TERMS_A,"order-2",T0+301));
+  say(350,"provider confirms the order",mkt_ack(m[..],q[..],PROVIDER,true,T0+350));
+
+  print("execution: the buyer's request %... (kind 25920, p = worker key 3)\n",CJV_REQUEST_ID[0..<8]);
+  scratch:[4096]u8;request:=verify(CJV_REQUEST,scratch[..]);
+  print("  the request verifies: %\n",ifx request.error==NE_OK && request.verified then "yes" else "no");
+  show_answer(request,"27020 from worker 3",CJV_ACCEPTED);
+  show_answer(request,"26920 from worker 3",CJV_RESULT);
+  show_answer(request,"26920 from key 7",CJV_IMPOSTOR);
+  show_answer(request,"26900 from worker 3",CJV_FAMILY);
+  show_answer(request,"26920 from worker 3, e = 63fadca9...",CJV_WRONG_E);
+  show_answer(request,"26920 from worker 3, p = key 7",CJV_WRONG_P);
+  // One character of worker 3's encrypted result changed.
+  forged:[2048]u8;n:=CJV_RESULT.count;for i:0..<n {forged[i]=CJV_RESULT[i];}
+  at:=0;while cast(string)forged[at..<at+11]!="\"content\":\"" {at+=1;}
+  at+=11+20;forged[at]=ifx forged[at]=='Q' then 'R' else 'Q';
+  bad:=verify(cast(string)forged[0..<n],scratch[..]);
+  why:=ifx bad.error==NE_ID then "NE_ID: the id is not the hash of the fields" else "another event error";
+  print("  26920 from worker 3, content byte % changed: %, %\n",at,CJ_WORDS[cj_answer(request,bad)],why);
+
+  print("delivery and acceptance\n");
+  say(950,"key 7 submits",mkt_submit(m[..],q[..],KEY_7,T0+950));
+  say(950,"provider key 2 submits",mkt_submit(m[..],q[..],PROVIDER,T0+950));
+  say(950,"worker 3 submits submission 0",mkt_submit(m[..],q[..],WORKER,T0+950));
+  say(1000,"buyer accepts before any verification",mkt_accept(m[..],q[..],BUYER,T0+1000,T0+1000));
+  say(1200,"reviewer key 4 records passed",mkt_verify(m[..],q[..],REVIEWER,MKT_PASSED));
+  say(1300,"buyer accepts, received at T0 + 1000",mkt_accept(m[..],q[..],BUYER,T0+1000,T0+1300));
+  print("amount due: % msat\n",m[0].amount_due);
+
+  print("settlement\n");
+  say(1350,"provider asks 60000 msat",mkt_instruct(m[..],q[..],PROVIDER,"ob-1",60000,INVOICE,HASH,T0+5000,T0+1350));
+  say(1400,"provider asks 50000 msat with lnbc500n1p4wfve5...",mkt_instruct(m[..],q[..],PROVIDER,"ob-1",50000,INVOICE,HASH,T0+5000,T0+1400));
+  say(1410,"provider opens a second obligation",mkt_instruct(m[..],q[..],PROVIDER,"ob-2",50000,INVOICE,HASH,T0+5000,T0+1410));
+  say(1500,"buyer records attempt 1, fee limit 1000 msat",mkt_attempt(m[..],q[..],BUYER,1,1000,T0+1500));
+  say(1505,"buyer records attempt 2",mkt_attempt(m[..],q[..],BUYER,2,1000,T0+1505));
+  say(1510,"a zap receipt as proof",mkt_result(m[..],BUYER,proof(MKT_RAIL_ZAP,MKT_PAY_CONFIRMED,50000,PREIMAGE)));
+  say(1510,"an on-chain transaction as proof",mkt_result(m[..],BUYER,proof(MKT_RAIL_ONCHAIN,MKT_PAY_CONFIRMED,50000,PREIMAGE)));
+  say(1510,"confirmed with preimage 0000...",mkt_result(m[..],BUYER,proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,ZERO)));
+  say(1510,"confirmed 50000 msat with preimage 0102...20",mkt_result(m[..],BUYER,proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,PREIMAGE)));
+  say(1600,"buyer records attempt 2",mkt_attempt(m[..],q[..],BUYER,2,1000,T0+1600));
+  print("paid: % msat in % attempt\n",m[0].paid_msat,m[0].attempts);
+}
+// book:end main

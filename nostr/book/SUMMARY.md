@@ -111,7 +111,7 @@
 - [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) — implemented
 - [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) — implemented
 - [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) — design draft
-- [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) — design draft
+- [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) — implemented
 - [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) — design draft
 - [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) — implemented
 - [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) — design draft

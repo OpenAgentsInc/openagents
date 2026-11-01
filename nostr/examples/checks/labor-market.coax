@@ -1,0 +1,70 @@
+// The checks of labor-market.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/labor-market.coax
+#load "../labor-market.coax";
+
+// book:begin check
+// The ids, from coax/tests/nostr/cj_result_vectors.py: Python's json.dumps
+// and hashlib.sha256 over [0, pubkey, created_at, kind, tags, content], with
+// BIP-340 signing and NIP-44 encryption from nip59_reference.py. They share
+// no code with event.coax, sha256.coax or nip44.coax. NIP-CJ, NIP-LAB and
+// NIP-MKT publish no wire examples with real ids, so these are the
+// reference.
+// Whether Coax's recomputed id of text, in hex, is id.
+lm_id :: (text:string,id:string)->bool {
+  scratch:[4096]u8;hex:[64]u8;
+  e:=nostr_event_read(text,scratch[..],false);
+  #assert e.error==NE_OK;
+  r:=hex_encode_checked(cast(string)e.computed_id[..],hex[..],false);
+  #assert r.error==NC_OK && r.written==64;
+  return cast(string)hex[..]==id;
+}
+#test "Coax recomputes each Python id" {
+  #assert lm_id(CJV_REQUEST,CJV_REQUEST_ID) && CJV_REQUEST_ID=="2be5278b186ccba2c8a9174fb3475a52c014c0710be6689a197093c7e954f2a8";
+  #assert lm_id(CJV_RESULT,CJV_RESULT_ID) && CJV_RESULT_ID=="511dc19e759af8920b4ebf82a9eba1dac307fa0505dabf66ed4cccba37a24f3c";
+  #assert lm_id(CJV_ACCEPTED,CJV_ACCEPTED_ID);
+  #assert lm_id(CJV_IMPOSTOR,CJV_IMPOSTOR_ID) && CJV_IMPOSTOR_ID=="06cff4c26cd3a6c2f79ba38e2ad1cadedea1b45bcfe5e39cbc805f101c0367c9";
+  #assert lm_id(CJV_FAMILY,CJV_FAMILY_ID) && lm_id(CJV_WRONG_E,CJV_WRONG_E_ID) && lm_id(CJV_WRONG_P,CJV_WRONG_P_ID);
+}
+
+// The money, worked by hand: 500n is 500 * 10^-9 BTC = 500 * 100 msat =
+// 50,000 msat (1 BTC = 10^11 msat), the price of quote A; SHA-256 of the
+// bytes 01 .. 20 is ae216c2e... (Python hashlib).
+#test "the invoice's amount and the preimage, by hand" {
+  #assert x402_bolt11_msat(INVOICE)==500*100 && 500*100==50000;
+  #assert x402_preimage_matches(PREIMAGE,HASH) && !x402_preimage_matches(ZERO,HASH);
+}
+
+// PLAN.md's Done means.
+lm_read :: (text:string)->NostrEvent {scratch:[4096]u8;e:=nostr_event_read(text,scratch[..],false);e.verified=e.error==NE_OK;return e;}
+#test "Done means: a job result from a key other than the admitted worker refuses" {
+  q:=lm_read(CJV_REQUEST);
+  #assert cj_answer(q,lm_read(CJV_RESULT))==CJ_OK && cj_answer(q,lm_read(CJV_IMPOSTOR))==CJ_SIGNER;
+  m:=[1]MktMarket.[MktMarket.{buyer=BUYER,provider=PROVIDER}];t:[2]MktTerms;
+  o:=MktOffering.{provider=PROVIDER,valid_until=T0+86400,profiles=MKT_LIGHTNING,networks=MKT_BITCOIN};
+  #assert mkt_rfq(m[..],o,BUYER,60000,T0+300,T0+400,T0)==MKT_OK;
+  #assert mkt_quote(m[..],t[..],quote_terms("A",TERMS_A,50000),PROVIDER,T0+100)==MKT_OK;
+  #assert mkt_order(m[..],t[..],BUYER,"A",TERMS_A,"o",T0+300)==MKT_OK && mkt_ack(m[..],t[..],PROVIDER,true,T0+350)==MKT_OK;
+  for k:[3]string.[KEY_7,PROVIDER,BUYER] {#assert mkt_submit(m[..],t[..],k,T0+950)==MKT_NOT_ADMITTED;}
+  #assert mkt_submit(m[..],t[..],WORKER,T0+950)==MKT_OK;
+}
+#test "Done means: an order settles only with a Lightning proof" {
+  m:=[1]MktMarket.[MktMarket.{buyer=BUYER,provider=PROVIDER}];t:[2]MktTerms;
+  o:=MktOffering.{provider=PROVIDER,valid_until=T0+86400,profiles=MKT_LIGHTNING,networks=MKT_BITCOIN};
+  #assert mkt_rfq(m[..],o,BUYER,60000,T0+300,T0+400,T0)==MKT_OK;
+  #assert mkt_quote(m[..],t[..],quote_terms("A",TERMS_A,50000),PROVIDER,T0+100)==MKT_OK;
+  #assert mkt_order(m[..],t[..],BUYER,"A",TERMS_A,"o",T0+300)==MKT_OK && mkt_ack(m[..],t[..],PROVIDER,true,T0+350)==MKT_OK;
+  #assert mkt_submit(m[..],t[..],WORKER,T0+950)==MKT_OK && mkt_verify(m[..],t[..],REVIEWER,MKT_PASSED)==MKT_OK;
+  #assert mkt_instruct(m[..],t[..],PROVIDER,"ob",50000,INVOICE,HASH,T0+5000,T0+1000)==MKT_NOT_ACCEPTED;
+  #assert mkt_accept(m[..],t[..],BUYER,T0+1000,T0+1300)==MKT_OK;
+  #assert mkt_instruct(m[..],t[..],PROVIDER,"ob",50000,INVOICE,HASH,T0+5000,T0+1400)==MKT_OK;
+  #assert mkt_attempt(m[..],t[..],BUYER,1,1000,T0+1500)==MKT_OK;
+  for r:[3]int.[MKT_RAIL_ONCHAIN,MKT_RAIL_ZAP,3] {
+    #assert mkt_result(m[..],BUYER,proof(r,MKT_PAY_CONFIRMED,50000,PREIMAGE))==MKT_UNSUPPORTED;
+  }
+  #assert mkt_result(m[..],BUYER,proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,ZERO))==MKT_PROOF;
+  #assert m[0].payment==MKT_PAY_PENDING && m[0].paid_msat==0;
+  #assert mkt_result(m[..],BUYER,proof(MKT_RAIL_LIGHTNING,MKT_PAY_CONFIRMED,50000,PREIMAGE))==MKT_OK && m[0].paid_msat==50000;
+  #assert mkt_attempt(m[..],t[..],BUYER,2,1000,T0+1600)==MKT_PAID;
+}
+// book:end check

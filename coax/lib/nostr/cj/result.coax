@@ -1,0 +1,166 @@
+// CJ answers: whether a signed response answers a signed request.
+// NIP-CJ "Families and transport" and "Execution jobs".
+//
+// Every CJ request names exactly one worker in a p tag. Every response
+// (result 26xxx or feedback/progress 27xxx) has exactly one p naming the
+// caller and one e naming the exact request it answers. cj_answer admits a
+// response only when both events verified (id and BIP-340 signature), both
+// kinds belong to the same family, the response's signer is the worker the
+// request named, its p is the request's author and its e is the request's id.
+// A result signed by any other key refuses, whatever its tags say: the
+// worker the caller admitted is the only key that can answer.
+//
+// It reads tags only. The NIP-44 content stays encrypted here; opening it,
+// the body's request/attempt/run identities, freshness windows and
+// deduplication by event id are the caller's.
+//   coax/bin/coax test coax/lib/nostr/cj/result.coax --library
+#load "../tags.coax";
+#load "../../../tests/nostr/cj_result_vectors.coax";
+#authority;
+
+// book:begin codes
+CJ_OK :: 0;        // the response answers the request
+CJ_EVENT :: 1;     // an event that did not verify (id or signature)
+CJ_KIND :: 2;      // not a request kind, or not a result or feedback kind
+CJ_FAMILY :: 3;    // the response belongs to another family than the request
+CJ_TAGS :: 4;      // not exactly one well-formed p (request), or p and e (response)
+CJ_SIGNER :: 5;    // signed by a key other than the worker the request named
+CJ_CALLER :: 6;    // the response's p is not the request's author
+CJ_REQUEST :: 7;   // the response's e is not the request's id
+
+CJ_CONVERSATION :: 0; CJ_DECISION :: 1; CJ_EXECUTION :: 2;   // families
+CJ_REQUEST_KIND :: 25900; CJ_RESULT_KIND :: 26900; CJ_FEEDBACK_KIND :: 27000;
+// book:end codes
+
+// book:begin family
+// The family of a kind of the given role (request 25900, result 26900 or
+// feedback 27000 as base): 0 conversation, 1 decision, 2 execution, -1 none.
+cj_family :: (kind:int,base:int)->int {
+  d:=kind-base;
+  if d==0 || d==10 || d==20 {return d/10;}
+  return -1;
+}
+// book:end family
+
+// book:begin tags
+// The event's p and e tags: np and ne count them, p and e hold the last of
+// each, and a malformed one makes ok false. Other tags are not read.
+CjTags :: struct {ok:bool=true;np:int;ne:int;p:[32]u8;e:[32]u8;}
+cj_tags :: (ev:NostrEvent)->CjTags {
+  r:CjTags;i:=0;
+  while true {
+    t:=nostr_tag(ev,i);
+    if t.error==NT_INDEX {break;}
+    if t.type==NT_P || t.type==NT_E {
+      if t.error!=NT_OK {r.ok=false;}
+      if t.type==NT_P {r.np+=1;r.p=t.pubkey;} else {r.ne+=1;r.e=t.id;}
+    }
+    i+=1;
+  }
+  return r;
+}
+cj_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+// book:end tags
+
+// book:begin answer
+// Whether response answers request: CJ_OK or the first refusal, in this order.
+cj_answer :: (request:NostrEvent,response:NostrEvent)->int {
+  if request.error!=NE_OK || !request.verified || response.error!=NE_OK || !response.verified {return CJ_EVENT;}
+  family:=cj_family(request.kind,CJ_REQUEST_KIND);
+  answer:=cj_family(response.kind,CJ_RESULT_KIND);
+  if answer<0 {answer=cj_family(response.kind,CJ_FEEDBACK_KIND);}
+  if family<0 || answer<0 {return CJ_KIND;}
+  if family!=answer {return CJ_FAMILY;}
+  q:=cj_tags(request);
+  if !q.ok || q.np!=1 {return CJ_TAGS;}
+  r:=cj_tags(response);
+  if !r.ok || r.np!=1 || r.ne!=1 {return CJ_TAGS;}
+  if !cj_same(response.public_key,q.p) {return CJ_SIGNER;}
+  if !cj_same(r.p,request.public_key) {return CJ_CALLER;}
+  if !cj_same(r.e,request.id) {return CJ_REQUEST;}
+  return CJ_OK;
+}
+// book:end answer
+
+// ---- checks
+
+// The vectors' ids recomputed (SHA-256 of the NIP-01 preimage) and marked
+// verified: BIP-340 is event.coax's to check and costs too many steps here;
+// the chapter's example verifies every signature at run time.
+cj_verify :: (text:string)->NostrEvent {scratch:[4096]u8;e:=nostr_event_read(text,scratch[..],false);e.verified=e.error==NE_OK;return e;}
+// A verified-looking event with only these tags, kind and signer byte.
+cj_forged :: (tags:string,kind:int,signer:u8)->NostrEvent {
+  e:=nt_event(tags);e.verified=true;e.kind=kind;e.public_key[31]=signer;return e;
+}
+
+#test "the codes and kinds are distinct" {
+  #assert CJ_OK==0 && CJ_EVENT==1 && CJ_KIND==2 && CJ_FAMILY==3 && CJ_TAGS==4 && CJ_SIGNER==5 && CJ_CALLER==6 && CJ_REQUEST==7;
+  #assert CJ_CONVERSATION==0 && CJ_DECISION==1 && CJ_EXECUTION==2;
+  #assert CJ_REQUEST_KIND==25900 && CJ_RESULT_KIND==26900 && CJ_FEEDBACK_KIND==27000;
+}
+#forall "each role has exactly three kinds" d:-1..<32 {
+  f:=cj_family(25900+d,25900);
+  #assert f==(ifx d==0 then 0 else ifx d==10 then 1 else ifx d==20 then 2 else -1);
+}
+#test "the vectors verify and the worker's result and acceptance answer the request" {
+  q:=cj_verify(CJV_REQUEST);
+  #assert q.error==NE_OK && q.verified && q.kind==25920;
+  #assert cj_answer(q,cj_verify(CJV_RESULT))==CJ_OK;
+  #assert cj_answer(q,cj_verify(CJV_ACCEPTED))==CJ_OK;
+}
+#test "a result signed by another key refuses, though its tags are right" {
+  q:=cj_verify(CJV_REQUEST);x:=cj_verify(CJV_IMPOSTOR);
+  #assert x.error==NE_OK && x.verified;
+  #assert cj_answer(q,x)==CJ_SIGNER;
+}
+#test "another family, another request and another caller refuse" {
+  q:=cj_verify(CJV_REQUEST);
+  #assert cj_answer(q,cj_verify(CJV_FAMILY))==CJ_FAMILY;
+  #assert cj_answer(q,cj_verify(CJV_WRONG_E))==CJ_REQUEST;
+  #assert cj_answer(q,cj_verify(CJV_WRONG_P))==CJ_CALLER;
+}
+#test "an unverified event refuses on either side" {
+  q:=cj_verify(CJV_REQUEST);r:=cj_verify(CJV_RESULT);
+  u:=r;u.verified=false;#assert cj_answer(q,u)==CJ_EVENT;
+  u=q;u.verified=false;#assert cj_answer(u,r)==CJ_EVENT;
+  u=r;u.error=NE_ID;#assert cj_answer(q,u)==CJ_EVENT;
+  u=q;u.error=NE_SIGNATURE;#assert cj_answer(u,r)==CJ_EVENT;
+  // A changed content no longer hashes to the id.
+  bad:=cj_verify(CJV_RESULT_ID);#assert bad.error!=NE_OK;
+}
+#test "kinds outside the families refuse, and a request answers nothing" {
+  q:=cj_verify(CJV_REQUEST);r:=cj_verify(CJV_RESULT);
+  u:=r;u.kind=25920;#assert cj_answer(q,u)==CJ_KIND;
+  u=r;u.kind=26930;#assert cj_answer(q,u)==CJ_KIND;
+  u=q;u.kind=26920;#assert cj_answer(u,r)==CJ_KIND;
+  u=r;u.kind=27020;#assert cj_answer(q,u)==CJ_OK;
+  u=r;u.kind=27010;#assert cj_answer(q,u)==CJ_FAMILY;
+  u=r;u.kind=26910;#assert cj_answer(q,u)==CJ_FAMILY;
+  // The conversation and decision families pair the same way.
+  u=q;u.kind=25900;v:=r;v.kind=26900;#assert cj_answer(u,v)==CJ_OK;v.kind=27000;#assert cj_answer(u,v)==CJ_OK;
+  u.kind=25910;v.kind=26910;#assert cj_answer(u,v)==CJ_OK;v.kind=26900;#assert cj_answer(u,v)==CJ_FAMILY;
+}
+CJ_RESPONSE :: "[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]";
+#test "tag shapes: one p on the request, one p and one e on the response" {
+  // The request's author is key byte 1, its id all zeros; the worker key byte 3.
+  q:=cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000003\"]]",25920,1);
+  ok:=cj_forged(CJ_RESPONSE,26920,3);
+  #assert cj_answer(q,ok)==CJ_OK;
+  #assert cj_answer(cj_forged("[]",25920,1),ok)==CJ_TAGS;
+  #assert cj_answer(cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000003\"],[\"p\",\"0000000000000000000000000000000000000000000000000000000000000005\"]]",25920,1),ok)==CJ_TAGS;
+  #assert cj_answer(cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000003\"],[\"e\",\"zz\"]]",25920,1),ok)==CJ_TAGS;
+  #assert cj_answer(cj_forged("[[\"p\",\"zz\"]]",25920,1),ok)==CJ_TAGS;
+  #assert cj_answer(cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000003\"],[\"expiration\",\"1\"]]",25920,1),ok)==CJ_OK;
+  #assert cj_answer(q,cj_forged("[[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]",26920,3))==CJ_TAGS;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"]]",26920,3))==CJ_TAGS;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]",26920,3))==CJ_TAGS;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]",26920,3))==CJ_TAGS;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"x\"]]",26920,3))==CJ_TAGS;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"],[\"t\"]]",26920,3))==CJ_OK;
+  // Right tags from key byte 5: the signer check. The p names byte 2: caller.
+  #assert cj_answer(q,cj_forged(CJ_RESPONSE,26920,5))==CJ_SIGNER;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000002\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]]",26920,3))==CJ_CALLER;
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"0000000000000000000000000000000000000000000000000000000000000009\"]]",26920,3))==CJ_REQUEST;
+  // Ids that differ only in their first byte.
+  #assert cj_answer(q,cj_forged("[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000001\"],[\"e\",\"0100000000000000000000000000000000000000000000000000000000000000\"]]",26920,3))==CJ_REQUEST;
+}

@@ -1,0 +1,40 @@
+offering: provider key 2, Lightning on bitcoin, valid until T0 + 86400
+negotiation
+T0 + 0: buyer asks for quotes, limit 60000 msat, answers due T0 + 300: accepted
+T0 + 100: provider quotes A: 50000 msat, fee limit 1000 msat, worker key 3, reviewer key 4: accepted
+T0 + 120: provider quotes B: 70000 msat: price_exceeded
+T0 + 150: key 7 quotes C: not_admitted
+T0 + 300: buyer orders quote Z: content_unavailable
+T0 + 300: buyer orders A naming terms bbbb...: identity_mismatch
+T0 + 300: buyer orders A naming terms aaaa...: accepted
+T0 + 301: buyer orders A again: conflict
+T0 + 350: provider confirms the order: accepted
+execution: the buyer's request 2be5278b... (kind 25920, p = worker key 3)
+  the request verifies: yes
+  27020 from worker 3: answers the request
+  26920 from worker 3: answers the request
+  26920 from key 7: refused: not the worker the request named
+  26900 from worker 3: refused: another family
+  26920 from worker 3, e = 63fadca9...: refused: e is not the request
+  26920 from worker 3, p = key 7: refused: p is not the caller
+  26920 from worker 3, content byte 372 changed: refused: the event does not verify, NE_ID: the id is not the hash of the fields
+delivery and acceptance
+T0 + 950: key 7 submits: not_admitted
+T0 + 950: provider key 2 submits: not_admitted
+T0 + 950: worker 3 submits submission 0: accepted
+T0 + 1000: buyer accepts before any verification: not passed by the reviewer
+T0 + 1200: reviewer key 4 records passed: accepted
+T0 + 1300: buyer accepts, received at T0 + 1000: accepted
+amount due: 50000 msat
+settlement
+T0 + 1350: provider asks 60000 msat: amount: not the accepted price
+T0 + 1400: provider asks 50000 msat with lnbc500n1p4wfve5...: accepted
+T0 + 1410: provider opens a second obligation: conflict
+T0 + 1500: buyer records attempt 1, fee limit 1000 msat: accepted
+T0 + 1505: buyer records attempt 2: pending: an earlier attempt is unresolved
+T0 + 1510: a zap receipt as proof: unsupported_profile
+T0 + 1510: an on-chain transaction as proof: unsupported_profile
+T0 + 1510: confirmed with preimage 0000...: no proof: the preimage does not hash to the payment hash
+T0 + 1510: confirmed 50000 msat with preimage 0102...20: accepted
+T0 + 1600: buyer records attempt 2: already paid
+paid: 50000 msat in 1 attempt

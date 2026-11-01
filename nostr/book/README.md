@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 90 are implemented and 14 are design drafts.
+Of the 104 chapters, 91 are implemented and 13 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -270,7 +270,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) | Runnable: native C | NIP-CAP dispatch (definition, exact binding, presence, grant, effects, ceilings, enforcement plan), NIP-POL single-use approvals, and NIP-EXT installation of signed releases (namespace, unknown features, equivocation, revocation, checkpoint freshness). Probes, preferences, instruction sets, listings, migration and NIP-REG are not built. |
 | [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) | Runnable: native C | NIP-RUN record digests and journal replay (gaps, forks, broken chains, controller handoff with fencing, the per-attempt state machine, head hints), NIP-ATIF chunk checks that report missing chunks, NIP-TERM client frame order with gaps. NIP-SESS, RUN retention and the 3187/30186, 3188 and 3198/3199 events are not built. |
 | [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) | Unimplemented: design draft | NIP-AGENT saved agents (30187), NIP-SKILL published `SKILL.md` listings (30188), NIP-SOV sovereign agents with local custody, and NIP-AUTO scheduled and triggered work. |
-| [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) | Unimplemented: design draft | NIP-CJ encrypted conversation, typed-decision and execution jobs, NIP-LAB agent labor terms and delivery, and NIP-MKT offerings, negotiated orders and Bitcoin settlement. |
+| [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) | Runnable: native C | NIP-CJ response admission (only the worker the request named), NIP-MKT negotiation from RFQ to confirmed order and fixed-price Lightning settlement (one obligation, one attempt at a time, a preimage of the payment hash), and NIP-LAB submission, verification and acceptance at the exact price. CJ bodies, record encodings and chains, rework, disputes, cancellation, refunds and invoice decoding are not built. |
 | [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) | Unimplemented: design draft | NIP-DEC decision requests and answers (25910), NIP-EVAL suites and reports, NIP-OPT optimization studies, and NIP-PRG typed programs (30182, 30183). |
 | [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) | Runnable: native C | NIP-PYLON beacons (30200) and service receipts (3201) verified and read: freshness by the reader's clock, no capacity from an expired beacon, receipts signed by their buyer and credited only to the beacon their p and a tags name. Model-group beacons, paid receipts, 30201 events, NIP-ENV and NIP-DEPLOY are not built. |
 | [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) | Unimplemented: design draft | NIP-ATT attested workload releases (3202), release heads (30202), rebuilds (3203) and endpoints, and NIP-VAULT sealed personal data with wraps and key slots. |

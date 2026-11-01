@@ -1,0 +1,59 @@
+// Helpers and data for coax/lib/nostr/mkt/order.coax's checks and chapter
+// 80's example checks. They live here so that mutation of order.coax changes
+// the library, not the checks.
+
+// Test keys: the x-only public keys of the scalars 1 (buyer), 2 (provider),
+// 3 (worker), 4 (reviewer) and 7 (another key). TEST ONLY.
+MK_BUYER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+MK_PROVIDER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+MK_WORKER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+MK_REVIEWER :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
+MK_OTHER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+MK_T0 :: 1790000000;
+MK_DIGEST :: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+MK_DIGEST_B :: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+MK_ZERO :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+mk_offering :: ()->MktOffering {
+  o:MktOffering;o.provider=MK_PROVIDER;o.valid_until=MK_T0+86400;o.profiles=MKT_FREE|MKT_LIGHTNING;o.networks=MKT_BITCOIN;return o;
+}
+mk_market :: ()->MktMarket {m:MktMarket;m.market="m-1";m.buyer=MK_BUYER;m.provider=MK_PROVIDER;return m;}
+// Quote A: 50,000 msat over Lightning on bitcoin.
+mk_terms :: (id:string,price:int)->MktTerms {
+  t:MktTerms;t.quote_id=id;t.digest=MK_DIGEST;t.worker=MK_WORKER;t.reviewer=MK_REVIEWER;
+  t.price_msat=price;t.fee_limit_msat=1000;t.profile=MKT_LIGHTNING;t.network=MKT_BITCOIN;
+  t.quote_expires_at=MK_T0+600;t.order_confirm_by=MK_T0+900;t.delivery_due_at=MK_T0+3600;
+  t.review_due_at=MK_T0+7200;t.payment_due_at=MK_T0+86400;t.retain_until=MK_T0+30*86400;return t;
+}
+// A market asked at T0 with a 60,000 msat limit and quote A on file.
+mk_quoted :: (m:[]MktMarket,q:[]MktTerms) {
+  m[0]=mk_market();
+  #assert mkt_rfq(m,mk_offering(),MK_BUYER,60000,MK_T0+300,MK_T0+40*86400,MK_T0)==MKT_OK;
+  #assert mkt_quote(m,q,mk_terms("A",50000),MK_PROVIDER,MK_T0+100)==MKT_OK;
+}
+mk_confirmed :: (m:[]MktMarket,q:[]MktTerms) {
+  mk_quoted(m,q);
+  #assert mkt_order(m,q,MK_BUYER,"A",MK_DIGEST,"order-1",MK_T0+300)==MKT_OK;
+  #assert mkt_ack(m,q,MK_PROVIDER,true,MK_T0+350)==MKT_OK;
+}
+mk_accepted :: (m:[]MktMarket,q:[]MktTerms) {
+  mk_confirmed(m,q);
+  #assert mkt_submit(m,q,MK_WORKER,MK_T0+950)==MKT_OK;
+  #assert mkt_verify(m,q,MK_REVIEWER,MKT_PASSED)==MKT_OK;
+  #assert mkt_accept(m,q,MK_BUYER,MK_T0+1000,MK_T0+1300)==MKT_OK;
+}
+mk_instructed :: (m:[]MktMarket,q:[]MktTerms) {
+  mk_accepted(m,q);
+  #assert mkt_instruct(m,q,MK_PROVIDER,"ob-1",50000,X402_FIX_INVOICE,X402_FIX_HASH,MK_T0+5000,MK_T0+1400)==MKT_OK;
+}
+mk_proof :: (rail:int,state:int,amount:int,preimage:string)->MktProof {
+  p:MktProof;p.rail=rail;p.state=state;p.amount_msat=amount;p.preimage=preimage;return p;
+}
+mk_same :: (a:MktMarket,b:MktMarket)->bool {
+  return a.stage==b.stage && a.quotes==b.quotes && a.order==b.order && a.order_id==b.order_id && a.submitted==b.submitted
+    && a.submitted_at==b.submitted_at && a.verdict==b.verdict && a.accepted==b.accepted && a.amount_due==b.amount_due
+    && a.obligation==b.obligation && a.amount_msat==b.amount_msat && a.attempts==b.attempts && a.payment==b.payment
+    && a.paid_msat==b.paid_msat && a.price_limit==b.price_limit && a.response_due_at==b.response_due_at && a.expires_at==b.expires_at
+    && a.payment_hash==b.payment_hash;
+}
+

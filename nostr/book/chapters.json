@@ -1712,14 +1712,21 @@
    "number": 80,
    "title": "Jobs, labor and markets",
    "file": "ch080-jobs-labor-and-markets.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     20,
     76
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/cj/result.coax",
+    "coax/lib/nostr/mkt/order.coax",
+    "nostr/examples/checks/labor-market.coax",
+    "nostr/examples/labor-market.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
