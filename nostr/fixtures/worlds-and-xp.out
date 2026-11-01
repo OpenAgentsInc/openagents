@@ -1,0 +1,30 @@
+world 33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza
+  admitted: cell 64.0, bounds (-264.0, 0.0, -264.0) to (264.0, 200.0, 264.0)
+frames from c6047f94... (clock in ms)
+  F1: s a41c n 812: admitted, avatar at (3.2, 0.0, -10.5) in cell 0,-1
+  F2: s a41c n 812: dropped: n not newer
+  F3: refused, outside the world's bounds, entry 0
+  F4: s a41c n 814: admitted, avatar at (-0.5, 0.0, -10.5) in cell -1,-1
+presence, last frame at 1790000001200
+  at 1790000011199: online
+  at 1790000011200: offline
+  entity state: admitted, avatar at (-0.5, 0.0, -10.5), online false
+object id of node plaza/lamp-0: obj-558157d13a69707d2163
+quest tb4.fix-git.beat-fable-low@1: ok, season 1790000000 to 1798000000, author 6 XP, runner 4 XP
+award 5ff0138e...: ok, accepted 1790500000
+award ca7d4532...: ok, accepted 1790700000
+revocation 52393c28... by 79be667e...: ok
+revocation 51267968... by c6047f94...: signer
+ledger: the first award alone
+  award 5ff0138e...: counted
+  credit c6047f94...: 6 XP
+  credit e493dbf1...: 4 XP
+ledger: both awards, nothing revoked
+  award 5ff0138e...: conflict
+  award ca7d4532...: conflict
+  no credit
+ledger: both awards, the first revoked (the forged revocation read and refused)
+  award 5ff0138e...: revoked
+  award ca7d4532...: counted
+  credit 5cbdf064...: 6 XP
+  credit e493dbf1...: 4 XP

@@ -1835,14 +1835,21 @@
    "number": 85,
    "title": "Live media, worlds and experience",
    "file": "ch085-live-media-worlds-and-experience.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     61,
     20
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipmv.coax",
+    "coax/lib/nostr/xp_ledger.coax",
+    "nostr/examples/checks/worlds-and-xp.coax",
+    "nostr/examples/worlds-and-xp.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

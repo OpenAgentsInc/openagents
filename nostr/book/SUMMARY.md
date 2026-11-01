@@ -116,7 +116,7 @@
 - [82. Pylons, environments and deploys](ch082-pylons-environments-and-deploys.md) — implemented
 - [83. Attested work and sealed data](ch083-attested-work-and-sealed-data.md) — implemented
 - [84. Knowledge and workspaces](ch084-knowledge-and-workspaces.md) — implemented
-- [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) — design draft
+- [85. Live media, worlds and experience](ch085-live-media-worlds-and-experience.md) — implemented
 - [86. Lightning payments for requests](ch086-lightning-payments-for-requests.md) — implemented
 - [87. Owner attestation and agent authentication](ch087-owner-attestation-and-agent-authentication.md) — implemented
 - [88. Federated identity](ch088-federated-identity.md) — implemented

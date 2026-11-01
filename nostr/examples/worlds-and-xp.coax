@@ -1,0 +1,76 @@
+// book:begin example
+// Chapter 85: a world, four pose frames from one visitor admitted and
+// ordered under a fixed clock, the visitor's last entity state, and then a
+// quest's awards, one revoked, folded into a ledger. Keys are the x-only
+// public keys of the scalars 1, 2, 4 and 7: TEST ONLY. Every event text and
+// id comes from coax/tests/nostr/xp_mv_vectors.py.
+#load "../../coax/lib/nostr/nipmv.coax";
+#load "../../coax/lib/nostr/xp_ledger.coax";
+#import "Basic";
+
+MV_WORDS :: [24]string.["admitted","another kind","tags","address","not this world","malformed","version",
+  "field","cell","bounds","session","sequence","time","entities","entity id","role","number",
+  "near-zero quaternion","outside the world's bounds","stamp","status","object id","dropped: n not newer","table full"];
+WHY :: [12]string.["counted","refused","untrusted referee","duplicate","revoked","no quest","rewritten quest",
+  "key","outside the season","xp table","rule not run","conflict"];
+XP_WORDS :: [21]string.["ok","kind","tags","marker","body","version","requires","type","field","id","season",
+  "text","rule","award","policy","quest","signer","key","awardees","mismatch","reason"];
+
+// One frame: read for the plaza, then ordered against what was seen.
+admit_frame :: (name:string,tags:string,body:string,w:MvWorld,seen:[]MvSeen,count:int,now:int)->int {
+  poses:[MV_ENTITIES]MvPose;
+  f:=mv_frame_read(MV_FRAME,tags,body,MV_PLAZA,w,poses[..]);
+  if f.code!=MvCode.ok {print("  %: refused, %, entry %\n",name,MV_WORDS[cast(int)f.code],f.at);return count;}
+  o:=mv_order(seen,count,F1_PK,f.s,f.n,now);
+  if o.code!=MvCode.ok {print("  %: s % n %: %\n",name,f.s,f.n,MV_WORDS[cast(int)o.code]);return o.count;}
+  p:=poses[0];
+  print("  %: s % n %: admitted, % at (%, %, %) in cell %,%\n",name,f.s,f.n,p.id,p.p[0],p.p[1],p.p[2],p.cx,p.cz);
+  return o.count;
+}
+ledger :: (what:string,awards:[]XpAward,revs:[]XpRevocation) {
+  trusted:=[1]string.[QUEST_PK];quests:=[1]XpQuest.[xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY)];
+  ruled:=[2]bool.[true,true];why:[2]XpWhy;out:[4]XpCredit;
+  l:=xp_ledger(trusted[..],quests[..],awards,revs,ruled[0..<awards.count],why[..],out[..]);
+  print("%\n",what);
+  for i:0..<awards.count {print("  award %...: %\n",awards[i].event[0..<8],WHY[cast(int)why[i]]);}
+  for i:0..<l.credits {print("  credit %...: % XP\n",out[i].pubkey[0..<8],out[i].xp);}
+  if l.credits==0 {print("  no credit\n");}
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  addr:[256]u8;
+  w:=mv_world_read(WORLD_KIND,WORLD_PK,WORLD_TAGS,WORLD_BODY,addr[..]);
+  print("world %\n  %: cell %, bounds (%, %, %) to (%, %, %)\n",cast(string)addr[0..<w.address],MV_WORDS[cast(int)w.code],
+    w.cell,w.lo[0],w.lo[1],w.lo[2],w.hi[0],w.hi[1],w.hi[2]);
+  print("frames from %... (clock in ms)\n",F1_PK[0..<8]);
+  seen:[4]MvSeen;count:=0;
+  count=admit_frame("F1",F1_TAGS,F1_BODY,w,seen[..],count,1790000001000);
+  count=admit_frame("F2",F2_TAGS,F2_BODY,w,seen[..],count,1790000001050);
+  count=admit_frame("F3",F3_TAGS,F3_BODY,w,seen[..],count,1790000001100);
+  count=admit_frame("F4",F4_TAGS,F4_BODY,w,seen[..],count,1790000001200);
+  last:=seen[0].ms;
+  print("presence, last frame at %\n",last);
+  print("  at 1790000011199: %\n",ifx mv_online(last,1790000011199) then "online" else "offline");
+  print("  at 1790000011200: %\n",ifx mv_online(last,1790000011200) then "online" else "offline");
+  s:=mv_state_read(STATE_KIND,STATE_TAGS,STATE_BODY,MV_PLAZA,w);
+  print("  entity state: %, % at (%, %, %), online %\n",MV_WORDS[cast(int)s.code],s.id,s.p[0],s.p[1],s.p[2],s.online);
+  o:[24]u8;
+  print("object id of node %: %\n",LAMP_NODE,mv_object_id(LAMP_NODE,o[..]));
+
+  q:=xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY);
+  print("quest %: %, season % to %, % % XP, % % XP\n",q.address,XP_WORDS[cast(int)q.code],q.opens,q.closes,q.roles[0],q.xp[0],q.roles[1],q.xp[1]);
+  a1:=xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,AWARD1_BODY);
+  a2:=xp_award_read(XP_AWARD,AWARD2_ID,AWARD2_PK,AWARD2_TAGS,AWARD2_BODY);
+  r1:=xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,REVOKE1_BODY);
+  forged:=xp_revocation_read(XP_REVOCATION,FORGED_ID,FORGED_PK,FORGED_TAGS,FORGED_BODY);
+  print("award %...: %, accepted %\naward %...: %, accepted %\n",a1.event[0..<8],XP_WORDS[cast(int)a1.code],a1.accepted,a2.event[0..<8],XP_WORDS[cast(int)a2.code],a2.accepted);
+  print("revocation %... by %...: %\nrevocation %... by %...: %\n",r1.event[0..<8],REVOKE1_PK[0..<8],XP_WORDS[cast(int)r1.code],
+    FORGED_ID[0..<8],FORGED_PK[0..<8],XP_WORDS[cast(int)forged.code]);
+  one:=[1]XpAward.[a1];both:=[2]XpAward.[a1,a2];revs:=[2]XpRevocation.[r1,forged];
+  ledger("ledger: the first award alone",one[..],revs[0..<0]);
+  ledger("ledger: both awards, nothing revoked",both[..],revs[0..<0]);
+  ledger("ledger: both awards, the first revoked (the forged revocation read and refused)",both[..],revs[..]);
+}
+// book:end main

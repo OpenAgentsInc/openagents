@@ -1080,6 +1080,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "nostr/examples/worlds-and-xp.coax",
+      "chapter": "nostr/book/ch085-live-media-worlds-and-experience.md",
+      "stdout": "nostr/fixtures/worlds-and-xp.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

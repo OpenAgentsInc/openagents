@@ -1,0 +1,638 @@
+// NIP-MV worlds and presence (nostr/nips/openagents/NIP-MV.md): the world
+// definition (kind 33300), the pose frame (kind 23300) and the entity state
+// (kind 33301), read and admitted, and the receiver's ordering rule for
+// frames under a clock the caller passes.
+//
+// mv_world_read takes a 33300's signer, raw tags JSON and content: exactly
+// one d, exactly one w naming the definition's own address
+// 33300:<pubkey>:<d>, content v 1, a positive cell (default 64) and
+// optional bounds whose min is at most max on every axis. Unknown content
+// keys (spawn, scene) are skipped: this is a presence-only reader, and NIP-MV
+// lets such a reader ignore scene.
+//
+// mv_frame_read admits one frame for one world: exactly one w equal to the
+// world, content v 1, a session s of 1 to 16 bytes, a sequence n and time t
+// that are non-negative integers, and 1 to 16 entries. Each entry has an id
+// of 1 to 64 bytes of [a-z0-9_-], a role, a position p of three finite
+// numbers and an orientation q of four. A q whose squared length is below
+// MV_QUAT_MIN is near zero and refuses; any other is normalized. A body
+// entry needs its stamp k = [epoch, rev] and any other role must not carry
+// one. When the world states bounds, a position outside them refuses: NIP-MV
+// says a receiver MUST discard such shared-body reports, and this reader
+// holds every entity to the bounds the world states. Every coordinate is
+// also held to |x| < MV_MAX_COORD, this reader's own bound, before use.
+//
+// Numbers read through json-f64.coax, which is within a few ulps, not
+// correctly rounded: a coordinate within that distance of a bound may land
+// on either side. Integer and short decimal bounds and coordinates, as the
+// NIP's examples use, read exactly.
+//
+// mv_order is the ordering rule: a frame counts only when its n is greater
+// than the last seen for that publisher and session, so a replayed or
+// reordered frame is dropped; a new session takes a new slot, and a full
+// table refuses (NIP-MV: receivers MUST bound what they track). mv_online is
+// the presence rule against the caller's clock: an entity with no frame for
+// MV_OFFLINE_MS is offline, and the reader falls back to its entity state.
+//
+// mv_state_read reads a 33301: d is the world, a slash and the entity id;
+// the content's id and role equal d's id and the role tag; t is integer
+// milliseconds and online a boolean; a status longer than 64 bytes or with
+// a control character refuses; and an object state that names its world-tree
+// node must have id obj- and the first 20 hex digits of SHA-256(node).
+//
+// Escaped tag values and escaped node strings refuse: the reader compares
+// and hashes the bytes the event carries.
+//
+// Checks: coax test coax/lib/nostr/nipmv.coax
+//         coax mutate coax/lib/nostr/nipmv.coax --root-only
+#load "nip34.coax";
+#load "json-f64.coax";
+#load "../crypto/sha256.coax";
+#load "../../tests/nostr/text_swap.coax";
+#authority;
+
+MV_WORLD :: 33300; MV_STATE :: 33301; MV_FRAME :: 23300;
+MV_ENTITIES :: 16;          // entries in one frame, at most
+MV_SESSION :: 16;           // bytes in a session id, at most
+MV_STATUS :: 64;            // bytes in an avatar status, at most
+MV_OFFLINE_MS :: 10000;     // no frame for this long: offline
+MV_QUAT_MIN :: 0.00000095367431640625;   // 2^-20: a squared quaternion length below this is near zero
+MV_MAX_COORD :: 1000000000.0;
+
+MvCode :: enum u8 {ok;kind;tags;address;world;body;version;field;cell;bounds_shape;session;seq;time;entities;id;role;number;quat;bounds;stamp;status;object;old;full;}
+
+// A world: the length of its address (written to the reader's out), its cell size and, when bounded, its min (lo) and max (hi).
+MvWorld :: struct {code:MvCode;address:int;cell:f64=64.0;bounded:bool;lo:[3]f64;hi:[3]f64;}
+// One admitted entry: q normalized, (cx, cz) its cell.
+MvPose :: struct {id:string;role:string;p:[3]f64;q:[4]f64;cx:int;cz:int;body:bool;epoch:int;rev:int;}
+// A frame: at is the refused entry's index, -1 when the refusal is the frame's own.
+MvFrame :: struct {code:MvCode;at:int=-1;s:string;n:int;t:int;count:int;}
+MvState :: struct {code:MvCode;id:string;role:string;p:[3]f64;q:[4]f64;t:int;online:bool;cx:int;cz:int;}
+// The last frame seen for one publisher and session, at the caller's ms.
+MvSeen :: struct {pubkey:string;s:string;n:int;ms:int;}
+MvOrder :: struct {code:MvCode;count:int;}
+
+MV_PK :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+MV_PLAZA :: "33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza";
+MV_PLAZA_TAGS :: "[[\"d\",\"plaza\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"name\",\"The Plaza\"]]";
+// NIP-MV's own world definition content.
+MV_PLAZA_BODY :: "{\"v\":1,\"cell\":64,\"bounds\":{\"min\":[-264,0,-264],\"max\":[264,200,264]},\"spawn\":{\"center\":[0,0,0],\"radius\":28}}";
+MV_FRAME_TAGS :: "[[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"c\",\"0,-1\"]]";
+// NIP-MV's own pose frame content.
+MV_FRAME_BODY :: "{\"v\":1,\"s\":\"a41c\",\"n\":812,\"t\":1790000000123,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0.38,0,0.92],\"v\":[0,0,6.4]},{\"id\":\"agent\",\"role\":\"agent\",\"follows\":\"avatar\",\"p\":[4.1,2.3,-11.6],\"q\":[0.05,0.37,0.02,0.93]}]}";
+MV_STATE_TAGS :: "[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza/avatar\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"c\",\"0,-1\"],[\"role\",\"avatar\"]]";
+// NIP-MV's own entity state content.
+MV_STATE_BODY :: "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0.38,0,0.92],\"t\":1790000000000,\"online\":true}";
+
+mv_plaza :: ()->MvWorld {a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a[..]);}
+mv_frame_with :: (from:string,to:string)->MvFrame {
+  o:[2048]u8;poses:[MV_ENTITIES]MvPose;
+  return mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,from,to,o[..]),MV_PLAZA,mv_plaza(),poses[..]);
+}
+mv_world_with :: (from:string,to:string)->MvWorld {
+  o:[512]u8;a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,ts_swap(MV_PLAZA_BODY,from,to,o[..]),a[..]);
+}
+mv_state_with :: (tags:string,from:string,to:string)->MvState {
+  o:[1024]u8;return mv_state_read(MV_STATE,tags,ts_swap(MV_STATE_BODY,from,to,o[..]),MV_PLAZA,mv_plaza());
+}
+
+#test "NIP-MV's plaza reads: cell 64, bounds -264..264, 0..200" {
+  a0:[256]u8;w:=mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a0[..]);
+  #assert w.code==MvCode.ok && cast(string)a0[0..<w.address]==MV_PLAZA && w.cell==64.0 && w.bounded;
+  #assert w.lo[0]== -264.0 && w.lo[1]==0.0 && w.lo[2]== -264.0 && w.hi[0]==264.0 && w.hi[1]==200.0 && w.hi[2]==264.0;
+  a:[256]u8;
+  u:=mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"v\":1}",a[..]);#assert u.code==MvCode.ok && u.cell==64.0 && !u.bounded;
+  #assert mv_world_with("\"cell\":64","\"cell\":8.5").cell==8.5;
+  // Keys in any order; each read once.
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"cell\":8,\"v\":1}",a[..]).code==MvCode.ok;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"bounds\":{\"max\":[1,1,1],\"min\":[0,0,0]},\"v\":1}",a[..]).bounded;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"bounds\":{\"max\":[1,1,1],\"min\":[0,0,0]},\"v\":1}",a[..]).hi[2]==1.0;
+}
+#test "a world definition refuses what NIP-MV refuses" {
+  a:[256]u8;
+  #assert mv_world_read(MV_FRAME,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a[..]).code==MvCode.kind;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"d\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.tags;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[1]]",MV_PLAZA_BODY,a[..]).code==MvCode.tags;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.address;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"d\",\"plaza\"],[\"d\",\"plaza\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.address;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"d\",\"pl\\u0061za\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.address;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"d\",\"plaza\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.world;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"d\",\"plaza\"],[\"w\",\"plaza\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.world;
+  #assert mv_world_read(MV_WORLD,"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",MV_PLAZA_TAGS,MV_PLAZA_BODY,a[..]).code==MvCode.world;
+  #assert mv_world_read(MV_WORLD,MV_PK,"[[\"d\",\"plaza\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"w\",\"x\"]]",MV_PLAZA_BODY,a[..]).code==MvCode.world;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a[0..<20]).code==MvCode.address;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"[]",a[..]).code==MvCode.body;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"v\":1} 1",a[..]).code==MvCode.body;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"v\":1,\"x\":[}",a[..]).code==MvCode.body;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{1:1}",a[..]).code==MvCode.body;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{}",a[..]).code==MvCode.field;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"v\":1,\"v\":1}",a[..]).code==MvCode.field;
+  #assert mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"v\":1,\"cell\":1,\"cell\":1}",a[..]).code==MvCode.field;
+  #assert mv_world_with("\"v\":1","\"v\":2").code==MvCode.version && mv_world_with("\"v\":1","\"v\":\"1\"").code==MvCode.version;
+  #assert mv_world_with("\"cell\":64","\"cell\":0").code==MvCode.cell && mv_world_with("\"cell\":64","\"cell\":-1").code==MvCode.cell;
+  #assert mv_world_with("\"cell\":64","\"cell\":\"64\"").code==MvCode.cell && mv_world_with("\"cell\":64","\"cell\":9e308").code==MvCode.cell;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,0,265]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[265,0,-264]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,201,-264]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,200,-264]").code==MvCode.ok;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,0]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"lo\":[-264,0,-264]").code==MvCode.bounds_shape;
+  #assert mv_world_with(",\"max\":[264,200,264]","").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"max\":[-264,0,-264]").code==MvCode.bounds_shape;
+  #assert mv_world_with("{\"min\":[-264,0,-264],\"max\":[264,200,264]}","[]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,0,-264,1]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,0,\"x\"]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,0,-2e9]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"min\":[-264,0,-264]","\"min\":[-264,0,-264],\"min\":[-264,0,-264]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"max\":[264,200,264]","\"max\":[264,200,264],\"max\":[264,200,264]").code==MvCode.bounds_shape;
+  #assert mv_world_with("{\"min\"","{1:2,\"min\"").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"max\":[264,200,264]","\"max\":[264,200]").code==MvCode.bounds_shape;
+  #assert mv_world_with("\"cell\":64","\"bounds\":{\"min\":[0,0,0],\"max\":[1,1,1]}").code==MvCode.field;
+}
+
+#test "NIP-MV's pose frame admits: two entries in cell 0,-1, q normalized" {
+  poses:[MV_ENTITIES]MvPose;
+  f:=mv_frame_read(MV_FRAME,MV_FRAME_TAGS,MV_FRAME_BODY,MV_PLAZA,mv_plaza(),poses[..]);
+  #assert f.code==MvCode.ok && f.at== -1 && f.s=="a41c" && f.n==812 && f.t==1790000000123 && f.count==2;
+  a:=poses[0];
+  #assert a.id=="avatar" && a.role=="avatar" && a.p[0]==3.2 && a.p[1]==0.0 && a.p[2]== -10.5 && a.cx==0 && a.cz== -1 && !a.body;
+  sq:=a.q[0]*a.q[0]+a.q[1]*a.q[1]+a.q[2]*a.q[2]+a.q[3]*a.q[3];#assert sq>0.9999999 && sq<1.0000001;
+  #assert a.q[1]>0.3817 && a.q[1]<0.3818 && a.q[3]>0.9242 && a.q[3]<0.9243;
+  #assert poses[1].id=="agent" && poses[1].cx==0 && poses[1].cz== -1;
+  #assert poses[1].q[0]>0.04988 && poses[1].q[0]<0.04989 && poses[1].q[2]>0.01995 && poses[1].q[2]<0.01996;
+  // A body with its stamp; cells floor toward minus infinity.
+  f=mv_frame_with("{\"id\":\"agent\",\"role\":\"agent\",\"follows\":\"avatar\",\"p\":[4.1,2.3,-11.6]","{\"id\":\"ball\",\"role\":\"body\",\"k\":[1,4],\"w\":[0,1,0],\"r\":true,\"a\":\"x\",\"p\":[-64,1.2,128]");
+  #assert f.code==MvCode.ok && poses[1].body==false;
+  o:[2048]u8;
+  g:=mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,"{\"id\":\"agent\",\"role\":\"agent\",\"follows\":\"avatar\",\"p\":[4.1,2.3,-11.6]","{\"id\":\"ball\",\"role\":\"body\",\"k\":[1,4],\"p\":[-64.5,1.2,128]",o[..]),MV_PLAZA,mv_plaza(),poses[..]);
+  #assert g.code==MvCode.ok && poses[1].body && poses[1].epoch==1 && poses[1].rev==4 && poses[1].cx== -2 && poses[1].cz==2;
+  #assert mv_cell(-0.5,64.0)== -1 && mv_cell(0.0,64.0)==0 && mv_cell(63.9,64.0)==0 && mv_cell(64.0,64.0)==1 && mv_cell(-64.0,64.0)== -1 && mv_cell(-64.1,64.0)== -2;
+  // On the bounds is inside.
+  #assert mv_frame_with("[3.2,0,-10.5]","[264,200,-264]").code==MvCode.ok && mv_frame_with("[3.2,0,-10.5]","[-264,0,264]").code==MvCode.ok;
+  // An unbounded world takes any finite position under MV_MAX_COORD.
+  a2:[256]u8;open:=mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,"{\"v\":1}",a2[..]);
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,"[3.2,0,-10.5]","[9000,0,-10.5]",o[..]),MV_PLAZA,open,poses[..]).code==MvCode.ok;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,"[3.2,0,-10.5]","[999999999,0,-999999999]",o[..]),MV_PLAZA,open,poses[..]).code==MvCode.ok;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,"[3.2,0,-10.5]","[1000000000,0,0]",o[..]),MV_PLAZA,open,poses[..]).code==MvCode.number;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,"[3.2,0,-10.5]","[0,0,-1000000000]",o[..]),MV_PLAZA,open,poses[..]).code==MvCode.number;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,"[3.2,0,-10.5]","[2e9,0,0]",o[..]),MV_PLAZA,open,poses[..]).code==MvCode.number;
+}
+#test "a pose outside its world's bounds refuses, on each axis and side" {
+  #assert mv_frame_with("[3.2,0,-10.5]","[264.5,0,-10.5]").code==MvCode.bounds;
+  #assert mv_frame_with("[3.2,0,-10.5]","[-264.5,0,-10.5]").code==MvCode.bounds;
+  #assert mv_frame_with("[3.2,0,-10.5]","[3.2,-0.1,-10.5]").code==MvCode.bounds;
+  #assert mv_frame_with("[3.2,0,-10.5]","[3.2,200.5,-10.5]").code==MvCode.bounds;
+  #assert mv_frame_with("[3.2,0,-10.5]","[3.2,0,-264.5]").code==MvCode.bounds;
+  #assert mv_frame_with("[3.2,0,-10.5]","[3.2,0,264.5]").code==MvCode.bounds;
+  f:=mv_frame_with("[4.1,2.3,-11.6]","[4.1,2.3,300]");#assert f.code==MvCode.bounds && f.at==1;
+}
+#test "a frame refuses what NIP-MV refuses" {
+  poses:[MV_ENTITIES]MvPose;w:=mv_plaza();
+  #assert mv_frame_read(MV_STATE,MV_FRAME_TAGS,MV_FRAME_BODY,MV_PLAZA,w,poses[..]).code==MvCode.kind;
+  #assert mv_frame_read(MV_FRAME,"[[\"w\"]]",MV_FRAME_BODY,MV_PLAZA,w,poses[..]).code==MvCode.tags;
+  #assert mv_frame_read(MV_FRAME,"[[\"c\",\"0,-1\"]]",MV_FRAME_BODY,MV_PLAZA,w,poses[..]).code==MvCode.world;
+  #assert mv_frame_read(MV_FRAME,"[[\"w\",\"verse-bare\"]]",MV_FRAME_BODY,MV_PLAZA,w,poses[..]).code==MvCode.world;
+  #assert mv_frame_read(MV_FRAME,"[[\"w\",\"verse-bare\"],[\"w\",\"verse-bare\"]]",MV_FRAME_BODY,"verse-bare",w,poses[..]).code==MvCode.world;
+  #assert mv_frame_read(MV_FRAME,"[[\"w\",\"verse-bar\\u0065\"]]",MV_FRAME_BODY,"verse-bare",w,poses[..]).code==MvCode.world;
+  #assert mv_frame_read(MV_FRAME,"[[\"w\",\"verse-bare\"]]",MV_FRAME_BODY,"verse-bare",w,poses[..]).code==MvCode.ok;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,"[]",MV_PLAZA,w,poses[..]).code==MvCode.body;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,"{1}",MV_PLAZA,w,poses[..]).code==MvCode.body;
+  #assert mv_frame_with("}]}","}]} 1").code==MvCode.body && mv_frame_with("\"t\":1790000000123,","\"x\":[,").code==MvCode.body;
+  #assert mv_frame_with("\"n\":812,","\"n\":812,\"x\":{\"y\":[1]},").code==MvCode.ok;
+  #assert mv_frame_with("\"v\":1,","\"v\":2,").code==MvCode.version && mv_frame_with("\"v\":1,","\"v\":true,").code==MvCode.version;
+  #assert mv_frame_with("\"v\":1,","").code==MvCode.field && mv_frame_with("\"s\":\"a41c\",","").code==MvCode.field;
+  #assert mv_frame_with("\"n\":812,","").code==MvCode.field && mv_frame_with("\"t\":1790000000123,","").code==MvCode.field;
+  #assert mv_frame_with("\"v\":1,","\"v\":1,\"v\":1,").code==MvCode.field && mv_frame_with("\"s\":\"a41c\",","\"s\":\"a41c\",\"s\":\"a41c\",").code==MvCode.field;
+  #assert mv_frame_with("\"n\":812,","\"n\":812,\"n\":812,").code==MvCode.field && mv_frame_with("\"t\":1790000000123,","\"t\":1,\"t\":1,").code==MvCode.field;
+  #assert mv_frame_with("}]}","}],\"e\":[]}").code==MvCode.field;
+  #assert mv_frame_with(",\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0.38,0,0.92],\"v\":[0,0,6.4]},{\"id\":\"agent\",\"role\":\"agent\",\"follows\":\"avatar\",\"p\":[4.1,2.3,-11.6],\"q\":[0.05,0.37,0.02,0.93]}]","").code==MvCode.field;
+  #assert mv_frame_with("\"s\":\"a41c\"","\"s\":\"\"").code==MvCode.session && mv_frame_with("\"s\":\"a41c\"","\"s\":\"0123456789abcdefg\"").code==MvCode.session;
+  #assert mv_frame_with("\"s\":\"a41c\"","\"s\":\"0123456789abcdef\"").code==MvCode.ok;
+  #assert mv_frame_with("\"s\":\"a41c\"","\"s\":\"a\\u0034\"").code==MvCode.session && mv_frame_with("\"s\":\"a41c\"","\"s\":7").code==MvCode.session;
+  #assert mv_frame_with("\"n\":812","\"n\":-1").code==MvCode.seq && mv_frame_with("\"n\":812","\"n\":1.5").code==MvCode.seq;
+  #assert mv_frame_with("\"n\":812","\"n\":\"812\"").code==MvCode.seq && mv_frame_with("\"n\":812","\"n\":0").code==MvCode.ok;
+  #assert mv_frame_with("\"t\":1790000000123","\"t\":-1").code==MvCode.time && mv_frame_with("\"t\":1790000000123","\"t\":null").code==MvCode.time;
+  #assert mv_frame_with("\"t\":1790000000123","\"t\":0").code==MvCode.ok;
+  #assert mv_frame_with("\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0.38,0,0.92],\"v\":[0,0,6.4]},{\"id\":\"agent\",\"role\":\"agent\",\"follows\":\"avatar\",\"p\":[4.1,2.3,-11.6],\"q\":[0.05,0.37,0.02,0.93]}]","\"e\":[]").code==MvCode.entities;
+  #assert mv_frame_with("\"e\":[{","\"e\":{\"x\":{").code==MvCode.entities && mv_frame_with("\"e\":[{","\"e\":[1,{").code==MvCode.entities;
+  o:[2048]u8;
+  // Sixteen entries admit; seventeen refuse; a short output refuses as entities too.
+  sixteen:[2048]u8;n:=json_raw(sixteen[..],0,"{\"v\":1,\"s\":\"a\",\"n\":1,\"t\":1,\"e\":[");
+  for i:0..<17 {if i>0 {n=json_raw(sixteen[..],n,",");}n=json_raw(sixteen[..],n,"{\"id\":\"x\",\"role\":\"object\",\"p\":[0,0,0],\"q\":[0,0,0,1]}");}
+  n=json_raw(sixteen[..],n,"]}");
+  body:=cast(string)sixteen[0..<n];
+  poses17:[17]MvPose;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,body,MV_PLAZA,w,poses17[..]).code==MvCode.entities;
+  b16:=ts_swap(body,",{\"id\":\"x\",\"role\":\"object\",\"p\":[0,0,0],\"q\":[0,0,0,1]}]}","]}",o[..]);
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,b16,MV_PLAZA,w,poses[..]).count==16;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,b16,MV_PLAZA,w,poses[0..<15]).code==MvCode.entities;
+  #assert mv_frame_read(MV_FRAME,MV_FRAME_TAGS,MV_FRAME_BODY,MV_PLAZA,w,poses[0..<1]).code==MvCode.entities;
+}
+#test "an entry refuses what NIP-MV refuses, at its index" {
+  f:=mv_frame_with("\"id\":\"agent\"","\"id\":\"Agent\"");#assert f.code==MvCode.id && f.at==1;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"\"").code==MvCode.id && mv_frame_with("\"id\":\"agent\"","\"id\":7").code==MvCode.id;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"a/b\"").code==MvCode.id && mv_frame_with("\"id\":\"agent\"","\"id\":\"a_b-9\"").code==MvCode.ok;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"a b\"").code==MvCode.id && mv_frame_with("\"id\":\"agent\"","\"id\":\"a`b\"").code==MvCode.id;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"a{b\"").code==MvCode.id && mv_frame_with("\"id\":\"agent\"","\"id\":\"a:b\"").code==MvCode.id;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"a.b\"").code==MvCode.id && mv_frame_with("\"id\":\"agent\"","\"id\":\"z9\"").code==MvCode.ok;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"").code==MvCode.ok;
+  #assert mv_frame_with("\"id\":\"agent\"","\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"").code==MvCode.id;
+  #assert mv_frame_with("\"follows\":\"avatar\"","\"follows\":\"Avatar\"").code==MvCode.id;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"\"").code==MvCode.role && mv_frame_with("\"role\":\"agent\"","\"role\":1").code==MvCode.role;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"robot\"").code==MvCode.ok;
+  #assert mv_frame_with("\"id\":\"agent\",","").code==MvCode.field && mv_frame_with("\"role\":\"agent\",","").code==MvCode.field;
+  #assert mv_frame_with(",\"p\":[4.1,2.3,-11.6]","").code==MvCode.field && mv_frame_with(",\"q\":[0.05,0.37,0.02,0.93]","").code==MvCode.field;
+  #assert mv_frame_with("\"id\":\"agent\",","\"id\":\"agent\",\"id\":\"agent\",").code==MvCode.field;
+  #assert mv_frame_with("\"role\":\"agent\",","\"role\":\"agent\",\"role\":\"agent\",").code==MvCode.field;
+  #assert mv_frame_with("\"p\":[4.1,2.3,-11.6]","\"p\":[4.1,2.3,-11.6],\"p\":[4.1,2.3,-11.6]").code==MvCode.field;
+  #assert mv_frame_with("\"q\":[0.05,0.37,0.02,0.93]","\"q\":[0,0,0,1],\"q\":[0,0,0,1]").code==MvCode.field;
+  #assert mv_frame_with("\"v\":[0,0,6.4]","\"v\":[0,0,6.4],\"v\":[0,0,6.4]").code==MvCode.field;
+  #assert mv_frame_with("\"follows\":\"avatar\"","\"follows\":\"avatar\",\"follows\":\"avatar\"").code==MvCode.field;
+  #assert mv_frame_with("\"e\":[{","\"e\":[{\"zz\":[{}],").code==MvCode.ok;
+  #assert mv_frame_with("\"e\":[{","\"e\":[{\"zz\":[,").code==MvCode.body;
+  #assert mv_frame_with("\"e\":[{","\"e\":[{1:").code==MvCode.body;
+  #assert mv_frame_with("[4.1,2.3,-11.6]","[4.1,2.3]").code==MvCode.number && mv_frame_with("[4.1,2.3,-11.6]","[4.1,2.3,-11.6,0]").code==MvCode.number;
+  #assert mv_frame_with("[4.1,2.3,-11.6]","[4.1,\"2\",-11.6]").code==MvCode.number && mv_frame_with("[4.1,2.3,-11.6]","{}").code==MvCode.number;
+  #assert mv_frame_with("[4.1,2.3,-11.6]","[1e308,0,0]").code==MvCode.number;
+  #assert mv_frame_with("[0,0,6.4]","[0,0,9e308]").code==MvCode.number && mv_frame_with("[0,0,6.4]","[0,0]").code==MvCode.number;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0]").code==MvCode.number;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0,0]").code==MvCode.quat;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0,0.0009]").code==MvCode.quat;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0,0.0011]").code==MvCode.ok;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0.0009,0,0,0]").code==MvCode.quat && mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0.0011,0,0]").code==MvCode.ok;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0.0009,0]").code==MvCode.quat && mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0.0009,0,0]").code==MvCode.quat;
+  // 2^-10 squared is 2^-20, MV_QUAT_MIN itself: not below it.
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0,0.0009765625]").code==MvCode.ok && mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0,0.00097656]").code==MvCode.quat;
+  #assert mv_frame_with("[0.05,0.37,0.02,0.93]","[0,0,0.0011,0]").code==MvCode.ok && mv_frame_with("[0.05,0.37,0.02,0.93]","[0.0011,0,0,0]").code==MvCode.ok;
+  // Stamps: a body needs k, others must not carry it; k is two non-negative integers.
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\"").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"agent\",\"k\":[1,4]").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[1]").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[1,4,5]").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[-1,4]").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[1,-4]").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[1,4.5]").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":{}").code==MvCode.stamp;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[0,0]").code==MvCode.ok;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[1,4],\"k\":[1,4]").code==MvCode.field;
+  #assert mv_frame_with("\"role\":\"agent\"","\"role\":\"body\",\"k\":[1,4],\"w\":[0,0]").code==MvCode.number;
+}
+
+#test "frames order by (s, n): a replayed or older n drops; sessions are apart" {
+  seen:[2]MvSeen;
+  o:=mv_order(seen[..],0,MV_PK,"a41c",812,1000);#assert o.code==MvCode.ok && o.count==1 && seen[0].n==812 && seen[0].ms==1000;
+  o=mv_order(seen[..],1,MV_PK,"a41c",812,1100);#assert o.code==MvCode.old && o.count==1 && seen[0].ms==1000;
+  o=mv_order(seen[..],1,MV_PK,"a41c",811,1100);#assert o.code==MvCode.old;
+  o=mv_order(seen[..],1,MV_PK,"a41c",813,1200);#assert o.code==MvCode.ok && o.count==1 && seen[0].n==813 && seen[0].ms==1200;
+  // A new session of the same key, and the same session id from another key, start apart.
+  o=mv_order(seen[..],1,MV_PK,"b000",1,1300);#assert o.code==MvCode.ok && o.count==2 && seen[1].s=="b000";
+  o=mv_order(seen[..],2,"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","a41c",1,1300);#assert o.code==MvCode.full && o.count==2;
+  o=mv_order(seen[..],2,MV_PK,"b000",2,1400);#assert o.code==MvCode.ok && seen[1].n==2 && seen[0].n==813;
+  // Presence against the caller's clock.
+  #assert mv_online(1000,10999) && !mv_online(1000,11000) && mv_online(1000,1000);
+}
+
+#test "NIP-MV's entity state reads; its address and fields are checked" {
+  s:=mv_state_read(MV_STATE,MV_STATE_TAGS,MV_STATE_BODY,MV_PLAZA,mv_plaza());
+  #assert s.code==MvCode.ok && s.id=="avatar" && s.role=="avatar" && s.t==1790000000000 && s.online && s.cx==0 && s.cz== -1 && s.p[2]== -10.5;
+  #assert mv_state_read(MV_FRAME,MV_STATE_TAGS,MV_STATE_BODY,MV_PLAZA,mv_plaza()).code==MvCode.kind;
+  #assert mv_state_read(MV_STATE,"[[1]]",MV_STATE_BODY,MV_PLAZA,mv_plaza()).code==MvCode.tags;
+  #assert mv_state_read(MV_STATE,MV_STATE_TAGS,MV_STATE_BODY,"verse-bare",mv_plaza()).code==MvCode.world;
+  t:=MV_STATE_TAGS;
+  no_d:="[[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"avatar\"]]";
+  #assert mv_state_with(no_d,"","").code==MvCode.address;
+  wrong_d:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza/agent\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"avatar\"]]";
+  #assert mv_state_with(wrong_d,"","").code==MvCode.address;
+  short_d:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"avatar\"]]";
+  #assert mv_state_with(short_d,"","").code==MvCode.address;
+  other_d:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plazx/avatar\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"avatar\"]]";
+  #assert mv_state_with(other_d,"","").code==MvCode.address;
+  slash_d:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plazaXavatar\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"avatar\"]]";
+  #assert mv_state_with(slash_d,"","").code==MvCode.address;
+  no_role:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza/avatar\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"]]";
+  #assert mv_state_with(no_role,"","").code==MvCode.role;
+  #assert mv_state_with(t,"\"role\":\"avatar\"","\"role\":\"agent\"").code==MvCode.role;
+  #assert mv_state_with(t,"\"role\":\"avatar\",","").code==MvCode.field && mv_state_with(t,"\"id\":\"avatar\",","").code==MvCode.field;
+  #assert mv_state_with(t,"\"id\":\"avatar\"","\"id\":\"agent\"").code==MvCode.address && mv_state_with(t,"\"id\":\"avatar\"","\"id\":1").code==MvCode.id;
+  #assert mv_state_with(t,"\"online\":true","\"online\":1").code==MvCode.field && mv_state_with(t,",\"online\":true","").code==MvCode.field;
+  off:=mv_state_with(t,"\"online\":true","\"online\":false");#assert off.code==MvCode.ok && !off.online;
+  #assert mv_state_with(t,"\"t\":1790000000000","\"t\":0").code==MvCode.ok;
+  cells:=mv_state_with(t,"[3.2,0,-10.5]","[-10,0,70]");#assert cells.code==MvCode.ok && cells.cx== -1 && cells.cz==1;
+  #assert mv_state_with(t,"\"t\":1790000000000","\"t\":-5").code==MvCode.time && mv_state_with(t,"\"t\":1790000000000,","").code==MvCode.field;
+  #assert mv_state_with(t,"\"v\":1","\"v\":3").code==MvCode.version && mv_state_with(t,"\"v\":1,","").code==MvCode.field;
+  #assert mv_state_with(t,"\"v\":1","\"v\":1,\"v\":1").code==MvCode.field && mv_state_with(t,"\"t\":1790000000000","\"t\":1,\"t\":1").code==MvCode.field;
+  #assert mv_state_with(t,"\"online\":true","\"online\":true,\"online\":true").code==MvCode.field;
+  #assert mv_state_with(t,"[3.2,0,-10.5]","[3.2,0,-300]").code==MvCode.bounds && mv_state_with(t,"[0,0.38,0,0.92]","[0,0,0,0]").code==MvCode.quat;
+  #assert mv_state_with(t,"[3.2,0,-10.5]","[3.2,0]").code==MvCode.number && mv_state_with(t,"[0,0.38,0,0.92]","[0,0,0]").code==MvCode.number;
+  #assert mv_state_with(t,",\"p\":[3.2,0,-10.5]","").code==MvCode.field && mv_state_with(t,",\"q\":[0,0.38,0,0.92]","").code==MvCode.field;
+  #assert mv_state_with(t,"}","} 1").code==MvCode.body && mv_state_read(MV_STATE,t,"[]",MV_PLAZA,mv_plaza()).code==MvCode.body;
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"x\":[,").code==MvCode.body && mv_state_with(t,"\"v\":1,","{1:").code==MvCode.body;
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"name\":\"Ada\",\"look\":{\"rig\":\"bunny-v1\",\"shade\":3},").code==MvCode.ok;
+  // Status: at most 64 bytes, no control characters.
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":\"WALKING TO THE PYLON BAY\",").code==MvCode.ok;
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",").code==MvCode.ok;
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",").code==MvCode.status;
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":\"A\\nB\",").code==MvCode.status && mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":\"A\\u0007\",").code==MvCode.status;
+  del:[64]u8;dn:=json_raw(del[..],0,"\"v\":1,\"status\":\"A");del[dn]=0x7f;dn=json_raw(del[..],dn+1,"\",");
+  #assert mv_state_with(t,"\"v\":1,",cast(string)del[0..<dn]).code==MvCode.status;
+  del[dn-3]='~';#assert mv_state_with(t,"\"v\":1,",cast(string)del[0..<dn]).code==MvCode.ok;
+  #assert mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":\"A\\\\B\",").code==MvCode.status && mv_state_with(t,"\"v\":1,","\"v\":1,\"status\":7,").code==MvCode.status;
+}
+#test "an object's id is obj- and 20 hex digits of SHA-256(node)" {
+  out:[24]u8;
+  // Python: hashlib.sha256(b"plaza/lamp-0").hexdigest()[:20]
+  #assert mv_object_id("plaza/lamp-0",out[..])=="obj-558157d13a69707d2163";
+  #assert mv_object_id("",out[..])=="obj-e3b0c44298fc1c149afb" && mv_object_id("x",out[0..<23])=="";
+  big:[300]u8;for i:0..<300 {big[i]='a';}#assert mv_object_id(cast(string)big[..],out[..])=="";
+  #assert mv_object_id(cast(string)big[0..<256],out[..]).count==24 && mv_object_id(cast(string)big[0..<257],out[..])=="";
+  ot:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza/obj-558157d13a69707d2163\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"object\"]]";
+  good:=mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":\"plaza/lamp-0\",\"state\":{\"kind\":\"lamp\",\"lit\":true}");
+  #assert good.code==MvCode.ok && good.role=="object";
+  // An object state without a node isn't held to one.
+  #assert mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\"").code==MvCode.ok;
+  #assert mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":\"plaza/lamp-1\"").code==MvCode.object;
+  #assert mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":\"plaza\\/lamp-0\"").code==MvCode.object;
+  #assert mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":7").code==MvCode.object;
+  #assert mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":\"plaza/lamp-0\",\"node\":\"plaza/lamp-0\"").code==MvCode.field;
+  // Only an object's node is held to its id.
+  at:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza/avatar\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"avatar\"]]";
+  #assert mv_state_with(at,"\"v\":1,","\"v\":1,\"node\":\"plaza/lamp-1\",").code==MvCode.ok;
+}
+
+// ---- reading helpers
+
+// x-x is NaN for NaN and for either infinity.
+mv_finite :: (x:f64)->bool {return x-x==0.0 && x<MV_MAX_COORD && x> -MV_MAX_COORD;}
+// The array whose first token was just read, as exactly out.count finite numbers.
+mv_vec :: (j:[]Json,tok:int,out:[]f64)->bool {
+  if tok!=JSON_ARRAY {return false;}
+  for i:0..<out.count {
+    if json_next(j)!=JSON_NUMBER {return false;}
+    f:=json_f64(json_text(j));
+    if !f.ok || !mv_finite(f.value) {return false;}
+    out[i]=f.value;
+  }
+  return json_next(j)==JSON_ARRAY_END;
+}
+// A non-negative integer token.
+mv_count :: (j:[]Json,tok:int)->int {
+  if tok!=JSON_NUMBER {return -1;}
+  v:=json_int(json_text(j));
+  return ifx v.ok && v.value>=0 then v.value else -1;
+}
+// An entity id: 1 to 64 bytes of [a-z0-9_-].
+mv_id_ok :: (s:string)->bool {
+  if s.count<1 || s.count>64 {return false;}
+  for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='_' || c=='-') {return false;}}
+  return true;
+}
+mv_plain :: (s:string)->bool {for c:s {if c=='\\' {return false;}}return true;}
+// floor(x / cell), toward minus infinity.
+mv_cell :: (x:f64,cell:f64)->int {
+  q:=x/cell;c:=cast(int)q;
+  if f64(c)>q {c-=1;}
+  return c;
+}
+mv_inside :: (w:MvWorld,p:[3]f64)->bool {
+  if !w.bounded {return true;}
+  for i:0..<3 {if p[i]<w.lo[i] || p[i]>w.hi[i] {return false;}}
+  return true;
+}
+// q normalized in place: false when its squared length is near zero.
+mv_unit :: (q:[]f64)->bool {
+  sq:=q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3];
+  if sq<MV_QUAT_MIN {return false;}
+  r:=sqrt(sq);
+  for i:0..<4 {q[i]=q[i]/r;}
+  return true;
+}
+// The one value of tag name, or found false; n -1 when the tags don't read.
+MvTag :: struct {n:int;value:string;}
+mv_tag :: (tags:string,name:string)->MvTag {
+  e:NtEvent;e.ok=true;e.original=tags;e.tags_to=tags.count;t:=nt_tag(e,name,0);
+  r:MvTag;r.n=t.n;
+  if t.n>=1 {if t.values<1 {r.n= -1;return r;}r.value=nt_raw(e,t.v[0]);}
+  return r;
+}
+
+// ---- 33300: a world definition. address is written into out.
+mv_world_read :: (kind:int,pubkey:string,tags:string,content:string,out:[]u8)->MvWorld {
+  r:MvWorld;
+  if kind!=MV_WORLD {return MvWorld.{code=MvCode.kind};}
+  d:=mv_tag(tags,"d");w:=mv_tag(tags,"w");
+  if d.n<0 {return MvWorld.{code=MvCode.tags};}   // one tags array: w reads when d does
+  if d.n!=1 || !mv_plain(d.value) {return MvWorld.{code=MvCode.address};}
+  n:=json_raw(out,0,"33300:");n=json_raw(out,n,pubkey);n=json_raw(out,n,":");n=json_raw(out,n,d.value);
+  if n!=7+pubkey.count+d.value.count {return MvWorld.{code=MvCode.address};}
+  r.address=n;
+  if w.n!=1 || w.value!=cast(string)out[0..<n] {return MvWorld.{code=MvCode.world};}
+  j:[1]Json;json_start(j[..],content);seen:=0;
+  if json_next(j[..])!=JSON_OBJECT {return MvWorld.{code=MvCode.body};}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return MvWorld.{code=MvCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    if key=="v" {
+      if (seen&1)!=0 {return MvWorld.{code=MvCode.field};}seen|=1;
+      if v!=JSON_NUMBER || json_text(j[..])!="1" {return MvWorld.{code=MvCode.version};}
+    } else if key=="cell" {
+      if (seen&2)!=0 {return MvWorld.{code=MvCode.field};}seen|=2;
+      if v!=JSON_NUMBER {return MvWorld.{code=MvCode.cell};}
+      f:=json_f64(json_text(j[..]));
+      if !f.ok || !mv_finite(f.value) || f.value<=0.0 {return MvWorld.{code=MvCode.cell};}
+      r.cell=f.value;
+    } else if key=="bounds" {
+      if (seen&4)!=0 {return MvWorld.{code=MvCode.field};}seen|=4;
+      if !mv_bounds(j[..],v,r.lo[..],r.hi[..]) {return MvWorld.{code=MvCode.bounds_shape};}
+      r.bounded=true;
+    } else if !json_skip(j[..]) {return MvWorld.{code=MvCode.body};}
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return MvWorld.{code=MvCode.body};}
+  if (seen&1)==0 {return MvWorld.{code=MvCode.field};}
+  return r;
+}
+// {"min":[x,y,z],"max":[x,y,z]}, exactly, with min <= max on each axis.
+mv_bounds :: (j:[]Json,tok:int,lo:[]f64,hi:[]f64)->bool {
+  if tok!=JSON_OBJECT {return false;}
+  seen:=0;t:=json_next(j);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return false;}
+    key:=json_text(j);v:=json_next(j);
+    if key=="min" && (seen&1)==0 {if !mv_vec(j,v,lo) {return false;}seen|=1;}
+    else if key=="max" && (seen&2)==0 {if !mv_vec(j,v,hi) {return false;}seen|=2;}
+    else {return false;}
+    t=json_next(j);
+  }
+  if seen!=3 {return false;}
+  for i:0..<3 {if lo[i]>hi[i] {return false;}}
+  return true;
+}
+
+// ---- 23300: a pose frame for world, its entries into out.
+mv_frame_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld,out:[]MvPose)->MvFrame {
+  r:MvFrame;
+  if kind!=MV_FRAME {return MvFrame.{code=MvCode.kind};}
+  wt:=mv_tag(tags,"w");
+  if wt.n<0 {return MvFrame.{code=MvCode.tags};}
+  if wt.n!=1 || wt.value!=world {return MvFrame.{code=MvCode.world};}
+  j:[1]Json;json_start(j[..],content);seen:=0;
+  if json_next(j[..])!=JSON_OBJECT {return MvFrame.{code=MvCode.body};}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return MvFrame.{code=MvCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);bit:=0;
+    if key=="v" {bit=1;} else if key=="s" {bit=2;} else if key=="n" {bit=4;} else if key=="t" {bit=8;} else if key=="e" {bit=16;}
+    if bit==0 {if !json_skip(j[..]) {return MvFrame.{code=MvCode.body};}}
+    else {
+      if (seen&bit)!=0 {return MvFrame.{code=MvCode.field};}
+      seen|=bit;
+      if bit==1 && (v!=JSON_NUMBER || json_text(j[..])!="1") {return MvFrame.{code=MvCode.version};}
+      if bit==2 {
+        if v!=JSON_STRING {return MvFrame.{code=MvCode.session};}
+        r.s=json_text(j[..]);
+        if r.s.count<1 || r.s.count>MV_SESSION || !mv_plain(r.s) {return MvFrame.{code=MvCode.session};}
+      }
+      if bit==4 {r.n=mv_count(j[..],v);if r.n<0 {return MvFrame.{code=MvCode.seq};}}
+      if bit==8 {r.t=mv_count(j[..],v);if r.t<0 {return MvFrame.{code=MvCode.time};}}
+      if bit==16 {
+        if v!=JSON_ARRAY {return MvFrame.{code=MvCode.entities};}
+        e:=json_next(j[..]);
+        while e!=JSON_ARRAY_END {
+          if e!=JSON_OBJECT || r.count==MV_ENTITIES || r.count==out.count {return MvFrame.{code=MvCode.entities};}
+          got:=mv_entry(j[..],w);
+          if got.code!=MvCode.ok {return MvFrame.{code=got.code,at=r.count};}
+          out[r.count]=got.pose;
+          r.count+=1;e=json_next(j[..]);
+        }
+        if r.count==0 {return MvFrame.{code=MvCode.entities};}
+      }
+    }
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return MvFrame.{code=MvCode.body};}
+  if seen!=31 {return MvFrame.{code=MvCode.field};}
+  return r;
+}
+// book:begin entry
+// One entry, its opening brace just read.
+MvEntry :: struct {code:MvCode;pose:MvPose;}
+mv_entry :: (j:[]Json,w:MvWorld)->MvEntry {
+  r:MvEntry;seen:=0;spare:[3]f64;
+  t:=json_next(j);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return MvEntry.{code=MvCode.body};}
+    key:=json_text(j);v:=json_next(j);bit:=0;
+    if key=="id" {bit=1;} else if key=="role" {bit=2;} else if key=="p" {bit=4;} else if key=="q" {bit=8;}
+    else if key=="v" {bit=16;} else if key=="follows" {bit=32;} else if key=="w" {bit=64;} else if key=="k" {bit=128;}
+    if bit==0 {if !json_skip(j) {return MvEntry.{code=MvCode.body};}}
+    else {
+      if (seen&bit)!=0 {return MvEntry.{code=MvCode.field};}
+      seen|=bit;
+      if bit==1 {if v!=JSON_STRING || !mv_id_ok(json_text(j)) {return MvEntry.{code=MvCode.id};}r.pose.id=json_text(j);}
+      if bit==2 {if v!=JSON_STRING || json_text(j).count==0 {return MvEntry.{code=MvCode.role};}r.pose.role=json_text(j);}
+      if bit==4 {if !mv_vec(j,v,r.pose.p[..]) {return MvEntry.{code=MvCode.number};}}
+      if bit==8 {if !mv_vec(j,v,r.pose.q[..]) {return MvEntry.{code=MvCode.number};}}
+      if bit==16 || bit==64 {if !mv_vec(j,v,spare[..]) {return MvEntry.{code=MvCode.number};}}
+      if bit==32 {if v!=JSON_STRING || !mv_id_ok(json_text(j)) {return MvEntry.{code=MvCode.id};}}
+      if bit==128 {
+        if v!=JSON_ARRAY {return MvEntry.{code=MvCode.stamp};}
+        r.pose.epoch=mv_count(j,json_next(j));r.pose.rev=mv_count(j,json_next(j));
+        if r.pose.epoch<0 || r.pose.rev<0 || json_next(j)!=JSON_ARRAY_END {return MvEntry.{code=MvCode.stamp};}
+      }
+    }
+    t=json_next(j);
+  }
+  if (seen&15)!=15 {return MvEntry.{code=MvCode.field};}
+  r.pose.body=r.pose.role=="body";
+  if r.pose.body!=((seen&128)!=0) {return MvEntry.{code=MvCode.stamp};}
+  if !mv_unit(r.pose.q[..]) {return MvEntry.{code=MvCode.quat};}
+  if !mv_inside(w,r.pose.p) {return MvEntry.{code=MvCode.bounds};}
+  r.pose.cx=mv_cell(r.pose.p[0],w.cell);r.pose.cz=mv_cell(r.pose.p[2],w.cell);
+  return r;
+}
+// book:end entry
+
+// ---- ordering and presence
+// book:begin order
+mv_order :: (seen:[]MvSeen,count:int,pubkey:string,s:string,n:int,ms:int)->MvOrder {
+  for i:0..<count {
+    if seen[i].pubkey==pubkey && seen[i].s==s {
+      if n<=seen[i].n {return MvOrder.{code=MvCode.old,count=count};}
+      seen[i].n=n;seen[i].ms=ms;
+      return MvOrder.{count=count};
+    }
+  }
+  if count>=seen.count {return MvOrder.{code=MvCode.full,count=count};}
+  seen[count]=MvSeen.{pubkey=pubkey,s=s,n=n,ms=ms};
+  return MvOrder.{count=count+1};
+}
+mv_online :: (last_ms:int,now_ms:int)->bool {return now_ms-last_ms<MV_OFFLINE_MS;}
+// book:end order
+
+// ---- 33301: an entity state in world.
+// "obj-" and the first 20 hex digits of SHA-256(node), into out (24 bytes); "" when it can't.
+mv_object_id :: (node:string,out:[]u8)->string {
+  if out.count<24 || node.count>256 {return "";}
+  bytes:[256]u8;for i:0..<node.count {bytes[i]=node[i];}
+  h:[32]u8;
+  if sha256_hash_checked(bytes[0..<node.count],h[..],false)!=SHA_OK {return "";}
+  digits:="0123456789abcdef";
+  n:=json_raw(out,0,"obj-");
+  for i:0..<10 {out[n]=digits[h[i]>>4];out[n+1]=digits[h[i]&15];n+=2;}
+  return cast(string)out[0..<n];
+}
+mv_state_read :: (kind:int,tags:string,content:string,world:string,w:MvWorld)->MvState {
+  r:MvState;
+  if kind!=MV_STATE {return MvState.{code=MvCode.kind};}
+  d:=mv_tag(tags,"d");wt:=mv_tag(tags,"w");rt:=mv_tag(tags,"role");
+  if d.n<0 {return MvState.{code=MvCode.tags};}   // one tags array: w and role read when d does
+  if wt.n!=1 || wt.value!=world {return MvState.{code=MvCode.world};}
+  if d.n!=1 || d.value.count<=world.count || d.value[0..<world.count]!=world || d.value[world.count]!='/' {return MvState.{code=MvCode.address};}
+  if rt.n!=1 {return MvState.{code=MvCode.role};}
+  j:[1]Json;json_start(j[..],content);seen:=0;node:="";has_node:=false;
+  if json_next(j[..])!=JSON_OBJECT {return MvState.{code=MvCode.body};}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return MvState.{code=MvCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);bit:=0;
+    if key=="v" {bit=1;} else if key=="id" {bit=2;} else if key=="role" {bit=4;} else if key=="p" {bit=8;}
+    else if key=="q" {bit=16;} else if key=="t" {bit=32;} else if key=="online" {bit=64;}
+    else if key=="status" {bit=128;} else if key=="node" {bit=256;}
+    if bit==0 {if !json_skip(j[..]) {return MvState.{code=MvCode.body};}}
+    else {
+      if (seen&bit)!=0 {return MvState.{code=MvCode.field};}
+      seen|=bit;
+      if bit==1 && (v!=JSON_NUMBER || json_text(j[..])!="1") {return MvState.{code=MvCode.version};}
+      if bit==2 {if v!=JSON_STRING || !mv_id_ok(json_text(j[..])) {return MvState.{code=MvCode.id};}r.id=json_text(j[..]);}
+      if bit==4 {if v!=JSON_STRING {return MvState.{code=MvCode.role};}r.role=json_text(j[..]);}
+      if bit==8 {if !mv_vec(j[..],v,r.p[..]) {return MvState.{code=MvCode.number};}}
+      if bit==16 {if !mv_vec(j[..],v,r.q[..]) {return MvState.{code=MvCode.number};}}
+      if bit==32 {r.t=mv_count(j[..],v);if r.t<0 {return MvState.{code=MvCode.time};}}
+      if bit==64 {if v!=JSON_TRUE && v!=JSON_FALSE {return MvState.{code=MvCode.field};}r.online=v==JSON_TRUE;}
+      if bit==128 {
+        if v!=JSON_STRING {return MvState.{code=MvCode.status};}
+        s:=json_text(j[..]);
+        if s.count>MV_STATUS {return MvState.{code=MvCode.status};}
+        for c:s {if c<0x20 || c==0x7f || c=='\\' {return MvState.{code=MvCode.status};}}
+      }
+      if bit==256 {
+        if v!=JSON_STRING {return MvState.{code=MvCode.object};}
+        node=json_text(j[..]);has_node=true;
+      }
+    }
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return MvState.{code=MvCode.body};}
+  if (seen&127)!=127 {return MvState.{code=MvCode.field};}
+  if d.value[world.count+1..<d.value.count]!=r.id {return MvState.{code=MvCode.address};}
+  if rt.value!=r.role {return MvState.{code=MvCode.role};}
+  if r.role=="object" && has_node {
+    o:[24]u8;
+    if !mv_plain(node) || mv_object_id(node,o[..])!=r.id {return MvState.{code=MvCode.object};}
+  }
+  if !mv_unit(r.q[..]) {return MvState.{code=MvCode.quat};}
+  if !mv_inside(w,r.p) {return MvState.{code=MvCode.bounds};}
+  r.cx=mv_cell(r.p[0],w.cell);r.cz=mv_cell(r.p[2],w.cell);
+  return r;
+}

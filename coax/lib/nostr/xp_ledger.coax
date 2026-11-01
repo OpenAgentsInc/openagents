@@ -1,0 +1,721 @@
+// NIP-XP quests (30193), awards (3193) and revocations (3194), and the
+// ledger a reader derives from them (nostr/nips/openagents/NIP-XP.md,
+// "Quests", "Awards", "Revocations", "Deriving a ledger" and "Validation").
+// xp_keys.coax reads the trainer profiles and key links.
+//
+// The readers take an event's id, signer (hex), raw tags JSON and content,
+// already signature-checked, and refuse what the NIP refuses: another kind;
+// not exactly one oa:xp:<type>:v1 marker or an uppercase t (xk_tags); a body
+// that isn't v 1, requires [], its type, with exactly its keys. A quest's id
+// follows the NIP-KB grammar, its d tag is <id>@<version>, its season window
+// opens before it closes and its season and rule t tags name the body's;
+// title and objective are at most 200 and 4,000 characters; its award names
+// exactly the rule's roles and sums to 1..1,000. An award is signed by the
+// quest's referee, pins the quest event by id, carries the quest version's
+// coordinate as its key (completions first), and its a, first e and p tags
+// agree with the body; its awardees are distinct. A revocation is signed by
+// the award's referee, its e and a tags name the award and its key, and its
+// reason is 1 to 1,000 characters.
+//
+// xp_ledger follows "Deriving a ledger" for the trusted referees: an event
+// id counts once; a revoked award doesn't count; an award must bind to the
+// exact quest event it names, from its own referee, at an address no
+// second quest event rewrote; its key, accepted_at (inside the season) and
+// awardee roles and XP must be the quest's; two live awards on one key are
+// a conflict and neither counts; an awardee with 0 XP gets no credit.
+//
+// Not built here: the acceptance rules themselves. A reader runs the
+// quest's rule over the exact entry and evidence events an award names
+// (kb-transfer needs NIP-KB 3190 entries and NIP-EVAL 3189 run evidence);
+// xp_ledger takes that verdict per award from the caller as `ruled`, and
+// counts nothing whose rule wasn't run and passed. Only the kb-transfer and
+// reproduce roles and the first policy are read: playtest, eval-check,
+// eval-adopt and pylon-check quests refuse as rule, and per-awardee as
+// policy, rather than being counted wrongly.
+//
+// Checks: coax test coax/lib/nostr/xp_ledger.coax
+//         coax mutate coax/lib/nostr/xp_ledger.coax --root-only
+#load "xp_keys.coax";
+#load "nip34.coax";
+#load "../../tests/nostr/text_swap.coax";
+#load "../../tests/nostr/xp_mv_vectors.coax";
+#authority;
+
+XP_QUEST :: 30193; XP_AWARD :: 3193; XP_REVOCATION :: 3194;
+XP_MAX_AWARD :: 1000;
+
+XpCode :: enum u8 {ok;kind;tags;marker;body;version;requires;type;field;id;season;text;rule;award;policy;quest;signer;key;awardees;mismatch;reason;}
+// Why the ledger counted an award or not.
+XpWhy :: enum u8 {counted;refused;untrusted;duplicate;revoked;no_quest;rewritten;key;time;xp;rule;conflict;}
+
+XpQuest :: struct {code:XpCode;event:string;referee:string;address:string;opens:int;closes:int;roles:[2]string;xp:[2]int;}
+XpAward :: struct {code:XpCode;event:string;referee:string;quest:string;key:string;accepted:int;n:int;roles:[2]string;keys:[2]string;xp:[2]int;}
+XpRevocation :: struct {code:XpCode;event:string;referee:string;award:string;key:string;}
+XpCredit :: struct {pubkey:string;xp:int;}
+// counted awards, credits written (-1 when out is too short), conflicts.
+XpLedger :: struct {counted:int;credits:int;conflicts:int;revoked:int;}
+
+xp_quest_with :: (from:string,to:string,out:[]u8)->XpQuest {return xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,ts_swap(QUEST_BODY,from,to,out));}
+xp_quest_tags :: (from:string,to:string,out:[]u8)->XpQuest {return xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,ts_swap(QUEST_TAGS,from,to,out),QUEST_BODY);}
+xp_award_with :: (from:string,to:string,out:[]u8)->XpAward {return xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,ts_swap(AWARD1_BODY,from,to,out));}
+xp_award_tags :: (from:string,to:string,out:[]u8)->XpAward {return xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,ts_swap(AWARD1_TAGS,from,to,out),AWARD1_BODY);}
+xp_rev_with :: (from:string,to:string,out:[]u8)->XpRevocation {return xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,ts_swap(REVOKE1_BODY,from,to,out));}
+xp_rev_tags :: (from:string,to:string,out:[]u8)->XpRevocation {return xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,ts_swap(REVOKE1_TAGS,from,to,out),REVOKE1_BODY);}
+
+#test "the quest reads: address, season, roles in the rule's order" {
+  q:=xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY);
+  #assert q.code==XpCode.ok && q.event==QUEST_ID && q.referee==QUEST_PK && q.address=="tb4.fix-git.beat-fable-low@1";
+  #assert q.opens==1790000000 && q.closes==1798000000 && q.roles[0]=="author" && q.roles[1]=="runner" && q.xp[0]==6 && q.xp[1]==4;
+  o:[2048]u8;
+  r:=xp_quest_with("{\"author\":6,\"runner\":4}","{\"runner\":4,\"author\":0}",o[..]);#assert r.code==XpCode.ok && r.xp[0]==0 && r.xp[1]==4;
+  r=xp_quest_with("\"reference\":null","\"reference\":{\"label\":\"x\"}",o[..]);#assert r.code==XpCode.ok;
+  // reproduce: claimant, then reproducer.
+  t:[512]u8;b:[2048]u8;
+  rt:=ts_swap(QUEST_TAGS,"oa:xp:rule:kb-transfer","oa:xp:rule:reproduce",t[..]);
+  rb:=ts_swap(ts_swap(QUEST_BODY,"\"rule\":\"kb-transfer\"","\"rule\":\"reproduce\"",o[..]),"{\"author\":6,\"runner\":4}","{\"reproducer\":3,\"claimant\":2}",b[..]);
+  p:=xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,rt,rb);#assert p.code==XpCode.ok && p.roles[0]=="claimant" && p.xp[0]==2 && p.roles[1]=="reproducer" && p.xp[1]==3;
+}
+#test "a quest refuses what NIP-XP refuses" {
+  o:[2048]u8;
+  #assert xp_quest_read(XP_AWARD,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY).code==XpCode.kind;
+  #assert xp_quest_tags("oa:xp:quest:v1","oa:xp:award:v1",o[..]).code==XpCode.marker;
+  #assert xp_quest_tags("oa:xp:quest:v1","OA:xp:quest:v1",o[..]).code==XpCode.tags;
+  #assert xp_quest_tags("[\"d\",\"tb4.fix-git.beat-fable-low@1\"],","",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("[\"d\",\"tb4.fix-git.beat-fable-low@1\"],","[\"d\",\"tb4.fix-git.beat-fable-low@1\"],[\"d\",\"tb4.fix-git.beat-fable-low@1\"],",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("beat-fable-low@1","beat-fable-low@2",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("beat-fable-low@1","beat-fable-low@11",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("beat-fable-low@1","beat-fable-low1",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("[\"t\",\"oa:xp:season:2026-q4\"],","",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("oa:xp:season:2026-q4","oa:xp:season:2026-q1",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("[\"t\",\"oa:xp:season:2026-q4\"],","[\"t\",\"oa:xp:season:2026-q4\"],[\"t\",\"oa:xp:season:2026-q4\"],",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("[\"t\",\"oa:xp:rule:kb-transfer\"]","[\"t\",\"oa:xp:rule:kb-transfer\"],[\"t\",\"oa:xp:rule:kb-transfer\"]",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags(",[\"t\",\"oa:xp:rule:kb-transfer\"]","",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("oa:xp:rule:kb-transfer","oa:xp:rule:reproduce",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("oa:xp:rule:kb-transfer","oa:xp:rule:kb-transfe",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("oa:xp:season:2026-q4","oa:xp:season:2026-q",o[..]).code==XpCode.mismatch;
+  #assert xp_quest_tags("[\"t\",\"oa:xp:rule:kb-transfer\"]","[\"t\",\"oa:xp:rule:kb-transfer\"],[\"t\",\"pylon\"],[\"x\"]",o[..]).code==XpCode.ok;
+  // The body's envelope.
+  #assert xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,"[]").code==XpCode.body;
+  #assert xp_quest_with("\"completions\":\"first\"}","\"completions\":\"first\"} 1",o[..]).code==XpCode.body;
+  #assert xp_quest_with("{\"v\":1,","{1:1,",o[..]).code==XpCode.body;
+  #assert xp_quest_with("\"reference\":null","\"reference\":{\"a\":[}",o[..]).code==XpCode.body;
+  #assert xp_quest_with("\"v\":1","\"v\":2",o[..]).code==XpCode.version && xp_quest_with("\"v\":1","\"v\":true",o[..]).code==XpCode.version;
+  #assert xp_quest_with("\"requires\":[]","\"requires\":[\"x\"]",o[..]).code==XpCode.requires && xp_quest_with("\"requires\":[]","\"requires\":{}",o[..]).code==XpCode.requires;
+  #assert xp_quest_with("\"type\":\"quest\"","\"type\":\"award\"",o[..]).code==XpCode.type && xp_quest_with("\"type\":\"quest\"","\"type\":1",o[..]).code==XpCode.type;
+  #assert xp_quest_with("\"v\":1,","\"v\":1,\"x\":1,",o[..]).code==XpCode.field && xp_quest_with("\"v\":1,","\"v\":1,\"v\":1,",o[..]).code==XpCode.field;
+  #assert xp_quest_with("\"v\":1,","",o[..]).code==XpCode.field && xp_quest_with("\"reference\":null,","",o[..]).code==XpCode.field;
+  #assert xp_quest_with(",\"completions\":\"first\"","",o[..]).code==XpCode.field && xp_quest_with("\"title\":","\"titl\":",o[..]).code==XpCode.field;
+  #assert xp_quest_with("\"reference\":null","\"reference\":1",o[..]).code==XpCode.field;
+  // id and version.
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"Tb4.fix-git.beat-fable-low\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"4b\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"tb4_fix\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"tb4/fix\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"tb4:fix\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"tb4{fix\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"t`b\"",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":7",o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"","\"id\":\"zb4.fix-git.beat-fable-low\"",o[..]).code==XpCode.mismatch;
+  long:[160]u8;n:=json_raw(long[..],0,"\"id\":\"a");for i:0..<127 {long[n+i]='z';}n=json_raw(long[..],n+127,"\"");
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"",cast(string)long[0..<n],o[..]).code==XpCode.mismatch;
+  long[n-1]='9';n=json_raw(long[..],n,"\"");
+  #assert xp_quest_with("\"id\":\"tb4.fix-git.beat-fable-low\"",cast(string)long[0..<n],o[..]).code==XpCode.id;
+  #assert xp_quest_with("\"version\":1","\"version\":0",o[..]).code==XpCode.id && xp_quest_with("\"version\":1","\"version\":\"1\"",o[..]).code==XpCode.id;
+  // The season.
+  #assert xp_quest_with("\"opens_at\":1790000000","\"opens_at\":1798000000",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"opens_at\":1790000000","\"opens_at\":1797999999",o[..]).code==XpCode.ok;
+  #assert xp_quest_with("\"opens_at\":1790000000","\"opens_at\":-1",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"closes_at\":1798000000","\"closes_at\":\"x\"",o[..]).code==XpCode.season;
+  #assert xp_quest_with(",\"closes_at\":1798000000","",o[..]).code==XpCode.season && xp_quest_with("\"id\":\"2026-q4\",","",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"opens_at\":1790000000,","",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"id\":\"2026-q4\"","\"id\":\"2026-q4\",\"x\":1",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"id\":\"2026-q4\"","\"id\":\"2026-q4\",\"id\":\"2026-q4\"",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"opens_at\":1790000000","\"opens_at\":1,\"opens_at\":1",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"closes_at\":1798000000","\"closes_at\":1798000000,\"closes_at\":1798000000",o[..]).code==XpCode.season;
+  #assert xp_quest_with("\"id\":\"2026-q4\"","\"id\":\"\"",o[..]).code==XpCode.season && xp_quest_with("\"id\":\"2026-q4\"","\"id\":4",o[..]).code==XpCode.season;
+  #assert xp_quest_with("{\"id\":\"2026-q4\",\"opens_at\":1790000000,\"closes_at\":1798000000}","[]",o[..]).code==XpCode.season;
+  #assert xp_quest_with("{\"id\":\"2026-q4\"","{1:2",o[..]).code==XpCode.season;
+}
+#test "a quest's texts, rule, award and policy" {
+  o:[8192]u8;t:[8192]u8;
+  #assert xp_quest_with("\"title\":\"Beat Fable 5.1 low's cheapest winning run on fix-git\"","\"title\":1",o[..]).code==XpCode.text;
+  #assert xp_quest_with("\"objective\":\"","\"objective\":7,\"x\":\"",o[..]).code==XpCode.text;
+  // Characters, not bytes: an escape and a multi-byte character count once.
+  #assert xp_chars("a\\u00e9\\n")==3 && xp_chars("é")==1 && xp_chars("")==0 && xp_chars("\\\\")==1 && xp_chars("\\\"x")==2;
+  title:="\"title\":\"Beat Fable 5.1 low's cheapest winning run on fix-git\"";
+  #assert xp_quest_with(title,ts_wrap("\"title\":\"",'a',200,"\"",t[..]),o[..]).code==XpCode.ok;
+  #assert xp_quest_with(title,ts_wrap("\"title\":\"",'a',201,"\"",t[..]),o[..]).code==XpCode.text;
+  obj:="\"objective\":\"Publish an entry that makes a paired Microcoder run pass fix-git for less than Fable 5.1 low's cheapest winning run, on a task the entry wasn't written from.\"";
+  #assert xp_quest_with(obj,ts_wrap("\"objective\":\"",'a',4000,"\"",t[..]),o[..]).code==XpCode.ok;
+  #assert xp_quest_with(obj,ts_wrap("\"objective\":\"",'a',4001,"\"",t[..]),o[..]).code==XpCode.text;
+  // Rules this file reads, rules it doesn't, and a missing one.
+  b:[2048]u8;
+  #assert xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,ts_swap(QUEST_TAGS,"rule:kb-transfer","rule:playtest",t[..]),ts_swap(QUEST_BODY,"\"rule\":\"kb-transfer\"","\"rule\":\"playtest\"",o[..])).code==XpCode.rule;
+  #assert xp_quest_with("\"rule\":\"kb-transfer\",","",o[..]).code==XpCode.rule && xp_quest_with("\"rule\":\"kb-transfer\"","\"rule\":7",o[..]).code==XpCode.rule;
+  #assert xp_quest_with("{\"rule\":\"kb-transfer\",","[\"rule\",",o[..]).code==XpCode.rule;
+  #assert xp_quest_with("{\"rule\":\"kb-transfer\",","{1:2,",o[..]).code==XpCode.rule;
+  #assert xp_quest_with("\"rule\":\"kb-transfer\",","\"rule\":\"kb-transfer\",\"rule\":\"kb-transfer\",",o[..]).code==XpCode.rule;
+  #assert xp_quest_with("\"task\":\"fix-git\"","\"task\":{\"a\":[1]}",o[..]).code==XpCode.ok;
+  #assert xp_quest_with("\"task\":\"fix-git\"","\"task\":[",o[..]).code==XpCode.body;
+  // The award table: exactly the rule's roles, sum 1..1000.
+  aw:="{\"author\":6,\"runner\":4}";
+  #assert xp_quest_with(aw,"{\"author\":6}",o[..]).code==XpCode.award && xp_quest_with(aw,"{\"author\":6,\"runner\":4,\"x\":1}",o[..]).code==XpCode.award;
+  #assert xp_quest_with(aw,"{\"author\":6,\"author\":4}",o[..]).code==XpCode.award && xp_quest_with(aw,"{\"author\":6,\"claimant\":4}",o[..]).code==XpCode.award;
+  #assert xp_quest_with(aw,"{\"claimant\":6,\"runner\":4}",o[..]).code==XpCode.award;
+  #assert xp_quest_with(aw,"{\"author\":0,\"runner\":0}",o[..]).code==XpCode.award && xp_quest_with(aw,"{\"author\":0,\"runner\":1}",o[..]).code==XpCode.ok;
+  #assert xp_quest_with(aw,"{\"author\":500,\"runner\":500}",o[..]).code==XpCode.ok && xp_quest_with(aw,"{\"author\":500,\"runner\":501}",o[..]).code==XpCode.award;
+  #assert xp_quest_with(aw,"{\"author\":-1,\"runner\":4}",o[..]).code==XpCode.award && xp_quest_with(aw,"{\"author\":1.5,\"runner\":4}",o[..]).code==XpCode.award;
+  #assert xp_quest_with(aw,"[6,4]",o[..]).code==XpCode.award && xp_quest_with(aw,"{1:2}",o[..]).code==XpCode.award;
+  #assert xp_quest_with(aw,"{\"runner\":4,\"runner\":4}",o[..]).code==XpCode.award;
+  // Completions: first only here.
+  #assert xp_quest_with("\"completions\":\"first\"","\"completions\":\"per-awardee\"",o[..]).code==XpCode.policy;
+  #assert xp_quest_with("\"completions\":\"first\"","\"completions\":1",o[..]).code==XpCode.policy;
+  #assert xp_quest_with("\"completions\":\"first\"","\"completions\":\"first\",\"max_awards\":5",o[..]).code==XpCode.policy;
+}
+
+#test "the award reads, and refuses what NIP-XP refuses" {
+  a:=xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,AWARD1_BODY);
+  #assert a.code==XpCode.ok && a.event==AWARD1_ID && a.referee==QUEST_PK && a.quest==QUEST_ID && a.accepted==1790500000 && a.n==2;
+  #assert a.key=="30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@1";
+  #assert a.roles[0]=="author" && a.keys[0]=="c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5" && a.xp[0]==6 && a.roles[1]=="runner" && a.xp[1]==4;
+  o:[4096]u8;
+  #assert xp_award_read(XP_QUEST,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,AWARD1_BODY).code==XpCode.kind;
+  #assert xp_award_read(XP_AWARD,AWARD1_ID,"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",AWARD1_TAGS,AWARD1_BODY).code==XpCode.signer;
+  #assert xp_award_tags("oa:xp:award:v1","oa:xp:quest:v1",o[..]).code==XpCode.marker;
+  #assert xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,"{").code==XpCode.body;
+  #assert xp_award_with("\"v\":1","\"v\":0",o[..]).code==XpCode.version && xp_award_with("\"requires\":[]","\"requires\":[1]",o[..]).code==XpCode.requires;
+  #assert xp_award_with("\"type\":\"award\"","\"type\":\"quest\"",o[..]).code==XpCode.type;
+  #assert xp_award_with("\"v\":1,","\"v\":1,\"x\":1,",o[..]).code==XpCode.field && xp_award_with("\"v\":1,","",o[..]).code==XpCode.field;
+  #assert xp_award_with("\"v\":1,","\"v\":1,\"v\":1,",o[..]).code==XpCode.field && xp_award_with("\"accepted_at\":1790500000,","",o[..]).code==XpCode.field;
+  #assert xp_award_with("\"accepted_at\":1790500000","\"accepted_at\":-1",o[..]).code==XpCode.field;
+  #assert xp_award_with("\"evidence\":","\"x\":",o[..]).code==XpCode.field && xp_award_with("\"evidence\":[{","\"evidence\":[{1:2,",o[..]).code==XpCode.body;
+  #assert xp_award_with("\"evidence\":[{","\"evidence\":{\"a\":{",o[..]).code==XpCode.field;
+  #assert xp_award_with("\"entry\":{","\"entry\":{1:2,",o[..]).code==XpCode.body;
+  #assert xp_award_with("\"entry\":{","\"entry\":7,\"x\":{",o[..]).code==XpCode.field;
+  // The entry fields are optional (reproduce has none).
+  #assert xp_award_with("\"entry_version\":{\"id\":\"git.reflog-recovery\",","\"x_version\":{\"id\":\"git.reflog-recovery\",",o[..]).code==XpCode.field;
+  // The pinned quest.
+  #assert xp_award_with("\"kind\":30193","\"kind\":30194",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"kind\":30193","\"kind\":30193,\"x\":1",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"kind\":30193","\"kind\":30193,\"kind\":30193",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"kind\":30193,","",o[..]).code==XpCode.quest;
+  #assert xp_award_with("{\"id\":\"bd832fc9","{1:2,\"id\":\"bd832fc9",o[..]).code==XpCode.quest;
+  #assert xp_award_with("{\"id\":\"bd832fc9","[\"id\",\"bd832fc9",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"id\":\"bd832fc9","\"id\":\"BD832fc9",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"quest\":{\"id\":\"bd832fc9","\"quest\":{\"id\":\"bd832fc9",o[..]).code==XpCode.ok;
+  #assert xp_award_with("\"pubkey\":\"79be667e","\"pubkey\":\"79BE667E",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"coordinate\":\"30193:","\"coordinate\":\"30194:",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"coordinate\":\"30193:","\"coordinate\":7,\"x\":\"30193:",o[..]).code==XpCode.quest;
+  #assert xp_award_with("16f81798:tb4.fix-git.beat-fable-low@1\"},","16f81798\"},",o[..]).code==XpCode.quest;
+  #assert xp_award_with("\"coordinate\":\"30193:79be","\"coordinate\":\"30193:c604",o[..]).code==XpCode.quest;
+  // The key: the coordinate itself.
+  #assert xp_award_with("\"key\":\"30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@1\"","\"key\":\"30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@2\"",o[..]).code==XpCode.key;
+  #assert xp_award_with("\"key\":\"30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@1\"","\"key\":1",o[..]).code==XpCode.key;
+  // Awardees.
+  aw:="\"awardees\":[{\"role\":\"author\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"xp\":6},{\"role\":\"runner\",\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"xp\":4}]";
+  #assert xp_award_with(",\"awardees\":[{\"role\":\"author\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"xp\":6},{\"role\":\"runner\",\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"xp\":4}]","",o[..]).code==XpCode.field;
+  #assert xp_award_with(aw,"\"awardees\":[]",o[..]).code==XpCode.awardees && xp_award_with(aw,"\"awardees\":{}",o[..]).code==XpCode.awardees;
+  #assert xp_award_with(",{\"role\":\"runner\"",",{\"role\":\"runner\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"xp\":1},{\"role\":\"runner\"",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("\"xp\":4","\"xp\":-4",o[..]).code==XpCode.awardees && xp_award_with("\"xp\":4","\"xp\":4,\"x\":1",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("\"xp\":4","\"xp\":4,\"xp\":4",o[..]).code==XpCode.awardees && xp_award_with(",\"xp\":4","",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("{\"role\":\"runner\",","{\"pubkey\":\"x\",\"role\":\"runner\",",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("{\"role\":\"runner\",","{\"role\":\"runner\",\"role\":\"runner\",",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("{\"role\":\"runner\",","{\"role\":7,",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("{\"role\":\"runner\",","{1:2,",o[..]).code==XpCode.awardees;
+  #assert xp_award_with(",{\"role\":\"runner\"",",[\"role\",\"runner\"",o[..]).code==XpCode.awardees;
+  #assert xp_award_with("e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"xp\"","E493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"xp\"",o[..]).code==XpCode.awardees;
+  // Two awardees with one key.
+  same:=ts_swap(AWARD1_BODY,"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"xp\":4","c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"xp\":4",o[..]);
+  t:[1024]u8;
+  #assert xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,ts_swap(AWARD1_TAGS,"[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]","[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]",t[..]),same).code==XpCode.awardees;
+  // Tags agree with the body.
+  #assert xp_award_tags("[\"a\",\"30193:","[\"a\",\"30194:",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"a\",\"30193:","[\"b\",\"30193:",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"t\",\"oa:xp:award:v1\"],","[\"t\",\"oa:xp:award:v1\"],[\"a\",\"x\"],",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"e\",\"bd832fc9","[\"e\",\"cd832fc9",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"e\",\"bd832fc9","[\"x\",\"bd832fc9",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"e\",\"bd832fc9","[\"e\"],[\"e\",\"bd832fc9",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags(",[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]","",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"p\",\"e493dbf1","[\"p\",\"5cbdf064",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("[\"p\",\"c6047f94","[\"p\",\"5cbdf064",o[..]).code==XpCode.mismatch;
+  #assert xp_award_tags("]]",",\"x\"],[\"p\",\"x\"]]",o[..]).code==XpCode.mismatch;
+}
+#test "the revocation reads, and refuses what NIP-XP refuses" {
+  r:=xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,REVOKE1_BODY);
+  #assert r.code==XpCode.ok && r.award==AWARD1_ID && r.referee==QUEST_PK && r.event==REVOKE1_ID && r.key==xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,AWARD1_BODY).key;
+  #assert xp_revocation_read(XP_REVOCATION,FORGED_ID,FORGED_PK,FORGED_TAGS,FORGED_BODY).code==XpCode.signer;
+  o:[4096]u8;t:[1024]u8;
+  #assert xp_revocation_read(XP_AWARD,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,REVOKE1_BODY).code==XpCode.kind;
+  #assert xp_rev_tags("oa:xp:revocation:v1","oa:xp:award:v1",o[..]).code==XpCode.marker;
+  #assert xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,"7").code==XpCode.body;
+  #assert xp_rev_with("\"v\":1","\"v\":9",o[..]).code==XpCode.version && xp_rev_with("\"requires\":[]","\"requires\":[[]]",o[..]).code==XpCode.requires;
+  #assert xp_rev_with("\"type\":\"revocation\"","\"type\":\"award\"",o[..]).code==XpCode.type;
+  #assert xp_rev_with("\"v\":1,","\"v\":1,\"x\":1,",o[..]).code==XpCode.field && xp_rev_with("\"v\":1,","",o[..]).code==XpCode.field;
+  #assert xp_rev_with("\"v\":1,","\"v\":1,\"v\":1,",o[..]).code==XpCode.field;
+  #assert xp_rev_with("\"kind\":3193","\"kind\":3194",o[..]).code==XpCode.award && xp_rev_with("\"kind\":3193","\"kind\":3193,\"x\":1",o[..]).code==XpCode.award;
+  #assert xp_rev_with("\"kind\":3193","\"kind\":3193,\"kind\":3193",o[..]).code==XpCode.award && xp_rev_with(",\"kind\":3193","",o[..]).code==XpCode.award;
+  #assert xp_rev_with("\"award\":{\"id\":\"5ff0","\"award\":{\"id\":\"5FF0",o[..]).code==XpCode.award;
+  #assert xp_rev_with("\"award\":{\"id\":\"5ff0","\"award\":[\"id\",\"5ff0",o[..]).code==XpCode.award;
+  #assert xp_rev_with("\"award\":{\"id\":\"5ff0","\"award\":{1:2,\"id\":\"5ff0",o[..]).code==XpCode.award;
+  #assert xp_rev_with("\"pubkey\":\"79be","\"pubkey\":\"79BE",o[..]).code==XpCode.award;
+  #assert xp_rev_with("\"key\":\"30193:","\"key\":7,\"x\":\"30193:",o[..]).code==XpCode.key;
+  #assert xp_rev_with("\"reason\":\"The runs were graded against the wrong verifier version.\"","\"reason\":\"\"",o[..]).code==XpCode.reason;
+  #assert xp_rev_with("\"reason\":\"The runs were graded against the wrong verifier version.\"","\"reason\":1",o[..]).code==XpCode.reason;
+  #assert xp_rev_with("\"reason\":\"The runs were graded against the wrong verifier version.\"",ts_wrap("\"reason\":\"",'r',1000,"\"",t[..]),o[..]).code==XpCode.ok;
+  #assert xp_rev_with("\"reason\":\"The runs were graded against the wrong verifier version.\"",ts_wrap("\"reason\":\"",'r',1001,"\"",t[..]),o[..]).code==XpCode.reason;
+  #assert xp_rev_tags("[\"e\",\"5ff0","[\"e\",\"6ff0",o[..]).code==XpCode.mismatch && xp_rev_tags("[\"e\",\"5ff0","[\"x\",\"5ff0",o[..]).code==XpCode.mismatch;
+  #assert xp_rev_tags("[\"a\",\"30193:","[\"a\",\"30194:",o[..]).code==XpCode.mismatch && xp_rev_tags("[\"a\",\"30193:","[\"x\",\"30193:",o[..]).code==XpCode.mismatch;
+  #assert xp_rev_tags("]]","],[\"e\",\"x\"]]",o[..]).code==XpCode.mismatch && xp_rev_tags("]]","],[\"a\",\"x\"]]",o[..]).code==XpCode.mismatch;
+}
+
+#test "grammar, counting and bounds edges" {
+  #assert xp_chars("\\u0041x")==2;
+  #assert xp_id_ok("a") && xp_id_ok("a9") && xp_id_ok("a0") && xp_id_ok("z.-") && !xp_id_ok("") && !xp_id_ok("9a") && !xp_id_ok("{a");
+  t:[80]u8;
+  #assert xp_slug_ok("a") && xp_slug_ok("z") && xp_slug_ok("0") && xp_slug_ok("9") && xp_slug_ok("-") && !xp_slug_ok("");
+  #assert !xp_slug_ok("A") && !xp_slug_ok("`") && !xp_slug_ok("{") && !xp_slug_ok("/") && !xp_slug_ok(":") && !xp_slug_ok("a.b");
+  #assert xp_slug_ok(ts_fill('a',64,t[..])) && !xp_slug_ok(ts_fill('a',65,t[..]));
+  o:[4096]u8;g:[1024]u8;
+  // A key renamed is an unknown key, never the one it replaced.
+  #assert xp_quest_with("\"v\":1","\"w\":1",o[..]).code==XpCode.field && xp_award_with("\"v\":1","\"w\":1",o[..]).code==XpCode.field;
+  #assert xp_rev_with("\"v\":1","\"w\":1",o[..]).code==XpCode.field && xp_award_with("\"coordinate\":","\"x\":",o[..]).code==XpCode.quest;
+  #assert xp_rev_with("\"kind\":3193","\"kind\":3193,\"coordinate\":\"x\"",o[..]).code==XpCode.award;
+  #assert xp_award_with("\"quest\":{\"id\":","\"quest\":{\"ix\":",o[..]).code==XpCode.quest && xp_rev_with("\"award\":{\"id\":","\"award\":{\"ix\":",o[..]).code==XpCode.award;
+  // Tags in another order; a second, empty season tag.
+  #assert xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,"[[\"t\",\"oa:xp:season:2026-q4\"],[\"d\",\"tb4.fix-git.beat-fable-low@1\"],[\"t\",\"oa:xp:quest:v1\"],[\"t\",\"oa:xp:rule:kb-transfer\"]]",QUEST_BODY).code==XpCode.ok;
+  #assert xp_quest_tags("[\"t\",\"oa:xp:quest:v1\"],","[\"t\",\"oa:xp:quest:v1\"],[\"t\",\"oa:xp:season:\"],",o[..]).code==XpCode.mismatch;
+  // Season edges, a repeated rule, the award sum's edges.
+  #assert xp_quest_with("\"opens_at\":1790000000","\"opens_at\":\"x\"",o[..]).code==XpCode.season && xp_quest_with("\"opens_at\":1790000000","\"opens_at\":0",o[..]).code==XpCode.ok;
+  #assert xp_quest_with("\"rule\":\"kb-transfer\",","\"rule\":\"x\",\"rule\":\"kb-transfer\",",o[..]).code==XpCode.rule;
+  aw:="{\"author\":6,\"runner\":4}";
+  #assert xp_quest_with(aw,"{\"author\":1,\"runner\":0}",o[..]).code==XpCode.ok && xp_quest_with(aw,"{\"author\":900,\"runner\":101}",o[..]).code==XpCode.award;
+  // Award edges: accepted_at 0, awardee keys in any order, XP 0, a one-character address, a one-character reason.
+  #assert xp_award_with("\"accepted_at\":1790500000","\"accepted_at\":0",o[..]).code==XpCode.ok;
+  rk:="{\"role\":\"runner\",\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"xp\":4}";
+  #assert xp_award_with(rk,"{\"xp\":4,\"role\":\"runner\",\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"}",o[..]).code==XpCode.ok;
+  #assert xp_award_with(rk,"{\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\",\"role\":\"runner\",\"xp\":0}",o[..]).code==XpCode.ok;
+  #assert xp_award_with(rk,"{\"role\":\"runner\",\"xp\":4,\"pubkey\":\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"}",o[..]).code==XpCode.ok;
+  b1:[4096]u8;b2:[4096]u8;
+  one:=ts_swap(ts_swap(AWARD1_BODY,"tb4.fix-git.beat-fable-low@1\"},","x\"},",b1[..]),"tb4.fix-git.beat-fable-low@1\",\"accepted","x\",\"accepted",b2[..]);
+  #assert xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,ts_swap(AWARD1_TAGS,"tb4.fix-git.beat-fable-low@1","x",g[..]),one).code==XpCode.ok;
+  #assert xp_rev_with("\"reason\":\"The runs were graded against the wrong verifier version.\"","\"reason\":\"r\"",o[..]).code==XpCode.ok;
+  #assert !xp_coordinate("30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@10",QUEST_PK,"tb4.fix-git.beat-fable-low@1");
+  #assert xp_coordinate("30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:x",QUEST_PK,"x") && xp_coordinate("30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@1",QUEST_PK,"tb4.fix-git.beat-fable-low@1");
+}
+
+// The chapter's five events, read.
+XpSet :: struct {q:XpQuest;a1:XpAward;a2:XpAward;r1:XpRevocation;forged:XpRevocation;}
+xp_set :: ()->XpSet {
+  s:XpSet;
+  s.q=xp_quest_read(XP_QUEST,QUEST_ID,QUEST_PK,QUEST_TAGS,QUEST_BODY);
+  s.a1=xp_award_read(XP_AWARD,AWARD1_ID,AWARD1_PK,AWARD1_TAGS,AWARD1_BODY);
+  s.a2=xp_award_read(XP_AWARD,AWARD2_ID,AWARD2_PK,AWARD2_TAGS,AWARD2_BODY);
+  s.r1=xp_revocation_read(XP_REVOCATION,REVOKE1_ID,REVOKE1_PK,REVOKE1_TAGS,REVOKE1_BODY);
+  s.forged=xp_revocation_read(XP_REVOCATION,FORGED_ID,FORGED_PK,FORGED_TAGS,FORGED_BODY);
+  return s;
+}
+XP_K2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+XP_K4 :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
+XP_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+
+#test "one award counts: author 6, runner 4" {
+  s:=xp_set();trusted:=[1]string.[QUEST_PK];qs:=[1]XpQuest.[s.q];as:=[1]XpAward.[s.a1];rs:[1]XpRevocation;
+  ruled:=[1]bool.[true];why:[1]XpWhy;out:[4]XpCredit;
+  l:=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);
+  #assert l.counted==1 && l.credits==2 && l.conflicts==0 && l.revoked==0 && why[0]==XpWhy.counted;
+  #assert out[0].pubkey==XP_K2 && out[0].xp==6 && out[1].pubkey==XP_K4 && out[1].xp==4;
+  // Untrusted referee, unrun rule, refused read, short output.
+  l=xp_ledger(trusted[0..<0],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert l.counted==0 && why[0]==XpWhy.untrusted;
+  ruled[0]=false;l=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[..]);#assert l.counted==0 && why[0]==XpWhy.rule && l.credits==0;
+  ruled[0]=true;
+  l=xp_ledger(trusted[..],qs[..],as[..],rs[0..<0],ruled[..],why[..],out[0..<1]);#assert l.credits== -1;
+  bad:=as;bad[0].code=XpCode.awardees;l=xp_ledger(trusted[..],qs[..],bad[..],rs[0..<0],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.refused;
+}
+#test "a revoked award is removed from the derived ledger; its replacement counts" {
+  s:=xp_set();trusted:=[1]string.[QUEST_PK];qs:=[1]XpQuest.[s.q];rs0:[1]XpRevocation;
+  as:=[2]XpAward.[s.a1,s.a2];ruled:=[2]bool.[true,true];why:[2]XpWhy;out:[4]XpCredit;
+  // Both live: two awards on one key, a conflict; neither counts.
+  l:=xp_ledger(trusted[..],qs[..],as[..],rs0[0..<0],ruled[..],why[..],out[..]);
+  #assert l.counted==0 && l.conflicts==2 && l.credits==0 && why[0]==XpWhy.conflict && why[1]==XpWhy.conflict;
+  // The referee revokes the first: it is gone, the key is free, the second counts.
+  rs:=[1]XpRevocation.[s.r1];
+  l=xp_ledger(trusted[..],qs[..],as[..],rs[..],ruled[..],why[..],out[..]);
+  #assert l.counted==1 && l.revoked==1 && l.conflicts==0 && why[0]==XpWhy.revoked && why[1]==XpWhy.counted && l.credits==2;
+  #assert out[0].pubkey==XP_K7 && out[0].xp==6 && out[1].pubkey==XP_K4 && out[1].xp==4;
+  // Alone, the revoked award credits no one.
+  l=xp_ledger(trusted[..],qs[..],as[0..<1],rs[..],ruled[..],why[..],out[..]);#assert l.counted==0 && l.credits==0 && why[0]==XpWhy.revoked;
+  // A revocation by another key, or naming another key or award, removes nothing.
+  forged:=[1]XpRevocation.[s.forged];#assert s.forged.code==XpCode.signer;
+  l=xp_ledger(trusted[..],qs[..],as[0..<1],forged[..],ruled[..],why[..],out[..]);#assert l.counted==1 && why[0]==XpWhy.counted;
+  other:=rs;other[0].key="x";l=xp_ledger(trusted[..],qs[..],as[0..<1],other[..],ruled[..],why[..],out[..]);#assert l.counted==1;
+  other=rs;other[0].award=AWARD2_ID;l=xp_ledger(trusted[..],qs[..],as[0..<1],other[..],ruled[..],why[..],out[..]);#assert l.counted==1;
+  other=rs;other[0].referee=XP_K2;l=xp_ledger(trusted[..],qs[..],as[0..<1],other[..],ruled[..],why[..],out[..]);#assert l.counted==1;
+  // A trusted-looking revocation from a referee the reader doesn't trust removes nothing either.
+  both:=[2]string.[XP_K2,QUEST_PK];
+  wrong:=as;wrong[0].referee=XP_K2;
+  l=xp_ledger(both[1..<2],qs[..],wrong[0..<1],other[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.untrusted;
+}
+#test "the ledger binds each award to its exact quest" {
+  s:=xp_set();trusted:=[1]string.[QUEST_PK];ruled:=[2]bool.[true,true];why:[2]XpWhy;out:[4]XpCredit;
+  qs:=[1]XpQuest.[s.q];as:=[1]XpAward.[s.a1];nr:[1]XpRevocation;none:=nr[0..<0];
+  // The same event twice counts once.
+  two:=[2]XpAward.[s.a1,s.a1];
+  l:=xp_ledger(trusted[..],qs[..],two[..],none[..],ruled[..],why[..],out[..]);#assert l.counted==1 && why[1]==XpWhy.duplicate && out[0].xp==6;
+  // No quest, a refused quest, another referee's quest.
+  l=xp_ledger(trusted[..],qs[0..<0],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.no_quest;
+  bq:=qs;bq[0].code=XpCode.award;l=xp_ledger(trusted[..],bq[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.no_quest;
+  bq=qs;bq[0].referee=XP_K2;l=xp_ledger(trusted[..],bq[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.no_quest;
+  bq=qs;bq[0].event=AWARD2_ID;l=xp_ledger(trusted[..],bq[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.no_quest;
+  // A rewritten version: a second quest event at the address.
+  rw:=[2]XpQuest.[s.q,s.q];rw[1].event=AWARD2_ID;
+  l=xp_ledger(trusted[..],rw[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.rewritten;
+  rw[1].code=XpCode.text;l=xp_ledger(trusted[..],rw[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted;
+  rw[1].code=XpCode.ok;rw[1].address="x@1";l=xp_ledger(trusted[..],rw[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted;
+  rw[1].address=s.q.address;rw[1].referee=XP_K2;l=xp_ledger(trusted[..],rw[..],as[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted;
+  // Key, season, XP table.
+  b:=as;b[0].key="30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@2";
+  l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.key;
+  b=as;b[0].key="30194:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tb4.fix-git.beat-fable-low@1";
+  l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.key;
+  b=as;b[0].accepted=1790000000;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted;
+  b[0].accepted=1789999999;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.time;
+  b[0].accepted=1798000000;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted;
+  b[0].accepted=1798000001;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.time;
+  b=as;b[0].xp[1]=5;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp;
+  b=as;b[0].xp[0]=7;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp;
+  b=as;b[0].roles[0]="runner";b[0].roles[1]="author";l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp;
+  b=as;b[0].roles[1]="author";l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp;
+  b=as;b[0].n=1;l=xp_ledger(trusted[..],qs[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.xp;
+  // Zero XP gets no credit; one person in two awards sums.
+  z:=qs;z[0].xp[0]=0;b=as;b[0].xp[0]=0;
+  l=xp_ledger(trusted[..],z[..],b[..],none[..],ruled[..],why[..],out[..]);#assert why[0]==XpWhy.counted && l.credits==1 && out[0].pubkey==XP_K4 && out[0].xp==4;
+  q2:=[2]XpQuest.[s.q,s.q];q2[1].event=AWARD2_ID;q2[1].address="other@1";
+  a2:=[2]XpAward.[s.a1,s.a1];a2[1].event=REVOKE1_ID;a2[1].quest=AWARD2_ID;a2[1].key="30193:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:other@1";
+  l=xp_ledger(trusted[..],q2[..],a2[..],none[..],ruled[..],why[..],out[..]);
+  #assert l.counted==2 && l.credits==2 && out[0].xp==12 && out[1].xp==8;
+  // Awards from two referees on one key string don't conflict.
+  tw:=[2]string.[QUEST_PK,XP_K2];q3:=q2;q3[1].referee=XP_K2;q3[1].address=s.q.address;
+  a3:=a2;a3[1].referee=XP_K2;a3[1].key="30193:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:tb4.fix-git.beat-fable-low@1";
+  l=xp_ledger(tw[..],q3[..],a3[..],none[..],ruled[..],why[..],out[..]);#assert l.counted==2 && l.conflicts==0;
+  a3[1].key=a3[0].key;l=xp_ledger(tw[..],q3[..],a3[..],none[..],ruled[..],why[..],out[..]);#assert why[1]==XpWhy.key && why[0]==XpWhy.counted;
+}
+
+// ---- reading helpers
+
+// Characters in a raw JSON string: an escape is one, a UTF-8 sequence is one.
+xp_chars :: (raw:string)->int {
+  n:=0;i:=0;
+  while i<raw.count {
+    c:=raw[i];
+    if c=='\\' {i+=ifx raw[i+1]=='u' then 6 else 2;}
+    else {i+=1;}
+    if (c&0xc0)!=0x80 {n+=1;}
+  }
+  return n;
+}
+// The NIP-KB id grammar: ^[a-z][a-z0-9.-]{0,127}$.
+xp_id_ok :: (s:string)->bool {
+  if s.count<1 || s.count>128 || s[0]<'a' {return false;}   // the loop holds s[0] to [a-z0-9.-]
+  for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='-') {return false;}}
+  return true;
+}
+// A season slug: 1 to 64 bytes of [a-z0-9-].
+xp_slug_ok :: (s:string)->bool {
+  if s.count<1 || s.count>64 {return false;}
+  for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
+  return true;
+}
+// The tags as an event for nt_tag.
+xp_event :: (tags:string)->NtEvent {e:NtEvent;e.ok=true;e.original=tags;e.tags_to=tags.count;return e;}
+// The one tag named name, its first value; "" with ok false unless exactly one.
+XpOne :: struct {ok:bool;value:string;}
+xp_one :: (tags:string,name:string)->XpOne {
+  e:=xp_event(tags);t:=nt_tag(e,name,0);
+  if t.n!=1 || t.values<1 {return XpOne.{};}
+  return XpOne.{ok=true,value=nt_raw(e,t.v[0])};
+}
+// How many t tags start with prefix, and the rest of the last one.
+xp_prefixed :: (tags:string,prefix:string)->XpOne {
+  e:=xp_event(tags);n:=nt_tags(e,"t");count:=0;r:XpOne;
+  for k:0..<n {
+    v:=nt_raw(e,nt_tag(e,"t",k).v[0]);   // xk_tags has refused a t tag without a value
+    if v.count>=prefix.count && v[0..<prefix.count]==prefix {count+=1;r.value=v[prefix.count..<v.count];}
+  }
+  r.ok=count==1;
+  return r;
+}
+xp_int :: (j:[]Json,tok:int)->int {
+  if tok!=JSON_NUMBER {return -1;}
+  v:=json_int(json_text(j));
+  return ifx v.ok && v.value>=0 then v.value else -1;
+}
+// v, requires and type: XpCode.ok, or the refusal. bit is the key's bit (1, 2, 4) or 0.
+xp_envelope :: (key:string,j:[]Json,v:int,type:string)->XpCode {
+  if key=="v" && (v!=JSON_NUMBER || json_text(j)!="1") {return XpCode.version;}
+  if key=="requires" && (v!=JSON_ARRAY || json_next(j)!=JSON_ARRAY_END) {return XpCode.requires;}
+  if key=="type" && (v!=JSON_STRING || json_text(j)!=type) {return XpCode.type;}
+  return XpCode.ok;
+}
+// An event reference {id, pubkey, kind[, coordinate]}: its id and pubkey, or ok false.
+XpRef :: struct {ok:bool;id:string;pubkey:string;coordinate:string;}
+xp_ref :: (j:[]Json,tok:int,kind:string,coordinate:bool)->XpRef {
+  r:XpRef;seen:=0;
+  if tok!=JSON_OBJECT {return r;}
+  t:=json_next(j);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return XpRef.{};}
+    key:=json_text(j);v:=json_next(j);bit:=0;
+    if key=="id" {bit=1;} else if key=="pubkey" {bit=2;} else if key=="kind" {bit=4;} else if coordinate && key=="coordinate" {bit=8;}
+    if bit==0 || (seen&bit)!=0 {return XpRef.{};}
+    seen|=bit;
+    if bit==1 {if v!=JSON_STRING || !xk_hex64(json_text(j)) {return XpRef.{};}r.id=json_text(j);}
+    if bit==2 {if v!=JSON_STRING || !xk_hex64(json_text(j)) {return XpRef.{};}r.pubkey=json_text(j);}
+    if bit==4 {if v!=JSON_NUMBER || json_text(j)!=kind {return XpRef.{};}}
+    if bit==8 {if v!=JSON_STRING {return XpRef.{};}r.coordinate=json_text(j);}
+    t=json_next(j);
+  }
+  r.ok=seen==ifx coordinate then 15 else 7;
+  return r;
+}
+
+// ---- 30193: a quest.
+xp_quest_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpQuest {
+  r:XpQuest;r.event=event;r.referee=signer;
+  if kind!=XP_QUEST {return XpQuest.{code=XpCode.kind};}
+  ps:[1]string;tc:=xk_tags(tags,"oa:xp:quest:v1",ps[..]);
+  if tc.code!=XkCode.ok {return XpQuest.{code=ifx tc.code==XkCode.marker then XpCode.marker else XpCode.tags};}
+  id:="";version:int;season:="";rule:="";names:[2]string;counts:[2]int;awards:=0;
+  j:[1]Json;json_start(j[..],content);seen:=0;
+  if json_next(j[..])!=JSON_OBJECT {return XpQuest.{code=XpCode.body};}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return XpQuest.{code=XpCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);bit:=0;
+    if key=="v" {bit=1;} else if key=="requires" {bit=2;} else if key=="type" {bit=4;} else if key=="id" {bit=8;}
+    else if key=="version" {bit=16;} else if key=="season" {bit=32;} else if key=="title" {bit=64;} else if key=="objective" {bit=128;}
+    else if key=="acceptance" {bit=256;} else if key=="reference" {bit=512;} else if key=="award" {bit=1024;} else if key=="completions" {bit=2048;}
+    else if key=="max_awards" {return XpQuest.{code=XpCode.policy};}
+    if bit==0 || (seen&bit)!=0 {return XpQuest.{code=XpCode.field};}
+    seen|=bit;
+    e:=xp_envelope(key,j[..],v,"quest");if e!=XpCode.ok {return XpQuest.{code=e};}
+    if bit==8 {if v!=JSON_STRING || !xp_id_ok(json_text(j[..])) {return XpQuest.{code=XpCode.id};}id=json_text(j[..]);}
+    if bit==16 {version=xp_int(j[..],v);if version<1 {return XpQuest.{code=XpCode.id};}}
+    if bit==32 {
+      if v!=JSON_OBJECT {return XpQuest.{code=XpCode.season};}
+      got:=0;s:=json_next(j[..]);
+      while s!=JSON_OBJECT_END {
+        if s!=JSON_STRING {return XpQuest.{code=XpCode.season};}
+        k:=json_text(j[..]);w:=json_next(j[..]);
+        if k=="id" && (got&1)==0 {if w!=JSON_STRING || !xp_slug_ok(json_text(j[..])) {return XpQuest.{code=XpCode.season};}season=json_text(j[..]);got|=1;}
+        else if k=="opens_at" && (got&2)==0 {r.opens=xp_int(j[..],w);if r.opens<0 {return XpQuest.{code=XpCode.season};}got|=2;}
+        else if k=="closes_at" && (got&4)==0 {r.closes=xp_int(j[..],w);got|=4;}   // opens_at >= 0 and opens_at < closes_at hold it
+        else {return XpQuest.{code=XpCode.season};}
+        s=json_next(j[..]);
+      }
+      if got!=7 || r.opens>=r.closes {return XpQuest.{code=XpCode.season};}
+    }
+    if bit==64 {if v!=JSON_STRING || xp_chars(json_text(j[..]))>200 {return XpQuest.{code=XpCode.text};}}
+    if bit==128 {if v!=JSON_STRING || xp_chars(json_text(j[..]))>4000 {return XpQuest.{code=XpCode.text};}}
+    if bit==256 {
+      if v!=JSON_OBJECT {return XpQuest.{code=XpCode.rule};}
+      a:=json_next(j[..]);
+      while a!=JSON_OBJECT_END {
+        if a!=JSON_STRING {return XpQuest.{code=XpCode.rule};}
+        k:=json_text(j[..]);w:=json_next(j[..]);
+        if k=="rule" {if w!=JSON_STRING || rule.count>0 {return XpQuest.{code=XpCode.rule};}rule=json_text(j[..]);}
+        else if !json_skip(j[..]) {return XpQuest.{code=XpCode.body};}
+        a=json_next(j[..]);
+      }
+    }
+    if bit==512 {
+      if v!=JSON_NULL && v!=JSON_OBJECT {return XpQuest.{code=XpCode.field};}
+      if !json_skip(j[..]) {return XpQuest.{code=XpCode.body};}
+    }
+    if bit==1024 {
+      if v!=JSON_OBJECT {return XpQuest.{code=XpCode.award};}
+      a:=json_next(j[..]);
+      while a!=JSON_OBJECT_END {
+        if a!=JSON_STRING || awards==2 {return XpQuest.{code=XpCode.award};}
+        names[awards]=json_text(j[..]);counts[awards]=xp_int(j[..],json_next(j[..]));
+        if counts[awards]<0 {return XpQuest.{code=XpCode.award};}
+        awards+=1;a=json_next(j[..]);
+      }
+    }
+    if bit==2048 {if v!=JSON_STRING || json_text(j[..])!="first" {return XpQuest.{code=XpCode.policy};}}
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return XpQuest.{code=XpCode.body};}
+  if seen!=4095 {return XpQuest.{code=XpCode.field};}
+  // The rule's roles, in its order.
+  if rule=="kb-transfer" {r.roles[0]="author";r.roles[1]="runner";}
+  else if rule=="reproduce" {r.roles[0]="claimant";r.roles[1]="reproducer";}
+  else {return XpQuest.{code=XpCode.rule};}
+  // Each role found among the (at most two) names: fewer, repeated or other names refuse.
+  for i:0..<2 {
+    k:=ifx names[0]==r.roles[i] then 0 else 1;
+    if names[k]!=r.roles[i] {return XpQuest.{code=XpCode.award};}
+    r.xp[i]=counts[k];
+  }
+  if r.xp[0]+r.xp[1]<1 || r.xp[0]+r.xp[1]>XP_MAX_AWARD {return XpQuest.{code=XpCode.award};}
+  // d is <id>@<version>; the season and rule tags name the body's.
+  d:=xp_one(tags,"d");
+  digits:[24]u8;dn:=json_write_int(digits[..],0,version);
+  if !d.ok || d.value.count!=id.count+1+dn || d.value[0..<id.count]!=id || d.value[id.count]!='@' || d.value[id.count+1..<d.value.count]!=cast(string)digits[0..<dn] {return XpQuest.{code=XpCode.mismatch};}
+  st:=xp_prefixed(tags,"oa:xp:season:");rt:=xp_prefixed(tags,"oa:xp:rule:");
+  if !st.ok || st.value!=season || !rt.ok || rt.value!=rule {return XpQuest.{code=XpCode.mismatch};}
+  r.address=d.value;
+  return r;
+}
+
+// ---- 3193: an award.
+xp_award_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpAward {
+  r:XpAward;r.event=event;r.referee=signer;
+  if kind!=XP_AWARD {return XpAward.{code=XpCode.kind};}
+  ps:[2]string;tc:=xk_tags(tags,"oa:xp:award:v1",ps[..]);
+  if tc.code==XkCode.marker {return XpAward.{code=XpCode.marker};}
+  if tc.code==XkCode.mismatch {return XpAward.{code=XpCode.mismatch};}
+  if tc.code!=XkCode.ok {return XpAward.{code=XpCode.tags};}
+  q:XpRef;
+  j:[1]Json;json_start(j[..],content);seen:=0;
+  if json_next(j[..])!=JSON_OBJECT {return XpAward.{code=XpCode.body};}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return XpAward.{code=XpCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);bit:=0;
+    if key=="v" {bit=1;} else if key=="requires" {bit=2;} else if key=="type" {bit=4;} else if key=="quest" {bit=8;}
+    else if key=="key" {bit=16;} else if key=="accepted_at" {bit=32;} else if key=="entry" {bit=64;} else if key=="entry_version" {bit=128;}
+    else if key=="evidence" {bit=256;} else if key=="awardees" {bit=512;}
+    if bit==0 || (seen&bit)!=0 {return XpAward.{code=XpCode.field};}
+    seen|=bit;
+    e:=xp_envelope(key,j[..],v,"award");if e!=XpCode.ok {return XpAward.{code=e};}
+    if bit==8 {q=xp_ref(j[..],v,"30193",true);if !q.ok {return XpAward.{code=XpCode.quest};}}
+    if bit==16 {if v!=JSON_STRING {return XpAward.{code=XpCode.key};}r.key=json_text(j[..]);}
+    if bit==32 {r.accepted=xp_int(j[..],v);if r.accepted<0 {return XpAward.{code=XpCode.field};}}
+    if bit==64 || bit==128 {if v!=JSON_OBJECT {return XpAward.{code=XpCode.field};}if !json_skip(j[..]) {return XpAward.{code=XpCode.body};}}
+    if bit==256 {if v!=JSON_ARRAY {return XpAward.{code=XpCode.field};}if !json_skip(j[..]) {return XpAward.{code=XpCode.body};}}
+    if bit==512 {
+      if v!=JSON_ARRAY {return XpAward.{code=XpCode.awardees};}
+      a:=json_next(j[..]);
+      while a!=JSON_ARRAY_END {
+        if a!=JSON_OBJECT || r.n==2 {return XpAward.{code=XpCode.awardees};}
+        got:=0;x:=json_next(j[..]);
+        while x!=JSON_OBJECT_END {
+          if x!=JSON_STRING {return XpAward.{code=XpCode.awardees};}
+          k:=json_text(j[..]);w:=json_next(j[..]);
+          if k=="role" && (got&1)==0 {if w!=JSON_STRING {return XpAward.{code=XpCode.awardees};}r.roles[r.n]=json_text(j[..]);got|=1;}
+          else if k=="pubkey" && (got&2)==0 {if w!=JSON_STRING || !xk_hex64(json_text(j[..])) {return XpAward.{code=XpCode.awardees};}r.keys[r.n]=json_text(j[..]);got|=2;}
+          else if k=="xp" && (got&4)==0 {r.xp[r.n]=xp_int(j[..],w);if r.xp[r.n]<0 {return XpAward.{code=XpCode.awardees};}got|=4;}
+          else {return XpAward.{code=XpCode.awardees};}
+          x=json_next(j[..]);
+        }
+        if got!=7 {return XpAward.{code=XpCode.awardees};}
+        r.n+=1;a=json_next(j[..]);
+      }
+      if r.n==0 || (r.n==2 && r.keys[0]==r.keys[1]) {return XpAward.{code=XpCode.awardees};}
+    }
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return XpAward.{code=XpCode.body};}
+  if (seen&831)!=831 {return XpAward.{code=XpCode.field};}   // all but entry and entry_version
+  if signer!=q.pubkey {return XpAward.{code=XpCode.signer};}
+  c:=q.coordinate;
+  if c.count<72 || c[0..<6]!="30193:" || c[6..<70]!=q.pubkey || c[70]!=':' {return XpAward.{code=XpCode.quest};}
+  if r.key!=c {return XpAward.{code=XpCode.key};}
+  r.quest=q.id;
+  a:=xp_one(tags,"a");e:=xp_event(tags);first:=nt_tag(e,"e",0);
+  if !a.ok || a.value!=r.key || !first.found || nt_raw(e,first.v[0])!=q.id || tc.count!=r.n {return XpAward.{code=XpCode.mismatch};}
+  for i:0..<r.n {if ps[i]!=r.keys[i] {return XpAward.{code=XpCode.mismatch};}}
+  return r;
+}
+
+// ---- 3194: a revocation.
+xp_revocation_read :: (kind:int,event:string,signer:string,tags:string,content:string)->XpRevocation {
+  r:XpRevocation;r.event=event;r.referee=signer;
+  if kind!=XP_REVOCATION {return XpRevocation.{code=XpCode.kind};}
+  ps:[1]string;tc:=xk_tags(tags,"oa:xp:revocation:v1",ps[..]);
+  if tc.code!=XkCode.ok {return XpRevocation.{code=ifx tc.code==XkCode.marker then XpCode.marker else XpCode.tags};}
+  a:XpRef;
+  j:[1]Json;json_start(j[..],content);seen:=0;
+  if json_next(j[..])!=JSON_OBJECT {return XpRevocation.{code=XpCode.body};}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    if t!=JSON_STRING {return XpRevocation.{code=XpCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);bit:=0;
+    if key=="v" {bit=1;} else if key=="requires" {bit=2;} else if key=="type" {bit=4;} else if key=="award" {bit=8;}
+    else if key=="key" {bit=16;} else if key=="reason" {bit=32;}
+    if bit==0 || (seen&bit)!=0 {return XpRevocation.{code=XpCode.field};}
+    seen|=bit;
+    e:=xp_envelope(key,j[..],v,"revocation");if e!=XpCode.ok {return XpRevocation.{code=e};}
+    if bit==8 {a=xp_ref(j[..],v,"3193",false);if !a.ok {return XpRevocation.{code=XpCode.award};}}
+    if bit==16 {if v!=JSON_STRING {return XpRevocation.{code=XpCode.key};}r.key=json_text(j[..]);}
+    if bit==32 {
+      if v!=JSON_STRING {return XpRevocation.{code=XpCode.reason};}
+      n:=xp_chars(json_text(j[..]));
+      if n<1 || n>1000 {return XpRevocation.{code=XpCode.reason};}
+    }
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return XpRevocation.{code=XpCode.body};}
+  if seen!=63 {return XpRevocation.{code=XpCode.field};}
+  if signer!=a.pubkey {return XpRevocation.{code=XpCode.signer};}
+  et:=xp_one(tags,"e");at:=xp_one(tags,"a");
+  if !et.ok || et.value!=a.id || !at.ok || at.value!=r.key {return XpRevocation.{code=XpCode.mismatch};}
+  r.award=a.id;
+  return r;
+}
+
+// ---- the ledger
+// book:begin ledger
+xp_trusted :: (trusted:[]string,key:string)->bool {for k:trusted {if k==key {return true;}}return false;}
+// Whether key is 30193:<referee>:<address>.
+xp_coordinate :: (key:string,referee:string,address:string)->bool {
+  if key.count!=71+address.count {return false;}
+  return key[0..<6]=="30193:" && key[6..<70]==referee && key[70]==':' && key[71..<key.count]==address;
+}
+xp_ledger :: (trusted:[]string,quests:[]XpQuest,awards:[]XpAward,revs:[]XpRevocation,ruled:[]bool,why:[]XpWhy,out:[]XpCredit)->XpLedger {
+  l:XpLedger;
+  for i:0..<awards.count {
+    a:=awards[i];why[i]=XpWhy.counted;
+    dup:=false;for k:0..<i {if awards[k].event==a.event {dup=true;}}
+    if dup {why[i]=XpWhy.duplicate;continue;}
+    if a.code!=XpCode.ok {why[i]=XpWhy.refused;continue;}
+    if !xp_trusted(trusted,a.referee) {why[i]=XpWhy.untrusted;continue;}
+    revoked:=false;
+    for r:revs {if r.code==XpCode.ok && r.award==a.event && r.referee==a.referee && r.key==a.key {revoked=true;}}
+    if revoked {why[i]=XpWhy.revoked;l.revoked+=1;continue;}
+    at:=-1;
+    for k:0..<quests.count {if quests[k].code==XpCode.ok && quests[k].event==a.quest && quests[k].referee==a.referee {at=k;}}
+    if at<0 {why[i]=XpWhy.no_quest;continue;}
+    q:=quests[at];rewritten:=false;
+    for o:quests {if o.code==XpCode.ok && o.referee==q.referee && o.address==q.address && o.event!=q.event {rewritten=true;}}
+    if rewritten {why[i]=XpWhy.rewritten;continue;}
+    if !xp_coordinate(a.key,q.referee,q.address) {why[i]=XpWhy.key;continue;}
+    if a.accepted<q.opens || a.accepted>q.closes {why[i]=XpWhy.time;continue;}
+    if a.n!=2 || a.roles[0]!=q.roles[0] || a.roles[1]!=q.roles[1] || a.xp[0]!=q.xp[0] || a.xp[1]!=q.xp[1] {why[i]=XpWhy.xp;continue;}
+    if !ruled[i] {why[i]=XpWhy.rule;continue;}
+  }
+  // Two live awards from one referee on one key: a conflict, and neither counts.
+  for i:0..<awards.count {
+    for k:0..<awards.count {
+      live:=(why[k]==XpWhy.counted || why[k]==XpWhy.conflict) && (why[i]==XpWhy.counted || why[i]==XpWhy.conflict);
+      if k!=i && live && awards[k].referee==awards[i].referee && awards[k].key==awards[i].key {why[i]=XpWhy.conflict;}
+    }
+  }
+  for i:0..<awards.count {
+    if why[i]==XpWhy.conflict {l.conflicts+=1;}
+    if why[i]!=XpWhy.counted {continue;}
+    l.counted+=1;
+    for k:0..<awards[i].n {
+      if awards[i].xp[k]==0 || l.credits<0 {continue;}
+      at:=-1;for c:0..<l.credits {if out[c].pubkey==awards[i].keys[k] {at=c;}}
+      if at<0 {
+        if l.credits==out.count {l.credits= -1;continue;}
+        out[l.credits]=XpCredit.{pubkey=awards[i].keys[k],xp=0};at=l.credits;l.credits+=1;
+      }
+      out[at].xp+=awards[i].xp[k];
+    }
+  }
+  return l;
+}
+// book:end ledger
