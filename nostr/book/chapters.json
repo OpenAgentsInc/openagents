@@ -647,14 +647,17 @@
    "number": 31,
    "title": "Publish and wait for OK",
    "file": "ch031-publish-and-wait-for-ok.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     29,
     21
    ],
    "source": [
-    "coax/lib/nostr/relay.coax"
+    "coax/lib/nostr/relay.coax",
+    "coax/lib/nostr/relay_read.coax",
+    "nostr/examples/publish-ok.coax",
+    "nostr/examples/checks/publish-ok.coax"
    ],
    "qualified_targets": [
     "cpu"

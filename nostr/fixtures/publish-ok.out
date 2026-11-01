@@ -1,0 +1,49 @@
+t=0 publish event A (id aee488a2...): slot 0
+t=0 publish event B (id c195de5e...): slot 1
+t=0 publish event C (id 0b31f609...): slot 2
+  publish A again: slot 0; an id of 31 bytes: -1
+  rl_next before the connection opens: RL_OUT_NONE
+  queued: slot 0 QUEUED, slot 1 QUEUED, slot 2 QUEUED
+t=50 connection 1 open
+  send ["EVENT",{"id":"aee488a2..."}] (358 bytes): event A, publish slot 0, OK due by t=10050
+  send ["EVENT",{"id":"c195de5e..."}] (358 bytes): event B, publish slot 1, OK due by t=10050
+  send ["EVENT",{"id":"0b31f609..."}] (358 bytes): event C, publish slot 2, OK due by t=10050
+  after sending: slot 0 SENT, slot 1 SENT, slot 2 SENT
+t=120 the relay answers:
+  recv ["OK",A,true,""] -> RL_ACK
+  recv ["OK",A,true,"duplicate: already have this event"] -> RL_UNKNOWN
+  recv ["OK",B,false,"rate-limited: slow down there chief"] -> RL_ACK
+  recv ["OK","b1a649eb...",true,""] (no publish has this id) -> RL_UNKNOWN
+  recv ["OK",C,false,""] (a refusal must carry a prefix) -> RL_BAD
+  recv ["OK","b1a6",true,""] (the id is 2 bytes) -> RL_BAD
+  t=120: slot 0 ACCEPTED, slot 1 REFUSED, slot 2 SENT
+t=10049 rl_tick: RL_DO_NONE, timeouts 0
+  t=10049: slot 0 ACCEPTED, slot 1 REFUSED, slot 2 SENT
+t=10050 rl_tick: RL_DO_NONE, timeouts 1
+  t=10050: slot 0 ACCEPTED, slot 1 REFUSED, slot 2 TIMEOUT
+t=10100 a late answer:
+  recv ["OK",C,true,"duplicate: already have this event"] -> RL_ACK
+  t=10100: slot 0 ACCEPTED, slot 1 REFUSED, slot 2 ACCEPTED
+t=10200 publish event B again: slot 0
+  send ["EVENT",{"id":"c195de5e..."}] (358 bytes): event B, publish slot 0, OK due by t=20200
+  t=10200: slot 0 SENT, slot 1 REFUSED, slot 2 ACCEPTED
+t=10300 the connection closes; reconnect at t=10800
+  t=10300: slot 0 SENT, slot 1 REFUSED, slot 2 ACCEPTED
+t=10850 connection 2 open
+  opened: slot 0 QUEUED, slot 1 REFUSED, slot 2 ACCEPTED
+  send ["EVENT",{"id":"c195de5e..."}] (358 bytes): event B, publish slot 0, OK due by t=20850
+t=10900 the relay answers:
+  recv ["AUTH","c1"] -> RL_AUTH
+  recv ["OK",B,false,"auth-required: we only accept events from registered users"] -> RL_ACK
+  t=10900: slot 0 AUTH, slot 1 REFUSED, slot 2 ACCEPTED
+  send ["AUTH",{"id":"637c0d50...","kind":22242,...}] (409 bytes), tags [["relay","wss://relay.example.com"],["challenge","c1"]]
+t=10950 the relay answers:
+  recv ["OK",<the AUTH event's id>,true,""] -> RL_AUTH
+  t=10950: slot 0 QUEUED, slot 1 REFUSED, slot 2 ACCEPTED
+  send ["EVENT",{"id":"c195de5e..."}] (358 bytes): event B, publish slot 0, OK due by t=20950
+t=11000 the relay answers:
+  recv ["OK",B,true,""] -> RL_ACK
+  t=11000: slot 0 ACCEPTED, slot 1 REFUSED, slot 2 ACCEPTED
+decisions: gdgdllgjgjg
+slots: 111 222 342 342 345 343 243 243 143 643 143 343
+deadlines: 10050 10050 10050 20200 20850 20950

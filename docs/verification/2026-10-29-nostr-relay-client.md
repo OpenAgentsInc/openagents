@@ -138,6 +138,26 @@ from `nostr_message_event_verify_vartime`). Then replace `rxf_req`,
 `_event`. After that the fixture can serve the frames unchanged, and
 `relay_e2e_frames.coax` keeps only the event table.
 
+## Part 3: auth-required on a publish (2026-11-01)
+
+Written for the Nostr book's chapter 31. An `OK false` whose message starts
+with `auth-required:` no longer makes a publish REFUSED. It becomes
+`RP_AUTH` (6): still pending, never timed out, sent again once (QUEUED) when
+the relay accepts an AUTH in the same generation, and sent again on a new
+connection, as NIP-42's "auth-required in response to an EVENT message"
+flow shows. A second `auth-required:` after that retry is REFUSED.
+`RlPub` gained `auth_retried`. `rl_publish` treats RP_AUTH as pending and
+clears the record it reuses. The new check ("publish: auth-required waits
+for AUTH and is sent again once") was written first and failed to compile
+before the change.
+
+`coax mutate coax/lib/nostr/relay.coax` on the final file: 578 mutants, 578
+killed, 0 survived, none marked equivalent. relay.coax has 14 checks.
+`relay_read.coax` (266 checks), `nip42.coax` (49) and the book's chapter 29
+and 31 checks pass. The relay_read and nip42 mutation records were not
+repeated: neither file changed, and relay.coax's mutants are killed by its
+own checks.
+
 ## Missing (not claimed)
 
 1. **message.coax wiring (#6015).** See the one-call TODO above.

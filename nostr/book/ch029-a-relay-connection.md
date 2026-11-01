@@ -700,12 +700,13 @@ so it carries `#steps 2000000000`.
 
 ### The library's own checks
 
-[relay.coax](../../coax/lib/nostr/relay.coax) has 13 checks: the
+[relay.coax](../../coax/lib/nostr/relay.coax) has 14 checks: the
 connect-subscribe-EOSE path, stale generations, unknown and forged input,
 publishes with `OK true`, `OK false`, a timeout and a late `OK`, queue
 overflow, drop and reconnect with `since`, the backoff bounds (including a
 small base that shows the 16-doubling limit), the `AUTH` hook and its
-re-arming on reconnect, shutdown, and the duplicate window forgetting its
+re-arming on reconnect, a publish refused with `auth-required:` and sent
+again after `AUTH` (chapter 31), shutdown, and the duplicate window forgetting its
 oldest id, the subscription ids, and the exported state reader.
 [relay_read.coax](../../coax/lib/nostr/relay_read.coax) checks a real and a
 forged event through `rl_input`, scratch too small or aliased, every relay
@@ -717,9 +718,10 @@ equivalent. The
 [2026-10-30 relay_read record](../../docs/verification/2026-10-30-relay-read.md)
 reports 5,371 of 5,371 killed for `relay_read.coax`, a count that includes
 `relay.coax`'s and `message.coax`'s mutants because `coax mutate` mutates
-every `#authority` unit a file loads. `relay.coax` has not changed since the
-first record (`d7373bcc82`), so those runs were not repeated for this
-chapter. Root-only mutation of the checks file reports no mutation sites:
+every `#authority` unit a file loads. Those runs were not repeated for this
+chapter. Chapter 31 later changed `relay.coax` (the `auth-required:`
+requeue for publishes) and repeated its mutation run on 2026-11-01: 578 of
+578 killed. Root-only mutation of the checks file reports no mutation sites:
 it holds tests and constants only.
 
 ## Summary

@@ -1,0 +1,216 @@
+// book:begin example
+#load "../../coax/lib/nostr/relay_read.coax";
+#load "../../coax/lib/nostr/nip42.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// BIP-340 test vector 1's published key and aux, as in chapter 21. Never
+// sign with a real key in an example.
+PO_KEY :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+PO_AUX :: "0000000000000000000000000000000000000000000000000000000000000001";
+// The script's clock starts at this Unix time, in seconds; t is milliseconds
+// after it.
+PO_AT :: 1793300000;
+PO_RELAY :: "wss://relay.example.com";
+// The OK id that NIP-01's examples abbreviate as "b1a649ebe8...", in full.
+PO_STRANGER :: "b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30";
+
+po_input_name :: (d: int) -> string {
+  names := [12] string.["RL_DELIVER", "RL_DUPLICATE", "RL_STALE", "RL_UNKNOWN", "RL_FORGED", "RL_EOSE",
+                        "RL_ACK", "RL_CLOSED", "RL_NOTICE", "RL_AUTH", "RL_NOT_OPEN", "RL_BAD"];
+  return names[d];
+}
+po_tick_name :: (t: int) -> string {
+  names := [3] string.["RL_DO_NONE", "RL_DO_CONNECT", "RL_DO_TIMEOUT"];
+  return names[t];
+}
+po_pub_name :: (s: int) -> string {
+  names := [7] string.["FREE", "QUEUED", "SENT", "ACCEPTED", "REFUSED", "TIMEOUT", "AUTH"];
+  return names[s];
+}
+
+// A signed event the host keeps for its publish: its bytes and its id.
+PoEvent :: struct { bytes: [1024] u8; count: int; id: [32] u8; }
+po_text :: (e: [] PoEvent, k: int) -> string { return cast(string) e[k].bytes[0..<e[k].count]; }
+
+po_sign :: (created_at: int, kind: int, tags: string, content: string) -> PoEvent {
+  key: [32] u8; aux: [32] u8; e: PoEvent;
+  k := hex_decode_checked(PO_KEY, key[..], false); a := hex_decode_checked(PO_AUX, aux[..], false);
+  work: [1] NostrSignWork; scratch: [1024] u8; result := EVENT_MORE;
+  while result == EVENT_MORE {
+    result = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], e.bytes[..], false);
+  }
+  if result < 0 { return e; }
+  e.count = result;
+  r := nostr_event_read(cast(string) e.bytes[0..<result], scratch[..], false);
+  e.id = r.id;
+  return e;
+}
+// The first 8 hex digits of an id, for printing.
+po_short :: (id: [] u8, out: [] u8) -> string {
+  r := hex_encode_checked(cast(string) id[0..<4], out, false);
+  return cast(string) out[0..<r.written];
+}
+// ["OK",<id>,<verdict>,<message>] with the id as 64 hex digits.
+po_ok :: (id: [] u8, accepted: bool, message: string, out: [] u8) -> string {
+  hex: [64] u8; r := hex_encode_checked(cast(string) id[0..<32], hex[..], false);
+  n := json_raw(out, 0, "[\"OK\",\""); n = json_raw(out, n, cast(string) hex[..]);
+  n = json_raw(out, n, ifx accepted then "\",true," else "\",false,");
+  n = json_write_string(out, n, message); n = json_raw(out, n, "]");
+  return cast(string) out[0..<n];
+}
+
+// What one session went through, for the checks: each rl_input decision
+// (and nip42_input's), the three publish slots' states after each step, and
+// each OK deadline the machine set.
+PoTrace :: struct {
+  decisions: [32] u8; nds: int;
+  states: [64] u8; ns: int;
+  deadlines: [16] int; nd: int;
+}
+po_decided :: (t: [] PoTrace, d: int) { t[0].decisions[t[0].nds] = cast(u8) ('a' + d); t[0].nds += 1; }
+// Records (and, when loud, prints) the publish slots after one step.
+po_slots :: (t: [] PoTrace, r: [] Relay, what: string, loud: bool) {
+  for k: 0..<3 { t[0].states[t[0].ns] = cast(u8) ('0' + r[0].pubs[k].state); t[0].ns += 1; }
+  t[0].states[t[0].ns] = ' '; t[0].ns += 1;
+  if loud {
+    print("  %: slot 0 %, slot 1 %, slot 2 %\n", what,
+          po_pub_name(r[0].pubs[0].state), po_pub_name(r[0].pubs[1].state), po_pub_name(r[0].pubs[2].state));
+  }
+}
+
+// Sends what the open connection asks for until rl_next has nothing: each
+// queued EVENT from the bytes the host kept for that slot, and an AUTH
+// event answering the relay's challenge (chapter 38).
+po_flush :: (t: [] PoTrace, r: [] Relay, n: [] Nip42, gen: int, now: int, ev: [] PoEvent, held: [] int, loud: bool) {
+  while true {
+    o := rl_next(r, now);
+    if o.kind == RL_OUT_NONE { return; }
+    out: [1200] u8; sb: [8] u8;
+    if o.kind == RL_OUT_EVENT {
+      k := held[o.slot];
+      w := nostr_message_write_event(po_text(ev, k), out[..], false);
+      t[0].deadlines[t[0].nd] = r[0].pubs[o.slot].deadline; t[0].nd += 1;
+      if loud {
+        print("  send [\"EVENT\",{\"id\":\"%...\"}] (% bytes): event %, publish slot %, OK due by t=%\n",
+              po_short(ev[k].id[..], sb[..]), w, cast(string) "ABC"[k..<k + 1], o.slot, r[0].pubs[o.slot].deadline);
+      }
+      continue;
+    }
+    if o.kind != RL_OUT_AUTH { return; }
+    s := PO_AT + now / 1000;
+    tags: [512] u8; tp := nip42_template(n, gen, s, tags[..]);
+    a: [1] PoEvent; a[0] = po_sign(tp.created_at, tp.kind, tp.tags, tp.content);
+    scratch: [1024] u8; e := nostr_event_read(po_text(a[..], 0), scratch[..], false);
+    f := nip42_send_fields(r, n, gen, s, e.error == NE_OK, tp.kind, tp.created_at, tp.tags, a[0].id[..], po_text(a[..], 0), out[..]);
+    if f.error != N42_OK { if loud { print("  AUTH not sent (%)\n", f.error); } return; }
+    if loud { print("  send [\"AUTH\",{\"id\":\"%...\",\"kind\":22242,...}] (% bytes), tags %\n", po_short(a[0].id[..], sb[..]), f.written, tp.tags); }
+  }
+}
+
+// One relay text message: an AUTH challenge goes to chapter 38's
+// nip42_input, everything else through rl_read to rl_input. shown is what
+// to print in place of a long message.
+po_recv :: (t: [] PoTrace, r: [] Relay, n: [] Nip42, gen: int, text: string, shown: string, loud: bool) -> int {
+  d := nip42_input(r, n, gen, text);
+  if d < 0 {
+    scratch: [64] u8;
+    d = rl_input(r, gen, rl_read(text, scratch[..], false));
+  }
+  po_decided(t, d);
+  if loud { print("  recv % -> %\n", shown, po_input_name(d)); }
+  return d;
+}
+
+// One scripted session against one relay with a fixed clock: three
+// publishes, every OK outcome, a timeout, a reconnect and an AUTH.
+po_session :: (loud: bool) -> PoTrace {
+  t: [1] PoTrace; r: [1] Relay; n: [1] Nip42; held: [RL_PUBS] int;
+  e := nip42_init(n[..], PO_RELAY);
+  ev: [3] PoEvent;
+  ev[0] = po_sign(PO_AT, 1, "[]", "note A");
+  ev[1] = po_sign(PO_AT, 1, "[]", "note B");
+  ev[2] = po_sign(PO_AT, 1, "[]", "note C");
+  sb: [8] u8; ok: [400] u8; d := 0;
+
+  // Before any connection: three publishes wait in slots 0, 1 and 2.
+  for k: 0..<3 {
+    s := rl_publish(r[..], ev[k].id[..]); held[s] = k;
+    if loud { print("t=0 publish event % (id %...): slot %\n", cast(string) "ABC"[k..<k + 1], po_short(ev[k].id[..], sb[..]), s); }
+  }
+  if loud {
+    print("  publish A again: slot %; an id of 31 bytes: %\n", rl_publish(r[..], ev[0].id[..]), rl_publish(r[..], ev[0].id[0..<31]));
+    print("  rl_next before the connection opens: %\n", ifx rl_next(r[..], 0).kind == RL_OUT_NONE then "RL_OUT_NONE" else "something");
+  }
+  po_slots(t[..], r[..], "queued", loud);
+
+  // Connection 1: open at t=50 and send all three.
+  g := rl_start(r[..], 0);
+  if !rl_opened(r[..], g, 50) { return t[0]; }
+  if loud { print("t=50 connection % open\n", g); }
+  po_flush(t[..], r[..], n[..], g, 50, ev[..], held[..], loud);
+  po_slots(t[..], r[..], "after sending", loud);
+
+  if loud { print("t=120 the relay answers:\n"); }
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[0].id[..], true, "", ok[..]), "[\"OK\",A,true,\"\"]", loud);
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[0].id[..], true, "duplicate: already have this event", ok[..]), "[\"OK\",A,true,\"duplicate: already have this event\"]", loud);
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[1].id[..], false, "rate-limited: slow down there chief", ok[..]), "[\"OK\",B,false,\"rate-limited: slow down there chief\"]", loud);
+  stranger: [32] u8; x := hex_decode_checked(PO_STRANGER, stranger[..], false);
+  d = po_recv(t[..], r[..], n[..], g, po_ok(stranger[..], true, "", ok[..]), "[\"OK\",\"b1a649eb...\",true,\"\"] (no publish has this id)", loud);
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[2].id[..], false, "", ok[..]), "[\"OK\",C,false,\"\"] (a refusal must carry a prefix)", loud);
+  d = po_recv(t[..], r[..], n[..], g, "[\"OK\",\"b1a6\",true,\"\"]", "[\"OK\",\"b1a6\",true,\"\"] (the id is 2 bytes)", loud);
+  po_slots(t[..], r[..], "t=120", loud);
+
+  // C's OK is overdue at 50 + 10000.
+  d = rl_tick(r[..], 10049);
+  if loud { print("t=10049 rl_tick: %, timeouts %\n", po_tick_name(d), r[0].timeouts); }
+  po_slots(t[..], r[..], "t=10049", loud);
+  d = rl_tick(r[..], 10050);
+  if loud { print("t=10050 rl_tick: %, timeouts %\n", po_tick_name(d), r[0].timeouts); }
+  po_slots(t[..], r[..], "t=10050", loud);
+  if loud { print("t=10100 a late answer:\n"); }
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[2].id[..], true, "duplicate: already have this event", ok[..]), "[\"OK\",C,true,\"duplicate: already have this event\"]", loud);
+  po_slots(t[..], r[..], "t=10100", loud);
+
+  // The caller publishes B again; slot 0's publish is resolved, so B takes it.
+  s := rl_publish(r[..], ev[1].id[..]); held[s] = 1;
+  if loud { print("t=10200 publish event B again: slot %\n", s); }
+  po_flush(t[..], r[..], n[..], g, 10200, ev[..], held[..], loud);
+  po_slots(t[..], r[..], "t=10200", loud);
+
+  // The relay closes before it answers.
+  if !rl_dropped(r[..], g, 10300, 0) { return t[0]; }
+  if loud { print("t=10300 the connection closes; reconnect at t=%\n", r[0].deadline); }
+  po_slots(t[..], r[..], "t=10300", loud);
+
+  // Connection 2: B goes again. The relay wants AUTH first.
+  g = rl_start(r[..], r[0].deadline);
+  if !rl_opened(r[..], g, 10850) { return t[0]; }
+  if loud { print("t=10850 connection % open\n", g); }
+  po_slots(t[..], r[..], "opened", loud);
+  po_flush(t[..], r[..], n[..], g, 10850, ev[..], held[..], loud);
+  if loud { print("t=10900 the relay answers:\n"); }
+  d = po_recv(t[..], r[..], n[..], g, "[\"AUTH\",\"c1\"]", "[\"AUTH\",\"c1\"]", loud);
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[1].id[..], false, "auth-required: we only accept events from registered users", ok[..]),
+              "[\"OK\",B,false,\"auth-required: we only accept events from registered users\"]", loud);
+  po_slots(t[..], r[..], "t=10900", loud);
+  po_flush(t[..], r[..], n[..], g, 10900, ev[..], held[..], loud);
+  if loud { print("t=10950 the relay answers:\n"); }
+  d = po_recv(t[..], r[..], n[..], g, po_ok(r[0].auth_id[..], true, "", ok[..]), "[\"OK\",<the AUTH event's id>,true,\"\"]", loud);
+  po_slots(t[..], r[..], "t=10950", loud);
+  po_flush(t[..], r[..], n[..], g, 10950, ev[..], held[..], loud);
+  if loud { print("t=11000 the relay answers:\n"); }
+  d = po_recv(t[..], r[..], n[..], g, po_ok(ev[1].id[..], true, "", ok[..]), "[\"OK\",B,true,\"\"]", loud);
+  po_slots(t[..], r[..], "t=11000", loud);
+  return t[0];
+}
+
+main :: () {
+  t := po_session(true);
+  print("decisions: %\n", cast(string) t.decisions[0..<t.nds]);
+  print("slots: %\n", cast(string) t.states[0..<t.ns - 1]);
+  print("deadlines:");
+  for k: 0..<t.nd { print(" %", t.deadlines[k]); }
+  print("\n");
+}
+// book:end example

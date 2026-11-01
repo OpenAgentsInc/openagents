@@ -15,7 +15,9 @@
 // (capped, jittered) and, on reopen, resubscribes each subscription with
 // `since` set to the newest created_at it delivered (inclusive, so the
 // boundary events come again and are dropped as duplicates) and resends
-// publishes whose OK never came. AUTH: the machine records a challenge and
+// publishes whose OK never came. A publish the relay refused with
+// "auth-required:" waits (RP_AUTH) and is sent again once after an AUTH is
+// accepted in the same generation, and again on a new connection. AUTH: the machine records a challenge and
 // asks for a signed AUTH (RL_OUT_AUTH); a subscription the relay CLOSED with
 // "auth-required:" is retried once after that AUTH is accepted in the same
 // generation. Signing the AUTH event is NIP-42's task (#f426), not this file.
@@ -27,7 +29,7 @@ RL_IDLE :: 0; RL_CONNECTING :: 1; RL_OPEN :: 2; RL_BACKOFF :: 3; RL_SHUT :: 4;
 // Subscription states.
 RS_FREE :: 0; RS_WANT :: 1; RS_LIVE :: 2; RS_CAUGHT :: 3; RS_CLOSING :: 4; RS_REFUSED :: 5; RS_AUTH :: 6;
 // Publish states.
-RP_FREE :: 0; RP_QUEUED :: 1; RP_SENT :: 2; RP_ACCEPTED :: 3; RP_REFUSED :: 4; RP_TIMEOUT :: 5;
+RP_FREE :: 0; RP_QUEUED :: 1; RP_SENT :: 2; RP_ACCEPTED :: 3; RP_REFUSED :: 4; RP_TIMEOUT :: 5; RP_AUTH :: 6;
 // AUTH states.
 RA_NONE :: 0; RA_CHALLENGED :: 1; RA_SENT :: 2; RA_OK :: 3;
 // Decoded relay messages (the first five match message.coax's NM_ types).
@@ -40,7 +42,7 @@ RL_OUT_NONE :: 0; RL_OUT_REQ :: 1; RL_OUT_CLOSE :: 2; RL_OUT_EVENT :: 3; RL_OUT_
 RL_DO_NONE :: 0; RL_DO_CONNECT :: 1; RL_DO_TIMEOUT :: 2;
 
 RlSub :: struct { state: int; serial: int; newest: int; has_newest: bool; events: int; auth_retried: bool; }
-RlPub :: struct { state: int; id: [32] u8; deadline: int; }
+RlPub :: struct { state: int; id: [32] u8; deadline: int; auth_retried: bool; }
 RlIn :: struct { kind: int; sub: string; id: [32] u8; accepted: bool; auth_required: bool; created_at: int; verified: bool; }
 // A send request: for RL_OUT_REQ, write REQ with the subscription's id
 // (rl_sub_text) and its filters, with since overridden when has_since.
@@ -274,6 +276,40 @@ rl_open_at :: (r: [] Relay, now: int) -> int { g := rl_start(r, now); ok := rl_o
   o = rl_next(r[..], 500);
   #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = auth, accepted = true}) == RL_UNKNOWN;
 }
+#test "publish: auth-required waits for AUTH and is sent again once" {
+  r: [1] Relay; g := rl_open_at(r[..], 0); auth := rl_id_of(77);
+  a := rl_id_of(30); b := rl_id_of(31);
+  #assert rl_publish(r[..], a[..]) == 0 && rl_publish(r[..], b[..]) == 1;
+  o := rl_next(r[..], 0); o = rl_next(r[..], 0);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, auth_required = true}) == RL_ACK && r[0].pubs[0].state == RP_AUTH;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = b}) == RL_ACK && r[0].pubs[1].state == RP_REFUSED;   // any other refusal is final
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, auth_required = true}) == RL_UNKNOWN;   // no longer awaiting an OK
+  #assert rl_tick(r[..], 99999) == RL_DO_NONE && r[0].pubs[0].state == RP_AUTH && r[0].timeouts == 0;
+  #assert rl_publish(r[..], a[..]) == 0 && rl_next(r[..], 0).kind == RL_OUT_NONE;   // still pending: same slot, nothing to send
+  #assert rl_publish(r[..], b[..]) == 1 && r[0].pubs[1].state == RP_QUEUED;          // a refused one may be published again
+  o = rl_next(r[..], 0);
+  // the AUTH is accepted: the publish goes out again, once
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_AUTH}) == RL_AUTH && rl_auth_sent(r[..], auth[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = auth, accepted = true}) == RL_AUTH;
+  #assert r[0].pubs[0].state == RP_QUEUED && r[0].pubs[0].auth_retried && r[0].pubs[1].state == RP_SENT;
+  o = rl_next(r[..], 500);
+  #assert o.kind == RL_OUT_EVENT && o.slot == 0 && r[0].pubs[0].deadline == 10500;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, auth_required = true}) == RL_ACK && r[0].pubs[0].state == RP_REFUSED;
+  // a second publish of the same event starts with a fresh retry
+  #assert rl_publish(r[..], a[..]) == 0 && !r[0].pubs[0].auth_retried;
+  o = rl_next(r[..], 600);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, auth_required = true}) == RL_ACK && r[0].pubs[0].state == RP_AUTH;
+  // a refused AUTH leaves it waiting; a new connection sends it again
+  r[0].auth = RA_CHALLENGED; #assert rl_auth_sent(r[..], auth[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = auth}) == RL_AUTH && r[0].pubs[0].state == RP_AUTH;
+  r[0].pubs[0].auth_retried = true;
+  #assert rl_dropped(r[..], g, 700, 0);
+  g = rl_start(r[..], 1200);
+  #assert rl_opened(r[..], g, 1200) && r[0].pubs[0].state == RP_QUEUED && !r[0].pubs[0].auth_retried;
+  // an accepted OK with the prefix is stored
+  o = rl_next(r[..], 1200);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, accepted = true, auth_required = true}) == RL_ACK && r[0].pubs[0].state == RP_ACCEPTED;
+}
 #test "shutdown stops reconnects; refused subscriptions stay refused across reconnect" {
   r: [1] Relay; buf: [24] u8;
   s := rl_subscribe(r[..]); g := rl_open_at(r[..], 0); o := rl_next(r[..], 0); id := rl_sub_text(s, 1, buf[..]);
@@ -358,17 +394,18 @@ rl_id_eq :: (a: [] u8, b: [] u8) -> bool {
 }
 // A publish slot for the event with this 32-byte id (the same slot when it
 // is already pending), or -1 when the id is malformed or every slot is
-// pending. The host keeps the event's bytes for RL_OUT_EVENT.
+// pending (queued, sent or waiting for AUTH). The host keeps the event's bytes for RL_OUT_EVENT.
 rl_publish :: (r: [] Relay, id: [] u8) -> int {
   if id.count != 32 { return -1; }
   free := -1;
   for slot: 0..<RL_PUBS {
     p := r[0].pubs[slot].state;
-    if (p == RP_QUEUED || p == RP_SENT) && rl_id_eq(r[0].pubs[slot].id[..], id) { return slot; }
-    if free < 0 && p != RP_QUEUED && p != RP_SENT { free = slot; }
+    pending := p == RP_QUEUED || p == RP_SENT || p == RP_AUTH;
+    if pending && rl_id_eq(r[0].pubs[slot].id[..], id) { return slot; }
+    if free < 0 && !pending { free = slot; }
   }
   if free < 0 { return -1; }
-  r[0].pubs[free].state = RP_QUEUED;
+  r[0].pubs[free] = RlPub.{state = RP_QUEUED};
   for i: 0..<32 { r[0].pubs[free].id[i] = id[i]; }
   return free;
 }
@@ -403,7 +440,11 @@ rl_opened :: (r: [] Relay, gen: int, now: int) -> bool {
     if st == RS_LIVE || st == RS_CAUGHT || st == RS_AUTH { r[0].subs[slot].state = RS_WANT; }
     r[0].subs[slot].auth_retried = false;
   }
-  for slot: 0..<RL_PUBS { if r[0].pubs[slot].state == RP_SENT { r[0].pubs[slot].state = RP_QUEUED; } }
+  for slot: 0..<RL_PUBS {
+    st := r[0].pubs[slot].state;
+    if st == RP_SENT || st == RP_AUTH { r[0].pubs[slot].state = RP_QUEUED; }
+    r[0].pubs[slot].auth_retried = false;
+  }
   return true;
 }
 // Generation gen's socket closed or failed (or rl_tick timed it out).
@@ -487,12 +528,18 @@ rl_input :: (r: [] Relay, gen: int, m: RlIn) -> int {
           r[0].subs[slot].state = RS_WANT; r[0].subs[slot].auth_retried = true;
         }
       }
+      for slot: 0..<RL_PUBS {
+        if m.accepted && r[0].pubs[slot].state == RP_AUTH && !r[0].pubs[slot].auth_retried {
+          r[0].pubs[slot].state = RP_QUEUED; r[0].pubs[slot].auth_retried = true;
+        }
+      }
       return RL_AUTH;
     }
     for slot: 0..<RL_PUBS {
       p := r[0].pubs[slot].state;
       if (p == RP_SENT || p == RP_TIMEOUT) && rl_id_eq(r[0].pubs[slot].id[..], mid[..]) {
-        r[0].pubs[slot].state = ifx m.accepted then RP_ACCEPTED else RP_REFUSED;
+        again := !m.accepted && m.auth_required && !r[0].pubs[slot].auth_retried;
+        r[0].pubs[slot].state = ifx m.accepted then RP_ACCEPTED else ifx again then RP_AUTH else RP_REFUSED;
         return RL_ACK;
       }
     }
