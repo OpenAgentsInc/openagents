@@ -1,0 +1,125 @@
+// book:begin example
+#load "../../coax/lib/crypto/hkdf.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [192] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Every call below this point must succeed; say so if one doesn't.
+must :: (status: u32) { if status != SHA_OK { print("unexpected status %\n", status); } }
+// Decode lowercase hex that the program itself supplies.
+from_hex :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  if r.error != 0 { print("bad hex\n"); }
+  return out[0..<r.written];
+}
+// One expand block by hand: T(i) = HMAC(PRK, T(i-1) || info || i).
+// `previous` is empty for the first block. Returns the HMAC status.
+block_by_hand :: (prk: [] u8, previous: [] u8, info: [] u8, counter: int, out: [] u8) -> u32 {
+  message: [80] u8;
+  n := 0;
+  for i: 0..<previous.count { message[n] = previous[i]; n += 1; }
+  for i: 0..<info.count { message[n] = info[i]; n += 1; }
+  message[n] = cast(u8) counter; n += 1;
+  return hmac_sha256_checked(prk, message[0..<n], out, false);
+}
+
+STATUS :: [8] string.["ok", "bad state", "bad input", "bad output",
+  "already final", "overlap", "too long", "bad tag"];
+
+main :: () {
+  // Expand makes 32-byte blocks and keeps a prefix of the last one.
+  print("blocks for 42, 76, 82 and 8160 bytes: % % % %\n",
+    hkdf_blocks(42), hkdf_blocks(76), hkdf_blocks(82), hkdf_blocks(8160));
+
+  // RFC 5869 test case 1. Extract: PRK = HMAC(salt, IKM).
+  sb: [13] u8; ib: [22] u8; fb: [10] u8;
+  salt := from_hex("000102030405060708090a0b0c", sb[..]);
+  ikm := from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", ib[..]);
+  info := from_hex("f0f1f2f3f4f5f6f7f8f9", fb[..]);
+  prk: [32] u8;
+  print("extract: %\n", STATUS[hkdf_extract_checked(salt, ikm, prk[..], false)]);
+  show("PRK", prk[..]);
+
+  // Expand by hand: two blocks, then keep the first 42 bytes.
+  t1: [32] u8; t2: [32] u8;
+  must(block_by_hand(prk[..], t1[0..<0], info, 1, t1[..]));
+  must(block_by_hand(prk[..], t1[..], info, 2, t2[..]));
+  show("T(1) = HMAC(PRK, info || 01)", t1[..]);
+  show("T(2) = HMAC(PRK, T(1) || info || 02)", t2[..]);
+  by_hand: [42] u8;
+  for i: 0..<32 { by_hand[i] = t1[i]; }
+  for i: 0..<10 { by_hand[32 + i] = t2[i]; }
+
+  // The library computes the same 42 bytes in one call.
+  okm: [42] u8;
+  print("expand: %\n", STATUS[hkdf_expand_checked(prk[..], info, okm[..], 42, false)]);
+  show("OKM", okm[..]);
+  print("same as by hand: %\n", cb_ct_equal(okm[..], by_hand[..]) != 0);
+
+  // RFC 5869 test case 3 has no salt. An empty HMAC key is padded with
+  // zeros, so it equals the RFC's 32 zero bytes.
+  no_salt: [32] u8; zero_salt: [32] u8; zeros: [32] u8;
+  must(hkdf_extract_checked(zeros[0..<0], ikm, no_salt[..], false));
+  must(hkdf_extract_checked(zeros[..], ikm, zero_salt[..], false));
+  show("case 3 PRK, empty salt", no_salt[..]);
+  print("empty salt equals 32 zero bytes: %\n", cb_ct_equal(no_salt[..], zero_salt[..]) != 0);
+
+  // NIP-44 v2: the conversation key is a PRK, made by extract with the
+  // salt "nip44-v2". Each message expands it with its 32-byte nonce as
+  // info to 76 bytes: ChaCha20 key, ChaCha20 nonce, HMAC key.
+  nip44_salt := [8] u8.[110, 105, 112, 52, 52, 45, 118, 50];
+  show("salt \"nip44-v2\"", nip44_salt[..]);
+  cb: [32] u8; nb: [32] u8;
+  conversation_key := from_hex("a1a3d60f3470a8612633924e91febf96dc5366ce130f658b1f0fc652c20b3b54", cb[..]);
+  nonce := from_hex("e1e6f880560d6d149ed83dcc7e5861ee62a5ee051f7fde9975fe5d25d2a02d72", nb[..]);
+  keys: [76] u8;
+  print("expand to 76 bytes: %\n", STATUS[hkdf_expand_checked(conversation_key, nonce, keys[..], 76, false)]);
+  show("chacha_key, bytes 0-31", keys[0..<32]);
+  show("chacha_nonce, bytes 32-43", keys[32..<44]);
+  show("hmac_key, bytes 44-75", keys[44..<76]);
+  vb: [76] u8;
+  vector := from_hex("f145f3bed47cb70dbeaac07f3a3fe683e822b3715edb7c4fe310829014ce7d76c4ad129bb01180c0933a160c027c1db445f05e2eee864a0975b0ddef5b7110583c8c192de3732571ca5838c4", vb[..]);
+  print("matches the NIP-44 vector: %\n", cb_ct_equal(keys[..], vector) != 0);
+
+  // Refusals. Each returns a status and leaves the output unchanged.
+  out: [8161] u8;
+  for i: 0..<8161 { out[i] = 0xa5; }
+  print("8161 bytes (255 * 32 + 1): %\n", STATUS[hkdf_expand_checked(prk[..], info, out[..], 8161, false)]);
+  print("31-byte PRK: %\n", STATUS[hkdf_expand_checked(prk[0..<31], info, out[..], 42, false)]);
+  print("42 bytes into 41: %\n", STATUS[hkdf_expand_checked(prk[..], info, out[0..<41], 42, false)]);
+  print("1025-byte info: %\n", STATUS[hkdf_expand_checked(prk[..], out[0..<1025], out[1025..<1067], 42, false)]);
+  print("output overlaps the PRK: %\n", STATUS[hkdf_expand_checked(prk[..], info, out[..], 42, true)]);
+  untouched := true;
+  for i: 0..<8161 { if out[i] != 0xa5 { untouched = false; } }
+  print("output unchanged: %\n", untouched);
+}
+// book:end example
+
+// book:begin check
+// The library's expand equals the block-by-block construction for lengths
+// around the block size, and a shorter output is a prefix of a longer one.
+#forall "HKDF expand equals T(1) || T(2) || ... cut to the length" which: 0..<10 {
+  lengths := [10] int.[0, 1, 31, 32, 33, 63, 64, 65, 76, 96];
+  n := lengths[which];
+  prk: [32] u8; info: [5] u8;
+  for i: 0..<32 { prk[i] = cast(u8) ((i * 29 + 3) % 256); }
+  for i: 0..<5 { info[i] = cast(u8) (100 + i); }
+  expected: [96] u8; t: [32] u8;
+  for block: 0..<hkdf_blocks(n) {
+    if block == 0 { #assert block_by_hand(prk[..], t[0..<0], info[..], 1, t[..]) == SHA_OK; }
+    else { previous := t; #assert block_by_hand(prk[..], previous[..], info[..], block + 1, t[..]) == SHA_OK; }
+    for i: 0..<32 { expected[block * 32 + i] = t[i]; }
+  }
+  out: [97] u8; longest: [96] u8;
+  for i: 0..<97 { out[i] = 0x5a; }
+  #assert hkdf_expand_checked(prk[..], info[..], out[..], n, false) == SHA_OK;
+  #assert hkdf_expand_checked(prk[..], info[..], longest[..], 96, false) == SHA_OK;
+  for i: 0..<n { #assert out[i] == expected[i] && out[i] == longest[i]; }
+  for i: n..<97 { #assert out[i] == 0x5a; }
+}
+// book:end check

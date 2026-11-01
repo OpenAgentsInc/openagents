@@ -114,13 +114,14 @@
    "number": 6,
    "title": "HKDF",
    "file": "ch006-hkdf.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     5
    ],
    "source": [
-    "coax/lib/crypto/hkdf.coax"
+    "coax/lib/crypto/hkdf.coax",
+    "nostr/examples/hkdf.coax"
    ],
    "qualified_targets": [
     "cpu",

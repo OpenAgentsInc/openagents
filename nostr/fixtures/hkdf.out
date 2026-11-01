@@ -1,0 +1,22 @@
+blocks for 42, 76, 82 and 8160 bytes: 2 3 3 255
+extract: ok
+PRK: 077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5
+T(1) = HMAC(PRK, info || 01): 3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf
+T(2) = HMAC(PRK, T(1) || info || 02): 34007208d5b887185865b4b0a85a993b89b9b65683d60f0106d28fff039d0b6f
+expand: ok
+OKM: 3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865
+same as by hand: true
+case 3 PRK, empty salt: 19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04
+empty salt equals 32 zero bytes: true
+salt "nip44-v2": 6e697034342d7632
+expand to 76 bytes: ok
+chacha_key, bytes 0-31: f145f3bed47cb70dbeaac07f3a3fe683e822b3715edb7c4fe310829014ce7d76
+chacha_nonce, bytes 32-43: c4ad129bb01180c0933a160c
+hmac_key, bytes 44-75: 027c1db445f05e2eee864a0975b0ddef5b7110583c8c192de3732571ca5838c4
+matches the NIP-44 vector: true
+8161 bytes (255 * 32 + 1): too long
+31-byte PRK: bad input
+42 bytes into 41: bad output
+1025-byte info: bad input
+output overlaps the PRK: overlap
+output unchanged: true

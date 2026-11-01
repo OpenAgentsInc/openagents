@@ -13,7 +13,7 @@
 
 - [4. SHA-256](ch004-sha-256.md) — implemented
 - [5. HMAC-SHA256](ch005-hmac-sha256.md) — implemented
-- [6. HKDF](ch006-hkdf.md) — partly implemented
+- [6. HKDF](ch006-hkdf.md) — implemented
 
 **III. Elliptic curves**
 

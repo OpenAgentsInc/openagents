@@ -73,7 +73,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | --- | --- | --- | --- |
 | [4. SHA-256](ch004-sha-256.md) — implemented | 1 | Every NIST CAVS 11.0 SHA256ShortMsg and SHA256LongMsg vector passes. Every split of a 1,000-byte message gives the same digest. The compression kernel moves out of the compiler-fingerprint module without changing a digest. | — |
 | [5. HMAC-SHA256](ch005-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 pass. A tag that differs in one bit is refused by the constant-time comparison. | — |
-| [6. HKDF](ch006-hkdf.md) — partly implemented | 5 | RFC 5869 SHA-256 cases 1–3 pass. An expand request of `255 * 32 + 1` bytes refuses. | — |
+| [6. HKDF](ch006-hkdf.md) — implemented | 5 | RFC 5869 SHA-256 cases 1–3 pass. An expand request of `255 * 32 + 1` bytes refuses. | — |
 
 ### Part III. Elliptic curves
 

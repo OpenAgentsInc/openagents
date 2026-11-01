@@ -50,6 +50,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/hkdf.coax",
+      "chapter": "nostr/book/ch006-hkdf.md",
+      "stdout": "nostr/fixtures/hkdf.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
