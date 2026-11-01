@@ -1,0 +1,132 @@
+// The checks of media-files.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/media-files.coax --run-steps 250000000
+#load "../media-files.coax";
+
+// book:begin check
+// From a Python script written from NIP-01, NIP-92, NIP-94 and BUD-02 (it
+// shares no code with Coax): hashlib.sha256 of the blob, and each event's
+// id as hashlib.sha256 of json.dumps([0, pubkey, created_at, kind, tags,
+// content], separators=(",", ":"), ensure_ascii=False).
+PY_BLOB :: "50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044";
+PY_CHANGED :: "649d4e402861596fd83b14f5379479f18185e913749fcb8fb0d4a1e347f3a8b3";
+PY_ID :: [4] string.[
+  "0e3a5dce8fa291df8854513d9d0b5496f42604335e07405e16200261eec88ecf",   // the note
+  "a47d4c06776d1600d1000749340e94ba947feff9642d99d58175f93f08ef8637",   // kind 1063
+  "6da5d94f60316ee2b7154674a070795bdf67b13977fea53e1b1416d455cb0377",   // kind 10063
+  "cb2d67b82e2244ac183cd66aeababc7f71011c3a24863df16fe48d048a692a9f"];  // kind 24242
+AT :: [4] int.[0, 1, 2, 0];
+KIND :: [4] int.[1, 1063, 10063, 24242];
+TAGS :: [4] string.[IMETA,
+  "[[\"url\",\"https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt\"],[\"m\",\"text/plain\"],[\"x\",\"50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044\"],[\"size\",\"16\"],[\"alt\",\"A greeting\"]]",
+  SERVERS,
+  "[[\"t\",\"upload\"],[\"x\",\"50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044\"],[\"expiration\",\"1790000300\"]]"];
+CONTENT :: [4] string.[
+  "A greeting: https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt",
+  "A greeting", "", "Upload greeting.txt"];
+PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+ZERO_SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked.
+py :: (k: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, TAGS[k]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, ZERO_SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the blob's SHA-256 and the four ids are Python's" {
+  blob: [16] u8; body := bytes_of(BLOB, blob[..]); h: [32] u8; hex: [64] u8;
+  #assert sha256_hash_checked(body, h[..], false) == SHA_OK && hex32(h, hex[..]) == PY_BLOB;
+  body[14] = '?'; #assert sha256_hash_checked(body, h[..], false) == SHA_OK && hex32(h, hex[..]) == PY_CHANGED;
+  buf: [2048] u8; scratch: [4096] u8;
+  for k: 0..<4 { e := py(k, buf[..], scratch[..]); #assert e.error == NE_OK && ns_equal32(e.computed_id, e.id); }
+}
+
+// The imeta tag by hand: each entry splits at its first space. "url" then
+// the URL, "m" then text/plain, "x" then 64 hex digits, "size" then 16,
+// "alt" then "A greeting", which keeps its space. The URL's last segment
+// starts at byte 24 (https:// is 8, blossom.example 15, / 1), so the hex
+// runs to byte 88, where ".txt" starts.
+#test "the imeta tag and the address match the hand values" {
+  buf: [2048] u8; scratch: [4096] u8;
+  f := n94_imeta(py(0, buf[..], scratch[..]), 0);
+  #assert f.status == N94_OK && n32_is(f.url, URL) && n32_is(f.m, "text/plain") && f.size == 16 && n32_is(f.alt, "A greeting");
+  x: [32] u8; decode_hex(PY_BLOB, x[..]); #assert f.has_x && ns_equal32(f.x, x) && f.others == 0 && f.fallbacks == 0;
+  a := nb7_address(URL); #assert a.ok && a.ext_from == 88 && ns_equal32(a.hash, x) && URL[a.ext_from..<URL.count] == ".txt";
+  // The 1063 tags the writer gives are the ones Python hashed.
+  out: [1024] u8; n := n94_write(f, out[..], 0, false); #assert cast(string) out[0..<n] == TAGS[1];
+  g := n94_file(py(1, buf[..], scratch[..])); #assert g.status == N94_OK && ns_equal32(g.x, x) && g.size == 16;
+  list: [2] N32Text; s := nb7_servers(py(2, buf[..], scratch[..]), list[..]);
+  #assert s.status == NB7_OK && s.n == 2 && n32_is(list[1], "https://mirror.example");
+}
+
+// The authorization by hand: created_at T0, expiration T0 + 300. It
+// admits an upload of the blob from T0 to T0 + 299: at T0 + 300 it has
+// expired, and before T0 it was not yet made.
+#test "the authorization's window matches the hand trace" {
+  buf: [2048] u8; scratch: [4096] u8;
+  e := py(3, buf[..], scratch[..]); e.verified = true;   // the id is Python's; the signature is the example's
+  blob: [16] u8; body := bytes_of(BLOB, blob[..]);
+  #assert nb7_upload(e, body, T0) == NB7_OK && nb7_upload(e, body, T0 + 299) == NB7_OK;
+  #assert nb7_upload(e, body, T0 + 300) == NB7_EXPIRED && nb7_upload(e, body, T0 - 1) == NB7_FUTURE;
+  x: [32] u8; decode_hex(PY_BLOB, x[..]);
+  #assert nb7_admit(e, NB7_GET, x, T0) == NB7_VERB && nb7_admit(e, NB7_UPLOAD, x, T0) == NB7_OK;
+}
+
+// NIP-92's example, with its placeholder x ("<sha256 hash as specified in
+// NIP 94>") replaced by the blob's hash. Its kind 0 example writes elided
+// hashes ("1f2e...a9"), which are not hashes: the reader refuses them.
+#test "NIP-92's examples" {
+  f := n94_imeta(nt_event("[[\"imeta\",\"url https://nostr.build/i/my-image.jpg\",\"m image/jpeg\",\"blurhash eVF$^OI:${M{o#*0-nNFxakD-?xVM}WEWB%iNKxvR-oetmo#R-aen$\",\"dim 3024x4032\",\"alt A scenic photo overlooking the coast of Costa Rica\",\"x 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044\",\"fallback https://nostrcheck.me/alt1.jpg\",\"fallback https://void.cat/alt1.jpg\"]]"), 0);
+  #assert f.status == N94_OK && n32_is(f.url, "https://nostr.build/i/my-image.jpg") && n32_is(f.m, "image/jpeg") && f.width == 3024 && f.height == 4032;
+  #assert n32_is(f.alt, "A scenic photo overlooking the coast of Costa Rica") && f.fallbacks == 2 && n32_is(f.fallback[1], "https://void.cat/alt1.jpg") && f.has_x;
+  f = n94_imeta(nt_event("[[\"imeta\",\"url https://blossom.example/1f2e...a9.jpg\",\"m image/jpeg\",\"x 1f2e...a9\",\"dim 400x400\",\"blurhash LEHV6nWB2yk8pyo0adR*.7kCMdnj\",\"fallback https://mirror.example/1f2e...a9.jpg\"]]"), 0);
+  #assert f.status == N94_HEX && f.entry == 3;
+  f = n94_imeta(nt_event("[[\"imeta\",\"url https://blossom.example/7c3d...04.webp\",\"m image/webp\",\"x 7c3d...04\",\"dim 1500x500\"]]"), 0);
+  #assert f.status == N94_HEX && f.entry == 3;
+  // Without the elided x, the kind 0 tags read; the URLs name no blob.
+  f = n94_imeta(nt_event("[[\"imeta\",\"url https://blossom.example/7c3d...04.webp\",\"m image/webp\",\"dim 1500x500\"]]"), 0);
+  #assert f.status == N94_OK && f.width == 1500 && !nb7_address("https://blossom.example/7c3d...04.webp").ok;
+}
+
+// NIP-68's two picture imeta tags (x placeholders replaced, annotate-user
+// counted as another key), NIP-71's four video and audio tags, and
+// NIP-A0's voice message tag.
+#test "NIP-68, NIP-71 and NIP-A0 imeta tags" {
+  f := n94_imeta(nt_event("[[\"imeta\",\"url https://nostr.build/i/my-image2.jpg\",\"m image/jpeg\",\"thumbhash zOcFFIIKmXgzmWaXWIcmcFQEGA\",\"dim 3024x4032\",\"alt Another scenic photo overlooking the coast of Costa Rica\",\"x 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044\",\"fallback https://nostrcheck.me/alt2.jpg\",\"fallback https://void.cat/alt2.jpg\",\"annotate-user dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:10:20\"]]"), 0);
+  #assert f.status == N94_OK && f.others == 2 && f.fallbacks == 2;
+  f = n94_imeta(nt_event("[[\"imeta\",\"dim 1920x1080\",\"url https://myvideo.com/1080/12345.mp4\",\"x 3093509d1e0bc604ff60cb9286f4cd7c781553bc8991937befaacfdc28ec5cdc\",\"m video/mp4\",\"image https://myvideo.com/1080/12345.jpg\",\"image https://myotherserver.com/1080/12345.jpg\",\"fallback https://myotherserver.com/1080/12345.mp4\",\"fallback https://andanotherserver.com/1080/12345.mp4\",\"service nip96\",\"bitrate 3000000\",\"duration 29.223\"]]"), 0);
+  #assert f.status == N94_OK && f.width == 1920 && f.height == 1080 && f.x[0] == 0x30 && f.x[31] == 0xdc && n32_is(f.m, "video/mp4") && f.fallbacks == 2 && f.others == 5;
+  f = n94_imeta(nt_event("[[\"imeta\",\"dim 1280x720\",\"url https://myvideo.com/720/12345.mp4\",\"x e1d4f808dae475ed32fb23ce52ef8ac82e3cc760702fca10d62d382d2da3697d\",\"m video/mp4\",\"image https://myvideo.com/720/12345.jpg\",\"image https://myotherserver.com/720/12345.jpg\",\"fallback https://myotherserver.com/720/12345.mp4\",\"fallback https://andanotherserver.com/720/12345.mp4\",\"service nip96\",\"bitrate 2000000\",\"duration 29.24\"]]"), 0);
+  #assert f.status == N94_OK && f.height == 720 && f.x[0] == 0xe1 && f.others == 5;
+  f = n94_imeta(nt_event("[[\"imeta\",\"dim 1280x720\",\"url https://myvideo.com/720/12345.m3u8\",\"x 704e720af2697f5d6a198ad377789d462054b6e8d790f8a3903afbc1e044014f\",\"m application/x-mpegURL\",\"image https://myvideo.com/720/12345.jpg\",\"image https://myotherserver.com/720/12345.jpg\",\"fallback https://myotherserver.com/720/12345.m3u8\",\"fallback https://andanotherserver.com/720/12345.m3u8\",\"service nip96\",\"duration 29.21\"]]"), 0);
+  #assert f.status == N94_OK && n32_is(f.m, "application/x-mpegURL") && f.x[31] == 0x4f && f.others == 4;
+  f = n94_imeta(nt_event("[[\"imeta\",\"url https://myaudio.com/audio/en/12345.mp3\",\"x b2e0a7a82ac9f3f3a71f1d9a78c381d5be9d1cf19dce258765c17c8a76287c93\",\"m audio/mp3\",\"waveform 0 7 35 8 100 100 49 8 4 16 8 10 7 2 20 10 100 100 100 100 100 100 15 100 100 100 25 60 5 4 3 1 0 100 100 15 100 29 88 0 33 11 39 100 100 19 4 100 42 35 5 0 1 5 0 0 11 38 100 94 17 11 44 58 5 100 100 100 55 14 72 100 100 57 6 1 14 2 16 100 100 40 16 100 100 6 32 14 13 41 36 16 14 6 3 0 1 2 1 6 0\",\"l en ISO-639-1 ov\",\"fallback https://myotherserver.com/audio/en/12345.mp3\",\"fallback https://andanotherserver.com/audio/en/12345.mp3\",\"service nip96\",\"bitrate  320000\",\"duration 29.24\"]]"), 0);
+  #assert f.status == N94_OK && !f.has_dim && f.x[0] == 0xb2 && f.fallbacks == 2 && f.others == 5;
+  f = n94_imeta(nt_event("[[\"imeta\",\"url https://blossom.primal.net/5fe7df0e46ee6b14b5a8b8b92939e84e3ca5e3950eb630299742325d5ed9891b.mp4\",\"waveform 0 7 35 8 100 100 49 8 4 16 8 10 7 2 20 10 100 100 100 100 100 100 15 100 100 100 25 60 5 4 3 1 0 100 100 15 100 29 88 0 33 11 39 100 100 19 4 100 42 35 5 0 1 5 0 0 11 38 100 94 17 11 44 58 5 100 100 100 55 14 72 100 100 57 6 1 14 2 16 100 100 40 16 100 100 6 32 14 13 41 36 16 14 6 3 0 1 2 1 6 0\",\"duration 8\"]]"), 0);
+  #assert f.status == N94_OK && f.others == 2 && !f.has_x;
+  // NIP-A0's URL names its blob, so a client can still check the bytes.
+  a := nb7_address("https://blossom.primal.net/5fe7df0e46ee6b14b5a8b8b92939e84e3ca5e3950eb630299742325d5ed9891b.mp4");
+  #assert a.ok && a.hash[0] == 0x5f && a.hash[31] == 0x1b;
+}
+
+// NIP-B7's kind 10063 example. Its stated id (e4bee088...) is not the
+// SHA-256 of its serialization; Python and Coax both compute bb431f39...
+// So the event is refused as it stands; its tags still read.
+#test "NIP-B7's server list example" {
+  text := "{\"id\":\"e4bee088334cb5d38cff1616e964369c37b6081be997962ab289d6c671975d71\",\"pubkey\":\"781208004e09102d7da3b7345e64fd193cd1bc3fce8fdae6008d77f9cabcd036\",\"content\":\"\",\"kind\":10063,\"created_at\":1708774162,\"tags\":[[\"server\",\"https://blossom.self.hosted\"],[\"server\",\"https://cdn.blossom.cloud\"]],\"sig\":\"cc5efa74f59e80622c77cacf4dd62076bcb7581b45e9acff471e7963a1f4d8b3406adab5ee1ac9673487480e57d20e523428e60ffcc7e7a904ac882cfccfc653\"}";
+  scratch: [4096] u8; hex: [64] u8;
+  e := nostr_event_read(text, scratch[..], false);
+  #assert e.error == NE_ID && hex32(e.computed_id, hex[..]) == "bb431f3950fe3dcd5b5ba3630cc1c88135047d7f171459ba4c0af554f914aff0";
+  list: [2] N32Text;
+  s := nb7_servers(n32_event(10063, "[[\"server\",\"https://blossom.self.hosted\"],[\"server\",\"https://cdn.blossom.cloud\"]]"), list[..]);
+  #assert s.status == NB7_OK && s.n == 2 && n32_is(list[0], "https://blossom.self.hosted");
+}
+// book:end check

@@ -1,0 +1,46 @@
+the blob: 16 bytes, SHA-256 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044
+a note that shows the blob
+note 0e3a5dce8fa291df8854513d9d0b5496f42604335e07405e16200261eec88ecf
+its imeta tag: ok
+  url https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt
+  m text/plain
+  x 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044
+  size 16
+  alt A greeting
+  fallbacks 0, other keys 0
+the url's last segment names 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044, extension from byte 88
+the hash check
+download the blob: ok
+download with ! changed to ?: SHA-256 differs
+download the first 15 bytes: SHA-256 differs
+download the blob, size 15 declared: size differs
+the same file as a kind 1063 event
+tags [["url","https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt"],["m","text/plain"],["x","50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044"],["size","16"],["alt","A greeting"]]
+event a47d4c06776d1600d1000749340e94ba947feff9642d99d58175f93f08ef8637
+kind 1063: ok
+  url https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt
+  m text/plain
+  x 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044
+  size 16
+  alt A greeting
+  fallbacks 0, other keys 0
+the url fails: Alice's other Blossom servers
+kind 10063 6da5d94f60316ee2b7154674a070795bdf67b13977fea53e1b1416d455cb0377
+servers: ok, 2
+try https://mirror.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt
+  the blob: ok
+  changed bytes: SHA-256 differs from the URL
+uploading: a kind 24242 authorization
+tags [["t","upload"],["x","50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044"],["expiration","1790000300"]]
+event cb2d67b82e2244ac183cd66aeababc7f71011c3a24863df16fe48d048a692a9f
+server at T0+10, upload of the blob: ok
+  changed bytes: not for this blob
+  as a delete: another verb
+  at T0+300: expired
+  at T0-5: created in the future
+  not verified: event not verified
+refusals
+imeta without url: no url at tag 0
+imeta with url alone: url alone at tag 0
+NIP-92's placeholder x: hash is not 64 lowercase hex digits at tag 0 entry 2
+kind 1063 without x: missing url, m or x

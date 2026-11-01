@@ -88,7 +88,7 @@
 - [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) — implemented
 - [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) — implemented
 - [56. Proof of work](ch056-proof-of-work.md) — implemented
-- [57. Media and files](ch057-media-and-files.md) — design draft
+- [57. Media and files](ch057-media-and-files.md) — implemented
 - [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) — implemented
 - [59. Groups and communities](ch059-groups-and-communities.md) — design draft
 - [60. Private messages](ch060-private-messages.md) — design draft

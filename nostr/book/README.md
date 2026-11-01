@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 76 are implemented and 28 are design drafts.
+Of the 104 chapters, 77 are implemented and 27 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -247,7 +247,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) | Runnable: native C | NIP-51 standard lists (10000 mutes, 10001 pins, 10003 bookmarks and others) and sets (30000 follow sets and others) with public tags and private items encrypted to self, and NIP-B0 kind 39701 web bookmarks. |
 | [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) | Runnable: native C | NIP-32 kind 1985 labels in `L` namespaces, NIP-56 kind 1984 reports with report types, and NIP-85 kinds 30382–30385 assertions from declared providers (kind 10040). |
 | [56. Proof of work](ch056-proof-of-work.md) | Runnable: native C | NIP-13 difficulty as the number of leading zero bits of the event ID, the `nonce` tag with its target, and relay admission by `pow:` reason. |
-| [57. Media and files](ch057-media-and-files.md) | Unimplemented: design draft | `imeta` tags (NIP-92), kind 1063 file metadata (NIP-94), picture (20) and video (21, 22, 34235, 34236) events, voice messages (1222, 1244), Blossom servers (kind 10063) and the deprecated NIP-96. |
+| [57. Media and files](ch057-media-and-files.md) | Runnable: native C | `imeta` tags (NIP-92) and kind 1063 file metadata (NIP-94) read, written and checked against downloaded bytes' SHA-256; picture, video and voice `imeta` tags; Blossom blob addresses, kind 10063 server lists and kind 24242 upload authorizations; NIP-96 read only. |
 | [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) | Runnable: native C | NIP-52 date (31922) and time (31923) events, calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018); NIP-84 highlights (9802). |
 | [59. Groups and communities](ch059-groups-and-communities.md) | Unimplemented: design draft | NIP-29 relay-based groups with `h` tags, moderation kinds 9000–9022 and relay-signed metadata 39000–39005; NIP-7D forum threads (kind 11); NIP-C7 chats (kind 9); and the unrecommended NIP-72 and NIP-28. |
 | [60. Private messages](ch060-private-messages.md) | Unimplemented: design draft | NIP-17 kind 14 chat and kind 15 file messages sent as gift wraps, kind 10050 DM relay lists, NIP-A4 kind 24 public messages, and the unrecommended NIP-EE MLS groups. |

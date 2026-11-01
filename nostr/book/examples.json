@@ -855,6 +855,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/media-files.coax",
+      "chapter": "nostr/book/ch057-media-and-files.md",
+      "stdout": "nostr/fixtures/media-files.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

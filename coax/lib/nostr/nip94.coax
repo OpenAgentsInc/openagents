@@ -1,0 +1,326 @@
+// NIP-92 imeta tags and NIP-94 kind 1063 file metadata, read from a parsed
+// event and written back, and the check that downloaded bytes are the file
+// the metadata names: their SHA-256 must equal x (or ox, for the original).
+//
+// An imeta tag is ["imeta", "<key> <value>", ...]: each entry splits at its
+// first space, so a value may hold spaces (alt text does). NIP-92 says an
+// imeta tag MUST have a url and at least one other field. A kind 1063
+// event carries the same fields as tags of their own: ["url", value].
+//
+// The reader keeps url, m, x, ox, size, dim, blurhash, alt and up to four
+// fallback URLs. Any other key (thumbhash, NIP-71's duration, ...) is
+// counted in others and not kept. A field this reader keeps may appear once,
+// except fallback. x and ox are 64 lowercase hex digits, size is a decimal
+// count of bytes, dim is <width>x<height> in pixels, and m is type/subtype.
+//
+// Nothing here fetches. The caller downloads the bytes and passes them to
+// n94_check, which refuses bytes whose SHA-256 is not x. A file is
+// accepted on its hash, never on its URL: the server may be anyone's.
+#load "nip32.coax";
+#authority;
+
+N94_OK :: 0; N94_EVENT :: 1; N94_NOT_IMETA :: 2; N94_ENTRY :: 3; N94_NO_URL :: 4;
+N94_ALONE :: 5; N94_DUPLICATE :: 6; N94_HEX :: 7; N94_NUMBER :: 8; N94_DIM :: 9;
+N94_MIME :: 10; N94_KIND :: 11; N94_MISSING :: 12; N94_LIMIT :: 13; N94_FALLBACKS :: 14;
+N94_NO_HASH :: 15; N94_MISMATCH :: 16; N94_SIZE :: 17;
+N94_KIND_FILE :: 1063;
+N94_MAX_FALLBACK :: 4; N94_MAX_ENTRY :: 1024;
+N94_URL :: 0; N94_M :: 1; N94_X :: 2; N94_OX :: 3; N94_SIZE_KEY :: 4; N94_DIM_KEY :: 5;
+N94_BLURHASH :: 6; N94_ALT :: 7; N94_FALLBACK :: 8;
+
+// book:begin record
+N94File :: struct {
+  status:int=N94_EVENT;
+  at:int=-1; entry:int=-1;            // the refusing tag, and its entry in an imeta tag
+  url:N32Text; m:N32Text; blurhash:N32Text; alt:N32Text;
+  has_x:bool; x:[32]u8;               // SHA-256 of the file as served
+  has_ox:bool; ox:[32]u8;             // SHA-256 of the file as uploaded
+  has_size:bool; size:int;            // bytes
+  has_dim:bool; width:int; height:int;
+  fallback:[N94_MAX_FALLBACK]N32Text; fallbacks:int;
+  others:int;                         // imeta entries with keys not kept here
+  seen:u32;                           // one bit per single-valued key read
+}
+// book:end record
+
+N94_T_HASH :: "d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5";
+N94_T_URL :: "https://nostr.build/i/my-image.jpg";
+
+#test "keys, numbers, MIME types and the first space" {
+  #assert n94_key("url")==N94_URL && n94_key("m")==N94_M && n94_key("x")==N94_X && n94_key("ox")==N94_OX && n94_key("size")==N94_SIZE_KEY;
+  #assert n94_key("dim")==N94_DIM_KEY && n94_key("blurhash")==N94_BLURHASH && n94_key("alt")==N94_ALT && n94_key("fallback")==N94_FALLBACK;
+  #assert n94_key("URL")== -1 && n94_key("thumbhash")== -1 && n94_key("")== -1;
+  #assert n94_number("0")==0 && n94_number("13")==13 && n94_number("007")==7 && n94_number("999999999999999")==999999999999999;
+  #assert n94_number("")== -1 && n94_number("1000000000000000")== -1 && n94_number("-1")== -1 && n94_number("1a")== -1 && n94_number("/")== -1 && n94_number(":")== -1;
+  #assert n94_mime("image/jpeg") && n94_mime("a/b") && !n94_mime("image") && !n94_mime("/jpeg") && !n94_mime("image/") && !n94_mime("a/b/c") && !n94_mime("");
+  #assert !n94_mime("/a/b") && !n94_mime("a//b");
+  #assert n94_find("url x",' ')==3 && n94_find("a b c",' ')==1 && n94_find("ab",' ')==2 && n94_find(" a",' ')==0 && n94_find("",' ')==0 && n94_find("2x3",'x')==1;
+  #assert n94_after("url x",3)=="x" && n94_after("ab",2)=="" && n94_after("a ",1)=="" && n94_after(" a",0)=="a";
+}
+#test "NIP-92's example imeta tag reads to its fields" {
+  f:=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://nostr.build/i/my-image.jpg\",\"m image/jpeg\",\"blurhash eVF$^OI:${M{o#*0-nNFxakD-?xVM}WEWB%iNKxvR-oetmo#R-aen$\",\"dim 3024x4032\",\"alt A scenic photo overlooking the coast of Costa Rica\",\"x d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\",\"fallback https://nostrcheck.me/alt1.jpg\",\"fallback https://void.cat/alt1.jpg\"]]"),0);
+  #assert f.status==N94_OK && f.at== -1 && f.entry== -1 && n32_is(f.url,N94_T_URL) && n32_is(f.m,"image/jpeg");
+  #assert n32_is(f.blurhash,"eVF$^OI:${M{o#*0-nNFxakD-?xVM}WEWB%iNKxvR-oetmo#R-aen$") && f.has_dim && f.width==3024 && f.height==4032;
+  #assert n32_is(f.alt,"A scenic photo overlooking the coast of Costa Rica") && f.has_x && f.x[0]==0xd9 && f.x[31]==0xf5 && !f.has_ox && !f.has_size;
+  #assert f.fallbacks==2 && n32_is(f.fallback[0],"https://nostrcheck.me/alt1.jpg") && n32_is(f.fallback[1],"https://void.cat/alt1.jpg") && f.others==0;
+}
+#test "other keys are counted; the tag is found by index" {
+  f:=n94_imeta(n32_event(20,"[[\"title\",\"t\"],[\"imeta\",\"url https://a.example/v.mp4\",\"thumbhash zOcF\",\"duration 29.2\",\"size 0\",\"ox d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]"),1);
+  #assert f.status==N94_OK && f.others==2 && f.has_size && f.size==0 && f.has_ox && f.ox[1]==0x01 && !f.has_x && f.m.n==0;
+  r:=n94_imeta(n32_event(20,"[[\"title\",\"t\"]]"),0);#assert r.status==N94_NOT_IMETA && r.at==0 && r.entry==0;
+  r=n94_imeta(n32_event(20,"[[\"a\"],[\"b\"],[\"imeta\",\"url u\",\"m a/b\"],[\"c\"]]"),2);#assert r.status==N94_OK && n32_is(r.url,"u");
+  r=n94_imeta(n32_event(20,"[[\"title\",\"t\"]]"),1);#assert r.status==N94_EVENT && r.at== -1;
+  #assert n94_imeta(n32_event(20,"[[\"title\",\"t\"]]"),-1).status==N94_EVENT;
+}
+#test "imeta refusals name the tag and the entry" {
+  f:=n94_imeta(n32_event(1,"[[\"imeta\",\"m image/jpeg\",\"x d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]"),0);
+  #assert f.status==N94_NO_URL && f.at==0 && f.entry== -1;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\"]]"),0);#assert f.status==N94_ALONE && f.at==0 && f.entry== -1;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"thumbhash z\"]]"),0);#assert f.status==N94_OK;
+  #assert n94_imeta(n32_event(1,"[[\"imeta\"]]"),0).status==N94_NO_URL;
+  f=n94_imeta(n32_event(1,"[[\"t\",\"x\"],[\"imeta\",\"url https://a.example/1.jpg\",\"m\"]]"),1);#assert f.status==N94_ENTRY && f.at==1 && f.entry==2;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"m \"]]"),0);#assert f.status==N94_ENTRY && f.entry==2;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\" image/jpeg\",\"url https://a.example/1.jpg\"]]"),0);#assert f.status==N94_ENTRY && f.entry==1;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"url https://b.example/1.jpg\"]]"),0);#assert f.status==N94_DUPLICATE && f.entry==2;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"x D9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]"),0);#assert f.status==N94_HEX && f.entry==2;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"x <sha256 hash as specified in NIP 94>\"]]"),0);#assert f.status==N94_HEX;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"ox 1f2e...a9\"]]"),0);#assert f.status==N94_HEX;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"size 1.5\"]]"),0);#assert f.status==N94_NUMBER;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"dim 3024\"]]"),0);#assert f.status==N94_DIM;
+  #assert n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"dim 0x10\"]]"),0).status==N94_DIM;
+  #assert n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"dim 10x0\"]]"),0).status==N94_DIM;
+  #assert n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"dim x10\"]]"),0).status==N94_DIM;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"dim 1x1\"]]"),0);#assert f.status==N94_OK && f.width==1 && f.height==1;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"\"]]"),0);#assert f.status==N94_ENTRY && f.entry==2;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"m jpeg\"]]"),0);#assert f.status==N94_MIME;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"fallback a\",\"fallback b\",\"fallback c\",\"fallback d\",\"fallback e\"]]"),0);#assert f.status==N94_FALLBACKS && f.entry==6;
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",\"fallback a\",\"fallback b\",\"fallback c\",\"fallback d\"]]"),0);#assert f.status==N94_OK && f.fallbacks==4 && n32_is(f.fallback[3],"d");
+  f=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/1.jpg\",1]]"),0);#assert f.status==N94_EVENT && f.at==0 && f.entry==2;
+  // A kept value holds 256 bytes; an entry 1,024.
+  long:[1100]u8;n:=json_raw(long[..],0,"[[\"imeta\",\"url ");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\",\"m a/b\"]]");
+  f=n94_imeta(n32_event(1,cast(string)long[0..<n]),0);#assert f.status==N94_LIMIT && f.entry==1;
+  n=json_raw(long[..],0,"[[\"imeta\",\"url ");for i:0..<256 {long[n+i]='x';}n+=256;n=json_raw(long[..],n,"\",\"m a/b\"]]");
+  f=n94_imeta(n32_event(1,cast(string)long[0..<n]),0);#assert f.status==N94_OK && f.url.n==256;
+  n=json_raw(long[..],0,"[[\"imeta\",\"url u\",\"waveform ");for i:0..<1015 {long[n+i]='1';}n+=1015;n=json_raw(long[..],n,"\"]]");
+  f=n94_imeta(n32_event(1,cast(string)long[0..<n]),0);#assert f.status==N94_OK && f.others==1;
+  n=json_raw(long[..],0,"[[\"imeta\",\"url u\",\"waveform ");for i:0..<1016 {long[n+i]='1';}n+=1016;n=json_raw(long[..],n,"\"]]");
+  f=n94_imeta(n32_event(1,cast(string)long[0..<n]),0);#assert f.status==N94_LIMIT && f.entry==2;
+  none:NostrEvent;#assert n94_imeta(none,0).status==N94_EVENT;
+}
+#test "kind 1063: url, m and x required, ox and the rest optional" {
+  f:=n94_file(n32_event(1063,"[[\"url\",\"https://a.example/f.png\"],[\"m\",\"image/png\"],[\"x\",\"d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"],[\"size\",\"13\"],[\"dim\",\"2x3\"],[\"thumb\",\"https://a.example/t.png\",\"d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"],[\"summary\",\"s\"],[\"t\"],[\"fallback\",\"https://b.example/f.png\"]]"));
+  #assert f.status==N94_OK && f.at== -1 && n32_is(f.url,"https://a.example/f.png") && n32_is(f.m,"image/png") && f.has_x && f.size==13 && f.width==2 && f.height==3 && f.fallbacks==1 && f.others==0;
+  r:=n94_file(n32_event(1064,"[]"));#assert r.status==N94_KIND && r.at== -1 && r.entry== -1;
+  r=n94_file(n32_event(1063,"[[\"url\",\"https://a.example/f.png\"],[\"m\",\"image/png\"]]"));#assert r.status==N94_MISSING && r.at== -1;
+  #assert n94_file(n32_event(1063,"[[\"url\",\"https://a.example/f.png\"],[\"x\",\"d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]")).status==N94_MISSING;
+  #assert n94_file(n32_event(1063,"[[\"m\",\"image/png\"],[\"x\",\"d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]")).status==N94_MISSING;
+  r=n94_file(n32_event(1063,"[[\"url\",\"https://a.example/f.png\"],[\"m\"]]"));#assert r.status==N94_ENTRY && r.at==1;
+  r=n94_file(n32_event(1063,"[[\"url\",\"https://a.example/f.png\"],[\"x\",\"ab\"]]"));#assert r.status==N94_HEX && r.at==1;
+  r=n94_file(n32_event(1063,"[[\"t\",\"a\"],[\"url\",1]]"));#assert r.status==N94_EVENT && r.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"url\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n94_file(n32_event(1063,cast(string)long[0..<n]));#assert r.status==N94_LIMIT && r.at==0;
+  none:NostrEvent;#assert n94_file(none).status==N94_EVENT;
+}
+#test "the hash check: x must be the SHA-256 of the bytes, then the size" {
+  hello:="hello world\n";b:[12]u8;for i:0..<12 {b[i]=hello[i];}
+  f:=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/h.txt\",\"x a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447\",\"size 12\",\"ox d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]"),0);
+  #assert f.status==N94_OK && n94_check(f,b[..],false)==N94_OK;
+  #assert n94_check(f,b[..],true)==N94_MISMATCH;
+  #assert n94_check(f,b[0..<11],false)==N94_MISMATCH;
+  b[11]='!';#assert n94_check(f,b[..],false)==N94_MISMATCH;b[11]=10;
+  g:=f;g.size=11;#assert n94_check(g,b[..],false)==N94_SIZE;
+  g.has_size=false;#assert n94_check(g,b[..],false)==N94_OK;
+  g.has_x=false;#assert n94_check(g,b[..],false)==N94_NO_HASH;
+  o:=f;o.ox=f.x;#assert n94_check(o,b[..],true)==N94_OK;
+  o.has_ox=false;#assert n94_check(o,b[..],true)==N94_NO_HASH;
+  // The size binds only the file as served.
+  o.has_ox=true;o.size=1;#assert n94_check(o,b[..],true)==N94_OK;
+  // The one-shot SHA-256 takes at most 1 MiB.
+  big:[1048577]u8;#assert n94_check(f,big[..],false)==N94_LIMIT;
+}
+#test "the writers round-trip through the readers" {
+  f:=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://nostr.build/i/my-image.jpg\",\"m image/jpeg\",\"blurhash e\\\"F\",\"dim 3024x4032\",\"alt A \\\"photo\\\"\",\"x d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\",\"ox a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447\",\"size 12\",\"fallback https://void.cat/alt1.jpg\"]]"),0);
+  #assert f.status==N94_OK;
+  out:[1024]u8;n:=json_raw(out[..],0,"[");n=n94_write(f,out[..],n,true);n=json_raw(out[..],n,"]");
+  #assert cast(string)out[0..<n]=="[[\"imeta\",\"url https://nostr.build/i/my-image.jpg\",\"m image/jpeg\",\"x d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\",\"ox a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447\",\"size 12\",\"dim 3024x4032\",\"blurhash e\\\"F\",\"alt A \\\"photo\\\"\",\"fallback https://void.cat/alt1.jpg\"]]";
+  g:=n94_imeta(n32_event(1,cast(string)out[0..<n]),0);
+  #assert g.status==N94_OK && n32_is(g.alt,"A \"photo\"") && ns_equal32(g.x,f.x) && ns_equal32(g.ox,f.ox) && g.size==12 && g.width==3024 && g.fallbacks==1;
+  t:[1024]u8;k:=n94_write(f,t[..],0,false);
+  #assert cast(string)t[0..<k]=="[[\"url\",\"https://nostr.build/i/my-image.jpg\"],[\"m\",\"image/jpeg\"],[\"x\",\"d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"],[\"ox\",\"a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447\"],[\"size\",\"12\"],[\"dim\",\"3024x4032\"],[\"blurhash\",\"e\\\"F\"],[\"alt\",\"A \\\"photo\\\"\"],[\"fallback\",\"https://void.cat/alt1.jpg\"]]";
+  h:=n94_file(n32_event(1063,cast(string)t[0..<k]));
+  #assert h.status==N94_OK && n32_is(h.blurhash,"e\"F") && ns_equal32(h.x,f.x) && h.height==4032;
+  // Only the fields present are written; no url, nothing written.
+  m:N94File;m.url=n94_text("https://a.example/1");m.has_size=true;m.size=0;
+  k=n94_write(m,t[..],0,true);#assert cast(string)t[0..<k]=="[\"imeta\",\"url https://a.example/1\",\"size 0\"]";
+  k=n94_write(m,t[..],5,false);#assert cast(string)t[5..<k]=="[[\"url\",\"https://a.example/1\"],[\"size\",\"0\"]]";
+  m.m=n94_text("a");m.alt=n94_text("A");m.blurhash=n94_text("b");
+  k=n94_write(m,t[..],0,true);#assert cast(string)t[0..<k]=="[\"imeta\",\"url https://a.example/1\",\"m a\",\"size 0\",\"blurhash b\",\"alt A\"]";
+  m.url.n=0;#assert n94_write(m,t[..],0,true)== -1 && n94_write(m,t[..],0,false)== -1;
+  #assert n94_write(f,t[0..<40],0,true)== -1 && n94_write(f,t[0..<40],0,false)== -1;
+}
+
+n94_refuse :: (f:N94File,status:int,at:int,entry:int)->N94File {o:=f;o.status=status;o.at=at;o.entry=entry;return o;}
+n94_status :: (f:N94File,status:int)->N94File {o:=f;o.status=status;return o;}
+n94_at :: (f:N94File,status:int,at:int)->N94File {o:=f;o.status=status;o.at=at;return o;}
+n94_text :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+
+// book:begin field
+N94_KEYS :: [9] string.["url", "m", "x", "ox", "size", "dim", "blurhash", "alt", "fallback"];
+n94_key :: (s:string)->int {
+  for k:0..<N94_KEYS.count {if s==N94_KEYS[k] {return k;}}
+  return -1;
+}
+// A decimal count of at most 15 digits, or -1.
+n94_number :: (s:string)->int {
+  if s.count==0 || s.count>15 {return -1;}
+  v:=0;
+  for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
+  return v;
+}
+// type/subtype: one slash with something on each side.
+n94_mime :: (s:string)->bool {
+  slash:= -1;
+  for i:0..<s.count {if s[i]=='/' {if slash>=0 {return false;}slash=i;}}
+  return slash>0 && slash<s.count-1;
+}
+// Where the first c is, or s.count when there is none.
+n94_find :: (s:string,c:u8)->int {for i:0..<s.count {if s[i]==c {return i;}}return s.count;}
+// What follows position at, or "" when at is the end.
+n94_after :: (s:string,at:int)->string {return ifx at<s.count then s[at+1..<s.count] else "";}
+// One field into f: its status is N94_OK or the refusal.
+n94_field :: (f:N94File,key:string,value:string)->N94File {
+  o:=f;
+  if key.count==0 || value.count==0 {return n94_status(o,N94_ENTRY);}
+  k:=n94_key(key);
+  if k<0 {o.others+=1;return n94_status(o,N94_OK);}
+  if value.count>NT_MAX_VALUE {return n94_status(o,N94_LIMIT);}
+  if k==N94_FALLBACK {
+    if o.fallbacks>=N94_MAX_FALLBACK {return n94_status(o,N94_FALLBACKS);}
+    o.fallback[o.fallbacks]=n94_text(value);o.fallbacks+=1;return n94_status(o,N94_OK);
+  }
+  bit:=cast(u32)1<<cast(u32)k;
+  if (o.seen&bit)!=0 {return n94_status(o,N94_DUPLICATE);}
+  o.seen|=bit;
+  if k==N94_URL {o.url=n94_text(value);}
+  if k==N94_M {if !n94_mime(value) {return n94_status(o,N94_MIME);}o.m=n94_text(value);}
+  if k==N94_X {if !ne_lower_hex(value,o.x[..]) {return n94_status(o,N94_HEX);}o.has_x=true;}
+  if k==N94_OX {if !ne_lower_hex(value,o.ox[..]) {return n94_status(o,N94_HEX);}o.has_ox=true;}
+  if k==N94_SIZE_KEY {o.size=n94_number(value);if o.size<0 {return n94_status(o,N94_NUMBER);}o.has_size=true;}
+  if k==N94_DIM_KEY {
+    cross:=n94_find(value,'x');
+    o.width=n94_number(value[0..<cross]);o.height=n94_number(n94_after(value,cross));
+    if o.width<=0 || o.height<=0 {return n94_status(o,N94_DIM);}
+    o.has_dim=true;
+  }
+  if k==N94_BLURHASH {o.blurhash=n94_text(value);}
+  if k==N94_ALT {o.alt=n94_text(value);}
+  return n94_status(o,N94_OK);
+}
+// book:end field
+
+// book:begin imeta
+// The index'th tag read as an imeta tag.
+n94_imeta :: (e:NostrEvent,index:int)->N94File {
+  f:N94File;j:[1]Json;
+  if index<0 || !nt_start(j[..],e) {return f;}
+  tok:=json_next(j[..]);k:=0;
+  while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
+  if tok!=JSON_ARRAY {return f;}
+  v:=json_next(j[..]);i:=0;
+  while v!=JSON_ARRAY_END {
+    if v!=JSON_STRING {return n94_refuse(f,N94_EVENT,index,i);}
+    buf:[N94_MAX_ENTRY]u8;n:=json_unescape(json_text(j[..]),buf[..]);
+    if n<0 {return n94_refuse(f,N94_LIMIT,index,i);}
+    s:=cast(string)buf[0..<n];
+    if i==0 {
+      if s!="imeta" {return n94_refuse(f,N94_NOT_IMETA,index,0);}
+    } else {
+      // No space leaves the value empty, which n94_field refuses.
+      sp:=n94_find(s,' ');
+      f=n94_field(f,s[0..<sp],n94_after(s,sp));
+      if f.status!=N94_OK {return n94_refuse(f,f.status,index,i);}
+    }
+    i+=1;v=json_next(j[..]);
+  }
+  if !n94_has(f,N94_URL) {return n94_refuse(f,N94_NO_URL,index,-1);}
+  if i<3 {return n94_refuse(f,N94_ALONE,index,-1);}
+  return n94_refuse(f,N94_OK,-1,-1);
+}
+n94_has :: (f:N94File,k:int)->bool {return (f.seen&(cast(u32)1<<cast(u32)k))!=0;}
+// book:end imeta
+
+// book:begin file
+// A kind 1063 event's file metadata: url, m and x are required.
+n94_file :: (e:NostrEvent)->N94File {
+  f:N94File;if e.error!=NE_OK {return f;}
+  if e.kind!=N94_KIND_FILE {return n94_at(f,N94_KIND,-1);}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n94_at(f,N94_LIMIT,i);}
+    if t.error!=NT_OK {return n94_at(f,N94_EVENT,i);}
+    name:=t.v[0];value:=t.v[1];
+    key:=cast(string)name.b[0..<name.n];
+    if n94_key(key)>=0 {
+      f=n94_field(f,key,cast(string)value.b[0..<value.n]);
+      if f.status!=N94_OK {return n94_at(f,f.status,i);}
+    }
+    i+=1;
+  }
+  if !n94_has(f,N94_URL) || !n94_has(f,N94_M) || !f.has_x {return n94_at(f,N94_MISSING,-1);}
+  return n94_at(f,N94_OK,-1);
+}
+// book:end file
+
+// book:begin check
+// Whether bytes are the file: the SHA-256 of the bytes must equal x, then
+// their count must equal size when there is one. With original, they must
+// hash to ox instead, the file before the server changed it; size is about
+// the served file, so it is not checked then.
+n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
+  want:=ifx original then f.ox else f.x;
+  has:=ifx original then f.has_ox else f.has_x;
+  if !has {return N94_NO_HASH;}
+  h:[32]u8;
+  if sha256_hash_checked(bytes,h[..],false)!=SHA_OK {return N94_LIMIT;}   // over 1 MiB
+  if !ns_equal32(h,want) {return N94_MISMATCH;}
+  if !original && f.has_size && f.size!=bytes.count {return N94_SIZE;}
+  return N94_OK;
+}
+// book:end check
+
+// book:begin write
+// One field after sep: "key value" in an imeta tag, or ["key","value"] as
+// a tag.
+n94_put :: (out:[]u8,at:int,sep:string,key:string,value:string,imeta:bool)->int {
+  n:=json_raw(out,at,sep);
+  if imeta {
+    s:[NT_MAX_VALUE+16]u8;m:=json_raw(s[..],0,key);m=json_raw(s[..],m," ");m=json_raw(s[..],m,value);
+    return json_write_string(out,n,cast(string)s[0..<m]);
+  }
+  n=json_raw(out,n,"[");n=json_write_string(out,n,key);n=json_raw(out,n,",");
+  n=json_write_string(out,n,value);return json_raw(out,n,"]");
+}
+// f's fields from at: an imeta tag ["imeta",...] or the tags of a kind
+// 1063 event [[...],...]. The new length, or -1 when it doesn't fit or f
+// has no url.
+n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int {
+  if f.url.n==0 {return -1;}
+  c:=f;hex:[64]u8;num:[48]u8;
+  n:=ifx imeta then json_raw(out,at,"[\"imeta\"") else at;
+  n=n94_put(out,n,ifx imeta then "," else "[","url",cast(string)c.url.b[0..<c.url.n],imeta);
+  if c.m.n>0 {n=n94_put(out,n,",","m",cast(string)c.m.b[0..<c.m.n],imeta);}
+  if c.has_x {r:=hex_encode_checked(cast(string)c.x[..],hex[..],false);n=n94_put(out,n,",","x",cast(string)hex[..],imeta);}
+  if c.has_ox {r:=hex_encode_checked(cast(string)c.ox[..],hex[..],false);n=n94_put(out,n,",","ox",cast(string)hex[..],imeta);}
+  if c.has_size {w:=json_write_int(num[..],0,c.size);n=n94_put(out,n,",","size",cast(string)num[0..<w],imeta);}
+  if c.has_dim {
+    w:=json_write_int(num[..],0,c.width);w=json_raw(num[..],w,"x");w=json_write_int(num[..],w,c.height);
+    n=n94_put(out,n,",","dim",cast(string)num[0..<w],imeta);
+  }
+  if c.blurhash.n>0 {n=n94_put(out,n,",","blurhash",cast(string)c.blurhash.b[0..<c.blurhash.n],imeta);}
+  if c.alt.n>0 {n=n94_put(out,n,",","alt",cast(string)c.alt.b[0..<c.alt.n],imeta);}
+  for k:0..<c.fallbacks {n=n94_put(out,n,",","fallback",cast(string)c.fallback[k].b[0..<c.fallback[k].n],imeta);}
+  return json_raw(out,n,"]");
+}
+// book:end write

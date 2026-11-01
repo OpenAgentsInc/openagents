@@ -1,0 +1,254 @@
+// NIP-B7 Blossom: blobs addressed by their SHA-256, the kind 10063 list of
+// a user's Blossom servers, and the kind 24242 event that authorizes one
+// request to a Blossom server.
+//
+// A Blossom URL ends in the blob's SHA-256 as 64 hex digits, with or
+// without a file extension. When the URL fails, NIP-B7 says to try the
+// same hex string on the author's other servers, and to check that the
+// downloaded bytes hash to it. nb7_fetch is that check.
+//
+// The authorization event is defined by Blossom's BUD-02 and BUD-04, which
+// are not pinned in this repository; the pinned NIP-B7 links them, and the
+// kinds table names 24242 "Blobs stored on mediaservers". This file follows
+// BUD-02's rules: exactly one t tag naming the verb (get, upload, list or
+// delete), exactly one expiration tag in the future, created_at not in the
+// future, and for upload and delete an x tag naming this blob. A get may
+// name blobs; then one must be this one. A list names none. The event is
+// verified by the caller (its id and BIP-340 signature): nb7_admit refuses
+// any event that is not. Who may upload is the server's own policy, and
+// replay within the window is not stopped here.
+#load "nip94.coax";
+#authority;
+
+NB7_OK :: 0; NB7_EVENT :: 1; NB7_KIND :: 2; NB7_FUTURE :: 3; NB7_TAG :: 4;
+NB7_VERB :: 5; NB7_EXPIRED :: 6; NB7_HASH :: 7; NB7_LIMIT :: 8; NB7_URL :: 9;
+NB7_MISMATCH :: 10; NB7_SERVER :: 11; NB7_TOO_MANY :: 12;
+NB7_KIND_SERVERS :: 10063; NB7_KIND_AUTH :: 24242;
+NB7_GET :: 0; NB7_UPLOAD :: 1; NB7_LIST :: 2; NB7_DELETE :: 3;
+NB7_VERBS :: [4] string.["get", "upload", "list", "delete"];
+
+// book:begin record
+NB7Blob :: struct {ok:bool; hash:[32]u8; ext_from:int;}  // ext_from: where the extension starts
+NB7Servers :: struct {status:int=NB7_EVENT; at:int=-1; n:int;}
+// book:end record
+
+NB7_T_HASH :: "b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553";
+
+#test "a blob URL ends in 64 hex digits and maybe an extension" {
+  b:=nb7_address("https://blossom.self.hosted/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553.png");
+  #assert b.ok && b.hash[0]==0xb1 && b.hash[31]==0x53 && b.ext_from==92;
+  b=nb7_address("https://cdn.example/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553");#assert b.ok && b.ext_from==84 && b.hash[1]==0x67;
+  #assert nb7_address("b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553").ok;
+  #assert nb7_address("https://x/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553.tar.gz").ext_from==74;
+  #assert !nb7_address("https://x/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f55.png").ok;
+  #assert !nb7_address("https://x/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f5533").ok;
+  #assert !nb7_address("https://x/B1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553").ok;
+  #assert !nb7_address("https://x/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553/").ok;
+  #assert !nb7_address("https://x/i/my-image.jpg").ok && !nb7_address("").ok;
+  #assert nb7_address("/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553").ok && nb7_address("https://x/abc.png").ext_from==13;
+}
+#test "a fetched blob must hash to its address" {
+  hello:="hello world\n";b:[12]u8;for i:0..<12 {b[i]=hello[i];}
+  #assert nb7_fetch("https://x/a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447.txt",b[..])==NB7_OK;
+  #assert nb7_fetch("https://x/a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447",b[0..<11])==NB7_MISMATCH;
+  #assert nb7_fetch("https://x/hello.txt",b[..])==NB7_URL;
+  big:[1048577]u8;#assert nb7_fetch("https://x/a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447",big[..])==NB7_LIMIT;
+}
+#test "the same blob on another server" {
+  h:[32]u8;ok:=ne_lower_hex(NB7_T_HASH,h[..]);out:[256]u8;
+  n:=nb7_blob_url("https://cdn.blossom.cloud",h,".png",out[..]);
+  #assert ok && cast(string)out[0..<n]=="https://cdn.blossom.cloud/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553.png";
+  n=nb7_blob_url("https://cdn.blossom.cloud/",h,"",out[..]);
+  #assert cast(string)out[0..<n]=="https://cdn.blossom.cloud/b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553";
+  #assert nb7_blob_url("https://cdn.blossom.cloud",h,"",out[0..<80])== -1;
+  #assert nb7_blob_url("/",h,"",out[..])==65 && nb7_blob_url("",h,"",out[..])==65;
+}
+#test "kind 10063 server lists" {
+  list:[4]N32Text;
+  s:=nb7_servers(n32_event(10063,"[[\"server\",\"https://blossom.self.hosted\"],[\"x\",\"y\"],[\"server\",\"http://cdn.blossom.cloud\"]]"),list[..]);
+  #assert s.status==NB7_OK && s.n==2 && s.at== -1 && n32_is(list[0],"https://blossom.self.hosted") && n32_is(list[1],"http://cdn.blossom.cloud");
+  #assert nb7_servers(n32_event(10002,"[]"),list[..]).status==NB7_KIND;
+  s=nb7_servers(n32_event(10063,"[[\"t\",\"a\"],[\"server\",\"wss://relay.example\"]]"),list[..]);#assert s.status==NB7_SERVER && s.at==1;
+  #assert nb7_servers(n32_event(10063,"[[\"server\",\"https://\"]]"),list[..]).status==NB7_SERVER;
+  #assert nb7_servers(n32_event(10063,"[[\"server\",\"http://\"]]"),list[..]).status==NB7_SERVER;
+  #assert nb7_servers(n32_event(10063,"[[\"server\",\"http://a\"]]"),list[..]).n==1;
+  #assert nb7_servers(n32_event(10063,"[[\"server\",\"https://a\"]]"),list[..]).n==1;
+  #assert nb7_servers(n32_event(10063,"[[\"server\"]]"),list[..]).status==NB7_SERVER;
+  s=nb7_servers(n32_event(10063,"[[\"server\",\"https://a\"],[\"server\",\"https://b\"]]"),list[0..<1]);#assert s.status==NB7_TOO_MANY && s.at==1;
+  s=nb7_servers(n32_event(10063,"[[\"server\",1]]"),list[..]);#assert s.status==NB7_EVENT && s.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"server\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  s=nb7_servers(n32_event(10063,cast(string)long[0..<n]),list[..]);#assert s.status==NB7_LIMIT && s.at==0;
+  none:NostrEvent;#assert nb7_servers(none,list[..]).status==NB7_EVENT;
+  #assert nb7_servers(n32_event(10063,"[]"),list[..]).status==NB7_OK;
+}
+// An authorization event as verified at time 1000 with these tags.
+nb7_t_auth :: (tags:string)->NostrEvent {e:=n32_event(NB7_KIND_AUTH,tags);e.verified=true;e.created_at=1000;return e;}
+#test "the authorization writer" {
+  h:[32]u8;ok:=ne_lower_hex(NB7_T_HASH,h[..]);out:[256]u8;
+  n:=nb7_auth_tags(NB7_UPLOAD,h,1600,out[..]);
+  #assert ok && cast(string)out[0..<n]=="[[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]";
+  n=nb7_auth_tags(NB7_LIST,h,7,out[..]);#assert cast(string)out[0..<n]=="[[\"t\",\"list\"],[\"expiration\",\"7\"]]";
+  #assert nb7_auth_tags(NB7_GET,h,7,out[0..<20])== -1;
+  n=nb7_auth_tags(NB7_DELETE,h,1600,out[..]);
+  #assert nb7_admit(nb7_t_auth(cast(string)out[0..<n]),NB7_DELETE,h,1001)==NB7_OK;
+}
+#test "admission: verb, blob, expiration and created_at" {
+  h:[32]u8;ok:=ne_lower_hex(NB7_T_HASH,h[..]);other:=h;other[5]^=1;
+  up:="[[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]";
+  #assert ok && nb7_admit(nb7_t_auth(up),NB7_UPLOAD,h,1000)==NB7_OK && nb7_admit(nb7_t_auth(up),NB7_UPLOAD,h,1599)==NB7_OK;
+  #assert nb7_admit(nb7_t_auth(up),NB7_UPLOAD,h,1600)==NB7_EXPIRED && nb7_admit(nb7_t_auth(up),NB7_UPLOAD,h,999)==NB7_FUTURE;
+  #assert nb7_admit(nb7_t_auth(up),NB7_UPLOAD,other,1000)==NB7_HASH;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"get\"],[\"expiration\",\"0\"]]"),NB7_GET,h,1000)==NB7_EXPIRED;
+  #assert nb7_admit(nb7_t_auth(up),NB7_DELETE,h,1000)==NB7_VERB && nb7_admit(nb7_t_auth(up),NB7_GET,h,1000)==NB7_VERB;
+  // Several x tags: any one names the blob.
+  two:="[[\"x\",\"0000000000000000000000000000000000000000000000000000000000000000\"],[\"t\",\"delete\"],[\"expiration\",\"1600\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"]]";
+  #assert nb7_admit(nb7_t_auth(two),NB7_DELETE,h,1000)==NB7_OK && nb7_admit(nb7_t_auth(two),NB7_DELETE,other,1000)==NB7_HASH;
+  // get: no x is any blob; with x, one must match. list ignores x.
+  get:="[[\"t\",\"get\"],[\"expiration\",\"1600\"]]";
+  #assert nb7_admit(nb7_t_auth(get),NB7_GET,other,1000)==NB7_OK;
+  getx:="[[\"t\",\"get\"],[\"expiration\",\"1600\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"]]";
+  #assert nb7_admit(nb7_t_auth(getx),NB7_GET,h,1000)==NB7_OK && nb7_admit(nb7_t_auth(getx),NB7_GET,other,1000)==NB7_HASH;
+  list:="[[\"t\",\"list\"],[\"expiration\",\"1600\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"]]";
+  #assert nb7_admit(nb7_t_auth(list),NB7_LIST,other,1000)==NB7_OK;
+  // upload and delete need an x tag.
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_HASH;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"delete\"],[\"expiration\",\"1600\"]]"),NB7_DELETE,h,1000)==NB7_HASH;
+}
+#test "admission refusals: the event, its kind and its tags" {
+  h:[32]u8;ok:=ne_lower_hex(NB7_T_HASH,h[..]);
+  up:="[[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]";
+  e:=nb7_t_auth(up);e.verified=false;#assert ok && nb7_admit(e,NB7_UPLOAD,h,1000)==NB7_EVENT;
+  e=nb7_t_auth(up);e.error=NE_ID;#assert nb7_admit(e,NB7_UPLOAD,h,1000)==NB7_EVENT;
+  e=nb7_t_auth(up);e.kind=27235;#assert nb7_admit(e,NB7_UPLOAD,h,1000)==NB7_KIND;
+  #assert nb7_admit(nb7_t_auth("[[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"put\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"],[\"expiration\",\"1700\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"16e2\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"x\",\"B1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"x\",1],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_TAG;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert nb7_admit(nb7_t_auth(cast(string)long[0..<n]),NB7_UPLOAD,h,1000)==NB7_LIMIT;
+  // Other tags pass; the content is for people.
+  #assert nb7_admit(nb7_t_auth("[[\"t\",\"upload\"],[\"server\",\"cdn.example\"],[\"x\",\"b1674191a88ec5cdd733e4240a81803105dc412d6c6708d53ab94fc248f4f553\"],[\"expiration\",\"1600\"]]"),NB7_UPLOAD,h,1000)==NB7_OK;
+}
+#test "upload: the body's SHA-256 is the blob" {
+  hello:="hello world\n";b:[12]u8;for i:0..<12 {b[i]=hello[i];}
+  up:="[[\"t\",\"upload\"],[\"x\",\"a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447\"],[\"expiration\",\"1600\"]]";
+  #assert nb7_upload(nb7_t_auth(up),b[..],1000)==NB7_OK && nb7_upload(nb7_t_auth(up),b[0..<11],1000)==NB7_HASH;
+  #assert nb7_upload(nb7_t_auth(up),b[..],1600)==NB7_EXPIRED;
+  big:[1048577]u8;#assert nb7_upload(nb7_t_auth(up),big[..],1000)==NB7_LIMIT;
+}
+
+// book:begin address
+// The blob a URL names: its last path segment is 64 lowercase hex digits,
+// then nothing or an extension starting with a dot.
+nb7_address :: (url:string)->NB7Blob {
+  b:NB7Blob;from:=0;
+  for i:0..<url.count {if url[i]=='/' {from=i+1;}}
+  to:=from;
+  while to<url.count && url[to]!='.' {to+=1;}
+  b.ok=to-from==64 && ne_lower_hex(url[from..<to],b.hash[..]);
+  b.ext_from=to;
+  return b;
+}
+// Whether bytes fetched from url are the blob it names.
+nb7_fetch :: (url:string,bytes:[]u8)->int {
+  b:=nb7_address(url);if !b.ok {return NB7_URL;}
+  h:[32]u8;
+  if sha256_hash_checked(bytes,h[..],false)!=SHA_OK {return NB7_LIMIT;}
+  return ifx ns_equal32(h,b.hash) then NB7_OK else NB7_MISMATCH;
+}
+// The blob's URL on server: server/hex then ext ("" or ".png"). The new
+// length, or -1 when it doesn't fit.
+nb7_blob_url :: (server:string,hash:[32]u8,ext:string,out:[]u8)->int {
+  s:=server;if s.count>0 && s[s.count-1]=='/' {s=s[0..<s.count-1];}
+  h:=hash;hex:[64]u8;r:=hex_encode_checked(cast(string)h[..],hex[..],false);
+  n:=json_raw(out,0,s);n=json_raw(out,n,"/");n=json_raw(out,n,cast(string)hex[..]);
+  return json_raw(out,n,ext);
+}
+// book:end address
+
+// book:begin servers
+// A kind 10063 event's server tags, in order, into list.
+nb7_servers :: (e:NostrEvent,list:[]N32Text)->NB7Servers {
+  s:NB7Servers;if e.error!=NE_OK {return s;}
+  if e.kind!=NB7_KIND_SERVERS {s.status=NB7_KIND;return s;}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    s.at=i;
+    if t.error==NT_LIMIT {s.status=NB7_LIMIT;return s;}
+    if t.error!=NT_OK {return s;}
+    if n32_is(t.v[0],"server") {
+      v:=t.v[1];u:=cast(string)v.b[0..<v.n];
+      if !nb7_http(u) {s.status=NB7_SERVER;return s;}
+      if s.n>=list.count {s.status=NB7_TOO_MANY;return s;}
+      list[s.n]=v;s.n+=1;
+    }
+    i+=1;
+  }
+  s.status=NB7_OK;s.at= -1;return s;
+}
+// An http:// or https:// URL with something after the scheme.
+nb7_http :: (u:string)->bool {
+  if u.count>8 && u[0..<8]=="https://" {return true;}
+  return u.count>7 && u[0..<7]=="http://";
+}
+// book:end servers
+
+// book:begin auth
+// The tags of an authorization for verb on blob until expiration: t, then
+// x (not for list), then expiration. The new length, or -1.
+nb7_auth_tags :: (verb:int,blob:[32]u8,expiration:int,out:[]u8)->int {
+  n:=json_raw(out,0,"[[\"t\",\"");n=json_raw(out,n,NB7_VERBS[verb]);n=json_raw(out,n,"\"],");
+  if verb!=NB7_LIST {
+    b:=blob;hex:[64]u8;r:=hex_encode_checked(cast(string)b[..],hex[..],false);
+    n=json_raw(out,n,"[\"x\",\"");n=json_raw(out,n,cast(string)hex[..]);n=json_raw(out,n,"\"],");
+  }
+  n=json_raw(out,n,"[\"expiration\",\"");n=json_write_int(out,n,expiration);
+  return json_raw(out,n,"\"]]");
+}
+// Whether a verified kind 24242 event authorizes verb on blob at now.
+nb7_admit :: (e:NostrEvent,verb:int,blob:[32]u8,now:int)->int {
+  if e.error!=NE_OK || !e.verified {return NB7_EVENT;}
+  if e.kind!=NB7_KIND_AUTH {return NB7_KIND;}
+  if e.created_at>now {return NB7_FUTURE;}
+  said:int;ts:=0;expiration:int;expirations:=0;has_x:=false;named:=false;
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return NB7_LIMIT;}
+    if t.error!=NT_OK {return NB7_TAG;}
+    v:=t.v[1];value:=cast(string)v.b[0..<v.n];
+    if n32_is(t.v[0],"t") {
+      ts+=1;said= -1;
+      for k:0..<NB7_VERBS.count {if value==NB7_VERBS[k] {said=k;}}
+    }
+    if n32_is(t.v[0],"expiration") {expirations+=1;expiration=n94_number(value);}
+    if n32_is(t.v[0],"x") {
+      h:[32]u8;
+      if !ne_lower_hex(value,h[..]) {return NB7_TAG;}
+      has_x=true;if ns_equal32(h,blob) {named=true;}
+    }
+    i+=1;
+  }
+  if ts!=1 || said<0 || expirations!=1 || expiration<0 {return NB7_TAG;}
+  if said!=verb {return NB7_VERB;}
+  if expiration<=now {return NB7_EXPIRED;}
+  if verb==NB7_LIST {return NB7_OK;}
+  if named || (verb==NB7_GET && !has_x) {return NB7_OK;}
+  return NB7_HASH;
+}
+// The server's check of an upload: the body's SHA-256 is the blob the
+// event must authorize.
+nb7_upload :: (e:NostrEvent,body:[]u8,now:int)->int {
+  h:[32]u8;
+  if sha256_hash_checked(body,h[..],false)!=SHA_OK {return NB7_LIMIT;}
+  return nb7_admit(e,NB7_UPLOAD,h,now);
+}
+// book:end auth

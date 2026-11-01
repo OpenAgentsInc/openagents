@@ -1,0 +1,132 @@
+// book:begin example
+#load "../../coax/lib/nostr/nipb7.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+FILE_STATUS :: [18] string.["ok", "event", "not an imeta tag", "entry is not a key and a value", "no url",
+  "url alone", "duplicate field", "hash is not 64 lowercase hex digits", "size is not a count",
+  "dim is not WxH", "m is not type/subtype", "not kind 1063", "missing url, m or x", "too long",
+  "too many fallbacks", "no hash", "SHA-256 differs", "size differs"];
+BLOSSOM :: [13] string.["ok", "event not verified", "not kind 24242", "created in the future",
+  "bad t, x or expiration tag", "another verb", "expired", "not for this blob", "too long",
+  "URL names no SHA-256", "SHA-256 differs from the URL", "server is not http(s)", "too many servers"];
+// Alice's secret key is BIP-340 test vector 1's published key. Never sign
+// with a real key in an example.
+ALICE :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+BLOB :: "Hello, Blossom!\n";
+URL :: "https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt";
+IMETA :: "[[\"imeta\",\"url https://blossom.example/50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044.txt\",\"m text/plain\",\"x 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044\",\"size 16\",\"alt A greeting\"]]";
+SERVERS :: "[[\"server\",\"https://blossom.example\"],[\"server\",\"https://mirror.example\"]]";
+T0 :: 1790000000;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+bytes_of :: (s: string, out: [] u8) -> [] u8 { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+
+// Sign an event by Alice into out and read it back with its ID and
+// signature checked.
+sign :: (created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(ALICE, key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+show_file :: (label: string, f: N94File) {
+  print("%: %", label, FILE_STATUS[f.status]);
+  if f.at >= 0 { print(" at tag %", f.at); }
+  if f.entry >= 0 { print(" entry %", f.entry); }
+  print("\n");
+  if f.status != N94_OK { return; }
+  hex: [64] u8;
+  print("  url "); say(f.url); print("\n  m "); say(f.m);
+  if f.has_x { print("\n  x %", hex32(f.x, hex[..])); }
+  if f.has_size { print("\n  size %", f.size); }
+  if f.alt.n > 0 { print("\n  alt "); say(f.alt); }
+  print("\n  fallbacks %, other keys %\n", f.fallbacks, f.others);
+}
+// Download bytes for f: the hash check.
+download :: (label: string, f: N94File, bytes: [] u8) {
+  print("download %: %\n", label, FILE_STATUS[n94_check(f, bytes, false)]);
+}
+
+main :: () {
+  blob: [16] u8; body := bytes_of(BLOB, blob[..]);
+  h: [32] u8; #assert sha256_hash_checked(body, h[..], false) == SHA_OK;
+  hex: [64] u8;
+  print("the blob: % bytes, SHA-256 %\n", body.count, hex32(h, hex[..]));
+
+  print("a note that shows the blob\n");
+  note_buf: [8192] u8; content: [256] u8;
+  n := json_raw(content[..], 0, "A greeting: "); n = json_raw(content[..], n, URL);
+  note := sign(T0, 1, IMETA, cast(string) content[0..<n], note_buf[..]);
+  print("note %\n", hex32(note.id, hex[..]));
+  f := n94_imeta(note, 0);
+  show_file("its imeta tag", f);
+  a := nb7_address(URL);
+  print("the url's last segment names %, extension from byte %\n", hex32(a.hash, hex[..]), a.ext_from);
+
+  print("the hash check\n");
+  download("the blob", f, body);
+  wrong: [16] u8; changed := bytes_of(BLOB, wrong[..]); changed[14] = '?';
+  download("with ! changed to ?", f, changed);
+  download("the first 15 bytes", f, body[0..<15]);
+  g := f; g.size = 15;
+  download("the blob, size 15 declared", g, body);
+
+  print("the same file as a kind 1063 event\n");
+  tags: [1024] u8; t := n94_write(f, tags[..], 0, false); #assert t > 0;
+  print("tags %\n", cast(string) tags[0..<t]);
+  file_buf: [8192] u8;
+  file := sign(T0 + 1, N94_KIND_FILE, cast(string) tags[0..<t], "A greeting", file_buf[..]);
+  print("event %\n", hex32(file.id, hex[..]));
+  show_file("kind 1063", n94_file(file));
+
+  print("the url fails: Alice's other Blossom servers\n");
+  servers_buf: [8192] u8;
+  servers := sign(T0 + 2, NB7_KIND_SERVERS, SERVERS, "", servers_buf[..]);
+  print("kind 10063 %\n", hex32(servers.id, hex[..]));
+  list: [4] N32Text; s := nb7_servers(servers, list[..]);
+  print("servers: %, %\n", BLOSSOM[s.status], s.n);
+  mirror: [256] u8; m := nb7_blob_url(cast(string) list[1].b[0..<list[1].n], a.hash, URL[a.ext_from..<URL.count], mirror[..]);
+  mirror_url := cast(string) mirror[0..<m];
+  print("try %\n", mirror_url);
+  print("  the blob: %\n", BLOSSOM[nb7_fetch(mirror_url, body)]);
+  print("  changed bytes: %\n", BLOSSOM[nb7_fetch(mirror_url, changed)]);
+
+  print("uploading: a kind 24242 authorization\n");
+  auth_tags: [512] u8; k := nb7_auth_tags(NB7_UPLOAD, h, T0 + 300, auth_tags[..]);
+  print("tags %\n", cast(string) auth_tags[0..<k]);
+  auth_buf: [8192] u8;
+  auth := sign(T0, NB7_KIND_AUTH, cast(string) auth_tags[0..<k], "Upload greeting.txt", auth_buf[..]);
+  print("event %\n", hex32(auth.id, hex[..]));
+  print("server at T0+10, upload of the blob: %\n", BLOSSOM[nb7_upload(auth, body, T0 + 10)]);
+  print("  changed bytes: %\n", BLOSSOM[nb7_upload(auth, changed, T0 + 10)]);
+  print("  as a delete: %\n", BLOSSOM[nb7_admit(auth, NB7_DELETE, h, T0 + 10)]);
+  print("  at T0+300: %\n", BLOSSOM[nb7_upload(auth, body, T0 + 300)]);
+  print("  at T0-5: %\n", BLOSSOM[nb7_upload(auth, body, T0 - 5)]);
+  forged := auth; forged.verified = false;
+  print("  not verified: %\n", BLOSSOM[nb7_upload(forged, body, T0 + 10)]);
+
+  print("refusals\n");
+  show_file("imeta without url", n94_imeta(nt_event("[[\"imeta\",\"m text/plain\",\"x 50831e9b89b8f27c88d119fe397e7251027f5c34a421d2c89c194b9b8591e044\"]]"), 0));
+  show_file("imeta with url alone", n94_imeta(nt_event("[[\"imeta\",\"url https://blossom.example/a.txt\"]]"), 0));
+  show_file("NIP-92's placeholder x", n94_imeta(nt_event("[[\"imeta\",\"url https://nostr.build/i/my-image.jpg\",\"x <sha256 hash as specified in NIP 94>\"]]"), 0));
+  show_file("kind 1063 without x", n94_file(n32_event(1063, "[[\"url\",\"https://blossom.example/a.txt\"],[\"m\",\"text/plain\"]]")));
+}
+// book:end example

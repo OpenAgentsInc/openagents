@@ -1214,14 +1214,21 @@
    "number": 57,
    "title": "Media and files",
    "file": "ch057-media-and-files.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22,
     49
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip94.coax",
+    "coax/lib/nostr/nipb7.coax",
+    "nostr/examples/media-files.coax",
+    "nostr/examples/checks/media-files.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
