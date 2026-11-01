@@ -249,6 +249,17 @@
         "release"
       ],
       "timeout": 180
+    },
+    {
+      "source": "nostr/examples/kinds-tags.coax",
+      "chapter": "nostr/book/ch022-kinds-and-tags.md",
+      "stdout": "nostr/fixtures/kinds-tags.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

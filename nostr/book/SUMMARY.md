@@ -41,7 +41,7 @@
 **VI. The event model**
 
 - [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) — implemented
-- [22. Kinds and tags](ch022-kinds-and-tags.md) — partly implemented
+- [22. Kinds and tags](ch022-kinds-and-tags.md) — implemented
 - [23. Filters](ch023-filters.md) — partly implemented
 - [24. Relay messages](ch024-relay-messages.md) — partly implemented
 - [25. Gift wrap](ch025-gift-wrap.md) — partly implemented

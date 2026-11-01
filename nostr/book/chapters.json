@@ -456,14 +456,17 @@
    "number": 22,
    "title": "Kinds and tags",
    "file": "ch022-kinds-and-tags.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     21
    ],
    "source": [
     "coax/lib/nostr/metadata.coax",
-    "coax/lib/nostr/tags.coax"
+    "coax/lib/nostr/store_policy.coax",
+    "coax/lib/nostr/tags.coax",
+    "nostr/examples/checks/kinds-tags.coax",
+    "nostr/examples/kinds-tags.coax"
    ],
    "qualified_targets": [
     "cpu"

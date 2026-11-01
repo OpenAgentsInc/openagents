@@ -1,0 +1,190 @@
+// book:begin example
+#load "../../coax/lib/nostr/tags.coax";
+#load "../../coax/lib/nostr/metadata.coax";
+#import "Basic";
+
+CLASS :: [4] string.["regular", "replaceable", "ephemeral", "addressable"];
+TAG :: [5] string.["other", "e", "p", "a", "d"];
+STATUS :: [8] string.["ok", "event", "index", "shape", "hex", "relay", "address", "limit"];
+MARK :: [4] string.["none", "root", "reply", "mention"];
+META :: [8] string.["ok", "event", "kind", "json", "shape", "duplicate key", "field", "output"];
+
+// Print a label and bytes as lowercase hex.
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// The address "kind:pubkey:d" of an addressable or replaceable event,
+// written into out: the kind in decimal, the pubkey as lowercase hex, and
+// the d value as it is (empty for a replaceable event).
+build_address :: (kind: int, pubkey: [] u8, d: string, out: [] u8) -> string {
+  hex: [64] u8;
+  r := hex_encode_checked(cast(string) pubkey, hex[..], false);
+  n := json_write_int(out, 0, kind);
+  n = json_raw(out, n, ":");
+  n = json_raw(out, n, cast(string) hex[0..<r.written]);
+  n = json_raw(out, n, ":");
+  n = json_raw(out, n, d);
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. A tag reader needs a parsed event, not a verified one.
+EVENT_HEAD :: "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1761686400,\"kind\":";
+EVENT_TAIL :: ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+event_with :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, EVENT_HEAD);
+  n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",\"tags\":");
+  n = json_raw(out, n, tags);
+  n = json_raw(out, n, EVENT_TAIL);
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// Print what nostr_tag read from one tag.
+show_tag :: (e: NostrEvent, index: int) {
+  t := nostr_tag(e, index);
+  print("tag %: %, %", index, TAG[t.type], STATUS[t.error]);
+  if t.error != NT_OK { print("\n"); return; }
+  print(", % values\n", t.values);
+  if t.type == NT_E {
+    print_hex("  id", t.id[..]);
+    print("  marker: %\n", MARK[t.marker]);
+    if t.has_author { print_hex("  author", t.author[..]); }
+  }
+  if t.type == NT_P { print_hex("  pubkey", t.pubkey[..]); }
+  if t.type == NT_A {
+    print("  kind: % (%)\n", t.address_kind, CLASS[ns_class(t.address_kind)]);
+    print_hex("  pubkey", t.pubkey[..]);
+  }
+  if t.type == NT_A || t.type == NT_D { print("  d: \"%\"\n", cast(string) t.d[0..<t.d_n]); }
+  if t.has_relay { print("  relay: %\n", cast(string) t.relay[0..<t.relay_n]); }
+}
+
+// One tag, read as tag 0 of an unsigned kind 1 event.
+read_one :: (tag: string) -> NostrTag {
+  buf: [1024] u8; tags: [512] u8;
+  n := json_raw(tags[..], 0, "[");
+  n = json_raw(tags[..], n, tag);
+  n = json_raw(tags[..], n, "]");
+  #assert n > 0;
+  return nostr_tag(event_with(1, cast(string) tags[0..<n], buf[..]), 0);
+}
+// An a tag with this value, read the same way.
+read_a :: (value: string) -> NostrTag {
+  tag: [512] u8;
+  n := json_raw(tag[..], 0, "[\"a\",");
+  n = json_write_string(tag[..], n, value);
+  n = json_raw(tag[..], n, "]");
+  #assert n > 0;
+  return read_one(cast(string) tag[0..<n]);
+}
+one_tag :: (label: string, tag: string) { print("%: %\n", label, STATUS[read_one(tag).error]); }
+a_value :: (label: string, value: string) { print("%: %\n", label, STATUS[read_a(value).error]); }
+
+// Which of two versions a relay keeps, by NIP-01's rule: one address (kind,
+// pubkey and, for an addressable kind, the d value) keeps one version, the
+// later created_at, and on a tie the lower id.
+keep :: (label: string, a: NsMeta, b: NsMeta) {
+  if ns_class(a.kind) == NS_EPHEMERAL { print("%: ephemeral, store neither\n", label); return; }
+  if !ns_same_key(a, b) { print("%: not one address, keep both\n", label); return; }
+  w := ifx ns_newer(a, b) then a else b;
+  print("%: one address, keep the %, created_at %, ", label,
+        ifx ns_newer(a, b) then "first" else "second", w.created);
+  print_hex("id begins", w.id[0..<2]);
+}
+
+PK_HEX :: "f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca";
+// A kind 1 reply: NIP-01's three example tags, with the e tag given a NIP-10
+// root marker and the author's pubkey, and a t tag that is no standard one.
+REPLY_TAGS :: "[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://nostr.example.com\",\"root\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"],[\"p\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"],[\"a\",\"30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd\",\"wss://nostr.example.com\"],[\"t\",\"nostr\"]]";
+
+main :: () {
+  print("kind ranges\n");
+  kinds := [6] int.[0, 1, 3, 10002, 20001, 30023];
+  for k: kinds { print("%: %\n", k, CLASS[ns_class(k)]); }
+  print("boundaries\n");
+  edges := [14] int.[2, 44, 45, 999, 1000, 9999, 10000, 19999, 20000, 29999, 30000, 39999, 40000, 65535];
+  for k: edges { print("%: %\n", k, CLASS[ns_class(k)]); }
+
+  print("an address\n");
+  pk: [32] u8; decode_hex(PK_HEX, pk[..]);
+  text: [128] u8;
+  print("article: %\n", build_address(30023, pk[..], "abcd", text[..]));
+  print("relay list: %\n", build_address(10002, pk[..], "", text[..]));
+
+  print("a reply's tags\n");
+  buf: [2048] u8;
+  e := event_with(1, REPLY_TAGS, buf[..]);
+  print("parsed: %, kind %, tags %\n", ifx e.error == NE_OK then "ok" else "refused", e.kind, e.tags);
+  for i: 0..<e.tags { show_tag(e, i); }
+  show_tag(e, e.tags);
+  d := nostr_tag_d(e);
+  print("first d: %, \"%\"\n", STATUS[d.error], cast(string) d.d[0..<d.d_n]);
+
+  print("a captured addressable event\n");
+  scratch: [16384] u8;
+  p := nostr_event_read(NT_PROJECT_EVENT, scratch[..], false);
+  print("read: %, kind % (%), tags %\n", ifx p.error == NE_OK then "ok, ID recomputed" else "refused",
+        p.kind, CLASS[ns_class(p.kind)], p.tags);
+  d = nostr_tag_d(p);
+  print("first d: %, \"%\"\n", STATUS[d.error], cast(string) d.d[0..<d.d_n]);
+  show_tag(p, 1);
+  show_tag(p, 2);
+  print("address: %\n", build_address(p.kind, p.public_key[..], cast(string) d.d[0..<d.d_n], text[..]));
+
+  print("which version is kept\n");
+  older := NsMeta.{kind = 10002, created = 1761686400};
+  older.id[0] = 0x5c; older.id[1] = 0x83;
+  newer := older; newer.created = 1761686460; newer.id[0] = 0xb7; newer.id[1] = 0x01;
+  keep("10002, 60 s apart", older, newer);
+  tie := older; tie.id[1] = 0x82;
+  keep("10002, same second", older, tie);
+  draft := NsMeta.{kind = 30023, created = 1761686400, identifier = "abcd"};
+  edit := draft; edit.created = 1761686460; edit.id[0] = 0x01;
+  keep("30023, d abcd twice", draft, edit);
+  other := draft; other.identifier = "efgh"; other.created = 1761686460;
+  keep("30023, d abcd and d efgh", draft, other);
+  note := NsMeta.{kind = 1, created = 1761686400};
+  keep("1, two notes", note, note);
+  keep("20001, two signals", NsMeta.{kind = 20001}, NsMeta.{kind = 20001});
+
+  print("refusals\n");
+  a_value("a, kind 1", "1:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:");
+  a_value("a, kind 20001", "20001:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:");
+  a_value("a, kind 10002 with d x", "10002:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:x");
+  a_value("a, no trailing colon", "10002:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca");
+  a_value("a, kind 030023", "030023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd");
+  a_value("a, kind 03", "03:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:");
+  a_value("a, kind 99999", "99999:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd");
+  a_value("a, pubkey 63 digits", "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9c:abcd");
+  a_value("a, pubkey uppercase F", "30023:F7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd");
+  one_tag("e, no id", "[\"e\"]");
+  one_tag("e, id 4 digits", "[\"e\",\"5c83\"]");
+  one_tag("e, relay https://x", "[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"https://x\"]");
+  one_tag("e, marker quote", "[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"\",\"quote\"]");
+  one_tag("p, empty pubkey", "[\"p\",\"\"]");
+  one_tag("tag value 1", "[\"p\",1]");
+  print("accepted\n");
+  one_tag("d on a kind 1 event", "[\"d\",\"abcd\"]");
+  a_value("a, kind 30023 with d a:b:", "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:a:b:");
+  one_tag("e, relay \"\" and marker reply", "[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"\",\"reply\"]");
+
+  print("kind 0 metadata\n");
+  m := nostr_metadata_parse("{\"name\":\"Ada\",\"about\":\"writes proofs\",\"website\":\"https://example.com\"}");
+  print("parse: %, name \"%\", about \"%\", picture %\n", META[m.error],
+        nmd_text(m, NMD_NAME), nmd_text(m, NMD_ABOUT), ifx m.has[NMD_PICTURE] then "present" else "absent");
+  print("name twice: %\n", META[nostr_metadata_parse("{\"name\":\"a\",\"name\":\"b\"}").error]);
+  print("name 1: %\n", META[nostr_metadata_parse("{\"name\":1}").error]);
+  print("an array: %\n", META[nostr_metadata_parse("[]").error]);
+}
+// book:end example

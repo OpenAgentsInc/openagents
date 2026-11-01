@@ -1,0 +1,82 @@
+// The checks of kinds-tags.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/kinds-tags.coax
+#load "../kinds-tags.coax";
+
+// book:begin check
+// Class counts over every kind 0..65535, from a Python script written from
+// NIP-01's four kind-range sentences (it shares no code with Coax):
+// regular 9043 (1, 2, 4..44, 1000..9999), replaceable 10002, ephemeral
+// 10000, addressable 10000, and 26491 kinds NIP-01 puts in no class
+// (45..999 and 40000..65535). ns_class stores those as regular.
+PY_REGULAR :: 9043; PY_UNCLASSED :: 26491;
+PY_REPLACEABLE :: 10002; PY_EPHEMERAL :: 10000; PY_ADDRESSABLE :: 10000;
+
+// NIP-01's regular rule, as its text states it.
+nip01_regular :: (n: int) -> bool { return (1000 <= n && n < 10000) || (4 <= n && n < 45) || n == 1 || n == 2; }
+
+#test "every kind's class matches the counts from NIP-01's text" {
+  count: [4] int; regular := 0;
+  for k: 0..<65536 {
+    c := ns_class(k); count[c] += 1;
+    if nip01_regular(k) { regular += 1; #assert c == NS_ORDINARY; }
+  }
+  #assert regular == PY_REGULAR && count[NS_ORDINARY] == PY_REGULAR + PY_UNCLASSED;
+  #assert count[NS_REPLACEABLE] == PY_REPLACEABLE && count[NS_EPHEMERAL] == PY_EPHEMERAL;
+  #assert count[NS_ADDRESSABLE] == PY_ADDRESSABLE;
+}
+#test "the worked kinds and every range boundary, by hand" {
+  #assert ns_class(0) == NS_REPLACEABLE && ns_class(1) == NS_ORDINARY && ns_class(3) == NS_REPLACEABLE;
+  #assert ns_class(10002) == NS_REPLACEABLE && ns_class(20001) == NS_EPHEMERAL && ns_class(30023) == NS_ADDRESSABLE;
+  #assert ns_class(9999) == NS_ORDINARY && ns_class(10000) == NS_REPLACEABLE;
+  #assert ns_class(19999) == NS_REPLACEABLE && ns_class(20000) == NS_EPHEMERAL;
+  #assert ns_class(29999) == NS_EPHEMERAL && ns_class(30000) == NS_ADDRESSABLE;
+  #assert ns_class(39999) == NS_ADDRESSABLE && ns_class(40000) == NS_ORDINARY;
+}
+#test "the built address is NIP-01's example a tag value" {
+  pk: [32] u8; decode_hex(PK_HEX, pk[..]); text: [128] u8;
+  #assert build_address(30023, pk[..], "abcd", text[..]) == "30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd";
+  #assert build_address(10002, pk[..], "", text[..]) == "10002:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:";
+}
+#test "NIP-01's example tags read as the NIP describes them" {
+  buf: [2048] u8; e := event_with(1, REPLY_TAGS, buf[..]);
+  #assert e.error == NE_OK && e.tags == 4;
+  t := nostr_tag(e, 0); id: [32] u8; pk: [32] u8;
+  decode_hex("5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36", id[..]); decode_hex(PK_HEX, pk[..]);
+  #assert t.error == NT_OK && t.type == NT_E && ns_equal32(t.id, id) && t.marker == NT_MARK_ROOT && t.has_author && ns_equal32(t.author, pk);
+  #assert t.has_relay && cast(string) t.relay[0..<t.relay_n] == "wss://nostr.example.com";
+  t = nostr_tag(e, 1); #assert t.error == NT_OK && t.type == NT_P && ns_equal32(t.pubkey, pk) && !t.has_relay;
+  t = nostr_tag(e, 2);
+  #assert t.error == NT_OK && t.type == NT_A && t.address_kind == 30023 && ns_equal32(t.pubkey, pk) && cast(string) t.d[0..<t.d_n] == "abcd";
+  t = nostr_tag(e, 3); #assert t.error == NT_OK && t.type == NT_OTHER && t.values == 2;
+  #assert nostr_tag(e, 4).error == NT_INDEX && nostr_tag_d(e).d_n == 0;
+}
+#test "the captured event's address is its own kind, pubkey and d" {
+  scratch: [16384] u8; p := nostr_event_read(NT_PROJECT_EVENT, scratch[..], false);
+  #assert p.error == NE_OK && p.kind == 30623 && p.tags == 108;
+  d := nostr_tag_d(p); text: [128] u8;
+  #assert build_address(p.kind, p.public_key[..], cast(string) d.d[0..<d.d_n], text[..]) == "30623:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax";
+  a := nostr_tag(p, 1); #assert a.address_kind == 30621 && ns_equal32(a.pubkey, p.public_key);
+}
+#test "replacement: later created_at, then the lower id; addresses by kind, author, d" {
+  a := NsMeta.{kind = 10002, created = 1761686400}; a.id[0] = 0x5c; a.id[1] = 0x83;
+  b := a; b.created = 1761686460; b.id[0] = 0xb7;
+  #assert ns_same_key(a, b) && ns_newer(b, a) && !ns_newer(a, b);
+  b = a; b.id[1] = 0x82; #assert ns_newer(b, a) && !ns_newer(a, b);
+  b = a; b.author[0] = 1; #assert !ns_same_key(a, b);
+  x := NsMeta.{kind = 30023, identifier = "abcd"}; y := x; #assert ns_same_key(x, y);
+  y.identifier = "efgh"; #assert !ns_same_key(x, y);
+  n := NsMeta.{kind = 1}; #assert !ns_same_key(n, n);
+}
+#test "each broken tag refuses with its own status" {
+  #assert read_a("1:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:").error == NT_ADDRESS;
+  #assert read_a("20001:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:").error == NT_ADDRESS;
+  #assert read_a("10002:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:x").error == NT_ADDRESS;
+  #assert read_a("10002:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca").error == NT_ADDRESS;
+  #assert read_a("030023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd").error == NT_LIMIT;
+  #assert read_a("30023:F7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd").error == NT_HEX;
+  #assert read_one("[\"e\"]").error == NT_SHAPE && read_one("[\"p\",\"\"]").error == NT_HEX;
+  #assert read_one("[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"https://x\"]").error == NT_RELAY;
+  #assert read_one("[\"p\",1]").error == NT_EVENT && read_one("[\"d\",\"abcd\"]").error == NT_OK;
+}
+// book:end check

@@ -1,0 +1,84 @@
+kind ranges
+0: replaceable
+1: regular
+3: replaceable
+10002: replaceable
+20001: ephemeral
+30023: addressable
+boundaries
+2: regular
+44: regular
+45: regular
+999: regular
+1000: regular
+9999: regular
+10000: replaceable
+19999: replaceable
+20000: ephemeral
+29999: ephemeral
+30000: addressable
+39999: addressable
+40000: regular
+65535: regular
+an address
+article: 30023:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:abcd
+relay list: 10002:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:
+a reply's tags
+parsed: ok, kind 1, tags 4
+tag 0: e, ok, 5 values
+  id: 5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36
+  marker: root
+  author: f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca
+  relay: wss://nostr.example.com
+tag 1: p, ok, 2 values
+  pubkey: f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca
+tag 2: a, ok, 3 values
+  kind: 30023 (addressable)
+  pubkey: f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca
+  d: "abcd"
+  relay: wss://nostr.example.com
+tag 3: other, ok, 2 values
+tag 4: other, index
+first d: ok, ""
+a captured addressable event
+read: ok, ID recomputed, kind 30623 (addressable), tags 108
+first d: ok, "coax"
+tag 1: a, ok, 3 values
+  kind: 30621 (addressable)
+  pubkey: 9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575
+  d: "coax"
+  relay: wss://relay.openagents.com
+tag 2: other, ok, 3 values
+address: 30623:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax
+which version is kept
+10002, 60 s apart: one address, keep the second, created_at 1761686460, id begins: b701
+10002, same second: one address, keep the second, created_at 1761686400, id begins: 5c82
+30023, d abcd twice: one address, keep the second, created_at 1761686460, id begins: 0100
+30023, d abcd and d efgh: not one address, keep both
+1, two notes: not one address, keep both
+20001, two signals: ephemeral, store neither
+refusals
+a, kind 1: address
+a, kind 20001: address
+a, kind 10002 with d x: address
+a, no trailing colon: address
+a, kind 030023: limit
+a, kind 03: address
+a, kind 99999: address
+a, pubkey 63 digits: address
+a, pubkey uppercase F: hex
+e, no id: shape
+e, id 4 digits: hex
+e, relay https://x: relay
+e, marker quote: hex
+p, empty pubkey: hex
+tag value 1: event
+accepted
+d on a kind 1 event: ok
+a, kind 30023 with d a:b:: ok
+e, relay "" and marker reply: ok
+kind 0 metadata
+parse: ok, name "Ada", about "writes proofs", picture absent
+name twice: duplicate key
+name 1: field
+an array: shape
