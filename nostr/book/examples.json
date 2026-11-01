@@ -100,7 +100,8 @@
         "debug",
         "release"
       ],
-      "run_steps": 250000000
+      "run_steps": 250000000,
+      "timeout": 240
     },
     {
       "source": "nostr/examples/keys.coax",
@@ -195,7 +196,8 @@
       "modes": [
         "debug",
         "release"
-      ]
+      ],
+      "timeout": 240
     },
     {
       "source": "nostr/examples/websocket-frames.coax",
