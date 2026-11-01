@@ -626,7 +626,7 @@
    "number": 30,
    "title": "Subscriptions and EOSE",
    "file": "ch030-subscriptions-and-eose.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     29,
@@ -634,7 +634,9 @@
    ],
    "source": [
     "coax/lib/nostr/relay.coax",
-    "coax/lib/nostr/relay_read.coax"
+    "coax/lib/nostr/relay_read.coax",
+    "nostr/examples/subscriptions.coax",
+    "nostr/examples/checks/subscriptions.coax"
    ],
    "qualified_targets": [
     "cpu"

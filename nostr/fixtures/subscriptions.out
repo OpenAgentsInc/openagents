@@ -1,0 +1,87 @@
+t=0 three subscriptions; connection gen 1 is open
+  send ["REQ","s0.1",{"kinds":[30617]}]
+  send ["REQ","s1.1",{"kinds":[30621]}]
+  send ["REQ","s2.1",{"kinds":[1111]}]
+t=100 the relay sends:
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... -> RL_DELIVER (stored, created_at 1793214821)
+  recv ["EOSE","s0.1",["finish"]] -> RL_EOSE (hint finish, stored set complete)
+  recv ["EVENT","s2.1",{"id":"5f377761f58cae551065c... -> RL_DELIVER (stored, created_at 1793219505)
+  recv ["EOSE","s2.1"] -> RL_EOSE (hint none, stored set unknown)
+  recv ["EVENT","s2.1",{"id":"fd6757b7c673ad4ebe991... -> RL_DELIVER (live, created_at 1793219504)
+  recv ["EVENT","s2.1",{"id":"5f377761f58cae551065c... -> RL_DUPLICATE
+  recv ["CLOSED","s1.1","auth-required: sign in to ... -> RL_CLOSED (now AUTH)
+  recv ["EVENT","s1.1",{"id":"375b0d296e3a16291582f... -> RL_UNKNOWN (it is AUTH)
+  recv ["CLOSED","s1.1","error: closed again"] -> RL_UNKNOWN (it is AUTH)
+t=200 rl_unsubscribe(0): slot 0 is CLOSING
+  recv ["EOSE","s0.1"] -> RL_UNKNOWN (it is CLOSING)
+  send ["CLOSE","s0.1"]
+t=200 rl_subscribe: slot 0, serial 2
+  send ["REQ","s0.2",{"kinds":[30617]}]
+t=250 the relay sends:
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... -> RL_UNKNOWN
+  recv ["CLOSED","s0.2","restricted: subscription l... -> RL_CLOSED (now REFUSED)
+  slot 0: s0.2 REFUSED, 0 delivered
+  slot 1: s1.1 AUTH, 0 delivered
+  slot 2: s2.1 CAUGHT, 2 delivered, newest created_at 1793219505
+t=300 dropped; t=850 connection gen 2 is open
+  send ["REQ","s1.1",{"kinds":[30621]}]
+  send ["REQ","s2.1",{"kinds":[1111],"since":1793219505}]
+t=900 the relay sends:
+  recv ["EVENT","s2.1",{"id":"5f377761f58cae551065c... -> RL_DUPLICATE
+  recv ["EOSE","s2.1",["finish"]] -> RL_EOSE (hint finish, stored set complete)
+  recv ["CLOSED","s1.1","auth-required: sign in to ... -> RL_CLOSED (now AUTH)
+  slot 0: s0.2 REFUSED, 0 delivered
+  slot 1: s1.1 AUTH, 0 delivered
+  slot 2: s2.1 CAUGHT, 2 delivered, newest created_at 1793219505
+decisions: afafabhddddhbfh
+phases: ssl
+rl_subscribe nine times: 0 1 2 3 4 5 6 7 -1
+["EOSE","s0.1"] -> hint none, stored set unknown
+["EOSE","s0.1",["finish"]] -> hint finish, stored set complete
+["EOSE","s0.1",["more","auth"]] -> hint more+auth, stored set unknown
+["EOSE","s0.1",[]] -> hint none, stored set unknown
+["EOSE","s0.1","finish"] -> hint none, stored set unknown
+["EOSE","s0.1",["FINISH","x-cursor"]] -> hint none, stored set unknown
+["EOSE","s0.1",["finish","more"]] -> hint finish+more, stored set unknown
+["EOSE","s0.1",["auth","finish"]] -> hint finish+auth, stored set unknown
+["EOSE","s0.1",[],2,3,4,5] -> hint frame refused, stored set unknown
+A: 100 events, the relay sends at most 37 per REQ, no hints
+  send ["REQ","s0.1",{"kinds":[1],"limit":500}]
+  recv 37 events, 37 new, oldest created_at 1031; ["EOSE","s0.1"] -> RL_EOSE (hint none)
+  send ["CLOSE","s0.1"]
+  send ["REQ","s1.1",{"kinds":[1],"until":1031,"limit":500}]
+  recv 37 events, 36 new, oldest created_at 1013; ["EOSE","s1.1"] -> RL_EOSE (hint none)
+  send ["CLOSE","s1.1"]
+  send ["REQ","s0.2",{"kinds":[1],"until":1013,"limit":500}]
+  recv 28 events, 27 new, oldest created_at 1000; ["EOSE","s0.2"] -> RL_EOSE (hint none)
+  send ["CLOSE","s0.2"]
+  send ["REQ","s1.2",{"kinds":[1],"until":1000,"limit":500}]
+  recv 2 events, 0 new, oldest created_at 1000; ["EOSE","s1.2"] -> RL_EOSE (hint none)
+  send ["CLOSE","s1.2"]
+  4 REQs, 100 of 100 events, stored set not known to be complete
+B: the same relay with NIP-67 hints
+  send ["REQ","s0.1",{"kinds":[1],"limit":500}]
+  recv 37 events, 37 new, oldest created_at 1031; ["EOSE","s0.1",["more"]] -> RL_EOSE (hint more)
+  send ["CLOSE","s0.1"]
+  send ["REQ","s1.1",{"kinds":[1],"until":1031,"limit":500}]
+  recv 37 events, 36 new, oldest created_at 1013; ["EOSE","s1.1",["more"]] -> RL_EOSE (hint more)
+  send ["CLOSE","s1.1"]
+  send ["REQ","s0.2",{"kinds":[1],"until":1013,"limit":500}]
+  recv 28 events, 27 new, oldest created_at 1000; ["EOSE","s0.2",["finish"]] -> RL_EOSE (hint finish)
+  send ["CLOSE","s0.2"]
+  3 REQs, 100 of 100 events, stored set complete (the relay said finish)
+C: 40 events share created_at 2000, cap 37, no hints
+  send ["REQ","s0.1",{"kinds":[1],"limit":500}]
+  recv 37 events, 37 new, oldest created_at 2000; ["EOSE","s0.1"] -> RL_EOSE (hint none)
+  send ["CLOSE","s0.1"]
+  send ["REQ","s1.1",{"kinds":[1],"until":2000,"limit":500}]
+  recv 37 events, 0 new, oldest created_at 2000; ["EOSE","s1.1"] -> RL_EOSE (hint none)
+  a full page with nothing new: stuck on created_at 2000; events there may be missing
+  send ["CLOSE","s1.1"]
+  send ["REQ","s0.2",{"kinds":[1],"until":1999,"limit":500}]
+  recv 5 events, 5 new, oldest created_at 1999; ["EOSE","s0.2"] -> RL_EOSE (hint none)
+  send ["CLOSE","s0.2"]
+  send ["REQ","s1.2",{"kinds":[1],"until":1999,"limit":500}]
+  recv 5 events, 0 new, oldest created_at 1999; ["EOSE","s1.2"] -> RL_EOSE (hint none)
+  send ["CLOSE","s1.2"]
+  4 REQs, 42 of 45 events, stored set not known to be complete, gap at created_at 2000

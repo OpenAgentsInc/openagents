@@ -351,6 +351,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/subscriptions.coax",
+      "chapter": "nostr/book/ch030-subscriptions-and-eose.md",
+      "stdout": "nostr/fixtures/subscriptions.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

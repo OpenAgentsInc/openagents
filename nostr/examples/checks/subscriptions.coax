@@ -1,0 +1,76 @@
+// The checks of subscriptions.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/subscriptions.coax
+#load "../subscriptions.coax";
+
+// book:begin check
+// The session's answers, worked out by hand in the chapter before the
+// program ran: 'a' + the RL_ code (a DELIVER, b DUPLICATE, d UNKNOWN,
+// f EOSE, h CLOSED), and s (stored) or l (live) for each delivery.
+HAND_DECISIONS :: "afafabhddddhbfh";
+HAND_PHASES :: "ssl";
+#test "the scripted session follows the hand trace" #steps 2000000000 {
+  t := sx_session(false);
+  #assert cast(string) t.decisions[0..<t.nds] == HAND_DECISIONS;
+  #assert cast(string) t.phases[0..<t.np] == HAND_PHASES;
+}
+#test "NIP-67's published examples and relay.openagents.com's captured EOSE frames" {
+  // NIP-67, Examples: the three EOSE frames, spaces as published.
+  h := sx_hint("[\"EOSE\", \"sub2\", [\"finish\"]]");
+  #assert h.read && h.finish && !h.more && !h.auth && sx_complete(h);
+  h = sx_hint("[\"EOSE\", \"sub2b\", [\"more\"]]");
+  #assert h.read && h.more && !h.finish && !sx_complete(h);
+  h = sx_hint("[\"EOSE\", \"sub4\", [\"auth\", \"finish\"]]");
+  #assert h.read && h.auth && h.finish && !sx_complete(h);
+  // Captured 2026-10-28 from wss://relay.openagents.com (COAX_RELAY lines 2 and 5).
+  lines := [2] int.[2, 5];
+  for line: lines {
+    span := nm_line(COAX_RELAY, line);
+    h = sx_hint(COAX_RELAY[span.from..<span.to]);
+    #assert h.read && h.finish && sx_complete(h);
+  }
+}
+#test "a missing or unreadable hint is never complete" {
+  // Every frame here lacks a usable "finish", or adds "more" or "auth".
+  frames := [9] string.["[\"EOSE\",\"a\"]", "[\"EOSE\",\"a\",[]]", "[\"EOSE\",\"a\",\"finish\"]", "[\"EOSE\",\"a\",[\"FINISH\"]]",
+                        "[\"EOSE\",\"a\",[[\"finish\"]]]", "[\"EOSE\",\"a\",{\"finish\":1}]", "[\"EOSE\",\"a\",[\"finish\",\"more\"]]",
+                        "[\"EOSE\",\"a\",[\"finish\"],2,3,4,5]", "[\"EOSE\",[\"finish\"]]"];
+  for f: frames { #assert !sx_complete(sx_hint(f)); }
+  // Unknown values next to "finish" are ignored, and so are later elements.
+  #assert sx_complete(sx_hint("[\"EOSE\",\"a\",[\"x-cursor\",{\"k\":[1]},\"finish\"],\"more\"]"));
+  #assert !sx_hint("[\"EOSE\",\"a\",[\"finish\"],2,3,4,5]").read;
+}
+#test "the pages of scenarios A, B and C match the hand counts" #steps 2000000000 {
+  // A: pages newest first, 37 each, until = the oldest created_at seen.
+  a := sx_catch_up(sx_store_pairs(37, false), false);
+  sentA := [4] int.[37, 37, 28, 2]; freshA := [4] int.[37, 36, 27, 0];
+  #assert a.reqs == 4 && a.delivered == 100 && !a.complete && !a.gap;
+  for k: 0..<4 { #assert a.sent[k] == sentA[k] && a.fresh[k] == freshA[k]; }
+  // B: "finish" on the third page saves the fourth REQ.
+  b := sx_catch_up(sx_store_pairs(37, true), false);
+  #assert b.reqs == 3 && b.delivered == 100 && b.complete;
+  // C: 40 events at 2000; the relay's first page is events 44 down to 8, so
+  // 5, 6 and 7 are never sent.
+  c := sx_catch_up(sx_store_tie(37), false);
+  sentC := [4] int.[37, 37, 5, 5]; freshC := [4] int.[37, 0, 5, 0];
+  #assert c.reqs == 4 && c.delivered == 42 && !c.complete && c.gap && c.gap_at == 2000;
+  for k: 0..<4 { #assert c.sent[k] == sentC[k] && c.fresh[k] == freshC[k]; }
+  for i: 0..<45 { #assert c.got[i] == (i < 5 || i > 7); }
+}
+#forall "pagination yields every event for any cap from 3 to 60" cap: 3..<61 #steps 2000000000 {
+  // Ties come in pairs, so a page of 3 always gets past one; the id window
+  // (64) holds a full page and its boundary events.
+  both := [2] bool.[false, true];
+  for hints: both {
+    c := sx_catch_up(sx_store_pairs(cap, hints), false);
+    #assert c.delivered == 100 && !c.gap && !c.stopped && c.complete == hints;
+    for i: 0..<100 { #assert c.got[i]; }
+  }
+}
+#test "a cap of 2 is stuck on every pair: the gap is reported, though nothing is lost" #steps 2000000000 {
+  // Per timestamp, one REQ brings its pair and one comes back full of
+  // duplicates (stuck); then until = 999 finds nothing: 50 * 2 + 1 REQs.
+  c := sx_catch_up(sx_store_pairs(2, false), false);
+  #assert c.reqs == 101 && c.delivered == 100 && c.gap && c.gap_at == 1000 && !c.complete && !c.stopped;
+}
+// book:end check
