@@ -1,0 +1,202 @@
+{
+  "status": "retained",
+  "scope": "Exact previously passing checker shard records and their checked stage0; original manifests keep their original absolute paths. This index maps byte-identical retained copies. No gate rerun.",
+  "files": [
+    {
+      "file": "01-of-8.json",
+      "sha256": "690a03728616881de541924ff06c0ab732f846d78416a3b6032db83bc64d18a5",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/01-of-8.json"
+    },
+    {
+      "file": "01-of-8.log",
+      "sha256": "a0cdc6be31448fe1518ef942656d16bd6e67672ecd09e8f1f0fbcf12fd126093",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/01-of-8.log"
+    },
+    {
+      "file": "01-of-8.rec",
+      "sha256": "032e340640ea504e07ad7a697f2a80f44a929d1b0ed8957781008cc0cb6d4986",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/01-of-8.rec"
+    },
+    {
+      "file": "02-of-8.json",
+      "sha256": "c2fb3bdc80e641405abf59f668dc46dd96ea28aed3d1e092e2af354a2abd0dc7",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/02-of-8.json"
+    },
+    {
+      "file": "02-of-8.log",
+      "sha256": "84a687cb1236aecf1acda747d0bdaf7844d11bbd4b525358ccb5054c7d24de41",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/02-of-8.log"
+    },
+    {
+      "file": "02-of-8.rec",
+      "sha256": "f846c7ab284336e976f8254b2df098dc9f30e31da2e94c77dba8a913c91c775f",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/02-of-8.rec"
+    },
+    {
+      "file": "03-of-8.json",
+      "sha256": "7c10dc890520a43ad83a4a50c33ad67877b98265ee087c4409763203c3887f2b",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/03-of-8.json"
+    },
+    {
+      "file": "03-of-8.log",
+      "sha256": "c1269461766415f7bcf1d951a8922e5c004bc44a42b8ad0ebc47044764eff2e2",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/03-of-8.log"
+    },
+    {
+      "file": "03-of-8.rec",
+      "sha256": "218ccd844263c9258cf1fe6501b5ec5eea4fb110cd3d659046dbe3893b56e6aa",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/03-of-8.rec"
+    },
+    {
+      "file": "04-of-8.json",
+      "sha256": "88f71babdb800e95591fca1b184a08076be4bdf21214d64e68728b811de2735f",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/04-of-8.json"
+    },
+    {
+      "file": "04-of-8.log",
+      "sha256": "0c68a4999a03fd584f040c83a40dfb50c5baf8754ba7a9df42c16db90361aa9f",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/04-of-8.log"
+    },
+    {
+      "file": "04-of-8.rec",
+      "sha256": "cd76614453a0f5e96f56ec2149c44899744a813c58acd04a08579f7baa795e4d",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/04-of-8.rec"
+    },
+    {
+      "file": "05-of-8.json",
+      "sha256": "0423697e6f9cd3b3be7751daa9be98e39cc881987ba4efe4395eda858758f7e5",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/05-of-8.json"
+    },
+    {
+      "file": "05-of-8.log",
+      "sha256": "6bdb59981684f69490c54969303a137b981339abb208d56881d5653e888b02d4",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/05-of-8.log"
+    },
+    {
+      "file": "05-of-8.rec",
+      "sha256": "ae693491a6e633b0c867e052ac8ca108adae4588b6b9f2ea1c3cc5d570a6b89b",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/05-of-8.rec"
+    },
+    {
+      "file": "06-of-8.json",
+      "sha256": "36afdb7bd4d285882537e26e8360783a5d7b5bfee1275fdd2f43f30ef9a8f893",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/06-of-8.json"
+    },
+    {
+      "file": "06-of-8.log",
+      "sha256": "b5e66cdb1c2d5aeec7f887a37dba460d9eb0d820956e4b0d6f90b901cf32ac3e",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/06-of-8.log"
+    },
+    {
+      "file": "06-of-8.rec",
+      "sha256": "39e40bba30286a786f54d694ccf4765aad936cae8082286abd2a19fbd2c83356",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/06-of-8.rec"
+    },
+    {
+      "file": "07-of-8.json",
+      "sha256": "29bc351eca20da3bfcd77b65757b7174c8ebaf326cf216182121319cb4252329",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/07-of-8.json"
+    },
+    {
+      "file": "07-of-8.log",
+      "sha256": "5c3cff9e932aef5f778586600961a560e919f627128741b646d9e51cdd67333a",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/07-of-8.log"
+    },
+    {
+      "file": "07-of-8.rec",
+      "sha256": "af3e75c7cad72bd63513d921157ddf1100150351416cb29633e82272c27ac78d",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/07-of-8.rec"
+    },
+    {
+      "file": "08-of-8.json",
+      "sha256": "f2571c38d2e48e1ea7e5ad425bfd0ac184abcaf4e20d3ed16e3d83a8e54c2118",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/08-of-8.json"
+    },
+    {
+      "file": "08-of-8.log",
+      "sha256": "1826923aebfb0d0350cae66cc2ee872cf3e3d3175a01b235a868522a51ca7941",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/08-of-8.log"
+    },
+    {
+      "file": "08-of-8.rec",
+      "sha256": "54913ce35618354385933c761ee9c37394c10fc648d8feafdda3d02590d2149d",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/08-of-8.rec"
+    },
+    {
+      "file": "complete.manifest",
+      "sha256": "dcda7c4ad9507927717b9d9f10d6cae8a5f393157203f36289d94c6cc78d7bb9",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/complete.manifest"
+    },
+    {
+      "file": "private-replay.log",
+      "sha256": "176af88b85eae34275574827044b4038e8f87f5e859af2dab299d08fba87277b",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/private-replay.log"
+    },
+    {
+      "file": "qualification.json",
+      "sha256": "2ac320ccb753aafdbeaecf5cc9a797e069610bb5190a1b06e817dd8979c0f97a",
+      "original": "/tmp/aethyr-ch11-final-checker-shards/qualification.json"
+    },
+    {
+      "file": "aethyr-ch11-bootstrap-hook-final-checks.log",
+      "sha256": "c240b3af1341016fcd9464d973dce015ccd8e787bc86ef5dd9ff4dca2a132639",
+      "original": "/tmp/aethyr-ch11-bootstrap-hook-final-checks.log"
+    },
+    {
+      "file": "aethyr-ch11-provenance-hook-checks.log",
+      "sha256": "005cc83f727691ec813a3947602bc97cd17b74fda67c78a849754db4bd80bbe9",
+      "original": "/tmp/aethyr-ch11-provenance-hook-checks.log"
+    },
+    {
+      "file": "aethyr-ch11-final-context-controls.json",
+      "sha256": "b23af706df1fb6b817d94a24aabc2285b4de496234f8c08d6abf102a76d24318",
+      "original": "/tmp/aethyr-ch11-final-context-controls.json"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/checker.coax",
+      "sha256": "177892429ac07bc7eac88a948e2a0b4be43fb9cb606d41224e669a1dfb5ac895",
+      "original": "coax/lib/compiler/checker.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/borrow-summary.coax",
+      "sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "original": "coax/lib/compiler/borrow-summary.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/retain-policy.coax",
+      "sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+      "original": "coax/lib/compiler/retain-policy.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/quantity.coax",
+      "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+      "original": "coax/lib/compiler/quantity.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/unit-algebra.coax",
+      "sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+      "original": "coax/lib/compiler/unit-algebra.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/unit-forms.coax",
+      "sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+      "original": "coax/lib/compiler/unit-forms.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/spatial-policy.coax",
+      "sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+      "original": "coax/lib/compiler/spatial-policy.coax"
+    },
+    {
+      "file": "inputs/coax/lib/compiler/spatial-mutation.coax",
+      "sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+      "original": "coax/lib/compiler/spatial-mutation.coax"
+    },
+    {
+      "file": "checked-stage0.tar.gz",
+      "sha256": "577b2730387e08427d3cfea49763bd7223b4094bf622bb9277f8ff2f97e02751",
+      "original": "/private/tmp/aethyr-ch11-final-compiler-retained/coax/bin/.bootstrap-30583/stage0",
+      "uncompressed_binary_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965"
+    }
+  ]
+}

@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.47.0 — Versioned Shader Operations — 2026-11-01
 
-Commit: [`f914a8dfd7fc94fb727db834739f5397e03296d6`](https://github.com/OpenAgentsInc/openagents/commit/f914a8dfd7fc94fb727db834739f5397e03296d6)
+Commit: [`aabbf0d5189a7b26002114733cff0de77c7d9283`](https://github.com/OpenAgentsInc/openagents/commit/aabbf0d5189a7b26002114733cff0de77c7d9283)
 
 - Preserve checked shader tree2 and its GPU operation registry. Emit tree3
   when a reachable procedure uses explicit fine derivatives or helper
@@ -29,7 +29,11 @@ Commit: [`f914a8dfd7fc94fb727db834739f5397e03296d6`](https://github.com/OpenAgen
   the original binding report lines for trusted legacy tools.
 - Add typed array-image dimension aliases `gpu_layer_width` and
   `gpu_layer_height` to the existing image-query operations10/11. Programs
-  using these queries alone retain tree2.
+  using these aliases select tree3 and query an array image's three-component
+  size. Tree2 retains its existing array-query refusal.
+- Declare and reuse an implicit float vec3 for array sample coordinates when
+  the reachable source declares only vec2 and vec4. Preserve an existing
+  declared vec3 and the existing sample operations in both tree versions.
 
 ## 0.46.0 — Returned Borrow Summaries — 2026-10-31
 

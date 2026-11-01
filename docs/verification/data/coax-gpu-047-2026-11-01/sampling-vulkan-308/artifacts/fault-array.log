@@ -1,0 +1,18 @@
+sample3 word0 got0 expected0.125
+sample3 word1 got0 expected0.25
+sample3 word2 got0 expected0.5
+sample3 word3 got0 expected0.75
+sample3 word4 got0 expected0.125
+sample3 word5 got0 expected0.25
+sample3 word6 got0 expected0.5
+sample3 word7 got0 expected0.75
+sample3 word8 got0 expected0.125
+sample3 word9 got0 expected0.25
+sample3 word10 got0 expected0.5
+sample3 word11 got0 expected0.75
+sample3 word12 got0 expected0.125
+sample3 word13 got0 expected0.25
+sample3 word14 got0 expected0.5
+sample3 word15 got0 expected0.75
+device=NVIDIA GeForce RTX 4080 helper=1 int64=1
+eight taps and invalid-footprint publication: wrong=16 validation_errors=0 validation_warnings=0

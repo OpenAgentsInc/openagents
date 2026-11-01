@@ -1,0 +1,140 @@
+// Exact physical metadata producer; deliberately not a compiler lowering rule.
+#load "quantity.coax";
+#authority;
+
+UA_Result :: struct {status:Q_Status;unit:Q_Unit;}
+
+#test "unit normalization reduces common factors and preserves every dimension" {
+  u:=Q_Unit.{mass=-8,length=7,time=-6,angle=5,numerator=1048576,denominator=524288};
+  r:=UA_normalize(u);#assert r.status==Q_Status.ok;
+  #assert r.unit.mass== -8 && r.unit.length==7 && r.unit.time== -6 && r.unit.angle==5;
+  #assert r.unit.numerator==2 && r.unit.denominator==1 && Q_unit_valid(r.unit);
+  again:=UA_normalize(r.unit);#assert again.status==Q_Status.ok && again.unit.numerator==2 && again.unit.denominator==1;
+  r=UA_normalize(Q_Unit.{numerator=832040,denominator=514229});
+  #assert r.status==Q_Status.ok && r.unit.numerator==832040 && r.unit.denominator==514229;
+}
+#forall "small normalized scales are exact and independently trial-divisor canonical" n:1..<13,d:1..<13 {
+  r:=UA_normalize(Q_Unit.{numerator=n,denominator=d});
+  #assert r.status==Q_Status.ok && Q_unit_valid(r.unit);
+  #assert r.unit.numerator*d==n*r.unit.denominator;
+  for factor:2..<13 {#assert r.unit.numerator%factor!=0 || r.unit.denominator%factor!=0;}
+}
+#forall "every metadata input field is admitted before any arithmetic" field:0..<6,bad:0..<5 {
+  a:=Q_Unit.{mass=2,length=-3,time=4,angle=-5,numerator=6,denominator=10};b:=a;
+  dimensions:=[5]int.[-9,9,-9223372036854775808,9223372036854775807,1048576];
+  scales:=[5]int.[0,-1,1048577,-9223372036854775808,9223372036854775807];
+  if field==0 {a.mass=dimensions[bad];}if field==1 {a.length=dimensions[bad];}
+  if field==2 {a.time=dimensions[bad];}if field==3 {a.angle=dimensions[bad];}
+  if field==4 {a.numerator=scales[bad];}if field==5 {a.denominator=scales[bad];}
+  results:=[7]UA_Result.[UA_normalize(a),UA_product(a,b),UA_product(b,a),UA_quotient(a,b),UA_quotient(b,a),UA_ratio(a,b),UA_ratio(b,a)];
+  for r:results {#assert r.status==Q_Status.metadata;
+    #assert r.unit.mass==0 && r.unit.length==0 && r.unit.time==0 && r.unit.angle==0 && r.unit.numerator==0 && r.unit.denominator==0;}
+}
+#forall "product and quotient dimensions admit inclusive bounds on each axis" axis:0..<4,a:-8..<9,b:-8..<9 {
+  x:=Q_Unit.{numerator=6,denominator=10};y:=Q_Unit.{numerator=15,denominator=21};
+  if axis==0 {x.mass=a;y.mass=b;}if axis==1 {x.length=a;y.length=b;}
+  if axis==2 {x.time=a;y.time=b;}if axis==3 {x.angle=a;y.angle=b;}
+  p:=UA_product(x,y);q:=UA_quotient(x,y);sum:=a+b;difference:=a-b;
+  results:=[2]UA_Result.[p,q];values:=[2]int.[sum,difference];
+  for i:0..<2 {r:=results[i];value:=values[i];
+    if value< -8 || value>8 {#assert r.status==Q_Status.dimension;
+      #assert r.unit.mass==0 && r.unit.length==0 && r.unit.time==0 && r.unit.angle==0 && r.unit.numerator==0 && r.unit.denominator==0;}
+    else {#assert r.status==Q_Status.ok && Q_unit_valid(r.unit);
+      dims:=[4]int.[r.unit.mass,r.unit.length,r.unit.time,r.unit.angle];
+      for j:0..<4 {if j==axis {#assert dims[j]==value;}else {#assert dims[j]==0;}}
+      if i==0 {#assert r.unit.numerator==3 && r.unit.denominator==7;}
+      else {#assert r.unit.numerator==21 && r.unit.denominator==25;}}
+  }
+  ratio:=UA_ratio(x,y);
+  if a!=b {#assert ratio.status==Q_Status.dimension && ratio.unit.numerator==0 && ratio.unit.denominator==0;}
+  else {#assert ratio.status==Q_Status.ok && ratio.unit.mass==0 && ratio.unit.length==0 && ratio.unit.time==0 && ratio.unit.angle==0 && ratio.unit.numerator==21 && ratio.unit.denominator==25;}
+}
+#test "all four dimension components compose together without collapsing an axis" {
+  a:=Q_Unit.{mass=2,length=-3,time=4,angle=-5,numerator=7,denominator=11};
+  b:=Q_Unit.{mass=-1,length=2,time=-3,angle=4,numerator=22,denominator=21};
+  p:=UA_product(a,b);#assert p.status==Q_Status.ok && p.unit.mass==1 && p.unit.length== -1 && p.unit.time==1 && p.unit.angle== -1 && p.unit.numerator==2 && p.unit.denominator==3;
+  q:=UA_quotient(a,b);#assert q.status==Q_Status.dimension && q.unit.numerator==0;
+  b.angle=3;q=UA_quotient(a,b);#assert q.status==Q_Status.ok && q.unit.mass==3 && q.unit.length== -5 && q.unit.time==7 && q.unit.angle== -8 && q.unit.numerator==147 && q.unit.denominator==242;
+}
+#forall "exact scale cancellation precedes the final metadata bound" row:0..<9 {
+  an:=[9]int.[1048576,1048576,1,1048576,1048576,1048576,6,832040,1];
+  ad:=[9]int.[1048576,1,1048576,1,1048575,2,35,514229,1];
+  bn:=[9]int.[1048576,1048576,1,1,1048575,2,9,514229,1];
+  bd:=[9]int.[1048576,1,1048576,1048576,1048576,1,70,832040,1];
+  pn:=[9]int.[1,0,0,1,1,1048576,27,1,1];pd:=[9]int.[1,0,0,1,1,1,1225,1,1];
+  qn:=[9]int.[1,1,1,0,0,262144,4,0,1];qd:=[9]int.[1,1,1,0,0,1,3,0,1];
+  a:=Q_Unit.{numerator=an[row],denominator=ad[row]};b:=Q_Unit.{numerator=bn[row],denominator=bd[row]};
+  results:=[3]UA_Result.[UA_product(a,b),UA_quotient(a,b),UA_ratio(a,b)];
+  for i:0..<3 {r:=results[i];n:=qn[row];d:=qd[row];if i==0 {n=pn[row];d=pd[row];}
+    if n==0 {#assert r.status==Q_Status.scale && r.unit.numerator==0 && r.unit.denominator==0;}
+    else {#assert r.status==Q_Status.ok && Q_unit_valid(r.unit) && r.unit.numerator==n && r.unit.denominator==d;}
+    #assert r.unit.mass==0 && r.unit.length==0 && r.unit.time==0 && r.unit.angle==0;}
+}
+#test "metadata refusal precedes dimensions which precede nonrepresentable scales" {
+  a:=Q_Unit.{mass=8,numerator=1048576,denominator=1};b:=a;b.numerator=0;
+  #assert UA_product(a,b).status==Q_Status.metadata;
+  #assert UA_quotient(a,b).status==Q_Status.metadata;
+  #assert UA_ratio(a,b).status==Q_Status.metadata;
+  b=a;#assert UA_product(a,b).status==Q_Status.dimension;
+  b.mass= -8;#assert UA_quotient(a,b).status==Q_Status.dimension;
+  b.mass=7;b.numerator=1;b.denominator=1048576;#assert UA_ratio(a,b).status==Q_Status.dimension;
+  a.mass=0;b.mass=0;#assert UA_ratio(a,b).status==Q_Status.scale;
+  // M1's transient binary conversion coefficient is not a bounded unit scale.
+  original:=Q_conversion(a,b);#assert original.status==Q_Status.ok && original.exponent==40;
+}
+#test "normalized identity is stable and division by self is dimensionless" {
+  a:=Q_Unit.{mass=8,length=-8,time=8,angle=-8,numerator=1048575,denominator=1048575};one:=Q_Unit.{numerator=1,denominator=1};
+  p:=UA_product(a,one);q:=UA_quotient(a,a);r:=UA_ratio(a,a);
+  #assert p.status==Q_Status.ok && p.unit.mass==8 && p.unit.length== -8 && p.unit.time==8 && p.unit.angle== -8 && p.unit.numerator==1 && p.unit.denominator==1;
+  for z:[2]UA_Result.[q,r] {#assert z.status==Q_Status.ok && z.unit.mass==0 && z.unit.length==0 && z.unit.time==0 && z.unit.angle==0 && z.unit.numerator==1 && z.unit.denominator==1;}
+}
+#test "reduced scale bounds distinguish the last admitted word and first refused word" {
+  one:=Q_Unit.{numerator=1,denominator=1};small:=Q_Unit.{numerator=1,denominator=1048576};
+  r:=UA_product(one,small);#assert r.status==Q_Status.ok && r.unit.numerator==1 && r.unit.denominator==1048576;
+  // 17 * 61681 = 1048577: each original factor is valid.
+  a:=Q_Unit.{numerator=17,denominator=1};b:=Q_Unit.{numerator=61681,denominator=1};
+  r=UA_product(a,b);#assert r.status==Q_Status.scale && r.unit.numerator==0 && r.unit.denominator==0;
+  a.numerator=1;a.denominator=17;b.numerator=1;b.denominator=61681;
+  r=UA_product(a,b);#assert r.status==Q_Status.scale && r.unit.numerator==0 && r.unit.denominator==0;
+}
+
+// Implementation follows the independently stated checks above.
+UA_gcd :: (a:int,b:int)->int {
+  // Private precondition: positive admitted scale products, at most 2^40.
+  x:=a;y:=b;
+  while y!=0 {remainder:=x%y;x=y;y=remainder;}
+  return x;
+}
+UA_finish :: (dimensions:Q_Unit,numerator:int,denominator:int)->UA_Result {
+  // Inputs are already admitted. Only the newly composed dimensions and
+  // reduced scale can fail. No unreduced product is tested against 2^20.
+  if dimensions.mass< -8 || dimensions.mass>8 || dimensions.length< -8 || dimensions.length>8 ||
+    dimensions.time< -8 || dimensions.time>8 || dimensions.angle< -8 || dimensions.angle>8 {
+    return UA_Result.{status=Q_Status.dimension};
+  }
+  divisor:=UA_gcd(numerator,denominator);n:=numerator/divisor;d:=denominator/divisor;
+  if n>1048576 || d>1048576 {return UA_Result.{status=Q_Status.scale};}
+  unit:=dimensions;unit.numerator=n;unit.denominator=d;
+  return UA_Result.{unit=unit};
+}
+UA_normalize :: (u:Q_Unit)->UA_Result #export_c {
+  if !Q_unit_valid(u) {return UA_Result.{status=Q_Status.metadata};}
+  return UA_finish(u,u.numerator,u.denominator);
+}
+UA_product :: (a:Q_Unit,b:Q_Unit)->UA_Result #export_c {
+  if !Q_unit_valid(a) || !Q_unit_valid(b) {return UA_Result.{status=Q_Status.metadata};}
+  dimensions:=Q_Unit.{mass=a.mass+b.mass,length=a.length+b.length,time=a.time+b.time,angle=a.angle+b.angle};
+  return UA_finish(dimensions,a.numerator*b.numerator,a.denominator*b.denominator);
+}
+UA_quotient :: (a:Q_Unit,b:Q_Unit)->UA_Result #export_c {
+  if !Q_unit_valid(a) || !Q_unit_valid(b) {return UA_Result.{status=Q_Status.metadata};}
+  dimensions:=Q_Unit.{mass=a.mass-b.mass,length=a.length-b.length,time=a.time-b.time,angle=a.angle-b.angle};
+  return UA_finish(dimensions,a.numerator*b.denominator,a.denominator*b.numerator);
+}
+UA_ratio :: (source:Q_Unit,target:Q_Unit)->UA_Result #export_c {
+  if !Q_unit_valid(source) || !Q_unit_valid(target) {return UA_Result.{status=Q_Status.metadata};}
+  if source.mass!=target.mass || source.length!=target.length || source.time!=target.time || source.angle!=target.angle {
+    return UA_Result.{status=Q_Status.dimension};
+  }
+  return UA_finish(Q_Unit.{},source.numerator*target.denominator,source.denominator*target.numerator);
+}

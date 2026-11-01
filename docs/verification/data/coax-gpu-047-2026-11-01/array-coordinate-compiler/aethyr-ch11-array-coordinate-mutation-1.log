@@ -1,0 +1,13 @@
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents-aethyr-compiler/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents-aethyr-compiler/coax/build.sh
+coax/lib/compiler/shader.coax:1956:13: mutant survived: the assignment was removed
+    sa_tree[0]=sa_version;
+              ^
+coax/lib/compiler/shader.coax:1957:6: mutant survived: the if condition was negated
+    if sa_declared {sa_tree[1]=11;sa_n+=sh_parse("7 3 2 0 2 4 2 8 12",sa_tree[sa_n..<sa_tree.count]);}
+       ^
+coax/lib/compiler/shader.coax:1958:17: mutant survived: 2 became 3
+    sa_tree[sa_n]=2;sa_n+=1;
+                  ^
+3877 mutants, 3824 killed, 3 survived, 50 marked equivalent

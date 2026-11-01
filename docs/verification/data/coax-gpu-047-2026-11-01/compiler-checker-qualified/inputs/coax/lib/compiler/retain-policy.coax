@@ -1,0 +1,195 @@
+// Supplied retained-store classification; checked graph integration is separate.
+// Valid immutable inputs are disjoint from writable output for this call.
+#load "borrow-summary.coax";
+#authority;
+
+RP_MAX_TERMS :: BS_MAX_SET;
+RP_MAX_WORK :: BS_MAX_WORK;
+RP_Status :: enum u8 {ok; invalid; capacity; work;}
+RP_Term :: struct {frame:int; origin:BS_Origin;}
+RP_Address :: struct {storage:RP_Term; value_type:int;}
+RP_Obligation :: struct {source:RP_Term; destination:RP_Address;}
+RP_Result :: struct {
+ status:RP_Status; facts_complete:bool; relation_complete:bool;
+ forbidden:bool; obligation_count:int;
+ bad_source:int = -1; bad_destination:int = -1;
+}
+
+#test "a callee local cannot be retained in caller addressed storage" {
+ source:=[1]RP_Term.[RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=11,type=3}}];
+ address:RP_Address;address.storage.frame=7;address.storage.origin=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=9};address.value_type=3;
+ address.storage.origin.path.count=2;address.storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};address.storage.origin.path.steps[1]=BS_Step.{kind=BS_FIELD,index=2};
+ destinations:=[1]RP_Address.[address];out:[1]RP_Obligation;out[0].source.frame=900;
+ #assert RP_bounds(1,1,1)==RP_Status.ok;
+ r:=RP_check(7,3,source[..],true,destinations[..],true,out[..]);
+ #assert r.status==RP_Status.ok && r.forbidden;
+ #assert r.facts_complete && r.relation_complete && r.obligation_count==0 && r.bad_source==0 && r.bad_destination==0 && out[0].source.frame==900;
+}
+
+#forall "source storage and lifetime decisions remain independent of fact completeness" src:0..<4,dst:0..<4,sc:bool,dc:bool {
+ source:RP_Term;source.frame=5;source.origin=BS_Origin.{kind=ifx src==0 then BS_STATIC else ifx src==1 then BS_LOCAL else BS_PARAMETER,root=ifx src<2 then 11 else 2,role=ifx src==2 then BS_INLINE else ifx src==3 then BS_DESCRIPTOR else 0,type=3};if src==0 {source.frame=0;}
+ address:RP_Address;address.storage.frame=5;address.storage.origin=BS_Origin.{kind=ifx dst==0 then BS_STATIC else ifx dst==1 then BS_LOCAL else BS_PARAMETER,root=ifx dst<2 then 21 else 2,role=ifx dst==2 then BS_INLINE else ifx dst==3 then BS_DESCRIPTOR else 0,type=9};address.value_type=3;if dst==0 {address.storage.frame=0;}if dst==3 {address.storage.origin.path.count=1;address.storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};}
+ sources:=[1]RP_Term.[source];destinations:=[1]RP_Address.[address];out:[2]RP_Obligation;out[0].source.frame=900;out[1].source.frame=901;
+ r:=RP_check(5,3,sources[..],sc,destinations[..],dc,out[..]);bad:=(src==1 || src==2) && (dst==0 || dst==3);pending:=src==3 && (dst==0 || dst==3);local_order:=(src==1 || src==2) && (dst==1 || dst==2);
+ #assert r.status==RP_Status.ok && r.facts_complete==(sc && dc) && r.relation_complete==(!pending && !local_order) && r.forbidden==bad && r.obligation_count==(ifx pending then 1 else 0) && r.bad_source==(ifx bad then 0 else -1) && r.bad_destination==(ifx bad then 0 else -1);
+ if pending {#assert out[0].source.frame==5 && out[0].source.origin.kind==BS_PARAMETER && out[0].source.origin.root==2 && out[0].source.origin.role==BS_DESCRIPTOR && out[0].source.origin.type==3 && out[0].source.origin.path.count==0;#assert out[0].destination.storage.frame==address.storage.frame && out[0].destination.storage.origin.kind==address.storage.origin.kind && out[0].destination.storage.origin.root==2+(ifx dst==0 then 19 else 0) && out[0].destination.storage.origin.role==address.storage.origin.role && out[0].destination.storage.origin.type==9 && out[0].destination.value_type==3 && out[0].destination.storage.origin.path.count==address.storage.origin.path.count;}
+ else {#assert out[0].source.frame==900;}#assert out[1].source.frame==901;
+}
+#forall "scalar span and pair work admission includes exact endpoints" s:0..<5,d:0..<5,o:0..<4 {
+ counts:=[5]int.[-1,0,43,64,65];outs:=[4]int.[-1,0,64,65];a:=counts[s];b:=counts[d];c:=outs[o];valid:=a>=0 && a<=64 && b>=0 && b<=64 && c>=0 && c<=64;want:=ifx !valid then RP_Status.invalid else ifx a*b>128 then RP_Status.work else RP_Status.ok;
+ #assert RP_bounds(a,b,c)==want;
+}
+#test "pair work is charged before duplicate elimination at126128129" {
+ #assert RP_bounds(63,2,1)==RP_Status.ok && RP_bounds(64,2,1)==RP_Status.ok && RP_bounds(43,3,1)==RP_Status.work;
+ source:RP_Term;source.frame=7;source.origin=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=3};address:RP_Address;address.storage=source;address.storage.origin.type=9;address.storage.origin.path.count=1;address.storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};address.value_type=3;
+ sources:[64]RP_Term;for i:0..<64 {sources[i]=source;}destinations:=[3]RP_Address.[address,address,address];out:[1]RP_Obligation;out[0].source.frame=900;
+ r:=RP_check(7,3,sources[..],true,destinations[0..<2],true,out[..]);#assert r.status==RP_Status.ok && r.obligation_count==1 && !r.relation_complete && out[0].source.frame==7;
+ out[0].source.frame=900;r=RP_check(7,3,sources[0..<43],false,destinations[..],false,out[..]);#assert r.status==RP_Status.work && r.obligation_count==0 && !r.facts_complete && !r.relation_complete && !r.forbidden && r.bad_source== -1 && r.bad_destination== -1 && out[0].source.frame==900;
+ sources[42].frame=8;r=RP_check(7,3,sources[0..<43],false,destinations[..],false,out[..]);#assert r.status==RP_Status.invalid && out[0].source.frame==900;
+}
+#forall "complete empty means no source backing and never an absent asserted address" sc:bool,dc:bool {
+ sources:[1]RP_Term;address:=RP_Address.{storage=RP_Term.{origin=BS_Origin.{kind=BS_STATIC,root=8,type=9}},value_type=3};destinations:=[1]RP_Address.[address];out:[1]RP_Obligation;out[0].source.frame=900;
+ r:=RP_check(1,3,sources[0..<0],sc,destinations[..],dc,out[..]);#assert r.status==RP_Status.ok && r.facts_complete==(sc && dc) && r.relation_complete && !r.forbidden && r.obligation_count==0 && r.bad_source== -1 && r.bad_destination== -1 && out[0].source.frame==900;
+ r=RP_check(1,3,sources[0..<0],sc,destinations[0..<0],dc,out[..]);#assert r.status==(ifx dc then RP_Status.invalid else RP_Status.ok) && !r.facts_complete && r.relation_complete==!dc && r.obligation_count==0 && !r.forbidden && out[0].source.frame==900;
+}
+#test "known bad and pending alternatives survive unknown and later benign alternatives" {
+ sources:=[4]RP_Term.[RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=11,type=3}},RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3}},RP_Term.{origin=BS_Origin.{kind=BS_STATIC,root=12,type=3}},RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=99,type=3}}];
+ local:=RP_Address.{storage=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=21,type=9}},value_type=3};external:=local;external.storage.origin=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=9,path=BS_Path.{count=1}};external.storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};destinations:=[2]RP_Address.[local,external];out:[2]RP_Obligation;
+ r:=RP_check(7,3,sources[..],false,destinations[..],false,out[..]);#assert r.status==RP_Status.ok && !r.facts_complete && !r.relation_complete && r.forbidden && r.obligation_count==1 && r.bad_source==0 && r.bad_destination==1 && out[0].source.origin.root==1;
+ r=RP_check(7,3,sources[0..<1],false,destinations[1..<2],false,out[..]);#assert r.status==RP_Status.ok && !r.facts_complete && r.relation_complete && r.forbidden && r.bad_source==0 && r.bad_destination==0;
+ r=RP_check(7,3,sources[0..<1],true,destinations[0..<0],false,out[..]);#assert r.status==RP_Status.ok && !r.facts_complete && r.relation_complete && !r.forbidden;
+}
+#forall "addressed storage is distinct from a descriptor slot and its old pointee" owned_copy:bool,before:bool {
+ source:=[1]RP_Term.[RP_Term.{frame=1,origin=BS_Origin.{kind=BS_LOCAL,root=10,type=3}}];address:=RP_Address.{storage=RP_Term.{frame=1,origin=BS_Origin.{kind=BS_PARAMETER,root=0,role=ifx owned_copy then BS_INLINE else BS_DESCRIPTOR,type=9}},value_type=3};address.storage.origin.path.count=2;address.storage.origin.path.steps[0]=BS_Step.{kind=BS_FIELD,index=6};address.storage.origin.path.steps[1]=BS_Step.{kind=ifx before then BS_DEREFERENCE else BS_ELEMENT,index=ifx before then 0 else 4};destinations:=[1]RP_Address.[address];out:[1]RP_Obligation;out[0].source.frame=900;
+ r:=RP_check(1,3,source[..],true,destinations[..],true,out[..]);valid:=owned_copy!=before;#assert r.status==(ifx valid then RP_Status.ok else RP_Status.invalid) && r.forbidden==(!owned_copy && before) && r.relation_complete==(!owned_copy && before) && r.obligation_count==0 && out[0].source.frame==900;
+}
+#forall "frame and checked payload keys admit extrema and refuse mismatches" mode:0..<16 {
+ frame:=ifx mode==0 then 2147483647 else 1;key:=ifx mode==1 then 2147483647 else 3;source:=RP_Term.{frame=frame,origin=BS_Origin.{kind=BS_PARAMETER,root=63,role=BS_DESCRIPTOR,type=key}};address:=RP_Address.{storage=RP_Term.{frame=frame,origin=BS_Origin.{kind=BS_LOCAL,root=2147483647,type=9}},value_type=key};
+ if mode==2 {frame=0;}else if mode==3 {frame=2147483648;}else if mode==4 {key=0;}else if mode==5 {key=2147483648;}else if mode==6 {source.frame=0;}else if mode==7 {source.frame=2;}else if mode==8 {source.origin.type=9;}else if mode==9 {address.storage.frame=0;}else if mode==10 {address.storage.frame=2;}else if mode==11 {address.value_type=9;}else if mode==12 {source.origin.kind=BS_STATIC;source.origin.role=0;source.origin.root=1;}else if mode==13 {address.storage.origin.kind=BS_STATIC;}else if mode==14 {source.origin.root=64;}else if mode==15 {address.storage.origin.type=0;}
+ sources:=[1]RP_Term.[source];destinations:=[1]RP_Address.[address];out:[1]RP_Obligation;out[0].source.frame=900;r:=RP_check(frame,key,sources[..],false,destinations[..],false,out[..]);#assert r.status==(ifx mode<2 then RP_Status.ok else RP_Status.invalid) && !r.facts_complete && r.relation_complete==(mode<2) && !r.forbidden && r.obligation_count==0 && r.bad_source== -1 && r.bad_destination== -1 && out[0].source.frame==900;
+}
+#test "malformed late paths and type facts refuse before unknown or pair work" {
+ source:=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=3}};address:=RP_Address.{storage=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=9,path=BS_Path.{count=1}}},value_type=3};address.storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};sources:[43]RP_Term;for i:0..<43 {sources[i]=source;}destinations:=[3]RP_Address.[address,address,address];out:[1]RP_Obligation;out[0].source.frame=900;
+ destinations[2].storage.origin.path.steps[0].index=1;r:=RP_check(7,3,sources[..],false,destinations[..],false,out[..]);#assert r.status==RP_Status.invalid && out[0].source.frame==900;
+ destinations[2]=address;sources[42].origin.path.steps[7].kind=BS_FIELD;r=RP_check(7,3,sources[..],false,destinations[..],false,out[..]);#assert r.status==RP_Status.invalid && out[0].source.frame==900;
+ sources[42]=source;destinations[2].value_type=4;r=RP_check(7,3,sources[..],false,destinations[..],false,out[..]);#assert r.status==RP_Status.invalid && out[0].source.frame==900;
+}
+#forall "canonical pending rows sort destinations then sources and deduplicate" reverse:bool {
+ a:=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3}};b:=a;b.origin.root=0;sources:=[3]RP_Term.[ifx reverse then a else b,ifx reverse then b else a,a];
+ x:=RP_Address.{storage=RP_Term.{origin=BS_Origin.{kind=BS_STATIC,root=9,type=11}},value_type=3};y:=RP_Address.{storage=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=9,path=BS_Path.{count=1}}},value_type=3};y.storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};destinations:=[3]RP_Address.[ifx reverse then y else x,ifx reverse then x else y,x];out:[5]RP_Obligation;out[4].source.frame=900;
+ r:=RP_check(7,3,sources[..],true,destinations[..],true,out[..]);#assert r.status==RP_Status.ok && r.facts_complete && !r.relation_complete && !r.forbidden && r.obligation_count==4 && r.bad_source== -1 && r.bad_destination== -1 && out[4].source.frame==900;
+ for i:0..<4 {#assert out[i].source.frame==7 && out[i].source.origin.root==i%2 && out[i].source.origin.role==BS_DESCRIPTOR && out[i].source.origin.type==3 && out[i].destination.value_type==3;#assert out[i].destination.storage.origin.kind==(ifx i<2 then BS_STATIC else BS_PARAMETER) && out[i].destination.storage.origin.root==(ifx i<2 then 9 else 0) && out[i].destination.storage.frame==(ifx i<2 then 0 else 7);}
+ #assert out[2].source.origin.root==out[2].destination.storage.origin.root && r.obligation_count>0;
+}
+#test "exact64 obligations publish and65 refuse without a partial prefix" {
+ sources:[13]RP_Term;for i:0..<13 {sources[i]=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=3}};}
+ destinations:[8]RP_Address;for i:0..<8 {destinations[i]=RP_Address.{storage=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=9,path=BS_Path.{count=1}}},value_type=3};destinations[i].storage.origin.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};}
+ out:[65]RP_Obligation;for i:0..<65 {out[i].source.frame=900+i;out[i].destination.value_type=700+i;}
+ r:=RP_check(7,3,sources[0..<8],true,destinations[..],true,out[0..<64]);#assert r.status==RP_Status.ok && r.obligation_count==64 && !r.relation_complete && out[64].source.frame==964 && out[64].destination.value_type==764;
+ for i:0..<64 {#assert out[i].source.origin.root==i%8 && out[i].destination.storage.origin.root==i/8;out[i].source.frame=900+i;out[i].destination.value_type=700+i;}
+ r=RP_check(7,3,sources[..],true,destinations[0..<5],true,out[0..<64]);#assert r.status==RP_Status.capacity && !r.facts_complete && !r.relation_complete && !r.forbidden && r.obligation_count==0 && r.bad_source== -1 && r.bad_destination== -1;
+ for i:0..<65 {#assert out[i].source.frame==900+i && out[i].destination.value_type==700+i;}
+ r=RP_check(7,3,sources[0..<8],true,destinations[..],true,out[0..<63]);#assert r.status==RP_Status.capacity && out[0].source.frame==900 && out[63].source.frame==963;
+ r=RP_check(7,3,sources[0..<1],true,destinations[0..<1],true,out[0..<0]);#assert r.status==RP_Status.capacity && out[0].source.frame==900;
+ r=RP_check(7,3,sources[0..<0],true,destinations[0..<1],true,out[0..<0]);#assert r.status==RP_Status.ok && r.obligation_count==0 && r.facts_complete && r.relation_complete;
+}
+#test "over-capacity native extents refuse before reading their inactive entries" {
+ sources:[65]RP_Term;destinations:[65]RP_Address;out:[65]RP_Obligation;out[0].source.frame=900;
+ r:=RP_check(1,3,sources[..],false,destinations[0..<0],false,out[0..<0]);#assert r.status==RP_Status.invalid && out[0].source.frame==900;
+ r=RP_check(1,3,sources[0..<0],false,destinations[..],false,out[0..<0]);#assert r.status==RP_Status.invalid;
+ r=RP_check(1,3,sources[0..<0],false,destinations[0..<0],false,out[..]);#assert r.status==RP_Status.invalid && out[0].source.frame==900;
+}
+
+#test "the first forbidden witness is source major and never overwritten" {
+ sources:=[3]RP_Term.[RP_Term.{origin=BS_Origin.{kind=BS_STATIC,root=1,type=3}},RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=11,type=3}},RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=12,type=3}}];
+ local:=RP_Address.{storage=RP_Term.{frame=7,origin=BS_Origin.{kind=BS_LOCAL,root=21,type=9}},value_type=3};external:=RP_Address.{storage=RP_Term.{origin=BS_Origin.{kind=BS_STATIC,root=22,type=9}},value_type=3};destinations:=[3]RP_Address.[local,external,external];out:[1]RP_Obligation;
+ r:=RP_check(7,3,sources[..],false,destinations[..],false,out[..]);#assert r.status==RP_Status.ok && r.forbidden && r.bad_source==1 && r.bad_destination==1 && !r.facts_complete && !r.relation_complete && r.obligation_count==0;
+}
+
+#forall "scalar invocation guards stand alone with empty source and static address" mode:0..<4 {
+ frame:=ifx mode==1 then 2147483647 else ifx mode==2 then 2147483648 else 1;key:=ifx mode==1 then 2147483647 else ifx mode==3 then 2147483648 else 1;
+ sources:[1]RP_Term;destinations:=[1]RP_Address.[RP_Address.{storage=RP_Term.{origin=BS_Origin.{kind=BS_STATIC,root=1,type=9}},value_type=key}];out:[1]RP_Obligation;out[0].source.frame=900;
+ r:=RP_check(frame,key,sources[0..<0],true,destinations[..],true,out[0..<0]);valid:=mode<2;#assert r.status==(ifx valid then RP_Status.ok else RP_Status.invalid) && r.facts_complete==valid && r.relation_complete==valid && !r.forbidden && r.obligation_count==0 && r.bad_source== -1 && r.bad_destination== -1 && out[0].source.frame==900;
+}
+
+// Each call classifies one descriptor leaf in one supplied frame namespace.
+// A complete empty source is a checked default-empty descriptor, not a zero
+// length view whose backing lifetime has disappeared. No strong update occurs.
+RP_bounds :: (source_count:int,destination_count:int,output_count:int)->RP_Status #export_c {
+ if source_count<0 || source_count>RP_MAX_TERMS || destination_count<0 || destination_count>RP_MAX_TERMS || output_count<0 || output_count>RP_MAX_TERMS {return RP_Status.invalid;}
+ if source_count*destination_count>RP_MAX_WORK {return RP_Status.work;}
+ return RP_Status.ok;
+}
+
+rp_term_valid :: (term:RP_Term,frame:int)->bool {
+ if !BS_origin_valid(term.origin) {return false;}
+ return ifx term.origin.kind==BS_STATIC then term.frame==0 else term.frame==frame;
+}
+rp_address_valid :: (address:RP_Address,frame:int,value_type:int)->bool {
+ if !rp_term_valid(address.storage,frame) || address.value_type!=value_type {return false;}
+ if address.storage.origin.kind==BS_PARAMETER && address.storage.origin.role==BS_DESCRIPTOR {
+  for i:0..<address.storage.origin.path.count {if address.storage.origin.path.steps[i].kind==BS_DEREFERENCE {return true;}}
+  return false;
+ }
+ return true;
+}
+// Preconditions: term/address shape, role and current-frame facts are admitted.
+rp_local_source :: (source:RP_Term)->bool {return source.origin.kind==BS_LOCAL || source.origin.role==BS_INLINE;}
+rp_external :: (address:RP_Address)->bool {return address.storage.origin.kind==BS_STATIC || address.storage.origin.role==BS_DESCRIPTOR;}
+
+// The per-call frame and value key are already canonical. BS compares the
+// potentially differing destination/source projections without C padding.
+rp_compare :: (a:RP_Obligation,b:RP_Obligation)->int {
+ comparison:=bs_compare(a.destination.storage.origin,b.destination.storage.origin);
+ if comparison!=0 {return comparison;}
+ return bs_compare(a.source.origin,b.source.origin);
+}
+// Only private staging is written; exactly -1 means capacity refusal.
+rp_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int {
+ at:=used;
+ for i:0..<used {
+  comparison:=rp_compare(staging[i],value);
+  if comparison<0 {continue;}
+  if comparison==0 {return used;}
+  at=i;break;
+ }
+ if used>=RP_MAX_TERMS {return -1;}
+ i:=used;while i>at {staging[i]=staging[i-1];i-=1;}
+ staging[at]=value;
+ return used+1;
+}
+
+// Invalid facts are hard refusal, never complete empty facts. Known pairs are
+// classified even with unknown alternatives. Pending outlives obligations and
+// unsupported same-frame local ordering both keep relation_complete false.
+RP_check :: (frame:int,value_type:int,sources:[]RP_Term,source_complete:bool,destinations:[]RP_Address,destination_complete:bool,out:[]RP_Obligation)->RP_Result #export_c {
+ bounds:=RP_bounds(sources.count,destinations.count,out.count);
+ if bounds==RP_Status.invalid || frame<1 || frame>2147483647 || value_type<1 || value_type>2147483647 || (destination_complete && destinations.count==0) {return RP_Result.{status=RP_Status.invalid};}
+ for source:sources {if !rp_term_valid(source,frame) || source.origin.type!=value_type {return RP_Result.{status=RP_Status.invalid};}}
+ for address:destinations {if !rp_address_valid(address,frame,value_type) {return RP_Result.{status=RP_Status.invalid};}}
+ if bounds!=RP_Status.ok {return RP_Result.{status=RP_Status.work};}
+ staging:[64]RP_Obligation;used:=0;
+ result:=RP_Result.{facts_complete=source_complete && destination_complete,relation_complete=true};
+ for i:0..<sources.count {
+  source:=sources[i];
+  for j:0..<destinations.count {
+   address:=destinations[j];
+   if rp_external(address) {
+    if rp_local_source(source) {
+     result.forbidden=true;
+     if result.bad_source<0 {result.bad_source=i;result.bad_destination=j;}
+    }else if source.origin.kind!=BS_STATIC {
+     result.relation_complete=false;
+     pending:=RP_Obligation.{source=source,destination=address};
+     inserted:=rp_insert(staging[..],used,pending);
+     if inserted== -1 {return RP_Result.{status=RP_Status.capacity};}
+     used=inserted;
+    }
+   }else if rp_local_source(source) {result.relation_complete=false;}
+  }
+ }
+ if used>out.count {return RP_Result.{status=RP_Status.capacity};}
+ for i:0..<used {out[i]=staging[i];}
+ result.obligation_count=used;
+ return result;
+}

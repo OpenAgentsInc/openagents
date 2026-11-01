@@ -1,0 +1,30 @@
+{
+  "schema": "aethyr.compiler.private-replay-controls.v1",
+  "compiler_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+  "controls": [
+    {
+      "control": "stage0-source-identity",
+      "exit_status": 1,
+      "message": "retained stage0 binary or input identity differs",
+      "elapsed_seconds": 2.943
+    },
+    {
+      "control": "stage0-binary-identity",
+      "exit_status": 1,
+      "message": "retained stage0 binary or input identity differs",
+      "elapsed_seconds": 2.379
+    },
+    {
+      "control": "full-input-identity",
+      "exit_status": 1,
+      "message": "retained stage0 binary or input identity differs",
+      "elapsed_seconds": 2.394
+    },
+    {
+      "control": "valid-context-missing-manifest",
+      "exit_status": 1,
+      "message": "missing or linked manifest",
+      "elapsed_seconds": 16.419
+    }
+  ]
+}

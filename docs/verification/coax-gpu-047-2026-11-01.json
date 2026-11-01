@@ -1,0 +1,44 @@
+{
+  "schema": "coax.gpu-047-qualification.v1",
+  "status": "pass for compiler dependency delivery",
+  "version": "coax0 0.47.0",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "published_source_parent": "8ae404f3f2e277ccddfdf0283f45cd127ff5aae1",
+  "introducing_commit": "aabbf0d5189a7b26002114733cff0de77c7d9283",
+  "array_coordinate_fix_commit": "51de31e0c8a9489831d8cc7cf4a16d6d13a8bd5b",
+  "provenance": "Supported provenance.sh install verified this isolated publication tree against the previously qualified compiler; compiler source inputs match exactly.",
+  "shader_gate": {
+    "total": 3876,
+    "killed": 3826,
+    "survivors": 0,
+    "preexisting_equivalent_marks": 50,
+    "new_equivalence_marks": 0
+  },
+  "checker_gate": {
+    "mutants": 9253,
+    "killed": 9253,
+    "survivors": 0,
+    "shards": 8,
+    "execution_binary_sha256": "28460b95ec89067f172b0f27f0f962a9362336ac82ce820a1f4a34525a3f5965",
+    "reuse": "Successful125.492second build reused its established source-identity cache. No claim that the raw new debug-path stage0 reran9253mutants."
+  },
+  "supported_shard_hook_checks": 8,
+  "provenance_checks": 13,
+  "published_source_reflection": "Focused actual rich/legacy reflection, tree versions, fine/helper capabilities, typed array dimensions, WGSL aliases and vertex-only entries passed on this publication tree.",
+  "native_array_sampling": {
+    "programs": 6,
+    "spirv_validation": "all pass",
+    "positive_wrong_pixels": 0,
+    "planted_demotion_controls_wrong_pixels": [
+      16,
+      16
+    ],
+    "validation_errors": 0,
+    "validation_warnings": 0,
+    "device": "coderos-4080 / RTX4080"
+  },
+  "evidence": "docs/verification/data/coax-gpu-047-2026-11-01",
+  "scope": "Completed compiler dependencies for Aethyr chapter11. The Aethyr renderer chapter remains unimplemented/in progress until shared hosts, whole CPU reference, actual resource/frame image parity and goldens qualify. No renderer route or chapter-status promotion is included here.",
+  "original_qualification_commits": "Retained raw receipts keep their original isolated/local commit identities; compiler source digest and full provenance fingerprint match this rebased publication tree."
+}
