@@ -1,0 +1,37 @@
+the relay's query (rsd_query) against NIP-01's filter text, at ASK = NOW+60
+known differences:
+  ephemeral: NIP-01: kinds 20000-29999 are not expected to be stored
+  replaced: NIP-01: one replaceable event per pubkey and kind, the newest, then the lowest id
+  expired: NIP-40: relays SHOULD NOT send expired events; expired once ASK >= expiration
+
+case 0 of seed 94:
+    e1 B kind 20001 NOW id 74... tags []
+    e2 A kind 1 NOW id 50... tags [["t","nostr"]]
+    e3 B kind 20001 NOW-200 id 2b... tags [["t","coax"]]
+    e4 A kind 1 NOW-300 id f1... tags [["t","coax"]] expires NOW+61
+    filter {"authors":["df00000000000000000000000000000000000000000000000000000000000000"],"#t":["nostr"],"limit":0}
+    relay: (none); reference: (none) -> match
+
+the relay as built: 500 cases, 342 match, 158 explained, 0 unexplained
+    events removed by a known rule: 153 ephemeral 28 replaced 62 expired
+
+seeded fault: until compared with >=: 500 cases, 326 match, 152 explained, 22 unexplained
+    events removed by a known rule: 153 ephemeral 28 replaced 62 expired
+
+first unexplained difference: case 17, 5 events
+    e1 B kind 20001 NOW id 22... tags [["t","nostr"],["t","coax"]]
+    e2 A kind 1 NOW-200 id f1... tags [["t","nostr"],["t","coax"]]
+    e3 A kind 7 NOW id 72... tags []
+    e4 A kind 0 NOW-200 id f9... tags [["t","nostr"],["t","coax"]]
+    e5 B kind 1 NOW-100 id 7e... tags [["t","nostr"],["t","coax"]]
+    filter {"until":1793491000}
+    relay: (none); reference: e2 e4 -> UNEXPLAINED
+minimizing:
+  round 1: -e1 -e2 -e3 e4 stays -e5 until stays
+  round 2: e4 stays until stays
+minimal case:
+    e4 A kind 0 NOW-200 id f9... tags [["t","nostr"],["t","coax"]]
+    filter {"until":1793491000}
+    relay: (none); reference: e4 -> UNEXPLAINED
+the same case without the fault:
+    relay: e4; reference: e4 -> match

@@ -1,0 +1,229 @@
+// The checks of differential.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/differential.coax
+#load "../differential.coax";
+
+// book:begin check
+dv_ev :: (name: int, author: int, kind: int, created: int, id: int, tag: int, expiry: int) -> Ev {
+  return Ev.{name = name, author = author, kind = kind, created = created, id = id, tag = tag, expiry = expiry};
+}
+single :: (e: Ev, f: Flt) -> Case { c: Case; c.n = 1; c.ev[0] = e; c.f = f; return c; }
+
+// xorshift32 from 94, computed separately (Python, 2026-11-01): states
+// 24365883, 2055631121, 539321123, 74048867, 544651553, 487502728,
+// 2760184023. Mod 6, 2, 4, 4, 254, 4, 6 they give 3, 1, 3, 3, 115, 0, 3:
+// four events; e1 is B, kind KINDS[3] = 20001, at TIMES[3] = NOW, id
+// 1 + 115 = 0x74, no tags, no expiry. That is case 0 as the example prints it.
+#test "case 0 decoded by hand from the generator" {
+  r: [1] Rng; r[0].s = 94;
+  #assert roll(r[..], 6) == 3 && r[0].s == 24365883;
+  c := case_at(0);
+  #assert c.n == 4;
+  e := c.ev[0];
+  #assert e.author == 1 && e.kind == 20001 && e.created == NOW && e.id == 0x74 && e.tag == 0 && e.expiry == -1;
+  #assert c.ev[3].expiry == ASK + 1;
+}
+// The same generator rewritten in Python (scratch script, 2026-11-01) gives
+// the same cases. Case 44 draws an id twice and redraws it; case 142's
+// filter asks for id 255, which no event has.
+IDS_44 :: [6] int.[0x20, 0xae, 0x49, 0x38, 0x9d, 0x52];
+IDS_142 :: [5] int.[0x40, 0x78, 0x08, 0x92, 0xaa];
+#test "cases 44 and 142 match a second implementation of the generator" {
+  c := case_at(44);
+  #assert c.n == 6 && c.f.authors == 1 && c.f.tag == 2 && !c.f.has_ids;
+  for i: 0..<6 { #assert c.ev[i].id == IDS_44[i]; }
+  c = case_at(142);
+  #assert c.n == 5 && c.f.has_ids && c.f.id == 255 && c.f.authors == 0 && c.f.kinds == 0;
+  for i: 0..<5 { #assert c.ev[i].id == IDS_142[i]; }
+}
+
+// The minimal case, worked by hand: NIP-01 says created_at <= until, and
+// NOW-200 <= NOW-200 holds, so the reference returns e4. The relay as built
+// agrees; with until compared with >= it returns nothing.
+#test "the minimal case by hand" {
+  f: Flt; f.has_until = true; f.until = NOW - 200;
+  c := single(dv_ev(4, 0, 0, NOW - 200, 0xf9, 3, -1), f);
+  out: [8] int;
+  #assert ref_answer(c, out[..]) == 1 && out[0] == 0;
+  #assert relay_answer(c, false, out[..]) == 1 && out[0] == 0;
+  #assert relay_answer(c, true, out[..]) == 0;
+  #assert compare(c, false).verdict == MATCH && compare(c, true).verdict == UNEXPLAINED;
+  // one second either side: both implementations agree, with or without the fault
+  c.f.until = NOW - 201; #assert compare(c, false).verdict == MATCH && compare(c, true).verdict == MATCH;
+  c.f.until = NOW - 199; #assert compare(c, false).verdict == MATCH && compare(c, true).verdict == MATCH;
+}
+
+// The minimizer on case 17 makes exactly the tries of the hand table, and
+// its result is 1-minimal: dropping its event or its field makes the
+// difference go away.
+TRY_ROUND :: [8] int.[1, 1, 1, 1, 1, 1, 2, 2];
+TRY_NAME :: [8] int.[1, 2, 3, 4, 5, 0, 4, 0];
+TRY_FIELD :: [8] int.[-1, -1, -1, -1, -1, 4, -1, 4];
+TRY_GONE :: [8] bool.[true, true, true, false, true, false, false, false];
+#test "the minimizer follows the hand table to a 1-minimal case" {
+  c := case_at(17);
+  #assert c.n == 5 && c.f.has_until && c.f.until == NOW - 200;
+  #assert !c.f.has_ids && c.f.authors == 0 && c.f.kinds == 0 && !c.f.has_since && c.f.tag == 0 && !c.f.has_limit;
+  #assert c.ev[3].kind == 0 && c.ev[3].created == NOW - 200 && c.ev[3].id == 0xf9 && c.ev[1].id == 0xf1;
+  #assert compare(c, true).verdict == UNEXPLAINED;
+  tr: [1] Trace;
+  m := minimize(c, true, tr[..]);
+  // round 1: -e1 -e2 -e3, e4 stays, -e5, until stays; round 2: e4 and until stay
+  #assert tr[0].n == 8;
+  for k: 0..<8 {
+    t := tr[0].tries[k];
+    #assert t.round == TRY_ROUND[k] && t.field == TRY_FIELD[k] && t.removed == TRY_GONE[k];
+    if TRY_FIELD[k] < 0 { #assert t.name == TRY_NAME[k]; }
+  }
+  #assert m.n == 1 && m.ev[0].name == 4 && m.f.has_until && m.f.until == NOW - 200;
+  #assert compare(without_event(m, 0), true).verdict != UNEXPLAINED;
+  #assert compare(without_field(m, 4), true).verdict != UNEXPLAINED;
+  // with "ids":[f9...] added, the minimizer removes ids and keeps until
+  c = m; c.f.has_ids = true; c.f.id = 0xf9;
+  tr[0] = Trace.{};
+  m = minimize(c, true, tr[..]);
+  #assert tr[0].n == 5 && tr[0].tries[1].field == 0 && tr[0].tries[1].removed && !tr[0].tries[2].removed;
+  #assert !m.f.has_ids && m.f.has_until && m.n == 1;
+}
+// Removing field k clears k and nothing else; removing an event keeps the
+// others' order and names.
+#forall "without_field clears one field" k: 0..<FIELD_NAME.count {
+  f := Flt.{has_ids = true, id = 3, authors = 1, kinds = 2, has_since = true, since = NOW, has_until = true, until = NOW, tag = 1, has_limit = true, limit = 2};
+  c: Case; c.f = f;
+  t := without_field(c, k);
+  for j: 0..<FIELD_NAME.count { #assert has_field(t.f, j) == (j != k); }
+}
+#test "without_event keeps the rest in order" {
+  c := case_at(17);
+  t := without_event(c, 1);
+  #assert t.n == 4 && t.ev[0].name == 1 && t.ev[1].name == 3 && t.ev[2].name == 4 && t.ev[3].name == 5;
+  t = without_event(c, 4);
+  #assert t.n == 4 && t.ev[3].name == 4;
+}
+
+// The reference against the relay (filter_read, rsd_query, nf_match)
+// on NIP-01's boundaries, every since and until in TIMES against every time.
+#test "the reference and the relay agree on the since and until boundaries" {
+  for t: 0..<4 {
+    for b: 0..<4 {
+      e := dv_ev(1, 0, 1, TIMES[t], 9, 0, -1);
+      f: Flt; f.has_since = true; f.since = TIMES[b];
+      c := single(e, f); out: [8] int;
+      #assert (ref_answer(c, out[..]) == 1) == (TIMES[b] <= TIMES[t]);
+      #assert (relay_answer(c, false, out[..]) == 1) == (TIMES[b] <= TIMES[t]);
+      f = Flt.{}; f.has_until = true; f.until = TIMES[b]; c = single(e, f);
+      #assert (ref_answer(c, out[..]) == 1) == (TIMES[t] <= TIMES[b]);
+      #assert (relay_answer(c, false, out[..]) == 1) == (TIMES[t] <= TIMES[b]);
+    }
+  }
+}
+
+// The kind ranges of NIP-01: ephemeral 20000 to 29999; replaceable 0, 3
+// and 10000 to 19999. A newer copy from the same author explains the old one
+// only for a replaceable kind.
+RULE_KIND :: [12] int.[19999, 20000, 29999, 30000, 0, 3, 2, 4, 9999, 10000, 19999, 1];
+RULE_WANT :: [12] int.[1, 0, 0, -1, 1, 1, -1, -1, -1, 1, 1, -1];
+#test "the known rules' kind ranges" {
+  for k: 0..<12 {
+    c: Case; c.n = 2;
+    c.ev[0] = dv_ev(1, 0, RULE_KIND[k], NOW - 100, 0x40, 0, -1);
+    c.ev[1] = dv_ev(2, 0, RULE_KIND[k], NOW, 0x41, 0, -1);
+    #assert known_rule(c, 0) == RULE_WANT[k];
+  }
+  #assert ephemeral(20000) && ephemeral(29999) && !ephemeral(19999) && !ephemeral(30000);
+  #assert replaceable(10000) && replaceable(19999) && !replaceable(20000) && !replaceable(9999);
+  // an expiration of 0 is long past
+  c := single(dv_ev(1, 0, 1, NOW, 5, 0, 0), Flt.{});
+  #assert known_rule(c, 0) == 2;
+}
+// Ids compare as text, first character first.
+#test "lower_id compares the hex text" {
+  #assert lower_id(0x15, 0x1a) && !lower_id(0x1a, 0x15);
+  #assert lower_id(0x1f, 0x20) && !lower_id(0x20, 0x1f);
+  #assert !lower_id(5, 5);
+}
+#test "event_of_id finds the first and the last event" {
+  c := case_at(17);
+  #assert event_of_id(c, 0x22) == 0 && event_of_id(c, 0x7e) == 4 && event_of_id(c, 0xff) == -1;
+}
+#test "same_list wants the same events in the same order" {
+  a := [3] int.[1, 2, 3]; b := [3] int.[1, 2, 3];
+  #assert same_list(a[..], 3, b[..], 3) && same_list(a[..], 0, b[..], 0);
+  #assert !same_list(a[..], 3, b[..], 2);
+  b[0] = 9; #assert !same_list(a[..], 3, b[..], 3);
+  b[0] = 1; b[2] = 9; #assert !same_list(a[..], 3, b[..], 3);
+}
+// The example's counts, as its transcript prints them.
+#test "the two runs give the transcript's counts" #steps 400000000 {
+  t := tally(false);
+  #assert t.count[MATCH] == 342 && t.count[EXPLAINED] == 158 && t.count[UNEXPLAINED] == 0 && t.first == -1;
+  #assert t.why[0] == 153 && t.why[1] == 28 && t.why[2] == 62;
+  t = tally(true);
+  #assert t.count[MATCH] == 326 && t.count[EXPLAINED] == 152 && t.count[UNEXPLAINED] == 22 && t.first == 17;
+  #assert t.why[0] == 153 && t.why[1] == 28 && t.why[2] == 62;
+}
+// Each known rule, by hand.
+#test "each known rule explains its event and no other" {
+  f: Flt;
+  c := single(dv_ev(1, 0, 20001, NOW, 5, 0, -1), f);
+  v := compare(c, false); #assert v.verdict == EXPLAINED && v.why[0] == 1 && v.rn == 0;
+  // NIP-40: expired once ASK >= expiration; one second later it is still sent
+  c = single(dv_ev(1, 0, 1, NOW, 5, 0, ASK), f);
+  v = compare(c, false); #assert v.verdict == EXPLAINED && v.why[2] == 1 && v.rn == 0;
+  c.ev[0].expiry = ASK + 1;
+  v = compare(c, false); #assert v.verdict == MATCH && v.rn == 1;
+  // two kind 0 events from A in the same second: the lower id (0x05) stays
+  c.n = 2; c.ev[0] = dv_ev(1, 0, 0, NOW, 0x30, 0, -1); c.ev[1] = dv_ev(2, 0, 0, NOW, 0x05, 0, -1);
+  v = compare(c, false);
+  #assert v.verdict == EXPLAINED && v.why[1] == 1 && v.rn == 1 && v.relay[0] == 1;
+  #assert known_rule(c, 0) == 1 && known_rule(c, 1) == -1;
+  // from different authors, both stay
+  c.ev[1].author = 1; v = compare(c, false); #assert v.verdict == MATCH && v.rn == 2;
+  // kind 1 is never replaced
+  c.ev[0].kind = 1; c.ev[1] = dv_ev(2, 0, 1, NOW, 0x05, 0, -1);
+  #assert known_rule(c, 0) == -1 && compare(c, false).verdict == MATCH;
+}
+
+// Order and limit: NOW-100 before NOW-200; ties by the lower id; limit 1.
+#test "order and limit by hand" {
+  c: Case; c.n = 3;
+  c.ev[0] = dv_ev(1, 0, 1, NOW - 200, 0x10, 0, -1);
+  c.ev[1] = dv_ev(2, 1, 1, NOW - 100, 0x90, 0, -1);
+  c.ev[2] = dv_ev(3, 0, 1, NOW - 100, 0x20, 0, -1);
+  v := compare(c, false);
+  #assert v.verdict == MATCH && v.rn == 3 && v.relay[0] == 2 && v.relay[1] == 1 && v.relay[2] == 0;
+  c.f.has_limit = true; c.f.limit = 1;
+  v = compare(c, false); #assert v.verdict == MATCH && v.rn == 1 && v.relay[0] == 2;
+  c.f.limit = 0; v = compare(c, false); #assert v.verdict == MATCH && v.rn == 0;
+}
+
+// Other seeds: the relay as built has no unexplained difference.
+#forall "no unexplained difference on other seeds" s: 1..<9 #steps 400000000 {
+  r: [1] Rng; r[0].s = cast(u32) (s * 7919);
+  for i: 0..<150 { #assert compare(generate(r[..]), false).verdict != UNEXPLAINED; }
+}
+// The filter JSON for the hand case, and every field at once.
+#test "the filter as REQ JSON" {
+  f: Flt; out: [512] u8;
+  #assert filter_json(f, out[..]) == "{}";
+  f.has_until = true; f.until = NOW - 200;
+  #assert filter_json(f, out[..]) == "{\"until\":1793491000}";
+  f.has_ids = true; f.id = 0xf9; f.authors = 3; f.kinds = 6; f.has_since = true; f.since = NOW; f.tag = 2; f.has_limit = true; f.limit = 0;
+  want := "{\"ids\":[\"f900000000000000000000000000000000000000000000000000000000000000\"],\"authors\":[\"df00000000000000000000000000000000000000000000000000000000000000\",\"dd00000000000000000000000000000000000000000000000000000000000000\"],\"kinds\":[1,7],\"since\":1793491200,\"until\":1793491000,\"#t\":[\"coax\"],\"limit\":0}";
+  #assert filter_json(f, out[..]) == want;
+  g: Flt; g.authors = 2; g.kinds = 9; g.tag = 1;
+  #assert filter_json(g, out[..]) == "{\"authors\":[\"dd00000000000000000000000000000000000000000000000000000000000000\"],\"kinds\":[0,20001],\"#t\":[\"nostr\"]}";
+  g = Flt.{}; g.authors = 1; g.has_limit = true; g.limit = 120;
+  #assert filter_json(g, out[..]) == "{\"authors\":[\"df00000000000000000000000000000000000000000000000000000000000000\"],\"limit\":120}";
+}
+// A #t filter reaches the relay's tag matcher: only events with that tag.
+#test "a tag filter by hand" {
+  c: Case; c.n = 4;
+  for i: 0..<4 { c.ev[i] = dv_ev(i + 1, 0, 1, NOW - 100 * i, 0x10 + i, i, -1); }
+  c.f.tag = 2;
+  v := compare(c, false);
+  #assert v.verdict == MATCH && v.rn == 2 && v.relay[0] == 2 && v.relay[1] == 3;
+  c.f.tag = 1; v = compare(c, false);
+  #assert v.verdict == MATCH && v.rn == 2 && v.relay[0] == 1 && v.relay[1] == 3;
+}
+// book:end check

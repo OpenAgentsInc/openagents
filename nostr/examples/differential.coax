@@ -1,0 +1,391 @@
+// book:begin example
+#load "../../coax/lib/nostr/store.coax";
+#import "Basic";
+
+// Every event is admitted at NOW (2026-11-01T00:00:00Z); every REQ is asked
+// at ASK, one minute later.
+NOW :: 1793491200;
+ASK :: NOW + 60;
+TIMES :: [4] int.[NOW - 300, NOW - 200, NOW - 100, NOW];
+KINDS :: [4] int.[0, 1, 7, 20001];
+TAG_TEXT :: [4] string.["[]", "[[\"t\",\"nostr\"]]", "[[\"t\",\"coax\"]]", "[[\"t\",\"nostr\"],[\"t\",\"coax\"]]"];
+
+// book:begin model
+// One generated event. author 0 is A (df00...00), 1 is B (dd00...00). id is
+// the id's first byte; the other 31 bytes are 0. tag 0 is none, 1 t=nostr,
+// 2 t=coax, 3 both. expiry -1 is none. name numbers it in its case (e1, e2...).
+Ev :: struct { name: int; author: int; kind: int; created: int; id: int; tag: int; expiry: int; }
+// One generated filter. A field is absent unless its has_ flag is set;
+// authors and kinds are bit sets over A, B and KINDS, 0 when absent; tag 0
+// is absent, 1 is "#t":["nostr"], 2 is "#t":["coax"].
+Flt :: struct {
+  has_ids: bool; id: int; authors: int; kinds: int;
+  has_since: bool; since: int; has_until: bool; until: int;
+  tag: int; has_limit: bool; limit: int;
+}
+// One case: up to six events, published in order, and one filter.
+Case :: struct { n: int; ev: [6] Ev; f: Flt; }
+// book:end model
+
+// book:begin generate
+// xorshift32 from a fixed seed: the same cases on every run and every target.
+Rng :: struct { s: u32; }
+roll :: (r: [] Rng, n: int) -> int {
+  h := r[0].s;
+  h ^= h << 13; h ^= h >> 17; h ^= h << 5;
+  r[0].s = h;
+  return cast(int) (h % cast(u32) n);
+}
+// Small value sets on purpose: equal times, the same author twice and
+// boundary values for since, until and expiry come up often.
+generate :: (r: [] Rng) -> Case {
+  c: Case; c.n = 1 + roll(r, 6);
+  used: [256] bool;
+  for i: 0..<c.n {
+    e: Ev; e.name = i + 1; e.author = roll(r, 2); e.kind = KINDS[roll(r, KINDS.count)]; e.created = TIMES[roll(r, TIMES.count)];
+    id := 1 + roll(r, 254); while used[id] { id = 1 + roll(r, 254); } used[id] = true; e.id = id;
+    e.tag = roll(r, TAG_TEXT.count);
+    x := roll(r, 6); e.expiry = -1;
+    if x == 0 { e.expiry = ASK; }
+    if x == 1 { e.expiry = ASK + 1; }
+    c.ev[i] = e;
+  }
+  f: Flt;
+  // id byte 255 is never generated: a filter for an id nobody has
+  if roll(r, 4) == 0 { f.has_ids = true; f.id = 255; if roll(r, 4) != 0 { f.id = c.ev[roll(r, c.n)].id; } }
+  if roll(r, 3) == 0 { f.authors = 1 + roll(r, 3); }
+  if roll(r, 2) == 0 { f.kinds = 1 + roll(r, 15); }
+  if roll(r, 3) == 0 { f.has_since = true; f.since = TIMES[roll(r, TIMES.count)]; }
+  if roll(r, 3) == 0 { f.has_until = true; f.until = TIMES[roll(r, TIMES.count)]; }
+  if roll(r, 3) == 0 { f.tag = 1 + roll(r, 2); }
+  if roll(r, 3) == 0 { f.has_limit = true; f.limit = roll(r, 4); }
+  c.f = f;
+  return c;
+}
+// book:end generate
+
+// Text helpers: an id or a key as 64 lowercase hex digits, and a byte buffer.
+hex2 :: (b: int, out: [] u8, at: int) { d := "0123456789abcdef"; out[at] = d[b >> 4]; out[at + 1] = d[b & 15]; }
+id_hex :: (first: int, out: [] u8) -> string {
+  hex2(first, out, 0); for i: 2..<64 { out[i] = '0'; }
+  return cast(string) out[0..<64];
+}
+AUTHOR_BYTE :: [2] int.[0xdf, 0xdd];
+put :: (out: [] u8, at: int, s: string) -> int { for i: 0..<s.count { out[at + i] = s[i]; } return at + s.count; }
+put_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; n := 0; x := v;
+  if x == 0 { digits[0] = '0'; n = 1; }
+  while x > 0 { digits[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for i: 0..<n { out[at + i] = digits[n - 1 - i]; }
+  return at + n;
+}
+
+// book:begin render
+// The filter as the JSON a client sends in a REQ.
+filter_json :: (f: Flt, out: [] u8) -> string {
+  h: [64] u8; at := put(out, 0, "{"); first := true;
+  if f.has_ids { at = put(out, at, "\"ids\":[\""); at = put(out, at, id_hex(f.id, h[..])); at = put(out, at, "\"]"); first = false; }
+  if f.authors != 0 {
+    if !first { at = put(out, at, ","); } at = put(out, at, "\"authors\":["); first = false; sep := false;
+    for a: 0..<AUTHOR_BYTE.count { if f.authors & (1 << a) != 0 {
+      if sep { at = put(out, at, ","); }
+      at = put(out, at, "\""); at = put(out, at, id_hex(AUTHOR_BYTE[a], h[..])); at = put(out, at, "\""); sep = true;
+    } }
+    at = put(out, at, "]");
+  }
+  if f.kinds != 0 {
+    if !first { at = put(out, at, ","); } at = put(out, at, "\"kinds\":["); first = false; sep := false;
+    for k: 0..<KINDS.count { if f.kinds & (1 << k) != 0 { if sep { at = put(out, at, ","); } at = put_int(out, at, KINDS[k]); sep = true; } }
+    at = put(out, at, "]");
+  }
+  if f.has_since { if !first { at = put(out, at, ","); } at = put(out, at, "\"since\":"); at = put_int(out, at, f.since); first = false; }
+  if f.has_until { if !first { at = put(out, at, ","); } at = put(out, at, "\"until\":"); at = put_int(out, at, f.until); first = false; }
+  if f.tag != 0 {
+    if !first { at = put(out, at, ","); }
+    at = put(out, at, ifx f.tag == 1 then "\"#t\":[\"nostr\"]" else "\"#t\":[\"coax\"]"); first = false;
+  }
+  if f.has_limit { if !first { at = put(out, at, ","); } at = put(out, at, "\"limit\":"); at = put_int(out, at, f.limit); }
+  at = put(out, at, "}");
+  return cast(string) out[0..<at];
+}
+// The event as the record the relay's admission (rs_admit_read) reads from
+// it: id, author, kind, created_at, expiration and the tags text.
+event_rec :: (e: Ev) -> RsdRec {
+  c: RsdRec; c.id[0] = cast(u8) e.id; c.author[0] = cast(u8) AUTHOR_BYTE[e.author];
+  c.kind = e.kind; c.created = e.created; c.expiry = e.expiry;
+  c.tags_to = TAG_TEXT[e.tag].count;  // the text is the tags array: tags_from 0
+  return c;
+}
+// book:end render
+
+// book:begin relay
+// Implementation 1: the relay. Each event goes into a fresh store through
+// ns_store_admit (replacement, ephemeral kinds); the filter goes through
+// filter_read, as a REQ does; rsd_query answers at ASK, exactly as
+// coax/relay/relay.coax does. The answer is event numbers, in the relay's
+// order. fault plants one bug: until compared with >= instead of >.
+Relay :: struct { arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; }
+relay_answer :: (c: Case, fault: bool, out: [] int) -> int {
+  r: [1] Relay; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  for i: 0..<c.n { stored := ns_store_admit(r[0].s[..], event_rec(c.ev[i]), TAG_TEXT[c.ev[i].tag], true); }
+  text: [512] u8;
+  strs: [16] string; ints: [16] int; tags: [4] NostrTagFilter; bytes: [512] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  #assert filter_read(filter_json(c.f, text[..]), f[..], sp[..]) == FR_OK;
+  if fault && f[0].has_until { f[0].until -= 1; }
+  idx: [8] int;
+  n := rsd_query(r[0].s[..], f[0], ASK, idx[..]);
+  for k: 0..<n { out[k] = event_of_id(c, cast(int) r[0].recs[idx[k]].id[0]); }
+  return n;
+}
+event_of_id :: (c: Case, id: int) -> int {
+  for i: 0..<c.n { if c.ev[i].id == id { return i; } }
+  return -1;
+}
+// book:end relay
+
+// book:begin reference
+// Implementation 2: NIP-01's filter section read literally, over the model.
+// "All of the conditions of a filter that are specified must match";
+// "since <= created_at <= until"; a tag filter matches an event with that
+// tag letter and one of the values. Nothing here calls the library.
+ref_match :: (f: Flt, e: Ev) -> bool {
+  if f.has_ids && f.id != e.id { return false; }
+  if f.authors != 0 && f.authors & (1 << e.author) == 0 { return false; }
+  if f.kinds != 0 {
+    found := false; for k: 0..<KINDS.count { if f.kinds & (1 << k) != 0 && KINDS[k] == e.kind { found = true; } }
+    if !found { return false; }
+  }
+  if f.has_since && !(f.since <= e.created) { return false; }
+  if f.has_until && !(e.created <= f.until) { return false; }
+  if f.tag != 0 && e.tag & f.tag == 0 { return false; }
+  return true;
+}
+// "the event with the lowest id (first in lexical order)": compared as hex text.
+lower_id :: (a: int, b: int) -> bool {
+  x: [64] u8; y: [64] u8; s := id_hex(a, x[..]); t := id_hex(b, y[..]);
+  for i: 0..<64 {
+    if s[i] < t[i] { return true; }
+    if s[i] > t[i] { return false; }
+  }
+  return false;
+}
+// "Newer events should appear first, and in the case of ties the event with
+// the lowest id ... should be first."
+ref_before :: (a: Ev, b: Ev) -> bool { return a.created > b.created || (a.created == b.created && lower_id(a.id, b.id)); }
+// Every matching event, in that order, with no limit applied.
+ref_answer :: (c: Case, out: [] int) -> int {
+  n := 0;
+  for i: 0..<c.n {
+    if !ref_match(c.f, c.ev[i]) { continue; }
+    at := n; while at > 0 && ref_before(c.ev[i], c.ev[out[at - 1]]) { out[at] = out[at - 1]; at -= 1; }
+    out[at] = i; n += 1;
+  }
+  return n;
+}
+// book:end reference
+
+// book:begin known
+// The known differences: each a rule the relay follows that the filter
+// section alone does not state, with its reason.
+KNOWN :: 3;
+KNOWN_NAME :: [3] string.["ephemeral", "replaced", "expired"];
+KNOWN_WHY :: [3] string.[
+  "NIP-01: kinds 20000-29999 are not expected to be stored",
+  "NIP-01: one replaceable event per pubkey and kind, the newest, then the lowest id",
+  "NIP-40: relays SHOULD NOT send expired events; expired once ASK >= expiration"];
+ephemeral :: (kind: int) -> bool { return kind >= 20000 && kind < 30000; }
+replaceable :: (kind: int) -> bool { return kind == 0 || kind == 3 || (kind >= 10000 && kind < 20000); }
+// Which known rule explains why the relay doesn't hold event i, or -1.
+known_rule :: (c: Case, i: int) -> int {
+  e := c.ev[i];
+  if ephemeral(e.kind) { return 0; }
+  if replaceable(e.kind) {
+    for j: 0..<c.n {
+      o := c.ev[j];
+      if j != i && o.author == e.author && o.kind == e.kind && ref_before(o, e) { return 1; }
+    }
+  }
+  if e.expiry >= 0 && ASK >= e.expiry { return 2; }
+  return -1;
+}
+// book:end known
+
+// book:begin compare
+MATCH :: 0; EXPLAINED :: 1; UNEXPLAINED :: 2;
+Verdict :: struct {
+  verdict: int; why: [3] int;          // events each known rule removed
+  relay: [8] int; rn: int;           // the relay's answer
+  ref: [8] int; fn: int;             // the reference, normalized
+}
+// Run both, normalize the reference (drop what a known rule explains, then
+// apply the limit the relay applies), compare the lists in order.
+compare :: (c: Case, fault: bool) -> Verdict {
+  v: Verdict;
+  v.rn = relay_answer(c, fault, v.relay[..]);
+  all: [8] int; n := ref_answer(c, all[..]);
+  // rs_limit caps a limit at 127, above any case's six events
+  limit := c.n; if c.f.has_limit { limit = c.f.limit; }
+  for k: 0..<n {
+    w := known_rule(c, all[k]);
+    if w >= 0 { v.why[w] += 1; continue; }
+    if v.fn < limit { v.ref[v.fn] = all[k]; v.fn += 1; }
+  }
+  // v.verdict starts as MATCH (0)
+  if v.why[0] + v.why[1] + v.why[2] > 0 { v.verdict = EXPLAINED; }
+  relay := v.relay; ref := v.ref;
+  if !same_list(relay[..], v.rn, ref[..], v.fn) { v.verdict = UNEXPLAINED; }
+  return v;
+}
+// The same events in the same order.
+same_list :: (a: [] int, an: int, b: [] int, bn: int) -> bool {
+  if an != bn { return false; }
+  for k: 0..<an { if a[k] != b[k] { return false; } }
+  return true;
+}
+// book:end compare
+
+// book:begin minimize
+// Remove event i (later events keep their names) or filter field k.
+without_event :: (c: Case, i: int) -> Case {
+  t := c; t.n = c.n - 1;
+  for j: i..<t.n { t.ev[j] = c.ev[j + 1]; }
+  return t;
+}
+FIELD_NAME :: [7] string.["ids", "authors", "kinds", "since", "until", "#t", "limit"];
+has_field :: (f: Flt, k: int) -> bool {
+  if k == 0 { return f.has_ids; } if k == 1 { return f.authors != 0; } if k == 2 { return f.kinds != 0; }
+  if k == 3 { return f.has_since; } if k == 4 { return f.has_until; } if k == 5 { return f.tag != 0; }
+  return f.has_limit;
+}
+without_field :: (c: Case, k: int) -> Case {
+  t := c;
+  if k == 0 { t.f.has_ids = false; } if k == 1 { t.f.authors = 0; } if k == 2 { t.f.kinds = 0; }
+  if k == 3 { t.f.has_since = false; } if k == 4 { t.f.has_until = false; } if k == 5 { t.f.tag = 0; }
+  if k == 6 { t.f.has_limit = false; }
+  return t;
+}
+// One try: event e<name> (field -1) or filter field <field>, and whether
+// it was removed. A round removes a part or ends the search, so a case of
+// six events and seven fields takes at most 14 rounds of 13 tries.
+Try :: struct { round: int; name: int; field: int = -1; removed: bool; }
+Trace :: struct { tries: [182] Try; n: int; }
+note :: (trace: [] Trace, t: Try) { trace[0].tries[trace[0].n] = t; trace[0].n += 1; }
+// Greedy one-at-a-time reduction: keep any removal after which the case
+// still gives an unexplained difference; repeat until no removal does.
+minimize :: (c: Case, fault: bool, trace: [] Trace) -> Case {
+  cur := c; changed := true; round := 0;
+  while changed {
+    changed = false; round += 1;
+    i := 0;
+    while i < cur.n {
+      t := without_event(cur, i);
+      gone := compare(t, fault).verdict == UNEXPLAINED;
+      note(trace, Try.{round = round, name = cur.ev[i].name, removed = gone});
+      if gone { cur = t; changed = true; } else { i += 1; }
+    }
+    for k: 0..<FIELD_NAME.count {
+      if !has_field(cur.f, k) { continue; }
+      t := without_field(cur, k);
+      gone := compare(t, fault).verdict == UNEXPLAINED;
+      note(trace, Try.{round = round, field = k, removed = gone});
+      if gone { cur = t; changed = true; }
+    }
+  }
+  return cur;
+}
+// book:end minimize
+
+show_time :: (t: int) { if t == NOW { print("NOW"); } else if t > NOW { print("NOW+%", t - NOW); } else { print("NOW-%", NOW - t); } }
+show_case :: (c: Case) {
+  for i: 0..<c.n {
+    e := c.ev[i];
+    print("    e% % kind % ", e.name, ifx e.author == 0 then "A" else "B", e.kind); show_time(e.created);
+    h: [64] u8; print(" id %... tags %", cast(string) id_hex(e.id, h[..])[0..<2], TAG_TEXT[e.tag]);
+    if e.expiry >= 0 { print(" expires "); show_time(e.expiry); }
+    print("\n");
+  }
+  text: [512] u8; print("    filter %\n", filter_json(c.f, text[..]));
+}
+show_list :: (c: Case, l: [] int, n: int) {
+  if n == 0 { print(" (none)"); }
+  for k: 0..<n { print(" e%", c.ev[l[k]].name); }
+}
+show_trace :: (tr: Trace) {
+  round := 0;
+  for k: 0..<tr.n {
+    t := tr.tries[k];
+    if t.round != round { if round > 0 { print("\n"); } round = t.round; print("  round %:", round); }
+    if t.field < 0 && t.removed { print(" -e%", t.name); }
+    if t.field < 0 && !t.removed { print(" e% stays", t.name); }
+    if t.field >= 0 && t.removed { print(" -%", FIELD_NAME[t.field]); }
+    if t.field >= 0 && !t.removed { print(" % stays", FIELD_NAME[t.field]); }
+  }
+  print("\n");
+}
+CLASS_NAME :: [3] string.["match", "explained", "UNEXPLAINED"];
+show_verdict :: (c: Case, v: Verdict) {
+  relay := v.relay; ref := v.ref;
+  print("    relay:"); show_list(c, relay[..], v.rn);
+  print("; reference:"); show_list(c, ref[..], v.fn);
+  print(" -> %", CLASS_NAME[v.verdict]);
+  for w: 0..<KNOWN { if v.why[w] > 0 { print(" (% %)", v.why[w], KNOWN_NAME[w]); } }
+  print("\n");
+}
+
+// book:begin main
+CASES :: 500;
+SEED :: 94;
+Tally :: struct { count: [3] int; why: [3] int; first: int = -1; }
+tally :: (fault: bool) -> Tally {
+  r: [1] Rng; r[0].s = SEED;
+  t: Tally;
+  for i: 0..<CASES {
+    c := generate(r[..]); v := compare(c, fault);
+    t.count[v.verdict] += 1;
+    for w: 0..<KNOWN { t.why[w] += v.why[w]; }
+    if v.verdict == UNEXPLAINED && t.first == -1 { t.first = i; }
+  }
+  return t;
+}
+run :: (label: string, fault: bool) -> Tally {
+  t := tally(fault);
+  print("%: % cases, % match, % explained, % unexplained\n", label, CASES, t.count[MATCH], t.count[EXPLAINED], t.count[UNEXPLAINED]);
+  print("    events removed by a known rule:");
+  for w: 0..<KNOWN { print(" % %", t.why[w], KNOWN_NAME[w]); }
+  print("\n");
+  return t;
+}
+case_at :: (i: int) -> Case {
+  r: [1] Rng; r[0].s = SEED;
+  c: Case; for k: 0..<i + 1 { c = generate(r[..]); }
+  return c;
+}
+
+main :: () {
+  print("the relay's query (rsd_query) against NIP-01's filter text, at ASK = NOW+60\n");
+  print("known differences:\n");
+  for w: 0..<KNOWN { print("  %: %\n", KNOWN_NAME[w], KNOWN_WHY[w]); }
+
+  print("\ncase 0 of seed %:\n", SEED);
+  c0 := case_at(0); show_case(c0); show_verdict(c0, compare(c0, false));
+
+  print("\n");
+  clean := run("the relay as built", false);
+  print("\n");
+  bad := run("seeded fault: until compared with >=", true);
+
+  if bad.first < 0 { print("the seeded fault went unseen\n"); return; }
+  c := case_at(bad.first);
+  print("\nfirst unexplained difference: case %, % events\n", bad.first, c.n);
+  show_case(c); show_verdict(c, compare(c, true));
+  print("minimizing:\n");
+  tr: [1] Trace; m := minimize(c, true, tr[..]); show_trace(tr[0]);
+  print("minimal case:\n");
+  show_case(m); show_verdict(m, compare(m, true));
+  print("the same case without the fault:\n");
+  show_verdict(m, compare(m, false));
+}
+// book:end main
+// book:end example

@@ -1690,15 +1690,19 @@
    "number": 94,
    "title": "Differential tests",
    "file": "ch094-differential-tests.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     34,
     93
    ],
    "source": [
+    "coax/lib/nostr/filter_read.coax",
+    "coax/lib/nostr/store.coax",
     "coax/tests/nostr/relay_differential.py",
-    "coax/tests/nostr/relay_rust_differential.py"
+    "coax/tests/nostr/relay_rust_differential.py",
+    "nostr/examples/differential.coax",
+    "nostr/examples/checks/differential.coax"
    ],
    "qualified_targets": [
     "cpu"

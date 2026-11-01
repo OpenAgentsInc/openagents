@@ -536,6 +536,17 @@
       ],
       "stack_kib": 32768,
       "timeout": 180
+    },
+    {
+      "source": "nostr/examples/differential.coax",
+      "chapter": "nostr/book/ch094-differential-tests.md",
+      "stdout": "nostr/fixtures/differential.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

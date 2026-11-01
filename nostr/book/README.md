@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 49 are implemented, 7 are partly implemented and
+Of the 104 chapters, 50 are implemented, 6 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -293,7 +293,7 @@ formal properties and a conformance report.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [93. Test vectors and their provenance](ch093-test-vectors-and-their-provenance.md) | Runnable: native C | Every vector file pinned by source URL, revision, license, retrieval date and SHA-256, with derived adapters labelled and their input hashes recorded. |
-| [94. Differential tests](ch094-differential-tests.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Running the same inputs through Coax and a reference implementation: the Rust relay from history in a network-less sandbox, and independent libraries for signatures, NIP-44 and NIP-59. |
+| [94. Differential tests](ch094-differential-tests.md) | Runnable: native C | Running the same inputs through Coax and a reference implementation: the Rust relay from history in a network-less sandbox, and independent libraries for signatures, NIP-44 and NIP-59. |
 | [95. Fuzzing](ch095-fuzzing.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Coverage-guided fuzzing of every parser (JSON, frames, filters, NIP-19, NIP-44 payloads) under ASan and UBSan, with pinned seeds and minimized regressions kept as tests. |
 | [96. Formal properties](ch096-formal-properties.md) | Unimplemented: design draft | Properties stated and checked with `#forall` and models: signature validity matches BIP-340's definition, filter matching is AND across fields and OR within lists, and indexes never change results. |
 | [97. A conformance report](ch097-a-conformance-report.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | A machine-readable support matrix per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`, `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses to advertise a NIP whose runtime gate is missing. |
