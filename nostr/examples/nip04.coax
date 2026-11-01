@@ -1,0 +1,123 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip04.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself spells; it must be valid.
+from_hex :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+// Print a label and one byte value in hex.
+show_byte :: (label: string, v: u32) {
+  b: [1] u8;
+  b[0] = cast(u8) v;
+  show(label, b[..]);
+}
+
+ERROR :: [13] string.["ok", "bad key", "bad format", "bad base64", "bad iv",
+  "bad length", "bad output", "overlap", "bad padding", "bad peer",
+  "bad secret", "retired: use NIP-17", "bad work"];
+
+// Test keys: the NIP-44 encrypt_decrypt vector 3 keys from chapter 14.
+SEC1 :: "5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a";
+SEC2 :: "4b22aa260e4acb7021e32f38a6cdf4b673c6a277755bfce287e370c924dc936d";
+PUB1 :: "87d3561f19b74adbe8bf840682992466068830a9d8c36b4a0c99d36f826cb6cb";
+PUB2 :: "fa3b4f81a620c66514bda0302847df167ed02a483141b5939e57bdd0cf76ad3b";
+// Made with OpenSSL from the shared x of SEC1 and PUB2.
+CONTENT :: "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==";
+
+decrypt :: (label: string, key: [] u8, content: string) {
+  out: [64] u8; work: [1] Nip04Work;
+  r := nip04_decrypt_checked(key, content, out[..], work[..], false);
+  if r.error == NIP04_OK { print("%: ok, \"%\"\n", label, cast(string) out[0..<r.written]); }
+  else { print("%: %\n", label, ERROR[r.error]); }
+}
+
+main :: () {
+  // One S-box value, FIPS-197 section 5.1.1.
+  show_byte("inverse of 53 in GF(2^8)", aes_gf_inverse(0x53));
+  show_byte("S(53)", aes_sbox(0x53));
+  show_byte("InvS(ed)", aes_inv_sbox(0xed));
+
+  // FIPS-197 appendix C.3: the inverse cipher, round 0 and the first steps
+  // of round 1, then the whole block.
+  key: [32] u8;
+  for i: 0..<32 { key[i] = cast(u8) i; }
+  s := aes256_expand(key[..]);
+  st: AesBlock; ib: [16] u8;
+  input := from_hex("8ea2b7ca516745bfeafc49904b496089", ib[..]);
+  for i: 0..<16 { st.b[i] = input[i]; }
+  show("round[ 0].iinput", st.b[..]);
+  show("round[ 0].ik_sch", s.b[224..<240]);
+  st = aes_add_round_key(st, s, 14);
+  show("round[ 1].istart", st.b[..]);
+  st = aes_inv_shift_rows(st);
+  show("round[ 1].is_row", st.b[..]);
+  st = aes_inv_sub_bytes(st);
+  show("round[ 1].is_box", st.b[..]);
+  show("round[ 1].ik_sch", s.b[208..<224]);
+  st = aes_add_round_key(st, s, 13);
+  show("round[ 1].ik_add", st.b[..]);
+  for i: 0..<16 { st.b[i] = input[i]; }
+  st = aes256_decrypt_block(s, st);
+  show("round[14].ioutput", st.b[..]);
+
+  // NIST SP 800-38A F.2.6, CBC-AES256.Decrypt.
+  kb: [32] u8; vb: [16] u8; cb: [64] u8; plain: [64] u8; work: [1] AesSchedule;
+  r := aes256_cbc_decrypt_checked(
+    from_hex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4", kb[..]),
+    from_hex("000102030405060708090a0b0c0d0e0f", vb[..]),
+    from_hex("f58c4c04d6e5f1ba779eabfb5f7bfbd69cfc4e967edb808d679f777bc6702c7d39f23369a9d9bacfa530e26304231461b2eb05e2c39be9fcda6c19078c6a9d1b", cb[..]),
+    plain[..], work[..], false);
+  print("SP 800-38A F.2.6: %, % bytes\n", ifx r.error == AES_OK then "ok" else "refused", r.written);
+  show("plaintext block 1", plain[0..<16]);
+  show("plaintext block 4", plain[48..<64]);
+
+  // A NIP-04 message. Split the content, then decrypt with the raw shared x.
+  parts := nip04_split(CONTENT);
+  print("cipher text: %\n", parts.cipher);
+  print("iv text: %\n", parts.iv);
+  bytes: [32] u8;
+  n := base64_decode_checked(parts.cipher, bytes[..], false).written;
+  show("ciphertext", bytes[0..<n]);
+  n = base64_decode_checked(parts.iv, bytes[..], false).written;
+  show("iv", bytes[0..<n]);
+  s1: [32] u8; s2: [32] u8; p1: [32] u8; p2: [32] u8;
+  sec1 := from_hex(SEC1, s1[..]); sec2 := from_hex(SEC2, s2[..]);
+  pub1 := from_hex(PUB1, p1[..]); pub2 := from_hex(PUB2, p2[..]);
+  ew: [1] EcdhScratch;
+  #assert ecdh_stage(sec1, pub2, ew[..]) == EC_OK;
+  x := ew[0].staged;
+  ew[0] = EcdhScratch.{};
+  show("shared x (the AES key, unhashed)", x[..]);
+  decrypt("decrypt with x", x[..], CONTENT);
+  out: [64] u8; nw: [1] Nip04Work;
+  d := nip04_decrypt_from_keys_checked(sec2, pub1, CONTENT, out[..], nw[..], false);
+  print("decrypt with sec2 and pub1: %, \"%\"\n", ERROR[d.error], cast(string) out[0..<d.written]);
+
+  // No authentication: flip bit 0 of the iv (a1 becomes a0). Decryption
+  // succeeds and plaintext byte 0 changes from N (4e) to O (4f).
+  decrypt("iv byte 0 flipped", x[..], "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=oLLD1OX2BxgpOktcbX6PkA==");
+
+  // Refusals.
+  decrypt("last block dropped", x[..], "zooMmtdlrlTCiIbfLqTqYg==?iv=obLD1OX2BxgpOktcbX6PkA==");
+  decrypt("no ?iv= part", x[..], "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=");
+  decrypt("12-byte iv", x[..], "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktc");
+  decrypt("15-byte ciphertext", x[..], "zooMmtdlrlTCiIbfLqTq?iv=obLD1OX2BxgpOktcbX6PkA==");
+  decrypt("base64 without its padding", x[..], "zooMmtdlrlTCiIbfLqTqYg?iv=obLD1OX2BxgpOktcbX6PkA==");
+  sec3: [32] u8;
+  for i: 0..<32 { sec3[i] = sec1[i]; }
+  sec3[31] ^= 1;
+  d = nip04_decrypt_from_keys_checked(sec3[..], pub2, CONTENT, out[..], nw[..], false);
+  print("decrypt with another secret: %\n", ERROR[d.error]);
+  d = nip04_encrypt(x[..], "a new message", out[..]);
+  print("encrypt: %, % bytes\n", ERROR[d.error], d.written);
+}
+// book:end example

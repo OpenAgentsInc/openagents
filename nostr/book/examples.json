@@ -127,6 +127,17 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/nip04.coax",
+      "chapter": "nostr/book/ch019-nip-04-and-why-it-is-retired.md",
+      "stdout": "nostr/fixtures/nip04.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 240
+    },
+    {
       "source": "nostr/examples/chacha20.coax",
       "chapter": "nostr/book/ch018-chacha20.md",
       "stdout": "nostr/fixtures/chacha20.out",

@@ -394,14 +394,21 @@
    "number": 19,
    "title": "NIP-04 and why it is retired",
    "file": "ch019-nip-04-and-why-it-is-retired.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     14,
     1
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/aes.coax",
+    "coax/lib/nostr/nip04.coax",
+    "nostr/examples/nip04.coax",
+    "nostr/examples/checks/nip04.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

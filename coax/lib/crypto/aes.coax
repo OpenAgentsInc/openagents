@@ -1,0 +1,325 @@
+// AES-256 decryption only (FIPS-197) and CBC decryption (NIST SP 800-38A),
+// for reading retired NIP-04 messages. There is deliberately no forward
+// cipher: this file cannot encrypt. The forward S-box exists only because the
+// key schedule needs it.
+//
+// No lookup tables. Each S-box value is computed: the inverse in GF(2^8) as
+// x^254 by a fixed chain of multiplications, then the affine map. The
+// multiply uses masks, not branches, so no memory address and no branch
+// depends on the key or the data. That is the intent of the source; the C
+// compiler is not proven to keep it, and no timing measurement has been
+// made. A T-table AES indexes memory by secret bytes and leaks them through
+// the cache; this file avoids that, at a cost of speed.
+//
+// The expanded key lives in a caller-supplied work buffer, cleared by
+// assignment before return; erasure beyond that is the caller's (zeroize.coax).
+#load "bytes.coax";
+
+AES_OK :: cast(u32)0;
+AES_KEY :: cast(u32)1;     // key is not 32 bytes
+AES_IV :: cast(u32)2;      // iv is not 16 bytes
+AES_INPUT :: cast(u32)3;   // not a whole number of 16-byte blocks, or over 1 MiB
+AES_OUTPUT :: cast(u32)4;  // output smaller than the input
+AES_ALIAS :: cast(u32)5;   // output shares memory with the key, iv or input
+AES_WORK :: cast(u32)6;    // work is not exactly one AesSchedule
+AES_MAX_BLOCKS :: 65536;   // 1 MiB, the byte helpers' limit
+AesResult :: struct { written:int; error:u32; }
+AesBlock :: struct { b:[16]u8; }
+AesSchedule :: struct { b:[240]u8; }  // 15 round keys of 16 bytes
+
+#test "FIPS-197 section 5.1.1: S(53) = ed, and the inverse of 53 is ca" {
+  #assert aes_gf_inverse(0x53)==0xca && aes_sbox(0x53)==0xed && aes_inv_sbox(0xed)==0x53;
+  #assert aes_sbox(0)==0x63 && aes_inv_sbox(0x63)==0 && aes_gf_inverse(0)==0;
+  #assert aes_sbox(1)==0x7c && aes_sbox(0xff)==0x16 && aes_sbox(0x10)==0xca;
+  #assert aes_inv_sbox(0)==0x52 && aes_inv_sbox(0xff)==0x7d;
+}
+#forall "the S-box inverts and the GF(2^8) inverse is an inverse" x:0..<256 {
+  v:=cast(u32)x;
+  #assert aes_inv_sbox(aes_sbox(v))==v && aes_sbox(aes_inv_sbox(v))==v;
+  if x!=0 {#assert aes_gf_mul(v,aes_gf_inverse(v))==1;}
+  #assert aes_gf_mul(v,1)==v && aes_gf_mul(v,2)==aes_xtime(v) && aes_gf_mul(2,v)==aes_xtime(v);
+  #assert aes_sbox(v)<256 && aes_inv_sbox(v)<256;
+}
+#test "FIPS-197 4.2: {57} x {83} = {c1} and {57} x {13} = {fe}" {
+  #assert aes_gf_mul(0x57,0x83)==0xc1 && aes_gf_mul(0x57,0x13)==0xfe;
+  #assert aes_xtime(0x57)==0xae && aes_xtime(0xae)==0x47 && aes_xtime(0x80)==0x1b;
+}
+#test "FIPS-197 appendix A.3: the AES-256 key expansion" {
+  key:=[32]u8.[0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4];
+  s:=aes256_expand(key[..]);
+  #assert cb_load_be32(s.b[..],32).value==0x9ba35411 && cb_load_be32(s.b[..],36).value==0x8e6925af;
+  #assert cb_load_be32(s.b[..],48).value==0xa8b09c1a && cb_load_be32(s.b[..],64).value==0xd59aecb8;
+  #assert cb_load_be32(s.b[..],236).value==0x706c631e;
+}
+#test "FIPS-197 appendix C.3: inverse cipher, round 0 and round 1 steps" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)i;}
+  s:=aes256_expand(key[..]);
+  st:=aes_block_hex_test("8ea2b7ca516745bfeafc49904b496089");
+  st=aes_add_round_key(st,s,14);
+  #assert aes_block_equals_test(st,"aa5ece06ee6e3c56dde68bac2621bebf");
+  st=aes_inv_shift_rows(st);
+  #assert aes_block_equals_test(st,"aa218b56ee5ebeacdd6ecebf26e63c06");
+  st=aes_inv_sub_bytes(st);
+  #assert aes_block_equals_test(st,"627bceb9999d5aaac945ecf423f56da5");
+  st=aes_add_round_key(st,s,13);
+  #assert aes_block_equals_test(st,"2c21a820306f154ab712c75eee0da04f");
+  out:=aes256_decrypt_block(s,aes_block_hex_test("8ea2b7ca516745bfeafc49904b496089"));
+  #assert aes_block_equals_test(out,"00112233445566778899aabbccddeeff");
+}
+#test "InvMixColumns on the FIPS-197 C.3 column and on known columns" {
+  // The column db 13 53 45 mixes forward to 8e 4d a1 bc; inverting gives it back.
+  st:AesBlock;st.b[0]=0x8e;st.b[1]=0x4d;st.b[2]=0xa1;st.b[3]=0xbc;
+  for i:4..<16 {st.b[i]=1;}
+  m:=aes_inv_mix_columns(st);
+  #assert m.b[0]==0xdb && m.b[1]==0x13 && m.b[2]==0x53 && m.b[3]==0x45;
+  for i:4..<16 {#assert m.b[i]==1;}
+  st.b[4]=0x9f;st.b[5]=0xdc;st.b[6]=0x58;st.b[7]=0x9d;
+  m=aes_inv_mix_columns(st);
+  #assert m.b[4]==0xf2 && m.b[5]==0x0a && m.b[6]==0x22 && m.b[7]==0x5c;
+  #assert m.b[0]==0xdb && m.b[8]==1 && m.b[15]==1;
+}
+#test "SP 800-38A F.2.6 CBC-AES256.Decrypt, all four blocks" {
+  key:=aes_hex32_test("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+  iv:=aes_block_hex_test("000102030405060708090a0b0c0d0e0f");
+  input:[64]u8;out:[65]u8;out[64]=165;work:[1]AesSchedule;
+  for i:0..<4 {c:=aes_block_hex_test(AES_SP_CIPHER[i]);for j:0..<16 {input[i*16+j]=c.b[j];}}
+  r:=aes256_cbc_decrypt_checked(key[..],iv.b[..],input[..],out[..],work[..],false);
+  #assert r.error==AES_OK && r.written==64 && out[64]==165;
+  for i:0..<4 {
+    p:=aes_block_hex_test(AES_SP_PLAIN[i]);
+    for j:0..<16 {#assert out[i*16+j]==p.b[j];}
+  }
+  // The expanded key is cleared from the work buffer on return.
+  for b:work[0].b {#assert b==0;}
+  // In place gives the same bytes.
+  r=aes256_cbc_decrypt_in_place_checked(key[..],iv.b[..],input[..],work[..]);
+  #assert r.error==AES_OK && r.written==64;
+  for i:0..<64 {#assert input[i]==out[i];}
+  for b:work[0].b {#assert b==0;}
+}
+#forall "CBC admission refuses before writing" k:30..<35, v:14..<19, w:0..<3, n:-1..<50, cap:-1..<50, overlap:bool {
+  expected:=AES_OK;
+  if k!=32 {expected=AES_KEY;}
+  else if v!=16 {expected=AES_IV;}
+  else if w!=1 {expected=AES_WORK;}
+  else if n<0 || n%16!=0 {expected=AES_INPUT;}
+  else if cap<n {expected=AES_OUTPUT;}
+  else if n>0 && overlap {expected=AES_ALIAS;}
+  #assert aes_cbc_admit(k,v,w,n,cap,overlap)==expected;
+}
+#test "CBC limits and refusals leave the output untouched" {
+  #assert aes_cbc_admit(32,16,1,1048576,1048576,false)==AES_OK;
+  #assert aes_cbc_admit(32,16,1,1048592,1048592,false)==AES_INPUT;
+  key:[32]u8;iv:[16]u8;input:[32]u8;out:[32]u8;work:[2]AesSchedule;
+  for i:0..<32 {out[i]=77;}
+  #assert aes256_cbc_decrypt_checked(key[0..<31],iv[..],input[..],out[..],work[0..<1],false).error==AES_KEY;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[0..<15],input[..],out[..],work[0..<1],false).error==AES_IV;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[..],out[..],work[..],false).error==AES_WORK;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[0..<17],out[..],work[0..<1],false).error==AES_INPUT;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[..],out[0..<31],work[0..<1],false).error==AES_OUTPUT;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[..],out[..],work[0..<1],true).error==AES_ALIAS;
+  #assert aes256_cbc_decrypt_in_place_checked(key[0..<31],iv[..],out[..],work[0..<1]).error==AES_KEY;
+  #assert aes256_cbc_decrypt_in_place_checked(key[..],key[0..<17],out[..],work[0..<1]).error==AES_IV;
+  #assert aes256_cbc_decrypt_in_place_checked(key[..],iv[..],out[..],work[0..<0]).error==AES_WORK;
+  #assert aes256_cbc_decrypt_in_place_checked(key[..],iv[..],out[0..<15],work[0..<1]).error==AES_INPUT;
+  r:=aes256_cbc_decrypt_checked(key[..],iv[..],input[0..<0],out[..],work[0..<1],false);
+  #assert r.error==AES_OK && r.written==0;
+  r=aes256_cbc_decrypt_checked(key[..],iv[..],input[0..<0],out[..],work[0..<1],true);
+  #assert r.error==AES_OK && r.written==0;
+  for b:out {#assert b==77;}
+}
+#test "CBC: block i depends on ciphertext block i - 1 and the iv only" {
+  // A one-bit change in ciphertext block 0 garbles plaintext block 0 and
+  // flips the same bit of plaintext block 1; block 2 is unchanged.
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(3*i);}
+  iv:[16]u8;for i:0..<16 {iv[i]=cast(u8)(200-i);}
+  input:[48]u8;for i:0..<48 {input[i]=cast(u8)((i*7)%256);}
+  a:[48]u8;b:[48]u8;work:[1]AesSchedule;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[..],a[..],work[..],false).error==AES_OK;
+  input[5]^=4;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[..],b[..],work[..],false).error==AES_OK;
+  for j:0..<16 {
+    #assert b[16+j]==ifx j==5 then a[16+j]^4 else a[16+j];
+    #assert b[32+j]==a[32+j];
+  }
+  differ:=0;for j:0..<16 {if a[j]!=b[j] {differ+=1;}}
+  #assert differ>8;
+  // The iv only enters block 0, by exclusive or.
+  iv[0]^=1;
+  #assert aes256_cbc_decrypt_checked(key[..],iv[..],input[..],a[..],work[..],false).error==AES_OK;
+  #assert a[0]==b[0]^1;
+  for j:1..<48 {#assert a[j]==b[j];}
+}
+#test "the multiply reads only the low 8 bits of b" {
+  #assert aes_gf_mul(3,0x103)==aes_gf_mul(3,3) && aes_gf_mul(0x57,0x183)==0xc1;
+}
+#forall "the block comparison the checks use tells every byte apart" i:0..<16 {
+  a:=aes_block_hex_test("00112233445566778899aabbccddeeff");
+  #assert aes_block_equals_test(a,"00112233445566778899aabbccddeeff");
+  a.b[i]^=1;
+  #assert !aes_block_equals_test(a,"00112233445566778899aabbccddeeff");
+}
+
+AES_SP_CIPHER :: [4]string.["f58c4c04d6e5f1ba779eabfb5f7bfbd6","9cfc4e967edb808d679f777bc6702c7d","39f23369a9d9bacfa530e26304231461","b2eb05e2c39be9fcda6c19078c6a9d1b"];
+AES_SP_PLAIN :: [4]string.["6bc1bee22e409f96e93d7e117393172a","ae2d8a571e03ac9c9eb76fac45af8e51","30c81c46a35ce411e5fbc1191a0a52ef","f69f2445df4f9b17ad2b417be66c3710"];
+aes_nibble_test :: (c:u8)->u32 {
+  if c>=97 {return cast(u32)(c-87);}
+  return cast(u32)(c-48);
+}
+aes_block_hex_test :: (text:string)->AesBlock {
+  out:AesBlock;
+  for i:0..<16 {out.b[i]=cast(u8)(aes_nibble_test(text[2*i])*16+aes_nibble_test(text[2*i+1]));}
+  return out;
+}
+aes_hex32_test :: (text:string)->[32]u8 {
+  out:[32]u8;
+  for i:0..<32 {out[i]=cast(u8)(aes_nibble_test(text[2*i])*16+aes_nibble_test(text[2*i+1]));}
+  return out;
+}
+aes_block_equals_test :: (a:AesBlock,text:string)->bool {
+  b:=aes_block_hex_test(text);
+  for i:0..<16 {if a.b[i]!=b.b[i] {return false;}}
+  return true;
+}
+
+// book:begin aes_gf_mul
+// Multiply by x in GF(2^8) modulo x^8 + x^4 + x^3 + x + 1: shift left, and
+// if bit 7 fell off, exclusive-or with 1b. The "if" is a multiply by the bit.
+aes_xtime :: (a:u32)->u32 {return ((a<<1)&255)^(((a>>7)&1)*0x1b);}
+aes_gf_mul :: (a_in:u32,b:u32)->u32 {
+  a:=a_in&255;r:=cast(u32)0;
+  for i:0..<8 {
+    r^=a&(((b>>i)&1)*255);
+    a=aes_xtime(a);
+  }
+  return r;
+}
+// book:end aes_gf_mul
+// book:begin aes_sbox
+// x^254 = x^-1 for x != 0, and 0 for 0: x^127 = x^(2^7 - 1) by six
+// square-and-multiply steps, then one more squaring.
+aes_gf_inverse :: (x:u32)->u32 {
+  y:=x&255;
+  for i:0..<6 {y=aes_gf_mul(aes_gf_mul(y,y),x);}
+  return aes_gf_mul(y,y);
+}
+aes_rotl8 :: (b:u32,n:u32)->u32 {return ((b<<n)|(b>>(8-n)))&255;}
+// FIPS-197 5.1.1: the inverse, then the affine map b ^ rotl(b,1..4) ^ 63.
+aes_sbox :: (x:u32)->u32 {
+  b:=aes_gf_inverse(x);
+  return b^aes_rotl8(b,1)^aes_rotl8(b,2)^aes_rotl8(b,3)^aes_rotl8(b,4)^0x63;
+}
+// FIPS-197 5.3.2: undo the affine map, then invert.
+aes_inv_sbox :: (y_in:u32)->u32 {
+  y:=y_in&255;
+  return aes_gf_inverse(aes_rotl8(y,1)^aes_rotl8(y,3)^aes_rotl8(y,6)^0x05);
+}
+// book:end aes_sbox
+// book:begin aes256_expand
+// FIPS-197 5.2 for Nk = 8: 60 words. Every 8th word rotates, substitutes and
+// adds the round constant; every 8th word plus 4 only substitutes.
+aes256_expand :: (key:[]u8)->AesSchedule {
+  s:AesSchedule;
+  for i:0..<32 {s.b[i]=key[i];}
+  rcon:=cast(u32)1;
+  for i:8..<60 {
+    t:[4]u32;
+    for j:0..<4 {t[j]=cast(u32)s.b[(i-1)*4+j];}
+    if i%8==0 {
+      first:=t[0];t[0]=t[1];t[1]=t[2];t[2]=t[3];t[3]=first;
+      for j:0..<4 {t[j]=aes_sbox(t[j]);}
+      t[0]^=rcon;rcon=aes_xtime(rcon);
+    } else if i%8==4 {
+      for j:0..<4 {t[j]=aes_sbox(t[j]);}
+    }
+    for j:0..<4 {s.b[i*4+j]=s.b[(i-8)*4+j]^cast(u8)t[j];}
+  }
+  return s;
+}
+// book:end aes256_expand
+// book:begin aes_inverse_steps
+// The state is column-major: byte r + 4c is row r of column c.
+aes_add_round_key :: (st:AesBlock,s:AesSchedule,round:int)->AesBlock {
+  out:AesBlock;
+  for i:0..<16 {out.b[i]=st.b[i]^s.b[round*16+i];}
+  return out;
+}
+// Row r moves r places to the right.
+aes_inv_shift_rows :: (st:AesBlock)->AesBlock {
+  out:AesBlock;
+  for c:0..<4 {for r:0..<4 {out.b[r+4*((c+r)%4)]=st.b[r+4*c];}}
+  return out;
+}
+aes_inv_sub_bytes :: (st:AesBlock)->AesBlock {
+  out:AesBlock;
+  for i:0..<16 {out.b[i]=cast(u8)aes_inv_sbox(cast(u32)st.b[i]);}
+  return out;
+}
+// Each column times the matrix rows (0e 0b 0d 09), rotated.
+aes_inv_mix_columns :: (st:AesBlock)->AesBlock {
+  out:AesBlock;
+  m:=[4]u32.[0x0e,0x0b,0x0d,0x09];
+  for c:0..<4 {
+    for r:0..<4 {
+      v:=cast(u32)0;
+      for k:0..<4 {v^=aes_gf_mul(cast(u32)st.b[4*c+k],m[(k-r+4)%4]);}
+      out.b[4*c+r]=cast(u8)v;
+    }
+  }
+  return out;
+}
+// book:end aes_inverse_steps
+// book:begin aes256_decrypt_block
+// FIPS-197 5.3, the inverse cipher with Nr = 14 rounds.
+aes256_decrypt_block :: (s:AesSchedule,input:AesBlock)->AesBlock {
+  st:=aes_add_round_key(input,s,14);
+  round:=13;
+  while round>=1 {
+    st=aes_add_round_key(aes_inv_sub_bytes(aes_inv_shift_rows(st)),s,round);
+    st=aes_inv_mix_columns(st);
+    round-=1;
+  }
+  return aes_add_round_key(aes_inv_sub_bytes(aes_inv_shift_rows(st)),s,0);
+}
+// book:end aes256_decrypt_block
+// book:begin aes_cbc_admit
+aes_cbc_admit :: (key_count:int,iv_count:int,work_count:int,n:int,capacity:int,overlap:bool)->u32 {
+  if key_count!=32 {return AES_KEY;}
+  if iv_count!=16 {return AES_IV;}
+  if work_count!=1 {return AES_WORK;}
+  if n<0 || n%16!=0 || n/16>AES_MAX_BLOCKS {return AES_INPUT;}
+  if capacity<n {return AES_OUTPUT;}
+  if n!=0 && overlap {return AES_ALIAS;}
+  return AES_OK;
+}
+// book:end aes_cbc_admit
+// book:begin aes256_cbc_decrypt_in_place_checked
+// SP 800-38A 6.2: P_i = D(C_i) ^ C_(i-1), with C_(-1) the iv. Working from
+// the last block back to the first keeps C_(i-1) intact until it is used.
+// The expanded key lives in the caller's work buffer and is cleared before
+// return.
+aes256_cbc_decrypt_in_place_checked :: (key:[]u8,iv:[]u8,data:[]u8,work:[]AesSchedule)->AesResult {
+  error:=aes_cbc_admit(key.count,iv.count,work.count,data.count,data.count,false);
+  if error!=AES_OK {return AesResult.{error=error};}
+  work[0]=aes256_expand(key);
+  i:=data.count/16-1;
+  while i>=0 {
+    c:AesBlock;
+    for j:0..<16 {c.b[j]=data[i*16+j];}
+    p:=aes256_decrypt_block(work[0],c);
+    for j:0..<16 {
+      previous:=ifx i==0 then iv[j] else data[(i-1)*16+j];
+      data[i*16+j]=p.b[j]^previous;
+    }
+    i-=1;
+  }
+  work[0]=AesSchedule.{};
+  return AesResult.{written=data.count};
+}
+// book:end aes256_cbc_decrypt_in_place_checked
+aes256_cbc_decrypt_checked :: (key:[]u8,iv:[]u8,input:[]u8,out:[]u8,work:[]AesSchedule,overlap:bool)->AesResult {
+  error:=aes_cbc_admit(key.count,iv.count,work.count,input.count,out.count,overlap);
+  if error!=AES_OK {return AesResult.{error=error};}
+  for i:0..<input.count {out[i]=input[i];}
+  return aes256_cbc_decrypt_in_place_checked(key,iv,out[0..<input.count],work);
+}

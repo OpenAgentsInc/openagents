@@ -1,0 +1,29 @@
+inverse of 53 in GF(2^8): ca
+S(53): ed
+InvS(ed): 53
+round[ 0].iinput: 8ea2b7ca516745bfeafc49904b496089
+round[ 0].ik_sch: 24fc79ccbf0979e9371ac23c6d68de36
+round[ 1].istart: aa5ece06ee6e3c56dde68bac2621bebf
+round[ 1].is_row: aa218b56ee5ebeacdd6ecebf26e63c06
+round[ 1].is_box: 627bceb9999d5aaac945ecf423f56da5
+round[ 1].ik_sch: 4e5a6699a9f24fe07e572baacdf8cdea
+round[ 1].ik_add: 2c21a820306f154ab712c75eee0da04f
+round[14].ioutput: 00112233445566778899aabbccddeeff
+SP 800-38A F.2.6: ok, 64 bytes
+plaintext block 1: 6bc1bee22e409f96e93d7e117393172a
+plaintext block 4: f69f2445df4f9b17ad2b417be66c3710
+cipher text: zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=
+iv text: obLD1OX2BxgpOktcbX6PkA==
+ciphertext: ce8a0c9ad765ae54c28886df2ea4ea62ba426d35ab71590fed175ca82b8cf134
+iv: a1b2c3d4e5f60718293a4b5c6d7e8f90
+shared x (the AES key, unhashed): 94da47d851b9c1ed33b3b72f35434f56aa608d60e573e9c295f568011f4f50a4
+decrypt with x: ok, "NIP-04 is retired; use NIP-17."
+decrypt with sec2 and pub1: ok, "NIP-04 is retired; use NIP-17."
+iv byte 0 flipped: ok, "OIP-04 is retired; use NIP-17."
+last block dropped: bad padding
+no ?iv= part: bad format
+12-byte iv: bad iv
+15-byte ciphertext: bad length
+base64 without its padding: bad base64
+decrypt with another secret: bad padding
+encrypt: retired: use NIP-17, 0 bytes

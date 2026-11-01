@@ -1,0 +1,90 @@
+// The checks of nip04.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/nip04.coax
+#load "../nip04.coax";
+
+// book:begin check
+// True when bytes equal the hex text.
+same_hex :: (bytes: [] u8, text: string) -> bool {
+  want: [64] u8;
+  w := from_hex(text, want[..]);
+  if w.count != bytes.count { return false; }
+  for i: 0..<w.count { if w[i] != bytes[i] { return false; } }
+  return true;
+}
+#test "same_hex tells a differing byte and another length apart" {
+  a := [2] u8.[0xab, 0xcd];
+  #assert same_hex(a[..], "abcd") && !same_hex(a[..], "abce") && !same_hex(a[..], "ab");
+}
+// FIPS-197 appendix C.3, AES-256: the published plaintext and output.
+#test "FIPS-197 C.3: the inverse cipher gives the plaintext" {
+  key: [32] u8; for i: 0..<32 { key[i] = cast(u8) i; }
+  c: AesBlock; cb: [16] u8;
+  input := from_hex("8ea2b7ca516745bfeafc49904b496089", cb[..]);
+  for i: 0..<16 { c.b[i] = input[i]; }
+  p := aes256_decrypt_block(aes256_expand(key[..]), c);
+  #assert same_hex(p.b[..], "00112233445566778899aabbccddeeff");
+}
+// NIST SP 800-38A F.2.6 CBC-AES256.Decrypt: key, iv, four ciphertext
+// blocks and their plaintext.
+SP_KEY :: "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4";
+SP_IV :: [4] string.["000102030405060708090a0b0c0d0e0f", "f58c4c04d6e5f1ba779eabfb5f7bfbd6",
+  "9cfc4e967edb808d679f777bc6702c7d", "39f23369a9d9bacfa530e26304231461"];
+SP_CIPHER :: [4] string.["f58c4c04d6e5f1ba779eabfb5f7bfbd6", "9cfc4e967edb808d679f777bc6702c7d",
+  "39f23369a9d9bacfa530e26304231461", "b2eb05e2c39be9fcda6c19078c6a9d1b"];
+SP_PLAIN :: [4] string.["6bc1bee22e409f96e93d7e117393172a", "ae2d8a571e03ac9c9eb76fac45af8e51",
+  "30c81c46a35ce411e5fbc1191a0a52ef", "f69f2445df4f9b17ad2b417be66c3710"];
+// Each block alone, with the previous ciphertext block as its iv, gives
+// the published plaintext block: CBC chains through ciphertext only.
+#forall "SP 800-38A F.2.6, block by block" i: 0..<4 {
+  kb: [32] u8; vb: [16] u8; cb: [16] u8; out: [16] u8; work: [1] AesSchedule;
+  r := aes256_cbc_decrypt_checked(from_hex(SP_KEY, kb[..]), from_hex(SP_IV[i], vb[..]),
+    from_hex(SP_CIPHER[i], cb[..]), out[..], work[..], false);
+  #assert r.error == AES_OK && r.written == 16;
+  #assert same_hex(out[..], SP_PLAIN[i]);
+}
+// Messages made with OpenSSL 3 (`openssl enc -aes-256-cbc -K <x> -iv
+// a1b2c3d4e5f60718293a4b5c6d7e8f90 -a`), an AES implementation independent
+// of this one, under the shared x of chapter 14's test keys. Their lengths
+// 0, 15, 16, 17 and 30 give PKCS#7 pads of 16, 1, 16, 15 and 2 bytes.
+X :: "94da47d851b9c1ed33b3b72f35434f56aa608d60e573e9c295f568011f4f50a4";
+OPENSSL_CIPHER :: [5] string.["iUdipJZvO3VdgsMSaTL2kQ==", "2i5vnNPruQiiEq12swcSzA==",
+  "YB9MjuMA/rzcSEIDlSqXvWmsrcaT7c/FI92sITYe8dM=", "wWmkCyYMuMCxVGdlqbNfG0lwlOzho6l7gHfIkfZp/pw=",
+  "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ="];
+OPENSSL_PLAIN :: [5] string.["", "fifteen bytes!!", "sixteen bytes!!!", "seventeen bytes!!",
+  "NIP-04 is retired; use NIP-17."];
+#forall "OpenSSL-made NIP-04 messages decrypt to their plaintext" i: 0..<5 #steps 100000000 {
+  xb: [32] u8; out: [48] u8; work: [1] Nip04Work; content: [128] u8;
+  text := OPENSSL_CIPHER[i];
+  n := 0;
+  for j: 0..<text.count { content[n] = text[j]; n += 1; }
+  tail := "?iv=obLD1OX2BxgpOktcbX6PkA==";
+  for j: 0..<tail.count { content[n] = tail[j]; n += 1; }
+  r := nip04_decrypt_checked(from_hex(X, xb[..]), cast(string) content[0..<n], out[..], work[..], false);
+  #assert r.error == NIP04_OK && r.written == OPENSSL_PLAIN[i].count;
+  #assert cast(string) out[0..<r.written] == OPENSSL_PLAIN[i];
+}
+// The example's message from either side's keys, and the refusals it shows.
+#test "both key pairs read the message; the broken inputs refuse" #steps 400000000 {
+  s1: [32] u8; s2: [32] u8; p1: [32] u8; p2: [32] u8; xb: [32] u8;
+  out: [64] u8; work: [1] Nip04Work;
+  r := nip04_decrypt_from_keys_checked(from_hex(SEC1, s1[..]), from_hex(PUB2, p2[..]), CONTENT, out[..], work[..], false);
+  #assert r.error == NIP04_OK && cast(string) out[0..<r.written] == "NIP-04 is retired; use NIP-17.";
+  r = nip04_decrypt_from_keys_checked(from_hex(SEC2, s2[..]), from_hex(PUB1, p1[..]), CONTENT, out[..], work[..], false);
+  #assert r.error == NIP04_OK && r.written == 30;
+  x := from_hex(X, xb[..]);
+  #assert nip04_decrypt_checked(x, "zooMmtdlrlTCiIbfLqTqYg==?iv=obLD1OX2BxgpOktcbX6PkA==", out[..], work[..], false).error == NIP04_PADDING;
+  #assert nip04_decrypt_checked(x, "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=", out[..], work[..], false).error == NIP04_FORMAT;
+  #assert nip04_decrypt_checked(x, "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktc", out[..], work[..], false).error == NIP04_IV;
+  #assert nip04_decrypt_checked(x, "zooMmtdlrlTCiIbfLqTq?iv=obLD1OX2BxgpOktcbX6PkA==", out[..], work[..], false).error == NIP04_LENGTH;
+  #assert nip04_decrypt_checked(x, "zooMmtdlrlTCiIbfLqTqYg?iv=obLD1OX2BxgpOktcbX6PkA==", out[..], work[..], false).error == NIP04_BASE64;
+}
+// Encryption is refused for every input length and leaves the output alone.
+#forall "encrypt refuses for every length" n: 0..<40 {
+  xb: [32] u8; out: [64] u8; text: [40] u8;
+  for i: 0..<64 { out[i] = 77; }
+  r := nip04_encrypt(from_hex(X, xb[..]), cast(string) text[0..<n], out[..]);
+  #assert r.error == NIP04_RETIRED && r.written == 0;
+  for b: out { #assert b == 77; }
+}
+// book:end check

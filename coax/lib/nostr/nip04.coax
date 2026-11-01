@@ -1,0 +1,236 @@
+// NIP-04, read only. Pinned spec: nostr/nips/official/04.md, marked
+// `unrecommended` in favour of NIP-17. This file decrypts old kind 4
+// messages so they can be read; it cannot make new ones. There is no AES
+// encryption in this stack: nip04_encrypt exists only to give a caller a
+// named refusal.
+//
+// content = base64(AES-256-CBC(x, iv, PKCS#7(plaintext))) "?iv=" base64(iv),
+// where x is the raw, unhashed ECDH x coordinate. Nothing authenticates the
+// ciphertext: a decryption that succeeds says nothing about who wrote it or
+// whether it was changed. The padding check is the only integrity check, and
+// its result is visible to the caller.
+//
+// Refusals happen before any write, except a bad padding, which is found
+// only after decrypting: then the decrypted bytes are cleared to zero.
+#load "base64.coax";
+#load "hex.coax";
+#load "../crypto/aes.coax";
+#load "../crypto/ecdh.coax";
+#authority;
+
+NIP04_OK :: cast(u32)0;
+NIP04_KEY :: cast(u32)1;      // shared x, secret or peer is not 32 bytes
+NIP04_FORMAT :: cast(u32)2;   // the first '?' does not start "?iv="
+NIP04_BASE64 :: cast(u32)3;   // either part is not canonical padded base64
+NIP04_IV :: cast(u32)4;       // the iv is not 16 bytes
+NIP04_LENGTH :: cast(u32)5;   // the ciphertext is empty or not whole 16-byte blocks
+NIP04_OUTPUT :: cast(u32)6;   // out is smaller than the ciphertext
+NIP04_ALIAS :: cast(u32)7;    // out shares memory with the content or key
+NIP04_PADDING :: cast(u32)8;  // not PKCS#7 after decryption
+NIP04_PEER :: cast(u32)9;     // the peer x is not on secp256k1
+NIP04_SECRET :: cast(u32)10;  // the secret is 0 or not below n
+NIP04_RETIRED :: cast(u32)11; // encryption is refused: use NIP-17
+NIP04_WORK :: cast(u32)12;    // work is not exactly one Nip04Work
+Nip04Result :: struct { written:int; error:u32; }
+Nip04Work :: struct { ecdh:[1]EcdhScratch; aes:[1]AesSchedule; }
+Nip04Split :: struct { cipher:string; iv:string; ok:bool; }
+
+// A message made for this book with OpenSSL (`openssl enc -aes-256-cbc`)
+// from the shared x of the NIP-44 test keys sec1 and pub2 (chapter 14) and
+// the iv a1b2c3d4e5f60718293a4b5c6d7e8f90. Test values, never real secrets.
+NIP04_TEST_SEC1 :: "5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a";
+NIP04_TEST_SEC2 :: "4b22aa260e4acb7021e32f38a6cdf4b673c6a277755bfce287e370c924dc936d";
+NIP04_TEST_PUB1 :: "87d3561f19b74adbe8bf840682992466068830a9d8c36b4a0c99d36f826cb6cb";
+NIP04_TEST_PUB2 :: "fa3b4f81a620c66514bda0302847df167ed02a483141b5939e57bdd0cf76ad3b";
+NIP04_TEST_X :: "94da47d851b9c1ed33b3b72f35434f56aa608d60e573e9c295f568011f4f50a4";
+NIP04_TEST_CONTENT :: "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==";
+NIP04_TEST_PLAIN :: "NIP-04 is retired; use NIP-17.";
+nip04_hex32_test :: (text:string)->[32]u8 {
+  out:[32]u8;
+  #assert hex_decode_checked(text,out[..],false).error==NC_OK;
+  return out;
+}
+
+#test "the OpenSSL message decrypts from the shared x" {
+  x:=nip04_hex32_test(NIP04_TEST_X);
+  out:[33]u8;out[32]=165;work:[1]Nip04Work;
+  r:=nip04_decrypt_checked(x[..],NIP04_TEST_CONTENT,out[..],work[..],false);
+  #assert r.error==NIP04_OK && r.written==30;
+  #assert cast(string)out[0..<30]==NIP04_TEST_PLAIN;
+  #assert out[30]==2 && out[31]==2 && out[32]==165;  // the padding stays, past written
+  for b:work[0].aes[0].b {#assert b==0;}
+}
+#test "either side's keys decrypt it, and the work buffer is cleared" #steps 200000000 {
+  sec1:=nip04_hex32_test(NIP04_TEST_SEC1);sec2:=nip04_hex32_test(NIP04_TEST_SEC2);
+  pub1:=nip04_hex32_test(NIP04_TEST_PUB1);pub2:=nip04_hex32_test(NIP04_TEST_PUB2);
+  out:[32]u8;work:[1]Nip04Work;
+  r:=nip04_decrypt_from_keys_checked(sec2[..],pub1[..],NIP04_TEST_CONTENT,out[..],work[..],false);
+  #assert r.error==NIP04_OK && cast(string)out[0..<r.written]==NIP04_TEST_PLAIN;
+  for b:work[0].ecdh[0].staged {#assert b==0;}
+  r=nip04_decrypt_from_keys_checked(sec1[..],pub2[..],NIP04_TEST_CONTENT,out[..],work[..],false);
+  #assert r.error==NIP04_OK && cast(string)out[0..<r.written]==NIP04_TEST_PLAIN;
+  for b:work[0].ecdh[0].staged {#assert b==0;}
+  // A third key derives another x, and the padding check refuses.
+  sec3:=sec1;sec3[31]^=1;
+  r=nip04_decrypt_from_keys_checked(sec3[..],pub2[..],NIP04_TEST_CONTENT,out[..],work[..],false);
+  #assert r.error==NIP04_PADDING && r.written==0;
+  for b:work[0].ecdh[0].staged {#assert b==0;}
+}
+#test "key refusals from ecdh map to NIP-04 errors and clear the work" #steps 200000000 {
+  sec1:=nip04_hex32_test(NIP04_TEST_SEC1);pub2:=nip04_hex32_test(NIP04_TEST_PUB2);
+  zero:[32]u8;out:[32]u8;for i:0..<32 {out[i]=77;}
+  work:[2]Nip04Work;
+  #assert nip04_decrypt_from_keys_checked(sec1[..],zero[..],NIP04_TEST_CONTENT,out[..],work[0..<1],false).error==NIP04_PEER;
+  #assert nip04_decrypt_from_keys_checked(zero[..],pub2[..],NIP04_TEST_CONTENT,out[..],work[0..<1],false).error==NIP04_SECRET;
+  #assert nip04_decrypt_from_keys_checked(sec1[0..<31],pub2[..],NIP04_TEST_CONTENT,out[..],work[0..<1],false).error==NIP04_KEY;
+  #assert nip04_decrypt_from_keys_checked(sec1[..],pub2[..],NIP04_TEST_CONTENT,out[..],work[..],false).error==NIP04_WORK;
+  #assert nip04_decrypt_from_keys_checked(sec1[..],pub2[..],NIP04_TEST_CONTENT,out[..],work[0..<0],false).error==NIP04_WORK;
+  for b:work[0].ecdh[0].staged {#assert b==0;}
+  for b:out {#assert b==77;}
+}
+#test "no authentication: an iv bit flip flips the same plaintext bit" {
+  x:=nip04_hex32_test(NIP04_TEST_X);out:[32]u8;work:[1]Nip04Work;
+  // obLD... is a1 b2 c3...; oLLD... is a0 b2 c3...
+  r:=nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=oLLD1OX2BxgpOktcbX6PkA==",out[..],work[..],false);
+  #assert r.error==NIP04_OK && cast(string)out[0..<r.written]=="OIP-04 is retired; use NIP-17.";
+}
+#test "format, base64, iv, length, output and alias refusals write nothing" {
+  x:=nip04_hex32_test(NIP04_TEST_X);out:[32]u8;work:[2]Nip04Work;
+  for i:0..<32 {out[i]=77;}
+  w:=work[0..<1];
+  #assert nip04_decrypt_checked(x[0..<31],NIP04_TEST_CONTENT,out[..],w,false).error==NIP04_KEY;
+  #assert nip04_decrypt_checked(x[..],NIP04_TEST_CONTENT,out[..],work[..],false).error==NIP04_WORK;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=",out[..],w,false).error==NIP04_FORMAT;
+  #assert nip04_decrypt_checked(x[..],"?iv=obLD1OX2BxgpOktcbX6PkA==",out[..],w,false).error==NIP04_LENGTH;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg==?iv=",out[..],w,false).error==NIP04_IV;
+  #assert nip04_decrypt_checked(x[..],"?iv=",out[..],w,false).error==NIP04_IV;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg==?IV=obLD1OX2BxgpOktcbX6PkA==",out[..],w,false).error==NIP04_FORMAT;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg==?iv",out[..],w,false).error==NIP04_FORMAT;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg==?iv=obLD1OX2BxgpOktcbX6PkA",out[..],w,false).error==NIP04_BASE64;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg=?iv=obLD1OX2BxgpOktcbX6PkA==",out[..],w,false).error==NIP04_BASE64;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg==?iv=obLD1OX2BxgpOktc",out[..],w,false).error==NIP04_IV;
+  #assert nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTq?iv=obLD1OX2BxgpOktcbX6PkA==",out[..],w,false).error==NIP04_LENGTH;
+  #assert nip04_decrypt_checked(x[..],NIP04_TEST_CONTENT,out[0..<31],w,false).error==NIP04_OUTPUT;
+  #assert nip04_decrypt_checked(x[..],NIP04_TEST_CONTENT,out[..],w,true).error==NIP04_ALIAS;
+  for b:out {#assert b==77;}
+}
+#test "an empty message is one block of padding and decrypts to 0 bytes" {
+  x:=nip04_hex32_test(NIP04_TEST_X);out:[16]u8;work:[1]Nip04Work;
+  r:=nip04_decrypt_checked(x[..],"iUdipJZvO3VdgsMSaTL2kQ==?iv=obLD1OX2BxgpOktcbX6PkA==",out[..],work[..],false);
+  #assert r.error==NIP04_OK && r.written==0;
+  for b:out {#assert b==16;}
+}
+#test "a truncated message fails its padding and the output is cleared" {
+  x:=nip04_hex32_test(NIP04_TEST_X);out:[17]u8;work:[1]Nip04Work;
+  for i:0..<17 {out[i]=77;}
+  r:=nip04_decrypt_checked(x[..],"zooMmtdlrlTCiIbfLqTqYg==?iv=obLD1OX2BxgpOktcbX6PkA==",out[..],work[..],false);
+  #assert r.error==NIP04_PADDING && r.written==0;
+  for i:0..<16 {#assert out[i]==0;}
+  #assert out[16]==77;
+  for b:work[0].aes[0].b {#assert b==0;}
+}
+#forall "PKCS#7: the last byte p in 1..16 and p copies of it" p:0..<20, fill:0..<3, at:0..<16 {
+  block:[16]u8;
+  for i:0..<16 {block[i]=cast(u8)(fill*100);}
+  if p<=16 {for i:16-p..<16 {block[i]=cast(u8)p;}} else {block[15]=cast(u8)p;}
+  valid:=p>=1 && p<=16;
+  #assert nip04_unpad(block[..])==ifx valid then 16-p else -1;
+  // Changing any one of the p padding bytes refuses.
+  if valid && at>=16-p && at<15 {
+    block[at]^=1;
+    #assert nip04_unpad(block[..])==-1;
+  }
+}
+#test "PKCS#7 over two blocks: a pad longer than one block refuses" {
+  data:[32]u8;for i:0..<32 {data[i]=17;}
+  #assert nip04_unpad(data[..])==-1;
+  for i:0..<32 {data[i]=16;}
+  #assert nip04_unpad(data[..])==16;
+}
+#test "encryption is refused and writes nothing" {
+  x:=nip04_hex32_test(NIP04_TEST_X);out:[32]u8;for i:0..<32 {out[i]=77;}
+  r:=nip04_encrypt(x[..],"hello",out[..]);
+  #assert r.error==NIP04_RETIRED && r.written==0;
+  for b:out {#assert b==77;}
+}
+#test "the split finds the first ?iv= and keeps the rest" {
+  s:=nip04_split("abc?iv=def");
+  #assert s.ok && s.cipher=="abc" && s.iv=="def";
+  s=nip04_split("a?iv=");
+  #assert s.ok && s.cipher=="a" && s.iv=="";
+  s=nip04_split("a?iv=b?iv=c");
+  #assert s.ok && s.cipher=="a" && s.iv=="b?iv=c";
+  s=nip04_split("?iv=x");
+  #assert s.ok && s.cipher=="" && s.iv=="x";
+  #assert !nip04_split("abc").ok && !nip04_split("?a?iv=b").ok && !nip04_split("ab?ix=c").ok;
+  #assert !nip04_split("").ok && !nip04_split("?iv").ok;
+  #assert !nip04_split("ab?").ok && !nip04_split("ab?iv").ok && !nip04_split("ab?xv=c").ok;
+  #assert !nip04_split("ab?ia=c").ok;
+}
+
+// book:begin nip04_split
+// "<cipher>?iv=<iv>": the first '?' must start "?iv=". An empty cipher
+// text splits; it is refused later as a bad length.
+nip04_split :: (content:string)->Nip04Split {
+  q:=0;
+  while q<content.count && content[q]!='?' {q+=1;}
+  if content.count-q<4 {return Nip04Split.{};}
+  if content[q+1]!='i' || content[q+2]!='v' || content[q+3]!='=' {return Nip04Split.{};}
+  return Nip04Split.{cipher=content[0..<q],iv=content[q+4..<content.count],ok=true};
+}
+// book:end nip04_split
+// book:begin nip04_unpad
+// PKCS#7: the last byte p is 1 to 16 and the last p bytes all equal p.
+// Returns the plaintext length, or -1.
+nip04_unpad :: (data:[]u8)->int {
+  n:=data.count;p:=cast(int)data[n-1];
+  if p<1 || p>16 {return -1;}
+  for i:n-p..<n-1 {if cast(int)data[i]!=p {return -1;}}
+  return n-p;
+}
+// book:end nip04_unpad
+// book:begin nip04_decrypt_checked
+nip04_decrypt_checked :: (shared_x:[]u8,content:string,out:[]u8,work:[]Nip04Work,overlap:bool)->Nip04Result {
+  if shared_x.count!=32 {return Nip04Result.{error=NIP04_KEY};}
+  if work.count!=1 {return Nip04Result.{error=NIP04_WORK};}
+  parts:=nip04_split(content);
+  if !parts.ok {return Nip04Result.{error=NIP04_FORMAT};}
+  n:=base64_decode_size(parts.cipher);iv_count:=base64_decode_size(parts.iv);
+  if n<0 || iv_count<0 {return Nip04Result.{error=NIP04_BASE64};}
+  if iv_count!=16 {return Nip04Result.{error=NIP04_IV};}
+  if n==0 || n%16!=0 {return Nip04Result.{error=NIP04_LENGTH};}
+  if out.count<n {return Nip04Result.{error=NIP04_OUTPUT};}
+  if overlap {return Nip04Result.{error=NIP04_ALIAS};}
+  iv:[16]u8;
+  decoded:=base64_decode_checked(parts.iv,iv[..],false);
+  decoded=base64_decode_checked(parts.cipher,out[0..<n],false);
+  done:=aes256_cbc_decrypt_in_place_checked(shared_x,iv[..],out[0..<n],work[0].aes[..]);
+  size:=nip04_unpad(out[0..<n]);
+  if size<0 {
+    for i:0..<n {out[i]=0;}
+    return Nip04Result.{error=NIP04_PADDING};
+  }
+  return Nip04Result.{written=size};
+}
+// book:end nip04_decrypt_checked
+// book:begin nip04_decrypt_from_keys_checked
+// The shared x from your secret and the other side's x-only key (chapter
+// 14), used unhashed, as NIP-04 requires. It is cleared before return.
+nip04_decrypt_from_keys_checked :: (secret:[]u8,peer_x:[]u8,content:string,out:[]u8,work:[]Nip04Work,overlap:bool)->Nip04Result {
+  if work.count!=1 {return Nip04Result.{error=NIP04_WORK};}
+  code:=ecdh_stage(secret,peer_x,work[0].ecdh[..]);
+  result:=Nip04Result.{error=NIP04_KEY};
+  if code==EC_PEER {result.error=NIP04_PEER;}
+  if code==EC_SCALAR {result.error=NIP04_SECRET;}
+  if code==EC_OK {result=nip04_decrypt_checked(work[0].ecdh[0].staged[..],content,out,work,overlap);}
+  work[0].ecdh[0]=EcdhScratch.{};
+  return result;
+}
+// book:end nip04_decrypt_from_keys_checked
+// book:begin nip04_encrypt
+// NIP-04 is retired. This takes the arguments an encrypter would and
+// refuses; new direct messages use NIP-17 (NIP-44 inside NIP-59).
+nip04_encrypt :: (shared_x:[]u8,plaintext:string,out:[]u8)->Nip04Result {
+  return Nip04Result.{error=NIP04_RETIRED};
+}
+// book:end nip04_encrypt
