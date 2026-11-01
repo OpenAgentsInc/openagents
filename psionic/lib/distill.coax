@@ -1,0 +1,635 @@
+// Chapter 223: distill a teacher into a small router. Chapter 222's encoder
+// (fe-tiny-v1) is frozen; one of its heads, three classes at head
+// temperature 1/2, is trained to match a teacher's answer distributions:
+// loss T^2 KL(p_T || q_T) at distillation temperature T, under chapter 118's
+// trainer with chapter 124's AdamW, on a split from chapter 120 that keeps a
+// family of requests in one split. A temperature fitted on the development
+// split calibrates the student; a quality card on the test split (agreement
+// with the teacher, and chapter 16's Brier score and calibration error
+// against outcome labels) meets a rule frozen before the test split was read.
+// The router answers when its calibrated confidence reaches the teacher's
+// development accuracy less the cost of a call over the cost of an error,
+// and escalates to the teacher otherwise.
+// The teacher is a recorded stand-in, not Elephant: see the chapter.
+#load "fast-encoder.coax";   // chapter 222: the encoder, its heads and identity
+#load "trainer.coax";        // chapter 118: batches, AdamW steps, evaluation, early stopping
+#load "data/split.coax";     // chapter 120: groups and the leak audit
+#load "../fixtures/distill/teacher.coax";  // the recorded teacher stand-in and outcome labels
+#load "../fixtures/distill/oracle.coax";   // the Python oracle's features, trained head and counts
+#authority;
+
+// book:begin shape
+DS_FAMILIES :: 64;     // request families: one split row each
+DS_PER :: 8;           // requests per family
+DS_REQUESTS :: 512;
+DS_TOKENS :: 16;       // token IDs per request: the family's 8, then 8 of its own
+DS_TEMPLATE :: 8;
+DS_CLASSES :: 3;
+DS_FEATURES :: 16;     // the pooled vector
+DS_PARAMS :: 48;       // the head: three rows of 16
+DS_HEAD_AT :: 8736;    // chapter 222's head 1: FE_HEAD_AT + 2 x 16
+DS_HEAD_TEMP :: 0.5;   // and its fixed temperature
+DS_PLAN :: SpPlan.{train_end=39,valid_end=51};
+// book:end shape
+
+// book:begin frozen
+// Frozen before the test split was read.
+DS_T :: 2.0;               // distillation temperature
+DS_WRONG :: 10.0;          // written cost of a wrong answer
+DS_CALL :: 1.0;            // written cost of one teacher call
+DS_ANSWERED_MIN :: 0.1;    // the router answers at least a tenth of the test requests
+DS_AGREE_MIN :: 0.8;       // and agrees with the teacher on at least 80% of them
+DS_ECE_MAX :: 0.1;         // calibration error against outcomes, all test requests
+DS_PRECISION_DROP :: 0.05; // right on its answers within 5 points of the teacher there
+// book:end frozen
+
+// book:begin types
+DsStatus :: enum u8 {ok;shape;teacher;stale;label;split;leak;temperature;encoder;trainer;}
+// Per request: 16 features, the teacher's 3 probabilities, an outcome label
+// and the split.
+DsData :: struct {feats:[]f64;teacher:[]f64;labels:[]int;split:[]PkSplit;}
+DsRun :: struct {status:DsStatus;trainer:TrStatus;steps:int;evals:int;stopped:bool;best:f64;}
+// The test split's counts: agreement with the teacher, the router's answers,
+// and right against outcome labels; chapter 16's calibration error and Brier
+// score for the calibrated student and the teacher; the confidence cut.
+DsCard :: struct {status:DsStatus;n:int;agree:int;answered:int;answered_agree:int;answered_right:int;teacher_answered_right:int;
+    student_right:int;teacher_right:int;dev:int;teacher_dev:int;cut:f64;tau:f64;ece:f64;brier:f64;teacher_ece:f64;teacher_brier:f64;}
+DsReason :: enum u8 {none;card;answered;agreement;calibration;precision;}
+DsVerdict :: struct {promoted:bool;reason:DsReason;}
+// Written costs over the test split: the router with escalation, and the
+// teacher answering everything.
+DsCost :: struct {calls:int;wrong:int;cost:f64;teacher_calls:int;teacher_wrong:int;teacher_cost:f64;}
+// book:end types
+
+// Checks precede the implementation.
+ds_oracle :: (feats:[]f64,teacher:[]f64,labels:[]int,split:[]PkSplit)->DsData {
+    for i:0..<8192 {feats[i]=DS_ORACLE_FEATS[i];}
+    #assert ds_recorded(teacher,labels)==DsStatus.ok && ds_split(split)==DsStatus.ok;
+    return DsData.{feats=feats,teacher=teacher,labels=labels,split=split};
+}
+
+#test "a KL gradient by hand: zero weights, teacher 2/3, 1/6, 1/6 at T = 2" {
+    // p_T is proportional to sqrt(p): 2, 1, 1 over sqrt 6, so 1/2, 1/4, 1/4.
+    // q_T is uniform. Loss 4 (1/2 ln(3/2) + 1/2 ln(3/4)) = 2 ln(9/8).
+    // dL/ds = (T / 0.5)(q_T - p_T) = 4 (-1/6, 1/12, 1/12) = (-2/3, 1/3, 1/3).
+    w:[48]f64;x:[16]f64;x[0]=1;x[1]=-0.5;p:=[3]f64.[2.0/3,1.0/6,1.0/6];g:[48]f64;
+    l:=ds_loss(w[..],x[..],p[..],2,g[..]);
+    #assert abs(l-2*log(1.125))<=1e-15;
+    want:=[3]f64.[-2.0/3,1.0/3,1.0/3];
+    for c:0..<3 {
+        #assert abs(g[c*16]-want[c])<=1e-15 && abs(g[c*16+1]+want[c]/2)<=1e-15;
+        for k:2..<16 {#assert g[c*16+k]==0;}
+    }
+    // The gradient adds to what is there.
+    l=ds_loss(w[..],x[..],p[..],2,g[..]);#assert abs(g[0]+4.0/3)<=1e-15;
+    // At T = 1 the same request: dL/ds = 2 (1/3 - 2/3, 1/3 - 1/6, 1/3 - 1/6).
+    h:[48]f64;l=ds_loss(w[..],x[..],p[..],1,h[..]);
+    #assert abs(h[0]+2.0/3)<=1e-15 && abs(h[16]-1.0/3)<=1e-15 && abs(h[17]+1.0/6)<=1e-15;
+    #assert abs(l-(2.0/3*log(2.0)+2.0/6*log(0.5)))<=1e-15;
+}
+#forall "the KL gradient equals central finite differences" seed:0..<6 {
+    w:[48]f64;x:[16]f64;p:[3]f64;
+    for i:0..<48 {w[i]=fe_unit(9000+seed*64+i);}
+    for k:0..<16 {x[k]=fe_unit(12000+seed*16+k);}
+    s:=0.0;for c:0..<3 {p[c]=0.05+abs(fe_unit(13000+seed*3+c));s+=p[c];}
+    for c:0..<3 {p[c]/=s;}
+    t:=0.5+f64(seed)/2;g:[48]f64;l0:=ds_loss(w[..],x[..],p[..],t,g[..]);#assert l0>=0;
+    h:=0.000001;scratch:[48]f64;
+    for i:0..<48 {
+        up:=w;up[i]+=h;down:=w;down[i]-=h;
+        d:=(ds_loss(up[..],x[..],p[..],t,scratch[..])-ds_loss(down[..],x[..],p[..],t,scratch[..]))/(2*h);
+        #assert abs(d-g[i])<=0.000001*(1+abs(g[i]));
+    }
+}
+#test "a tiny distillation step by hand: one AdamW step from zero moves each live weight by the rate" {
+    // One request, the hand case above. AdamW's first step is
+    // -0.05 g / (|g| + 10^-8) per weight: 0.05 against the gradient's sign,
+    // less 0.05 x 10^-8 / |g|; weights with zero gradient stay 0.
+    x:[16]f64;x[0]=1;x[1]=-0.5;
+    feats:[16]f64;for k:0..<16 {feats[k]=x[k];}
+    p:=[3]f64.[2.0/3,1.0/6,1.0/6];w:[48]f64;
+    c:=ds_config();c.examples=1;c.batch=1;c.every=0;c.patience=0;c.epochs=1;
+    order:[1]int;none:[1]PkDoc;nothing:[1]u8;st:=tr_begin(c,48,none[0..<0],nothing[0..<0],order[..]);#assert st.status==TrStatus.ok;
+    b:=tr_next(c,st.run,none[0..<0],nothing[0..<0],nothing[0..<0]);#assert b.status==TrStatus.ok && b.micro==1;
+    g:[48]f64;total:[48]f64;l:=ds_loss(w[..],feats[..],p[..],2,g[..]);
+    s:=tr_add(b,TrSum.{},l,g[..],total[..]);m:[48]f64;v:[48]f64;stage:[144]f64;
+    a:=tr_apply(c,st.run,b,s,w[..],m[..],v[..],total[..],stage[..],order[..]);#assert a.status==TrStatus.ok;
+    for r:0..<3 {for k:0..<2 {
+        gi:=g[r*16+k];want:=-0.05*gi/(abs(gi)+0.00000001);
+        #assert abs(w[r*16+k]-want)<=1e-15 && abs(abs(w[r*16+k])-0.05)<=0.00000001;
+    }}
+    #assert w[0]>0 && w[1]<0 && w[16]<0 && w[17]>0;
+    for r:0..<3 {for k:2..<16 {#assert w[r*16+k]==0;}}
+    // The new logits are 0.075, -0.075, -0.075 within 10^-8, and the loss fell.
+    z:=ds_logits(w[..],feats[..]);#assert abs(z[0]-0.075)<=0.00000001 && abs(z[1]+0.075)<=0.00000001 && abs(z[2]+0.075)<=0.00000001;
+    #assert ds_loss(w[..],feats[..],p[..],2,g[..])<l;
+}
+#test "the teacher is admitted as distributions with its recorded identity, or refused" {
+    p:[1536]f64;y:[512]int;#assert ds_recorded(p[..],y[..])==DsStatus.ok;
+    #assert p[0]==DS_TEACHER_P[0] && p[1535]==DS_TEACHER_P[1535] && y[0]==DS_LABELS[0] && y[511]==DS_LABELS[511];
+    #assert ds_recorded(p[0..<1535],y[..])==DsStatus.shape && ds_recorded(p[..],y[0..<511])==DsStatus.shape;
+    #assert ds_teacher(p[..],y[..],DS_TEACHER_ID)==DsStatus.ok;
+    #assert ds_teacher(p[0..<1535],y[..],DS_TEACHER_ID)==DsStatus.shape && ds_teacher(p[..],y[0..<511],DS_TEACHER_ID)==DsStatus.shape;
+    #assert ds_teacher(p[..],y[..],DS_TEACHER_ID+1)==DsStatus.stale;
+    // One row moved by 2^-29 no longer sums to 1; a zero has no logarithm.
+    q:=p;q[4]+=0.000000001862645149230957;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.teacher;
+    q=p;q[4]+=0.0000000004656612873077393;q[5]-=0.0000000004656612873077393;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.ok;
+    q=p;q[3]=q[3]+q[4];q[4]=0;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.teacher;
+    q=p;q[3]=q[3]+q[4]+1;q[4]=-1;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.teacher;
+    q=p;q[0]=0.0/0.0;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.teacher;
+    q=p;q[0]=1;q[1]=0.0000000001;q[2]=0;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.teacher;
+    // A row off by exactly 2^-30 is admitted; by 2^-29, refused.
+    q=p;q[0]=0.5;q[1]=0.25;q[2]=0.25+0.000000000931322574615478515625;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.ok;
+    q[2]=0.25+0.00000000186264514923095703125;#assert ds_teacher(q[..],y[..],fe_model_id(q[..]))==DsStatus.teacher;
+    z:=y;z[7]=3;#assert ds_teacher(p[..],z[..],DS_TEACHER_ID)==DsStatus.label;
+    z[7]=-1;#assert ds_teacher(p[..],z[..],DS_TEACHER_ID)==DsStatus.label;
+    z[7]=2;#assert ds_teacher(p[..],z[..],DS_TEACHER_ID)==DsStatus.ok;
+    z[7]=0;#assert ds_teacher(p[..],z[..],DS_TEACHER_ID)==DsStatus.ok;
+}
+#test "requests: a family's 8 IDs below 15, then 8 of the request's own" {
+    a:[16]int;b:[16]int;ds_request(0,a[..]);ds_request(7,b[..]);
+    for i:0..<8 {#assert a[i]==b[i] && a[i]==cast(int)(cr_bits(2233,cast(u64)i)%15);}
+    for i:0..<8 {#assert a[8+i]==cast(int)(cr_bits(2234,cast(u64)i)%64) && b[8+i]==cast(int)(cr_bits(2234,cast(u64)(56+i))%64);}
+    ds_request(511,a[..]);for i:0..<8 {#assert a[i]==cast(int)(cr_bits(2233,cast(u64)(504+i))%15) && a[8+i]==cast(int)(cr_bits(2234,cast(u64)(4088+i))%64);}
+}
+#test "the split: pairs of families are one group, the audit finds nothing, a moved request is a leak" #steps 2000000000 {
+    s:[512]PkSplit;for r:0..<512 {s[r]=PkSplit.test;}
+    #assert ds_split(s[..])==DsStatus.ok && ds_split(s[0..<511])==DsStatus.shape;
+    n:[3]int;for r:0..<512 {n[cast(int)s[r]]+=1;}
+    #assert n[0]==DS_ORACLE_SPLIT[0] && n[1]==DS_ORACLE_SPLIT[1] && n[2]==DS_ORACLE_SPLIT[2] && n[0]==320 && n[1]==96;
+    #assert s[319]==PkSplit.train && s[320]==PkSplit.validation && s[415]==PkSplit.validation && s[416]==PkSplit.test && s[511]==PkSplit.test;
+    rows:[64]SpRow;tokens:[512]u8;ds_families(rows[..],tokens[..]);
+    #assert rows[5].task==2 && rows[5].session==5 && rows[5].time==5 && rows[5].first==40 && rows[5].count==8 && rows[5].licence==1;
+    ids:[16]int;for f:0..<64 {ds_request(8*f+3,ids[..]);for i:0..<8 {#assert tokens[8*f+i]==cast(u8)ids[i];}}
+    // Each count in the audit, alone, makes it unclean.
+    #assert ds_clean(SpAudit.{}) && !ds_clean(SpAudit.{status=SpStatus.leak});
+    #assert !ds_clean(SpAudit.{exact=1}) && !ds_clean(SpAudit.{task=1}) && !ds_clean(SpAudit.{session=1});
+    #assert !ds_clean(SpAudit.{derived=1}) && !ds_clean(SpAudit.{near=1}) && !ds_clean(SpAudit.{post=1});
+    feats:[8192]f64;t:[1536]f64;y:[512]int;d:=ds_oracle(feats[..],t[..],y[..],s[..]);
+    #assert ds_admit(d)==DsStatus.ok;
+    for r:[3]int.[0,415,511] {
+        m:=s;m[r]=ifx s[r]==PkSplit.train then PkSplit.test else PkSplit.train;d.split=m[..];
+        #assert ds_admit(d)==DsStatus.leak;
+    }
+    d.split=s[0..<511];#assert ds_admit(d)==DsStatus.shape;
+    d.split=s[..];d.feats=feats[0..<8191];#assert ds_admit(d)==DsStatus.shape;
+    d.feats=feats[..];y[3]=5;#assert ds_admit(d)==DsStatus.label;
+    y[3]=DS_LABELS[3];t[0]=t[0]+t[1];t[1]=0;#assert ds_admit(d)==DsStatus.teacher;
+}
+#test "features: the pooled vector read through unit head rows equals the Python oracle" #steps 400000000 {
+    w:[8848]f64;#assert fe_weights(w[..])==FeStatus.ok;
+    f:[3072]f64;k:=FeWork.{f=f[..]};ids:[16]int;x:[16]f64;
+    for r:[3]int.[0,1,511] {
+        ds_request(r,ids[..]);#assert ds_features(w[..],k,ids[..],x[..])==FeStatus.ok;
+        for c:0..<16 {#assert abs(x[c]-DS_ORACLE_FEATS[r*16+c])<=1e-12;}
+    }
+    // The weights are not changed, and a trained head gives the same logits
+    // through chapter 222's forward pass as through the router, bit for bit.
+    v:[8848]f64;#assert fe_weights(v[..])==FeStatus.ok;for i:0..<8848 {#assert f64_bits(w[i])==f64_bits(v[i]);}
+    head:[48]f64;for i:0..<48 {head[i]=DS_ORACLE_W[i];}
+    #assert ds_install(w[..],head[..])==DsStatus.ok;
+    for i:0..<8848 {#assert (i>=DS_HEAD_AT && i<DS_HEAD_AT+48) || f64_bits(w[i])==f64_bits(v[i]);}
+    z:[9]f64;#assert fe_forward(FeEngine.reference,w[..],FeQ8.{},k,ids[..],z[..])==FeStatus.ok;
+    s:=ds_logits(head[..],x[..]);for c:0..<3 {#assert f64_bits(z[2+c])==f64_bits(s[c]);}
+    #assert ds_install(w[0..<8847],head[..])==DsStatus.shape && ds_install(w[..],head[0..<47])==DsStatus.shape;
+    #assert ds_features(w[0..<8847],k,ids[..],x[..])==FeStatus.storage && ds_features(w[..],k,ids[..],x[0..<15])==FeStatus.storage;
+    ids[3]=64;#assert ds_features(w[..],k,ids[..],x[..])==FeStatus.id;
+    ids[3]=1;#assert ds_features(w[..],FeWork.{f=f[0..<3071]},ids[..],x[..])==FeStatus.capacity;
+}
+#test "distillation under the trainer equals the Python oracle's run" #steps 3000000000 {
+    feats:[8192]f64;t:[1536]f64;y:[512]int;s:[512]PkSplit;d:=ds_oracle(feats[..],t[..],y[..],s[..]);
+    w:[48]f64;r:=ds_train(d,DS_T,ds_config(),w[..]);
+    #assert r.status==DsStatus.ok && r.trainer==TrStatus.ok;
+    #assert r.steps==DS_ORACLE_RUN[0] && r.evals==DS_ORACLE_RUN[1] && (ifx r.stopped then 1 else 0)==DS_ORACLE_RUN[2];
+    #assert abs(r.best-DS_ORACLE_BEST)<=1e-12;
+    for i:0..<48 {#assert abs(w[i]-DS_ORACLE_W[i])<=1e-9;}
+    tau:=ds_fit(d,w[..]);#assert tau==DS_ORACLE_TAU;
+    // The head scaled by 3/20: the same fit lands on 3/8 instead of 5/2.
+    u:[48]f64;for i:0..<48 {u[i]=w[i]*0.15;}#assert ds_fit(d,u[..])==0.375;
+    probs:[1536]f64;items:[512]PqItem;c:=ds_card(d,w[..],tau,probs[..],items[..]);
+    o:=DS_ORACLE_TEST;
+    #assert c.status==DsStatus.ok && c.n==96 && c.dev==96 && c.teacher_dev==o[0] && c.agree==o[1] && c.answered==o[2];
+    #assert c.answered_agree==o[3] && c.answered_right==o[4] && c.teacher_answered_right==o[5] && c.teacher_right==o[6];
+    #assert c.cut==f64(o[0])/96-0.1 && c.tau==tau && c.student_right==o[7];
+    q:=DS_ORACLE_QUALITY;
+    #assert abs(c.ece-q[0])<=1e-12 && abs(c.brier-q[1])<=1e-12 && abs(c.teacher_ece-q[2])<=1e-12 && abs(c.teacher_brier-q[3])<=1e-12;
+    #assert ds_card(d,w[..],16,probs[..],items[..]).status==DsStatus.ok;
+    // Refusals before any work: a temperature outside (0, 16], a leaked request.
+    v:[48]f64;
+    c0:=ds_config();
+    #assert ds_train(d,0,c0,v[..]).status==DsStatus.temperature && ds_train(d,16.000001,c0,v[..]).status==DsStatus.temperature;
+    #assert ds_train(d,0.0/0.0,c0,v[..]).status==DsStatus.temperature && ds_train(d,DS_T,c0,v[0..<47]).status==DsStatus.shape;
+    // The trainer's own refusals: an AdamW rate above 1, a bound the first
+    // step crosses.
+    bad:=c0;bad.rate=2;r=ds_train(d,16,bad,v[..]);#assert r.status==DsStatus.trainer && r.trainer==TrStatus.config && r.steps==0;
+    bad=c0;bad.bound=0.01;r=ds_train(d,DS_T,bad,v[..]);#assert r.status==DsStatus.trainer && r.trainer==TrStatus.bound && r.steps==0 && r.evals==1;
+    for i:0..<48 {#assert v[i]==0;}
+    s[0]=PkSplit.test;#assert ds_train(d,DS_T,c0,v[..]).status==DsStatus.leak;
+    for i:0..<48 {#assert v[i]==0;}
+    #assert ds_card(d,w[..],tau,probs[..],items[..]).status==DsStatus.leak && ds_fit(d,w[..])==0;
+    s[0]=PkSplit.train;
+    #assert ds_card(d,w[..],0,probs[..],items[..]).status==DsStatus.temperature && ds_card(d,w[..],tau,probs[0..<1535],items[..]).status==DsStatus.shape;
+    #assert ds_card(d,w[..],tau,probs[..],items[0..<511]).status==DsStatus.shape && ds_card(d,w[0..<47],tau,probs[..],items[..]).status==DsStatus.shape;
+}
+#test "the temperature fit: the first grid value with the least development log loss" #steps 2000000000 {
+    // One development request with label 0 and logits 0.5, 0, 0 at head
+    // temperature 1/2: dividing by tau = 1/4 sharpens toward the right label,
+    // so the least log loss is at the grid's smallest temperature.
+    feats:[8192]f64;t:[1536]f64;y:[512]int;s:[512]PkSplit;d:=ds_oracle(feats[..],t[..],y[..],s[..]);
+    w:[48]f64;w[0]=1;
+    // Only feature 0 matters: right labels with feature 0 high favour small temperatures.
+    for r:320..<416 {y[r]=ifx feats[r*16]>0 then 0 else 1;}
+    #assert ds_fit(d,w[..])==0.25;
+    // Labels against the sign: the largest temperature flattens the mistakes.
+    for r:320..<416 {y[r]=ifx feats[r*16]>0 then 1 else 0;}
+    #assert ds_fit(d,w[..])==4;
+    // Zero weights: every temperature ties, so the first, 1/4.
+    z:[48]f64;#assert ds_fit(d,z[..])==0.25;
+}
+#test "the trainer's settings, and a log-softmax that never overflows" {
+    c:=ds_config();
+    #assert c.optimizer==TrOptimizer.adamw && c.rate==0.05 && c.beta1==0.9 && c.beta2==0.999 && c.eps==0.00000001 && c.decay==0;
+    #assert c.batch==32 && c.epochs==40 && c.shuffle && c.seed==223 && c.patience==3 && c.bound==100 && c.clip==0 && c.accumulate==1;
+    #assert c.schedule==TrSchedule.constant && c.source==TrSource.rows && c.span_count==0;
+    for big:[3]int.[0,1,2] {
+        a:[3]f64;a[big]=1000;a[(big+1)%3]=-1000;
+        l:=ds_log_soft(a);#assert l[big]==0 && l[(big+1)%3]==-2000 && l[(big+2)%3]==-1000;
+    }
+    l:=ds_log_soft([3]f64.[0,0,0]);#assert abs(l[1]+log(3.0))<=1e-15;
+}
+#test "development log loss: zero weights give ln 3 on every request" #steps 2000000000 {
+    feats:[8192]f64;t:[1536]f64;y:[512]int;s:[512]PkSplit;d:=ds_oracle(feats[..],t[..],y[..],s[..]);
+    z:[48]f64;#assert abs(ds_nll(d,z[..],1)-log(3.0))<=1e-14;
+    // One weight: the mean over the 96 development requests, by hand.
+    z[0]=1;want:=0.0;
+    for r:320..<416 {a:=[3]f64.[feats[r*16]/0.5,0,0];l:=ds_log_soft(a);want-=l[y[r]];}
+    #assert abs(ds_nll(d,z[..],1)-want/96)<=1e-15;
+    // Logits read exactly 16 features and 48 weights; a loss with a slice of
+    // the wrong length is not a number and adds nothing.
+    x:[17]f64;w:[49]f64;
+    g:=ds_logits(w[0..<48],x[0..<17]);#assert g[0]!=g[0];
+    g=ds_logits(w[..],x[0..<16]);#assert g[2]!=g[2];
+    p:=[3]f64.[0.5,0.25,0.25];h:[48]f64;
+    e:=ds_loss(w[0..<48],x[0..<17],p[..],2,h[..]);#assert e!=e;
+    e=ds_loss(w[0..<48],x[0..<16],p[0..<2],2,h[..]);#assert e!=e;
+    e=ds_loss(w[0..<48],x[0..<16],p[..],2,h[0..<47]);#assert e!=e;
+    o:=[4]f64.[7,7,7,7];ds_probs(w[0..<48],x[0..<16],1,o[..]);#assert o[0]==7 && o[3]==7;
+    ds_probs(w[0..<48],x[0..<16],1,o[0..<3]);#assert abs(o[0]-1.0/3)<=1e-15 && o[3]==7;
+    for i:0..<48 {#assert h[i]==0;}
+}
+#test "the frozen rule: each gate in order, at its boundary" {
+    c:=DsCard.{n=100,answered=10,answered_agree=8,answered_right=6,teacher_answered_right=6,ece=0.1};
+    v:=ds_gate(c);#assert v.promoted && v.reason==DsReason.none;
+    b:=c;b.status=DsStatus.leak;#assert ds_gate(b).reason==DsReason.card && !ds_gate(b).promoted;
+    b=c;b.n=0;#assert ds_gate(b).reason==DsReason.card;
+    b=c;b.answered=9;b.answered_agree=8;#assert ds_gate(b).reason==DsReason.answered;
+    b=c;b.answered_agree=7;#assert ds_gate(b).reason==DsReason.agreement && !ds_gate(b).promoted;
+    b=c;b.ece=0.10000000000000002;#assert ds_gate(b).reason==DsReason.calibration;
+    b=c;b.teacher_answered_right=7;#assert ds_gate(b).reason==DsReason.precision;
+    b=c;b.answered_right=5;b.teacher_answered_right=5;#assert ds_gate(b).promoted;
+    // 0.05 x 20 answered allows one fewer right than the teacher, not two.
+    b=c;b.answered=20;b.answered_agree=16;b.answered_right=9;b.teacher_answered_right=10;#assert ds_gate(b).promoted;
+    b.answered_right=8;#assert ds_gate(b).reason==DsReason.precision;
+    b=c;b.answered=0;b.answered_agree=0;b.n=1;#assert ds_gate(b).reason==DsReason.answered;
+}
+#test "written costs: calls and errors for the router and for the teacher alone" {
+    // 100 requests, 40 answered (30 right), 60 escalated; the teacher is right
+    // on 70 in all, 32 of them among the 40.
+    c:=DsCard.{n=100,answered=40,answered_right=30,teacher_answered_right=32,teacher_right=70};
+    k:=ds_cost(c);
+    // Escalated: 60 calls; the teacher is wrong on 60 - (70 - 32) = 22 of them.
+    #assert k.calls==60 && k.wrong==10+22 && k.cost==60*1.0+32*10.0;
+    #assert k.teacher_calls==100 && k.teacher_wrong==30 && k.teacher_cost==100+300.0;
+    // The cut: the teacher's development accuracy less one call over one error.
+    #assert ds_cut(72,96)==0.75-0.1 && ds_cut(96,96)==0.9 && ds_cut(0,96)==-0.1;
+    #assert ds_answers(0.65,0.65) && ds_answers(0.66,0.65) && !ds_answers(0.64,0.65);
+}
+#test "the data: the teacher admitted, the split given, features computed for a range" #steps 400000000 {
+    w:[8848]f64;#assert fe_weights(w[..])==FeStatus.ok;f:[3072]f64;k:=FeWork.{f=f[..]};
+    feats:[8192]f64;t:[1536]f64;y:[512]int;s:[512]PkSplit;#assert ds_recorded(t[..],y[..])==DsStatus.ok;
+    for i:0..<8192 {feats[i]=-7;}
+    d:=DsData.{feats=feats[..],teacher=t[..],labels=y[..],split=s[..]};
+    #assert ds_data(w[..],k,d,510,512)==DsStatus.ok;
+    for i:0..<8160 {#assert feats[i]==-7;}
+    for i:8160..<8192 {#assert abs(feats[i]-DS_ORACLE_FEATS[i])<=1e-12;}
+    #assert s[0]==PkSplit.train && s[400]==PkSplit.validation && s[511]==PkSplit.test;
+    #assert ds_data(w[..],k,d,0,0)==DsStatus.shape && ds_data(w[..],k,d,-1,1)==DsStatus.shape && ds_data(w[..],k,d,511,513)==DsStatus.shape;
+    #assert ds_data(w[..],k,d,511,512)==DsStatus.ok;
+    d.split=s[0..<511];#assert ds_data(w[..],k,d,0,1)==DsStatus.shape;d.split=s[..];
+    d.feats=feats[0..<8191];#assert ds_data(w[..],k,d,0,1)==DsStatus.shape;d.feats=feats[..];
+    t[0]+=1;#assert ds_data(w[..],k,d,0,1)==DsStatus.teacher;t[0]-=1;
+    // The same distributions with one probability moved within the tolerance: not the recorded teacher.
+    t[0]+=0.0000000000000001;t[2]-=0.0000000000000001;#assert ds_data(w[..],k,d,0,1)==DsStatus.stale;
+    t[0]=DS_TEACHER_P[0];t[2]=DS_TEACHER_P[2];
+    #assert ds_data(w[..],FeWork.{f=f[0..<3071]},d,0,1)==DsStatus.encoder;
+}
+#test "names" {
+    #assert ds_status_name(DsStatus.ok)=="ok" && ds_status_name(DsStatus.trainer)=="the trainer refused" && ds_status_name(DsStatus.leak)=="a request outside its family's split";
+    #assert ds_status_name(DsStatus.stale)=="not the recorded teacher" && ds_reason_name(DsReason.none)=="none" && ds_reason_name(DsReason.answered)=="fewer than a tenth of the test requests answered";
+    #assert ds_reason_name(DsReason.precision)=="more than 5 points less often right than the teacher on the answers";
+}
+
+// book:begin teacher
+// The teacher's distributions: 512 rows of 3 positive probabilities summing
+// to 1 within 2^-30, whose FNV-1a identity is the recorded one;
+// a different identity is a different target set. Labels are 0, 1 or 2.
+// The recorded stand-in and its outcome labels, copied out.
+ds_recorded :: (p:[]f64,labels:[]int)->DsStatus #export_c {
+    if p.count!=DS_REQUESTS*DS_CLASSES || labels.count!=DS_REQUESTS {return DsStatus.shape;}
+    for i:0..<DS_REQUESTS*DS_CLASSES {p[i]=DS_TEACHER_P[i];}
+    for i:0..<DS_REQUESTS {labels[i]=DS_LABELS[i];}
+    return DsStatus.ok;
+}
+ds_teacher :: (p:[]f64,labels:[]int,id:u64)->DsStatus #export_c {
+    if p.count!=DS_REQUESTS*DS_CLASSES || labels.count!=DS_REQUESTS {return DsStatus.shape;}
+    for r:0..<DS_REQUESTS {
+        sum:=0.0;
+        for c:0..<DS_CLASSES {v:=p[r*DS_CLASSES+c];if !(v>0) {return DsStatus.teacher;}sum+=v;}
+        if abs(sum-1)>PQ_TOLERANCE {return DsStatus.teacher;}
+    }
+    for y:labels {if y<0 || y>=DS_CLASSES {return DsStatus.label;}}
+    if fe_model_id(p)!=id {return DsStatus.stale;}
+    return DsStatus.ok;
+}
+// book:end teacher
+
+// book:begin requests
+// Request r of family f = r / 8: the family's 8 token IDs (SplitMix64 seed
+// 2233, below 15, so chapter 120's split can read them), then 8 of its own
+// (seed 2234, below 64).
+ds_request :: (r:int,ids:[]int) {
+    f:=r/DS_PER;
+    for i:0..<DS_TOKENS {
+        ids[i]=ifx i<DS_TEMPLATE then cast(int)(cr_bits(2233,cast(u64)(f*DS_TEMPLATE+i))%15)
+            else cast(int)(cr_bits(2234,cast(u64)(r*(DS_TOKENS-DS_TEMPLATE)+i-DS_TEMPLATE))%64);
+    }
+}
+// One split row per family: families 2k and 2k+1 share task k, family f has
+// its own session and time f, and its tokens are its 8 shared IDs.
+ds_families :: (rows:[]SpRow,tokens:[]u8) {
+    ids:[16]int;
+    for f:0..<DS_FAMILIES {
+        ds_request(f*DS_PER,ids[..]);
+        rows[f]=SpRow.{id=f,licence=1,task=f/2,session=f,time=f,outcome=f,first=f*DS_TEMPLATE,count=DS_TEMPLATE};
+        for i:0..<DS_TEMPLATE {tokens[f*DS_TEMPLATE+i]=cast(u8)ids[i];}
+    }
+}
+// An audit that ran and counted nothing across splits.
+ds_clean :: (a:SpAudit)->bool {
+    return a.status==SpStatus.ok && a.exact==0 && a.task==0 && a.session==0 && a.derived==0 && a.near==0 && a.post==0;
+}
+// Chapter 120 assigns each group of families one split; the audit must find
+// no shared content, task, session, link or near duplicate across splits.
+// Every request takes its family's split.
+ds_split :: (split:[]PkSplit)->DsStatus #export_c {
+    if split.count!=DS_REQUESTS {return DsStatus.shape;}
+    rows:[64]SpRow;tokens:[512]u8;fam:[64]PkSplit;cells:[1]SpCell;
+    ds_families(rows[..],tokens[..]);
+    if sp_assign(rows[..],tokens[..],DS_PLAN,fam[..])!=SpStatus.ok {return DsStatus.split;}
+    a:=sp_audit(rows[..],tokens[..],fam[..],cells[0..<0],0);
+    if !ds_clean(a) {return DsStatus.leak;}
+    for r:0..<DS_REQUESTS {split[r]=fam[r/DS_PER];}
+    return DsStatus.ok;
+}
+// book:end requests
+
+// book:begin features
+// The frozen encoder's pooled vector, read through chapter 222's own forward
+// pass: with head row o set to unit vector o, logit o is pooled value o
+// exactly. Two passes give all 16. The caller's weights are not changed.
+// Pooled values first to first + 8 (those below 16), through the 9 head rows.
+ds_read :: (v:[]f64,k:FeWork,ids:[]int,first:int,out:[]f64)->FeStatus {
+    for o:0..<FE_LOGITS {for c:0..<DS_FEATURES {v[FE_HEAD_AT+o*DS_FEATURES+c]=ifx c==first+o then 1 else 0;}}
+    z:[9]f64;st:=fe_forward(FeEngine.reference,v,FeQ8.{},k,ids,z[..]);
+    if st!=FeStatus.ok {return st;}
+    for o:0..<FE_LOGITS {if first+o<DS_FEATURES {out[first+o]=z[o];}}
+    return FeStatus.ok;
+}
+ds_features :: (w:[]f64,k:FeWork,ids:[]int,out:[]f64)->FeStatus #export_c {
+    if w.count!=FE_WEIGHTS || out.count!=DS_FEATURES {return FeStatus.storage;}
+    v:[8848]f64;for i:0..<FE_WEIGHTS {v[i]=w[i];}
+    st:=ds_read(v[..],k,ids,0,out);if st!=FeStatus.ok {return st;}
+    return ds_read(v[..],k,ids,FE_LOGITS,out);
+}
+// Writes a trained head into chapter 222's weights: the student is the same
+// model shape with a new identity.
+ds_install :: (w:[]f64,head:[]f64)->DsStatus #export_c {
+    if w.count!=FE_WEIGHTS || head.count!=DS_PARAMS {return DsStatus.shape;}
+    for i:0..<DS_PARAMS {w[DS_HEAD_AT+i]=head[i];}
+    return DsStatus.ok;
+}
+// book:end features
+
+// book:begin data
+// Admits the teacher and the split from provenance, then computes the
+// features of requests first..<end (all 512 in the example, a few in checks).
+ds_data :: (w:[]f64,k:FeWork,d:DsData,first:int,end:int)->DsStatus #export_c {
+    if d.feats.count!=DS_REQUESTS*DS_FEATURES || d.split.count!=DS_REQUESTS || first<0 || end<=first || end>DS_REQUESTS {return DsStatus.shape;}
+    s:=ds_teacher(d.teacher,d.labels,DS_TEACHER_ID);if s!=DsStatus.ok {return s;}
+    s=ds_split(d.split);if s!=DsStatus.ok {return s;}
+    ids:[16]int;
+    for r:first..<end {
+        ds_request(r,ids[..]);
+        if ds_features(w,k,ids[..],d.feats[r*DS_FEATURES..<(r+1)*DS_FEATURES])!=FeStatus.ok {return DsStatus.encoder;}
+    }
+    return DsStatus.ok;
+}
+// What training, fitting and the card read: shapes, the teacher, and a split
+// equal to the one provenance gives, so a moved request is a leak.
+ds_admit :: (d:DsData)->DsStatus {
+    if d.feats.count!=DS_REQUESTS*DS_FEATURES || d.split.count!=DS_REQUESTS {return DsStatus.shape;}
+    s:=ds_teacher(d.teacher,d.labels,fe_model_id(d.teacher));if s!=DsStatus.ok {return s;}
+    want:[512]PkSplit;s=ds_split(want[..]);if s!=DsStatus.ok {return s;}
+    for r:0..<DS_REQUESTS {if d.split[r]!=want[r] {return DsStatus.leak;}}
+    return DsStatus.ok;
+}
+// book:end data
+
+// book:begin loss
+// The student's logits: head row c times the features, in chapter 222's order.
+// Not a number when the slices are not 48 weights and 16 features.
+ds_logits :: (w:[]f64,x:[]f64)->[3]f64 {
+    s:[3]f64;
+    if w.count!=DS_PARAMS || x.count!=DS_FEATURES {for c:0..<DS_CLASSES {s[c]=0.0/0.0;}return s;}
+    for c:0..<DS_CLASSES {acc:=0.0;for k:0..<DS_FEATURES {acc+=w[c*DS_FEATURES+k]*x[k];}s[c]=acc;}
+    return s;
+}
+ds_log_soft :: (a:[3]f64)->[3]f64 {
+    top:=qz_larger(qz_larger(a[0],a[1]),a[2]);sum:=0.0;
+    for c:0..<3 {sum+=exp(a[c]-top);}
+    l:[3]f64;for c:0..<3 {l[c]=a[c]-top-log(sum);}
+    return l;
+}
+// One request: T^2 KL(p_T || q_T), where p_T is the teacher at temperature T
+// (log p / T, renormalized) and q_T the student at T (logits over 1/2 x T).
+// Adds the gradient, (T / (1/2)) (q_T - p_T)_c times feature k, into g. A
+// slice of the wrong length gives not a number and adds nothing.
+ds_loss :: (w:[]f64,x:[]f64,p:[]f64,t:f64,g:[]f64)->f64 {
+    if w.count!=DS_PARAMS || x.count!=DS_FEATURES || p.count!=DS_CLASSES || g.count!=DS_PARAMS {return 0.0/0.0;}
+    a:[3]f64;b:[3]f64;s:=ds_logits(w,x);
+    for c:0..<DS_CLASSES {a[c]=s[c]/(DS_HEAD_TEMP*t);b[c]=log(p[c])/t;}
+    lq:=ds_log_soft(a);lp:=ds_log_soft(b);kl:=0.0;
+    for c:0..<DS_CLASSES {
+        pt:=exp(lp[c]);kl+=pt*(lp[c]-lq[c]);
+        d:=(t/DS_HEAD_TEMP)*(exp(lq[c])-pt);
+        for k:0..<DS_FEATURES {g[c*DS_FEATURES+k]+=d*x[k];}
+    }
+    return t*t*kl;
+}
+// The mean loss and gradient over requests rows.
+ds_batch :: (w:[]f64,d:DsData,rows:[]int,t:f64,g:[]f64)->f64 {
+    for i:0..<DS_PARAMS {g[i]=0;}
+    loss:=0.0;
+    for r:rows {loss+=ds_loss(w,d.feats[r*DS_FEATURES..<(r+1)*DS_FEATURES],d.teacher[r*DS_CLASSES..<(r+1)*DS_CLASSES],t,g);}
+    n:=f64(rows.count);for i:0..<DS_PARAMS {g[i]/=n;}
+    return loss/n;
+}
+// book:end loss
+
+// book:begin train
+// Chapter 118's trainer in rows mode: AdamW (rate 0.05, betas 0.9 and 0.999,
+// eps 10^-8, no decay), batches of 32 reshuffled each epoch (seed 223), 40
+// epochs, the development loss once per epoch from step 0, and a stop after
+// 3 evaluations without improvement.
+// ds_train sets the examples to the training split's size and evaluates
+// once an epoch.
+ds_config :: ()->TrConfig #export_c {
+    return TrConfig.{optimizer=TrOptimizer.adamw,rate=0.05,beta1=0.9,beta2=0.999,eps=0.00000001,bound=100,
+        batch=32,epochs=40,shuffle=true,seed=223,patience=3};
+}
+ds_rows :: (d:DsData,want:PkSplit,out:[]int)->int {n:=0;for r:0..<DS_REQUESTS {if d.split[r]==want {out[n]=r;n+=1;}}return n;}
+// Trains head w (48 values, zero to start) on the training split.
+ds_train :: (d:DsData,t:f64,base:TrConfig,w:[]f64)->DsRun #export_c {
+    if !(t>0 && t<=16) {return DsRun.{status=DsStatus.temperature};}
+    if w.count!=DS_PARAMS {return DsRun.{status=DsStatus.shape};}
+    s:=ds_admit(d);if s!=DsStatus.ok {return DsRun.{status=s};}
+    train:[512]int;dev:[512]int;n:=ds_rows(d,PkSplit.train,train[..]);nd:=ds_rows(d,PkSplit.validation,dev[..]);
+    c:=base;c.examples=n;c.every=tr_ceil(n,c.batch);order:[512]int;none:[]PkDoc;nothing:[]u8;
+    st:=tr_begin(c,w.count,none,nothing,order[..]);
+    out:=DsRun.{trainer=st.status};if st.status!=TrStatus.ok {out.status=DsStatus.trainer;return out;}
+    run:=st.run;m:[48]f64;v:[48]f64;total:[48]f64;stage:[144]f64;g:[48]f64;idx:[32]int;
+    // The trainer asks for an evaluation (the development loss) or a step
+    // (each micro-batch's mean loss and gradient), until it is done or stops.
+    while true {
+        b:=tr_next(c,run,none,nothing,nothing);
+        if b.status==TrStatus.done || b.status==TrStatus.stopped {break;}
+        now:=b.status;
+        if now==TrStatus.evaluate {
+            e:=tr_eval(c,run,ds_batch(w,d,dev[0..<nd],t,g[..]));now=e.status;
+            if now==TrStatus.ok {run=e.run;out.evals+=1;}
+        } else if now==TrStatus.ok {
+            sum:TrSum;
+            for j:0..<b.micro {
+                r:=tr_rows(c,b,j);for i:0..<r.count {idx[i]=train[order[r.first+i]];}
+                sum=tr_add(b,sum,ds_batch(w,d,idx[0..<r.count],t,g[..]),g[..],total[..]);
+            }
+            a:=tr_apply(c,run,b,sum,w,m[..],v[..],total[..],stage[..],order[..]);now=a.status;
+            if now==TrStatus.ok {run=a.run;out.steps+=1;}
+        }
+        if now!=TrStatus.ok {out.status=DsStatus.trainer;out.trainer=now;return out;}
+    }
+    out.stopped=run.stopped;out.best=run.best;
+    return out;
+}
+// book:end train
+
+// book:begin fit
+// The calibrated student: softmax of the logits over 1/2 x tau, into three
+// slots (anything else is left as it was).
+ds_probs :: (w:[]f64,x:[]f64,tau:f64,out:[]f64) {
+    s:=ds_logits(w,x);a:[3]f64;for c:0..<DS_CLASSES {a[c]=s[c]/(DS_HEAD_TEMP*tau);}
+    if out.count!=DS_CLASSES {return;}
+    l:=ds_log_soft(a);for c:0..<DS_CLASSES {out[c]=exp(l[c]);}
+}
+// Mean log loss against the outcome labels on the development split.
+ds_nll :: (d:DsData,w:[]f64,tau:f64)->f64 {
+    dev:[512]int;n:=ds_rows(d,PkSplit.validation,dev[..]);loss:=0.0;
+    for r:dev[0..<n] {
+        s:=ds_logits(w,d.feats[r*DS_FEATURES..<(r+1)*DS_FEATURES]);a:[3]f64;
+        for c:0..<DS_CLASSES {a[c]=s[c]/(DS_HEAD_TEMP*tau);}
+        l:=ds_log_soft(a);loss-=l[d.labels[r]];
+    }
+    return loss/f64(n);
+}
+// The temperature: the first of 1/4, 3/8, ..., 4 with the least development
+// log loss. 0 when the data are refused.
+ds_fit :: (d:DsData,w:[]f64)->f64 #export_c {
+    if w.count!=DS_PARAMS || ds_admit(d)!=DsStatus.ok {return 0;}
+    best:=0.25;least:=ds_nll(d,w,best);
+    for k:3..<33 {tau:=f64(k)/8;l:=ds_nll(d,w,tau);if l<least {least=l;best=tau;}}
+    return best;
+}
+// book:end fit
+
+// book:begin card
+// The router answers when its calibrated confidence is at least the
+// teacher's development accuracy less one call's cost over one error's.
+ds_cut :: (right:int,n:int)->f64 {return f64(right)/f64(n)-DS_CALL/DS_WRONG;}
+ds_answers :: (confidence:f64,cut:f64)->bool {return confidence>=cut;}
+// The test split's card. probs and items are scratch for chapter 16's
+// measure: the student's calibrated probabilities, then the teacher's.
+ds_card :: (d:DsData,w:[]f64,tau:f64,probs:[]f64,items:[]PqItem)->DsCard #export_c {
+    if !(tau>0 && tau<=16) {return DsCard.{status=DsStatus.temperature};}
+    if w.count!=DS_PARAMS || probs.count!=DS_REQUESTS*DS_CLASSES || items.count!=DS_REQUESTS {return DsCard.{status=DsStatus.shape};}
+    s:=ds_admit(d);if s!=DsStatus.ok {return DsCard.{status=s};}
+    c:=DsCard.{tau=tau};dev:[512]int;test:[512]int;
+    c.dev=ds_rows(d,PkSplit.validation,dev[..]);c.n=ds_rows(d,PkSplit.test,test[..]);
+    for r:dev[0..<c.dev] {if fe_argmax(d.teacher,r*3,3)-r*3==d.labels[r] {c.teacher_dev+=1;}}
+    c.cut=ds_cut(c.teacher_dev,c.dev);
+    for r,i:test[0..<c.n] {
+        q:=probs[DS_CLASSES*i..<DS_CLASSES*(i+1)];ds_probs(w,d.feats[r*DS_FEATURES..<(r+1)*DS_FEATURES],tau,q);
+        y:=d.labels[r];st:=fe_argmax(q,0,3);te:=fe_argmax(d.teacher,r*3,3)-r*3;
+        items[i]=PqItem.{kind=QrKind.choice,count=3,start=3*i,gold=y,abstain=-1};
+        if st==te {c.agree+=1;}
+        if st==y {c.student_right+=1;}
+        if te==y {c.teacher_right+=1;}
+        if ds_answers(q[st],c.cut) {
+            c.answered+=1;
+            if st==te {c.answered_agree+=1;}
+            if st==y {c.answered_right+=1;}
+            if te==y {c.teacher_answered_right+=1;}
+        }
+    }
+    // Chapter 16's measure: every item answered, none abstaining (a refused
+    // measure answers none).
+    m:=pq_measure(items[0..<c.n],probs);
+    if m.answered!=c.n {return DsCard.{status=DsStatus.shape};}
+    c.ece=m.ece;c.brier=m.brier;
+    for r,i:test[0..<c.n] {for k:0..<3 {probs[3*i+k]=d.teacher[3*r+k];}}
+    m=pq_measure(items[0..<c.n],probs);c.teacher_ece=m.ece;c.teacher_brier=m.brier;
+    return c;
+}
+// book:end card
+
+// book:begin gate
+// The frozen rule, in order: a card, enough answers, agreement with the
+// teacher on them, calibration on every test request, and right answers
+// within 5 points of what the teacher would have been on the same requests.
+ds_gate :: (c:DsCard)->DsVerdict #export_c {
+    if c.status!=DsStatus.ok || c.n<1 {return DsVerdict.{reason=DsReason.card};}
+    if f64(c.answered)<DS_ANSWERED_MIN*f64(c.n) {return DsVerdict.{reason=DsReason.answered};}
+    if f64(c.answered_agree)<DS_AGREE_MIN*f64(c.answered) {return DsVerdict.{reason=DsReason.agreement};}
+    if c.ece>DS_ECE_MAX {return DsVerdict.{reason=DsReason.calibration};}
+    if f64(c.answered_right)<f64(c.teacher_answered_right)-DS_PRECISION_DROP*f64(c.answered) {return DsVerdict.{reason=DsReason.precision};}
+    return DsVerdict.{promoted=true};
+}
+// Escalated requests cost a call and are right when the teacher is.
+ds_cost :: (c:DsCard)->DsCost {
+    k:=DsCost.{calls=c.n-c.answered,teacher_calls=c.n,teacher_wrong=c.n-c.teacher_right};
+    k.wrong=(c.answered-c.answered_right)+(k.calls-(c.teacher_right-c.teacher_answered_right));
+    k.cost=DS_CALL*f64(k.calls)+DS_WRONG*f64(k.wrong);
+    k.teacher_cost=DS_CALL*f64(k.teacher_calls)+DS_WRONG*f64(k.teacher_wrong);
+    return k;
+}
+// book:end gate
+
+ds_status_name :: (s:DsStatus)->string {
+    names:=[10]string.["ok","a slice of the wrong length","a teacher row that is not a distribution","not the recorded teacher",
+        "a label outside 0 to 2","no split","a request outside its family's split","a temperature outside (0, 16]","the encoder refused","the trainer refused"];
+    return names[cast(int)s];
+}
+ds_reason_name :: (r:DsReason)->string {
+    names:=[6]string.["none","no card","fewer than a tenth of the test requests answered","agreement with the teacher below 80% on the answers",
+        "calibration error above 0.1","more than 5 points less often right than the teacher on the answers"];
+    return names[cast(int)r];
+}

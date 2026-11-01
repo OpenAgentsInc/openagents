@@ -832,6 +832,26 @@
       ]
     },
     {
+      "source": "psionic/examples/distill-router.coax",
+      "chapter": "psionic/book/ch223-distill-elephant-into-a-small-router.md",
+      "stdout": "psionic/fixtures/distill/distill-router.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/distill-router-refuse.coax",
+      "chapter": "psionic/book/ch223-distill-elephant-into-a-small-router.md",
+      "stdout": "psionic/fixtures/distill/distill-router-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/time-decision.coax",
       "chapter": "psionic/book/ch018-time-a-decision.md",
       "stdout": "psionic/fixtures/time-decision.out",

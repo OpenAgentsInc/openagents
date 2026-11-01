@@ -1,0 +1,36 @@
+// Chapter 223: what is refused before any training, and the frozen rule on
+// teaching cards. Data come from the recorded fixtures, so nothing runs the
+// encoder here.
+#import "Basic";
+#load "../lib/distill.coax";
+
+// book:begin refuse
+judge :: (what:string,c:DsCard) {v:=ds_gate(c);print("%: %\n",what,ifx v.promoted then "promoted" else ds_reason_name(v.reason));}
+main :: () {
+    feats:[8192]f64;t:[1536]f64;y:[512]int;s:[512]PkSplit;
+    for i:0..<8192 {feats[i]=DS_ORACLE_FEATS[i];}
+    #assert ds_recorded(t[..],y[..])==DsStatus.ok;
+    #assert ds_split(s[..])==DsStatus.ok;
+    d:=DsData.{feats=feats[..],teacher=t[..],labels=y[..],split=s[..]};w:[48]f64;
+    print("the recorded data: %\n",ds_status_name(ds_admit(d)));
+    t[1]=t[1]+0.001;
+    print("teacher row 0 sums to 1.001: %\n",ds_status_name(ds_train(d,DS_T,ds_config(),w[..]).status));
+    t[1]=DS_TEACHER_P[1];t[0]=DS_TEACHER_P[0]+0.0000000000000001;t[2]=DS_TEACHER_P[2]-0.0000000000000001;
+    print("teacher row 0 moved by 10^-16: %\n",ds_status_name(ds_teacher(t[..],y[..],DS_TEACHER_ID)));
+    t[0]=DS_TEACHER_P[0];t[2]=DS_TEACHER_P[2];y[9]=3;
+    print("outcome label 3: %\n",ds_status_name(ds_train(d,DS_T,ds_config(),w[..]).status));
+    y[9]=DS_LABELS[9];s[420]=PkSplit.train;
+    print("request 420 (a test family's) moved to training: %\n",ds_status_name(ds_train(d,DS_T,ds_config(),w[..]).status));
+    s[420]=PkSplit.test;
+    print("distillation temperature 0: %\n",ds_status_name(ds_train(d,0,ds_config(),w[..]).status));
+    print("a head of 47 weights: %\n",ds_status_name(ds_train(d,DS_T,ds_config(),w[0..<47]).status));
+    // The frozen rule on teaching cards, not measurements.
+    c:=DsCard.{n=96,answered=40,answered_agree=34,answered_right=30,teacher_answered_right=31,ece=0.05};
+    judge("a card that meets every gate",c);
+    b:=c;b.answered=9;b.answered_agree=9;judge("9 of 96 answered",b);
+    b=c;b.answered_agree=31;judge("31 of 40 answers agree",b);
+    b=c;b.ece=0.12;judge("calibration error 0.12",b);
+    b=c;b.answered_right=28;judge("28 right where the teacher is right 31 times",b);
+    b=c;b.status=DsStatus.leak;judge("a card from leaked data",b);
+}
+// book:end refuse

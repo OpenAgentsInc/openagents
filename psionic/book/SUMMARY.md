@@ -244,7 +244,7 @@
 - [220. Read a bounded ONNX graph](ch220-read-a-bounded-onnx-graph.md)
 - [221. Write a bounded ONNX graph](ch221-write-a-bounded-onnx-graph.md)
 - [222. A decision in milliseconds](ch222-a-decision-in-milliseconds.md) — partly implemented
-- [223. Distill Elephant into a small router](ch223-distill-elephant-into-a-small-router.md) — design draft
+- [223. Distill Elephant into a small router](ch223-distill-elephant-into-a-small-router.md) — partly implemented
 - [224. Shadow a new model, then promote it](ch224-shadow-a-new-model-then-promote-it.md)
 - [225. Learn which model to call](ch225-learn-which-model-to-call.md)
 
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–178, 180, 188, 195, 215–222, 224–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–178, 180, 188, 195, 215–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

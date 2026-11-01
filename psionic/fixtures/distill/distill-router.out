@@ -1,0 +1,11 @@
+encoder fe-tiny-v1, identity 872817745440994249: frozen; head 1 (3 classes, temperature 1/2) is trained
+teacher stand-in 8153232079184106977, 512 requests: ok
+split by family: 320 training, 96 development, 96 test requests; largest feature difference from the oracle 3.0531133177191805e-15
+distilled at T = 2.0: ok, 70 steps, 8 evaluations, stopped early: true, best development loss 0.8967355806659106
+temperature fitted on development: 2.5; the teacher was right on 69 of 96 there, so the cut is 0.61875
+test: 96 requests; the student agrees with the teacher on 51; right 49 times, the teacher 74 times
+calibration error: student 0.13352489849405125, teacher 0.09142585830869063; Brier: student 0.5979107450275571, teacher 0.29967905790541377
+the router answers 1: 1 agree with the teacher, 1 right; the teacher would be right on 1 of them
+frozen rule: fewer than a tenth of the test requests answered
+router: 95 calls, 22 wrong, cost 315.0; teacher alone: 96 calls, 22 wrong, cost 316.0
+student model identity 14272328053237282941; multiply-adds per 512-token decision 16281744

@@ -1,0 +1,13 @@
+the recorded data: ok
+teacher row 0 sums to 1.001: a teacher row that is not a distribution
+teacher row 0 moved by 10^-16: not the recorded teacher
+outcome label 3: a label outside 0 to 2
+request 420 (a test family's) moved to training: a request outside its family's split
+distillation temperature 0: a temperature outside (0, 16]
+a head of 47 weights: a slice of the wrong length
+a card that meets every gate: promoted
+9 of 96 answered: fewer than a tenth of the test requests answered
+31 of 40 answers agree: agreement with the teacher below 80% on the answers
+calibration error 0.12: calibration error above 0.1
+28 right where the teacher is right 31 times: more than 5 points less often right than the teacher on the answers
+a card from leaked data: no card
