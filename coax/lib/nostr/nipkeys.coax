@@ -686,16 +686,16 @@ ky_txout :: (b:[]u8,at:int,end:int,value:[]int,s:[]KyScript)->int {
 // keys of types 0 and 1 (the global map's unsigned transaction, an input's
 // witness UTXO), whether each is there and where its value starts; whether
 // either repeats; the version (key 0xfb); and the map's end (after 0x00)
-// when it is well formed.
+// when it is well formed; all zero when it isn't.
 KyMap :: struct {ok:bool;end:int;found:[2]bool;at:[2]int;n:[2]int;dup:bool;other:int;}
 ky_map :: (b:[]u8,at:int)->KyMap {
   r:KyMap;i:=at;
   while true {
-    k:=ky_var(b,i);if !k.ok {return r;}
+    k:=ky_var(b,i);if !k.ok {return KyMap.{};}
     if k.value==0 {r.ok=true;r.end=k.next;return r;}
-    if k.next>=b.count {return r;}            // the key's type byte, then ky_var bounds the rest
+    if k.next>=b.count {return KyMap.{};}     // the key's type byte, then ky_var bounds the rest
     kt:=b[k.next];
-    v:=ky_var(b,k.next+k.value);if !v.ok {return r;}           // a value past the end leaves no terminator
+    v:=ky_var(b,k.next+k.value);if !v.ok {return KyMap.{};}    // a value past the end leaves no terminator
     if k.value==1 && kt<2 {x:=cast(int)kt;r.dup=r.dup || r.found[x];r.found[x]=true;r.at[x]=v.next;r.n[x]=v.value;}
     else if k.value==1 && kt==0xfb {r.other=ifx v.value==4 then ky_le(b,v.next,4) else -1;}
     i=v.next+v.value;
@@ -710,7 +710,7 @@ ky_psbt_read :: (b:[]u8)->KyPsbt {
   r:=[1]KyPsbt.[KyPsbt.{}];bad:=KyPsbt.{code=KyCode.psbt};
   for k:0..<KY_MAGIC.count {if ky_at(b,k)!=cast(int)KY_MAGIC[k] {return bad;}}
   g:=ky_map(b,5);
-  if !g.ok || !g.found[0] || g.dup {return bad;}
+  if !g.found[0] || g.dup {return bad;}
   if g.other!=0 {return KyPsbt.{code=KyCode.not_built};}       // PSBT v2 (BIP-370)
   // The unsigned transaction: version, inputs with empty scriptSigs, outputs, locktime.
   t:=g.at[0];end:=t+g.n[0];
@@ -865,7 +865,7 @@ ky_consume :: (l:[]KyLedger,agent:string,r:KyRequest,code:KyCode)->KyRetry {
 // the tip is height: older(n) needs n confirmations, after(h) needs h.
 ky_path_open :: (p:KyPath,conf_height:int,height:int)->KyCode {
   if p.older>0 && height-conf_height+1<p.older {return KyCode.locked;}
-  if p.after>0 && height<p.after {return KyCode.locked;}
+  if height<p.after {return KyCode.locked;}                 // after 0: every tip is past it
   return KyCode.ok;
 }
 // A retired wallet's signers sign only its rotation's sweeps.

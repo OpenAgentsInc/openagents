@@ -576,7 +576,7 @@ ky_psbt_read :: (b:[]u8)->KyPsbt {
   r:=[1]KyPsbt.[KyPsbt.{}];bad:=KyPsbt.{code=KyCode.psbt};
   for k:0..<KY_MAGIC.count {if ky_at(b,k)!=cast(int)KY_MAGIC[k] {return bad;}}
   g:=ky_map(b,5);
-  if !g.ok || !g.found[0] || g.dup {return bad;}
+  if !g.found[0] || g.dup {return bad;}
   if g.other!=0 {return KyPsbt.{code=KyCode.not_built};}       // PSBT v2 (BIP-370)
   // The unsigned transaction: version, inputs with empty scriptSigs, outputs, locktime.
   t:=g.at[0];end:=t+g.n[0];
@@ -880,13 +880,17 @@ request doesn't name: `outputs` from every signer.
 ### Checks in the library
 
 `coax/lib/nostr/nipkeys.coax` is `#authority`: every procedure is exercised
-by a `#test`, and `coax mutate --root-only` must leave no survivors. On
-2026-11-01 its 273 checks pass, but the root-only mutation run did not
-finish: eight parallel shards each hit the 14-minute limit before writing a
-record, because the BIP-32 derivation checks cost hundreds of millions of
-interpreter steps for every surviving mutant. There is no mutation record
-yet; running it in more, smaller shards is the next step before this file
-can be called sharp. Its
+by a `#test`, and `coax mutate --root-only` must leave no survivors. Eight
+shards hit the 14-minute limit, so the run is split 40 ways
+(`coax mutate coax/lib/nostr/nipkeys.coax --root-only --shard I/40`), each
+shard about a minute with `--jobs 8`. On 2026-11-01 the first pass over all
+40 shards, on the file as this chapter first shipped, left 179 of 2054
+mutants alive. They were killed with sharper checks or by removing the code
+they showed had no effect (the PSBT map reader now reports `ok` and `found`
+flags instead of `-1` positions, and redundant length guards are gone),
+and no mutant was marked equivalent. The second pass, on the file as it now
+stands, ran all 40 shards (1 to 40) and merged their records: 1963 mutants,
+1963 killed, 0 survived, with 273 checks passing. Its
 checks cover every reader's refusals field by field, the descriptor for one
 path and for a recovery path (against a Python checksum), every composition
 rule at its boundary, rule 4's successor approvals, the PSBT reader's
