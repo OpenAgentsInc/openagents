@@ -133,7 +133,7 @@
    "number": 7,
    "title": "Field arithmetic mod p",
    "file": "ch007-field-arithmetic-mod-p.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     2,
@@ -142,7 +142,8 @@
    "source": [
     "coax/lib/crypto/secp_field.coax",
     "coax/lib/crypto/secp_field32.coax",
-    "coax/lib/crypto/secp_field32_total.coax"
+    "coax/lib/crypto/secp_field32_total.coax",
+    "nostr/examples/field-arithmetic.coax"
    ],
    "qualified_targets": [
     "cpu",

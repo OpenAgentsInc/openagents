@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 103 chapters, 6 are implemented, 50 are partly implemented and
+Of the 103 chapters, 7 are implemented, 49 are partly implemented and
 47 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -140,7 +140,7 @@ official vectors, keys from host randomness, signing, and x-only ECDH.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | Addition, multiplication, squaring, inversion and square roots in F_p for p = 2^256 − 2^32 − 977, with canonical outputs and exact addition chains for inverse and root. |
+| [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md) | Runnable: native C and wasm | Addition, multiplication, squaring, inversion and square roots in F_p for p = 2^256 − 2^32 − 977, with canonical outputs and exact addition chains for inverse and root. |
 | [8. Scalars mod n](ch008-scalars-mod-n.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | Scalars mod the group order n: reduction of 32-byte and 64-byte inputs, addition, multiplication and negation, with the s < n and key-range checks BIP-340 needs. |
 | [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | Points on y² = x³ + 7 in affine and Jacobian coordinates, doubling and complete addition with the point at infinity and the P + (−P) case handled. |
 | [10. Scalar multiplication](ch010-scalar-multiplication.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | Three multiplications: a variable-time public path for verification, a fixed-base table for k·G, and a constant-time variable-base path for ECDH, each checked against an oracle. |

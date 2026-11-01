@@ -60,6 +60,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/field-arithmetic.coax",
+      "chapter": "nostr/book/ch007-field-arithmetic-mod-p.md",
+      "stdout": "nostr/fixtures/field-arithmetic.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,23 @@
+p limbs: [67107887, 67108799, 67108863, 67108863, 67108863, 67108863, 67108863, 67108863, 67108863, 4194303]
+2^256 - 1 mod p: 00000000000000000000000000000000000000000000000000000001000003d0
+2^128 * 2^128: 00000000000000000000000000000000000000000000000000000001000003d1
+-1: fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e
+(p - 1) + 2: 0000000000000000000000000000000000000000000000000000000000000001
+0 - 1: fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2e
+inverse of 2: ok true
+1/2: 7fffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffffe18
+2 * (1/2): 0000000000000000000000000000000000000000000000000000000000000001
+inverse exponent: fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2d
+square-root exponent: 3fffffffffffffffffffffffffffffffffffffffffffffffffffffffbfffff0c
+shared chain: 12 steps, 245 squarings
+inverse: 258 squarings, 15 multiplications; root: 253 squarings, 13 multiplications
+sqrt(4): 0000000000000000000000000000000000000000000000000000000000000002
+sqrt(9): fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2c
+sqrt(9) is p - 3: true
+x^3 + 7 is a square: true
+y: 483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+matches G.y: true
+sqrt(3): ok false, value is zero true
+inverse of 0: ok false
+strict load of p: ok false, value is zero true
+31-byte load: ok false
