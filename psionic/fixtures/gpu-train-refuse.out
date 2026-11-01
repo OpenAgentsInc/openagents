@@ -1,0 +1,6 @@
+a 1 MiB budget: refused: the buffers do not fit the device budget; the plan needs 1174648 bytes
+a budget of exactly 1174648 bytes: admitted
+a decoder of 205376 parameters: refused: the shape is not a chapter 113 decoder the trainer can checkpoint, or rows are not the context long
+SGD: refused: no device kernel for this optimizer, decay or micro-batch
+two rows a micro-batch: refused: no device kernel for this optimizer, decay or micro-batch
+a step past a bound of 0.5: status bound, revision 0, flags (0.0 1.0), parameters unchanged: true

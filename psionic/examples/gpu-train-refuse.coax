@@ -1,0 +1,22 @@
+#import "Basic";
+#load "../lib/transformer/gpu-train.coax";
+
+// book:begin refuse
+// Chapter 129: runs the device refuses before it allocates anything, and a
+// step it refuses after staging, which changes nothing.
+main :: () {
+    c:=gt_config(TT_SHAPE,4,400);f:=tt_fix();d:=f.docs[..];t:=f.tokens[0..<f.n];
+    p:=gt_plan(TT_SHAPE,c,d,t,1048576);print("a 1 MiB budget: %; the plan needs % bytes\n",gt_status(p.status),p.bytes);
+    p=gt_plan(TT_SHAPE,c,d,t,GT_HAND_BYTES);print("a budget of exactly % bytes: %\n",GT_HAND_BYTES,gt_status(p.status));
+    big:=TdShape.{vocab=256,width=64,heads=8,kv_heads=2,head_width=8,hidden=256,layers=4,context=32};
+    p=gt_plan(big,c,d,t,1<<40);print("a decoder of % parameters: %\n",p.parameters,gt_status(p.status));
+    sgd:=c;sgd.optimizer=TrOptimizer.sgd;sgd.rate=0.1;p=gt_plan(TT_SHAPE,sgd,d,t,1<<40);print("SGD: %\n",gt_status(p.status));
+    wide:=c;wide.batch=2;p=gt_plan(TT_SHAPE,wide,d,t,1<<40);print("two rows a micro-batch: %\n",gt_status(p.status));
+
+    // A bound of 0.5 that the first step's AdamW move crosses.
+    s:=gt_config(TT_SMALL,4,3);s.bound=0.5;run:=gt_start(s,f,220);x:=gt_small();
+    r:=gt_small_run(s,f,run,1,x);
+    print("a step past a bound of 0.5: status %, revision %, flags (% %), parameters unchanged: %\n",
+        r.step.status,r.step.run.revision,r.x.scalars[1],r.x.scalars[2],gt_bits(r.x.p[..],x.p[..]) && gt_bits(r.x.m[..],x.m[..]));
+}
+// book:end refuse

@@ -1,0 +1,268 @@
+// Chapter 129: the tiny decoder's training step as device kernels, in the
+// coax cuda subset. Chapter 113's decoder (td_advance, td_gradients) has
+// structs and while loops, which the subset refuses, so its arithmetic is
+// restated here over a shape view and offsets, one operation for one
+// operation in the same order: on the CPU these kernels give chapter 113's
+// bits. On the device +, -, *, / and sqrt round the same way (--fmad=false);
+// exp and log come from the device library, so a device gradient may differ
+// from the CPU's in the last bits. RoPE's cosines and sines are not computed
+// on the device at all: they come in a table the host fills once.
+//
+// The shape view sh holds chapter 113's TdShape fields in order:
+// vocab, width, heads, kv_heads, head_width, hidden, layers, context.
+// A training row is context tokens long.
+
+GK_EPSILON :: 0.000001;
+GK_THETA :: 10000.0;
+// The values these checks pin were written by chapter 113's td_gradients on
+// TD_TINY with its formula weights (psionic/lib/transformer/gpu-train.coax
+// checks the kernels against td_gradients directly at larger shapes).
+GK_TINY :: [8]int.[5,4,2,1,2,3,2,4];
+GK_ORACLE_LOSS :: 1.8059255342158516;
+// td_gradients' bits on the checks' rows (two of TD_TINY, two of a shape
+// with no two fields alike): each loss, and the gradient's bits folded by
+// gk_fold (psionic/tests/train-kernels-checks.coax).
+GK_PIN_LOSS :: [4]u64.[4610811984735600285,4609836793812327909,4611158005661823240,4611375483214818035];
+GK_PIN_GRADS :: [4]u64.[226818329418378778,2892832140653224102,17312059436405755485,916989370725146129];
+#load "../../tests/train-kernels-checks.coax";
+
+// book:begin layout
+// Chapter 113's parameter and work layouts, from the shape view.
+gk_block_size :: (sh:[]int)->int {d:=sh[1];q:=sh[2]*sh[4];k:=sh[3]*sh[4];return 2*d+q*d+2*k*d+d*q+2*sh[5]*d;}
+gk_parameters :: (sh:[]int)->int {return 2*sh[0]*sh[1]+sh[6]*gk_block_size(sh)+sh[1];}
+gk_norm1 :: (sh:[]int,layer:int)->int {return sh[0]*sh[1]+layer*gk_block_size(sh);}
+gk_final_norm :: (sh:[]int)->int {return sh[0]*sh[1]+sh[6]*gk_block_size(sh);}
+gk_slot_size :: (sh:[]int)->int {return 4*sh[1]+2+2*sh[2]*sh[4]+sh[5]+sh[2]*sh[7];}
+gk_layer_size :: (sh:[]int)->int {return sh[7]*(gk_slot_size(sh)+2*sh[3]*sh[4]);}
+gk_work :: (sh:[]int)->int {return sh[6]*gk_layer_size(sh)+sh[7]*(2*sh[1]+1+sh[0]);}
+gk_slot :: (sh:[]int,layer:int,t:int)->int {return layer*gk_layer_size(sh)+t*gk_slot_size(sh);}
+gk_keys :: (sh:[]int,layer:int)->int {return layer*gk_layer_size(sh)+sh[7]*gk_slot_size(sh);}
+gk_values :: (sh:[]int,layer:int)->int {return gk_keys(sh,layer)+sh[7]*sh[3]*sh[4];}
+gk_final :: (sh:[]int,t:int)->int {return sh[6]*gk_layer_size(sh)+t*(2*sh[1]+1+sh[0]);}
+// book:end layout
+
+// book:begin rope
+// The host's table: for position t and pair i, the cosine and sine of
+// t * theta^(-2i/E), at (t*E/2 + i)*2 and the element after it.
+gk_rope_table :: (e:int,context:int,out:[]f64) {
+    for t:0..<context {for i:0..<e/2 {angle:=f64(t)*exp(-log(GK_THETA)*f64(2*i)/f64(e));at:=(t*(e/2)+i)*2;out[at]=cos(angle);out[at+1]=sin(angle);}}
+}
+// Rotates each interleaved pair of every head; back applies the transpose
+// (the sine negated), which the backward pass needs.
+gk_rope :: (v:[]f64,vo:int,heads:int,e:int,rope:[]f64,t:int,back:bool) {
+    for h:0..<heads {for i:0..<e/2 {at:=(t*(e/2)+i)*2;c:=rope[at];sn:=rope[at+1];if back {sn=-sn;}
+        x:=vo+h*e+2*i;a:=v[x];b:=v[x+1];v[x]=a*c-b*sn;v[x+1]=a*sn+b*c;}}
+}
+// book:end rope
+
+// The first position of the largest of x[at..<at+count]; its value is
+// chapter 113's softmax shift. max(z, 0), with -0 going to +0: where chapter
+// 113 skips z <= 0, adding +0 or -0 to a sum that is never -0 changes nothing.
+gk_first :: (x:[]f64,at:int,count:int)->int {best:=0;for i:0..<count-1 {if x[at+i+1]>x[at+best] {best=i+1;}}return best;}
+gk_relu :: (z:f64)->f64 {if z>0 {return z;}return 0;}
+gk_matvec :: (w:[]f64,wo:int,rows:int,cols:int,x:[]f64,xo:int,y:[]f64,yo:int) {
+    for r:0..<rows {acc:=0.0;for c:0..<cols {acc+=w[wo+r*cols+c]*x[xo+c];}y[yo+r]=acc;}
+}
+gk_norm :: (x:[]f64,xo:int,g:[]f64,go:int,n:int,y:[]f64,yo:int)->f64 {
+    squares:=0.0;for i:0..<n {squares+=x[xo+i]*x[xo+i];}r:=1/sqrt(squares/f64(n)+GK_EPSILON);
+    for i:0..<n {y[yo+i]=g[go+i]*x[xo+i]*r;}return r;
+}
+gk_norm_back :: (dy:[]f64,dyo:int,x:[]f64,xo:int,r:f64,p:[]f64,go:int,n:int,grads:[]f64,out:[]f64,outo:int) {
+    dot:=0.0;for i:0..<n {grads[go+i]+=dy[dyo+i]*x[xo+i]*r;dot+=dy[dyo+i]*p[go+i]*x[xo+i];}
+    for i:0..<n {out[outo+i]+=r*dy[dyo+i]*p[go+i]-x[xo+i]*r*r*r*dot/f64(n);}
+}
+gk_matvec_back :: (p:[]f64,wo:int,rows:int,cols:int,x:[]f64,xo:int,dy:[]f64,dyo:int,grads:[]f64,dx:[]f64,dxo:int) {
+    for r:0..<rows {for c:0..<cols {grads[wo+r*cols+c]+=dy[dyo+r]*x[xo+c];dx[dxo+c]+=p[wo+r*cols+c]*dy[dyo+r];}}
+}
+
+// book:begin advance
+// Chapter 113's td_advance: every layer and the logits at position t.
+gk_advance :: (sh:[]int,p:[]f64,w:[]f64,rope:[]f64,token:int,t:int) {
+    d:=sh[1];heads:=sh[2];kv:=sh[3];e:=sh[4];hidden:=sh[5];context:=sh[7];
+    q:=heads*e;k:=kv*e;group:=heads/kv;scale:=1/sqrt(f64(e));
+    first:=gk_slot(sh,0,t);for i:0..<d {w[first+i]=p[token*d+i];}
+    for l:0..<sh[6] {
+        bn1:=gk_norm1(sh,l);bq:=bn1+d;bk:=bq+q*d;bv:=bk+k*d;bo:=bv+k*d;bn2:=bo+d*q;b1:=bn2+d;b2:=b1+hidden*d;
+        o:=gk_slot(sh,l,t);n1:=o+d;r:=o+2*d;qs:=r+2;cs:=qs+q;m:=cs+q;n2:=m+d;u:=n2+d;a:=u+hidden;
+        keys:=gk_keys(sh,l);values:=gk_values(sh,l);key:=keys+t*k;value:=values+t*k;
+        w[r]=gk_norm(w,o,p,bn1,d,w,n1);
+        gk_matvec(p,bq,q,d,w,n1,w,qs);gk_matvec(p,bk,k,d,w,n1,w,key);gk_matvec(p,bv,k,d,w,n1,w,value);
+        gk_rope(w,qs,heads,e,rope,t,false);gk_rope(w,key,kv,e,rope,t,false);
+        for h:0..<heads {g:=h/group;row:=a+h*context;
+            for j:0..<t+1 {score:=0.0;for x:0..<e {score+=w[qs+h*e+x]*w[keys+j*k+g*e+x];}w[row+j]=score*scale;}
+            top:=w[row+gk_first(w,row,t+1)];total:=0.0;for j:0..<t+1 {w[row+j]=exp(w[row+j]-top);total+=w[row+j];}for j:0..<t+1 {w[row+j]/=total;}
+            for x:0..<e {acc:=0.0;for j:0..<t+1 {acc+=w[row+j]*w[values+j*k+g*e+x];}w[cs+h*e+x]=acc;}
+        }
+        gk_matvec(p,bo,d,q,w,cs,w,m);for i:0..<d {w[m+i]+=w[o+i];}
+        w[r+1]=gk_norm(w,m,p,bn2,d,w,n2);gk_matvec(p,b1,hidden,d,w,n2,w,u);
+        next:=gk_final(sh,t);if l+1<sh[6] {next=gk_slot(sh,l+1,t);}
+        for i:0..<d {acc:=0.0;for f:0..<hidden {z:=gk_relu(w[u+f]);acc+=p[b2+i*hidden+f]*z*z;}w[next+i]=w[m+i]+acc;}
+    }
+    f:=gk_final(sh,t);fn:=gk_final_norm(sh);w[f+2*d]=gk_norm(w,f,p,fn,d,w,f+d);gk_matvec(p,fn+d,sh[0],d,w,f+d,w,f+2*d+1);
+}
+// book:end advance
+// book:begin rows
+// Kernel 0, one work item per training row: chapter 113's td_gradients on
+// row `item` (context tokens at rows[item*context..]). Each row has its own
+// slices of the work buffers and of grads, and writes its loss.
+gk_rows :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64,dwork:[]f64,grads:[]f64,losses:[]f64) #export_c {
+    d:=sh[1];heads:=sh[2];kv:=sh[3];e:=sh[4];hidden:=sh[5];layers:=sh[6];n:=sh[7];
+    q:=heads*e;k:=kv*e;group:=heads/kv;scale:=1/sqrt(f64(e));np:=gk_parameters(sh);nw:=gk_work(sh);base:=item*n;
+    w:=work[item*nw..<item*nw+nw];dw:=dwork[item*nw..<item*nw+nw];g:=grads[item*np..<item*np+np];
+    for t:0..<n {gk_advance(sh,p,w,rope,cast(int)rows[base+t],t);}
+    for i:0..<np {g[i]=0;}for i:0..<nw {dw[i]=0;}
+    // Head: softmax minus the one-hot target, averaged over the n-1 predictions.
+    // The loss is chapter 113's td_loss, from the same shift and sum.
+    fn:=gk_final_norm(sh);loss:=0.0;
+    for t:0..<n-1 {f:=gk_final(sh,t);z:=f+2*d+1;top:=w[z+gk_first(w,z,sh[0])];sum:=0.0;for v:0..<sh[0] {sum+=exp(w[z+v]-top);}
+        for v:0..<sh[0] {dw[z+v]=exp(w[z+v]-top)/sum/f64(n-1);}target:=z+cast(int)rows[base+t+1];dw[target]-=1/f64(n-1);loss+=top+log(sum)-w[target];
+        gk_matvec_back(p,fn+d,sh[0],d,w,f+d,dw,z,g,dw,f+d);gk_norm_back(dw,f+d,w,f,w[f+2*d],p,fn,d,g,dw,f);}
+    for back:0..<layers {l:=layers-1-back;
+        bn1:=gk_norm1(sh,l);bq:=bn1+d;bk:=bq+q*d;bv:=bk+k*d;bo:=bv+k*d;bn2:=bo+d*q;b1:=bn2+d;b2:=b1+hidden*d;
+        keys:=gk_keys(sh,l);values:=gk_values(sh,l);
+        for t:0..<n {o:=gk_slot(sh,l,t);r:=o+2*d;qs:=r+2;cs:=qs+q;m:=cs+q;n2:=m+d;u:=n2+d;a:=u+hidden;
+            next:=gk_final(sh,t);if l+1<layers {next=gk_slot(sh,l+1,t);}
+            for i:0..<d {dw[m+i]+=dw[next+i];}
+            for f:0..<hidden {z:=gk_relu(w[u+f]);s:=0.0;for i:0..<d {g[b2+i*hidden+f]+=dw[next+i]*z*z;s+=p[b2+i*hidden+f]*dw[next+i];}dw[u+f]=2*z*s;}
+            gk_matvec_back(p,b1,hidden,d,w,n2,dw,u,g,dw,n2);gk_norm_back(dw,n2,w,m,w[r+1],p,bn2,d,g,dw,m);
+            gk_matvec_back(p,bo,d,q,w,cs,dw,m,g,dw,cs);
+            for h:0..<heads {gh:=h/group;row:=a+h*n;mean:=0.0;
+                for j:0..<t+1 {dp:=0.0;for x:0..<e {dp+=dw[cs+h*e+x]*w[values+j*k+gh*e+x];dw[values+j*k+gh*e+x]+=w[row+j]*dw[cs+h*e+x];}dw[row+j]=dp;mean+=w[row+j]*dp;}
+                for j:0..<t+1 {ds:=w[row+j]*(dw[row+j]-mean)*scale;for x:0..<e {dw[qs+h*e+x]+=ds*w[keys+j*k+gh*e+x];dw[keys+j*k+gh*e+x]+=ds*w[qs+h*e+x];}}
+            }
+        }
+        for t:0..<n {o:=gk_slot(sh,l,t);n1:=o+d;r:=o+2*d;qs:=r+2;m:=qs+2*q;key:=keys+t*k;value:=values+t*k;
+            gk_rope(dw,qs,heads,e,rope,t,true);gk_rope(dw,key,kv,e,rope,t,true);
+            gk_matvec_back(p,bq,q,d,w,n1,dw,qs,g,dw,n1);gk_matvec_back(p,bk,k,d,w,n1,dw,key,g,dw,n1);gk_matvec_back(p,bv,k,d,w,n1,dw,value,g,dw,n1);
+            for i:0..<d {dw[o+i]+=dw[m+i];}gk_norm_back(dw,n1,w,o,w[r],p,bn1,d,g,dw,o);
+        }
+    }
+    for t:0..<n {o:=gk_slot(sh,0,t);token:=cast(int)rows[base+t];for i:0..<d {g[token*d+i]+=dw[o+i];}}
+    losses[item]=loss/f64(n-1);
+}
+// book:end rows
+
+// book:begin step
+// Kernel 1, one item per parameter: chapter 118's tr_add over the step's
+// micro-batches, in their order: the sum starts at zero and adds each row's
+// gradient divided by the micro-batch count.
+gk_mean :: (item:int,micro:int,n:int,grads:[]f64,total:[]f64) #export_c {
+    total[item]=0;for k:0..<micro {total[item]+=grads[k*n+item]/f64(micro);}
+}
+// Kernel 2, one item: the squared global norm, summed in parameter order as
+// tr_apply sums it.
+gk_squares :: (item:int,n:int,total:[]f64,out:[]f64) #export_c {
+    s:=0.0;for i:0..<n {s+=total[i]*total[i];}out[item]=s;
+}
+// Kernel 3, one item per parameter, launched only when the norm is over the
+// clip: tr_apply's scaling.
+gk_clip :: (item:int,clip:f64,norm:f64,total:[]f64) #export_c {
+    total[item]=total[item]*clip/norm;
+}
+// Kernel 4, one item per parameter: chapter 124's aw_cell at step t, with
+// c1 = 1 - beta1^t and c2 = 1 - beta2^t from the host. The new parameter,
+// moments go to the stage (p, m, v as three spans of n); nothing live changes.
+gk_adamw :: (item:int,n:int,lr:f64,beta1:f64,beta2:f64,eps:f64,decay:f64,c1:f64,c2:f64,p:[]f64,total:[]f64,m:[]f64,v:[]f64,stage:[]f64) #export_c {
+    grad:=total[item];
+    decayed:=p[item]*(1-lr*decay);
+    m2:=beta1*m[item]+(1-beta1)*grad;
+    v2:=beta2*v[item]+(1-beta2)*grad*grad;
+    stage[item]=decayed-(lr/c1)*(m2/(sqrt(v2)/sqrt(c2)+eps));stage[n+item]=m2;stage[2*n+item]=v2;
+}
+GK_MAX :: 1.7976931348623157e308;
+gk_finite :: (x:f64)->bool {return x>=-GK_MAX && x<=GK_MAX;}
+// Kernel 5, one item: what the host needs to admit the staged step. out[0]
+// is 1 when a staged value is not finite (AdamW refuses the step), out[1]
+// is 1 when a staged parameter is outside the bound.
+gk_admit :: (item:int,n:int,bound:f64,stage:[]f64,out:[]f64) #export_c {
+    bad:=0.0;far:=0.0;
+    for i:0..<n {if !gk_finite(stage[i]) || !gk_finite(stage[n+i]) || !gk_finite(stage[2*n+i]) {bad=1;}if !(stage[i]<=bound && stage[i]>=-bound) {far=1;}}
+    out[2*item]=bad;out[2*item+1]=far;
+}
+// Kernel 6, one item per parameter, launched only for an admitted step.
+gk_commit :: (item:int,n:int,stage:[]f64,p:[]f64,m:[]f64,v:[]f64) #export_c {
+    p[item]=stage[item];m[item]=stage[n+item];v[item]=stage[2*n+item];
+}
+// book:end step
+
+// ---- Checks. Their helpers are in psionic/tests/train-kernels-checks.coax.
+#test "both shapes' rows give chapter 113's bits" {
+    x:GkTiny;gk_formula(x.p[..]);gk_tiny(x.p[..],x.w[..],x.dw[..],x.g[..],x.loss[..],2);
+    for r:0..<2 {#assert f64_bits(x.loss[r])==GK_PIN_LOSS[r] && gk_fold(x.g[r*204..<r*204+204])==GK_PIN_GRADS[r];}
+    sh:=GK_ODD;rows:=GK_ODD_ROWS;p:[2160]f64;gk_formula(p[..]);w:[3180]f64;dw:[3180]f64;g:[4320]f64;loss:[2]f64;
+    #assert gk_parameters(sh[..])==2160 && gk_work(sh[..])==1590;
+    gk_run(sh[..],p[..],rows[..],w[..],dw[..],g[..],loss[..],2);
+    for r:0..<2 {#assert f64_bits(loss[r])==GK_PIN_LOSS[2+r] && gk_fold(g[r*2160..<r*2160+2160])==GK_PIN_GRADS[2+r];}
+    a:=[2]f64.[1,2];b:=[2]f64.[2,1];#assert gk_fold(a[..])!=gk_fold(b[..]) && gk_fold(a[0..<0])==0 && gk_fold(a[0..<1])==f64_bits(1.0);
+}
+#test "the softmax shift is the first largest value; relu sends -0 to +0" {
+    x:=[6]f64.[9,1,3,3,2,9];#assert gk_first(x[..],1,4)==1 && gk_first(x[..],1,1)==0 && gk_first(x[..],0,6)==0 && gk_first(x[..],1,5)==4 && gk_first(x[..],4,2)==1;
+    y:=[3]f64.[1,5,2];#assert gk_first(y[..],0,3)==1 && gk_first(y[..],0,2)==1;
+    #assert gk_relu(2)==2 && gk_relu(-1)==0 && f64_bits(gk_relu(-0.0))==0 && f64_bits(gk_relu(0))==0;
+}
+#test "layouts are chapter 113's, by hand" {
+    sh:=GK_TINY;#assert gk_block_size(sh[..])==80 && gk_parameters(sh[..])==204 && gk_slot_size(sh[..])==37 && gk_work(sh[..])==384;
+    #assert gk_norm1(sh[..],1)==100 && gk_final_norm(sh[..])==180 && gk_layer_size(sh[..])==164 && gk_slot(sh[..],1,2)==238 && gk_keys(sh[..],1)==312 && gk_values(sh[..],1)==320 && gk_final(sh[..],3)==370;
+    big:=[8]int.[16,16,2,1,8,16,2,32];#assert gk_parameters(big[..])==3152 && gk_work(big[..])==13984;
+}
+#test "the rope table holds cosines and sines of t * theta^(-2i/E)" {
+    r:[16]f64;gk_rope_table(4,2,r[0..<8]);
+    #assert r[0]==1 && f64_bits(r[1])==0 && r[2]==1 && f64_bits(r[3])==0 && r[4]==cos(1.0) && r[5]==sin(1.0) && r[6]==cos(exp(-log(10000.0)*2.0/4.0)) && r[7]==sin(exp(-log(10000.0)*2.0/4.0));
+    // Forward then back is the identity up to rounding; at t = 0 exactly.
+    v:=[4]f64.[1,2,3,4];gk_rope(v[..],0,1,4,r[0..<8],1,false);#assert abs(v[0]-(cos(1.0)-2*sin(1.0)))<1e-15 && abs(v[1]-(sin(1.0)+2*cos(1.0)))<1e-15;
+    gk_rope(v[..],0,1,4,r[0..<8],1,true);#assert abs(v[0]-1)<1e-15 && abs(v[1]-2)<1e-15 && abs(v[2]-3)<1e-15 && abs(v[3]-4)<1e-15;
+    u:=[4]f64.[1,2,3,4];gk_rope(u[..],0,2,2,r[0..<8],0,true);#assert u[0]==1 && u[1]==2 && u[2]==3 && u[3]==4;
+}
+#test "row 0's loss is the independent definition's, and both rows are independent" {
+    x:GkTiny;gk_formula(x.p[..]);gk_tiny(x.p[..],x.w[..],x.dw[..],x.g[..],x.loss[..],2);#assert abs(x.loss[0]-GK_ORACLE_LOSS)<1e-12;
+    one:GkTiny;gk_formula(one.p[..]);rows:=GK_ROWS;sh:=GK_TINY;rope:[8]f64;gk_rope_table(2,4,rope[..]);
+    // Row 1 alone, in item 0's buffers, gives item 1's loss and gradient.
+    moved:=[4]u8.[rows[4],rows[5],rows[6],rows[7]];gk_rows(0,sh[..],one.p[..],moved[..],rope[..],one.w[..],one.dw[..],one.g[..],one.loss[..]);
+    #assert one.loss[0]==x.loss[1] && x.loss[1]!=x.loss[0];for i:0..<204 {#assert f64_bits(one.g[i])==f64_bits(x.g[204+i]);}
+    // Dirty buffers are cleared: the same row twice gives the same bits.
+    a:=x.g;for i:0..<768 {x.w[i]=7;x.dw[i]=7;}gk_tiny(x.p[..],x.w[..],x.dw[..],x.g[..],x.loss[..],2);for i:0..<408 {#assert f64_bits(a[i])==f64_bits(x.g[i]);}
+}
+#test "gradients match central differences: embedding and first block" {#assert gk_span(0,40)<1e-8 && gk_span(40,100)<1e-8;}
+#test "gradients match central differences: first block's projections and FFN" {#assert gk_span(100,140)<1e-8 && gk_span(140,180)<1e-8;}
+#test "gradients match central differences: second block and head" {#assert gk_span(180,204)<1e-8;}
+#test "every parameter group receives gradient; unused tokens' rows stay zero" {
+    x:GkTiny;gk_formula(x.p[..]);gk_tiny(x.p[..],x.w[..],x.dw[..],x.g[..],x.loss[..],1);
+    starts:=[17]int.[20,24,40,48,56,72,76,88,100,104,120,128,136,152,156,168,180];
+    for k:0..<16 {mass:=0.0;for i:starts[k]..<starts[k+1] {mass+=abs(x.g[i]);}#assert mass>0;}
+    mass:=0.0;for i:180..<204 {mass+=abs(x.g[i]);}#assert mass>0;for i:0..<20 {row:=i/4;#assert (x.g[i]==0)==(row==2 || row==4);}
+}
+#test "the step kernels by hand" {
+    // Two micro-batches of three parameters: (2, -4, 1) and (4, 0, 1), halved and summed.
+    g:=[6]f64.[2,-4,1,4,0,1];t:=[3]f64.[9,9,9];for i:0..<3 {gk_mean(i,2,3,g[..],t[..]);}#assert t[0]==3 && t[1]==-2 && t[2]==1;
+    for i:0..<3 {gk_mean(i,1,3,g[..],t[..]);}#assert t[0]==2 && t[1]==-4 && t[2]==1;
+    // The order is micro-batch 0 first: 0.1/3 + 0.2/3, not 0.2/3 + 0.1/3.
+    h:=[2]f64.[0.1,0.2];one:[1]f64;gk_mean(0,2,1,h[..],one[..]);#assert one[0]==0.1/2+0.2/2;
+    three:=[3]f64.[1e16,1,-1e16];gk_mean(0,3,1,three[..],one[..]);#assert one[0]==1e16/3+1.0/3-1e16/3;
+    s:=[3]f64.[3,4,0];out:=[2]f64.[7,7];gk_squares(0,3,s[..],out[..]);#assert out[0]==25 && out[1]==7;gk_squares(1,2,s[..],out[..]);#assert out[1]==25;
+    gk_squares(0,0,s[..],out[..]);#assert out[0]==0;
+    // Clip a 3-4-5 gradient to 2.5: (1.5, 2).
+    for i:0..<2 {gk_clip(i,2.5,5,s[..]);}#assert s[0]==1.5 && s[1]==2 && s[2]==0;
+    // AdamW at step 1: lr 0.25, beta1 0.5, beta2 0.75, eps 0.5, p = 1, g = 2:
+    // m = 1, v = 1, corrected by c1 = 0.5 and c2 = 0.25: 1 - 0.5 * 1/(2 + 0.5).
+    p:=[2]f64.[1,-3];gr:=[2]f64.[2,0];m:=[2]f64.[0,0.5];v:=[2]f64.[0,4];st:[6]f64;
+    for i:0..<2 {gk_adamw(i,2,0.25,0.5,0.75,0.5,0,0.5,0.25,p[..],gr[..],m[..],v[..],st[..]);}
+    #assert st[0]==1-0.5*(1/2.5) && st[2]==1 && st[4]==1 && p[0]==1 && m[0]==0;
+    // Parameter 1: no gradient, m = 0.25, v = 3: 3 - 0.5*(0.25/(sqrt(3)/0.5 + 0.5)).
+    #assert st[3]==0.25 && st[5]==3 && st[1]==-3-0.5*(0.25/(sqrt(3.0)/0.5+0.5));
+    // Decay 0.5 first shrinks p to 1 - 0.25*0.5 of itself.
+    gk_adamw(0,2,0.25,0.5,0.75,0.5,0.5,0.5,0.25,p[..],gr[..],m[..],v[..],st[..]);#assert st[0]==1*(1-0.25*0.5)-0.5*(1/2.5);
+    // Admission flags and the commit.
+    f:=[4]f64.[7,7,7,7];gk_admit(0,2,3.5,st[..],f[..]);#assert f[0]==0 && f[1]==0 && f[2]==7;gk_admit(0,2,3,st[..],f[..]);#assert f[0]==0 && f[1]==1;
+    gk_admit(1,2,3.5,st[..],f[..]);#assert f[2]==0 && f[3]==0;
+    for at:0..<6 {b:=st;b[at]=1.0/0.0;gk_admit(0,2,1e300,b[..],f[..]);#assert f[0]==1 && f[1]==((ifx at<2 then 1.0 else 0.0));
+        b[at]=-1.0/0.0;gk_admit(0,2,1e300,b[..],f[..]);#assert f[0]==1;b[at]=0.0/0.0;gk_admit(0,2,1e300,b[..],f[..]);#assert f[0]==1 && f[1]==((ifx at<2 then 1.0 else 0.0));}
+    edge:=st;edge[1]=3;gk_admit(0,2,3,edge[..],f[..]);#assert f[1]==0;edge[1]=-3;gk_admit(0,2,3,edge[..],f[..]);#assert f[1]==0;edge[0]=-3.0000001;gk_admit(0,2,3,edge[..],f[..]);#assert f[1]==1;
+    #assert gk_finite(GK_MAX) && gk_finite(-GK_MAX) && !gk_finite(1.0/0.0) && !gk_finite(0.0/0.0);
+    cp:[2]f64;cm:[2]f64;cv:[2]f64;gk_commit(1,2,st[..],cp[..],cm[..],cv[..]);#assert cp[0]==0 && cp[1]==st[1] && cm[1]==st[3] && cv[1]==st[5];
+    // Three parameters: the spans of the stage are n apart.
+    p3:=[3]f64.[1,2,3];g3:=[3]f64.[1,1,1];m3:=[3]f64.[0,0,0];v3:=[3]f64.[0,0,0];s3:[9]f64;
+    for i:0..<3 {gk_adamw(i,3,0.25,0.5,0.75,0.5,0,0.5,0.25,p3[..],g3[..],m3[..],v3[..],s3[..]);}
+    for i:0..<3 {#assert s3[3+i]==0.5 && s3[6+i]==0.25 && s3[i]==p3[i]-0.5*(0.5/(0.5/0.5+0.5));}
+    f3:[2]f64;for at:[3]int.[2,5,8] {b:=s3;b[at]=1.0/0.0;gk_admit(0,3,1e300,b[..],f3[..]);#assert f3[0]==1;}
+    c3:[3]f64;d3:[3]f64;e3:[3]f64;for i:0..<3 {gk_commit(i,3,s3[..],c3[..],d3[..],e3[..]);}for i:0..<3 {#assert c3[i]==s3[i] && d3[i]==s3[3+i] && e3[i]==s3[6+i];}
+}

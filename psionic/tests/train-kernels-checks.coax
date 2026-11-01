@@ -1,0 +1,23 @@
+// Chapter 129: helpers for the checks in psionic/lib/transformer/train-kernels.coax.
+gk_formula :: (p:[]f64) {for i:0..<p.count {p[i]=0.5*sin(0.7*f64(i)+0.3);}}
+// Rows of TD_TINY's length 4: row 0 is chapter 113's tokens 1,3,0,2.
+GK_ROWS :: [8]u8.[1,3,0,2,4,4,1,0];
+// A shape with no two fields alike, and two rows of its length 5.
+GK_ODD :: [8]int.[7,16,4,2,4,5,2,5];
+GK_ODD_ROWS :: [10]u8.[6,1,5,0,3,2,2,4,6,0];
+// Runs gk_rows for items rows of shape sh, with its own rope table.
+gk_run :: (sh:[]int,p:[]f64,rows:[]u8,w:[]f64,dw:[]f64,g:[]f64,loss:[]f64,items:int) {
+    rope:[64]f64;gk_rope_table(sh[4],sh[7],rope[0..<sh[4]*sh[7]]);
+    for i:0..<items {gk_rows(i,sh,p,rows,rope[0..<sh[4]*sh[7]],w,dw,g,loss);}
+}
+GkTiny :: struct {p:[204]f64;w:[768]f64;dw:[768]f64;g:[408]f64;loss:[2]f64;}
+gk_tiny :: (p:[]f64,w:[]f64,dw:[]f64,g:[]f64,loss:[]f64,items:int) {sh:=GK_TINY;rows:=GK_ROWS;gk_run(sh[..],p,rows[..],w,dw,g,loss,items);}
+// The loss of row 0 alone with parameter i moved by h.
+gk_moved :: (p:[]f64,i:int,h:f64)->f64 {keep:=p[i];p[i]=keep+h;w:[768]f64;dw:[768]f64;g:[408]f64;l:[2]f64;gk_tiny(p,w[..],dw[..],g[..],l[..],1);p[i]=keep;return l[0];}
+// Largest scaled gap between the kernel's gradient and a central difference.
+gk_span :: (first:int,last:int)->f64 {
+    x:GkTiny;gk_formula(x.p[..]);gk_tiny(x.p[..],x.w[..],x.dw[..],x.g[..],x.loss[..],1);grads:=x.g;worst:=0.0;h:=0.00001;
+    for i:first..<last {up:=gk_moved(x.p[..],i,h);down:=gk_moved(x.p[..],i,-h);e:=abs(grads[i]-(up-down)/(2*h))/(1+abs(grads[i]));if e>worst {worst=e;}}
+    return worst;
+}
+gk_fold :: (g:[]f64)->u64 {h:u64=0;for x:g {h=((h<<7)|(h>>57))^f64_bits(x);}return h;}

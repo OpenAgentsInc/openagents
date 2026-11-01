@@ -1,0 +1,23 @@
+plan for chapter 115's decoder, 4 rows a step: admitted, 3152 parameters, 13984 work values a row
+  parameters: 25216 bytes
+  first moments: 25216 bytes
+  second moments: 25216 bytes
+  stage (p, m, v): 75648 bytes
+  step gradient: 25216 bytes
+  row gradients: 100864 bytes
+  row work: 447488 bytes
+  row work gradients: 447488 bytes
+  rows: 128 bytes
+  rope table: 2048 bytes
+  row losses: 32 bytes
+  norm and flags: 24 bytes
+  shape: 64 bytes
+  total: 1174648 bytes (hand count 1174648)
+launches a step: gk_rows (4 items), gk_mean (3152), gk_squares (1), gk_clip (3152, only past the clip),
+  gk_adamw (3152), gk_admit (1), gk_commit (3152, only when admitted)
+three steps at the checks' small shape, the device's launches on the CPU:
+  step 1: loss 2.9360807937186078 (chapter 118: 2.9360807937186078)
+  step 2: loss 2.761001189796394 (chapter 118: 2.761001189796394)
+  step 3: loss 2.7893926020018047 (chapter 118: 2.7893926020018047)
+  losses, parameters and moments equal chapter 118's run bit for bit: true
+saved after step 2 (5620 bytes), resumed at revision 2: step 3 loss 2.7893926020018047, weights equal the uninterrupted run: true

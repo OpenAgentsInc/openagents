@@ -1,0 +1,18 @@
+// Chapter 129: helpers for the checks in psionic/lib/transformer/gpu-train.coax.
+// Every buffer of a TT_SMALL run (220 parameters, 600 work values, 8
+// positions of head width 2) with four rows a step.
+GtSmall :: struct {rows:[32]u8;w:[600]f64;dw:[600]f64;g:[220]f64;none:[1]int;rope:[16]f64;p:[220]f64;m:[220]f64;v:[220]f64;stage:[660]f64;total:[220]f64;grads:[880]f64;work:[2400]f64;dwork:[2400]f64;rowloss:[4]f64;scalars:[3]f64;losses:[8]f64;}
+gt_small :: ()->GtSmall {x:GtSmall;gt_rope(TT_SMALL,x.rope[..]);gt_init(TT_SMALL,x.p[..]);return x;}
+// count steps of the device step on the CPU, from run, into x.
+gt_small_run :: (c:TrConfig,f:TtFix,run:TrRun,count:int,x:GtSmall)->GtSmallRun {
+    y:=x;g:=f;st:=gt_run_cpu(TT_SMALL,c,g.docs[..],g.tokens[0..<g.n],run,count,y.rows[..],y.rope[..],y.p[..],y.m[..],y.v[..],y.stage[..],y.total[..],y.grads[..],y.work[..],y.dwork[..],y.rowloss[..],y.scalars[..],y.losses[0..<count]);
+    return GtSmallRun.{step=st,x=y};
+}
+GtSmallRun :: struct {step:TrStep;x:GtSmall;}
+// Chapter 118's run of the same configuration, from the same start.
+gt_small_reference :: (c:TrConfig,f:TtFix,run:TrRun,count:int,x:GtSmall)->GtSmallRun {
+    y:=x;g:=f;st:=gt_reference(TT_SMALL,c,g.docs[..],g.tokens[0..<g.n],y.none[0..<0],run,count,y.rows[..],y.w[..],y.dw[..],y.g[..],y.p[..],y.m[..],y.v[..],y.total[..],y.stage[..],y.losses[0..<count]);
+    return GtSmallRun.{step=st,x=y};
+}
+gt_start :: (c:TrConfig,f:TtFix,n:int)->TrRun {g:=f;none:[1]int;s:=gt_begin(c,n,g.docs[..],g.tokens[0..<g.n],none[0..<0]);#assert s.status==TrStatus.ok;return s.run;}
+gt_bits :: (a:[]f64,b:[]f64)->bool {return tr_same(a,b);}

@@ -1,0 +1,33 @@
+#import "Basic";
+#load "../lib/transformer/gpu-train.coax";
+
+// book:begin example
+// Chapter 129: the device plan for chapter 115's decoder, the step's
+// launches, and three steps of those launches run on the CPU, against
+// chapter 118's own run and through a checkpoint. No GPU is needed: the
+// device harness (psionic/tests/check_gpu_train.sh) runs the same kernels
+// on one.
+main :: () {
+    c:=gt_config(TT_SHAPE,4,400);f:=tt_fix();p:=gt_plan(TT_SHAPE,c,f.docs[..],f.tokens[0..<f.n],16*1073741824);
+    print("plan for chapter 115's decoder, 4 rows a step: %, % parameters, % work values a row\n",gt_status(p.status),p.parameters,p.work);
+    for k:0..<GT_BUFFERS {print("  %: % bytes\n",GT_NAMES[k],p.sizes[k]);}
+    print("  total: % bytes (hand count %)\n",p.bytes,GT_HAND_BYTES);
+    print("launches a step: gk_rows (4 items), gk_mean (3152), gk_squares (1), gk_clip (3152, only past the clip),\n");
+    print("  gk_adamw (3152), gk_admit (1), gk_commit (3152, only when admitted)\n");
+
+    s:=gt_config(TT_SMALL,4,3);run:=gt_start(s,f,220);x:=gt_small();
+    a:=gt_small_run(s,f,run,3,x);b:=gt_small_reference(s,f,run,3,x);
+    print("three steps at the checks' small shape, the device's launches on the CPU:\n");
+    for k:0..<3 {print("  step %: loss % (chapter 118: %)\n",k+1,a.x.losses[k],b.x.losses[k]);}
+    same:=gt_bits(a.x.losses[0..<3],b.x.losses[0..<3]) && gt_bits(a.x.p[..],b.x.p[..]) && gt_bits(a.x.m[..],b.x.m[..]) && gt_bits(a.x.v[..],b.x.v[..]);
+    print("  losses, parameters and moments equal chapter 118's run bit for bit: %\n",same);
+
+    // Saved after two steps, resumed into fresh buffers, one step more.
+    two:=gt_small_run(s,f,run,2,x);ids:=gt_ids(TT_SMALL,s,f.docs[..],f.tokens[0..<f.n]);bytes:[5620]u8;pointer:[80]u8;
+    saved:=gt_save(ids,two.step.run,two.x.p[..],two.x.m[..],two.x.v[..],bytes[..],pointer[..]);
+    y:=gt_small();back:=gt_resume(s,ids,pointer[..],bytes[..],f.docs[..],f.tokens[0..<f.n],y.p[..],y.m[..],y.v[..],y.none[0..<0]);
+    rest:=gt_small_run(s,f,back.run,1,y);
+    print("saved after step 2 (% bytes), resumed at revision %: step 3 loss %, weights equal the uninterrupted run: %\n",
+        gt_size(220),back.run.revision,rest.x.losses[0],gt_bits(rest.x.p[..],a.x.p[..]) && gt_bits(rest.x.v[..],a.x.v[..]) && saved==CkStatus.ok);
+}
+// book:end example

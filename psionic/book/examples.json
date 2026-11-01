@@ -1982,6 +1982,28 @@
         "release"
       ],
       "timeout": 180
+    },
+    {
+      "source": "psionic/examples/gpu-train.coax",
+      "chapter": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
+      "stdout": "psionic/fixtures/gpu-train.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
+      "source": "psionic/examples/gpu-train-refuse.coax",
+      "chapter": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
+      "stdout": "psionic/fixtures/gpu-train-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }
