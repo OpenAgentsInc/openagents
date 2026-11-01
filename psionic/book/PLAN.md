@@ -496,7 +496,7 @@ single-device trainer and the selected backend.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [142. Pixels, convolutions and patches](ch142-pixels-convolutions-and-patches.md) — design draft | Exact resize/channel/range conventions, convolution, sampling and patch projection with tiny independent fixtures. |
+| [142. Pixels, convolutions and patches](ch142-pixels-convolutions-and-patches.md) — partly implemented: bounded CPU profile psionic-pixels-v1 | Exact resize/channel/range conventions, convolution, sampling and patch projection with tiny independent fixtures. Admission, profiles, nearest and bilinear resizing, convolution forward (direct and im2col) and gradients, patch projection and position-table resizing run; bicubic resizing, registry entries and chapter 38 lowering remain. |
 | [143. Elephant and Mammoth see](ch143-elephant-and-mammoth-see.md) — design draft | The pinned Qwen3.5 vision encoder and projector, exact image preprocessing, image token layout and multimodal rotary positions; image-bearing decision requests with their own reference captures. |
 | [144. See with C-RADIO](ch144-see-with-c-radio.md) — design draft | C-RADIOv3-B feature outputs, visual-asset retrieval and a small Psionic-trained head over frozen features. |
 | [145. Compress and reconstruct an image](ch145-compress-and-reconstruct-an-image.md) — design draft | The older Cosmos-0.1-Tokenizer-CI8x8, including wavelets, normalization and decoder; inspect latent/reconstruction numerics. |

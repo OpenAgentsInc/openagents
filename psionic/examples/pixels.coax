@@ -1,0 +1,79 @@
+// Chapter 142: an image becomes model input, a convolution runs two ways and
+// its gradients meet central differences, patches become tokens, and a
+// position table moves to a new grid.
+#import "Basic";
+#load "../lib/pixels.coax";
+
+show :: (label:string,v:[]f32) {print("%",label);for x:v {print(" %",x);}print("\n");}
+
+// book:begin example
+main :: () {
+    // A 2 by 2 RGB image to 4 by 4 under a mean-0.5, spread-0.5 profile.
+    pixels:=px_tiny();work:[105]f32;out:[108]f32;image:=PxImage.{width=2,height=2};
+    r:=px_preprocess(image,pixels[..],px_half(),work[0..<12],out[0..<48],false);
+    print("2x2 to 4x4, bilinear: %, % values\n",r.status,r.written);
+    for y:0..<4 {show("  red  ",out[y*4..<y*4+4]);}
+    show("  green row 0",out[16..<20]);show("  blue row 3 ",out[44..<48]);
+    near:=px_half();near.filter=PxFilter.nearest;r=px_preprocess(image,pixels[..],near,work[0..<12],out[0..<48],false);
+    show("  red row 1, nearest",out[4..<8]);
+    // A 7 by 5 image to 9 by 4 under ImageNet's profile, against the binary64 reference.
+    big:[105]u8;for i:0..<105 {big[i]=cast(u8)((i*97+13)%256);}
+    seven:=PxImage.{width=7,height=5};net:=px_imagenet();net.height=4;net.width=9;worst:=0.0;
+    r=px_preprocess(seven,big[..],net,work[..],out[..],false);
+    for i:0..<108 {d:=abs(f64(out[i])-px_reference(seven,big[..],net,i/36,(i/9)%4,i%9));if d>worst {worst=d;}}
+    print("7x5 to 9x4, ImageNet profile: %, largest difference from the reference %\n",r.status,worst);
+
+    // The 3 by 3 image 1..9 under a 3 by 3 kernel of ones, stride 2, padding 1, bias 0.5.
+    x:=[9]f32.[1,2,3,4,5,6,7,8,9];ones:=[9]f32.[1,1,1,1,1,1,1,1,1];bias:=[1]f32.[0.5];y:[4]f32;s:[4]f32;
+    c:=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
+    r=px_conv_direct(c,x[..],ones[..],bias[..],y[..],s[..],false);show("box sum, stride 2, padding 1:",y[..]);
+    c=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=2,kernel_w=2,dilation_h=2,dilation_w=2};
+    r=px_conv_direct(c,x[..],ones[0..<4],bias[0..<0],y[..],s[..],false);show("2x2 ones, dilation 2:",y[0..<1]);
+
+    // Every stride, padding, dilation and group setting over a 2x2x4x4 input.
+    same:=0;exact:=0;
+    for k:0..<32 {
+        stride:=1+k%2;wide:=(k/2)%2;pad:=(k/4)%2;dilation:=1+(k/8)%2;groups:=1+k/16;
+        cv:=PxConv.{batch=2,channels=2,height=4,width=4,filters=2,kernel_h=2,kernel_w=3,stride_h=stride,stride_w=stride+wide*(3-2*stride),
+            pad_h=pad,pad_w=pad,dilation_h=dilation,groups=groups};
+        p:=px_conv_plan(cv);xs:[64]f32;w:[24]f32;b:[2]f32;px_fill(xs[..],5);px_fill(w[0..<p.w],3);px_fill(b[..],7);
+        d:[80]f32;sd:[80]f32;m:[80]f32;cols:[640]f32;
+        r=px_conv_direct(cv,xs[..],w[0..<p.w],b[..],d[..],sd[..],false);r=px_conv_im2col(cv,xs[..],w[0..<p.w],b[..],cols[0..<p.scratch],m[..],false);
+        if px_same(d[0..<p.y],m[0..<p.y]) {same+=1;}
+        dy:[80]f32;px_fill(dy[0..<p.y],2);dx:[64]f32;dw:[24]f32;db:[2]f32;g:[90]f32;
+        r=px_conv_backward(cv,xs[..],w[0..<p.w],dy[0..<p.y],dx[..],dw[..],db[..],g[..],false);
+        agree:=true;
+        for i:0..<64 {
+            v:=xs[i];xs[i]=v+0.25;up:=px_loss(cv,xs[..],w[0..<p.w],b[..],dy[0..<p.y],d[..],sd[..]);
+            xs[i]=v-0.25;down:=px_loss(cv,xs[..],w[0..<p.w],b[..],dy[0..<p.y],d[..],sd[..]);xs[i]=v;
+            if (up-down)/0.5!=f64(dx[i]) {agree=false;}
+        }
+        for i:0..<p.w {
+            v:=w[i];w[i]=v+0.25;up:=px_loss(cv,xs[..],w[0..<p.w],b[..],dy[0..<p.y],d[..],sd[..]);
+            w[i]=v-0.25;down:=px_loss(cv,xs[..],w[0..<p.w],b[..],dy[0..<p.y],d[..],sd[..]);w[i]=v;
+            if (up-down)/0.5!=f64(dw[i]) {agree=false;}
+        }
+        if agree {exact+=1;}
+    }
+    print("32 settings: direct equals im2col on % of them; central differences equal the gradients on % of them\n",same,exact);
+
+    // Values that are not binary fractions: the two paths round in different places.
+    c=PxConv.{channels=3,height=6,width=5,filters=2,kernel_h=3,kernel_w=3,stride_h=2,pad_h=1,pad_w=1};
+    xs:[90]f32;ws:[54]f32;bs:=[2]f32.[0.1,-0.3];for i:0..<90 {xs[i]=f32(i%13)/7-0.9;}for i:0..<54 {ws[i]=f32(i%11)/9-0.55;}
+    d:[30]f32;sd:[30]f32;m:[30]f32;cols:[1000]f32;
+    r=px_conv_direct(c,xs[..],ws[..],bs[..],d[..],sd[..],false);r=px_conv_im2col(c,xs[..],ws[..],bs[..],cols[..],m[..],false);
+    differ:=0;gap:=0.0;for i:0..<30 {if d[i]!=m[i] {differ+=1;}e:=abs(f64(d[i])-f64(m[i]));if e>gap {gap=e;}}
+    print("sevenths and ninths: % of 30 outputs differ, by at most %\n",differ,gap);
+
+    // Two 2 by 2 patches of a 2 by 4 image; weights pick the top-left pixel and sum the patch.
+    q:=PxPatch.{channels=1,height=2,width=4,patch=2,dim=2};img:=[8]f32.[1,2,3,4,5,6,7,8];pw:=[8]f32.[1,0,0,0,1,1,1,1];pb:=[2]f32.[0,0.5];
+    tokens:[8]f32;n:=px_patchify(q,img[..],tokens[..]);show("patches as rows:",tokens[0..<n]);
+    embed:[4]f32;pwork:[24]f32;r=px_patch_embed(q,img[..],pw[..],pb[..],pwork[..],embed[..],false);show("projected tokens:",embed[..]);
+    cp:=PxConv.{channels=1,height=2,width=4,filters=2,kernel_h=2,kernel_w=2,stride_h=2,stride_w=2};
+    r=px_conv_direct(cp,img[..],pw[..],pb[..],y[..],s[..],false);show("stride-2 convolution, (filter, column):",y[..]);
+
+    // A 2 by 2 position table, one feature, stretched to 4 by 4.
+    table:=[4]f32.[0,1,1,0];grid:[16]f32;r=px_positions(2,2,1,table[..],4,4,grid[..],false);
+    for t:0..<4 {show("  positions",grid[t*4..<t*4+4]);}
+}
+// book:end example

@@ -1,0 +1,817 @@
+// Chapter 142: pixels, convolutions and patches. An 8-bit RGB image becomes a
+// normalized channel-major tensor under a named preprocessing profile; 2-D
+// convolution runs with stride, padding, dilation and groups, directly and as
+// image-to-columns plus chapter 4's matrix product; its gradients are direct
+// sums; a vision transformer's patch projection and a learned position table
+// resized to a new grid reuse chapter 4's product and chapter 5's resize.
+// Profile psionic-pixels-v1: f32 storage, binary64 compensated sums
+// (chapter 4's accumulator), one rounding to f32 per stored value.
+#load "ops.coax";
+#load "tensor-ops.coax";
+#authority;
+
+// book:begin types
+PxStatus :: enum u8 {ok;shape;channels;depth;limit;parameter;capacity;alias;number;}
+PxOrder :: enum u8 {rgb;bgr;}
+PxFilter :: enum u8 {nearest;bilinear;}
+// Pixels arrive row by row, each pixel's channels together (height, width,
+// channel), one byte per channel, in the stated channel order.
+PxImage :: struct {width:int;height:int;channels:int=3;depth:int=8;order:PxOrder;}
+// What a model expects: channel order, the factor that maps a byte to its
+// range, per-channel mean and standard deviation, and the resize rule.
+PxProfile :: struct {order:PxOrder;scale:f64;mean:[3]f64;std:[3]f64;height:int;width:int;filter:PxFilter;}
+PxResult :: struct {status:PxStatus;written:int;}
+// Input (batch, channels, height, width); weights (filters, channels/groups,
+// kernel_h, kernel_w); output (batch, filters, out_h, out_w).
+PxConv :: struct {batch:int=1;channels:int;height:int;width:int;filters:int;kernel_h:int;kernel_w:int;
+    stride_h:int=1;stride_w:int=1;pad_h:int;pad_w:int;dilation_h:int=1;dilation_w:int=1;groups:int=1;}
+PxConvPlan :: struct {status:PxStatus;out_h:int;out_w:int;x:int;w:int;y:int;patch:int;columns:int;work:int;scratch:int;}
+// Input (batch, channels, height, width); weights (dim, channels, patch,
+// patch), the layout of the equivalent convolution; output (batch, tokens, dim).
+PxPatch :: struct {batch:int=1;channels:int;height:int;width:int;patch:int;dim:int;}
+PxPatchPlan :: struct {status:PxStatus;grid_h:int;grid_w:int;tokens:int;features:int;x:int;w:int;out:int;scratch:int;}
+// book:end types
+
+PX_SIDE_MAX :: 512;
+PX_EXTENT_MAX :: 4096;
+PX_ELEMENTS_MAX :: 1048576;
+PX_WORK_MAX :: 16777216;
+PX_MEAN_MAX :: 256.0;
+PX_STD_MIN :: 0.0009765625;
+
+// Checks precede the implementation. Expected values are derived in chapter 142.
+px_half :: ()->PxProfile {
+    return PxProfile.{scale=1.0/255,mean=[3]f64.[0.5,0.5,0.5],std=[3]f64.[0.5,0.5,0.5],height=4,width=4,filter=PxFilter.bilinear};
+}
+// A 2 by 2 image: red 0 255 / 255 0, green 51 everywhere, blue 0 0 / 0 255.
+px_tiny :: ()->[12]u8 {return [12]u8.[0,51,0, 255,51,0, 255,51,0, 0,51,255];}
+// Multiples of 1/16 in [-1/2, 1/2]: every product and sum below is exact in f32.
+px_fill :: (x:[]f32,seed:int) {for i:0..<x.count {x[i]=f32((i*seed+11)%17-8)/16;}}
+px_same :: (a:[]f32,b:[]f32)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+
+#test "the fixtures themselves" {
+    x:[4]f32;px_fill(x[..],5);#assert x[0]==0.1875 && x[1]==0.5 && x[2]==-0.25 && x[3]==0.0625;
+    y:=x;#assert px_same(x[..],y[..]) && !px_same(x[0..<3],y[..]);y[3]=0;#assert !px_same(x[..],y[..]);y=x;y[0]=1;#assert !px_same(x[..],y[..]);
+    n:=px_imagenet();#assert n.height==224 && n.width==224 && n.order==PxOrder.rgb && n.filter==PxFilter.bilinear;
+}
+#test "counts stop at their bounds" {
+    #assert px_elements(1048576,1,1,1)==1048576 && px_elements(1048577,1,1,1)==-1 && px_elements(1,1,1024,1025)==-1;
+    #assert px_elements(2,3,5,7)==210 && px_elements(1,1,1,1)==1;
+    #assert px_work(16777216,1,1,1)==16777216 && px_work(16777217,1,1,1)==-1 && px_work(1,4096,4096,2)==-1;
+}
+#test "image admission: sides, channels, depth" {
+    #assert px_image_status(PxImage.{width=1,height=1})==PxStatus.ok;
+    #assert px_image_status(PxImage.{width=0,height=1})==PxStatus.shape && px_image_status(PxImage.{width=1,height=0})==PxStatus.shape;
+    #assert px_image_status(PxImage.{width=512,height=512})==PxStatus.ok;
+    #assert px_image_status(PxImage.{width=513,height=1})==PxStatus.limit && px_image_status(PxImage.{width=1,height=513})==PxStatus.limit;
+    #assert px_image_status(PxImage.{width=2,height=2,channels=4})==PxStatus.channels && px_image_status(PxImage.{width=2,height=2,channels=1})==PxStatus.channels;
+    #assert px_image_status(PxImage.{width=2,height=2,depth=16})==PxStatus.depth;
+    #assert px_image_status(PxImage.{width=0,height=2,channels=4})==PxStatus.shape;
+}
+#test "profiles: sizes, scale, mean and spread" {
+    p:=px_half();#assert px_profile_status(p)==PxStatus.ok && px_profile_status(px_imagenet())==PxStatus.ok;
+    p.width=1;p.height=1;#assert px_profile_status(p)==PxStatus.ok;p.width=512;#assert px_profile_status(p)==PxStatus.ok;
+    p.height=0;#assert px_profile_status(p)==PxStatus.parameter;p.height=512;#assert px_profile_status(p)==PxStatus.ok;
+    p.height=513;#assert px_profile_status(p)==PxStatus.limit;
+    p=px_half();p.width=0;#assert px_profile_status(p)==PxStatus.parameter;p.width=513;#assert px_profile_status(p)==PxStatus.limit;
+    p=px_half();p.scale=0;#assert px_profile_status(p)==PxStatus.parameter;
+    p.scale=1;#assert px_profile_status(p)==PxStatus.ok;p.scale=1.0000000000000002;#assert px_profile_status(p)==PxStatus.parameter;
+    p.scale=0.0/0.0;#assert px_profile_status(p)==PxStatus.parameter;
+    for c:0..<3 {
+        p=px_half();p.mean[c]=256;#assert px_profile_status(p)==PxStatus.ok;p.mean[c]=-256;#assert px_profile_status(p)==PxStatus.ok;
+        p.mean[c]=256.00000000000006;#assert px_profile_status(p)==PxStatus.parameter;
+        p.mean[c]=0.0/0.0;#assert px_profile_status(p)==PxStatus.parameter;
+        p=px_half();p.std[c]=PX_STD_MIN;#assert px_profile_status(p)==PxStatus.ok;
+        p.std[c]=0.0009765624999999999;#assert px_profile_status(p)==PxStatus.parameter;
+        p.std[c]=256;#assert px_profile_status(p)==PxStatus.ok;p.std[c]=256.00000000000006;#assert px_profile_status(p)==PxStatus.parameter;
+        p.std[c]=0.0/0.0;#assert px_profile_status(p)==PxStatus.parameter;
+    }
+}
+#test "the 2 by 2 image, resized to 4 by 4 and normalized, by hand" {
+    pixels:=px_tiny();work:[12]f32;out:[49]f32;
+    out[48]=-7;image:=PxImage.{width=2,height=2};
+    r:=px_preprocess(image,pixels[..],px_half(),work[..],out[..],false);
+    #assert r.status==PxStatus.ok && r.written==48 && out[48]==-7;
+    // Red: rows read source rows 0, 0.25, 0.75, 1 and columns the same.
+    red:=[16]f32.[-1,-0.5,0.5,1, -0.5,-0.25,0.25,0.5, 0.5,0.25,-0.25,-0.5, 1,0.5,-0.5,-1];
+    #assert px_same(out[0..<16],red[..]);
+    // Green: 51/255 = 0.2, minus 0.5, over 0.5, rounded once to f32.
+    for i:16..<32 {#assert out[i]==-0.6;}
+    // Blue: 0 except the bottom-right pixel.
+    #assert out[32]==-1 && out[37]==-0.875 && out[42]==0.125 && out[43]==0.5 && out[47]==1;
+    // The same pixels declared BGR swap red and blue.
+    image.order=PxOrder.bgr;#assert px_preprocess(image,pixels[..],px_half(),work[..],out[..],false).status==PxStatus.ok;
+    #assert out[0]==-1 && out[15]==1 && out[47]==-1 && out[32]==-1 && out[35]==1;
+    // Nearest: output row y reads source row floor(y * 2 / 4).
+    p:=px_half();p.filter=PxFilter.nearest;image.order=PxOrder.rgb;
+    #assert px_preprocess(image,pixels[..],p,work[..],out[..],false).status==PxStatus.ok;
+    near:=[16]f32.[-1,-1,1,1, -1,-1,1,1, 1,1,-1,-1, 1,1,-1,-1];#assert px_same(out[0..<16],near[..]);
+}
+#test "preprocessing refuses before it writes" {
+    pixels:=px_tiny();work:[12]f32;out:[48]f32;out[0]=-7;image:=PxImage.{width=2,height=2};p:=px_half();
+    #assert px_preprocess_work(image,p)==12;
+    #assert px_preprocess(image,pixels[0..<11],p,work[..],out[..],false).status==PxStatus.shape;
+    big:[13]u8;#assert px_preprocess(image,big[..],p,work[..],out[..],false).status==PxStatus.shape;
+    #assert px_preprocess(image,pixels[..],p,work[0..<11],out[..],false).status==PxStatus.capacity;
+    #assert px_preprocess(image,pixels[..],p,work[..],out[0..<47],false).status==PxStatus.capacity;
+    #assert px_preprocess(image,pixels[..],p,work[..],out[..],true).status==PxStatus.alias;
+    bad:=image;bad.channels=4;#assert px_preprocess(bad,pixels[..],p,work[..],out[..],false).status==PxStatus.channels;
+    bad=image;bad.depth=16;#assert px_preprocess(bad,pixels[..],p,work[..],out[..],false).status==PxStatus.depth;
+    bad=image;bad.width=0;#assert px_preprocess(bad,pixels[..],p,work[..],out[..],false).status==PxStatus.shape;
+    q:=p;q.std[1]=0;#assert px_preprocess(image,pixels[..],q,work[..],out[..],false).status==PxStatus.parameter;
+    #assert out[0]==-7 && out[1]==0 && out[47]==0;
+}
+#test "preprocessing agrees with a direct floating-point reference" {
+    // A 7 by 5 image to 4 by 9 and 9 by 3, both filters, both orders, ImageNet's profile.
+    pixels:[105]u8;for i:0..<105 {pixels[i]=cast(u8)((i*97+13)%256);}
+    worst:=0.0;
+    for k:0..<8 {
+        image:=PxImage.{width=7,height=5};p:=px_imagenet();p.height=4;p.width=9;
+        if k%2==1 {p.height=9;p.width=3;}
+        if (k/2)%2==1 {p.filter=PxFilter.nearest;}
+        if k/4==1 {image.order=PxOrder.bgr;}
+        work:[105]f32;out:[108]f32;
+        #assert px_preprocess(image,pixels[..],p,work[0..<px_preprocess_work(image,p)],out[..],false).status==PxStatus.ok;
+        for c:0..<3 {for y:0..<p.height {for x:0..<p.width {
+            d:=abs(f64(out[(c*p.height+y)*p.width+x])-px_reference(image,pixels[..],p,c,y,x));if d>worst {worst=d;}
+        }}}
+    }
+    #assert worst<=0.000002;
+}
+#test "preprocessing resizes exactly as chapter 5's operators do" {
+    pixels:[105]u8;for i:0..<105 {pixels[i]=cast(u8)((i*89+7)%256);}
+    for k:0..<4 {
+        image:=PxImage.{width=7,height=5};p:=px_half();p.height=9;p.width=3;
+        if k%2==1 {p.height=2;p.width=11;}
+        if k/2==1 {p.filter=PxFilter.nearest;}
+        work:[105]f32;out:[81]f32;m:=3*p.height*p.width;
+        #assert px_preprocess(image,pixels[..],p,work[..],out[0..<m],false).status==PxStatus.ok;
+        owners:=[2]TvStorage.[tv_owner(1,1,105).storage,tv_owner(2,1,0).storage];
+        views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=4,dims=[4]int.[1,3,5,7]},false).view,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+        op:=ToOp.bilinear2d;if k/2==1 {op=ToOp.nearest2d;}
+        resized:[81]f32;stage:[81]f32;none:[1]f32;idx:[1]int;aux:[1]int;
+        r:=to_forward_checked(ToRequest.{op=op,height=p.height,width=p.width},owners[..],views[..],work[..],none[0..<0],idx[0..<0],
+            resized[0..<m],stage[0..<m],aux[0..<0],aux[0..<0],false);
+        #assert r.status==ToStatus.ok && r.written==m;
+        for i:0..<m {#assert out[i]==f32((f64(resized[i])-0.5)/0.5);}
+    }
+}
+#test "convolution plans: output sizes, counts and work" {
+    p:=px_conv_plan(PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1});
+    #assert p.status==PxStatus.ok && p.out_h==2 && p.out_w==2 && p.x==9 && p.w==9 && p.y==4 && p.patch==9 && p.columns==4 && p.work==36;
+    // im2col scratch: columns 9 by 4, product 1 by 4, chapter 4's staging 1 by 4.
+    #assert p.scratch==44;
+    c:=PxConv.{batch=2,channels=4,height=5,width=6,filters=6,kernel_h=2,kernel_w=3,dilation_h=2,dilation_w=1,groups=2,pad_w=2};
+    p=px_conv_plan(c);
+    // Window 3 by 3 (dilated); 5 - 3 + 1 = 3 rows; 6 + 4 - 3 + 1 = 8 columns.
+    #assert p.status==PxStatus.ok && p.out_h==3 && p.out_w==8 && p.x==240 && p.w==72 && p.y==288 && p.patch==12 && p.columns==48;
+    #assert p.work==288*12 && p.scratch==2*12*48+6*48+3*48;
+    c.stride_h=2;c.stride_w=3;p=px_conv_plan(c);#assert p.out_h==2 && p.out_w==3;
+}
+#test "convolution plans refuse each bad field alone" {
+    c:=PxConv.{channels=2,height=4,width=4,filters=2,kernel_h=3,kernel_w=3};#assert px_conv_plan(c).status==PxStatus.ok;
+    for f:0..<7 {
+        b:=c;if f==0 {b.batch=0;}if f==1 {b.channels=0;}if f==2 {b.height=0;}if f==3 {b.width=0;}if f==4 {b.filters=0;}if f==5 {b.kernel_h=0;}if f==6 {b.kernel_w=0;}
+        #assert px_conv_plan(b).status==PxStatus.shape;
+        b=c;if f==0 {b.batch=4097;}if f==1 {b.channels=4097;}if f==2 {b.height=4097;}if f==3 {b.width=4097;}if f==4 {b.filters=4097;}if f==5 {b.kernel_h=4097;}if f==6 {b.kernel_w=4097;}
+        #assert px_conv_plan(b).status==PxStatus.limit;
+    }
+    edge:=PxConv.{channels=1,height=1,width=4096,filters=1,kernel_h=1,kernel_w=1};#assert px_conv_plan(edge).status==PxStatus.ok;
+    for f:0..<5 {
+        b:=c;if f==0 {b.stride_h=0;}if f==1 {b.stride_w=0;}if f==2 {b.dilation_h=0;}if f==3 {b.dilation_w=0;}if f==4 {b.groups=0;}
+        #assert px_conv_plan(b).status==PxStatus.parameter;
+        b=c;if f==0 {b.stride_h=4097;}if f==1 {b.stride_w=4097;}if f==2 {b.dilation_h=4097;}if f==3 {b.dilation_w=4097;}if f==4 {b.groups=4097;}
+        #assert px_conv_plan(b).status==PxStatus.parameter;
+    }
+    b:=c;b.stride_h=4096;b.stride_w=4096;#assert px_conv_plan(b).status==PxStatus.ok;
+    b=c;b.pad_h=-1;#assert px_conv_plan(b).status==PxStatus.parameter;b=c;b.pad_w=-1;#assert px_conv_plan(b).status==PxStatus.parameter;
+    // Padding up to one less than the window, so every window touches the image.
+    b=c;b.pad_h=2;b.pad_w=2;#assert px_conv_plan(b).status==PxStatus.ok;
+    b.pad_h=3;#assert px_conv_plan(b).status==PxStatus.parameter;b.pad_h=2;b.pad_w=3;#assert px_conv_plan(b).status==PxStatus.parameter;
+    b=c;b.dilation_h=2;b.pad_h=4;#assert px_conv_plan(b).status==PxStatus.ok;b.pad_h=5;#assert px_conv_plan(b).status==PxStatus.parameter;
+    b=c;b.dilation_w=2;b.pad_w=4;#assert px_conv_plan(b).status==PxStatus.ok;b.pad_w=5;#assert px_conv_plan(b).status==PxStatus.parameter;
+    // Groups must divide both channel counts.
+    b=c;b.groups=2;#assert px_conv_plan(b).status==PxStatus.ok;
+    b.channels=3;#assert px_conv_plan(b).status==PxStatus.parameter;b.channels=2;b.filters=3;#assert px_conv_plan(b).status==PxStatus.parameter;
+    // A window larger than the padded image has no output.
+    b=c;b.kernel_h=5;#assert px_conv_plan(b).status==PxStatus.shape;b.pad_h=1;#assert px_conv_plan(b).status==PxStatus.ok;
+    b=c;b.kernel_w=5;#assert px_conv_plan(b).status==PxStatus.shape;b.pad_w=1;#assert px_conv_plan(b).status==PxStatus.ok;
+    b=c;b.dilation_h=2;#assert px_conv_plan(b).status==PxStatus.shape;b=c;b.dilation_w=2;#assert px_conv_plan(b).status==PxStatus.shape;
+    b=c;b.height=2;b.kernel_h=5;b.pad_h=1;#assert px_conv_plan(b).status==PxStatus.shape;b.pad_h=2;#assert px_conv_plan(b).status==PxStatus.ok;
+    b=c;b.width=2;b.kernel_w=5;b.pad_w=1;#assert px_conv_plan(b).status==PxStatus.shape;b.pad_w=2;#assert px_conv_plan(b).status==PxStatus.ok;
+    // Element and work bounds: 2^20 values per tensor, 2^24 multiply-adds.
+    b=PxConv.{channels=1,height=1024,width=1024,filters=1,kernel_h=1,kernel_w=1};#assert px_conv_plan(b).status==PxStatus.ok;
+    b.channels=2;#assert px_conv_plan(b).status==PxStatus.limit;
+    b=PxConv.{channels=1,height=1,width=1,filters=1,kernel_h=1024,kernel_w=1024,stride_h=1024,stride_w=1024,pad_h=1023,pad_w=1023};
+    #assert px_conv_plan(b).status==PxStatus.ok && px_conv_plan(b).w==1048576 && px_conv_plan(b).y==1;
+    b.channels=2;#assert px_conv_plan(b).status==PxStatus.limit;
+    b=PxConv.{channels=1,height=1,width=1024,filters=1024,kernel_h=1,kernel_w=1};#assert px_conv_plan(b).status==PxStatus.ok;
+    b.width=1025;#assert px_conv_plan(b).status==PxStatus.limit;
+    // Padding grows the output: a 32 by 32 kernel over one padded pixel has 32 by 32 outputs.
+    b=PxConv.{channels=16,height=1,width=1,filters=1,kernel_h=32,kernel_w=32,pad_h=31,pad_w=31};#assert px_conv_plan(b).status==PxStatus.ok && px_conv_plan(b).work==PX_WORK_MAX;
+    b.channels=17;#assert px_conv_plan(b).status==PxStatus.limit;
+    // im2col needs its own columns: 1024 channels of a 1024-wide row is 2^20 columns plus product rows.
+    b=PxConv.{channels=1024,height=1,width=1024,filters=1,kernel_h=1,kernel_w=1};#assert px_conv_plan(b).status==PxStatus.ok && px_conv_plan(b).scratch==-1;
+    b.channels=1022;#assert px_conv_plan(b).scratch==1048576;
+}
+#test "3 by 3 convolutions by hand" {
+    x:=[9]f32.[1,2,3,4,5,6,7,8,9];ones:=[9]f32.[1,1,1,1,1,1,1,1,1];bias:=[1]f32.[0.5];y:[5]f32;s:[5]f32;
+    // Stride 2, padding 1: each output sums the 2 by 2 block its window covers.
+    c:=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1};y[4]=-7;
+    r:=px_conv_direct(c,x[..],ones[..],bias[..],y[..],s[..],false);
+    #assert r.status==PxStatus.ok && r.written==4 && y[0]==12.5 && y[1]==16.5 && y[2]==24.5 && y[3]==28.5 && y[4]==-7;
+    // Not flipped: a kernel with one 1 to the right of centre reads x[1][2].
+    right:=[9]f32.[0,0,0,0,0,1,0,0,0];c=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3};
+    #assert px_conv_direct(c,x[..],right[..],bias[0..<0],y[..],s[..],false).written==1 && y[0]==6;
+    // Dilation 2: a 2 by 2 kernel reaches the four corners.
+    c=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=2,kernel_w=2,dilation_h=2,dilation_w=2};
+    #assert px_conv_direct(c,x[..],ones[0..<4],bias[0..<0],y[..],s[..],false).written==1 && y[0]==20;
+    // Two groups of one channel: filter 0 sees channel 0 only, filter 1 channel 1.
+    two:=[4]f32.[1,2,3,4];w:=[2]f32.[2,3];c=PxConv.{channels=2,height=1,width=2,filters=2,kernel_h=1,kernel_w=1,groups=2};
+    #assert px_conv_direct(c,two[..],w[..],bias[0..<0],y[..],s[..],false).written==4 && y[0]==2 && y[1]==4 && y[2]==9 && y[3]==12;
+}
+#test "convolution refuses before it writes" {
+    c:=PxConv.{channels=1,height=2,width=2,filters=1,kernel_h=1,kernel_w=1};x:=[4]f32.[1,2,3,4];w:=[1]f32.[2];b:=[1]f32.[1];
+    y:=[4]f32.[-7,-7,-7,-7];s:[4]f32;
+    #assert px_conv_direct(c,x[0..<3],w[..],b[..],y[..],s[..],false).status==PxStatus.shape;
+    #assert px_conv_direct(c,x[..],w[0..<0],b[..],y[..],s[..],false).status==PxStatus.shape;
+    two:=[2]f32.[1,1];#assert px_conv_direct(c,x[..],w[..],two[..],y[..],s[..],false).status==PxStatus.shape;
+    #assert px_conv_direct(c,x[..],w[..],b[..],y[0..<3],s[..],false).status==PxStatus.capacity;
+    #assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[0..<3],false).status==PxStatus.capacity;
+    #assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[..],true).status==PxStatus.alias;
+    bad:=c;bad.stride_h=0;#assert px_conv_direct(bad,x[..],w[..],b[..],y[..],s[..],false).status==PxStatus.parameter;
+    x[3]=0.0/0.0;#assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[..],false).status==PxStatus.number;x[3]=4;
+    w[0]=1.0/0.0;#assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[..],false).status==PxStatus.number;w[0]=2;
+    b[0]=0.0/0.0;#assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[..],false).status==PxStatus.number;b[0]=1;
+    // A finite sum too large for f32 is refused, and nothing is written.
+    x[3]=f32_from_bits(0x7f7fffff);w[0]=2;#assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[..],false).status==PxStatus.number;
+    #assert y[0]==-7 && y[3]==-7;
+    x[3]=4;#assert px_conv_direct(c,x[..],w[..],b[..],y[..],s[..],false).written==4 && y[0]==3 && y[3]==9;
+}
+// The loss sum(dy * y) for central differences; the forward is linear in x, w and bias.
+px_loss :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,dy:[]f32,y:[]f32,s:[]f32)->f64 {
+    r:=px_conv_direct(c,x,w,bias,y,s,false);#assert r.status==PxStatus.ok;
+    t:PsionicAccumulator;for i:0..<r.written {t=psionic_ops_accumulate(t,f64(dy[i])*f64(y[i]));}return psionic_ops_total(t);
+}
+#forall "direct, im2col, chapter 5 and gradients agree on every setting" stride: 1..<3, wide: 0..<2, pad: 0..<2, dilation: 1..<3, groups: 1..<3 #steps 400000000 {
+    // wide 1 makes the column stride the other one of 1 and 2.
+    c:=PxConv.{batch=2,channels=2,height=4,width=4,filters=2,kernel_h=2,kernel_w=3,stride_h=stride,stride_w=stride+wide*(3-2*stride),
+        pad_h=pad,pad_w=pad,dilation_h=dilation,dilation_w=1,groups=groups};
+    p:=px_conv_plan(c);#assert p.status==PxStatus.ok;
+    x:[64]f32;w:[24]f32;bias:[2]f32;px_fill(x[..],5);px_fill(w[0..<p.w],3);px_fill(bias[..],7);
+    y:[80]f32;s:[80]f32;z:[80]f32;work:[640]f32;
+    #assert px_conv_direct(c,x[..],w[0..<p.w],bias[..],y[..],s[..],false).written==p.y;
+    #assert px_conv_im2col(c,x[..],w[0..<p.w],bias[..],work[0..<p.scratch],z[..],false).written==p.y;
+    #assert px_same(y[0..<p.y],z[0..<p.y]);
+    if stride==1 && wide==0 && pad==0 && dilation==1 && groups==1 {
+        // Chapter 5's conv2d: stride 1, no padding, no groups, no bias.
+        owners:=[2]TvStorage.[tv_owner(1,1,p.x).storage,tv_owner(2,1,p.w).storage];
+        views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=4,dims=[4]int.[2,2,4,4]},false).view,
+            tv_contiguous(owners[1],TvShape.{rank=4,dims=[4]int.[2,2,2,3]},false).view];
+        stage:[80]f32;idx:[1]int;aux:[1]int;
+        r:=to_forward_checked(ToRequest.{op=ToOp.conv2d},owners[..],views[..],x[..],w[0..<p.w],idx[0..<0],z[..],stage[..],aux[0..<0],aux[0..<0],false);
+        #assert r.status==ToStatus.ok && r.written==p.y;
+        for i:0..<p.y {f:=(i/(p.out_h*p.out_w))%2;#assert z[i]+bias[f]==y[i];}
+    }
+    dy:[80]f32;px_fill(dy[0..<p.y],2);dx:[64]f32;dw:[24]f32;db:[2]f32;g:[90]f32;
+    #assert px_conv_backward(c,x[..],w[0..<p.w],dy[0..<p.y],dx[..],dw[..],db[..],g[..],false).written==64+p.w+2;
+    // Central differences, exact here: every value is a multiple of 1/256 far inside f32.
+    h:f32=0.25;
+    for i:0..<64 {
+        v:=x[i];x[i]=v+h;up:=px_loss(c,x[..],w[0..<p.w],bias[..],dy[0..<p.y],y[..],s[..]);
+        x[i]=v-h;down:=px_loss(c,x[..],w[0..<p.w],bias[..],dy[0..<p.y],y[..],s[..]);x[i]=v;
+        #assert (up-down)/0.5==f64(dx[i]);
+    }
+    for i:0..<p.w {
+        v:=w[i];w[i]=v+h;up:=px_loss(c,x[..],w[0..<p.w],bias[..],dy[0..<p.y],y[..],s[..]);
+        w[i]=v-h;down:=px_loss(c,x[..],w[0..<p.w],bias[..],dy[0..<p.y],y[..],s[..]);w[i]=v;
+        #assert (up-down)/0.5==f64(dw[i]);
+    }
+    for i:0..<2 {
+        v:=bias[i];bias[i]=v+h;up:=px_loss(c,x[..],w[0..<p.w],bias[..],dy[0..<p.y],y[..],s[..]);
+        bias[i]=v-h;down:=px_loss(c,x[..],w[0..<p.w],bias[..],dy[0..<p.y],y[..],s[..]);bias[i]=v;
+        #assert (up-down)/0.5==f64(db[i]);
+    }
+}
+#test "im2col and the direct sum agree within rounding on values that are not exact" {
+    c:=PxConv.{batch=1,channels=3,height=6,width=5,filters=2,kernel_h=3,kernel_w=3,stride_h=2,pad_h=1,pad_w=1};p:=px_conv_plan(c);
+    x:[90]f32;w:[54]f32;bias:=[2]f32.[0.1,-0.3];for i:0..<90 {x[i]=f32(i%13)/7-0.9;}for i:0..<54 {w[i]=f32(i%11)/9-0.55;}
+    y:[30]f32;s:[30]f32;z:[30]f32;work:[1000]f32;
+    #assert px_conv_direct(c,x[..],w[..],bias[..],y[..],s[..],false).written==p.y && p.y==30;
+    #assert px_conv_im2col(c,x[..],w[..],bias[..],work[0..<p.scratch],z[..],false).written==30;
+    differ:=0;for i:0..<30 {#assert abs(y[i]-z[i])<=0.000001*(1+abs(y[i]));if y[i]!=z[i] {differ+=1;}}
+    // The two paths round in different places, so a few values differ in the last bit.
+    #assert differ>0;
+}
+#test "im2col refuses before it writes" {
+    c:=PxConv.{channels=1,height=2,width=2,filters=1,kernel_h=1,kernel_w=1};x:=[4]f32.[1,2,3,4];w:=[1]f32.[2];b:=[1]f32.[1];
+    y:=[4]f32.[-7,-7,-7,-7];work:[12]f32;#assert px_conv_plan(c).scratch==12;
+    #assert px_conv_im2col(c,x[0..<3],w[..],b[..],work[..],y[..],false).status==PxStatus.shape;
+    #assert px_conv_im2col(c,x[..],w[0..<0],b[..],work[..],y[..],false).status==PxStatus.shape;
+    two:=[2]f32.[1,1];#assert px_conv_im2col(c,x[..],w[..],two[..],work[..],y[..],false).status==PxStatus.shape;
+    #assert px_conv_im2col(c,x[..],w[..],b[..],work[0..<11],y[..],false).status==PxStatus.capacity;
+    #assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[0..<3],false).status==PxStatus.capacity;
+    #assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],true).status==PxStatus.alias;
+    bad:=c;bad.groups=0;#assert px_conv_im2col(bad,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.parameter;
+    x[0]=0.0/0.0;#assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.number;x[0]=1;
+    w[0]=0.0/0.0;#assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.number;w[0]=2;
+    b[0]=0.0/0.0;#assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.number;b[0]=1;
+    // Too large for f32 inside chapter 4's product, then only after the bias.
+    x[3]=f32_from_bits(0x7f7fffff);#assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.number;
+    w[0]=1;b[0]=x[3];#assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.number;w[0]=2;b[0]=1;
+    #assert y[0]==-7 && y[3]==-7;
+    x[3]=4;#assert px_conv_im2col(c,x[..],w[..],b[0..<0],work[..],y[..],false).written==4 && y[0]==2 && y[3]==8;
+    #assert px_conv_im2col(c,x[..],w[..],b[..],work[..],y[..],false).written==4 && y[0]==3 && y[3]==9;
+    // A NaN in a pixel no window reaches: im2col never copies it, admission still refuses it.
+    s2:=PxConv.{channels=1,height=1,width=3,filters=1,kernel_h=1,kernel_w=1,stride_w=2};three:=[3]f32.[1,0.0/0.0,3];
+    #assert px_conv_im2col(s2,three[..],w[..],b[..],work[..],y[..],false).status==PxStatus.number;
+    // Chapter 4's product refuses more than 2^20 multiply-adds per group; so does im2col.
+    big:=PxConv.{channels=520,height=1,width=1024,filters=2,kernel_h=1,kernel_w=1};#assert px_conv_plan(big).scratch==520*1024+4*1024;
+    #assert px_conv_im2col(big,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.limit;
+    big.filters=1;#assert px_conv_im2col(big,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.shape;
+    big=PxConv.{channels=1024,height=1,width=1024,filters=1,kernel_h=1,kernel_w=1};
+    #assert px_conv_im2col(big,x[..],w[..],b[..],work[..],y[..],false).status==PxStatus.limit;
+}
+#test "gradients by hand and their refusals" {
+    // y = 2 x + 1 per pixel: dx = 2 dy, dw = sum x dy, db = sum dy.
+    c:=PxConv.{channels=1,height=2,width=2,filters=1,kernel_h=1,kernel_w=1};x:=[4]f32.[1,2,3,4];w:=[1]f32.[2];dy:=[4]f32.[1,0,-1,0.5];
+    dx:=[5]f32.[-7,-7,-7,-7,-7];dw:=[2]f32.[-7,-7];db:=[2]f32.[-7,-7];g:[6]f32;
+    r:=px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false);
+    #assert r.status==PxStatus.ok && r.written==6 && dx[0]==2 && dx[1]==0 && dx[2]==-2 && dx[3]==1 && dx[4]==-7;
+    #assert dw[0]==1-3+2 && dw[1]==-7 && db[0]==0.5 && db[1]==-7;
+    // Stride 2 skips input pixels: their gradient is zero.
+    s2:=PxConv.{channels=1,height=1,width=3,filters=1,kernel_h=1,kernel_w=1,stride_w=2};y3:=[3]f32.[5,6,7];dy2:=[2]f32.[1,1];
+    #assert px_conv_backward(s2,y3[..],w[..],dy2[..],dx[..],dw[..],db[..],g[..],false).written==5 && dx[0]==2 && dx[1]==0 && dx[2]==2 && dw[0]==12 && db[0]==2;
+    #assert px_conv_backward(c,x[0..<3],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.shape;
+    #assert px_conv_backward(c,x[..],w[0..<0],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.shape;
+    #assert px_conv_backward(c,x[..],w[..],dy[0..<3],dx[..],dw[..],db[..],g[..],false).status==PxStatus.shape;
+    #assert px_conv_backward(c,x[..],w[..],dy[..],dx[0..<3],dw[..],db[..],g[..],false).status==PxStatus.capacity;
+    #assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[0..<0],db[..],g[..],false).status==PxStatus.capacity;
+    #assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[0..<0],g[..],false).status==PxStatus.capacity;
+    #assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[0..<5],false).status==PxStatus.capacity;
+    #assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],true).status==PxStatus.alias;
+    bad:=c;bad.pad_h=-1;#assert px_conv_backward(bad,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.parameter;
+    x[1]=0.0/0.0;#assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.number;x[1]=2;
+    w[0]=0.0/0.0;#assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.number;w[0]=2;
+    dy[1]=0.0/0.0;#assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.number;dy[1]=0;
+    big:=f32_from_bits(0x7f7fffff);
+    dy[0]=big;dy[2]=big;#assert px_conv_backward(c,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.number;
+    #assert dx[0]==2 && dx[1]==0 && dx[2]==2 && dw[0]==12;
+    // The input gradient visits every pixel's window taps, skipped or not: at
+    // stride 16 a 16-wide kernel costs 2^20 multiply-adds forward, 2^24 backward.
+    wide:=PxConv.{channels=1,height=1,width=1024,filters=1024,kernel_h=1,kernel_w=16,stride_w=16};
+    #assert px_conv_plan(wide).status==PxStatus.ok && px_conv_plan(wide).work==1048576;
+    wide.kernel_w=17;wide.stride_w=17;#assert px_conv_plan(wide).status==PxStatus.limit;
+    #assert px_conv_backward(wide,x[..],w[..],dy[..],dx[..],dw[..],db[..],g[..],false).status==PxStatus.limit;
+    // With groups, each pixel meets only its own group's filters.
+    wide=PxConv.{channels=2,height=1,width=512,filters=2048,kernel_h=1,kernel_w=16,stride_w=16,groups=2};#assert px_conv_plan(wide).status==PxStatus.ok;
+}
+#test "patch plans" {
+    p:=px_patch_plan(PxPatch.{batch=2,channels=3,height=8,width=12,patch=4,dim=5});
+    #assert p.status==PxStatus.ok && p.grid_h==2 && p.grid_w==3 && p.tokens==6 && p.features==48 && p.x==576 && p.w==240 && p.out==60;
+    // Tokens 12 by 48, transposed weights 48 by 5, the product 12 by 5 and chapter 4's staging.
+    #assert p.scratch==12*48+48*5+2*12*5;
+    q:=PxPatch.{channels=3,height=8,width=8,patch=4,dim=5};#assert px_patch_plan(q).status==PxStatus.ok;
+    for f:0..<6 {
+        b:=q;if f==0 {b.batch=0;}if f==1 {b.channels=0;}if f==2 {b.height=0;}if f==3 {b.width=0;}if f==4 {b.patch=0;}if f==5 {b.dim=0;}
+        #assert px_patch_plan(b).status==PxStatus.shape;
+        b=q;if f==0 {b.batch=4097;}if f==1 {b.channels=4097;}if f==2 {b.height=4097;}if f==3 {b.width=4097;}if f==4 {b.patch=4097;}if f==5 {b.dim=4097;}
+        #assert px_patch_plan(b).status==PxStatus.limit;
+    }
+    b:=PxPatch.{channels=1,height=1,width=4096,patch=1,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
+    b=q;b.height=9;#assert px_patch_plan(b).status==PxStatus.shape;b=q;b.width=10;#assert px_patch_plan(b).status==PxStatus.shape;
+    b=q;b.patch=8;#assert px_patch_plan(b).status==PxStatus.ok;b.patch=16;#assert px_patch_plan(b).status==PxStatus.shape;
+    // Chapter 4's product bounds the projection: 2^20 multiply-adds.
+    b=PxPatch.{channels=1,height=1024,width=1024,patch=1,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
+    b.dim=2;#assert px_patch_plan(b).status==PxStatus.limit;
+    b=PxPatch.{channels=1,height=1,width=1024,patch=1,dim=1024};#assert px_patch_plan(b).status==PxStatus.ok;
+    b.batch=2;#assert px_patch_plan(b).status==PxStatus.limit;
+    b=PxPatch.{channels=4,height=512,width=512,patch=1,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
+    b.dim=2;#assert px_patch_plan(b).status==PxStatus.limit;
+}
+#forall "a patch projection equals the convolution with stride equal to kernel" patch: 1..<4, batch: 1..<3 {
+    q:=PxPatch.{batch=batch,channels=2,height=6,width=3*patch,patch=patch,dim=3};p:=px_patch_plan(q);
+    #assert p.status==PxStatus.ok;
+    x:[216]f32;w:[54]f32;bias:=[3]f32.[0.5,-0.25,1];px_fill(x[0..<p.x],5);px_fill(w[0..<p.w],3);
+    out:[108]f32;work:[600]f32;
+    #assert px_patch_embed(q,x[0..<p.x],w[0..<p.w],bias[..],work[..],out[..],false).written==p.out;
+    c:=PxConv.{batch=batch,channels=2,height=q.height,width=q.width,filters=3,kernel_h=patch,kernel_w=patch,stride_h=patch,stride_w=patch};
+    y:[108]f32;s:[108]f32;#assert px_conv_direct(c,x[0..<p.x],w[0..<p.w],bias[..],y[..],s[..],false).written==p.out;
+    // Token t of image n, feature d, is the convolution's output (n, d, t).
+    for n:0..<batch {for t:0..<p.tokens {for d:0..<3 {#assert out[(n*p.tokens+t)*3+d]==y[(n*3+d)*p.tokens+t];}}}
+}
+#test "patch projection by hand and its refusals" {
+    // One 2 by 2 patch per token; weights pick the top-left pixel and sum the patch.
+    q:=PxPatch.{channels=1,height=2,width=4,patch=2,dim=2};x:=[8]f32.[1,2,3,4,5,6,7,8];w:=[8]f32.[1,0,0,0,1,1,1,1];b:=[2]f32.[0,0.5];
+    out:=[5]f32.[-7,-7,-7,-7,-7];work:[24]f32;#assert px_patch_plan(q).scratch==24;
+    r:=px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false);
+    #assert r.status==PxStatus.ok && r.written==4 && out[0]==1 && out[1]==14.5 && out[2]==3 && out[3]==22.5 && out[4]==-7;
+    tokens:[8]f32;#assert px_patchify(q,x[..],tokens[..])==8;
+    want:=[8]f32.[1,2,5,6,3,4,7,8];#assert px_same(tokens[..],want[..]);
+    #assert px_patch_embed(q,x[0..<7],w[..],b[..],work[..],out[..],false).status==PxStatus.shape;
+    #assert px_patch_embed(q,x[..],w[0..<7],b[..],work[..],out[..],false).status==PxStatus.shape;
+    #assert px_patch_embed(q,x[..],w[..],b[0..<1],work[..],out[..],false).status==PxStatus.shape;
+    #assert px_patch_embed(q,x[..],w[..],b[..],work[0..<23],out[..],false).status==PxStatus.capacity;
+    #assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[0..<3],false).status==PxStatus.capacity;
+    #assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],true).status==PxStatus.alias;
+    bad:=q;bad.width=5;#assert px_patch_embed(bad,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.shape;
+    x[7]=0.0/0.0;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;x[7]=8;
+    w[7]=0.0/0.0;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;w[7]=1;
+    b[1]=0.0/0.0;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;b[1]=0.5;
+    // Too large for f32 inside chapter 4's product, then only after the bias.
+    x[0]=f32_from_bits(0x7f7fffff);w[0]=2;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;
+    w[0]=1;b[1]=x[0];#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;
+    #assert out[0]==1 && out[3]==22.5;
+    #assert px_patchify(q,x[0..<7],tokens[..])==0 && px_patchify(q,x[..],tokens[0..<7])==0 && px_patchify(bad,x[..],tokens[..])==0;
+}
+#test "position tables resized to a new grid" {
+    // A 2 by 2 grid of 2-wide positions; the second feature is the first plus 10.
+    table:=[8]f32.[0,10, 1,11, 1,11, 0,10];out:[33]f32;for i:0..<33 {out[i]=-7;}
+    r:=px_positions(2,2,2,table[..],4,4,out[..],false);
+    #assert r.status==PxStatus.ok && r.written==32 && out[32]==-7;
+    want:=[16]f32.[0,0.25,0.75,1, 0.25,0.375,0.625,0.75, 0.75,0.625,0.375,0.25, 1,0.75,0.25,0];
+    for t:0..<16 {#assert out[2*t]==want[t] && out[2*t+1]==want[t]+10;}
+    // The same size returns the table unchanged.
+    #assert px_positions(2,2,2,table[..],2,2,out[..],false).written==8 && px_same(out[0..<8],table[..]);
+    #assert px_positions(0,2,2,table[0..<0],4,4,out[..],false).status==PxStatus.shape;
+    #assert px_positions(2,0,2,table[0..<0],4,4,out[..],false).status==PxStatus.shape;
+    #assert px_positions(2,2,0,table[0..<0],4,4,out[..],false).status==PxStatus.shape;
+    #assert px_positions(2,2,2,table[..],0,4,out[..],false).status==PxStatus.parameter;
+    #assert px_positions(2,2,2,table[..],4,0,out[..],false).status==PxStatus.parameter;
+    #assert px_positions(2,2,2,table[0..<7],4,4,out[..],false).status==PxStatus.shape;
+    #assert px_positions(2,2,2,table[..],4,4,out[0..<31],false).status==PxStatus.capacity;
+    #assert px_positions(2,2,2,table[..],4,4,out[..],true).status==PxStatus.alias;
+    #assert px_positions(513,1,1,table[..],4,4,out[..],false).status==PxStatus.limit;
+    #assert px_positions(1,513,1,table[..],4,4,out[..],false).status==PxStatus.limit;
+    #assert px_positions(1,1,4097,table[..],4,4,out[..],false).status==PxStatus.limit;
+    #assert px_positions(1,1,4096,table[..],4,4,out[..],false).status==PxStatus.shape;
+    #assert px_positions(2,2,2,table[..],513,4,out[..],false).status==PxStatus.limit;
+    #assert px_positions(2,2,2,table[..],4,513,out[..],false).status==PxStatus.limit;
+    #assert px_positions(2,2,2,table[..],512,512,out[..],false).status==PxStatus.capacity;
+    // A 512 by 512 grid of 4-wide positions holds 2^20 values; 5-wide is refused.
+    #assert px_positions(512,512,5,table[..],1,1,out[..],false).status==PxStatus.limit;
+    #assert px_positions(512,512,4,table[..],1,1,out[..],false).status==PxStatus.shape;
+    #assert px_positions(1,1,4,table[0..<4],512,512,out[..],false).status==PxStatus.capacity;
+    #assert px_positions(1,1,5,table[0..<5],512,512,out[..],false).status==PxStatus.limit;
+    table[3]=0.0/0.0;#assert px_positions(2,2,2,table[..],4,4,out[..],false).status==PxStatus.number;
+}
+#test "position tables resize exactly as chapter 5's bilinear operator through a transposed view" {
+    // A 3 by 4 grid of 5-wide positions to 7 by 2.
+    table:[60]f32;for i:0..<60 {table[i]=f32((i*23+5)%31)/8-2;}out:[70]f32;
+    #assert px_positions(3,4,5,table[..],7,2,out[..],false).written==70;
+    owners:=[2]TvStorage.[tv_owner(1,1,60).storage,tv_owner(2,1,0).storage];
+    // (1, 3, 4, 5) with the feature axis swapped to the front twice: (1, 5, 3, 4), no copy.
+    v:=tv_contiguous(owners[0],TvShape.{rank=4,dims=[4]int.[1,3,4,5]},false).view;
+    v=tv_transpose(owners[0],v,1,3).view;v=tv_transpose(owners[0],v,2,3).view;
+    #assert v.shape.dims[1]==5 && v.shape.dims[2]==3 && v.shape.dims[3]==4 && v.strides[1]==1;
+    views:=[2]TvView.[v,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+    resized:[70]f32;stage:[70]f32;none:[1]f32;idx:[1]int;aux:[1]int;
+    r:=to_forward_checked(ToRequest.{op=ToOp.bilinear2d,height=7,width=2},owners[..],views[..],table[..],none[0..<0],idx[0..<0],
+        resized[..],stage[..],aux[0..<0],aux[0..<0],false);
+    #assert r.status==ToStatus.ok && r.written==70;
+    // Chapter 5 writes (feature, row, column); the table keeps (row, column, feature).
+    for t:0..<14 {for d:0..<5 {#assert out[t*5+d]==resized[d*14+t];}}
+}
+
+// book:begin profiles
+// ImageNet's statistics, as most convolutional and many transformer image
+// models were trained with them.
+px_imagenet :: ()->PxProfile {
+    return PxProfile.{scale=1.0/255,mean=[3]f64.[0.485,0.456,0.406],std=[3]f64.[0.229,0.224,0.225],height=224,width=224,filter=PxFilter.bilinear};
+}
+px_image_status :: (image:PxImage)->PxStatus {
+    if image.width<1 || image.height<1 {return PxStatus.shape;}
+    if image.width>PX_SIDE_MAX || image.height>PX_SIDE_MAX {return PxStatus.limit;}
+    if image.channels!=3 {return PxStatus.channels;}
+    if image.depth!=8 {return PxStatus.depth;}
+    return PxStatus.ok;
+}
+px_profile_status :: (p:PxProfile)->PxStatus {
+    if p.width<1 || p.height<1 {return PxStatus.parameter;}
+    if p.width>PX_SIDE_MAX || p.height>PX_SIDE_MAX {return PxStatus.limit;}
+    if !(p.scale>0 && p.scale<=1) {return PxStatus.parameter;}
+    for c:0..<3 {
+        if !(p.mean[c]>=-PX_MEAN_MAX && p.mean[c]<=PX_MEAN_MAX) || !(p.std[c]>=PX_STD_MIN && p.std[c]<=PX_MEAN_MAX) {return PxStatus.parameter;}
+    }
+    return PxStatus.ok;
+}
+// book:end profiles
+
+// book:begin sample
+// One resized value, with chapter 5's arithmetic for nearest2d and
+// bilinear2d. Nearest reads source floor(out * in / size). Bilinear takes
+// chapter 5's half-pixel source point (to_point: low and high neighbours and
+// the fraction between them) on each axis and blends the four neighbours.
+// The grid is read at base + r * row + c * column, so one procedure serves a
+// channel-major image plane and a position table with features innermost.
+px_sample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size_w:int,filter:PxFilter,y:int,x:int)->f64 {
+    if filter==PxFilter.nearest {return f64(data[base+(y*h/size_h)*row+(x*w/size_w)*column]);}
+    a:=to_point(y,h,size_h);b:=to_point(x,w,size_w);
+    top:=(1-b.fraction)*f64(data[base+a.low*row+b.low*column])+b.fraction*f64(data[base+a.low*row+b.high*column]);
+    bottom:=(1-b.fraction)*f64(data[base+a.high*row+b.low*column])+b.fraction*f64(data[base+a.high*row+b.high*column]);
+    return (1-a.fraction)*top+a.fraction*bottom;
+}
+// book:end sample
+
+// book:begin preprocess
+px_preprocess_work :: (image:PxImage,p:PxProfile)->int {return 3*image.width*image.height;}
+// Bytes to model values: pick the model's channel order and lay the image out
+// channel by channel, times the scale; resize; subtract the mean and divide by
+// the spread. Each stage rounds to f32 once, as chapter 5's operators do.
+px_preprocess :: (image:PxImage,pixels:[]u8,p:PxProfile,work:[]f32,out:[]f32,overlap:bool)->PxResult {
+    s:=px_image_status(image);if s!=PxStatus.ok {return PxResult.{status=s};}
+    s=px_profile_status(p);if s!=PxStatus.ok {return PxResult.{status=s};}
+    h:=image.height;w:=image.width;area:=h*w;size:=p.height*p.width;
+    if pixels.count!=3*area {return PxResult.{status=PxStatus.shape};}
+    if work.count<3*area || out.count<3*size {return PxResult.{status=PxStatus.capacity};}
+    if overlap {return PxResult.{status=PxStatus.alias};}
+    for c:0..<3 {
+        // Model channel c is source channel c, or 2 - c when the orders differ.
+        source:=c;if image.order!=p.order {source=2-c;}
+        for i:0..<area {work[c*area+i]=f32(f64(pixels[i*3+source])*p.scale);}
+    }
+    for c:0..<3 {for y:0..<p.height {for x:0..<p.width {
+        v:=f32(px_sample(work,c*area,w,1,h,w,p.height,p.width,p.filter,y,x));
+        out[(c*p.height+y)*p.width+x]=f32((f64(v)-p.mean[c])/p.std[c]);
+    }}}
+    return PxResult.{written=3*size};
+}
+// book:end preprocess
+
+// book:begin reference
+// One output value straight from the bytes, in binary64, written from the
+// usual description of bilinear sampling with half-pixel centres: the source
+// point is (out + 1/2) * in / size - 1/2, at least 0; the pixel at its floor
+// and the next one, which stops at the last pixel, are blended by the
+// fraction. Nearest reads source floor(out * in / size).
+px_reference :: (image:PxImage,pixels:[]u8,p:PxProfile,c:int,y:int,x:int)->f64 {
+    source:=c;if image.order!=p.order {source=2-c;}
+    h:=image.height;w:=image.width;v:=0.0;
+    if p.filter==PxFilter.nearest {v=f64(pixels[((y*h/p.height)*w+x*w/p.width)*3+source]);}
+    else {
+        sy:=(f64(y)+0.5)*f64(h)/f64(p.height)-0.5;sx:=(f64(x)+0.5)*f64(w)/f64(p.width)-0.5;
+        sy=(sy+abs(sy))/2;sx=(sx+abs(sx))/2;
+        y0:=int(floor(sy));x0:=int(floor(sx));y1:=y0+1;x1:=x0+1;
+        if y1==h {y1=h-1;}
+        if x1==w {x1=w-1;}
+        fy:=sy-f64(y0);fx:=sx-f64(x0);
+        top:=(1-fx)*f64(pixels[(y0*w+x0)*3+source])+fx*f64(pixels[(y0*w+x1)*3+source]);
+        bottom:=(1-fx)*f64(pixels[(y1*w+x0)*3+source])+fx*f64(pixels[(y1*w+x1)*3+source]);
+        v=(1-fy)*top+fy*bottom;
+    }
+    return (v*p.scale-p.mean[c])/p.std[c];
+}
+// book:end reference
+
+// book:begin plan
+// The product of four counts, or -1 once it passes the bound.
+px_product :: (a:int,b:int,c:int,d:int,bound:int)->int {
+    dims:=[4]int.[a,b,c,d];n:=1;
+    for e:dims {if e>bound/n {return -1;}n*=e;}
+    return n;
+}
+px_elements :: (a:int,b:int,c:int,d:int)->int {return px_product(a,b,c,d,PX_ELEMENTS_MAX);}
+px_work :: (a:int,b:int,c:int,d:int)->int {return px_product(a,b,c,d,PX_WORK_MAX);}
+px_conv_plan :: (c:PxConv)->PxConvPlan {
+    extents:=[7]int.[c.batch,c.channels,c.height,c.width,c.filters,c.kernel_h,c.kernel_w];
+    for e:extents {if e<1 {return PxConvPlan.{status=PxStatus.shape};}}
+    for e:extents {if e>PX_EXTENT_MAX {return PxConvPlan.{status=PxStatus.limit};}}
+    steps:=[5]int.[c.stride_h,c.stride_w,c.dilation_h,c.dilation_w,c.groups];
+    for e:steps {if e<1 || e>PX_EXTENT_MAX {return PxConvPlan.{status=PxStatus.parameter};}}
+    if c.channels%c.groups!=0 || c.filters%c.groups!=0 {return PxConvPlan.{status=PxStatus.parameter};}
+    // The window a dilated kernel spans, and padding below it, so that every
+    // window overlaps the image.
+    span_h:=(c.kernel_h-1)*c.dilation_h+1;span_w:=(c.kernel_w-1)*c.dilation_w+1;
+    if c.pad_h<0 || c.pad_w<0 || c.pad_h>=span_h || c.pad_w>=span_w {return PxConvPlan.{status=PxStatus.parameter};}
+    if span_h>c.height+2*c.pad_h || span_w>c.width+2*c.pad_w {return PxConvPlan.{status=PxStatus.shape};}
+    p:=PxConvPlan.{out_h=(c.height+2*c.pad_h-span_h)/c.stride_h+1,out_w=(c.width+2*c.pad_w-span_w)/c.stride_w+1};
+    p.patch=c.channels/c.groups*c.kernel_h*c.kernel_w;
+    p.x=px_elements(c.batch,c.channels,c.height,c.width);
+    p.w=px_elements(c.filters,p.patch,1,1);
+    p.y=px_elements(c.batch,c.filters,p.out_h,p.out_w);
+    if p.x==-1 || p.w==-1 || p.y==-1 {return PxConvPlan.{status=PxStatus.limit};}
+    // Forward multiply-adds; the input gradient visits every pixel's taps.
+    p.work=px_work(c.batch*c.filters,p.out_h*p.out_w,p.patch,1);
+    back:=px_work(c.batch*c.channels,c.height*c.width,c.filters/c.groups,c.kernel_h*c.kernel_w);
+    if p.work==-1 || back==-1 {return PxConvPlan.{status=PxStatus.limit};}
+    p.columns=c.batch*p.out_h*p.out_w;
+    // im2col's columns for every group, chapter 4's staging for one group
+    // and the product; -1 when that passes 2^20 values.
+    p.scratch=px_elements(p.columns,c.channels*c.kernel_h*c.kernel_w+c.filters/c.groups+c.filters,1,1);
+    return p;
+}
+// book:end plan
+
+px_finite :: (x:[]f32)->bool {for v:x {if !psionic_tensor_finite_bits(f32_bits(v)) {return false;}}return true;}
+// Shared admission for the forward paths; bias may be empty.
+px_conv_admit :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,y:int,scratch:int,im2col:bool,overlap:bool)->PxConvPlan {
+    p:=px_conv_plan(c);if p.status!=PxStatus.ok {return p;}
+    need:=p.y;if im2col {need=p.scratch;}
+    if x.count!=p.x || w.count!=p.w || (bias.count!=0 && bias.count!=c.filters) {return PxConvPlan.{status=PxStatus.shape};}
+    if y<p.y || scratch<need {return PxConvPlan.{status=PxStatus.capacity};}
+    if overlap {return PxConvPlan.{status=PxStatus.alias};}
+    if !px_finite(x) || !px_finite(w) || !px_finite(bias) {return PxConvPlan.{status=PxStatus.number};}
+    return p;
+}
+
+// book:begin direct
+// Output (n, f, oh, ow) sums input (n, channel, oh*stride - pad + i*dilation,
+// ow*stride - pad + j*dilation) times weight (f, channel within the group,
+// i, j) over the channels of f's group and the kernel taps that land inside
+// the image; taps in the padding read zero. No kernel flip: this is the
+// cross-correlation every framework calls convolution.
+px_conv_value :: (c:PxConv,p:PxConvPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 {
+    ow:=i%p.out_w;oh:=(i/p.out_w)%p.out_h;f:=(i/(p.out_w*p.out_h))%c.filters;n:=i/(p.out_w*p.out_h*c.filters);
+    per:=c.channels/c.groups;first:=f/(c.filters/c.groups)*per;
+    t:PsionicAccumulator;if bias.count>0 {t=psionic_ops_accumulate(t,f64(bias[f]));}
+    for k:0..<per {for a:0..<c.kernel_h {
+        row:=oh*c.stride_h-c.pad_h+a*c.dilation_h;if row<0 || row>=c.height {continue;}
+        for b:0..<c.kernel_w {
+            col:=ow*c.stride_w-c.pad_w+b*c.dilation_w;if col<0 || col>=c.width {continue;}
+            pixel:=x[((n*c.channels+first+k)*c.height+row)*c.width+col];weight:=w[((f*per+k)*c.kernel_h+a)*c.kernel_w+b];
+            t=psionic_ops_accumulate(t,f64(pixel)*f64(weight));
+        }
+    }}
+    return psionic_ops_total(t);
+}
+px_conv_direct :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,y:[]f32,scratch:[]f32,overlap:bool)->PxResult {
+    p:=px_conv_admit(c,x,w,bias,y.count,scratch.count,false,overlap);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
+    for i:0..<p.y {v:=px_conv_value(c,p,x,w,bias,i);if !psionic_ops_fits_f32(v) {return PxResult.{status=PxStatus.number};}scratch[i]=f32(v);}
+    for i:0..<p.y {y[i]=scratch[i];}
+    return PxResult.{written=p.y};
+}
+// book:end direct
+
+// book:begin im2col
+// Image to columns: for group g, row (k, i, j) and column (n, oh, ow) hold the
+// pixel that kernel tap (i, j) of channel k reads at that output, or zero in
+// the padding. Each group's filters, a (filters/groups) by patch matrix, then
+// multiply its columns with chapter 4's matrix product. Scratch holds the
+// columns, chapter 4's staging, and the product, in that order.
+px_conv_im2col :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,y:[]f32,overlap:bool)->PxResult {
+    p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
+    per:=c.channels/c.groups;each:=c.filters/c.groups;L:=p.columns;
+    request:=PsionicRequest.{op=PsionicOp.matmul,rows=each,width=p.patch,columns=L};
+    if p.scratch==-1 || psionic_ops_plan(request).status!=PsionicOpStatus.ok {return PxResult.{status=PxStatus.limit};}
+    p=px_conv_admit(c,x,w,bias,y.count,work.count,true,overlap);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
+    cols:=c.groups*p.patch*L;product:=cols+each*L;
+    for r:0..<cols/L {
+        g:=r/p.patch;k:=(r/(c.kernel_h*c.kernel_w))%per;a:=(r/c.kernel_w)%c.kernel_h;b:=r%c.kernel_w;
+        for l:0..<L {
+            ow:=l%p.out_w;oh:=(l/p.out_w)%p.out_h;n:=l/(p.out_w*p.out_h);
+            row:=oh*c.stride_h-c.pad_h+a*c.dilation_h;col:=ow*c.stride_w-c.pad_w+b*c.dilation_w;v:f32=0;
+            if row>=0 && row<c.height && col>=0 && col<c.width {v=x[((n*c.channels+g*per+k)*c.height+row)*c.width+col];}
+            work[r*L+l]=v;
+        }
+    }
+    idx:[1]int;mask:[1]u8;
+    for g:0..<c.groups {
+        r:=psionic_ops_checked(request,w[g*each*p.patch..<(g+1)*each*p.patch],work[g*p.patch*L..<(g+1)*p.patch*L],
+            idx[0..<0],mask[0..<0],work[product+g*each*L..<product+(g+1)*each*L],work[cols..<product],false);
+        if r.status!=PsionicOpStatus.ok {return PxResult.{status=PxStatus.number};}
+    }
+    // Add the bias in place, (filter, column), then copy to (n, filter, oh, ow).
+    for i:0..<c.filters*L {
+        v:=f64(work[product+i]);if bias.count>0 {v+=f64(bias[i/L]);}
+        if !psionic_ops_fits_f32(v) {return PxResult.{status=PxStatus.number};}
+        work[product+i]=f32(v);
+    }
+    area:=p.out_h*p.out_w;
+    for i:0..<p.y {y[i]=work[product+(i/area)%c.filters*L+i/(area*c.filters)*area+i%area];}
+    return PxResult.{written=p.y};
+}
+// book:end im2col
+
+// book:begin backward
+// The vector-Jacobian product of the convolution for an output gradient dy.
+// Input pixel (n, ch, row, col) received weight (f, k, i, j) at every output
+// (oh, ow) with oh*stride - pad + i*dilation = row; dx gathers those. dw sums
+// pixel times dy over every output that used the weight, and db sums dy.
+px_conv_dx :: (c:PxConv,p:PxConvPlan,w:[]f32,dy:[]f32,i:int)->f64 {
+    col:=i%c.width;row:=(i/c.width)%c.height;ch:=(i/(c.width*c.height))%c.channels;n:=i/(c.width*c.height*c.channels);
+    per:=c.channels/c.groups;each:=c.filters/c.groups;g:=ch/per;k:=ch%per;t:PsionicAccumulator;
+    for e:0..<each {f:=g*each+e;for a:0..<c.kernel_h {
+        u:=row+c.pad_h-a*c.dilation_h;if u<0 || u%c.stride_h!=0 || u/c.stride_h>=p.out_h {continue;}
+        for b:0..<c.kernel_w {
+            v:=col+c.pad_w-b*c.dilation_w;if v<0 || v%c.stride_w!=0 || v/c.stride_w>=p.out_w {continue;}
+            t=psionic_ops_accumulate(t,f64(dy[((n*c.filters+f)*p.out_h+u/c.stride_h)*p.out_w+v/c.stride_w])*f64(w[((f*per+k)*c.kernel_h+a)*c.kernel_w+b]));
+        }
+    }}
+    return psionic_ops_total(t);
+}
+px_conv_dw :: (c:PxConv,p:PxConvPlan,x:[]f32,dy:[]f32,i:int)->f64 {
+    b:=i%c.kernel_w;a:=(i/c.kernel_w)%c.kernel_h;per:=c.channels/c.groups;k:=(i/(c.kernel_w*c.kernel_h))%per;f:=i/(c.kernel_w*c.kernel_h*per);
+    ch:=f/(c.filters/c.groups)*per+k;t:PsionicAccumulator;
+    for n:0..<c.batch {for oh:0..<p.out_h {
+        row:=oh*c.stride_h-c.pad_h+a*c.dilation_h;if row<0 || row>=c.height {continue;}
+        for ow:0..<p.out_w {
+            col:=ow*c.stride_w-c.pad_w+b*c.dilation_w;if col<0 || col>=c.width {continue;}
+            t=psionic_ops_accumulate(t,f64(x[((n*c.channels+ch)*c.height+row)*c.width+col])*f64(dy[((n*c.filters+f)*p.out_h+oh)*p.out_w+ow]));
+        }
+    }}
+    return psionic_ops_total(t);
+}
+px_conv_db :: (c:PxConv,p:PxConvPlan,dy:[]f32,f:int)->f64 {
+    t:PsionicAccumulator;area:=p.out_h*p.out_w;
+    for n:0..<c.batch {for j:0..<area {t=psionic_ops_accumulate(t,f64(dy[(n*c.filters+f)*area+j]));}}
+    return psionic_ops_total(t);
+}
+px_conv_backward :: (c:PxConv,x:[]f32,w:[]f32,dy:[]f32,dx:[]f32,dw:[]f32,db:[]f32,scratch:[]f32,overlap:bool)->PxResult {
+    p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
+    if x.count!=p.x || w.count!=p.w || dy.count!=p.y {return PxResult.{status=PxStatus.shape};}
+    total:=p.x+p.w+c.filters;
+    if dx.count<p.x || dw.count<p.w || db.count<c.filters || scratch.count<total {return PxResult.{status=PxStatus.capacity};}
+    if overlap {return PxResult.{status=PxStatus.alias};}
+    if !px_finite(x) || !px_finite(w) || !px_finite(dy) {return PxResult.{status=PxStatus.number};}
+    for i:0..<total {
+        v:=0.0;
+        if i<p.x {v=px_conv_dx(c,p,w,dy,i);}
+        else if i<p.x+p.w {v=px_conv_dw(c,p,x,dy,i-p.x);}
+        else {v=px_conv_db(c,p,dy,i-p.x-p.w);}
+        if !psionic_ops_fits_f32(v) {return PxResult.{status=PxStatus.number};}
+        scratch[i]=f32(v);
+    }
+    for i:0..<p.x {dx[i]=scratch[i];}
+    for i:0..<p.w {dw[i]=scratch[p.x+i];}
+    for i:0..<c.filters {db[i]=scratch[p.x+p.w+i];}
+    return PxResult.{written=total};
+}
+// book:end backward
+
+// book:begin patch
+// Chapter 4's product bounds the projection at 2^20 multiply-adds, and with
+// it every count below.
+px_patch_plan :: (q:PxPatch)->PxPatchPlan {
+    extents:=[6]int.[q.batch,q.channels,q.height,q.width,q.patch,q.dim];
+    for e:extents {if e<1 {return PxPatchPlan.{status=PxStatus.shape};}}
+    for e:extents {if e>PX_EXTENT_MAX {return PxPatchPlan.{status=PxStatus.limit};}}
+    if q.height%q.patch!=0 || q.width%q.patch!=0 {return PxPatchPlan.{status=PxStatus.shape};}
+    p:=PxPatchPlan.{grid_h=q.height/q.patch,grid_w=q.width/q.patch};
+    p.tokens=p.grid_h*p.grid_w;p.features=q.channels*q.patch*q.patch;
+    request:=PsionicRequest.{op=PsionicOp.matmul,rows=q.batch*p.tokens,width=p.features,columns=q.dim};
+    if psionic_ops_plan(request).status!=PsionicOpStatus.ok {return PxPatchPlan.{status=PxStatus.limit};}
+    p.x=q.batch*q.channels*q.height*q.width;p.w=q.dim*p.features;p.out=q.batch*p.tokens*q.dim;
+    p.scratch=p.x+p.w+2*p.out;
+    return p;
+}
+// Cut each image into patch by patch squares, left to right and top to
+// bottom; each square becomes one row of features in (channel, row, column)
+// order, the order of the convolution's weights.
+px_patchify :: (q:PxPatch,x:[]f32,tokens:[]f32)->int {
+    p:=px_patch_plan(q);if p.status!=PxStatus.ok || x.count!=p.x || tokens.count<p.x {return 0;}
+    for r:0..<q.batch*p.tokens {
+        n:=r/p.tokens;gy:=(r%p.tokens)/p.grid_w;gx:=r%p.grid_w;
+        for k:0..<p.features {
+            ch:=k/(q.patch*q.patch);dy:=(k/q.patch)%q.patch;dx:=k%q.patch;
+            tokens[r*p.features+k]=x[((n*q.channels+ch)*q.height+gy*q.patch+dy)*q.width+gx*q.patch+dx];
+        }
+    }
+    return p.x;
+}
+// Tokens times the transposed weights, plus the bias: the first layer of a
+// vision transformer. Scratch holds the tokens, the transposed weights,
+// chapter 4's staging and the product, in that order.
+px_patch_embed :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32,overlap:bool)->PxResult {
+    p:=px_patch_plan(q);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
+    if x.count!=p.x || w.count!=p.w || bias.count!=q.dim {return PxResult.{status=PxStatus.shape};}
+    if work.count<p.scratch || out.count<p.out {return PxResult.{status=PxStatus.capacity};}
+    if overlap {return PxResult.{status=PxStatus.alias};}
+    // Chapter 4 checks the pixels and weights it multiplies.
+    if !px_finite(bias) {return PxResult.{status=PxStatus.number};}
+    #assert px_patchify(q,x,work[0..<p.x])==p.x;
+    for k:0..<p.features {for d:0..<q.dim {work[p.x+k*q.dim+d]=w[d*p.features+k];}}
+    idx:[1]int;mask:[1]u8;stage:=p.x+p.w;product:=stage+p.out;
+    r:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.matmul,rows=q.batch*p.tokens,width=p.features,columns=q.dim},work[0..<p.x],
+        work[p.x..<stage],idx[0..<0],mask[0..<0],work[product..<product+p.out],work[stage..<product],false);
+    if r.status!=PsionicOpStatus.ok {return PxResult.{status=PxStatus.number};}
+    for i:0..<p.out {
+        v:=f64(work[product+i])+f64(bias[i%q.dim]);
+        if !psionic_ops_fits_f32(v) {return PxResult.{status=PxStatus.number};}
+        work[product+i]=f32(v);
+    }
+    for i:0..<p.out {out[i]=work[product+i];}
+    return PxResult.{written=p.out};
+}
+// book:end patch
+
+// book:begin positions
+// A learned position table, one row of dim values per grid cell (row,
+// column, feature), resized to a new grid by the bilinear rule above.
+px_positions :: (grid_h:int,grid_w:int,dim:int,table:[]f32,new_h:int,new_w:int,out:[]f32,overlap:bool)->PxResult {
+    if grid_h<1 || grid_w<1 || dim<1 {return PxResult.{status=PxStatus.shape};}
+    if grid_h>PX_SIDE_MAX || grid_w>PX_SIDE_MAX || dim>PX_EXTENT_MAX {return PxResult.{status=PxStatus.limit};}
+    if new_h<1 || new_w<1 {return PxResult.{status=PxStatus.parameter};}
+    if new_h>PX_SIDE_MAX || new_w>PX_SIDE_MAX {return PxResult.{status=PxStatus.limit};}
+    n:=px_elements(grid_h,grid_w,dim,1);m:=px_elements(new_h,new_w,dim,1);
+    if n==-1 || m==-1 {return PxResult.{status=PxStatus.limit};}
+    if table.count!=n {return PxResult.{status=PxStatus.shape};}
+    if out.count<m {return PxResult.{status=PxStatus.capacity};}
+    if overlap {return PxResult.{status=PxStatus.alias};}
+    if !px_finite(table) {return PxResult.{status=PxStatus.number};}
+    for i:0..<m {
+        d:=i%dim;t:=i/dim;
+        out[i]=f32(px_sample(table,d,grid_w*dim,dim,grid_h,grid_w,new_h,new_w,PxFilter.bilinear,t/new_w,t%new_w));
+    }
+    return PxResult.{written=m};
+}
+// book:end positions

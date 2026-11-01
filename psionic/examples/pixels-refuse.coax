@@ -1,0 +1,39 @@
+// Chapter 142: malformed images, profiles, convolutions, patches and
+// position tables, each refused with its status before anything is written.
+#import "Basic";
+#load "../lib/pixels.coax";
+
+// book:begin refuse
+main :: () {
+    pixels:=px_tiny();work:[12]f32;out:[48]f32;for i:0..<48 {out[i]=-7;}p:=px_half();
+    four:=PxImage.{width=2,height=2,channels=4};print("four channels: %\n",px_preprocess(four,pixels[..],p,work[..],out[..],false).status);
+    deep:=PxImage.{width=2,height=2,depth=16};print("16-bit samples: %\n",px_preprocess(deep,pixels[..],p,work[..],out[..],false).status);
+    flat:=PxImage.{width=0,height=2};print("width 0: %\n",px_preprocess(flat,pixels[..],p,work[..],out[..],false).status);
+    wide:=PxImage.{width=513,height=2};print("width 513: %\n",px_preprocess(wide,pixels[..],p,work[..],out[..],false).status);
+    image:=PxImage.{width=2,height=2};
+    print("11 bytes for a 2x2 RGB image: %\n",px_preprocess(image,pixels[0..<11],p,work[..],out[..],false).status);
+    zero:=p;zero.std[1]=0;print("spread 0 in green: %\n",px_preprocess(image,pixels[..],zero,work[..],out[..],false).status);
+    print("47 output values for 48: %\n",px_preprocess(image,pixels[..],p,work[..],out[0..<47],false).status);
+    untouched:=0;for v:out {if v==-7 {untouched+=1;}}print("output values still -7: % of 48\n",untouched);
+
+    x:=[9]f32.[1,2,3,4,5,6,7,8,9];w:=[9]f32.[1,1,1,1,1,1,1,1,1];none:[1]f32;y:=[4]f32.[-7,-7,-7,-7];s:[4]f32;
+    c:=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3};
+    bad:=c;bad.pad_h=3;print("padding 3 on a 3-wide window: %\n",px_conv_direct(bad,x[..],w[..],none[0..<0],y[..],s[..],false).status);
+    bad=c;bad.stride_w=0;print("stride 0: %\n",px_conv_direct(bad,x[..],w[..],none[0..<0],y[..],s[..],false).status);
+    bad=c;bad.groups=2;print("2 groups of 1 channel: %\n",px_conv_direct(bad,x[..],w[..],none[0..<0],y[..],s[..],false).status);
+    bad=c;bad.dilation_h=2;print("dilation 2 spans 5 rows of 3: %\n",px_conv_direct(bad,x[..],w[..],none[0..<0],y[..],s[..],false).status);
+    print("8 weights for 9: %\n",px_conv_direct(c,x[..],w[0..<8],none[0..<0],y[..],s[..],false).status);
+    x[4]=0.0/0.0;print("a NaN pixel: %\n",px_conv_direct(c,x[..],w[..],none[0..<0],y[..],s[..],false).status);x[4]=5;
+    x[4]=f32_from_bits(0x7f7fffff);x[5]=x[4];print("a sum past the largest f32: %\n",px_conv_direct(c,x[..],w[..],none[0..<0],y[..],s[..],false).status);
+    print("outputs still -7: % % % %\n",y[0],y[1],y[2],y[3]);
+    huge:=PxConv.{channels=520,height=1,width=1024,filters=2,kernel_h=1,kernel_w=1};
+    print("im2col with 2^20 + 16,384 multiply-adds in one product: %\n",px_conv_im2col(huge,x[..],w[..],none[0..<0],s[..],y[..],false).status);
+    big:=PxConv.{channels=2,height=1024,width=1024,filters=1,kernel_h=1,kernel_w=1};print("2^21 input values: %\n",px_conv_plan(big).status);
+
+    q:=PxPatch.{channels=3,height=8,width=10,patch=4,dim=5};print("patch 4 on width 10: %\n",px_patch_plan(q).status);
+    q=PxPatch.{channels=4,height=512,width=512,patch=1,dim=2};print("a projection of 2^21 multiply-adds: %\n",px_patch_plan(q).status);
+    table:=[4]f32.[0,1,1,0];grid:[16]f32;
+    print("a position table resized to 0 rows: %\n",px_positions(2,2,1,table[..],0,4,grid[..],false).status);
+    print("3 table values for a 2x2 grid: %\n",px_positions(2,2,1,table[0..<3],4,4,grid[..],false).status);
+}
+// book:end refuse

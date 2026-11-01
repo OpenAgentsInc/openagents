@@ -154,7 +154,7 @@
 - [140. Post-train a decision model](ch140-post-train-a-decision-model.md) — design draft
 - [141. Distill Mammoth into Elephant](ch141-distill-mammoth-into-elephant.md) — design draft
 
-- [142. Pixels, convolutions and patches](ch142-pixels-convolutions-and-patches.md) — design draft
+- [142. Pixels, convolutions and patches](ch142-pixels-convolutions-and-patches.md) — partly implemented
 - [143. Elephant and Mammoth see](ch143-elephant-and-mammoth-see.md) — design draft
 - [144. See with C-RADIO](ch144-see-with-c-radio.md) — design draft
 - [145. Compress and reconstruct an image](ch145-compress-and-reconstruct-an-image.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 120, 123, 124, 147, 151, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–32, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 120, 123, 124, 142, 147, 151, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

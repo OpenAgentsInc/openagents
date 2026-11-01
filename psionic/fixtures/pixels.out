@@ -1,0 +1,20 @@
+2x2 to 4x4, bilinear: ok, 48 values
+  red   -1.0 -0.5 0.5 1.0
+  red   -0.5 -0.25 0.25 0.5
+  red   0.5 0.25 -0.25 -0.5
+  red   1.0 0.5 -0.5 -1.0
+  green row 0 -0.6 -0.6 -0.6 -0.6
+  blue row 3  -1.0 -0.5 0.5 1.0
+  red row 1, nearest -1.0 -1.0 1.0 1.0
+7x5 to 9x4, ImageNet profile: ok, largest difference from the reference 1.9689196945060772e-07
+box sum, stride 2, padding 1: 12.5 16.5 24.5 28.5
+2x2 ones, dilation 2: 20.0
+32 settings: direct equals im2col on 32 of them; central differences equal the gradients on 32 of them
+sevenths and ninths: 13 of 30 outputs differ, by at most 1.1920928955078125e-07
+patches as rows: 1.0 2.0 5.0 6.0 3.0 4.0 7.0 8.0
+projected tokens: 1.0 14.5 3.0 22.5
+stride-2 convolution, (filter, column): 1.0 3.0 14.5 22.5
+  positions 0.0 0.25 0.75 1.0
+  positions 0.25 0.375 0.625 0.75
+  positions 0.75 0.625 0.375 0.25
+  positions 1.0 0.75 0.25 0.0

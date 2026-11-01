@@ -1,0 +1,22 @@
+four channels: channels
+16-bit samples: depth
+width 0: shape
+width 513: limit
+11 bytes for a 2x2 RGB image: shape
+spread 0 in green: parameter
+47 output values for 48: capacity
+output values still -7: 48 of 48
+padding 3 on a 3-wide window: parameter
+stride 0: parameter
+2 groups of 1 channel: parameter
+dilation 2 spans 5 rows of 3: shape
+8 weights for 9: shape
+a NaN pixel: number
+a sum past the largest f32: number
+outputs still -7: -7.0 -7.0 -7.0 -7.0
+im2col with 2^20 + 16,384 multiply-adds in one product: limit
+2^21 input values: limit
+patch 4 on width 10: shape
+a projection of 2^21 multiply-adds: limit
+a position table resized to 0 rows: parameter
+3 table values for a 2x2 grid: shape
