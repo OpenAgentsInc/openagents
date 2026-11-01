@@ -175,14 +175,15 @@
    "number": 9,
    "title": "The secp256k1 group law",
    "file": "ch009-the-secp256k1-group-law.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     7
    ],
    "source": [
     "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_group32.coax"
+    "coax/lib/crypto/secp_group32.coax",
+    "nostr/examples/group-law.coax"
    ],
    "qualified_targets": [
     "cpu",

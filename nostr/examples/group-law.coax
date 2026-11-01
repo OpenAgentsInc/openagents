@@ -1,0 +1,187 @@
+// book:begin example
+#load "../../coax/lib/crypto/secp_group.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [80] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a field element as 32 big-endian bytes.
+show_field :: (label: string, a: SecpField) {
+  b: [32] u8;
+  if sf_store(a, b[..]) { show(label, b[..]); }
+}
+// Print a point's affine x and y, or "infinity".
+show_point :: (label: string, p: SgPoint) {
+  a := sg_to_affine(p);
+  if !a.ok { print("%: not a valid point\n", label); return; }
+  if a.value.infinity != 0 { print("%: infinity\n", label); return; }
+  print("%:\n", label);
+  show_field("  x", a.value.x);
+  show_field("  y", a.value.y);
+}
+// Decode 64 hex digits into 32 bytes; false if the hex is bad.
+bytes_of :: (text: string, out: [] u8) -> bool {
+  return hex_decode_checked(text, out, false).error == 0;
+}
+// True when two points are the same valid point.
+same_point :: (a: SgPoint, b: SgPoint) -> bool { return sg_equal_mask(a, b) == CB_MAX64; }
+// lift_x of 64 hex digits.
+lift_hex :: (text: string) -> SgResult {
+  b: [32] u8;
+  if !bytes_of(text, b[..]) { print("bad hex\n"); }
+  return sg_lift_x_public(b[..]);
+}
+
+main :: () {
+  g := sg_generator();
+  inf := sg_infinity();
+  show_point("G", g);
+  print("G is on the curve: %\n", sg_valid_mask(g) == CB_MAX64);
+
+  // The negative of (x, y) is (x, p - y).
+  minus_g := sg_negate(g).value;
+  show_point("-G", minus_g);
+  print("G + (-G) is infinity: %\n", same_point(sg_add(g, minus_g).value, inf));
+  print("G + infinity is G: %\n", same_point(sg_add(g, inf).value, g));
+
+  // Doubling and addition.
+  two := sg_double(g).value;
+  print("2G = G + G: %\n", same_point(two, sg_add(g, g).value));
+  show_point("2G", two);
+  three := sg_add(two, g).value;
+  show_point("3G", three);
+
+  // The same point in other Jacobian coordinates: (X Z^2, Y Z^3, Z) for Z = 2.
+  z: SecpField; z.limb[0] = 2;
+  scaled := g;
+  scaled.x = sf_multiply(g.x, sf_square(z));
+  scaled.y = sf_multiply(g.y, sf_multiply(sf_square(z), z));
+  scaled.z = z;
+  show_field("G with Z = 2, X", scaled.x);
+  print("equal to G: %\n", same_point(scaled, g));
+  print("scaled G + G = 2G: %\n", same_point(sg_add(scaled, g).value, two));
+
+  // Compressed encoding: a parity byte and x.
+  encoded := sg_encode_public(g);
+  show("compressed G", encoded.bytes[0..<encoded.length]);
+
+  // lift_x: x = 1 gives 1 + 7 = 8, a square; the even root is returned.
+  one := lift_hex("0000000000000000000000000000000000000000000000000000000000000001");
+  print("lift_x(1): ok %\n", one.ok);
+  show_point("lift_x(1)", one.value);
+
+  // Refusals.
+  print("lift_x(0): ok %\n", lift_hex("0000000000000000000000000000000000000000000000000000000000000000").ok);
+  print("lift_x(7): ok %\n", lift_hex("0000000000000000000000000000000000000000000000000000000000000007").ok);
+  p1 := lift_hex("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30");
+  print("lift_x(p + 1): ok %, value is infinity %\n", p1.ok, same_point(p1.value, inf));
+  prefix: [33] u8;
+  for i: 0..<33 { prefix[i] = encoded.bytes[i]; }
+  prefix[0] = 4;
+  print("decode with prefix 04: ok %\n", sg_decode_public(prefix[..]).ok);
+  off: SgPoint; off.x.limb[0] = 1; off.y.limb[0] = 1; off.z.limb[0] = 1;
+  refused := sg_add(off, g);
+  print("(1, 1) + G: ok %, value is infinity %\n", refused.ok, same_point(refused.value, inf));
+}
+// book:end example
+
+// book:begin check
+// Affine chord-and-tangent formulas, written from the curve equation with
+// one field inverse each. They share no code with the Jacobian kernels.
+affine_add :: (a: SgAffine, b: SgAffine) -> SgAffine {
+  slope: SecpField;
+  if sf_equal_mask(a.x, b.x) == CB_MAX64 {
+    three: SecpField; three.limb[0] = 3;
+    slope = sf_multiply(sf_multiply(three, sf_square(a.x)), sf_inverse(sf_add(a.y, a.y)).value);
+  } else {
+    slope = sf_multiply(sf_subtract(b.y, a.y), sf_inverse(sf_subtract(b.x, a.x)).value);
+  }
+  r: SgAffine;
+  r.x = sf_subtract(sf_subtract(sf_square(slope), a.x), b.x);
+  r.y = sf_subtract(sf_multiply(slope, sf_subtract(a.x, r.x)), a.y);
+  return r;
+}
+// Six points as affine (x, y) hex: G, 2G, 3G, 4G, -G and -3G, computed with
+// Python's arbitrary-precision integers and the affine formulas.
+POINTS :: 6;
+POINT_HEX :: [12] string.[
+    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
+    "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5", "1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a",
+    "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "388f7b0f632de8140fe337e62a37f3566500a99934c2231b6cb9fd7584b8e672",
+    "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13", "51ed993ea0d455b75642e2098ea51448d967ae33bfbdfe40cfe97bdc47739922",
+    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "b7c52588d95c3b9aa25b0403f1eef75702e84bb7597aabe663b82f6f04ef2777",
+    "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "c77084f09cd217ebf01cc819d5c80ca99aff5666cb3ddce4934602897b4715bd"];
+affine_at :: (i: int) -> SgAffine {
+  b: [32] u8; r: SgAffine;
+  #assert bytes_of(POINT_HEX[2 * i], b[..]); r.x = sf_load(b[..]).value;
+  #assert bytes_of(POINT_HEX[2 * i + 1], b[..]); r.y = sf_load(b[..]).value;
+  return r;
+}
+jacobian :: (i: int) -> SgPoint { return sg_from_affine(affine_at(i)).value; }
+// The table agrees with the group code: 2G, 3G and 4G by doubling and
+// addition, and the negatives by negation.
+#test "the oracle's points match the group code" #steps 100000000 {
+  for i: 0..<POINTS { #assert sg_from_affine(affine_at(i)).ok; }
+  g := jacobian(0);
+  #assert same_point(sg_double(g).value, jacobian(1));
+  #assert same_point(sg_add(jacobian(1), g).value, jacobian(2));
+  #assert same_point(sg_double(jacobian(1)).value, jacobian(3));
+  #assert same_point(sg_negate(g).value, jacobian(4));
+  #assert same_point(sg_negate(jacobian(2)).value, jacobian(5));
+}
+// Jacobian addition and doubling give the affine formulas' points.
+#forall "Jacobian sums match the affine formulas" a: 0..<POINTS, b: 0..<POINTS #steps 400000000 {
+  got := sg_add(jacobian(a), jacobian(b));
+  #assert got.ok;
+  pa := affine_at(a); pb := affine_at(b);
+  if sf_equal_mask(pa.x, pb.x) == CB_MAX64 && sf_equal_mask(pa.y, pb.y) != CB_MAX64 {
+    #assert same_point(got.value, sg_infinity());
+  } else {
+    want := sg_from_affine(affine_add(pa, pb));
+    #assert want.ok && same_point(got.value, want.value);
+  }
+}
+// Associativity, commutativity, inverses, identity and doubling.
+#forall "the group laws hold" a: 0..<POINTS, b: 0..<POINTS #steps 400000000 {
+  inf := sg_infinity();
+  p := jacobian(a); q := jacobian(b); r := jacobian((a + 2 * b + 1) % POINTS);
+  #assert same_point(sg_add(sg_add(p, q).value, r).value, sg_add(p, sg_add(q, r).value).value);
+  #assert same_point(sg_add(p, q).value, sg_add(q, p).value);
+  #assert same_point(sg_add(p, sg_negate(p).value).value, inf);
+  #assert same_point(sg_add(p, inf).value, p);
+  #assert same_point(sg_double(p).value, sg_add(p, p).value);
+}
+// lift_x accepts exactly the x whose x^3 + 7 passes Euler's criterion,
+// (x^3 + 7)^((p-1)/2) = 1, computed by square-and-multiply over the bits
+// of (p - 1) / 2 instead of the square-root chain.
+HALF :: "7fffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffffe17";
+euler :: (a: SecpField) -> SecpField {
+  e: [32] u8;
+  #assert bytes_of(HALF, e[..]);
+  // Right to left: the last byte first, its low bit first.
+  r: SecpField; r.limb[0] = 1;
+  power := a;
+  for j: 0..<32 {
+    for bit: 0..<8 {
+      if ((e[31 - j] >> bit) & 1) != 0 { r = sf_multiply(r, power); }
+      power = sf_square(power);
+    }
+  }
+  return r;
+}
+#forall "lift_x accepts exactly the squares" x: 0..<12 #steps 400000000 {
+  b: [32] u8; b[31] = cast(u8) x;
+  v: SecpField; v.limb[0] = cast(u64) (x * x * x + 7);
+  one: SecpField; one.limb[0] = 1;
+  lifted := sg_lift_x_public(b[..]);
+  #assert lifted.ok == (sf_equal_mask(euler(v), one) == CB_MAX64);
+  if lifted.ok {
+    #assert (lifted.value.y.limb[0] & 1) == 0;
+    #assert sf_equal_mask(sf_square(lifted.value.y), v) == CB_MAX64;
+  }
+}
+// book:end check

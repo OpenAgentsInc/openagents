@@ -124,6 +124,17 @@ class Group(unittest.TestCase):
     self.assertEqual(lib.sg_equal_mask(pa,point(a)),base.MAX64)
     self.assertEqual(lib.sg_equal_mask(pa,pb),base.MAX64 if a==b else 0);count+=6
   self.report['scaled_oracle_comparisons']=count;self.report['random_pairs_per_mode']=COUNT;self.report['libsecp_pair_comparisons']=len(cases);self.report['same_y_generic_case']=True
+ def test_random_triples_are_associative_and_match_libsecp(self):
+  rng=random.Random(9);count=0
+  for i in range(128):
+   a,b,c=(self.native_point(1+rng.randrange(N-1)) for _ in range(3))
+   if i%4==0:c=(b[0],base.P-b[1]) # q + r is infinity
+   want=self.native_sum(self.native_sum(a,b),c)
+   for label,lib in self.libs:
+    pa,pb,pc=(point(v,1+rng.randrange(base.P-1)) for v in (a,b,c))
+    left=lib.sg_add(lib.sg_add(pa,pb).value,pc);right=lib.sg_add(pa,lib.sg_add(pb,pc).value)
+    self.assert_result(left,want);self.assert_result(right,want);count+=2
+  self.report['associativity_comparisons']=count
  def test_public_encoding_lifts_and_affine_conversion(self):
   rng=random.Random(334);points=[None,G,point_mul(2),point_mul(3)]+[self.native_point(1+rng.randrange(N-1)) for _ in range(64)]
   count=0

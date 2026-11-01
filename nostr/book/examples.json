@@ -80,6 +80,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/group-law.coax",
+      "chapter": "nostr/book/ch009-the-secp256k1-group-law.md",
+      "stdout": "nostr/fixtures/group-law.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -19,7 +19,7 @@
 
 - [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md) — implemented
 - [8. Scalars mod n](ch008-scalars-mod-n.md) — implemented
-- [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) — partly implemented
+- [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) — implemented
 - [10. Scalar multiplication](ch010-scalar-multiplication.md) — partly implemented
 - [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — partly implemented
 - [12. Keys and randomness](ch012-keys-and-randomness.md) — partly implemented
