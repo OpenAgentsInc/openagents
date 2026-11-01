@@ -101,6 +101,78 @@ final class WalletUITests: XCTestCase {
     }
 }
 
+extension WalletUITests {
+    /// Buy bitcoin with the throwaway wallet: the SDK's MoonPay and Cash App
+    /// pages are made and passed for this wallet, and kept on screen
+    /// (OPENAGENTS_BUY_KEEP_PAGE, debug builds only) instead of opened, so
+    /// nothing is bought. MoonPay's page must be for the on-chain address
+    /// Receive shows afterwards.
+    func testBuyMakesTheProviderPagesForThisWallet() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES"]
+        app.launchEnvironment["OPENAGENTS_THROWAWAY_WALLET"] = "1"
+        app.launchEnvironment["OPENAGENTS_BUY_KEEP_PAGE"] = "1"
+        app.launch()
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        start.tap()
+        let open = app.buttons["wallet.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 20))
+        XCTAssertTrue(wait(90) { open.isEnabled })
+        open.tap()
+        let buy = app.buttons["wallet.buy"]
+        XCTAssertTrue(buy.waitForExistence(timeout: 10))
+        buy.tap()
+        let terms = app.staticTexts["buy.moonpay.terms"]
+        XCTAssertTrue(terms.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait(20) { terms.label.contains("Adding it costs at most ₿") }, terms.label)
+        shot(app, "Buy")
+
+        // No amount, then one too small to pay its own claim.
+        app.buttons["buy.moonpay"].tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts.firstMatch.staticTexts["Enter how many sats to buy."].exists)
+        app.alerts.firstMatch.buttons["OK"].tap()
+        let amount = app.textFields["buy.amount"]
+        amount.tap(); amount.typeText("1")
+        app.buttons["buy.moonpay"].tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts.firstMatch.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Buy more than ₿'")).count > 0)
+        app.alerts.firstMatch.buttons["OK"].tap()
+
+        // MoonPay: bitcoin, to this wallet's address.
+        amount.tap(); amount.typeText("00000")
+        XCTAssertTrue(app.staticTexts["buy.worth"].waitForExistence(timeout: 5))
+        app.buttons["buy.moonpay"].tap()
+        let status = app.staticTexts["buy.status"]
+        XCTAssertTrue(wait(60) { status.exists && status.label != "" }, status.label)
+        XCTAssertEqual(status.label, "Waiting for MoonPay", app.staticTexts["buy.detail"].label)
+        let page = "\(status.value ?? "")"
+        shot(app, "Buy: MoonPay")
+        XCTAssertTrue(page.hasPrefix("https://buy.moonpay.io"), page)
+        XCTAssertTrue(page.contains("currencyCode=btc&"), page)
+        let query = URLComponents(string: page)?.queryItems ?? []
+        let address = query.first { $0.name == "walletAddress" }?.value ?? ""
+        XCTAssertTrue(address.hasPrefix("bc1"), page)
+        XCTAssertEqual(query.first { $0.name == "quoteCurrencyAmount" }?.value, "0.00100000", page)
+
+        // Cash App: a mainnet invoice for the amount.
+        app.buttons["buy.cashapp"].tap()
+        XCTAssertTrue(wait(60) { status.label == "Waiting for Cash App" }, status.label + " " + app.staticTexts["buy.detail"].label)
+        let cash = "\(status.value ?? "")"
+        XCTAssertTrue(cash.hasPrefix("https://cash.app/launch/lightning/lnbc1m"), cash)
+        shot(app, "Buy: Cash App")
+
+        app.navigationBars.buttons["Wallet"].tap()
+        app.buttons["wallet.receive"].tap()
+        app.segmentedControls["receive.kind"].buttons["On-chain"].tap()
+        let text = app.staticTexts["receive.text"]
+        XCTAssertTrue(wait(30) { text.exists && text.label.hasPrefix("bc1") }, text.label)
+        XCTAssertEqual(text.label, address)
+        app.terminate()
+    }
+}
+
 private extension XCUIElement {
     func clearAndType(_ text: String) {
         if buttons["Clear text"].exists { buttons["Clear text"].tap() }

@@ -2254,17 +2254,35 @@ The phone's owner check (Face ID, Touch ID or passcode) comes last, before
 the send. SDK errors are shown in words, never as the SDK's own text. Backup
 of the words and exit data are later work (`docs/lightning/`).
 
+Buying bitcoin (Wallet → Buy bitcoin, #12613) goes through the SDK's
+`buyBitcoin` with MoonPay's Bitcoin delivery or Cash App's Lightning invoice,
+never an asset other than bitcoin. `verse/wallet.coax` decides it:
+`verse_wallet_buy_amount` refuses a MoonPay amount at or below the most the
+SDK may pay to claim the deposit (`verse_wallet_claim_fee_max`: the fastest
+recommended rate plus 1 sat/vB, times its 99-vbyte claim);
+`verse_wallet_moonpay_page` passes only `https://buy.moonpay.io` with exactly
+one `currencyCode=btc` and exactly one `walletAddress` equal to the deposit
+address the wallet itself reports after the call;
+`verse_wallet_cashapp_page` passes only a `cash.app` link to a mainnet
+invoice whose amount, as the SDK parsed it, is the amount asked; and
+`verse_wallet_buy_step` opens the page only on the step from asking to open,
+so one SDK answer opens one page. A refused page is not opened.
+
 Model-boundary exception: Debug builds launched with
 `OPENAGENTS_THROWAWAY_WALLET=1` (the wallet UI test only) open a fresh wallet
 from random words held in memory for that launch, in its own folder, never
-the Keychain. Release builds compile this path out.
+the Keychain. Release builds compile this path out. Debug builds launched with
+`OPENAGENTS_BUY_KEEP_PAGE=1` (the buy UI test only) keep the passed
+provider page on screen instead of opening it; Release builds compile it out.
 
 Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors);
 `coax test` and `coax mutate verse/wallet.coax` (0 survivors); the iOS UI
 tests (a phone with no wallet shows that and changes nothing, and
 `WalletUITests` against mainnet with a throwaway wallet: every kind of
 request is made, sends are parsed and quoted, and an empty wallet's send is
-refused in words); and the owner's device showing the existing balance.
+refused in words; `testBuyMakesTheProviderPagesForThisWallet`: MoonPay's page
+is for bitcoin to the address Receive then shows, Cash App's for a mainnet
+invoice of the amount, and too-small amounts are refused); and the owner's device showing the existing balance.
 
 ## Inference credit is bought only with payments our own Spark wallet received
 

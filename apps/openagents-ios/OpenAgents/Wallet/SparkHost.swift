@@ -510,6 +510,65 @@ actor SparkHost {
                                                                              maxFee: MaxFee(onchain: .networkRecommended(leewaySatPerVbyte: 5))))
     }
 
+    // MARK: Buying
+
+    /// Who sells bitcoin for dollars, through Breez's SDK. Raw values are
+    /// verse/wallet.coax's BUY_MOONPAY and BUY_CASHAPP.
+    enum Provider: Int64, Sendable { case moonpay = 0, cashApp = 1 }
+
+    /// The most adding an on-chain deposit to the balance costs now: the
+    /// SDK's fastest recommended rate plus the leeway set in `open`, for its
+    /// claim transaction (verse_wallet_claim_fee_max). Nil if it can't say.
+    func claimFeeMax() async -> UInt64? {
+        guard let fees = try? await connected().recommendedFees() else { return nil }
+        let most = verse_wallet_claim_fee_max(Int64(clamping: fees.fastestFee))
+        return most < 0 ? nil : UInt64(most)
+    }
+
+    /// The provider's page for buying `amount` sats into this wallet, from
+    /// the SDK's buyBitcoin. Bitcoin only: MoonPay delivers bitcoin on-chain,
+    /// never another asset. The page is returned only if verse/wallet.coax
+    /// passes it: MoonPay's for bitcoin to the deposit address the wallet
+    /// reports, Cash App's for a mainnet invoice of exactly `amount`.
+    func buy(_ provider: Provider, amount: UInt64) async throws -> URL {
+        let sdk = try connected()
+        let page: String
+        let passed: Bool
+        do {
+            switch provider {
+            case .moonpay:
+                page = try await sdk.buyBitcoin(request: .moonpay(delivery: .bitcoin(amountSat: amount), redirectUrl: nil)).url
+                // buyBitcoin moves the wallet to a fresh deposit address; this
+                // reads the one it uses now.
+                let address = try await sdk.receivePayment(request: ReceivePaymentRequest(paymentMethod: .bitcoinAddress(newAddress: false))).paymentRequest
+                passed = Self.bytes(page) { url in Self.bytes(address) { verse_wallet_moonpay_page(url, $0) } }
+            case .cashApp:
+                page = try await sdk.buyBitcoin(request: .cashApp(amountSats: amount)).url
+                var invoiceSats: Int64 = -1
+                if let at = page.range(of: "/launch/lightning/"),
+                   case .bolt11Invoice(let d) = try await sdk.parse(input: String(page[at.upperBound...])),
+                   d.network == .bitcoin, let msat = d.amountMsat {
+                    invoiceSats = Int64(clamping: msat / 1000)
+                }
+                passed = Self.bytes(page) { verse_wallet_cashapp_page($0, Int64(clamping: amount), invoiceSats) }
+            }
+        } catch {
+            NSLog("OpenAgents wallet: buy: %@", String(describing: error))
+            throw HostError.said("We couldn't start the purchase. Check the connection and try again.")
+        }
+        guard passed, let url = URL(string: page) else {
+            NSLog("OpenAgents wallet: buy: the provider page was refused")
+            throw HostError.said("The purchase page wasn't for this wallet, so it wasn't opened.")
+        }
+        return url
+    }
+
+    /// `text`'s bytes as a Coax view, for the length of `body`.
+    private static func bytes<T>(_ text: String, _ body: (coax_v_u8) -> T) -> T {
+        var b = Array(text.utf8)
+        return b.withUnsafeMutableBufferPointer { body(coax_v_u8(data: $0.baseAddress, count: Int64($0.count))) }
+    }
+
     // MARK: Values
 
     private static func sats(_ v: U128) -> UInt64 { UInt64(v.description) ?? 0 }

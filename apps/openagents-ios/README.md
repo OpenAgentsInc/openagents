@@ -58,6 +58,10 @@ existing Spark wallet sits top right; tapping it opens the wallet. You can:
   address (fast, normal or slow fee) or a Spark address, by paste or scan;
 - take LNURL withdrawals, claim on-chain deposits, and see activity and each
   payment's details.
+- buy bitcoin with dollars (Buy bitcoin): MoonPay sends it on-chain to the
+  wallet's own address, Cash App pays a Lightning invoice the wallet made.
+  The screen shows the most adding an on-chain purchase costs at today's
+  fees, then the incoming payment as the SDK reports it.
 
 Every send goes through a review screen and the phone's owner check, and
 `verse/wallet.coax` decides whether it may go. The wallet opens from the

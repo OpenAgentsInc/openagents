@@ -103,7 +103,7 @@ store is SQLite in the data directory. The calls a wallet needs:
 | `realTimeSyncServerUrl` | unset | Sends encrypted wallet data to Breez's server; needs its own decision |
 | `maxDepositClaimFee` | recommended rate + 1 sat/vB | What the earlier phone wallet used |
 | `lnurlDomain` | ours when we host addresses | `name@openagents.com` (#12307 had a self-hosted LNURL server with NIP-57 zaps) |
-| Buying (MoonPay, Cash App) | off | The Cash App bridges are USDC/USDT. MoonPay was on before (#9865); turn it back on only by owner decision. |
+| Buying (MoonPay, Cash App) | on | Back by owner decision, 2026-10-31 ([#12613](https://github.com/OpenAgentsInc/openagents/issues/12613)): `buyBitcoin` with MoonPay's Bitcoin delivery (never its USDC cross-chain delivery) and Cash App's Lightning invoice. The Cash App bridges (USDC/USDT) stay off. |
 
 ### What the CLI does that we must not
 

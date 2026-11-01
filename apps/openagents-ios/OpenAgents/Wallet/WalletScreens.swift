@@ -4,6 +4,7 @@ import CoreImage.CIFilterBuiltins
 
 // The wallet's screens (UIKit, per docs/lightning/coax-integration.md):
 // the balance and activity, sending, receiving and a payment's details.
+// Buying is in BuyScreen.swift.
 // SparkHost does the work; verse/wallet.coax decides each send.
 
 enum Look {
@@ -91,7 +92,7 @@ class WalletForm: UIViewController {
 
 // MARK: - The wallet
 
-/// The balance, Send and Receive, deposits on the way, and activity.
+/// The balance, Send, Receive and Buy bitcoin, deposits on the way, and activity.
 final class WalletViewController: UITableViewController {
     private let host: SparkHost
     private var balance: UInt64 = 0
@@ -128,7 +129,9 @@ final class WalletViewController: UITableViewController {
         send.addAction(UIAction { [weak self] _ in self?.open(SendViewController(host: self!.host)) }, for: .touchUpInside)
         receive.addAction(UIAction { [weak self] _ in self?.open(ReceiveViewController(host: self!.host)) }, for: .touchUpInside)
         let buttons = UIStackView(arrangedSubviews: [receive, send]); buttons.spacing = 12; buttons.distribution = .fillEqually
-        let header = Look.stack([balanceButton, dollars, buttons], spacing: 10)
+        let buy = Look.button("Buy bitcoin", "wallet.buy")
+        buy.addAction(UIAction { [weak self] _ in self?.open(BuyViewController(host: self!.host)) }, for: .touchUpInside)
+        let header = Look.stack([balanceButton, dollars, buttons, buy], spacing: 10)
         header.setCustomSpacing(22, after: dollars)
         header.layoutMargins = UIEdgeInsets(top: 24, left: 20, bottom: 12, right: 20); header.isLayoutMarginsRelativeArrangement = true
         header.frame.size = header.systemLayoutSizeFitting(CGSize(width: view.bounds.width, height: 0), withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)

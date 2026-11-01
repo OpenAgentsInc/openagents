@@ -5,6 +5,9 @@ import LocalAuthentication
 /// import the header's cast macros). The header's layout checks pin Flow.
 enum Pay { static let idle: coax_t_Pay = 0, quoted: coax_t_Pay = 1, sending: coax_t_Pay = 2, succeeded: coax_t_Pay = 3, notSent: coax_t_Pay = 4, unknown: coax_t_Pay = 5 }
 enum Verdict { static let send: coax_t_Verdict = 0, overCap: coax_t_Verdict = 1, overLimit: coax_t_Verdict = 2, expired: coax_t_Verdict = 3, badAmount: coax_t_Verdict = 4, busy: coax_t_Verdict = 5 }
+enum BuyState { static let idle: coax_t_Buy = 0, asking: coax_t_Buy = 1, open: coax_t_Buy = 2, arriving: coax_t_Buy = 3, received: coax_t_Buy = 4, failed: coax_t_Buy = 5 }
+enum BuyEvent { static let ask: coax_t_BuyEvent = 0, page: coax_t_BuyEvent = 1, refused: coax_t_BuyEvent = 2, seen: coax_t_BuyEvent = 3, paid: coax_t_BuyEvent = 4, done: coax_t_BuyEvent = 5 }
+enum BuyCheck { static let ok: coax_t_BuyCheck = 0, noProvider: coax_t_BuyCheck = 1, noAmount: coax_t_BuyCheck = 2, tooSmall: coax_t_BuyCheck = 3, tooLarge: coax_t_BuyCheck = 4 }
 enum PayEvent { static let quote: coax_t_Event = 0, confirm: coax_t_Event = 1, cancel: coax_t_Event = 2, expire: coax_t_Event = 3, sent: coax_t_Event = 4, failed: coax_t_Event = 5, timedOut: coax_t_Event = 6, done: coax_t_Event = 7 }
 
 /// Amounts as the wallet shows them: whole sats after ₿ (as the home does),
