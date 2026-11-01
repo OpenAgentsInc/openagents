@@ -30,6 +30,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/sha-256.coax",
+      "chapter": "nostr/book/ch004-sha-256.md",
+      "stdout": "nostr/fixtures/sha-256.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

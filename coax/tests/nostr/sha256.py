@@ -17,7 +17,7 @@ ROOT=Path(__file__).resolve().parents[3]
 COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax'))
 PURE=ROOT/'coax/lib/crypto/sha256.coax'
 BRIDGE=ROOT/'coax/lib/crypto/sha256-memory.coax'
-FINGERPRINT_PIN='94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a'
+FINGERPRINT_PIN='cbb06bc1439ca987d14de9addf60f6966bff9c291f80987c2b69f0bbe9db50a2'  # kernel bytes, then fingerprint.coax bytes
 
 def run(*args,**kw):
  r=subprocess.run([str(a) for a in args],capture_output=True,text=True,**kw)
@@ -112,7 +112,7 @@ class Sha256(unittest.TestCase):
    for tag in [-1,3,2**63-1]:
     out=array([0xa5]*32);self.assertNotEqual(lib.sha256_bip340(tag,view(data),view(out)),0);self.assertEqual(bytes(out),b'\xa5'*32)
  def test_frozen_fingerprint_source_and_digest_evidence(self):
-  self.assertEqual(hashlib.sha256((ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),FINGERPRINT_PIN)
+  self.assertEqual(hashlib.sha256((ROOT/'coax/lib/crypto/sha256-kernel.coax').read_bytes()+(ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),FINGERPRINT_PIN)
 
  def test_one_mib_all_chunk_sizes_native(self):
   expected=','.join(str(x) for x in hashlib.sha256(bytes(range(256))*4096).digest())

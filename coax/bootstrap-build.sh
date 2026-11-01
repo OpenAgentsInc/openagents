@@ -35,7 +35,7 @@ trap 'rm -rf "$work"' EXIT
   printf ')COAX_MEMORY";\nstatic constexpr char PROTO_IMPORTER_SOURCE[] = R"COAX_IMPORTER('
   cat lib/proto/importer.coax
   printf ')COAX_IMPORTER";\nstatic constexpr char PROTO_FINGERPRINT_SOURCE[] = R"COAX_FP('
-  cat lib/proto/fingerprint.coax
+  cat lib/crypto/sha256-kernel.coax lib/proto/fingerprint.coax
   printf ')COAX_FP";\n'
 } > "$work/proto_runtime.inc"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/budget.c -o "$work/seed-budget.o"
@@ -229,6 +229,8 @@ if ! cmp bootstrap/checker.c "$work/checker.c" || ! cmp bootstrap/checker.h "$wo
 fi
 gate "$work/stage0" test lib/proto/wire.coax
 gate "$work/stage0" mutate lib/proto/wire.coax
+gate "$work/stage0" test lib/crypto/sha256-kernel.coax
+gate "$work/stage0" mutate lib/crypto/sha256-kernel.coax
 gate "$work/stage0" test lib/proto/fingerprint.coax
 gate "$work/stage0" mutate lib/proto/fingerprint.coax
 gate "$work/stage0" test lib/proto/importer.coax

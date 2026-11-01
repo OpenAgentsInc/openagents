@@ -1,0 +1,141 @@
+// book:begin example
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a label and one 32-bit word as 8 hex digits.
+show_word :: (label: string, x: u32) {
+  b: [4] u8;
+  if cb_store_be32(b[..], 0, x) { show(label, b[..]); }
+}
+// Every call below this point must succeed; say so if one doesn't.
+must :: (status: u32) { if status != SHA_OK { print("unexpected status %\n", status); } }
+
+STATUS :: [8] string.["ok", "bad state", "bad input", "bad output",
+  "already final", "overlap", "too long", "bad tag"];
+
+main :: () {
+  abc := [3] u8.[97, 98, 99];
+
+  // Padding: "abc" is 3 bytes, so it fits in one 64-byte block.
+  print("blocks for 0, 55, 56 and 64 bytes: % % % %\n", S_blocks(0), S_blocks(55), S_blocks(56), S_blocks(64));
+  block: [64] u8;
+  for i: 0..<64 { block[i] = S_padded("abc", i, 64); }
+  show("padded block bytes 0-3", block[0..<4]);
+  show("padded block bytes 56-63", block[56..<64]);
+
+  // The first schedule words, as the compression function builds them.
+  w: [18] u32;
+  for i: 0..<16 { w[i] = cb_load_be32(block[..], i * 4).value; }
+  for i: 16..<18 {
+    x := w[i - 15]; y := w[i - 2];
+    s0 := S_rotr(x, 7) ^ S_rotr(x, 18) ^ (x >> 3);
+    s1 := S_rotr(y, 17) ^ S_rotr(y, 19) ^ (y >> 10);
+    w[i] = S_sum4(w[i - 16], s0, w[i - 7], s1);
+  }
+  show_word("w[0]", w[0]); show_word("w[15]", w[15]);
+  show_word("w[16]", w[16]); show_word("w[17]", w[17]);
+
+  // Round 0 of the compression function, from the initial hash words.
+  iv := S_seed(3).words;
+  a := iv[0]; e := iv[4];
+  s1 := S_rotr(e, 6) ^ S_rotr(e, 11) ^ S_rotr(e, 25);
+  choose := (e & iv[5]) ^ ((e ^ 4294967295) & iv[6]);
+  t1 := S_sum5(iv[7], s1, choose, 0x428a2f98, w[0]);
+  s0 := S_rotr(a, 2) ^ S_rotr(a, 13) ^ S_rotr(a, 22);
+  majority := (a & iv[1]) ^ (a & iv[2]) ^ (iv[1] & iv[2]);
+  t2 := S_sum2(s0, majority);
+  show_word("round 0 T1", t1); show_word("round 0 T2", t2);
+  show_word("round 0 new a", S_sum2(t1, t2)); show_word("round 0 new e", S_sum2(iv[3], t1));
+
+  // The digest of "abc", in one call.
+  out: [32] u8;
+  print("hash \"abc\": %\n", STATUS[sha256_hash_checked(abc[..], out[..], false)]);
+  show("SHA-256(\"abc\")", out[..]);
+
+  // The two-block FIPS 180-2 message, streamed one byte at a time.
+  text := "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+  long: [56] u8;
+  for i: 0..<56 { long[i] = text[i]; }
+  state: [112] u8;
+  must(sha256_init(state[..]));
+  for i: 0..<56 { must(sha256_update_checked(state[..], long[i..<i + 1], false)); }
+  print("% bytes in 56 updates, % buffered\n", sha256_info(state[..]).total, sha256_info(state[..]).buffered);
+  must(sha256_final_checked(state[..], out[..], false));
+  show("SHA-256(56-byte message)", out[..]);
+
+  // One million "a" bytes, in 1,000 updates of 1,000 bytes.
+  thousand: [1000] u8;
+  for i: 0..<1000 { thousand[i] = 97; }
+  must(sha256_init(state[..]));
+  for i: 0..<1000 { must(sha256_update_checked(state[..], thousand[..], false)); }
+  must(sha256_final_checked(state[..], out[..], false));
+  show("SHA-256(1,000,000 x \"a\")", out[..]);
+
+  // Every split of a 1,000-byte message into two updates gives the digest
+  // of one update.
+  message: [1000] u8;
+  for i: 0..<1000 { message[i] = cast(u8) ((i * 7 + 3) % 256); }
+  whole: [32] u8;
+  must(sha256_hash_checked(message[..], whole[..], false));
+  agree := 0;
+  for cut: 0..<1001 {
+    split: [32] u8;
+    must(sha256_init(state[..]));
+    must(sha256_update_checked(state[..], message[0..<cut], false));
+    must(sha256_update_checked(state[..], message[cut..<1000], false));
+    must(sha256_final_checked(state[..], split[..], false));
+    same := true;
+    for i: 0..<32 { if split[i] != whole[i] { same = false; } }
+    if same { agree += 1; }
+  }
+  print("splits of 1,000 bytes that match one update: % of 1001\n", agree);
+  show("SHA-256(1,000-byte message)", whole[..]);
+
+  // A BIP-340 tagged hash: SHA-256(SHA-256(tag) || SHA-256(tag) || "abc").
+  tag := S_hash("BIP0340/challenge");
+  tag_bytes: [32] u8;
+  must(sha256_emit(tag.words[..], tag_bytes[..]));
+  show("SHA-256(\"BIP0340/challenge\")", tag_bytes[..]);
+  must(sha256_bip340_checked(2, abc[..], out[..], false));
+  show("tagged challenge of \"abc\"", out[..]);
+
+  // Refusals. Each one returns a status and leaves the output unchanged.
+  must(sha256_init(state[..]));
+  must(sha256_final_checked(state[..], out[..], false));
+  print("update after final: %\n", STATUS[sha256_update_checked(state[..], abc[..], false)]);
+  small: [31] u8;
+  print("31-byte output: %\n", STATUS[sha256_hash_checked(abc[..], small[..], false)]);
+  print("tag id 3: %\n", STATUS[sha256_bip340_checked(3, abc[..], out[..], false)]);
+  print("1 MiB + 1 byte in one call: %\n", STATUS[sha256_request(1048577, 32, false)]);
+  short: [111] u8;
+  print("111-byte state: %\n", STATUS[sha256_init(short[..])]);
+}
+// book:end example
+
+// book:begin splits
+// Every split of a 130-byte message into two updates gives the same digest
+// as one update. 130 bytes cross two block boundaries, so the cuts cover an
+// empty first chunk, a full first block, a chunk that ends inside the length
+// field and an empty second chunk.
+#forall "every split of a 130-byte message gives the same digest" cut: 0..<131 {
+  message: [130] u8;
+  for i: 0..<130 { message[i] = cast(u8) ((i * 7 + 3) % 256); }
+  state: [112] u8; split: [32] u8;
+  #assert sha256_init(state[..]) == SHA_OK;
+  #assert sha256_update_checked(state[..], message[0..<cut], false) == SHA_OK;
+  #assert sha256_update_checked(state[..], message[cut..<130], false) == SHA_OK;
+  #assert sha256_final_checked(state[..], split[..], false) == SHA_OK;
+  // The digest computed outside Coax, with Python's hashlib.
+  expected := "4d5e47a2e8510a314576c238f6ff19d389d3ef3aaaca8b2e530263a5d15741da";
+  text: [64] u8;
+  #assert hex_encode_checked(cast(string) split[..], text[..], false).written == 64;
+  #assert cast(string) text[..] == expected;
+}
+// book:end splits

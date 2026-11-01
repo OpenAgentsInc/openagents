@@ -37,8 +37,6 @@ typedef struct coax_t_ScInverse coax_t_ScInverse;
 typedef struct coax_t_ScWindow coax_t_ScWindow;
 typedef struct coax_t_Sha256Info coax_t_Sha256Info;
 typedef struct coax_t_S_Digest coax_t_S_Digest;
-typedef struct coax_t_F_Limits coax_t_F_Limits;
-typedef struct coax_t_F_Result coax_t_F_Result;
 #ifdef COAX_coax_t_Nip98_DEFINED
 #ifndef COAX_SCHEMA_coax_t_Nip98_31343a636f61782d632d747970652d7631363a73747275637431323a636f61785f745f4e69703938323a3438313a38313a36353a6572726f72373a696e7436345f74313a3031303a637265617465645f6174373a696e7436345f74313a38343a6b696e64373a696e7436345f74323a3136313a75373a696e7436345f74323a3234363a6d6574686f64373a696e7436345f74323a3332373a7061796c6f6164373a696e7436345f74323a3430
 #error "incompatible Coax C type coax_t_Nip98"
@@ -255,24 +253,6 @@ struct coax_t_Sha256Info { uint32_t error; uint32_t phase; uint64_t total; uint3
 #define COAX_SCHEMA_coax_t_S_Digest_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f535f446967657374323a3336313a34313a32353a776f72647331313a636f61785f61385f753332313a30353a6572726f72383a75696e7433325f74323a3332
 struct coax_t_S_Digest { coax_a8_u32 words; uint32_t error; };
 #endif
-#ifdef COAX_coax_t_F_Limits_DEFINED
-#ifndef COAX_SCHEMA_coax_t_F_Limits_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f465f4c696d697473323a3234313a38313a3331303a64657363726970746f72373a696e7436345f74313a30373a72756e74696d65373a696e7436345f74313a38363a736f75726365373a696e7436345f74323a3136
-#error "incompatible Coax C type coax_t_F_Limits"
-#endif
-#else
-#define COAX_coax_t_F_Limits_DEFINED
-#define COAX_SCHEMA_coax_t_F_Limits_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f465f4c696d697473323a3234313a38313a3331303a64657363726970746f72373a696e7436345f74313a30373a72756e74696d65373a696e7436345f74313a38363a736f75726365373a696e7436345f74323a3136
-struct coax_t_F_Limits { int64_t descriptor; int64_t runtime; int64_t source; };
-#endif
-#ifdef COAX_coax_t_F_Result_DEFINED
-#ifndef COAX_SCHEMA_coax_t_F_Result_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f465f526573756c74323a3332313a38313a33373a7772697474656e373a696e7436345f74313a3031303a70726f76656e616e6365373a696e7436345f74313a38353a6572726f7231313a636f61785f737472696e67323a3136
-#error "incompatible Coax C type coax_t_F_Result"
-#endif
-#else
-#define COAX_coax_t_F_Result_DEFINED
-#define COAX_SCHEMA_coax_t_F_Result_31343a636f61782d632d747970652d7631363a73747275637431353a636f61785f745f465f526573756c74323a3332313a38313a33373a7772697474656e373a696e7436345f74313a3031303a70726f76656e616e6365373a696e7436345f74313a38353a6572726f7231313a636f61785f737472696e67323a3136
-struct coax_t_F_Result { int64_t written; int64_t provenance; coax_string error; };
-#endif
 COAX_LAYOUT(sizeof(coax_t_Nip98) == 48 && COAX_ALIGNOF(coax_t_Nip98) == 8, "layout of Nip98");
 COAX_LAYOUT(offsetof(coax_t_Nip98, error) == 0, "offset of Nip98.error");
 COAX_LAYOUT(offsetof(coax_t_Nip98, created_at) == 8, "offset of Nip98.created_at");
@@ -337,14 +317,6 @@ COAX_LAYOUT(offsetof(coax_t_Sha256Info, buffered) == 16, "offset of Sha256Info.b
 COAX_LAYOUT(sizeof(coax_t_S_Digest) == 36 && COAX_ALIGNOF(coax_t_S_Digest) == 4, "layout of S_Digest");
 COAX_LAYOUT(offsetof(coax_t_S_Digest, words) == 0, "offset of S_Digest.words");
 COAX_LAYOUT(offsetof(coax_t_S_Digest, error) == 32, "offset of S_Digest.error");
-COAX_LAYOUT(sizeof(coax_t_F_Limits) == 24 && COAX_ALIGNOF(coax_t_F_Limits) == 8, "layout of F_Limits");
-COAX_LAYOUT(offsetof(coax_t_F_Limits, descriptor) == 0, "offset of F_Limits.descriptor");
-COAX_LAYOUT(offsetof(coax_t_F_Limits, runtime) == 8, "offset of F_Limits.runtime");
-COAX_LAYOUT(offsetof(coax_t_F_Limits, source) == 16, "offset of F_Limits.source");
-COAX_LAYOUT(sizeof(coax_t_F_Result) == 32 && COAX_ALIGNOF(coax_t_F_Result) == 8, "layout of F_Result");
-COAX_LAYOUT(offsetof(coax_t_F_Result, written) == 0, "offset of F_Result.written");
-COAX_LAYOUT(offsetof(coax_t_F_Result, provenance) == 8, "offset of F_Result.provenance");
-COAX_LAYOUT(offsetof(coax_t_F_Result, error) == 16, "offset of F_Result.error");
 
 coax_string nip98_error_text(int64_t code);
 coax_t_Nip98 nip98_check_coax(coax_string authorization, coax_string method, coax_string url, coax_v_u8 body, int64_t now, coax_v_u8 work, coax_v_u8 out);
@@ -419,9 +391,7 @@ uint32_t sha256_init(coax_v_u8 state);
 coax_t_Sha256Info sha256_info(coax_v_u8 state);
 coax_t_S_Digest S_hash(coax_string input);
 _Bool S_hex(coax_t_S_Digest digest, coax_v_u8 out);
-coax_t_F_Limits F_capacities(void);
-coax_t_F_Result F_runtime(coax_string core, coax_string memory, coax_v_u8 out);
-coax_t_F_Result F_package(coax_string raw, coax_string prefix, coax_string compiler, coax_string runtime, coax_string importer, coax_string fingerprints, coax_string body, coax_v_u8 out);
+void coax_default_t_Nip98(coax_t_Nip98 *p);
 
 #ifdef __cplusplus
 }

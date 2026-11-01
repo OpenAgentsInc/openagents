@@ -26,7 +26,7 @@ compare() {  # compare ROOT: build stage0 from ROOT's seeds, emit, compare
     printf 'static constexpr char PROTO_CORE_SOURCE[] = R"COAX_CORE('; cat lib/proto/wire.coax
     printf ')COAX_CORE";\nstatic constexpr char PROTO_MEMORY_SOURCE[] = R"COAX_MEMORY('; cat lib/proto/memory.coax
     printf ')COAX_MEMORY";\nstatic constexpr char PROTO_IMPORTER_SOURCE[] = R"COAX_IMPORTER('; cat lib/proto/importer.coax
-    printf ')COAX_IMPORTER";\nstatic constexpr char PROTO_FINGERPRINT_SOURCE[] = R"COAX_FP('; cat lib/proto/fingerprint.coax
+    printf ')COAX_IMPORTER";\nstatic constexpr char PROTO_FINGERPRINT_SOURCE[] = R"COAX_FP('; cat lib/crypto/sha256-kernel.coax lib/proto/fingerprint.coax
     printf ')COAX_FP";\n'
   } > "$w/proto_runtime.inc"
   local objs=()

@@ -2381,9 +2381,11 @@ generation live in `coax/lib/proto/importer.coax`, with `#authority`, bounded
 checks and a zero-survivor mutation gate. Coax owns scratch capacities. Stage0
 has proto imports disabled and compiles this actual Coax implementation to C11;
 the final compiler links it and must regenerate identical importer C. There is
-no C++ parser/generator fallback. `coax/lib/proto/fingerprint.coax` owns
-SHA-256, runtime extraction, hexadecimal/provenance formatting and output
-assembly, with its own authority checks and zero-survivor mutation build gate.
+no C++ parser/generator fallback. `coax/lib/crypto/sha256-kernel.coax` owns
+SHA-256 and hexadecimal digests, and `coax/lib/proto/fingerprint.coax` loads it
+and owns runtime extraction, provenance formatting and output assembly; each
+has its own authority checks and zero-survivor mutation build gate, and the
+kernel is a listed compiler input in `coax/provenance.sh`.
 The native bridge only reads files, allocates Coax-requested buffers and copies
 Coax results. It contains no hash or formatting fallback. The frontend, evaluator, C emitter, toolchain
 and native host effects remain trusted; these gates are not a formal proof.

@@ -464,8 +464,9 @@ embed these sources into coax0; no Python build dependency returns.
 schema declaration hashes characterize compatibility; independent protoc vectors
 check interoperability. The descriptor parser and generator now live in
 `lib/proto/importer.coax`, with their own authority checks and mutation gate.
-`lib/proto/fingerprint.coax` owns SHA-256, runtime extraction and provenance
-assembly, with its own authority and zero-survivor mutation gates. Stage0
+`lib/crypto/sha256-kernel.coax` owns SHA-256 and `lib/proto/fingerprint.coax`
+owns runtime extraction and provenance assembly, each with its own authority
+and zero-survivor mutation gates. Stage0
 compiles these actual implementations together to C11; the final compiler links it
 and regenerates identical C. The C++ frontend/check interpreter/emitter and
 native host effects remain trusted. See [the evidence table](proto.md#native-importer-audit-boundary)

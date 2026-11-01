@@ -130,7 +130,7 @@ generated_checks_rc=$?
 wire_core_rc=$?
 "$COAX" test lib/proto/importer.coax
 importer_checks_rc=$?
-"$COAX" test lib/proto/fingerprint.coax && "$COAX" mutate lib/proto/fingerprint.coax
+"$COAX" test lib/crypto/sha256-kernel.coax && "$COAX" mutate lib/crypto/sha256-kernel.coax && "$COAX" test lib/proto/fingerprint.coax && "$COAX" mutate lib/proto/fingerprint.coax
 fingerprint_checks_rc=$?
 "$COAX" test lib/compiler/quantity.coax && "$COAX" mutate lib/compiler/quantity.coax --root-only && "$COAX" test lib/compiler/unit-algebra.coax && "$COAX" mutate lib/compiler/unit-algebra.coax --root-only && python3 tests/unit_algebra.py
 unit_algebra_rc=$?

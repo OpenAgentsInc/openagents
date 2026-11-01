@@ -1,9 +1,8 @@
-// Streaming SHA-256 over caller-owned byte state. Temporary dependency: the
-// unchanged compiler-fingerprint module owns the single compression kernel.
-// This reuse does not qualify that old API for admission/signing or alter its
-// provenance. Moving the kernel later requires an explicit compiler migration.
+// Streaming SHA-256 over caller-owned byte state. The compression function,
+// padding and initial hash words are in sha256-kernel.coax, which the compiler
+// fingerprint also loads.
 #load "bytes.coax";
-#load "../proto/fingerprint.coax";
+#load "sha256-kernel.coax";
 #authority;
 SHA_OK :: cast(u32) 0;
 SHA_BAD_STATE :: cast(u32) 1;

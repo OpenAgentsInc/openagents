@@ -18,9 +18,10 @@ the resulting implementation, and `coax header` exposes exported C wrappers.
 The parser, descriptor validation, name resolution and source generator live in
 `coax/lib/proto/importer.coax`, with `#authority` and executable checks. They
 compile to C11 and are linked into coax0; `src/proto.cpp` supplies file I/O and
-Coax-requested buffer allocation only. `lib/proto/fingerprint.coax` owns
-SHA-256, runtime-boundary extraction and the complete provenance/source
-envelope. There is no C++ hash, formatter or source-assembly fallback.
+Coax-requested buffer allocation only. `lib/crypto/sha256-kernel.coax` owns
+SHA-256; `lib/proto/fingerprint.coax` loads it and owns runtime-boundary
+extraction and the complete provenance/source envelope. `fingerprint_sha256`
+is the SHA-256 of the kernel followed by `fingerprint.coax`. There is no C++ hash, formatter or source-assembly fallback.
 
 `coax/build.sh` builds a temporary stage0 compiler with proto imports disabled
 using generated Coax lexer, parser and checker seeds. Each source must reproduce its
@@ -227,7 +228,7 @@ The evidence has distinct scopes:
 | Gate | What it establishes | What it does not establish |
 | --- | --- | --- |
 | Legacy declaration hashes in `tests/proto/import-baselines.json` | No generated schema-API drift for 11 existing profiles plus the scalar fixture; original full-output hashes retained as history | Correctness of either generator |
-| `coax test coax/lib/proto/fingerprint.coax` | Actual SHA-256, padding/length, hexadecimal, runtime boundary and envelope code passes finite checks, including empty/abc, binary block-boundary vectors and the maximum logical length | A certified cryptographic implementation, signatures or admission authority |
+| `coax test coax/lib/proto/fingerprint.coax` | Actual SHA-256 (from `lib/crypto/sha256-kernel.coax`), padding/length, hexadecimal, runtime boundary and envelope code passes finite checks, including empty/abc, binary block-boundary vectors and the maximum logical length | A certified cryptographic implementation, signatures or admission authority |
 | `coax mutate coax/lib/proto/fingerprint.coax` | All selected mutations are killed, with no exemptions | Universal correctness or an exhaustive defect model |
 | `coax test coax/lib/proto/importer.coax` | The actual parser/generator passes valid/invalid descriptor, budget, UTF-8, dependency, namespace, policy, diagnostic and generated-output checks | Universal correctness; exact-output fixtures characterize compatibility |
 | `coax mutate coax/lib/proto/importer.coax` | All selected mutations are killed, with no equivalent exemptions | An exhaustive defect model or proof of the compiler executing the checks |

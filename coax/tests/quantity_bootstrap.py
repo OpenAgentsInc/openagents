@@ -152,6 +152,8 @@ def plan_for(root, work, source_commit):
     for name, relative, tag in (("CORE", "wire", "COAX_CORE"), ("MEMORY", "memory", "COAX_MEMORY"),
                                 ("IMPORTER", "importer", "COAX_IMPORTER"), ("FINGERPRINT", "fingerprint", "COAX_FP")):
         protocol += f'static constexpr char PROTO_{name}_SOURCE[] = R"{tag}('.encode()
+        if relative == "fingerprint":  # the fingerprint source is the SHA-256 kernel, then fingerprint.coax
+            protocol += (coax / "lib/crypto/sha256-kernel.coax").read_bytes()
         protocol += (coax / f"lib/proto/{relative}.coax").read_bytes()
         protocol += f'){tag}";\n'.encode()
     plan = {
@@ -163,7 +165,7 @@ def plan_for(root, work, source_commit):
         "seed_sha256": {f"coax/bootstrap/{name}.{ext}": sha(coax / f"bootstrap/{name}.{ext}") for name in seeds for ext in ("c", "h")},
         "authored_source_sha256": {f"coax/lib/compiler/{name}.coax": sha(coax / f"lib/compiler/{name}.coax") for name in AUTHORED},
         "embedded_protocol_sources_sha256": hashlib.sha256(protocol).hexdigest(),
-        "preparation": {"generated_file": str(work / "proto_runtime.inc"), "source": "Four exact lib/proto source literals, with the normal raw-string delimiters."},
+        "preparation": {"generated_file": str(work / "proto_runtime.inc"), "source": "Four exact source literals (lib/proto, with lib/crypto/sha256-kernel.coax before fingerprint.coax), with the normal raw-string delimiters."},
         "commands": commands, "command_count": len(commands), "shared_wall_budget_seconds": WALL_BUDGET_SECONDS,
         "normal_rebuild_command": "coax/build.sh", "normal_rebuild_executed": False,
         "scope": "Focused checked-in-seed reconstruction and C/header fixed point, not the complete normal release/cache/provenance qualification.",

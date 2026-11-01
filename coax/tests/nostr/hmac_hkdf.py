@@ -77,7 +77,7 @@ class HmacHkdf(unittest.TestCase):
   for path in ['upstream/rfc/rfc4231.txt','upstream/rfc/rfc5869.txt','upstream/nip44/nip44.vectors.json']:
    data=(base/path).read_bytes();self.assertEqual(len(data),pins[path]['bytes'])
    self.assertEqual(hashlib.sha256(data).hexdigest(),pins[path]['sha256'])
-  self.assertEqual(hashlib.sha256((ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),'94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a')
+  self.assertEqual(hashlib.sha256((ROOT/'coax/lib/crypto/sha256-kernel.coax').read_bytes()+(ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),'cbb06bc1439ca987d14de9addf60f6966bff9c291f80987c2b69f0bbe9db50a2')
  def mac(self,lib,key,message):
   k=array(key);m=array(message);out=array([0xa5]*40)
   self.assertEqual(lib.hmac_sha256(view(k),view(m),view(out)),0)

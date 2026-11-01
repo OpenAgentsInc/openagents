@@ -1303,9 +1303,11 @@ Version 0.10.0 implements descriptor parsing, validation and source generation i
 `lib/proto/importer.coax`. Its `#authority` checks and mutation gate execute on
 the actual implementation. A proto-disabled C++ stage0 compiles it to C11,
 then the final compiler links it and must regenerate identical C. Coax defines
-its bounded scratch capacities. `lib/proto/fingerprint.coax` also implements
-SHA-256, runtime extraction and the provenance/source envelope, with authority
-checks and mutation gates. Native code owns allocation and I/O only.
+its bounded scratch capacities. `lib/crypto/sha256-kernel.coax` implements
+SHA-256 and `lib/proto/fingerprint.coax` the runtime extraction and the
+provenance/source envelope, with authority checks and mutation gates. A
+generated module's `fingerprint_sha256` is the SHA-256 of the kernel followed
+by `fingerprint.coax`. Native code owns allocation and I/O only.
 The runtime remains in `lib/proto/wire.coax` with separate authority/mutation
 gates and two native-address wrappers. The frontend, check evaluator, C emitter,
 host effects and toolchain remain trusted; finite checks are not a proof of

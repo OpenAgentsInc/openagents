@@ -70,7 +70,7 @@ artifacts_from() {
         { printf 'static constexpr char PROTO_CORE_SOURCE[] = R"COAX_CORE('; cat lib/proto/wire.coax
           printf ')COAX_CORE";\nstatic constexpr char PROTO_MEMORY_SOURCE[] = R"COAX_MEMORY('; cat lib/proto/memory.coax
           printf ')COAX_MEMORY";\nstatic constexpr char PROTO_IMPORTER_SOURCE[] = R"COAX_IMPORTER('; cat lib/proto/importer.coax
-          printf ')COAX_IMPORTER";\nstatic constexpr char PROTO_FINGERPRINT_SOURCE[] = R"COAX_FP('; cat lib/proto/fingerprint.coax
+          printf ')COAX_IMPORTER";\nstatic constexpr char PROTO_FINGERPRINT_SOURCE[] = R"COAX_FP('; cat lib/crypto/sha256-kernel.coax lib/proto/fingerprint.coax
           printf ')COAX_FP";\n'; } > "$work/$name" ;;
       proto_importer.c) bin/coax c lib/compiler/compiler.coax --library --header "$work/proto_importer.h" > "$work/proto_importer.c" ;;
       proto_importer.h) [[ -f "$work/proto_importer.h" ]] || bin/coax c lib/compiler/compiler.coax --library --header "$work/proto_importer.h" > /dev/null ;;
@@ -153,6 +153,9 @@ else
       mkdir -p "$snapshot/coax/$(dirname "$dir")"
       cp -R "$dir" "$snapshot/coax/$dir"
     done
+    # The SHA-256 kernel is the one compiler input outside these directories.
+    mkdir -p "$snapshot/coax/lib/crypto"
+    cp -p lib/crypto/sha256-kernel.coax "$snapshot/coax/lib/crypto/sha256-kernel.coax"
     cp "$root/scripts/coax-release.sh" "$snapshot/scripts/coax-release.sh"
     [[ "$("$snapshot/coax/provenance.sh" fingerprint "$snapshot")" == "$expected" ]] || { echo 'compiler inputs changed while creating snapshot' >&2; exit 1; }
     "$snapshot/coax/bootstrap-build.sh" --private-snapshot

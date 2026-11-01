@@ -73,14 +73,16 @@
    "number": 4,
    "title": "SHA-256",
    "file": "ch004-sha-256.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     1
    ],
    "source": [
+    "coax/lib/crypto/sha256-kernel.coax",
     "coax/lib/crypto/sha256.coax",
-    "coax/lib/crypto/sha256_workspace.coax"
+    "coax/lib/crypto/sha256_workspace.coax",
+    "nostr/examples/sha-256.coax"
    ],
    "qualified_targets": [
     "cpu",

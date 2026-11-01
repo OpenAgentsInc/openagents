@@ -72,9 +72,9 @@ Contexts, key blocks, derived keys and staging buffers retain sensitive
 material. There is **no secure-erasure guarantee, production-secret approval
 or compiler-level constant-time assurance** in this slice. Separate erasure,
 side-channel, consumer-admission and independent review gates remain open.
-The unchanged SHA compression implementation is still shared through
-`coax/lib/proto/fingerprint.coax`; its later relocation requires an explicit
-compiler seed/provenance migration, not an unreviewed duplicate kernel.
+The SHA compression implementation is shared through
+`coax/lib/crypto/sha256-kernel.coax`, which the compiler fingerprint also
+loads (moved there with a provenance migration in Nostr book chapter 4).
 
 ## Focused evidence
 

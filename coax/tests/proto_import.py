@@ -303,7 +303,7 @@ main :: () {a:[4] u8;b:[4] u8;
         self.assertIn('descriptor_sha256='+hashlib.sha256(descriptor.read_bytes()).hexdigest(),first)
         self.assertIn('generator=coax0-coax-v1',first)
         self.assertIn('coax-proto-v4',first)
-        self.assertIn('fingerprint_sha256='+hashlib.sha256((ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),first)
+        self.assertIn('fingerprint_sha256='+hashlib.sha256((ROOT/'coax/lib/crypto/sha256-kernel.coax').read_bytes()+(ROOT/'coax/lib/proto/fingerprint.coax').read_bytes()).hexdigest(),first)
         self.assertIn('importer_sha256='+hashlib.sha256((ROOT/'coax/lib/proto/importer.coax').read_bytes()).hexdigest(),first)
         self.assertIn('compiler='+checked([COAX,'--version']).decode().strip().replace(' ','-'),first)
         core=(ROOT/'coax/lib/proto/wire.coax').read_bytes()

@@ -34,6 +34,7 @@ class ProvenanceTests(unittest.TestCase):
   self.tree=Path(self.tmp.name)/'repo';(self.tree/'coax').mkdir(parents=True);(self.tree/'scripts').mkdir()
   for name in ('src','bootstrap','lib/compiler','lib/proto'):
    shutil.copytree(ROOT/name,self.tree/'coax'/name)
+  (self.tree/'coax/lib/crypto').mkdir();shutil.copy2(ROOT/'lib/crypto/sha256-kernel.coax',self.tree/'coax/lib/crypto/sha256-kernel.coax')
   for name in ('build.sh','bootstrap-build.sh','mutation-gate.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
    shutil.copy2(ROOT/name,self.tree/'coax'/name)
   for name in RELEASE_DOCUMENTS+('changelog.coax','changelog-model.coax','changelog-bridge.c'):
