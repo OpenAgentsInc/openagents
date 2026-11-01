@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 93 are implemented and 11 are design drafts.
+Of the 104 chapters, 94 are implemented and 10 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
