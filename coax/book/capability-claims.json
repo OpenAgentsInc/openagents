@@ -138,7 +138,7 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "afcffc102b553d66e9b4178cb4e6552a105480166342675693f87ad73962e086"
+          "sha256": "f74ad0e5c0b969290ac4df61db6000b34d214e28eda40d343b30bcdd72df35ff"
         },
         {
           "path": "psionic/book/examples.json",
@@ -183,7 +183,7 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "afcffc102b553d66e9b4178cb4e6552a105480166342675693f87ad73962e086"
+          "sha256": "f74ad0e5c0b969290ac4df61db6000b34d214e28eda40d343b30bcdd72df35ff"
         },
         {
           "path": "psionic/book/examples.json",

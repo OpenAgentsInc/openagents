@@ -130,3 +130,13 @@ This stops after linking. A genuine neural-plus-owned-query execution is the
 next unqualified integration step; neither task success, hardware validity,
 solver/contact replacement nor whole compiler boundedness/clock guarantees
 are established by this build and mocked-order checkpoint.
+
+## First executed neural/owned-query prefix — 2026-11-01
+
+The sections above retain the original build/admission checkpoint verbatim. Their zero-execution fields are historical evidence and are not rewritten. A [separate executed-prefix receipt](../panda-owned-query-neural/README.md) now qualifies the already-linked `owned-shadow-v1` binary on the exact original `demo_000` reset/assets with genuine GR00T and the original OSC. No build, old model gate or standalone verification preflight was repeated. The product performs its required 88-file input admission on entry.
+
+The first prescribed invocation completes nine action ticks, two model calls and 225 live SDK steps. The mandatory 225-step recorded-control replay matches every one of the 45 F64 state words exactly. There are no holds, refusals or torque-clipped coordinates; fail-fast sanitizer stderr is empty. Task success was not required and was not observed.
+
+Independent stdlib auditing checks 225 canonical records, all numeric fields, the initial seed and every hash/footer link, clocks to 3.331e−16 seconds and the serial-1-to-2 transition across the eight-row request boundary. The first eight consumed actions match the saved first decoded output. Its frame-0 hash match is diagnostic only; the full second decoded array is not persisted.
+
+The frozen source path implies four offscreen capture calls, 452 explicit SDK forwards including resets and 226 robot-state/owned-sample paths. These are source-backed counts, not newly instrumented per-function telemetry. The 450 integrated SDK steps comprise 225 live and 225 mandatory replay updates. Cameras, request geometry, contacts, actuation and integration remain in the SDK. This is separate from C/D scheduled PD and owned Euler. It establishes no task completion, LIBERO benchmark, hardware or real-time guarantee. The original 125-source inventory excludes this README; that inventory and all original receipts remain unchanged.

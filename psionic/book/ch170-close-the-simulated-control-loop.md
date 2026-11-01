@@ -1768,9 +1768,10 @@ qvel words; gripper commands and request F32 observations were bit-identical.
 The predeclared budgets were 1e-6, 1e-8 and 1e-7 respectively. Clock/action/flag
 records, source stamps, ready state and clip counts matched exactly.
 
-These 500 new SDK steps are a short controlled prefix with no NN, renderer, task
-success or hardware claim. The full neural host still needs explicit wiring
-to select this provider. SDK integration/contact and geometry effects remain;
+Those 500 SDK steps qualified the recorded-action prefix without NN, rendering,
+task success or hardware evidence. The following section separately qualifies
+the explicit owned-query route in the genuine neural host. SDK integration/
+contact and geometry effects remain;
 removing those needs separate owned-backend work. Source-visible low-level
 helpers still have trusted preconditions; only the exported selector supplies
 this admission contract. Full records and frozen budgets are in
@@ -1842,6 +1843,51 @@ integration check. This checkpoint contains no new NN/simulator execution,
 episode or task-success result. The [complete contracts and composed proof](../fixtures/robotics/panda-query-runtime/README.md)
 retain each executed artifact and its scope.
 
+
+## Owned controller samples in the genuine neural loop
+
+The earlier 500-step recorded-action comparison qualified replacing controller samples while preserving the SDK plant. A separate owned-query build then linked that selector to the existing resident Coax GR00T policy. Its build, mocked ordering and file-only admission records deliberately reported zero neural and simulator execution. This first bounded run tests their actual composition; those historical records remain unchanged.
+
+The profile admits one exact original `demo_000` scene/reset, the actually linked MuJoCo 3.3.1 library and all 85 referenced assets before opening the policy. Counts and a matching directory name cannot certify our fixed Panda coefficients. The new query profile has its own schema and trace identity; unknown profile names or an owned-query failure cannot fall back to SDK controller math. The unchanged default route remains a different profile.
+
+The coupled path is now:
+
+1. Capture the existing cached SDK request state and both offscreen cameras, before the next explicit forward. Request state retains the grip SITE position, right-hand BODY attitude and current finger coordinates in the established observation recipe.
+2. Run the resident Coax GR00T vision, text and four-step action-head graph on Metal with the original weights, the existing wide-statistics/F32 numerical profile and explicit fixed noise. The unchanged adapter decodes physical actions, then the supervisor admits the action chunk.
+3. For every physics substep, perform SDK forward and read the current named nine positions/rates. Coax constructs the selected controller sample using its owned finger/arm FK, world Jacobian, sixteen-body mass and velocity-dependent bias. SDK telemetry is still acquired and admitted; its geometry remains available for requests, cameras and success observation.
+4. Give that sample to the original operational-space controller. A new action updates the pose goal only at the first of 25 servo substeps; the gripper's internal target still advances on every servo call. The unchanged controller reports saturation and supplies nine actuator commands.
+5. Let MuJoCo perform the source scene's actuation, contacts and integration. Admit the returned clock/state receipt, chain the canonical physics record and commit the complete action row. After eight consumed rows, capture the next observation at the same cached SDK stage and issue a second genuine neural request.
+
+The supervisor admits all 16 decoded seven-component action rows, then consumes the first eight before replanning. Each consumed row spans 25 physics steps at 0.002 seconds: 20 Hz action goals and a 500 Hz servo in simulation time. The ninth row therefore exercises the first row of the second genuine request, rather than extending an old chunk indefinitely. These are scheduling semantics, not wall-time throughput guarantees.
+
+This is not the chapter167 scheduled-PD experiment or its owned Euler/no-contact profile. The neural runner retains the original scene defaults, SDK geometry, contacts, integration and rendering. “Owned query” identifies the selected controller mathematics, not an SDK-free robot simulator.
+
+The first run completes the prescribed nine ticks and two genuine model calls, with 225 canonical forward-run physics records, zero fallbacks, zero refusals and zero torque-clipped coordinates. The mandatory 225-step replay matches all 45 F64 state words exactly. The sanitizer-profile process exits successfully with empty stderr. Task success is false: this experiment required a clean bounded integration prefix, not successful task completion. The saved first decoded hash matches the older frame0 value as a diagnostic only.
+
+The first independent stdlib audit passes on the saved evidence without repeating physics or inference. It decodes all 225 canonical records, checks 1,575 F32 action words and 12,150 F64 control/state words for finiteness, reconstructs the seed and every SHA link/footer, and verifies serial1→2 plus the first eight decoded action rows. Maximum SDK-clock error is 3.331e−16 seconds, within the frozen 2⁻²⁶-second budget. Its new reader guards cover all numeric lanes, canonical metadata, malformed case records and poisoned hash chains.
+
+| Timing observation | Seconds | Scope |
+| --- | ---: | --- |
+| Whole recorded invocation | 36.6552 | Includes entry, model open, live loop and replay |
+| Model context open | 12.4638 | Reported separately before loop timing |
+| Live loop wall | 10.3489 | Excludes initial model open and replay |
+| Inference total | 8.9717 | Two model calls; maximum call4.7554 |
+| GPU compute total | 2.0947 | Reported graph GPU work within inference |
+| Simulated time | 0.4500 | Nine action rows, independent of wall time |
+
+Replay is not individually timed in this record. Subtracting these differently scoped observations would not manufacture a separate replay measurement.
+
+The frozen normal prefix is nine action ticks: 225 forward-run SDK steps and 225 mandatory recorded-control replay steps, 450 integrated steps total. Two successful model calls imply four camera capture calls in the bound source path; these are source-backed counts, not newly instrumented per-function telemetry. Initialization and replay resets also perform SDK forward, so integrated-step counts are not totals of every SDK forward call. No extra model or SDK verification run is scheduled after this attempt.
+
+The trace binds the exact scene, reset, explicit noise and versioned profile. The independent reader checks the new PTR1 bytes, finite action/control/state fields, canonical metadata and live simulation clock, and reproduces the SHA chain through every 512-byte record and final digest. In a complete normal prefix, serial1 covers ticks0..7 and serial2 covers tick8. The first eight consumed actions can be compared to the saved first decoded output; the full second decoded array is not separately persisted. The successful second-call/source/serial transition establishes that later handoff without claiming an independent byte oracle for every hidden layer or the complete second output.
+
+Native replay resets the SDK and applies the recorded actuator commands. Every one of the 45 F64 state words must match exactly at every integrated step, and the hash chain must match. Replay performs no controller recomputation, neural inference or rendering. Exact physics replay therefore does not claim exact image replay. The first decoded hash is a diagnostic comparison with an existing frame0 receipt, not a new vendor-framework execution or an acceptance requirement.
+
+Acceptance requires the complete normal prefix with no fallback/refusal, or a separately identified authoritative source-success stop after a complete action row. A partial, refused or failed run is retained and is not an accepted integration. PTR success flags remain zero in this source path; an early success is carried by the final case record and the bound source predicate. A short prefix has no task-success objective or LIBERO benchmark threshold.
+
+Model-open time, loop wall time, inference time and GPU compute time remain distinct observations; replay is included only in the whole invocation timing. Synchronous inference pauses simulation. Nine action ticks correspond to 0.45 simulated seconds; that does not prove a 20 Hz wall deadline, compiler-enforced bounded control, hardware validity or global policy reliability.
+
+The [owned-runtime checkpoint and executed-prefix evidence](../fixtures/robotics/panda-query-runtime/README.md) retain source, binary, shader, model-input and trace identities. The older model endpoint/conditional-head proofs and their failed global hidden diagnostics remain carried with their original scope. No new Coax controller, example or arithmetic qualification is implied by executing this existing linked profile for the first time.
 
 ## Run the genuine experiment
 

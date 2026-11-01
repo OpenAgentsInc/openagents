@@ -187,7 +187,7 @@
 - [167. Command a robot](ch167-command-a-robot.md) — runnable position/pose IK, linearized posture projection, rest-to-rest timing, PD gains, short owned Euler loop, nonlinear control measurements, bounded gain study (no qualified family) and scheduled PD (original cases and two frozen C/D poses; no-contact SDK/own parity)
 - [168. Imitation before robotics scale](ch168-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [169. Execute a GR00T policy](ch169-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
-- [170. Close the simulated control loop](ch170-close-the-simulated-control-loop.md) — original GR00T drives a Panda through Coax control, with exact SDK physics replay
+- [170. Close the simulated control loop](ch170-close-the-simulated-control-loop.md) — genuine GR00T/Panda SDK evaluation plus a first 9-action neural prefix with owned controller samples and exact physics replay
 - [171. Learn a gait in many worlds](ch171-learn-a-gait-in-many-worlds.md) — design draft
 
 - [172. Benchmark a service, not a kernel](ch172-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter
