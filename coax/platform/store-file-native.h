@@ -52,6 +52,10 @@ int64_t cxfs_mkdir(void);
 int64_t cxfs_temp(void);
 int64_t cxfs_name_byte(int64_t i);
 int64_t cxfs_remove(void);
+/* cxfs_hold: keep the pushed path as a rename's source; cxfs_rename: rename it to the pushed path,
+   replacing what is there (atomic within one file system). 0 or -1. */
+int64_t cxfs_hold(void);
+int64_t cxfs_rename(void);
 int64_t cxfs_list(void);
 int64_t cxfs_entry_len(int64_t i);
 int64_t cxfs_entry_byte(int64_t i, int64_t j);

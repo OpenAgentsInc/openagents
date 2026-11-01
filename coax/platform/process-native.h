@@ -53,6 +53,7 @@ int64_t cxproc_stderr_count(int64_t h);
 int64_t cxproc_stderr_byte(int64_t h, int64_t i);
 int64_t cxproc_release(int64_t h);
 int64_t cxproc_now_ms(void);
+int64_t cxproc_wall_us(void);   /* the wall clock, microseconds since the epoch */
 /* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
    instead of pipes (a browser that logs freely must never block on a pipe
    nobody reads). stdin stays a pipe. */

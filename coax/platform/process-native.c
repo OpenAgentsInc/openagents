@@ -109,6 +109,13 @@ int64_t cxproc_now_ms(void) {
   return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 
+/* The wall clock in microseconds since the epoch (CLOCK_REALTIME): for logs that are compared with
+   other programs' timestamps, never for timeouts, which use the monotonic clock above. */
+int64_t cxproc_wall_us(void) {
+  struct timespec t; clock_gettime(CLOCK_REALTIME, &t);
+  return (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
+}
+
 int64_t cxproc_new(void) {
   for (int i = 0; i < CXPROC_MAX; i++) if (!procs[i].used) {
     memset(&procs[i], 0, sizeof procs[i]);

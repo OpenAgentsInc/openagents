@@ -292,8 +292,18 @@ compiler and the examples have not been run on Linux yet.
   PipeWire graphs. The pattern is a regular expression, so it needed
   `coax/lib/text/regex.coax`, a small search that refuses anything outside
   its subset (`#authority`, 0 mutants survive, 2,780 pinned cases, and
-  4,000 random cases that agree with Python's `re`). The capture supervisor
-  is next. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  4,000 random cases that agree with Python's `re`).
+  `os/record-audio.coax` is the microphone's supervisor. It opens a segment
+  per capture with its offset in the ledger, watches the file and the node,
+  cuts a capture that stalls or loses its node, finds the microphone again,
+  and keeps the outage marker and the HUD's mic report. On coderos-4080 it
+  ran against stand-ins for `pw-record`, `pw-dump` and `wpctl`, never the
+  real devices: a clean take, a stalled file, a recorder that exits, a node
+  that disappears and comes back, and no microphone at first. In all five
+  it wrote the same segments, arguments, warnings, reports and markers as
+  the shell's `supervise_audio`, with offsets within 0.4 s of each other.
+  Left in row 4: `start`, `stop`, `status` and `repair`, then
+  `recording-hud`, `presentation-mode` and `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.

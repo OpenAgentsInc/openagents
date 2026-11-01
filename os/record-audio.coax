@@ -1,0 +1,346 @@
+// CoderOS screen recording: the microphone's supervisor (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// step 2 row 4), in place of screen-record's supervise_audio, watch_capture, end_capture,
+// resolve_audio_target, node_present, write_mic_report and mark_mic_outage (openagents 2ca255550e).
+// screen-record starts it beside the picture and it runs until the take's stop file appears:
+//   coax/web/tool.sh os/record-audio.coax supervise OUTPUT T0 TARGET PICK [--system] [--name NODE]
+// OUTPUT is the take's video path, T0 its start (epoch seconds, as `date +%s.%N` wrote it), TARGET
+// the node to read first (an id, or a name) and PICK the microphone report it was chosen with
+// (os/microphone.coax's JSON; "" when there is none). --system reads the default sink's monitor
+// instead of a microphone; --name is the node name the take asked for.
+// What it does, as the shell did, and why (each from a take that lost sound):
+//   - each capture is a segment, OUTPUT.audio.wav then OUTPUT.audio.001.wav..., and the ledger
+//     META.audio.segments gets `index<TAB>offset<TAB>path` as it opens, the offset on the take's
+//     clock, so a hole keeps the sound after it in place (2026-09-09);
+//   - a capture is watched, not only waited on: one whose file stops growing for OUTAGE_MIN, or
+//     whose node goes away while pw-record lives, is ended there (2026-09-11), and each growth is
+//     logged in the segment's .clock file for the microphone-clock fit;
+//   - while the microphone is gone it is looked for again by name, at 1, 2 then 3 seconds, the
+//     take is told once (and again after OUTAGE_LIMIT), META.audio.outage holds where the sound
+//     stopped, and META.mic says live false so the HUD shows it.
+// The files, their formats and the messages are the shell's, so screen-record's stop and the HUD
+// read a take made by either. Timings come from CODEROS_RECORD_AUDIO_{POLL,DEVICE_POLL,OUTAGE_MIN,
+// OUTAGE_LIMIT} as they did.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+#load "../coax/lib/text/regex.coax";
+#load "mic-pick.coax";
+#load "record-policy.coax";
+
+cxproc_wall_us :: () -> int #foreign;
+
+AUDIO_HEADER_BYTES :: 44;
+
+// The take's files and timings.
+Take :: struct {
+  output: string; t0: f64; pid_file: string; meta_file: string;
+  system: bool; name: string; pattern: string;
+  poll_ms: int; device_us: int; floor_us: int; limit: f64;
+}
+
+// ---- pure pieces
+
+// A segment's path: OUTPUT.audio.wav for the first, OUTPUT.audio.NNN.wav after.
+ra_segment :: (output: string, index: int, out: [] u8) -> string {
+  n := ra_cat(out, 0, output);
+  if index == 0 { n = ra_cat(out, n, ".audio.wav"); return cast(string) out[0..<n]; }
+  n = ra_cat(out, n, ".audio.");
+  d := [3] u8.['0', '0', '0'];
+  v := index;
+  // %03d: at least three digits
+  digits: [20] u8; k := 0;
+  while v > 0 { digits[k] = cast,trunc(u8) ('0' + v % 10); v = v / 10; k += 1; }
+  while k < 3 { digits[k] = '0'; k += 1; }
+  while k > 0 { k -= 1; out[n] = digits[k]; n += 1; }
+  n = ra_cat(out, n, ".wav");
+  return cast(string) out[0..<n];
+}
+#test "segment paths" {
+  b: [256] u8;
+  #assert ra_segment("/v/t.mp4", 0, b[..]) == "/v/t.mp4.audio.wav" && ra_segment("/v/t.mp4", 1, b[..]) == "/v/t.mp4.audio.001.wav";
+  #assert ra_segment("t", 42, b[..]) == "t.audio.042.wav" && ra_segment("t", 1234, b[..]) == "t.audio.1234.wav";
+}
+ra_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// The JSON object `base` with keys set (their raw JSON values), as jq's `. + {...}` writes it: the
+// base's keys in order, a set key replacing its value where it stands, new keys after.
+ra_merge :: (base: string, keys: [] string, values: [] string, o: [] Jo) -> bool {
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], base, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  done: [8] bool;
+  jo_obj(o);
+  c := d[0].nodes[0].first;
+  while c >= 0 {
+    k := jv_key(d[0], c);
+    jo_value(o); jo_byte(o, '"'); jo_put(o, k); jo_byte(o, '"'); jo_byte(o, ':'); o[0].keyed = true;
+    set := -1;
+    for i: 0..<keys.count { if jv_raw_eq(k, keys[i]) { set = i; } }
+    if set >= 0 { jo_raw(o, values[set]); done[set] = true; }
+    else if jv_kind(d[0], c) == JV_STRING { jo_value(o); jo_byte(o, '"'); jo_put(o, jv_raw(d[0], c)); jo_byte(o, '"'); }
+    else { jo_raw(o, jv_raw(d[0], c)); }
+    c = d[0].nodes[c].next;
+  }
+  for i: 0..<keys.count { if !done[i] { jo_key(o, keys[i]); jo_raw(o, values[i]); } }
+  jo_end(o);
+  return !o[0].bad;
+}
+#test "merging as jq's + does" {
+  b: [512] u8; o: [1] Jo;
+  k := [3] string.["recording", "live", "warning"]; v := [3] string.["true", "true", "\"\""];
+  jo_start(o[..], b[..]);
+  #assert ra_merge("{\"id\":57,\"name\":\"a\\\"b\",\"preferred\":true}", k[..], v[..], o[..]);
+  #assert jo_text(o[..]) == "{\"id\":57,\"name\":\"a\\\"b\",\"preferred\":true,\"recording\":true,\"live\":true,\"warning\":\"\"}";
+  k2 := [2] string.["live", "warning"]; v2 := [2] string.["false", "\"gone\""];
+  jo_start(o[..], b[..]);
+  #assert ra_merge("{\"id\":57,\"recording\":true,\"live\":true,\"warning\":\"\"}", k2[..], v2[..], o[..]);
+  #assert jo_text(o[..]) == "{\"id\":57,\"recording\":true,\"live\":false,\"warning\":\"gone\"}";
+  jo_start(o[..], b[..]);
+  #assert !ra_merge("[1]", k2[..], v2[..], o[..]) && !ra_merge("nope", k2[..], v2[..], o[..]);
+}
+
+// A JSON string literal of s.
+ra_quoted :: (s: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_str(o[..], s);
+  return jo_text(o[..]);
+}
+
+// Seconds as microseconds, as awk's printf "%d", s * 1000000 truncates.
+ra_us :: (s: f64) -> int { return cast(int) (s * 1000000.0); }
+#test "seconds to microseconds" {
+  #assert ra_us(0.25) == 250000 && ra_us(2.0) == 2000000 && ra_us(0.1) == 100000;
+}
+
+// ---- the take's files
+
+ra_report :: (tk: Take, pick: string, live: bool, warning: string) {
+  if pick.count == 0 { return; }
+  qb: [8192] u8; keys := [3] string.["recording", "live", "warning"];
+  vals := [3] string.["true", ifx live then "true" else "false", ra_quoted(warning, qb[..])];
+  ra_put_mic(tk, pick, keys[..], vals[..]);
+}
+ra_mark_outage :: (tk: Take, warning: string) {
+  pb: [256] u8; mic := ra_path(tk.meta_file, ".mic", pb[..]);
+  cur: [65536] u8; n := fs_read(mic, cur[..]);
+  if n <= 0 { return; }
+  qb: [8192] u8; keys := [2] string.["live", "warning"]; vals := [2] string.["false", ra_quoted(warning, qb[..])];
+  t := cast(string) cur[0..<n];
+  while t.count > 0 && t[t.count - 1] == '\n' { t = t[0..<t.count - 1]; }
+  ra_put_mic(tk, t, keys[..], vals[..]);
+}
+// META.mic replaced whole: written to META.mic.next and renamed over it, as the shell's mv did.
+ra_put_mic :: (tk: Take, base: string, keys: [] string, vals: [] string) {
+  ob: [65536] u8; o: [1] Jo; jo_start(o[..], ob[..]);
+  pb: [256] u8; nb: [256] u8;
+  mic := ra_path(tk.meta_file, ".mic", pb[..]); next := ra_path(tk.meta_file, ".mic.next", nb[..]);
+  if !ra_merge(base, keys, vals, o[..]) { r := fs_remove(next); return; }
+  lb: [65600] u8; n := ra_cat(lb[..], 0, jo_text(o[..])); n = ra_cat(lb[..], n, "\n");
+  if fs_write(next, cast(string) lb[0..<n]) { r := fs_rename(next, mic); } else { r := fs_remove(next); }
+}
+ra_path :: (base: string, suffix: string, out: [] u8) -> string { n := ra_cat(out, 0, base); n = ra_cat(out, n, suffix); return cast(string) out[0..<n]; }
+ra_stopped :: (tk: Take) -> bool { b: [256] u8; return fs_exists(ra_path(tk.pid_file, ".audio.stop", b[..])); }
+
+// Seconds since the take began, as the shell's elapsed_since printed it (%.3f, never negative).
+ra_elapsed :: (tk: Take) -> f64 {
+  d := cast(f64) cxproc_wall_us() / 1000000.0 - tk.t0;
+  return ifx d < 0.0 then 0.0 else d;
+}
+
+// ---- the microphone
+
+// The PipeWire graph's Audio/Source nodes, parsed into d: how many (0 when pw-dump failed).
+ra_sources :: (text: [] u8, d: [] Jv, nodes: [] JvNode, s: [] Source) -> int {
+  n := mic_run("pw-dump", "", text);
+  if n <= 0 || !jv_parse(d, cast(string) text[0..<n], nodes) { return 0; }
+  return mic_sources(d[0], s);
+}
+// Whether the node a capture reads is still there: true when it is a name (not checked), when the
+// graph cannot be read, and when it lists no sources at all, as node_present answered.
+ra_present :: (target: string) -> bool {
+  id := mic_id(target);
+  if id < 0 { return true; }
+  text: [4194304] u8; nodes: [262144] JvNode; d: [1] Jv; s: [MIC_MAX] Source;
+  n := ra_sources(text[..], d[..], nodes[..], s[..]);
+  if n == 0 { return true; }
+  for i: 0..<n { if s[i].id == id { return true; } }
+  return false;
+}
+// The name pw-record is given: a node id becomes its name, so a re-minted node is not missed.
+ra_capture_target :: (target: string, out: [] u8) -> string {
+  id := mic_id(target);
+  if id < 0 { return target; }
+  text: [4194304] u8; nodes: [262144] JvNode; d: [1] Jv; s: [MIC_MAX] Source;
+  n := ra_sources(text[..], d[..], nodes[..], s[..]);
+  for i: 0..<n { if s[i].id == id && s[i].name >= 0 { m := jv_str(d[0], s[i].name, out); if m > 0 { return cast(string) out[0..<m]; } } }
+  return target;
+}
+// Where to read next: the target and its pick report, or "" when nothing is there.
+Found :: struct { target: string; pick: string; }
+ra_resolve :: (tk: Take, tb: [] u8, pb: [] u8) -> Found {
+  if tk.system { return ra_monitor(tb); }   // the default sink's monitor, for a take of the system's sound
+  text: [4194304] u8; nodes: [262144] JvNode; d: [1] Jv; s: [MIC_MAX] Source;
+  n := ra_sources(text[..], d[..], nodes[..], s[..]);
+  w: [65536] u8; m := mic_run("wpctl", "inspect", w[..]);
+  db: [64] u8; def := mic_default(ifx m > 0 then cast(string) w[0..<m] else "", db[..]);
+  ch := mic_pick(d[0], s[0..<n], tk.name, tk.pattern, def);
+  if ch.at < 0 { return Found.{}; }
+  o: [1] Jo; jo_start(o[..], pb); mic_json(d[0], s[0..<n], ch, o[..]);
+  k := ra_int(s[ch.at].id, tb);
+  return Found.{target = k, pick = jo_text(o[..])};
+}
+// The default sink's monitor, "" when pactl has none.
+ra_monitor :: (out: [] u8) -> Found {
+  argv := [2] string.["pactl", "get-default-sink"]; o: [4096] u8; e: [1024] u8;
+  r := proc_run(argv[..], 5000, o[..], e[..]);
+  n := r.out_n; while n > 0 && (o[n - 1] == '\n' || o[n - 1] == ' ') { n -= 1; }
+  if r.status != 0 || n == 0 { return Found.{}; }
+  k := ra_cat(out, 0, cast(string) o[0..<n]); k = ra_cat(out, k, ".monitor");
+  return Found.{target = cast(string) out[0..<k]};
+}
+ra_int :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := 0; if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return cast(string) out[0..<n + k];
+}
+
+// ---- one capture
+
+// SIGINT, five seconds to finish its file, then SIGTERM, as end_capture did.
+ra_end :: (h: int) {
+  r := proc_kill(h, 2);
+  if proc_wait(h, 5000) == PROC_RUNNING { r = proc_kill(h, PROC_SIGTERM); }
+}
+// Watches a running capture until it ends: true when it ended by itself or the take stopped,
+// false when it was cut (its file stopped growing, or its node went away).
+ra_watch :: (tk: Take, seg: string, h: int, target: string) -> bool {
+  seen := 0; armed := false;
+  now := cxproc_wall_us(); grew := now; looked := now;
+  cb: [512] u8; clock := ra_path(seg, ".clock", cb[..]);
+  while proc_wait(h, 0) == PROC_RUNNING {
+    if ra_stopped(tk) { return true; }
+    r := cxproc_sleep_ms(tk.poll_ms);
+    if ra_stopped(tk) { return true; }
+    if proc_wait(h, 0) != PROC_RUNNING { break; }
+    size := fs_size(seg); if size < 0 { size = 0; }
+    now = cxproc_wall_us();
+    if size > seen {
+      seen = size; grew = now;
+      if size > AUDIO_HEADER_BYTES {
+        armed = true;
+        lb: [64] u8; a: [24] u8; b: [24] u8;
+        n := ra_cat(lb[..], 0, ra_int(now, a[..])); n = ra_cat(lb[..], n, "\t"); n = ra_cat(lb[..], n, ra_int(size, b[..])); n = ra_cat(lb[..], n, "\n");
+        x := fs_append(clock, cast(string) lb[0..<n]);
+      }
+    } else if armed && now - grew > tk.floor_us {
+      ra_end(h); return false;
+    }
+    if now - looked >= tk.device_us {
+      looked = now;
+      if !ra_present(target) { ra_end(h); return false; }
+    }
+  }
+  return true;
+}
+
+// ---- the supervisor
+
+ra_supervise :: (tk: Take, first_target: string, first_pick: string) {
+  index := 0; delay := 1; warned := 0; cut := false;
+  outage := -1.0;   // where the sound stopped on the take's clock, -1 while it is being captured
+  tb: [4096] u8; pb: [65536] u8;
+  target := first_target; pick := first_pick;
+  fb: [64] u8; gb: [64] u8;
+  while true {
+    if ra_stopped(tk) { break; }
+    if target.count > 0 {
+      sb: [512] u8; seg := ra_segment(tk.output, index, sb[..]);
+      off := ifx index == 0 then "0.000" else rec_fixed(ra_elapsed(tk), 3, fb[..]);
+      nb: [4096] u8; name := ra_capture_target(target, nb[..]);
+      ab: [4200] u8; an := ra_cat(ab[..], 0, "--target="); an = ra_cat(ab[..], an, name);
+      h := proc_new();
+      ok := proc_quiet(h) && proc_arg(h, "pw-record") && proc_arg(h, cast(string) ab[0..<an]) && proc_arg(h, "--channels") && proc_arg(h, "1") && proc_arg(h, "--rate") && proc_arg(h, "48000") && proc_arg(h, seg);
+      started := ok && proc_start(h) == 0;
+      kb: [256] u8; ib: [24] u8; pid := ra_int(ifx started then proc_pid(h) else 0, ib[..]);
+      lb: [64] u8; ln := ra_cat(lb[..], 0, pid); ln = ra_cat(lb[..], ln, "\n");
+      x := fs_write(ra_path(tk.pid_file, ".audio", kb[..]), cast(string) lb[0..<ln]);
+      gl: [1024] u8; xb: [24] u8;
+      g := ra_cat(gl[..], 0, ra_int(index, xb[..])); g = ra_cat(gl[..], g, "\t"); g = ra_cat(gl[..], g, off); g = ra_cat(gl[..], g, "\t"); g = ra_cat(gl[..], g, seg); g = ra_cat(gl[..], g, "\n");
+      mb: [256] u8; x = fs_append(ra_path(tk.meta_file, ".audio.segments", mb[..]), cast(string) gl[0..<g]);
+      if outage >= 0.0 {
+        tool_err("The microphone is back after "); tool_err(rec_fixed(rec_num(off) - outage, 1, gb[..]));
+        tool_errln("s; the recording carries on, and the hole is named in the file.");
+        ob: [256] u8; x = fs_remove(ra_path(tk.meta_file, ".audio.outage", ob[..]));
+        outage = -1.0; warned = 0; delay = 1;
+      }
+      if index > 0 && pick.count > 0 { ra_report(tk, pick, true, ""); }
+      cut = false;
+      if started { cut = !ra_watch(tk, seg, h, target); w := proc_wait(h, -1); }
+      r := proc_release(h);
+      index += 1; target = ""; pick = "";
+      if ra_stopped(tk) { break; }
+      outage = ra_elapsed(tk);
+      // the marker holds the shell's text: %.3f and a newline
+      ob: [256] u8; tx: [64] u8; t := rec_fixed(outage, 3, tx[..]); ol: [80] u8; on := ra_cat(ol[..], 0, t); on = ra_cat(ol[..], on, "\n");
+      outage = rec_num(t);
+      x = fs_write(ra_path(tk.meta_file, ".audio.outage", ob[..]), cast(string) ol[0..<on]);
+    }
+    at := ifx outage >= 0.0 then rec_fixed(outage, 3, gb[..]) else "";
+    if warned == 0 {
+      warned = 1;
+      tool_err("The microphone stopped delivering audio "); tool_err(at); tool_errln("s into the recording. Looking for it again; the picture carries on.");
+      wb: [256] u8; wn := ra_cat(wb[..], 0, "No audio since "); wn = ra_cat(wb[..], wn, at); wn = ra_cat(wb[..], wn, "s into the take; looking for the microphone.");
+      ra_mark_outage(tk, cast(string) wb[0..<wn]);
+    } else if warned == 1 && ra_elapsed(tk) - outage > tk.limit {
+      warned = 2;
+      lb2: [32] u8;
+      tool_err("This recording has had no audio for more than "); tool_err(ra_limit_text(tk.limit, lb2[..]));
+      tool_errln("s. It is still running and the picture is whole; stop it if the sound matters.");
+    }
+    if cut { cut = false; }
+    else { r := cxproc_sleep_ms(delay * 1000); if delay < 3 { delay += 1; } }
+    if ra_stopped(tk) { break; }
+    f := ra_resolve(tk, tb[..], pb[..]);
+    target = f.target; pick = f.pick;
+  }
+}
+// The limit as the shell wrote it: the configured text, which is a whole number by default.
+ra_limit_text :: (limit: f64, out: [] u8) -> string {
+  w := cast(int) limit;
+  return ifx cast(f64) w == limit then ra_int(w, out) else rec_fixed(limit, 1, out);
+}
+#test "the outage limit's text" {
+  b: [32] u8;
+  #assert ra_limit_text(30.0, b[..]) == "30" && ra_limit_text(2.5, b[..]) == "2.5";
+}
+
+// A setting from the environment, else its default.
+ra_env :: (name: string, fallback: f64, out: [] u8) -> f64 {
+  v := proc_getenv(name, out);
+  return ifx v.count > 0 then rec_num(v) else fallback;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 5 || args_at(a[..], 0) != "supervise" {
+    tool_errln("usage: record-audio supervise OUTPUT T0 TARGET PICK [--system] [--name NODE]"); return 2;
+  }
+  e: [6] [4096] u8;
+  pid_file := proc_getenv("CODEROS_SCREEN_RECORD_PID", e[0][..]); if pid_file.count == 0 { pid_file = "/tmp/screen-record.pid"; }
+  meta_file := proc_getenv("CODEROS_SCREEN_RECORD_META", e[1][..]); if meta_file.count == 0 { meta_file = "/tmp/screen-record.meta"; }
+  vb: [64] u8;
+  tk := Take.{
+    output = args_at(a[..], 1), t0 = rec_num(args_at(a[..], 2)), pid_file = pid_file, meta_file = meta_file,
+    system = args_has(a[..], "--system"), name = args_value(a[..], "--name", ""),
+    pattern = proc_getenv("CODEROS_MICROPHONE_NODE", e[2][..]),
+    poll_ms = cast(int) (ra_env("CODEROS_RECORD_AUDIO_POLL", 0.1, vb[..]) * 1000.0),
+    device_us = ra_us(ra_env("CODEROS_RECORD_AUDIO_DEVICE_POLL", 2.0, vb[..])),
+    floor_us = ra_us(ra_env("CODEROS_RECORD_AUDIO_OUTAGE_MIN", 0.25, vb[..])),
+    limit = ra_env("CODEROS_RECORD_AUDIO_OUTAGE_LIMIT", 30.0, vb[..])};
+  ra_supervise(tk, args_at(a[..], 3), args_at(a[..], 4));
+  return 0;
+}

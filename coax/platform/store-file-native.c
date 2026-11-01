@@ -195,6 +195,24 @@ int64_t cxfs_write(int64_t append) {
   return close(f) == 0 ? 0 : -1;
 }
 
+/* rename(2) in two steps: cxfs_hold keeps the pushed path as the source, then the next pushed path
+   is the destination of cxfs_rename. Within one file system the replacement is atomic, so a reader
+   sees the old file or the new one, never part of either. */
+static char fs_held[sizeof fs_path];
+static int fs_held_ok;
+int64_t cxfs_hold(void) {
+  const char *p = take_path();
+  fs_held_ok = p != NULL;
+  if (p) memcpy(fs_held, p, strlen(p) + 1);
+  return p ? 0 : -1;
+}
+int64_t cxfs_rename(void) {
+  const char *p = take_path();
+  int ok = fs_held_ok && p;
+  fs_held_ok = 0;
+  return ok && rename(fs_held, p) == 0 ? 0 : -1;
+}
+
 int64_t cxfs_kind(void) {
   const char *p = take_path();
   struct stat st;

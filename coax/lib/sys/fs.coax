@@ -24,6 +24,8 @@ cxfs_list :: () -> int #foreign;
 cxfs_entry_len :: (i: int) -> int #foreign;
 cxfs_entry_byte :: (i: int, j: int) -> int #foreign;
 cxfs_cwd :: () -> int #foreign;
+cxfs_hold :: () -> int #foreign;
+cxfs_rename :: () -> int #foreign;
 
 FS_PATH_MAX :: 4096;
 FS_NONE :: 0; FS_FILE :: 1; FS_DIR :: 2; FS_OTHER :: 3;
@@ -104,6 +106,9 @@ fs_size :: (path: string) -> int { return ifx fs_push(path) then cxfs_size() els
 fs_mkdir :: (path: string) -> bool { return fs_push(path) && cxfs_mkdir() == 0; }
 // The file, or the directory with everything in it. A missing path is fine.
 fs_remove :: (path: string) -> bool { return fs_push(path) && cxfs_remove() == 0; }
+// Renames from to to, replacing what is there; atomic within one file system, so writing a temporary
+// and renaming it over a file others read means they never see part of it.
+fs_rename :: (from: string, to: string) -> bool { return fs_push(from) && cxfs_hold() == 0 && fs_push(to) && cxfs_rename() == 0; }
 // A new empty directory in the system's temporary folder whose name starts
 // with prefix (no slash in it); its path in out, or "".
 fs_temp :: (prefix: string, out: [] u8) -> string {
