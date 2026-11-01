@@ -1,0 +1,10 @@
+by row: exact 1 task 1 session 1 derived 1 near 1 post-outcome features 1
+by row as a dataset: leak
+0 0 2 2 4 4 6 6 8 8 10 11 12 13 <- group of each row
+1 1 1 1 2 2 2 2 1 1 0 0 0 0 <- split (0 train, 1 validation, 2 test)
+grouped: exact 0 task 0 session 0 derived 0 near 0 post-outcome features 1
+feature 0 from 4 training rows: mean 3.0 scale 1.8708286933869707
+feature 1: time
+loss 2.772588722239781 -> 1.993527110149979; resumed at 4: 6 of 6 losses and 256 of 256 parameter triples identical
+one flipped bit: corrupt
+another split: dataset

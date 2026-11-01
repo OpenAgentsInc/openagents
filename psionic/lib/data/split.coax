@@ -1,0 +1,364 @@
+// Leakage-safe splits (psionic-split-v1). Every row carries its provenance:
+// an ID, a source, a licence code and the identity of its content. Rows are
+// joined into groups when they share a task or a session, when one is
+// declared as derived from (a paraphrase of) another, or when their token
+// bigram sets overlap by at least half (Jaccard >= 1/2, which includes exact
+// copies). A whole group takes one split from its latest time, so a
+// repeated episode, a paraphrase or a near-duplicate never straddles a split.
+// Features carry the time they became known; one known after the row's
+// outcome is leaked. Preprocessing statistics come from training rows only.
+// A clean split becomes chapter 122's packed dataset (PkDoc), whose identity
+// a checkpoint names, so a run resumes only on the split it was trained on.
+#load "../checkpoint/resume.coax";
+#authority;
+SpStatus :: enum u8 {ok;shape;order;source;licence;token;link;time;split;leak;}
+SpRow :: struct {id:int;source:int;licence:u8;task:int;session:int;time:int;outcome:int;derived:int;first:int;count:int;}
+SpPlan :: struct {train_end:int;valid_end:int;}
+SpCell :: struct {value:f64;known:int;}
+// Cross-split pairs of each kind, and features known after the outcome.
+SpAudit :: struct {status:SpStatus;exact:int;task:int;session:int;derived:int;near:int;post:int;}
+SpFit :: struct {status:SpStatus;mean:f64;scale:f64;rows:int;}
+SP_ROWS :: 64;
+SP_LICENCES :: 3;
+
+// Provenance and shape: IDs ascending, a source and a known licence on every
+// row, times with the outcome no earlier than the row, derived links naming
+// an earlier row (derived is 1 + that row's index, 0 for an original), spans
+// covering the tokens, and content tokens below PK_BOS.
+sp_rows :: (rows:[]SpRow,tokens:[]u8)->SpStatus {
+    if rows.count<1 || rows.count>SP_ROWS || tokens.count>PK_TOKENS {return SpStatus.shape;}
+    at:=0;
+    for i:0..<rows.count {r:=rows[i];
+        if r.id<0 || (i>0 && r.id<=rows[i-1].id) {return SpStatus.order;}
+        if r.first!=at || r.count<1 || r.count>PK_DOC_TOKENS {return SpStatus.shape;}
+        if r.source<0 {return SpStatus.source;}
+        if r.licence<1 || r.licence>SP_LICENCES {return SpStatus.licence;}
+        if r.time<0 || r.outcome<r.time {return SpStatus.time;}
+        if r.derived<0 || r.derived>i {return SpStatus.link;}
+        at+=r.count;
+    }
+    if at!=tokens.count {return SpStatus.shape;}
+    for t:tokens {if t>=PK_BOS {return SpStatus.token;}}
+    return SpStatus.ok;
+}
+// The content identity of one row: SHA-256 (tag psionic.content.v1) of its tokens.
+sp_content :: (r:SpRow,tokens:[]u8)->[32]u8 {return ck_digest("psionic.content.v1",tokens[r.first..<r.first+r.count]);}
+// The row's bigram set, with BOS before the first token: count shingles at most.
+sp_shingles :: (r:SpRow,tokens:[]u8,set:[]bool) {
+    for k:0..<256 {set[k]=false;}
+    prev:=PK_BOS;for i:0..<r.count {t:=cast(int)tokens[r.first+i];set[prev*16+t]=true;prev=t;}
+}
+// Jaccard of the two bigram sets is at least 1/2, compared in integers.
+sp_near :: (a:SpRow,b:SpRow,tokens:[]u8)->bool {
+    x:[256]bool;y:[256]bool;sp_shingles(a,tokens,x[..]);sp_shingles(b,tokens,y[..]);both:=0;either:=0;
+    for k:0..<256 {if x[k] && y[k] {both+=1;}if x[k] || y[k] {either+=1;}}
+    return 2*both>=either;
+}
+// Rows i < j are linked. Admission keeps derived links pointing backwards.
+sp_linked :: (rows:[]SpRow,tokens:[]u8,i:int,j:int)->bool {
+    a:=rows[i];b:=rows[j];
+    return a.task==b.task || a.session==b.session || b.derived==i+1 || sp_near(a,b,tokens);
+}
+// book:begin groups
+// Labels every row with the smallest index in its group: rows are joined by a
+// shared task or session, a derived link, or near-duplicate content, and the
+// joining is transitive. A label is never larger than its rows' indexes, so
+// the group being renamed starts at its own label.
+sp_groups :: (rows:[]SpRow,tokens:[]u8,label:[]int) {
+    for i:0..<rows.count {label[i]=i;}
+    for i:0..<rows.count {for j:i+1..<rows.count {
+        a:=label[i];b:=label[j];
+        if a!=b && sp_linked(rows,tokens,i,j) {
+            keep:=0;while keep!=a && keep!=b {keep+=1;}gone:=a+b-keep;
+            for k:gone..<rows.count {if label[k]==gone {label[k]=keep;}}
+        }
+    }}
+}
+// book:end groups
+// book:begin assign
+// Gives each group one split from its latest time: at or before train_end is
+// training, at or before valid_end is validation, anything later is test. A
+// group is late when any of its rows is.
+sp_assign :: (rows:[]SpRow,tokens:[]u8,plan:SpPlan,splits:[]PkSplit)->SpStatus #export_c {
+    s:=sp_rows(rows,tokens);if s!=SpStatus.ok {return s;}
+    if splits.count!=rows.count || plan.train_end<0 || plan.valid_end<plan.train_end {return SpStatus.shape;}
+    label:[64]int;sp_groups(rows,tokens,label[..]);late:[64]bool;later:[64]bool;
+    for i:0..<rows.count {g:=label[i];t:=rows[i].time;late[g]=late[g] || t>plan.train_end;later[g]=later[g] || t>plan.valid_end;}
+    train:=false;
+    for i:0..<rows.count {g:=label[i];
+        if later[g] {splits[i]=PkSplit.test;}
+        else if late[g] {splits[i]=PkSplit.validation;}
+        else {splits[i]=PkSplit.train;train=true;}
+    }
+    if !train {return SpStatus.split;}
+    return SpStatus.ok;
+}
+// book:end assign
+// Features known after the row's outcome. cells is row-major, rows by features.
+sp_post :: (rows:[]SpRow,cells:[]SpCell,features:int)->int {
+    n:=0;
+    for f:0..<features {hit:=false;for i:0..<rows.count {hit=hit || cells[i*features+f].known>rows[i].outcome;}if hit {n+=1;}}
+    return n;
+}
+// book:begin audit
+// Counts every pair of rows in different splits that shares content, a task,
+// a session, a derived link or near-duplicate content, and every feature known
+// after its row's outcome. A clean split has all six counts zero.
+sp_audit :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,cells:[]SpCell,features:int)->SpAudit #export_c {
+    s:=sp_rows(rows,tokens);if s!=SpStatus.ok {return SpAudit.{status=s};}
+    if splits.count!=rows.count || features<0 || features>16 || cells.count!=rows.count*features {return SpAudit.{status=SpStatus.shape};}
+    a:=SpAudit.{};ids:[64][32]u8;for i:0..<rows.count {ids[i]=sp_content(rows[i],tokens);}
+    for i:0..<rows.count {for j:i+1..<rows.count {
+        if splits[i]==splits[j] {continue;}
+        x:=rows[i];y:=rows[j];
+        if ck_equal(ids[i],ids[j]) {a.exact+=1;} else if sp_near(x,y,tokens) {a.near+=1;}
+        if x.task==y.task {a.task+=1;}
+        if x.session==y.session {a.session+=1;}
+        if y.derived==i+1 {a.derived+=1;}
+    }}
+    a.post=sp_post(rows,cells,features);
+    return a;
+}
+// book:end audit
+// book:begin fit
+// Mean and population standard deviation of one feature over training rows
+// only. A feature known after the outcome is refused, not fitted.
+sp_fit :: (rows:[]SpRow,splits:[]PkSplit,cells:[]SpCell,features:int,f:int)->SpFit #export_c {
+    if splits.count!=rows.count || rows.count>SP_ROWS || features<1 || f<0 || f>=features || cells.count!=rows.count*features {return SpFit.{status=SpStatus.shape};}
+    sum:=0.0;n:=0;
+    for i:0..<rows.count {c:=cells[i*features+f];
+        if c.known>rows[i].outcome {return SpFit.{status=SpStatus.time};}
+        if splits[i]==PkSplit.train {sum+=c.value;n+=1;}
+    }
+    if n==0 {return SpFit.{status=SpStatus.split};}
+    mean:=sum/f64(n);sq:=0.0;
+    for i:0..<rows.count {if splits[i]==PkSplit.train {d:=cells[i*features+f].value-mean;sq+=d*d;}}
+    return SpFit.{mean=mean,scale=sqrt(sq/f64(n)),rows=n};
+}
+// book:end fit
+// book:begin docs
+// Turns an admitted, leak-free split into chapter 122's packed documents.
+// A split with any cross-split pair is refused and nothing is written.
+sp_docs :: (rows:[]SpRow,tokens:[]u8,splits:[]PkSplit,docs:[]PkDoc)->SpStatus #export_c {
+    none:[1]SpCell;a:=sp_audit(rows,tokens,splits,none[0..<0],0);if a.status!=SpStatus.ok {return a.status;}
+    if docs.count!=rows.count {return SpStatus.shape;}
+    if a.exact!=0 || a.task!=0 || a.session!=0 || a.derived!=0 || a.near!=0 {return SpStatus.leak;}
+    train:=false;for s:splits {if s==PkSplit.train {train=true;}}if !train {return SpStatus.split;}
+    for i:0..<rows.count {docs[i]=PkDoc.{id=rows[i].id,split=splits[i],first=rows[i].first,count=rows[i].count};}
+    return SpStatus.ok;
+}
+// book:end docs
+
+// book:begin fixture
+// Fourteen rows with five planted leaks: a task (rows 0, 1), a session
+// (2, 3), near-duplicate content (4, 5), a paraphrase declared by provenance
+// (6, 7) and an exact copy (8, 9). Rows 10 to 13 are independent. Feature 0
+// is known with its row; feature 1 is known one tick after the outcome.
+sp_fixture :: (rows:[]SpRow,tokens:[]u8,cells:[]SpCell) {
+    text:=[51]u8.[1,2,3,4, 5,6,7, 8,9,10,11, 0,1, 12,13,14,12, 12,13,14,12,0, 3,5,7,9, 9,7,5,3, 2,4,6, 2,4,6, 11,10,9,8, 6,5,4, 13,12,1,0, 14,0,13,1];
+    lens:=[14]int.[4,3,4,2,4,5,4,4,3,3,4,3,4,4];
+    tasks:=[14]int.[1,1,2,3,4,5,6,7,8,9,10,11,12,13];
+    sessions:=[14]int.[10,11,12,12,13,14,15,16,17,18,19,20,21,22];
+    times:=[14]int.[1,7,3,6,4,9,2,10,3,8,1,2,4,5];
+    values:=[14]f64.[50,60,70,80,90,100,110,120,130,140,1,2,3,6];
+    for i:0..<51 {tokens[i]=text[i];}
+    at:=0;
+    for i:0..<14 {
+        rows[i]=SpRow.{id=i+1,source=i%3,licence=cast(u8)(1+i%2),task=tasks[i],session=sessions[i],time=times[i],outcome=times[i]+1,first=at,count=lens[i]};at+=lens[i];
+        cells[2*i]=SpCell.{value=values[i],known=times[i]};cells[2*i+1]=SpCell.{value=f64(i%2),known=times[i]+2};
+    }
+    rows[7].derived=7;
+}
+// book:end fixture
+// Splitting by each row's own time, the way that leaks.
+sp_by_row :: (rows:[]SpRow,plan:SpPlan,splits:[]PkSplit) {
+    for i:0..<rows.count {t:=rows[i].time;splits[i]=PkSplit.test;if t<=plan.valid_end {splits[i]=PkSplit.validation;}if t<=plan.train_end {splits[i]=PkSplit.train;}}
+}
+SP_PLAN :: SpPlan.{train_end=5,valid_end=8};
+
+#test "admission refuses missing provenance and broken shape" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);
+    #assert sp_rows(rows[..],tokens[..])==SpStatus.ok;
+    #assert sp_rows(rows[0..<0],tokens[..])==SpStatus.shape && sp_rows(rows[..],tokens[0..<50])==SpStatus.shape;
+    many:[65]SpRow;#assert sp_rows(many[..],tokens[..])==SpStatus.shape;
+    big:[4097]u8;#assert sp_rows(rows[..],big[..])==SpStatus.shape;
+    rows[1].id=1;#assert sp_rows(rows[..],tokens[..])==SpStatus.order;rows[1].id=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.order;rows[1].id=2;
+    rows[0].id=-1;#assert sp_rows(rows[..],tokens[..])==SpStatus.order;rows[0].id=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;rows[0].id=1;
+    rows[1].first=5;#assert sp_rows(rows[..],tokens[..])==SpStatus.shape;rows[1].first=4;
+    rows[3].count=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.shape;rows[3].count=2;
+    rows[2].source=-1;#assert sp_rows(rows[..],tokens[..])==SpStatus.source;rows[2].source=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;
+    rows[2].licence=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.licence;rows[2].licence=4;#assert sp_rows(rows[..],tokens[..])==SpStatus.licence;
+    rows[2].licence=3;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;rows[2].licence=1;
+    rows[2].time=-1;rows[2].outcome=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.time;rows[2].time=0;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;
+    rows[2].time=5;rows[2].outcome=4;#assert sp_rows(rows[..],tokens[..])==SpStatus.time;rows[2].outcome=5;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;
+    rows[2].derived=3;#assert sp_rows(rows[..],tokens[..])==SpStatus.link;rows[2].derived=-1;#assert sp_rows(rows[..],tokens[..])==SpStatus.link;
+    rows[2].derived=2;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;rows[2].derived=0;
+    tokens[50]=15;#assert sp_rows(rows[..],tokens[..])==SpStatus.token;tokens[50]=14;#assert sp_rows(rows[..],tokens[..])==SpStatus.ok;
+    one:=[1]SpRow.[SpRow.{licence=1,count=1024}];t:[1025]u8;#assert sp_rows(one[..],t[0..<1024])==SpStatus.ok;
+    one[0].count=1025;#assert sp_rows(one[..],t[..])==SpStatus.shape;
+    full:[65]SpRow;ft:[65]u8;for i:0..<65 {full[i]=SpRow.{id=i,licence=1,first=i,count=1};}
+    #assert sp_rows(full[0..<64],ft[0..<64])==SpStatus.ok && sp_rows(full[..],ft[..])==SpStatus.shape && sp_rows(full[0..<0],ft[0..<0])==SpStatus.shape;
+    five:[5]SpRow;f5:[4097]u8;for i:0..<4 {five[i]=SpRow.{id=i,licence=1,first=i*1024,count=1024};}five[4]=SpRow.{id=4,licence=1,first=4096,count=1};
+    #assert sp_rows(five[0..<4],f5[0..<4096])==SpStatus.ok && sp_rows(five[..],f5[..])==SpStatus.shape;
+}
+#test "content identity and near-duplicate thresholds" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);
+    a:=sp_content(rows[8],tokens[..]);b:=sp_content(rows[9],tokens[..]);#assert ck_equal(a,b) && !ck_equal(a,sp_content(rows[0],tokens[..]));
+    set:[256]bool;sp_shingles(rows[4],tokens[..],set[..]);n:=0;for k:0..<256 {if set[k] {n+=1;}}
+    #assert n==4 && set[15*16+12] && set[12*16+13] && set[13*16+14] && set[14*16+12];
+    sp_shingles(rows[3],tokens[..],set[..]);n=0;for k:0..<256 {if set[k] {n+=1;}}#assert n==2 && set[15*16] && set[1];
+    // Rows 4 and 5 share 4 of 5 bigrams; rows 6 and 7, a reversal, share none.
+    #assert sp_near(rows[4],rows[5],tokens[..]) && sp_near(rows[8],rows[9],tokens[..]) && !sp_near(rows[6],rows[7],tokens[..]);
+    // Exactly half is near; just under half is not. [1,2,3] vs [1,2,4]: 2 of 4. [1,2,3] vs [1,4,3]: 1 of 5.
+    t:=[9]u8.[1,2,3,1,2,4,1,4,3];x:=SpRow.{count=3};y:=SpRow.{first=3,count=3};z:=SpRow.{first=6,count=3};
+    #assert sp_near(x,y,t[..]) && !sp_near(x,z,t[..]);
+    // 2 of 5 is not near; 3 of 6 is. A (0,0) bigram counts like any other.
+    u:=[18]u8.[1,2,3,1,2,4,5, 1,2,3,4,1,2,3,5,6, 0,0];
+    #assert !sp_near(SpRow.{count=3},SpRow.{first=3,count=4},u[..]) && sp_near(SpRow.{first=7,count=4},SpRow.{first=11,count=5},u[..]);
+    zz:=SpRow.{first=16,count=2};zo:=[2]u8.[0,1];#assert sp_near(zz,zz,u[..]);
+    w:=[4]u8.[0,0,0,1];#assert !sp_near(SpRow.{count=2},SpRow.{first=2,count=2},w[..]);
+    sp_shingles(zz,u[..],set[..]);#assert set[0];sp_shingles(rows[4],tokens[..],set[..]);n=0;for k:0..<256 {if set[k] {n+=1;}}#assert n==4 && !set[0];
+}
+#test "groups join task, session, paraphrase and near-duplicate links transitively" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);label:[14]int;for i:0..<14 {label[i]=99;}
+    sp_groups(rows[..],tokens[..],label[..]);want:=[14]int.[0,0,2,2,4,4,6,6,8,8,10,11,12,13];
+    for i:0..<14 {#assert label[i]==want[i];}
+    // A chain 13 -> 12 -> 10 through two sessions joins all three under 10.
+    rows[12].session=19;rows[13].task=12;sp_groups(rows[..],tokens[..],label[..]);
+    #assert label[10]==10 && label[12]==10 && label[13]==10 && label[11]==11;
+    // A derived link pointing back joins too (row 3 derived from row 0).
+    sp_fixture(rows[..],tokens[..],cells[..]);rows[3].derived=1;sp_groups(rows[..],tokens[..],label[..]);#assert label[2]==0 && label[3]==0 && label[1]==0;
+}
+#test "the grouped split is clean; splitting by row leaks all five planted pairs" #steps 100000000 {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);splits:[14]PkSplit;
+    #assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[..])==SpStatus.ok;
+    // Hand-derived: groups {0,1} latest 7, {2,3} 6, {8,9} 8 go to validation;
+    // {4,5} latest 9 and {6,7} latest 10 go to test; rows 10..13 are training.
+    V:=PkSplit.validation;T:=PkSplit.test;R:=PkSplit.train;want:=[14]PkSplit.[V,V,V,V,T,T,T,T,V,V,R,R,R,R];
+    for i:0..<14 {#assert splits[i]==want[i];}
+    a:=sp_audit(rows[..],tokens[..],splits[..],cells[..],2);
+    #assert a.status==SpStatus.ok && a.exact==0 && a.task==0 && a.session==0 && a.derived==0 && a.near==0 && a.post==1;
+    for i:0..<14 {splits[i]=PkSplit.validation;}sp_by_row(rows[..],SP_PLAN,splits[..]);a=sp_audit(rows[..],tokens[..],splits[..],cells[..],2);
+    byrow:=[14]PkSplit.[R,V,R,V,R,T,R,T,R,V,R,R,R,R];for i:0..<14 {#assert splits[i]==byrow[i];}
+    #assert a.exact==1 && a.task==1 && a.session==1 && a.derived==1 && a.near==1 && a.post==1;
+    #assert sp_audit(rows[..],tokens[..],splits[..],cells[..],0).post==0;
+    docs:[14]PkDoc;docs[0].id=99;#assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.leak && docs[0].id==99;
+    // A leak of one kind alone is still refused.
+    #assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[..])==SpStatus.ok;splits[7]=PkSplit.validation;#assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.leak && docs[0].id==99;
+    // Each planted kind alone: task (row 1), session (3), near (5), exact (9).
+    splits[7]=PkSplit.test;move:=[4]int.[1,3,5,9];to:=[4]PkSplit.[R,R,V,R];
+    for c:0..<4 {splits[move[c]]=to[c];a=sp_audit(rows[..],tokens[..],splits[..],cells[..],2);
+        #assert (a.task==1)==(c==0) && (a.session==1)==(c==1) && (a.near==1)==(c==2) && (a.exact==1)==(c==3) && a.task+a.session+a.near+a.exact==1 && a.derived==0;
+        #assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.leak && docs[0].id==99;splits[move[c]]=want[move[c]];}
+    splits[7]=PkSplit.test;#assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.ok && docs[0].id==1 && docs[13].id==14 && docs[13].first==47 && docs[13].count==4 && docs[13].split==R && docs[0].split==V;
+}
+#test "assignment and docs refuse bad plans, shapes and splits without training" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);splits:[14]PkSplit;docs:[14]PkDoc;
+    #assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[0..<13])==SpStatus.shape;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=-1,valid_end=8},splits[..])==SpStatus.shape;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=5,valid_end=4},splits[..])==SpStatus.shape;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=5,valid_end=5},splits[..])==SpStatus.ok && splits[0]==PkSplit.test && splits[13]==PkSplit.train;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=10,valid_end=10},splits[..])==SpStatus.ok && splits[7]==PkSplit.train;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=0,valid_end=0},splits[..])==SpStatus.split;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=1,valid_end=1},splits[..])==SpStatus.ok && splits[10]==PkSplit.train && splits[11]==PkSplit.test;
+    #assert sp_docs(rows[..],tokens[..],splits[..],docs[0..<13])==SpStatus.shape;
+    for i:0..<14 {splits[i]=PkSplit.test;}#assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.split;
+    rows[0].licence=0;#assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[..])==SpStatus.licence && sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.licence;
+    #assert sp_audit(rows[..],tokens[..],splits[..],cells[..],2).status==SpStatus.licence;rows[0].licence=1;
+    #assert sp_audit(rows[..],tokens[..],splits[0..<13],cells[0..<26],2).status==SpStatus.shape && sp_audit(rows[..],tokens[..],splits[..],cells[..],-1).status==SpStatus.shape;
+    #assert sp_audit(rows[..],tokens[..],splits[..],cells[0..<27],2).status==SpStatus.shape && sp_audit(rows[..],tokens[..],splits[0..<13],cells[..],2).status==SpStatus.shape;
+    wide:[238]SpCell;#assert sp_audit(rows[..],tokens[..],splits[..],wide[..],17).status==SpStatus.shape;
+    wide2:[224]SpCell;#assert sp_audit(rows[..],tokens[..],splits[..],wide2[..],16).status==SpStatus.ok;
+}
+#test "preprocessing is fitted on training rows only" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);splits:[14]PkSplit;
+    #assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[..])==SpStatus.ok;
+    // Hand-derived: training values 1, 2, 3, 6: mean 3, variance (4+1+0+9)/4 = 3.5.
+    f:=sp_fit(rows[..],splits[..],cells[..],2,0);#assert f.status==SpStatus.ok && f.rows==4 && f.mean==3 && f.scale==sqrt(3.5);
+    // Validation and test values are far away; changing them changes nothing.
+    cells[0].value=1e9;cells[18].value=-1e9;g:=sp_fit(rows[..],splits[..],cells[..],2,0);#assert g.mean==f.mean && g.scale==f.scale;
+    cells[26].value=10;g=sp_fit(rows[..],splits[..],cells[..],2,0);#assert g.mean==4 && g.scale==sqrt(12.5);
+    #assert sp_fit(rows[..],splits[..],cells[..],2,1).status==SpStatus.time;
+    cells[27].known=rows[13].outcome;#assert sp_fit(rows[..],splits[..],cells[..],2,1).status==SpStatus.time;
+    for i:0..<14 {cells[2*i+1].known=rows[i].outcome;}h:=sp_fit(rows[..],splits[..],cells[..],2,1);#assert h.status==SpStatus.ok && h.mean==0.5 && h.scale==0.5;
+    cells[27].value=3;h=sp_fit(rows[..],splits[..],cells[..],2,1);#assert h.mean==1 && h.scale==sqrt(1.5);
+    // Row 0 counts when it is a training row; one feature is enough.
+    splits[0]=PkSplit.train;one:=[2]SpCell.[SpCell.{value=4},SpCell.{value=8}];h=sp_fit(rows[0..<2],splits[0..<2],one[..],1,0);#assert h.status==SpStatus.ok && h.rows==1 && h.mean==4 && h.scale==0;
+    splits[1]=PkSplit.train;h=sp_fit(rows[0..<2],splits[0..<2],one[..],1,0);#assert h.rows==2 && h.mean==6 && h.scale==2;
+    full:[64]SpRow;fs:[64]PkSplit;fc:[64]SpCell;fc[0].value=64;h=sp_fit(full[..],fs[..],fc[..],1,0);#assert h.status==SpStatus.ok && h.rows==64 && h.mean==1;
+    #assert sp_fit(rows[..],splits[0..<13],cells[..],2,0).status==SpStatus.shape && sp_fit(rows[..],splits[..],cells[..],0,0).status==SpStatus.shape;
+    #assert sp_fit(rows[..],splits[..],cells[..],2,2).status==SpStatus.shape && sp_fit(rows[..],splits[..],cells[..],2,-1).status==SpStatus.shape;
+    #assert sp_fit(rows[..],splits[..],cells[0..<27],2,0).status==SpStatus.shape;
+    many:[65]SpRow;ms:[65]PkSplit;mc:[65]SpCell;#assert sp_fit(many[..],ms[..],mc[..],1,0).status==SpStatus.shape;
+    for i:0..<14 {splits[i]=PkSplit.validation;}#assert sp_fit(rows[..],splits[..],cells[..],2,0).status==SpStatus.split;
+}
+#test "post-outcome features are counted per feature, strictly after the outcome" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);
+    #assert sp_post(rows[..],cells[..],2)==1 && sp_post(rows[..],cells[..],0)==0;
+    for i:0..<14 {cells[2*i+1].known=rows[i].outcome;}#assert sp_post(rows[..],cells[..],2)==0;
+    cells[0].known=rows[0].outcome+1;#assert sp_post(rows[..],cells[..],2)==1;
+    cells[1].known=rows[0].outcome+1;#assert sp_post(rows[..],cells[..],2)==2;
+    cells[0].known=rows[0].outcome;cells[1].known=0;#assert sp_post(rows[..],cells[..],2)==0;
+    cells[27].known=rows[13].outcome+1;#assert sp_post(rows[..],cells[..],2)==1;
+}
+#test "an exact copy of the first row is caught across splits" {
+    t:=[6]u8.[3,1,4,3,1,4];rows:=[2]SpRow.[SpRow.{id=1,licence=1,task=1,session=1,count=3},SpRow.{id=2,licence=1,task=2,session=2,first=3,count=3}];
+    s:=[2]PkSplit.[PkSplit.train,PkSplit.test];none:[1]SpCell;a:=sp_audit(rows[..],t[..],s[..],none[0..<0],0);
+    #assert a.status==SpStatus.ok && a.exact==1 && a.near==0 && a.task==0 && a.session==0 && a.derived==0;
+}
+#test "the fixture is the one the chapter's tables show" {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);
+    // Weighted sums, (k+1)*x, of every field, computed independently of sp_fixture.
+    tw:=0;for k:0..<51 {tw+=(k+1)*cast(int)tokens[k];}#assert tw==9006;
+    sums:[9]int;fv:=0.0;gv:=0.0;
+    for k:0..<14 {r:=rows[k];w:=k+1;sums[0]+=w*r.id;sums[1]+=w*r.source;sums[2]+=w*cast(int)r.licence;sums[3]+=w*r.task;sums[4]+=w*r.session;sums[5]+=w*r.time;sums[6]+=w*r.outcome;sums[7]+=w*r.derived;sums[8]+=w*r.count*1000+r.first;
+        fv+=f64(w)*cells[2*k].value+f64(cells[2*k].known);gv+=f64(w)*cells[2*k+1].value+f64(w)*f64(cells[2*k+1].known);}
+    want:=[9]int.[1015,100,161,911,1861,480,585,56,385329];for k:0..<9 {#assert sums[k]==want[k];}
+    #assert fv==6273.0 && gv==746.0;
+}
+// An independent reference: random rows, groups as the reachability closure
+// of the link relation (Warshall), and the split of each group from the
+// largest time it reaches. The assignment must equal it and audit clean.
+#forall "random rows split like the reachability closure and audit clean" seed:0..<24 #steps 400000000 {
+    rows:[12]SpRow;tokens:[48]u8;x:=(seed*7919+12345)%2147483648;at:=0;
+    for i:0..<12 {
+        x=(x*1103515245+12345)%2147483648;n:=1+x%4;
+        x=(x*1103515245+12345)%2147483648;task:=x%9;
+        x=(x*1103515245+12345)%2147483648;session:=x%11;
+        x=(x*1103515245+12345)%2147483648;time:=x%12;
+        x=(x*1103515245+12345)%2147483648;d:=0;if i>0 && x%5==0 {d=1+(x/5)%i;}
+        for k:0..<n {x=(x*1103515245+12345)%2147483648;tokens[at+k]=cast(u8)(x%6);}
+        rows[i]=SpRow.{id=3*i+1,licence=1,task=task,session=session,time=time,outcome=time,derived=d,first=at,count=n};at+=n;
+    }
+    reach:[144]bool;
+    for i:0..<12 {reach[i*13]=true;for j:i+1..<12 {l:=sp_linked(rows[..],tokens[0..<at],i,j);reach[i*12+j]=l;reach[j*12+i]=l;}}
+    for k:0..<12 {for i:0..<12 {for j:0..<12 {if reach[i*12+k] && reach[k*12+j] {reach[i*12+j]=true;}}}}
+    plan:=SpPlan.{train_end=4,valid_end=8};splits:[12]PkSplit;s:=sp_assign(rows[..],tokens[0..<at],plan,splits[..]);
+    label:[12]int;sp_groups(rows[..],tokens[0..<at],label[..]);train:=false;
+    for i:0..<12 {
+        top:=0;for j:0..<12 {if reach[i*12+j] && rows[j].time>top {top=rows[j].time;}}
+        for j:0..<12 {#assert (label[i]==label[j])==reach[i*12+j];}
+        want:=PkSplit.test;if top<=8 {want=PkSplit.validation;}if top<=4 {want=PkSplit.train;train=true;}
+        if s==SpStatus.ok {#assert splits[i]==want;}
+    }
+    #assert (s==SpStatus.ok)==train;
+    if train {none:[1]SpCell;a:=sp_audit(rows[..],tokens[0..<at],splits[..],none[0..<0],0);#assert a.exact+a.task+a.session+a.derived+a.near==0;}
+}
+#test "a run on the split resumes exactly and refuses another split's checkpoint" #steps 400000000 {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);splits:[14]PkSplit;docs:[14]PkDoc;
+    #assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[..])==SpStatus.ok;#assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.ok;
+    groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=3}};straight:[10]f64;
+    for k:0..<10 {s:=rs_step(docs[..],tokens[..],groups[..],P,run,w[..],m[..],v[..]);#assert s.status==RsStatus.ok;run=s.run;straight[k]=s.loss;}
+    a:[256]f64;am:[256]f64;av:[256]f64;r:=RsRun.{cursor=PkCursor.{seed=3}};
+    for k:0..<4 {s:=rs_step(docs[..],tokens[..],groups[..],P,r,a[..],am[..],av[..]);r=s.run;}
+    bytes:[6404]u8;#assert ck_write(rs_meta(ids,r),a[..],am[..],av[..],bytes[..],false)==CkStatus.ok;
+    pointer:[80]u8;#assert ck_pointer_write(r.revision,ck_digest("psionic.checkpoint.v1",bytes[0..<6372]),pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;q:=rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]);#assert q.status==CkStatus.ok && q.meta.revision==4;
+    resumed:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};
+    for k:4..<10 {s:=rs_step(docs[..],tokens[..],groups[..],P,resumed,b[..],bm[..],bv[..]);resumed=s.run;#assert s.loss==straight[k];}
+    for i:0..<256 {#assert b[i]==w[i] && bm[i]==m[i] && bv[i]==v[i];}
+    // The same rows under another plan are another dataset: the checkpoint refuses.
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=8,valid_end=9},splits[..])==SpStatus.ok;#assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.ok;
+    other:=rs_ids(docs[..],tokens[..],groups[..],P);#assert rs_resume(pointer[..],bytes[..],other,docs[..],b[..],bm[..],bv[..]).status==CkStatus.dataset;
+}

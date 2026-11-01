@@ -1,0 +1,39 @@
+#import "Basic";
+#load "../lib/data/split.coax";
+// book:begin example
+main :: () {
+    rows:[14]SpRow;tokens:[51]u8;cells:[28]SpCell;sp_fixture(rows[..],tokens[..],cells[..]);
+    // The leaky way: each row takes the split of its own time.
+    naive:[14]PkSplit;sp_by_row(rows[..],SP_PLAN,naive[..]);a:=sp_audit(rows[..],tokens[..],naive[..],cells[..],2);
+    print("by row: exact % task % session % derived % near % post-outcome features %\n",a.exact,a.task,a.session,a.derived,a.near,a.post);
+    docs:[14]PkDoc;print("by row as a dataset: %\n",sp_docs(rows[..],tokens[..],naive[..],docs[..]));
+    // The grouped way: one split per group, from the group's latest time.
+    splits:[14]PkSplit;#assert sp_assign(rows[..],tokens[..],SP_PLAN,splits[..])==SpStatus.ok;
+    label:[14]int;sp_groups(rows[..],tokens[..],label[..]);
+    for i:0..<14 {print("% ",label[i]);}print("<- group of each row\n");
+    for i:0..<14 {print("% ",cast(int)splits[i]);}print("<- split (0 train, 1 validation, 2 test)\n");
+    a=sp_audit(rows[..],tokens[..],splits[..],cells[..],2);
+    print("grouped: exact % task % session % derived % near % post-outcome features %\n",a.exact,a.task,a.session,a.derived,a.near,a.post);
+    f:=sp_fit(rows[..],splits[..],cells[..],2,0);print("feature 0 from % training rows: mean % scale %\n",f.rows,f.mean,f.scale);
+    print("feature 1: %\n",sp_fit(rows[..],splits[..],cells[..],2,1).status);
+    // Train ten steps straight; separately, four steps, a checkpoint, a fresh resume, six more.
+    #assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.ok;
+    groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=3}};straight:[10]f64;
+    for k:0..<10 {s:=rs_step(docs[..],tokens[..],groups[..],P,run,w[..],m[..],v[..]);#assert s.status==RsStatus.ok;run=s.run;straight[k]=s.loss;}
+    x:[256]f64;xm:[256]f64;xv:[256]f64;r:=RsRun.{cursor=PkCursor.{seed=3}};
+    for k:0..<4 {s:=rs_step(docs[..],tokens[..],groups[..],P,r,x[..],xm[..],xv[..]);r=s.run;}
+    bytes:[6404]u8;#assert ck_write(rs_meta(ids,r),x[..],xm[..],xv[..],bytes[..],false)==CkStatus.ok;
+    pointer:[80]u8;#assert ck_pointer_write(r.revision,ck_digest("psionic.checkpoint.v1",bytes[0..<6372]),pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;q:=rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]);#assert q.status==CkStatus.ok;
+    resumed:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};same:=0;
+    for k:4..<10 {s:=rs_step(docs[..],tokens[..],groups[..],P,resumed,b[..],bm[..],bv[..]);resumed=s.run;if s.loss==straight[k] {same+=1;}}
+    equal:=0;for i:0..<256 {if b[i]==w[i] && bm[i]==m[i] && bv[i]==v[i] {equal+=1;}}
+    print("loss % -> %; resumed at 4: % of 6 losses and % of 256 parameter triples identical\n",straight[0],straight[9],same,equal);
+    // The same checkpoint against a damaged record and against another split.
+    bytes[300]^=1;print("one flipped bit: %\n",rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]).status);bytes[300]^=1;
+    #assert sp_assign(rows[..],tokens[..],SpPlan.{train_end=8,valid_end=9},splits[..])==SpStatus.ok;
+    #assert sp_docs(rows[..],tokens[..],splits[..],docs[..])==SpStatus.ok;
+    print("another split: %\n",rs_resume(pointer[..],bytes[..],rs_ids(docs[..],tokens[..],groups[..],P),docs[..],b[..],bm[..],bv[..]).status);
+}
+// book:end example

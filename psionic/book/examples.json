@@ -762,6 +762,16 @@
       ]
     },
     {
+      "source": "psionic/examples/split.coax",
+      "chapter": "psionic/book/ch120-data-and-resumable-state.md",
+      "stdout": "psionic/fixtures/split.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/resume.coax",
       "chapter": "psionic/book/ch122-a-checkpoint-holds-the-whole-experiment.md",
       "stdout": "psionic/fixtures/resume.out",

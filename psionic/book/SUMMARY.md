@@ -130,7 +130,7 @@
 - [118. One trainer for every model](ch118-one-trainer-for-every-model.md) — design draft
 - [119. Change an activation, change the answer](ch119-change-an-activation-change-the-answer.md) — design draft
 
-- [120. Data and resumable state](ch120-data-and-resumable-state.md) — design draft
+- [120. Data and resumable state](ch120-data-and-resumable-state.md)
 - [121. Feed the accelerator](ch121-feed-the-accelerator.md) — design draft
 - [122. A checkpoint holds the whole experiment](ch122-a-checkpoint-holds-the-whole-experiment.md)
 - [123. Learn a tokenizer](ch123-learn-a-tokenizer.md)
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–32, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 123, 124, 147, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–32, 36–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 120, 123, 124, 147, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).
