@@ -29,21 +29,7 @@
 #load "relay_conn_rules.coax";
 #load "relay_poll_budget.coax";
 
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
-cxsock_now_ms :: () -> int #foreign;
-cxtls_host_push :: (byte: int) -> int #foreign;
-cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxtls_write :: (h: int, byte: int) -> int #foreign;
-cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxtls_byte :: (h: int, i: int) -> int #foreign;
-cxtls_close :: (h: int) -> int #foreign;
+#load "transport.coax";
 cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
 
 RC_MSG_MAX :: 131072;                    // the largest message (and frame) taken from a relay, 128 KiB

@@ -1,0 +1,748 @@
+// An HTTP/1.1 client for Coax tools: GET and POST (any method) over TCP or
+// TLS, caller headers, Content-Length and chunked bodies, at most 5 redirects,
+// one deadline for the whole call and a bounded body.
+//
+// The parsing is pure and checked here: the URL (http_url), the request's
+// bytes (http_request), the response head (http_head, http_header), chunked
+// bodies (http_dechunk) and redirects (http_follow, http_redirect_method).
+// http_do moves the bytes through coax/platform/socket-native.c and
+// tls-native.c (coax/lib/net/transport.coax; link both with the flags from
+// coax/platform/tls-env.sh). TLS verifies the chain and the host name, with no
+// switch to skip it.
+//
+//   w: [1] HttpWork; body: [65536] u8;
+//   hdr := [1] string.["Accept: text/plain"];
+//   r := http_do(w[..], "GET", "https://openagents.com/api/playtest/access", hdr[..], "", 10000, 5, body[..]);
+//   if r.error == HTTP_OK { print("% %\n", r.code, cast(string) body[0..<r.n]); }
+//   type := http_header(cast(string) w[0].head[0..<w[0].head_n], "content-type");
+//
+// Strict on what it reads: a status line of HTTP/1.0 or HTTP/1.1, CRLF line
+// ends, no folded headers, one Content-Length (or a list of one value),
+// never both Content-Length and Transfer-Encoding, and no transfer coding but
+// chunked. Every request says Connection: close and Accept-Encoding:
+// identity, so a response is one exchange on its own connection. A body with
+// neither length nor chunks ends at the end of the stream (on Apple TLS that
+// end is unverified: unverified_end says so). Redirects keep the method only
+// for 307 and 308, never go from https to http, and drop Authorization when
+// they leave the origin. A request signed for its URL (NIP-98) should pass 0
+// redirects: a redirect is then answered as itself.
+#load "transport.coax";
+
+HTTP_URL_MAX :: 2048;
+HTTP_HEAD_MAX :: 16384;                  // the response head, and the request head we write
+HTTP_BODY_MAX :: 1048576;                // the most body http_do keeps, whatever out holds
+HTTP_READ_MAX :: 65536;                  // the most one transport read returns
+HTTP_RAW :: HTTP_HEAD_MAX + HTTP_BODY_MAX + 131072 + HTTP_READ_MAX;   // head, body, chunk framing, one read
+HTTP_REDIRECTS :: 5;
+HTTP_HEADERS :: 32;                      // caller headers on one request
+
+// http_do's errors.
+HTTP_OK :: 0; HTTP_E_URL :: 1; HTTP_E_CONNECT :: 2; HTTP_E_TLS :: 3; HTTP_E_SEND :: 4; HTTP_E_TIMEOUT :: 5;
+HTTP_E_READ :: 6; HTTP_E_RESPONSE :: 7; HTTP_E_TOO_BIG :: 8; HTTP_E_REDIRECTS :: 9; HTTP_E_REQUEST :: 10;
+HTTP_E_TRUNCATED :: 11;
+
+http_error_text :: (e: int) -> string {
+  if e == HTTP_OK { return "ok"; }
+  if e == HTTP_E_URL { return "not an http:// or https:// URL we can request"; }
+  if e == HTTP_E_CONNECT { return "could not connect"; }
+  if e == HTTP_E_TLS { return "TLS failed (the certificate is not trusted or not for this host)"; }
+  if e == HTTP_E_SEND { return "could not send the request"; }
+  if e == HTTP_E_TIMEOUT { return "timed out"; }
+  if e == HTTP_E_READ { return "the connection failed while reading"; }
+  if e == HTTP_E_RESPONSE { return "the response is not well-formed HTTP/1.1"; }
+  if e == HTTP_E_TOO_BIG { return "the response is too large"; }
+  if e == HTTP_E_REDIRECTS { return "too many redirects, or one we won't follow"; }
+  if e == HTTP_E_REQUEST { return "the request has a bad method, header or size"; }
+  if e == HTTP_E_TRUNCATED { return "the connection ended before the response did"; }
+  return "unknown";
+}
+
+// ---- bytes ------------------------------------------------------------------
+
+http_prefix :: (text: string, prefix: string) -> bool {
+  return text.count >= prefix.count && text[0..<prefix.count] == prefix;
+}
+http_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+http_same :: (a: string, b: string) -> bool {   // ASCII case folded
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if http_lower(a[i]) != http_lower(b[i]) { return false; } }
+  return true;
+}
+http_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+http_hex :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+// RFC 9110 tchar.
+http_tchar :: (c: u8) -> bool {
+  if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || http_digit(c) { return true; }
+  for t: "!#$%&'*+-.^_`|~" { if c == t { return true; } }
+  return false;
+}
+// A field value's byte: visible, space, tab or not ASCII.
+http_vchar :: (c: u8) -> bool { return c == 9 || (c >= 32 && c != 127); }
+http_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == 9) { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == 9) { b -= 1; }
+  return s[a..<b];
+}
+
+// ---- the URL ----------------------------------------------------------------
+
+// An absolute http:// or https:// URL. host: letters, digits, dots and
+// hyphens (a DNS name, localhost or a dotted IPv4 address); port 1 to 65535;
+// the target is everything from the first '/' or '?', visible ASCII with no
+// '#' or '\'. No credentials, fragments or IPv6 literals.
+HttpUrl :: struct { ok: bool; tls: bool; host_from: int; host_to: int; port: int; target_from: int; target_to: int; }
+
+#test "URLs: schemes, hosts, ports and targets" {
+  s := "https://openagents.com/api/playtest/access?as=lines";
+  u := http_url(s);
+  #assert u.ok && u.tls && u.port == 443 && s[u.host_from..<u.host_to] == "openagents.com";
+  #assert s[u.target_from..<u.target_to] == "/api/playtest/access?as=lines";
+  s = "http://127.0.0.1:57012/api";
+  u = http_url(s);
+  #assert u.ok && !u.tls && u.port == 57012 && s[u.host_from..<u.host_to] == "127.0.0.1" && s[u.target_from..<u.target_to] == "/api";
+  s = "http://localhost";
+  u = http_url(s);
+  #assert u.ok && u.port == 80 && u.target_from == 16 && u.target_to == 16;
+  s = "https://a.b:1?x";
+  u = http_url(s);
+  #assert u.ok && u.port == 1 && s[u.target_from..<u.target_to] == "?x";
+  #assert http_url("https://A-b.Example:65535/").ok && http_url("http://x/%41~").ok;
+  bad := [24] string.["", "https://", "ftp://a", "HTTPS://a", "https:/a", "https://user@a/", "https://a/#x", "https://a/\\x",
+                      "https://[::1]/", "https://a:", "https://a:0", "https://a:65536", "https://a:123456", "https://a:8x",
+                      "https://.a", "https://a.", "https://a..b", "https://-a", "https://a-", "https://a_b", "https://a/ b",
+                      "https://a/%", "https://a/\n", "https://a/é"];
+  for b: bad { #assert !http_url(b).ok || b == "https://a/%"; }
+  t1: [32] u8;
+  #assert http_url("https://a/%").ok && !http_url(http_tb("https://a/%7f", t1[..])).ok;
+  long: [2049] u8;
+  p := "https://a/";
+  for i: 0..<2049 { long[i] = ifx i < p.count then p[i] else 'x'; }
+  #assert http_url(cast(string) long[0..<2048]).ok && !http_url(cast(string) long[..]).ok;
+  host: [262] u8;
+  for i: 0..<262 { host[i] = 'a'; }
+  for i: 0..<8 { host[i] = "https://"[i]; }
+  for k: 1..<4 { host[8 + k * 63] = '.'; }
+  #assert http_url(cast(string) host[0..<8 + 253]).ok && !http_url(cast(string) host[0..<8 + 254]).ok;
+}
+
+http_url :: (text: string) -> HttpUrl {
+  bad: HttpUrl;
+  if text.count > HTTP_URL_MAX { return bad; }
+  u: HttpUrl;
+  if http_prefix(text, "https://") { u.tls = true; u.host_from = 8; u.port = 443; }
+  else if http_prefix(text, "http://") { u.host_from = 7; u.port = 80; }
+  else { return bad; }
+  at := u.host_from;
+  while at < text.count && text[at] != '/' && text[at] != '?' && text[at] != ':' {
+    c := text[at];
+    if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || http_digit(c) || c == '.' || c == '-') { return bad; }
+    at += 1;
+  }
+  u.host_to = at;
+  host := text[u.host_from..<at];
+  if host.count < 1 || host.count > 253 { return bad; }
+  for i: 0..<host.count {
+    c := host[i];
+    first := i == 0 || host[i - 1] == '.';
+    last := i == host.count - 1 || host[i + 1] == '.';
+    if c == '.' && (first || last) { return bad; }
+    if c == '-' && (first || last) { return bad; }
+  }
+  if at < text.count && text[at] == ':' {
+    at += 1;
+    port := 0; digits := 0;
+    while at < text.count && text[at] != '/' && text[at] != '?' {
+      if !http_digit(text[at]) || digits == 5 { return bad; }
+      port = port * 10 + cast(int) (text[at] - '0'); digits += 1; at += 1;
+    }
+    if port < 1 || port > 65535 { return bad; }
+    u.port = port;
+  }
+  u.target_from = at; u.target_to = text.count;
+  for i: at..<text.count {
+    c := text[i];
+    if c < 33 || c > 126 || c == '#' || c == '\\' { return bad; }
+  }
+  u.ok = true;
+  return u;
+}
+
+// ---- the request ------------------------------------------------------------
+
+HttpOut :: struct { buf: [] u8; n: int; bad: bool; }
+ho_put :: (o: [] HttpOut, s: string) {
+  if o[0].n + s.count > o[0].buf.count { o[0].bad = true; return; }
+  for i: 0..<s.count { o[0].buf[o[0].n + i] = s[i]; }
+  o[0].n += s.count;
+}
+ho_int :: (o: [] HttpOut, v: int) {
+  t: [24] u8; n := 0; x := v;
+  if x == 0 { ho_put(o, "0"); return; }
+  while x > 0 { t[n] = cast(u8) (x % 10) + '0'; x = x / 10; n += 1; }
+  r: [24] u8;
+  for i: 0..<n { r[i] = t[n - 1 - i]; }
+  ho_put(o, cast(string) r[0..<n]);
+}
+
+// A caller's header line, "Name: value": a token, a colon, a value of visible
+// bytes. The headers http_request writes itself are refused.
+http_header_ok :: (line: string) -> bool {
+  colon := -1;
+  for i: 0..<line.count { if line[i] == ':' { colon = i; break; } }
+  if colon < 1 { return false; }
+  for i: 0..<colon { if !http_tchar(line[i]) { return false; } }
+  for i: colon + 1..<line.count { if !http_vchar(line[i]) { return false; } }
+  name := line[0..<colon];
+  own := [5] string.["host", "content-length", "transfer-encoding", "connection", "accept-encoding"];
+  for n: own { if http_same(name, n) { return false; } }
+  return true;
+}
+http_is_auth :: (line: string) -> bool {
+  return line.count > 14 && http_same(line[0..<14], "authorization:");
+}
+
+#test "the request is exact, and refuses injection and bad sizes" {
+  out: [512] u8;
+  s := "https://openagents.com/api/x?y=1";
+  h := [2] string.["Accept: text/plain", "Authorization: Nostr abc"];
+  n := http_request("GET", s, http_url(s), h[..], 0, false, false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "GET /api/x?y=1 HTTP/1.1\r\nHost: openagents.com\r\nUser-Agent: openagents-coax/1\r\nAccept-Encoding: identity\r\nConnection: close\r\nAccept: text/plain\r\nAuthorization: Nostr abc\r\n\r\n";
+  n = http_request("GET", s, http_url(s), h[..], 0, false, true, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "GET /api/x?y=1 HTTP/1.1\r\nHost: openagents.com\r\nUser-Agent: openagents-coax/1\r\nAccept-Encoding: identity\r\nConnection: close\r\nAccept: text/plain\r\n\r\n";
+  s = "http://127.0.0.1:8080";
+  none: [1] string;
+  n = http_request("POST", s, http_url(s), none[0..<0], 12, true, false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "POST / HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: openagents-coax/1\r\nAccept-Encoding: identity\r\nConnection: close\r\nContent-Length: 12\r\n\r\n";
+  s = "http://h?q";
+  n = http_request("POST", s, http_url(s), none[0..<0], 0, true, false, out[..]);
+  #assert n > 0 && cast(string) out[0..<34] == "POST /?q HTTP/1.1\r\nHost: h\r\nUser-A" && cast(string) out[n - 21..<n] == "Content-Length: 0\r\n\r\n";
+  s = "https://h:443/";
+  n = http_request("GET", s, http_url(s), none[0..<0], 0, false, false, out[..]);
+  #assert n > 0 && cast(string) out[0..<24] == "GET / HTTP/1.1\r\nHost: h\r";
+  s = "http://h:443/";
+  n = http_request("GET", s, http_url(s), none[0..<0], 0, false, false, out[..]);
+  #assert n > 0 && cast(string) out[0..<28] == "GET / HTTP/1.1\r\nHost: h:443\r";
+  #assert http_request("GET", s, http_url(s), none[0..<0], 0, false, false, out[0..<n]) == n;
+  #assert http_request("GET", s, http_url(s), none[0..<0], 0, false, false, out[0..<n - 1]) == -1;
+  #assert http_request("get", s, http_url(s), none[0..<0], 0, false, false, out[..]) == -1;
+  #assert http_request("", s, http_url(s), none[0..<0], 0, false, false, out[..]) == -1;
+  #assert http_request("VERYLONGMETHOD", s, http_url(s), none[0..<0], 0, false, false, out[..]) == -1;
+  #assert http_request("GET", s, http_url("x"), none[0..<0], 0, false, false, out[..]) == -1;
+  #assert http_request("POST", s, http_url(s), none[0..<0], -1, true, false, out[..]) == -1;
+  #assert http_request("POST", s, http_url(s), none[0..<0], HTTP_BODY_MAX + 1, true, false, out[..]) == -1;
+  bad := [9] string.["X: a\r\nY: b", "X: a\n", ": v", "X Y: v", "X", "Host: evil", "content-length: 9", "Transfer-Encoding: chunked", "Connection: keep-alive"];
+  for b: bad {
+    one := [1] string.[b];
+    #assert !http_header_ok(b) && http_request("GET", s, http_url(s), one[..], 0, false, false, out[..]) == -1;
+  }
+  #assert http_header_ok("X-Verse-Player: abc") && http_header_ok("A:") && http_header_ok("Content-Type: application/json; charset=utf-8");
+  #assert http_is_auth("authorization: x") && http_is_auth("Authorization: Nostr x") && !http_is_auth("Authorization:") && !http_is_auth("X-Authorization: y");
+  many: [33] string;
+  for i: 0..<33 { many[i] = "X: y"; }
+  big: [4096] u8;
+  #assert http_request("GET", s, http_url(s), many[0..<32], 0, false, false, big[..]) > 0;
+  #assert http_request("GET", s, http_url(s), many[..], 0, false, false, big[..]) == -1;
+}
+
+// The request head for url (parsed as u): the request line, Host, our fixed
+// headers, the caller's (Authorization left out when drop_auth) and, when the
+// request carries a body, its Content-Length. Its length, or -1.
+http_request :: (method: string, url: string, u: HttpUrl, headers: [] string, body_n: int, has_body: bool, drop_auth: bool, out: [] u8) -> int {
+  if !u.ok || method.count < 1 || method.count > 10 || headers.count > HTTP_HEADERS { return -1; }
+  for c: method { if c < 'A' || c > 'Z' { return -1; } }
+  if has_body && (body_n < 0 || body_n > HTTP_BODY_MAX) { return -1; }
+  for h: headers { if !http_header_ok(h) { return -1; } }
+  o: [1] HttpOut;
+  o[0].buf = out;
+  ho_put(o[..], method); ho_put(o[..], " ");
+  target := url[u.target_from..<u.target_to];
+  if target.count == 0 || target[0] != '/' { ho_put(o[..], "/"); }
+  ho_put(o[..], target);
+  ho_put(o[..], " HTTP/1.1\r\nHost: ");
+  ho_put(o[..], url[u.host_from..<u.host_to]);
+  if u.port != (ifx u.tls then 443 else 80) { ho_put(o[..], ":"); ho_int(o[..], u.port); }
+  ho_put(o[..], "\r\nUser-Agent: openagents-coax/1\r\nAccept-Encoding: identity\r\nConnection: close\r\n");
+  for h: headers {
+    if drop_auth && http_is_auth(h) { continue; }
+    ho_put(o[..], h); ho_put(o[..], "\r\n");
+  }
+  if has_body { ho_put(o[..], "Content-Length: "); ho_int(o[..], body_n); ho_put(o[..], "\r\n"); }
+  ho_put(o[..], "\r\n");
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// ---- the response head --------------------------------------------------------
+
+HH_OK :: 0; HH_MORE :: 1; HH_TOO_BIG :: 2; HH_STATUS :: 3; HH_HEADER :: 4; HH_LENGTH :: 5; HH_ENCODING :: 6;
+// status: HH_*. code: the status code. head_n: bytes through the blank line.
+// length: Content-Length, or -1. chunked: Transfer-Encoding: chunked.
+HttpHead :: struct { status: int; code: int; head_n: int; length: int = -1; chunked: bool; }
+
+#test "response heads: status lines, fields, lengths and codings" {
+  h := http_head("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello");
+  #assert h.status == HH_OK && h.code == 200 && h.head_n == 64 && h.length == 5 && !h.chunked;
+  h = http_head("HTTP/1.0 404 \r\n\r\n");
+  #assert h.status == HH_OK && h.code == 404 && h.head_n == 17 && h.length == -1;
+  h = http_head("HTTP/1.1 302\r\nLocation: /x\r\n\r\n");
+  #assert h.status == HH_OK && h.code == 302;
+  h = http_head("HTTP/1.1 200 OK\r\nTransfer-Encoding:  Chunked \r\n\r\n");
+  #assert h.status == HH_OK && h.chunked && h.length == -1;
+  h = http_head("HTTP/1.1 200 OK\r\ncontent-length: 7\r\nContent-Length: 7\r\n\r\n");
+  #assert h.status == HH_OK && h.length == 7;
+  h = http_head("HTTP/1.1 200 OK\r\nContent-Length:0\r\nX-Empty:\r\nX-Tab:\ta\t\r\n\r\n");
+  #assert h.status == HH_OK && h.length == 0;
+  h = http_head("HTTP/1.1 200 OK\r\nContent-Length: 999999999999999\r\n\r\n");
+  #assert h.status == HH_OK && h.length == 999999999999999;
+  #assert http_head("HTTP/1.1 599 x\r\n\r\n").code == 599 && http_head("HTTP/1.1 100 Continue\r\n\r\n").code == 100;
+  // not yet whole
+  #assert http_head("").status == HH_MORE && http_head("HTTP/1.1 200 OK\r\n").status == HH_MORE && http_head("HTTP/1.1 200 OK\r\n\r").status == HH_MORE;
+  #assert http_head("HTTP/1.").status == HH_MORE && http_head("HTTP/1.1 200 OK\r\nA: b\r\n").status == HH_MORE;
+  // malformed status lines
+  st := [14] string.["HTTP/2 200 OK\r\n\r\n", "HTTP/1.1 20 OK\r\n\r\n", "HTTP/1.1 2000 OK\r\n\r\n", "HTTP/1.1 099 OK\r\n\r\n",
+                     "HTTP/1.1 600 OK\r\n\r\n", "HTTP/1.1  200 OK\r\n\r\n", "http/1.1 200 OK\r\n\r\n", "HTTP/1.1 2x0 OK\r\n\r\n",
+                     "HTTP/1.1 200OK\r\n\r\n", "HTTP/1.1 200 O\0K\r\n\r\n", "HTTP/1.1 200 OK\n\r\n\r\n", "SSH-2.0-OpenSSH_9.6\r\n",
+                     "HTTP/1.2 200 OK\r\n\r\n", "<html><body>hello</body></html>"];
+  for s: st { #assert http_head(s).status == HH_STATUS; }
+  // malformed fields
+  hd := [9] string.["HTTP/1.1 200 OK\r\n folded: x\r\n\r\n", "HTTP/1.1 200 OK\r\nA: b\r\n c\r\n\r\n", "HTTP/1.1 200 OK\r\nNoColon\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nA b: c\r\n\r\n", "HTTP/1.1 200 OK\r\nA : c\r\n\r\n", "HTTP/1.1 200 OK\r\n: c\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nA: b\nC: d\r\n\r\n", "HTTP/1.1 200 OK\r\nA: b\rc\r\n\r\n", "HTTP/1.1 200 OK\r\nA: \0\r\n\r\n"];
+  for s: hd { #assert http_head(s).status == HH_HEADER; }
+  t2: [64] u8;
+  #assert http_head(http_tb("HTTP/1.1 200 OK%0d%0aA: %7f%0d%0a%0d%0a", t2[..])).status == HH_HEADER;
+  #assert http_head(http_tb("HTTP/1.1 200 OK%0d%0aA: %c3%a9%09x%0d%0a%0d%0a", t2[..])).status == HH_OK;
+  ln := [8] string.["HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nContent-Length: 5, 5\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: \r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nContent-Length: 0x10\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 1000000000000000\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n"];
+  for s: ln { #assert http_head(s).status == HH_LENGTH; }
+  te := [4] string.["HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\n", "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n",
+                    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n\r\n", "HTTP/1.1 200 OK\r\nTransfer-Encoding: \r\n\r\n"];
+  for s: te { #assert http_head(s).status == HH_ENCODING; }
+  big: [HTTP_HEAD_MAX + 4] u8;
+  p := "HTTP/1.1 200 OK\r\nX: ";
+  for i: 0..<big.count { big[i] = ifx i < p.count then p[i] else 'a'; }
+  #assert http_head(cast(string) big[0..<HTTP_HEAD_MAX - 1]).status == HH_MORE && http_head(cast(string) big[..]).status == HH_TOO_BIG;
+  e := "\r\n\r\n";
+  for i: 0..<4 { big[HTTP_HEAD_MAX - 4 + i] = e[i]; }
+  #assert http_head(cast(string) big[0..<HTTP_HEAD_MAX]).status == HH_OK && http_head(cast(string) big[0..<HTTP_HEAD_MAX]).head_n == HTTP_HEAD_MAX;
+}
+
+http_head :: (b: string) -> HttpHead {
+  h: HttpHead;
+  // The status line, as far as it has come.
+  pre := "HTTP/1.";
+  for i: 0..<pre.count {
+    if i == b.count { h.status = HH_MORE; return h; }
+    if b[i] != pre[i] { h.status = HH_STATUS; return h; }
+  }
+  end := -1;
+  limit := ifx b.count < HTTP_HEAD_MAX then b.count else HTTP_HEAD_MAX;
+  for i: 3..<limit { if b[i - 3] == 13 && b[i - 2] == 10 && b[i - 1] == 13 && b[i] == 10 { end = i + 1; break; } }
+  if end < 0 {
+    if b.count > 12 && (b[7] != '0' && b[7] != '1') { h.status = HH_STATUS; return h; }
+    h.status = ifx b.count >= HTTP_HEAD_MAX then HH_TOO_BIG else HH_MORE;
+    return h;
+  }
+  h.head_n = end;
+  // HTTP/1.x DDD[ reason]CRLF
+  if end < 14 || (b[7] != '0' && b[7] != '1') || b[8] != ' ' { h.status = HH_STATUS; return h; }
+  if !http_digit(b[9]) || !http_digit(b[10]) || !http_digit(b[11]) { h.status = HH_STATUS; return h; }
+  h.code = cast(int) (b[9] - '0') * 100 + cast(int) (b[10] - '0') * 10 + cast(int) (b[11] - '0');
+  if h.code < 100 || h.code > 599 { h.status = HH_STATUS; return h; }
+  at := 12;
+  if b[at] == ' ' {
+    at += 1;
+    while at < end && b[at] != 13 { if !http_vchar(b[at]) || b[at] == 10 { h.status = HH_STATUS; return h; } at += 1; }
+  }
+  if b[at] != 13 || b[at + 1] != 10 { h.status = HH_STATUS; return h; }
+  at += 2;
+  te_seen := false;
+  while at < end - 2 {
+    line_end := at;
+    while b[line_end] != 13 && b[line_end] != 10 { line_end += 1; }
+    if b[line_end] != 13 || b[line_end + 1] != 10 { h.status = HH_HEADER; return h; }
+    line := b[at..<line_end];
+    colon := -1;
+    for i: 0..<line.count { if line[i] == ':' { colon = i; break; } }
+    if colon < 1 { h.status = HH_HEADER; return h; }
+    for i: 0..<colon { if !http_tchar(line[i]) { h.status = HH_HEADER; return h; } }
+    for i: colon + 1..<line.count { if !http_vchar(line[i]) { h.status = HH_HEADER; return h; } }
+    name := line[0..<colon];
+    value := http_trim(line[colon + 1..<line.count]);
+    if http_same(name, "content-length") {
+      if value.count < 1 || value.count > 15 { h.status = HH_LENGTH; return h; }
+      v := 0;
+      for c: value { if !http_digit(c) { h.status = HH_LENGTH; return h; } v = v * 10 + cast(int) (c - '0'); }
+      if h.length >= 0 && h.length != v { h.status = HH_LENGTH; return h; }
+      h.length = v;
+    }
+    if http_same(name, "transfer-encoding") {
+      if te_seen || !http_same(value, "chunked") { h.status = HH_ENCODING; return h; }
+      te_seen = true; h.chunked = true;
+    }
+    at = line_end + 2;
+  }
+  if h.chunked && h.length >= 0 { h.status = HH_LENGTH; return h; }
+  h.status = HH_OK;
+  return h;
+}
+
+#test "a header's value by name, case folded, the first one" {
+  head := "HTTP/1.1 302 Found\r\nlocation:  /next \r\nX-A: 1\r\nx-a: 2\r\nEmpty:\r\n\r\n";
+  #assert http_header(head, "Location") == "/next" && http_header(head, "x-a") == "1" && http_header(head, "empty") == "";
+  #assert http_header(head, "missing") == "" && http_header(head, "HTTP/1.1 302 Found") == "" && http_header("", "a") == "";
+  #assert http_header("HTTP/1.1 200 OK\r\nA: b\r\n\r\nC: d\r\n", "c") == "";
+  #assert http_header("HTTP/1.1 200 OK\r\nAB: x\r\n\r\n", "a") == "" && http_header("HTTP/1.1 200 OK\r\nA: x\r\n\r\n", "ab") == "";
+}
+
+// A field's value (trimmed) in a head that http_head admitted: the first one
+// named name, ASCII case folded, or "".
+http_header :: (head: string, name: string) -> string {
+  at := 0;
+  while at + 1 < head.count && !(head[at] == 13 && head[at + 1] == 10) { at += 1; }
+  at += 2;
+  while at < head.count {
+    e := at;
+    while e + 1 < head.count && !(head[e] == 13 && head[e + 1] == 10) { e += 1; }
+    if e + 1 >= head.count || e == at { return ""; }
+    line := head[at..<e];
+    if line.count > name.count && line[name.count] == ':' && http_same(line[0..<name.count], name) {
+      return http_trim(line[name.count + 1..<line.count]);
+    }
+    at = e + 2;
+  }
+  return "";
+}
+
+// For checks: text with %HH written as that byte.
+http_tb :: (s: string, out: [] u8) -> string {
+  n := 0; i := 0;
+  while i < s.count && n < out.count {
+    if s[i] == '%' && i + 2 < s.count && http_hex(s[i + 1]) >= 0 && http_hex(s[i + 2]) >= 0 {
+      out[n] = cast,trunc(u8) (http_hex(s[i + 1]) * 16 + http_hex(s[i + 2])); i += 3;
+    } else { out[n] = s[i]; i += 1; }
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- chunked bodies -----------------------------------------------------------
+
+HC_OK :: 0; HC_MORE :: 1; HC_BAD :: 2; HC_TOO_BIG :: 3;
+// status: HC_*. consumed: the raw bytes the whole chunked body took (HC_OK).
+// n: body bytes written to out so far.
+HttpChunked :: struct { status: int; consumed: int; n: int; }
+
+#test "chunked bodies decode, incomplete ones ask for more, bad ones refuse" {
+  out: [64] u8;
+  c := http_dechunk("5\r\nhello\r\n7;name=v\r\n, world\r\n0\r\n\r\n", out[..]);
+  #assert c.status == HC_OK && c.n == 12 && cast(string) out[0..<12] == "hello, world" && c.consumed == 34;
+  c = http_dechunk("A\r\n0123456789\r\na\r\nabcdefghij\r\n0\r\nX-Trailer: 1\r\n\r\nNEXT", out[..]);
+  #assert c.status == HC_OK && c.n == 20 && c.consumed == 49 && cast(string) out[0..<20] == "0123456789abcdefghij";
+  c = http_dechunk("0\r\n\r\n", out[..]);
+  #assert c.status == HC_OK && c.n == 0 && c.consumed == 5;
+  c = http_dechunk("000\r\n\r\n", out[..]);
+  #assert c.status == HC_OK && c.consumed == 7;
+  whole := "5\r\nhello\r\n0\r\nT: x\r\n\r\n";
+  for k: 0..<whole.count { #assert http_dechunk(whole[0..<k], out[..]).status == HC_MORE; }
+  #assert http_dechunk(whole, out[..]).status == HC_OK;
+  bad := [11] string.["x\r\n", "5\nhello\r\n", "5\r\nhelloXY", "5\r\nhello\r\r", "-1\r\n", "5 \r\nhello\r\n0\r\n\r\n", "\r\n",
+                      "123456789\r\n", "0\r\nBad Trailer\r\n\r\n", "0\r\nT: \0\r\n\r\n", "5;\0\r\nhello\r\n0\r\n\r\n"];
+  for b: bad { #assert http_dechunk(b, out[..]).status == HC_BAD; }
+  #assert http_dechunk("41\r\n", out[..]).status == HC_TOO_BIG;
+  #assert http_dechunk("40\r\n", out[..]).status == HC_MORE;
+  #assert http_dechunk("20\r\n0123456789abcdef0123456789abcdef\r\n21\r\n", out[..]).status == HC_TOO_BIG;
+  #assert http_dechunk("5\r\nhello\r\n0\r\n\r\n", out[0..<5]).status == HC_OK && http_dechunk("5\r\nhello\r\n", out[0..<4]).status == HC_TOO_BIG;
+}
+
+// Decodes a whole chunked body from the start of raw into out. HC_MORE when raw
+// ends before the body does (call again with more), HC_TOO_BIG when the body
+// would not fit out. Chunk extensions and trailer fields are checked and dropped.
+http_dechunk :: (raw: string, out: [] u8) -> HttpChunked {
+  c: HttpChunked;
+  at := 0;
+  while true {
+    size := 0; digits := 0;
+    while at < raw.count && http_hex(raw[at]) >= 0 {
+      if digits == 8 { c.status = HC_BAD; return c; }
+      size = size * 16 + http_hex(raw[at]); digits += 1; at += 1;
+    }
+    if at == raw.count { c.status = HC_MORE; return c; }
+    if digits == 0 { c.status = HC_BAD; return c; }
+    if c.n + size > out.count { c.status = HC_TOO_BIG; return c; }
+    if raw[at] == ';' {
+      while at < raw.count && raw[at] != 13 { if !http_vchar(raw[at]) { c.status = HC_BAD; return c; } at += 1; }
+    }
+    if at + 1 >= raw.count { c.status = ifx at < raw.count && raw[at] != 13 then HC_BAD else HC_MORE; return c; }
+    if raw[at] != 13 || raw[at + 1] != 10 { c.status = HC_BAD; return c; }
+    at += 2;
+    if size == 0 { break; }
+    if raw.count - at < size + 2 {
+      left := raw.count - at - size;
+      if left == 1 && raw[at + size] != 13 { c.status = HC_BAD; return c; }
+      c.status = HC_MORE; return c;
+    }
+    if raw[at + size] != 13 || raw[at + size + 1] != 10 { c.status = HC_BAD; return c; }
+    for i: 0..<size { out[c.n + i] = raw[at + i]; }
+    c.n += size; at += size + 2;
+  }
+  // trailer fields, then the blank line
+  while true {
+    e := at;
+    while e < raw.count && raw[e] != 13 && raw[e] != 10 { e += 1; }
+    if e + 1 >= raw.count { c.status = ifx e < raw.count && raw[e] != 13 then HC_BAD else HC_MORE; return c; }
+    if raw[e] != 13 || raw[e + 1] != 10 { c.status = HC_BAD; return c; }
+    if e == at { c.consumed = e + 2; c.status = HC_OK; return c; }
+    line := raw[at..<e];
+    colon := -1;
+    for i: 0..<line.count { if line[i] == ':' { colon = i; break; } }
+    if colon < 1 { c.status = HC_BAD; return c; }
+    for i: 0..<colon { if !http_tchar(line[i]) { c.status = HC_BAD; return c; } }
+    for i: colon + 1..<line.count { if !http_vchar(line[i]) { c.status = HC_BAD; return c; } }
+    at = e + 2;
+  }
+  return c;
+}
+
+// ---- redirects ----------------------------------------------------------------
+
+#test "redirects: which codes, which method, where to" {
+  #assert http_redirect_method(301, "GET") == "GET" && http_redirect_method(301, "POST") == "GET" && http_redirect_method(302, "POST") == "GET";
+  #assert http_redirect_method(303, "POST") == "GET" && http_redirect_method(303, "HEAD") == "HEAD" && http_redirect_method(303, "PUT") == "GET";
+  #assert http_redirect_method(307, "POST") == "POST" && http_redirect_method(308, "PUT") == "PUT" && http_redirect_method(302, "PUT") == "PUT";
+  #assert http_redirect_method(200, "GET") == "" && http_redirect_method(304, "GET") == "" && http_redirect_method(300, "GET") == "" && http_redirect_method(309, "GET") == "";
+  out: [HTTP_URL_MAX] u8;
+  base := "https://openagents.com:8443/a/b?c";
+  n := http_follow(base, "/login?x=1", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://openagents.com:8443/login?x=1";
+  n = http_follow(base, "https://staging.openagents.com/x", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://staging.openagents.com/x";
+  n = http_follow("http://127.0.0.1:5000/a", "http://localhost/b", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://localhost/b";
+  n = http_follow("http://127.0.0.1:5000/a", "https://localhost/b", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://localhost/b";
+  #assert http_follow(base, "http://openagents.com/", out[..]) == -1;      // never down from https
+  #assert http_follow(base, "//evil.example/", out[..]) == -1 && http_follow(base, "relative", out[..]) == -1;
+  #assert http_follow(base, "", out[..]) == -1 && http_follow(base, "/a b", out[..]) == -1 && http_follow("nope", "/x", out[..]) == -1;
+  #assert http_follow(base, "/x", out[0..<20]) == -1;
+  #assert http_same_origin("https://a.test/x", "https://A.test/y") && !http_same_origin("https://a.test/", "https://a.test:444/");
+  #assert !http_same_origin("https://a.test/", "http://a.test/") && !http_same_origin("https://a.test/", "https://b.test/") && !http_same_origin("x", "x");
+}
+
+// The method a redirect's request uses, or "" when code is not one we follow.
+http_redirect_method :: (code: int, method: string) -> string {
+  if code == 307 || code == 308 { return method; }
+  if code == 303 { return ifx method == "HEAD" then "HEAD" else "GET"; }
+  if code == 301 || code == 302 { return ifx method == "POST" then "GET" else method; }
+  return "";
+}
+// The absolute URL a Location points to from base: an absolute http(s) URL, or
+// a path from base's origin. -1 for anything else, and for https to http.
+http_follow :: (base: string, location: string, out: [] u8) -> int {
+  b := http_url(base);
+  if !b.ok { return -1; }
+  o: [1] HttpOut;
+  o[0].buf = out;
+  if http_prefix(location, "http://") || http_prefix(location, "https://") {
+    ho_put(o[..], location);
+  } else if location.count > 0 && location[0] == '/' && !(location.count > 1 && location[1] == '/') {
+    ho_put(o[..], base[0..<b.target_from]);
+    ho_put(o[..], location);
+  } else { return -1; }
+  if o[0].bad { return -1; }
+  u := http_url(cast(string) out[0..<o[0].n]);
+  if !u.ok || (b.tls && !u.tls) { return -1; }
+  return o[0].n;
+}
+http_same_origin :: (a: string, b: string) -> bool {
+  x := http_url(a); y := http_url(b);
+  return x.ok && y.ok && x.tls == y.tls && x.port == y.port && http_same(a[x.host_from..<x.host_to], b[y.host_from..<y.host_to]);
+}
+
+// ---- the client -----------------------------------------------------------------
+
+// raw: what came back; head: the final response's head (for http_header);
+// url: the final URL. Reused by each call.
+HttpWork :: struct {
+  raw: [HTTP_RAW] u8; used: int;
+  head: [HTTP_HEAD_MAX] u8; head_n: int;
+  req: [HTTP_HEAD_MAX] u8;
+  url: [HTTP_URL_MAX] u8; url_n: int;
+  next: [HTTP_URL_MAX] u8;
+  h: int = -1; tls: bool;
+}
+// error: HTTP_*; code: the final status; n: body bytes in out; redirects
+// followed; unverified_end: the body ended with the stream, on a transport
+// that cannot say whether the peer closed it cleanly (Apple TLS).
+HttpResult :: struct { error: int; code: int; n: int; redirects: int; unverified_end: bool; }
+
+hx_shut :: (w: [] HttpWork) {
+  if w[0].h >= 0 { r := ifx w[0].tls then cxtls_close(w[0].h) else cxsock_close(w[0].h); }
+  w[0].h = -1;
+}
+hx_left :: (deadline: int) -> int { return deadline - cxsock_now_ms(); }
+hx_send :: (w: [] HttpWork, bytes: string) -> bool {
+  for b: bytes {
+    e := ifx w[0].tls then cxtls_write(w[0].h, cast(int) b) else cxsock_write(w[0].h, cast(int) b);
+    if e != 0 { return false; }
+  }
+  return true;
+}
+hx_flush :: (w: [] HttpWork, deadline: int) -> bool {
+  left := hx_left(deadline);
+  if left <= 0 { return false; }
+  e := ifx w[0].tls then cxtls_flush(w[0].h, left) else cxsock_flush(w[0].h, left);
+  return e == 0;
+}
+// More bytes into raw: their count, 0 at a clean or unverified end (-12 noted),
+// or an HTTP_E_* error as a negative number.
+hx_fill :: (w: [] HttpWork, deadline: int, r: [] HttpResult) -> int {
+  while true {
+    left := hx_left(deadline);
+    if left <= 0 { return -HTTP_E_TIMEOUT; }
+    n := ifx w[0].tls then cxtls_read(w[0].h, left) else cxsock_read(w[0].h, left);
+    if n == -2 { continue; }
+    if n == -1 { return 0; }
+    if n == -12 { r[0].unverified_end = true; return 0; }
+    if n < 0 { return -HTTP_E_READ; }
+    if w[0].used + n > HTTP_RAW { return -HTTP_E_TOO_BIG; }
+    for i: 0..<n {
+      b := ifx w[0].tls then cxtls_byte(w[0].h, i) else cxsock_byte(w[0].h, i);
+      w[0].raw[w[0].used + i] = cast,trunc(u8) b;
+    }
+    w[0].used += n;
+    return n;
+  }
+  return 0;
+}
+
+// One exchange with the URL in w[0].url: connect, send, read the head and the body.
+hx_once :: (w: [] HttpWork, method: string, headers: [] string, body: string, has_body: bool, drop_auth: bool, deadline: int, out: [] u8) -> HttpResult {
+  r: [1] HttpResult;
+  url := cast(string) w[0].url[0..<w[0].url_n];
+  u := http_url(url);
+  if !u.ok { r[0].error = HTTP_E_URL; return r[0]; }
+  rn := http_request(method, url, u, headers, body.count, has_body, drop_auth, w[0].req[..]);
+  if rn < 0 { r[0].error = HTTP_E_REQUEST; return r[0]; }
+  left := hx_left(deadline);
+  if left <= 0 { r[0].error = HTTP_E_TIMEOUT; return r[0]; }
+  for b: url[u.host_from..<u.host_to] {
+    p := ifx u.tls then cxtls_host_push(cast(int) b) else cxsock_host_push(cast(int) b);
+    if p != 0 { break; }
+  }
+  h := ifx u.tls then cxtls_connect(u.port, left) else cxsock_connect(u.port, left);
+  if h < 0 {
+    r[0].error = ifx h == -2 then HTTP_E_TIMEOUT else ifx u.tls && h <= -8 && h >= -11 then HTTP_E_TLS else HTTP_E_CONNECT;
+    return r[0];
+  }
+  w[0].h = h; w[0].tls = u.tls; w[0].used = 0; w[0].head_n = 0;
+  if !hx_send(w, cast(string) w[0].req[0..<rn]) || (has_body && !hx_send(w, body)) || !hx_flush(w, deadline) {
+    hx_shut(w);
+    r[0].error = ifx hx_left(deadline) <= 0 then HTTP_E_TIMEOUT else HTTP_E_SEND;
+    return r[0];
+  }
+  cap := ifx out.count < HTTP_BODY_MAX then out.count else HTTP_BODY_MAX;
+  head: HttpHead;
+  // The head; 1xx interim heads are dropped.
+  while true {
+    head = http_head(cast(string) w[0].raw[0..<w[0].used]);
+    if head.status == HH_OK && head.code >= 100 && head.code < 200 && head.code != 101 {
+      k := head.head_n;
+      for i: k..<w[0].used { w[0].raw[i - k] = w[0].raw[i]; }
+      w[0].used -= k;
+      continue;
+    }
+    if head.status == HH_OK { break; }
+    if head.status != HH_MORE { hx_shut(w); r[0].error = HTTP_E_RESPONSE; return r[0]; }
+    got := hx_fill(w, deadline, r[..]);
+    if got < 0 { hx_shut(w); r[0].error = -got; return r[0]; }
+    if got == 0 { hx_shut(w); r[0].error = ifx w[0].used == 0 then HTTP_E_READ else HTTP_E_TRUNCATED; return r[0]; }
+  }
+  for i: 0..<head.head_n { w[0].head[i] = w[0].raw[i]; }
+  w[0].head_n = head.head_n;
+  r[0].code = head.code;
+  hn := head.head_n;
+  if method == "HEAD" || head.code == 204 || head.code == 304 || head.code == 101 { hx_shut(w); return r[0]; }
+  if head.chunked {
+    while true {
+      c := http_dechunk(cast(string) w[0].raw[hn..<w[0].used], out[0..<cap]);
+      if c.status == HC_OK { r[0].n = c.n; hx_shut(w); return r[0]; }
+      if c.status == HC_BAD { hx_shut(w); r[0].error = HTTP_E_RESPONSE; return r[0]; }
+      if c.status == HC_TOO_BIG { hx_shut(w); r[0].error = HTTP_E_TOO_BIG; return r[0]; }
+      got := hx_fill(w, deadline, r[..]);
+      if got < 0 { hx_shut(w); r[0].error = -got; return r[0]; }
+      if got == 0 { hx_shut(w); r[0].error = HTTP_E_TRUNCATED; return r[0]; }
+    }
+  }
+  if head.length >= 0 {
+    if head.length > cap { hx_shut(w); r[0].error = HTTP_E_TOO_BIG; return r[0]; }
+    while w[0].used - hn < head.length {
+      got := hx_fill(w, deadline, r[..]);
+      if got < 0 { hx_shut(w); r[0].error = -got; return r[0]; }
+      if got == 0 { hx_shut(w); r[0].error = HTTP_E_TRUNCATED; return r[0]; }
+    }
+    for i: 0..<head.length { out[i] = w[0].raw[hn + i]; }
+    r[0].n = head.length;
+    hx_shut(w);
+    return r[0];
+  }
+  // Neither: the body ends with the stream.
+  while true {
+    if w[0].used - hn > cap { hx_shut(w); r[0].error = HTTP_E_TOO_BIG; return r[0]; }
+    got := hx_fill(w, deadline, r[..]);
+    if got < 0 { hx_shut(w); r[0].error = -got; return r[0]; }
+    if got == 0 { break; }
+  }
+  n := w[0].used - hn;
+  if n > cap { hx_shut(w); r[0].error = HTTP_E_TOO_BIG; return r[0]; }
+  for i: 0..<n { out[i] = w[0].raw[hn + i]; }
+  r[0].n = n;
+  hx_shut(w);
+  return r[0];
+}
+
+// One request, following at most max_redirects redirects (0 to HTTP_REDIRECTS),
+// all within timeout_ms. A body is sent with POST, PUT and PATCH (and kept by
+// 307 and 308). The body read goes to out (at most HTTP_BODY_MAX); the final
+// head stays in w[0].head and the final URL in w[0].url.
+http_do :: (w: [] HttpWork, method: string, url: string, headers: [] string, body: string, timeout_ms: int, max_redirects: int, out: [] u8) -> HttpResult {
+  r: HttpResult;
+  if url.count > HTTP_URL_MAX || !http_url(url).ok { r.error = HTTP_E_URL; return r; }
+  if timeout_ms < 1 || max_redirects < 0 || max_redirects > HTTP_REDIRECTS || method.count > 10 { r.error = HTTP_E_REQUEST; return r; }
+  deadline := cxsock_now_ms() + timeout_ms;
+  for i: 0..<url.count { w[0].url[i] = url[i]; }
+  w[0].url_n = url.count;
+  m: [10] u8;
+  for i: 0..<method.count { m[i] = method[i]; }
+  mn := method.count;
+  drop_auth := false;
+  hops := 0;
+  while true {
+    meth := cast(string) m[0..<mn];
+    has_body := meth == "POST" || meth == "PUT" || meth == "PATCH";
+    r = hx_once(w, meth, headers, ifx has_body then body else "", has_body, drop_auth, deadline, out);
+    r.redirects = hops;
+    if r.error != HTTP_OK { return r; }
+    next := http_redirect_method(r.code, meth);
+    if next == "" || max_redirects == 0 { return r; }
+    if hops == max_redirects { r.error = HTTP_E_REDIRECTS; return r; }
+    here := cast(string) w[0].url[0..<w[0].url_n];
+    loc := http_header(cast(string) w[0].head[0..<w[0].head_n], "location");
+    n := http_follow(here, loc, w[0].next[..]);
+    if n < 0 { r.error = HTTP_E_REDIRECTS; return r; }
+    if !http_same_origin(here, cast(string) w[0].next[0..<n]) { drop_auth = true; }
+    for i: 0..<n { w[0].url[i] = w[0].next[i]; }
+    w[0].url_n = n;
+    for i: 0..<next.count { m[i] = next[i]; }
+    mn = next.count;
+    hops += 1;
+  }
+  return r;
+}

@@ -61,7 +61,7 @@ exists today: sockets and TLS (`coax/platform/socket-native.c`,
 | Library | For | Notes |
 | --- | --- | --- |
 | `json` (parse into a tree, read paths, write) | DevTools, every API test, the project CLI, GitHub and GitBook APIs | The agent libraries parse JSON ad hoc; make one shared module with tests. |
-| `http` client (GET/POST, headers, chunked, redirects) over the existing sockets and TLS | API tests, publishers, Pylon model fetch, App Store | |
+| `http` client (GET/POST, headers, chunked, redirects) over the existing sockets and TLS | API tests, publishers, Pylon model fetch, App Store | Done: `net/http.coax` (2026-11-01). |
 | `args` (flags, usage text) | every CLI | |
 | `fs` (read, write, list, walk, mkdir, temp dirs, remove) | packers, strip, realms, release | Extend `store-file-native.c`. |
 | `proc` (spawn with args, pipes, wait, kill, timeouts) | release, clip (Chrome, ffmpeg), deploy | Build on `cxproc_spawn`; the timeout is the lesson from the hung live-home check. |

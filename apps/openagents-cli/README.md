@@ -92,6 +92,7 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `nostr.coax` | the `nostr` domain: identity, signing, NIP-98, publish and req |
 | `relay.coax` | the relay client: connect, NIP-42 AUTH, one REQ to EOSE, publish and OK |
 | `pylon.coax` | the `pylon` domain |
+| `account.coax` | HTTPS calls through `coax/lib/net/http.coax`; the hidden `http METHOD URL` check |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, process liveness, the executable's path |
 | `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |

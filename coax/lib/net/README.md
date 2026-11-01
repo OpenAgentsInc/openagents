@@ -73,3 +73,30 @@ pending receive, and cancelled callbacks cannot affect a reused slot.
 The [Apple TLS record](../../../docs/verification/2026-10-30-apple-tls.md)
 retains macOS sanitizer, Linux regression, certificate-refusal and read-only
 public-relay evidence. iOS compilation is checked; iOS runtime is unqualified.
+
+# HTTP
+
+`http.coax` is an HTTP/1.1 client: `http_do(w, method, url, headers, body,
+timeout_ms, max_redirects, out)` sends one request over TCP or TLS
+(`transport.coax`: `socket-native.c`, `tls-native.c`) and returns
+`HttpResult` (`error`, `code`, `n` body bytes in `out`, `redirects`). The
+final head stays in `w[0].head` for `http_header(head, name)`; the final URL
+in `w[0].url`. One deadline covers the whole call, redirects included; the
+body is at most `HTTP_BODY_MAX` (1 MiB).
+
+The parsing is pure and has its own checks: `http_url` (http:// and https://,
+DNS names, localhost and dotted IPv4, no credentials or fragments),
+`http_request` (the exact request bytes; header injection and our own
+framing headers refused), `http_head` (strict status line and fields, one
+Content-Length, no Content-Length with Transfer-Encoding, no coding but
+chunked), `http_dechunk` (chunk sizes, extensions and trailers, incomplete
+input asks for more) and the redirect rules (`http_redirect_method`,
+`http_follow`: 301/302/303 become GET for POST, 307/308 keep the method, never
+https to http, Authorization dropped off-origin). A NIP-98-signed request is
+bound to its URL, so its caller passes 0 redirects.
+
+`transport.coax` declares the socket and TLS effects once, so `http.coax` and
+`relay_conn.coax` load into one program.
+
+    coax/bin/coax test coax/lib/net/http.coax --library
+    apps/openagents-cli/build/openagents http GET https://openagents.com/api/playtest/access

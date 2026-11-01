@@ -22,6 +22,7 @@
 #load "relay.coax";
 #load "nostr.coax";
 #load "pylon.coax";
+#load "account.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -73,5 +74,6 @@ tool_main :: () -> int #export_c {
   // One line per domain; each domain file dispatches its own verbs.
   if domain == "nostr" { return nostr_main(a[..], r[..], profile, verb); }
   if domain == "pylon" { return pylon_main(a[..], r[..], verb); }
+  if domain == "http" { return cli_http(a[..], r[..]); }   // hidden: one request through coax/lib/net/http.coax
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }

@@ -1,0 +1,52 @@
+// The CLI's account domain and its HTTPS calls (coax/lib/net/http.coax).
+//
+//   openagents http METHOD URL [--header 'K: V']... [--body FILE] [--redirects N] [--timeout MS]
+//       hidden: one request, printing `status N` and the body (a check of the client)
+#load "../../coax/lib/net/http.coax";
+
+CLI_HTTP_MS :: 15000;
+
+// Every --header's value, in order, into out; their count, or -1 past out.
+cli_headers :: (a: [] Args, out: [] string) -> int {
+  n := 0; i := 0;
+  while i + 1 < args_count(a) {
+    if args_at(a, i) == "--header" {
+      if n == out.count { return -1; }
+      out[n] = args_at(a, i + 1); n += 1; i += 2; continue;
+    }
+    i += 1;
+  }
+  return n;
+}
+
+cli_http :: (a: [] Args, r: [] Rep) -> int {
+  method := positional(a, 1);
+  url := positional(a, 2);
+  if method == "" || url == "" { return fail(r, EXIT_USAGE, "http METHOD URL [--header 'K: V']... [--body FILE] [--redirects N] [--timeout MS]"); }
+  hs: [HTTP_HEADERS] string;
+  hn := cli_headers(a, hs[..]);
+  if hn < 0 { return fail(r, EXIT_USAGE, "at most 32 --header"); }
+  redirects := text_int(args_value(a, "--redirects", "5"));
+  timeout := text_int(args_value(a, "--timeout", "15000"));
+  if redirects < 0 || redirects > HTTP_REDIRECTS { return fail(r, EXIT_USAGE, "--redirects is 0 to 5"); }
+  if timeout < 1 || timeout > 600000 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600000 ms"); }
+  body: [HTTP_BODY_MAX] u8; bn := 0;
+  if args_has(a, "--body") {
+    bn = fs_read(args_value(a, "--body", ""), body[..]);
+    if bn < 0 { return fail(r, EXIT_NOT_FOUND, "could not read --body (at most 1 MB)"); }
+  }
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8;
+  res := http_do(w[..], method, url, hs[0..<hn], cast(string) body[0..<bn], timeout, redirects, out[..]);
+  if res.error != HTTP_OK { return fail(r, ifx res.error == HTTP_E_URL || res.error == HTTP_E_REQUEST then EXIT_USAGE else EXIT_FAIL, http_error_text(res.error)); }
+  if !r[0].json {
+    print("status %\n", res.code);
+    print("%", cast(string) out[0..<res.n]);
+    return EXIT_OK;
+  }
+  rep_int(r, "status", res.code);
+  rep_str(r, "url", cast(string) w[0].url[0..<w[0].url_n]);
+  rep_int(r, "redirects", res.redirects);
+  rep_str(r, "content_type", http_header(cast(string) w[0].head[0..<w[0].head_n], "content-type"));
+  rep_str(r, "body", cast(string) out[0..<res.n]);
+  return rep_done(r, EXIT_OK);
+}
