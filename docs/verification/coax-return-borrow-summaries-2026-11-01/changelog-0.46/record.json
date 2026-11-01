@@ -1,0 +1,40 @@
+{
+  "schema": "coax.changelog046.local-render-qualification.v1",
+  "outcome": "two reviewed raw goldens; actual changed-baseline comparison2/2pass; distinct cleanup followup retained",
+  "rendered_source": "3e95149816d2d296a27670afe413e66bd05a801f",
+  "compiler_qualified_source": "44b25a4b3e83797ed8d6d3ffd9ca885aab8c1449",
+  "introduction": "9e29938427cba24fd4fa6778812c216f2f3ad1f5",
+  "compiler_sha256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+  "normal_receipt_sha256": "cfd90bb0b29e59417478a69c69cb25bf46bb39416fbe6e87f8db9b2575e2aef8",
+  "original_common_receipt_sha256": "171afc1435237566f7c43c9054a9aa18c7d54e1458dd8dbb0ea9dc1e635ded7a",
+  "root_accepted_unconsumed_four_file_delta_sha256": "74597a615931aac9896ebc04f1d2ed8cafd5cea5576ba0dc46cecd633fd52d90",
+  "author_review_sha256": "6b6f52fb4b866a04a730a0abd4c98a8998a302e8948b5c9081729da313ebca46",
+  "actual_comparison_sha256": "c02d1ffdd50624595e6124c6434ba18d663d6405eacc0a00da91419aaa22386f",
+  "original_failed_cleanup_outer_sha256": "521853724c1788eebee6d727fe3247aa41a20c634c695d46f34df6561c473a17",
+  "cleanup_composition_sha256": "51be4bcc1599b3a0dc97dacab452868d15c4bc102cd11ae33a7b5f9b368a0858",
+  "goldens": {
+    "coax-changelog.png": "a74d5d61b77a78550e09ad5cf717ceb3e361d0cb392acefa920fd05e9381ec46",
+    "coax-changelog-phone.png": "43b02b8964175af1a14a4fd315f0e0e344509545c3a3ef8f091ba2a0195c971a"
+  },
+  "proof": {
+    "path": "proof.tar.gz",
+    "sha256": "9a99dc63d5206e3fad2c0fa88e000fcc5daf0ec798573c6d1cefeeafdb2851cd",
+    "bytes": 1992242,
+    "members": 157
+  },
+  "manifest_sha256": "7d0aeb00a18cdf162f0e0e971cb020a6af84a5d1ffd9897c7c24a1920a604cf4",
+  "scope": "Actual three-phase source3e951 capture; original mismatches/failed cleanup remain recorded. Actual successful2lane comparison plus distinct cleanup observation, exact reviewed rawPNGs and seven immutable served fixture files. No fullsite/native/device/publication qualification.",
+  "production_publication": "Separate pending workflow; not inferred from local capture.",
+  "static_continuity": {
+    "path": "continuity.json",
+    "sha256": "e338a61bbe6d913527880757568b6e45ae43072b774125eb216d558d50436502",
+    "incoming": "619abfebacf36743bf1a9c038d6ff17fdc01aaa9",
+    "scope": "Static source/selected-lane continuity only; captures remain actual3e951 observations."
+  },
+  "additional_static_continuity": {
+    "path": "continuity-3d01.json",
+    "sha256": "5a2d063ba5dbd9d0ada0035c37627d1d421a9ad91d56cf51b64eca33980c6005",
+    "incoming": "3d01ba39e3150dd3e60cad78de9a96e1b4270a13"
+  }
+}

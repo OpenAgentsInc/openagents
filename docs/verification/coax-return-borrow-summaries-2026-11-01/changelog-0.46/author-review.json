@@ -1,0 +1,11 @@
+{
+  "schema": "coax.changelog046.author-visual-review.v1",
+  "reviewed": true,
+  "reviewer": "Root GPT-6",
+  "utc": "2026-11-01T04:41:46.533016+00:00",
+  "method": "Actually viewed both retained original PNGs with local image viewer before this note",
+  "coax-changelog_sha256": "a74d5d61b77a78550e09ad5cf717ceb3e361d0cb392acefa920fd05e9381ec46",
+  "coax-changelog-phone_sha256": "43b02b8964175af1a14a4fd315f0e0e344509545c3a3ef8f091ba2a0195c971a",
+  "reason": "Desktop and phone visibly show latest0.46 returned-borrow heading and actual9e299 introduction, all three intended release bullets, readable navigation and valid vertical scroll. Desktop also shows the previous0.45 entry. Phone heading/hash wrap and below-viewport history follow the existing layout; no missing/blank content or horizontal clipping observed. These are raw unedited renders of the qualified5c compiler fixture. Approve exactly these two existing Mac goldens; old comparisons stay intentional mismatches, not passed checks.",
+  "scope": "Visual author approval only; no full site/backend/native/device qualification."
+}

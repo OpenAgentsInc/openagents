@@ -1,0 +1,12 @@
+{
+  "schema": "coax.changelog046.additional-static-continuity.v1",
+  "before": "619abfebacf36743bf1a9c038d6ff17fdc01aaa9",
+  "incoming": "3d01ba39e3150dd3e60cad78de9a96e1b4270a13",
+  "changed_paths": [
+    "apps/openagents-web/myrealm.coax"
+  ],
+  "old_sha256": "04de5a708db4a16371290f8fd0d672b87ed4ec74b1f9747a3cd8a9f62c727904",
+  "incoming_sha256": "ffe7bef9914d11f80ef18ffd40d0bfd745ce957e7d2b492662550b6fb4907784",
+  "normalization": "Ignoring line comments and per-check #steps integer attributes, complete source text is identical. No changelog dependency/selected-lane definition changes.",
+  "scope": "Static continuity only. Prior captures/comparison remain actual3e951; no myrealm or new render/test result inferred."
+}

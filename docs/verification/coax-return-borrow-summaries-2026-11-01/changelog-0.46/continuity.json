@@ -1,0 +1,534 @@
+{
+  "schema": "coax.changelog046.incoming-static-continuity.v1",
+  "scope": "Read-only Git blob/diff, literal dependency and retained artifact hash review. No imports, compiler/toolchain execution, tests, probes, browser, service, rebase or Root edits. No future render/binary identity measured.",
+  "observed_render_head": "3e95149816d2d296a27670afe413e66bd05a801f",
+  "incoming_commit_reviewed_only": "619abfebacf36743bf1a9c038d6ff17fdc01aaa9",
+  "actual_render_attribution_unchanged": true,
+  "changes": [
+    {
+      "path": "apps/openagents-web/build.sh",
+      "old_sha256": "84e88cb933866bdaf519eb623b7c64b0bfbc61d10f5eb43b15a6635ea2e7bbdc",
+      "incoming_sha256": "7b8e9aa1acd8ab4791e89a25915f4c4f53773b80a222aca81f32013eb62ac28a"
+    },
+    {
+      "path": "apps/openagents-web/gpu/watchtower.bindings",
+      "old_sha256": null,
+      "incoming_sha256": "d341ad02ef356eac74990023e05b6522c749e0bae44816dfebb2dd07921779b4"
+    },
+    {
+      "path": "apps/openagents-web/gpu/watchtower.coax",
+      "old_sha256": null,
+      "incoming_sha256": "314dac56f09f89070ceb78670969ef7aeac9d9d68a7d89b65f38e022692d6a1f"
+    },
+    {
+      "path": "apps/openagents-web/gpu/watchtower.module",
+      "old_sha256": null,
+      "incoming_sha256": "f882700aff8adf9f61560800cb5c8e8da6a27e05cf5b614509ae2411ce7342b2"
+    },
+    {
+      "path": "apps/openagents-web/realms.coax",
+      "old_sha256": "5851ad815079376839c131416792f507ab3e27a9afb15b717255d6c70c9cde4f",
+      "incoming_sha256": "40962dc9ef788f98d743e090d5a6f25eaf92ea05e941af0cf6fca91d6b061370"
+    },
+    {
+      "path": "apps/openagents-web/realms.json",
+      "old_sha256": "ff432b6d6dc49d262d241bfa758f111caaee0d020d6c11df21b1d8c53fd1a279",
+      "incoming_sha256": "c872b6524e5e2e98c9d7304ebecf48030feae968fda6badffbf5b4aec10cb16c"
+    },
+    {
+      "path": "apps/openagents-web/realms/watchtower/index.html",
+      "old_sha256": null,
+      "incoming_sha256": "b159accaa8b7d9a389961c6072b5952a2b46db541ed451e2680bae665e868c64"
+    },
+    {
+      "path": "apps/openagents-web/realms/watchtower/index.md",
+      "old_sha256": null,
+      "incoming_sha256": "0e6f454dee5dc5d31733e8963648d7544a721b50b4df1d307756554ecbbeeb78"
+    },
+    {
+      "path": "apps/openagents-web/watchtower-face.c",
+      "old_sha256": null,
+      "incoming_sha256": "f57dc942da33cd588839260561111fd7778e6c0e0dffd9d5fabd4dfe542932c8"
+    },
+    {
+      "path": "apps/openagents-web/watchtower.coax",
+      "old_sha256": null,
+      "incoming_sha256": "29a7ba209f91f180f641b39b1fef765f94071bada28d47d09fe68c00d9a775c2"
+    },
+    {
+      "path": "apps/openagents-web/watchtower.wgsl",
+      "old_sha256": null,
+      "incoming_sha256": "6263f88a8f3138ba6877eb78ff34b99b27707e4ca80a06525adbe93902a7263c"
+    },
+    {
+      "path": "coax/web/api/migrations/0095_watchtower_rights.sql",
+      "old_sha256": null,
+      "incoming_sha256": "40b87bcb7894c667ba0a611d12c8286ef2ccc83c864f2547b5b21358c19b29e6"
+    },
+    {
+      "path": "coax/web/forge-journey.coax",
+      "old_sha256": "d079931bf783174b1266490f00b7ee4561e38f00ee866e63c8d688dc28c199ba",
+      "incoming_sha256": "52def6354db1c268b610337344d61aa8135a7c17fdb7f5ca41abe8c0695fd446"
+    }
+  ],
+  "literal_coax_closure": {
+    "apps/openagents-web/gpu/changelog.coax": {
+      "sha256": "8c6fa469813c676c47310246167614e31dcc6ba66080cd1318448f0a5fc2e714",
+      "literal_loads": [
+        "verse/gpu/wgsl.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "8c6fa469813c676c47310246167614e31dcc6ba66080cd1318448f0a5fc2e714"
+    },
+    "verse/gpu/wgsl.coax": {
+      "sha256": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb",
+      "literal_loads": [
+        "verse/gpu/shader.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb"
+    },
+    "verse/gpu/shader.coax": {
+      "sha256": "dcebd5b868dc677edc48fb298768af3cad6bd78bc27e245c764d32c451831959",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "dcebd5b868dc677edc48fb298768af3cad6bd78bc27e245c764d32c451831959"
+    },
+    "apps/openagents-web/changelog.coax": {
+      "sha256": "dddccd8118b077a0b50ce2be9ba751431c9723d50659dbbb5eca289a8a25f49a",
+      "literal_loads": [
+        "apps/openagents-web/font.coax",
+        "apps/openagents-web/analytics.coax",
+        "apps/openagents-web/changelog-content.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "dddccd8118b077a0b50ce2be9ba751431c9723d50659dbbb5eca289a8a25f49a"
+    },
+    "apps/openagents-web/changelog-content.coax": {
+      "sha256": "79328ee45f530edeb858f4797e31ac1a804e91cb9e028771000a877d6a829624",
+      "literal_loads": [],
+      "provenance": "Actual retained generated snapshot source",
+      "incoming_sha256": null
+    },
+    "apps/openagents-web/analytics.coax": {
+      "sha256": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00"
+    },
+    "apps/openagents-web/font.coax": {
+      "sha256": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414"
+    },
+    "coax/web/wgsl-module.coax": {
+      "sha256": "9a75da021b1fd68f92706778f232c46cb278323f60f45cf5968bd1d36a676e50",
+      "literal_loads": [
+        "coax/lib/sys/tool.coax",
+        "coax/lib/sys/fs.coax",
+        "coax/lib/sys/args.coax",
+        "coax/lib/sys/proc.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "9a75da021b1fd68f92706778f232c46cb278323f60f45cf5968bd1d36a676e50"
+    },
+    "coax/lib/sys/proc.coax": {
+      "sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b"
+    },
+    "coax/lib/sys/args.coax": {
+      "sha256": "446c6b2429ded56c3706202c455607d1ce2e396b748abeff3e24d03e55230f0e",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "446c6b2429ded56c3706202c455607d1ce2e396b748abeff3e24d03e55230f0e"
+    },
+    "coax/lib/sys/fs.coax": {
+      "sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614"
+    },
+    "coax/lib/sys/tool.coax": {
+      "sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
+      "literal_loads": [
+        "coax/lib/sys/args.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70"
+    },
+    "coax/web/changelog-page.coax": {
+      "sha256": "38c357713845ccfa6aeed93e68d9e60943fc244f885dbce5307aef63a29f8d96",
+      "literal_loads": [
+        "coax/release.coax",
+        "coax/changelog-model.coax",
+        "coax/web/changelog-links.coax",
+        "coax/lib/sys/tool.coax",
+        "coax/lib/sys/fs.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "38c357713845ccfa6aeed93e68d9e60943fc244f885dbce5307aef63a29f8d96"
+    },
+    "coax/web/changelog-links.coax": {
+      "sha256": "3b065fbcfd7525d5bae94b94cfb17a84d66c4aae9c793b104f17cbbfb2f91801",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "3b065fbcfd7525d5bae94b94cfb17a84d66c4aae9c793b104f17cbbfb2f91801"
+    },
+    "coax/changelog-model.coax": {
+      "sha256": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c",
+      "literal_loads": [
+        "coax/release-model.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c"
+    },
+    "coax/release-model.coax": {
+      "sha256": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434",
+      "literal_loads": [],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434"
+    },
+    "coax/release.coax": {
+      "sha256": "06878a86eff7745cd5ca4380db8fe05b6967c964e33d58bff557fedb1fdd2f3f",
+      "literal_loads": [
+        "coax/release-model.coax"
+      ],
+      "provenance": "Original Git source blob",
+      "incoming_sha256": "06878a86eff7745cd5ca4380db8fe05b6967c964e33d58bff557fedb1fdd2f3f"
+    }
+  },
+  "builtin_imports": [
+    {
+      "source": "coax/web/wgsl-module.coax",
+      "builtin_import": "Basic"
+    },
+    {
+      "source": "coax/release.coax",
+      "builtin_import": "Basic"
+    }
+  ],
+  "literal_js_host_closure": {
+    "coax/web/host.js": {
+      "old_sha256": "75a3c43b77598ca3d3b2e1074dace3fdfccf6399e75c855a9ad1b9a5aceacda5",
+      "incoming_sha256": "75a3c43b77598ca3d3b2e1074dace3fdfccf6399e75c855a9ad1b9a5aceacda5",
+      "relative_imports": [
+        "coax/web/entropy-import.js",
+        "coax/web/drop.js",
+        "coax/web/uploads.js",
+        "coax/web/docs.js",
+        "coax/web/card.js",
+        "coax/web/voice.js",
+        "coax/web/gpui.js",
+        "coax/web/loader.js",
+        "coax/web/http-requests.js"
+      ]
+    },
+    "coax/web/http-requests.js": {
+      "old_sha256": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+      "incoming_sha256": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+      "relative_imports": []
+    },
+    "coax/web/loader.js": {
+      "old_sha256": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+      "incoming_sha256": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+      "relative_imports": []
+    },
+    "coax/web/gpui.js": {
+      "old_sha256": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+      "incoming_sha256": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+      "relative_imports": []
+    },
+    "coax/web/voice.js": {
+      "old_sha256": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+      "incoming_sha256": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+      "relative_imports": []
+    },
+    "coax/web/card.js": {
+      "old_sha256": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+      "incoming_sha256": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+      "relative_imports": []
+    },
+    "coax/web/docs.js": {
+      "old_sha256": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+      "incoming_sha256": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+      "relative_imports": []
+    },
+    "coax/web/uploads.js": {
+      "old_sha256": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+      "incoming_sha256": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+      "relative_imports": []
+    },
+    "coax/web/drop.js": {
+      "old_sha256": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+      "incoming_sha256": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+      "relative_imports": []
+    },
+    "coax/web/entropy-import.js": {
+      "old_sha256": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+      "incoming_sha256": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+      "relative_imports": [
+        "coax/web/entropy.js"
+      ]
+    },
+    "coax/web/entropy.js": {
+      "old_sha256": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+      "incoming_sha256": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+      "relative_imports": []
+    }
+  },
+  "external_js_imports": [],
+  "explicit_other_unchanged_inputs": {
+    "coax/CHANGELOG.md": {
+      "old_sha256": "f337f9ebda9fca5ed1e28673dc5dac66c1daaf84b93908f877210e0010b042d0",
+      "incoming_sha256": "f337f9ebda9fca5ed1e28673dc5dac66c1daaf84b93908f877210e0010b042d0"
+    },
+    "coax/release.coax": {
+      "old_sha256": "06878a86eff7745cd5ca4380db8fe05b6967c964e33d58bff557fedb1fdd2f3f",
+      "incoming_sha256": "06878a86eff7745cd5ca4380db8fe05b6967c964e33d58bff557fedb1fdd2f3f"
+    },
+    "coax/web/wasm.sh": {
+      "old_sha256": "7dc0ede8db4e762bcf174feb077edeb07f06acb5ac4251543f88cf1e2b859f65",
+      "incoming_sha256": "7dc0ede8db4e762bcf174feb077edeb07f06acb5ac4251543f88cf1e2b859f65"
+    },
+    "coax/web/toolchain.sh": {
+      "old_sha256": "53a97a8a69730f19aaa7cf2644a300a244b9603f291c8730f851e9389ff6f63c",
+      "incoming_sha256": "53a97a8a69730f19aaa7cf2644a300a244b9603f291c8730f851e9389ff6f63c"
+    },
+    "coax/web/chrome.ts": {
+      "old_sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+      "incoming_sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3"
+    },
+    "coax/web/goldens.ts": {
+      "old_sha256": "6dfb558b8aaa1b6b7e58d6ce0eda8e6df0f1345884e8f16529ae6208828ee04a",
+      "incoming_sha256": "6dfb558b8aaa1b6b7e58d6ce0eda8e6df0f1345884e8f16529ae6208828ee04a"
+    },
+    "coax/web/golden-pages.ts": {
+      "old_sha256": "a9852cce364e43b37551224e6447065c7732d5265f1939fd3698d872e0439c41",
+      "incoming_sha256": "a9852cce364e43b37551224e6447065c7732d5265f1939fd3698d872e0439c41"
+    },
+    "coax/web/golden-policy.ts": {
+      "old_sha256": "b512b6cce7b570c4b789e5ca19a17984e6275137a4eec076096393cd9bdb5645",
+      "incoming_sha256": "b512b6cce7b570c4b789e5ca19a17984e6275137a4eec076096393cd9bdb5645"
+    },
+    "coax/web/realms.ts": {
+      "old_sha256": "98357b3bf00067983c9664027402676b01a812a188992b82b410999169399c6c",
+      "incoming_sha256": "98357b3bf00067983c9664027402676b01a812a188992b82b410999169399c6c"
+    },
+    "coax/web/analytics-contract.json": {
+      "old_sha256": "bf466c829ac2e14c01e390a52774a130ef5588a89eb653692ddde381fbd1e7bf",
+      "incoming_sha256": "bf466c829ac2e14c01e390a52774a130ef5588a89eb653692ddde381fbd1e7bf"
+    },
+    "apps/openagents-web/changelog-face.c": {
+      "old_sha256": "fb1cb92783e5853b0e30b3cc082f02fdcd10a4a7acd514cfc3a36ef4a3d7fdde",
+      "incoming_sha256": "fb1cb92783e5853b0e30b3cc082f02fdcd10a4a7acd514cfc3a36ef4a3d7fdde"
+    },
+    "apps/openagents-web/analytics-face.h": {
+      "old_sha256": "b712546342bd199eb9e26b18d51670bb1cb877c46cab66a76046498a8df7dcbd",
+      "incoming_sha256": "b712546342bd199eb9e26b18d51670bb1cb877c46cab66a76046498a8df7dcbd"
+    },
+    "apps/openagents-web/gpu/changelog.module": {
+      "old_sha256": "9e6c05c4b503a1464baf9869717be46d49498a21eb31a6eee8ebbdc401a9f0fe",
+      "incoming_sha256": "9e6c05c4b503a1464baf9869717be46d49498a21eb31a6eee8ebbdc401a9f0fe"
+    },
+    "apps/openagents-web/gpu/changelog.bindings": {
+      "old_sha256": "186c6eade96c095a67dee9da38a03d7e3dca2db7e37f5edadfba79ef57a76d2e",
+      "incoming_sha256": "186c6eade96c095a67dee9da38a03d7e3dca2db7e37f5edadfba79ef57a76d2e"
+    },
+    "apps/openagents-web/favicon.svg": {
+      "old_sha256": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+      "incoming_sha256": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74"
+    }
+  },
+  "critical_inventory": {
+    "count": 26,
+    "changed": [],
+    "all_hashes": {
+      "coax/src/emit_c.cpp": {
+        "old_sha256": "dc66c9fa5cdf489f161c10167041896a89c8f1399e1f3524549cd4563dccd782",
+        "incoming_sha256": "dc66c9fa5cdf489f161c10167041896a89c8f1399e1f3524549cd4563dccd782"
+      },
+      "coax/web/wasm.sh": {
+        "old_sha256": "7dc0ede8db4e762bcf174feb077edeb07f06acb5ac4251543f88cf1e2b859f65",
+        "incoming_sha256": "7dc0ede8db4e762bcf174feb077edeb07f06acb5ac4251543f88cf1e2b859f65"
+      },
+      "coax/web/toolchain.sh": {
+        "old_sha256": "53a97a8a69730f19aaa7cf2644a300a244b9603f291c8730f851e9389ff6f63c",
+        "incoming_sha256": "53a97a8a69730f19aaa7cf2644a300a244b9603f291c8730f851e9389ff6f63c"
+      },
+      "coax/web/host.js": {
+        "old_sha256": "75a3c43b77598ca3d3b2e1074dace3fdfccf6399e75c855a9ad1b9a5aceacda5",
+        "incoming_sha256": "75a3c43b77598ca3d3b2e1074dace3fdfccf6399e75c855a9ad1b9a5aceacda5"
+      },
+      "coax/web/goldens.ts": {
+        "old_sha256": "6dfb558b8aaa1b6b7e58d6ce0eda8e6df0f1345884e8f16529ae6208828ee04a",
+        "incoming_sha256": "6dfb558b8aaa1b6b7e58d6ce0eda8e6df0f1345884e8f16529ae6208828ee04a"
+      },
+      "coax/web/golden-pages.ts": {
+        "old_sha256": "a9852cce364e43b37551224e6447065c7732d5265f1939fd3698d872e0439c41",
+        "incoming_sha256": "a9852cce364e43b37551224e6447065c7732d5265f1939fd3698d872e0439c41"
+      },
+      "coax/web/golden-policy.ts": {
+        "old_sha256": "b512b6cce7b570c4b789e5ca19a17984e6275137a4eec076096393cd9bdb5645",
+        "incoming_sha256": "b512b6cce7b570c4b789e5ca19a17984e6275137a4eec076096393cd9bdb5645"
+      },
+      "coax/web/chrome.ts": {
+        "old_sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3",
+        "incoming_sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3"
+      },
+      "apps/openagents-web/changelog.coax": {
+        "old_sha256": "dddccd8118b077a0b50ce2be9ba751431c9723d50659dbbb5eca289a8a25f49a",
+        "incoming_sha256": "dddccd8118b077a0b50ce2be9ba751431c9723d50659dbbb5eca289a8a25f49a"
+      },
+      "apps/openagents-web/changelog-face.c": {
+        "old_sha256": "fb1cb92783e5853b0e30b3cc082f02fdcd10a4a7acd514cfc3a36ef4a3d7fdde",
+        "incoming_sha256": "fb1cb92783e5853b0e30b3cc082f02fdcd10a4a7acd514cfc3a36ef4a3d7fdde"
+      },
+      "apps/openagents-web/analytics-face.h": {
+        "old_sha256": "b712546342bd199eb9e26b18d51670bb1cb877c46cab66a76046498a8df7dcbd",
+        "incoming_sha256": "b712546342bd199eb9e26b18d51670bb1cb877c46cab66a76046498a8df7dcbd"
+      },
+      "apps/openagents-web/font.coax": {
+        "old_sha256": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414",
+        "incoming_sha256": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414"
+      },
+      "apps/openagents-web/analytics.coax": {
+        "old_sha256": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00",
+        "incoming_sha256": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00"
+      },
+      "apps/openagents-web/gpu/changelog.coax": {
+        "old_sha256": "8c6fa469813c676c47310246167614e31dcc6ba66080cd1318448f0a5fc2e714",
+        "incoming_sha256": "8c6fa469813c676c47310246167614e31dcc6ba66080cd1318448f0a5fc2e714"
+      },
+      "apps/openagents-web/gpu/changelog.module": {
+        "old_sha256": "9e6c05c4b503a1464baf9869717be46d49498a21eb31a6eee8ebbdc401a9f0fe",
+        "incoming_sha256": "9e6c05c4b503a1464baf9869717be46d49498a21eb31a6eee8ebbdc401a9f0fe"
+      },
+      "apps/openagents-web/gpu/changelog.bindings": {
+        "old_sha256": "186c6eade96c095a67dee9da38a03d7e3dca2db7e37f5edadfba79ef57a76d2e",
+        "incoming_sha256": "186c6eade96c095a67dee9da38a03d7e3dca2db7e37f5edadfba79ef57a76d2e"
+      },
+      "coax/web/changelog-page.coax": {
+        "old_sha256": "38c357713845ccfa6aeed93e68d9e60943fc244f885dbce5307aef63a29f8d96",
+        "incoming_sha256": "38c357713845ccfa6aeed93e68d9e60943fc244f885dbce5307aef63a29f8d96"
+      },
+      "coax/web/changelog-links.coax": {
+        "old_sha256": "3b065fbcfd7525d5bae94b94cfb17a84d66c4aae9c793b104f17cbbfb2f91801",
+        "incoming_sha256": "3b065fbcfd7525d5bae94b94cfb17a84d66c4aae9c793b104f17cbbfb2f91801"
+      },
+      "coax/web/wgsl-module.coax": {
+        "old_sha256": "9a75da021b1fd68f92706778f232c46cb278323f60f45cf5968bd1d36a676e50",
+        "incoming_sha256": "9a75da021b1fd68f92706778f232c46cb278323f60f45cf5968bd1d36a676e50"
+      },
+      "coax/changelog-model.coax": {
+        "old_sha256": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c",
+        "incoming_sha256": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c"
+      },
+      "coax/release.coax": {
+        "old_sha256": "06878a86eff7745cd5ca4380db8fe05b6967c964e33d58bff557fedb1fdd2f3f",
+        "incoming_sha256": "06878a86eff7745cd5ca4380db8fe05b6967c964e33d58bff557fedb1fdd2f3f"
+      },
+      "coax/lib/sys/tool.coax": {
+        "old_sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70",
+        "incoming_sha256": "abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70"
+      },
+      "coax/lib/sys/fs.coax": {
+        "old_sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614",
+        "incoming_sha256": "b5cc6abf4c76ecd416e00bada836c7321e4f342ac58a17546ad53faa20d18614"
+      },
+      "coax/lib/sys/proc.coax": {
+        "old_sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b",
+        "incoming_sha256": "3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b"
+      },
+      "coax/lib/sys/args.coax": {
+        "old_sha256": "446c6b2429ded56c3706202c455607d1ce2e396b748abeff3e24d03e55230f0e",
+        "incoming_sha256": "446c6b2429ded56c3706202c455607d1ce2e396b748abeff3e24d03e55230f0e"
+      },
+      "verse/gpu/wgsl.coax": {
+        "old_sha256": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb",
+        "incoming_sha256": "89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb"
+      }
+    }
+  },
+  "coarse_capture_input_changes": [
+    "apps/openagents-web/realms.json",
+    "coax/web/forge-journey.coax"
+  ],
+  "registry": {
+    "old_worlds": 19,
+    "incoming_worlds": 20,
+    "previous_world_values_exact": true,
+    "appended_world": {
+      "id": "watch",
+      "name": "WATCHTOWER",
+      "kind": "open",
+      "listed": false,
+      "orbit": {
+        "r": 0.4,
+        "a": 1.3,
+        "size": 0.024
+      },
+      "realm": {
+        "slug": "watchtower",
+        "edit": {
+          "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+          "admins": [
+            "n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+          ],
+          "tools": [],
+          "things": [],
+          "rows": [
+            {
+              "id": "triad",
+              "label": "The triad's advice and autopilot",
+              "says": "the three advisors' votes on each host, FOLLOW TRIAD, and the triad defending on its own"
+            },
+            {
+              "id": "traffic",
+              "label": "Ordinary traffic in the log",
+              "says": "everyday log lines the intruder hides among; off, the log shows only the intruder and you"
+            }
+          ]
+        },
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "title": "Watchtower",
+        "description": "Watchtower, a cyber defense range in the browser: an intruder works through a small company network toward the vault. Read the sensor log, scan, isolate and reimage hosts, and evict it before the vault is emptied or the business goes dark.",
+        "share": "A cyber defense range: read the log, find the intruder, isolate and clean hosts before it empties the vault.",
+        "alt": "Watchtower: a company network on a glowing isometric grid, with red alerts on an infected host",
+        "module": "watchtower",
+        "slot": "watchtower",
+        "golden": {
+          "lit": 0.02,
+          "settle": 3000,
+          "blocks": 6
+        },
+        "assets": []
+      }
+    },
+    "selected_changelog_definitions_unchanged": {
+      "coax-changelog": "byAddress[\"coax-changelog\"] = {path:\"/coax/changelog\",lit:0.004,settle:1200,blocks:4,module:\"changelog\"}",
+      "coax-changelog-phone": "byAddress[\"coax-changelog-phone\"] = {path:\"/coax/changelog\",lit:0.004,settle:1200,blocks:4,module:\"changelog\",size:[390,844]}"
+    },
+    "qualification_boundary": "realms.json is not loaded by the local changelog generator/Coax Wasm/HTML/host. It IS consumed by official goldenPages\u2192worlds global registry initialization; appended unlisted lowpoly Watchtower/assets[] has unique id/slug/slot and no selected-name collision. The selected two byAddress definitions/thresholds/viewport and --only lane filters are unchanged. This is static control-flow/data continuity, not a fresh registry execution."
+  },
+  "local_build_recipe": "Actual retained workflow directly invokes snapshot coax/web/wasm.sh with changelog.coax+changelog-face.c only. apps/openagents-web/build.sh and realms.coax are not executed/loaded by that local fixture; incoming new full-site build Watchtower target is outside it.",
+  "data_generation": "changelog-page tool_main reads only coax/CHANGELOG.md plus IMPLEMENTATION_VERSION into generated content/HTML/Markdown; both sources unchanged. Generated changelog-content.coax is the actual retained source, not a claimed new619 output.",
+  "retained_site_artifacts": {
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/build/changelog.20a8bda5923b.wasm": "20a8bda5923b6d6db3c35811c59cd47a96368cc9de619b0008e226bceddbbda6",
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/build/changelog.89c5f0c35f39.wgsl": "89c5f0c35f396cb9daa661dc20de0f849f8909c5bf3fd514bd7796aaeaf0b6c4",
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coax/changelog/index.html": "5e32c480d24aeb4802092af5da6ba9a8186fa5b7a16578ee0398e819fdf17148",
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coax/changelog/index.md": "f337f9ebda9fca5ed1e28673dc5dac66c1daaf84b93908f877210e0010b042d0",
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coaxial/host.4362c063fd68.js": "4362c063fd6874848ea4f383d6831dd1f4fc186f5671131f7916c2f93a46dbcd",
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coaxial/host.js": "4362c063fd6874848ea4f383d6831dd1f4fc186f5671131f7916c2f93a46dbcd",
+    "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74"
+  },
+  "existing_composition": {
+    "path": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/result/composition.json",
+    "sha256": "51be4bcc1599b3a0dc97dacab452868d15c4bc102cd11ae33a7b5f9b368a0858",
+    "render_and_comparison_source": "3e95149816d2d296a27670afe413e66bd05a801f"
+  },
+  "decision": "No incoming delta changes an actual changelog render/build/source/entry/introduction input or either selected golden definition. Retain actual3e951 captures and successful two-lane comparison with this narrowly scoped static continuity companion; do not relabel them619 observations or infer full-site/Watchtower/forge/service qualification. Stock coarse affected() would include these pages because registry/build are SHARED; this report is an explicit review of narrower local fixture/selected-lane use."
+}

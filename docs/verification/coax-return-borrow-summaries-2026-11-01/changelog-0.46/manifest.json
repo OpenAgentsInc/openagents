@@ -1,0 +1,1110 @@
+{
+  "schema": "coax.changelog046.compact-proof-manifest.v1",
+  "base_selection_sha256": "25251efea3480374df726133367984c0740646751282459de41ddb5cbeb591fb",
+  "selected_count": 155,
+  "selected_bytes": 3074465,
+  "files": [
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/approval-provenance-before.json",
+      "archive_relative_path": "phases/approval-provenance-before.json",
+      "sha256": "9327786c3e025cd6b95bfe1f633634fb43bf27023d7525116d1d07ce04670fa1",
+      "bytes": 2959,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/approval-provenance-before.stderr",
+      "archive_relative_path": "phases/approval-provenance-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/approval-provenance-before.stdout",
+      "archive_relative_path": "phases/approval-provenance-before.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/approval.json",
+      "archive_relative_path": "phases/approval.json",
+      "sha256": "5c2bacd160955b5937cd7ffb08c4495df0ff86ab1c14df60951f32b2df374428",
+      "bytes": 1030,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/author-review.json",
+      "archive_relative_path": "phases/author-review.json",
+      "sha256": "6b6f52fb4b866a04a730a0abd4c98a8998a302e8948b5c9081729da313ebca46",
+      "bytes": 1096,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture-provenance-after.json",
+      "archive_relative_path": "phases/capture-provenance-after.json",
+      "sha256": "a4be5aa01e3f6dcc951deb266d11d29a552a4c2b04896e4ab00d2ab620e5fa74",
+      "bytes": 2940,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture-provenance-after.stderr",
+      "archive_relative_path": "phases/capture-provenance-after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture-provenance-after.stdout",
+      "archive_relative_path": "phases/capture-provenance-after.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture-provenance-before.json",
+      "archive_relative_path": "phases/capture-provenance-before.json",
+      "sha256": "4968499f231fc58be9b577214bc915c6417d9652144d66001c3509f897258907",
+      "bytes": 2943,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture-provenance-before.stderr",
+      "archive_relative_path": "phases/capture-provenance-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture-provenance-before.stdout",
+      "archive_relative_path": "phases/capture-provenance-before.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/capture.json",
+      "archive_relative_path": "phases/capture.json",
+      "sha256": "2bfff2d7cc7ad0a5ffafa573e9e99eb9d64f5f2aa6a38946dcbefa5858b19762",
+      "bytes": 1604,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/changelog-page-c.json",
+      "archive_relative_path": "phases/changelog-page-c.json",
+      "sha256": "74ee4aa01e0601dbe01bfc21ff5ae21513940181fb6cecf2665dfedcd573284a",
+      "bytes": 1926,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/changelog-page-c.stderr",
+      "archive_relative_path": "phases/changelog-page-c.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/changelog-page-c.stdout",
+      "archive_relative_path": "phases/changelog-page-c.stdout",
+      "sha256": "1d8e95b8472d64b180eb027780dc6b7d945f9e87bb1d59ce2cec18e86904e470",
+      "bytes": 152835,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/changelog-page-link.json",
+      "archive_relative_path": "phases/changelog-page-link.json",
+      "sha256": "adf42234f4f4c4c6a9889f0bbc56c963758164feb241514e3159090c8280d0f6",
+      "bytes": 5148,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/changelog-page-link.stderr",
+      "archive_relative_path": "phases/changelog-page-link.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/changelog-page-link.stdout",
+      "archive_relative_path": "phases/changelog-page-link.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/cleanup-followup.json",
+      "archive_relative_path": "phases/cleanup-followup.json",
+      "sha256": "4a0941c6c2ba992fcebfb20102e8882a6bf124f50131909808040e7a94abcb6a",
+      "bytes": 1363,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/cleanup-observation.json",
+      "archive_relative_path": "phases/cleanup-observation.json",
+      "sha256": "5e91a119ba96157f97790a38a815c51021f76e83a2d55f1105f146e879ba749d",
+      "bytes": 10838,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/config.json",
+      "archive_relative_path": "phases/config.json",
+      "sha256": "2a0b4d030dd357224b4b02ad7090cd43ee365e23fbe99dd6dbb435c8c15721c1",
+      "bytes": 197514,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/generate.json",
+      "archive_relative_path": "phases/generate.json",
+      "sha256": "16476393488d9e8a0e4b58476eac2c67d95de3d3e1a089653ac24e10c2f4af19",
+      "bytes": 1745,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/generate.stderr",
+      "archive_relative_path": "phases/generate.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/generate.stdout",
+      "archive_relative_path": "phases/generate.stdout",
+      "sha256": "157dc4b25999e537a9414a951b094bb85171a04b40eaf04005a865d59a15f80b",
+      "bytes": 52,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/generated-check.json",
+      "archive_relative_path": "phases/generated-check.json",
+      "sha256": "ccb9481c9c859c9ce6464ad44fe9a0b2af54268b14ee626ba9c28aacbe57d6b9",
+      "bytes": 1759,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/generated-check.stderr",
+      "archive_relative_path": "phases/generated-check.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/generated-check.stdout",
+      "archive_relative_path": "phases/generated-check.stdout",
+      "sha256": "8b6335a179a0beb3fcf7483ad35a9c56168f6b414e3a3a8700e86032a289f1a7",
+      "bytes": 50,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/host-bundle.json",
+      "archive_relative_path": "phases/host-bundle.json",
+      "sha256": "a10a17299ed91afa20a6bbebc1c806116eed1e08b128ac9ffeb32e977789ad01",
+      "bytes": 2314,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/host-bundle.stderr",
+      "archive_relative_path": "phases/host-bundle.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/host-bundle.stdout",
+      "archive_relative_path": "phases/host-bundle.stdout",
+      "sha256": "d5eb85ec1ca241f334efc13f5a0259bf0e0e7b2bf90888ef0915db9a7b99fe97",
+      "bytes": 65,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/old-golden-comparison.json",
+      "archive_relative_path": "phases/old-golden-comparison.json",
+      "sha256": "255fa6b31c519954b6351494f493d9ef86832810a2f9db75af78da483a89a95e",
+      "bytes": 2435,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/old-golden-comparison.stderr",
+      "archive_relative_path": "phases/old-golden-comparison.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/old-golden-comparison.stdout",
+      "archive_relative_path": "phases/old-golden-comparison.stdout",
+      "sha256": "372f7409dc158018c05e110956d721401e3df087c5eff7b74c62185f53ef43c4",
+      "bytes": 1054,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/old-goldens.json",
+      "archive_relative_path": "phases/old-goldens.json",
+      "sha256": "587590cb2bd6dada9ce9549f1476bfa2f8f3b057fcfa9175a7a55c25c2412df7",
+      "bytes": 680,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepare-provenance-after.json",
+      "archive_relative_path": "phases/prepare-provenance-after.json",
+      "sha256": "f497b407c27e7a12a0734c6fe80fadda8bd1954c91f51d38615981a9f790ad1d",
+      "bytes": 2941,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepare-provenance-after.stderr",
+      "archive_relative_path": "phases/prepare-provenance-after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepare-provenance-after.stdout",
+      "archive_relative_path": "phases/prepare-provenance-after.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepare-provenance-before.json",
+      "archive_relative_path": "phases/prepare-provenance-before.json",
+      "sha256": "05847111606e722de0bbdcca70a7c5d2a918fc2ff13fdb637f545f04bc4bdd9c",
+      "bytes": 2943,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepare-provenance-before.stderr",
+      "archive_relative_path": "phases/prepare-provenance-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepare-provenance-before.stdout",
+      "archive_relative_path": "phases/prepare-provenance-before.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/prepared.json",
+      "archive_relative_path": "phases/prepared.json",
+      "sha256": "b68c5a8c3d5c67b02796fdaea67e8e526bef3a8f693a0f34a6ce07c7ab7f1542",
+      "bytes": 44066,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/raw-review-captures.json",
+      "archive_relative_path": "phases/raw-review-captures.json",
+      "sha256": "a77a59f24c485f3a231207d8ec5da6b55b29f30d987f43ef1bb5e8e16a8504d8",
+      "bytes": 2293,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/raw-review-captures.stderr",
+      "archive_relative_path": "phases/raw-review-captures.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/raw-review-captures.stdout",
+      "archive_relative_path": "phases/raw-review-captures.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/reuse-source-head.json",
+      "archive_relative_path": "phases/reuse-source-head.json",
+      "sha256": "bcbed8614a42b8a62fd63c95cc5ce3ce4bcb99d24ba02b7199725e619e258295",
+      "bytes": 1582,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/reuse-source-head.stderr",
+      "archive_relative_path": "phases/reuse-source-head.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/reuse-source-head.stdout",
+      "archive_relative_path": "phases/reuse-source-head.stdout",
+      "sha256": "e00ca790ca182dcca0af9dbf2332bb99c7c88d7669fcff5a32947b7beba77547",
+      "bytes": 41,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/server-ready.json",
+      "archive_relative_path": "phases/server-ready.json",
+      "sha256": "39ef3e9a740019bcfcc622b7189baeeeea70ae3578b604aa90e2cdc773988925",
+      "bytes": 66,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/server.log",
+      "archive_relative_path": "phases/server.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/staged.json",
+      "archive_relative_path": "phases/staged.json",
+      "sha256": "27ffe590d08649dfe58226d30808a8045e219008f91673104de285a3adc82968",
+      "bytes": 1116,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/version.json",
+      "archive_relative_path": "phases/version.json",
+      "sha256": "5eb169cf2f656492a8f06f1e865aefa9c06e94e8b8961aa5722e38f0b106ec81",
+      "bytes": 1756,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/version.stderr",
+      "archive_relative_path": "phases/version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/version.stdout",
+      "archive_relative_path": "phases/version.stdout",
+      "sha256": "6f25770fa9911ed59d3c4a2b6f368b538c6b85c89073ecf4135bc0cb3af433f2",
+      "bytes": 13,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-clang-version.json",
+      "archive_relative_path": "phases/wasm-clang-version.json",
+      "sha256": "ee4ae0ec731c21d48bcb771cf927626fdc04c2efeb14a263c06f2428b51cfd91",
+      "bytes": 1671,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-clang-version.stderr",
+      "archive_relative_path": "phases/wasm-clang-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-clang-version.stdout",
+      "archive_relative_path": "phases/wasm-clang-version.stdout",
+      "sha256": "9098788d5853f7198299a669cf9f2a05d4380538feadca57c52178ac22554652",
+      "bytes": 222,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-linker-resolution.json",
+      "archive_relative_path": "phases/wasm-linker-resolution.json",
+      "sha256": "97ac38915f6e9178bf690bdf354882053be1fb1e29886a4c3f47380c79758fdd",
+      "bytes": 1817,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-linker-resolution.stderr",
+      "archive_relative_path": "phases/wasm-linker-resolution.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-linker-resolution.stdout",
+      "archive_relative_path": "phases/wasm-linker-resolution.stdout",
+      "sha256": "165e3c4be2e4c190ecea8c4d9ae35d68aeebd2fef5d8bd2778fba2dcd9309b80",
+      "bytes": 34,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-linker-version.json",
+      "archive_relative_path": "phases/wasm-linker-version.json",
+      "sha256": "bbe4e15e31e130f2fecedac9fe1a7abfc9970029b373b627be3eac5b9d0f5d8a",
+      "bytes": 1636,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-linker-version.stderr",
+      "archive_relative_path": "phases/wasm-linker-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-linker-version.stdout",
+      "archive_relative_path": "phases/wasm-linker-version.stdout",
+      "sha256": "54a190c8a9cdfbf3d368a61259c99d162617bdd7e5c282e02059d38759d31b33",
+      "bytes": 20,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-provenance-after.json",
+      "archive_relative_path": "phases/wasm-provenance-after.json",
+      "sha256": "a4db6f151fd2c3ca06dccc28620d9975bae1eb3c1a1c1492c9e7c0d7425a23a0",
+      "bytes": 2935,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-provenance-after.stderr",
+      "archive_relative_path": "phases/wasm-provenance-after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-provenance-after.stdout",
+      "archive_relative_path": "phases/wasm-provenance-after.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-provenance-before.json",
+      "archive_relative_path": "phases/wasm-provenance-before.json",
+      "sha256": "ddf5505dc86b1eaae83f20cea3d9e0076cdafc323ce421b8ca9ba9801daabf98",
+      "bytes": 2936,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-provenance-before.stderr",
+      "archive_relative_path": "phases/wasm-provenance-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-provenance-before.stdout",
+      "archive_relative_path": "phases/wasm-provenance-before.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-toolchain-environment.json",
+      "archive_relative_path": "phases/wasm-toolchain-environment.json",
+      "sha256": "a7311fee59bf0807860b19ffdfd43a15e6104a8ba888793182bd207046b97536",
+      "bytes": 2429,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-toolchain-environment.stderr",
+      "archive_relative_path": "phases/wasm-toolchain-environment.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-toolchain-environment.stdout",
+      "archive_relative_path": "phases/wasm-toolchain-environment.stdout",
+      "sha256": "e7a626220edc321ad0f49c6d84912fc1783bf858381c2100524d10257846bcb3",
+      "bytes": 2438,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm-toolchain.json",
+      "archive_relative_path": "phases/wasm-toolchain.json",
+      "sha256": "127b50ae9341cfe77b1ab351ef3ed69cb33171d771b03a1457b88a394dc24239",
+      "bytes": 16394,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm.json",
+      "archive_relative_path": "phases/wasm.json",
+      "sha256": "055c2cd0bfcfe009172f58bea86a25e05ad0c427cb4eb46df1496e80a8e2013d",
+      "bytes": 2354,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm.stderr",
+      "archive_relative_path": "phases/wasm.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wasm.stdout",
+      "archive_relative_path": "phases/wasm.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl-module-c.json",
+      "archive_relative_path": "phases/wgsl-module-c.json",
+      "sha256": "9bee86ac72c339229dc2917e10790a538597590e4f1d8e3a4bc9902b3e664447",
+      "bytes": 1911,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl-module-c.stderr",
+      "archive_relative_path": "phases/wgsl-module-c.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl-module-c.stdout",
+      "archive_relative_path": "phases/wgsl-module-c.stdout",
+      "sha256": "3e156cf1d89b8b2b482cca1d690b6270e4f86c1b3caaff3b959f686628efd624",
+      "bytes": 65074,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl-module-link.json",
+      "archive_relative_path": "phases/wgsl-module-link.json",
+      "sha256": "276337630b48237f784f53c8200346cb5e44e2f11cd8910b7370f800a354433d",
+      "bytes": 5125,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl-module-link.stderr",
+      "archive_relative_path": "phases/wgsl-module-link.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl-module-link.stdout",
+      "archive_relative_path": "phases/wgsl-module-link.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl.json",
+      "archive_relative_path": "phases/wgsl.json",
+      "sha256": "31247f6f4198160bf88e0831e8bc6b00d1e529e8acbb575d214c72c5180cb5df",
+      "bytes": 2097,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl.stderr",
+      "archive_relative_path": "phases/wgsl.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/wgsl.stdout",
+      "archive_relative_path": "phases/wgsl.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original phase/input/tool/raw observation; old mismatches and first overbroad cleanup observation remain distinct."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/approval.stdout",
+      "archive_relative_path": "transports/approval.stdout",
+      "sha256": "8872d8b03db66b64fe1a5c89bb27324a38d6d5919e39fa5494cf96cc2058312b",
+      "bytes": 121,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/capture.json",
+      "archive_relative_path": "transports/capture.json",
+      "sha256": "31b3f2db0a17c1b1fb10427a43fc8fef871e9419399f799a6f4307789dbb17c0",
+      "bytes": 2188,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/capture.stderr",
+      "archive_relative_path": "transports/capture.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/capture.stdout",
+      "archive_relative_path": "transports/capture.stdout",
+      "sha256": "a9f316cba41ac010c533b90da9b333ac415555f830c9ea0686c72dfcf16f02a7",
+      "bytes": 118,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/prepare.json",
+      "archive_relative_path": "transports/prepare.json",
+      "sha256": "1cea588291f0b48af4c393a4ebc5fbc1a75421da620042d9391cb143518d60f8",
+      "bytes": 5089,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/prepare.stderr",
+      "archive_relative_path": "transports/prepare.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/prepare.stdout",
+      "archive_relative_path": "transports/prepare.stdout",
+      "sha256": "5212070c5c0c205a72dd1a1ec34fc1a05d917788f30c67dc40d730184bf121ce",
+      "bytes": 126,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/wasm.json",
+      "archive_relative_path": "transports/wasm.json",
+      "sha256": "99a82f077ffb2876a459371c82a43728ec71f8763dade4b7a2f51991f3b9ea28",
+      "bytes": 2172,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/wasm.stderr",
+      "archive_relative_path": "transports/wasm.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13-transports/wasm.stdout",
+      "archive_relative_path": "transports/wasm.stdout",
+      "sha256": "57a3b4b23024a3216cfb0746660473fddc1bcfa0242d41dfad99a70f428731dd",
+      "bytes": 72,
+      "role": "Actual one-time prepare/wasm/capture outer bounded transport."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/captures.json",
+      "archive_relative_path": "review/captures.json",
+      "sha256": "b7e4fd44a9e9c6dffe2df1620081241edd2f066c8c056ec2d08d9f387b1ae99d",
+      "bytes": 794,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/coax-changelog-comparison.png",
+      "archive_relative_path": "review/coax-changelog-comparison.png",
+      "sha256": "a74d5d61b77a78550e09ad5cf717ceb3e361d0cb392acefa920fd05e9381ec46",
+      "bytes": 348708,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/coax-changelog-old.png",
+      "archive_relative_path": "review/coax-changelog-old.png",
+      "sha256": "81848494495d30553e48a7ce973f311b07432cb608187e91b67b402a7efd3c20",
+      "bytes": 364188,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/coax-changelog-phone-comparison.png",
+      "archive_relative_path": "review/coax-changelog-phone-comparison.png",
+      "sha256": "43b02b8964175af1a14a4fd315f0e0e344509545c3a3ef8f091ba2a0195c971a",
+      "bytes": 159800,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/coax-changelog-phone-old.png",
+      "archive_relative_path": "review/coax-changelog-phone-old.png",
+      "sha256": "4bc7507c485e60808b44c423742def0c588131c04c8a25ae717f1263ebd2bcef",
+      "bytes": 168062,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/coax-changelog-phone.png",
+      "archive_relative_path": "review/coax-changelog-phone.png",
+      "sha256": "43b02b8964175af1a14a4fd315f0e0e344509545c3a3ef8f091ba2a0195c971a",
+      "bytes": 159800,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/review/coax-changelog.png",
+      "archive_relative_path": "review/coax-changelog.png",
+      "sha256": "a74d5d61b77a78550e09ad5cf717ceb3e361d0cb392acefa920fd05e9381ec46",
+      "bytes": 348708,
+      "role": "Exact retained old baseline/comparison/original reviewed capture; no pixel edits."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/workflow.py",
+      "archive_relative_path": "workflow/workflow.py",
+      "sha256": "cbf89b85d199c617417981bb99509978e2874e74306e7d138368f8c16e3de7e5",
+      "bytes": 18608,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/serve.ts",
+      "archive_relative_path": "workflow/serve.ts",
+      "sha256": "7fee65c37de19c9f04ab9b03ce769638f4583344b3d768202aa558e8791403b9",
+      "bytes": 1323,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/capture.ts",
+      "archive_relative_path": "workflow/capture.ts",
+      "sha256": "3e7ced1653f28df4050bf6f06eab62b145c0e1bb33c3cead033707f485a10f6c",
+      "bytes": 2840,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/approve.py",
+      "archive_relative_path": "workflow/approve.py",
+      "sha256": "f88a022d93a26b9c138a6fef99f4d78a1bb040726d853ca40aa7a3efc5b5ab3f",
+      "bytes": 2385,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/producer_binding.py",
+      "archive_relative_path": "workflow/producer_binding.py",
+      "sha256": "e6aefccd3d5815e75dd74c17c7538dc54b79ece9554751842db12646fce9b0c9",
+      "bytes": 3938,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/common_reuse.py",
+      "archive_relative_path": "workflow/common_reuse.py",
+      "sha256": "79a5a8ac4b27e8cd7e3c75a97933e330d174178ef24f803db14a371d54756b69",
+      "bytes": 4197,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/source-epoch.json",
+      "archive_relative_path": "workflow/source-epoch.json",
+      "sha256": "457eac0f71563e5366c174cd5f57cab1ad4019b613c7037f220e144c92bbbf15",
+      "bytes": 5584,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/source-delta-reuse.proposed.json",
+      "archive_relative_path": "workflow/source-delta-reuse.proposed.json",
+      "sha256": "459bbaceecdfd85c8fada8395bdf21f49f2f36550654d93cb28fbd517d1955c4",
+      "bytes": 67741,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/source-delta-reuse.accepted.json",
+      "archive_relative_path": "workflow/source-delta-reuse.accepted.json",
+      "sha256": "74597a615931aac9896ebc04f1d2ed8cafd5cea5576ba0dc46cecd633fd52d90",
+      "bytes": 68379,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/root-admission.json",
+      "archive_relative_path": "workflow/root-admission.json",
+      "sha256": "5a82609e644899ae8264e0843a19152acb6f9d50fe8bb79dff501a73779c5fe1",
+      "bytes": 89500,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/initial-preservation.json",
+      "archive_relative_path": "workflow/initial-preservation.json",
+      "sha256": "945424718b6f296d769496a6acd005d640f40df2a666098bfa71128083724946",
+      "bytes": 2323,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/lld-alias-preexecution.patch",
+      "archive_relative_path": "workflow/lld-alias-preexecution.patch",
+      "sha256": "f623999097b20d4030c77ac719e0a4fe28e36ff5788647fb2404ac12417b43ad",
+      "bytes": 2911,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/prepared-review.json",
+      "archive_relative_path": "workflow/prepared-review.json",
+      "sha256": "a9cbd77bbed27bfc13e64c01c13307ce4edb7615471ca517c302b3561a1e8dfa",
+      "bytes": 6033,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-plan-v13/ps-final-peer-review.json",
+      "archive_relative_path": "workflow/ps-final-peer-review.json",
+      "sha256": "6dc5446a6ff96ddca73343830de9b25aed8fa129fa9d6f4f77ae42b267ba3cf9",
+      "bytes": 3021,
+      "role": "Frozen reviewed workflow/admission/source-delta preparation; proposals remain proposals, accepted record and author review separately attributed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/run.py",
+      "archive_relative_path": "postapproval/run.py",
+      "sha256": "a25975bc2db45d58fc9c8d40671522c8c0794727a9ca9a53d17546b2fa021525",
+      "bytes": 9028,
+      "role": "Prepared-only affected changed-baseline runner, not yet executed."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/prepared-review.json",
+      "archive_relative_path": "postapproval/prepared-review.json",
+      "sha256": "697ed0c3e954e3e5d3931724942ec8e4a7ed7a16feb3242f7ebf705daf3986c3",
+      "bytes": 2383,
+      "role": "Prepared-only runner input inventory; no comparison result inferred."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/approved-baseline-comparison.json",
+      "archive_relative_path": "postapproval/original-result/approved-baseline-comparison.json",
+      "sha256": "c02d1ffdd50624595e6124c6434ba18d663d6405eacc0a00da91419aaa22386f",
+      "bytes": 2536,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/approved-baseline-comparison.stderr",
+      "archive_relative_path": "postapproval/original-result/approved-baseline-comparison.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/approved-baseline-comparison.stdout",
+      "archive_relative_path": "postapproval/original-result/approved-baseline-comparison.stdout",
+      "sha256": "83705e5ccfae9ae01ebff71c4ce712e17b9a0ee205caf27d9c7d1288226a85ad",
+      "bytes": 799,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/comparison-report.json",
+      "archive_relative_path": "postapproval/original-result/comparison-report.json",
+      "sha256": "8468617196f28ca9f48c5b444bb709e4fc3f5c20940d1adab821c4718868e28e",
+      "bytes": 93,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/golden-diff-before.json",
+      "archive_relative_path": "postapproval/original-result/golden-diff-before.json",
+      "sha256": "885101537d83658514ab4157090f54614fa456b0aea4d18c3207a8145adb4b00",
+      "bytes": 1618,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/golden-diff-before.stderr",
+      "archive_relative_path": "postapproval/original-result/golden-diff-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/golden-diff-before.stdout",
+      "archive_relative_path": "postapproval/original-result/golden-diff-before.stdout",
+      "sha256": "0f8509dff70fd514b0bf8e9fe67f511c3ffd4df72fe173819e5e81ee5cdc36b9",
+      "bytes": 78,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/outer.json",
+      "archive_relative_path": "postapproval/original-result/outer.json",
+      "sha256": "521853724c1788eebee6d727fe3247aa41a20c634c695d46f34df6561c473a17",
+      "bytes": 1649,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/outer.stderr",
+      "archive_relative_path": "postapproval/original-result/outer.stderr",
+      "sha256": "49483f9c81fc54420f03ae31f048ed2202063161b2e7e5447ffedb502e19a8e9",
+      "bytes": 602,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/outer.stdout",
+      "archive_relative_path": "postapproval/original-result/outer.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/owned-server.json",
+      "archive_relative_path": "postapproval/original-result/owned-server.json",
+      "sha256": "ddfcb3cdfd3b3ad1c26343a827a2ee80eb19e2a37160da7df8e28ee8ad0456ce",
+      "bytes": 290,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/post-approval-provenance-after.json",
+      "archive_relative_path": "postapproval/original-result/post-approval-provenance-after.json",
+      "sha256": "d4b89fde87497bed863abc33a47f260d3b3ae07eff6245044831c07027d1a8f2",
+      "bytes": 2981,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/post-approval-provenance-after.stderr",
+      "archive_relative_path": "postapproval/original-result/post-approval-provenance-after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/post-approval-provenance-after.stdout",
+      "archive_relative_path": "postapproval/original-result/post-approval-provenance-after.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/post-approval-provenance-before.json",
+      "archive_relative_path": "postapproval/original-result/post-approval-provenance-before.json",
+      "sha256": "5c577de7f95d6b6bcc823afdd51f1aaff39f6d4a5fdeb0499393b1e8bef93f41",
+      "bytes": 2982,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/post-approval-provenance-before.stderr",
+      "archive_relative_path": "postapproval/original-result/post-approval-provenance-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/post-approval-provenance-before.stdout",
+      "archive_relative_path": "postapproval/original-result/post-approval-provenance-before.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/server-ready.json",
+      "archive_relative_path": "postapproval/original-result/server-ready.json",
+      "sha256": "6ed20492b13fdd9cd61ad8fecda1eb66e0d55bcfdbf9031031174dbcebc6a22d",
+      "bytes": 66,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/server.log",
+      "archive_relative_path": "postapproval/original-result/server.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/source-head-after.json",
+      "archive_relative_path": "postapproval/original-result/source-head-after.json",
+      "sha256": "05f37df68af7055d774431f5f05222d791081c8e6db465ba1efa780018a9c198",
+      "bytes": 1610,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/source-head-after.stderr",
+      "archive_relative_path": "postapproval/original-result/source-head-after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/source-head-after.stdout",
+      "archive_relative_path": "postapproval/original-result/source-head-after.stdout",
+      "sha256": "e00ca790ca182dcca0af9dbf2332bb99c7c88d7669fcff5a32947b7beba77547",
+      "bytes": 41,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/source-head-before.json",
+      "archive_relative_path": "postapproval/original-result/source-head-before.json",
+      "sha256": "e840ce0d560699d6a3f9e5d19be0ed9426590460d1bcb518e7e4c09dca70234d",
+      "bytes": 1611,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/source-head-before.stderr",
+      "archive_relative_path": "postapproval/original-result/source-head-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-v13/result/source-head-before.stdout",
+      "archive_relative_path": "postapproval/original-result/source-head-before.stdout",
+      "sha256": "e00ca790ca182dcca0af9dbf2332bb99c7c88d7669fcff5a32947b7beba77547",
+      "bytes": 41,
+      "role": "Actual original postapproval record/raw bytes: successful2/2 comparison plus nonpassing outer cleanupEPERM, never retagged."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/run.py",
+      "archive_relative_path": "postapproval/cleanup-followup/run.py",
+      "sha256": "4d4860e8d3e9992f362efde5977fef7f840efbbc8a1bacbfbf8f678b71765672",
+      "bytes": 11535,
+      "role": "Prepared-only cleanup companion; no signal/browser/provenance replay."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/prepared-review.json",
+      "archive_relative_path": "postapproval/cleanup-followup/prepared-review.json",
+      "sha256": "e27c2e97c366cf83678ea446e376728c520ac71fb231f6bd35728378e1f755ec",
+      "bytes": 5496,
+      "role": "Prepared-only cleanup companion; no signal/browser/provenance replay."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/result/composition.json",
+      "archive_relative_path": "postapproval/cleanup-followup/result/composition.json",
+      "sha256": "51be4bcc1599b3a0dc97dacab452868d15c4bc102cd11ae33a7b5f9b368a0858",
+      "bytes": 7102,
+      "role": "Actual cleanup-only numeric process/SID observation and honest composition; no signals or prior-check replay."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/result/owned-session-observation.json",
+      "archive_relative_path": "postapproval/cleanup-followup/result/owned-session-observation.json",
+      "sha256": "f4a116671c0006c539bcb53a93356823cefaf4e87a4f8ebef6d3a4bf885dc055",
+      "bytes": 429,
+      "role": "Actual cleanup-only numeric process/SID observation and honest composition; no signals or prior-check replay."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/result/ps.stderr",
+      "archive_relative_path": "postapproval/cleanup-followup/result/ps.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "Actual cleanup-only numeric process/SID observation and honest composition; no signals or prior-check replay."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-postapproval-cleanup-v13/result/ps.stdout",
+      "archive_relative_path": "postapproval/cleanup-followup/result/ps.stdout",
+      "sha256": "8e7a0b70d895c4dfb3058d95cbe0ac1602d29bf0c9d5224d1e5ec5fe3c2335f2",
+      "bytes": 41905,
+      "role": "Actual cleanup-only numeric process/SID observation and honest composition; no signals or prior-check replay."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/build/changelog.20a8bda5923b.wasm",
+      "archive_relative_path": "served-site/build/changelog.20a8bda5923b.wasm",
+      "sha256": "20a8bda5923b6d6db3c35811c59cd47a96368cc9de619b0008e226bceddbbda6",
+      "bytes": 161429,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/build/changelog.89c5f0c35f39.wgsl",
+      "archive_relative_path": "served-site/build/changelog.89c5f0c35f39.wgsl",
+      "sha256": "89c5f0c35f396cb9daa661dc20de0f849f8909c5bf3fd514bd7796aaeaf0b6c4",
+      "bytes": 16279,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coax/changelog/index.html",
+      "archive_relative_path": "served-site/coax/changelog/index.html",
+      "sha256": "5e32c480d24aeb4802092af5da6ba9a8186fa5b7a16578ee0398e819fdf17148",
+      "bytes": 48122,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coax/changelog/index.md",
+      "archive_relative_path": "served-site/coax/changelog/index.md",
+      "sha256": "f337f9ebda9fca5ed1e28673dc5dac66c1daaf84b93908f877210e0010b042d0",
+      "bytes": 41163,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coaxial/host.4362c063fd68.js",
+      "archive_relative_path": "served-site/coaxial/host.4362c063fd68.js",
+      "sha256": "4362c063fd6874848ea4f383d6831dd1f4fc186f5671131f7916c2f93a46dbcd",
+      "bytes": 157657,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/coaxial/host.js",
+      "archive_relative_path": "served-site/coaxial/host.js",
+      "sha256": "4362c063fd6874848ea4f383d6831dd1f4fc186f5671131f7916c2f93a46dbcd",
+      "bytes": 157657,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/changelog046-final-v13/site/favicon.svg",
+      "archive_relative_path": "served-site/favicon.svg",
+      "sha256": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+      "bytes": 294,
+      "role": "Root-added exact seven served fixture files, including actual Wasm/host/shader/HTML/Markdown; not a fullsite snapshot."
+    }
+  ],
+  "references": [
+    {
+      "source": "/tmp/coax-return-borrows-A1/normal046-shared-sha-v12-current309-184/qualification.json",
+      "sha256": "cfd90bb0b29e59417478a69c69cb25bf46bb39416fbe6e87f8db9b2575e2aef8",
+      "bytes": 42261,
+      "scope": "Existing completed165-step normal proof; original source epoch retained.",
+      "archive_action": "Reference existing A1 public proof/receipt, do not relabel as fresh."
+    },
+    {
+      "source": "/tmp/coax-return-borrows-A1/final-v12/tools-common/qualification.json",
+      "sha256": "171afc1435237566f7c43c9054a9aa18c7d54e1458dd8dbb0ea9dc1e635ded7a",
+      "bytes": 218751,
+      "scope": "Original same-producer common entropy gate; actual consumed source/artifacts/tools unchanged under explicit four-file accepted delta.",
+      "archive_action": "Reference existing A1 public proof/receipt, do not relabel as fresh."
+    }
+  ],
+  "scope": "Actual three-phase source3e951 capture; original mismatches/failed cleanup remain recorded. Actual successful2lane comparison plus distinct cleanup observation, exact reviewed rawPNGs and seven immutable served fixture files. No fullsite/native/device/publication qualification."
+}
