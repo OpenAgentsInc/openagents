@@ -1,0 +1,198 @@
+// WAV input for Psionic's Whisper (#12615): read any common RIFF/WAVE file
+// and resample it to the 16 kHz mono samples the model takes, so a WAV never
+// needs ffmpeg.
+//   - Formats: integer PCM of 8, 16, 24 or 32 bits and IEEE float of 32 or
+//     64 bits, plain or WAVE_FORMAT_EXTENSIBLE; 1 to 16 channels at 1 kHz
+//     to 384 kHz.
+//   - Channels are averaged into one.
+//   - Resampling is a Hann-windowed sinc with 16 zero crossings on each
+//     side; when the source is faster than 16 kHz the sinc is stretched so
+//     it also low-passes at 8 kHz. The kernel is tabulated at 512 steps per
+//     zero crossing and read with linear interpolation.
+// Checks: coax test psionic/lib/whisper/wav.coax --library
+#load "ggml.coax";
+
+WV_RATE :: 16000;
+WV_ZEROS :: 16;
+WV_STEPS :: 512;
+WV_TABLE :: WV_ZEROS * WV_STEPS + 2;
+
+WvStatus :: enum u8 { ok; riff; format; data; }
+WvInfo :: struct {
+  status: WvStatus; format: int; channels: int; rate: int; bits: int;
+  at: int; frames: int;
+}
+wv_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+
+// The format and the data chunk of a WAV file.
+wv_info :: (b: [] u8) -> WvInfo {
+  r: WvInfo; r.status = WvStatus.riff;
+  if b.count < 12 || cast(string) b[0..<4] != "RIFF" || cast(string) b[8..<12] != "WAVE" { return r; }
+  r.status = WvStatus.format;
+  at := 12; fmt_ok := false;
+  while at + 8 <= b.count {
+    id := cast(string) b[at..<at + 4]; size := wg_u32(b, at + 4); body := at + 8;
+    if id == "fmt " {
+      if size < 16 || body + 16 > b.count { return r; }
+      format := wv_u16(b, body);
+      if format == 0xFFFE && size >= 26 && body + 26 <= b.count { format = wv_u16(b, body + 24); }
+      r.format = format; r.channels = wv_u16(b, body + 2); r.rate = wg_u32(b, body + 4); r.bits = wv_u16(b, body + 14);
+      int_ok := format == 1 && (r.bits == 8 || r.bits == 16 || r.bits == 24 || r.bits == 32);
+      float_ok := format == 3 && (r.bits == 32 || r.bits == 64);
+      fmt_ok = (int_ok || float_ok) && r.channels >= 1 && r.channels <= 16 && r.rate >= 1000 && r.rate <= 384000;
+      if !fmt_ok { return r; }
+    }
+    if id == "data" {
+      if !fmt_ok { return r; }
+      // a truncated last chunk (a recorder that stopped early) keeps what is there
+      n := ifx body + size > b.count then b.count - body else size;
+      r.status = WvStatus.ok; r.at = body; r.frames = n / (r.channels * (r.bits / 8));
+      return r;
+    }
+    if body + size > b.count { r.status = WvStatus.data; return r; }
+    at = body + size + (size & 1);
+  }
+  r.status = WvStatus.data;
+  return r;
+}
+// Sample at byte offset at, in -1..1.
+wv_sample :: (b: [] u8, at: int, format: int, bits: int) -> f64 {
+  if format == 3 {
+    if bits == 32 { return cast(f64) f32_from_bits(cast(u32) wg_u32(b, at)); }
+    lo := cast(u64) wg_u32(b, at); hi := cast(u64) wg_u32(b, at + 4);
+    return f64_from_bits(lo | (hi << 32));
+  }
+  if bits == 8 { return (cast(f64) b[at] - 128) / 128; }
+  if bits == 16 { v := wv_u16(b, at); if v >= 32768 { v -= 65536; } return cast(f64) v / 32768; }
+  if bits == 24 { v := wv_u16(b, at) | (cast(int) b[at + 2] << 16); if v >= 8388608 { v -= 16777216; } return cast(f64) v / 8388608; }
+  v := wg_u32(b, at); if v >= 2147483648 { v -= 4294967296; }
+  return cast(f64) v / 2147483648;
+}
+// Every frame averaged over its channels into mono (frames values); how
+// many were written.
+wv_mono :: (b: [] u8, info: WvInfo, mono: [] f32) -> int {
+  if info.status != WvStatus.ok || mono.count < info.frames { return -1; }
+  bytes := info.bits / 8; stride := bytes * info.channels;
+  for f: 0..<info.frames {
+    s := 0.0; at := info.at + f * stride;
+    for c: 0..<info.channels { s += wv_sample(b, at + c * bytes, info.format, info.bits); }
+    v := s / cast(f64) info.channels;
+    // float files may exceed full scale (or hold NaN); the model takes -1..1
+    mono[f] = cast(f32) (ifx v > 1 then 1.0 else ifx v >= -1 then v else -1.0);
+  }
+  return info.frames;
+}
+// How many 16 kHz samples n frames at rate make.
+wv_length :: (n: int, rate: int) -> int { return n * WV_RATE / rate; }
+// The kernel at WV_STEPS points per zero crossing: sinc(u) times a Hann
+// window reaching zero at u = WV_ZEROS.
+wv_table :: (table: [] f64) {
+  for i: 0..<WV_TABLE {
+    u := cast(f64) i / cast(f64) WV_STEPS;
+    if u >= cast(f64) WV_ZEROS { table[i] = 0; continue; }
+    s := ifx i == 0 then 1.0 else sin(3.141592653589793 * u) / (3.141592653589793 * u);
+    w := 0.5 + 0.5 * cos(3.141592653589793 * u / cast(f64) WV_ZEROS);
+    table[i] = s * w;
+  }
+}
+// mono at rate into out at 16 kHz (wv_length(mono.count, rate) values).
+wv_resample :: (mono: [] f32, rate: int, table: [] f64, out: [] f32) -> int {
+  n := wv_length(mono.count, rate);
+  if out.count < n { return -1; }
+  if rate == WV_RATE { for i: 0..<n { out[i] = mono[i]; } return n; }
+  // fc: the cutoff relative to the source's Nyquist frequency
+  fc := ifx rate > WV_RATE then cast(f64) WV_RATE / cast(f64) rate else 1.0;
+  reach := cast(int) (cast(f64) WV_ZEROS / fc) + 1;
+  step := cast(f64) rate / cast(f64) WV_RATE;
+  for t: 0..<n {
+    p := cast(f64) t * step;
+    c := cast(int) p;
+    s := 0.0; wsum := 0.0;
+    lo := ifx c - reach + 1 < 0 then 0 else c - reach + 1;
+    hi := ifx c + reach + 1 > mono.count then mono.count else c + reach + 1;
+    for j: lo..<hi {
+      u := abs(p - cast(f64) j) * fc * cast(f64) WV_STEPS;
+      k := cast(int) u;
+      if k + 1 >= WV_TABLE { continue; }
+      f := u - cast(f64) k;
+      h := table[k] + (table[k + 1] - table[k]) * f;
+      s += h * cast(f64) mono[j]; wsum += h;
+    }
+    // dividing by the kernel's sum keeps a constant signal constant at the edges;
+    // the overshoot a sharp edge rings into is clipped to full scale
+    v := ifx wsum > 0 then s / wsum else 0.0;
+    out[t] = cast(f32) (ifx v > 1 then 1.0 else ifx v < -1 then -1.0 else v);
+  }
+  return n;
+}
+
+// ---- tests --------------------------------------------------------------------------
+
+wv_put16 :: (b: [] u8, at: int, v: int) { b[at] = cast(u8) (v & 255); b[at + 1] = cast(u8) ((v >> 8) & 255); }
+wv_put32 :: (b: [] u8, at: int, v: int) { wv_put16(b, at, v & 65535); wv_put16(b, at + 2, (v >> 16) & 65535); }
+// A WAV header for a format, channels, rate and bits, with n data bytes.
+wv_header :: (b: [] u8, format: int, channels: int, rate: int, bits: int, n: int) {
+  for i: 0..<4 { b[i] = "RIFF"[i]; b[8 + i] = "WAVE"[i]; b[12 + i] = "fmt "[i]; b[36 + i] = "data"[i]; }
+  wv_put32(b, 4, 36 + n); wv_put32(b, 16, 16); wv_put16(b, 20, format); wv_put16(b, 22, channels);
+  wv_put32(b, 24, rate); wv_put32(b, 28, rate * channels * bits / 8); wv_put16(b, 32, channels * bits / 8); wv_put16(b, 34, bits);
+  wv_put32(b, 40, n);
+}
+#test "formats decode to the same values" {
+  b: [64] u8;
+  // 16-bit stereo: (-1, 0.5) averages to -0.25
+  wv_header(b[..], 1, 2, 16000, 16, 4); wv_put16(b[..], 44, 32768); wv_put16(b[..], 46, 16384);
+  i := wv_info(b[0..<48]); m: [4] f32;
+  #assert i.status == WvStatus.ok && i.frames == 1 && i.channels == 2 && wv_mono(b[0..<48], i, m[..]) == 1 && m[0] == -0.25;
+  // 24-bit: 0x400000 is 0.5
+  wv_header(b[..], 1, 1, 16000, 24, 3); b[44] = 0; b[45] = 0; b[46] = 0x40;
+  i = wv_info(b[0..<47]); #assert i.status == WvStatus.ok && wv_mono(b[0..<47], i, m[..]) == 1 && m[0] == 0.5;
+  // 8-bit unsigned: 64 is -0.5
+  wv_header(b[..], 1, 1, 8000, 8, 1); b[44] = 64;
+  i = wv_info(b[0..<45]); #assert i.status == WvStatus.ok && i.rate == 8000 && wv_mono(b[0..<45], i, m[..]) == 1 && m[0] == -0.5;
+  // float 32: -0.75
+  wv_header(b[..], 3, 1, 48000, 32, 4); wv_put32(b[..], 44, cast(int) f32_bits(-0.75));
+  i = wv_info(b[0..<48]); #assert i.status == WvStatus.ok && wv_mono(b[0..<48], i, m[..]) == 1 && m[0] == -0.75;
+  // 32-bit integer: 0x40000000 is 0.5
+  wv_header(b[..], 1, 1, 16000, 32, 4); wv_put32(b[..], 44, 0x40000000);
+  i = wv_info(b[0..<48]); #assert wv_mono(b[0..<48], i, m[..]) == 1 && m[0] == 0.5;
+  // refusals: not RIFF, 12-bit, no data chunk
+  b[0] = 'X'; #assert wv_info(b[0..<48]).status == WvStatus.riff; b[0] = 'R';
+  wv_put16(b[..], 34, 12); #assert wv_info(b[0..<48]).status == WvStatus.format;
+  wv_header(b[..], 1, 1, 16000, 16, 4); b[36] = 'x'; #assert wv_info(b[0..<48]).status == WvStatus.data;
+}
+#test "an extensible header names its format in the subformat" {
+  b: [80] u8;
+  for i: 0..<4 { b[i] = "RIFF"[i]; b[8 + i] = "WAVE"[i]; b[12 + i] = "fmt "[i]; b[60 + i] = "data"[i]; }
+  wv_put32(b[..], 16, 40); wv_put16(b[..], 20, 0xFFFE); wv_put16(b[..], 22, 1); wv_put32(b[..], 24, 44100);
+  wv_put16(b[..], 34, 32); wv_put16(b[..], 36, 22); wv_put16(b[..], 44, 3);
+  wv_put32(b[..], 64, 8); wv_put32(b[..], 68, cast(int) f32_bits(0.25)); wv_put32(b[..], 72, cast(int) f32_bits(0.5));
+  i := wv_info(b[0..<76]);
+  #assert i.status == WvStatus.ok && i.format == 3 && i.rate == 44100 && i.frames == 2 && i.at == 68;
+}
+#test "resampling keeps a tone and a constant, and drops what 16 kHz cannot hold" #steps 400000000 {
+  table: [WV_TABLE] f64; wv_table(table[..]);
+  #assert table[0] == 1 && abs(table[WV_STEPS]) < 1.0e-12 && table[WV_TABLE - 1] == 0;
+  // 0.1 s at 48 kHz: a 440 Hz tone plus a 12 kHz tone (above 8 kHz)
+  src: [4800] f32; out: [1600] f32; want: [1600] f32;
+  for i: 0..<4800 { t := cast(f64) i / 48000; src[i] = cast(f32) (0.5 * sin(2 * 3.141592653589793 * 440 * t) + 0.3 * sin(2 * 3.141592653589793 * 12000 * t)); }
+  #assert wv_resample(src[..], 48000, table[..], out[..]) == 1600;
+  worst := 0.0;
+  for i: 200..<1400 {
+    t := cast(f64) i / 16000; e := abs(cast(f64) out[i] - 0.5 * sin(2 * 3.141592653589793 * 440 * t));
+    if e > worst { worst = e; }
+  }
+  #assert worst < 0.01;
+  // 8 kHz up to 16 kHz: a 1 kHz tone stays a 1 kHz tone
+  s8: [800] f32; o16: [1600] f32;
+  for i: 0..<800 { s8[i] = cast(f32) sin(2 * 3.141592653589793 * 1000 * cast(f64) i / 8000); }
+  #assert wv_resample(s8[..], 8000, table[..], o16[..]) == 1600;
+  worst = 0.0;
+  for i: 200..<1400 { e := abs(cast(f64) o16[i] - sin(2 * 3.141592653589793 * 1000 * cast(f64) i / 16000)); if e > worst { worst = e; } }
+  #assert worst < 0.01;
+  // a constant stays constant to the last sample, at 44.1 kHz
+  c: [441] f32; oc: [160] f32; for i: 0..<441 { c[i] = 0.25; }
+  #assert wv_resample(c[..], 44100, table[..], oc[..]) == 160;
+  for i: 0..<160 { #assert abs(oc[i] - 0.25) < 0.0001; }
+  // 16 kHz passes through unchanged
+  #assert wv_resample(c[0..<100], 16000, table[..], oc[..]) == 100 && oc[99] == 0.25;
+}

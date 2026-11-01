@@ -7,7 +7,8 @@
  *   OUT/psionic-whisper filters MODEL
  *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto]
  *       [--threads N] [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C] [--gpu]
- * WAV is 16 kHz mono 16-bit PCM (`ffmpeg -i IN -ar 16000 -ac 1 OUT.wav`).
+ * WAV is any PCM (8, 16, 24 or 32-bit) or float WAV; wav.coax mixes it to mono
+ * and resamples it to 16 kHz. Exit status 65: not a WAV this reads.
  * Design: psionic/docs/transcribe.md. */
 #include "whisper.h"
 #include <fcntl.h>
@@ -303,11 +304,22 @@ int main(int argc, char **argv) {
     double t_load = now_ms();
     coax_v_u8 wav = map(argv[3]);
     if (!wav.data) { fprintf(stderr, "psionic-whisper: cannot map %s\n", argv[3]); return 1; }
-    coax_t_WeWav wh = psionic_whisper_wav(wav);
-    if (!wh.ok || wh.samples < 1) { fputs("psionic-whisper: WAV must be 16 kHz mono 16-bit PCM\n", stderr); return 1; }
-    float *audio = malloc((size_t)wh.samples * sizeof *audio);
-    if (!audio || psionic_whisper_pcm16(wav, wh.at, wh.samples, (coax_v_f32){audio, wh.samples}) != wh.samples) return 1;
-    int64_t cache_n = psionic_whisper_cache_size(wh.samples, p.n_mels);
+    coax_t_WvInfo wi = psionic_whisper_wav_info(wav);
+    if (wi.status != COAX_WvStatus_ok || wi.frames < 1) {
+        fprintf(stderr, "psionic-whisper: %s is not a WAV file this reads (PCM 8/16/24/32-bit or float 32/64-bit)\n", argv[3]);
+        return 65;
+    }
+    float *mono = malloc((size_t)wi.frames * sizeof *mono);
+    if (!mono || psionic_whisper_wav_mono(wav, wi, (coax_v_f32){mono, wi.frames}) != wi.frames) return 1;
+    int64_t samples = psionic_whisper_wav_length(wi.frames, wi.rate);
+    float *audio = mono;
+    if (wi.rate != 16000) {
+        audio = malloc((size_t)(samples > 0 ? samples : 1) * sizeof *audio);
+        if (!audio || psionic_whisper_resample((coax_v_f32){mono, wi.frames}, wi.rate, (coax_v_f32){audio, samples}) != samples) return 1;
+    }
+    if (samples < 1) { fputs("psionic-whisper: the audio is empty\n", stderr); return 65; }
+
+    int64_t cache_n = psionic_whisper_cache_size(samples, p.n_mels);
     float *cache = malloc((size_t)cache_n * sizeof *cache);
     if (!cache) return 1;
     int64_t *vocab = malloc((size_t)m.tokens * sizeof *vocab);
@@ -320,7 +332,7 @@ int main(int argc, char **argv) {
     uint8_t *text = malloc(text_cap), *out = malloc(text_cap * 2);
     if (!text || !out) return 1;
     coax_t_WeRun run = psionic_whisper_transcribe(*net, (coax_v_f32){W, net->weights}, (coax_v_f32){work, net->work.total}, file, m,
-                                                  (coax_v_s64){vocab, m.tokens}, (coax_v_f64){bank, p.n_mels * 201}, (coax_v_f32){audio, wh.samples},
+                                                  (coax_v_s64){vocab, m.tokens}, (coax_v_f64){bank, p.n_mels * 201}, (coax_v_f32){audio, samples},
                                                   (coax_v_f32){cache, cache_n}, opt,
                                                   (coax_v_t_WsSegment){segs, SEGMENTS}, (coax_v_u8){text, (int64_t)text_cap});
     double t_end = now_ms();
@@ -335,7 +347,7 @@ int main(int argc, char **argv) {
     fwrite(out, 1, (size_t)n, stdout);
     fprintf(stderr, "psionic-whisper: %.0f ms load, %.0f ms transcribe (%s%d threads, %lld windows, %lld tokens, %lld fallbacks, %.*s, %.1f s audio)\n",
             t_load - t0, t_end - t_load, g_gpu ? "GPU and " : "", g_threads, (long long)run.windows, (long long)run.tokens, (long long)run.fallbacks, (int)lang_n, lang,
-            wh.samples / 16000.0);
+            samples / 16000.0);
     if (g_profile) fprintf(stderr, "psionic-whisper profile: GPU %.0f ms; ", g_gpu_ms);
     if (g_profile)
         fprintf(stderr, "decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",

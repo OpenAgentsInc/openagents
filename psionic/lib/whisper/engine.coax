@@ -12,6 +12,7 @@
 #load "tokens.coax";
 #load "front.coax";
 #load "segments.coax";
+#load "wav.coax";
 #load "../counter-rng.coax";
 
 WE_LAYERS_MAX :: 32;
@@ -606,38 +607,14 @@ psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, langu
   return ifx w[0].full then -1 else w[0].n;
 }
 // 16-bit little-endian PCM samples at b[at..] as f32 in [-1, 1).
-psionic_whisper_pcm16 :: (b: [] u8, at: int, n: int, out: [] f32) -> int #export_c {
-  if at < 0 || at + 2 * n > b.count || out.count < n { return -1; }
-  for i: 0..<n {
-    v := cast(int) b[at + 2 * i] | (cast(int) b[at + 2 * i + 1] << 8);
-    if v >= 32768 { v -= 65536; }
-    out[i] = cast(f32) v / 32768;
-  }
-  return n;
-}
-// A 16 kHz mono 16-bit PCM WAV's data chunk: its offset, and its sample
-// count in .tokens (reused), or status format. Full WAV reading is #12615.
-WeWav :: struct { ok: bool; at: int; samples: int; }
-psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
-  r: WeWav;
-  if b.count < 12 || cast(string) b[0..<4] != "RIFF" || cast(string) b[8..<12] != "WAVE" { return r; }
-  at := 12; fmt_ok := false;
-  while at + 8 <= b.count {
-    id := cast(string) b[at..<at + 4]; size := wg_u32(b, at + 4); body := at + 8;
-    if body + size > b.count { return r; }
-    if id == "fmt " {
-      if size < 16 { return r; }
-      format := cast(int) b[body] | (cast(int) b[body + 1] << 8); channels := cast(int) b[body + 2] | (cast(int) b[body + 3] << 8);
-      rate := wg_u32(b, body + 4); bits := cast(int) b[body + 14] | (cast(int) b[body + 15] << 8);
-      fmt_ok = (format == 1 || format == 0xFFFE) && channels == 1 && rate == 16000 && bits == 16;
-    }
-    if id == "data" {
-      if !fmt_ok { return r; }
-      r.ok = true; r.at = body; r.samples = size / 2; return r;
-    }
-    at = body + size + (size & 1);
-  }
-  return r;
+// WAV input (wav.coax): the format and data chunk, every frame as mono at
+// the file's rate, and those resampled to 16 kHz.
+psionic_whisper_wav_info :: (b: [] u8) -> WvInfo #export_c { return wv_info(b); }
+psionic_whisper_wav_mono :: (b: [] u8, info: WvInfo, mono: [] f32) -> int #export_c { return wv_mono(b, info, mono); }
+psionic_whisper_wav_length :: (frames: int, rate: int) -> int #export_c { return wv_length(frames, rate); }
+psionic_whisper_resample :: (mono: [] f32, rate: int, out: [] f32) -> int #export_c {
+  table: [WV_TABLE] f64; wv_table(table[..]);
+  return wv_resample(mono, rate, table[..], out);
 }
 
 #test "halves decode exactly" #steps 200000000 {
@@ -731,16 +708,6 @@ psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
   we_im2col_time(y[..], 4, 8, 4, col2[..]);
   we_linear_part(col2[..], 4, 12, w2[..], b[..], 4, y2[..], 0, 4, 1);
   for i: 0..<16 { #assert abs(d2[i] - y2[i]) < 0.00001; }
-}
-#test "a WAV header" {
-  h: [48] u8; w: [1] WgBuild; w[0].b = h[..];
-  wg_put_bytes(w[..], "RIFF"); wg_put32(w[..], 40); wg_put_bytes(w[..], "WAVE");
-  wg_put_bytes(w[..], "fmt "); wg_put32(w[..], 16); wg_put32(w[..], 1 | (1 << 16)); wg_put32(w[..], 16000); wg_put32(w[..], 32000); wg_put32(w[..], 2 | (16 << 16));
-  wg_put_bytes(w[..], "data"); wg_put32(w[..], 4); h[44] = 0; h[45] = 0x80; h[46] = 0xff; h[47] = 0x7f;
-  r := psionic_whisper_wav(h[..]);
-  #assert r.ok && r.at == 44 && r.samples == 2;
-  out: [2] f32; #assert psionic_whisper_pcm16(h[..], 44, 2, out[..]) == 2 && out[0] == -1 && out[1] == cast(f32) 32767 / 32768;
-  h[24] = 0x44; #assert !psionic_whisper_wav(h[..]).ok;
 }
 psionic_whisper_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int, act: int) #export_c {
   we_linear_part(x, rows, n_in, w, b, n_out, y, o0, o1, act);

@@ -8,12 +8,12 @@
 // Backends, on the same ggml model files:
 // - psionic: Psionic's own Whisper (psionic/lib/whisper/), the psionic-whisper
 //   host built from this checkout on first use (psionic/platform/whisper-build.sh).
-//   Greedy decoding, English and named languages; no beam search or
-//   language detection yet (#12619).
+//   Beam search, temperature fallback and language detection, as whisper.cpp;
+//   the encoder runs on the GPU where there is Metal.
 // - whispercpp: the interim default, whisper.cpp's whisper-cli (Homebrew:
-//   brew install whisper-cpp). It is removed when Psionic matches it with
-//   beam search (#12621, #12623).
-// Decoding: ffmpeg turns any audio or video into 16 kHz mono 16-bit WAV.
+//   brew install whisper-cpp), until Psionic is also faster (#12623).
+// Decoding: Psionic reads WAV files itself (psionic/lib/whisper/wav.coax).
+// ffmpeg turns any other audio or video into 16 kHz mono 16-bit WAV.
 // Firm reason: 6 (no Coax decoder for compressed audio and video
 // containers yet); it is one program call, and the WAV it writes is all
 // either backend reads.
@@ -22,7 +22,7 @@
 
 TR_HF :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-";
 // What psionic-whisper is built from; a newer one rebuilds it.
-TR_ENGINE_SOURCES :: [10] string.["psionic/lib/whisper/search.coax", "psionic/lib/counter-rng.coax", "psionic/lib/whisper/engine.coax", "psionic/lib/whisper/front.coax", "psionic/lib/whisper/ggml.coax",
+TR_ENGINE_SOURCES :: [12] string.["psionic/lib/whisper/search.coax", "psionic/lib/whisper/wav.coax", "psionic/lib/whisper/device.coax", "psionic/lib/counter-rng.coax", "psionic/lib/whisper/engine.coax", "psionic/lib/whisper/front.coax", "psionic/lib/whisper/ggml.coax",
   "psionic/lib/whisper/tokens.coax", "psionic/lib/whisper/segments.coax", "psionic/lib/spectral.coax",
   "psionic/platform/whisper-face.c", "psionic/platform/whisper-build.sh"];
 
@@ -122,6 +122,18 @@ transcribe_models :: (r: [] Rep) -> int {
   return rep_done(r, EXIT_OK);
 }
 
+// ffmpeg: file to 16 kHz mono 16-bit WAV at wav. EXIT_NOT_FOUND when there
+// is no ffmpeg, EXIT_FAIL when it cannot decode the file.
+tr_decode :: (file: string, wav: string, err: [] u8) -> int {
+  fb: [1024] u8; ffmpeg := tr_program("OPENAGENTS_FFMPEG", "ffmpeg", fb[..]);
+  dec := [14] string.[ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", file, "-vn", "-ar", "16000", "-ac", "1", wav];
+  small: [256] u8;
+  got := proc_run(dec[..], 900000, small[..], err);
+  if got.started != 0 { return EXIT_NOT_FOUND; }
+  if got.status != 0 { if got.err_n > 0 { tool_err(cast(string) err[0..<got.err_n]); } return EXIT_FAIL; }
+  return EXIT_OK;
+}
+
 transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "" { transcribe_usage(); return EXIT_USAGE; }
   if verb == "models" { return transcribe_models(r); }
@@ -146,7 +158,6 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if format < 0 { return fail(r, EXIT_USAGE, "pick one of --text, --srt, --vtt and --json"); }
   backend := args_value(a, "--backend", "whispercpp");
   if backend != "whispercpp" && backend != "psionic" { return fail(r, EXIT_USAGE, "--backend is whispercpp or psionic"); }
-  if backend == "psionic" && language == "auto" { return fail(r, EXIT_USAGE, "the psionic backend does not detect languages yet (#12619); name one with --language"); }
   eb: [1100] u8; engine := "";
   if backend == "psionic" {
     engine = tr_engine(eb[..]);
@@ -159,29 +170,33 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if code != EXIT_OK { return code; }
   mp: [1024] u8; model := tr_model_path(name, mp[..]);
 
-  // Decode to 16 kHz mono WAV in a private temporary directory.
+  // Psionic reads WAV files itself (psionic/lib/whisper/wav.coax); anything
+  // else, or a WAV it refuses (exit 65), is decoded by ffmpeg to 16 kHz mono
+  // WAV in a private temporary directory.
   td: [1024] u8; tmp := fs_temp("openagents-transcribe", td[..]);
   if tmp == "" { return fail(r, EXIT_FAIL, "cannot make a temporary directory"); }
   wb: [1100] u8; wav := fs_join(tmp, "audio.wav", wb[..]);
-  fb: [1024] u8; ffmpeg := tr_program("OPENAGENTS_FFMPEG", "ffmpeg", fb[..]);
-  dec := [14] string.[ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", file, "-vn", "-ar", "16000", "-ac", "1", wav];
   small: [256] u8; err: [8192] u8;
-  got := proc_run(dec[..], 900000, small[..], err[..]);
-  if got.started != 0 || got.status != 0 {
-    rm := fs_remove(tmp);
-    if got.err_n > 0 { tool_err(cast(string) err[0..<got.err_n]); }
-    if got.started != 0 { return fail(r, EXIT_FAIL, "ffmpeg was not found (brew install ffmpeg, or set OPENAGENTS_FFMPEG)"); }
-    return fail(r, EXIT_FAIL, "ffmpeg could not decode the file");
-  }
-
   run_: [1] TrRun; run := run_[..];
   lang0 := ifx language == "" then "en" else language;
+  is_wav := file.count > 4 && (cast(string) file[file.count - 4..<file.count] == ".wav" || cast(string) file[file.count - 4..<file.count] == ".WAV");
+  if backend != "psionic" || !is_wav {
+    code = tr_decode(file, wav, err[..]);
+    if code != EXIT_OK { rm := fs_remove(tmp); return fail(r, code, ifx code == EXIT_NOT_FOUND then "ffmpeg was not found (brew install ffmpeg, or set OPENAGENTS_FFMPEG)" else "ffmpeg could not decode the file"); }
+  }
   if backend == "psionic" {
     flag := "--text";
     if format == cast(int) TrFormat.srt { flag = "--srt"; } else if format == cast(int) TrFormat.vtt { flag = "--vtt"; } else if format == cast(int) TrFormat.json { flag = "--json"; }
-    pv := [11] string.[engine, "transcribe", model, wav, flag, "--language", lang0, "--threads", threads, "--name", name];
+    input := ifx is_wav then file else wav;
+    pv := [12] string.[engine, "transcribe", model, input, flag, "--language", lang0, "--threads", threads, "--name", name, "--gpu"];
     t0 := proc_now_ms();
-    got = proc_run(pv[..], 900000, run[0].out[..], err[..]);
+    got := proc_run(pv[..], 900000, run[0].out[..], err[..]);
+    if is_wav && got.started == 0 && got.status == 65 {
+      code = tr_decode(file, wav, err[..]);
+      if code != EXIT_OK { rm := fs_remove(tmp); return fail(r, code, ifx code == EXIT_NOT_FOUND then "ffmpeg was not found (brew install ffmpeg, or set OPENAGENTS_FFMPEG)" else "ffmpeg could not decode the file"); }
+      pv[3] = wav;
+      got = proc_run(pv[..], 900000, run[0].out[..], err[..]);
+    }
     ms := proc_now_ms() - t0;
     rm := fs_remove(tmp);
     if got.started != 0 || got.status != 0 || got.timed_out {
@@ -203,7 +218,7 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   lang := ifx language == "" then "en" else language;
   argv := [10] string.[whisper, "-m", model, "-f", wav, "-np", "-t", threads, "-l", lang];
   t0 := proc_now_ms();
-  got = proc_run(argv[..], 900000, run[0].out[..], err[..]);
+  got := proc_run(argv[..], 900000, run[0].out[..], err[..]);
   ms := proc_now_ms() - t0;
   rm := fs_remove(tmp);
   if got.started != 0 { return fail(r, EXIT_FAIL, "whisper-cli was not found (brew install whisper-cpp, or set OPENAGENTS_WHISPER_CLI)"); }
