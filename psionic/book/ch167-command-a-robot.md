@@ -1,18 +1,20 @@
 # 167. Command a robot
 
 This chapter builds position-only inverse kinematics, principal orientation
-error, a capped whole-pose solve, linearized posture projection, isolated PD
-gain/response analysis, seven-joint PD with gravity compensation, and a short
-coupled run on our owned Panda dynamics. IK returns source-limited coordinates;
-the posture query returns a delta, and PD returns explicit force terms. The
+error, a capped whole-pose solve, linearized posture projection, rest-to-rest
+reference timing, isolated PD gain/response analysis, seven-joint PD with gravity
+compensation, and a short coupled run on our owned Panda dynamics. IK returns
+source-limited coordinates; posture returns a delta, timing returns reference
+samples, and PD returns explicit force terms. The
 250-step experiment then recomputes the PD command on every owned state and
 compares that trajectory with one MuJoCo reference. General stability and
 the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Holding/tracking experiments,
-finite-step nullspace/IK integration, collision-free planning, trajectory timing and
-compiler-enforced bounded control retain their separate acceptance criteria.
+finite-step nullspace/IK integration, collision-free planning, tracking timed
+references and compiler-enforced bounded control retain separate acceptance
+criteria. The timing query below does not qualify those tracking dynamics.
 
 ## A source-bound position IK query
 
@@ -471,6 +473,126 @@ compiler `#bounded` control, R14 or hardware qualification.
 The [component record](../fixtures/robotics/panda-nullspace/README.md) links
 the frozen corpus, independent projector, source and native qualifications.
 
+## Put a rest-to-rest edge on a fixed grid
+
+A joint-space path needs a reference timing before it can be tracked. This
+query assigns time to one straight source-range edge; it does not move the
+plant or validate collision. Both endpoint reference velocities and
+accelerations are zero. Concatenating these edges therefore **stops at each
+waypoint**. Retargeting a moving state, or interpolating successive 20 Hz VLA
+action chunks without stopping, requires a different boundary-value problem.
+
+Use the quintic progress `s(u)=10u³-15u⁴+6u⁵`, with `u=t/T`. Its maximum first
+derivative is **15/8=1.875**; its maximum absolute second derivative is
+**10/sqrt(3)**. For each of seven joints, obtain the two duration candidates
+`(1.875*abs(dq))/vlim` and `sqrt((5.773502691896258*abs(dq))/alim)` with that
+fixed binary64 grouping. Take the largest of fourteen candidates. Angles,
+velocity/acceleration limits and durations retain radian, radian/second,
+radian/second² and second types throughout.
+
+For a nonzero edge, let R be that estimate times 500 and choose
+**N=ceil(R)+1**. Do not subtract an epsilon near integer boundaries. The
+reserve tick is deliberate: this is not a fastest-grid or exact-real ceil
+policy. R>999999 refuses before integer conversion, so N is at most one
+million. Integer total nanoseconds are `N*2000000`; floating duration is
+`N/500`, with no accumulated 0.002 additions. A numeric zero edge has N=0 only
+after every input has been admitted. Its only sample is tick 0, and the target
+representation wins, including signed zero. A nonzero subnormal edge still
+reserves a tick even if its required estimate underflows to zero.
+
+Sample the nearer endpoint using `v=min(k,N-k)/N` and `b=v³*(10+v*(-15+6v))`;
+anchor position at q0 on the first half and q1 on the second. Analytic
+derivatives use `30v²(1-v)²` and `60v(1-v)(1-2v)`, reversing the acceleration
+sign on the second half. Endpoint branches copy exact angles and positive-zero
+derivatives. No hidden joint clamp changes the curve. These are derivatives of
+the analytic reference, not derivatives of rounded output. Public calls
+re-admit all four input spans and recompute timing; a mutable timing POD is
+not an admission certificate. Trusted quantization requires the admitted-edge
+bound of finite nonnegative required seconds below 11250; trusted sampling
+requires an admitted edge, its actual timing and 0<=tick<=N. Low-level
+coefficient fixtures are not public velocity-limit admissions.
+
+The [timing and numerical
+assumptions](../docs/robotics/panda-quintic-timing.md) spell out the reserve
+argument and integration limits. Under the declared
+round-to-nearest/gradual-underflow/correct-sqrt/no-fastmath profile, a loose
+estimate-error allowance below 2^-20 tick fits inside the extra tick. The
+frozen independent oracle separately checks the real duration requirements and
+sample extrema. This is a numerical timing result, not a compiler R14
+certificate.
+
+The example moves one reference angle by 0.3 rad under a 0.05 rad/s limit. Its
+independently predicted estimate is 11.25 s and duration 11.252 s, or 5626
+ticks. At the midpoint, the reference angle is 0.15 rad and rate
+0.049991112691 rad/s. It also shows an exact endpoint, atomic tick refusal and
+zero-edge representation.
+
+<!-- source: psionic/examples/panda-quintic.coax pqt-timing -->
+```jai
+ // Endpoints are radians, limits rad/s and rad/s^2. This API returns a
+ // numerical reference; it does not admit collision or tracking behavior.
+ x:=pqt_fixture();x.q1=x.q0;x.q1[0].value=0.3;x.vlim[0].value=0.05;
+ timing:[1]PqtTiming;#assert pqt_time(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[..])==PqtStatus.ok;
+ print("ticks: %; total nanoseconds: %\n",timing[0].steps,timing[0].total_nanoseconds);
+ print("duration (us): %; required estimate (us): %\n",pqt_example_micro(timing[0].duration.value),pqt_example_micro(timing[0].required_estimate.value));
+ sample:[1]PqtSample;mid:=timing[0].steps/2;
+ #assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],mid,sample[..])==PqtStatus.ok;
+ print("midpoint joint1: % urad; % urad/s; % urad/s^2\n",pqt_example_micro(sample[0].angle[0].value),pqt_example_micro(sample[0].rate[0].value),pqt_example_micro(sample[0].acceleration[0].value));
+ #assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[0].steps,sample[..])==PqtStatus.ok;
+ for i:0..<7 {#assert f64_bits(sample[0].angle[i].value)==f64_bits(x.q1[i].value) && f64_bits(sample[0].rate[i].value)==0 && f64_bits(sample[0].acceleration[i].value)==0;}
+ print("endpoint joint1: % urad; exact target and +0 derivatives\n",pqt_example_micro(sample[0].angle[0].value));
+ before:=sample[0];#assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[0].steps+1,sample[..])==PqtStatus.range;pqt_sample_same(sample[0],before);
+ print("tick beyond duration: range; complete sample unchanged\n");
+ // Numeric equality does not erase the target's signed-zero representation.
+ x.q1=x.q0;x.q1[0].value=f64_from_bits(0x8000000000000000);
+ #assert pqt_time(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[..])==PqtStatus.ok && timing[0].steps==0;
+ #assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],0,sample[..])==PqtStatus.ok && f64_bits(sample[0].angle[0].value)==0x8000000000000000;
+ print("zero edge: % ticks; target signed zero retained\n",timing[0].steps);
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-quintic.coax
+```
+
+Thirteen new source groups and four meaningful unit refusals qualify the new
+policy and sampler. Focused root runs kill **107/89 actual emitted sites**.
+The initial five/three survivors are retained, followed by exact per-role/tick
+endpoint observations and one shared, independently observable stable-half
+policy. No equivalence waiver or input/budget tuning was used. Counts do not
+imply complete authored quantity-token mutation provenance. The example's
+expected output was written independently before its first passing display
+check and debug/release executions.
+
+The new frozen corpus has **27 edges** and **238 sample queries**: 25 timing
+results and 236 samples publish; two timing and two sample refusals preserve
+caller output before unavailable transport markers. Exact-input Fraction
+rounded-operation modeling predicts the policy N independently; 80-digit
+Decimal real quintics predict the samples and velocity/acceleration extrema.
+The largest estimate discrepancy is 1.384e-10 tick, with real reserve at least
+0.9999999999999937 tick over this corpus. These are observations of fixed
+cases, not a tuned epsilon or a new collision experiment.
+
+The first debug, release and fail-fast ASan/UBSan profiles each pass **26,756
+assertions**. Complete files match byte for byte; N/ns/status and the entire
+timing file also match the independent oracle exactly. Maximum angle/rate
+errors are 4.441e-16 rad and 4.441e-16 rad/s; acceleration error is 1.421e-14
+rad/s². Forty-seven endpoint samples match exact bits and positive-zero
+derivatives. Twenty-four overlap cases, 56 numeric endpoints, 140 IEEE cases,
+10 tick refusals and 20 poisoned-reader guards pass. Frozen comparison budgets
+remain 2e-12 rad absolute for angles; rates/accelerations use
+2e-10+2e-12*abs(reference).
+
+A static certified straight geometric edge would retain its point set under
+this monotone timing change. This API neither constructs nor binds that
+collision certificate. Tracking error, dynamic obstacles, jerk limits,
+moving-state retargeting, global time optimality, R13 clocks, compiler bounds
+and hardware remain separate. No SDK, neural, old physics/IK/nullspace/rotor
+numerical corpus or mutation gate is repeated.
+
+The [component record](../fixtures/robotics/panda-quintic/README.md) links the
+frozen edge/sampling corpus, independent timing and analytic references, and
+source/native/example qualifications.
+
 ## Joint errors become forces
 
 The next runnable profile is a fixed-source seven-arm-joint PD query with
@@ -809,7 +931,9 @@ do not qualify these complete control and planning tools.
 - Finite, range-preserving nullspace steps and their integration with pose IK,
   beyond the delivered linearized posture projection.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
-- Trajectory timing within velocity and acceleration limits.
+- Tracking timed edges under the declared plant, delay and fault profiles;
+  moving-state retargeting, non-stopping blends and jerk constraints. The
+  rest-to-rest numerical reference above does not supply those behaviors.
 
 ## Planned control and planning math
 
@@ -845,12 +969,14 @@ steps: fixed rate, bounded computation, saturating outputs with reported
 saturation. The position query above has an explicit iteration cap and typed
 nonconvergence, while compiler enforcement remains pending. The planner uses Aethyr chapter 20 and 21's queries for collision checks
 in a single-environment scene copy, seeded from the counter-based RNG so a
-plan is reproducible; shortcutting and time parameterization follow.
+plan is reproducible. A rest-to-rest timing query is available above;
+connecting certified edges, shortcutting and tracking their references remain
+planned.
 
 ## Planned additional modules
 
 - `psionic/lib/robotics/control.coax` (broader control profiles and IK), `plan.coax` (RRT-Connect,
-  shortcutting, timing).
+  shortcutting and timed-reference integration).
 
 ## Remaining acceptance checks and oracles
 
@@ -867,7 +993,10 @@ plan is reproducible; shortcutting and time parameterization follow.
   denser recheck is an additional oracle. The same seed gives the same plan.
   Follow the [collision-to-planning sequence](../docs/robotics/panda-motion-planning.md)
   before qualifying RRT.
-- Timed trajectories never exceed velocity and acceleration limits.
+- The rest-to-rest reference meets its declared velocity/acceleration profile
+  under the stated numerical assumptions. Physical tracking must separately
+  measure limits, timing delays and fault recovery; moving-state blends and
+  jerk-bounded profiles remain future work.
 
 ## How Genesis does it
 

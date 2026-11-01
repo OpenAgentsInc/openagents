@@ -184,7 +184,7 @@
 
 - [165. Sequences of observations](ch165-sequences-of-observations.md) — design draft
 - [166. One complete Cosmos3-Edge path](ch166-one-complete-cosmos3-edge-path.md) — design draft
-- [167. Command a robot](ch167-command-a-robot.md) — runnable position/pose IK, linearized posture projection, PD gains and short owned Euler loop
+- [167. Command a robot](ch167-command-a-robot.md) — runnable position/pose IK, linearized posture projection, rest-to-rest timing, PD gains and short owned Euler loop
 - [168. Imitation before robotics scale](ch168-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [169. Execute a GR00T policy](ch169-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
 - [170. Close the simulated control loop](ch170-close-the-simulated-control-loop.md) — original GR00T drives a Panda through Coax control, with exact SDK physics replay
