@@ -84994,7 +84994,9 @@ CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) {
  // Every eligible concrete body is eagerly seeded with relation=true before use.
  // Excluded generic/bodyless declarations publish no retained summary.
  for id:2..<c.state[0].used+1 {if c.nodes[id].kind==CK_Tag.proc {if !CB_tick(b,c.nodes[id].loc) {return;}c.nodes[id].retain_head=0;c.nodes[id].retain_count=0;c.nodes[id].retain_mark=CR_Phase.fresh;c.nodes[id].retain_incomplete=false;}}
- CR_walk(r,c.nodes[1].head,false,true);CR_walk(r,c.state[0].instances,true,true);if c.state[0].fatal || c.state[0].error_count>0 {return;}
+ CR_walk(r,c.nodes[1].head,false,true);CR_walk(r,c.state[0].instances,true,true);
+ // Summary walk entries stop on diagnostics; their tick barrier stops fatal-only states.
+ // The final post-summary guard below still blocks public report publication.
  CR_walk(r,c.nodes[1].head,false,false);CR_walk(r,c.state[0].instances,true,false);if c.state[0].fatal || c.state[0].error_count>0 {return;}c.state[0].retain_report_count=state[0].reports;
 }
 CR_run :: (b:CB_Context) {
@@ -85134,7 +85136,9 @@ CR_run :: (b:CB_Context) {
 
 // Streamed-profile contract checks, authored before replacing breadth cutoffs.
 // Every outcome is a public acceptance/diagnostic/report observation.
-CK_streamed_aggregate_fixture :: (sample:int,static_source:bool) {
+
+
+#forall "retained streamed aggregates admit default wide arrays" sample:0..<3 {static_source:=false;
  nodes:[320]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=319,type_count=24}];work:[1]CB_State;queries:[512]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;
  for i:0..<16 {types[i]=CK_builtin(i);}widths:=[4]int.[64,65,122,129];aggregate:=16;
  if sample<4 {types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=widths[sample]};}
@@ -85146,10 +85150,30 @@ CK_streamed_aggregate_fixture :: (sample:int,static_source:bool) {
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);
  #assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==1;row:=reports[0];#assert row.kind==1 && row.owner==2 && row.site==2 && row.facts_complete && row.relation_complete && !row.forbidden && row.pending==0;
 }
-
-#forall "retained streamed aggregates admit default wide arrays" sample:0..<3 {CK_streamed_aggregate_fixture(sample,false);}
-#forall "retained streamed aggregates admit default wide record and nested layouts" sample:3..<6 {CK_streamed_aggregate_fixture(sample,false);}
-#forall "retained streamed aggregates admit static wide arrays records and nested layouts" sample:0..<6 {CK_streamed_aggregate_fixture(sample,true);}
+#forall "retained streamed aggregates admit default wide record and nested layouts" sample:3..<6 {static_source:=false;
+ nodes:[320]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=319,type_count=24}];work:[1]CB_State;queries:[512]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;
+ for i:0..<16 {types[i]=CK_builtin(i);}widths:=[4]int.[64,65,122,129];aggregate:=16;
+ if sample<4 {types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=widths[sample]};}
+ else if sample==4 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=80};for i:0..<129 {nodes[80+i]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx i==128 then 0 else 81+i};}}
+ else {types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=65};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=80};nodes[80]=CK_Node.{kind=CK_Tag.field,type=16};types[18]=CK_Type.{kind=CK_Kind.array,elem=17,length=2};aggregate=18;}
+ types[20]=CK_Type.{kind=CK_Kind.view,elem=aggregate};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=20,borrow_owner=2};nodes[4].kind=CK_Tag.stmt_block;
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=20,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_index,type=aggregate,a=5,b=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=aggregate,borrow_binding=ifx static_source then 0 else 30,constant=ifx static_source then 30 else 0,loc=CK_Loc.{line=410,column=11,offset=41011}};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=8,c=7,borrow_owner=2,loc=CK_Loc.{line=410,column=3,offset=41003}};
+ nodes[30]=CK_Node.{kind=ifx static_source then CK_Tag.constant else CK_Tag.stmt_var,type=aggregate,borrow_owner=2,a=ifx static_source then 31 else 0};nodes[31]=CK_Node.{kind=ifx sample<4 || sample==5 then CK_Tag.expr_array else CK_Tag.expr_struct,type=aggregate};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);
+ #assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==1;row:=reports[0];#assert row.kind==1 && row.owner==2 && row.site==2 && row.facts_complete && row.relation_complete && !row.forbidden && row.pending==0;
+}
+#forall "retained streamed aggregates admit static wide arrays records and nested layouts" sample:0..<6 {static_source:=true;
+ nodes:[320]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=319,type_count=24}];work:[1]CB_State;queries:[512]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;
+ for i:0..<16 {types[i]=CK_builtin(i);}widths:=[4]int.[64,65,122,129];aggregate:=16;
+ if sample<4 {types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=widths[sample]};}
+ else if sample==4 {types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=80};for i:0..<129 {nodes[80+i]=CK_Node.{kind=CK_Tag.field,type=3,next=ifx i==128 then 0 else 81+i};}}
+ else {types[16]=CK_Type.{kind=CK_Kind.array,elem=3,length=65};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=80};nodes[80]=CK_Node.{kind=CK_Tag.field,type=16};types[18]=CK_Type.{kind=CK_Kind.array,elem=17,length=2};aggregate=18;}
+ types[20]=CK_Type.{kind=CK_Kind.view,elem=aggregate};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=20,borrow_owner=2};nodes[4].kind=CK_Tag.stmt_block;
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=20,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_index,type=aggregate,a=5,b=6};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=aggregate,borrow_binding=ifx static_source then 0 else 30,constant=ifx static_source then 30 else 0,loc=CK_Loc.{line=410,column=11,offset=41011}};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=8,c=7,borrow_owner=2,loc=CK_Loc.{line=410,column=3,offset=41003}};
+ nodes[30]=CK_Node.{kind=ifx static_source then CK_Tag.constant else CK_Tag.stmt_var,type=aggregate,borrow_owner=2,a=ifx static_source then 31 else 0};nodes[31]=CK_Node.{kind=ifx sample<4 || sample==5 then CK_Tag.expr_array else CK_Tag.expr_struct,type=aggregate};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};CR_run(b);
+ #assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==1;row:=reports[0];#assert row.kind==1 && row.owner==2 && row.site==2 && row.facts_complete && row.relation_complete && !row.forbidden && row.pending==0;
+}
 
 #forall "retained streamed aggregates preserve a forbidden final descriptor and zero reports" record:bool,raw_context:bool {
  nodes:[400]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=399,type_count=24}];work:[1]CB_State;queries:[512]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:[1]CR_State;
@@ -85183,7 +85207,9 @@ CK_streamed_aggregate_fixture :: (sample:int,static_source:bool) {
 }
 
 // First-error controls authored before adding nonfatal helper-edge barriers.
-CK_streamed_edge_fixture :: (edge:int) {
+
+
+#forall "retained streamed helper stage errors preserve the first witness" edge:0..<4 {
  nodes:[64]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=63,type_count=20}];work:[1]CB_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[8]CK_RetainObservation;rs:[1]CR_State;
  for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};types[18]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[19]=CK_Type.{kind=CK_Kind.array,elem=16,length=1};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[4].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=5};nodes[7]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=6,loc=CK_Loc.{line=450,column=11,offset=45011}};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};nodes[9]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=8,b=12};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=7,c=9,borrow_owner=2,loc=CK_Loc.{line=450,column=3}};nodes[12]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[20]=CK_Node.{kind=CK_Tag.proc,type=1,b=21};nodes[21].kind=CK_Tag.stmt_block;
  if edge==0 || edge==3 {nodes[7]=CK_Node.{kind=CK_Tag.expr_call,type=16,proc=20,loc=CK_Loc.{line=450,column=11,offset=45011}};nodes[20].type=16;nodes[20].borrow_returns=22;nodes[22]=CK_Node.{kind=CK_Tag.stmt_return,a=23};nodes[23]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=24,loc=CK_Loc.{line=451,column=13,offset=45113}};nodes[24]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=25};nodes[25]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=20};}
@@ -85197,14 +85223,10 @@ CK_streamed_edge_fixture :: (edge:int) {
  #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==(ifx edge==0 || edge==3 then 451 else ifx edge==1 then 450 else 454) && errors[0].loc.column==(ifx edge==0 || edge==3 then 13 else ifx edge==1 then 11 else 9) && state[0].retain_report_count==0;
 }
 
-#test "retained streamed helper return errors stop before address policy" {CK_streamed_edge_fixture(0);}
-#test "retained streamed first errors cross no seed walk" {CK_streamed_edge_fixture(1);}
-#test "retained streamed first errors cross no nested summary apply" {CK_streamed_edge_fixture(2);}
-
-#test "retained streamed applied actual errors stop before destination policy" {CK_streamed_edge_fixture(3);}
 
 // Both retained helper-address entries must preserve the first return error.
-CK_streamed_address_edge_fixture :: (applied:bool) {
+
+#forall "retained streamed addressed helper errors stop both policy stages" applied:bool {
  nodes:[64]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=63,type_count=20}];work:[1]CB_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:[1]CR_State;
  for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};types[18]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[19]=CK_Type.{kind=CK_Kind.array,elem=16,length=1};
  nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=4};nodes[4].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=5};nodes[7]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=6,loc=CK_Loc.{line=450,column=11,offset=45011}};nodes[8]=CK_Node.{kind=CK_Tag.expr_call,type=17,proc=20};nodes[9]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=8,b=12};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=7,c=9,borrow_owner=2};nodes[12]=CK_Node.{kind=CK_Tag.expr_int,type=11};
@@ -85213,12 +85235,12 @@ CK_streamed_address_edge_fixture :: (applied:bool) {
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=rs[..]};if applied {CR_apply(r,2,10,false);}else {CR_leaf(r,2,10,16,BS_Path.{});}
  #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==451 && errors[0].loc.column==13 && errors[0].loc.offset==45113 && state[0].retain_report_count==0;
 }
-#test "retained streamed addressed helper error stops leaf policy" {CK_streamed_address_edge_fixture(false);}
-#test "retained streamed addressed helper error stops applied policy" {CK_streamed_address_edge_fixture(true);}
 
 // Preauthored retaining-field-shape admission. The graph's64 immediate fields
 // contain one/eight descriptors; only validated scalar runs may be skipped.
-CK_retained_shape_fixture :: (mode:int,classes:bool) {
+
+#forall "retained shape configurations preserve all layout and publication boundaries" choice:0..<42 {
+ modes:=[42]int.[0,0,2,2,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,23,24,24,25,26,27,28,29,30,31,33,33,34,35,36,37];source_classes:=[42]bool.[false,true,false,true,false,true,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,true,false,true,false,false,false,false,false,false,false,false,true,false,false,false,false];mode:=modes[choice];classes:=source_classes[choice];
  nodes:[384]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=383,type_count=24}];work:[1]CB_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;rs:[1]CR_State;
  for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};types[17]=CK_Type.{kind=CK_Kind.view,elem=16};types[18]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[23]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=ifx mode==1 then 2 else ifx mode==28 then 0 else 80};
  width:=ifx mode==1 then 1 else ifx mode==28 then 0 else ifx mode==21 then 129 else 64;retained:=ifx mode==2 || mode==24 || mode==25 then 8 else ifx mode==20 then 9 else ifx mode==21 then 129 else ifx mode==27 || mode==28 then 0 else 1;
@@ -85244,10 +85266,6 @@ CK_retained_shape_fixture :: (mode:int,classes:bool) {
  if mode<4 || mode==26 || mode==27 || mode==28 {#assert !state[0].fatal && state[0].error_count==0 && state[0].retain_report_count==0;}
  else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && state[0].retain_report_count==0;if mode==4 {#assert work[0].work==1048577;}}
 }
-#forall "retained shape cache admits warm one and eight descriptor layouts in both source modes" many:bool,classes:bool {CK_retained_shape_fixture(ifx many then 2 else 0,classes);}
-#test "retained shape cache keeps field2 ordinal0 and full query workspace admitted" {CK_retained_shape_fixture(1,false);CK_retained_shape_fixture(3,true);}
-#forall "retained shape cache refuses exhausted work corrupt selected rows and stale prefixes" mode:4..<20 {CK_retained_shape_fixture(mode,false);}
-#forall "retained shape cache falls back without truncation above eight immediate fields" wide:bool {CK_retained_shape_fixture(ifx wide then 21 else 20,false);}
 
 #test "retained shape cold admission validates the complete scalar tail before reuse" {
  nodes:[48]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=47,type_count=18}];work:=[1]CB_State.[CB_State.{work=1048500}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;rs:[1]CR_State;
@@ -85261,7 +85279,6 @@ CK_retained_shape_fixture :: (mode:int,classes:bool) {
  nodes[81].type=19;nodes[50].next=51;nodes[51]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=62};nodes[62]=CK_Node.{kind=CK_Tag.expr_slice,type=19,a=63};nodes[63]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=64};nodes[64]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=20};CB_run(c,queries[..],origins[..]);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==480 && errors[0].loc.column==11 && errors[0].loc.offset==48011 && state[0].retain_report_count==0;
 }
 
-#test "retained shape selected validation charges the shared last tick" {CK_retained_shape_fixture(22,false);}
 #test "retained warm outer shape survives child replacement and reaches the second aggregate field" {
  nodes:[128]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=127,type_count=24}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;reports:[4]CK_RetainObservation;
  for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=41};types[18]=CK_Type.{kind=CK_Kind.view,elem=16};types[19]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[23]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=80};nodes[80]=CK_Node.{kind=CK_Tag.field,type=17,next=81};nodes[81]=CK_Node.{kind=CK_Tag.field,type=17};nodes[41]=CK_Node.{kind=CK_Tag.struct_,head=82};nodes[82]=CK_Node.{kind=CK_Tag.field,type=3};
@@ -85270,10 +85287,22 @@ CK_retained_shape_fixture :: (mode:int,classes:bool) {
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};CB_run(c,queries[..],origins[..]);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==490 && errors[0].loc.column==11 && errors[0].loc.offset==49011 && state[0].retain_report_count==0;
 }
 
-#forall "retained shape scoped warm layouts requery changed leaf facts in both source modes" many:bool,classes:bool {CK_retained_shape_fixture(ifx many then 24 else 23,classes);}
-#test "retained shape scoped ordinals remain ordered and exact published upper endpoint succeeds" {CK_retained_shape_fixture(25,false);CK_retained_shape_fixture(26,false);}
-#forall "retained shape scoped empty and scalar layouts remain uncached accepted values" empty:bool {CK_retained_shape_fixture(ifx empty then 28 else 27,false);}
-#forall "retained shape scoped original heads obey committed prefix before cache selection" mode:29..<32 {CK_retained_shape_fixture(mode,false);}
 
-#forall "retained two shapes preserve alternating admission and deduplicate primary hits" classes:bool {CK_retained_shape_fixture(33,classes);}
-#forall "retained two shapes validate secondary prefixes and refuse matching invalid primary" mode:34..<38 {CK_retained_shape_fixture(mode,false);}
+
+#test "return borrow instance error stops before retained workspace admission" {
+ nodes:[12]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7,type_count=18,instances=2}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[127]CK_RetainEffect;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};nodes[1].kind=CK_Tag.file;nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,b=4,borrow_returns=5,loc=CK_Loc.{line=501,column=2}};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,a=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=7,loc=CK_Loc.{line=502,column=4,offset=50204}};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],retain_effects=effects[..]};CB_run(c,queries[..],origins[..]);
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==502 && errors[0].loc.column==4 && errors[0].loc.offset==50204 && state[0].retain_report_count==0;
+}
+
+#forall "retained streamed child errors stop cold warm and array siblings" mode:0..<3 {
+ nodes:[96]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=95,type_count=20}];work:[1]CB_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;effects:[128]CK_RetainEffect;rs:[1]CR_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=ifx mode==2 then CK_Type.{kind=CK_Kind.array,elem=16,length=2} else CK_Type.{kind=CK_Kind.struct_,decl=30};types[18]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};nodes[30]=CK_Node.{kind=CK_Tag.struct_,head=80};nodes[80]=CK_Node.{kind=CK_Tag.field,type=16,next=81};nodes[81]=CK_Node.{kind=CK_Tag.field,type=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=3,retain_relation=true};nodes[3].kind=CK_Tag.stmt_block;nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=5};nodes[7]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=6,next=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_call,type=16,proc=40,loc=CK_Loc.{line=511,column=11}};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=11,c=12,borrow_owner=2,loc=CK_Loc.{line=510,column=3}};nodes[11]=CK_Node.{kind=ifx mode==2 then CK_Tag.expr_array else CK_Tag.expr_struct,type=17,head=ifx mode==2 then 7 else 50,loc=CK_Loc.{line=510,column=11,offset=51011}};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,type=17,constant=70};
+ nodes[40]=CK_Node.{kind=CK_Tag.proc,type=16,b=41,borrow_returns=42};nodes[41]=CK_Node.{kind=CK_Tag.stmt_block,head=42};nodes[42]=CK_Node.{kind=CK_Tag.stmt_return,a=43};nodes[43]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=44,loc=CK_Loc.{line=512,column=13,offset=51213}};nodes[44]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=45};nodes[45]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=40};nodes[50]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=60,next=51};nodes[51]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=60};nodes[60]=CK_Node.{kind=CK_Tag.expr_ident,type=16,constant=72};nodes[70]=CK_Node.{kind=CK_Tag.constant,type=17,a=71};nodes[71]=CK_Node.{kind=ifx mode==2 then CK_Tag.expr_array else CK_Tag.expr_struct,type=17};nodes[72]=CK_Node.{kind=CK_Tag.constant,type=16,a=73};nodes[73]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=74};nodes[74]=CK_Node.{kind=CK_Tag.expr_array,type=18};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};r:=CR_Context.{b=b,effects=effects[..],state=rs[..]};
+ if mode==1 {CR_leaf(r,2,10,17,BS_Path.{});#assert !state[0].fatal && state[0].error_count==0;}
+ nodes[50].a=7;nodes[51].a=8;CR_leaf(r,2,10,17,BS_Path.{});
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==510 && errors[0].loc.column==11 && errors[0].loc.offset==51011 && state[0].retain_report_count==0;
+}
