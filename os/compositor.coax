@@ -21,6 +21,7 @@
 //   wm OP [ARG]              a window-policy verb: movefocus D, movewindow D, resize D F, togglesplit,
 //                            togglefloating, fullscreen, maximize, switch N, moveto N (D 0..3 left
 //                            right up down, N 0..8)
+//   pointer on|off           draws the pointer in headless shots too
 //   bench N                  composites N times and says how long a frame took
 //   quit
 // Effects (sockets, descriptors, shared memory) are coax/platform/wayland-native.c; the protocol,
@@ -71,7 +72,7 @@ K_NONE :: 0; K_DISPLAY :: 1; K_REGISTRY :: 2; K_CALLBACK :: 3; K_COMPOSITOR :: 4
 K_BUFFER :: 8; K_SURFACE :: 9; K_REGION :: 10; K_SEAT :: 11; K_KEYBOARD :: 12; K_POINTER :: 13; K_OUTPUT :: 14;
 K_WMBASE :: 15; K_XDGSURF :: 16; K_TOPLEVEL :: 17; K_POSITIONER :: 18; K_POPUP :: 19; K_SUBSURF :: 20; K_TOUCH :: 21; K_DDM :: 22; K_DSOURCE :: 23; K_DDEV :: 24; K_DECOMGR :: 25; K_DECO :: 26;
 // A surface's role.
-R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3;
+R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3; R_CURSOR :: 4;
 
 CxObj :: struct { kind: int; ix: int; ver: int; }
 CxClient :: struct {
@@ -118,7 +119,8 @@ Cx :: struct {
   held: [256] bool; swallowed: [256] bool;   // keys down, and presses a binding took
   sock: [256] u8; nsock: int; launch: [512] u8; nlaunch: int;
   sources: [CX_SOURCES] CxSource; sel: int;   // the selection: a source, or -1
-  quit: bool; dirty: bool; screen: bool;
+  cursor: int; hot_x: int; hot_y: int;   // the pointer image a client set (a surface), or -1 for the arrow
+  quit: bool; dirty: bool; screen: bool; show_pointer: bool;
 }
 
 cx_say :: (s: string) { b: [8192] u8; n := 0; for c: s { if n < 8190 { b[n] = c; n += 1; } } b[n] = '\n'; x := cxwl_out(b[0..<n + 1]); }
@@ -264,6 +266,7 @@ cx_surf_free :: (x: [] Cx, s: int) {
   for i: 0..<CX_SURFS { if x[0].surfs[i].used && x[0].surfs[i].parent == s { x[0].surfs[i].parent = -1; } }
   if x[0].kfocus == s { x[0].kfocus = -1; }
   if x[0].pfocus == s { x[0].pfocus = -1; }
+  if x[0].cursor == s { x[0].cursor = -1; }
   x[0].surfs[s].used = false;
 }
 cx_drop_client :: (x: [] Cx, ci: int) {
@@ -414,6 +417,15 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
   } else if k == K_KEYBOARD {
     if op == 0 { cx_unlist(x[0].clients[ci].kbds[..], x[0].clients[ci].nk, obj); x[0].clients[ci].nk = cx_count_left(x[0].clients[ci].kbds[..], x[0].clients[ci].nk); cx_delete(x, ci, obj); }
   } else if k == K_POINTER {
+    if op == 0 {   // set_cursor: only the client under the pointer may
+      so := cx_rd(a, at + 4);
+      if x[0].pfocus < 0 || x[0].surfs[x[0].pfocus].client != ci { return; }
+      if so > 0 && so < CX_OBJS && x[0].clients[ci].objs[so].kind == K_SURFACE {
+        c := x[0].clients[ci].objs[so].ix; x[0].surfs[c].role = R_CURSOR;
+        x[0].cursor = c; x[0].hot_x = cx_rdi(a, at + 8); x[0].hot_y = cx_rdi(a, at + 12);
+      } else { x[0].cursor = -2; }   // a null surface hides the pointer
+      x[0].dirty = true;
+    }
     if op == 1 { cx_unlist(x[0].clients[ci].ptrs[..], x[0].clients[ci].npt, obj); x[0].clients[ci].npt = cx_count_left(x[0].clients[ci].ptrs[..], x[0].clients[ci].npt); cx_delete(x, ci, obj); }
   } else if k == K_OUTPUT {
     if op == 0 { cx_delete(x, ci, obj); }
@@ -620,7 +632,9 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
       }
     }
   }
-  if x[0].screen {   // the pointer: a white arrow with a dark edge, 12 pixels tall
+  if x[0].show_pointer && x[0].cursor >= 0 && x[0].surfs[x[0].cursor].used {   // the client's pointer image
+    cx_draw_surf(x, o, x[0].cursor, x[0].px - x[0].hot_x, x[0].py - x[0].hot_y, 0, 0, x[0].w, x[0].h);
+  } else if x[0].show_pointer && x[0].cursor == -1 {   // the pointer: a white arrow with a dark edge, 12 pixels tall
     for j: 0..<12 {
       for i: 0..<j / 2 + 1 {
         px := x[0].px + i; py := x[0].py + j;
@@ -797,6 +811,7 @@ cx_pointer :: (x: [] Cx, px: int, py: int) {
     mg_flush(x, pc, -1);
   }
   x[0].px = px; x[0].py = py;
+  if s != x[0].pfocus { x[0].cursor = -1; }   // a new window sets its own pointer on enter
   if s < 0 { x[0].pfocus = -1; return; }
   r: [4] int; if !cx_place(x, id, r[..]) { return; }
   lx := (px - r[0] + x[0].surfs[s].gx) * 256; ly := (py - r[1] + x[0].surfs[s].gy) * 256;
@@ -911,6 +926,7 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
     else { cx_say("unknown wm verb"); return; }
     cx_sync(x); cx_say("ok");
   }
+  else if c == "pointer" && nw == 2 { x[0].show_pointer = w[1] == "on"; cx_say("ok"); }   // draw the pointer in shots too
   else if c == "bench" && nw == 2 {   // composites N times: the milliseconds a frame takes
     k := cx_max(cx_num(w[1]), 1); t0 := cxwl_ms();
     for i: 0..<k { cx_composite(x, o); }
@@ -938,7 +954,7 @@ tool_main :: () -> int #export_c {
   if want_screen {
     r := cxscr_open();
     if r < 0 { tool_err("compositor: cannot take the screen (step "); tool_err(ifx r == -2 then "2: another program holds it; run from a free VT" else ifx r == -1 then "1: no display device" else "3-6: no usable screen or mode"); tool_errln(")"); return 1; }
-    x[0].w = cxscr_width(); x[0].h = cxscr_height(); x[0].screen = true;
+    x[0].w = cxscr_width(); x[0].h = cxscr_height(); x[0].screen = true; x[0].show_pointer = true;
   }
   if want_screen || input.count > 0 {
     ip: [1024] u8; ipn := 0; for c: input { if ipn < 1024 { ip[ipn] = c; ipn += 1; } }
@@ -954,7 +970,7 @@ tool_main :: () -> int #export_c {
   wm_new(x[0].wm[..]);
   wm_set_screen(x[0].wm[..], 0, wm_screen("headless", 0, 0, x[0].w, x[0].h));
   for i: 0..<WM_WINS { x[0].win_surf[i] = -1; }
-  x[0].kfocus = -1; x[0].pfocus = -1; x[0].sel = -1;
+  x[0].kfocus = -1; x[0].pfocus = -1; x[0].sel = -1; x[0].cursor = -1;
   sock := pos[0]; sp: [256] u8; sn := 0; for c: sock { if sn < 255 { sp[sn] = c; sn += 1; } }
   for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);

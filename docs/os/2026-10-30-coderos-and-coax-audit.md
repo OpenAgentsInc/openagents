@@ -502,8 +502,11 @@ compiler and the examples have not been run on Linux yet.
   blit worked out each row's visible span once and checked a pool's size
   once per surface. The screenshot came out byte-identical.
 
-  Also left: client cursors, damage tracking (redrawing only what
-  changed), and the protocols foot still reports missing
+  A client's own pointer image (`wl_pointer.set_cursor`) replaces the
+  arrow while the pointer is over that client: over a terminal, foot's
+  I-beam was drawn at its hotspot.
+
+  Also left: damage tracking (redrawing only what changed), and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
