@@ -1,0 +1,48 @@
+#import "Basic";
+#load "../lib/shard.coax";
+
+// book:begin example
+// Chapter 133: one matrix in every layout over a group of logical devices,
+// every redistribution between them, and a two-layer network run
+// column-parallel then row-parallel, compared with one device.
+value :: (i:int,seed:int)->f64 {return f64((i*37+seed*11)%17)/10.0-1.0;}
+main :: () {
+    l:=[4]SdLayout.[sd_replicated(),sd_shard(0),sd_shard(1),sd_partial()];
+    print("a 6 x 4 matrix over 4 devices:\n");
+    for k:1..<3 {t:=sd_tensor(6,4,4,l[k]);print("  %:",sd_name(l[k]));
+        for d:0..<4 {print(" device % holds % to %;",d,sd_first(sd_extent(t,k-1),4,d),sd_first(sd_extent(t,k-1),4,d+1)-1);}print("\n");}
+
+    print("every redistribution of it, 8 bytes a value:\n");
+    g:[24]f64;for i:0..<24 {g[i]=value(i,1);}
+    for f:0..<3 {src:=sd_tensor(6,4,4,l[f]);a:[96]f64;#assert sd_place(src,g[..],a[..])==SdStatus.ok;
+        for t:0..<3 {b:[96]f64;back:[96]f64;out:[24]f64;m:=sd_redistribute(src,a[..],l[t],b[..]);#assert sd_gather(m.tensor,b[..],out[..])==SdStatus.ok;
+            r:=sd_redistribute(m.tensor,b[..],l[f],back[..]);
+            print("  % to %: %, % values moved, % bytes (sd_cost %), gathers to the matrix and comes back: %\n",
+                sd_name(l[f]),sd_name(l[t]),sd_collective_name(m.collective),m.moved,8*m.moved,sd_cost(6,4,4,l[f],l[t]),sd_equal(back[..],a[..]) && sd_equal(out[..],g[..]));}}
+
+    // y = relu(x w1) w2: x is 2 x 4, w1 4 x 6, w2 6 x 3.
+    x:[8]f64;w1:[24]f64;w2:[18]f64;for i:0..<8 {x[i]=value(i,2);}for i:0..<24 {w1[i]=value(i,3);}for i:0..<18 {w2[i]=value(i,4);}
+    h:[12]f64;y:[6]f64;sd_matmul_one(2,4,6,x[..],w1[..],h[..]);for i:0..<12 {if !(h[i]>0) {h[i]=0;}}sd_matmul_one(2,6,3,h[..],w2[..],y[..]);
+    nodes:=[7]SdNode.[SdNode.{op=SdOp.input,rows=2,cols=4,layout=sd_replicated()},SdNode.{op=SdOp.input,rows=4,cols=6,layout=sd_shard(1)},
+        SdNode.{op=SdOp.matmul,a=0,b=1},SdNode.{op=SdOp.relu,a=2},SdNode.{op=SdOp.input,rows=6,cols=3,layout=sd_shard(0)},
+        SdNode.{op=SdOp.matmul,a=3,b=4},SdNode.{op=SdOp.move,a=5,layout=sd_replicated()}];
+    tensors:[7]SdTensor;c:=sd_propagate(4,nodes[..],tensors[..]);
+    print("y = relu(x w1) w2 over 4 devices: %\n",sd_why(c.status));
+    names:=[7]string.["x","w1","x w1","relu","w2","relu w2","y"];
+    for n:0..<7 {print("  node % (%): % x %, %\n",n,names[n],tensors[n].rows,tensors[n].cols,sd_name(tensors[n].layout));}
+    print("  one device: y = % % % / % % %\n",y[0],y[1],y[2],y[3],y[4],y[5]);
+    for d:1..<5 {X:=sd_tensor(2,4,d,sd_replicated());W1:=sd_tensor(4,6,d,sd_shard(1));W2:=sd_tensor(6,3,d,sd_shard(0));
+        lx:[32]f64;lw1:[96]f64;lw2:[72]f64;lh:[48]f64;lr:[48]f64;lp:[24]f64;ly:[24]f64;gh:[12]f64;gy:[6]f64;
+        #assert sd_place(X,x[..],lx[..])==SdStatus.ok;#assert sd_place(W1,w1[..],lw1[..])==SdStatus.ok;#assert sd_place(W2,w2[..],lw2[..])==SdStatus.ok;
+        H:=sd_matmul(X,lx[..],W1,lw1[..],lh[..]);Rl:=sd_relu(H,lh[..],lr[..]);P:=sd_matmul(Rl,lr[..],W2,lw2[..],lp[..]);
+        m:=sd_redistribute(P,lp[..],sd_replicated(),ly[..]);#assert sd_gather(Rl,lr[..],gh[..])==SdStatus.ok;#assert sd_gather(m.tensor,ly[..],gy[..])==SdStatus.ok;
+        far:=0.0;differ:=0;for i:0..<6 {if f64_bits(gy[i])!=f64_bits(y[i]) {differ+=1;}gap:=gy[i]-y[i];if gap<0 {gap=-gap;}if gap>far {far=gap;}}
+        print("  % devices: hidden layer equal bit for bit: %; all-reduce moved % values; y differs in % of 6 values, largest gap %\n",d,sd_equal(gh[..],h[..]),m.moved,differ,far);}
+
+    print("row-parallel [1e16 1 -1e16 1] . [1 1 1 1], one device: ");
+    a:=[4]f64.[1e16,1,-1e16,1];ones:=[4]f64.[1,1,1,1];one:[1]f64;sd_matmul_one(1,4,1,a[..],ones[..],one[..]);print("%\n",one[0]);
+    for d:[3]int.[1,2,4] {A:=sd_tensor(1,4,d,sd_shard(1));B:=sd_tensor(4,1,d,sd_shard(0));la:[16]f64;lb:[16]f64;lc:[4]f64;
+        #assert sd_place(A,a[..],la[..])==SdStatus.ok;#assert sd_place(B,ones[..],lb[..])==SdStatus.ok;C:=sd_matmul(A,la[..],B,lb[..],lc[..]);#assert sd_gather(C,lc[..],one[..])==SdStatus.ok;
+        print("  % devices: partial sums",d);for k:0..<d {print(" %",lc[k]);}print(", their sum %\n",one[0]);}
+}
+// book:end example

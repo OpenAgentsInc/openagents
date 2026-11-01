@@ -1,0 +1,30 @@
+#import "Basic";
+#load "../lib/shard.coax";
+
+// book:begin refuse
+// Chapter 133: tensors, redistributions, operations and programs that are
+// refused, each with its reason. Nothing is computed for a refused one.
+main :: () {
+    print("9 devices: %\n",sd_why(sd_tensor(4,4,9,sd_replicated()).status));
+    print("65 rows: %\n",sd_why(sd_tensor(65,4,2,sd_replicated()).status));
+    print("a shard on axis 2: %\n",sd_why(sd_tensor(4,4,2,sd_shard(2)).status));
+    g:=[16]f64.[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];R:=sd_tensor(4,4,2,sd_replicated());lr:[32]f64;out:[32]f64;
+    #assert sd_place(R,g[..],lr[..])==SdStatus.ok;
+    m:=sd_redistribute(R,lr[..],sd_partial(),out[..]);print("replicated to partial: %\n",sd_why(m.status));
+    m=sd_redistribute(R,lr[..],sd_shard(0),out[0..<31]);print("into a 31-value buffer: %\n",sd_why(m.status));
+    l:=[4]SdLayout.[sd_replicated(),sd_shard(0),sd_shard(1),sd_partial()];
+    for a:0..<4 {for b:0..<4 {r:=sd_matmul_rule(l[a],l[b]);if r.status!=SdStatus.ok {print("% @ %: %\n",sd_name(l[a]),sd_name(l[b]),sd_why(r.status));}}}
+    lc:[32]f64;print("a 4 x 4 @ a 2 x 4: %\n",sd_why(sd_matmul(R,lr[..],sd_tensor(2,4,2,sd_replicated()),lr[..],lc[..]).status));
+    print("relu of a partial: %\n",sd_why(sd_relu(sd_tensor(4,4,2,sd_partial()),lr[..],lc[..]).status));
+    print("replicated + sharded on rows: %\n",sd_why(sd_add(R,lr[..],sd_tensor(4,4,2,sd_shard(0)),lr[..],lc[..]).status));
+
+    // The two-layer network with relu moved after the row-parallel product, and with a node that uses itself.
+    nodes:=[7]SdNode.[SdNode.{op=SdOp.input,rows=2,cols=4,layout=sd_replicated()},SdNode.{op=SdOp.input,rows=4,cols=6,layout=sd_shard(1)},
+        SdNode.{op=SdOp.matmul,a=0,b=1},SdNode.{op=SdOp.input,rows=6,cols=3,layout=sd_shard(0)},
+        SdNode.{op=SdOp.matmul,a=2,b=3},SdNode.{op=SdOp.relu,a=4},SdNode.{op=SdOp.move,a=5,layout=sd_replicated()}];
+    tensors:[7]SdTensor;c:=sd_propagate(4,nodes[..],tensors[..]);print("relu(x w1 w2): node %: %\n",c.node,sd_why(c.status));
+    nodes[5]=SdNode.{op=SdOp.move,a=4,layout=sd_replicated()};nodes[6]=SdNode.{op=SdOp.relu,a=5};
+    c=sd_propagate(4,nodes[..],tensors[..]);print("relu after the all-reduce: %, y %\n",sd_why(c.status),sd_name(tensors[6].layout));
+    nodes[2].b=2;c=sd_propagate(4,nodes[..],tensors[..]);print("a product that uses its own output: node %: %\n",c.node,sd_why(c.status));
+}
+// book:end refuse

@@ -1,0 +1,21 @@
+9 devices: refused: from 1 to 8 devices
+65 rows: refused: from 1 to 64 rows and columns
+a shard on axis 2: refused: a shard axis is 0 (rows) or 1 (columns)
+replicated to partial: refused: only an operation makes a partial sum
+into a 31-value buffer: refused: a buffer is too small for every device's block
+replicated @ sharded on rows: refused: the contraction axis is split on one operand only; redistribute one first
+sharded on rows @ sharded on rows: refused: the contraction axis is split on one operand only; redistribute one first
+sharded on rows @ sharded on columns: refused: the result would be split two ways, which needs a 2-D mesh
+sharded on rows @ partial: refused: the result would be split two ways, which needs a 2-D mesh
+sharded on columns @ replicated: refused: the contraction axis is split on one operand only; redistribute one first
+sharded on columns @ sharded on columns: refused: the contraction axis is split on one operand only; redistribute one first
+sharded on columns @ partial: refused: the contraction axis is split on one operand only; redistribute one first
+partial @ sharded on rows: refused: the contraction axis is split on one operand only; redistribute one first
+partial @ sharded on columns: refused: the result would be split two ways, which needs a 2-D mesh
+partial @ partial: refused: both operands are partial sums, so the cross terms are missing
+a 4 x 4 @ a 2 x 4: refused: the shapes or device counts do not fit
+relu of a partial: refused: a partial sum through a non-linear operation; all-reduce it first
+replicated + sharded on rows: refused: the operands have different layouts; redistribute one first
+relu(x w1 w2): node 5: refused: a partial sum through a non-linear operation; all-reduce it first
+relu after the all-reduce: ok, y replicated
+a product that uses its own output: node 2: refused: a node uses a node that is not before it

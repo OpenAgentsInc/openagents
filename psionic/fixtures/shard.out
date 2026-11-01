@@ -1,0 +1,30 @@
+a 6 x 4 matrix over 4 devices:
+  sharded on rows: device 0 holds 0 to 0; device 1 holds 1 to 2; device 2 holds 3 to 3; device 3 holds 4 to 5;
+  sharded on columns: device 0 holds 0 to 0; device 1 holds 1 to 1; device 2 holds 2 to 2; device 3 holds 3 to 3;
+every redistribution of it, 8 bytes a value:
+  replicated to replicated: none, 0 values moved, 0 bytes (sd_cost 0), gathers to the matrix and comes back: true
+  replicated to sharded on rows: slice, 0 values moved, 0 bytes (sd_cost 0), gathers to the matrix and comes back: true
+  replicated to sharded on columns: slice, 0 values moved, 0 bytes (sd_cost 0), gathers to the matrix and comes back: true
+  sharded on rows to replicated: all-gather, 72 values moved, 576 bytes (sd_cost 576), gathers to the matrix and comes back: true
+  sharded on rows to sharded on rows: none, 0 values moved, 0 bytes (sd_cost 0), gathers to the matrix and comes back: true
+  sharded on rows to sharded on columns: all-to-all, 18 values moved, 144 bytes (sd_cost 144), gathers to the matrix and comes back: true
+  sharded on columns to replicated: all-gather, 72 values moved, 576 bytes (sd_cost 576), gathers to the matrix and comes back: true
+  sharded on columns to sharded on rows: all-to-all, 18 values moved, 144 bytes (sd_cost 144), gathers to the matrix and comes back: true
+  sharded on columns to sharded on columns: none, 0 values moved, 0 bytes (sd_cost 0), gathers to the matrix and comes back: true
+y = relu(x w1) w2 over 4 devices: ok
+  node 0 (x): 2 x 4, replicated
+  node 1 (w1): 4 x 6, sharded on columns
+  node 2 (x w1): 2 x 6, sharded on columns
+  node 3 (relu): 2 x 6, sharded on columns
+  node 4 (w2): 6 x 3, sharded on rows
+  node 5 (relu w2): 2 x 3, partial
+  node 6 (y): 2 x 3, replicated
+  one device: y = -0.29400000000000004 -0.06600000000000009 -0.3819999999999999 / -1.354 -0.36400000000000005 -0.938
+  1 devices: hidden layer equal bit for bit: true; all-reduce moved 0 values; y differs in 0 of 6 values, largest gap 0.0
+  2 devices: hidden layer equal bit for bit: true; all-reduce moved 12 values; y differs in 0 of 6 values, largest gap 0.0
+  3 devices: hidden layer equal bit for bit: true; all-reduce moved 24 values; y differs in 1 of 6 values, largest gap 5.551115123125783e-17
+  4 devices: hidden layer equal bit for bit: true; all-reduce moved 36 values; y differs in 1 of 6 values, largest gap 5.551115123125783e-17
+row-parallel [1e16 1 -1e16 1] . [1 1 1 1], one device: 1.0
+  1 devices: partial sums 1.0, their sum 1.0
+  2 devices: partial sums 10000000000000000.0 -10000000000000000.0, their sum 0.0
+  4 devices: partial sums 10000000000000000.0 1.0 -10000000000000000.0 1.0, their sum 1.0

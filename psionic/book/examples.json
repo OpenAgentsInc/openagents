@@ -2069,6 +2069,28 @@
       "timeout": 300
     },
     {
+      "source": "psionic/examples/shard.coax",
+      "chapter": "psionic/book/ch133-a-tensor-spread-over-devices.md",
+      "stdout": "psionic/fixtures/shard.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
+      "source": "psionic/examples/shard-refuse.coax",
+      "chapter": "psionic/book/ch133-a-tensor-spread-over-devices.md",
+      "stdout": "psionic/fixtures/shard-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "psionic/examples/pretrain.coax",
       "chapter": "psionic/book/ch128-a-complete-pretraining-run.md",
       "stdout": "psionic/fixtures/pretrain.out",
