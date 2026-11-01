@@ -1,0 +1,23 @@
+problems: 4096 training, 256 held out, shared: 0, audit: ok
+start: chapter 136's run, 600 base steps and 250 of 1200 tuning steps, record digest aee203d11c6e6180...
+start, held-out questions answered greedily with reward 1: 90 of 256 right, 95% interval 0.29566093701007257 to 0.4118531792823149
+greedy rollouts against chapter 136's sf_ask: 256 of 256 agree in tokens and verdict
+a sampled rollout of the first held-out question, tokens: 320 321 87 104 300 32 105 115 32 49 54 42 53 53 63 322 323 325 49 54 42 53 53 326 327 56 56 48 328 56 54 53 324
+its targets: - - - - - - - - - - - - - - - - 325 49 54 42 53 53 326 - - - - - 56 54 53 324 -
+the first batch drawn twice from its seeds: identical tokens: true, identical log-probabilities: true
+step 25: mean reward 0.296875, mean log-ratio to the reference 0.7329176892347451, loss -0.03194355231140722, gradient norm 0.12837514840252118
+step 50: mean reward 0.484375, mean log-ratio to the reference 0.5735990873880318, loss -0.02357372238443379, gradient norm 0.1890936454070852
+step 75: mean reward 0.390625, mean log-ratio to the reference 1.1360229894552332, loss -0.017980284028969926, gradient norm 0.08555963071594658
+step 100: mean reward 0.609375, mean log-ratio to the reference 2.189248355796322, loss -0.008984507406609887, gradient norm 0.32247618302646947
+step 125: mean reward 0.578125, mean log-ratio to the reference 1.2400435439490123, loss -0.013302756518308444, gradient norm 0.0754518540284159
+step 150: mean reward 0.75, mean log-ratio to the reference 1.6417507887822094, loss -0.029684066584589865, gradient norm 0.12846130774441092
+budget: 9600 rollouts, 9600 graded, 4660 with reward 1, 505987 positions read while sampling, 99402 sampled tokens, 9600 gradient passes, 9600 reference passes
+after, held-out questions answered greedily with reward 1: 170 of 256 right, 95% interval 0.6041561810850576 to 0.7191176903812512
+changed outcomes: 81 gained, 1 lost; share gained 0.9341050148733268 to 0.9978440634290349 (95% interval)
+acceptance (frozen before the run): passed
+reference after training: identical to the start's record: true
+the first batch offered at step 1: stale
+the first batch relabelled as step 149: stale
+weights unchanged by the refusals: true
+the 2+3 exchange graded: reward 1.0
+the same exchange with the calculator's output changed to 6: tool

@@ -2223,6 +2223,18 @@
       ],
       "timeout": 180,
       "stack_kib": 65536
+    },
+    {
+      "source": "psionic/examples/rollouts.coax",
+      "chapter": "psionic/book/ch139-learn-from-rollouts.md",
+      "stdout": "psionic/fixtures/rollouts.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180,
+      "stack_kib": 65536
     }
   ]
 }

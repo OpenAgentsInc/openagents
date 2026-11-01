@@ -1,0 +1,20 @@
+problems: 64 training, 4 held out, shared: 0, audit: ok
+start: chapter 136's run, 6 base steps and 10 of 10 tuning steps, record digest 723058b2318e1c94...
+start, held-out questions answered greedily with reward 1: 0 of 4 right, 95% interval 0.0 to 0.48990002040399916
+greedy rollouts against chapter 136's sf_ask: 4 of 4 agree in tokens and verdict
+a sampled rollout of the first held-out question, tokens: 320 321 87 104 300 32 105 115 32 49 54 42 53 53 63 322 323 325 42 51 52 57 49 54 48 6 52 326
+its targets: - - - - - - - - - - - - - - - - 325 42 51 52 57 49 54 48 6 52 326 -
+the first batch drawn twice from its seeds: identical tokens: true, identical log-probabilities: true
+step 1: mean reward 0.0, mean log-ratio to the reference 0.0, loss 0.0, gradient norm 0.0
+step 2: mean reward 0.0, mean log-ratio to the reference 0.0, loss 0.0, gradient norm 0.0
+step 3: mean reward 0.0, mean log-ratio to the reference 0.0, loss 0.0, gradient norm 0.0
+budget: 24 rollouts, 24 graded, 0 with reward 1, 660 positions read while sampling, 288 sampled tokens, 24 gradient passes, 24 reference passes
+after, held-out questions answered greedily with reward 1: 0 of 4 right, 95% interval 0.0 to 0.48990002040399916
+changed outcomes: 0 gained, 0 lost; share gained 0.0 to 1.0 (95% interval)
+acceptance (frozen before the run): failed
+reference after training: identical to the start's record: true
+the first batch offered at step 1: stale
+the first batch relabelled as step 2: ok
+weights unchanged by the refusals: true
+the 2+3 exchange graded: reward 1.0
+the same exchange with the calculator's output changed to 6: tool

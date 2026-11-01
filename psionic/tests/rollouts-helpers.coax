@@ -1,0 +1,19 @@
+// Chapter 139's checks: chapter 136's programmed bigram models with the
+// output head scaled by gain, so that sampling at temperature 1 follows the
+// program except where two pairs share a source token, and the surrogate
+// loss over hand-made rollouts that the central differences read.
+// psionic/lib/nanochat/rollouts.coax loads this file.
+rl_program :: (c:NcConfig,pairs:[][2]int,gain:f64,p:[]f64) {sf_program(c,pairs,p);for i:nc_head(c)..<nc_smear_gate(c) {p[i]*=gain;}}
+// 1+2 through the tool: the call, then after the calculator's output either
+// 3 or 4, as the draw falls, and <|assistant_end|>.
+RL_FORK :: [9][2]int.[[2]int.[323,325],[2]int.[325,49],[2]int.[49,43],[2]int.[43,50],[2]int.[50,326],[2]int.[328,51],[2]int.[328,52],[2]int.[51,324],[2]int.[52,324]];
+// The seeds the sampled check draws: the fork falls both ways among them.
+RL_SEEDS :: 3;
+// -sum_i adv_i log pi(y_i) / T from chapter 125's forward pass alone.
+rl_surrogate :: (c:NcConfig,w:[]f64,tok:[]int,tgt:[]int,start:[]int,adv:[]f64,kept:int,k:PfWork)->f64 {
+    s:=0.0;for i:0..<start.count-1 {s-=adv[i]*pf_value(c,w,PfMode.dpo,0,tok[start[i]..<start[i+1]],tgt[start[i]..<start[i+1]],k).value;}return s/f64(kept);
+}
+rl_central :: (c:NcConfig,w:[]f64,tok:[]int,tgt:[]int,start:[]int,adv:[]f64,kept:int,at:int,k:PfWork)->f64 {
+    h:=0.00001;x:=w[at];w[at]=x+h;up:=rl_surrogate(c,w,tok,tgt,start,adv,kept,k);w[at]=x-h;down:=rl_surrogate(c,w,tok,tgt,start,adv,kept,k);w[at]=x;
+    return (up-down)/(2*h);
+}

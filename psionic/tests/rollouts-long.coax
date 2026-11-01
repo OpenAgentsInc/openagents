@@ -1,0 +1,18 @@
+#load "rollouts-drive.coax";
+// Chapter 139's recorded run (release only; psionic/tests/check_rollouts.sh
+// compares its transcript with psionic/fixtures/rollouts/long.out): chapter
+// 136's recorded base run rebuilt and its tuning run stopped after step 250,
+// then 150 policy-gradient steps of 8 prompts with 8 rollouts each over
+// chapter 136's 4,096 training problems, and its 256 held-out questions asked
+// greedily before and after.
+// book:begin long
+// Chapter 136's recorded plans (psionic/tests/sft-long.coax), unchanged.
+SF_BASE_RUN :: NpPlan.{model=SF_MODEL,batch=8,steps=600,warmup=20,warmdown=120,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1361,budget=1e12};
+SF_TUNE_RUN :: NpPlan.{model=SF_MODEL,batch=16,steps=1200,warmup=0,warmdown=300,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=11,init=0,budget=1e13};
+RL_RUN :: NpPlan.{model=SF_MODEL,batch=1,steps=150,warmup=0,warmdown=40,final=0,
+    embed=0.01,matrix=0.003,head=0.003,scalar=0.003,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=19,init=0,budget=1e13};
+RL_PLAN :: RlPlan.{prompts=8,group=8,beta=0.02,scale=false,seed=139};
+main :: () {rl_drive(SF_BASE_RUN,SF_TUNE_RUN,250,RL_RUN,RL_PLAN,4096,256,25);}
+// book:end long

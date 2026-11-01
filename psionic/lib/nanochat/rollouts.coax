@@ -1,0 +1,473 @@
+// Chapter 139: on-policy learning from rollouts on chapter 136's calculator
+// task, on the CPU in binary64 (nanochat-rollouts-cpu-f64-v1). A rollout is
+// one sampled exchange: the question, the model's reply drawn by chapter
+// 126's engine with chapter 53's seeded sampler, the calculator's output when
+// the reply closes a call, and the model's second reply. The reward is 1 when
+// the call is exactly the question's expression and the final reply is
+// exactly the calculator's answer, graded from the tokens alone, and 0
+// otherwise. Each prompt gets a group of rollouts; a rollout's advantage is
+// its reward, less beta times its log-probability ratio to a frozen
+// reference, minus the group's mean (optionally over the group's standard
+// deviation). A step adds every rollout's summed log-probability gradient
+// over its sampled tokens, weighted by its advantage over the batch's sampled
+// tokens, then clips, schedules and applies AdamW as chapter 128 does. A step
+// refuses rollouts sampled from another policy version. The acceptance rule
+// is frozen here, before any run.
+#load "prefer.coax";
+#load "../../tests/rollouts-helpers.coax";
+#authority;
+
+RlStatus :: enum u8 {ok;shape;window;model;tool;stale;data;config;}
+// The recipe: prompts per step, rollouts per prompt, the KL coefficient,
+// whether advantages are divided by the group's standard deviation, and the
+// seed every rollout's draws come from. Rollouts are drawn at temperature 1,
+// the distribution the step's log-probabilities read.
+RlPlan :: struct {prompts:int;group:int;beta:f64;scale:bool;seed:u64;}
+// A rollout: n tokens, the first prompt of them the question.
+RlRoll :: struct {status:RlStatus;n:int;prompt:int;positions:int;}
+RlGrade :: struct {status:RlStatus;called:bool;answered:bool;}
+// A batch sampled at one policy version: rollout i holds
+// tok[start[i]..<start[i+1]]; kept counts its sampled tokens; positions the
+// model read while sampling.
+RlBatch :: struct {status:RlStatus;version:int;count:int;tokens:int;kept:int;positions:int;rewarded:int;reward:f64;kl:f64;}
+RlStep :: struct {status:RlStatus;run:NpRun;loss:f64;norm:f64;scale:f64;}
+RlRate :: struct {status:RlStatus;right:int;count:int;}
+// A recorded log-probability may differ from the step's own by rounding
+// between chapter 125's forward pass and chapter 127's tape: at most 2^-30.
+RL_SAME :: 1.0/1073741824.0;
+
+// Checks first.
+#test "hand values: advantages, rewards and the acceptance rule" {
+    // Rewards 1 0 0 1 and log-ratios 0.5 0 1 -1 with beta 0.1 shape to
+    // 0.95 0 -0.1 1.1, whose mean is 0.4875. The second group is all alike.
+    r:=[8]f64.[1,0,0,1, 1,1,1,1];lp:=[8]f64.[-2,-3,-1,-4, -1,-2,-3,-4];lr:=[8]f64.[-2.5,-3,-2,-3, -1,-2,-3,-4];out:[8]f64;
+    #assert rl_advantages(4,0.1,false,r[..],lp[..],lr[..],out[..])==RlStatus.ok;
+    want:=[4]f64.[0.4625,-0.4875,-0.5875,0.6125];for i:0..<4 {#assert abs(out[i]-want[i])<1e-15;}for i:4..<8 {#assert out[i]==0;}
+    // Over the group's standard deviation, sqrt(1.171875/4) = 0.54127; a group all alike stays 0.
+    #assert rl_advantages(4,0.1,true,r[..],lp[..],lr[..],out[..])==RlStatus.ok;
+    sd:=sqrt(1.171875/4.0);for i:0..<4 {#assert abs(out[i]-want[i]/sd)<1e-15;}#assert abs(out[0]-0.854478398400646)<1e-14;for i:4..<8 {#assert out[i]==0;}
+    // beta 0 is the plain recipe: the reward minus the group's mean.
+    #assert rl_advantages(4,0,false,r[..],lp[..],lr[..],out[..])==RlStatus.ok && out[0]==0.5 && out[1]==-0.5 && out[2]==-0.5 && out[3]==0.5;
+    #assert rl_advantages(8,0,false,r[..],lp[..],lr[..],out[..])==RlStatus.ok && out[0]==0.25 && out[1]==-0.75 && out[2]==-0.75 && out[7]==0.25;
+    #assert rl_advantages(8,0,true,r[..],lp[..],lr[..],out[..])==RlStatus.ok && abs(out[0]-0.25/sqrt(0.1875))<1e-15;
+    // A group of one has nothing to compare with.
+    #assert rl_advantages(1,0.1,false,r[..],lp[..],lr[..],out[..])==RlStatus.ok;for i:0..<8 {#assert out[i]==0;}
+    // Refusals write nothing.
+    for i:0..<8 {out[i]=7;}
+    #assert rl_advantages(0,0.1,false,r[..],lp[..],lr[..],out[..])==RlStatus.data && rl_advantages(3,0.1,false,r[..],lp[..],lr[..],out[..])==RlStatus.data;
+    #assert rl_advantages(4,0.1,false,r[..],lp[0..<7],lr[..],out[..])==RlStatus.data && rl_advantages(4,0.1,false,r[..],lp[..],lr[0..<7],out[..])==RlStatus.data && rl_advantages(4,0.1,false,r[..],lp[..],lr[..],out[0..<7])==RlStatus.data;
+    #assert rl_advantages(4,-0.1,false,r[..],lp[..],lr[..],out[..])==RlStatus.config && rl_advantages(4,0.0/0.0,false,r[..],lp[..],lr[..],out[..])==RlStatus.config;
+    for i:0..<8 {#assert out[i]==7;}
+    // The reward is 1 only for the exact call and the exact answer.
+    #assert rl_reward(RlGrade.{called=true,answered=true})==1 && rl_reward(RlGrade.{called=true})==0 && rl_reward(RlGrade.{answered=true})==0 && rl_reward(RlGrade.{})==0;
+    // Acceptance: 14 gained and 6 lost give 0.481 to 0.855; 15 and 6 give 0.5004 to 0.862.
+    #assert abs(pf_wilson(14,20).lo-0.4810232237710206)<1e-15 && abs(pf_wilson(15,21).lo-0.500432261771624)<1e-15;
+    was:[64]u8;now:[64]u8;for i:0..<64 {was[i]=cast(u8)(i%2);now[i]=was[i];}
+    for i:0..<14 {now[2*i]=1;}for i:0..<6 {now[2*i+41]=0;}ok:=RlRate.{right=40,count=64};
+    ch:=rl_changes(was[..],now[..]);#assert ch.status==RlStatus.ok && ch.right==14 && ch.count==20 && !rl_accept(ok,ok,was[..],now[..]);
+    now[28]=1;ch=rl_changes(was[..],now[..]);#assert ch.right==15 && ch.count==21 && rl_accept(ok,ok,was[..],now[..]);
+    now[41]=1;ch=rl_changes(was[..],now[..]);#assert ch.right==15 && ch.count==20 && rl_accept(ok,ok,was[..],now[..]);
+    #assert !rl_accept(RlRate.{status=RlStatus.data},ok,was[..],now[..]) && !rl_accept(ok,RlRate.{status=RlStatus.model,right=40,count=64},was[..],now[..]) && !rl_accept(ok,RlRate.{right=40,count=63},was[..],now[..]);
+    #assert rl_changes(was[..],now[0..<63]).status==RlStatus.data && !rl_accept(ok,ok,was[..],now[0..<63]);
+    // Nothing changed is no evidence; swapped lists are losses.
+    #assert rl_changes(was[..],was[..]).count==0 && !rl_accept(ok,ok,was[..],was[..]) && !rl_accept(ok,ok,now[..],was[..]);
+    // The bound itself is not above it.
+    x:=RlRate.{right=24,count=64};lo:=pf_wilson(24,64).lo;#assert !rl_above(x,lo) && rl_above(x,lo-1e-12) && rl_above(RlRate.{right=64,count=64},0.9) && !rl_above(RlRate.{status=RlStatus.data,right=64,count=64},0.9);
+}
+#test "the checker grades from tokens: the 2+3 exchange, each way to miss, and a changed output" #steps 2000000000 {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ids:[64]int;t:[64]int;p:=SfProblem.{a=2,b=3};
+    // Positions 15 to 24: <|python_start|> 2 + 3 <|python_end|> <|output_start|> 5 <|output_end|> 5 <|assistant_end|>.
+    #assert sf_example(table[..],sp[..],329,64,p,ids[..],t[..]).n==25;
+    g:=rl_grade(table[..],320,p,ids[0..<25],15);#assert g.status==RlStatus.ok && g.called && g.answered;
+    x:=ids;x[23]=54;g=rl_grade(table[..],320,p,x[0..<25],15);#assert g.status==RlStatus.ok && g.called && !g.answered;     // 6 after the output 5
+    g=rl_grade(table[..],320,p,ids[0..<24],15);#assert g.status==RlStatus.ok && g.called && !g.answered;                    // cut off before <|assistant_end|>
+    g=rl_grade(table[..],320,p,ids[0..<20],15);#assert g.status==RlStatus.ok && g.called && !g.answered;                    // ends at the call
+    g=rl_grade(table[..],320,p,ids[0..<23],15);#assert g.status==RlStatus.ok && g.called && !g.answered;                    // ends at the output
+    x=ids;x[18]=52;x[21]=54;x[23]=54;g=rl_grade(table[..],320,p,x[0..<25],15);#assert g.status==RlStatus.ok && !g.called && !g.answered;  // 2+4, 6, 6
+    x[23]=53;g=rl_grade(table[..],320,p,x[0..<25],15);#assert g.status==RlStatus.ok && !g.called && g.answered && rl_reward(g)==0;          // 2+4, 6, then 5
+    // Direct answers: right, wrong, and cut off.
+    x=ids;x[15]=53;x[16]=324;g=rl_grade(table[..],320,p,x[0..<17],15);#assert g.status==RlStatus.ok && !g.called && g.answered;
+    x[15]=54;g=rl_grade(table[..],320,p,x[0..<17],15);#assert !g.called && !g.answered;
+    x[15]=53;g=rl_grade(table[..],320,p,x[0..<16],15);#assert !g.called && !g.answered;
+    // An unclosed call is not a call, and its text is not a number.
+    x=ids;x[17]=324;g=rl_grade(table[..],320,p,x[0..<18],15);#assert g.status==RlStatus.ok && !g.called && !g.answered;
+    // Text before the call, and a <|python_end|> before any block, are allowed as sf_ask allows them.
+    y:[64]int;for i:0..<15 {y[i]=ids[i];}y[15]=32;for i:15..<25 {y[i+1]=ids[i];}g=rl_grade(table[..],320,p,y[0..<26],15);#assert g.called && g.answered;
+    y[15]=326;g=rl_grade(table[..],320,p,y[0..<26],15);#assert g.called && g.answered;
+    // A second call after the output ends the exchange without an answer.
+    x=ids;x[23]=325;x[24]=326;g=rl_grade(table[..],320,p,x[0..<25],15);#assert g.status==RlStatus.ok && g.called && !g.answered;
+    // Two-token and negative outputs.
+    q:=SfProblem.{a=7,b=9,op=2};a:=sf_example(table[..],sp[..],329,64,q,ids[..],t[..]);g=rl_grade(table[..],320,q,ids[0..<a.n],15);#assert a.n==27 && g.called && g.answered;
+    x=ids;x[22]=55;#assert rl_grade(table[..],320,q,x[0..<a.n],15).status==RlStatus.tool;                                   // 67 for 63
+    q=SfProblem.{a=1,b=9,op=1};a=sf_example(table[..],sp[..],329,64,q,ids[..],t[..]);g=rl_grade(table[..],320,q,ids[0..<a.n],15);#assert g.called && g.answered;
+    // Refusals: an output the calculator did not give, a missing <|output_start|> or <|output_end|>, a call it cannot run with tokens after it, an output cut short.
+    #assert sf_example(table[..],sp[..],329,64,p,ids[..],t[..]).n==25;
+    x=ids;x[21]=54;g=rl_grade(table[..],320,p,x[0..<25],15);#assert g.status==RlStatus.tool && !g.called && !g.answered;
+    x=ids;x[20]=53;#assert rl_grade(table[..],320,p,x[0..<25],15).status==RlStatus.tool;
+    x=ids;x[22]=53;#assert rl_grade(table[..],320,p,x[0..<25],15).status==RlStatus.tool;
+    x=ids;x[18]=326;x[19]=327;#assert rl_grade(table[..],320,p,x[0..<25],15).status==RlStatus.tool;
+    #assert rl_grade(table[..],320,p,ids[0..<22],15).status==RlStatus.tool && rl_grade(table[..],320,p,ids[0..<21],15).status==RlStatus.tool;
+    #assert rl_grade(table[..],320,p,ids[0..<25],0).status==RlStatus.shape && rl_grade(table[..],320,p,ids[0..<25],25).status==RlStatus.shape;
+    g=rl_grade(table[..],320,p,ids[0..<25],24);#assert g.status==RlStatus.ok && !g.called && !g.answered;
+    g=rl_grade(table[..],320,p,ids[0..<25],1);#assert g.status==RlStatus.ok && g.called && g.answered;
+}
+#test "a step's gradient by hand and by central differences" #steps 4000000000 {
+    c:=PF_SMALL;n:=nc_parameter_count(c);tok:=PF_TOK;tgt:=PF_TGT;start:=PF_START;
+    cache:[2000]f64;work:[2000]f64;logits:[96]f64;tape:[6000]f64;g:[10216]f64;h:[10216]f64;seq:[8]int;target:[8]int;
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    p:=NpPlan.{model=c,batch=1,steps=3,warmup=0,warmdown=1,final=0.5,embed=0.05,matrix=0.02,head=0.02,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=0,seed=4,init=9,budget=1e12};
+    w:[10216]f64;m:[10216]f64;v:[10216]f64;total:[10216]f64;w0:[10216]f64;lp:[4]f64;want:[10216]f64;
+    // Four stand-in rollouts with 3, 3, 3 and 2 sampled tokens: T = 11.
+    adv:=[4]f64.[0.5,-0.25,-0.75,0.5];kept:=[4]int.[3,3,3,2];for i:0..<4 {#assert sf_kept(tgt[start[i]..<start[i+1]])==kept[i];}
+    b:=RlBatch.{count=4,tokens=20,kept=11};
+    // A zero head: every log-probability is -ln 12 per token, so the loss is
+    // ln 12 (0.5*3 - 0.25*3 - 0.75*3 + 0.5*2) / 11 = -0.5 ln 12 / 11.
+    np_init(c,p.init,w[..]);for i:nc_head(c)..<nc_smear_gate(c) {w[i]=0;}
+    for i:0..<4 {lp[i]=pf_value(c,w[..],PfMode.dpo,0,tok[start[i]..<start[i+1]],tgt[start[i]..<start[i+1]],k).value;#assert abs(lp[i]+f64(kept[i])*log(12.0))<1e-14;}
+    r:=rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k);
+    #assert r.status==RlStatus.ok && abs(r.loss+0.11295030226309093)<1e-15 && r.run.step==1 && r.scale==1;
+    // By hand: rollout i adds A_i kept_i/T times chapter 127's masked gradient of its mean loss.
+    np_init(c,p.init,w[..]);w0=w;for i:0..<n {m[i]=0;v[i]=0;}
+    for i:0..<4 {lp[i]=pf_value(c,w0[..],PfMode.dpo,0,tok[start[i]..<start[i+1]],tgt[start[i]..<start[i+1]],k).value;
+        q:=nb_masked(c,w0[..],tok[start[i]..<start[i+1]],tgt[start[i]..<start[i+1]-1],g[..],tape[..],logits[..],false);#assert q.status==NcStatus.ok;
+        for j:0..<n {want[j]+=adv[i]*f64(kept[i])/11*g[j];}}
+    r=rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k);#assert r.status==RlStatus.ok;
+    for j:0..<n {#assert abs(total[j]-want[j])<=1e-14*(1+abs(want[j]));}
+    s:=0.0;for x:total {s+=x*x;}#assert r.norm==sqrt(s) && abs(r.loss-rl_surrogate(c,w0[..],tok[..],tgt[..],start[..],adv[..],11,k))<1e-14;
+    // Central differences of the forward surrogate agree in four tensors.
+    picks:=[4]int.[0,nc_wte(c)+4*24+3,nc_block(c,0).q+7,nc_head(c)+11*24+5];
+    for at:picks {#assert abs(rl_central(c,w0[..],tok[..],tgt[..],start[..],adv[..],11,at,k)-total[at])<=1e-7*(1+abs(total[at]));}
+    #assert !np_same(w[..],w0[..]);
+    // Zero advantages give a zero gradient.
+    z:=[4]f64.[0,0,0,0];w=w0;for i:0..<n {m[i]=0;v[i]=0;}r=rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],z[..],w[..],m[..],v[..],total[..],k);
+    #assert r.status==RlStatus.ok && r.norm==0 && r.loss==0;
+    // Clipping leaves the gradient at exactly clip; at the norm itself it scales nothing.
+    w=w0;for i:0..<n {m[i]=0;v[i]=0;}q:=p;r=rl_step(q,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k);t0:=total;
+    w=w0;q.clip=r.norm/2;r=rl_step(q,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k);
+    s=0.0;for x:total {s+=x*x;}#assert abs(sqrt(s)-q.clip)<1e-15*(1+q.clip) && r.norm==2*q.clip;
+    w=w0;q.clip=r.norm;r=rl_step(q,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k);#assert np_same(total[..],t0[..]);
+    // The schedule: with a warmdown of two, the last step of three runs at (1 + final)/2.
+    q=p;q.warmdown=2;w=w0;r=rl_step(q,NpRun.{step=2,state=AwState.{step=2}},RlBatch.{version=2,count=4,tokens=20,kept=11},tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k);#assert r.status==RlStatus.ok && r.scale==0.75 && r.run.step==3;
+}
+#test "a step refuses another version's rollouts and changed log-probabilities before anything moves" #steps 4000000000 {
+    c:=PF_SMALL;n:=nc_parameter_count(c);tok:=PF_TOK;tgt:=PF_TGT;start:=PF_START;
+    cache:[2000]f64;work:[2000]f64;logits:[96]f64;tape:[6000]f64;g:[10216]f64;h:[10216]f64;seq:[8]int;target:[8]int;
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    p:=NpPlan.{model=c,batch=1,steps=3,warmup=0,warmdown=1,final=0.5,embed=0.05,matrix=0.02,head=0.02,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=0,seed=4,init=9,budget=1e12};
+    w:[10216]f64;m:[10216]f64;v:[10216]f64;total:[10216]f64;lp:[4]f64;np_init(c,p.init,w[..]);keep:=w;
+    adv:=[4]f64.[0.5,-0.25,-0.75,0.5];b:=RlBatch.{count=4,tokens=20,kept=11};
+    for i:0..<4 {lp[i]=pf_value(c,w[..],PfMode.dpo,0,tok[start[i]..<start[i+1]],tgt[start[i]..<start[i+1]],k).value;}
+    // Another version, a finished run, a refused batch, short buffers, nothing sampled.
+    x:=b;x.version=1;#assert rl_step(p,NpRun.{},x,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.stale;
+    #assert rl_step(p,NpRun.{step=1},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.stale;
+    x=b;x.version=3;#assert rl_step(p,NpRun.{step=3},x,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.config;
+    x=b;x.status=RlStatus.tool;#assert rl_step(p,NpRun.{},x,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.data;
+    x=b;x.count=0;#assert rl_step(p,NpRun.{},x,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.data;
+    x=b;x.kept=0;#assert rl_step(p,NpRun.{},x,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.data;
+    #assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[0..<4],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.data;
+    #assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],lp[0..<3],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.data;
+    #assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[0..<3],w[..],m[..],v[..],total[..],k).status==RlStatus.data;
+    // A recorded log-probability off by 2^-29 was read from other weights; 2^-30 is rounding.
+    for f:0..<4 {l:=lp;l[f]+=1.0/536870912.0;#assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],l[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.stale;}
+    l:=lp;l[3]=0.0/0.0;#assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],l[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.stale;
+    l=lp;l[3]-=1.0/536870912.0;#assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],l[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.stale;
+    // A broken model, and an optimizer refusal.
+    bw:=w;bw[0]=0.0/0.0;#assert rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],lp[..],adv[..],bw[..],m[..],v[..],total[..],k).status==RlStatus.model;
+    #assert rl_step(p,NpRun.{state=AwState.{step=-1}},b,tok[..],tgt[..],start[..],lp[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.config;
+    #assert np_same(keep[..],w[..]);
+    // Rounding passes: exactly 2^-30 either way from the step's own value, chapter 127's.
+    for f:0..<4 {e:=pf_grad(c,keep[..],PfMode.dpo,0,tok[start[f]..<start[f+1]],tgt[start[f]..<start[f+1]],h[..],k).value;
+        for sign:[2]f64.[1,-1] {l=lp;l[f]=e+sign*RL_SAME;w=keep;for i:0..<n {m[i]=0;v[i]=0;}
+            #assert abs(l[f]-e)==RL_SAME && rl_step(p,NpRun.{},b,tok[..],tgt[..],start[..],l[..],adv[..],w[..],m[..],v[..],total[..],k).status==RlStatus.ok;}}
+    // One rollout is a batch.
+    // One rollout is a batch, and one sampled token is enough.
+    o:=b;o.count=1;o.kept=1;w=keep;#assert rl_step(p,NpRun.{},o,tok[..],tgt[..],start[0..<2],lp[0..<1],adv[0..<1],w[..],m[..],v[..],total[..],k).status==RlStatus.ok;
+}
+#test "greedy rollouts are chapter 136's exchanges, and the checker is its verdict" #steps 4000000000 {
+    c:=SF_TEST;c.sequence_len=32;c.context=32;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);w:[29416]f64;
+    cache:[8000]f64;work:[12000]f64;logits:[21056]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    ww:=ne_buffers(c,32,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    tok:[64]int;tgt:[64]int;ids:[64]int;greedy:=NxOptions.{temperature=0};
+    tool:=[7][2]int.[[2]int.[323,325],[2]int.[325,49],[2]int.[49,43],[2]int.[43,50],[2]int.[50,326],[2]int.[328,51],[2]int.[51,324]];
+    four:=tool;four[5][1]=52;four[6][0]=52;
+    lead:=[7][2]int.[[2]int.[323,32],[2]int.[32,325],[2]int.[325,49],[2]int.[49,43],[2]int.[43,50],[2]int.[50,326],[2]int.[328,324]];
+    junk:=[3][2]int.[[2]int.[323,325],[2]int.[325,43],[2]int.[43,326]];
+    bos:=[1][2]int.[[2]int.[323,320]];
+    one:=SfProblem.{a=1,b=2};two:=SfProblem.{a=2,b=2};
+    // Each program asked one question, by rollout and by sf_ask: the same tokens, the same verdict.
+    mul:=[8][2]int.[[2]int.[323,325],[2]int.[325,55],[2]int.[55,42],[2]int.[42,57],[2]int.[57,326],[2]int.[328,54],[2]int.[54,51],[2]int.[51,324]];
+    for f:0..<7 {q:=one;
+        if f==0 {sf_program(c,tool[..],w[..]);}if f==1 {sf_program(c,tool[..],w[..]);q=two;}if f==2 {sf_program(c,four[..],w[..]);q=two;}if f==6 {sf_program(c,mul[..],w[..]);q=SfProblem.{a=7,b=9,op=2};}
+        if f==3 {sf_program(c,lead[..],w[..]);}if f==4 {sf_program(c,junk[..],w[..]);}if f==5 {sf_program(c,bos[..],w[..]);}
+        o:=rl_rollout(c,w[..],table[..],sp[..],q,greedy,cast(u64)f,ww,tok[..],tgt[..]);a:=sf_ask(c,w[..],table[..],sp[..],q,ww,ids[..]);
+        #assert o.status==RlStatus.ok && a.status==SfStatus.ok && o.prompt==15 && o.positions==a.positions;
+        for i:0..<a.written {#assert tok[i]==ids[i];}
+        final:=a.first;if a.first==NeStop.tool && a.last!=NeStop.none {final=a.last;}
+        if final==NeStop.assistant_end {#assert o.n==a.written+1 && tok[a.written]==324;}
+        else if final==NeStop.bos {#assert o.n==a.written+1 && tok[a.written]==320;}
+        else {#assert o.n==a.written;}
+        g:=rl_grade(table[..],320,q,tok[0..<o.n],o.prompt);#assert g.status==RlStatus.ok && g.called==a.called && g.answered==a.answered;
+        for i:0..<o.n-1 {#assert tgt[i]==-1 || tgt[i]==tok[i+1];}#assert tgt[o.n-1]==-1;
+        if f<3 {#assert final==NeStop.assistant_end && sf_check(tok[0..<o.n],tgt[0..<o.n],320);}
+        // 1+2 through the tool, by hand: the call and the answer are targets; the prompt and the output are not.
+        if f==0 {want:=[25]int.[320,321,87,104,300,32,105,115,32,49,43,50,63,322,323,325,49,43,50,326,327,51,328,51,324];
+            tw:=[25]int.[-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,325,49,43,50,326,-1,-1,-1,51,324,-1];
+            #assert o.n==25 && g.called && g.answered;for i:0..<25 {#assert tok[i]==want[i] && tgt[i]==tw[i];}}
+        if f==2 {#assert !g.called && g.answered;}
+        // 7*9: a two-token output, 6 then 3, written in order.
+        if f==6 {#assert o.n==27 && tok[21]==54 && tok[22]==51 && g.called && g.answered && sf_check(tok[0..<27],tgt[0..<27],320);}if f==3 {#assert g.called && !g.answered;}
+        // A call the calculator cannot run ends the exchange at <|python_end|>; a drawn <|bos|> is kept as the draw.
+        if f==4 {#assert o.n==18 && tok[17]==326 && tgt[16]==326 && tgt[17]==-1;}
+        if f==5 {#assert o.n==16 && tok[15]==320 && tgt[14]==320 && tgt[15]==-1 && sf_kept(tgt[0..<16])==1;}
+    }
+    // A reply that runs to a window of 20 keeps every drawn token and adds none: 20 - 15 = 5 of them.
+    loop:=[2][2]int.[[2]int.[323,49],[2]int.[49,49]];sf_program(c,loop[..],w[..]);small:=c;small.sequence_len=20;small.context=20;
+    o:=rl_rollout(small,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]);
+    #assert o.n==20 && tok[19]==49 && tgt[14]==49 && tgt[18]==49 && tgt[19]==-1 && sf_kept(tgt[0..<20])==5;
+    // The window's edge: 15 + 5 for the call + 3 for the output leaves one token in 24, none in 23.
+    sf_program(c,tool[..],w[..]);small.sequence_len=24;small.context=24;
+    o=rl_rollout(small,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]);#assert o.status==RlStatus.ok && o.n==24 && tok[23]==51 && tgt[22]==51 && tgt[23]==-1 && tgt[21]==-1;
+    small.sequence_len=23;small.context=23;o=rl_rollout(small,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]);#assert o.status==RlStatus.ok && o.n==20 && tgt[18]==326 && tgt[19]==-1;
+    // Refusals: short buffers, no room for a reply, a vocabulary without the specials, a broken model.
+    #assert rl_rollout(c,w[..],table[..],sp[..],one,greedy,0,ww,tok[0..<31],tgt[..]).status==RlStatus.shape && rl_rollout(c,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[0..<31]).status==RlStatus.shape;
+    small.sequence_len=15;small.context=15;#assert rl_rollout(small,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]).status==RlStatus.window;
+    small.sequence_len=16;small.context=16;#assert rl_rollout(small,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]).status==RlStatus.ok;
+    v:=c;v.vocab=328;#assert rl_rollout(v,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]).status==RlStatus.shape;
+    w[0]=0.0/0.0;#assert rl_rollout(c,w[..],table[..],sp[..],one,greedy,0,ww,tok[..],tgt[..]).status==RlStatus.model;
+}
+#test "sampled rollouts replay from their seeds, one stream per reply" #steps 4000000000 {
+    c:=SF_TEST;c.sequence_len=32;c.context=32;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);w:[29416]f64;fork:=RL_FORK;rl_program(c,fork[..],2,w[..]);
+    cache:[8000]f64;work:[12000]f64;logits:[21056]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    ww:=ne_buffers(c,32,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    tok:[32]int;tgt:[32]int;t2:[32]int;g2:[32]int;out:[32]int;p:=SfProblem.{a=1,b=2};threes:=0;
+    for seed:0..<RL_SEEDS {o:=rl_rollout(c,w[..],table[..],sp[..],p,NxOptions.{},cast(u64)seed,ww,tok[..],tgt[..]);
+        #assert o.status==RlStatus.ok && o.n==25 && tok[19]==326 && tok[22]==328 && sf_check(tok[0..<25],tgt[0..<25],320);
+        // The first reply is chapter 126's engine with draws from cr_bits(seed, 0), the second with cr_bits(seed, 1).
+        h:=ne_generate(c,w[..],320,tok[0..<15],NxOptions.{},cr_bits(cast(u64)seed,0),17,out[..],ww,false);#assert h.written==5 && h.stop==NeStop.tool;for i:0..<5 {#assert out[i]==tok[15+i];}
+        h=ne_generate(c,w[..],320,tok[0..<23],NxOptions.{},cr_bits(cast(u64)seed,1),9,out[..],ww,false);#assert h.written==1 && out[0]==tok[23] && h.stop==NeStop.assistant_end;
+        g:=rl_grade(table[..],320,p,tok[0..<o.n],15);#assert g.called && g.answered==(tok[23]==51);if g.answered {threes+=1;}
+        // The same seed again, into other buffers: the same rollout.
+        if seed<2 {for i:0..<32 {t2[i]=-7;g2[i]=-7;}r:=rl_rollout(c,w[..],table[..],sp[..],p,NxOptions.{},cast(u64)seed,ww,t2[..],g2[..]);
+            #assert r.n==o.n && r.positions==o.positions;for i:0..<o.n {#assert t2[i]==tok[i] && g2[i]==tgt[i];}}}
+    // A fork in the first reply: its draw is stream 0's.
+    direct:=[3][2]int.[[2]int.[323,51],[2]int.[323,52],[2]int.[51,324]];rl_program(c,direct[..],2,w[..]);differ:=0;
+    for seed:0..<4 {o:=rl_rollout(c,w[..],table[..],sp[..],p,NxOptions.{},cast(u64)seed,ww,tok[..],tgt[..]);
+        h:=ne_generate(c,w[..],320,tok[0..<15],NxOptions.{},cr_bits(cast(u64)seed,0),1,out[..],ww,false);#assert out[0]==tok[15];
+        h=ne_generate(c,w[..],320,tok[0..<15],NxOptions.{},cr_bits(cast(u64)seed,1),1,out[..],ww,false);if out[0]!=tok[15] {differ+=1;}}
+    #assert differ>0;rl_program(c,fork[..],2,w[..]);
+    // The fork falls both ways: more seeds until it has.
+    seed:=RL_SEEDS;drawn:=RL_SEEDS;
+    while (threes==0 || threes==drawn) && seed<32 {o:=rl_rollout(c,w[..],table[..],sp[..],p,NxOptions.{},cast(u64)seed,ww,tok[..],tgt[..]);
+        if rl_reward(rl_grade(table[..],320,p,tok[0..<o.n],15))==1 {threes+=1;}drawn+=1;seed+=1;}
+    #assert threes>0 && threes<drawn;
+}
+#test "a batch: seeds, grades, values and advantages, each from its own definition" #steps 4000000000 {
+    c:=SF_TEST;c.sequence_len=32;c.context=32;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);w:[29416]f64;ref:[29416]f64;fork:=RL_FORK;rl_program(c,fork[..],2,w[..]);rl_program(c,fork[..],1.5,ref[..]);
+    cache:[8000]f64;work:[12000]f64;logits:[21056]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    ww:=ne_buffers(c,32,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    tape:[1]f64;g:[1]f64;h:[1]f64;seq:[32]int;target:[32]int;k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    ps:=[3]SfProblem.[SfProblem.{a=1,b=2},SfProblem.{a=2,b=2},SfProblem.{a=1,b=2,op=2}];plan:=RlPlan.{prompts=2,group=2,beta=0.05,seed=5};
+    tok:[4*32]int;tgt:[4*32]int;start:=[5]int.[9,9,9,9,9];rw:[4]f64;lp:[4]f64;lr:[4]f64;ad:[4]f64;x:[32]int;y:[32]int;want:[4]f64;
+    // Version 1 asks problems 2 and 3 mod 3: 1*2 and 1+2; only 1+2 can earn a reward.
+    for version:1..<2 {b:=rl_collect(plan,version,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]);
+        #assert b.status==RlStatus.ok && b.version==version && b.count==4 && start[0]==0 && b.tokens==start[4];
+        kept:=0;positions:=0;reward:=0.0;kl:=0.0;rewarded:=0;
+        for j:0..<2 {p:=ps[(version*2+j)%3];
+            for gi:0..<2 {i:=j*2+gi;o:=rl_rollout(c,w[..],table[..],sp[..],p,NxOptions.{},cr_bits(5,cast(u64)((version*2+j)*2+gi)),ww,x[..],y[..]);
+                #assert start[i+1]-start[i]==o.n;for e:0..<o.n {#assert tok[start[i]+e]==x[e] && tgt[start[i]+e]==y[e];}
+                q:=rl_grade(table[..],320,p,x[0..<o.n],15);#assert rw[i]==rl_reward(q);if rw[i]==1 {rewarded+=1;}
+                #assert lp[i]==pf_value(c,w[..],PfMode.dpo,0,x[0..<o.n],y[0..<o.n],k).value && lr[i]==pf_value(c,ref[..],PfMode.dpo,0,x[0..<o.n],y[0..<o.n],k).value && lp[i]!=lr[i];
+                kept+=sf_kept(y[0..<o.n]);positions+=o.positions;reward+=rw[i];kl+=lp[i]-lr[i];}}
+        #assert b.kept==kept && b.positions==positions && b.rewarded==rewarded && b.reward==reward/4 && b.kl==kl/4;
+        #assert rl_advantages(2,0.05,false,rw[..],lp[..],lr[..],want[..])==RlStatus.ok;for i:0..<4 {#assert ad[i]==want[i];}
+        #assert rw[0]==0 && rw[1]==0;}
+    // Refusals.
+    bad:=plan;bad.prompts=0;#assert rl_collect(bad,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.config;
+    bad=plan;bad.group=0;#assert rl_collect(bad,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.config;
+    #assert rl_collect(plan,-1,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.config;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[0..<0],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.config;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[0..<4],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.shape;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[0..<3],lp[..],lr[..],ad[..]).status==RlStatus.shape;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[0..<3],lr[..],ad[..]).status==RlStatus.shape;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[0..<3],ad[..]).status==RlStatus.shape;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[0..<3]).status==RlStatus.shape;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[0..<4*32-1],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.shape;
+    #assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[0..<4*32-1],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.shape;
+    // A rollout's refusal passes through; a policy or reference that cannot be read is refused; a bad beta, after the draws.
+    small:=c;small.sequence_len=15;small.context=15;#assert rl_collect(plan,0,small,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.window;
+    short:=k;short.seq=seq[0..<20];#assert rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,short,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.shape;
+    br:=ref;br[0]=0.0/0.0;#assert rl_collect(plan,0,c,w[..],br[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.model;
+    bw:=w;bw[0]=0.0/0.0;#assert rl_collect(plan,0,c,bw[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.model;
+    one:=plan;one.prompts=1;one.group=1;start[0]=9;#assert rl_collect(one,0,c,w[..],ref[..],table[..],sp[..],ps[0..<1],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.ok && ad[0]==0;
+    bad=plan;bad.prompts=1;bad.beta=-1;#assert rl_collect(bad,0,c,w[..],ref[..],table[..],sp[..],ps[..],ww,k,tok[..],tgt[..],start[..],rw[..],lp[..],lr[..],ad[..]).status==RlStatus.config;
+    // Held-out success: greedy rollouts graded; the fork's greedy pick is its first pair, 3.
+    out:=[2]u8.[7,7];r:=rl_rate(c,w[..],table[..],sp[..],ps[0..<2],ww,out[..]);#assert r.status==RlStatus.ok && r.count==2 && r.right==1 && out[0]==1 && out[1]==0;
+    #assert rl_rate(c,w[..],table[..],sp[..],ps[0..<0],ww,out[0..<0]).status==RlStatus.data && rl_rate(c,w[..],table[..],sp[..],ps[0..<2],ww,out[0..<1]).status==RlStatus.data && rl_rate(c,bw[..],table[..],sp[..],ps[0..<2],ww,out[..]).status==RlStatus.model;
+}
+
+// book:begin accept
+// The acceptance rule, frozen before the first run, on the same held-out
+// questions asked greedily before and after (1 where the reward was 1). Of
+// the questions whose outcome changed, the share that changed to right has
+// a 95% Wilson interval whose lower end is above one half: more gained than
+// lost, beyond chance.
+rl_accept :: (before:RlRate,after:RlRate,was:[]u8,now:[]u8)->bool {
+    if before.status!=RlStatus.ok || after.status!=RlStatus.ok || after.count!=before.count {return false;}
+    return rl_above(rl_changes(was,now),0.5);
+}
+// right: the questions gained; count: those gained or lost.
+rl_changes :: (was:[]u8,now:[]u8)->RlRate {
+    r:=RlRate.{};if was.count!=now.count {r.status=RlStatus.data;return r;}
+    for i:0..<was.count {if was[i]!=now[i] {r.count+=1;if now[i]==1 {r.right+=1;}}}
+    return r;
+}
+// The lower end of r's interval is above bound.
+rl_above :: (r:RlRate,bound:f64)->bool {return r.status==RlStatus.ok && pf_wilson(r.right,r.count).lo>bound;}
+// book:end accept
+
+// book:begin rollout
+// One sampled exchange in tok, its targets in tgt. Like chapter 136's
+// sf_ask, but every token is drawn with options from seed's two streams, the
+// stop token the sampler drew is kept, and every token the model drew is a
+// target: the prompt and the calculator's output are not.
+rl_rollout :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,p:SfProblem,options:NxOptions,seed:u64,work:NeWork,tok:[]int,tgt:[]int)->RlRoll {
+    if tok.count<c.context || tgt.count<c.context {return RlRoll.{status=RlStatus.shape};}
+    q:[24]u8;m:=[2]NcMessage.[NcMessage.{role=NcRole.user,text=sf_text(q[..],sf_question(p,q[..]))},NcMessage.{role=NcRole.assistant}];none:[1]NcPart;
+    pr:=ne_prompt(table,specials,c.vocab,m[..],none[..],tok,false);
+    if pr.status!=NeStatus.ok {return RlRoll.{status=RlStatus.shape};}
+    n:=pr.written;if n>=c.context {return RlRoll.{status=RlStatus.window};}
+    base:=specials[0];
+    g:=ne_generate(c,w,base,tok[0..<n],options,cr_bits(seed,0),c.context-n,tok[n..<c.context],work,false);
+    if g.status!=NeStatus.ok {return RlRoll.{status=RlStatus.model};}
+    end:=rl_close(base,g,n,tok);r:=RlRoll.{n=end,prompt=n,positions=g.positions};at:=end;
+    if g.stop==NeStop.tool {
+        s:=n;while tok[s]!=base+NC_PYTHON_START {s+=1;}
+        d:=bt_decode(table,tok[s+1..<end-1]);k:=sf_calc(cast(string)d.bytes[0..<d.written]);
+        o:[24]u8;out:=bt_encode(table,sf_text(o[..],sf_itoa(k.value,o[..])));at=end+out.written+2;
+        if k.ok && at<c.context {
+            tok[end]=base+NC_OUTPUT_START;for i:0..<out.written {tok[end+1+i]=out.ids[i];}tok[at-1]=base+NC_OUTPUT_END;
+            h:=ne_generate(c,w,base,tok[0..<at],options,cr_bits(seed,1),c.context-at,tok[at..<c.context],work,false);
+            r.n=rl_close(base,h,at,tok);r.positions+=h.positions;
+        }
+    }
+    for i:0..<r.n {tgt[i]=-1;}
+    for i:n-1..<end-1 {tgt[i]=tok[i+1];}
+    for i:at-1..<r.n-1 {tgt[i]=tok[i+1];}
+    return r;
+}
+// The reply's end: a drawn <|assistant_end|> or <|bos|> stays, as the token
+// the sampler chose.
+rl_close :: (base:int,g:NeReply,at:int,tok:[]int)->int {
+    end:=at+g.written;
+    if g.stop==NeStop.assistant_end {tok[end]=base+NC_ASSISTANT_END;end+=1;}
+    if g.stop==NeStop.bos {tok[end]=base;end+=1;}
+    return end;
+}
+// book:end rollout
+
+// book:begin grade
+// The checker, from the tokens alone. called: the first python block holds
+// exactly the question's expression. answered: the exchange ends with
+// <|assistant_end|> and the reply before it, after the calculator's output
+// when there was a call, is exactly the right number. A rollout whose
+// recorded output is not what the calculator returns for the call is refused.
+rl_grade :: (table:[]u8,base:int,p:SfProblem,tok:[]int,prompt:int)->RlGrade {
+    n:=tok.count;if prompt<1 || prompt>=n {return RlGrade.{status=RlStatus.shape};}
+    e:[12]u8;v:[12]u8;expr:=sf_text(e[..],sf_expr(p,e[..]));want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));
+    done:=tok[n-1]==base+NC_ASSISTANT_END;r:=RlGrade.{};
+    s:=prompt;while s<n && tok[s]!=base+NC_PYTHON_START {s+=1;}
+    f:=s;while f<n && tok[f]!=base+NC_PYTHON_END {f+=1;}
+    if f==n {r.answered=done && sf_says(table,tok[prompt..<n-1],want);return r;}
+    d:=bt_decode(table,tok[s+1..<f]);call:=cast(string)d.bytes[0..<d.written];r.called=call==expr;
+    if f==n-1 {return r;}
+    k:=sf_calc(call);o:[24]u8;out:=bt_encode(table,sf_text(o[..],sf_itoa(k.value,o[..])));at:=f+out.written+3;
+    if !k.ok || at>n || tok[f+1]!=base+NC_OUTPUT_START || tok[at-1]!=base+NC_OUTPUT_END {return RlGrade.{status=RlStatus.tool};}
+    for i:0..<out.written {if tok[f+2+i]!=out.ids[i] {return RlGrade.{status=RlStatus.tool};}}
+    r.answered=done && sf_says(table,tok[at..<n-1],want);
+    return r;
+}
+rl_reward :: (g:RlGrade)->f64 {return ifx g.called && g.answered then 1.0 else 0.0;}
+// book:end grade
+
+// book:begin advantages
+// Group-relative advantages. Rollout i's shaped reward is its reward less
+// beta times its log-probability ratio to the reference; its advantage is
+// that minus its group's mean, and over the group's standard deviation when
+// scale is set (0 when the group is all alike).
+rl_advantages :: (group:int,beta:f64,scale:bool,reward:[]f64,logp:[]f64,logr:[]f64,out:[]f64)->RlStatus {
+    n:=reward.count;
+    if group<1 || n%group!=0 || logp.count!=n || logr.count!=n || out.count!=n {return RlStatus.data;}
+    if !(beta>=0) {return RlStatus.config;}
+    for i:0..<n {out[i]=reward[i]-beta*(logp[i]-logr[i]);}
+    for a:0..<n/group {at:=a*group;mean:=0.0;for i:at..<at+group {mean+=out[i];}mean/=f64(group);
+        spread:=0.0;for i:at..<at+group {out[i]-=mean;spread+=out[i]*out[i];}sd:=sqrt(spread/f64(group));
+        if scale {for i:at..<at+group {out[i]=ifx sd>0 then out[i]/sd else 0.0;}}}
+    return RlStatus.ok;
+}
+// book:end advantages
+
+// book:begin collect
+// One step's rollouts at policy version `version`: prompts problems, taken
+// in turn, group rollouts each. Rollout k of prompt j at version s draws from
+// the seed cr_bits(plan.seed, (s*prompts+j)*group+k). Each is graded, read by
+// the policy and the frozen reference, and given its advantage.
+rl_collect :: (plan:RlPlan,version:int,c:NcConfig,w:[]f64,ref:[]f64,table:[]u8,specials:[]int,problems:[]SfProblem,work:NeWork,k:PfWork,
+               tok:[]int,tgt:[]int,start:[]int,reward:[]f64,logp:[]f64,logr:[]f64,adv:[]f64)->RlBatch {
+    count:=plan.prompts*plan.group;b:=RlBatch.{version=version};
+    if plan.prompts<1 || plan.group<1 || problems.count<1 || version<0 {b.status=RlStatus.config;return b;}
+    if start.count<count+1 || reward.count<count || logp.count<count || logr.count<count || adv.count<count || tok.count<count*c.context || tgt.count<count*c.context {b.status=RlStatus.shape;return b;}
+    options:=NxOptions.{};start[0]=0;
+    for j:0..<plan.prompts {at:=version*plan.prompts+j;p:=problems[at%problems.count];
+        for g:0..<plan.group {i:=j*plan.group+g;x:=start[i];
+            r:=rl_rollout(c,w,table,specials,p,options,cr_bits(plan.seed,cast(u64)(at*plan.group+g)),work,tok[x..<x+c.context],tgt[x..<x+c.context]);
+            if r.status!=RlStatus.ok {b.status=r.status;return b;}
+            q:=rl_grade(table,specials[0],p,tok[x..<x+r.n],r.prompt);
+            a:=pf_value(c,w,PfMode.dpo,c.vocab,tok[x..<x+r.n],tgt[x..<x+r.n],k);if a.status!=PfStatus.ok {b.status=RlStatus.shape;return b;}
+            z:=pf_value(c,ref,PfMode.dpo,c.vocab,tok[x..<x+r.n],tgt[x..<x+r.n],k);if z.status!=PfStatus.ok {b.status=RlStatus.model;return b;}
+            reward[i]=rl_reward(q);logp[i]=a.value;logr[i]=z.value;start[i+1]=x+r.n;
+            b.kept+=sf_kept(tgt[x..<x+r.n]);b.positions+=r.positions;b.reward+=reward[i];b.kl+=a.value-z.value;if q.called && q.answered {b.rewarded+=1;}}}
+    b.count=count;b.tokens=start[count];b.reward/=f64(count);b.kl/=f64(count);
+    b.status=rl_advantages(plan.group,plan.beta,plan.scale,reward[0..<count],logp[0..<count],logr[0..<count],adv[0..<count]);
+    return b;
+}
+// book:end collect
+
+// book:begin step
+// One policy-gradient step on a batch. The surrogate loss is
+// -sum_i A_i log pi(y_i) / T, T the batch's sampled tokens, so the step adds
+// -A_i/T times rollout i's summed log-probability gradient; then clipping,
+// the schedule and AdamW as in chapter 128. A batch sampled at another
+// version, or whose recorded log-probabilities the current weights do not
+// give, is refused before anything moves.
+rl_step :: (p:NpPlan,run:NpRun,batch:RlBatch,tok:[]int,tgt:[]int,start:[]int,logp:[]f64,adv:[]f64,w:[]f64,m:[]f64,v:[]f64,total:[]f64,k:PfWork)->RlStep {
+    c:=p.model;n:=w.count;fail:=RlStep.{run=run};
+    if run.step>=p.steps {fail.status=RlStatus.config;return fail;}
+    if batch.status!=RlStatus.ok || batch.count<1 || start.count<batch.count+1 || logp.count<batch.count || adv.count<batch.count || batch.kept<1 {fail.status=RlStatus.data;return fail;}
+    if batch.version!=run.step {fail.status=RlStatus.stale;return fail;}
+    for i:0..<n {total[i]=0;}loss:=0.0;T:=f64(batch.kept);
+    for i:0..<batch.count {a:=start[i];b:=start[i+1];
+        x:=pf_grad(c,w,PfMode.dpo,c.vocab,tok[a..<b],tgt[a..<b],k.g,k);
+        if x.status!=PfStatus.ok {fail.status=RlStatus.model;return fail;}
+        d:=x.value-logp[i];if !(d<=RL_SAME && d>=-RL_SAME) {fail.status=RlStatus.stale;return fail;}
+        f:=adv[i]/T;for j:0..<n {total[j]-=f*k.g[j];}loss-=f*x.value;
+    }
+    sum:=0.0;for x:total {sum+=x*x;}norm:=sqrt(sum);
+    if p.clip>0 && norm>p.clip {for i:0..<n {total[i]=total[i]*p.clip/norm;}}
+    scale:=np_scale(p,run.step);groups:[5]AwGroup;np_groups(p,scale,groups[..]);none:[1]f32;
+    a:=aw_step(groups[..],AwPolicy.{},run.state,w,total,m,v,none[0..<0],false);
+    if a.status!=AwStatus.ok {fail.status=RlStatus.config;return fail;}
+    return RlStep.{run=NpRun.{step=run.step+1,state=a.state},loss=loss,norm=norm,scale=scale};
+}
+// book:end step
+
+// book:begin rate
+// Held-out success: each question answered greedily and graded by rl_grade,
+// its outcome in out (1 when the reward is 1).
+rl_rate :: (c:NcConfig,w:[]f64,table:[]u8,specials:[]int,problems:[]SfProblem,work:NeWork,out:[]u8)->RlRate {
+    r:=RlRate.{};if problems.count==0 || out.count!=problems.count {r.status=RlStatus.data;return r;}
+    tok:[NE_PROMPT_MAX]int;tgt:[NE_PROMPT_MAX]int;greedy:=NxOptions.{temperature=0};
+    for p:problems {o:=rl_rollout(c,w,table,specials,p,greedy,cast(u64)r.count,work,tok[..],tgt[..]);if o.status!=RlStatus.ok {r.status=o.status;return r;}
+        out[r.count]=cast(u8)rl_reward(rl_grade(table,specials[0],p,tok[0..<o.n],o.prompt));r.right+=cast(int)out[r.count];r.count+=1;}
+    return r;
+}
+// book:end rate

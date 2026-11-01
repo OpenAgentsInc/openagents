@@ -1,0 +1,90 @@
+// Chapter 139's driving loop, shared by the short example
+// (psionic/examples/rollouts.coax) and the recorded long run
+// (psionic/tests/rollouts-long.coax). Every decision is in
+// psionic/lib/nanochat/rollouts.coax and the chapters it loads; this file
+// holds the buffers and prints.
+#import "Basic";
+#load "../lib/nanochat/rollouts.coax";
+RL_PARAMETERS :: 53290;
+RL_TRAIN_MAX :: 4096;
+RL_HELD_MAX :: 256;
+RL_BATCH_MAX :: 64;
+// Chapter 136's problem seed: the same split and the same draws.
+RL_SEED :: cast(u64)7;
+RL_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+rl_hex :: (d:[32]u8) {for i:0..<8 {print("%",RL_HEX[cast(int)d[i]/16]);print("%",RL_HEX[cast(int)d[i]%16]);}}
+rl_show :: (label:string,x:[]int) {print("%:",label);for t:x {if t<0 {print(" -");} else {print(" %",t);}}print("\n");}
+rl_print :: (label:string,r:RlRate) {i:=pf_wilson(r.right,r.count);print("%: % of % right, 95%% interval % to %\n",label,r.right,r.count,i.lo,i.hi);}
+rl_same_batch :: (a:[]int,b:[]int,n:int)->bool {for i:0..<n {if a[i]!=b[i] {return false;}}return true;}
+// book:begin drive
+// Chapter 136's base run, rebuilt, and its tuning run stopped after step
+// cut; the starting policy asked held-out questions greedily; greedy
+// rollouts against chapter 136's sf_ask; the first batch drawn twice; the
+// policy-gradient steps against the frozen start; the same questions asked
+// again; the frozen rule; the reference checked; then the refusals.
+rl_drive :: (base:NpPlan,tune:NpPlan,cut:int,rl:NpPlan,plan:RlPlan,trains:int,asks:int,report:int) {
+    c:=tune.model;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);bos:=sp[0];L:=c.sequence_len;n:=nc_parameter_count(c);#assert n==RL_PARAMETERS;
+    train:[RL_TRAIN_MAX]SfProblem;held:[RL_HELD_MAX]SfProblem;seen:[SF_KEYS]u8;
+    #assert sf_problems(RL_SEED,false,train[0..<trains])==trains && sf_problems(RL_SEED,true,held[0..<asks])==asks;
+    tr:=train[0..<trains];he:=held[0..<asks];a:=sf_audit(tr,he,seen[..]);
+    print("problems: % training, % held out, shared: %, audit: %\n",a.train,a.held,a.shared,a.status);
+    // Chapter 136's run, step for step, with tuning stopped after step cut.
+    eq:[RL_TRAIN_MAX*12]int;val:[RL_HELD_MAX*12]int;d:=sf_stream(table[..],bos,tr,eq[..]);dv:=sf_stream(table[..],bos,he,val[..]);#assert d.status==SfStatus.ok && dv.status==SfStatus.ok;
+    tok:[RL_TRAIN_MAX*40]int;tgt:[RL_TRAIN_MAX*40]int;start:[RL_TRAIN_MAX+1]int;e:=sf_encode(table[..],sp[..],c.vocab,L,tr,tok[..],tgt[..],start[..]);#assert e.status==SfStatus.ok;
+    w:[RL_PARAMETERS]f64;m:[RL_PARAMETERS]f64;v:[RL_PARAMETERS]f64;g:[RL_PARAMETERS]f64;h:[RL_PARAMETERS]f64;total:[RL_PARAMETERS]f64;
+    tape:[110000]f64;logits:[21056]f64;cache:[8192]f64;work:[16384]f64;order:[RL_TRAIN_MAX+1]int;seq:[64]int;target:[64]int;
+    last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;ww:=ne_buffers(c,L,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    np_init(c,base.init,w[..]);order[d.tokens/L]=-1;run:=NpRun.{};
+    while run.step<base.steps {r:=np_step(base,run,eq[0..<d.tokens],order[0..<d.tokens/L+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;}
+    bp:=np_plan_id(base);bd:=np_data_id(eq[0..<d.tokens],val[0..<dv.tokens]);rec:[1279092]u8;#assert np_save(bp,bd,run,w[..],m[..],v[..],rec[..])==NpCheck.ok;
+    tp:=sf_plan_id(tune,ck_get(rec[..],rec.count-32));td:=np_data_id(tok[0..<e.tokens],tgt[0..<e.tokens]);
+    s:=sf_start(bp,bd,base.steps,rec[..],w[..],m[..],v[..]);#assert s.status==NpCheck.ok;
+    for i:0..<e.count+1 {order[i]=0;}order[e.count]=-1;run=s.run;
+    while run.step<cut {r:=sf_step(tune,run,tok[0..<e.tokens],tgt[0..<e.tokens],start[0..<e.count+1],order[0..<e.count+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;}
+    tuned:[1279092]u8;#assert np_save(tp,td,run,w[..],m[..],v[..],tuned[..])==NpCheck.ok;
+    print("start: chapter 136's run, % base steps and % of % tuning steps, record digest ",base.steps,cut,tune.steps);rl_hex(ck_get(tuned[..],tuned.count-32));print("...\n");
+    // The reference is the start, frozen; the policy starts there with fresh moments.
+    ref:=w;for i:0..<n {m[i]=0;v[i]=0;}
+    was:[RL_HELD_MAX]u8;now:[RL_HELD_MAX]u8;before:=rl_rate(c,w[..],table[..],sp[..],he,ww,was[0..<asks]);#assert before.status==RlStatus.ok;
+    rl_print("start, held-out questions answered greedily with reward 1",before);
+    // Greedy rollouts are chapter 136's exchanges, and the checker is its verdict.
+    x:[NE_PROMPT_MAX]int;y:[NE_PROMPT_MAX]int;z:[NE_PROMPT_MAX]int;agree:=0;greedy:=NxOptions.{temperature=0};
+    for p:he {o:=rl_rollout(c,w[..],table[..],sp[..],p,greedy,0,ww,x[..],y[..]);q:=sf_ask(c,w[..],table[..],sp[..],p,ww,z[..]);
+        gr:=rl_grade(table[..],bos,p,x[0..<o.n],o.prompt);same:=o.status==RlStatus.ok && q.status==SfStatus.ok && gr.called==q.called && gr.answered==q.answered && rl_same_batch(x[..],z[..],q.written);
+        if same {agree+=1;}}
+    print("greedy rollouts against chapter 136's sf_ask: % of % agree in tokens and verdict\n",agree,asks);
+    o:=rl_rollout(c,w[..],table[..],sp[..],he[0],NxOptions.{},plan.seed,ww,x[..],y[..]);#assert o.status==RlStatus.ok;
+    rl_show("a sampled rollout of the first held-out question, tokens",x[0..<o.n]);rl_show("its targets",y[0..<o.n]);
+    // The batches. The first is drawn twice and kept for the refusals.
+    count:=plan.prompts*plan.group;#assert count<=RL_BATCH_MAX;
+    bt:[RL_BATCH_MAX*64]int;bg:[RL_BATCH_MAX*64]int;bs:[RL_BATCH_MAX+1]int;rw:[RL_BATCH_MAX]f64;lp:[RL_BATCH_MAX]f64;lr:[RL_BATCH_MAX]f64;ad:[RL_BATCH_MAX]f64;
+    ft:[RL_BATCH_MAX*64]int;fg:[RL_BATCH_MAX*64]int;fs:[RL_BATCH_MAX+1]int;fw:[RL_BATCH_MAX]f64;fp:[RL_BATCH_MAX]f64;fr:[RL_BATCH_MAX]f64;fa:[RL_BATCH_MAX]f64;
+    first:=rl_collect(plan,0,c,w[..],ref[..],table[..],sp[..],tr,ww,k,ft[..],fg[..],fs[..],fw[..],fp[..],fr[..],fa[..]);#assert first.status==RlStatus.ok;
+    run=NpRun.{};rollouts:=0;positions:=0;sampled:=0;rewarded:=0;
+    while run.step<rl.steps {b:=rl_collect(plan,run.step,c,w[..],ref[..],table[..],sp[..],tr,ww,k,bt[..],bg[..],bs[..],rw[..],lp[..],lr[..],ad[..]);#assert b.status==RlStatus.ok;
+        if run.step==0 {print("the first batch drawn twice from its seeds: identical tokens: %, identical log-probabilities: %\n",rl_same_batch(bt[..],ft[..],b.tokens) && b.tokens==first.tokens,np_same(lp[0..<count],fp[0..<count]));}
+        r:=rl_step(rl,run,b,bt[..],bg[..],bs[..],lp[..],ad[..],w[..],m[..],v[..],total[..],k);#assert r.status==RlStatus.ok;
+        rollouts+=b.count;positions+=b.positions;sampled+=b.kept;rewarded+=b.rewarded;run=r.run;
+        if run.step%report==0 {print("step %: mean reward %, mean log-ratio to the reference %, loss %, gradient norm %\n",run.step,b.reward,b.kl,r.loss,r.norm);}}
+    print("budget: % rollouts, % graded, % with reward 1, % positions read while sampling, % sampled tokens, % gradient passes, % reference passes\n",rollouts,rollouts,rewarded,positions,sampled,rollouts,rollouts);
+    after:=rl_rate(c,w[..],table[..],sp[..],he,ww,now[0..<asks]);#assert after.status==RlStatus.ok;
+    rl_print("after, held-out questions answered greedily with reward 1",after);
+    ch:=rl_changes(was[0..<asks],now[0..<asks]);ci:=pf_wilson(ch.right,ch.count);
+    print("changed outcomes: % gained, % lost; share gained % to % (95%% interval)\n",ch.right,ch.count-ch.right,ci.lo,ci.hi);
+    print("acceptance (frozen before the run): %\n",ifx rl_accept(before,after,was[0..<asks],now[0..<asks]) then "passed" else "failed");
+    // The reference is the start's record, bit for bit.
+    zw:=w;zm:=m;zv:=v;rd:=np_read(tp,td,cut,tuned[..],zw[..],zm[..],zv[..]);#assert rd.status==NpCheck.ok;
+    print("reference after training: identical to the start's record: %\n",np_same(zw[..],ref[..]));
+    // Refusals, each before anything moves.
+    keep:=w;
+    print("the first batch offered at step 1: %\n",rl_step(rl,NpRun.{step=1},first,ft[..],fg[..],fs[..],fp[..],fa[..],w[..],m[..],v[..],total[..],k).status);
+    forged:=first;forged.version=run.step-1;
+    print("the first batch relabelled as step %: %\n",run.step-1,rl_step(rl,NpRun.{step=run.step-1},forged,ft[..],fg[..],fs[..],fp[..],fa[..],w[..],m[..],v[..],total[..],k).status);
+    print("weights unchanged by the refusals: %\n",np_same(keep[..],w[..]));
+    // A rollout whose recorded calculator output was changed.
+    p0:=SfProblem.{a=2,b=3};#assert sf_example(table[..],sp[..],c.vocab,L,p0,x[..],y[..]).n==25;
+    print("the 2+3 exchange graded: reward %\n",rl_reward(rl_grade(table[..],bos,p0,x[0..<25],15)));
+    x[21]=54;print("the same exchange with the calculator's output changed to 6: %\n",rl_grade(table[..],bos,p0,x[0..<25],15).status);
+}
+// book:end drive
