@@ -1,0 +1,25 @@
+// The actual Garden frame writes a blue-coat head sphere into the GPU
+// object store. Its authored centre is 1.66 m above the figure's root.
+#load "../../apps/openagents-web/garden.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] Garden;
+  garden_start(s[..]);
+  for i: 0..<GROUND_POINTS { s[0].heights[i] = 2.5; }
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  f := Point.{x = fx, y = fy, z = fz};
+  n := garden_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+    f.x, f.y, f.z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  found := 0;
+  for i: 0..<s[0].counts[SHAPE_SPHERE] {
+    at := (SLOT_AT[SHAPE_SPHERE] + i) * OBJECT_FLOATS;
+    if abs(s[0].objects[at] - 0.36) < 0.00001 && abs(s[0].objects[at + 5] - 0.4) < 0.00001 &&
+       abs(s[0].objects[at + 10] - 0.36) < 0.00001 && abs(s[0].objects[at + 12] - 0.93) < 0.00001 {
+      result[0] = s[0].objects[at + 3]; result[1] = s[0].objects[at + 7] - 1.66; result[2] = s[0].objects[at + 11];
+      found += 1;
+    }
+  }
+  result[3] = 0; result[4] = 2.5; result[5] = 0;
+  result[6] = ifx n > 0 && found == 1 then 1.0f32 else 0.0f32;
+}

@@ -1,0 +1,18 @@
+// Ice Cream Man owns horizontal position and vertical height. Its real
+// avatar writer emits a torso matrix with an authored 0.4 m model origin.
+#load "../../verse/icecream/scene.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] IceScene;
+  s[0].games[0].house.cols = 1; s[0].games[0].house.rows = 1; s[0].games[0].house.room_n = 1;
+  f := V3.{x = fx, y = fy, z = fz};
+  s[0].games[0].player.pos = v2(f.x, f.z);
+  s[0].games[0].player.height = f.y;
+  // The real writer needs a model descriptor to emit a draw, but never
+  // reads mesh vertices. One triangle per model is an admitted test asset.
+  for i: 0..<MODELS { s[0].model_count[i] = 3; }
+  draw_avatar(s[..]);
+  result[0] = s[0].objs[3]; result[1] = s[0].objs[7] - 0.4; result[2] = s[0].objs[11];
+  result[3] = 0; result[4] = 0; result[5] = 0;
+  result[6] = f32(s[0].obj_n);
+}

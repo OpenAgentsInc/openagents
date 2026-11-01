@@ -1,0 +1,36 @@
+// Exercise the frame the Grid's C face calls, then read the same root the
+// walking figure consumes. The table-derived origin is reported separately.
+#load "../../apps/openagents-web/newland.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] LandState;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  f := Fv.{x = fx, y = fy, z = fz};
+  n := coaxial_walk_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+    f.x, f.y, f.z, 0, 0, 2, 4, 6, 2, 1, -4, false, 0, 0, 0, 0);
+  at := s[0].wk[0].feet;
+  mid := centre(s[..], -1);
+  // Follow through wk_you and figure_up, not merely the pre-render state.
+  // A long-lens, axis-aligned view makes world y translate screen y by
+  // almost exactly -1, independently of the articulated skeleton's shape.
+  c := Cam.{eye = fv(at.x, 0, 10000), right = fv(1, 0, 0), up = fv(0, 1, 0),
+    ahead = fv(0, 0, -1), cx = 400, cy = 300, focal = 10000,
+    clip = Box.{x0 = -100000, y0 = -100000, x1 = 100000, y1 = 100000}, near = 0.05, vr = 100000};
+  pen := Pen.{d = 1, fade = 1, time = 0, still = true, phone = false};
+  figure_out: [8192] f32;
+  s[0].wk[0].feet.y = 0;
+  grounded := wk_you(figure_out[..], 0, s[..], c, pen, 0);
+  // The four corners' average cancels the stroke's glow expansion and
+  // exposes the projected bone midpoint, even when its angle rounds.
+  zero_y := (figure_out[1] + figure_out[VERTEX_FLOATS + 1] + figure_out[2 * VERTEX_FLOATS + 1] + figure_out[5 * VERTEX_FLOATS + 1]) * 0.25;
+  s[0].wk[0].feet = at;
+  drawn := wk_you(figure_out[..], 0, s[..], c, pen, 0);
+  drawn_y := (figure_out[1] + figure_out[VERTEX_FLOATS + 1] + figure_out[2 * VERTEX_FLOATS + 1] + figure_out[5 * VERTEX_FLOATS + 1]) * 0.25;
+  geometry_ok := grounded > 0 && drawn == grounded && abs((drawn_y - zero_y) + at.y) < 0.001;
+  result[0] = at.x; result[1] = at.y; result[2] = at.z;
+  result[3] = mid.x; result[4] = mid.y; result[5] = mid.z;
+  result[6] = ifx n > 0 && s[0].wk[0].placed && geometry_ok then 1.0f32 else 0.0f32;
+  result[7] = f32(grounded); result[8] = f32(drawn);
+  result[9] = drawn_y - zero_y; result[10] = at.y;
+}

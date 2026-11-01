@@ -1,0 +1,23 @@
+// Dead Gears owns its player. Exercise its production walk() handoff and
+// actual engineer bone writer, comparing translations of the same pose.
+#load "../../apps/openagents-web/deadgears.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] DeadGears;
+  dg_page_start(s[..]);
+  s[0].pl = pc.verse_player_place(fx, fy, fz, 0);
+  s[0].pl.on_ground = false;
+  walk(s[..], 0);
+  at := s[0].feet;
+  pose := suit_pose(s[..], false, false, 0);
+  s[0].round_n = 0;
+  engineer(s[..], v3(0, 0, 0), 0, pose, false, 100);
+  zero := v3(s[0].objects[0], s[0].objects[1], s[0].objects[2]);
+  s[0].round_n = 0;
+  engineer(s[..], at, 0, pose, false, 100);
+  result[0] = s[0].objects[0] - zero.x;
+  result[1] = s[0].objects[1] - zero.y;
+  result[2] = s[0].objects[2] - zero.z;
+  result[3] = 0; result[4] = 0; result[5] = 0;
+  result[6] = f32(s[0].round_n);
+}

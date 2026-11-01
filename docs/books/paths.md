@@ -75,7 +75,9 @@ coax/build.sh
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax
 ```
 
-It ends with `book execution: 20 runs match output and exit status`.
+It ends with `book execution: 34 runs match output and exit status`. This
+gate was checked again on 2026-11-01 with `coax0 0.46.0`; the other commands
+on this page retain their original qualification above.
 
 To play a realm in the browser:
 
@@ -92,8 +94,8 @@ Chapters, in order:
 
 1. Coax chapters 1–11, then 17 (GPU programs, partly implemented) and 19
    (builds and hot reload, partly implemented).
-2. Aethyr chapters 1–4: the fixed step, spaces and units (partly
-   implemented), state from defaults, and typed input.
+2. Aethyr chapters 1–4: the fixed step, spaces and units (native f32 spatial
+   boundaries), state from defaults, and typed input.
 3. Aethyr chapters 65–67: synthesized sound, the beat grid and a mixed
    soundtrack.
 4. Aethyr chapters 6 and 7: entities that are born and die, and queries

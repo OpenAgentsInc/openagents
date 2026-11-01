@@ -1,0 +1,18 @@
+// The real step stores world feet; the real figure library consumes them
+// exactly as villa-face.c pose() does. Two translated placements must move
+// every emitted bone endpoint by the same independently checked vector.
+#load "../../apps/openagents-web/villa.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] Villa;
+  villa_start(s[..]);
+  for i: 0..<GROUND_POINTS { s[0].heights[i] = 2.5; }
+  f := Point.{x = fx, y = fy, z = fz};
+  villa_step(s[..], 0, f.x, f.y, f.z, 0, 0, 0, 0);
+  at := s[0].feet;
+  result[0] = at.x; result[1] = at.y; result[2] = at.z;
+  result[3] = 0; result[4] = 2.5; result[5] = 0;
+  // The native driver links villafig as the separate production library
+  // and replaces these coordinates with its emitted-bone translation.
+  result[6] = 1;
+}

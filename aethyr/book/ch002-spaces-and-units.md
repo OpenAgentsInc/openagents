@@ -1,14 +1,13 @@
 # 2. Spaces and units
 
-> **Status: partly implemented.** One check is pending: that every realm
-> draws a figure's feet at their physics height.
->
 > Engine-core task: `ec-space` (#12609). The module
 > [aethyr/space.coax](../space.coax) and its refusal check
-> [aethyr/refusals.coax](../refusals.coax) landed in `a93d35c2dd`. The task
-> stays open for one check: that every realm draws a figure's feet at their
-> physics height. That check lands with the realm migration
-> ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
+> [aethyr/refusals.coax](../refusals.coax) landed in `a93d35c2dd`.
+> This chapter's profile is native f32 spatial boundaries: typed conversions,
+> compiler refusals, and the interpolated world anchor consumed by every
+> current avatar renderer. It does not qualify browser pixels or consolidate
+> every legacy vector type. The [verification record](../../docs/verification/aethyr-book-implementation-2026-11-01.json)
+> identifies the compiler, source and checks.
 
 A number such as `1.8` can be a height in metres, a distance on the Grid, a
 pixel offset, or a depth in front of the camera. Many engine bugs come from
@@ -164,6 +163,93 @@ back from the grid (2.0, 1.17, -4.0) m
 a point behind the eye is drawn false
 ```
 
+## At a realm's drawing boundary
+
+The position drawn this frame is the interpolation of two fixed steps, not
+the position from the last step alone (chapter 1). Some older realms also
+step their controller on a flat floor. Its height is relative to that floor;
+the realm adds the terrain or bridge height when it draws. This is a local
+point crossing into the world, and it needs one named conversion.
+
+Work the boundary by hand. Suppose the previous feet are `(1, 0.25, -6)` and
+the next feet are `(5, 1.25, 2)`. A frame one quarter of the way between them
+draws `(2, 0.5, -4)`. On terrain at 2.5 m, the world feet are `(2, 3, -4)`.
+Dropping the controller's height puts the figure 0.5 m too low. Adding the
+terrain twice puts it 2.5 m too high. Drawing the next step instead loses
+the interpolation on all three axes.
+
+The existing realm boundary keeps its `Point` layout for C callers, but
+the conversion goes through Aethyr's distinct local and world types:
+
+<!-- source: verse/space.coax feet -->
+```jai
+// A realm that steps its controller on a flat floor supplies that floor's world
+// height from its terrain or bridge once. Figures and cameras share the resulting
+// world point. Point is retained at the older realms' C boundary.
+feet_in_world :: (flat_feet: Point, floor_y: f32) -> Point {
+  placement := feet_space.Placement.{origin = feet_space.world_point(0, floor_y, 0), yaw = 0};
+  local := feet_space.LocalPoint.{x = flat_feet.x, y = flat_feet.y, z = flat_feet.z};
+  world := feet_space.local_to_world(placement, local);
+  return v3(world.x, world.y, world.z);
+}
+```
+
+The Garden, Fairy Forest, Everglade and the Cemetery use this conversion
+before drawing their figure and following it with the camera. Everglade's
+wading height is another floor origin. Swimming instead supplies an absolute
+world height; it does not add the jump height a second time.
+
+The Grid uses `world_to_grid` for the feet, camera eye and aim. Its remote
+visitors keep their admitted height alongside their horizontal position,
+ease all three coordinates, and draw through `figure_up`. Previously the
+remote drawing kept only horizontal position and put every visitor on the
+floor, even when the presence record said they were jumping.
+
+The runnable example
+[feet-at-a-realm-boundary.coax](../examples/feet-at-a-realm-boundary.coax)
+performs that calculation, then converts to Grid units with a nonzero origin:
+
+<!-- source: aethyr/examples/feet-at-a-realm-boundary.coax example -->
+```jai
+#load "../../verse/space.coax";
+#load "../space.coax" as engine;
+#import "Basic";
+
+main :: () {
+  feet := mix(v3(1, 0.25, -6), v3(5, 1.25, 2), 0.25);
+  world := feet_in_world(feet, 2.5);
+  mid := engine.GridPoint.{x = 4, y = 3, z = -6};
+  grid := engine.world_to_grid(mid, engine.world_point(world.x, world.y, world.z));
+  print("interpolated feet: (%, %, %) m above the flat floor\n", feet.x, feet.y, feet.z);
+  print("world feet: (%, %, %) m\n", world.x, world.y, world.z);
+  print("Grid feet: (%, %, %) units\n", grid.x, grid.y, grid.z);
+}
+```
+
+```shell
+coax/bin/coax run aethyr/examples/feet-at-a-realm-boundary.coax
+```
+
+```text
+interpolated feet: (2.0, 0.5, -4.0) m above the flat floor
+world feet: (2.0, 3.0, -4.0) m
+Grid feet: (5.0, 4.5, -8.0) units
+```
+
+The production-boundary check is
+[aethyr/tests/check_drawn_feet.py](../tests/check_drawn_feet.py). It compiles
+separate Coax probes against the real realm code and checks their native
+render records against independently calculated coordinates. Each probe
+also receives deliberately wrong producer values: a dropped height, a
+doubled height, the last step instead of interpolation, and an extra floor
+offset. Those controls must disagree with the independently specified
+world point. They test the boundary comparison; they do not establish that
+every possible fault in the renderer is detected.
+
+```shell
+python3 aethyr/tests/check_drawn_feet.py --coax coax/bin/coax
+```
+
 ## Check that mixed spaces don't compile
 
 A type error is only useful if a check keeps it in place. Otherwise, a later
@@ -246,20 +332,52 @@ The checks in `aethyr/space.coax` cover:
 47 mutants of `aethyr/refusals.coax`, whose checks read a fixture's
 expectation and decide whether the compiler met it.
 
-## Still to do
+## The qualified boundary
 
-One check needs every realm to use these spaces: in the same frame, the drawn
-feet must equal the physics feet exactly. The check lands with the realm
-migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)), after every
-realm draws through `world_to_grid` or `world_to_view`. The migration also
-replaces the older vector types:
+The native check covers these production paths. A figure's anchor is the
+interpolated controller position in world space, after its declared floor
+origin is applied once. It is not the last fixed step or an animated ankle.
+
+| Renderer | What the check observes |
+| --- | --- |
+| Grid | The walking frame's converted root and the figure's emitted stroke geometry; presence height has its own update and reordering check. |
+| Garden | The emitted figure's head sphere, minus its authored offset. |
+| Fairy Forest | The first emitted figure sphere compared with the same pose at world origin. |
+| Cemetery and villa | The world root handed to the figure library and the resulting bone translation. |
+| Everglade | The Ranger's object matrix; the authored checks also cover wading and swimming. |
+| Dead Gears | The shared controller's handoff and the engineer's emitted bone translation. |
+| Haunted House and Sandbox | The avatar instance matrices for both guest variants. |
+| Made realms | The actor-to-pawn-to-person path's emitted pieces. |
+| Ice Cream Man | The avatar's torso matrix, minus its authored model offset. |
+
+The nine paths each have one independently specified valid input and four
+invalid producer controls. Object and bone coordinates are compared within
+0.00002 m; the Grid also checks its projected stroke translation within
+0.001 pixels. No downloaded mesh geometry is needed to test the translation
+of a figure's root.
+
+Orbit League's cars, Belt's ships, Hold the Stair's tiles, and views without
+a player figure have no walking-foot anchor. They are not additional avatar
+cases. The figure editor's posed previews likewise have no controller state
+to interpolate.
+
+GPU renderers consume world-space object matrices, so their boundary is
+checked before GPU submission. They do not need to project each vertex on
+the CPU through `world_to_view`. Browser execution and final rasterized
+pixels are separate qualifications in chapters 11 and 85.
+
+## Later consolidation
+
+The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+replaces the older vector types behind the existing C interfaces:
 
 - `Point` in [verse/space.coax](../../verse/space.coax);
 - `Vec3` in [verse/player.coax](../../verse/player.coax);
 - the f64 `D3` type with a floating origin in
   [verse/rigid.coax](../../verse/rigid.coax) and
   [verse/spacecam.coax](../../verse/spacecam.coax). When these move, this
-  module gains f64 spaces.
+  module gains f64 spaces. These types and floating-origin arithmetic are
+  outside this chapter's native f32 profile.
 
 ## Dependencies
 

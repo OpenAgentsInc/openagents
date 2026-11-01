@@ -1,0 +1,28 @@
+// Haunted House and Sandbox share this advance→instance writer. A minimal
+// admitted mesh catalogue needs no downloaded geometry to inspect the real
+// ready-to-bind avatar matrix. Test both published guest mesh choices.
+#load "../../verse/haunt.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  f := HauntPoint.{x = fx, y = fy, z = fz};
+  meshes := [2] HauntMesh.[HauntMesh.{name = "Custom_Fig_Guest0", count = 3},
+    HauntMesh.{name = "Custom_Fig_Guest4", first = 3, count = 3}];
+  out: [2] HauntInstance; draws: [2] HauntDraw;
+  emitted := 0;
+  first: HauntPoint;
+  both_roots := true;
+  for variant: 0..<2 {
+    s: Haunt; s.ok = true; s.meshes = meshes[..]; s.mesh_count = 2;
+    s.camera = 1; s.avatar = variant * 4;
+    if variant == 1 { s.instance_id = "sandbox"; s.world_id = "sandbox"; }
+    s = verse_haunt_advance(s, 0, hh_p(f.x, f.y, f.z), hh_p(2, 4, 6), 0, 0, false);
+    n := verse_haunt_instances(s, 0, out[..], draws[..]);
+    if n == 1 && draws[0].instances == 1 {
+      if variant == 0 { first = hh_p(out[0].rows[3], out[0].rows[7], out[0].rows[11]); }
+      else { both_roots = first.x == out[0].rows[3] && first.y == out[0].rows[7] && first.z == out[0].rows[11]; }
+      result[0] = out[0].rows[3]; result[1] = out[0].rows[7]; result[2] = out[0].rows[11]; emitted += 1;
+    }
+  }
+  result[3] = 0; result[4] = 0; result[5] = 0;
+  result[6] = ifx emitted == 2 && both_roots then 2.0f32 else 0.0f32;
+}

@@ -116,6 +116,24 @@ The first Spacecam consumer preserves the public D3/SpaceCam layouts and
 subtracts F64 points before narrowing. Its boundary assertion is not an
 end-to-end migration of every world coordinate.
 
+## A figure's world anchor includes its interpolation and its floor origin once
+
+The current avatar renderers consume the interpolated feet for a frame, not
+the last fixed step alone. Realms whose controller steps on a flat floor use
+`feet_in_world` (`verse/space.coax`) to apply the terrain or bridge origin
+once; that world point is shared by the figure and camera. Everglade's wading
+origin is relative, while its swimming height is already absolute.
+
+The Grid converts feet, eye and aim through `aethyr/space.coax`'s
+`world_to_grid` on all three axes. Remote visitors retain and ease their
+admitted height with their horizontal position; drawing never replaces it
+with the floor. Checks: `aethyr/tests/check_drawn_feet.py` observes the nine
+current avatar renderer paths' native figure, object or instance records
+against independent coordinates and four broken producer controls each;
+`newland-walkers.coax` checks height updates and identity-preserving reorder.
+This native f32 boundary evidence does not qualify browser rasterization,
+replace every legacy vector ABI or establish f64 world coordinates.
+
 ## Each input press is taken by exactly one fixed step
 
 Realm input reaches the simulation through `aethyr/input.coax`. Keys and the

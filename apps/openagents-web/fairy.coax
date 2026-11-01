@@ -2228,7 +2228,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].air = ifx finite(air) then hi(air, 0) else 0.0f32;
   speed := sqrt(vx * vx + vz * vz);
   if finite(speed) { s[0].stride += speed * t / 1.6; }
-  shown := add(v3(feet.x, 0, feet.z), v3(0, walk_at(s, feet.x, feet.z) + feet.y, 0));   // on a bridge, its deck
+  shown := feet_in_world(feet, walk_at(s, feet.x, feet.z));   // on a bridge, its deck
   s[0].feet = shown;
   ffq_step(s);
   ffn_frame(s, t);
@@ -2323,6 +2323,18 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert SLOT_AT[4] + SLOTS[4] == OBJECTS;
   for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
   #assert SHAPE_VERTICES[2] <= 1024 && WATER_DRAW == DRAWS - 1;
+}
+
+#test "Fairy Forest draws the player's elevated feet above the world floor once" #steps 150000000 {
+  s: [1] Fairy; fairy_start(s[..]);
+  for i: 0..<s[0].heights.count { s[0].heights[i] = 2.5; }
+  out: [10000 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := fairy_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+                   7, 1.25, -3, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0;
+  #assert s[0].feet.x == 7 && s[0].feet.y == 3.75 && s[0].feet.z == -3;
+  // fig_at is the actual scaling origin used by oriented() for her geometry.
+  #assert same(s[0].fig_at, v3(7, 3.75, -3), 0);
 }
 
 #test "a frame lays the valley out within its slots and sees you" #steps 150000000 {

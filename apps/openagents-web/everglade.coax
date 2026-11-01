@@ -3700,9 +3700,9 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].feet = feet; s[0].face = face; s[0].act = act;
   speed := sqrt(vx * vx + vz * vz);
   // afloat, you are where the river holds you; else on the ground or the deck
-  shown := add(feet, v3(0, walk_at(s, feet.x, feet.z), 0));
+  shown := feet_in_world(feet, walk_at(s, feet.x, feet.z));
   if s[0].water >= WATER_SWIMMING { shown.y = s[0].swim_feet; }
-  else if s[0].water == WATER_WADING { shown.y = s[0].swim_feet + feet.y; }
+  else if s[0].water == WATER_WADING { shown = feet_in_world(feet, s[0].swim_feet); }
 
   shot := camera_frame(s, shown, vx, vz, t);
   shot = spells_camera(s, shot, t);   // a blast shakes it; nothing turns it
@@ -4646,6 +4646,25 @@ contains :: (text: string, part: string) -> bool {
 // ---------------------------------------------------------------------------------------------
 // The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Everglade may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+#test "Everglade draws elevated and wading feet at the world floor once" #steps 500000000 {
+  s: [1] Everglade; everglade_start(s[..]);
+  for i: 0..<s[0].heights.count { s[0].heights[i] = 2.5; }
+  out: [6000 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  o := RANGER_AT * OBJECT_FLOATS;
+  n := everglade_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+                       7, 1.25, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0;
+  #assert s[0].objects[o + 3] == 7 && s[0].objects[o + 7] == 3.75 && s[0].objects[o + 11] == -3;
+  s[0].water = WATER_WADING; s[0].swim_feet = -2.5;
+  n = everglade_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+                       7, 1.25, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && s[0].objects[o + 7] == -1.25;
+  s[0].water = WATER_SWIMMING; s[0].swim_feet = 0.75;
+  n = everglade_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+                       7, 1.25, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && s[0].objects[o + 7] == 0.75;
+}
+
 EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, bytes = 4325376};
 
 // A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book

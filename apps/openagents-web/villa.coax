@@ -580,7 +580,7 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   if in_space(s) && s[0].ed[0].ready && !redit_row_on(s[0].ed[..], "flight") && !s[0].skip_ask { s[0].skip_ask = true; }
   feet := v3(fx, fy, fz);
   if !finite3(feet) { feet = v3(s[0].feet.x, 0, s[0].feet.z); }
-  shown := v3(feet.x, feet.y + ground_at(s, feet.x, feet.z), feet.z);
+  shown := feet_in_world(feet, ground_at(s, feet.x, feet.z));
   s[0].feet = shown; s[0].face = face; s[0].act = act;
   speed := sqrt(vx * vx + vz * vz);
   s[0].speed = ifx finite(speed) then speed else 0.0f32;
@@ -1426,6 +1426,17 @@ frame :: (s: [] Villa, out: [] f32, u: [] f32, dt: f32, x: f32, z: f32, face: f3
 fly :: (s: [] Villa, t: f32) {
   take := ifx t < f32(FLIGHT_CUT) then 0 else ifx t < 8.6 then 1 else -1;
   villa_flight(s, t < 9.5, t < 8.6, take, t, -17, 20, -60, -17, 0, 0);
+}
+
+#test "the Cemetery's figure and live camera share feet lifted above the world floor once" {
+  s: [1] Villa; villa_start(s[..]);
+  for i: 0..<GROUND_POINTS { s[0].heights[i] = -2.5; }
+  villa_step(s[..], 0, 7, 1.25, -3, 0, 0, 0, 0);
+  #assert s[0].feet.x == 7 && s[0].feet.y == -1.25 && s[0].feet.z == -3;
+  // The C face poses the figure from these feet; camera_frame reads the same
+  // world point, not a second ground-height addition.
+  expected := camera_frame(s[..], v3(7, -1.25, -3), 0, 0, 0);
+  #assert same(s[0].live.eye, expected.eye, 0) && same(s[0].live.at, expected.at, 0);
 }
 
 #test "the flight: space first (the planet, no ground), a cut to the garden with a flash, and SKIP" {

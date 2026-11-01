@@ -1,0 +1,19 @@
+// Made realms own x/y/z. Exercise their actual actors→pawn→person_figure
+// path; compare the first emitted bone with the same pose at the origin.
+#load "../../apps/openagents-web/myrealm.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] MyRealm;
+  realm_reset(s[..]);
+  s[0].x = 0; s[0].y = 0; s[0].z = 0;
+  actors(s[..]);
+  zero_x := s[0].piece_x[0]; zero_y := s[0].piece_y[0]; zero_z := s[0].piece_z[0];
+
+  s[0].x = fx; s[0].y = fy; s[0].z = fz;
+  actors(s[..]);
+  result[0] = s[0].piece_x[0] - zero_x;
+  result[1] = s[0].piece_y[0] - zero_y;
+  result[2] = s[0].piece_z[0] - zero_z;
+  result[3] = 0; result[4] = 0; result[5] = 0;
+  result[6] = f32(s[0].piece_n);
+}

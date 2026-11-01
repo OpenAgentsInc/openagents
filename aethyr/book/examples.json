@@ -160,6 +160,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/feet-at-a-realm-boundary.coax",
+      "chapter": "aethyr/book/ch002-spaces-and-units.md",
+      "stdout": "aethyr/fixtures/feet-at-a-realm-boundary.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

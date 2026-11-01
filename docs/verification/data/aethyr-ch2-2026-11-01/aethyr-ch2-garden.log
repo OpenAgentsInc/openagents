@@ -1,0 +1,2 @@
+ok   #test the Garden draws the player's elevated feet above the world floor once (1 case, 3637652 steps, 55 ms)
+1 of 109 checks (--only 'elevated feet above'), 1 passed, 0 failed

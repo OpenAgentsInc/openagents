@@ -8,6 +8,8 @@
 // in openagents.engine.v1.
 //   coax/bin/coax test verse/space.coax --library
 
+#load "../aethyr/space.coax" as feet_space;
+
 PI :: 3.14159265;
 TAU :: 6.2831853;
 
@@ -15,6 +17,17 @@ Point :: struct { x: f32; y: f32; z: f32; }
 Shot :: struct { eye: Point; at: Point; }
 
 v3 :: (x: f32, y: f32, z: f32) -> Point { return Point.{x = x, y = y, z = z}; }
+// book:begin feet
+// A realm that steps its controller on a flat floor supplies that floor's world
+// height from its terrain or bridge once. Figures and cameras share the resulting
+// world point. Point is retained at the older realms' C boundary.
+feet_in_world :: (flat_feet: Point, floor_y: f32) -> Point {
+  placement := feet_space.Placement.{origin = feet_space.world_point(0, floor_y, 0), yaw = 0};
+  local := feet_space.LocalPoint.{x = flat_feet.x, y = flat_feet.y, z = flat_feet.z};
+  world := feet_space.local_to_world(placement, local);
+  return v3(world.x, world.y, world.z);
+}
+// book:end feet
 add :: (a: Point, b: Point) -> Point { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
 sub :: (a: Point, b: Point) -> Point { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
 times :: (a: Point, k: f32) -> Point { return v3(a.x * k, a.y * k, a.z * k); }
@@ -65,6 +78,13 @@ settle :: (rate: f32, dt: f32) -> f32 { return 1 - exp(-rate * hi(dt, 0)); }
 
 near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
 same :: (a: Point, b: Point, tolerance: f32) -> bool { return near(a.x, b.x, tolerance) && near(a.y, b.y, tolerance) && near(a.z, b.z, tolerance); }
+
+#test "a realm's floor-relative feet become one world point, including the height" {
+  #assert same(feet_in_world(v3(3, 1.25, -7), 2.5), v3(3, 3.75, -7), 0);
+  #assert same(feet_in_world(v3(-4, 0.75, 9), -3.5), v3(-4, -2.75, 9), 0);
+  #assert same(feet_in_world(v3(2, 0, -5), 4), v3(2, 4, -5), 0);
+  #assert same(feet_in_world(v3(1, 1.17, -2), 0), v3(1, 1.17, -2), 0);
+}
 
 #forall "atan2 points the right way" ix: -4..<5, iy: -4..<5 {
   x := f32(ix) * 0.5; y := f32(iy) * 0.5;

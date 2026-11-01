@@ -1,0 +1,30 @@
+// The figure is laid out before scenery. Compare its actual first emitted
+// sphere translation at the same pose, at the origin and at the live root.
+#load "../../apps/openagents-web/fairy.coax";
+
+drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  for i: 0..<s[0].heights.count { s[0].heights[i] = 2.5; }
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  // The reference bypasses the incoming terrain conversion entirely:
+  // draw this same pose directly at world origin. Thus removing the floor
+  // from fairy_frame cannot cancel out of a pair of frame measurements.
+  worn := ffu_worn(s[..]); body := ffl_part_worn(s[0].life[..], worn, FFL_BODY);
+  ups := FFL_BODY_UP; acrosses := FFL_BODY_ACROSS;
+  s[0].fig_on = true; s[0].fig_at = v3(0, 0, 0);
+  s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
+  fairy_figure(s[..], u[..], v3(0, 0, 0), 0, 0, 0, 0, 0, worn);
+  s[0].fig_on = false;
+  at := SLOT_AT[SHAPE_SPHERE] * OBJECT_FLOATS;
+  zero := v3(s[0].objects[at + 3], s[0].objects[at + 7], s[0].objects[at + 11]);
+  f := Point.{x = fx, y = fy, z = fz};
+  n := fairy_frame(s[..], out[..], u[..], 1280, 800, 1, 0, true,
+    f.x, f.y, f.z, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  result[0] = s[0].objects[at + 3] - zero.x;
+  result[1] = s[0].objects[at + 7] - zero.y;
+  result[2] = s[0].objects[at + 11] - zero.z;
+  result[3] = 0; result[4] = 2.5; result[5] = 0;
+  result[6] = ifx n > 0 && s[0].counts[SHAPE_BOX] > 0 then 1.0f32 else 0.0f32;
+}

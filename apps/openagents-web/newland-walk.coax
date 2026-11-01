@@ -225,8 +225,23 @@ wk_cam :: (eye: Fv, at: Fv, focal: f32, cx: f32, cy: f32, width: f32, height: f3
               vr = sqrt(width * width + height * height) * 0.5, near = WK_NEAR};
 }
 wk_focal :: (width: f32, height: f32) -> f32 { return lo(height * 0.5 / WK_TAN, width * 0.5 / WK_TAN_WIDE); }
+#test "the Grid's feet, eye and aim keep the same world origin and height scale" {
+  mid := fv(4, 3, -6);
+  feet := wk_at(mid, 2, 1.17, -4);
+  eye := wk_at(mid, 2, 4.17, -10);
+  aim := wk_at(mid, 2, 2.69, -4);
+  // Independent arithmetic: one grid unit is two metres, including height.
+  #assert feet.x == 5 && abs(feet.y - 3.585) < 0.000001 && feet.z == -8;
+  #assert eye.x == 5 && abs(eye.y - 5.085) < 0.000001 && eye.z == -11;
+  #assert abs((eye.y - feet.y) * 2 - 3) < 0.000001;
+  #assert abs((aim.y - feet.y) * 2 - 1.52) < 0.000001;
+  #assert wk_at(fv(0, -2, 0), 0, 0, 0).y == -2;
+}
 // The Grid's metres as the scene's grid units: half a unit each, from the places' middle.
-wk_at :: (mid: Fv, x: f32, y: f32, z: f32) -> Fv { return fv(mid.x + x * WALK_SCALE, y * WALK_SCALE, mid.z + z * WALK_SCALE); }
+wk_at :: (mid: Fv, x: f32, y: f32, z: f32) -> Fv {
+  g := spaces.world_to_grid(spaces.GridPoint.{x = mid.x, y = mid.y, z = mid.z}, spaces.world_point(x, y, z));
+  return fv(g.x, g.y, g.z);
+}
 
 // From the homepage: its view at the end of WALK AROUND's dive (over the places' middle, close in),
 // gliding down to the camera behind you. The lens eases so the picture's scale never jumps.
@@ -254,7 +269,7 @@ wk_you :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
   gait := ifx w.act == 2 || w.act == 3 then Gait.run else ifx w.act == 1 then Gait.walk else Gait.stand;
   pose := verse_figure_gait(Rig.person, gait, w.phase, t);
   top: [1] Spot;
-  return figure_up(out, at, c, verse_figure_skeleton(person_shape(1)), pose, w.feet.x, hi(w.feet.y, 0), w.feet.z, w.face, ink(p, INK_BRIGHT), 1, p, top[..]);
+  return figure_up(out, at, c, verse_figure_skeleton(person_shape(1)), pose, w.feet.x, w.feet.y, w.feet.z, w.face, ink(p, INK_BRIGHT), 1, p, top[..]);
 }
 
 // The project you are nearest: its name for the title's second line.

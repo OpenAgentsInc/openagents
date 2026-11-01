@@ -6,7 +6,7 @@
 **I. Foundations**
 
 - [1. A frame has a fixed step](ch001-a-frame-has-a-fixed-step.md)
-- [2. Spaces and units](ch002-spaces-and-units.md) — partly implemented
+- [2. Spaces and units](ch002-spaces-and-units.md)
 - [3. State starts from its defaults](ch003-state-starts-from-its-defaults.md)
 - [4. Input becomes typed actions](ch004-input-becomes-typed-actions.md)
 - [5. Replay a session exactly](ch005-replay-a-session-exactly.md)

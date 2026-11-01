@@ -1,0 +1,15 @@
+// book:begin example
+#load "../../verse/space.coax";
+#load "../space.coax" as engine;
+#import "Basic";
+
+main :: () {
+  feet := mix(v3(1, 0.25, -6), v3(5, 1.25, 2), 0.25);
+  world := feet_in_world(feet, 2.5);
+  mid := engine.GridPoint.{x = 4, y = 3, z = -6};
+  grid := engine.world_to_grid(mid, engine.world_point(world.x, world.y, world.z));
+  print("interpolated feet: (%, %, %) m above the flat floor\n", feet.x, feet.y, feet.z);
+  print("world feet: (%, %, %) m\n", world.x, world.y, world.z);
+  print("Grid feet: (%, %, %) units\n", grid.x, grid.y, grid.z);
+}
+// book:end example

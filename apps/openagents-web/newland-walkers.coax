@@ -13,11 +13,12 @@
 // simulated people stay away; with nobody, they come back.
 
 #load "room.coax";
+#load "../../aethyr/space.coax" as spaces;
 
 WALK_ROOM :: "/api/playtest/presence/the-grid";
 WALK_ASK_EVERY :: 1.0;     // s between asks
 WALK_ASK_AFTER :: 2.5;     // s before the first, so the page's first seconds are only its own
-WALK_SCALE :: 0.5;         // grid units a Grid metre
+WALK_SCALE :: spaces.GRID_PER_METRE;   // the named world-to-grid conversion's scale
 WALK_DIVE :: 0.75;         // s the camera dives before the page goes on
 WALK_URL :: "/realms/the-grid?from=home";
 
@@ -28,6 +29,7 @@ Walkers :: struct {
   want: bool;              // time for the next one
   speed: [ROOM_OTHERS] f32; phase: [ROOM_OTHERS] f32;
   drawn: [ROOM_OTHERS * 3] f32;   // x, z, yaw on the homepage, eased
+  feet_y: [ROOM_OTHERS] f32;     // the same eased feet height, in grid units
   seen: [ROOM_OTHERS] bool;
   diving: bool; dive: f32; // WALK AROUND was pressed, and s into its dive
   went: bool;              // the page was sent on to the Grid: once, not every frame until it leaves
@@ -46,11 +48,12 @@ coaxial_land_walkers_answer :: (s: [] LandState, answer: string) #export_c {
   w[0].asking = false;
   r := w[0].room[..];
   was := r[0].others;
-  was_id: [ROOM_OTHERS] f32; was_drawn: [ROOM_OTHERS * 3] f32; was_speed: [ROOM_OTHERS] f32; was_phase: [ROOM_OTHERS] f32;
+  was_id: [ROOM_OTHERS] f32; was_drawn: [ROOM_OTHERS * 3] f32; was_speed: [ROOM_OTHERS] f32; was_phase: [ROOM_OTHERS] f32; was_y: [ROOM_OTHERS] f32;
   for i: 0..<was {
     was_id[i] = walker_hash(room_other_id(r, i));
     for k: 0..<3 { was_drawn[i * 3 + k] = w[0].drawn[i * 3 + k]; }
     was_speed[i] = w[0].speed[i]; was_phase[i] = w[0].phase[i];
+    was_y[i] = w[0].feet_y[i];
   }
   st := room_take(r, answer);
   if st != 200 { r[0].others = 0; return; }
@@ -62,9 +65,12 @@ coaxial_land_walkers_answer :: (s: [] LandState, answer: string) #export_c {
     if j >= 0 {
       for k: 0..<3 { w[0].drawn[i * 3 + k] = was_drawn[j * 3 + k]; }
       w[0].speed[i] = was_speed[j]; w[0].phase[i] = was_phase[j];
+      w[0].feet_y[i] = was_y[j];
     } else {
-      w[0].drawn[i * 3] = mid.x + r[0].to[i * 4] * WALK_SCALE;
-      w[0].drawn[i * 3 + 1] = mid.z + r[0].to[i * 4 + 2] * WALK_SCALE;
+      feet := wk_at(mid, r[0].to[i * 4], r[0].to[i * 4 + 1], r[0].to[i * 4 + 2]);
+      w[0].drawn[i * 3] = feet.x;
+      w[0].drawn[i * 3 + 1] = feet.z;
+      w[0].feet_y[i] = feet.y;
       w[0].drawn[i * 3 + 2] = r[0].to[i * 4 + 3];
       w[0].speed[i] = 0; w[0].phase[i] = 0;
     }
@@ -86,10 +92,12 @@ walkers_step :: (s: [] LandState, dt: f32) {
   mid := centre(s, -1);
   k := clamp(dt * 2.5, 0, 1);   // an ask a second: eased so they keep moving between answers
   for i: 0..<r[0].others {
-    tx := mid.x + r[0].to[i * 4] * WALK_SCALE; tz := mid.z + r[0].to[i * 4 + 2] * WALK_SCALE;
+    feet := wk_at(mid, r[0].to[i * 4], r[0].to[i * 4 + 1], r[0].to[i * 4 + 2]);
+    tx := feet.x; tz := feet.z;
     bx := w[0].drawn[i * 3]; bz := w[0].drawn[i * 3 + 1];
     nx := bx + (tx - bx) * k; nz := bz + (tz - bz) * k;
     w[0].drawn[i * 3] = nx; w[0].drawn[i * 3 + 1] = nz;
+    w[0].feet_y[i] += (feet.y - w[0].feet_y[i]) * k;
     step := sqrt((nx - bx) * (nx - bx) + (nz - bz) * (nz - bz));
     if step > 0.002 { w[0].drawn[i * 3 + 2] = angle_of(nx - bx, nz - bz); }
     if dt > 0 { w[0].speed[i] += (step / dt / WALK_SCALE - w[0].speed[i]) * clamp(dt * 4, 0, 1); }   // Grid m/s
@@ -112,7 +120,7 @@ walkers_draw :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) 
     pose := verse_figure_gait(Rig.person, gait, w[0].phase[i], t + cast(f32) i * 1.7);
     top: [1] Spot;
     x := w[0].drawn[i * 3]; z := w[0].drawn[i * 3 + 1];
-    v = figure(out, v, c, k, pose, x, z, w[0].drawn[i * 3 + 2], bright, 1, p, top[..]);
+    v = figure_up(out, v, c, k, pose, x, w[0].feet_y[i], z, w[0].drawn[i * 3 + 2], bright, 1, p, top[..]);
     w[0].seen[i] = top[0].ok && inside(c.clip, top[0].x, top[0].y);
     if w[0].seen[i] {
       cap := (ifx p.phone then 5.8f32 else 6.8f32) * p.d;
@@ -168,4 +176,21 @@ walk_dive :: (s: [] LandState, step: f32) {
   #assert s[0].action == 0;
   coaxial_land_walkers_answer(s[..], "200\n{\"others\":[],\"count\":0}");
   #assert coaxial_land_walkers(s[..]) == 0;
+}
+
+#test "a remote Grid walker's jump is drawn at its recorded height through updates and reordering" {
+  s: [1] LandState;
+  mid := centre(s[..], -1);
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":4,\"y\":1.5,\"z\":2,\"yaw\":0}],\"count\":1}");
+  #assert s[0].walk[0].room[0].others == 1;
+  #assert s[0].walk[0].feet_y[0] == mid.y + 0.75;
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":4,\"y\":0.5,\"z\":2,\"yaw\":0}],\"count\":1}");
+  #assert s[0].walk[0].feet_y[0] == mid.y + 0.75;
+  walkers_step(s[..], 0.2);
+  #assert s[0].walk[0].feet_y[0] == mid.y + 0.5;
+  // A new visitor inserted before WREN must not inherit WREN's airborne feet.
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-b\",\"name\":\"JAY\",\"x\":0,\"y\":0,\"z\":0,\"yaw\":0},{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":4,\"y\":0.5,\"z\":2,\"yaw\":0}],\"count\":2}");
+  #assert s[0].walk[0].feet_y[0] == mid.y && s[0].walk[0].feet_y[1] == mid.y + 0.5;
+  walkers_step(s[..], 0.4);
+  #assert s[0].walk[0].feet_y[1] == mid.y + 0.25;
 }

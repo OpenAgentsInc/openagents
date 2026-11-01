@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "objective": "Implement the Aethyr book in chapter order, including production Coax, checks, independent verification and teaching text; push passing deliveries to main.",
+  "started_utc": "2026-11-01 06:40 UTC",
+  "base_commit": "7bc7ec0c77c682fa8dd572396922956ef105a8c7",
+  "initial_status": {
+    "implemented": 10,
+    "partly_implemented": 6,
+    "design_draft": 70
+  },
+  "current_chapter": 8,
+  "status": "chapter 2 complete; chapter 8 implementation in progress",
+  "deliveries": [
+    {
+      "chapter": 2,
+      "title": "Spaces and units",
+      "profile": "native f32 spatial boundaries",
+      "result": "Typed production floor-to-world/Grid conversions, remote Grid jump height, nine native renderer probes, worked example, synchronized registry and teaching text.",
+      "evidence_directory": "docs/verification/data/aethyr-ch2-2026-11-01",
+      "commit": "recorded by the accompanying Git commit"
+    }
+  ],
+  "next_incomplete_chapters": [
+    8,
+    9,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
+  "scope_rule": "Keep design status until its declared acceptance is supported; preserve existing evidence and test only changed inputs.",
+  "worktree": "/Users/christopherdavid/work/openagents-aethyr-book",
+  "compiler": {
+    "version": "coax0 0.46.0",
+    "binary_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+    "source_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3",
+    "provenance": "coax/provenance.sh verify . coax/bin/coax coax/bin/provenance-check coax/bin/provenance.record passed"
+  },
+  "chapter_2": {
+    "status": "qualified",
+    "profile": "native f32 spatial boundaries",
+    "commands": [
+      {
+        "command": "coax/bin/coax test verse/space.coax --library",
+        "exit_status": 0,
+        "summary": [
+          "12 checks, 12 passed, 0 failed"
+        ]
+      },
+      {
+        "command": "coax/bin/coax test apps/openagents-web/garden.coax --only 'elevated feet above'",
+        "exit_status": 0,
+        "summary": [
+          "1 of 109 checks (--only 'elevated feet above'), 1 passed, 0 failed"
+        ]
+      },
+      {
+        "command": "coax/bin/coax test apps/openagents-web/fairy.coax --only 'elevated feet above'",
+        "exit_status": 0,
+        "summary": [
+          "1 of 165 checks (--only 'elevated feet above'), 1 passed, 0 failed"
+        ]
+      },
+      {
+        "command": "coax/bin/coax test apps/openagents-web/villa.coax --only 'figure and live camera share'",
+        "exit_status": 0,
+        "summary": [
+          "1 of 144 checks (--only 'figure and live camera share'), 1 passed, 0 failed"
+        ]
+      },
+      {
+        "command": "coax/bin/coax test apps/openagents-web/everglade.coax --only 'elevated and wading feet'",
+        "exit_status": 0,
+        "summary": [
+          "1 of 452 checks (--only 'elevated and wading feet'), 1 passed, 0 failed"
+        ]
+      },
+      {
+        "command": "coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000",
+        "exit_status": 0,
+        "summary": [
+          "109 checks, 109 passed, 0 failed"
+        ]
+      },
+      {
+        "command": "python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax --jobs 4",
+        "exit_status": 0,
+        "summary": [
+          "book execution: 34 runs match output and exit status"
+        ]
+      },
+      {
+        "command": "coax/web/project/build-home.sh /tmp/aethyr-ch2-newland.wasm",
+        "exit_status": 0,
+        "summary": [
+          "compiled and linked successfully"
+        ]
+      }
+    ],
+    "reused_evidence": [
+      {
+        "source": "aethyr/space.coax",
+        "commit": "a93d35c2dd",
+        "mutation": "78/78 killed; unchanged conversion implementation"
+      },
+      {
+        "source": "aethyr/refusals.coax",
+        "commit": "a93d35c2dd",
+        "mutation": "47/47 killed; unchanged refusal implementation"
+      }
+    ],
+    "limits": [
+      "Native figure/object/instance anchors; no browser raster qualification",
+      "Legacy Point/Vec3 C interfaces and f64 consolidation remain chapter 64 work",
+      "Non-avatar and two-dimensional views have no walker-foot anchor"
+    ],
+    "remaining": "No remaining work for the named native f32 profile.",
+    "render_boundary_evidence": "docs/verification/data/aethyr-ch2-2026-11-01/render-boundaries.json",
+    "render_boundary_summary": {
+      "paths": 9,
+      "debug_cases": 45,
+      "release_cases": 45,
+      "sanitized_subset": [
+        "grid",
+        "garden",
+        "haunt"
+      ],
+      "sanitized_cases": 15,
+      "source_snapshot_sha256": "45cf0c6e5df63a8135fc55e5b02256a8cadd8eab836bd07f4a09f756edf4a843",
+      "source_files": 171
+    },
+    "remaining_expansions": [
+      "Legacy vector ABI and f64 consolidation in chapter 64",
+      "Browser execution and final GPU raster qualification in chapters 11 and 85"
+    ],
+    "source_sha256": {
+      "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+      "apps/openagents-web/garden.coax": "1c840e669059c3bd03522c6b2395c65db9f568ec5a86e0fc99ccd919de4afeda",
+      "apps/openagents-web/fairy.coax": "d95b3352a9e64b094401ea2572e50dc40b7160d556d4e0e3f7f2da4d4f49a4f1",
+      "apps/openagents-web/villa.coax": "9c3fb8a13ea8f25d88f02284b7eb4b0aa388f9e493750bd02975e3c484dac3db",
+      "apps/openagents-web/everglade.coax": "56b60b082307d5749b843266ef2d84be0ddd6d9ee77ee73a9d28f8bc6f14352f",
+      "apps/openagents-web/newland-walk.coax": "ba497667c9ead8061dcbe7a3488b8fa6bb8ece0cd770df7c3cd5d60b5d2903d2",
+      "apps/openagents-web/newland-walkers.coax": "7edbf78bc785504fafda05310799211ea6c2a2f19e97db64eb0f516cf677fd43",
+      "aethyr/examples/feet-at-a-realm-boundary.coax": "4b37a5fe3569d97db465e70e22ba3151e322e7372d99676cec82c7f540b34c1c"
+    },
+    "wasm_build": {
+      "artifact": "/tmp/aethyr-ch2-newland.wasm",
+      "sha256": "167741670e76dec69b079d2d53f1df948419447a136d640af99631a614d1d60c",
+      "scope": "compiled and linked only; no browser raster claim"
+    }
+  },
+  "current_status": {
+    "implemented": 11,
+    "partly_implemented": 5,
+    "design_draft": 70
+  }
+}
