@@ -111,6 +111,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/bech32.coax",
+      "chapter": "nostr/book/ch015-bech32.md",
+      "stdout": "nostr/fixtures/bech32.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

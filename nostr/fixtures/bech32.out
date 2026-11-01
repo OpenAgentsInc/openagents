@@ -1,0 +1,29 @@
+step 1 (value 3): state: 00000023
+step 2 (value 0): state: 00000460
+step 3 (value 1): state: 00008c01
+step 4 (value 0): state: 00118020
+step 5 (value 0): state: 02300400
+step 6 (value 0): state: 3d6ad7b2
+step 7 (value 0): state: 02fd30b9
+step 8 (value 0): state: 24cc4092
+step 9 (value 0): state: 15ccfe9e
+state xor 1: 15ccfe9f
+checksum words: 10 28 25 31 20 31
+encode "a", no data: a12uel5l
+words of 7e 7e: 15 25 31 0
+npub: npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6
+equals NIP-19's example: true
+decode: ok, hrp npub, 52 words, last word 16
+bytes: ok, 32 of them
+key: 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d
+A12UEL5L re-encodes as a12uel5l
+mixed case a12UEL5L: invalid
+bad checksum a12uel5m: invalid
+no separator pzry9x0s0muk: invalid
+Bech32m a1lqfn3a: invalid
+Bech32m npub: invalid
+Bech32m npub as NIP-19: invalid
+bad padding: npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkw3eyr0ng
+bad padding as Bech32: ok, hrp npub, 52 words
+bad padding as bytes: invalid
+unused bits of 52 words, last word 17: byte count -1

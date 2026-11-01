@@ -1,0 +1,108 @@
+// The checks of bech32.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/bech32.coax
+#load "../bech32.coax";
+
+// book:begin check
+// BIP-173's valid Bech32 strings, copied from the pinned
+// coax/tests/vectors/upstream/bip173/bip-0173.mediawiki. Each decodes, and
+// re-encoding its HRP and words gives the string in lowercase.
+VALID :: [7] string.[
+    "A12UEL5L", "a12uel5l",
+    "an83characterlonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1tt5tgs",
+    "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw",
+    "11qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqc8247j",
+    "split1checkupstagehandshakeupstreamerranterredcaperred2y9e3w",
+    "?1ezyfcl"];
+#forall "every valid BIP-173 string decodes and re-encodes in lowercase" i: 0..<7 {
+  s := VALID[i];
+  hrp: [83] u8; words: [90] u8; text: [90] u8;
+  r := bech32_decode_checked(s, hrp[..], words[..], false, false);
+  #assert r.error == NC_OK && r.hrp_written + 1 + r.written + 6 == s.count;
+  q := bech32_encode_checked(cast(string) hrp[0..<r.hrp_written], cast(string) words[0..<r.written], false, text[..], false, false);
+  #assert q.error == NC_OK && q.written == s.count;
+  for k: 0..<s.count { #assert text[k] == b32_lower(s[k]); }
+}
+// BIP-173's invalid strings. The four with a byte outside printable ASCII
+// are built from their listed bytes.
+INVALID :: [9] string.[
+    "an84characterslonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1569pvx",
+    "pzry9x0s0muk", "1pzry9x0s0muk", "x1b4n0q5v", "li1dgmt3", "A1G7SGD8",
+    "10a06t8", "1qzzfhee", "de1lg7wt"];
+#forall "every invalid BIP-173 string refuses" i: 0..<12 {
+  s: [9] u8; text := "";
+  if i < 8 {
+    text = INVALID[i];
+  } else if i == 8 {
+    for k: 0..<8 { s[k] = INVALID[8][k]; }
+    s[8] = 0xff;  // "de1lg7wt" + 0xFF
+    text = cast(string) s[..];
+  } else {
+    lead := [3] u8.[0x20, 0x7f, 0x80];
+    tail := [3] string.["1nwldj5", "1axkwrx", "1eym55h"];
+    s[0] = lead[i - 9];
+    for k: 0..<7 { s[k + 1] = tail[i - 9][k]; }
+    text = cast(string) s[0..<8];
+  }
+  hrp: [83] u8; words: [90] u8;
+  #assert bech32_decode_checked(text, hrp[..], words[..], false, false).error == NC_INVALID;
+}
+// BIP-350's valid Bech32m strings: the same checksum with constant
+// 0x2bc830a3 in place of 1. Every one refuses here.
+BECH32M :: [7] string.[
+    "A1LQFN3A", "a1lqfn3a",
+    "an83characterlonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11sg7hg6",
+    "abcdef1l7aum6echk45nj3s0wdvt2fg8x9yrzpqzd3ryx",
+    "11llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllludsr8",
+    "split1checkupstagehandshakeupstreamerranterredcaperredlc445v",
+    "?1v759aa"];
+// The polymod residue of a string: 1 for Bech32, 0x2bc830a3 for Bech32m.
+residue :: (s: string) -> u32 {
+  at := s.count - 1;
+  while s[at] != '1' { at -= 1; }
+  state := b32_prefix(s[0..<at]);
+  for k: at + 1..<s.count { state = b32_step(state, cast(u8) b32_digit(b32_lower(s[k]))); }
+  return state;
+}
+#forall "every BIP-350 Bech32m string refuses" i: 0..<7 {
+  #assert residue(BECH32M[i]) == 0x2bc830a3;
+  hrp: [83] u8; words: [90] u8;
+  #assert bech32_decode_checked(BECH32M[i], hrp[..], words[..], false, false).error == NC_INVALID;
+}
+// The hand trace: HRP "a" with no data. The states were worked out by hand
+// and with BIP-173's reference polymod in Python.
+TRACE :: [9] u32.[0x23, 0x460, 0x8c01, 0x118020, 0x2300400, 0x3d6ad7b2,
+                  0x2fd30b9, 0x24cc4092, 0x15ccfe9e];
+#test "the polymod of \"a\" matches the hand trace" {
+  values := [9] u8.[3, 0, 1, 0, 0, 0, 0, 0, 0];
+  state: u32 = 1;
+  for i: 0..<9 { state = b32_step(state, values[i]); #assert state == TRACE[i]; }
+  #assert (state ^ 1) == 0x15ccfe9f;
+  #assert residue("a12uel5l") == 1;
+  #assert residue("a1") == TRACE[2];   // the expanded HRP alone: step 3
+  #assert residue("a1q") == TRACE[3];  // then one zero word: step 4
+}
+// NIP-19's two npub examples, from the pinned
+// coax/tests/vectors/upstream/nips/19.md, encode and decode both ways.
+NPUBS :: [4] string.[
+    "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6",
+    "7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e",
+    "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg"];
+#forall "NIP-19's npub examples round-trip" i: 0..<2 {
+  key: [32] u8; back: [32] u8; text: [90] u8;
+  #assert hex_decode_checked(NPUBS[2 * i], key[..], false).error == NC_OK;
+  e := bech32_encode_checked("npub", cast(string) key[..], true, text[..], false, false);
+  #assert e.error == NC_OK && cast(string) text[0..<e.written] == NPUBS[2 * i + 1];
+  n := nip19_decode_checked(NPUBS[2 * i + 1], back[..], false);
+  #assert n.error == NC_OK && n.written == 32;
+  for k: 0..<32 { #assert back[k] == key[k]; }
+}
+// 8-to-5 regrouping by hand: 7e 7e is 01111 11001 11111 0(0000).
+#test "two bytes regroup into four words" {
+  pair := [2] u8.[0x7e, 0x7e];
+  want := [4] u8.[15, 25, 31, 0];
+  #assert b32_word_count(2, true) == 4;
+  for i: 0..<4 { #assert b32_word(cast(string) pair[..], true, i) == want[i]; }
+}
+// book:end check

@@ -101,6 +101,7 @@ n19_type :: (hrp: string) -> u32 {
   return 0;
 }
 n19_word_count :: (count: int) -> bool #export_c { return count >= 0 && count <= 4992; }
+// book:begin padding
 n19_byte_count :: (words: int, last: int) -> int {
   if !n19_word_count(words) || last < 0 || last > 31 { return -1; }
   bits := words * 5;
@@ -109,6 +110,7 @@ n19_byte_count :: (words: int, last: int) -> int {
   if unused != 0 && (last & ((1 << unused) - 1)) != 0 { return -1; }
   return bits / 8;
 }
+// book:end padding
 // Reads decoded bytes directly from the validated source. In particular, nsec
 // does not pass through an intermediate raw-key array before caller output.
 n19_byte :: (source: N19_Source, at: int) -> u8 {

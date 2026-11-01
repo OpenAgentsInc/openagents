@@ -28,7 +28,7 @@
 
 **IV. Encodings**
 
-- [15. Bech32](ch015-bech32.md) — partly implemented
+- [15. Bech32](ch015-bech32.md) — implemented
 - [16. NIP-19 entities and nostr: URIs](ch016-nip-19-entities-and-nostr-uris.md) — partly implemented
 - [17. JSON you can sign](ch017-json-you-can-sign.md) — partly implemented
 

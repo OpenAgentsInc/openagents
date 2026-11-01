@@ -1,0 +1,105 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [80] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// A 30-bit checksum state as 8 hex digits.
+show_state :: (label: string, state: u32) {
+  b: [4] u8;
+  for i: 0..<4 { b[i] = cast(u8)((state >> (8 * (3 - i))) & 255); }
+  show(label, b[..]);
+}
+// The name of a codec error code.
+error_name :: (e: u32) -> string {
+  if e == NC_OK { return "ok"; }
+  if e == NC_INVALID { return "invalid"; }
+  if e == NC_CAPACITY { return "capacity"; }
+  if e == NC_LIMIT { return "limit"; }
+  return "alias";
+}
+// Decode a Bech32 string and print its result, its HRP and its word count.
+try_decode :: (label: string, text: string) {
+  hrp: [83] u8; words: [90] u8;
+  r := bech32_decode_checked(text, hrp[..], words[..], false, false);
+  if r.error != NC_OK { print("%: %\n", label, error_name(r.error)); return; }
+  print("%: ok, hrp %, % words\n", label, cast(string) hrp[0..<r.hrp_written], r.written);
+}
+
+NIP19_KEY  :: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+NIP19_NPUB :: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+// The same key with a Bech32m checksum (constant 0x2bc830a3).
+NIP19_NPUB_M :: "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkws3w8ktc";
+
+main :: () {
+  // The checksum of HRP "a" with no data, one polymod step per value:
+  // the expanded HRP (3, 0, 1), then six zeros.
+  values := [9] u8.[3, 0, 1, 0, 0, 0, 0, 0, 0];
+  state: u32 = 1;
+  for i: 0..<9 {
+    state = b32_step(state, values[i]);
+    print("step % (value %): ", i + 1, values[i]);
+    show_state("state", state);
+  }
+  show_state("state xor 1", state ^ 1);
+  print("checksum words:");
+  for i: 0..<6 { print(" %", (state ^ 1) >> (5 * (5 - i)) & 31); }
+  print("\n");
+  text: [90] u8;
+  e := bech32_encode_checked("a", "", false, text[..], false, false);
+  print("encode \"a\", no data: %\n", cast(string) text[0..<e.written]);
+
+  // Two bytes regrouped into 5-bit words.
+  pair := [2] u8.[0x7e, 0x7e];
+  print("words of 7e 7e:");
+  for i: 0..<b32_word_count(2, true) { print(" %", b32_word(cast(string) pair[..], true, i)); }
+  print("\n");
+
+  // The NIP-19 example key as an npub, and back.
+  key: [32] u8;
+  #assert hex_decode_checked(NIP19_KEY, key[..], false).error == NC_OK;
+  e = bech32_encode_checked("npub", cast(string) key[..], true, text[..], false, false);
+  npub := cast(string) text[0..<e.written];
+  print("npub: %\n", npub);
+  print("equals NIP-19's example: %\n", npub == NIP19_NPUB);
+  hrp: [83] u8; words: [90] u8;
+  d := bech32_decode_checked(npub, hrp[..], words[..], false, false);
+  print("decode: %, hrp %, % words, last word %\n", error_name(d.error),
+        cast(string) hrp[0..<d.hrp_written], d.written, words[d.written - 1]);
+  back: [32] u8;
+  n := nip19_decode_checked(npub, back[..], false);
+  print("bytes: %, % of them\n", error_name(n.error), n.written);
+  show("key", back[0..<n.written]);
+
+  // Uppercase is accepted, and output is always lowercase.
+  d = bech32_decode_checked("A12UEL5L", hrp[..], words[..], false, false);
+  e = bech32_encode_checked(cast(string) hrp[0..<d.hrp_written], "", false, text[..], false, false);
+  print("A12UEL5L re-encodes as %\n", cast(string) text[0..<e.written]);
+
+  // Refusals.
+  try_decode("mixed case a12UEL5L", "a12UEL5L");
+  try_decode("bad checksum a12uel5m", "a12uel5m");
+  try_decode("no separator pzry9x0s0muk", "pzry9x0s0muk");
+  try_decode("Bech32m a1lqfn3a", "a1lqfn3a");
+  try_decode("Bech32m npub", NIP19_NPUB_M);
+  print("Bech32m npub as NIP-19: %\n", error_name(nip19_decode_checked(NIP19_NPUB_M, back[..], false).error));
+
+  // Bad padding: set the last word's low bit, one of the 4 unused bits, and
+  // give the string a valid checksum. Bech32 accepts it; the 5-to-8
+  // regrouping refuses it.
+  d = bech32_decode_checked(npub, hrp[..], words[..], false, false);
+  words[51] = words[51] | 1;
+  padded: [90] u8;
+  e = bech32_encode_checked("npub", cast(string) words[0..<52], false, padded[..], false, false);
+  bad := cast(string) padded[0..<e.written];
+  print("bad padding: %\n", bad);
+  try_decode("bad padding as Bech32", bad);
+  print("bad padding as bytes: %\n", error_name(nip19_decode_checked(bad, back[..], false).error));
+  print("unused bits of 52 words, last word 17: byte count %\n", n19_byte_count(52, 17));
+}
+// book:end example

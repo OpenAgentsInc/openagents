@@ -303,13 +303,16 @@
    "number": 15,
    "title": "Bech32",
    "file": "ch015-bech32.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     1
    ],
    "source": [
-    "coax/lib/nostr/bech32-core.coax"
+    "coax/lib/nostr/bech32-core.coax",
+    "coax/lib/nostr/nip19-core.coax",
+    "nostr/examples/bech32.coax",
+    "nostr/examples/checks/bech32.coax"
    ],
    "qualified_targets": [
     "cpu"

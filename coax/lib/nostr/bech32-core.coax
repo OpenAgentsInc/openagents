@@ -94,6 +94,7 @@ b32_word_count :: (count: int, eight: bool) -> int {
   if eight { return (count * 8 + 4) / 5; }
   return count;
 }
+// book:begin word
 b32_word :: (data: string, eight: bool, at: int) -> u8 {
   if !eight { return data[at]; }
   value: u32 = 0;
@@ -104,6 +105,8 @@ b32_word :: (data: string, eight: bool, at: int) -> u8 {
   }
   return cast(u8) value;
 }
+// book:end word
+// book:begin polymod
 b32_step :: (state: u32, value: u8) -> u32 {
   top := state >> 25;
   next := ((state & 0x1ffffff) << 5) ^ cast(u32) value;
@@ -118,6 +121,8 @@ b32_prefix :: (hrp: string) -> u32 {
   for c: hrp { state = b32_step(state, b32_lower(c) & 31); }
   return state;
 }
+// book:end polymod
+// book:begin inspect
 b32_inspect :: (input: string, extended: bool) -> B32_Header {
   if !b32_text_count(input.count, extended) { return B32_Header.{error = NC_INVALID}; }
   upper := false; lower := false; separator := 0;
@@ -139,6 +144,7 @@ b32_inspect :: (input: string, extended: bool) -> B32_Header {
   if state != 1 { return B32_Header.{error = NC_INVALID}; }
   return B32_Header.{hrp = separator, words = input.count - separator - 7};
 }
+// book:end inspect
 bech32_encode_checked :: (hrp: string, data: string, eight: bool, out: [] u8, extended: bool, overlap: bool) -> NC_Result {
   words := b32_word_count(data.count, eight);
   needed := b32_size(hrp.count, words, extended);
