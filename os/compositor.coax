@@ -6,6 +6,7 @@
 // The CoderOS key bindings run first (Super+Return opens Coder, Super+arrows move the focus, and the
 // rest of Omarchy's tiling keys); a binding that starts a program runs LAUNCH-DIR/NAME with NAME one
 // of coder, pane, dictation, presentation, browser, android, camera. Super+Shift+E leaves.
+// LAUNCH-DIR/start, when there is one, runs once the socket is up: the session's start list.
 // KEYMAP is the XKB keymap text clients get (os/compositor-us.xkb is the US layout, compiled once by
 // `xkbcli compile-keymap --layout us`; it is data, not a tool).
 // With --screen it takes the first connected screen through KMS (from a free VT; Ctrl+Alt+Backspace
@@ -1073,6 +1074,9 @@ tool_main :: () -> int #export_c {
   r := cxwl_listen(sp[0..<sn]);
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
   cx_say("ready");
+  // the session's start list (Hyprland's exec-once rows), as one program the system writes
+  sp2: [1024] u8; stn := 0; for i: 0..<x[0].nlaunch { sp2[stn] = x[0].launch[i]; stn += 1; } for c: "/start" { sp2[stn] = c; stn += 1; }
+  if cxwl_spawn(sp2[0..<stn], sp[0..<sn]) > 0 { cx_say("exec start"); }
   last := cxwl_ms(); stdin_open := true; input_open := want_screen || input.count > 0;
   while !x[0].quit {
     p := cxwl_poll(8, ifx stdin_open then 1 else 0);

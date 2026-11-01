@@ -522,6 +522,11 @@ compiler and the examples have not been run on Linux yet.
   resize, the floats' first size (320 px when the window hasn't drawn
   yet), and host rules such as the Android emulator's class.
 
+  The session's start list (Hyprland's `exec-once` rows) is
+  `LAUNCH-DIR/start`, run once the socket is up. A start program that
+  opened a terminal gave a focused window at login, and a launch
+  directory without one starts nothing.
+
   A client's own pointer image (`wl_pointer.set_cursor`) replaces the
   arrow while the pointer is over that client: over a terminal, foot's
   I-beam was drawn at its hotspot.
