@@ -80387,6 +80387,20 @@ CK_spatial_fixture :: (c:CK_Context) {
 #test "return borrow union exactly fills the supplied destination without refusing" {
  nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};out:=[1]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=9,type=12}];empty:[1]BS_Origin;r:=CB_merge(b,out[..],CB_Result.{count=1},empty[0..<0],CB_Result.{});#assert r.count==1 && !r.incomplete && !state[0].fatal && state[0].error_count==0 && out[0].kind==BS_STATIC && out[0].root==9 && out[0].type==12;
 }
+// GitHub #12611: a returned string chosen from many literals (Everglade's
+// spell hints) overflowed the 64-origin set with static origins alone.
+#forall "return borrow static origins that overflow a set collapse to one per type and keep the rest" sample:0..<5 {
+ nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};
+ out:[64]BS_Origin;values:[64]BS_Origin;small:[3]BS_Origin;left:=40;right:=26;for i:0..<64 {out[i]=BS_Origin.{kind=BS_STATIC,root=100+i,type=12};values[i]=BS_Origin.{kind=BS_STATIC,root=200+i,type=ifx sample==4 && i<25 then 11 else 12};}values[25]=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=12};
+ if sample==1 || sample==2 {left=2;right=ifx sample==1 then 2 else 1;for i:0..<2 {small[i]=out[i];}}
+ if sample==3 {for i:0..<64 {out[i].kind=BS_LOCAL;values[i].kind=BS_LOCAL;}right=25;}
+ r:CB_Result;if sample==1 || sample==2 {r=CB_merge(b,small[..],CB_Result.{count=left},values[..],CB_Result.{count=right});}else {r=CB_merge(b,out[..],CB_Result.{count=left},values[..],CB_Result.{count=right});}
+ if sample==3 {#assert state[0].fatal && errors[0].code=="E0381" && r.count==0;}
+ else if sample==1 {#assert !state[0].fatal && r.count==1 && small[0].kind==BS_STATIC && small[0].root==1 && small[0].type==12;}
+ else if sample==2 {#assert !state[0].fatal && r.count==3 && small[0].root==100 && small[1].root==101 && small[2].root==200;}
+ else if sample==4 {#assert !state[0].fatal && state[0].error_count==0 && r.count==3 && out[0].kind==BS_STATIC && out[0].root==1 && out[0].type==11 && out[1].root==1 && out[1].type==12 && out[2].kind==BS_PARAMETER && out[2].root==0;}
+ else {#assert !state[0].fatal && state[0].error_count==0 && r.count==2 && !r.incomplete && out[0].kind==BS_STATIC && out[0].root==1 && out[0].type==12 && out[1].kind==BS_PARAMETER && out[1].root==0 && out[1].role==BS_DESCRIPTOR && out[1].type==12;}
+}
 
 #test "return borrow file walk keeps the complete depth budget for fully owned return types" {
  nodes:[8]CK_Node;types:[272]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=6,type_count=272}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}for i:16..<272 {types[i]=CK_Type.{kind=CK_Kind.array,elem=ifx i==271 then 12 else i+1,length=1};}nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,b=3,borrow_returns=4,loc=CK_Loc.{line=87,column=2}};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block,head=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_return,a=5};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=6};nodes[6]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};CB_walk(b,2,false);#assert !state[0].fatal && state[0].error_count==0 && nodes[2].borrow_status==0;
@@ -80460,7 +80474,7 @@ CK_spatial_fixture :: (c:CK_Context) {
  nodes:[160]CK_Node;types:[32]CK_Type;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=127,type_count=24}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=100,column=2}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
  types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[18]=CK_Type.{kind=CK_Kind.view,elem=3};types[19]=CK_Type.{kind=CK_Kind.array,elem=3,length=2};types[20]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2,next=6};nodes[6]=CK_Node.{kind=CK_Tag.param,type=11,borrow_owner=2};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=19,a=20,borrow_owner=2};nodes[20]=CK_Node.{kind=CK_Tag.expr_array,type=19,head=21};nodes[21]=CK_Node.{kind=CK_Tag.expr_string,type=3,next=22,name="first"};nodes[22]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="second"};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.field,type=16,next=42};nodes[42]=CK_Node.{kind=CK_Tag.field,type=3,b=31};nodes[31]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="default"};nodes[50]=CK_Node.{kind=CK_Tag.constant,type=3,a=51};nodes[51]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="constant"};
  id:=10;nodes[10]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="literal",loc=CK_Loc.{line=14,column=7}};path:BS_Path;storage:=false;kind:=BS_STATIC;root:=10;count:=1;
- if mode==0 {id=127;nodes[127]=nodes[10];root=127;}if mode==1 {nodes[10].kind=CK_Tag.expr_ct;}if mode==2 {nodes[10].kind=CK_Tag.expr_ident;nodes[10].constant=50;root=51;}if mode==3 {nodes[10].kind=CK_Tag.expr_ident;nodes[10].constant=50;nodes[10].type=17;nodes[50].type=17;nodes[51]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=52};nodes[52]=CK_Node.{kind=CK_Tag.expr_int,type=12,next=53};nodes[53]=CK_Node.{kind=CK_Tag.expr_int,type=12};storage=true;root=50;}
+ if mode==0 {id=127;nodes[127]=nodes[10];root=127;}if mode==1 {nodes[10].kind=CK_Tag.expr_ct;}if mode==2 {nodes[10].kind=CK_Tag.expr_ident;nodes[10].constant=50;root=50;}if mode==3 {nodes[10].kind=CK_Tag.expr_ident;nodes[10].constant=50;nodes[10].type=17;nodes[50].type=17;nodes[51]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=52};nodes[52]=CK_Node.{kind=CK_Tag.expr_int,type=12,next=53};nodes[53]=CK_Node.{kind=CK_Tag.expr_int,type=12};storage=true;root=50;}
  if mode==4 || mode==6 {nodes[10].kind=ifx mode==4 then CK_Tag.expr_cast else CK_Tag.expr_slice;nodes[10].a=11;nodes[10].type=ifx mode==4 then 3 else 16;nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};kind=BS_PARAMETER;root=0;}
  if mode==5 {nodes[10].kind=CK_Tag.expr_run;nodes[10].a=11;nodes[11]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="frozen"};root=11;}
  if mode==7 {nodes[10].kind=CK_Tag.expr_index;nodes[10].a=11;nodes[10].b=12;nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=4};nodes[12]=CK_Node.{kind=CK_Tag.expr_int,type=11};kind=BS_PARAMETER;root=1;}
@@ -80469,6 +80483,33 @@ CK_spatial_fixture :: (c:CK_Context) {
  if mode==11 {nodes[10].kind=CK_Tag.expr_struct;nodes[10].type=20;nodes[10].head=15;nodes[15]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=11};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};path.count=1;path.steps[0]=BS_Step.{kind=BS_FIELD,index=1};root=31;}
  if mode==12 {nodes[10].kind=CK_Tag.expr_array;nodes[10].type=17;nodes[10].head=15;nodes[15]=CK_Node.{kind=CK_Tag.expr_int,type=12,next=16};nodes[16]=CK_Node.{kind=CK_Tag.expr_int,type=12};storage=true;kind=BS_LOCAL;}
  out:[64]BS_Origin;r:=CB_expr(b,id,path,storage,out[..]);#assert !state[0].fatal && state[0].error_count==0 && !r.incomplete && r.count==count && out[0].kind==kind && out[0].root==root && out[0].type==12 && out[0].role==(ifx kind==BS_PARAMETER then BS_DESCRIPTOR else cast(u8)0);if count==2 {#assert out[1].kind==BS_STATIC && out[1].root==22 && out[1].type==12;}if mode==7 {#assert out[0].path.count==1 && out[0].path.steps[0].kind==BS_DEREFERENCE && out[0].path.steps[0].index==0;}else {#assert out[0].path.count==0;}#assert work[0].loc.line==100 && work[0].loc.column==2;
+}
+
+// GitHub #12611: a helper returns a slice of an array inside its view
+// parameter's pointee, and a caller passes the result on. The origin names the
+// array's storage, so the caller's argument is read for storage at that place:
+// the caller's view (a parameter) or its local array, never a resource failure.
+#forall "return borrow storage behind a passed-on helper slice stays the caller's view or local array" mode:0..<14 {
+ nodes:[96]CK_Node;types:[32]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=90,type_count=26}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.struct_,decl=40};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=8};types[18]=CK_Type.{kind=CK_Kind.array,elem=16,length=4};types[19]=CK_Type.{kind=CK_Kind.struct_,decl=43};types[20]=CK_Type.{kind=CK_Kind.view,elem=19};types[21]=CK_Type.{kind=CK_Kind.view,elem=16};types[22]=CK_Type.{kind=CK_Kind.array,elem=19,length=2};types[23]=CK_Type.{kind=CK_Kind.view,elem=12};types[24]=CK_Type.{kind=CK_Kind.struct_,decl=46};types[25]=CK_Type.{kind=CK_Kind.array,elem=20,length=1};
+ nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.field,type=17,next=42};nodes[42]=CK_Node.{kind=CK_Tag.field,type=11};nodes[43]=CK_Node.{kind=CK_Tag.struct_,head=44};nodes[44]=CK_Node.{kind=CK_Tag.field,type=18};nodes[46]=CK_Node.{kind=CK_Tag.struct_,head=47};nodes[47]=CK_Node.{kind=CK_Tag.field,type=20};nodes[39].kind=CK_Tag.stmt_block;nodes[37]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[30]=CK_Node.{kind=CK_Tag.proc,type=21,head=31,b=39,borrow_returns=32};nodes[31]=CK_Node.{kind=CK_Tag.param,type=20,borrow_owner=30};nodes[32]=CK_Node.{kind=CK_Tag.stmt_return,a=33};nodes[33]=CK_Node.{kind=CK_Tag.expr_slice,type=21,a=34};nodes[34]=CK_Node.{kind=CK_Tag.expr_field,type=18,a=35,field_index=0};nodes[35]=CK_Node.{kind=CK_Tag.expr_index,type=19,a=36,b=37};nodes[36]=CK_Node.{kind=CK_Tag.expr_ident,type=20,borrow_binding=31};
+ nodes[50]=CK_Node.{kind=CK_Tag.proc,type=21,head=51,b=39,borrow_returns=52};nodes[51]=CK_Node.{kind=CK_Tag.param,type=21,borrow_owner=50};nodes[52]=CK_Node.{kind=CK_Tag.stmt_return,a=53};nodes[53]=CK_Node.{kind=CK_Tag.expr_ident,type=21,borrow_binding=51};
+ nodes[60]=CK_Node.{kind=CK_Tag.proc,type=3,head=61,b=39,borrow_returns=62};nodes[61]=CK_Node.{kind=CK_Tag.param,type=21,borrow_owner=60};nodes[62]=CK_Node.{kind=CK_Tag.stmt_return,a=63};nodes[63]=CK_Node.{kind=CK_Tag.expr_cast,type=3,a=64};nodes[64]=CK_Node.{kind=CK_Tag.expr_slice,type=23,a=65};nodes[65]=CK_Node.{kind=CK_Tag.expr_field,type=17,a=66,field_index=0};nodes[66]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=67,b=37};nodes[67]=CK_Node.{kind=CK_Tag.expr_ident,type=21,borrow_binding=61};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=20,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_var,type=22,borrow_owner=2};local:=mode%2==1;step:=mode/2;
+ if local {nodes[7]=CK_Node.{kind=CK_Tag.expr_slice,type=20,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=22,borrow_binding=4};}else {nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=20,borrow_binding=3};}
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_call,type=21,proc=30,head=7};id:=5;path:BS_Path;storage:=false;type:=16;depth:=2;
+ if step==0 {nodes[5]=CK_Node.{kind=CK_Tag.expr_call,type=21,proc=50,head=6};}
+ if step==1 {nodes[5]=CK_Node.{kind=CK_Tag.expr_call,type=3,proc=60,head=6};type=12;depth=4;}
+ if step==2 || step==3 {id=9;nodes[9]=CK_Node.{kind=CK_Tag.expr_struct,type=24,head=10};nodes[10]=CK_Node.{kind=CK_Tag.field_init,a=7,field_index=0};path=CB_add_path(b,path,BS_FIELD,0);}
+ if step==4 || step==5 {id=9;nodes[9]=CK_Node.{kind=CK_Tag.expr_array,type=25,head=7};path=CB_add_path(b,path,BS_ELEMENT,0);}
+ if step==2 || step==4 {path=CB_add_path(b,path,BS_DEREFERENCE,0);path=CB_add_path(b,path,BS_FIELD,0);storage=true;}
+ if step==3 || step==5 {type=19;depth=0;}
+ if step==6 {id=9;nodes[9]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=37};storage=true;type=12;depth=0;if !local {path=CB_add_path(b,path,BS_ELEMENT,0);depth=1;}}
+ out:[64]BS_Origin;r:=CB_expr(b,id,path,storage,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].type==type;
+ if step==6 {#assert out[0].kind==BS_LOCAL && out[0].root==9 && out[0].path.count==depth;}
+ else if local {#assert out[0].kind==BS_LOCAL && out[0].root==4 && out[0].path.count==depth && (depth==0 || out[0].path.steps[0].kind==BS_ELEMENT);}
+ else {#assert out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].role==BS_DESCRIPTOR && out[0].path.count==depth && (depth==0 || out[0].path.steps[0].kind==BS_DEREFERENCE && out[0].path.steps[1].kind==BS_FIELD);}
 }
 
 #forall "return borrow expression malformed boundaries are distinct from unknown" mode:0..<9 {
@@ -81189,6 +81230,9 @@ CB_tick :: (b:CB_Context,loc:CK_Loc)->bool {
 CB_add_path :: (b:CB_Context,path:BS_Path,kind:u8,index:int)->BS_Path {
  r:=path;if path.count<0 || path.count>=8 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}if path.steps[path.count].kind!=0 || path.steps[path.count].index!=0 {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}r.steps[r.count]=BS_Step.{kind=kind,index=index};r.count+=1;if !BS_path_valid(r) {CK_resource(b.c,b.state[0].loc);return BS_Path.{};}return r;
 }
+// The path's prefix before its first dereference: the part that stays inside
+// the root's own storage.
+CB_direct :: (b:CB_Context,path:BS_Path)->BS_Path {r:BS_Path;for i:0..<path.count {if path.steps[i].kind==BS_DEREFERENCE {return r;}r=CB_add_path(b,r,path.steps[i].kind,path.steps[i].index);}return r;}
 CB_tail :: (path:BS_Path)->BS_Path {r:BS_Path;for i:1..<path.count {r.steps[i-1]=path.steps[i];}r.count=path.count-1;return r;}
 CB_prepend :: (b:CB_Context,path:BS_Path,kind:u8,index:int)->BS_Path {r:BS_Path;r=CB_add_path(b,r,kind,index);for i:0..<path.count {r=CB_add_path(b,r,path.steps[i].kind,path.steps[i].index);}return r;}
 CB_at :: (b:CB_Context,head:int,index:int)->int {
@@ -81216,8 +81260,13 @@ CB_descriptor_key :: (b:CB_Context,t:int)->int {
 CB_key :: (b:CB_Context,t:int,storage:bool)->int {
  if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 1;}if storage && b.c.types[t].kind==CK_Kind.array {return b.c.types[t].elem;}return CB_descriptor_key(b,t);
 }
+// Static data lives as long as the program, so no static origin decides a
+// returned borrow. When a set overflows, one static origin per type stands for
+// them all: a table of strings, or every arm of a long chain of returns.
+CB_static :: (o:BS_Origin)->BS_Origin {r:=o;if o.kind==BS_STATIC {r.root=1;}return r;}
 CB_merge :: (b:CB_Context,out:[]BS_Origin,a:CB_Result,values:[]BS_Origin,z:CB_Result)->CB_Result {
  temp:[64]BS_Origin;r:=BS_union(out[0..<a.count],true,values[0..<z.count],true,temp[..]);
+ if r.status==BS_Status.capacity || r.count>out.count {left:[64]BS_Origin;right:[64]BS_Origin;for i:0..<a.count {left[i]=CB_static(out[i]);}for i:0..<z.count {right[i]=CB_static(values[i]);}r=BS_union(left[0..<a.count],true,right[0..<z.count],true,temp[..]);}
  if r.status!=BS_Status.ok || r.count>out.count {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
  for i:0..<r.count {out[i]=temp[i];}return CB_Result.{count=r.count,incomplete=a.incomplete || z.incomplete};
 }
@@ -81309,7 +81358,11 @@ CB_expr :: (b:CB_Context,id:int,path:BS_Path,storage:bool,out:[]BS_Origin)->CB_R
  if b.state[0].depth>=32 {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}b.state[0].depth+=1;defer b.state[0].depth-=1;
  if e.kind==CK_Tag.expr_ident {
   if e.borrow_binding!=0 {return CB_query(b,ifx storage then cast(u8)3 else cast(u8)2,e.borrow_binding,path,out);}
-  if e.constant<2 || e.constant>b.c.state[0].used || b.c.nodes[e.constant].kind!=CK_Tag.constant {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}if storage {return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_STATIC,root=e.constant,type=CB_key(b,CB_type(b,e.type,path),true),path=path});}return CB_expr(b,b.c.nodes[e.constant].a,path,false,out);
+  if e.constant<2 || e.constant>b.c.state[0].used || b.c.nodes[e.constant].kind!=CK_Tag.constant {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
+  // A constant holds compile-time data only (a #run result cannot hold a
+  // view, E0409), so its storage and every descriptor in it are static. One
+  // origin stands for them all, rather than one per literal in the table.
+  return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_STATIC,root=e.constant,type=CB_key(b,CB_type(b,e.type,path),true),path=path});
  }
  if e.kind==CK_Tag.expr_field {return CB_expr(b,e.a,CB_prepend(b,path,BS_FIELD,e.field_index),storage,out);}
  if e.kind==CK_Tag.expr_index {
@@ -81323,20 +81376,27 @@ CB_expr :: (b:CB_Context,id:int,path:BS_Path,storage:bool,out:[]BS_Origin)->CB_R
  }
  if e.kind==CK_Tag.expr_cast || e.kind==CK_Tag.expr_run {return CB_expr(b,e.a,path,storage,out);}
  if e.kind==CK_Tag.expr_ifx {r:=CB_expr(b,e.b,path,storage,out);temp:[64]BS_Origin;z:=CB_expr(b,e.c,path,storage,temp[..]);return CB_merge(b,out,r,temp[..],z);}
- if storage {return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_LOCAL,root=id,type=CB_key(b,CB_type(b,e.type,path),true),path=path});}
+ // An rvalue's own storage is a temporary. Storage behind one of its
+ // descriptors (a dereferencing path) is wherever that descriptor points.
+ if storage && CB_direct(b,path).count==path.count {return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_LOCAL,root=id,type=CB_key(b,CB_type(b,e.type,path),true),path=path});}
  if e.kind==CK_Tag.expr_string || e.kind==CK_Tag.expr_ct {return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_STATIC,root=id,type=CB_descriptor_key(b,CB_type(b,e.type,path))});}
  if e.kind==CK_Tag.expr_struct {
-  if path.count==0 || path.steps[0].kind!=BS_FIELD {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}field:=e.head;while field!=0 {if !CB_tick(b,e.loc) {return CB_Result.{};}if b.c.nodes[field].field_index==path.steps[0].index {return CB_expr(b,b.c.nodes[field].a,CB_tail(path),false,out);}field=b.c.nodes[field].next;}return CB_default(b,e.type,path,out);
+  if path.count==0 || path.steps[0].kind!=BS_FIELD {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}field:=e.head;while field!=0 {if !CB_tick(b,e.loc) {return CB_Result.{};}if b.c.nodes[field].field_index==path.steps[0].index {return CB_expr(b,b.c.nodes[field].a,CB_tail(path),storage,out);}field=b.c.nodes[field].next;}return CB_default(b,e.type,path,out);
  }
  if e.kind==CK_Tag.expr_array {
   if path.count==0 || path.steps[0].kind!=BS_ELEMENT {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}r:CB_Result;at:=0;item:=e.head;temp:[64]BS_Origin;
-  while item!=0 {if !CB_tick(b,e.loc) {return CB_Result.{};}if path.steps[0].index==2147483647 || path.steps[0].index==at {z:=CB_expr(b,item,CB_tail(path),false,temp[..]);r=CB_merge(b,out,r,temp[..],z);}item=b.c.nodes[item].next;at+=1;}return r;
+  while item!=0 {if !CB_tick(b,e.loc) {return CB_Result.{};}if path.steps[0].index==2147483647 || path.steps[0].index==at {z:=CB_expr(b,item,CB_tail(path),storage,temp[..]);r=CB_merge(b,out,r,temp[..],z);}item=b.c.nodes[item].next;at+=1;}return r;
  }
  if e.kind==CK_Tag.expr_call {
   summary:[64]BS_Origin;s:=CB_query(b,1,e.proc,path,summary[..]);r:=CB_Result.{incomplete=s.incomplete};
   for i:0..<s.count {
    origin:=summary[i];if origin.kind!=BS_PARAMETER {r=CB_put(b,out,r,origin);continue;}
-   actual:=CB_at(b,e.head,origin.root);if actual<2 {return CB_Result.{};}temp:[64]BS_Origin;a:=CB_expr(b,actual,origin.path,origin.role==BS_INLINE,temp[..]);r.incomplete=r.incomplete || a.incomplete;
+   actual:=CB_at(b,e.head,origin.root);if actual<2 {return CB_Result.{};}
+   // An origin whose place is an array names storage the view parameter
+   // points into, not a descriptor held there, so the caller's actual is
+   // read for its storage at that place too: a slice of the caller's array
+   // passed on is the same borrow.
+   place:=CB_type(b,b.c.nodes[CB_at(b,b.c.nodes[e.proc].head,origin.root)].type,origin.path);temp:[64]BS_Origin;a:=CB_expr(b,actual,origin.path,origin.role==BS_INLINE || b.c.types[place].kind==CK_Kind.array,temp[..]);r.incomplete=r.incomplete || a.incomplete;
    for j:0..<a.count {if temp[j].type!=origin.type {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}}
    // The enumerated known-term set is complete as a set; this does not
    // qualify the whole value. Its separate incompleteness remains sticky.
@@ -81367,7 +81427,9 @@ CB_query :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,out:[]BS_Origin)->CB_Res
  slot:=b.state[0].queries;if slot>=b.queries.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}b.state[0].queries+=1;b.queries[slot]=CK_BorrowQuery.{kind=kind,decl=decl,type=expected_type,path=path,status=1,next=head};b.c.nodes[decl].borrow_query=slot+1;r:CB_Result;n:=b.c.nodes[decl];
  if kind==1 {
   if n.kind!=CK_Tag.proc {CK_resource(b.c,n.loc);return CB_Result.{};}if n.flag2 || n.generic || n.b==0 || n.borrow_returns==0 {CK_resource(b.c,n.loc);return CB_Result.{};}
-  ret:=n.borrow_returns;temp:[64]BS_Origin;while ret!=0 {if ret<2 || ret>b.c.state[0].used || b.c.nodes[ret].kind!=CK_Tag.stmt_return {CK_resource(b.c,n.loc);return CB_Result.{};}z:=CB_expr(b,b.c.nodes[ret].a,path,false,temp[..]);for i:0..<z.count {if temp[i].kind==BS_LOCAL {CK_error(b.c,b.c.nodes[b.c.nodes[ret].a].loc,"E0383","returned borrow may refer to local inline storage through a helper or aggregate","return owned storage, or keep the borrowed backing in the caller");break;}}r=CB_merge(b,out,r,temp[..],z);ret=b.c.nodes[ret].borrow_next;}
+  // A caller asks where an array behind the returned descriptor lives (its
+  // storage), or what a returned descriptor points at (its value).
+  ret:=n.borrow_returns;temp:[64]BS_Origin;place:=b.c.types[expected_type].kind==CK_Kind.array;while ret!=0 {if ret<2 || ret>b.c.state[0].used || b.c.nodes[ret].kind!=CK_Tag.stmt_return {CK_resource(b.c,n.loc);return CB_Result.{};}z:=CB_expr(b,b.c.nodes[ret].a,path,place,temp[..]);for i:0..<z.count {if temp[i].kind==BS_LOCAL {CK_error(b.c,b.c.nodes[b.c.nodes[ret].a].loc,"E0383","returned borrow may refer to local inline storage through a helper or aggregate","return owned storage, or keep the borrowed backing in the caller");break;}}r=CB_merge(b,out,r,temp[..],z);ret=b.c.nodes[ret].borrow_next;}
  }else {
   owner:=n.borrow_owner;if owner<2 || owner>b.c.state[0].used || (b.c.nodes[owner].kind!=CK_Tag.proc && b.c.nodes[owner].kind!=CK_Tag.check) {CK_resource(b.c,n.loc);return CB_Result.{};}
   t:=CB_type(b,n.type,path);indirect:=false;for i:0..<path.count {if path.steps[i].kind==BS_DEREFERENCE {indirect=true;}}

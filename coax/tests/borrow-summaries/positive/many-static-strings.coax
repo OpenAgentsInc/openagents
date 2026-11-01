@@ -1,0 +1,43 @@
+ONE :: [40] string.["ONE W00", "ONE W01", "ONE W02", "ONE W03", "ONE W04", "ONE W05", "ONE W06", "ONE W07", "ONE W08", "ONE W09", "ONE W10", "ONE W11", "ONE W12", "ONE W13", "ONE W14", "ONE W15", "ONE W16", "ONE W17", "ONE W18", "ONE W19", "ONE W20", "ONE W21", "ONE W22", "ONE W23", "ONE W24", "ONE W25", "ONE W26", "ONE W27", "ONE W28", "ONE W29", "ONE W30", "ONE W31", "ONE W32", "ONE W33", "ONE W34", "ONE W35", "ONE W36", "ONE W37", "ONE W38", "ONE W39"];
+MANY :: [40] string.["MANY W00", "MANY W01", "MANY W02", "MANY W03", "MANY W04", "MANY W05", "MANY W06", "MANY W07", "MANY W08", "MANY W09", "MANY W10", "MANY W11", "MANY W12", "MANY W13", "MANY W14", "MANY W15", "MANY W16", "MANY W17", "MANY W18", "MANY W19", "MANY W20", "MANY W21", "MANY W22", "MANY W23", "MANY W24", "MANY W25", "MANY W26", "MANY W27", "MANY W28", "MANY W29", "MANY W30", "MANY W31", "MANY W32", "MANY W33", "MANY W34", "MANY W35", "MANY W36", "MANY W37", "MANY W38", "MANY W39"];
+main :: () {}
+label :: (k: int, many: bool) -> string { return ifx many then MANY[k] else ONE[k]; }
+hint :: (k: int, phone: bool) -> string {
+  if k == 0 { return ifx phone then "TAP 0" else "CLICK 0"; }
+  if k == 1 { return ifx phone then "TAP 1" else "CLICK 1"; }
+  if k == 2 { return ifx phone then "TAP 2" else "CLICK 2"; }
+  if k == 3 { return ifx phone then "TAP 3" else "CLICK 3"; }
+  if k == 4 { return ifx phone then "TAP 4" else "CLICK 4"; }
+  if k == 5 { return ifx phone then "TAP 5" else "CLICK 5"; }
+  if k == 6 { return ifx phone then "TAP 6" else "CLICK 6"; }
+  if k == 7 { return ifx phone then "TAP 7" else "CLICK 7"; }
+  if k == 8 { return ifx phone then "TAP 8" else "CLICK 8"; }
+  if k == 9 { return ifx phone then "TAP 9" else "CLICK 9"; }
+  if k == 10 { return ifx phone then "TAP 10" else "CLICK 10"; }
+  if k == 11 { return ifx phone then "TAP 11" else "CLICK 11"; }
+  if k == 12 { return ifx phone then "TAP 12" else "CLICK 12"; }
+  if k == 13 { return ifx phone then "TAP 13" else "CLICK 13"; }
+  if k == 14 { return ifx phone then "TAP 14" else "CLICK 14"; }
+  if k == 15 { return ifx phone then "TAP 15" else "CLICK 15"; }
+  if k == 16 { return ifx phone then "TAP 16" else "CLICK 16"; }
+  if k == 17 { return ifx phone then "TAP 17" else "CLICK 17"; }
+  if k == 18 { return ifx phone then "TAP 18" else "CLICK 18"; }
+  if k == 19 { return ifx phone then "TAP 19" else "CLICK 19"; }
+  if k == 20 { return ifx phone then "TAP 20" else "CLICK 20"; }
+  if k == 21 { return ifx phone then "TAP 21" else "CLICK 21"; }
+  if k == 22 { return ifx phone then "TAP 22" else "CLICK 22"; }
+  if k == 23 { return ifx phone then "TAP 23" else "CLICK 23"; }
+  if k == 24 { return ifx phone then "TAP 24" else "CLICK 24"; }
+  if k == 25 { return ifx phone then "TAP 25" else "CLICK 25"; }
+  if k == 26 { return ifx phone then "TAP 26" else "CLICK 26"; }
+  if k == 27 { return ifx phone then "TAP 27" else "CLICK 27"; }
+  if k == 28 { return ifx phone then "TAP 28" else "CLICK 28"; }
+  if k == 29 { return ifx phone then "TAP 29" else "CLICK 29"; }
+  if k == 30 { return ifx phone then "TAP 30" else "CLICK 30"; }
+  if k == 31 { return ifx phone then "TAP 31" else "CLICK 31"; }
+  if k == 32 { return ifx phone then "TAP 32" else "CLICK 32"; }
+  if k == 33 { return ifx phone then "TAP 33" else "CLICK 33"; }
+  if k == 34 { return ifx phone then "TAP 34" else "CLICK 34"; }
+  if k == 35 { return ifx phone then "TAP 35" else "CLICK 35"; }
+  return label(k, phone);
+}

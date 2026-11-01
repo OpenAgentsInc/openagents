@@ -394,6 +394,50 @@
       "outcome": "accept-manual",
       "diagnostics": [],
       "analysis_obligation": "A by-value context still holds a mutable view into local descriptor storage. Helper writes through that view must leave status2/manual unless modeled; no complete-empty or retention permission."
+    },
+    {
+      "id": "accept-passed-on-helper-slice",
+      "source": "positive/passed-on-helper-slice.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-passed-on-helper-text",
+      "source": "positive/passed-on-helper-text.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "accept-many-static-strings",
+      "source": "positive/many-static-strings.coax",
+      "outcome": "accept",
+      "diagnostics": []
+    },
+    {
+      "id": "reject-passed-on-local-slice",
+      "source": "negative/passed-on-local-slice.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/passed-on-local-slice.coax",
+          "line": 8,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
+    },
+    {
+      "id": "reject-passed-on-local-text",
+      "source": "negative/passed-on-local-text.coax",
+      "outcome": "reject",
+      "diagnostics": [
+        {
+          "file": "negative/passed-on-local-text.coax",
+          "line": 8,
+          "col": 10,
+          "code": "E0383"
+        }
+      ]
     }
   ],
   "support": [

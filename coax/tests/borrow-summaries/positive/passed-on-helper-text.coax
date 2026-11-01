@@ -1,0 +1,6 @@
+Field :: struct { text: [8] u8; n: int; }
+Ui :: struct { fields: [4] Field; }
+main :: () {}
+field :: (u: [] Ui, k: int) -> [] Field { return u[0].fields[k..<k + 1]; }
+field_text :: (f: [] Field) -> string { return cast(string) f[0].text[0..<f[0].n]; }
+code_text :: (u: [] Ui) -> string { return field_text(field(u, 1)); }

@@ -1,0 +1,9 @@
+Field :: struct { text: [8] u8; n: int; }
+Ui :: struct { fields: [4] Field; }
+main :: () {}
+field :: (u: [] Ui) -> [] Field { return u[0].fields[0..<1]; }
+ft :: (f: [] Field) -> [] Field { return f; }
+leak :: () -> [] Field {
+  a: [2] Ui;
+  return ft(field(a[..]));
+}
