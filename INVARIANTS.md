@@ -2664,13 +2664,17 @@ worktrees install the same verified compiler within the time limit), and a
 bootstrap log after a one-file change names the reused gates. Workflow:
 `coax/RELEASE.md#build-caches`.
 
-## Only survivors on changed lines stop a build or a release
+## Only survivors a change causes stop a build or a release
 
 A bootstrap mutation gate that fails only on surviving mutants stops the build
-when a survivor is on a line changed since the build's base: where the
-checkout left `origin/main` for `coax/build.sh` (or `COAX_MUTATION_BASE`), and
-production's release commit for `coax/web/release.sh`. Survivors on other
-lines are recorded in `coax/bin/mutation-survivors`, in the checked-build
+when the change since the build's base caused a survivor: the survivor is on a
+changed line, or the change removed or edited a check line (`#assert`,
+`#test`, `#forall`, `#authority`) in the survivor's file or in the file the
+gate mutates. The base is where the checkout left `origin/main` for
+`coax/build.sh` (or `COAX_MUTATION_BASE`), and production's release commit for
+`coax/web/release.sh`, computed for the commit the release builds. Changed
+lines include `.coax` files the working tree adds without committing. Other
+survivors are recorded in `coax/bin/mutation-survivors`, in the checked-build
 cache and in `releases/<time>/MUTATION`; they never stop a release. A gate that
 fails for any other reason (a failing baseline, an unreached procedure, an
 error) always stops the build. A cached build is reused only when none of its
@@ -2679,10 +2683,17 @@ recorded survivors is on a line the reusing build counts as changed.
 every survivor; the zero-survivor statements for compiler units elsewhere in
 this file are what that full check enforces. The Coax taskmaster owns it.
 
+Model boundary: a survivor on an unchanged line that a code change elsewhere
+caused indirectly (for example, a changed caller that makes the line's result
+unobservable to the checks) is reported, not gating. The full check catches
+it.
+
 Check: `coax/tests/mutation-gate.sh` (changed-line listing for the working
-tree and for a commit range, a survivor on an unchanged line reported, one on
-a changed line named and gating, strict mode gating, and refusal of reports
-that failed for other reasons). Workflow: `coax/RELEASE.md`.
+tree, for a commit range, for untracked files and under `diff.noprefix`; a
+survivor on an unchanged line reported; one on a changed line named and
+gating; a removed or edited check gating the survivor it leaves, also through
+the gate's mutated file; strict mode gating; and refusal of reports that failed
+for other reasons). Workflow: `coax/RELEASE.md`.
 
 ## Generated C headers check compatible declarations across libraries
 
