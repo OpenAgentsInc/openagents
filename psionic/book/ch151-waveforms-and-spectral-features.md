@@ -147,15 +147,37 @@ sf_dft :: (re:[]f64,im:[]f64,out_re:[]f64,out_im:[]f64,inverse:bool)->SfStatus {
 A power of two uses radix-2 Cooley-Tukey in place: reverse the index bits,
 then merge half transforms of length 1, 2, 4 and so on.
 
+Reversing the bits is a permutation made of swaps: index i trades places
+with reverse(i), and indices that read the same both ways stay put. The
+loop below lists each swapped pair exactly once, so it needs no test such
+as "swap only when reverse(i) > i". It compares the bits in pairs from the
+outside in: bit 0 with the top bit, bit 1 with the next, and so on. A pair
+belongs to level k when its first k bit pairs match and the k-th differs;
+the smaller index of the pair has bit k set and the mirror bit clear. For
+n = 16 (four bits), level 0 swaps 1, 3, 5 and 7 with 8, 12, 10 and 14, and
+level 1 swaps 2 with 4 and 11 with 13. The other four indices, 0, 6, 9 and
+15, read the same backwards and are never visited.
+
 <!-- source: psionic/lib/spectral.coax radix2 -->
 ```jai
 // Radix-2 Cooley-Tukey in place for a power of two: reverse the index bits,
 // then merge pairs of half transforms with one butterfly each.
 sf_radix2 :: (re:[]f64,im:[]f64) {
     n:=re.count;
-    for i:0..<n {
-        r:=sf_reverse(i,n);
-        if r>i {t:=re[i];re[i]=re[r];re[r]=t;t=im[i];im[i]=im[r];im[r]=t;}
+    // Visit each pair i <-> reverse(i) once, from its smaller end, and no
+    // fixed point. Pair the bits from the outside in. Level k takes the
+    // indices whose k outer bit pairs match, whose bit k is 1 and whose bit
+    // log2(n)-1-k is 0: o + reverse(o) mirrors the outer bits, q fills the
+    // inner ones.
+    lo:=1;c:=n/4;
+    while c>=1 {
+        for o:0..<lo {
+            for q:0..<c {
+                i:=o+sf_reverse(o,n)+lo+2*lo*q;r:=sf_reverse(i,n);
+                t:=re[i];re[i]=re[r];re[r]=t;t=im[i];im[i]=im[r];im[r]=t;
+            }
+        }
+        lo*=2;c/=4;
     }
     sf_butterflies(re,im);
 }

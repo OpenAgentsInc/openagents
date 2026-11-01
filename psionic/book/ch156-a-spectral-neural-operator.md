@@ -420,12 +420,10 @@ policy.
 To keep the compile-time checks inside their work budget, chapter 151's
 radix-2 transform now reverses the index bits in place instead of copying
 into an 8,192-element scratch array. The butterflies and their order are
-unchanged, so every result is the same bit for bit. Mutating
-`spectral.coax` leaves three survivors in that loop, all of which produce
-the same permutation: starting at index 1 instead of 0 (index 0 reverses to
-itself), swapping when r ≥ i (a swap with itself) and swapping when r ≤ i
-(each pair is then swapped from its other end). The other 612 of 615
-mutants are caught.
+unchanged, so every result is the same bit for bit. The loop lists each
+swapped pair exactly once and never visits an index that reverses to
+itself, so no boundary choice in it is redundant: `coax mutate
+psionic/lib/spectral.coax --root-only` catches all 630 of its mutants.
 
 ## What this does not do
 

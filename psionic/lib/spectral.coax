@@ -390,9 +390,20 @@ sf_dft :: (re:[]f64,im:[]f64,out_re:[]f64,out_im:[]f64,inverse:bool)->SfStatus {
 // then merge pairs of half transforms with one butterfly each.
 sf_radix2 :: (re:[]f64,im:[]f64) {
     n:=re.count;
-    for i:0..<n {
-        r:=sf_reverse(i,n);
-        if r>i {t:=re[i];re[i]=re[r];re[r]=t;t=im[i];im[i]=im[r];im[r]=t;}
+    // Visit each pair i <-> reverse(i) once, from its smaller end, and no
+    // fixed point. Pair the bits from the outside in. Level k takes the
+    // indices whose k outer bit pairs match, whose bit k is 1 and whose bit
+    // log2(n)-1-k is 0: o + reverse(o) mirrors the outer bits, q fills the
+    // inner ones.
+    lo:=1;c:=n/4;
+    while c>=1 {
+        for o:0..<lo {
+            for q:0..<c {
+                i:=o+sf_reverse(o,n)+lo+2*lo*q;r:=sf_reverse(i,n);
+                t:=re[i];re[i]=re[r];re[r]=t;t=im[i];im[i]=im[r];im[r]=t;
+            }
+        }
+        lo*=2;c/=4;
     }
     sf_butterflies(re,im);
 }
