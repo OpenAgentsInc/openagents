@@ -278,7 +278,7 @@ compiler and the examples have not been run on Linux yet.
   requests for all 21 other verbs, sent to a stand-in socket, match it byte
   for byte. The Hyprland backend is not ported; with no desk socket it says
   so. Installing it in place of the Rust binary is part of step 1.
-- **Step 2 row 4, recording: started.** `os/record-policy.coax`
+- **Step 2 row 4, recording: written, not installed.** `os/record-policy.coax`
   (`#authority`, 0 mutants survive) is how `screen-record` places a take's
   sound against its picture: the microphone-clock fit, the holes, the
   unplaced shortfall, the clock note and each piece's delay.
@@ -343,7 +343,23 @@ compiler and the examples have not been run on Linux yet.
   curl, fourteen scenarios gave the shell's output, warnings and calls,
   except that a failed whisper-cli is now reported as a failure (the
   shell's pipeline reported it as "no speech").
-  Left in row 4: `recording-hud`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  `os/recording-hud.coax` replaces `recording-hud`, the strip under the
+  camera view that the sync check reads. Its frames matched the shell's
+  draw byte for byte in 300 generated states. With stand-ins for the desk,
+  `screen-record`, `pw-record` and `foot`, it made the same desk calls,
+  recorder calls, foot command and messages for start (with and without a
+  camera, already up, low on the screen), run (keys, mouse, arrows,
+  recording on and off, the camera going away), status and stop. Two
+  differences: it stops the meter's `pw-record` when it ends (the shell
+  killed only the last process of its pipeline and left the microphone
+  open), and it reads the microphone report field by field (the shell's
+  tab-split read merged empty fields). On a pseudo-terminal it took the
+  window's size and put echo and line mode back on exit. The platform
+  gained `cxterm_*` (raw mode, size, key reads, signals), `cxproc_exec`,
+  `cxproc_read_bytes` and `cxproc_cmdline` for it.
+  Row 4 is written in full; installing it is the owner's yes in
+  NEEDS_OWNER.md (the screen recorder option), and the four programs go in
+  together. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.

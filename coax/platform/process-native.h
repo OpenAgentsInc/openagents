@@ -71,6 +71,12 @@ int64_t cxproc_self_path(coax_v_u8 out);
 int64_t cxproc_local_stamp(coax_v_u8 out);
 int64_t cxproc_uid(void);   /* id -u */
 int64_t cxproc_self_pid(void);   /* $$ */
+/* exec: this process becomes the handle's program; returns the error when that fails. */
+int64_t cxproc_exec(int64_t h);
+/* Binary stdout: up to out.count bytes, 0 when none came in time, CXPROC_EOF, CXPROC_ERROR. */
+int64_t cxproc_read_bytes(int64_t h, int64_t timeout_ms, coax_v_u8 out);
+/* /proc/PID/cmdline (arguments, NUL-ended): the byte count, or -1. */
+int64_t cxproc_cmdline(int64_t pid, coax_v_u8 out);
 /* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
    instead of pipes (a browser that logs freely must never block on a pipe
    nobody reads). stdin stays a pipe. */

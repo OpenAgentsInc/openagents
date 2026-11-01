@@ -578,3 +578,80 @@ int64_t cxproc_getenv_byte(int64_t i) {
   if (!env_value || i < 0 || (size_t)i >= strlen(env_value)) return -1;
   return (unsigned char)env_value[i];
 }
+
+/* Replace this process with the handle's program, as the shell's exec: it returns only when that
+   fails (the error). The handle's env and unset entries apply; stdio is this process's own. */
+int64_t cxproc_exec(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started || p->args.count == 0) return EINVAL;
+  char path[4096];
+  if (!resolve(p->args.items[0].data, path, sizeof path)) return ENOENT;
+  char **argv = calloc(p->args.count + 1, sizeof *argv);
+  if (!argv) return ENOMEM;
+  for (size_t i = 0; i < p->args.count; i++) argv[i] = p->args.items[i].data;
+  for (size_t i = 0; i < p->unset.count; i++) unsetenv(p->unset.items[i].data);
+  for (size_t i = 0; i < p->env.count; i++) {
+    char *kv = p->env.items[i].data, *eq = strchr(kv, '=');
+    if (eq && eq != kv) { *eq = 0; setenv(kv, eq + 1, 1); *eq = '='; }
+  }
+  if (p->cwd.count && chdir(cstr(&p->cwd))) { int e = errno; free(argv); return e; }
+  fflush(stdout); fflush(stderr);
+  execv(path, argv);
+  int e = errno; free(argv); return e;
+}
+
+/* Up to out.count bytes of the child's stdout, for a program that writes binary: the count, 0
+   when none came within timeout_ms (-1 waits), CXPROC_EOF at the end, CXPROC_ERROR. */
+int64_t cxproc_read_bytes(int64_t h, int64_t timeout_ms, coax_v_u8 out) {
+  Proc *p = get(h);
+  if (!p || !p->started || out.count <= 0) return CXPROC_ERROR;
+  if (p->scan) {
+    memmove(p->buf.data, p->buf.data + p->scan, p->buf.count - p->scan);
+    p->buf.count -= p->scan; p->scan = 0;
+  }
+  if (p->buf.count) {
+    size_t n = p->buf.count < (size_t)out.count ? p->buf.count : (size_t)out.count;
+    memcpy(out.data, p->buf.data, n);
+    memmove(p->buf.data, p->buf.data + n, p->buf.count - n); p->buf.count -= n;
+    return (int64_t)n;
+  }
+  if (p->eof) return CXPROC_EOF;
+  int64_t deadline = timeout_ms < 0 ? -1 : cxproc_now_ms() + timeout_ms;
+  for (;;) {
+    struct pollfd fds[2] = {{p->out, POLLIN, 0}, {p->err, POLLIN, 0}};
+    int wait = -1;
+    if (deadline >= 0) { int64_t left = deadline - cxproc_now_ms(); wait = left <= 0 ? 0 : left > 1000000 ? 1000000 : (int)left; }
+    int r = poll(fds, p->err >= 0 ? 2 : 1, wait);
+    if (r < 0) { if (errno == EINTR) continue; return CXPROC_ERROR; }
+    if (r == 0) return 0;
+    if (p->err >= 0 && (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) drain_stderr(p);
+    if (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) {
+      ssize_t n = read(p->out, out.data, (size_t)out.count);
+      if (n < 0) { if (errno == EINTR) continue; return CXPROC_ERROR; }
+      if (n == 0) { p->eof = 1; return CXPROC_EOF; }
+      return (int64_t)n;
+    }
+    if (wait == 0) return 0;
+  }
+}
+
+/* A process's command line (/proc/PID/cmdline: its arguments, each ended by a NUL): the byte
+   count, or -1 (no such process, or not Linux). */
+int64_t cxproc_cmdline(int64_t pid, coax_v_u8 out) {
+#if defined(__linux__)
+  char path[64]; snprintf(path, sizeof path, "/proc/%lld/cmdline", (long long)pid);
+  int f = open(path, O_RDONLY | O_CLOEXEC);
+  if (f < 0) return -1;
+  int64_t got = 0;
+  while (got < out.count) {
+    ssize_t r = read(f, out.data + got, (size_t)(out.count - got));
+    if (r < 0 && errno == EINTR) continue;
+    if (r <= 0) break;
+    got += r;
+  }
+  close(f);
+  return got;
+#else
+  (void)pid; (void)out; return -1;
+#endif
+}

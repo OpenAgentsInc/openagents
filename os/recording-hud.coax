@@ -1,0 +1,661 @@
+// CoderOS recording HUD: a strip under the camera view while the screen is recorded
+// (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 4), in place of os/bin/recording-hud
+// (openagents 2ca255550e). It shows the microphone's level as a scrolling bar meter, which the
+// recording films too: os/record-sync.coax reads it back to check sound against picture. It also
+// names the microphone, turns red when that microphone is the wrong one or silent, blinks REC and
+// MIC OPEN, and has record, smaller and bigger controls for the mouse and keys.
+//   coax/web/tool.sh os/recording-hud.coax [start|run|stop|status]
+// start opens a foot terminal titled recording-hud running `run`, and a detached `shape` run
+// floats, sizes and pins that window under the camera view. run is the meter: pw-record's 8 kHz
+// samples, the peak of each 40 ms as a bar. Frames, controls, desk calls and messages are the
+// shell's. `frame` prints one frame from given state, for comparison with the shell's draw.
+// Two changes: the microphone report is read field by field (the shell's tab-split read joined
+// empty fields, so a microphone with no id shifted its fields and showed as present), and a
+// screen height that cannot be read counts as 1080 (the shell's arithmetic failed on it).
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+
+cxproc_pid_alive :: (pid: int) -> int #foreign;
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_self_pid :: () -> int #foreign;
+cxproc_exec :: (h: int) -> int #foreign;
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+cxproc_cmdline :: (pid: int, out: [] u8) -> int #foreign;
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+cxterm_raw :: (on: int) -> int #foreign;
+cxterm_size :: () -> int #foreign;
+cxterm_byte :: (timeout_ms: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign;
+cxterm_watch :: () -> int #foreign;
+cxterm_stopped :: () -> int #foreign;
+cxterm_resized :: () -> int #foreign;
+
+WHITE :: "255;255;255";    // the bright bars and the labels
+WHITE75 :: "200;200;200";  // a lit control
+WHITE50 :: "138;138;138";  // the flat baseline and the dim glyphs
+WHITE25 :: "74;74;74";     // the dim record dot between blinks
+RECRED :: "227;66;52";     // the record dot and the error label
+RED75 :: "170;50;39";      // the bars while the microphone is wrong or silent
+RED50 :: "113;33;26";      // the baseline in the same condition
+CAMERA_TITLE :: "selfie";
+HUD_TITLE :: "recording-hud";
+REC_C0 :: 2; REC_C1 :: 15; MINUS_C0 :: 18; MINUS_C1 :: 22; PLUS_C0 :: 24; PLUS_C1 :: 28;
+HIST_MAX :: 4096;
+
+// ---- text
+
+Out :: struct { b: [] u8; n: int; }
+// Coax strings have no escape for ESC, so the literals here write it as \\e and put makes it one.
+hd_put :: (o: [] Out, s: string) {
+  i := 0;
+  while i < s.count {
+    c := s[i];
+    if c == '\\' && i + 1 < s.count && s[i + 1] == 'e' { c = 27; i += 1; }
+    if o[0].n < o[0].b.count { o[0].b[o[0].n] = c; o[0].n += 1; }
+    i += 1;
+  }
+}
+// Text as it is (a nick, a size), never read for \\e.
+hd_put_raw :: (o: [] Out, s: string) { for c: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = c; o[0].n += 1; } } }
+hd_put_int :: (o: [] Out, v: int) { b: [24] u8; hd_put(o, hd_itoa(v, b[..])); }
+hd_text_of :: (o: [] Out) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+// ESC [ ROW ; COL H
+hd_put_at :: (o: [] Out, row: int, col: int) { hd_put(o, "\\e["); hd_put_int(o, row); hd_put(o, ";"); hd_put_int(o, col); hd_put(o, "H"); }
+hd_put_fg :: (o: [] Out, rgb: string) { hd_put(o, "\\e[38;2;"); hd_put(o, rgb); hd_put(o, "m"); }
+hd_itoa :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := 0; if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return cast(string) out[0..<n + k];
+}
+// An integer's text (an optional sign, then digits); ok false otherwise.
+Int :: struct { ok: bool; v: int; }
+hd_int :: (t: string) -> Int {
+  i := 0; neg := false;
+  if t.count > 0 && (t[0] == '-' || t[0] == '+') { neg = t[0] == '-'; i = 1; }
+  if i >= t.count || t.count - i > 18 { return Int.{}; }
+  v := 0;
+  while i < t.count { if t[i] < '0' || t[i] > '9' { return Int.{}; } v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  return Int.{ok = true, v = ifx neg then -v else v};
+}
+hd_env_int :: (name: string, dflt: int) -> int { b: [64] u8; t := proc_getenv(name, b[..]); r := hd_int(t); return ifx t.count > 0 && r.ok then r.v else dflt; }
+// The first n characters of UTF-8 text, as bash's ${text:0:n} counts them.
+hd_chars :: (t: string, n: int) -> string {
+  seen := 0; i := 0;
+  while i < t.count {
+    if (t[i] & 0xC0) != 0x80 { if seen == n { return t[0..<i]; } seen += 1; }
+    i += 1;
+  }
+  return t;
+}
+hd_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// ---- the microphone label and the controls
+
+Label :: struct { state: string; text: string; }
+// mic_label: what the strip says about the microphone. state is ok, error or quiet.
+hd_label :: (present: bool, preferred: bool, live: bool, nick: string, video_only: bool, mic_name: string, out: [] u8) -> Label {
+  if video_only { return Label.{state = "quiet", text = "VIDEO ONLY"}; }
+  if !present { return Label.{state = "error", text = "NO MIC"}; }
+  n := 0;
+  if !live { n = hd_cat(out, 0, "NO AUDIO · "); n = hd_cat(out, n, nick); return Label.{state = "error", text = cast(string) out[0..<n]}; }
+  if !preferred {
+    if mic_name.count > 0 {
+      n = hd_cat(out, 0, "NOT ");
+      for c: mic_name { if n < out.count { out[n] = ifx c >= 'a' && c <= 'z' then c - 32 else c; n += 1; } }
+      n = hd_cat(out, n, " · "); n = hd_cat(out, n, nick);
+    } else { n = hd_cat(out, 0, "WRONG MIC · "); n = hd_cat(out, n, nick); }
+    return Label.{state = "error", text = cast(string) out[0..<n]};
+  }
+  n = hd_cat(out, 0, "MIC · "); n = hd_cat(out, n, nick);
+  return Label.{state = "ok", text = cast(string) out[0..<n]};
+}
+#test "the microphone label" {
+  b: [128] u8;
+  l := hd_label(true, true, true, "Yeti", true, "", b[..]); #assert l.state == "quiet" && l.text == "VIDEO ONLY";
+  l = hd_label(false, true, true, "Yeti", false, "", b[..]); #assert l.state == "error" && l.text == "NO MIC";
+  l = hd_label(true, true, false, "Yeti", false, "", b[..]); #assert l.state == "error" && l.text == "NO AUDIO · Yeti";
+  l = hd_label(true, false, true, "Webcam", false, "blue yeti", b[..]); #assert l.state == "error" && l.text == "NOT BLUE YETI · Webcam";
+  l = hd_label(true, false, true, "Webcam", false, "", b[..]); #assert l.text == "WRONG MIC · Webcam";
+  l = hd_label(true, true, true, "Yeti", false, "", b[..]); #assert l.state == "ok" && l.text == "MIC · Yeti";
+}
+CTRL_NONE :: 0; CTRL_RECORD :: 1; CTRL_SMALLER :: 2; CTRL_BIGGER :: 3;
+// control_at: a left press on the last row, over a control.
+hd_control :: (btn: int, col: int, row: int, press: bool, last_row: int) -> int {
+  if !press || btn != 0 || row != last_row { return CTRL_NONE; }
+  if col >= REC_C0 && col <= REC_C1 { return CTRL_RECORD; }
+  if col >= MINUS_C0 && col <= MINUS_C1 { return CTRL_SMALLER; }
+  if col >= PLUS_C0 && col <= PLUS_C1 { return CTRL_BIGGER; }
+  return CTRL_NONE;
+}
+#test "controls" {
+  #assert hd_control(0, 2, 4, true, 4) == CTRL_RECORD && hd_control(0, 15, 4, true, 4) == CTRL_RECORD && hd_control(0, 16, 4, true, 4) == CTRL_NONE;
+  #assert hd_control(0, 20, 4, true, 4) == CTRL_SMALLER && hd_control(0, 28, 4, true, 4) == CTRL_BIGGER && hd_control(0, 28, 3, true, 4) == CTRL_NONE;
+  #assert hd_control(1, 3, 4, true, 4) == CTRL_NONE && hd_control(0, 3, 4, false, 4) == CTRL_NONE;
+}
+// An SGR mouse report's body (after ESC [ <): button;col;row then M (press) or m (release).
+Mouse :: struct { ok: bool; btn: int; col: int; row: int; press: bool; }
+hd_mouse :: (body: string) -> Mouse {
+  if body.count < 2 { return Mouse.{}; }
+  kind := body[body.count - 1];
+  if kind != 'M' && kind != 'm' { return Mouse.{}; }
+  b := body[0..<body.count - 1];
+  f: [3] int; k := 0; i := 0;
+  while k < 3 {
+    j := i; while j < b.count && b[j] != ';' { j += 1; }
+    if k == 2 { j = b.count; }
+    r := hd_int(b[i..<j]); if !r.ok { return Mouse.{}; }
+    f[k] = r.v; k += 1; i = j + 1;
+    if k < 3 && i > b.count { return Mouse.{}; }
+  }
+  return Mouse.{ok = true, btn = f[0], col = f[1], row = f[2], press = kind == 'M'};
+}
+#test "mouse reports" {
+  m := hd_mouse("0;3;4M"); #assert m.ok && m.btn == 0 && m.col == 3 && m.row == 4 && m.press;
+  m = hd_mouse("0;30;12m"); #assert m.ok && !m.press && m.col == 30;
+  #assert !hd_mouse("0;3M").ok && !hd_mouse("x;3;4M").ok && !hd_mouse("").ok;
+}
+
+// ---- the meter
+
+// Samples into levels as the shell's od and awk did: the peak of each 320 samples (40 ms at
+// 8 kHz) times the gain over 32768, at most 1000.
+Meter :: struct { h: int; n: int; mx: int; half: int; odd: bool; level: int; got: bool; }
+hd_samples :: (m: [] Meter, bytes: [] u8, gain: int) {
+  for c: bytes {
+    if !m[0].odd { m[0].half = cast(int) c; m[0].odd = true; continue; }
+    m[0].odd = false;
+    v := m[0].half | (cast(int) c << 8);
+    if v >= 32768 { v -= 65536; }
+    if v < 0 { v = -v; }
+    if v > m[0].mx { m[0].mx = v; }
+    m[0].n += 1;
+    if m[0].n % 320 == 0 {
+      norm := m[0].mx * gain / 32768;
+      m[0].level = ifx norm > 1000 then 1000 else norm; m[0].got = true; m[0].mx = 0;
+    }
+  }
+}
+#test "levels from samples" {
+  m: [1] Meter; b: [640] u8;
+  for i: 0..<320 { b[2 * i] = 0; b[2 * i + 1] = 0; }
+  b[100] = 0x00; b[101] = 0x08;   // 2048
+  hd_samples(m[..], b[0..<301], 1600); #assert !m[0].got;
+  hd_samples(m[..], b[301..<640], 1600); #assert m[0].got && m[0].level == 100;
+  m[0].got = false; for i: 0..<320 { b[2 * i] = 0x00; b[2 * i + 1] = 0x80; }   // -32768
+  hd_samples(m[..], b[..], 1600); #assert m[0].got && m[0].level == 1000;
+}
+hd_meter_stop :: (m: [] Meter) {
+  if m[0].h >= 0 { k := proc_kill(m[0].h, PROC_SIGTERM); s := proc_wait(m[0].h, 500); r := proc_release(m[0].h); }
+  m[0].h = -1; m[0].n = 0; m[0].mx = 0; m[0].odd = false;
+}
+hd_meter_start :: (m: [] Meter, target: string) {
+  hd_meter_stop(m);
+  if !hd_installed("pw-record") { return; }
+  h := proc_new();
+  ok := proc_arg(h, "pw-record");
+  tb: [4200] u8;
+  if target.count > 0 { n := hd_cat(tb[..], 0, "--target="); n = hd_cat(tb[..], n, target); ok = ok && proc_arg(h, cast(string) tb[0..<n]); }
+  rest := [5] string.["--format=s16", "--rate=8000", "--channels=1", "--latency=20ms", "-"];
+  for a: rest { ok = ok && proc_arg(h, a); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return; }
+  m[0].h = h;
+}
+// Every level the meter has ready; got says whether any came.
+hd_meter_read :: (m: [] Meter, gain: int) {
+  m[0].got = false;
+  if m[0].h < 0 { return; }
+  b: [65536] u8;
+  while true {
+    n := cxproc_read_bytes(m[0].h, 0, b[..]);
+    if n <= 0 { break; }
+    hd_samples(m, b[0..<n], gain);
+  }
+}
+
+// ---- one frame
+
+Frame :: struct {
+  cols: int; rows: int; ring: int; tick: int; last_level_tick: int; dead_ticks: int;
+  mic_known: bool; present: bool; preferred: bool; audio: bool; nick: string; mic_name: string;
+  blink: bool; cam_size: string; recording: bool; dictating: bool;
+}
+// draw: the meter, the label, REC and MIC OPEN, then the controls, as the shell drew them.
+hd_frame :: (f: Frame, hist: [] int, o: [] Out) {
+  wave_rows := f.rows - 1; width := f.cols; units_max := wave_rows * 8;
+  live := !(f.tick - f.last_level_tick > f.dead_ticks);
+  bright := WHITE; mid := WHITE75; dim := WHITE50;
+  lb: [4200] u8; label := Label.{state = "", text = ""};
+  if f.mic_known {
+    label = hd_label(f.present, f.preferred, live, f.nick, f.recording && !f.audio, f.mic_name, lb[..]);
+    if label.state == "error" { bright = RECRED; mid = RED75; dim = RED50; }
+  }
+  eighths := [8] string.[" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇"];
+  hd_put(o, "\\e[H");
+  for r: 0..<wave_rows {
+    from_bottom := wave_rows - 1 - r;
+    for c: 0..<width {
+      idx := (f.ring + c) % width;
+      u := hist[idx] * units_max / 1000;
+      if u < 1 { u = 1; }
+      full := u / 8; part := u % 8;
+      glyph := " ";
+      if from_bottom < full { glyph = "█"; } else if from_bottom == full { glyph = eighths[part]; }
+      if glyph == " " { hd_put(o, " "); }
+      else if u <= 1 { hd_put_fg(o, dim); hd_put(o, glyph); }
+      else if from_bottom >= full - 1 && full >= 2 { hd_put_fg(o, bright); hd_put(o, glyph); }
+      else { hd_put_fg(o, mid); hd_put(o, glyph); }
+    }
+    hd_put(o, "\\e[0m\\e[K");
+    if r < wave_rows - 1 { hd_put(o, "\n"); }
+  }
+  if label.text.count > 0 {
+    room := f.cols - 8; if room < 8 { room = 8; }
+    t := hd_chars(label.text, room);
+    if label.state == "error" { hd_put(o, "\\e[1;1H\\e[1;38;2;"); hd_put(o, RECRED); hd_put(o, "m"); }
+    else if label.state == "quiet" { hd_put(o, "\\e[1;1H"); hd_put_fg(o, WHITE50); }
+    else { hd_put(o, "\\e[1;1H"); hd_put_fg(o, WHITE); }
+    hd_put_raw(o, t); hd_put(o, "\\e[0m");
+  }
+  hd_put(o, "\\e[H");
+  if f.recording {
+    dotcol := f.cols - 6; if dotcol < 1 { dotcol = 1; }
+    hd_put_at(o, 1, dotcol);
+    if f.blink { hd_put_fg(o, RECRED); hd_put(o, "●"); hd_put_fg(o, WHITE); hd_put(o, "  REC \\e[0m"); }
+    else { hd_put_fg(o, WHITE25); hd_put(o, "●"); hd_put_fg(o, WHITE50); hd_put(o, "  REC \\e[0m"); }
+  }
+  if f.dictating {
+    drow := ifx f.recording && wave_rows >= 2 then 2 else 1;
+    dcol := f.cols - 10 - 1; if dcol < 1 { dcol = 1; }
+    hd_put_at(o, drow, dcol);
+    if f.blink { hd_put(o, "\\e[1;38;2;"); hd_put(o, RECRED); hd_put(o, "m● MIC OPEN\\e[0m"); }
+    else { hd_put_fg(o, WHITE50); hd_put(o, "● MIC OPEN\\e[0m"); }
+  }
+  hd_put(o, "\n");
+  // draw_controls
+  hd_put(o, "\\e["); hd_put_int(o, f.rows); hd_put(o, ";1H\\e[K");
+  hd_put_at(o, f.rows, REC_C0); hd_put_fg(o, WHITE); hd_put(o, ifx f.recording then "[ ■ stop ]" else "[ ● record ]"); hd_put(o, "\\e[0m");
+  hd_put_at(o, f.rows, MINUS_C0); hd_put_fg(o, WHITE75); hd_put(o, "[ - ]\\e[0m");
+  hd_put_at(o, f.rows, PLUS_C0); hd_put_fg(o, WHITE75); hd_put(o, "[ + ]\\e[0m");
+  hd_put_at(o, f.rows, PLUS_C1 + 2); hd_put_fg(o, WHITE50); hd_put_raw(o, f.cam_size); hd_put(o, "px\\e[0m");
+}
+#test "a frame" {
+  hist: [20] int; for i: 0..<20 { hist[i] = i * 50; }
+  ob: [65536] u8; o: [1] Out; o[0].b = ob[..];
+  f := Frame.{cols = 20, rows = 3, ring = 0, tick = 5, last_level_tick = 5, dead_ticks = 30, mic_known = true, present = true, preferred = true, audio = true, nick = "Yeti", blink = true, cam_size = "560", recording = true};
+  hd_frame(f, hist[..], o[..]);
+  t := hd_text_of(o[..]);
+  #assert t.count > 0 && t[0] == 27 && t[1..<3] == "[H";
+  // the label, REC and the controls land where the shell put them
+  e: [4] [256] u8;
+  #assert hd_has(t, hd_esc("\\e[1;1H\\e[38;2;255;255;255mMIC · Yeti\\e[0m", e[0][..])) && hd_has(t, hd_esc("\\e[1;14H\\e[38;2;227;66;52m●", e[1][..]));
+  #assert hd_has(t, hd_esc("\\e[3;2H\\e[38;2;255;255;255m[ ■ stop ]", e[2][..])) && hd_has(t, hd_esc("\\e[3;30H\\e[38;2;138;138;138m560px\\e[0m", e[3][..]));
+}
+hd_esc :: (s: string, out: [] u8) -> string { o: [1] Out; o[0].b = out; hd_put(o[..], s); return hd_text_of(o[..]); }
+hd_has :: (t: string, s: string) -> bool {
+  if s.count > t.count { return false; }
+  for i: 0..<t.count - s.count + 1 { if t[i..<i + s.count] == s { return true; } }
+  return false;
+}
+
+// ---- the desk and the files
+
+hd_installed :: (name: string) -> bool {
+  pb: [16384] u8; path := proc_getenv("PATH", pb[..]);
+  i := 0;
+  while i <= path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    dir := path[i..<j]; if dir.count == 0 { dir = "."; }
+    fb: [4300] u8; n := hd_cat(fb[..], 0, dir); n = hd_cat(fb[..], n, "/"); n = hd_cat(fb[..], n, name);
+    if fs_kind(cast(string) fb[0..<n]) == 1 { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+Run :: struct { ok: bool; text: string; }
+// coder-desk ARGS, its stdout (stderr dropped, as the shell's 2>/dev/null).
+hd_desk :: (argv: [] string, out: [] u8) -> Run {
+  a: [16] string; a[0] = "coder-desk"; for x, i: argv { a[i + 1] = x; }
+  e: [65536] u8;
+  r := proc_run(a[0..<argv.count + 1], 60000, out, e[..]);
+  return Run.{ok = r.started == 0 && r.status == 0, text = cast(string) out[0..<r.out_n]};
+}
+hd_desk_quiet :: (argv: [] string) { b: [65536] u8; r := hd_desk(argv, b[..]); }
+// A value as jq -r writes it: strings decoded, others as written, null when missing.
+hd_text :: (d: Jv, at: int, out: [] u8) -> string {
+  if at < 0 { return "null"; }
+  if jv_kind(d, at) == JV_STRING { m := jv_str(d, at, out); return cast(string) out[0..<ifx m > 0 then m else 0]; }
+  return jv_raw(d, at);
+}
+// Whether a window of this title is up (jq -e 'any(.[]; .title == $t)').
+hd_window_up :: (title: string) -> bool {
+  ob: [1048576] u8; a := [1] string.["list"]; r := hd_desk(a[..], ob[..]);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !r.ok || !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return false; }
+  c := d[0].nodes[0].first;
+  while c >= 0 {
+    if jv_kind(d[0], c) == JV_OBJECT { t := jv_get(d[0], c, "title"); tb: [256] u8; if jv_kind(d[0], t) == JV_STRING { m := jv_str(d[0], t, tb[..]); if m >= 0 && cast(string) tb[0..<m] == title { return true; } } }
+    c = d[0].nodes[c].next;
+  }
+  return false;
+}
+// camera_client: the first selfie window's at.x, at.y, size.width and size.height as jq -r gives them.
+Cam :: struct { up: bool; x: string; y: string; w: string; h: string; }
+hd_camera :: (b: [] [64] u8) -> Cam {
+  ob: [1048576] u8; a := [1] string.["list"]; r := hd_desk(a[..], ob[..]);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !r.ok || !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return Cam.{}; }
+  c := d[0].nodes[0].first;
+  while c >= 0 {
+    k := jv_kind(d[0], c);
+    if k != JV_OBJECT && k != JV_NULL { return Cam.{}; }
+    if k == JV_OBJECT {
+      t := jv_get(d[0], c, "title"); tb: [16] u8;
+      if jv_kind(d[0], t) == JV_STRING && jv_str(d[0], t, tb[..]) == 6 && cast(string) tb[0..<6] == CAMERA_TITLE {
+        return Cam.{up = true, x = hd_copy(hd_text(d[0], jv_path(d[0], c, "at.x"), b[4][..]), b[0][..]), y = hd_copy(hd_text(d[0], jv_path(d[0], c, "at.y"), b[4][..]), b[1][..]),
+                    w = hd_copy(hd_text(d[0], jv_path(d[0], c, "size.width"), b[4][..]), b[2][..]), h = hd_copy(hd_text(d[0], jv_path(d[0], c, "size.height"), b[4][..]), b[3][..])};
+      }
+    }
+    c = d[0].nodes[c].next;
+  }
+  return Cam.{};
+}
+hd_copy :: (s: string, out: [] u8) -> string { n := hd_cat(out, 0, s); return cast(string) out[0..<n]; }
+hd_monitor_height :: () -> int {
+  ob: [1048576] u8; a := [1] string.["screens"]; r := hd_desk(a[..], ob[..]);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return 1080; }
+  first := d[0].nodes[0].first;
+  h := ifx first >= 0 then jv_path(d[0], first, "size.height") else -1;
+  if h < 0 || jv_kind(d[0], h) == JV_NULL || jv_kind(d[0], h) == JV_FALSE { return 1080; }
+  r2 := hd_int(jv_raw(d[0], h));
+  return ifx r2.ok then r2.v else 1080;
+}
+Conf :: struct { pid_file: string; dictation_file: string; height: int; gap: int; raise_ticks: int; gain: int; mic_name: string; dead_ticks: int; camera_tries: int; }
+// place_hud: the HUD under the camera view (over it by the gap), or above it when that runs off the screen.
+hd_place :: (c: Conf) -> bool {
+  b: [5] [64] u8; cam := hd_camera(b[..]);
+  if !cam.up { return false; }
+  sy := hd_int(cam.y); sh := hd_int(cam.h);
+  mh := hd_monitor_height();
+  y := sy.v + sh.v + c.gap;
+  if y + c.height > mh { y = sy.v - c.gap - c.height; }
+  if y < 0 { y = 0; }
+  sz: [128] u8; sn := hd_cat(sz[..], 0, cam.w); sn = hd_cat(sz[..], sn, "x"); ib: [24] u8; sn = hd_cat(sz[..], sn, hd_itoa(c.height, ib[..]));
+  at: [128] u8; an := hd_cat(at[..], 0, cam.x); an = hd_cat(at[..], an, ","); an = hd_cat(at[..], an, hd_itoa(y, ib[..]));
+  a := [6] string.["shape", "title:recording-hud", "--size", cast(string) sz[0..<sn], "--at", cast(string) at[0..<an]];
+  hd_desk_quiet(a[..]);
+  return true;
+}
+hd_wait_camera :: (c: Conf) -> bool {
+  b: [5] [64] u8;
+  for i: 0..<c.camera_tries { if hd_camera(b[..]).up { return true; } proc_sleep(250); }
+  return hd_camera(b[..]).up;
+}
+// shape_hud: once the HUD's window is up, float it, size and place it, pin it and raise it.
+hd_shape :: (c: Conf) -> int {
+  for i: 0..<40 { if hd_window_up(HUD_TITLE) { break; } proc_sleep(250); }
+  a := [9] string.["shape", "title:recording-hud", "--float", "--no-aspect", "--border", "0", "--rounding", "0", "--no-shadow"];
+  hd_desk_quiet(a[..]);
+  if hd_wait_camera(c) { p := hd_place(c); }
+  pin := [3] string.["shape", "title:recording-hud", "--pin"]; hd_desk_quiet(pin[..]);
+  hd_raise();
+  return 0;
+}
+hd_raise :: () { a := [2] string.["raise", "title:recording-hud"]; hd_desk_quiet(a[..]); }
+hd_resize_camera :: (c: Conf, delta: int) {
+  b: [5] [64] u8; cam := hd_camera(b[..]);
+  if !cam.up { return; }
+  n := hd_int(cam.w).v + delta;
+  if n < 200 { n = 200; } if n > 1000 { n = 1000; }
+  ib: [24] u8; s := hd_itoa(n, ib[..]);
+  sz: [64] u8; sn := hd_cat(sz[..], 0, s); sn = hd_cat(sz[..], sn, "x"); sn = hd_cat(sz[..], sn, s);
+  a := [4] string.["shape", "title:selfie", "--size", cast(string) sz[0..<sn]]; hd_desk_quiet(a[..]);
+  p := hd_place(c);
+}
+// screen-record ARGS, waited for, its output gone (detached so a supervisor it leaves holds no pipe of ours).
+hd_screen_record :: (a: string, b: string) {
+  h := proc_new();
+  ok := proc_quiet(h) && proc_detach(h) && proc_arg(h, "screen-record") && proc_arg(h, a);
+  if b.count > 0 { ok = ok && proc_arg(h, b); }
+  if ok && proc_start(h) == 0 { s := proc_wait(h, -1); }
+  r := proc_release(h);
+}
+hd_toggle_recording :: (c: Conf) {
+  if hd_recording(c) { hd_screen_record("stop", ""); }
+  else if hd_installed("screen-record") { hd_screen_record("start", "--audio"); }
+}
+hd_digits :: (t: string) -> int {
+  if t.count == 0 || t.count > 18 { return -1; }
+  v := 0; for ch: t { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); }
+  return v;
+}
+// is_recording: the screen recorder's pid file names a live process.
+hd_recording :: (c: Conf) -> bool {
+  if !fs_exists(c.pid_file) { return false; }
+  b: [256] u8; n := fs_read(c.pid_file, b[..]); if n < 0 { return false; }
+  while n > 0 && b[n - 1] == '\n' { n -= 1; }
+  p := hd_digits(cast(string) b[0..<n]);
+  return p >= 0 && cxproc_pid_alive(p) == 1;
+}
+// is_dictating: the dictation record's first line names a live process.
+hd_dictating :: (c: Conf) -> bool {
+  if !fs_exists(c.dictation_file) { return false; }
+  b: [256] u8; n := fs_read(c.dictation_file, b[..]); if n < 0 { return false; }
+  e := 0; while e < n && b[e] != '\n' { e += 1; }
+  p := hd_digits(cast(string) b[0..<e]);
+  return p >= 0 && cxproc_pid_alive(p) == 1;
+}
+
+// ---- run
+
+Mic :: struct { known: bool; present: bool; preferred: bool; audio: bool; id: [256] u8; id_n: int; nick: [256] u8; nick_n: int; }
+// refresh_mic: what screen-record says the microphone is; a new one restarts the meter on it.
+hd_refresh_mic :: (mic: [] Mic, m: [] Meter, last_level_tick: [] int, tick: int) {
+  if !hd_installed("screen-record") { return; }
+  a := [2] string.["screen-record", "microphone"]; ob: [65536] u8; eb: [65536] u8;
+  r := proc_run(a[..], 60000, ob[..], eb[..]);
+  if r.started != 0 || r.status != 0 || r.out_n == 0 { return; }
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) ob[0..<r.out_n], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return; }
+  ib: [256] u8; nb: [4096] u8; kb: [256] u8;
+  id := hd_or_empty(d[0], jv_get(d[0], 0, "id"), ib[..]);
+  name := hd_or_empty(d[0], jv_get(d[0], 0, "name"), nb[..]);
+  nick := hd_or_empty(d[0], jv_get(d[0], 0, "nick"), kb[..]);
+  mic[0].known = true;
+  mic[0].nick_n = hd_cat(mic[0].nick[..], 0, nick);
+  mic[0].preferred = hd_truthy(d[0], jv_get(d[0], 0, "preferred"));
+  mic[0].audio = hd_truthy(d[0], jv_get(d[0], 0, "recording"));
+  mic[0].present = id.count > 0;
+  if id != cast(string) mic[0].id[0..<mic[0].id_n] {
+    mic[0].id_n = hd_cat(mic[0].id[..], 0, id);
+    if id.count > 0 { hd_meter_start(m, ifx name.count > 0 then name else id); } else { hd_meter_stop(m); }
+    last_level_tick[0] = tick;
+  }
+}
+// (.x // "") as text: missing, null and false give "".
+hd_or_empty :: (d: Jv, at: int, out: [] u8) -> string {
+  if at < 0 { return ""; }
+  k := jv_kind(d, at);
+  if k == JV_NULL || k == JV_FALSE { return ""; }
+  return hd_text(d, at, out);
+}
+hd_truthy :: (d: Jv, at: int) -> bool { if at < 0 { return false; } k := jv_kind(d, at); return k != JV_NULL && k != JV_FALSE; }
+
+Size :: struct { rows: int; cols: int; }
+hd_size :: () -> Size {
+  s := cxterm_size();
+  rows := 24; cols := 80;
+  if s > 0 { rows = s / 65536; cols = s % 65536; }
+  if rows < 2 { rows = 2; } if cols < 20 { cols = 20; } if cols > HIST_MAX { cols = HIST_MAX; }
+  return Size.{rows = rows, cols = cols};
+}
+
+hd_run :: (c: Conf) -> int {
+  w := cxterm_watch();
+  hist: [HIST_MAX] int;
+  meter: [1] Meter; meter[0].h = -1;
+  mic: [1] Mic;
+  llt: [1] int;
+  tick := 0; ring := 0; level := 0; blink := false; gone := 0;
+  last_geom: [256] u8; lg_n := -1; csb: [64] u8; cam_size := "?";
+  if hd_installed("screen-record") { hd_refresh_mic(mic[..], meter[..], llt[..], tick); } else { hd_meter_start(meter[..], ""); }
+  x := cxterm_raw(1);
+  hd_say("\\e[?25l\\e[?1000h\\e[?1006h");
+  sz := hd_size();
+  hd_say("\\e[2J");
+  frame: [1048576] u8;
+  ticks := 0;
+  while cxterm_stopped() == 0 {
+    if cxterm_resized() != 0 {
+      sz = hd_size();
+      for i: sz.cols..<HIST_MAX { hist[i] = 0; }
+      if ring >= sz.cols { ring = 0; }
+    }
+    ticks += 1;
+    hd_meter_read(meter[..], c.gain);
+    if meter[0].got { level = meter[0].level; llt[0] = tick; } else { level = level * 7 / 10; }
+    hist[ring] = level; ring = (ring + 1) % sz.cols;
+    hd_input(c, sz.rows);
+    tick += 1;
+    if tick % 12 == 0 { blink = !blink; }
+    if tick % 25 == 0 { hd_refresh_mic(mic[..], meter[..], llt[..], tick); }
+    if tick % 10 == 0 {
+      b: [5] [64] u8; cam := hd_camera(b[..]);
+      if !cam.up { gone += 1; if gone >= 2 { break; } }
+      else {
+        gone = 0;
+        gb: [256] u8; gn := hd_cat(gb[..], 0, cam.x); gn = hd_cat(gb[..], gn, " "); gn = hd_cat(gb[..], gn, cam.y); gn = hd_cat(gb[..], gn, " "); gn = hd_cat(gb[..], gn, cam.w); gn = hd_cat(gb[..], gn, " "); gn = hd_cat(gb[..], gn, cam.h);
+        if lg_n < 0 || cast(string) gb[0..<gn] != cast(string) last_geom[0..<lg_n] {
+          p := hd_place(c); hd_raise();
+          lg_n = hd_cat(last_geom[..], 0, cast(string) gb[0..<gn]);
+          // read -r _ _ cam_size _: the width's word
+          k := 0; while k < cam.w.count && cam.w[k] != ' ' { k += 1; }
+          cam_size = hd_copy(cam.w[0..<k], csb[..]);
+        } else if ticks % c.raise_ticks == 0 { hd_raise(); }
+      }
+    }
+    o: [1] Out; o[0].b = frame[..];
+    f := Frame.{cols = sz.cols, rows = sz.rows, ring = ring, tick = tick, last_level_tick = llt[0], dead_ticks = c.dead_ticks,
+                mic_known = mic[0].known, present = mic[0].present, preferred = mic[0].preferred, audio = mic[0].audio, nick = cast(string) mic[0].nick[0..<mic[0].nick_n],
+                mic_name = c.mic_name, blink = blink, cam_size = cam_size, recording = hd_recording(c), dictating = hd_dictating(c)};
+    hd_frame(f, hist[0..<sz.cols], o[..]);
+    r := cxterm_write(frame[0..<o[0].n]);
+    proc_sleep(40);
+  }
+  hd_say("\\e[?1000l\\e[?1006l\\e[?25h\\e[0m\\e[2J\\e[H");
+  x = cxterm_raw(0);
+  hd_meter_stop(meter[..]);
+  return 0;
+}
+hd_say :: (s: string) { b: [256] u8; o: [1] Out; o[0].b = b[..]; hd_put(o[..], s); r := cxterm_write(b[0..<o[0].n]); }
+// handle_input: a key within 30 ms, or a mouse report or arrow after ESC [.
+hd_input :: (c: Conf, rows: int) {
+  k := cxterm_byte(30);
+  if k < 0 || k == 0 { return; }
+  if k == ' ' || k == 'r' || k == 'R' { hd_toggle_recording(c); return; }
+  if k == '+' || k == '=' { hd_resize_camera(c, 40); return; }
+  if k == '-' || k == '_' { hd_resize_camera(c, -40); return; }
+  if k != 27 { return; }
+  if cxterm_byte(2) != '[' { return; }
+  seq: [256] u8; n := 0;
+  while n < seq.count {
+    ch := cxterm_byte(2);
+    if ch < 0 { break; }
+    seq[n] = cast,trunc(u8) ch; n += 1;
+    if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') { break; }
+  }
+  s := cast(string) seq[0..<n];
+  if s.count >= 2 && s[0] == '<' && (s[s.count - 1] == 'M' || s[s.count - 1] == 'm') {
+    m := hd_mouse(s[1..<s.count]);
+    if !m.ok { return; }
+    ctl := hd_control(m.btn, m.col, m.row, m.press, rows);
+    if ctl == CTRL_RECORD { hd_toggle_recording(c); } else if ctl == CTRL_SMALLER { hd_resize_camera(c, -40); } else if ctl == CTRL_BIGGER { hd_resize_camera(c, 40); }
+    return;
+  }
+  if s == "A" { hd_resize_camera(c, 40); } else if s == "B" { hd_resize_camera(c, -40); }
+}
+
+// ---- start, stop, status
+
+hd_start :: (c: Conf) -> int {
+  if hd_window_up(HUD_TITLE) { tool_errln("The recording HUD is already up."); return 0; }
+  if !hd_wait_camera(c) { return 0; }
+  sb: [4096] u8; n := cxproc_self_path(sb[..]);
+  if n <= 0 { tool_errln("recording-hud: cannot find its own program"); return 1; }
+  self := cast(string) sb[0..<n];
+  sh := proc_new();
+  if proc_detach(sh) && proc_arg(sh, self) && proc_arg(sh, "shape") { r := proc_start(sh); }
+  r := proc_release(sh);
+  h := proc_new();
+  argv := [9] string.["foot", "--title=recording-hud", "--app-id=recording-hud", "--config", "/etc/coderos/foot.ini", "--override", "colors-dark.alpha=0.0", "--", self];
+  ok := true; for a: argv { ok = ok && proc_arg(h, a); }
+  ok = ok && proc_arg(h, "run");
+  e := ifx ok then cxproc_exec(h) else 22;
+  tool_errln("recording-hud: foot: not found");
+  return 127;
+}
+// The processes whose command line holds "recording-hud run" (pgrep -f), not this one.
+hd_huds :: (pids: [] int) -> int {
+  l: [1] FsList; n := fs_list("/proc", l[..]);
+  k := 0; me := cxproc_self_pid();
+  for i: 0..<n {
+    p := hd_digits(fs_entry(l[..], i));
+    if p <= 0 || p == me { continue; }
+    cb: [65536] u8; m := cxproc_cmdline(p, cb[..]);
+    if m <= 0 { continue; }
+    if cb[m - 1] == 0 { m -= 1; }
+    for j: 0..<m { if cb[j] == 0 { cb[j] = ' '; } }
+    if hd_has(cast(string) cb[0..<m], "recording-hud run") && k < pids.count { pids[k] = p; k += 1; }
+  }
+  return k;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  eb: [2] [4096] u8; mb: [256] u8;
+  c := Conf.{pid_file = proc_getenv("CODEROS_SCREEN_RECORD_PID", eb[0][..]), dictation_file = proc_getenv("CODEROS_DICTATION_PID", eb[1][..]),
+             height = hd_env_int("CODEROS_HUD_HEIGHT", 104), gap = hd_env_int("CODEROS_HUD_GAP", -48), raise_ticks = hd_env_int("CODEROS_HUD_RAISE_TICKS", 50),
+             gain = hd_env_int("CODEROS_HUD_GAIN", 1600), mic_name = proc_getenv("CODEROS_MICROPHONE_NAME", mb[..]),
+             dead_ticks = hd_env_int("CODEROS_HUD_DEAD_TICKS", 30), camera_tries = hd_env_int("CODEROS_HUD_CAMERA_TRIES", 40)};
+  if c.pid_file.count == 0 { c.pid_file = "/tmp/screen-record.pid"; }
+  if c.dictation_file.count == 0 { c.dictation_file = "/tmp/dictation_recording.pid"; }
+  if c.raise_ticks == 0 { c.raise_ticks = 50; }
+  verb := ifx ok && args_count(a[..]) > 0 then args_at(a[..], 0) else "";
+  if verb == "" || verb == "start" { return hd_start(c); }
+  if verb == "run" { return hd_run(c); }
+  if verb == "shape" { return hd_shape(c); }
+  if verb == "stop" {
+    pids: [256] int; n := hd_huds(pids[..]);
+    for i: 0..<n { r := cxproc_pid_signal(pids[i], PROC_SIGTERM); }
+    print("The recording HUD stopped.\n");
+    return 0;
+  }
+  if verb == "status" {
+    pids: [4] int;
+    print("%\n", ifx hd_huds(pids[..]) > 0 then "The recording HUD is up." else "The recording HUD is not up.");
+    return 0;
+  }
+  if verb == "frame" && args_count(a[..]) >= 16 { return hd_print_frame(a[..], c); }
+  tool_errln("Usage: recording-hud [start|stop|status]");
+  return 2;
+}
+// frame COLS ROWS RING TICK LAST_LEVEL_TICK KNOWN PRESENT PREFERRED AUDIO BLINK RECORDING DICTATING CAM_SIZE NICK HIST,...
+hd_print_frame :: (a: [] Args, c: Conf) -> int {
+  n: [13] int; for i: 0..<12 { n[i] = hd_int(args_at(a, i + 1)).v; }
+  hist: [HIST_MAX] int; hs := args_at(a, 15); k := 0; i := 0;
+  while i < hs.count && k < HIST_MAX { j := i; while j < hs.count && hs[j] != ',' { j += 1; } hist[k] = hd_int(hs[i..<j]).v; k += 1; i = j + 1; }
+  f := Frame.{cols = n[0], rows = n[1], ring = n[2], tick = n[3], last_level_tick = n[4], dead_ticks = c.dead_ticks, mic_known = n[5] == 1, present = n[6] == 1,
+              preferred = n[7] == 1, audio = n[8] == 1, blink = n[9] == 1, recording = n[10] == 1, dictating = n[11] == 1, cam_size = args_at(a, 13), nick = args_at(a, 14), mic_name = c.mic_name};
+  fb: [1048576] u8; o: [1] Out; o[0].b = fb[..];
+  hd_frame(f, hist[0..<f.cols], o[..]);
+  r := cxterm_write(fb[0..<o[0].n]);
+  return 0;
+}
