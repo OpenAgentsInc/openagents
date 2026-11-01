@@ -269,7 +269,7 @@
 - [243. Fit settings on recorded answers](ch243-fit-settings-on-recorded-answers.md)
 - [244. Search a policy, cheapest first](ch244-search-a-policy-cheapest-first.md)
 - [245. Reflective prompt evolution](ch245-reflective-prompt-evolution.md) — design draft
-- [246. Judges are components](ch246-judges-are-components.md) — design draft
+- [246. Judges are components](ch246-judges-are-components.md) — partly implemented
 - [247. Outcomes become training rows](ch247-outcomes-become-training-rows.md)
 - [248. Is the loop improving?](ch248-is-the-loop-improving.md)
 - [249. An agent optimizes a Psionic kernel](ch249-an-agent-optimizes-a-psionic-kernel.md)
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–138, 140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 180, 188, 195, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–138, 140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 180, 188, 195, 215–221, 224–237, 239–244 and 246–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

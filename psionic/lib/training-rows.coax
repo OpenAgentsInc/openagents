@@ -11,10 +11,11 @@
 #load "replay.coax";
 #authority;
 
-TrReason :: enum u8 {admitted;shape;capacity;order;unlabelled;summary;unverifiable;failed;crosses;reserved;duplicate;}
+TrReason :: enum u8 {admitted;shape;capacity;order;unlabelled;summary;unverifiable;failed;crosses;reserved;duplicate;opinion;}
 TrRole :: enum u8 {none;train;calibration;development;heldout;}
 TrSource :: enum u8 {decision;trace;}
-TrLabel :: enum u8 {none;check;diff;summary;replay;}
+// judge: a grade from a model judging the work (chapter 246), an opinion.
+TrLabel :: enum u8 {none;check;diff;summary;replay;judge;}
 // Times before calibration are train; then calibration, development, and
 // held out from heldout on. Equal cuts leave a split empty.
 TrCuts :: struct {calibration:int;development:int;heldout:int;}
@@ -109,6 +110,7 @@ tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd {
     if a.reason!=TrReason.admitted {return a;}
     if o.from==TrLabel.none {a.reason=TrReason.unlabelled;return a;}
     if o.from==TrLabel.summary {a.reason=TrReason.summary;return a;}
+    if o.from==TrLabel.judge {a.reason=TrReason.opinion;return a;}
     return tr_admit(a.set,TrRow.{source=TrSource.decision,group=o.group,time=o.time,label=o.label,from=o.from,key=tr_outcome_key(o)});
 }
 // The trace is replayed here, whole, within budget steps; chapter 234
@@ -216,6 +218,14 @@ tr_hex :: (d:[32]u8,text:string)->bool {
     #assert tr_add_outcome(s,tr_out(1,3,0,2,TrLabel.check)).reason==TrReason.shape;
     #assert tr_add_outcome(s,tr_out(1,3,0,-1,TrLabel.check)).reason==TrReason.shape;
     #assert tr_add_outcome(s,tr_out(1,3,0,0,TrLabel.check)).reason==TrReason.admitted;
+}
+#test "a judge's grade is an opinion, never a label" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(1,2,0,1,TrLabel.judge));
+    #assert a.reason==TrReason.opinion && a.set.count==0 && a.set.entries==0 && a.set.last==2;
+    #assert tr_add_outcome(a.set,tr_out(1,2,0,0,TrLabel.judge)).reason==TrReason.opinion;
+    #assert tr_add_outcome(a.set,tr_out(1,1,0,1,TrLabel.judge)).reason==TrReason.order;
+    #assert tr_add_outcome(a.set,tr_out(1,2,0,1,TrLabel.check)).reason==TrReason.admitted;
 }
 #test "the feed runs forward in time, refused rows included" {
     st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
@@ -332,7 +342,7 @@ tr_hex :: (d:[32]u8,text:string)->bool {
     d:=tr_add_trace(c,p[..],x.claim,x.rows[0..<212],10,30,64);
     #assert d.reason==TrReason.admitted && rows[0].role==TrRole.train && st.entry[1].group==10 && st.entry[1].artifacts==4;
 }
-TrTally :: struct {reasons:[11]int;set:TrSet;}
+TrTally :: struct {reasons:[12]int;set:TrSet;}
 tr_tally :: (s:TrSet,feed:[]TrOutcome)->TrTally {
     t:=TrTally.{set=s};
     for o:feed {a:=tr_add_outcome(t.set,o);t.set=a.set;t.reasons[cast(int)a.reason]+=1;}

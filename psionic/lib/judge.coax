@@ -1,0 +1,559 @@
+// Chapter 246: judges are components. A judge is a model run with a rubric
+// and settings, named by one identity digest over all three, so an edit to
+// any of them is a different judge. Before its grades count, it is measured
+// against outcomes that checks or diffs labelled: agreement and Cohen's kappa
+// with intervals, its own noise between repeated runs, and two bias probes,
+// the order answers are shown in and their length. A gate turns those into
+// passed, failed or unverifiable. A grader never shares an identity or
+// weights with the student or the reflector, and its grade never becomes a
+// training label: chapter 247 refuses it as an opinion.
+// Profile judge-v1: binary64, Wilson intervals at z = 1.96, up to 4,096
+// items or pairs, chapter 239's encoding for the identity, chapter 215's
+// calibration error, and a stand-in judge (stand-in-judge-v1) for the runs.
+#load "verdict.coax";
+#load "suite.coax";
+#load "training-rows.coax";
+#load "../tests/judge-checks.coax";   // the checks' helpers, fixtures and 2x2 recount
+#authority;
+
+JgStatus :: enum u8 {ok;shape;number;}
+JgModel :: enum u8 {elephant;mammoth;}
+// weights: the weights' digest; rubric: the prompt or rubric text;
+// temperature in thousandths; samples: calls averaged per judgment; swap:
+// each pair is judged in both orders. price is per call and is not identity.
+JgComponent :: struct {model:JgModel;weights:[32]u8;rubric:string;temperature:int;samples:int;swap:bool;price:f64;}
+JgSeparation :: enum u8 {separate;shape;same_identity;same_weights;}
+JgAgreement :: struct {
+    status:JgStatus;items:int;skipped:int;agree:int;judge_yes:int;truth_yes:int;
+    observed:f64;chance:f64;low:f64;high:f64;kappa:f64;kappa_low:f64;kappa_high:f64;ece:f64;brier:f64;
+}
+// inconsistent: pairs whose winner changes with the order shown; first and
+// second: pairs where the answer shown first, or second, won both ways.
+JgProbe :: struct {status:JgStatus;items:int;flips:int;flip_rate:f64;pairs:int;inconsistent:int;first:int;second:int;position:f64;judge_longer:int;truth_longer:int;length_bias:f64;}
+// Limits written down before any judge is measured.
+JgPolicy :: struct {items_min:int;kappa_min:f64;flip_max:f64;position_max:f64;length_max:f64;}
+JgReason :: enum u8 {none;agrees;disagrees;unclear;few_items;one_class;position;length;noisy;unmeasured;shared;unproven;graded;}
+JgResult :: struct {verdict:VdVerdict;reason:JgReason;}
+
+JG_RUBRIC_MAX :: 4096;
+JG_SAMPLES_MAX :: 16;
+JG_TEMPERATURE_MAX :: 2000;
+JG_ITEMS_MAX :: 4096;
+JG_PRICE_MAX :: 1.0e6;
+JG_Z :: 1.96;
+JG_POLICY :: JgPolicy.{items_min=30,kappa_min=0.6,flip_max=0.1,position_max=0.1,length_max=0.15};
+
+// Checks precede the implementation. Expected digests come from Python's
+// hashlib over the same bytes; the rest are derived by hand in chapter 246.
+// Their helpers and the independent 2x2 recount are in the tests file.
+#test "an identity digest covers the model, weights, rubric and settings" {
+    c:=JgComponent.{model=JgModel.elephant,rubric="Does the patch pass?",temperature=300,samples=1,price=1};
+    for i:0..<32 {c.weights[i]=cast(u8)i;}
+    d:=jg_identity(c);
+    #assert jg_hex(d,"5bf2d4089ab44977ed25f904fb7aea0b0a539b215f266cab8d0ae2965375a4ea");
+    e:=c;e.rubric="Does the patch pass!";#assert !su_same(d,jg_identity(e));
+    e=c;e.rubric="Does the patch pass? ";#assert !su_same(d,jg_identity(e));
+    e=c;e.model=JgModel.mammoth;#assert !su_same(d,jg_identity(e));
+    e=c;e.weights[31]^=1;#assert !su_same(d,jg_identity(e));
+    e=c;e.temperature=301;#assert !su_same(d,jg_identity(e));
+    e=c;e.samples=2;#assert !su_same(d,jg_identity(e));
+    e=c;e.swap=true;#assert !su_same(d,jg_identity(e));
+    // The price is not part of what the judge is.
+    e=c;e.price=6;#assert su_same(d,jg_identity(e));
+    // An invalid component has no identity.
+    e=c;e.rubric="";#assert su_same(jg_identity(e),su_zero());
+}
+#test "a component is checked before it gets an identity" {
+    c:=JgComponent.{model=JgModel.mammoth,rubric="r",temperature=0,samples=1,price=0};
+    #assert jg_component_ok(c);
+    e:=c;e.rubric="";#assert !jg_component_ok(e);
+    long:[4097]u8;for i:0..<4097 {long[i]=65;}
+    e=c;e.rubric=cast(string)long[0..<4096];#assert jg_component_ok(e) && !su_same(jg_identity(e),su_zero());
+    e=c;e.rubric=cast(string)long[..];#assert !jg_component_ok(e);
+    e=c;e.temperature=-1;#assert !jg_component_ok(e);
+    e=c;e.temperature=2000;#assert jg_component_ok(e);
+    e=c;e.temperature=2001;#assert !jg_component_ok(e);
+    e=c;e.samples=0;#assert !jg_component_ok(e);
+    e=c;e.samples=16;#assert jg_component_ok(e);
+    e=c;e.samples=17;#assert !jg_component_ok(e);
+    e=c;e.price=-0.5;#assert !jg_component_ok(e);
+    e=c;e.price=1.0e6;#assert jg_component_ok(e);
+    e=c;e.price=2.0e6;#assert !jg_component_ok(e);
+    e=c;e.price=0.0/0.0;#assert !jg_component_ok(e);
+}
+#test "cost per judgment counts every call" {
+    c:=JgComponent.{model=JgModel.elephant,rubric="r",samples=2,price=1.5};
+    #assert jg_cost(c,false)==3 && jg_cost(c,true)==3;
+    c.swap=true;#assert jg_cost(c,false)==3 && jg_cost(c,true)==6;
+}
+#test "a grader never shares an identity or weights with the student or the reflector" {
+    g:=JgComponent.{model=JgModel.mammoth,rubric="grade",samples=1};g.weights[0]=2;
+    s:=JgComponent.{model=JgModel.elephant,rubric="solve",samples=1};s.weights[0]=1;
+    r:=JgComponent.{model=JgModel.elephant,rubric="reflect",samples=1};r.weights[0]=3;
+    #assert jg_separate(g,s,r)==JgSeparation.separate;
+    #assert jg_separate(g,g,r)==JgSeparation.same_identity;
+    #assert jg_separate(g,s,g)==JgSeparation.same_identity;
+    // The same weights told something else still grade their own work.
+    t:=s;t.rubric="grade";#assert jg_separate(t,s,r)==JgSeparation.same_weights;
+    t=r;t.rubric="grade";#assert jg_separate(t,s,r)==JgSeparation.same_weights;
+    // The reflector and the student may share weights; the grader may not.
+    t=r;t.weights[0]=1;#assert jg_separate(g,s,t)==JgSeparation.separate;
+    bad:=g;bad.samples=0;
+    #assert jg_separate(bad,s,r)==JgSeparation.shape && jg_separate(g,bad,r)==JgSeparation.shape && jg_separate(g,s,bad)==JgSeparation.shape;
+}
+#test "agreement and kappa by hand on twenty items" {
+    p:[24]f64;t:[24]TrOutcome;jg_twenty(p[..],t[..]);
+    a:=jg_agreement(p[0..<20],t[0..<20]);
+    #assert a.status==JgStatus.ok && a.items==20 && a.skipped==0 && a.agree==17 && a.judge_yes==9 && a.truth_yes==8;
+    #assert a.observed==0.85 && a.chance==0.51;
+    #assert jg_near(a.kappa,0.6938776) && jg_near(a.low,0.6395767) && jg_near(a.high,0.9476322);
+    #assert jg_near(a.kappa_low,0.2644423) && jg_near(a.kappa_high,0.8931270);
+    // Chapter 215's measures on the same rows. Top labels 0.8 (9 items, 7 right)
+    // and 0.7 (11 items, 10 right): (|7.2-7| + |7.7-10|)/20.
+    #assert jg_near(a.ece,0.125) && jg_near(a.brier,2*(7*0.04+10*0.09+2*0.64+0.49)/20) && jg_near(a.brier,0.295);
+    // Rows labelled by a summary, by nobody, by replay or by a judge are not truth.
+    t[20]=jg_label(1,TrLabel.summary);t[21]=jg_label(1,TrLabel.none);t[22]=jg_label(0,TrLabel.judge);t[23]=jg_label(0,TrLabel.replay);
+    b:=jg_agreement(p[..],t[..]);
+    #assert b.items==20 && b.skipped==4 && b.agree==17 && b.kappa==a.kappa && b.ece==a.ece && b.brier==a.brier;
+    // Exactly 0.5 is yes.
+    p[0]=0.5;t[0]=jg_label(1,TrLabel.check);c:=jg_agreement(p[0..<1],t[0..<1]);
+    #assert c.judge_yes==1 && c.agree==1;
+}
+#test "kappa needs two classes, and malformed inputs are refused" {
+    p:[4]f64;t:[4]TrOutcome;for i:0..<4 {p[i]=0.9;t[i]=jg_label(1,TrLabel.check);}
+    a:=jg_agreement(p[..],t[..]);
+    #assert a.status==JgStatus.ok && a.chance==1 && a.kappa==0 && a.kappa_low==0 && a.kappa_high==0 && a.observed==1;
+    for i:0..<4 {t[i].from=TrLabel.summary;}
+    a=jg_agreement(p[..],t[..]);#assert a.status==JgStatus.ok && a.items==0 && a.skipped==4 && a.observed==0;
+    t[0].from=TrLabel.check;
+    #assert jg_agreement(p[0..<3],t[..]).status==JgStatus.shape;
+    #assert jg_agreement(p[0..<0],t[0..<0]).status==JgStatus.shape;
+    p[1]=1.5;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    p[1]=-0.1;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    p[1]=1;p[0]=1.5;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    p[0]=0.9;t[0].label=-1;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    t[0].label=1;
+    p[1]=0.0/0.0;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    p[1]=1;t[2].label=2;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    t[2].label=-1;#assert jg_agreement(p[..],t[..]).status==JgStatus.number;
+    t[2].label=0;#assert jg_agreement(p[..],t[..]).status==JgStatus.ok;
+    big:[4097]f64;bt:[4097]TrOutcome;
+    #assert jg_agreement(big[0..<4096],bt[0..<4096]).status==JgStatus.ok;
+    #assert jg_agreement(big[..],bt[..]).status==JgStatus.shape;
+}
+#forall "kappa and agreement match a 2x2 table, and the intervals hold them" yy:0..<5,yn:0..<5,ny:0..<5,nn:0..<5 {
+    n:=yy+yn+ny+nn;
+    if n>0 {
+        p:[16]f64;t:[16]TrOutcome;k:=0;
+        for i:0..<yy {p[k]=0.7;t[k]=jg_label(1,TrLabel.check);k+=1;}
+        for i:0..<yn {p[k]=0.7;t[k]=jg_label(0,TrLabel.diff);k+=1;}
+        for i:0..<ny {p[k]=0.2;t[k]=jg_label(1,TrLabel.check);k+=1;}
+        for i:0..<nn {p[k]=0.2;t[k]=jg_label(0,TrLabel.diff);k+=1;}
+        a:=jg_agreement(p[0..<n],t[0..<n]);
+        #assert a.status==JgStatus.ok && a.items==n && a.agree==yy+nn && a.judge_yes==yy+yn && a.truth_yes==yy+ny;
+        #assert a.low>=0 && a.low<=a.observed && a.observed<=a.high && a.high<=1;
+        two:=(yy+yn>0 && ny+nn>0) || (yy+ny>0 && yn+nn>0);
+        if two {
+            #assert jg_near(a.kappa,jg_table_kappa(yy,yn,ny,nn));
+            #assert a.kappa_low<=a.kappa && a.kappa<=a.kappa_high && a.kappa<=1;
+        }
+    }
+}
+#test "a judge that flips between runs, or between orders, is caught" {
+    first:=[7]f64.[0.9,0.2,0.6,0.4,0.5,0.1,0.3];second:=[7]f64.[0.8,0.3,0.4,0.6,0.49,0.1,0.5];
+    // Pairs: q is shown (a, b), r is shown (b, a); both are "the first shown is better".
+    q:=[4]f64.[0.9,0.7,0.3,0.6];r:=[4]f64.[0.2,0.6,0.8,0.45];
+    longer:=[4]int.[0,0,1,1];better:=[4]int.[0,1,1,0];
+    p:=jg_probe(first[..],second[..],q[..],r[..],longer[..],better[..]);
+    #assert p.status==JgStatus.ok && p.items==7 && p.flips==4 && p.flip_rate==4.0/7;
+    // Pair 1 prefers whichever is shown first; no pair prefers the second.
+    #assert p.pairs==4 && p.inconsistent==1 && p.first==1 && p.second==0 && p.position==0.25;
+    // Picks from both orders: a (1.7), a (1.1), b (0.5), a (1.15). Longer: a, a, b, b.
+    #assert p.judge_longer==3 && p.truth_longer==2 && p.length_bias==0.25;
+    // Exactly 0.5 is yes; a tie between orders picks a.
+    tie:=[1]f64.[0.5];tl:=[1]int.[1];tb:=[1]int.[1];
+    s:=jg_probe(first[0..<1],first[0..<1],tie[..],tie[..],tl[..],tb[..]);
+    #assert s.inconsistent==1 && s.first==1 && s.second==0 && s.position==1 && s.judge_longer==0 && s.truth_longer==1 && s.length_bias==-1;
+    lq:=[1]f64.[0.3];lr:=[1]f64.[0.4];u:=jg_probe(first[0..<1],first[0..<1],lq[..],lr[..],tl[..],tb[..]);
+    #assert u.inconsistent==1 && u.first==0 && u.second==1 && u.position==-1 && u.judge_longer==1 && u.length_bias==0;
+    h:=[1]f64.[0.5];l:=[1]f64.[0.3];
+    #assert jg_probe(first[0..<1],first[0..<1],h[..],l[..],tl[..],tb[..]).second==0;
+    #assert jg_probe(first[0..<1],first[0..<1],l[..],h[..],tl[..],tb[..]).second==0;
+}
+#test "the probe refuses malformed inputs" {
+    a:=[2]f64.[0.5,0.5];i:=[2]int.[0,1];
+    #assert jg_probe(a[..],a[..],a[..],a[..],i[..],i[..]).status==JgStatus.ok;
+    #assert jg_probe(a[..],a[0..<1],a[..],a[..],i[..],i[..]).status==JgStatus.shape;
+    #assert jg_probe(a[0..<0],a[0..<0],a[..],a[..],i[..],i[..]).status==JgStatus.shape;
+    #assert jg_probe(a[..],a[..],a[0..<0],a[0..<0],i[0..<0],i[0..<0]).status==JgStatus.shape;
+    #assert jg_probe(a[..],a[..],a[..],a[0..<1],i[..],i[..]).status==JgStatus.shape;
+    #assert jg_probe(a[..],a[..],a[..],a[..],i[0..<1],i[..]).status==JgStatus.shape;
+    #assert jg_probe(a[..],a[..],a[..],a[..],i[..],i[0..<1]).status==JgStatus.shape;
+    for k:0..<4 {
+        b:=a;b[1]=1.01;
+        x:=ifx k==0 then b else a;y:=ifx k==1 then b else a;z:=ifx k==2 then b else a;w:=ifx k==3 then b else a;
+        #assert jg_probe(x[..],y[..],z[..],w[..],i[..],i[..]).status==JgStatus.number;
+        b[1]=-0.01;x=ifx k==0 then b else a;y=ifx k==1 then b else a;z=ifx k==2 then b else a;w=ifx k==3 then b else a;
+        #assert jg_probe(x[..],y[..],z[..],w[..],i[..],i[..]).status==JgStatus.number;
+    }
+    j:=i;j[0]=2;#assert jg_probe(a[..],a[..],a[..],a[..],j[..],i[..]).status==JgStatus.number;
+    #assert jg_probe(a[..],a[..],a[..],a[..],i[..],j[..]).status==JgStatus.number;
+    j[0]=-1;#assert jg_probe(a[..],a[..],a[..],a[..],j[..],i[..]).status==JgStatus.number;
+    #assert jg_probe(a[..],a[..],a[..],a[..],i[..],j[..]).status==JgStatus.number;
+    big:[4097]f64;bi:[4097]int;
+    #assert jg_probe(big[0..<4096],big[0..<4096],big[0..<4096],big[0..<4096],bi[0..<4096],bi[0..<4096]).status==JgStatus.ok;
+    #assert jg_probe(big[..],big[..],big[0..<1],big[0..<1],bi[0..<1],bi[0..<1]).status==JgStatus.shape;
+    #assert jg_probe(big[0..<1],big[0..<1],big[..],big[..],bi[..],bi[..]).status==JgStatus.shape;
+}
+#test "the judge gate by hand" {
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0.1,0.1,0.15),VdVerdict.passed,JgReason.agrees);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0.1,0.1,-0.15),VdVerdict.passed,JgReason.agrees);
+    #assert jg_res(jg_gate_of(29,0.5,0.6,0.9,0,0,0),VdVerdict.unverifiable,JgReason.few_items);
+    #assert jg_res(jg_gate_of(30,1,0.6,0.9,0,0,0),VdVerdict.unverifiable,JgReason.one_class);
+    #assert jg_res(jg_gate_of(30,0.9999,0.6,0.9,0,0,0),VdVerdict.passed,JgReason.agrees);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0,0.1001,0),VdVerdict.failed,JgReason.position);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0,-0.1001,0),VdVerdict.failed,JgReason.position);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0,-0.1,0),VdVerdict.passed,JgReason.agrees);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0,0,0.1501),VdVerdict.failed,JgReason.length);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0,0,-0.1501),VdVerdict.failed,JgReason.length);
+    #assert jg_res(jg_gate_of(30,0.5,0.6,0.9,0.1001,0,0),VdVerdict.unverifiable,JgReason.noisy);
+    #assert jg_res(jg_gate_of(30,0.5,0.5999,0.9,0,0,0),VdVerdict.unverifiable,JgReason.unclear);
+    #assert jg_res(jg_gate_of(30,0.5,0.2,0.6,0,0,0),VdVerdict.unverifiable,JgReason.unclear);
+    #assert jg_res(jg_gate_of(30,0.5,0.2,0.5999,0,0,0),VdVerdict.failed,JgReason.disagrees);
+    // A bias fails a judge even when it agrees; noise holds back one that disagrees.
+    #assert jg_res(jg_gate_of(30,0.5,0.2,0.5,0,0.2,0),VdVerdict.failed,JgReason.position);
+    #assert jg_res(jg_gate_of(30,0.5,0.2,0.5,0.2,0,0),VdVerdict.unverifiable,JgReason.noisy);
+    #assert jg_res(jg_gate_of(10,0.5,0.2,0.5,0,0.2,0),VdVerdict.unverifiable,JgReason.few_items);
+    // Unmeasured: a refused measure, or a policy that is not a policy.
+    a:=JgAgreement.{items=30,chance=0.5,kappa_low=0.7,kappa_high=0.9};p:JgProbe;
+    #assert jg_res(jg_gate(a,p,JG_POLICY),VdVerdict.passed,JgReason.agrees);
+    b:=a;b.status=JgStatus.number;#assert jg_res(jg_gate(b,p,JG_POLICY),VdVerdict.unverifiable,JgReason.unmeasured);
+    q:=p;q.status=JgStatus.shape;#assert jg_res(jg_gate(a,q,JG_POLICY),VdVerdict.unverifiable,JgReason.unmeasured);
+    for k:0..<9 {
+        y:=JG_POLICY;nan:=0.0/0.0;
+        if k==0 {y.items_min=0;} if k==1 {y.kappa_min=nan;} if k==2 {y.kappa_min=1.01;} if k==3 {y.flip_max=-0.01;}
+        if k==4 {y.position_max=1.01;} if k==5 {y.length_max=nan;} if k==6 {y.kappa_min=-1.01;} if k==7 {y.flip_max=1.01;}
+        if k==8 {y.length_max=-0.01;}
+        #assert jg_res(jg_gate(a,p,y),VdVerdict.unverifiable,JgReason.unmeasured);
+    }
+    y:=JG_POLICY;y.items_min=1;y.kappa_min=-1;y.flip_max=1;y.position_max=0;y.length_max=1;
+    #assert jg_res(jg_gate(a,p,y),VdVerdict.passed,JgReason.agrees);
+    y.flip_max=0;y.position_max=1;y.length_max=0;y.kappa_min=1;
+    #assert jg_res(jg_gate(a,p,y),VdVerdict.failed,JgReason.disagrees);
+}
+#forall "the gate passes only an agreeing, unbiased, quiet judge; it fails only on a bias or a clear disagreement" items:28..<32,low:0..<5,high:0..<5,flip:0..<3,swap:0..<3,length:0..<3 {
+    if low<=high {
+        lo:=0.3+0.15*f64(low);hi:=0.3+0.15*f64(high);fl:=0.05*f64(flip);sw:=0.05*f64(swap);ln:=0.075*f64(length);
+        r:=jg_gate_of(items,0.5,lo,hi,fl,sw,ln);
+        sound:=items>=30 && sw<=0.1 && ln<=0.15;
+        #assert (r.verdict==VdVerdict.passed)==(sound && fl<=0.1 && lo>=0.6);
+        if r.verdict==VdVerdict.failed {#assert items>=30 && (sw>0.1 || ln>0.15 || (fl<=0.1 && hi<0.6));}
+        if r.verdict==VdVerdict.unverifiable {#assert items<30 || fl>0.1 || (lo<0.6 && hi>=0.6);}
+    }
+}
+#test "a grade counts only from a separate judge that passed" {
+    pass:=JgResult.{verdict=VdVerdict.passed,reason=JgReason.agrees};
+    open:=JgResult.{verdict=VdVerdict.unverifiable,reason=JgReason.unclear};
+    fail:=JgResult.{verdict=VdVerdict.failed,reason=JgReason.length};
+    good:=vd(VdVerdict.passed,VdReason.beyond_floor);bad:=vd(VdVerdict.failed,VdReason.within_floor);
+    #assert jg_res(jg_grade(JgSeparation.separate,pass,good),VdVerdict.passed,JgReason.graded);
+    #assert jg_res(jg_grade(JgSeparation.separate,pass,bad),VdVerdict.failed,JgReason.graded);
+    #assert jg_res(jg_grade(JgSeparation.separate,open,good),VdVerdict.unverifiable,JgReason.unproven);
+    #assert jg_res(jg_grade(JgSeparation.separate,fail,bad),VdVerdict.unverifiable,JgReason.unproven);
+    #assert jg_res(jg_grade(JgSeparation.same_weights,pass,good),VdVerdict.unverifiable,JgReason.shared);
+    #assert jg_res(jg_grade(JgSeparation.same_identity,pass,good),VdVerdict.unverifiable,JgReason.shared);
+    #assert jg_res(jg_grade(JgSeparation.shape,pass,good),VdVerdict.unverifiable,JgReason.shared);
+}
+#test "a judge's grade offered as a training row is refused as an opinion" {
+    o:=jg_opinion(3,40,7,0.5);
+    #assert o.group==3 && o.time==40 && o.decision==7 && o.label==1 && o.from==TrLabel.judge;
+    #assert jg_opinion(3,40,7,0.4999).label==0;
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,o);#assert a.reason==TrReason.opinion && a.set.count==0;
+}
+#test "the stand-in judge's draws are keyed by its identity" {
+    c:=jg_judges();
+    #assert jg_seed(jg_identity(c[0]))!=jg_seed(jg_identity(c[1]));
+    #assert jg_hex(c[0].weights,"5092c0f7c2fec2025c2ac1e1a676bc0200cf17809f3de2b4ba7a4ad8f7d59996");
+    #assert jg_hex(jg_identity(c[0]),"4b03c35b1788ea31ffe910bc08728fa2e63f5bb448f2d352643bd7158da1af61");
+    d:[32]u8;d[0]=1;d[7]=2;d[8]=255;#assert jg_seed(d)==0x0200000000000001;
+    b:=JG_BEHAVIOR[0];k0:=jg_seed(jg_identity(c[0]));
+    #assert jg_point(c[0],k0,b,1,1,0,5,0)==jg_point(c[0],k0,b,1,1,0,5,0);
+    #assert jg_point(c[0],k0,b,1,1,0,5,0)!=jg_point(c[0],k0,b,1,1,0,5,1);
+    z:=c[0];z.temperature=0;kz:=jg_seed(jg_identity(z));
+    #assert jg_point(z,kz,b,1,1,0,5,0)==tb_sigmoid(b.skill) && jg_point(z,kz,b,0,0.5,0,5,0)==tb_sigmoid(-b.skill/2);
+    l:=JgBehavior.{length=2};#assert jg_point(z,kz,l,0,1,0.5,5,0)==tb_sigmoid(1);
+    #assert jg_pair(z,kz,JgBehavior.{position=1},0.5,0.5,3,0)==tb_sigmoid(1);
+    #assert jg_pair(z,kz,JgBehavior.{skill=2,length=1},0.25,-0.5,3,0)==tb_sigmoid(0);
+    w:=z;w.samples=2;w.temperature=1000;s0:=kz;
+    u0:=tb_uniform(s0,cast(u64)((5*JG_SAMPLES_MAX+0)*2+1));u1:=tb_uniform(s0,cast(u64)((5*JG_SAMPLES_MAX+1)*2+1));
+    #assert jg_point(w,s0,b,1,1,0,5,1)==(tb_sigmoid(b.skill+(8*u0-4))+tb_sigmoid(b.skill+(8*u1-4)))/2;
+    v0:=tb_uniform(s0,cast(u64)(((JG_PAIR_BASE+3)*JG_SAMPLES_MAX+0)*2+1));v1:=tb_uniform(s0,cast(u64)(((JG_PAIR_BASE+3)*JG_SAMPLES_MAX+1)*2+1));
+    #assert jg_pair(w,s0,b,0.5,0,3,1)==(tb_sigmoid(0.5*b.skill+(8*v0-4))+tb_sigmoid(0.5*b.skill+(8*v1-4)))/2;
+}
+#test "the example's world and judges" #steps 2000000000 {
+    items:[120]JgItem;pairs:[60]JgPair;jg_world(7,items[..],pairs[..]);
+    labelled:=0;yes:=0;
+    for x:items {if jg_counted(x.truth) {labelled+=1;yes+=x.truth.label;}}
+    #assert labelled==108 && items[9].truth.from==TrLabel.summary && items[0].truth.from==TrLabel.check && items[1].truth.from==TrLabel.diff;
+    #assert items[119].truth.time==219 && items[119].truth.group==29 && items[119].truth.decision==119;
+    longer_better:=0;
+    for p:pairs {
+        if p.better==p.longer {longer_better+=1;}
+        b:=p.better;l:=p.longer;
+        #assert p.quality[b]>p.quality[1-b] && p.quality[1-b]>=0 && p.quality[b]<1;
+        #assert p.length[l]>p.length[1-l] && p.length[1-l]>=-1 && p.length[l]<1;
+    }
+    m:=jg_measure_all(items[..],pairs[..]);
+    #assert pairs[0].better==JG_EXPECT_PAIR0[0] && pairs[0].longer==JG_EXPECT_PAIR0[1];
+    checks:=0;for x:items {if x.truth.from==TrLabel.check {checks+=1;}}
+    #assert checks==60;
+    #assert yes==JG_EXPECT_YES && longer_better==JG_EXPECT_LONGER;
+    for k:0..<5 {
+        #assert m[k].agreement.status==JgStatus.ok && m[k].probe.status==JgStatus.ok;
+        #assert m[k].agreement.agree==JG_EXPECT_AGREE[k] && m[k].agreement.judge_yes==JG_EXPECT_JUDGE_YES[k];
+        #assert m[k].probe.flips==JG_EXPECT_FLIPS[k] && m[k].probe.inconsistent==JG_EXPECT_SWAPS[k] && m[k].probe.first==JG_EXPECT_FIRST[k] && m[k].probe.second==JG_EXPECT_SECOND[k] && m[k].probe.judge_longer==JG_EXPECT_JUDGE_LONGER[k] && m[k].probe.truth_longer==longer_better;
+        #assert jg_res(m[k].result,JG_EXPECT_VERDICT[k],JG_EXPECT_REASON[k]);
+    }
+}
+
+// book:begin identity
+jg_component_ok :: (c:JgComponent)->bool {
+    return c.rubric.count>=1 && c.rubric.count<=JG_RUBRIC_MAX &&
+        c.temperature>=0 && c.temperature<=JG_TEMPERATURE_MAX && c.samples>=1 && c.samples<=JG_SAMPLES_MAX &&
+        tb_in(c.price,0,JG_PRICE_MAX);
+}
+// Chapter 239's encoding under its own tag: the model, the weights' digest,
+// the rubric's bytes and the settings. A changed byte anywhere is a new judge.
+jg_identity :: (c:JgComponent)->[32]u8 #export_c {
+    if !jg_component_ok(c) {return su_zero();}
+    buf:[4224]u8;at:=su_text(buf[..],0,"psionic.component.v1");
+    buf[at]=cast(u8)c.model;at+=1;
+    for i:0..<32 {buf[at+i]=c.weights[i];}
+    at=su_text(buf[..],at+32,c.rubric);
+    at=su_u64(buf[..],at,cast(u64)c.temperature);at=su_u64(buf[..],at,cast(u64)c.samples);at=su_flag(buf[..],at,c.swap);
+    return su_hash(buf[0..<at]);
+}
+// Calls per judgment times the price of one; a pair judged both ways is two.
+jg_cost :: (c:JgComponent,pair:bool)->f64 #export_c {
+    return c.price*f64(c.samples)*(ifx pair && c.swap then 2.0 else 1.0);
+}
+// The grader grades someone else's work: a different identity and different
+// weights from the student and the reflector.
+jg_separate :: (grader:JgComponent,student:JgComponent,reflector:JgComponent)->JgSeparation #export_c {
+    if !jg_component_ok(grader) || !jg_component_ok(student) || !jg_component_ok(reflector) {return JgSeparation.shape;}
+    g:=jg_identity(grader);
+    if su_same(g,jg_identity(student)) || su_same(g,jg_identity(reflector)) {return JgSeparation.same_identity;}
+    if su_same(grader.weights,student.weights) || su_same(grader.weights,reflector.weights) {return JgSeparation.same_weights;}
+    return JgSeparation.separate;
+}
+// book:end identity
+
+// book:begin agreement
+// Only a label from a check or a diff is truth (chapter 247's rule).
+jg_counted :: (o:TrOutcome)->bool {return o.from==TrLabel.check || o.from==TrLabel.diff;}
+// The Wilson score interval for k agreements in n at z = 1.96.
+jg_wilson :: (k:int,n:int)->[2]f64 {
+    m:=f64(n);p:=f64(k)/m;z2:=JG_Z*JG_Z;d:=1+z2/m;
+    c:=(p+z2/(2*m))/d;h:=JG_Z*sqrt(p*(1-p)/m+z2/(4*m*m))/d;
+    // At 0 and at n the bounds are exactly 0 and 1; rounding is kept out.
+    return [2]f64.[ifx k==0 then 0.0 else c-h,ifx k==n then 1.0 else c+h];
+}
+// The judge's probability of yes p against labelled outcomes; yes is p >= 0.5.
+// Kappa's interval maps agreement's interval through the same formula, with
+// chance agreement held at its measured value.
+jg_agreement :: (p:[]f64,truth:[]TrOutcome)->JgAgreement #export_c {
+    n:=p.count;
+    if n<1 || n>JG_ITEMS_MAX || truth.count!=n {return JgAgreement.{status=JgStatus.shape};}
+    for i:0..<n {
+        if !tb_in(p[i],0,1) || truth[i].label<0 || truth[i].label>1 {return JgAgreement.{status=JgStatus.number};}
+    }
+    a:JgAgreement;y:[JG_ITEMS_MAX]f64;rows:[JG_ITEMS_MAX]int;
+    for i:0..<n {
+        if !jg_counted(truth[i]) {a.skipped+=1;continue;}
+        yes:=p[i]>=0.5;t:=truth[i].label==1;
+        y[i]=f64(truth[i].label);rows[a.items]=i;a.items+=1;
+        if yes {a.judge_yes+=1;}
+        if t {a.truth_yes+=1;}
+        if yes==t {a.agree+=1;}
+    }
+    if a.items==0 {return a;}
+    m:=f64(a.items);w:=jg_wilson(a.agree,a.items);
+    a.observed=f64(a.agree)/m;a.low=w[0];a.high=w[1];
+    a.chance=(f64(a.judge_yes)*f64(a.truth_yes)+f64(a.items-a.judge_yes)*f64(a.items-a.truth_yes))/(m*m);
+    if a.chance<1 {
+        a.kappa=(a.observed-a.chance)/(1-a.chance);
+        a.kappa_low=(a.low-a.chance)/(1-a.chance);a.kappa_high=(a.high-a.chance)/(1-a.chance);
+    }
+    r:=cf_measure(p,y[0..<n],rows[0..<a.items]);a.ece=r.ece;a.brier=r.brier;
+    return a;
+}
+// book:end agreement
+
+// book:begin probe
+jg_unit :: (v:[]f64)->bool {for x:v {if !tb_in(x,0,1) {return false;}}return true;}
+jg_side :: (v:[]int)->bool {for x:v {if x!=0 && x!=1 {return false;}}return true;}
+// first and second: two runs of the same judge on the same items. q: the
+// probability that the answer shown first is better, shown (a, b); r: the
+// same, shown (b, a). longer and better name a (0) or b (1).
+jg_probe :: (first:[]f64,second:[]f64,q:[]f64,r:[]f64,longer:[]int,better:[]int)->JgProbe #export_c {
+    n:=first.count;m:=q.count;
+    if n<1 || n>JG_ITEMS_MAX || second.count!=n || m<1 || m>JG_ITEMS_MAX || r.count!=m || longer.count!=m || better.count!=m {
+        return JgProbe.{status=JgStatus.shape};
+    }
+    if !jg_unit(first) || !jg_unit(second) || !jg_unit(q) || !jg_unit(r) || !jg_side(longer) || !jg_side(better) {
+        return JgProbe.{status=JgStatus.number};
+    }
+    p:=JgProbe.{items=n,pairs=m};
+    for i:0..<n {if (first[i]>=0.5)!=(second[i]>=0.5) {p.flips+=1;}}
+    for k:0..<m {
+        // Shown first, a wins at q >= 0.5; shown second, a wins when b loses.
+        if (q[k]>=0.5)!=(r[k]<0.5) {p.inconsistent+=1;}
+        if q[k]>=0.5 && r[k]>=0.5 {p.first+=1;}
+        if q[k]<0.5 && r[k]<0.5 {p.second+=1;}
+        pick:=ifx q[k]+(1-r[k])>=1 then 0 else 1;
+        if pick==longer[k] {p.judge_longer+=1;}
+        if better[k]==longer[k] {p.truth_longer+=1;}
+    }
+    p.flip_rate=f64(p.flips)/f64(n);p.position=f64(p.first-p.second)/f64(m);
+    p.length_bias=f64(p.judge_longer-p.truth_longer)/f64(m);
+    return p;
+}
+// book:end probe
+
+// book:begin gate
+jg :: (v:VdVerdict,why:JgReason)->JgResult {return JgResult.{verdict=v,reason=why};}
+jg_policy_ok :: (y:JgPolicy)->bool {
+    return y.items_min>=1 && tb_in(y.kappa_min,-1,1) && tb_in(y.flip_max,0,1) && tb_in(y.position_max,0,1) && tb_in(y.length_max,0,1);
+}
+// Enough labelled items in two classes first; then a bias fails the judge,
+// noise between runs leaves it unverifiable, and kappa's interval decides.
+jg_gate :: (a:JgAgreement,p:JgProbe,y:JgPolicy)->JgResult #export_c {
+    if a.status!=JgStatus.ok || p.status!=JgStatus.ok || !jg_policy_ok(y) {return jg(VdVerdict.unverifiable,JgReason.unmeasured);}
+    if a.items<y.items_min {return jg(VdVerdict.unverifiable,JgReason.few_items);}
+    if a.chance>=1 {return jg(VdVerdict.unverifiable,JgReason.one_class);}
+    if abs(p.position)>y.position_max {return jg(VdVerdict.failed,JgReason.position);}
+    if abs(p.length_bias)>y.length_max {return jg(VdVerdict.failed,JgReason.length);}
+    if p.flip_rate>y.flip_max {return jg(VdVerdict.unverifiable,JgReason.noisy);}
+    if a.kappa_low>=y.kappa_min {return jg(VdVerdict.passed,JgReason.agrees);}
+    if a.kappa_high<y.kappa_min {return jg(VdVerdict.failed,JgReason.disagrees);}
+    return jg(VdVerdict.unverifiable,JgReason.unclear);
+}
+// A grade counts only from a separate judge that passed its gate.
+jg_grade :: (s:JgSeparation,judge:JgResult,grade:VdResult)->JgResult #export_c {
+    if s!=JgSeparation.separate {return jg(VdVerdict.unverifiable,JgReason.shared);}
+    if judge.verdict!=VdVerdict.passed {return jg(VdVerdict.unverifiable,JgReason.unproven);}
+    return jg(grade.verdict,JgReason.graded);
+}
+// A grade offered as a row carries its source, so chapter 247 refuses it.
+jg_opinion :: (group:int,time:int,decision:int,p:f64)->TrOutcome #export_c {
+    return TrOutcome.{group=group,time=time,decision=decision,label=ifx p>=0.5 then 1 else 0,from=TrLabel.judge};
+}
+// book:end gate
+
+// book:begin standin
+// stand-in-judge-v1. Not a model: a judge whose behavior is written down.
+// skill pulls toward the truth, length toward longer answers, position
+// toward the answer shown first, and temperature spreads each call; the
+// draws are keyed by the judge's identity, so a new rubric draws anew.
+JgBehavior :: struct {skill:f64;length:f64;position:f64;}
+JG_PAIR_BASE :: 4096;
+jg_seed :: (d:[32]u8)->u64 {s:u64=0;for i:0..<8 {s|=cast(u64)d[i]<<cast(u64)(8*i);}return s;}
+jg_call :: (c:JgComponent,seed:u64,z:f64,slot:int,run:int)->f64 {
+    total:=0.0;
+    for k:0..<c.samples {
+        u:=tb_uniform(seed,cast(u64)((slot*JG_SAMPLES_MAX+k)*2+run));
+        total+=tb_sigmoid(z+f64(c.temperature)/1000*(8*u-4));
+    }
+    return total/f64(c.samples);
+}
+// One item: truth 0 or 1, how clearly the answer shows it in [0, 1], and
+// length in [-1, 1].
+jg_point :: (c:JgComponent,seed:u64,b:JgBehavior,truth:int,clarity:f64,length:f64,item:int,run:int)->f64 {
+    return jg_call(c,seed,b.skill*f64(2*truth-1)*clarity+b.length*length,item,run);
+}
+// One pair as shown: quality and length of the first less the second's.
+jg_pair :: (c:JgComponent,seed:u64,b:JgBehavior,quality:f64,length:f64,pair:int,order:int)->f64 {
+    return jg_call(c,seed,b.skill*quality+b.length*length+b.position,JG_PAIR_BASE+pair,order);
+}
+// book:end standin
+
+// The example's world: 120 held-out outcomes at times 100 to 219 in groups
+// of four, 45 percent passing, each with how clearly it shows its truth; every tenth was labelled by the agent's own
+// summary, the rest by a check (even) or a diff (odd). 60 pairs of answers
+// with a quality each (the share of tests passed) and a length.
+JgItem :: struct {truth:TrOutcome;clarity:f64;length:f64;}
+JgPair :: struct {quality:[2]f64;length:[2]f64;better:int;longer:int;}
+jg_world :: (seed:u64,items:[]JgItem,pairs:[]JgPair) {
+    for i:0..<items.count {
+        o:=TrOutcome.{group=i/4,time=100+i,decision=i,label=ifx tb_bits(seed,cast(u64)(3*i))%20<9 then 1 else 0};
+        o.from=ifx i%10==9 then TrLabel.summary else ifx i%2==0 then TrLabel.check else TrLabel.diff;
+        items[i]=JgItem.{truth=o,clarity=tb_uniform(seed,cast(u64)(3*i+1)),length=2*tb_uniform(seed,cast(u64)(3*i+2))-1};
+    }
+    // Which answer is better, and which longer, are drawn first; the worse
+    // one's quality is a share of the better one's, the shorter one's length
+    // a share of the way from -1 to the longer one's.
+    for k:0..<pairs.count {
+        b:=cast(u64)(1000+6*k);
+        p:=JgPair.{better=cast(int)(tb_bits(seed,b)%2),longer=cast(int)(tb_bits(seed,b+1)%2)};
+        hi:=tb_uniform(seed,b+2);long:=2*tb_uniform(seed,b+3)-1;
+        p.quality[p.better]=hi;p.quality[1-p.better]=hi*tb_uniform(seed,b+4);
+        p.length[p.longer]=long;p.length[1-p.longer]=-1+(long+1)*tb_uniform(seed,b+5);
+        pairs[k]=p;
+    }
+}
+// Five judges, Elephant and Mammoth at their pinned revisions; weights is
+// SHA-256 of the pinned origin and revision (chapter 14's pins).
+JG_RUBRIC :: "Read the task and the answer. Reply yes if the answer is correct and complete, no otherwise.";
+jg_weights :: (pin:string)->[32]u8 {buf:[128]u8;for i:0..<pin.count {buf[i]=pin[i];}return su_hash(buf[0..<pin.count]);}
+JG_ELEPHANT :: "baselabs/elephant-1@b3f8a93462fb1051a9de031e94a7ff380e254072";
+JG_MAMMOTH :: "baselabs/mammoth-1@61cec44c281c693992e3d6ebeb44dd3402dfa186";
+jg_judges :: ()->[5]JgComponent {
+    e:=jg_weights(JG_ELEPHANT);m:=jg_weights(JG_MAMMOTH);
+    j:[5]JgComponent;
+    j[0]=JgComponent.{model=JgModel.elephant,weights=e,rubric=JG_RUBRIC,temperature=300,samples=1,swap=true,price=1};
+    j[1]=JgComponent.{model=JgModel.elephant,weights=e,rubric="Read the task and the answer. Reply yes if the answer is thorough and complete, no otherwise.",temperature=300,samples=1,swap=true,price=1};
+    j[2]=JgComponent.{model=JgModel.elephant,weights=e,rubric="Which answer is better, A or B?",temperature=300,samples=1,price=1};
+    j[3]=JgComponent.{model=JgModel.elephant,weights=e,rubric="Correct?",temperature=1000,samples=1,swap=true,price=1};
+    j[4]=JgComponent.{model=JgModel.mammoth,weights=m,rubric=JG_RUBRIC,temperature=300,samples=3,swap=true,price=6};
+    return j;
+}
+JG_BEHAVIOR :: [5]JgBehavior.[
+    JgBehavior.{skill=6},JgBehavior.{skill=6,length=3},JgBehavior.{skill=6,position=1},
+    JgBehavior.{skill=3},JgBehavior.{skill=8}];
+JgMeasured :: struct {agreement:JgAgreement;probe:JgProbe;result:JgResult;}
+jg_measure :: (c:JgComponent,b:JgBehavior,items:[]JgItem,pairs:[]JgPair)->JgMeasured {
+    p:[JG_ITEMS_MAX]f64;p2:[JG_ITEMS_MAX]f64;t:[JG_ITEMS_MAX]TrOutcome;
+    q:[JG_ITEMS_MAX]f64;r:[JG_ITEMS_MAX]f64;longer:[JG_ITEMS_MAX]int;better:[JG_ITEMS_MAX]int;
+    n:=items.count;m:=pairs.count;seed:=jg_seed(jg_identity(c));
+    for i:0..<n {
+        x:=items[i];t[i]=x.truth;
+        p[i]=jg_point(c,seed,b,x.truth.label,x.clarity,x.length,i,0);p2[i]=jg_point(c,seed,b,x.truth.label,x.clarity,x.length,i,1);
+    }
+    for k:0..<m {
+        x:=pairs[k];dq:=x.quality[0]-x.quality[1];dl:=x.length[0]-x.length[1];
+        q[k]=jg_pair(c,seed,b,dq,dl,k,0);r[k]=jg_pair(c,seed,b,-dq,-dl,k,1);longer[k]=x.longer;better[k]=x.better;
+    }
+    out:=JgMeasured.{agreement=jg_agreement(p[0..<n],t[0..<n]),probe=jg_probe(p[0..<n],p2[0..<n],q[0..<m],r[0..<m],longer[0..<m],better[0..<m])};
+    out.result=jg_gate(out.agreement,out.probe,JG_POLICY);
+    return out;
+}
+jg_measure_all :: (items:[]JgItem,pairs:[]JgPair)->[5]JgMeasured {
+    j:=jg_judges();out:[5]JgMeasured;
+    for k:0..<5 {out[k]=jg_measure(j[k],JG_BEHAVIOR[k],items,pairs);}
+    return out;
+}
+// The example's counts, recorded from its run. The Coax checks pin them;
+// the hand-checked values above are the independent ones.
+JG_EXPECT_YES :: 46;
+JG_EXPECT_LONGER :: 33;
+JG_EXPECT_PAIR0 :: [2]int.[0,0];
+JG_EXPECT_AGREE :: [5]int.[105,97,98,74,107];
+JG_EXPECT_JUDGE_YES :: [5]int.[45,47,46,52,45];
+JG_EXPECT_FLIPS :: [5]int.[9,7,9,45,2];
+JG_EXPECT_SWAPS :: [5]int.[9,5,26,32,6];
+JG_EXPECT_FIRST :: [5]int.[3,0,26,17,1];
+JG_EXPECT_SECOND :: [5]int.[6,5,0,15,5];
+JG_EXPECT_JUDGE_LONGER :: [5]int.[35,46,32,33,32];
+JG_EXPECT_VERDICT :: [5]VdVerdict.[VdVerdict.passed,VdVerdict.failed,VdVerdict.failed,VdVerdict.unverifiable,VdVerdict.passed];
+JG_EXPECT_REASON :: [5]JgReason.[JgReason.agrees,JgReason.length,JgReason.position,JgReason.noisy,JgReason.agrees];

@@ -1002,6 +1002,16 @@
       ]
     },
     {
+      "source": "psionic/examples/judges.coax",
+      "chapter": "psionic/book/ch246-judges-are-components.md",
+      "stdout": "psionic/fixtures/judges.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/training-rows.coax",
       "chapter": "psionic/book/ch247-outcomes-become-training-rows.md",
       "stdout": "psionic/fixtures/training-rows.out",

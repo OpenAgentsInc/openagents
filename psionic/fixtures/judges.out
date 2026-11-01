@@ -1,0 +1,34 @@
+held out: 120 outcomes at times 100 to 219; 108 labelled by a check or a diff (46 passed), 12 by the agent's own summary (not truth)
+pairs: 60, the longer answer better in 33
+judge 0: Elephant, rubric v1, temperature 0.3, samples 1; identity 4b03c35b; cost 1.0 per judgment, 2.0 per pair
+  agreement 105/108 = 0.9722 [0.9215, 0.9905], chance 0.5123, kappa 0.943 [0.839, 0.9805]; calibration error 0.097, Brier 0.0744
+  runs differ on 9/120; order changes the winner of 9/60 pairs; the first shown won both ways in 3, the second in 6; picks the longer in 35, truth 33
+  -> passed (agrees)
+judge 1: Elephant, rubric v2, asks for thoroughness, temperature 0.3, samples 1; identity 492b0812; cost 1.0 per judgment, 2.0 per pair
+  agreement 97/108 = 0.8981 [0.8268, 0.9422], chance 0.5096, kappa 0.7923 [0.6468, 0.8821]; calibration error 0.0397, Brier 0.1362
+  runs differ on 7/120; order changes the winner of 5/60 pairs; the first shown won both ways in 0, the second in 5; picks the longer in 46, truth 33
+  -> failed (length)
+judge 2: Elephant, A or B, temperature 0.3, samples 1; identity ccdbfc71; cost 1.0 per judgment, 1.0 per pair
+  agreement 98/108 = 0.9074 [0.8379, 0.9489], chance 0.511, kappa 0.8107 [0.6685, 0.8956]; calibration error 0.095, Brier 0.0953
+  runs differ on 9/120; order changes the winner of 26/60 pairs; the first shown won both ways in 26, the second in 0; picks the longer in 32, truth 33
+  -> failed (position)
+judge 3: Elephant, terse rubric, temperature 1.0, samples 1; identity 9dd42dc7; cost 1.0 per judgment, 2.0 per pair
+  agreement 74/108 = 0.6852 [0.5925, 0.7651], chance 0.5027, kappa 0.3669 [0.1805, 0.5277]; calibration error 0.1611, Brier 0.4042
+  runs differ on 45/120; order changes the winner of 32/60 pairs; the first shown won both ways in 17, the second in 15; picks the longer in 33, truth 33
+  -> unverifiable (noisy)
+judge 4: Mammoth, rubric v1, temperature 0.3, samples 3; identity 8986941a; cost 18.0 per judgment, 36.0 per pair
+  agreement 107/108 = 0.9907 [0.9494, 0.9984], chance 0.5123, kappa 0.981 [0.8962, 0.9966]; calibration error 0.0816, Brier 0.0547
+  runs differ on 2/120; order changes the winner of 6/60 pairs; the first shown won both ways in 1, the second in 5; picks the longer in 32, truth 33
+  -> passed (agrees)
+judge 0 with one character of its rubric changed: identity 4b03c35b -> e4255283
+grader judge 0 for an Elephant student and reflector: same_weights
+grader judge 1 for an Elephant student and reflector: same_weights
+grader judge 4 for an Elephant student and reflector: separate
+grader judge 0 grading itself: same_identity
+a passing grade from judge 0: unverifiable (shared)
+a passing grade from judge 1: unverifiable (shared)
+a passing grade from judge 2: unverifiable (shared)
+a passing grade from judge 3: unverifiable (shared)
+a passing grade from judge 4: passed (graded)
+judge 4's grade of item 0 offered as a training row: opinion
+judge output 1.5 on item 17: number, gate unverifiable (unmeasured)

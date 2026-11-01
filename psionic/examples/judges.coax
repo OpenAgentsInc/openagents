@@ -1,0 +1,55 @@
+#import "Basic";
+#load "../lib/judge.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+show_id :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[8]u8;
+    for i:0..<4 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+NAMES :: [5]string.["rubric v1","rubric v2, asks for thoroughness","A or B","terse rubric","rubric v1"];
+
+// book:begin example
+main :: () {
+    items:[120]JgItem;pairs:[60]JgPair;jg_world(7,items[..],pairs[..]);
+    labelled:=0;passed:=0;for x:items {if jg_counted(x.truth) {labelled+=1;passed+=x.truth.label;}}
+    longer:=0;for p:pairs {if p.better==p.longer {longer+=1;}}
+    print("held out: 120 outcomes at times 100 to 219; % labelled by a check or a diff (% passed), % by the agent's own summary (not truth)\n",
+        labelled,passed,120-labelled);
+    print("pairs: 60, the longer answer better in %\n",longer);
+    j:=jg_judges();m:=jg_measure_all(items[..],pairs[..]);
+    for k:0..<5 {
+        c:=j[k];a:=m[k].agreement;p:=m[k].probe;
+        print("judge %: %, %, temperature %, samples %; identity ",k,ifx c.model==JgModel.mammoth then "Mammoth" else "Elephant",
+            NAMES[k],f64(c.temperature)/1000,c.samples);
+        show_id(jg_identity(c));print("; cost % per judgment, % per pair\n",jg_cost(c,false),jg_cost(c,true));
+        print("  agreement %/% = % [%, %], chance %, kappa % [%, %]; calibration error %, Brier %\n",a.agree,a.items,r4(a.observed),
+            r4(a.low),r4(a.high),r4(a.chance),r4(a.kappa),r4(a.kappa_low),r4(a.kappa_high),r4(a.ece),r4(a.brier));
+        print("  runs differ on %/%; order changes the winner of %/% pairs; the first shown won both ways in %, the second in %; picks the longer in %, truth %\n",
+            p.flips,p.items,p.inconsistent,p.pairs,p.first,p.second,p.judge_longer,p.truth_longer);
+        print("  -> % (%)\n",m[k].result.verdict,m[k].result.reason);
+    }
+    edited:=j[0];edited.rubric="Read the task and the answer! Reply yes if the answer is correct and complete, no otherwise.";
+    print("judge 0 with one character of its rubric changed: identity ");show_id(jg_identity(j[0]));print(" -> ");show_id(jg_identity(edited));print("\n");
+    // The student and the reflector run on Elephant with their own prompts.
+    student:=j[0];student.rubric="Solve the task.";reflector:=j[0];reflector.rubric="Propose a better prompt for the student.";
+    for g:0..<5 {
+        if g!=0 && g!=1 && g!=4 {continue;}
+        print("grader judge % for an Elephant student and reflector: %\n",g,jg_separate(j[g],student,reflector));
+    }
+    print("grader judge 0 grading itself: %\n",jg_separate(j[0],j[0],reflector));
+    // A candidate the judge's grades would pass, through chapter 241's gate.
+    grade:=vd(VdVerdict.passed,VdReason.beyond_floor);
+    for g:0..<5 {
+        r:=jg_grade(jg_separate(j[g],student,reflector),m[g].result,grade);
+        print("a passing grade from judge %: % (%)\n",g,r.verdict,r.reason);
+    }
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    o:=jg_opinion(items[0].truth.group,items[0].truth.time,items[0].truth.decision,0.97);
+    print("judge 4's grade of item 0 offered as a training row: %\n",tr_add_outcome(s,o).reason);
+    // A broken input: a probability above 1 from the judge.
+    bad:[120]f64;truth:[120]TrOutcome;for i:0..<120 {bad[i]=0.5;truth[i]=items[i].truth;}
+    bad[17]=1.5;b:=jg_agreement(bad[..],truth[..]);
+    print("judge output 1.5 on item 17: %, gate % (%)\n",b.status,jg_gate(b,m[0].probe,JG_POLICY).verdict,jg_gate(b,m[0].probe,JG_POLICY).reason);
+}
+// book:end example

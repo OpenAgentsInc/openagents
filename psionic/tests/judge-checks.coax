@@ -1,0 +1,32 @@
+// Helpers, fixtures and an independent recount for psionic/lib/judge.coax
+// (chapter 246). jg_table_kappa writes kappa from a 2x2 table as a textbook
+// does, without the unit's counting.
+jg_hex :: (d:[32]u8,text:string)->bool {
+    digits:="0123456789abcdef";
+    for i:0..<32 {if text[2*i]!=digits[cast(int)(d[i]>>4)] || text[2*i+1]!=digits[cast(int)(d[i]&15)] {return false;}}
+    return true;
+}
+jg_near :: (a:f64,b:f64)->bool {return abs(a-b)<0.0000005;}
+jg_res :: (r:JgResult,v:VdVerdict,why:JgReason)->bool {return r.verdict==v && r.reason==why;}
+jg_label :: (label:int,from:TrLabel)->TrOutcome {return TrOutcome.{label=label,from=from};}
+// Twenty labelled items by hand: the judge says yes on 9, truth on 8, and
+// they agree on 17 (7 yes-yes, 10 no-no, 2 judge-only yes, 1 truth-only yes).
+jg_twenty :: (p:[]f64,t:[]TrOutcome) {
+    for i:0..<20 {
+        yes:=i<7 || i==17 || i==18;truth:=i<7 || i==19;
+        p[i]=ifx yes then 0.8 else 0.3;t[i]=jg_label(ifx truth then 1 else 0,ifx i%2==0 then TrLabel.check else TrLabel.diff);
+    }
+}
+
+// An independent recount: kappa from the 2x2 table, as a textbook writes it.
+jg_table_kappa :: (yy:int,yn:int,ny:int,nn:int)->f64 {
+    n:=f64(yy+yn+ny+nn);po:=f64(yy+nn)/n;
+    pe:=(f64(yy+yn)/n)*(f64(yy+ny)/n)+(f64(ny+nn)/n)*(f64(yn+nn)/n);
+    return (po-pe)/(1-pe);
+}
+// The gate on agreement and probe values set directly.
+jg_gate_of :: (items:int,chance:f64,low:f64,high:f64,flip:f64,swap:f64,length:f64)->JgResult {
+    a:=JgAgreement.{items=items,chance=chance,kappa_low=low,kappa_high=high};
+    p:=JgProbe.{flip_rate=flip,position=swap,length_bias=length};
+    return jg_gate(a,p,JG_POLICY);
+}

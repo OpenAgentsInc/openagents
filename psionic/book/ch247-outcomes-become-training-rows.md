@@ -103,6 +103,7 @@ tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd {
     if a.reason!=TrReason.admitted {return a;}
     if o.from==TrLabel.none {a.reason=TrReason.unlabelled;return a;}
     if o.from==TrLabel.summary {a.reason=TrReason.summary;return a;}
+    if o.from==TrLabel.judge {a.reason=TrReason.opinion;return a;}
     return tr_admit(a.set,TrRow.{source=TrSource.decision,group=o.group,time=o.time,label=o.label,from=o.from,key=tr_outcome_key(o)});
 }
 // The trace is replayed here, whole, within budget steps; chapter 234
@@ -124,7 +125,10 @@ order:
    passed, or a **diff**, such as a change that was merged. A missing label
    is `unlabelled`. A label taken from the agent's own summary of what it did
    is refused as `summary`: an agent's account of its work isn't evidence
-   that the work was right.
+   that the work was right. A label taken from a model judging the work
+   ([chapter 246](ch246-judges-are-components.md)) is refused as `opinion`:
+   a judge can be confidently wrong, and a model trained on its grades
+   learns its mistakes.
 2. **A trace** is replayed with chapter 234's checker, whole, within a step
    budget. Only an `exact` verdict is admitted; its label is 1 and its
    label source is `replay`. A trace that fails is refused as `failed`, and
@@ -221,9 +225,9 @@ changes it.
 
 ## How it is checked
 
-- **Coax checks:** the chapter's 14 checks, with the 119 from chapters 226 and 234 that `training-rows.coax` loads, all 133 passing in debug and release. They cover:
+- **Coax checks:** the chapter's 15 checks, with those from chapters 226 and 234 that `training-rows.coax` loads, all 132 passing in debug and release. They cover:
   - the cuts and each split's edges;
-  - each refusal reason, and that an admitted row claims its group;
+  - each refusal reason, including chapter 246's `opinion`, and that an admitted row claims its group;
   - the feed's order, including rows that were refused;
   - `crosses` against `reserved`, across two artifacts;
   - duplicates, for outcomes and for traces;
@@ -235,7 +239,7 @@ changes it.
   per split, digests and the shared ledger, and finds each line in the
   example's output. It doesn't replay traces; it takes their verdicts from
   chapter 234 and checks the ledger's refusal of group 9.
-- **Mutation testing** of `training-rows.coax`: 1,570 of 1,570 mutants killed.
+- **Mutation testing** of `training-rows.coax`: 1,570 of 1,570 mutants killed. After chapter 246 added the `judge` label source and the `opinion` refusal, a run over the file's own procedures killed 230 of 230.
 
 The [verification record](../../docs/verification/psionic-ch186-2026-10-30.md)
 has the commands and results.

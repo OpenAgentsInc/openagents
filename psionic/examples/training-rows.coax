@@ -6,11 +6,11 @@ main :: () {
     f:=tr_feed();rows:[64]TrRow;entry:[64]TrEntry;entries:=0;
     cuts:=[2]TrCuts.[TrCuts.{calibration=22,development=30,heldout=38},TrCuts.{calibration=14,development=18,heldout=26}];
     for k:0..<2 {
-        s:=tr_open(k,cuts[k],rows[..],entry[..],entries);reasons:[11]int;
+        s:=tr_open(k,cuts[k],rows[..],entry[..],entries);reasons:[12]int;
         for o:f {a:=tr_add_outcome(s,o);s=a.set;reasons[cast(int)a.reason]+=1;}
         print("artifact %, cuts %/%/%: ",k,cuts[k].calibration,cuts[k].development,cuts[k].heldout);
         first:=true;
-        for i:0..<11 {
+        for i:0..<12 {
             if reasons[i]==0 {continue;}
             if !first {print(", ");}
             print("% %",cast(TrReason)i,reasons[i]);first=false;
