@@ -1,0 +1,8 @@
+// Seven named-source hinge commands; raw C coefficients retain explicit units.
+#load "panda-actuation-math.coax";
+#load "panda-ik-math.coax";
+PjpStiffness :: struct @unit(mass=1,length=2,time=-2,angle=-2,numerator=1,denominator=1) {}
+PjpDamping :: struct @unit(mass=1,length=2,time=-1,angle=-2,numerator=1,denominator=1) {}
+PjpStatus :: enum u8 {ok;shape;number;range;limits;gravity;}
+PjpOutput :: struct {proportional:[7]pfku.Quantity(PmHingeGravity,f64);derivative:[7]pfku.Quantity(PmHingeGravity,f64);gravity:[7]pfku.Quantity(PmHingeGravity,f64);requested:[7]pfku.Quantity(PmHingeGravity,f64);command:[7]pfku.Quantity(PmHingeGravity,f64);clipped:int;}
+PjpInput :: struct {q:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);rate:[7]pfku.Quantity(PidAngularRate,f64);target:[7]pfku.Quantity(pfku.Radian,f64);target_rate:[7]pfku.Quantity(PidAngularRate,f64);kp:[7]pfku.Quantity(PjpStiffness,f64);kd:[7]pfku.Quantity(PjpDamping,f64);}

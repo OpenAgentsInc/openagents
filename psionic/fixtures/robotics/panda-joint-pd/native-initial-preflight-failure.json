@@ -1,0 +1,15 @@
+{
+  "schema": "psionic.panda-joint-pd.native-qualification.v1",
+  "passed": false,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "integration_steps": 0,
+  "render_calls": 0,
+  "commands": [],
+  "modes": [],
+  "failure": "RuntimeError('all24 new matrix cases')",
+  "seconds": 0.0015884169843047857,
+  "record_sha256": "8de484a272815c3bce73cf825aa157b4e7fec8d4da09b756f59659cfeed5b7be",
+  "initial_phase": "Metadata-only corpus-name admission, before matrix/Coax/native execution",
+  "correction": "Expected matrix names use two decimal digits, as already frozen in experiment/cases. No product, input, budget or oracle arithmetic changed."
+}

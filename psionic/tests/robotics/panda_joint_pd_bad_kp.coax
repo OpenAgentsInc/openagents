@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-joint-pd.coax";
+main :: () {x:=pjp_fixture();kp:[7]pfku.Quantity(PmHingeGravity,f64);out:[1]PjpOutput;status:=pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],kp[..],x.kd[..],out[..]);}

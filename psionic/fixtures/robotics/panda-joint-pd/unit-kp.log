@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_joint_pd_bad_kp.coax:2:172: error[E0317]: argument 6 of 'pjp_forward' is [] Quantity(PjpStiffness, f64), given [] Quantity(PmHingeGravity, f64)
+  main :: () {x:=pjp_fixture();kp:[7]pfku.Quantity(PmHingeGravity,f64);out:[1]PjpOutput;status:=pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],kp[..],x.kd[..],out[..]);}
+                                                                                                                                                                             ^
+1 error

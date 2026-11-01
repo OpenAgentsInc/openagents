@@ -1,0 +1,28 @@
+{
+  "schema": "psionic.panda-joint-pd.example.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_sha256": "204b0ea7974f080a5c9fed5da442ddd6d67632aeeee0bb46705d4277af7a0188",
+  "golden_sha256": "5ffb23aee9197a3380d2838e0900d9e419cfd499f872d4c538477c252a64861a",
+  "prewritten_golden_receipt_sha256": "c08c4c27ae6dcb816165ecda809c8c1a69d683cae3033e27a9a6b04a7a4e2532",
+  "commands": [
+    {
+      "name": "new-example-check",
+      "exit": 0,
+      "stdout_sha256": "07bed50b32f3c4ab6e1297eef74cbcbc726323ea9a8111b94fac5ac0cad5b120",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "debug",
+      "exit": 0,
+      "stdout_sha256": "5ffb23aee9197a3380d2838e0900d9e419cfd499f872d4c538477c252a64861a",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "release",
+      "exit": 0,
+      "stdout_sha256": "5ffb23aee9197a3380d2838e0900d9e419cfd499f872d4c538477c252a64861a",
+      "stderr_bytes": 0
+    }
+  ]
+}

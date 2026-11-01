@@ -1,0 +1,3236 @@
+{
+  "schema": "psionic.panda-joint-pd.experiment.v1",
+  "frozen_before_product_implementation": true,
+  "profile": "panda-fixed7-joint-pd-gravity-f64-v1",
+  "numeric_profile": "Darwin arm64 F64 scalar-libm,no fastmath/contraction; no cross-target deterministic claim",
+  "equation": "requested=(Kp*(target_q-q)+Kd*(target_v-v))+g0(q,fingers); command=source_arm_clip(requested)",
+  "joint_limits_radians": [
+    [
+      -2.8973,
+      2.8973
+    ],
+    [
+      -1.7628,
+      1.7628
+    ],
+    [
+      -2.8973,
+      2.8973
+    ],
+    [
+      -3.0718,
+      -0.0698
+    ],
+    [
+      -2.8973,
+      2.8973
+    ],
+    [
+      -0.0175,
+      3.7525
+    ],
+    [
+      -2.8973,
+      2.8973
+    ]
+  ],
+  "slide_numeric_bound_metres": 1,
+  "rate_bound_radians_per_second": 20,
+  "kp_positive_box": [
+    1e-06,
+    500
+  ],
+  "kd_positive_box": [
+    1e-06,
+    100
+  ],
+  "default_kp": [
+    60,
+    60,
+    60,
+    60,
+    40,
+    20,
+    10
+  ],
+  "default_kd": [
+    8,
+    8,
+    8,
+    8,
+    5,
+    3,
+    2
+  ],
+  "source_arm_command_limits_J_per_radian": [
+    80,
+    80,
+    80,
+    80,
+    80,
+    12,
+    12
+  ],
+  "output_order": [
+    "proportional7",
+    "derivative7",
+    "gravity7",
+    "requested7",
+    "command7",
+    "clippedI64"
+  ],
+  "output_bytes": 288,
+  "typed_units": {
+    "position": "Radian",
+    "rate": "Radian/Second",
+    "kp": "Joule/Radian\u00b2",
+    "kd": "Joule*Second/Radian\u00b2",
+    "all_force_fields": "Joule/Radian"
+  },
+  "admission_order": [
+    "all typed or packed span shapes",
+    "q7 finite/source limits",
+    "slides2 finite/numerical box",
+    "current rates7 finite/range",
+    "target q7 finite/source limits",
+    "target rates7 finite/range",
+    "Kp7 finite/positive box",
+    "Kd7 finite/positive box"
+  ],
+  "budgets": {
+    "force_fields_atol": 5e-10,
+    "rtol": 0,
+    "clipping_counts": "exact",
+    "mode_bytes": "exact"
+  },
+  "gravity": "Same16body ownedPm source snapshot includes fingers. g0 only, independent of rates; never substitute velocity-dependent bias or add passive/damping/actuator forces.",
+  "command_semantics": "Clipped value can feed Pa armcontrol once; same downstream cap is idempotent. Keep clipping counters perstage; do not sum asunique clipping events. No gravity added again.",
+  "scope": "Pure joint-control query; no timebase/sensor admission,simulator step,stability proof,orientation,nullspace,RRT,collision,contacts,compilerboundedness or hardware permission.",
+  "case_seed": 1347047473,
+  "case_count": 44,
+  "retained_source_rows": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "retained_based_positive_cases": 20,
+  "independent_matrix_cases": 24,
+  "all_retained_q_within_source_limits": true,
+  "retained_source": "The5home-arm panda-fingers capture, NOT older zero-angleFK/M9 sets; zero rates are independently captured sourcefacts.",
+  "cases": [
+    {
+      "name": "SDK0-gravity-only",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        0
+      ],
+      "rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 0,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK0-dense",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        0
+      ],
+      "rate_radians_per_second": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1
+      ],
+      "target_radians": [
+        0.1,
+        0.07634954084936207,
+        0.13,
+        -2.757993877991494,
+        0.15,
+        2.781592653589793,
+        0.9553981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -0.2,
+        0.3,
+        -0.4,
+        0.5,
+        -0.6,
+        0.7,
+        -0.8
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 0,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK0-both-sign-clipping",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        0
+      ],
+      "rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "target_radians": [
+        2.8973,
+        -1.7628,
+        2.8973,
+        -3.0718,
+        2.8973,
+        -0.0175,
+        2.8973
+      ],
+      "target_rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "kp_J_per_radian_squared": [
+        500,
+        500,
+        500,
+        500,
+        500,
+        500,
+        500
+      ],
+      "kd_J_second_per_radian_squared": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 0,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK0-rate-edges-gain-floor",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        0
+      ],
+      "rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "kp_J_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "kd_J_second_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 0,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK1-gravity-only",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        0
+      ],
+      "rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 1,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK1-dense",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        0
+      ],
+      "rate_radians_per_second": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1
+      ],
+      "target_radians": [
+        0.1,
+        0.07634954084936207,
+        0.13,
+        -2.757993877991494,
+        0.15,
+        2.781592653589793,
+        0.9553981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -0.2,
+        0.3,
+        -0.4,
+        0.5,
+        -0.6,
+        0.7,
+        -0.8
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 1,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK1-both-sign-clipping",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        0
+      ],
+      "rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "target_radians": [
+        2.8973,
+        -1.7628,
+        2.8973,
+        -3.0718,
+        2.8973,
+        -0.0175,
+        2.8973
+      ],
+      "target_rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "kp_J_per_radian_squared": [
+        500,
+        500,
+        500,
+        500,
+        500,
+        500,
+        500
+      ],
+      "kd_J_second_per_radian_squared": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 1,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK1-rate-edges-gain-floor",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        0
+      ],
+      "rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "kp_J_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "kd_J_second_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 1,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          0
+        ]
+      }
+    },
+    {
+      "name": "SDK2-gravity-only",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 2,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK2-dense",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1
+      ],
+      "target_radians": [
+        0.1,
+        0.07634954084936207,
+        0.13,
+        -2.757993877991494,
+        0.15,
+        2.781592653589793,
+        0.9553981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -0.2,
+        0.3,
+        -0.4,
+        0.5,
+        -0.6,
+        0.7,
+        -0.8
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 2,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK2-both-sign-clipping",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "target_radians": [
+        2.8973,
+        -1.7628,
+        2.8973,
+        -3.0718,
+        2.8973,
+        -0.0175,
+        2.8973
+      ],
+      "target_rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "kp_J_per_radian_squared": [
+        500,
+        500,
+        500,
+        500,
+        500,
+        500,
+        500
+      ],
+      "kd_J_second_per_radian_squared": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 2,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK2-rate-edges-gain-floor",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "kp_J_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "kd_J_second_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 2,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK3-gravity-only",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 3,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK3-dense",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1
+      ],
+      "target_radians": [
+        0.1,
+        0.07634954084936207,
+        0.13,
+        -2.757993877991494,
+        0.15,
+        2.781592653589793,
+        0.9553981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -0.2,
+        0.3,
+        -0.4,
+        0.5,
+        -0.6,
+        0.7,
+        -0.8
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 3,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK3-both-sign-clipping",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "target_radians": [
+        2.8973,
+        -1.7628,
+        2.8973,
+        -3.0718,
+        2.8973,
+        -0.0175,
+        2.8973
+      ],
+      "target_rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "kp_J_per_radian_squared": [
+        500,
+        500,
+        500,
+        500,
+        500,
+        500,
+        500
+      ],
+      "kd_J_second_per_radian_squared": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 3,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK3-rate-edges-gain-floor",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.04,
+        -0.04
+      ],
+      "rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "kp_J_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "kd_J_second_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 3,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.04,
+          -0.04
+        ]
+      }
+    },
+    {
+      "name": "SDK4-gravity-only",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.013,
+        -0.027
+      ],
+      "rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 4,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.013,
+          -0.027
+        ]
+      }
+    },
+    {
+      "name": "SDK4-dense",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.013,
+        -0.027
+      ],
+      "rate_radians_per_second": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1
+      ],
+      "target_radians": [
+        0.1,
+        0.07634954084936207,
+        0.13,
+        -2.757993877991494,
+        0.15,
+        2.781592653589793,
+        0.9553981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -0.2,
+        0.3,
+        -0.4,
+        0.5,
+        -0.6,
+        0.7,
+        -0.8
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 4,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.013,
+          -0.027
+        ]
+      }
+    },
+    {
+      "name": "SDK4-both-sign-clipping",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.013,
+        -0.027
+      ],
+      "rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "target_radians": [
+        2.8973,
+        -1.7628,
+        2.8973,
+        -3.0718,
+        2.8973,
+        -0.0175,
+        2.8973
+      ],
+      "target_rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "kp_J_per_radian_squared": [
+        500,
+        500,
+        500,
+        500,
+        500,
+        500,
+        500
+      ],
+      "kd_J_second_per_radian_squared": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 4,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.013,
+          -0.027
+        ]
+      }
+    },
+    {
+      "name": "SDK4-rate-edges-gain-floor",
+      "q_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "slides_metres": [
+        0.013,
+        -0.027
+      ],
+      "rate_radians_per_second": [
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20
+      ],
+      "target_radians": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "target_rate_radians_per_second": [
+        -20,
+        20,
+        -20,
+        20,
+        -20,
+        20,
+        -20
+      ],
+      "kp_J_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "kd_J_second_per_radian_squared": [
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06,
+        1e-06
+      ],
+      "gravity_reference": {
+        "kind": "retained_sdk_zero_rate_gravity",
+        "row": 4,
+        "layout": "sdk-dynamics.f64 row90, hinge bias offsets81..87",
+        "input_q_radians_then_metres": [
+          0,
+          0.19634954084936207,
+          0,
+          -2.617993877991494,
+          0,
+          2.941592653589793,
+          0.7853981633974483,
+          0.013,
+          -0.027
+        ]
+      }
+    },
+    {
+      "name": "matrix00",
+      "q_radians": [
+        -2.3567458981998057,
+        1.1574161889007955,
+        -0.04576765012054196,
+        -0.83761346375598,
+        0.8235765627215068,
+        3.125972494077449,
+        -0.9927866760283304
+      ],
+      "slides_metres": [
+        0.004616958258901023,
+        -0.0024486923774967168
+      ],
+      "rate_radians_per_second": [
+        -14.471332990915467,
+        6.069794341079934,
+        -16.835050928898447,
+        -15.146794617671077,
+        7.9703242210482586,
+        -14.392312216377166,
+        8.813682981297344
+      ],
+      "target_radians": [
+        1.1892013628602967,
+        0.6725677382315873,
+        1.5855720757403478,
+        -2.6924089496847174,
+        2.6081627957869737,
+        1.1027931286686725,
+        -2.874889139334574
+      ],
+      "target_rate_radians_per_second": [
+        -4.451692819480337,
+        2.8631638185794586,
+        -13.198245709178016,
+        12.483810903356435,
+        13.268820873295198,
+        17.96045987062756,
+        -0.558625681949497
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix01",
+      "q_radians": [
+        -1.5549860863773424,
+        -0.8844637173974339,
+        1.9040606893663852,
+        -0.3142001276852535,
+        2.637156644109202,
+        2.7204618601049253,
+        2.760447988948019
+      ],
+      "slides_metres": [
+        0.018229203026413385,
+        -0.010261579687024819
+      ],
+      "rate_radians_per_second": [
+        14.208853279769869,
+        0.6752214432296455,
+        4.446018292605682,
+        -6.009740449018409,
+        14.781613227621335,
+        -8.434863131953222,
+        15.86127670874405
+      ],
+      "target_radians": [
+        2.6131119007209125,
+        -1.659984852395029,
+        2.5482178037109304,
+        -2.232426423427422,
+        2.632809990756525,
+        2.3282434435058152,
+        1.9721601722266908
+      ],
+      "target_rate_radians_per_second": [
+        19.950682756752315,
+        -16.080062992039025,
+        -7.138798438132596,
+        -9.95433861372383,
+        -2.3480740427574958,
+        13.418728409301188,
+        -10.373640675046696
+      ],
+      "kp_J_per_radian_squared": [
+        20.99643209040431,
+        6.945199805397568,
+        88.7173349537389,
+        72.49507387909334,
+        106.90953503190917,
+        93.70504140318445,
+        47.42989899743499
+      ],
+      "kd_J_second_per_radian_squared": [
+        7.725063079933709,
+        13.722683338449146,
+        12.764524069072946,
+        13.058575328748294,
+        15.817721848368512,
+        8.023682570417476,
+        11.745897252951396
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix02",
+      "q_radians": [
+        -0.5355944194932021,
+        -0.3084052677800513,
+        -0.8274670611153963,
+        -1.4383579409867318,
+        -1.9630941874735393,
+        0.21814410772385595,
+        -0.1197754855431219
+      ],
+      "slides_metres": [
+        0.024104909437860037,
+        -0.02362098544830766
+      ],
+      "rate_radians_per_second": [
+        0.8744946975743844,
+        -8.0834059163945,
+        -3.417970772031296,
+        16.652240120634943,
+        -19.025852179329043,
+        -13.690442308057197,
+        -7.901482955726401
+      ],
+      "target_radians": [
+        2.6562555307474223,
+        -0.2335166143052103,
+        -1.5076482972939604,
+        -1.7741788153449967,
+        -0.6940452870221692,
+        1.1950165235113068,
+        -2.674043419172013
+      ],
+      "target_rate_radians_per_second": [
+        14.838139507502916,
+        3.1341262255292435,
+        -7.884591645606331,
+        -13.113019345999732,
+        18.29041373392291,
+        -2.2956693163028135,
+        11.52647786485154
+      ],
+      "kp_J_per_radian_squared": [
+        45.50955008347018,
+        88.2184253153194,
+        70.61508479342862,
+        52.939104200489275,
+        95.07546136944899,
+        69.39277091473882,
+        154.7644756254761
+      ],
+      "kd_J_second_per_radian_squared": [
+        0.410204743917781,
+        19.81359657105665,
+        6.555681441163805,
+        18.429515036840968,
+        19.4071789592577,
+        4.330856564791513,
+        24.9638201646128
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix03",
+      "q_radians": [
+        0.26161871593615915,
+        -1.7379757787073082,
+        -0.4634735108841621,
+        -1.3264373046066902,
+        -1.9409063417053254,
+        2.669231858676225,
+        -2.883012496629629
+      ],
+      "slides_metres": [
+        0.024665668151661272,
+        -0.016343319040137104
+      ],
+      "rate_radians_per_second": [
+        15.842840151174343,
+        12.569361362984829,
+        6.423051277915221,
+        -12.192423279723963,
+        8.868877631543807,
+        -10.460465569575646,
+        -15.76579634324521
+      ],
+      "target_radians": [
+        0.7511802156056153,
+        0.7261059248252026,
+        -0.9327094506100404,
+        -2.637238944518517,
+        0.9988182756577952,
+        3.1489239288617994,
+        2.12208360960496
+      ],
+      "target_rate_radians_per_second": [
+        -3.4772461612018404,
+        -2.3135958910721754,
+        2.5089912592943975,
+        7.2641705227972295,
+        -3.5394405302755807,
+        -2.649843059061766,
+        10.948133508791045
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix04",
+      "q_radians": [
+        2.131297555911288,
+        0.4433886266364082,
+        -1.464121551698713,
+        -0.5908250411964779,
+        -2.5709480188356704,
+        0.8656871609195299,
+        -1.063808372884167
+      ],
+      "slides_metres": [
+        0.015229278923693816,
+        -0.0346774492462761
+      ],
+      "rate_radians_per_second": [
+        -8.295723703230538,
+        15.067935505170524,
+        -1.8063781229608367,
+        13.813788909764511,
+        6.592220511544898,
+        -1.425733654108928,
+        13.600106243719289
+      ],
+      "target_radians": [
+        -0.23164021106054733,
+        1.7358327881491036,
+        -2.6977288073748205,
+        -1.899178073354882,
+        -1.303862328017934,
+        0.5731926337665947,
+        -0.5989468523470047
+      ],
+      "target_rate_radians_per_second": [
+        -2.8985140331690573,
+        -6.447569340441097,
+        11.290475531529896,
+        -8.140929719272334,
+        7.803934930667257,
+        -8.803806810275816,
+        8.645137077564044
+      ],
+      "kp_J_per_radian_squared": [
+        108.41492593277579,
+        173.78684698180655,
+        153.3014786328718,
+        7.053700972465509,
+        55.00780444643511,
+        5.596857419116661,
+        24.323561080668338
+      ],
+      "kd_J_second_per_radian_squared": [
+        9.172599807922241,
+        3.207551269585331,
+        7.037843224599389,
+        20.495162436526325,
+        1.801293623809003,
+        16.21962109437494,
+        8.306935034509836
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix05",
+      "q_radians": [
+        -1.2789589813746611,
+        -0.2422226636506648,
+        -1.7220988974775193,
+        -2.3675646038732543,
+        2.6549941409076996,
+        0.46269203057179803,
+        1.6699168267158915
+      ],
+      "slides_metres": [
+        0.022087207960786098,
+        -0.007930982977338553
+      ],
+      "rate_radians_per_second": [
+        14.78325154321712,
+        6.998652539891282,
+        9.139931548486704,
+        16.665698690632716,
+        -18.46557509071477,
+        -2.859840540296851,
+        -3.9337500299632246
+      ],
+      "target_radians": [
+        -0.5030012946156708,
+        -0.6488575801469469,
+        1.7798766708583664,
+        -2.5146738157113435,
+        -1.695083541600935,
+        0.6788915626926975,
+        1.4389039006623183
+      ],
+      "target_rate_radians_per_second": [
+        9.984894823801064,
+        6.042873032468194,
+        6.421830234790107,
+        -17.956440792128102,
+        10.221002437609702,
+        -15.085995173616809,
+        11.805755895903864
+      ],
+      "kp_J_per_radian_squared": [
+        77.89823772843158,
+        28.576934605213285,
+        110.31320742851909,
+        86.09710496506744,
+        69.38984093503005,
+        79.62034271061141,
+        167.74800655076086
+      ],
+      "kd_J_second_per_radian_squared": [
+        23.68148628871796,
+        24.39304491839551,
+        15.398675056400815,
+        9.407449895083724,
+        7.611413494991326,
+        22.552179735582687,
+        16.219726090790147
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix06",
+      "q_radians": [
+        1.8880753422836434,
+        -0.8366604708601654,
+        1.670510301971087,
+        -0.8317173281324224,
+        -2.1775613809586174,
+        3.600682690319501,
+        0.42148825502850373
+      ],
+      "slides_metres": [
+        0.025638087132433242,
+        -0.038133647181420594
+      ],
+      "rate_radians_per_second": [
+        6.834091635128164,
+        6.1106408382930795,
+        0.6773055857370736,
+        -10.187665443173541,
+        16.41393642618518,
+        -7.0492795855441415,
+        4.875265076037888
+      ],
+      "target_radians": [
+        -2.718368323311436,
+        0.2034854605781531,
+        -0.2997464097107616,
+        -0.7865668648949997,
+        1.0376912298682903,
+        3.6939021991518146,
+        -0.10546830303393495
+      ],
+      "target_rate_radians_per_second": [
+        15.26235289396589,
+        11.943895943471695,
+        2.6497088249650993,
+        -7.851439426386584,
+        -16.70511531609426,
+        2.185228794822109,
+        17.951446719798938
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix07",
+      "q_radians": [
+        1.5243230830227605,
+        1.272554105655431,
+        0.6827033727433123,
+        -0.1919547288549417,
+        -2.287577756050863,
+        2.9056175531448205,
+        -1.798168201935996
+      ],
+      "slides_metres": [
+        0.011300629997531732,
+        -0.014721760693037527
+      ],
+      "rate_radians_per_second": [
+        -10.755434047893164,
+        15.244019440755785,
+        19.874382354678673,
+        -5.379386713518954,
+        -11.667122805491736,
+        7.149061053065612,
+        -3.281280200629432
+      ],
+      "target_radians": [
+        1.798173425050758,
+        0.830846351644213,
+        0.06021891370308019,
+        -1.1443040404467837,
+        -1.8073787205297853,
+        2.2435846558714267,
+        -2.214358935570295
+      ],
+      "target_rate_radians_per_second": [
+        0.11166530784313267,
+        -11.429841350692902,
+        1.491849429195021,
+        2.5628091543850147,
+        -1.7539561871418528,
+        13.446898666401637,
+        19.85341909470396
+      ],
+      "kp_J_per_radian_squared": [
+        110.10657583650288,
+        144.00303601445867,
+        150.50899348296997,
+        102.77283303826819,
+        67.56292632941496,
+        137.29765280832297,
+        195.43801903910818
+      ],
+      "kd_J_second_per_radian_squared": [
+        10.944164034336472,
+        0.1842818919126406,
+        16.51497364985359,
+        14.29350745528372,
+        18.733879437518283,
+        0.3826784503693886,
+        3.5605813445516765
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix08",
+      "q_radians": [
+        -0.406120063921358,
+        -0.39860008465715513,
+        1.904333540389874,
+        -0.9379930562207819,
+        -2.3087033910704022,
+        0.917259216889116,
+        -1.1453794578026941
+      ],
+      "slides_metres": [
+        0.00389951771938152,
+        -0.011340416781960894
+      ],
+      "rate_radians_per_second": [
+        -12.434779172272833,
+        -16.944067349752988,
+        16.59152891325195,
+        11.745420624700994,
+        -16.58293821692448,
+        11.497175631840939,
+        -15.856698086726745
+      ],
+      "target_radians": [
+        2.717873637631994,
+        1.5307711758137224,
+        1.449785781981182,
+        -1.0121385467167432,
+        2.8097192115730585,
+        3.5843392744363864,
+        0.6556637350281629
+      ],
+      "target_rate_radians_per_second": [
+        3.3408397802356937,
+        10.749789966301417,
+        -1.68245311767474,
+        3.469717623300717,
+        -7.401963673366495,
+        16.233575770892756,
+        17.550889975644182
+      ],
+      "kp_J_per_radian_squared": [
+        198.9855350318536,
+        159.4788522073958,
+        29.533445131240114,
+        41.15157633953654,
+        11.347005058807076,
+        72.78097735542119,
+        47.95319967334213
+      ],
+      "kd_J_second_per_radian_squared": [
+        11.771691864353311,
+        21.725563376405518,
+        6.864353830761849,
+        9.755684229458454,
+        3.236699741432883,
+        3.48819124714641,
+        12.220445877610615
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix09",
+      "q_radians": [
+        -2.6746941761828094,
+        -0.1378081723471678,
+        -0.18233185203783586,
+        -1.8882790721567602,
+        -2.6425641665797364,
+        3.358317975072533,
+        -1.315305694947217
+      ],
+      "slides_metres": [
+        0.01809279009157366,
+        -0.010362849582085377
+      ],
+      "rate_radians_per_second": [
+        16.701452293967158,
+        17.703236138412294,
+        -6.7946568174963815,
+        -4.55169690625687,
+        -13.581089630909734,
+        -18.185016146021397,
+        -7.7669435939969045
+      ],
+      "target_radians": [
+        -0.3116707149205151,
+        -1.690929475785858,
+        -1.8320399418239626,
+        -1.1361169522886962,
+        0.4882658558137991,
+        3.2870821040100737,
+        2.3270472602618644
+      ],
+      "target_rate_radians_per_second": [
+        3.9776382402111636,
+        -6.213595801095693,
+        5.376970657908437,
+        16.404771851871935,
+        -18.72758450056154,
+        8.710917908069511,
+        17.36868035965773
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix10",
+      "q_radians": [
+        -1.169589990236607,
+        -1.3763077800647106,
+        -1.210587837243608,
+        -2.8152807381643483,
+        1.591654279771444,
+        3.0676546525142707,
+        -2.670537600231258
+      ],
+      "slides_metres": [
+        0.03110943160750352,
+        -0.014584696794188591
+      ],
+      "rate_radians_per_second": [
+        -8.780606248344732,
+        10.168616743975281,
+        -16.91084269882029,
+        6.644560519216348,
+        11.001542856525237,
+        0.8712383296062534,
+        -16.806647703498978
+      ],
+      "target_radians": [
+        -1.6512134525997872,
+        -0.2119794959454191,
+        -1.4286413853516728,
+        -2.671727184552259,
+        2.08078475545329,
+        2.5112102597029065,
+        1.0706756566317615
+      ],
+      "target_rate_radians_per_second": [
+        10.298385022944654,
+        -3.4152095601840884,
+        -6.043276473372412,
+        -16.64520420539079,
+        -14.6916545510344,
+        -13.018944439574675,
+        -19.617014882935813
+      ],
+      "kp_J_per_radian_squared": [
+        59.227235441748924,
+        116.48522717298574,
+        148.4571722205273,
+        122.02353219871038,
+        71.39315063192768,
+        75.99559618528227,
+        142.44893865347865
+      ],
+      "kd_J_second_per_radian_squared": [
+        7.95393015810612,
+        8.815612188908226,
+        15.73590466533263,
+        19.848516110545297,
+        22.143829753774185,
+        18.922488426331324,
+        24.248829887341262
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix11",
+      "q_radians": [
+        -2.799532494600988,
+        1.1948710595086678,
+        0.18606747989863637,
+        -2.8796691174065057,
+        1.3588861623905868,
+        0.06429497363993013,
+        -1.6772336378281378
+      ],
+      "slides_metres": [
+        0.014348757097726112,
+        -0.03071153170953656
+      ],
+      "rate_radians_per_second": [
+        -2.766220411520276,
+        2.4564945246100898,
+        -12.437423355420915,
+        15.402512937847234,
+        -0.35706853711929654,
+        0.57483394168381,
+        13.689721359629132
+      ],
+      "target_radians": [
+        -1.5377328438942477,
+        -0.2664298372856859,
+        1.3156268950203889,
+        -2.80029310808367,
+        -0.7942396676506411,
+        1.0517741608907671,
+        0.3087371924917717
+      ],
+      "target_rate_radians_per_second": [
+        7.755468240930597,
+        -17.622917073097575,
+        -13.722956436393288,
+        1.5962052649399254,
+        -0.29018830970235143,
+        6.641754179003154,
+        -13.357402815922823
+      ],
+      "kp_J_per_radian_squared": [
+        31.72049663261791,
+        49.25503911061136,
+        180.89146412294158,
+        163.59773624447243,
+        175.76432903077568,
+        45.39248051800361,
+        86.95201042569254
+      ],
+      "kd_J_second_per_radian_squared": [
+        5.656688475206494,
+        9.372476218975043,
+        4.4037157537848035,
+        10.347034070465062,
+        1.733138567270715,
+        8.515178227421552,
+        18.906332142008434
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix12",
+      "q_radians": [
+        -1.2851789553723125,
+        1.0246509264231305,
+        -0.42009230203461234,
+        -0.24146049251456958,
+        -1.4869608859297032,
+        1.2340609659146937,
+        0.8134362069723862
+      ],
+      "slides_metres": [
+        0.008165572658439379,
+        -0.005398268297729908
+      ],
+      "rate_radians_per_second": [
+        -7.93817782938568,
+        -8.282200478398769,
+        -17.169965070589516,
+        3.0027287227890582,
+        -18.36094658392689,
+        13.791650544137163,
+        10.574303716380228
+      ],
+      "target_radians": [
+        -1.2590115188940605,
+        -1.0123510312524113,
+        2.455151969814818,
+        -2.6482276360478347,
+        -1.9652959708720843,
+        0.9698501866121204,
+        0.5017931674186733
+      ],
+      "target_rate_radians_per_second": [
+        -3.719052168852137,
+        -1.835289435805059,
+        -0.9640823537086973,
+        3.16627045896211,
+        5.664884868903862,
+        -8.284592676798685,
+        -4.978538936737396
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix13",
+      "q_radians": [
+        0.94935491742583,
+        -0.4850939776037768,
+        -1.0812191405255744,
+        -1.9248920549436257,
+        2.1812622025942496,
+        0.8239779225824914,
+        1.0407391896955054
+      ],
+      "slides_metres": [
+        0.00034151700491616313,
+        -0.0380146790940239
+      ],
+      "rate_radians_per_second": [
+        -5.916638433564923,
+        8.781366130549387,
+        -11.415877974934613,
+        -9.793174627017267,
+        -8.181505397829172,
+        7.724763906196486,
+        -5.290895437211445
+      ],
+      "target_radians": [
+        0.023818359803043254,
+        -1.1232939516667373,
+        -2.3935727255921884,
+        -0.6772059264610597,
+        -1.1056336938364353,
+        3.6128819026168886,
+        -0.1686803675699351
+      ],
+      "target_rate_radians_per_second": [
+        -1.754610712249164,
+        -17.87080164829822,
+        -13.907144139308407,
+        4.543837277495257,
+        -18.85236672158119,
+        10.474762559506907,
+        5.32621149175819
+      ],
+      "kp_J_per_radian_squared": [
+        80.10597809345792,
+        105.36381746762594,
+        144.0941325522443,
+        97.72697547664654,
+        156.93992425419887,
+        85.26432014080208,
+        79.94379851364818
+      ],
+      "kd_J_second_per_radian_squared": [
+        15.945030541057386,
+        5.002391063083362,
+        12.195214170838883,
+        9.06980689733746,
+        21.718620458923457,
+        18.472912991805803,
+        7.757477545088289
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix14",
+      "q_radians": [
+        1.1712545375273815,
+        -0.47921673194350434,
+        0.5880145551191052,
+        -2.7820778474319945,
+        0.8811537299191601,
+        3.1428415007853614,
+        1.5118142643455532
+      ],
+      "slides_metres": [
+        0.028599830143391375,
+        -0.00776703595478203
+      ],
+      "rate_radians_per_second": [
+        6.018667376573177,
+        4.950845552038441,
+        -6.143072383083172,
+        7.530246500410488,
+        -13.180216769906306,
+        -11.583625458420128,
+        -11.510247006258956
+      ],
+      "target_radians": [
+        -1.313905508917241,
+        -1.6427263764915652,
+        0.8931698474086684,
+        -0.8576348888502543,
+        -1.7759816529728518,
+        1.8287030101060067,
+        0.062196700683366135
+      ],
+      "target_rate_radians_per_second": [
+        -14.680312600286417,
+        -16.535367242104257,
+        5.778621975087489,
+        -2.428087797442796,
+        4.08308849359868,
+        1.120805222975136,
+        17.881382576651774
+      ],
+      "kp_J_per_radian_squared": [
+        139.36695240200663,
+        114.87577300257847,
+        79.00599586938677,
+        54.17358777918885,
+        82.03110471093284,
+        72.5336927937345,
+        137.4125001378854
+      ],
+      "kd_J_second_per_radian_squared": [
+        2.9134231960040813,
+        22.534402864349907,
+        10.17556708282022,
+        5.791982380403052,
+        7.2944459823380985,
+        11.945724911856688,
+        1.8952519940395827
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix15",
+      "q_radians": [
+        -2.1444823403129183,
+        -0.19358891660666688,
+        2.6265534436725715,
+        -1.7053656886472757,
+        0.47826294506829203,
+        0.28172927596309605,
+        -0.7647553456906993
+      ],
+      "slides_metres": [
+        0.02467936973353678,
+        -0.00035649842637348883
+      ],
+      "rate_radians_per_second": [
+        19.555566819807986,
+        6.633427724878352,
+        9.904319009779105,
+        14.95790161992494,
+        11.559163226888202,
+        -8.731104510325345,
+        -12.844103175505662
+      ],
+      "target_radians": [
+        1.878004916677487,
+        1.071641648742912,
+        2.694259072414662,
+        -1.7000357836577575,
+        -1.1901821477367038,
+        0.7499835400715348,
+        2.502250952581339
+      ],
+      "target_rate_radians_per_second": [
+        17.13074016037727,
+        -9.217704871926436,
+        -7.4047994196139335,
+        7.8337287540948175,
+        -7.766881310399416,
+        2.211850299459446,
+        2.2318010896600704
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix16",
+      "q_radians": [
+        -2.4621288151941942,
+        0.02840411423536615,
+        1.5533985613043124,
+        -0.9651413241013178,
+        1.2797946948017178,
+        0.2741317574171653,
+        0.4235900191596005
+      ],
+      "slides_metres": [
+        0.00593430783077773,
+        -0.007273215134456355
+      ],
+      "rate_radians_per_second": [
+        -12.455207058765101,
+        5.213792636170901,
+        12.757596992387732,
+        -16.84731009088329,
+        16.043965023615613,
+        17.3467454621767,
+        -11.999991055236618
+      ],
+      "target_radians": [
+        -0.36990135276156,
+        -1.405922898537258,
+        -0.762065945507012,
+        -0.3526760941361493,
+        -1.4935820404667421,
+        2.6897345784805466,
+        -1.5868139742225333
+      ],
+      "target_rate_radians_per_second": [
+        12.539813408916899,
+        -8.864921382094174,
+        -12.578221943961774,
+        7.888963355627503,
+        -7.038563557755907,
+        -5.291205943565576,
+        -12.754440449647317
+      ],
+      "kp_J_per_radian_squared": [
+        46.01701776022035,
+        140.30017773071992,
+        49.39550452699475,
+        95.38537879155088,
+        101.30377186990236,
+        55.92236158458262,
+        16.87283017032407
+      ],
+      "kd_J_second_per_radian_squared": [
+        22.25081355570292,
+        4.333070422555475,
+        6.2281006054182395,
+        24.648610319146876,
+        11.496812917692704,
+        3.6055387961921355,
+        7.678555961075922
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix17",
+      "q_radians": [
+        -1.9984334766076723,
+        -0.09137598788558066,
+        -1.6441043475787238,
+        -0.48708815190825394,
+        2.458262145959559,
+        2.4406043334376646,
+        -0.8498826762719345
+      ],
+      "slides_metres": [
+        0.004467661200103992,
+        -0.035725445624903894
+      ],
+      "rate_radians_per_second": [
+        -14.07989809276058,
+        -0.786521022571236,
+        9.762904725531122,
+        14.609527770138953,
+        19.00603370605966,
+        18.62796929271876,
+        18.688861686382253
+      ],
+      "target_radians": [
+        1.6260976083078433,
+        0.7792950711108295,
+        -2.4241867168957767,
+        -0.12785395321060333,
+        -2.751478378144222,
+        0.9667727416019939,
+        2.3050720797374793
+      ],
+      "target_rate_radians_per_second": [
+        14.736680231272203,
+        -12.469419615069759,
+        -1.9498239316787789,
+        16.867817370311464,
+        -2.967767699976921,
+        -10.176639186278873,
+        -18.933534589554377
+      ],
+      "kp_J_per_radian_squared": [
+        36.916145836113444,
+        84.61951083471489,
+        75.83823421306154,
+        155.13526860748877,
+        54.51473082708502,
+        26.43463826434503,
+        107.16944502974914
+      ],
+      "kd_J_second_per_radian_squared": [
+        3.8893989068772794,
+        9.917652796139949,
+        3.883849836151351,
+        13.29748444366505,
+        24.917735241642813,
+        22.297152355545297,
+        23.05571582765893
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix18",
+      "q_radians": [
+        0.3209132512552748,
+        1.045606918852695,
+        0.4975978263730316,
+        -0.9132512455421078,
+        0.7193699277116727,
+        1.8774937538228054,
+        -1.9451577543820417
+      ],
+      "slides_metres": [
+        0.016135740265043833,
+        -0.02847583094419856
+      ],
+      "rate_radians_per_second": [
+        -2.070971318462451,
+        -18.993068659013254,
+        18.422966780099337,
+        17.98425760270228,
+        10.87486565429554,
+        -6.1175636671808,
+        9.481526834163159
+      ],
+      "target_radians": [
+        -2.259959202966646,
+        0.30630669892837536,
+        2.25180319208521,
+        -2.634968063754253,
+        2.839880672372128,
+        1.6391922392177776,
+        0.6274023283867591
+      ],
+      "target_rate_radians_per_second": [
+        -17.453620360782374,
+        -3.1308349219891696,
+        -14.22342748689541,
+        -10.266049046386287,
+        -16.650660354809432,
+        11.990685720626967,
+        -17.776256820814105
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix19",
+      "q_radians": [
+        0.19668782589240452,
+        1.7618880377395398,
+        -0.05975353818926221,
+        -1.1879799950792456,
+        2.7037466758188304,
+        1.9335954832940587,
+        0.03794592191088242
+      ],
+      "slides_metres": [
+        0.03143312813673234,
+        -0.006994392531237195
+      ],
+      "rate_radians_per_second": [
+        13.019386172966676,
+        -14.784723765869195,
+        -6.148213336683659,
+        -15.761657537381982,
+        -6.33775662656554,
+        -12.985371371949084,
+        7.646269441238353
+      ],
+      "target_radians": [
+        0.18383642613739104,
+        -1.4125230127338457,
+        -1.353415656001618,
+        -0.8602954966165788,
+        -1.015511198938768,
+        1.9908992766898668,
+        1.76250486028307
+      ],
+      "target_rate_radians_per_second": [
+        -18.44283792789433,
+        -14.747254868357821,
+        -10.428511917410393,
+        -9.777990034539187,
+        19.120583519185608,
+        -18.790189761426067,
+        5.463823128452553
+      ],
+      "kp_J_per_radian_squared": [
+        32.352355901384286,
+        90.96350932187558,
+        37.79698428838786,
+        83.54540644907672,
+        137.87434655546915,
+        26.96194131631873,
+        147.36393859318088
+      ],
+      "kd_J_second_per_radian_squared": [
+        14.12805445903553,
+        19.423246751266877,
+        5.609975080185412,
+        24.951072608065704,
+        23.65671678189123,
+        5.653090770126907,
+        18.000053710726174
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix20",
+      "q_radians": [
+        -0.029860529011258574,
+        1.0435523754708091,
+        -1.78004744445961,
+        -0.6706661867327153,
+        -0.7810356673861296,
+        2.3450346671281515,
+        -1.5684694311960952
+      ],
+      "slides_metres": [
+        0.02828855985477664,
+        -0.008483895029031852
+      ],
+      "rate_radians_per_second": [
+        -15.768023644831345,
+        -10.130984375531305,
+        12.704444962182691,
+        13.557265084288446,
+        8.77231998037647,
+        -7.798471105226428,
+        3.16900003324044
+      ],
+      "target_radians": [
+        2.0522317375698456,
+        0.8898627456998893,
+        1.1897093871867175,
+        -1.4359646446733598,
+        1.2678060753105336,
+        3.687200621867451,
+        0.05271191288609334
+      ],
+      "target_rate_radians_per_second": [
+        15.444180623548036,
+        13.811481060912158,
+        -15.731772670484805,
+        -5.0844468829786,
+        5.672436085979594,
+        -10.884161336472026,
+        -19.86905057448332
+      ],
+      "kp_J_per_radian_squared": [
+        51.631481900976894,
+        145.2424877701306,
+        135.02436806482575,
+        171.81992290737492,
+        162.70748613655923,
+        52.93090081199891,
+        107.39171198570742
+      ],
+      "kd_J_second_per_radian_squared": [
+        14.57758185595707,
+        13.41338825005008,
+        24.449892006079512,
+        16.20331147026375,
+        21.480232288344098,
+        3.6456116473313696,
+        17.79846861203514
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix21",
+      "q_radians": [
+        -1.5162730960786992,
+        0.6104623703067378,
+        0.5644755833633113,
+        -1.2759857573206541,
+        -2.676444319687837,
+        1.8446868403532486,
+        -2.6724556348066235
+      ],
+      "slides_metres": [
+        0.020340117075020602,
+        -0.03450579668660237
+      ],
+      "rate_radians_per_second": [
+        -13.948988341446169,
+        2.0222491039030324,
+        -3.8477548488637794,
+        -9.15670575611259,
+        14.64602144671018,
+        -3.567021147312932,
+        17.328782974913267
+      ],
+      "target_radians": [
+        -1.1298953804200689,
+        0.8714319640981381,
+        1.6145131589691757,
+        -1.92859855364572,
+        -1.4432020538055845,
+        3.6554739209467417,
+        0.9777733729298181
+      ],
+      "target_rate_radians_per_second": [
+        5.9428734887843895,
+        19.827456085220568,
+        3.6816628637876363,
+        -6.545645941051612,
+        6.6175691404625745,
+        0.9335166708815343,
+        -17.815135102881477
+      ],
+      "kp_J_per_radian_squared": [
+        60,
+        60,
+        60,
+        60,
+        40,
+        20,
+        10
+      ],
+      "kd_J_second_per_radian_squared": [
+        8,
+        8,
+        8,
+        8,
+        5,
+        3,
+        2
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix22",
+      "q_radians": [
+        -2.550187496693883,
+        -0.2088189548320678,
+        -2.789101588267417,
+        -2.2703929371063842,
+        -0.1657373489443832,
+        0.14830862081945945,
+        -1.863058496742101
+      ],
+      "slides_metres": [
+        0.01063677093460648,
+        -9.273726411426764e-05
+      ],
+      "rate_radians_per_second": [
+        -12.725521140383558,
+        -16.094738773252487,
+        -4.493164655168464,
+        -8.781866478817765,
+        -0.8508353342960326,
+        9.04743529936464,
+        19.661404517707282
+      ],
+      "target_radians": [
+        2.2982459427808855,
+        -1.5481337339611283,
+        -1.2349135526913249,
+        -1.5660793224622662,
+        -0.16480035903397194,
+        3.4759944658690647,
+        -1.8272583946466678
+      ],
+      "target_rate_radians_per_second": [
+        1.9005965264147022,
+        -1.0829799958989739,
+        -17.838890999499895,
+        18.5380827941854,
+        8.945617660158533,
+        -8.791221488321721,
+        -18.412342390826986
+      ],
+      "kp_J_per_radian_squared": [
+        104.43372578464769,
+        121.00064012420208,
+        143.0381876871471,
+        125.57999169351906,
+        43.64093726003478,
+        177.14945641575684,
+        26.943398134284497
+      ],
+      "kd_J_second_per_radian_squared": [
+        7.650378247667156,
+        21.944222555792273,
+        24.845041945033437,
+        3.6960695152365157,
+        6.715456823990214,
+        11.332018903262956,
+        23.583873306415246
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    },
+    {
+      "name": "matrix23",
+      "q_radians": [
+        -2.576348276886757,
+        1.4092685452383447,
+        2.3969831604197087,
+        -0.9364681835163116,
+        -2.771681195853568,
+        2.4357507858190357,
+        0.19048739519938573
+      ],
+      "slides_metres": [
+        0.004525901385092119,
+        -0.00857157448034359
+      ],
+      "rate_radians_per_second": [
+        -11.936377655261662,
+        19.607992997308642,
+        -1.2202688539025672,
+        6.267929791249294,
+        -4.684523740420413,
+        -13.964136877474802,
+        3.139220566360251
+      ],
+      "target_radians": [
+        -0.8514546063562993,
+        0.3189657620547601,
+        -1.3957962210469588,
+        -2.7759697945392876,
+        -2.66529327646017,
+        1.2525424886051313,
+        -0.5297463550347814
+      ],
+      "target_rate_radians_per_second": [
+        2.672412935117773,
+        10.746485674893659,
+        -11.900612102210024,
+        13.171569989959082,
+        -9.147389459324625,
+        -19.565006817960167,
+        -7.927574110759936
+      ],
+      "kp_J_per_radian_squared": [
+        74.85339301459489,
+        151.2819328016018,
+        92.68916562778465,
+        128.96973767283217,
+        18.555183797474402,
+        91.48473658303405,
+        135.80522774823686
+      ],
+      "kd_J_second_per_radian_squared": [
+        19.397480586904905,
+        22.299045230622994,
+        19.561311556613663,
+        24.747326536029103,
+        19.066145641723867,
+        19.349919419083044,
+        17.886383102411248
+      ],
+      "gravity_reference": {
+        "kind": "independent_matrix_potential_gradient",
+        "source": "authored matrix product-rule COM derivative; no Coax/SDK calls"
+      }
+    }
+  ],
+  "cases_sha256": "e226f2c1f92ac61c0f118483c2342f67548b4819aa1967ce24714dcf6914ae3d",
+  "dependencies": {
+    "psionic/fixtures/robotics/panda-fingers/sdk-profile.json": "5699650e695759ca51940f49cbdec78061ef683777da10af651b95c1e2841a5d",
+    "psionic/fixtures/robotics/panda-fingers/sdk-model.json": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+    "psionic/fixtures/robotics/panda-fingers/sdk-cases.f64": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+    "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.f64": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed",
+    "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.json": "bf63ab336cd828bbb2a4b17316e742b0f080e9402a198a542dc924c32408c287",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f"
+  }
+}

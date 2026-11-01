@@ -1,0 +1,12 @@
+joint PD + zero-rate gravity; fixed source7
+hinge 1 P/D/g0/requested/command (micro-J/rad): 6000000 -7200000 0 -1200000 -1200000
+hinge 2 P/D/g0/requested/command (micro-J/rad): -7200000 5600000 -24672161 -26272161 -26272161
+hinge 3 P/D/g0/requested/command (micro-J/rad): 7800000 -5600000 2947 2202947 2202947
+hinge 4 P/D/g0/requested/command (micro-J/rad): -8400000 8800000 12492334 12892334 12892334
+hinge 5 P/D/g0/requested/command (micro-J/rad): 6000000 -5500000 4856 504856 504856
+hinge 6 P/D/g0/requested/command (micro-J/rad): -3200000 2700000 2454055 1954055 1954055
+hinge 7 P/D/g0/requested/command (micro-J/rad): 1700000 -1800000 1917 -98083 -98083
+controller clipped coordinates: 0
+stress query clipped coordinates: 7; source limits reported
+zero Kd: range refusal; complete output unchanged
+feed command to Pa once; keep clipping stages separate

@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_joint_pd_bad_angle.coax:2:103: error[E0317]: argument 1 of 'pjp_forward' is [] Quantity(Radian, f64), given [] Quantity(Metre, f64)
+  main :: () {x:=pjp_fixture();q:[7]pfku.Quantity(pfku.Metre,f64);out:[1]PjpOutput;status:=pjp_forward(q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..]);}
+                                                                                                        ^
+1 error

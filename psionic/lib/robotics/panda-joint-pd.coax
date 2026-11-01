@@ -1,0 +1,40 @@
+// Pure fixed-source joint PD + zero-rate gravity; no actuator/passive effects,
+// velocity-bias substitution, integration, command admission or R14 claim.
+#load "panda-joint-pd-math.coax";
+#authority;
+#test "Panda joint PD zero error returns owned gravity and current velocity only changes derivative" {
+ x:=pjp_fixture();out:=[2]PjpOutput.[pjp_poison(),pjp_poison()];tail:=out[1];gravity:[1]PmOutput;#assert pm_forward(x.q[..],x.slides[..],gravity[..])==PfkStatus.ok;
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[0..<1])==PjpStatus.ok;
+ for i:0..<7 {#assert out[0].proportional[i].value==0 && out[0].derivative[i].value==0 && out[0].gravity[i].value==gravity[0].hinge_gravity[i].value && out[0].requested[i].value==gravity[0].hinge_gravity[i].value && out[0].command[i].value==out[0].requested[i].value;}#assert out[0].clipped==0;pjp_same(out[1],tail);
+ before:=out[0];for i:0..<7 {x.rate[i].value=f64(i+1);}
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[0..<1])==PjpStatus.ok;
+ for i:0..<7 {#assert out[0].gravity[i].value==before.gravity[i].value && out[0].derivative[i].value== -x.kd[i].value*x.rate[i].value;}
+}
+#forall "Panda joint PD every typed span shape refuses before invalid source position and preserves spare" field:0..<8 {
+ x:=pjp_fixture();o:=[2]PjpOutput.[pjp_poison(),pjp_poison()];a:=o[0];b:=o[1];q:=x.q[..];s:=x.slides[..];v:=x.rate[..];t:=x.target[..];tv:=x.target_rate[..];kp:=x.kp[..];kd:=x.kd[..];out:=o[0..<1];
+ if field==0 {q=x.q[0..<6];}if field==1 {s=x.slides[0..<1];}if field==2 {v=x.rate[0..<6];}if field==3 {t=x.target[0..<6];}if field==4 {tv=x.target_rate[0..<6];}if field==5 {kp=x.kp[0..<6];}if field==6 {kd=x.kd[0..<6];}if field==7 {out=o[..];}x.q[0].value=3;
+ #assert pjp_forward(q,s,v,t,tv,kp,kd,out)==PjpStatus.shape;pjp_same(o[0],a);pjp_same(o[1],b);
+}
+#test "Panda joint PD packed bridge every field agrees and all scalar refusals stay atomic" {
+ x:=pjp_fixture();for i:0..<7 {x.q[i].value=0.1*f64(i+1);x.target[i].value=0.15*f64(i+1);x.rate[i].value=0.2*f64(i+1);x.target_rate[i].value= -0.3*f64(i+1);}x.q[3].value= -2.4;x.target[3].value= -2.1;x.slides[0].value=0.02;x.slides[1].value= -0.03;
+ raw:[44]f64;for i:0..<7 {raw[i]=x.q[i].value;raw[9+i]=x.rate[i].value;raw[16+i]=x.target[i].value;raw[23+i]=x.target_rate[i].value;raw[30+i]=x.kp[i].value;raw[37+i]=x.kd[i].value;}for i:0..<2 {raw[7+i]=x.slides[i].value;}
+ a:[1]PjpOutput;b:[1]PjpOutput;#assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],a[..])==PjpStatus.ok && pjp_forward_raw(raw[..],b[..])==PjpStatus.ok;pjp_same(a[0],b[0]);for i:0..<7 {#assert a[0].proportional[i].value==x.kp[i].value*(x.target[i].value-x.q[i].value) && a[0].derivative[i].value==x.kd[i].value*(x.target_rate[i].value-x.rate[i].value);}old:=b[0];
+ #assert pjp_forward_raw(raw[0..<43],b[..])==PjpStatus.shape && pjp_forward_raw(raw[..],b[0..<0])==PjpStatus.shape;pjp_same(b[0],old);
+ for i:0..<44 {before:=raw[i];raw[i]=ifx i<7 || (i>=16 && i<23) then 9.0 else ifx i<30 then 100.0 else 0.0;want:=ifx i<7 || (i>=16 && i<23) then PjpStatus.limits else PjpStatus.range;
+  #assert pjp_forward_raw(raw[..],b[..])==want;pjp_same(b[0],old);raw[i]=before;
+ }
+}
+
+pjp_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),rates:[]pfku.Quantity(PidAngularRate,f64),target:[]pfku.Quantity(pfku.Radian,f64),target_rates:[]pfku.Quantity(PidAngularRate,f64),kp:[]pfku.Quantity(PjpStiffness,f64),kd:[]pfku.Quantity(PjpDamping,f64),output:[]PjpOutput)->PjpStatus #export_c {
+ if angles.count!=7 || slides.count!=2 || rates.count!=7 || target.count!=7 || target_rates.count!=7 || kp.count!=7 || kd.count!=7 || output.count!=1 {return PjpStatus.shape;}
+ words:[44]u64;for i:0..<7 {words[i]=f64_bits(angles[i].value);words[9+i]=f64_bits(rates[i].value);words[16+i]=f64_bits(target[i].value);words[23+i]=f64_bits(target_rates[i].value);words[30+i]=f64_bits(kp[i].value);words[37+i]=f64_bits(kd[i].value);}for i:0..<2 {words[7+i]=f64_bits(slides[i].value);}
+ admitted:=pjp_admit(words);if admitted!=PjpStatus.ok {return admitted;}
+ gravity:[1]PmOutput;if pm_forward(angles,slides,gravity[..])!=PfkStatus.ok {return PjpStatus.gravity;}
+ x:PjpInput;for i:0..<7 {x.q[i]=angles[i];x.rate[i]=rates[i];x.target[i]=target[i];x.target_rate[i]=target_rates[i];x.kp[i]=kp[i];x.kd[i]=kd[i];}
+ fresh:=pjp_assemble(x,gravity[0].hinge_gravity);output[0]=fresh;return PjpStatus.ok;
+}
+pjp_forward_raw :: (coefficients:[]f64,output:[]PjpOutput)->PjpStatus #export_c {
+ if coefficients.count!=44 || output.count!=1 {return PjpStatus.shape;}
+ x:PjpInput;for i:0..<7 {x.q[i].value=coefficients[i];x.rate[i].value=coefficients[9+i];x.target[i].value=coefficients[16+i];x.target_rate[i].value=coefficients[23+i];x.kp[i].value=coefficients[30+i];x.kd[i].value=coefficients[37+i];}for i:0..<2 {x.slides[i].value=coefficients[7+i];}
+ return pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],output);
+}

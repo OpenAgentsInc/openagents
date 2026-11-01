@@ -1,0 +1,698 @@
+{
+  "schema": "psionic.panda-joint-pd.native-qualification.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "integration_steps": 0,
+  "render_calls": 0,
+  "commands": [
+    {
+      "name": "dependencies",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "deps",
+        "psionic/lib/robotics/panda-joint-pd.coax"
+      ],
+      "exit": 0,
+      "seconds": 0.3749390000011772,
+      "stdout_sha256": "bb86b6f99601658efb65fdad5365076c11f16c3c5b47acd487f8f882420014de",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-debug",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-joint-pd.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-joint-pd-native-qualified/debug/panda-joint-pd.h"
+      ],
+      "exit": 0,
+      "seconds": 0.38370191695867106,
+      "stdout_sha256": "a31ea35c81b26cac5550ad736c81a6fa006b1e2a8354ee5ffecd7b86e9c7d03a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "emit-release",
+      "arguments": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-joint-pd.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-joint-pd-native-qualified/release/panda-joint-pd.h"
+      ],
+      "exit": 0,
+      "seconds": 0.4769631670205854,
+      "stdout_sha256": "37179e2c26c661aefd5a2606f659772b06d51c70e9eeafa0fd4c4890d14e6863",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-debug",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-joint-pd-native-qualified/debug",
+        "/private/tmp/panda-joint-pd-native-qualified/debug/panda-joint-pd.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-joint-pd-native-qualified/debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.4589740830124356,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-debug",
+      "arguments": [
+        "/private/tmp/panda-joint-pd-native-qualified/debug/native",
+        "/private/tmp/panda-joint-pd-native-qualified/input.bin",
+        "/private/tmp/panda-joint-pd-native-qualified/debug/outputs.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.38677687500603497,
+      "stdout_sha256": "1b96a0a76dfbe2aa93298429a02478850ef689fbfb385f182e4f309c7bff106a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-release",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-joint-pd-native-qualified/release",
+        "/private/tmp/panda-joint-pd-native-qualified/release/panda-joint-pd.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-joint-pd-native-qualified/release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.7518954169936478,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-release",
+      "arguments": [
+        "/private/tmp/panda-joint-pd-native-qualified/release/native",
+        "/private/tmp/panda-joint-pd-native-qualified/input.bin",
+        "/private/tmp/panda-joint-pd-native-qualified/release/outputs.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.2160639999783598,
+      "stdout_sha256": "1b96a0a76dfbe2aa93298429a02478850ef689fbfb385f182e4f309c7bff106a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "compile-sanitized",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-joint-pd-native-qualified/debug",
+        "/private/tmp/panda-joint-pd-native-qualified/debug/panda-joint-pd.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-joint-pd-native-qualified/sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 1.0560199160245247,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "run-sanitized",
+      "arguments": [
+        "/private/tmp/panda-joint-pd-native-qualified/sanitized/native",
+        "/private/tmp/panda-joint-pd-native-qualified/input.bin",
+        "/private/tmp/panda-joint-pd-native-qualified/sanitized/outputs.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.31623008399037644,
+      "stdout_sha256": "1b96a0a76dfbe2aa93298429a02478850ef689fbfb385f182e4f309c7bff106a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic.panda-joint-pd.native.v1",
+        "passed": true,
+        "cases": 44,
+        "record_bytes": 296,
+        "nonfinite_cases": 220,
+        "boundary_cases": 88,
+        "adjacent_precedence_cases": 86,
+        "alias_cases": 4,
+        "assertions": 6420
+      },
+      "metrics": {
+        "retained_SDK_based.proportional": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.derivative": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.gravity": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.requested": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.command": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.proportional": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.derivative": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.gravity": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 2.1316282072803006e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.requested": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 1.1368683772161603e-13,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.command": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 1.4210854715202004e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.proportional": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.derivative": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.gravity": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 2.1316282072803006e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.requested": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 1.1368683772161603e-13,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.command": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 1.4210854715202004e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        }
+      },
+      "all1540_actual_fields_finite": true,
+      "clipping_counts_exact": true,
+      "C_sha256": "a31ea35c81b26cac5550ad736c81a6fa006b1e2a8354ee5ffecd7b86e9c7d03a",
+      "header_sha256": "974061a8947def0a1599a0a3f2ebaf417048b6cdc20637c1269d76e9104dd328",
+      "binary_sha256": "b069bcb9d1584db096edad48c2a9faccaf34f869c83c38649284ff9700a1ba3c",
+      "output_sha256": "20e5daf9db29344414a5a355be434917dea2abe8741650243978ae679d2ed44e"
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic.panda-joint-pd.native.v1",
+        "passed": true,
+        "cases": 44,
+        "record_bytes": 296,
+        "nonfinite_cases": 220,
+        "boundary_cases": 88,
+        "adjacent_precedence_cases": 86,
+        "alias_cases": 4,
+        "assertions": 6420
+      },
+      "metrics": {
+        "retained_SDK_based.proportional": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.derivative": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.gravity": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.requested": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.command": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.proportional": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.derivative": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.gravity": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 2.1316282072803006e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.requested": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 1.1368683772161603e-13,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.command": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 1.4210854715202004e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.proportional": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.derivative": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.gravity": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 2.1316282072803006e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.requested": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 1.1368683772161603e-13,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.command": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 1.4210854715202004e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        }
+      },
+      "all1540_actual_fields_finite": true,
+      "clipping_counts_exact": true,
+      "C_sha256": "37179e2c26c661aefd5a2606f659772b06d51c70e9eeafa0fd4c4890d14e6863",
+      "header_sha256": "974061a8947def0a1599a0a3f2ebaf417048b6cdc20637c1269d76e9104dd328",
+      "binary_sha256": "efdd71ef34fce68da18627d5d27aac601050c46972e8175255069880dd5e6340",
+      "output_sha256": "20e5daf9db29344414a5a355be434917dea2abe8741650243978ae679d2ed44e"
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic.panda-joint-pd.native.v1",
+        "passed": true,
+        "cases": 44,
+        "record_bytes": 296,
+        "nonfinite_cases": 220,
+        "boundary_cases": 88,
+        "adjacent_precedence_cases": 86,
+        "alias_cases": 4,
+        "assertions": 6420
+      },
+      "metrics": {
+        "retained_SDK_based.proportional": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.derivative": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.gravity": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.requested": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "retained_SDK_based.command": {
+          "passed": true,
+          "values": 140,
+          "max_abs_error": 7.105427357601002e-15,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.proportional": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.derivative": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.gravity": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 2.1316282072803006e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.requested": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 1.1368683772161603e-13,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "new_matrix.command": {
+          "passed": true,
+          "values": 168,
+          "max_abs_error": 1.4210854715202004e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.proportional": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.derivative": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 0.0,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.gravity": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 2.1316282072803006e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.requested": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 1.1368683772161603e-13,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        },
+        "all.command": {
+          "passed": true,
+          "values": 308,
+          "max_abs_error": 1.4210854715202004e-14,
+          "atol": 5e-10,
+          "rtol": 0,
+          "unit": "Joule/Radian; per-one-radian generator normalization"
+        }
+      },
+      "all1540_actual_fields_finite": true,
+      "clipping_counts_exact": true,
+      "C_sha256": "a31ea35c81b26cac5550ad736c81a6fa006b1e2a8354ee5ffecd7b86e9c7d03a",
+      "header_sha256": "974061a8947def0a1599a0a3f2ebaf417048b6cdc20637c1269d76e9104dd328",
+      "binary_sha256": "47d9c8831504b2bde1b3aa0bc68738de1c1157d40310721c49c2adfd69686ac0",
+      "output_sha256": "20e5daf9db29344414a5a355be434917dea2abe8741650243978ae679d2ed44e"
+    }
+  ],
+  "experiment_sha256": "5c5a44371db1dd48695dfb08953409fa425914b46f0cd1b2ffad24b5653a0143",
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "independent_oracle": {
+    "matrix_vs_retained_SDK": {
+      "passed": true,
+      "values": 35,
+      "max_abs_error": 7.105427357601002e-15,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "Joule/Radian; per-one-radian generator normalization"
+    },
+    "unique_gravity_contexts": 29,
+    "retained_SDK_states": 5,
+    "retained_based_PD_queries": 20,
+    "new_matrix_states": 24,
+    "SDK_calls": 0,
+    "old_numeric_gates_repeated": false
+  },
+  "decoder_guards": {
+    "passed": true,
+    "refused_cases": 7,
+    "SDK_calls": 0
+  },
+  "scope": "Pure joint-control query; no timebase/sensor admission,simulator step,stability proof,orientation,nullspace,RRT,collision,contacts,compilerboundedness or hardware permission.",
+  "expected_sha256": "60ee4be0d1be397771c557438b62284e58740d14f3f313436ce03d8b2eac4793",
+  "historical_unit_refusals": {
+    "receipt_sha256": "14797b975fd46406065db731e4ecb251bed07533ef9a41ec68085a7b800079f1",
+    "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "calls_repeated": false
+  },
+  "source_sha256": {
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/fixtures/robotics/panda-fingers/sdk-cases.f64": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+    "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.f64": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed",
+    "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.json": "bf63ab336cd828bbb2a4b17316e742b0f080e9402a198a542dc924c32408c287",
+    "psionic/fixtures/robotics/panda-fingers/sdk-model.json": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+    "psionic/fixtures/robotics/panda-fingers/sdk-profile.json": "5699650e695759ca51940f49cbdec78061ef683777da10af651b95c1e2841a5d",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-joint-pd/cases.f64": "e226f2c1f92ac61c0f118483c2342f67548b4819aa1967ce24714dcf6914ae3d",
+    "psionic/fixtures/robotics/panda-joint-pd/checks-qualification.json": "a81e142f2acb17dce2182728b7834c3f5b5b80d1d05f875568b5ab09ab155f17",
+    "psionic/fixtures/robotics/panda-joint-pd/experiment.json": "5c5a44371db1dd48695dfb08953409fa425914b46f0cd1b2ffad24b5653a0143",
+    "psionic/fixtures/robotics/panda-joint-pd/unit-angle.log": "f931d5ff2c402af689393b414c166be1be0991f448b8230117e225577a604b1a",
+    "psionic/fixtures/robotics/panda-joint-pd/unit-kd.log": "14ec3ca338a75be0490e343259e6b366b03a06a86cc07ae7e63be1bad14554e9",
+    "psionic/fixtures/robotics/panda-joint-pd/unit-kp.log": "82f4d92023902159e1bbec8d75471feccc24a6e15beb6ce01291b0aded069349",
+    "psionic/fixtures/robotics/panda-joint-pd/unit-rate.log": "f837286d56ac17505cc51c3a783163cf6022f27b69c9c076295b2d6fc308e49a",
+    "psionic/fixtures/robotics/panda-joint-pd/unit-refusals.json": "14797b975fd46406065db731e4ecb251bed07533ef9a41ec68085a7b800079f1",
+    "psionic/lib/robotics/panda-actuation-math.coax": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106",
+    "psionic/lib/robotics/panda-actuation-types.coax": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9",
+    "psionic/lib/robotics/panda-ik-math.coax": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7",
+    "psionic/lib/robotics/panda-ik-types.coax": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": "08f5603db29e1a6fa6b04c8745c01bd5e0dedd6d44d1b97395daa02c03060618",
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+    "psionic/lib/robotics/panda-inverse-dynamics.coax": "7eb8047eb124653073ca6a7223f071e79f36d197a09370ce7b7c2e51c0bd0dff",
+    "psionic/lib/robotics/panda-joint-pd-fixtures.coax": "d179ed3cd55a1ec205e1948138d1af55134e516d2cc0e56bccdb2447bf627688",
+    "psionic/lib/robotics/panda-joint-pd-math.coax": "34ff88f6cd51b6d12cffeaadc62a6d15c25c178f8b6bde848a67e87873999e0e",
+    "psionic/lib/robotics/panda-joint-pd-types.coax": "bc86a3feaa97ef774aae5a03d669561db3ae3cda57b9f44fc07d7a17382dc1a5",
+    "psionic/lib/robotics/panda-joint-pd.coax": "dcd2248ee1a008a62487d32d15d04af494969666b8db1700d6cd65768bb451b8",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/tests/robotics/panda_joint_pd_bad_angle.coax": "b77f984ba670702787ff3e6ff29bf660a699ae4a5a89e8bda1e33b58f00cf090",
+    "psionic/tests/robotics/panda_joint_pd_bad_kd.coax": "41bc36e28d085ab2f76019647a5221d759e5470ebcd2f7dff673826d38917d86",
+    "psionic/tests/robotics/panda_joint_pd_bad_kp.coax": "465fb16d769c38daca3e0ee40809894bebeb3b41f07ac278f29ef83214baaa28",
+    "psionic/tests/robotics/panda_joint_pd_bad_rate.coax": "e8220c286af060afb0f05cf5cbecc5dd92f90e8c7aab6466ee3cc1eae3414a8d",
+    "psionic/tests/robotics/panda_joint_pd_native.c": "ce3b8de91368c5f36afc62fe62278c7e87da8c8f7e5b33ba1409eb24174cc4ca",
+    "psionic/tests/robotics/panda_joint_pd_reference.py": "3e6e5eb87fd3d2937486ae2d380ea1928844119aca10a1e27eaa496e5edcb1af"
+  },
+  "native_modes_byte_identical": true,
+  "cases": 44,
+  "output_shape": "44\u00d7(int64status,35F64,int64clipped)",
+  "seconds": 4.5253689590026625,
+  "execution_record_sha256": "c45adb3ca2f8d8d4155f8e8b736fddc7c1ded173e38db43f13de0612f4beb935",
+  "source_only_checks_receipt_sha256": "a81e142f2acb17dce2182728b7834c3f5b5b80d1d05f875568b5ab09ab155f17",
+  "initial_preflight_failure": {
+    "record_sha256": "8de484a272815c3bce73cf825aa157b4e7fec8d4da09b756f59659cfeed5b7be",
+    "failure": "Expected matrix0..matrix9 labels while frozen corpus correctly names matrix00..matrix09; corrected only expected label formatting before any matrix/reference/native execution.",
+    "commands": 0,
+    "native_modes": 0,
+    "product_changed": false
+  }
+}

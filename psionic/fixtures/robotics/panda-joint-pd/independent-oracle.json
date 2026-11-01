@@ -1,0 +1,34 @@
+{
+  "schema": "psionic.panda-joint-pd.independent-oracle.v1",
+  "passed": true,
+  "method": "Derivative of -sum(mass * worldgravity dot worldCOM) via full-angle4x4 analytic matrix product-rule tangents; scalar PD in declared F64 order, independent strict clipping. No owned quaternion/cross-product arithmetic.",
+  "source_matrix_module": "psionic/tests/robotics/panda_inverse_dynamics_matrix.py",
+  "source_matrix_module_sha256": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+  "oracle_driver_sha256": "3e6e5eb87fd3d2937486ae2d380ea1928844119aca10a1e27eaa496e5edcb1af",
+  "experiment_sha256": "5c5a44371db1dd48695dfb08953409fa425914b46f0cd1b2ffad24b5653a0143",
+  "input_cases_sha256": "e226f2c1f92ac61c0f118483c2342f67548b4819aa1967ce24714dcf6914ae3d",
+  "target_table_sha256": "60ee4be0d1be397771c557438b62284e58740d14f3f313436ce03d8b2eac4793",
+  "target_words": 1540,
+  "retained_SDK_states": 5,
+  "retained_based_PD_queries": 20,
+  "new_matrix_states": 24,
+  "source": {
+    "matrix_vs_retained_SDK": {
+      "passed": true,
+      "values": 35,
+      "max_abs_error": 7.105427357601002e-15,
+      "atol": 5e-10,
+      "rtol": 0,
+      "unit": "Joule/Radian; per-one-radian generator normalization"
+    },
+    "unique_gravity_contexts": 29,
+    "retained_SDK_states": 5,
+    "retained_based_PD_queries": 20,
+    "new_matrix_states": 24,
+    "SDK_calls": 0,
+    "old_numeric_gates_repeated": false
+  },
+  "SDK_calls": 0,
+  "old_metric_or_source_qualification_repeated": false,
+  "native_receipt_sha256": "6385d4517db9af849631cf26faff6fe41d4100a85cf4d173977d4b2ffdc9122e"
+}

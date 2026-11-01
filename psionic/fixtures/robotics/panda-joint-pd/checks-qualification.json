@@ -1,0 +1,120 @@
+{
+  "schema": "psionic.panda-joint-pd.checks-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "experiment_sha256": "5c5a44371db1dd48695dfb08953409fa425914b46f0cd1b2ffad24b5653a0143",
+  "sources": {
+    "psionic/lib/robotics/panda-joint-pd-fixtures.coax": {
+      "sha256": "d179ed3cd55a1ec205e1948138d1af55134e516d2cc0e56bccdb2447bf627688",
+      "bytes": 1202
+    },
+    "psionic/lib/robotics/panda-joint-pd-math.coax": {
+      "sha256": "34ff88f6cd51b6d12cffeaadc62a6d15c25c178f8b6bde848a67e87873999e0e",
+      "bytes": 4664
+    },
+    "psionic/lib/robotics/panda-joint-pd-types.coax": {
+      "sha256": "bc86a3feaa97ef774aae5a03d669561db3ae3cda57b9f44fc07d7a17382dc1a5",
+      "bytes": 960
+    },
+    "psionic/lib/robotics/panda-joint-pd.coax": {
+      "sha256": "dcd2248ee1a008a62487d32d15d04af494969666b8db1700d6cd65768bb451b8",
+      "bytes": 5079
+    },
+    "psionic/tests/robotics/panda_joint_pd_bad_angle.coax": {
+      "sha256": "b77f984ba670702787ff3e6ff29bf660a699ae4a5a89e8bda1e33b58f00cf090",
+      "bytes": 239
+    },
+    "psionic/tests/robotics/panda_joint_pd_bad_kd.coax": {
+      "sha256": "41bc36e28d085ab2f76019647a5221d759e5470ebcd2f7dff673826d38917d86",
+      "bytes": 242
+    },
+    "psionic/tests/robotics/panda_joint_pd_bad_kp.coax": {
+      "sha256": "465fb16d769c38daca3e0ee40809894bebeb3b41f07ac278f29ef83214baaa28",
+      "bytes": 244
+    },
+    "psionic/tests/robotics/panda_joint_pd_bad_rate.coax": {
+      "sha256": "e8220c286af060afb0f05cf5cbecc5dd92f90e8c7aab6466ee3cc1eae3414a8d",
+      "bytes": 245
+    }
+  },
+  "check_first": true,
+  "current_source_groups": 8,
+  "current_source_cases": 101,
+  "source_counts_scope": "Finalnewrootmutation baselines execute current8groups/101cases. Initialfocusedlog115cases included14emptyforallbranches; replaced with60actualboundedcaseindices before finalrootqualification, leaving101meaningfulcases.",
+  "initial_source_log_sha256": "67392bf0821e226f02d2ea7d0e54e6e53f86162989ecd485cfe93a1075e1e9b4",
+  "mutation_roots": [
+    {
+      "source": "panda-joint-pd-math.coax",
+      "mutants": 54,
+      "killed": 54,
+      "survived": 0,
+      "stdout_sha256": "06561125e07a43d88fae17ec16cd82c87320aef55cdbaa9ad39bc0a58910d99c"
+    },
+    {
+      "source": "panda-joint-pd.coax",
+      "mutants": 91,
+      "killed": 91,
+      "survived": 0,
+      "stdout_sha256": "5d3e9076530796247dc035360c606a274082fc7c5ee7fa2899112a2edbf97818"
+    }
+  ],
+  "history": [
+    {
+      "kind": "initialforallcontinueunsupported;fixtureonlyrepair",
+      "stderr_sha256": "b1eb68dba3ae8fa64c2a59e5a041c86e35190bbaa8a824cde3335d6870a6bf88"
+    },
+    {
+      "kind": "two missingpubliccopyobservationsclosedwithoutproductarithmeticchanges",
+      "mutants": 91,
+      "killed": 89,
+      "survived": 2,
+      "stdout_sha256": "71ecbce2bc9a2bc22140cf6a70048cde6bc2a8477e3cfe13524a3855d16b2da3"
+    }
+  ],
+  "unit_refusals_sha256": "14797b975fd46406065db731e4ecb251bed07533ef9a41ec68085a7b800079f1",
+  "unit_refusals": {
+    "schema": "psionic.panda-joint-pd.unit-refusals.v1",
+    "passed": true,
+    "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "checks": [
+      {
+        "name": "angle",
+        "source_sha256": "b77f984ba670702787ff3e6ff29bf660a699ae4a5a89e8bda1e33b58f00cf090",
+        "exit": 1,
+        "diagnostic": "E0317",
+        "stderr_sha256": "f931d5ff2c402af689393b414c166be1be0991f448b8230117e225577a604b1a",
+        "refused": true
+      },
+      {
+        "name": "rate",
+        "source_sha256": "e8220c286af060afb0f05cf5cbecc5dd92f90e8c7aab6466ee3cc1eae3414a8d",
+        "exit": 1,
+        "diagnostic": "E0317",
+        "stderr_sha256": "f837286d56ac17505cc51c3a783163cf6022f27b69c9c076295b2d6fc308e49a",
+        "refused": true
+      },
+      {
+        "name": "kp",
+        "source_sha256": "465fb16d769c38daca3e0ee40809894bebeb3b41f07ac278f29ef83214baaa28",
+        "exit": 1,
+        "diagnostic": "E0317",
+        "stderr_sha256": "82f4d92023902159e1bbec8d75471feccc24a6e15beb6ce01291b0aded069349",
+        "refused": true
+      },
+      {
+        "name": "kd",
+        "source_sha256": "41bc36e28d085ab2f76019647a5221d759e5470ebcd2f7dff673826d38917d86",
+        "exit": 1,
+        "diagnostic": "E0317",
+        "stderr_sha256": "14ec3ca338a75be0490e343259e6b366b03a06a86cc07ae7e63be1bad14554e9",
+        "refused": true
+      }
+    ]
+  },
+  "mutation_scope": "Actual emitted newroot sites only, all zero survivors without equivalent waivers. TypedQuantityoperator-token provenance remains incomplete; independent literal/native allfield checks supplement this scope.",
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "simulation_steps": 0,
+  "old_passing_gates_repeated": false
+}

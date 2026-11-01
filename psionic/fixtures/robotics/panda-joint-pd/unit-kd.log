@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_joint_pd_bad_kd.coax:2:179: error[E0317]: argument 7 of 'pjp_forward' is [] Quantity(PjpDamping, f64), given [] Quantity(PjpStiffness, f64)
+  main :: () {x:=pjp_fixture();kd:[7]pfku.Quantity(PjpStiffness,f64);out:[1]PjpOutput;status:=pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],kd[..],out[..]);}
+                                                                                                                                                                                    ^
+1 error

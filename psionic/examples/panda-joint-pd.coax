@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../lib/robotics/panda-joint-pd.coax";
+
+#test "Panda joint PD example display rounds independent positive negative and zero force values" {
+ #assert pjp_example_micro(6)==6000000 && pjp_example_micro(-1.2)== -1200000;
+ #assert pjp_example_micro(0)==0 && pjp_example_micro(0.0000006)==1 && pjp_example_micro(-0.0000006)== -1;
+}
+pjp_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("joint PD + zero-rate gravity; fixed source7\n");
+// book:begin pjp-query
+ // All q/target entries are radians, rates rad/s, Kp J/rad² and Kd J*s/rad².
+ // Fingers affect owned gravity; they are positions here, not control outputs.
+ x:=pjp_fixture();delta:=[7]f64.[0.1,-0.12,0.13,-0.14,0.15,-0.16,0.17];
+ v:=[7]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1];tv:=[7]f64.[-0.2,0.3,-0.4,0.5,-0.6,0.7,-0.8];
+ for i:0..<7 {x.target[i].value=x.q[i].value+delta[i];x.rate[i].value=v[i];x.target_rate[i].value=tv[i];}
+ out:[1]PjpOutput;
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..])==PjpStatus.ok;
+ for i:0..<7 {print("hinge % P/D/g0/requested/command (micro-J/rad): % % % % %\n",i+1,pjp_example_micro(out[0].proportional[i].value),pjp_example_micro(out[0].derivative[i].value),pjp_example_micro(out[0].gravity[i].value),pjp_example_micro(out[0].requested[i].value),pjp_example_micro(out[0].command[i].value));}
+ print("controller clipped coordinates: %\n",out[0].clipped);
+ // A predeclared numerical stress fixture, not a stable-gain recommendation.
+ lo:=pik_lower();hi:=pik_upper();
+ for i:0..<7 {positive:=i%2==0;x.target[i].value=ifx positive then hi[i] else lo[i];x.rate[i].value=ifx positive then -20.0 else 20.0;x.target_rate[i].value= -x.rate[i].value;x.kp[i].value=500;x.kd[i].value=100;}
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..])==PjpStatus.ok && out[0].clipped==7;
+ print("stress query clipped coordinates: %; source limits reported\n",out[0].clipped);
+ before:=out[0];x.kd[0].value=0;
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..])==PjpStatus.range;
+ pjp_same(out[0],before);
+ print("zero Kd: range refusal; complete output unchanged\n");
+ print("feed command to Pa once; keep clipping stages separate\n");
+// book:end pjp-query
+}
