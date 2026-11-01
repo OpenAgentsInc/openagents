@@ -516,7 +516,7 @@
    "number": 25,
    "title": "Gift wrap",
    "file": "ch025-gift-wrap.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     20,
@@ -524,7 +524,9 @@
     13
    ],
    "source": [
-    "coax/lib/nostr/nip59.coax"
+    "coax/lib/nostr/nip59.coax",
+    "nostr/examples/checks/gift-wrap.coax",
+    "nostr/examples/gift-wrap.coax"
    ],
    "qualified_targets": [
     "cpu"

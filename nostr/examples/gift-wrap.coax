@@ -1,0 +1,192 @@
+// Chapter 25: wrap one rumor for Bob with fixed test keys and fixed stand-ins
+// for host entropy, peel the three layers by hand, open it with
+// nip59_unwrap_checked, then show what the reader refuses.
+// Run: coax/bin/coax run nostr/examples/gift-wrap.coax --run-steps 250000000
+// book:begin example
+#load "../../coax/lib/nostr/nip59.coax";
+#import "Basic";
+
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+STATUS :: [17] string.["ok", "input", "alias", "output", "capacity", "key", "fresh",
+  "wrap", "wrap signature", "recipient", "wrap payload", "seal", "seal signature",
+  "seal payload", "rumor", "identity", "internal"];
+
+// Test keys only: Alice k=3, Bob is BIP-340 vector 1's secret key, Carol
+// k=7, and the one-time wrap key k=5. Never put a real key in an example.
+ALICE_HEX :: "0000000000000000000000000000000000000000000000000000000000000003";
+BOB_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+CAROL_HEX :: "0000000000000000000000000000000000000000000000000000000000000007";
+ONE_TIME_HEX :: "0000000000000000000000000000000000000000000000000000000000000005";
+NOW :: 1793300000;
+BOB_TAG :: "[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+MESSAGE :: "Are you going to the party tonight?";
+
+test_key :: (text: string) -> [32] u8 { k: [32] u8; decode_hex(text, k[..]); return k; }
+// The x-only public key: the first stage of the event signer computes it.
+x_only_key :: (secret: [] u8) -> [32] u8 {
+  aux: [32] u8; sw: [1] NostrSignWork; scratch: [256] u8; out: [256] u8;
+  #assert nostr_event_sign_step(secret, aux[..], 0, 1, "[]", "", sw[..], scratch[..], out[..], false) == EVENT_MORE;
+  return sw[0].pub;
+}
+// What a host's random source would supply, fixed so the output repeats:
+// the one-time key, two NIP-44 nonces, two BIP-340 aux values, and the two
+// draws that pick how far back the seal and the wrap are dated.
+fixed_entropy :: () -> [1] Nip59Fresh {
+  f: [1] Nip59Fresh;
+  f[0].wrap_key = test_key(ONE_TIME_HEX);
+  for i: 0..<32 {
+    f[0].seal_nonce[i] = 0x11; f[0].wrap_nonce[i] = 0x22;
+    f[0].seal_aux[i] = 0x33; f[0].wrap_aux[i] = 0x44;
+  }
+  f[0].seal_back = 3600; f[0].wrap_back = 200000;
+  return f;
+}
+
+// The content field of an event, unescaped, decrypted with the conversation
+// key of secret and the event's pubkey. Returns the plaintext length or -1.
+// With show, prints the layer's kind, time, signer and conversation key.
+open_layer :: (secret: [] u8, label: string, text: string, out: [] u8, show: bool) -> int {
+  scratch: [NIP59_REGION] u8; payload: [NIP59_REGION] u8; work: [2 * NIP59_REGION] u8;
+  e := nostr_event_verify_vartime(text, scratch[..], false);
+  if !e.verified { return -1; }
+  ck: [32] u8;
+  if n59_ck(secret, e.public_key[..], ck[..]) != NIP44_OK { return -1; }
+  if show {
+    print("%: kind %, created_at %, verified %\n", label, e.kind, e.created_at, e.verified);
+    print_hex("  signed by", e.public_key[..]);
+    print_hex("  conversation key", ck[..]);
+  }
+  n := json_unescape(text[e.content_from..<e.content_to], payload[..]);
+  d := nip44_decrypt_checked(NIP44_COMPAT, ck[..], cast(string) payload[0..<n], work[..], out, false);
+  if d.error != NIP44_OK { return -1; }
+  return d.written;
+}
+
+// Opens text as recipient (secret, public key) and prints the status.
+check_open :: (label: string, secret: [] u8, me: [] u8, text: string) {
+  work: [NIP59_WORK] u8; out: [NIP59_REGION] u8;
+  o := nip59_unwrap_checked(secret, me, text, work[..], out[..], false);
+  print("%: %\n", label, STATUS[o.error]);
+  if o.error == NIP59_OK {
+    print_hex("  author", o.author[..]);
+    print_hex("  wrap key", o.wrap_key[..]);
+    print_hex("  rumor id", o.rumor_id[..]);
+    print("  kind %, created_at %, content %\n", o.kind, o.created_at,
+          cast(string) out[o.content_from..<o.content_to]);
+  }
+}
+// text with its signature's last hex digit changed, written into out.
+flip_last_sig_digit :: (text: string, out: [] u8) -> string {
+  n := json_raw(out, 0, text);
+  #assert n == text.count && out[n - 1] == '}' && out[n - 2] == '"';
+  out[n - 3] = ifx out[n - 3] == '0' then cast(u8) '1' else cast(u8) '0';
+  return cast(string) out[0..<n];
+}
+// text with the first occurrence of old replaced by new.
+replace :: (text: string, old: string, new: string, out: [] u8) -> string {
+  at := -1;
+  for i: 0..<text.count - old.count + 1 {
+    if at < 0 && text[i..<i + old.count] == old { at = i; }
+  }
+  #assert at >= 0;
+  n := json_raw(out, 0, text[0..<at]);
+  n = json_raw(out, n, new);
+  n = json_raw(out, n, text[at + old.count..<text.count]);
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// Seals any rumor bytes with seal_key and seal_tags, and wraps the seal for
+// Bob with the one-time key, skipping every rule nip59_wrap_checked enforces.
+// This is how a forger would build a wrap; the reader must refuse it.
+forge :: (seal_key: [] u8, seal_tags: string, rumor: [] u8, out: [] u8) -> int {
+  bob_key := test_key(BOB_HEX); bob := x_only_key(bob_key[..]); one := test_key(ONE_TIME_HEX); f := fixed_entropy();
+  ck: [32] u8; work: [2 * NIP59_REGION] u8; pay: [NIP59_REGION] u8;
+  scratch: [NIP59_REGION] u8; seal: [NIP59_REGION] u8;
+  #assert n59_ck(seal_key, bob[..], ck[..]) == NIP44_OK;
+  p := nip44_encrypt_checked(NIP44_COMPAT, ck[..], f[0].seal_nonce[..], rumor, work[..], pay[..], false);
+  sw: [1] NostrSignWork;
+  s := n59_sign(seal_key, f[0].seal_aux[..], NOW - 3600, NIP59_SEAL_KIND, seal_tags,
+                cast(string) pay[0..<p.written], sw[..], scratch[..], seal[..]);
+  #assert s > 0 && n59_ck(one[..], bob[..], ck[..]) == NIP44_OK;
+  q := nip44_encrypt_checked(NIP44_COMPAT, ck[..], f[0].wrap_nonce[..], seal[0..<s], work[..], pay[..], false);
+  ww: [1] NostrSignWork;
+  return n59_sign(one[..], f[0].wrap_aux[..], NOW - 27200, NIP59_WRAP_KIND, BOB_TAG,
+                  cast(string) pay[0..<q.written], ww[..], scratch[..], out);
+}
+
+main :: () {
+  alice := test_key(ALICE_HEX); bob := test_key(BOB_HEX); carol := test_key(CAROL_HEX);
+  bob_pub := x_only_key(bob[..]); carol_pub := x_only_key(carol[..]);
+  print("keys\n");
+  one := test_key(ONE_TIME_HEX); alice_pub := x_only_key(alice[..]); one_pub := x_only_key(one[..]);
+  print_hex("alice", alice_pub[..]); print_hex("bob", bob_pub[..]);
+  print_hex("carol", carol_pub[..]); print_hex("one-time", one_pub[..]);
+
+  print("wrap\n");
+  fresh := fixed_entropy();
+  work: [NIP59_WORK] u8; wrapped: [NIP59_REGION] u8;
+  w := nip59_wrap_checked(alice[..], bob_pub[..], NOW, 14, BOB_TAG, MESSAGE, NIP59_WRAP_KIND,
+                          fresh[..], work[..], wrapped[..], false);
+  print("status: %, % bytes\n", STATUS[w.error], w.written);
+  print_hex("rumor id", w.rumor_id[..]);
+  print("rumor at %, seal at % (-%), wrap at % (-%)\n", NOW, w.seal_at, NOW - w.seal_at, w.wrap_at, NOW - w.wrap_at);
+  print("entropy cleared: %\n", fresh[0].wrap_key[31] == 0 && fresh[0].seal_back == 0);
+  wrap := cast(string) wrapped[0..<w.written];
+  print("wrap: %\n", wrap);
+
+  print("peel it by hand as bob\n");
+  seal: [NIP59_REGION] u8; rumor: [NIP59_REGION] u8;
+  s := open_layer(bob[..], "wrap", wrap, seal[..], true);
+  print("seal (% bytes): %\n", s, cast(string) seal[0..<s]);
+  r := open_layer(bob[..], "seal", cast(string) seal[0..<s], rumor[..], true);
+  print("rumor (% bytes): %\n", r, cast(string) rumor[0..<r]);
+
+  print("unwrap\n");
+  check_open("bob opens it", bob[..], bob_pub[..], wrap);
+
+  print("refusals\n");
+  edit: [NIP59_REGION] u8;
+  check_open("kind 1059 -> 1060", bob[..], bob_pub[..], replace(wrap, "1059", "1060", edit[..]));
+  check_open("content first A -> B", bob[..], bob_pub[..], replace(wrap, "\"content\":\"A", "\"content\":\"B", edit[..]));
+  check_open("sig last digit changed", bob[..], bob_pub[..], flip_last_sig_digit(wrap, edit[..]));
+  check_open("carol opens it", carol[..], carol_pub[..], wrap);
+  check_open("carol claims bob's key", carol[..], bob_pub[..], wrap);
+
+  forged: [NIP59_REGION] u8; pre: [NIP59_REGION] u8; body: [NIP59_REGION] u8; id: [32] u8;
+  n := n59_rumor(alice_pub[..], NOW, 14, BOB_TAG, MESSAGE, pre[..], body[..], id[..]);
+  m := forge(carol[..], "[]", body[0..<n], forged[..]);
+  check_open("alice's rumor sealed by carol", bob[..], bob_pub[..], cast(string) forged[0..<m]);
+  m = forge(alice[..], BOB_TAG, body[0..<n], forged[..]);
+  check_open("seal with a p tag", bob[..], bob_pub[..], cast(string) forged[0..<m]);
+  aux: [32] u8; sw: [1] NostrSignWork;
+  n = n59_sign(alice[..], aux[..], NOW, 14, BOB_TAG, MESSAGE, sw[..], pre[..], body[..]);
+  m = forge(alice[..], "[]", body[0..<n], forged[..]);
+  check_open("signed rumor", bob[..], bob_pub[..], cast(string) forged[0..<m]);
+
+  fresh = fixed_entropy(); fresh[0].wrap_key = alice;
+  w = nip59_wrap_checked(alice[..], bob_pub[..], NOW, 14, BOB_TAG, MESSAGE, NIP59_WRAP_KIND,
+                         fresh[..], work[..], wrapped[..], false);
+  print("wrap with alice's key as the one-time key: %\n", STATUS[w.error]);
+
+  print("NIP-59's example\n");
+  recipient := test_key(NIP59_RECIPIENT_HEX); recipient_pub := x_only_key(recipient[..]);
+  check_open("as published", recipient[..], recipient_pub[..], NIP59_EXAMPLE_PUBLISHED);
+  check_open("trailing comma removed", recipient[..], recipient_pub[..], NIP59_EXAMPLE);
+}
+// book:end example
+
+// NIP-59's "An Example": the recipient's published test key and its kind 1059
+// wrap, as printed in nostr/nips/official/59.md (with the trailing comma after
+// "tags" that makes it invalid JSON), and the same wrap without that comma.
+NIP59_RECIPIENT_HEX :: "e108399bd8424357a710b606ae0c13166d853d327e47a6e5e038197346bdbf45";
+NIP59_EXAMPLE_PUBLISHED :: "{\n  \"content\": \"AhC3Qj/QsKJFWuf6xroiYip+2yK95qPwJjVvFujhzSguJWb/6TlPpBW0CGFwfufCs2Zyb0JeuLmZhNlnqecAAalC4ZCugB+I9ViA5pxLyFfQjs1lcE6KdX3euCHBLAnE9GL/+IzdV9vZnfJH6atVjvBkNPNzxU+OLCHO/DAPmzmMVx0SR63frRTCz6Cuth40D+VzluKu1/Fg2Q1LSst65DE7o2efTtZ4Z9j15rQAOZfE9jwMCQZt27rBBK3yVwqVEriFpg2mHXc1DDwHhDADO8eiyOTWF1ghDds/DxhMcjkIi/o+FS3gG1dG7gJHu3KkGK5UXpmgyFKt+421m5o++RMD/BylS3iazS1S93IzTLeGfMCk+7IKxuSCO06k1+DaasJJe8RE4/rmismUvwrHu/HDutZWkvOAhd4z4khZo7bJLtiCzZCZ74lZcjOB4CYtuAX2ZGpc4I1iOKkvwTuQy9BWYpkzGg3ZoSWRD6ty7U+KN+fTTmIS4CelhBTT15QVqD02JxfLF7nA6sg3UlYgtiGw61oH68lSbx16P3vwSeQQpEB5JbhofW7t9TLZIbIW/ODnI4hpwj8didtk7IMBI3Ra3uUP7ya6vptkd9TwQkd/7cOFaSJmU+BIsLpOXbirJACMn+URoDXhuEtiO6xirNtrPN8jYqpwvMUm5lMMVzGT3kMMVNBqgbj8Ln8VmqouK0DR+gRyNb8fHT0BFPwsHxDskFk5yhe5c/2VUUoKCGe0kfCcX/EsHbJLUUtlHXmTqaOJpmQnW1tZ/siPwKRl6oEsIJWTUYxPQmrM2fUpYZCuAo/29lTLHiHMlTbarFOd6J/ybIbICy2gRRH/LFSryty3Cnf6aae+A9uizFBUdCwTwffc3vCBae802+R92OL78bbqHKPbSZOXNC+6ybqziezwG+OPWHx1Qk39RYaF0aFsM4uZWrFic97WwVrH5i+/Nsf/OtwWiuH0gV/SqvN1hnkxCTF/+XNn/laWKmS3e7wFzBsG8+qwqwmO9aVbDVMhOmeUXRMkxcj4QreQkHxLkCx97euZpC7xhvYnCHarHTDeD6nVK+xzbPNtzeGzNpYoiMqxZ9bBJwMaHnEoI944Vxoodf51cMIIwpTmmRvAzI1QgrfnOLOUS7uUjQ/IZ1Qa3lY08Nqm9MAGxZ2Ou6R0/Z5z30ha/Q71q6meAs3uHQcpSuRaQeV29IASmye2A2Nif+lmbhV7w8hjFYoaLCRsdchiVyNjOEM4VmxUhX4VEvw6KoCAZ/XvO2eBF/SyNU3Of4SO\",\n  \"kind\": 1059,\n  \"created_at\": 1703021488,\n  \"pubkey\": \"18b1a75918f1f2c90c23da616bce317d36e348bcf5f7ba55e75949319210c87c\",\n  \"id\": \"5c005f3ccf01950aa8d131203248544fb1e41a0d698e846bd419cec3890903ac\",\n  \"sig\": \"35fabdae4634eb630880a1896a886e40fd6ea8a60958e30b89b33a93e6235df750097b04f9e13053764251b8bc5dd7e8e0794a3426a90b6bcc7e5ff660f54259\",\n  \"tags\": [[\"p\", \"166bf3765ebd1fc55decfe395beff2ea3b2a4e0a8946e7eb578512b555737c99\"]],\n}";
+NIP59_EXAMPLE :: "{\n  \"content\": \"AhC3Qj/QsKJFWuf6xroiYip+2yK95qPwJjVvFujhzSguJWb/6TlPpBW0CGFwfufCs2Zyb0JeuLmZhNlnqecAAalC4ZCugB+I9ViA5pxLyFfQjs1lcE6KdX3euCHBLAnE9GL/+IzdV9vZnfJH6atVjvBkNPNzxU+OLCHO/DAPmzmMVx0SR63frRTCz6Cuth40D+VzluKu1/Fg2Q1LSst65DE7o2efTtZ4Z9j15rQAOZfE9jwMCQZt27rBBK3yVwqVEriFpg2mHXc1DDwHhDADO8eiyOTWF1ghDds/DxhMcjkIi/o+FS3gG1dG7gJHu3KkGK5UXpmgyFKt+421m5o++RMD/BylS3iazS1S93IzTLeGfMCk+7IKxuSCO06k1+DaasJJe8RE4/rmismUvwrHu/HDutZWkvOAhd4z4khZo7bJLtiCzZCZ74lZcjOB4CYtuAX2ZGpc4I1iOKkvwTuQy9BWYpkzGg3ZoSWRD6ty7U+KN+fTTmIS4CelhBTT15QVqD02JxfLF7nA6sg3UlYgtiGw61oH68lSbx16P3vwSeQQpEB5JbhofW7t9TLZIbIW/ODnI4hpwj8didtk7IMBI3Ra3uUP7ya6vptkd9TwQkd/7cOFaSJmU+BIsLpOXbirJACMn+URoDXhuEtiO6xirNtrPN8jYqpwvMUm5lMMVzGT3kMMVNBqgbj8Ln8VmqouK0DR+gRyNb8fHT0BFPwsHxDskFk5yhe5c/2VUUoKCGe0kfCcX/EsHbJLUUtlHXmTqaOJpmQnW1tZ/siPwKRl6oEsIJWTUYxPQmrM2fUpYZCuAo/29lTLHiHMlTbarFOd6J/ybIbICy2gRRH/LFSryty3Cnf6aae+A9uizFBUdCwTwffc3vCBae802+R92OL78bbqHKPbSZOXNC+6ybqziezwG+OPWHx1Qk39RYaF0aFsM4uZWrFic97WwVrH5i+/Nsf/OtwWiuH0gV/SqvN1hnkxCTF/+XNn/laWKmS3e7wFzBsG8+qwqwmO9aVbDVMhOmeUXRMkxcj4QreQkHxLkCx97euZpC7xhvYnCHarHTDeD6nVK+xzbPNtzeGzNpYoiMqxZ9bBJwMaHnEoI944Vxoodf51cMIIwpTmmRvAzI1QgrfnOLOUS7uUjQ/IZ1Qa3lY08Nqm9MAGxZ2Ou6R0/Z5z30ha/Q71q6meAs3uHQcpSuRaQeV29IASmye2A2Nif+lmbhV7w8hjFYoaLCRsdchiVyNjOEM4VmxUhX4VEvw6KoCAZ/XvO2eBF/SyNU3Of4SO\",\n  \"kind\": 1059,\n  \"created_at\": 1703021488,\n  \"pubkey\": \"18b1a75918f1f2c90c23da616bce317d36e348bcf5f7ba55e75949319210c87c\",\n  \"id\": \"5c005f3ccf01950aa8d131203248544fb1e41a0d698e846bd419cec3890903ac\",\n  \"sig\": \"35fabdae4634eb630880a1896a886e40fd6ea8a60958e30b89b33a93e6235df750097b04f9e13053764251b8bc5dd7e8e0794a3426a90b6bcc7e5ff660f54259\",\n  \"tags\": [[\"p\", \"166bf3765ebd1fc55decfe395beff2ea3b2a4e0a8946e7eb578512b555737c99\"]]\n}";

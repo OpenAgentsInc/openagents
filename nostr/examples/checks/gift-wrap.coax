@@ -1,0 +1,80 @@
+// The checks of gift-wrap.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/gift-wrap.coax --run-steps 250000000
+#load "../gift-wrap.coax";
+
+// book:begin check
+// Chapter 25's rumor, seal and wrap as written by
+// coax/tests/nostr/nip59_reference.py: a pure-Python NIP-59 (integers,
+// hashlib, hmac and base64, with ChaCha20, NIP-44 v2 and BIP-340 written from
+// their documents; it shares no code with Coax) given the same test keys,
+// nonces, aux bytes and time draws.
+PY_RUMOR :: "{\"id\":\"2f28bd6c3f405f933b16e0737cfbe321afed12150c7af45093c005bdc6476593\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1793300000,\"kind\":14,\"tags\":[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]],\"content\":\"Are you going to the party tonight?\"}";
+PY_SEAL :: "{\"id\":\"10ab74e701a4a2d04303db4ef15c914386ab4a050470c4008f157221c28a0e2f\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1793296400,\"kind\":13,\"tags\":[],\"content\":\"AhERERERERERERERERERERERERERERERERERERERERERHJa6jG4w2PI7Vsjqo5olWJi8uAMy33jsuNsbuq0x62NgGBvZPNP9hjk1Q50TW3Q+8Ja46gU0vaqCTh1jtH16xZNK0hZM5y4V0Kecx382Pkl17dKDSC8RGKUMwOoVAQphtlhxG/6UlUw44bKyE09cy8WGatPKqxTNOW+pON4ikBSRRli2KvLHx+TDT0hjO7OSrRfaHweVu2jW3Css+JVNPFbeXBU/GCpI0ZN9lGK0Xd1ntjr+6vdnhD5pIAgvl+0/6JoP9x1Sc50F0Xrw75MfbjhTVmxGi5Hym3ivjYwhYBj/5nVZnA7O2M8gDhojTAagvh5l3DoqgOCFGWTa0Pt4kccK/MwUZr1LLhlMJx8+r1yCCtHibtKS7CspT2dC8ycoZXsAX+XOexOz3kIBWvynWKFAUkYqQ1o6uxfQ612eg6bcTaFz2MiHDwAaeFZVzoEBfi3hY1+8wGi8aa8NZV9+dUso\",\"sig\":\"0e994d7ca8d900a50013bf5245d46c33c67985d5eba723485bf9d95e462f48ab56edf0fff9f1578617d4c7479e81c0456bcb767b4c1f00b1672bfdacc1d3035f\"}";
+PY_WRAP :: "{\"id\":\"dee716d487d997ac7b96dd52059fef87d018c51cab9aa0c229b92651621d2378\",\"pubkey\":\"2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4\",\"created_at\":1793272800,\"kind\":1059,\"tags\":[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]],\"content\":\"AiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIix1GJXHcZ+mlPEiFxleaUhIdz8zu6lNYKmxg7Mk6sVXcHxmHtqaBD1ehGrUnMFL61D1d2idSkck+7/jU2ZmriAeczAh2O9ObAJy15tNI6ly4l5pZrNlkjOvMgea79P8ASrtoryFrXslbzGeiA9DuYd8w/3BG/dZGBsKx/qA9pPk6N3s//EXoMh02w7siZAPyekcx3HMn0yfC4KF5srfLKESGfgc2uw0hx38ygSntu+6Hmm9W50/JrBclh8txd/7SoRClaDfvjgDnONz5iqxaxlP7PspMLCBCJu3zz3ZHkWf2gPwArcMCmIBQ8mPiiUb3NZ8sNzoB5wbN5813NTXou6xYHwrDiRxMARvoofPQTmlpUQIx2LAiVT2+EeQBrr8gc7gXGFtT1kC0E72E5rSd4jqQBYBuoVAuUlfbl/0JQZpyF1diGQ1Qw+cweSOSg11ToNFk06rFi3PoZPUZtidD6gEyR/RhfK/M6LaidQXLLhD+5CzGQLTDoVY7bVbwe5MzXCStZ0cGzDzNyJ2i6C/c7ZzVqxwDGvzlpRD85pMZJ870xXCzkvtpALeIsOfQTESv9W1fmkavd8CfYmqvMln+hNB3427hOqitz4rIAapem1gW2qKsnbwVRmCamNyeW/JP7F17XZD2Cv6DyEHtcDr7yijl8iaQX05zzbDxpod26y2oOoCd8NnKes6m29plvV5eH3oiJaRTCXw2UkPG5dfIjugUOo2azcVUtPVWQEbGSmd1MSKZIS+tAPRGkH3pRyRLSlHnpBXgrsTALynf1F2NDnYn3peEFuWa/HY5218i+F0SnOPHal5LNKgZRDwA7RIUR8fZ1PLAwSa5oUgm9RSS5SDUSkfMXhP7lUge5GIsxCHH65F3yRrthoBSHIehkKME118hs9e+K3tFZAKb0yhtLzVrTx5TxRXC3ruimB7dnyb/ENR1ORtara3uCAN3pb6oZFUEsUlmk7LPgO4vEesOOgTF2TKsQ6nBqlpniEtlxbdlBuLQX4OZFeM6vZaQnu8k9200Cl5HU6mE+oqlyOgATCT6Y47rdsWo5vUom/n7xs+nnVvrDURloXJJjh/sBrS298LtDPT4LSiUTNFMc6LB8FCEm+4uZuQQ0LqWmPNNQIbOX9kbVAhzC5PLOBpFzgnH02U6rXPTa0ur9B/5UtaRlzq1u7GTqVwOpiqYKrHpunOyZ2ByZtHWf8wH/kJfZJGacZ1PqUCxihEMbg43tBm9FeZrz\",\"sig\":\"24a9d69e5d96f36b744f63d34ea05dd2d57a31ba7a0a6cfa9e33f917c3ee71ca5058832bb054625883d308db687cbbe1cc9629ece0f9c449766eb32201f56713\"}";
+// What the same Python script reads from NIP-59's example with the
+// recipient's published key: the seal's author and the rumor's id.
+PY_NIP59_AUTHOR :: "611df01bfcf85c26ae65453b772d8f1dfd25c264621c0277e1fc1518686faef9";
+PY_NIP59_RUMOR_ID :: "9dd003c6d3b73b74a85a9ab099469ce251653a7af76f523671ab828acd2a0ef9";
+
+same_hex :: (bytes: [32] u8, text: string) -> bool {
+  want: [32] u8; decode_hex(text, want[..]);
+  for i: 0..<32 { if bytes[i] != want[i] { return false; } }
+  return true;
+}
+open_as :: (secret_hex: string, text: string, out: [] u8) -> Nip59Opened {
+  secret := test_key(secret_hex); me := x_only_key(secret[..]); work: [NIP59_WORK] u8;
+  return nip59_unwrap_checked(secret[..], me[..], text, work[..], out, false);
+}
+
+#test "the fixed-entropy wrap is the Python reference's, byte for byte" #steps 400000000 {
+  alice := test_key(ALICE_HEX); bob := test_key(BOB_HEX); bob_pub := x_only_key(bob[..]);
+  fresh := fixed_entropy(); work: [NIP59_WORK] u8; out: [NIP59_REGION] u8;
+  w := nip59_wrap_checked(alice[..], bob_pub[..], NOW, 14, BOB_TAG, MESSAGE, NIP59_WRAP_KIND,
+                          fresh[..], work[..], out[..], false);
+  #assert w.error == NIP59_OK && w.written == PY_WRAP.count && cast(string) out[0..<w.written] == PY_WRAP;
+  #assert same_hex(w.rumor_id, "2f28bd6c3f405f933b16e0737cfbe321afed12150c7af45093c005bdc6476593");
+  #assert w.seal_at == NOW - 3600 && w.wrap_at == NOW - 27200;
+}
+#test "the Python wrap peels to the Python seal and opens to the Python rumor" #steps 400000000 {
+  bob := test_key(BOB_HEX); seal: [NIP59_REGION] u8; out: [NIP59_REGION] u8;
+  s := open_layer(bob[..], "wrap", PY_WRAP, seal[..], false);
+  #assert s == PY_SEAL.count && cast(string) seal[0..<s] == PY_SEAL;
+  o := open_as(BOB_HEX, PY_WRAP, out[..]);
+  #assert o.error == NIP59_OK && cast(string) out[0..<o.written] == PY_RUMOR;
+  alice := test_key(ALICE_HEX); alice_pub := x_only_key(alice[..]);
+  for i: 0..<32 { #assert o.author[i] == alice_pub[i]; }
+}
+#test "NIP-59's example opens with the recipient's key once its trailing comma is gone" #steps 400000000 {
+  out: [NIP59_REGION] u8;
+  o := open_as(NIP59_RECIPIENT_HEX, NIP59_EXAMPLE, out[..]);
+  #assert o.error == NIP59_OK && o.kind == 1 && o.created_at == 1691518405;
+  #assert same_hex(o.author, PY_NIP59_AUTHOR) && same_hex(o.rumor_id, PY_NIP59_RUMOR_ID);
+  #assert cast(string) out[o.content_from..<o.content_to] == "Are you going to the party tonight?";
+  #assert open_as(NIP59_RECIPIENT_HEX, NIP59_EXAMPLE_PUBLISHED, out[..]).error == NIP59_WRAP;
+}
+#test "a rumor by Alice sealed by Carol refuses as identity, and clears out" #steps 400000000 {
+  alice := test_key(ALICE_HEX); carol := test_key(CAROL_HEX); alice_pub := x_only_key(alice[..]);
+  pre: [NIP59_REGION] u8; body: [NIP59_REGION] u8; id: [32] u8; forged: [NIP59_REGION] u8; out: [NIP59_REGION] u8;
+  n := n59_rumor(alice_pub[..], NOW, 14, BOB_TAG, MESSAGE, pre[..], body[..], id[..]);
+  m := forge(carol[..], "[]", body[0..<n], forged[..]);
+  #assert m > 0 && open_as(BOB_HEX, cast(string) forged[0..<m], out[..]).error == NIP59_IDENTITY;
+  for b: out { #assert b == 0; }
+}
+#test "flip_last_sig_digit changes exactly the last signature digit" {
+  out: [16] u8;
+  #assert flip_last_sig_digit("{\"sig\":\"a0\"}", out[..]) == "{\"sig\":\"a1\"}";
+  #assert flip_last_sig_digit("{\"sig\":\"a7\"}", out[..]) == "{\"sig\":\"a0\"}";
+}
+#test "replace changes exactly the first occurrence" {
+  out: [16] u8;
+  #assert replace("abab", "ab", "x", out[..]) == "xab";
+  #assert replace("abab", "ba", "", out[..]) == "ab";
+}
+#test "same_hex notices a change in the first or last byte" {
+  b: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert same_hex(b, zero);
+  b[0] = 1; #assert !same_hex(b, zero);
+  b[0] = 0; b[31] = 1; #assert !same_hex(b, zero);
+}
+// book:end check

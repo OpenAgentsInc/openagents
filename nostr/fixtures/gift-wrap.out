@@ -1,0 +1,43 @@
+keys
+alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+carol: 5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc
+one-time: 2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4
+wrap
+status: ok, 1701 bytes
+rumor id: 2f28bd6c3f405f933b16e0737cfbe321afed12150c7af45093c005bdc6476593
+rumor at 1793300000, seal at 1793296400 (-3600), wrap at 1793272800 (-27200)
+entropy cleared: true
+wrap: {"id":"dee716d487d997ac7b96dd52059fef87d018c51cab9aa0c229b92651621d2378","pubkey":"2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4","created_at":1793272800,"kind":1059,"tags":[["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"]],"content":"AiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIix1GJXHcZ+mlPEiFxleaUhIdz8zu6lNYKmxg7Mk6sVXcHxmHtqaBD1ehGrUnMFL61D1d2idSkck+7/jU2ZmriAeczAh2O9ObAJy15tNI6ly4l5pZrNlkjOvMgea79P8ASrtoryFrXslbzGeiA9DuYd8w/3BG/dZGBsKx/qA9pPk6N3s//EXoMh02w7siZAPyekcx3HMn0yfC4KF5srfLKESGfgc2uw0hx38ygSntu+6Hmm9W50/JrBclh8txd/7SoRClaDfvjgDnONz5iqxaxlP7PspMLCBCJu3zz3ZHkWf2gPwArcMCmIBQ8mPiiUb3NZ8sNzoB5wbN5813NTXou6xYHwrDiRxMARvoofPQTmlpUQIx2LAiVT2+EeQBrr8gc7gXGFtT1kC0E72E5rSd4jqQBYBuoVAuUlfbl/0JQZpyF1diGQ1Qw+cweSOSg11ToNFk06rFi3PoZPUZtidD6gEyR/RhfK/M6LaidQXLLhD+5CzGQLTDoVY7bVbwe5MzXCStZ0cGzDzNyJ2i6C/c7ZzVqxwDGvzlpRD85pMZJ870xXCzkvtpALeIsOfQTESv9W1fmkavd8CfYmqvMln+hNB3427hOqitz4rIAapem1gW2qKsnbwVRmCamNyeW/JP7F17XZD2Cv6DyEHtcDr7yijl8iaQX05zzbDxpod26y2oOoCd8NnKes6m29plvV5eH3oiJaRTCXw2UkPG5dfIjugUOo2azcVUtPVWQEbGSmd1MSKZIS+tAPRGkH3pRyRLSlHnpBXgrsTALynf1F2NDnYn3peEFuWa/HY5218i+F0SnOPHal5LNKgZRDwA7RIUR8fZ1PLAwSa5oUgm9RSS5SDUSkfMXhP7lUge5GIsxCHH65F3yRrthoBSHIehkKME118hs9e+K3tFZAKb0yhtLzVrTx5TxRXC3ruimB7dnyb/ENR1ORtara3uCAN3pb6oZFUEsUlmk7LPgO4vEesOOgTF2TKsQ6nBqlpniEtlxbdlBuLQX4OZFeM6vZaQnu8k9200Cl5HU6mE+oqlyOgATCT6Y47rdsWo5vUom/n7xs+nnVvrDURloXJJjh/sBrS298LtDPT4LSiUTNFMc6LB8FCEm+4uZuQQ0LqWmPNNQIbOX9kbVAhzC5PLOBpFzgnH02U6rXPTa0ur9B/5UtaRlzq1u7GTqVwOpiqYKrHpunOyZ2ByZtHWf8wH/kJfZJGacZ1PqUCxihEMbg43tBm9FeZrz","sig":"24a9d69e5d96f36b744f63d34ea05dd2d57a31ba7a0a6cfa9e33f917c3ee71ca5058832bb054625883d308db687cbbe1cc9629ece0f9c449766eb32201f56713"}
+peel it by hand as bob
+wrap: kind 1059, created_at 1793272800, verified true
+  signed by: 2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4
+  conversation key: 4f2b660a4e72bc9036cf9171ddf4aae0025967beb20d2ee610e8adef40f3b0bc
+seal (859 bytes): {"id":"10ab74e701a4a2d04303db4ef15c914386ab4a050470c4008f157221c28a0e2f","pubkey":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","created_at":1793296400,"kind":13,"tags":[],"content":"AhERERERERERERERERERERERERERERERERERERERERERHJa6jG4w2PI7Vsjqo5olWJi8uAMy33jsuNsbuq0x62NgGBvZPNP9hjk1Q50TW3Q+8Ja46gU0vaqCTh1jtH16xZNK0hZM5y4V0Kecx382Pkl17dKDSC8RGKUMwOoVAQphtlhxG/6UlUw44bKyE09cy8WGatPKqxTNOW+pON4ikBSRRli2KvLHx+TDT0hjO7OSrRfaHweVu2jW3Css+JVNPFbeXBU/GCpI0ZN9lGK0Xd1ntjr+6vdnhD5pIAgvl+0/6JoP9x1Sc50F0Xrw75MfbjhTVmxGi5Hym3ivjYwhYBj/5nVZnA7O2M8gDhojTAagvh5l3DoqgOCFGWTa0Pt4kccK/MwUZr1LLhlMJx8+r1yCCtHibtKS7CspT2dC8ycoZXsAX+XOexOz3kIBWvynWKFAUkYqQ1o6uxfQ612eg6bcTaFz2MiHDwAaeFZVzoEBfi3hY1+8wGi8aa8NZV9+dUso","sig":"0e994d7ca8d900a50013bf5245d46c33c67985d5eba723485bf9d95e462f48ab56edf0fff9f1578617d4c7479e81c0456bcb767b4c1f00b1672bfdacc1d3035f"}
+seal: kind 13, created_at 1793296400, verified true
+  signed by: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  conversation key: a7bc353f42fdfdd67d252471c994e73503f1b494108c63135bff8b0b23c5291f
+rumor (313 bytes): {"id":"2f28bd6c3f405f933b16e0737cfbe321afed12150c7af45093c005bdc6476593","pubkey":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","created_at":1793300000,"kind":14,"tags":[["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"]],"content":"Are you going to the party tonight?"}
+unwrap
+bob opens it: ok
+  author: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  wrap key: 2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4
+  rumor id: 2f28bd6c3f405f933b16e0737cfbe321afed12150c7af45093c005bdc6476593
+  kind 14, created_at 1793300000, content Are you going to the party tonight?
+refusals
+kind 1059 -> 1060: wrap
+content first A -> B: wrap
+sig last digit changed: wrap signature
+carol opens it: recipient
+carol claims bob's key: wrap payload
+alice's rumor sealed by carol: identity
+seal with a p tag: seal
+signed rumor: rumor
+wrap with alice's key as the one-time key: fresh
+NIP-59's example
+as published: wrap
+trailing comma removed: ok
+  author: 611df01bfcf85c26ae65453b772d8f1dfd25c264621c0277e1fc1518686faef9
+  wrap key: 18b1a75918f1f2c90c23da616bce317d36e348bcf5f7ba55e75949319210c87c
+  rumor id: 9dd003c6d3b73b74a85a9ab099469ce251653a7af76f523671ab828acd2a0ef9
+  kind 1, created_at 1691518405, content Are you going to the party tonight?

@@ -230,6 +230,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/gift-wrap.coax",
+      "chapter": "nostr/book/ch025-gift-wrap.md",
+      "stdout": "nostr/fixtures/gift-wrap.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
       "source": "nostr/examples/relay-urls.coax",
       "chapter": "nostr/book/ch028-sockets-tls-and-relay-urls.md",
       "stdout": "nostr/fixtures/relay-urls.out",
