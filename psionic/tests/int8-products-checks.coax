@@ -1,0 +1,34 @@
+// Chapter 48's check helpers: fixtures and the naive integer oracle.
+// Test fixtures: a small linear congruential stream, owned by the checks.
+int8_next :: (state:int)->int {return (state*1103515245+12345)%2147483648;}
+int8_fill_codes :: (codes:[]s8,seed:int) {
+    state:=seed*7919+17;
+    for i:0..<codes.count {state=int8_next(state);codes[i]=cast(s8)((state>>9)%255-127);}
+}
+int8_fill_sums :: (r:Int8Request,x:Int8Activations) {
+    for i:0..<r.tokens*(r.width/r.block) {
+        s:s32=0;
+        for k:0..<r.block {s+=cast(s32)x.codes[i*r.block+k];}
+        x.sums[i]=s;
+    }
+}
+int8_run :: (r:Int8Request,w:Int8Weights,x:Int8Activations,dots:[]s32,y:[]f64,tiled:int)->Int8Status {
+    if tiled==1 {return int8_tiled(r,w,x,dots,y).status;}
+    return int8_row(r,w,x,dots,y).status;
+}
+// Non-finite values come from arithmetic: a checked test cannot convert their bits.
+int8_special :: (k:int)->f32 {
+    big:=f32_from_bits(0x7f7fffff);infinity:=big*2;
+    if k==0 {return infinity;}
+    if k==1 {return -infinity;}
+    if k==2 {return infinity-infinity;}
+    if k==3 {return -1;}
+    return f32_from_bits(0x80000001);
+}
+// Naive oracle: one integer at a time, in 64-bit, no grouping.
+int8_naive :: (a:[]s8,b:[]s8,n:int)->int {
+    total:=0;
+    for i:0..<n {total+=cast(int)a[i]*cast(int)b[i];}
+    return total;
+}
+

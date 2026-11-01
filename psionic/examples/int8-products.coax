@@ -1,0 +1,77 @@
+// Chapter 48: 8-bit activation blocks, exact s32 block sums, the row and
+// tiled kernels, the error bound against chapter 4, and the refusals.
+#import "Basic";
+#load "../lib/int8-products.coax";
+
+// Chapter 4's float product of W (rows x width) and X (tokens x width).
+reference :: (r:Int8Request,wf:[]f32,x:[]f32,out:[]f32) {
+    xt:[256]f32;scratch:[32]f32;indices:[1]int;mask:[1]u8;
+    for t:0..<r.tokens {for k:0..<r.width {xt[k*r.tokens+t]=x[t*r.width+k];}}
+    c:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.matmul,rows=r.rows,width=r.width,columns=r.tokens},
+        wf,xt[0..<r.width*r.tokens],indices[0..<0],mask[0..<0],out,scratch[0..<r.rows*r.tokens],false);
+    #assert c.status==PsionicOpStatus.ok;
+}
+
+// book:begin example
+main :: () {
+    // One block of four: the hand trace in the chapter.
+    r:=Int8Request.{rows=1,width=4,tokens=1,block=4};
+    x:=[4]f32.[1.984375,-0.5,0.1,0.0078125];
+    xc:[4]s8;xs:[1]f32;xm:[1]s32;
+    a:=Int8Activations.{codes=xc[..],scales=xs[..],sums=xm[..]};
+    #assert int8_quantize(r,x[..],a).status==Int8Status.ok;
+    print("activation codes % % % %, scale %, sum %\n",xc[0],xc[1],xc[2],xc[3],xs[0],xm[0]);
+    wc:=[4]s8.[2,-1,0,3];ws:=[1]f32.[0.5];wo:=[1]f32.[0.25];
+    w:=Int8Weights.{codes=wc[..],scales=ws[..],offsets=wo[..]};
+    wf:[4]f32;dots:[1]s32;y:[1]f64;bound:[1]f64;ref:[1]f32;
+    #assert int8_dequantize(r,w,wf[..]).status==Int8Status.ok;
+    print("weights % % % %\n",wf[0],wf[1],wf[2],wf[3]);
+    #assert int8_bound(r,wf[..],x[..],a,bound[..]).status==Int8Status.ok;
+    #assert int8_row(r,w,a,dots[..],y[..]).status==Int8Status.ok;
+    print("integer sum %, quantized product %\n",dots[0],y[0]);
+    // Chapter 4 needs two columns; the second token repeats the first.
+    two:=Int8Request.{rows=1,width=4,tokens=2,block=4};
+    pair:[8]f32;ref2:[2]f32;
+    for k:0..<4 {pair[k]=x[k];pair[4+k]=x[k];}
+    reference(two,wf[..],pair[..],ref2[..]);ref[0]=ref2[0];
+    print("chapter 4 product %, error %, bound %\n",ref[0],abs(y[0]-f64(ref[0])),bound[0]);
+
+    // Eight rows, four tokens, two blocks of 32: row kernel against tiled kernel.
+    big:=Int8Request.{rows=8,width=64,tokens=4,block=32};
+    bc:[512]s8;bi:[512]s8;bs:[16]f32;bo:[16]f32;bf:[512]f32;bx:[256]f32;
+    qc:[256]s8;qs:[8]f32;qm:[8]s32;d1:[64]s32;d2:[64]s32;y1:[32]f64;y2:[32]f64;bb:[32]f64;br:[32]f32;
+    for i:0..<512 {bc[i]=cast(s8)((i*37)%255-127);}
+    for i:0..<16 {bs[i]=f32(f64(i+1)/512);bo[i]=f32(f64(i%5-2)/64);}
+    for i:0..<256 {bx[i]=f32(f64((i*53)%201-100)/37);}
+    bw:=Int8Weights.{codes=bc[..],scales=bs[..],offsets=bo[..]};
+    q:=Int8Activations.{codes=qc[..],scales=qs[..],sums=qm[..]};
+    #assert int8_quantize(big,bx[..],q).status==Int8Status.ok;
+    #assert int8_dequantize(big,bw,bf[..]).status==Int8Status.ok;
+    #assert int8_bound(big,bf[..],bx[..],q,bb[..]).status==Int8Status.ok;
+    #assert int8_row(big,bw,q,d1[..],y1[..]).status==Int8Status.ok;
+    #assert int8_interleave(big,bc[..],bi[..]).status==Int8Status.ok;
+    #assert int8_tiled(big,Int8Weights.{codes=bi[..],scales=bs[..],offsets=bo[..]},q,d2[..],y2[..]).status==Int8Status.ok;
+    same:=true;
+    for i:0..<64 {same=same && d1[i]==d2[i];}
+    for i:0..<32 {same=same && f64_bits(y1[i])==f64_bits(y2[i]);}
+    print("8 x 64 times 64 x 4: 64 block sums, tiled equals row bit for bit: %\n",same);
+    reference(big,bf[..],bx[..],br[..]);
+    worst:=0.0;within:=true;
+    for t:0..<4 {for row:0..<8 {
+        e:=abs(y1[t*8+row]-f64(br[row*4+t]));
+        if e/bb[t*8+row]>worst {worst=e/bb[t*8+row];}
+        within=within && e<=bb[t*8+row];
+    }}
+    print("every output within its bound: %, largest error / bound: %\n",within,worst);
+
+    // Refusals, each with its typed reason.
+    print("block of 6: %\n",int8_plan(Int8Request.{rows=1,width=96,tokens=1,block=6}).status);
+    print("block of 133148: %\n",int8_plan(Int8Request.{rows=1,width=133148,tokens=1,block=133148}).status);
+    print("1025 x 1024 weights: %\n",int8_plan(Int8Request.{rows=1025,width=1024,tokens=1,block=32}).status);
+    wc[1]=-128;print("weight code -128: %\n",int8_row(r,w,a,dots[..],y[..]).status);wc[1]=-1;
+    xm[0]=101;print("stored sum 101 for codes summing to 102: %\n",int8_row(r,w,a,dots[..],y[..]).status);xm[0]=102;
+    ws[0]=-0.5;print("weight scale -0.5: %\n",int8_row(r,w,a,dots[..],y[..]).status);ws[0]=0.5;
+    print("tiled kernel with 1 row: %\n",int8_tiled(r,w,a,dots[..],y[..]).status);
+    print("quantized product left unchanged: %\n",y[0]);
+}
+// book:end example

@@ -1,0 +1,14 @@
+activation codes 127 -32 6 1, scale 0.015625, sum 102
+weights 1.25 -0.25 0.25 1.75
+integer sum 289, quantized product 2.65625
+chapter 4 product 2.6441407, error 0.01210927963256836, bound 0.027344380412275715
+8 x 64 times 64 x 4: 64 block sums, tiled equals row bit for bit: true
+every output within its bound: true, largest error / bound: 0.2557947414250603
+block of 6: shape
+block of 133148: overflow
+1025 x 1024 weights: limit
+weight code -128: code
+stored sum 101 for codes summing to 102: sum
+weight scale -0.5: scale
+tiled kernel with 1 row: tile
+quantized product left unchanged: 2.65625

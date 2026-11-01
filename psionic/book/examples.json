@@ -172,6 +172,16 @@
       ]
     },
     {
+      "source": "psionic/examples/int8-products.coax",
+      "chapter": "psionic/book/ch048-integer-matrix-products.md",
+      "stdout": "psionic/fixtures/int8-products.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/original-fp8.coax",
       "chapter": "psionic/book/ch082-original-fp8-weights.md",
       "stdout": "psionic/fixtures/original-fp8.out",
