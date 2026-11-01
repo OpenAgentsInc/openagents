@@ -187,20 +187,20 @@ we_rules :: (net: WeNet, logits: [] f32, d: WeDec, temperature: f64, bias: WeBia
   if n == 0 { for i: sp.beg + 50 + 1..<V { lp[i] = WE_NEG; } }
   // timestamps never go back
   if d.has_ts { for i: sp.beg..<sp.beg + d.seek_delta / 2 { lp[i] = WE_NEG; } }
-  // log-softmax
-  best := -1.0e300; for i: 0..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > best { best = cast(f64) lp[i]; } }
+  // log-softmax, with the text and timestamp maxima and the timestamps'
+  // share of the sum taken on the way
+  text := -1.0e300; tmax := -1.0e300;
+  for i: 0..<sp.beg { if !we_dead(lp[i]) && cast(f64) lp[i] > text { text = cast(f64) lp[i]; } }
+  for i: sp.beg..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > tmax { tmax = cast(f64) lp[i]; } }
+  best := ifx text > tmax then text else tmax;
   bf := cast(f32) best;
-  z := 0.0; for i: 0..<V { if !we_dead(lp[i]) { z += cast(f64) we_expf(lp[i] - bf); } }
-  lz := best + log(z);
+  zx := 0.0; for i: 0..<sp.beg { if !we_dead(lp[i]) { zx += cast(f64) we_expf(lp[i] - bf); } }
+  zt := 0.0; for i: sp.beg..<V { if !we_dead(lp[i]) { zt += cast(f64) we_expf(lp[i] - bf); } }
+  lz := best + log(zx + zt);
   for i: 0..<V { if !we_dead(lp[i]) { lp[i] = cast(f32) (cast(f64) lp[i] - lz); } }
-  // when the timestamps together are likelier than any text token, only a timestamp may follow
-  tmax := -1.0e300; for i: sp.beg..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > tmax { tmax = cast(f64) lp[i]; } }
-  ts := -1.0e300;
-  if tmax > -1.0e300 {
-    s := 0.0; for i: sp.beg..<V { if !we_dead(lp[i]) { s += exp(cast(f64) lp[i] - tmax); } }
-    ts = tmax + log(s);
-  }
-  text := -1.0e300; for i: 0..<sp.beg { if !we_dead(lp[i]) && cast(f64) lp[i] > text { text = cast(f64) lp[i]; } }
+  // when the timestamps together are likelier than any text token, only a
+  // timestamp may follow: log(sum of e^lp over timestamps) against the best text
+  ts := ifx zt > 0 then best + log(zt) else -1.0e300;
   if ts > text { for i: 0..<sp.beg { lp[i] = WE_NEG; } }
 }
 we_argmax :: (lp: [] f32) -> int { a := 0; for i: 1..<lp.count { if lp[i] > lp[a] { a = i; } } return a; }

@@ -35,7 +35,6 @@ static void run_job(job *j) {
     if (j->kind == 0) psionic_whisper_linear_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->d, j->lo, j->hi, j->i3);
     else if (j->kind == 1) psionic_whisper_attend_part(j->a, j->i0, j->b, j->c, j->i1, j->i2, j->i3, j->i4, j->flag, j->d, j->lo, j->hi);
     else if (j->kind == 3) psionic_whisper_mel_part(j->a, j->f, j->g, j->i0, j->b, j->lo, j->hi);
-    else psionic_whisper_conv_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->i3, j->i4, j->d, j->e, j->lo, j->hi);
 }
 /* A pool of g_threads - 1 workers, started once. split() hands each one a
  * job and runs the first itself; workers spin briefly on the generation
@@ -216,11 +215,6 @@ int64_t cxwh_mel(coax_v_f32 x, coax_v_f64 window, coax_v_f64 bank, int64_t mels,
     split(j, frames, (double)frames * 1e5);
     return 0;
 }
-int64_t cxwh_conv(coax_v_f32 src, int64_t n_in, int64_t t_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, int64_t t_out, int64_t stride, coax_v_f32 pos, coax_v_f32 out) {
-    job j = {0}; j.kind = 2; j.a = src; j.i0 = n_in; j.i1 = t_in; j.b = w; j.c = b; j.i2 = n_out; j.i3 = t_out; j.i4 = stride; j.d = pos; j.e = out;
-    split(j, n_out, (double)n_in * t_out * n_out * 3);
-    return 0;
-}
 
 static double now_ms(void) {
     struct timespec t;
@@ -344,8 +338,8 @@ int main(int argc, char **argv) {
             wh.samples / 16000.0);
     if (g_profile) fprintf(stderr, "psionic-whisper profile: GPU %.0f ms; ", g_gpu_ms);
     if (g_profile)
-        fprintf(stderr, "decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), conv %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",
-                g_prof[4], g_calls[4], g_prof[5], g_calls[5], g_prof[0], g_calls[0], g_prof[1], g_calls[1], g_prof[2], g_calls[2], g_prof[3], g_calls[3],
+        fprintf(stderr, "decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",
+                g_prof[4], g_calls[4], g_prof[5], g_calls[5], g_prof[0], g_calls[0], g_prof[1], g_calls[1], g_prof[3], g_calls[3],
                 (t_end - t_load) - g_prof[0] - g_prof[1] - g_prof[2] - g_prof[3] - g_prof[4] - g_prof[5]);
     return 0;
 }

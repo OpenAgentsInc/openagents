@@ -175,7 +175,6 @@ we_whole :: (f: [] WeFind, name: string, elements: int) -> int {
 cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, act: int) -> int #foreign;
 cxwh_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) -> int #foreign;
 cxwh_mel :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, frames: int) -> int #foreign;
-cxwh_conv :: (src: [] f32, n_in: int, t_in: int, w: [] f32, b: [] f32, n_out: int, t_out: int, stride: int, pos: [] f32, out: [] f32) -> int #foreign;
 
 WE_KEYS_MAX :: 1500;
 
@@ -423,6 +422,36 @@ we_conv_part :: (src: [] f32, n_in: int, t_in: int, w: [] f32, b: [] f32, n_out:
   }
 }
 
+// The encoder's convolutions run as projections: each output time t takes
+// a row of its n_in x 3 inputs (input c, tap k at col[t][3c + k], zero past
+// the edges), which matches the weights' [out][in][3] layout.
+// From channel-major src (n_in rows of t_in), stride 1.
+we_im2col_rows :: (src: [] f32, n_in: int, t_in: int, t_out: int, col: [] f32) {
+  w := 3 * n_in;
+  for t: 0..<t_out {
+    r := col[t * w..<(t + 1) * w];
+    for c: 0..<n_in {
+      row := src[c * t_in..<(c + 1) * t_in];
+      r[3 * c] = ifx t > 0 then row[t - 1] else 0;
+      r[3 * c + 1] = row[t];
+      r[3 * c + 2] = ifx t + 1 < t_in then row[t + 1] else 0;
+    }
+  }
+}
+// From time-major src (t_in rows of n_in), stride 2.
+we_im2col_time :: (src: [] f32, n_in: int, t_in: int, t_out: int, col: [] f32) {
+  w := 3 * n_in;
+  for t: 0..<t_out {
+    r := col[t * w..<(t + 1) * w];
+    c0 := 2 * t;
+    for c: 0..<n_in {
+      r[3 * c] = ifx c0 > 0 then src[(c0 - 1) * n_in + c] else 0;
+      r[3 * c + 1] = src[c0 * n_in + c];
+      r[3 * c + 2] = ifx c0 + 1 < t_in then src[(c0 + 1) * n_in + c] else 0;
+    }
+  }
+}
+
 // ---- encoder ------------------------------------------------------------------
 
 // The encoder over net.ctx positions of the mel window at work.mel
@@ -434,11 +463,16 @@ we_encode :: (net: WeNet, W: [] f32, work: [] f32) {
   c1 := work[k.c1..<k.c1 + d * T2];
   x := work[k.x..<k.x + T * d];
   none: [1] f32;
-  // conv1 reads the first 2T frames of each mel row (rows are 3,000 long).
-  r := cxwh_conv(mel, mels, WF_WINDOW_FRAMES, W[net.c1_w..<net.c1_w + 3 * mels * d], W[net.c1_b..<net.c1_b + d], d, T2, 1, none[0..<0], c1);
-  r = cxwh_conv(c1, d, T2, W[net.c2_w..<net.c2_w + 3 * d * d], W[net.c2_b..<net.c2_b + d], d, T, 2, W[net.e_pos..<net.e_pos + T * d], x);
   h := work[k.h..<k.h + T * d]; q := work[k.q..<k.q + T * d]; kk := work[k.k..<k.k + T * d]; v := work[k.v..<k.v + T * d];
   a := work[k.a..<k.a + T * d]; mm := work[k.m..<k.m + T * 4 * d];
+  // conv1 reads the first 2T frames of each mel row (rows are 3,000 long)
+  // and leaves c1 time-major; both convolutions build their rows in mm.
+  we_im2col_rows(mel, mels, WF_WINDOW_FRAMES, T2, mm);
+  we_mm_gelu(mm, T2, 3 * mels, W[net.c1_w..<net.c1_w + 3 * mels * d], W[net.c1_b..<net.c1_b + d], d, c1);
+  we_im2col_time(c1, d, T2, T, mm);
+  we_mm_gelu(mm, T, 3 * d, W[net.c2_w..<net.c2_w + 3 * d * d], W[net.c2_b..<net.c2_b + d], d, x);
+  pos := W[net.e_pos..<net.e_pos + T * d];
+  for i: 0..<T * d { x[i] += pos[i]; }
   for l: 0..<p.n_audio_layer {
     bl := net.enc[l];
     we_norm(x, T, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
@@ -678,6 +712,26 @@ psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
     }
   }
 }
+#test "convolution rows times the weights equal the direct convolution" {
+  // 3 inputs of 8 frames, 4 outputs: stride 1 channel-major, then stride 2 from time-major
+  src: [24] f32; w: [36] f32; b: [4] f32; pos: [16] f32;
+  for i: 0..<24 { src[i] = cast(f32) ((i * 5) % 7) - 3; }
+  for i: 0..<36 { w[i] = cast(f32) ((i * 3) % 5) * 0.25 - 0.5; }
+  for i: 0..<4 { b[i] = cast(f32) i * 0.5; }
+  direct: [32] f32; col: [96] f32; y: [32] f32;
+  we_conv_part(src[..], 3, 8, w[..], b[..], 4, 8, 1, pos[0..<0], direct[..], 0, 4);
+  we_im2col_rows(src[..], 3, 8, 8, col[..]);
+  we_linear_part(col[..], 8, 9, w[..], b[..], 4, y[..], 0, 4, 1);
+  for o: 0..<4 { for t: 0..<8 { #assert abs(direct[o * 8 + t] - y[t * 4 + o]) < 0.00001; } }
+  // stride 2 on 4 time-major channels of 8 frames (y above), 4 outputs
+  w2: [48] f32; for i: 0..<48 { w2[i] = cast(f32) ((i * 7) % 9) * 0.1 - 0.4; }
+  cm: [32] f32; for o: 0..<4 { for t: 0..<8 { cm[o * 8 + t] = y[t * 4 + o]; } }
+  d2: [16] f32; col2: [48] f32; y2: [16] f32;
+  we_conv_part(cm[..], 4, 8, w2[..], b[..], 4, 4, 2, pos[..], d2[..], 0, 4);
+  we_im2col_time(y[..], 4, 8, 4, col2[..]);
+  we_linear_part(col2[..], 4, 12, w2[..], b[..], 4, y2[..], 0, 4, 1);
+  for i: 0..<16 { #assert abs(d2[i] - y2[i]) < 0.00001; }
+}
 #test "a WAV header" {
   h: [48] u8; w: [1] WgBuild; w[0].b = h[..];
   wg_put_bytes(w[..], "RIFF"); wg_put32(w[..], 40); wg_put_bytes(w[..], "WAVE");
@@ -699,9 +753,6 @@ psionic_whisper_mel_part :: (x: [] f32, window: [] f64, bank: [] f64, mels: int,
 }
 // The cache size in floats for n samples: every frame's mels.
 psionic_whisper_cache_size :: (n: int, mels: int) -> int #export_c { return wf_frames(n) * mels; }
-psionic_whisper_conv_part :: (src: [] f32, n_in: int, t_in: int, w: [] f32, b: [] f32, n_out: int, t_out: int, stride: int, pos: [] f32, out: [] f32, o0: int, o1: int) #export_c {
-  we_conv_part(src, n_in, t_in, w, b, n_out, t_out, stride, pos, out, o0, o1);
-}
 // The language token for a code on this model, or -1 (English-only models
 // have none; "auto" is not detected yet and also gives -1).
 psionic_whisper_language :: (net: WeNet, code: string) -> int #export_c { return wt_language(net.sp, code); }
