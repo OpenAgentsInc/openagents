@@ -25,7 +25,7 @@
 - [12. Materials](ch012-materials.md) — design draft
 - [13. Light and shadow](ch013-light-and-shadow.md) — design draft
 - [14. Figures and animation](ch014-figures-and-animation.md) — design draft
-- [15. UI and the HUD](ch015-ui-and-the-hud.md) — design draft
+- [15. UI and the HUD](ch015-ui-and-the-hud.md) — partly implemented
 - [16. Budgets that refuse](ch016-budgets-that-refuse.md) — partly implemented
 
 **IV. Physics**

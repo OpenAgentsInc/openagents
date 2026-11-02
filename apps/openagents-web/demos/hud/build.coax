@@ -1,0 +1,100 @@
+// The HUD demo's build tool. The page, components and this tooling are Coax.
+// Existing Coaxial platform adapters compile and serve the generated app.
+// Run from the repository root:
+//   coax/web/tool.sh apps/openagents-web/demos/hud/build.coax [--serve]
+#import "Basic";
+#load "../../../../coax/lib/sys/tool.coax";
+#load "../../../../coax/lib/sys/fs.coax";
+#load "../../../../coax/lib/sys/proc.coax";
+
+HUD_BUILD_APP :: "apps/openagents-web/build/hud";
+HUD_BUILD_SOURCE :: "apps/openagents-web/demos/hud/build.coax";
+
+#test "build command shell quoting preserves spaces apostrophes and metacharacters" {
+  out:[128]u8;
+  #assert hud_build_quote("",out[..])=="''";
+  #assert hud_build_quote("a b/$x`y`",out[..])=="'a b/$x`y`'";
+  #assert hud_build_quote("a'b",out[..])=="'a'\\''b'";
+  small:[3]u8;
+  #assert hud_build_quote("ab",small[..])=="";
+}
+
+// Only the standard dev server's --build value is interpreted by a shell.
+// Every other child receives a structured argv through the Coax process API.
+hud_build_quote :: (text:string,out:[]u8)->string {
+  need:=2;
+  for c:text {need+=ifx c=='\'' then 4 else 1;}
+  if need>out.count {return "";}
+  n:=0;out[n]='\'';n+=1;
+  for c:text {
+    if c=='\'' {out[n]='\'';out[n+1]='\\';out[n+2]='\'';out[n+3]='\'';n+=4;}
+    else {out[n]=c;n+=1;}
+  }
+  out[n]='\'';n+=1;return cast(string)out[0..<n];
+}
+
+hud_build_run :: (argv:[]string)->bool {
+  out:[65536]u8;err:[65536]u8;
+  r:=proc_run(argv,600000,out[..],err[..]);
+  if r.out_n>0 {tool_errln(cast(string)out[0..<r.out_n]);}
+  if r.err_n>0 {tool_errln(cast(string)err[0..<r.err_n]);}
+  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {
+    tool_errln("hud build: a child failed, exceeded its ten-minute limit, or exceeded the output budget");
+    return false;
+  }
+  return true;
+}
+
+hud_build_write :: (path:string,text:string)->bool {
+  prior:[65536]u8;n:=fs_read(path,prior[..]);
+  if n>=0 && cast(string)prior[0..<n]==text {return true;}
+  return fs_write(path,text);
+}
+
+// The generated document is a platform shell and accessible text twin.
+// Every visible control, word, diagram and interaction is drawn by Coax.
+HUD_BUILD_HTML :: "<!doctype html>\n<html lang=\"en\"><head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n<title>Aethyr HUD Laboratory · OpenAgents</title>\n<meta name=\"description\" content=\"A Coax component library for the monochrome Grid: navigation, telemetry, targeting, systems and communications.\">\n<meta name=\"theme-color\" content=\"#000000\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script>if(\"gpu\" in navigator)document.documentElement.classList.add(\"gpu\")</script>\n<style>html,body{margin:0;height:100%;background:#000;color:#ededed;font-family:system-ui,sans-serif}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}canvas[data-cursor=pointer]{cursor:pointer}main{max-width:760px;margin:auto;padding:32px 20px;line-height:1.6}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}a{color:#b9e8e8}</style>\n</head><body>\n<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main><h1>Aethyr HUD Laboratory</h1><p>A Coax HUD component library and five interactive demonstrations. All displayed telemetry and contacts are synthetic demo fixtures.</p><h2>Controls</h2><ul><li>1: component catalog. Scroll with the wheel, Page Up and Page Down.</li><li>2: Grid command scene.</li><li>3: flight navigation scene.</li><li>4: engineering scene.</li><li>5: communications scene.</li><li>M: switch monochrome and cyan accents.</li><li>Space: pause or resume the demonstration clock.</li><li>Tab or Shift Tab: move focus. Enter: activate the focused control.</li></ul><p>The host honors the reduced-motion preference. The visual demo is canvas-based; this text twin documents its controls. It does not implement the full dynamic accessibility tree planned by Aethyr chapter 15.</p><p>Visual study: <a href=\"https://www.hudsandguis.com/home/2021/theexpanse\">The Expanse UI Design, HUDS+GUIS</a>. These are original Coax primitives; no film images or footage are bundled.</p><p><a href=\"/index.md\">Read the Markdown description</a></p></main>\n<script type=\"module\" src=\"/coaxial/host.js\" data-app=\"projects\" data-slot=\"hud-laboratory\" data-supersample=\"2\"></script>\n</body></html>\n";
+
+HUD_BUILD_MD :: "# Aethyr HUD Laboratory\n\nAn original Coax HUD component library for the OpenAgents monochrome Grid, informed by a visual study of The Expanse's navigation, tactical, engineering and communications displays.\n\nAll telemetry and contacts are synthetic demo fixtures. Every visible element is drawn by Coax on WebGPU. The demo reuses the existing Coaxial host, C adapter and Coax-generated projects shader.\n\nControls: 1 component catalog; 2 Grid command; 3 flight navigation; 4 engineering; 5 communications. M switches monochrome/cyan accents. Space pauses the demo clock. Tab and Shift Tab move focus; Enter activates it. Scroll the component catalog with the wheel or Page Up/Page Down. Reduced motion follows the browser preference.\n\nReference: [The Expanse UI Design — HUDS+GUIS](https://www.hudsandguis.com/home/2021/theexpanse). No film images or footage are bundled.\n\nThis demo is a component and composition study. Aethyr chapter 15's complete shared UI tree and dynamic accessibility mirror remain separate planned work.\n";
+
+hud_build_watch :: (root:string,source:string,name:string)->bool {
+  a:[4096]u8;b:[4096]u8;c:[4096]u8;
+  from:=fs_join(root,source,a[..]);app:=fs_join(root,HUD_BUILD_APP,b[..]);into:=fs_join(app,name,c[..]);
+  if from=="" || into=="" {return false;}
+  argv:=[4]string.["ln","-sfn",from,into];return hud_build_run(argv[..]);
+}
+
+hud_build_serve :: (root:string)->bool {
+  a:[4096]u8;b:[4096]u8;c:[8192]u8;d:[16384]u8;
+  script:=fs_join(root,"coax/web/tool.sh",a[..]);source:=fs_join(root,HUD_BUILD_SOURCE,b[..]);
+  qs:=hud_build_quote(script,c[..]);qt:[8192]u8;quoted_source:=hud_build_quote(source,qt[..]);
+  if qs=="" || quoted_source=="" || qs.count+quoted_source.count+1>d.count {return false;}
+  for i:0..<qs.count {d[i]=qs[i];}d[qs.count]=' ';
+  for i:0..<quoted_source.count {d[qs.count+1+i]=quoted_source[i];}
+  command:=cast(string)d[0..<qs.count+quoted_source.count+1];
+  h:=proc_new();if h<0 {return false;}
+  ok:=proc_arg(h,"coax/web/serve.sh") && proc_arg(h,HUD_BUILD_APP) && proc_arg(h,"--listen") && proc_arg(h,"127.0.0.1:8815") && proc_arg(h,"--build") && proc_arg(h,command) && proc_cwd(h,root) && proc_detach(h);
+  if !ok || proc_start(h)!=0 {done:=proc_release(h);return false;}
+  pid:=proc_pid(h);done:=proc_release(h);
+  tool_err("hud server PID ");print("%\n",pid);
+  tool_errln("HUD laboratory: http://127.0.0.1:8815/");return true;
+}
+
+tool_main :: ()->int #export_c {
+  args:[1]Args;
+  if !args_load(args[..]) || args_count(args[..])>1 {tool_errln("usage: hud-build [--serve] (from the repository root)");return 2;}
+  serve:=args_count(args[..])==1;
+  if serve && args_at(args[..],0)!="--serve" {tool_errln("usage: hud-build [--serve]");return 2;}
+  if fs_kind("apps/openagents-web/projects-face.c")!=FS_FILE {tool_errln("hud build: run from the repository root");return 2;}
+  root_buf:[4096]u8;root:=fs_cwd(root_buf[..]);
+  if root=="" || !fs_mkdir("apps/openagents-web/build/hud/build") {tool_errln("hud build: cannot prepare the output directory");return 1;}
+  gpu_args:=[5]string.["coax/web/tool.sh","coax/web/wgsl-module.coax","apps/openagents-web/gpu/projects.coax","apps/openagents-web/build/hud/projects.wgsl","apps/openagents-web/gpu/projects.module"];
+  if !hud_build_run(gpu_args[..]) {return 1;}
+  wasm:=[4]string.["coax/web/wasm.sh","apps/openagents-web/demos/hud/projects.coax","apps/openagents-web/projects-face.c","apps/openagents-web/build/hud/build/projects.wasm"];
+  if !hud_build_run(wasm[..]) {return 1;}
+  if !hud_build_write("apps/openagents-web/build/hud/index.html",HUD_BUILD_HTML) || !hud_build_write("apps/openagents-web/build/hud/index.md",HUD_BUILD_MD) {tool_errln("hud build: cannot write the shell");return 1;}
+  if !hud_build_watch(root,"apps/openagents-web/demos/hud/projects.coax","source-demo.coax") || !hud_build_watch(root,HUD_BUILD_SOURCE,"source-build.coax") || !hud_build_watch(root,"aethyr/ui/hud.coax","source-hud.coax") || !hud_build_watch(root,"aethyr/ui/draw.coax","source-draw.coax") || !hud_build_watch(root,"verse/hud/frame.coax","source-frame.coax") || !hud_build_watch(root,"apps/openagents-web/font.coax","source-font.coax") {tool_errln("hud build: cannot connect source watches");return 1;}
+  tool_errln("HUD laboratory built in apps/openagents-web/build/hud");
+  if serve && !hud_build_serve(root) {return 1;}
+  return 0;
+}

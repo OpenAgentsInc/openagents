@@ -1,0 +1,164 @@
+// Native frame/action checks plus the actual Wasm/WebGPU input journey in
+// headless muted Chrome. The browser observer exists only in this QA tool.
+// coax/web/tool.sh apps/openagents-web/demos/hud/check.coax [--native|--browser] [BASE_URL]
+#import "Basic";
+#load "projects.coax";
+#load "../../../../coax/lib/net/cdp.coax";
+
+#test "QA control lookup refuses missing actions" {
+  s:[1]ProjectsState;s[0].control_n=1;
+  s[0].controls[0]=HudControl.{action=6,label="Accent",enabled=true};
+  #assert hq_control(s[..],6)==0 && hq_control(s[..],7)== -1;
+}
+
+hq_control :: (s:[]ProjectsState,id:int)->int {
+  for i:0..<s[0].control_n {if s[0].controls[i].action==id {return i;}}
+  return -1;
+}
+hq_need :: (ok:bool,label:string)->bool {
+  print("% %\n",ifx ok then "ok" else "FAIL",label);return ok;
+}
+
+hq_native :: (frames:bool)->bool {
+  out:[2880000]f32;u:[88]f32;s:[1]ProjectsState;
+  widths:=[5]f32.[320,390,900,1440,1920];heights:=[5]f32.[700,844,420,900,1080];dprs:=[5]f32.[2,3,2,1,2];
+  peak:=0;
+  if frames {for view:0..<5 {
+    w:=widths[view];h:=heights[view];d:=dprs[view];
+    for scene:0..<5 {
+      demo_apply(s[..],scene+1);
+      n:=coaxial_projects_frame(s[..],out[..],u[..],w*d,h*d,d,0.016,false);
+      if !hq_need(n>0 && n<coaxial_projects_max_vertices()*9/10 && n%6==0,"native frame fits its vertex budget") {return false;}
+      if n>peak {peak=n;}
+      for i:0..<n*12 {if !(out[i]>= -1000000 && out[i]<=1000000) {return hq_need(false,"finite frame vertices");}}
+      if s[0].control_n<7 || s[0].control_n>48 {return hq_need(false,"control count fits capacity");}
+      for i:0..<s[0].control_n {
+        c:=s[0].controls[i];b:=c.box;
+        if !c.enabled || c.label.count==0 || b.width<=0 || b.height<=0 || b.x<0 || b.x+b.width>w || b.y<0 || b.y+b.height>h-36 {return hq_need(false,"action geometry fits viewport");}
+      }
+      if s[0].scroll_max>0 {
+        coaxial_projects_wheel(s[..],1000000);
+        n=coaxial_projects_frame(s[..],out[..],u[..],w*d,h*d,d,0.016,false);
+        if s[0].scroll!=s[0].scroll_max || n<=0 {return hq_need(false,"scroll reaches last panel");}
+      }
+    }
+  }
+  print("ok native scenes across five viewports; peak % / % vertices\n",peak,coaxial_projects_max_vertices());}
+  demo_apply(s[..],1);n:=coaxial_projects_frame(s[..],out[..],u[..],1440,900,1,0.016,false);
+  i:=hq_control(s[..],100);if i<0 {return hq_need(false,"first component actionable");}
+  b:=s[0].controls[i].box;
+  used:=coaxial_projects_pointer(s[..],b.x+12,b.y+12,0,0);
+  used=coaxial_projects_pointer(s[..],b.x+12,b.y+12,2,0);
+  if s[0].inspected!=1 {return hq_need(false,"pointer opens component");}
+  n=coaxial_projects_frame(s[..],out[..],u[..],1440,900,1,0.016,false);
+  if s[0].control_n!=1 || s[0].controls[0].action!=50 {return hq_need(false,"inspector traps focus");}
+  used=coaxial_projects_key(s[..],-15,0);used=coaxial_projects_key(s[..],-2,0);
+  if s[0].inspected!=0 {return hq_need(false,"keyboard closes inspector");}
+  s[0].paused=false;s[0].time=7;
+  n=coaxial_projects_frame(s[..],out[..],u[..],1440,900,1,0.5,true);
+  if s[0].time!=7 {return hq_need(false,"reduced motion holds the demo clock");}
+  used=coaxial_projects_key(s[..],32,0);
+  n=coaxial_projects_frame(s[..],out[..],u[..],1440,900,1,0.5,false);
+  if s[0].time!=7 || !s[0].paused {return hq_need(false,"pause holds the demo clock");}
+  if !hq_need(true,"native pointer keyboard modal and clock journey") {return false;}
+  n=coaxial_projects_frame(s[..],out[..],u[..],1440,900,1,0.016,false);
+  i=hq_control(s[..],6);if i<0 {return false;}b=s[0].controls[i].box;before:=s[0].cyan;
+  used=coaxial_projects_pointer(s[..],b.x+12,b.y+12,0,0);
+  used=coaxial_projects_pointer(s[..],b.x+12,b.y+12,3,0);
+  used=coaxial_projects_pointer(s[..],b.x+12,b.y+12,2,0);
+  if s[0].cyan!=before {return hq_need(false,"cancelled press cannot activate");}
+  demo_apply(s[..],2);s[0].scroll=350;
+  n=coaxial_projects_frame(s[..],out[..],u[..],390,844,1,0.016,false);
+  for k:0..<s[0].control_n {c:=s[0].controls[k];if c.action>=9 && c.action<100 && c.box.y<168 {return hq_need(false,"clipped body actions cannot take focus");}}
+  demo_apply(s[..],5);s[0].scroll=100000;
+  n=coaxial_projects_frame(s[..],out[..],u[..],390,844,1,0.016,false);
+  for id:60..<66 {
+    i=hq_control(s[..],id);if i<0 {return hq_need(false,"every communications command is reachable");}
+    b=s[0].controls[i].box;
+    used=coaxial_projects_pointer(s[..],b.x+b.width*0.5,b.y+b.height*0.5,0,0);
+    used=coaxial_projects_pointer(s[..],b.x+b.width*0.5,b.y+b.height*0.5,2,0);
+    if s[0].command!=id-59 {return hq_need(false,"communication command updates transcript state");}
+  }
+  return hq_need(true,"cancel clipping and communications action regressions");
+}
+
+// Observe the actual imported Wasm memory and its initial arena base without
+// replacing exports or altering application behavior. The read fields are
+// the scalar prefix shared by the generated native/Wasm C struct; the browser
+// check also verifies the state is large enough for that observed prefix.
+HQ_INIT :: "globalThis.__hqErrors=[];addEventListener('error',e=>__hqErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__hqErrors.push(String(e.reason)));const err=console.error.bind(console);console.error=(...a)=>{__hqErrors.push(a.map(String).join(' '));err(...a)};const instantiate=WebAssembly.instantiate.bind(WebAssembly);WebAssembly.instantiate=async(module,imports)=>{const value=await instantiate(module,imports);const instance=value.instance||value;const x=instance.exports,m=imports?.env?.memory;if(x.coaxial_frame&&m){const base=Math.ceil(Math.max(Number(x.__heap_base?.value||0),m.buffer.byteLength)/65536)*65536;globalThis.__hq={x,m,base};globalThis.__hqState=()=>{const d=new DataView(m.buffer,base);return {frames:Number(d.getBigInt64(8,true)),scene:Number(d.getBigInt64(32,true)),cyan:!!d.getUint8(40),paused:!!d.getUint8(41),ack:!!d.getUint8(42),route:!!d.getUint8(43),contact:Number(d.getBigInt64(48,true)),inspected:Number(d.getBigInt64(56,true)),focus:Number(d.getBigInt64(64,true)),scroll:d.getFloat32(88,true),max:d.getFloat32(92,true),time:d.getFloat32(0,true)}};}return value};";
+HQ_READY :: "(async()=>{for(let i=0;i<100;i++){if(globalThis.coaxial?.ready&&globalThis.__hq&&__hqState().frames>0)return true;await new Promise(r=>setTimeout(r,50))}return false})()";
+
+hq_call :: (c:[]Cdp,name:string,params:string)->bool {return cdp_call(c,name,params,15000)>=0;}
+hq_eval :: (c:[]Cdp,script:string,label:string)->bool {
+  n:=cdp_evaluate(c,script);ok:=n>=0 && jv_bool(cdp_doc(c),n);
+  if !ok {
+    v:=cdp_evaluate(c,"JSON.stringify({ready:globalThis.coaxial?.ready,hq:!!globalThis.__hq,errors:globalThis.__hqErrors,state:(()=>{try{return globalThis.__hqState?.()}catch(e){return String(e)}})()})");
+    buf:[8192]u8;if v>=0 {z:=jv_str(cdp_doc(c),v,buf[..]);if z>=0 {tool_errln(cast(string)buf[0..<z]);}}
+  }
+  return hq_need(ok,label);
+}
+hq_key :: (c:[]Cdp,key:string,code:int,mods:int)->bool {
+  bytes:[1024]u8;o:[1]Jo;
+  for phase:0..<2 {
+    jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx phase==0 then "keyDown" else "keyUp");
+    jo_key(o[..],"key");jo_str(o[..],key);jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],code);
+    jo_key(o[..],"nativeVirtualKeyCode");jo_int(o[..],code);jo_key(o[..],"modifiers");jo_int(o[..],mods);jo_end(o[..]);
+    if !hq_call(c,"Input.dispatchKeyEvent",jo_text(o[..])) {return false;}
+  }
+  proc_sleep(120);return true;
+}
+hq_click :: (c:[]Cdp,x:int,y:int)->bool {
+  bytes:[1024]u8;o:[1]Jo;
+  for phase:0..<3 {
+    jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx phase==0 then "mouseMoved" else ifx phase==1 then "mousePressed" else "mouseReleased");
+    jo_key(o[..],"x");jo_int(o[..],x);jo_key(o[..],"y");jo_int(o[..],y);jo_key(o[..],"button");jo_str(o[..],ifx phase==0 then "none" else "left");
+    jo_key(o[..],"clickCount");jo_int(o[..],1);jo_end(o[..]);if !hq_call(c,"Input.dispatchMouseEvent",jo_text(o[..])) {return false;}
+  }
+  proc_sleep(120);return true;
+}
+hq_navigate :: (c:[]Cdp,url:string)->bool {
+  buf:[4096]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  return hq_call(c,"Page.navigate",jo_text(o[..])) && hq_eval(c,HQ_READY,"actual page Wasm and WebGPU ready");
+}
+hq_browser_run :: (c:[]Cdp,url:string)->bool {
+  if !hq_call(c,"Page.enable","{}") {return false;}
+  b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],HQ_INIT);jo_end(o[..]);
+  if !hq_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..])) || !hq_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}") || !hq_navigate(c,url) {return false;}
+  if !hq_eval(c,"__hq.x.coaxial_state_size()>=68312&&__hqState().scene===0","Wasm state prefix and initial library") {return false;}
+  keys:=[4]string.["2","3","4","5"];scripts:=[4]string.["__hqState().scene===1","__hqState().scene===2","__hqState().scene===3","__hqState().scene===4"];
+  for i:0..<4 {if !hq_key(c,keys[i],50+i,0) || !hq_eval(c,scripts[i],"real keyboard changes scene") {return false;}}
+  if !hq_click(c,150,130) || !hq_eval(c,"__hqState().scene===0","real pointer selects Library tab") {return false;}
+  if !hq_click(c,100,220) || !hq_eval(c,"__hqState().inspected===1","real pointer opens orbit component") {return false;}
+  if !hq_key(c,"3",51,0) || !hq_eval(c,"__hqState().scene===0&&__hqState().inspected===1","modal consumes background scene shortcut") {return false;}
+  if !hq_key(c,"Tab",9,0) || !hq_eval(c,"__hqState().focus===0","Tab focuses modal close") {return false;}
+  if !hq_key(c,"Tab",9,8) || !hq_eval(c,"__hqState().focus===0","Shift Tab stays trapped in modal") {return false;}
+  if !hq_key(c,"Enter",13,0) || !hq_eval(c,"__hqState().inspected===0","Enter closes modal") {return false;}
+  if !hq_key(c,"m",77,0) || !hq_eval(c,"__hqState().cyan","accent key changes actual Wasm state") {return false;}
+  if !hq_key(c," ",32,0) || !hq_eval(c,"__hqState().paused","Space pauses actual Wasm") {return false;}
+  if !hq_eval(c,"(async()=>{const t=__hqState().time;await new Promise(r=>setTimeout(r,250));return __hqState().time===t})()","paused WebGPU frames retain demo time") {return false;}
+  if !hq_key(c," ",32,0) || !hq_key(c,"3",51,0) {return false;}
+  if !hq_click(c,700,820) || !hq_eval(c,"__hqState().route","real pointer arms demo route") {return false;}
+  if !hq_eval(c,"__hqErrors.length===0","desktop has no browser exceptions or console errors") {return false;}
+  if !hq_call(c,"Emulation.setEmulatedMedia","{\"features\":[{\"name\":\"prefers-reduced-motion\",\"value\":\"reduce\"}]}") || !hq_navigate(c,url) {return false;}
+  if !hq_eval(c,"(async()=>{const t=__hqState().time;await new Promise(r=>setTimeout(r,250));return matchMedia('(prefers-reduced-motion: reduce)').matches&&__hqState().time===t})()","reduced motion freezes the actual page clock") {return false;}
+  if !hq_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":2,\"mobile\":true}") || !hq_navigate(c,url) {return false;}
+  if !hq_key(c,"5",53,0) || !hq_eval(c,"__hqState().scene===4&&__hqState().max>0","phone scene has reachable scroll content") {return false;}
+  if !hq_key(c,"PageDown",34,0) || !hq_eval(c,"__hqState().scroll>0","phone keyboard scrolls content") {return false;}
+  return hq_eval(c,"__hqErrors.length===0","no browser exceptions or console errors");
+}
+
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])>2 {tool_errln("usage: hud-check [--native|--browser] [BASE_URL]");return 2;}
+  browser:=args_count(a[..])>0 && args_at(a[..],0)=="--browser";
+  native:=args_count(a[..])>0 && args_at(a[..],0)=="--native";
+  regressions:=args_count(a[..])>0 && args_at(a[..],0)=="--regressions";
+  if !browser && !hq_native(!regressions) {return 1;}
+  if native || regressions {return 0;}
+  at:=ifx browser then 1 else 0;
+  url:=ifx args_count(a[..])>at then args_at(a[..],at) else "http://127.0.0.1:8815/";
+  c:[1]Cdp;if !cdp_launch(c[..],1440,900,"aethyr-hud-check-") {tool_errln(cdp_error(c[..]));return 1;}
+  ok:=hq_browser_run(c[..],url);if !ok {tool_errln(cdp_error(c[..]));}cdp_close(c[..]);
+  if !ok {return 1;}
+  print("PASS actual Wasm/WebGPU desktop/phone input journey\n");return 0;
+}

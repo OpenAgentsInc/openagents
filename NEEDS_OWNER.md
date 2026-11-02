@@ -1,5 +1,20 @@
 # Owner actions
 
+## Aethyr HUD component library: visual review (2026-11-01)
+
+Review the running local demo at `http://127.0.0.1:8815/` (the isolated
+`aethyr-hud-library` worktree). Keys 1–5 choose the component library, Grid,
+flight, systems and communications; M toggles monochrome/cyan, Space freezes
+motion, Tab/Enter operate controls. Click a component to inspect it; Escape
+closes it. Scroll for all 18 components and the stacked phone scenes.
+
+Assess the monochrome hierarchy, type size, instrument density and how the
+four compositions extend the current Grid. Contacts, telemetry and events are
+synthetic demo fixtures. This review does not require a payment, sign-in or
+production deployment. Research and reuse contract:
+`docs/verse/2026-11-01-hud-library.md`; restart instructions:
+`apps/openagents-web/demos/hud/README.md`.
+
 ## Nostr book follow-ups that need the owner (2026-11-01)
 
 Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.

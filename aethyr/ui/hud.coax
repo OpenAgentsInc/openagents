@@ -1,0 +1,166 @@
+// HUD atlas foundations. Coordinates are screen points, y down. The caller
+// draws and hit-tests the same boxes, translating both by its scroll offset.
+// This is a component-library foundation, not chapter 15's complete UI tree.
+// coax/bin/coax test aethyr/ui/hud.coax --library
+
+HudBox :: struct { x:f32; y:f32; width:f32; height:f32; }
+HudCoord :: struct { x:f32; y:f32; }
+HudControl :: struct { box:HudBox; action:int; label:string; enabled:bool; }
+
+#test "a drawn rectangle owns its top and left edges only" {
+  b := HudBox.{x=10,y=20,width=44,height=44};
+  #assert hud_contains(b,10,20) && hud_contains(b,53.99,63.99);
+  #assert !hud_contains(b,54,20) && !hud_contains(b,10,64);
+  #assert !hud_contains(b,9.99,20) && !hud_contains(b,10,19.99);
+  #assert !hud_contains(HudBox.{width=0,height=44},0,0);
+  #assert !hud_contains(HudBox.{width=-10,height=44},0,0);
+  #assert !hud_contains(HudBox.{width=44,height=0},0,0);
+  #assert !hud_contains(b,0.0f32/0.0f32,20);
+}
+
+#test "the last enabled labelled control owns an overlap" {
+  controls := [4] HudControl.[
+    HudControl.{box=HudBox.{x=10,y=10,width=80,height=80},action=1,label="Base",enabled=true},
+    HudControl.{box=HudBox.{x=30,y=30,width=40,height=40},action=2,label="Front",enabled=true},
+    HudControl.{box=HudBox.{x=30,y=30,width=40,height=40},action=3,label="Disabled",enabled=false},
+    HudControl.{box=HudBox.{x=30,y=30,width=40,height=40},action=4,label="",enabled=true}
+  ];
+  #assert hud_hit(controls[..],40,40)==2;
+  #assert hud_hit(controls[..],10,10)==1;
+  #assert hud_hit(controls[..],90,10)==0;
+  #assert hud_hit(controls[..],70,40)==1;
+  controls[3].label="X";
+  #assert hud_hit(controls[..],40,40)==4;
+  controls[3].action=0;
+  #assert hud_hit(controls[..],40,40)==2;
+}
+
+#test "keyboard focus visits the same actionable controls and wraps" {
+  controls := [5] HudControl.[
+    HudControl.{action=1,label="Scene",enabled=true},
+    HudControl.{action=2,label="Unavailable",enabled=false},
+    HudControl.{action=3,label="",enabled=true},
+    HudControl.{action=0,label="Decoration",enabled=true},
+    HudControl.{action=5,label="Pause",enabled=true}
+  ];
+  #assert hud_focus_next(controls[..],-1,false)==0;
+  #assert hud_focus_next(controls[..],0,false)==4;
+  #assert hud_focus_next(controls[..],4,false)==0;
+  #assert hud_focus_next(controls[..],0,true)==4;
+  #assert hud_focus_next(controls[..],-1,true)==4;
+  #assert hud_focus_next(controls[1..<4],-1,false)==-1;
+  #assert hud_focus_next(controls[0..<0],-1,false)==-1;
+  #assert hud_focus_next(controls[0..<1],0,false)==0;
+  all := [3] HudControl.[HudControl.{action=1,label="A",enabled=true},
+    HudControl.{action=2,label="B",enabled=true},HudControl.{action=3,label="C",enabled=true}];
+  #assert hud_focus_next(all[..],0,false)==1 && hud_focus_next(all[..],1,false)==2;
+  #assert hud_focus_next(all[..],2,true)==1 && hud_focus_next(all[..],1,true)==0;
+  #assert hud_focus_next(all[..],3,false)==0 && hud_focus_next(all[..],3,true)==2;
+  #assert hud_focus_next(all[..],-2,false)==0;
+}
+
+#forall "atlas cells fit phone tablet and desktop widths and never overlap" view: 0..<4 {
+  widths := [4] f32.[320,768,1280,1920];
+  columns := [4] int.[1,2,3,3];
+  w := widths[view];
+  for i: 0..<18 {
+    a := hud_grid_cell(w,800,34,i,18);
+    #assert a.x>=24 && a.x+a.width<=w-23.99;
+    #assert a.width>0 && a.height==224;
+    #assert a.y==180+cast(f32)(i/columns[view])*242;
+    if i+1<18 {
+      b := hud_grid_cell(w,800,34,i+1,18);
+      #assert a.x+a.width<b.x || a.y+a.height<b.y;
+    }
+  }
+}
+
+#test "invalid gallery cells are empty and segment counts are bounded" {
+  #assert hud_grid_cell(320,700,34,-1,18).width==0;
+  #assert hud_grid_cell(320,700,34,18,18).width==0;
+  #assert hud_grid_cell(40,700,34,0,18).width==0;
+  #assert hud_grid_cell(0.0f32/0.0f32,700,34,0,18).width==0;
+  #assert hud_grid_cell(100,700,0,0,18).width==52;
+  #assert hud_grid_cell(1000000,700,0,0,18).width==0;
+  #assert hud_grid_cell(320,0,0,0,18).width==0;
+  #assert hud_grid_cell(320,1000000,0,0,18).width==0;
+  #assert hud_grid_cell(320,700,700,0,18).width==0;
+  #assert hud_grid_cell(700,700,0,0,18).width==317;
+  #assert abs(hud_grid_cell(1100,700,0,0,18).width-338.6666667)<0.001;
+  #assert hud_segment(0,20)==0 && hud_segment(1,20)==20;
+  #assert hud_segment(0.499,20)==9 && hud_segment(0.5,20)==10;
+  #assert hud_segment(-1,20)==0 && hud_segment(2,20)==20;
+  #assert hud_segment(0.0f32/0.0f32,20)==0;
+  #assert hud_segment(0.5,0)==0 && hud_segment(0.5,-1)==0;
+  #assert hud_segment(1,1)==1 && hud_segment(1,16777217)==16777217;
+}
+
+#test "elliptical arc coordinates preserve the cardinal points" {
+  a := hud_arc_point(100,200,40,20,0);
+  b := hud_arc_point(100,200,40,20,1.57079632679);
+  #assert a.x==140 && a.y==200;
+  #assert abs(b.x-100)<0.001 && abs(b.y-220)<0.001;
+}
+
+// Half-open edges give two adjacent controls exactly one owner.
+hud_contains :: (box:HudBox,x:f32,y:f32)->bool {
+  return x>=box.x && y>=box.y &&
+    x<box.x+box.width && y<box.y+box.height;
+}
+
+// A label is required for both pointer and keyboard activation. Zero means
+// no action; controls with a nonpositive action are informational only.
+hud_hit :: (controls:[]HudControl,x:f32,y:f32)->int {
+  action := 0;
+  for control:controls {
+    if control.enabled && control.action>0 && control.label.count>0 && hud_contains(control.box,x,y) {
+      action = control.action;
+    }
+  }
+  return action;
+}
+
+// Current is an index, not an action ID. A missing focus starts at the first
+// available control (last when moving backward). No available control is -1.
+hud_focus_next :: (controls:[]HudControl,current:int,back:bool)->int {
+  if controls.count==0 { return -1; }
+  at := current;
+  if at<0 || at>=controls.count { at=ifx back then 0 else controls.count-1; }
+  for ignored:0..<controls.count {
+    if back { at-=1; if at<0 { at=controls.count-1; } }
+    else { at+=1; if at>=controls.count { at=0; } }
+    c := controls[at];
+    if c.enabled && c.action>0 && c.label.count>0 { return at; }
+  }
+  return -1;
+}
+
+// The atlas is scrollable content: cells below the viewport keep their
+// logical y coordinate. Height/bottom validate the viewport; the caller
+// clips drawing and derives the scroll range from the last cell and inset.
+hud_grid_cell :: (width:f32,height:f32,bottom:f32,index:int,count:int)->HudBox {
+  empty:HudBox;
+  if !(width>=100 && width<1000000 && height>0 && height<1000000 && bottom>=0 && bottom<height) ||
+      index<0 || index>=count { return empty; }
+  columns := 1;
+  if width>=1100 { columns=3; } else if width>=700 { columns=2; }
+  cell_width := (width-48-cast(f32)(columns-1)*18)/cast(f32)columns;
+  return HudBox.{x=24+cast(f32)(index%columns)*(cell_width+18),
+    y=180+cast(f32)(index/columns)*242,width=cell_width,height=224};
+}
+
+// Fractional progress lights only whole segments, never a partial one.
+// The comparison form maps NaN and negatives to zero before a float cast.
+hud_segment :: (value:f32,total:int)->int {
+  if total<=0 || !(value>0) { return 0; }
+  if value>=1 { return total; }
+  n := cast(int)floor(value*cast(f32)total);
+  if n>total { return total; }
+  return n;
+}
+
+// Radians, clockwise from the right in y-down screen space. This is drawing
+// geometry and may use host trigonometry; simulation never calls it.
+hud_arc_point :: (cx:f32,cy:f32,rx:f32,ry:f32,angle:f32)->HudCoord {
+  return HudCoord.{x=cx+cos(angle)*rx,y=cy+sin(angle)*ry};
+}

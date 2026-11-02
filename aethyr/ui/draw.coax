@@ -1,0 +1,443 @@
+// Aethyr's HUD drawing components. Screen points become the existing
+// projects shader's twelve-float stroke/sans vertices. No platform effects.
+// Demo labels and numbers describe synthetic instrumentation, not live work.
+// coax/bin/coax test aethyr/ui/draw.coax --library
+#load "hud.coax";
+#load "../../verse/hud/frame.coax";
+#load "../../apps/openagents-web/font.coax";
+
+VERTEX_FLOATS :: 12;
+HdPen :: struct { d:f32; cyan:bool; top:f32; bottom:f32; }
+HdRow :: struct { label:string; value:string; status:int=1; }
+HdMeter :: struct { label:string; value:f32; readout:string; }
+HdMessage :: struct { channel:string; title:string; line1:string; line2:string; footer:string; }
+HdAlert :: struct { title:string; detail:string; active:bool; }
+
+#test "HUD strokes refuse a short buffer and clip to the visible strip" {
+  out:[144]f32;
+  p:=HdPen.{d=2,top=10,bottom=100};
+  #assert hd_line(out[0..<60],0,10,20,40,50,p,0,1)==0;
+  #assert out[0]==0 && out[59]==0;
+  #assert hd_line(out[..],0,0,0,20,0,p,0,1)==0;
+  #assert hd_line(out[..],0,10,20,40,50,p,0,1)==6;
+  #assert out[6]==1 && out[8]==HUD_GREY_WHITE;
+  #assert hd_line(out[..],6,10,20,40,50,p,2,1)==12;
+}
+
+#test "component drawing remains bounded even when its buffer fills" {
+  out:[720]f32;
+  p:=HdPen.{d=1,cyan=true,top=0,bottom=1000};
+  for kind:0..<18 {
+    n:=hd_component(out[..],0,kind,HudBox.{x=20,y=20,width=280,height=140},p,4,0.72);
+    #assert n>=0 && n<=60 && n%6==0;
+  }
+}
+
+#test "advisories draw their supplied active or acknowledged state" {
+  out:[36000]f32;p:=HdPen.{d=1,cyan=true,top=0,bottom=1000};
+  b:=HudBox.{x=0,y=0,width=236,height=140};
+  active:=hd_advisory(out[..],0,b,p,HdAlert.{title="THERMAL",detail="Loop 02",active=true});
+  acknowledged:=hd_advisory(out[..],0,b,p,HdAlert.{title="THERMAL",detail="Loop 02",active=false});
+  #assert active>0 && acknowledged>0 && active!=acknowledged;
+}
+
+// The shared Filament implementation calls this vertex writer directly.
+lit :: (out:[]f32,at:int,ax:f32,ay:f32,bx:f32,by:f32,core:f32,light:f32,glow:f32,
+  red:f32,green:f32,blue:f32,mode:f32)->bool {
+  if at<0 || (at+6)*VERTEX_FLOATS>out.count || light<=0.003 { return false; }
+  dx:=bx-ax;dy:=by-ay;length:=sqrt(dx*dx+dy*dy);
+  if !(length>0) {return false;}
+  ux:=dx/length;uy:=dy/length;r:=core+glow;
+  along:=[6]f32.[-r,length+r,length+r,-r,length+r,-r];
+  across:=[6]f32.[-r,-r,r,-r,r,r];
+  for i:0..<6 {
+    o:=(at+i)*VERTEX_FLOATS;
+    out[o]=ax+ux*along[i]-uy*across[i];out[o+1]=ay+uy*along[i]+ux*across[i];
+    out[o+2]=along[i];out[o+3]=across[i];out[o+4]=length;out[o+5]=core;
+    out[o+6]=light;out[o+7]=glow;out[o+8]=red;out[o+9]=green;out[o+10]=blue;out[o+11]=mode;
+  }
+  return true;
+}
+
+hd_ink :: (p:HdPen,kind:int)->Ink {
+  k:=Ink.{core=0.48*p.d,light=0.92,glow=2*p.d,red=HUD_GREY_WHITE,green=HUD_GREY_WHITE,
+    blue=HUD_GREY_WHITE,scale=p.d,sans=true};
+  if kind==1 {k.red=HUD_GREY_MID;k.green=HUD_GREY_MID;k.blue=HUD_GREY_MID;}
+  if kind==3 {k.red=HUD_GREY_DIM;k.green=HUD_GREY_DIM;k.blue=HUD_GREY_DIM;}
+  if kind==2 && p.cyan {k.red=HUD_ACCENT_R;k.green=HUD_ACCENT_G;k.blue=HUD_ACCENT_B;}
+  return k;
+}
+
+hd_line :: (out:[]f32,at:int,ax:f32,ay:f32,bx:f32,by:f32,p:HdPen,kind:int,light:f32)->int {
+  x0:=ax;y0:=ay;x1:=bx;y1:=by;
+  if (y0<p.top && y1<p.top) || (y0>p.bottom && y1>p.bottom) {return at;}
+  if y0<p.top {x0=ax+(bx-ax)*(p.top-ay)/(by-ay);y0=p.top;}
+  if y0>p.bottom {x0=ax+(bx-ax)*(p.bottom-ay)/(by-ay);y0=p.bottom;}
+  if y1<p.top {x1=ax+(bx-ax)*(p.top-ay)/(by-ay);y1=p.top;}
+  if y1>p.bottom {x1=ax+(bx-ax)*(p.bottom-ay)/(by-ay);y1=p.bottom;}
+  k:=hd_ink(p,kind);
+  if lit(out,at,x0*p.d,y0*p.d,x1*p.d,y1*p.d,k.core,light,k.glow,k.red,k.green,k.blue,0) {return at+6;}
+  return at;
+}
+
+hd_text :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,p:HdPen,kind:int)->int {
+  if y-cap<p.top || y+3>p.bottom || at<0 {return at;}
+  k:=hd_ink(p,kind);k.sans=cap<15;
+  return draw_text(out,at,text,x*p.d,y*p.d,cap*p.d,0.22,0.72,k,false,false);
+}
+
+// Text stays inside the supplied column. The same font metrics determine
+// both the fitted prefix and the actual rendered advance, at every DPR.
+hd_text_fit :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,width:f32,p:HdPen,kind:int)->int {
+  if width<=0 {return at;}
+  k:=hd_ink(p,kind);k.sans=cap<15;k.scale=1;
+  if ink_width(text,cap,0.22,0.72,k)<=width {return hd_text(out,at,text,x,y,cap,p,kind);}
+  dots:=ink_width("...",cap,0.22,0.72,k);
+  if dots>width {return at;}
+  i:=0;stop:=0;
+  while i<text.count {
+    rune:=decode(text,i);i+=rune.len;
+    if ink_width(text[0..<i],cap,0.22,0.72,k)+dots>width {break;}
+    stop=i;
+  }
+  n:=hd_text(out,at,text[0..<stop],x,y,cap,p,kind);
+  return hd_text(out,n,"...",x+ink_width(text[0..<stop],cap,0.22,0.72,k),y,cap,p,kind);
+}
+
+hd_panel :: (out:[]f32,at:int,b:HudBox,p:HdPen,active:bool)->int {
+  n:=at;
+  for i:0..<6 {
+    a:=verse_hud_frame_point(b.x,b.y,b.x+b.width,b.y+b.height,10,i);
+    z:=verse_hud_frame_point(b.x,b.y,b.x+b.width,b.y+b.height,10,i+1);
+    n=hd_line(out,n,a.x,a.y,z.x,z.y,p,1,0.34);
+  }
+  arm:=verse_hud_frame_arm(b.width,1);kind:=ifx active then 2 else 0;
+  n=hd_line(out,n,b.x,b.y+arm*0.6,b.x,b.y,p,kind,0.92);
+  n=hd_line(out,n,b.x,b.y,b.x+arm,b.y,p,kind,0.92);
+  n=hd_line(out,n,b.x+b.width,b.y+b.height-arm*0.6,b.x+b.width,b.y+b.height,p,kind,0.92);
+  return hd_line(out,n,b.x+b.width,b.y+b.height,b.x+b.width-arm,b.y+b.height,p,kind,0.92);
+}
+
+hd_ring :: (out:[]f32,at:int,cx:f32,cy:f32,rx:f32,ry:f32,start:f32,end:f32,p:HdPen,kind:int)->int {
+  n:=at;steps:=64;
+  for i:0..<steps {
+    a:=hud_arc_point(cx,cy,rx,ry,start+(end-start)*cast(f32)i/cast(f32)steps);
+    b:=hud_arc_point(cx,cy,rx,ry,start+(end-start)*cast(f32)(i+1)/cast(f32)steps);
+    n=hd_line(out,n,a.x,a.y,b.x,b.y,p,kind,0.72);
+  }
+  return n;
+}
+
+hd_diamond :: (out:[]f32,at:int,x:f32,y:f32,r:f32,p:HdPen,kind:int)->int {
+  n:=hd_line(out,at,x,y-r,x+r,y,p,kind,1);
+  n=hd_line(out,n,x+r,y,x,y+r,p,kind,1);
+  n=hd_line(out,n,x,y+r,x-r,y,p,kind,1);
+  return hd_line(out,n,x-r,y,x,y-r,p,kind,1);
+}
+
+hd_rect :: (out:[]f32,at:int,b:HudBox,p:HdPen,kind:int,light:f32)->int {
+  n:=hd_line(out,at,b.x,b.y,b.x+b.width,b.y,p,kind,light);
+  n=hd_line(out,n,b.x+b.width,b.y,b.x+b.width,b.y+b.height,p,kind,light);
+  n=hd_line(out,n,b.x+b.width,b.y+b.height,b.x,b.y+b.height,p,kind,light);
+  return hd_line(out,n,b.x,b.y+b.height,b.x,b.y,p,kind,light);
+}
+
+hd_orbits :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  cx:=b.x+b.width*0.5;cy:=b.y+b.height*0.52;n:=at;
+  radius:=b.width*0.43;if radius>b.height*0.93 {radius=b.height*0.93;}
+  for i:0..<5 {
+    r:=radius*(0.22+cast(f32)i*0.195);
+    n=hd_ring(out,n,cx,cy,r,r*0.39,0,6.2831853,p,ifx i==3 then 2 else 3);
+    a:=time*0.08+cast(f32)i*1.8;
+    dot:=hud_arc_point(cx,cy,r,r*0.39,a);
+    n=hd_diamond(out,n,dot.x,dot.y,2.4,p,ifx i==3 then 2 else 0);
+  }
+  n=hd_line(out,n,cx-radius*1.06,cy,cx+radius*1.06,cy,p,3,0.3);
+  n=hd_line(out,n,cx,cy-radius*0.49,cx,cy+radius*0.49,p,3,0.3);
+  for i:0..<24 {
+    angle:=cast(f32)i*6.2831853/24;
+    a:=hud_arc_point(cx,cy,radius*1.04,radius*0.406,angle);
+    z:=hud_arc_point(cx,cy,radius*1.08,radius*0.422,angle);
+    n=hd_line(out,n,a.x,a.y,z.x,z.y,p,3,0.45);
+  }
+  n=hd_diamond(out,n,cx,cy,4,p,0);
+  n=hd_text(out,n,"LOCAL / 5 CONTACTS",b.x+4,b.y+12,8,p,1);
+  return hd_text(out,n,"REFERENCE PLANE  0.00",b.x+4,b.y+b.height-2,8,p,1);
+}
+
+hd_telemetry :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;x:=b.x+25;y:=b.y+20;w:=b.width-33;h:=b.height-43;
+  for i:0..<5 {yy:=y+cast(f32)i*h/4;n=hd_line(out,n,x,yy,x+w,yy,p,3,0.35);}
+  for i:0..<9 {px:=x+cast(f32)i*w/8;n=hd_line(out,n,px,y,px,y+h,p,3,0.22);}
+  for channel:0..<2 {
+    lastx:=x;lasty:=y+h*0.5;
+    for i:0..<80 {
+      t:=cast(f32)i/79;px:=x+t*w;
+      yy:=y+h*(0.48+0.19*sin(t*15+time*0.3+cast(f32)channel)+0.08*cos(t*37+cast(f32)channel*5));
+      if i>0 {n=hd_line(out,n,lastx,lasty,px,yy,p,ifx channel==0 then 2 else 1,ifx channel==0 then 0.9 else 0.5);}
+      lastx=px;lasty=yy;
+    }
+  }
+  n=hd_text(out,n,"100",b.x,y+5,8,p,1);n=hd_text(out,n,"0",b.x+11,y+h,8,p,1);
+  n=hd_text(out,n,"T - 60 S",x,b.y+b.height,8,p,1);
+  return hd_text(out,n,"NOW",x+w-25,b.y+b.height,8,p,2);
+}
+
+hd_target :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32,value:f32)->int {
+  cx:=b.x+b.width*0.5;cy:=b.y+b.height*0.52;r:=b.height*0.31;
+  if r>b.width*0.25 {r=b.width*0.25;}n:=at;
+  n=hd_ring(out,n,cx,cy,r,r,0.16,1.35,p,0);
+  n=hd_ring(out,n,cx,cy,r,r,1.74,2.94,p,0);
+  n=hd_ring(out,n,cx,cy,r,r,3.3,4.5,p,0);
+  n=hd_ring(out,n,cx,cy,r,r,4.89,6.1,p,0);
+  n=hd_ring(out,n,cx,cy,r*0.72,r*0.72,0,6.2831853,p,3);
+  n=hd_line(out,n,cx-r-8,cy,cx-r+9,cy,p,0,1);n=hd_line(out,n,cx+r-9,cy,cx+r+8,cy,p,0,1);
+  n=hd_line(out,n,cx,cy-r-8,cx,cy-r+9,p,0,1);n=hd_line(out,n,cx,cy+r-9,cx,cy+r+8,p,0,1);
+  n=hd_diamond(out,n,cx+sin(time*0.3)*8,cy+cos(time*0.3)*5,8,p,2);
+  n=hd_text(out,n,"TRACK  004",b.x+4,b.y+10,8,p,2);
+  return hd_text(out,n,"RNG  2.84 KM",b.x+b.width-83,b.y+b.height-2,8,p,1);
+}
+
+hd_attitude :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;cx:=b.x+b.width*0.5;cy:=b.y+b.height*0.52;
+  for i:0..<7 {
+    offset:=cast(f32)(i-3)*17;reach:=ifx i==3 then 85.0f32 else 37.0f32;
+    yy:=cy+offset;
+    n=hd_line(out,n,cx-reach,yy,cx-10,yy,p,ifx i==3 then 0 else 3,0.7);
+    n=hd_line(out,n,cx+10,yy,cx+reach,yy,p,ifx i==3 then 0 else 3,0.7);
+    if i!=3 {n=hd_line(out,n,cx-reach,yy,cx-reach,yy+4,p,3,0.7);n=hd_line(out,n,cx+reach,yy,cx+reach,yy+4,p,3,0.7);}
+  }
+  n=hd_line(out,n,cx-22,cy-3,cx-9,cy-3,p,2,1);n=hd_line(out,n,cx-9,cy-3,cx,cy+4,p,2,1);
+  n=hd_line(out,n,cx,cy+4,cx+9,cy-3,p,2,1);n=hd_line(out,n,cx+9,cy-3,cx+22,cy-3,p,2,1);
+  n=hd_text(out,n,"+30",b.x+8,cy-47,8,p,1);n=hd_text(out,n,"-30",b.x+8,cy+55,8,p,1);
+  return hd_text(out,n,"PITCH  +00.4 / ROLL  00.0",b.x+45,b.y+b.height,8,p,1);
+}
+
+hd_meter :: (out:[]f32,at:int,b:HudBox,p:HdPen,value:f32)->int {
+  meters:=[3]HdMeter.[HdMeter.{label="CORE LOAD",value=value,readout="72 %"},
+    HdMeter.{label="MEMORY",value=0.43,readout="43 %"},HdMeter.{label="CAPACITY",value=0.86,readout="86 %"}];
+  return hd_meters(out,at,meters[..],b,p);
+}
+
+hd_schematic :: (out:[]f32,at:int,b:HudBox,p:HdPen,value:f32)->int {
+  n:=at;cx:=b.x+b.width*0.5;cy:=b.y+b.height*0.52;
+  halfw:=b.width*0.075;halfh:=b.height*0.19;bus:=b.width*0.28;reach:=b.width*0.41;
+  n=hd_rect(out,n,HudBox.{x=cx-halfw,y=cy-halfh,width=halfw*2,height=halfh*2},p,0,0.9);
+  n=hd_rect(out,n,HudBox.{x=cx-halfw*0.64,y=cy-halfh*0.65,width=halfw*1.28,height=halfh*1.3},p,3,0.7);
+  for side:0..<2 {
+    sign:=ifx side==0 then -1.0f32 else 1.0f32;
+    for row:0..<3 {
+      yy:=b.y+b.height*(0.15+cast(f32)row*0.3);px:=cx+sign*bus;
+      n=hd_line(out,n,cx+sign*halfw,cy,px,cy,p,3,0.55);
+      n=hd_line(out,n,px,cy,px,yy,p,3,0.55);
+      n=hd_line(out,n,px,yy,cx+sign*reach,yy,p,ifx row==1 then 2 else 3,0.55);
+      n=hd_diamond(out,n,cx+sign*reach,yy,4,p,ifx row==1 then 2 else 0);
+    }
+  }
+  n=hd_text(out,n,"COMPUTE / STORAGE",b.x+2,b.y+8,8,p,1);
+  return hd_text(out,n,"POWER BUS / 6 NODES",b.x+2,b.y+b.height,8,p,1);
+}
+
+hd_contacts :: (out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  rows:=[4]HdRow.[HdRow.{label="PYLON / 01",value="0.24 KM"},HdRow.{label="BEACON / 07",value="1.80 KM",status=2},
+    HdRow.{label="RELAY / 02",value="2.84 KM"},HdRow.{label="TERMINAL / 04",value="4.12 KM"}];
+  return hd_rows(out,at,rows[..],b,p);
+}
+
+hd_waveform :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;cy:=b.y+b.height*0.48;w:=b.width-12;
+  n=hd_line(out,n,b.x+4,cy,b.x+w,cy,p,3,0.45);
+  for i:0..<82 {
+    x:=b.x+4+cast(f32)i*w/82;t:=cast(f32)i;
+    envelope:=0.12+0.88*abs(sin(t*0.065+time*0.3));
+    h:=3+abs(sin(t*2.1+time*0.6))*envelope*35;
+    n=hd_line(out,n,x,cy-h,x,cy+h,p,ifx i>58 then 3 else 2,0.85);
+  }
+  n=hd_text(out,n,"CHANNEL 04 / VOICE",b.x+4,b.y+10,8,p,1);
+  return hd_text(out,n,"-18 DB   16 KHZ   00:42",b.x+4,b.y+b.height-3,8,p,1);
+}
+
+hd_terminal :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  lines:=[6]string.["> COAX / DIAGNOSTICS","[OK] frame budget  8 / 8","[OK] replay digest  matched","[OK] mesh records   admitted","[--] awaiting next sample","> _"];
+  return hd_terminal_lines(out,at,lines[..],b,p);
+}
+
+hd_timeline :: (out:[]f32,at:int,b:HudBox,p:HdPen,value:f32)->int {
+  labels:=[4]string.["SPAWN","RELAY","PYLON","ARRIVE"];n:=at;
+  x0:=b.x+17;x1:=b.x+b.width-17;yy:=b.y+61;
+  n=hd_line(out,n,x0,yy,x1,yy,p,3,0.6);
+  n=hd_line(out,n,x0,yy,x0+(x1-x0)*value,yy,p,2,1);
+  for i:0..<4 {
+    px:=x0+cast(f32)i*(x1-x0)/3;
+    n=hd_ring(out,n,px,yy,5,5,0,6.2831853,p,ifx i<3 then 2 else 1);
+    n=hd_line(out,n,px,yy+10,px,yy+24,p,3,0.8);
+    n=hd_text(out,n,labels[i],px-15,yy+41,8,p,1);
+  }
+  n=hd_text(out,n,"ROUTE / 04 WAYPOINTS",b.x+3,b.y+12,8,p,1);
+  return hd_text(out,n,"ETA  00:18",b.x+3,b.y+b.height-2,9,p,2);
+}
+
+hd_alert :: (out:[]f32,at:int,b:HudBox,p:HdPen,value:f32)->int {
+  return hd_advisory(out,at,b,p,HdAlert.{title="THERMAL ADVISORY",detail="Loop 02 approaching limit",active=value>=0.5});
+}
+
+hd_commands :: (out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  labels:=[6]string.["SCAN","TRACK","ROUTE","FOCUS","HOLD","CLEAR"];n:=at;
+  w:=(b.width-14)/3;h:=48.0f32;
+  for i:0..<6 {
+    box:=HudBox.{x=b.x+cast(f32)(i%3)*(w+7),y=b.y+9+cast(f32)(i/3)*(h+9),width=w,height=h};
+    n=hd_panel(out,n,box,p,i==1);
+    n=hd_text(out,n,labels[i],box.x+10,box.y+29,9,p,ifx i==1 then 2 else 0);
+    n=hd_line(out,n,box.x+8,box.y+8,box.x+16,box.y+8,p,ifx i==1 then 2 else 3,0.6);
+  }
+  return n;
+}
+
+hd_spectrum :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;w:=b.width-8;h:=b.height-35;
+  for row:0..<7 {
+    yy:=b.y+18+cast(f32)row*12;
+    for band:0..<38 {
+      phase:=cast(f32)band*0.47+cast(f32)row*0.28;
+      power:=0.2+0.8*abs(sin(phase+time*0.2)*cos(phase*0.41));
+      px:=b.x+4+cast(f32)band*w/38;
+      n=hd_line(out,n,px,yy,px+w/38-3,yy,p,ifx power>0.65 then 2 else 3,power*0.7);
+    }
+  }
+  n=hd_text(out,n,"SIGNAL DENSITY",b.x+4,b.y+8,8,p,1);
+  return hd_text(out,n,"0.2       1.0       2.0       4.0 GHZ",b.x+4,b.y+b.height-2,8,p,1);
+}
+
+hd_heading :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;cx:=b.x+b.width*0.5;yy:=b.y+65;
+  n=hd_ring(out,n,cx,yy,b.width*0.43,48,3.4,6.02,p,3);
+  for i:0..<25 {
+    px:=b.x+10+cast(f32)i*(b.width-20)/24;major:=i%4==0;
+    n=hd_line(out,n,px,yy,px,yy-(ifx major then 16.0f32 else 7.0f32),p,ifx major then 0 else 3,0.8);
+  }
+  n=hd_diamond(out,n,cx,yy+4,4,p,2);
+  n=hd_text(out,n,"270",b.x+7,yy-22,8,p,1);n=hd_text(out,n,"000",cx-10,yy-22,8,p,0);
+  n=hd_text(out,n,"090",b.x+b.width-28,yy-22,8,p,1);
+  n=hd_text(out,n,"000.4",cx-31,yy+42,18,p,0);
+  return hd_text(out,n,"HEADING / TRUE",b.x+4,b.y+b.height,8,p,1);
+}
+
+hd_docking :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;cx:=b.x+b.width*0.45;cy:=b.y+b.height*0.49;
+  for i:0..<4 {
+    size:=14+cast(f32)i*12;
+    n=hd_rect(out,n,HudBox.{x=cx-size,y=cy-size*0.72,width=size*2,height=size*1.44},p,ifx i==0 then 2 else 3,0.65);
+  }
+  n=hd_line(out,n,cx-63,cy,cx+63,cy,p,3,0.5);n=hd_line(out,n,cx,cy-47,cx,cy+47,p,3,0.5);
+  n=hd_diamond(out,n,cx+sin(time*0.3)*7,cy+cos(time*0.2)*4,7,p,2);
+  n=hd_text(out,n,"X  +0.04",b.x+b.width-69,b.y+40,8,p,1);
+  n=hd_text(out,n,"Y  -0.02",b.x+b.width-69,b.y+58,8,p,1);
+  n=hd_text(out,n,"Z  012.8",b.x+b.width-69,b.y+76,8,p,1);
+  return hd_text(out,n,"APPROACH AXIS / ALIGNED",b.x+4,b.y+b.height,8,p,2);
+}
+
+hd_manifest :: (out:[]f32,at:int,b:HudBox,p:HdPen,value:f32)->int {
+  rows:=[4]HdRow.[HdRow.{label="STORAGE",value="128 GB"},HdRow.{label="COMPUTE",value="8 CORES"},
+    HdRow.{label="BANDWIDTH",value="240 MB/S"},HdRow.{label="RESERVE",value="72 %",status=2}];
+  return hd_rows(out,at,rows[..],b,p);
+}
+
+hd_hand_terminal :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  return hd_message(out,at,b,p,HdMessage.{channel="04 / INCOMING TRANSMISSION",title="AETHYR OPERATIONS",
+    line1="Survey packet received.",line2="Local coordinates ready.",footer="READ  [01]"});
+}
+
+hd_beacon :: (out:[]f32,at:int,b:HudBox,p:HdPen,time:f32)->int {
+  n:=at;cx:=b.x+b.width*0.5;cy:=b.y+b.height*0.69;
+  for i:0..<4 {r:=18+cast(f32)i*17;n=hd_ring(out,n,cx,cy,r,r*0.3,0,6.2831853,p,ifx i==2 then 2 else 3);}
+  n=hd_line(out,n,cx,cy,cx,b.y+22,p,0,0.9);
+  n=hd_diamond(out,n,cx,b.y+22,4,p,2);
+  n=hd_line(out,n,cx+9,b.y+22,cx+24,b.y+9,p,3,0.8);
+  n=hd_line(out,n,cx+24,b.y+9,cx+80,b.y+9,p,3,0.8);
+  n=hd_text(out,n,"RELAY / 04",cx+28,b.y+5,8,p,0);
+  return hd_text(out,n,"WORLD ANCHOR / 3D TO SCREEN",b.x+5,b.y+b.height,8,p,1);
+}
+
+// Consumer-provided data: these helpers do not own telemetry or decide any
+// admission. Status is an ink kind, never an authority/health verdict.
+hd_rows :: (out:[]f32,at:int,rows:[]HdRow,b:HudBox,p:HdPen)->int {
+  if rows.count==0 {return at;}
+  n:=at;pitch:=b.height/cast(f32)rows.count;
+  for i:0..<rows.count {
+    yy:=b.y+12+cast(f32)i*pitch;
+    n=hd_diamond(out,n,b.x+6,yy-3,2.5,p,rows[i].status);
+    n=hd_text_fit(out,n,rows[i].label,b.x+18,yy,9,b.width*0.61-20,p,rows[i].status);
+    n=hd_text_fit(out,n,rows[i].value,b.x+b.width*0.64,yy,9,b.width*0.36-4,p,0);
+    n=hd_line(out,n,b.x+18,yy+9,b.x+b.width-3,yy+9,p,3,0.35);
+  }
+  return n;
+}
+
+hd_meters :: (out:[]f32,at:int,meters:[]HdMeter,b:HudBox,p:HdPen)->int {
+  if meters.count==0 {return at;}
+  n:=at;pitch:=b.height/cast(f32)meters.count;w:=(b.width-8-46)/24;
+  for row:0..<meters.count {
+    yy:=b.y+cast(f32)row*pitch;
+    n=hd_text_fit(out,n,meters[row].label,b.x+3,yy+10,9,b.width*0.68,p,1);
+    n=hd_text_fit(out,n,meters[row].readout,b.x+b.width*0.78,yy+10,9,b.width*0.22-3,p,0);
+    for i:0..<24 {
+      px:=b.x+3+cast(f32)i*(w+2);on:=i<hud_segment(meters[row].value,24);
+      n=hd_rect(out,n,HudBox.{x=px,y=yy+20,width=w,height=10},p,ifx on then 2 else 3,ifx on then 0.9 else 0.25);
+    }
+  }
+  return n;
+}
+
+hd_terminal_lines :: (out:[]f32,at:int,lines:[]string,b:HudBox,p:HdPen)->int {
+  if lines.count==0 {return at;}
+  n:=at;pitch:=(b.height-10)/cast(f32)lines.count;
+  for i:0..<lines.count {
+    n=hd_text_fit(out,n,lines[i],b.x+5,b.y+12+cast(f32)i*pitch,9,b.width-10,p,ifx i==0 || i==lines.count-1 then 2 else 1);
+  }
+  return n;
+}
+
+hd_message :: (out:[]f32,at:int,b:HudBox,p:HdPen,message:HdMessage)->int {
+  x:=b.x+5;w:=b.width-10;n:=hd_panel(out,at,HudBox.{x=x,y=b.y+3,width=w,height=b.height-7},p,false);
+  n=hd_text_fit(out,n,message.channel,x+12,b.y+22,8,w-24,p,2);
+  n=hd_line(out,n,x+12,b.y+32,x+w-12,b.y+32,p,3,0.5);
+  n=hd_text_fit(out,n,message.title,x+12,b.y+53,12,w-24,p,0);
+  n=hd_text_fit(out,n,message.line1,x+12,b.y+75,9,w-24,p,1);
+  n=hd_text_fit(out,n,message.line2,x+12,b.y+92,9,w-24,p,1);
+  n=hd_text_fit(out,n,message.footer,x+12,b.y+b.height-18,8,w-45,p,2);
+  return hd_diamond(out,n,x+w-19,b.y+b.height-22,3,p,0);
+}
+
+hd_advisory :: (out:[]f32,at:int,b:HudBox,p:HdPen,alert:HdAlert)->int {
+  n:=hd_panel(out,at,HudBox.{x=b.x+3,y=b.y+17,width=b.width-6,height=94},p,alert.active);
+  n=hd_diamond(out,n,b.x+26,b.y+49,11,p,ifx alert.active then 2 else 1);
+  n=hd_text(out,n,"!",b.x+24,b.y+54,13,p,ifx alert.active then 2 else 1);
+  n=hd_text_fit(out,n,alert.title,b.x+47,b.y+44,10,b.width-62,p,0);
+  n=hd_text_fit(out,n,alert.detail,b.x+47,b.y+64,8,b.width-62,p,1);
+  n=hd_line(out,n,b.x+47,b.y+78,b.x+b.width-15,b.y+78,p,3,0.7);
+  status:=ifx alert.active then "ACTIVE / ACK REQUIRED" else "ACKNOWLEDGED / MONITORING";
+  return hd_text_fit(out,n,status,b.x+47,b.y+96,8,b.width-62,p,2);
+}
+
+// The atlas is one consumer of these individually callable components.
+hd_component :: (out:[]f32,at:int,kind:int,b:HudBox,p:HdPen,time:f32,value:f32)->int {
+  if kind==0 {return hd_orbits(out,at,b,p,time);}
+  if kind==1 {return hd_telemetry(out,at,b,p,time);}
+  if kind==2 {return hd_target(out,at,b,p,time,value);}
+  if kind==3 {return hd_attitude(out,at,b,p,time);}
+  if kind==4 {return hd_meter(out,at,b,p,value);}
+  if kind==5 {return hd_schematic(out,at,b,p,value);}
+  if kind==6 {return hd_contacts(out,at,b,p);}
+  if kind==7 {return hd_waveform(out,at,b,p,time);}
+  if kind==8 {return hd_terminal(out,at,b,p,time);}
+  if kind==9 {return hd_timeline(out,at,b,p,value);}
+  if kind==10 {return hd_alert(out,at,b,p,value);}
+  if kind==11 {return hd_commands(out,at,b,p);}
+  if kind==12 {return hd_spectrum(out,at,b,p,time);}
+  if kind==13 {return hd_heading(out,at,b,p,time);}
+  if kind==14 {return hd_docking(out,at,b,p,time);}
+  if kind==15 {return hd_manifest(out,at,b,p,value);}
+  if kind==16 {return hd_hand_terminal(out,at,b,p,time);}
+  if kind==17 {return hd_beacon(out,at,b,p,time);}
+  return at;
+}

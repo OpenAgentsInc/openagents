@@ -1,0 +1,382 @@
+// HUD Lab. Product state, layout, drawing and interaction are entirely Coax.
+// The existing projects C face and WebGPU host only transport buffers/input.
+// All contacts, capacity, traces and events below are synthetic demo fixtures.
+// coax/bin/coax test apps/openagents-web/demos/hud/projects.coax --library
+#load "../../../../aethyr/ui/draw.coax";
+#load "../../analytics.coax";
+
+ProjectsState :: struct {
+  time:f32; frames:int; ready:bool; width:f32; height:f32; d:f32;
+  scene:int; cyan:bool; paused:bool; acknowledged:bool; route:bool;
+  contact:int; inspected:int; focus:int; hot:int; press:int;
+  scroll:f32; scroll_max:f32; drag_y:f32; drag_start:f32; dragged:bool;
+  controls:[48]HudControl; control_n:int;
+  field:[4]f32; viewer:[64]u8; inbox:[65536]u8;
+  outbox:[256]u8; out_n:int; action:int;
+  command:int; range:int;
+}
+
+DEMO_NAMES :: [18]string.["ORBITAL PLOT","TELEMETRY TRACE","TARGET ACQUISITION","ATTITUDE LADDER","CAPACITY BANK","SYSTEMS SCHEMATIC","CONTACT REGISTER","COMMS / WAVEFORM","DIAGNOSTIC TERMINAL","ROUTE SEQUENCE","ALERT / ACKNOWLEDGE","COMMAND SURFACE","SPECTRUM ANALYSER","HEADING TAPE","DOCKING ALIGNMENT","RESOURCE MANIFEST","HAND TERMINAL","WORLD ANCHOR"];
+DEMO_FAMILIES :: [18]string.["HOLOGRAPHIC / SPATIAL","ENGINEERING / TIME SERIES","TACTICAL / TRACKING","FLIGHT / ORIENTATION","ENGINEERING / BUDGETS","ENGINEERING / TOPOLOGY","TACTICAL / IDENTITY","COMMUNICATION / SIGNAL","CREW / DIAGNOSTICS","NAVIGATION / PROGRESS","OPERATIONS / EXCEPTIONS","TOUCH / LARGE TARGETS","SENSORS / FREQUENCY","FLIGHT / BEARING","FLIGHT / RELATIVE POSE","LOGISTICS / INVENTORY","MOBILE / FOCUSED TASK","GRID / ANNOTATION"];
+DEMO_SCENES :: [5]string.["COMPONENTS","GRID COMMAND","NAVIGATION","ENGINEERING","COMMUNICATIONS"];
+
+#test "scene keys and pointer actions share one transition" {
+  a:[1]ProjectsState;b:[1]ProjectsState;
+  #assert coaxial_projects_key(a[..],'3',0);
+  demo_apply(b[..],3);
+  #assert a[0].scene==2 && b[0].scene==a[0].scene;
+  demo_apply(a[..],6); #assert a[0].cyan;
+  demo_apply(a[..],7); #assert a[0].paused;
+  demo_apply(a[..],10); #assert a[0].acknowledged;
+  demo_apply(a[..],11); #assert a[0].route;
+  demo_apply(a[..],101); #assert a[0].inspected==2;
+  #assert coaxial_projects_key(a[..],-1,0) && a[0].inspected==0;
+}
+#test "a release outside the pressed control never activates it" {
+  s:[1]ProjectsState;s[0].d=1;s[0].control_n=1;
+  s[0].controls[0]=HudControl.{box=HudBox.{x=10,y=10,width=80,height=44},action=6,label="Accent",enabled=true};
+  #assert coaxial_projects_pointer(s[..],20,20,0,0);
+  #assert !coaxial_projects_pointer(s[..],200,200,2,0);
+  #assert !s[0].cyan;
+  #assert coaxial_projects_pointer(s[..],20,20,0,0);
+  #assert coaxial_projects_pointer(s[..],20,20,2,0) && s[0].cyan;
+}
+#test "scroll clamps and scene changes reset it; drag never activates" {
+  s:[1]ProjectsState;s[0].d=2;s[0].scroll_max=500;
+  coaxial_projects_wheel(s[..],10000);#assert s[0].scroll==500;
+  coaxial_projects_wheel(s[..],-10000);#assert s[0].scroll==0;
+  s[0].scroll=300;demo_apply(s[..],2);#assert s[0].scene==1 && s[0].scroll==0;
+  s[0].control_n=1;s[0].controls[0]=HudControl.{box=HudBox.{width=100,height=100},action=6,label="Accent",enabled=true};
+  used:=coaxial_projects_pointer(s[..],10,80,0,1);
+  used=coaxial_projects_pointer(s[..],10,10,1,1);
+  used=coaxial_projects_pointer(s[..],10,10,2,1);
+  #assert !s[0].cyan;
+}
+#test "scene layouts preserve margins on desktop and stack on phones" {
+  for i:0..<5 {
+    b:=demo_scene_box(1440,900,i);
+    #assert b.x>=24 && b.x+b.width<=1416 && b.y>=180;
+    c:=demo_scene_box(390,844,i);
+    #assert c.x==24 && c.width==342;
+    if i>0 {last:=demo_scene_box(390,844,i-1);#assert c.y>last.y+last.height;}
+  }
+}
+#test "the scene's grid lines stop at its content rectangle" {
+  box:=demo_box(10,20,100,80);a:=HudCoord.{x=-10,y=0};b:=HudCoord.{x=130,y=120};
+  clipped:=demo_grid_clip(a,b,box);
+  #assert clipped.width>0 && clipped.x>=10 && clipped.y>=20;
+  #assert clipped.x+clipped.width<=110 && clipped.y+clipped.height<=100;
+  #assert demo_grid_clip(HudCoord.{x=-10,y=0},HudCoord.{x=-5,y=30},box).width==0;
+}
+
+demo_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+demo_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+demo_limit :: (v:f32,a:f32,b:f32)->f32 {return demo_min(b,demo_max(a,v));}
+demo_box :: (x:f32,y:f32,w:f32,h:f32)->HudBox {return HudBox.{x=x,y=y,width=w,height=h};}
+demo_shift :: (b:HudBox,y:f32)->HudBox {r:=b;r.y-=y;return r;}
+demo_pen :: (s:[]ProjectsState)->HdPen {return HdPen.{d=s[0].d,cyan=s[0].cyan,top=168,bottom=s[0].height-44};}
+
+demo_apply :: (s:[]ProjectsState,id:int) {
+  if id>=1 && id<=5 {s[0].scene=id-1;s[0].scroll=0;s[0].focus=-1;s[0].inspected=0;}
+  else if id==6 {s[0].cyan=!s[0].cyan;}
+  else if id==7 {s[0].paused=!s[0].paused;}
+  else if id==8 {s[0].time=0;s[0].acknowledged=false;s[0].route=false;s[0].contact=0;s[0].command=0;s[0].range=0;}
+  else if id==9 {s[0].contact=(s[0].contact+1)%3;}
+  else if id==10 {s[0].acknowledged=!s[0].acknowledged;}
+  else if id==11 {s[0].route=!s[0].route;}
+  else if id==12 {s[0].range=(s[0].range+1)%3;}
+  else if id>=60 && id<66 {s[0].command=id-59;}
+  else if id==20 {s[0].scroll=demo_max(0,s[0].scroll-484);}
+  else if id==21 {s[0].scroll=demo_min(s[0].scroll_max,s[0].scroll+484);}
+  else if id==50 {s[0].inspected=0;s[0].focus=-1;}
+  else if id>=100 && id<118 {s[0].inspected=id-99;s[0].focus=-1;}
+}
+demo_control :: (s:[]ProjectsState,b:HudBox,id:int,label:string) {
+  if s[0].control_n>=48 || b.y<0 || b.y+b.height>s[0].height-36 {return;}
+  s[0].controls[s[0].control_n]=HudControl.{box=b,action=id,label=label,enabled=true};s[0].control_n+=1;
+}
+demo_button :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,id:int,label:string,p:HdPen,selected:bool)->int {
+  if b.y>=p.top && b.y+b.height<=p.bottom {demo_control(s,b,id,label);}
+  v:=hd_panel(out,at,b,p,selected || s[0].hot==id);
+  if selected {v=hd_line(out,v,b.x+4,b.y+b.height-3,b.x+b.width-4,b.y+b.height-3,p,2,1);}
+  return hd_text_fit(out,v,label,b.x+12,b.y+b.height*0.5+4,9,b.width-24,p,ifx selected then 2 else 0);
+}
+demo_glass :: (u:[]f32,b:HudBox,d:f32) {
+  n:=cast(int)u[5];if n>=10{return;}o:=8+n*8;
+  u[o]=b.x*d;u[o+1]=demo_max(168,b.y)*d;u[o+2]=(b.x+b.width)*d;u[o+3]=demo_min(u[1]-44*d,(b.y+b.height)*d);
+  u[o+4]=10*d;u[o+5]=0.96;u[o+6]=0;u[o+7]=0;u[5]=cast(f32)(n+1);
+}
+
+// Central working surface with two instrument rails. Phones keep one column.
+demo_scene_box :: (w:f32,h:f32,i:int)->HudBox {
+  if w<1000 {
+    if i==0 {return demo_box(24,180,w-48,360);}
+    return demo_box(24,558+cast(f32)(i-1)*242,w-48,224);
+  }
+  side:=demo_min(280,w*0.22);gap:=18.0f32;high:=demo_max(460,h-236);
+  if i==0 {return demo_box(24+side+gap,180,w-48-side*2-gap*2,high);}
+  x:=ifx i<=2 then 24.0f32 else w-24-side;
+  y:=180.0f32+cast(f32)((i-1)%2)*(high*0.5+9);
+  return demo_box(x,y,side,high*0.5-9);
+}
+
+demo_grid_point :: (b:HudBox,x:f32,z:f32,h:f32,t:f32)->HudCoord {
+  angle:=0.2f32+t*0.018;rot_x:=x*cos(angle)-z*sin(angle);rot_z:=x*sin(angle)+z*cos(angle);
+  scale:=demo_min(b.width/22,b.height/15);
+  return HudCoord.{x=b.x+b.width*0.5+(rot_x-rot_z)*scale,y=b.y+b.height*0.48+(rot_x+rot_z)*scale*0.46-h*scale};
+}
+demo_grid_line :: (out:[]f32,at:int,b:HudBox,x:f32,z:f32,h:f32,to_x:f32,to_z:f32,to_h:f32,t:f32,p:HdPen,kind:int,light:f32)->int {
+  a:=demo_grid_point(b,x,z,h,t);c:=demo_grid_point(b,to_x,to_z,to_h,t);
+  r:=demo_grid_clip(a,c,b);if r.width==0 && r.height==0 {return at;}
+  return hd_line(out,at,r.x,r.y,r.x+r.width,r.y+r.height,p,kind,light);
+}
+// Slab clipping keeps the world drawing out of its instrument rails. Width
+// and height are signed endpoint deltas here, not hit-test rectangles.
+demo_grid_clip :: (a:HudCoord,b:HudCoord,box:HudBox)->HudBox {
+  low:=0.0f32;high:=1.0f32;dx:=b.x-a.x;dy:=b.y-a.y;empty:HudBox;
+  if dx==0 {if a.x<box.x || a.x>box.x+box.width {return empty;}}
+  else {t0:=(box.x-a.x)/dx;t1:=(box.x+box.width-a.x)/dx;low=demo_max(low,demo_min(t0,t1));high=demo_min(high,demo_max(t0,t1));}
+  if dy==0 {if a.y<box.y || a.y>box.y+box.height {return empty;}}
+  else {t0:=(box.y-a.y)/dy;t1:=(box.y+box.height-a.y)/dy;low=demo_max(low,demo_min(t0,t1));high=demo_min(high,demo_max(t0,t1));}
+  if high<=low {return empty;}
+  return demo_box(a.x+dx*low,a.y+dy*low,dx*(high-low),dy*(high-low));
+}
+demo_grid :: (out:[]f32,at:int,b:HudBox,p:HdPen,t:f32,selected:int)->int {
+  v:=at;
+  for i:-12..<13 {f:=cast(f32)i;v=demo_grid_line(out,v,b,f,-12,0,f,12,0,t,p,1,0.2);v=demo_grid_line(out,v,b,-12,f,0,12,f,0,t,p,1,0.2);}
+  xs:=[5]f32.[-4,3,-1,5,-5];zs:=[5]f32.[-3,-4,4,3,3];
+  names:=[5]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE","VERSE / REALMS","NOSTR / RELAY"];
+  for i:0..<5 {
+    x:=xs[i];z:=zs[i];sel:=i==selected;
+    for j:0..<4 {
+      dx:=[5]f32.[-1.6,1.6,1.6,-1.6,-1.6];dz:=[5]f32.[-1.6,-1.6,1.6,1.6,-1.6];
+      v=demo_grid_line(out,v,b,x+dx[j],z+dz[j],0,x+dx[j+1],z+dz[j+1],0,t,p,ifx sel then 2 else 0,0.8);
+    }
+    v=demo_grid_line(out,v,b,x,z,0,x,z,3.3,t,p,0,0.85);
+    for level:0..<4 {
+      r:=1.35-cast(f32)level*0.28;hh:=0.3+cast(f32)level*0.65;
+      for j:0..<12 {
+        a:=cast(f32)j*0.523599;c:=cast(f32)(j+1)*0.523599;
+        v=demo_grid_line(out,v,b,x+cos(a)*r,z+sin(a)*r,hh,x+cos(c)*r,z+sin(c)*r,hh,t,p,1,0.65);
+        v=demo_grid_line(out,v,b,x+cos(a)*r,z+sin(a)*r,hh,x,z,3.3,t,p,1,0.36);
+      }
+    }
+    q:=demo_grid_point(b,x,z,3.7,t);v=hd_diamond(out,v,q.x,q.y,4,p,ifx sel then 2 else 0);
+    if b.width>=360 || sel {v=hd_text(out,v,names[i],q.x-40,q.y-13,7,p,ifx sel then 2 else 0);}
+  }
+  v=hd_text_fit(out,v,"LOCAL GRID / ISOMETRIC PROJECTION",b.x+16,b.y+b.height-26,8,b.width-32,p,1);
+  return v;
+}
+
+demo_header :: (s:[]ProjectsState,out:[]f32,at:int)->int {
+  p:=HdPen.{d=s[0].d,cyan=s[0].cyan,top=0,bottom=s[0].height};w:=s[0].width;v:=at;
+  v=hd_diamond(out,v,29,29,4,p,2);
+  v=hd_text(out,v,ifx w<400 then "AETHYR" else ifx w<700 then "AETHYR / HUD LAB" else "OPENAGENTS / AETHYR",43,33,10,p,0);
+  v=hd_text(out,v,ifx w<700 then "HUD / FIELD SYSTEMS" else "HUD / COMPONENT SYSTEM",24,76,ifx w<700 then 18.0f32 else 26.0f32,p,0);
+  v=hd_text(out,v,ifx w<700 then "EXPANSE STUDY / 18 COMPONENTS" else "EXPANSE STUDY     /     18 COMPONENTS     /     COAX + WEBGPU     /     SYNTHETIC DEMO",24,96,8,p,1);
+  small:=w<700;bw:=ifx small then 62.0f32 else 104.0f32;
+  v=demo_button(s,out,v,demo_box(w-24-bw*2-10,14,bw,36),6,ifx s[0].cyan then "CYAN" else "MONO",p,s[0].cyan);
+  v=demo_button(s,out,v,demo_box(w-24-bw,14,bw,36),7,ifx small then (ifx s[0].paused then "PLAY" else "HOLD") else (ifx s[0].paused then "RESUME" else "FREEZE"),p,s[0].paused);
+  full:=[5]string.["01 / LIBRARY","02 / THE GRID","03 / FLIGHT","04 / SYSTEMS","05 / COMMS"];
+  short:=[5]string.["LIB","GRID","NAV","SYS","COM"];
+  tw:=(w-48)/5;
+  for i:0..<5 {
+    v=demo_button(s,out,v,demo_box(24+cast(f32)i*tw,112,tw-6,44),i+1,ifx small then short[i] else full[i],p,s[0].scene==i);
+  }
+  return v;
+}
+demo_catalog :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
+  last:=hud_grid_cell(s[0].width,s[0].height,0,17,18);
+  s[0].scroll_max=demo_max(0,last.y+last.height+24-(s[0].height-44));
+  s[0].scroll=demo_limit(s[0].scroll,0,s[0].scroll_max);v:=at;
+  for i:0..<18 {
+    b:=demo_shift(hud_grid_cell(s[0].width,s[0].height,0,i,18),s[0].scroll);
+    if b.y+b.height<=p.top || b.y>=p.bottom {continue;}
+    demo_glass(u,b,p.d);v=hd_panel(out,v,b,p,s[0].hot==100+i);
+    v=hd_text_fit(out,v,DEMO_NAMES[i],b.x+18,b.y+27,10,b.width-60,p,0);
+    v=hd_line(out,v,b.x+18,b.y+41,b.x+b.width-18,b.y+41,p,1,0.35);
+    content:=demo_box(b.x+18,b.y+52,b.width-36,b.height-84);
+    v=hd_component(out,v,i,content,p,s[0].time,0.72);
+    v=hd_text(out,v,DEMO_FAMILIES[i],b.x+18,b.y+b.height-15,7,p,1);
+    v=hd_text(out,v,"+",b.x+b.width-24,b.y+28,12,p,2);
+    if b.y>=p.top && b.y+b.height<=p.bottom {demo_control(s,b,100+i,DEMO_NAMES[i]);}
+  }
+  return v;
+}
+demo_scene :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
+  v:=at;w:=s[0].width;h:=s[0].height;
+  last:=demo_scene_box(w,h,4);s[0].scroll_max=demo_max(0,last.y+last.height+24-(h-44));
+  s[0].scroll=demo_limit(s[0].scroll,0,s[0].scroll_max);
+  titles:=[20]string.["THE GRID / PROJECT CONSTELLATION","NETWORK / CAPACITY","ACTIVE / CONTACTS","RECEIPTS / SIGNAL","ATTENTION / EVENT","NAVIGATION / LOCAL SPACE","FLIGHT / ATTITUDE","FLIGHT / HEADING","RENDEZVOUS / TARGET","SEQUENCE / ROUTE","ENGINEERING / SYSTEM MAP","REACTOR / TELEMETRY","COMPUTE / CAPACITY","RESOURCES / MANIFEST","EXCEPTION / REVIEW","COMMUNICATION / CREW LINK","UPLINK / WAVEFORM","SENSOR / SPECTRUM","CREW / TERMINAL","INCOMING / MESSAGE"];
+  kinds:=[20]int.[17,4,6,7,10,0,3,13,14,9,5,1,4,15,10,8,7,12,16,11];
+  start:=(s[0].scene-1)*5;
+  for i:0..<5 {
+    b:=demo_shift(demo_scene_box(w,h,i),s[0].scroll);
+    if b.y>=p.bottom || b.y+b.height<=p.top {continue;}
+    demo_glass(u,b,p.d);v=hd_panel(out,v,b,p,i==0);
+    v=hd_text_fit(out,v,titles[start+i],b.x+18,b.y+28,ifx i==0 then 11.0f32 else 9.0f32,b.width-36,p,0);
+    v=hd_line(out,v,b.x+18,b.y+43,b.x+b.width-18,b.y+43,p,1,0.4);
+    extra:=ifx i==0 || i==2 || i==4 then 56.0f32 else 16.0f32;
+    content:=demo_box(b.x+18,b.y+58,b.width-36,b.height-58-extra);
+    value:=ifx s[0].acknowledged then 0.3f32 else 0.72f32;
+    if kinds[start+i]==9 {value=ifx s[0].route then 0.72f32 else 0.0f32;}
+    if i==0 && s[0].scene==1 {v=demo_grid(out,v,content,p,s[0].time,s[0].contact);}
+    else if i==0 && s[0].scene==2 {v=demo_flight(s,out,v,content,p);}
+    else if i==0 && s[0].scene==3 {v=demo_systems(s,out,v,content,p);}
+    else if i==0 && s[0].scene==4 {v=demo_comms(s,out,v,content,p);}
+    else if s[0].scene==1 && i==2 {v=demo_contacts(s,out,v,content,p);}
+    else if s[0].scene==4 && i==3 {v=hd_message(out,v,content,p,HdMessage.{channel="04 / DEMO TRANSMISSION",title="AETHYR OPERATIONS",line1=ifx s[0].command==0 then "Awaiting your command." else "Command received locally.",line2="No remote action is sent.",footer=ifx s[0].command==0 then "UNREAD / LOCAL" else "READ / LOCAL"});}
+    else if s[0].scene==4 && i==4 {v=demo_commands(s,out,v,content,p);}
+    else {v=hd_component(out,v,kinds[start+i],content,p,s[0].time,value);}
+    foot:=demo_box(b.x+18,b.y+b.height-52,b.width-36,36);
+    if i==0 && s[0].scene==2 {
+      first:=foot;first.width=foot.width*0.62-4;
+      second:=foot;second.x=foot.x+foot.width*0.62+4;second.width=foot.width*0.38-4;
+      v=demo_button(s,out,v,first,11,ifx s[0].route then "DISARM ROUTE" else "ARM DEMO ROUTE",p,s[0].route);
+      v=demo_button(s,out,v,second,9,"NEXT CONTACT",p,false);
+    } else if i==0 {
+      v=demo_button(s,out,v,foot,9,ifx s[0].contact==0 then "SELECT / COAX" else ifx s[0].contact==1 then "SELECT / AETHYR" else "SELECT / PSIONIC",p,false);
+    }
+    if i==2 {v=demo_button(s,out,v,foot,ifx s[0].scene==2 then 12 else 9,ifx s[0].scene==2 then (ifx s[0].range==0 then "RANGE / 1X" else ifx s[0].range==1 then "RANGE / 2X" else "RANGE / 4X") else ifx s[0].contact==0 then "CONTACT 01 / NEXT" else ifx s[0].contact==1 then "CONTACT 02 / NEXT" else "CONTACT 03 / NEXT",p,false);}
+    if i==4 && s[0].scene!=2 && s[0].scene!=4 {v=demo_button(s,out,v,foot,10,ifx s[0].acknowledged then "ACKNOWLEDGED / REOPEN" else "ACKNOWLEDGE DEMO EVENT",p,s[0].acknowledged);}
+    if i==4 && s[0].scene==2 {v=hd_text(out,v,ifx s[0].route then "ARMED / LOCAL PREVIEW" else "IDLE / NO ROUTE ARMED",foot.x,foot.y+24,8,p,2);}
+  }
+  return v;
+}
+
+demo_contacts :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  labels:=[3]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE"];
+  ranges:=[3]string.["0.24 KM","1.80 KM","2.84 KM"];rows:[3]HdRow;
+  for i:0..<3 {rows[i]=HdRow.{label=labels[i],value=ranges[i],status=ifx s[0].contact==i then 2 else 1};}
+  return hd_rows(out,at,rows[..],b,p);
+}
+demo_flight :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  plot:=b;plot.height=b.height*0.8;v:=hd_orbits(out,at,plot,p,s[0].time);
+  cx:=b.x+b.width*0.48;cy:=plot.y+plot.height*0.52;reach:=demo_min(plot.width*0.46,plot.height*0.85);
+  for i:0..<3 {
+    a:=cast(f32)i*1.8+0.6;r:=reach*(0.35+0.2*cast(f32)i)/(1+cast(f32)s[0].range*0.22);
+    q:=hud_arc_point(cx,cy,r,r*0.39,a);v=hd_diamond(out,v,q.x,q.y,5,p,ifx i==s[0].contact then 2 else 1);
+    labels:=[3]string.["COAX / 01","AETHYR / 02","PSIONIC / 03"];
+    v=hd_text(out,v,labels[i],q.x+12,q.y-9,8,p,ifx i==s[0].contact then 2 else 1);
+    if s[0].route {v=hd_line(out,v,cx,cy,q.x,q.y,p,2,0.7);}
+  }
+  foot:=demo_box(b.x,b.y+b.height*0.84,b.width,b.height*0.14);
+  rows:=[2]HdRow.[HdRow.{label="REFERENCE",value="LOCAL PLANE"},HdRow.{label="ROUTE",value=ifx s[0].route then "ARMED" else "IDLE",status=2}];
+  return hd_rows(out,v,rows[..],foot,p);
+}
+demo_systems :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  diagram:=b;diagram.height=b.height*0.72;v:=hd_schematic(out,at,diagram,p,0.72);
+  labels:=[6]string.["COMPUTE / 8 CORES","MEMORY / 128 GB","STORAGE / NOMINAL","MESH / 4 PEERS","ASSETS / ADMITTED","POWER / MONITOR"];
+  for i:0..<6 {
+    left:=i<3;row:=i%3;x:=ifx left then b.x+8 else b.x+b.width*0.68;
+    yy:=diagram.y+diagram.height*(0.16+cast(f32)row*0.32)+26;
+    v=hd_text_fit(out,v,labels[i],x,yy,8,b.width*0.3,p,ifx row==s[0].contact then 2 else 1);
+  }
+  // Resource cells use the same selected subsystem and advisory state.
+  x0:=b.x+6;y0:=b.y+b.height*0.8;cw:=(b.width-24)/6;
+  for row:0..<3 {for col:0..<6 {
+    box:=demo_box(x0+cast(f32)col*(cw+3),y0+cast(f32)row*18,cw,10);
+    v=hd_rect(out,v,box,p,ifx row==s[0].contact then 2 else 3,ifx col==5 && !s[0].acknowledged then 1.0f32 else 0.5f32);
+  }}
+  return hd_text(out,v,"SUBSYSTEM MATRIX / SELECTED ROW FOLLOWS CONTACT",b.x+6,b.y+b.height-3,7,p,1);
+}
+demo_comms :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  names:=[3]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE"];
+  card:=demo_box(b.x,b.y,b.width,demo_min(150,b.height*0.34));
+  v:=hd_message(out,at,card,p,HdMessage.{channel="CHANNEL 04 / LOCAL SIMULATION",title=names[s[0].contact],line1="Link established. Survey packet ready.",line2="All actions stay in this demonstration.",footer="SESSION / LOCAL"});
+  if b.height<280 {return v;}
+  wave:=demo_box(b.x,b.y+b.height*0.37,b.width,b.height*0.24);v=hd_waveform(out,v,wave,p,s[0].time);
+  cmds:=[7]string.["> Awaiting local command","> SCAN / sample ready","> TRACK / contact selected","> ROUTE / local path staged","> FOCUS / contact isolated","> HOLD / keeping position","> CLEAR / view reset"];
+  lines:=[4]string.["[LOCAL] SESSION / NO NETWORK EFFECT","[OK] SIGNAL / FRAME STREAM READY",cmds[s[0].command],"> COAX / END OF TRANSCRIPT"];
+  return hd_terminal_lines(out,v,lines[..],demo_box(b.x,b.y+b.height*0.68,b.width,b.height*0.3),p);
+}
+demo_commands :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
+  labels:=[6]string.["SCAN","TRACK","ROUTE","FOCUS","HOLD","CLEAR"];v:=at;w:=(b.width-14)/3;
+  for i:0..<6 {box:=demo_box(b.x+cast(f32)(i%3)*(w+7),b.y+9+cast(f32)(i/3)*57,w,48);v=demo_button(s,out,v,box,60+i,labels[i],p,s[0].command==i+1);}
+  return v;
+}
+demo_inspector :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
+  // The inspector is a focus-trapping composition. Background controls are
+  // removed from the action tree before its one close action is published.
+  s[0].control_n=0;u[5]=0;
+  b:=demo_box(24,180,s[0].width-48,s[0].height-236);
+  demo_glass(u,b,p.d);v:=hd_panel(out,at,b,p,true);i:=s[0].inspected-1;
+  v=hd_text_fit(out,v,DEMO_NAMES[i],b.x+20,b.y+34,16,b.width-40,p,0);
+  v=hd_text(out,v,DEMO_FAMILIES[i],b.x+20,b.y+58,8,p,1);
+  content:=demo_box(b.x+24,b.y+84,b.width-48,demo_max(80,b.height-168));
+  v=hd_component(out,v,i,content,p,s[0].time,0.72);
+  v=demo_button(s,out,v,demo_box(b.x+20,b.y+b.height-60,demo_min(280,b.width-40),40),50,"CLOSE COMPONENT / ESC",p,false);
+  return v;
+}
+demo_footer :: (s:[]ProjectsState,out:[]f32,at:int)->int {
+  p:=HdPen.{d=s[0].d,cyan=s[0].cyan,top=0,bottom=s[0].height};y:=s[0].height-35;v:=at;
+  v=hd_line(out,v,24,y,s[0].width-24,y,p,1,0.35);
+  hint:=ifx s[0].width<700 then "1-5 SCENES / TAB + ENTER / SCROLL" else "1-5 SCENES    TAB + ENTER SELECT    M ACCENT    SPACE FREEZE    ESC CLOSE    SCROLL TO EXPLORE";
+  v=hd_text_fit(out,v,hint,24,y+22,7,s[0].width-48,p,1);
+  if s[0].width>=1100 {v=hd_text(out,v,"AETHYR / HUD LAB 001",s[0].width-210,y+22,8,p,0);}
+  if s[0].scroll_max>0 {
+    x:=s[0].width-10;top:=180.0f32;range:=s[0].height-244;
+    v=hd_line(out,v,x,top,x,top+range,p,1,0.2);
+    yy:=top+(range-40)*s[0].scroll/s[0].scroll_max;v=hd_line(out,v,x,yy,x,yy+40,p,2,0.85);
+  }
+  return v;
+}
+
+coaxial_projects_frame :: (s:[]ProjectsState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
+  if s.count<1 || u.count<88 || out.count<12 || !(dpr>0 && width>0 && height>0) {return 0;}
+  if !s[0].ready {s[0].focus=-1;s[0].ready=true;}
+  s[0].width=width/dpr;s[0].height=height/dpr;s[0].d=dpr;
+  if !s[0].paused && !still && dt>0 && dt<1 {s[0].time+=dt;}
+  s[0].frames+=1;s[0].control_n=0;
+  for i:0..<88 {u[i]=0;}u[0]=width;u[1]=height;u[2]=0;u[3]=1;u[4]=1;
+  p:=demo_pen(s);v:=demo_header(s,out,0);
+  if s[0].inspected>0 {v=demo_inspector(s,out,u,v,p);}
+  else if s[0].scene==0 {v=demo_catalog(s,out,u,v,p);}
+  else {v=demo_scene(s,out,u,v,p);}
+  v=demo_footer(s,out,v);
+  if s[0].focus>=0 && s[0].focus<s[0].control_n {
+    b:=s[0].controls[s[0].focus].box;
+    q:=HdPen.{d=dpr,cyan=true,top=0,bottom=s[0].height};
+    v=hd_line(out,v,b.x+2,b.y+2,b.x+b.width-2,b.y+2,q,2,1);
+    v=hd_line(out,v,b.x+2,b.y+b.height-2,b.x+b.width-2,b.y+b.height-2,q,2,1);
+  }
+  return v;
+}
+coaxial_projects_key :: (s:[]ProjectsState,key:int,mods:int)->bool #export_c {
+  if key==-1 && s[0].inspected>0 {demo_apply(s,50);return true;}
+  if s[0].inspected>0 && key>=49 && key<=53 {return true;}
+  if key>=49 && key<=53 {demo_apply(s,key-48);return true;}
+  if key=='m' || key=='M' {demo_apply(s,6);return true;}
+  if key==32 {demo_apply(s,7);return true;}
+  if key=='r' || key=='R' {demo_apply(s,8);return true;}
+  if key==-15 {s[0].focus=hud_focus_next(s[0].controls[0..<s[0].control_n],s[0].focus,(mods&1)!=0);return true;}
+  if key==-2 && s[0].focus>=0 && s[0].focus<s[0].control_n {demo_apply(s,s[0].controls[s[0].focus].action);return true;}
+  if key==-7 || key==-11 {demo_apply(s,21);return true;}
+  if key==-6 || key==-10 {demo_apply(s,20);return true;}
+  return false;
+}
+coaxial_projects_pointer :: (s:[]ProjectsState,x:f32,y:f32,phase:int,kind:int)->bool #export_c {
+  if !(s[0].d>0) {return false;}
+  point_x:=x/s[0].d;yy:=y/s[0].d;
+  id:=hud_hit(s[0].controls[0..<s[0].control_n],point_x,yy);s[0].hot=id;
+  if phase==3 {s[0].press=0;s[0].dragged=false;return false;}
+  if phase==0 {s[0].press=id;s[0].drag_y=yy;s[0].drag_start=yy;s[0].dragged=false;return id>0;}
+  if phase==1 && kind==1 {
+    if abs(yy-s[0].drag_start)>8 {s[0].dragged=true;}
+    if s[0].dragged {s[0].scroll=demo_limit(s[0].scroll+s[0].drag_y-yy,0,s[0].scroll_max);}
+    s[0].drag_y=yy;
+  }
+  if phase==2 {pressed:=s[0].press;s[0].press=0;if pressed>0 && id==pressed && !s[0].dragged {demo_apply(s,id);return true;}}
+  return id>0;
+}
+coaxial_projects_wheel :: (s:[]ProjectsState,dy:f32) #export_c {if s[0].inspected==0 && dy==dy {s[0].scroll=demo_limit(s[0].scroll+dy/demo_max(1,s[0].d),0,s[0].scroll_max);}}
+coaxial_projects_max_vertices :: ()->int #export_c {return 240000;}
+coaxial_projects_vertex_floats :: ()->int #export_c {return 12;}
+coaxial_projects_uniform_floats :: ()->int #export_c {return 88;}
+coaxial_projects_inbox_cap :: ()->int #export_c {return 65536;}
+coaxial_projects_message :: (s:[]ProjectsState,kind:int,n:int) #export_c {}
+coaxial_projects_hash :: (s:[]ProjectsState,n:int) #export_c {}
+coaxial_projects_wants_text :: (s:[]ProjectsState)->bool #export_c {return false;}
+coaxial_projects_cursor :: (s:[]ProjectsState)->int #export_c {return ifx s[0].hot>0 then 1 else 0;}
+coaxial_projects_action :: (s:[]ProjectsState)->int #export_c {return 0;}
+coaxial_projects_action_done :: (s:[]ProjectsState) #export_c {s[0].action=0;}

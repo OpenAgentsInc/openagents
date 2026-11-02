@@ -1,10 +1,13 @@
 # 15. UI and the HUD
 
-> **Status: unimplemented — design draft.** Today the hotbar layout
-> (`verse/hud.coax`) and the HUD frame (`verse/hud/frame.coax`) are shared
-> Coax, while each realm draws its own panels, labels and touch controls.
-> This chapter plans Aethyr's UI layer: layout in screen space, text, hit
-> areas and actions, drawn in one pass over the scene. Nothing here runs yet.
+> **Status: partly implemented.** Visual component foundations. The hotbar
+> layout (`verse/hud.coax`) and frame (`verse/hud/frame.coax`) remain shared
+> Coax. `aethyr/ui/hud.coax` adds rectangles, hit tests, focus traversal and
+> responsive catalog layout; `aethyr/ui/draw.coax` adds eighteen HUD drawing
+> components and consumer-supplied rows, meters, messages and advisories.
+> The standalone HUD laboratory composes them into five local demo scenes.
+> The full screen-space UI tree, typed-step integration, semantic platform
+> mirror and complete accessibility journey below remain a design draft.
 
 The HUD is the one part of a realm that lives in screen space: points on a
 glass that may be a narrow phone with a home indicator or a wide desktop.
@@ -46,6 +49,21 @@ rectangle comes from the same function that placed the drawing.
   the home indicator and that slots stay separate in landscape.
 - [verse/hud/frame.coax](../../verse/hud/frame.coax): the frame's points,
   arms, cuts and greys, shared by the web landing and the iOS app.
+- [aethyr/ui/hud.coax](../ui/hud.coax): logical screen rectangles,
+  half-open hit areas, labelled/enabled controls, keyboard focus traversal,
+  responsive catalog cells and arc/segment geometry.
+- [aethyr/ui/draw.coax](../ui/draw.coax): eighteen callable visual
+  components using the existing frame and font, plus typed row, meter,
+  message and advisory inputs. Drawing uses the existing twelve-float
+  stroke/sans vertex convention; it does not own live measurements or
+  authorize commands.
+- [HUD laboratory](../../apps/openagents-web/demos/hud/README.md): a
+  component catalog with inspectors and Grid command, navigation,
+  engineering and communications scenes. Their explicit local actions
+  demonstrate shared drawn/hit boxes, focus, contact selection, route/range
+  previews, event acknowledgment and command feedback. The
+  [reference study and reuse contract](../../docs/verse/2026-11-01-hud-library.md)
+  distinguish these foundations from the full UI tree planned here.
 - [verse/light.coax](../../verse/light.coax): the slot and bar shading
   (`verse_slot_light`, `verse_slot_cover`, `verse_bar`, `verse_slot_icon`).
 - Filament, the stroke font in `apps/openagents-web/font.coax`

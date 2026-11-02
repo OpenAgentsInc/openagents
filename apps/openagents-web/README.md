@@ -58,6 +58,16 @@ save `newland.coax` to rebuild.
 
 Needs upstream LLVM: `brew install llvm lld wasi-libc wasi-runtimes`.
 
+## HUD component laboratory
+
+The [HUD laboratory](demos/hud/README.md) is a standalone Coax component catalog
+and four example scenes, extending the Grid's shared monochrome frame with
+navigation, engineering, tactical and communications instruments. Its fixtures
+are synthetic. Build it with
+`coax/web/tool.sh apps/openagents-web/demos/hud/build.coax`; its focused dev
+server runs on port 8815. The [visual study](../../docs/verse/2026-11-01-hud-library.md)
+records the Expanse image analysis and the Aethyr/Coax book boundaries.
+
 ## NIP implementation guides
 
 `/nip` indexes 22 NIPs with Coax library support, partial foundations or a
