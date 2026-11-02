@@ -290,6 +290,33 @@ binding ranges. The sheet's eight-tap footprint is explicit shader
 arithmetic with an admitted isotropic hardware sampler. Merely lowering
 a sampler's anisotropy setting would change the filtering contract.
 
+## Every GPU object has a ledger handle
+
+A resource view is admitted against an allocation, and the allocation needs
+an identity of its own. [registry.coax](../render/registry.coax) is the GPU
+resource ledger. A host asks it before creating a buffer or texture. It
+answers with a slot and a generation, or refuses: an unknown kind, an empty
+or oversized extent, all 512 slots in use, or a 1 GiB word budget spent. A
+refusal creates nothing. Destroying the object releases its handle.
+
+The ledger's table is the `RfResource` table that `rf_live` and `rf_pass` in
+[frame.coax](../render/frame.coax) read. Each frame begins a new epoch, and
+every buffer, image and attachment it draws with must be live before the
+first GPU write. A released or foreign handle refuses the whole frame. A
+lost device releases every handle and keeps the generations, so a handle
+from before the loss is never live again, even after its slot is reused.
+
+Both hosts use it. The browser's [render.js](../../coax/web/render.js)
+reaches it through the Wasm face. The Vulkan host's
+[render-host.c](../../verse/native/render-host.c),
+[render-realm.c](../../verse/native/render-realm.c) and
+[render-textures.c](../../verse/native/render-textures.c) call the same
+exports from C. The browser record is
+[render-ledger.coax](../tests/render-ledger.coax) on the Grid and the fixture
+realm. It checks the exact count, one epoch per frame, a frame refused under
+a released handle, and no old handle live after a lost device. The iOS Metal
+host does not use the ledger yet.
+
 ## The pass graph is data
 
 [passes.coax](../render/passes.coax) returns a bounded operation sequence.

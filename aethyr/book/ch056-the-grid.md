@@ -71,6 +71,15 @@ grid_draw :: (w: *GridWorld, alpha: f32, out: *Frame) {
   Grid scene; [verse/cast.coax](../../verse/cast.coax) reads `Cast.bin`.
 - Its edit rows (walkers, names) are in
   [realm-edit.md](../../docs/verse/realm-edit.md).
+- In the browser it draws through chapter 11's shared renderer: its page
+  names the `the-grid` package ([page-render.coax](../render/page-render.coax)),
+  and every GPU object has a ledger handle
+  ([registry.coax](../render/registry.coax)). The recorded route is the
+  homepage's WALK AROUND, 240 frames with two jumps, the camera, replay, and
+  a resource refusal and recovery. Its 320×180 final frame matches the CPU
+  reference, WebGPU and Vulkan
+  ([route record](../../docs/verification/aethyr-grid-playable-route-2026-11-02.md)).
+  A lost GPU device keeps its session ([gpu-recovery.coax](../../coax/web/gpu-recovery.coax)).
 
 Its loop, camera smoothing and grid-unit conversion are its own; the floor's
 lines are projected per frame relative to the player, the seam behind the

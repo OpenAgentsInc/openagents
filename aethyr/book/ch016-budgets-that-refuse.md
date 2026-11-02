@@ -307,6 +307,19 @@ Notes on the measurements:
   which compile-time evaluation refuses (`E0412`), so its check takes only
   its arena.
 
+## GPU memory has a budget too
+
+The frame budget limits what a realm's writers produce. Its GPU objects have
+a separate limit. The renderer's ledger,
+[aethyr/render/registry.coax](../render/registry.coax)
+([chapter 11](ch011-the-wgsl-renderer.md)), admits each buffer and texture
+before it is created, within 512 slots and 1 GiB counted in four-byte words.
+Past either limit it refuses, and nothing is created; nothing is clipped or
+partly allocated. Destroying an object returns its words. Its checks and a
+zero-survivor mutation run are in the file. A headless run on the served
+Grid and fixture realm counts exactly the objects each renderer holds:
+3 objects (6,175,024 words) and 24 objects (7,395,518 words).
+
 ## Checks
 
 ```shell

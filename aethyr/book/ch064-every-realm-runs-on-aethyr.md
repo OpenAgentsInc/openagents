@@ -83,10 +83,13 @@ owns common frame/pass/binding admission and the full CPU-reference profile.
 Do not count that future consolidation as another shader-source port.
 Its first [CPU metadata component](../render/README.md) is now used by
 `verse_grid_view` through `verse/grid-render.coax`, before the native matrix
-output is written. The browser Grid frame, GPU resource owners and pass
-submission have a larger shared implementation under qualification in
-chapter 11. The earlier native matrix result alone does not qualify those
-hosts or complete the playable route or `ec-migrate`. Anime Lab is newer than
+output is written. The browser Grid now renders through chapter 11's shared `Render*` facade
+([route record](../../docs/verification/aethyr-grid-playable-route-2026-11-02.md)).
+Its GPU objects are owned through the shared ledger
+([registry.coax](../render/registry.coax)) in the browser and in the native
+Vulkan host. The iOS Metal host (`HomeRenderer.swift`) still allocates and
+submits on its own. That, the remaining realms' subsystems and the
+no-private-copies gate keep `ec-migrate` open. Anime Lab is newer than
 the retained sixteen-realm shader inventory; its explicit legacy route must
 not be counted as shared renderer adoption.
 
