@@ -1,0 +1,296 @@
+// Chapter 191: experts from disk. When a mixture model's routed experts do
+// not fit in memory, a fixed number of expert slots holds the ones in use
+// and the rest are read from local disk when a token chooses them. This
+// file makes routing traces with chapter 85's router over a stated input
+// distribution, replays a trace through an expert cache under one of three
+// policies (least recently used, least frequently used, and chapter 96's
+// decayed heat, optionally seeded from a recorded profile), and turns the
+// misses into bytes read, read time at a measured disk rate, and tokens a
+// second.
+// Profile expert-stream-v1: up to 65,536 keys (layer * experts + expert);
+// counts and bytes exact; times in microseconds rounded up; the trace's
+// router arithmetic is chapter 85's m4_route.
+#load "mistral-small.coax";
+#load "../tests/expert-stream-checks.coax";  // the checks' stack-distance LRU, Belady's optimum and hand traces
+
+XsStatus :: enum u8 {ok;input;capacity;key;}
+XsPolicy :: enum u8 {lru;lfu;heat;}
+XS_KEYS_MAX :: 65536;
+
+// book:begin trace
+// The synthetic router and its inputs. Width 16; every value comes from
+// one generator, xs_unit, uniform on [-1, 1) in steps of 1/1000. The model
+// seed fixes each layer's gate rows and XS_TOPICS topic centers; the
+// prompt number then shifts the generator, so two prompts share a router
+// and a distribution but not their tokens. A prompt starts on topic 0 and
+// before each token moves, with probability 1/8, to a topic the generator
+// picks (it may pick the same one). A token's input is its topic's center
+// plus noise uniform on [-1/2, 1/2) in each value. Every layer routes the
+// same input with m4_route and its own gate; the trace records key
+// layer * experts + expert for each slot.
+XS_WIDTH :: 16;XS_TOPICS :: 4;
+xs_next :: (x:int)->int {return (x*48271+11)%2147483647;}
+xs_unit :: (x:int)->f32 {return f32(x%2000-1000)/1000;}
+XsTrace :: struct {status:XsStatus;tokens:int;layers:int;experts:int;top_k:int;accesses:int;}
+// seed and prompt from 0 to 1,000,000; gate holds layers * experts *
+// XS_WIDTH values, fwork experts.
+xs_trace :: (seed:int,prompt:int,tokens:int,layers:int,experts:int,k:int,keys:[]int,gate:[]f32,fwork:[]f64)->XsTrace {
+    t:=XsTrace.{tokens=tokens,layers=layers,experts=experts,top_k=k,accesses=tokens*layers*k};
+    if seed<0 || seed>1000000 || prompt<0 || prompt>1000000 || tokens<1 || layers<1 || experts<2 || experts>M4_EXPERTS_MAX || k<1 || k>M4_TOP_MAX || k>=experts {t.status=XsStatus.input;return t;}
+    if keys.count<t.accesses || gate.count<layers*experts*XS_WIDTH || fwork.count<experts {t.status=XsStatus.capacity;return t;}
+    x:=seed+1;
+    for i:0..<layers*experts*XS_WIDTH {x=xs_next(x);gate[i]=xs_unit(x);}
+    centers:[64]f32;
+    for i:0..<XS_TOPICS*XS_WIDTH {x=xs_next(x);centers[i]=xs_unit(x);}
+    topic:=0;input:[16]f32;n:=0;x=xs_next(x+prompt);
+    for token:0..<tokens {
+        x=xs_next(x);
+        if x%8==0 {x=xs_next(x);topic=x%XS_TOPICS;}
+        for i:0..<XS_WIDTH {x=xs_next(x);input[i]=centers[topic*XS_WIDTH+i]+xs_unit(x)/2;}
+        for l:0..<layers {
+            r:=m4_route(gate[l*experts*XS_WIDTH..<(l+1)*experts*XS_WIDTH],input[..],k,fwork[0..<experts]);
+            for slot:0..<k {keys[n]=l*experts+r.ids[slot];n+=1;}
+        }
+    }
+    return t;
+}
+// book:end trace
+
+// book:begin cache
+// One replay. Accesses before `warm` fill the cache but are not counted.
+// A miss reads the expert from disk; it is then cached (an empty slot
+// first, the lowest one) or, under heat, passed through when it is not hot
+// enough to replace the coldest resident.
+//   lru:  evict the resident used longest ago, counted in tokens (the
+//         lowest slot on a tie).
+//   lfu:  evict the resident with the fewest uses so far, then the one used
+//         longest ago, then the lowest slot.
+//   heat: chapter 96's rule: 1,024 heat a use (profile[key] uses to start,
+//         when a profile is given), every 256 tokens all heat times 9/10
+//         rounded down; replace the coldest resident (the lowest slot on a
+//         tie) only when 4 * incoming > 5 * coldest + 4,096.
+XS_HEAT :: 1024;
+XsCache :: struct {status:XsStatus;accesses:int;hits:int;misses:int;passed:int;evicted:int;}
+xs_work :: (capacity:int,keys:int)->int {return capacity+3*keys;}
+xs_replay :: (policy:XsPolicy,trace:[]int,per_token:int,warm:int,capacity:int,keys:int,profile:[]int,work:[]int)->XsCache {
+    c:XsCache;
+    if per_token<1 || warm<0 || warm>trace.count || capacity<1 || keys<1 || keys>XS_KEYS_MAX || (profile.count!=0 && profile.count!=keys) {c.status=XsStatus.input;return c;}
+    if work.count<xs_work(capacity,keys) {c.status=XsStatus.capacity;return c;}
+    for key:trace {if key<0 || key>=keys {c.status=XsStatus.key;return c;}}
+    for u:profile {if u<0 || u>1000000 {c.status=XsStatus.input;return c;}}
+    a:=capacity+keys;b:=a+keys;
+    slot:=work[0..<capacity];where:=work[capacity..<a];last:=work[a..<b];score:=work[b..<work.count];
+    for i:0..<capacity {slot[i]=-1;}
+    // A key's last use is written before it can be resident, so it is not cleared.
+    for key:0..<keys {where[key]=-1;score[key]=0;}
+    if policy==XsPolicy.heat {for key:0..<profile.count {score[key]=XS_HEAT*profile[key];}}
+    decay:=256*per_token;
+    for n:0..<trace.count {
+        key:=trace[n];counted:=n>=warm;token:=n/per_token;
+        if policy==XsPolicy.heat && n==decay {for k:0..<keys {score[k]=score[k]*9/10;}decay+=256*per_token;}
+        // Every policy counts uses in heat units; only heat decays them.
+        score[key]+=XS_HEAT;
+        if counted {c.accesses+=1;}
+        if where[key]>=0 {last[key]=token;if counted {c.hits+=1;}continue;}
+        if counted {c.misses+=1;}
+        // The victim: the lowest empty slot, else the policy's choice.
+        v:=0;
+        for i:0..<capacity {
+            if slot[i]<0 {v=i;break;}
+            x:=slot[i];y:=slot[v];
+            if policy==XsPolicy.lru {if last[x]<last[y] {v=i;}}
+            else if score[x]<score[y] || (policy==XsPolicy.lfu && score[x]==score[y] && last[x]<last[y]) {v=i;}
+        }
+        last[key]=token;
+        if slot[v]>=0 {
+            if policy==XsPolicy.heat && 4*score[key]<=5*score[slot[v]]+4*XS_HEAT {if counted {c.passed+=1;}continue;}
+            where[slot[v]]=-1;if counted {c.evicted+=1;}
+        }
+        slot[v]=key;where[key]=v;
+    }
+    return c;
+}
+// book:end cache
+
+// book:begin cost
+// What a replay costs a model: every miss reads one expert's bytes at the
+// disk's measured rate, and every token reads its resident weights at the
+// memory's measured rate (rates in bytes a microsecond, MB/s). serial adds
+// the two; overlap is the bound if every read were prefetched under the
+// computation, the larger of the two. Tokens a second times 1,000, rounded
+// down, for each.
+XsCost :: struct {status:XsStatus;read_bytes:int;read_us:int;compute_us:int;serial_us:int;overlap_us:int;serial_milli:int;overlap_milli:int;}
+xs_us :: (bytes:int,rate:int)->int {return (bytes+rate-1)/rate;}
+xs_cost :: (misses:int,tokens:int,expert_bytes:int,disk_rate:int,token_bytes:int,memory_rate:int)->XsCost {
+    if misses<0 || tokens<1 || expert_bytes<1 || disk_rate<1 || token_bytes<1 || memory_rate<1 {return XsCost.{status=XsStatus.input};}
+    c:=XsCost.{read_bytes=misses*expert_bytes};
+    c.read_us=xs_us(c.read_bytes,disk_rate);c.compute_us=xs_us(tokens*token_bytes,memory_rate);
+    c.serial_us=c.read_us+c.compute_us;c.overlap_us=rp_max(c.read_us,c.compute_us);
+    c.serial_milli=tokens*1000000000/c.serial_us;c.overlap_milli=tokens*1000000000/c.overlap_us;
+    return c;
+}
+// book:end cost
+
+xs_policy_name :: (p:XsPolicy)->string {names:=[3]string.["lru","lfu","heat"];return names[cast(int)p];}
+
+// ---- Checks.
+// book:begin checks-hand
+#test "three policies on one trace, worked by hand" {
+    // Two slots, keys 0 to 3: 0 1 0 2 0 1 3 0.
+    trace:=[8]int.[0,1,0,2,0,1,3,0];work:[14]int;none:[1]int;
+    // lru: 2 evicts 1 (used at 1); 1 evicts 2 (3 is older than 4); 3
+    // evicts 0; 0 evicts 1. Hits at 2 and 4.
+    c:=xs_replay(XsPolicy.lru,trace[..],1,0,2,4,none[0..<0],work[..]);
+    #assert c.status==XsStatus.ok && c.accesses==8 && c.hits==2 && c.misses==6 && c.evicted==4 && c.passed==0;
+    #assert work[0]==3 && work[1]==0 && work[2]==1 && work[3]==-1 && work[5]==0 && work[6]==7 && work[9]==6;
+    // lfu: 2 evicts 1 (1 use to 0's 2); 1 evicts 2 (1 use to 3); 3 evicts
+    // 1 (2 uses to 3). Hits at 2, 4 and 7.
+    c=xs_replay(XsPolicy.lfu,trace[..],1,0,2,4,none[0..<0],work[..]);
+    #assert c.hits==3 && c.misses==5 && c.evicted==3 && work[0]==0 && work[1]==3;
+    // heat: 2 arrives with 1,024 against 1's 1,024: 4,096 is not above
+    // 5,120 + 4,096, so it passes through, and so does 3. Hits at 2, 4, 5, 7:
+    // Belady's optimum for this trace.
+    c=xs_replay(XsPolicy.heat,trace[..],1,0,2,4,none[0..<0],work[..]);
+    #assert c.hits==4 && c.misses==4 && c.passed==2 && c.evicted==0 && xsc_min(trace[..],2)==4;
+    // heat seeded with 5 recorded uses of 2: 6,144 against 1's 1,024 replaces it.
+    profile:=[4]int.[0,0,5,0];
+    c=xs_replay(XsPolicy.heat,trace[..],1,0,2,4,profile[..],work[..]);
+    #assert c.hits==3 && c.misses==5 && c.passed==2 && c.evicted==1 && work[12]==5120+1024;
+    // Counting from access 4 on: the cache is warm, the first four uncounted.
+    c=xs_replay(XsPolicy.lru,trace[..],1,4,2,4,none[0..<0],work[..]);#assert c.accesses==4 && c.hits==1 && c.misses==3 && c.evicted==3;
+    c=xs_replay(XsPolicy.heat,trace[..],1,4,2,4,none[0..<0],work[..]);#assert c.accesses==4 && c.hits==3 && c.passed==1;
+    // Seeded heat on key 0: 3 recorded uses and 4 in the trace.
+    early:=[4]int.[3,0,0,0];c=xs_replay(XsPolicy.heat,trace[..],1,0,2,4,early[..],work[..]);#assert work[10]==7*1024;
+    // Room for every key: one miss each.
+    room:[16]int;c=xs_replay(XsPolicy.lfu,trace[..],1,0,4,4,none[0..<0],room[..]);#assert c.hits==4 && c.misses==4 && c.evicted==0;
+}
+#test "heat decays by 9/10 every 256 tokens" {
+    // Key 0 once (1,024), then key 2 767 times, then key 1 twice and 0 again.
+    // Three decays leave 0 at 745; key 1's second use (2,048) replaces it:
+    // 8,192 > 5 * 745 + 4,096. Without decay 8,192 would not beat 9,216.
+    trace:[771]int;for n:1..<768 {trace[n]=2;}trace[768]=1;trace[769]=1;
+    work:[11]int;none:[1]int;
+    c:=xs_replay(XsPolicy.heat,trace[..],1,0,2,3,none[0..<0],work[..]);
+    #assert c.hits==766 && c.misses==5 && c.passed==2 && c.evicted==1 && work[0]==1 && work[8]==745+1024;
+    // 256 tokens of 3 accesses each is 768 accesses: one decay, at 768.
+    c=xs_replay(XsPolicy.heat,trace[..],3,0,2,3,none[0..<0],work[..]);#assert c.evicted==0 && c.passed==2 && c.hits==767;
+    // A decay rounds down: 1,024 a use, 1,000 uses, 9/10 of 1,024,000 exactly; 1,023 uses round.
+    many:[513]int;w2:[4]int;c=xs_replay(XsPolicy.heat,many[0..<257],1,0,1,1,none[0..<0],w2[..]);#assert w2[3]==1024*256*9/10+1024 && c.hits==256;
+    c=xs_replay(XsPolicy.heat,many[..],1,0,1,1,none[0..<0],w2[..]);#assert w2[3]==(1024*256*9/10+1024*256)*9/10+1024;
+}
+#test "costs, worked by hand" {
+    // Mistral Small 4: 10 misses of 25,165,832 bytes at 984 B/us, and two
+    // tokens of 6,651,117,568 resident bytes at 23,361 B/us.
+    c:=xs_cost(10,2,25165832,984,6651117568,23361);
+    #assert c.status==XsStatus.ok && c.read_bytes==251658320 && c.read_us==255751 && c.compute_us==569421;
+    #assert c.serial_us==825172 && c.overlap_us==569421 && c.serial_milli==2423 && c.overlap_milli==3512;
+    #assert xs_us(984,984)==1 && xs_us(985,984)==2 && xs_us(0,984)==0;
+    z:=xs_cost(0,1,1,1,1,1);#assert z.read_us==0 && z.serial_us==1 && z.overlap_milli==1000000000 && z.serial_milli==1000000000;
+    #assert xs_cost(-1,1,1,1,1,1).status==XsStatus.input && xs_cost(0,0,1,1,1,1).status==XsStatus.input && xs_cost(0,1,0,1,1,1).status==XsStatus.input;
+    #assert xs_cost(0,1,1,0,1,1).status==XsStatus.input && xs_cost(0,1,1,1,0,1).status==XsStatus.input && xs_cost(0,1,1,1,1,0).status==XsStatus.input;
+    #assert xs_policy_name(XsPolicy.lru)=="lru" && xs_policy_name(XsPolicy.lfu)=="lfu" && xs_policy_name(XsPolicy.heat)=="heat";
+}
+#test "ties: the lowest slot, and heat's threshold exactly" {
+    // Two accesses a token: 0 and 1 share token 0's time. lru and lfu both
+    // evict slot 0 for 2; then 0 and 1 tie again, under lfu by uses too.
+    trace:=[5]int.[0,1,2,0,1];work:[11]int;none:[1]int;
+    c:=xs_replay(XsPolicy.lru,trace[0..<3],2,0,2,3,none[0..<0],work[..]);#assert work[0]==2 && work[1]==1;
+    // 0 1 | 1 0 | 2: 1 and 0 were both last used in token 1; slot 0 goes.
+    swap:=[5]int.[0,1,1,0,2];c=xs_replay(XsPolicy.lru,swap[..],2,0,2,3,none[0..<0],work[..]);#assert work[0]==2 && work[1]==1;
+    // Heat ties at 2,048 with slot 0 used more recently: slot 0 still goes.
+    again:=[4]int.[0,1,0,2];warmed:=[3]int.[0,1,6];c=xs_replay(XsPolicy.heat,again[..],1,0,2,3,warmed[..],work[..]);#assert work[0]==2 && work[1]==1 && c.evicted==1;
+    c=xs_replay(XsPolicy.lfu,trace[0..<3],2,0,2,3,none[0..<0],work[..]);#assert work[0]==2 && work[1]==1;
+    // One access a token: lfu evicts the older of two single uses, 0, then 1.
+    c=xs_replay(XsPolicy.lfu,trace[0..<4],1,0,2,3,none[0..<0],work[..]);#assert work[0]==2 && work[1]==0 && c.evicted==2;
+    c=xs_replay(XsPolicy.lfu,trace[..],1,0,2,3,none[0..<0],work[..]);#assert work[0]==1 && work[1]==0 && c.evicted==3;
+    // Heat ties at 1,024: the lowest slot goes.
+    hot:=[3]int.[0,0,5];c=xs_replay(XsPolicy.heat,trace[0..<3],1,0,2,3,hot[..],work[..]);#assert work[0]==2 && work[1]==1 && c.evicted==1;
+    // 4 * 6,144 equals 5 * 4,096 + 4,096: kept. 4 * 5,120 is above 5 * 3,072 + 4,096: replaced.
+    one:=[5]int.[0,0,0,0,1];w:[7]int;five:=[2]int.[0,5];four:=[2]int.[0,4];
+    c=xs_replay(XsPolicy.heat,one[..],1,0,1,2,five[..],w[..]);#assert c.passed==1 && c.evicted==0;
+    c=xs_replay(XsPolicy.heat,one[1..<5],1,0,1,2,four[..],w[..]);#assert c.passed==0 && c.evicted==1 && w[0]==1;
+    // After one decay, 4 * 245,248 is 5 * 195,379 + 4,097: one above the threshold.
+    long:[266]int;for n:1..<266 {long[n]=1;}far:=[2]int.[211,0];
+    c=xs_replay(XsPolicy.heat,long[..],1,0,1,2,far[..],w[..]);#assert c.passed==264 && c.evicted==1 && w[5]==195379 && w[6]==245248;
+}
+#test "traces match the stated distribution, ranked by chapter 85's oracle" #steps 400000000 {
+    for seed:0..<4 {for layers:1..<3 {for k:1..<4 {
+        keys:[120]int;gate:[256]f32;fwork:[8]f64;
+        t:=xs_trace(seed*7,seed,20,layers,8,k,keys[0..<20*layers*k],gate[..],fwork[..]);
+        #assert t.status==XsStatus.ok && xsc_agrees(seed*7,seed,20,layers,8,k,keys[0..<20*layers*k]);
+    }}}
+    // The largest shapes the trace admits.
+    keys:[8]int;gate:[4096]f32;fwork:[256]f64;
+    #assert xs_trace(1000000,1000000,1,1,256,8,keys[..],gate[..],fwork[..]).status==XsStatus.ok && xs_trace(1000001,0,1,1,256,8,keys[..],gate[..],fwork[..]).status==XsStatus.input;
+    #assert xs_trace(0,1000001,1,1,256,8,keys[..],gate[..],fwork[..]).status==XsStatus.input && xs_trace(0,-1,1,1,256,8,keys[..],gate[..],fwork[..]).status==XsStatus.input;
+    #assert xs_trace(0,0,1,1,9,8,keys[..],gate[..],fwork[..]).status==XsStatus.ok;
+}
+// book:end checks-hand
+#test "replays refuse bad inputs" {
+    trace:=[3]int.[0,1,2];work:[10]int;none:[1]int;p:=[3]int.[0,0,0];
+    #assert xs_replay(XsPolicy.lru,trace[..],0,0,1,3,none[0..<0],work[..]).status==XsStatus.input;
+    #assert xs_replay(XsPolicy.lru,trace[..],1,-1,1,3,none[0..<0],work[..]).status==XsStatus.input;
+    #assert xs_replay(XsPolicy.lru,trace[..],1,4,1,3,none[0..<0],work[..]).status==XsStatus.input;
+    z:=xs_replay(XsPolicy.lru,trace[..],1,3,1,3,none[0..<0],work[..]);#assert z.status==XsStatus.ok && z.accesses==0;
+    #assert xs_replay(XsPolicy.lru,trace[..],1,0,0,3,none[0..<0],work[..]).status==XsStatus.input;
+    #assert xs_replay(XsPolicy.lru,trace[..],1,0,1,0,none[0..<0],work[..]).status==XsStatus.input;
+    big:[65537]int;#assert xs_replay(XsPolicy.lru,trace[..],1,0,1,65537,none[0..<0],big[..]).status==XsStatus.input;
+    #assert xs_replay(XsPolicy.lru,trace[..],1,0,1,65536,none[0..<0],big[..]).status==XsStatus.capacity;
+    #assert xs_replay(XsPolicy.heat,trace[..],1,0,1,3,p[0..<2],work[..]).status==XsStatus.input;
+    #assert xs_replay(XsPolicy.heat,trace[..],1,0,1,3,p[..],work[..]).status==XsStatus.ok;
+    p[2]=-1;#assert xs_replay(XsPolicy.heat,trace[..],1,0,1,3,p[..],work[..]).status==XsStatus.input;
+    p[2]=1000001;#assert xs_replay(XsPolicy.heat,trace[..],1,0,1,3,p[..],work[..]).status==XsStatus.input;
+    p[2]=1000000;#assert xs_replay(XsPolicy.heat,trace[..],1,0,1,3,p[..],work[..]).status==XsStatus.ok;
+    #assert xs_work(1,3)==10 && xs_replay(XsPolicy.lru,trace[..],1,0,1,3,none[0..<0],work[0..<9]).status==XsStatus.capacity;
+    trace[2]=3;#assert xs_replay(XsPolicy.lru,trace[..],1,0,1,3,none[0..<0],work[..]).status==XsStatus.key;
+    trace[2]=-1;#assert xs_replay(XsPolicy.lru,trace[..],1,0,1,3,none[0..<0],work[..]).status==XsStatus.key;
+}
+// book:begin checks-oracle
+#forall "replays agree with stack-distance LRU and never beat Belady's optimum" seed:0..<40,keys:1..<7,capacity:1..<5 #steps 400000000 {
+    trace:[40]int;xsc_trace(seed,keys,trace[..]);work:[25]int;none:[1]int;warm:=seed%5;
+    best:=xsc_min(trace[..],capacity);distinct:=xsc_distinct(trace[..]);
+    for policy:[3]XsPolicy.[XsPolicy.lru,XsPolicy.lfu,XsPolicy.heat] {
+        c:=xs_replay(policy,trace[..],1+seed%3,0,capacity,keys,none[0..<0],work[..]);
+        #assert c.status==XsStatus.ok && c.accesses==40 && c.hits+c.misses==40 && c.hits<=best;
+        // Each miss is either cached, evicting a resident once the cache is full, or passed through.
+        #assert c.misses==c.passed+c.evicted+rp_min(capacity,c.misses-c.passed-c.evicted) && c.evicted+rp_min(capacity,distinct)==c.misses-c.passed;
+        if capacity>=distinct {#assert c.misses==distinct && c.evicted==0;}
+        if policy!=XsPolicy.heat {#assert c.passed==0;}
+    }
+    c:=xs_replay(XsPolicy.lru,trace[..],1,warm,capacity,keys,none[0..<0],work[..]);
+    #assert c.hits==xsc_lru(trace[..],capacity,warm) && c.accesses==40-warm;
+}
+// book:end checks-oracle
+#forall "traces: keys in their layer, distinct in each token, the same for the same seed" seed:0..<6,layers:1..<4,k:1..<4 #steps 400000000 {
+    keys:[120]int;again:[120]int;gate:[384]f32;fwork:[8]f64;
+    t:=xs_trace(seed,0,10,layers,8,k,keys[..],gate[..],fwork[..]);
+    #assert t.status==XsStatus.ok && t.accesses==10*layers*k;
+    #assert xs_trace(seed,0,10,layers,8,k,again[..],gate[..],fwork[..]).accesses==t.accesses;
+    for n:0..<t.accesses {
+        #assert keys[n]==again[n] && keys[n]/8==(n/k)%layers;
+        for m:(n/k)*k..<n {#assert keys[m]!=keys[n];}
+    }
+    other:[120]int;#assert xs_trace(seed+1,0,10,layers,8,k,other[..],gate[..],fwork[..]).status==XsStatus.ok;
+    differ:=false;for n:0..<t.accesses {if other[n]!=keys[n] {differ=true;}}#assert differ;
+}
+#test "a trace by hand, and its refusals" {
+    // xs_unit: x mod 2000 - 1000, over 1000.
+    #assert xs_unit(0)==-1 && xs_unit(1000)==0 && xs_unit(3999)==0.999f32 && xs_next(1)==48282 && xs_next(2147483646)==(2147483646*48271+11)%2147483647;
+    // One layer of 2 experts, top 1, one token: the key is the expert whose gate row scores higher.
+    keys:[1]int;gate:[32]f32;fwork:[2]f64;
+    #assert xs_trace(0,0,1,1,2,1,keys[..],gate[..],fwork[..]).status==XsStatus.ok && gate[0]==xs_unit(xs_next(1));
+    x:=1;for i:0..<32 {x=xs_next(x);}
+    centers:[64]f32;for i:0..<64 {x=xs_next(x);centers[i]=xs_unit(x);}
+    // Prompt 0's shift, then token 0's topic draw.
+    x=xs_next(x);x=xs_next(x);topic:=0;if x%8==0 {x=xs_next(x);topic=x%4;}
+    dot:=[2]f64.[0,0];
+    for i:0..<16 {x=xs_next(x);v:=f64(centers[topic*16+i]+xs_unit(x)/2);dot[0]+=f64(gate[i])*v;dot[1]+=f64(gate[16+i])*v;}
+    #assert keys[0]==ifx dot[1]>dot[0] then 1 else 0;
+    big:[4]int;g:[512]f32;f:[257]f64;
+    #assert xs_trace(-1,0,1,1,2,1,keys[..],gate[..],fwork[..]).status==XsStatus.input && xs_trace(0,0,0,1,2,1,keys[..],gate[..],fwork[..]).status==XsStatus.input;
+    #assert xs_trace(0,0,1,0,2,1,keys[..],gate[..],fwork[..]).status==XsStatus.input && xs_trace(0,0,1,1,1,1,keys[..],gate[..],fwork[..]).status==XsStatus.input;
+    #assert xs_trace(0,0,1,1,257,1,keys[..],gate[..],f[..]).status==XsStatus.input && xs_trace(0,0,1,1,2,0,keys[..],gate[..],fwork[..]).status==XsStatus.input;
+    #assert xs_trace(0,0,1,1,10,9,big[..],g[..],f[..]).status==XsStatus.input && xs_trace(0,0,1,1,3,2,big[..],g[..],f[..]).status==XsStatus.ok && xs_trace(0,0,1,1,2,2,big[..],g[..],f[..]).status==XsStatus.input;
+    #assert xs_trace(0,0,2,1,2,1,keys[..],gate[..],fwork[..]).status==XsStatus.capacity && xs_trace(0,0,1,1,2,1,keys[..],gate[0..<31],fwork[..]).status==XsStatus.capacity;
+    #assert xs_trace(0,0,1,1,2,1,keys[..],gate[..],fwork[0..<1]).status==XsStatus.capacity;
+}

@@ -1,0 +1,56 @@
+#import "Basic";
+#load "../lib/expert-mesh.coax";
+#load "../lib/expert-stream.coax";
+
+// Thousandths as a decimal: 1666 prints 1.666.
+mesh_ratio :: (milli:int) {v:=milli%1000;print("%.",milli/1000);print("%",v/100);print("%",v/10%10);print("%",v%10);}
+
+// book:begin example
+MESH_TOKENS :: 256;MESH_LAYERS :: 36;MESH_EXPERTS :: 128;MESH_K :: 4;MESH_PEERS :: 4;
+main :: () {
+    // 1. The checks' small layer (5 experts, 2 a token) on three peers.
+    s:=m4o_shape();a:=m4o_moe_weights(1);w:=m4_moe_view(a.f[..],a.c[..]);
+    hidden:[56]f32;m4o_values(6,hidden[..],0);one:=hidden;spread:=hidden;
+    routes:[7]M4Route;mw:[22]f32;fwork:[13]f64;fine:=m4_moe(s,w,7,one[..],routes[..],mw[..],fwork[..]).written==7;
+    owner:[5]int;fine=fine && xm_contiguous(5,3,owner[..])==XmStatus.ok;
+    store:[15]XmExpert;peers:[3]XmPeer;
+    for p:0..<3 {n:=0;for e:0..<5 {if owner[e]==p {store[p*5+n]=xm_expert(s,w,e);n+=1;}}peers[p]=XmPeer.{experts=store[p*5..<p*5+n]};}
+    homes:[7]int;got:[7]M4Route;work:[7*8*6+14]f32;
+    r:=xm_moe(s,w,peers[..],owner[..],7,homes[..],spread[..],got[..],work[..],fwork[..]);
+    same:=true;for i:0..<56 {if f32_bits(one[i])!=f32_bits(spread[i]) {same=false;}}
+    print("small layer, 7 tokens on peer 0, experts 0-1 | 2-3 | 4 on 3 peers: %, % rows sent, % outputs returned, % bytes\n",xm_status_name(r.status),r.bytes.dispatched,r.bytes.returned,r.bytes.total);
+    print("  equal to chapter 85's layer on one machine, bit for bit: %\n",same);
+
+    // 2. Mistral Small 4's 36 mixture layers on four peers, routed by the
+    // synthetic router: profile on the first 128 tokens, measure on the rest.
+    keys:[MESH_TOKENS*MESH_LAYERS*MESH_K]int;gate:[MESH_LAYERS*MESH_EXPERTS*XS_WIDTH]f32;f:[MESH_EXPERTS]f64;
+    t:=xs_trace(1,0,MESH_TOKENS,MESH_LAYERS,MESH_EXPERTS,MESH_K,keys[..],gate[..],f[..]);
+    half:=MESH_TOKENS/2;slots:=[4]int.[32,32,32,32];
+    contiguous:[MESH_EXPERTS]int;fine=fine && t.status==XsStatus.ok && xm_contiguous(MESH_EXPERTS,MESH_PEERS,contiguous[..])==XmStatus.ok;
+    sum_c:=0;sum_b:=0;worst_c:=0;worst_b:=0;bytes:=0;dispatched:=0;ns:=0;
+    lat:[8][8]int;bw:[8][8]int;for i:0..<8 {for j:0..<8 {lat[i][j]=50000;bw[i][j]=1250;}}
+    for l:0..<MESH_LAYERS {
+        // Routes of this layer for every token.
+        lr:[MESH_TOKENS]M4Route;
+        for tok:0..<MESH_TOKENS {lr[tok].count=MESH_K;for k:0..<MESH_K {lr[tok].ids[k]=keys[(tok*MESH_LAYERS+l)*MESH_K+k]-l*MESH_EXPERTS;}}
+        profile:[MESH_EXPERTS]int;fine=fine && xm_count(lr[0..<half],half,profile[..])==XmStatus.ok;
+        balanced:[MESH_EXPERTS]int;fine=fine && xm_place(profile[..],slots[..],balanced[..]).status==XmStatus.ok;
+        later:[MESH_EXPERTS]int;fine=fine && xm_count(lr[half..<MESH_TOKENS],half,later[..])==XmStatus.ok;
+        ic:=xm_imbalance(xm_load(later[..],contiguous[..],MESH_PEERS));ib:=xm_imbalance(xm_load(later[..],balanced[..],MESH_PEERS));
+        sum_c+=ic;sum_b+=ib;worst_c=rp_max(worst_c,ic);worst_b=rp_max(worst_b,ib);
+        // One decode token at a time, its row on peer 0.
+        zero:[1]int;
+        for tok:half..<MESH_TOKENS {
+            b:=xm_bytes(lr[tok..<tok+1],1,zero[..],balanced[..],MESH_PEERS,4096);
+            bytes+=b.total;dispatched+=b.dispatched;ns+=xm_exchange(b,MESH_PEERS,lat,bw);
+        }
+    }
+    print("Mistral Small 4, % layers of % experts, top %, on % peers of 32 experts a layer: % traced tokens\n",MESH_LAYERS,MESH_EXPERTS,MESH_K,MESH_PEERS,t.tokens);
+    print("  busiest peer over the mean, tokens 128-255: contiguous ");mesh_ratio(sum_c/MESH_LAYERS);print(" (worst layer ");mesh_ratio(worst_c);
+    print("), balanced on tokens 0-127 ");mesh_ratio(sum_b/MESH_LAYERS);print(" (worst layer ");mesh_ratio(worst_b);print(")\n");
+    print("  a decode token on peer 0: % bytes over % layers, % rows sent to other peers\n",bytes/half,MESH_LAYERS,dispatched/half);
+    print("  on links of 50 us and 1,250 MB/s (assumed, not measured): % us of expert exchange a token\n",(ns/half+999)/1000);
+    print("  every step ok: %\n",fine);
+    print("  each peer holds 32 x 36 experts: % bytes\n",32*36*(m4_weights(m4_small4()).expert+8));
+}
+// book:end example

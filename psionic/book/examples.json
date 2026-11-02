@@ -3381,6 +3381,36 @@
         "release"
       ],
       "run_steps": 40000000
+    },
+    {
+      "source": "psionic/examples/expert-mesh.coax",
+      "chapter": "psionic/book/ch191-experts-across-machines-and-from-disk.md",
+      "stdout": "psionic/fixtures/expert-mesh.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/expert-stream.coax",
+      "chapter": "psionic/book/ch191-experts-across-machines-and-from-disk.md",
+      "stdout": "psionic/fixtures/expert-stream.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/expert-mesh-refuse.coax",
+      "chapter": "psionic/book/ch191-experts-across-machines-and-from-disk.md",
+      "stdout": "psionic/fixtures/expert-mesh-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

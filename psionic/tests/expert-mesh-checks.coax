@@ -1,0 +1,64 @@
+// Chapter 191's check helpers, loaded by psionic/lib/expert-mesh.coax and
+// owned by its checks: seeded partitions and routes, a brute-force placer
+// that tries every assignment of experts to peers, a byte counter written
+// per peer rather than per slot, and the peers' expert stores.
+
+xmc_next :: (x:int)->int {return (x*48271+11)%2147483647;}
+// A seeded owner map: every expert on one of `peers` peers.
+xmc_owner :: (seed:int,peers:int,owner:[]int) {
+    x:=seed*2654435761%1000003+17;
+    for e:0..<owner.count {x=xmc_next(x);owner[e]=x%peers;}
+}
+// Seeded small counts, 0 to 6, so ties are common.
+xmc_counts :: (seed:int,counts:[]int) {
+    x:=seed*40503%1000033+5;
+    for e:0..<counts.count {x=xmc_next(x);counts[e]=x%7;}
+}
+// The least possible busiest-peer load over every assignment of experts to
+// peers that fits slots, or -1 when none fits: peers^experts tries.
+xmc_brute :: (counts:[]int,slots:[]int)->int {
+    E:=counts.count;P:=slots.count;tries:=1;
+    for e:0..<E {tries*=P;}
+    best:=-1;
+    for n:0..<tries {
+        held:[8]int;load:[8]int;m:=n;
+        for e:0..<E {p:=m%P;m=m/P;held[p]+=1;load[p]+=counts[e];}
+        ok:=true;most:=0;
+        for p:0..<P {if held[p]>slots[p] {ok=false;}if load[p]>most {most=load[p];}}
+        if ok && (best<0 || most<best) {best=most;}
+    }
+    return best;
+}
+// Bytes per (token, peer): a peer other than the home that holds n of the
+// token's experts receives one row, a 4-byte index and 2 bytes for each of
+// the n, and returns n rows.
+XmcBytes :: struct {send:int;back:int;rows:int;}
+xmc_bytes :: (routes:[]M4Route,tokens:int,homes:[]int,owner:[]int,peers:int,hidden:int)->XmcBytes {
+    c:XmcBytes;
+    for t:0..<tokens {for p:0..<peers {
+        if p==homes[t] {continue;}
+        n:=0;
+        for slot:0..<routes[t].count {if owner[routes[t].ids[slot]]==p {n+=1;}}
+        if n>0 {c.send+=4*hidden+4+2*n;c.back+=n*4*hidden;c.rows+=1;}
+    }}
+    return c;
+}
+// Each peer's store, filled from a whole layer by owner: peer p's experts
+// are store[p * experts ..], in expert order.
+xmc_peers :: (s:M4Shape,w:M4Moe,owner:[]int,store:[]XmExpert,peers:[]XmPeer) {
+    E:=s.experts;
+    for p:0..<peers.count {
+        n:=0;
+        for e:0..<E {if owner[e]==p {store[p*E+n]=xm_expert(s,w,e);n+=1;}}
+        peers[p]=XmPeer.{experts=store[p*E..<p*E+n]};
+    }
+}
+// A route that names its experts directly, weights left 0.
+xmc_route :: (a:int,b:int,c:int,d:int,k:int)->M4Route {
+    r:=M4Route.{count=k};r.ids[0]=a;r.ids[1]=b;r.ids[2]=c;r.ids[3]=d;return r;
+}
+xmc_same :: (a:[]f32,b:[]f32)->bool {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return false;}}
+    return true;
+}

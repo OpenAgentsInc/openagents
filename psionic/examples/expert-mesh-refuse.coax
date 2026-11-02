@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../lib/expert-mesh.coax";
+#load "../lib/expert-stream.coax";
+
+// book:begin example
+// Four things the chapter refuses, each with its typed status: an expert
+// missing from the peer that should hold it, a placement with too little
+// room, a link that carries bytes with no bandwidth, and a trace key
+// outside the cache's keys.
+main :: () {
+    s:=m4o_shape();a:=m4o_moe_weights(2);w:=m4_moe_view(a.f[..],a.c[..]);
+    hidden:[56]f32;m4o_values(4,hidden[..],0);h:=hidden;owner:=[5]int.[0,0,1,1,1];
+    // Peer 1 should hold experts 2, 3 and 4, but its store lost 3.
+    store:=[4]XmExpert.[xm_expert(s,w,0),xm_expert(s,w,1),xm_expert(s,w,2),xm_expert(s,w,4)];
+    peers:=[2]XmPeer.[XmPeer.{experts=store[0..<2]},XmPeer.{experts=store[2..<4]}];
+    homes:[7]int;routes:[7]M4Route;work:[7*8*5+14]f32;fwork:[13]f64;
+    r:=xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]);
+    same:=true;for i:0..<56 {if f32_bits(h[i])!=f32_bits(hidden[i]) {same=false;}}
+    print("refused: %, peer % does not hold expert %; % tokens written, hidden unchanged %\n",xm_status_name(r.status),r.peer,r.expert,r.written,same);
+    // 128 experts, 4 peers with room for 31 each.
+    counts:[128]int;room:=[4]int.[31,31,31,31];placed:[128]int;
+    p:=xm_place(counts[..],room[..],placed[..]);
+    print("refused: %, the peers need % more expert slots\n",xm_status_name(p.status),p.lacking);
+    // One row from peer 0 to peer 1 on a link with no bandwidth.
+    b:XmBytes;b.send[0][1]=4100;lat:[8][8]int;bw:[8][8]int;
+    print("refused: exchange time % for a link with no bandwidth\n",xm_exchange(b,2,lat,bw));
+    // A trace key 4608 when 36 layers of 128 experts have keys 0 to 4607.
+    trace:=[3]int.[0,4607,4608];none:[1]int;cache:[2+3*4608]int;
+    c:=xs_replay(XsPolicy.lru,trace[..],1,0,2,4608,none[0..<0],cache[..]);
+    print("refused: replay status %, % accesses replayed\n",c.status,c.accesses);
+}
+// book:end example

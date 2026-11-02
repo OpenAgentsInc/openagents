@@ -1,0 +1,68 @@
+// Chapter 191's check helpers, loaded by psionic/lib/expert-stream.coax and
+// owned by its checks: seeded traces, least-recently-used hits by stack
+// distance, and Belady's optimum, all written without the cache's slots.
+
+xsc_next :: (x:int)->int {return (x*48271+11)%2147483647;}
+// A seeded trace over `keys` keys; a few keys are used far more often.
+xsc_trace :: (seed:int,keys:int,trace:[]int) {
+    x:=seed*2654435761%1000003+3;
+    for n:0..<trace.count {x=xsc_next(x);v:=x%(2*keys);trace[n]=ifx v<keys then v else (v-keys)%2;}
+}
+// Least recently used by stack distance: an access hits when it was used
+// before and fewer than `capacity` other keys were used since.
+xsc_lru :: (trace:[]int,capacity:int,warm:int)->int {
+    hits:=0;
+    for n:warm..<trace.count {
+        j:=n-1;while j>=0 && trace[j]!=trace[n] {j-=1;}
+        if j<0 {continue;}
+        seen:[64]bool;distinct:=0;
+        for i:j+1..<n {if !seen[trace[i]] {seen[trace[i]]=true;distinct+=1;}}
+        if distinct<capacity {hits+=1;}
+    }
+    return hits;
+}
+// The next use of trace[n]'s key after position n, or the trace's length.
+xsc_next_use :: (trace:[]int,key:int,n:int)->int {
+    j:=n+1;while j<trace.count && trace[j]!=key {j+=1;}
+    return j;
+}
+// Belady's optimum when a miss may also pass through without being cached:
+// on a full cache, drop whichever of the residents and the incoming key is
+// next used farthest away. No policy hits more often.
+xsc_min :: (trace:[]int,capacity:int)->int {
+    held:[64]bool;count:=0;hits:=0;
+    for n:0..<trace.count {
+        key:=trace[n];
+        if held[key] {hits+=1;continue;}
+        if count<capacity {held[key]=true;count+=1;continue;}
+        far:=key;farthest:=xsc_next_use(trace,key,n);
+        for k:0..<64 {if held[k] {u:=xsc_next_use(trace,k,n);if u>farthest {far=k;farthest=u;}}}
+        if far!=key {held[far]=false;held[key]=true;}
+    }
+    return hits;
+}
+xsc_distinct :: (trace:[]int)->int {
+    seen:[64]bool;n:=0;
+    for k:trace {if !seen[k] {seen[k]=true;n+=1;}}
+    return n;
+}
+// The trace regenerated from its statement: gates, then topic centers,
+// then the prompt's shift, then each token's topic draw and input; each layer's chosen experts
+// ranked by the oracle's binary64 logits. At most 8 experts and 2 layers.
+xsc_agrees :: (seed:int,prompt:int,tokens:int,layers:int,experts:int,k:int,keys:[]int)->bool {
+    x:=seed+1;gate:[256]f32;centers:[64]f32;
+    for i:0..<layers*experts*16 {x=xsc_next(x);gate[i]=f32(x%2000-1000)/1000;}
+    for i:0..<64 {x=xsc_next(x);centers[i]=f32(x%2000-1000)/1000;}
+    topic:=0;n:=0;x=xsc_next(x+prompt);
+    for token:0..<tokens {
+        x=xsc_next(x);
+        if x%8==0 {x=xsc_next(x);topic=x%4;}
+        input:[16]f64;
+        for i:0..<16 {x=xsc_next(x);input[i]=f64(centers[topic*16+i]+(f32(x%2000-1000)/1000)/2);}
+        for l:0..<layers {
+            o:=m4o_route(gate[l*experts*16..<(l+1)*experts*16],input[..],k);
+            for slot:0..<k {if keys[n]-l*experts<0 || keys[n]-l*experts>=experts || !o.chosen[keys[n]-l*experts] {return false;}n+=1;}
+        }
+    }
+    return true;
+}

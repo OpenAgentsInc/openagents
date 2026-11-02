@@ -1,0 +1,8 @@
+small layer, 7 tokens on peer 0, experts 0-1 | 2-3 | 4 on 3 peers: ok, 8 rows sent, 13 outputs returned, 730 bytes
+  equal to chapter 85's layer on one machine, bit for bit: true
+Mistral Small 4, 36 layers of 128 experts, top 4, on 4 peers of 32 experts a layer: 256 traced tokens
+  busiest peer over the mean, tokens 128-255: contiguous 1.375 (worst layer 1.984), balanced on tokens 0-127 1.257 (worst layer 1.570)
+  a decode token on peer 0: 2954750 bytes over 36 layers, 75 rows sent to other peers
+  on links of 50 us and 1,250 MB/s (assumed, not measured): 4903 us of expert exchange a token
+  every step ok: true
+  each peer holds 32 x 36 experts: 28991038464 bytes

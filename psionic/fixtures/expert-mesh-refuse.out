@@ -1,0 +1,4 @@
+refused: missing, peer 1 does not hold expert 3; 0 tokens written, hidden unchanged true
+refused: memory, the peers need 4 more expert slots
+refused: exchange time -1 for a link with no bandwidth
+refused: replay status key, 0 accesses replayed

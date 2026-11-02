@@ -1,0 +1,439 @@
+// Chapter 191: experts across machines. A mixture layer's routed experts
+// are split over peers; each token's normed row is sent once to every peer
+// that holds one of its chosen experts, each chosen expert's output comes
+// back, and the token's home sums them in route-slot order, exactly as
+// chapter 85's m4_moe sums them on one machine. This file counts each
+// expert's uses from routes, measures how unevenly a placement loads the
+// peers, chooses a placement that balances expected load under each peer's
+// room, counts the bytes one layer's exchange moves between every pair of
+// peers, prices that exchange on measured links, and runs the layer with
+// peers simulated as separate expert stores in this process.
+// Profile expert-mesh-v1: up to 8 peers and chapter 85's 256 experts;
+// activations f32 on the wire (4 bytes a value); byte counts exact; times in
+// nanoseconds rounded up; arithmetic is chapter 85's
+// mistral-small-cpu-f64-v1, unchanged.
+#authority;
+#load "mistral-small.coax";
+#load "shard.coax";
+#load "../tests/expert-mesh-checks.coax";  // the checks' brute-force placer, byte counter and random partitions
+
+XmStatus :: enum u8 {ok;input;memory;owner;missing;capacity;route;arithmetic;}
+XM_PEERS_MAX :: 8;
+
+// book:begin load
+// counts[e]: how many (token, slot) pairs of the first `tokens` routes
+// chose expert e. A route that was refused, or names an expert outside
+// counts, refuses.
+xm_count :: (routes:[]M4Route,tokens:int,counts:[]int)->XmStatus {
+    if tokens<0 || tokens>routes.count {return XmStatus.input;}
+    for e:0..<counts.count {counts[e]=0;}
+    for t:0..<tokens {
+        r:=routes[t];
+        if r.status!=M4Status.ok {return XmStatus.route;}
+        for slot:0..<r.count {
+            e:=r.ids[slot];
+            if e<0 || e>=counts.count {return XmStatus.route;}
+            counts[e]+=1;
+        }
+    }
+    return XmStatus.ok;
+}
+// A placement's load: the uses each peer serves, their total, and the
+// largest. owner[e] is the peer that holds expert e.
+XmLoad :: struct {status:XmStatus;peers:int;load:[8]int;total:int;most:int;}
+xm_load :: (counts:[]int,owner:[]int,peers:int)->XmLoad {
+    l:=XmLoad.{peers=peers};
+    if peers<1 || peers>XM_PEERS_MAX || owner.count!=counts.count {l.status=XmStatus.input;return l;}
+    for e:0..<counts.count {
+        p:=owner[e];
+        if p<0 || p>=peers {l.status=XmStatus.owner;return l;}
+        l.load[p]+=counts[e];l.total+=counts[e];
+    }
+    for p:0..<peers {l.most=rp_max(l.most,l.load[p]);}
+    return l;
+}
+// The busiest peer's load over the mean, in thousandths, rounded down:
+// 1000 is perfect balance, peers * 1000 is one peer doing everything. A
+// layer waits for its busiest peer, so this is the slowdown imbalance
+// causes. No uses at all count as balanced.
+xm_imbalance :: (l:XmLoad)->int {
+    if l.total==0 {return 1000;}
+    return l.most*l.peers*1000/l.total;
+}
+// book:end load
+
+// book:begin place
+// The usual split: peer d holds a contiguous block of experts, cut by
+// chapter 132's rule (sd_first), whatever their load.
+xm_contiguous :: (experts:int,peers:int,owner:[]int)->XmStatus {
+    if experts<1 || peers<1 || peers>XM_PEERS_MAX || owner.count!=experts {return XmStatus.input;}
+    for d:0..<peers {for e:sd_first(experts,peers,d)..<sd_first(experts,peers,d+1) {owner[e]=d;}}
+    return XmStatus.ok;
+}
+// A placement that balances expected load: counts[e] is expert e's
+// expected uses (from a recorded routing profile), slots[p] the experts
+// peer p has memory for. Experts go out most-used first (the lower id on a
+// tie), each to the peer with room that has the least load so far (the
+// lower peer on a tie): Graham's longest-processing-time rule. With room to
+// spare everywhere its busiest peer is within 4/3 - 1/(3 * peers) of the
+// best possible. owner is written only when every expert finds room.
+XmPlace :: struct {status:XmStatus;load:XmLoad;lacking:int;}
+xm_place :: (counts:[]int,slots:[]int,owner:[]int)->XmPlace {
+    E:=counts.count;P:=slots.count;
+    if E<1 || E>M4_EXPERTS_MAX || P<1 || P>XM_PEERS_MAX || owner.count!=E {return XmPlace.{status=XmStatus.input};}
+    room:=0;
+    for p:0..<P {if slots[p]<0 {return XmPlace.{status=XmStatus.input};}room+=slots[p];}
+    for e:0..<E {if counts[e]<0 {return XmPlace.{status=XmStatus.input};}}
+    // lacking: how many more expert slots the peers need between them.
+    if room<E {return XmPlace.{status=XmStatus.memory,lacking=E-room};}
+    placed:[256]bool;held:[8]int;load:[8]int;
+    for n:0..<E {
+        e:=-1;
+        for i:0..<E {if !placed[i] && (e<0 || counts[i]>counts[e]) {e=i;}}
+        p:=-1;
+        for q:0..<P {if held[q]<slots[q] && (p<0 || load[q]<load[p]) {p=q;}}
+        owner[e]=p;placed[e]=true;held[p]+=1;load[p]+=counts[e];
+    }
+    return XmPlace.{load=xm_load(counts,owner,P)};
+}
+// book:end place
+
+// book:begin bytes
+// The bytes one layer's expert exchange moves, for tokens whose rows live
+// on peer homes[t]. Dispatch: the token's normed row (hidden f32 values)
+// goes once to every other peer that holds one of its chosen experts, with
+// a 4-byte token index and, for each of its experts there, a 1-byte expert
+// id and a 1-byte route slot. Return: each such expert's output, hidden
+// f32 values. Nothing moves for an expert on the token's home.
+// send[a][b] and back[a][b] are the bytes from peer a to peer b.
+XmBytes :: struct {status:XmStatus;send:[8][8]int;back:[8][8]int;dispatched:int;returned:int;total:int;}
+XM_INDEX :: 4;XM_TAG :: 2;
+xm_bytes :: (routes:[]M4Route,tokens:int,homes:[]int,owner:[]int,peers:int,hidden:int)->XmBytes {
+    b:XmBytes;
+    if peers<1 || peers>XM_PEERS_MAX || hidden<1 || tokens<0 || tokens>routes.count || tokens>homes.count {b.status=XmStatus.input;return b;}
+    row:=4*hidden;
+    for t:0..<tokens {
+        r:=routes[t];a:=homes[t];
+        if r.status!=M4Status.ok {b.status=XmStatus.route;return b;}
+        if a<0 || a>=peers {b.status=XmStatus.owner;return b;}
+        sent:[8]bool;
+        for slot:0..<r.count {
+            e:=r.ids[slot];
+            if e<0 || e>=owner.count {b.status=XmStatus.route;return b;}
+            p:=owner[e];
+            if p<0 || p>=peers {b.status=XmStatus.owner;return b;}
+            if p==a {continue;}
+            if !sent[p] {sent[p]=true;b.send[a][p]+=row+XM_INDEX;b.dispatched+=1;}
+            b.send[a][p]+=XM_TAG;b.back[p][a]+=row;b.returned+=1;
+        }
+    }
+    for a:0..<peers {for p:0..<peers {b.total+=b.send[a][p]+b.back[a][p];}}
+    return b;
+}
+// book:end bytes
+
+// book:begin time
+// Nanoseconds to move b bytes over a link of one-way latency lat ns and
+// bw bytes a microsecond (MB/s): lat + ceil(b * 1000 / bw), chapter 189's
+// plc_send. Nothing to move takes no time.
+xm_link :: (lat:int,bw:int,b:int)->int {
+    if b==0 {return 0;}
+    return lat+(b*1000+bw-1)/bw;
+}
+// One layer's exchange when every ordered pair of peers has its own link:
+// the dispatch phase lasts as long as its slowest link, then the experts
+// run, then the return phase lasts as long as its slowest link. -1 when a
+// link that carries bytes has no bandwidth.
+xm_exchange :: (b:XmBytes,peers:int,lat:[8][8]int,bw:[8][8]int)->int {
+    out:=0;back:=0;
+    for a:0..<peers {for p:0..<peers {
+        if (b.send[a][p]>0 || b.back[a][p]>0) && bw[a][p]<1 {return -1;}
+        out=rp_max(out,xm_link(lat[a][p],bw[a][p],b.send[a][p]));
+        back=rp_max(back,xm_link(lat[a][p],bw[a][p],b.back[a][p]));
+    }}
+    return out+back;
+}
+// book:end time
+
+// book:begin run
+// One peer's store: the routed experts it holds, by id, each its gate_up
+// codes (gate rows, then up rows), its down codes and their two scales.
+XmExpert :: struct {id:int;up:[]u8;up_scale:f32;down:[]u8;down_scale:f32;}
+XmPeer :: struct {experts:[]XmExpert;}
+// Expert e of a whole layer's weights, as a peer would hold it.
+xm_expert :: (s:M4Shape,w:M4Moe,e:int)->XmExpert {
+    n:=s.expert_mlp*s.hidden;
+    return XmExpert.{id=e,up=w.up[e*2*n..<(e+1)*2*n],up_scale=w.up_scale[e],down=w.down[e*n..<(e+1)*n],down_scale=w.down_scale[e]};
+}
+// Where expert id sits in a peer's store, or -1.
+xm_find :: (p:XmPeer,id:int)->int {
+    for i:0..<p.experts.count {if p.experts[i].id==id {return i;}}
+    return -1;
+}
+// Work: every token's normed row, every (token, slot)'s returned output,
+// one output row, one expert's inner values and each peer's received copy
+// of every row. fwork is chapter 85's: the sums and one score an expert.
+xm_work :: (s:M4Shape,tokens:int,peers:int)->int {
+    return tokens*s.hidden*(1+peers+s.top_k)+s.hidden+2*rp_max(s.expert_mlp,s.shared_mlp);
+}
+// The layer across peers. The home holds the block norm, the router and
+// the shared expert (w's routed experts are not read); peers[p] holds the
+// experts owner[] gives it. Every token is normed and routed and every
+// chosen expert found before any expert runs, so a route refusal, an
+// expert missing from the peer that should hold it, or an expert whose
+// arithmetic overflows leaves hidden unchanged; peer and expert name what
+// was missing. Then each peer runs its experts on the rows it received,
+// and each home sums its tokens' outputs in slot order, adds the shared
+// expert and the residual, chapter 85's order exactly. A refusal while
+// summing token t leaves tokens before it written, as m4_moe does.
+XmResult :: struct {status:XmStatus;written:int;peer:int=-1;expert:int=-1;bytes:XmBytes;}
+xm_moe :: (s:M4Shape,w:M4Moe,peers:[]XmPeer,owner:[]int,tokens:int,homes:[]int,hidden:[]f32,routes:[]M4Route,work:[]f32,fwork:[]f64)->XmResult {
+    h:=s.hidden;E:=s.experts;I:=s.expert_mlp;k:=s.top_k;P:=peers.count;
+    if !m4_valid(s) || w.norm.count!=h || w.gate.count!=E*h || owner.count!=E || P<1 || P>XM_PEERS_MAX {return XmResult.{status=XmStatus.input};}
+    if !m4_matrix_ok(w.shared_gate,s.shared_mlp,h) || !m4_matrix_ok(w.shared_up,s.shared_mlp,h) || !m4_matrix_ok(w.shared_down,h,s.shared_mlp) {return XmResult.{status=XmStatus.input};}
+    for e:0..<E {if owner[e]<0 || owner[e]>=P {return XmResult.{status=XmStatus.owner,expert=e};}}
+    for p:0..<P {for x:peers[p].experts {
+        if x.up.count!=2*I*h || x.down.count!=h*I || !fp8_f32_scale_ok(f32_bits(x.up_scale)) || !fp8_f32_scale_ok(f32_bits(x.down_scale)) {return XmResult.{status=XmStatus.input,peer=p,expert=x.id};}
+    }}
+    if tokens<1 || hidden.count!=tokens*h || routes.count<tokens || homes.count<tokens || work.count<xm_work(s,tokens,P) || fwork.count<m4_moe_fwork(s) {return XmResult.{status=XmStatus.capacity};}
+    n:=tokens*h;wide:=2*rp_max(I,s.shared_mlp);
+    a:=n*(1+k);b:=a+h;c:=b+wide;
+    normed:=work[0..<n];outs:=work[n..<a];out:=work[a..<b];inner:=work[b..<c];inbox:=work[c..<work.count];sums:=fwork[0..<h];
+    // Route every token; find every chosen expert where owner says it is.
+    for t:0..<tokens {
+        if !m4_norm(hidden[t*h..<(t+1)*h],w.norm,normed[t*h..<(t+1)*h]) {return XmResult.{status=XmStatus.arithmetic};}
+        r:=m4_route(w.gate,normed[t*h..<(t+1)*h],k,fwork[h..<h+E]);routes[t]=r;
+        if r.status!=M4Status.ok {return XmResult.{status=XmStatus.route};}
+        for slot:0..<k {e:=r.ids[slot];if xm_find(peers[owner[e]],e)<0 {return XmResult.{status=XmStatus.missing,peer=owner[e],expert=e};}}
+    }
+    bytes:=xm_bytes(routes,tokens,homes,owner,P,h);
+    if bytes.status!=XmStatus.ok {return XmResult.{status=bytes.status};}
+    // Dispatch: a copy of the row in each peer's inbox that will use it.
+    for t:0..<tokens {for slot:0..<k {p:=owner[routes[t].ids[slot]];
+        for i:0..<h {inbox[(t*P+p)*h+i]=normed[t*h+i];}}}
+    // Each peer runs its experts on the rows it received.
+    for p:0..<P {for t:0..<tokens {for slot:0..<k {
+        e:=routes[t].ids[slot];
+        if owner[e]!=p {continue;}
+        x:=peers[p].experts[xm_find(peers[p],e)];
+        gate:=M4Matrix.{codes=x.up[0..<I*h],scale=x.up_scale};up:=M4Matrix.{codes=x.up[I*h..<2*I*h],scale=x.up_scale};
+        down:=M4Matrix.{codes=x.down,scale=x.down_scale};
+        if !m4_swiglu(gate,up,down,inbox[(t*P+p)*h..<(t*P+p+1)*h],inner[0..<2*I],outs[(t*k+slot)*h..<(t*k+slot+1)*h]) {return XmResult.{status=XmStatus.arithmetic,peer=p,expert=e};}
+    }}}
+    // Combine at each home, in slot order, then the shared expert.
+    for t:0..<tokens {
+        r:=routes[t];
+        for i:0..<h {sums[i]=0;}
+        for slot:0..<k {for i:0..<h {sums[i]+=f64(r.weights[slot])*f64(outs[(t*k+slot)*h+i]);}}
+        if !m4_swiglu(w.shared_gate,w.shared_up,w.shared_down,normed[t*h..<(t+1)*h],inner[0..<2*s.shared_mlp],out) {return XmResult.{status=XmStatus.arithmetic,written=t,bytes=bytes};}
+        for i:0..<h {
+            v:=sums[i]+f64(out[i]);
+            if !psionic_ops_fits_f32(v) {return XmResult.{status=XmStatus.arithmetic,written=t,bytes=bytes};}
+            out[i]=f32(v);
+        }
+        if !m4_residual(hidden[t*h..<(t+1)*h],out) {return XmResult.{status=XmStatus.arithmetic,written=t,bytes=bytes};}
+    }
+    return XmResult.{written=tokens,bytes=bytes};
+}
+// book:end run
+
+xm_status_name :: (s:XmStatus)->string {
+    names:=[8]string.["ok","input","memory","owner","missing","capacity","route","arithmetic"];
+    return names[cast(int)s];
+}
+
+// ---- Checks.
+// book:begin checks-hand
+#test "uses, imbalance and placement, worked by hand" {
+    // Six tokens, two experts each, over eight experts: 12 uses.
+    counts:=[8]int.[5,3,2,0,1,0,1,0];owner:[8]int;
+    // Contiguous halves: experts 0-3 serve 10 uses, 4-7 serve 2.
+    #assert xm_contiguous(8,2,owner[..])==XmStatus.ok && owner[3]==0 && owner[4]==1;
+    l:=xm_load(counts[..],owner[..],2);#assert l.status==XmStatus.ok && l.load[0]==10 && l.load[1]==2 && l.total==12 && l.most==10 && xm_imbalance(l)==1666;
+    // Most-used first, each to the lighter peer: 0 -> 0 (5), 1 -> 1 (3),
+    // 2 -> 1 (5), 4 -> 0 on the tie (6), 6 -> 1 (6), then the unused ones.
+    slots:=[2]int.[4,4];p:=xm_place(counts[..],slots[..],owner[..]);
+    #assert p.status==XmStatus.ok && p.load.load[0]==6 && p.load.load[1]==6 && xm_imbalance(p.load)==1000;
+    want:=[8]int.[0,1,1,0,0,0,1,1];for e:0..<8 {#assert owner[e]==want[e];}
+    // Room for one expert on peer 0: it takes expert 0 and peer 1 the rest.
+    slots=[2]int.[1,7];p=xm_place(counts[..],slots[..],owner[..]);
+    #assert p.load.load[0]==5 && p.load.load[1]==7 && xm_imbalance(p.load)==1166 && owner[0]==0 && owner[1]==1;
+    // Seven slots for eight experts: one short, and owner is not touched.
+    slots=[2]int.[3,4];p=xm_place(counts[..],slots[..],owner[..]);#assert p.status==XmStatus.memory && p.lacking==1 && owner[0]==0 && owner[1]==1;
+    #assert xm_imbalance(XmLoad.{peers=4})==1000 && xm_imbalance(XmLoad.{peers=4,total=8,most=8})==4000 && xm_imbalance(XmLoad.{peers=3,total=9,most=4})==1333;
+}
+#test "bytes and exchange time, worked by hand" {
+    // Hidden 4 (16-byte rows), experts 0, 1 on peer 0 and 2, 3 on peer 1.
+    owner:=[4]int.[0,0,1,1];homes:=[3]int.[0,1,0];
+    routes:=[3]M4Route.[xmc_route(1,2,0,0,2),xmc_route(0,3,0,0,2),xmc_route(3,2,0,0,2)];
+    b:=xm_bytes(routes[..],3,homes[..],owner[..],2,4);
+    // Token 0 sends one row for expert 2: 16 + 4 + 2; it returns 16. Token 1
+    // (home 1) does the same for expert 0. Token 2 sends one row for both
+    // of its experts: 16 + 4 + 2 + 2, and gets two rows back.
+    #assert b.status==XmStatus.ok && b.send[0][1]==46 && b.send[1][0]==22 && b.back[1][0]==48 && b.back[0][1]==16 && b.send[0][0]==0;
+    #assert b.dispatched==3 && b.returned==4 && b.total==132;
+    // 0.5 ms and 125 MB/s each way: dispatch waits on 46 bytes (368 ns of
+    // transfer), the return on 48 (384 ns).
+    lat:[8][8]int;bw:[8][8]int;lat[0][1]=500000;lat[1][0]=500000;bw[0][1]=125;bw[1][0]=125;
+    #assert xm_link(500000,125,46)==500368 && xm_link(500000,125,47)==500376 && xm_link(9,125,0)==0 && xm_link(0,3,1)==334;
+    #assert xm_exchange(b,2,lat,bw)==500368+500384;
+    bw[1][0]=0;#assert xm_exchange(b,2,lat,bw)==-1;
+    one:=b;one.send[1][0]=0;one.back[1][0]=0;#assert xm_exchange(one,2,lat,bw)==500128+500368;
+    // Refusals.
+    #assert xm_bytes(routes[..],3,homes[..],owner[..],0,4).status==XmStatus.input && xm_bytes(routes[..],3,homes[..],owner[..],9,4).status==XmStatus.input;
+    #assert xm_bytes(routes[..],3,homes[..],owner[..],2,0).status==XmStatus.input && xm_bytes(routes[..],4,homes[..],owner[..],2,4).status==XmStatus.input;
+    #assert xm_bytes(routes[..],3,homes[0..<2],owner[..],2,4).status==XmStatus.input && xm_bytes(routes[..],-1,homes[..],owner[..],2,4).status==XmStatus.input;
+    z:=xm_bytes(routes[..],0,homes[..],owner[..],2,4);#assert z.status==XmStatus.ok && z.total==0 && xm_exchange(z,2,lat,bw)==0;
+    #assert xm_bytes(routes[..],3,homes[..],owner[..],8,1).status==XmStatus.ok && xm_bytes(routes[..],3,homes[..],owner[..],2,1).total==48;
+    // One byte each way on a 1 MB/s link: 1 us; on a link with no bandwidth, -1.
+    tiny:XmBytes;tiny.send[0][1]=1;bw[0][1]=1;#assert xm_exchange(tiny,2,lat,bw)==501000;bw[0][1]=0;#assert xm_exchange(tiny,2,lat,bw)==-1;
+    tiny.send[0][1]=0;tiny.back[0][1]=1;#assert xm_exchange(tiny,2,lat,bw)==-1;bw[0][1]=125;
+    homes[2]=2;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.owner;homes[2]=-1;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.owner;homes[2]=0;
+    owner[2]=2;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.owner;owner[2]=-1;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.owner;owner[2]=1;
+    routes[2].ids[1]=4;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.route;routes[2].ids[1]=-1;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.route;
+    routes[2].status=M4Status.number;#assert xm_bytes(routes[..],3,homes[..],owner[..],2,4).status==XmStatus.route;
+}
+// book:end checks-hand
+#test "counting and placement refusals" {
+    routes:=[2]M4Route.[xmc_route(1,2,0,0,2),xmc_route(2,3,0,0,2)];counts:=[4]int.[9,9,9,9];
+    #assert xm_count(routes[..],2,counts[..])==XmStatus.ok && counts[0]==0 && counts[1]==1 && counts[2]==2 && counts[3]==1;
+    #assert xm_count(routes[..],0,counts[..])==XmStatus.ok && counts[2]==0;
+    #assert xm_count(routes[..],3,counts[..])==XmStatus.input && xm_count(routes[..],-1,counts[..])==XmStatus.input;
+    #assert xm_count(routes[..],2,counts[0..<3])==XmStatus.route;routes[0].ids[0]=-1;#assert xm_count(routes[..],2,counts[..])==XmStatus.route;
+    routes[0].ids[0]=1;routes[1].status=M4Status.shape;#assert xm_count(routes[..],2,counts[..])==XmStatus.route;
+    owner:=[4]int.[0,1,1,0];c:=[4]int.[1,2,3,4];
+    #assert xm_load(c[..],owner[..],0).status==XmStatus.input && xm_load(c[..],owner[..],9).status==XmStatus.input && xm_load(c[..],owner[0..<3],2).status==XmStatus.input;
+    owner[3]=2;#assert xm_load(c[..],owner[..],2).status==XmStatus.owner;owner[3]=-1;#assert xm_load(c[..],owner[..],2).status==XmStatus.owner;
+    owner[3]=0;l:=xm_load(c[..],owner[..],8);#assert l.status==XmStatus.ok && l.most==5 && l.peers==8;
+    #assert xm_contiguous(0,2,owner[0..<0])==XmStatus.input && xm_contiguous(4,0,owner[..])==XmStatus.input && xm_contiguous(4,9,owner[..])==XmStatus.input && xm_contiguous(3,2,owner[..])==XmStatus.input;
+    #assert xm_contiguous(1,1,owner[0..<1])==XmStatus.ok && owner[0]==0;
+    #assert xm_contiguous(4,8,owner[..])==XmStatus.ok && owner[0]==1 && owner[1]==3 && owner[2]==5 && owner[3]==7;
+    slots:=[2]int.[2,2];none:[1]int;nine:[9]int;big:[257]int;bigo:[257]int;halves:=[2]int.[128,128];
+    #assert xm_place(none[0..<0],slots[..],owner[0..<0]).status==XmStatus.input && xm_place(c[..],none[0..<0],owner[..]).status==XmStatus.input;
+    #assert xm_place(c[..],nine[..],owner[..]).status==XmStatus.input && xm_place(c[..],slots[..],owner[0..<3]).status==XmStatus.input;
+    #assert xm_place(big[..],slots[..],bigo[..]).status==XmStatus.input && xm_place(big[0..<256],halves[..],bigo[0..<256]).status==XmStatus.ok;
+    slots[1]=-1;#assert xm_place(c[..],slots[..],owner[..]).status==XmStatus.input;slots[1]=2;
+    c[2]=-1;#assert xm_place(c[..],slots[..],owner[..]).status==XmStatus.input;c[2]=3;
+    c[0]=-1;#assert xm_place(c[..],slots[..],owner[..]).status==XmStatus.input;c[0]=1;
+    #assert xm_place(c[..],nine[0..<8],owner[..]).status==XmStatus.memory && xm_place(c[..],nine[0..<8],owner[..]).lacking==4;
+    #assert xm_status_name(XmStatus.ok)=="ok" && xm_status_name(XmStatus.missing)=="missing" && xm_status_name(XmStatus.arithmetic)=="arithmetic";
+}
+#forall "the balanced placement fits, and is within Graham's bound of the best" seed:0..<40,experts:1..<7,peers:1..<4 #steps 400000000 {
+    counts:[6]int;xmc_counts(seed,counts[0..<experts]);c:=counts[0..<experts];
+    // Room everywhere: the 4/3 - 1/(3 peers) bound against brute force.
+    slots:[3]int;for p:0..<peers {slots[p]=experts;}
+    owner:[6]int;r:=xm_place(c,slots[0..<peers],owner[0..<experts]);best:=xmc_brute(c,slots[0..<peers]);
+    #assert r.status==XmStatus.ok && 3*peers*r.load.most<=(4*peers-1)*best && r.load.most>=best;
+    l:=xm_load(c,owner[0..<experts],peers);#assert l.most==r.load.most && l.total==r.load.total;
+    // Tight room: never more experts on a peer than it has room for, and
+    // never better than the best that fits.
+    x:=seed*31+experts;tight:[3]int;room:=0;
+    for p:0..<peers {x=xmc_next(x);tight[p]=x%(experts+1);room+=tight[p];}
+    r=xm_place(c,tight[0..<peers],owner[0..<experts]);best=xmc_brute(c,tight[0..<peers]);
+    if room<experts {#assert r.status==XmStatus.memory && r.lacking==experts-room && best==-1;}
+    else {
+        held:[3]int;for e:0..<experts {held[owner[e]]+=1;}
+        for p:0..<peers {#assert held[p]<=tight[p];}
+        #assert r.status==XmStatus.ok && r.load.most>=best && best>=0;
+    }
+}
+#forall "bytes match a per-peer count, and a dispatch to every peer is chapter 133's all-gather" seed:0..<30,peers:1..<5,tokens:1..<6 {
+    // Random routes over 8 experts, 4 a token, random owners and homes.
+    owner:[8]int;xmc_owner(seed,peers,owner[..]);routes:[5]M4Route;homes:[5]int;x:=seed*7+tokens;
+    for t:0..<tokens {
+        used:[8]bool;r:=M4Route.{count=4};
+        for slot:0..<4 {x=xmc_next(x);e:=x%8;while used[e] {e=(e+1)%8;}used[e]=true;r.ids[slot]=e;}
+        routes[t]=r;x=xmc_next(x);homes[t]=x%peers;
+    }
+    b:=xm_bytes(routes[..],tokens,homes[..],owner[..],peers,6);c:=xmc_bytes(routes[..],tokens,homes[..],owner[..],peers,6);
+    send:=0;back:=0;for a:0..<peers {for p:0..<peers {send+=b.send[a][p];back+=b.back[a][p];}}
+    #assert b.status==XmStatus.ok && send==c.send && back==c.back && b.dispatched==c.rows && b.total==send+back && b.returned*24==back;
+    // Contiguous owners and slot j on peer (j + t) mod peers: every token
+    // needs every peer, so the rows sent are a row-sharded tensor gathered
+    // onto every device: sd_cost at 8 bytes a value, 4 here.
+    #assert xm_contiguous(8,peers,owner[..])==XmStatus.ok;
+    for t:0..<tokens {
+        for slot:0..<4 {routes[t].ids[slot]=sd_first(8,peers,(slot+t)%peers)+ifx peers==1 then slot else 0;}
+        for d:0..<peers {if t>=sd_first(tokens,peers,d) && t<sd_first(tokens,peers,d+1) {homes[t]=d;}}
+    }
+    b=xm_bytes(routes[..],tokens,homes[..],owner[..],peers,6);
+    #assert b.dispatched==tokens*(peers-1) && 2*b.dispatched*4*6==sd_cost(tokens,6,peers,sd_shard(0),sd_replicated());
+}
+// book:begin checks-run
+#forall "the layer across peers equals chapter 85's layer on one machine, bit for bit" seed:0..<12,peers:1..<5,part:0..<3 #steps 400000000 {
+    s:=m4o_shape();a:=m4o_moe_weights(seed);w:=m4_moe_view(a.f[..],a.c[..]);
+    hidden:[56]f32;m4o_values(seed+5,hidden[..],0);
+    // Three partitions: random, contiguous, balanced on this prompt's uses.
+    owner:[5]int;xmc_owner(seed*3+part,peers,owner[..]);
+    local:=hidden;routes:[7]M4Route;mw:[22]f32;fwork:[13]f64;
+    #assert m4_moe(s,w,7,local[..],routes[..],mw[..],fwork[..]).written==7;
+    if part==1 {#assert xm_contiguous(5,peers,owner[..])==XmStatus.ok;}
+    if part==2 {
+        counts:[5]int;#assert xm_count(routes[..],7,counts[..])==XmStatus.ok;
+        slots:[4]int;for p:0..<peers {slots[p]=5;}
+        #assert xm_place(counts[..],slots[0..<peers],owner[..]).status==XmStatus.ok;
+    }
+    store:[20]XmExpert;held:[4]XmPeer;xmc_peers(s,w,owner[..],store[..],held[0..<peers]);
+    homes:[7]int;for t:0..<7 {homes[t]=(t+seed)%peers;}
+    spread:=hidden;got:[7]M4Route;work:[406]f32;
+    r:=xm_moe(s,w,held[0..<peers],owner[..],7,homes[..],spread[..],got[..],work[..],fwork[..]);
+    #assert r.status==XmStatus.ok && r.written==7 && xmc_same(spread[..],local[..]);
+    for t:0..<7 {for slot:0..<2 {#assert got[t].ids[slot]==routes[t].ids[slot] && got[t].weights[slot]==routes[t].weights[slot];}}
+    c:=xmc_bytes(got[..],7,homes[..],owner[..],peers,8);#assert r.bytes.total==c.send+c.back && r.bytes.dispatched==c.rows;
+}
+// book:end checks-run
+// book:begin checks-refuse
+#test "a missing expert, bad owners and bad shapes refuse before hidden changes" {
+    s:=m4o_shape();a:=m4o_moe_weights(2);w:=m4_moe_view(a.f[..],a.c[..]);
+    hidden:[56]f32;m4o_values(4,hidden[..],0);h:=hidden;owner:=[5]int.[0,0,1,1,1];
+    store:[20]XmExpert;peers:[2]XmPeer;xmc_peers(s,w,owner[..],store[..],peers[..]);
+    homes:[7]int;routes:[7]M4Route;work:[406]f32;fwork:[13]f64;
+    #assert xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.ok;
+    // Peer 1 lost expert 3: every token is routed before any expert runs,
+    // so the refusal comes with nothing written.
+    h=hidden;store[6]=store[7];peers[1].experts=store[5..<7];
+    r:=xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]);
+    #assert r.status==XmStatus.missing && r.peer==1 && r.expert==3 && r.written==0 && xmc_same(h[..],hidden[..]);
+    xmc_peers(s,w,owner[..],store[..],peers[..]);
+    // Expert routes[0].ids[0], chosen in slot 0 of the first token, renamed in its store.
+    first:=routes[0].ids[0];at:=owner[first]*5;for e:0..<first {if owner[e]==owner[first] {at+=1;}}
+    store[at].id=99;r=xm_moe(s,w,peers[..],owner[..],1,homes[..],h[0..<8],routes[..],work[..],fwork[..]);
+    #assert r.status==XmStatus.missing && r.expert==first && r.peer==owner[first] && xmc_same(h[..],hidden[..]);store[at].id=first;
+    eight:[8]XmPeer;eight[0]=peers[0];eight[1]=peers[1];wide:[630]f32;#assert xm_moe(s,w,eight[..],owner[..],7,homes[..],h[..],routes[..],wide[..],fwork[..]).status==XmStatus.ok;h=hidden;
+    #assert xm_moe(s,w,peers[..],owner[..],1,homes[..],h[0..<8],routes[..],work[..],fwork[..]).status==XmStatus.ok;h=hidden;
+    owner[0]=2;r=xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]);#assert r.status==XmStatus.owner && r.expert==0;owner[0]=0;
+    owner[4]=2;r=xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]);#assert r.status==XmStatus.owner && r.expert==4;
+    owner[4]=-1;#assert xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.owner;owner[4]=1;
+    homes[6]=2;#assert xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.owner;homes[6]=0;
+    #assert xmc_same(h[..],hidden[..]);
+    #assert xm_moe(s,w,peers[..],owner[0..<4],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    #assert xm_moe(s,w,peers[0..<0],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    nine:[9]XmPeer;#assert xm_moe(s,w,nine[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    bad:=s;bad.top_k=0;#assert xm_moe(bad,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    v:=w;v.norm=a.f[0..<7];#assert xm_moe(s,v,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    v=w;v.gate=a.f[8..<47];#assert xm_moe(s,v,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    v=w;v.shared_gate.codes=a.c[360..<383];#assert xm_moe(s,v,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    v=w;v.shared_up.codes=a.c[384..<407];#assert xm_moe(s,v,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    v=w;v.shared_down.codes=a.c[408..<431];#assert xm_moe(s,v,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.input;
+    // A peer's expert of the wrong size, or with a scale that is not finite and positive.
+    for which:0..<4 {
+        x:=xm_expert(s,w,1);
+        if which==0 {x.up=x.up[0..<47];}
+        if which==1 {x.down=x.down[0..<23];}
+        if which==2 {x.up_scale=0;}
+        if which==3 {x.down_scale=-1;}
+        store[1]=x;r=xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]);#assert r.status==XmStatus.input && r.peer==0 && r.expert==1;
+    }
+    store[1]=xm_expert(s,w,1);
+    #assert xm_moe(s,w,peers[..],owner[..],0,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.capacity;
+    #assert xm_moe(s,w,peers[..],owner[..],6,homes[..],h[..],routes[..],work[..],fwork[..]).status==XmStatus.capacity;
+    #assert xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[0..<6],work[..],fwork[..]).status==XmStatus.capacity;
+    #assert xm_moe(s,w,peers[..],owner[..],7,homes[0..<6],h[..],routes[..],work[..],fwork[..]).status==XmStatus.capacity;
+    #assert xm_work(s,7,2)==7*8*5+8+6 && xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[0..<7*8*5+13],fwork[..]).status==XmStatus.capacity;
+    #assert xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[0..<7*8*5+14],fwork[..]).status==XmStatus.ok;
+    h=hidden;#assert xm_moe(s,w,peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[0..<12]).status==XmStatus.capacity;
+    // A gate value that is infinite: the route refuses, nothing written.
+    huge:f32=3e38;a.f[20]=huge*huge;r=xm_moe(s,m4_moe_view(a.f[..],a.c[..]),peers[..],owner[..],7,homes[..],h[..],routes[..],work[..],fwork[..]);
+    #assert r.status==XmStatus.route && r.written==0 && xmc_same(h[..],hidden[..]);
+}
+// book:end checks-refuse

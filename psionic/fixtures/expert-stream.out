@@ -1,0 +1,18 @@
+expert 25165832 bytes, 4608 keys, 144 expert reads a token, 6651117568 resident bytes a token
+traces ok, ok: tokens 128-383 measured after 128 warm, 2861 distinct experts used
+cache 8 GiB = 341 experts, 7 percent of 4608:
+  lru: hits 22661 of 36864, 55 reads a token, 1396 MB read a token, tokens/s 0.586 serial, 0.704 if reads overlapped
+  lfu: hits 15722 of 36864, 82 reads a token, 2078 MB read a token, tokens/s 0.417 serial, 0.473 if reads overlapped
+  heat: hits 14621 of 36864, 86 reads a token, 2186 MB read a token, tokens/s 0.398 serial, 0.450 if reads overlapped
+  heat, profiled: hits 15517 of 36864, 83 reads a token, 2098 MB read a token, tokens/s 0.413 serial, 0.468 if reads overlapped
+cache 16 GiB = 682 experts, 14 percent of 4608:
+  lru: hits 27685 of 36864, 35 reads a token, 902 MB read a token, tokens/s 0.832 serial, 1.090 if reads overlapped
+  lfu: hits 24102 of 36864, 49 reads a token, 1254 MB read a token, tokens/s 0.641 serial, 0.784 if reads overlapped
+  heat: hits 23215 of 36864, 53 reads a token, 1341 MB read a token, tokens/s 0.606 serial, 0.733 if reads overlapped
+  heat, profiled: hits 23768 of 36864, 51 reads a token, 1287 MB read a token, tokens/s 0.627 serial, 0.764 if reads overlapped
+cache 32 GiB = 1365 experts, 29 percent of 4608:
+  lru: hits 31482 of 36864, 21 reads a token, 529 MB read a token, tokens/s 1.215 serial, 1.859 if reads overlapped
+  lfu: hits 31965 of 36864, 19 reads a token, 481 MB read a token, tokens/s 1.291 serial, 2.043 if reads overlapped
+  heat: hits 31600 of 36864, 20 reads a token, 517 MB read a token, tokens/s 1.233 serial, 1.901 if reads overlapped
+  heat, profiled: hits 31998 of 36864, 19 reads a token, 478 MB read a token, tokens/s 1.297 serial, 2.057 if reads overlapped
+all in memory: tokens/s 3.512; every expert from disk: 0.252

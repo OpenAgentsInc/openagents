@@ -1,0 +1,47 @@
+#import "Basic";
+#load "../lib/expert-stream.coax";
+
+// Thousandths as a decimal: 2423 prints 2.423.
+stream_milli :: (milli:int) {v:=milli%1000;print("%.",milli/1000);print("%",v/100);print("%",v/10%10);print("%",v%10);}
+
+// book:begin example
+// Mistral Small 4 with its routed experts on disk: 36 layers of 128, top 4.
+// Rates measured on coderos-4080: reading a file through a mapping from
+// disk, 984 bytes a microsecond (chapter 178's receipt); one thread reading
+// memory, 23,361 (chapter 33's roofline receipt).
+ST_TOKENS :: 384;ST_WARM :: 128;ST_LAYERS :: 36;ST_EXPERTS :: 128;ST_K :: 4;
+ST_DISK :: 984;ST_MEMORY :: 23361;
+main :: () {
+    s:=m4_small4();
+    expert:=m4_weights(s).expert+8;
+    // Resident bytes a token reads: m4_active's values, the BF16 router and readout at two bytes.
+    token:=m4_active(s)+s.layers*s.experts*s.hidden+s.vocab*s.hidden;
+    keys:=ST_LAYERS*ST_EXPERTS;per:=ST_LAYERS*ST_K;
+    print("expert % bytes, % keys, % expert reads a token, % resident bytes a token\n",expert,keys,per,token);
+    trace:[ST_TOKENS*ST_LAYERS*ST_K]int;recorded:[ST_TOKENS*ST_LAYERS*ST_K]int;gate:[ST_LAYERS*ST_EXPERTS*XS_WIDTH]f32;f:[ST_EXPERTS]f64;
+    a:=xs_trace(1,2,ST_TOKENS,ST_LAYERS,ST_EXPERTS,ST_K,trace[..],gate[..],f[..]);
+    // A profile recorded on another prompt through the same router.
+    b:=xs_trace(1,1,ST_TOKENS,ST_LAYERS,ST_EXPERTS,ST_K,recorded[..],gate[..],f[..]);
+    profile:[ST_LAYERS*ST_EXPERTS]int;for k:recorded {profile[k]+=1;}
+    used:[ST_LAYERS*ST_EXPERTS]bool;distinct:=0;for n:ST_WARM*per..<trace.count {if !used[trace[n]] {used[trace[n]]=true;distinct+=1;}}
+    print("traces %, %: tokens %-% measured after % warm, % distinct experts used\n",a.status,b.status,ST_WARM,ST_TOKENS-1,ST_WARM,distinct);
+    none:[1]int;work:[1400+3*ST_LAYERS*ST_EXPERTS]int;
+    budgets:=[3]int.[8,16,32];
+    for g:budgets {
+        slots:=g*1073741824/expert;
+        print("cache % GiB = % experts, % percent of %:\n",g,slots,slots*100/keys,keys);
+        for which:0..<4 {
+            policy:=ifx which==3 then XsPolicy.heat else cast(XsPolicy)which;
+            p:=ifx which==3 then profile[..] else none[0..<0];
+            c:=xs_replay(policy,trace[..],per,ST_WARM*per,slots,keys,p,work[..]);
+            tokens:=ST_TOKENS-ST_WARM;cost:=xs_cost(c.misses,tokens,expert,ST_DISK,token,ST_MEMORY);
+            label:=ifx which==3 then "heat, profiled" else xs_policy_name(policy);
+            print("  %: hits % of %, % reads a token, % MB read a token, tokens/s ",label,c.hits,c.accesses,c.misses/tokens,cost.read_bytes/tokens/1000000);
+            stream_milli(cost.serial_milli);print(" serial, ");stream_milli(cost.overlap_milli);print(" if reads overlapped\n");
+        }
+    }
+    all:=xs_cost(0,1,expert,ST_DISK,token,ST_MEMORY);
+    print("all in memory: tokens/s ");stream_milli(all.serial_milli);print("; every expert from disk: ");
+    stream_milli(xs_cost(per,1,expert,ST_DISK,token,ST_MEMORY).serial_milli);print("\n");
+}
+// book:end example
