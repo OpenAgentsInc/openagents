@@ -1,0 +1,341 @@
+// coder host against a local Coax relay (coax/relay), in a fresh CODER_HOME.
+// A stand-in browser key (`coder host call`, the codec in
+// coax/lib/nostr/host/browser.coax) asks to pair, is refused a thread before
+// it is allowed, is allowed with `coder host allow`, reads its grant from
+// browser.status, runs a thread on the echo engine, reads its steps and
+// stops it. An unpaired key is refused, a forgotten key is refused revoked,
+// and browser.status keeps answering for the pairing (allowed, then denied).
+// The relay and `coder host` run as child processes (coax/lib/sys/proc.coax).
+//
+//   coax/web/tool.sh coder/tui/host_smoke.coax      from the repository root; exit 0 when every check passes
+//
+// A host to point a browser or another harness at, by hand (a relay URL
+// names a host, never an IP literal: relay_uri.coax refuses ws://127.0.0.1):
+//
+//   coax/relay/build.sh /tmp/relay && /tmp/relay --listen 127.0.0.1 --port 7777 --url ws://localhost:7777
+//   OPENAGENTS_NIP_HOST_RELAY=ws://localhost:7777 CODER_HOME=/tmp/host-home coder/tui/coder.sh host --engine echo
+//   CODER_HOME=/tmp/host-home coder/tui/coder.sh host allow ID    # when the browser's request shows
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+cxterm_write :: (s: [] u8) -> int #foreign;
+
+SM_ENVS :: 6;
+Sm :: struct {
+  repo: [1024] u8; nrepo: int;
+  coder: [1100] u8; ncoder: int;
+  tmp: [1024] u8; ntmp: int;
+  home: [1100] u8; nhome: int;
+  url: [64] u8; nurl: int;
+  env: [SM_ENVS] [1200] u8; nenv: [SM_ENVS] int;
+  key: [64] u8; npub: [80] u8; nnpub: int;
+  fails: int; checks: int;
+}
+// One child's run: its stdout, its exit status, and the stdout as JSON when it parses.
+Rp :: struct { text: [65536] u8; n: int; status: int; nodes: [4096] JvNode; d: [1] Jv; ok: bool; }
+
+sm_out :: (s: string) {
+  ob: [4096] u8; n := 0;
+  for c: s { ob[n] = c; n += 1; if n == ob.count { r := cxterm_write(ob[0..<n]); n = 0; } }
+  if n > 0 { r := cxterm_write(ob[0..<n]); }
+}
+sm_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+sm_itoa :: (v: int, out: [] u8) -> string {
+  tmp: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+sm_atoi :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return ifx s.count > 0 then v else -1; }
+sm_has :: (s: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  for i: 0..<s.count - needle.count + 1 { if cast(string) s[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+sm_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+sm_repo :: (s: [] Sm) -> string { return sm_str(s[0].repo[..], s[0].nrepo); }
+sm_tmp :: (s: [] Sm) -> string { return sm_str(s[0].tmp[..], s[0].ntmp); }
+sm_home :: (s: [] Sm) -> string { return sm_str(s[0].home[..], s[0].nhome); }
+sm_key :: (s: [] Sm) -> string { return cast(string) s[0].key[..]; }
+// tmp/NAME
+sm_in_tmp :: (s: [] Sm, name: string, out: [] u8) -> string {
+  n := sm_cat(out, 0, sm_tmp(s)); n = sm_cat(out, n, "/"); n = sm_cat(out, n, name);
+  return cast(string) out[0..<n];
+}
+sm_in_home :: (s: [] Sm, name: string, out: [] u8) -> string {
+  n := sm_cat(out, 0, sm_home(s)); n = sm_cat(out, n, "/"); n = sm_cat(out, n, name);
+  return cast(string) out[0..<n];
+}
+
+sm_check :: (s: [] Sm, ok: bool, what: string) {
+  s[0].checks += 1;
+  if !ok { s[0].fails += 1; }
+  sm_out(ifx ok then "ok   " else "FAIL "); sm_out(what); sm_out("\n");
+}
+sm_check2 :: (s: [] Sm, ok: bool, what: string, detail: string) {
+  b: [512] u8; n := sm_cat(b[..], 0, what); n = sm_cat(b[..], n, " ("); n = sm_cat(b[..], n, detail); n = sm_cat(b[..], n, ")");
+  sm_check(s, ok, cast(string) b[0..<n]);
+}
+
+// A child with the smoke's environment, in the repository; its handle, or -1.
+sm_spawn :: (s: [] Sm, argv: [] string, quiet: bool) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_cwd(h, sm_repo(s));
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for i: 0..<SM_ENVS { if s[0].nenv[i] > 0 { ok = ok && proc_env(h, sm_str(s[0].env[i][..], s[0].nenv[i])); } }
+  if quiet { ok = ok && proc_quiet(h); }
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return -1; }
+  return h;
+}
+// Runs argv to its end: stdout in rp (and as JSON when it parses), the exit status.
+sm_exec :: (s: [] Sm, rp: [] Rp, argv: [] string, timeout_ms: int) {
+  rp[0].n = 0; rp[0].status = -1; rp[0].ok = false;
+  h := sm_spawn(s, argv, false);
+  if h < 0 { return; }
+  deadline := proc_now_ms() + timeout_ms;
+  line: [65536] u8;
+  while true {
+    left := deadline - proc_now_ms(); if left < 0 { left = 0; }
+    n := proc_line(h, left, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR || n == PROC_TIMEOUT { break; }
+    if n < 0 { continue; }
+    if rp[0].n > 0 { rp[0].n = sm_cat(rp[0].text[..], rp[0].n, "\n"); }
+    rp[0].n = sm_cat(rp[0].text[..], rp[0].n, cast(string) line[0..<n]);
+  }
+  rp[0].status = proc_wait(h, 5000);
+  if rp[0].status == PROC_RUNNING { k := proc_kill(h, PROC_SIGKILL); rp[0].status = proc_wait(h, 2000); }
+  done := proc_release(h);
+  if rp[0].status == 0 && rp[0].n > 0 { rp[0].ok = jv_parse(rp[0].d[..], cast(string) rp[0].text[0..<rp[0].n], rp[0].nodes[..]); }
+}
+sm_text :: (rp: [] Rp) -> string { return cast(string) rp[0].text[0..<rp[0].n]; }
+// The node at a dotted path (result.outcome.steps.0.kind), or -1.
+rp_at :: (rp: [] Rp, path: string) -> int {
+  if !rp[0].ok { return -1; }
+  d := rp[0].d[0];
+  at := 0; i := 0;
+  while i < path.count && at >= 0 {
+    e := i; while e < path.count && path[e] != '.' { e += 1; }
+    part := cast(string) path[i..<e];
+    if part.count > 0 && part[0] >= '0' && part[0] <= '9' { at = jv_at(d, at, sm_atoi(part)); } else { at = jv_get(d, at, part); }
+    i = e + 1;
+  }
+  return at;
+}
+rp_s :: (rp: [] Rp, path: string, out: [] u8) -> string {
+  at := rp_at(rp, path);
+  if at < 0 { return ""; }
+  n := jv_str(rp[0].d[0], at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+rp_i :: (rp: [] Rp, path: string) -> int { at := rp_at(rp, path); return ifx at < 0 then -1 else jv_int(rp[0].d[0], at, -1); }
+rp_kind :: (rp: [] Rp, path: string) -> int { at := rp_at(rp, path); return ifx at < 0 then 0 else jv_kind(rp[0].d[0], at); }
+rp_count :: (rp: [] Rp, path: string) -> int { at := rp_at(rp, path); return ifx at < 0 then -1 else jv_len(rp[0].d[0], at); }
+// A reply's result.status.
+rp_good :: (rp: [] Rp) -> bool { b: [16] u8; return rp_s(rp, "result.status", b[..]) == "ok"; }
+rp_refused :: (rp: [] Rp, code: string) -> bool { b: [16] u8; c: [32] u8; return rp_s(rp, "result.status", b[..]) == "refused" && rp_s(rp, "result.code", c[..]) == code; }
+rp_is :: (rp: [] Rp, path: string, want: string) -> bool { b: [256] u8; return rp_s(rp, path, b[..]) == want; }
+
+#test "host smoke: dotted paths into a reply" {
+  rp: [1] Rp;
+  t := "{\"result\":{\"status\":\"ok\",\"outcome\":{\"steps\":[{\"seq\":3,\"kind\":\"user\"},{\"seq\":4,\"kind\":\"end\"}],\"grant\":null}}}";
+  rp[0].n = sm_cat(rp[0].text[..], 0, t); rp[0].ok = jv_parse(rp[0].d[..], cast(string) rp[0].text[0..<rp[0].n], rp[0].nodes[..]);
+  b: [32] u8;
+  #assert rp_good(rp[..]) && rp_s(rp[..], "result.outcome.steps.1.kind", b[..]) == "end" && rp_i(rp[..], "result.outcome.steps.0.seq") == 3;
+  #assert rp_count(rp[..], "result.outcome.steps") == 2 && rp_kind(rp[..], "result.outcome.grant") == JV_NULL && rp_at(rp[..], "result.nope") < 0;
+  #assert !rp_refused(rp[..], "forbidden") && sm_has("abc", "bc") && !sm_has("ab", "abc");
+}
+
+// `coder host call OP --host KEY --browser-key FILE EXTRA...`
+sm_call :: (s: [] Sm, rp: [] Rp, op: string, key_file: string, extra: [] string) {
+  argv: [32] string; n := 0;
+  base := [9] string.["host", "call", op, "--host", sm_key(s), "--browser-key", key_file, "--wait", "60"];
+  argv[0] = sm_str(s[0].coder[..], s[0].ncoder); n = 1;
+  for a: base { argv[n] = a; n += 1; }
+  for a: extra { argv[n] = a; n += 1; }
+  sm_exec(s, rp, argv[0..<n], 90000);
+}
+sm_host :: (s: [] Sm, rp: [] Rp, args: [] string) {
+  argv: [16] string; argv[0] = sm_str(s[0].coder[..], s[0].ncoder); argv[1] = "host"; n := 2;
+  for a: args { argv[n] = a; n += 1; }
+  sm_exec(s, rp, argv[0..<n], 600000);
+}
+// A file's permission bits as octal text (stat -f on macOS, stat -c elsewhere).
+sm_mode :: (s: [] Sm, path: string, out: [] u8) -> string {
+  rp_b: [1] Rp;
+  mac := [4] string.["/usr/bin/stat", "-f", "%Lp", path];
+  sm_exec(s, rp_b[..], mac[..], 10000);
+  if rp_b[0].status != 0 { gnu := [4] string.["stat", "-c", "%a", path]; sm_exec(s, rp_b[..], gnu[..], 10000); }
+  n := sm_cat(out, 0, sm_text(rp_b[..]));
+  return cast(string) out[0..<n];
+}
+sm_env :: (s: [] Sm, i: int, name: string, value: string) {
+  n := sm_cat(s[0].env[i][..], 0, name); n = sm_cat(s[0].env[i][..], n, "="); s[0].nenv[i] = sm_cat(s[0].env[i][..], n, value);
+}
+
+tool_main :: () -> int #export_c {
+  s_b: [1] Sm; s := s_b[..];
+  rb: [1024] u8; repo := proc_getenv("CODER_REPO", rb[..]);
+  cb: [1024] u8; if repo.count == 0 { repo = fs_cwd(cb[..]); }
+  s[0].nrepo = sm_cat(s[0].repo[..], 0, repo);
+  n := sm_cat(s[0].coder[..], 0, repo); s[0].ncoder = sm_cat(s[0].coder[..], n, "/coder/tui/coder.sh");
+  if !fs_exists(sm_str(s[0].coder[..], s[0].ncoder)) { tool_errln("host_smoke: run it from the repository root (coder/tui/coder.sh not found)"); return 2; }
+  tb: [1024] u8; tmp := fs_temp("coder-host-smoke.", tb[..]);
+  if tmp.count == 0 { tool_errln("host_smoke: no temporary folder"); return 1; }
+  s[0].ntmp = sm_cat(s[0].tmp[..], 0, tmp);
+  hb: [1100] u8; home := sm_in_tmp(s, "home", hb[..]); s[0].nhome = sm_cat(s[0].home[..], 0, home);
+  ok := fs_mkdir(home);
+
+  // the relay, built into the temporary folder, on a port picked from the clock
+  relay_b: [1100] u8; relay_bin := sm_in_tmp(s, "relay", relay_b[..]);
+  rp_b: [1] Rp; rp := rp_b[..];
+  build := [2] string.["coax/relay/build.sh", relay_bin];
+  sm_exec(s, rp, build[..], 600000);
+  if rp[0].status != 0 { tool_errln("host_smoke: coax/relay/build.sh failed"); return 1; }
+  port := 20000 + (proc_now_ms() / 7) % 30000;
+  pb: [16] u8; ports := sm_itoa(port, pb[..]);
+  un := sm_cat(s[0].url[..], 0, "ws://localhost:"); s[0].nurl = sm_cat(s[0].url[..], un, ports);   // a host name: relay URLs never take an IP literal
+  url := sm_str(s[0].url[..], s[0].nurl);
+  rargv := [7] string.[relay_bin, "--listen", "127.0.0.1", "--port", ports, "--url", url];
+  relay := sm_spawn(s, rargv[..], true);
+  if relay < 0 { tool_errln("host_smoke: the relay did not start"); return 1; }
+  proc_sleep(500);
+  sm_env(s, 0, "CODER_HOME", home); sm_env(s, 1, "BROWSER", "/usr/bin/true"); sm_env(s, 2, "NO_OPEN_BROWSER", "1");
+  sm_env(s, 3, "OPENAGENTS_NIP_HOST_RELAY", url); sm_env(s, 4, "CODER_REALM_TOOLS", "0"); sm_env(s, 5, "CODER_USAGE_KEYCHAIN", "0");
+
+  serve := -1;
+  // the host key: builds the host tool on first use
+  ka := [1] string.["key"]; sm_host(s, rp, ka[..]);
+  t := sm_text(rp);
+  nl := 0; while nl < t.count && t[nl] != '\n' { nl += 1; }
+  npub := ifx nl < t.count then cast(string) t[nl + 1..<t.count] else "";
+  sm_check(s, rp[0].status == 0 && nl == 64 && npub.count > 5 && cast(string) npub[0..<5] == "npub1", "coder host key prints the host key as 64 hex and an npub");
+  if nl == 64 { kx := sm_cat(s[0].key[..], 0, cast(string) t[0..<64]); }
+  s[0].nnpub = sm_cat(s[0].npub[..], 0, npub);
+  mb: [1200] u8; mo: [16] u8;
+  sm_check(s, sm_mode(s, sm_in_home(s, ".openagents/coder/host/key", mb[..]), mo[..]) == "600", "the host key file is mode 600");
+
+  // Coder itself, built now: a job's `coder run` would otherwise rebuild it while the host waits
+  pre := [3] string.[sm_str(s[0].coder[..], s[0].ncoder), "ls", "--json"];
+  sm_exec(s, rp, pre[..], 600000);
+  sargv := [6] string.[sm_str(s[0].coder[..], s[0].ncoder), "host", "--engine", "echo", "--for", "240"];
+  serve = sm_spawn(s, sargv[..], false);
+  shown: [8192] u8; ns := 0; first: [1024] u8; nfirst := 0; lines := 0;
+  line: [4096] u8;
+  while serve >= 0 {
+    k := proc_line(serve, 300000, line[..]);
+    if k < 0 { break; }
+    if lines == 0 { nfirst = sm_cat(first[..], 0, cast(string) line[0..<k]); }
+    lines += 1;
+    ns = sm_cat(shown[..], ns, cast(string) line[0..<k]); ns = sm_cat(shown[..], ns, "\n");
+    if sm_has(cast(string) line[0..<k], "Listening") { break; }
+  }
+  fl := cast(string) first[0..<nfirst];
+  sm_check(s, sm_has(fl, sm_key(s)) && s[0].nnpub > 0 && sm_has(fl, sm_str(s[0].npub[..], s[0].nnpub)), "coder host serves and prints its npub and hex key");
+  sm_check(s, sm_has(cast(string) shown[0..<ns], "EDIT > COMPUTER"), "it says where to paste the key");
+
+  bkb: [1100] u8; bk := sm_in_tmp(s, "browser.key", bkb[..]);
+  okb: [1100] u8; other := sm_in_tmp(s, "other.key", okb[..]);
+  b1: [256] u8; b2: [256] u8;
+
+  e1 := [2] string.["--label", "Smoke browser"];
+  sm_call(s, rp, "browser.request", bk, e1[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "browser_request") && rp_is(rp, "result.outcome.state", "asked"), "a browser asks to pair");
+  pairing_b: [64] u8; pairing := rp_s(rp, "result.outcome.request", pairing_b[..]);
+  pr: [64] u8; pn := sm_cat(pr[..], 0, pairing); pairing = cast(string) pr[0..<pn];
+  e2 := [2] string.["--request", pairing];
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "asked"), "it waits: browser.status says asked");
+  fake := "abababababababababababababababababababababababababababababababab";
+  e3 := [8] string.["--text", "Add a well", "--realm", "garden", "--grant", fake, "--epoch", "0"];
+  sm_call(s, rp, "thread.run", bk, e3[..]);
+  sm_check2(s, rp_refused(rp, "forbidden"), "a thread before it is allowed is refused", rp_s(rp, "result.code", b1[..]));
+  la := [2] string.["list", "--json"]; sm_host(s, rp, la[..]);
+  sm_check(s, rp_count(rp, "waiting") == 1 && rp_is(rp, "waiting.0.label", "Smoke browser"), "coder host list shows it waiting");
+  aa := [2] string.["allow", ifx pairing.count >= 8 then cast(string) pairing[0..<8] else "none"]; sm_host(s, rp, aa[..]);
+  sm_check(s, rp[0].status == 0 && sm_has(sm_text(rp), "Allowed Smoke browser"), "coder host allow allows it");
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "allowed") && rp_is(rp, "result.outcome.grant.rights.0", "observe") && rp_is(rp, "result.outcome.grant.rights.1", "operate") && rp_count(rp, "result.outcome.grant.rights") == 2, "browser.status hands it the grant");
+  gb: [64] u8; gs := rp_s(rp, "result.outcome.grant.grant", gb[..]);
+  grant_b: [64] u8; gn := sm_cat(grant_b[..], 0, gs); grant := cast(string) grant_b[0..<gn];
+  eb: [24] u8; epoch := sm_itoa(rp_i(rp, "result.outcome.grant.epoch"), eb[..]);
+
+  e4 := [8] string.["--text", "Add a well by the oak", "--realm", "garden", "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.run", bk, e4[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "dispatched") && rp_is(rp, "result.outcome.operation", "thread.run"), "thread.run starts a job");
+  thb: [64] u8; ts := rp_s(rp, "result.outcome.reference", thb[..]);
+  th_b: [64] u8; tn := sm_cat(th_b[..], 0, ts); thread := cast(string) th_b[0..<tn];
+  steps_b: [1] Rp; steps := steps_b[..]; finished := false;
+  e5 := [8] string.["--thread", thread, "--after", "0", "--grant", grant, "--epoch", epoch];
+  for attempt: 0..<30 {
+    sm_call(s, steps, "thread.read", bk, e5[..]);
+    if rp_good(steps) && !rp_is(steps, "result.outcome.state", "running") { finished = true; break; }
+    proc_sleep(1000);
+  }
+  sm_check(s, finished && rp_is(steps, "result.outcome.state", "finished"), "thread.read follows it to finished");
+  kinds: [256] u8; nk := 0; count := rp_count(steps, "result.outcome.steps");
+  for i: 0..<(ifx count > 0 then count else 0) {
+    pb2: [64] u8; pn2 := sm_cat(pb2[..], 0, "result.outcome.steps."); ib: [8] u8; pn2 = sm_cat(pb2[..], pn2, sm_itoa(i, ib[..])); pn2 = sm_cat(pb2[..], pn2, ".kind");
+    kb: [32] u8; if nk > 0 { nk = sm_cat(kinds[..], nk, ","); }
+    nk = sm_cat(kinds[..], nk, rp_s(steps, cast(string) pb2[0..<pn2], kb[..]));
+  }
+  ks := cast(string) kinds[0..<nk];
+  kc: [300] u8; kcn := sm_cat(kc[..], 0, "its steps: "); kcn = sm_cat(kc[..], kcn, ks);
+  last_end := ks.count >= 3 && cast(string) ks[ks.count - 3..<ks.count] == "end";
+  sm_check(s, ks.count >= 4 && cast(string) ks[0..<4] == "user" && sm_has(ks, "reply") && last_end, cast(string) kc[0..<kcn]);
+  ub: [4096] u8; user := rp_s(steps, "result.outcome.steps.0.text", ub[..]);
+  sm_check(s, sm_has(user, "garden") && sm_has(user, "Add a well by the oak"), "the job was told the realm and the words");
+  nb: [24] u8; next := sm_itoa(rp_i(steps, "result.outcome.next"), nb[..]);
+  e6 := [8] string.["--thread", thread, "--after", next, "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.read", bk, e6[..]);
+  sm_check(s, rp_good(rp) && rp_count(rp, "result.outcome.steps") == 0, "thread.read after next returns no steps");
+  e7 := [6] string.["--thread", thread, "--grant", grant, "--epoch", epoch];
+  sm_call(s, rp, "thread.stop", bk, e7[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "dispatched") && rp_is(rp, "result.outcome.operation", "thread.stop"), "thread.stop answers dispatched");
+  // the job's session ran on the host's engine
+  sb: [1200] u8; sessions := sm_in_home(s, ".openagents/coder/sessions", sb[..]);
+  ls_b: [1] FsList; nl2 := fs_list(sessions, ls_b[..]); head_echo := false;
+  for i: 0..<(ifx nl2 > 0 then nl2 else 0) {
+    name := fs_entry(ls_b[..], i);
+    if name.count > 6 && cast(string) name[name.count - 6..<name.count] == ".jsonl" {
+      fb: [1400] u8; fn := sm_cat(fb[..], 0, sessions); fn = sm_cat(fb[..], fn, "/"); fn = sm_cat(fb[..], fn, name);
+      body: [8192] u8; bn := fs_read(cast(string) fb[0..<fn], body[..]);
+      e := 0; while e < bn && body[e] != '\n' { e += 1; }
+      if bn > 0 && sm_has(cast(string) body[0..<e], "\"engine\":\"echo\"") { head_echo = true; }
+    }
+  }
+  sm_check(s, head_echo, "the job ran on the host's engine");
+  sm_call(s, rp, "thread.read", other, e5[..]);
+  sm_check2(s, rp_refused(rp, "forbidden"), "an unpaired key is refused", rp_s(rp, "result.code", b1[..]));
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "allowed") && rp_is(rp, "result.outcome.grant.grant", grant), "browser.status keeps answering allowed for the pairing while the grant lasts");
+  fa := [2] string.["forget", ifx grant.count >= 8 then cast(string) grant[0..<8] else "none"]; sm_host(s, rp, fa[..]);
+  sm_check(s, rp[0].status == 0 && sm_has(sm_text(rp), "Revoked"), "coder host forget revokes it");
+  sm_call(s, rp, "thread.read", bk, e5[..]);
+  sm_check2(s, rp_refused(rp, "revoked"), "a forgotten key is refused", rp_s(rp, "result.code", b2[..]));
+  sm_call(s, rp, "browser.status", bk, e2[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "denied") && rp_kind(rp, "result.outcome.grant") == JV_NULL, "browser.status says denied once forgotten, with no grant");
+  e8 := [2] string.["--label", "Smoke again"];
+  sm_call(s, rp, "browser.request", bk, e8[..]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.state", "asked"), "the forgotten browser can ask again");
+  none: [1] string;
+  sm_call(s, rp, "browser.forget", bk, none[0..<0]);
+  sm_check(s, rp_good(rp) && rp_is(rp, "result.outcome.kind", "forgotten"), "browser.forget answers forgotten");
+  sm_host(s, rp, la[..]);
+  sm_check(s, rp_count(rp, "waiting") == 0 && rp_count(rp, "browsers") == 0, "nothing is waiting or allowed after browser.forget");
+  sm_check(s, sm_mode(s, sm_in_home(s, ".openagents/coder/host/state.json", mb[..]), mo[..]) == "600", "state.json is mode 600");
+
+  if serve >= 0 { k := proc_kill(serve, PROC_SIGTERM); w := proc_wait(serve, 10000); d := proc_release(serve); }
+  k2 := proc_kill(relay, PROC_SIGTERM); w2 := proc_wait(relay, 10000); d2 := proc_release(relay);
+  cb2: [24] u8; fb2: [24] u8;
+  sm_out(ifx s[0].fails > 0 then "FAILED: " else "passed: "); sm_out(sm_itoa(s[0].fails, fb2[..])); sm_out(" failures of ");
+  sm_out(sm_itoa(s[0].checks, cb2[..])); sm_out(" checks\n");
+  if s[0].fails > 0 { sm_out("work folder: "); sm_out(sm_tmp(s)); sm_out("\n"); }
+  return ifx s[0].fails > 0 then 1 else 0;
+}

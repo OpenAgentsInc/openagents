@@ -1629,7 +1629,7 @@ then retention.
 [`coder host`](../../../coder/tui/host.coax) is a host for them. Only the
 person at the computer allows a pairing, the browser grant has `observe` and
 `operate` for seven days, and `thread.run` starts a Coder job that reads and
-uses the realm tools only. `coder/tui/host_smoke.py` runs it against a local
+uses the realm tools only. `coder/tui/host_smoke.coax` runs it against a local
 relay with a stand-in browser key. The direct-channel binding, CAP/CJ,
 connect codes, iroh enrollment, the operator socket, and the `task.*`,
 `terminal.*`, `device.*` and `spend.*` operations are not in Coax yet.

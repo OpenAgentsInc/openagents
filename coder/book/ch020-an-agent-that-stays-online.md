@@ -524,8 +524,9 @@ and `coax/web/tool.sh` reads its `// tool.sh: run-steps` line to raise the
 compile-time budget. Coder's own build stays as fast as before.
 
 `coder host call OP --host KEY --browser-key FILE ...` is a stand-in
-browser: it sends one request and prints the reply's body. The smoke uses
-it.
+browser: it sends one request and prints the reply's body. The smoke,
+[host_smoke.coax](../../coder/tui/host_smoke.coax), runs the relay and
+`coder host` as child processes and plays the browser with it.
 
 ## Checks
 
@@ -556,7 +557,7 @@ it.
 - The smoke kills the Router with SIGKILL right after it starts a Worker and
   right after it posts a reply (see [A crash between two steps](#a-crash-between-two-steps)),
   and checks that the next pass repeats neither.
-- `python3 coder/tui/host_smoke.py` builds the Coax relay and runs it on a
+- `coax/web/tool.sh coder/tui/host_smoke.coax` builds the Coax relay and runs it on a
   local port, then runs `coder host --engine echo` in a fresh
   `CODER_HOME`. A stand-in browser key asks to pair and waits, and is
   refused a thread before it is allowed. `coder host allow` allows it,
