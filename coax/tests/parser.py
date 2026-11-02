@@ -19,6 +19,7 @@ class Unit(C.Structure):_fields_=[('e',C.c_int64*6)]
 class Frame(C.Structure):_fields_=[('e',C.c_int64*4)]
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64),('quantity',C.c_uint8),('unit',Unit),('frame_decl',C.c_bool),('frame',Frame)]
+    _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc)]
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool)]
 class Result(C.Structure):_fields_=[('ok',C.c_bool),('root',C.c_int64)]
 def view(T):
@@ -169,15 +170,22 @@ class Parser(unittest.TestCase):
     def test_native_bridge_under_sanitizers(self):
         # The complete compiler links the actual generated compiler modules.
         # This covers pointer/value-list reconstruction as well as the C kernel.
-        obj=self.d/'modules.o';exe=self.d/'coax-sanitized'
-        flags=['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer']
-        LX.checked([os.environ.get('CC','cc'),'-std=c11',*flags,'-c',ROOT/'bin/proto_importer.c','-o',obj])
-        LX.checked([os.environ.get('CXX','c++'),'-std=c++20',*flags,'-I',ROOT/'bin',ROOT/'src/main.cpp',obj,'-o',exe])
+        # Private changed-code builds retain their coherent C/header tuple outside
+        # bin; never silently mix it with an installed parser/checker header.
+        artifacts=Path(os.environ.get('COAX_TEST_ARTIFACT_DIR',ROOT/'bin')).resolve()
+        native=self.d
+        if os.environ.get('COAX_NATIVE_BRIDGE_DIR'):
+            native=Path(os.environ['COAX_NATIVE_BRIDGE_DIR']).resolve()
+            native.mkdir(parents=True,exist_ok=False)
+        obj=native/'modules.o';exe=native/'coax-sanitized'
+        flags=['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer']
+        LX.checked([os.environ.get('CC','cc'),'-std=c11',*flags,'-c',artifacts/'proto_importer.c','-o',obj])
+        LX.checked([os.environ.get('CXX','c++'),'-std=c++20',*flags,'-I',artifacts,ROOT/'src/main.cpp',obj,'-o',exe])
         for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'verse/home.coax',ROOT.parent/'verse/grid.coax'):
             LX.checked([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
         # Wide source with a deep semantic dependency chain: the parser's
         # grammar bound is not involved, and no partial typed tree may escape.
-        deep=self.d/'deep-types.coax'
+        deep=native/'deep-types.coax'
         deep.write_text('\n'.join(f'S{i} :: struct {{x:S{i+1};}}' for i in range(400))+'\nS400 :: struct {x:int;}')
         import subprocess
         result=subprocess.run([str(exe),'c',str(deep),'--library'],capture_output=True,text=True,

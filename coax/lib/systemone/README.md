@@ -28,6 +28,7 @@ if r.problem.count == 0 && so_noul_of(r.body, "refund").value > 0.9 { ... }
 | --- | --- |
 | `request.coax` | The body builder: `so_begin`, `so_state_text` or `so_state_json` (an object, an array, or `{"messages": [...]}` with images), then `so_choice`, `so_noul` and `so_score`, then `so_body`. It refuses a question shape the API would refuse. |
 | `answers.coax` | `so_check` holds a response to the request that asked it: every question has an answer of its own type, and the probabilities form a distribution. Readers: `so_choice_of`, `so_noul_of`, `so_score_of`, `so_probability`, `so_usage`, `so_error_of`. |
+| `owner.coax`, `outcomes.coax` | The canonical generation owner and actual typed asynchronous API: start/poll/snapshot/cancel/discard, independent terminal snapshots, exhaustive outcomes. |
 | `transport.coax` | `so_post` and `so_decide` run `curl` (8.3 or later) as a child; `so_start` and `so_step` do the same without blocking, for a frame loop (`so_step(call, 0)` reads what has arrived), and `so_cancel` stops one. The key stays in the environment: curl expands it into the header, so it never appears in Coax memory, curl's arguments or a process listing. |
 | `smoke.sh` | A live run against both models, plus a 401 and a 422 refusal, which cost no credit. |
 
@@ -40,7 +41,62 @@ Both models refuse requests over 16,384 tokens (`SO_CONTEXT_TOKENS`). A
 choice's `confidence` measures how concentrated its distribution is. It is
 not the probability of the chosen option, which is `SoChoice.probability`.
 
-## The asynchronous owner and its buffers
+## Typed asynchronous requests
+
+The Lab uses `SoOwnedCall` through `outcomes.coax`. Construct the canonical
+owner once, keep its storage and generation for its whole lifetime, and exclude
+concurrent access. Copy tickets; do not copy, reconstruct or transfer the owner.
+A ticket belongs to that same owner storage. This is a runtime request protocol,
+not compiler-enforced linearity, native-handle authentication or a pool-free API.
+
+`so_request_start` returns `Result(int, SoStartFailure)`. Its successful ticket
+owns a pending request or a ready setup failure. A ready result blocks a new
+start until snapshot or discard. `so_request_poll` returns an exhaustive
+`SoRequestPoll` (`pending`, `ready`, `refused`). Stale tickets have no process,
+buffer or owner effect, including after reuse has advanced the generation.
+Generation exhaustion refuses; it never wraps.
+
+`so_request_snapshot` returns `Result(SoTerminal, SoSnapshotFailure)`. Supply
+independent body, stderr and problem buffers, disjoint from each other, the
+wire buffers and owner storage. All capacities and the ticket are checked
+before any byte changes. Success copies every string and scalar, publishes the
+whole result, then retires the owner. Every returned payload borrows these
+caller snapshot buffers; keep them live through every use. Reusing the owner,
+wire storage or process slot cannot revoke a completed snapshot.
+
+`SoTerminal` distinguishes `answered`, `refused`, `cancelled`, `not_connected`
+and `unknown`, each carrying the full `SoResult`. Answered means HTTP success;
+validate the answer against the original questions with `so_check` before
+applying it. Only the transport's explicit curl exit-7 observation becomes
+`not_connected`. Other status-zero failures remain `unknown`, which gives no
+permission to retry. The Lab retains its existing one-time door fallback only
+for `not_connected`; it never retries an unknown outcome.
+
+`so_request_cancel` returns a handled unit Result and keeps a terminal result
+available to snapshot. `so_request_discard` cancels pending work or drops a ready
+result and retires it. Both reject stale tickets without effects. The Lab's
+Stop/quit paths handle discard explicitly. Its completion path snapshots into
+local buffers, validates/formats/routes while those buffers live, and copies
+all displayed strings into the application-life transcript pool.
+
+The runnable offline source, literal transcript and refused misuses are in
+[`coax/tests/systemone-outcomes.coax`](../../tests/systemone-outcomes.coax),
+[`systemone-outcomes.out`](../../tests/systemone-outcomes.out) and
+[`systemone-outcomes/`](../../tests/systemone-outcomes/). The bounded runner
+compiles an owned fixture child and links the actual process host; it makes no
+HTTP request:
+
+```shell
+python3 coax/tests/systemone-outcomes.py --compiler /path/to/coax --out /tmp/new-outcomes-proof
+python3 apps/openagents-desktop/tests/lab-consumer.py --coax /path/to/coax --out /tmp/new-lab-proof
+```
+
+The [consumer record](../../../docs/verification/coax-request-consumer-2026-11-02/README.md)
+keeps canonical-owner, typed transcript, actual Lab projection and full-application
+scope separate. The desktop's selected storage lasts for the application; no
+copied-owner transfer, foreign retention or general lifetime claim is added.
+
+## Raw transport compatibility and buffers
 
 Create a `SoCall` with Coax's declared defaults before its first use. A C host
 allocating a containing record must invoke that record's actual generated

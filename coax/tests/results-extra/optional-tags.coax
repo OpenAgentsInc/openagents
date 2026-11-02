@@ -1,0 +1,18 @@
+// Literal tag comparisons; no payload value is an absence sentinel.
+make_present :: (trace:[]int)->int? {trace[0]+=1;return some(0);}
+#test "present zero false and nested none have nonempty outer tags" {
+  zero:int?=some(0); no:bool?=some(false); nested:int??=some(null);
+  #assert zero!=null && null!=zero && !(zero==null) && !(null==zero);
+  #assert no!=null && null!=no && nested!=null && null!=nested;
+  trace:=[1]int.[0];
+  #assert null!=make_present(trace[..]) && make_present(trace[..])!=null;
+  #assert trace[0]==2;
+}
+main :: () {
+  zero:int?=some(0); no:bool?=some(false); nested:int??=some(null);
+  #assert zero!=null && null!=zero && !(zero==null) && !(null==zero);
+  #assert no!=null && null!=no && nested!=null && null!=nested;
+  trace:=[1]int.[0];
+  #assert null!=make_present(trace[..]) && make_present(trace[..])!=null;
+  #assert trace[0]==2;
+}

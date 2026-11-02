@@ -1,0 +1,55 @@
+#authority;
+// Only CB_run enables this after A1 and completed Result handling, on fresh
+// invocation-owned state. Scratch views retain the existing valid/disjoint/
+// exclusive ownership contract. Short scratch and direct contexts stay linear.
+// Frozen concrete query keys/next links are the trust boundary: skipped old
+// metadata is not reauthenticated after this private phase builds its index.
+CB_index_bucket :: (kind:u8,path:BS_Path)->int {
+ // Every caller has admitted the ordinary origin kinds1..3 or write-summary kind5; only path mixing needs a mask.
+ hash:=cast(int)kind;for i:0..<path.count {hash=((hash<<1) ^ cast(int)path.steps[i].kind ^ path.steps[i].index) & 7;}return hash;
+}
+CB_index_begin :: (b:CB_Context)->bool {
+ if b.queries.count>b.c.result_work.count/10 {return false;}
+ // A1 owns this committed prefix. Invalidate only each head marker; rebuild
+ // initializes every visited next link and all eight snapshot heads before
+ // publishing that marker. No other old RF word can be read beforehand.
+ for slot:0..<b.state[0].queries {if !CB_tick(b,b.state[0].loc) {return false;}b.c.result_work[slot*10+9]=0;}
+ return true;
+}
+// Every rejected probe sets or preserves fatal. Callers stop before reading any row or scratch.
+CB_index_probe :: (b:CB_Context,decl:int,link:int) {
+ if link<1 || link>b.state[0].queries {CK_resource(b.c,b.c.nodes[decl].loc);}
+ else if CB_tick(b,b.c.nodes[decl].loc) {
+  q:=b.queries[link-1];
+  if q.decl!=decl || q.kind<1 || (q.kind>3 && q.kind!=5) || q.status<1 || q.status>3 || q.next<0 || q.next>=link || !BS_path_valid(q.path) {CK_resource(b.c,b.c.nodes[decl].loc);}
+ }
+}
+// On fatal the private link value is unspecified; the sole CB_query caller
+// checks fatal before using it. Bounds failures still stop immediately.
+CB_index_start :: (b:CB_Context,decl:int,head:int,bucket:int)->int {
+ if head==0 {return 0;}
+ // Validate the ORIGINAL head before any scratch access or substitution.
+ CB_index_probe(b,decl,head);if b.c.state[0].fatal {return head;}base:=(head-1)*10;marker:=b.c.result_work[base+9];
+ if marker==0 {
+  heads:[8]int;tails:[8]int;link:=head;
+  while link!=0 {
+   if link!=head {CB_index_probe(b,decl,link);if b.c.state[0].fatal {return link;}}q:=b.queries[link-1];at:=CB_index_bucket(q.kind,q.path);prior:=tails[at];
+   if prior==0 {heads[at]=link;}else {b.c.result_work[(prior-1)*10+8]=link;}b.c.result_work[(link-1)*10+8]=0;tails[at]=link;link=q.next;
+  }
+  // Each visited row was charged. Publish the complete snapshot last.
+  for i:0..<8 {b.c.result_work[base+i]=heads[i];}b.c.result_work[base+9]=head;
+ }else if marker!=head {CK_resource(b.c,b.c.nodes[decl].loc);return 0;}
+ link:=b.c.result_work[base+bucket];if link<0 || link>head {CK_resource(b.c,b.c.nodes[decl].loc);return link;}return link;
+}
+CB_index_next :: (b:CB_Context,decl:int,link:int,q:CK_BorrowQuery,bucket:int)->int {
+ next:=b.c.result_work[(link-1)*10+8];
+ if next<0 || next>=link || next>q.next || CB_index_bucket(q.kind,q.path)!=bucket {CK_resource(b.c,b.c.nodes[decl].loc);return 0;}return next;
+}
+CB_index_prepare :: (b:CB_Context,slot:int,kind:u8,path:BS_Path,head:int)->bool {
+ if !b.query_index {return true;}staged:[10]int;
+ if head!=0 {for i:0..<8 {staged[i]=b.c.result_work[(head-1)*10+i];}}
+ bucket:=CB_index_bucket(kind,path);staged[8]=staged[bucket];staged[bucket]=slot+1;staged[9]=slot+1;
+ // The sole ordinary-origin allocation site commits a fully initialized row
+ // before ACTIVE/head publication. Recursion can then observe that active row.
+ if !CB_tick(b,b.state[0].loc) {return false;}for i:0..<10 {b.c.result_work[slot*10+i]=staged[i];}return true;
+}

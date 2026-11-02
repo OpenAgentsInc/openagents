@@ -21,13 +21,12 @@ bug stops the program with a *trap*.
 There are no exceptions in Coax. Nothing unwinds the stack behind your
 back, and a line that can fail says so where you can see it.
 
-> Note: `coax0` today runs traps, `defer`, `#assert` in procedure bodies,
-> and the rule that a returned result must be used. The dedicated error
-> syntax from the spec (optional types `T?`, `try`, `or_else` and
-> multiple results, spec §8 and §11.3) isn't implemented yet. Everything
-> in this chapter that runs is checked against `coax0`; the planned parts
-> are marked as such, and we'll see what the compiler says when you try
-> them.
+> Native C supports `Result(T,E)`, optional types `T?`, exhaustive `switch`,
+> `try` and `or_else`. This chapter first builds an ordinary error record,
+> then replaces it with a tagged Result. Multiple returns, pointers and
+> general asynchronous ownership remain separate work. Chapter 15 applies this
+> bounded profile to the real System One request owner. The exact initial profile
+> and its storage limits are in [the tagged-value contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/results.md).
 
 ## A parser that trusts its input
 
@@ -279,8 +278,9 @@ A procedure that returns a value must have that value used, so the
 error inside it can't be thrown away silently. Be clear about what this
 does and doesn't promise. `coax0` makes sure you *received* the result.
 It doesn't yet make sure you looked at `error` before reading `value`;
-`p := parse_port(text); print("%\n", p.value);` compiles. The planned
-optional types in the last section of this chapter close that gap.
+`p := parse_port(text); print("%\n", p.value);` compiles for this ordinary
+error record. The tagged Result version in the last section requires
+handling its active alternative.
 
 ## Passing errors along
 
@@ -536,22 +536,20 @@ only leaving the deferred code that's ruled out.
 process won't run pending deferred code, so state that must survive a
 crash needs its own crash consistency.
 
-Once the planned `try` arrives, a propagated error will run pending
-defers on the way out too, which is what makes the pattern below safe
-in the design:
+`try` runs pending defers on a propagated error too. Register cleanup
+immediately after a successful acquisition. The synchronous file adapter in
+[`coax/lib/sys/read-file.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/sys/read-file.coax) follows this pattern:
 
 ```jai
-f := try open_file(path);
-defer close_file(f);
-
-lock(*world.mutex);
-defer unlock(*world.mutex);
-
-// ... any return from here runs unlock, then close_file
+fd := try fr_acquire(path);
+// Register a defer that handles the fallible close Result here.
+// Validate the file, then read into caller-owned storage.
 ```
 
-None of `open_file`, pointers or `try` exist in `coax0` yet; read this
-as the shape the feature is aiming for.
+The complete adapter records a secondary cleanup failure without replacing
+the primary read error. It retires the numeric descriptor before attempting
+close and never retries a failed close. A failed close leaves release
+unconfirmed; one close attempt is not proof that the OS released the resource.
 
 ## Traps
 
@@ -596,6 +594,7 @@ every trap `coax0` has today, and whether `--release` changes it:
 | Slice out of bounds | `slice out of bounds` | Stops | Stops |
 | `cast` that doesn't fit | `cast out of range` | Stops | Stops |
 | `cast` to a non-member of an enum | `value is not a member of enum Mode` | Stops | Stops |
+| Invalid tagged-value discriminator at selection or extraction | `invalid sum tag` / `invalid switch tag` | Stops | Stops |
 | Shift by a negative amount or the width or more | `shift amount out of range` | Stops | Stops |
 | A false `#assert` in a procedure | `assertion failed` | Stops | Stops |
 
@@ -700,66 +699,108 @@ every reason.
 The bugs, meanwhile, are caught by `#assert` in checks that run on
 every build, which is the subject of [Chapter 11](ch11-writing-checks.md).
 
-## What's coming: `try`, `or_else` and optional types
+## Tagged Results, `try` and `or_else`
 
-Listing 7-4 works, but propagating the port's error took four lines,
-and nothing stopped a caller from reading `a.port` without checking
-`a.error`. The spec plans dedicated syntax for both problems. None of it
-runs in `coax0` today; if you try, the compiler tells you so:
+Listing 7-4 works, but its record always contains a value and an error field.
+A tagged Result makes success and failure separate alternatives:
+
+```jai
+Port_Error :: enum u8 { empty; not_a_digit; out_of_range; }
+parse_port :: (text:string)->Result(u16,Port_Error) { /* ... */ }
+```
+
+Construct success with `Result(u16,Port_Error).{ok=value}` and failure with
+`Result(u16,Port_Error).{err=Port_Error.empty}`. A Result has exactly one active
+alternative. Select it with an exhaustive switch; the payload binding belongs
+to that case:
+
+```jai
+switch parse_port(text) {
+  case ok(value) { print("port %\n",value); }
+  case err(error) { print("error %\n",error); }
+}
+```
+
+Ignoring a Result is a compile error. Naming it, printing it or asking its
+type does not handle the error. A switch, propagation, fallback, return or
+transfer to a checked Result parameter handles that obligation.
+Use `or_else` when a fallback deliberately discards the error:
+
+```jai
+port_or_default :: (text:string)->u16 {
+  return parse_port(text) or_else cast(u16)443;
+}
+```
+
+The fallback executes only on failure. To preserve the error, `try` unwraps
+success or returns the identical error payload from the current procedure.
+The caller must return a Result with the exact same error type. Mapping to a
+different error domain requires an explicit switch.
+
+The complete source is `examples/ch07_results.coax`; its propagation helper is:
+
+```jai
+parse_with_cleanup :: (text:string,cleanup:[]int)->Result(u16,Port_Error) {
+  defer cleanup[0] += 1;
+  value := try parse_port(text);
+  return Result(u16,Port_Error).{ok=value};
+}
+```
+
+The complete example checks valid and invalid input and observes cleanup on
+both success and propagation. A propagated error stops later operands and
+effects, captures its return payload, then runs active defers once in reverse
+order. It is an ordinary recoverable return; fatal traps keep their existing
+contract.
+
+An optional `T?` has none and some alternatives instead of an error payload.
+It defaults to none without constructing T. `some(value)` wraps a payload;
+`null` needs an expected optional type. `try` propagates none only from a
+procedure returning another optional. `or_else` supplies T lazily. Comparing
+an optional with null tests presence; it does not expose its payload.
+
+This first profile permits direct Result locals, parameters and returns.
+Results cannot be nested inside aggregates or other sums, and top-level
+Result constants are refused. Multiple returns and general ownership remain
+planned.
+
+## A real file, including failure during cleanup
+
+The port parser has no operating-system resource. The real
+[bounded file adapter](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/sys/read-file.coax)
+uses the same language features around open, stat, read and close. Its public
+operation returns `Result(int,FrError)`: the byte count on success, or a nominal
+error alternative retaining the foreign error domain, code and operation.
+Only the successful byte count authorizes reading the output buffer.
+
+After acquisition, a defer owns one close attempt. Every recoverable `try`
+failure passes through it. On the success path, explicit close first retires
+the local descriptor, then attempts close; its failure cannot trigger a second
+close on an ambiguously released descriptor. The adapter never retries close.
+When an earlier read or stat fails, that primary error remains the returned
+error. A separate `FrCleanup` records an unsuccessful cleanup attempt without
+overwriting it. A failed close does not prove the operating system released
+the resource.
+
+The [native fixture](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/sys/read-file-fixture.coax)
+puts two nested defers around that real adapter. Its C effect observer checks
+the exact order, including errors propagated before later effects and lazy
+fallback evaluated after cleanup. It also checks a real file, missing paths,
+exact fit, short reads, capacity, invalid descriptors and injected failures:
 
 ```shell
-$ coax check ports.coax
-ports.coax:25:10: error[E0204]: 'try' is reserved and not supported by coax0 yet
-      p := try parse_port(text);
-           ^
-1 error
+python3 coax/tests/sys/read-file.py --compiler coax/bin/coax --output /tmp/book-read-file
 ```
 
-In the design, a procedure that can fail returns its error as its last
-result, typed as an optional enum (`Port_Error?`) or a tagged union, so
-the type says exactly which failures are possible:
+Use a fresh output directory: failed observations stay available. The harness
+runs O0, O2 and ASan/UBSan and composes the actual generated and native headers
+in both orders. Python orchestrates these checks; the shipped adapter is Coax
+with a small C file-effect boundary.
 
-```jai
-Read_Error :: enum u8 { not_found = 1; too_large = 2; denied = 3; }
-
-read_file :: (path: string, max_bytes: int) -> (string, Read_Error?) { ... }
-```
-
-Ignoring that error will be a compile error, extending the rule we saw
-with `E0323`. Two operators will handle it at the call site:
-
-```jai
-load_level :: (path: string) -> (Level, Load_Error?) {
-  text := try read_file(path, 1 << 20);              // on error: return it to our caller
-  level := parse_level(text) or_else empty_level();  // on error: use a fallback
-  return level, null;
-}
-```
-
-`try` unwraps a success, or returns the error from the current
-procedure, running any pending `defer` on the way out. `or_else`
-handles the failure in place with a value. Both are visible where the
-call is, so reading a procedure you can still see every point where it
-might return early. The spec doesn't yet say how `try` converts one
-error type into another (our `Port_Error` into an `Address_Error`);
-until it does, assume that mapping stays explicit, the way Listing 7-4
-writes it.
-
-Multiple results are the other planned piece. They're a plain return of
-several values, with no tuple object allocated and no out-parameter
-pointer:
-
-```jai
-divmod :: (a: int, b: int) -> (quotient: int, remainder: int) {
-  return a / b, a % b;
-}
-
-q, r := divmod(17, 5);
-```
-
-That's how a value and its error will travel together. Until then, a
-struct with an error field, as in `Parsed_Port`, is the way to do it,
-and it converts mechanically when the syntax lands.
+This synchronous frame has exclusive descriptor ownership. It does not promise
+cleanup after a fatal trap, process termination or foreign nonlocal exit. For
+pending requests, cancellation and snapshot ownership, continue to
+[Chapter 15](ch15-asynchronous-work.md).
 
 ## Summary
 
@@ -767,8 +808,8 @@ Coax keeps two kinds of failure apart. Bugs trap: overflow, division by
 zero, out-of-bounds indexing and slicing, casts that don't fit and false
 `#assert`s stop the program with a file and line, and all but overflow
 stay on in release builds. Expected failures are values: an enum of
-reasons, returned alongside the result, with zero meaning "no error",
-and a result the caller isn't allowed to drop. When an error passes
+reasons, carried by the error alternative of a Result, or an explicitly
+checked ordinary error record. A Result's error cannot be silently dropped. When an error passes
 through a procedure, it should keep its original meaning. `defer` puts
 cleanup next to the thing it cleans up and runs it on every way out of a
 block, in reverse order, after the return value is computed.

@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "New canonical owner + real native host; reuse exact already-passed emission.",
+  "owner_inputs": {
+    "coax/tests/systemone-owner.coax": {
+      "bytes": 864,
+      "sha256": "004e0875f3526b7adfd34f698c3645eaa42a07964ee253821d4214caa8f5d5f4"
+    },
+    "coax/lib/systemone/owner.coax": {
+      "bytes": 3446,
+      "sha256": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097"
+    },
+    "coax/lib/systemone/transport.coax": {
+      "bytes": 8339,
+      "sha256": "4ef727091b9248ea1d7997a8312d37b99e632e8150374c36ec571ba392451244"
+    },
+    "coax/lib/systemone/answers.coax": {
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    "coax/lib/systemone/request.coax": {
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    "coax/lib/nostr/json.coax": {
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    "coax/lib/agent/claude/fields.coax": {
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    "coax/lib/nostr/json-f64.coax": {
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    "coax/lib/agent/claude/transport.coax": {
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    "coax/lib/agent/claude/query.coax": {
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    "coax/lib/agent/claude/mcp.coax": {
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    "coax/lib/agent/claude/options.coax": {
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    "coax/lib/agent/claude/control.coax": {
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    "coax/lib/agent/claude/messages.coax": {
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    "coax/lib/systemone/call-policy.coax": {
+      "bytes": 1829,
+      "sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf"
+    },
+    "coax/lib/systemone/owner-policy.coax": {
+      "bytes": 2292,
+      "sha256": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720"
+    }
+  },
+  "inputs": {
+    "coax/tests/systemone-owned-process.c": "e8fd73dd4ea57ae2657d24f6fa6dc5d020d701d9326be94cf831f804bec68df4",
+    "coax/tests/systemone-owned-process.py": "b9ba1fc4f06e3bb8a199d9b5d9ca752d1d9a36ac4ecdb48807065b04f2cfd97d",
+    "coax/tests/b2_support.py": "aa9cf321283e88af0dac1745a3628f3aa16fc8e7da5063010a8aff83568be594",
+    "coax/tests/systemone-fakecurl.c": "31497739cd35d5f1ba125b8b0902d41f19a98b2175026bc1ff84e11c9811bd41",
+    "coax/platform/process-native.c": "c5657424d634fdb9ebd8c011ed05ea4e7cc4633f25b5382be37d5d0dfcc71256",
+    "coax/platform/process-native.h": "4f0cc2c0b47d189ae8119861de61057eba04c4e1a4333d5a2e4a7acf99eb2b92"
+  },
+  "tools": {
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba"
+  },
+  "reused_emission": {
+    "receipt": "/private/tmp/coax-systemone-owner-native-12625-v4/qualification.json",
+    "sha256": "fd60b9e4bdbd24fa36edc0b89be84880d752164868517073e8d1ab14ef93d81e"
+  },
+  "runs": [
+    {
+      "label": "O0-child",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O0",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-fakecurl.c",
+        "-o",
+        "/private/tmp/b3-owned-process-20261102/child-O0"
+      ],
+      "exit_status": 0,
+      "seconds": 0.03953483304940164
+    },
+    {
+      "label": "O0-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-owned-process-20261102",
+        "-I",
+        "/private/tmp/openagents-b3-request-12625/coax/platform",
+        "/private/tmp/b3-owned-process-20261102/systemone-owner.c",
+        "/private/tmp/openagents-b3-request-12625/coax/platform/process-native.c",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-owned-process.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-owned-process-20261102/O0"
+      ],
+      "exit_status": 0,
+      "seconds": 0.1136374999769032
+    },
+    {
+      "label": "O0-run",
+      "argv": [
+        "/private/tmp/b3-owned-process-20261102/O0",
+        "/private/tmp/b3-owned-process-20261102/child-O0"
+      ],
+      "exit_status": 0,
+      "seconds": 0.3766010000836104
+    },
+    {
+      "label": "O2-child",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-fakecurl.c",
+        "-o",
+        "/private/tmp/b3-owned-process-20261102/child-O2"
+      ],
+      "exit_status": 0,
+      "seconds": 0.060842958046123385
+    },
+    {
+      "label": "O2-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-owned-process-20261102",
+        "-I",
+        "/private/tmp/openagents-b3-request-12625/coax/platform",
+        "/private/tmp/b3-owned-process-20261102/systemone-owner.c",
+        "/private/tmp/openagents-b3-request-12625/coax/platform/process-native.c",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-owned-process.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-owned-process-20261102/O2"
+      ],
+      "exit_status": 0,
+      "seconds": 0.3288964160019532
+    },
+    {
+      "label": "O2-run",
+      "argv": [
+        "/private/tmp/b3-owned-process-20261102/O2",
+        "/private/tmp/b3-owned-process-20261102/child-O2"
+      ],
+      "exit_status": 0,
+      "seconds": 0.30755612498614937
+    },
+    {
+      "label": "sanitized-child",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-fakecurl.c",
+        "-o",
+        "/private/tmp/b3-owned-process-20261102/child-sanitized"
+      ],
+      "exit_status": 0,
+      "seconds": 0.0840319589478895
+    },
+    {
+      "label": "sanitized-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-owned-process-20261102",
+        "-I",
+        "/private/tmp/openagents-b3-request-12625/coax/platform",
+        "/private/tmp/b3-owned-process-20261102/systemone-owner.c",
+        "/private/tmp/openagents-b3-request-12625/coax/platform/process-native.c",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-owned-process.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-owned-process-20261102/sanitized"
+      ],
+      "exit_status": 0,
+      "seconds": 0.46813479193951935
+    },
+    {
+      "label": "sanitized-run",
+      "argv": [
+        "/private/tmp/b3-owned-process-20261102/sanitized",
+        "/private/tmp/b3-owned-process-20261102/child-sanitized"
+      ],
+      "exit_status": 0,
+      "seconds": 0.640252250013873
+    }
+  ],
+  "artifacts": {
+    "sanitized-child.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "systemone-owner.h": "608af5da4148c246530f42648000f0767118f38ce90b60a33a9667f5ed348197",
+    "O0-child.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "child-O0": "de2942e08c46d2a97eed7721112b8fb9f1360b06a0ebf7e71729d8e979db3a26",
+    "child-sanitized": "80445443f1c4903b7bf83441124ac37b5f15a956a5674208e927e386ef817de8",
+    "O2": "e5af28a25c0d1f08468dfec71918c892b8d72fca09e20f3ba08a5802ebf0fb77",
+    "O0-child.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-child.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-child.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "systemone-owner.c": "a36654e7e75f1b0ed3bae2a4740278686477f02223311d69dd0e811db09333db",
+    "sanitized-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "child-O2": "93bb42f81cf4b0459e558e609e739f72e0f25b139e2c8a2219bada923a56ad59",
+    "sanitized-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-run.stdout": "4f231dab18279afe20d02b5f415844f7f13b9ae07b69ab3400fb5c9e4ae0dd53",
+    "O2-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0": "ed95b30a83a960049581cf5ad9da4916c028b57c995cc01546d80bb8a8443584",
+    "sanitized-run.stdout": "4f231dab18279afe20d02b5f415844f7f13b9ae07b69ab3400fb5c9e4ae0dd53",
+    "sanitized": "d4589a959ee76e8af6ec144bccd44463cf9b5c16b490bc269342bae7f1c1c929",
+    "sanitized-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-run.stdout": "4f231dab18279afe20d02b5f415844f7f13b9ae07b69ab3400fb5c9e4ae0dd53",
+    "O2-child.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "child-sanitized.dSYM/Contents/Info.plist": "96771ad37b076d804a645fc4b99e24fc093209be244343a144108844b362e8d6",
+    "child-sanitized.dSYM/Contents/Resources/DWARF/child-sanitized": "50784a5d82f95951e88c5c9ed8d400be714043bcc096dd673623edcf399edf3b",
+    "child-sanitized.dSYM/Contents/Resources/Relocations/aarch64/child-sanitized.yml": "9776f9daa36dd2a447c78e1e215966a88a3f4125ab4aa9ebc80c87d72e23d897",
+    "sanitized.dSYM/Contents/Info.plist": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab",
+    "sanitized.dSYM/Contents/Resources/DWARF/sanitized": "b79cb26145988ea1bc9ef7503bdcdc3ae89dd3ddff6065d3fcb70c8b6914aa17",
+    "sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml": "849f24c5abfde6c920dcc9a946d266c45aa8bbff85e83f8a7dd33c0bcbb10d16"
+  }
+}

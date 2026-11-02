@@ -3,8 +3,8 @@
 
 Types/defaults use the shared complete-declaration extractor. The production
 lab_ask body is unchanged; only unreachable callees become signature-matched
-test stubs that terminate through a foreign boundary. RED removes exactly the
-new guard and must match the recorded Git base's actual lab_ask body.
+test stubs that terminate through a foreign boundary. RED removes exactly the current entry guard as a fault injection. It is not
+an historical source or full consumer qualification.
 """
 import argparse
 import datetime
@@ -20,10 +20,11 @@ import zeron_source_extract as extract
 
 ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
-STUBS=['lab_body','lab_state','s_text_of','so_body','lab_fail','lab_url','cl_getenv','so_start','lab_problem']
-GUARD='  // A repeated ask must not abandon the active owner or rewrite its backing.\n  if !so_start_allowed(l[0].call[0].h) { return; }\n'
+STUBS=['lab_body','lab_state','s_text_of','so_body','lab_fail','lab_url','cl_getenv','so_request_start']
+GUARD='  // A repeated ask must not abandon the active owner or rewrite its backing.\n  if !so_owned_can_start(l[0].owner[0].phase,l[0].owner[0].generation) || !so_start_allowed(l[0].owner[0].call[0].h) { return; }\n'
 COMPARED_FIELDS={
- 'Lab':'phase call q part route via mc codex_due codex_effort fallback secs codex url url_n local remote body out err',
+ 'Lab':'phase owner ticket q part route via mc codex_due codex_effort fallback secs codex url url_n local remote body out err',
+ 'SoOwnedCall':'generation phase call',
  'SoCall':'h out err at last lines timeout_s done r',
  'SoResult':'status body problem stderr usage',
  'SoUsage':'ok input_tokens output_tokens',
@@ -52,7 +53,7 @@ def projection():
   row=index[name];selected[name]=row
   for token in sorted(set(re.findall(r'\b[A-Za-z_]\w*\b',extract.mask(row['text'])))):
    if token in index and index[token]['kind']!='procedure':add(token)
- for name in ['Lab','Session','SoClient']:add(name)
+ for name in ['Lab','Session','SoClient','SO_OWN_IDLE','SO_OWN_LAST','SoStartFailure']:add(name)
  for token in sorted(set(re.findall(r'\b[A-Za-z_]\w*\b',extract.mask(actual)))):
   if token in index and index[token]['kind']!='procedure':add(token)
  chunks=['#import "Basic";\n','lab_owner_unexpected :: () #foreign;\n']+[r['text'] for r in selected.values()]
@@ -62,25 +63,23 @@ def projection():
   result=''
   if '-> string' in signature:result=' return "";'
   elif '-> bool' in signature:result=' return false;'
+  elif name=='so_request_start':result=' return Result(int,SoStartFailure).{err=SoStartFailure.unavailable};'
   stub=signature+' { lab_owner_unexpected();'+result+' }\n';chunks.append(stub)
   stubs.append(dict(name=name,path=index[name]['path'],line=index[name]['line'],signature=signature,source_sha256=sha(original.encode()),stub_sha256=sha(stub.encode())))
- chunks.append(proc(index['so_start_allowed']['text']))
+ for name in ['so_start_allowed','so_owned_can_start']:chunks.append(proc(index[name]['text']))
  chunks.append(actual)
  chunks.append('lab_owner_init :: (l:[]Lab,s:[]Session) #export_c {l[0]=Lab.{};s[0]=Session.{};}\n')
  chunks.append('lab_owner_ask :: (l:[]Lab,s:[]Session) #export_c {lab_ask(l,s);}\n')
  return '\n'.join(chunks),dict(files=files,declarations=[{k:v for k,v in r.items() if k!='text'} for r in selected.values()],stubs=stubs,actual_lab_ask_sha256=sha(actual.encode()),guard=GUARD,compared_fields=COMPARED_FIELDS),actual
 
 def main():
- parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--coax',required=True,type=Path);parser.add_argument('--out',required=True,type=Path);parser.add_argument('--base',default='a2e4931045ca62b204481956a74128b4277f6250');parser.add_argument('--generated-dir',type=Path,help='reuse exact hash-validated RED/GREEN emissions from a passed receipt; native checks still execute');args=parser.parse_args()
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--coax',required=True,type=Path);parser.add_argument('--out',required=True,type=Path);parser.add_argument('--generated-dir',type=Path,help='reuse exact hash-validated RED/GREEN emissions from a passed receipt; native checks still execute');args=parser.parse_args()
  out=args.out.resolve();out.mkdir(parents=True,exist_ok=False);compiler=args.coax.resolve();cc=shutil.which(os.environ.get('COAX_CC','cc'));deadline=time.monotonic()+800;runs=[]
  tooling={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in [Path(__file__),HERE/'lab-owner.c',HERE/'zeron_source_extract.py']}
  source,manifest,actual=projection()
  if actual.count(GUARD)!=1:raise RuntimeError('expected exact single production entry guard')
  red=actual.replace(GUARD,'',1)
- base=subprocess.check_output(['git','show',args.base+':apps/openagents-desktop/zeron/lab.coax'],cwd=ROOT,text=True)
- marker=re.search(r'\blab_ask\s*::',extract.mask(base));base=proc(base[marker.start():])
- if red!=base:raise RuntimeError('guard-removed projection differs from actual Git base function')
- manifest.update(base_revision=args.base,red_lab_ask_sha256=sha(red.encode()),red_matches_actual_base=True,compiler_sha256=sha(compiler.read_bytes()),cc=cc,cc_sha256=sha(Path(cc).read_bytes()),scope='Exact lab_ask early active/invalid refusal only; complete authored types/defaults; signature-matched unreachable fatal stubs. Not full Lab generation, attachment, process lifecycle, B2, R2 or general ownership qualification.')
+ manifest.update(fault_injection='remove exact entry guard',red_lab_ask_sha256=sha(red.encode()),compiler_sha256=sha(compiler.read_bytes()),cc=cc,cc_sha256=sha(Path(cc).read_bytes()),scope='Exact lab_ask early active/invalid refusal only; complete authored types/defaults; signature-matched unreachable fatal stubs. Not full Lab generation, attachment, process lifecycle, B2, R2 or general ownership qualification.')
  (out/'projection.json').write_text(json.dumps(manifest,indent=2)+'\n')
  env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0:halt_on_error=1','UBSAN_OPTIONS':'halt_on_error=1'}
  def run(label,cmd,expected=0,stdout=None):

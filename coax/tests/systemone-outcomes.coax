@@ -1,0 +1,46 @@
+// Runnable native transcript over the actual async owner and process host.
+// The bounded runner supplies an offline fixture child; no HTTP service or key.
+#import "Basic";
+#load "../lib/systemone/outcomes.coax";
+
+request_example :: (exe:string,mode:string,cancel:bool) {
+  owner:[1]SoOwnedCall;wire:[512]u8;wire_error:[512]u8;
+  body:[512]u8;error:[512]u8;problem:[256]u8;
+  ticket:=0;
+  switch so_request_start(owner[..],SoClient.{curl=exe,url=mode,key_env=""},"{}",wire[..],wire_error[..]) {
+    case ok(current) {ticket=current;}
+    case err(failure) {print("start refused\n");return;}
+  }
+  // Every normal early return discards the current ticket. A completed take
+  // already retired it, so the deferred stale refusal is explicitly handled.
+  defer {switch so_request_discard(owner[..],ticket) {case ok {}case err(failure) {}}}
+  if cancel {switch so_request_cancel(owner[..],ticket) {case ok {}case err(failure) {print("cancel refused\n");return;}}}
+  switch so_request_poll(owner[..],ticket,2000) {
+    case pending {print("pending\n");return;}
+    case refused(failure) {print("stale\n");return;}
+    case ready {}
+  }
+  switch so_request_snapshot(owner[..],ticket,body[..],error[..],problem[..]) {
+    case err(failure) {print("snapshot refused\n");}
+    case ok(terminal) {
+      switch terminal {
+        case answered(reply) {print("answered % %\n",reply.status,reply.body);}
+        case refused(reply) {print("refused % %\n",reply.status,reply.body);}
+        case cancelled(reply) {print("cancelled % %\n",reply.status,reply.problem);}
+        case not_connected(reply) {print("not connected % %\n",reply.status,reply.problem);}
+        case unknown(reply) {print("unknown % %\n",reply.status,reply.problem);}
+      }
+    }
+  }
+}
+
+main :: () {
+  path:[2048]u8;exe:=cl_getenv("COAX_SYSTEMONE_TEST_CHILD",path[..]);
+  if exe.count==0 {print("set COAX_SYSTEMONE_TEST_CHILD to the offline fixture\n");return;}
+  request_example(exe,"offline-success",false);
+  request_example(exe,"offline-refused",false);
+  request_example(exe,"offline-sleep",true);
+  request_example(exe,"offline-exit7",false);
+  // An unknown terminal outcome is displayed. It never authorizes a retry.
+  request_example(exe,"offline-exit28",false);
+}

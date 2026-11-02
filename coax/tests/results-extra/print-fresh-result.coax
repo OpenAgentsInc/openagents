@@ -1,0 +1,4 @@
+#import "Basic";
+Error :: union { bad; }
+make :: ()->Result(int,Error) {return Result(int,Error).{err=Error.{bad}};}
+main :: () {print("%",make());}

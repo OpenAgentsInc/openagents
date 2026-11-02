@@ -75,7 +75,7 @@ encode it, and print the bytes.
 
 Filename: ch18_start_button.coax
 
-```coax
+```jai
 #import_proto "../../../proto/descriptors/ios-home.pb" as Home;
 #import "Basic";
 
@@ -123,7 +123,7 @@ Next come three buffers. The generated codecs never allocate. A message
 value is a view (Chapter 6) of wire bytes that live in storage you
 provide, plus an error code:
 
-```coax
+```jai
 Home_HudAction :: struct {wire:[] u8;error:u32;}
 ```
 
@@ -173,7 +173,7 @@ That's every message in the profile, 27 of them, including the agent
 and HUD messages `hud.proto` imports, plus a shared wire core. The first
 line records where it came from:
 
-```coax
+```jai
 // coax-proto-v4 generator=coax0-coax-v1 compiler=coax0-0.10.0 importer_sha256=3a9a7e61... fingerprint_sha256=94142391... descriptor_sha256=9ced2888... runtime_sha256=b0ceb1e5... prefix=Home
 ```
 
@@ -186,7 +186,7 @@ the C that `coax c` produces for any file with an import.
 The generated code is plain Coax, and you can read any of it. Here's
 the getter for `id`:
 
-```coax
+```jai
 Home_HudAction_get_id :: (msg:Home_HudAction)->Home__pb_String {
 if msg.error!=0 {return Home__pb_String.{error=msg.error};}
 checked:=Home_HudAction_decode(msg.wire);if checked.error!=0 {return Home__pb_String.{error=checked.error};}
@@ -208,7 +208,7 @@ missing and a field that's zero.
 
 Filename: ch18_home_config.coax
 
-```coax
+```jai
 #import_proto "../../../proto/descriptors/ios-home.pb" as Home;
 #import "Basic";
 
@@ -297,7 +297,7 @@ is copied.
 Here's the mistake we promised. Suppose we skip the separate buffers for
 the button and build it in `a` and `b` as well:
 
-```coax
+```jai
   a: [256] u8;
   b: [256] u8;
   start := Home_HudAction_new();
@@ -322,7 +322,7 @@ must not write to that buffer while any view of it is still in use. The
 codec can check the case it can see. Pass the same buffer as input and
 output,
 
-```coax
+```jai
   config = Home_HomeConfiguration_set_schema_version(config, 1, a[..]);
   config = Home_HomeConfiguration_set_seed(config, 7, a[..]);
 ```
@@ -347,7 +347,7 @@ ch18_home_config.coax:34:12: error[E0315]: procedure 'Home_HomeConfiguration_get
 
 Give a field the wrong type and the schema's type shows up in the error:
 
-```coax
+```jai
 ch18_home_config.coax:19:52: error[E0317]: argument 2 of 'Home_HomeConfiguration_set_seed' is u32, given string
     config = Home_HomeConfiguration_set_seed(config, "seven", b[..]);
                                                      ^
@@ -357,7 +357,7 @@ ch18_home_config.coax:19:52: error[E0317]: argument 2 of 'Home_HomeConfiguration
 A wrong descriptor path is reported at the import, with the path the
 compiler actually tried:
 
-```coax
+```jai
 examples/ch18_home_config.coax:1:1: error[E0502]: cannot read proto descriptor: /Users/christopherdavid/work/openagents/proto/descriptors/ios-hom.pb
   #import_proto "../../../proto/descriptors/ios-hom.pb" as Home;
   ^
@@ -380,7 +380,7 @@ Let's write that policy as a function and throw some bad input at it.
 
 Filename: ch18_admit.coax
 
-```coax
+```jai
 #import_proto "../../../proto/descriptors/ios-home.pb" as Home;
 #import "Basic";
 
@@ -529,7 +529,7 @@ At startup, the host hands it the configuration bytes, and Coax copies
 them into a bounded scratch buffer and applies the screen's admission
 policy:
 
-```coax
+```jai
 #import_proto "../proto/descriptors/ios-home.pb" as Home;
 // ...
   config:=Home_HomeConfiguration_decode_minimal(scratch[0..<count]);
@@ -561,7 +561,7 @@ validation; this is the screen's closed schema-1 admission policy."
 When you tap Start, the home screen writes a `HudInvocation` the same
 way we built our button, alternating two 512-byte buffers:
 
-```coax
+```jai
   message:=Home_HudInvocation_new();
   message=Home_HudInvocation_set_schema(message,1,first[..]);
   message=Home_HudInvocation_set_world(message,"home",second[..]);
@@ -625,7 +625,7 @@ profile limit violations. Selected event integers and JWS time fields must fit
 ±(2^53−1); unknown numeric bytes remain untouched. The older generic `json_int`
 helper keeps its documented ±2^53 range.
 
-```coax
+```jai
 #load "../../coax/lib/nostr/adapters/json-admission.coax";
 #import "Basic";
 main :: () {

@@ -933,7 +933,7 @@ coaxial_zeron_answer :: (s: [] ZeronState, allow: bool) -> bool #export_c {
   s[0].transcript[0].action = ifx allow then A_ALLOW else A_DENY;
   return true;
 }
-coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); so_cancel(s[0].lab[0].call[..]); gs_close(s[0].gpu[..]); cxe_close(s[0].codex); } }
+coaxial_zeron_quit :: (s: [] ZeronState) #export_c { if s.count > 0 && s[0].engine[0].on { e_close(s[0].engine[..]); ps_close(s[0].psionic[..]); switch so_request_discard(s[0].lab[0].owner[..],s[0].lab[0].ticket) {case ok {}case err(failure) {}} gs_close(s[0].gpu[..]); cxe_close(s[0].codex); } }
 coaxial_zeron_scroll_to :: (s: [] ZeronState, px: f32) #export_c { if s.count > 0 { s[0].want_scroll = ifx px < 0 then 0.0f32 else px; } }
 coaxial_zeron_cut :: (s: [] ZeronState) #export_c { if s.count > 0 { composer_cut_selection(s[0].composer[..]); } }
 coaxial_zeron_paste :: (s: [] ZeronState, text: string) #export_c {

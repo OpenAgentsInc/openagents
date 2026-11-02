@@ -25,7 +25,7 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 | Priority and issue | Independently reviewable tasks | Exit |
 | --- | --- | --- |
 | Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
-| P1: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Preserve owner/polling prerequisites and the [bounded B2 helper continuation](../verification/coax-b2-early-exit-2026-11-01/README.md), whose matching-image cost gate is **1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. Integrate external R2, qualify normal release/bootstrap and complete the actual typed asynchronous consumer. | Handled outcomes, cleanup and buffer lifetime survive success, refusal and cancellation within measured analysis bounds. Raw helper return facts, retained-only manual fallback and development-stage production do not close #12625. |
+| Delivered bounded route: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Integrate the initial R2 native LP64 language, real file cleanup, B2 helper composition and generation-fenced typed System One/Lab ownership. [Current qualification](../verification/coax-outcomes-12625-2026-11-02/README.md) binds focused checks, canonical compiler fixedpoints and matching-image analysis cost under the unchanged budget. | Actual native outcomes, cleanup, cancellation/reap/reuse and transcript lifetimes pass within their declared component profile. Whole-desktop E0381, normal full-release/cache gates and R0 physical/reviewer/page-golden gates remain separate; no general linear ownership is claimed. |
 | P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial now pass; independent artifact-reader checks are recorded, with fresh training still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
 | P1: [Aethyr shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
@@ -48,21 +48,21 @@ through the same training/state interfaces. Residual-model and unfamiliar-consum
 acceptance come next. GPU and compiled-backward support must be qualified
 separately or refuse explicitly.
 
-The [Coax issue execution map](coax-outcomes-request-ownership.md) links existing
-R2, analysis-cost, B2 and B3 identities, preserving the separate agent's active
-language work and the independent R0 owner/reviewer gates. Its first
-[owner prerequisite slice](../verification/coax-request-owner-2026-11-01/README.md)
-now fixes default construction, active-start admission and the Lab entry, with
-scoped native and actual offline process checks. The bounded raw helper-return
-continuation preserves retained-only manual fallback; broader R2/B2/B3 remains
-open. See the execution map for the current cost gate and separate evidence.
+The [Coax issue execution map](coax-outcomes-request-ownership.md) preserves
+R2, analysis-cost, B2 and B3 identities and the independent R0 owner/reviewer
+gates. The initial tagged-result language and real file adapter now join typed
+System One/Lab request ownership, with actual native offline child traces and
+snapshot/transcript lifetime oracles. The bounded raw helper-return continuation
+preserves retained-only manual fallback. General ownership, broader roadmap R2
+forms and whole-desktop readiness remain open; the execution map names those
+boundaries separately from the delivered component route.
 
 This ordering preserves completed work. B1 ownership qualification, generated
 realm shaders, API NIP-98 verification and the relay's wired operations already
 exist. The qualified analysis-cost candidate in the existing
 `book30-analysis-cost` task reports 1,010,708 steps; B1's older 1,047,475-step
 observation is historical, not a measurement of current main. Measure the exact
-current compiler before adding analysis. The later [delivered wide-store H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md) reports 1,035,932 steps, leaving 12,644; a lower in-flight R2 measurement is not a delivered/current-main qualification. Forge currently pins the document
+current compiler before adding analysis. The later [delivered wide-store H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md) reports 1,035,932 steps, leaving 12,644; the integrated R2 route has its own matching-image measurement in the current qualification record. Forge currently pins the document
 revision but still plays it with the current engine, which is the concrete
 artifact gap for #12629. Nostr's frozen conformance example must not be relabeled
 as a current operational report.

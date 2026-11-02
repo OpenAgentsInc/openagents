@@ -68,12 +68,13 @@ static int defaults_case(void) {
   REQUIRE(zr_new() == NULL && defaults_calls == 0 && state_allocations == 1);
   coax_t_ZeronState *s = zr_new();
   REQUIRE(s != NULL && defaults_calls == 1 && state_allocations == 2);
-  REQUIRE(s->lab.e[0].call.e[0].h == -1);
-  REQUIRE(!s->lab.e[0].call.e[0].done && !s->ready);
-  REQUIRE(s->lab.e[0].call.e[0].r.status == 0);
-  REQUIRE(s->lab.e[0].call.e[0].r.body.count == 0);
-  REQUIRE(s->lab.e[0].call.e[0].r.stderr.count == 0);
-  REQUIRE(s->lab.e[0].call.e[0].r.problem.count == 0);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].h == -1);
+  REQUIRE(s->lab.e[0].owner.e[0].generation == 0 && s->lab.e[0].owner.e[0].phase == 0 && s->lab.e[0].ticket == 0);
+  REQUIRE(!s->lab.e[0].owner.e[0].call.e[0].done && !s->ready);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].r.status == 0);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].r.body.count == 0);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].r.stderr.count == 0);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].r.problem.count == 0);
   REQUIRE(s->lab.e[0].out.count == 0 && s->lab.e[0].out.data == NULL);
   REQUIRE(s->codex.count == 0 && s->codex.data == NULL);
   REQUIRE(s->engine.e[0].p.e[0].handle == -1);
@@ -81,11 +82,11 @@ static int defaults_case(void) {
   REQUIRE(guards() == 0);
   coax_t_ZeronState *other = zr_new();
   REQUIRE(other && other != s && defaults_calls == 2 && state_allocations == 3);
-  REQUIRE(other->lab.e[0].call.e[0].h == -1);
+  REQUIRE(other->lab.e[0].owner.e[0].call.e[0].h == -1);
   /* A later factory allocation must not reconstruct a previous owner. */
-  s->lab.e[0].call.e[0].r.status = 299;
+  s->lab.e[0].owner.e[0].call.e[0].r.status = 299;
   zr_quit(s); /* Fresh unattached quit is intentionally inert. */
-  REQUIRE(s->lab.e[0].call.e[0].r.status == 299 && defaults_calls == 2);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].r.status == 299 && defaults_calls == 2);
   REQUIRE(guards() == 0);
   cleanup(); puts("factory defaults: failed allocation skips init; each successful owner initialized once; nested defaults and guards pass");
   return 0;
@@ -109,14 +110,14 @@ static int attachment_case(void) {
   uint8_t *out = s->lab.e[0].out.data, *err = s->lab.e[0].err.data;
   int64_t out_count = s->lab.e[0].out.count, err_count = s->lab.e[0].err.count;
   out[0] = 0x31; out[out_count - 1] = 0x72; err[0] = 0x43; err[err_count - 1] = 0x64;
-  s->lab.e[0].call.e[0].r.status = 299;
+  s->lab.e[0].owner.e[0].call.e[0].r.status = 299;
   zr_quit(s);
   REQUIRE(slot0_releases == 0);
   REQUIRE(defaults_calls == initialized);
   REQUIRE(s->lab.e[0].out.data == out && s->lab.e[0].out.count == out_count);
   REQUIRE(s->lab.e[0].err.data == err && s->lab.e[0].err.count == err_count);
   REQUIRE(out[0] == 0x31 && out[out_count - 1] == 0x72 && err[0] == 0x43 && err[err_count - 1] == 0x64);
-  REQUIRE(s->lab.e[0].call.e[0].r.status == 299);
+  REQUIRE(s->lab.e[0].owner.e[0].call.e[0].r.status == 299);
   zr_quit(s); REQUIRE(slot0_releases == 0 && defaults_calls == initialized);
   int64_t next = cxproc_new(); REQUIRE(next == 1);
   REQUIRE(zdf_real_release(next) == 0 && zdf_real_release(unrelated) == 0);

@@ -1,0 +1,45 @@
+// Canonical one-slot request owner. Tickets are copyable generation numbers,
+// paired with this same owner storage; they are not native process handles.
+#authority;
+
+SO_OWN_IDLE :: 0; SO_OWN_PENDING :: 1; SO_OWN_READY :: 2;
+SO_OWN_LAST :: 9223372036854775807;
+
+#forall "owned request admission matches the independent state table" phase: -1..<4, generation: -1..<4 {
+  expected := phase == 0 && generation >= 0;
+  #assert so_owned_can_start(phase, generation) == expected;
+}
+#test "owned request generations exhaust without wrapping" {
+  #assert so_owned_can_start(SO_OWN_IDLE, SO_OWN_LAST - 1);
+  #assert !so_owned_can_start(SO_OWN_IDLE, SO_OWN_LAST);
+  #assert so_owned_next(0) == 1 && so_owned_next(SO_OWN_LAST - 1) == SO_OWN_LAST;
+  #assert so_owned_next(-1) == 0 && so_owned_next(SO_OWN_LAST) == 0;
+}
+#forall "copied tickets authorize only their current pending or ready generation" phase: -1..<4, generation: 0..<4, ticket: -1..<5 {
+  expected := (phase == 1 || phase == 2) && ticket > 0 && ticket == generation;
+  #assert so_owned_matches(phase, generation, ticket) == expected;
+  #assert so_owned_is_ready(phase, generation, ticket) == (expected && phase == 2);
+}
+#test "largest current ticket remains usable without admitting a successor" {
+  #assert so_owned_matches(SO_OWN_PENDING, SO_OWN_LAST, SO_OWN_LAST);
+  #assert so_owned_is_ready(SO_OWN_READY, SO_OWN_LAST, SO_OWN_LAST);
+  #assert !so_owned_matches(SO_OWN_READY, SO_OWN_LAST, SO_OWN_LAST - 1);
+}
+#forall "snapshot admission fits every independent byte extent" need: -1..<5, have: -1..<5 {
+  #assert so_owned_fits(need, have) == (need >= 0 && have >= need);
+}
+
+so_owned_can_start :: (phase:int,generation:int)->bool {
+  return phase == SO_OWN_IDLE && generation >= 0 && generation < SO_OWN_LAST;
+}
+so_owned_next :: (generation:int)->int {
+  if generation < 0 || generation == SO_OWN_LAST { return 0; }
+  return generation + 1;
+}
+so_owned_matches :: (phase:int,generation:int,ticket:int)->bool {
+  return (phase == SO_OWN_PENDING || phase == SO_OWN_READY) && ticket > 0 && ticket == generation;
+}
+so_owned_is_ready :: (phase:int,generation:int,ticket:int)->bool {
+  return phase == SO_OWN_READY && so_owned_matches(phase,generation,ticket);
+}
+so_owned_fits :: (need:int,have:int)->bool { return need >= 0 && have >= need; }

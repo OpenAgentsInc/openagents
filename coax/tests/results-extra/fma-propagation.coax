@@ -1,0 +1,69 @@
+// Literal regression oracles precede the implementations they exercise.
+#test "fma propagation stops each operand in order and cleans up once" {
+  trace := [2]int.[0,0];
+  switch fma_value(trace[..],1) {
+    case ok(v) { #assert false; }
+    case err(e) { #assert e == FmaError.first; }
+  }
+  #assert trace[0] == 1 && trace[1] == 1;
+  trace[0] = 0; trace[1] = 0;
+  switch fma_value(trace[..],2) {
+    case ok(v) { #assert false; }
+    case err(e) { #assert e == FmaError.second; }
+  }
+  #assert trace[0] == 12 && trace[1] == 1;
+  trace[0] = 0; trace[1] = 0;
+  switch fma_value(trace[..],3) {
+    case ok(v) { #assert false; }
+    case err(e) { #assert e == FmaError.third; }
+  }
+  #assert trace[0] == 123 && trace[1] == 1;
+  trace[0] = 0; trace[1] = 0;
+  #assert (fma_value(trace[..],0) or_else -1.0) == 5.0;
+  #assert trace[0] == 123 && trace[1] == 1;
+}
+
+FmaError :: enum u8 { first; second; third; }
+fma_operand :: (trace:[]int,position:int,fail:int)->Result(f64,FmaError) {
+  trace[0] = trace[0]*10 + position;
+  if fail == position {
+    if position == 1 { return Result(f64,FmaError).{err=FmaError.first}; }
+    if position == 2 { return Result(f64,FmaError).{err=FmaError.second}; }
+    return Result(f64,FmaError).{err=FmaError.third};
+  }
+  if position == 1 { return Result(f64,FmaError).{ok=1.0}; }
+  if position == 2 { return Result(f64,FmaError).{ok=2.0}; }
+  return Result(f64,FmaError).{ok=3.0};
+}
+fma_value :: (trace:[]int,fail:int)->Result(f64,FmaError) {
+  defer trace[1] += 1;
+  value := fma(try fma_operand(trace,1,fail),
+               try fma_operand(trace,2,fail),
+               try fma_operand(trace,3,fail));
+  return Result(f64,FmaError).{ok=value};
+}
+
+// The native entry repeats the same literal assertions and prints nothing.
+main :: () {
+  trace := [2]int.[0,0];
+  switch fma_value(trace[..],1) {
+    case ok(v) { #assert false; }
+    case err(e) { #assert e == FmaError.first; }
+  }
+  #assert trace[0] == 1 && trace[1] == 1;
+  trace[0] = 0; trace[1] = 0;
+  switch fma_value(trace[..],2) {
+    case ok(v) { #assert false; }
+    case err(e) { #assert e == FmaError.second; }
+  }
+  #assert trace[0] == 12 && trace[1] == 1;
+  trace[0] = 0; trace[1] = 0;
+  switch fma_value(trace[..],3) {
+    case ok(v) { #assert false; }
+    case err(e) { #assert e == FmaError.third; }
+  }
+  #assert trace[0] == 123 && trace[1] == 1;
+  trace[0] = 0; trace[1] = 0;
+  #assert (fma_value(trace[..],0) or_else -1.0) == 5.0;
+  #assert trace[0] == 123 && trace[1] == 1;
+}

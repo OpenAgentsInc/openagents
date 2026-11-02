@@ -7,7 +7,7 @@
    escaped byte strings; whitespace, line comments and nested block comments.
    A unary minus is a separate token. *)
 
-file = { module | export | load | import | proto-import | procedure | constant | struct | enum | assertion | check | authority } ;
+file = { module | export | load | import | proto-import | procedure | constant | struct | union | enum | assertion | check | authority } ;
 module = "#module", string, ";" ;
 (* At most one claim per unit: a lowercase dotted logical module ID. *)
 export = "#export", identifier, { ",", identifier }, ";" ;
@@ -23,7 +23,11 @@ proto-import = "#import_proto", string, "as", identifier, ";" ;
 (* Proto imports generate ordinary declarations; see proto.md for supported
    descriptors, naming, budgets, borrowed lifetimes and strict wire policy. *)
 procedure = identifier, "::", "(", [ parameters ], ")",
-            [ "->", type ], ( [ "#export_c" ], block | "#foreign", ";" ) ;
+            [ "->", type ], { procedure-directive }, ( block | "#foreign", ";" ) ;
+procedure-directive = "#export_c" | "#pure" | "#effects", "(", [ identifier, { ",", identifier } ], ")" ;
+(* Effect metadata parses without admission in R2: #pure/#effects are refused
+   by the checker until the versioned R11 admission implementation. At most
+   one effect declaration and each listed capability name occurs once. *)
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
@@ -46,6 +50,9 @@ struct-parameters = "(", type-parameter, { ",", type-parameter }, ")" ;
 field-block = "{", { field | profile-fields }, "}" ;
 profile-fields = "#if", "BUILD_DEBUG", field-block, [ "else", field-block ] ;
 field = identifier, ":", type, [ "=", expression ], ";" ;
+union = identifier, "::", "union", "{", { variant }, "}" ;
+variant = identifier, [ ":", type ], ";" ;
+(* The checker requires 1..64 unique alternatives; a unit has no payload. *)
 enum = identifier, "::", "enum", type, "{", { member }, "}" ;
 member = identifier, [ "=", expression ], ";" ;
 assertion = "#assert", expression, ";" ;
@@ -55,10 +62,14 @@ check = "#test", string, [ budget ], block
 budget = "#steps", integer ;  (* positive: the check's own step budget *)
 binding = identifier, ":", ( type | expression, "..<", expression ) ;
 
-type = named-type
-     | type-parameter
-     | "[", ( type-parameter | expression ), "]", type
-     | "[", "]", type ;
+type = type-base, { "?" } ;
+type-base = named-type | type-parameter | "(", type, ")"
+          | "[", ( type-parameter | expression ), "]", type
+          | "[", "]", type ;
+(* Suffixes bind inside an array/view element: [] T? is a view of optionals;
+   ([] T)? is an optional view. Result(T,E) is an ordered compiler-owned type
+   family, represented with named type arguments; Result remains an identifier
+   token whose declaration is reserved by semantic admission. *)
 named-type = ( qualified-name | reserved-type-name ), [ type-arguments ] ;
 qualified-name = identifier, [ ".", identifier ] ;
 type-arguments = "(", type-argument, { ",", type-argument }, ")" ;
@@ -75,7 +86,7 @@ type-parameter = "$", identifier ;       (* one token: no space after '$' *)
 
 block = "{", { statement }, "}" ;
 statement = block | declaration | assignment, ";" | return | if | while | for |
-            "break", ";" | "continue", ";" | defer | assertion | profile-statements | expression, ";" ;
+            "break", ";" | "continue", ";" | defer | switch | assertion | profile-statements | expression, ";" ;
 profile-statements = "#if", "BUILD_DEBUG", block, [ "else", block ] ;
 (* BUILD_DEBUG is a fixed per-graph selector resolved by the build profile.
    The legacy defaults are development=true and --release=false; an explicit
@@ -93,15 +104,22 @@ while = "while", expression, block ;
 for = "for", identifier, ":", expression, "..<", expression, block
     | "for", identifier, [ ",", identifier ], ":", expression, block ;
 defer = "defer", ( block | ( assignment | expression ), ";" ) ;
+switch = "switch", expression, "{", { switch-case }, "}" ;
+switch-case = "case", ( identifier, [ "(", identifier, ")" ] | enum-pattern ), block ;
+enum-pattern = identifier, ".", identifier, [ ".", identifier ] ;
+(* The checker requires exhaustive unique alternatives/members, exactly one
+   binding for a payload and none for a unit/enum. No default, wildcard, guard
+   or fallthrough. Bindings are immutable case locals, never parameters. *)
 
-expression = disjunction ;
+expression = disjunction, [ "or_else", expression ] ;
+(* Fallback is lazy and right associative below ||. *)
 disjunction = conjunction, { "||", conjunction } ;
 conjunction = comparison, { "&&", comparison } ;
 (* Comparisons do not chain, including mixed equality/ordering. *)
 comparison = sum, [ ( "==" | "!=" | "<" | "<=" | ">" | ">=" ), sum ] ;
 sum = product, { ( "+" | "-" | "|" | "^" ), product } ;
 product = unary, { ( "*" | "/" | "%" | "&" | "<<" | ">>" ), unary } ;
-unary = ( "-" | "!" | "#run" ), unary
+unary = ( "-" | "!" | "#run" | "try" ), unary
       | "cast", [ ",", "trunc" ], "(", type, ")", unary
       | postfix ;
 postfix = primary, { ".", identifier
@@ -109,8 +127,11 @@ postfix = primary, { ".", identifier
                    | "[", expression, "]"
                    | "[", expression, "..<", expression, "]"
                    | "[", "..", "]" } ;
-field-init = identifier, "=", expression ;
-primary = integer | float | character | string | "true" | "false" |
+field-init = identifier, [ "=", expression ] ;
+(* A bare alternative is only admitted for a unit sum; ordinary struct fields
+   still require = value, enforced after nominal type resolution. *)
+primary = integer | float | character | string | "true" | "false" | "null" |
+          named-type, ".", "{", [ field-init, { ",", field-init }, [ "," ] ], "}" |
           qualified-name, [ "(", [ arguments ], ")" ] |
           "size_of", "(", type, ")" |
           "type_info", "(", type, ")" |
@@ -149,3 +170,10 @@ arguments = expression, { ",", expression }, [ "," ] ;
    of 256 (E0339). A struct literal remains Pair.{...}, with bindings deduced
    from fields or supplied by its declared context; Pair(int) names a type.
    Constraints remain planned. *)
+
+(* some(expr) is an ordinary identifier/call. A declared procedure wins normal
+   lookup; only an unbound builtin call is rewritten by Coax semantic admission
+   into optional construction. null requires a contextual optional type.
+   Constructors require exactly one admitted alternative. New sums and by-value
+   arrays/records containing them reject explicit =---; an uninitialized optional
+   declaration constructs none. Result/union have no implicit default. *)

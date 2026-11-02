@@ -1,7 +1,7 @@
 # 10. Organizing a larger program
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 The small programs in the first half of this book fit in one file. A
 world, a compiler and an app do not. They need boundaries: who owns a
@@ -208,7 +208,7 @@ source graph instead of shell concatenation.
 A path says where a file is today; it is not who owns a declaration. Give a
 group of files an owner by claiming a logical module in one of them:
 
-```coax
+```jai
 #module "engine.hud";
 #load "hud/types.coax";
 #load "hud/frame.coax";
@@ -261,7 +261,7 @@ separately and both load `verse/everglade/guard-types.coax`, which claims
 Two modules may each declare `V`. Load them with aliases and say which one
 you mean:
 
-```coax
+```jai
 #import "Basic";
 #load "left.coax" as l;    // claims #module "demo.left"
 #load "right.coax" as r;   // claims #module "demo.right"
@@ -289,7 +289,7 @@ a library header's type is one global C name, so two modules exporting
 By default every declaration in a module is visible to every other module.
 An `#export` list makes a module's API explicit. The engine HUD does this:
 
-```coax
+```jai
 // verse/hud.coax
 #module "verse.hud";
 #export HudRect, HudPoint, verse_hud_slot;

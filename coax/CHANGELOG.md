@@ -13,6 +13,34 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.48.0 — Tagged Results and Cleanup — 2026-11-02
+
+Commit: pending
+
+- Add compiler-owned `Result(T,E)`, nominal tagged unions, nested `T?`
+  optionals and exhaustive selection. Keep valid active-tag construction and
+  explicit payload binding; refuse hidden Result containment in this first
+  handling profile.
+- Check direct Result obligations through transfers, branch joins, normal
+  exits and implicit propagation. Preserve left-to-right evaluation, lazy
+  fallback, assignment-place order and reverse lexical cleanup on recoverable
+  returns. Loop/defer restrictions remain explicit.
+- Track active success/error payload borrows through construction, selection,
+  propagation and checked helpers. Preserve B2's bounded raw helper-write
+  composition, its manual fallback and all existing resource limits. Mutable
+  view carriers in sums keep the same explicit manual boundary as aggregates.
+- Emit checked LP64 tagged C layouts and composed sum-capable header identities;
+  validate tags before selection/extraction. Preserve published legacy
+  inspection schemas and refuse unsupported inventories explicitly.
+- Use typed errors in a real bounded-file adapter and the WGSL tool, preserving
+  POSIX codes and one close attempt on each ordinary acquired-descriptor exit.
+  `#pure` and `#effects` remain refused until separate effect admission lands.
+- Add a generation-fenced System One owner, typed asynchronous outcomes and
+  real Lab adoption. Snapshots copy before wire reuse; stale tickets cannot
+  cancel a newer request. This is a serialized canonical-owner protocol,
+  not general linear ownership or remote exactly-once effects. Join chapters
+  6, 7, 15, 20 and 24 through the actual adapters and offline native checks.
+
 ## 0.47.0 — Versioned Shader Operations — 2026-11-01
 
 Commit: [`aabbf0d5189a7b26002114733cff0de77c7d9283`](https://github.com/OpenAgentsInc/openagents/commit/aabbf0d5189a7b26002114733cff0de77c7d9283)

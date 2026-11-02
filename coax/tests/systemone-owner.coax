@@ -1,0 +1,8 @@
+// Native entrypoints exercise the actual owner and its actual transport.
+#load "../lib/systemone/owner.coax";
+so_owner_init :: (owner:[]SoOwnedCall) #export_c { owner[0] = SoOwnedCall.{}; }
+so_owner_start :: (owner:[]SoOwnedCall,c:SoClient,body:string,out:[]u8,err:[]u8)->int #export_c { return so_owned_start(owner,c,body,out,err); }
+so_owner_poll :: (owner:[]SoOwnedCall,ticket:int,wait_ms:int)->bool #export_c { return so_owned_poll(owner,ticket,wait_ms); }
+so_owner_cancel :: (owner:[]SoOwnedCall,ticket:int)->bool #export_c { return so_owned_cancel(owner,ticket); }
+so_owner_take :: (owner:[]SoOwnedCall,ticket:int,result:[]SoResult,body:[]u8,err:[]u8,problem:[]u8)->bool #export_c { return so_owned_take(owner,ticket,result,body,err,problem); }
+so_owner_discard :: (owner:[]SoOwnedCall,ticket:int)->bool #export_c { return so_owned_discard(owner,ticket); }

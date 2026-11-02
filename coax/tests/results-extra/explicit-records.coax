@@ -1,0 +1,15 @@
+Choice :: union { value:int; done; }
+Wrap :: struct { choice:Choice; extra:int=23; }
+Outer :: struct { items:[2]Wrap; }
+read_choice :: (choice:Choice)->int {
+  switch choice {case value(n) {return n;} case done {return -1;}}
+}
+exercise :: ()->int {
+  one:=Wrap.{choice=Choice.{value=7}};
+  two:=Wrap.{choice=Choice.{done},extra=11};
+  box:=Outer.{items=[2]Wrap.[one,two]};
+  return read_choice(box.items[0].choice)+box.items[0].extra+read_choice(box.items[1].choice)+box.items[1].extra;
+}
+VALUE :: #run exercise();
+#test "explicit inline sums never require an inactive default" {#assert exercise()==40 && VALUE==40;}
+main :: () {#assert exercise()==40 && VALUE==40;}

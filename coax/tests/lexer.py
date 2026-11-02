@@ -81,12 +81,19 @@ class Lexer(unittest.TestCase):
         self.assertEqual([(e[0],e[3]) for e in errors],[(b'E0108',(1,11,10)),(b'E0108',(1,13,12))])
 
     def test_recovery_and_longest_match(self):
-        tokens,errors=self.tokens(b'/*/**/*/ ?A 2..<3 "a\\qb"')
+        tokens,errors=self.tokens(b'/*/**/*/ ~A 2..<3 "a\\qb"')
         self.assertEqual([e[0] for e in errors],[b'E0108',b'E0105'])
         self.assertEqual([t[0] for t in tokens],[b'identifier',b'integer',b"'..<'",b'integer',b'string',b'end of file'])
         self.assertEqual(tokens[0][1],b'A');self.assertEqual(tokens[-2][5],b'ab')
         tokens,errors=self.tokens(b'"bad\nnext')
         self.assertEqual(errors[0][0],b'E0106');self.assertEqual(tokens[1][1],b'next');self.assertEqual(tokens[1][-1],(2,1,5))
+
+    def test_question_suffix_is_a_real_token(self):
+        tokens,errors=self.tokens(b'T?? some(value)')
+        self.assertEqual(errors,[])
+        self.assertEqual([t[0] for t in tokens],[b'identifier',b"'?'",b"'?'",b'identifier',b"'('",b'identifier',b"')'",b'end of file'])
+        self.assertEqual(raw(self.lib.LX_name(54)),b"'?'")
+        self.assertEqual(raw(self.lib.LX_name(55)),b'?')
 
     def test_independent_decimal_oracle(self):
         rng=random.Random(29)
@@ -127,7 +134,7 @@ static void inspect(uint8_t *input,int n){
  uint8_t decoded[258],message[64];coax_t_LX_State state=LX_begin(n);
  for(int i=0;i<n+3;i++){
   coax_t_LX_Item item=LX_next((coax_string){(char*)input,n},(coax_v_t_LX_State){&state,1},(coax_v_u8){decoded,n+1},(coax_v_u8){message,64});
-  if(item.has_token){assert(item.token.kind<=COAX_LX_Kind_k_dollar);assert(item.token.text_begin>=0&&item.token.text_end>=item.token.text_begin&&item.token.text_end<=n);assert(item.token.decoded_count<=n);
+  if(item.has_token){assert(item.token.kind<=COAX_LX_Kind_k_question);assert(item.token.text_begin>=0&&item.token.text_end>=item.token.text_begin&&item.token.text_end<=n);assert(item.token.decoded_count<=n);
    if(item.token.kind==COAX_LX_Kind_k_eof)return;}
   else assert(item.diagnostic.code.count>0);
  }assert(0&&"lexer failed to make progress");

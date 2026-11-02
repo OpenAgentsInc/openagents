@@ -180,8 +180,10 @@ its own prerequisites and consumer are ready.
    R0 device, frame-tail, development-loop and independent-review gates. Use
    chapters [6](ch06-memory.md), [7](ch07-errors.md),
    [15](ch15-asynchronous-work.md), [20](ch20-interop.md) and
-   [24](ch24-a-complete-boundary.md) to teach handled results and buffer/request
-   ownership through one real fallible asynchronous adapter. Extend chapter
+   [24](ch24-a-complete-boundary.md) now join handled Results, the real file
+   adapter and System One/Lab request ownership. Their bounded native profile
+   and component adoption are distinct from whole-desktop/device readiness;
+   see the [request qualification](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-outcomes-12625-2026-11-02/README.md). Extend chapter
    17 only with named GPU resource, layout and artifact evidence. The shipped
    bounded generics, modules and borrow diagnostics remain the starting point.
 3. **Build physical-world facilities through the shared consumers.** Complete

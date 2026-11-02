@@ -1,0 +1,5 @@
+answered 200 reply-body
+refused 503 refused-body
+cancelled 0 cancelled
+not connected 0 the server is unreachable
+unknown 0 the request timed out

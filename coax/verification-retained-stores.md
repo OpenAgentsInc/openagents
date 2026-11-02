@@ -66,14 +66,24 @@ continuity limits. These retained receipts are not fresh full-checker mutation
 or normal release/bootstrap qualification. The B1 qualification above keeps
 its own source and producer identity; a full desktop build remains separate.
 
-## Remaining boundary
+## The real request owner and remaining boundary
 
-By-value carriers containing mutable views, broader context/getter cases and
-recursive fixed points remain manual beyond the slice above. B3 has
-[construction, admission and offline lifecycle prerequisites](../docs/books/coax-outcomes-request-ownership.md#delivered-prerequisite-slice),
-but its full asynchronous consumer, all borrowed result uses and backing-buffer
-lifetime obligations remain separate. Host-entry outlives duties are not
-automatically discharged. Foreign retention, ownership transfer,
-nested-block/loop lifetimes and copied handles have no general proof. Full
-desktop settings/Lab checking retains its recorded eight-step path refusal
-E0381. This bounded diagnostic is not general ownership safety; #12625 stays open.
+The [canonical System One owner](lib/systemone/owner.coax) and
+[typed outcomes](lib/systemone/outcomes.coax) now apply that compiler profile
+in the actual Lab consumer. A generation ticket fences stale operations;
+terminal snapshot checks capacities before copying body/stderr/problem into
+separate caller buffers. Stop and quit handle discard. The offline native
+checks cover completion, cancellation, EOF-before-exit, process-slot reuse and
+transcript storage after wire overwrite. The
+[issue qualification](../docs/verification/coax-outcomes-12625-2026-11-02/README.md)
+keeps source, producer, focused compiler checks and actual consumer evidence
+separate.
+
+This is a serialized canonical-owner protocol. Arbitrary owner-value copies,
+races, overlapping snapshots and host-entry outlives duties are not
+automatically discharged. By-value mutable-view carriers (including sums),
+broader context/getter cases, recursive fixed points, foreign retention and
+nested-block/loop lifetimes remain manual. An unknown remote outcome never
+proves safe retry. Full desktop settings/Lab checking retains its recorded
+eight-step path refusal E0381; component checks do not qualify the whole app.
+R0 device/reviewer and the earlier failed page-golden gates remain separate.

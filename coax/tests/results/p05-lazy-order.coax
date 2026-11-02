@@ -1,0 +1,41 @@
+// R2 check-first regression: literal expectation predates implementation.
+Error :: enum u8 {failed;}
+mark :: (trace:[]int,n:int)->int {trace[0]=trace[0]*10+n;return n;}
+source :: (trace:[]int,ok:bool)->Result(int,Error) {
+  value:=mark(trace,4);if ok {return Result(int,Error).{ok=value};}
+  return Result(int,Error).{err=Error.failed};
+}
+index :: (trace:[]int)->int {ignored:=mark(trace,1);return 0;}
+combine :: (a:int,b:int,c:int)->int {return a+b+c;}
+store :: (values:[]int,trace:[]int,call:bool)->Result(void,Error) {
+  defer {ignored:=mark(trace,2);}
+  if call {n:=combine(mark(trace,1),try source(trace,false),mark(trace,3));}
+  else {values[index(trace)]=try source(trace,false);}
+  return Result(void,Error).{ok};
+}
+lazy :: ()->Result(int,Error) {
+  r:=ifx true then 8 else try Result(int,Error).{err=Error.failed};
+  gate:=false && (try Result(bool,Error).{err=Error.failed});
+  #assert !gate;return Result(int,Error).{ok=r};
+}
+#test "fallback and skipped branches are lazy and propagation stops later operands" {
+  trace:=[1]int.[0];
+  #assert (source(trace[..],true) or_else mark(trace[..],5))==4 && trace[0]==4;
+  trace[0]=0;#assert (source(trace[..],false) or_else mark(trace[..],5))==5 && trace[0]==45;
+  for mode:0..<2 {values:=[1]int.[7];trace[0]=0;
+    switch store(values[..],trace[..],mode==1) {case ok {#assert false;}case err(e) {#assert e==Error.failed;}}
+    #assert trace[0]==142 && values[0]==7;
+  }
+  #assert (lazy() or_else 0)==8;
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  trace:=[1]int.[0];
+  #assert (source(trace[..],true) or_else mark(trace[..],5))==4 && trace[0]==4;
+  trace[0]=0;#assert (source(trace[..],false) or_else mark(trace[..],5))==5 && trace[0]==45;
+  for mode:0..<2 {values:=[1]int.[7];trace[0]=0;
+    switch store(values[..],trace[..],mode==1) {case ok {#assert false;}case err(e) {#assert e==Error.failed;}}
+    #assert trace[0]==142 && values[0]==7;
+  }
+  #assert (lazy() or_else 0)==8;
+}

@@ -9,6 +9,7 @@
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
+#load "../lib/sys/read-file.coax";
 #load "../lib/sys/args.coax";
 #load "../lib/sys/proc.coax";
 #load "../lib/net/cdp.coax";
@@ -48,8 +49,11 @@ compile_all :: (c: [] Cdp, a: [] Args) -> int {
   for i: 0..<args_count(a) {
     path := args_at(a, i);
     text: [WC_FILE] u8;
-    n := fs_read(path, text[..]);
-    if n < 0 { tool_err("wgsl-compile: cannot read "); tool_errln(path); bad += 1; continue; }
+    cleanup: [1] FrCleanup; n := 0;
+    switch fr_read_file(path, text[..], cleanup[..]) {
+      case ok(count) { n = count; }
+      case err(error) { wc_file_error(path, error, cleanup[..]); bad += 1; continue; }
+    }
     // the module's text as a JSON string literal, which is a JavaScript one
     lit: [CDP_REQ] u8; l: [1] Jo; jo_start(l[..], lit[..]); jo_str(l[..], cast(string) text[0..<n]);
     e: [CDP_REQ] u8;
@@ -83,4 +87,19 @@ wc_cat :: (x: string, y: string, out: [] u8) -> string {
   for i: 0..<x.count { out[i] = x[i]; }
   for i: 0..<y.count { out[x.count + i] = y[i]; }
   return cast(string) out[0..<x.count + y.count];
+}
+
+// The typed read keeps the primary operation/code even when cleanup also fails.
+wc_file_error :: (path:string,error:FrError,cleanup:[]FrCleanup) {
+  detail:=fr_error_detail(error);tool_err("wgsl-compile: cannot read ");tool_err(path);
+  tool_err(" (domain=");wc_err_number(cast(int)detail.domain);tool_err(" code=");wc_err_number(detail.code);tool_err(" operation=");wc_err_number(cast(int)detail.operation);
+  if cleanup[0].secondary {secondary:=fr_error_detail(cleanup[0].error);tool_err("; cleanup domain=");wc_err_number(cast(int)secondary.domain);tool_err(" code=");wc_err_number(secondary.code);tool_err(" operation=");wc_err_number(cast(int)secondary.operation);}
+  if cleanup[0].attempted && !cleanup[0].confirmed {tool_err("; release=unconfirmed");}tool_errln(")");
+}
+wc_err_number :: (value:int) {
+  // Keep the magnitude negative, so the minimum signed value is representable.
+  n:=value;if n>=0 {n= -n;}digits:[20]u8;used:=0;
+  if n==0 {tool_err("0");return;}
+  while n<0 {digits[used]=cast(u8)(48-(n%10));used+=1;n=n/10;}
+  if value<0 {tool_err("-");}for i:0..<used {one:=[1]u8.[digits[used-1-i]];tool_err(cast(string)one[..]);}
 }

@@ -1,0 +1,53 @@
+#import "Basic";
+
+#test "typed ports handle errors and run cleanup" {
+  #assert port_or_default("8080") == 8080;
+  #assert port_or_default("80a0") == 443;
+  #assert port_or_default("") == 443;
+  #assert port_or_default("70000") == 443;
+  #assert port_or_default("0") == 443;
+  cleanup:[1]int;
+  #assert (parse_with_cleanup("80a0",cleanup[..]) or_else cast(u16)0) == 0;
+  #assert cleanup[0] == 1;
+  #assert (parse_with_cleanup("443",cleanup[..]) or_else cast(u16)0) == 443;
+  #assert cleanup[0] == 2;
+}
+
+Port_Error :: enum u8 { empty; not_a_digit; out_of_range; }
+
+parse_port :: (text:string)->Result(u16,Port_Error) {
+  if text.count == 0 { return Result(u16,Port_Error).{err=Port_Error.empty}; }
+  value := 0;
+  for c:text {
+    if c < '0' || c > '9' {
+      return Result(u16,Port_Error).{err=Port_Error.not_a_digit};
+    }
+    value = value*10 + cast(int)(c-'0');
+    if value > 65535 { return Result(u16,Port_Error).{err=Port_Error.out_of_range}; }
+  }
+  if value == 0 { return Result(u16,Port_Error).{err=Port_Error.out_of_range}; }
+  return Result(u16,Port_Error).{ok=cast(u16)value};
+}
+
+port_or_default :: (text:string)->u16 {
+  return parse_port(text) or_else cast(u16)443;
+}
+
+parse_with_cleanup :: (text:string,cleanup:[]int)->Result(u16,Port_Error) {
+  defer cleanup[0] += 1;
+  value := try parse_port(text);
+  return Result(u16,Port_Error).{ok=value};
+}
+
+main :: () {
+  for text:[5]string.["8080","80a0","","70000","443"] {
+    switch parse_port(text) {
+      case ok(value) { print("port %\n",value); }
+      case err(error) { print("error %\n",error); }
+    }
+  }
+  print("fallback %\n",port_or_default("80a0"));
+  cleanup:[1]int;
+  value := parse_with_cleanup("80a0",cleanup[..]) or_else cast(u16)0;
+  print("value %, cleanup %\n",value,cleanup[0]);
+}

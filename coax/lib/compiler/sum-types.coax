@@ -1,0 +1,315 @@
+#load "sum-layout.coax";
+#authority;
+#forall "R2 sum mutation exact zero traversal budget refuses before a valid leaf" budget:0..<2 {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.enum_,name="Flag",decl=2,elem=12,size=1,alignment=1,bits=8};nodes[2]=CK_Node.{kind=CK_Tag.enum_,name="Flag",head=3,type=16,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.member,name="only",type=16};
+ found:=CK_sum_contains_bounded(c,16,true,budget);
+ if budget==0 {#assert found && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}
+ else {#assert !found && !state[0].fatal && state[0].error_count==0;}
+}
+#forall "R2 sum mutation Result errors admit optional values and refuse nested Result" nested:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=3,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,bits=32,sum_payload_offset=8,sum_default=0};
+ if nested {types[16]=CK_Type.{kind=CK_Kind.result,name="Result(int, u8)",elem=11,sum_error=12,size=16,alignment=8,bits=32,sum_payload_offset=8};}
+ t:=CK_sum_type(c,CK_Kind.result,11,16,CK_Loc.{line=9,column=5,offset=905});
+ if nested {#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==9 && errors[0].loc.column==5;}
+ else {#assert t>=16 && !state[0].fatal && state[0].error_count==0 && types[t].kind==CK_Kind.result && types[t].elem==11 && types[t].sum_error==16 && types[t].size==24 && types[t].alignment==8 && types[t].sum_payload_offset==8 && types[t].sum_default== -1;}
+}
+#forall "R2 sum mutation success payloads admit optional and nominal sums without nested Result" mode:0..<3 {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,bits=32,sum_payload_offset=8,sum_default=0};
+ if mode==1 {types[16]=CK_Type.{kind=CK_Kind.union_,name="Reply",decl=2,size=16,alignment=8,bits=32,sum_payload_offset=8};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Reply",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="item",type=11,value=0,next=4};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="done",type=1,value=1};}
+ if mode==2 {types[16]=CK_Type.{kind=CK_Kind.result,name="Result(int, u8)",elem=11,sum_error=12,size=16,alignment=8,bits=32,sum_payload_offset=8};}
+ t:=CK_sum_type(c,CK_Kind.result,16,12,CK_Loc.{line=15,column=7,offset=1507});
+ if mode==2 {#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==15 && errors[0].loc.column==7;}
+ else {#assert t>=16 && !state[0].fatal && state[0].error_count==0 && types[t].kind==CK_Kind.result && types[t].elem==16 && types[t].sum_error==12 && types[t].size==24 && types[t].alignment==8 && types[t].sum_payload_offset==8 && types[t].sum_default== -1;}
+}
+#forall "R2 sum mutation void success layout preserves actual generic error placeholders" generic_error:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=3,type_count=16,generic=2,site=CK_Site.param}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.proc,name="relay"};nodes[3]=CK_Node.{kind=CK_Tag.type_param,name="E"};
+ error:=12;if generic_error {error=CK_resolve(c,3,CK_Access.value);#assert error>=16 && nodes[2].generic && types[error].kind==CK_Kind.param && types[error].size==0 && types[error].alignment==1;}
+ t:=CK_sum_type(c,CK_Kind.result,1,error,CK_Loc.{});
+ #assert t>=16 && !state[0].fatal && state[0].error_count==0 && types[t].kind==CK_Kind.result && types[t].elem==1 && types[t].sum_error==error && types[t].alignment==4 && types[t].sum_default== -1;
+ #assert types[t].size==(ifx generic_error then 4 else 8) && types[t].sum_payload_offset==(ifx generic_error then 0 else 4);
+}
+#forall "R2 sum mutation a nonunit constructor requires an actual payload expression" supplied:bool {
+ nodes:[12]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.union_,name="Choice",decl=4,size=16,alignment=8,bits=32,sum_payload_offset=8};nodes[4]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16,head=5,mark=2};nodes[5]=CK_Node.{kind=CK_Tag.variant,name="item",type=11};
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_struct,head=3,tail=3};nodes[3]=CK_Node.{kind=CK_Tag.field_init,name="item",loc=CK_Loc.{line=32,column=7,offset=3207}};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,value=9};if supplied {nodes[3].a=7;}
+ t:=CK_sum_construct(c,2,16);
+ if supplied {#assert t==16 && !state[0].fatal && state[0].error_count==0 && nodes[2].kind==CK_Tag.expr_sum && nodes[2].sum_variant==0 && nodes[2].a==7 && nodes[7].type==11;}
+ else {#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0901" && errors[0].loc.line==32 && errors[0].loc.column==7 && nodes[2].kind==CK_Tag.expr_struct && nodes[2].head==3;}
+}
+#forall "R2 sum mutation invalid or void switch scrutinee preserves diagnostic precedence" void_call:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=6,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.stmt_switch,a=3,head=4,loc=CK_Loc.{line=20,column=3,offset=2003}};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,name="missing",loc=CK_Loc.{line=21,column=9,offset=2109}};nodes[4]=CK_Node.{kind=CK_Tag.switch_case};
+ if void_call {nodes[1].head=5;nodes[3].kind=CK_Tag.expr_call;nodes[3].name="noop";nodes[5]=CK_Node.{kind=CK_Tag.proc,name="noop",type=1,b=6,mark=2};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block};}
+ CK_switch(c,2);#assert !state[0].fatal && state[0].error_count==1;
+ if void_call {#assert errors[0].code=="E0904" && errors[0].loc.line==20 && errors[0].loc.column==3 && errors[0].loc.offset==2003;}
+ else {#assert errors[0].code=="E0306" && errors[0].loc.line==21 && errors[0].loc.column==9 && errors[0].loc.offset==2109;}
+}
+#forall "R2 sum mutation enum cases preserve tags and require the same nominal type" wrong_nominal:bool {
+ nodes:[20]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=17,type_count=18,current=5,local_count=1}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.enum_,name="Flag",decl=2,elem=12,size=1,alignment=1,bits=8};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.enum_,name="Flag",type=16,head=3,next=5,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.member,name="zero",type=16,value=0,next=4};nodes[4]=CK_Node.{kind=CK_Tag.member,name="seven",type=16,value=7};
+ nodes[5]=CK_Node.{kind=CK_Tag.proc,name="choose",type=1,head=7};nodes[7]=CK_Node.{kind=CK_Tag.param,name="arg",type=16};locals[0]=CK_Local.{name="arg",type=16,decl=7};nodes[8]=CK_Node.{kind=CK_Tag.stmt_switch,a=9,head=10};nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,name="arg"};nodes[10]=CK_Node.{kind=CK_Tag.switch_case,d=12,b=14,next=11};nodes[11]=CK_Node.{kind=CK_Tag.switch_case,d=13,b=15,loc=CK_Loc.{line=64,column=3,offset=6403}};nodes[12]=CK_Node.{kind=CK_Tag.expr_enum,type=16,value=0};nodes[13]=CK_Node.{kind=CK_Tag.expr_enum,type=16,value=7};nodes[14]=CK_Node.{kind=CK_Tag.stmt_block};nodes[15]=CK_Node.{kind=CK_Tag.stmt_block};
+ types[17]=CK_Type.{kind=CK_Kind.enum_,name="Other",decl=16,elem=12,size=1,alignment=1,bits=8};nodes[2].next=16;nodes[16]=CK_Node.{kind=CK_Tag.enum_,name="Other",type=17,head=17,next=5,mark=2};nodes[17]=CK_Node.{kind=CK_Tag.member,name="seven",type=17,value=7};if wrong_nominal {nodes[13].type=17;}
+ CK_switch(c,8);#assert !state[0].fatal && state[0].local_count==1 && nodes[10].value==0;
+ if wrong_nominal {#assert state[0].error_count==1 && errors[0].code=="E0904" && errors[0].loc.line==64 && errors[0].loc.column==3 && errors[0].loc.offset==6403;}
+ else {#assert state[0].error_count==0 && nodes[11].value==7;}
+}
+#test "R2 sum mutation schema one reflection sees optional payloads behind a view" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=2,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,name="[] int?",elem=17,size=16,alignment=8};types[17]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,bits=32,sum_payload_offset=8,sum_default=0};nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="field_info",loc=CK_Loc.{line=70,column=5,offset=7005}};
+ t:=CK_meta_query(c,2,16);#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0911" && errors[0].loc.line==70 && errors[0].loc.column==5 && errors[0].loc.offset==7005;
+}
+#forall "R2 sum part02 defaultable payload traversal still inspects later record fields" explicit_default:bool {
+ nodes:[16]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=9,type_count=19}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.optional,name="int?",elem=11,size=16,alignment=8,sum_payload_offset=8,sum_default=0};
+ types[17]=CK_Type.{kind=CK_Kind.union_,name="Reply",decl=6,size=16,alignment=8,sum_payload_offset=8};nodes[6]=CK_Node.{kind=CK_Tag.union_,name="Reply",type=17,head=7,mark=2};nodes[7]=CK_Node.{kind=CK_Tag.variant,name="item",type=11,next=8};nodes[8]=CK_Node.{kind=CK_Tag.variant,name="done",type=1,value=1};
+ types[18]=CK_Type.{kind=CK_Kind.struct_,name="Record",decl=2,size=32,alignment=8};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Record",type=18,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.field,name="first",type=16,next=4};nodes[4]=CK_Node.{kind=CK_Tag.field,name="later",type=17};nodes[9]=CK_Node.{kind=CK_Tag.expr_sum,type=17,sum_variant=1};if explicit_default {nodes[4].b=9;}
+ admitted:=CK_defaultable(c,18);#assert admitted==explicit_default && !state[0].fatal && state[0].error_count==0;
+}
+#forall "R2 sum part02 switch bindings preserve the selected caller payload identity" selected:0..<2 {
+ nodes:[24]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=15,type_count=18,current=5,local_count=1}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,name="[]u8",elem=12,size=16,alignment=8};types[17]=CK_Type.{kind=CK_Kind.union_,name="Choice",decl=2,size=24,alignment=8,sum_payload_offset=8};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=17,head=3,next=5,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="left",type=16,next=4};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="right",type=16,value=1};
+ nodes[5]=CK_Node.{kind=CK_Tag.proc,name="inspect",type=1,head=6};nodes[6]=CK_Node.{kind=CK_Tag.param,name="u",type=17,borrow_owner=5};locals[0]=CK_Local.{name="u",type=17,decl=6};nodes[8]=CK_Node.{kind=CK_Tag.stmt_switch,a=9,head=10};nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,name="u"};nodes[10]=CK_Node.{kind=CK_Tag.switch_case,name="left",a=12,b=14,next=11};nodes[11]=CK_Node.{kind=CK_Tag.switch_case,name="right",a=13,b=15};nodes[12]=CK_Node.{kind=CK_Tag.case_binding,name="l"};nodes[13]=CK_Node.{kind=CK_Tag.case_binding,name="r"};nodes[14]=CK_Node.{kind=CK_Tag.stmt_block};nodes[15]=CK_Node.{kind=CK_Tag.stmt_block};
+ CK_switch(c,8);#assert !state[0].fatal && state[0].error_count==0 && state[0].local_count==1;
+ queries:[16]CK_BorrowQuery;origins:[32]BS_Origin;work:[1]CB_State;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};out:[64]BS_Origin;result:=CB_query(b,2,12+selected,BS_Path.{},out[..]);
+ #assert !state[0].fatal && state[0].error_count==0 && result.count==1 && !result.incomplete;
+ #assert out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].role==BS_DESCRIPTOR && out[0].type==12 && out[0].path.count==1 && out[0].path.steps[0].kind==BS_VARIANT && out[0].path.steps[0].index==selected;
+}
+#forall "R2 sum coverage failed type arguments preserve the original resolution error" missing_success:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=2,type_count=16}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.type_named,name="Missing",loc=CK_Loc.{line=102,column=5}};
+ failed:=CK_resolve(c,2,CK_Access.value);#assert failed==0 && state[0].error_count==1 && errors[0].code=="E0302";
+ t:=CK_sum_type(c,CK_Kind.result,ifx missing_success then failed else 11,ifx missing_success then 12 else failed,CK_Loc.{line=102,column=1});#assert t==0 && !state[0].fatal && state[0].type_count==16 && state[0].error_count==1 && errors[0].code=="E0302" && errors[0].loc.line==102 && errors[0].loc.column==5;
+}
+#forall "R2 sum coverage malformed some calls never become typed values" extra:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=16}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="some",loc=CK_Loc.{line=103,column=7}};if extra {nodes[2].head=3;nodes[2].tail=4;nodes[3]=CK_Node.{kind=CK_Tag.expr_int,type=11,next=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,type=11};}
+ t:=CK_value(c,2,CK_Hint.{});#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0910" && errors[0].loc.line==103 && errors[0].loc.column==7;
+}
+#forall "R2 sum coverage try inside defer retains its primary rejection" optional:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17,current=2,defer_depth=1}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12,size=16,alignment=8,sum_payload_offset=8};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16};nodes[3]=CK_Node.{kind=CK_Tag.expr_try,a=4,loc=CK_Loc.{line=104,column=9}};nodes[4]=CK_Node.{kind=CK_Tag.expr_sum,type=16,a=5,sum_variant=0};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=11};if optional {types[16].kind=CK_Kind.optional;types[16].sum_error=0;types[16].sum_default=0;nodes[4].kind=CK_Tag.expr_some;nodes[4].sum_variant=1;}
+ t:=CK_value(c,3,CK_Hint.{});#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0361" && errors[0].loc.line==104 && errors[0].loc.column==9 && nodes[3].propagate_type==0;
+}
+#forall "R2 sum coverage null comparison refuses wrong types and ordering operators" mode:0..<3 {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,elem=11,size=16,alignment=8,sum_payload_offset=8,sum_default=0};nodes[2]=CK_Node.{kind=CK_Tag.expr_binary,op=44,a=3,b=4,loc=CK_Loc.{line=105,column=3}};nodes[3]=CK_Node.{kind=CK_Tag.expr_null};nodes[4]=CK_Node.{kind=CK_Tag.expr_some,type=16,a=5,sum_variant=1};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=11};if mode==0 {nodes[4]=nodes[5];}if mode==1 {nodes[2].op=47;}
+ t:=CK_value(c,2,CK_Hint.{});if mode==2 {#assert t==2 && state[0].error_count==0 && nodes[3].type==16;}else {#assert t==0 && state[0].error_count==1 && errors[0].code=="E0910" && errors[0].loc.line==105 && errors[0].loc.column==3;}#assert !state[0].fatal;
+}
+#forall "R2 sum coverage memo overflow still meters active recursion probes" budget:33931..<33933 {
+ nodes:[8]CK_Node;types:[274]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=6,type_count=274}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ for i:17..<272 {types[i]=CK_Type.{kind=CK_Kind.view,elem=i+1,size=16,alignment=8};}types[271].elem=11;
+ types[16]=CK_Type.{kind=CK_Kind.struct_,name="Root",decl=2,size=32,alignment=8};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Root",type=16,head=3,next=5,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.field,name="left",type=17,next=4};nodes[4]=CK_Node.{kind=CK_Tag.field,name="right",type=272};
+ types[272]=CK_Type.{kind=CK_Kind.view,elem=273,size=16,alignment=8};types[273]=CK_Type.{kind=CK_Kind.struct_,name="Link",decl=5,size=16,alignment=8};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="Link",type=273,head=6,mark=2};nodes[6]=CK_Node.{kind=CK_Tag.field,name="next",type=272};
+ found:=CK_sum_contains_bounded(c,16,true,budget);if budget==33931 {#assert found && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}else {#assert !found && !state[0].fatal && state[0].error_count==0;}
+}
+// This containment request carries candidate metadata to admission; a nested
+// Result is deliberately invalid and must never become a newly admitted type.
+#forall "R2 sum coverage candidate containment sees Result hidden behind optional payloads" nested_result:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=1,type_count=18}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12,size=16,alignment=8,sum_payload_offset=8};types[17]=CK_Type.{kind=CK_Kind.optional,name="Candidate?",elem=ifx nested_result then 16 else 11,size=ifx nested_result then 24 else 16,alignment=8,sum_payload_offset=8,sum_default=0};
+ t:=CK_sum_type(c,CK_Kind.optional,17,0,CK_Loc.{line=107,column=3});if nested_result {#assert t==0 && state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==107 && errors[0].loc.column==3;}else {#assert t>=18 && state[0].error_count==0 && types[t].kind==CK_Kind.optional && types[t].elem==17 && types[t].size==24 && types[t].sum_payload_offset==8 && types[t].sum_default==0;}#assert !state[0].fatal;
+}
+#forall "R2 sum coverage Result constructors retain success and error payload types" error_arm:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12,size=16,alignment=8,sum_payload_offset=8};nodes[2]=CK_Node.{kind=CK_Tag.expr_struct,head=3,tail=3};nodes[3]=CK_Node.{kind=CK_Tag.field_init,name=ifx error_arm then "err" else "ok",a=4};nodes[4]=CK_Node.{kind=CK_Tag.expr_int,value=ifx error_arm then cast(u64)7 else cast(u64)300};
+ t:=CK_sum_construct(c,2,16);#assert t==16 && !state[0].fatal && state[0].error_count==0 && nodes[2].kind==CK_Tag.expr_sum && nodes[2].sum_variant==(ifx error_arm then 1 else 0) && nodes[4].type==(ifx error_arm then 12 else 11);
+}
+#forall "R2 sum coverage union layout publishes canonical discriminator and payload placement" shape:0..<4 {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,name="Reply",decl=2};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Reply",type=16,head=3};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="item"};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="u8"};if shape>0 {nodes[3].a=4;}if shape==2 {nodes[4].name="int";}if shape==3 {nodes[4].name="string";}
+ CK_union_layout(c,2);CK_union_layout(c,2);want_size:=4;want_align:=4;want_offset:=0;if shape==1 {want_size=8;want_offset=4;}if shape==2 {want_size=16;want_align=8;want_offset=8;}if shape==3 {want_size=24;want_align=8;want_offset=8;}
+ #assert !state[0].fatal && state[0].error_count==0 && nodes[2].mark==2 && types[16].size==want_size && types[16].alignment==want_align && types[16].bits==32 && types[16].sum_payload_offset==want_offset && types[16].sum_default== -1;
+}
+#forall "R2 sum coverage rejects scan limits above the admitted bound" limit:1048576..<1048578 {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.enum_,name="Flag",decl=2,elem=12,size=1,bits=8};nodes[2]=CK_Node.{kind=CK_Tag.enum_,name="Flag",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.member,name="only",type=16};
+ found:=CK_sum_contains_bounded(c,16,true,limit);if limit==1048576 {#assert !found && !state[0].fatal && state[0].error_count==0;}else {#assert found && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}
+}
+#forall "R2 sum coverage literal fields satisfy required union storage by value or default" mode:0..<3 {
+ nodes:[12]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=8,type_count=18}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,name="Record",decl=2,size=4,alignment=4};types[17]=CK_Type.{kind=CK_Kind.union_,name="Reply",decl=4,size=4,alignment=4,bits=32};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Record",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.field,name="reply",type=17};nodes[4]=CK_Node.{kind=CK_Tag.union_,name="Reply",type=17,head=5,mark=2};nodes[5]=CK_Node.{kind=CK_Tag.variant,name="done",type=1};nodes[6]=CK_Node.{kind=CK_Tag.expr_struct,type=16,loc=CK_Loc.{line=112,column=5}};nodes[7]=CK_Node.{kind=CK_Tag.expr_sum,type=17,sum_variant=0};nodes[8]=CK_Node.{kind=CK_Tag.field_init,name="reply",a=7};if mode==1 {nodes[6].head=8;}if mode==2 {nodes[3].b=7;}
+ CK_literal_defaults(c,6,2);if mode==0 {#assert state[0].error_count==1 && errors[0].code=="E0902" && errors[0].loc.line==112 && errors[0].loc.column==5;}else {#assert state[0].error_count==0;}#assert !state[0].fatal;
+}
+#forall "R2 sum coverage some respects an optional payload context before construction" wrong:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=3,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,name="u8?",elem=12,size=8,alignment=4,bits=32,sum_payload_offset=4,sum_default=0};nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name="some",head=3,tail=3,loc=CK_Loc.{line=113,column=7}};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=7};if wrong {nodes[3]=CK_Node.{kind=CK_Tag.expr_string,name="x"};}
+ t:=CK_value(c,2,CK_Hint.{type=16});if wrong {#assert t==0 && state[0].error_count==1 && errors[0].code=="E0910" && errors[0].loc.line==113 && errors[0].loc.column==7;}else {#assert t==16 && state[0].error_count==0 && nodes[3].type==12 && nodes[2].kind==CK_Tag.expr_some;}#assert !state[0].fatal;
+}
+#test "R2 sum coverage Result type syntax admits an optional success type argument" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=16}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=3};nodes[3]=CK_Node.{kind=CK_Tag.type_optional,b=4,next=5};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="u8"};
+ t:=CK_resolve(c,2,CK_Access.value);#assert t>=16 && !state[0].fatal && state[0].error_count==0 && types[t].kind==CK_Kind.result && types[t].sum_error==12 && types[types[t].elem].kind==CK_Kind.optional && types[types[t].elem].elem==11 && types[t].size==24 && types[t].sum_payload_offset==8;
+}
+#forall "R2 sum coverage nonpositive scan budgets retain immediate bounded refusal" budget:-1..<1 {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.enum_,name="Flag",decl=2,elem=12,size=1,bits=8};nodes[2]=CK_Node.{kind=CK_Tag.enum_,name="Flag",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.member,name="only",type=16};
+ found:=CK_sum_contains_bounded(c,16,true,budget);#assert found && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";
+}
+#forall "R2 sum coverage unit alternatives reject payload expressions before typing them" supplied:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=6,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,name="Done",decl=2,size=4,alignment=4,bits=32};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Done",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="done",type=1};nodes[4]=CK_Node.{kind=CK_Tag.expr_struct,head=5,tail=5};nodes[5]=CK_Node.{kind=CK_Tag.field_init,name="done",loc=CK_Loc.{line=115,column=9}};nodes[6]=CK_Node.{kind=CK_Tag.expr_int};if supplied {nodes[5].a=6;}
+ t:=CK_sum_construct(c,4,16);if supplied {#assert t==0 && state[0].error_count==1 && errors[0].code=="E0901" && errors[0].loc.line==115 && errors[0].loc.column==9;}else {#assert t==16 && state[0].error_count==0 && nodes[4].kind==CK_Tag.expr_sum && nodes[4].sum_variant==0 && nodes[4].a==0;}#assert !state[0].fatal;
+}
+#test "R2 sum coverage Result rejects value arguments at the type argument site" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=16}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=3};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=4,next=5,loc=CK_Loc.{line=116,column=11}};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="u8"};
+ t:=CK_resolve(c,2,CK_Access.value);#assert t==0 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==116 && errors[0].loc.column==11;
+}
+#test "R2 sum coverage unit cases use no additional local slots" {
+ nodes:[16]CK_Node;types:[24]CK_Type;locals:[1]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=10,type_count=17,current=2}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,name="Done",decl=5,size=4,alignment=4,bits=32};nodes[1]=CK_Node.{kind=CK_Tag.file,head=5};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="inspect",type=1,head=3,b=4};nodes[3]=CK_Node.{kind=CK_Tag.param,name="arg",type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[5]=CK_Node.{kind=CK_Tag.union_,name="Done",type=16,head=6,next=2,mark=2};nodes[6]=CK_Node.{kind=CK_Tag.variant,name="done",type=1};nodes[7]=CK_Node.{kind=CK_Tag.stmt_switch,a=8,head=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="arg"};nodes[9]=CK_Node.{kind=CK_Tag.switch_case,name="done",b=10};nodes[10]=CK_Node.{kind=CK_Tag.stmt_block};
+ CK_declare_id(c,"arg",16,CK_Loc.{},"parameter",3);CK_switch(c,7);#assert !state[0].fatal && state[0].error_count==0 && state[0].local_count==1 && state[0].depth==0;
+}
+#forall "R2 sum coverage try requires a matching procedure propagation target" optional:bool, outside:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=7,type_count=17,current=2}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12,size=16,alignment=8,sum_payload_offset=8};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,b=6};nodes[3]=CK_Node.{kind=CK_Tag.expr_try,a=4,loc=CK_Loc.{line=117,column=7}};nodes[4]=CK_Node.{kind=CK_Tag.expr_sum,type=16,a=5,sum_variant=0};nodes[5]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_var,type=11,a=3};if optional {types[16].kind=CK_Kind.optional;types[16].sum_error=0;types[16].sum_default=0;nodes[4].kind=CK_Tag.expr_some;nodes[4].sum_variant=1;}if outside {state[0].current=0;}
+ t:=CK_value(c,3,CK_Hint.{});if outside {#assert t==0 && state[0].error_count==1 && errors[0].code=="E0905" && errors[0].loc.line==117 && errors[0].loc.column==7;}else {#assert t==11 && state[0].error_count==0 && nodes[3].propagate_type==16 && nodes[3].sum_variant==(ifx optional then 0 else 1);}#assert !state[0].fatal;
+}
+#forall "R2 sum coverage some preserves void and failed operand diagnostics" void_operand:bool {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=16}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="noop",type=1,b=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};nodes[4]=CK_Node.{kind=CK_Tag.expr_call,name="some",head=5,tail=5,loc=CK_Loc.{line=118,column=3}};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="missing",loc=CK_Loc.{line=119,column=9}};if void_operand {nodes[5].kind=CK_Tag.expr_call;nodes[5].name="noop";}
+ t:=CK_value(c,4,CK_Hint.{});#assert t==0 && !state[0].fatal && state[0].error_count==1;if void_operand {#assert errors[0].code=="E0900" && errors[0].loc.line==118 && errors[0].loc.column==3;}else {#assert errors[0].code=="E0306" && errors[0].loc.line==119 && errors[0].loc.column==9;}
+}
+#test "R2 sum coverage duplicate union alternatives retain their declaration error" {
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=4,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,name="Repeated",decl=2};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Repeated",type=16,head=3};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="done",next=4};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="done",loc=CK_Loc.{line=120,column=9}};
+ CK_union_layout(c,2);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==120 && errors[0].loc.column==9;
+}
+// Semantic sum metadata; all storage/identity/default decisions stay in Coax.
+// CK_Context is supplied by the including checker, not a native fallback.
+CK_sum :: (c:CK_Context,t:int)->bool {k:=c.types[t].kind;return k==CK_Kind.union_ || k==CK_Kind.result || k==CK_Kind.optional;}
+CK_SumFrame :: struct {type:int;field:int;entered:bool;}
+CK_SumBudget :: struct {used:int;limit:int;}
+// The caller owns one initialized budget, with used nonnegative. A failed
+// charge keeps used unchanged and records E0381 before any traversal work.
+CK_sum_tick :: (c:CK_Context,budget:[]CK_SumBudget)->bool {
+ if budget[0].used>=budget[0].limit {CK_resource(c,CK_Loc.{});return false;}
+ budget[0].used+=1;return true;
+}
+// Mode0: Result anywhere. Mode1: any sum (reflection). Mode2: inline
+// sums (=---). Mode3: a nondefaultable value, skipping explicit field defaults.
+// Per-query memoization removes shared-DAG expansion; above the private memo
+// capacity traversal remains fully metered, never truncated or called empty.
+CK_sum_scan :: (c:CK_Context,t:int,mode:int,limit:int)->bool {
+ if t<16 || c.state[0].fatal || c.state[0].error_count>0 {return false;}
+ if limit>1048576 {CK_resource(c,CK_Loc.{});return true;}
+ frames:[256]CK_SumFrame;visited:[256]int;seen_count:=1;visited[0]=t;top:=0;frames[0].type=t;budget:=[1]CK_SumBudget.[CK_SumBudget.{limit=limit}];
+ while top>=0 {
+  if !CK_sum_tick(c,budget[..]) {return true;}f:=frames[top];r:=c.types[f.type];child:int;
+  if !f.entered {
+   frames[top].entered=true;sum:=CK_sum(c,f.type);if (mode==0 && r.kind==CK_Kind.result) || ((mode==1 || mode==2) && sum) {return true;}
+   if mode==3 && sum {if r.sum_default<0 {return true;}top-=1;continue;}
+   if r.kind==CK_Kind.array || (r.kind==CK_Kind.view && mode<2) || (r.kind==CK_Kind.optional && mode==0) {child=r.elem;}
+   else if r.kind==CK_Kind.struct_ || r.kind==CK_Kind.union_ {frames[top].field=c.nodes[r.decl].head;continue;}
+   else {top-=1;continue;}
+  }else if r.kind==CK_Kind.struct_ || r.kind==CK_Kind.union_ {
+   if f.field==0 {top-=1;continue;}field:=c.nodes[f.field];frames[top].field=field.next;if mode==3 && field.b!=0 {continue;}child=field.type;
+  }else {top-=1;continue;}
+  if child<16 {continue;}seen:=false;
+  for i:0..<seen_count {if !CK_sum_tick(c,budget[..]) {return true;}if visited[i]==child {seen=true;break;}}
+  if seen {continue;}
+  // Memo overflow changes only optimization, not supported value breadth.
+  if seen_count<visited.count {visited[seen_count]=child;seen_count+=1;}
+  else {for i:0..<top+1 {if !CK_sum_tick(c,budget[..]) {return true;}if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+  if top+1>=frames.count {CK_resource(c,CK_Loc.{});return true;}top+=1;frames[top]=CK_SumFrame.{type=child};
+ }
+ return false;
+}
+CK_sum_contains :: (c:CK_Context,t:int,results:bool)->bool {return CK_sum_contains_bounded(c,t,results,1048576);}
+CK_sum_count :: (c:CK_Context,t:int)->int {if c.types[t].kind==CK_Kind.union_ {return CK_list_count(c,c.nodes[c.types[t].decl].head);}return 2;}
+CK_sum_payload :: (c:CK_Context,t:int,ordinal:int)->int {
+ if ordinal<0 || ordinal>=CK_sum_count(c,t) {return 0;}r:=c.types[t];
+ if r.kind==CK_Kind.union_ {return c.nodes[CK_at(c,c.nodes[r.decl].head,ordinal)].type;}
+ if r.kind==CK_Kind.result {if ordinal==0 {return r.elem;}return r.sum_error;}
+ if r.kind==CK_Kind.optional {if ordinal==0 {return 1;}return r.elem;}return 0;
+}
+CK_sum_name :: (c:CK_Context,t:int,ordinal:int)->string {
+ r:=c.types[t];if r.kind==CK_Kind.union_ {return c.nodes[CK_at(c,c.nodes[r.decl].head,ordinal)].name;}
+ if r.kind==CK_Kind.result {if ordinal==0 {return "ok";}return "err";}if ordinal==0 {return "none";}return "some";
+}
+CK_sum_inner :: (c:CK_Context,id:int)->int {n:=c.nodes[id];if n.kind==CK_Tag.type_named && n.name=="void" && n.name2.count==0 && n.head==0 {return 1;}return CK_resolve(c,id,CK_Access.value);}
+CK_sum_type :: (c:CK_Context,kind:CK_Kind,elem:int,error:int,loc:CK_Loc)->int {
+ if elem==0 || (kind==CK_Kind.result && error==0) {return 0;}
+ if (kind==CK_Kind.optional && elem==1) || (kind==CK_Kind.result && error==1) || CK_sum_contains(c,elem,true) || CK_sum_contains(c,error,true) {CK_error(c,loc,"E0900","Result cannot be contained in another value type; optional payload and Result error must be non-void","");return 0;}
+ for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==kind && r.elem==elem && r.sum_error==error {return i;}}
+ sizes:=[2]int.[c.types[elem].size,c.types[error].size];aligns:=[2]int.[c.types[elem].alignment,c.types[error].alignment];
+ // An optional's error ID is the invalid builtin (size0, alignment1), the
+ // same storage facts as none. Max payload extent/alignment are commutative;
+ // no reordering or replacement of these facts is needed for optional.
+ l:=SL_layout(sizes[..],aligns[..]);if !l.valid {CK_resource(c,loc);return 0;}
+ name:=CK_join2(c,c.types[elem].name,"?");default:=0;
+ if kind==CK_Kind.result {name=CK_join3(c,"Result(",c.types[elem].name,CK_join3(c,", ",c.types[error].name,")"));default= -1;}
+ return CK_new_type(c,CK_Type.{kind=kind,name=name,elem=elem,sum_error=error,size=l.size,alignment=l.alignment,bits=32,sum_payload_offset=l.offset,sum_default=default});
+}
+CK_sum_type_tag :: (tag:u32)->bool {return tag>=1 && tag<=6;}
+CK_sum_can_propagate :: (current:int,kind:CK_Kind,error:int,out_kind:CK_Kind,out_error:int)->bool {
+ return current!=0 && kind==out_kind && (kind!=CK_Kind.result || error==out_error);
+}
+CK_result_syntax :: (c:CK_Context,id:int)->int {
+ e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0900","Result requires exactly success and error type arguments","");return 0;}
+ arg:=e.head;while arg!=0 {tag:=cast(u32)c.nodes[arg].kind;if !CK_sum_type_tag(tag) {CK_error(c,c.nodes[arg].loc,"E0900","Result arguments must both be types, not length or value arguments","");return 0;}arg=c.nodes[arg].next;}
+ a:=CK_sum_inner(c,e.head);b:=CK_sum_inner(c,c.nodes[e.head].next);return CK_sum_type(c,CK_Kind.result,a,b,e.loc);
+}
+CK_union_layout :: (c:CK_Context,id:int) {
+ n:=c.nodes[id];if n.mark==2 {return;}if n.mark==1 {CK_error(c,n.loc,"E0900","a union cannot contain itself by value","");return;}
+ if !CK_enter(c,n.loc) {return;}defer CK_leave(c);c.nodes[id].mark=1;
+ count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+ sizes:[64]int;aligns:[64]int;field:=n.head;at:=0;
+ while field!=0 && !c.state[0].fatal {
+  f:=c.nodes[field];prior:=n.head;while prior!=field {if c.nodes[prior].name==f.name {CK_error(c,f.loc,"E0900","duplicate union alternative","");}prior=c.nodes[prior].next;}
+  ty:=1;if f.a!=0 {ty=CK_resolve(c,f.a,CK_Access.value);}if ty==0 {return;}
+  if CK_sum_contains(c,ty,true) {CK_error(c,f.loc,"E0900","Result cannot be stored in a union payload","");return;}
+  c.nodes[field].type=ty;c.nodes[field].value=cast(u64)at;sizes[at]=c.types[ty].size;aligns[at]=c.types[ty].alignment;field=f.next;at+=1;
+ }
+ l:=SL_layout(sizes[0..<count],aligns[0..<count]);if !l.valid {CK_resource(c,n.loc);return;}
+ t:=n.type;c.types[t].size=l.size;c.types[t].alignment=l.alignment;c.types[t].bits=32;c.types[t].sum_payload_offset=l.offset;c.nodes[id].mark=2;
+}
+CK_defaultable :: (c:CK_Context,t:int)->bool {return !CK_sum_scan(c,t,3,1048576);}
+// A view does not inline its element storage.
+CK_inline_sum :: (c:CK_Context,t:int)->bool {return CK_sum_scan(c,t,2,1048576);}
+CK_sum_construct :: (c:CK_Context,id:int,t:int)->int {
+ if t==0 {return 0;}e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0901","construct exactly one sum alternative","");return 0;}
+ init:=c.nodes[e.head];ordinal:= -1;for i:0..<CK_sum_count(c,t) {if CK_sum_name(c,t,i)==init.name {ordinal=i;}}
+ if ordinal<0 {CK_error(c,init.loc,"E0901","unknown sum alternative","");return 0;}
+ payload:=CK_sum_payload(c,t,ordinal);if payload==1 {if init.a!=0 {CK_error(c,init.loc,"E0901","a unit alternative has no payload","");return 0;}}
+ else {if init.a==0 {CK_error(c,init.loc,"E0901","this alternative requires its payload","");return 0;}a:=CK_value(c,init.a,CK_Hint.{type=payload});if a==0 {return 0;}if a!=payload {CK_error(c,c.nodes[init.a].loc,"E0901","sum payload type does not match its alternative","");return 0;}}
+ c.nodes[id].kind=CK_Tag.expr_sum;c.nodes[id].name=init.name;c.nodes[id].a=init.a;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=ordinal;return t;
+}
+CK_some :: (c:CK_Context,id:int,want:CK_Hint)->int {
+ e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0910","some takes exactly one payload","");return 0;}
+ inner:=0;if c.types[want.type].kind==CK_Kind.optional {inner=c.types[want.type].elem;}
+ t:=CK_value(c,e.head,CK_Hint.{type=inner});if t==0 {return 0;}if inner!=0 && t!=inner {CK_error(c,e.loc,"E0910","some payload does not match the optional context","");return 0;}
+ r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
+}
+CK_sum_expression :: (c:CK_Context,id:int,want:CK_Hint)->int {
+ e:=c.nodes[id];if e.kind==CK_Tag.expr_null {if c.types[want.type].kind!=CK_Kind.optional {CK_error(c,e.loc,"E0910","null requires an optional type context","");return 0;}c.nodes[id].sum_variant=0;return want.type;}
+ if e.kind==CK_Tag.expr_sum || e.kind==CK_Tag.expr_some {return e.type;}
+ t:=CK_value(c,e.a,CK_Hint.{});if t==0 {return 0;}r:=c.types[t];
+ if r.kind!=CK_Kind.result && r.kind!=CK_Kind.optional {CK_error(c,e.loc,"E0905","try and or_else require Result or optional","");return 0;}
+ if e.kind==CK_Tag.expr_or_else {f:=CK_value(c,e.b,CK_Hint.{type=r.elem});if f!=0 && f!=r.elem {CK_error(c,c.nodes[e.b].loc,"E0906","or_else fallback must have the success payload type","");return 0;}return r.elem;}
+ if c.state[0].defer_depth!=0 {CK_error(c,e.loc,"E0361","try cannot leave a deferred block","");return 0;}
+ ret:=c.nodes[c.state[0].current].type;out:=c.types[ret];
+ if !CK_sum_can_propagate(c.state[0].current,r.kind,r.sum_error,out.kind,out.sum_error) {CK_error(c,e.loc,"E0905","try requires the same propagation family and exact error type","");return 0;}
+ c.nodes[id].propagate_type=ret;CK_borrow_return(c,id);c.nodes[id].sum_variant=ifx r.kind==CK_Kind.result then 1 else 0;return r.elem;
+}
+CK_literal_defaults :: (c:CK_Context,id:int,decl:int) {
+ field:=c.nodes[decl].head;while field!=0 {f:=c.nodes[field];found:=false;a:=c.nodes[id].head;while a!=0 {if c.nodes[a].name==f.name {found=true;}a=c.nodes[a].next;}
+  if !found && f.b==0 && !CK_defaultable(c,f.type) {CK_error(c,c.nodes[id].loc,"E0902","a nondefaultable field requires an initializer","");}field=f.next;}
+}
+CK_switch :: (c:CK_Context,id:int) {
+ s:=c.nodes[id];t:=CK_value(c,s.a,CK_Hint.{});if t==0 {return;}is_sum:=CK_sum(c,t);r:=c.types[t];
+ if !is_sum && r.kind!=CK_Kind.enum_ {CK_error(c,s.loc,"E0904","switch requires a tagged sum or enum","");return;}
+ count:=CK_list_count(c,c.nodes[r.decl].head);if is_sum {count=CK_sum_count(c,t);}
+ at:=s.head;while at!=0 && !c.state[0].fatal {
+  branch:=c.nodes[at];ordinal:= -1;payload:=1;tag:u64;valid:bool;
+  if is_sum {for i:0..<count {if CK_sum_name(c,t,i)==branch.name && branch.d==0 {ordinal=i;}}valid=ordinal>=0;if valid {payload=CK_sum_payload(c,t,ordinal);tag=cast(u64)ordinal;}}
+  else {v:=CK_value(c,branch.d,CK_Hint.{type=t});valid=v==t && c.nodes[branch.d].kind==CK_Tag.expr_enum;if valid {tag=c.nodes[branch.d].value;}}
+  if !valid {CK_error(c,branch.loc,"E0904","case is not an alternative of the switch type","");return;}
+  previous:=s.head;while previous!=at {if c.nodes[previous].value==tag {CK_error(c,branch.loc,"E0904","duplicate switch case","");return;}previous=c.nodes[previous].next;}
+  if (payload==1 && branch.a!=0) || (payload!=1 && branch.a==0) {CK_error(c,branch.loc,"E0904","payload cases require one binding; unit and enum cases have none","");return;}
+  c.nodes[at].value=tag;if is_sum {c.nodes[at].sum_variant=ordinal;}
+  mark:=c.state[0].local_count;if branch.a!=0 {binding:=branch.a;c.nodes[binding].type=payload;c.nodes[binding].sum_variant=ordinal;c.nodes[binding].a=s.a;CK_declare_id(c,c.nodes[binding].name,payload,c.nodes[binding].loc,"case payload",binding);}
+  CK_stmt(c,branch.b);c.state[0].local_count=mark;at=branch.next;
+ }
+ if CK_list_count(c,s.head)!=count {CK_error(c,s.loc,"E0904","switch must cover every alternative exactly once","");}
+}
+CK_null_comparison :: (c:CK_Context,id:int)->int {
+ e:=c.nodes[id];left:=c.nodes[e.a].kind==CK_Tag.expr_null;other:=e.a;if left {other=e.b;}
+ t:=CK_value(c,other,CK_Hint.{});if t==0 {return 0;}if c.types[t].kind!=CK_Kind.optional || (e.op!=44 && e.op!=45) {CK_error(c,e.loc,"E0910","null compares only for equality with an optional","");return 0;}
+ null_id:=e.b;if left {null_id=e.a;}ignored:=CK_value(c,null_id,CK_Hint.{type=t});return 2;
+}
+CK_sum_contains_bounded :: (c:CK_Context,t:int,results:bool,limit:int)->bool {return CK_sum_scan(c,t,ifx results then 0 else 1,limit);}

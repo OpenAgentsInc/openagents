@@ -1,7 +1,7 @@
 # 28. The road ahead
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 
 Release/status generation now ships: one Coax catalogue supplies the CLI,
@@ -90,8 +90,12 @@ rotating frames or clocks, and quantities add no finite-value or
 actuator-admission checks. Other output backends refuse concrete quantity and
 spatial use in this initial profile.
 
-Pointers and dynamic arrays, tagged unions and `switch`, `try` and
-optionals, the context and allocators, richer reflection and macros, jobs
+Native C also supports the initial [tagged-value and error profile](https://github.com/OpenAgentsInc/openagents/blob/main/coax/results.md):
+nominal unions, exhaustive `switch`, `Result(T,E)`, optionals, `try` and
+`or_else`, with deferred cleanup on recoverable returns. Result storage,
+inspection and backend limits remain explicit. Chapter 7 introduces these forms.
+
+Pointers and dynamic arrays, the context and allocators, richer reflection and macros, jobs
 and effects, `strict` and `deterministic`, importing C headers, `build.coax`
 and transactional state reload remain planned. Module configuration and
 package management are also separate future work.

@@ -506,7 +506,7 @@ Raising `--steps` for the whole file lets every check run that long. To
 raise the budget for one check only, write `#steps N` after its name, or
 after a `#forall`'s bindings:
 
-```coax
+```jai
 spin :: (n: int) -> int {
   s := 0;
   for i: 0..<n { s += i % 7; }
@@ -1199,7 +1199,7 @@ and authorization, see [Chapter 23](ch23-verification-boundaries.md).
 Coax 0.17.0 adds a small conditional-compilation slice:
 
 <!-- checked-source: examples/ch11_build_profiles.coax -->
-```coax
+```jai
 #authority;
 Sample :: struct {
  value:u32;

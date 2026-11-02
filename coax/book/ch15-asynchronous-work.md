@@ -145,6 +145,89 @@ progress events, preserve terminal results, and put a bound on the queue.
 Dropping arbitrary chunks of a protocol stream can corrupt its meaning;
 backpressure belongs in the stream's actual contract.
 
+## The actual System One request
+
+The small request machine above isolates the rule. The production
+[System One adapter](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/systemone/outcomes.coax)
+applies it to the actual polling transport used by the desktop Lab. The C host
+spawns, polls, cancels and reaps the child. Coax owns admission, generations,
+terminal classification and copying results before wire-buffer reuse.
+
+| Operation | Handled result |
+| --- | --- |
+| `so_request_start` | `Result(int,SoStartFailure)`; a positive ticket owns pending work or an immediate terminal setup failure |
+| `so_request_poll` | Exhaustive `pending`, `ready` or `refused` selection; a stale ticket cannot touch newer work |
+| `so_request_snapshot` | `Result(SoTerminal,SoSnapshotFailure)`; pending, stale or insufficient-capacity refusal preserves storage |
+| `so_request_cancel` | A handled Result; terminal cancellation leaves a result available for snapshot |
+| `so_request_discard` | A handled Result; pending work is cancelled and retired, or an unread terminal result is discarded |
+
+A successful snapshot is a tagged terminal outcome. `answered` still needs
+the application's response validation. `refused` retains the response and
+diagnostics. `cancelled` records local cancellation. `not_connected` is the
+transport's specific no-connection observation, used for the Lab's existing
+alternate door. `unknown` includes outcomes such as a lost response or timeout;
+it never authorizes automatic retry. None proves that a remote server undid
+work. Snapshot payloads borrow the separate caller buffers described in
+[Chapter 6](ch06-memory.md).
+
+The actual Lab handles the start Result, exhaustively polls, takes a snapshot,
+validates the answer and copies its displayed details into the transcript.
+Stop and quit explicitly handle discard. A ready result prevents a new start
+until taken or discarded. The generation counter refuses exhaustion instead
+of wrapping. Keep one canonical owner at a stable address and serialize all
+access; this API does not prohibit arbitrary copies of the owner value.
+
+The [checked typed fixture](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/systemone-outcomes.coax)
+loads the adapter's authored checks for every terminal alternative,
+pending/stale/capacity refusals and detached snapshots. Its main drives real
+request operations against the fixture child. Run its Coax checks:
+
+```shell
+coax/bin/coax test coax/tests/systemone-outcomes.coax
+```
+
+To run that same source against the real native process host, with an owned
+offline child instead of a server:
+
+```shell
+python3 coax/tests/systemone-outcomes.py --compiler coax/bin/coax --out /tmp/book-systemone
+cat /tmp/book-systemone/O0-run.stdout
+```
+
+The literal transcript is checked at O0, O2 and ASan/UBSan:
+
+```jai
+answered 200 reply-body
+refused 503 refused-body
+cancelled 0 cancelled
+not connected 0 the server is unreachable
+unknown 0 the request timed out
+```
+
+The fixture child supplies independent bytes and exit statuses. The Coax
+transport interprets them; the oracle compares the whole transcript and the
+consumer checks separately verify retained text after wire reuse. Use a fresh
+output directory to preserve failures.
+
+Then try the intentional mistakes separately:
+
+```shell
+coax/bin/coax check coax/tests/systemone-outcomes/ignored-start.coax --library
+coax/bin/coax check coax/tests/systemone-outcomes/incomplete-terminal.coax --library
+coax/bin/coax check coax/tests/systemone-outcomes/local-snapshot.coax --library
+```
+
+These are expected refusals: ignoring a Result, omitting a terminal alternative,
+and returning a view of local snapshot storage. Giving a Result a name does not
+handle it. Exhaustive handling does not extend the lifetime of its payload.
+The observed diagnostics are `E0907` at line 2, `E0904` at line 3 and `E0383`
+at line 4, respectively; the runner checks those codes and source locations.
+The [qualification record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-outcomes-12625-2026-11-02/README.md)
+retains actual diagnostics and offline native request traces, including HTTP
+refusal, timeout, cancellation, child failure and wire reuse. It states the
+scope of the actual Lab consumer checks separately from whole-desktop build
+and device readiness.
+
 ## GPU work is asynchronous too
 
 Returning from a draw call does not mean the GPU has finished reading its

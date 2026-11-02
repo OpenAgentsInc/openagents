@@ -1,0 +1,60 @@
+// The admitted LP64 tagged value: a u32 discriminator and one active payload.
+// This arithmetic policy never inspects inactive bytes or native ABI guesses.
+#authority;
+SL_Layout :: struct {valid:bool;size:int;alignment:int;offset:int;}
+#forall "tagged layout preserves unit and independently aligned payloads" mode:0..<5 {
+ sizes:=[2]int.[0,0];aligns:=[2]int.[1,1];want_size:=4;want_align:=4;want_offset:=0;
+ if mode==1 {sizes[0]=1;want_size=8;want_offset=4;}
+ if mode==2 {sizes[0]=8;aligns[0]=8;want_size=16;want_align=8;want_offset=8;}
+ if mode==3 {sizes[0]=17;aligns[0]=8;want_size=32;want_align=8;want_offset=8;}
+ if mode==4 {sizes[0]=3;sizes[1]=16;aligns[1]=16;want_size=32;want_align=16;want_offset=16;}
+ l:=SL_layout(sizes[..],aligns[..]);#assert l.valid && l.size==want_size && l.alignment==want_align && l.offset==want_offset;
+}
+#forall "tagged layout refuses malformed or overflowing payload facts" mode:0..<8 {
+ sizes:=[2]int.[8,1];aligns:=[2]int.[8,1];n:=2;m:=2;
+ if mode==0 {n=0;m=0;}if mode==1 {m=1;}if mode==2 {sizes[0]= -1;}
+ if mode==3 {aligns[0]=0;}if mode==4 {aligns[0]=3;}if mode==5 {sizes[0]=2147483647;}
+ if mode==6 {aligns[0]=2147483648;}if mode==7 {sizes[0]=2147483648;}
+ l:=SL_layout(sizes[0..<n],aligns[0..<m]);#assert !l.valid && l.size==0 && l.alignment==0 && l.offset==0;
+}
+#test "tagged layout admits exactly sixty four alternatives and exact final size" {
+ sizes:[65]int;aligns:[65]int;for i:0..<65 {aligns[i]=1;}
+ sizes[63]=2147483640;aligns[63]=4;
+ l:=SL_layout(sizes[0..<64],aligns[0..<64]);#assert l.valid && l.size==2147483644 && l.offset==4 && l.alignment==4;
+ #assert !SL_layout(sizes[..],aligns[..]).valid;
+ sizes[63]=2147483644;#assert !SL_layout(sizes[0..<64],aligns[0..<64]).valid;
+}
+#forall "tagged layout coverage refuses signed32 overflow introduced only by final padding" size:2147483642..<2147483644 {
+ sizes:=[1]int.[size];aligns:=[1]int.[4];l:=SL_layout(sizes[..],aligns[..]);#assert !l.valid && l.size==0 && l.alignment==0 && l.offset==0;
+}
+#forall "tagged layout endpoint metadata is checked even for a unit alternative" mode:0..<6 {
+ sizes:=[1]int.[0];aligns:=[1]int.[1073741824];
+ if mode==1 {aligns[0]=2147483648;}
+ if mode==2 {aligns[0]=9223372036854775807;}
+ if mode==3 {sizes[0]=2147483647;aligns[0]=1;}
+ if mode==4 {sizes[0]=9223372036854775807;aligns[0]=1;}
+ if mode==5 {sizes[0]=1;aligns[0]=536870912;}
+ l:=SL_layout(sizes[..],aligns[..]);
+ if mode==0 {#assert l.valid && l.size==4 && l.alignment==4 && l.offset==0;}
+ else if mode==5 {#assert l.valid && l.size==1073741824 && l.alignment==536870912 && l.offset==536870912;}
+ else {#assert !l.valid && l.size==0 && l.alignment==0 && l.offset==0;}
+}
+SL_layout :: (sizes:[]int,aligns:[]int)->SL_Layout {
+ if sizes.count<1 || sizes.count>64 || sizes.count!=aligns.count {return SL_Layout.{};}
+ size:=0;alignment:=4;
+ for i:0..<sizes.count {
+  n:=sizes[i];a:=aligns[i];
+  // Both metadata values fit positive signed32 bits; a nonzero power of
+  // two can therefore be at most 2^30. The mask also rejects negative n.
+  if (n & 2147483647)!=n || a==0 || (a & 2147483647)!=a || (a & (a-1))!=0 {return SL_Layout.{};}
+  if n>=size+1 {size=n;}if a>=alignment+alignment {alignment=a;}
+ }
+ if size==0 {return SL_Layout.{valid=true,size=4,alignment=4};}
+ // A power-of-two alignment at least four already rounds the u32 tag.
+ // Each admitted operand is at most 2^31-1, so this sum and product fit
+ // int64 before the one final signed32 extent check.
+ offset:=alignment;
+ total:=(offset+size+alignment-1)/alignment*alignment;
+ if total>=2147483648 {return SL_Layout.{};}
+ return SL_Layout.{valid=true,size=total,alignment=alignment,offset=offset};
+}

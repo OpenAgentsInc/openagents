@@ -1,0 +1,22 @@
+// R2 check-first regression: literal expectation predates implementation.
+ViewError :: struct {code:int;detail:[]u8;}
+Payload :: union {bytes:[]u8;empty;}
+pass :: (v:[]u8,ok:bool)->Result([]u8,ViewError) {
+  if ok {return Result([]u8,ViewError).{ok=v};}
+  return Result([]u8,ViewError).{err=ViewError.{code=4,detail=v}};
+}
+#test "both alternatives retain caller backing without rebasing copied views" {
+  bytes:=[2]u8.[7,9];
+  switch pass(bytes[..],true) {case ok(v) {v[0]=8;}case err(e) {#assert false;}}
+  switch pass(bytes[..],false) {case ok(v) {#assert false;}case err(e) {#assert e.code==4 && e.detail[0]==8;}}
+  tagged:=Payload.{bytes=bytes[..]};
+  switch tagged {case bytes(v) {#assert v[1]==9;}case empty {#assert false;}}
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  bytes:=[2]u8.[7,9];
+  switch pass(bytes[..],true) {case ok(v) {v[0]=8;}case err(e) {#assert false;}}
+  switch pass(bytes[..],false) {case ok(v) {#assert false;}case err(e) {#assert e.code==4 && e.detail[0]==8;}}
+  tagged:=Payload.{bytes=bytes[..]};
+  switch tagged {case bytes(v) {#assert v[1]==9;}case empty {#assert false;}}
+}

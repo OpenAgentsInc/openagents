@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -34,16 +34,13 @@ The first two digits after the `E` give the stage that reports the error:
 | `E05` | Protobuf descriptor imports | Chapter 18 |
 | `E06` | Source-unit composition | Chapter 10 |
 | `E07` | Device code (`coax cuda`, `coax metal-compute`, `coax spirv`) | Chapter 17 |
+| `E08` | Generic structs | Chapter 8 |
+| `E09` | Tagged values and effect declarations | Chapters 7 and 14 |
 
 Chapter 4 explains how to read a diagnostic, and Chapter 27 shows which
-part of the compiler produces each stage's errors. With `--json`, each
-diagnostic is one JSON object per line on stderr, with the fields `file`,
-`line`, `col`, `code`, `message` and `fix`.
-
-
-
-
-
+part of the compiler produces each stage's errors. With `--diagnostics json`,
+each diagnostic is one JSON object per line on stderr. It carries a schema,
+severity, code, message, source span, notes and proposed fixes.
 
 ## E01xx: lexer
 
@@ -66,9 +63,9 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | Code | Meaning | What to do |
 | --- | --- | --- |
 | `E0201` | expected a token | The parser needed a specific token here, usually ';', ')' or '}'. For a missing ';' the caret points right after the previous token. |
-| `E0202` | expected a type | A type is a name (int, f32, Vec2), a fixed array '[N] T', or a view '[] T'. |
+| `E0202` | expected a type | A type is a name, a fixed array '[N] T', a view '[] T', an optional 'T?', or an admitted parameterized type such as Result(T,E). Parentheses group a type before an optional suffix. |
 | `E0203` | comparisons cannot be chained | a < b < c is rejected rather than given a surprising meaning. Write a < b && b < c. |
-| `E0204` | reserved word not supported yet | The word is reserved for a planned feature (union, switch, using, try...). coax0 refuses it rather than guessing what it means. |
+| `E0204` | reserved word not supported yet | The word is reserved for a planned feature, such as using or enum_flags. coax0 refuses it rather than guessing what it means. |
 | `E0205` | expected an expression | A value was needed here: a literal, a name, a call, or a parenthesized expression. |
 | `E0206` | local declarations with :: are not supported | Constants, procedures and types are declared at the top level in coax0. |
 | `E0207` | cannot assign to this expression | Only a variable, a struct field or an element (a[i]) can be assigned. |
@@ -175,7 +172,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0380` | procedure not exercised by a check | Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions. |
 | `E0381` | type checker resource limit | The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. |
 | `E0382` | invalid reflection category | field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout. |
-| `E0383` | borrow may outlive local backing | A returned descriptor or a checked retained store may expose callee-local backing. Retained-store diagnostics name the original RHS or violating helper call. Keep backing with the caller and satisfy its outlives obligations; unsupported regions and helper-write return composition remain manual. |
+| `E0383` | borrow may outlive its backing storage | A returned descriptor or retained store can carry local backing beyond its frame, including through helpers, aggregates and active sum payloads. Return an owned value or use caller-owned backing. The bounded A1/B1 checks retain known local witnesses even with incomplete alternatives; general region lifetimes, B2 local-carrier composition and B3 request ownership remain separate work. |
 | `E0384` | unknown module alias | A qualified name's alias must be bound in this module by #load "FILE.coax" as NAME;. Aliases belong to the logical module that loads them. |
 | `E0385` | module has no such declaration | A qualified name sees only the declarations of the alias's module. Check the spelling, or load the module that declares it. |
 | `E0386` | ambiguous unqualified name | Two modules declare this name and the use's own module does not. Qualify it with the alias of the module you mean: alias.Name. |
@@ -192,6 +189,28 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0399` | query depends on the instance | size_of, type_info, field_info, enum_info and type_name of a type parameter (or a view of one) depend on the type each call binds, and generic instantiation is not supported yet. |
 | `E0387` | C cannot spell a module collision | Two modules may each declare a name, and their private C spellings are qualified. An #export_c or #foreign symbol, or a type in a C library header, is one global C name, so a collision there is refused, never merged. Rename one. |
 | `E0388` | alias is not reexported | alias.Name cannot name another module's alias. Load the module you mean here with its own alias. |
+
+## E08xx: generic structs
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `E0820` | invalid unit annotation | @unit takes all six literal metadata fields and annotates an empty nongeneric tag. Exponents are -8..8 and positive rational factors are 1..1048576. An annotation is checked metadata, not runtime storage. |
+| `E0821` | invalid quantity family or carrier | @builtin_quantity requires two parameters and a single value field of the second numeric parameter, with no default. Concrete units must carry @unit metadata; the initial carrier profile is f32 or f64. |
+| `E0822` | quantity units differ | Addition, subtraction and comparison require the same nominal unit. Write an explicit supported convert_unit(TargetUnit, value); equal dimensions do not imply an implicit conversion. |
+| `E0823` | quantity representations differ | Quantity arithmetic and scalar scaling use one f32 or f64 carrier. Convert the raw representation explicitly before constructing a different quantity carrier. |
+| `E0824` | quantity operator is outside the initial profile | The initial profile admits matching quantity addition/subtraction/comparison and dimensionless scalar scaling. Quantity products and quotients use checked derived units. Raw scalar divided by quantity, compound updates and affine/frame operators remain pending. |
+| `E0825` | invalid explicit quantity conversion | convert_unit takes a concrete declared target unit and one quantity with matching mass/length/time/angle dimensions. Initial conversions require concrete unit metadata. |
+| `E0826` | unit ratio needs a later rounding profile | The initial conversion profile admits only an exact power-of-two scale ratio. Normal representable results are exact; subnormal rounding and overflow follow carrier IEEE arithmetic. Other unit ratios are refused. |
+| `E0827` | quantity reflection is not in schema1 | Transparent quantities erase to scalar C carriers. Existing schema1 type_info/field_info records do not describe that semantic-to-physical relation; use size_of and type_name until versioned metadata is qualified. |
+| `E0828` | quantity device profile is unqualified | This initial quantity slice qualifies transparent scalar carriers on the C backend only. Metal, CUDA, SPIR-V and WGSL quantity output is explicitly refused until its own representation/ABI evidence exists. |
+| `E0829` | derived physical metadata is outside the profile | Each intermediate unit must have mass/length/time/angle exponents -8..8 and reduced rational scale factors 1..1048576. Exact cancellation happens before the scale bound. Convert operands explicitly when needed. |
+| `E0830` | invalid derived unit type expression | UnitOne takes no arguments; UnitProduct and UnitQuotient take two concrete unit types. These reserved forms are types, not runtime calls. Symbolic generic unit operands are a later profile. |
+| `E0831` | derived nominal unit expression is too complex | Canonical forms contain at most eight nominal atoms with nonzero powers from -2147483647 through 2147483647. Matching atoms cancel before the capacity check; no partial unit is admitted. |
+| `E0832` | invalid frame metadata or declaration | Declare one empty nongeneric frame tag with explicit handedness, convention, continuity and minimum precision. Optical is right-handed X-right/Y-down/Z-forward. |
+| `E0833` | invalid spatial type | Point3 and Vector3 require an admitted concrete frame, unit and f32/f64; points require length units and all coordinates meet the frame precision floor. |
+| `E0834` | spatial operation refused | Use the admitted affine point/vector operations with identical frame, unit and carrier. Only matching raw f32/f64 values scale vectors; transforms and implicit conversions are not provided. |
+| `E0835` | spatial reflection profile unavailable | Schema1 does not describe spatial semantics. Use size_of, physical layout or type_name until versioned frame metadata is qualified. |
+| `E0836` | spatial device profile unavailable | The initial Point3/Vector3 representation and operator profile is qualified only for native C. |
 
 ## E04xx: compile-time evaluation
 
@@ -263,9 +282,30 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0800` | generic struct without arguments | A type that names a generic struct gives an argument for each parameter: Pair(int), Box(f64, 4). A literal Pair.{a = 1, b = 2} deduces them from its fields instead. |
 | `E0801` | wrong number of struct arguments | A generic struct takes one argument for each parameter it lists: Box :: struct($T, $N) is written Box(int, 4). |
 | `E0802` | generic struct over a borrow | A generic struct holds fixed storage only. Binding a parameter to a view, or to a struct or array that holds one, would carry a borrow past the rule that a view does not outlive its array. Store the array itself, or an index into it. |
-| `E0803` | arguments on a type that takes none | Only a generic struct takes arguments. A builtin type, an enum or a struct without parameters is written by its name alone. |
+| `E0803` | arguments on a type that takes none | Type arguments require a generic struct or a compiler-owned parameterized family such as Result(T,E). Other builtin types, enums and structs without parameters are written by name alone. |
 | `E0804` | struct parameter not deduced | A literal of a generic struct deduces each parameter from a field given in it. Give a field that uses the parameter, or declare the variable's type: x: Pair(int) = Pair.{...}. |
 | `E0805` | unknown constraint | A type parameter's constraint is one of equatable (== and !=), ordered (also < <= > >=), numeric (also + - * / and integer literals) or copyable (assignment, which every coax0 type allows). A length parameter $N takes no constraint. |
 | `E0806` | binding outside a constraint | A call or instance gives a constrained parameter a type that does not meet its constraint. The error is at the use and names the generic declaration and the constraint. Ordered and numeric types are integers and floats; equatable types are scalars, strings and enums. |
 | `E0807` | instantiation failed | A generic body checked against its constraints can still fail for one instance, for example a literal too large for u8. The instance's errors come first; this one is at the call that made the instance and lists its bindings. |
 | `E0808` | misplaced constraint | A constraint is written once, where the parameter is bound: on its first $T in a procedure's parameters, or in a struct's parameter list. Elsewhere, and a second different constraint on one parameter, are refused. |
+
+## E09xx: tagged values and effect declarations
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `E0900` | invalid tagged type or Result containment | A nominal union has1 to64 unique alternatives. Result(T,E) has explicit success and non-void error types; a Result cannot be hidden transitively in another Result, optional, array, view, record or union in the initial handling profile. |
+| `E0901` | invalid active alternative constructor | Construct exactly one declared alternative with its checked payload, or a unit alternative with no payload. Result constructors spell both type arguments. |
+| `E0902` | tagged value needs valid construction | Union and Result values have no implicit default. Optional defaults to none. Explicit =--- is refused for all sums and by-value arrays or records containing them; supply a valid constructor. |
+| `E0903` | tagged payload needs elimination | A sum's payload cannot be read as an ordinary field. Use an exhaustive switch, try, or or_else so only the active alternative is accessed. |
+| `E0904` | invalid or nonexhaustive switch | Switch a union, Result, optional or enum and cover every alternative exactly once. Payload alternatives bind one immutable local; unit and enum cases bind none. There is no default, fallthrough or guarded case in this profile. |
+| `E0905` | propagation family or error type differs | try requires Result(T,E) inside a procedure returning Result(U,E), with the exact same nominal E, or T? inside a procedure returning U?. Map other families explicitly with switch. |
+| `E0906` | fallback has the wrong payload type | The lazy right side of or_else must have the success payload type. A unit success needs a void fallback expression. |
+| `E0907` | Result would leave without handling | Naming or assigning an error does not handle it. Consume or transfer each direct Result before every scope exit, including an implicit error return from try and a later failing call argument. |
+| `E0908` | Result has already transferred or cannot be reassigned | Direct Result bindings are immutable handling obligations. Transfer into a new local, direct Result parameter or return only once; the old binding cannot be read again. |
+| `E0909` | Result handling paths do not agree | Continuing branches must agree on pending and consumed Results. An outer Result cannot be consumed in a loop or captured by a deferred block in the initial structured-flow profile. |
+| `E0910` | optional has no valid context or operation | null needs an expected optional type. Wrap explicitly with some(value); there is no implicit payload-to-optional conversion, truthiness or arbitrary sum equality. |
+| `E0911` | inspection profile has no tagged-value records | The requested published inspection profile cannot describe sums, propagation or exhaustive switches. Use an explicitly sum-capable profile when available; no partial successful inventory or cached query is produced. |
+| `E0940` | invalid or unsupported effect declaration | Use one well-formed #pure or #effects declaration with unique known names. Before effect admission is enabled these annotations are explicitly refused rather than trusted. |
+| `E0941` | declared effect bound is exceeded | A concrete procedure's direct or transitive capability exceeds its declared upper bound. Inspect the original site and call path; include the capability or remove its effect. |
+| `E0942` | effect admission is incomplete | Unknown or unreviewed foreign behavior cannot satisfy a checked purity or effect contract. Supply matching explicit boundary evidence or keep the obligation visible. |
+| `E0943` | effect graph or workspace limit | Effect admission could not validate its complete bounded graph and scratch storage. No partial successful contract is published. |

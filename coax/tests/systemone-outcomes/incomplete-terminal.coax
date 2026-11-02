@@ -1,0 +1,4 @@
+#load "../../lib/systemone/outcomes.coax";
+bad :: (terminal:SoTerminal) {
+  switch terminal {case answered(reply) {}case refused(reply) {}case cancelled(reply) {}case not_connected(reply) {}}
+}

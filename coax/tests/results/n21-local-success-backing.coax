@@ -1,0 +1,7 @@
+// R2 check-first regression: literal expectation predates implementation.
+Error :: enum u8 {failed;}
+bad :: ()->Result([]u8,Error) {local:=[1]u8.[7];
+  // DIAGNOSTIC
+  return Result([]u8,Error).{ok=local[..]};
+}
+main :: () {}

@@ -1,0 +1,151 @@
+// Typed asynchronous adapter over the actual generation-checked owner. The
+// Result family and exhaustive switches are Coax language features. Destination
+// snapshot storage belongs to the caller and outlives every returned payload.
+#load "owner.coax";
+#authority;
+
+SoStartFailure :: enum u8 { unavailable; }
+SoTicketFailure :: enum u8 { stale; }
+SoSnapshotFailure :: enum u8 { stale; pending; capacity; }
+SoRequestPoll :: union { pending; ready; refused:SoTicketFailure; }
+SoTerminal :: union {
+  answered:SoResult;
+  refused:SoResult;
+  cancelled:SoResult;
+  not_connected:SoResult;
+  unknown:SoResult;
+}
+
+so_request_start :: (owner:[]SoOwnedCall,c:SoClient,body:string,out:[]u8,err:[]u8)->Result(int,SoStartFailure) {
+  ticket:=so_owned_start(owner,c,body,out,err);
+  if ticket==0 {return Result(int,SoStartFailure).{err=SoStartFailure.unavailable};}
+  return Result(int,SoStartFailure).{ok=ticket};
+}
+
+so_request_poll :: (owner:[]SoOwnedCall,ticket:int,wait_ms:int)->SoRequestPoll {
+  if owner.count<1 {return SoRequestPoll.{refused=SoTicketFailure.stale};}
+  if !so_owned_matches(owner[0].phase,owner[0].generation,ticket) {return SoRequestPoll.{refused=SoTicketFailure.stale};}
+  if so_owned_poll(owner,ticket,wait_ms) {return SoRequestPoll.{ready};}
+  return SoRequestPoll.{pending};
+}
+
+so_request_snapshot :: (owner:[]SoOwnedCall,ticket:int,body:[]u8,err:[]u8,problem:[]u8)->Result(SoTerminal,SoSnapshotFailure) {
+  if owner.count<1 {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.stale};}
+  if !so_owned_matches(owner[0].phase,owner[0].generation,ticket) {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.stale};}
+  if owner[0].phase!=SO_OWN_READY {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.pending};}
+  result:[1]SoResult;
+  if !so_owned_take(owner,ticket,result[..],body,err,problem) {return Result(SoTerminal,SoSnapshotFailure).{err=SoSnapshotFailure.capacity};}
+  reply:=result[0];
+  if reply.problem=="cancelled" {return Result(SoTerminal,SoSnapshotFailure).{ok=SoTerminal.{cancelled=reply}};}
+  // curl exit7 is the existing explicit no-connection observation. Other
+  // status0 outcomes remain unknown: no automatic retry is authorized by them.
+  if reply.status==0 {
+    if reply.problem=="the server is unreachable" {return Result(SoTerminal,SoSnapshotFailure).{ok=SoTerminal.{not_connected=reply}};}
+    return Result(SoTerminal,SoSnapshotFailure).{ok=SoTerminal.{unknown=reply}};
+  }
+  if reply.problem.count>0 {return Result(SoTerminal,SoSnapshotFailure).{ok=SoTerminal.{refused=reply}};}
+  return Result(SoTerminal,SoSnapshotFailure).{ok=SoTerminal.{answered=reply}};
+}
+
+so_request_cancel :: (owner:[]SoOwnedCall,ticket:int)->Result(void,SoTicketFailure) {
+  if !so_owned_cancel(owner,ticket) {return Result(void,SoTicketFailure).{err=SoTicketFailure.stale};}
+  return Result(void,SoTicketFailure).{ok};
+}
+so_request_discard :: (owner:[]SoOwnedCall,ticket:int)->Result(void,SoTicketFailure) {
+  if !so_owned_discard(owner,ticket) {return Result(void,SoTicketFailure).{err=SoTicketFailure.stale};}
+  return Result(void,SoTicketFailure).{ok};
+}
+
+
+
+#test "a stale owner is a handled nominal start failure" {
+  owner:[1]SoOwnedCall; owner[0].phase=SO_OWN_READY; owner[0].generation=1;
+  wire:[8]u8; err:[8]u8; client:SoClient;
+  switch so_request_start(owner[..],client,"{}",wire[..],err[..]) {
+    case ok(ticket) { #assert false; }
+    case err(failure) { #assert failure==SoStartFailure.unavailable; }
+  }
+}
+
+#forall "typed terminal snapshots preserve every byte and distinguish each outcome" kind:0..<5 {
+  owner:[1]SoOwnedCall; owner[0].generation=7; owner[0].phase=SO_OWN_READY;
+  owner[0].call[0].done=true;
+  owner[0].call[0].r=SoResult.{status=ifx kind<2 then (ifx kind==0 then 200 else 503) else 0,
+    body="reply",stderr="detail",problem=ifx kind==0 then "" else ifx kind==1 then "the API refused the request" else ifx kind==2 then "cancelled" else ifx kind==3 then "the server is unreachable" else "curl failed"};
+  body:[8]u8; err:[8]u8; problem:[64]u8;
+  switch so_request_poll(owner[..],7,0) {case pending {#assert false;}case ready {}case refused(failure) {#assert false;}}
+  observed:=0;
+  switch so_request_snapshot(owner[..],7,body[..],err[..],problem[..]) {
+    case err(failure) {#assert false;}
+    case ok(terminal) {
+      switch terminal {
+        case answered(reply) {observed=1;#assert reply.status==200 && reply.body=="reply" && reply.stderr=="detail" && reply.problem=="";}
+        case refused(reply) {observed=2;#assert reply.status==503 && reply.body=="reply" && reply.stderr=="detail" && reply.problem=="the API refused the request";}
+        case cancelled(reply) {observed=3;#assert reply.status==0 && reply.body=="reply" && reply.stderr=="detail" && reply.problem=="cancelled";}
+        case not_connected(reply) {observed=4;#assert reply.status==0 && reply.body=="reply" && reply.stderr=="detail" && reply.problem=="the server is unreachable";}
+        case unknown(reply) {observed=5;#assert reply.status==0 && reply.body=="reply" && reply.stderr=="detail" && reply.problem=="curl failed";}
+      }
+    }
+  }
+  #assert observed==kind+1 && owner[0].phase==SO_OWN_IDLE && owner[0].generation==7;
+  #assert cast(string)body[0..<5]=="reply" && cast(string)err[0..<6]=="detail";
+  switch so_request_discard(owner[..],7) {case ok {#assert false;}case err(failure) {#assert failure==SoTicketFailure.stale;}}
+}
+
+#test "typed pending stale and snapshot capacity failures are all handled" {
+  owner:[1]SoOwnedCall; body:[8]u8; err:[8]u8; problem:[8]u8;
+  switch so_request_poll(owner[..],0,0) {case pending {#assert false;}case ready {#assert false;}case refused(failure) {#assert failure==SoTicketFailure.stale;}}
+  switch so_request_snapshot(owner[..],0,body[..],err[..],problem[..]) {case ok(terminal) {#assert false;}case err(failure) {#assert failure==SoSnapshotFailure.stale;}}
+  owner[0].phase=SO_OWN_PENDING;owner[0].generation=1;
+  switch so_request_snapshot(owner[..],1,body[..],err[..],problem[..]) {case ok(terminal) {#assert false;}case err(failure) {#assert failure==SoSnapshotFailure.pending;}}
+  owner[0].phase=SO_OWN_READY;owner[0].call[0].r.body="too long for two";
+  for i:0..<8 {body[i]=91;err[i]=92;problem[i]=93;}
+  switch so_request_snapshot(owner[..],1,body[0..<2],err[..],problem[..]) {case ok(terminal) {#assert false;}case err(failure) {#assert failure==SoSnapshotFailure.capacity;}}
+  #assert owner[0].phase==SO_OWN_READY;
+  for i:0..<8 {#assert body[i]==91 && err[i]==92 && problem[i]==93;}
+  switch so_request_discard(owner[..],1) {case ok {}case err(failure) {#assert false;}}
+}
+
+#test "typed start and cancellation preserve setup ownership without host effects" {
+  owner:[1]SoOwnedCall;wire:[8]u8;err:[8]u8;body:[8]u8;error:[8]u8;problem:[64]u8;
+  switch so_request_start(owner[..],SoClient.{key_env="invalid!"},"{}",wire[..],err[..]) {
+    case err(failure) {#assert false;}
+    case ok(ticket) {#assert ticket==1 && owner[0].phase==SO_OWN_READY;}
+  }
+  switch so_request_cancel(owner[..],1) {case ok {}case err(failure) {#assert false;}}
+  switch so_request_cancel(owner[..],0) {case ok {#assert false;}case err(failure) {#assert failure==SoTicketFailure.stale;}}
+  switch so_request_snapshot(owner[..],1,body[..],error[..],problem[..]) {
+    case err(failure) {#assert false;}
+    case ok(terminal) {
+      switch terminal {
+        case answered(reply) {#assert false;}
+        case refused(reply) {#assert false;}
+        case cancelled(reply) {#assert false;}
+        case not_connected(reply) {#assert false;}
+        case unknown(reply) {#assert reply.problem=="key_env must be a plain variable name";}
+      }
+    }
+  }
+  empty:[]SoOwnedCall;
+  switch so_request_poll(empty,1,0) {case pending {#assert false;}case ready {#assert false;}case refused(failure) {#assert failure==SoTicketFailure.stale;}}
+  switch so_request_snapshot(empty,1,body[..],error[..],problem[..]) {case ok(terminal) {#assert false;}case err(failure) {#assert failure==SoSnapshotFailure.stale;}}
+  switch so_request_cancel(empty,1) {case ok {#assert false;}case err(failure) {#assert failure==SoTicketFailure.stale;}}
+}
+
+#test "even a one-byte terminal problem remains a refusal" {
+  owner:[1]SoOwnedCall;owner[0].phase=SO_OWN_READY;owner[0].generation=1;
+  owner[0].call[0].r=SoResult.{status=200,problem="x"};
+  body:[1]u8;error:[1]u8;problem:[1]u8;
+  switch so_request_snapshot(owner[..],1,body[..],error[..],problem[..]) {
+    case err(failure) {#assert false;}
+    case ok(terminal) {
+      switch terminal {
+        case answered(reply) {#assert false;}
+        case refused(reply) {#assert reply.status==200 && reply.problem=="x";}
+        case cancelled(reply) {#assert false;}
+        case not_connected(reply) {#assert false;}
+        case unknown(reply) {#assert false;}
+      }
+    }
+  }
+}

@@ -91,6 +91,7 @@ struct CtLocal {
 };
 
 struct CtFrame {
+  const ProcDecl *procedure = nullptr;
   std::vector<CtLocal> locals;
 
   CtLocal *find(Str name) {
@@ -99,6 +100,29 @@ struct CtFrame {
     return nullptr;
   }
 };
+
+struct ExprOutcome {
+  Value value;
+  bool returning = false;
+  ExprOutcome() = default;
+  ExprOutcome(Value v) : value(std::move(v)) {}
+  static ExprOutcome returned(Value v) { ExprOutcome r(std::move(v));r.returning=true;return r; }
+};
+struct PlaceOutcome {
+  Value *value = nullptr;
+  Value returned_value;
+  bool returning = false;
+  PlaceOutcome() = default;
+  PlaceOutcome(Value *v) : value(v) {}
+  PlaceOutcome(ExprOutcome r) : returned_value(std::move(r.value)),returning(r.returning) {}
+};
+// Operand return is explicit and local to this recursive evaluation. It never
+// uses Evaluator.failed or a process/frame-global pending-return flag.
+#define CT_EVAL(name, node) \
+  auto name##_outcome=expression((node),frame,allow_calls); \
+  if(name##_outcome.returning)return name##_outcome; \
+  if(failed)return {}; \
+  Value name=std::move(name##_outcome.value)
 
 // Keeps storage alive while a located element is in use.
 struct Holder {
@@ -238,7 +262,7 @@ struct Evaluator {
   // Every borrowed string in a value to be frozen becomes a snapshot.
   void own_text(Value &v) {
     if (v.type == &T_STRING) { if (v.agg) v = snapshot(v); return; }
-    if (is_aggregate(v.type) && v.agg)
+    if ((is_aggregate(v.type) || is_sum(v.type)) && v.agg)
       for (Value &e : *v.agg) { traverse(); own_text(e); }
   }
 
@@ -254,11 +278,49 @@ struct Evaluator {
     return result;
   }
 
+  Type payload_type(Type t, uint32_t tag, Loc loc) {
+    if(t->kind==TypeKind::result){if(tag<2)return tag==0?t->elem:t->sum_error;}
+    else if(t->kind==TypeKind::optional){if(tag<2)return tag==0?&T_VOID:t->elem;}
+    else if(t->kind==TypeKind::union_ && t->union_decl && tag<(uint32_t)t->union_decl->variants.count){
+      const auto &v=t->union_decl->variants[(int32_t)tag];if(v.ordinal==tag)return v.type;
+    }
+    err(loc,"E0401","invalid active sum tag during compile-time evaluation");return &T_INVALID;
+  }
+  bool valid_sum(const Value &v, Loc loc) {
+    Type p=payload_type(v.type,v.sum_tag,loc);if(failed)return false;
+    const size_t count=p==&T_VOID?0:1;
+    if((v.agg?v.agg->size():0)!=count || (count && (*v.agg)[0].type!=p)){
+      err(loc,"E0401","invalid active sum payload during compile-time evaluation");return false;
+    }
+    return true;
+  }
+  Value sum_value(Type t,uint32_t tag,Value payload,Loc loc) {
+    Value v;v.type=t;v.sum_tag=tag;Type p=payload_type(t,tag,loc);if(failed)return v;
+    if(p!=&T_VOID){if(payload.type!=p){err(loc,"E0401","sum payload disagrees with checked type");return v;}v.agg=storage();v.agg->push_back(std::move(payload));}
+    return v;
+  }
+
+  // Select the representation path, not defaultability/admission. Coax has
+  // already checked every by-value field; views do not inline their pointees.
+  std::map<Type,bool> inline_sum_cache;
+  bool inline_sum(Type t) {
+    auto found=inline_sum_cache.find(t);if(found!=inline_sum_cache.end())return found->second;
+    inline_sum_cache.emplace(t,false);
+    bool result=is_sum(t);
+    if(t->kind==TypeKind::array)result=inline_sum(t->elem);
+    else if(t->kind==TypeKind::struct_)for(const Field &field:t->struct_decl->fields)result=result || inline_sum(field.type);
+    inline_sum_cache[t]=result;return result;
+  }
+
   // The value of a declaration without an initializer: zero, or the
   // struct's field defaults. Arrays cost one step per element.
   Value zero(Type t, Loc loc) {
     Value v;
     v.type = t;
+    if (is_sum(t)) {
+      if(t->sum_default<0){err(loc,"E0401","nondefaultable sum reached compile-time initialization");return v;}
+      return sum_value(t,(uint32_t)t->sum_default,{},loc);
+    }
     if (t->kind == TypeKind::struct_) {
       StructDecl *d = t->struct_decl;
       field_defaults(d);
@@ -280,9 +342,10 @@ struct Evaluator {
 
   // Aggregates copy deeply; views and strings keep sharing what they borrow.
   Value clone(const Value &v, bool nested = false) {
-    if (nested || is_aggregate(v.type)) traverse();
+    if (nested || is_aggregate(v.type) || is_sum(v.type)) traverse();
+    if(is_sum(v.type) && !valid_sum(v,current_loc))return {};
     Value c = v;
-    if (is_aggregate(v.type) && v.agg) {
+    if ((is_aggregate(v.type) || is_sum(v.type)) && v.agg) {
       c.agg = storage();
       c.agg->reserve(v.agg->size());
       for (const Value &e : *v.agg) c.agg->push_back(clone(e, true));
@@ -292,7 +355,13 @@ struct Evaluator {
 
   // Assignment writes into existing storage, so views of it see the change.
   void assign_into(Value &dst, const Value &src, bool nested = false) {
-    if (nested || is_aggregate(dst.type)) traverse();
+    if (nested || is_aggregate(dst.type) || is_sum(dst.type)) traverse();
+    if(is_sum(dst.type)){
+      if(!valid_sum(dst,current_loc) || !valid_sum(src,current_loc))return;
+      if(dst.sum_tag==src.sum_tag && dst.agg && src.agg)assign_into((*dst.agg)[0],(*src.agg)[0],true);
+      else dst=clone(src);
+      return;
+    }
     if (is_aggregate(dst.type) && dst.agg && src.agg) {
       for (size_t i = 0; i < dst.agg->size(); i++) assign_into((*dst.agg)[i], (*src.agg)[i], true);
     } else {
@@ -312,9 +381,10 @@ struct Evaluator {
   }
 
   bool contains_view(const Value &v, bool nested = false) {
-    if (nested || is_aggregate(v.type) || v.type->kind == TypeKind::view) traverse();
+    if (nested || is_aggregate(v.type) || is_sum(v.type) || v.type->kind == TypeKind::view) traverse();
     if (v.type->kind == TypeKind::view) return true;
-    if (v.agg && is_aggregate(v.type))
+    if(is_sum(v.type) && !valid_sum(v,current_loc))return false;
+    if (v.agg && (is_aggregate(v.type) || is_sum(v.type)))
       for (const Value &e : *v.agg) if (contains_view(e, true)) return true;
     return false;
   }
@@ -325,6 +395,7 @@ struct Evaluator {
       err(loc, "E0409", "a compile-time result cannot contain a view; views borrow memory that exists only while compiling");
       return;
     }
+    if (failed) return;
     // Prepare all fallible ownership and aggregate copies before touching the
     // syntax node; a limit or host-allocation failure must leave it intact.
     Value *saved = nullptr;
@@ -460,10 +531,10 @@ struct Evaluator {
   }
 
   // Built-in math. f32 uses the float functions, as the generated C does.
-  Value math(const Expr *e, CtFrame &frame, bool allow_calls) {
-    double a = expr(e->args[0], frame, allow_calls).f, b = 0, c = 0;
-    if (!failed && e->args.count >= 2) b = expr(e->args[1], frame, allow_calls).f;
-    if (!failed && e->args.count == 3) c = expr(e->args[2], frame, allow_calls).f;
+  ExprOutcome math(const Expr *e, CtFrame &frame, bool allow_calls) {
+    CT_EVAL(first,e->args[0]);double a=first.f,b=0,c=0;
+    if (e->args.count >= 2) {CT_EVAL(second,e->args[1]);b=second.f;}
+    if (e->args.count == 3) {CT_EVAL(third,e->args[2]);c=third.f;}
     if (failed) return {};
     bool f32 = e->type == &T_F32;
     float x = (float)a, y = (float)b, z = (float)c;
@@ -546,7 +617,7 @@ struct Evaluator {
   // ---- places ----
 
   // The storage an expression names, or a temporary holding its value.
-  Value *locate(Expr *e, CtFrame &frame, Holder &h, bool allow_calls, CtLocal **root = nullptr) {
+  PlaceOutcome place(Expr *e, CtFrame &frame, Holder &h, bool allow_calls, CtLocal **root = nullptr) {
     if (!tick(e->loc)) return nullptr;
     switch (e->kind) {
       case ExprKind::ident: {
@@ -570,7 +641,7 @@ struct Evaluator {
       case ExprKind::ct_value: return e->ct;
       case ExprKind::field: {
         if (e->field_index < 0) break;
-        Value *base = locate(e->lhs, frame, h, allow_calls, root);
+        auto located=place(e->lhs,frame,h,allow_calls,root);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));Value *base=located.value;
         if (!base || failed) return nullptr;
         return &(*base->agg)[(size_t)e->field_index];
       }
@@ -580,13 +651,13 @@ struct Evaluator {
         Value *base = nullptr;
         Value view;
         if (lt->kind == TypeKind::view) {
-          view = expr(e->lhs, frame, allow_calls);
+          CT_EVAL(value,e->lhs);view=std::move(value);
           if (root) *root = nullptr;  // a view's elements are always initialized storage
         } else {
-          base = locate(e->lhs, frame, h, allow_calls, root);
+          auto located=place(e->lhs,frame,h,allow_calls,root);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));base=located.value;
         }
         if (failed) return nullptr;
-        Value iv = expr(e->rhs, frame, allow_calls);
+        CT_EVAL(iv,e->rhs);
         if (failed) return nullptr;
         int64_t i = index_value(iv);
         int64_t count = base ? lt->length : view.count;
@@ -602,12 +673,20 @@ struct Evaluator {
       default: break;
     }
     refund();  // expr() charges its own step
-    return h.temp(expr(e, frame, allow_calls));
+    CT_EVAL(value,e);return h.temp(std::move(value));
+  }
+
+  // Non-procedure entry points preserve the Value API and explicitly reject a
+  // malformed checked tree that tries to leave an absent current frame.
+  Value expr(Expr *e,CtFrame &frame,bool allow_calls){
+    auto r=expression(e,frame,allow_calls);
+    if(r.returning){err(e->loc,"E0401","compile-time propagation has no enclosing procedure");return {};}
+    return std::move(r.value);
   }
 
   // ---- expressions ----
 
-  Value expr(Expr *e, CtFrame &frame, bool allow_calls) {
+  ExprOutcome expression(Expr *e, CtFrame &frame, bool allow_calls) {
     if (!tick(e->loc)) return {};
     switch (e->kind) {
       case ExprKind::int_lit: case ExprKind::bool_lit: case ExprKind::enum_value:
@@ -620,16 +699,16 @@ struct Evaluator {
           // .count: an array's is its length; a view's or string's is stored.
           Type lt = e->lhs->type;
           if (lt->kind == TypeKind::array) {
-            if (has_call(e->lhs)) expr(e->lhs, frame, allow_calls);
+            if (has_call(e->lhs) || (e->lhs->effects & 8)) {CT_EVAL(ignored,e->lhs);}
             return scalar(T_INT, (uint64_t)lt->length);
           }
-          Value v = expr(e->lhs, frame, allow_calls);
+          CT_EVAL(v,e->lhs);
           return scalar(T_INT, (uint64_t)(lt == &T_STRING ? text_count(v) : v.count));
         }
         if (e->kind == ExprKind::index && e->lhs->type == &T_STRING) {
-          Value s = expr(e->lhs, frame, allow_calls);
+          CT_EVAL(s,e->lhs);
           if (failed) return {};
-          Value iv = expr(e->rhs, frame, allow_calls);
+          CT_EVAL(iv,e->rhs);
           if (failed) return {};
           int64_t i = index_value(iv);
           if (i < 0 || i >= text_count(s)) {
@@ -642,7 +721,7 @@ struct Evaluator {
         Holder h;
         CtLocal *root = nullptr;
         refund();
-        Value *v = locate(e, frame, h, allow_calls, &root);
+        auto located=place(e,frame,h,allow_calls,&root);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));Value *v=located.value;
         if (!v || failed) return {};
         if (root && !root->initialized) {
           err(e->loc, "E0405", "compile-time read of an uninitialized variable");
@@ -652,7 +731,7 @@ struct Evaluator {
       }
       case ExprKind::run: {
         CtFrame isolated;
-        Value value = expr(e->lhs, isolated, true);
+        auto result=expression(e->lhs,isolated,true);if(result.returning){err(e->loc,"E0401","compile-time propagation has no enclosing procedure");return {};}Value value=std::move(result.value);
         freeze(e, value, e->loc);
         return value;
       }
@@ -663,15 +742,15 @@ struct Evaluator {
         }
         if (e->byte_intrinsic != ByteIntrinsic::none) {
           if(e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {err(e->loc,"E0404","runtime storage overlap cannot execute at compile time");return {};}
-          Value a=expr(e->args[0],frame,allow_calls),r;r.type=e->type;
+          CT_EVAL(a,e->args[0]);Value r;r.type=e->type;
           if(e->byte_intrinsic == ByteIntrinsic::value_barrier){r.bits=a.bits;return r;}
           if(e->byte_intrinsic == ByteIntrinsic::mul_wide) {
-            Value b=expr(e->args[1],frame,allow_calls);
+            CT_EVAL(b,e->args[1]);
             unsigned __int128 product=(unsigned __int128)a.bits*b.bits;
             r=zero(e->type,e->loc);(*r.agg)[0].bits=(uint64_t)(product>>64);(*r.agg)[1].bits=(uint64_t)product;return r;
           }
           if(e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
-            Value b=expr(e->args[1],frame,allow_calls);
+            CT_EVAL(b,e->args[1]);
             unsigned width=e->type==&T_U32?32:64,k=(unsigned)(b.bits&(width-1));
             switch(e->byte_intrinsic) {
               case ByteIntrinsic::add_wrap:r.bits=a.bits+b.bits;break;
@@ -704,9 +783,9 @@ struct Evaluator {
           err(e->loc, "E0403", "compile-time call depth exceeds 64");
           return {};
         }
-        CtFrame callee;
+        CtFrame callee;callee.procedure=e->proc;
         for (int i = 0; i < e->args.count; i++) {
-          Value value = expr(e->args[i], frame, allow_calls);
+          CT_EVAL(value,e->args[i]);
           if (failed) return {};
           callee.locals.push_back({e->proc->params[i].name, std::move(value), true});
         }
@@ -730,19 +809,41 @@ struct Evaluator {
         calls.pop_back();
         return result;
       }
+      case ExprKind::sum:
+      case ExprKind::some: {
+        Value payload;if(e->lhs){CT_EVAL(value,e->lhs);payload=std::move(value);}
+        return sum_value(e->type,(uint32_t)e->sum_variant,std::move(payload),e->loc);
+      }
+      case ExprKind::null_:return sum_value(e->type,0,{},e->loc);
+      case ExprKind::try_: {
+        CT_EVAL(value,e->lhs);if(!valid_sum(value,e->loc))return {};
+        const uint32_t success=value.type->kind==TypeKind::optional?1:0;
+        if(value.sum_tag==success)return value.agg?clone((*value.agg)[0]):Value{};
+        if(!e->propagate_type || !frame.procedure || frame.procedure->ret!=e->propagate_type){
+          err(e->loc,"E0401","propagation target disagrees with checked current frame");return {};
+        }
+        Value payload=value.agg?clone((*value.agg)[0]):Value{};
+        return ExprOutcome::returned(sum_value(e->propagate_type,(uint32_t)e->sum_variant,std::move(payload),e->loc));
+      }
+      case ExprKind::or_else: {
+        CT_EVAL(value,e->lhs);if(!valid_sum(value,e->loc))return {};
+        const uint32_t success=value.type->kind==TypeKind::optional?1:0;
+        if(value.sum_tag==success)return value.agg?clone((*value.agg)[0]):Value{};
+        return expression(e->rhs,frame,allow_calls);
+      }
       case ExprKind::unary: {
-        Value a = expr(e->lhs, frame, allow_calls);
+        CT_EVAL(a,e->lhs);
         if (failed) return {};
         if (e->op == Tok::bang) return scalar(&T_BOOL, !a.bits);
         if (is_float(a.type)) return floating(a.type, -a.f);
         return int_op(Tok::minus, a.type, 0, a.bits, nullptr, e->loc);
       }
       case ExprKind::binary: {
-        Value a = expr(e->lhs, frame, allow_calls);
+        CT_EVAL(a,e->lhs);
         if (failed) return {};
         if (e->op == Tok::andand && !a.bits) return scalar(&T_BOOL, 0);
         if (e->op == Tok::oror && a.bits) return scalar(&T_BOOL, 1);
-        Value b = expr(e->rhs, frame, allow_calls);
+        CT_EVAL(b,e->rhs);
         if (failed) return {};
         Type t = a.type;
         switch (e->op) {
@@ -755,7 +856,11 @@ struct Evaluator {
           default: break;
         }
         bool result = false;
-        if (t == &T_STRING) {
+        if(t->kind==TypeKind::optional){
+          if(!valid_sum(a,e->loc) || !valid_sum(b,e->loc))return {};
+          result=a.sum_tag==b.sum_tag;
+          if(e->op==Tok::noteq)result=!result;
+        } else if (t == &T_STRING) {
           result = text_equal(a, b);
           if (e->op == Tok::noteq) result = !result;
         } else if (is_float(t)) {
@@ -783,21 +888,35 @@ struct Evaluator {
         return scalar(&T_BOOL, result);
       }
       case ExprKind::cast: {
-        Value v = expr(e->lhs, frame, allow_calls);
+        CT_EVAL(v,e->lhs);
         if (failed) return {};
         return do_cast(e, std::move(v));
       }
       case ExprKind::ifx: {
-        Value c = expr(e->lhs, frame, allow_calls);
+        CT_EVAL(c,e->lhs);
         if (failed) return {};
-        return expr(c.bits ? e->rhs : e->third, frame, allow_calls);
+        return expression(c.bits ? e->rhs : e->third, frame, allow_calls);
       }
       case ExprKind::struct_lit: {
-        Value v = zero(e->type, e->loc);
+        Value v;
+        if(!inline_sum(e->type))v=zero(e->type,e->loc);
+        else {
+          v.type=e->type;v.agg=storage();
+          StructDecl *decl=e->type->struct_decl;field_defaults(decl);
+          for(int32_t i=0;i<decl->fields.count;i++){
+            traverse();bool supplied=false;
+            for(const FieldInit &field:e->fields)if(field.field==i){supplied=true;break;}
+            const Field &field=decl->fields[i];
+            // A supplied field gets storage without constructing a default
+            // value. Its initializer is evaluated below, in authored order.
+            v.agg->push_back(supplied ? Value{} : field.init ? literal(field.init) : zero(field.type,e->loc));
+            if(failed)return {};
+          }
+        }
         for (const FieldInit &fi : e->fields) {
           if (failed) return {};
           traverse();
-          (*v.agg)[(size_t)fi.field] = expr(fi.value, frame, allow_calls);
+          CT_EVAL(value,fi.value);(*v.agg)[(size_t)fi.field]=std::move(value);
         }
         return v;
       }
@@ -808,7 +927,7 @@ struct Evaluator {
         for (Expr *a : e->args) {
           if (failed) return {};
           traverse();
-          v.agg->push_back(expr(a, frame, allow_calls));
+          CT_EVAL(value,a);v.agg->push_back(std::move(value));
         }
         return v;
       }
@@ -818,22 +937,22 @@ struct Evaluator {
         Value base;
         int64_t count = 0;
         if (lt->kind == TypeKind::array) {
-          Value *storage = locate(e->lhs, frame, h, allow_calls);
+          auto located=place(e->lhs,frame,h,allow_calls);if(located.returning)return ExprOutcome::returned(std::move(located.returned_value));Value *storage=located.value;
           if (!storage || failed) return {};
           base.type = e->type;
           base.agg = storage->agg;
           base.offset = 0;
           count = lt->length;
         } else {
-          base = expr(e->lhs, frame, allow_calls);
+          CT_EVAL(value,e->lhs);base=std::move(value);
           if (failed) return {};
           count = lt == &T_STRING ? text_count(base) : base.count;
         }
         int64_t lo = 0, hi = count;
         if (e->rhs) {
-          Value l = expr(e->rhs, frame, allow_calls);
+          CT_EVAL(l,e->rhs);
           if (failed) return {};
-          Value r = expr(e->third, frame, allow_calls);
+          CT_EVAL(r,e->third);
           if (failed) return {};
           lo = index_value(l);
           hi = index_value(r);
@@ -858,6 +977,12 @@ struct Evaluator {
 
   // ---- statements ----
 
+#define CT_STMT_EVAL(name, node) \
+  auto name##_outcome=expression((node),frame,true); \
+  if(name##_outcome.returning){*returned=std::move(name##_outcome.value);return Flow::ret;} \
+  if(failed)return Flow::normal; \
+  Value name=std::move(name##_outcome.value)
+
   Flow stmt(Stmt *s, CtFrame &frame, Value *returned) {
     if (!tick(s->loc)) return Flow::normal;
     switch (s->kind) {
@@ -874,13 +999,17 @@ struct Evaluator {
           if ((flow = stmt(child, frame, returned)) != Flow::normal) break;
         }
         // Cleanup runs in reverse registration order on every exit.
-        for (size_t i = deferred.size(); i-- > 0 && !failed;) stmt(deferred[i], frame, returned);
+        for (size_t i = deferred.size(); i-- > 0 && !failed;) {
+          Value ignored;
+          if(stmt(deferred[i],frame,&ignored)!=Flow::normal && !failed)
+            err(deferred[i]->loc,"E0401","control transfer in deferred cleanup");
+        }
         frame.locals.resize(mark);
         return flow;
       }
       case StmtKind::var: {
         Value value;
-        if (s->expr) value = expr(s->expr, frame, true);
+        if (s->expr) { CT_STMT_EVAL(initial,s->expr);value=std::move(initial); }
         else value = zero(s->type, s->loc);
         frame.locals.push_back({s->name, std::move(value), !s->uninit});
         return Flow::normal;
@@ -888,10 +1017,11 @@ struct Evaluator {
       case StmtKind::assign: {
         Holder h;
         CtLocal *root = nullptr;
-        Value *place = locate(s->target, frame, h, true, &root);
-        if (!place || failed) return Flow::normal;
-        Value value = expr(s->expr, frame, true);
-        if (failed) return Flow::normal;
+        auto located=this->place(s->target,frame,h,true,&root);
+        if(located.returning){*returned=std::move(located.returned_value);return Flow::ret;}
+        Value *place=located.value;
+        if(!place || failed)return Flow::normal;
+        CT_STMT_EVAL(value,s->expr);
         if (s->op != Tok::equal) {
           if (root && !root->initialized) {
             err(s->loc, "E0405", "compile-time read of an uninitialized variable");
@@ -910,27 +1040,42 @@ struct Evaluator {
         if (root) root->initialized = true;
         return Flow::normal;
       }
-      case StmtKind::expr: expr(s->expr, frame, true); return Flow::normal;
+      case StmtKind::expr: {CT_STMT_EVAL(ignored,s->expr);return Flow::normal;}
       case StmtKind::ret:
-        if (s->expr) *returned = expr(s->expr, frame, true);
+        if(s->expr){auto value=expression(s->expr,frame,true);*returned=std::move(value.value);}
         return Flow::ret;
       case StmtKind::break_: return Flow::brk;
       case StmtKind::continue_: return Flow::cont;
       case StmtKind::defer: return Flow::normal;  // registered by the enclosing block
       case StmtKind::assert_: {
-        Value condition = expr(s->expr, frame, true);
+        CT_STMT_EVAL(condition,s->expr);
         if (!failed && !condition.bits) err(s->loc, "E0406", "assertion failed");
         return Flow::normal;
       }
       case StmtKind::if_: {
-        Value condition = expr(s->expr, frame, true);
+        CT_STMT_EVAL(condition,s->expr);
         if (failed) return Flow::normal;
         if (condition.bits) return stmt(s->then_, frame, returned);
         return s->else_ ? stmt(s->else_, frame, returned) : Flow::normal;
       }
+      case StmtKind::switch_: {
+        CT_STMT_EVAL(value,s->expr);
+        uint64_t tag=value.bits;
+        if(is_sum(value.type)){if(!valid_sum(value,s->loc))return Flow::normal;tag=value.sum_tag;}
+        if(value.type->kind==TypeKind::enum_)tag=canon_bits(value.type->elem,tag);
+        for(SwitchCase *arm:s->cases) if((value.type->kind==TypeKind::enum_ ? canon_bits(value.type->elem,arm->tag_value) : arm->tag_value)==tag){
+          size_t mark=frame.locals.size();
+          if(arm->binding){
+            if(!is_sum(value.type) || !value.agg || value.agg->size()!=1){err(arm->loc,"E0401","invalid checked case payload");return Flow::normal;}
+            frame.locals.push_back({arm->binding->name,clone((*value.agg)[0]),true});
+          }
+          Flow flow=stmt(arm->body,frame,returned);frame.locals.resize(mark);return flow;
+        }
+        err(s->loc,"E0401","invalid checked switch tag");return Flow::normal;
+      }
       case StmtKind::while_:
         while (!failed) {
-          Value c = expr(s->expr, frame, true);
+          CT_STMT_EVAL(c,s->expr);
           if (failed || !c.bits) break;
           Flow f = stmt(s->then_, frame, returned);
           if (f == Flow::ret) return f;
@@ -938,9 +1083,9 @@ struct Evaluator {
         }
         return Flow::normal;
       case StmtKind::for_range: {
-        Value lo = expr(s->expr, frame, true);
+        CT_STMT_EVAL(lo,s->expr);
         if (failed) return Flow::normal;
-        Value hi = expr(s->expr2, frame, true);
+        CT_STMT_EVAL(hi,s->expr2);
         if (failed) return Flow::normal;
         Type t = s->type;
         size_t mark = frame.locals.size();
@@ -962,12 +1107,14 @@ struct Evaluator {
         Value collection;
         if (ct->kind == TypeKind::array) {
           // Arrays are iterated in place: writes by the body are seen by later iterations.
-          Value *a = locate(s->expr, frame, h, true);
-          if (!a || failed) return Flow::normal;
+          auto located=place(s->expr,frame,h,true);
+          if(located.returning){*returned=std::move(located.returned_value);return Flow::ret;}
+          Value *a=located.value;
+          if(!a || failed)return Flow::normal;
           storage = a->agg;
           count = ct->length;
         } else {
-          collection = expr(s->expr, frame, true);
+          CT_STMT_EVAL(value,s->expr);collection=std::move(value);
           if (failed) return Flow::normal;
           if (ct == &T_STRING) count = text_count(collection);
           else { storage = collection.agg; offset = collection.offset; count = collection.count; }
@@ -1014,6 +1161,7 @@ struct Evaluator {
     for (Stmt *child : s->body) fold_stmt(child);
     fold_stmt(s->then_);
     fold_stmt(s->else_);
+    for(SwitchCase *arm:s->cases)fold_stmt(arm->body);
   }
 
   bool run() {
@@ -1132,7 +1280,7 @@ struct Evaluator {
       uint32_t reason = FD_tuple({facts.data(), (int64_t)facts.size()}, cursor.index,
                                  {words.data(), (int64_t)words.size()});
       if (reason) { err(c->loc, "E0400", "invalid finite-domain traversal facts"); break; }
-      CtFrame frame;
+      CtFrame frame;frame.procedure=p;
       for (size_t i = 0; i < bound.size(); i++)
         frame.locals.push_back({p->params[(int32_t)i].name, scalar(bound[i].type, words[i]), true});
       Value ignored;
@@ -1245,3 +1393,6 @@ bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traverse
 }
 
 }  // namespace coax
+
+#undef CT_EVAL
+#undef CT_STMT_EVAL

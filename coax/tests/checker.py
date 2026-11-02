@@ -23,7 +23,9 @@ class Node(C.Structure):
     _fields_ += [('quantity',C.c_uint8),('unit',Unit),('unit_form',C.c_int64),('unit_link',C.c_int64),('unit_generated',C.c_bool),('frame_decl',C.c_bool),('frame',Frame),('spatial_link',C.c_int64),('lowering',C.c_uint8),('mutation_status',C.c_uint8),('mutation_op',C.c_uint32),('mutation_proc',C.c_int64)]
     _fields_ += [(n,C.c_int64) for n in ('borrow_binding','borrow_owner','borrow_writes','borrow_returns','borrow_calls','borrow_next')]+[('borrow_status',C.c_uint8),('borrow_query',C.c_int64)]
     _fields_ += [('retain_head',C.c_int64),('retain_count',C.c_int64),('retain_mark',C.c_uint8),('retain_incomplete',C.c_bool),('retain_relation',C.c_bool)]
-class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial),('retain_presence',C.c_uint8),('retain_mutable',C.c_uint8),('retain_fields',C.c_int64)]
+    _fields_ += [('effect_present',C.c_bool),('pure_decl',C.c_bool),('effect_head',C.c_int64),('effect_loc',Loc),('sum_variant',C.c_int64),('propagate_type',C.c_int64)]
+class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial),('retain_presence',C.c_uint8),('retain_mutable',C.c_uint8),('retain_fields',C.c_int64)]+[(n,C.c_int64) for n in ('sum_error','sum_payload_offset','sum_default')]
+class Caps(C.Structure):_fields_=[(n,C.c_int64) for n in ('nodes','types','locals','errors','bytes','result_work')]
 class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool),('decl',C.c_int64)]
 class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('used','type_count','composite_count','local_count','byte_count','error_count','current','constant_depth','loop_depth','defer_depth','unevaluated')]+[('basic',C.c_bool),('depth',C.c_int64),('fatal',C.c_bool),('metal_depth',C.c_int64),('clashes',C.c_int64),('generic',C.c_int64),('site',C.c_uint8),('instances',C.c_int64),('instance_tail',C.c_int64),('instance_count',C.c_int64),('quantity_device',C.c_bool),('unit_units',C.c_int64),('spatial_types',C.c_int64),('spatial_helpers',C.c_int64),('retain_report_count',C.c_int64)]
@@ -39,10 +41,10 @@ class BorrowCaps(C.Structure):_fields_=[('queries',C.c_int64),('origins',C.c_int
 class RetainEffect(C.Structure):_fields_=[('source',BorrowOrigin),('destination',BorrowOrigin),('value_type',C.c_int64),('witness',C.c_int64),('next',C.c_int64),('source_storage',C.c_bool)]
 class RetainObservation(C.Structure):_fields_=[('kind',C.c_uint8),('owner',C.c_int64),('site',C.c_int64),('facts_complete',C.c_bool),('relation_complete',C.c_bool),('forbidden',C.c_bool),('pending',C.c_int64)]
 class RetainCaps(C.Structure):_fields_=[('effects',C.c_int64),('reports',C.c_int64),('work',C.c_int64)]
-class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export)),('borrow_queries',PS.view(BorrowQuery)),('borrow_origins',PS.view(BorrowOrigin)),('retain_effects',PS.view(RetainEffect)),('retain_reports',PS.view(RetainObservation))]
+class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export)),('borrow_queries',PS.view(BorrowQuery)),('borrow_origins',PS.view(BorrowOrigin)),('retain_effects',PS.view(RetainEffect)),('retain_reports',PS.view(RetainObservation)),('result_work',PS.view(C.c_int64))]
 
 def transport_records():
-    return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_SP_Frame',Frame),('coax_t_SP_Type',Spatial),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_BS_Step',BorrowStep),('coax_t_BS_Path',BorrowPath),('coax_t_BS_Origin',BorrowOrigin),('coax_t_CK_BorrowQuery',BorrowQuery),('coax_t_CK_BorrowCaps',BorrowCaps),('coax_t_CK_RetainEffect',RetainEffect),('coax_t_CK_RetainObservation',RetainObservation),('coax_t_CK_RetainCaps',RetainCaps),('coax_t_CK_Context',Context)]
+    return [('coax_t_CK_Loc',Loc),('coax_t_Q_Unit',Unit),('coax_t_SP_Frame',Frame),('coax_t_SP_Type',Spatial),('coax_t_CK_Node',Node),('coax_t_CK_Type',Type),('coax_t_CK_Local',Local),('coax_t_CK_Error',Error),('coax_t_CK_State',State),('coax_t_CK_Options',Options),('coax_t_CK_Alias',Alias),('coax_t_CK_Export',Export),('coax_t_BS_Step',BorrowStep),('coax_t_BS_Path',BorrowPath),('coax_t_BS_Origin',BorrowOrigin),('coax_t_CK_BorrowQuery',BorrowQuery),('coax_t_CK_BorrowCaps',BorrowCaps),('coax_t_CK_RetainEffect',RetainEffect),('coax_t_CK_RetainObservation',RetainObservation),('coax_t_CK_RetainCaps',RetainCaps),('coax_t_CK_Context',Context),('coax_t_CK_Caps',Caps)]
 
 class TransportABI(unittest.TestCase):
     def test_generated_seed_headers_match_ctypes(self):
@@ -58,12 +60,14 @@ class Checker(unittest.TestCase):
         PS.Parser.setUpClass();cls.parser=PS.Parser('test_admission_and_names')
         cls.tmp=tempfile.TemporaryDirectory(prefix='coax-checker-');cls.d=Path(cls.tmp.name)
         cls.source=cls.d/'checker.c';cls.header=cls.d/'checker.h'
-        cls.source.write_bytes(LX.checked([ROOT/'bin/coax','c',ROOT/'lib/compiler/checker.coax','--library','--header',cls.header]))
+        compiler=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax'))
+        cls.source.write_bytes(LX.checked([compiler,'c',ROOT/'lib/compiler/checker.coax','--library','--header',cls.header]))
         PS.assert_native_layouts(cls.header,transport_records())
         LX.checked([os.environ.get('CC','cc'),'-std=c11','-O1','-shared','-fPIC',cls.source,'-lm','-o',cls.d/'checker.dylib'])
         cls.lib=C.CDLL(str(cls.d/'checker.dylib'))
         cls.lib.CK_meta_capacity.argtypes=[Context._fields_[0][1],C.c_int64];cls.lib.CK_meta_capacity.restype=C.c_int64
         cls.lib.CK_run.argtypes=[Context,C.c_int64,Options];cls.lib.CK_run.restype=C.c_bool
+        cls.lib.CK_caps.argtypes=[C.c_int64,C.c_int64];cls.lib.CK_caps.restype=Caps
         cls.lib.CK_borrow_caps.argtypes=[C.c_int64];cls.lib.CK_borrow_caps.restype=BorrowCaps
         cls.lib.CK_retain_caps.argtypes=[C.c_int64];cls.lib.CK_retain_caps.restype=RetainCaps
         cls.lib.CM_float.argtypes=[C.c_uint32,C.c_uint64,C.c_uint64];cls.lib.CM_float.restype=C.c_uint64
@@ -75,11 +79,11 @@ class Checker(unittest.TestCase):
         result,parsed,s,msg,keep=self.parser.parse(source);self.assertTrue(result.ok,msg)
         n=s.used+1;nodes=(Node*(n*3+16))();types=(Type*(n*3+16))();locals_=(Local*(n+16))();errors=(Error*(n*8+16))();storage=(C.c_uint8*(len(source)*8+n*512+4096))();state=(State*1)()
         for i in range(n):
-            v=parsed[i];x=nodes[i];x.field_index=-1
+            v=parsed[i];x=nodes[i];x.field_index=-1;x.sum_variant=-1
             for field,T in PS.Node._fields_:
                 if field in ('width','end'):continue
                 value=getattr(v,field)
-                if field in ('loc','loc2'):value=Loc(value.line,value.column,value.offset)
+                if field in ('loc','loc2','effect_loc'):value=Loc(value.line,value.column,value.offset)
                 if field=='floating':value=struct.unpack('Q',struct.pack('d',value))[0]
                 if field=='unit':value=Unit(*value.e)
                 if field=='frame':value=Frame(*value.e)
@@ -98,8 +102,10 @@ class Checker(unittest.TestCase):
         ctx.borrow_queries=context_views['borrow_queries'](queries,len(queries));ctx.borrow_origins=context_views['borrow_origins'](origins,len(origins))
         retain_caps=self.lib.CK_retain_caps(n);effects=(RetainEffect*retain_caps.effects)()
         ctx.retain_effects=context_views['retain_effects'](effects,len(effects));ctx.retain_reports=context_views['retain_reports']()
+        caps=self.lib.CK_caps(n,len(source));result_work=(C.c_int64*caps.result_work)()
+        ctx.result_work=context_views['result_work'](result_work,len(result_work))
         ok=self.lib.CK_run(ctx,n-1,Options(True,metal,parsed[1].flag,quantity_device))
-        return ok,nodes,types,errors,state[0],(keep,parsed,*arrays,queries,origins,effects)
+        return ok,nodes,types,errors,state[0],(keep,parsed,*arrays,queries,origins,effects,result_work)
     def test_independent_layout_and_constant_typing(self):
         source='S :: struct {a:u8;b:int;c:[3]u16;} E :: enum s8 {a= -128;b;} f :: ()->u8 {return 2*3+1;}'
         ok,n,t,e,s,owners=self.check(source);self.assertTrue(ok)

@@ -1,0 +1,78 @@
+// Synchronous bounded read with typed errors and one close attempt per acquired
+// descriptor on ordinary exits. Legacy fs_read is a separate, unchanged API.
+// Output is unspecified on error. Only count bytes of a successful result may
+// be read. A full output uses a separate owned byte to distinguish exact fit.
+// Callers supply live disjoint views and exclusive descriptor ownership; no
+// concurrent close/dup2, callbacks, cancellation or longjmp crosses this frame.
+// Fatal traps/abnormal termination retain Coax's no-normal-cleanup contract.
+#load "file-policy.coax";
+FrError :: union {invalid_path:FrDetail;wrong_kind:FrDetail;capacity:FrDetail;descriptor:FrDetail;posix:FrDetail;}
+// error is meaningful only when secondary is true. An unconfirmed release
+// retires adapter authority, without asserting that the kernel closed the fd.
+FrCleanup :: struct {attempted:bool;confirmed:bool;secondary:bool;error:FrError=FrError.{descriptor=FrDetail.{domain=2,code=4,operation=FrOp.close}};}
+cxfr_open :: (path:[]u8)->int #foreign;
+cxfr_stat :: (fd:int,metadata:[]int)->int #foreign;
+cxfr_read :: (fd:int,out:[]u8)->int #foreign;
+cxfr_close :: (fd:int)->int #foreign;
+
+fr_error :: (d:FrDecision)->FrError {
+ switch d.fault {
+  case FrFault.invalid_path {return FrError.{invalid_path=d.error};}
+  case FrFault.wrong_kind {return FrError.{wrong_kind=d.error};}
+  case FrFault.capacity {return FrError.{capacity=d.error};}
+  case FrFault.descriptor {return FrError.{descriptor=d.error};}
+  case FrFault.posix {return FrError.{posix=d.error};}
+  case FrFault.none {#assert false;return FrError.{descriptor=fr_problem(FrFault.descriptor,FrOp.none).error};}
+ }
+}
+fr_error_detail :: (error:FrError)->FrDetail {
+ switch error {
+  case invalid_path(e) {return e;}
+  case wrong_kind(e) {return e;}
+  case capacity(e) {return e;}
+  case descriptor(e) {return e;}
+  case posix(e) {return e;}
+ }
+}
+fr_take :: (d:FrDecision)->Result(int,FrError) {
+ if d.fault==FrFault.none {return Result(int,FrError).{ok=d.value};}return Result(int,FrError).{err=fr_error(d)};
+}
+fr_unit :: (d:FrDecision)->Result(void,FrError) {
+ if d.fault==FrFault.none {return Result(void,FrError).{ok};}return Result(void,FrError).{err=fr_error(d)};
+}
+fr_acquire :: (path:string)->Result(int,FrError) {
+ try fr_unit(fr_path_policy(path));
+ bytes:[FR_PATH_MAX]u8;for i:0..<path.count {bytes[i]=path[i];}
+ return fr_take(fr_open_policy(cxfr_open(bytes[0..<path.count])));
+}
+fr_check_file :: (fd:int)->Result(void,FrError) {
+ metadata:[2]int;raw:=cxfr_stat(fd,metadata[..]);return fr_unit(fr_stat_policy(raw,metadata[0],metadata[1]));
+}
+fr_close_file :: (fd:int)->Result(void,FrError) {return fr_unit(fr_close_policy(cxfr_close(fd)));}
+fr_read_file :: (path:string,out:[]u8,cleanup:[]FrCleanup)->Result(int,FrError) {
+ try fr_unit(fr_extent_policy(out.count,cleanup.count));cleanup[0]=FrCleanup.{};
+ armed:=false;fd:=try fr_acquire(path);
+ defer {
+  if armed {
+   held:=fd;fd= -1;armed=false;cleanup[0].attempted=true;
+   switch fr_close_file(held) {
+    case ok {cleanup[0].confirmed=true;}
+    case err(error) {cleanup[0].secondary=true;cleanup[0].error=error;}
+   }
+  }
+ }
+ armed=true;
+ try fr_check_file(fd);
+ used:=0;done:=false;probe:[1]u8;
+ while !done {
+  window:=fr_window_policy(used,out.count);try fr_unit(window.decision);raw:=0;
+  if window.probe {raw=cxfr_read(fd,probe[..]);}
+  else {raw=cxfr_read(fd,out[window.offset..<window.offset+window.count]);}
+  n:=try fr_take(fr_read_policy(raw,window.count,window.probe));
+  if n==0 {done=true;}else {used+=n;}
+ }
+ // Retire before close: even an ambiguous close error never re-arms cleanup.
+ held:=fd;fd= -1;armed=false;cleanup[0].attempted=true;
+ try fr_close_file(held);cleanup[0].confirmed=true;
+ return Result(int,FrError).{ok=used};
+}

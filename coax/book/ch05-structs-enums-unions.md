@@ -10,12 +10,11 @@ named fields into one value. An *enum* names a fixed set of choices. A
 we'll look at how each one is laid out in memory, because in Coax that
 layout is part of the type's meaning, not an accident of the compiler.
 
-> Note: Structs and enums run on the current `coax0`, and every program in this
-> chapter that prints something has its output checked. Unions, `switch`,
-> `using`, `enum_flags` and `#derive` are planned: `coax0` reserves those
-> words and refuses them with error `E0204` (or `E0210` for `#derive`).
-> Where the chapter shows them, it says so, and it shows what you write
-> today instead. The book's copy of each program is in
+> Native C supports structs, enums, nominal tagged unions and exhaustive
+> `switch`. This chapter compares explicit tag records with language-level
+> unions. `using`, `enum_flags` and `#derive` remain planned and are refused.
+> Every program that prints something has its output checked.
+> The book's copy of each program is in
 > `coax/book/examples/`, with a `ch05_` prefix: `ship.coax` below is
 > `examples/ch05_ship.coax`.
 
@@ -115,9 +114,11 @@ runs. Inside the braces, each field is `name: type;`. Structs live at the top
 level of a file, like procedures, and they can be declared in any order:
 `Entity` could come before `Vec2` and the program would mean the same thing.
 
-`Entity` has fields whose types are other structs. A struct's fields can be
-any type Coax has: numbers, bools, strings, enums, other structs, fixed
-arrays and views (Chapter 6).
+`Entity` has fields whose types are other structs. Supported field types
+include numbers, bools, strings, enums, other structs, fixed arrays and
+views (Chapter 6), plus nominal unions and optionals. The initial Result
+profile permits direct locals, parameters and returns, and refuses Result
+inside record fields or other containers.
 
 `Entity.{ pos = ..., vel = ..., health = 100 }` is a *struct literal*. It
 starts with the type's name, then `.{`, then `field = value` for the fields
@@ -232,12 +233,15 @@ A field can have a default after its type: `health: s32 = MAX_HEALTH;`. The
 default can be a literal, a constant, or another struct literal, as `vel`
 shows.
 
-The rule for a new struct value is: every field gets its declared default,
-and every field without one gets zero. That's true whether you declare a
-variable with no initializer (`a: Entity;`) or write a literal that only
-names some fields (`Entity.{health = 40}`). A literal starts from the
-defaults and then overwrites the fields it names. `Entity.{}` is a valid
-literal that means "all the defaults".
+For this record, omitted fields get their declared defaults, or zero when
+none is declared. That's true whether you declare a variable with no
+initializer (`a: Entity;`) or write a literal that only names some fields
+(`Entity.{health = 40}`). `Entity.{}` means "all the defaults".
+Tagged unions have no implicit default alternative: a record containing one
+must provide it, or declare an explicit valid field default. An optional
+instead defaults to none. These requirements propagate through by-value
+records and arrays; [the tagged-value contract](https://github.com/OpenAgentsInc/openagents/blob/main/coax/results.md)
+defines the exact profile.
 
 This is why we say *default initialized* rather than *zeroed*. In Listing
 5-3, `target` starts at `-1` and `vel` starts pointing down, and neither is
@@ -250,7 +254,9 @@ nothing is zeroed. The fields hold whatever was in that memory before. It's
 for the rare case where you're about to overwrite every field anyway and
 have measured that the initialization costs something. Reading a field of
 `d` you haven't written is a bug that `coax0` doesn't catch at run time, so
-use `---` sparingly.
+use `---` sparingly. It is refused for every sum and for records or arrays
+containing sums, including optionals; uninitialized memory cannot invent a
+valid tag.
 
 ### Structs are values
 
@@ -717,18 +723,9 @@ which never leaves the program, can use the defaults.
 ## Matching on an enum
 
 Most code that holds an enum wants to do something different for each
-member. Many languages have a `switch` or `match` statement for this. Coax
-plans one, but `coax0` doesn't have it:
-
-```jai
-sw.coax:4:3: error[E0204]: 'switch' is reserved and not supported by coax0 yet
-    switch k {
-    ^
-1 error
-```
-
-Today we match with `if`/`else if` chains and `ifx`. Let's give each kind of
-entity a collision radius and a description.
+member. Coax supports exhaustive `switch`. First compare an ordinary
+`if`/`else if` chain and `ifx`; then we'll make coverage a compiler rule.
+Let's give each kind of entity a collision radius and a description.
 
 Filename: match.coax
 
@@ -791,7 +788,7 @@ rare.
 The bigger problem with an `if` chain is that nothing tells you when it's
 incomplete. Add a `mine` member to `Kind` next month and `radius` will
 quietly return 0 for every mine. A `switch` that has to cover every member
-would catch that at compile time. Until Coax has one, the `#forall` block at
+catches that at compile time. For the `if` version, the `#forall` block at
 the bottom of Listing 5-7 does the job. `#forall k: Kind` runs its body once
 for every member of `Kind`, while compiling, and `#assert radius(k) > 0`
 fails if any member falls through to the `return 0`. `coax run` doesn't run
@@ -831,23 +828,24 @@ shot". Choose the final `else` with that in mind.
 > and a `#forall state: Pay, e: Event, sends: 0..<2` check walks every state
 > and event pair to prove things like "a payment is never sent twice".
 
-### What `switch` will look like
+### Exhaustive `switch`
 
-> Note: The spec plans an exhaustive `switch` but doesn't fix its syntax
-> yet. Something like this, which `coax0` does not accept:
->
-> ```jai
-> radius :: (k: Kind) -> f32 {
->   switch k {
->     case .ship:   return 1.5;
->     case .rock:   return 4;
->     case .bullet: return 0.25;
->   }
-> }
-> ```
->
-> A `switch` on an enum must handle every member or say `case else`, so
-> adding `mine` turns every incomplete `switch` into a compile error.
+The runnable `examples/ch05_tagged.coax` uses qualified enum members and
+braced case bodies:
+
+```jai
+radius :: (k:Kind)->f32 {
+  switch k {
+    case Kind.ship { return 1.5; }
+    case Kind.rock { return 4; }
+    case Kind.bullet { return 0.25; }
+  }
+}
+```
+
+Every member must appear exactly once. There is no default case or
+fallthrough. Adding `mine` makes an incomplete switch a compile error;
+returning from every case makes the procedure complete.
 
 ## Flags
 
@@ -933,16 +931,7 @@ height.
 
 This is what a union is for, and Coax's design makes unions *tagged*: the
 value records which alternative it holds, and the language won't let you
-read the wrong one. `coax0` doesn't have unions yet:
-
-```jai
-un.coax:2:10: error[E0204]: 'union' is reserved and not supported by coax0 yet
-  Shape :: union { circle: f32; box: Vec2; }
-           ^
-1 error
-```
-
-What we can write today is the same idea by hand: an enum for the tag, and
+read the wrong one. First write the idea by hand: an enum for the tag, and
 a struct that holds the tag and the fields for every alternative.
 
 Filename: shapes.coax
@@ -1038,45 +1027,42 @@ Shape  size 16  align 4
 A `Shape` is 16 bytes, but a circle only uses `kind` and `radius`, and a
 box only uses `kind` and `half`. Every circle carries a box's worth of dead
 space, and every new alternative adds its fields to every shape. A real
-union would overlap the alternatives, so a `Shape` would be the tag plus the
+union overlaps the alternatives, so a `Shape` is the tag plus the
 largest alternative, which with natural alignment would be 12 bytes here. With two small alternatives, the
 hand-written form is fine. With many alternatives of different sizes, the
-waste adds up, and that's one of the reasons unions are on the plan.
+waste adds up, and that's one reason to use a tagged union.
 
 The other cost is that the discipline lives in comments and in `#assert`s
 that run at run time. Nothing at compile time stops a new procedure from
 reading `s.radius` without testing `s.kind`.
 
-### Planned: tagged unions
+### Tagged unions
 
-> Note: This is the planned design, and the syntax may change before
-> `coax0` implements it.
->
-> ```jai
-> Shape :: union {
->   circle: struct { radius: f32; };
->   box:    struct { half: Vec2; };
-> }
->
-> area :: (s: Shape) -> f32 {
->   switch s {
->     case .circle: (c) { return 3.14159 * c.radius * c.radius; }
->     case .box:    (b) { return 4 * b.half.x * b.half.y; }
->   }
-> }
-> ```
->
-> A Coax `union` records which alternative it holds. The only way to read an
-> alternative is a `switch` case that binds it (`(c)` above), so reading the
-> wrong one can't be written. The `switch` must handle every alternative or
-> say `case else`, so adding a third shape turns every `area`-like
-> procedure that forgot it into a compile error.
->
-> This differs from C and Jai, where a plain `union` overlays storage and
-> the program tracks the active member itself. Overlapping raw storage has
-> real uses, such as reinterpreting the bits of a float. If Coax adds it,
-> it will be a separate, visibly unsafe form, and the safe tagged form stays
-> the one you get by writing `union`.
+The complete `examples/ch05_tagged.coax` replaces the record with:
+
+```jai
+Shape :: union { circle:f32; box:Vec2; point; }
+
+area :: (s:Shape)->f32 {
+  switch s {
+    case circle(r) { return 3.14159*r*r; }
+    case box(half) { return 4*half.x*half.y; }
+    case point { return 0; }
+  }
+}
+```
+
+Construct `Shape.{circle=2}`, `Shape.{box=Vec2.{x=1,y=2}}` or the unit
+alternative `Shape.{point}`. There is no implicit default alternative.
+Only an exhaustive case exposes its immutable payload binding. Adding a
+fourth shape makes incomplete switches fail at compile time. A malformed
+runtime tag traps.
+
+The native LP64 layout uses a u32 tag followed by the maximally aligned
+payload, with overall padding. It does not promise a foreign union ABI.
+The first profile allows 1–64 alternatives and refuses generic union
+declarations. See [the complete profile](https://github.com/OpenAgentsInc/openagents/blob/main/coax/results.md).
+Raw overlapping storage and unsafe reinterpretation remain separate work.
 
 ## Composition with `using` (planned)
 
@@ -1146,11 +1132,10 @@ make.
 Enums name a fixed set of choices with a declared integer width. They
 compare only with `==` and `!=`, convert to numbers only with a cast, and
 convert back only through a check that traps on non-members in every build.
-Values that leave the program are written out explicitly. Until `switch`
-arrives, we match with `if` chains and use `#forall` to prove that every
-member is handled. Flags are typed bit constants today and `enum_flags`
-later. Tagged data is a tag plus fields, guarded by constructors and
-asserts, until tagged unions arrive.
+Values that leave the program are written out explicitly. Exhaustive
+`switch` checks member coverage; `#forall` also checks the behavior of each
+case. Flags are typed bit constants today and `enum_flags` later. Tagged
+unions store one alternative and expose its payload only inside a case.
 
 Several of these types held arrays, views and strings without our looking
 closely at what those are. That's the subject of Chapter 6: where values live

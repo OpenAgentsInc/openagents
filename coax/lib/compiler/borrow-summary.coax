@@ -4,7 +4,7 @@
 #authority;
 BS_STATIC :: cast(u8)1; BS_LOCAL :: cast(u8)2; BS_PARAMETER :: cast(u8)3;
 BS_INLINE :: cast(u8)1; BS_DESCRIPTOR :: cast(u8)2;
-BS_FIELD :: cast(u8)1; BS_ELEMENT :: cast(u8)2; BS_DEREFERENCE :: cast(u8)3;
+BS_FIELD :: cast(u8)1; BS_ELEMENT :: cast(u8)2; BS_DEREFERENCE :: cast(u8)3; BS_VARIANT :: cast(u8)4;
 BS_MAX_SET :: 64; BS_MAX_BINDINGS :: 64; BS_MAX_POOL :: 256; BS_MAX_PATH :: 8; BS_MAX_WORK :: 128;
 BS_Status :: enum u8 {ok;invalid;unknown;capacity;work;}
 BS_Step :: struct {kind:u8;index:int;}
@@ -24,7 +24,7 @@ BS_Result :: struct {status:BS_Status;count:int;}
 
 #forall "logical path vocabulary and depth are bounded" depth:0..<10,kind:0..<5,index:-1..<2 {
  p:BS_Path;p.count=depth;for i:0..<8 {if i<depth {p.steps[i]=BS_Step.{kind=cast(u8)kind,index=index};}}
- want:=depth<=8 && (depth==0 || ((kind==1 || kind==2) && index>=0) || (kind==3 && index==0));
+ want:=depth<=8 && (depth==0 || ((kind==1 || kind==2 || kind==4) && index>=0) || (kind==3 && index==0));
  #assert BS_path_valid(p)==want;
 }
 #forall "inactive logical path fields must be zero" position:0..<8,field:bool {
@@ -191,6 +191,7 @@ BS_path_valid :: (path:BS_Path)->bool #export_c {
  for i:0..<BS_MAX_PATH {
   step:=path.steps[i];
   if i>=path.count {if step.kind!=0 || step.index!=0 {return false;}}
+  else if step.kind==BS_VARIANT {if step.index<0 || step.index>=64 {return false;}}
   else if step.kind==BS_FIELD || step.kind==BS_ELEMENT {if step.index<0 || step.index>2147483647 {return false;}}
   else if step.kind!=BS_DEREFERENCE || step.index!=0 {return false;}
  }
@@ -296,4 +297,10 @@ BS_substitute :: (summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Bindin
   }
  }
  return bs_commit(staging[..],used,out);
+}
+
+#forall "sum variant projections are canonical and distinct from record fields" ordinal: -1..<65 {
+ p:=BS_Path.{count=1};p.steps[0]=BS_Step.{kind=BS_VARIANT,index=ordinal};
+ #assert BS_path_valid(p)==(ordinal>=0 && ordinal<64);
+ if ordinal>=0 && ordinal<64 {a:=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=12,path=p};b:=a;b.path.steps[0].kind=BS_FIELD;out:[2]BS_Origin;left:=[1]BS_Origin.[a];right:=[1]BS_Origin.[b];r:=BS_union(left[..],true,right[..],true,out[..]);#assert r.status==BS_Status.ok && r.count==2;}
 }

@@ -34,7 +34,7 @@ if [[ ! -x "$bin" || -n "$(find "$src" "$repo/coax/lib" "$p" "$repo/coax/bin/coa
   "$repo/coax/bin/coax" c "$src" --library > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
   "${cc[@]}" -std=c11 -O2 -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
-    "$p/store-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
+    "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
   mv -f "$work/$name" "$bin"; rm -rf "$work"; trap - EXIT
 fi
 exec "$bin" "$@"

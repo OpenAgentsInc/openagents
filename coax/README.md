@@ -1,7 +1,7 @@
 # Coax
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
 
@@ -410,15 +410,21 @@ remain planned. See [the spec](spec.md#102-reflection-now-and-later) and the
 
 ## Limits and next work
 
-The bootstrap does not implement pointers, dynamic arrays, unions, `switch`,
-optionals and errors (`try`/`or_else`), generic constraints, general
+Native C supports an initial [tagged-value and error profile](results.md):
+nominal unions, exhaustive `switch`, `Result(T,E)`, optionals, `try` and lazy
+`or_else`, including ordered deferred cleanup. Result storage and inspection
+profiles have explicit limits; async ownership and effect admission remain
+separate work.
+
+The bootstrap does not implement pointers, dynamic arrays, general
 reflection, macros,
 compiler plugins, context, effects, jobs, general GPU programs, a build language, a native
 backend or a resident compiler. Reserved syntax for them is diagnosed. Views
-borrow storage; E0383 diagnoses direct returns of local fixed-array views,
-their simple local aliases/subranges and borrowed strings. Calls, stored
-aggregate borrows and general region lifetimes remain outside this check;
-see [the scoped verification note](verification-local-borrows.md).
+borrow storage; E0383 diagnoses local-storage escapes through the bounded
+[return-borrow](verification-return-borrows.md) and retained-store profiles.
+General region lifetimes and ownership remain separate work; the
+[original direct-local note](verification-local-borrows.md) describes the
+earlier profile.
 Native line mapping and LLDB name presentation work on the
 tested Mac and iOS Simulator; optimized values still follow native debugging
 limits, and no Coax expression evaluator is provided.

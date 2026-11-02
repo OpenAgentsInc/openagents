@@ -1,0 +1,23 @@
+Error :: struct { code:int; }
+range_total :: (input:Result(int,Error))->int {
+  total:=0;
+  for i:0..<(input or_else 0) {total+=i;}
+  return total;
+}
+each_total :: (input:Result([3]int,Error))->int {
+  total:=0;
+  for value:(input or_else [3]int.[0,0,0]) {total+=value;}
+  return total;
+}
+#test "one-time loop headers handle a Result before iteration begins" {
+  #assert range_total(Result(int,Error).{ok=4})==6;
+  #assert range_total(Result(int,Error).{err=Error.{code= -7}})==0;
+  #assert each_total(Result([3]int,Error).{ok=[3]int.[3,4,5]})==12;
+  #assert each_total(Result([3]int,Error).{err=Error.{code= -7}})==0;
+}
+main :: () {
+  #assert range_total(Result(int,Error).{ok=4})==6;
+  #assert range_total(Result(int,Error).{err=Error.{code= -7}})==0;
+  #assert each_total(Result([3]int,Error).{ok=[3]int.[3,4,5]})==12;
+  #assert each_total(Result([3]int,Error).{err=Error.{code= -7}})==0;
+}

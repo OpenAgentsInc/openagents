@@ -896,6 +896,9 @@ std::string tag(Type t) {
       // A name two modules declare is spelled by its module scope; coax_q never comes from a user name.
       if (t->scope) return "q" + std::to_string(t->scope) + "t_" + to_std(t->kind == TypeKind::struct_ ? t->struct_decl->name : t->enum_decl->name);
       return "t_" + t->name;
+    case TypeKind::union_: return (t->scope ? "q"+std::to_string(t->scope) : "")+"u_"+to_std(t->union_decl->name);
+    case TypeKind::result: {std::string a=tag(t->elem),b=tag(t->sum_error);return "r_"+std::to_string(a.size())+"_"+a+"_"+std::to_string(b.size())+"_"+b;}
+    case TypeKind::optional: {std::string a=tag(t->elem);return "o_"+std::to_string(a.size())+"_"+a;}
     case TypeKind::array: return "a" + std::to_string(t->length) + "_" + tag(t->elem);
     case TypeKind::view: return "v_" + tag(t->elem);
     default: return "void";
@@ -912,6 +915,19 @@ std::string c_type(Type t) {
     case TypeKind::string_: return "coax_string";
     default: return "coax_" + tag(t);
   }
+}
+
+int32_t sum_count(Type t) {return t->kind==TypeKind::union_ ? t->union_decl->variants.count : 2;}
+Type sum_payload(Type t,int32_t alternative) {
+  if(t->kind==TypeKind::union_)return t->union_decl->variants[alternative].type;
+  if(t->kind==TypeKind::result)return alternative==0 ? t->elem : t->sum_error;
+  return alternative==0 ? &T_VOID : t->elem;
+}
+std::string sum_member(int32_t alternative){return "v"+std::to_string(alternative);}
+std::string sum_construct(Type t,int32_t alternative,const std::string &payload) {
+  std::string text="(("+c_type(t)+"){.tag = "+std::to_string(alternative);
+  if(sum_payload(t,alternative)!=&T_VOID)text+=", .payload."+sum_member(alternative)+" = "+payload;
+  return text+"})";
 }
 
 std::string int_tag(Type t) {
@@ -987,6 +1003,7 @@ bool lowering_may_trap(const Expr *e, LoweringPolicy p) {
 // and another is not trivial, or when two may trap.
 bool lowering_sequenced(const std::vector<const Expr *> &ops, LoweringPolicy p) {
   int calls = 0, nontrivial = 0, traps = 0;
+  for(const Expr *e:ops)if(e && (e->effects & 8))return true;
   for (const Expr *e : ops) {
     if (has_call(e)) calls++;
     if (!trivial(e)) nontrivial++;
@@ -996,6 +1013,7 @@ bool lowering_sequenced(const std::vector<const Expr *> &ops, LoweringPolicy p) 
 }
 // `place = value`: the place's address is taken before the value runs.
 bool lowering_place_first(const Expr *target, const Expr *value, LoweringPolicy p) {
+  if((target->effects|value->effects)&8)return true;
   return (has_call(target) && !trivial(value)) || (has_call(value) && !trivial(target)) ||
          (lowering_may_trap(target, p) && lowering_may_trap(value, p));
 }
@@ -1016,6 +1034,7 @@ bool lowering_inner_sequenced(const Expr *e, LoweringPolicy p) {
 // `place = place op value` would assign its temporaries twice in one
 // expression, which C leaves undefined.
 bool lowering_compound_staged(const Expr *target, const Expr *value, LoweringPolicy p) {
+  if((target->effects|value->effects)&8)return true;
   return has_call(target) || has_call(value) || (lowering_may_trap(target, p) && lowering_may_trap(value, p)) ||
          lowering_inner_sequenced(target, p);
 }
@@ -1192,6 +1211,7 @@ struct Emitter {
     if (needs_init(t)) return "coax_init_" + tag(t) + "()";
     switch (t->kind) {
       case TypeKind::string_: return "COAX_STR(0, 0)";
+      case TypeKind::optional: return sum_construct(t,t->sum_default,"");
       case TypeKind::struct_: case TypeKind::array: case TypeKind::view: return "((" + c_type(t) + "){0})";
       case TypeKind::floating: return t == &T_F32 ? "0.0f" : "0.0";
       default: return "((" + c_type(t) + ")0)";
@@ -1226,6 +1246,11 @@ struct Emitter {
       case TypeKind::bool_: return v.bits ? "1" : "0";
       case TypeKind::floating: return float_text(t, v.f);
       case TypeKind::string_: return "{" + c_string_text(v.s) + ", " + std::to_string(v.s.count) + "}";
+      case TypeKind::union_: case TypeKind::result: case TypeKind::optional: {
+        std::string text="{.tag = "+std::to_string(v.sum_tag);
+        if(sum_payload(t,(int32_t)v.sum_tag)!=&T_VOID)text+=", .payload."+sum_member((int32_t)v.sum_tag)+" = "+init_list((*v.agg)[0]);
+        return text+"}";
+      }
       case TypeKind::struct_: {
         std::string s = "{";
         const StructDecl *d = t->struct_decl;
@@ -1306,7 +1331,74 @@ struct Emitter {
     return "((" + ct + ")" + fn + ", " + line + "))";
   }
 
+  std::map<const Expr *,std::string> lowered;
+  bool control(const Expr *e) const {
+    if(!e)return false;
+    if((e->effects&8) || e->kind==ExprKind::try_ || e->kind==ExprKind::or_else)return true;
+    for(const Expr *child:{e->lhs,e->rhs,e->third})if(control(child))return true;
+    for(const Expr *child:e->args)if(control(child))return true;
+    for(const FieldInit &field:e->fields)if(control(field.value))return true;
+    return false;
+  }
+  std::string capture(const Expr *e,bool address=false) {
+    std::string value=ex(e);
+    if(e->type==&T_VOID){line(value+";");return "((void)0)";}
+    std::string temp=new_temp(address ? pointer_type(e) : c_type(e->type));
+    line(temp+" = "+(address ? "&("+value+")" : value)+";");
+    return address ? "(*"+temp+")" : temp;
+  }
+  std::string lower_control(const Expr *e) {
+    if(e->kind==ExprKind::try_ || e->kind==ExprKind::or_else){
+      std::string value=capture(e->lhs);
+      line("if ("+value+".tag >= "+std::to_string(sum_count(e->lhs->type))+") coax_trap(\"invalid sum tag\", "+std::to_string(e->loc.line)+");");
+      int32_t success=e->lhs->type->kind==TypeKind::optional ? 1 : 0;
+      std::string payload="("+value+").payload."+sum_member(success);
+      if(e->kind==ExprKind::try_){
+        line("if ("+value+".tag != "+std::to_string(success)+") {");indent++;
+        std::string error=sum_payload(e->lhs->type,1-success)==&T_VOID ? "" : "("+value+").payload."+sum_member(1-success);
+        std::string returned=new_temp(c_type(e->propagate_type));
+        line(returned+" = "+sum_construct(e->propagate_type,e->sum_variant,error)+";");
+        emit_defers_from(0);line("return "+returned+";");indent--;line("}");
+        return e->type==&T_VOID ? "((void)0)" : payload;
+      }
+      std::string result=e->type==&T_VOID ? "" : new_temp(c_type(e->type));
+      line("if ("+value+".tag == "+std::to_string(success)+") {");indent++;
+      if(!result.empty())line(result+" = "+payload+";");
+      indent--;line("} else {");indent++;
+      std::string fallback=ex(e->rhs);line((result.empty()?"":result+" = ")+fallback+";");
+      indent--;line("}");return result.empty()?"((void)0)":result;
+    }
+    if(e->kind==ExprKind::ifx || (e->kind==ExprKind::binary && (e->op==Tok::andand || e->op==Tok::oror))){
+      std::string condition=capture(e->lhs),result=new_temp(c_type(e->type));
+      line("if ("+condition+") {");indent++;
+      if(e->kind==ExprKind::ifx){std::string yes=ex(e->rhs);line(result+" = "+yes+";");}
+      else if(e->op==Tok::andand){std::string rhs=ex(e->rhs);line(result+" = "+rhs+";");}
+      else line(result+" = 1;");
+      indent--;line("} else {");indent++;
+      if(e->kind==ExprKind::ifx){std::string no=ex(e->third);line(result+" = "+no+";");}
+      else if(e->op==Tok::oror){std::string rhs=ex(e->rhs);line(result+" = "+rhs+";");}
+      else line(result+" = 0;");
+      indent--;line("}");return result;
+    }
+    std::vector<const Expr *> children;
+    auto stage=[&](const Expr *child,bool address=false){if(child){lowered[child]=capture(child,address);children.push_back(child);}};
+    if(e->kind==ExprKind::slice)stage(e->lhs,e->lhs->type->kind==TypeKind::array && is_place(e->lhs));
+    else if(e->kind==ExprKind::index)stage(e->lhs,e->lhs->type->kind==TypeKind::array && is_place(e->lhs));
+    else if(e->kind==ExprKind::field)stage(e->lhs,is_place(e->lhs));
+    else stage(e->lhs);
+    stage(e->rhs);stage(e->third);
+    for(const Expr *arg:e->args)stage(arg);
+    for(const FieldInit &field:e->fields)stage(field.value);
+    std::string text=raw_ex(e);
+    for(const Expr *child:children)lowered.erase(child);
+    return text;
+  }
   std::string ex(const Expr *e) {
+    auto found=lowered.find(e);if(found!=lowered.end())return found->second;
+    return control(e) ? lower_control(e) : raw_ex(e);
+  }
+
+  std::string raw_ex(const Expr *e) {
     std::string line = std::to_string(e->loc.line);
     if (n32 && n32->binary_site(e)) {
       const char *op = e->op == Tok::plus ? " + " : e->op == Tok::minus ? " - " : e->op == Tok::star ? " * " : e->op == Tok::slash ? " / " :
@@ -1426,6 +1518,10 @@ struct Emitter {
           return s + ")";
         });
       }
+      case ExprKind::sum: case ExprKind::some:
+        return sum_construct(e->type,e->sum_variant,e->lhs ? ex(e->lhs) : "");
+      case ExprKind::null_: return sum_construct(e->type,0,"");
+      case ExprKind::try_: case ExprKind::or_else: return lower_control(e);
       case ExprKind::unary:
         if (e->op == Tok::bang) return "(!" + ex(e->lhs) + ")";
         if (is_float(e->type)) return "(-" + ex(e->lhs) + ")";
@@ -1548,6 +1644,12 @@ struct Emitter {
   std::string binary(const Expr *e) {
     Type t = e->lhs->type;
     std::string line = std::to_string(e->loc.line);
+    if(t->kind==TypeKind::optional){
+      // Coax admits only optional/null equality here, never payload equality.
+      std::string a=new_temp(c_type(t)),b=new_temp(c_type(t));
+      std::string left=ex(e->lhs);std::string right=ex(e->rhs);
+      return "("+a+" = "+left+", "+b+" = "+right+", (("+a+".tag >= 2 || "+b+".tag >= 2) ? (coax_trap(\"invalid sum tag\", "+line+"), 0) : ("+a+".tag"+(e->op==Tok::noteq?" != ":" == ")+b+".tag)))";
+    }
     if (is_int(t)) {
       switch (e->op) {
         case Tok::plus: return arith("add", e);
@@ -1618,6 +1720,11 @@ struct Emitter {
     std::vector<std::string> values;
     bool all_trivial = true;
     for (int32_t i = 1; i < e->args.count; i++) all_trivial = all_trivial && trivial(e->args[i]);
+    std::vector<const Expr *> staged;
+    for(int32_t i=1;i<e->args.count;i++)if(control(e->args[i])){
+      for(int32_t k=1;k<e->args.count;k++){lowered[e->args[k]]=capture(e->args[k]);staged.push_back(e->args[k]);}
+      break;
+    }
     line_start();
     out += "{";
     for (int32_t i = 1; i < e->args.count; i++) {
@@ -1654,6 +1761,7 @@ struct Emitter {
     }
     flush(fmt.count);
     out += " }\n";
+    for(const Expr *a:staged)lowered.erase(a);
   }
 
   // ---- statements ----
@@ -1705,7 +1813,7 @@ struct Emitter {
   void assign(const Stmt *s) {
     const Expr *target = s->target;
     if (s->op == Tok::equal) {
-      bool order = lowering_place_first(target, s->expr, policy());
+      bool order = control(target) || control(s->expr) || lowering_place_first(target, s->expr, policy());
       if (!order) {
         // Same order as the C the old emitter produced under Clang: target, then value.
         std::string to = ex(target); std::string value = ex(s->expr);
@@ -1731,7 +1839,7 @@ struct Emitter {
     }
     // x op= v: the place is evaluated once, then v, then the update.
     Expr place{}, value{}, bin{};
-    bool direct = !lowering_compound_staged(target, s->expr, policy());
+    bool direct = !control(target) && !control(s->expr) && !lowering_compound_staged(target, s->expr, policy());
     std::string p, v;
     if (!direct) {
       p = new_temp(pointer_type(target));
@@ -1839,9 +1947,27 @@ struct Emitter {
           stmt(s->else_);
         }
         break;
+      case StmtKind::switch_: {
+        std::string value=capture(s->expr);
+        if(is_sum(s->expr->type))line("if ("+value+".tag >= "+std::to_string(sum_count(s->expr->type))+") coax_trap(\"invalid sum tag\", "+std::to_string(s->loc.line)+");");
+        line("{");indent++;
+        for(int32_t i=0;i<s->cases.count;i++){
+          const SwitchCase *arm=s->cases[i];
+          std::string tag=is_sum(s->expr->type)?value+".tag":value;
+          std::string alternative=is_sum(s->expr->type) ? "UINT32_C("+std::to_string(arm->tag_value)+")" : int_text(s->expr->type,arm->tag_value);
+          line(std::string(i?"else if (":"if (")+tag+" == "+alternative+") {");indent++;
+          if(arm->binding)line("const "+c_type(arm->binding->type)+" "+local_name(arm->binding->name)+" = "+value+".payload."+sum_member((int32_t)arm->tag_value)+";");
+          stmt(arm->body);indent--;line("}");
+        }
+        if(s->cases.count)line("else coax_trap(\"invalid switch tag\", "+std::to_string(s->loc.line)+");");
+        indent--;line("}");break;
+      }
       case StmtKind::while_:
-        line("while " + condition(s->expr));
-        loop(s->then_);
+        if(control(s->expr)){
+          line("while (1) {");indent++;
+          std::string test=ex(s->expr);line("if (!("+test+")) break;");
+          loop(s->then_);indent--;line("}");
+        }else{line("while " + condition(s->expr));loop(s->then_);}
         break;
       case StmtKind::for_range: {
         if (device() && g_warp.lane_loops.count(s)) {
@@ -1963,6 +2089,13 @@ struct Emitter {
         v.declared[name_of(s->name)]++;
         if (s->name2.count) v.declared[name_of(s->name2)]++;
         vscan_expr(s->expr, v); vscan_stmt(s->then_, v); break;
+      case StmtKind::switch_:
+        vscan_expr(s->expr, v);
+        for (const SwitchCase *arm : s->cases) {
+          if (arm->binding) v.declared[name_of(arm->binding->name)]++;
+          vscan_stmt(arm->body, v);
+        }
+        break;
       default:
         vscan_expr(s->expr, v); vscan_expr(s->expr2, v); vscan_expr(s->target, v);
         vscan_stmt(s->then_, v); vscan_stmt(s->else_, v); break;
@@ -2139,6 +2272,7 @@ struct Emitter {
     mapping_active=true;debug_location=p->loc;
     out.clear();
     temps.clear();
+    lowered.clear();
     ret_temp = false;
     indent = 1;
     std::string saved;
@@ -2172,18 +2306,27 @@ static std::string header_type_schema(Type t) {
   auto part = [&](const std::string &value) {
     schema += std::to_string(value.size()) + ":" + value;
   };
-  part("coax-c-type-v1");
+  part(is_sum(t) ? "coax-c-sum-lp64-v1" : "coax-c-type-v1");
   switch (t->kind) {
     case TypeKind::struct_: part("struct"); break;
     case TypeKind::enum_: part("enum"); break;
     case TypeKind::array: part("array"); break;
     case TypeKind::view: part("view"); break;
+    case TypeKind::union_: part("union"); break;
+    case TypeKind::result: part("result"); break;
+    case TypeKind::optional: part("optional"); break;
     default: part("other"); break;
   }
   part(c_type(t));
   part(std::to_string(t->size));
   part(std::to_string(t->align));
-  if (t->kind == TypeKind::struct_) {
+  if(is_sum(t)){
+    part("u32");part(std::to_string(t->sum_payload_offset));part(std::to_string(sum_count(t)));
+    for(int32_t i=0;i<sum_count(t);i++){
+      part(std::to_string(i));part(c_type(sum_payload(t,i)));
+      if(t->kind==TypeKind::union_)part(to_std(t->union_decl->variants[i].name));
+    }
+  } else if (t->kind == TypeKind::struct_) {
     part(std::to_string(t->struct_decl->fields.count));
     for (const Field &field : t->struct_decl->fields) {
       part(to_std(field.name));
@@ -2224,7 +2367,7 @@ struct TypeWriter {
   bool header = false;
 
   bool seen(Type t) {
-    for (Type d : done) if (d == t || ((t->kind==TypeKind::array || t->kind==TypeKind::view) && d->kind==t->kind && tag(d)==tag(t))) return true;
+    for (Type d : done) if (d == t || ((t->kind==TypeKind::array || t->kind==TypeKind::view || is_sum(t)) && d->kind==t->kind && tag(d)==tag(t))) return true;
     return false;
   }
 
@@ -2244,6 +2387,21 @@ struct TypeWriter {
         out += header ? header_type_definition(t, definition) : definition;
         break;
       }
+      case TypeKind::union_: case TypeKind::result: case TypeKind::optional: {
+        done.push_back(t);
+        bool payload=false;
+        for(int32_t i=0;i<sum_count(t);i++)if(sum_payload(t,i)!=&T_VOID){need(sum_payload(t,i));payload=true;}
+        std::string definition="struct "+c_type(t)+" { uint32_t tag;";
+        if(payload){
+          definition+=" union {";
+          for(int32_t i=0;i<sum_count(t);i++)if(sum_payload(t,i)!=&T_VOID)
+            definition+=" "+c_type(sum_payload(t,i))+" "+sum_member(i)+";";
+          definition+=" } payload;";
+        }
+        definition+=" };\n";
+        out+=header ? header_type_definition(t,definition) : definition;
+        break;
+      }
       case TypeKind::array: {
         need(t->elem);
         done.push_back(t);
@@ -2253,6 +2411,13 @@ struct TypeWriter {
       }
       case TypeKind::view:
         done.push_back(t);
+        if(is_sum(t->elem)){
+          // The sum has a forward alias. Publish its pointer descriptor before
+          // walking a recursive union's payloads, which may use this view.
+          std::string definition="typedef struct { "+c_type(t->elem)+" *data; int64_t count; } "+c_type(t)+";\n";
+          out+=header ? header_type_definition(t,definition) : definition;
+          need(t->elem);break;
+        }
         // C needs only the element's name for a pointer; a header still
         // declares the element so the host can use it.
         if (t->elem->kind != TypeKind::struct_ || header) need(t->elem);
@@ -2283,12 +2448,23 @@ struct TypeWriter {
   }
 
   void forward_structs(const File *file) {
+    for(const UnionDecl *d:file->unions)out+="typedef struct "+c_type(d->type)+" "+c_type(d->type)+";\n";
+    for(Type t:all_composite_types())if(is_sum(t))out+="typedef struct "+c_type(t)+" "+c_type(t)+";\n";
     for (const StructDecl *d : file->structs) if(!d->type->physical)
       out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
   }
 
   // The C compiler checks that Coax's layout is the C layout.
+  void sum_layout_asserts(const char *alignment="_Alignof") {
+    for(Type t:done)if(is_sum(t)){
+      std::string c=c_type(t);
+      out+="COAX_LAYOUT(sizeof("+c+") == "+std::to_string(t->size)+" && "+alignment+"("+c+") == "+std::to_string(t->align)+", \"sum layout of "+c+"\");\n";
+      out+="COAX_LAYOUT(offsetof("+c+", tag) == 0, \"sum tag of "+c+"\");\n";
+      if(t->sum_payload_offset)out+="COAX_LAYOUT(offsetof("+c+", payload) == "+std::to_string(t->sum_payload_offset)+", \"sum payload of "+c+"\");\n";
+    }
+  }
   void layout_asserts(const File *file) {
+    sum_layout_asserts();
     for (const StructDecl *d : file->structs) {
       if(d->type->physical) continue;
       std::string c = c_type(d->type);
@@ -2309,6 +2485,7 @@ void collect_types(const File *file, std::vector<Type> *types) {
   };
   for (const StructDecl *d : file->structs) add(d->type);
   for (const EnumDecl *d : file->enums) add(d->type);
+  for(const UnionDecl *d:file->unions)add(d->type);
   for (Type t : all_composite_types()) add(t);
 }
 
@@ -2348,7 +2525,17 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
     }
     protos += "static void coax_show_" + tg + "(const " + c + " *v);\n";
     bodies += "static void coax_show_" + tg + "(const " + c + " *v) {\n";
-    if (t->kind == TypeKind::struct_) {
+    if(is_sum(t)){
+      bodies+="  switch(v->tag) {\n";
+      for(int32_t i=0;i<sum_count(t);i++){
+        Type payload=sum_payload(t,i);
+        std::string label=t->kind==TypeKind::union_ ? to_std(t->union_decl->variants[i].name) : t->kind==TypeKind::result ? (i==0?"ok":"err") : (i==0?"none":"some");
+        bodies+="  case "+std::to_string(i)+": fputs(\""+label+"\", stdout);";
+        if(payload!=&T_VOID)bodies+=" fputc('(', stdout); "+em.show_call(payload,"v->payload."+sum_member(i),false)+"; fputc(')', stdout);";
+        bodies+=" return;\n";
+      }
+      bodies+="  default: coax_trap(\"invalid sum tag\",0);\n  }\n";
+    } else if (t->kind == TypeKind::struct_) {
       const StructDecl *d = t->struct_decl;
       bodies += "  fputs(\"" + to_std(d->name) + ".{\", stdout);\n";
       for (int32_t i = 0; i < d->fields.count; i++) {
@@ -2492,8 +2679,29 @@ std::string escape_path(const std::string &path) {
 
 // Source-unit provenance is emitted only for composed programs, preserving
 // standalone seed bytes. Runtime helpers receive joined line numbers.
+static bool sum_runtime_profile(const File *file) {
+  if(file->unions.count)return true;
+  for(Type t:all_composite_types())if(is_sum(t))return true;
+  std::function<bool(const Stmt *)> switched=[&](const Stmt *stmt){
+    if(!stmt)return false;
+    if(stmt->kind==StmtKind::switch_)return true;
+    for(const Stmt *child:stmt->body)if(switched(child))return true;
+    return switched(stmt->then_) || switched(stmt->else_);
+  };
+  for(const ProcDecl *proc:file->procs)if(switched(proc->body))return true;
+  for(const CheckDecl *check:file->checks)if(switched(check->proc->body))return true;
+  return false;
+}
+
 static std::string source_runtime(const File *file, bool verification = false) {
-  if (file->src->units.size()<2 && !verification) return RUNTIME;
+  auto declared_runtime=[&](std::string runtime){
+    if(sum_runtime_profile(file)){
+      const std::string declaration="static void coax_trap(";
+      runtime.replace(runtime.find(declaration),declaration.size(),"static _Noreturn void coax_trap(");
+    }
+    return runtime;
+  };
+  if (file->src->units.size()<2 && !verification) return declared_runtime(RUNTIME);
   std::string out="struct coax_source_range { int first, last, base, fixed; const char *path; };\n";
   if (verification) {
     const std::string &path = file->src->units.empty() ? file->src->path : file->src->units.front()->canonical;
@@ -2537,7 +2745,7 @@ static std::string source_runtime(const File *file, bool verification = false) {
         "    coax_verification_trap_handler_v1(what, (int64_t)strlen(what), path, (int64_t)strlen(path), coax_line_for(line));\n"
         "  }\n");
   }
-  return out+runtime;
+  return out+declared_runtime(std::move(runtime));
 }
 
 // Procedures a CUDA module contains: the kernels (#export_c) and what they
@@ -2557,6 +2765,7 @@ std::vector<const ProcDecl *> cuda_procs(const File *file) {
     visit_expr(st->expr); visit_expr(st->expr2); visit_expr(st->target);
     for (const Stmt *c : st->body) visit_stmt(c);
     visit_stmt(st->then_); visit_stmt(st->else_);
+    for(const SwitchCase *arm:st->cases)visit_stmt(arm->body);
   };
   visit_proc = [&](const ProcDecl *p) {
     for (const ProcDecl *q : seen) if (q == p) return;
@@ -2642,6 +2851,7 @@ static std::string emit_cuda(const File *file, const EmitOptions &opts) {
     if (st->expr) add(st->expr->type);
     for (const Stmt *c : st->body) types_stmt(c);
     types_stmt(st->then_); types_stmt(st->else_);
+    for(const SwitchCase *arm:st->cases)types_stmt(arm->body);
   };
   for (const ProcDecl *p : procs) {
     add(p->ret);
@@ -3078,6 +3288,7 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
     types_expr(st->expr); types_expr(st->expr2); types_expr(st->target);
     for (const Stmt *c : st->body) types_stmt(c);
     types_stmt(st->then_); types_stmt(st->else_);
+    for(const SwitchCase *arm:st->cases)types_stmt(arm->body);
   };
   for (const ProcDecl *p : procs) {
     add(p->ret);
@@ -3197,6 +3408,7 @@ static std::set<const ProcDecl *> called_instances(const File *file) {
     expr(st->expr); expr(st->expr2); expr(st->target);
     for (const Stmt *c : st->body) stmt(c);
     stmt(st->then_); stmt(st->else_);
+    for(const SwitchCase *arm:st->cases)stmt(arm->body);
   };
   for (const ProcDecl *p : file->procs) if (!p->origin) stmt(p->body);
   while (!work.empty()) {
@@ -3418,6 +3630,8 @@ std::string emit_header(const File *file) {
   // The types the exported procedures use, and everything they contain.
   TypeWriter types;
   types.header = true;
+  for(const UnionDecl *d:file->unions)types.out+="typedef struct "+c_type(d->type)+" "+c_type(d->type)+";\n";
+  for(Type t:all_composite_types())if(is_sum(t))types.out+="typedef struct "+c_type(t)+" "+c_type(t)+";\n";
   for (const StructDecl *d : file->structs) {
     bool used = false;
     std::vector<Type> visiting;
@@ -3426,6 +3640,7 @@ std::string emit_header(const File *file) {
       for (Type v : visiting) if (v == t) return false;
       visiting.push_back(t);
       bool found = false;
+      if(is_sum(t))for(int32_t i=0;i<sum_count(t);i++)found=found || uses(sum_payload(t,i));
       if (t->kind == TypeKind::array || t->kind == TypeKind::view) found = uses(t->elem);
       if (t->kind == TypeKind::struct_)
         for (const Field &f : t->struct_decl->fields) found = found || uses(f.type);
@@ -3444,7 +3659,8 @@ std::string emit_header(const File *file) {
     types.out += used.out;
     types.done = used.done;
   }
-  std::string asserts;
+  size_t definitions_end=types.out.size();types.sum_layout_asserts("COAX_ALIGNOF");
+  std::string asserts=types.out.substr(definitions_end);types.out.resize(definitions_end);
   for (const StructDecl *d : file->structs) {
     if (d->type->physical || !types.seen(d->type)) continue;
     std::string c = c_type(d->type);
@@ -3483,7 +3699,13 @@ std::string emit_header(const File *file) {
 }
 
 std::string layout_report(const File *file) {
-  std::string s;
+  std::vector<Type> types;collect_types(file,&types);
+  bool sums=false;for(Type t:types)sums=sums || is_sum(t);
+  std::string s=sums ? "coax-layout-sums-lp64.v1\n" : "";
+  if(sums)for(Type t:types)if(is_sum(t)){
+    s+=std::string(type_name(t))+"  sum size "+std::to_string(t->size)+"  align "+std::to_string(t->align)+"  tag u32@0  payload@"+std::to_string(t->sum_payload_offset)+"\n";
+    for(int32_t i=0;i<sum_count(t);i++)s+="  "+std::to_string(i)+": "+type_name(sum_payload(t,i))+"\n";
+  }
   char buf[256];
   for (const StructDecl *d : file->structs) {
     // an instance is listed by its type: Pair(int)
@@ -3554,6 +3776,7 @@ std::string emit_debug_map(const File *file) {
       }
       for(const auto *child:s->body) walk(child);
       walk(s->then_);walk(s->else_);
+      for(const SwitchCase *arm:s->cases){if(arm->binding)variable(arm->binding->name,arm->binding->type,arm->binding->loc,"case");walk(arm->body);}
     };
     walk(p->body);out+="]}";
   }

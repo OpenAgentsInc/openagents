@@ -1,130 +1,112 @@
 # Coax outcomes and request ownership
 
-Implementation sequence for [#12625](https://github.com/OpenAgentsInc/openagents/issues/12625),
-following the [shared completion plan](completion.md). This maps existing task
-identities; it creates no replacement language or ownership milestone. Snapshot:
-`a2e4931045`, 2026-11-01 (November 2 UTC).
+The delivery route for [#12625](https://github.com/OpenAgentsInc/openagents/issues/12625)
+joins the initial R2 language profile, B2 helper summaries and the actual B3
+System One/Lab consumer. The [qualification record](../verification/coax-outcomes-12625-2026-11-02/README.md)
+binds the final source, compiler, native observations and focused checks.
+It keeps this component delivery separate from whole-desktop and R0 readiness.
 
-## Preserve the existing work
+## Existing work identities
 
-| Existing identity | Scope and retained evidence | Remaining exit |
+| Stable identity | Delivered bounded profile | Separate expansion or gate |
 | --- | --- | --- |
-| [`book30-analysis-cost`](../../apps/openagents-web/projects/coax/work/book30-clocks.json) | Delivered wide retained-store streaming; [H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md) and [machine record](../verification/coax-wide-retained-stores-2026-11-01/record.json). The matching source/image used 1,035,932 of 1,048,576 work ticks, leaving 12,644. | Measure any changed compiler input on its matching image. Preserve the failed page goldens and earlier cost candidates. Do not rerun unchanged passing compiler qualification. |
-| [`book30-result-language`](../../apps/openagents-web/projects/coax/work/book30-clocks.json) | R2 child: tagged results/unions/optionals, exhaustive handling, propagation, ordered cleanup, sum-aware borrows and a real synchronous resource adapter. A separate agent's local integration is in progress. | Publish the final qualified compiler, source/native/ABI/authority/bootstrap evidence and teaching contract. A private implementation or lower cost measurement is not delivery on main. |
-| [`r2a-results`](../../apps/openagents-web/projects/coax/work/coax.json) | Original language umbrella; its first child does not remove the original asynchronous adapter or remaining procedure scope. | Integrate the actual asynchronous request with handled success/refusal/cancellation/unknown outcomes and cleanup. Preserve idempotency/reconciliation rules; unknown outcomes cannot imply safe retry. |
-| [`r3a-retain-helper-composition`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json) (B2) | [Bounded raw return-origin helper composition](../verification/coax-b2-early-exit-2026-11-01/README.md) follows the actual `so_start`/`so_step`/`so_fail_call`/`so_post` chain. Caller output/error, static messages and default empty stay distinct; known local backing is rejected. Cost gate: **1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. | Preserve retained-only manual fallback and broader context/getter/recursive and foreign-retention boundaries. Integrate external R2 and qualify normal release/bootstrap separately; the full B2/B3 milestones remain open. |
-| [`r3a-retain-request-owner`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json) (B3) | Actual System One transport and desktop owner, following B2. Existing [caller-buffer harness](../../coax/tests/borrow_summary_systemone.py) qualifies only digits/stderr returns. | Generated owner defaults, single active request, terminal/cancel/poll traces, all borrowed result uses and process-slot reclamation. Caller storage remains alive independently of process release. |
+| [`book30-analysis-cost`](../../apps/openagents-web/projects/coax/work/book30-clocks.json) | Wide retained-store streaming is preserved. The current matching-image full compiler cost is recorded with the final integration. | The 1,010,708, 1,047,475 and H 1,035,932 observations retain their own source/image identities. Earlier failed page goldens remain unapproved. No budget increase. |
+| [`book30-result-language`](../../apps/openagents-web/projects/coax/work/book30-clocks.json) | Native LP64 tagged unions/optionals/Results, exhaustive handling, propagation, source-ordered evaluation, reverse lexical cleanup and the real synchronous file adapter. | Result containment, broader generic/layout/effect/target forms and the rest of roadmap R2 remain explicit limits. |
+| [`r2a-results`](../../apps/openagents-web/projects/coax/work/coax.json) | The same typed language now wraps an actual asynchronous request; the Lab handles start, polling, snapshot and discard. | This does not add a scheduler, async functions, general callback ownership or remote exactly-once effects. |
+| [`r3a-retain-helper-composition`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json), B2 | Selected raw helper writes compose into returned fields. Known local witnesses survive unknown alternatives. Kind5 write-only index rows are admitted and checked. | Retained-only misses, recursive/unmodeled helpers and by-value mutable-view carriers, including new sums, remain manual. |
+| [`r3a-retain-request-owner`](../../apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json), B3 | One canonical owner, generation-fenced tickets, terminal/cancel/poll traces, independent snapshots, actual native kill/reap/reuse and actual Lab transcript uses. | The owner is serialized and not copied. Destination disjointness and host/snapshot lifetimes are explicit preconditions, not compiler-enforced linear ownership. |
 
-These are stable project slugs. The hexadecimal aliases shown by the Nostr
-project are not GitHub issue numbers. Authored seed files describe scope and
-dependencies, not live claim or resolution status. The local owner checkpoint
-observed at `/tmp/coax-chapter30-full/CURRENT_STATE.json` reports the cost task
-resolved and the R2 child active; this is attributed coordination information,
-not an independently queried live project inventory. Its provisional R2 cost
-and partial qualification are deliberately not promoted here.
+These are stable project slugs. Their hexadecimal NIP aliases are not GitHub
+issue numbers. Authored seed files describe scope/dependencies, not a queried
+live claim status. The earlier R2 owner stopped and released its claim; this
+integration resumes that work without restoring the removed Reason workflow.
 
-## Implementation order
+## Follow the implementation
 
-1. Preserve the delivered B1/wide-store evidence and its budgets. The older
-   1,010,708-work candidate and B1's 1,047,475-work observation remain historical
-   measurements of their own source/images. None is a current compiler estimate.
-2. Let the current R2 owner finish the compiler and synchronous adapter. Avoid
-   parallel changes to its checker, parser, evaluator, emitters, seeds, spec,
-   grammar or teaching examples. Reuse only exactly matching passing inputs.
-3. Preserve B2's bounded selected helper composition during integration. Raw
-   returned-field facts and retained-only manual fallback have separate scope.
-   Keep complete origin/effect inventory separate from discharged host
-   lifetimes; an unknown recursive dependency cannot become safe-empty. Broader
-   context/getter and by-value mutable-view cases need separate evidence.
-4. Finish B3 on the real polling API. A platform construction fix can proceed
-   independently as a prerequisite: after successful root allocation, call the
-   actual generated Coax default constructor once before attachment. Never
-   reconstruct an attached/active owner or initialize view pointees implicitly.
-   After attachment, quitting without starting a request must not release an
-   unrelated process slot zero.
-5. Enforce single-active-owner admission in Coax and qualify its unchanged-state
-   refusal, then success, HTTP refusal, process error, timeout, cancellation,
-   duplicate polls and release. Keep borrowed output/error bytes alive through
-   every use; cancelling a process cannot revoke a copied descriptor. No live
-   service or automatic retry is needed for these offline native checks.
-6. Migrate the same consumer to delivered typed outcomes and teach its actual
-   diagnostics, transcript, refused misuse and independent oracle. Update the
-   chapter marker, registry, contents and README/plan together, only for the
-   profile actually delivered.
+1. [Chapter 6](../../coax/book/ch06-memory.md) distinguishes wire bytes from
+   independently backed snapshots. Process release does not extend a view's
+   lifetime.
+2. [Chapter 7](../../coax/book/ch07-errors.md) uses actual typed errors and the
+   real file adapter. Close retires authority before its one attempt; primary
+   foreign errors survive a secondary cleanup failure. Nested defers run once
+   in reverse order on recoverable exits. Fatal traps retain their contract.
+3. [Chapter 15](../../coax/book/ch15-asynchronous-work.md) runs the real System
+   One process host against an owned offline child. Start/snapshot/discard
+   Results must be handled, polling/terminal sums are exhaustive, and unknown
+   outcomes never authorize automatic retry.
+4. [Chapter 20](../../coax/book/ch20-interop.md) joins generated header/default
+   construction with the actual native effect boundary. Old incompatible sum
+   headers are refused rather than accepted by size alone.
+5. [Chapter 24](../../coax/book/ch24-a-complete-boundary.md) follows the actual
+   Lab ask/pump/stop/validation/routing/details/transcript procedures. Native
+   traces reuse the same canonical owner across six generations, overwrite
+   wire storage, cancel/reap a delayed child and leave an unrelated reused
+   process slot alone.
 
-The construction, admission and bounded helper slices do not finish B2/B3,
-async Result integration, compiler ownership safety or #12625. In particular,
-the desktop's selected request pool lives for the application: there is no
-new pool-free or copied-active-handle ownership-transfer claim.
+The typed native transcript is literal and independently checked:
 
-## Qualification and independent exits
+```shell
+python3 coax/tests/systemone-outcomes.py --compiler coax/bin/coax --out /tmp/book-systemone
+cat /tmp/book-systemone/O0-run.stdout
+```
 
-New checks precede implementation. Use the actual generated Coax header and
-code at native O0/O2 and under ASan/UBSan, with independent process-effect
-fixtures, named fields/descriptors and guarded byte buffers. C padding is not
-an oracle. Changed admission/policy authority gets focused zero-survivor
-mutation; unchanged compiler/bootstrap and model checks are retained, not
-repeated. Every command stays below fifteen minutes.
+```jai
+answered 200 reply-body
+refused 503 refused-body
+cancelled 0 cancelled
+not connected 0 the server is unreachable
+unknown 0 the request timed out
+```
+
+The same runner observes refused misuse: E0907 for an ignored start Result,
+E0904 for nonexhaustive terminal selection and E0383 for returning local
+snapshot storage. Exact locations, generated sources and raw observations are
+retained. Python is test tooling, never the runtime adapter.
+
+## Qualification scope
+
+Checks precede implementation. The continuation retains genuine RED/GREEN
+regressions for kind5 query-index admission and mutable-view sum carriers, and
+sharp focused authority/compiler mutation without equivalence waivers. Its
+native evidence includes evaluator/source diagnostics, O0/O2/fatal ASan/UBSan,
+real file effects, the complete native parser/checker bridge and canonical
+C/header fixedpoints. Tests target changed code; a full checker mutation sweep
+and the unrelated whole release gate were not requested or run.
+
+The current full-feature compiler and canonical bootstrap tuple have a
+**focused qualification record**. They are not installed into the normal
+checked-build cache with a fabricated provenance claim. Normal release/cache
+publication retains its own gates. Unchanged passing observations are reused
+only with their exact source/artifact/tool bindings; failed attempts keep their
+original identities.
+
+B2's already merged [early-exit slice](../verification/coax-b2-early-exit-2026-11-01/README.md)
+remains historical evidence: 1,044,325 / 1,048,576 steps, 4,251 spare (0.41%,
+owner accepted). The [failed earlier candidate](../verification/coax-helper-write-returns-2026-11-01/README.md)
+is preserved. The final integration has its own matching-image measurement,
+with the same 1,048,576-work, depth-32, eight-step path and 64-origin limits.
+
+## Independent application and owner gates
+
+The actual Lab consumer is tested with its complete authored types and exact
+production procedures, the real System One transport/owner and the actual C
+process host. Downstream engine effects are bounded test substitutes; no live
+model or remote service is claimed. This is stronger than the earlier
+entry-guard-only projection, but is still not whole-application qualification.
+
+Full `settings.coax` emission and the full Lab check retain E0381 at their
+existing ninth logical borrow-path step (settings line52 and Claude options
+assignment line900). Unknown source facts do not become safe-empty/static.
+No cap increase, catalogue whitelist or hidden refusal bypass was introduced.
+General path/region expansion belongs to the open R3 application work.
 
 The [R0 owner/reviewer entry](../../NEEDS_OWNER.md#r0-adoption-gate) remains
-separate: physical iPhone measurements, agreed median/frame-tail budgets and
-independent frozen-reference adaptation review. The wide-store record also
-retains four failed/unapproved page goldens. Native compilation, a constructor
-fix or a successful offline trace cannot close those gates. No owner action
-has been completed or newly requested by this coordination document.
+separate: physical iPhone measurements, agreed median/frame-tail budgets,
+independent frozen-reference adaptation review and earlier failed/unapproved
+page goldens. None is inferred from a native compile or an offline request.
+No owner action or production sign-off was performed here.
 
-
-## Delivered prerequisite slice
-
-The [retained implementation record](../verification/coax-request-owner-2026-11-01/README.md)
-now covers generated desktop defaults, single-active-owner admission, the Lab's
-entry guard, and actual offline child completion/cancellation/reaping. Focused
-policy mutation killed both mutants; native O0/O2/sanitizer checks pass within
-their declared boundaries. The full desktop unit and new full Lab check group
-refused with E0381 on the observed images before the application checks ran;
-exact source subsets qualify the changed boundaries without calling the full
-application passed. Broader B2, typed async outcomes and the full B3 milestone
-remain open; those exits are not inferred from these prerequisites.
-
-
-The [nonblocking EOF follow-up](../verification/coax-request-polling-2026-11-01/README.md)
-keeps a frame poll pending when stdout closes before child exit, with actual
-native delayed-completion/cancel checks and sharp policy mutation. Its frozen
-full-desktop diagnosis identifies the eight-step borrow-path refusal; it does
-not call a source subset a successful full application build.
-
-## Bounded helper-write continuation
-
-The [early-exit record](../verification/coax-b2-early-exit-2026-11-01/README.md)
-binds the changed guard, focused proof and matching full compiler input.
-Actual-compiler cost under the unchanged 1,048,576-work budget:
-**1,044,325 / 1,048,576 steps; 4,251 spare (0.41%, owner accepted)**. The owner accepted this measured margin for publication; the budget is unchanged.
-The guard skips retained opacity discovery only when an independent fact is
-already incomplete; complete facts still run that scan. Missing raw facts
-never certify write-free behavior.
-
-Precise helper-write composition applies to raw return-origin queries.
-Retained-store-only misses keep the existing manual boundary, while complete
-raw facts remain reusable for source-class queries. The write-only query joins
-selected helper effects with caller defaults, without treating incoming
-descriptors as writes or unrelated reads as returned origins. Existing
-admitted-prefix checks, depth 32, eight-step paths, 64-origin sets and the
-shared work budget remain. `body` derives from caller `out`, `stderr` from
-caller `err`, `problem` from static messages and `usage` from scalars, with
-modeled empty alternatives. Foreign retention remains incomplete, and host
-outlives duties are not automatically discharged.
-
-The [failed candidate](../verification/coax-helper-write-returns-2026-11-01/README.md)
-reached work 1,048,577 against the unchanged bound. Its retained receipts keep
-220/220 killed helper-entry mutants, 63 native `CK_run` observations and 138
-actual `so_post` buffer observations with their original producer identities
-and continuity limits. They are not fresh full-checker mutation or qualification
-of every declaration in the changed compiler. Normal release/bootstrap and
-full application qualification remain separate. Broader B2 context/getter and
-recursive cases, external R2, full B3 and typed async teaching remain open;
-settings/Lab retains its recorded eight-step path refusal.
-
-The [polling fix](../verification/coax-request-polling-2026-11-01/README.md)
-remains delivered. The [stopping-point handoff](handoff-2026-11-01-12625-12628.md)
-preserves the earlier failed B2 candidate and the separately delivered polling,
-model, GPU and Grid slices. This continuation does not close #12625.
+Earlier [construction/admission](../verification/coax-request-owner-2026-11-01/README.md),
+[nonblocking EOF](../verification/coax-request-polling-2026-11-01/README.md) and
+[stopping-point](handoff-2026-11-01-12625-12628.md) records stay immutable.
+This delivery does not start another chapter or advance issues #12626–#12631.

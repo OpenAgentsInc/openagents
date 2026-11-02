@@ -23,9 +23,9 @@ const ErrorInfo ERRORS[] = {
 
     // ---- E02xx: parser ----
     {"E0201", "expected a token", "The parser needed a specific token here, usually ';', ')' or '}'. For a missing ';' the caret points right after the previous token."},
-    {"E0202", "expected a type", "A type is a name (int, f32, Vec2), a fixed array '[N] T', or a view '[] T'."},
+    {"E0202", "expected a type", "A type is a name, a fixed array '[N] T', a view '[] T', an optional 'T?', or an admitted parameterized type such as Result(T,E). Parentheses group a type before an optional suffix."},
     {"E0203", "comparisons cannot be chained", "a < b < c is rejected rather than given a surprising meaning. Write a < b && b < c."},
-    {"E0204", "reserved word not supported yet", "The word is reserved for a planned feature (union, switch, using, try...). coax0 refuses it rather than guessing what it means."},
+    {"E0204", "reserved word not supported yet", "The word is reserved for a planned feature, such as using or enum_flags. coax0 refuses it rather than guessing what it means."},
     {"E0205", "expected an expression", "A value was needed here: a literal, a name, a call, or a parenthesized expression."},
     {"E0206", "local declarations with :: are not supported", "Constants, procedures and types are declared at the top level in coax0."},
     {"E0207", "cannot assign to this expression", "Only a variable, a struct field or an element (a[i]) can be assigned."},
@@ -133,7 +133,7 @@ const ErrorInfo ERRORS[] = {
 
     {"E0382", "invalid reflection category", "field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout."},
 
-    {"E0383", "returned borrow may outlive local storage", "A returned view or string may borrow a local fixed array, directly or through a local alias, subrange, cast or ifx. Return the fixed array value or use caller-owned storage. This conservative local check does not establish general lifetime safety."},
+    {"E0383", "borrow may outlive its backing storage", "A returned descriptor or retained store can carry local backing beyond its frame, including through helpers, aggregates and active sum payloads. Return an owned value or use caller-owned backing. The bounded A1/B1 checks retain known local witnesses even with incomplete alternatives; general region lifetimes, B2 local-carrier composition and B3 request ownership remain separate work."},
     {"E0384", "unknown module alias", "A qualified name's alias must be bound in this module by #load \"FILE.coax\" as NAME;. Aliases belong to the logical module that loads them."},
     {"E0385", "module has no such declaration", "A qualified name sees only the declarations of the alias's module. Check the spelling, or load the module that declares it."},
     {"E0386", "ambiguous unqualified name", "Two modules declare this name and the use's own module does not. Qualify it with the alias of the module you mean: alias.Name."},
@@ -222,12 +222,29 @@ const ErrorInfo ERRORS[] = {
     {"E0800", "generic struct without arguments", "A type that names a generic struct gives an argument for each parameter: Pair(int), Box(f64, 4). A literal Pair.{a = 1, b = 2} deduces them from its fields instead."},
     {"E0801", "wrong number of struct arguments", "A generic struct takes one argument for each parameter it lists: Box :: struct($T, $N) is written Box(int, 4)."},
     {"E0802", "generic struct over a borrow", "A generic struct holds fixed storage only. Binding a parameter to a view, or to a struct or array that holds one, would carry a borrow past the rule that a view does not outlive its array. Store the array itself, or an index into it."},
-    {"E0803", "arguments on a type that takes none", "Only a generic struct takes arguments. A builtin type, an enum or a struct without parameters is written by its name alone."},
+    {"E0803", "arguments on a type that takes none", "Type arguments require a generic struct or a compiler-owned parameterized family such as Result(T,E). Other builtin types, enums and structs without parameters are written by name alone."},
     {"E0804", "struct parameter not deduced", "A literal of a generic struct deduces each parameter from a field given in it. Give a field that uses the parameter, or declare the variable's type: x: Pair(int) = Pair.{...}."},
     {"E0805", "unknown constraint", "A type parameter's constraint is one of equatable (== and !=), ordered (also < <= > >=), numeric (also + - * / and integer literals) or copyable (assignment, which every coax0 type allows). A length parameter $N takes no constraint."},
     {"E0806", "binding outside a constraint", "A call or instance gives a constrained parameter a type that does not meet its constraint. The error is at the use and names the generic declaration and the constraint. Ordered and numeric types are integers and floats; equatable types are scalars, strings and enums."},
     {"E0807", "instantiation failed", "A generic body checked against its constraints can still fail for one instance, for example a literal too large for u8. The instance's errors come first; this one is at the call that made the instance and lists its bindings."},
     {"E0808", "misplaced constraint", "A constraint is written once, where the parameter is bound: on its first $T in a procedure's parameters, or in a struct's parameter list. Elsewhere, and a second different constraint on one parameter, are refused."},
+    // ---- E09xx: tagged results and effect admission ----
+    {"E0900", "invalid tagged type or Result containment", "A nominal union has1 to64 unique alternatives. Result(T,E) has explicit success and non-void error types; a Result cannot be hidden transitively in another Result, optional, array, view, record or union in the initial handling profile."},
+    {"E0901", "invalid active alternative constructor", "Construct exactly one declared alternative with its checked payload, or a unit alternative with no payload. Result constructors spell both type arguments."},
+    {"E0902", "tagged value needs valid construction", "Union and Result values have no implicit default. Optional defaults to none. Explicit =--- is refused for all sums and by-value arrays or records containing them; supply a valid constructor."},
+    {"E0903", "tagged payload needs elimination", "A sum's payload cannot be read as an ordinary field. Use an exhaustive switch, try, or or_else so only the active alternative is accessed."},
+    {"E0904", "invalid or nonexhaustive switch", "Switch a union, Result, optional or enum and cover every alternative exactly once. Payload alternatives bind one immutable local; unit and enum cases bind none. There is no default, fallthrough or guarded case in this profile."},
+    {"E0905", "propagation family or error type differs", "try requires Result(T,E) inside a procedure returning Result(U,E), with the exact same nominal E, or T? inside a procedure returning U?. Map other families explicitly with switch."},
+    {"E0906", "fallback has the wrong payload type", "The lazy right side of or_else must have the success payload type. A unit success needs a void fallback expression."},
+    {"E0907", "Result would leave without handling", "Naming or assigning an error does not handle it. Consume or transfer each direct Result before every scope exit, including an implicit error return from try and a later failing call argument."},
+    {"E0908", "Result has already transferred or cannot be reassigned", "Direct Result bindings are immutable handling obligations. Transfer into a new local, direct Result parameter or return only once; the old binding cannot be read again."},
+    {"E0909", "Result handling paths do not agree", "Continuing branches must agree on pending and consumed Results. An outer Result cannot be consumed in a loop or captured by a deferred block in the initial structured-flow profile."},
+    {"E0910", "optional has no valid context or operation", "null needs an expected optional type. Wrap explicitly with some(value); there is no implicit payload-to-optional conversion, truthiness or arbitrary sum equality."},
+    {"E0911", "inspection profile has no tagged-value records", "The requested published inspection profile cannot describe sums, propagation or exhaustive switches. Use an explicitly sum-capable profile when available; no partial successful inventory or cached query is produced."},
+    {"E0940", "invalid or unsupported effect declaration", "Use one well-formed #pure or #effects declaration with unique known names. Before effect admission is enabled these annotations are explicitly refused rather than trusted."},
+    {"E0941", "declared effect bound is exceeded", "A concrete procedure's direct or transitive capability exceeds its declared upper bound. Inspect the original site and call path; include the capability or remove its effect."},
+    {"E0942", "effect admission is incomplete", "Unknown or unreviewed foreign behavior cannot satisfy a checked purity or effect contract. Supply matching explicit boundary evidence or keep the obligation visible."},
+    {"E0943", "effect graph or workspace limit", "Effect admission could not validate its complete bounded graph and scratch storage. No partial successful contract is published."},
 };
 
 const int32_t ERROR_COUNT = (int32_t)(sizeof ERRORS / sizeof ERRORS[0]);

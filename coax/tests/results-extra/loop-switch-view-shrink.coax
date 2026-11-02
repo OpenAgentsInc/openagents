@@ -1,0 +1,21 @@
+#import "Basic";
+
+#test "the unmodified descriptor covers the loop" {
+  #assert switched_read(Choice.keep) == 30;
+}
+
+Choice :: enum u8 { shrink; keep; }
+switched_read :: (choice:Choice)->int {
+  values := [2]int.[10,20];
+  view := values[..];
+  total := 0;
+  for i:0..<2 {
+    switch choice {
+      case Choice.shrink { view = values[0..<1]; }
+      case Choice.keep {}
+    }
+    total += view[i];
+  }
+  return total;
+}
+main :: () { print("%\n",switched_read(Choice.shrink)); }

@@ -183,10 +183,22 @@ class Release(unittest.TestCase):
   fake=self.root/'binary';fake.write_text('#!/bin/sh\ncd "'+str(self.root)+'"\nif [ "$1" = version ]; then cat version; elif [ "$2" = --json ]; then cat stale.json; else cat coax/STATUS.md; fi\n');fake.chmod(0o755)
   r=self.tool('--check','--binary',fake);self.assertNotEqual(r.returncode,0);self.assertIn('binary metadata',r.stderr)
  def test_representative_acceptance_claims_use_the_real_frontend(self):
-  cases=[('values','main :: () {x:uint=3;data:[4]u8=---;data[0]=cast(u8)x;}',True),('barrier','main :: () {a:u32=3;b:u64=7;#assert value_barrier(a)==a && value_barrier(b)==b;}',True),('layout','Pair :: struct {x:int;}\nmain :: () {n:=type_info(Pair).size;}',True),('reserved','Bad :: union {x:int;}\nmain :: () {}',False),('borrow','bad :: ()->[]int {a:[2]int;return a[..];}\nmain :: () {}',False)]
+  cases=[('values','main :: () {x:uint=3;data:[4]u8=---;data[0]=cast(u8)x;}',True),('barrier','main :: () {a:u32=3;b:u64=7;#assert value_barrier(a)==a && value_barrier(b)==b;}',True),('layout','Pair :: struct {x:int;}\nmain :: () {n:=type_info(Pair).size;}',True),('union','Choice :: union {x:int;}\nmain :: () {}',True),('reserved','Flags :: enum_flags u8 {a;}\nmain :: () {}',False),('results','Failure :: enum u8 {bad;} f :: ()->Result(int,Failure) {return Result(int,Failure).{ok=7};} main :: () {#assert (f() or_else 0)==7;}',True),('borrow','bad :: ()->[]int {a:[2]int;return a[..];}\nmain :: () {}',False)]
   for name,text,success in cases:
    p=self.root/(name+'.coax');p.write_text(text);r=subprocess.run([str(COAX),'check',str(p)],capture_output=True,text=True)
    self.assertEqual(r.returncode==0,success,r.stderr)
+ def test_diagnostic_markdown_stages_match_registered_codes(self):
+  result=subprocess.run([str(COAX),'explain','--all','--markdown'],capture_output=True,text=True,timeout=30)
+  self.assertEqual(result.returncode,0,result.stderr)
+  stage=None;seen=set()
+  for line in result.stdout.splitlines():
+   heading=re.match(r'## E(\d\d)xx:',line)
+   if heading:stage=heading.group(1)
+   code=re.match(r'\| `E(\d\d)\d\d` \|',line)
+   if code:
+    self.assertEqual(stage,code.group(1),line)
+    seen.add(stage)
+  self.assertIn('09',seen)
  def test_publisher_rejects_drift_before_credentials_or_network(self):
   spec=importlib.util.spec_from_file_location('coax_publisher',ROOT/'scripts/publish-coax-book.py');mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
   with mock.patch.object(mod.subprocess,'run',side_effect=subprocess.CalledProcessError(1,['drift'])) as run, mock.patch.object(mod,'token_from_file') as token, mock.patch.object(mod.urllib.request,'build_opener') as network, mock.patch('sys.argv',['publisher','--token-file','secret']):

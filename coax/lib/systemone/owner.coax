@@ -1,0 +1,70 @@
+// One canonical owner, held at one stable address until discard/take. Only its
+// ticket is copied. The owner and wire buffers are not copied or concurrently
+// accessed. Raw transport callers keep their existing manual lifetime duties.
+#load "transport.coax";
+#load "owner-policy.coax";
+
+SoOwnedCall :: struct {
+  generation: int;
+  phase: int;
+  call: [1] SoCall;
+}
+
+// Zero means admission refused without changing owner, bytes, or host effects.
+// A positive ticket owns either a pending call or a terminal setup refusal.
+// Completed results block reuse until a whole snapshot is taken or discarded.
+so_owned_start :: (owner:[]SoOwnedCall,c:SoClient,body:string,out:[]u8,err:[]u8)->int {
+  if owner.count < 1 { return 0; }
+  if !so_owned_can_start(owner[0].phase,owner[0].generation) { return 0; }
+  if !so_start_allowed(owner[0].call[0].h) { return 0; }
+  owner[0].generation = so_owned_next(owner[0].generation);
+  owner[0].phase = SO_OWN_PENDING;
+  if !so_start(c,body,owner[0].call[..],out,err) { owner[0].phase = SO_OWN_READY; }
+  return owner[0].generation;
+}
+
+so_owned_poll :: (owner:[]SoOwnedCall,ticket:int,wait_ms:int)->bool {
+  if owner.count < 1 { return false; }
+  if !so_owned_matches(owner[0].phase,owner[0].generation,ticket) { return false; }
+  if owner[0].phase == SO_OWN_READY { return true; }
+  if !so_step(owner[0].call[..],wait_ms) { return false; }
+  owner[0].phase = SO_OWN_READY;
+  return true;
+}
+
+// Cancel publishes the existing transport's terminal cancellation exactly once.
+// It does not discard a result that the consumer has yet to snapshot.
+so_owned_cancel :: (owner:[]SoOwnedCall,ticket:int)->bool {
+  if owner.count < 1 { return false; }
+  if !so_owned_matches(owner[0].phase,owner[0].generation,ticket) { return false; }
+  if owner[0].phase == SO_OWN_PENDING {
+    so_cancel(owner[0].call[..]); owner[0].phase = SO_OWN_READY;
+  }
+  return true;
+}
+
+// No borrowed transport descriptor escapes. All destination buffers must be
+// disjoint from one another and the wire buffers, and live through every use of
+// result. Capacity/state refusal changes no byte or named field. After those
+// checks, copying cannot refuse; metadata publishes last, then the owner retires.
+so_owned_take :: (owner:[]SoOwnedCall,ticket:int,result:[]SoResult,body:[]u8,err:[]u8,problem:[]u8)->bool {
+  if owner.count < 1 || result.count < 1 { return false; }
+  if !so_owned_is_ready(owner[0].phase,owner[0].generation,ticket) { return false; }
+  r := owner[0].call[0].r;
+  if !so_owned_fits(r.body.count,body.count) || !so_owned_fits(r.stderr.count,err.count) || !so_owned_fits(r.problem.count,problem.count) { return false; }
+  for i:0..<r.body.count { body[i] = r.body[i]; }
+  for i:0..<r.stderr.count { err[i] = r.stderr[i]; }
+  for i:0..<r.problem.count { problem[i] = r.problem[i]; }
+  result[0] = SoResult.{status = r.status, body = cast(string) body[0..<r.body.count],
+    stderr = cast(string) err[0..<r.stderr.count], problem = cast(string) problem[0..<r.problem.count], usage = r.usage};
+  owner[0].call[0] = SoCall.{}; owner[0].phase = SO_OWN_IDLE;
+  return true;
+}
+
+// Stops pending work or drops the ready result. A late/copy ticket is inert even
+// after the process host has reused its raw slot for an unrelated child.
+so_owned_discard :: (owner:[]SoOwnedCall,ticket:int)->bool {
+  if !so_owned_cancel(owner,ticket) { return false; }
+  owner[0].call[0] = SoCall.{}; owner[0].phase = SO_OWN_IDLE;
+  return true;
+}

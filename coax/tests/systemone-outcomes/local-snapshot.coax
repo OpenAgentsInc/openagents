@@ -1,0 +1,5 @@
+#load "../../lib/systemone/outcomes.coax";
+bad :: (owner:[]SoOwnedCall,ticket:int)->Result(SoTerminal,SoSnapshotFailure) {
+  body:[512]u8;err:[512]u8;problem:[256]u8;
+  return so_request_snapshot(owner,ticket,body[..],err[..],problem[..]);
+}

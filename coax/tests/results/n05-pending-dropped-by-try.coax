@@ -1,0 +1,13 @@
+// R2 check-first regression: literal expectation predates implementation.
+Error :: struct {domain:u32;code:int;operation:u32;}
+make :: (ok:bool)->Result(int,Error) {
+  if ok {return Result(int,Error).{ok=7};}
+  return Result(int,Error).{err=Error.{domain=9,code=-41,operation=2}};
+}
+
+bad :: ()->Result(int,Error) {pending:=make(true);
+  // DIAGNOSTIC
+  value:=try make(false);
+  used:=pending or_else 0;return Result(int,Error).{ok=value+used};
+}
+main :: () {}

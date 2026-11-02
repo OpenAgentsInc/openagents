@@ -1430,7 +1430,7 @@ written: a view could come *into* an exported procedure, but `#foreign`
 imports passed only scalars. Since 0.38.0 they also take borrowed views of
 numbers, so an Opus encoder that takes sample buffers can be declared:
 
-```coax
+```jai
 opus_encode :: (pcm: [] s16, out: [] u8) -> int #foreign;
 ```
 

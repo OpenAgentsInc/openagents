@@ -1,0 +1,362 @@
+{
+  "schema": "coax.results.fixtures.v1",
+  "scope": "R2 tagged sums/optionals, handling, propagation and ordered cleanup only; R11 annotations are rejected until enforced. Thirteen positive and28negative authored sources, including5extra sequencing controls. Native entrypoints execute literal checks or predeclared effect traces. No native foreign sums.",
+  "cases": [
+    {
+      "id": "p01-tagged-alternatives",
+      "source": "p01-tagged-alternatives.coax",
+      "sha256": "26d076ad73500389ae088370b544c78614f23ca41349ede468167e7a18645d1a",
+      "expected": "accept",
+      "oracle": "All three alternatives select independently; all-case return is sufficient without an extra return.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p02-optional-shapes",
+      "source": "p02-optional-shapes.coax",
+      "sha256": "02ed45a3ad3bd4b316774f458816458ae128c463373c674f1a1c0182c7df5608",
+      "expected": "accept",
+      "oracle": "None/some/some(none) differ; optional view and view of optionals remain distinct.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p03-result-transfer",
+      "source": "p03-result-transfer.coax",
+      "sha256": "7fa8b7190addc0a8d282cf930f09545203101b8cfc26f38828ac676e75f817ec",
+      "expected": "accept",
+      "oracle": "Every continuing/return path consumes each Result; generic passthrough transfers without naming alone handling an error.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p04-propagation-cleanup",
+      "source": "p04-propagation-cleanup.coax",
+      "sha256": "754ad283c2adf0005ca7adc38ccc031ca0cca619af01ca69258fd1072d512ca0",
+      "expected": "accept",
+      "oracle": "Independent traces failure421/success4321; exact foreign-shaped domain/code/operation; return captures7 before deferred assignment8.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p05-lazy-order",
+      "source": "p05-lazy-order.coax",
+      "sha256": "b9e70eaceb9ef1e7249c444279dc1ae485688e375c256859d659e28708052239",
+      "expected": "accept",
+      "oracle": "Literal traces: fallback4/45, assignment-place and argument propagation142; no later mark3 or store; lazy error arms never execute.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p06-caller-payload-borrows",
+      "source": "p06-caller-payload-borrows.coax",
+      "sha256": "1b56afee793c68aeb9dc6e1a5635dafef296b982a1dc09df06a2eb13c6bb9180",
+      "expected": "accept",
+      "oracle": "Result view builtin arguments are admitted only with sum-aware A1/B1; both success/error payloads keep caller roots.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p09-unit-cleanup-handling",
+      "source": "p09-unit-cleanup-handling.coax",
+      "sha256": "f79ad82cc9f66f56d04f80721754bb3c82f1a74ea93c142ae36d7f3b32fdde03",
+      "expected": "accept",
+      "oracle": "Unit success syntax and explicit cleanup failure handler; return7 preserved while report records close failure.",
+      "native_stdout": ""
+    },
+    {
+      "id": "p11-declared-some-is-ordinary-call",
+      "source": "p11-declared-some-is-ordinary-call.coax",
+      "sha256": "a0f55fc3ca01d32e56a2ab178b1146919da897a2c4b770736b3e0ef3728cf2ca",
+      "expected": "accept",
+      "oracle": "Parser does not reserve some; declared procedure wins over the optional intrinsic.",
+      "native_stdout": ""
+    },
+    {
+      "id": "n01-bound-result-ignored",
+      "source": "n01-bound-result-ignored.coax",
+      "sha256": "e279dbb0dae3b29edc5396539ac27f3ca3aece78bd439acf70be4976fc836ced",
+      "expected": "reject",
+      "oracle": "A named Result remains pending at return.",
+      "code": "E0907",
+      "line": 10
+    },
+    {
+      "id": "n02-bare-result-ignored",
+      "source": "n02-bare-result-ignored.coax",
+      "sha256": "cf098cfb405077e247b6c469fb0b4cfd9a2a3025c2c42de4f252059d1f0eb0ac",
+      "expected": "reject",
+      "oracle": "Standalone Result expression is not handled.",
+      "code": "E0907",
+      "line": 10
+    },
+    {
+      "id": "n03-result-read-after-transfer",
+      "source": "n03-result-read-after-transfer.coax",
+      "sha256": "40ce1824abb1041f3840b754ececd91cb9be2504b2dbe385a629d8f42cea1e3c",
+      "expected": "reject",
+      "oracle": "Transfer consumed the first binding; second is handled.",
+      "code": "E0908",
+      "line": 10
+    },
+    {
+      "id": "n04-partial-handling-join",
+      "source": "n04-partial-handling-join.coax",
+      "sha256": "4fd8bbf489dd0cd7f7d74becc320f319d1c27047216e81a4fe69eee896c1bd7d",
+      "expected": "reject",
+      "oracle": "Continuing branches disagree pending/consumed; reject at the join/first following statement.",
+      "code": "E0909",
+      "line": 10
+    },
+    {
+      "id": "n05-pending-dropped-by-try",
+      "source": "n05-pending-dropped-by-try.coax",
+      "sha256": "3c12fb17a0fa1432cc91a3bc4c967ef01e20e428e54776c9d036e745f21027c4",
+      "expected": "reject",
+      "oracle": "Try failure would leave another Result pending; later success-path handling cannot repair it.",
+      "code": "E0907",
+      "line": 10
+    },
+    {
+      "id": "n06-result-reassignment",
+      "source": "n06-result-reassignment.coax",
+      "sha256": "e66d256a6b68046b87faf0b1772a1e96ba12f8b35fa49eb516971fc4cf9a4ea3",
+      "expected": "reject",
+      "oracle": "Result bindings are immutable and cannot overwrite a pending error.",
+      "code": "E0908",
+      "line": 10
+    },
+    {
+      "id": "n07-result-contained-in-record",
+      "source": "n07-result-contained-in-record.coax",
+      "sha256": "db04cbfb1207f7c140f515f25fc940ca3d9823a080c1f32432ed59aa3daec1a0",
+      "expected": "reject",
+      "oracle": "Initial handling profile rejects transitive Result storage in aggregates.",
+      "code": "E0900",
+      "line": 9
+    },
+    {
+      "id": "n08-result-consumed-from-outer-loop",
+      "source": "n08-result-consumed-from-outer-loop.coax",
+      "sha256": "8f2f195c0a6d5c0cdf84b529be3d229c782f0cabd4e64619e16cd45cee405c78",
+      "expected": "reject",
+      "oracle": "Cannot prove a loop consumes an outer Result exactly once.",
+      "code": "E0909",
+      "line": 10
+    },
+    {
+      "id": "n09-result-captured-by-defer",
+      "source": "n09-result-captured-by-defer.coax",
+      "sha256": "c0b24fb7f30e7fe10401302993b16caea4b5cfdd822daa56dabe8dbae0433d97",
+      "expected": "reject",
+      "oracle": "Deferred capture of outer Result obligation is unsupported; handle a result produced inside cleanup.",
+      "code": "E0909",
+      "line": 10
+    },
+    {
+      "id": "n10-later-try-drops-result-argument",
+      "source": "n10-later-try-drops-result-argument.coax",
+      "sha256": "2963a10694bb0ecdcc5eb71a0e14edaff8b005b6fb1cdef7c466e54094d6a353",
+      "expected": "reject",
+      "oracle": "Result argument transfer is committed only when the call begins; later propagation would abandon its pending temporary.",
+      "code": "E0907",
+      "line": 11
+    },
+    {
+      "id": "n11-nominal-error-mismatch",
+      "source": "n11-nominal-error-mismatch.coax",
+      "sha256": "118211f5b30d855fb5d102b85eb8af03bc9e10d871c4d017be67f40f1902ca8b",
+      "expected": "reject",
+      "oracle": "Identical record shape does not convert nominal error domains.",
+      "code": "E0905",
+      "line": 11
+    },
+    {
+      "id": "n12-optional-result-family-mismatch",
+      "source": "n12-optional-result-family-mismatch.coax",
+      "sha256": "e650eaf9163640a102dfe1f0e5ba4d88d32450624967491562614cac1d7c1e56",
+      "expected": "reject",
+      "oracle": "Result failure cannot silently become optional absence.",
+      "code": "E0905",
+      "line": 10
+    },
+    {
+      "id": "n13-try-leaves-defer",
+      "source": "n13-try-leaves-defer.coax",
+      "sha256": "146e5b1bea7529dd93570186594bc35be17d70dd41702c1f2885f9d136f2ef30",
+      "expected": "reject",
+      "oracle": "Recoverable propagation may not leave deferred code; reuse E0361.",
+      "code": "E0361",
+      "line": 10
+    },
+    {
+      "id": "n14-inactive-payload-access",
+      "source": "n14-inactive-payload-access.coax",
+      "sha256": "6e3f0ad8587db182e6d5f27b795f537f88830eb541f6ad915d47d6e498a350c2",
+      "expected": "reject",
+      "oracle": "No unchecked payload access even if the alternative name is known.",
+      "code": "E0903",
+      "line": 5
+    },
+    {
+      "id": "n15-nonexhaustive-switch",
+      "source": "n15-nonexhaustive-switch.coax",
+      "sha256": "04b1301ed557799a70f7ca8852c46daf52755914998759649475990b81354167",
+      "expected": "reject",
+      "oracle": "Missing err alternative is a semantic error, not an implicit default.",
+      "code": "E0904",
+      "line": 10
+    },
+    {
+      "id": "n16-duplicate-switch-case",
+      "source": "n16-duplicate-switch-case.coax",
+      "sha256": "0b8fcabf3c2a2da537c4ddfcb6979b3238e7f4cc79ef3be822060a77f8334740",
+      "expected": "reject",
+      "oracle": "Each alternative exactly once, regardless of whether the duplicate body is reachable.",
+      "code": "E0904",
+      "line": 10
+    },
+    {
+      "id": "n17-multiple-active-constructor",
+      "source": "n17-multiple-active-constructor.coax",
+      "sha256": "9883cdde8ca68c5249d474fe367d1ca3958a842d9f51ce075f6e2ea975a016fc",
+      "expected": "reject",
+      "oracle": "Construct exactly one alternative.",
+      "code": "E0901",
+      "line": 5
+    },
+    {
+      "id": "n18-union-default",
+      "source": "n18-union-default.coax",
+      "sha256": "96559e1620c085278a7b0ca5160bca1c8ae2bde8a58bb1594ab46dd887f09868",
+      "expected": "reject",
+      "oracle": "A zero-filled tag must not fabricate an initialized union success.",
+      "code": "E0902",
+      "line": 5
+    },
+    {
+      "id": "n19-fallback-type",
+      "source": "n19-fallback-type.coax",
+      "sha256": "25c66127d9eb9cf7e1355bc1397f5a7328cc5a3d91d456851ee6c881c7ca09b3",
+      "expected": "reject",
+      "oracle": "Fallback must have success type int.",
+      "code": "E0906",
+      "line": 10
+    },
+    {
+      "id": "n20-ambiguous-null",
+      "source": "n20-ambiguous-null.coax",
+      "sha256": "06d02e5ec67e9e7eae47dc2f16f910ba7936cde7401fbdde987f59d1fd16902d",
+      "expected": "reject",
+      "oracle": "None has no standalone type; optional context required.",
+      "code": "E0910",
+      "line": 4
+    },
+    {
+      "id": "n21-local-success-backing",
+      "source": "n21-local-success-backing.coax",
+      "sha256": "34660c584bfa0a740d53ae10af42972d304a9cc39bdf990f3bca9f0459adfd2b",
+      "expected": "reject",
+      "oracle": "Sum success payload cannot return a descriptor into local inline storage.",
+      "code": "E0383",
+      "line": 5
+    },
+    {
+      "id": "n22-local-error-backing",
+      "source": "n22-local-error-backing.coax",
+      "sha256": "559e3bc8be26a33e29272cf49a1994de47ff5ed515a11577c7eff789378534a4",
+      "expected": "reject",
+      "oracle": "Error payload lifetime is checked as strictly as success payload.",
+      "code": "E0383",
+      "line": 5
+    },
+    {
+      "id": "n23-propagated-local-error",
+      "source": "n23-propagated-local-error.coax",
+      "sha256": "2ee1a7714c511976eef4fd7ad133e8ed16a75a2742b3c8cf41445d633749faf9",
+      "expected": "reject",
+      "oracle": "Synthesized error return projects callee error backing to local actual input; original try source witness.",
+      "code": "E0383",
+      "line": 6
+    },
+    {
+      "id": "n32-switch-break-is-loop-only",
+      "source": "n32-switch-break-is-loop-only.coax",
+      "sha256": "395304b03d7b02ea1f2fd2fa6373577d3da1f0f4b388715334868089e7aca04f",
+      "expected": "reject",
+      "oracle": "C switch lowering must not introduce a language switch break.",
+      "code": "E0360",
+      "line": 5
+    },
+    {
+      "id": "n34-optional-is-not-implicit",
+      "source": "n34-optional-is-not-implicit.coax",
+      "sha256": "30727115ec0438ce835c1bb8cf7fd92a07c8836fb20a3a2fb13e0f3188f09ce9",
+      "expected": "reject",
+      "oracle": "Optional injection is explicit some(7); ordinary assignment mismatch applies.",
+      "code": "E0325",
+      "line": 4
+    },
+    {
+      "id": "n37-optional-explicit-uninitialized",
+      "source": "n37-optional-explicit-uninitialized.coax",
+      "sha256": "c649635a0619f3f3460ccdc6a5c9a7e6ce504b5da58cbe8c61ceb53f7167d4a9",
+      "expected": "reject",
+      "oracle": "Optional with no initializer defaults none; explicit uninitialized storage cannot fabricate its active tag.",
+      "code": "E0902",
+      "line": 4
+    },
+    {
+      "id": "n38-array-containing-optional-uninitialized",
+      "source": "n38-array-containing-optional-uninitialized.coax",
+      "sha256": "36a1ed1c1868e28c0454be21551faf07d47bf6f5c6eae4ae02f8b1559473c80f",
+      "expected": "reject",
+      "oracle": "Explicit uninitialized storage is refused transitively for by-value arrays containing sums.",
+      "code": "E0902",
+      "line": 4
+    },
+    {
+      "id": "n39-record-containing-optional-uninitialized",
+      "source": "n39-record-containing-optional-uninitialized.coax",
+      "sha256": "892aa3affba53e080f25dce6fb215d83244350b163d7cb11b8db0692722dda97",
+      "expected": "reject",
+      "oracle": "Defaultable optional field does not make explicit uninitialized containing record valid; sum-free legacy cases unchanged.",
+      "code": "E0902",
+      "line": 5
+    },
+    {
+      "id": "p12-switch-loop-control",
+      "source": "p12-switch-loop-control.coax",
+      "sha256": "62bd1c051d5bb9e2b2a240e307e04442c7b746fa44e325dd5cbd50c968b52d4b",
+      "expected": "accept",
+      "native_stdout": "404 1 4\n",
+      "oracle": "Predeclared evaluator assertions and literal native effect/order trace."
+    },
+    {
+      "id": "p13-while-propagation",
+      "source": "p13-while-propagation.coax",
+      "sha256": "58f83025c095bb53474d50157b22f24c16dfef43844e7bf2acab43b7d9db0653",
+      "expected": "accept",
+      "native_stdout": "3122 3129\n",
+      "oracle": "Predeclared evaluator assertions and literal native effect/order trace."
+    },
+    {
+      "id": "p14-place-propagation",
+      "source": "p14-place-propagation.coax",
+      "sha256": "dec10b2a1ad278d5dbf5f988204f8b0a34d563c5e0c1afcbfbdf46b004d7146a",
+      "expected": "accept",
+      "native_stdout": "127 1929\n",
+      "oracle": "Predeclared evaluator assertions and literal native effect/order trace."
+    },
+    {
+      "id": "p15-range-propagation",
+      "source": "p15-range-propagation.coax",
+      "sha256": "06cba5dc8ab555551e3336f3fa3d1811daf847e8966cb4d589c91ed017555a02",
+      "expected": "accept",
+      "native_stdout": "149 1249 123341\n",
+      "oracle": "Predeclared evaluator assertions and literal native effect/order trace."
+    },
+    {
+      "id": "p16-unit-try-before-effects",
+      "source": "p16-unit-try-before-effects.coax",
+      "sha256": "b0c3f0f2606c132371a0e3df75c7b14495adf50503e8d9d53b3758c7b8ad331f",
+      "expected": "accept",
+      "native_stdout": "9 -1 2\n",
+      "oracle": "Predeclared evaluator assertions and literal native effect/order trace."
+    }
+  ]
+}

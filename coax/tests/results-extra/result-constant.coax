@@ -1,0 +1,3 @@
+Error :: union { bad; }
+abandoned :: Result(int,Error).{err=Error.{bad}};
+main :: () {}

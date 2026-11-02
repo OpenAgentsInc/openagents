@@ -1,0 +1,5 @@
+// R2 check-first regression: literal expectation predates implementation.
+main :: () {
+  // DIAGNOSTIC
+  values:[2]int?=---;
+}

@@ -1,0 +1,17 @@
+Rows :: union { rows:[][2]u8; }
+pick :: (input:Rows)->[]u8 {
+  switch input {case rows(value) {return value[0][..];}}
+}
+forward :: (values:[][2]u8)->[]u8 {return pick(Rows.{rows=values});}
+#test "case payloads preserve caller array storage through helper substitution" {
+  values:=[2][2]u8.[[2]u8.[3,5],[2]u8.[7,11]];
+  selected:=forward(values[..]);
+  #assert selected.count==2 && selected[0]==3 && selected[1]==5;
+  selected[1]=13;#assert values[0][1]==13 && values[1][0]==7;
+}
+main :: () {
+  values:=[2][2]u8.[[2]u8.[3,5],[2]u8.[7,11]];
+  selected:=forward(values[..]);
+  #assert selected.count==2 && selected[0]==3 && selected[1]==5;
+  selected[1]=13;#assert values[0][1]==13 && values[1][0]==7;
+}

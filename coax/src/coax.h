@@ -172,7 +172,7 @@ enum class Tok : uint8_t {
   equal, plus_equal, minus_equal, star_equal, slash_equal, percent_equal,
   amp_equal, pipe_equal, caret_equal, shl_equal, shr_equal,
   plus, minus, star, slash, percent, amp, pipe, caret, shl, shr,
-  eqeq, noteq, lt, le, gt, ge, andand, oror, bang, dollar,
+  eqeq, noteq, lt, le, gt, ge, andand, oror, bang, dollar, question,
 };
 
 struct Token {
@@ -196,10 +196,12 @@ enum class TypeKind : uint8_t {
   invalid, void_, integer, floating, bool_, string_, untyped_int, untyped_float,
   struct_, enum_, array, view,
   param,  // a type parameter's placeholder ($T): checked, never laid out or emitted
+  union_, result, optional,
 };
 
 struct StructDecl;
 struct EnumDecl;
+struct UnionDecl;
 
 struct TypeInfo {
   TypeKind kind = TypeKind::invalid;
@@ -214,6 +216,10 @@ struct TypeInfo {
   EnumDecl *enum_decl = nullptr;
   const TypeInfo *physical = nullptr; // compiler-selected transparent quantity carrier
   int32_t id = 0;            // generated C names for arrays and views
+  UnionDecl *union_decl = nullptr;
+  const TypeInfo *sum_error = nullptr;
+  int32_t sum_payload_offset = 0;
+  int32_t sum_default = -1;  // checked default tag; -1 means no implicit construction
 };
 using Type = const TypeInfo *;
 
@@ -227,6 +233,7 @@ inline bool is_float(Type t) { return t->kind == TypeKind::floating; }
 inline bool is_number(Type t) { return is_int(t) || is_float(t); }
 inline bool is_untyped(Type t) { return t->kind == TypeKind::untyped_int || t->kind == TypeKind::untyped_float; }
 inline bool is_aggregate(Type t) { return t->kind == TypeKind::struct_ || t->kind == TypeKind::array; }
+inline bool is_sum(Type t) { return t->kind == TypeKind::union_ || t->kind == TypeKind::result || t->kind == TypeKind::optional; }
 const std::vector<Type> &all_composite_types();  // arrays and views, in creation order
 
 // ---- Compile-time values ----
@@ -303,23 +310,31 @@ struct Value {
   std::shared_ptr<CtString> string_owner;  // owned cast snapshot, shared by slices
   std::shared_ptr<CtStorage> agg;  // struct fields, array elements, view storage
   int64_t offset = 0, count = 0;            // view: window into agg
+  uint32_t sum_tag = 0;  // sum: agg contains only the active payload (zero slots for unit)
 };
 
 // ---- Syntax tree ----
 
 struct Expr;
+struct TypeExpr;
+struct TypeArgument {
+  TypeExpr *type = nullptr;
+  Expr *length = nullptr;
+};
 
 struct TypeExpr {
-  enum Kind : uint8_t { named, array, view, dynamic, param } kind = named;
+  enum Kind : uint8_t { named, array, view, dynamic, param, optional } kind = named;
   Loc loc;
   Str name;                  // named
   Expr *length = nullptr;    // array
   TypeExpr *elem = nullptr;  // array, view, dynamic
+  Slice<TypeArgument> args;
 };
 
 enum class ExprKind : uint8_t {
   int_lit, float_lit, bool_lit, string_lit, ident, call, unary, binary, run,
   field, index, slice, struct_lit, array_lit, cast, ifx, enum_value, ct_value,
+  sum, null_, some, try_, or_else,
 };
 
 // Built-in math, the same in C, Metal and compile-time evaluation.
@@ -338,7 +353,7 @@ struct FieldInit {
 
 struct Expr {
   ExprKind kind;
-  uint8_t effects = 0;  // CK_effects: 1 call, 2 trap, 4 overflow trap under checked arithmetic
+  uint8_t effects = 0;  // CK_effects: 1 call, 2 trap, 4 overflow, 8 current-frame propagation
   uint8_t own_effects = 0;  // the same bits for this operation alone, without its operands
   Loc loc;
   Type type = &T_INVALID;     // set by the checker
@@ -367,9 +382,12 @@ struct Expr {
   Intrinsic intrinsic = Intrinsic::none;  // call: built-in math (proc is null)
   Value *ct = nullptr;        // ct_value: an aggregate computed at compile time
   int32_t ct_id = -1;         // ct_value: emitted as a static constant
+  int32_t sum_variant = -1;
+  Type propagate_type = nullptr; // exact admitted enclosing return type on try
 };
 
-enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_, for_range, for_each, break_, continue_, defer, assert_ };
+struct SwitchCase;
+enum class StmtKind : uint8_t { block, expr, var, assign, ret, if_, while_, for_range, for_each, break_, continue_, defer, assert_, switch_ };
 
 struct Stmt {
   StmtKind kind;
@@ -387,6 +405,7 @@ struct Stmt {
   Tok op = Tok::equal;         // assign: = += -= ...
   uint8_t own_effects = 0;     // assign: the compound update's CK_effects bits
   Stmt *then_ = nullptr, *else_ = nullptr;  // if (then_ is a block), loops and defer (then_)
+  Slice<SwitchCase *> cases;
 };
 
 struct Param {
@@ -395,6 +414,21 @@ struct Param {
   TypeExpr *type_expr = nullptr;
   Type type = &T_INVALID;
 };
+
+struct CaseBinding {
+  Str name;
+  Loc loc;
+  Type type = &T_INVALID;
+};
+struct SwitchCase {
+  Loc loc;
+  Str name;
+  Expr *enum_pattern = nullptr;
+  CaseBinding *binding = nullptr;
+  Stmt *body = nullptr;
+  uint64_t tag_value = 0;
+};
+struct EffectName { Str name; Loc loc; };
 
 struct ProcDecl {
   Str name;
@@ -412,6 +446,9 @@ struct ProcDecl {
   bool generic = false;  // has $T type parameters: checked; only its instances are emitted
   Str key;  // an instance: its bindings, length-prefixed, appended to the template's C name
   const ProcDecl *origin = nullptr;  // an instance: the generic procedure it was made from
+  bool effect_present = false, pure_decl = false;
+  Loc effect_loc;
+  Slice<EffectName> effect_names;
 };
 
 struct Field {
@@ -451,6 +488,21 @@ struct EnumDecl {
   int32_t end = 0;  // offset just past the item's last authored token (0: unknown)
   TypeExpr *base_expr = nullptr;
   Slice<EnumMember> members;
+  TypeInfo *type = nullptr;
+};
+
+struct UnionVariant {
+  Str name;
+  Loc loc;
+  TypeExpr *type_expr = nullptr;
+  Type type = &T_INVALID;
+  uint32_t ordinal = 0;
+};
+struct UnionDecl {
+  Str name;
+  Loc loc;
+  int32_t end = 0;
+  Slice<UnionVariant> variants;
   TypeInfo *type = nullptr;
 };
 
@@ -500,6 +552,7 @@ struct File {
   Slice<ConstDecl *> constants;
   Slice<StructDecl *> structs;
   Slice<EnumDecl *> enums;
+  Slice<UnionDecl *> unions;
   Slice<Expr *> assertions;
   Slice<CheckDecl *> checks;
   bool authority = false;  // at least one authored unit requires checked execution

@@ -1,0 +1,34 @@
+// R2 check-first regression: literal expectation predates implementation.
+Error :: struct {domain:u32;code:int;operation:u32;}
+mark :: (trace:[]int,n:int) {trace[0]=trace[0]*10+n;}
+read :: (trace:[]int,ok:bool)->Result(int,Error) {
+  mark(trace,4);if ok {return Result(int,Error).{ok=7};}
+  return Result(int,Error).{err=Error.{domain=9,code=-41,operation=2}};
+}
+work :: (trace:[]int,ok:bool)->Result(int,Error) {
+  defer mark(trace,1);
+  {defer mark(trace,2);value:=try read(trace,ok);mark(trace,3);}
+  return Result(int,Error).{ok=9};
+}
+snapshot :: ()->Result(int,Error) {value:=7;defer value=8;return Result(int,Error).{ok=value};}
+#test "success and propagated failure run reverse lexical cleanup once" {
+  trace:=[1]int.[0];
+  switch work(trace[..],false) {
+    case ok(v) {#assert false;}
+    case err(e) {#assert e.domain==9 && e.code==-41 && e.operation==2;}
+  }
+  #assert trace[0]==421;trace[0]=0;
+  #assert (work(trace[..],true) or_else 0)==9 && trace[0]==4321;
+  #assert (snapshot() or_else 0)==7;
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  trace:=[1]int.[0];
+  switch work(trace[..],false) {
+    case ok(v) {#assert false;}
+    case err(e) {#assert e.domain==9 && e.code==-41 && e.operation==2;}
+  }
+  #assert trace[0]==421;trace[0]=0;
+  #assert (work(trace[..],true) or_else 0)==9 && trace[0]==4321;
+  #assert (snapshot() or_else 0)==7;
+}

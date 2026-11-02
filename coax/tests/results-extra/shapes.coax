@@ -1,0 +1,28 @@
+Failure :: struct { code:s32; operation:u8; }
+Choice :: union { small:u8; wide:f64; done; }
+Empty :: union { first; second; }
+Signed :: enum s8 { minus= -1; zero; last=127; }
+
+r_choice :: ()->Choice #export_c {return Choice.{wide=9.5};}
+r_empty :: ()->Empty #export_c {return Empty.{second};}
+r_nested :: ()->int?? #export_c {inside:int?=some(7);return some(inside);}
+r_unit :: ()->Result(void,Failure) #export_c {return Result(void,Failure).{ok};}
+r_error :: ()->Result(void,Failure) #export_c {return Result(void,Failure).{err=Failure.{code= -41,operation=3}};}
+r_choose :: (value:Choice)->int #export_c {
+  switch value {case small(v) {return cast(int)v;} case wide(v) {return cast(int)v;} case done {return -1;}}
+}
+r_signed :: (value:Signed)->int #export_c {
+  switch value {case Signed.minus {return -7;} case Signed.zero {return 11;} case Signed.last {return 19;}}
+}
+r_present :: (value:int?)->bool #export_c {return value!=null;}
+
+#test "independent LP64 layouts and signed enum cases" {
+  #assert size_of(Choice)==16 && size_of(Empty)==4;
+  #assert size_of(int?)==16 && size_of(int??)==24;
+  #assert size_of(Result(void,Failure))==12;
+  #assert r_choose(r_choice())==9 && r_signed(Signed.minus)== -7;
+  #assert r_signed(Signed.zero)==11 && r_signed(Signed.last)==19;
+  #assert r_present(some(0)) && !r_present(null);
+  switch r_unit() {case ok {} case err(e) {#assert false;}}
+  switch r_error() {case ok {#assert false;} case err(e) {#assert e.code== -41 && e.operation==3;}}
+}

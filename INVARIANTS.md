@@ -2399,6 +2399,75 @@ Check: [verification profile](coax/verification-retain-policy.md) and
 128/128 root mutants killed and LP64 O0/O2/ASan+UBSan, using the earlier
 qualified producer with explicit standalone scope.
 
+## Tagged error handling preserves payloads and cleanup
+
+Coax owns nominal union, Result and optional identity, layout, selection,
+handling obligations and sum-aware borrow admission. The native bootstrap
+transports those decisions and executes active payloads. The initial profile
+is [specified separately](coax/results.md): direct Result locals, parameters
+and returns are admitted; transitive Result containment and top-level Result
+constants are refused. A payload's exact nominal error type survives propagation.
+
+Result obligations are separate from ordinary returned-value use. Naming,
+printing or reflecting a Result does not handle it. Transfer requires an
+actual checked Result formal; a later argument's early return cannot erase
+an earlier temporary obligation. Continuing branches agree on handling state.
+Once-only range bounds and foreach collections execute before loop restrictions;
+repeated conditions, outer bindings in loop bodies and deferred captures keep
+their conservative restrictions.
+
+Recoverable propagation is an ordinary return: operands and assignment places
+execute once in source order, later effects stop, and registered cleanup runs
+once in reverse lexical order after capture of the return payload. Fatal traps
+retain their fatal contract. A sum has one active alternative; none constructs
+no payload storage. Malformed runtime tags trap. Padding and inactive bytes
+have no equality, initialization, wire or foreign-ABI contract. New sum-capable
+native C headers and layout reports have distinct schema identities; legacy
+inspection and device profiles must explicitly support new forms or refuse.
+
+The synchronous file adapter keeps protocol and cleanup decisions in Coax.
+It preserves primary foreign errors and records secondary cleanup failures.
+It retires a descriptor before its single close attempt and never retries a
+failed close; release remains unconfirmed on failure. This does not establish
+asynchronous completion/cancellation ownership or general lifetime safety.
+
+Checks: `coax/tests/results.py`, `coax/tests/results_profiles.py`, the authority
+policy `coax/lib/sys/file-policy.coax`, and the actual native/fault-injection
+adapter harness `coax/tests/sys/read-file.py`. The book's tagged-shape and
+typed-port examples exercise these forms in chapters 5 and 7.
+
+## A System One ticket owns one canonical request generation
+
+`coax/lib/systemone/owner.coax` keeps one canonical owner at a stable address,
+with serialized exclusive access and live wire storage. Only its generation
+ticket is copied. Pending work and an unread terminal result refuse a new
+start; generation exhaustion refuses rather than wraps. Stale tickets cannot
+poll, cancel, take or discard a newer generation, even after the host reuses
+its raw process slot. Cancel produces a terminal result; discard retires it.
+An unstarted owner never releases an unrelated slot zero.
+
+Taking a terminal result validates every snapshot capacity before writing,
+copies body/stderr/problem bytes to independent caller storage, publishes
+metadata last, then retires the owner. Snapshot buffers are disjoint from each
+other and the wire buffers, and outlive every returned descriptor. Process
+reaping ends native buffer access; it does not retain a borrowed result.
+Arbitrary owner-value copies, races and overlapping destinations remain API
+violations, not compiler-enforced linearity.
+
+`outcomes.coax` makes admission/snapshot/cancel/discard failures handled Results
+and polling/terminal states exhaustive sums. The real Lab copies a snapshot
+before response validation, routing and transcript publication; displayed text
+is copied again into the transcript pool before temporary snapshot storage
+expires. Only explicit no-connection uses its existing alternate door. Timeout,
+lost reply and other unknown outcomes never authorize automatic retry or prove
+that a remote effect did not happen. Stop and quit handle discard explicitly.
+
+Checks: the owner policy's focused mutation, `coax/tests/systemone-owner.py`,
+`coax/tests/systemone-outcomes.coax`, actual native child traces, and the
+hash-bound production Lab/default/quit consumer checks in
+`docs/verification/coax-outcomes-12625-2026-11-02/`. Their declared component
+scope does not establish a full-desktop build or R0 device readiness.
+
 ## One protocol for all OpenAgents surfaces
 
 Root `proto/` and the OpenAgents Protocol specification define interchange for

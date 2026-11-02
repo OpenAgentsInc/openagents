@@ -1,7 +1,7 @@
 # Coax implementation roadmap
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated 2026-11-01. Baseline: the current compiler above, including bounded
 generics, logical modules, returned-borrow and retained-store diagnostics,
@@ -40,7 +40,7 @@ slice as new work. The README's obsolete paynet prerequisite is already fixed.
 
 | Area | Shipped | Still missing |
 | --- | --- | --- |
-| Language core | Scalars, strings, structs/defaults, enums, fixed arrays/views, loops, cleanup, checked casts, ordered evaluation, generic procedures and fixed-storage structs over type/length parameters with built-in constraints | Tagged results/unions, optionals, exhaustive switching, richer procedures, pointers, owned containers, user-defined constraints and operators |
+| Language core | Scalars, strings, structs/defaults, enums, fixed arrays/views, loops, cleanup, checked casts, ordered evaluation, generic procedures and fixed-storage structs over type/length parameters with built-in constraints, plus the initial native-C tagged-value/error profile | Richer procedures, pointers, owned containers, broader sum storage, user-defined constraints and operators |
 | Compile-time work | Constants, bounded `#run`, assertions, finite checks, execution coverage for authority units, mutation testing | Typed quotation/insertion, general declaration generation, plugins and a dependency scheduler |
 | Source graph | Checked `#load`, physical-file ownership, bounded graphs, logical module owners, qualified names, explicit exports, nominal declaration IDs, source spans and module content revisions in `coax deps` | Generated-work scheduling, richer module configuration, reexports, parameterized modules, package/lock manifests and general incremental invalidation |
 | Reflection | Schema-1 CPU type/field/enum records; constant projections and `#run` tables; a real Haunted House layout consumer | First-class types, stable field/persistence identities, richer metadata, alternate-target layouts and derivation |
@@ -374,8 +374,18 @@ WebGPU host is a narrow consumer, not complete browser support.
 cleanup in one real adapter. **Expansion later:** richer procedures and adjacent forms
 only as consumers require them.
 
-Implement tagged unions, optionals, exhaustive `switch`, typed results,
-ignored-error diagnostics, `try` and `or_else`. Propagation must execute active
+The initial native LP64 profile is specified in [results.md](results.md):
+tagged unions, optionals, exhaustive `switch`, typed results,
+ignored-error diagnostics, `try` and `or_else`. Its synchronous file adapter
+preserves foreign error domains/codes, and the WGSL validation driver consumes
+it. Result nesting/storage, inspection and other backends remain bounded.
+The shared asynchronous contract below now has a bounded System One/Lab
+consumer: handled start/snapshot/discard Results, exhaustive terminal outcomes,
+generation-fenced polling and copying before wire reuse. The
+[qualification route](../docs/books/coax-outcomes-request-ownership.md) separates
+that component from whole-desktop and R0 readiness. General ownership and the
+remaining R2 forms stay open.
+Propagation must execute active
 `defer` cleanup exactly once in reverse order. Keep fatal traps distinct from
 recoverable domain errors; foreign error domains/codes must survive adapters.
 Define that distinction normatively with the implementation: recoverable errors
@@ -430,9 +440,11 @@ alongside incomplete facts. See the current
 [returned-borrow](verification-return-borrows.md) and
 [retained-store](verification-retained-stores.md) contracts and their qualified
 evidence. The earlier [local-only record](verification-local-borrows.md) retains
-its historical scope. Recursive/unmodeled helper relations, helper-write to
-returned-carrier composition and asynchronous request ownership still need
-separate work; general region and transfer lifetimes remain incomplete.
+its historical scope. Bounded raw helper-write/returned-carrier composition and the canonical
+System One request/snapshot protocol are delivered separately. Recursive,
+unmodeled and by-value mutable-view helper relations, general region and
+transfer lifetimes remain incomplete. A copied ticket is fenced; arbitrary
+copies of the canonical owner are not compiler-enforced linear values.
 **Expansion later:** owning allocations, containers and context after error/cleanup
 and target contracts exist. Early escape diagnostics do not establish general
 memory safety.
@@ -1238,10 +1250,10 @@ open; every new slice still needs its listed prerequisites. The book's
    queries and revision-bound fixes use R1. Restricted analysis and useful
    diagnostics must not wait for plugins, macros or owning containers.
 5. **Continue R2 and R3, then owning storage.** Retain the qualified bounded
-   returned-borrow and retained-store diagnostics; finish helper-write/returned
-   carrier composition and request ownership. Add typed results, exhaustive cleanup,
-   transfer/deferred-destruction rules and one real
-   asynchronous adapter. Build on R4's shipped non-owning generics; R5 concrete
+   returned-borrow and retained-store diagnostics, bounded helper-write/returned
+   carrier composition, typed results/cleanup and the real System One request
+   adapter. Extend transfer/deferred-destruction rules only with new consumer
+   evidence. Build on R4's shipped non-owning generics; R5 concrete
    derivation can proceed on its narrower prerequisites. Owning libraries wait
    for R3's expansion. Reduce measured analysis cost before growing a nearly
    exhausted compiler work budget; the retained-store record names the observation.

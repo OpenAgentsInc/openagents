@@ -1,0 +1,32 @@
+{
+  "factory": {
+    "receipt": "/tmp/b3-zeron-defaults-typed-final-20261102/receipt.json",
+    "receipt_sha256": "c39a323fba0bb4a4fbe39627942f540d0721646636755c35e84091f70f65a0c7",
+    "same_complete_authored_declarations": true,
+    "changed_declarations": [],
+    "declared_rows": 177,
+    "source_files_changed": [
+      "coax/lib/systemone/outcomes.coax"
+    ]
+  },
+  "guard": {
+    "receipt": "/tmp/b3-lab-owner-typed-final-20261102/receipt.json",
+    "receipt_sha256": "11b2204638d0071ce7e5638005ceb5ba8a85f5b4930925dd8616930d49bb512c",
+    "same_complete_authored_declarations": true,
+    "changed_declarations": [],
+    "declared_rows": 60,
+    "source_files_changed": [
+      "coax/lib/systemone/outcomes.coax"
+    ],
+    "same_actual_lab_ask_body": true
+  },
+  "test_only_source_delta": {
+    "path": "coax/lib/systemone/outcomes.coax",
+    "current_sha256": "9c71c5925d82e5cd328c3d2b254144290fadc2bd88b9787ad28441c490d1320c",
+    "prior_sha256": "71fce7b00b240609fbacc4adf75b60ac3670059db59c4d246cb1e27ceb93adb1",
+    "prior_matches_recorded_source": true,
+    "appended_bytes": 682,
+    "appended_sha256": "f5bc37d20321e94661fb3be5adeea56012b6348f41aca156dc6c1e64c22b291e",
+    "description": "Only the appended sharp one-byte refusal check differs; all selected product/type/default declarations match."
+  }
+}

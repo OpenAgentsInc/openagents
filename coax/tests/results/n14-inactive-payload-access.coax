@@ -1,0 +1,6 @@
+// R2 check-first regression: literal expectation predates implementation.
+Reply :: union {number:int;empty;}
+main :: () {r:=Reply.{empty};
+  // DIAGNOSTIC
+  value:=r.number;
+}

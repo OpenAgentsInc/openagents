@@ -1,0 +1,20 @@
+#import "Basic";
+// R2 check-first regression: native trace has a predeclared literal oracle.
+Error :: enum u8 {failed;}
+condition :: (trace:[]int,fail:bool)->Result(bool,Error) {
+  trace[0]+=1;
+  if trace[0]>=3 {if fail {return Result(bool,Error).{err=Error.failed};}return Result(bool,Error).{ok=false};}
+  return Result(bool,Error).{ok=true};
+}
+work :: (trace:[]int,fail:bool)->Result(int,Error) {
+  defer trace[1]+=1;
+  while try condition(trace,fail) {trace[2]+=1;if trace[2]>=4 {break;}}
+  return Result(int,Error).{ok=trace[2]};
+}
+probe :: (fail:bool)->int {
+  trace:=[3]int.[0,0,0];code:=0;
+  switch work(trace[..],fail) {case ok(n) {if fail {return -1;}code=n;}case err(e) {if !fail || e!=Error.failed {return -2;}code=9;}}
+  return trace[0]*1000+trace[1]*100+trace[2]*10+code;
+}
+#test "try in a while condition runs each iteration and unwinds once" {#assert probe(false)==3122 && probe(true)==3129;}
+main :: () {print("% %\n",probe(false),probe(true));}

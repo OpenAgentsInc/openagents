@@ -63,7 +63,8 @@ LAB_CLAUDE_LABELS :: [3] string.["Opus 5.5: the most capable, for hard or import
 
 Lab :: struct {
   phase: int;
-  call: [1] SoCall;
+  owner: [1] SoOwnedCall;
+  ticket: int;                    // copyable generation; owner storage stays canonical
   q: [1] SoBody;                  // the questions asked, for so_check
   part: int;                      // the user's message (a session part)
   route: int;                     // its decision part, or -1
@@ -80,7 +81,12 @@ Lab :: struct {
   body: [] u8; out: [] u8; err: [] u8;   // the host's (lab_attach)
 }
 LAB_BODY :: 24576; LAB_OUT :: 65536; LAB_ERR :: 4096;
-lab_attach :: (l: [] Lab, body: [] u8, out: [] u8, err: [] u8) { l[0].body = body; l[0].out = out; l[0].err = err; }
+// The host attaches app-life buffers to the canonical owner. Reattachment may
+// not replace backing storage while a pending/ready request owns it.
+lab_attach :: (l: [] Lab, body: [] u8, out: [] u8, err: [] u8) {
+  if !so_owned_can_start(l[0].owner[0].phase,l[0].owner[0].generation) || !so_start_allowed(l[0].owner[0].call[0].h) { return; }
+  l[0].body = body; l[0].out = out; l[0].err = err;
+}
 
 // The door: PSIONIC_SYSTEMONE_URL when set, else this Mac's (read once, when the host is attached).
 lab_door :: (l: [] Lab) {
@@ -288,7 +294,7 @@ lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Ses
 // Elephant is asked where the message goes.
 lab_ask :: (l: [] Lab, s: [] Session) {
   // A repeated ask must not abandon the active owner or rewrite its backing.
-  if !so_start_allowed(l[0].call[0].h) { return; }
+  if !so_owned_can_start(l[0].owner[0].phase,l[0].owner[0].generation) || !so_start_allowed(l[0].owner[0].call[0].h) { return; }
   st: [1400] u8;
   mc := l[0].mc.count > 0;
   lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], s_text_of(s, l[0].part), l[0].codex, mc), l[0].codex, mc);
@@ -298,8 +304,10 @@ lab_ask :: (l: [] Lab, s: [] Session) {
   c := SoClient.{url = lab_url(l), key_env = "", timeout_s = LAB_TIMEOUT_S};
   kb: [8] u8;
   if cl_getenv(SO_PSIONIC_KEY_ENV, kb[..]).count > 0 { c.key_env = SO_PSIONIC_KEY_ENV; c.scheme = "Bearer"; }
-  if !so_start(c, body, l[0].call[..], l[0].out[..], l[0].err[..]) { lab_fail(s, lab_problem(l[0].out[..], l[0].call[0].r, lab_url(l))); return; }
-  l[0].phase = LAB_ASKING;
+  switch so_request_start(l[0].owner[..],c,body,l[0].out[..],l[0].err[..]) {
+    case ok(ticket) {l[0].ticket=ticket;l[0].phase=LAB_ASKING;}
+    case err(failure) {lab_fail(s,"The Lab request owner is unavailable.");}
+  }
 }
 lab_fail :: (s: [] Session, why: string) { s_notice(s, N_ERROR, why); s_turn_end(s, false, ""); }
 
@@ -368,7 +376,9 @@ lab_unanswered :: (l: [] Lab, s: [] Session) -> bool {
 lab_stop :: (l: [] Lab, s: [] Session) -> bool {
   if l[0].via == 3 && l[0].mc.count > 0 && lab_mc_stop(l[0].mc, s) { return true; }
   if l[0].phase == LAB_IDLE { return false; }
-  if l[0].phase == LAB_ASKING { so_cancel(l[0].call[..]); }
+  if l[0].phase == LAB_ASKING {
+    switch so_request_discard(l[0].owner[..],l[0].ticket) {case ok {}case err(failure) {}}
+  }
   l[0].phase = LAB_IDLE;
   s[0].stopping = true;
   s_turn_end(s, false, "");
@@ -395,13 +405,36 @@ lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Ses
   }
   if l[0].phase != LAB_ASKING { return; }
   l[0].secs += dt;
-  if !so_step(l[0].call[..], 0) { return; }
+  switch so_request_poll(l[0].owner[..],l[0].ticket,0) {
+    case pending {return;}
+    case refused(failure) {l[0].phase=LAB_IDLE;lab_fail(s,"The Lab request ticket is stale.");return;}
+    case ready {}
+  }
+  // Independent local snapshots live through validation, every formatting use,
+  // routing and the transcript's s_put copies. Retiring/reusing the canonical
+  // owner or its wire buffers cannot revoke these descriptors.
+  response: [LAB_OUT] u8; error: [LAB_ERR] u8; problem: [256] u8;
+  r:SoResult; may_fall_back:=false;
+  switch so_request_snapshot(l[0].owner[..],l[0].ticket,response[..],error[..],problem[..]) {
+    case err(failure) {
+      switch so_request_discard(l[0].owner[..],l[0].ticket) {case ok {}case err(stale) {}}
+      l[0].phase=LAB_IDLE;lab_fail(s,"The Lab response does not fit its result storage.");return;
+    }
+    case ok(terminal) {
+      switch terminal {
+        case answered(reply) {r=reply;}
+        case refused(reply) {r=reply;}
+        case cancelled(reply) {r=reply;}
+        case not_connected(reply) {r=reply;may_fall_back=true;}
+        case unknown(reply) {r=reply;}
+      }
+    }
+  }
   l[0].phase = LAB_IDLE;
-  r := l[0].call[0].r;
   round_ms := cast(int) (l[0].secs * 1000.0);
   if r.problem.count == 0 { r.problem = so_check(l[0].q[..], r.body); }
   // nothing on this Mac: the same message goes to Elephant on the RTX 4080
-  if lab_fall_back(l, g, r.problem) {
+  if may_fall_back && lab_fall_back(l, g, r.problem) {
     if gs_want(g, s, GS_ELEPHANT, GT_LAB, lab_url(l), ps_url(p)) { l[0].phase = LAB_LOADING; return; }
     lab_ask(l, s);
     return;
@@ -716,15 +749,17 @@ LAB_TEST_OTHER :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"o
   s_init(ss[..], pool[..]); s_user(ss[..], "first");
   lab_attach(l[..], body[2..<10], out[2..<10], err[2..<10]);
   l[0].phase = LAB_ASKING; l[0].secs = 7; l[0].route = 3;
-  l[0].call[0].h = 0; l[0].call[0].at = 4; l[0].call[0].lines = 2;
-  l[0].call[0].out = out[2..<10]; l[0].call[0].err = err[2..<10];
-  l[0].call[0].r = SoResult.{status = 202, body = "pending", problem = "keep", stderr = "prior"};
+  l[0].owner[0].phase = SO_OWN_PENDING; l[0].owner[0].generation = 9; l[0].ticket = 9;
+  l[0].owner[0].call[0].h = 0; l[0].owner[0].call[0].at = 4; l[0].owner[0].call[0].lines = 2;
+  l[0].owner[0].call[0].out = out[2..<10]; l[0].owner[0].call[0].err = err[2..<10];
+  l[0].owner[0].call[0].r = SoResult.{status = 202, body = "pending", problem = "keep", stderr = "prior"};
   l[0].q[0].at = 5; l[0].q[0].stage = 3; l[0].q[0].questions = 1;
   l[0].q[0].problem = "original question";
   lab_ask(l[..], ss[..]);
   #assert l[0].phase == LAB_ASKING && l[0].secs == 7 && l[0].route == 3;
-  #assert l[0].call[0].h == 0 && !l[0].call[0].done && l[0].call[0].at == 4 && l[0].call[0].lines == 2;
-  #assert l[0].call[0].r.status == 202 && l[0].call[0].r.body == "pending" && l[0].call[0].r.problem == "keep" && l[0].call[0].r.stderr == "prior";
+  #assert l[0].owner[0].phase == SO_OWN_PENDING && l[0].owner[0].generation == 9 && l[0].ticket == 9;
+  #assert l[0].owner[0].call[0].h == 0 && !l[0].owner[0].call[0].done && l[0].owner[0].call[0].at == 4 && l[0].owner[0].call[0].lines == 2;
+  #assert l[0].owner[0].call[0].r.status == 202 && l[0].owner[0].call[0].r.body == "pending" && l[0].owner[0].call[0].r.problem == "keep" && l[0].owner[0].call[0].r.stderr == "prior";
   #assert l[0].q[0].at == 5 && l[0].q[0].stage == 3 && l[0].q[0].questions == 1 && l[0].q[0].problem == "original question";
   #assert ss[0].n == 1 && ss[0].live && s_text_of(ss[..], 0) == "first";
   for i: 0..<12 { #assert body[i] == 71 && out[i] == 72 && err[i] == 73; }

@@ -1,0 +1,7 @@
+// R2 check-first regression: literal expectation predates implementation.
+Value :: enum u8 {one;two;}
+bad :: (v:Value) {switch v {case Value.one {
+  // DIAGNOSTIC
+  break;
+}case Value.two {}}}
+main :: () {}

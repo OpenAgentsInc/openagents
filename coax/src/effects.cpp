@@ -31,6 +31,9 @@ struct EffectFacts {
     if(type->kind==TypeKind::view || type->kind==TypeKind::string_)return true;
     if(type->kind==TypeKind::array)return borrowed_type(type->elem,seen_types);
     if(type->kind==TypeKind::struct_ && type->struct_decl)for(const auto &f:type->struct_decl->fields)if(borrowed_type(f.type,seen_types))return true;
+    if(type->kind==TypeKind::result && borrowed_type(type->sum_error,seen_types))return true;
+    if((type->kind==TypeKind::result || type->kind==TypeKind::optional) && borrowed_type(type->elem,seen_types))return true;
+    if(type->kind==TypeKind::union_ && type->union_decl)for(const auto &v:type->union_decl->variants)if(borrowed_type(v.type,seen_types))return true;
     return false;
   }
   void defaults(Type type) {
@@ -71,6 +74,13 @@ struct EffectFacts {
       case ExprKind::binary:expression(e->lhs);expression(e->rhs);return;
       case ExprKind::slice:case ExprKind::ifx:expression(e->lhs);expression(e->rhs);expression(e->third);return;
       case ExprKind::ct_value:return;
+      case ExprKind::sum:case ExprKind::some:case ExprKind::try_:
+        // v1 has no recoverable-flow/active-variant contract. Preserve all
+        // actual child effects and report its unsupported semantics as unknown.
+        site(3,e->loc);expression(e->lhs);return;
+      case ExprKind::null_:site(3,e->loc);return;
+      case ExprKind::or_else:
+        site(3,e->loc);expression(e->lhs);expression(e->rhs);return;
     }
     site(3,e->loc);
   }
@@ -86,6 +96,7 @@ struct EffectFacts {
     expression(s->expr);expression(s->expr2);
     expression(s->target,s->kind==StmtKind::assign && s->op==Tok::equal);
     for(const Stmt *child:s->body)statement(child);
+    for(const SwitchCase *c:s->cases){expression(c->enum_pattern);statement(c->body);}
     statement(s->then_);statement(s->else_); // Includes defer bodies and every syntactic branch.
   }
   void collect() {

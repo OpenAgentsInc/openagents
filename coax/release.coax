@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.47.0";
+IMPLEMENTATION_VERSION :: "0.48.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [125]ReleaseFeature.[
+CATALOGUE :: [130]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -14,11 +14,12 @@ CATALOGUE :: [125]ReleaseFeature.[
   ReleaseFeature.{id="keywords.struct",section="Keywords",name="`struct` `enum`",meaning="Type declarations: `Name :: struct { ... }`, `Name :: enum u8 { ... }`",status="works",introduced=""},
   ReleaseFeature.{id="keywords.cast",section="Keywords",name="`cast`",meaning="`cast(T) x` (checked), `cast,trunc(T) x` (keeps the low bits)",status="works",introduced=""},
   ReleaseFeature.{id="keywords.size-of",section="Keywords",name="`size_of`",meaning="`size_of(T)`: the C size in bytes, as an untyped integer",status="works",introduced=""},
-  ReleaseFeature.{id="keywords.union",section="Keywords",name="`union` `enum_flags`",meaning="Tagged unions; flag sets",status="reserved",introduced=""},
-  ReleaseFeature.{id="keywords.switch",section="Keywords",name="`switch` `case`",meaning="Exhaustive selection",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.union",section="Keywords",name="`union`",meaning="Nominal tagged unions with 1 to 64 payload or unit alternatives; initial native LP64 profile, no generic unions",status="partial",introduced="0.48.0"},
+  ReleaseFeature.{id="keywords.enum-flags",section="Keywords",name="`enum_flags`",meaning="Flag sets",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.switch",section="Keywords",name="`switch` `case`",meaning="Exhaustive statement selection over unions, Result, optionals and enums; immutable payload bindings, no fallthrough/default/guards",status="partial",introduced="0.48.0"},
   ReleaseFeature.{id="keywords.using",section="Keywords",name="`using`",meaning="Bring an embedded field's members into scope",status="reserved",introduced=""},
-  ReleaseFeature.{id="keywords.try",section="Keywords",name="`try` `or_else`",meaning="Propagate or handle an error result",status="reserved",introduced=""},
-  ReleaseFeature.{id="keywords.null",section="Keywords",name="`null`",meaning="The empty optional pointer",status="reserved",introduced=""},
+  ReleaseFeature.{id="keywords.try",section="Keywords",name="`try` `or_else`",meaning="Same-error-type Result or optional propagation with lexical cleanup; lazy fallback, source-order operands and assignment places",status="partial",introduced="0.48.0"},
+  ReleaseFeature.{id="keywords.null",section="Keywords",name="`null`",meaning="Contextual none of a tagged optional; symmetric tag comparison, no pointer sentinel or truthiness",status="works",introduced="0.48.0"},
   ReleaseFeature.{id="keywords.push-context",section="Keywords",name="`push_context`",meaning="Change the implicit context for a block",status="reserved",introduced=""},
   ReleaseFeature.{id="keywords.remove",section="Keywords",name="`remove`",meaning="Remove the current element during iteration",status="reserved",introduced=""},
   ReleaseFeature.{id="keywords.it",section="Keywords",name="`it` `it_index`",meaning="Implicit element and index names inside `for` (Coax names them instead: `for x, i: ...`)",status="reserved",introduced=""},
@@ -91,7 +92,11 @@ CATALOGUE :: [125]ReleaseFeature.[
   ReleaseFeature.{id="types.fixed32-fixed64",section="Types",name="`fixed32 fixed64`",meaning="(E0301)",status="reserved",introduced=""},
   ReleaseFeature.{id="types.v2-v3-v4-quat-m3-m4",section="Types",name="`v2 v3 v4 quat m3 m4`",meaning="(E0301)",status="reserved",introduced=""},
   ReleaseFeature.{id="types.any",section="Types",name="`Any`",meaning="(E0301); planned for tools and logging only",status="reserved",introduced=""},
-  ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, `T?`, `Handle(T)`, lane types",meaning="",status="designed",introduced=""},
+  ReleaseFeature.{id="types.pointer-optional-handle",section="Types",name="`*T`, `*T?`, `Handle(T)`, lane types",meaning="Raw pointers and handles remain planned; tagged optionals are recorded separately",status="designed",introduced=""},
+  ReleaseFeature.{id="types.optional",section="Types",name="`T?`",meaning="Interned none/some values, nested optionals, explicit some construction and none default; no implicit payload conversion",status="works",introduced="0.48.0"},
+  ReleaseFeature.{id="types.result",section="Types",name="`Result(T,E)`",meaning="Compiler-owned ok/err values with checked direct-result handling and transfer; Result containment and general async ownership remain outside the initial profile",status="partial",introduced="0.48.0"},
+  ReleaseFeature.{id="compiler.result-handling",section="Capabilities",name="Checked recoverable error handling",meaning="Pending/consumed direct Results checked on branches, normal exits and implicit try exits; conservative loop/defer restrictions, active-payload borrows; canonical asynchronous ownership is a separate library protocol, not deep ownership",status="partial",introduced="0.48.0"},
+  ReleaseFeature.{id="target.c-sums",section="Capabilities",name="Tagged native C values",meaning="Explicit native LP64 tag/payload layout, active-payload execution, versioned composed headers and invalid-tag traps; numeric-view/scalar foreign boundary remains",status="partial",introduced="0.48.0"},
   ReleaseFeature.{id="source.units",section="Capabilities",name="`#load` / `coax deps`",meaning="Bounded source composition and input inventory",status="works",introduced="0.11.0"},
   ReleaseFeature.{id="source.declarations",section="Capabilities",name="`coax deps --declarations`",meaning="Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph",status="works",introduced="0.26.0"},
   ReleaseFeature.{id="source.revisions",section="Capabilities",name="`coax deps --modules`",meaning="Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no per-declaration revisions or cache key",status="partial",introduced="0.27.0"},
@@ -114,7 +119,7 @@ CATALOGUE :: [125]ReleaseFeature.[
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Rejects direct local fixed-array view/string returns and simple aliases, slices and casts. Helper returns and retained stores have separate bounded profiles; general ownership remains unchecked",status="works",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.returns",section="Capabilities",name="Bounded returned-borrow diagnostics",meaning="Resolved helper and aggregate return projections retain known caller, static and local origins; a concrete local witness reports E0383 even beside an incomplete arm. Recursion and unmodeled helper writes remain explicit manual status, not a safe empty result. Resource exhaustion is E0381; retained caller-state and general region lifetimes remain separate",status="partial",introduced="0.46.0"},
-  ReleaseFeature.{id="borrow.stores",section="Capabilities",name="Bounded retained-store diagnostics",meaning="Checks concrete bodies including void and uncalled procedures, rejecting known callee-local descriptor backing stored into caller or static storage with E0383. Sparse parameter outlives obligations are projected at actual callers. Unknown, recursive, foreign and same-frame region relations remain explicit manual scope; local-carrier write-to-return composition and request ownership remain separate",status="partial",introduced="0.46.0"},
+  ReleaseFeature.{id="borrow.stores",section="Capabilities",name="Bounded retained-store diagnostics",meaning="Checks concrete bodies including void and uncalled procedures, rejecting known callee-local descriptor backing stored into caller or static storage with E0383. Sparse parameter outlives obligations are projected at actual callers. Unknown, recursive, foreign and same-frame region relations remain explicit manual scope; bounded raw local-carrier write-to-return composition is supported; canonical request ownership is a separate library protocol",status="partial",introduced="0.46.0"},
   ReleaseFeature.{id="release.status",section="Capabilities",name="Release/status generation",meaning="Canonical Coax catalogue, CLI status and build/publication drift gate",status="works",introduced="0.14.0"},
   ReleaseFeature.{id="release.provenance",section="Capabilities",name="Compiler build identity",meaning="Checked source and artifact consistency record for site releases; not authentication",status="works",introduced="0.22.0"},
   ReleaseFeature.{id="compiler.semantic-profiles",section="Capabilities",name="Explicit semantic profile selection",meaning="Independent arithmetic, native optimization, build selector and debug information; optional schema-1 profile report; legacy presets retained, no general cross-object or device qualification",status="partial",introduced="0.25.0"},

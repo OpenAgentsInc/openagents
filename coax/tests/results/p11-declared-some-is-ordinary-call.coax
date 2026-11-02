@@ -1,0 +1,9 @@
+// R2 check-first regression: literal expectation predates implementation.
+some :: (value:int)->int {return value+1;}
+#test "an existing declared procedure named some keeps ordinary resolution" {
+  #assert some(4)==5;
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  #assert some(4)==5;
+}

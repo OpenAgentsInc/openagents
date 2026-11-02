@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "scope": "Specific actual System One and desktop Lab canonical request consumer under explicit exclusive-owner/snapshot-storage preconditions. General linear ownership and full application readiness are not claimed.",
+  "base_commit": "5fb9c509b842161f27feb9c5ecabbd1cd41a9ea4",
+  "product_commit": "a6dedd914cfa1b8ce3b6869fcfec2d16fda1dd7f",
+  "external_r2_native_compiler": {
+    "path": "/tmp/coax-12625-native/v3/coax",
+    "sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80",
+    "provenance": "Coherent R2 integration image supplied by its owner; this work did not build or independently qualify its normal-release/bootstrap workflow."
+  },
+  "earlier_qualified_compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa"
+  },
+  "results": {
+    "owner_policy": {
+      "groups": 5,
+      "cases": 183,
+      "mutants": 34,
+      "killed": 34,
+      "survivors": 0,
+      "producer": "earlier qualified 1fac; unchanged policy retained"
+    },
+    "typed_api": {
+      "groups": 42,
+      "authority_coverage": "passed",
+      "root_mutants": 32,
+      "killed": 32,
+      "survivors": 0,
+      "native_modes": [
+        "O0",
+        "O2",
+        "ASan+UBSan"
+      ],
+      "literal_transcript_lines": 5,
+      "diagnostics": [
+        "E0907",
+        "E0904",
+        "E0383"
+      ]
+    },
+    "actual_lab_real_host": {
+      "request_generations_per_mode": 6,
+      "native_modes": [
+        "O0",
+        "O2",
+        "ASan+UBSan"
+      ],
+      "same_canonical_owner": true,
+      "usage_service_body_error_and_all_transcript_strings": true,
+      "eof_pending_and_real_cancel_reap": true,
+      "stale_copied_tickets_and_unrelated_slot_reuse": true,
+      "scope": "Complete actual authored Lab/Session/Engine/Ps/Gpu types and actual Lab request/validation/routing/transcript procedures; environment/downstream engine effect stubs, actual native process host, owned offline curl stand-in. No app/UI/service claim."
+    },
+    "construction": {
+      "runs": 16,
+      "native_modes": [
+        "O0",
+        "O2",
+        "ASan+UBSan"
+      ],
+      "scope": "177 unchanged complete authored declarations and production C factory/quit, bounded actual attachment statements; full attachment not established"
+    },
+    "lab_entry": {
+      "cases_per_mode": 8,
+      "runs": 14,
+      "scope": "60 unchanged complete authored declarations, actual lab_ask and fatal nonentry stubs; RED removes the current guard as a fault injection, not historical Git-base replay"
+    },
+    "full_application": {
+      "settings": "E0381 at settings.coax:52",
+      "lab": "E0381 at claude.coax:900",
+      "status": "refused before app emission/authored Lab check execution"
+    }
+  },
+  "retained_provenance": [
+    "Raw owner O0/emission retained from v3 in v4 after runner-only expected-count correction; O2 and sanitizer executed in v4.",
+    "Typed checks/mutation and first negative retained from final-v2 in final-v3 after runner-only diagnostic stream correction; remaining negatives and all native literal transcripts executed in final-v3.",
+    "Factory/entry product declarations and actual lab_ask body match current source exactly. Only an appended sharp refusal test changed the full outcomes.coax source; exact prior prefix hashes match both receipts.",
+    "Earlier ABI/default fixture and transcript oracle mistakes, initial projection refusals, one genuine surviving mutation and runner errors remain raw archived observations. None is relabeled passed."
+  ],
+  "receipts": {
+    "typed-api.json": {
+      "original": "/tmp/b3-outcomes-final-20261102-v3/qualification.json",
+      "sha256": "c24a32210075bd26d06ef5e54a5a3551eaa87972c5abb5a09c19ad77ce04e2c7",
+      "bytes": 20272
+    },
+    "typed-checks.json": {
+      "original": "/tmp/b3-outcomes-final-20261102-v3/checks.json",
+      "sha256": "aa4deb3667ff710d290aff35451330e5fcee2a361e352f748685ad71d9d927d1",
+      "bytes": 13606
+    },
+    "typed-mutation.json": {
+      "original": "/tmp/b3-outcomes-final-20261102-v3/mutation.json",
+      "sha256": "1906170f50fc1b3ad3a36f2a2993bf25861918beaeb57f60c8318795802180d7",
+      "bytes": 13852
+    },
+    "lab-native.json": {
+      "original": "/tmp/b3-lab-process-native-final-20261102/qualification.json",
+      "sha256": "7a723d9319b3425f8c1f37e04f0f13ee49a722f0be9f83bebfdd99c5e5396850",
+      "bytes": 118377
+    },
+    "construction.json": {
+      "original": "/tmp/b3-zeron-defaults-typed-final-20261102/receipt.json",
+      "sha256": "c39a323fba0bb4a4fbe39627942f540d0721646636755c35e84091f70f65a0c7",
+      "bytes": 95027
+    },
+    "lab-entry.json": {
+      "original": "/tmp/b3-lab-owner-typed-final-20261102/receipt.json",
+      "sha256": "11b2204638d0071ce7e5638005ceb5ba8a85f5b4930925dd8616930d49bb512c",
+      "bytes": 45965
+    },
+    "declaration-continuity.json": {
+      "original": "/tmp/b3-product-declaration-continuity.json",
+      "sha256": "a0c05239402e2a4b5545ac9ef95ae912359b8246801bfc145ede2f0244a793db",
+      "bytes": 1324
+    },
+    "full-app-refusal.json": {
+      "original": "/tmp/b3-full-desktop-typed-final-20261102/qualification.json",
+      "sha256": "aa3e42a9b2b9e60e8d9fb14393675e12ed0fbf626e9850c759aef958359d7bc6",
+      "bytes": 41437
+    },
+    "owner-policy-checks.json": {
+      "original": "/tmp/b3-owner-policy-20261102/test.json",
+      "sha256": "698383d22ad678d8a65fafe7521f5299b4ec376dae6dbe071551beb81fcbcc51",
+      "bytes": 1923
+    },
+    "owner-policy-mutation.json": {
+      "original": "/tmp/b3-owner-policy-20261102/mutation.json",
+      "sha256": "1ff04175557e0999895fb0faa9e7c78cd988d481b5d48b8ee52da3c6c2b8f89c",
+      "bytes": 2174
+    },
+    "raw-owner-native.json": {
+      "original": "/tmp/coax-systemone-owner-native-12625-v4/qualification.json",
+      "sha256": "fd60b9e4bdbd24fa36edc0b89be84880d752164868517073e8d1ab14ef93d81e",
+      "bytes": 10710
+    },
+    "raw-owner-process.json": {
+      "original": "/tmp/b3-owned-process-20261102/qualification.json",
+      "sha256": "a94f6fddfe8e26357419c82088e88fed000b727dd03aee11126caf625363c6bf",
+      "bytes": 11145
+    }
+  },
+  "archive": {
+    "file": "proof.tar.xz",
+    "bytes": 546716,
+    "sha256": "2edea50e88f5cd6b3f2a3c1e33cbdba4ac01fa8376a0cb558e660172d69a8017"
+  },
+  "manifest_sha256": "6252667f4d464cef7a1fc7d9d8344748445bdb40031fe4f3143161b10ae5ca74",
+  "readback_verified": true,
+  "no_new_owner_action": true,
+  "no_push_by_b3_agent": true
+}

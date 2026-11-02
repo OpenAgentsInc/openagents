@@ -4,7 +4,7 @@
 > `coax0`. Heap memory, the context and temporary storage are design.
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have
@@ -590,6 +590,37 @@ means a short buffer is refused, not overrun.
 > three is the same: make owners and reset points visible, poison freed
 > memory in debug builds, and use handles for anything long-lived. None of
 > it is a proof, and the spec says so.
+
+## A request owns two different sets of bytes
+
+The real System One consumer gives the lifetime rules a concrete use. Its
+[owner](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/systemone/owner.coax)
+holds one request at a stable address. Starting returns a generation ticket;
+only the ticket is copied. A second start cannot replace a pending request or
+an unread terminal result. Old tickets cannot poll, cancel or discard a later
+generation.
+
+The wire buffers remain alive while the transport can write them. Finishing
+or cancelling the child retires that native effect, but its result still
+contains views of those buffers. Before reuse, `so_owned_take` checks every
+destination capacity, copies body, stderr and problem text into independent
+caller storage, publishes the new descriptors, then retires the owner. A
+capacity refusal changes neither the owner nor any destination byte.
+
+The snapshot buffers must be disjoint from each other and from the wire
+buffers. They must outlive every use of the snapshot. The desktop Lab consumes
+that snapshot synchronously and copies displayed text into its transcript
+pool before returning. Process-slot reuse therefore cannot change an existing
+transcript entry. The [native owner checks](https://github.com/OpenAgentsInc/openagents/blob/main/coax/tests/systemone-owner.py)
+deliberately overwrite the old wire storage and exercise stale tickets after
+reuse.
+
+This is an explicit ownership protocol, with one canonical, serialized owner.
+The compiler does not make `SoOwnedCall` a linear type: copying the owner value
+itself, racing callers or passing overlapping buffers violates the API's
+preconditions. The compiler's borrow diagnostics and the native lifecycle
+checks answer different parts of the problem. [Chapter 15](ch15-asynchronous-work.md)
+follows the actual request through its typed outcomes.
 
 ## Strings
 

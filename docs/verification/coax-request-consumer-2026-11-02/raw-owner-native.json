@@ -1,0 +1,286 @@
+{
+  "schema": 1,
+  "scope": "Bounded native SoOwnedCall snapshots/tickets; scripted effects, no live service.",
+  "recorded_utc": "2026-11-02T05:57:00.437858+00:00",
+  "source_before": {
+    "coax/tests/systemone-owner.coax": {
+      "bytes": 864,
+      "sha256": "004e0875f3526b7adfd34f698c3645eaa42a07964ee253821d4214caa8f5d5f4"
+    },
+    "coax/lib/systemone/owner.coax": {
+      "bytes": 3446,
+      "sha256": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097"
+    },
+    "coax/lib/systemone/transport.coax": {
+      "bytes": 8339,
+      "sha256": "4ef727091b9248ea1d7997a8312d37b99e632e8150374c36ec571ba392451244"
+    },
+    "coax/lib/systemone/answers.coax": {
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    "coax/lib/systemone/request.coax": {
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    "coax/lib/nostr/json.coax": {
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    "coax/lib/agent/claude/fields.coax": {
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    "coax/lib/nostr/json-f64.coax": {
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    "coax/lib/agent/claude/transport.coax": {
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    "coax/lib/agent/claude/query.coax": {
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    "coax/lib/agent/claude/mcp.coax": {
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    "coax/lib/agent/claude/options.coax": {
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    "coax/lib/agent/claude/control.coax": {
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    "coax/lib/agent/claude/messages.coax": {
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    "coax/lib/systemone/call-policy.coax": {
+      "bytes": 1829,
+      "sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf"
+    },
+    "coax/lib/systemone/owner-policy.coax": {
+      "bytes": 2292,
+      "sha256": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720"
+    },
+    "coax/tests/systemone-owner.c": {
+      "bytes": 15511,
+      "sha256": "3bba03317945f2c2110240092708491f3cdc37ac7e076248ffd57d9f6e3e2d92"
+    },
+    "coax/tests/systemone-owner.py": {
+      "bytes": 6955,
+      "sha256": "78d2ae951d590be4cf5e7a86f8d47b6a410e43ef011ae95d36d2351cda4f6c11"
+    },
+    "coax/tests/b2_support.py": {
+      "bytes": 2973,
+      "sha256": "aa9cf321283e88af0dac1745a3628f3aa16fc8e7da5063010a8aff83568be594"
+    }
+  },
+  "tools_before": {
+    "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba"
+  },
+  "runs": [
+    {
+      "label": "O2-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/coax-systemone-owner-native-12625-v4",
+        "/private/tmp/coax-systemone-owner-native-12625-v4/systemone-owner.c",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/coax-systemone-owner-native-12625-v4/O2"
+      ],
+      "exit_status": 0,
+      "seconds": 0.24682983302045614
+    },
+    {
+      "label": "O2-run",
+      "argv": [
+        "/private/tmp/coax-systemone-owner-native-12625-v4/O2"
+      ],
+      "exit_status": 0,
+      "seconds": 0.16851174994371831
+    },
+    {
+      "label": "sanitized-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/coax-systemone-owner-native-12625-v4",
+        "/private/tmp/coax-systemone-owner-native-12625-v4/systemone-owner.c",
+        "/private/tmp/openagents-b3-request-12625/coax/tests/systemone-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/coax-systemone-owner-native-12625-v4/sanitized"
+      ],
+      "exit_status": 0,
+      "seconds": 0.40175433398690075
+    },
+    {
+      "label": "sanitized-run",
+      "argv": [
+        "/private/tmp/coax-systemone-owner-native-12625-v4/sanitized"
+      ],
+      "exit_status": 0,
+      "seconds": 0.29737820802256465
+    }
+  ],
+  "status": "passed",
+  "profiles": {
+    "O0": {
+      "scope": "actual generated owned System One API; scripted process effects",
+      "observations": 150,
+      "groups": 4
+    },
+    "O2": {
+      "scope": "actual generated owned System One API; scripted process effects",
+      "observations": 150,
+      "groups": 4
+    },
+    "sanitized": {
+      "scope": "actual generated owned System One API; scripted process effects",
+      "observations": 150,
+      "groups": 4
+    }
+  },
+  "retained_results": {
+    "receipt": "/private/tmp/coax-systemone-owner-native-12625-v3/qualification.json",
+    "receipt_sha256": "9f81483b7d95335f1640500a53c0c351fd28490095f694e0d464dab4181b0168",
+    "runner_only_correction": true,
+    "profiles": {
+      "O0": {
+        "scope": "actual generated owned System One API; scripted process effects",
+        "observations": 150,
+        "groups": 4
+      }
+    }
+  },
+  "source_after": {
+    "coax/tests/systemone-owner.coax": {
+      "bytes": 864,
+      "sha256": "004e0875f3526b7adfd34f698c3645eaa42a07964ee253821d4214caa8f5d5f4"
+    },
+    "coax/lib/systemone/owner.coax": {
+      "bytes": 3446,
+      "sha256": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097"
+    },
+    "coax/lib/systemone/transport.coax": {
+      "bytes": 8339,
+      "sha256": "4ef727091b9248ea1d7997a8312d37b99e632e8150374c36ec571ba392451244"
+    },
+    "coax/lib/systemone/answers.coax": {
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    "coax/lib/systemone/request.coax": {
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    "coax/lib/nostr/json.coax": {
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    "coax/lib/agent/claude/fields.coax": {
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    "coax/lib/nostr/json-f64.coax": {
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    "coax/lib/agent/claude/transport.coax": {
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    "coax/lib/agent/claude/query.coax": {
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    "coax/lib/agent/claude/mcp.coax": {
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    "coax/lib/agent/claude/options.coax": {
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    "coax/lib/agent/claude/control.coax": {
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    "coax/lib/agent/claude/messages.coax": {
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    "coax/lib/systemone/call-policy.coax": {
+      "bytes": 1829,
+      "sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf"
+    },
+    "coax/lib/systemone/owner-policy.coax": {
+      "bytes": 2292,
+      "sha256": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720"
+    },
+    "coax/tests/systemone-owner.c": {
+      "bytes": 15511,
+      "sha256": "3bba03317945f2c2110240092708491f3cdc37ac7e076248ffd57d9f6e3e2d92"
+    },
+    "coax/tests/systemone-owner.py": {
+      "bytes": 6955,
+      "sha256": "78d2ae951d590be4cf5e7a86f8d47b6a410e43ef011ae95d36d2351cda4f6c11"
+    },
+    "coax/tests/b2_support.py": {
+      "bytes": 2973,
+      "sha256": "aa9cf321283e88af0dac1745a3628f3aa16fc8e7da5063010a8aff83568be594"
+    }
+  },
+  "inputs_unchanged": true,
+  "tools_unchanged": true,
+  "artifacts": {
+    "systemone-owner.c": "a36654e7e75f1b0ed3bae2a4740278686477f02223311d69dd0e811db09333db",
+    "systemone-owner.h": "608af5da4148c246530f42648000f0767118f38ce90b60a33a9667f5ed348197",
+    "O2-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2": "17e93d986e79b2ccd5602efe8edce5e741c97238e3667dbddb65db74402913b6",
+    "O2-run.stdout": "eb9c1ad67667ead45854bd63169b14584e8fa36652750d48037f1b54556c98c3",
+    "O2-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized": "15491b7527735085396c4a08b230d2d0b5900750991b0463fe0b9f49029b2bf2",
+    "sanitized-run.stdout": "eb9c1ad67667ead45854bd63169b14584e8fa36652750d48037f1b54556c98c3",
+    "sanitized-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "artifacts_unchanged": true
+}

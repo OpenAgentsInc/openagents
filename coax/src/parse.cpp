@@ -42,6 +42,25 @@ static_assert((uint32_t)StmtKind::break_ == COAX_PS_Tag_stmt_break_-40, "stateme
 static_assert((uint32_t)StmtKind::continue_ == COAX_PS_Tag_stmt_continue_-40, "statement AST ABI: continue_");
 static_assert((uint32_t)StmtKind::defer == COAX_PS_Tag_stmt_defer-40, "statement AST ABI: defer");
 static_assert((uint32_t)StmtKind::assert_ == COAX_PS_Tag_stmt_assert_-40, "statement AST ABI: assert_");
+static_assert((uint32_t)TypeExpr::optional == COAX_PS_Tag_type_optional-1, "type AST ABI: optional");
+static_assert((uint32_t)ExprKind::sum == COAX_PS_Tag_expr_sum-16, "expression AST ABI: sum");
+static_assert((uint32_t)ExprKind::null_ == COAX_PS_Tag_expr_null-16, "expression AST ABI: null");
+static_assert((uint32_t)ExprKind::some == COAX_PS_Tag_expr_some-16, "expression AST ABI: some");
+static_assert((uint32_t)ExprKind::try_ == COAX_PS_Tag_expr_try-16, "expression AST ABI: try");
+static_assert((uint32_t)ExprKind::or_else == COAX_PS_Tag_expr_or_else-16, "expression AST ABI: or_else");
+static_assert((uint32_t)StmtKind::switch_ == COAX_PS_Tag_stmt_switch-40, "statement AST ABI: switch");
+bool parser_type_tag(uint32_t kind) { switch(kind) {
+  case COAX_PS_Tag_type_named:case COAX_PS_Tag_type_array:case COAX_PS_Tag_type_view:case COAX_PS_Tag_type_dynamic:case COAX_PS_Tag_type_param:case COAX_PS_Tag_type_optional:return true;
+  default:return false;
+}}
+bool parser_expr_tag(uint32_t kind) { switch(kind) {
+  case COAX_PS_Tag_expr_int_lit:case COAX_PS_Tag_expr_float_lit:case COAX_PS_Tag_expr_bool_lit:case COAX_PS_Tag_expr_string_lit:case COAX_PS_Tag_expr_ident:case COAX_PS_Tag_expr_call:case COAX_PS_Tag_expr_unary:case COAX_PS_Tag_expr_binary:case COAX_PS_Tag_expr_run:case COAX_PS_Tag_expr_field:case COAX_PS_Tag_expr_index:case COAX_PS_Tag_expr_slice:case COAX_PS_Tag_expr_struct_lit:case COAX_PS_Tag_expr_array_lit:case COAX_PS_Tag_expr_cast:case COAX_PS_Tag_expr_ifx:case COAX_PS_Tag_expr_sum:case COAX_PS_Tag_expr_null:case COAX_PS_Tag_expr_some:case COAX_PS_Tag_expr_try:case COAX_PS_Tag_expr_or_else:return true;
+  default:return false;
+}}
+bool parser_stmt_tag(uint32_t kind) { switch(kind) {
+  case COAX_PS_Tag_stmt_block:case COAX_PS_Tag_stmt_expr:case COAX_PS_Tag_stmt_var:case COAX_PS_Tag_stmt_assign:case COAX_PS_Tag_stmt_ret:case COAX_PS_Tag_stmt_if_:case COAX_PS_Tag_stmt_while_:case COAX_PS_Tag_stmt_for_range:case COAX_PS_Tag_stmt_for_each:case COAX_PS_Tag_stmt_break_:case COAX_PS_Tag_stmt_continue_:case COAX_PS_Tag_stmt_defer:case COAX_PS_Tag_stmt_assert_:case COAX_PS_Tag_stmt_switch:return true;
+  default:return false;
+}}
 Loc parser_loc(coax_t_PS_Loc l) {return {(int32_t)l.line,(int32_t)l.column,(int32_t)l.offset};}
 Str parser_str(coax_string s) {return {s.data,(int32_t)s.count};}
 template<class T> T *parser_ref(const std::vector<void*> &objects,int64_t id) {return (T*)objects[(size_t)id];}
@@ -77,37 +96,40 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
   // Allocate first so all subsequent reference copies are independent of order.
   for(int64_t id=1;id<=state.used;id++) {
     const auto k=nodes[(size_t)id].kind;void *p=nullptr;
-    if(k>=1 && k<=5) p=make<TypeExpr>(arena);
-    else if(k>=16 && k<=31) p=make<Expr>(arena);
-    else if(k>=40 && k<=52) p=make<Stmt>(arena);
+    if(parser_type_tag(k)) p=make<TypeExpr>(arena);
+    else if(parser_expr_tag(k)) p=make<Expr>(arena);
+    else if(parser_stmt_tag(k)) p=make<Stmt>(arena);
     else switch(k) {
       case COAX_PS_Tag_decl_proc:p=make<ProcDecl>(arena);break;case COAX_PS_Tag_decl_constant:p=make<ConstDecl>(arena);break;
       case COAX_PS_Tag_decl_struct_:p=make<StructDecl>(arena);break;case COAX_PS_Tag_decl_enum_:p=make<EnumDecl>(arena);break;
       case COAX_PS_Tag_decl_param:p=make<Param>(arena);break;case COAX_PS_Tag_decl_field:p=make<Field>(arena);break;
       case COAX_PS_Tag_decl_enum_member:p=make<EnumMember>(arena);break;case COAX_PS_Tag_decl_field_init:p=make<FieldInit>(arena);break;
       case COAX_PS_Tag_decl_import_:p=make<Import>(arena);break;case COAX_PS_Tag_decl_check:p=make<CheckDecl>(arena);break;
+      case COAX_PS_Tag_decl_union:p=make<UnionDecl>(arena);break;case COAX_PS_Tag_decl_variant:p=make<UnionVariant>(arena);break;
+      case COAX_PS_Tag_switch_case:p=make<SwitchCase>(arena);break;case COAX_PS_Tag_case_binding:p=make<CaseBinding>(arena);break;
+      case COAX_PS_Tag_effect_name:p=make<EffectName>(arena);break;
     }
     objects[(size_t)id]=p;
   }
   // Scalar and reference fields; list value copies happen after this pass.
   for(int64_t id=1;id<=state.used;id++) {
     const auto &v=nodes[(size_t)id];const auto loc=parser_loc(v.loc);const auto name=parser_str(v.name);
-    if(v.kind>=1 && v.kind<=5) {
+    if(parser_type_tag(v.kind)) {
       auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;
       p->length=v.a && nodes[(size_t)v.a].kind==COAX_PS_Tag_type_param?nullptr:parser_ref<Expr>(objects,v.a);p->elem=parser_ref<TypeExpr>(objects,v.b);
-    }else if(v.kind>=16 && v.kind<=31) {
+    }else if(parser_expr_tag(v.kind)) {
       auto *p=parser_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->int_value=v.value;p->float_value=v.floating;
       if(v.width) p->type=v.width==32?&T_F32:&T_F64;
       p->op=(Tok)v.op;p->lhs=parser_ref<Expr>(objects,v.a);p->rhs=parser_ref<Expr>(objects,v.b);p->third=parser_ref<Expr>(objects,v.c);
       p->type_expr=parser_ref<TypeExpr>(objects,v.d);p->trunc=v.flag;
-    }else if(v.kind>=40 && v.kind<=52) {
+    }else if(parser_stmt_tag(v.kind)) {
       auto *p=parser_ref<Stmt>(objects,id);p->kind=(StmtKind)(v.kind-40);p->loc=loc;p->name=name;p->name2=parser_str(v.name2);p->name2_loc=parser_loc(v.loc2);
       p->expr=parser_ref<Expr>(objects,v.a);p->expr2=parser_ref<Expr>(objects,v.b);p->uninit=v.flag;
       if(v.kind==42) p->type_expr=parser_ref<TypeExpr>(objects,v.d);
       else {p->then_=parser_ref<Stmt>(objects,v.c);p->else_=parser_ref<Stmt>(objects,v.d);}
       if(v.kind==43) {p->target=parser_ref<Expr>(objects,v.c);p->then_=nullptr;p->op=(Tok)v.op;}
     }else switch(v.kind) {
-      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->ret_expr=parser_ref<TypeExpr>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);p->export_c=v.flag;p->foreign=v.flag2;break;}
+      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->ret_expr=parser_ref<TypeExpr>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);p->export_c=v.flag;p->foreign=v.flag2;p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=parser_loc(v.effect_loc);break;}
       case COAX_PS_Tag_decl_constant:{auto *p=parser_ref<ConstDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->expr=parser_ref<Expr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_struct_:{auto *p=parser_ref<StructDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;break;}
       case COAX_PS_Tag_decl_enum_:{auto *p=parser_ref<EnumDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;p->base_expr=parser_ref<TypeExpr>(objects,v.a);break;}
@@ -115,6 +137,11 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
       case COAX_PS_Tag_decl_field:{auto *p=parser_ref<Field>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->init=parser_ref<Expr>(objects,v.b);p->flat=v.flag;p->depth=v.flag2;break;}
       case COAX_PS_Tag_decl_enum_member:{auto *p=parser_ref<EnumMember>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_field_init:{auto *p=parser_ref<FieldInit>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
+      case COAX_PS_Tag_decl_union:{auto *p=parser_ref<UnionDecl>(objects,id);p->loc=loc;p->end=(int32_t)v.end;p->name=name;break;}
+      case COAX_PS_Tag_decl_variant:{auto *p=parser_ref<UnionVariant>(objects,id);p->loc=loc;p->name=name;p->type_expr=parser_ref<TypeExpr>(objects,v.a);p->ordinal=(uint32_t)v.value;break;}
+      case COAX_PS_Tag_switch_case:{auto *p=parser_ref<SwitchCase>(objects,id);p->loc=loc;p->name=name;p->enum_pattern=parser_ref<Expr>(objects,v.d);p->binding=parser_ref<CaseBinding>(objects,v.a);p->body=parser_ref<Stmt>(objects,v.b);break;}
+      case COAX_PS_Tag_case_binding:{auto *p=parser_ref<CaseBinding>(objects,id);p->name=name;p->loc=loc;break;}
+      case COAX_PS_Tag_effect_name:{auto *p=parser_ref<EffectName>(objects,id);p->name=name;p->loc=loc;break;}
       case COAX_PS_Tag_decl_import_:{auto *p=parser_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}
       case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->steps=v.value;p->proc=parser_ref<ProcDecl>(objects,v.a);
         std::vector<Binding> domains;for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) domains.push_back({parser_ref<Expr>(objects,nodes[(size_t)b].b),parser_ref<Expr>(objects,nodes[(size_t)b].c)});
@@ -126,17 +153,21 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
       case COAX_PS_Tag_expr_call:case COAX_PS_Tag_expr_array_lit:parser_ref<Expr>(objects,id)->args=parser_pointers<Expr>(arena,nodes,objects,v.head);break;
       case COAX_PS_Tag_expr_struct_lit:parser_ref<Expr>(objects,id)->fields=parser_values<FieldInit>(arena,nodes,objects,v.head);break;
       case COAX_PS_Tag_stmt_block:parser_ref<Stmt>(objects,id)->body=parser_pointers<Stmt>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_decl_proc:parser_ref<ProcDecl>(objects,id)->params=parser_values<Param>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->params=parser_values<Param>(arena,nodes,objects,v.head);p->effect_names=parser_values<EffectName>(arena,nodes,objects,v.effect_head);break;}
+      case COAX_PS_Tag_stmt_switch:parser_ref<Stmt>(objects,id)->cases=parser_pointers<SwitchCase>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_decl_union:parser_ref<UnionDecl>(objects,id)->variants=parser_values<UnionVariant>(arena,nodes,objects,v.head);break;
+      case COAX_PS_Tag_type_named:{std::vector<TypeArgument> args;for(auto at=v.head;at;at=nodes[(size_t)at].next){TypeArgument a;if(parser_type_tag(nodes[(size_t)at].kind))a.type=parser_ref<TypeExpr>(objects,at);else a.length=parser_ref<Expr>(objects,at);args.push_back(a);}parser_ref<TypeExpr>(objects,id)->args=to_slice(arena,args);break;}
       case COAX_PS_Tag_decl_struct_:parser_ref<StructDecl>(objects,id)->fields=parser_values<Field>(arena,nodes,objects,v.head);break;
       case COAX_PS_Tag_decl_enum_:parser_ref<EnumDecl>(objects,id)->members=parser_values<EnumMember>(arena,nodes,objects,v.head);break;
     }
   }
   std::vector<Import> imports;std::vector<ProcDecl*> procs;std::vector<ConstDecl*> constants;
-  std::vector<StructDecl*> structs;std::vector<EnumDecl*> enums;std::vector<Expr*> assertions;std::vector<CheckDecl*> checks;
+  std::vector<StructDecl*> structs;std::vector<EnumDecl*> enums;std::vector<UnionDecl*> unions;std::vector<Expr*> assertions;std::vector<CheckDecl*> checks;
   for(auto id=nodes[(size_t)result.root].head;id;id=nodes[(size_t)id].next) switch(nodes[(size_t)id].kind) {
     case COAX_PS_Tag_decl_import_:imports.push_back(*parser_ref<Import>(objects,id));break;case COAX_PS_Tag_decl_proc:procs.push_back(parser_ref<ProcDecl>(objects,id));break;
     case COAX_PS_Tag_decl_constant:constants.push_back(parser_ref<ConstDecl>(objects,id));break;case COAX_PS_Tag_decl_struct_:structs.push_back(parser_ref<StructDecl>(objects,id));break;
     case COAX_PS_Tag_decl_enum_:enums.push_back(parser_ref<EnumDecl>(objects,id));break;case COAX_PS_Tag_decl_check:checks.push_back(parser_ref<CheckDecl>(objects,id));break;
+    case COAX_PS_Tag_decl_union:unions.push_back(parser_ref<UnionDecl>(objects,id));break;
     case COAX_PS_Tag_decl_assertion:assertions.push_back(parser_ref<Expr>(objects,nodes[(size_t)id].a));break;
   }
   for (auto *p:procs) {
@@ -144,7 +175,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
     p->root_source=src->units.empty() || source_point(src,p->loc).path==src->units.front()->path;
   }
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
-  out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
+  out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
   attach_check_input(out,nodes,objects,state.used);
   return true;
 }

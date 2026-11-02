@@ -154,6 +154,42 @@ Everything is built in a fresh temporary directory and removed when the
 script exits. The shared book check command also runs this example;
 `PROTOC` and `BOOK_SANITIZE` can be supplied there too.
 
+## Continue into a real fallible request
+
+The protobuf exercise remains a small independently checkable boundary. The
+production continuation uses the same sequence across these chapters:
+
+| Chapter | Concrete boundary |
+| --- | --- |
+| [6](ch06-memory.md) | Canonical request owner, live wire buffers and a separately backed snapshot |
+| [7](ch07-errors.md) | Handled Result values and the real file adapter's once-only cleanup |
+| [15](ch15-asynchronous-work.md) | System One start, polling, terminal selection, cancellation and discard |
+| [20](ch20-interop.md) | Generated headers/defaults and native process/file effects |
+| 24 | The actual Lab validates a decision, routes it and copies the displayed transcript |
+
+The consumer is
+[lab.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-desktop/zeron/lab.coax),
+using the shared
+[typed adapter](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/systemone/outcomes.coax).
+The checks use offline process observations and a fixed answer; no live model,
+payment, credential or remote service is needed. A malformed HTTP 200 answer
+fails application validation. HTTP refusal, timeout, spawn failure and
+cancellation are distinct paths. Only the explicit no-connection outcome uses
+the existing alternate door; an unknown outcome never means safe retry.
+
+An old ticket cannot act on a later request or an unrelated child that reused
+the process slot. After terminal snapshot, overwriting the wire bytes must not
+change the decision details already copied into the transcript. These are
+independent consumer oracles, beyond merely exercising a policy helper.
+
+The [retained verification record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-outcomes-12625-2026-11-02/README.md)
+names the exact compiler, source closure, diagnostics and O0/O2/sanitizer
+observations. Read its application limits too: a qualified source projection
+is component evidence, and does not erase a whole-desktop compiler refusal.
+Physical-device measurements, frame budgets and independent frozen-reference
+review remain separate R0 gates. General linear ownership, a scheduler and
+remote exactly-once effects are outside this bounded request protocol.
+
 ## Follow the same seam into the app
 
 The current iOS app uses this shape with richer native adapters:

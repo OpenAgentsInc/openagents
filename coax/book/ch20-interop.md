@@ -736,7 +736,7 @@ or *borrowed views* of them; results are scalars or nothing. A view crosses
 as the same `{data, count}` struct the exports use, so a host can sum a
 buffer Coax owns:
 
-```coax
+```jai
 host_sum :: (xs: [] f32) -> f32 #foreign;
 ```
 
@@ -1113,6 +1113,33 @@ the exporter releases it. Every transfer between host and device would be an
 explicit effect that `coax explain` counts, so a step that quietly reads
 state back to the CPU fails its transfer budget instead of just running
 slowly. Psionic's leased DLPack views are the first consumer.
+
+## A fallible adapter keeps decisions in Coax
+
+The [file adapter](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/sys/read-file.coax)
+from Chapter 7 uses four C effects: open, stat, read and close. C reports raw
+observations; Coax constructs typed errors and controls cleanup. The native
+header and generated header are compiled together in both include orders.
+The initial tagged-value ABI has its own schema identity: an old header with
+the same size is insufficient. Use the generated active-alternative contract;
+inactive payload bytes and padding are not a wire format or equality oracle.
+
+The asynchronous
+[System One owner](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/systemone/owner.coax)
+keeps the same split. The host's process handle is a reusable slot, so callers
+retain a generation ticket rather than authority to cancel that raw slot.
+Reaping the child ends its buffer access; taking a result copies into separate
+caller buffers before their descriptors escape. Destination disjointness,
+canonical-owner exclusivity and snapshot lifetime remain explicit caller
+preconditions. A generated default constructor must run before the first use;
+zero-filled native memory is not a substitute for Coax defaults such as `-1`.
+
+The independent native checks inspect named fields, guarded buffers, process
+effects and the real generated constructor. They run at O0, O2 and under fatal
+ASan/UBSan. They do not compare padding or infer a complete application's
+readiness from one successful C compilation. Follow the complete request in
+[Chapter 15](ch15-asynchronous-work.md) and the joined route in
+[Chapter 24](ch24-a-complete-boundary.md).
 
 ## What isn't here yet
 

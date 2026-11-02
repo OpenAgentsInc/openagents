@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -389,8 +389,11 @@ Outcome :: enum u8 { completed; refused; failed; cancelled; unknown; }
 Answer :: union { text: string; count: int; }
 ```
 
-This is target syntax; `#derive`, `[..]`, `#distinct` and unions are not
-implemented. Implemented: `Name :: struct { field: T; field: T = default; }`,
+`#derive`, `[..]` and `#distinct` remain target syntax. Tagged unions, the
+compiler-owned `Result(T,E)` family and `T?` follow the initial native LP64
+contract in [Tagged values and recoverable errors](results.md), including its
+construction, handling, layout and borrow restrictions. Ordinary records use
+`Name :: struct { field: T; field: T = default; }`,
 `Name.{field = value}` literals that name each field they set, and
 `Name :: enum u8 { a; b = 4; }` with `Name.a`, `==`/`!=`, printing by name,
 and `cast` to and from integers that traps on a value that names no member.
@@ -754,15 +757,19 @@ on all statically covered paths. Loop variables are immutable copies; an
 array is iterated in place, so writes by the body are seen by later
 iterations.
 
-Planned: exhaustive `switch`, `try` and `or_else`.
+Exhaustive `switch`, unary `try` and lazy `or_else` follow the
+[R2 contract](results.md). Switch covers every alternative of a tagged union,
+Result, optional or enum exactly once. Try requires the enclosing return's
+propagation family and exact error type. Or_else associates right to left
+below `||` and evaluates its fallback only on failure or absence.
 
 Use half-open `0..<n` for the first range implementation. An empty range has
 zero iterations. Reverse iteration and removal need explicit invalidation
 rules before acceptance. Do not add an implicit iterator allocation.
 
 `defer` executes cleanup at lexical-scope exit in reverse registration
-order, including `return`, `break` and `continue` (implemented) and propagated
-errors (with `try`, planned). A returned value is computed before deferred
+order, including `return`, `break`, `continue` and recoverable errors propagated
+with `try`. A returned value is captured before deferred
 code runs. Deferred code cannot return, break or continue out of its block
 (E0361). It is not an automatic type destructor.
 
@@ -1280,9 +1287,13 @@ allocator's existence.
 
 ### 11.3 Errors and resource cleanup
 
-Fallible APIs return a value plus a typed optional error or a tagged result.
-Ignored errors are compile errors. `try` propagates an error and runs active
-`defer` cleanup; `or_else` handles it explicitly. This syntax is planned.
+Fallible APIs use the compiler-owned `Result(T,E)` or a typed optional T?.
+Every direct Result has a checked handling obligation: naming it does not
+handle it. `try` propagates an error and runs active `defer` cleanup;
+`or_else` handles/discards it explicitly and exhaustive switch exposes the
+active payload. The [R2 contract](results.md) defines transfers, structured
+joins, loop/defer restrictions and implicit failure exits. This first delivery
+does not establish asynchronous ownership or general aggregate error handling.
 
 Foreign errors map through explicit adapters. An HTTP status or protocol
 refusal keeps its original domain and code; it is not collapsed to an

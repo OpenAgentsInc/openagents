@@ -663,6 +663,7 @@ static std::string tok_text(Tok t) {
   std::string n(v.data, (size_t)v.count);
   return n.size() >= 2 && n.front() == '\'' && n.back() == '\'' ? n.substr(1, n.size() - 2) : n;
 }
+static bool legacy_sum_procedure(const ProcDecl *proc);
 struct LoweringReport {
   const Source *src;
   LoweringPolicy policy;
@@ -696,6 +697,12 @@ struct LoweringReport {
   void expr(const Expr *e) {
     if (!e || unsupported.size()) return;
     if (e->kind == ExprKind::run) { unsupported = "#run expressions are not in the lowering subset"; return; }
+    if (e->kind == ExprKind::sum || e->kind == ExprKind::some ||
+        e->kind == ExprKind::null_ || e->kind == ExprKind::try_ ||
+        e->kind == ExprKind::or_else) {
+      unsupported = "tagged values and recoverable flow require a sum-capable lowering profile";
+      return;
+    }
     std::vector<const Expr *> operands;
     for (const Expr *x : {e->lhs, e->rhs, e->third}) if (x) operands.push_back(x);
     for (const Expr *a : e->args) operands.push_back(a);
@@ -758,6 +765,7 @@ struct LoweringReport {
       case StmtKind::continue_: op("continue", s->loc); break;
       case StmtKind::for_range: case StmtKind::for_each: unsupported = "for loops are not in the lowering subset"; break;
       case StmtKind::assert_: unsupported = "#assert statements are not in the lowering subset"; break;
+      case StmtKind::switch_: unsupported = "switch requires a sum-capable lowering profile"; break;
     }
   }
 };
@@ -775,7 +783,8 @@ static std::string lowering_report(const Source *src, const File *file, const Em
     if (p->foreign || !p->body) row += ",\"eligible\":false,\"reason\":\"no Coax body\"}";
     else {
       LoweringReport r{src, policy};
-      r.stmt(p->body);
+      if (legacy_sum_procedure(p)) r.unsupported = "tagged values and exhaustive switch require a sum-capable lowering profile";
+      else r.stmt(p->body);
       if (r.unsupported.size()) row += ",\"eligible\":false,\"reason\":" + json_string(r.unsupported) + "}";
       else row += ",\"eligible\":true,\"operations\":[" + r.ops + "]}";
     }
@@ -1032,6 +1041,70 @@ static void drop_library_checks(const Source *src, const std::vector<bool> &unit
 // so constants and defaults keep the expressions their names were written in.
 struct QueryParsed;
 static void query_snapshot(QueryParsed *parsed, const File *file);
+// Published declaration/query inventories have no sum/case records. Refuse the
+// complete requested inventory rather than silently omit new checked facts.
+// This is a transport-profile limit, not type/handling admission in the host.
+struct LegacySumInventory {
+  bool found = false;
+  Loc witness{};
+  std::set<Type> types;
+  void mark(Loc loc) { if (!found) witness = loc; found = true; }
+  void type(Type t, Loc loc) {
+    if (!t || found || !types.insert(t).second) return;
+    if (is_sum(t)) { mark(loc); return; }
+    if (t->kind == TypeKind::array || t->kind == TypeKind::view) type(t->elem, loc);
+    if (t->kind == TypeKind::struct_ && t->struct_decl)
+      for (const Field &f : t->struct_decl->fields) type(f.type, f.loc);
+  }
+  void syntax(const TypeExpr *t) {
+    if (!t || found) return;
+    if (t->kind == TypeExpr::optional ||
+        (t->kind == TypeExpr::named && str_eq(t->name, "Result"))) { mark(t->loc); return; }
+    syntax(t->elem); expr(t->length);
+    for (const TypeArgument &arg : t->args) { syntax(arg.type); expr(arg.length); }
+  }
+  void expr(const Expr *e) {
+    if (!e || found) return;
+    if (e->kind == ExprKind::sum || e->kind == ExprKind::null_ ||
+        e->kind == ExprKind::some || e->kind == ExprKind::try_ ||
+        e->kind == ExprKind::or_else) { mark(e->loc); return; }
+    type(e->type, e->loc); syntax(e->type_expr);
+    expr(e->lhs); expr(e->rhs); expr(e->third);
+    for (const Expr *a : e->args) expr(a);
+    for (const FieldInit &f : e->fields) expr(f.value);
+  }
+  void stmt(const Stmt *s) {
+    if (!s || found) return;
+    if (s->kind == StmtKind::switch_) { mark(s->loc); return; }
+    type(s->type, s->loc); syntax(s->type_expr);
+    expr(s->expr); expr(s->expr2); expr(s->target);
+    for (const Stmt *c : s->body) stmt(c);
+    stmt(s->then_); stmt(s->else_);
+  }
+  void proc(const ProcDecl *p) {
+    type(p->ret, p->loc); syntax(p->ret_expr);
+    for (const Param &a : p->params) { type(a.type, a.loc); syntax(a.type_expr); }
+    stmt(p->body);
+  }
+  bool file(const File *f) {
+    for (const UnionDecl *d : f->unions) mark(d->loc);
+    for (const StructDecl *d : f->structs)
+      for (const Field &a : d->fields) { type(a.type, a.loc); syntax(a.type_expr); expr(a.init); }
+    for (const StructDecl *d : f->generic_structs)
+      for (const Field &a : d->fields) { syntax(a.type_expr); expr(a.init); }
+    for (const ConstDecl *d : f->constants) expr(d->expr);
+    for (const ProcDecl *p : f->procs) proc(p);
+    for (const ProcDecl *p : f->generics) proc(p);
+    for (const CheckDecl *c : f->checks) if (c->proc) proc(c->proc);
+    for (const Expr *a : f->assertions) expr(a);
+    return found;
+  }
+};
+static bool legacy_sum_procedure(const ProcDecl *proc) {
+  LegacySumInventory inventory;
+  inventory.proc(proc);
+  return inventory.found;
+}
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
@@ -1079,6 +1152,13 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   File file;
   g_library_checks = what == Output::c || what == Output::header || what == Output::none;
   if (!front_end(path, &src, &arena, &file, opts, library)) return false;
+  if (what == Output::declarations || what == Output::modules) {
+    LegacySumInventory inventory;
+    if (inventory.file(&file)) {
+      error_at(&src, inventory.witness, "E0911", "the requested legacy inventory has no tagged-value or switch records");
+      return false;
+    }
+  }
   if (opts.cuda || opts.metal_compute) {file.cuda=opts.cuda;if(!compute_admit(&file,opts.metal_compute)) {if (!g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");return false;}}
   TimedPhase phase{"emit"};
   if(!g_timings.source_map.empty() && !write_file(g_timings.source_map,emit_debug_map(&file))) {fprintf(stderr,"coax: cannot write source map '%s'\n",g_timings.source_map.c_str());return false;}
@@ -1208,7 +1288,8 @@ static int explain(int argc, char **argv) {
       const char *s = e.code[2] == '1' ? "E01xx: lexer" : e.code[2] == '2' ? "E02xx: parser"
                     : e.code[2] == '3' ? "E03xx: checker" : e.code[2] == '4' ? "E04xx: compile-time evaluation"
                     : e.code[2] == '5' ? "E05xx: proto imports" : e.code[2] == '6' ? "E06xx: source units"
-                    : e.code[2] == '7' ? "E07xx: device code" : "E08xx: generic structs";
+                    : e.code[2] == '7' ? "E07xx: device code" : e.code[2] == '8' ? "E08xx: generic structs"
+                    : e.code[2] == '9' ? "E09xx: tagged values and effect declarations" : "Other stages";
       if (strcmp(s, stage) != 0) {
         printf("\n## %s\n\n| Code | Meaning | What to do |\n| --- | --- | --- |\n", s);
         stage = s;
@@ -1313,6 +1394,11 @@ static int query_command(const char *input, const EmitOptions &opts, QueryReques
     File file;
     QueryParsed parsed;
     if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false, false, &parsed)) return 1;
+    LegacySumInventory inventory;
+    if (inventory.file(&file)) {
+      error_at(&src, inventory.witness, "E0911", "coax.query.v1 has no tagged-value or switch inventory; no index was published");
+      return 1;
+    }
     index.compiler = compiler;
     index.entry = entry.string();
     index.profile = opts.profile_identity;

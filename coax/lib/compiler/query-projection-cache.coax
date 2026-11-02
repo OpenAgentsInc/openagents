@@ -1,0 +1,60 @@
+#authority;
+// Private typed-projection witnesses. They cache field resolution, never origin
+// facts. The complete declaration query chain and raw/class eligibility remain
+// authoritative. Only successful completed query rows publish a witness.
+CB_ProjectionStep :: struct {type:int;decl:int;head:int;field_head:int;row:int;field:int;next_type:int;}
+CB_QueryProjection :: struct {decl:int;kind:u8;classes:bool;root:int;type:int;path:BS_Path;query:int;head:int;used:int;types:int;steps:[8]CB_ProjectionStep;}
+// The private hit value is unspecified after fatal; its sole caller checks fatal before use.
+CB_projection_hit :: (b:CB_Context,p:CB_QueryProjection,kind:u8,decl:int,path:BS_Path)->bool {
+ if p.classes!=b.retain_classes || p.root!=b.c.nodes[decl].type || p.used!=b.c.state[0].used || p.types!=b.c.state[0].type_count || p.head!=b.c.nodes[decl].borrow_query {return false;}
+ if p.query<1 || p.query>b.state[0].queries {return false;}memo:=b.queries[p.query-1];
+ if memo.decl!=decl || memo.kind!=kind || memo.status!=2 || !bs_path_equal(memo.path,path) || !(memo.retain_classes==b.retain_classes || !memo.retain_classes) {return false;}
+ t:=p.root;
+ for i:0..<path.count {
+  // Published step types were admitted composite IDs in the unchanged p.types prefix.
+  w:=p.steps[i];step:=path.steps[i];if w.type!=t {return false;}r:=b.c.types[t];
+  if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {
+   if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+   // CB_field published this head in the same used prefix; the current declaration head still matches.
+   if b.c.nodes[w.head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return false;}
+   if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+   charged:=CB_tick(b,b.state[0].loc);if !charged {return charged;}q:=b.queries[w.row-1];
+   if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return false;}
+   for j:0..<8 {if q.path.steps[j].kind!=0 {CK_resource(b.c,b.state[0].loc);return charged;}}
+   if q.path.steps[step.index%8].index!=w.field {return false;}
+   if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+   f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+   if f.type!=w.next_type {return false;}t=f.type;
+   b.state[0].field_type=w.type;b.state[0].field_block=step.index/8;b.state[0].field_head=w.field_head;b.state[0].field_row=w.row;
+  }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+  else if step.kind==BS_DEREFERENCE && r.kind==CK_Kind.view {t=r.elem;}
+  else {return false;}
+ }
+ return t==p.type && t>=1 && t<b.c.state[0].type_count;
+}
+// On fatal, the private returned type is unspecified; CB_query immediately
+// checks fatal before any use. Stop here without another probe or record write.
+CB_query_project :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,record:[]CB_QueryProjection)->int {
+ // Keep A1, empty projections and new active-variant paths on the original
+ // resolver. Source can extend this witness independently after its variant
+ // validator is qualified; this optimization supplies no sum-path permission.
+ eligible:=b.retain_fields && path.count>0;for i:0..<path.count {if path.steps[i].kind!=BS_FIELD && path.steps[i].kind!=BS_ELEMENT && path.steps[i].kind!=BS_DEREFERENCE {eligible=false;}}
+ if !eligible {return CB_type(b,b.c.nodes[decl].type,path);}
+ for i:0..<2 {p:=b.state[0].projections[i];hit:=CB_projection_hit(b,p,kind,decl,path);if b.c.state[0].fatal {return p.type;}if hit {record[0]=p;return p.type;}}
+ // One original walk, recording only field rows that CB_field has admitted.
+ p:=CB_QueryProjection.{decl=decl,kind=kind,classes=b.retain_classes,root=b.c.nodes[decl].type,path=path,used=b.c.state[0].used,types=b.c.state[0].type_count};t:=p.root;
+ if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return 0;}
+ for i:0..<path.count {
+  if t<16 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return p.type;}r:=b.c.types[t];step:=path.steps[i];w:=CB_ProjectionStep.{type=t};
+  if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if field==0 {return 0;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
+  else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+  else if step.kind==BS_DEREFERENCE && r.kind==CK_Kind.view {t=r.elem;}
+  else {CK_resource(b.c,b.state[0].loc);return p.type;}w.next_type=t;p.steps[i]=w;
+ }
+ if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+}
+CB_projection_commit :: (b:CB_Context,pending:CB_QueryProjection,query:int) {
+ if pending.decl==0 || b.queries[query-1].status!=2 {return;}p:=pending;p.query=query;p.head=b.c.nodes[p.decl].borrow_query;
+ for i:0..<2 {old:=b.state[0].projections[i];if old.decl==p.decl && old.kind==p.kind && old.classes==p.classes && bs_path_equal(old.path,p.path) {b.state[0].projections[i]=p;return;}}
+ slot:=ifx b.state[0].projection_next then 1 else 0;b.state[0].projections[slot]=p;b.state[0].projection_next=!b.state[0].projection_next;
+}

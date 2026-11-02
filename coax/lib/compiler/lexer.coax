@@ -148,6 +148,7 @@ LX_Kind :: enum u8 {
   k_oror = 51;
   k_bang = 52;
   k_dollar = 53;
+  k_question = 54;
 }
 LX_Loc :: struct {line:int;column:int;offset:int;}
 LX_Token :: struct {kind:LX_Kind;text_begin:int;text_end:int;loc:LX_Loc;int_value:u64;float_value:u64;float_bits:int;decoded:bool;decoded_count:int;}
@@ -160,7 +161,7 @@ LX_keyword :: (t:string)->bool {
   for w:words {if t==w {return true;}}return false;
 }
 LX_name :: (kind:u32)->string #export_c {
-  words:=[54] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'","'$' name"];
+  words:=[55] string.["end of file","identifier","keyword","integer","float","string","directive","annotation","'('","')'","'{'","'}'","'['","']'","','","';'","':'","'::'","':='","'->'","'.'","'..'","'..<'","'='","'+='","'-='","'*='","'/='","'%='","'&='","'|='","'^='","'<<='","'>>='","'+'","'-'","'*'","'/'","'%'","'&'","'|'","'^'","'<<'","'>>'","'=='","'!='","'<'","'<='","'>'","'>='","'&&'","'||'","'!'","'$' name","'?'"];
   index:=cast(int)kind;if index>=words.count {return "?";}return words[index];
 }
 LX_source :: (count:int)->bool {return count>=0 && count<=2147483646;}
@@ -271,8 +272,8 @@ LX_punctuation :: (text:string,at:int)->LX_Token {
   two:=[20] string.["<<",">>","&=","|=","^=","::",":=","->","..","==","!=","<=",">=","&&","||","+=","-=","*=","/=","%="];
   kinds:=[20] LX_Kind.[LX_Kind.k_shl,LX_Kind.k_shr,LX_Kind.k_amp_equal,LX_Kind.k_pipe_equal,LX_Kind.k_caret_equal,LX_Kind.k_coloncolon,LX_Kind.k_colonequal,LX_Kind.k_arrow,LX_Kind.k_dotdot,LX_Kind.k_eqeq,LX_Kind.k_noteq,LX_Kind.k_le,LX_Kind.k_ge,LX_Kind.k_andand,LX_Kind.k_oror,LX_Kind.k_plus_equal,LX_Kind.k_minus_equal,LX_Kind.k_star_equal,LX_Kind.k_slash_equal,LX_Kind.k_percent_equal];
   for p,i:two {if LX_has(text,at,p) {return LX_Token.{kind=kinds[i],text_end=2};}}
-  one:="(){}[],;:.=+-*/%<>!&|^";
-  single:=[22] LX_Kind.[LX_Kind.k_lparen,LX_Kind.k_rparen,LX_Kind.k_lbrace,LX_Kind.k_rbrace,LX_Kind.k_lbracket,LX_Kind.k_rbracket,LX_Kind.k_comma,LX_Kind.k_semicolon,LX_Kind.k_colon,LX_Kind.k_dot,LX_Kind.k_equal,LX_Kind.k_plus,LX_Kind.k_minus,LX_Kind.k_star,LX_Kind.k_slash,LX_Kind.k_percent,LX_Kind.k_lt,LX_Kind.k_gt,LX_Kind.k_bang,LX_Kind.k_amp,LX_Kind.k_pipe,LX_Kind.k_caret];
+  one:="(){}[],;:.=+-*/%<>!&|^?";
+  single:=[23] LX_Kind.[LX_Kind.k_lparen,LX_Kind.k_rparen,LX_Kind.k_lbrace,LX_Kind.k_rbrace,LX_Kind.k_lbracket,LX_Kind.k_rbracket,LX_Kind.k_comma,LX_Kind.k_semicolon,LX_Kind.k_colon,LX_Kind.k_dot,LX_Kind.k_equal,LX_Kind.k_plus,LX_Kind.k_minus,LX_Kind.k_star,LX_Kind.k_slash,LX_Kind.k_percent,LX_Kind.k_lt,LX_Kind.k_gt,LX_Kind.k_bang,LX_Kind.k_amp,LX_Kind.k_pipe,LX_Kind.k_caret,LX_Kind.k_question];
   c:=LX_at(text,at);for b,i:one {if c==b {return LX_Token.{kind=single[i],text_end=1};}}return LX_Token.{};
 }
 LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #export_c {
@@ -654,7 +655,7 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
 
 #test "punctuation bang" {p:=LX_punctuation("!",0);#assert p.kind==LX_Kind.k_bang && p.text_end==1;}
 
-#test "token spelling dollar" {#assert LX_name(cast(u32)LX_Kind.k_dollar)=="'$' name" && LX_name(54)=="?";}
+#test "token spelling dollar" {#assert LX_name(cast(u32)LX_Kind.k_dollar)=="'$' name" && LX_name(55)=="?";}
 
 #test "a $ before a name is one type-parameter token whose text is the name" {
   text:="($T $Elem_2) $ $1 $$U";
@@ -766,7 +767,7 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
   else if byte==39 {#assert !r.has_token && r.diagnostic.code=="E0110";}
   else if byte>=128 {#assert !r.has_token && r.diagnostic.code=="E0107";}
   else {
-    punctuation:="(){}[],;:.=+-*/%<>!&|^";found:=false;
+    punctuation:="(){}[],;:.=+-*/%<>!&|^?";found:=false;
     for c:punctuation {if c==byte {found=true;}}
     if found {#assert r.has_token && r.diagnostic.code=="" && r.token.text_begin==0 && r.token.text_end==1;}
     else {#assert !r.has_token && r.diagnostic.code=="E0108";}
@@ -802,7 +803,7 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
   r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.message=="floating-point literal is too large for f32";
   r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.message=="floating-point literal is too large for f64";
   #assert LX_value_digit(71,16)== -1;
-  #assert LX_name(54)=="?";
+  #assert LX_name(55)=="?";
 }
 
 #test "nonempty source cannot resume after a resource failure" {
@@ -921,7 +922,7 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
   decoded:[4] u8;message:[64] u8;
   text:="#x";state:=[1] LX_State.[LX_begin(text.count)];r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_directive && r.token.text_begin==1 && r.token.text_end==2 && r.diagnostic.code=="";
   text="@x";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_annotation && r.diagnostic.code=="";
-  text="?A";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.code=="E0108";
+  text="~A";state[0]=LX_begin(text.count);r=LX_next(text,state[..],decoded[..],message[..]);#assert r.diagnostic.code=="E0108";
   r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && r.token.loc.offset==1 && r.diagnostic.code=="";
 }
 
@@ -1084,4 +1085,14 @@ LX_next :: (text:string,s:[] LX_State,decoded:[] u8,message:[] u8)->LX_Item #exp
   for i:0..<128 {n[i]=0;}p=LX_read_decimal(cast(string)bytes[..],n[..]);
   #assert p.significant==801 && p.kept==800 && p.sticky;
   bytes[800]=48;for i:0..<128 {n[i]=0;}p=LX_read_decimal(cast(string)bytes[..],n[..]);#assert !p.sticky;
+}
+
+#test "R2 optional punctuation has additive ordinal and some remains a name" {
+ text:="? some Result try or_else null";state:=[1]LX_State.[LX_begin(text.count)];decoded:[16]u8;message:[64]u8;
+ r:=LX_next(text,state[..],decoded[..],message[..]);#assert r.has_token && cast(u32)r.token.kind==54 && r.token.text_begin==0 && r.token.text_end==1 && r.diagnostic.code=="";
+ #assert LX_name(54)=="'?'" && !LX_keyword("some") && !LX_keyword("Result") && !LX_keyword("Result_");
+ r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && text[r.token.text_begin..<r.token.text_end]=="some";
+ r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_ident && text[r.token.text_begin..<r.token.text_end]=="Result";
+ for word:[3]string.["try","or_else","null"] {r=LX_next(text,state[..],decoded[..],message[..]);#assert r.token.kind==LX_Kind.k_keyword && text[r.token.text_begin..<r.token.text_end]==word;}
+ #assert LX_next(text,state[..],decoded[..],message[..]).token.kind==LX_Kind.k_eof;
 }

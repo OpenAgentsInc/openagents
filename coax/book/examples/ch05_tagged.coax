@@ -1,0 +1,35 @@
+#import "Basic";
+
+#test "tagged shapes and exhaustive enum selection" {
+  #assert area(Shape.{circle=0}) == 0;
+  #assert area(Shape.{box=Vec2.{x=2,y=3}}) == 24;
+  #assert area(Shape.{point}) == 0;
+  #assert radius(Kind.ship) == 1.5;
+  #assert radius(Kind.rock) == 4;
+  #assert radius(Kind.bullet) == 0.25;
+}
+
+Vec2 :: struct { x:f32; y:f32; }
+Shape :: union { circle:f32; box:Vec2; point; }
+Kind :: enum u8 { ship=1; rock=2; bullet=3; }
+
+radius :: (k:Kind)->f32 {
+  switch k {
+    case Kind.ship { return 1.5; }
+    case Kind.rock { return 4; }
+    case Kind.bullet { return 0.25; }
+  }
+}
+
+area :: (s:Shape)->f32 {
+  switch s {
+    case circle(r) { return 3.14159*r*r; }
+    case box(half) { return 4*half.x*half.y; }
+    case point { return 0; }
+  }
+}
+
+main :: () {
+  print("circle %, box %, point %\n",cast(int)area(Shape.{circle=0}),
+        cast(int)area(Shape.{box=Vec2.{x=2,y=3}}),cast(int)area(Shape.{point}));
+}

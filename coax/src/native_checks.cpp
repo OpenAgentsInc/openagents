@@ -26,6 +26,11 @@ static bool nc_borrowed_type(Type type, std::set<Type> &seen) {
   if (type->kind == TypeKind::view || type->kind == TypeKind::string_) return true;
   if (!seen.insert(type).second) return false;
   if (type->kind == TypeKind::array) return nc_borrowed_type(type->elem, seen);
+  if (type->kind == TypeKind::result && nc_borrowed_type(type->sum_error, seen)) return true;
+  if ((type->kind == TypeKind::result || type->kind == TypeKind::optional) && nc_borrowed_type(type->elem, seen)) return true;
+  if (type->kind == TypeKind::union_ && type->union_decl)
+    for (const UnionVariant &variant : type->union_decl->variants)
+      if (nc_borrowed_type(variant.type, seen)) return true;
   if (type->kind == TypeKind::struct_ && type->struct_decl)
     for (const Field &field : type->struct_decl->fields)
       if (nc_borrowed_type(field.type, seen)) return true;
@@ -67,6 +72,9 @@ struct NativeCheckFacts {
 
   void defaults(Type type) {
     if (!type || !seen_defaults.insert(type).second) return;
+    // The published verification ABI has no active-payload observation
+    // contract yet. In particular none never constructs its payload default.
+    if (is_sum(type)) { hazard(8, procedures[(size_t)current]->loc); return; }
     if (type->kind == TypeKind::array) defaults(type->elem);
     if (type->kind == TypeKind::struct_ && type->struct_decl)
       for (const Field &field : type->struct_decl->fields) {
@@ -124,12 +132,19 @@ struct NativeCheckFacts {
       case ExprKind::array_lit:
         for (const Expr *element : expr->args) expression(element);
         return;
+      case ExprKind::sum: case ExprKind::some: case ExprKind::try_:
+        hazard(8, expr->loc); expression(expr->lhs); return;
+      case ExprKind::null_:
+        hazard(8, expr->loc); return;
+      case ExprKind::or_else:
+        hazard(8, expr->loc); expression(expr->lhs); expression(expr->rhs); return;
     }
     hazard(8, expr->loc);
   }
 
   void statement(const Stmt *stmt) {
     if (!stmt) return;
+    if (stmt->kind == StmtKind::switch_) hazard(8, stmt->loc);
     if ((stmt->kind == StmtKind::assign || stmt->kind == StmtKind::ret) && stmt->expr && nc_borrowed_type(stmt->expr->type))
       hazard(4, stmt->loc);
     if (stmt->kind == StmtKind::var) {
@@ -138,6 +153,7 @@ struct NativeCheckFacts {
     }
     expression(stmt->expr); expression(stmt->expr2); expression(stmt->target);
     for (const Stmt *child : stmt->body) statement(child);
+    for (const SwitchCase *c : stmt->cases) { expression(c->enum_pattern); statement(c->body); }
     statement(stmt->then_); statement(stmt->else_);
   }
 

@@ -1,0 +1,34 @@
+#authority;
+// Only CB_run enables this on its fresh, invocation-owned CB_State after A1.
+// Checked literal heads/links/indices are frozen for B1. Direct contexts stay
+// cold, even when retain_fields is true. These witnesses select syntax only:
+// every selected source is re-read and analyzed normally, never cached as facts.
+CB_LiteralBlock :: struct {id:int;type:int;head:int;used:int;types:int;block:int;fields:[8]int;}
+CB_literal_same :: (p:CB_LiteralBlock,id:int,type:int,head:int,used:int,types:int,block:int)->bool {
+ return p.id==id && p.type==type && p.head==head && p.used==used && p.types==types && p.block==block;
+}
+CB_literal_keep :: (b:CB_Context,p:CB_LiteralBlock) {
+ if CB_literal_same(b.state[0].literal_current,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_current=p;return;}
+ if CB_literal_same(b.state[0].literal_previous,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_previous=p;return;}
+ // Distinct keys retain FIFO insertion order; refreshing an existing key above does not promote it.
+ b.state[0].literal_previous=b.state[0].literal_current;b.state[0].literal_current=p;
+}
+CB_literal_field :: (b:CB_Context,id:int,index:int)->int {
+ e:=b.c.nodes[id];enabled:=b.literal_cache && index>=0;block:=0;if enabled {block=index/8;
+  p:=b.state[0].literal_current;if !CB_literal_same(p,id,e.type,e.head,b.c.state[0].used,b.c.state[0].type_count,block) {p=b.state[0].literal_previous;}
+  if CB_literal_same(p,id,e.type,e.head,b.c.state[0].used,b.c.state[0].type_count,block) {
+   // Nonzero slots were visited valid node IDs under this exact frozen pool/prefix key.
+   // Keep the live ordinal check: an updated initializer must fall back to the original scan.
+   selected:=p.fields[index%8];if selected!=0 && b.c.nodes[selected].field_index==index {if !CB_tick(b,e.loc) {return 0;}return selected;}
+  }
+ }
+ staged:=CB_LiteralBlock.{id=id,type=e.type,head=e.head,used=b.c.state[0].used,types=b.c.state[0].type_count,block=block};field:=e.head;
+ while field!=0 {
+  if !CB_tick(b,e.loc) {return 0;}f:=b.c.nodes[field];
+  // Stage only the actually visited prefix. First occurrence wins even for
+  // a supplied duplicate graph; no later initializer or value is inspected.
+  if enabled && f.field_index>=0 && f.field_index/8==block {slot:=f.field_index%8;if staged.fields[slot]==0 {staged.fields[slot]=field;}}
+  if f.field_index==index {if enabled {CB_literal_keep(b,staged);}return field;}
+  field=f.next;
+ }return 0; // No negative/default cache, and no publication after failed scan.
+}

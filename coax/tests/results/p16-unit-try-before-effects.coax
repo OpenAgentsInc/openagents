@@ -1,0 +1,14 @@
+#import "Basic";
+// Check-first R2 design only; not admitted or executed. No effect annotation.
+Error :: enum u8 {failed;}
+finish :: (ok:bool)->Result(void,Error) {
+  if ok {return Result(void,Error).{ok};}
+  return Result(void,Error).{err=Error.failed};
+}
+work :: (ok:bool)->Result(int,Error) {try finish(ok);return Result(int,Error).{ok=9};}
+metadata :: (data:[]int)->int {copy:=data;return copy.count;}
+#test "unannotated unit try propagates before effect admission exists" {
+  #assert (work(true) or_else -1)==9 && (work(false) or_else -1)==-1;
+  data:=[2]int.[3,4];#assert metadata(data[..])==2;
+}
+main :: () {data:=[2]int.[3,4];print("% % %\n",(work(true) or_else -1),(work(false) or_else -1),metadata(data[..]));}

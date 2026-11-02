@@ -1,0 +1,30 @@
+// R2 check-first regression: literal expectation predates implementation.
+first :: (v:int?)->int? {return some((try v)+1);}
+unwrap_nested :: (v:int??)->int {
+  switch v {case none {return 1;}case some(inner) {
+    switch inner {case none {return 2;}case some(value) {return value;}}
+  }}
+}
+#test "optional defaults explicit wrapping and nested absence differ" {
+  empty:int?;
+  #assert empty==null && null==empty;
+  #assert (first(some(8)) or_else -1)==9;
+  #assert (first(null) or_else -1)==-1;
+  outer_none:int??=null;inner_none:int??=some(null);
+  #assert unwrap_nested(outer_none)==1 && unwrap_nested(inner_none)==2;
+  #assert unwrap_nested(some(some(3)))==3;
+  a:=[2]int?.[some(4),null];optional_view:([] int)?=null;
+  #assert (a[0] or_else 0)==4 && a[1]==null && optional_view==null;
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  empty:int?;
+  #assert empty==null && null==empty;
+  #assert (first(some(8)) or_else -1)==9;
+  #assert (first(null) or_else -1)==-1;
+  outer_none:int??=null;inner_none:int??=some(null);
+  #assert unwrap_nested(outer_none)==1 && unwrap_nested(inner_none)==2;
+  #assert unwrap_nested(some(some(3)))==3;
+  a:=[2]int?.[some(4),null];optional_view:([] int)?=null;
+  #assert (a[0] or_else 0)==4 && a[1]==null && optional_view==null;
+}

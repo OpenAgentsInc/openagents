@@ -1,0 +1,22 @@
+#import "Basic";
+// R2 check-first regression: native trace has a predeclared literal oracle.
+Error :: enum u8 {failed;}
+mark :: (trace:[]int,n:int) {trace[0]=trace[0]*10+n;}
+bound :: (trace:[]int,which:int,ok:bool)->Result(int,Error) {
+  mark(trace,which);
+  if !ok {return Result(int,Error).{err=Error.failed};}
+  return Result(int,Error).{ok=ifx which==1 then 0 else 2};
+}
+work :: (trace:[]int,lo:bool,hi:bool)->Result(int,Error) {
+  defer mark(trace,4);
+  sum:=0;
+  for i:(try bound(trace,1,lo))..<(try bound(trace,2,hi)) {mark(trace,3);sum+=i;}
+  return Result(int,Error).{ok=sum};
+}
+probe :: (lo:bool,hi:bool)->int {
+  trace:=[1]int.[0];code:=0;
+  switch work(trace[..],lo,hi) {case ok(n) {if !lo || !hi {return -1;}code=n;}case err(e) {if (lo && hi) || e!=Error.failed {return -2;}code=9;}}
+  return trace[0]*10+code;
+}
+#test "range bounds run once in order and propagation stops the later bound" {#assert probe(false,true)==149 && probe(true,false)==1249 && probe(true,true)==123341;}
+main :: () {print("% % %\n",probe(false,true),probe(true,false),probe(true,true));}

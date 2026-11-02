@@ -1,7 +1,7 @@
 # Appendix A. Keywords, directives, types and current status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.48.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -25,11 +25,12 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `struct` `enum` | Type declarations: `Name :: struct { ... }`, `Name :: enum u8 { ... }` | works | — |
 | `cast` | `cast(T) x` (checked), `cast,trunc(T) x` (keeps the low bits) | works | — |
 | `size_of` | `size_of(T)`: the C size in bytes, as an untyped integer | works | — |
-| `union` `enum_flags` | Tagged unions; flag sets | reserved | — |
-| `switch` `case` | Exhaustive selection | reserved | — |
+| `union` | Nominal tagged unions with 1 to 64 payload or unit alternatives; initial native LP64 profile, no generic unions | partial | 0.48.0 |
+| `enum_flags` | Flag sets | reserved | — |
+| `switch` `case` | Exhaustive statement selection over unions, Result, optionals and enums; immutable payload bindings, no fallthrough/default/guards | partial | 0.48.0 |
 | `using` | Bring an embedded field's members into scope | reserved | — |
-| `try` `or_else` | Propagate or handle an error result | reserved | — |
-| `null` | The empty optional pointer | reserved | — |
+| `try` `or_else` | Same-error-type Result or optional propagation with lexical cleanup; lazy fallback, source-order operands and assignment places | partial | 0.48.0 |
+| `null` | Contextual none of a tagged optional; symmetric tag comparison, no pointer sentinel or truthiness | works | 0.48.0 |
 | `push_context` | Change the implicit context for a block | reserved | — |
 | `remove` | Remove the current element during iteration | reserved | — |
 | `it` `it_index` | Implicit element and index names inside `for` (Coax names them instead: `for x, i: ...`) | reserved | — |
@@ -127,12 +128,16 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `fixed32 fixed64` | (E0301) | reserved | — |
 | `v2 v3 v4 quat m3 m4` | (E0301) | reserved | — |
 | `Any` | (E0301); planned for tools and logging only | reserved | — |
-| `*T`, `*T?`, `T?`, `Handle(T)`, lane types |  | designed | — |
+| `*T`, `*T?`, `Handle(T)`, lane types | Raw pointers and handles remain planned; tagged optionals are recorded separately | designed | — |
+| `T?` | Interned none/some values, nested optionals, explicit some construction and none default; no implicit payload conversion | works | 0.48.0 |
+| `Result(T,E)` | Compiler-owned ok/err values with checked direct-result handling and transfer; Result containment and general async ownership remain outside the initial profile | partial | 0.48.0 |
 
 ## Capabilities
 
 | Name | Meaning | Status | Introduced |
 | --- | --- | --- | --- |
+| Checked recoverable error handling | Pending/consumed direct Results checked on branches, normal exits and implicit try exits; conservative loop/defer restrictions, active-payload borrows; canonical asynchronous ownership is a separate library protocol, not deep ownership | partial | 0.48.0 |
+| Tagged native C values | Explicit native LP64 tag/payload layout, active-payload execution, versioned composed headers and invalid-tag traps; numeric-view/scalar foreign boundary remains | partial | 0.48.0 |
 | `#load` / `coax deps` | Bounded source composition and input inventory | works | 0.11.0 |
 | `coax deps --declarations` | Schema coax.declarations.v1: unit owners, nominal declaration IDs and resolved references from the checked graph | works | 0.26.0 |
 | `coax deps --modules` | Schema coax.modules.v1: conservative module-scoped content and dependency revisions, separate from nominal IDs, source hashes and the profile; no per-declaration revisions or cache key | partial | 0.27.0 |
@@ -155,7 +160,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Rejects direct local fixed-array view/string returns and simple aliases, slices and casts. Helper returns and retained stores have separate bounded profiles; general ownership remains unchecked | works | 0.13.0 |
 | Bounded returned-borrow diagnostics | Resolved helper and aggregate return projections retain known caller, static and local origins; a concrete local witness reports E0383 even beside an incomplete arm. Recursion and unmodeled helper writes remain explicit manual status, not a safe empty result. Resource exhaustion is E0381; retained caller-state and general region lifetimes remain separate | partial | 0.46.0 |
-| Bounded retained-store diagnostics | Checks concrete bodies including void and uncalled procedures, rejecting known callee-local descriptor backing stored into caller or static storage with E0383. Sparse parameter outlives obligations are projected at actual callers. Unknown, recursive, foreign and same-frame region relations remain explicit manual scope; local-carrier write-to-return composition and request ownership remain separate | partial | 0.46.0 |
+| Bounded retained-store diagnostics | Checks concrete bodies including void and uncalled procedures, rejecting known callee-local descriptor backing stored into caller or static storage with E0383. Sparse parameter outlives obligations are projected at actual callers. Unknown, recursive, foreign and same-frame region relations remain explicit manual scope; bounded raw local-carrier write-to-return composition is supported; canonical request ownership is a separate library protocol | partial | 0.46.0 |
 | Release/status generation | Canonical Coax catalogue, CLI status and build/publication drift gate | works | 0.14.0 |
 | Compiler build identity | Checked source and artifact consistency record for site releases; not authentication | works | 0.22.0 |
 | Explicit semantic profile selection | Independent arithmetic, native optimization, build selector and debug information; optional schema-1 profile report; legacy presets retained, no general cross-object or device qualification | partial | 0.25.0 |

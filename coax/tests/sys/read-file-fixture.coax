@@ -1,0 +1,35 @@
+// Native-only observation boundary. No #foreign calls from compile-time checks.
+#load "../../lib/sys/read-file.coax";
+fr_test_event :: (n:int) #foreign;
+fr_fixture_error :: (error:FrError,state:[]int)->int {
+ switch error {
+  case invalid_path(e) {state[1]=cast(int)e.domain;state[2]=e.code;state[3]=cast(int)e.operation;return 1;}
+  case wrong_kind(e) {state[1]=cast(int)e.domain;state[2]=e.code;state[3]=cast(int)e.operation;return 2;}
+  case capacity(e) {state[1]=cast(int)e.domain;state[2]=e.code;state[3]=cast(int)e.operation;return 3;}
+  case descriptor(e) {state[1]=cast(int)e.domain;state[2]=e.code;state[3]=cast(int)e.operation;return 4;}
+  case posix(e) {state[1]=cast(int)e.domain;state[2]=e.code;state[3]=cast(int)e.operation;return 5;}
+ }
+}
+fr_fixture_report :: (cleanup:[]FrCleanup,state:[]int) {
+ state[4]=ifx cleanup[0].attempted then 1 else 0;state[5]=ifx cleanup[0].confirmed then 1 else 0;state[6]=ifx cleanup[0].secondary then 1 else 0;
+ if cleanup[0].secondary {details:[4]int;state[7]=fr_fixture_error(cleanup[0].error,details[..]);state[8]=details[1];state[9]=details[2];state[10]=details[3];}
+}
+fr_fixture_fallback :: (cleanup:[]FrCleanup,state:[]int)->int {
+ fr_test_event(3);state[11]=ifx cleanup[0].attempted then 1 else 0;state[12]=ifx cleanup[0].confirmed then 1 else 0;state[13]+=1;return -777;
+}
+fr_fixture_nested :: (path:string,out:[]u8,cleanup:[]FrCleanup)->Result(int,FrError) {
+ defer fr_test_event(1);
+ {defer fr_test_event(2);n:=try fr_read_file(path,out,cleanup);return Result(int,FrError).{ok=n};}
+}
+fr_fixture_result :: (answer:Result(int,FrError),cleanup:[]FrCleanup,state:[]int)->int {
+ n:= -1;
+ switch answer {case ok(value) {n=value;}case err(error) {state[0]=fr_fixture_error(error,state);}}
+ fr_fixture_report(cleanup,state);return n;
+}
+fr_fixture_run :: (path:[]u8,out:[]u8,state:[]int,variant:int)->int #export_c {
+ cleanup:[1]FrCleanup;for i:0..<state.count {state[i]=0;}
+ if variant==1 {n:=fr_read_file(cast(string)path,out,cleanup[..]) or_else fr_fixture_fallback(cleanup[..],state);fr_fixture_report(cleanup[..],state);return n;}
+ if variant==3 {return fr_fixture_result(fr_read_file(cast(string)path,out,cleanup[0..<0]),cleanup[..],state);}
+ if variant==2 {return fr_fixture_result(fr_fixture_nested(cast(string)path,out,cleanup[..]),cleanup[..],state);}
+ return fr_fixture_result(fr_read_file(cast(string)path,out,cleanup[..]),cleanup[..],state);
+}

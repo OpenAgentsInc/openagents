@@ -1,0 +1,9 @@
+// R2 check-first regression: literal expectation predates implementation.
+Error :: struct {detail:[]u8;}
+fail :: (v:[]u8)->Result(int,Error) {return Result(int,Error).{err=Error.{detail=v}};}
+bad :: ()->Result(int,Error) {local:=[1]u8.[7];
+  // DIAGNOSTIC
+  value:=try fail(local[..]);
+  return Result(int,Error).{ok=value};
+}
+main :: () {}

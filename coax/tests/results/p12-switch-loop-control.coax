@@ -1,0 +1,18 @@
+#import "Basic";
+// R2 check-first regression: native trace has a predeclared literal oracle.
+Flag :: enum u8 {go;stop;skip;}
+probe :: (mode:Flag)->int {
+  n:=0;
+  for i:0..<4 {
+    n+=1;
+    switch mode {case Flag.go {} case Flag.stop {break;} case Flag.skip {continue;}}
+    n+=100;
+  }
+  return n;
+}
+#test "switch break and continue belong to the enclosing loop" {
+  #assert probe(Flag.go)==404;
+  #assert probe(Flag.stop)==1;
+  #assert probe(Flag.skip)==4;
+}
+main :: () {print("% % %\n",probe(Flag.go),probe(Flag.stop),probe(Flag.skip));}

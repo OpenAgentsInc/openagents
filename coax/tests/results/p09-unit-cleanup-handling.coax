@@ -1,0 +1,17 @@
+// R2 check-first regression: literal expectation predates implementation.
+Error :: enum u8 {close_failed;}
+close :: (fail:bool)->Result(void,Error) {
+  if fail {return Result(void,Error).{err=Error.close_failed};}
+  return Result(void,Error).{ok};
+}
+work :: (report:[]int)->Result(int,Error) {
+  defer {switch close(true) {case ok {}case err(error) {report[0]=1;}}}
+  return Result(int,Error).{ok=7};
+}
+#test "fallible cleanup handles itself without replacing captured primary return" {
+  report:=[1]int.[0];#assert (work(report[..]) or_else 0)==7 && report[0]==1;
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  report:=[1]int.[0];#assert (work(report[..]) or_else 0)==7 && report[0]==1;
+}

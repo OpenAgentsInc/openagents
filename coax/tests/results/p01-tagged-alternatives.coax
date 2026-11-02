@@ -1,0 +1,16 @@
+// R2 check-first regression: literal expectation predates implementation.
+Reply :: union {number:int; label:string; done;}
+select :: (r:Reply)->int {
+  switch r {case number(n) {return n;}case label(s) {return s.count;}case done {return -1;}}
+}
+#test "each active alternative has one checked payload" {
+  #assert select(Reply.{number=41})==41;
+  #assert select(Reply.{label="abc"})==3;
+  #assert select(Reply.{done})==-1;
+}
+// The native entry executes the same independent literal assertions.
+main :: () {
+  #assert select(Reply.{number=41})==41;
+  #assert select(Reply.{label="abc"})==3;
+  #assert select(Reply.{done})==-1;
+}

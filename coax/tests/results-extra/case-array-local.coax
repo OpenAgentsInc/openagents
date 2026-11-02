@@ -1,0 +1,5 @@
+#load "case-array-storage.coax";
+escape :: ()->[]u8 {
+  values:[1][2]u8;
+  return forward(values[..]);
+}

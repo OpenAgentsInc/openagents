@@ -1,0 +1,320 @@
+#load "result-flow.coax";
+// Structured direct-Result obligations, after ordinary typing/specialization.
+// There are no runtime ownership flags and no native handling inference.
+#authority;
+#test "R2 mutation handling collects Result locals from both conditional arms" {
+ nodes:[20]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=19,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};
+ f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=2,state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[2]=CK_Node.{kind=CK_Tag.stmt_if,c=3,d=4};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block,head=8};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=12};
+ nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=16};nodes[12]=nodes[8];
+ CF_collect(f,2,0);
+ #assert cs[0].collected==2 && words[0]==8 && words[3]==12 && words[2]==1 && words[5]==1;
+ #assert ck[0].depth==0 && ck[0].error_count==0 && rs[0].reason==RF_Reason.ok;
+}
+#forall "R2 mutation handling neutral choices retire their temporary snapshots" statement:bool {
+ nodes:[4]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=3,type_count=17}];words:[5]int;rs:[1]RF_State;cs:[1]CF_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ for i:0..<3 {CF_choice(f,0,0,ifx statement then CF_Mode.statement else CF_Mode.read,CK_Loc.{});#assert CF_ok(f) && rs[0].top==3 && RF_get(f.flow,0)==1 && cs[0].alive;}
+}
+#forall "R2 handling transfers discharge exactly once and continuing branches agree" mode:0..<6 {
+ nodes:[32]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;work:[256]int;state:=[1]CK_State.[CK_State.{used=25,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],result_work=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,name="f",type=16,head=3,b=4};nodes[3]=CK_Node.{kind=CK_Tag.param,name="r",type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,a=6,loc=CK_Loc.{line=10,column=3}};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=10,column=10}};
+ if mode==1 {nodes[5].a=0;nodes[2].type=1;}if mode==2 {nodes[5].kind=CK_Tag.stmt_expr;}
+ if mode==3 {nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,a=6,next=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=nodes[6];}
+ if mode>=4 {
+  nodes[2].type=1;nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=6,c=7,next=20,loc=CK_Loc.{line=8,column=3}};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block,head=8};nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=11,a=9};nodes[9]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=10,b=11};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[11]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[20]=CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=10,column=3}};
+  if mode==5 {nodes[5].d=12;nodes[12]=CK_Node.{kind=CK_Tag.stmt_block,head=13};nodes[13]=CK_Node.{kind=CK_Tag.stmt_var,type=11,a=14};nodes[14]=nodes[9];nodes[14].a=15;nodes[15]=nodes[10];}
+ }
+ CK_result_proc(c,2);if mode==0 || mode==5 {#assert state[0].error_count==0 && !state[0].fatal;}
+ else {want:="E0907";if mode==3 {want="E0908";}if mode==4 {want="E0909";}#assert state[0].error_count==1 && errors[0].code==want;if mode==4 {#assert errors[0].loc.line==10;}}
+}
+#forall "R2 handling observes implicit failure before pending argument transfer commits" mode:0..<3 {
+ nodes:[24]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[512]u8;work:[128]int;state:=[1]CK_State.[CK_State.{used=20,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],result_work=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,head=3,b=4};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=11,a=6,next=12};nodes[6]=CK_Node.{kind=CK_Tag.expr_try,type=11,a=7,propagate_type=16,loc=CK_Loc.{line=20,column=9}};nodes[7]=CK_Node.{kind=CK_Tag.expr_call,type=16};nodes[12]=CK_Node.{kind=CK_Tag.stmt_return,a=13};nodes[13]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};
+ if mode==1 {nodes[5].a=8;nodes[8]=CK_Node.{kind=CK_Tag.expr_call,type=11,head=9,proc=14};nodes[14]=CK_Node.{kind=CK_Tag.proc,type=11,head=15};nodes[15]=CK_Node.{kind=CK_Tag.param,type=16,next=16};nodes[16]=CK_Node.{kind=CK_Tag.param,type=11};nodes[9]=nodes[13];nodes[9].next=6;}
+ if mode==2 {nodes[2].head=0;nodes[13]=nodes[7];}
+ CK_result_proc(c,2);if mode==2 {#assert state[0].error_count==0;}else {#assert state[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==20;}
+}
+CF_State :: struct {depth:int;loop_scope:int;defer_scope:int;arguments:bool;collected:int;alive:bool=true;}
+#forall "R2 mutation handling short circuit reads preserve conditional transfers" op:50..<52 {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=2,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_binary,type=2,op=cast(u32)op,a=6,b=7,loc=CK_Loc.{line=61,column=7}};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};
+ nodes[7]=CK_Node.{kind=CK_Tag.expr_or_else,type=2,a=8,b=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[9]=nodes[6];
+ CF_expr(f,5,false);#assert ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==61 && ck[0].depth==0;
+}
+#forall "R2 mutation handling refuses statement work and depth before body effects" depth:bool {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=16}];words:[4]int;rs:[1]RF_State;cs:[1]CF_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=71,column=9}};
+ if depth {ck[0].depth=256;}else {rs[0].work=1048576;}
+ CF_stmt(f,5);#assert cs[0].alive;
+ if depth {#assert ck[0].depth==256 && ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0381";}
+ else {#assert ck[0].depth==0 && !ck[0].fatal && ck[0].error_count==0 && rs[0].reason==RF_Reason.work;}
+}
+CF_Context :: struct {c:CK_Context;flow:RF_Context;state:[]CF_State;}
+#test "R2 mutation handling defer visits its body under capture restrictions" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_defer,c=6};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_expr,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=9,b=10};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=82,column=11}};nodes[10]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ CF_stmt(f,5);#assert ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==82;
+ #assert cs[0].depth==0 && cs[0].defer_scope==0 && ck[0].depth==0;
+}
+#forall "R2 mutation handling part02 reports exhausted branch workspace at the procedure" capacity:2..<4 {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[3]int;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..],result_work=words[0..<capacity]};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,loc=CK_Loc.{line=90,column=5}};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=6,c=7,d=8};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block};nodes[8]=nodes[7];
+ CK_result_proc(c,2);#assert ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==90 && ck[0].depth==0;
+}
+#forall "R2 handling part02 loop-local Result transfer is allowed at its exact loop scope" scope:1..<3 {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[16]int;rs:[1]RF_State;cs:=[1]CF_State.[CF_State.{depth=scope,loop_scope=scope}];
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=16,a=6};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.expr_sum,type=16,sum_variant=0,a=7};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,scope) && RF_set(f.flow,0,1);CF_expr(f,5,true);#assert CF_ok(f) && RF_get(f.flow,0)==2 && ck[0].depth==0;
+}
+#test "R2 handling part02 an ordinary local consumes only its statement and expression work" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=11,a=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);rs[0].work=1048574;
+ CF_stmt(f,5);#assert CF_ok(f) && rs[0].work==1048576 && words[0]==3 && words[1]==1 && words[2]==0 && ck[0].depth==0;
+}
+#test "R2 handling part02 a terminal conditional disagreement reports the conditional site" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=6,c=7,loc=CK_Loc.{line=91,column=7,offset=9107}};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block,head=8};nodes[8]=CK_Node.{kind=CK_Tag.stmt_var,type=11,a=9};nodes[9]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=10,b=11};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[11]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ CF_stmt(f,5);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==91 && errors[0].loc.column==7 && errors[0].loc.offset==9107 && ck[0].depth==0;
+}
+#forall "R2 handling part02 a Result-free switch pays for restoring its continuing state" allowance:7..<9 {
+ nodes:[12]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=11,type_count=18}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};types[17]=CK_Type.{kind=CK_Kind.enum_,name="Only",decl=2,elem=12,size=1,bits=8};nodes[2]=CK_Node.{kind=CK_Tag.enum_,name="Only",type=17,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.member,name="only",type=17};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);rs[0].work=1048576-allowance;
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_switch,a=6,head=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_enum,type=17};nodes[7]=CK_Node.{kind=CK_Tag.switch_case,d=9,b=8};nodes[8]=CK_Node.{kind=CK_Tag.stmt_block};nodes[9]=nodes[6];
+ CF_stmt(f,5);#assert CF_ok(f)==(allowance>=8) && !ck[0].fatal && ck[0].error_count==0 && ck[0].depth==0;if allowance==7 {#assert rs[0].reason==RF_Reason.work;}
+}
+#test "R2 handling part02 harmless range headers do not bypass outer Result capture refusal" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[24]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_range,a=6,b=7,c=8};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=nodes[6];nodes[8]=CK_Node.{kind=CK_Tag.stmt_block,head=9};nodes[9]=CK_Node.{kind=CK_Tag.stmt_expr,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=11,b=12};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=93,column=13}};nodes[12]=nodes[6];
+ CF_stmt(f,5);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==93 && errors[0].loc.column==13 && ck[0].depth==0;
+}
+CF_result :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.result;}
+CF_has_results :: (c:CK_Context)->bool {for i:16..<c.state[0].type_count {if CF_result(c,i) {return true;}}return false;}
+CF_ok :: (f:CF_Context)->bool {return !f.c.state[0].fatal && f.c.state[0].error_count==0 && f.flow.state[0].reason==RF_Reason.ok;}
+// No flow slots means inventory only; allocated slots enable registration.
+CF_collect :: (f:CF_Context,id:int,depth:int) {
+ if id==0 {return;}n:=f.c.nodes[id];if !CK_enter(f.c,n.loc) {return;}defer CK_leave(f.c);
+ if n.kind==CK_Tag.stmt_var && CF_result(f.c,n.type) {if f.flow.count>0 {ignored:=RF_register(f.flow,f.state[0].collected,id,depth);}f.state[0].collected+=1;}
+ if n.kind==CK_Tag.stmt_block {at:=n.head;while at!=0 {CF_collect(f,at,depth+1);at=f.c.nodes[at].next;}}
+ else if n.kind==CK_Tag.stmt_if {CF_collect(f,n.c,depth);CF_collect(f,n.d,depth);}
+ else if n.kind==CK_Tag.stmt_while || n.kind==CK_Tag.stmt_range || n.kind==CK_Tag.stmt_each || n.kind==CK_Tag.stmt_defer {CF_collect(f,n.c,depth);}
+ else if n.kind==CK_Tag.stmt_switch {at:=n.head;while at!=0 {CF_collect(f,f.c.nodes[at].b,depth);at=f.c.nodes[at].next;}}
+}
+CF_exit :: (f:CF_Context,scope:int,loc:CK_Loc) {
+ if !CF_ok(f) {return;}if f.state[0].arguments {CK_error(f.c,loc,"E0907","try would abandon a pending Result argument before the call begins","");return;}
+ for i:0..<f.flow.count {if RF_scope(f.flow,i)>=scope && RF_get(f.flow,i)==1 {CK_error(f.c,loc,"E0907","a Result remains pending on this exit","");return;}}
+}
+CF_join :: (f:CF_Context,base:int,loc:CK_Loc) {if CF_ok(f) && !RF_equal(f.flow,base) {if f.flow.state[0].reason==RF_Reason.ok {CK_error(f.c,loc,"E0909","continuing branches disagree about a Result transfer","");}}}
+CF_Mode :: enum u8 {read;transfer;statement;}
+CF_visit :: (f:CF_Context,id:int,mode:CF_Mode) {if mode==CF_Mode.statement {CF_stmt(f,id);}else {CF_expr(f,id,mode==CF_Mode.transfer);}}
+CF_choice :: (f:CF_Context,a:int,b:int,mode:CF_Mode,loc:CK_Loc) {
+ base:=RF_save(f.flow);if base<0 {return;}
+ CF_visit(f,a,mode);if !CF_ok(f) {return;}left_alive:=f.state[0].alive;left:=RF_save(f.flow);if left<0 {return;}
+ ignored:=RF_restore(f.flow,base);f.state[0].alive=true;
+ CF_visit(f,b,mode);if !CF_ok(f) {return;}
+ if left_alive && f.state[0].alive {CF_join(f,left,loc);}else if left_alive {ignored=RF_restore(f.flow,left);f.state[0].alive=true;}
+ ignored=RF_drop(f.flow,base);
+}
+// Read positions share one nontransfer policy, including builtin arguments.
+CF_read :: (f:CF_Context,id:int) {CF_expr(f,id,false);}
+CF_expr :: (f:CF_Context,id:int,consume:bool) {
+ if id==0 || !CF_ok(f) {return;}e:=f.c.nodes[id];if !RF_tick(f.flow) || !CK_enter(f.c,e.loc) {return;}defer CK_leave(f.c);
+ result:=CF_result(f.c,e.type);
+ if e.kind==CK_Tag.expr_ident && result {
+  at:=RF_find(f.flow,e.borrow_binding);if at<0 {if CF_ok(f) {CK_error(f.c,e.loc,"E0907","this Result has no transferable local obligation","");}return;}
+  current:=RF_get(f.flow,at);if current!=1 {CK_error(f.c,e.loc,"E0908","this Result was already transferred or is not initialized","");return;}
+  if (f.state[0].defer_scope>0 && RF_scope(f.flow,at)<f.state[0].defer_scope) || (consume && f.state[0].loop_scope>0 && RF_scope(f.flow,at)<f.state[0].loop_scope) {CK_error(f.c,e.loc,"E0909","an outer Result cannot be captured by defer or consumed inside a loop","");return;}
+  if !consume {CK_error(f.c,e.loc,"E0907","naming a Result does not handle its error","");return;}ignored:=RF_set(f.flow,at,2);return;
+ }
+ if e.kind==CK_Tag.expr_try {CF_expr(f,e.a,true);CF_exit(f,0,e.loc);return;}
+ if e.kind==CK_Tag.expr_or_else {CF_expr(f,e.a,true);if CF_ok(f) {CF_choice(f,0,e.b,CF_Mode.read,e.loc);}return;}
+ if e.kind==CK_Tag.expr_ifx {CF_read(f,e.a);if CF_ok(f) {CF_choice(f,e.b,e.c,ifx consume then CF_Mode.transfer else CF_Mode.read,e.loc);}return;}
+ if e.kind==CK_Tag.expr_binary && (e.op==50 || e.op==51) {CF_read(f,e.a);if CF_ok(f) {CF_choice(f,0,e.b,CF_Mode.read,e.loc);}return;}
+ if e.kind==CK_Tag.expr_call {
+  saved:=f.state[0].arguments;defer f.state[0].arguments=saved;
+  // Node zero is the canonical null procedure, with no formal parameters.
+  parameter:=f.c.nodes[e.proc].head;at:=e.head;while at!=0 && CF_ok(f) {transfers:=CF_result(f.c,f.c.nodes[parameter].type);if transfers {CF_expr(f,at,true);f.state[0].arguments=true;}else {CF_read(f,at);}at=f.c.nodes[at].next;parameter=f.c.nodes[parameter].next;}
+ }else {CF_read(f,e.a);CF_read(f,e.b);CF_read(f,e.c);at:=e.head;while at!=0 && CF_ok(f) {CF_read(f,at);at=f.c.nodes[at].next;}}
+ if result && !consume && CF_ok(f) {CK_error(f.c,e.loc,"E0907","a produced Result must be handled or transferred","");}
+}
+CF_stmt :: (f:CF_Context,id:int) {
+ if id==0 || !f.state[0].alive || !CF_ok(f) {return;}n:=f.c.nodes[id];if !RF_tick(f.flow) || !CK_enter(f.c,n.loc) {return;}defer CK_leave(f.c);
+ if n.kind==CK_Tag.stmt_block {
+  f.state[0].depth+=1;at:=n.head;while at!=0 && f.state[0].alive && CF_ok(f) {CF_stmt(f,at);at=f.c.nodes[at].next;}
+  if f.state[0].alive {CF_exit(f,f.state[0].depth,n.loc);}
+  for i:0..<f.flow.count {if RF_scope(f.flow,i)==f.state[0].depth {ignored:=RF_set(f.flow,i,0);}}f.state[0].depth-=1;return;
+ }
+ if n.kind==CK_Tag.stmt_var {CF_expr(f,n.a,CF_result(f.c,n.type));if CF_result(f.c,n.type) && CF_ok(f) {at:=RF_find(f.flow,id);if at>=0 {ignored:=RF_set(f.flow,at,1);}}return;}
+ if n.kind==CK_Tag.stmt_assign {CF_read(f,n.c);CF_read(f,n.a);return;}
+ if n.kind==CK_Tag.stmt_return {CF_expr(f,n.a,CF_result(f.c,f.c.nodes[n.a].type));CF_exit(f,0,n.loc);f.state[0].alive=false;return;}
+ if n.kind==CK_Tag.stmt_expr || n.kind==CK_Tag.stmt_assert {CF_read(f,n.a);return;}
+ if n.kind==CK_Tag.stmt_if {CF_read(f,n.a);if CF_ok(f) {join_loc:=n.loc;if n.next!=0 {join_loc=f.c.nodes[n.next].loc;}CF_choice(f,n.c,n.d,CF_Mode.statement,join_loc);}return;}
+ if n.kind==CK_Tag.stmt_switch {
+  CF_expr(f,n.a,CF_result(f.c,f.c.nodes[n.a].type));if !CF_ok(f) {return;}base:=RF_save(f.flow);joined:= -1;at:=n.head;
+  while at!=0 && CF_ok(f) {ignored:=RF_restore(f.flow,base);f.state[0].alive=true;CF_stmt(f,f.c.nodes[at].b);if f.state[0].alive && CF_ok(f) {if joined<0 {joined=RF_save(f.flow);}else {CF_join(f,joined,n.loc);}}at=f.c.nodes[at].next;}
+  f.state[0].alive=joined>=0;if joined>=0 {ignored:=RF_restore(f.flow,joined);}ignored:=RF_drop(f.flow,base);return;
+ }
+ if n.kind==CK_Tag.stmt_while || n.kind==CK_Tag.stmt_range || n.kind==CK_Tag.stmt_each {
+  saved:=f.state[0].loop_scope;if n.kind==CK_Tag.stmt_while {f.state[0].loop_scope=f.state[0].depth+1;}CF_read(f,n.a);CF_read(f,n.b);if n.kind==CK_Tag.stmt_while {f.state[0].loop_scope=saved;}
+  if !CF_ok(f) {return;}base:=RF_save(f.flow);f.state[0].loop_scope=f.state[0].depth+1;CF_stmt(f,n.c);f.state[0].loop_scope=saved;
+  ignored:=RF_restore(f.flow,base);ignored=RF_drop(f.flow,base);f.state[0].alive=true;return;
+ }
+ if n.kind==CK_Tag.stmt_break || n.kind==CK_Tag.stmt_continue {CF_exit(f,f.state[0].loop_scope,n.loc);f.state[0].alive=false;return;}
+ if n.kind==CK_Tag.stmt_defer {saved:=f.state[0].defer_scope;f.state[0].defer_scope=f.state[0].depth+1;CF_stmt(f,n.c);f.state[0].defer_scope=saved;}
+}
+CK_result_proc :: (c:CK_Context,proc:int) {
+ rs:[1]RF_State;state:[1]CF_State;f:=CF_Context.{c=c,flow=RF_Context.{words=c.result_work,state=rs[..]},state=state[..]};p:=c.nodes[proc];at:=p.head;
+ while at!=0 {if CF_result(c,c.nodes[at].type) {state[0].collected+=1;}at=c.nodes[at].next;}CF_collect(f,p.b,0);count:=state[0].collected;f.flow.count=count;
+ if !RF_init(f.flow) {CK_resource(c,p.loc);return;}state[0].collected=0;at=p.head;
+ while at!=0 {if CF_result(c,c.nodes[at].type) {index:=state[0].collected;ignored:=RF_register(f.flow,index,at,0);ignored=RF_set(f.flow,index,1);state[0].collected+=1;}at=c.nodes[at].next;}
+ CF_collect(f,p.b,0);CF_stmt(f,p.b);if state[0].alive {CF_exit(f,0,p.loc);}if rs[0].reason!=RF_Reason.ok && c.state[0].error_count==0 {CK_resource(c,p.loc);}
+}
+CK_results :: (c:CK_Context) {
+ if !CF_has_results(c) {return;}
+ at:=c.nodes[1].head;while at!=0 && c.state[0].error_count==0 && !c.state[0].fatal {n:=c.nodes[at];if n.kind==CK_Tag.proc && !n.generic && !n.flag2 {CK_result_proc(c,at);}if n.kind==CK_Tag.check {CK_result_proc(c,n.a);}at=n.next;}
+ at=c.state[0].instances;while at!=0 && c.state[0].error_count==0 && !c.state[0].fatal {n:=c.nodes[at];if n.kind==CK_Tag.proc && !n.generic && !n.flag2 {CK_result_proc(c,at);}at=n.chain;}
+}
+#test "R2 advanced loop conditions cannot consume an outer Result on repeated tests" {
+ nodes:[24]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;bytes:[512]u8;work:[128]int;state:=[1]CK_State.[CK_State.{used=20,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],result_work=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_while,a=6,c=11,next=12};nodes[6]=CK_Node.{kind=CK_Tag.expr_binary,type=2,op=48,a=7,b=10};nodes[7]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=8,b=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=31,column=9}};nodes[9]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[10]=nodes[9];nodes[11]=CK_Node.{kind=CK_Tag.stmt_block};nodes[12]=CK_Node.{kind=CK_Tag.stmt_return};
+ CK_result_proc(c,2);#assert state[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==31;
+}
+#forall "R2 once-only range and collection headers may consume before iteration" collection:bool {
+ nodes:[24]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;bytes:[512]u8;work:[128]int;state:=[1]CK_State.[CK_State.{used=20,type_count=18}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],result_work=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=11,length=1};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=11,head=3,b=4};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_range,a=6,b=7,c=10,next=12};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=8,b=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=41,column=9}};nodes[9]=nodes[6];nodes[10]=CK_Node.{kind=CK_Tag.stmt_block};nodes[12]=CK_Node.{kind=CK_Tag.stmt_return,a=13};nodes[13]=nodes[6];
+ if collection {types[16].elem=17;nodes[5].kind=CK_Tag.stmt_each;nodes[5].a=7;nodes[5].b=0;nodes[7].type=17;nodes[9]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=11};nodes[11]=nodes[6];}
+ CK_result_proc(c,2);#assert state[0].error_count==0 && !state[0].fatal;
+}
+#forall "R2 printing a bound or fresh Result is not an error handler" bound:bool {
+ nodes:[24]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;bytes:[512]u8;work:[128]int;state:=[1]CK_State.[CK_State.{used=20,type_count=17}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..],result_work=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,b=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=8};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,a=6,next=8};nodes[6]=CK_Node.{kind=CK_Tag.expr_sum,type=16,sum_variant=1,a=7};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=12,value=9};nodes[8]=CK_Node.{kind=CK_Tag.stmt_expr,a=9,next=13};nodes[9]=CK_Node.{kind=CK_Tag.expr_call,type=1,name="print",builtin_print=true,head=11};nodes[10]=nodes[6];nodes[10].loc=CK_Loc.{line=41,column=14};nodes[11]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="%",next=10};nodes[13]=CK_Node.{kind=CK_Tag.stmt_return};
+ if bound {nodes[4].head=5;nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5,loc=CK_Loc.{line=41,column=14}};}
+ CK_result_proc(c,2);#assert state[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==41;
+}
+
+#test "R2 mutation handling switch restores the continuing arm after a returning arm" {
+ nodes:[32]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=31,type_count=18}];words:[24]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};types[17]=CK_Type.{kind=CK_Kind.enum_,decl=18,size=1,alignment=1,bits=8};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[18]=CK_Node.{kind=CK_Tag.enum_,type=17,head=19,tail=20};nodes[19]=CK_Node.{kind=CK_Tag.member,type=17,value=0,next=20};nodes[20]=CK_Node.{kind=CK_Tag.member,type=17,value=1};
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_switch,a=6,head=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_enum,type=17,value=0};
+ nodes[7]=CK_Node.{kind=CK_Tag.switch_case,b=8,d=21,next=10};nodes[8]=CK_Node.{kind=CK_Tag.stmt_block};nodes[21]=nodes[6];
+ nodes[10]=CK_Node.{kind=CK_Tag.switch_case,b=11,d=22};nodes[22]=nodes[6];nodes[22].value=1;nodes[11]=CK_Node.{kind=CK_Tag.stmt_block,head=12};
+ nodes[12]=CK_Node.{kind=CK_Tag.stmt_expr,a=13,next=16};nodes[13]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=14,b=15};nodes[14]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[15]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[16]=CK_Node.{kind=CK_Tag.stmt_return};
+ CF_stmt(f,5);#assert CF_ok(f) && cs[0].alive && rs[0].top==3 && RF_get(f.flow,0)==1;
+ CF_expr(f,14,true);#assert CF_ok(f) && RF_get(f.flow,0)==2 && ck[0].depth==0;
+}
+#test "R2 coverage2 a returning conditional arm leaves its continuing sibling alive" {
+ nodes:[16]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=15,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};
+ #assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_block};nodes[6]=CK_Node.{kind=CK_Tag.stmt_return,a=7};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};
+ CF_choice(f,5,6,CF_Mode.statement,CK_Loc.{});#assert CF_ok(f) && cs[0].alive && rs[0].top==3 && RF_get(f.flow,0)==1 && ck[0].depth==0;
+ CF_expr(f,7,true);#assert CF_ok(f) && RF_get(f.flow,0)==2;
+}
+#test "R2 coverage2 an absent statement spends no flow or semantic work" {
+ nodes:[2]CK_Node;types:[16]CK_Type;errors:[1]CK_Error;ck:=[1]CK_State.[CK_State.{used=1,type_count=16}];words:[1]int;rs:[1]RF_State;cs:[1]CF_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ CF_stmt(f,0);#assert CF_ok(f) && rs[0].work==0 && rs[0].top==0 && cs[0].alive && ck[0].depth==0;
+}
+#test "R2 coverage2 a Result-free continuing switch keeps its zero-offset snapshot" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=11,type_count=17}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.enum_,decl=2,size=1,alignment=1,bits=8};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[2]=CK_Node.{kind=CK_Tag.enum_,type=16,head=3};nodes[3]=CK_Node.{kind=CK_Tag.member,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_switch,a=6,head=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_enum,type=16};nodes[7]=CK_Node.{kind=CK_Tag.switch_case,b=8,d=9};nodes[8]=CK_Node.{kind=CK_Tag.stmt_block};nodes[9]=nodes[6];
+ CF_stmt(f,5);#assert CF_ok(f) && cs[0].alive && cs[0].depth==0 && rs[0].top==0 && ck[0].depth==0;
+}
+#test "R2 coverage2 a nested while restores its enclosing loop context" {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=16}];words:[8]int;rs:[1]RF_State;cs:=[1]CF_State.[CF_State.{depth=1,loop_scope=1}];
+ for i:0..<16 {types[i]=CK_builtin(i);}c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};#assert RF_init(f.flow);nodes[5]=CK_Node.{kind=CK_Tag.stmt_while,a=6,c=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block};
+ CF_stmt(f,5);#assert CF_ok(f) && cs[0].alive && cs[0].depth==1 && cs[0].loop_scope==1 && ck[0].depth==0;
+}
+#forall "R2 coverage2 break and continue terminate only their current path" continuing:bool {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:=[1]CF_State.[CF_State.{depth=2,loop_scope=2}];
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=ifx continuing then CK_Tag.stmt_continue else CK_Tag.stmt_break};CF_stmt(f,5);
+ #assert CF_ok(f) && !cs[0].alive && cs[0].depth==2 && cs[0].loop_scope==2 && RF_get(f.flow,0)==1 && ck[0].depth==0;
+}
+#test "R2 coverage2 specialized procedures retain their Result obligations" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17,instances=2}];words:[16]int;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..],result_work=words[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=4,loc=CK_Loc.{line=121,column=5}};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=122,column=7}};
+ CK_results(c);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==122 && errors[0].loc.column==7 && ck[0].depth==0;
+}
+#test "R2 coverage2 the inventory pass only counts before workspace initialization" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:=[4]int.[91,92,93,94];rs:=[1]RF_State.[RF_State.{work=17}];cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],state=rs[..]},state=cs[..]};
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_block,head=6};nodes[6]=CK_Node.{kind=CK_Tag.stmt_var,type=16};CF_collect(f,5,0);
+ #assert CF_ok(f) && cs[0].collected==1 && rs[0].work==17 && rs[0].top==0 && words[0]==91 && words[1]==92 && words[2]==93 && words[3]==94 && ck[0].depth==0;
+}
+#test "R2 coverage3 reading a Result in a loop still requires an actual handler" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:=[1]CF_State.[CF_State.{depth=1,loop_scope=1}];
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.expr_call,type=1,builtin_print=true,head=6};nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=131,column=9}};
+ CF_read(f,5);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==131 && ck[0].depth==0;
+}
+#test "R2 coverage3 ordinary binary operands handle their Results sequentially" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=11,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.expr_binary,type=11,op=34,a=6,b=7};nodes[6]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[7]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=8,b=9};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[9]=nodes[6];
+ CF_read(f,5);#assert CF_ok(f) && RF_get(f.flow,0)==2 && cs[0].alive && ck[0].depth==0;
+}
+#test "R2 coverage3 a refused while condition restores its enclosing loop scope" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=11,type_count=17}];words:[16]int;rs:[1]RF_State;cs:=[1]CF_State.[CF_State.{depth=1,loop_scope=1}];
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=2,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_while,a=6,c=10};nodes[6]=CK_Node.{kind=CK_Tag.expr_or_else,type=2,a=7,b=8};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=132,column=11}};nodes[8]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[10]=CK_Node.{kind=CK_Tag.stmt_block};
+ CF_stmt(f,5);#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0909" && errors[0].loc.line==132 && cs[0].loop_scope==1 && ck[0].depth==0;
+}
+#forall "R2 coverage4 Result-valued conditionals transfer through expression arms" transfer:bool {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=11,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.expr_ifx,type=16,a=6,b=7,c=8};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3,loc=CK_Loc.{line=141,column=9}};nodes[8]=nodes[7];
+ CF_expr(f,5,transfer);if transfer {#assert CF_ok(f) && RF_get(f.flow,0)==2 && rs[0].top==3;}else {#assert !ck[0].fatal && ck[0].error_count==1 && errors[0].code=="E0907" && errors[0].loc.line==141;}#assert ck[0].depth==0;
+}
+#test "R2 coverage4 inactive capture guards spend no scope lookup work" {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=7,type_count=17}];words:[8]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};rs[0].work=1048572;
+ CF_expr(f,5,true);#assert CF_ok(f) && rs[0].work==1048576 && words[1]==2 && cs[0].loop_scope==0 && cs[0].defer_scope==0 && ck[0].depth==0;
+}
+#forall "R2 coverage7 Result phase selection uses only the declared type prefix" mode:0..<5 {
+ nodes:[2]CK_Node;types:[18]CK_Type;ck:=[1]CK_State.[CK_State.{used=1,type_count=18}];for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};
+ types[16]=CK_Type.{kind=CK_Kind.optional,elem=11};types[17]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};
+ if mode==0 {ck[0].type_count=16;types[16]=types[17];}if mode==1 {ck[0].type_count=17;}if mode==3 {types[16]=types[17];types[17]=CK_Type.{kind=CK_Kind.optional,elem=11};}if mode==4 {types[17]=CK_Type.{kind=CK_Kind.optional,elem=12};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],state=ck[..]};#assert CF_has_results(c)==(mode==2 || mode==3) && ck[0].error_count==0 && !ck[0].fatal;
+}
+#forall "R2 coverage8 statement conditionals preserve their continuing Result path" left_returns:bool {
+ nodes:[20]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=19,type_count=17}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow) && RF_register(f.flow,0,3,0) && RF_set(f.flow,0,1);
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16};nodes[5]=CK_Node.{kind=CK_Tag.stmt_if,a=6,c=7,d=8};nodes[6]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block};nodes[8]=CK_Node.{kind=CK_Tag.stmt_block,head=9};nodes[9]=CK_Node.{kind=CK_Tag.stmt_return,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};nodes[14]=nodes[9];
+ if left_returns {nodes[5].c=8;nodes[5].d=7;}
+ CF_stmt(f,5);#assert CF_ok(f) && cs[0].alive && RF_get(f.flow,0)==1 && rs[0].top==3;
+ CF_stmt(f,14);#assert CF_ok(f) && !cs[0].alive && RF_get(f.flow,0)==2 && ck[0].depth==0;
+}
+#forall "R2 coverage8 loop and defer inventories register their own Result locals" mode:0..<4 {
+ nodes:[24]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;ck:=[1]CK_State.[CK_State.{used=23,type_count=18}];words:[16]int;rs:[1]RF_State;cs:[1]CF_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=11,length=1};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=ck[..]};f:=CF_Context.{c=c,flow=RF_Context.{words=words[..],count=1,state=rs[..]},state=cs[..]};#assert RF_init(f.flow);
+ nodes[2]=CK_Node.{kind=CK_Tag.stmt_block,head=3};nodes[3]=CK_Node.{kind=CK_Tag.stmt_defer,c=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_block,head=5};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=16,a=6,next=10};nodes[6]=CK_Node.{kind=CK_Tag.expr_sum,type=16,sum_variant=0,a=7};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[8]=CK_Node.{kind=CK_Tag.expr_bool,type=2};nodes[9]=nodes[7];nodes[9].value=1;
+ nodes[10]=CK_Node.{kind=CK_Tag.stmt_expr,a=11};nodes[11]=CK_Node.{kind=CK_Tag.expr_or_else,type=11,a=12,b=13};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=5};nodes[13]=nodes[7];nodes[14]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=15};nodes[15]=nodes[7];
+ if mode==0 {nodes[3].kind=CK_Tag.stmt_while;nodes[3].a=8;}if mode==1 {nodes[3].kind=CK_Tag.stmt_range;nodes[3].a=7;nodes[3].b=9;}if mode==2 {nodes[3].kind=CK_Tag.stmt_each;nodes[3].a=14;}
+ CF_collect(f,2,0);#assert CF_ok(f) && cs[0].collected==1 && RF_find(f.flow,5)==0 && RF_scope(f.flow,0)==2 && ck[0].depth==0;
+}

@@ -1,0 +1,6 @@
+// R2 check-first regression: literal expectation predates implementation.
+Record :: struct {value:int?;}
+main :: () {
+  // DIAGNOSTIC
+  value:Record=---;
+}

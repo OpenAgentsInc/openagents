@@ -280,6 +280,7 @@ struct Mutator {
     if (!s) return;
     for (const Expr *e : {s->expr, s->expr2, s->target}) calls(e);
     for (const Stmt *c : s->body) calls(c);
+    for (const SwitchCase *c : s->cases) { calls(c->enum_pattern); calls(c->body); }
     calls(s->then_);
     calls(s->else_);
   }
@@ -366,6 +367,7 @@ struct Mutator {
     expr(s->expr2);
     expr(s->target);
     for (Stmt *c : s->body) stmt(c);
+    for (SwitchCase *c : s->cases) { expr(c->enum_pattern); stmt(c->body); }
     stmt(s->then_);
     stmt(s->else_);
   }
@@ -449,6 +451,8 @@ static bool mutation_allocates_string(const Stmt *s) {
   if (!s) return false;
   if (mutation_allocates_string(s->expr) || mutation_allocates_string(s->expr2) || mutation_allocates_string(s->target)) return true;
   for (const Stmt *child : s->body) if (mutation_allocates_string(child)) return true;
+  for (const SwitchCase *c : s->cases)
+    if (mutation_allocates_string(c->enum_pattern) || mutation_allocates_string(c->body)) return true;
   return mutation_allocates_string(s->then_) || mutation_allocates_string(s->else_);
 }
 static bool mutation_allocates_string(const File *file) {

@@ -1,0 +1,73 @@
+// Bounded compile-time Result handling state. Words are private Coax scratch;
+// the native bridge allocates only the reported view and never decodes it.
+#authority;
+RF_Reason :: enum u8 {ok;invalid;capacity;work;}
+RF_State :: struct {top:int;work:int;reason:RF_Reason;}
+RF_Context :: struct {words:[]int;count:int;state:[]RF_State;}
+#forall "R2 mutation handling lookup never publishes a slot after refusal" mode:0..<4 {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=1,state=state[..]};
+ #assert RF_init(c) && RF_register(c,0,7,0) && RF_set(c,0,1);
+ if mode==0 {state[0].work=1048576;}
+ else if mode==1 {state[0].reason=RF_Reason.invalid;}
+ else if mode==2 {state[0].reason=RF_Reason.capacity;}
+ else {state[0].reason=RF_Reason.work;}
+ expected:=ifx mode==0 then RF_Reason.work else state[0].reason;
+ #assert RF_find(c,7)== -1 && state[0].reason==expected;
+ #assert words[0]==7 && words[1]==1 && state[0].top==3;
+}
+#test "Result flow states and branch snapshots preserve the continuing path" {
+ words:[16]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};
+ #assert RF_init(c);#assert RF_register(c,0,7,1) && RF_register(c,1,9,2);
+ #assert RF_find(c,7)==0 && RF_find(c,9)==1 && RF_find(c,8)== -1;
+ #assert RF_set(c,0,1) && RF_get(c,0)==1 && RF_scope(c,1)==2;
+ before:=RF_save(c);#assert before==6 && RF_set(c,0,2);after:=RF_save(c);#assert after==8;
+ #assert RF_restore(c,before) && RF_get(c,0)==1 && !RF_equal(c,after);
+ #assert RF_set(c,0,2) && RF_equal(c,after);#assert RF_drop(c,before) && state[0].top==6 && state[0].reason==RF_Reason.ok;
+}
+#forall "Result flow refuses invalid state and workspace before publishing a snapshot" mode:0..<7 {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};#assert RF_init(c);
+ if mode==0 {#assert !RF_set(c,-1,1);}if mode==1 {#assert !RF_set(c,2,1);}if mode==2 {#assert !RF_set(c,0,3);}
+ if mode==3 {#assert !RF_register(c,0,1,0);}if mode==4 {#assert !RF_restore(c,5);}
+ if mode==5 {#assert RF_save(c)==6 && RF_save(c)== -1 && state[0].top==8;}
+ if mode==6 {state[0].work=1048576;#assert !RF_set(c,0,1) && words[1]==0;}
+ #assert state[0].reason!=RF_Reason.ok;
+}
+RF_fail :: (c:RF_Context,reason:RF_Reason)->bool {if c.state.count==1 && c.state[0].reason==RF_Reason.ok {c.state[0].reason=reason;}return false;}
+#forall "R2 coverage3 snapshots reject storage outside the live snapshot interval" mode:0..<5 {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};#assert RF_init(c) && RF_register(c,0,7,0) && RF_register(c,1,9,1) && RF_set(c,0,1) && RF_set(c,1,2);#assert RF_save(c)==6;
+ bases:=[5]int.[4,5,6,7,9];valid:=RF_snapshot(c,bases[mode]);#assert valid==(mode==2) && state[0].top==8 && words[0]==7 && words[1]==1 && words[3]==9 && words[4]==2 && words[6]==1 && words[7]==2;
+ #assert state[0].reason==(ifx mode==2 then RF_Reason.ok else RF_Reason.invalid);
+}
+#forall "R2 coverage8 registration refuses invalid slots and exhausted work without publishing" mode:0..<5 {
+ words:[8]int;state:[1]RF_State;c:=RF_Context.{words=words[..],count=2,state=state[..]};#assert RF_init(c);index:=mode-3;if mode==0 {index= -1;}if mode==1 {index=2;}if mode==2 {index=0;state[0].work=1048576;}
+ accepted:=RF_register(c,index,7,1);#assert accepted==(mode>=3) && state[0].top==6;
+ if accepted {#assert state[0].reason==RF_Reason.ok && RF_find(c,7)==index && RF_scope(c,index)==1;}
+ else {#assert state[0].reason==(ifx mode==2 then RF_Reason.work else RF_Reason.invalid);for w:words {#assert w==0;}}
+}
+RF_tick :: (c:RF_Context)->bool {
+ if c.state.count!=1 || c.state[0].reason!=RF_Reason.ok {return false;}
+ if c.state[0].work>=1048576 {return RF_fail(c,RF_Reason.work);}c.state[0].work+=1;return true;
+}
+RF_init :: (c:RF_Context)->bool {
+ if c.state.count!=1 {return false;}c.state[0]=RF_State.{};
+ if c.count<0 || c.count>c.words.count/3 {return RF_fail(c,RF_Reason.capacity);}
+ for i:0..<c.count*3 {c.words[i]=0;}c.state[0].top=c.count*3;return true;
+}
+RF_index :: (c:RF_Context,index:int)->bool {if index<0 || index>=c.count {return RF_fail(c,RF_Reason.invalid);}return RF_tick(c);}
+RF_register :: (c:RF_Context,index:int,id:int,scope:int)->bool {
+ if !RF_index(c,index) {return false;}if id<2 || scope<0 || c.words[index*3]!=0 {return RF_fail(c,RF_Reason.invalid);}
+ for i:0..<c.count {if c.words[i*3]==id {return RF_fail(c,RF_Reason.invalid);}}
+ c.words[index*3]=id;c.words[index*3+2]=scope;return true;
+}
+RF_find :: (c:RF_Context,id:int)->int {for i:0..<c.count {if !RF_tick(c) {return -1;}if c.words[i*3]==id {return i;}}return -1;}
+RF_get :: (c:RF_Context,index:int)->int {if !RF_index(c,index) {return 0;}v:=c.words[index*3+1];if v<0 || v>2 {ignored:=RF_fail(c,RF_Reason.invalid);return 0;}return v;}
+RF_scope :: (c:RF_Context,index:int)->int {if !RF_index(c,index) {return 0;}return c.words[index*3+2];}
+RF_set :: (c:RF_Context,index:int,value:int)->bool {if !RF_index(c,index) {return false;}if value<0 || value>2 {return RF_fail(c,RF_Reason.invalid);}c.words[index*3+1]=value;return true;}
+RF_save :: (c:RF_Context)->int {
+ if !RF_tick(c) {return -1;}base:=c.state[0].top;if base<0 || c.count>c.words.count-base {ignored:=RF_fail(c,RF_Reason.capacity);return -1;}
+ for i:0..<c.count {v:=RF_get(c,i);if c.state[0].reason!=RF_Reason.ok {return -1;}c.words[base+i]=v;}c.state[0].top=base+c.count;return base;
+}
+RF_snapshot :: (c:RF_Context,base:int)->bool {if !RF_tick(c) {return false;}if base<c.count*3 || base>c.state[0].top || c.count>c.state[0].top-base {return RF_fail(c,RF_Reason.invalid);}return true;}
+RF_restore :: (c:RF_Context,base:int)->bool {if !RF_snapshot(c,base) {return false;}for i:0..<c.count {if !RF_set(c,i,c.words[base+i]) {return false;}}return true;}
+RF_equal :: (c:RF_Context,base:int)->bool {if !RF_snapshot(c,base) {return false;}for i:0..<c.count {if RF_get(c,i)!=c.words[base+i] {return false;}}return c.state[0].reason==RF_Reason.ok;}
+RF_drop :: (c:RF_Context,base:int)->bool {if !RF_snapshot(c,base) {return false;}c.state[0].top=base;return true;}

@@ -1,0 +1,21 @@
+#import "Basic";
+// R2 check-first regression: native trace has a predeclared literal oracle.
+Error :: enum u8 {failed;}
+mark :: (trace:[]int,n:int)->int {trace[0]=trace[0]*10+n;return n;}
+index :: (trace:[]int,ok:bool)->Result(int,Error) {
+  ignored:=mark(trace,1);
+  if ok {return Result(int,Error).{ok=0};}
+  return Result(int,Error).{err=Error.failed};
+}
+work :: (values:[]int,trace:[]int,ok:bool)->Result(void,Error) {
+  defer {ignored:=mark(trace,2);}
+  values[try index(trace,ok)]=mark(trace,9);
+  return Result(void,Error).{ok};
+}
+probe :: (ok:bool)->int {
+  values:=[1]int.[7];trace:=[1]int.[0];
+  switch work(values[..],trace[..],ok) {case ok {if !ok {return -1;}}case err(e) {if ok || e!=Error.failed {return -2;}}}
+  return trace[0]*10+values[0];
+}
+#test "propagation from an assignment index prevents the RHS and store" {#assert probe(false)==127 && probe(true)==1929;}
+main :: () {print("% %\n",probe(false),probe(true));}

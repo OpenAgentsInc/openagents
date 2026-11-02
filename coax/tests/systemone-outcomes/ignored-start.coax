@@ -1,0 +1,4 @@
+#load "../../lib/systemone/outcomes.coax";
+bad :: (owner:[]SoOwnedCall,c:SoClient,wire:[]u8,err:[]u8) {
+  pending := so_request_start(owner,c,"{}",wire,err);
+}

@@ -26,7 +26,7 @@
 
 * [13. Data-oriented layout](ch13-data-layout.md) — partly implemented
 * [14. Jobs: captures as effects](ch14-jobs.md) — partly implemented
-* [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md)
+* [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md) — actual typed System One request and snapshot ownership
 * [16. Determinism](ch16-determinism.md) — partly implemented
 * [17. GPU programs](ch17-gpu.md) — partly implemented
 
