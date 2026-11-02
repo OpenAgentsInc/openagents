@@ -1518,7 +1518,7 @@ function draw(now) {
   } catch (e) { say(`${app} trapped: ${e.message}`, true); loading.fail(`ENGINE STOPPED: ${e.message}`); engine = null; return; }
   if (gpu.renderer) {
     try {
-      const submitted = gpu.renderer.frame(n, w, h, (probe || dev) && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
+      const submitted = gpu.renderer.frame(n, w, h, captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? (encoder, texture) => readBack(encoder, texture) : null);
       if (submitted && gpu.renderer.readiness === gpu.renderer.ids.readiness.ready) globalThis.coaxial.sceneReady = true;
       if (probe || dev) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
       if (gpu.snap) { const take = gpu.snap;gpu.snap = null;take(); }
@@ -1714,7 +1714,7 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
-  captureFrame: () => { if (probe || dev) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
+  captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {

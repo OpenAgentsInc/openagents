@@ -995,11 +995,11 @@ verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(v
  #assert abs(verse_style_anime_spot(0.96f32,0.96f32,0.004f32,0.6f32)-0.3f32)<0.0001f32;
 }
 #test "anime: the shadow tone is the albedo under a cool tint, keeping its value; never grey or black" {
- tr:=0.62f32; tg:=0.66f32; tb:=1.0f32; tl:=verse_style_luma(tr,tg,tb); depth:=0.6f32;
+ tr:=0.62f32; anime_tint_green:=0.66f32; tb:=1.0f32; tl:=verse_style_luma(tr,anime_tint_green,tb); depth:=0.6f32;
  for s:0..<ANIME_SLOTS {
   lr:=verse_style_anime_colour(cast(f32)s,0.0f32); lg:=verse_style_anime_colour(cast(f32)s,1.0f32); lb:=verse_style_anime_colour(cast(f32)s,2.0f32);
   y:=verse_style_luma(lr,lg,lb);
-  sr:=verse_style_anime_shadow(lr,tr,tl,depth); sg:=verse_style_anime_shadow(lg,tg,tl,depth); sb:=verse_style_anime_shadow(lb,tb,tl,depth);
+  sr:=verse_style_anime_shadow(lr,tr,tl,depth); sg:=verse_style_anime_shadow(lg,anime_tint_green,tl,depth); sb:=verse_style_anime_shadow(lb,tb,tl,depth);
   raw:=verse_style_luma(sr,sg,sb);
   kr:=verse_style_keep_value(sr,depth*y,raw); kg:=verse_style_keep_value(sg,depth*y,raw); kb:=verse_style_keep_value(sb,depth*y,raw);
   // its value is depth of the lit tone's, exactly once kept, within 15 percent before for all but the bluest albedos
@@ -1011,7 +1011,7 @@ verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(v
   #assert kr>=0.0f32 && kg>0.0f32 && kb>0.0f32;
  }
  // a grey albedo's shadow is blue-violet, not grey, and exactly depth of its value with no keeping
- gr:=verse_style_anime_shadow(0.5f32,tr,tl,depth); gg:=verse_style_anime_shadow(0.5f32,tg,tl,depth); gb:=verse_style_anime_shadow(0.5f32,tb,tl,depth);
+ gr:=verse_style_anime_shadow(0.5f32,tr,tl,depth); gg:=verse_style_anime_shadow(0.5f32,anime_tint_green,tl,depth); gb:=verse_style_anime_shadow(0.5f32,tb,tl,depth);
  #assert gb>gg && gg>gr && abs(verse_style_luma(gr,gg,gb)-0.3f32)<0.00001f32;
 }
 #test "anime: ink lines at silhouettes and creases, the albedo darkened, thinning with distance" {

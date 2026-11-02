@@ -1,0 +1,839 @@
+#test the uniforms and shape slots line up with everglade.wgsl's
+#test a frame draws the whole city within its slots, and you in front of the camera
+#test the trees fill the woods: off the trails and out of the city, a metre clear of the open ground
+#test the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it
+#test the pack's catalog: a pack that fails before its catalog draws nothing
+#test you are the old Everglade's Ranger: one skinned draw, standing on the ground, facing your way
+#test on a still page the Ranger standing idle holds one pose, however long the page has run
+#test the controller's state picks the clip: idle, walk, run, and jump in the air
+#test the Ranger's pose is the old engine's: its joints and what they skin, part way into every clip
+#test the people: the catalog names their parts, and the nearest in view are drawn a part an instance, posed
+#test a phone draws at most its cap of kit trees, however you look
+#test the camera stays out of the trees: among them it pulls in before a trunk
+#test the woods are open and the world's edge is the thicket: a step stops only at EG_BOUND
+#test the reach check: every open spot inside the edge is one you walk to
+#test M lifts the camera over the city and back; you stand still meanwhile
+#test each house takes a plaster and a roof from the palettes, and the kit after it none
+#test a hash names a place: you start on the street nearest it, facing it
+#test a click on MAP lifts the camera; a drag elsewhere turns it
+#test the hint and the district fit a phone
+#test walk up to someone and press E: you type, they answer through the character chat, and E ends nothing else
+#test what the keyboard field types reaches the conversation and is drawn in a box with a caret (host.js MSG_TEXT)
+#test #quest-board starts you at the board, near enough to read it
+#test a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up
+#test the quest board: take a quest, go out to the deep wood, talk to Moss, hand it in; it's kept for this player
+#test the river quest earns the flock, handed in to the crier; a save comes back for its player only
+#test a conversation keeps its last lines, oldest dropped
+#test the painterly day: the page's clock picks the preset, its key lights the realm, a still page shows noon
+#test every look has its own number (everglade.wgsl's LOOK_*)
+#test the lamps: a brazier, a lantern at each door, torches at the town's crossings off the squares, the houses' hearths; lit from dusk, full at night
+#test Everglade draws elevated and wading feet at the world floor once
+#test every glyph is on the grid, inside its width, and the table is sorted
+#test the HUD's and a deck's characters all have glyphs
+#test UTF-8 goes both ways, and bad bytes read as '?'
+#test measure and wrap
+#test small text with a scale lands on device-pixel centres, without glow
+#test small text keeps its dots: a period, a colon and an exclamation mark each draw
+#test the sans covers ASCII and its extras, in the host's order
+#test Font and atlas roundtrip every codepoint into the same glyph cell
+#test sans profile pins the existing atlas and raster effect contract
+#test sans mip commands pin byte offsets and independent raster sizes
+#test sans glyph commands enumerate every codepoint and exact half texel position
+#test sans commands refuse unknown glyphs and mip endpoints before arithmetic
+#test a page's facts start a session and a page view; events batch into the playtest's shape
+#test numbers keep three decimals; long words are cut at a code point
+#test a realm's acts: once, tallies, walking milestones and chat length
+#test the ease rests at both ends
+#forall the ease only rises
+#forall the overview circles the spawn from high up, looking down
+#test the overview moves slowly and never jumps
+#test the dolly starts where the camera is and ends behind you
+#forall the dolly is smooth, above the ground, and comes in from behind
+#test the last stretch comes down from behind and above you
+#test reduced motion cuts
+#test a touch hurries the rest from where the camera is
+#test a broken shot is not followed
+#test it starts behind you and above, over your right shoulder
+#forall the shot is whole and looks forward wherever it turns
+#test looking turns it, the keys turn it at their rate, and junk is ignored
+#test zoom asks for a distance, and it eases there
+#test the pivot follows you, smoothly, and cuts when you jump far
+#test walking swings it behind you, a while after you last looked
+#test a tree behind you pulls the eye in at once; it backs out gently
+#test only scenery on the line counts
+#forall the eye stays inside the room it is given
+#forall another camera's shot hands back without a turn
+#test a shot blends from one to the other and rests at both ends
+#test the screen's middle points along the shot, and its edges at the projection's edges
+#test zooming in past the closest goes on into your head
+#test zooming out of your head comes back to the closest, smoothly
+#test a realm's floor-relative feet become one world point, including the height
+#forall atan2 points the right way
+#forall wrap_angle keeps the direction
+#test yaw 0 faces +Z and a quarter turn faces +X
+#test vectors
+#forall settle never overshoots and is framerate-free
+#test world arithmetic
+#test distances keep their units, and grid units convert exactly
+#forall a local point goes to the world and back
+#test a placement turns with its yaw: a quarter turn takes local +Z to world +X
+#test the Grid draws a metre as half a unit, heights too
+#test the lens sees ahead, right, up, and nothing behind its near plane
+#test top down looks down at the feet from 22 m
+#test the free orbit sits back and right of the pivot outside, and starts at the eyes inside
+#test a dive starts on its first shot, lands on the live one, and moves smoothly frame to frame
+#test a dive of no length is a cut, and frames that aren't time don't move it
+#test the helpers' edges: signed zeros, the finite range, a line just long enough, and mixing
+#test nothing overlaps: buildings keep apart, inside the palisade, off the streets
+#test the streets and trails keep clear of everything in the way
+#test the paths connect: one network, through every gate and over the bridge
+#test everything is reachable on foot from the road in
+#test the open ground: past the apron only a trail or a clearing is, where the people walk and an admin places
+#test the palisade keeps you in but for its gates
+#test the ground is built: flat where the city stands, rising into the forest
+#test the river runs in its carved bed, falling south, with the deck over it
+#test every place, gate and character has a name, and the hashes are distinct
+#test the ponds: off the trails and the river, clear of the walls, each in a clearing that meets its trail, carved to their depths
+#test the terrain normal follows constant edge continuation outside the mesh
+#forall legacy terrain keeps every nonbinary drawn vertex exact including its far edges
+#forall legacy terrain copies stored corner words without cancelling away signed zero
+#test legacy terrain keeps adjacent f32 samples on their actual drawn side of a vertex
+#test legacy terrain height and normal share the qualified ground triangles
+#forall legacy terrain refusal gives zero height and an upward normal
+#forall legacy terrain build refuses a rejected descriptor before publishing heights
+#test the ground is built only where it fits
+#test the height is the drawn surface: exact at every grid point
+#test the surface is continuous and has no cliffs
+#test the painterly ground normal is exact on a slope and has no facet steps
+#test paths are level across and gentle along
+#test the ground rises toward the edge, and off the edge holds
+#test a wider ground moves the bowl's edge out
+#test a ray stops at the ground, just above it
+#test the whole route: from where you stand, by the path's nodes, to the end
+#test the route goes by the paths when that is shorter, and straight when near
+#forall a follower gets there from anywhere
+#forall a follower goes round a block in its way, never through it
+#test from the south tail to the far corner it keeps to the paths
+#test a rectangular ground: rows south to north, the height exact at its far corner
+#test a lane carries distance along it, and a walker is placed by that distance
+#test targeting picks first, last, strongest and closest among the walkers in range, and none out of range
+#test ground descriptor keeps the existing terrain defaults and a bounded point count
+#forall ground refuses malformed descriptors before indexing
+#test ground samples both drawn triangles and chooses the south-west diagonal
+#forall ground samples every boundary vertex exactly, including the north-east corner
+#test ground extends the exact edge beyond its rectangle and reads no extra height words
+#forall ground refuses each malformed sampled word and every short height view
+#forall ground refuses nonfinite and out-of-range coordinates, heights and slopes
+#test ground normals reject fabricated samples and keep a level normal on refusal
+#forall ground equals independent f64 barycentric triangles inside rectangular cells
+#test ground rejects collapsed boundary cells separately on each axis and refuses its exact extent limit
+#forall ground vertex heights retain their stored f32 words, including signed zero
+#test ground refusals publish no partial clamping metadata
+#forall ground matches actual nonbinary drawn vertex coordinates without epsilon snapping
+#test ground keeps the adjacent representable positions on either side of a drawn vertex
+#test ground gives an interior vertex to the next cell, including its triangle's slope
+#test ground requires four rendering ulps of cell width and refuses an interior collapse
+#test everyone at a spot has a name, a role and a greeting; the cats are cats
+#test the question's body is JSON with every text escaped
+#test every quest is three steps an agent can follow: a place, someone there, the board
+#test a quest is taken, followed and handed in, and only in that order
+#test two quests at once move on their own
+#test a save is read back for its player, and only for them
+#test a quest whose giver was taken away is off the board and can't be handed in until they're back
+#test the flock keeps up with a runner, over and behind them, the birds apart
+#test on a phone's uneven frames the birds move smoothly: no jump, no jolt
+#test a long frame is caught up in bounded steps; far away at once, the flock waits there
+#test each bird trails a ribbon of where it has been, newest first
+#test the clip is the old Motion::of's: jump in the air, stand, walk, run
+#test keys: the two either side and how far between, held past the last
+#test slerp keeps unit length and takes the shorter way
+#test the rest pose skins every vertex where it was bound
+#test a gait advances by the distance moved, a clip on the clock by time, and a new clip starts at its beginning
+#test the first clip shows at once; a change blends from the pose it left over SKIN_FADE, smoothstepped
+#test a turned arm skins its vertices round the joint, its root moves them all
+#test a turn swings a joint and its children about the character's up through it
+#test the parts are the pack's, in its order, and each person wears their own body's
+#test the people's poses are the clips' as people.py sampled them, on both bodies
+#test standing, a man's and a woman's heads are 1.5 to 1.85 m up and their feet on the ground
+#test they turn to face you within 4 m, step round while they turn, and turn back when you go
+#test they nod as a talk starts and talk with their hands while the answer is fresh
+#test alone, they shift their weight now and then and glance about, within bounds, each at their own times
+#test a pose's palette with a glance: finite, and the head turned the way of the glance
+#test on a turning day they walk their routine; talking stops them and turns them to you; let go, they catch up
+#test someone walking stops for you in their way, and walks on once you step aside
+#test every day is sorted, starts and ends at a real stop, and each walk ends before the next row begins
+#test every walk and every beat keeps to open ground: the streets, the squares, the clearings, never a wall or the woods
+#test the stable hand wades into the Reed Pond and swims its middle at half pace, by the player's rules
+#test a day: at work by day, walking home at dusk, indoors at night, out again in the morning
+#test two people reading the same clock put a person in the same place; a guard walks the beat all day
+#test wading past 0.4 m, swimming past 1.25 m, at half speed either way
+#test rumours: one rumour over a day, the same every time; it starts with its source and spreads by meetings
+#test rumours: two out of doors far apart don't meet; the same door does
+#test the watch: eight guards, each beat on open ground, there and back on the shared clock
+#test a crime makes a guard who sees it hostile and you wanted; one who can't see or hear it stays calm
+#test a hostile guard runs to you and its blows resolve under the SRD: d20 + 3 against your AC 15, 1d6 + 1
+#test you die at 0 HP: the view fades, YOU DIED, then you stand at the Road In whole and wanted no more
+#test a blast hurts or kills the townsfolk and the watch; R or the dawn stands them up; a fallen guard is replaced
+#test out of every hunter's sight for a while, you are wanted no more and the watch walk back
+#test a guard chasing you over the river runs on the bridge's deck, at its height, the whole way
+#test out of a sword's reach above them (levitating 6 m up), no blow lands; a guard below throws spears; on the ground they cut
+#test a blast throws a guard out from it and up: they tumble, land, lie on their backs, and get up where they came down
+#test you die: you topple and lie there through YOU DIED; a blast that kills you throws your body
+#test the heat: crimes and fallen hunters raise WANTED 1 to 5; each level's wave comes in at the gate nearest you; never over 12 hunting
+#test the heat clears out of sight (longer the higher it is) or when you die; the reinforcements walk back out of their gate
+#test the casters: a Mage's Fire Bolt and Ray of Frost, Hold Person, and a Fireball that throws you; dodged bolts miss
+#test the casters: a Priest heals the watch and marks you with Guiding Bolt; an Archmage's Lightning Bolt and Cone of Cold
+#test WANTED 5, you levitating 18 m up out of reach: the Archmage's Magic Missile darts turn after you and strike; Earthbind pulls you down
+#test srd5 combat: a guard's attack is d20 + 3 against AC, 1d6 + 1 on a hit, 2d6 + 1 on a natural 20
+#test srd5 combat: a creature in a spell's area saves for half
+#test srd5: the dice are seeded, in range and use every face
+#test srd5: 20d6 sums between 20 and 120 and averages near 70
+#test srd5: the object table is the SRD's
+#test srd5: objects are immune to poison and psychic, glass breaks to blows, stone resists fire
+#test srd5: Meteor Swarm rolls its two kinds once and a blast's edge does nothing
+#test srd5: a save is d20 plus its modifier against the DC
+#test stand: a box's top holds you over it, a step past its edge with a pad, and not from under it
+#test stand: a gable roof's two slopes rise from its eaves to its ridge, the slope telling the way down
+#test stand: a tower's cone and a dome are steep at their rims, a ring holds you only on its band
+#test stand: a tilted slab's top face holds you on its slope
+#test stand: the grid finds the same highest floor as reading them all, over a town's worth
+#test two clients sample the same weather for the same seed and tick
+#test blocks follow the climate, and Everglade is mostly clear
+#test transitions blend over sixty seconds
+#test a pinned state overrides the schedule
+#test the SRD effects follow rain and wind
+#test storms flash and clear skies do not
+#test spell weather is local and bounded in time
+#test rising water is bounded
+#test the schedule's rise stays in bounds and moves smoothly
+#test the water rises in rain and falls back after
+#test the ground wets in rain and dries after
+#test climates validate and states name
+#forall acos and atan agree with cos and tan
+#test quaternions rotate as glam's
+#test a tumbling body keeps its angular momentum and a falling one gains m g t
+#test a supported body at rest sleeps after SLEEP_TIME and an unsupported one never does
+#test voice edits: only an admin on a voice page gets the button; the button holds and lets go
+#test voice edits: sentences said while one is with the server wait their turn, in order, each shown and then its result
+#test voice edits: one of a thing is A THING, more are THINGS
+#test voice edits: a row starts in front of you and never stands on you, whichever way you face
+#test voice edits: placed things are walls from the ground they stand on; a bench you stand on casts your shadow on its top
+#test voice edits: remove these crates takes the row; remove Marta takes her, UNDO and ORIGINAL bring her back
+#test voice edits: with Moss taken away his quest is off the board, and one under way can't be handed in till he's back
+#test edit mode: a click on one of the city's people picks them, and DELETE takes them away
+#test voice verbs: pumpkins on the stall's top, a house, a ring of benches, a field of purple flowers
+#test voice verbs: the barrel bigger, the crates moved, the temple hidden and back, and a name that isn't here
+#test a thing stands in the open: not in a building, the palisade, the woods, the river or past the edge
+#test two things don't stand in each other
+#test a thing on a street is allowed, and said
+#test the list round trips as text, and refuses what isn't one
+#test the publish's body and the server's answer
+#test a removal: the nearest thing or person, a named one, or a whole row ('these crates')
+#test the list keeps what stands on another's top, its colour, and the city's buildings taken away
+#test the list keeps who is gone and each thing's row
+#test edit mode: only an admin gets EDIT; B goes in and out; the hotbar places and picks
+#test edit mode: a thing is refused where it can't stand; ORIGINAL takes two presses and UNDO brings the list back
+#test edit mode: the HUD draws EDIT for an admin only, and the hotbar and the row within the plates
+#test the shared layer: a visitor with BUILD gets EDIT, the things only, each sent as a card; no UNDO or ORIGINAL
+#test a kept place in Everglade: open ground stays, a wall or the woods moves you to the nearest open spot, a room keeps you in it
+#test the orbit comes back as it was kept, within its reach
+#test a place round-trips through its text exactly, for its realm only
+#test a step or a glance counts, a twitch doesn't; a full turn is the same way
+#test nothing is kept until you move; then this browser every second, the server every ten, both at once when you leave
+#test precedence: a hash's place wins, the newer copy wins, and nothing is put back once you've moved
+#test the server's copy: asked once with an account, sent as a container, read back for this realm
+#test the spots tried round a place: itself first, then rings out to about 20 m, and walls that block
+#test a save packs into an AESV container that opens again, and a corrupted save falls back to the last good one
+#test migrations forward: the bare-hex save from before containers opens as schema 0
+#test the server's answer and body: base64 both ways, the newer save known by its time
+#test demolish: a gable leans on its roof: it stands while the roof does, and falls once the roof goes, the wall under it standing
+#test demolish: what hangs on a wall or stands in it goes with it, and two things side by side don't hold each other up
+#test demolish: a cottage's upper walls rest on the lower and the roof on the upper
+#test demolish: damage below the hit points cracks, at zero it breaks into chunks
+#test demolish: the steps are Aethyr's clock's, 1/60 s, at most six a frame, and a stall's backlog is dropped
+#test demolish: the wall over a broken one comes loose, falls and breaks on the ground; the roof holds
+#test demolish: knock out the upper walls and the roof falls; restore stands it all back
+#test demolish: a roof falls in once a quarter of the walls under it go
+#test demolish: the chunk budget holds; a phone's is half
+#test demolish: a loose piece is drawn where its body is, turned with it
+#test demolish: a wall broken over water splashes in, its wood floats off on the current, stone sinks
+#test demolish: a broken wall's chunks are cut from its own mesh: every point of it in exactly one chunk's cell
+#test demolish: a blast throws what it breaks out and up at up to its speed, then the speed caps hold
+#test demolish: rubble is the same on every client: the same blows give the same bodies
+#test demolish: a loose wall topples out from its building
+#test demolish: a wall left with nothing beside it topples; one with a neighbour stands
+#test demolish: a tower cut through at a level tips over toward the cut, its top fastest
+#test demolish: you stand on a cottage's roof following its slope, eave to ridge, and on its walls' tops
+#test demolish: a roof broken away no longer holds you; the rubble lying still does
+#test seconds become nanoseconds, to the nearest
+#test a frame's time is refused, clamped, then owed
+#test the steps due are the whole steps owed, at most max_steps
+#test a clock read from zeroed memory steps as a constructed one does
+#test a frame counts for its time, refused, clamped and dropped as the steps are
+#test a frame's steps are kept once it has run, until the next frame
+#test running pays the steps due
+#test a stall runs max_steps and the next frame is ordinary
+#test alpha is the part of a step owed once the steps due have run
+#test step and simulation time in seconds
+#forall the step count follows the time fed at any frame rate
+#test a bolt conducts to a swimmer 5 m off and not 7 m off, nor across to another body or into a boat
+#test fire under water is halved, other spells don't conduct, and each spell has its splash
+#test abilities: Reverse Gravity lifts you and the town's loose props to hover under its top, and lets them fall
+#test abilities: a Wind Wall rises 4 m ahead across your way, throws you up when you walk in, and lifts a splinter
+#test abilities: Levitate rises while 7 is held and hovers when let go; X sinks to the ground and ends it; Feather Fall slows a fall and ends on landing
+#test abilities: Gust of Wind pushes along its line; Thunderwave frees a prop in its cube and throws it 10 feet's worth away
+#test abilities: a Wall of Stone's two panels stand 4 m ahead across your way as two of your bodies, for ten minutes
+#test abilities: Telekinesis takes a prop, lifts it 20 feet, moves it 30 feet at most a click, and lets it fall
+#test abilities: Earthbound (the watch's Earthbind), Levitate can't rise and sinks you 60 feet a round to the ground, where it ends; it can't be cast again
+#test frost: an Ice Knife bursts on the ground, throws its shards out to fall and lie, and leaves slippery frost that makes you slide
+#test tide: Water Walk keeps you on a pond's top; Water Breathing breathes under it
+#test tide: Create Water's rain puts out a fire; Destroy Water lifts the smoke from its cube
+#test marks: a Sleet Storm's patch is a frost mark in the ground's uniforms, not a slab
+#test two shouts at one spot never overlap: the second goes above the first
+#test watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow
+#test the request names the four nearest hunting guards and asks each a choice over the six roles
+#test an answer binds its model, its service, every asked guard and every role; anything else is refused
+#test with a fake decision the guards take the assigned roles: they flank you, one calls for help, one waits under you
+#test a cutter stands between you and the gate nearest you
+#test with no decision, a late one, a refusal or a malformed one, the current escalation runs unchanged
+#test requests are bounded: one out, every CAP_EVERY at most, CAP_HUNT a hunt; 401 stops them; a new hunt fences an old answer
+#test the pinned JSONTestSuite cases: every y_ parses, every n_ is refused
+#test tokens come with their byte ranges, keys marked
+#test limits: depth 16, the input and a string's length; a refusal sticks
+#test UTF-8 inside strings, byte by byte
+#test unescaping: every escape, surrogate pairs, refusal of lone ones and of what doesn't fit
+#test bounded starts raise the input and string limits
+#test integers within 2^53, and nothing else
+#test the writer escapes as NIP-01 does, appends, and refuses what doesn't fit
+#test reused parser state is reset and refusal ranges remain observable
+#test original input budget is inclusive without parsing a megabyte
+#forall hex and decimal classification on every byte
+#test token ranges, whitespace, scalar skip and malformed containers
+#test unescape helper boundaries are explicit even before parser admission
+#test writer control bytes, exact output and sticky failures
+#test fixed Unicode encoding boundaries match independent UTF-8 fixtures
+#test UTF-8 width at raw byte boundaries and truncated spans
+#test minimal numbers and parser failure metadata remain exact
+#test raw string budget includes a nonzero opening offset
+#test truncated strings refuse at the original byte and control writes stay bounded
+#test short Unicode escapes and paired low surrogates cannot bypass admission
+#test the route follows the streets from the guard to the place
+#test an edit on the route refuses it; one beside it or elsewhere does not
+#test a spell's wall or rubble on the route refuses it; one away does not
+#test a hidden building touches only when its box reaches the route
+#test segment distances
+#test items: every thing of the catalogue draws within its groups, a patch of flowers is hundreds of plants
+#test items: a hidden building is laid without, and its walls go
+#test dress: a chimney on every roof with a fire, through the roof and over its ridge
+#test dress: the bunting's poles stand off the streets, its ropes high over them
+#test interiors: every building has a room inside it, its pieces laid as town pieces
+#test interiors: the new pieces break, and the wood and the cloth burn
+#test interiors: the small pieces draw near you by the LOD rules, and the near run holds them all
+#test hammer: a plaster wall section breaks in a few blows, a miss on a 1 and a crit on a 20
+#test lod: the small props draw near you, the rest of the town at every distance; it chooses again only past the step
+#test sky: open ground sees it all, the woods and the streets' corners less, a room under its roof least
+#test room: Enter opens a line, what you type is said once, Esc closes it
+#test a room's urls and bodies
+#test numbers out of the server's JSON
+#test who is here and what was said, the next answer easing them on
+#test lines say who said them, and leave when removed or blocked
+#test the panel keeps the last six lines
+#test a world's urls, and ids that are not ones
+#test the newest waiting offer out of the log, past nested deltas and decided ones
+#test the house published and offered, and opened again from the server
+#test Everglade itself is no fork: no rules, its own world
+#test a fork's facts: its slug and its rules, only the four this code plays; its own world
+#test the board decides once the layer has the fork's spec: a rule switched off there is off
+#test the pane: the server's rules, FORK IT sends only the picked ones, the answer's path is where the page goes
+#test a fork's pane says what it was forked from and who made it; hostile waves send the watch in
+#test reply: a line goes up on the house, is smashed, and is sent once with its seed, escaped
+#test stand: Levitate ends on the temple's roof, and you stay on it
+#test stand: a gable roof holds you at its eave and its ridge, at their heights, following its slope
+#test stand: the temple's roof blown away no longer holds you
+#test stand: one thrown onto the temple's roof comes down on it and stays there; off its edge they fall
+#test stand: ?stage=roof starts you over the temple's roof, to come down on it
+#test the shadow tint is blue or violet all day: blue the largest, nothing under 0.35
+#test the rim's colour is the key's, warmed, by clock: day, dusk and dawn, the moon's blue at 0.35
+#test a realm with no outlines draws no outline and no rim, by day and night, desktop and phone
+#test the painterly preset holds the spec's shading numbers
+#test the phone tier: less in it, the same painting
+#test photoreal has no preset yet and refuses to evaluate
+#test every key evaluates to its own numbers: noon day, dusk, midnight night, dawn as dusk
+#test halfway between keys is the mean of both
+#test shadows are blue or violet all day and night, no channel below 0.35
+#test the sun runs -20 degrees at midnight to 60 at noon; the moon keys below -6
+#test the preset's own numbers run through the shading functions as the spec says
+#test lowpoly is one light term, light fog and no post
+#test the clock: fixed pins it, cycle turns every 48 minutes for everyone alike, real follows the visitor
+#test a realm's own moon takes the key's direction at night, never by day
+#test a cycle's day is smooth: no key number jumps between neighbouring frames
+#test flat: three hard tones from the preset's own edges, two for characters, on both tiers
+#test flat: no specular, no rim, no outline, no shafts, no clouds, no tone curve, at every hour
+#test flat: each realm its own palette; the cemetery's is moonlit all day, the garden's turns
+#test flat: the hem, the dither, flat shadows and the phone's fewer tufts
+#test anime: each variant's two hard tones from its own block, a spot, its ink and vignette in the spare slots
+#test anime: the shadow tone is cooler than the lit and keeps its share of the value, every variant, every hour
+#test anime: the sky's zenith darker and more saturated than its horizon, every variant at every key
+#test anime: dusk is magic hour all day with a warm horizon; neon is night at every hour
+#test anime: action is harder than pastoral: deeper shadows, a harder edge, thicker ink, stronger rims and bloom
+#test anime: the phone draws the same look with less in it
+#test anime: halfway between keys is the mean of both, for the variants that follow the clock
+#test anime: its variants by name, its default, and where each is meant to be seen
+#test style live lattice uses the portable integer noise profile
+#test facets: one tone a face from its normal; corners nudged without cracks; an edge only in front of something further
+#test flat: the fairy palette is muted pastels, never orange, on a plain sky bluer than it is green
+#test flat: three hard tones, never a gradient; two for characters
+#test flat: a flat sky with one soft horizon band; flat shadows with a soft rim; one far fade
+#test flat: the dither steps a gradient in flat steps, each pixel one of them, the 4x4 pattern covering all 16 thresholds
+#test flat: a hem's trim is a thin line at the edge, nothing past it
+#test the chroma cap: a greyed shadow gets back to 0.7 of its albedo's saturation, never past 2.5 times; a saturated one is left
+#test the near ring: 7 m (6 on a phone), 4 r2 blades a density, 2.4 times as wide at the eye and 1 at the reach
+#test the band edges sit at 0.20 and 0.58 and blend over 0.12
+#test the bands never step back as the light grows
+#test the wrap lifts the terminator a quarter and stays in 0..1
+#test characters get two bands at 0.40
+#test the shadow band is the albedo under the tinted ambient, never black
+#test the shadow band takes the tint's hue once more, warm albedos included, keeping its value
+#test one dab of paint, not a gloss
+#test the rim starts at 68 degrees, is full at 83, and is stronger toward the key
+#test on a 1.8 m figure 8 m away at 1440x900 the rim is 2 to 4 px wide
+#test the shadow map reaches 60 m, 40 m on a phone, snapped to whole texels
+#test the map's depth runs 0 at the light's side to 1 away from it, over twice the reach each way
+#test nine Poisson taps at 2.5 texels on desktop, four on a phone, all on the unit disc
+#test a mover's blob darkens to 0.65 under it and never lightens a cast shadow
+#test day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap
+#test haze thins higher up, to 0.4 of itself far above the eye
+#test the haze glows toward the key light only
+#test haze is teal in the middle distance and the preset's blue far off
+#test the sky runs horizon to zenith by elevation, with a 6 degree band
+#test value noise stays in 0..1, is smooth, and repeats exactly at a lattice point
+#test clouds: two octaves (one on a phone), cut at 0.48 to 0.62, none at cover 0
+#test bloom starts 0.25 under 0.85 with a soft knee and takes all of the excess past it
+#test the tone keeps black, approaches white, and lifts blacks 0.035
+#test light shafts: the sky's glow toward the light, 24 taps decaying 0.94, at most the preset's weight
+#test shafts show while the light is in the frame and fade out over 0.35 of it past the edge
+#test wind: 0.30 rad, a 12 m wave at 3 m/s with a gust, the base still and the tip bent with height squared
+#test blades: 0.35 to 0.60 m, 24 a square metre to 32 m (8 to 18 on a phone), shrinking over the last 6 m
+#test no blade on a masked path; all of them 0.25 m clear; movers part them within 0.7 m
+#test a blade's tip is 15% lighter and warmer, and its hue jitters 4% at most
+#test canopies: normals 0.85 to the blob, an ellipsoid for a pine, 0.05 m of sway at the top, 0.36 open
+#test anime: two hard tones, nothing between them but the antialias; characters keep a face toward the eye lit
+#test anime: the shadow tone is the albedo under a cool tint, keeping its value; never grey or black
+#test anime: ink lines at silhouettes and creases, the albedo darkened, thinning with distance
+#test anime: a thin hard rim at the silhouette, stronger on the light's side
+#test anime: a vivid gradient sky, the warm band toward the sun, stars in their cells
+#test anime: clouds in two or three flat tones with crisp edges, shaded toward the sky, lit on the sun's side
+#test anime: the far background fades toward the pale sky and softens; the near stays crisp
+#test anime: speed lines round a clear middle, redrawn each twelfth of a second; streaks, sparkles, bloom and vignette
+#test anime: a clean, saturated palette; nothing black, greens green, neon neon
+#forall render noise integer words match an independent wrapping oracle
+#forall render noise cell quantization includes negative floor and signed32 endpoints
+#forall render noise float promotion keeps only its exact high twenty-four bits
+#test render noise live coordinate fixtures match independently computed float words
+#forall render noise scalar diagnostic refuses every nonfinite coordinate position
+#test render noise finite diagnostic retains both finite f32 extremes
+#test array image queries retain their scalar dimension values
+#test fine derivative names preserve the scalar CPU compatibility profile
+#test vectors are their components' arithmetic
+#test a matrix applies by columns
+#test the scalar builtins are WGSL's
+#test sampling reads texel centers, clamped to the edge
+#test comparison sampling counts the texels the reference is not behind
+#test a declaration names each limit, and one is valid only below its vertex buffer
+#test the arena is the state and four bytes a float of the vertex and uniform buffers
+#test takes that fit add up, and the peak keeps the most one frame used
+#test one vertex too many is refused whole, reported with its kind and counts, and fails the check
+#test a measured frame takes its vertices, draws and bytes, and fails when one doesn't fit
+#test a count below zero, an unknown kind and a sum past the largest int are refused
+#test native span observations treat capacity as a size at a nonzero allocation base
+#test native upload and buffer forwarding retain exact physical byte views and atomic refusal
+#test host byte staging and source views refuse before construction outside their actual spans
+#forall host backend transport preserves only the three declared identities
+#test host operation projection never exposes an inactive or invalid frame slot
+#forall host profile selection binds app page and exact catalog realm
+#test host selection refuses ambiguous shared apps and unknown realm identities
+#forall host implicit app selection covers both catalog endpoints and refuses shared ownership
+#test host package admission commits only an inactive retained JSON and entry bank
+#test host package rejects corrupt bank state and unsupported capabilities before publication
+#test host raw target enums refuse wrapped values before narrowing and intersect device limits
+#test host reload waits for every verified module and created pipeline before replacing its active bank
+#test host reload failures and a later retry preserve the old borrowed bank and invalidate stale prepared receipts
+#test host transaction preparation admits one owner and refuses active corrupt or exhausted banks
+#test host transactions reject absent products invalid acknowledgements and malformed candidate views
+#forall host transaction native and reference products are distinct from a verified browser module
+#test host transaction verifies all three module banks and the last media pipeline
+#test host commit requires the first pipeline and first module independently
+#test host text source spans admit unaligned bytes and zero end views without overflowing endpoints
+#forall host raw booleans preserve only the two declared integer encodings
+#test host raw booleans refuse wide transports before narrowing
+#forall host raw readiness preserves only the declared loading background and ready states
+#test host raw readiness refuses integers that would wrap into a declared state
+#test host asset destination checks measured object capacity and linear memory for arbitrary bytes
+#test runtime admits the real flat HUD and keeps requested counts
+#test runtime source admission precedes loading and any payload use
+#test runtime background uses the canonical plan without requiring pending scene assets
+#test runtime publishes domains only after indexed payload validation succeeds
+#test runtime geometry refusal and loading publish no frame operations
+#test runtime derives all direct work from canonical commands without counting scaffolding
+#forall runtime preflight rejects malformed raw metadata before readiness masks work
+#test runtime keeps invalid schedule and missing output storage atomic
+#forall runtime exact viewport and command capacity boundaries remain admissible
+#test render geometry derives stored vertex records and object rows rather than trusting counts
+#test render geometry ground and object partitions have distinct vertex domains
+#test render geometry refuses a bad second record without publishing the first
+#test render geometry retains the sparse Myrealm round vertex interval
+#test render geometry decodes Icecream terrain chunks and object outline prefixes
+#test render geometry checks every packed skin joint against the initialized pose
+#test render geometry rectangular Fairy ground includes both additional path planes
+#test render geometry derives river grid vertices and all Everglade water piece classes
+#test render geometry derives Waterlab clipmap and uniform-only fixture direct capacities
+#forall render geometry accepts empty frames for all catalog profiles
+#forall render geometry procedural shape limits follow each realm's actual encoding
+#test render geometry indexed domains retain initialized index length and actual index values
+#test render geometry refuses a water tail on a nonwater profile
+#test render geometry skips empty commands before looking at unused ground metadata
+#forall render geometry integer cap primitive includes adjacent values zero and ties
+#test render geometry budget and numeric metadata distinguish every refusal boundary
+#forall render geometry validates catalog resources and borrowed view record strides
+#test render geometry exact buffer table outer capacity precedes invalid resource contents
+#forall render geometry preflight refusals leave a caller's domains intact
+#test render geometry admits exact empty command and work capacities without amplification
+#test render geometry generic particle instances expand sixty four slots per initialized emitter
+#forall render geometry Icecream prefixes chunks partial tails and metadata bounds are exact
+#test render geometry person packed offsets pose blocks and threshold equality are observable
+#forall render geometry checks all four joint bytes even when weights are zero
+#test render geometry skin refusals distinguish malformed metadata out of bounds fetch and work
+#forall render geometry water metadata rejects each malformed dimension before resource reads
+#forall render geometry retains Everglade's three reserved spray slots at both river tiers
+#test render geometry admits the actual desktop river tail and refuses its first excess instance
+#test render geometry water dimensions preserve exact and fractional piece counts
+#test render geometry packed virtual extents preserve the procedural discriminator at large sizes
+#test render geometry round and box instance batches retain their exact Deadgears boundary
+#test render geometry grass near rings retain phone threshold and checked u32 arithmetic
+#forall render geometry rejects each invalid grass parameter without overflowing products
+#forall render geometry ocean clipmaps validate both tiers and every level record
+#test render geometry error receipts name resource and preflight failures precisely
+#test render geometry index work is paid once per checked word and refusal is atomic
+#test render geometry metadata bases must leave a complete packed record
+#test render geometry follows requested skin indices rather than adjacent valid vertices
+#test render geometry overflow checks precede a grass product and a near-ring sum
+#test render geometry clipmaps refuse a thirteenth fully populated level
+#test render geometry procedural metadata and exhausted work retain exact statuses
+#test render geometry draw outer cap is independent of caller output allocation
+#test render geometry Realm lights use their own live resource extent only when active
+#test render geometry Everglade puffs are one twelve-word record per instance
+#test render geometry virtual ground dimensions and all height planes are exact
+#test render geometry bad indexed fetch and object work refusal name the record
+#forall render geometry bit metadata refuses nonfinite words before float conversion
+#test render geometry a single grass draw still validates its ground payload
+#test render geometry shard plane metadata stays inside the same object resource
+#test render geometry active river shading validates nodes without requiring a water draw
+#test render geometry shard plane encoding uses a full byte below the plane index
+#forall render geometry river spacing is finite bounded and may disable node reads
+#forall render catalog preserves every current realm identity and its declared frame shape
+#forall render catalog has valid logical tables and exact reflected active pipeline sets
+#test render catalog refusals cannot select a different resource or pipeline
+#test render bindings retain uniform transport and disjoint pipeline aliases
+#forall render binding domains refuse exactly the bad resource fields
+#test render bindings admit their exact declared edges and reject duplicate names
+#forall render reflected native kinds and texture shapes match the logical resource
+#forall render use indices stages and physical slots are checked before publication
+#test render use capacity is separate from a well formed zero resource entry
+#test render binding and active use capacities admit the last slot
+#test render flat graph is one clear background and maximum blended HUD
+#test render loading admits no effects and pending assets retain background and HUD
+#test render shadow map is cleared without mesh draws before a consumer reads it
+#test render water preserves each draw transmit then emit and copies before both
+#test render copied depth is also fresh for smoke when there are no wet draws
+#test render five bloom stages retain exact sources directions scales and final targets
+#forall render graph feature admission follows the complete prerequisite relation
+#forall render pipeline states retain every output depth blend bias and channel policy
+#test render surface and nonpost scene pipeline states retain a shared unwritten HUD depth
+#forall render malformed counts or schedules return no partial program
+#test render refusal precedes loading and never publishes malformed plans
+#forall render zero work is omitted while clear and dependency passes remain
+#test render symbolically bounded graph handles maximum u32 counts without expansion
+#test render grass readiness differs for buffer scenes and uniform-only casters
+#test render complete graph is the canonical forty operation GPU program
+#test render asymmetric feature flags and suppressed work remain independent
+#forall render surface flag and positive count must both be present
+#test render admission accepts exact limits and preserves the draw ABI
+#test render admission refuses stale dead wrong-kind and out-of-range resources whole
+#test render admission separates bindings and bounds indexed and direct draws
+#test render admission rejects invalid declarations and budgets and abort cleans reservations
+#test render admission word ranges and independent cumulative limits have sharp boundaries
+#test renderer admits a clear-only frame and validates every declared limit
+#forall renderer refuses malformed frame limits
+#test renderer viewport and HUD stride have exact admitted boundaries
+#forall renderer count words never truncate negative or wide producer values
+#test renderer uploads check allocation end GPU end alignment and overflow without clipping
+#test renderer validates every upload before admitting a frame
+#test renderer keeps four draw words and decodes the high base bit only for nonindexed draws
+#test renderer checks indexed payloads GPU domains skip records and nonindexed endpoints
+#test renderer rejects incomplete draw tables and an exhausted index budget without partial admission
+#test renderer u32 endpoint arithmetic never wraps first count base or the declared domains
+#test renderer admits the exact representable count and configured limits
+#forall renderer admits each supported alignment and rejects smaller non-power alignments
+#test renderer empty upload can reach the exact u64 allocation endpoint
+#forall renderer direct command counts fit the actual admitted resource domains
+#test renderer direct domain metadata and later draw failures never grant partial work
+#test renderer admits encoded prefix intervals and rejects gaps without widening domains
+#test renderer preflights source descriptors before a host constructs geometry views
+#test renderer one-pixel and one-float profiles admit equal direct capacities
+#test renderer empty primary and exact secondary/index endpoints retain their meanings
+#test catalog interfaces admit the exact three-vector HUD and procedural background
+#forall HUD admission observes every attribute and its exact complete extent
+#test target and depth admission follow the shared pass state including media
+#test water and particles may omit only the masked auxiliary attachment
+#test build reflection reads actual versioned rows without losing resource or input layout
+#test build reflection accepts a procedural vertex and refuses incomplete or ambiguous reports
+#test reflection token and integer readers reject truncation overflow and extra columns
+#test reflection required rows are unique and their exact column counts are checked
+#test reflection resource fields and the thirty-second slot have explicit bounds
+#test reflection target and vertex input endpoints refuse malformed layout
+#test SPIRV requirement scanning uses framed instructions and the actual Int64 capability
+#test module emission groups a source and derives its aliases from catalog entries
+#forall module emission refuses an entry that cannot share the source or prefix
+#test a module admits one unprefixed entry and its full entry table but refuses empty names
+#test the real vertex-only caster contributes no fictitious fragment entry
+#test bindings text comes from the declared logical addresses and uniform transport
+#test shader reflection matches each pass's names slots layouts and stages
+#forall shader reflection refuses every changed observed field
+#test shader reflection refuses malformed declarations and its exact capacity
+#test shader emission admits the exact thirty-second active slot
+#test render comparisons keep the stated relative tolerance and exact allowance
+#forall render comparison refuses nonfinite values even on both sides or within allowance
+#test render comparison handles finite extrema without overflowing its error
+#test portable shader capability admission uses enabled helper and native integer features
+#forall both generic derivative masks require an explicit trusted legacy profile
+#forall capability metadata refuses unknown schema versions masks and backends
+#test tree2 never acquires the new registry through capability admission
+#test the reference interpreter declares its own helper and native integer capabilities
+#test parse: scalars, nesting, ranges and links
+#test parse refuses what is not JSON
+#test whitespace and token ends
+#test paths: keys and indexes
+#test unescape: every escape, surrogate pairs and UTF-8
+#test writing: objects, arrays, escapes and commas
+#test a node written back compactly, strings escaped as JSON.stringify does
+#test JSON authority publishes complete scalar records and resets reused parse status
+#test JSON authority reaches the actual64container depth bound before node capacity
+#test JSON authority empty key and truncated key colon retain exact failure coordinates
+#forall JSON authority hex and digit token endpoints classify every ASCII byte
+#test JSON authority string scanning exact spans include empty values whitespace and malformed unicode
+#test JSON authority scalar scanners recognize token delimiters signed digits and missing exponent digits
+#test JSON authority public readers refuse exact index ends and preserve absent children
+#test JSON authority paths handle nine zero missing brackets and missing nested keys
+#test JSON authority integer reads preserve signs exact2pow53 endpoints and reject fractional exponent or oversized words
+#test JSON authority escaped equality handles long plain text empty decoded text and capacity refusal
+#test JSON authority writer fits exact output boundaries and refuses larger puts without partial writes
+#test JSON authority writer accepts64nestedcontainers and refuses the next with its flag retained
+#test JSON authority integer writer includes zero decimal digits and the signed64 minimum
+#test JSON authority UTF8 codepoint boundary 0
+#test JSON authority UTF8 codepoint boundary 127
+#test JSON authority UTF8 codepoint boundary 128
+#test JSON authority UTF8 codepoint boundary 2047
+#test JSON authority UTF8 codepoint boundary 2048
+#test JSON authority UTF8 codepoint boundary 65535
+#test JSON authority UTF8 codepoint boundary 65536
+#test JSON authority UTF8 codepoint boundary 1114111
+#test JSON authority Unicode escape boundary u0000
+#test JSON authority Unicode escape boundary ud800udc00
+#test JSON authority Unicode escape boundary udbffudfff
+#test JSON authority Unicode escape boundary udbffudc00
+#test JSON authority Unicode escape boundary ud800udfff
+#test JSON authority Unicode escape boundary ud7ff
+#test JSON authority Unicode escape boundary udfff
+#test JSON authority Unicode escape boundary ue000
+#test JSON authority Unicode escape boundary ud800x
+#test JSON authority Unicode escape boundary ud800u0041
+#test JSON authority malformed raw Unicode and output exhaustion report refusal
+#test JSON authority writer byte boundary 0
+#test JSON authority writer byte boundary 1
+#test JSON authority writer byte boundary 15
+#test JSON authority writer byte boundary 16
+#test JSON authority writer byte boundary 31
+#test JSON authority writer byte boundary 32
+#test JSON authority writer byte boundary 33
+#test JSON authority writer byte boundary 34
+#test JSON authority writer byte boundary 92
+#test JSON authority writer byte boundary 127
+#test JSON authority parser refuses truncated live views at the exact observed endpoint
+#test JSON authority paths preserve multicharacter and chained indexes and reject colon as a digit
+#test JSON authority integer overflow refuses before multiplication and malformed raw digits use fallback
+#test JSON authority escaped capacity failure stops before a following raw byte write
+#test JSON authority UTF8 exactcapacity 0
+#test JSON authority UTF8 exactcapacity 127
+#test JSON authority UTF8 exactcapacity 128
+#test JSON authority UTF8 exactcapacity 2047
+#test JSON authority UTF8 exactcapacity 2048
+#test JSON authority UTF8 exactcapacity 65535
+#test JSON authority UTF8 exactcapacity 65536
+#test JSON authority UTF8 exactcapacity 1114111
+#test JSON authority requote completebytes case 0
+#test JSON authority requote completebytes case 1
+#test JSON authority requote completebytes case 2
+#test JSON authority requote completebytes case 3
+#test JSON authority requote completebytes case 4
+#test JSON authority requote completebytes case 5
+#test JSON authority requote completebytes case 6
+#test JSON authority requote completebytes case 7
+#test JSON authority requote completebytes case 8
+#test JSON authority requote completebytes case 9
+#test JSON authority requote malformed escape reports its writer bad flag
+#test JSON authority unescape refuses unknown simple escapes and requotes a final complete simple escape
+#test JSON authority integer accumulation refuses the next decimal prefix above its exact limit
+#forall fragment layouts retain exact zero one and two targets plus masked auxiliary omission
+#test shared media entry and all three bindings come from one compiled descriptor
+#test media geometry declares the exact ordered two-triangle UV packet and draw extent
+#test media image uploads preserve the declared legacy colour and alpha representation
+#test published SHA256 empty and abc vectors
+#test SHA256 length and padding boundaries
+#test binary SHA256 vector 1
+#test binary SHA256 vector 3
+#test binary SHA256 vector 55
+#test binary SHA256 vector 56
+#test binary SHA256 vector 57
+#test binary SHA256 vector 63
+#test binary SHA256 vector 64
+#test binary SHA256 vector 65
+#test binary SHA256 vector 119
+#test binary SHA256 vector 120
+#test binary SHA256 vector 128
+#test binary SHA256 vector 256
+#test binary SHA256 vector 1000
+#forall every rotate distance
+#test logical maximum SHA length without allocating the input
+#test runtime package parses the complete concrete Grid resource and input interfaces
+#test CPU tree bytes are authenticated separately from their decoder and IR admission
+#test runtime package admission requires the expected catalog and enabled device features
+#test runtime package hashes the actual fetched module and SPIRV bytes before use
+#forall package parsing and admission refuse each independently changed scalar field
+#forall package integer fields reject fractions missing values and negative values
+#test package object keys distinguish empty optional fields required fields and duplicates
+#forall package hash and sibling filename grammar check every possible byte
+#test package hash filename JSON storage and fetched-file sizes have exact boundaries
+#test package entry syntax retains zero integers before catalog semantics and true depth
+#forall package entry refuses empty names and accepts single-byte transport names
+#test entry arrays are typed independently and own exactly thirty-two rows
+#test package provenance is optional typed metadata and candidate entry storage is reusable
+#test all three module sets and the media entry preserve catalog identity and file access
+#forall SPIRV requirements come from framed byte opcodes including adjacent nonfeatures
+#test package entry module indices and profile identity obey their parse bounds
+#test package module and entry tables require arrays and retain one-entry candidates
+#test package byte admission refuses a short entry receipt and mismatched or malformed SPIRV requirements
+#test depth-only caster transport retains an absent fragment as typed empty strings
+#forall render target descriptions preserve every role format and odd viewport extent
+#forall render reduced target extents round up on both axes including a one pixel viewport
+#forall render sampler profiles retain all filtering addressing comparison and logical quality fields
+#forall render texture layouts preserve depth array and unfilterable copied water roles
+#forall render legacy buffer views preserve padded array length independently of upload bytes
+#test render uniform and immutable views retain their declared extent instead of allocation capacity
+#forall render target admission refuses malformed viewport format and platform limits
+#test render target exact limits retain colour formats and coarse shadow capacity
+#forall render buffer publication refuses bad modes layouts ranges and uninitialized tails
+#test render buffer updates retain a valid prefix and require clearing padded tails
+#test render target platform minimum and singleton storage binding retain exact edges
+#forall render buffer mode must match the declared shader buffer kind
+#forall render texture layout refuses malformed logical bindings before describing a GPU view
+#forall render buffer offset alignment admits exactly the declared power of two set
+#test render padded capacity refuses the final unsigned byte without addition overflow
+#forall binding origins match every resource in all eighteen catalog profiles
+#forall binding origins map particle uniforms to the main allocation and emitter views
+#forall binding origins grant shared media only to declared media profiles
+#forall binding origins refuse absent profiles and unknown resource sets without fallback
+#test binding asset ordinals count decoded GPU payloads not data sound or index rows
+#forall binding storage source boundaries retain distinct asset ordinals and store zero
+#test flat host allocation sizes admit exact device extents without clipping
+#test flat host exact empty and full source endpoints remain valid
+#test flat host source spans precede borrowed payload construction and GPU upload
+#forall generic host arena spans cover every declared scene and surface profile
+#test generic host arena admission refuses counts and capacities before source views
+#test host pipeline activation data retains positive work for every graph branch
+#forall host logical binding tables include exact catalog and optional media sets
+#forall host reflected slots retain per-pass resources transport and source roles
+#forall host pipeline templates preserve physical attachments and shared pass state
+#test host descriptor refusal bounds precede casts and unknown table access
+#test host media projection retains an attached nonpost depth and refuses absent operations
+#forall host pipeline group extents retain empty gaps in every frozen catalog entry
+#forall host file origin names preserve every bounded producer and media index
+#test host static resource origins do not require scratch and unknown origins have no filename
+#test host media origin keeps the existing 112 line window independently of stores
+#forall host media origin names retain every additional line and exact scratch capacity
+#test host clear policy is opaque black on both colour attachments and depth one
+#test shared host inputs retain independent main and particle uniform extents
+#test shared host inputs preserve legacy padding retained initialization and physical offsets
+#test shared host inputs resolve an immutable mesh view and refuse missing duplicate or wrong roles
+#test shared host inputs keep graph generated bloom and media uniform observations separate
+#test shared host inputs publish geometry bindings in catalog order only after every view is valid
+#test shared host inputs include particle storage and bound names without mutating short output
+#test shared host inputs admit exactly48 distinct names and refuse49 before lookup
+#forall shared host inputs closed storage inventories fit the48 row geometry receipt
+#test shared host owned buffers describe every exact initialized byte and preserve their word view
+#test shared physical buffer allocation retains minimum and exact legacy padding under the device limit
+#test shared mesh placeholders preserve the nonblocking zero mesh with a measured device extent
+#test shared texture origins select the named image rather than its array order
+#test shared sans origin refuses an array or a depth image
+#test shared texture namespace rejects duplicate missing empty and unknown roles
+#forall media images retain the original line context including three digit names
+#test media images reject out of window contexts and refuse absent contexts
+#test generated render targets and pass sources do not masquerade as named textures
+#test the texture namespace admits the complete media window and two shared images
+#forall all catalog texture roles use the shared origin and shape protocol
+#forall host staging rounds each cursor residue up to four and admits complete word spans
+#test host staging page counts include an exact boundary without an extra page
+#test host staging admits the exact64MiB allocation and an empty span at its end
+#forall host staging refuses nonword payloads before returning a writable address
+#test host staging refuses exhaustion alignment padding and native addition overflow atomically
+#test host staging rejects a forged allocation limit above the imported memory maximum
+#test media text retains kind URL phase line number and all four coordinates
+#test media text skips malformed rows without renumbering later image contexts
+#test media row selection preserves literal space columns and rejects unsafe or nonfinite records
+#test media admission is atomic when caller entry storage is too short
+#test media112 contexts are independent of48 binding slots and later lines are explicitly outside the window
+#test media raw text admits its exact byte bound and refuses one extra byte before any write
+#test media numeric decoding covers signed decimal exponent prefixed integers and ASCII whitespace
+#test media decimal scaling admits the finite extreme and retains gradual underflow
+#test media decimal scaling does not overflow a cancelled long significand
+#test media aspect fit authors exact centred horizontal and vertical uniforms
+#test media pending and one-pixel boxes keep valid context without drawing
+#test media rectangle supports one-pixel images and screens up to the exact finite f32 coordinate limit
+#forall media rectangle refuses invalid identities dimensions and nonfinite or unrepresentable coordinates
+#test media image extent keeps video dimensions and rounds bounded image resizes with a one-pixel minimum
+#test media aspect selection preserves the smaller positive ratio without cancellation
+#test media finite and digit classification include both signed infinities and base boundaries
+#forall host media raw observations retain exact kind readiness URL and signed dimensions before composition
+#test host media raw observations refuse integers that would wrap enum or bool before any narrowing
+#test host media composes parsed line identities with one shared ready image observation
+#test host media missing and pending observations preserve line phase without selecting a draw
+#forall host media ready observations match both kind and URL rather than row or cache order
+#forall host media invalid observed identities duplicate keys and unprepared image dimensions fail atomically
+#forall host media invalid request identity line order and rectangle refuse the entire candidate
+#forall host media requires valid screen dimensions even when no rows need a draw
+#test host media exact112 boundary is independent of resource slots and insufficient output is atomic
+#test host media admits the slash path video dimensions and unused pending observations
+#test host media observes the first image and admits exactly112 distinct pending image keys
+#test host media draws bind independently observed readiness to the exact physical line texture
+#forall host media physical publication refuses missing wrong shaped or mismatched line textures atomically
+#test host media pending or stale identity never draws merely because a matching line texture exists
+#test host media physical validation preserves the complete candidate when a later image fails
+#test host media physical composition propagates invalid images requests and short output before publication
+#test host media physical observations reject ambiguous names and exact capacity overrun even for an empty media set
+#test host media physical composition refuses unsupported profile requests while allowing its empty media frame
+#forall host upload staging retains the union prefix and reports only strict growth
+#forall host upload staging refuses each nonword incoming or retained prefix without publication
+#test host upload staging admits exact capacity and refuses either prefix beyond it
+#test host upload retries retain a consumed producer prefix until an actual submission acknowledges it
+#test host upload union never adds its u64 endpoints and preserves native high bits
+#forall asset delivery counts preserve every canonical page including direct profiles
+#test a pack has four delivery IDs with fixed VPK part kinds and no container ID
+#test individual layers sounds loops and index payloads preserve exact URLs and lazy loading
+#test GPU source ordinals refer to decoded storage mesh and layers delivery rows
+#test scene readiness waits only for storage index and layer deliveries
+#test mesh readiness preserves the independent zero placeholder path and optional audio never blocks
+#test readiness refuses duplicate unknown states and out of range observations without a partial receipt
+#test canonical declaration parsing refuses malformed rows and never publishes an incomplete profile
+#test asset parser retains one character roots names and exact refusal boundaries
+#test layer mip policy keeps first image extent with floor halves and a full chain
+#test layer mip admission refuses limits instead of clipping any base dimension or layer
+#test layer upload description preserves sRGB straight alpha and original high quality resizing

@@ -1,0 +1,27 @@
+{
+  "schema": "aethyr.render.source-integration.v1",
+  "status": "focused_checks_passed_full_chapter_pending",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "changes": [
+    {
+      "files": ["verse/style.coax", "verse/style-preset.coax"],
+      "problem": "Test-local tg and near names collided with procedures imported by the complete authority carrier closure.",
+      "fix": "Rename only test-local variables; product procedures and numeric expressions are unchanged.",
+      "before": "aethyr-everglade-current-check-inventory-20261102.log",
+      "after": "aethyr-everglade-current-check-inventory-qualified-profile-20261102.log",
+      "ordinary_profile_compile_steps": 128000,
+      "listed_checks": 839,
+      "executed_diagnostic": {"name": "the uniforms and shape slots line up with everglade.wgsl's", "passed": true, "steps": 268829379, "milliseconds": 3391},
+      "scope": "Front-end integration and one bounded timing diagnostic. The filtered execution explicitly skips authority coverage and is not a full carrier qualification. The ordinary full build remains required."
+    },
+    {
+      "file": "coax/web/host.js",
+      "problem": "Development captureFrame could arm a readback although the canvas and renderer only enable capture when captureRequested is set at initialization.",
+      "fix": "Use captureRequested for arming and the readback callback, matching the existing resource configuration.",
+      "actual_headless_dev_without_opt_in": {"armed": false, "log": "aethyr-host-capture-guard-20261102.log"},
+      "scope": "Current served host bytes were compared to the workspace file; a real headless muted Chrome page called the public captureFrame API. This check asserts refusal to arm, not a GPU rendering result. Existing probe and explicit opt-in predicates are unchanged."
+    }
+  ],
+  "logs": "docs/verification/data/aethyr-ch11-2026-11-02/source-integration/",
+  "limitations": ["The compiler is an explicit older qualified observer, not a source-matching current-main compiler claim.", "No unchanged numerical or mutation gate was rerun for these local-name and capture-opt-in fixes."]
+}

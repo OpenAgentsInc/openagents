@@ -1,0 +1,53 @@
+verse/style-preset.coax:991:25: error[E0304]: 'tg' is already the name of a procedure
+        tr := o[SU_TINT]; tg := o[SU_TINT + 1]; tb := o[SU_TINT + 2]; tl := verse_style_luma(tr, tg, tb); depth := o[SU_BANDS + 3];
+                          ^
+  fix: pick another name
+verse/style-preset.coax:991:96: error[E0305]: procedures are not values in coax0
+        tr := o[SU_TINT]; tg := o[SU_TINT + 1]; tb := o[SU_TINT + 2]; tl := verse_style_luma(tr, tg, tb); depth := o[SU_BANDS + 3];
+                                                                                                 ^
+  fix: call it: tg()
+verse/style-preset.coax:992:31: error[E0305]: procedures are not values in coax0
+        #assert tb > tr && tb > tg && tr > 0.3 && tg > 0.3;   // blue-violet, never grey
+                                ^
+  fix: call it: tg()
+verse/style-preset.coax:992:49: error[E0305]: procedures are not values in coax0
+        #assert tb > tr && tb > tg && tr > 0.3 && tg > 0.3;   // blue-violet, never grey
+                                                  ^
+  fix: call it: tg()
+verse/style-preset.coax:997:95: error[E0305]: procedures are not values in coax0
+          sr := verse_style_anime_shadow(lr, tr, tl, depth); sg := verse_style_anime_shadow(lg, tg, tl, depth); sb := verse_style_anime_shadow(lb, tb, tl, depth);
+                                                                                                ^
+  fix: call it: tg()
+verse/style-preset.coax:1059:5: error[E0304]: 'near' is already the name of a procedure
+      near := verse_style_anime_ink_width(2.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
+      ^
+  fix: pick another name
+verse/style-preset.coax:1062:13: error[E0305]: procedures are not values in coax0
+      #assert near == q.ink_width && mid < near && far < mid && sp_near(far, near * 0.25);
+              ^
+  fix: call it: near()
+verse/style-preset.coax:1062:42: error[E0305]: procedures are not values in coax0
+      #assert near == q.ink_width && mid < near && far < mid && sp_near(far, near * 0.25);
+                                           ^
+  fix: call it: near()
+verse/style-preset.coax:1062:76: error[E0305]: procedures are not values in coax0
+      #assert near == q.ink_width && mid < near && far < mid && sp_near(far, near * 0.25);
+                                                                             ^
+  fix: call it: near()
+verse/style.coax:998:15: error[E0304]: 'tg' is already the name of a procedure
+   tr:=0.62f32; tg:=0.66f32; tb:=1.0f32; tl:=verse_style_luma(tr,tg,tb); depth:=0.6f32;
+                ^
+  fix: pick another name
+verse/style.coax:998:64: error[E0305]: procedures are not values in coax0
+   tr:=0.62f32; tg:=0.66f32; tb:=1.0f32; tl:=verse_style_luma(tr,tg,tb); depth:=0.6f32;
+                                                                 ^
+  fix: call it: tg()
+verse/style.coax:1002:81: error[E0305]: procedures are not values in coax0
+    sr:=verse_style_anime_shadow(lr,tr,tl,depth); sg:=verse_style_anime_shadow(lg,tg,tl,depth); sb:=verse_style_anime_shadow(lb,tb,tl,depth);
+                                                                                  ^
+  fix: call it: tg()
+verse/style.coax:1014:88: error[E0305]: procedures are not values in coax0
+   gr:=verse_style_anime_shadow(0.5f32,tr,tl,depth); gg:=verse_style_anime_shadow(0.5f32,tg,tl,depth); gb:=verse_style_anime_shadow(0.5f32,tb,tl,depth);
+                                                                                         ^
+  fix: call it: tg()
+13 errors

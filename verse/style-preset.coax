@@ -988,13 +988,13 @@ sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
     p := verse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
     for c: 0..<24 {
       #assert verse_style_at(p, f32(c) / 24.0, o[..]);
-      tr := o[SU_TINT]; tg := o[SU_TINT + 1]; tb := o[SU_TINT + 2]; tl := verse_style_luma(tr, tg, tb); depth := o[SU_BANDS + 3];
-      #assert tb > tr && tb > tg && tr > 0.3 && tg > 0.3;   // blue-violet, never grey
+      tr := o[SU_TINT]; anime_tint_green := o[SU_TINT + 1]; tb := o[SU_TINT + 2]; tl := verse_style_luma(tr, anime_tint_green, tb); depth := o[SU_BANDS + 3];
+      #assert tb > tr && tb > anime_tint_green && tr > 0.3 && anime_tint_green > 0.3;   // blue-violet, never grey
       for s: 0..<ANIME_SLOTS {
         // the lit tone under the key; its shadow
         lr := verse_style_anime_colour(f32(s), 0) * o[SU_KEY]; lg := verse_style_anime_colour(f32(s), 1) * o[SU_KEY + 1]; lb := verse_style_anime_colour(f32(s), 2) * o[SU_KEY + 2];
         y := verse_style_luma(lr, lg, lb);
-        sr := verse_style_anime_shadow(lr, tr, tl, depth); sg := verse_style_anime_shadow(lg, tg, tl, depth); sb := verse_style_anime_shadow(lb, tb, tl, depth);
+        sr := verse_style_anime_shadow(lr, tr, tl, depth); sg := verse_style_anime_shadow(lg, anime_tint_green, tl, depth); sb := verse_style_anime_shadow(lb, tb, tl, depth);
         m := verse_style_luma(sr, sg, sb);
         kr := verse_style_keep_value(sr, depth * y, m); kg := verse_style_keep_value(sg, depth * y, m); kb := verse_style_keep_value(sb, depth * y, m);
         #assert abs(verse_style_luma(kr, kg, kb) - depth * y) < 0.00001;
@@ -1056,10 +1056,10 @@ sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
   for v: 0..<ANIME_VARIANTS {
     q := verse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
     #assert verse_style_at(q, 0.5, o[..]);
-    near := verse_style_anime_ink_width(2.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
+    anime_near_width := verse_style_anime_ink_width(2.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
     mid := verse_style_anime_ink_width(o[SU_BLOOM + 3] * 0.5, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
     far := verse_style_anime_ink_width(o[SU_BLOOM + 3] * 3.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
-    #assert near == q.ink_width && mid < near && far < mid && sp_near(far, near * 0.25);
+    #assert anime_near_width == q.ink_width && mid < anime_near_width && far < mid && sp_near(far, anime_near_width * 0.25);
   }
 }
 #test "anime: the phone draws the same look with less in it" {
