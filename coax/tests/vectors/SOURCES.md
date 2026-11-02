@@ -36,6 +36,10 @@ that a maliciously replaced manifest is authentic.
   response files. `Len` is in bits; `Len = 0, Msg = 00` represents an empty
   message, not one zero byte. The source archive also contains other algorithms
   and Monte Carlo data; those are not claimed here.
+- **SHA-512:** the ShortMsg and LongMsg response files from the same NIST CAVS
+  11.0 archive (same archive digest), added 2026-11-02 for Bitcoin From
+  Scratch chapter 7. The same `Len = 0, Msg = 00` rule applies. SHA-384,
+  SHA-512/224, SHA-512/256 and the Monte Carlo files are not pinned.
 - **HMAC/HKDF/PBKDF2:** full numbered RFCs preserve the source context. Consumers
   select RFC 4231 SHA-256 cases 1–7 (including the truncated case), RFC 5869
   SHA-256 cases 1–3 and RFC 7914 section 11 PBKDF2-HMAC-SHA256 vectors. Pinning a

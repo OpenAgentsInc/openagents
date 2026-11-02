@@ -361,6 +361,36 @@
       "bytes": 426209
     },
     {
+      "path": "upstream/nist/SHA512ShortMsg.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip",
+      "revision": "NIST CAVS 11.0 byte-oriented SHA vectors (archive identity pinned)",
+      "archive_member": "shabytetestvectors/SHA512ShortMsg.rsp",
+      "archive_sha256": "929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "sha512"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "e53a36c03609e5a3e3cc4b6e117a499db7864c23ec825c6cec99503a45f40764",
+      "bytes": 36800
+    },
+    {
+      "path": "upstream/nist/SHA512LongMsg.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip",
+      "revision": "NIST CAVS 11.0 byte-oriented SHA vectors (archive identity pinned)",
+      "archive_member": "shabytetestvectors/SHA512LongMsg.rsp",
+      "archive_sha256": "929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "sha512"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "b1f3f05d5c209777954d49521d7ea1349447c36a0c52849e044bc397a27dd410",
+      "bytes": 1687845
+    },
+    {
       "path": "upstream/nips/01.md",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/01.md",

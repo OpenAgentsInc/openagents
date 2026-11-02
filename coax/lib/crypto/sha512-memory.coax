@@ -1,0 +1,5 @@
+// Address-observation bridge only. The core owns lifecycle and refusal policy.
+#load "sha512.coax";
+sha512_update :: (state: [] u8,input: [] u8) -> u32 #export_c {return sha512_update_checked(state,input,bytes_overlap(state,input));}
+sha512_final :: (state: [] u8,out: [] u8) -> u32 #export_c {return sha512_final_checked(state,out,bytes_overlap(state,out));}
+sha512_hash :: (input: [] u8,out: [] u8) -> u32 #export_c {return sha512_hash_checked(input,out,bytes_overlap(input,out));}

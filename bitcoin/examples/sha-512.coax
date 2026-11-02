@@ -1,0 +1,144 @@
+// book:begin example
+#load "../../coax/lib/crypto/sha512.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [256] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a label and one 64-bit word as 16 hex digits.
+show_word :: (label: string, x: u64) {
+  b: [8] u8;
+  sha512_put64(b[..], 0, x);
+  show(label, b[..]);
+}
+// Every call below this point must succeed; say so if one doesn't.
+must :: (status: u32) { if status != SHA512_OK { print("unexpected status %\n", status); } }
+
+STATUS :: [7] string.["ok", "bad state", "bad input", "bad output",
+  "already final", "overlap", "too long"];
+
+main :: () {
+  abc := [3] u8.[97, 98, 99];
+
+  // Padding: "abc" is 3 bytes, so it fits in one 128-byte block.
+  print("blocks for 0, 111, 112 and 128 bytes: % % % %\n", S512_blocks(0), S512_blocks(111), S512_blocks(112), S512_blocks(128));
+  block: [128] u8;
+  for i: 0..<3 { block[i] = abc[i]; }
+  fits := S512_pad(block[..], 3);
+  S512_length(block[..], 3);
+  print("length fits in the block: %\n", fits);
+  show("padded block bytes 0-7", block[0..<8]);
+  show("padded block bytes 112-127", block[112..<128]);
+
+  // The first schedule words, as the compression function builds them.
+  w: [18] u64;
+  for i: 0..<16 { w[i] = sha512_get64(block[..], i * 8); }
+  for i: 16..<18 {
+    x := w[i - 15]; y := w[i - 2];
+    s0 := S512_rotr(x, 1) ^ S512_rotr(x, 8) ^ (x >> 7);
+    s1 := S512_rotr(y, 19) ^ S512_rotr(y, 61) ^ (y >> 6);
+    w[i] = S512_sum4(w[i - 16], s0, w[i - 7], s1);
+  }
+  show_word("w[0]", w[0]); show_word("w[15]", w[15]);
+  show_word("w[16]", w[16]); show_word("w[17]", w[17]);
+
+  // Round 0 of the compression function, from the initial hash words.
+  iv := S512_IV;
+  a := iv[0]; e := iv[4];
+  s1 := S512_rotr(e, 14) ^ S512_rotr(e, 18) ^ S512_rotr(e, 41);
+  choose := (e & iv[5]) ^ ((e ^ 0xffffffffffffffff) & iv[6]);
+  t1 := S512_sum5(iv[7], s1, choose, S512_K[0], w[0]);
+  s0 := S512_rotr(a, 28) ^ S512_rotr(a, 34) ^ S512_rotr(a, 39);
+  majority := (a & iv[1]) ^ (a & iv[2]) ^ (iv[1] & iv[2]);
+  t2 := S512_sum2(s0, majority);
+  show_word("round 0 T1", t1); show_word("round 0 T2", t2);
+  show_word("round 0 new a", S512_sum2(t1, t2)); show_word("round 0 new e", S512_sum2(iv[3], t1));
+
+  // The digest of "abc", in one call.
+  out: [64] u8;
+  print("hash \"abc\": %\n", STATUS[sha512_hash_checked(abc[..], out[..], false)]);
+  show("SHA-512(\"abc\")", out[..]);
+
+  // The two-block FIPS 180-4 message, streamed one byte at a time.
+  text := "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu";
+  long: [112] u8;
+  for i: 0..<112 { long[i] = text[i]; }
+  state: [208] u8;
+  must(sha512_init(state[..]));
+  for i: 0..<112 { must(sha512_update_checked(state[..], long[i..<i + 1], false)); }
+  print("% bytes in 112 updates, % buffered\n", sha512_info(state[..]).total, sha512_info(state[..]).buffered);
+  must(sha512_final_checked(state[..], out[..], false));
+  show("SHA-512(112-byte message)", out[..]);
+
+  // One million "a" bytes, in 1,000 updates of 1,000 bytes.
+  thousand: [1000] u8;
+  for i: 0..<1000 { thousand[i] = 97; }
+  must(sha512_init(state[..]));
+  for i: 0..<1000 { must(sha512_update_checked(state[..], thousand[..], false)); }
+  must(sha512_final_checked(state[..], out[..], false));
+  show("SHA-512(1,000,000 x \"a\")", out[..]);
+
+  // Every split of a 1,000-byte message into two updates gives the digest
+  // of one update.
+  message: [1000] u8;
+  for i: 0..<1000 { message[i] = cast(u8) ((i * 7 + 3) % 256); }
+  whole: [64] u8;
+  must(sha512_hash_checked(message[..], whole[..], false));
+  agree := 0;
+  for cut: 0..<1001 {
+    split: [64] u8;
+    must(sha512_init(state[..]));
+    must(sha512_update_checked(state[..], message[0..<cut], false));
+    must(sha512_update_checked(state[..], message[cut..<1000], false));
+    must(sha512_final_checked(state[..], split[..], false));
+    same := true;
+    for i: 0..<64 { if split[i] != whole[i] { same = false; } }
+    if same { agree += 1; }
+  }
+  print("splits of 1,000 bytes that match one update: % of 1001\n", agree);
+  show("SHA-512(1,000-byte message)", whole[..]);
+
+  // The 128-bit length field for the largest stream, 2^64 - 1 bytes.
+  S512_length(block[..], SHA512_MAX_TOTAL);
+  show("length field for 2^64 - 1 bytes", block[112..<128]);
+
+  // Refusals. Each one returns a status and leaves the state and output unchanged.
+  must(sha512_init(state[..]));
+  must(sha512_final_checked(state[..], out[..], false));
+  print("update after final: %\n", STATUS[sha512_update_checked(state[..], abc[..], false)]);
+  small: [63] u8;
+  print("63-byte output: %\n", STATUS[sha512_hash_checked(abc[..], small[..], false)]);
+  print("1 MiB + 1 byte in one call: %\n", STATUS[sha512_request(1048577, 64, false)]);
+  short: [207] u8;
+  print("207-byte state: %\n", STATUS[sha512_init(short[..])]);
+  must(sha512_init(state[..]));
+  state[7] = 1;
+  print("state that buffers 1 byte of 0: %\n", STATUS[sha512_update_checked(state[..], abc[..], false)]);
+  print("legacy call, 63-byte output: %\n", sha512(abc[..], small[..]));
+}
+// book:end example
+
+// book:begin splits
+// Every split of a 260-byte message into two updates gives the same digest
+// as one update. 260 bytes cross two block boundaries, so the cuts cover an
+// empty first chunk, a full first block, a chunk that ends inside the length
+// field's range and an empty second chunk.
+#forall "every split of a 260-byte message gives the same digest" cut: 0..<261 #steps 200000000 {
+  message: [260] u8;
+  for i: 0..<260 { message[i] = cast(u8) ((i * 7 + 3) % 256); }
+  state: [208] u8; split: [64] u8;
+  #assert sha512_init(state[..]) == SHA512_OK;
+  #assert sha512_update_checked(state[..], message[0..<cut], false) == SHA512_OK;
+  #assert sha512_update_checked(state[..], message[cut..<260], false) == SHA512_OK;
+  #assert sha512_final_checked(state[..], split[..], false) == SHA512_OK;
+  // The digest computed outside Coax, with Python's hashlib.
+  expected := "e0e77840e82d30fc7dd9ea91990fe54b802a2664c08444a099a21dfdb9c1cd2d417ab22cf8f644256d9ce3cc4ebf819f4adc1c576c822f7ae88c46f40c3df627";
+  text: [128] u8;
+  #assert hex_encode_checked(cast(string) split[..], text[..], false).written == 128;
+  #assert cast(string) text[..] == expected;
+}
+// book:end splits

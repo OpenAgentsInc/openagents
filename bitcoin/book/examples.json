@@ -62,6 +62,16 @@
       ]
     },
     {
+      "source": "bitcoin/examples/sha-512.coax",
+      "chapter": "bitcoin/book/ch007-sha-512.md",
+      "stdout": "bitcoin/fixtures/sha-512.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/hmac-sha256.coax",
       "chapter": "bitcoin/book/ch008-hmac-sha256.md",
       "stdout": "bitcoin/fixtures/hmac-sha256.out",

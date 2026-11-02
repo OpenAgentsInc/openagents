@@ -1,0 +1,223 @@
+// SHA-512 (FIPS 180-4): the round constants, the initial hash words, the
+// compression function, the padding and a one-shot hash over a whole byte
+// view. No host calls or allocation. Every 64-bit addition is add_wrap, so
+// it wraps modulo 2^64 the same way in checked and native builds. The
+// streaming API, HMAC-SHA512 and PBKDF2-HMAC-SHA512 in sha512.coax load this
+// file (Bitcoin From Scratch, chapter 7).
+#authority;
+S512_Digest :: struct { words: [8] u64; error: u32; }
+
+// K[i] is the first 64 bits of the fractional part of the cube root of the
+// i-th prime, for the first 80 primes.
+S512_K :: [80] u64.[
+  0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
+  0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
+  0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
+  0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235, 0xc19bf174cf692694,
+  0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65,
+  0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
+  0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4,
+  0xc6e00bf33da88fc2, 0xd5a79147930aa725, 0x06ca6351e003826f, 0x142929670a0e6e70,
+  0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
+  0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
+  0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30,
+  0xd192e819d6ef5218, 0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
+  0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8,
+  0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3,
+  0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
+  0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b,
+  0xca273eceea26619c, 0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178,
+  0x06f067aa72176fba, 0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
+  0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c,
+  0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817];
+// The initial hash words: the first 64 bits of the fractional parts of the
+// square roots of the first eight primes.
+S512_IV :: [8] u64.[
+  0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+  0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179];
+
+// book:begin words
+// Word arithmetic on u64. A checked build refuses an addition that
+// overflows, so every sum that FIPS 180-4 takes modulo 2^64 says so with
+// add_wrap.
+S512_rotr :: (x: u64, n: int) -> u64 {
+  if n == 0 { return x; }
+  return (x >> n) | (x << (64 - n));
+}
+S512_sum2 :: (a: u64, b: u64) -> u64 { return add_wrap(a, b); }
+S512_sum4 :: (a: u64, b: u64, c: u64, d: u64) -> u64 { return add_wrap(add_wrap(a, b), add_wrap(c, d)); }
+S512_sum5 :: (a: u64, b: u64, c: u64, d: u64, e: u64) -> u64 { return add_wrap(S512_sum4(a, b, c, d), e); }
+// book:end words
+
+// book:begin compress
+// The 128-byte block at data[at..<at + 128] into the eight hash words h. The
+// caller owns the 80-word message schedule w, and it is erased before
+// return, because HMAC and PBKDF2 pass key bytes through it.
+S512_compress :: (h: [] u64, data: [] u8, at: int, w: [] u64) {
+  // The message schedule: 16 big-endian words from the block, then 64 more.
+  for i: 0..<16 {
+    x: u64 = 0;
+    for j: 0..<8 { x = x | (cast(u64) data[at + i * 8 + j] << ((7 - j) * 8)); }
+    w[i] = x;
+  }
+  for i: 16..<80 {
+    x := w[i - 15]; y := w[i - 2];
+    s0 := S512_rotr(x, 1) ^ S512_rotr(x, 8) ^ (x >> 7);
+    s1 := S512_rotr(y, 19) ^ S512_rotr(y, 61) ^ (y >> 6);
+    w[i] = S512_sum4(w[i - 16], s0, w[i - 7], s1);
+  }
+  // 80 rounds over the eight working variables. FIPS 180-4 calls the last
+  // one h; here it is z, because h is the hash.
+  k := S512_K;
+  a := h[0]; b := h[1]; c := h[2]; d := h[3]; e := h[4]; f := h[5]; g := h[6]; z := h[7];
+  for i: 0..<80 {
+    s1 := S512_rotr(e, 14) ^ S512_rotr(e, 18) ^ S512_rotr(e, 41);
+    choose := (e & f) ^ ((e ^ 0xffffffffffffffff) & g);
+    t1 := S512_sum5(z, s1, choose, k[i], w[i]);
+    s0 := S512_rotr(a, 28) ^ S512_rotr(a, 34) ^ S512_rotr(a, 39);
+    majority := (a & b) ^ (a & c) ^ (b & c);
+    t2 := S512_sum2(s0, majority);
+    z = g; g = f; f = e; e = S512_sum2(d, t1); d = c; c = b; b = a; a = S512_sum2(t1, t2);
+  }
+  h[0] = S512_sum2(h[0], a); h[1] = S512_sum2(h[1], b); h[2] = S512_sum2(h[2], c); h[3] = S512_sum2(h[3], d);
+  h[4] = S512_sum2(h[4], e); h[5] = S512_sum2(h[5], f); h[6] = S512_sum2(h[6], g); h[7] = S512_sum2(h[7], z);
+  for i: 0..<80 { w[i] = 0; }
+}
+// book:end compress
+
+// book:begin padding
+// The padded message is the input, one 0x80 byte, zero bytes, and the input's
+// bit length as a big-endian 128-bit number in the last 16 bytes. It needs
+// one block per 128 input bytes plus one, and one more when the last block
+// has fewer than 17 bytes free (the remainder is 112 to 127).
+S512_blocks :: (n: u64) -> u64 {
+  blocks := n / 128 + 1;
+  if n % 128 >= 112 { blocks += 1; }
+  return blocks;
+}
+// Write the 0x80 byte and zeros after the `used` input bytes of the last
+// block. Return whether the 16-byte length still fits in this block.
+S512_pad :: (block: [] u8, used: int) -> bool {
+  block[used] = 0x80;
+  for i: used + 1..<128 { block[i] = 0; }
+  return used < 112;
+}
+// The bit length of n bytes is 8n, which needs up to 67 bits. The high word
+// is the top 3 bits of n, at most 7; the low word is n shifted left by 3.
+S512_length :: (block: [] u8, n: u64) {
+  block[119] = cast(u8) (n >> 61);
+  for i: 112..<119 { block[i] = 0; }
+  low := n << 3;
+  for i: 0..<8 { block[120 + i] = cast,trunc(u8) (low >> ((7 - i) * 8)); }
+}
+// The last one or two blocks. block holds the `used` bytes (0 to 127) that
+// didn't fill a block, and n is the whole input's byte count. The block is
+// erased afterwards.
+S512_finish :: (h: [] u64, block: [] u8, used: int, n: u64, w: [] u64) {
+  if !S512_pad(block, used) {
+    S512_compress(h, block, 0, w);
+    for i: 0..<128 { block[i] = 0; }
+  }
+  S512_length(block, n);
+  S512_compress(h, block, 0, w);
+  for i: 0..<128 { block[i] = 0; }
+}
+// book:end padding
+
+// book:begin hash
+// The digest of a whole byte view. Full blocks are compressed where they are;
+// the rest is copied into one local block, which S512_finish pads and erases.
+S512_hash :: (input: [] u8) -> S512_Digest #export_c {
+  if input.count < 0 { return S512_Digest.{error = 1}; } // mutant: equivalent (every reader tests error != 0)
+  h := S512_IV; w: [80] u64;
+  full := input.count / 128;
+  for i: 0..<full { S512_compress(h[..], input, i * 128, w[..]); }
+  last: [128] u8;
+  used := input.count - full * 128;
+  for i: 0..<used { last[i] = input[full * 128 + i]; }
+  S512_finish(h[..], last[..], used, cast(u64) input.count, w[..]);
+  return S512_Digest.{words = h};
+}
+// book:end hash
+
+// The digest as 128 lowercase hex digits, into out[0..<128].
+S512_hex :: (digest: S512_Digest, out: [] u8) -> bool {
+  if digest.error != 0 || out.count < 128 { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<8 { for j: 0..<16 { out[i * 16 + j] = digits[cast(int) ((digest.words[i] >> ((15 - j) * 4)) & 15)]; } }
+  return true;
+}
+S512_hex_of :: (input: [] u8, want: string) -> bool {
+  text: [128] u8;
+  return S512_hex(S512_hash(input), text[..]) && cast(string) text[..] == want;
+}
+
+#test "the FIPS 180-4 examples: empty, abc and the 112-byte message" {
+  empty: [1] u8;
+  #assert S512_hex_of(empty[0..<0], "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e");
+  abc := [3] u8.[97, 98, 99];
+  #assert !S512_hex_of(abc[..], "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e");
+  #assert S512_hex_of(abc[..], "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f");
+  text := "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu";
+  long: [112] u8; for i: 0..<112 { long[i] = text[i]; }
+  #assert S512_hex_of(long[..], "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909");
+}
+#test "padding boundaries: 111 bytes fit one block, 112 need two" {
+  #assert S512_blocks(0) == 1 && S512_blocks(111) == 1 && S512_blocks(112) == 2 && S512_blocks(127) == 2;
+  #assert S512_blocks(128) == 2 && S512_blocks(239) == 2 && S512_blocks(240) == 3;
+  #assert S512_blocks(0xffffffffffffffff) == 0x0200000000000001;
+  // Digests computed outside Coax, with Python's hashlib, of the bytes 0, 1, 2 and so on.
+  data: [256] u8; for i: 0..<256 { data[i] = cast(u8) i; }
+  #assert S512_hex_of(data[0..<111], "a1a111449b198d9b1f538bad7f3fc1022b3a5b1a5e90a0bc860de8512746cbc31599e6c834de3a3235327af0b51ff57bf7acf1974a73014d9c3953812edc7c8d");
+  #assert S512_hex_of(data[0..<112], "c5fbd731d19d2ae1180f001be72c2c1aaba1d7b094b3748880e24593b8e117a750e11c1bd867cc2f96dace8c8b74abd2d5c4f236be444e77d30d1916174070b9");
+  #assert S512_hex_of(data[0..<127], "eab89674feaa34e27aebeeff3c0a4d70070bb872d5e9f186cf1dbbdee517b6e35724d629ff025a5b07185e911ada7e3c8acf830aa0e4f71777bd2d44f504f7f0");
+  #assert S512_hex_of(data[0..<128], "1dffd5e3adb71d45d2245939665521ae001a317a03720a45732ba1900ca3b8351fc5c9b4ca513eba6f80bc7b1d1fdad4abd13491cb824d61b08d8c0e1561b3f7");
+  #assert S512_hex_of(data[0..<129], "1d9da57fbbdab09afb3506ab2d223d06109d65c1c8ad197f50138f714bc4c3f2fe5787922639c680acad1c651f955990425954ce2cba0c5cc83f2667d878eb0f");
+  #assert S512_hex_of(data[0..<239], "cb4c7fd522756d5781ad3a4f590a1d862906b960e7720136cb3fb36b563caa1ea5689134291fa79c80ccc2b4092b41df32ebdcb36dbe79db483440228c1622a8");
+  #assert S512_hex_of(data[0..<240], "6c48466c9f6c07e4ab762c696b7eeb35cfe236fca73683e5fab873ac3489b4d2eb3d7afcce7e8165dbbf37aded3b5b0c889c0b7e0f1790a8330d8677429d91a5");
+  #assert S512_hex_of(data[..], "1e7b80bc8edc552c8feeb2780e111477e5bc70465fac1a77b29b35980c3f0ce4a036a6c9462036824bd56801e62af7e9feba5c22ed8a5af877bf7de117dcac6d");
+}
+#test "the length field carries bits above 2^64" {
+  block: [128] u8; for i: 0..<128 { block[i] = 0xaa; }
+  S512_length(block[..], 0xffffffffffffffff);
+  for i: 112..<119 { #assert block[i] == 0; }
+  #assert block[119] == 7;
+  for i: 120..<127 { #assert block[i] == 255; }
+  #assert block[127] == 248;
+  for i: 0..<112 { #assert block[i] == 0xaa; }
+  S512_length(block[..], 3);
+  for i: 112..<127 { #assert block[i] == 0; }
+  #assert block[127] == 24;
+}
+#test "padding writes 0x80 and zeros, and says whether the length fits" {
+  block: [128] u8; for i: 0..<128 { block[i] = 0xaa; }
+  #assert S512_pad(block[..], 3);
+  #assert block[2] == 0xaa && block[3] == 0x80;
+  for i: 4..<128 { #assert block[i] == 0; }
+  #assert S512_pad(block[..], 111) && !S512_pad(block[..], 112) && !S512_pad(block[..], 127) && block[127] == 0x80;
+}
+#test "the schedule and the last block are erased" {
+  h := S512_IV; w: [80] u64; block: [128] u8;
+  for i: 0..<80 { w[i] = 0x5555; }
+  for i: 0..<128 { block[i] = cast(u8) i; }
+  S512_compress(h[..], block[..], 0, w[..]);
+  for i: 0..<80 { #assert w[i] == 0; }
+  #assert h[0] != S512_IV[0];
+  for i: 0..<128 { block[i] = 0x61; }
+  S512_finish(h[..], block[..], 120, 120, w[..]);
+  for i: 0..<128 { #assert block[i] == 0; }
+  for i: 0..<80 { #assert w[i] == 0; }
+  for i: 0..<128 { block[i] = 0x61; }
+  S512_finish(h[..], block[..], 3, 3, w[..]);
+  for i: 0..<128 { #assert block[i] == 0; }
+}
+#forall "every rotate distance" n: 0..<64 {
+  bits: u64 = 0x91e6a5f3c47b2d18; expected: u64 = 0;
+  for i: 0..<64 { if ((bits >> i) & 1) != 0 { expected = expected | (cast(u64) 1 << ((i - n + 64) % 64)); } }
+  #assert S512_rotr(bits, n) == expected;
+}
+#test "the hex form refuses an error digest and a short output" {
+  data: [1] u8; text: [128] u8; text[0] = 99;
+  #assert !S512_hex(S512_Digest.{error = 1}, text[..]) && text[0] == 99;
+  #assert !S512_hex(S512_hash(data[0..<0]), text[0..<127]) && text[0] == 99;
+}

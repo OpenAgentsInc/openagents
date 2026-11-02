@@ -1,0 +1,26 @@
+blocks for 0, 111, 112 and 128 bytes: 1 1 2 2
+length fits in the block: true
+padded block bytes 0-7: 6162638000000000
+padded block bytes 112-127: 00000000000000000000000000000018
+w[0]: 6162638000000000
+w[15]: 0000000000000018
+w[16]: 6162638000000000
+w[17]: 00030000000000c0
+round 0 T1: b37b0cfa1b97e8a0
+round 0 T2: 4334c1bea164f555
+round 0 new a: f6afceb8bcfcddf5
+round 0 new e: 58cb02347ab51f91
+hash "abc": ok
+SHA-512("abc"): ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f
+112 bytes in 112 updates, 112 buffered
+SHA-512(112-byte message): 8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909
+SHA-512(1,000,000 x "a"): e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b
+splits of 1,000 bytes that match one update: 1001 of 1001
+SHA-512(1,000-byte message): 00e36fccf193e59697a92b5ab24666ce6326d7fa16bf10832d0991ddc591112e9dfa6a636950ed9c4d67344a760654c2ff7785e1d60094d651038735b5dccabd
+length field for 2^64 - 1 bytes: 0000000000000007fffffffffffffff8
+update after final: already final
+63-byte output: bad output
+1 MiB + 1 byte in one call: bad input
+207-byte state: bad state
+state that buffers 1 byte of 0: bad state
+legacy call, 63-byte output: false

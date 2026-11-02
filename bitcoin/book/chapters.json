@@ -145,15 +145,27 @@
   {
    "number": 7,
    "title": "SHA-512",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch007-sha-512.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
-    1
+    1,
+    4
    ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
+   "source": [
+    "coax/lib/crypto/sha512-kernel.coax",
+    "coax/lib/crypto/sha512.coax",
+    "coax/lib/crypto/sha512-memory.coax",
+    "bitcoin/examples/sha-512.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/bip32.coax",
+    "coax/lib/crypto/bip39.coax"
+   ]
   },
   {
    "number": 8,

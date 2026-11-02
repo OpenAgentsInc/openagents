@@ -38,10 +38,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 17 are implemented and 68 are planned. The 17
-implemented chapters have runnable examples, qualified on native CPU, and 13
+Of the 85 chapters, 18 are implemented and 67 are planned. The 18
+implemented chapters have runnable examples, qualified on native CPU, and 14
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5 and 6 are the first new ones.
+chapters 5, 6 and 7 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -111,7 +111,7 @@ Every hash, MAC and cipher Bitcoin and Lightning use, each checked against its p
 | [4. SHA-256](ch004-sha-256.md) | Runnable: native C and wasm | Streaming SHA-256 over caller-owned state, checked against every NIST CAVS ShortMsg and LongMsg vector, with split-stream and padding-boundary checks, plus BIP-340 tagged hashes. |
 | [5. SHA-256d and tagged hashes](ch005-sha-256d-and-tagged-hashes.md) | Runnable: native C | SHA-256d and the P2P checksum, with the genesis block hash and pinned mainnet txids matching their published values, and the BIP-340 and BIP-341 tagged hashes by tag ID, checked against every BIP-341 wallet vector. |
 | [6. RIPEMD-160 and HASH160](ch006-ripemd-160-and-hash160.md) | Runnable: native C | Streaming RIPEMD-160 over caller-owned state and HASH160 on SHA-256, checked against the paper's nine test values, every parent fingerprint in BIP-32 vectors 1–3 and Python's `hashlib`. |
-| 7. SHA-512 | Planned | Every NIST CAVS vector in `SHA512ShortMsg.rsp` and `SHA512LongMsg.rsp` passes. |
+| [7. SHA-512](ch007-sha-512.md) | Runnable: native C and wasm | Streaming SHA-512 over caller-owned state, checked against all 257 NIST CAVS ShortMsg and LongMsg vectors natively and in Wasm, with the one-shot, HMAC-SHA512 and PBKDF2 calls that BIP-39 and BIP-32 use. |
 | [8. HMAC-SHA256](ch008-hmac-sha256.md) | Runnable: native C and wasm | HMAC-SHA256 with keys longer than a block hashed first, checked against RFC 4231 cases 1–7 including the truncated case. |
 | [9. HKDF](ch009-hkdf.md) | Runnable: native C and wasm | HKDF-SHA256 extract and expand with output bounds, checked against RFC 5869 cases 1–3, and the exact NIP-44 v2 use: extract with salt `nip44-v2`, expand to 76 bytes. |
 | 10. SipHash-2-4 | Planned | The 64 vectors of the SipHash reference implementation pass. |
