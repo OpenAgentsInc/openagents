@@ -1,0 +1,51 @@
+// Chapter 87: a draft head speculates for its own target model on workload
+// dh-walk-v1, greedy and sampled; the timing goes to chapter 76's rule; and
+// Mistral Large 4's real draft-head inventory is checked against its config.
+#import "Basic";
+#load "../lib/draft-head.coax";
+
+// The host's processor clock in microseconds (C's clock(), CLOCKS_PER_SEC
+// 1,000,000 on Linux and macOS). Only the timing below reads it.
+clock :: () -> int #foreign;
+
+// book:begin example
+main :: () {
+    // Workload dh-walk-v1: vocabulary 8, width 4, prompt 1 2 3, 48 tokens.
+    recur:[16]f64;embed:[32]f64;out:[32]f64;hr:[16]f64;he:[32]f64;
+    dh_fill(1,4,recur[..]);dh_fill(2,1,embed[..]);dh_fill(3,4,out[..]);
+    dh_round(recur[..],0.5,hr[..]);dh_round(embed[..],0.5,he[..]);
+    t:=DhCell.{vocab=8,width=4,recur=recur[..],embed=embed[..],out=out[..]};
+    head:=DhCell.{vocab=8,width=4,recur=hr[..],embed=he[..],out=out[..]};
+    prompt:=[3]int.[1,2,3];none:[1]f64;base:[48]int;
+    g:=dh_generate(t,prompt[..],48,true,none[0..<0],base[..]);
+    print("target alone, greedy: ");for x:base {print("%",x);}print(" (% target steps)\n",g.target);
+    print("draft head, greedy:\n  k  same  blocks  accepted/drafted  committed  target steps  head steps\n");
+    for k:1..<5 {
+        o:[48]int;r:=dh_speculate(t,head,prompt[..],48,k,true,none[0..<0],o[..]);
+        same:=true;for i:0..<48 {if o[i]!=base[i] {same=false;}}
+        print("  %  %  %      %/%            %         %            %\n",k,same,r.blocks,r.accepted,r.drafted,r.committed,r.target,r.head);
+    }
+    exact:[48]int;r:=dh_speculate(t,t,prompt[..],48,4,true,none[0..<0],exact[..]);
+    print("the target as its own head, k 4: accepted %/% in % blocks\n",r.accepted,r.drafted,r.blocks);
+    u:[4096]f64;dh_uniforms(7,u[..]);sampled:[48]int;
+    r=dh_speculate(t,head,prompt[..],48,2,false,u[..],sampled[..]);
+    print("draft head, sampled, k 2, uniforms seed 7: accepted %/% in % blocks, % uniforms\n",r.accepted,r.drafted,r.blocks,r.used);
+
+    // Chapter 76's rule on CPU times: seven paired runs, each 200 greedy
+    // generations of 48 tokens, target alone and with the head at k 4.
+    plain:[7]int;spec:[7]int;same:=true;
+    for run:0..<7 {
+        a:[48]int;b:[48]int;n:=0;
+        start:=clock();for i:0..<200 {n+=dh_generate(t,prompt[..],48,true,none[0..<0],a[..]).written;}plain[run]=(clock()-start)*1000+1;
+        start=clock();for i:0..<200 {n-=dh_speculate(t,head,prompt[..],48,4,true,none[0..<0],b[..]).written;}spec[run]=(clock()-start)*1000+1;
+        for i:0..<48 {if a[i]!=b[i] {same=false;}}if n!=0 {same=false;}
+    }
+    d:=sg_decide(same,plain[..],spec[..]);
+    print("chapter 76's rule on this CPU: speculation enabled: %\n",sg_enabled(d));
+
+    // Large 4's draft head, from one shard header and params.json.
+    v:=dh_large4_inventory(DH_LARGE4,DH_PINNED_MANIFEST);
+    print("Large 4 mtp_dspark: %, % tensors, % BF16 values, % bytes = shard % - header %\n",v.status,v.tensors,v.values,
+        2*v.values,DH_PINNED_SHARD_BYTES,DH_PINNED_HEADER_BYTES);
+}
+// book:end example

@@ -1,0 +1,26 @@
+// Chapter 87's refusals: a head that does not fit its target, a uniform
+// outside [0, 1), and a Large 4 config with one draft-head layer too few.
+#import "Basic";
+#load "../lib/draft-head.coax";
+
+// book:begin example
+main :: () {
+    recur:[16]f64;embed:[32]f64;out:[32]f64;
+    dh_fill(1,4,recur[..]);dh_fill(2,1,embed[..]);dh_fill(3,4,out[..]);
+    t:=DhCell.{vocab=8,width=4,recur=recur[..],embed=embed[..],out=out[..]};
+    // A head of width 3 cannot read the target's width-4 hidden state.
+    head:=DhCell.{vocab=8,width=3,recur=recur[0..<9],embed=embed[0..<24],out=out[0..<24]};
+    prompt:=[3]int.[1,2,3];none:[1]f64;o:[48]int;
+    r:=dh_speculate(t,head,prompt[..],48,4,true,none[0..<0],o[..]);
+    print("head of width 3 on a width-4 target: %, % tokens written\n",r.status,r.written);
+    // A uniform of exactly 1 is outside [0, 1): refused before any step.
+    u:[64]f64;dh_uniforms(7,u[..]);u[10]=1;
+    r=dh_speculate(t,t,prompt[..],48,2,false,u[..],o[..]);
+    print("uniform 10 is 1: %, % target steps\n",r.status,r.target);
+    // Large 4's params.json says mtp.n_layers 3; a config claiming 2 stops at
+    // the first tensor the header holds that 2 layers would not.
+    s:=DH_LARGE4;s.layers=2;v:=dh_large4_inventory(s,DH_PINNED_MANIFEST);
+    buf:[160]u8;n:=dh_line(dh_large4_tensor(s,v.bad),buf[..]);
+    print("2 draft-head layers: %, expected tensor % is %\n",v.status,v.bad,cast(string)buf[0..<n]);
+}
+// book:end example

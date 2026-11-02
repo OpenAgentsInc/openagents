@@ -1,0 +1,83 @@
+// Chapter 87's check oracle, loaded by psionic/lib/draft-head.coax. Written
+// separately from the library and from chapter 75's gx_block: the exact
+// probability that speculative decoding with the draft head emits a given
+// token sequence, by enumerating every draft block and every accept, reject
+// and correction branch, with the acceptance min(1, p/q) and the normalized
+// positive residual max(p - q, 0) computed here. The two cells are evaluated
+// with dh_step and dh_probs; the rule is not. Everything is binary64.
+
+DHO_K_MAX :: 3;
+
+// The target's own probability of seq after the state (h, pending): the
+// product of its conditionals.
+dho_target :: (t:DhCell,h:[]f64,pending:int,seq:[]int)->f64 {
+    g:[DH_WIDTH_MAX]f64;next:[DH_WIDTH_MAX]f64;p:[DH_VOCAB_MAX]f64;for i:0..<t.width {g[i]=h[i];}
+    token:=pending;total:=1.0;
+    for x:seq {dh_step(t,g[..],token,next[..]);dh_probs(t,next[..],p[..]);total*=p[x];token=x;for i:0..<t.width {g[i]=next[i];}}
+    return total;
+}
+
+// Does a block that emitted e (length n) agree with seq where they overlap,
+// and if seq is longer, the probability of the rest from the next state.
+dho_rest :: (t:DhCell,head:DhCell,h:[]f64,e:[]int,n:int,k:int,seq:[]int)->f64 {
+    for i:0..<n {if i<seq.count && e[i]!=seq[i] {return 0;}}
+    if n>=seq.count {return 1;}
+    return dho_speculate(t,head,h,e[n-1],k,seq[n..<seq.count]);
+}
+
+// The speculative process's probability of emitting seq first, from the
+// state (h, pending), with sampled drafts and sampled verification.
+dho_speculate :: (t:DhCell,head:DhCell,h:[]f64,pending:int,k:int,seq:[]int)->f64 {
+    if seq.count==0 {return 1;}
+    v:=t.vocab;w:=t.width;blocks:=1;for i:0..<k {blocks*=v;}total:=0.0;
+    for code:0..<blocks {
+        d:[DHO_K_MAX]int;c:=code;for i:0..<k {d[i]=c%v;c/=v;}
+        // The head's probability of this draft block, and its rows.
+        q:[DHO_K_MAX*DH_VOCAB_MAX]f64;g:[DH_WIDTH_MAX]f64;next:[DH_WIDTH_MAX]f64;for i:0..<w {g[i]=h[i];}
+        chance:=1.0;token:=pending;
+        for j:0..<k {dh_step(head,g[..],token,next[..]);dh_probs(head,next[..],q[j*v..<(j+1)*v]);chance*=q[j*v+d[j]];token=d[j];for i:0..<w {g[i]=next[i];}}
+        // The target's rows after the pending token and each draft prefix.
+        hs:[(DHO_K_MAX+2)*DH_WIDTH_MAX]f64;p:[(DHO_K_MAX+1)*DH_VOCAB_MAX]f64;for i:0..<w {hs[i]=h[i];}token=pending;
+        for i:0..<k+1 {dh_step(t,hs[i*w..<(i+1)*w],token,hs[(i+1)*w..<(i+2)*w]);dh_probs(t,hs[(i+1)*w..<(i+2)*w],p[i*v..<(i+1)*v]);if i<k {token=d[i];}}
+        reach:=chance;e:[DHO_K_MAX+1]int;
+        for i:0..<k {
+            pi:=p[i*v+d[i]];qi:=q[i*v+d[i]];a:=1.0;if pi<qi {a=pi/qi;}
+            if a<1 {
+                // Rejected at i: drafts 0..<i, then a correction from the residual.
+                mass:=0.0;for x:0..<v {r:=p[i*v+x]-q[i*v+x];if r>0 {mass+=r;}}
+                for x:0..<v {
+                    r:=p[i*v+x]-q[i*v+x];if r<=0 {continue;}
+                    for j:0..<i {e[j]=d[j];}e[i]=x;
+                    total+=reach*(1-a)*(r/mass)*dho_rest(t,head,hs[(i+1)*w..<(i+2)*w],e[..],i+1,k,seq);
+                }
+            }
+            reach*=a;
+        }
+        // All k accepted: the bonus token from the target's last row.
+        for x:0..<v {
+            for j:0..<k {e[j]=d[j];}e[k]=x;
+            total+=reach*p[k*v+x]*dho_rest(t,head,hs[(k+1)*w..<(k+2)*w],e[..],k+1,k,seq);
+        }
+    }
+    return total;
+}
+
+// The chapter's hand trace: width 1, vocabulary 2, out = [1, -1], so token 0
+// wins when h > 0, token 1 when h < 0, and token 0 on a tie at h = 0.
+// Target: recur -4, embed [1, -1]. Head A: recur -3. Head B: recur -1.
+// g holds the three recurrences, then embed, then out.
+dh_hand :: (g:[]f64,which:int)->DhCell {
+    g[0]=-4;g[1]=-3;g[2]=-1;g[3]=1;g[4]=-1;g[5]=1;g[6]=-1;
+    return DhCell.{vocab=2,width=1,recur=g[which..<which+1],embed=g[3..<5],out=g[5..<7]};
+}
+// The chapter's workload dh-walk-v1 and a three-token cell for enumeration.
+// g (128 values) holds the target's recur, embed and out, then the head's
+// recur and embed, rounded to multiples of step; the head shares out.
+dh_rig :: (g:[]f64,vocab:int,width:int,seed:int,step:f64)->[2]DhCell {
+    w:=width*width;v:=vocab*width;recur:=g[0..<w];embed:=g[w..<w+v];out:=g[w+v..<w+2*v];hr:=g[w+2*v..<2*w+2*v];he:=g[2*w+2*v..<2*w+3*v];
+    dh_fill(seed,4,recur);dh_fill(seed+1,1,embed);dh_fill(seed+2,4,out);dh_round(recur,step,hr);dh_round(embed,step,he);
+    t:=DhCell.{vocab=vocab,width=width,recur=recur,embed=embed,out=out};
+    return [2]DhCell.[t,DhCell.{vocab=vocab,width=width,recur=hr,embed=he,out=out}];
+}
+// The target's distribution after reading token from h.
+dh_row :: (c:DhCell,h:[]f64,token:int)->[3]f64 {next:[2]f64;p:[3]f64;dh_step(c,h,token,next[..]);dh_probs(c,next[..],p[..]);return p;}

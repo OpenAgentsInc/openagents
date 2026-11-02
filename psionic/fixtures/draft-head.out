@@ -1,0 +1,11 @@
+target alone, greedy: 501155401554016540165401654016540165401655116551 (48 target steps)
+draft head, greedy:
+  k  same  blocks  accepted/drafted  committed  target steps  head steps
+  1  true  29      20/29            49         58            29
+  2  true  21      29/42            50         63            42
+  3  true  19      32/57            51         76            57
+  4  true  13      39/52            52         65            52
+the target as its own head, k 4: accepted 40/40 in 10 blocks
+draft head, sampled, k 2, uniforms seed 7: accepted 30/36 in 18 blocks, 126 uniforms
+chapter 76's rule on this CPU: speculation enabled: false
+Large 4 mtp_dspark: ok, 38 tensors, 2099969024 BF16 values, 4199938048 bytes = shard 4199942840 - header 4792

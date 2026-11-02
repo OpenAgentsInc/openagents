@@ -1,0 +1,3 @@
+head of width 3 on a width-4 target: shape, 0 tokens written
+uniform 10 is 1: uniform, 0 target steps
+2 draft-head layers: manifest, expected tensor 25 is backbone.mask_embedding BF16 2,6144

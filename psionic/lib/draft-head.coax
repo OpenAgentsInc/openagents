@@ -1,0 +1,397 @@
+// Chapter 87: a model's own draft head as a speculator. A small recurrent
+// target model, a draft head that reads the target's last hidden state and
+// the embedding of the token just sampled and drafts the next k tokens, and
+// verification of those drafts by chapter 75's block rule (gx_block). The
+// pinned inventory of Mistral Large 4's real draft head (mtp_dspark) is
+// checked against shapes derived from its params.json.
+// Profile draft-head-cpu-f64-v1: binary64 on the CPU, one row at a time.
+#load "gptoss/speculation.coax";
+#load "speculation-gate.coax";
+#load "../fixtures/mistral-large4-draft-head.coax";
+#load "../tests/draft-head-oracle.coax";   // the checks' exact enumeration
+
+// book:begin types
+DhStatus :: enum u8 {ok;shape;token;uniform;weight;manifest;}
+DH_WEIGHT_MAX :: 8.0;
+DH_VOCAB_MAX :: 64;
+DH_WIDTH_MAX :: 16;
+DH_DRAFTS_MAX :: 8;
+DH_STEPS_MAX :: 4096;
+// One recurrent cell: s = recur * h + embed[token], next = s / (1 + abs(s)), and the
+// next-token distribution softmax(out * next). recur is width x width,
+// embed and out are vocab x width, row-major.
+DhCell :: struct {vocab:int;width:int;recur:[]f64;embed:[]f64;out:[]f64;}
+// A generation's outcome and its counts. written: tokens in out. blocks:
+// draft-and-verify rounds. drafted and accepted: draft tokens proposed and
+// kept. committed: tokens the blocks emitted before truncation to steps.
+// target and head: cell steps each model ran. used: uniforms consumed.
+DhRun :: struct {status:DhStatus;written:int;blocks:int;drafted:int;accepted:int;committed:int;target:int;head:int;used:int;}
+// book:end types
+
+dh_valid :: (c:DhCell)->bool {
+    if c.vocab<2 || c.vocab>DH_VOCAB_MAX || c.width<1 || c.width>DH_WIDTH_MAX {return false;}
+    return c.recur.count==c.width*c.width && c.embed.count==c.vocab*c.width && c.out.count==c.vocab*c.width;
+}
+
+// book:begin cell
+// The cell's step and its distribution. Both models use these two
+// procedures, so a target step computed while verifying is the same
+// arithmetic, bit for bit, as the step computed without speculation.
+dh_step :: (c:DhCell,h:[]f64,token:int,next:[]f64) {
+    w:=c.width;
+    for i:0..<w {s:=c.embed[token*w+i];for j:0..<w {s+=c.recur[i*w+j]*h[j];}next[i]=s/(1+abs(s));}
+}
+// Weights are at most 8 in size and every hidden value is in (-1, 1), so a
+// logit is at most 8 x 16 = 128 in size: exp needs no shift to stay finite
+// and positive.
+dh_probs :: (c:DhCell,h:[]f64,p:[]f64) {
+    w:=c.width;total:=0.0;
+    for v:0..<c.vocab {s:=0.0;for j:0..<w {s+=c.out[v*w+j]*h[j];}p[v]=exp(s);total+=p[v];}
+    for v:0..<c.vocab {p[v]/=total;}
+}
+// book:end cell
+
+// Every weight finite and at most DH_WEIGHT_MAX in size, so every
+// distribution is finite and every proposal has positive draft probability.
+// NaN fails x == x; infinities fail the bounds.
+dh_bounded :: (w:[]f64)->bool {for x:w {if x!=x || x>DH_WEIGHT_MAX || x< -DH_WEIGHT_MAX {return false;}}return true;}
+dh_weights :: (c:DhCell)->bool {return dh_bounded(c.recur) && dh_bounded(c.embed) && dh_bounded(c.out);}
+dh_check :: (t:DhCell,head:DhCell,prompt:[]int,steps:int,uniforms:[]f64,out:[]int)->DhStatus {
+    if !dh_valid(t) || !dh_valid(head) || head.vocab!=t.vocab || head.width!=t.width || steps<1 || steps>DH_STEPS_MAX || out.count<steps || prompt.count<1 {return DhStatus.shape;}
+    for x:prompt {if x<0 || x>=t.vocab {return DhStatus.token;}}
+    if !dh_weights(t) || !dh_weights(head) {return DhStatus.weight;}
+    for u:uniforms {if !(u>=0 && u<1) {return DhStatus.uniform;}}
+    return DhStatus.ok;
+}
+// The state after a prompt: the hidden state after all but its last token,
+// and that last token, sampled or given but not yet read by the target.
+// h holds zeros on entry, the state before any token.
+dh_prefill :: (t:DhCell,prompt:[]int,h:[]f64) {
+    for i:0..<prompt.count-1 {next:[DH_WIDTH_MAX]f64;dh_step(t,h,prompt[i],next[..]);for j:0..<t.width {h[j]=next[j];}}
+}
+
+// book:begin generate
+// Target alone: read the pending token, emit the next one, repeat. greedy
+// takes the lowest-ID maximum (gx_argmax); otherwise each token draws one
+// uniform through chapter 64's gs_pick.
+dh_generate :: (t:DhCell,prompt:[]int,steps:int,greedy:bool,uniforms:[]f64,out:[]int)->DhRun {
+    r:=DhRun.{status=dh_check(t,t,prompt,steps,uniforms,out)};if r.status!=DhStatus.ok {return r;}
+    h:[DH_WIDTH_MAX]f64;next:[DH_WIDTH_MAX]f64;p:[DH_VOCAB_MAX]f64;dh_prefill(t,prompt,h[..]);
+    pending:=prompt[prompt.count-1];
+    while r.written<steps {
+        dh_step(t,h[..],pending,next[..]);dh_probs(t,next[..],p[..]);r.target+=1;
+        if greedy {pending=gx_argmax(p[0..<t.vocab]);}
+        else {
+            if r.used==uniforms.count {r.status=DhStatus.uniform;return r;}
+            pick:=gs_pick(p[0..<t.vocab],uniforms[r.used]);r.used+=1;#assert pick.status==GStatus.ok;
+            pending=pick.token;
+        }
+        out[r.written]=pending;r.written+=1;for j:0..<t.width {h[j]=next[j];}
+    }
+    return r;
+}
+// book:end generate
+
+// book:begin draft
+// The draft head: from the target's hidden state h and the pending token,
+// run the head's own cell k times on its own guesses. Row j of q is the
+// head's distribution for draft j. Greedy drafts take the head's maximum;
+// sampled drafts draw one uniform each. Returns the uniforms used.
+dh_draft :: (head:DhCell,h:[]f64,pending:int,k:int,greedy:bool,uniforms:[]f64,drafts:[]int,q:[]f64)->int {
+    g:[DH_WIDTH_MAX]f64;next:[DH_WIDTH_MAX]f64;for i:0..<head.width {g[i]=h[i];}
+    token:=pending;used:=0;v:=head.vocab;
+    for j:0..<k {
+        dh_step(head,g[..],token,next[..]);row:=q[j*v..<(j+1)*v];dh_probs(head,next[..],row);
+        token=gx_argmax(row);
+        if !greedy {token=gs_pick(row,uniforms[used]).token;used+=1;}
+        drafts[j]=token;for i:0..<head.width {g[i]=next[i];}
+    }
+    return used;
+}
+// book:end draft
+
+// book:begin speculate
+// Draft k tokens with the head, then verify them with chapter 75's block
+// rule. The target reads the pending token and the k drafts in order, one
+// step each, keeping every hidden state: row i of p is its distribution
+// after the pending token and drafts 0..<i. gx_block accepts a prefix and
+// adds one correction or, when all k pass, one bonus token. The next state
+// is the hidden state after the accepted prefix, which was already
+// computed, so nothing is recomputed on a rejection.
+dh_speculate :: (t:DhCell,head:DhCell,prompt:[]int,steps:int,k:int,greedy:bool,uniforms:[]f64,out:[]int)->DhRun {
+    r:=DhRun.{status=dh_check(t,head,prompt,steps,uniforms,out)};if r.status!=DhStatus.ok {return r;}
+    if k<1 || k>DH_DRAFTS_MAX {r.status=DhStatus.shape;return r;}
+    w:=t.width;v:=t.vocab;
+    hs:[(DH_DRAFTS_MAX+2)*DH_WIDTH_MAX]f64;p:[(DH_DRAFTS_MAX+1)*DH_VOCAB_MAX]f64;q:[DH_DRAFTS_MAX*DH_VOCAB_MAX]f64;
+    drafts:[DH_DRAFTS_MAX]int;emitted:[DH_DRAFTS_MAX+1]int;stage:[DH_DRAFTS_MAX+1]int;residual:[DH_VOCAB_MAX]f64;scratch:[DH_VOCAB_MAX]f64;
+    zeros:[2*DH_DRAFTS_MAX+1]f64;
+    dh_prefill(t,prompt,hs[0..<w]);pending:=prompt[prompt.count-1];
+    while r.written<steps {
+        need:=ifx greedy then 0 else 3*k+1;
+        if r.used+need>uniforms.count {r.status=DhStatus.uniform;return r;}
+        r.used+=dh_draft(head,hs[0..<w],pending,k,greedy,uniforms[r.used..<uniforms.count],drafts[..],q[..]);
+        token:=pending;
+        for i:0..<k+1 {
+            dh_step(t,hs[i*w..<hs.count],token,hs[(i+1)*w..<hs.count]);dh_probs(t,hs[(i+1)*w..<hs.count],p[i*v..<p.count]);r.target+=1;
+            if i<k {token=drafts[i];}
+        }
+        u:=zeros[0..<2*k+1];if !greedy {u=uniforms[r.used..<r.used+2*k+1];r.used+=2*k+1;}
+        b:=gx_block(v,p[0..<(k+1)*v],q[0..<k*v],drafts[0..<k],u,greedy,emitted[..],stage[..],residual[..],scratch[..],false);
+        #assert b.status==GStatus.ok;
+        for i:0..<b.written {if r.written<steps {out[r.written]=emitted[i];r.written+=1;}}
+        r.blocks+=1;r.drafted+=k;r.accepted+=b.accepted;r.committed+=b.written;r.head+=k;
+        a:=b.accepted+1;for j:0..<w {hs[j]=hs[a*w+j];}pending=emitted[b.written-1];
+    }
+    return r;
+}
+// book:end speculate
+
+// ---- fixtures: synthetic cells and uniforms -------------------------------
+
+// book:begin fixtures
+// Weights from a fixed integer recurrence, scaled to [-scale, scale):
+// value i is (x_i - 32768) / 32768 * scale, x_i = (seed * 40503 + i * 2654435761 + 12345) mod 65536.
+dh_fill :: (seed:int,scale:f64,out:[]f64) {
+    for i:0..<out.count {x:=(seed*40503+i*2654435761+12345)%65536;out[i]=cast(f64)(x-32768)/32768*scale;}
+}
+// A head that is the target's cell with every weight rounded to a multiple
+// of step: a cheaper, less exact copy that shares the target's readout.
+dh_round :: (src:[]f64,step:f64,out:[]f64) {for i:0..<src.count {out[i]=floor(src[i]/step+0.5)*step;}}
+// Uniforms in [0, 1) from x = (x * 1103515245 + 12345) mod 2^31.
+dh_uniforms :: (seed:int,out:[]f64) {
+    x:=seed%2147483648;for i:0..<out.count {x=(x*1103515245+12345)%2147483648;out[i]=cast(f64)x/2147483648;}
+}
+// book:end fixtures
+
+// ---- Mistral Large 4's draft head ------------------------------------------
+
+// book:begin large4
+// The numbers in Large 4's params.json that set the draft head's shapes:
+// dim, vocab_size, n_heads, qk_nope_head_dim, qk_rope_head_dim, v_head_dim,
+// kv_lora_rank, hidden_dim, mtp.n_layers, the count of
+// mtp.target_activation_layers ("1,18,36,54,71") and mtp.dspark.markov_rank.
+DhLarge4 :: struct {dim:int;vocab:int;heads:int;nope:int;rope:int;value:int;rank:int;hidden:int;layers:int;targets:int;markov:int;}
+DH_LARGE4 :: DhLarge4.{dim=6144,vocab=204800,heads=64,nope=64,rope=64,value=128,rank=512,hidden=24576,layers=3,targets=5,markov=512};
+DH_LAYER_NAMES :: [10]string.["attention.kv_a_norm.weight","attention.wkv_a_with_mqa.weight","attention.wkv_b.weight","attention.wo.weight",
+    "attention.wq.weight","attention_norm.weight","feed_forward.w1.weight","feed_forward.w2.weight","feed_forward.w3.weight","ffn_norm.weight"];
+DhTensor :: struct {name:string;layer:int;rows:int;cols:int;}
+// Expected tensor e, in name order: 5 head and backbone tensors, 10 a
+// layer, then 3 more. cols 0 means one dimension.
+dh_large4_tensor :: (s:DhLarge4,e:int)->DhTensor {
+    m:=s.markov;d:=s.dim;
+    names:=[8]string.["autoregressive_head.embedding.weight","autoregressive_head.joint_proj.bias","autoregressive_head.joint_proj.weight",
+        "autoregressive_head.output.weight","backbone.final_norm.weight","backbone.mask_embedding","backbone.target_norm.weight","backbone.target_projection.weight"];
+    outer:=[8]int.[s.vocab,3*m,3*m,s.vocab,d,2,d,d];inner:=[8]int.[m,0,d+2*m,m,0,d,0,s.targets*d];
+    top:=e;k:=e-5-10*s.layers;if k>=0 {top=5+k;}
+    if e<5 || k>=0 {return DhTensor.{name=names[top],layer=-1,rows=outer[top],cols=inner[top]};}
+    l:=(e-5)/10;i:=e-5-10*l;qk:=s.nope+s.rope;
+    rows:=[10]int.[s.rank,s.rank+s.rope,s.heads*(s.nope+s.value),d,s.heads*qk,d,s.hidden,d,s.hidden,d];
+    cols:=[10]int.[0,d,s.rank,s.heads*s.value,d,0,d,s.hidden,d,0];
+    return DhTensor.{name=DH_LAYER_NAMES[i],layer=l,rows=rows[i],cols=cols[i]};
+}
+// book:end large4
+dh_put :: (out:[]u8,n:int,s:string)->int {for i:0..<s.count {out[n+i]=s[i];}return n+s.count;}
+dh_put_int :: (out:[]u8,n:int,v:int)->int {
+    digits:[20]u8;c:=0;x:=v;while c==0 || x>0 {digits[c]=cast(u8)(48+x%10);x/=10;c+=1;}
+    for i:0..<c {out[n+i]=digits[c-1-i];}return n+c;
+}
+// "name BF16 rows[,cols]", with "backbone.layers.L." before a layer's names.
+dh_line :: (t:DhTensor,out:[]u8)->int {
+    n:=0;if t.layer>=0 {n=dh_put(out,n,"backbone.layers.");n=dh_put_int(out,n,t.layer);n=dh_put(out,n,".");}
+    n=dh_put(out,n,t.name);n=dh_put(out,n," BF16 ");n=dh_put_int(out,n,t.rows);
+    if t.cols!=0 {n=dh_put(out,n,",");n=dh_put_int(out,n,t.cols);}
+    return n;
+}
+// book:begin inventory
+// The manifest must be exactly the expected lines, in order. On a mismatch
+// bad names the first line that differs; values counts the parameters.
+DhInventory :: struct {status:DhStatus;tensors:int;values:int;bad:int;}
+dh_large4_inventory :: (s:DhLarge4,manifest:string)->DhInventory {
+    r:=DhInventory.{bad=-1};expected:=8+10*s.layers;at:=0;buf:[160]u8;
+    for e:0..<expected {
+        t:=dh_large4_tensor(s,e);n:=dh_line(t,buf[..]);
+        if at+n>=manifest.count || manifest[at..<at+n]!=cast(string)buf[0..<n] || manifest[at+n]!='\n' {r.status=DhStatus.manifest;r.bad=e;return r;}
+        size:=t.rows;if t.cols!=0 {size*=t.cols;}at+=n+1;r.tensors+=1;r.values+=size;
+    }
+    if at!=manifest.count {r.status=DhStatus.manifest;r.bad=expected;}
+    return r;
+}
+// book:end inventory
+
+
+// ---- checks ------------------------------------------------------------------
+
+#test "the hand trace: one step, the target alone, head A's bonus and head B's correction" {
+    g:[7]f64;t:=dh_hand(g[..],0);a:=dh_hand(g[..],1);b:=dh_hand(g[..],2);
+    // h = 0, token 0: s = 1, next = 1/2; logits 1/2 and -1/2.
+    h:=[1]f64.[0];next:[1]f64;p:[2]f64;dh_step(t,h[..],0,next[..]);dh_probs(t,next[..],p[..]);
+    #assert next[0]==0.5 && abs(p[0]-1/(1+exp(-1.0)))<1e-15 && abs(p[0]+p[1]-1)<1e-15;
+    // s = -4 * 1/2 - 1 = -3: next = -3/4.
+    h[0]=0.5;dh_step(t,h[..],1,next[..]);#assert next[0]== -0.75;
+    // The state after prompt 0 0 1 is the state after 0 0: 1/2, then -1/2.
+    pre:=[3]int.[0,0,1];z:[1]f64;dh_prefill(t,pre[..],z[..]);#assert z[0]== -0.5;z[0]=0;dh_prefill(t,pre[0..<2],z[..]);#assert z[0]==0.5;
+    // The target alone from prompt [0]: 1/2, -1/2, 1/2, ... emits 0 1 0 1 0 1.
+    prompt:=[1]int.[0];none:[1]f64;out:[6]int;
+    r:=dh_generate(t,prompt[..],6,true,none[0..<0],out[..]);
+    #assert r.status==DhStatus.ok && r.written==6 && r.target==6 && out[0]==0 && out[1]==1 && out[2]==0 && out[3]==1 && out[4]==0 && out[5]==1;
+    // Head A drafts 0 (g = 1/2), then 1 (s = -3/2 + 1 = -1/2, g = -1/3): both
+    // right, and the bonus row (h = 1/2 after token 1) adds 0. One block, three tokens.
+    drafts:[2]int;q:[4]f64;h[0]=0;
+    #assert dh_draft(a,h[..],0,2,true,none[0..<0],drafts[..],q[..])==0 && drafts[0]==0 && drafts[1]==1;
+    o:[3]int;r=dh_speculate(t,a,prompt[..],3,2,true,none[0..<0],o[..]);
+    #assert r.status==DhStatus.ok && r.blocks==1 && r.accepted==2 && r.drafted==2 && r.committed==3 && r.target==3 && r.head==2 && o[0]==0 && o[1]==1 && o[2]==0;
+    // Head B drafts 0 (g = 1/2), then 0 (s = -1/2 + 1 = 1/2, g = 1/3): the
+    // second is wrong, the target's row says 1, so the block emits 0 1.
+    #assert dh_draft(b,h[..],0,2,true,none[0..<0],drafts[..],q[..])==0 && drafts[0]==0 && drafts[1]==0;
+    #assert abs(q[0]-1/(1+exp(-1.0)))<1e-15 && abs(q[2]-1/(1+exp(-2.0/3)))<1e-15;
+    o2:[2]int;r=dh_speculate(t,b,prompt[..],2,2,true,none[0..<0],o2[..]);
+    #assert r.status==DhStatus.ok && r.blocks==1 && r.accepted==1 && r.committed==2 && r.target==3 && o2[0]==0 && o2[1]==1;
+    // Six tokens with head B still equal the target alone.
+    o6:[6]int;r=dh_speculate(t,b,prompt[..],6,2,true,none[0..<0],o6[..]);
+    #assert r.status==DhStatus.ok && r.written==6;for i:0..<6 {#assert o6[i]==out[i];}
+}
+#test "the largest logits the bounds allow stay finite and positive" {
+    w:[16]f64;e:[32]f64;o:[32]f64;h:[16]f64;p:[2]f64;
+    for i:0..<16 {o[i]=8;o[16+i]=-8;h[i]=0.999999;}
+    c:=DhCell.{vocab=2,width=16,recur=w[..],embed=e[..],out=o[..]};dh_probs(c,h[..],p[..]);
+    // Logits about +128 and -128: p[1] = exp(-256) / (1 + exp(-256)), about 6.6e-112.
+    #assert p[0]==1 && p[1]>0 && abs(p[1]/exp(-8*16*0.999999*2.0)-1)<1e-9;
+    o[0]=0;o[1]=0;c.width=1;c.recur=w[0..<1];c.embed=e[0..<2];c.out=o[0..<2];dh_probs(c,h[..],p[..]);#assert p[0]==0.5 && p[1]==0.5;
+}
+#test "fixtures: the weight recurrence, rounding and uniforms" {
+    w:[3]f64;dh_fill(0,1,w[..]);
+    // x0 = 12345, x1 = (2654435761 + 12345) mod 65536 = 43498, x2 = 9115.
+    #assert w[0]==cast(f64)(12345-32768)/32768 && w[1]==cast(f64)(43498-32768)/32768 && w[2]==cast(f64)(9115-32768)/32768;
+    dh_fill(1,4,w[..]);#assert w[0]==cast(f64)((40503+12345)%65536-32768)/32768*4;
+    r:[3]f64;src:=[3]f64.[0.74,0.76,-0.26];dh_round(src[..],0.5,r[..]);#assert r[0]==0.5 && r[1]==1 && r[2]== -0.5;
+    u:[2]f64;dh_uniforms(7,u[..]);x:=(7*1103515245+12345)%2147483648;#assert u[0]==cast(f64)x/2147483648;
+    x=(x*1103515245+12345)%2147483648;#assert u[1]==cast(f64)x/2147483648;
+    dh_uniforms(2147483648+7,u[0..<1]);#assert u[0]==cast(f64)((7*1103515245+12345)%2147483648)/2147483648;
+}
+
+#forall "greedy speculation emits the target's own greedy tokens" seed:1..<4,k:1..<9,start:0..<2 #steps 200000000 {
+    g:[128]f64;c:=dh_rig(g[..],8,4,seed,0.5);prompt:=[2]int.[start,(start*3+1)%8];none:[1]f64;base:[40]int;spec:[40]int;
+    a:=dh_generate(c[0],prompt[..],40,true,none[0..<0],base[..]);#assert a.status==DhStatus.ok && a.written==40 && a.target==40;
+    r:=dh_speculate(c[0],c[1],prompt[..],40,k,true,none[0..<0],spec[..]);
+    #assert r.status==DhStatus.ok && r.written==40 && r.drafted==k*r.blocks && r.target==(k+1)*r.blocks && r.head==k*r.blocks;
+    #assert r.committed==r.accepted+r.blocks && r.committed>=40 && r.committed<40+k+1 && r.used==0;
+    for i:0..<40 {#assert spec[i]==base[i];}
+    // The target as its own head is always right: every block is k drafts and a bonus.
+    r=dh_speculate(c[0],c[0],prompt[..],40,k,true,none[0..<0],spec[..]);
+    #assert r.accepted==r.drafted && r.committed==(k+1)*r.blocks;for i:0..<40 {#assert spec[i]==base[i];}
+}
+#test "the workload's measured acceptance" {
+    g:[128]f64;c:=dh_rig(g[..],8,4,1,0.5);prompt:=[3]int.[1,2,3];none:[1]f64;o:[48]int;
+    acc:=[4]int.[20,29,32,39];blocks:=[4]int.[29,21,19,13];
+    for k:1..<5 {r:=dh_speculate(c[0],c[1],prompt[..],48,k,true,none[0..<0],o[..]);#assert r.accepted==acc[k-1] && r.blocks==blocks[k-1];}
+}
+// Independent check: the exact probability that sampled speculation emits
+// each sequence of three tokens, by enumeration (the oracle), equals the
+// target's own probability, for k = 1, 2 and 3.
+#forall "sampled speculation preserves the target distribution exactly" seed:1..<3,k:1..<4 #steps 4000000000 {
+    g:[128]f64;c:=dh_rig(g[..],3,2,seed,1);h:[2]f64;
+    total:=0.0;worst:=0.0;
+    for code:0..<27 {
+        seq:=[3]int.[code%3,(code/3)%3,code/9];
+        a:=dho_speculate(c[0],c[1],h[..],0,k,seq[..]);b:=dho_target(c[0],h[..],0,seq[..]);
+        total+=a;if abs(a-b)>worst {worst=abs(a-b);}
+    }
+    #assert worst<1e-14 && abs(total-1)<1e-14;
+}
+// The sampler itself against those exact probabilities: 2,048 seeded runs
+// of two tokens at k = 3, with the head's weights rounded to multiples of 4,
+// every count within 5 standard deviations plus 1.
+#test "sampled speculation's frequencies match the exact probabilities" #steps 4000000000 {
+    g:[128]f64;c:=dh_rig(g[..],3,2,2,4);prompt:=[1]int.[0];h:[2]f64;count:[9]int;u:[64]f64;o:[2]int;
+    for trial:0..<2048 {
+        dh_uniforms(trial*7919+1,u[..]);r:=dh_speculate(c[0],c[1],prompt[..],2,3,false,u[..],o[..]);
+        #assert r.status==DhStatus.ok && r.written==2 && r.used==10*r.blocks;count[o[0]*3+o[1]]+=1;
+    }
+    for cell:0..<9 {
+        seq:=[2]int.[cell/3,cell%3];p:=dho_target(c[0],h[..],0,seq[..]);
+        #assert abs(cast(f64)count[cell]-2048*p)<=5*sqrt(2048*p*(1-p))+1;
+    }
+    // The target alone, sampled, one uniform a token.
+    a:=dh_generate(c[0],prompt[..],2,false,u[0..<2],o[..]);#assert a.status==DhStatus.ok && a.used==2;
+    p:=dh_row(c[0],h[..],0);#assert o[0]==gs_pick(p[..],u[0]).token;
+}
+#test "refusals: shapes, tokens, uniforms and weights" #steps 100000000 {
+    g:[128]f64;c:=dh_rig(g[..],8,4,1,0.5);t:=c[0];hd:=c[1];prompt:=[2]int.[1,2];none:[1]f64;o:[8]int;big:[4097]int;
+    #assert dh_generate(t,prompt[..],8,true,none[0..<0],o[..]).status==DhStatus.ok && dh_speculate(t,hd,prompt[..],8,8,true,none[0..<0],o[..]).status==DhStatus.ok;
+    #assert dh_generate(t,prompt[..],4096,true,none[0..<0],big[..]).status==DhStatus.ok;
+    #assert dh_generate(t,prompt[..],4097,true,none[0..<0],big[..]).status==DhStatus.shape;
+    #assert dh_generate(t,prompt[..],0,true,none[0..<0],o[..]).status==DhStatus.shape;
+    r1:=dh_speculate(t,hd,prompt[..],1,3,true,none[0..<0],o[..]);#assert r1.status==DhStatus.ok && r1.written==1 && o[0]==dh_generate(t,prompt[..],1,true,none[0..<0],o[1..<2]).written*o[1];
+    one:=[1]int.[5];#assert dh_speculate(t,hd,one[..],8,2,true,none[0..<0],o[..]).status==DhStatus.ok;
+    #assert dh_generate(t,prompt[..],8,true,none[0..<0],o[0..<7]).status==DhStatus.shape;
+    #assert dh_generate(t,prompt[0..<0],8,true,none[0..<0],o[..]).status==DhStatus.shape;
+    #assert dh_speculate(t,hd,prompt[..],8,0,true,none[0..<0],o[..]).status==DhStatus.shape;
+    #assert dh_speculate(t,hd,prompt[..],8,9,true,none[0..<0],o[..]).status==DhStatus.shape;
+    bad:=[2]int.[1,8];#assert dh_generate(t,bad[..],8,true,none[0..<0],o[..]).status==DhStatus.token;
+    bad[1]=-1;#assert dh_speculate(t,hd,bad[..],8,2,true,none[0..<0],o[..]).status==DhStatus.token;
+    bad[1]=7;#assert dh_generate(t,bad[..],8,true,none[0..<0],o[..]).status==DhStatus.ok;
+    bad[0]=0;#assert dh_generate(t,bad[..],8,true,none[0..<0],o[..]).status==DhStatus.ok;
+    // Cells: vocabulary 2..64, width 1..16, slices of exactly the stated sizes.
+    x:=hd;x.vocab=7;#assert dh_speculate(t,x,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.shape;
+    x=hd;x.width=3;x.recur=g[0..<9];x.embed=g[16..<40];x.out=g[48..<72];#assert dh_valid(x) && dh_speculate(t,x,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.shape;
+    x=t;x.recur=g[0..<15];#assert !dh_valid(x);x=t;x.embed=g[16..<47];#assert !dh_valid(x);x=t;x.out=g[48..<79];#assert !dh_valid(x);
+    x=t;x.vocab=1;x.embed=g[16..<20];x.out=g[48..<52];#assert !dh_valid(x);x.vocab=2;x.embed=g[16..<24];x.out=g[48..<56];#assert dh_valid(x);
+    x.width=0;x.recur=g[0..<0];x.embed=g[0..<0];x.out=g[0..<0];#assert !dh_valid(x);
+    wide:[64*16]f64;sq:[256]f64;sq17:[289]f64;wide17:[64*17]f64;
+    x=DhCell.{vocab=64,width=16,recur=sq[..],embed=wide[..],out=wide[..]};#assert dh_valid(x);
+    x=DhCell.{vocab=64,width=1,recur=sq[0..<1],embed=wide[0..<64],out=wide[0..<64]};#assert dh_valid(x);
+    x=DhCell.{vocab=65,width=1,recur=sq[0..<1],embed=wide[0..<65],out=wide[0..<65]};#assert !dh_valid(x);
+    // An invalid target is refused even beside a valid head of its size.
+    x=t;x.recur=g[0..<15];#assert dh_speculate(x,hd,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.shape;
+    x=DhCell.{vocab=64,width=17,recur=sq17[..],embed=wide17[..],out=wide17[..]};#assert !dh_valid(x);
+    x=t;x.vocab=9;#assert dh_generate(x,prompt[..],8,true,none[0..<0],o[..]).status==DhStatus.shape;
+    // Uniforms: each in [0, 1), and enough of them.
+    u:[64]f64;dh_uniforms(3,u[..]);
+    r:=dh_generate(t,prompt[..],8,false,u[0..<7],o[..]);#assert r.status==DhStatus.uniform && r.written==7 && r.used==7;
+    r=dh_speculate(t,hd,prompt[..],8,2,false,u[0..<6],o[..]);#assert r.status==DhStatus.uniform && r.written==0;
+    r=dh_speculate(t,hd,prompt[..],2,2,false,u[0..<7],o[..]);#assert r.status==DhStatus.ok && r.used==7;
+    u[5]=1;#assert dh_generate(t,prompt[..],2,false,u[..],o[..]).status==DhStatus.uniform;
+    u[5]=-0.25;#assert dh_speculate(t,hd,prompt[..],2,2,false,u[..],o[..]).status==DhStatus.uniform;
+    u[5]=0;#assert dh_generate(t,prompt[..],2,false,u[..],o[..]).status==DhStatus.ok;
+    // Weights must be finite and at most 8 in size.
+    zero:=0.0;g[48]=zero/zero;#assert dh_generate(t,prompt[..],8,false,u[..],o[..]).status==DhStatus.weight;
+    g[48]=8;#assert dh_generate(t,prompt[..],8,false,u[..],o[..]).status==DhStatus.ok;
+    g[48]=8.5;#assert dh_generate(t,prompt[..],8,false,u[..],o[..]).status==DhStatus.weight;g[48]=8;
+    g[0]=-8.5;#assert dh_speculate(t,hd,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.weight;
+    g[0]=-8;x=hd;x.embed=g[16..<48];#assert dh_speculate(t,x,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.ok;
+    g[20]=1.0/zero;#assert dh_speculate(t,x,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.weight;
+    g[20]=0;g[120]=-1.0/zero;#assert dh_speculate(t,hd,prompt[..],8,2,true,none[0..<0],o[..]).status==DhStatus.weight;
+}
+#test "Large 4's draft head is exactly the shapes its params.json implies" {
+    v:=dh_large4_inventory(DH_LARGE4,DH_PINNED_MANIFEST);
+    #assert v.status==DhStatus.ok && v.tensors==38 && v.tensors==DH_PINNED_TENSORS && v.bad== -1;
+    // 2 x (vocab x 512) + 1536 + 1536 x 7168 + 6144, three layers, then the
+    // mask, target norm and projection: all BF16, so twice the values fills
+    // the shard after its header.
+    layer:=512+576*6144+12288*512+6144*8192+8192*6144+6144+3*24576*6144+6144;
+    #assert v.values==2*204800*512+1536+1536*7168+6144+3*layer+2*6144+6144+6144*30720 && 2*v.values+DH_PINNED_HEADER_BYTES==DH_PINNED_SHARD_BYTES;
+    buf:[160]u8;n:=dh_line(dh_large4_tensor(DH_LARGE4,7),buf[..]);#assert cast(string)buf[0..<n]=="backbone.layers.0.attention.wkv_b.weight BF16 12288,512";
+    n=dh_line(dh_large4_tensor(DH_LARGE4,34),buf[..]);#assert cast(string)buf[0..<n]=="backbone.layers.2.ffn_norm.weight BF16 6144";
+    n=dh_line(dh_large4_tensor(DH_LARGE4,37),buf[..]);#assert cast(string)buf[0..<n]=="backbone.target_projection.weight BF16 6144,30720";
+    n=dh_line(dh_large4_tensor(DH_LARGE4,1),buf[..]);#assert cast(string)buf[0..<n]=="autoregressive_head.joint_proj.bias BF16 1536";
+    // Each config number moved by one is refused at its first tensor.
+    s:=DH_LARGE4;s.vocab=204801;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==0;
+    s=DH_LARGE4;s.markov=256;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==0;
+    s=DH_LARGE4;s.dim=6143;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==2;
+    s=DH_LARGE4;s.rank=511;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==5;
+    s=DH_LARGE4;s.rope=63;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==6;
+    s=DH_LARGE4;s.heads=63;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==7;
+    s=DH_LARGE4;s.nope=63;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==7;
+    s=DH_LARGE4;s.value=127;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==7;
+    s=DH_LARGE4;s.hidden=24575;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==11;
+    s=DH_LARGE4;s.targets=4;#assert dh_large4_inventory(s,DH_PINNED_MANIFEST).bad==37;
+    s=DH_LARGE4;s.layers=2;v=dh_large4_inventory(s,DH_PINNED_MANIFEST);#assert v.status==DhStatus.manifest && v.bad==25 && v.tensors==25;
+    s=DH_LARGE4;s.layers=4;v=dh_large4_inventory(s,DH_PINNED_MANIFEST);#assert v.status==DhStatus.manifest && v.bad==35;
+    // A manifest cut short, missing its last newline, or with a line more.
+    m:=DH_PINNED_MANIFEST;
+    v=dh_large4_inventory(DH_LARGE4,m[0..<m.count-1]);#assert v.status==DhStatus.manifest && v.bad==37 && v.tensors==37;
+    more:[8192]u8;k:=dh_put(more[..],0,m);k=dh_put(more[..],k,"x BF16 1\n");
+    v=dh_large4_inventory(DH_LARGE4,cast(string)more[0..<k]);#assert v.status==DhStatus.manifest && v.bad==38 && v.tensors==38;
+    more[k-10]='x';v=dh_large4_inventory(DH_LARGE4,cast(string)more[0..<k]);#assert v.status==DhStatus.manifest && v.bad==37;
+    #assert dh_put_int(buf[..],0,0)==1 && buf[0]=='0';
+}
