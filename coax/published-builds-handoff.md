@@ -4,8 +4,9 @@ For an agent with access to the owner's Mac. Written 2026-11-02.
 
 ## Why
 
-Every machine without a cached compiler used to bootstrap it: about 10 minutes
-on a big host, more than an hour on a small container. Published builds
+Every machine without a cached compiler used to bootstrap it: about 90 minutes
+on CoderOS's 28 cores (84 of them mutating `lib/compiler/checker.coax`), several
+hours on a small container. The first published Linux build installed in 17 s. Published builds
 (`coax/RELEASE.md#published-builds`, INVARIANTS.md "Compiler builds reuse only
 exactly matching checked results") fix that. Each platform's release host
 builds the compiler once per compiler change and uploads it; every other
@@ -64,8 +65,9 @@ with `.sha256` beside it. A published name is never overwritten.
    (`publish-host.sh` reuses this clone and keeps it at `origin/main`.)
 
 3. **Run the first publish in the foreground,** so you see it work. It
-   bootstraps with every mutation gate (`COAX_MUTATION_FULL=1`); on 18 cores
-   expect 10 to 25 minutes, most of it in `stage0 mutate lib/compiler/checker.coax`.
+   bootstraps with every mutation gate (`COAX_MUTATION_FULL=1`). On CoderOS's 28
+   cores that took about 90 minutes, 84 of them in `stage0 mutate
+   lib/compiler/checker.coax`; on the Mac's 18 cores expect two hours or more.
 
    ```sh
    ~/.cache/coax-publish/openagents/coax/publish-host.sh 2>&1 | tee ~/work/coax-publish.log
@@ -127,8 +129,8 @@ with `.sha256` beside it. A published name is never overwritten.
    - `publish-host.sh` updates its own clone to `origin/main` each round,
      including its own scripts. A change to the publishing scripts is picked up
      on the next round, with no reload.
-   - It is low priority (`Nice 10`). A build takes the Mac's cores for 10 to 25
-     minutes only when the compiler's sources change on main.
+   - It is low priority (`Nice 10`). A build takes the Mac's cores for about two
+     hours, but only when the compiler's sources change on main.
    - **Owner choice:** if a build during the working day is unwelcome, use
      `StartCalendarInterval` (for example hourly) instead of `--every 600` and
      `KeepAlive`. Note what you chose in the closing report.

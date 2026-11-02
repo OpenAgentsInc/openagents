@@ -154,9 +154,11 @@ cache directories, like the checked builds beside it.
 
 ## Published builds
 
-A machine with neither cache bootstraps: about ten minutes on a 28-core
-host, an hour or more on a small container, every time the compiler's sources
-change. Published builds remove that wait. Each platform's release host
+A machine with neither cache bootstraps: about 90 minutes on CoderOS's 28
+cores (2026-11-02: 84 of them in one gate, `stage0 mutate
+lib/compiler/checker.coax`, 5,064 s) and several hours on a 4-core container,
+every time the compiler's sources change. Published builds remove that wait
+for everyone but the release host; a published build installs in about 17 s. Published builds remove that wait. Each platform's release host
 bootstraps once per compiler change and publishes the result; every other
 machine downloads it.
 
