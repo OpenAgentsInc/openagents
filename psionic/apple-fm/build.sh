@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (a thin wrapper around swift build and codesign); 6 (Apple's FoundationModels SDK is Swift-only)
 # Builds the Apple FM bridge: macOS 26 or later on Apple Silicon, with the
 # Xcode command line tools. Running it also needs Apple Intelligence on.
 set -euo pipefail
