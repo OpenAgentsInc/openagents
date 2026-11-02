@@ -160,9 +160,9 @@ bb_write_index :: (w: [] BbW, s: BbStore, encoder: [32] u8) {
 }
 ```
 
-Loading hashes the three files, parses the encoder and the index into the
-caller's storage, checking every count and span against that storage, and
-asks `bb_admit`:
+Loading hashes the three files, parses the encoder and, when the encoder
+names this profile, the index into the caller's storage, checking every
+count and span against that storage, and asks `bb_admit`:
 
 <!-- source: psionic/lib/book-search/browser.coax load -->
 ```jai
@@ -175,7 +175,7 @@ bb_load :: (manifest: [] u8, encoder: [] u8, index: [] u8, s: [] BbStore) -> BbV
   seen.encoder = bs_file_hash(encoder, 0, encoder.count);
   seen.index = bs_file_hash(index, 0, index.count);
   seen.profile = bb_read_encoder(encoder, s);
-  if seen.profile.count > 0 {
+  if seen.profile == BB_PROFILE {
     h := bb_read_index(index, s);
     seen.index_ok = h.ok; seen.index_encoder = h.encoder; seen.index_corpus = h.corpus;
     if h.ok { seen.listed_corpus = bb_corpus(s[0]); }
@@ -227,10 +227,11 @@ passages of each ranking with their binary64 scores in hex.
 // then the first ten of each ranking as passage:score (binary64 bits).
 bb_hits :: (w: [] BbW, name: string, hits: [] BsHit) {
   bb_byte(w, ' '); bb_text(w, name); bb_byte(w, '=');
-  top := ifx hits.count < BB_SHOW then hits.count else BB_SHOW;
-  for i: 0..<top {
-    if i > 0 { bb_byte(w, ','); }
-    bb_decimal(w, hits[i].passage); bb_byte(w, ':'); bb_hex_bits(w, f64_bits(hits[i].score), 16);
+  for i: 0..<hits.count {
+    if i < BB_SHOW {
+      if i > 0 { bb_byte(w, ','); }
+      bb_decimal(w, hits[i].passage); bb_byte(w, ':'); bb_hex_bits(w, f64_bits(hits[i].score), 16);
+    }
   }
 }
 bb_line :: (w: [] BbW, e: [] f32, words: int, known: int, bm: [] BsHit, dn: [] BsHit, fu: [] BsHit) {
@@ -262,9 +263,10 @@ bb_small_books :: (b: [] BbSmall, paths: [] string, chapters: [] string) -> bool
     from[f] = at; for c: chapters[f] { b[0].pool[at] = c; at += 1; } to[f] = at;
   }
   if !bb_index_books(b[0].pool[..], from[0..<paths.count], to[0..<paths.count], b[0].store[..], b[0].ids[..]) { return false; }
-  for i: 0..<BE_WIDTH * BE_WIDTH { b[0].table[i] = 0; }
-  for e: 0..<b[0].store[0].words { b[0].table[e * BE_WIDTH + e] = 1; }
-  for d: 0..<BE_WIDTH { b[0].query[d] = 0; }
+  for e: 0..<BE_WIDTH {
+    for d: 0..<BE_WIDTH { b[0].table[e * BE_WIDTH + d] = ifx e == d then 1 else 0; }
+    b[0].query[e] = 0;
+  }
   bb_embed_all(b[0].store[..], b[0].ids[..]);
   return true;
 }
@@ -512,16 +514,20 @@ psionic/check.sh --only book-search
 [check_book_search.sh](../tests/check_book_search.sh) runs the checks of
 `bundle.coax` and `browser.coax` with chapters 54 to 57's, in debug and
 release builds, runs both examples in both builds against their recorded
-output, and mutates `bundle.coax`. The checks cover every refusal and their
-order, the manifest's exact format, little-endian reads and range checks,
-and a bundle written, read back and searched: its embedding and every BM25
-and dense score are compared bit for bit with chapter 54's `be_embed`,
-`bs_dot` and `bs_passage_bm25` on the original store, and with the hand
-values above. `coax mutate` kills all 50 mutants of `bundle.coax`, the
-`#authority` file; none survive. `browser.coax` is not mutation-gated yet:
-`coax mutate --root-only` kills 860 of its 968 mutants. Most of the 108
-survivors are the reader's range checks (an index whose counts sit exactly
-at a storage limit) and the small-book builder's edge cases.
+output, and mutates `bundle.coax` and `browser.coax`. The checks cover
+every refusal and their order, the manifest's exact format, little-endian
+reads and range checks, and a bundle written, read back and searched: its
+embedding and every BM25 and dense score are compared bit for bit with
+chapter 54's `be_embed`, `bs_dot` and `bs_passage_bm25` on the original
+store, and with the hand values above. The readers are also fed storage cut
+to exactly what the small book needs, which they accept, and one entry
+smaller in each count, which they refuse; files one byte short or one byte
+long; and every index field (status, book, heading and term spans, the
+average length) at its last allowed value and one past it. The small-book
+builder is checked at exactly eight files, a full pool and name buffer, and
+one passage, word, word id or term too many. `coax mutate` kills all 50
+mutants of `bundle.coax`, the `#authority` file, and all 963 of
+`browser.coax` (`--root-only`); none survive.
 
 ## What this does not do yet
 
@@ -537,8 +543,6 @@ at a storage limit) and the small-book builder's edge cases.
 - **Compression.** The development server sends the files uncompressed;
   gzip -9 would shrink the download from 8.6 MB to 5.8 MB.
 - **Other browsers.** Only headless Chrome on Linux was measured.
-- **Sharper checks for `browser.coax`.** 108 of its 968 mutants survive;
-  killing them needs checks that corrupt each index field at its exact limit.
 - **Passage text.** The index holds heading paths, not text; results show
   where to read, not a snippet.
 

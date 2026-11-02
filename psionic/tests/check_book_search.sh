@@ -5,9 +5,9 @@
 # recorded output, zero-survivor mutation of the ranking and status rules
 # (rank.coax, #authority), of the index (hnsw.coax), of the reranker
 # (rerank.coax), of the answer and citation rules (answer.coax,
-# #authority) and of the bundle admission rule (bundle.coax, #authority),
-# each on its own procedures, and the book. browser.coax (the bundle reader
-# and search) is not mutation-gated yet: 108 of 968 mutants survive. The browser run itself is psionic/web/book-search/check.sh. CPU only; it does not
+# #authority), of the bundle admission rule (bundle.coax, #authority) and of
+# the bundle reader and search (browser.coax), each on its own procedures,
+# and the book. The browser run itself is psionic/web/book-search/check.sh. CPU only; it does not
 # read the books or train (the tool does: coax/web/tool.sh psionic/tools/book-search.coax).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -29,5 +29,6 @@ if [[ $mutate == 1 ]];then
  "$coax" mutate psionic/lib/book-search/rerank.coax --library --root-only --jobs "$jobs"
  "$coax" mutate psionic/lib/book-search/answer.coax --library --root-only --jobs "$jobs"
  "$coax" mutate psionic/lib/book-search/bundle.coax --library --jobs "$jobs"
+ "$coax" mutate psionic/lib/book-search/browser.coax --library --root-only --jobs "$jobs"
 fi
 python3 -I psionic/tests/book.py
