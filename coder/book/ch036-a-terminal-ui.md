@@ -71,7 +71,12 @@ the new size.
 
 **Markdown.** `tui_md_line` styles a reply one line at a time, as it
 streams: headings, lists, quotes, inline code, bold and italics, and fenced
-code blocks. Code blocks go through the highlighter.
+code blocks. Code blocks go through the highlighter. A table needs all its
+rows before a column's width is known, so Coder holds the rows
+(`tui_md_is_row`) until the table ends. `tui_md_table` then draws it with
+box borders and a bold header, each column as wide as its widest cell and
+aligned as the separator row says. A table wider than the terminal becomes
+one block a row: the first cell in bold, then `header: value` lines.
 
 **Highlighting.** `tui_hl_line` colors one line of code: a Coax
 highlighter (after Jai) and a shared one for other languages (`tui_hl_lang`

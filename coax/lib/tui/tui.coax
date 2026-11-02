@@ -973,6 +973,134 @@ tui_md_line :: (st: [] TuiMd, line: string, o: [] TuiOut, cols: int) -> bool {
   return true;
 }
 
+// ---------------------------------------------------------------- tables
+
+// A Markdown table needs every row before a column's width is known, so a
+// caller holds the rows (tui_md_is_row) and passes them here together. It
+// draws a box with a bold header row, each column as wide as its widest
+// cell and aligned as the separator row says. A table wider than cols
+// becomes one block a row: the first cell in bold, then "header: value"
+// lines. Output lines are separated by newlines.
+TUI_MD_TCOLS :: 12; TUI_MD_TROWS :: 64;
+
+tui_md_is_row :: (line: string) -> bool {
+  i := tui_md_indent(line);
+  return i < line.count && line[i] == '|';
+}
+
+// A row's cells, as byte ranges of line with their spaces trimmed; how many.
+// A | inside `code` or written \| doesn't split a cell.
+tui_md_cells :: (line: string, starts: [] int, ends: [] int) -> int {
+  i := tui_md_indent(line);
+  e := line.count;
+  while e > i && (line[e - 1] == ' ' || line[e - 1] == '\r') { e -= 1; }
+  if i < e && line[i] == '|' { i += 1; }
+  if e > i && line[e - 1] == '|' && !(e - 2 >= i && line[e - 2] == '\\') { e -= 1; }
+  n := 0; at := i; tick := false; k := i;
+  while k < e && n < starts.count {
+    c := line[k];
+    if c == '`' { tick = !tick; }
+    else if c == '\\' && k + 1 < e { k += 1; }
+    else if c == '|' && !tick { starts[n] = at; ends[n] = k; n += 1; at = k + 1; }
+    k += 1;
+  }
+  if n < starts.count { starts[n] = at; ends[n] = e; n += 1; }
+  for j: 0..<n {
+    while starts[j] < ends[j] && line[starts[j]] == ' ' { starts[j] += 1; }
+    while ends[j] > starts[j] && line[ends[j] - 1] == ' ' { ends[j] -= 1; }
+  }
+  return n;
+}
+
+// The separator row: every cell dashes, with colons for alignment.
+tui_md_is_sep :: (line: string) -> bool {
+  dash := false;
+  for c: line { if c == '-' { dash = true; } else if c != '|' && c != ':' && c != ' ' { return false; } }
+  return dash;
+}
+
+tui_md_dashes :: (o: [] TuiOut, glyph: string, w: int) { for i: 0..<w { tui_put(o, glyph); } }
+
+tui_md_edge :: (o: [] TuiOut, w: [] int, ncols: int, left: string, mid: string, right: string) {
+  tui_md_sgr(o, TUI_MD_DIM); tui_put(o, left);
+  for c: 0..<ncols { tui_md_dashes(o, "─", w[c] + 2); tui_put(o, ifx c + 1 < ncols then mid else right); }
+  tui_csi(o, "0m"); tui_byte(o, 10);
+}
+
+tui_md_table :: (text: string, o: [] TuiOut, cols: int) {
+  lines_s: [64] int; lines_e: [64] int; nl := 0; at := 0;
+  while at < text.count && nl < TUI_MD_TROWS {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    if e > at { lines_s[nl] = at; lines_e[nl] = e; nl += 1; }
+    at = e + 1;
+  }
+  if nl == 0 { return; }
+  // alignment from the separator row (the second line): 0 left, 1 right, 2 center
+  align: [12] int; for c: 0..<TUI_MD_TCOLS { align[c] = 0; }
+  sep := -1;
+  if nl > 1 && tui_md_is_sep(cast(string) text[lines_s[1]..<lines_e[1]]) {
+    sep = 1;
+    ss: [12] int; se: [12] int; sl := cast(string) text[lines_s[1]..<lines_e[1]];
+    sn := tui_md_cells(sl, ss[..], se[..]);
+    for c: 0..<sn {
+      if se[c] > ss[c] {
+        l := sl[ss[c]] == ':'; r := sl[se[c] - 1] == ':';
+        align[c] = ifx l && r then 2 else ifx r then 1 else 0;
+      }
+    }
+  }
+  // every cell rendered once, and its width
+  cb: [65536] u8; pos := 0;
+  cs: [768] int; ce: [768] int; cw: [768] int; rowmap: [64] int; nrows := 0; ncols := 0;
+  for r: 0..<nl {
+    if r == sep { continue; }
+    line := cast(string) text[lines_s[r]..<lines_e[r]];
+    st: [12] int; en: [12] int;
+    n := tui_md_cells(line, st[..], en[..]);
+    if n > ncols { ncols = n; }
+    for c: 0..<TUI_MD_TCOLS {
+      k := nrows * TUI_MD_TCOLS + c;
+      co_b: [1] TuiOut; co := co_b[..]; co[0].b = cb[pos..<cb.count]; co[0].theme = o[0].theme;
+      if c < n { tui_md_inline(co, cast(string) line[st[c]..<en[c]], ifx nrows == 0 then TUI_MD_BOLD else 0); }
+      cs[k] = pos; ce[k] = pos + co[0].n; pos += co[0].n;
+      cw[k] = tui_text_width(cast(string) cb[cs[k]..<ce[k]]);
+    }
+    rowmap[nrows] = r; nrows += 1;
+  }
+  w: [12] int;
+  for c: 0..<ncols { w[c] = 1; for r: 0..<nrows { if cw[r * TUI_MD_TCOLS + c] > w[c] { w[c] = cw[r * TUI_MD_TCOLS + c]; } } }
+  total := 1; for c: 0..<ncols { total += w[c] + 3; }
+  if total <= cols {
+    tui_md_edge(o, w[..], ncols, "┌", "┬", "┐");
+    for r: 0..<nrows {
+      for c: 0..<ncols {
+        k := r * TUI_MD_TCOLS + c;
+        tui_md_sgr(o, TUI_MD_DIM); tui_put(o, ifx c == 0 then "│ " else " │ "); tui_csi(o, "0m");
+        pad := w[c] - cw[k];
+        before := ifx align[c] == 1 then pad else ifx align[c] == 2 then pad / 2 else 0;
+        for i: 0..<before { tui_byte(o, ' '); }
+        tui_put(o, cast(string) cb[cs[k]..<ce[k]]); tui_csi(o, "0m");
+        for i: 0..<pad - before { tui_byte(o, ' '); }
+      }
+      tui_md_sgr(o, TUI_MD_DIM); tui_put(o, " │"); tui_csi(o, "0m"); tui_byte(o, 10);
+      if r == 0 && nrows > 1 { tui_md_edge(o, w[..], ncols, "├", "┼", "┤"); }
+    }
+    tui_md_edge(o, w[..], ncols, "└", "┴", "┘");
+    return;
+  }
+  // too wide: a block a row
+  for r: 1..<nrows {
+    k0 := r * TUI_MD_TCOLS;
+    tui_md_sgr(o, TUI_MD_BOLD); tui_put(o, cast(string) cb[cs[k0]..<ce[k0]]); tui_csi(o, "0m"); tui_byte(o, 10);
+    for c: 1..<ncols {
+      k := k0 + c;
+      if ce[k] == cs[k] { continue; }
+      tui_put(o, "  "); tui_md_sgr(o, TUI_MD_DIM); tui_put(o, cast(string) cb[cs[c]..<ce[c]]); tui_md_sgr(o, TUI_MD_DIM); tui_put(o, ": "); tui_csi(o, "0m");
+      tui_put(o, cast(string) cb[cs[k]..<ce[k]]); tui_csi(o, "0m"); tui_byte(o, 10);
+    }
+  }
+}
+
 // ---------------------------------------------------------------- checks
 
 // Test bytes: ` is ESC and | is Ctrl-C, since Coax strings have no \e.
@@ -1218,4 +1346,20 @@ tui_hl_kinds :: (st: [] TuiHl, lang: int, line: string, out: [] u8) -> string {
   o[0].n = 0; o[0].theme = TUI_THEME_NONE; tui_style(o, TUI_DIM); #assert cast(string) ob[1..<o[0].n] == "[0m";
   o[0].n = 0; tui_hl_sgr(o, TUI_HL_STRING, ";48;2;1;2;3"); #assert cast(string) ob[1..<o[0].n] == "[0m";
   #assert tui_theme_of("light") == TUI_THEME_LIGHT && tui_theme_of("blue") == -1;
+}
+
+#test "markdown tables: a box sized to the cells, aligned, and blocks when too wide" {
+  t := "| Where | Files | What |\n| --- | ---: | :-: |\n| coax/web | 55 | goldens |\n| verse | 2 | `a|b` |\n";
+  b: [8192] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = b[..]; o[0].theme = TUI_THEME_NONE;
+  tui_md_table(t, o, 80);
+  pb: [8192] u8; pn := 0; i := 0; out := tui_text(o);
+  while i < out.count { e := tui_esc_len(out, i); if e > 0 { i += e; continue; } pb[pn] = out[i]; pn += 1; i += 1; }
+  plain := cast(string) pb[0..<pn];
+  #assert plain == "┌──────────┬───────┬─────────┐\n│ Where    │ Files │  What   │\n├──────────┼───────┼─────────┤\n│ coax/web │    55 │ goldens │\n│ verse    │     2 │   a|b   │\n└──────────┴───────┴─────────┘\n";
+  o[0].n = 0;
+  tui_md_table(t, o, 20);
+  pn = 0; i = 0; out = tui_text(o);
+  while i < out.count { e := tui_esc_len(out, i); if e > 0 { i += e; continue; } pb[pn] = out[i]; pn += 1; i += 1; }
+  #assert cast(string) pb[0..<pn] == "coax/web\n  Files: 55\n  What: goldens\nverse\n  Files: 2\n  What: a|b\n";
+  #assert tui_md_is_row("  | a |") && !tui_md_is_row("a | b") && tui_md_is_sep("|---|:--:|") && !tui_md_is_sep("| a |");
 }

@@ -101,6 +101,7 @@ App :: struct {
   wrap_buf: [1] TuiRows;
   md: [1] TuiMd;                 // the reply's Markdown state (a code block open)
   md_out: [65536] u8;
+  tbl: [16384] u8; ntbl: int;      // a Markdown table's rows, held until the table ends so its columns line up
   // Edit and Write calls shown as diffs once they have run
   df_pending: [1] DfPending;
   df_table: [] DfTable;
@@ -306,15 +307,36 @@ cd_md :: (a: [] App, st: [] TuiMd, line: string) -> string {
   return tui_text(o);
 }
 
+// The held table, drawn whole (tui_md_table), one committed line per row.
+cd_table_flush :: (a: [] App) {
+  if a[0].ntbl == 0 { return; }
+  o_b: [1] TuiOut; o := o_b[..]; o[0].b = a[0].md_out[..]; o[0].theme = a[0].o[0].theme;
+  tui_md_table(cast(string) a[0].tbl[0..<a[0].ntbl], o, a[0].cols - 3);
+  a[0].ntbl = 0;
+  out := tui_text(o); at := 0;
+  while at < out.count {
+    e := at; while e < out.count && out[e] != 10 { e += 1; }
+    cd_commit_prefixed(a, TUI_PLAIN, ifx a[0].rep_lines == 0 then "● " else "  ", "  ", cast(string) out[at..<e]);
+    a[0].rep_lines += 1;
+    at = e + 1;
+  }
+}
+
 cd_reply_commit :: (a: [] App, all: bool) {
   for guard: 0..<100000 {
     at := a[0].rep_done;
-    if at >= a[0].nrep { return; }
+    if at >= a[0].nrep { if all { cd_table_flush(a); } return; }
     nl := at; while nl < a[0].nrep && a[0].rep[nl] != 10 { nl += 1; }
     if nl >= a[0].nrep && !all { return; }
     line := cast(string) a[0].rep[at..<nl];
-    first := ifx a[0].rep_lines == 0 then "● " else "  ";
     a[0].rep_done = ifx nl < a[0].nrep then nl + 1 else nl;
+    // a table row waits for the rest of its table
+    if !a[0].plain && !a[0].md[0].in_code && tui_md_is_row(line) && a[0].ntbl + line.count + 1 <= a[0].tbl.count {
+      a[0].ntbl = cd_cat(a[0].tbl[..], a[0].ntbl, line); a[0].ntbl = cd_cat(a[0].tbl[..], a[0].ntbl, "\n");
+      continue;
+    }
+    cd_table_flush(a);
+    first := ifx a[0].rep_lines == 0 then "● " else "  ";
     shown := cd_md(a, a[0].md[..], line);
     if shown.count == 0 && line.count > 0 { continue; }      // a code fence
     cd_commit_prefixed(a, TUI_PLAIN, first, "  ", shown);
