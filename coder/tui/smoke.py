@@ -371,6 +371,30 @@ def verbs(check):
         ra, rb = replay(), replay()
         check("replay: recorded gateway streams run through the loop with no credentials, byte-identical each time",
               ra[0] == 0 and ra == rb and '"text":"It printed replay-check."' in ra[1] and '"label":"Bash(echo replay-check)"' in ra[1])
+        # each Microcoder ending through coder run (chapter 9), from replayed responses
+        def mhttp(content, status=200):
+            if status != 200:
+                return "HTTP/2 %d \r\ncontent-type: application/json\r\n\r\n{\"error\":{\"code\":%d,\"message\":\"overloaded\"}}\n" % (status, status)
+            chunk = {"choices": [{"delta": {"content": content, "role": "assistant"}, "index": 0}], "object": "chat.completion.chunk"}
+            last = {"choices": [{"delta": {"content": ""}, "finish_reason": "stop", "index": 0}], "object": "chat.completion.chunk",
+                    "usage": {"prompt_tokens": 500, "completion_tokens": 40, "total_tokens": 540}}
+            return "HTTP/2 200 \r\ncontent-type: text/event-stream\r\n\r\ndata: " + json.dumps(chunk) + "\n\ndata: " + json.dumps(last) + "\n\ndata: [DONE]\n"
+        act = lambda **k: json.dumps(dict({"rationale": "r", "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}, **k))
+        endings = {}
+        for name, rs in {"asked": [mhttp(act(reply="Which file?", ask="question"))], "bad_replies": [mhttp("not json")] * 3,
+                         "no_capacity": [mhttp("", 503)] * 4, "idle": [mhttp(act())] * 3}.items():
+            ed = tempfile.mkdtemp(prefix="coder-ending-")
+            for i, r in enumerate(rs):
+                with open(os.path.join(ed, "%d.http" % (i + 1)), "w") as f:
+                    f.write(r)
+            ep = subprocess.run([coder, "run", "do it", "--engine", "micro", "--json", "--cwd", ed], cwd=REPO, env=dict(renv, GW_REPLAY=ed), capture_output=True, text=True, timeout=300)
+            el = [json.loads(l) for l in ep.stdout.splitlines() if l.startswith("{")]
+            endings[name] = (ep.returncode, el[-1].get("ending") if el else "", el[-1].get("text", "") if el else "", [l["text"] for l in el if l["kind"] == "reply"])
+        check("microcoder endings through coder run: asked, bad_replies, no_capacity and idle",
+              endings["asked"] == (0, "finished", "", ["Which file?"])
+              and endings["bad_replies"][:3] == (1, "failed", "The model's replies didn't fit Microcoder's schema three times in a row.")
+              and endings["no_capacity"][:3] == (1, "failed", "No model answered: overloaded")
+              and endings["idle"][:3] == (1, "failed", "The model gave nothing to do and no reply three times in a row."))
         # goals (chapter 14): the check runs after each finished turn; its output is the next turn until it passes
         gw = tempfile.mkdtemp(prefix="coder-goal-")
         gm = subprocess.run([coder, "run", "$ echo working", "--engine", "echo", "--json", "--cwd", gw, "--goal", "test -f c || { touch c; echo c-missing; false; }"],

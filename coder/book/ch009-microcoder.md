@@ -1,13 +1,12 @@
 # 9. Microcoder
 
-> **Status: partly implemented.** The loop runs in Coder: `coder run
+> **Status: implemented.** The loop runs in Coder: `coder run
 > "TASK" --engine micro` and the terminal UI's third agent both drive
 > `coax/lib/microcoder/` through a gateway plan of Vertex Gemini Flash, the
 > Gemini API and OpenRouter. Its checks cover every ending, the state's
 > caps and the reply streaming out of a partial action. Gateway streams
 > recorded live replay through the loop with no credentials, the same each
-> time. Still to come: the endings reached through `coder run` fixtures as
-> well as unit checks.
+> time, and replayed responses reach each ending through `coder run`.
 
 Microcoder is Coder's own engine: a small loop that runs on any model we can
 reach and needs no other agent installed. It is the engine for plain
@@ -114,6 +113,14 @@ replays matched each other byte for byte apart from the session's ID,
 times and folder: the same request digest, the same command and result,
 and the reply "It printed replay-check."
 
+The smoke also reaches the endings through `coder run`, each from a few
+replayed responses written in the check: a question (`asked`, which Coder
+shows as the reply and ends as finished), three replies that aren't JSON
+(`bad_replies`), a 503 on every try (`no_capacity`) and three empty steps
+(`idle`). Each failed ending says what happened in plain words, such as "The
+model gave nothing to do and no reply three times in a row." `stopped` is
+the unit check's and the smoke's `coder stop` checks'.
+
 ## Checks
 
 ```sh
@@ -121,7 +128,8 @@ coax test coax/lib/microcoder/run.coax --library   # the loop, state, actions, t
 coax/lib/microcoder/tools_smoke.sh           # commands and views in a real directory
 coax/lib/microcoder/live.sh                  # one live run on the plan
 python3 coder/tui/smoke.py --live microcoder # two turns in the terminal UI; the second needs the first
-python3 coder/tui/smoke.py                   # the Vertex recording replayed twice, with no credentials
+python3 coder/tui/smoke.py                   # the Vertex recording replayed twice, with no credentials;
+                                             # asked, bad_replies, no_capacity and idle through coder run
 ```
 
 ## Dependencies
@@ -138,7 +146,8 @@ python3 coder/tui/smoke.py                   # the Vertex recording replayed twi
   logs, apart from the session's ID, times and folder.
 - [x] Each ending is reached by a scripted check
   (`loop.coax`: "asked, no_capacity, idle and stopped", "three replies in
-  a row that fail the schema").
+  a row that fail the schema"), and all but `stopped` also through `coder
+  run` with replayed responses.
 
 ## Sources
 
