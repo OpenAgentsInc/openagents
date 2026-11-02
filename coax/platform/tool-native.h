@@ -23,6 +23,7 @@ int64_t cxargs_len(int64_t i);
 int64_t cxargs_byte(int64_t i, int64_t j);
 int64_t cxtool_err(int64_t byte);
 int64_t cxtool_err_flush(void);
+int64_t cxtool_out_flush(void);
 int64_t cxtool_os(void);
 #ifdef COAX_coax_v_u8_DEFINED
 #ifndef COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74

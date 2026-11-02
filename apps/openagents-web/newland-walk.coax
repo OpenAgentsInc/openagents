@@ -452,6 +452,7 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   s[0].playtest = none; s[0].network_box = none; s[0].walk_box = none; s[0].gal_box = none; s[0].gal_open = none; s[0].gal_over = -1;
   v := land_scene(out, 0, s, c, feet, f.p, f.t, f.motion);
   v = wk_you(out, v, s, c, f.p, f.motion);
+  v = local_agents(out, v, s, c, mid, f.p, f.t);   // Verse OS: the machine's own agents (newland-local.coax)
   scene_end := v;
   if s[0].card != CARD_NONE {
     s[0].card_t += f.step;

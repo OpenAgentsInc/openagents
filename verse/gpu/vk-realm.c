@@ -126,9 +126,43 @@ static char *online_facts(char *text, size_t *n, const char *dir) {
   return out;
 }
 
+// --activity FILE (docs/os/2026-11-02-verse-os.md, V5): every input marks the person present, and
+// the file's time is set to now at most once a second, so the session can tell how long the Verse
+// has been left alone (os/verse-pylon-policy.coax decides what that means).
+static const char *activity;
+static volatile int touched;
+static double touched_at;
+static void touch_activity(double now) {
+  if (!activity || !touched || now - touched_at < 1) return;
+  touched = 0; touched_at = now;
+  int fd = open(activity, O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
+  if (fd >= 0) { futimens(fd, NULL); close(fd); }
+}
+// --agents FILE (V4): the agents on this machine, as verse-session writes them (os/verse-agents.coax);
+// read again when the file's time changes (looked at once a second) and sent to the realm as
+// message 610, which the Grid draws as figures by the spawn (newland-local.coax).
+#define RH_AGENTS_KIND 610
+static const char *agents_file;
+static long long agents_mtime;
+static double agents_at;
+static char *slurp(const char *path, size_t *n);
+static void agents_poll(double now) {
+  if (!agents_file || now - agents_at < 1) return;
+  agents_at = now;
+  struct stat st;
+  if (stat(agents_file, &st)) return;
+  long long m = (long long)st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec;
+  if (m == agents_mtime) return;
+  size_t n;
+  char *text = slurp(agents_file, &n);
+  if (!text) return;
+  agents_mtime = m;
+  rh_send(&H, RH_AGENTS_KIND, text, n);
+  free(text);
+}
 // evdev's keys (verse/kms/evdev.h) into the face; the codes are host.js's KEYS.
-bool realm_key(void *state, int key) { (void)state; coaxial_key(H.state, key, 0); return true; }
-bool realm_key_up(void *state, int key) { (void)state; coaxial_key_up(H.state, key, 0); return true; }
+bool realm_key(void *state, int key) { (void)state; touched = 1; coaxial_key(H.state, key, 0); return true; }
+bool realm_key_up(void *state, int key) { (void)state; touched = 1; coaxial_key_up(H.state, key, 0); return true; }
 
 // The spec's files that are the realm's: its uniforms, stores and particles (with their
 // capacities, so the buffers hold what they grow to) and the pack's indices.
@@ -160,8 +194,9 @@ static const void *file(void *user, const char *name, size_t *size, size_t *cap)
 // The pointer: the mice into the face, as host.js's pointer and wheel events, and drawn as a
 // dot after the frame's own vertices (fx_vs's 16 floats: the place in device pixels and the
 // place in the stroke, its shape, tint and bar; a stroke of length 0 is a round glow).
-static void to_pointer(void *user, float x, float y, int phase) { (void)user; coaxial_pointer(H.state, x, y, phase, 0, 1); }
-static void to_wheel(void *user, float dy) { (void)user; coaxial_wheel(H.state, dy); }
+static void to_pointer(void *user, float x, float y, int phase) { (void)user; touched = 1; coaxial_pointer(H.state, x, y, phase, 0, 1); }
+static void to_wheel(void *user, float dy) { (void)user; touched = 1; coaxial_wheel(H.state, dy); }
+static void to_moved(void *user) { (void)user; touched = 1; }
 static Mice mice;
 static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
@@ -284,7 +319,7 @@ static void press_keys(const char *keys, int frame) {
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
-                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE]\n");
+                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE] [--activity FILE] [--agents FILE]\n");
     return 2;
   }
   const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL,*raw_out=NULL;
@@ -316,7 +351,9 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--out")) out = val, i++;
     else if (!strcmp(a, "--raw-out")) raw_out = val, i++;
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
-    else if (!strcmp(a, "--leave-to")) leave_to = atoi(val), i++;  // the boot session: hold this VT, show VT N on leaving
+    else if (!strcmp(a, "--leave-to")) leave_to = atoi(val), i++;
+    else if (!strcmp(a, "--activity")) activity = val, touched = 1, i++;   // the person present: this file's time
+    else if (!strcmp(a, "--agents")) agents_file = val, i++;                // the machine's agents, sent as they change  // the boot session: hold this VT, show VT N on leaving
     else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
@@ -387,7 +424,7 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {to_pointer_window, to_wheel, NULL};
+    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved};
     vkw_open(&v, &win, "Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
     screen.period = win.period;
     vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
@@ -497,6 +534,7 @@ int main(int argc, char **argv) {
       } else {
         if (keyboards_read(NULL)) { why = "Escape was held"; break; }
         mice_read(&mice, (float)w, (float)h, &to);
+        if (mice.moved) touched = 1;
       }
       if (demo) {
         // walk forward and turn now and then, for a run nobody plays
@@ -507,6 +545,8 @@ int main(int argc, char **argv) {
       }
       vkp_wait(&v, &p);
       t = now_s();
+      touch_activity(t);
+      agents_poll(t);
       double dt = t - prev;
       prev = t;
       if (dt > 0.1) dt = 0.1;

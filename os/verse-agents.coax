@@ -1,0 +1,117 @@
+// Verse OS: the agents on this machine, for the Grid to show as figures (docs/os/2026-11-02-verse-os.md,
+// V4). Every few seconds the session looks at where each agent writes its transcript — Claude Code
+// (~/.claude/projects/PROJECT/SESSION.jsonl), Codex (~/.codex/sessions/YYYY/MM/DD/*.jsonl) and Coder
+// (~/.openagents/coder/sessions/*.jsonl) — and a transcript written in the last two minutes is an
+// agent at work; in the last half hour, one waiting. It writes them, newest first, as
+// `agent=KIND|PROJECT|STATE|MINUTES` lines, which vk-realm sends the Grid when they change
+// (--agents; apps/openagents-web/newland-local.coax draws them). Only names and times: nothing of
+// what a transcript says leaves its file. Loaded by os/verse-session.coax.
+
+cxproc_wall_us :: () -> int #foreign;
+
+VA_MAX :: 8;
+VA_WORKING_S :: 120;    // written this recently: at work
+VA_WAITING_S :: 1800;   // this recently: waiting for you
+VA_WORKING :: 1; VA_WAITING :: 2;
+
+VaAgent :: struct { kind: [16] u8; kind_n: int; project: [48] u8; project_n: int; age_s: int; }
+VaList :: struct { a: [VA_MAX] VaAgent; n: int; }
+
+// A transcript's state by its age: working, waiting, or 0 (gone: not shown).
+va_state :: (age_s: int) -> int {
+  if age_s < 0 { return VA_WORKING; }   // a clock a little ahead of the file's: just written
+  if age_s <= VA_WORKING_S { return VA_WORKING; }
+  if age_s <= VA_WAITING_S { return VA_WAITING; }
+  return 0;
+}
+#test "an agent's state by its transcript's age" {
+  #assert va_state(0) == VA_WORKING && va_state(VA_WORKING_S) == VA_WORKING && va_state(VA_WORKING_S + 1) == VA_WAITING;
+  #assert va_state(VA_WAITING_S) == VA_WAITING && va_state(VA_WAITING_S + 1) == 0 && va_state(-3) == VA_WORKING;
+}
+// Claude Code names a project's directory by its path with / as -: its last part is the project.
+va_project_of :: (dir: string) -> string {
+  i := dir.count;
+  while i > 0 && dir[i - 1] != '-' { i -= 1; }
+  return ifx i < dir.count then dir[i..<dir.count] else dir;
+}
+#test "a project from Claude Code's directory name" {
+  #assert va_project_of("-home-christopherdavid-openagents") == "openagents" && va_project_of("plain") == "plain" && va_project_of("-a-") == "-a-";
+}
+// Keeps the newest VA_MAX: an agent goes in by its age, the oldest falls out.
+va_add :: (l: [] VaList, kind: string, project: string, age_s: int) {
+  if va_state(age_s) == 0 { return; }
+  at := l[0].n;
+  while at > 0 && l[0].a[at - 1].age_s > age_s { at -= 1; }
+  if at >= VA_MAX { return; }
+  last := ifx l[0].n < VA_MAX then l[0].n else VA_MAX - 1;
+  i := last; while i > at { l[0].a[i] = l[0].a[i - 1]; i -= 1; }
+  g: VaAgent;
+  g.kind_n = 0; for c: kind { if g.kind_n < 16 { g.kind[g.kind_n] = c; g.kind_n += 1; } }
+  g.project_n = 0; for c: project { if g.project_n < 48 && c != '|' && c != '\n' { g.project[g.project_n] = c; g.project_n += 1; } }
+  g.age_s = age_s;
+  l[0].a[at] = g;
+  if l[0].n < VA_MAX { l[0].n += 1; }
+}
+#test "newest first, at most eight, the stale left out" {
+  l: [1] VaList;
+  va_add(l[..], "claude", "a", 50); va_add(l[..], "codex", "b", 10); va_add(l[..], "coder", "c", 100000); va_add(l[..], "claude", "d", 30);
+  #assert l[0].n == 3 && l[0].a[0].age_s == 10 && l[0].a[1].age_s == 30 && l[0].a[2].age_s == 50;
+  for k: 0..<10 { va_add(l[..], "claude", "x", 5); }
+  #assert l[0].n == VA_MAX && l[0].a[0].age_s == 5 && l[0].a[VA_MAX - 1].age_s == 5;
+  va_add(l[..], "claude", "late", 900);
+  #assert l[0].a[VA_MAX - 1].age_s == 5;
+}
+va_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+// The lines for the Grid.
+va_text :: (l: [] VaList, out: [] u8) -> int {
+  n := 0;
+  for k: 0..<l[0].n {
+    g := l[0].a[k];
+    n = va_put(out, n, "agent="); n = va_put(out, n, cast(string) g.kind[0..<g.kind_n]); n = va_put(out, n, "|");
+    n = va_put(out, n, cast(string) g.project[0..<g.project_n]); n = va_put(out, n, "|");
+    n = va_put(out, n, ifx va_state(g.age_s) == VA_WORKING then "working|" else "waiting|");
+    nb: [24] u8; n = va_put(out, n, vs_num(ifx g.age_s > 0 then g.age_s / 60 else 0, nb[..])); n = va_put(out, n, "\n");
+  }
+  return n;
+}
+#test "the lines" {
+  l: [1] VaList; va_add(l[..], "claude", "openagents", 30); va_add(l[..], "codex", "coder", 600);
+  b: [512] u8; n := va_text(l[..], b[..]);
+  #assert cast(string) b[0..<n] == "agent=claude|openagents|working|0\nagent=codex|coder|waiting|10\n";
+}
+
+// The transcripts in one directory (names ending .jsonl), each an agent of kind for project.
+va_scan_dir :: (l: [] VaList, dir: string, kind: string, project: string, now_s: int) {
+  fl: [1] FsList; pb: [4096] u8;
+  n := fs_list(dir, fl[..]);
+  for i: 0..<ifx n > 0 then n else 0 {
+    e := fs_entry(fl[..], i);
+    if e.count < 7 || e[e.count - 6..<e.count] != ".jsonl" { continue; }
+    m := fs_mtime_ns(fs_join(dir, e, pb[..]));
+    if m > 0 { va_add(l, kind, project, now_s - m / 1000000000); }
+  }
+}
+// Every agent under home, now.
+va_scan :: (l: [] VaList, home: string) {
+  l[0].n = 0;
+  now_s := cxproc_wall_us() / 1000000;
+  b: [4] [4096] u8; pl: [1] FsList;
+  // Claude Code: a directory per project
+  cl := fs_join(home, ".claude/projects", b[0][..]);
+  np := fs_list(cl, pl[..]);
+  for i: 0..<ifx np > 0 then np else 0 { e := fs_entry(pl[..], i); va_scan_dir(l, fs_join(cl, e, b[1][..]), "claude", va_project_of(e), now_s); }
+  // Codex: by date; today's and yesterday's directories are enough for half an hour
+  cx := fs_join(home, ".codex/sessions", b[0][..]);
+  yl: [1] FsList; ny := fs_list(cx, yl[..]);
+  for y: 0..<ifx ny > 0 then ny else 0 {
+    yd := fs_join(cx, fs_entry(yl[..], y), b[1][..]);
+    ml: [1] FsList; nm := fs_list(yd, ml[..]);
+    for m: 0..<ifx nm > 0 then nm else 0 {
+      md := fs_join(yd, fs_entry(ml[..], m), b[2][..]);
+      dl: [1] FsList; nd := fs_list(md, dl[..]);
+      for d: 0..<ifx nd > 0 then nd else 0 { va_scan_dir(l, fs_join(md, fs_entry(dl[..], d), b[3][..]), "codex", "codex", now_s); }
+    }
+  }
+  // Coder
+  va_scan_dir(l, fs_join(home, ".openagents/coder/sessions", b[0][..]), "coder", "coder", now_s);
+}

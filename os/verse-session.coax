@@ -13,6 +13,10 @@
 // `CLI nostr new` (--cli PATH, default DIR/openagents), keeps its words and npub in memory, writes
 // them with the boot lines to a file in $XDG_RUNTIME_DIR (memory, the user's alone), and opens the
 // same realm again with `--facts-once`: vk-realm reads the file, removes it, and wipes its copies.
+// The Pylon (V5), off unless --pylon: vk-realm sets DIR/activity's time on every input
+// (--activity); once a second this session asks os/verse-pylon-policy.coax (#authority) whether
+// to run `CLI pylon start --model M` (--pylon-model, default psionic-toy; --pylon-source names the
+// checkout with scripts/join-pylon.sh) or `CLI pylon stop`, and does what it says.
 // DIR is what `verse/gpu/realm.sh HOST install DIR` keeps: a directory per realm (its vk-realm,
 // drawdir and given) and the travel file (slug:module pairs). --tty N waits for ttyN to show
 // first (default: start at once); --leave-to VT is the VT shown on leaving (default 1); --state
@@ -25,6 +29,13 @@
 #load "../coax/lib/sys/args.coax";
 #load "../coax/lib/sys/proc.coax";
 #load "verse-boot.coax";
+#load "verse-pylon-policy.coax";
+#load "verse-agents.coax";
+
+cxtool_out_flush :: () -> int #foreign;
+// The session's log is its stdout, kept by the login (verse-session.log): each line written out at
+// once, so a reboot or a kill doesn't lose the last of them.
+vs_flush :: () { r := cxtool_out_flush(); }
 
 VS_TRAVELLED :: 3;       // vk-realm's status when the realm opened another (--go)
 VS_FOREVER :: 31536000;  // vk-realm --seconds: a year, so only the person ends it
@@ -127,19 +138,80 @@ vs_has_realm :: (dir: string, m: string) -> bool {
   return fs_exists(fs_join(d, "vk-realm", c[..]));
 }
 
-// Waits until ttyN shows (n 0: at once).
-vs_wait_for :: (n: int) {
+// Waits until ttyN shows (n 0: at once), the Pylon's clock running meanwhile.
+vs_wait_for :: (n: int, py: [] VsPylon) {
   if n <= 0 { return; }
   active: [64] u8;
   while true {
     k := fs_read("/sys/class/tty/tty0/active", active[..]);
     if k > 0 && vs_shows(cast(string) active[0..<k], n) { return; }
-    proc_sleep(500);
+    vs_pylon_tick(py);
+    proc_sleep(1000);
   }
 }
 
 // One realm on the screen: its exit status, its lines passed through to this program's stdout.
 VS_IDENTITY :: "verse-os-identity";
+
+// The Pylon's state as this session knows it: whether it may serve, whether it started one, when
+// you last touched the Verse, and when it last stopped one.
+VsPylon :: struct {
+  allowed: bool; running: bool;
+  input_ms: int; mtime: int; stopped_ms: int;
+  cli: [4096] u8; cli_n: int; model: [64] u8; model_n: int; source: [4096] u8; source_n: int;
+  activity: [4096] u8; activity_n: int;
+  // the agents on this machine (verse-agents.coax), for the Grid: where they go, and when last looked
+  home: [1024] u8; home_n: int; agents: [4096] u8; agents_n: int; agents_ms: int;
+  last: [2048] u8; last_n: int;
+}
+// Every five seconds: the agents, written for vk-realm (--agents) only when they changed.
+vs_agents_tick :: (p: [] VsPylon) {
+  now := proc_now_ms();
+  if p[0].agents_n == 0 || (p[0].agents_ms > 0 && now - p[0].agents_ms < 5000) { return; }
+  p[0].agents_ms = now;
+  l: [1] VaList; va_scan(l[..], cast(string) p[0].home[0..<p[0].home_n]);
+  t: [2048] u8; n := va_text(l[..], t[..]);
+  same := n == p[0].last_n;
+  if same { for i: 0..<n { if t[i] != p[0].last[i] { same = false; break; } } }
+  if same && fs_exists(cast(string) p[0].agents[0..<p[0].agents_n]) { return; }
+  // the file is never empty: an empty list is one line that says so
+  body := ifx n > 0 then cast(string) t[0..<n] else "agents=none\n";
+  if fs_write(cast(string) p[0].agents[0..<p[0].agents_n], body) { for i: 0..<n { p[0].last[i] = t[i]; } p[0].last_n = n; }
+}
+vs_fill :: (out: [] u8, s: string) -> int { n := 0; for c: s { if n < out.count { out[n] = c; n += 1; } } return n; }
+// One `CLI pylon VERB`: whether it said yes.
+vs_pylon_run :: (p: [] VsPylon, verb: string) -> bool {
+  h := proc_new(); if h < 0 { return false; }
+  ok := proc_arg(h, cast(string) p[0].cli[0..<p[0].cli_n]) && proc_arg(h, "pylon") && proc_arg(h, verb);
+  if verb == "start" { ok = ok && proc_arg(h, "--model") && proc_arg(h, cast(string) p[0].model[0..<p[0].model_n]); }
+  if p[0].source_n > 0 { eb: [4200] u8; en := vs_fill(eb[..], "OPENAGENTS_SOURCE="); for i: 0..<p[0].source_n { if en < 4200 { eb[en] = p[0].source[i]; en += 1; } } ok = ok && proc_env(h, cast(string) eb[0..<en]); }
+  if !ok || proc_start(h) != 0 { d := proc_release(h); return false; }
+  c := proc_close_stdin(h);
+  line: [1024] u8;
+  while true { n := proc_line(h, 60000, line[..]); if n < 0 && n != PROC_TOO_LONG { break; } }
+  status := proc_wait(h, 10000);
+  d := proc_release(h);
+  return status == 0;
+}
+// Once a second: the time since your last input, the policy's word, and the command it asks for.
+vs_pylon_tick :: (p: [] VsPylon) {
+  vs_agents_tick(p);
+  if !p[0].allowed && !p[0].running { return; }
+  now := proc_now_ms();
+  m := fs_mtime_ns(cast(string) p[0].activity[0..<p[0].activity_n]);
+  if m > 0 && m != p[0].mtime { p[0].mtime = m; p[0].input_ms = now; }
+  idle := (now - p[0].input_ms) / 1000;
+  since := ifx p[0].stopped_ms < 0 then -1 else (now - p[0].stopped_ms) / 1000;
+  d := pylon_decide(p[0].allowed, p[0].running, idle, since);
+  if d == PYLON_START {
+    if vs_pylon_run(p, "start") { p[0].running = true; print("verse-session: % s away; the Pylon serves the mesh\n", idle); vs_flush(); }
+    else { p[0].stopped_ms = now; print("verse-session: the Pylon did not start; trying again later\n"); vs_flush(); }
+  }
+  if d == PYLON_STOP {
+    r := vs_pylon_run(p, "stop"); p[0].running = false; p[0].stopped_ms = now;
+    print("verse-session: you are back; the Pylon stopped%\n", ifx r then "" else " (its stop said no)"); vs_flush();
+  }
+}
 
 // The words and npub from `openagents nostr new`'s report ("words W1 ... W12", "npub npub1..."),
 // as facts: their length, 0 when the report has no twelve words or no npub.
@@ -179,7 +251,7 @@ vs_wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
 vs_identity :: (cli: string, facts: string, home: string) -> bool {
   h := proc_new(); if h < 0 { return false; }
   ok := proc_arg(h, cli) && proc_arg(h, "nostr") && proc_arg(h, "new");
-  if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", cli); return false; }
+  if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", cli); vs_flush(); return false; }
   c := proc_close_stdin(h);
   report: [4096] u8; rn := 0; line: [1024] u8;
   while true {
@@ -199,17 +271,17 @@ vs_identity :: (cli: string, facts: string, home: string) -> bool {
   vs_wipe(report[..]);
   wrote := status == 0 && m > 0 && fs_write(facts, cast(string) out[0..<n + m]);
   vs_wipe(out[..]);
-  if status == 0 && m == 0 { print("verse-session: % nostr new gave no words\n", cli); }
+  if status == 0 && m == 0 { print("verse-session: % nostr new gave no words\n", cli); vs_flush(); }
   return wrote;
 }
 
-vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string, facts: string) -> int {
+vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string, facts: string, py: [] VsPylon) -> int {
   b: [6] [4096] u8;
   rdir := fs_join(dir, realm, b[0][..]);
   drawdir_text: [4096] u8; given_text: [4096] u8;
   nd := fs_read(fs_join(rdir, "drawdir", b[1][..]), drawdir_text[..]);
   ng := fs_read(fs_join(rdir, "given", b[2][..]), given_text[..]);
-  if nd <= 0 || ng <= 0 { print("verse-session: % has no drawdir or given\n", realm); return -1; }
+  if nd <= 0 || ng <= 0 { print("verse-session: % has no drawdir or given\n", realm); vs_flush(); return -1; }
   dw: [VS_WORDS] string; gw: [VS_WORDS] string;
   ndw := vs_words(cast(string) drawdir_text[0..<nd], dw[..]);
   ngw := vs_words(cast(string) given_text[0..<ng], gw[..]);
@@ -222,17 +294,20 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   if facts.count > 0 { ok = ok && proc_arg(h, ifx vs_is_secret(facts) then "--facts-once" else "--facts") && proc_arg(h, facts); }
   if window.count > 0 { ok = ok && proc_arg(h, window); }
   else { ok = ok && proc_arg(h, "--leave-to") && proc_arg(h, leave_to); }
+  ok = ok && proc_arg(h, "--activity") && proc_arg(h, cast(string) py[0].activity[0..<py[0].activity_n]);
+  ok = ok && proc_arg(h, "--agents") && proc_arg(h, cast(string) py[0].agents[0..<py[0].agents_n]);
   ok = ok && proc_arg(h, "--seconds");
   sb: [24] u8; ok = ok && proc_arg(h, vs_num(VS_FOREVER, sb[..]));
   if state.count > 0 { ok = ok && proc_arg(h, "--net") && proc_arg(h, state); }
   ok = ok && proc_cwd(h, rdir);
-  if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", realm); return -1; }
+  if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", realm); vs_flush(); return -1; }
   c := proc_close_stdin(h);
   line: [65536] u8;
   while true {
-    n := proc_line(h, -1, line[..]);
+    n := proc_line(h, 1000, line[..]);
     if n == PROC_EOF || n == PROC_ERROR { break; }
     if n >= 0 { print("%\n", cast(string) line[0..<n]); }
+    if n == PROC_TIMEOUT { vs_pylon_tick(py); }
   }
   status := proc_wait(h, -1);
   e: [4096] u8; t := proc_stderr(h, e[..]);
@@ -250,7 +325,7 @@ vs_num :: (n: int, out: [] u8) -> string {
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  usage := "usage: verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once] [--window | --fullscreen]";
+  usage := "usage: verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once] [--window | --fullscreen] [--run DIR] [--cli PATH] [--pylon [--pylon-model M] [--pylon-source DIR]]";
   if !args_load(a[..]) { tool_errln(usage); return 2; }
   hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
   if args_has(a[..], "--print-boot") {
@@ -274,48 +349,67 @@ tool_main :: () -> int #export_c {
   if state.count > 0 && !args_has(a[..], "--first") { nk := fs_read(realm_file, kept_b[..]); if nk > 0 { kept = cast(string) kept_b[0..<nk]; } }
   kw: [2] string; kn := vs_words(kept, kw[..]);
   cur := vs_copy(cur_b[..], vs_start(kept, args_value(a[..], "--first", "newland"), kn == 1 && vs_has_realm(dir, kw[0])));
-  if !vs_has_realm(dir, cur) { print("verse-session: no realm % in %\n", cur, dir); return 1; }
-  go := fs_join(dir, "go", b[1][..]);
+  if !vs_has_realm(dir, cur) { print("verse-session: no realm % in %\n", cur, dir); vs_flush(); return 1; }
+  // what the session writes (the travel slug, the boot lines, your activity) goes to --run, so DIR
+  // may be read only (an image's /nix/store); --run defaults to DIR
+  run := args_value(a[..], "--run", dir);
+  if run != dir { mr := fs_mkdir(run); }
+  go := fs_join(run, "go", b[1][..]);
   // the boot lines, for the session's first realm
-  boot := fs_join(dir, "boot.facts", b[3][..]);
+  boot := fs_join(run, "boot.facts", b[3][..]);
   bo: [1] VbOut; vb_lines(bo[..], "", home);
   first_run := fs_write(boot, cast(string) bo[0].b[0..<bo[0].n]);
   cli_b: [4096] u8; cli := args_value(a[..], "--cli", fs_join(dir, "openagents", cli_b[..]));
   rt_b: [1024] u8; rt := proc_getenv("XDG_RUNTIME_DIR", rt_b[..]);
   sec_b: [1200] u8; secret := vs_cat(sec_b[..], rt, "/verse-identity.facts");
   secret_next := false;
+  // the Pylon: off unless --pylon
+  py: [1] VsPylon;
+  py[0].allowed = args_has(a[..], "--pylon"); py[0].stopped_ms = -1; py[0].input_ms = proc_now_ms();
+  py[0].cli_n = vs_fill(py[0].cli[..], cli);
+  py[0].model_n = vs_fill(py[0].model[..], args_value(a[..], "--pylon-model", "psionic-toy"));
+  py[0].source_n = vs_fill(py[0].source[..], args_value(a[..], "--pylon-source", ""));
+  ab: [4096] u8; py[0].activity_n = vs_fill(py[0].activity[..], fs_join(run, "activity", ab[..]));
+  py[0].mtime = fs_mtime_ns(cast(string) py[0].activity[0..<py[0].activity_n]);
+  py[0].home_n = vs_fill(py[0].home[..], home);
+  agb: [4096] u8; py[0].agents_n = vs_fill(py[0].agents[..], fs_join(run, "agents.facts", agb[..]));
+  vs_agents_tick(py[..]);   // the first list before the first realm opens
   while true {
-    if window.count == 0 { vs_wait_for(tty); }
+    if window.count == 0 { vs_wait_for(tty, py[..]); }
     r := fs_remove(go);
     if state.count > 0 { r = fs_mkdir(state); kept_ok := fs_write(realm_file, cur); }
-    status := vs_run(dir, cur, leave_to, state, go, window, ifx secret_next then secret else ifx first_run then boot else "");
+    status := vs_run(dir, cur, leave_to, state, go, window, ifx secret_next then secret else ifx first_run then boot else "", py[..]);
     first_run = false; secret_next = false;
     slug_b: [256] u8; ns := fs_read(go, slug_b[..]);
     slug := ifx ns > 0 then cast(string) slug_b[0..<ns] else "";
     w: [2] string; if vs_words(slug, w[..]) == 1 { slug = w[0]; } else { slug = ""; }
     // the Grid asked for an identity: make it, and open the realm again to show its words once
     if status == VS_TRAVELLED && slug == VS_IDENTITY {
-      if rt.count > 0 && vs_identity(cli, secret, home) { print("verse-session: identity made; showing its words once\n"); secret_next = true; }
-      else { print("verse-session: no identity made\n"); }
+      if rt.count > 0 && vs_identity(cli, secret, home) { print("verse-session: identity made; showing its words once\n"); vs_flush(); secret_next = true; }
+      else { print("verse-session: no identity made\n"); vs_flush(); }
       continue;
     }
     m := vs_module_of(travel, slug);
     next := vs_after(status, m, m.count > 0 && vs_has_realm(dir, m));
     if next.count > 0 {
-      print("verse-session: % opened % (%)\n", cur, slug, next);
+      print("verse-session: % opened % (%)\n", cur, slug, next); vs_flush();
       nb: [256] u8; nn := vs_copy(nb[..], next);
       cur = vs_copy(cur_b[..], nn);
       continue;
     }
-    if status == VS_TRAVELLED { print("verse-session: % opened %, which is not native here; staying\n", cur, slug); continue; }
-    print("verse-session: % ended (status %)\n", cur, status);
-    if once { return ifx status == 0 then 0 else 1; }
+    if status == VS_TRAVELLED { print("verse-session: % opened %, which is not native here; staying\n", cur, slug); vs_flush(); continue; }
+    print("verse-session: % ended (status %)\n", cur, status); vs_flush();
+    if once {
+      // the session ends: a Pylon it started stops with it
+      if py[0].running { stopped := vs_pylon_run(py[..], "stop"); py[0].running = false; print("verse-session: the session ended; the Pylon stopped\n"); vs_flush(); }
+      return ifx status == 0 then 0 else 1;
+    }
     // a failure that comes back at once must not spin: a second before the next try
     proc_sleep(1000);
     // the person left to another VT: wait for this one to show again (vs_wait_for), then resume
     if tty > 0 {
       active: [64] u8; k := fs_read("/sys/class/tty/tty0/active", active[..]);
-      while k > 0 && vs_shows(cast(string) active[0..<k], tty) { proc_sleep(500); k = fs_read("/sys/class/tty/tty0/active", active[..]); }
+      while k > 0 && vs_shows(cast(string) active[0..<k], tty) { vs_pylon_tick(py[..]); proc_sleep(1000); k = fs_read("/sys/class/tty/tty0/active", active[..]); }
     }
   }
   return 0;

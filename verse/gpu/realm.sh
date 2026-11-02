@@ -27,6 +27,9 @@
 #                                                    session that runs them (docs/os/2026-11-02-verse-os.md
 #                                                    V0); DIR is replaced whole, the old one kept until the
 #                                                    new one is in place
+#   verse/gpu/realm.sh HOST ship DIR                 the generated tree only (C, specs, packs, the protocol
+#                                                    sources), built by nothing: os/nix/pkgs/verse-realms.nix
+#                                                    builds it into the image (HOST is unused; say local)
 #   HOST local (or localhost) builds and runs here, with no ssh.
 #   verse/gpu/realm.sh HOST net                      the network (verse/native/net.coax, the approved
 #                                                    TLS): one request by the helper, then the first
@@ -53,8 +56,8 @@ mode="${2:?usage: realm.sh HOST check|screen|window|net [options]}"
 there() { if [[ "$host" == local || "$host" == localhost ]]; then bash -c "$1"; else ssh -o BatchMode=yes "$host" "$1"; fi; }
 shift 2
 dest=""
-if [[ "$mode" == install ]]; then dest="${1:?usage: realm.sh HOST install DIR}"; shift; fi
-case "$mode" in check|screen|net|window|install) ;; *) echo "realm.sh: unknown mode $mode" >&2; exit 2 ;; esac
+if [[ "$mode" == install || "$mode" == ship ]]; then dest="${1:?usage: realm.sh HOST $mode DIR}"; shift; fi
+case "$mode" in check|screen|net|window|install|ship) ;; *) echo "realm.sh: unknown mode $mode" >&2; exit 2 ;; esac
 renderer="${VERSE_GPU_RENDERER:-shared}"
 case "$renderer" in shared|legacy) ;; *) echo "realm.sh: VERSE_GPU_RENDERER must be shared or legacy" >&2; exit 2 ;; esac
 check_sizes="${VERSE_GPU_CHECK_SIZES-320x180 2560x1440 3840x2160}"
@@ -165,6 +168,11 @@ automation=""
 [[ " $args " == *" --demo "* ]] && automation=native-demo
 first="${realms[0]}"
 
+if [[ "$mode" == ship ]]; then
+  rm -rf "$dest" && mkdir -p "$dest" && cp -a "$work/ship/." "$dest/"
+  echo "realm.sh: the tree for $(cat "$work/ship/realms") is in $dest"
+  exit 0
+fi
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/ship" -cf - . | there "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; tar -x -C \"\$d\" 2>/dev/null; cd \"\$d\"
 nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validation-layers openssl wayland wayland-scanner wayland-protocols --run '

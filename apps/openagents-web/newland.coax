@@ -21,6 +21,7 @@
 #load "newland-walkers.coax";
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
 #load "newland-boot.coax";   // Verse OS's boot sequence over it, when the machine's session asks
+#load "newland-local.coax";  // and the agents on that machine, standing by the spawn
 #load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
@@ -82,6 +83,7 @@ land_capture_age :: (s:[]LandState)->int {
 }
 // PAGE facts carry the browser's wall clock as a generic host effect.
 coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c {
+  if s.count==1 && kind==LOCAL_KIND && text.count<=4096 {local_message(s[0].local[..],text);return;}
   if s.count!=1 || kind!=600 || text.count>4096 {return;}
   boot_facts(s[0].boot[..],text);
   from:=0;
@@ -151,6 +153,7 @@ LandState :: struct {
   gal_box: Box; gal_open: Box; gal_over: int; gal_sel: int; gal_down: bool;
   gal_x: [PLANETS] f32; gal_y: [PLANETS] f32; gal_r: [PLANETS] f32;
   boot: [1] LandBoot;   // Verse OS's boot lines (newland-boot.coax), none on the website
+  local: [1] LocalAgents;   // the machine's own agents (newland-local.coax), none on the website
 }
 CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3; CARD_PYLON :: 4; CARD_NETWORK :: 5;
 

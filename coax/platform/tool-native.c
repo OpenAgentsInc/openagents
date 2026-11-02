@@ -34,6 +34,8 @@ int64_t cxtool_err(int64_t byte) {
   return fputc((int)byte, stderr) == EOF ? -1 : 0;
 }
 int64_t cxtool_err_flush(void) { return fflush(stderr) == 0 ? 0 : -1; }
+/* stdout's buffer written out now: a long-running tool's log keeps its lines if it is killed. */
+int64_t cxtool_out_flush(void) { return fflush(stdout) == 0 ? 0 : -1; }
 
 /* The terminal on stdin and stdout, for a full-screen tool. */
 static struct termios g_term_saved;

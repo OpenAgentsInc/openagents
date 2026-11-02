@@ -16,6 +16,8 @@ let
   cfg = config.verseos.session;
   tty = toString cfg.tty;
   stateDir = if cfg.stateDir == null then "" else cfg.stateDir;
+  # the realms: a package (an image) or a directory realm.sh install keeps (a machine you develop on)
+  dir = if cfg.package != null then "${cfg.package}/share/verse-os" else cfg.dir;
 in
 {
   options.verseos.session = {
@@ -46,8 +48,19 @@ in
       description = "The VT shown when you leave the Verse (Escape held a second).";
     };
 
+    package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The realms built by Nix (os/nix/pkgs/verse-realms.nix). When set, `dir` is
+        its share/verse-os, read only, and what the session writes goes to
+        $XDG_RUNTIME_DIR/verse-os.
+      '';
+    };
+
     dir = lib.mkOption {
       type = lib.types.str;
+      default = "";
       example = "/home/alice/.local/share/verse-os/current";
       description = ''
         What `verse/gpu/realm.sh local install DIR` keeps: a directory per
@@ -83,6 +96,10 @@ in
         '';
       }
       {
+        assertion = cfg.package != null || cfg.dir != "";
+        message = "verseos.session needs the realms: set package (an image) or dir (realm.sh local install DIR).";
+      }
+      {
         assertion = cfg.tty != cfg.leaveTo;
         message = "verseos.session.leaveTo is the Verse's own VT (${tty}); name the one to leave to.";
       }
@@ -97,10 +114,11 @@ in
 
     programs.bash.loginShellInit = lib.mkAfter ''
       if [ "$(tty)" = "/dev/tty${tty}" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$USER" = "${cfg.user}" ] \
-        && [ -x "${cfg.dir}/verse-session" ]; then
+        && [ -x "${dir}/verse-session" ]; then
+        run="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/verse-os"
         log="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/verse-session.log"
         export VK_DRIVER_FILES="''${VK_DRIVER_FILES:-$(ls /run/opengl-driver/share/vulkan/icd.d/*.json 2>/dev/null | head -1)}"
-        "${cfg.dir}/verse-session" --dir "${cfg.dir}" --first "${cfg.first}" --tty ${tty} \
+        "${dir}/verse-session" --dir "${dir}" --run "$run" --first "${cfg.first}" --tty ${tty} \
           --leave-to ${toString cfg.leaveTo} ${lib.optionalString (stateDir != "") "--state \"${stateDir}\""} \
           </dev/null >"$log" 2>&1
       fi

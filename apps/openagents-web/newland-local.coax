@@ -1,0 +1,97 @@
+// Verse OS: the agents on your own machine, standing in the Grid by the spawn (docs/os/2026-11-02-verse-os.md,
+// V4). The machine's session (os/verse-agents.coax) sends them as message 610, one line each,
+// `agent=KIND|PROJECT|STATE|MINUTES` (STATE working or waiting), newest first; a new message
+// replaces the last. They stand in an arc seven metres ahead of where you arrive, past the
+// terminal, facing you: one at work with a hand raised to its work, one waiting with its arms
+// down, each named over its head. The website never sends 610, so it never shows them.
+// Loaded by newland.coax; newland-walk.coax draws them after you.
+
+LOCAL_MAX :: 8;
+LOCAL_KIND :: 610;
+LocalAgent :: struct { kind: [16] u8; kind_n: int; project: [48] u8; project_n: int; working: bool; minutes: int; }
+LocalAgents :: struct { a: [LOCAL_MAX] LocalAgent; n: int; }
+
+// One agent= line into slot k: whether it was well formed.
+local_line :: (l: [] LocalAgents, k: int, line: string) -> bool {
+  bars: [3] int; nb := 0;
+  for i: 0..<line.count { if line[i] == '|' && nb < 3 { bars[nb] = i; nb += 1; } }
+  if nb != 3 || bars[0] < 1 || bars[1] <= bars[0] + 1 { return false; }
+  st := line[bars[1] + 1..<bars[2]];
+  if st != "working" && st != "waiting" { return false; }
+  m := 0; mins := line[bars[2] + 1..<line.count];
+  if mins.count < 1 || mins.count > 6 { return false; }
+  for c: mins { if c < '0' || c > '9' { return false; } m = m * 10 + cast(int) (c - '0'); }
+  g: LocalAgent;
+  g.kind_n = lo_int(bars[0], 16); for i: 0..<g.kind_n { g.kind[i] = line[i]; }
+  g.project_n = lo_int(bars[1] - bars[0] - 1, 48); for i: 0..<g.project_n { g.project[i] = line[bars[0] + 1 + i]; }
+  g.working = st == "working"; g.minutes = m;
+  l[0].a[k] = g;
+  return true;
+}
+local_message :: (l: [] LocalAgents, text: string) {
+  n := 0; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    if e - i > 6 && text[i..<i + 6] == "agent=" && n < LOCAL_MAX && local_line(l, n, text[i + 6..<e]) { n += 1; }
+    i = e + 1;
+  }
+  l[0].n = n;
+}
+#test "the machine's agents: in order, the malformed left out, a new list replacing the last" {
+  l: [1] LocalAgents;
+  local_message(l[..], "agent=claude|openagents|working|0\nagent=bad\nagent=codex|coder|waiting|12\nagent=x|y|sleeping|1\n");
+  #assert l[0].n == 2 && l[0].a[0].working && !l[0].a[1].working && l[0].a[1].minutes == 12;
+  #assert cast(string) l[0].a[0].kind[0..<l[0].a[0].kind_n] == "claude" && cast(string) l[0].a[1].project[0..<l[0].a[1].project_n] == "coder";
+  local_message(l[..], "agents=none\n");
+  #assert l[0].n == 0;
+  local_message(l[..], "agent=a|b|working|1x\nagent=|b|working|1\nagent=a||working|1\nagent=a|b|working|\n");
+  #assert l[0].n == 0;
+}
+
+// Where agent k of n stands, in the world's metres from the places' middle: an arc seven metres
+// ahead of the spawn, a metre and a half apart, centred on your line of sight.
+local_place :: (k: int, n: int) -> Fv {
+  face: f32 = WK_SPAWN_FACE;
+  fx := sin(face); fz := cos(face);                      // ahead, as the player's yaw is
+  rx := fz; rz := -fx;                                   // to the right
+  side := (cast(f32) k - cast(f32) (n - 1) * 0.5) * 1.5;
+  return fv(WK_SPAWN_X + fx * 7 + rx * side, 0, WK_SPAWN_Z + fz * 7 + rz * side);
+}
+#test "they stand ahead of you, side by side" {
+  a := local_place(0, 2); b := local_place(1, 2); m := local_place(0, 1);
+  d := sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
+  #assert d > 1.49 && d < 1.51;
+  ahead := sqrt((m.x - WK_SPAWN_X) * (m.x - WK_SPAWN_X) + (m.z - WK_SPAWN_Z) * (m.z - WK_SPAWN_Z));
+  #assert ahead > 6.99 && ahead < 7.01;
+}
+
+local_agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen, t: f32) -> int {
+  l := s[0].local[..];
+  if l[0].n == 0 { return at; }
+  v := at;
+  sh: Shape; sh.size = 0.95;
+  k := verse_figure_skeleton(sh);
+  you := wk_at(mid, WK_SPAWN_X, 0, WK_SPAWN_Z);
+  for a: 0..<l[0].n {
+    g := l[0].a[a];
+    w := local_place(a, l[0].n);
+    at_grid := wk_at(mid, w.x, w.y, w.z);
+    yaw := angle_of(you.x - at_grid.x, you.z - at_grid.z);
+    pose := verse_figure_gait(Rig.person, Gait.stand, 0, t * 1.4 + cast(f32) a);
+    if g.working { pose.turn[P_R_SHOULDER] = fv(-1.1 - 0.15 * sin(t * 3.1 + cast(f32) a), 0, -0.2); pose.turn[P_R_ELBOW] = fv(-0.5, 0, 0); }
+    tint := ink(p, ifx g.working then INK_BLUE else INK_PALE);
+    top: [1] Spot;
+    v = figure(out, v, c, k, pose, at_grid.x, at_grid.z, yaw, tint, ifx g.working then 1.0f32 else 0.6f32, p, top[..]);
+    if top[0].ok {
+      name: [80] u8; n := 0;
+      kind := cast(string) g.kind[0..<g.kind_n];
+      n = app(name[..], n, ifx kind == "claude" then "CLAUDE CODE" else ifx kind == "codex" then "CODEX" else ifx kind == "coder" then "CODER" else kind);
+      n = app(name[..], n, " · "); n = app(name[..], n, cast(string) g.project[0..<g.project_n]);
+      v = put_centred(out, v, cast(string) name[0..<n], top[0].x, top[0].y - 16 * p.d, 7 * p.d, chrome(ink(p, INK_BRIGHT)));
+      st: [32] u8; sn := 0;
+      if g.working { sn = app(st[..], 0, "AT WORK"); } else { sn = app(st[..], 0, "WAITING "); sn = app_int(st[..], sn, g.minutes); sn = app(st[..], sn, " MIN"); }
+      v = put_centred(out, v, cast(string) st[0..<sn], top[0].x, top[0].y - 4 * p.d, 6 * p.d, ink(p, ifx g.working then INK_BLUE else INK_DIM));
+    }
+  }
+  return v;
+}

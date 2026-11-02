@@ -64,6 +64,26 @@ on coderos-4080: the page there fails to fetch its engine when DevTools serves
 it (one 900 KB DevTools message breaks the connection; a local URL is refused
 as "failed to fetch"). Run it on the Mac.
 
+## Verse OS V7: build and boot the image on a second machine (2026-11-02)
+
+The image evaluates (`nix flake check ./os/nix`) and its realms package
+builds, but the disk itself was not built here, to keep the machine free for
+the other work on it. On a free machine with an AMD or Intel GPU and TPM2:
+`REALM="newland verse everglade" verse/gpu/realm.sh local ship os/nix/ship`,
+then `nix build ./os/nix#nixosConfigurations.verse-os-image.config.system.build.image`,
+write the image to a USB disk, and boot it. It should reach the Grid on tty1
+with no key pressed. Two choices for you: the host that serves update
+versions (`verseos.image.updateUrl`, now `https://openagents.com/verse-os/`),
+and whether `/home` may be encrypted with TPM2 alone or should ask for a
+passphrase.
+
+## Verse OS V5: let this machine serve as a Pylon when idle (2026-11-02)
+
+`verse-session --pylon` starts `openagents pylon start --model M` after ten
+minutes without input and stops it when you touch a key. It is off unless you
+pass `--pylon` (and `--pylon-source` with this checkout). Say whether
+coderos-4080 should, and with which model.
+
 ## Verse OS V2: which Spark wallet runs on Linux (2026-11-02)
 
 Verse OS makes your Nostr identity in the Grid (docs/os/2026-11-02-verse-os.md,

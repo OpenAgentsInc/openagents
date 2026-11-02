@@ -1,0 +1,52 @@
+// Verse OS: when the machine serves the mesh as a Pylon (docs/os/2026-11-02-verse-os.md, V5). The
+// GPU is yours while you are in the Verse; when you have left it alone long enough, the session
+// lends it to the mesh, and the moment you touch a key or the mouse it takes it back. It spends
+// power and earns money, so it is #authority: these rules decide, and os/verse-session.coax only
+// runs `openagents pylon start` and `stop` when they say so.
+//   - Off unless the owner turned it on (--pylon): a machine never serves by default.
+//   - Never while you are playing: any input within PYLON_IDLE_S keeps it stopped.
+//   - Stop at once when you come back: no grace period at your expense.
+//   - After a stop, wait PYLON_REST_S before the next start, so a twitchy hand on the mouse does
+//     not start and stop a model load over and over.
+#authority;
+
+PYLON_IDLE_S :: 600;    // ten minutes with no key or mouse before the GPU is lent
+PYLON_REST_S :: 300;    // five minutes between a stop and the next start
+
+PYLON_KEEP :: 0; PYLON_START :: 1; PYLON_STOP :: 2;
+
+// What to do now. idle_s: seconds since your last input (-1 when none was ever seen: the session
+// just started, which is not idleness). since_stop_s: seconds since the last stop (-1: never).
+pylon_decide :: (allowed: bool, running: bool, idle_s: int, since_stop_s: int) -> int {
+  if !allowed { return ifx running then PYLON_STOP else PYLON_KEEP; }
+  away := idle_s >= PYLON_IDLE_S;
+  if running { return ifx away then PYLON_KEEP else PYLON_STOP; }
+  if !away { return PYLON_KEEP; }
+  if since_stop_s >= 0 && since_stop_s < PYLON_REST_S { return PYLON_KEEP; }
+  return PYLON_START;
+}
+
+#test "off unless allowed, and a running Pylon is stopped when it is not" {
+  #assert pylon_decide(false, false, 100000, -1) == PYLON_KEEP;
+  #assert pylon_decide(false, true, 100000, -1) == PYLON_STOP;
+  #assert pylon_decide(false, true, 0, 0) == PYLON_STOP;
+}
+#test "it starts only after ten minutes away" {
+  #assert pylon_decide(true, false, PYLON_IDLE_S - 1, -1) == PYLON_KEEP;
+  #assert pylon_decide(true, false, PYLON_IDLE_S, -1) == PYLON_START;
+  #assert pylon_decide(true, false, -1, -1) == PYLON_KEEP;
+  #assert pylon_decide(true, false, 0, -1) == PYLON_KEEP;
+}
+#test "you coming back stops it at once" {
+  #assert pylon_decide(true, true, 0, -1) == PYLON_STOP;
+  #assert pylon_decide(true, true, PYLON_IDLE_S - 1, 10) == PYLON_STOP;
+  #assert pylon_decide(true, true, PYLON_IDLE_S, -1) == PYLON_KEEP;
+  #assert pylon_decide(true, true, -1, -1) == PYLON_STOP;
+}
+#test "a rest after a stop" {
+  #assert pylon_decide(true, false, PYLON_IDLE_S, PYLON_REST_S - 1) == PYLON_KEEP;
+  #assert pylon_decide(true, false, PYLON_IDLE_S, PYLON_REST_S) == PYLON_START;
+  #assert pylon_decide(true, false, PYLON_IDLE_S, 0) == PYLON_KEEP;
+  #assert pylon_decide(true, false, PYLON_IDLE_S * 10, -1) == PYLON_START;
+}
+#test "the constants" { #assert PYLON_IDLE_S == 600 && PYLON_REST_S == 300 && PYLON_KEEP != PYLON_START && PYLON_START != PYLON_STOP && PYLON_KEEP != PYLON_STOP; }

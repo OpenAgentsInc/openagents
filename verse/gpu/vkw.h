@@ -26,6 +26,7 @@ typedef struct {
   void (*pointer)(void *user, float x, float y, int phase);  // 0 down, 1 move while down, 2 up
   void (*wheel)(void *user, float dy);                        // CSS pixels, 100 a notch
   void *user;
+  void (*moved)(void *user);                                  // any motion: the person is there
 } VkwTo;
 
 typedef struct {
@@ -112,6 +113,7 @@ static void vkw_pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed
   vkw_->x = (float)wl_fixed_to_double(x);
   vkw_->y = (float)wl_fixed_to_double(y);
   if (vkw_->down && vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, 1);
+  if (vkw_->to.moved) vkw_->to.moved(vkw_->to.user);
 }
 static void vkw_pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
   (void)d; (void)p; (void)serial; (void)time;
