@@ -9,9 +9,15 @@ paste, walks history with Up, then quits with Ctrl-C and checks the exit.
 
 Test-only harness; the program under test is Coax.
 """
-import os, pty, select, signal, struct, sys, time, fcntl, termios
+import os, pty, re, select, signal, struct, sys, time, fcntl, termios
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+STYLE = re.compile(rb"\x1b\[[0-9;?<>]*[@-~]")
+
+
+def shown(out):
+    """The output without style sequences: what the text says."""
+    return STYLE.sub(b"", bytes(out))
 REPO = os.path.dirname(os.path.dirname(HERE))
 
 
@@ -32,14 +38,14 @@ def live():
 
     def read_until(needle, seconds):
         end = time.time() + seconds
-        while time.time() < end and needle.encode() not in out:
+        while time.time() < end and needle.encode() not in shown(out):
             r, _, _ = select.select([fd], [], [], 0.1)
             if r:
                 try:
                     out.extend(os.read(fd, 65536))
                 except OSError:
                     break
-        return needle.encode() in out
+        return needle.encode() in shown(out)
 
     steps = [("banner", read_until("/help for commands.", 600))]
     os.write(fd, b"Remember the word heliotrope. Reply with only: noted\r")
@@ -88,7 +94,7 @@ def main():
     def read_until(needle, seconds):
         end = time.time() + seconds
         while time.time() < end:
-            if needle.encode() in out:
+            if needle.encode() in shown(out):
                 return True
             r, _, _ = select.select([fd], [], [], 0.1)
             if r:
@@ -96,7 +102,7 @@ def main():
                     out.extend(os.read(fd, 65536))
                 except OSError:
                     break
-        return needle.encode() in out
+        return needle.encode() in shown(out)
 
     def send(b):
         os.write(fd, b)

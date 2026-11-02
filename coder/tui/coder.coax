@@ -22,6 +22,8 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/tui/tui.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "diff.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -49,6 +51,12 @@ App :: struct {
   lv: [1] TuiLive;
   rows_buf: [1] TuiRows;
   wrap_buf: [1] TuiRows;
+  md: [1] TuiMd;                 // the reply's Markdown state (a code block open)
+  md_out: [65536] u8;
+  // Edit and Write calls shown as diffs once they have run
+  df_pending: [1] DfPending;
+  df_table: [] DfTable;
+  df_file: [2097152] u8;
   keys: [1] TuiKeys;
   ed: [1] TuiEditor;
   inb: [8192] u8; nin: int; last_in_ms: int;
@@ -123,7 +131,9 @@ cd_draw :: (a: [] App) {
     // the reply's unfinished line, right under the transcript
     if a[0].nrep > a[0].rep_done {
       first := ifx a[0].rep_lines == 0 then "● " else "  ";
-      w := tui_rows_wrap(r, TUI_PLAIN, first, "  ", cast(string) a[0].rep[a[0].rep_done..<a[0].nrep], cols);
+      peek_b: [1] TuiMd; peek := peek_b[..]; peek[0] = a[0].md[0];     // a partial line does not move the state
+      shown := cd_md(a, peek, cast(string) a[0].rep[a[0].rep_done..<a[0].nrep]);
+      if shown.count > 0 { w := tui_rows_wrap(r, TUI_PLAIN, first, "  ", shown, cols); }
     }
     r[0].pad_at = r[0].n;
     // status and any question, just above the composer
@@ -161,6 +171,15 @@ cd_now :: (a: [] App) -> int { return cxproc_now_ms(); }
 cd_reply_add :: (a: [] App, s: string) { for c: s { if a[0].nrep < a[0].rep.count { a[0].rep[a[0].nrep] = c; a[0].nrep += 1; } } }
 
 // Commits whole lines of the reply; with all, the rest too.
+// A reply line as the terminal shows it: Markdown rendered to styles, or
+// as written with --print. "" for a line that shows nothing (a code fence).
+cd_md :: (a: [] App, st: [] TuiMd, line: string) -> string {
+  if a[0].plain { return line; }
+  o_b: [1] TuiOut; o := o_b[..]; o[0].b = a[0].md_out[..];
+  if !tui_md_line(st, line, o, a[0].cols - 3) { return ""; }
+  return tui_text(o);
+}
+
 cd_reply_commit :: (a: [] App, all: bool) {
   for guard: 0..<100000 {
     at := a[0].rep_done;
@@ -169,9 +188,11 @@ cd_reply_commit :: (a: [] App, all: bool) {
     if nl >= a[0].nrep && !all { return; }
     line := cast(string) a[0].rep[at..<nl];
     first := ifx a[0].rep_lines == 0 then "● " else "  ";
-    cd_commit_prefixed(a, TUI_PLAIN, first, "  ", line);
-    a[0].rep_lines += 1;
     a[0].rep_done = ifx nl < a[0].nrep then nl + 1 else nl;
+    shown := cd_md(a, a[0].md[..], line);
+    if shown.count == 0 && line.count > 0 { continue; }      // a code fence
+    cd_commit_prefixed(a, TUI_PLAIN, first, "  ", shown);
+    a[0].rep_lines += 1;
   }
 }
 
@@ -214,6 +235,7 @@ cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output:
 cd_start :: (a: [] App, msg: string) {
   a[0].running = true; a[0].started_ms = cd_now(a); a[0].steps = 0;
   a[0].nrep = 0; a[0].rep_done = 0; a[0].rep_lines = 0;
+  a[0].md[0].in_code = false;
   a[0].turns += 1;
   if msg.count > 2 && msg[0] == '$' && msg[1] == ' ' { cd_command_start(a, cast(string) msg[2..<msg.count]); return; }
   if a[0].engine == ENGINE_ECHO {
@@ -287,6 +309,7 @@ cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 cd_claude_options :: (q: [] ClQuery, cwd: string, model: string) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
+  o[0].permission_handler = true;        // permission requests come to the y/a/n prompt
   o[0].cwd = cwd;
   if model.count > 0 { o[0].model = model; }
   cl_remove_env(o[..], "ANTHROPIC_API_KEY");
@@ -324,6 +347,10 @@ cd_tool_label :: (a: [] App, name: string, input: string, out: [] u8) -> string 
   if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "pattern"); }
   if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "url"); }
   if arg.count == 0 { arg = cl_str(a[0].q[0].ar[..], input, "description"); }
+  // a path inside the working directory, relative to it
+  if a[0].cwd.count > 0 && arg.count > a[0].cwd.count + 1 && cast(string) arg[0..<a[0].cwd.count] == a[0].cwd && arg[a[0].cwd.count] == '/' {
+    arg = cast(string) arg[a[0].cwd.count + 1..<arg.count];
+  }
   if arg.count > 0 {
     n = cd_cat(out, n, "(");
     line := 0; while line < arg.count && arg[line] != 10 { line += 1; }
@@ -357,6 +384,17 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
       label := cd_tool_label(a, cl_str(q[0].ar[..], item, "name"), cl_raw(item, "input"), lb[..]);
       cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", label);
       a[0].steps += 1;
+      name := cl_str(q[0].ar[..], item, "name");
+      if name == "Edit" || name == "Write" {
+        input := cl_raw(item, "input");
+        dp := a[0].df_pending[..];
+        dp[0].write = name == "Write";
+        dp[0].nid = cd_cat(dp[0].id[..], 0, cl_str(q[0].ar[..], item, "id"));
+        dp[0].npath = cd_cat(dp[0].path[..], 0, cl_str(q[0].ar[..], input, "file_path"));
+        dp[0].nold = cd_cat(dp[0].old[..], 0, ifx dp[0].write then "" else cl_str(q[0].ar[..], input, "old_string"));
+        dp[0].nnext = cd_cat(dp[0].next[..], 0, cl_str(q[0].ar[..], input, ifx dp[0].write then "content" else "new_string"));
+        dp[0].active = dp[0].npath > 0;
+      }
     }
     return;
   }
@@ -369,6 +407,11 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
       text := cl_str(q[0].ar[..], item, "content");
       if text.count == 0 { text = cl_str(q[0].ar[..], item, "content.0.text"); }
       bad := cl_bool(item, "is_error");
+      dp := a[0].df_pending[..];
+      if dp[0].active && cl_str(q[0].ar[..], item, "tool_use_id") == cast(string) dp[0].id[0..<dp[0].nid] {
+        dp[0].active = false;
+        if !(bad.ok && bad.value) { df_show(a, dp); continue; }
+      }
       lines := 0; for c: text { if c == 10 { lines += 1; } }
       e := 0; while e < text.count && text[e] != 10 { e += 1; }
       first := cast(string) text[0..<e];
@@ -579,6 +622,7 @@ tool_main :: () -> int #export_c {
   if args_has(args, "--version") { tool_errln(CODER_VERSION); return 0; }
   a_b: [1] App; a := a_b[..];
   q: [1] ClQuery; p: [1] ClProcess;
+  dft: [1] DfTable; a[0].df_table = dft[..];
   qline_b: [CL_LINE_MAX] u8; qarena_b: [CL_LINE_MAX] u8; qout_b: [262144] u8; scratch_b: [196608] u8;
   a[0].q = q[..]; a[0].p = p[..]; a[0].qline = qline_b[..]; a[0].qarena = qarena_b[..]; a[0].qout = qout_b[..]; a[0].scratch = scratch_b[..];
   a[0].o[0].b = a[0].ob[..];

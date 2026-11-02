@@ -66,9 +66,22 @@ tui_width :: (cp: int) -> int {
   return 1;
 }
 
+// The length of an escape sequence (ESC [ ... final) at s[i], or 0. Text
+// may carry style sequences; they take no columns and are never split.
+tui_esc_len :: (s: string, i: int) -> int {
+  if s[i] != 27 || i + 1 >= s.count || s[i + 1] != '[' { return 0; }
+  j := i + 2;
+  while j < s.count && (s[j] < 0x40 || s[j] > 0x7e) { j += 1; }
+  return ifx j < s.count then j + 1 - i else s.count - i;
+}
+
 tui_text_width :: (s: string) -> int {
   w := 0; i := 0;
-  while i < s.count { r := tui_rune(s, i); w += tui_width(r.cp); i += r.len; }
+  while i < s.count {
+    e := tui_esc_len(s, i);
+    if e > 0 { i += e; continue; }
+    r := tui_rune(s, i); w += tui_width(r.cp); i += r.len;
+  }
   return w;
 }
 
@@ -76,6 +89,8 @@ tui_text_width :: (s: string) -> int {
 tui_fit :: (s: string, cols: int) -> int {
   w := 0; i := 0;
   while i < s.count {
+    e := tui_esc_len(s, i);
+    if e > 0 { i += e; continue; }
     r := tui_rune(s, i);
     cw := tui_width(r.cp);
     if w + cw > cols { break; }
@@ -405,6 +420,16 @@ tui_rows_append :: (r: [] TuiRows, k: int, s: string) {
   for c: s { if r[0].len[k] < TUI_ROW_BYTES { r[0].text[k][r[0].len[k]] = c; r[0].len[k] += 1; } }
 }
 
+// The last style sequence in s ("" when none), to restart a wrapped span.
+tui_last_esc :: (s: string) -> string {
+  last := ""; i := 0;
+  while i < s.count {
+    e := tui_esc_len(s, i);
+    if e > 0 { last = cast(string) s[i..<i + e]; i += e; } else { i += 1; }
+  }
+  return last;
+}
+
 // Adds text wrapped to cols columns after a first-line prefix and a
 // continuation prefix of the same width; returns the rows added.
 tui_rows_wrap :: (r: [] TuiRows, style: int, first: string, cont: string, s: string, cols: int) -> int {
@@ -424,6 +449,7 @@ tui_rows_wrap :: (r: [] TuiRows, style: int, first: string, cont: string, s: str
         if sp > pos { take = sp - pos; }
       }
       k := tui_rows_add(r, style, ifx added == 0 then first else cont);
+      if pos > 0 { tui_rows_append(r, k, tui_last_esc(cast(string) line[0..<pos])); }   // the style a span had where it wrapped
       tui_rows_append(r, k, cast(string) line[pos..<pos + take]);
       added += 1; pos += take;
       if pos >= line.count { break; }
@@ -571,6 +597,331 @@ tui_live_commit :: (o: [] TuiOut, lv: [] TuiLive, style: int, s: string) {
   for c: s { if c == 10 { tui_style(o, TUI_PLAIN); tui_put(o, "\r\n"); tui_style(o, style); } else { tui_byte(o, cast(int) c); } }
   tui_style(o, TUI_PLAIN);
   tui_put(o, "\r\n");
+}
+
+// ---------------------------------------------------------------- syntax highlighting
+
+// Code colors on a dark terminal, a line at a time. Coax (and Jai, which it
+// follows) gets the full treatment: keywords, #directives, types, the names
+// a declaration defines, calls, CONSTANTS, numbers, strings and comments,
+// nested /* */ comments carried across lines. Other languages get strings,
+// numbers, comments and a shared keyword list. bg is appended to every
+// style (";48;2;R;G;B" for a diff line, or "").
+TUI_LANG_PLAIN :: 0; TUI_LANG_COAX :: 1; TUI_LANG_C :: 2; TUI_LANG_HASH :: 3;
+
+TuiHl :: struct { comment: int; }   // open /* */ depth
+
+TUI_HL_TEXT :: 0; TUI_HL_KEYWORD :: 1; TUI_HL_DIRECTIVE :: 2; TUI_HL_TYPE :: 3; TUI_HL_DEF :: 4; TUI_HL_CALL :: 5;
+TUI_HL_CONST :: 6; TUI_HL_NUMBER :: 7; TUI_HL_STRING :: 8; TUI_HL_COMMENT :: 9; TUI_HL_PUNCT :: 10;
+
+tui_hl_sgr :: (o: [] TuiOut, kind: int, bg: string) {
+  tui_byte(o, 27); tui_put(o, "[0");
+  if kind == TUI_HL_KEYWORD { tui_put(o, ";38;2;198;120;221"); }
+  else if kind == TUI_HL_DIRECTIVE { tui_put(o, ";38;2;229;192;123"); }
+  else if kind == TUI_HL_TYPE { tui_put(o, ";38;2;86;182;194"); }
+  else if kind == TUI_HL_DEF { tui_put(o, ";1;38;2;97;175;239"); }
+  else if kind == TUI_HL_CALL { tui_put(o, ";38;2;97;175;239"); }
+  else if kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { tui_put(o, ";38;2;209;154;102"); }
+  else if kind == TUI_HL_STRING { tui_put(o, ";38;2;152;195;121"); }
+  else if kind == TUI_HL_COMMENT { tui_put(o, ";3;38;2;110;118;129"); }
+  else if kind == TUI_HL_PUNCT { tui_put(o, ";38;2;150;156;168"); }
+  else { tui_put(o, ";38;2;220;223;228"); }
+  tui_put(o, bg); tui_put(o, "m");
+}
+
+// The language a fence tag or a file name means.
+tui_hl_lang :: (name: string) -> int {
+  dot := name.count; while dot > 0 && name[dot - 1] != '.' && name[dot - 1] != '/' { dot -= 1; }
+  ext := ifx dot > 0 && name[dot - 1] == '.' then cast(string) name[dot..<name.count] else name;
+  if ext == "coax" || ext == "jai" { return TUI_LANG_COAX; }
+  words1 := [24] string.["c", "h", "cc", "cpp", "rs", "rust", "js", "ts", "tsx", "jsx", "javascript", "typescript", "go", "swift", "java", "kt", "zig", "json", "css", "wgsl", "glsl", "metal", "cu", "proto"];
+  for e: words1  { if ext == e { return TUI_LANG_C; } }
+  words2 := [12] string.["py", "python", "sh", "bash", "zsh", "shell", "console", "rb", "ruby", "yaml", "yml", "toml"];
+  for e: words2  { if ext == e { return TUI_LANG_HASH; } }
+  return TUI_LANG_PLAIN;
+}
+
+tui_hl_ident_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c >= 0x80; }
+
+tui_hl_coax_keyword :: (w: string) -> bool {
+  words3 := [32] string.["struct", "union", "enum", "enum_flags", "if", "else", "ifx", "then", "while", "for", "break", "continue",
+                 "return", "defer", "switch", "case", "using", "cast", "xx", "inline", "no_inline", "remove", "it", "it_index",
+                 "size_of", "type_of", "type_info", "push_context", "or_else", "try", "operator", "trunc"];
+  for k: words3  { if w == k { return true; } }
+  return false;
+}
+
+tui_hl_coax_type :: (w: string) -> bool {
+  words4 := [20] string.["int", "u8", "u16", "u32", "u64", "s8", "s16", "s32", "s64", "f32", "f64", "float", "float32", "float64",
+                 "bool", "string", "void", "Type", "Any", "Code"];
+  for k: words4  { if w == k { return true; } }
+  return false;
+}
+
+tui_hl_other_keyword :: (w: string) -> bool {
+  words5 := [79] string.["fn", "let", "mut", "pub", "use", "mod", "impl", "struct", "enum", "trait", "match", "if", "else", "for",
+                 "while", "loop", "return", "break", "continue", "const", "static", "def", "class", "import", "from", "as",
+                 "in", "not", "and", "or", "is", "lambda", "with", "yield", "async", "await", "function", "var", "new",
+                 "this", "self", "export", "default", "type", "interface", "package", "func", "defer", "select", "case",
+                 "switch", "try", "catch", "finally", "throw", "raise", "except", "pass", "then", "fi", "do", "done",
+                 "esac", "local", "elif", "unsafe", "where", "extern", "typedef", "sizeof", "void", "true", "false",
+                 "null", "nil", "None", "True", "False", "undefined"];
+  for k: words5  { if w == k { return true; } }
+  return false;
+}
+
+tui_hl_all_caps :: (w: string) -> bool {
+  letters := 0;
+  for c: w { if c >= 'a' && c <= 'z' { return false; } if c >= 'A' && c <= 'Z' { letters += 1; } }
+  return letters >= 2;
+}
+
+// One line of code into o.
+tui_hl_line :: (st: [] TuiHl, lang: int, line: string, o: [] TuiOut, bg: string) {
+  cur := -1;
+  i := 0;
+  for guard: 0..<line.count + 1 {
+    if i >= line.count { break; }
+    c := line[i];
+    kind := TUI_HL_TEXT; e := i + 1;
+    if lang == TUI_LANG_PLAIN { kind = TUI_HL_TEXT; e = line.count; }
+    else if st[0].comment > 0 {
+      // inside /* */ (nested in Coax)
+      e = i;
+      while e < line.count && st[0].comment > 0 {
+        if e + 1 < line.count && line[e] == '*' && line[e + 1] == '/' { st[0].comment -= 1; e += 2; }
+        else if lang == TUI_LANG_COAX && e + 1 < line.count && line[e] == '/' && line[e + 1] == '*' { st[0].comment += 1; e += 2; }
+        else { e += 1; }
+      }
+      kind = TUI_HL_COMMENT;
+    }
+    else if lang != TUI_LANG_HASH && c == '/' && i + 1 < line.count && line[i + 1] == '/' { kind = TUI_HL_COMMENT; e = line.count; }
+    else if lang == TUI_LANG_HASH && c == '#' && (i == 0 || line[i - 1] == ' ' || line[i - 1] == 9) { kind = TUI_HL_COMMENT; e = line.count; }
+    else if lang != TUI_LANG_HASH && c == '/' && i + 1 < line.count && line[i + 1] == '*' { st[0].comment = 1; kind = TUI_HL_COMMENT; e = i + 2; }
+    else if c == '"' || c == '\'' || (c == '`' && lang != TUI_LANG_COAX) {
+      e = i + 1;
+      while e < line.count && line[e] != c { if line[e] == '\\' { e += 1; } e += 1; }
+      if e < line.count { e += 1; } if e > line.count { e = line.count; }
+      kind = TUI_HL_STRING;
+    }
+    else if c >= '0' && c <= '9' {
+      e = i + 1; while e < line.count && (tui_hl_ident_char(line[e]) || (line[e] == '.' && e + 1 < line.count && line[e + 1] >= '0' && line[e + 1] <= '9')) { e += 1; }
+      kind = TUI_HL_NUMBER;
+    }
+    else if c == '#' && lang != TUI_LANG_HASH && i + 1 < line.count && tui_hl_ident_char(line[i + 1]) {
+      e = i + 1; while e < line.count && tui_hl_ident_char(line[e]) { e += 1; }
+      kind = TUI_HL_DIRECTIVE;
+    }
+    else if tui_hl_ident_char(c) {
+      e = i + 1; while e < line.count && tui_hl_ident_char(line[e]) { e += 1; }
+      w := cast(string) line[i..<e];
+      n := e; while n < line.count && line[n] == ' ' { n += 1; }
+      declares := n + 1 < line.count && line[n] == ':' && line[n + 1] == ':';
+      calls := n < line.count && line[n] == '(';
+      if lang == TUI_LANG_COAX {
+        if tui_hl_coax_keyword(w) { kind = TUI_HL_KEYWORD; }
+        else if w == "true" || w == "false" || w == "null" { kind = TUI_HL_CONST; }
+        else if tui_hl_coax_type(w) { kind = TUI_HL_TYPE; }
+        else if tui_hl_all_caps(w) { kind = TUI_HL_CONST; }
+        else if c >= 'A' && c <= 'Z' { kind = TUI_HL_TYPE; }
+        else if declares { kind = TUI_HL_DEF; }
+        else if calls { kind = TUI_HL_CALL; }
+      } else {
+        if tui_hl_other_keyword(w) { kind = TUI_HL_KEYWORD; }
+        else if tui_hl_all_caps(w) { kind = TUI_HL_CONST; }
+        else if calls { kind = TUI_HL_CALL; }
+        else if c >= 'A' && c <= 'Z' { kind = TUI_HL_TYPE; }
+      }
+    }
+    else if c == ':' || c == '-' && i + 1 < line.count && line[i + 1] == '>' || c == '=' || c == ';' || c == ',' || c == '{' || c == '}' || c == '(' || c == ')' || c == '[' || c == ']' {
+      kind = TUI_HL_PUNCT;
+    }
+    if e <= i { e = i + 1; }
+    if kind != cur { tui_hl_sgr(o, kind, bg); cur = kind; }
+    tui_put(o, cast(string) line[i..<e]);
+    i = e;
+  }
+  if cur < 0 { tui_hl_sgr(o, TUI_HL_TEXT, bg); }
+}
+
+// ---------------------------------------------------------------- markdown
+
+// Markdown for a terminal, a line at a time so a streaming reply renders as
+// it arrives: headings, emphasis, inline code, code blocks, lists, quotes,
+// links, strikethrough and rules become styles and glyphs; anything it does
+// not know stays as written. The state carries what spans lines (a code
+// block). The output holds style sequences; tui_text_width skips them.
+TuiMd :: struct { in_code: bool; fence: u8; lang: int; hl: TuiHl; }
+
+TUI_MD_BOLD :: 1; TUI_MD_ITALIC :: 2; TUI_MD_CODE :: 4; TUI_MD_STRIKE :: 8; TUI_MD_LINK :: 16; TUI_MD_DIM :: 32; TUI_MD_HEAD :: 64;
+
+// The style for a set of flags, after a reset.
+tui_md_sgr :: (o: [] TuiOut, f: int) {
+  tui_byte(o, 27); tui_put(o, "[0");
+  if (f & TUI_MD_HEAD) != 0 { tui_put(o, ";1;38;2;255;255;255"); }
+  if (f & TUI_MD_BOLD) != 0 { tui_put(o, ";1"); }
+  if (f & TUI_MD_ITALIC) != 0 { tui_put(o, ";3"); }
+  if (f & TUI_MD_STRIKE) != 0 { tui_put(o, ";9"); }
+  if (f & TUI_MD_LINK) != 0 { tui_put(o, ";4;38;2;130;180;255"); }
+  if (f & TUI_MD_CODE) != 0 { tui_put(o, ";38;2;220;170;120"); }
+  else if (f & TUI_MD_DIM) != 0 { tui_put(o, ";38;2;150;150;150"); }
+  tui_put(o, "m");
+}
+
+tui_md_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80; }
+
+// Where the closing mark for a span opened at s[at] (mark of mlen bytes)
+// is, or -1: it must come later on the line, after something.
+tui_md_close :: (s: string, at: int, mark: string) -> int {
+  j := at + mark.count + 1;
+  while j + mark.count <= s.count {
+    if s[j] == '\\' { j += 2; continue; }
+    if cast(string) s[j..<j + mark.count] == mark && s[j - 1] != ' ' {
+      if mark[0] != '_' || j + mark.count >= s.count || !tui_md_word(s[j + mark.count]) { return j; }
+    }
+    j += 1;
+  }
+  return -1;
+}
+
+// Inline spans of s under the base flags.
+tui_md_inline :: (o: [] TuiOut, s: string, base: int) {
+  f := base;
+  tui_md_sgr(o, f);
+  i := 0;
+  for guard: 0..<s.count + 1 {
+    if i >= s.count { break; }
+    c := s[i];
+    if c == '\\' && i + 1 < s.count && !tui_md_word(s[i + 1]) && s[i + 1] != ' ' { tui_byte(o, cast(int) s[i + 1]); i += 2; continue; }
+    if c == '`' {
+      e := i + 1; while e < s.count && s[e] != '`' { e += 1; }
+      if e < s.count {
+        tui_md_sgr(o, f | TUI_MD_CODE); tui_put(o, cast(string) s[i + 1..<e]); tui_md_sgr(o, f);
+        i = e + 1; continue;
+      }
+    }
+    if (c == '*' || c == '_') && i + 1 < s.count && s[i + 1] == c && i + 2 < s.count && s[i + 2] != ' ' {
+      mark := ifx c == '*' then "**" else "__";
+      e := tui_md_close(s, i, mark);
+      if e > 0 {
+        tui_md_sgr(o, f | TUI_MD_BOLD); tui_md_inline_plain(o, cast(string) s[i + 2..<e], f | TUI_MD_BOLD); tui_md_sgr(o, f);
+        i = e + 2; continue;
+      }
+    }
+    if (c == '*' || c == '_') && i + 1 < s.count && s[i + 1] != ' ' && s[i + 1] != c && (i == 0 || !tui_md_word(s[i - 1])) {
+      mark := ifx c == '*' then "*" else "_";
+      e := tui_md_close(s, i, mark);
+      if e > 0 {
+        tui_md_sgr(o, f | TUI_MD_ITALIC); tui_md_inline_plain(o, cast(string) s[i + 1..<e], f | TUI_MD_ITALIC); tui_md_sgr(o, f);
+        i = e + 1; continue;
+      }
+    }
+    if c == '~' && i + 1 < s.count && s[i + 1] == '~' {
+      e := tui_md_close(s, i, "~~");
+      if e > 0 { tui_md_sgr(o, f | TUI_MD_STRIKE); tui_put(o, cast(string) s[i + 2..<e]); tui_md_sgr(o, f); i = e + 2; continue; }
+    }
+    if c == '[' {
+      e := i + 1; while e < s.count && s[e] != ']' { e += 1; }
+      if e + 1 < s.count && s[e + 1] == '(' {
+        u := e + 2; while u < s.count && s[u] != ')' { u += 1; }
+        if u < s.count {
+          tui_md_sgr(o, f | TUI_MD_LINK); tui_put(o, cast(string) s[i + 1..<e]); tui_md_sgr(o, f);
+          url := cast(string) s[e + 2..<u];
+          if url != cast(string) s[i + 1..<e] && url.count > 0 && url[0] != '#' {
+            tui_md_sgr(o, f | TUI_MD_DIM); tui_put(o, " ("); tui_put(o, url); tui_put(o, ")"); tui_md_sgr(o, f);
+          }
+          i = u + 1; continue;
+        }
+      }
+    }
+    tui_byte(o, cast(int) c); i += 1;
+  }
+  tui_csi(o, "0m");
+}
+
+// A span's inside: code and links still apply, emphasis nests by flags.
+tui_md_inline_plain :: (o: [] TuiOut, s: string, f: int) {
+  i := 0;
+  while i < s.count {
+    if s[i] == '`' {
+      e := i + 1; while e < s.count && s[e] != '`' { e += 1; }
+      if e < s.count { tui_md_sgr(o, f | TUI_MD_CODE); tui_put(o, cast(string) s[i + 1..<e]); tui_md_sgr(o, f); i = e + 1; continue; }
+    }
+    tui_byte(o, cast(int) s[i]); i += 1;
+  }
+}
+
+// Leading spaces of s.
+tui_md_indent :: (s: string) -> int { n := 0; while n < s.count && s[n] == ' ' { n += 1; } return n; }
+
+// Renders one line into o. False when the line shows nothing (a code fence).
+tui_md_line :: (st: [] TuiMd, line: string, o: [] TuiOut, cols: int) -> bool {
+  ind := tui_md_indent(line);
+  rest := cast(string) line[ind..<line.count];
+  if rest.count >= 3 && (cast(string) rest[0..<3] == "```" || cast(string) rest[0..<3] == "~~~") {
+    if !st[0].in_code {
+      st[0].in_code = true; st[0].fence = rest[0]; st[0].hl.comment = 0;
+      tag := cast(string) rest[3..<rest.count];
+      while tag.count > 0 && tag[0] == ' ' { tag = cast(string) tag[1..<tag.count]; }
+      t := 0; while t < tag.count && tag[t] != ' ' && tag[t] != '{' { t += 1; }
+      st[0].lang = tui_hl_lang(cast(string) tag[0..<t]);
+      return false;
+    }
+    if rest[0] == st[0].fence { st[0].in_code = false; return false; }
+  }
+  if st[0].in_code {
+    if st[0].lang == TUI_LANG_PLAIN { tui_md_sgr(o, TUI_MD_CODE); tui_put(o, line); }
+    else { hl_b: [1] TuiHl; hl_b[0] = st[0].hl; tui_hl_line(hl_b[..], st[0].lang, line, o, ""); st[0].hl = hl_b[0]; }
+    tui_csi(o, "0m");
+    return true;
+  }
+  // headings
+  h := 0; while h < rest.count && h < 6 && rest[h] == '#' { h += 1; }
+  if h > 0 && h < rest.count && rest[h] == ' ' {
+    tui_md_inline(o, cast(string) rest[h + 1..<rest.count], TUI_MD_HEAD);
+    return true;
+  }
+  // a rule: three or more of - * _ and nothing else
+  if rest.count >= 3 && (rest[0] == '-' || rest[0] == '*' || rest[0] == '_') {
+    rule := true; marks := 0;
+    for c: rest { if c == rest[0] { marks += 1; } else if c != ' ' { rule = false; } }
+    if rule && marks >= 3 {
+      tui_md_sgr(o, TUI_MD_DIM);
+      w := ifx cols > 4 && cols < 200 then cols else 40;
+      for i: 0..<w { tui_put(o, "─"); }
+      tui_csi(o, "0m");
+      return true;
+    }
+  }
+  // a quote
+  if rest.count >= 1 && rest[0] == '>' {
+    q := ifx rest.count > 1 && rest[1] == ' ' then 2 else 1;
+    for i: 0..<ind { tui_byte(o, ' '); }
+    tui_md_sgr(o, TUI_MD_DIM); tui_put(o, "│ ");
+    tui_md_inline(o, cast(string) rest[q..<rest.count], TUI_MD_DIM | TUI_MD_ITALIC);
+    return true;
+  }
+  // list items: - * + become a bullet; numbers stay
+  if rest.count >= 2 && (rest[0] == '-' || rest[0] == '*' || rest[0] == '+') && rest[1] == ' ' {
+    for i: 0..<ind { tui_byte(o, ' '); }
+    body := cast(string) rest[2..<rest.count];
+    if body.count >= 4 && body[0] == '[' && body[2] == ']' && body[3] == ' ' {
+      tui_put(o, ifx body[1] == 'x' || body[1] == 'X' then "☑ " else "☐ ");
+      tui_md_inline(o, cast(string) body[4..<body.count], 0);
+      return true;
+    }
+    tui_put(o, ifx ind >= 2 then "◦ " else "• ");
+    tui_md_inline(o, body, 0);
+    return true;
+  }
+  // table separator rows are drawn faint
+  if rest.count >= 3 && rest[0] == '|' {
+    sep := true; for c: rest { if c != '|' && c != '-' && c != ':' && c != ' ' { sep = false; } }
+    if sep { tui_md_sgr(o, TUI_MD_DIM); tui_put(o, line); tui_csi(o, "0m"); return true; }
+  }
+  for i: 0..<ind { tui_byte(o, ' '); }
+  tui_md_inline(o, rest, 0);
+  return true;
 }
 
 // ---------------------------------------------------------------- checks
@@ -730,4 +1081,79 @@ tui_tb :: (s: string, out: [] u8) -> string {
   #assert first + pw.count <= t.count && last + cw.count <= t.count && first < last;
   unpinned_b: [1] TuiLive; tui_live_draw(o, unpinned_b[..], r);
   #assert unpinned_b[0].drawn == 2 && unpinned_b[0].floor == 0;
+}
+
+// Renders md lines and strips the style sequences, for checks.
+tui_md_plain :: (st: [] TuiMd, line: string, out: [] u8) -> string {
+  ob: [4096] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
+  if !tui_md_line(st, line, o, 10) { return "<skip>"; }
+  t := tui_text(o); n := 0; i := 0;
+  while i < t.count { e := tui_esc_len(t, i); if e > 0 { i += e; continue; } out[n] = t[i]; n += 1; i += 1; }
+  return cast(string) out[0..<n];
+}
+
+#test "markdown: emphasis, code, links, lists, headings, quotes, fences and rules" {
+  st_b: [1] TuiMd; st := st_b[..]; b: [512] u8;
+  #assert tui_md_plain(st, "**Bash**: run `ls -la` now", b[..]) == "Bash: run ls -la now";
+  #assert tui_md_plain(st, "an *italic* and _this_ but not snake_case_name or 2*3*4", b[..]) == "an italic and this but not snake_case_name or 2*3*4";
+  #assert tui_md_plain(st, "**unclosed bold", b[..]) == "**unclosed bold";
+  #assert tui_md_plain(st, "- **Read / Write**: files", b[..]) == "• Read / Write: files";
+  #assert tui_md_plain(st, "  * nested", b[..]) == "  ◦ nested";
+  #assert tui_md_plain(st, "- [x] done", b[..]) == "☑ done";
+  #assert tui_md_plain(st, "1. first", b[..]) == "1. first";
+  #assert tui_md_plain(st, "## Core (ready now)", b[..]) == "Core (ready now)";
+  #assert tui_md_plain(st, "> quoted", b[..]) == "│ quoted";
+  #assert tui_md_plain(st, "see [the docs](https://x.y/z) and [x](#a)", b[..]) == "see the docs (https://x.y/z) and x";
+  #assert tui_md_plain(st, "~~gone~~ \\*star\\*", b[..]) == "gone *star*";
+  #assert tui_md_plain(st, "---", b[..]) == "──────────";
+  #assert tui_md_plain(st, "```coax", b[..]) == "<skip>" && st[0].in_code;
+  #assert tui_md_plain(st, "x := **y**;", b[..]) == "x := **y**;";
+  #assert tui_md_plain(st, "```", b[..]) == "<skip>" && !st[0].in_code;
+  ob: [256] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
+  ok := tui_md_line(st, "**b** `c`", o, 10);
+  #assert tui_text_width(tui_text(o)) == 3 && tui_fit(tui_text(o), 1) > 1;
+}
+
+// The kinds a highlighted line shows, one letter per byte, for checks.
+tui_hl_kinds :: (st: [] TuiHl, lang: int, line: string, out: [] u8) -> string {
+  ob: [4096] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
+  tui_hl_line(st, lang, line, o, "");
+  t := tui_text(o); n := 0; i := 0; kind: u8 = '?';
+  names := "tkdyfcCnsm,";      // text keyword directive type def call CONST (same color as numbers) number string comment punct
+  while i < t.count {
+    e := tui_esc_len(t, i);
+    if e > 0 {
+      sgr := cast(string) t[i..<i + e];
+      kind = 't';
+      for k: 0..<11 {
+        pb: [64] u8; p_b: [1] TuiOut; po := p_b[..]; po[0].b = pb[..];
+        tui_hl_sgr(po, k, "");
+        if tui_text(po) == sgr { kind = names[k]; }
+      }
+      i += e; continue;
+    }
+    out[n] = kind; n += 1; i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "highlighting: Coax declarations, keywords, types, directives, strings, numbers and comments" {
+  st_b: [1] TuiHl; st := st_b[..]; b: [256] u8;
+  k := tui_hl_kinds(st, TUI_LANG_COAX, "foo :: (a: int)", b[..]);
+  #assert k == "ffft,,t,t,tyyy,";
+  k = tui_hl_kinds(st, TUI_LANG_COAX, "#load \"x\";", b[..]);
+  #assert k == "dddddtsss,";
+  k = tui_hl_kinds(st, TUI_LANG_COAX, "if MAX_N > 10 { f(x); }", b[..]);
+  #assert k == "kktnnnnntttnnt,tc,t,,t,";
+  k = tui_hl_kinds(st, TUI_LANG_COAX, "x := 1; // done", b[..]);
+  #assert k == "tt,,tn,tmmmmmmm";
+  k = tui_hl_kinds(st, TUI_LANG_COAX, "a /* open", b[..]);
+  #assert st[0].comment == 1 && k == "ttmmmmmmm";
+  k = tui_hl_kinds(st, TUI_LANG_COAX, "still */ b", b[..]);
+  #assert st[0].comment == 0 && k == "mmmmmmmmtt";
+  k = tui_hl_kinds(st, TUI_LANG_COAX, "App :: struct", b[..]);
+  #assert k == "yyyt,,tkkkkkk";
+  k = tui_hl_kinds(st, TUI_LANG_HASH, "x = 1  # note", b[..]);
+  #assert k == "tt,tnttmmmmmm";
+  #assert tui_hl_lang("lib/tui/tui.coax") == TUI_LANG_COAX && tui_hl_lang("jai") == TUI_LANG_COAX && tui_hl_lang("rs") == TUI_LANG_C && tui_hl_lang("") == TUI_LANG_PLAIN;
 }

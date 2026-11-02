@@ -1,0 +1,208 @@
+// Edits as diffs, the way Claude Code shows them: the changed lines with
+// their numbers in the file, added lines on green and removed lines on red,
+// three lines of context around each change, and the code itself
+// highlighted (coax/lib/tui's highlighter). Write shows the first lines of
+// the new file. The line numbers come from reading the file once the tool
+// has run.
+
+DF_MAX_LINES :: 400;       // lines per side the diff compares
+DF_SHOWN :: 40;            // rows shown before "… N more lines"
+DF_CONTEXT :: 3;
+DF_ADD_BG :: ";48;2;28;66;36";
+DF_DEL_BG :: ";48;2;92;30;34";
+
+// A tool call waiting for its result: Edit (old -> new) or Write (new only).
+DfPending :: struct {
+  id: [128] u8; nid: int;
+  path: [1024] u8; npath: int;
+  old: [65536] u8; nold: int;
+  next: [65536] u8; nnext: int;
+  write: bool;
+  active: bool;
+}
+
+DfLines :: struct { at: [DF_MAX_LINES] int; end: [DF_MAX_LINES] int; n: int; more: bool; }
+
+df_split :: (s: string, l: [] DfLines) {
+  l[0].n = 0; l[0].more = false;
+  if s.count == 0 { return; }
+  at := 0;
+  for guard: 0..<s.count + 1 {
+    if l[0].n >= DF_MAX_LINES { l[0].more = true; return; }
+    e := at; while e < s.count && s[e] != 10 { e += 1; }
+    l[0].at[l[0].n] = at; l[0].end[l[0].n] = e; l[0].n += 1;
+    if e >= s.count { return; }
+    at = e + 1;
+    if at >= s.count { return; }      // a trailing newline ends the last line
+  }
+}
+
+df_line :: (s: string, l: [] DfLines, i: int) -> string { return cast(string) s[l[0].at[i]..<l[0].end[i]]; }
+
+// One row: number, sign and code, on the row's background to the edge.
+DfRow :: struct { o: [1] TuiOut; b: [8192] u8; }
+
+df_row :: (a: [] App, num: int, sign: u8, code: string, lang: int, hl: [] TuiHl) {
+  r_b: [1] DfRow; r := r_b[..]; o := r[0].o[..]; o[0].b = r[0].b[..];
+  bg := ifx sign == '+' then DF_ADD_BG else ifx sign == '-' then DF_DEL_BG else "";
+  tui_put(o, "      ");
+  tui_byte(o, 27); tui_put(o, "[0;38;2;110;118;129"); tui_put(o, bg); tui_put(o, "m");
+  nb: [16] u8; ns := ifx num > 0 then cd_itoa(num, nb[..]) else "";
+  for i: ns.count..<5 { tui_put(o, " "); }
+  tui_put(o, ns); tui_put(o, " ");
+  if sign == '+' { tui_byte(o, 27); tui_put(o, "[0;38;2;120;210;140"); tui_put(o, bg); tui_put(o, "m+"); }
+  else if sign == '-' { tui_byte(o, 27); tui_put(o, "[0;38;2;235;110;110"); tui_put(o, bg); tui_put(o, "m-"); }
+  else { tui_put(o, " "); }
+  tui_hl_line(hl, lang, code, o, bg);
+  row := tui_text(o);
+  width := a[0].cols - 1;
+  cut := tui_fit(row, width);
+  shown := cast(string) row[0..<cut];
+  pad := width - tui_text_width(shown);
+  fb: [8400] u8; fn := cd_cat(fb[..], 0, shown);
+  if bg.count > 0 { for i: 0..<pad { fn = cd_cat(fb[..], fn, " "); } }
+  fn = cd_cat(fb[..], fn, "");
+  if a[0].plain {
+    // plain output: the same row without styles
+    pn := 0; i := 0; t := cast(string) fb[0..<fn];
+    while i < t.count { e := tui_esc_len(t, i); if e > 0 { i += e; continue; } fb[pn] = t[i]; pn += 1; i += 1; }
+    fn = pn;
+  }
+  cd_commit(a, TUI_PLAIN, cast(string) fb[0..<fn]);
+}
+
+df_note :: (a: [] App, s: string) {
+  b: [2048] u8; n := cd_cat(b[..], 0, "    ⎿ "); n = cd_cat(b[..], n, s);
+  cd_commit(a, TUI_DIM, cast(string) b[0..<n]);
+}
+
+// Kinds of diff rows.
+DF_SAME :: 0; DF_DEL :: 1; DF_ADD :: 2;
+DfOps :: struct { kind: [2 * DF_MAX_LINES] u8; oi: [2 * DF_MAX_LINES] int; ni: [2 * DF_MAX_LINES] int; n: int; }
+DfTable :: struct { t: [(DF_MAX_LINES + 1) * (DF_MAX_LINES + 1)] u16; }
+
+// A line diff by longest common subsequence.
+df_ops :: (old: string, ol: [] DfLines, after: string, nl: [] DfLines, ops: [] DfOps, tb: [] DfTable) {
+  n := ol[0].n; m := nl[0].n; w := m + 1;
+  for i: 0..<n + 1 { tb[0].t[i * w + m] = 0; }
+  for j: 0..<m + 1 { tb[0].t[n * w + j] = 0; }
+  i := n - 1;
+  while i >= 0 {
+    j := m - 1;
+    while j >= 0 {
+      if df_line(old, ol, i) == df_line(after, nl, j) { tb[0].t[i * w + j] = tb[0].t[(i + 1) * w + j + 1] + 1; }
+      else {
+        x := tb[0].t[(i + 1) * w + j]; y := tb[0].t[i * w + j + 1];
+        tb[0].t[i * w + j] = ifx x >= y then x else y;
+      }
+      j -= 1;
+    }
+    i -= 1;
+  }
+  ops[0].n = 0; i = 0; j := 0;
+  while i < n || j < m {
+    k := ops[0].n;
+    if i < n && j < m && df_line(old, ol, i) == df_line(after, nl, j) { ops[0].kind[k] = DF_SAME; ops[0].oi[k] = i; ops[0].ni[k] = j; i += 1; j += 1; }
+    // removals before additions, as a reader expects
+    else if i < n && (j >= m || tb[0].t[(i + 1) * w + j] >= tb[0].t[i * w + j + 1]) { ops[0].kind[k] = DF_DEL; ops[0].oi[k] = i; ops[0].ni[k] = j; i += 1; }
+    else { ops[0].kind[k] = DF_ADD; ops[0].oi[k] = i; ops[0].ni[k] = j; j += 1; }
+    ops[0].n += 1;
+  }
+}
+
+// Where `needle` starts in the file, as a 1-based line, or 0.
+df_find_line :: (file: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > file.count { return 0; }
+  for i: 0..<file.count - needle.count + 1 {
+    if file[i] == needle[0] && cast(string) file[i..<i + needle.count] == needle {
+      line := 1; for k: 0..<i { if file[k] == 10 { line += 1; } }
+      return line;
+    }
+  }
+  return 0;
+}
+
+df_show :: (a: [] App, p: [] DfPending) {
+  path := cast(string) p[0].path[0..<p[0].npath];
+  old := cast(string) p[0].old[0..<p[0].nold];
+  after := cast(string) p[0].next[0..<p[0].nnext];
+  lang := tui_hl_lang(path);
+  rel := path;
+  if a[0].cwd.count > 0 && path.count > a[0].cwd.count + 1 && cast(string) path[0..<a[0].cwd.count] == a[0].cwd && path[a[0].cwd.count] == '/' {
+    rel = cast(string) path[a[0].cwd.count + 1..<path.count];
+  }
+  nl_b: [1] DfLines; nl := nl_b[..]; df_split(after, nl);
+  if p[0].write {
+    nb: [2048] u8; nn := cd_cat(nb[..], 0, "Wrote "); tb: [16] u8;
+    nn = cd_cat(nb[..], nn, cd_itoa(nl[0].n, tb[..])); nn = cd_cat(nb[..], nn, ifx nl[0].n == 1 then " line to " else " lines to ");
+    nn = cd_cat(nb[..], nn, rel);
+    df_note(a, cast(string) nb[0..<nn]);
+    hl_b: [1] TuiHl;
+    shown := ifx nl[0].n < 12 then nl[0].n else 12;
+    for i: 0..<shown { df_row(a, i + 1, ' ', df_line(after, nl, i), lang, hl_b[..]); }
+    if nl[0].n > shown { mb: [64] u8; mn := cd_cat(mb[..], 0, "      … "); mn = cd_cat(mb[..], mn, cd_itoa(nl[0].n - shown, tb[..])); mn = cd_cat(mb[..], mn, " more lines"); cd_commit(a, TUI_FAINT, cast(string) mb[0..<mn]); }
+    return;
+  }
+  ol_b: [1] DfLines; ol := ol_b[..]; df_split(old, ol);
+  ops_b: [1] DfOps; ops := ops_b[..];
+  if ol[0].more || nl[0].more {
+    // too long to compare line by line: all removed, then all added
+    ops[0].n = 0;
+    for i: 0..<ol[0].n { k := ops[0].n; ops[0].kind[k] = DF_DEL; ops[0].oi[k] = i; ops[0].ni[k] = 0; ops[0].n += 1; }
+    for j: 0..<nl[0].n { k := ops[0].n; ops[0].kind[k] = DF_ADD; ops[0].oi[k] = ol[0].n; ops[0].ni[k] = j; ops[0].n += 1; }
+  } else {
+    df_ops(old, ol, after, nl, ops, a[0].df_table);
+  }
+  adds := 0; dels := 0;
+  for k: 0..<ops[0].n { if ops[0].kind[k] == DF_ADD { adds += 1; } else if ops[0].kind[k] == DF_DEL { dels += 1; } }
+  // the file as it is now, for line numbers and the context around the edit
+  fn := fs_read(path, a[0].df_file[..]);
+  file := ifx fn > 0 then cast(string) a[0].df_file[0..<fn] else "";
+  start := df_find_line(file, after);
+  fl_at := 0;    // file offset of line `start`
+  if start > 0 { line := 1; while line < start && fl_at < file.count { if file[fl_at] == 10 { line += 1; } fl_at += 1; } }
+  sb: [2048] u8; sn := cd_cat(sb[..], 0, "Updated "); tb: [16] u8;
+  sn = cd_cat(sb[..], sn, rel); sn = cd_cat(sb[..], sn, " (+"); sn = cd_cat(sb[..], sn, cd_itoa(adds, tb[..]));
+  sn = cd_cat(sb[..], sn, " -"); sn = cd_cat(sb[..], sn, cd_itoa(dels, tb[..])); sn = cd_cat(sb[..], sn, ")");
+  df_note(a, cast(string) sb[0..<sn]);
+  hl_b: [1] TuiHl; hl := hl_b[..];
+  rows := 0;
+  // context before the edit, from the file
+  if start > 1 {
+    first := ifx start - DF_CONTEXT > 1 then start - DF_CONTEXT else 1;
+    at := fl_at; line := start;
+    while line > first && at > 0 { at -= 1; while at > 0 && file[at - 1] != 10 { at -= 1; } line -= 1; }
+    for ln: first..<start { e := at; while e < file.count && file[e] != 10 { e += 1; } df_row(a, ln, ' ', cast(string) file[at..<e], lang, hl); rows += 1; at = e + 1; }
+  }
+  // the edit: unchanged lines far from a change fold into "…"
+  hidden := false;
+  for k: 0..<ops[0].n {
+    if rows >= DF_SHOWN { break; }
+    kind := ops[0].kind[k];
+    if kind == DF_SAME {
+      near := false;
+      for d: 1..<DF_CONTEXT + 1 { if (k - d >= 0 && ops[0].kind[k - d] != DF_SAME) || (k + d < ops[0].n && ops[0].kind[k + d] != DF_SAME) { near = true; } }
+      if !near { if !hidden { cd_commit(a, TUI_FAINT, "      …"); hidden = true; rows += 1; } continue; }
+    }
+    hidden = false;
+    oi := ops[0].oi[k]; ni := ops[0].ni[k];
+    num := 0;
+    if start > 0 { num = ifx kind == DF_DEL then start + oi else start + ni; }
+    df_row(a, num, ifx kind == DF_ADD then '+' else ifx kind == DF_DEL then '-' else ' ',
+           ifx kind == DF_DEL then df_line(old, ol, oi) else df_line(after, nl, ni), lang, hl);
+    rows += 1;
+  }
+  // context after the edit
+  if start > 0 && rows < DF_SHOWN {
+    at := fl_at + after.count; line := start + nl[0].n;
+    if at < file.count && file[at] == 10 { at += 1; }
+    else { e := at; while e < file.count && file[e] != 10 { e += 1; } at = ifx e < file.count then e + 1 else e; }
+    for c: 0..<DF_CONTEXT {
+      if at >= file.count { break; }
+      e := at; while e < file.count && file[e] != 10 { e += 1; }
+      df_row(a, line, ' ', cast(string) file[at..<e], lang, hl); rows += 1;
+      line += 1; at = e + 1;
+    }
+  }
+  if rows >= DF_SHOWN { cd_commit(a, TUI_FAINT, "      … more lines"); }
+}
