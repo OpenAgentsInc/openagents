@@ -55,7 +55,7 @@ ground query instead of loading Aethyr's.
 | Ice Cream Man | Declared frame budget, existing rule-trace checks, and its 1/30 s rules steps on `aethyr/loop.coax` (`ice_run`, at most 4 a frame). | Input mapping and the separate boom camera in `verse/icecream/play.coax`. |
 | Hecate's Cemetery | Shared walking/camera and paid-step fetch in the actual villa face. | Flight/boat handover, special controls and the remaining floor-relative adapters. |
 | Fairy Forest | Shared walking/camera and counted frame time. | Flight in `fairy-face.c` and its recorded-session integration. |
-| Space games | Orbit League's 120 Hz steps use `aethyr/loop.coax`; both games have existing simulation/network checks. | Belt's lockstep schedule, space-camera/world-frame adapters and shared session/profile integration. |
+| Space games | Orbit League's 120 Hz steps and Belt 2200's lockstep ticks (20 a second, at most 6 a frame; a tick waiting on the partner stays owed through `loop_ran_some`) use `aethyr/loop.coax`; both games have existing simulation/network checks. | Space-camera/world-frame adapters and shared session/profile integration. |
 | Anime Lab | The new Coax stage and generated shaders are present on main. | Shared renderer adoption and a complete engine-subsystem inventory remain open; its existing renderer is explicitly tracked in `aethyr/render/adoption.coax`. |
 
 Clock migration already moved these paths onto `aethyr/loop.coax`

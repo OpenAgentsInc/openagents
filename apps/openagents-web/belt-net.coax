@@ -11,6 +11,8 @@
 
 NET_GAME :: "belt-2200";
 NET_RATE :: 20.0;         // ticks a real second
+NET_STEP_NS :: 50000000;  // one tick, 1 / NET_RATE s, in nanoseconds
+NET_CATCH_UP :: 6;        // ticks one frame may run; a longer wait drops the rest (aethyr/loop.coax)
 NET_CHECK :: 40;          // two seconds
 NET_SNAP :: 8192;
 N_GO :: 0; N_FLEET :: 1; N_BUILD :: 2; N_REFINERY :: 3; N_SPEED :: 4; N_NEW :: 5;
@@ -124,9 +126,11 @@ net_frame :: (s: [] Belt, real: f64) {
   lr_frame(L, real);
   lr_snapshot_send(L, s[0].snap[..]);
   if L[0].note_new { L[0].note_new = false; say(s, cast(string) L[0].note[0..<L[0].note_n]); }
-  s[0].net_acc += real;
-  guard := 0;
-  while s[0].net_acc >= 1.0 / NET_RATE && guard < 6 {
+  // The ticks run on Aethyr's clock (aethyr/loop.coax): NET_STEP_NS each, at most NET_CATCH_UP a
+  // frame. A tick waiting on the partner (lr_may_step) stays owed for the next frame.
+  nc := loop_accept(s[0].net_clock, real);
+  ran := 0;
+  while ran < loop_due(nc) {
     if !lr_may_step(L) { break; }
     buf: [LR_ORDER] u8; who: [1] int;
     while true {
@@ -136,9 +140,9 @@ net_frame :: (s: [] Belt, real: f64) {
     }
     net_advance(s, SPEEDS[s[0].speed] * DAY / NET_RATE);
     if lr_ticked(L) { lr_hash(L, belt_hash(s)); }
-    s[0].net_acc -= 1.0 / NET_RATE; guard += 1;
+    ran += 1;
   }
-  if s[0].net_acc > 6.0 / NET_RATE { s[0].net_acc = 6.0 / NET_RATE; }
+  s[0].net_clock = loop_ran_some(nc, ran);
   if s[0].net_nudge && lr_together(L) {
     s[0].net_nudge_t += real;
     if s[0].net_nudge_t > 5.0 { s[0].net_nudge = false; s[0].station[0].metal += 1.0; }
@@ -194,4 +198,16 @@ net_say :: (s: [] Belt, t: string) { belt_message(s, SOCKET_KIND + 4 * s[0].lock
   for f: 0..<20 { net_frame(a[..], 0.05); net_pump(a[..], b[..]); net_pump(b[..], a[..]); }
   for f: 0..<40 { if b[0].lock[0].tick < a[0].lock[0].tick { net_frame(b[..], 0.05); net_pump(b[..], a[..]); } }
   #assert a[0].lock[0].tick == b[0].lock[0].tick && belt_hash(a[..]) == belt_hash(b[..]) && a[0].t > ORBIT_2200 + 70.0 * DAY;
+  // The ticks are Aethyr's clock's steps: a 3 s stall counts as 0.1 s and runs at most
+  // NET_CATCH_UP; with the partner silent, ticks wait and stay owed, never more than the cap.
+  bt := b[0].net_clock.ticks;
+  net_frame(b[..], 3.0);
+  #assert b[0].net_clock.overlong == 1 && b[0].net_clock.ran <= NET_CATCH_UP && b[0].net_clock.ticks - bt == b[0].net_clock.ran;
+  waited := 0;
+  for f: 0..<40 {
+    net_frame(b[..], 0.05);
+    #assert b[0].net_clock.ran <= 1 && b[0].net_clock.carry_ns < (NET_CATCH_UP + 1) * NET_STEP_NS;
+    if b[0].net_clock.ran == 0 && b[0].net_clock.carry_ns >= NET_STEP_NS { waited += 1; }
+  }
+  #assert waited > 0;
 }

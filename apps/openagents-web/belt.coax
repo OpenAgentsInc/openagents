@@ -33,6 +33,7 @@
 #load "lockroom.coax";
 #load "belt-net.coax";
 #load "../../aethyr/budget.coax";
+#load "../../aethyr/loop.coax";      // the lockstep ticks' clock (belt-net.coax)
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -198,7 +199,7 @@ Belt :: struct {
   stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
   tac: [1] Tac; tac_fast: bool;   // the tactical view (belt-tactical.coax), up while a battle is on
   // a game for two over the room server (belt-net.coax, lockroom.coax)
-  lock: [1] Lock; net_applying: bool; net_acc: f64; net_nudge: bool; net_nudge_t: f64;
+  lock: [1] Lock; net_applying: bool; net_clock: FrameClock = FrameClock.{step_ns = NET_STEP_NS, max_frame_ns = 100000000, max_steps = NET_CATCH_UP}; net_nudge: bool; net_nudge_t: f64;
   snap: [NET_SNAP] u8;
 }
 

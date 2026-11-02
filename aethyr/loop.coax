@@ -101,6 +101,20 @@ loop_ran :: (c: FrameClock) -> FrameClock {
   return next;
 }
 
+// Only n of the steps due could run (a lockstep realm waiting on a peer): those n are paid,
+// and the rest stay owed in carry_ns for the next frame, whose accept caps them at max_steps
+// as any backlog. n below 0 runs none; n past the steps due runs only those.
+loop_ran_some :: (c: FrameClock, n: int) -> FrameClock {
+  paid := 0;   // at most max_steps: counted up, so neither bound has a tie to round
+  while paid < c.due && paid < n { paid += 1; }
+  next := c;
+  next.carry_ns -= paid * c.step_ns;
+  next.ticks += paid;
+  next.ran = paid;
+  next.due = 0;
+  return next;
+}
+
 // One frame in one call: accept its time, and the steps it runs.
 FrameTick :: struct { clock: FrameClock; steps: int; }
 loop_frame :: (c: FrameClock, seconds: f64) -> FrameTick {
@@ -277,3 +291,30 @@ loop_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
   #assert c.frames == fps * 5 && c.ticks >= 319 && c.ticks <= 320;
 }
 // book:end rates
+
+#test "a frame that runs only some of its steps keeps the rest owed, and the next frame caps them" {
+  c := loop_clock(50000000);   // 20 a second
+  c.max_steps = 6;
+  c = loop_accept_ns(c, 175000000);              // three steps and a half
+  #assert loop_due(c) == 3;
+  w := loop_ran_some(c, 1);                      // a peer is late: one runs
+  #assert w.ran == 1 && w.ticks == 1 && w.due == 0 && w.carry_ns == 125000000;
+  // The two left are due on the next frame with its own time.
+  w = loop_accept_ns(w, 50000000);
+  #assert loop_due(w) == 3 && w.carry_ns == 175000000 && w.stalls == 0;
+  // None runs; a long wait then piles up to the cap and no further.
+  w = loop_ran_some(w, 0);
+  #assert w.ran == 0 && w.ticks == 1 && w.carry_ns == 175000000;
+  w = loop_accept_ns(w, 300000000);
+  #assert loop_due(w) == 6 && w.overlong == 1 && w.stalls == 1 && w.dropped_ns == 100000000 && w.carry_ns == 325000000;   // 0.3 s counts as 0.25
+  // Asking for more than are due runs only those due; less than none runs none.
+  all := loop_ran_some(w, 99);
+  #assert all.ran == 6 && all.ticks == 7 && all.carry_ns == 25000000 && all.due == 0;
+  #assert all.ticks == loop_ran(w).ticks && all.carry_ns == loop_ran(w).carry_ns;
+  none := loop_ran_some(w, -2);
+  #assert none.ran == 0 && none.ticks == 1 && none.carry_ns == 325000000 && none.due == 0;
+  exact := loop_ran_some(w, 6);
+  #assert exact.ran == 6 && exact.ticks == 7;
+  five := loop_ran_some(w, 5);
+  #assert five.ran == 5 && five.ticks == 6 && five.carry_ns == 75000000;
+}

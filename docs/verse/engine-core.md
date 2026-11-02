@@ -51,6 +51,14 @@ jump's feet change their per-frame move by at most 0.008 m (gravity alone is
 0.0067 m; drawing the last step instead lurches by 0.077 m) and its camera by
 at most 0.014 m (0.062 m).
 
+A lockstep realm that must wait for a partner runs only some of a frame's
+steps: `loop_ran_some(c, n)` pays n and leaves the rest owed for the next
+frame, whose accept caps them at `max_steps` like any backlog. Belt 2200's
+two-player ticks (`belt-net.coax`, 1/20 s, at most 6 a frame) use it; its
+check stalls a frame for 3 s (it counts as 0.1 s and runs at most 6 ticks)
+and lets the partner fall silent (ticks wait, owed, never past the cap).
+Mutation: `loop.coax` 97 of 97.
+
 ## Space (`aethyr/space.coax`)
 
 A position's type is its space: `WorldPoint` (metres, where physics puts
