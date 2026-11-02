@@ -1,14 +1,14 @@
 # 17. One agent, many tasks
 
 > **Status: partly implemented.** A Router runs in Coder. Events come from
-> `coder trigger` and from GitHub sources (new labelled issues and new
-> comments). `coder router` decides each event's fate: first in code on
+> `coder trigger` and from GitHub sources (new labelled issues, new
+> comments and, with `--ci`, failed workflow runs). `coder router` decides each event's fate: first in code on
 > bounded fields, then by a System One decision. Workers are detached Coder
 > sessions, a later event on a subscribed Thread passes straight to its
 > Worker, and when a Worker ends the Router writes its reply to the outbox
 > and, for a GitHub source that asks for it, posts it on the issue. The
 > offline smoke, a live System One check and a live read-only GitHub poll
-> cover it. Still to come: chat and CI sources, a Router model for replies
+> cover it. Still to come: chat sources, a Router model for replies
 > that need more than the Worker's result, batching, inline and spill, chain
 > of recall, acting ahead, many-to-many subscriptions, and the ablation.
 
@@ -116,6 +116,12 @@ A source named `github:OWNER/REPO` is polled on every Router pass through
   becoming an event twice.
 - Comments the Router posted itself are listed in `router/posted` and never
   come back as events, so a reply can't start a loop.
+- With `"ci":true` (`coder policy add github:OWNER/REPO --ci`), each failed
+  workflow run since the cursor becomes an event addressed to the agent. Its
+  text names the workflow, the branch, the commit title and the run's link.
+  Its Thread is `github:OWNER/REPO@BRANCH`, so later failures on the same
+  branch go to the Worker already fixing it. A branch Thread has no issue, so
+  its reply stays in the outbox instead of being posted.
 
 In the live check, the Router read six hours of comments on this repository
 and dropped each one with `dropped: author not allowed`, because that

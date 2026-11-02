@@ -427,15 +427,20 @@ rt_poll_github :: (p: [] RtPaths, source: string, policy: string, json: bool) ->
   posted := cast(string) posted_b[0..<ifx pn > 0 then pn else 0];
   ghb: [1024] u8; gh := rt_gh(ghb[..]);
   count := 0;
-  for pass: 0..<2 {
+  ci := cl_bool(policy, "ci");
+  for pass: 0..<3 {
     if pass == 0 && label.count == 0 { continue; }
+    if pass == 2 && !(ci.ok && ci.value) { continue; }
     ub: [2048] u8;
     un := cd_cat(ub[..], 0, "repos/"); un = cd_cat(ub[..], un, repo);
     if pass == 0 { un = cd_cat(ub[..], un, "/issues?state=open&per_page=50&labels="); un = cd_cat(ub[..], un, label); }
-    else { un = cd_cat(ub[..], un, "/issues/comments?sort=updated&direction=asc&per_page=100"); }
-    un = cd_cat(ub[..], un, "&since="); un = cd_cat(ub[..], un, since);
+    else if pass == 1 { un = cd_cat(ub[..], un, "/issues/comments?sort=updated&direction=asc&per_page=100"); }
+    else { un = cd_cat(ub[..], un, "/actions/runs?status=failure&per_page=30"); }     // failed CI runs (chapter 17)
+    if pass == 2 { un = cd_cat(ub[..], un, "&created=%3E%3D"); } else { un = cd_cat(ub[..], un, "&since="); }
+    un = cd_cat(ub[..], un, since);
     jq := ifx pass == 0 then ".[] | {k:(\"issue:\"+(.number|tostring)), n:.number, a:.user.login, t:(.title+\"\\n\\n\"+(.body // \"\"))} | @json"
-                        else ".[] | {k:(\"comment:\"+(.id|tostring)), c:(.id|tostring), n:(.issue_url|split(\"/\")|last|tonumber), a:.user.login, t:(.body // \"\")} | @json";
+          else ifx pass == 1 then ".[] | {k:(\"comment:\"+(.id|tostring)), c:(.id|tostring), n:(.issue_url|split(\"/\")|last|tonumber), a:.user.login, t:(.body // \"\")} | @json"
+          else ".workflow_runs[] | {k:(\"run:\"+(.id|tostring)), b:.head_branch, a:(.actor.login // \"\"), t:(\"CI failed: \"+.name+\" on \"+.head_branch+\": \"+.display_title+\"\\n\"+.html_url)} | @json";
     argv := [5] string.[gh, "api", cast(string) ub[0..<un], "--jq", jq];
     out: [1048576] u8; ok: [1] bool;
     text := rt_run(argv[..], out[..], ok[..]);
@@ -456,11 +461,15 @@ rt_poll_github :: (p: [] RtPaths, source: string, policy: string, json: bool) ->
       if pass == 1 && rt_has_line(posted, cl_str(lar[..], line, "c")) { continue; }   // a reply the Router posted
       nn := cl_int(line, "n");
       tb: [16] u8; thb: [512] u8;
-      thn := cd_cat(thb[..], 0, source); thn = cd_cat(thb[..], thn, "#"); thn = cd_cat(thb[..], thn, cd_itoa(nn.value, tb[..]));
+      thn := cd_cat(thb[..], 0, source);
+      // an issue's Thread is source#N; a branch's CI failures share source@BRANCH
+      if pass == 2 { thn = cd_cat(thb[..], thn, "@"); thn = cd_cat(thb[..], thn, cl_str(lar[..], line, "b")); }
+      else { thn = cd_cat(thb[..], thn, "#"); thn = cd_cat(thb[..], thn, cd_itoa(nn.value, tb[..])); }
       idb: [128] u8; idn := cd_cat(idb[..], 0, "gh-"); idn = cd_cat(idb[..], idn, rf); idn = cd_cat(idb[..], idn, "-");
       for c: key { if idn < idb.count { idb[idn] = ifx c == ':' then '-' else c; idn += 1; } }
-      // a labelled issue was addressed to the agent by whoever labelled it; a comment is an event on the issue's Thread
-      if rt_write_trigger(p, cast(string) idb[0..<idn], source, cast(string) thb[0..<thn], cl_str(lar[..], line, "a"), pass == 0, cl_str(lar[..], line, "t")) {
+      // a labelled issue was addressed to the agent by whoever labelled it, a failed run by the policy's --ci;
+      // a comment is an event on the issue's Thread
+      if rt_write_trigger(p, cast(string) idb[0..<idn], source, cast(string) thb[0..<thn], cl_str(lar[..], line, "a"), pass != 1, cl_str(lar[..], line, "t")) {
         kb: [96] u8; kn := cd_cat(kb[..], 0, key); kn = cd_cat(kb[..], kn, "\n");
         x := fs_append(cast(string) seenp[0..<sen], cast(string) kb[0..<kn]);
         count += 1;
@@ -740,7 +749,7 @@ RT_POLICY_MODES :: [3] string.["explicit_requests_only", "candidate", "ignore"];
 RT_CHANNELS :: [2] string.["chat", "issue"];
 
 // One source's policy entry. authors is a comma-separated list ("*" for anyone).
-rt_policy_entry :: (mode: string, authors: string, engine: string, label: string, channel: string, deliver: bool, policy: string, out: [] u8) -> string {
+rt_policy_entry :: (mode: string, authors: string, engine: string, label: string, channel: string, deliver: bool, ci: bool, policy: string, out: [] u8) -> string {
   n := json_raw(out, 0, "{\"mode\":"); n = json_write_string(out, n, mode);
   n = json_raw(out, n, ",\"authors\":[");
   at := 0; k := 0;
@@ -754,6 +763,7 @@ rt_policy_entry :: (mode: string, authors: string, engine: string, label: string
   if label.count > 0 { n = json_raw(out, n, ",\"label\":"); n = json_write_string(out, n, label); }
   if channel.count > 0 { n = json_raw(out, n, ",\"channel\":"); n = json_write_string(out, n, channel); }
   if deliver { n = json_raw(out, n, ",\"deliver\":true"); }
+  if ci { n = json_raw(out, n, ",\"ci\":true"); }
   if policy.count > 0 { n = json_raw(out, n, ",\"policy\":"); n = json_write_string(out, n, policy); }
   n = json_raw(out, n, "}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
@@ -761,7 +771,7 @@ rt_policy_entry :: (mode: string, authors: string, engine: string, label: string
 
 rt_in :: (v: string, set: [] string) -> bool { for x: set { if x == v { return true; } } return false; }
 
-// coder policy list | add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel C] [--deliver] [--text POLICY] | rm NAME
+// coder policy list | add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel C] [--deliver] [--ci] [--text POLICY] | rm NAME
 cd_cmd_policy :: (args: [] Args, json: bool) -> int {
   p: [1] RtPaths;
   if !rt_init(p[..]) { tool_errln("coder policy: no $HOME"); return 1; }
@@ -792,7 +802,7 @@ cd_cmd_policy :: (args: [] Args, json: bool) -> int {
     channel := args_value(args, "--channel", "");
     if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat or issue"); return 2; }
     eb: [8192] u8;
-    entry := rt_policy_entry(mode, args_value(args, "--authors", "*"), args_value(args, "--engine", ""), args_value(args, "--label", ""), channel, args_has(args, "--deliver"), args_value(args, "--text", ""), eb[..]);
+    entry := rt_policy_entry(mode, args_value(args, "--authors", "*"), args_value(args, "--engine", ""), args_value(args, "--label", ""), channel, args_has(args, "--deliver"), args_has(args, "--ci"), args_value(args, "--text", ""), eb[..]);
     next = rt_sources_with(sources, name, entry, ob[..]);
   } else { tool_errln("coder policy: list, add or rm"); return 2; }
   if next.count == 0 || !fs_write(path, next) { tool_errln("coder policy: could not write router/sources.json"); return 1; }
@@ -839,7 +849,7 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
       ghb: [1024] u8; argv := [5] string.[rt_gh(ghb[..]), "api", "user", "--jq", ".login"];
       ub: [256] u8; ok: [1] bool; login := rt_run(argv[..], ub[..], ok[..]);
       if !ok[0] || login.count == 0 { tool_errln("coder watch: watching it; add a policy for its repository with coder policy add (gh is not logged in)"); return 0; }
-      eb: [1024] u8; entry := rt_policy_entry("explicit_requests_only", login, "", "", "issue", false, "", eb[..]);
+      eb: [1024] u8; entry := rt_policy_entry("explicit_requests_only", login, "", "", "issue", false, false, "", eb[..]);
       ob: [65536] u8; next := rt_sources_with(sources, source, entry, ob[..]);
       x := fs_write(spath, next);
       lb: [600] u8; ln := cd_cat(lb[..], 0, "Added the source "); ln = cd_cat(lb[..], ln, source); ln = cd_cat(lb[..], ln, ": only "); ln = cd_cat(lb[..], ln, login); ln = cd_cat(lb[..], ln, "'s comments reach Coder.");
@@ -897,7 +907,7 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
 
 #test "policies: entries are written and replaced by name, others kept" {
   eb: [1024] u8; ob: [4096] u8; ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  e := rt_policy_entry("candidate", "alice,bob", "claude", "", "chat", false, "Requests about this repo.", eb[..]);
+  e := rt_policy_entry("candidate", "alice,bob", "claude", "", "chat", false, false, "Requests about this repo.", eb[..]);
   #assert e == "{\"mode\":\"candidate\",\"authors\":[\"alice\",\"bob\"],\"engine\":\"claude\",\"channel\":\"chat\",\"policy\":\"Requests about this repo.\"}";
   s1 := rt_sources_with("{\"sources\":{\"local\":{\"mode\":\"ignore\",\"authors\":[\"*\"]}}}", "chat", e, ob[..]);
   #assert cl_str(ar[..], rt_source(ar[..], s1, "chat"), "mode") == "candidate" && cl_str(ar[..], rt_source(ar[..], s1, "local"), "mode") == "ignore";

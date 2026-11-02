@@ -96,7 +96,9 @@ a = sys.argv[1:]
 if a[:2] == ["api", "user"]:
     print("alice")
 elif a[:1] == ["api"]:
-    if "/issues/comments" in a[1]:
+    if "/actions/runs" in a[1]:
+        print('{"k":"run:4242","b":"main","a":"ci-bot","t":"CI failed: tests on main: Fix parser\\nhttps://github.com/c/i/actions/runs/4242"}')
+    elif "/issues/comments" in a[1]:
         print('{"k":"comment:555","c":"555","n":7,"a":"alice","t":"thanks"}')
         if os.path.exists(os.path.join(d, "gh-posted")):
             print('{"k":"comment:999","c":"999","n":7,"a":"alice","t":"the posted reply"}')
@@ -444,6 +446,18 @@ def verbs(check):
               and posted.startswith("issue comment 7 -R o/r --body **Coder** finished in") and "gh-ok" in posted)
         g4 = grouter()
         check("github: the Router's own comment is not an event", g4 == [])
+        # a CI source: with --ci, a failed workflow run is an event addressed to the agent on the branch's Thread
+        pc = subprocess.run([coder, "policy", "add", "github:c/i", "--mode", "explicit_requests_only", "--authors", "*", "--engine", "echo", "--ci"],
+                            cwd=REPO, env=genv, capture_output=True, text=True, timeout=120)
+        def crouter():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=genv, capture_output=True, text=True, timeout=300)
+            return [l for l in (json.loads(x) for x in r.stdout.splitlines() if x.startswith("{")) if l.get("source") == "github:c/i"]
+        c1 = crouter()
+        c2 = crouter()
+        check("github ci: a failed run starts a worker on the branch's Thread", pc.returncode == 0 and c1 == []
+              and any(l["fate"] == "addressed to the agent: new worker" and l.get("thread") == "github:c/i@main" for l in c2))
+        c3 = crouter()
+        check("github ci: a run seen once is not an event again", not any(l.get("thread") == "github:c/i@main" and "new worker" in l["fate"] for l in c3))
         # coder policy and coder watch: sources are edited by name; a watched Thread's events are addressed to the agent
         def cmd(*a, e=None):
             return subprocess.run([coder, *a], cwd=REPO, env=e or genv, capture_output=True, text=True, timeout=120)
