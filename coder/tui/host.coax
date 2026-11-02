@@ -1,0 +1,1100 @@
+// coder host: this computer serves NIP-HOST browser pairing and realm jobs
+// over a Nostr relay, so the realm builder on openagents.com can use the
+// person's own Coder (Coder book chapter 20, "A browser uses this computer").
+// The person's Claude Code or Codex login never leaves the computer.
+//
+//   coder host [serve] [--relay URL] [--engine E] [--for SECONDS]   serve until stopped
+//   coder host list [--json]       waiting browsers and allowed ones
+//   coder host allow ID            allow a waiting browser (7 days)
+//   coder host deny ID             refuse it
+//   coder host forget ID           revoke an allowed browser
+//   coder host key                 this computer's host key
+//   coder host call OP --host KEY [...]   a stand-in browser: one request, its reply's body on stdout
+//
+// The wire is coax/lib/nostr/host/browser.coax: NIP-HOST's direct artifact
+// binding, requests and replies as signed, NIP-44 encrypted kind 3188
+// private artifacts on wss://relay.openagents.com ($OPENAGENTS_NIP_HOST_RELAY
+// or --relay to change it). Only the person at the computer allows a
+// browser: allow, deny, list and forget are local commands, never relay
+// operations. Every thread call is admitted by host/admit.coax against the
+// current grants first. A job a browser starts is `coder run` on the
+// person's engine with --ceiling read --allow read --realm-tools: it reads
+// inside its own empty folder and uses the realm tools (`openagents mcp`),
+// and nothing else: no shell, no file writes.
+//
+// State lives in $CODER_HOME (else $HOME)/.openagents/coder/host, a mode 700
+// folder: key (the host secret, 64 hex, mode 600; never the Keychain) and
+// state.json (pairings, grants, epochs, threads).
+//
+//   coax/web/tool.sh coder/tui/host.coax ...   (coder/tui/coder.sh host ... runs this)
+// tool.sh: tls
+// tool.sh: run-steps 250000000
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/nostr/host/browser.coax";
+#load "../../coax/lib/nostr/host/admit.coax";
+#load "../../apps/openagents-cli/relay.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+
+cxterm_write :: (s: [] u8) -> int #foreign;
+cxproc_wall_us :: () -> int #foreign;
+cxproc_pid_alive :: (pid: int) -> int #foreign;
+
+HS_RELAY :: "wss://relay.openagents.com";
+HS_PAIRINGS :: 32; HS_GRANTS :: 64; HS_EPOCHS :: 64; HS_THREADS :: 128;
+HS_RETAINED :: 16; HS_REPLY_MAX :: 16384;
+HS_RUNNING_MAX :: 2;           // browser jobs running at once
+HS_STATE_MAX :: 262144;
+HS_SESSION_MAX :: 4194304;
+HS_ROTATE_S :: 90;             // a subscription's connection is replaced before the relay's 120 s
+HS_STEPS_BYTES :: 40000;       // step text in one thread_steps reply
+
+// ---------------------------------------------------------------- the relay client's needs
+
+// relay.coax (apps/openagents-cli) is the CLI's client; these are what it takes from the CLI.
+cxcli_now_s :: () -> int { return cxproc_wall_us() / 1000000; }
+wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+sign_event_at :: (secret: [] u8, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  aux: [32] u8;
+  if cxrand_draw(aux[..], 32) != 0 { return -1; }
+  work: [1] NostrSignWork; scratch: [70000] u8;
+  r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 4096 {
+    r = nostr_event_sign_step(secret, aux[..], at, kind, tags, content, work[..], scratch[..], out, false);
+    steps += 1;
+  }
+  return ifx r > 0 then r else -1;
+}
+
+// ---------------------------------------------------------------- output and text
+
+hs_out :: (s: string) {
+  ob: [8192] u8; n := 0;
+  for c: s { ob[n] = c; n += 1; if n == ob.count { r := cxterm_write(ob[0..<n]); n = 0; } }
+  if n > 0 { r := cxterm_write(ob[0..<n]); }
+}
+hs_outln :: (s: string) { hs_out(s); hs_out("\n"); }
+hs_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+hs_itoa :: (v: int, out: [] u8) -> string {
+  tmp: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+hs_atoi :: (s: string) -> int { if s.count == 0 { return -1; } v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }
+hs_now :: () -> int { return cxproc_wall_us() / 1000000; }
+// A field of fixed bytes set from s (cut to the field); its length.
+hs_set :: (dst: [] u8, s: string) -> int { n := 0; for c: s { if n < dst.count { dst[n] = c; n += 1; } } return n; }
+hs_prefix :: (s: string, p: string) -> bool { return p.count <= s.count && cast(string) s[0..<p.count] == p; }
+// n random bytes as 2n lowercase hex.
+hs_random_hex :: (n: int, out: [] u8) -> string {
+  b: [32] u8;
+  if n > 32 || out.count < 2 * n || cxrand_draw(b[..], n) != 0 { return ""; }
+  hex := "0123456789abcdef";
+  for i: 0..<n { out[2 * i] = hex[b[i] >> 4]; out[2 * i + 1] = hex[b[i] & 15]; }
+  return cast(string) out[0..<2 * n];
+}
+// s cut to at most max bytes, at a UTF-8 boundary.
+hs_cut :: (s: string, max: int) -> string {
+  if s.count <= max { return s; }
+  k := max;
+  while k > 0 && (s[k] & 0xc0) == 0x80 { k -= 1; }
+  return cast(string) s[0..<k];
+}
+
+#test "host: text helpers" {
+  b: [32] u8;
+  #assert hs_itoa(0, b[..]) == "0" && hs_itoa(1790000000, b[..]) == "1790000000" && hs_itoa(-12, b[..]) == "-12";
+  #assert hs_atoi("42") == 42 && hs_atoi("") == -1 && hs_atoi("4x") == -1;
+  #assert hs_cat(b[..], hs_cat(b[..], 0, "ab"), "cd") == 4 && cast(string) b[0..<4] == "abcd";
+  f: [3] u8; #assert hs_set(f[..], "abcdef") == 3 && cast(string) f[..] == "abc";
+  #assert hs_prefix("abcdef", "abc") && !hs_prefix("ab", "abc") && hs_prefix("x", "");
+  #assert hs_cut("héllo", 2) == "h" && hs_cut("héllo", 3) == "hé" && hs_cut("abc", 9) == "abc";
+}
+
+// ---------------------------------------------------------------- where things live
+
+hs_home :: (out: [] u8) -> string {
+  h := proc_getenv("CODER_HOME", out);
+  if h.count > 0 { return h; }
+  return proc_getenv("HOME", out);
+}
+// $HOME/.openagents/coder/host/NAME ("" for the folder itself).
+hs_path :: (name: string, out: [] u8) -> string {
+  hb: [1024] u8; home := hs_home(hb[..]);
+  if home.count == 0 { return ""; }
+  n := hs_cat(out, 0, home); n = hs_cat(out, n, "/.openagents/coder/host");
+  if name.count > 0 { n = hs_cat(out, n, "/"); n = hs_cat(out, n, name); }
+  return cast(string) out[0..<n];
+}
+hs_chmod :: (mode: string, path: string) -> bool {
+  av := [3] string.["/bin/chmod", mode, path]; o: [256] u8; e: [256] u8;
+  r := proc_run(av[..], 10000, o[..], e[..]);
+  return r.started == 0 && r.status == 0;
+}
+// The host folder, made private when it is new.
+hs_dir :: () -> bool {
+  hb: [1024] u8; home := hs_home(hb[..]);
+  if home.count == 0 { return false; }
+  pb: [1200] u8; n := hs_cat(pb[..], 0, home);
+  parts := [3] string.["/.openagents", "/coder", "/host"];
+  for p: parts { n = hs_cat(pb[..], n, p); d := cast(string) pb[0..<n]; if !fs_exists(d) { ok := fs_mkdir(d); } }
+  dir := cast(string) pb[0..<n];
+  return fs_exists(dir) && hs_chmod("700", dir);
+}
+// Writes a private file: empty while its mode is set, then the data, then renamed into place.
+hs_write_private :: (name: string, data: string) -> bool {
+  pb: [1200] u8; path := hs_path(name, pb[..]);
+  tb: [1200] u8; tn := hs_cat(tb[..], 0, path); tn = hs_cat(tb[..], tn, ".new");
+  tmp := cast(string) tb[0..<tn];
+  return path.count > 0 && fs_write(tmp, "") && hs_chmod("600", tmp) && fs_write(tmp, data) && fs_rename(tmp, path);
+}
+
+// ---------------------------------------------------------------- the host key
+
+// The host secret, made on first use: 32 random bytes in a mode 600 file.
+hs_key :: (secret: [] u8, x: [] u8, xhex: [] u8) -> bool {
+  if !hs_dir() { return false; }
+  pb: [1200] u8; path := hs_path("key", pb[..]);
+  kb: [80] u8;
+  if fs_exists(path) {
+    n := fs_read(path, kb[..]);
+    while n > 0 && (kb[n - 1] == 10 || kb[n - 1] == 13) { n -= 1; }
+    ok := n == 64 && hb_unhex(cast(string) kb[0..<64], secret);
+    wipe(kb[..]);
+    return ok && hb_public(secret, x) && hb_hex(x, xhex);
+  }
+  if cxrand_draw(secret, 32) != 0 || !hb_public(secret, x) || !hb_hex(secret, kb[..]) { return false; }
+  kb[64] = 10;
+  ok := hs_write_private("key", cast(string) kb[0..<65]);
+  wipe(kb[..]);
+  return ok && hb_hex(x, xhex);
+}
+
+// The host key as an npub (NIP-19), what a person pastes into a realm's EDIT > COMPUTER tab.
+hs_npub :: (x: [] u8, out: [] u8) -> string {
+  r := nip19_encode_checked(N19_NPUB, cast(string) x[0..<32], out, false);
+  return ifx r.error == NC_OK then cast(string) out[0..<r.written] else "";
+}
+#test "host: the host key as an npub" {
+  x: [32] u8; ok := hb_unhex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", x[..]); b: [100] u8;
+  #assert ok && hs_npub(x[..], b[..]) == "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d";
+}
+
+// ---------------------------------------------------------------- state
+
+HsPairing :: struct { id: [64] u8; key: [64] u8; label: [80] u8; nlabel: int; at: int; state: int; }
+HsGrant :: struct { grant: [64] u8; device: [64] u8; label: [80] u8; nlabel: int; epoch: int; issued: int; expires: int; revoked: bool; }
+HsEpoch :: struct { device: [64] u8; epoch: int; }
+HsThread :: struct { thread: [32] u8; request: [64] u8; device: [64] u8; session: [40] u8; nsession: int; realm: [64] u8; nrealm: int; at: int; }
+HsState :: struct {
+  np: int; pairings: [HS_PAIRINGS] HsPairing;
+  ng: int; grants: [HS_GRANTS] HsGrant;
+  ne: int; epochs: [HS_EPOCHS] HsEpoch;
+  nt: int; threads: [HS_THREADS] HsThread;
+}
+
+hs_label :: (p: [] HsPairing, i: int) -> string { return cast(string) p[i].label[0..<p[i].nlabel]; }
+// A pairing is waiting while asked and younger than ten minutes.
+hs_waiting :: (p: HsPairing, now: int) -> bool { return p.state == HB_ASKED && now - p.at < HB_PAIRING_WAIT; }
+hs_state_of :: (p: HsPairing, now: int) -> int { return ifx p.state == HB_ASKED && !hs_waiting(p, now) then HB_EXPIRED else p.state; }
+hs_epoch_of :: (st: [] HsState, device: string) -> int {
+  for i: 0..<st[0].ne { if cast(string) st[0].epochs[i].device[..] == device { return st[0].epochs[i].epoch; } }
+  return 0;
+}
+// A grant is current while unrevoked, unexpired and at its device's epoch.
+hs_current :: (st: [] HsState, i: int, now: int) -> bool {
+  g := st[0].grants[i];
+  dev := g.device;
+  return !g.revoked && now < g.expires && g.epoch == hs_epoch_of(st, cast(string) dev[..]);
+}
+// The device's newest current grant, or -1.
+hs_grant_of :: (st: [] HsState, device: string, now: int) -> int {
+  k := -1;
+  for i: 0..<st[0].ng { if cast(string) st[0].grants[i].device[..] == device && hs_current(st, i, now) && (k < 0 || st[0].grants[i].issued >= st[0].grants[k].issued) { k = i; } }
+  return k;
+}
+hs_pairing_find :: (st: [] HsState, id: string) -> int {
+  for i: 0..<st[0].np { if cast(string) st[0].pairings[i].id[..] == id { return i; } }
+  return -1;
+}
+hs_thread_find :: (st: [] HsState, thread: string) -> int {
+  for i: 0..<st[0].nt { if cast(string) st[0].threads[i].thread[..] == thread { return i; } }
+  return -1;
+}
+hs_thread_by_request :: (st: [] HsState, request: string) -> int {
+  for i: 0..<st[0].nt { if cast(string) st[0].threads[i].request[..] == request { return i; } }
+  return -1;
+}
+
+// Adds a waiting pairing. Older waiting ones from the same key go; the
+// oldest settled one makes room. -1 when eight are already waiting.
+hs_pairing_add :: (st: [] HsState, id: string, key: string, label: string, now: int) -> int {
+  w := 0; i := 0;
+  while i < st[0].np {
+    p := st[0].pairings[i];
+    pk := p.key;
+    if p.state == HB_ASKED && cast(string) pk[..] == key { hs_pairing_drop(st, i); continue; }
+    if hs_waiting(p, now) { w += 1; }
+    i += 1;
+  }
+  if w >= HB_PAIRING_MAX { return -1; }
+  if st[0].np == HS_PAIRINGS {
+    k := 0;
+    for j: 0..<st[0].np { if !hs_waiting(st[0].pairings[j], now) && (hs_waiting(st[0].pairings[k], now) || st[0].pairings[j].at < st[0].pairings[k].at) { k = j; } }
+    hs_pairing_drop(st, k);
+  }
+  n := st[0].np; fresh: HsPairing; st[0].pairings[n] = fresh;
+  a := hs_set(st[0].pairings[n].id[..], id); b := hs_set(st[0].pairings[n].key[..], key);
+  st[0].pairings[n].nlabel = hs_set(st[0].pairings[n].label[..], label);
+  st[0].pairings[n].at = now; st[0].pairings[n].state = HB_ASKED;
+  st[0].np += 1;
+  return n;
+}
+hs_pairing_drop :: (st: [] HsState, i: int) {
+  for j: i..<st[0].np - 1 { st[0].pairings[j] = st[0].pairings[j + 1]; }
+  st[0].np -= 1;
+}
+
+// Allows a waiting pairing: a browser grant (observe and operate, seven
+// days, origin approval) at the device's current epoch. The grant's index, or -1.
+hs_allow :: (st: [] HsState, i: int, grant_id: string, now: int) -> int {
+  if i < 0 || i >= st[0].np || !hs_waiting(st[0].pairings[i], now) || !hb_hex64(grant_id) { return -1; }
+  if st[0].ng == HS_GRANTS {
+    // the oldest grant that no longer admits anything makes room
+    k := -1;
+    for j: 0..<st[0].ng { if !hs_current(st, j, now) && (k < 0 || st[0].grants[j].expires < st[0].grants[k].expires) { k = j; } }
+    if k < 0 { return -1; }
+    for j: k..<st[0].ng - 1 { st[0].grants[j] = st[0].grants[j + 1]; }
+    st[0].ng -= 1;
+  }
+  p := st[0].pairings[i];
+  pk := p.key; pl := p.label;
+  n := st[0].ng; fresh: HsGrant; st[0].grants[n] = fresh;
+  a := hs_set(st[0].grants[n].grant[..], grant_id); b := hs_set(st[0].grants[n].device[..], cast(string) pk[..]);
+  st[0].grants[n].nlabel = hs_set(st[0].grants[n].label[..], cast(string) pl[0..<p.nlabel]);
+  st[0].grants[n].epoch = hs_epoch_of(st, cast(string) pk[..]);
+  st[0].grants[n].issued = now; st[0].grants[n].expires = now + HB_GRANT_LIFETIME;
+  st[0].ng += 1;
+  st[0].pairings[i].state = HB_ALLOWED;
+  return n;
+}
+// Revokes every grant of a device and advances its epoch (admit.coax's
+// host_revoke over the host's record). The new epoch, or -1 when the epoch table is full.
+hs_revoke :: (st: [] HsState, device: string) -> int {
+  for i: 0..<st[0].ng { if cast(string) st[0].grants[i].device[..] == device { st[0].grants[i].revoked = true; } }
+  for i: 0..<st[0].ne { if cast(string) st[0].epochs[i].device[..] == device { st[0].epochs[i].epoch += 1; return st[0].epochs[i].epoch; } }
+  if st[0].ne == HS_EPOCHS { return -1; }
+  n := st[0].ne; a := hs_set(st[0].epochs[n].device[..], device); st[0].epochs[n].epoch = 1; st[0].ne += 1;
+  return 1;
+}
+hs_thread_add :: (st: [] HsState, thread: string, request: string, device: string, session: string, realm: string, now: int) {
+  if st[0].nt == HS_THREADS { for j: 0..<st[0].nt - 1 { st[0].threads[j] = st[0].threads[j + 1]; } st[0].nt -= 1; }
+  n := st[0].nt; fresh: HsThread; st[0].threads[n] = fresh;
+  a := hs_set(st[0].threads[n].thread[..], thread); b := hs_set(st[0].threads[n].request[..], request); c := hs_set(st[0].threads[n].device[..], device);
+  st[0].threads[n].nsession = hs_set(st[0].threads[n].session[..], session);
+  st[0].threads[n].nrealm = hs_set(st[0].threads[n].realm[..], realm);
+  st[0].threads[n].at = now;
+  st[0].nt += 1;
+}
+
+// The host's record as admit.coax reads it. The strings view st.
+hs_records :: (st: [] HsState, g: [] HostGrantRecord, e: [] HostEpoch) {
+  for i: 0..<st[0].ng {
+    g[i].grant = cast(string) st[0].grants[i].grant[..]; g[i].device = cast(string) st[0].grants[i].device[..];
+    g[i].epoch = st[0].grants[i].epoch; g[i].issued_at = st[0].grants[i].issued; g[i].expires_at = st[0].grants[i].expires;
+    g[i].rights = (1 << HA_OBSERVE) | (1 << HA_OPERATE); g[i].revoked = st[0].grants[i].revoked;
+  }
+  for i: 0..<st[0].ne { e[i].device = cast(string) st[0].epochs[i].device[..]; e[i].epoch = st[0].epochs[i].epoch; }
+}
+
+// state.json
+hs_state_write :: (st: [] HsState, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "v"); jo_int(o[..], 1);
+  jo_key(o[..], "pairings"); jo_arr(o[..]);
+  for i: 0..<st[0].np {
+    p := st[0].pairings[i]; id := p.id; key := p.key; lb := p.label;
+    jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], cast(string) id[..]); jo_key(o[..], "key"); jo_str(o[..], cast(string) key[..]);
+    jo_key(o[..], "label"); jo_str(o[..], cast(string) lb[0..<p.nlabel]); jo_key(o[..], "at"); jo_int(o[..], p.at);
+    jo_key(o[..], "state"); jo_int(o[..], p.state); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "grants"); jo_arr(o[..]);
+  for i: 0..<st[0].ng {
+    g := st[0].grants[i]; gid := g.grant; dev := g.device; lb := g.label;
+    jo_obj(o[..]); jo_key(o[..], "grant"); jo_str(o[..], cast(string) gid[..]); jo_key(o[..], "device"); jo_str(o[..], cast(string) dev[..]);
+    jo_key(o[..], "label"); jo_str(o[..], cast(string) lb[0..<g.nlabel]); jo_key(o[..], "epoch"); jo_int(o[..], g.epoch);
+    jo_key(o[..], "issued_at"); jo_int(o[..], g.issued); jo_key(o[..], "expires_at"); jo_int(o[..], g.expires);
+    jo_key(o[..], "revoked"); jo_bool(o[..], g.revoked); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "epochs"); jo_arr(o[..]);
+  for i: 0..<st[0].ne {
+    e := st[0].epochs[i]; dev := e.device;
+    jo_obj(o[..]); jo_key(o[..], "device"); jo_str(o[..], cast(string) dev[..]); jo_key(o[..], "epoch"); jo_int(o[..], e.epoch); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "threads"); jo_arr(o[..]);
+  for i: 0..<st[0].nt {
+    t := st[0].threads[i]; th := t.thread; rq := t.request; dev := t.device; se := t.session; rl := t.realm;
+    jo_obj(o[..]); jo_key(o[..], "thread"); jo_str(o[..], cast(string) th[..]); jo_key(o[..], "request"); jo_str(o[..], cast(string) rq[..]);
+    jo_key(o[..], "device"); jo_str(o[..], cast(string) dev[..]); jo_key(o[..], "session"); jo_str(o[..], cast(string) se[0..<t.nsession]);
+    jo_key(o[..], "realm"); jo_str(o[..], cast(string) rl[0..<t.nrealm]); jo_key(o[..], "at"); jo_int(o[..], t.at); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+hs_jstr :: (d: Jv, at: int, key: string, dst: [] u8) -> int {
+  b: [256] u8; n := jv_str(d, jv_get(d, at, key), b[..]);
+  if n < 0 { return 0; }
+  return hs_set(dst, cast(string) b[0..<n]);
+}
+hs_jint :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), 0); }
+// Reads state.json; an absent or unreadable file is an empty record.
+hs_state_read :: (text: string, st: [] HsState) {
+  fresh: HsState; st[0] = fresh;
+  nodes: [4096] JvNode; dv: [1] Jv;
+  if !jv_parse(dv[..], text, nodes[..]) { return; }
+  d := dv[0];
+  ps := jv_get(d, 0, "pairings"); k := ifx jv_kind(d, ps) == JV_ARRAY then d.nodes[ps].first else -1;
+  while k != -1 && st[0].np < HS_PAIRINGS {
+    n := st[0].np;
+    if hs_jstr(d, k, "id", st[0].pairings[n].id[..]) == 64 && hs_jstr(d, k, "key", st[0].pairings[n].key[..]) == 64 {
+      st[0].pairings[n].nlabel = hs_jstr(d, k, "label", st[0].pairings[n].label[..]);
+      st[0].pairings[n].at = hs_jint(d, k, "at"); st[0].pairings[n].state = hs_jint(d, k, "state");
+      st[0].np += 1;
+    }
+    k = d.nodes[k].next;
+  }
+  gs := jv_get(d, 0, "grants"); k = ifx jv_kind(d, gs) == JV_ARRAY then d.nodes[gs].first else -1;
+  while k != -1 && st[0].ng < HS_GRANTS {
+    n := st[0].ng;
+    if hs_jstr(d, k, "grant", st[0].grants[n].grant[..]) == 64 && hs_jstr(d, k, "device", st[0].grants[n].device[..]) == 64 {
+      st[0].grants[n].nlabel = hs_jstr(d, k, "label", st[0].grants[n].label[..]);
+      st[0].grants[n].epoch = hs_jint(d, k, "epoch"); st[0].grants[n].issued = hs_jint(d, k, "issued_at");
+      st[0].grants[n].expires = hs_jint(d, k, "expires_at"); st[0].grants[n].revoked = jv_kind(d, jv_get(d, k, "revoked")) != JV_FALSE;
+      st[0].ng += 1;
+    }
+    k = d.nodes[k].next;
+  }
+  es := jv_get(d, 0, "epochs"); k = ifx jv_kind(d, es) == JV_ARRAY then d.nodes[es].first else -1;
+  while k != -1 && st[0].ne < HS_EPOCHS {
+    n := st[0].ne;
+    if hs_jstr(d, k, "device", st[0].epochs[n].device[..]) == 64 { st[0].epochs[n].epoch = hs_jint(d, k, "epoch"); st[0].ne += 1; }
+    k = d.nodes[k].next;
+  }
+  ts := jv_get(d, 0, "threads"); k = ifx jv_kind(d, ts) == JV_ARRAY then d.nodes[ts].first else -1;
+  while k != -1 && st[0].nt < HS_THREADS {
+    n := st[0].nt;
+    if hs_jstr(d, k, "thread", st[0].threads[n].thread[..]) == 32 && hs_jstr(d, k, "device", st[0].threads[n].device[..]) == 64 {
+      a := hs_jstr(d, k, "request", st[0].threads[n].request[..]);
+      st[0].threads[n].nsession = hs_jstr(d, k, "session", st[0].threads[n].session[..]);
+      st[0].threads[n].nrealm = hs_jstr(d, k, "realm", st[0].threads[n].realm[..]);
+      st[0].threads[n].at = hs_jint(d, k, "at");
+      st[0].nt += 1;
+    }
+    k = d.nodes[k].next;
+  }
+}
+hs_load :: (st: [] HsState, buf: [] u8) {
+  pb: [1200] u8; path := hs_path("state.json", pb[..]);
+  n := ifx path.count > 0 && fs_exists(path) then fs_read(path, buf) else 0;
+  hs_state_read(ifx n > 0 then cast(string) buf[0..<n] else "", st);
+}
+hs_save :: (st: [] HsState, buf: [] u8) -> bool {
+  n := hs_state_write(st, buf);
+  return n > 0 && hs_dir() && hs_write_private("state.json", cast(string) buf[0..<n]);
+}
+
+HST_A :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+HST_B :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+HST_P1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+HST_P2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+HST_G1 :: "3333333333333333333333333333333333333333333333333333333333333333";
+HST_T0 :: 1790000000;
+
+#test "host: pairing waits ten minutes, eight at most, one per key" {
+  st: [1] HsState;
+  #assert hs_pairing_add(st[..], HST_P1, HST_A, "Chrome", HST_T0) == 0 && st[0].np == 1;
+  // the same key asking again replaces its waiting request
+  #assert hs_pairing_add(st[..], HST_P2, HST_A, "Chrome", HST_T0 + 5) == 0 && st[0].np == 1 && cast(string) st[0].pairings[0].id[..] == HST_P2;
+  #assert hs_state_of(st[0].pairings[0], HST_T0 + 5 + 599) == HB_ASKED && hs_state_of(st[0].pairings[0], HST_T0 + 5 + 600) == HB_EXPIRED;
+  // eight waiting from other keys, then a ninth is refused
+  for i: 0..<7 { k: [64] u8; for j: 0..<64 { k[j] = cast(u8) ('a' + i); } #assert hs_pairing_add(st[..], HST_P1, cast(string) k[..], "x", HST_T0 + 10) >= 0; }
+  #assert st[0].np == 8 && hs_pairing_add(st[..], HST_P1, HST_B, "late", HST_T0 + 10) == -1;
+  // after ten minutes the old ones no longer count
+  #assert hs_pairing_add(st[..], HST_P1, HST_B, "later", HST_T0 + 700) == 8;
+  #assert hs_label(st[0].pairings[..], 8) == "later" && hs_pairing_find(st[..], HST_P2) == 0 && hs_pairing_find(st[..], HST_G1) == -1;
+}
+#test "host: allow issues a seven-day browser grant; forget revokes it and moves the epoch" {
+  st: [1] HsState;
+  i := hs_pairing_add(st[..], HST_P1, HST_A, "Chrome", HST_T0);
+  #assert hs_allow(st[..], i, "zz", HST_T0) == -1;
+  // an expired request can't be allowed
+  #assert hs_allow(st[..], i, HST_G1, HST_T0 + 600) == -1;
+  g := hs_allow(st[..], i, HST_G1, HST_T0 + 1);
+  #assert g == 0 && st[0].pairings[i].state == HB_ALLOWED && st[0].grants[0].expires == HST_T0 + 1 + HB_GRANT_LIFETIME && st[0].grants[0].epoch == 0;
+  #assert hs_grant_of(st[..], HST_A, HST_T0 + 2) == 0 && hs_grant_of(st[..], HST_B, HST_T0 + 2) == -1;
+  #assert hs_grant_of(st[..], HST_A, HST_T0 + 1 + HB_GRANT_LIFETIME) == -1;
+  // admit.coax admits a request under it, for observe and operate only
+  ga: [HS_GRANTS] HostGrantRecord; ea: [HS_EPOCHS] HostEpoch; r1: [1] HostRetained;
+  hs_records(st[..], ga[..], ea[..]);
+  q := HostRequest.{request = HST_P2, event = HST_P2, signer = HST_A, grant = HST_G1, epoch = 0, issued_at = HST_T0 + 10, expires_at = HST_T0 + 70, right = HA_OPERATE};
+  #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_OK;
+  q.right = HA_TERMINAL; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_NOT_ADMITTED;
+  q.right = HA_OPERATE; q.signer = HST_B; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_NOT_ADMITTED;
+  q.signer = HST_A;
+  #assert hs_revoke(st[..], HST_A) == 1 && st[0].grants[0].revoked && hs_grant_of(st[..], HST_A, HST_T0 + 2) == -1;
+  hs_records(st[..], ga[..], ea[..]);
+  #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 10) == HA_REVOKED;
+  // pairing again issues a grant at the new epoch, and the old request is stale against it
+  j := hs_pairing_add(st[..], HST_P2, HST_A, "Chrome", HST_T0 + 20);
+  #assert hs_allow(st[..], j, HST_P1, HST_T0 + 20) == 1 && st[0].grants[1].epoch == 1 && hs_grant_of(st[..], HST_A, HST_T0 + 21) == 1;
+  hs_records(st[..], ga[..], ea[..]);
+  q.grant = HST_P1; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 20) == HA_STALE;
+  q.epoch = 1; q.issued_at = HST_T0 + 20; q.expires_at = HST_T0 + 80; #assert host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], r1[0..<0], q, HST_T0 + 20) == HA_OK;
+  #assert hs_revoke(st[..], HST_A) == 2;
+}
+#test "host: state.json writes and reads back" {
+  st: [1] HsState;
+  i := hs_pairing_add(st[..], HST_P1, HST_A, "Chrome \"work\"", HST_T0);
+  g := hs_allow(st[..], i, HST_G1, HST_T0 + 1);
+  e := hs_revoke(st[..], HST_B);
+  hs_thread_add(st[..], "44444444444444444444444444444444", HST_P2, HST_A, "20261102-120000-001", "garden", HST_T0 + 3);
+  buf: [65536] u8; n := hs_state_write(st[..], buf[..]);
+  back: [1] HsState; hs_state_read(cast(string) buf[0..<n], back[..]);
+  #assert back[0].np == 1 && back[0].ng == 1 && back[0].ne == 1 && back[0].nt == 1;
+  #assert hs_label(back[0].pairings[..], 0) == "Chrome \"work\"" && back[0].pairings[0].state == HB_ALLOWED && back[0].grants[0].expires == st[0].grants[0].expires;
+  #assert !back[0].grants[0].revoked && back[0].epochs[0].epoch == 1 && cast(string) back[0].threads[0].session[0..<back[0].threads[0].nsession] == "20261102-120000-001";
+  #assert hs_thread_find(back[..], "44444444444444444444444444444444") == 0 && hs_thread_by_request(back[..], HST_P2) == 0 && hs_thread_find(back[..], "x") == -1;
+  empty: [1] HsState; hs_state_read("not json", empty[..]); #assert empty[0].np == 0 && empty[0].ng == 0;
+}
+
+// ---------------------------------------------------------------- jobs
+
+// The session's file: $HOME/.openagents/coder/sessions/ID.EXT.
+hs_session_path :: (session: string, ext: string, out: [] u8) -> string {
+  hb: [1024] u8; home := hs_home(hb[..]);
+  n := hs_cat(out, 0, home); n = hs_cat(out, n, "/.openagents/coder/sessions/"); n = hs_cat(out, n, session); n = hs_cat(out, n, ext);
+  return cast(string) out[0..<n];
+}
+hs_session_alive :: (session: string) -> bool {
+  pb: [1200] u8; fb: [32] u8;
+  n := fs_read(hs_session_path(session, ".pid", pb[..]), fb[..]);
+  if n <= 0 { return false; }
+  pid := hs_atoi(cast(string) fb[0..<n]);
+  return pid > 0 && cxproc_pid_alive(pid) == 1;
+}
+// What the job is told: the realm and the person's words.
+hs_prompt :: (realm: string, text: string, out: [] u8) -> string {
+  n := hs_cat(out, 0, "A request from the realm builder on openagents.com, for the realm \"");
+  n = hs_cat(out, n, realm);
+  n = hs_cat(out, n, "\". Use the realm tools (realm_show, then the realm edits) to do it, and say in a sentence what you changed.\n\n");
+  n = hs_cat(out, n, text);
+  return cast(string) out[0..<n];
+}
+// The job's argv: `coder run PROMPT --detach --json` on the engine, read and the realm tools only.
+hs_job_argv :: (coder_sh: string, prompt: string, engine: string, cwd: string, argv: [] string) -> int {
+  a := [14] string.[coder_sh, "run", prompt, "--detach", "--json", "--engine", engine, "--ceiling", "read", "--allow", "read", "--realm-tools", "--cwd", cwd];
+  for s, i: a { argv[i] = s; }
+  return a.count;
+}
+#test "host: a browser job runs under the read ceiling with the realm tools" {
+  argv: [16] string;
+  n := hs_job_argv("/r/coder/tui/coder.sh", "P", "claude", "/h/work", argv[..]);
+  #assert n == 14 && argv[1] == "run" && argv[3] == "--detach" && argv[6] == "claude" && argv[7] == "--ceiling" && argv[8] == "read" && argv[10] == "read" && argv[11] == "--realm-tools" && argv[13] == "/h/work";
+  b: [512] u8; p := hs_prompt("garden", "Add a well", b[..]);
+  #assert hs_prefix(p, "A request from the realm builder") && p[p.count - 10..<p.count] == "Add a well";
+}
+// Starts the job; its session ID in out, or "".
+hs_job_start :: (realm: string, text: string, engine: string, out: [] u8) -> string {
+  rb: [1024] u8; repo := proc_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { return ""; }
+  sb: [1100] u8; sn := hs_cat(sb[..], 0, repo); sn = hs_cat(sb[..], sn, "/coder/tui/coder.sh");
+  wb: [1200] u8; work := hs_path("work", wb[..]);
+  if work.count == 0 || (!fs_exists(work) && !fs_mkdir(work)) { return ""; }
+  pb: [HB_TEXT_MAX + 512] u8; prompt := hs_prompt(realm, text, pb[..]);
+  argv: [16] string; n := hs_job_argv(cast(string) sb[0..<sn], prompt, engine, work, argv[..]);
+  ob: [4096] u8; eb: [4096] u8;
+  r := proc_run(argv[0..<n], 120000, ob[..], eb[..]);
+  if r.started != 0 || r.status != 0 { return ""; }
+  nodes: [32] JvNode; dv: [1] Jv;
+  if !jv_parse(dv[..], cast(string) ob[0..<r.out_n], nodes[..]) { return ""; }
+  k := jv_str(dv[0], jv_get(dv[0], 0, "id"), out);
+  if k <= 0 || k > 40 { return ""; }
+  for c: cast(string) out[0..<k] { if !((c >= '0' && c <= '9') || c == '-' || (c >= 'a' && c <= 'z')) { return ""; } }
+  return cast(string) out[0..<k];
+}
+
+// A session line as a step: its kind, and what the person reads. "" kind for lines a browser is not shown.
+hs_step :: (line: string, kind: [] u8, nkind: [] int, text: [] u8) -> int {
+  nkind[0] = 0;
+  nodes: [256] JvNode; dv: [1] Jv;
+  if !jv_parse(dv[..], line, nodes[..]) || jv_kind(dv[0], 0) != JV_OBJECT { return 0; }
+  d := dv[0];
+  kb: [32] u8; kn := jv_str(d, jv_get(d, 0, "kind"), kb[..]);
+  if kn <= 0 { return 0; }
+  k := cast(string) kb[0..<kn];
+  shown := [7] string.["user", "tool", "result", "reply", "end", "approval", "diff"];
+  if hb_index(shown[..], k) < 0 { return 0; }
+  nkind[0] = hs_set(kind, k);
+  tb: [65536] u8; n := 0;
+  if k == "tool" { n = jv_str(d, jv_get(d, 0, "label"), tb[..]); }
+  else if k == "approval" {
+    a := jv_str(d, jv_get(d, 0, "tool"), tb[..]); n = ifx a < 0 then 0 else a;
+    vb: [64] u8; v := jv_str(d, jv_get(d, 0, "verdict"), vb[..]);
+    if v > 0 { n = hs_cat(tb[..], n, ": "); n = hs_cat(tb[..], n, cast(string) vb[0..<v]); }
+  } else if k == "diff" {
+    a := jv_str(d, jv_get(d, 0, "path"), tb[..]); n = ifx a < 0 then 0 else a;
+  } else if k == "end" {
+    eb: [32] u8; e := jv_str(d, jv_get(d, 0, "ending"), eb[..]);
+    n = ifx e > 0 then hs_cat(tb[..], 0, cast(string) eb[0..<e]) else 0;
+    xb: [8192] u8; x := jv_str(d, jv_get(d, 0, "text"), xb[..]);
+    if x > 0 { n = hs_cat(tb[..], n, ": "); n = hs_cat(tb[..], n, cast(string) xb[0..<x]); }
+  } else { n = jv_str(d, jv_get(d, 0, "text"), tb[..]); }
+  if n < 0 { n = 0; }
+  return hs_set(text, hs_cut(cast(string) tb[0..<n], HB_STEP_TEXT_MAX));
+}
+// The ending of the session's last end line ("" when none).
+hs_ending :: (line: string, out: [] u8) -> int {
+  nodes: [64] JvNode; dv: [1] Jv;
+  if !jv_parse(dv[..], line, nodes[..]) { return 0; }
+  kb: [16] u8; kn := jv_str(dv[0], jv_get(dv[0], 0, "kind"), kb[..]);
+  if kn != 3 || cast(string) kb[0..<3] != "end" { return 0; }
+  n := jv_str(dv[0], jv_get(dv[0], 0, "ending"), out);
+  return ifx n < 0 then 0 else n;
+}
+#test "host: session lines as steps" {
+  kind: [32] u8; nk: [1] int; text: [4096] u8;
+  n := hs_step("{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_show(garden)\"}", kind[..], nk[..], text[..]);
+  #assert cast(string) kind[0..<nk[0]] == "tool" && cast(string) text[0..<n] == "mcp__openagents__realm_show(garden)";
+  n = hs_step("{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":3,\"steps\":1,\"text\":\"done\"}", kind[..], nk[..], text[..]);
+  #assert cast(string) kind[0..<nk[0]] == "end" && cast(string) text[0..<n] == "finished: done";
+  n = hs_step("{\"kind\":\"approval\",\"tool\":\"Bash(ls)\",\"verdict\":\"refuse\"}", kind[..], nk[..], text[..]);
+  #assert cast(string) text[0..<n] == "Bash(ls): refuse";
+  n = hs_step("{\"kind\":\"session\",\"cwd\":\"/Users/x\"}", kind[..], nk[..], text[..]);
+  #assert nk[0] == 0 && n == 0;
+  n = hs_step("not json", kind[..], nk[..], text[..]); #assert nk[0] == 0;
+  e: [16] u8;
+  #assert hs_ending("{\"kind\":\"end\",\"ending\":\"stopped\"}", e[..]) == 7 && hs_ending("{\"kind\":\"reply\",\"text\":\"x\"}", e[..]) == 0;
+}
+
+// The thread_steps outcome: the session's shown lines after seq after (a
+// seq is the line's number in the session file), at most 32 and about 40 KB.
+hs_steps :: (session: string, alive: bool, started: int, now: int, after: int, file: [] u8, r: [] HbReply, store: [] u8) {
+  pb: [1200] u8; path := hs_session_path(session, ".jsonl", pb[..]);
+  n := ifx fs_exists(path) then fs_read(path, file) else 0;
+  if n < 0 { n = 0; }
+  text := cast(string) file[0..<n];
+  r[0].nsteps = 0; r[0].next = after;
+  at := 0; seq := 0; used := 0; full := false;
+  ending: [16] u8; nending := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    if e >= text.count { break; }             // a line still being written
+    seq += 1;
+    line := cast(string) text[at..<e];
+    en := hs_ending(line, ending[..]);
+    if en > 0 { nending = en; }
+    if seq > after && !full {
+      kind: [32] u8; nk: [1] int; tb: [HB_STEP_TEXT_MAX] u8;
+      tn := hs_step(line, kind[..], nk[..], tb[..]);
+      if nk[0] > 0 && (r[0].nsteps == HB_STEPS_MAX || used + tn + nk[0] > store.count || used + tn > HS_STEPS_BYTES) { full = true; }
+      if !full {
+        if nk[0] > 0 {
+          i := r[0].nsteps;
+          for j: 0..<nk[0] { store[used + j] = kind[j]; }
+          r[0].steps[i].kind = cast(string) store[used..<used + nk[0]]; used += nk[0];
+          for j: 0..<tn { store[used + j] = tb[j]; }
+          r[0].steps[i].text = cast(string) store[used..<used + tn]; used += tn;
+          r[0].steps[i].seq = seq;
+          r[0].nsteps += 1;
+        }
+        r[0].next = seq;
+      }
+    }
+    at = e + 1;
+  }
+  ed := cast(string) ending[0..<nending];
+  if alive { r[0].state = HB_RUNNING; }
+  else if ed == "finished" { r[0].state = HB_FINISHED; }
+  else if ed == "stopped" { r[0].state = HB_STOPPED; }
+  else if nending == 0 && now - started < 30 { r[0].state = HB_RUNNING; }   // starting: no pid file yet
+  else { r[0].state = HB_FAILED; }
+}
+
+// ---------------------------------------------------------------- serving
+
+// What one serving host holds between requests.
+HsHost :: struct {
+  secret: [32] u8; x: [32] u8; xhex: [64] u8;
+  relay: [512] u8; nrelay: int;
+  engine: [32] u8; nengine: int;
+  // retained replies (NIP-HOST "Admission order and retention"): request ID, event ID, expiry, the signed reply
+  rq: [HS_RETAINED] [64] u8; rev: [HS_RETAINED] [64] u8; rexp: [HS_RETAINED] int; rn: [HS_RETAINED] int; rbody: [HS_RETAINED] [HS_REPLY_MAX] u8; rnext: int;
+  seen: [256] [64] u8; nseen: int;   // event IDs already answered (two subscriptions overlap)
+}
+hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
+hs_seen :: (h: [] HsHost, id: string) -> bool {
+  for i: 0..<(ifx h[0].nseen < 256 then h[0].nseen else 256) { if cast(string) h[0].seen[i][..] == id { return true; } }
+  k := h[0].nseen % 256; x := hs_set(h[0].seen[k][..], id); h[0].nseen += 1;
+  return false;
+}
+hs_retained_find :: (h: [] HsHost, request: string, now: int) -> int {
+  for i: 0..<HS_RETAINED { if h[0].rn[i] > 0 && now <= h[0].rexp[i] && cast(string) h[0].rq[i][..] == request { return i; } }
+  return -1;
+}
+hs_retain :: (h: [] HsHost, request: string, event: string, expires: int, reply: string) {
+  if reply.count > HS_REPLY_MAX { return; }
+  k := h[0].rnext % HS_RETAINED; h[0].rnext += 1;
+  a := hs_set(h[0].rq[k][..], request); b := hs_set(h[0].rev[k][..], event); h[0].rexp[k] = expires;
+  h[0].rn[k] = hs_set(h[0].rbody[k][..], reply);
+}
+
+// Seals a reply to the requesting key; its length in out, or -1.
+hs_seal_reply :: (h: [] HsHost, rp: HbReply, to_hex: string, w: [] HbWork, out: [] u8) -> int {
+  to: [32] u8; nonce: [32] u8; aux: [32] u8;
+  if !hb_unhex(to_hex, to[..]) || cxrand_draw(nonce[..], 32) != 0 || cxrand_draw(aux[..], 32) != 0 { return -1; }
+  return hb_reply_seal(rp, h[0].secret[..], to[..], nonce[..], aux[..], hs_now(), w, out);
+}
+hs_base_reply :: (h: [] HsHost, request: string, event: string, expires: int) -> HbReply {
+  r: HbReply; r.request = request; r.request_event = event; r.host = cast(string) h[0].xhex[..];
+  r.issued_at = hs_now(); r.expires_at = expires;
+  return r;
+}
+hs_refused :: (h: [] HsHost, request: string, event: string, expires: int, code: string, missing: string) -> HbReply {
+  r := hs_base_reply(h, request, event, expires); r.ok = false; r.code = code; r.missing = missing;
+  return r;
+}
+
+// Answers one request event: the signed reply in out (its length), or 0 for none.
+hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf: [] u8, file: [] u8, out: [] u8) -> int {
+  body: [HB_BODY_MAX] u8; sb: [HB_BODY_MAX] u8; a := [1] HbText.[HbText.{buf = sb[..]}]; q: [1] HbRequest;
+  o := hb_request_open(text, h[0].secret[..], h[0].x[..], w, body[..], q[..], a[..]);
+  signer := o.signer; eid := o.id; mail := o.mailbox;
+  sig := cast(string) signer[..]; ev := cast(string) eid[..]; mb := cast(string) mail[..];
+  if o.error == HB_EVENT || o.error == HB_SIGNATURE || o.error == HB_ARTIFACT || o.error == HB_KEY || o.error == HB_DECRYPT || o.error == HB_ENVELOPE || o.error == HB_INPUT { return 0; }
+  now := hs_now();
+  if o.error != HB_OK {
+    // a body that does not read: refused, in its mailbox, for its signer
+    code := ifx o.error == HB_SIGNER then "forbidden" else hb_refusal(o.error);
+    return hs_seal_reply(h, hs_refused(h, mb, ev, now + HB_WINDOW, code, ""), sig, w, out);
+  }
+  rq := q[0];
+  if rq.host != cast(string) h[0].xhex[..] { return 0; }
+  if now > rq.expires_at { return 0; }                         // expired: no reply, no effect
+  if rq.issued_at > now + HB_WINDOW || rq.relay != hs_relay_of(h) {
+    return hs_seal_reply(h, hs_refused(h, rq.request, ev, rq.expires_at, ifx rq.relay != hs_relay_of(h) then "forbidden" else "malformed", ""), sig, w, out);
+  }
+  hs_load(st, statebuf);
+  if rq.op <= HB_OP_BROWSER_FORGET { return hs_pairing_op(h, rq, sig, ev, w, st, statebuf, out); }
+  return hs_thread_op(h, rq, sig, ev, w, st, statebuf, file, out);
+}
+
+hs_answer :: (h: [] HsHost, rp: HbReply, to: string, retain: bool, w: [] HbWork, out: [] u8) -> int {
+  n := hs_seal_reply(h, rp, to, w, out);
+  if n > 0 && retain { hs_retain(h, rp.request, rp.request_event, rp.expires_at, cast(string) out[0..<n]); }
+  return n;
+}
+// An exact retry gets the retained reply; other bytes under its request ID, conflict.
+hs_retry :: (h: [] HsHost, rq: HbRequest, ev: string, sig: string, w: [] HbWork, out: [] u8) -> int {
+  k := hs_retained_find(h, rq.request, hs_now());
+  if k < 0 { return -1; }
+  if cast(string) h[0].rev[k][..] != ev { return hs_seal_reply(h, hs_refused(h, rq.request, ev, rq.expires_at, "conflict", ""), sig, w, out); }
+  return hs_set(out, cast(string) h[0].rbody[k][0..<h[0].rn[k]]);
+}
+
+hs_pairing_op :: (h: [] HsHost, rq: HbRequest, sig: string, ev: string, w: [] HbWork, st: [] HsState, statebuf: [] u8, out: [] u8) -> int {
+  now := hs_now();
+  if rq.op != HB_OP_BROWSER_STATUS { r := hs_retry(h, rq, ev, sig, w, out); if r >= 0 { return r; } }
+  rp := hs_base_reply(h, rq.request, ev, rq.expires_at); rp.ok = true;
+  if rq.op == HB_OP_BROWSER_REQUEST {
+    i := hs_pairing_add(st, rq.request, sig, rq.label, now);
+    if i < 0 { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "rate_limited", ""), sig, true, w, out); }
+    if !hs_save(st, statebuf) { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "unavailable", ""), sig, false, w, out); }
+    lb: [400] u8; ln := hs_cat(lb[..], 0, "A browser asks to use this computer: ");
+    ln = hs_cat(lb[..], ln, ifx rq.label.count > 0 then rq.label else "(no label)");
+    ln = hs_cat(lb[..], ln, ". Allow it with: coder host allow "); ln = hs_cat(lb[..], ln, cast(string) rq.request[0..<8]);
+    hs_outln(cast(string) lb[0..<ln]);
+    rp.outcome = HB_OUT_PAIRING; rp.pairing = rq.request; rp.state = HB_ASKED;
+    return hs_answer(h, rp, sig, true, w, out);
+  }
+  if rq.op == HB_OP_BROWSER_STATUS {
+    i := hs_pairing_find(st, rq.pairing);
+    if i < 0 { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "unavailable", ""), sig, false, w, out); }
+    if cast(string) st[0].pairings[i].key[..] != sig { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "forbidden", ""), sig, false, w, out); }
+    rp.outcome = HB_OUT_PAIRING; rp.pairing = rq.pairing; rp.state = hs_state_of(st[0].pairings[i], now);
+    if rp.state == HB_ALLOWED {
+      g := hs_grant_of(st, sig, now);
+      // allowed once: a revoked grant reads as denied, an ended one as expired
+      if g < 0 { rp.state = HB_EXPIRED; for j: 0..<st[0].ng { if cast(string) st[0].grants[j].device[..] == sig && st[0].grants[j].revoked { rp.state = HB_DENIED; } } }
+      else { rp.grant = cast(string) st[0].grants[g].grant[..]; rp.epoch = st[0].grants[g].epoch; rp.grant_expires = st[0].grants[g].expires; }
+    }
+    return hs_answer(h, rp, sig, false, w, out);
+  }
+  // browser.forget: this key's grants go, whether or not it has any
+  e := hs_revoke(st, sig);
+  for i: 0..<st[0].np { if cast(string) st[0].pairings[i].key[..] == sig && st[0].pairings[i].state == HB_ASKED { st[0].pairings[i].state = HB_DENIED; } }
+  if e < 0 || !hs_save(st, statebuf) { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "unavailable", ""), sig, false, w, out); }
+  hs_outln("A browser forgot this computer; its access is revoked.");
+  rp.outcome = HB_OUT_FORGOTTEN;
+  return hs_answer(h, rp, sig, true, w, out);
+}
+
+hs_thread_op :: (h: [] HsHost, rq: HbRequest, sig: string, ev: string, w: [] HbWork, st: [] HsState, statebuf: [] u8, file: [] u8, out: [] u8) -> int {
+  now := hs_now();
+  // admission first, for every call and every retry (admit.coax)
+  ga: [HS_GRANTS] HostGrantRecord; ea: [HS_EPOCHS] HostEpoch; ra: [HS_RETAINED] HostRetained; nr := 0;
+  hs_records(st, ga[..], ea[..]);
+  for i: 0..<HS_RETAINED { if h[0].rn[i] > 0 { ra[nr].request = cast(string) h[0].rq[i][..]; ra[nr].event = cast(string) h[0].rev[i][..]; ra[nr].expires_at = h[0].rexp[i]; nr += 1; } }
+  hq := HostRequest.{request = rq.request, event = ev, signer = sig, grant = rq.grant, epoch = rq.epoch, issued_at = rq.issued_at, expires_at = rq.expires_at, right = hb_op_right(rq.op)};
+  reads := rq.op == HB_OP_THREAD_READ;   // a read's reply is not retained
+  verdict := host_admit(ga[0..<st[0].ng], ea[0..<st[0].ne], ra[0..<ifx reads then 0 else nr], hq, now);
+  if verdict == HA_SILENT { return 0; }
+  if verdict == HA_RETRY { r := hs_retry(h, rq, ev, sig, w, out); return ifx r > 0 then r else 0; }
+  if verdict != HA_OK {
+    code := "forbidden"; missing := "";
+    if verdict == HA_MALFORMED || verdict == HA_EARLY { code = "malformed"; }
+    if verdict == HA_REVOKED { code = "revoked"; }
+    if verdict == HA_EXPIRED { code = "expired"; }
+    if verdict == HA_STALE { code = "stale"; }
+    if verdict == HA_CONFLICT { code = "conflict"; }
+    if verdict == HA_NOT_ADMITTED {
+      for i: 0..<st[0].ng { if cast(string) st[0].grants[i].grant[..] == rq.grant && cast(string) st[0].grants[i].device[..] == sig { code = "missing_right"; missing = ifx hq.right == HA_OBSERVE then "observe" else "operate"; } }
+    }
+    return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, code, missing), sig, false, w, out);
+  }
+  rp := hs_base_reply(h, rq.request, ev, rq.expires_at); rp.ok = true;
+  if rq.op == HB_OP_THREAD_RUN {
+    tb: [32] u8; thread := "";
+    t := hs_thread_by_request(st, rq.request);
+    if t >= 0 { thread = cast(string) st[0].threads[t].thread[..]; }      // the same request, after a restart: the same job
+    else {
+      running := 0;
+      for i: 0..<st[0].nt { s := st[0].threads[i]; se := s.session; if hs_session_alive(cast(string) se[0..<s.nsession]) { running += 1; } }
+      if running >= HS_RUNNING_MAX { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "rate_limited", ""), sig, false, w, out); }
+      idb: [64] u8; session := hs_job_start(rq.realm, rq.text, cast(string) h[0].engine[0..<h[0].nengine], idb[..]);
+      if session.count == 0 { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "unavailable", ""), sig, false, w, out); }
+      thread = hs_random_hex(16, tb[..]);
+      hs_thread_add(st, thread, rq.request, sig, session, rq.realm, now);
+      if !hs_save(st, statebuf) { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "unavailable", ""), sig, false, w, out); }
+      lb: [300] u8; ln := hs_cat(lb[..], 0, "A browser started a realm job on "); ln = hs_cat(lb[..], ln, rq.realm);
+      ln = hs_cat(lb[..], ln, ": session "); ln = hs_cat(lb[..], ln, session);
+      hs_outln(cast(string) lb[0..<ln]);
+    }
+    rp.outcome = HB_OUT_DISPATCHED; rp.operation = HB_OP_THREAD_RUN; rp.reference = thread;
+    return hs_answer(h, rp, sig, true, w, out);
+  }
+  t := hs_thread_find(st, rq.thread);
+  if t < 0 || cast(string) st[0].threads[t].device[..] != sig { return hs_answer(h, hs_refused(h, rq.request, ev, rq.expires_at, "unavailable", ""), sig, false, w, out); }
+  th := st[0].threads[t]; se := th.session; session := cast(string) se[0..<th.nsession];
+  alive := hs_session_alive(session);
+  if rq.op == HB_OP_THREAD_STOP {
+    // `coder stop` leaves ID.stop; the job stops as if Esc was pressed
+    if alive { pb: [1200] u8; ok := fs_write(hs_session_path(session, ".stop", pb[..]), "stop\n"); }
+    rp.outcome = HB_OUT_DISPATCHED; rp.operation = HB_OP_THREAD_STOP; rp.reference = rq.thread;
+    return hs_answer(h, rp, sig, true, w, out);
+  }
+  rp.outcome = HB_OUT_STEPS; rp.thread = rq.thread;
+  store: [HS_STEPS_BYTES + 4096] u8; rv := [1] HbReply.[rp];
+  hs_steps(session, alive, th.at, now, rq.after, file, rv[..], store[..]);
+  return hs_answer(h, rv[0], sig, false, w, out);
+}
+
+// The event's id, read without checking anything (hb_open checks it all).
+hs_event_id :: (text: string, out: [] u8) -> string {
+  nodes: [128] JvNode; dv: [1] Jv;
+  if !jv_parse(dv[..], text, nodes[..]) { return ""; }
+  v := jv_get(dv[0], 0, "id");
+  if jv_kind(dv[0], v) != JV_STRING || !hb_hex64(jv_raw(dv[0], v)) { return ""; }
+  n := hs_set(out, jv_raw(dv[0], v));
+  return cast(string) out[0..<n];
+}
+
+// Opens a subscription connection: AUTH with the host key, then the REQ for
+// requests addressed to this host since two minutes ago.
+hs_subscribe :: (h: [] HsHost, c: [] CliRelay) -> bool {
+  fresh: CliRelay; c[0] = fresh;
+  if !cr_open(c, hs_relay_of(h), h[0].secret[..]) { return false; }
+  fb: [512] u8; n := hb_host_filter(cast(string) h[0].xhex[..], hs_now() - 120, fb[..]);
+  return n > 0 && cr_req(c, cast(string) fb[0..<n]);
+}
+hs_publish :: (h: [] HsHost, p: [] CliRelay, event: string) -> bool {
+  for attempt: 0..<2 {
+    if !p[0].open { fresh: CliRelay; p[0] = fresh; if !cr_open(p, hs_relay_of(h), h[0].secret[..]) { continue; } }
+    if cr_publish(p, event, cxsock_now_ms() + 5000) { return true; }
+    cr_dropped(p);
+  }
+  return false;
+}
+
+hs_serve :: (args: [] Args) -> int {
+  h_b: [1] HsHost; h := h_b[..];
+  if !hs_key(h[0].secret[..], h[0].x[..], h[0].xhex[..]) { tool_errln("coder host: could not read or make the host key in ~/.openagents/coder/host"); return 1; }
+  eb: [512] u8; env := proc_getenv("OPENAGENTS_NIP_HOST_RELAY", eb[..]);
+  relay := args_value(args, "--relay", ifx env.count > 0 then env else HS_RELAY);
+  if relay.count > 500 || !relay_uri(relay).ok { tool_errln("coder host: --relay is a ws:// or wss:// URL with a host name (ws://localhost:7777, not an IP address)"); return 2; }
+  h[0].nrelay = hs_set(h[0].relay[..], relay);
+  gb: [64] u8; engine := args_value(args, "--engine", proc_getenv("CODER_HOST_ENGINE", gb[..]));
+  if engine.count == 0 { engine = "claude"; }
+  engines := [5] string.["claude", "codex", "micro", "psionic", "echo"];
+  if hb_index(engines[..], engine) < 0 { tool_errln("coder host: --engine is claude, codex, micro, psionic or echo"); return 2; }
+  h[0].nengine = hs_set(h[0].engine[..], engine);
+  for_s := hs_atoi(args_value(args, "--for", "0"));
+  if for_s < 0 { tool_errln("coder host: --for takes whole seconds"); return 2; }
+  end_at := ifx for_s > 0 then hs_now() + for_s else 0;
+
+  w_b: [1] HbWork; st_b: [1] HsState; statebuf: [HS_STATE_MAX] u8; file: [HS_SESSION_MAX] u8; out: [131072] u8;
+  subs: [2] CliRelay; pub: [1] CliRelay;
+  since_ms: [2] int; live := [2] bool.[false, false]; cur := 0; caught_up := false;
+  // the browser learns this computer's key only by the person pasting it
+  nb: [100] u8; npub := hs_npub(h[0].x[..], nb[..]);
+  lb: [700] u8; ln := hs_cat(lb[..], 0, "Coder host "); ln = hs_cat(lb[..], ln, npub);
+  ln = hs_cat(lb[..], ln, " ("); ln = hs_cat(lb[..], ln, cast(string) h[0].xhex[..]); ln = hs_cat(lb[..], ln, ")");
+  ln = hs_cat(lb[..], ln, " on "); ln = hs_cat(lb[..], ln, relay); ln = hs_cat(lb[..], ln, ", engine "); ln = hs_cat(lb[..], ln, engine);
+  hs_outln(cast(string) lb[0..<ln]);
+  hs_outln("Paste this key into your realm's EDIT > COMPUTER tab on openagents.com to pair this computer.");
+  retry_at := 0;
+  while end_at == 0 || hs_now() < end_at {
+    now_ms := cxsock_now_ms();
+    if !live[cur] && now_ms >= retry_at {
+      live[cur] = hs_subscribe(h, subs[cur..<cur + 1]);
+      since_ms[cur] = now_ms;
+      if !live[cur] { retry_at = now_ms + 3000; tool_err("coder host: the relay "); tool_err(relay); tool_errln(" did not answer; trying again"); }
+      else if !caught_up { hs_outln("Listening for browsers."); caught_up = true; }
+    }
+    if !live[cur] { x := cxproc_sleep_ms(200); continue; }
+    // before the relay's connection lifetime ends, the next connection subscribes; both are read until the old one closes
+    other := 1 - cur;
+    if now_ms - since_ms[cur] > HS_ROTATE_S * 1000 && !live[other] {
+      live[other] = hs_subscribe(h, subs[other..<other + 1]);
+      since_ms[other] = now_ms;
+      if live[other] {
+        // read the new one to its EOSE, then close the old
+        for k: 0..<200 {
+          r := hs_pump(h, subs[other..<other + 1], pub[..], w_b[..], st_b[..], statebuf[..], file[..], out[..], 50);
+          if r == CR_EOSE || r == CR_FAIL || r == CR_CLOSED { break; }
+          r2 := hs_pump(h, subs[cur..<cur + 1], pub[..], w_b[..], st_b[..], statebuf[..], file[..], out[..], 10);
+        }
+        cr_close(subs[cur..<cur + 1]); live[cur] = false; cur = other;
+      }
+    }
+    r := hs_pump(h, subs[cur..<cur + 1], pub[..], w_b[..], st_b[..], statebuf[..], file[..], out[..], 250);
+    if r == CR_FAIL || r == CR_CLOSED { cr_dropped(subs[cur..<cur + 1]); live[cur] = false; }
+  }
+  for i: 0..<2 { if live[i] { cr_close(subs[i..<i + 1]); } }
+  if pub[0].open { cr_close(pub[..]); }
+  wipe(h[0].secret[..]);
+  return 0;
+}
+// One subscription message: an event is answered (its reply published).
+hs_pump :: (h: [] HsHost, c: [] CliRelay, pub: [] CliRelay, w: [] HbWork, st: [] HsState, statebuf: [] u8, file: [] u8, out: [] u8, wait_ms: int) -> int {
+  r := cr_next(c, cxsock_now_ms() + wait_ms);
+  if r != CR_EVENT { return r; }
+  ev: [131072] u8; t := cr_event(c);
+  if t.count > ev.count { return r; }
+  n := hs_set(ev[..], t); text := cast(string) ev[0..<n];
+  ib: [64] u8; id := hs_event_id(text, ib[..]);
+  if id.count == 0 || hs_seen(h, id) { return r; }
+  m := hs_handle(h, text, w, st, statebuf, file, out);
+  if m > 0 && !hs_publish(h, pub, cast(string) out[0..<m]) { tool_errln("coder host: a reply was not published; the browser will ask again"); }
+  return r;
+}
+
+// ---------------------------------------------------------------- the local commands
+
+// A waiting or settled pairing by its ID or the ID's first characters (at least 4).
+hs_pick_pairing :: (st: [] HsState, id: string) -> int {
+  if id.count < 4 { return -2; }
+  k := -1;
+  for i: 0..<st[0].np { if hs_prefix(cast(string) st[0].pairings[i].id[..], id) { if k >= 0 { return -2; } k = i; } }
+  return k;
+}
+hs_cmd_decide :: (allow: bool, id: string) -> int {
+  st_b: [1] HsState; buf: [HS_STATE_MAX] u8; st := st_b[..];
+  hs_load(st, buf[..]);
+  i := hs_pick_pairing(st, id);
+  verb := ifx allow then "coder host allow" else "coder host deny";
+  if i == -2 { tool_err(verb); tool_errln(": name the request by its ID (coder host list shows them), at least 4 characters, one match"); return 2; }
+  if i < 0 { tool_err(verb); tool_errln(": no such request; coder host list shows the waiting ones"); return 6; }
+  now := hs_now();
+  if !hs_waiting(st[0].pairings[i], now) { tool_err(verb); tool_errln(": that request is no longer waiting (requests wait ten minutes); ask the browser to try again"); return 6; }
+  lb: [300] u8; label := hs_label(st[0].pairings[..], i); if label.count == 0 { label = "the browser"; }
+  if allow {
+    gb: [64] u8; g := hs_allow(st, i, hs_random_hex(32, gb[..]), now);
+    if g < 0 || !hs_save(st, buf[..]) { tool_errln("coder host allow: could not save the grant"); return 1; }
+    n := hs_cat(lb[..], 0, "Allowed "); n = hs_cat(lb[..], n, label);
+    n = hs_cat(lb[..], n, " for 7 days: it can run realm jobs here (read and the realm tools only). Revoke it with: coder host forget ");
+    n = hs_cat(lb[..], n, cast(string) st[0].grants[g].grant[0..<8]);
+    hs_outln(cast(string) lb[0..<n]);
+  } else {
+    st[0].pairings[i].state = HB_DENIED;
+    if !hs_save(st, buf[..]) { tool_errln("coder host deny: could not save"); return 1; }
+    n := hs_cat(lb[..], 0, "Denied "); n = hs_cat(lb[..], n, label); n = hs_cat(lb[..], n, ".");
+    hs_outln(cast(string) lb[0..<n]);
+  }
+  return 0;
+}
+hs_cmd_forget :: (id: string) -> int {
+  st_b: [1] HsState; buf: [HS_STATE_MAX] u8; st := st_b[..];
+  hs_load(st, buf[..]);
+  if id.count < 4 { tool_errln("coder host forget: name the browser by its grant ID or key (coder host list shows them), at least 4 characters"); return 2; }
+  dev: [64] u8; found := 0;
+  for i: 0..<st[0].ng {
+    g := st[0].grants[i]; gid := g.grant; gd := g.device;
+    if hs_prefix(cast(string) gid[..], id) || hs_prefix(cast(string) gd[..], id) {
+      if found > 0 && cast(string) dev[..] != cast(string) gd[..] { tool_errln("coder host forget: that names more than one browser; give more characters"); return 2; }
+      x := hs_set(dev[..], cast(string) gd[..]); found += 1;
+    }
+  }
+  if found == 0 { tool_errln("coder host forget: no such browser; coder host list shows them"); return 6; }
+  e := hs_revoke(st, cast(string) dev[..]);
+  if e < 0 || !hs_save(st, buf[..]) { tool_errln("coder host forget: could not save"); return 1; }
+  hs_outln("Revoked. That browser can't use this computer until you allow it again.");
+  return 0;
+}
+hs_cmd_list :: (json: bool) -> int {
+  st_b: [1] HsState; buf: [HS_STATE_MAX] u8; st := st_b[..];
+  hs_load(st, buf[..]);
+  now := hs_now();
+  if json {
+    o: [1] Jo; ob: [131072] u8; jo_start(o[..], ob[..]);
+    jo_obj(o[..]); jo_key(o[..], "waiting"); jo_arr(o[..]);
+    for i: 0..<st[0].np {
+      p := st[0].pairings[i]; if !hs_waiting(p, now) { continue; }
+      pid := p.id; pk := p.key;
+      jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], cast(string) pid[..]); jo_key(o[..], "key"); jo_str(o[..], cast(string) pk[..]);
+      jo_key(o[..], "label"); jo_str(o[..], hs_label(st[0].pairings[..], i)); jo_key(o[..], "asked_at"); jo_int(o[..], p.at); jo_end(o[..]);
+    }
+    jo_end(o[..]); jo_key(o[..], "browsers"); jo_arr(o[..]);
+    for i: 0..<st[0].ng {
+      if !hs_current(st, i, now) { continue; }
+      g := st[0].grants[i]; gid := g.grant; gd := g.device; gl := g.label;
+      jo_obj(o[..]); jo_key(o[..], "grant"); jo_str(o[..], cast(string) gid[..]); jo_key(o[..], "key"); jo_str(o[..], cast(string) gd[..]);
+      jo_key(o[..], "label"); jo_str(o[..], cast(string) gl[0..<g.nlabel]); jo_key(o[..], "expires_at"); jo_int(o[..], g.expires); jo_end(o[..]);
+    }
+    jo_end(o[..]); jo_end(o[..]);
+    hs_outln(jo_text(o[..]));
+    return 0;
+  }
+  shown := 0;
+  for i: 0..<st[0].np {
+    p := st[0].pairings[i]; if !hs_waiting(p, now) { continue; }
+    lb: [300] u8; pid := p.id;
+    n := hs_cat(lb[..], 0, "waiting  "); n = hs_cat(lb[..], n, cast(string) pid[0..<8]); n = hs_cat(lb[..], n, "  ");
+    lab := hs_label(st[0].pairings[..], i); n = hs_cat(lb[..], n, ifx lab.count > 0 then lab else "(no label)");
+    n = hs_cat(lb[..], n, "   coder host allow "); n = hs_cat(lb[..], n, cast(string) pid[0..<8]);
+    hs_outln(cast(string) lb[0..<n]); shown += 1;
+  }
+  for i: 0..<st[0].ng {
+    if !hs_current(st, i, now) { continue; }
+    g := st[0].grants[i]; lb: [300] u8; gid := g.grant; gl := g.label; db: [24] u8;
+    n := hs_cat(lb[..], 0, "allowed  "); n = hs_cat(lb[..], n, cast(string) gid[0..<8]); n = hs_cat(lb[..], n, "  ");
+    n = hs_cat(lb[..], n, ifx g.nlabel > 0 then cast(string) gl[0..<g.nlabel] else "(no label)");
+    n = hs_cat(lb[..], n, "   "); n = hs_cat(lb[..], n, hs_itoa((g.expires - now) / 86400, db[..])); n = hs_cat(lb[..], n, " days left");
+    hs_outln(cast(string) lb[0..<n]); shown += 1;
+  }
+  if shown == 0 { hs_outln("No browsers waiting or allowed. Pair one from a realm's \"Your computer\" panel on openagents.com while coder host runs."); }
+  return 0;
+}
+
+// ---------------------------------------------------------------- a stand-in browser
+
+// coder host call OP --host KEY [--relay URL] [--browser-key FILE] [--label L]
+//   [--request PAIRING] [--text T --realm R] [--thread T [--after N]] [--grant G --epoch E] [--wait SECONDS]
+// One request from a browser key kept in FILE (made when missing); the
+// reply's body JSON on stdout. Exit 0 with a reply, 3 when none came.
+hs_cmd_call :: (args: [] Args, op_name: string) -> int {
+  ops := HB_OPS; op := hb_index(ops[..], op_name);
+  if op < 1 { tool_errln("coder host call: OP is browser.request, browser.status, browser.forget, thread.run, thread.read or thread.stop"); return 2; }
+  host_hex := args_value(args, "--host", "");
+  hx: [32] u8; if !hb_unhex(host_hex, hx[..]) { tool_errln("coder host call: --host is the host key (64 hex; coder host key prints it)"); return 2; }
+  eb: [512] u8; env := proc_getenv("OPENAGENTS_NIP_HOST_RELAY", eb[..]);
+  relay := args_value(args, "--relay", ifx env.count > 0 then env else HS_RELAY);
+  if relay.count > 500 || !relay_uri(relay).ok { tool_errln("coder host call: --relay is a ws:// or wss:// URL with a host name"); return 2; }
+  kf := args_value(args, "--browser-key", "");
+  if kf.count == 0 { tool_errln("coder host call: --browser-key FILE (made when missing)"); return 2; }
+  sk: [32] u8; bx: [32] u8; bhex: [64] u8; kb: [80] u8;
+  if fs_exists(kf) {
+    n := fs_read(kf, kb[..]); while n > 0 && (kb[n - 1] == 10 || kb[n - 1] == 13) { n -= 1; }
+    if n != 64 || !hb_unhex(cast(string) kb[0..<64], sk[..]) { tool_errln("coder host call: the browser key file is not 64 hex"); return 2; }
+  } else {
+    if cxrand_draw(sk[..], 32) != 0 || !hb_hex(sk[..], kb[..]) { return 1; }
+    kb[64] = 10; ok := fs_write(kf, "") && hs_chmod("600", kf) && fs_write(kf, cast(string) kb[0..<65]);
+    if !ok { tool_errln("coder host call: could not write the browser key file"); return 1; }
+  }
+  wipe(kb[..]);
+  if !hb_public(sk[..], bx[..]) || !hb_hex(bx[..], bhex[..]) { return 1; }
+  now := hs_now(); rb: [64] u8;
+  q: HbRequest; q.request = hs_random_hex(32, rb[..]); q.host = host_hex; q.relay = relay; q.issued_at = now; q.expires_at = now + HB_WINDOW; q.op = op;
+  q.key = cast(string) bhex[..]; q.label = args_value(args, "--label", "");
+  q.pairing = args_value(args, "--request", "");
+  q.text = args_value(args, "--text", ""); q.realm = args_value(args, "--realm", "");
+  q.thread = args_value(args, "--thread", ""); q.after = hs_atoi(args_value(args, "--after", "0"));
+  q.grant = args_value(args, "--grant", ""); q.epoch = ifx q.grant.count > 0 then hs_atoi(args_value(args, "--epoch", "0")) else -1;
+  check := hb_request_check(q);
+  if check != HB_OK { tool_err("coder host call: the request does not check: "); tool_errln(hb_refusal(check)); return 2; }
+  w_b: [1] HbWork; out: [131072] u8; nonce: [32] u8; aux: [32] u8;
+  if cxrand_draw(nonce[..], 32) != 0 || cxrand_draw(aux[..], 32) != 0 { return 1; }
+  n := hb_request_seal(q, sk[..], hx[..], nonce[..], aux[..], now, w_b[..], out[..]);
+  if n <= 0 { tool_errln("coder host call: could not seal the request"); return 1; }
+  ib: [64] u8; eid := hs_event_id(cast(string) out[0..<n], ib[..]);
+  // the reply's mailbox first, then the request
+  sub: [1] CliRelay; pub: [1] CliRelay;
+  if !cr_open(sub[..], relay, sk[..]) { tool_errln("coder host call: the relay did not answer"); wipe(sk[..]); return 1; }
+  fb: [512] u8; fl := hb_reply_filter(cast(string) bhex[..], q.request, fb[..]);
+  if fl <= 0 || !cr_req(sub[..], cast(string) fb[0..<fl]) { return 1; }
+  if !cr_open(pub[..], relay, sk[..]) || !cr_publish(pub[..], cast(string) out[0..<n], cxsock_now_ms() + 5000) { tool_errln("coder host call: the relay did not take the request"); wipe(sk[..]); return 1; }
+  cr_close(pub[..]);
+  wait_s := hs_atoi(args_value(args, "--wait", "20")); if wait_s <= 0 { wait_s = 20; }
+  deadline := cxsock_now_ms() + wait_s * 1000;
+  body: [HB_BODY_MAX] u8; sb: [HB_BODY_MAX] u8;
+  while cxsock_now_ms() < deadline {
+    r := cr_next(sub[..], deadline);
+    if r == CR_FAIL || r == CR_CLOSED { break; }
+    if r != CR_EVENT { continue; }
+    a := [1] HbText.[HbText.{buf = sb[..]}]; rp: [1] HbReply;
+    o := hb_reply_open(cr_event(sub[..]), sk[..], bx[..], w_b[..], body[..], rp[..], a[..]);
+    if o.error != HB_OK || cast(string) o.signer[..] != host_hex || rp[0].request_event != eid || !hb_reply_answers(op, rp[0]) { continue; }
+    hs_outln(cast(string) body[0..<o.body_n]);
+    cr_close(sub[..]); wipe(sk[..]);
+    return 0;
+  }
+  cr_close(sub[..]); wipe(sk[..]);
+  tool_errln("coder host call: no reply (is coder host running on that computer?)");
+  return 3;
+}
+
+HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.";
+
+tool_main :: () -> int #export_c {
+  args_b: [1] Args; args := args_b[..];
+  if !args_load(args) { tool_errln("coder host: bad arguments"); return 2; }
+  // the arguments as coder.sh passes them: host VERB ...
+  k := 0; if args_count(args) > 0 && args_at(args, 0) == "host" { k = 1; }
+  verb := ifx args_count(args) > k then args_at(args, k) else "";
+  if verb.count > 0 && verb[0] == '-' { verb = ""; }
+  arg := ifx args_count(args) > k + 1 then args_at(args, k + 1) else "";
+  if verb == "help" || args_has(args, "--help") { hs_outln(HS_USAGE); return 0; }
+  if verb == "" || verb == "serve" { return hs_serve(args); }
+  if verb == "list" { return hs_cmd_list(args_has(args, "--json")); }
+  if verb == "allow" { return hs_cmd_decide(true, arg); }
+  if verb == "deny" { return hs_cmd_decide(false, arg); }
+  if verb == "forget" { return hs_cmd_forget(arg); }
+  if verb == "key" {
+    s: [32] u8; x: [32] u8; xh: [64] u8;
+    if !hs_key(s[..], x[..], xh[..]) { tool_errln("coder host: could not read or make the host key"); return 1; }
+    wipe(s[..]); hs_outln(cast(string) xh[..]); nb: [100] u8; hs_outln(hs_npub(x[..], nb[..])); return 0;
+  }
+  if verb == "call" { return hs_cmd_call(args, arg); }
+  tool_err("coder host: unknown verb "); tool_errln(verb); tool_errln(HS_USAGE);
+  return 2;
+}

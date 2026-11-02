@@ -7,7 +7,10 @@
 # The entropy policy (coax/lib/crypto/entropy.coax) is linked here; a tool
 # does not #load it. A tool with a "// tool.sh: tls" line (in its file or a
 # file it #loads from its own directory) also links tls-native.c with coax/platform/tls-env.sh's flags,
-# for wss:// and https:// (coax/lib/net/relay_conn.coax, http.coax).
+# for wss:// and https:// (coax/lib/net/relay_conn.coax, http.coax). A
+# "// tool.sh: run-steps N" line in the tool's own file gives the compiler a
+# larger compile-time budget (coax --run-steps), for a tool that loads the
+# secp256k1 tables (coder/tui/host.coax).
 #   coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS]
 #   coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] ...
 set -euo pipefail
@@ -45,10 +48,11 @@ if [[ -n "$why" ]]; then
     # shellcheck source=/dev/null
     source "$p/tls-env.sh"; tls=("$p/tls-native.c" $CXTLS_CFLAGS); libs+=($CXTLS_LIBS)
   fi
+  steps=(); n="$(sed -n 's|^// tool.sh: run-steps \([0-9][0-9]*\)$|\1|p' "$src" | head -n 1)"; [[ -z "$n" ]] || steps=(--run-steps "$n")
   work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
   "$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
-  "$repo/coax/bin/coax" deps "$src" > "$work/deps.json" 2> /dev/null & deps_pid=$!
-  "$repo/coax/bin/coax" c "$src" --library > "$work/$name.c"
+  "$repo/coax/bin/coax" deps "$src" ${steps[@]+"${steps[@]}"} > "$work/deps.json" 2> /dev/null & deps_pid=$!
+  "$repo/coax/bin/coax" c "$src" --library ${steps[@]+"${steps[@]}"} > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
   "${cc[@]}" -std=c11 -O2 -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
     "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm

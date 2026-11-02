@@ -1615,6 +1615,29 @@ behaviors tested, in NIP-11 `supported_extensions`, not a numeric
 
 ## Implementation status
 
+The Coax implementation serves the direct artifact binding for browsers.
+[`coax/lib/nostr/host/browser.coax`](../../../coax/lib/nostr/host/browser.coax)
+encodes, decodes and checks the bodies of `browser.request`,
+`browser.status`, `browser.forget`, `thread.run`, `thread.read` and
+`thread.stop` and their replies, and seals and opens them as kind `3188`
+private artifacts: signed, NIP-44 encrypted to the recipient, with the
+request ID as the mailbox. It has no platform effects, so native tools and
+wasm pages both compile it.
+[`coax/lib/nostr/host/admit.coax`](../../../coax/lib/nostr/host/admit.coax)
+is the admission order: grant, device, revocation, expiry, epochs, right,
+then retention.
+[`coder host`](../../../coder/tui/host.coax) is a host for them. Only the
+person at the computer allows a pairing, the browser grant has `observe` and
+`operate` for seven days, and `thread.run` starts a Coder job that reads and
+uses the realm tools only. `coder/tui/host_smoke.py` runs it against a local
+relay with a stand-in browser key. The direct-channel binding, CAP/CJ,
+connect codes, iroh enrollment, the operator socket, and the `task.*`,
+`terminal.*`, `device.*` and `spend.*` operations are not in Coax yet.
+
+The paragraphs below describe the earlier Rust implementation. Its crates
+(`crates/coder-access`, `crates/coder-host` and the others named here) have
+since been removed from the repository; they remain in its history.
+
 [`crates/coder-access`](../../../crates/coder-access/README.md) implements the
 host store, the direct artifact binding, the portable client, and a CLI. Its
 behavior tests run over a synthetic NIP-42 relay. The wire fixtures in

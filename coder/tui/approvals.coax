@@ -34,6 +34,20 @@ CdPolicy :: struct {
   allow: int;                     // runs without asking at or below this
   ceiling: int;                   // never above this
   roots: [4096] u8; nroots: int;  // folders, one per line; the working directory is always one
+  realm: bool;                    // --realm-tools: the realm tools run whatever the ceiling (coder host's jobs)
+}
+
+CD_REALM_TOOL :: "mcp__openagents__realm_";   // the openagents MCP server's realm tools (cd_claude_realm_tools)
+
+// The verdict for one Claude Code tool call. With --realm-tools the realm
+// tools run under any ceiling: a job a browser starts through `coder host`
+// has --ceiling read, so it reads and edits realms and does nothing else.
+cd_policy_tool :: (p: [] CdPolicy, tool: string, inside: bool, why: [] u8) -> int {
+  if p[0].realm && tool.count > CD_REALM_TOOL.count && cast(string) tool[0..<CD_REALM_TOOL.count] == CD_REALM_TOOL {
+    n := cd_cat(why, 0, "a realm tool (--realm-tools)");
+    return CD_VERDICT_RUN;
+  }
+  return cd_policy_decide(p, cd_effect_of(tool), inside, why);
 }
 
 // -1 when name isn't an effect.
@@ -185,6 +199,22 @@ CD_PATH_FIELDS :: [4] string.["file_path", "path", "notebook_path", "cwd"];
   #assert cd_policy_args(p[..], "", "", "relative") != "";
 }
 
+#test "realm tools: under --realm-tools they run below a read ceiling; nothing else does" {
+  p: [1] CdPolicy; why: [256] u8;
+  #assert cd_policy_args(p[..], "read", "read", "") == "";
+  #assert cd_policy_tool(p[..], "mcp__openagents__realm_apply", true, why[..]) == CD_VERDICT_REFUSE;
+  p[0].realm = true;
+  #assert cd_policy_tool(p[..], "mcp__openagents__realm_apply", true, why[..]) == CD_VERDICT_RUN;
+  #assert cd_policy_tool(p[..], "mcp__openagents__realm_show", false, why[..]) == CD_VERDICT_RUN;
+  #assert cd_policy_tool(p[..], "Read", true, why[..]) == CD_VERDICT_RUN;
+  #assert cd_policy_tool(p[..], "Bash", true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_tool(p[..], "Write", true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_tool(p[..], "WebFetch", true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_tool(p[..], "mcp__openagents__forum_post", true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_tool(p[..], "mcp__openagents__realm_", true, why[..]) == CD_VERDICT_REFUSE;
+  #assert cd_policy_tool(p[..], "mcp__other__realm_apply", true, why[..]) == CD_VERDICT_REFUSE;
+}
+
 // One approval verdict: a line in the session log and a row in the transcript.
 cd_approval_note :: (a: [] App, label: string, effect: int, inside: bool, verdict: int, why: string) {
   effects := CD_EFFECTS; verdicts := CD_VERDICTS;
@@ -222,7 +252,7 @@ cd_claude_inside :: (a: [] App, input: string) -> bool {
 // every call, including the ones Claude Code would run without asking.
 cd_claude_verdict_of :: (a: [] App, tool: string, input: string, why: [] u8, nwhy: [] int) -> int {
   for i: 0..<why.count { why[i] = 0; }
-  verdict := cd_policy_decide(a[0].pol[..], cd_effect_of(tool), cd_claude_inside(a, input), why);
+  verdict := cd_policy_tool(a[0].pol[..], tool, cd_claude_inside(a, input), why);
   k := 0; while k < why.count && why[k] != 0 { k += 1; }
   nwhy[0] = k;
   return verdict;

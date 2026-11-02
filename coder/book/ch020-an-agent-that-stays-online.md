@@ -451,6 +451,82 @@ ended and posted "Stopped ():" for a Worker that went on to finish. A log
 with no turn yet now reads as running, and the lab fails on a reply posted
 before its Worker ended.
 
+### A browser uses this computer
+
+`coder host` ([host.coax](../../coder/tui/host.coax)) lets the realm
+builder on openagents.com run jobs on your computer, with your Claude Code
+or Codex login, without that login leaving the computer. The browser and
+the computer talk through a Nostr relay, `wss://relay.openagents.com` by
+default (`--relay URL` or `OPENAGENTS_NIP_HOST_RELAY` changes it), using
+NIP-HOST's [direct artifact binding](../../nostr/nips/openagents/NIP-HOST.md).
+Each request and reply is a signed kind 3188 artifact, NIP-44 encrypted to
+the other side. The codec,
+[browser.coax](../../coax/lib/nostr/host/browser.coax), has no platform
+effects, so the web page compiles the same code to wasm.
+
+```sh
+coder host                       # serve; prints the host key as an npub and as hex
+coder host list                  # browsers waiting, and browsers allowed
+coder host allow 3f2a91c0        # allow a waiting browser for 7 days
+coder host deny 3f2a91c0
+coder host forget 3f2a91c0       # revoke an allowed browser
+```
+
+1. You paste the host key that `coder host` prints into the realm's
+   **EDIT > COMPUTER** tab. The browser sends `browser.request` with its
+   own key and a label.
+2. The request waits for at most ten minutes, and at most eight wait at
+   once. `coder host` prints it with the command that allows it. Only the
+   person at the computer allows a browser: `allow`, `deny` and `forget` are
+   local commands, never relay operations.
+3. `coder host allow` issues a grant with the rights `observe` and
+   `operate` for seven days. The browser picks it up by sending
+   `browser.status` for its pairing request, and keeps sending it to check
+   that the computer answers. While the grant lasts, the answer is
+   `allowed` with the grant. After `forget` the answer is `denied`.
+4. Before every thread call, the host checks the request against its
+   grants with [admit.coax](../../coax/lib/nostr/host/admit.coax): the
+   grant, the device, revocation, expiry and epochs, then the right. An
+   exact retry gets the same reply, and other bytes under the same request
+   ID are refused `conflict`.
+
+The thread operations map onto Coder jobs:
+
+- `thread.run {text, realm}` starts `coder run` as a detached job on the
+  host's engine (`--engine`, `claude` by default) with `--ceiling read
+  --allow read --realm-tools`, in an empty folder of its own. Under that
+  ceiling the job can read but not run a shell, write files or fetch the
+  web. `--realm-tools` lets the realm tools (`mcp__openagents__realm_*`,
+  from `openagents mcp`) run anyway, so the job can read and edit realms
+  and do nothing else. The realm tools reach Claude Code only, so a job on
+  another engine can only read. At most two browser jobs run at once.
+- `thread.read {thread, after}` returns the job's steps after a sequence
+  number. A step is one line of the session log (user, tool, result,
+  reply, diff, approval or end), its sequence is the line number, and its
+  text is cut to 2 KB. The state is `running`, `finished`, `stopped` or
+  `failed`.
+- `thread.stop {thread}` writes the session's stop file, as `coder stop`
+  does.
+
+The host keeps its state in `~/.openagents/coder/host/` (or under
+`$CODER_HOME`), a folder with mode 700. The host secret is in `key`, mode
+600, never in the macOS Keychain. Pairings, grants, epochs and threads are
+in `state.json`, also mode 600, and the local commands edit the same file
+while the host runs. The host reads requests on a subscription that it
+replaces every 90 seconds, before the relay's 120-second connection limit.
+The new subscription starts before the old one closes, so no request falls
+in a gap, and a request that both subscriptions deliver is answered once.
+
+`coder host` is a tool of its own, not part of Coder's binary.
+`coder/tui/coder.sh host` builds and runs it. It loads the secp256k1 tables
+that Coax computes at compile time, so its build takes about 90 seconds,
+and `coax/web/tool.sh` reads its `// tool.sh: run-steps` line to raise the
+compile-time budget. Coder's own build stays as fast as before.
+
+`coder host call OP --host KEY --browser-key FILE ...` is a stand-in
+browser: it sends one request and prints the reply's body. The smoke uses
+it.
+
 ## Checks
 
 - `python3 coder/tui/smoke.py`, offline: each check runs `coder router
@@ -480,6 +556,20 @@ before its Worker ended.
 - The smoke kills the Router with SIGKILL right after it starts a Worker and
   right after it posts a reply (see [A crash between two steps](#a-crash-between-two-steps)),
   and checks that the next pass repeats neither.
+- `python3 coder/tui/host_smoke.py` builds the Coax relay and runs it on a
+  local port, then runs `coder host --engine echo` in a fresh
+  `CODER_HOME`. A stand-in browser key asks to pair and waits, and is
+  refused a thread before it is allowed. `coder host allow` allows it,
+  `browser.status` hands it the grant, and it runs a thread on the echo
+  engine, reads its steps until the thread finishes, and stops it. An
+  unpaired key is refused `forbidden`. After `coder host forget`, the key is
+  refused `revoked` and `browser.status` answers `denied`. The key and
+  `state.json` are mode 600.
+- Unit checks for the host (`coax test coder/tui/host.coax --run-steps
+  250000000`): pairing limits, grants and revocation through admit.coax,
+  `state.json` round trips, the job's arguments, and session lines as
+  steps. The codec's checks are in browser.coax, and approvals.coax checks
+  that `--realm-tools` lets only the realm tools past a read ceiling.
 - Unit checks: handle and variable names, a job's handles against the grant, the hiding of values longer and shorter than the mark, a job's admission against the grant, the chat cap of 100 words and the issue format.
 - Live: two quiet Workers with the same task, "fix the failing parser test".
   System One judged the one that read, edited and tested the parser as still
