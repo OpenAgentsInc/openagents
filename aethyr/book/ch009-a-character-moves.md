@@ -77,6 +77,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
     p.vel.y = w.locomotion.jump_speed;
     p.on_ground = false;
   }
+  beat := t.pressed && !given.on_ground;   // a press in the air: a wing beat, if the realm flies
 ```
 
 The rest of the step runs in this order:
@@ -163,6 +164,14 @@ The rest of the step runs in this order:
     next.vel.y -= w.locomotion.gravity * dt;
     next.on_ground = false;
   }
+  // A flying realm's hook: in the air, this step's vertical speed is the flight's.
+  next.diving = false;
+  if w.flight.on && !next.on_ground {
+    turn := flight_vertical(w.flight, next.vel.y, next.pos.y, beat, p.jump_held, p.dive_held, p.wings);
+    next.vel.y = turn.vy;
+    next.diving = turn.diving;
+    if turn.beat { next.beats += 1; }
+  }
   next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - w.locomotion.sink_limit);
 
   // Turn toward where you are going.
@@ -178,6 +187,15 @@ The rest of the step runs in this order:
   return next;
 }
 ```
+
+A realm that flies declares a `FlightProfile` (`aethyr/flight.coax`; Fairy
+Forest is the one that does). In the air, after gravity, the step hands the
+vertical speed to `flight_vertical`: a press taken in the air is a wing
+beat, the jump held climbs, between beats you glide, and the dive held
+folds the wings. Every other realm's profile is off, so its step is
+unchanged. Because the hook runs once a step, a flight flies the same
+states at 30, 60, 120 and 144 FPS (the check "a flight of beats, climbs,
+glides and a dive has the same states ...").
 
 ## The numbers on a fixed step
 

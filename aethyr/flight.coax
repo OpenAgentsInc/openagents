@@ -1,0 +1,213 @@
+// Aethyr's flight rule (the Aethyr engine core, GitHub #12609): the per-step hook a walking
+// realm declares to fly. The walker (aethyr/walk.coax) calls `flight_vertical` once a fixed
+// step, after gravity and before it moves you up or down, whenever you are in the air and
+// your realm declares a profile that is on. So a beat, a climb, a glide and a dive set the
+// vertical speed of one 1/64 s step, and the same presses and holds fly the same path at
+// 30, 60, 120 or 144 FPS. It replaced Fairy Forest's per-frame flight in fairy-face.c.
+//
+// A wing beat is a jump press taken in the air (aethyr/input.coax: each press is taken by
+// exactly one step). The climb is the jump held. The dive is its own hold. `wings` is the
+// realm's say on whether you may beat and climb now (its settings, or you are in water).
+//
+// Units are metres and seconds, +Y up.
+//   coax/bin/coax test aethyr/flight.coax
+//   coax/bin/coax mutate aethyr/flight.coax
+
+#module "aethyr.flight";
+#authority;
+
+FLIGHT_LIMIT :: 1000.0;
+
+// book:begin flight
+FlightProfile :: struct {
+  on: bool;                // off: the walker never calls the hook (every realm but the fliers)
+  flap_up: f32 = 5.2;      // m/s up from a beat in the air: about 0.55 m a beat
+  flap_keep: f32 = 0.5;    // the share of a rise a beat keeps before adding flap_up
+  climb: f32 = 3.2;        // m/s: the steady climb while the jump is held
+  glide: f32 = -1.5;       // m/s: the gentle fall between beats
+  dive: f32 = -7.0;        // m/s: the fall while the dive is held, wings folded
+  ceiling: f32 = 40.0;     // m: beats and the climb stop lifting here, and a rise stops past it
+}
+// book:end flight
+
+// What one step's flight decided: the vertical speed, whether a beat lifted you and whether
+// you are diving (the face draws the wings from these).
+FlightTurn :: struct { vy: f32; beat: bool; diving: bool; }
+
+// ---- checks, authored before the rule
+
+flight_fairy_profile :: () -> FlightProfile { return flight_profile_lookup("fairy-forest"); }
+
+#test "Fairy Forest's flight keeps the numbers its face flew by" {
+  p := flight_fairy_profile();
+  #assert p.on && flight_profile_ok(p);
+  #assert p.flap_up == 5.2 && p.flap_keep == 0.5 && p.climb == 3.2 && p.glide == -1.5 && p.dive == -7.0 && p.ceiling == 40.0;
+  #assert flight_profile_lookup("fairy").on;
+}
+
+#forall "every other realm walks: its profile is off" which: 0..<9 {
+  names := [9] string.["", "the-grid", "garden", "everglade", "hecates-cemetery", "villa", "dead-gears", "Fairy-Forest", "fairy-forest "];
+  p := flight_profile_lookup(names[which]);
+  #assert !p.on;
+  q: FlightProfile;
+  #assert !q.on && flight_profile_ok(q);
+}
+
+#forall "a profile refuses a nonfinite field and a wrong sign" field: 0..<6, bad: 0..<3 {
+  p := flight_fairy_profile(); zero := 0.0f32;
+  v := ifx bad == 0 then zero / zero else ifx bad == 1 then 1 / zero else 1000.0f32;
+  if field == 0 { p.flap_up = v; }
+  if field == 1 { p.flap_keep = v; }
+  if field == 2 { p.climb = v; }
+  if field == 3 { p.glide = -v; }
+  if field == 4 { p.dive = -v; }
+  if field == 5 { p.ceiling = v; }
+  #assert !flight_profile_ok(p);
+}
+
+#test "a profile's signs and bounds" {
+  p := flight_fairy_profile();
+  p.flap_up = 0; p.climb = 0; p.flap_keep = 0; p.glide = 0; p.dive = 0; p.ceiling = 0;
+  #assert flight_profile_ok(p);
+  p.flap_keep = 1; #assert flight_profile_ok(p);
+  p.flap_keep = 1.01; #assert !flight_profile_ok(p); p.flap_keep = 1;
+  p.flap_keep = -0.01; #assert !flight_profile_ok(p); p.flap_keep = 1;
+  p.flap_up = -0.01; #assert !flight_profile_ok(p); p.flap_up = 0;
+  p.climb = -0.01; #assert !flight_profile_ok(p); p.climb = 0;
+  p.glide = 0.01; #assert !flight_profile_ok(p); p.glide = 0;
+  p.dive = 0.01; #assert !flight_profile_ok(p); p.dive = 0;
+  p.ceiling = -0.01; #assert !flight_profile_ok(p); p.ceiling = 0;
+  p.ceiling = 999.99; #assert flight_profile_ok(p);
+  #assert flight_finite(999.99) && flight_finite(-999.99) && !flight_finite(1000) && !flight_finite(-1000);
+}
+
+#test "a beat in the air lifts you: flap_up from a fall, half your rise plus flap_up from a rise" {
+  p := flight_fairy_profile();
+  t := flight_vertical(p, -3, 5, true, false, false, true);
+  #assert t.vy == 5.2 && t.beat && !t.diving;
+  t = flight_vertical(p, 0, 5, true, false, false, true);
+  #assert t.vy == 5.2 && t.beat;
+  t = flight_vertical(p, 4, 5, true, false, false, true);
+  #assert t.vy == 7.2 && t.beat;   // 4 * 0.5 + 5.2
+  // without wings (the realm's settings, or in water) a press does nothing
+  t = flight_vertical(p, -1, 5, true, false, false, false);
+  #assert t.vy == -1 && !t.beat;
+  // at the ceiling and above, a beat no longer lifts
+  t = flight_vertical(p, -1, 40, true, false, false, true);
+  #assert t.vy == -1 && !t.beat;
+  t = flight_vertical(p, -1, 39.99, true, false, false, true);
+  #assert t.vy == 5.2 && t.beat;
+}
+
+#test "held, you climb at climb; never slower, and a faster rise is kept" {
+  p := flight_fairy_profile();
+  #assert flight_vertical(p, -1.5, 5, false, true, false, true).vy == 3.2;
+  #assert flight_vertical(p, 3.19, 5, false, true, false, true).vy == 3.2;
+  #assert flight_vertical(p, 3.2, 5, false, true, false, true).vy == 3.2;
+  #assert flight_vertical(p, 6, 5, false, true, false, true).vy == 6;
+  #assert flight_vertical(p, -1, 5, false, true, false, false).vy == -1;    // no wings, no climb
+  #assert flight_vertical(p, -1, 40, false, true, false, true).vy == -1;    // the ceiling
+  #assert flight_vertical(p, -1, 39.5, false, true, false, true).vy == 3.2;
+}
+
+#test "between beats you glide: a fall never passes glide, a rise is kept" {
+  p := flight_fairy_profile();
+  #assert flight_vertical(p, -9, 5, false, false, false, true).vy == -1.5;
+  #assert flight_vertical(p, -1.51, 5, false, false, false, false).vy == -1.5;   // wings or not
+  #assert flight_vertical(p, -1.5, 5, false, false, false, true).vy == -1.5;
+  #assert flight_vertical(p, -1, 5, false, false, false, true).vy == -1;
+  #assert flight_vertical(p, 2, 5, false, false, false, true).vy == 2;
+}
+
+#test "past the ceiling a rise stops; at it a rise is kept" {
+  p := flight_fairy_profile();
+  #assert flight_vertical(p, 2, 40.01, false, false, false, true).vy == 0;
+  #assert flight_vertical(p, 2, 40, false, false, false, true).vy == 2;
+  #assert flight_vertical(p, 6, 41, false, true, false, true).vy == 0;
+  #assert flight_vertical(p, -1, 41, false, false, false, true).vy == -1;
+  #assert flight_vertical(p, 0, 41, false, false, false, true).vy == 0;
+}
+
+#test "the dive folds the wings: a fall at dive, unless this step beat" {
+  p := flight_fairy_profile();
+  t := flight_vertical(p, -1.5, 5, false, false, true, true);
+  #assert t.vy == -7 && t.diving && !t.beat;
+  t = flight_vertical(p, 3, 5, false, true, true, true);    // held climb and dive: the dive wins
+  #assert t.vy == -7 && t.diving;
+  t = flight_vertical(p, -9, 5, false, false, true, true);  // already faster: the glide holds it to -1.5 first
+  #assert t.vy == -7 && t.diving;
+  t = flight_vertical(p, -1, 5, true, false, true, true);   // a beat this step: no dive
+  #assert t.vy == 5.2 && t.beat && !t.diving;
+  t = flight_vertical(p, -1, 5, true, false, true, false);  // a press without wings is no beat: it dives
+  #assert t.vy == -7 && t.diving && !t.beat;
+  p.dive = -1;
+  t = flight_vertical(p, -1.5, 5, false, false, true, true);
+  #assert t.vy == -1.5 && t.diving;                         // diving, never slower than the glide
+}
+
+// At a tie each rule keeps the speed it was given: a zero's sign shows which one won.
+#test "ties: a speed already at a rule's bound is kept as it was" {
+  p := flight_fairy_profile(); z := 0.0f32; n := -z;
+  p.climb = 0; p.glide = -1;
+  #assert f32_bits(flight_vertical(p, n, 5, false, true, false, true).vy) != 0;    // climb: -0 is not under 0
+  p.climb = 3.2; p.glide = 0;
+  #assert f32_bits(flight_vertical(p, n, 5, false, false, false, true).vy) != 0;   // glide: -0 is not under 0
+  p.glide = -1;
+  #assert f32_bits(flight_vertical(p, n, 41, false, false, false, true).vy) != 0;  // past the ceiling: -0 is no rise
+  p.dive = 0;
+  #assert f32_bits(flight_vertical(p, n, 5, false, false, true, true).vy) != 0;    // the dive: -0 is not over 0
+  p.dive = -7; p.flap_up = n;
+  #assert f32_bits(flight_vertical(p, z, 5, true, false, false, true).vy) != 0;    // a beat from 0 is flap_up itself
+}
+
+#test "bad numbers never get in" {
+  p := flight_fairy_profile(); zero := 0.0f32;
+  #assert flight_vertical(p, zero / zero, 5, false, false, false, true).vy == 0;   // no speed is still
+  #assert flight_vertical(p, 1 / zero, 5, false, false, false, true).vy == 0;
+  #assert flight_vertical(p, -1 / zero, 5, false, true, false, true).vy == 3.2;
+  #assert flight_vertical(p, -1, zero / zero, true, false, false, true).vy == -1;   // nowhere: no lift
+  q := p; q.flap_up = zero / zero;
+  t := flight_vertical(q, -1, 5, true, true, true, true);
+  #assert t.vy == -1 && !t.beat && !t.diving;                                        // a bad profile does nothing
+}
+
+// ---- the rule
+
+flight_finite :: (a: f32) -> bool { return a == a && a > -f32(FLIGHT_LIMIT) && a < f32(FLIGHT_LIMIT); }
+flight_profile_ok :: (p: FlightProfile) -> bool {
+  values := [6] f32.[p.flap_up, p.flap_keep, p.climb, p.glide, p.dive, p.ceiling];
+  for i: 0..<6 { if !flight_finite(values[i]) { return false; } }
+  return p.flap_up >= 0 && p.flap_keep >= 0 && p.flap_keep <= 1 && p.climb >= 0 && p.glide <= 0 && p.dive <= 0 && p.ceiling >= 0;
+}
+
+// The realms that fly, by the names the walker's realm lookup takes (aethyr/collision-profiles.coax).
+flight_profile_lookup :: (name: string) -> FlightProfile {
+  p: FlightProfile;
+  if name == "fairy-forest" || name == "fairy" { p.on = true; }
+  return p;
+}
+
+// book:begin vertical
+// One step in the air: vy is your vertical speed after gravity, y your feet. A beat (a press
+// taken this step) lifts you, a held jump climbs, between beats you glide, past the ceiling a
+// rise stops, and a held dive folds the wings unless this step beat.
+flight_vertical :: (p: FlightProfile, vy: f32, y: f32, beat: bool, climb: bool, dive: bool, wings: bool) -> FlightTurn {
+  out := FlightTurn.{vy = vy};
+  if !flight_profile_ok(p) { return out; }
+  v := ifx flight_finite(vy) then vy else 0.0f32;
+  lifts := wings && flight_finite(y) && y < p.ceiling;
+  if beat && lifts {
+    v = ifx v > 0 then v * p.flap_keep + p.flap_up else p.flap_up;
+    out.beat = true;
+  }
+  if climb && lifts && v < p.climb { v = p.climb; }
+  if v < p.glide { v = p.glide; }
+  if y > p.ceiling && v > 0 { v = 0; }
+  if dive && !out.beat {
+    out.diving = true;
+    if v > p.dive { v = p.dive; }
+  }
+  out.vy = v;
+  return out;
+}
+// book:end vertical

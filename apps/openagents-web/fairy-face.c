@@ -67,18 +67,15 @@ static bool stream_built;
 static float course[48];
 static float pads[7 * 8];
 static coax_t_Swim swim;
-static bool jump_was;
 static float flap_phase;
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_v_t_Stream sv(void) { return (coax_v_t_Stream){&stream, 1}; }
 
-#define FLAP_UP 5.2f      /* m/s up from each beat in the air: about 0.55 m a beat */
-#define GLIDE -1.5f       /* m/s: the gentle fall between beats */
-#define CLIMB 3.2f        /* m/s: the steady climb while Space is held, beating on */
-#define CEILING 40.0f     /* m over the ground: beats stop lifting here */
-#define DIVE -7.0f        /* m/s: the fall while Shift is held in the air, wings folded */
+/* The flight itself (beats, the climb, the glide, the ceiling and the dive) is the walker's
+   per-step hook, aethyr/flight.coax, which Fairy Forest's profile turns on; this face hands it
+   the presses and holds and draws the wings. */
 
 #define NPC_URL "/api/playtest/npc/ask"
 #define PLAYER_URL "/api/playtest/player"
@@ -232,30 +229,27 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   bool jump = g->jump || sticks.jump || thumb_held;
   int64_t taps = fairy_taps(at(state)) + (sticks.jump ? 1 : 0);
   bool afloat = swim.medium >= 2;
+  // flight (aethyr/flight.coax, a step at a time): every press in the air is one wing beat
+  // up, as many as you like (on the ground the player's jump lifts you); between beats you
+  // glide down; held, she keeps beating and climbs; Shift in the air dives. In the water, or
+  // with flight off for visitors (SETTINGS), there are no wings.
+  int64_t beats_were = player.beats, jumps_were = (int64_t)player.jumps.pressed;
   bool grounded = player.on_ground;
-  player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), (jump || taps > 0) && !afloat, 0, 0);
+  player = verse_player_input_flying(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
+                                     jump && !afloat, afloat ? 0 : taps, fairy_may_fly(at(state)) && !afloat, g->run && !afloat);
   player.pace = swim.pace;
   player.theta = fairy_player_theta(at(state));
-  // flight: every press is one wing beat up, as many as you like (on the
-  // ground the player's jump lifts you); between beats you glide down, and
-  // held, she keeps beating and climbs
-  bool beat = taps > 0 || (jump && !jump_was);
-  if (!fairy_may_fly(at(state))) { if (!grounded) beat = false; if (!grounded) jump = false; }   /* SETTINGS: flight off for visitors */
-  if (beat) flap_phase = 1.5708f + 6.2832f * (float)(int)(flap_phase / 6.2832f + 1.0f);   /* wings to the top, then the downstroke */
-  if (beat && !grounded && !afloat && player.pos.y < CEILING) player.vel.y = player.vel.y > 0 ? player.vel.y * 0.5f + FLAP_UP : FLAP_UP;
-  if (jump && !grounded && !afloat && player.pos.y < CEILING && player.vel.y < CLIMB) player.vel.y = CLIMB;
-  if (!player.on_ground && player.vel.y < GLIDE) player.vel.y = GLIDE;
-  if (player.pos.y > CEILING && player.vel.y > 0) player.vel.y = 0;
-  // Shift in the air dives (on the ground it still walks): a fast fall, wings folded down
-  bool diving = g->run && !player.on_ground && !afloat && !beat;
-  if (diving && player.vel.y > DIVE) player.vel.y = DIVE;
-  jump_was = jump;
+  bool pressed = (int64_t)player.jumps.pressed != jumps_were;
   if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = fairy_walls(at(state));
   player = verse_player_advance_in_realm(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"fairy-forest", sizeof "fairy-forest" - 1});
   coax_t_Vec3 feet = verse_player_feet(player);
+  /* a flap, for the wings and the count: a beat the steps took, or a press from the ground or with wings */
+  bool beat = player.beats != beats_were || (pressed && (grounded || fairy_may_fly(at(state))));
+  bool diving = player.diving;
+  if (beat) flap_phase = 1.5708f + 6.2832f * (float)(int)(flap_phase / 6.2832f + 1.0f);   /* wings to the top, then the downstroke */
   coax_v_f32 heights = {g->heights.e, fairy_heights(at(state))};
   fairy_stream_drop(sv(), heights, fairy_pond_drop(at(state)));   /* the pond: low until filled (fairypond.coax) */
   /* on a bridge's deck you stand over the water by the deck's height (fairypark.coax walk_at) */

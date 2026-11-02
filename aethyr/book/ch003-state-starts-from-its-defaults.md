@@ -71,6 +71,12 @@ Player :: struct {
   run: bool;
   jump_held: bool;
   jumps: InputPress;          // jump presses, each taken by the first step after it (aethyr/input.coax)
+  // Flight (aethyr/flight.coax), for a realm whose World declares it: whether you may beat and
+  // climb now, the dive held, the beats taken in the air, and whether the last step dived.
+  wings: bool;
+  dive_held: bool;
+  beats: int;
+  diving: bool;
   // Fixed steps (aethyr/loop.coax, the engine's one clock): time not yet stepped,
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;

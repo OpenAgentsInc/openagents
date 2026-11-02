@@ -354,6 +354,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
     p.vel.y = w.locomotion.jump_speed;
     p.on_ground = false;
   }
+  beat := t.pressed && !given.on_ground;   // a press in the air: a wing beat, if the realm flies
 ```
 
 Before this change, `verse_player_input` applied the jump when it was called,

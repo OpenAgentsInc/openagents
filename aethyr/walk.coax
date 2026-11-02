@@ -25,6 +25,7 @@
 #load "collision-profiles.coax" as realm_collision;
 #load "tests/player-collision-checks.coax";
 #load "locomotion.coax";
+#load "flight.coax";   // the per-step flight hook a flying realm declares (Fairy Forest)
 #load "walk-frame.coax";
 #load "tests/walk-tuning-checks.coax";
 #authority;
@@ -79,6 +80,7 @@ World :: struct {
   heightfields: [] QueryHeightfield;
   collision: CollideProfile;
   locomotion: LocomotionProfile;
+  flight: FlightProfile;   // off unless the realm flies (aethyr/flight.coax)
 }
 
 // What the character is doing, for the animation that comes later. The
@@ -109,6 +111,12 @@ Player :: struct {
   run: bool;
   jump_held: bool;
   jumps: InputPress;          // jump presses, each taken by the first step after it (aethyr/input.coax)
+  // Flight (aethyr/flight.coax), for a realm whose World declares it: whether you may beat and
+  // climb now, the dive held, the beats taken in the air, and whether the last step dived.
+  wings: bool;
+  dive_held: bool;
+  beats: int;
+  diving: bool;
   // Fixed steps (aethyr/loop.coax, the engine's one clock): time not yet stepped,
   // and where the last step began, so the frame shows a point between the last two.
   clock: FrameClock;
@@ -312,6 +320,20 @@ walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
 // (the key the realms call HOLD_RUN), stick_run the stick's full push
 // (verse/grid.coax), pad its travel. A stick past the dead zone decides; the
 // keys go by RUN_BY_DEFAULT, Shift turning it the other way.
+// A flying realm's frame of controls: walk_input's, plus `taps` (a tap is a press even while
+// the jump is held; one per frame, as the face counted them), whether you may beat and climb
+// now (`wings`) and the dive held.
+walk_fly_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, run: bool, jump: bool,
+                   taps: int, wings: bool, dive: bool) -> Player {
+  next := walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, 0, 0);
+  if taps > 0 && next.jumps.pressed == p.jumps.pressed {
+    next.jumps = input_press(next.jumps);
+    next.jumps.held = jump;
+  }
+  next.wings = wings; next.dive_held = dive;
+  return next;
+}
+
 walk_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool {
   return input_runs(shift, stick_run, pad_x, pad_y);
 }
@@ -361,6 +383,7 @@ step :: (w: World, given: Player, dt: f32) -> Player {
     p.vel.y = w.locomotion.jump_speed;
     p.on_ground = false;
   }
+  beat := t.pressed && !given.on_ground;   // a press in the air: a wing beat, if the realm flies
 // book:end take
 // book:begin move
   next := p;
@@ -424,6 +447,14 @@ step :: (w: World, given: Player, dt: f32) -> Player {
   if falls {
     next.vel.y -= w.locomotion.gravity * dt;
     next.on_ground = false;
+  }
+  // A flying realm's hook: in the air, this step's vertical speed is the flight's.
+  next.diving = false;
+  if w.flight.on && !next.on_ground {
+    turn := flight_vertical(w.flight, next.vel.y, next.pos.y, beat, p.jump_held, p.dive_held, p.wings);
+    next.vel.y = turn.vy;
+    next.diving = turn.diving;
+    if turn.beat { next.beats += 1; }
   }
   next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - w.locomotion.sink_limit);
 
@@ -552,7 +583,7 @@ walk_advance_in_realm_traced :: (p: Player, frame: f32, bodies: [] f32, walls: [
   if declaration.status != realm_collision.CollisionProfileStatus.ok {
     return AdvanceTrace.{player = collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile})};
   }
-  w := World.{bodies = bodies, walls = walls, floors = floors, collision = declaration.profile};
+  w := World.{bodies = bodies, walls = walls, floors = floors, collision = declaration.profile, flight = flight_profile_lookup(realm)};
   return advance_traced(w, p, frame);
 }
 
@@ -1674,4 +1705,163 @@ gable :: (f: [] f32, eave: f32) {
   q := held(walk_place(-6, 0, 0, f32(PI) / 2), 0, 1, false);
   for i: 0..<120 { q = step(w, q, STEP); }
   #assert q.pos.x > -3 && q.pos.y > 0.5;
+}
+
+// ---- Flight (aethyr/flight.coax): the per-step hook a flying realm declares ----
+
+flier :: () -> World { w: World; w.flight = flight_profile_lookup("fairy-forest"); return w; }
+// The flying session's controls in window k of 1/6 s each. A window starts on a frame at 30,
+// 60, 120 and 144 FPS alike and, with the clock started half a step in, at least a sixth of a
+// 1/64 s step from a step's end, so every rate starts the window's controls on the same step: walk, a jump from the ground held into a climb, a glide,
+// a beat held into a climb, a beat and a longer climb, a dive and a glide to the ground.
+FLY_WINDOWS :: 18;
+fly_controls :: (p: Player, k: int) -> Player {
+  jump := k == 1 || k == 2 || k == 5 || k == 7 || k == 8;
+  dive := k == 10 || k == 11;
+  return walk_fly_input(p, 0, ifx k < 14 then 1.0f32 else 0, 0, 0, false, jump, 0, true, dive);
+}
+// The step a window's controls start on: floor(k * 64 / 6 + 1 / 2).
+fly_window_step :: (k: int) -> int { return (64 * k + 3) / 6; }
+fly_start :: () -> Player { p := walk_place(0, 0, 0, 0); p.clock.carry_ns = LOOP_STEP_NS / 2; return p; }
+same_flight :: (a: Player, b: Player) -> bool {
+  return same_step(a, b) && a.beats == b.beats && a.diving == b.diving && a.jumps.taken == b.jumps.taken;
+}
+fly_reference :: (out: [] Player) {
+  w := flier();
+  q := fly_start();
+  k := 0;
+  for i: 0..<out.count {
+    while fly_window_step(k + 1) <= i { k += 1; }   // out.count steps end with the last window
+    q = fly_controls(q, k);
+    q = step_once(w, q, STEP);
+    out[i] = q;
+  }
+}
+// Frames whose times sum to 1/6 s, unevenly: 4, 1, 2, 5 and 8 of 1/120 s.
+fly_uneven :: (f: int) -> f32 {
+  parts := [5] f32.[4.0 / 120.0, 1.0 / 120.0, 2.0 / 120.0, 5.0 / 120.0, 8.0 / 120.0];
+  return parts[f % 5];
+}
+
+// book:begin flight-rates
+#forall "a flight of beats, climbs, glides and a dive has the same states at 30, 60, 120 and 144 FPS and on uneven frames" r: 0..<5 {
+  fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
+  per := ifx r == 4 then 5 else fps / 6;    // frames a window
+  total := fly_window_step(FLY_WINDOWS);
+  ref: [192] Player;
+  fly_reference(ref[0..<total]);
+  // the reference really flew: it climbed held, glided, beat twice in the air, dived and landed
+  #assert ref[fly_window_step(3) - 1].pos.y > 1 && ref[fly_window_step(3) - 1].vel.y == 3.2;
+  #assert ref[fly_window_step(4) + 8].vel.y == -1.5 && !ref[fly_window_step(4) + 8].on_ground;
+  #assert ref[total - 1].beats == 2 && ref[total - 1].jumps.taken == 3;
+  #assert ref[fly_window_step(10) + 2].diving && ref[fly_window_step(10) + 2].vel.y == -7;
+  #assert ref[total - 1].on_ground && !ref[total - 1].diving;
+  w := flier();
+  p := fly_start();
+  frames := 0;
+  for k: 0..<FLY_WINDOWS {
+    for f: 0..<per {
+      p = fly_controls(p, k);
+      frame := ifx r == 4 then fly_uneven(frames) else cast(f32) (1.0 / cast(f64) fps);
+      p = advance_in(w, p, frame);
+      frames += 1;
+      if p.clock.ticks > 0 { #assert same_flight(p, ref[p.clock.ticks - 1]); }
+    }
+    #assert p.clock.ticks == fly_window_step(k + 1);   // every rate ends the window on the same step
+  }
+  #assert frames == FLY_WINDOWS * per && p.clock.ticks == total;
+}
+// book:end flight-rates
+
+// The session itself, pinned: the feet's height at the end of each window (its bits) and how
+// far it walked, so a change to the controls, the windows or the start shows here.
+#test "the flying session flies the path it was recorded with" {
+  ref: [192] Player;
+  fly_reference(ref[..]);
+  bits := [18] u32.[0, 1062830080, 1068728317, 1070098015, 1068158149, 1073607463, 1074359493, 1076874435, 1079181300,
+    1079866149, 1075278629, 1066722890, 1063767188, 1059835028, 1054054696, 1042231888, 0, 0];
+  for k: 0..<18 { #assert f32_bits(ref[fly_window_step(k + 1) - 1].pos.y) == bits[k]; }
+  #assert ref[191].pos.z == 8.1484375 && ref[148].pos.z == 8.072266 && ref[159].pos.z == 8.1484375;
+  #assert fly_start().clock.carry_ns * 2 == LOOP_STEP_NS;
+  sum := 0.0f32;
+  for f: 0..<5 { sum += fly_uneven(f); #assert f == 0 || fly_uneven(f) != fly_uneven(f - 1); }
+  #assert abs(sum - 1.0f32 / 6) < 0.000001 && fly_uneven(5) == fly_uneven(0);
+}
+
+#forall "same_flight compares every field it names" k: 0..<4 {
+  a := walk_fly_input(walk_place(0, 3, 0, 0), 0, 0, 0, 0, false, true, 0, true, true);
+  #assert same_flight(a, a);
+  b := a;
+  if k == 0 { b.pos.y += 1; } else if k == 1 { b.beats += 1; } else if k == 2 { b.diving = !b.diving; } else { b.jumps.taken += 1; }
+  #assert !same_flight(a, b);
+}
+
+#test "a glide falls at exactly glide and a held climb rises at exactly climb, step by step" {
+  w := flier();
+  p := walk_place(0, 10, 0, 0);
+  p = walk_fly_input(p, 0, 0, 0, 0, false, false, 0, true, false);
+  for i: 0..<64 {
+    y := p.pos.y;
+    p = step(w, p, STEP);
+    if i > 4 { #assert p.vel.y == -1.5 && p.pos.y == y - 1.5 * f32(STEP) && !p.on_ground && !p.diving; }
+  }
+  p = walk_fly_input(p, 0, 0, 0, 0, false, true, 0, true, false);   // pressed: a beat, then held: the climb
+  p = step(w, p, STEP);
+  #assert p.beats == 1 && p.vel.y == 5.2 && p.jumps.taken == 1;
+  for i: 0..<64 { p = step(w, p, STEP); }
+  y := p.pos.y;
+  p = step(w, p, STEP);
+  #assert p.vel.y == 3.2 && p.pos.y == y + 3.2 * f32(STEP) && p.beats == 1;
+}
+
+#test "a press on the ground still jumps; in the air without wings it is spent and lifts nothing" {
+  w := flier();
+  p := walk_fly_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, true, false);
+  p = step(w, p, STEP);
+  #assert !p.on_ground && p.beats == 0 && p.vel.y > f32(JUMP) - 1;   // the jump, not a beat
+  q := walk_fly_input(walk_place(0, 10, 0, 0), 0, 0, 0, 0, false, false, 0, false, false);
+  for i: 0..<8 { q = step(w, q, STEP); }   // falling from rest: gravity, then the glide
+  #assert q.vel.y == -1.5;
+  q = walk_fly_input(q, 0, 0, 0, 0, false, true, 0, false, false);
+  q = step(w, q, STEP);
+  #assert q.jumps.taken == 1 && q.jumps.waiting == 0 && q.beats == 0 && q.vel.y == -1.5;
+  // the dive works without wings: Shift in the air
+  q = walk_fly_input(q, 0, 0, 0, 0, false, false, 0, false, true);
+  q = step(w, q, STEP);
+  #assert q.diving && q.vel.y == -7;
+  // still held down to the ground: landed, you are not diving
+  while !q.on_ground { q = step(w, q, STEP); }
+  #assert !q.diving && q.dive_held;
+}
+
+#test "a tap is a press even while the jump is held; held, it is one press" {
+  p := walk_place(0, 0, 0, 0);
+  p = walk_fly_input(p, 0, 0, 0, 0, false, true, 0, true, false);
+  #assert p.jumps.pressed == 1;
+  p = walk_fly_input(p, 0, 0, 0, 0, false, true, 0, true, false);
+  #assert p.jumps.pressed == 1;                       // held: no new press
+  p = walk_fly_input(p, 0, 0, 0, 0, false, true, 2, true, false);
+  #assert p.jumps.pressed == 2 && p.jumps.held;       // a tap while held: one more, the hold kept
+  q := walk_fly_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, false, 1, true, false);
+  #assert q.jumps.pressed == 1 && !q.jumps.held && !q.jump_held;   // a tap alone: a press, nothing held
+  q = walk_fly_input(q, 0, 0, 0, 0, false, true, 1, true, false);
+  #assert q.jumps.pressed == 2 && q.jump_held;        // rising and tapping in one frame: one press
+  #assert q.wings && !q.dive_held;
+  q = walk_fly_input(q, 0, 0, 0, 0, false, false, 0, false, true);
+  #assert !q.wings && q.dive_held && q.jumps.pressed == 2;
+}
+
+#test "a walker with no flight profile is the same with wings and a dive held" {
+  w: World;
+  a := walk_place(0, 0, 0, 0); b := a;
+  for i: 0..<200 {
+    jump := i == 5 || i == 30 || i == 31;
+    before := a;
+    a = walk_fly_input(before, 0, 1, 0, 0, false, jump, 0, false, false);
+    #assert walker_same(a, walk_input(before, 0, 1, 0, 0, false, jump, 0, 0));
+    b = walk_fly_input(b, 0, 1, 0, 0, false, jump, ifx i == 40 then 1 else 0, true, true);
+    a = step_once(w, a, STEP); b = step_once(w, b, STEP);
+    if i < 40 { #assert walker_same(a, b) && b.beats == 0 && !b.diving; }
+  }
+  #assert a.jumps.taken == 2 && b.jumps.taken == 3 && b.beats == 0 && !b.diving;
 }

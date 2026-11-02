@@ -28,6 +28,7 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
 | `walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `aethyr/player.coax` retains its C facade |
 | `locomotion.coax` | Finite, bounded walking and grounded-route tuning, separate from capsule collision profiles |
+| `flight.coax` | The walker's per-step flight hook: a realm's `FlightProfile` (Fairy Forest's is on) sets the vertical speed of each step in the air: a wing beat, the held climb, the glide, the ceiling and the dive |
 | `walk-frame.coax` | Shared post-step targets and velocity records, with no C exports or persistent clock |
 | `follower.coax` | Grounded route followers and fetch on the realm's paid steps: checked terrain, declared tuning, strict directions, atomic refusal and previous-pose drawing, with no second clock |
 | `follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), the eye drawn between steps, and its third- and first-person shots; it steps after the player and only reads it |

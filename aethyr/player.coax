@@ -13,6 +13,12 @@ verse_player_place :: (x: f32, y: f32, z: f32, yaw: f32) -> walk.Player #export_
 verse_player_input :: (p: walk.Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> walk.Player #export_c { return walk.walk_input(p, key_x, key_y, pad_x, pad_y, run, jump, dyaw, dpitch); }
 
+// A flying realm's controls (aethyr/flight.coax, through walk_fly_input): taps, wings and the dive.
+verse_player_input_flying :: (p: walk.Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32, run: bool, jump: bool,
+                              taps: int, wings: bool, dive: bool) -> walk.Player #export_c {
+  return walk.walk_fly_input(p, key_x, key_y, pad_x, pad_y, run, jump, taps, wings, dive);
+}
+
 verse_runs :: (shift: bool, stick_run: bool, pad_x: f32, pad_y: f32) -> bool #export_c { return walk.walk_runs(shift, stick_run, pad_x, pad_y); }
 
 verse_player_intent :: (p: walk.Player, i: Intent) -> walk.Player { return walk.walk_intent(p, i); }
