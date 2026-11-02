@@ -1,0 +1,140 @@
+// Chapter 196: a Psionic buyer and a simulated Mesh-LLM peer, in one process.
+// The peer's advertisement and wire follow Mesh-LLM at f2a7f62; its
+// arithmetic is chapter 20's toy engine, not llama.cpp. The buyer maps the
+// peer's gossip to a capability claim and a one-stage route, probes it and
+// records the probe as evidence, then sends it work through the System One
+// translation, re-runs each answer, meters the usage, prices it by
+// Mesh-LLM's own rules and decides payment in chapter 238's ledger.
+#import "Basic";
+#load "../lib/peer/meshllm.coax";
+#load "../lib/serve-run.coax";
+
+// book:begin example
+PEER :: "8f0e3c2a5b6d4e1f9a7c3b2d1e0f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5";
+PROBE :: "{\"model\":\"psionic-toy\",\"state\":\"The kettle has boiled.\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"},\"drink\":{\"type\":\"choice\",\"criteria\":{\"tea\":null,\"soup\":\"a meal\"}}}}";
+JOB1 :: "{\"model\":\"psionic-toy\",\"state\":\"The kettle is cold.\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"}}}";
+JOB2 :: "{\"model\":\"psionic-toy\",\"state\":\"The tea is ready.\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"}}}";
+JOB3 :: "{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"},\"b\":{\"type\":\"noul\"},\"c\":{\"type\":\"noul\"}}}";
+
+main :: () {
+    toy:[1]SvToy;engine:=sv_test_toy(toy[..],400);
+    ex:[1]Ex;ex[0].engine=engine;ex[0].work=sv_scratch(ex[0].prep[..],engine);
+    print("Mesh-LLM % in process; the peer is simulated: chapter 20's toy engine behind Mesh-LLM's wire\n",ML_REVISION[0..<7]);
+    // Four advertisements, as decoded from node.proto's PeerAnnouncement.
+    toy_model:=MlModel.{name="psionic-toy",identity=SV_TOY_SHA,system_one=MlLevel.supported,layers=4,runtime_identity=SV_TOY_SHA,ready=true};
+    peer:=MlPeer.{endpoint=PEER,role=MlRole.host,mesh="lab",gen=7,admission=MlAdmission.accepting,model=toy_model};
+    laya:=peer;laya.model.name="meshllm/laya-multilingual-F16-GGUF";laya.model.system_one=MlLevel.likely;
+    gpu:=peer;gpu.gpus=1;paused:=peer;paused.admission=MlAdmission.all_paused;
+    ads:=[4]MlPeer.[peer,laya,gpu,paused];names:=[4]string.["toy, CPU only","Laya, system_one likely","toy, one GPU","toy, all paused"];
+    print("advertisements:\n");
+    for i:0..<4 {
+        c:=ml_claim(ads[i]);
+        if c.refuse==MlRefuse.none {print("  %: claim % % %\n",names[i],c.claim.model,cp_backend_name(c.claim.backend),c.claim.profile);}
+        else {print("  %: refused, %\n",names[i],ml_refuse_name(c.refuse));}
+    }
+    order:[1]int;r:=ml_route(peer,PG_NOW,PG_NOW,60,order[..]);
+    print("route: %, % stage, layers 0..%\n",r.route.code,r.route.stages,peer.model.layers);
+    offer:=MlOffer.{model="psionic-toy",input=2000000,output=8000000,protocol=3};
+    print("offer: % msat per million in, % out, protocol %: %\n",offer.input,offer.output,offer.protocol,ifx ml_offer(offer,"psionic-toy")==MlRefuse.none then "accepted" else "refused");
+    claims:=[1]CpClaim.[ml_claim(peer).claim];doc:[1]CpEntry;
+    none:[1]CpEvidence;n:=cp_derive(claims[..],none[0..<0],0,doc[..]);
+    print("before a probe: % %: unknown (%)\n",doc[0].claim.model,cp_backend_name(doc[0].claim.backend),cp_cause_name(doc[0].cause));
+
+    // The probe: chapter 173's request, sent through the translation and
+    // re-run by the buyer. The buyer's checker requires Mesh-LLM peers to
+    // match its own answers byte for byte.
+    exact:=[1]PkProfile.[PkProfile.{name=ML_PROFILE,exact=true}];
+    keys:[256]u8;key:=ml_commit(PROBE,keys[0..<64]);
+    req:[1024]u8;m:=ml_request(PROBE,"psionic-toy",ex_pools(ex[..]),req[..]);
+    print("probe request, commitment %:\n%\n",key,cast(string)req[0..<m]);
+    resp:[2048]u8;k:=ex_peer(ex[..],cast(string)req[0..<m],Mode.honest,resp[..]);
+    print("peer:\n%\n",cast(string)resp[0..<k]);
+    a:=ml_answer(cast(string)resp[0..<k],"psionic-toy");
+    ref:[1024]u8;own:=ex_reference(ex[..],PROBE,ref[..]);
+    cmp:=ml_check(exact[..],a.answers,own,true);
+    size:=ml_size(sv_decode(PROBE,ex_pools(ex[..])),ex_pools(ex[..]),30000);
+    record:="probe:8f0e3c2a5b6d:1";
+    evidence:=[1]CpEvidence.[ml_evidence(claims[0],cmp,record,size)];
+    print("probe: % %; record % covers % questions, % options, % state bytes, % ms\n",cmp.verdict,cmp.reason,record,size.questions,size.options,size.state,size.deadline_ms);
+    n=cp_derive(claims[..],evidence[..],0,doc[..]);
+    body:[2048]u8;b:=cp_render(doc[..],body[..]);print("capability: %\n",cast(string)body[0..<b]);
+    print("honest: %\n",cp_cause_name(cp_honest(doc[..],evidence[..],0).cause));
+
+    // Work: a ledger with a 20000 msat cap. Each job holds the cost of the
+    // buyer's per-request cap, 4096 input tokens, with a 1 sat deposit.
+    quote:=ml_cost(offer,"psionic-toy",4096,0,1000).msat;
+    l:=VpLedger.{account=BlAccount.{budget=20000}};policy:=VpPolicy.{trust_unsampled=false,payout_cap=5000};
+    metrics:=UmMetrics.{};deposit:=1000;
+    print("quote per job: % msat (4096 tokens in, 1000 msat deposit)\n",quote);
+    jobs:=[2]string.[JOB1,JOB2];modes:=[2]Mode.[Mode.honest,Mode.tamper];
+    for j:0..<2 {
+        text:=jobs[j];key=ml_commit(text,keys[64*j+64..<64*j+128]);
+        rq:=sv_decode(text,ex_pools(ex[..]));ad:=cp_admit(doc[..],rq,ex_pools(ex[..]));
+        h:=vp_hold(l,key,PEER,quote,"msat");l=h.ledger;
+        m=ml_request(text,doc[ad.entry].claim.model,ex_pools(ex[..]),req[..]);
+        k=ex_peer(ex[..],cast(string)req[0..<m],modes[j],resp[..]);
+        a=ml_answer(cast(string)resp[0..<k],"psionic-toy");
+        own=ex_reference(ex[..],text,ref[..]);
+        cmp=ml_check(exact[..],a.answers,own,true);
+        cost:=ml_cost(offer,"psionic-toy",a.tokens_in,a.tokens_out,deposit);deposit=0;
+        um:=um_observe(metrics,ml_record(j+1,doc[ad.entry],a,0,quote,cost.msat));metrics=um.metrics;
+        d:=vp_decide(l,policy,key,cost.msat,true,cmp);l=d.ledger;
+        print("job %, commitment %...: admission %, hold %\n",j+1,key[0..<12],ifx ad.code==SvCode.none then "ok" else sv_code_name(ad.code),vp_state_name(h.state));
+        print("  answers %\n  usage % in, % out; bill % msat, deposit %, final invoice %, cost % msat\n",a.answers,a.tokens_in,a.tokens_out,cost.bill,cost.deposit,cost.final,cost.msat);
+        print("  checked: % %; meter: %; ledger: %\n",cmp.verdict,cmp.reason,um_cause_name(um.cause),vp_state_name(d.state));
+        if j==0 {out:[1024]u8;o:=ml_reply(a,doc[0].claim,PEER,out[..]);print("  reply: %\n",cast(string)out[0..<o]);}
+    }
+    rq:=sv_decode(JOB3,ex_pools(ex[..]));ad:=cp_admit(doc[..],rq,ex_pools(ex[..]));
+    print("job 3, three questions: %, nothing sent\n",sv_code_name(ad.code));
+    print("meter: % requests, % tokens in, % msat quoted, % msat billed by the peer\n",metrics.requests,metrics.tokens_in,metrics.quoted,metrics.charged);
+    print("ledger: escrow % msat, owed % msat, withheld % msat\n",l.account.held,l.account.spent,l.withheld);
+    for i:0..<l.m {v:=vp_invoice(l,l.intents[i].key,"lightning");print("  intent %... % msat to %...: lightning invoice for % msat (not paid)\n",v.key[0..<12],v.msat,v.payee[0..<12],v.msat);}
+
+    print("refusals:\n");
+    m=ml_request(PROBE,"psionic-toy",ex_pools(ex[..]),req[..]);
+    wrong:=[3]Mode.[Mode.model,Mode.usage,Mode.down];what:=[3]string.["answers for another model","sends \"usage\":null","answers 503"];
+    for i:0..<3 {k=ex_peer(ex[..],cast(string)req[0..<m],wrong[i],resp[..]);a=ml_answer(cast(string)resp[0..<k],"psionic-toy");print("  a peer that %: %\n",what[i],ml_refuse_name(a.refuse));}
+    old:=offer;old.protocol=2;print("  an offer on payment protocol 2: %\n",ml_refuse_name(ml_offer(old,"psionic-toy")));
+    print("  a request for a model the entry doesn't name: %\n",ifx ml_request(PROBE,"meshllm/laya-multilingual-F16-GGUF",ex_pools(ex[..]),req[..])<0 then "not sent" else "sent");
+}
+// book:end example
+
+Mode :: enum u8 {honest;tamper;model;usage;down;}
+ExPools :: struct {questions:[64]SvQuestion;options:[16320]PtOption;raw:[16320]string;arena:[1024]u8;}
+PrScratch :: struct {prompt:[4096]u8;render:[4096]u8;candidate:[2048]int;full:[2048]int;stage:[2048]int;normal:[8192]u8;scalars:[8192]int;symbols:[1024]int;tokens:[2048]int;state:[51230]f32;work:[583952]f32;prob:[510]f64;}
+Ex :: struct {engine:SvEngine;work:SvWork;prep:[1]PrScratch;pools:[1]ExPools;answers:[16320]f64;}
+ex_pools :: (ex:[]Ex)->SvPools {p:=ex[0].pools[..];return SvPools.{questions=p[0].questions[..],options=p[0].options[..],raw=p[0].raw[..],arena=p[0].arena[..]};}
+sv_scratch :: (w:[]PrScratch,engine:SvEngine)->SvWork {
+    plan:=sv_plan(engine);
+    prep:=PrWorkspace.{prompt=w[0].prompt[..],render_work=w[0].render[..],candidate=w[0].candidate[..],full=w[0].full[..],token_stage=w[0].stage[..],normal=w[0].normal[..],scalars=w[0].scalars[..],symbols=w[0].symbols[..]};
+    return SvWork.{prep=prep,tokens=w[0].tokens[..],state=w[0].state[0..<plan.state],work=w[0].work[0..<plan.work],prob=w[0].prob[..]};
+}
+// The toy engine's answers object for a body, as raw JSON copied into out.
+ex_run :: (ex:[]Ex,body:string,pools:SvPools,out:[]u8)->string {
+    r:=sv_decode(body,pools);
+    code:=sv_answers(ex[0].engine,r,pools,ex[0].work,ex[0].answers[..]);#assert code==SvCode.none;
+    page:[4096]u8;span:=sv_render(ex[0].engine,r,pools,ex[0].answers[..],0,page[..]);
+    text:=cast(string)page[span.from..<span.to];text=text[sv_body_start(text)..<text.count];
+    from:=sv_index(text,",\"answers\":")+11;to:=sv_index(text,",\"usage\":null");
+    n:=json_raw(out,0,text[from..<to]);return cast(string)out[0..<n];
+}
+// The buyer's own run.
+ex_reference :: (ex:[]Ex,body:string,out:[]u8)->string {return ex_run(ex,body,ex_pools(ex),out);}
+// The simulated peer: it reads Mesh-LLM's System One request, answers with
+// the toy engine, counts one input token per state byte, and writes
+// Mesh-LLM's {model, answers, usage} envelope. The other modes misbehave.
+ex_peer :: (ex:[]Ex,request:string,mode:Mode,out:[]u8)->int {
+    if mode==Mode.down {return json_raw(out,0,"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n");}
+    #assert sv_index(request,"POST /systemone HTTP/1.1\r\n")==0;
+    body:=request[sv_body_start(request)..<request.count];
+    answers:[1024]u8;a:=ex_run(ex,body,ex_pools(ex),answers[..]);
+    tokens:=sv_decode(body,ex_pools(ex)).state.value.count;
+    if mode==Mode.tamper {at:=sv_index(a,"\"noul\":0.")+9;answers[at]=ifx answers[at]=='9' then '0' else answers[at]+1;}
+    env:[1024]u8;
+    e:=json_raw(env[..],0,"{\"model\":");e=json_write_string(env[..],e,ifx mode==Mode.model then "meshllm/laya-multilingual-F16-GGUF" else "psionic-toy");
+    e=json_raw(env[..],e,",\"answers\":");e=json_raw(env[..],e,a);
+    if mode==Mode.usage {e=json_raw(env[..],e,",\"usage\":null}");}
+    else {e=json_raw(env[..],e,",\"usage\":{\"input_tokens\":");e=json_write_int(env[..],e,tokens);e=json_raw(env[..],e,",\"output_tokens\":0}}");}
+    n:=json_raw(out,0,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ");n=json_write_int(out,n,e);
+    n=json_raw(out,n,"\r\n\r\n");return json_raw(out,n,cast(string)env[0..<e]);
+}

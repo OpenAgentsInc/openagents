@@ -1,0 +1,623 @@
+// Chapter 196: the decisions a Psionic buyer makes about a Mesh-LLM peer.
+// Mesh-LLM (github.com/Mesh-LLM/mesh-llm, Apache-2.0) was read at revision
+// f2a7f62 as untrusted source: its gossip schema (node.proto), its System One
+// API page, its metered Lightning pricing (pricing.rs, metering.rs) and its
+// wire-byte commitments. Nothing from it runs here. This file maps a bounded
+// subset of what a peer advertises onto chapter 173's capability claims and
+// chapter 188's stage routes, refusing whatever cannot be mapped honestly;
+// translates one inference path, POST /systemone, in both directions; reads
+// the peer's answer and its usage; prices that usage by Mesh-LLM's own
+// rules; and gives chapter 195's checker and chapter 238's ledger what they
+// need, so a Mesh-LLM peer is metered, checked and paid like any other peer.
+// The decoded advertisement is an in-process profile; decoding protobuf
+// gossip and speaking QUIC to a live node are not built.
+//   coax/bin/coax test psionic/lib/peer/meshllm.coax
+//   coax/bin/coax mutate psionic/lib/peer/meshllm.coax --root-only
+#load "pay.coax";
+#load "policy.coax";
+#load "../serve-capability.coax";
+#load "../serve-meter.coax";
+#authority;
+
+// book:begin types
+ML_REVISION :: "f2a7f62c755e283c389a28cbf8d1e8f926677a4e";
+// The numerical profile a Mesh-LLM peer is named under. Its arithmetic is a
+// patched llama.cpp at this revision, never one of Psionic's own profiles.
+ML_PROFILE :: "mesh-llm-f2a7f62";
+// node.proto's NodeRole, InferenceAdmissionState and CapabilityLevel.
+MlRole :: enum u8 {unspecified;worker;host;client;}
+MlAdmission :: enum u8 {unspecified;accepting;deprioritized;remote_paused;all_paused;}
+MlLevel :: enum u8 {unspecified;none;likely;supported;}
+// One served model as the buyer decoded it from a peer's gossip:
+// ServedModelDescriptor's identity.model_name, identity.identity_hash,
+// capabilities.system_one and metadata.layer_count, and the
+// ModelRuntimeDescriptor's identity_hash and ready for the same model.
+MlModel :: struct {name:string;identity:string;system_one:MlLevel;layers:int;runtime_identity:string;ready:bool;}
+// The peer: its 32-byte endpoint_id in hex, role, mesh_id, the GossipFrame's
+// gen, inference_admission_state, how many entries hardware.gpus lists, and
+// the one model this mapping is about.
+MlPeer :: struct {endpoint:string;role:MlRole;mesh:string;gen:int;admission:MlAdmission;gpus:int;model:MlModel;}
+// A LightningOffer: msat per million input and output tokens, the cached
+// input discount and the payment protocol (3 is metered v3).
+MlOffer :: struct {model:string;input:int;output:int;cache:int;protocol:int;}
+MlRefuse :: enum u8 {none;endpoint;role;admission;name;identity;runtime;ready;system_one;backend;mesh;layers;offer;protocol;rate;discount;usage;deposit;request;status;length;json;model;answers;}
+MlClaim :: struct {refuse:MlRefuse;claim:CpClaim;}
+// book:end types
+ML_RATE_MOST :: 1000000000;   // msat per million tokens: 1000 sat a token
+ML_FLOOR_MOST :: 1000000;     // Mesh-LLM's MAX_PAYMENT_FLOOR_MSAT, also its largest deposit
+ML_FLOOR :: 1000;             // Mesh-LLM's PAYMENT_FLOOR_MSAT: 1 sat
+ML_TTL_MOST :: 300;           // a beacon older than chapter 24's window is stale anyway
+
+// Checks come first. The values in them are worked by hand in chapter 196.
+MLT_KEY :: "8f0e3c2a5b6d4e1f9a7c3b2d1e0f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5";
+mlt_peer :: ()->MlPeer {
+    m:=MlModel.{name="psionic-toy",identity=SV_TOY_SHA,system_one=MlLevel.supported,layers=4,runtime_identity=SV_TOY_SHA,ready=true};
+    return MlPeer.{endpoint=MLT_KEY,role=MlRole.host,mesh="lab",gen=7,admission=MlAdmission.accepting,model=m};
+}
+mlt_offer :: ()->MlOffer {return MlOffer.{model="psionic-toy",input=2000000,output=8000000,protocol=3};}
+MLT_ANSWERS :: "{\"hot\":{\"type\":\"noul\",\"noul\":0.437308645}}";
+MLT_BODY :: "{\"model\":\"psionic-toy\",\"answers\":{\"hot\":{\"type\":\"noul\",\"noul\":0.437308645}},\"usage\":{\"input_tokens\":22,\"output_tokens\":0}}";
+mlt_http :: (body:string,out:[]u8)->string {
+    n:=json_raw(out,0,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ");n=json_write_int(out,n,body.count);
+    n=json_raw(out,n,"\r\n\r\n");n=json_raw(out,n,body);return cast(string)out[0..<n];
+}
+mlt_answer :: (out:[]u8,body:string)->MlAnswer {return ml_answer(mlt_http(body,out),"psionic-toy");}
+
+// book:begin check-claim
+#test "a peer maps to a claim, or is refused for the first thing wrong" {
+    c:=ml_claim(mlt_peer());
+    #assert c.refuse==MlRefuse.none && c.claim.model=="psionic-toy" && c.claim.digest==SV_TOY_SHA && c.claim.backend==CpBackend.cpu;
+    #assert c.claim.profile==ML_PROFILE && c.claim.alias=="" && c.claim.memory==0 && cp_claim_valid(c.claim);
+    // The peer states no limits: the claim asks for NIP-DEC's whole range and
+    // the shortest deadline, and only a record can narrow it.
+    #assert c.claim.limits.questions==64 && c.claim.limits.options==255 && c.claim.limits.state==131072 && c.claim.limits.deadline_ms==1;
+    p:=mlt_peer();p.endpoint="xyz";#assert ml_claim(p).refuse==MlRefuse.endpoint;
+    p=mlt_peer();p.role=MlRole.client;#assert ml_claim(p).refuse==MlRefuse.role;
+    p=mlt_peer();p.admission=MlAdmission.remote_paused;#assert ml_claim(p).refuse==MlRefuse.admission;
+    p=mlt_peer();p.model.name="";#assert ml_claim(p).refuse==MlRefuse.name;
+    p=mlt_peer();p.model.identity="";p.model.runtime_identity="";#assert ml_claim(p).refuse==MlRefuse.identity;   // no hash advertised
+    p=mlt_peer();p.model.runtime_identity=CP_D1;#assert ml_claim(p).refuse==MlRefuse.runtime;                       // loaded another file
+    p=mlt_peer();p.model.ready=false;#assert ml_claim(p).refuse==MlRefuse.ready;
+    p=mlt_peer();p.model.system_one=MlLevel.likely;#assert ml_claim(p).refuse==MlRefuse.system_one;                 // a guess is not support
+    p=mlt_peer();p.gpus=1;#assert ml_claim(p).refuse==MlRefuse.backend;                                              // CPU or GPU: not stated
+}
+// book:end check-claim
+#forall "only an accepting worker or host maps" role: 0..<4, admission: 0..<5 {
+    p:=mlt_peer();p.role=cast(MlRole)role;p.admission=cast(MlAdmission)admission;r:=ml_claim(p).refuse;
+    if role!=1 && role!=2 {#assert r==MlRefuse.role;}
+    else if admission!=1 && admission!=2 {#assert r==MlRefuse.admission;}
+    else {#assert r==MlRefuse.none;}
+}
+#forall "only a supported System One maps" level: 0..<4, gpus: 0..<3 {
+    p:=mlt_peer();p.model.system_one=cast(MlLevel)level;p.gpus=gpus;r:=ml_claim(p).refuse;
+    if level!=3 {#assert r==MlRefuse.system_one;} else if gpus!=0 {#assert r==MlRefuse.backend;} else {#assert r==MlRefuse.none;}
+}
+#test "refusals have names" {
+    #assert ml_refuse_name(MlRefuse.none)=="none" && ml_refuse_name(MlRefuse.system_one)=="system_one" && ml_refuse_name(MlRefuse.answers)=="answers";
+    #assert ml_refuse_name(MlRefuse.deposit)=="deposit" && ml_refuse_name(MlRefuse.model)=="model";
+}
+#test "a refused claim carries nothing" {
+    p:=mlt_peer();p.model.ready=false;c:=ml_claim(p);
+    #assert c.claim.model=="" && c.claim.digest=="" && c.claim.backend==CpBackend.none && !cp_claim_valid(c.claim);
+    p=mlt_peer();p.gpus=-1;#assert ml_claim(p).refuse==MlRefuse.backend;
+    long:[129]u8;for i:0..<129 {long[i]='m';}
+    p=mlt_peer();p.model.name=cast(string)long[0..<128];#assert ml_claim(p).refuse==MlRefuse.none;
+    p.model.name=cast(string)long[..];#assert ml_claim(p).refuse==MlRefuse.name;
+    p.model.name="a b";#assert ml_claim(p).refuse==MlRefuse.name;
+    p=mlt_peer();p.endpoint=MLT_KEY[0..<63];#assert ml_claim(p).refuse==MlRefuse.endpoint;
+    p=mlt_peer();p.model.identity=CP_D1;p.model.runtime_identity=CP_D1;#assert ml_claim(p).refuse==MlRefuse.none && ml_claim(p).claim.digest==CP_D1;
+    p=mlt_peer();p.role=MlRole.worker;p.admission=MlAdmission.deprioritized;#assert ml_claim(p).refuse==MlRefuse.none;
+}
+
+// book:begin check-route
+#test "a whole-model peer is a one-stage group" {
+    order:[1]int;r:=ml_route(mlt_peer(),PG_NOW,PG_NOW,60,order[..]);
+    #assert r.refuse==MlRefuse.none && r.route.code==PgCode.ok && r.route.stages==1 && order[0]==0;
+    // Seen 61 s ago with a 60 s lifetime: stale, so no route.
+    r=ml_route(mlt_peer(),PG_NOW,PG_NOW-61,60,order[..]);#assert r.refuse==MlRefuse.none && r.route.code==PgCode.stale;
+    r=ml_route(mlt_peer(),PG_NOW,PG_NOW-60,60,order[..]);#assert r.route.code==PgCode.ok;
+// book:end check-route
+    p:=mlt_peer();p.model.layers=0;r=ml_route(p,PG_NOW,PG_NOW,60,order[..]);#assert r.refuse==MlRefuse.layers && r.route.code==PgCode.stages;
+    p.model.layers=1;#assert ml_route(p,PG_NOW,PG_NOW,60,order[..]).route.code==PgCode.ok;
+    p=mlt_peer();p.mesh="";r=ml_route(p,PG_NOW,PG_NOW,60,order[..]);#assert r.refuse==MlRefuse.mesh && r.route.code==PgCode.stages;
+    p.mesh="a b";#assert ml_route(p,PG_NOW,PG_NOW,60,order[..]).refuse==MlRefuse.mesh;
+    long:[129]u8;for i:0..<129 {long[i]='m';}
+    p.mesh=cast(string)long[0..<128];#assert ml_route(p,PG_NOW,PG_NOW,60,order[..]).refuse==MlRefuse.none;
+    p.mesh=cast(string)long[..];#assert ml_route(p,PG_NOW,PG_NOW,60,order[..]).refuse==MlRefuse.mesh;
+    p=mlt_peer();p.model.ready=false;r=ml_route(p,PG_NOW,PG_NOW,60,order[..]);#assert r.refuse==MlRefuse.ready && r.route.code==PgCode.stages;
+    #assert ml_route(mlt_peer(),PG_NOW,PG_NOW,0,order[..]).refuse==MlRefuse.request;
+    #assert ml_route(mlt_peer(),PG_NOW,PG_NOW,301,order[..]).refuse==MlRefuse.request;
+    #assert ml_route(mlt_peer(),PG_NOW,PG_NOW,300,order[..]).route.code==PgCode.ok;
+    #assert ml_route(mlt_peer(),PG_NOW,PG_NOW,1,order[..]).route.code==PgCode.ok;
+    #assert ml_route(mlt_peer(),PG_NOW,PG_NOW,60,order[0..<0]).route.code==PgCode.stages;
+    // A negative gossip generation is not one.
+    p=mlt_peer();p.gen=-1;#assert ml_route(p,PG_NOW,PG_NOW,60,order[..]).refuse==MlRefuse.request;
+    p.gen=0;#assert ml_route(p,PG_NOW,PG_NOW,60,order[..]).route.code==PgCode.ok;
+    h:=ml_beacon(mlt_peer(),PG_NOW-5,60,PgRole.head);
+    #assert h.key==MLT_KEY && h.owner==MLT_KEY && h.id=="lab" && h.artifact==SV_TOY_SHA && h.generation==7 && h.beacon_generation==7;
+    #assert h.observed_at==PG_NOW-5 && h.valid_until==PG_NOW+55 && h.from==0 && h.to==4 && h.free==1 && h.readiness==PgReady.ready && h.status==PbStatus.online;
+    s:=ml_beacon(mlt_peer(),PG_NOW,60,PgRole.stage);#assert s.role==PgRole.stage && s.to==4;
+}
+
+// book:begin check-bill
+#test "Mesh-LLM's bill, against its own published checks" {
+    // pricing.rs: 1000000 and 2000000 msat per million, 75 % off cached input.
+    o:=MlOffer.{model="m",input=1000000,output=2000000,cache=75,protocol=3};
+    #assert ml_bill(o,"m",10,8,0).msat==4 && ml_bill(o,"m",0,0,10).msat==20 && ml_bill(o,"m",1,1,0).msat==1;
+    #assert ml_bill(o,"m",1,2,0).refuse==MlRefuse.usage;
+    o.cache=100;#assert ml_bill(o,"m",10,10,0).msat==0;
+    o.cache=0;#assert ml_bill(o,"m",10,8,0).msat==10;
+    o.cache=101;#assert ml_bill(o,"m",10,8,0).refuse==MlRefuse.discount;
+    // Fractional rates round once, up, to the msat.
+    f:=MlOffer.{model="m",input=500,output=1500,protocol=3};
+    #assert ml_bill(f,"m",1000,0,0).msat==1 && ml_bill(f,"m",0,0,1000).msat==2 && ml_bill(f,"m",0,0,0).msat==0 && ml_bill(f,"m",1000000,0,0).msat==500;
+    f.input=1000001;#assert ml_bill(f,"m",1000,0,0).msat==1001;
+    // metering.rs: the final invoice after the deposit, and its 1 sat floor.
+    // Each row: bill, deposit applied, floor, final invoice.
+    want:=[60]int.[0,0,1000,0, 1,0,1000,1000, 1001,1000,1000,1000, 1000,1000,1000,0, 499,0,1000,1000, 500,0,1000,1000,
+        999,0,1000,1000, 1000,0,1000,1000, 1499,0,1000,1499, 4045,0,1000,4045, 1499,1000,1000,1000, 1500,1000,1000,1000,
+        1640,1000,1000,1000, 2640,1000,1000,1640, 500,1000,1000,0];
+    for i:0..<15 {#assert ml_final(want[4*i],want[4*i+1],want[4*i+2])==want[4*i+3];}
+    #assert ml_final(1,0,2000)==2000 && ml_final(2500,1000,2000)==2000 && ml_final(4000,2000,2000)==2000 && ml_final(1500,0,1)==1500;
+}
+// book:end check-bill
+#test "offers and usage are bounded" {
+    o:=mlt_offer();
+    #assert ml_offer(o,"psionic-toy")==MlRefuse.none && ml_offer(o,"other")==MlRefuse.offer;
+    b:=o;b.protocol=2;#assert ml_offer(b,"psionic-toy")==MlRefuse.protocol;b.protocol=0;#assert ml_offer(b,"psionic-toy")==MlRefuse.protocol;
+    b=o;b.input=0;#assert ml_offer(b,"psionic-toy")==MlRefuse.rate;b.input=1;#assert ml_offer(b,"psionic-toy")==MlRefuse.none;
+    b=o;b.output=0;#assert ml_offer(b,"psionic-toy")==MlRefuse.rate;b.output=1;#assert ml_offer(b,"psionic-toy")==MlRefuse.none;
+    b=o;b.input=ML_RATE_MOST;#assert ml_offer(b,"psionic-toy")==MlRefuse.none;b.input=ML_RATE_MOST+1;#assert ml_offer(b,"psionic-toy")==MlRefuse.rate;
+    b=o;b.output=ML_RATE_MOST;#assert ml_offer(b,"psionic-toy")==MlRefuse.none;b.output=ML_RATE_MOST+1;#assert ml_offer(b,"psionic-toy")==MlRefuse.rate;
+    b=o;b.cache=-1;#assert ml_offer(b,"psionic-toy")==MlRefuse.discount;b.cache=100;#assert ml_offer(b,"psionic-toy")==MlRefuse.none;
+    #assert ml_bill(b,"other",1,0,0).refuse==MlRefuse.offer && ml_bill(b,"other",1,0,0).msat==0;
+    #assert ml_bill(o,"psionic-toy",-1,0,0).refuse==MlRefuse.usage && ml_bill(o,"psionic-toy",0,-1,0).refuse==MlRefuse.usage && ml_bill(o,"psionic-toy",0,0,-1).refuse==MlRefuse.usage;
+    #assert ml_bill(o,"psionic-toy",BL_TOKENS_MOST,0,0).msat==2097152 && ml_bill(o,"psionic-toy",BL_TOKENS_MOST+1,0,0).refuse==MlRefuse.usage;
+    #assert ml_bill(o,"psionic-toy",0,0,BL_TOKENS_MOST).msat==8388608 && ml_bill(o,"psionic-toy",0,0,BL_TOKENS_MOST+1).refuse==MlRefuse.usage;
+    top:=MlOffer.{model="m",input=ML_RATE_MOST,output=ML_RATE_MOST,protocol=3};
+    #assert ml_bill(top,"m",BL_TOKENS_MOST,0,BL_TOKENS_MOST).msat==2*BL_TOKENS_MOST*1000;
+    #assert ml_final(0,0,0)==-1 && ml_final(0,0,ML_FLOOR_MOST)==0 && ml_final(1,0,ML_FLOOR_MOST+1)==-1 && ml_final(-1,0,1000)==-1 && ml_final(0,-1,1000)==-1;
+    #assert ml_final(JSON_INT_MOST,0,1000)==JSON_INT_MOST && ml_final(JSON_INT_MOST-1,1,1000)==JSON_INT_MOST-2 && ml_final(JSON_INT_MOST+1,0,1000)==-1 && ml_final(0,ML_FLOOR_MOST,1000)==0 && ml_final(0,ML_FLOOR_MOST+1,1000)==-1;
+}
+// book:begin check-cost
+#test "what a cold buyer pays: the deposit, then the rest" {
+    o:=mlt_offer();
+    // 22 input tokens at 2 msat each is 44 msat. The 1000 msat deposit covers
+    // it and is kept, so the buyer pays 1000 msat; a warm buyer pays 44 msat
+    // raised to the 1 sat floor.
+    c:=ml_cost(o,"psionic-toy",22,0,1000);#assert c.refuse==MlRefuse.none && c.bill==44 && c.deposit==1000 && c.final==0 && c.msat==1000;
+    c=ml_cost(o,"psionic-toy",22,0,0);#assert c.bill==44 && c.final==1000 && c.msat==1000;
+    c=ml_cost(o,"psionic-toy",4096,0,1000);#assert c.bill==8192 && c.final==7192 && c.msat==8192;
+    c=ml_cost(o,"psionic-toy",600,0,1000);#assert c.bill==1200 && c.final==1000 && c.msat==2000;   // 200 left, raised to the floor
+}
+// book:end check-cost
+#test "a cost refuses what it cannot price" {
+    o:=mlt_offer();
+    c:=ml_cost(o,"other",22,0,1000);#assert c.refuse==MlRefuse.offer && c.msat==0;
+    c=ml_cost(o,"psionic-toy",-1,0,1000);#assert c.refuse==MlRefuse.usage && c.msat==0;
+    c=ml_cost(o,"psionic-toy",22,0,-1);#assert c.refuse==MlRefuse.deposit && c.msat==0;
+    c=ml_cost(o,"psionic-toy",22,0,ML_FLOOR_MOST+1);#assert c.refuse==MlRefuse.deposit;
+    c=ml_cost(o,"psionic-toy",0,0,ML_FLOOR_MOST);#assert c.refuse==MlRefuse.none && c.msat==ML_FLOOR_MOST && c.final==0;
+    c=ml_cost(o,"psionic-toy",0,0,0);#assert c.msat==0 && c.final==0;
+}
+
+// book:begin check-wire
+#test "Mesh-LLM's published wire-byte vectors" {
+    hex:[64]u8;
+    #assert ml_commit("{ \"model\": \"tiny\", \"stream\":true }\n",hex[..])=="61b54b4afd933a3dad0f1854e1ee723d92e10e0289a84d14079fefe34b99921e";
+    #assert ml_commit("data: {\"id\":\"x\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n",hex[..])=="2774745745fc204699d02f6f2d032c205fd17caf18070316bcfbbb16956f66fd";
+}
+// book:end check-wire
+#test "a request goes out on Mesh-LLM's path with its body unchanged" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);out:[512]u8;
+    body:="{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"}}}";
+    n:=ml_request(body,"psionic-toy",pools,out[..]);
+    #assert cast(string)out[0..<n]=="POST /systemone HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 69\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"}}}";
+    #assert ml_request(body,"other",pools,out[..])==-1;                       // asked for a model the entry doesn't name
+    #assert ml_request("{\"model\":\"psionic-toy\"}","psionic-toy",pools,out[..])==-1;   // no questions
+    #assert ml_request(body,"psionic-toy",pools,out[0..<n-1])==-1 && ml_request(body,"psionic-toy",pools,out[0..<n])==n;
+}
+
+// book:begin check-answer
+#test "a peer's answer is read, or refused for the first thing wrong" {
+    o:[1024]u8;
+    a:=mlt_answer(o[..],MLT_BODY);
+    #assert a.refuse==MlRefuse.none && a.status==200 && a.answers==MLT_ANSWERS && a.tokens_in==22 && a.tokens_out==0;
+    // Another model's answer is not this model's.
+    #assert mlt_answer(o[..],"{\"model\":\"laya\",\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.model;
+    // No usage, or usage a meter cannot read, is unknown, never zero.
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":null}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1.5,\"output_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.answers;
+// book:end check-answer
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.answers;
+    #assert mlt_answer(o[..],"{\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.model;
+    #assert mlt_answer(o[..],"{\"model\":7,\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.model;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.json;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.json;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.json;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1,\"input_tokens\":1,\"output_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0,\"output_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"output_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":-1,\"output_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":0,\"output_tokens\":-1}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":0,\"output_tokens\":\"1\"}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1048577,\"output_tokens\":0}}").refuse==MlRefuse.usage;
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":0,\"output_tokens\":1048577}}").refuse==MlRefuse.usage;
+    a=mlt_answer(o[..],"{\"usage\":{\"cached\":{\"x\":1},\"output_tokens\":1048576,\"input_tokens\":1048576},\"extra\":[1,{\"a\":2}],\"answers\":{\"a\":[1]},\"model\":\"psionic-toy\"}");
+    #assert a.refuse==MlRefuse.none && a.tokens_in==1048576 && a.tokens_out==1048576 && a.answers=="{\"a\":[1]}";
+    #assert mlt_answer(o[..],"{\"model\":\"psionic-toy\",\"answers\":{},\"usage\":{\"input_tokens\":1,\"output_tokens\":0}").refuse==MlRefuse.json;
+    #assert mlt_answer(o[..],"[]").refuse==MlRefuse.json && mlt_answer(o[..],"").refuse==MlRefuse.json;
+}
+#test "the HTTP around an answer" {
+    out:[1024]u8;
+    #assert ml_answer(mlt_http(MLT_BODY,out[..]),"psionic-toy").refuse==MlRefuse.none;
+    a:=ml_answer("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n","psionic-toy");#assert a.refuse==MlRefuse.status && a.status==503;
+    a=ml_answer("HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}","psionic-toy");#assert a.refuse==MlRefuse.model && a.status==200;
+    #assert ml_answer("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n{}","psionic-toy").refuse==MlRefuse.length;
+    #assert ml_answer("HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n{}","psionic-toy").refuse==MlRefuse.length;
+    #assert ml_answer("HTTP/1.1 200 OK\r\n\r\n{}","psionic-toy").refuse==MlRefuse.length;
+    #assert ml_answer("HTTP/1.1 200 OK\r\nContent-Length: x\r\n\r\n{}","psionic-toy").refuse==MlRefuse.length;
+    #assert ml_answer("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n","psionic-toy").refuse==MlRefuse.length;
+    #assert ml_answer("HTTP/1.1 200 OK\r\nX-Content-Length: 2\r\n\r\n{}","psionic-toy").refuse==MlRefuse.length;
+    #assert ml_answer("HTTP/1.1 2x0 OK\r\nContent-Length: 2\r\n\r\n{}","psionic-toy").refuse==MlRefuse.status;
+    #assert ml_answer("HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n{}","psionic-toy").refuse==MlRefuse.status;
+    #assert ml_answer("HTTP/1.1 200","psionic-toy").refuse==MlRefuse.status;
+    a=ml_answer("HTTP/1.1 199 X\r\nContent-Length: 2\r\n\r\n{}","psionic-toy");#assert a.refuse==MlRefuse.status && a.status==199;
+    a=ml_answer("HTTP/1.1 201 X\r\nContent-Length: 2\r\n\r\n{}","psionic-toy");#assert a.refuse==MlRefuse.status && a.status==201;
+    #assert ml_status("HTTP/1.1 999 ")==999 && ml_status("HTTP/1.1 000 ")==0 && ml_status("HTTP/1.1 /00 ")==-1 && ml_status("HTTP/1.1 :00 ")==-1;
+    #assert ml_status("HTTP/1.1 20")==-1 && ml_status("HTTP/1.1 200")==-1 && ml_status("HTTP/1.1 2000")==-1;
+    #assert ml_header("Content-Length: 12\r\n",18,"content-length")=="12" && ml_header("A: 1\r\ncontent-LENGTH:7\r\n",22,"content-length")=="7" && ml_header("A: 1\r\n",4,"content-length")=="!";
+    #assert ml_header("Content-Length 2\r\n",16,"content-length")=="!" && ml_header("Content-Length: 2",99,"content-length")=="!";
+    #assert ml_header("\r\nContent-Length: 2\r\n",19,"content-length")=="2" && ml_header("content-length\r\n",14,"content-length")=="!";
+    // Only lines that end by stop: the last one ends at 22.
+    #assert ml_header("A: 1\r\ncontent-LENGTH:7\r\n",21,"content-length")=="!" && ml_header("A: 1\r\ncontent-LENGTH:7\r\n",-1,"content-length")=="!";
+    #assert ml_answer("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nContent-Length: 2\r\n","psionic-toy").refuse==MlRefuse.length;
+}
+
+// book:begin check-reply
+#test "the answer goes back to the Psionic client with the peer named" {
+    o:[1024]u8;out:[1024]u8;c:=ml_claim(mlt_peer()).claim;
+    n:=ml_reply(mlt_answer(o[..],MLT_BODY),c,MLT_KEY,out[..]);
+    #assert cast(string)out[0..<n]=="{\"model\":\"psionic-toy\",\"answers\":{\"hot\":{\"type\":\"noul\",\"noul\":0.437308645}},\"usage\":{\"input_tokens\":22,\"output_tokens\":0},\"service\":{\"door\":\"mesh-llm\",\"revision\":\"f2a7f62\",\"profile\":\"mesh-llm-f2a7f62\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"peer\":\"8f0e3c2a5b6d4e1f9a7c3b2d1e0f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5\"}}";
+}
+// book:end check-reply
+#test "a reply needs a read answer and room" {
+    o:[1024]u8;out:[1024]u8;c:=ml_claim(mlt_peer()).claim;a:=mlt_answer(o[..],MLT_BODY);n:=ml_reply(a,c,MLT_KEY,out[..]);
+    #assert ml_reply(a,c,MLT_KEY,out[0..<n])==n && ml_reply(a,c,MLT_KEY,out[0..<n-1])==-1;
+    bad:=a;bad.refuse=MlRefuse.usage;#assert ml_reply(bad,c,MLT_KEY,out[..])==-1;
+    other:=c;other.profile="seq";#assert ml_reply(a,other,MLT_KEY,out[..])==-1;
+}
+
+// book:begin check-verify
+#test "a peer's answers against the buyer's own run" {
+    exact:=[1]PkProfile.[PkProfile.{name=ML_PROFILE,exact=true}];
+    c:=ml_check(exact[..],MLT_ANSWERS,MLT_ANSWERS,true);#assert c.verdict==PkVerdict.agree && c.reason==PkReason.exact;
+    c=ml_check(exact[..],"{\"hot\":{\"type\":\"noul\",\"noul\":0.437308646}}",MLT_ANSWERS,true);#assert c.verdict==PkVerdict.disagree && c.reason==PkReason.bits;
+    c=ml_check(exact[..],MLT_ANSWERS,"",false);#assert c.verdict==PkVerdict.unverifiable && c.reason==PkReason.reference;
+    // A checker with no profile for Mesh-LLM peers cannot say.
+    other:=[1]PkProfile.[PkProfile.{name="seq",exact=true}];
+    c=ml_check(other[..],MLT_ANSWERS,MLT_ANSWERS,true);#assert c.verdict==PkVerdict.unverifiable && c.reason==PkReason.profile;
+    loose:=[1]PkProfile.[PkProfile.{name=ML_PROFILE,exact=false,tolerance_ppb=1000}];
+    c=ml_check(loose[..],MLT_ANSWERS,MLT_ANSWERS,true);#assert c.verdict==PkVerdict.unverifiable && c.reason==PkReason.profile;
+}
+// book:end check-verify
+#test "the checker's profile is found wherever it is listed" {
+    two:=[2]PkProfile.[PkProfile.{name="seq",exact=false},PkProfile.{name=ML_PROFILE,exact=true}];
+    #assert ml_check(two[..],"a","a",true).verdict==PkVerdict.agree && ml_check(two[0..<0],"a","a",true).reason==PkReason.profile;
+    #assert ml_check(two[..],"a","b",true).tolerance==0 && ml_check(two[..],"a","a",true).at==-1;
+}
+
+// book:begin check-evidence
+#test "a probe the peer matched is a record; one it missed is not" {
+    c:=ml_claim(mlt_peer()).claim;size:=CpLimits.{questions=2,options=2,state=22,deadline_ms=30000};
+    agree:=PkCompare.{verdict=PkVerdict.agree,reason=PkReason.exact};
+    e:=ml_evidence(c,agree,"probe-1",size);
+    #assert e.verdict==QyVerdict.qualified && e.digest==SV_TOY_SHA && e.backend==CpBackend.cpu && e.profile==ML_PROFILE && e.record=="probe-1" && e.covered.state==22;
+    ev:=[1]CpEvidence.[e];en:=cp_entry(c,ev[..],0);
+    #assert en.qualified && en.limits.questions==2 && en.limits.options==2 && en.limits.state==22 && en.limits.deadline_ms==30000;
+    for v:0..<4 {
+        if v==1 {continue;}
+        e=ml_evidence(c,PkCompare.{verdict=cast(PkVerdict)v},"probe-1",size);#assert e.verdict==QyVerdict.failed;
+        ev[0]=e;#assert !cp_entry(c,ev[..],0).qualified;
+    }
+}
+// book:end check-evidence
+#test "a probe's size is the request's" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+    r:=sv_decode("{\"model\":\"m\",\"state\":\"abc\",\"questions\":{\"a\":{\"type\":\"noul\"},\"b\":{\"type\":\"choice\",\"criteria\":{\"x\":null,\"y\":null,\"z\":null}}}}",pools);
+    #assert r.code==SvCode.none;
+    l:=ml_size(r,pools,500);#assert l.questions==2 && l.options==3 && l.state==3 && l.deadline_ms==500;
+    // A noul without criteria lists no options; a size still covers one.
+    // The second slot still holds the three options above, and is not read.
+    r1:=sv_decode("{\"model\":\"m\",\"state\":\"a\",\"questions\":{\"a\":{\"type\":\"noul\"}}}",pools);
+    #assert pools.questions[0].count==0 && pools.questions[1].count==3;
+    l=ml_size(r1,pools,1);#assert l.options==1 && l.questions==1 && cp_limits_valid(l);
+    r2:=sv_decode("{\"model\":\"m\",\"state\":\"ab\",\"questions\":{\"b\":{\"type\":\"choice\",\"criteria\":{\"x\":null,\"y\":null,\"z\":null}},\"a\":{\"type\":\"noul\"}}}",pools);
+    l=ml_size(r2,pools,1);#assert l.options==3 && l.state==2 && l.questions==2;
+    // One question after two: the second slot still holds three options, and is not read.
+    r3:=sv_decode("{\"model\":\"m\",\"state\":\"ab\",\"questions\":{\"b\":{\"type\":\"choice\",\"criteria\":{\"x\":null,\"y\":null}}}}",pools);
+    l=ml_size(r3,pools,1);#assert l.options==2 && l.questions==1;
+}
+
+// book:begin check-meter
+#test "a peer's usage is metered like any other" {
+    o:[1024]u8;en:=CpEntry.{claim=ml_claim(mlt_peer()).claim,qualified=true,record="probe-1"};
+    r:=ml_record(1,en,mlt_answer(o[..],MLT_BODY),1500,8192,1000);
+    #assert r.seq==1 && r.evidence.model=="psionic-toy" && r.evidence.digest==SV_TOY_SHA && r.evidence.backend=="cpu" && r.evidence.profile==ML_PROFILE && r.evidence.record=="probe-1";
+    #assert r.use.status==BlStatus.answered && r.use.tokens_in==22 && r.use.tokens_out==0 && r.use.device_us==0;
+    #assert r.latency_us==1500 && r.quote_msat==8192 && r.charge_msat==1000;
+    m:=um_observe(UmMetrics.{},r);#assert m.cause==UmCause.none && m.metrics.tokens_in==22 && m.metrics.charged==1000;
+}
+// book:end check-meter
+
+// book:begin claim
+// The claim a peer's advertisement supports, or the first reason it supports
+// none. Only a worker or host that is accepting work, serving a model whose
+// name is printable, whose identity hash is a SHA-256 the loaded runtime
+// repeats, that is ready, that states System One support (likely is a guess)
+// and that lists no GPU, maps. A node with GPUs does not say whether this
+// model runs on one, so its backend is unknown and it is refused.
+ml_asked :: ()->CpLimits {return CpLimits.{questions=SV_QUESTIONS_MAX,options=SV_OPTIONS_MAX,state=sv_nip().state,deadline_ms=1};}
+ml_claim :: (p:MlPeer)->MlClaim #export_c {
+    r:=MlClaim.{refuse=MlRefuse.endpoint};
+    if !cp_hex64(p.endpoint) {return r;}
+    r.refuse=MlRefuse.role;
+    if p.role!=MlRole.worker && p.role!=MlRole.host {return r;}
+    r.refuse=MlRefuse.admission;
+    if p.admission!=MlAdmission.accepting && p.admission!=MlAdmission.deprioritized {return r;}
+    m:=p.model;
+    r.refuse=MlRefuse.name;
+    if !cp_text(m.name,CP_NAME_MAX) {return r;}
+    r.refuse=MlRefuse.identity;
+    if !cp_hex64(m.identity) {return r;}
+    r.refuse=MlRefuse.runtime;
+    if m.runtime_identity!=m.identity {return r;}
+    r.refuse=MlRefuse.ready;
+    if !m.ready {return r;}
+    r.refuse=MlRefuse.system_one;
+    if m.system_one!=MlLevel.supported {return r;}
+    r.refuse=MlRefuse.backend;
+    if p.gpus!=0 {return r;}
+    return MlClaim.{claim=CpClaim.{model=m.name,digest=m.identity,backend=CpBackend.cpu,profile=ML_PROFILE,limits=ml_asked()}};
+}
+// book:end claim
+
+// book:begin route
+// The peer as chapter 188's group: Mesh-LLM gossip names no stage
+// boundaries, so a peer is one stage holding every layer, under the mesh's
+// name, keyed and owned by its endpoint, its generation the gossip's. The
+// buyer stamps when it read the gossip and how long it trusts it.
+MlRoute :: struct {refuse:MlRefuse;route:PgRoute;}
+ml_beacon :: (p:MlPeer,observed:int,ttl:int,role:PgRole)->PgBeacon {
+    return PgBeacon.{key=p.endpoint,owner=p.endpoint,status=PbStatus.online,observed_at=observed,valid_until=observed+ttl,beacon_generation=p.gen,
+        id=p.mesh,role=role,generation=p.gen,artifact=p.model.identity,readiness=PgReady.ready,free=1,from=0,to=p.model.layers};
+}
+ml_route :: (p:MlPeer,now:int,observed:int,ttl:int,order:[]int)->MlRoute #export_c {
+    r:=MlRoute.{refuse=ml_claim(p).refuse,route=PgRoute.{code=PgCode.stages}};
+    if r.refuse!=MlRefuse.none {return r;}
+    r.refuse=MlRefuse.mesh;
+    if !cp_text(p.mesh,CP_NAME_MAX) {return r;}
+    r.refuse=MlRefuse.layers;
+    if p.model.layers<1 {return r;}
+    r.refuse=MlRefuse.request;
+    if ttl<1 || ttl>ML_TTL_MOST || p.gen<0 {return r;}
+    stage:=[1]PgBeacon.[ml_beacon(p,observed,ttl,PgRole.stage)];
+    return MlRoute.{route=pg_route(ml_beacon(p,observed,ttl,PgRole.head),stage[..],p.model.identity,p.model.layers,now,order)};
+}
+// book:end route
+
+// book:begin bill
+// Mesh-LLM's bill at revision f2a7f62 (pricing.rs, metering.rs): input is
+// uncached tokens plus cached tokens at the discounted rate, rounded up once
+// to the msat; output is rounded up on its own. The final invoice is the
+// bill less the deposit, exact to the msat, with a positive remainder below
+// the floor raised to it. A paid offer needs protocol 3 and positive rates.
+MlBill :: struct {refuse:MlRefuse;msat:int;}
+ml_offer :: (o:MlOffer,model:string)->MlRefuse {
+    if o.model!=model {return MlRefuse.offer;}
+    if o.protocol!=3 {return MlRefuse.protocol;}
+    if !bl_in(o.input-1,ML_RATE_MOST-1) || !bl_in(o.output-1,ML_RATE_MOST-1) {return MlRefuse.rate;}
+    if !bl_in(o.cache,100) {return MlRefuse.discount;}
+    return MlRefuse.none;
+}
+ml_bill :: (o:MlOffer,model:string,prompt:int,cached:int,completion:int)->MlBill #export_c {
+    r:=MlBill.{refuse=ml_offer(o,model)};
+    if r.refuse!=MlRefuse.none {return r;}
+    r.refuse=MlRefuse.usage;
+    if !bl_in(prompt,BL_TOKENS_MOST) || !bl_in(cached,prompt) || !bl_in(completion,BL_TOKENS_MOST) {return r;}
+    weighted:=(prompt-cached)*100+cached*(100-o.cache);
+    return MlBill.{msat=bl_ceil(o.input*weighted,100000000)+bl_ceil(o.output*completion,1000000)};
+}
+// -1 for a floor outside 1..1000000 msat, a deposit above 1000000 msat or a
+// bill past 2^53 msat, the largest integer a wire report carries here.
+ml_final :: (bill:int,deposit:int,least:int)->int #export_c {
+    if !bl_in(least-1,ML_FLOOR_MOST-1) || !bl_in(bill,JSON_INT_MOST) || !bl_in(deposit,ML_FLOOR_MOST) {return -1;}
+    rest:=bill-deposit;
+    if rest<=0 {return 0;}
+    return cp_max(rest,least);
+}
+// What a buyer pays for one request: the deposit (0 for a peer that already
+// trusts it), which is kept even when it exceeds the bill, plus the final
+// invoice at the default 1 sat floor.
+MlCost :: struct {refuse:MlRefuse;bill:int;deposit:int;final:int;msat:int;}
+ml_cost :: (o:MlOffer,model:string,prompt:int,completion:int,deposit:int)->MlCost #export_c {
+    b:=ml_bill(o,model,prompt,0,completion);
+    if b.refuse!=MlRefuse.none {return MlCost.{refuse=b.refuse};}
+    f:=ml_final(b.msat,deposit,ML_FLOOR);
+    if f<0 {return MlCost.{refuse=MlRefuse.deposit};}
+    return MlCost.{bill=b.msat,deposit=deposit,final=f,msat=deposit+f};
+}
+// book:end bill
+
+// book:begin wire
+// Mesh-LLM's wire_bytes commitment: SHA-256 over the HTTP entity bytes, in
+// lowercase hex. The buyer keys a job by its request's commitment.
+ml_commit :: (entity:string,out:[]u8)->string {
+    sha:[112]u8;d:[32]u8;chunk:[64]u8;#assert sha256_init(sha[..])==SHA_OK;
+    at:=0;
+    while at<entity.count {
+        n:=0;
+        while n<64 && at+n<entity.count {chunk[n]=entity[at+n];n+=1;}
+        #assert sha256_update_checked(sha[..],chunk[0..<n],false)==SHA_OK;at+=n;
+    }
+    #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
+    digits:="0123456789abcdef";
+    for i:0..<32 {out[2*i]=digits[cast(int)(d[i]>>4)];out[2*i+1]=digits[cast(int)(d[i]&15)];}
+    return cast(string)out[0..<64];
+}
+// A System One body the buyer admitted, for the model its entry names, sent
+// on Mesh-LLM's path. The body's bytes go out unchanged, so the request
+// commitment both sides compute is the same.
+ML_HEAD :: "POST /systemone HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: ";
+ml_request :: (body:string,model:string,pools:SvPools,out:[]u8)->int #export_c {
+    r:=sv_decode(body,pools);
+    if r.code!=SvCode.none || r.model!=model {return -1;}
+    n:=json_raw(out,0,ML_HEAD);n=json_write_int(out,n,body.count);n=json_raw(out,n,"\r\n\r\n");
+    return json_raw(out,n,body);
+}
+// book:end wire
+
+// book:begin answer
+// A peer's HTTP response read as System One's {model, answers, usage}. The
+// status must be 200, the body exactly its Content-Length, the JSON one
+// object with each of the three keys once; model must be the model asked;
+// answers an object; usage two integers inside chapter 180's token bound.
+// Missing or unreadable usage is unknown, never zero.
+MlAnswer :: struct {refuse:MlRefuse;status:int;answers:string;tokens_in:int;tokens_out:int;}
+ml_status :: (text:string)->int {
+    if text.count<13 || text[0..<9]!="HTTP/1.1 " || text[12]!=' ' {return -1;}
+    v:=0;
+    for i:9..<12 {c:=text[i];if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}
+    return v;
+}
+// A header's value, or "!" when the head has no such line.
+// A header's value from the lines that end by stop, or "!" when none is it.
+ml_header :: (text:string,stop:int,name:string)->string {
+    at:=0;
+    while true {
+        end:=sv_find(text,at,"\r\n");
+        if end<0 || end>stop {return "!";}
+        line:=text[at..<end];
+        if line.count>name.count && line[name.count]==':' && sv_same(line[0..<name.count],name) {return sv_trim(line[name.count+1..<line.count]);}
+        at=end+2;
+    }
+    return "!";
+}
+ml_usage :: (j:[]Json,a:[]MlAnswer)->bool {
+    seen:=[2]bool.[false,false];
+    while true {
+        t:=json_next(j);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j);t=json_next(j);
+        k:=-1;if json_is(key,"input_tokens") {k=0;} else if json_is(key,"output_tokens") {k=1;}
+        if k<0 {ok:=json_skip(j);continue;}
+        if seen[k] || t!=JSON_NUMBER {return false;}
+        v:=json_int(json_text(j));
+        if !v.ok || !bl_in(v.value,BL_TOKENS_MOST) {return false;}
+        seen[k]=true;
+        if k==0 {a[0].tokens_in=v.value;} else {a[0].tokens_out=v.value;}
+    }
+    return seen[0] && seen[1];
+}
+ml_answer :: (text:string,model:string)->MlAnswer #export_c {
+    a:=[1]MlAnswer.[MlAnswer.{refuse=MlRefuse.status,status=ml_status(text)}];
+    if a[0].status!=200 {return a[0];}
+    a[0].refuse=MlRefuse.length;
+    // No blank line: head is -1, no header ends by it, and the length is refused.
+    head:=sv_index(text,"\r\n\r\n");
+    body:=text[head+4..<text.count];
+    if sv_length(ml_header(text,head,"content-length"))!=body.count {return a[0];}
+    a[0].refuse=MlRefuse.json;
+    if !json_valid(body) {return a[0];}
+    j:[1]Json;json_start(j[..],body);
+    if json_next(j[..])!=JSON_OBJECT {return a[0];}
+    named:=false;answered:=false;used:=false;
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j[..]);t=json_next(j[..]);from:=j[0].from;
+        if json_is(key,"model") {
+            if named {return a[0];}
+            named=t==JSON_STRING && json_is(json_text(j[..]),model);
+            if !named {a[0].refuse=MlRefuse.model;return a[0];}
+        } else if json_is(key,"answers") {
+            if answered {return a[0];}
+            answered=t==JSON_OBJECT;ok:=json_skip(j[..]);
+            a[0].answers=body[from..<j[0].at];
+        } else if json_is(key,"usage") {
+            if used {return a[0];}
+            used=t==JSON_OBJECT && ml_usage(j[..],a[..]);
+            if !used {a[0].refuse=MlRefuse.usage;return a[0];}
+        } else {ok:=json_skip(j[..]);}
+    }
+    a[0].refuse=MlRefuse.model;
+    if !named {return a[0];}
+    a[0].refuse=MlRefuse.answers;
+    if !answered {return a[0];}
+    a[0].refuse=MlRefuse.usage;
+    if !used {return a[0];}
+    a[0].refuse=MlRefuse.none;
+    return a[0];
+}
+// book:end answer
+
+// book:begin reply
+// The answer as the Psionic client receives it: the peer's answers and
+// usage, unchanged, and a service block naming who computed them.
+ml_reply :: (a:MlAnswer,c:CpClaim,peer:string,out:[]u8)->int #export_c {
+    if a.refuse!=MlRefuse.none || c.profile!=ML_PROFILE {return -1;}
+    n:=json_raw(out,0,"{\"model\":");n=json_write_string(out,n,c.model);n=json_raw(out,n,",\"answers\":");n=json_raw(out,n,a.answers);
+    n=json_raw(out,n,",\"usage\":{\"input_tokens\":");n=json_write_int(out,n,a.tokens_in);n=json_raw(out,n,",\"output_tokens\":");n=json_write_int(out,n,a.tokens_out);
+    n=json_raw(out,n,"},\"service\":{\"door\":\"mesh-llm\",\"revision\":\"");n=json_raw(out,n,ML_REVISION[0..<7]);
+    n=json_raw(out,n,"\",\"profile\":\"");n=json_raw(out,n,ML_PROFILE);n=json_raw(out,n,"\",\"identity\":");n=json_write_string(out,n,c.model)-1;
+    n=json_raw(out,n,"@sha256:");n=json_raw(out,n,c.digest);n=json_raw(out,n,"\",\"peer\":\"");n=json_raw(out,n,peer);
+    return json_raw(out,n,"\"}}");
+}
+// book:end reply
+
+// book:begin verify
+// Chapter 195's comparison for a Mesh-LLM peer. The checker re-runs the
+// request on its own engine and compares the answers' bytes. Only a profile
+// the checker lists for Mesh-LLM peers, and only an exact one, can give a
+// verdict: equal bytes agree, any other bytes disagree. Comparing within a
+// tolerance would need the probabilities parsed, which is not built.
+ml_check :: (profiles:[]PkProfile,answers:string,reference:string,ref_ok:bool)->PkCompare #export_c {
+    k:=-1;
+    for i:0..<profiles.count {if profiles[i].name==ML_PROFILE {k=i;}}
+    r:=PkCompare.{verdict=PkVerdict.unverifiable,reason=PkReason.profile};
+    if k<0 || !profiles[k].exact {return r;}
+    r.reason=PkReason.reference;
+    if !ref_ok {return r;}
+    if answers==reference {return PkCompare.{verdict=PkVerdict.agree,reason=PkReason.exact};}
+    return PkCompare.{verdict=PkVerdict.disagree,reason=PkReason.bits};
+}
+// A probe's outcome as chapter 173's evidence: qualified only when the
+// checker agreed, covering exactly the probe's size: its questions, the
+// most options any one lists (at least one), its state bytes and the
+// deadline it ran under.
+ml_evidence :: (c:CpClaim,cmp:PkCompare,record:string,covered:CpLimits)->CpEvidence #export_c {
+    v:=QyVerdict.failed;
+    if cmp.verdict==PkVerdict.agree {v=QyVerdict.qualified;}
+    return CpEvidence.{digest=c.digest,backend=c.backend,profile=c.profile,record=record,verdict=v,covered=covered};
+}
+ml_size :: (r:SvRequest,pools:SvPools,deadline_ms:int)->CpLimits {
+    most:=1;
+    for q:pools.questions[0..<r.questions] {most=cp_max(most,q.count);}
+    return CpLimits.{questions=r.questions,options=most,state=r.state.value.count,deadline_ms=deadline_ms};
+}
+// book:end verify
+
+// book:begin meter
+// Chapter 180's usage record for a peer's answer: the peer's reported tokens,
+// no device time (the peer does not report it), and the evidence of the
+// entry that admitted the request.
+ml_record :: (seq:int,e:CpEntry,a:MlAnswer,latency_us:int,quote:int,charge:int)->UmRecord #export_c {
+    ev:=UmEvidence.{model=e.claim.model,digest=e.claim.digest,backend=cp_backend_name(e.claim.backend),profile=e.claim.profile,record=e.record};
+    return UmRecord.{seq=seq,evidence=ev,use=BlUse.{status=BlStatus.answered,tokens_in=a.tokens_in,tokens_out=a.tokens_out},latency_us=latency_us,quote_msat=quote,charge_msat=charge};
+}
+// book:end meter
+ml_refuse_name :: (r:MlRefuse)->string {
+    names:=[24]string.["none","endpoint","role","admission","name","identity","runtime","ready","system_one","backend","mesh","layers","offer","protocol","rate","discount","usage","deposit","request","status","length","json","model","answers"];
+    return names[cast(int)r];
+}

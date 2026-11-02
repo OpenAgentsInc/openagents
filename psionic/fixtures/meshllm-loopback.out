@@ -1,0 +1,44 @@
+Mesh-LLM f2a7f62 in process; the peer is simulated: chapter 20's toy engine behind Mesh-LLM's wire
+advertisements:
+  toy, CPU only: claim psionic-toy cpu mesh-llm-f2a7f62
+  Laya, system_one likely: refused, system_one
+  toy, one GPU: refused, backend
+  toy, all paused: refused, admission
+route: ok, 1 stage, layers 0..4
+offer: 2000000 msat per million in, 8000000 out, protocol 3: accepted
+before a probe: psionic-toy cpu: unknown (no_record)
+probe request, commitment fc3f77ef3b316ac0733a2ec6d425da0936d61b0f3eb84fe3b3a572a6f2419e52:
+POST /systemone HTTP/1.1
+Content-Type: application/json
+Content-Length: 193
+
+{"model":"psionic-toy","state":"The kettle has boiled.","questions":{"hot":{"type":"noul","instructions":"Is the water hot?"},"drink":{"type":"choice","criteria":{"tea":null,"soup":"a meal"}}}}
+peer:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 244
+
+{"model":"psionic-toy","answers":{"hot":{"type":"noul","noul":0.437308645},"drink":{"type":"choice","choice":"soup","confidence":0.562514618,"probabilities":{"tea":0.437485382,"soup":0.562514618}}},"usage":{"input_tokens":22,"output_tokens":0}}
+probe: agree exact; record probe:8f0e3c2a5b6d:1 covers 2 questions, 2 options, 22 state bytes, 30000 ms
+capability: {"schema":"psionic-capability-v1","door":"psionic","version":"psionic-serve-v1","entries":[{"model":"psionic-toy","alias":"","identity":"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573","backend":"cpu","profile":"mesh-llm-f2a7f62","state":"qualified","record":"probe:8f0e3c2a5b6d:1","limits":{"questions":2,"options":2,"state_bytes":22,"deadline_ms":30000}}]}
+honest: none
+quote per job: 8192 msat (4096 tokens in, 1000 msat deposit)
+job 1, commitment f27525ac8096...: admission ok, hold held
+  answers {"hot":{"type":"noul","noul":0.437483439}}
+  usage 19 in, 0 out; bill 38 msat, deposit 1000, final invoice 0, cost 1000 msat
+  checked: agree exact; meter: none; ledger: paid
+  reply: {"model":"psionic-toy","answers":{"hot":{"type":"noul","noul":0.437483439}},"usage":{"input_tokens":19,"output_tokens":0},"service":{"door":"mesh-llm","revision":"f2a7f62","profile":"mesh-llm-f2a7f62","identity":"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573","peer":"8f0e3c2a5b6d4e1f9a7c3b2d1e0f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5"}}
+job 2, commitment d8b1c8dcf41c...: admission ok, hold held
+  answers {"hot":{"type":"noul","noul":0.537392432}}
+  usage 17 in, 0 out; bill 34 msat, deposit 0, final invoice 1000, cost 1000 msat
+  checked: disagree bits; meter: none; ledger: withheld
+job 3, three questions: unsupported_input, nothing sent
+meter: 2 requests, 36 tokens in, 16384 msat quoted, 2000 msat billed by the peer
+ledger: escrow 0 msat, owed 1000 msat, withheld 1000 msat
+  intent f27525ac8096... 1000 msat to 8f0e3c2a5b6d...: lightning invoice for 1000 msat (not paid)
+refusals:
+  a peer that answers for another model: model
+  a peer that sends "usage":null: usage
+  a peer that answers 503: status
+  an offer on payment protocol 2: protocol
+  a request for a model the entry doesn't name: not sent

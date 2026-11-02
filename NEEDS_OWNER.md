@@ -1,5 +1,14 @@
 # Owner actions
 
+## Psionic chapter 196: working with Mesh-LLM (2026-11-01)
+
+`psionic/lib/peer/meshllm.coax` maps Mesh-LLM peers to capability claims and
+prices their usage by Mesh-LLM's bill rules, against a simulated peer in
+process only. Before any live interop: decide whether to join a Mesh-LLM mesh
+(a private test mesh first, or a public one), whether to pay Mesh-LLM peers
+(their 1 sat deposit and final invoices) through our wallet, and whether to
+accept payment from Mesh-LLM buyers.
+
 ## Psionic chapter 238: paying verified work (2026-11-01)
 
 `psionic/lib/peer/pay.coax` now emits payment intents (msat, keyed by the
