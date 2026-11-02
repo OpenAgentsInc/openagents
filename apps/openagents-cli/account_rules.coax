@@ -59,6 +59,50 @@ ar_origin_ok :: (o: string) -> bool {
   return false;
 }
 
+// After a command run with an explicit --origin, a profile that has no
+// origin of its own keeps that one, as a login does, so the next command
+// without --origin goes to the same server (not silently to
+// https://openagents.com). Only when it worked (exit 0), only for the
+// commands that talk to the account's server (whoami, account, access,
+// realm, admin), only for a key kept for the profile (a file or the
+// Keychain; OPENAGENTS_NSEC stores nothing), and never over a saved origin.
+#test "an explicit origin is kept for a profile without one, as login keeps it" {
+  s := "https://staging.openagents.com";
+  for d: [5] string.["whoami", "account", "access", "realm", "admin"] { #assert ar_keep_origin(d, s, false, "file", 0); }
+  #assert ar_keep_origin("realm", s, false, "keychain", 0) && ar_keep_origin("access", "http://127.0.0.1:8800", false, "file", 0);
+  #assert !ar_keep_origin("realm", s, true, "file", 0) && !ar_keep_origin("realm", s, false, "env", 0) && !ar_keep_origin("realm", s, false, "", 0);
+  #assert !ar_keep_origin("realm", s, false, "file", 1) && !ar_keep_origin("realm", s, false, "file", 4) && !ar_keep_origin("realm", s, false, "file", -1);
+  #assert !ar_keep_origin("realm", "", false, "file", 0) && !ar_keep_origin("realm", "https://a/", false, "file", 0);
+  for d: [7] string.["labs", "http", "login", "nostr", "project", "pylon", ""] { #assert !ar_keep_origin(d, s, false, "file", 0); }
+}
+ar_keep_origin :: (domain: string, origin: string, saved: bool, key_from: string, code: int) -> bool {
+  if code != 0 || saved || !ar_origin_ok(origin) { return false; }   // 0: EXIT_OK
+  if key_from != "file" && key_from != "keychain" { return false; }
+  return domain == "whoami" || domain == "account" || domain == "access" || domain == "realm" || domain == "admin";
+}
+
+// What a server said, with the server: "https://openagents.com: invite only",
+// so an answer is never mistaken for another server's. "" when it does not fit.
+#test "a server's words name the server" {
+  out: [64] u8;
+  #assert ar_said("https://openagents.com", "invite only", out[..]) == "https://openagents.com: invite only";
+  #assert ar_said("http://127.0.0.1:9", "", out[..]) == "http://127.0.0.1:9";
+  #assert ar_said("", "invite only", out[..]) == "invite only" && ar_said("https://a", "x", out[..]) == "https://a: x";
+  #assert ar_said("https://a", "", out[0..<9]) == "https://a" && ar_said("https://a", "", out[0..<8]) == "";
+  #assert ar_said("https://openagents.com", "invite only", out[0..<35]) == "https://openagents.com: invite only" && ar_said("https://openagents.com", "invite only", out[0..<34]) == "";
+}
+ar_said :: (origin: string, why: string, out: [] u8) -> string {
+  if origin.count == 0 { return why; }
+  n := origin.count + (ifx why.count > 0 then 2 + why.count else 0);
+  if n > out.count { return ""; }
+  for i: 0..<origin.count { out[i] = origin[i]; }
+  if why.count > 0 {
+    out[origin.count] = ':'; out[origin.count + 1] = ' ';
+    for i: 0..<why.count { out[origin.count + 2 + i] = why[i]; }
+  }
+  return cast(string) out[0..<n];
+}
+
 // The machine name a login sends: printable ASCII, spaces kept inside, at
 // most 64 bytes; anything else becomes '-'. Empty: "cli".
 #test "machine names" {

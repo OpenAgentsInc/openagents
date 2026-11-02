@@ -207,9 +207,21 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
   while at < text.count {
     span := realm_line(text,at);
     if span.first == span.end { at=span.next; line+=1; continue; }
-    if applied >= 256 || !rb_args(text[span.first..<span.end],slug,b[..]) {
+    bad := ifx applied >= 256 then RbWhy.{why="a batch has at most 256 operations"} else rb_check(text[span.first..<span.end],slug,b[..]);
+    if bad.why != "" {
       rep_int(r,"applied",applied); rep_int(r,"line",line); if expected >= 1 { rep_int(r,"rev",expected); }
-      return fail(r,EXIT_USAGE,"invalid or unbounded batch operation");
+      if bad.field != "" { rep_str(r,"field",bad.field); }
+      said: [1024] u8;
+      lt: [24] u8; m := forge_put(said[..],0,"line "); m = forge_put(said[..],m,int_text(line,lt[..]));
+      if bad.field != "" { m = forge_put(said[..],m,": field \""); m = forge_put(said[..],m,bad.field); m = forge_put(said[..],m,"\""); }
+      m = forge_put(said[..],m,ifx bad.field != "" then " " else ": "); m = forge_put(said[..],m,bad.why);
+      m = forge_put(said[..],m," (openagents help: realm apply's FILE)");
+      if applied > 0 {
+        at_text: [24] u8; rev_text: [24] u8;
+        m = forge_put(said[..],m,"; applied before it: "); m = forge_put(said[..],m,int_text(applied,at_text[..]));
+        m = forge_put(said[..],m,", and the realm is now at rev "); m = forge_put(said[..],m,int_text(expected,rev_text[..]));
+      }
+      return fail(r,EXIT_USAGE,ifx m < 0 then bad.why else cast(string) said[0..<m]);
     }
     if rc_has(a,"apply","--origin") {
       added := args_add(b[..],"--origin") && args_add(b[..],rc_option(a,"apply","--origin",""));
@@ -270,7 +282,12 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
 
 realm_usage :: () {
   print("%\n", "Realms (openagents.com/realms):");
-  for c: REALM_COMMANDS { print("  realm % % %  %\n",c.verb,c.arguments,c.flags,c.help); }
+  line: [512] u8;
+  for c: REALM_COMMANDS { print("%\n", rc_help_line(c, line[..])); }
+  ops: [1024] u8;
+  print("%\n", "  realm apply's FILE: one JSON object a line, {\"op\":OP, ...its fields}; a revision goes in --rev, not a line:");
+  print("%\n", "    {\"op\":\"move\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2}   {\"op\":\"switch\",\"row\":\"water\",\"on\":false}");
+  print("    ops and fields (? optional): %\n", rb_help(ops[..]));
   print("%\n", "");
 }
 
@@ -296,7 +313,11 @@ realm_list :: (a: [] Args, r: [] Rep, profile: string) -> int {
   body := cast(string) out[0..<res.n];
   if res.error == HTTP_OK && res.status == 404 { return fail(r, EXIT_FAIL, "this server has no list of your realms yet (GET /api/playtest/realms/mine)"); }
   if !api_ok(res) { return api_fail(r, res, body); }
-  if !r[0].json { print("%", body); return EXIT_OK; }
+  if !r[0].json {
+    rows: [API_OUT] u8; n := cli_realm_rows(body, rows[..]);
+    if n < 0 { return fail(r, EXIT_FAIL, "your realms do not fit the answer buffer"); }
+    print("%", cast(string) rows[0..<n]); return EXIT_OK;
+  }
   if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }
   return rep_done(r, EXIT_OK);
 }
@@ -335,8 +356,20 @@ realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
     plan = cli_count(from, 1, 999999999);
     if plan < 0 { return fail(r, EXIT_USAGE, "--from is a plan's number"); }
   } else {
-    body := api_body1("prompt", words, buf[..]);
-    if body == "" { return fail(r, EXIT_USAGE, "those words are too long"); }
+    // The setup the words fix (verse.builder_setup); a field not given is the model's pick.
+    p: [1] Jo; jo_start(p[..], buf[..]); jo_obj(p[..]); jo_key(p[..], "prompt"); jo_str(p[..], words);
+    if rc_has(a, "new", "--style") || rc_has(a, "new", "--time") || rc_has(a, "new", "--camera") || rc_has(a, "new", "--ground") {
+      jo_key(p[..], "setup"); jo_obj(p[..]);
+      for field: [4] string.["style", "time", "camera", "ground"] {
+        flag: [16] u8; fn := copy("--", flag[..]); fn += copy(field, flag[fn..<flag.count]);
+        v := rc_option(a, "new", cast(string) flag[0..<fn], "");
+        if v != "" { jo_key(p[..], field); jo_str(p[..], v); }
+      }
+      jo_end(p[..]);
+    }
+    jo_end(p[..]);
+    if p[0].bad { return fail(r, EXIT_USAGE, "those words are too long"); }
+    body := jo_text(p[..]);
     res := api_call(a, profile, "POST", "/api/playtest/realms/plan?as=lines", body, out[..]);
     text := cast(string) out[0..<res.n];
     if !api_ok(res) { return api_fail(r, res, text); }

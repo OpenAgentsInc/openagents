@@ -487,9 +487,9 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 #test "each declared argument and flag kind publishes its exact limits" {
-  kinds := [22] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script"];
-  lows := [22] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0];
-  highs := [22] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072];
+  kinds := [26] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground"];
+  lows := [26] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0,4,3,3,4];
+  highs := [26] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072,9,5,5,6];
   for i: 0..<kinds.count { b := rc_bound(kinds[i]); #assert b.min == lows[i] && b.max == highs[i]; }
   for c: REALM_COMMANDS {
     fi := 0;
@@ -666,34 +666,34 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
   #assert rc_validate(c[..],"shot") != "";
 }
 
-CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; help: string; }
+CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
 REALM_COMMANDS :: [26] CliCommand.[
   CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
-  CliCommand.{verb="show",method="GET",route="",arguments="slug",help="the realm's spec and page"},
-  CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id",help="plan words and make a private realm; --from PLAN uses an existing plan"},
-  CliCommand.{verb="visibility",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",help="who sees it"},
-  CliCommand.{verb="publish",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",help="publish the named revision"},
-  CliCommand.{verb="fork",method="POST",route="/fork",arguments="slug",flags="--name:who",help="a private copy that you own"},
-  CliCommand.{verb="shot",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",help="a visitor PNG in muted headless Chrome; OUT defaults to SLUG.png"},
-  CliCommand.{verb="doc",method="GET",route="/doc",arguments="slug",help="the versioned document and SHA-256"},
-  CliCommand.{verb="asks",method="GET",route="/asks",arguments="slug",help="the feature asks"},
-  CliCommand.{verb="proposals",method="GET",route="/proposals",arguments="slug",help="visitors' proposals"},
-  CliCommand.{verb="panes",method="GET",route="/panes",arguments="slug",help="lore and quests"},
-  CliCommand.{verb="switch",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",help="turn a row on or off"},
-  CliCommand.{verb="revise",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",help="ask the planner to revise the board"},
-  CliCommand.{verb="ask",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",help="add words, or --doc FILE, to the feature list"},
-  CliCommand.{verb="ask-delete",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id",help="delete an ask"},
-  CliCommand.{verb="ask-done",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",help="an admin marks pushed code done"},
-  CliCommand.{verb="row-delete",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id",help="delete a board row"},
-  CliCommand.{verb="move",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",help="move an entity to X Z metres; one save"},
-  CliCommand.{verb="place",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",help="place a thing at X Z metres"},
-  CliCommand.{verb="settings",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",help="set the enabled tools as a comma-separated list"},
-  CliCommand.{verb="lore",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",help="set WHO's lore; empty text forgets it"},
-  CliCommand.{verb="quest",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",help="set a giver's quest, up to three --step values"},
-  CliCommand.{verb="accept",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",help="accept a visitor's proposal"},
-  CliCommand.{verb="decline",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",help="decline a visitor's proposal"},
-  CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",help="restore the preceding revision as a new revision"},
-  CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",help="apply JSON lines in order; consecutive moves share one save"}
+  CliCommand.{verb="show",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
+  CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
+  CliCommand.{verb="visibility",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",usage="SLUG private|unlisted|public [--rev N]",help="who sees it"},
+  CliCommand.{verb="publish",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",usage="SLUG [--rev N] [--listed] [--yes]",help="publish the named revision"},
+  CliCommand.{verb="fork",method="POST",route="/fork",arguments="slug",flags="--name:who",usage="SLUG [--name NAME]",help="a private copy that you own"},
+  CliCommand.{verb="shot",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",usage="SLUG [OUT.png] [--size WxH|--phone|--square|--vertical] [--wait MS] [--eval JS] [--dark] [--fresh] [--as-me]",help="a visitor's PNG in muted headless Chrome, once its scene is drawn; OUT defaults to SLUG.png"},
+  CliCommand.{verb="doc",method="GET",route="/doc",arguments="slug",usage="SLUG",help="the versioned document and SHA-256"},
+  CliCommand.{verb="asks",method="GET",route="/asks",arguments="slug",usage="SLUG",help="the feature asks"},
+  CliCommand.{verb="proposals",method="GET",route="/proposals",arguments="slug",usage="SLUG",help="visitors' proposals"},
+  CliCommand.{verb="panes",method="GET",route="/panes",arguments="slug",usage="SLUG",help="lore and quests"},
+  CliCommand.{verb="switch",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",usage="SLUG ROW on|off [--rev N]",help="turn a row on or off"},
+  CliCommand.{verb="revise",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",usage="SLUG \"WORDS\" [--rev N]",help="ask the planner to revise the board"},
+  CliCommand.{verb="ask",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",usage="SLUG \"WORDS\" | SLUG --doc FILE [--rev N]",help="add words, or a design document, to the feature list"},
+  CliCommand.{verb="ask-delete",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="delete an ask"},
+  CliCommand.{verb="ask-done",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",usage="SLUG ID --commit HASH [--rev N]",help="an admin marks pushed code done"},
+  CliCommand.{verb="row-delete",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id",usage="SLUG ROW [--rev N]",help="delete a board row"},
+  CliCommand.{verb="move",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",usage="SLUG ENTITY X Z [--rev N]",help="move a thing (FEATURE:N, such as trees:3) to X Z metres; one save"},
+  CliCommand.{verb="place",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres"},
+  CliCommand.{verb="settings",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get"},
+  CliCommand.{verb="lore",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it"},
+  CliCommand.{verb="quest",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps"},
+  CliCommand.{verb="accept",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal"},
+  CliCommand.{verb="decline",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal"},
+  CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="restore the preceding revision as a new revision"},
+  CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"}
 ];
 
 rc_find :: (verb: string) -> int { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
@@ -721,6 +721,10 @@ rc_bound :: (kind: string) -> CliBound {
   if kind == "size" { return CliBound.{min=0,max=19}; }
   if kind == "waitms" { return CliBound.{min=0,max=120000}; }
   if kind == "script" { return CliBound.{min=0,max=131072}; }
+  if kind == "style" { return CliBound.{min=4,max=9}; }
+  if kind == "time" { return CliBound.{min=3,max=5}; }
+  if kind == "camera" { return CliBound.{min=3,max=5}; }
+  if kind == "ground" { return CliBound.{min=4,max=6}; }
   return CliBound.{};
 }
 rc_value :: (kind: string, value: string) -> bool {
@@ -748,6 +752,7 @@ rc_value :: (kind: string, value: string) -> bool {
     return size.ok && size.w >= 16 && size.h >= 16 && size.w <= 7680 && size.h <= 7680;
   }
   if kind == "waitms" { n := args_whole(value); return n >= 0 && n <= 120000; }
+  if kind == "style" || kind == "time" || kind == "camera" || kind == "ground" { return cli_setup_ok(kind, value); }
   b := rc_bound(kind);
   return b.max > 0 && value.count >= b.min && value.count <= b.max;
 }
@@ -824,11 +829,11 @@ rc_validate :: (a: [] Args, verb: string) -> string {
     s := args_at(a,i);
     if rc_is_flag(s) {
       kind := rc_flag_kind(c,s);
-      if kind == "" { return "flag is not supported by this realm command"; }
+      if kind == "" { return "that flag is not one this realm command takes (openagents help)"; }
       if s == "--step" { steps += 1; if steps > 3 { return "a quest has at most three steps"; } }
       else { if rc_option_index(a,verb,s,0) != i { return "a flag was supplied twice"; } }
       if kind != "bool" {
-        if i+1 >= args_count(a) || !rc_value(kind,args_at(a,i+1)) { return "flag value is missing or outside its bounds"; }
+        if i+1 >= args_count(a) || !rc_value(kind,args_at(a,i+1)) { return rc_why(kind); }
         i += 1;
       }
     } else { if pn >= p.count { return "too many realm arguments"; } p[pn] = s; pn += 1; }
@@ -842,7 +847,10 @@ rc_validate :: (a: [] Args, verb: string) -> string {
   if p[0] != "realm" || p[1] != verb { return "realm command does not match its catalogue row"; }
   for j: 2..<pn {
     kind := cli_field(c.arguments,j-2);
-    if !rc_value(kind,p[j]) { return "realm argument is outside its declared bounds"; }
+    if !rc_value(kind,p[j]) { return rc_why(kind); }
+  }
+  if verb == "new" && rc_has(a,verb,"--from") {
+    for f: [4] string.["--style","--time","--camera","--ground"] { if rc_has(a,verb,f) { return "--style, --time, --camera and --ground go with WORDS: a plan made earlier keeps its setup"; } }
   }
   if verb == "ask-done" && !rc_has(a,verb,"--commit") { return "ask-done needs --commit HASH"; }
   if verb == "settings" && !rc_has(a,verb,"--tools") { return "settings needs --tools build,talk,..."; }
@@ -854,6 +862,153 @@ rc_validate :: (a: [] Args, verb: string) -> string {
     if sizes > 1 { return "shot takes at most one of --size, --phone, --square or --vertical"; }
   }
   return "";
+}
+
+// What a bad argument or flag value should be, naming it and its bounds.
+#test "a bad argument or flag value is named with its bounds" {
+  kinds := [26] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground"];
+  names := [26] string.["SLUG ","ROW ","ENTITY ","X and Z ","--yaw ","ID, ","WORDS ","WORDS ","TEXT ","WHO ","FILE ","--ask ","--step ","--commit ","--tools ","the last word ","the visibility ","that flag ","OUT.png ","--size ","--wait ","--eval ","--style ","--time ","--camera ","--ground "];
+  for i: 0..<kinds.count {
+    w := rc_why(kinds[i]);
+    #assert cli_prefix(w, names[i]);
+    for j: 0..<i { #assert w != rc_why(kinds[j]); }
+  }
+  #assert rc_why("entity") == "ENTITY is one thing of a board row as FEATURE:N, such as enclosure:0 or trees:3 (FEATURE at most 20 characters; realm show SLUG lists the rows)";
+  #assert rc_why("metres") == "X and Z are metres from -40 to 40 with at most two decimals, such as 4.5 or -2";
+  #assert rc_why("") == "an argument is outside its bounds (openagents help)" && rc_why("unknown") == rc_why("");
+  a: [1] Args;
+  for w: [6] string.["realm","move","walled-garden","enclosure","1","1"] { #assert args_add(a[..],w); }
+  #assert rc_validate(a[..],"move") == rc_why("entity");
+  a[0].v[3] = "enclosure:0"; a[0].v[4] = "41"; #assert rc_validate(a[..],"move") == rc_why("metres");
+  a[0].v[4] = "1"; #assert rc_validate(a[..],"move") == "";
+  #assert args_add(a[..],"--rev") && rc_validate(a[..],"move") == rc_why("id");
+  #assert args_add(a[..],"x") && rc_validate(a[..],"move") == rc_why("id");
+  b: [1] Args;
+  for w: [4] string.["realm","undo","garden","--nope"] { #assert args_add(b[..],w); }
+  #assert rc_validate(b[..],"undo") == "that flag is not one this realm command takes (openagents help)";
+}
+rc_why :: (kind: string) -> string {
+  if kind == "slug" { return "SLUG is 1 to 48 of a-z, 0-9 and -"; }
+  if kind == "row" { return "ROW (or THING) is 1 to 63 of a-z, 0-9, : and -"; }
+  if kind == "entity" { return "ENTITY is one thing of a board row as FEATURE:N, such as enclosure:0 or trees:3 (FEATURE at most 20 characters; realm show SLUG lists the rows)"; }
+  if kind == "metres" { return "X and Z are metres from -40 to 40 with at most two decimals, such as 4.5 or -2"; }
+  if kind == "yaw" { return "--yaw is whole degrees from -360 to 360"; }
+  if kind == "id" { return "ID, --rev N and --from PLAN are whole numbers from 1 to 999999999"; }
+  if kind == "words" { return "WORDS are 1 to 600 bytes"; }
+  if kind == "newwords" { return "WORDS are 1 to 2000 bytes"; }
+  if kind == "lore" { return "TEXT is at most 400 bytes (\"\" forgets the lore)"; }
+  if kind == "who" { return "WHO (a name, --name or --profile) is 1 to 40 bytes"; }
+  if kind == "file" { return "FILE (or --origin) is 1 to 1024 bytes"; }
+  if kind == "ask" { return "--ask TEXT is at most 160 bytes"; }
+  if kind == "step" { return "--step and --reward TEXT are at most 100 bytes"; }
+  if kind == "commit" { return "--commit HASH is 7 to 64 lowercase hex digits"; }
+  if kind == "tools" { return "--tools is a comma-separated list of build, fly, jump, map, talk and voice, each at most once"; }
+  if kind == "onoff" { return "the last word is on or off"; }
+  if kind == "visibility" { return "the visibility is private, unlisted or public"; }
+  if kind == "bool" { return "that flag takes no value"; }
+  if kind == "shotfile" { return "OUT.png is a path of at most 1024 bytes"; }
+  if kind == "size" { return "--size is WxH, each from 16 to 7680"; }
+  if kind == "waitms" { return "--wait is milliseconds from 0 to 120000"; }
+  if kind == "script" { return "--eval JS is at most 128 KiB"; }
+  if kind == "style" { return "--style is lowpoly, painterly or flat"; }
+  if kind == "time" { return "--time is day, dawn, dusk or night"; }
+  if kind == "camera" { return "--camera is third, first, top or side"; }
+  if kind == "ground" { return "--ground is meadow, forest, desert, snow, stone or beach"; }
+  return "an argument is outside its bounds (openagents help)";
+}
+
+// A made realm's setup, as the server's builder holds it (verse.builder_setup,
+// migrations 0048, 0049 and 0062): the words each field takes. Anything else
+// the server drops silently, so the CLI refuses it first. Palette is the
+// model's pick and anime is not a realm style yet.
+#test "setup words are the server's" {
+  #assert cli_setup_ok("style","lowpoly") && cli_setup_ok("style","painterly") && cli_setup_ok("style","flat");
+  #assert !cli_setup_ok("style","anime") && !cli_setup_ok("style","Flat") && !cli_setup_ok("style","");
+  #assert cli_setup_ok("time","day") && cli_setup_ok("time","dawn") && cli_setup_ok("time","dusk") && cli_setup_ok("time","night") && !cli_setup_ok("time","noon");
+  #assert cli_setup_ok("camera","third") && cli_setup_ok("camera","first") && cli_setup_ok("camera","top") && cli_setup_ok("camera","side") && !cli_setup_ok("camera","2d");
+  for g: [6] string.["meadow","forest","desert","snow","stone","beach"] { #assert cli_setup_ok("ground",g) && !cli_setup_ok("style",g); }
+  #assert !cli_setup_ok("ground","grass") && !cli_setup_ok("palette","pastel") && !cli_setup_ok("","day") && !cli_setup_ok("time","lowpoly");
+  a: [1] Args;
+  for w: [9] string.["realm","new","a koi pond","--style","flat","--time","dusk","--camera","top"] { #assert args_add(a[..],w); }
+  #assert rc_validate(a[..],"new") == "";
+  #assert args_add(a[..],"--ground") && args_add(a[..],"beach") && rc_validate(a[..],"new") == "";
+  #assert rc_option(a[..],"new","--style","") == "flat" && rc_option(a[..],"new","--ground","") == "beach";
+  a[0].v[4] = "anime"; #assert rc_validate(a[..],"new") == rc_why("style");
+  b: [1] Args;
+  for w: [6] string.["realm","new","--from","7","--time","night"] { #assert args_add(b[..],w); }
+  #assert rc_validate(b[..],"new") == "--style, --time, --camera and --ground go with WORDS: a plan made earlier keeps its setup";
+  for f: [3] string.["--style","--camera","--ground"] {
+    c: [1] Args;
+    for w: [4] string.["realm","new","--from","7"] { #assert args_add(c[..],w); }
+    #assert rc_validate(c[..],"new") == "" && args_add(c[..],f) && args_add(c[..],ifx f == "--style" then "flat" else ifx f == "--camera" then "top" else "snow");
+    #assert rc_validate(c[..],"new") != "";
+  }
+}
+cli_setup_ok :: (field: string, v: string) -> bool {
+  words := ifx field == "style" then "lowpoly|painterly|flat" else ifx field == "time" then "day|dawn|dusk|night"
+           else ifx field == "camera" then "third|first|top|side" else ifx field == "ground" then "meadow|forest|desert|snow|stone|beach" else "";
+  i := 0;
+  while cli_field(words,i) != "" { if cli_field(words,i) == v { return true; } i += 1; }
+  return false;
+}
+
+// One help line: "  realm VERB USAGE", its help from column 42 (or two spaces after a longer one).
+#test "help lines read like the other domains' and show no catalogue syntax" {
+  out: [512] u8;
+  #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[..]) == "  realm move SLUG ENTITY X Z [--rev N]    move a thing (FEATURE:N, such as trees:3) to X Z metres; one save";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("list")],out[..]) == "  realm list                              your realms";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("new")],out[..]) == "  realm new \"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN  plan words and make a private realm; --from PLAN makes an existing plan";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[0..<20]) == "";
+  long := CliCommand.{verb="a-verb-long-enough-to-pass-the-column-x",usage="X",help="h"};
+  #assert rc_help_line(long,out[..]) == "  realm a-verb-long-enough-to-pass-the-column-x X  h";
+  long.usage = ""; #assert rc_help_line(long,out[..]) == "  realm a-verb-long-enough-to-pass-the-column-x  h";
+  long.verb = "a-verb-exactly-to-the-column-xxx"; #assert rc_help_line(long,out[..]) == "  realm a-verb-exactly-to-the-column-xxx  h";
+  long.verb = "a-verb-exactly-to-the-column-xx"; #assert rc_help_line(long,out[..]) == "  realm a-verb-exactly-to-the-column-xx   h";
+  #assert rc_contains("ab","ab") && rc_contains("ab","a") && rc_contains("ab","b") && rc_contains("ab","") && !rc_contains("a","ab") && !rc_contains("ab","ba");
+  #assert rc_word("ab cd",0) == "ab" && rc_word("ab cd",1) == "cd" && rc_word("a  b",1) == "b" && rc_word(" a",0) == "a" && rc_word("a",1) == "" && rc_word("",0) == "";
+  for c: REALM_COMMANDS {
+    line := rc_help_line(c,out[..]);
+    #assert line.count > 0;
+    #assert rc_contains(line,c.usage) && rc_contains(line,c.help);
+    for bad: [8] string.[":id",":bool",":file","slug","metres","newwords","|row","shotfile"] { #assert !rc_contains(c.usage,bad); }
+    // every flag the row takes is shown by name, and the required arguments come first
+    fi := 0;
+    while cli_field(c.flags,fi) != "" {
+      f := cli_field(c.flags,fi); colon := 0;
+      for j: 0..<f.count { if f[j] == ':' { colon = j; } }
+      #assert rc_contains(c.usage,f[0..<colon]);
+      fi += 1;
+    }
+    args := 0; while cli_field(c.arguments,args) != "" { args += 1; }
+    for k: 0..<args - c.optional {
+      t := rc_word(c.usage,k);
+      #assert t.count > 0 && t[0] != '-' && t[0] != '[';
+    }
+  }
+}
+rc_contains :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+// The k-th space-separated word of s, or "".
+rc_word :: (s: string, k: int) -> string {
+  at := 0; seen := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' {
+      if i > at { if seen == k { return s[at..<i]; } seen += 1; }
+      at = i + 1;
+    }
+  }
+  return "";
+}
+rc_help_line :: (c: CliCommand, out: [] u8) -> string {
+  n := forge_put(out,0,"  realm "); n = forge_put(out,n,c.verb);
+  if c.usage.count > 0 { n = forge_put(out,n," "); n = forge_put(out,n,c.usage); }
+  w := n;
+  while w < 40 { n = forge_put(out,n," "); w += 1; }
+  n = forge_put(out,n,"  "); n = forge_put(out,n,c.help);
+  return ifx n == -1 then "" else cast(string) out[0..<n];
 }
 
 // A bounded JSON-line edit becomes the same copied Args the command table
@@ -970,7 +1125,7 @@ rc_validate :: (a: [] Args, verb: string) -> string {
   rb_clear(a[..]); a[0].used = ARGS_BYTES;
   #assert !rb_emit(d[0],jv_at(d[0],0,0),RbField.{kind=2,flag="--yaw"},a[..]);
   #assert !rb_emit(d[0],jv_at(d[0],0,5),step,a[..]);
-  #assert !rb_read("{\"op\":\"undo\"}","garden",a[..]);
+  #assert rb_read("{\"op\":\"undo\"}","garden",a[..]).why == "the operation does not fit";
   #assert !rb_args("{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\\u0000\"}","garden",a[..]);
   #assert rb_args("{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\\ud800\"}","garden",a[..]);
   #assert rb_args("{\"op\":\"lore\",\"who\":\"Bram\",\"text\":\"\\u0001\"}","garden",a[..]);
@@ -1027,39 +1182,166 @@ rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool {
   if f.kind == 1 { return rb_string(d,at,a); }
   return jv_kind(d,at) == JV_NUMBER && args_add(a,jv_raw(d,at));
 }
-rb_read :: (line: string, slug: string, a: [] Args) -> bool {
-  if line.count > 8192 { return false; }
+// Why a line is refused: field names the JSON field ("" for the whole line;
+// a slice of the line or of RB_SPECS), why says what it must be. why "" is admitted.
+RbWhy :: struct { field: string; why: string; }
+RB_OPS :: "is not an edit: move, switch, place, revise, ask, ask-delete, ask-done, row-delete, settings, lore, quest, accept, decline, undo, publish or visibility";
+rb_kind_why :: (kind: int) -> string {
+  if kind == 2 { return "must be a JSON number"; }
+  if kind == 3 || kind == 5 { return "must be true or false"; }
+  if kind == 4 { return "must be an array of at most three strings"; }
+  return "must be a string (without NUL)";
+}
+rb_read :: (line: string, slug: string, a: [] Args) -> RbWhy {
+  if line.count > 8192 { return RbWhy.{why="a line is at most 8192 bytes"}; }
   nodes: [64] JvNode; d: [1] Jv;
-  if !jv_parse(d[..],line,nodes[..]) { return false; }
+  if !jv_parse(d[..],line,nodes[..]) || jv_kind(d[0],0) != JV_OBJECT { return RbWhy.{why="is not one JSON object such as {\"op\":\"undo\"}"}; }
   op := jv_get(d[0],0,"op");
-  if jv_kind(d[0],op) != JV_STRING { return false; }
-  index := rb_find(jv_raw(d[0],op)); if index == -1 { return false; }
+  if jv_kind(d[0],op) != JV_STRING { return RbWhy.{field="op",why="is missing or not a string"}; }
+  index := rb_find(jv_raw(d[0],op)); if index == -1 { return RbWhy.{field="op",why=RB_OPS}; }
   spec := RB_SPECS[index]; verb := spec.verb; fields := [4] int.[-1,-1,-1,-1];
   c := d[0].nodes[0].first;
   while c != -1 {
     key := jv_key(d[0],c);
-    if jv_raw_eq(key,"op") { if c != op { return false; } }
+    if jv_raw_eq(key,"op") { if c != op { return RbWhy.{field="op",why="is given twice"}; } }
     else {
       found := -1;
       for i: 0..<4 { if spec.fields[i].key != "" && jv_raw_eq(key,spec.fields[i].key) { found = i; } }
-      if found == -1 || fields[found] != -1 { return false; }
+      if found == -1 { return RbWhy.{field=key,why="is not a field of this op (a revision goes in --rev, not in a line)"}; }
+      if fields[found] != -1 { return RbWhy.{field=key,why="is given twice"}; }
       fields[found] = c;
     }
     c = d[0].nodes[c].next;
   }
-  if verb == "ask" && (fields[0] != -1) == (fields[1] != -1) { return false; }
-  if !args_add(a,"realm") || !args_add(a,verb) || !args_add(a,slug) { return false; }
+  if verb == "ask" && (fields[0] != -1) == (fields[1] != -1) { return RbWhy.{field="words",why="ask takes words or doc, exactly one"}; }
+  if !args_add(a,"realm") || !args_add(a,verb) || !args_add(a,slug) { return RbWhy.{why="the operation does not fit"}; }
   for i: 0..<4 {
     f := spec.fields[i]; if f.key == "" { continue; }
-    if fields[i] == -1 { if !f.optional { return false; } }
-    else { if !rb_emit(d[0],fields[i],f,a) { return false; } }
+    if fields[i] == -1 { if !f.optional { return RbWhy.{field=f.key,why="is missing"}; } }
+    else { if !rb_emit(d[0],fields[i],f,a) { return RbWhy.{field=f.key,why=rb_kind_why(f.kind)}; } }
   }
-  return rc_validate(a,verb) == "";
+  return RbWhy.{why=rc_validate(a,verb)};
 }
 // Failure leaves no partially parsed operation for a caller to execute.
-rb_args :: (line: string, slug: string, a: [] Args) -> bool {
-  if a.count < 1 { return false; }
+rb_args :: (line: string, slug: string, a: [] Args) -> bool { return rb_check(line,slug,a).why == ""; }
+rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy {
+  if a.count < 1 { return RbWhy.{why="no room for the operation"}; }
   rb_clear(a);
-  if rb_read(line,slug,a) { return true; }
-  rb_clear(a); return false;
+  w := rb_read(line,slug,a);
+  if w.why != "" { rb_clear(a); }
+  return w;
 }
+
+#test "a refused batch line names its field and what it must be" {
+  a: [1] Args;
+  cases := [12] string.[
+    "[1]", "{\"x\":1}", "{\"op\":\"fly\"}", "{\"op\":\"undo\",\"op\":\"undo\"}",
+    "{\"op\":\"undo\",\"rev\":3}", "{\"op\":\"switch\",\"row\":\"a\",\"row\":\"b\",\"on\":true}",
+    "{\"op\":\"ask\"}", "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":0}",
+    "{\"op\":\"move\",\"entity\":\"trees:0\",\"x\":\"0\",\"z\":0}", "{\"op\":\"switch\",\"row\":\"a\",\"on\":1}",
+    "{\"op\":\"move\",\"entity\":\"enclosure\",\"x\":1,\"z\":1}", "{\"op\":\"quest\",\"giver\":\"B\",\"ask\":\"x\",\"steps\":{}}"];
+  fields := [12] string.["", "op", "op", "op", "rev", "row", "words", "z", "x", "on", "", "steps"];
+  whys := [12] string.["is not one JSON object such as {\"op\":\"undo\"}", "is missing or not a string", RB_OPS, "is given twice",
+    "is not a field of this op (a revision goes in --rev, not in a line)", "is given twice", "ask takes words or doc, exactly one", "is missing",
+    "must be a JSON number", "must be true or false", rc_why("entity"), "must be an array of at most three strings"];
+  for i: 0..<cases.count {
+    w := rb_check(cases[i],"garden",a[..]);
+    #assert w.field == fields[i] && w.why == whys[i] && a[0].n == 0;
+  }
+  #assert rb_check("{\"op\":\"lore\",\"who\":\"B\",\"text\":0}","garden",a[..]).why == "must be a string (without NUL)";
+  #assert rb_check("{\"op\":\"publish\",\"listed\":1}","garden",a[..]).why == "must be true or false";
+  #assert rb_check("{\"op\":\"undo\"}","garden",a[0..<0]).why != "";
+  long: [8193] u8; for i: 0..<long.count { long[i] = ' '; }
+  #assert rb_check(cast(string) long[..],"garden",a[..]).why == "a line is at most 8192 bytes";
+  ok := rb_check("{\"op\":\"undo\"}","garden",a[..]);
+  #assert ok.why == "" && ok.field == "" && a[0].n == 3;
+}
+
+// realm apply's FILE, for help: each op and its fields (? optional), from RB_SPECS.
+#test "the batch format help lists every op with its fields" {
+  out: [1024] u8;
+  h := rb_help(out[..]);
+  #assert cli_prefix(h, "move entity x z; switch row on; place thing x z yaw?; revise prompt; ask words?|doc?; ask-delete id; ask-done id commit; ");
+  #assert rc_contains(h, "quest giver ask steps reward?; accept id; decline id; undo; publish listed?; visibility visibility") && !rc_contains(h, "  ");
+  #assert rb_help(out[0..<10]) == "";
+}
+rb_help :: (out: [] u8) -> string {
+  n := 0;
+  for i: 0..<RB_SPECS.count {
+    sp := RB_SPECS[i];
+    if i > 0 { n = forge_put(out,n,"; "); }
+    n = forge_put(out,n,sp.verb);
+    for j: 0..<4 {
+      f := sp.fields[j]; if f.key == "" { continue; }
+      n = forge_put(out,n,ifx sp.verb == "ask" && j == 1 then "|" else " ");
+      n = forge_put(out,n,f.key);
+      if f.optional { n = forge_put(out,n,"?"); }
+    }
+  }
+  return ifx n == -1 then "" else cast(string) out[0..<n];
+}
+
+// realm list's text: one aligned row a realm under a header, from the
+// server's "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" lines
+// (published 0: never); "realms 0" when there are none. A line of another
+// shape is kept as it came. Its length, or -1 when out is short.
+#test "realm list reads as aligned columns, not pipe rows" {
+  out: [1024] u8;
+  t := "realm night-garden|1|1|0|Night Garden|private\nrealm walled-garden|12|0|1|Walled Garden|public\n";
+  n := cli_realm_rows(t, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "SLUG           VISIBILITY  REV  PUBLISHED  NAME\nnight-garden   private     1    1          Night Garden\nwalled-garden  public      12   never      Walled Garden\n";
+  n = cli_realm_rows("", out[..]);
+  #assert cast(string) out[0..<n] == "realms 0\n";
+  n = cli_realm_rows("\n\n", out[..]);
+  #assert cast(string) out[0..<n] == "realms 0\n";
+  n = cli_realm_rows("realm a|2|2|0|A|unlisted\nnote x", out[..]);
+  #assert cast(string) out[0..<n] == "SLUG  VISIBILITY  REV  PUBLISHED  NAME\na     unlisted    2    2          A\nnote x\n";
+  n = cli_realm_rows("realm a|2|2|0|A|", out[..]);
+  #assert cast(string) out[0..<n] == "SLUG  VISIBILITY  REV  PUBLISHED  NAME\na     public      2    2          A\n";
+  #assert cli_realm_rows(t, out[0..<40]) == -1 && cli_realm_rows("", out[0..<3]) == -1;
+  n = cli_realm_rows("note x", out[..]);
+  #assert cast(string) out[0..<n] == "note x\n";
+  n = cli_realm_rows("\nrealm abcdefg|2|2|0|A|unlisted", out[..]);
+  #assert cast(string) out[0..<n] == "SLUG     VISIBILITY  REV  PUBLISHED  NAME\nabcdefg  unlisted    2    2          A\n";
+  n = cli_realm_rows("realm a-very-long-realm-slug-name|123456|99|0|N|private", out[..]);
+  #assert cast(string) out[0..<n] == "SLUG                         VISIBILITY  REV  PUBLISHED  NAME\na-very-long-realm-slug-name  private     123456 99         N\n";
+}
+cli_realm_rows :: (text: string, out: [] u8) -> int {
+  slug_w := 4; rows := false; at := 0;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end]; at = end + 1;
+    if !cli_prefix(line,"realm ") { continue; }
+    k := cli_field(line[6..<line.count],0).count;
+    while slug_w < k { slug_w += 1; }
+    rows = true;
+  }
+  n := 0;
+  if rows {
+    n = cli_cell(out,n,"SLUG",slug_w + 2); n = cli_cell(out,n,"VISIBILITY",12); n = cli_cell(out,n,"REV",5); n = cli_cell(out,n,"PUBLISHED",11); n = forge_put(out,n,"NAME\n");
+  }
+  at = 0; others := false;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end]; at = end + 1;
+    if line.count == 0 { continue; }
+    if !cli_prefix(line,"realm ") { n = forge_put(out,n,line); n = forge_put(out,n,"\n"); others = true; continue; }
+    r := line[6..<line.count];
+    vis := cli_field(r,5); pub := cli_field(r,2);
+    n = cli_cell(out,n,cli_field(r,0),slug_w + 2);
+    n = cli_cell(out,n,ifx vis == "" then "public" else vis,12);
+    n = cli_cell(out,n,cli_field(r,1),5);
+    n = cli_cell(out,n,ifx pub == "0" then "never" else pub,11);
+    n = forge_put(out,n,cli_field(r,4)); n = forge_put(out,n,"\n");
+  }
+  if !rows && !others { n = forge_put(out,n,"realms 0\n"); }
+  return n;
+}
+// text, then spaces to width (at least one).
+cli_cell :: (out: [] u8, at: int, text: string, width: int) -> int {
+  n := forge_put(out,forge_put(out,at,text)," ");
+  w := text.count + 1;
+  while w < width { n = forge_put(out,n," "); w += 1; }
+  return n;
+}
+

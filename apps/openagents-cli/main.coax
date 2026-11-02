@@ -94,23 +94,30 @@ tool_main :: () -> int #export_c {
   help := ifx realm_command then rc_has(a[..],verb,"--help") else args_has(a[..],"--help");
   if domain == "" || domain == "help" || help || domain == "-h" { usage(); return ifx domain == "" && !help then EXIT_USAGE else EXIT_OK; }
   if domain == "version" { rep_str(r[..], "openagents", CLI_VERSION); return rep_done(r[..], EXIT_OK); }
+  code := cli_dispatch(a[..], r[..], profile, domain, verb);
+  // A profile with no origin of its own keeps an explicit --origin that worked, as login does.
+  acct_keep_origin(a[..], profile, domain, code);
+  return code;
+}
+
+cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: string) -> int {
   // Account: login, logout, whoami, account keys, access (account.coax).
-  if domain == "login" { return cli_login(a[..], r[..], profile); }
-  if domain == "logout" { return cli_logout(a[..], r[..], profile); }
-  if domain == "whoami" { return cli_whoami(a[..], r[..], profile, false); }
-  if domain == "account" { return ifx verb == "keys" then cli_whoami(a[..], r[..], profile, true) else fail(r[..], EXIT_USAGE, "account keys"); }
-  if domain == "access" { return cli_access(a[..], r[..], profile, verb); }
+  if domain == "login" { return cli_login(a, r, profile); }
+  if domain == "logout" { return cli_logout(a, r, profile); }
+  if domain == "whoami" { return cli_whoami(a, r, profile, false); }
+  if domain == "account" { return ifx verb == "keys" then cli_whoami(a, r, profile, true) else fail(r, EXIT_USAGE, "account keys"); }
+  if domain == "access" { return cli_access(a, r, profile, verb); }
   // One line per domain; each domain file dispatches its own verbs.
-  if domain == "nostr" { return nostr_main(a[..], r[..], profile, verb); }
-  if domain == "pylon" { return pylon_main(a[..], r[..], profile, verb); }
-  if domain == "http" { return cli_http(a[..], r[..]); }   // hidden: one request through coax/lib/net/http.coax
-  if domain == "project" { return project_main(a[..], r[..], verb); }
-  if domain == "realm" { return realm_main(a[..], r[..], profile, verb); }
-  if domain == "admin" { return admin_main(a[..], r[..], profile, verb); }
-  if domain == "transcribe" { return transcribe_main(a[..], r[..], verb); }
-  if domain == "coder" { return coder_main(a[..], r[..]); }
-  if domain == "labs" { return labs_main(a[..], r[..], profile, verb); }
-  if domain == "mcp" { return mcp_main(a[..], r[..], profile); }
-  if domain == "skill" { return skill_main(a[..], r[..], verb); }
-  return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
+  if domain == "nostr" { return nostr_main(a, r, profile, verb); }
+  if domain == "pylon" { return pylon_main(a, r, profile, verb); }
+  if domain == "http" { return cli_http(a, r); }   // hidden: one request through coax/lib/net/http.coax
+  if domain == "project" { return project_main(a, r, verb); }
+  if domain == "realm" { return realm_main(a, r, profile, verb); }
+  if domain == "admin" { return admin_main(a, r, profile, verb); }
+  if domain == "transcribe" { return transcribe_main(a, r, verb); }
+  if domain == "coder" { return coder_main(a, r); }
+  if domain == "labs" { return labs_main(a, r, profile, verb); }
+  if domain == "mcp" { return mcp_main(a, r, profile); }
+  if domain == "skill" { return skill_main(a, r, verb); }
+  return fail(r, EXIT_USAGE, "unknown command (openagents help)");
 }

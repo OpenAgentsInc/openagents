@@ -73,7 +73,7 @@ account_usage :: () {
   print("%\n", "");
 }
 
-AcctCall :: struct { w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int; status: int; error: int; }
+AcctCall :: struct { w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int; status: int; error: int; origin: [300] u8; origin_n: int; }
 
 acct_body :: (c: [] AcctCall) -> string { return cast(string) c[0].out[0..<c[0].n]; }
 
@@ -81,15 +81,17 @@ origin_file :: (profile: string, out: [] u8) -> string {
   d: [1024] u8; o: [1024] u8;
   return fs_join(fs_join(cli_dir(d[..]), "origins", o[..]), profile, out);
 }
-// The origin: --origin, else the one this profile logged in to, else openagents.com. "" when --origin is bad.
-acct_origin :: (a: [] Args, profile: string, out: [] u8) -> string {
+// --origin as given ("" when there is none; it may be a bad one).
+acct_explicit_origin :: (a: [] Args) -> string {
   verb := positional(a,1);
   realm_command := positional(a,0) == "realm" && rc_find(verb) >= 0;
   has_origin := ifx realm_command then rc_has(a,verb,"--origin") else args_has(a,"--origin");
-  if has_origin {
-    o := ifx realm_command then rc_option(a,verb,"--origin","") else args_value(a,"--origin","");
-    return ifx ar_origin_ok(o) then o else "";
-  }
+  if !has_origin { return ""; }
+  o := ifx realm_command then rc_option(a,verb,"--origin","") else args_value(a,"--origin","");
+  return ifx o.count > 0 then o else "-";
+}
+// The origin this profile keeps (a login's, or kept after --origin), into out; "" when none.
+acct_saved_origin :: (profile: string, out: [] u8) -> string {
   p: [1024] u8; text: [300] u8;
   path := origin_file(profile, p[..]);
   if fs_kind(path) == FS_FILE {
@@ -98,7 +100,27 @@ acct_origin :: (a: [] Args, profile: string, out: [] u8) -> string {
     while e > 0 && (text[e - 1] == '\n' || text[e - 1] == ' ') { e -= 1; }
     if n > 0 && ar_origin_ok(cast(string) text[0..<e]) { m := copy(cast(string) text[0..<e], out); return cast(string) out[0..<m]; }
   }
-  return AR_ORIGIN;
+  return "";
+}
+// The origin: --origin, else the one this profile keeps, else openagents.com. "" when --origin is bad.
+acct_origin :: (a: [] Args, profile: string, out: [] u8) -> string {
+  o := acct_explicit_origin(a);
+  if o.count > 0 { return ifx ar_origin_ok(o) then o else ""; }
+  saved := acct_saved_origin(profile, out);
+  return ifx saved.count > 0 then saved else AR_ORIGIN;
+}
+// After a command: keep its explicit --origin for a profile that has none (ar_keep_origin), and say so.
+acct_keep_origin :: (a: [] Args, profile: string, domain: string, code: int) {
+  o := acct_explicit_origin(a);
+  if o.count == 0 { return; }
+  sb: [300] u8; k: [1] Key;
+  from := "";
+  if load_key(profile, k[..]) { from = k[0].from; }
+  wipe(k[0].secret[..]);
+  if !ar_keep_origin(domain, o, acct_saved_origin(profile, sb[..]).count > 0, from, code) { return; }
+  if !save_origin(profile, o) { tool_errln("openagents: could not keep --origin for this profile"); return; }
+  tool_err("openagents: profile "); tool_err(profile); tool_err(" now keeps "); tool_err(o);
+  tool_errln(" as its origin, as login does (--origin changes it for one run)");
 }
 save_origin :: (profile: string, origin: string) -> bool {
   d: [1024] u8; od: [1024] u8; p: [1024] u8; line: [300] u8;
@@ -114,6 +136,7 @@ save_origin :: (profile: string, origin: string) -> bool {
 
 // One request to origin + path, signed with secret (a NIP-98 header bound to the body unless a GET).
 acct_call :: (c: [] AcctCall, secret: [] u8, origin: string, method: string, path: string, body: string) -> int {
+  on := copy(origin, c[0].origin[..]); c[0].origin_n = ifx on < 0 then 0 else on;
   url: [2400] u8;
   u := copy(origin, url[..]);
   v := copy(path, url[u..<url.count]);
@@ -133,11 +156,13 @@ acct_call :: (c: [] AcctCall, secret: [] u8, origin: string, method: string, pat
   c[0].status = ifx res.error == HTTP_OK then res.code else 0;
   return c[0].status;
 }
-// A failed call: no answer, or the server's words (its {"error"} or first line) and the exit code of its status.
+// A failed call: no answer, or the server's words (its {"error"} or first line) and the exit code of its status,
+// naming the server (cli_fail_from).
 acct_fail :: (r: [] Rep, c: [] AcctCall, doing: string) -> int {
+  origin := cast(string) c[0].origin[0..<c[0].origin_n];
   if c[0].status == 0 {
     m: [300] u8; n := copy(doing, m[..]); k := copy(": ", m[n..<m.count]); e := copy(http_error_text(c[0].error), m[n + k..<m.count]);
-    return fail(r, EXIT_FAIL, ifx e < 0 then doing else cast(string) m[0..<n + k + e]);
+    return cli_fail_from(r, EXIT_FAIL, origin, ifx e < 0 then doing else cast(string) m[0..<n + k + e]);
   }
   b := acct_body(c[..]);
   at := 0;
@@ -146,7 +171,13 @@ acct_fail :: (r: [] Rep, c: [] AcctCall, doing: string) -> int {
   e := at;
   if at > 0 { while e < b.count && b[e] != '"' { e += 1; } } else { while e < b.count && b[e] != '\n' { e += 1; } }
   why := b[at..<e];
-  return fail(r, cli_exit_of(c[0].status), ifx why.count > 0 then why else doing);
+  return cli_fail_from(r, cli_exit_of(c[0].status), origin, ifx why.count > 0 then why else doing);
+}
+// A failure from a server: text "openagents: ORIGIN: WHY" (ar_said); --json keeps error as the server's words and adds origin.
+cli_fail_from :: (r: [] Rep, code: int, origin: string, why: string) -> int {
+  if r[0].json { if origin.count > 0 { rep_str(r, "origin", origin); } return fail(r, code, why); }
+  m: [1024] u8; said := ar_said(origin, why, m[..]);
+  return fail(r, code, ifx said.count > 0 then said else why);
 }
 
 // The key: this profile's, or a new one made and kept for it (made: true).
@@ -405,7 +436,7 @@ api_auth :: (secret: [] u8, url: string, method: string, body: string, out: [] u
 // One answer: error is HTTP_OK and status the HTTP status, or error is the client's (http.coax),
 // or API_E_ORIGIN / API_E_SIGN before any request. body is out[0..<n].
 API_E_ORIGIN :: 100; API_E_SIGN :: 101;
-ApiAnswer :: struct { error: int; status: int; n: int; keyed: bool; }
+ApiAnswer :: struct { error: int; status: int; n: int; keyed: bool; origin: [300] u8; origin_n: int; }
 
 // method origin+path, signed by the profile's key when it has one (needs_key: refuse without one).
 api_call :: (a: [] Args, profile: string, method: string, path: string, body: string, out: [] u8) -> ApiAnswer {
@@ -413,6 +444,7 @@ api_call :: (a: [] Args, profile: string, method: string, path: string, body: st
   env: [300] u8; url: [2400] u8;
   origin := acct_origin(a, profile, env[..]);
   if origin == "" { res.error = API_E_ORIGIN; return res; }
+  on := copy(origin, res.origin[..]); res.origin_n = ifx on < 0 then 0 else on;
   un := copy(origin, url[..]);
   pn := copy(path, url[un..<url.count]);
   if pn < 0 { res.error = HTTP_E_URL; return res; }
@@ -458,16 +490,19 @@ api_why :: (body: string, out: [] u8) -> string {
 }
 
 // Ends a command whose answer was not 2xx (or never came): the exit code its status says, and why.
-api_fail :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
+api_fail :: (r: [] Rep, answer: ApiAnswer, body: string) -> int {
+  res := answer;
+  origin := cast(string) res.origin[0..<res.origin_n];
   if res.error != HTTP_OK {
-    return fail(r, ifx res.error == API_E_ORIGIN || res.error == HTTP_E_URL then EXIT_USAGE else EXIT_FAIL, api_error_text(res.error));
+    if res.error == API_E_ORIGIN || res.error == HTTP_E_URL { return fail(r, EXIT_USAGE, api_error_text(res.error)); }
+    return cli_fail_from(r, EXIT_FAIL, origin, api_error_text(res.error));
   }
   why: [512] u8; t: [24] u8;
   w := api_why(body, why[..]);
   if w.count == 0 { w = int_text(res.status, t[..]); }
   if r[0].json { rep_int(r, "status", res.status); }
   if res.status == 401 && !res.keyed { w = "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import`"; }
-  return fail(r, cli_exit_of(res.status), w);
+  return cli_fail_from(r, cli_exit_of(res.status), origin, w);
 }
 
 // The answer's body, and whether it was 2xx.

@@ -100,7 +100,7 @@ copy :: (s: string, out: [] u8) -> int {
 // ---- arguments: flags anywhere, positionals in order ----------------------
 
 // Flags that take a value, a domain's on its own line ("" pads the array).
-VALUE_FLAGS :: [70] string.["--profile",
+VALUE_FLAGS :: [74] string.["--profile",
   "--kind", "--content", "--tags", "--method", "--body", "--relay", "--limit", "--timeout",   // nostr
   "--model", "--label", "--slug", "--device", "--model-cache", "--source", "--wait", "--lines", "--port", "--trainer",   // pylon
   "--project", "--key", "--by", "--commit", "--before", "--after", "--dir", "--order",   // project
@@ -110,7 +110,8 @@ VALUE_FLAGS :: [70] string.["--profile",
   "--language", "--backend", "--threads", "--models", "--prompt", "--words",   // transcribe (--model is pylon's)
   "--size", "--eval", "--seconds", "--fps", "--skip", "--stage", "--frames",   // labs (--wait, --from above)
   "--quality", "--at", "--every", "--strip", "--set", "--seeds", "--against",   // labs
-  "--doc", "--yaw", "--tools", "--ask", "--step", "--reward"];
+  "--doc", "--yaw", "--tools", "--ask", "--step", "--reward",   // realm edits
+  "--style", "--time", "--camera", "--ground"];   // realm new's setup
 takes_value :: (s: string) -> bool { for f: VALUE_FLAGS { if f.count > 0 && s == f { return true; } } return false; }
 // The k-th argument that is not a flag or a flag's value, or "".
 positional :: (a: [] Args, k: int) -> string {

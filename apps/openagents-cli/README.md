@@ -68,6 +68,15 @@ openagents logout                            # unlink this key, then delete it h
 openagents --origin https://staging.openagents.com login   # a profile keeps the origin it logged in to
 ```
 
+- A profile with no origin of its own (it never logged in) keeps the first
+  `--origin` that works for `whoami`, `account`, `access`, `realm` or `admin`,
+  the way `login` does, and says so on stderr; a later command without
+  `--origin` goes to that server, never silently to production. A saved
+  origin is never replaced this way, and `OPENAGENTS_NSEC` runs store
+  nothing. A server's error names the server:
+  `openagents: https://openagents.com: invite only` (`--json` keeps `error`
+  as the server's words and adds `origin`).
+
 - Every call is NIP-98 signed with the profile's key
   (`coax/lib/nostr/nip98_sign.coax`); the server takes the signature as its
   key's account. The key never leaves the 0600 file except as signatures.
@@ -183,9 +192,10 @@ the events are [docs/protocol/2026-10-28-projects.md](../../docs/protocol/2026-1
 ## Realms
 
 ```sh
-openagents realm list                              # your realms: slug|rev|published|listed|name|visibility
+openagents realm list                              # your realms: SLUG VISIBILITY REV PUBLISHED NAME columns (--json: the API's objects)
 openagents realm show SLUG                         # its spec lines and its page
 openagents realm new "a koi garden at dusk"        # plan it from words and make it, private
+openagents realm new "WORDS" --style flat --time night --camera top --ground snow   # fix the setup; the rest is the model's pick
 openagents realm new --from PLAN                   # make a plan you have
 openagents realm visibility SLUG private|unlisted|public
 openagents realm publish SLUG [--rev N]            # visitors see this revision
@@ -207,6 +217,22 @@ openagents realm accept SLUG ID | decline SLUG ID [--rev N]
 openagents realm undo SLUG [--rev N]
 openagents realm apply SLUG FILE [--rev N]          # at most 64 KiB / 256 JSON-line operations
 ```
+
+`realm apply`'s FILE is one JSON object a line, `{"op":OP, ...}` with the
+op's fields (`?` optional): `move entity x z`, `switch row on`, `place thing x
+z yaw?`, `revise prompt`, `ask words` or `ask doc`, `ask-delete id`, `ask-done
+id commit`, `row-delete row`, `settings tools`, `lore who text`, `quest giver
+ask steps reward?` (`steps` an array of at most three strings), `accept id`,
+`decline id`, `undo`, `publish listed?`, `visibility visibility`. Numbers are
+JSON numbers, `on` and `listed` are `true` or `false`, and a revision goes in
+`--rev`, never in a line. `openagents help` prints the same list. A bad line
+is named with its field: `line 2: field "on" must be true or false`.
+
+Setup: `--style lowpoly|painterly|flat`, `--time day|dawn|dusk|night`,
+`--camera third|first|top|side`, `--ground
+meadow|forest|desert|snow|stone|beach` (the server's `verse.builder_setup`).
+They go with words, not `--from`. There is no route to change a made realm's
+setup, its palette or an anime style yet (see the spec's "Not built yet").
 
 The catalogue in `commands.coax` supplies realm help and checks bounded
 arguments before requests. Each edit reads the current revision unless

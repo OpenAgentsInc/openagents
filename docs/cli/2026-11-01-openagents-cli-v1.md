@@ -77,7 +77,7 @@ Global flags:
 | --- | --- |
 | `--json` | Answer in JSON, one object (or one object per line for streams). |
 | `--profile NAME` | Use another saved login (default `default`). `OPENAGENTS_PROFILE` too. |
-| `--origin URL` | Talk to another server, for example `https://staging.openagents.com`. Saved per profile. |
+| `--origin URL` | Talk to another server, for example `https://staging.openagents.com`. Saved per profile by `login`; a profile with no saved origin also keeps the first `--origin` that works for `whoami`, `account`, `access`, `realm` or `admin` (built 2026-11-02, saying so on stderr), so a later command without it never goes silently to production. A saved origin is changed only by `login`; `OPENAGENTS_NSEC` runs store nothing. |
 | `--yes` | Skip confirmation for commands that ask (publish, delete). Without a TTY they refuse unless `--yes` is given. |
 | `--quiet` | Print only the result value (a slug, a URL, a revision). |
 
@@ -86,7 +86,13 @@ Global flags:
 Text output is lines of `KEY VALUE` or rows of fields, the same shape the API
 answers with `?as=lines`, so it reads well and splits with `cut` or `awk`.
 `--json` returns the API's JSON, wrapped as `{"ok": true, ...}` or
-`{"ok": false, "error": "...", ...}`. Errors go to stderr in text mode.
+`{"ok": false, "error": "...", ...}`. Errors go to stderr in text mode. An
+error a server sent names that server: `openagents: https://openagents.com:
+invite only` in text, and `"origin"` beside the server's `"error"` in JSON.
+Usage errors name the argument and its bounds (`ENTITY is one thing of a
+board row as FEATURE:N, such as enclosure:0 or trees:3 ...`). `realm list`
+prints aligned columns, `SLUG VISIBILITY REV PUBLISHED NAME` (published
+`never` for 0), or `realms 0`.
 
 ### Exit codes
 
@@ -293,7 +299,7 @@ chapters 51 to 55 and 82.
 
 | Command | Route | Notes |
 | --- | --- | --- |
-| `realm new "WORDS" [--setup K=V,...]` | `POST /plan?as=lines` | Prints the board: plan ID, then one row a line, `N on\|off FEATURE LABEL`, then any `want THING` lines. `--setup` takes `camera=third\|first\|top\|side`, `style=lowpoly\|painterly\|flat`, `ground=...`, `time=...`; omitted fields are the model's pick. |
+| `realm new "WORDS" [--style S] [--time T] [--camera C] [--ground G]` | `POST /plan?as=lines {prompt, setup}`, then `POST /realms?as=lines` | Built: plans and makes the rows the model checked; prints `plan`, `slug`, `page`. The setup flags fix `style` (`lowpoly\|painterly\|flat`), `time` (`day\|dawn\|dusk\|night`), `camera` (`third\|first\|top\|side`) and `ground` (`meadow\|forest\|desert\|snow\|stone\|beach`), the words `verse.builder_setup` holds; omitted fields are the model's pick. Not with `--from PLAN`, whose setup is fixed. Palette is the model's pick. |
 | `realm new --doc FILE` | `POST /plan/doc?as=lines` | A design document (.md, .txt, .pdf, .docx, 360 KB at most). |
 | `realm revise-plan PLAN "WORDS"` | `POST /plan` with the plan and switches | Revise the board before making it. |
 | `realm make PLAN [--on 0,2,5 \| --all]` | `POST /realms?as=lines` | Makes exactly the board's checked rows. Prints `slug`, `page`. |
@@ -372,6 +378,18 @@ Unknown fields, duplicate decoded keys, wrong JSON types, inline revisions,
 read operations and nested `apply` are refused. Each operation uses the last
 accepted revision, so an intervening writer stops the remaining batch.
 
+Each line is `{"op":OP, ...}` with exactly that op's fields (`?` optional;
+`openagents help` prints the same list): `move entity x z`, `switch row on`,
+`place thing x z yaw?`, `revise prompt`, `ask words` or `ask doc`,
+`ask-delete id`, `ask-done id commit`, `row-delete row`, `settings tools`,
+`lore who text`, `quest giver ask steps reward?`, `accept id`, `decline id`,
+`undo`, `publish listed?`, `visibility visibility`. `x`, `z`, `yaw` and `id`
+are JSON numbers; `on` and `listed` are `true` or `false`; `steps` is an
+array of at most three strings; the rest are strings. A refused line is
+named with its field and what it must be, for example `line 2: field "on"
+must be true or false`, followed by how many earlier operations were applied
+and the revision now.
+
 ```json
 {"op":"move","entity":"trees:3","x":4.5,"z":-2}
 {"op":"move","entity":"rocks:0","x":-6,"z":8}
@@ -385,6 +403,14 @@ prints how many lines were applied and the revision now. In v1 a batch is
 not atomic; a server-side `POST /<slug>/apply {rev, ops}` that is (one
 revision, one undo step) comes with chapter 52's "Still to do": every edit
 as an operation in one log.
+
+## Not built yet (2026-11-02)
+
+| Command | Needs |
+| --- | --- |
+| `realm setup SLUG [--style S] [--time T] [--camera C] [--ground G] [--palette P] [--rev N]` | A route that changes a made realm's setup: no route in `coax/web/api/realms.c` does (`settings` sets only tools; a setup is fixed at `/plan`). It needs `POST /api/playtest/realms/<slug>/edit-v1/setup {rev, style?, time?, camera?, ground?, palette?}`, admitted by the owner's `verse.edit_role`, held to `verse.builder_styles()`, `builder_times()`, `builder_cameras()`, `builder_grounds()` and `builder_palettes()`, compared and applied under the 0102 revision fence as a new document revision (so it is one undo step), and the page rewritten. Until then `realm new --style ...` fixes the setup when the realm is made. |
+| `anime` as a realm style | `verse.builder_styles()` is `lowpoly`, `painterly`, `flat` (migration 0062). Anime becomes a CLI value once a migration adds it there and the realm renderer draws it. |
+| `realm shot --as-me` | A NIP-98 sign-in for a headless page. Until then a shot is a visitor's, so a realm must be unlisted or public (`openagents realm visibility SLUG unlisted`). |
 
 ## Connecting Claude Code and other agents (built, 2026-11-02)
 
