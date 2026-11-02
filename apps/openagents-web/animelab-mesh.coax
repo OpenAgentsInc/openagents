@@ -1,0 +1,192 @@
+// Anime Lab's mesh writers (animelab.coax): boxes, tapered tubes, ellipsoids,
+// flat shapes and ink ribbons, written as triangles into a store of words the
+// GPU reads in order (gpu/animelab.coax scene_vs): six words a vertex, x, y, z
+// (f32 bits), the normal and an object number (four bytes), the colour (sRGB
+// bytes) and its material (the top byte), and a parameter (f32 bits: a glow's
+// strength, the made thing's distance from its sketch lines, smoke's share
+// left). Every shape is built from its frame, so the cast and the stage pose
+// it by moving frames. Nothing here draws or decides; it only writes.
+//   coax/bin/coax test apps/openagents-web/animelab.coax
+
+VERTEX_WORDS :: 6;
+MAT_WORLD :: 0; MAT_SKIN :: 1; MAT_HAIR :: 2; MAT_GLOW :: 3; MAT_FLAT :: 4; MAT_FLOOR :: 5; MAT_MADE :: 6;
+MAT_INK :: 7; MAT_SMOKE :: 8; MAT_WINDOW :: 9; MAT_CLOTH :: 10;
+
+// What the next triangles are: their object, material, colour and parameter, and how many vertices
+// are written. A pen that runs out of room stops writing (over), never past its store.
+Pen :: struct { n: int; obj: int; mat: int; r: f32; g: f32; b: f32; param: f32; over: bool; }
+// A place and its axes: x right, y up, z ahead, all unit and square to each other.
+Frame :: struct { o: Point; x: Point; y: Point; z: Point; }
+
+frame_at :: (o: Point, yaw: f32) -> Frame {
+  return Frame.{o = o, x = v3(cos(yaw), 0, -sin(yaw)), y = v3(0, 1, 0), z = v3(sin(yaw), 0, cos(yaw))};
+}
+// A local point in the world.
+fp :: (f: Frame, x: f32, y: f32, z: f32) -> Point { return add(f.o, add(times(f.x, x), add(times(f.y, y), times(f.z, z)))); }
+// A local direction in the world.
+fd :: (f: Frame, x: f32, y: f32, z: f32) -> Point { return add(times(f.x, x), add(times(f.y, y), times(f.z, z))); }
+// v turned by angle a about the unit axis k (Rodrigues).
+turn :: (v: Point, k: Point, a: f32) -> Point {
+  c := cos(a); s := sin(a);
+  return add(add(times(v, c), times(cross(k, v), s)), times(k, dot(k, v) * (1 - c)));
+}
+// The frame turned by a about its own axis: 0 its x (pitch: +a tips its z down... ahead up), 1 y (yaw), 2 z (roll).
+frame_turn :: (f: Frame, axis: int, a: f32) -> Frame {
+  k := ifx axis == 0 then f.x else ifx axis == 1 then f.y else f.z;
+  return Frame.{o = f.o, x = turn(f.x, k, a), y = turn(f.y, k, a), z = turn(f.z, k, a)};
+}
+frame_move :: (f: Frame, o: Point) -> Frame { return Frame.{o = o, x = f.x, y = f.y, z = f.z}; }
+// A frame whose y runs from a toward b (a limb's), its x as square to `side` as it can be.
+frame_along :: (a: Point, b: Point, side: Point) -> Frame {
+  y := unit_or(sub(b, a), v3(0, 1, 0));
+  z := cross(side, y);
+  if length(z) < 0.0001 { z = cross(v3(0, 0, 1), y); }
+  if length(z) < 0.0001 { z = cross(v3(1, 0, 0), y); }
+  z = unit_or(z, v3(0, 0, 1));
+  return Frame.{o = a, x = cross(y, z), y = y, z = z};
+}
+
+pen_set :: (p: [] Pen, obj: int, mat: int, r: f32, g: f32, b: f32) {
+  p[0].obj = obj; p[0].mat = mat; p[0].r = r; p[0].g = g; p[0].b = b; p[0].param = 1;
+}
+byte_of :: (x: f32) -> u32 { return cast(u32) (cast(int) floor(clamp01(x) * 255 + 0.5)); }
+// One vertex: where, its normal (unit).
+vtx :: (buf: [] u32, p: [] Pen, at: Point, n: Point) {
+  i := p[0].n * VERTEX_WORDS;
+  buf[i] = f32_bits(at.x); buf[i + 1] = f32_bits(at.y); buf[i + 2] = f32_bits(at.z);
+  buf[i + 3] = byte_of(n.x * 0.5 + 0.5) | (byte_of(n.y * 0.5 + 0.5) << 8) | (byte_of(n.z * 0.5 + 0.5) << 16) | (cast(u32) (p[0].obj & 255) << 24);
+  buf[i + 4] = byte_of(p[0].r) | (byte_of(p[0].g) << 8) | (byte_of(p[0].b) << 16) | (cast(u32) (p[0].mat & 255) << 24);
+  buf[i + 5] = f32_bits(p[0].param);
+  p[0].n += 1;
+}
+room :: (buf: [] u32, p: [] Pen, vertices: int) -> bool {
+  if (p[0].n + vertices) * VERTEX_WORDS > buf.count { p[0].over = true; return false; }
+  return true;
+}
+tri :: (buf: [] u32, p: [] Pen, a: Point, b: Point, c: Point, na: Point, nb: Point, nc: Point) {
+  if !room(buf, p, 3) { return; }
+  vtx(buf, p, a, na); vtx(buf, p, b, nb); vtx(buf, p, c, nc);
+}
+// A flat quad a, b, c, d (in order round it), its normal its own.
+quad :: (buf: [] u32, p: [] Pen, a: Point, b: Point, c: Point, d: Point) {
+  n := unit_or(cross(sub(b, a), sub(c, a)), v3(0, 1, 0));
+  tri(buf, p, a, b, c, n, n, n); tri(buf, p, a, c, d, n, n, n);
+}
+// A box: half sizes along the frame's axes, round its origin.
+box :: (buf: [] u32, p: [] Pen, f: Frame, hx: f32, hy: f32, hz: f32) {
+  c := [8] Point.[fp(f, -hx, -hy, -hz), fp(f, hx, -hy, -hz), fp(f, hx, hy, -hz), fp(f, -hx, hy, -hz),
+                  fp(f, -hx, -hy, hz), fp(f, hx, -hy, hz), fp(f, hx, hy, hz), fp(f, -hx, hy, hz)];
+  quad(buf, p, c[4], c[5], c[6], c[7]);   // +z
+  quad(buf, p, c[1], c[0], c[3], c[2]);   // -z
+  quad(buf, p, c[5], c[1], c[2], c[6]);   // +x
+  quad(buf, p, c[0], c[4], c[7], c[3]);   // -x
+  quad(buf, p, c[7], c[6], c[2], c[3]);   // +y
+  quad(buf, p, c[0], c[1], c[5], c[4]);   // -y
+}
+// A box standing on the ground at (x, z): its base at y0, h tall.
+block :: (buf: [] u32, p: [] Pen, x: f32, y0: f32, z: f32, hx: f32, h: f32, hz: f32) {
+  box(buf, p, frame_at(v3(x, y0 + h * 0.5, z), 0), hx, h * 0.5, hz);
+}
+// A tapered tube along the frame's y from 0 to len: ellipses (rx0, rz0) at its foot and (rx1, rz1) at
+// its top, `sides` round, smooth; capped at either end when asked. A cone is a tube to a point.
+tube :: (buf: [] u32, p: [] Pen, f: Frame, tall: f32, rx0: f32, rz0: f32, rx1: f32, rz1: f32, sides: int, caps: bool) {
+  k := sides;
+  slope := (hi(rx0, rz0) - hi(rx1, rz1)) / hi(tall, 0.0001);
+  for i: 0..<k {
+    a0 := TAU * cast(f32) i / cast(f32) k; a1 := TAU * cast(f32) (i + 1) / cast(f32) k;
+    p00 := fp(f, cos(a0) * rx0, 0, sin(a0) * rz0); p01 := fp(f, cos(a1) * rx0, 0, sin(a1) * rz0);
+    p10 := fp(f, cos(a0) * rx1, tall, sin(a0) * rz1); p11 := fp(f, cos(a1) * rx1, tall, sin(a1) * rz1);
+    n0 := unit_or(fd(f, cos(a0), slope, sin(a0)), f.x); n1 := unit_or(fd(f, cos(a1), slope, sin(a1)), f.x);
+    tri(buf, p, p00, p10, p11, n0, n0, n1); tri(buf, p, p00, p11, p01, n0, n1, n1);
+    if caps {
+      if rx0 > 0.0001 { d := times(f.y, -1); tri(buf, p, f.o, p01, p00, d, d, d); }
+      if rx1 > 0.0001 { u := f.y; top := fp(f, 0, tall, 0); tri(buf, p, top, p10, p11, u, u, u); }
+    }
+  }
+}
+// A tube between two points (a limb), round, radii ra at a and rb at b.
+limb :: (buf: [] u32, p: [] Pen, a: Point, b: Point, ra: f32, rb: f32, side: Point, sides: int) {
+  f := frame_along(a, b, side);
+  tube(buf, p, f, length(sub(b, a)), ra, ra, rb, rb, sides, true);
+}
+// An ellipsoid round the frame's origin (radii rx, ry, rz on its axes), `seg` round and `rings` down,
+// smooth. chin > 0 narrows its lower front into a chin (a head); flat_back > 0 flattens its back.
+ellipsoid :: (buf: [] u32, p: [] Pen, f: Frame, rx: f32, ry: f32, rz: f32, seg: int, rings: int, chin: f32) {
+  for j: 0..<rings {
+    for i: 0..<seg {
+      q := [4] Point.[v3(0, 0, 0), v3(0, 0, 0), v3(0, 0, 0), v3(0, 0, 0)];
+      m := [4] Point.[v3(0, 0, 0), v3(0, 0, 0), v3(0, 0, 0), v3(0, 0, 0)];
+      for c: 0..<4 {
+        ii := i + (c & 1); jj := j + (c >> 1);
+        th := PI * cast(f32) jj / cast(f32) rings;
+        ph := TAU * cast(f32) ii / cast(f32) seg;
+        ux := sin(th) * sin(ph); uy := cos(th); uz := sin(th) * cos(ph);
+        sx := 1.0f32; sz := 1.0f32;
+        if chin > 0 && uy < 0 {
+          k := chin * (-uy) * (-uy);
+          sx = 1 - k * 0.55;
+          sz = ifx uz > 0 then 1 + k * 0.12 else 1 - k * 0.3;
+        }
+        q[c] = fp(f, ux * rx * sx, uy * ry, uz * rz * sz);
+        m[c] = unit_or(fd(f, ux / rx, uy / ry, uz / rz), f.y);
+      }
+      if j > 0 { tri(buf, p, q[0], q[1], q[3], m[0], m[1], m[3]); }
+      if j < rings - 1 { tri(buf, p, q[0], q[3], q[2], m[0], m[3], m[2]); } else { tri(buf, p, q[0], q[1], q[3], m[0], m[1], m[3]); }
+    }
+  }
+}
+ball :: (buf: [] u32, p: [] Pen, at: Point, r: f32, seg: int) {
+  ellipsoid(buf, p, frame_at(at, 0), r, r, r, seg, hi_i(seg / 2, 3), 0);
+}
+fract :: (x: f32) -> f32 { return x - floor(x); }
+hi_i :: (a: int, b: int) -> int { if a > b { return a; } return b; }
+lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+// A flat ellipse on the frame's x-y plane (facing its z), from angle a0 to a1 of it: a mark on a face.
+oval :: (buf: [] u32, p: [] Pen, f: Frame, rx: f32, ry: f32, seg: int) {
+  n := f.z;
+  for i: 0..<seg {
+    a0 := TAU * cast(f32) i / cast(f32) seg; a1 := TAU * cast(f32) (i + 1) / cast(f32) seg;
+    tri(buf, p, f.o, fp(f, cos(a0) * rx, sin(a0) * ry, 0), fp(f, cos(a1) * rx, sin(a1) * ry, 0), n, n, n);
+  }
+}
+// A flat stroke from (x0, y0) to (x1, y1) on the frame's x-y plane, w wide at the start and w1 at the end.
+dash :: (buf: [] u32, p: [] Pen, f: Frame, x0: f32, y0: f32, x1: f32, y1: f32, w0: f32, w1: f32) {
+  dx := x1 - x0; dy := y1 - y0; l := sqrt(dx * dx + dy * dy);
+  if l < 0.000001 { return; }
+  nx := -dy / l; ny := dx / l;
+  a := fp(f, x0 + nx * w0 * 0.5, y0 + ny * w0 * 0.5, 0); b := fp(f, x0 - nx * w0 * 0.5, y0 - ny * w0 * 0.5, 0);
+  c := fp(f, x1 - nx * w1 * 0.5, y1 - ny * w1 * 0.5, 0); d := fp(f, x1 + nx * w1 * 0.5, y1 + ny * w1 * 0.5, 0);
+  n := f.z;
+  tri(buf, p, a, b, c, n, n, n); tri(buf, p, a, c, d, n, n, n);
+}
+// An ink ribbon through the world from a to b, w wide, turned to face the eye.
+ribbon :: (buf: [] u32, p: [] Pen, a: Point, b: Point, w: f32, view: Point) {
+  along := sub(b, a);
+  if length(along) < 0.00001 { return; }
+  mid := times(add(a, b), 0.5);
+  side := unit_or(cross(along, sub(view, mid)), v3(0, 1, 0));
+  h := times(side, w * 0.5);
+  n := unit_or(sub(view, mid), v3(0, 1, 0));
+  tri(buf, p, add(a, h), sub(a, h), sub(b, h), n, n, n); tri(buf, p, add(a, h), sub(b, h), add(b, h), n, n, n);
+}
+
+#test "a box is twelve triangles with its normals outward" {
+  buf: [12 * 3 * VERTEX_WORDS] u32;
+  pen := [1] Pen.[Pen.{}];
+  pen_set(pen[..], 3, MAT_WORLD, 1, 0.5, 0);
+  box(buf[..], pen[..], frame_at(v3(0, 1, 0), 0), 1, 1, 1);
+  #assert pen[0].n == 36 && !pen[0].over;
+  // the first face is +z: its normal's z byte is 255 and its object number rides in the top byte
+  #assert (buf[3] >> 16) & 255 == 255 && buf[3] >> 24 == 3 && buf[4] & 255 == 255 && buf[4] >> 24 == MAT_WORLD;
+  box(buf[..], pen[..], frame_at(v3(0, 1, 0), 0), 1, 1, 1);
+  #assert pen[0].n == 36 && pen[0].over;   // no room: nothing more written
+}
+
+#test "frames turn and place points as they should" {
+  f := frame_at(v3(1, 0, 0), 1.5707963);   // facing +x
+  #assert same(fp(f, 0, 0, 1), v3(2, 0, 0), 0.0001) && same(fp(f, 1, 0, 0), v3(1, 0, -1), 0.0001);
+  g := frame_turn(frame_at(v3(0, 0, 0), 0), 0, 1.5707963);   // pitched a quarter about x: ahead goes down
+  #assert same(g.z, v3(0, -1, 0), 0.0001) && same(g.y, v3(0, 0, 1), 0.0001);
+  l := frame_along(v3(0, 0, 0), v3(0, 2, 0), v3(1, 0, 0));
+  #assert same(l.y, v3(0, 1, 0), 0.0001) && abs(dot(l.x, l.z)) < 0.0001;
+}

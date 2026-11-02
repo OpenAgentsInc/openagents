@@ -26,22 +26,25 @@ const KINDS = { locked: 0, open: 1, soon: 2 } as const
 export type Golden = { lit: number; settle: number; blocks: number }
 // style: the realm's art style (docs/verse/art-styles.md); style_views: the hashes the style check shoots it at (style-check.ts); zones: parts of it drawn in another;
 // clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
-export const STYLES = ["lowpoly", "painterly", "photoreal", "flat"] as const
+export const STYLES = ["lowpoly", "painterly", "photoreal", "flat", "anime"] as const
 export type Style = (typeof STYLES)[number]
+// variant: an anime realm's or zone's look (verse/style-preset.coax ANIME_*); none is pastoral. Only anime has variants.
+export const ANIME_VARIANTS = ["pastoral", "action", "dusk", "neon"] as const
+export type AnimeVariant = (typeof ANIME_VARIANTS)[number]
 // ruleset: the rules a realm plays by (verse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
 export const RULESETS = ["srd5"]
-export type Zone = { id: string; style?: Style }
+export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
 // page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
-export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 // added: when the realm opened, Chicago time to the minute (/realms' RECENT); line: its one line there.
 export const ADDED = /^20\d\d-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d$/
 export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
-// What coax wgsl writes into a realm's WGSL from the style presets: a painterly, photoreal or flat
-// realm draws with it. Required once verse/style.coax exists (as-presets).
+// What coax wgsl writes into a realm's WGSL from the style presets: a painterly, photoreal, flat or
+// anime realm draws with it. Required once verse/style.coax exists (as-presets).
 export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
 // A module coax wgsl writes whole carries the style as its own functions (coax/web/wgsl-module.coax).
 export const STYLE_MODULE = "fn coax_p_verse_style_"
@@ -61,7 +64,8 @@ const PACKS = join(import.meta.dir, "../../verse/packs")
 // (Everglade: eg-paint-pack, #f300). A pack that names a style never passes by it.
 const PACK_STYLE_PENDING = new Set(["everglade"])
 /** The table, checked: unique ids, slugs and slots; an open world has a realm and a realm a module,
- *  a style, its zones' ids once each, and a clock; a painterly, photoreal or flat realm's WGSL has the style block. */
+ *  a style (an anime one maybe a variant), its zones' ids once each, and a clock; a painterly, photoreal, flat or
+ *  anime realm's WGSL has the style block. */
 export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; styleBlock?: boolean; packs?: string } = {}): World[] {
   const site = opts.site ?? SITE, styleBlock = opts.styleBlock ?? existsSync(STYLE_SOURCE), packs = opts.packs ?? PACKS
   const list: World[] = JSON.parse(readFileSync(file, "utf8")).worlds
@@ -79,14 +83,16 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     once(`slug ${r.slug}`); once(`slot ${r.slot}`)
     if (r.slot_was) once(`slot ${r.slot_was}`)
     if (!STYLES.includes(r.style)) throw new Error(`realms.json: ${r.slug}: style is one of ${STYLES.join(", ")}, not ${JSON.stringify(r.style)}`)
+    variant(r.slug, r.style, r.variant)
     const zones = new Set<string>()
     for (const z of r.zones ?? []) {
       if (!ID.test(z?.id) || (z.style !== undefined && !STYLES.includes(z.style))) throw new Error(`realms.json: ${r.slug}: zone ${JSON.stringify(z?.id)}: an id and a style (${STYLES.join(", ")})`)
       if (zones.has(z.id)) throw new Error(`realms.json: ${r.slug}: zone ${z.id} twice`)
       zones.add(z.id)
+      variant(`${r.slug}: zone ${z.id}`, z.style ?? r.style, z.variant)
     }
     if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
-    if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat")) {
+    if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat" || st === "anime")) {
       const wgsl = join(site, `${r.module}.wgsl`)
       if (!existsSync(wgsl) || !styled(readFileSync(wgsl, "utf8"))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)
     }
@@ -115,6 +121,17 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
   return list
 }
 
+/** A realm's or zone's variant: none, or one of ANIME_VARIANTS when what it names is drawn anime. */
+function variant(what: string, style: string, v: unknown) {
+  if (v === undefined) return
+  if (style !== "anime") throw new Error(`realms.json: ${what}: a variant is anime's, but it is drawn ${style}`)
+  if (!ANIME_VARIANTS.includes(v as AnimeVariant)) throw new Error(`realms.json: ${what}: variant is one of ${ANIME_VARIANTS.join(", ")}, not ${JSON.stringify(v)}`)
+}
+// A zone in data-zones: "id:style", and for an anime zone "id:anime:variant" (its own, the realm's, or pastoral).
+export const zoneFact = (r: Realm) => (z: Zone) => {
+  const st = z.style ?? r.style
+  return st === "anime" ? `${z.id}:anime:${z.variant ?? r.variant ?? "pastoral"}` : `${z.id}:${st}`
+}
 const lit = (s: string) => JSON.stringify(s)
 const num = (n: number) => (Number.isInteger(n) ? n.toFixed(0) : String(n))
 export function coax(list: World[]): string {
@@ -134,7 +151,7 @@ export function coax(list: World[]): string {
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
     `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realms/${w.realm.slug}` : ""))};`,
     "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
-    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3;   // verse/style-preset.coax STYLE_*",
+    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3; PLANET_ANIME :: 4;   // verse/style-preset.coax STYLE_*",
     `PLANET_STYLE :: ${col("int", (w) => `PLANET_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
     `PLANET_CLOCK :: ${col("string", (w) => lit(w.realm?.clock ?? ""))};`,
     "",
@@ -230,8 +247,8 @@ export function page(r: Realm): string {
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
     + (hasMaker(r.slug) ? ` data-maker="1"` : "")
     + (r.uploads ? ` data-uploads="${esc(r.uploads)}"` : "")
-    + ` data-style="${r.style}" data-clock="${r.clock}"`
-    + (r.zones?.length ? ` data-zones="${r.zones.map((z) => `${z.id}:${z.style ?? r.style}`).join(" ")}"` : "")
+    + ` data-style="${r.style}"` + (r.style === "anime" ? ` data-variant="${r.variant ?? "pastoral"}"` : "") + ` data-clock="${r.clock}"`
+    + (r.zones?.length ? ` data-zones="${r.zones.map(zoneFact(r)).join(" ")}"` : "")
   const assets = r.assets.length ? ` data-assets="\n${r.assets.map((a) => `  ${a}`).join("\n")}"` : ""
   return `<!doctype html>
 <html lang="en">

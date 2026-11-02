@@ -1,0 +1,607 @@
+// Anime Lab's director (docs/verse/anime-lab.md): spoken lines become typed
+// directions over a fixed catalogue, and the directions become a timeline
+// the stage plays while it is written. Pure: no drawing, no network, no
+// clock of its own. The live voice path (A4) and the demo's simulated
+// session (?stage=direct) both come through here.
+//
+// The words never reach this file as a way to choose. The decision model
+// (today the server's typed selector, next Psionic's) reads the words and
+// answers one flat JSON object per direction, its fields the catalogue's
+// own words and a confidence `p`; anime_read holds each answer to the
+// catalogue again, the way verse/setpiece.coax holds the Sandbox's pieces.
+// The only parsing here is of those bounded fields (catalogue words, a
+// count, a decimal). There is no keyword routing.
+//
+// The timeline keeps the anime grammar: a direction plays when it is
+// decided (DECIDE after the words end); a cut never lands inside an
+// action's anticipation (the wind-up before a cast); a close-up holds at
+// least CLOSE_HOLD; a flash cut is FLASH_FRAMES white frames. The engine
+// adds its own framing ("auto" shots) when a direction's subject is off
+// the shot, so what is directed is always seen; those are marked auto.
+//   coax/bin/coax test verse/anime/director.coax
+
+// ---- The catalogue (anime-lab.md, Directions)
+AD_ENTER :: 0; AD_EXIT :: 1; AD_ACT :: 2; AD_EMOTE :: 3; AD_CAST :: 4; AD_FX :: 5;
+AD_SHOT :: 6; AD_CUT :: 7; AD_BEAT :: 8; AD_SET :: 9; AD_SAY :: 10; AD_MAKE :: 11;
+AD_KINDS :: 12;
+AD_KIND_WORDS :: [AD_KINDS] string.["enter", "exit", "act", "emote", "cast", "fx", "shot", "cut", "beat", "set", "say", "make"];
+AD_KIND_LABELS :: [AD_KINDS] string.["ENTER", "EXIT", "ACT", "EMOTE", "CAST", "FX", "SHOT", "CUT", "BEAT", "SET", "SAY", "MAKE"];
+
+// Cast slots: archetypes drawn in our own designs. A spoken name binds to one the first time it is
+// heard; after that it is a label. The hooded figures are three of one archetype (slots 2, 3, 4).
+AS_HEROINE :: 0; AS_HERO :: 1; AS_HOODED :: 2; AS_LORD :: 5; AS_MADE :: 6;
+AS_SLOTS :: 7;
+AS_ARCHETYPES :: 5;
+AS_ARCHETYPE_WORDS :: [AS_ARCHETYPES] string.["heroine", "hero", "hooded", "dark-lord", "creature"];
+AS_ARCHETYPE_SLOT :: [AS_ARCHETYPES] int.[AS_HEROINE, AS_HERO, AS_HOODED, AS_LORD, AS_MADE];
+
+ACTIONS :: 11;
+ACT_RAISE :: 0; ACT_CAST :: 1; ACT_BLOCK :: 2; ACT_RUN :: 3; ACT_FALL :: 4; ACT_KNEEL :: 5; ACT_TURN :: 6;
+ACT_POINT :: 7; ACT_HESITATE :: 8; ACT_RECOIL :: 9; ACT_SHOUT :: 10;
+ACTION_WORDS :: [ACTIONS] string.["raise-wand", "cast", "block", "run", "fall", "kneel", "turn", "point", "hesitate", "recoil", "shout"];
+EMOTIONS :: 10;
+EMO_CALM :: 0; EMO_SAD :: 1; EMO_ANGRY :: 2; EMO_AFRAID :: 3; EMO_DETERMINED :: 4; EMO_SMUG :: 5; EMO_SHOCKED :: 6;
+EMO_CRYING :: 7; EMO_LAUGHING :: 8; EMO_HESITANT :: 9;
+EMOTION_WORDS :: [EMOTIONS] string.["calm", "sad", "angry", "afraid", "determined", "smug", "shocked", "crying", "laughing", "hesitant"];
+SPELLS :: 6;
+SPELL_BOLT :: 0; SPELL_FIREBALL :: 1; SPELL_SHIELD :: 2; SPELL_FROST :: 3; SPELL_GUARDIAN :: 4; SPELL_LIGHT :: 5;
+SPELL_WORDS :: [SPELLS] string.["bolt", "fireball", "shield", "frost-ring", "guardian", "light"];
+EFFECTS :: 9;
+FX_EXPLOSION :: 0; FX_RUBBLE :: 1; FX_FLASH :: 2; FX_SMOKE :: 3; FX_EMBERS :: 4; FX_WIND :: 5; FX_LIGHTNING :: 6;
+FX_PETALS :: 7; FX_SHOCKWAVE :: 8;
+EFFECT_WORDS :: [EFFECTS] string.["explosion", "rubble-rain", "flash", "smoke", "embers", "wind", "lightning", "petals", "shockwave"];
+FRAMINGS :: 8;
+FR_EXTREME :: 0; FR_CLOSE :: 1; FR_MEDIUM :: 2; FR_WIDE :: 3; FR_ESTABLISHING :: 4; FR_OVER :: 5; FR_LOW :: 6; FR_HIGH :: 7;
+FRAMING_WORDS :: [FRAMINGS] string.["extreme-close-up", "close-up", "medium", "wide", "establishing", "over-the-shoulder", "low-angle", "high-angle"];
+MOVES :: 6;
+MOVE_HOLD :: 0; MOVE_PUSH :: 1; MOVE_PULL :: 2; MOVE_ORBIT :: 3; MOVE_SHAKE :: 4; MOVE_WHIP :: 5;
+MOVE_WORDS :: [MOVES] string.["hold", "push-in", "pull-out", "orbit", "shake", "whip-pan"];
+TRANSITIONS :: 5;
+TR_CUT :: 0; TR_FLASH :: 1; TR_SMASH :: 2; TR_WIPE :: 3; TR_MATCH :: 4;
+TRANSITION_WORDS :: [TRANSITIONS] string.["cut", "flash", "smash", "speed-line-wipe", "match"];
+BEATS :: 4;
+BEAT_HOLD :: 0; BEAT_SLOW :: 1; BEAT_FREEZE :: 2; BEAT_SPEED :: 3;
+BEAT_WORDS :: [BEATS] string.["hold", "slow-motion", "freeze-frame", "speed-lines"];
+HOWS :: 4;
+HOW_WALKS :: 0; HOW_RUNS :: 1; HOW_APPEARS :: 2; HOW_LANDS :: 3;
+HOW_WORDS :: [HOWS] string.["walks", "runs", "appears", "lands"];
+// Places on the stage: where something enters, what a spell or an effect is aimed at.
+PLACES :: 8;
+PL_GATE :: 0; PL_COURTYARD :: 1; PL_WALL :: 2; PL_SKY :: 3; PL_LEFT :: 4; PL_RIGHT :: 5; PL_BEHIND :: 6; PL_ABOVE :: 7;
+PLACE_WORDS :: [PLACES] string.["gate", "courtyard", "wall", "sky", "left", "right", "behind", "above"];
+SIZES :: 3;
+SIZE_SMALL :: 0; SIZE_LARGE :: 1; SIZE_HUGE :: 2;
+SIZE_WORDS :: [SIZES] string.["small", "large", "huge"];
+
+// The thresholds (anime-lab.md 2, calibrated): over PLAY plays at once; SOFT to PLAY plays and
+// shows a "did you mean" chip; under SOFT the line shows as heard and nothing plays.
+P_PLAY :: 0.85f32;
+P_SOFT :: 0.5f32;
+
+AnimeDirection :: struct {
+  kind: int = -1;
+  who: int = -1;         // the subject: a cast slot (AS_*), -1 none
+  option: int = -1;      // the kind's own field: action, emotion, spell, effect, framing, transition, beat; enter: archetype
+  move: int = -1;        // shot: its move; enter: how
+  place: int = -1;       // where, or a spell's or an effect's target place (PL_*)
+  to: int = -1;          // a cast slot the cut goes to, or a spell is aimed at
+  count: int = 1;
+  size: int = -1;
+  p: f32 = 0;            // the decision model's confidence
+  stock: bool = true;    // in the library (a make never is)
+  what: string = "";     // a make's description, as said
+  like: int = -1;        // a make's nearest archetype
+  engine_framed: bool = false;    // the engine's own framing, not directed
+}
+
+ad_find :: (names: [] string, word: string) -> int { for i: 0..<names.count { if names[i] == word { return i; } } return -1; }
+
+// The value after "key": in a flat JSON object: a string's letters (no escapes: catalogue words and a
+// short description) or a number's characters; "" if none.
+ad_value :: (json: string, key: string) -> string {
+  i := 0;
+  while i + key.count + 2 <= json.count {
+    if json[i] == '"' && json[i + key.count + 1] == '"' && json[i + 1..<i + key.count + 1] == key {
+      j := i + key.count + 2;
+      while j < json.count && json[j] == ' ' { j += 1; }
+      if j >= json.count || json[j] != ':' { i += 1; continue; }
+      j += 1;
+      while j < json.count && json[j] == ' ' { j += 1; }
+      if j < json.count && json[j] == '"' {
+        e := j + 1;
+        while e < json.count && json[e] != '"' && json[e] != '\\' { e += 1; }
+        if e >= json.count || json[e] != '"' { return ""; }
+        return json[j + 1..<e];
+      }
+      e := j;
+      while e < json.count && ((json[e] >= '0' && json[e] <= '9') || json[e] == '.') { e += 1; }
+      return json[j..<e];
+    }
+    i += 1;
+  }
+  return "";
+}
+ad_int :: (digits: string) -> int {
+  if digits.count == 0 || digits.count > 3 { return -1; }
+  n := 0;
+  for i: 0..<digits.count { if digits[i] < '0' || digits[i] > '9' { return -1; } n = n * 10 + cast(int) (digits[i] - '0'); }
+  return n;
+}
+// A confidence "0.94" (0 to 1, at most three decimals); -1 when it isn't one.
+ad_p :: (digits: string) -> f32 {
+  if digits.count < 1 || digits.count > 5 { return -1; }
+  if digits == "1" || digits == "1.0" { return 1; }
+  if digits.count < 3 || digits[0] != '0' || digits[1] != '.' { return -1; }
+  v := 0; scale := 1;
+  for i: 2..<digits.count {
+    if digits[i] < '0' || digits[i] > '9' { return -1; }
+    v = v * 10 + cast(int) (digits[i] - '0'); scale *= 10;
+  }
+  return cast(f32) v / cast(f32) scale;
+}
+// A who: an archetype's word, its slot (the hooded's first); -1 for none or an unknown one.
+ad_who :: (word: string) -> int {
+  words := AS_ARCHETYPE_WORDS;
+  k := ad_find(words[..], word);
+  return ifx k < 0 then -1 else AS_ARCHETYPE_SLOT[k];
+}
+
+// Reads one of the decision model's answers, held to the catalogue: an unknown kind is no
+// direction (kind -1); a field that isn't the kind's own words stays -1, and a direction missing
+// the field its kind needs is no direction either. A make is never in stock; every other kind is.
+anime_read :: (json: string) -> AnimeDirection {
+  kinds := AD_KIND_WORDS;
+  d: AnimeDirection;
+  k := ad_find(kinds[..], ad_value(json, "kind"));
+  if k < 0 { return d; }
+  p := ad_p(ad_value(json, "p"));
+  if p < 0 { return d; }
+  d.p = p;
+  d.who = ad_who(ad_value(json, "who"));
+  places := PLACE_WORDS; sizes := SIZE_WORDS;
+  d.place = ad_find(places[..], ad_value(json, "place"));
+  d.to = ad_who(ad_value(json, "to"));
+  d.size = ad_find(sizes[..], ad_value(json, "size"));
+  c := ad_int(ad_value(json, "count"));
+  d.count = ifx c >= 1 && c <= 3 then c else 1;
+  if k == AD_ACT { w := ACTION_WORDS; d.option = ad_find(w[..], ad_value(json, "action")); }
+  if k == AD_EMOTE { w := EMOTION_WORDS; d.option = ad_find(w[..], ad_value(json, "emotion")); }
+  if k == AD_CAST { w := SPELL_WORDS; d.option = ad_find(w[..], ad_value(json, "spell")); }
+  if k == AD_FX { w := EFFECT_WORDS; d.option = ad_find(w[..], ad_value(json, "effect")); }
+  if k == AD_SHOT {
+    w := FRAMING_WORDS; d.option = ad_find(w[..], ad_value(json, "framing"));
+    m := MOVE_WORDS; d.move = ad_find(m[..], ad_value(json, "move"));
+    if d.move < 0 { d.move = MOVE_HOLD; }
+  }
+  if k == AD_CUT {
+    w := TRANSITION_WORDS; d.option = ad_find(w[..], ad_value(json, "transition"));
+    if d.option < 0 { d.option = TR_CUT; }
+  }
+  if k == AD_BEAT { w := BEAT_WORDS; d.option = ad_find(w[..], ad_value(json, "beat")); }
+  if k == AD_ENTER {
+    d.option = ad_who(ad_value(json, "archetype"));
+    h := HOW_WORDS; d.move = ad_find(h[..], ad_value(json, "how"));
+    if d.move < 0 { d.move = HOW_WALKS; }
+  }
+  if k == AD_MAKE {
+    d.what = ad_value(json, "what");
+    d.like = ad_who(ad_value(json, "like"));
+  }
+  d.kind = k;
+  d.stock = k != AD_MAKE;
+  if !anime_direction_ok(d) { return AnimeDirection.{}; }
+  return d;
+}
+
+// Whether a direction holds to the catalogue's types: its kind's own field in range, a subject
+// where the kind needs one, a make described and not in stock.
+anime_direction_ok :: (d: AnimeDirection) -> bool {
+  if d.kind < 0 || d.kind >= AD_KINDS || !(d.p >= 0 && d.p <= 1) { return false; }
+  if d.who >= AS_SLOTS || d.to >= AS_SLOTS || d.place >= PLACES || d.size >= SIZES || d.count < 1 || d.count > 3 { return false; }
+  if d.stock == (d.kind == AD_MAKE) { return false; }
+  k := d.kind;
+  if k == AD_ACT { return d.who >= 0 && d.option >= 0 && d.option < ACTIONS; }
+  if k == AD_EMOTE { return d.who >= 0 && d.option >= 0 && d.option < EMOTIONS; }
+  if k == AD_CAST { return d.option >= 0 && d.option < SPELLS && (d.place >= 0 || d.to >= 0); }
+  if k == AD_FX { return d.option >= 0 && d.option < EFFECTS; }
+  if k == AD_SHOT { return d.option >= 0 && d.option < FRAMINGS && d.move >= 0 && d.move < MOVES && (d.who >= 0 || d.place >= 0); }
+  if k == AD_CUT { return d.option >= 0 && d.option < TRANSITIONS && d.to >= 0; }
+  if k == AD_BEAT { return d.option >= 0 && d.option < BEATS; }
+  if k == AD_ENTER { return d.option >= 0 && d.move >= 0 && d.move < HOWS; }
+  if k == AD_MAKE { return d.what.count > 0 && d.what.count <= 40 && d.like >= 0; }
+  return true;
+}
+
+// ---- The take's cast: names bound to slots (anime.v1's `cast` lines)
+CAST_NAMES :: [AS_SLOTS] string.["Draconia", "Kai", "hooded", "hooded", "hooded", "dark lord", "ink dragon"];
+
+// ---- Words for the overlay: what the director made of a line, in the catalogue's vocabulary.
+ad_put :: (buf: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < buf.count { buf[n] = t[i]; n += 1; } } return n; }
+// A catalogue word as shown: its hyphens as spaces ("raise-wand" is "raise wand").
+ad_word :: (buf: [] u8, at: int, t: string) -> int {
+  n := at;
+  for i: 0..<t.count { if n < buf.count { buf[n] = ifx t[i] == '-' then cast(u8) ' ' else t[i]; n += 1; } }
+  return n;
+}
+AD_DOT :: " · ";
+AD_ARROW :: " → ";
+AD_TIMES :: " ×";
+ad_slot_name :: (slot: int) -> string { if slot < 0 || slot >= AS_SLOTS { return "-"; } return CAST_NAMES[slot]; }
+
+// The direction in words after its kind: "Draconia · fireball → gate".
+anime_says :: (d: AnimeDirection, buf: [] u8) -> string {
+  n := 0;
+  k := d.kind;
+  if k == AD_ACT { n = ad_put(buf, n, ad_slot_name(d.who)); n = ad_put(buf, n, AD_DOT); n = ad_word(buf, n, ACTION_WORDS[d.option]); }
+  if k == AD_EMOTE { n = ad_put(buf, n, ad_slot_name(d.who)); n = ad_put(buf, n, AD_DOT); n = ad_word(buf, n, EMOTION_WORDS[d.option]); }
+  if k == AD_CAST {
+    if d.who >= 0 { n = ad_put(buf, n, ad_slot_name(d.who)); n = ad_put(buf, n, AD_DOT); }
+    n = ad_word(buf, n, SPELL_WORDS[d.option]); n = ad_put(buf, n, AD_ARROW);
+    n = ad_put(buf, n, ifx d.to >= 0 then ad_slot_name(d.to) else PLACE_WORDS[d.place]);
+    if d.size == SIZE_HUGE { n = ad_put(buf, n, AD_DOT); n = ad_put(buf, n, "huge"); }
+  }
+  if k == AD_FX {
+    n = ad_word(buf, n, EFFECT_WORDS[d.option]);
+    if d.place >= 0 { n = ad_put(buf, n, AD_DOT); n = ad_put(buf, n, PLACE_WORDS[d.place]); }
+  }
+  if k == AD_SHOT {
+    n = ad_word(buf, n, FRAMING_WORDS[d.option]); n = ad_put(buf, n, AD_DOT);
+    n = ad_put(buf, n, ifx d.who >= 0 then ad_slot_name(d.who) else PLACE_WORDS[d.place]);
+    if d.move != MOVE_HOLD || d.option == FR_WIDE { n = ad_put(buf, n, AD_DOT); n = ad_word(buf, n, MOVE_WORDS[d.move]); }
+  }
+  if k == AD_CUT { n = ad_word(buf, n, TRANSITION_WORDS[d.option]); n = ad_put(buf, n, AD_ARROW); n = ad_put(buf, n, ad_slot_name(d.to)); }
+  if k == AD_BEAT { n = ad_word(buf, n, BEAT_WORDS[d.option]); }
+  if k == AD_ENTER {
+    n = ad_put(buf, n, ifx d.option == AS_LORD then "dark lord" else ad_slot_name(d.option));
+    if d.count > 1 { n = ad_put(buf, n, AD_TIMES); n = ad_put(buf, n, ifx d.count == 3 then "3" else "2"); }
+    if d.place >= 0 { n = ad_put(buf, n, AD_DOT); n = ad_put(buf, n, PLACE_WORDS[d.place]); }
+    n = ad_put(buf, n, AD_DOT); n = ad_word(buf, n, HOW_WORDS[d.move]);
+  }
+  if k == AD_MAKE {
+    n = ad_put(buf, n, "\""); n = ad_put(buf, n, d.what); n = ad_put(buf, n, "\" like ");
+    n = ad_put(buf, n, AS_ARCHETYPE_WORDS[ad_archetype(d.like)]);
+  }
+  return cast(string) buf[0..<n];
+}
+ad_archetype :: (slot: int) -> int { for i: 0..<AS_ARCHETYPES { if AS_ARCHETYPE_SLOT[i] == slot { return i; } } return 0; }
+
+// ---- The session: lines as heard, with the decision model's answers
+// said, done: when the line's words start and end (s into the take); the answers to it are
+// AnimeAnswers[first ..< first + count], one flat object each, as the typed selector returns them.
+AnimeLine :: struct { said: f32; done: f32; words: string; first: int; count: int; }
+
+// The demo (anime-lab.md, The demo): a person directing, the voice simulated. The words, their
+// timing and the answers are what the live path makes of them; the answers are recorded here.
+DEMO_LINES_N :: 13;
+DEMO_LINES :: [DEMO_LINES_N] AnimeLine.[
+  AnimeLine.{said = 1.4, done = 3.1, words = "Draconia raises her wand.", first = 0, count = 1},
+  AnimeLine.{said = 4.2, done = 6.2, words = "She casts a fireball at the gate.", first = 1, count = 1},
+  AnimeLine.{said = 8.6, done = 9.9, words = "Close up on Draconia.", first = 2, count = 1},
+  AnimeLine.{said = 11.4, done = 13.6, words = "Flash to Kai, he's looking sad.", first = 3, count = 2},
+  AnimeLine.{said = 15.1, done = 16.0, words = "Now he's angry.", first = 5, count = 1},
+  AnimeLine.{said = 17.3, done = 19.1, words = "He starts casting something.", first = 6, count = 1},
+  AnimeLine.{said = 20.6, done = 21.8, words = "Draconia hesitates.", first = 7, count = 2},
+  AnimeLine.{said = 23.2, done = 26.4, words = "All of a sudden, three hooded figures appear behind them.", first = 9, count = 2},
+  AnimeLine.{said = 28.4, done = 30.6, words = "Then the dark lord steps out of the smoke.", first = 11, count = 1},
+  AnimeLine.{said = 32.4, done = 34.4, words = "A huge fireball hits the courtyard.", first = 12, count = 1},
+  AnimeLine.{said = 36.4, done = 37.6, words = "Rubble rains down.", first = 13, count = 1},
+  AnimeLine.{said = 39.4, done = 42.0, words = "And an ink dragon crashes through the wall.", first = 14, count = 2},
+  AnimeLine.{said = 49.6, done = 51.0, words = "Wide shot. Hold.", first = 16, count = 2}
+];
+DEMO_ANSWERS_N :: 18;
+DEMO_ANSWERS :: [DEMO_ANSWERS_N] string.[
+  "{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"raise-wand\",\"p\":0.96}",
+  "{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"size\":\"large\",\"p\":0.94}",
+  "{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"heroine\",\"move\":\"push-in\",\"p\":0.97}",
+  "{\"kind\":\"cut\",\"transition\":\"flash\",\"to\":\"hero\",\"p\":0.95}",
+  "{\"kind\":\"emote\",\"who\":\"hero\",\"emotion\":\"sad\",\"p\":0.91}",
+  "{\"kind\":\"emote\",\"who\":\"hero\",\"emotion\":\"angry\",\"p\":0.93}",
+  "{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"cast\",\"p\":0.78}",
+  "{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"hesitate\",\"p\":0.95}",
+  "{\"kind\":\"emote\",\"who\":\"heroine\",\"emotion\":\"hesitant\",\"p\":0.88}",
+  "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":3,\"place\":\"behind\",\"how\":\"appears\",\"p\":0.93}",
+  "{\"kind\":\"fx\",\"effect\":\"smoke\",\"place\":\"behind\",\"p\":0.86}",
+  "{\"kind\":\"enter\",\"archetype\":\"dark-lord\",\"place\":\"behind\",\"how\":\"walks\",\"p\":0.91}",
+  "{\"kind\":\"cast\",\"spell\":\"fireball\",\"place\":\"courtyard\",\"size\":\"huge\",\"p\":0.9}",
+  "{\"kind\":\"fx\",\"effect\":\"rubble-rain\",\"place\":\"courtyard\",\"p\":0.96}",
+  "{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"p\":0.87}",
+  "{\"kind\":\"fx\",\"effect\":\"explosion\",\"place\":\"wall\",\"p\":0.84}",
+  "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"courtyard\",\"move\":\"hold\",\"p\":0.98}",
+  "{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":0.95}"
+];
+DEMO_LENGTH :: 60.0f32;    // s: the take, with its hold at the end
+
+// The film (?stage=film): the same stage played from a written take, no voice: an establishing wide,
+// the heroine raising her wand among the braziers, her fireball at the gate, a close-up, the ink
+// dragon crashing in, a white flash.
+FILM_LINES_N :: 7;
+FILM_LINES :: [FILM_LINES_N] AnimeLine.[
+  AnimeLine.{said = 0, done = 0.0, words = "", first = 0, count = 1},
+  AnimeLine.{said = 0, done = 2.4, words = "", first = 1, count = 2},
+  AnimeLine.{said = 0, done = 3.8, words = "", first = 3, count = 2},
+  AnimeLine.{said = 0, done = 5.9, words = "", first = 5, count = 2},
+  AnimeLine.{said = 0, done = 6.8, words = "", first = 7, count = 3},
+  AnimeLine.{said = 0, done = 9.3, words = "", first = 10, count = 1},
+  AnimeLine.{said = 0, done = 9.7, words = "", first = 11, count = 1}
+];
+FILM_ANSWERS_N :: 12;
+FILM_ANSWERS :: [FILM_ANSWERS_N] string.[
+  "{\"kind\":\"shot\",\"framing\":\"establishing\",\"place\":\"courtyard\",\"move\":\"push-in\",\"p\":1}",
+  "{\"kind\":\"shot\",\"framing\":\"medium\",\"who\":\"heroine\",\"move\":\"push-in\",\"p\":1}",
+  "{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"raise-wand\",\"p\":1}",
+  "{\"kind\":\"shot\",\"framing\":\"over-the-shoulder\",\"who\":\"heroine\",\"move\":\"hold\",\"p\":1}",
+  "{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"size\":\"large\",\"p\":1}",
+  "{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"heroine\",\"move\":\"push-in\",\"p\":1}",
+  "{\"kind\":\"emote\",\"who\":\"heroine\",\"emotion\":\"determined\",\"p\":1}",
+  "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"wall\",\"move\":\"pull-out\",\"p\":1}",
+  "{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"p\":1}",
+  "{\"kind\":\"fx\",\"effect\":\"explosion\",\"place\":\"wall\",\"p\":1}",
+  "{\"kind\":\"beat\",\"beat\":\"speed-lines\",\"p\":1}",
+  "{\"kind\":\"fx\",\"effect\":\"flash\",\"p\":1}"
+];
+FILM_LENGTH :: 10.5f32;
+
+// ---- The timeline: when each direction plays
+DECIDE :: 0.35f32;         // s from the words' end to the decision (the typed selector, simulated)
+STAGGER :: 0.14f32;        // s between one line's directions
+ANTICIPATION :: 0.4f32;    // s: a cast's wind-up, inside which nothing cuts
+CLOSE_HOLD :: 0.6f32;      // s: a close-up holds at least this
+FLASH_FRAMES :: 3;         // a flash cut's white frames
+FILM_FPS :: 30.0f32;
+FLIGHT :: 0.9f32;          // s: a spell's flight to its target
+EVENTS_MAX :: 48;
+
+// shown: when the overlay shows the direction (it was decided); at: when it plays (the grammar may
+// hold it a moment past that); line: the line it came from (-1 for the engine's own framing).
+AnimeEvent :: struct { at: f32; shown: f32; d: AnimeDirection; line: int; }
+
+anime_flash_length :: () -> f32 { return cast(f32) FLASH_FRAMES / FILM_FPS; }
+// Whether a direction moves the camera.
+anime_camera :: (d: AnimeDirection) -> bool { return d.kind == AD_SHOT || d.kind == AD_CUT; }
+// Whether a direction has a wind-up the camera must not cut inside: a cast, or the act of casting.
+anime_winds_up :: (d: AnimeDirection) -> bool { return (d.kind == AD_CAST && d.who >= 0) || (d.kind == AD_ACT && d.option == ACT_CAST); }
+
+// The framing the camera holds after a camera direction, and on whom: a cut keeps a close framing
+// (flash to Kai from a close-up is a close-up of Kai), else medium.
+ad_frames :: (d: AnimeDirection, last: int) -> int {
+  if d.kind == AD_SHOT { return d.option; }
+  return ifx last == FR_CLOSE || last == FR_EXTREME then FR_CLOSE else FR_MEDIUM;
+}
+ad_subject :: (d: AnimeDirection) -> int { return ifx d.kind == AD_CUT then d.to else d.who; }
+
+// The engine's framing for a direction that needs its subject seen: a shot it adds before it (kind
+// -1: none). An action, a feeling or a cast on someone the shot isn't on gets a medium shot of them
+// (a cast: over their shoulder at the target); a body action in a close-up pulls back to medium;
+// whoever enters, a big spell, a made thing get a wide one.
+ad_auto :: (d: AnimeDirection, framing: int, subject: int) -> AnimeDirection {
+  a: AnimeDirection;
+  a.engine_framed = true; a.p = 1; a.move = MOVE_HOLD;
+  wide := framing == FR_WIDE || framing == FR_ESTABLISHING;
+  if (d.kind == AD_ACT || d.kind == AD_EMOTE) && (subject != d.who || (d.kind == AD_ACT && framing == FR_CLOSE)) {
+    if d.kind == AD_EMOTE && subject != d.who { a.kind = AD_SHOT; a.option = FR_MEDIUM; a.who = d.who; a.move = MOVE_PUSH; }
+    if d.kind == AD_ACT { a.kind = AD_SHOT; a.option = FR_MEDIUM; a.who = d.who; a.move = MOVE_PUSH; }
+    return a;
+  }
+  if d.kind == AD_CAST && d.who >= 0 && !(framing == FR_OVER && subject == d.who) {
+    a.kind = AD_SHOT; a.option = FR_OVER; a.who = d.who; return a;
+  }
+  if d.kind == AD_CAST && d.who < 0 && !wide { a.kind = AD_SHOT; a.option = FR_WIDE; a.place = d.place; return a; }
+  if d.kind == AD_ENTER && d.option == AS_HOODED { a.kind = AD_SHOT; a.option = FR_WIDE; a.place = PL_BEHIND; a.move = MOVE_PUSH; return a; }
+  if d.kind == AD_ENTER && d.option == AS_LORD { a.kind = AD_SHOT; a.option = FR_LOW; a.who = AS_LORD; a.move = MOVE_PUSH; return a; }
+  if d.kind == AD_MAKE { a.kind = AD_SHOT; a.option = FR_WIDE; a.place = d.place; a.move = MOVE_PULL; return a; }
+  return a;
+}
+
+// Lays the lines' answers out as a timeline into out, in the order they play; returns how many.
+// The grammar holds: camera directions wait out a close-up's CLOSE_HOLD and any wind-up they would
+// land inside; a flash cut's subject's feeling plays with the cut, after its white frames.
+anime_timeline :: (lines: [] AnimeLine, answers: [] string, auto: bool, out: [] AnimeEvent) -> int {
+  n := 0;
+  framing := FR_ESTABLISHING; subject := -1;
+  close_at := -100.0f32;          // when the last close-up started
+  wind_at := -100.0f32;           // when the last wind-up started
+  flash_end := -100.0f32;
+  for i: 0..<lines.count {
+    l := lines[i];
+    for k: 0..<l.count {
+      if l.first + k >= answers.count || n >= out.count { continue; }
+      d := anime_read(answers[l.first + k]);
+      if d.kind < 0 || d.p < P_SOFT { continue; }
+      shown := l.done + (ifx l.said < l.done then DECIDE else 0.0f32) + cast(f32) k * STAGGER;
+      at := shown;
+      if auto && !anime_camera(d) {
+        a := ad_auto(d, framing, subject);
+        if a.kind == AD_SHOT && n < out.count {
+          ta := at;
+          if framing == FR_CLOSE || framing == FR_EXTREME { ta = ifx ta < close_at + CLOSE_HOLD then close_at + CLOSE_HOLD else ta; }
+          if ta > wind_at && ta < wind_at + ANTICIPATION { ta = wind_at + ANTICIPATION; }
+          out[n] = AnimeEvent.{at = ta, shown = shown, d = a, line = -1}; n += 1;
+          framing = a.option; subject = a.who;
+          at = ifx at < ta then ta else at;
+        }
+      }
+      if anime_camera(d) {
+        if framing == FR_CLOSE || framing == FR_EXTREME { at = ifx at < close_at + CLOSE_HOLD then close_at + CLOSE_HOLD else at; }
+        if at > wind_at && at < wind_at + ANTICIPATION { at = wind_at + ANTICIPATION; }
+        framing = ad_frames(d, framing); subject = ad_subject(d);
+        if framing == FR_CLOSE || framing == FR_EXTREME { close_at = at; }
+        if d.kind == AD_CUT && d.option == TR_FLASH { flash_end = at + anime_flash_length(); }
+      } else if d.kind == AD_EMOTE && d.who == subject && at < flash_end {
+        at = flash_end;    // the feeling shows on the far side of the white frames
+      }
+      if anime_winds_up(d) { wind_at = at; }
+      out[n] = AnimeEvent.{at = at, shown = shown, d = d, line = i}; n += 1;
+    }
+  }
+  // in the order they play (a stable insertion sort: the lists are short)
+  for i: 1..<n {
+    e := out[i]; j := i - 1;
+    while j >= 0 && out[j].at > e.at { out[j + 1] = out[j]; j -= 1; }
+    out[j + 1] = e;
+  }
+  return n;
+}
+
+// How much of a line's words have been heard at t: bytes of its words, whole words only, the
+// words arriving evenly while it is said (the partial), all of it from done (the final).
+anime_heard :: (l: AnimeLine, t: f32) -> int {
+  if t >= l.done { return l.words.count; }
+  if t <= l.said || l.done <= l.said { return 0; }
+  words := 0;
+  for i: 0..<l.words.count { if l.words[i] == ' ' { words += 1; } }
+  words += 1;
+  want := cast(int) floor((t - l.said) / (l.done - l.said) * cast(f32) words);
+  seen := 0;
+  for i: 0..<l.words.count {
+    if l.words[i] == ' ' { seen += 1; if seen >= want { return i; } }
+  }
+  return l.words.count;
+}
+
+// ---- Checks
+ad_events :: (lines: [] AnimeLine, answers: [] string, out: [] AnimeEvent) -> int { return anime_timeline(lines, answers, true, out); }
+
+#test "every answer in the demo and the film reads to a direction of the catalogue" {
+  said := DEMO_ANSWERS; film := FILM_ANSWERS;
+  for i: 0..<DEMO_ANSWERS_N { d := anime_read(said[i]); #assert d.kind >= 0 && anime_direction_ok(d); }
+  for i: 0..<FILM_ANSWERS_N { d := anime_read(film[i]); #assert d.kind >= 0 && anime_direction_ok(d); }
+  // each line's answers are its own: the table is covered once, in order
+  lines := DEMO_LINES; next := 0;
+  for i: 0..<DEMO_LINES_N { #assert lines[i].first == next && lines[i].count >= 1; next += lines[i].count; }
+  #assert next == DEMO_ANSWERS_N;
+  flines := FILM_LINES; next = 0;
+  for i: 0..<FILM_LINES_N { #assert flines[i].first == next; next += flines[i].count; }
+  #assert next == FILM_ANSWERS_N;
+}
+
+#test "answers are held to the catalogue: kinds, fields and confidences" {
+  d := anime_read("{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"size\":\"large\",\"p\":0.94}");
+  #assert d.kind == AD_CAST && d.who == AS_HEROINE && d.option == SPELL_FIREBALL && d.place == PL_GATE && d.size == SIZE_LARGE && d.stock;
+  #assert d.p > 0.939 && d.p < 0.941;
+  #assert anime_read("{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"avalanche\",\"place\":\"gate\",\"p\":0.9}").kind == -1;  // not a spell of ours
+  #assert anime_read("{\"kind\":\"dance\",\"who\":\"heroine\",\"p\":0.9}").kind == -1;
+  #assert anime_read("{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"raise-wand\"}").kind == -1;            // no confidence
+  #assert anime_read("{\"kind\":\"act\",\"who\":\"heroine\",\"action\":\"raise-wand\",\"p\":1.4}").kind == -1;  // not a probability
+  #assert anime_read("{\"kind\":\"act\",\"action\":\"raise-wand\",\"p\":0.9}").kind == -1;                    // nobody to do it
+  #assert anime_read("{\"kind\":\"act\",\"who\":\"Heroine\",\"action\":\"raise-wand\",\"p\":0.9}").kind == -1; // exact words only
+  #assert anime_read("{\"kind\":\"cut\",\"to\":\"hero\",\"p\":0.9}").option == TR_CUT;                         // a plain cut by default
+  e := anime_read("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":3,\"place\":\"behind\",\"how\":\"appears\",\"p\":0.93}");
+  #assert e.kind == AD_ENTER && e.option == AS_HOODED && e.count == 3 && e.move == HOW_APPEARS && e.place == PL_BEHIND;
+  #assert anime_read("{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":30,\"how\":\"appears\",\"p\":0.9}").count == 1;
+  m := anime_read("{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"p\":0.87}");
+  #assert m.kind == AD_MAKE && !m.stock && m.what == "ink dragon" && m.like == AS_MADE;
+  #assert anime_read("{\"kind\":\"make\",\"like\":\"creature\",\"p\":0.87}").kind == -1;   // a make says what it is
+  #assert anime_read("").kind == -1 && anime_read("{\"kind\":\"act\"").kind == -1;
+}
+
+#test "only the make is out of stock, and it is the ink dragon" {
+  said := DEMO_ANSWERS; makes := 0;
+  for i: 0..<DEMO_ANSWERS_N {
+    d := anime_read(said[i]);
+    if !d.stock { makes += 1; #assert d.kind == AD_MAKE && d.what == "ink dragon"; }
+  }
+  #assert makes == 1;
+}
+
+#test "the session is paced like a person talking, inside the take" {
+  lines := DEMO_LINES;
+  for i: 0..<DEMO_LINES_N {
+    #assert lines[i].said < lines[i].done && lines[i].done - lines[i].said < 4.0;
+    if i > 0 { #assert lines[i].said > lines[i - 1].done + 0.8; }   // a breath between lines
+  }
+  #assert lines[0].said > 0.5 && lines[DEMO_LINES_N - 1].done > 40 && lines[DEMO_LINES_N - 1].done + 6 < DEMO_LENGTH && DEMO_LENGTH <= 60;
+}
+
+#test "the timeline plays in order, each direction once decided" {
+  ev: [EVENTS_MAX] AnimeEvent;
+  lines := DEMO_LINES; answers := DEMO_ANSWERS;
+  n := ad_events(lines[..], answers[..], ev[..]);
+  directed := 0;
+  for i: 0..<n {
+    if i > 0 { #assert ev[i].at >= ev[i - 1].at; }
+    #assert ev[i].at >= ev[i].shown && ev[i].at - ev[i].shown < 1.0;
+    if ev[i].line >= 0 { directed += 1; #assert ev[i].shown >= lines[ev[i].line].done + DECIDE; } else { #assert ev[i].d.engine_framed; }
+  }
+  #assert directed == DEMO_ANSWERS_N;   // every answer clears the threshold and plays
+}
+
+#test "the anime grammar: a close-up holds, no cut inside a wind-up, a flash cut is three frames" {
+  ev: [EVENTS_MAX] AnimeEvent;
+  lines := DEMO_LINES; answers := DEMO_ANSWERS;
+  n := ad_events(lines[..], answers[..], ev[..]);
+  close_at := -100.0f32; closed := false;
+  for i: 0..<n {
+    d := ev[i].d;
+    if anime_camera(d) {
+      if closed { #assert ev[i].at >= close_at + CLOSE_HOLD - 0.0001; }
+      closed = d.kind == AD_SHOT && d.option == FR_CLOSE;
+      if d.kind == AD_CUT { closed = closed || ad_frames(d, FR_CLOSE) == FR_CLOSE; }
+      if closed { close_at = ev[i].at; }
+      for j: 0..<n { if anime_winds_up(ev[j].d) { #assert !(ev[i].at > ev[j].at + 0.0001 && ev[i].at < ev[j].at + ANTICIPATION - 0.0001); } }
+    }
+  }
+  #assert FLASH_FRAMES == 3 && anime_flash_length() * FILM_FPS == 3;
+  // flash to Kai: his sadness shows after the white frames, not under them
+  cut := -1.0f32; sad := -1.0f32;
+  for i: 0..<n {
+    if ev[i].d.kind == AD_CUT && ev[i].d.option == TR_FLASH { cut = ev[i].at; }
+    if ev[i].d.kind == AD_EMOTE && ev[i].d.option == EMO_SAD { sad = ev[i].at; }
+  }
+  #assert cut > 0 && sad >= cut + anime_flash_length() - 0.0001;
+}
+
+#test "a cut asked for inside a wind-up waits for it; a shot after a close-up waits out its hold" {
+  ls := [2] AnimeLine.[AnimeLine.{said = 0, done = 1, words = "a", first = 0, count = 1}, AnimeLine.{said = 1.05, done = 1.1, words = "b", first = 1, count = 1}];
+  as := [2] string.["{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"bolt\",\"place\":\"gate\",\"p\":0.9}",
+                    "{\"kind\":\"cut\",\"to\":\"hero\",\"p\":0.9}"];
+  ev: [8] AnimeEvent;
+  n := anime_timeline(ls[..], as[..], false, ev[..]);
+  #assert n == 2 && ev[1].d.kind == AD_CUT && ev[1].at >= ev[0].at + ANTICIPATION - 0.0001;
+  bs := [2] string.["{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"heroine\",\"p\":0.9}",
+                    "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"courtyard\",\"p\":0.9}"];
+  n = anime_timeline(ls[..], bs[..], false, ev[..]);
+  #assert n == 2 && ev[1].at >= ev[0].at + CLOSE_HOLD - 0.0001;
+}
+
+#test "under the soft threshold nothing plays; between, it plays" {
+  ls := [1] AnimeLine.[AnimeLine.{said = 0, done = 1, words = "x", first = 0, count = 2}];
+  as := [2] string.["{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.3}", "{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"turn\",\"p\":0.6}"];
+  ev: [8] AnimeEvent;
+  n := anime_timeline(ls[..], as[..], false, ev[..]);
+  #assert n == 1 && ev[0].d.option == ACT_TURN;
+}
+
+#test "the engine frames what is directed, and says so" {
+  ev: [EVENTS_MAX] AnimeEvent;
+  lines := DEMO_LINES; answers := DEMO_ANSWERS;
+  n := ad_events(lines[..], answers[..], ev[..]);
+  // the heroine hesitates while the shot is on Kai: a medium shot of her comes first
+  for i: 0..<n {
+    if ev[i].d.kind == AD_ACT && ev[i].d.option == ACT_HESITATE {
+      #assert i > 0 && ev[i - 1].d.engine_framed && ev[i - 1].d.kind == AD_SHOT && ev[i - 1].d.who == AS_HEROINE;
+    }
+    if ev[i].d.engine_framed { #assert anime_direction_ok(ev[i].d) && ev[i].line == -1; }
+  }
+}
+
+#test "the overlay says a direction in the catalogue's words" {
+  buf: [96] u8;
+  answers := DEMO_ANSWERS;
+  #assert anime_says(anime_read(answers[0]), buf[..]) == "Draconia · raise wand";
+  #assert anime_says(anime_read(answers[1]), buf[..]) == "Draconia · fireball → gate";
+  #assert anime_says(anime_read(answers[2]), buf[..]) == "close up · Draconia · push in";
+  #assert anime_says(anime_read(answers[3]), buf[..]) == "flash → Kai";
+  #assert anime_says(anime_read(answers[4]), buf[..]) == "Kai · sad";
+  #assert anime_says(anime_read(answers[9]), buf[..]) == "hooded ×3 · behind · appears";
+  #assert anime_says(anime_read(answers[12]), buf[..]) == "fireball → courtyard · huge";
+  #assert anime_says(anime_read(answers[14]), buf[..]) == "\"ink dragon\" like creature";
+}
+
+#test "words are heard as they are said, whole words, then all of them" {
+  l := AnimeLine.{said = 1, done = 3, words = "Close up on Draconia.", first = 0, count = 1};
+  #assert anime_heard(l, 0.5) == 0 && anime_heard(l, 3) == l.words.count && anime_heard(l, 9) == l.words.count;
+  #assert anime_heard(l, 1.6) == 5;      // "Close"
+  #assert anime_heard(l, 2.1) == 8;      // "Close up"
+  last := 0;
+  for i: 0..<40 { h := anime_heard(l, 0.8 + cast(f32) i * 0.06); #assert h >= last; last = h; }
+}

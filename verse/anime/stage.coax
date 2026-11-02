@@ -1,0 +1,494 @@
+// Anime Lab's stage (docs/verse/anime-lab.md 4): a timeline of directions
+// (director.coax) played at a moment t. Pure, like the director: given the
+// events and t it says who is on the stage, where, in which pose and with
+// which feeling, which effects are running and how old they are, and where
+// the camera is (its shots flown with verse/cinematic.coax). The realm
+// (apps/openagents-web/animelab.coax) draws what this says; the live voice
+// path will drive the same function. The same events and t always give the
+// same stage, so a take renders the same frames every time.
+//
+// The stage is the courtyard of Skyreach Academy, our own cliff-top school
+// of magic: the gate in the north wall (-z), the east wall (+x), the
+// parapet over the cliff to the south (+z). The heroine and the hero stand
+// near its middle facing the gate; whoever enters "behind them" comes from
+// the south. The engine adds a few reactions of its own, named here: the
+// heroes turn to face what appears behind them, everyone near a huge
+// impact recoils, and a spell's impact shakes the camera.
+//   coax/bin/coax test verse/anime/stage.coax --library
+
+#load "director.coax";
+#load "../cinematic.coax";
+
+// ---- The stage's marks
+COURT :: 12.0f32;                    // m: the courtyard's half width (walls at ±COURT)
+GATE_Z :: -12.0f32;
+MARK_X :: [AS_SLOTS] f32.[-1.5, 1.8, -4.4, -1.7, 3.2, 0.5, 8.6];
+MARK_Z :: [AS_SLOTS] f32.[1.6, 2.9, 7.6, 8.5, 7.9, 10.4, -0.4];
+MARK_YAW :: [AS_SLOTS] f32.[3.14159265, 3.0, 3.3, 3.14159265, 3.0, 3.14159265, -1.5707963];
+HEAD_Y :: [AS_SLOTS] f32.[1.5, 1.6, 1.66, 1.66, 1.66, 1.98, 4.2];   // m: where each one's eyes are
+LORD_STEP :: 1.4f32;                 // m he walks out of the smoke
+LORD_WALK :: 1.8f32;                 // s it takes
+IMPACT_X :: 0.3f32; IMPACT_Z :: 5.4f32;   // the huge fireball's landing
+BREACH_Z :: 0.0f32;                  // the east wall's breach
+
+// Poses (a direction's action, as the body plays it)
+POSE_IDLE :: 0; POSE_RAISE :: 1; POSE_CAST :: 2; POSE_CHARGE :: 3; POSE_HESITATE :: 4; POSE_RECOIL :: 5;
+POSE_POINT :: 6; POSE_ROBED :: 7; POSE_COMMAND :: 8; POSE_READY :: 9;
+POSES :: 10;
+BLEND :: 0.28f32;                    // s from one pose to the next
+CAST_RELEASE :: 0.4f32;              // s into a cast: the wind-up ends and the spell leaves the wand (ANTICIPATION)
+CAST_SETTLE :: 1.7f32;               // s: then back to ready
+
+// Effects running on the stage
+FXK_BOLT :: 0;        // a spell in flight: from, to, size
+FXK_BURST :: 1;       // an impact: at to, size
+FXK_SMOKE :: 2;       // smoke at to
+FXK_RUBBLE :: 3;      // rubble raining on the courtyard
+FXK_BREACH :: 4;      // the east wall bursting
+FXK_CHARGE :: 5;      // a spell gathering in someone's hands (who)
+FX_MAX :: 16;
+
+StageCast :: struct {
+  on: bool; at: f32;            // on the stage, since
+  x: f32; z: f32; yaw: f32;
+  pose: int; pose_at: f32; was: int;
+  emotion: int; emotion_at: f32; was_emotion: int;
+}
+StageFx :: struct { kind: int; at: f32; from: Point; to: Point; size: f32; who: int; spell: int; }
+StageShot :: struct { framing: int = FR_ESTABLISHING; who: int = -1; place: int = PL_COURTYARD; move: int = MOVE_PUSH; at: f32 = 0; transition: int = TR_CUT; }
+Stage :: struct {
+  who: [AS_SLOTS] StageCast;
+  shot: StageShot;
+  fx: [FX_MAX] StageFx; fx_n: int;
+  make_at: f32 = -1;            // the make's start (the draw-in), -1 none
+  make_speed: f32 = 1;
+  breach_at: f32 = -1;
+  flash: f32;                   // white over the frame, 0 to 1
+  impact: f32;                  // an impact frame (the frame inverted to ink), 0 or 1
+  speed: f32;                   // speed lines, 0 to 1
+  shake: f32;                   // the camera's shake, m
+  hold_at: f32 = -1;            // a beat's hold, from
+  white_at: f32 = -1;           // an FX flash: the frame whitening out, from
+}
+
+// Limbs: what the body does, as the realm draws it. Angles in radians; an arm's pitch 0 hangs down,
+// PI/2 points ahead, PI straight up; out swings it from the side; elbow bends the forearm on.
+Limbs :: struct {
+  lean: f32; crouch: f32; turn: f32; head_yaw: f32; head_pitch: f32;
+  r_pitch: f32; r_out: f32; r_elbow: f32;
+  l_pitch: f32; l_out: f32; l_elbow: f32;
+  glow: f32;                    // the wand's tip, 0 to 1
+}
+
+sg_sat :: (x: f32) -> f32 { return clamp01(x); }
+sg_smooth :: (x: f32) -> f32 { t := clamp01(x); return t * t * (3 - 2 * t); }
+
+// A pose's limbs at rest (k: 0 to 1 within the pose's own motion, for the cast's wind-up and release).
+sg_pose :: (pose: int, k: f32, t: f32) -> Limbs {
+  b: Limbs;
+  b.r_pitch = 0.18; b.r_out = 0.16; b.r_elbow = 0.25; b.l_pitch = 0.12; b.l_out = 0.14; b.l_elbow = 0.2;
+  breathe := 0.02 * sin(t * 1.7);
+  b.lean = breathe;
+  if pose == POSE_READY { b.r_pitch = 0.9; b.r_out = 0.15; b.r_elbow = 0.55; b.glow = 0.35; }
+  if pose == POSE_RAISE { b.r_pitch = 2.75; b.r_out = 0.2; b.r_elbow = 0.15; b.head_pitch = -0.18; b.glow = 0.8 + 0.2 * sin(t * 9); b.lean = -0.04; }
+  if pose == POSE_CAST {
+    // wind-up: the arm drawn back and up, the body coiled; release: flung ahead; follow-through
+    w := sg_smooth(k / CAST_RELEASE);
+    r := sg_smooth((k - CAST_RELEASE) / 0.18);
+    b.r_pitch = lerp(lerp(1.0, 2.6, w), 1.62, r); b.r_out = lerp(0.5, 0.05, r); b.r_elbow = lerp(lerp(0.4, 1.4, w), 0.0, r);
+    b.l_pitch = lerp(0.3, 0.9, w) - 0.5 * r; b.l_out = 0.4; b.l_elbow = 0.6;
+    b.lean = lerp(-0.12 * w, 0.2, r); b.turn = lerp(-0.35 * w, 0.12, r); b.crouch = 0.06 * w + 0.04 * r;
+    b.glow = ifx k < CAST_RELEASE then w else 1 - 0.6 * sg_sat((k - CAST_RELEASE) / 0.6);
+  }
+  if pose == POSE_CHARGE {
+    // both hands ahead, the spell gathering between them
+    b.r_pitch = 1.35; b.r_out = -0.28; b.r_elbow = 0.55; b.l_pitch = 1.35; b.l_out = -0.28; b.l_elbow = 0.55;
+    b.lean = 0.1; b.crouch = 0.08; b.glow = 1;
+  }
+  if pose == POSE_HESITATE {
+    b.r_pitch = 1.05; b.r_out = 0.1; b.r_elbow = 0.9; b.l_pitch = 0.75; b.l_out = -0.2; b.l_elbow = 1.6;
+    b.lean = -0.08; b.head_pitch = 0.22; b.head_yaw = 0.35; b.glow = 0.15; b.turn = 0.1;
+  }
+  if pose == POSE_RECOIL {
+    b.r_pitch = 2.0; b.r_out = -0.5; b.r_elbow = 1.7; b.l_pitch = 2.0; b.l_out = -0.5; b.l_elbow = 1.7;
+    b.lean = -0.28; b.crouch = 0.14; b.head_pitch = 0.3; b.head_yaw = -0.3;
+  }
+  if pose == POSE_POINT { b.r_pitch = 1.6; b.r_out = 0.1; b.r_elbow = 0.0; }
+  if pose == POSE_ROBED { b.r_pitch = 0.5; b.r_out = -0.5; b.r_elbow = 1.2; b.l_pitch = 0.5; b.l_out = -0.5; b.l_elbow = 1.2; b.lean = 0.05; }
+  if pose == POSE_COMMAND { b.r_pitch = 2.35; b.r_out = 0.45; b.r_elbow = 0.25; b.l_pitch = 0.3; b.l_out = 0.2; b.lean = -0.05; b.head_pitch = -0.08; b.glow = 0.8; }
+  return b;
+}
+sg_mix :: (a: Limbs, b: Limbs, k: f32) -> Limbs {
+  m: Limbs;
+  m.lean = lerp(a.lean, b.lean, k); m.crouch = lerp(a.crouch, b.crouch, k); m.turn = lerp(a.turn, b.turn, k);
+  m.head_yaw = lerp(a.head_yaw, b.head_yaw, k); m.head_pitch = lerp(a.head_pitch, b.head_pitch, k);
+  m.r_pitch = lerp(a.r_pitch, b.r_pitch, k); m.r_out = lerp(a.r_out, b.r_out, k); m.r_elbow = lerp(a.r_elbow, b.r_elbow, k);
+  m.l_pitch = lerp(a.l_pitch, b.l_pitch, k); m.l_out = lerp(a.l_out, b.l_out, k); m.l_elbow = lerp(a.l_elbow, b.l_elbow, k);
+  m.glow = lerp(a.glow, b.glow, k);
+  return m;
+}
+// The pose a cast is in at t: a cast settles to ready once it is done.
+sg_now :: (c: StageCast, t: f32) -> int {
+  if c.pose == POSE_CAST && t - c.pose_at > CAST_SETTLE { return POSE_READY; }
+  return c.pose;
+}
+// Someone's limbs at t: their pose (blended in from the last over BLEND).
+anime_limbs :: (c: StageCast, t: f32) -> Limbs {
+  now := sg_pose(sg_now(c, t), t - c.pose_at, t);
+  if c.pose == POSE_CAST && t - c.pose_at > CAST_SETTLE {
+    return sg_mix(sg_pose(POSE_CAST, CAST_SETTLE, t), now, sg_smooth((t - c.pose_at - CAST_SETTLE) / 0.5));
+  }
+  k := sg_smooth((t - c.pose_at) / BLEND);
+  if k >= 1 || c.pose == POSE_CAST { return now; }
+  return sg_mix(sg_pose(c.was, 10, t), now, k);
+}
+
+sg_pose_of :: (d: AnimeDirection, who: int) -> int {
+  if d.kind == AD_CAST { return POSE_CAST; }
+  a := d.option;
+  if a == ACT_RAISE { return POSE_RAISE; }
+  if a == ACT_CAST { return ifx who == AS_LORD then POSE_COMMAND else POSE_CHARGE; }   // casting something, not yet a spell
+  if a == ACT_HESITATE { return POSE_HESITATE; }
+  if a == ACT_RECOIL || a == ACT_BLOCK || a == ACT_FALL { return POSE_RECOIL; }
+  if a == ACT_POINT { return POSE_POINT; }
+  return POSE_IDLE;
+}
+sg_set_pose :: (s: [] Stage, who: int, pose: int, at: f32) {
+  if who < 0 || who >= AS_SLOTS { return; }
+  c := s[0].who[who];
+  if c.pose == pose && pose != POSE_CAST { return; }
+  s[0].who[who].was = sg_now(c, at); s[0].who[who].pose = pose; s[0].who[who].pose_at = at;
+}
+sg_set_emotion :: (s: [] Stage, who: int, emotion: int, at: f32) {
+  if who < 0 || who >= AS_SLOTS { return; }
+  s[0].who[who].was_emotion = s[0].who[who].emotion; s[0].who[who].emotion = emotion; s[0].who[who].emotion_at = at;
+}
+sg_fx :: (s: [] Stage, f: StageFx) {
+  if s[0].fx_n >= FX_MAX { return; }
+  s[0].fx[s[0].fx_n] = f; s[0].fx_n += 1;
+}
+// Where a place is on the stage (a spell's target, an effect's middle).
+anime_place :: (place: int) -> Point {
+  if place == PL_GATE { return v3(0, 2.6, GATE_Z + 0.6); }
+  if place == PL_WALL { return v3(COURT, 2.0, BREACH_Z); }
+  if place == PL_SKY { return v3(0, 24, 4); }
+  if place == PL_BEHIND { return v3(0, 0.4, 8.6); }
+  if place == PL_LEFT { return v3(-8, 0.4, 2); }
+  if place == PL_RIGHT { return v3(8, 0.4, 2); }
+  if place == PL_ABOVE { return v3(0, 12, 3); }
+  return v3(IMPACT_X, 0.3, IMPACT_Z);
+}
+// Where someone's wand tip is about, for a spell's start.
+anime_hand :: (c: StageCast) -> Point { return v3(c.x + sin(c.yaw) * 0.55, 1.75, c.z + cos(c.yaw) * 0.55); }
+// Where someone's head is.
+anime_head :: (s: Stage, who: int) -> Point {
+  c := s.who[who];
+  return v3(c.x, HEAD_Y[who], c.z);
+}
+
+// The stage at t: every event at or before t applied in order, then the engine's reactions.
+anime_stage :: (events: [] AnimeEvent, n: int, t: f32, make_speed: f32) -> Stage {
+  st: [1] Stage;
+  s := st[..];
+  s[0].make_speed = make_speed;
+  for i: 0..<AS_SLOTS {
+    s[0].who[i] = StageCast.{on = i <= AS_HERO, at = -10, x = MARK_X[i], z = MARK_Z[i], yaw = MARK_YAW[i],
+                              pose = ifx i == AS_LORD || (i >= AS_HOODED && i < AS_LORD) then POSE_ROBED else POSE_IDLE, pose_at = -10,
+                              was = POSE_IDLE, emotion = EMO_CALM, emotion_at = -10, was_emotion = EMO_CALM};
+  }
+  s[0].shot = StageShot.{};
+  for i: 0..<n {
+    e := events[i];
+    if e.at > t { break; }
+    d := e.d;
+    if d.kind == AD_ACT { sg_set_pose(s, d.who, sg_pose_of(d, d.who), e.at); }
+    if d.kind == AD_EMOTE { sg_set_emotion(s, d.who, d.option, e.at); }
+    if d.kind == AD_ENTER {
+      if d.option == AS_HOODED {
+        for k: 0..<d.count { s[0].who[AS_HOODED + k].on = true; s[0].who[AS_HOODED + k].at = e.at + 0.22 * cast(f32) k; }
+        // the engine's reaction: the heroes turn to face what appeared behind them
+        for h: 0..<2 { s[0].who[h].yaw = lerp(MARK_YAW[h], 0.25 - 0.5 * cast(f32) h, sg_smooth((t - e.at - 0.7) / 0.6)); }
+      } else if d.option >= 0 && d.option < AS_SLOTS {
+        s[0].who[d.option].on = true; s[0].who[d.option].at = e.at;
+        // the engine's: whoever walks on from behind comes out of smoke
+        if d.place == PL_BEHIND { sg_fx(s, StageFx.{kind = FXK_SMOKE, at = e.at - 0.6, to = v3(MARK_X[d.option], 0, MARK_Z[d.option] + 0.9), size = 1.1}); }
+      }
+    }
+    if d.kind == AD_CAST {
+      from := ifx d.who >= 0 then anime_hand(s[0].who[d.who]) else v3(IMPACT_X - 3, 26, IMPACT_Z + 14);
+      if d.who >= 0 { sg_set_pose(s, d.who, POSE_CAST, e.at); }
+      to := ifx d.to >= 0 then anime_head(s[0], d.to) else anime_place(d.place);
+      size := ifx d.size == SIZE_HUGE then 3.2f32 else ifx d.size == SIZE_SMALL then 0.6f32 else 1.0f32;
+      leave := e.at + (ifx d.who >= 0 then CAST_RELEASE else 0.0f32);
+      flight := ifx d.who >= 0 then FLIGHT else 1.0f32;
+      sg_fx(s, StageFx.{kind = FXK_BOLT, at = leave, from = from, to = to, size = size, who = d.who, spell = d.option});
+      sg_fx(s, StageFx.{kind = FXK_BURST, at = leave + flight, from = from, to = to, size = size, who = -1, spell = d.option});
+      hit := leave + flight;
+      if t >= hit {
+        // the engine's reaction to a huge impact: everyone near it recoils
+        if d.size == SIZE_HUGE {
+          for k: 0..<AS_MADE { if s[0].who[k].on && s[0].who[k].pose != POSE_RECOIL { sg_set_pose(s, k, POSE_RECOIL, hit + 0.05); } }
+          sg_set_emotion(s, AS_HEROINE, EMO_SHOCKED, hit + 0.05); sg_set_emotion(s, AS_HERO, EMO_SHOCKED, hit + 0.05);
+        }
+      }
+    }
+    if d.kind == AD_FX {
+      if d.option == FX_SMOKE {
+        for k: 0..<3 { sg_fx(s, StageFx.{kind = FXK_SMOKE, at = e.at - 0.1 + 0.2 * cast(f32) k, to = v3(MARK_X[AS_HOODED + k], 0, MARK_Z[AS_HOODED + k]), size = 1.0}); }
+      }
+      if d.option == FX_RUBBLE { sg_fx(s, StageFx.{kind = FXK_RUBBLE, at = e.at, to = anime_place(PL_COURTYARD), size = 1}); }
+      if d.option == FX_EXPLOSION && d.place == PL_WALL { s[0].breach_at = e.at; sg_fx(s, StageFx.{kind = FXK_BREACH, at = e.at, to = anime_place(PL_WALL), size = 1}); }
+      if d.option == FX_FLASH { s[0].white_at = e.at; }
+    }
+    if d.kind == AD_MAKE {
+      s[0].make_at = e.at;
+      s[0].who[AS_MADE].on = true; s[0].who[AS_MADE].at = e.at;
+    }
+    if d.kind == AD_SHOT {
+      s[0].shot = StageShot.{framing = d.option, who = d.who, place = d.place, move = d.move, at = e.at, transition = TR_CUT};
+    }
+    if d.kind == AD_CUT {
+      last := s[0].shot.framing;
+      s[0].shot = StageShot.{framing = ad_frames(d, last), who = d.to, place = PL_COURTYARD, move = MOVE_PUSH, at = e.at, transition = d.option};
+    }
+    if d.kind == AD_BEAT && d.option == BEAT_SPEED { s[0].speed = 1; }
+    if d.kind == AD_BEAT && d.option == BEAT_HOLD { s[0].hold_at = e.at; }
+  }
+  // The lord walks out of the smoke.
+  lord := s[0].who[AS_LORD];
+  if lord.on {
+    k := sg_smooth((t - lord.at) / LORD_WALK);
+    s[0].who[AS_LORD].z = MARK_Z[AS_LORD] - LORD_STEP * k;
+  }
+  // Light on the frame: flash cuts, impacts, the breach.
+  if s[0].shot.transition == TR_FLASH && t - s[0].shot.at < anime_flash_length() && t >= s[0].shot.at { s[0].flash = 1; }
+  if s[0].shot.transition == TR_SMASH && t - s[0].shot.at < 0.5 && t >= s[0].shot.at { s[0].speed = hi(s[0].speed, 1 - (t - s[0].shot.at) / 0.5); }
+  for i: 0..<s[0].fx_n {
+    f := s[0].fx[i];
+    a := t - f.at;
+    if a < 0 { continue; }
+    if f.kind == FXK_BURST {
+      big := f.size > 2;
+      if big {
+        if a < 2.0 / FILM_FPS { s[0].impact = 1; }
+        s[0].flash = hi(s[0].flash, ifx a < 2.0 / FILM_FPS then 0.0f32 else 0.9 * (1 - sg_sat((a - 0.07) / 0.55)));
+        s[0].speed = hi(s[0].speed, 1 - sg_sat((a - 0.3) / 1.2));
+        s[0].shake = hi(s[0].shake, 0.35 * (1 - sg_sat(a / 1.4)));
+      } else {
+        s[0].flash = hi(s[0].flash, 0.35 * (1 - sg_sat(a / 0.18)));
+        s[0].shake = hi(s[0].shake, 0.1 * (1 - sg_sat(a / 0.5)));
+      }
+    }
+    if f.kind == FXK_BREACH {
+      s[0].shake = hi(s[0].shake, 0.28 * (1 - sg_sat(a / 1.0)));
+      s[0].speed = hi(s[0].speed, 0.8 * (1 - sg_sat(a / 0.9)));
+    }
+    if f.kind == FXK_RUBBLE { s[0].shake = hi(s[0].shake, 0.05 * (1 - sg_sat((a - 2.5) / 1.0))); }
+  }
+  if s[0].white_at >= 0 && t >= s[0].white_at { s[0].flash = hi(s[0].flash, sg_sat((t - s[0].white_at) / 0.35)); }
+  if s[0].hold_at >= 0 && s[0].speed > 0 && t - s[0].hold_at > 2 { s[0].speed = 0; }
+  return s[0];
+}
+
+// The draw-in of a made thing (anime-lab.md 5), at a = s since the make, at the maker's speed: the ink
+// sketch's share drawn (0 to 1), the flat colour's flood (0 to 1), the shading's (0 to 1), and made.
+DRAW_SKETCH :: 1.6f32; DRAW_FLOOD :: 1.6f32; DRAW_SHADE :: 1.0f32; DRAW_SETTLE :: 0.3f32;
+DrawIn :: struct { sketch: f32; flood: f32; shade: f32; made: bool; }
+anime_draw_in :: (a: f32, speed: f32) -> DrawIn {
+  d: DrawIn;
+  x := a * hi(speed, 0.1);
+  d.sketch = sg_sat(x / DRAW_SKETCH);
+  d.flood = sg_sat((x - DRAW_SKETCH) / DRAW_FLOOD);
+  d.shade = sg_sat((x - DRAW_SKETCH - DRAW_FLOOD) / DRAW_SHADE);
+  d.made = x >= DRAW_SKETCH + DRAW_FLOOD + DRAW_SHADE + DRAW_SETTLE;
+  return d;
+}
+anime_draw_in_length :: (speed: f32) -> f32 { return (DRAW_SKETCH + DRAW_FLOOD + DRAW_SHADE + DRAW_SETTLE) / hi(speed, 0.1); }
+
+// ---- The camera
+CamNow :: struct { eye: Point; at: Point; fov: f32; }
+SHOT_DRIFT :: 5.0f32;      // s over which a shot's move plays
+
+sg_forward :: (yaw: f32) -> Point { return v3(sin(yaw), 0, cos(yaw)); }
+sg_side :: (yaw: f32) -> Point { return v3(cos(yaw), 0, -sin(yaw)); }
+
+// A framing's shot at the start (k 0) and end (k 1) of its move, and its field of view (vertical, rad).
+sg_frame :: (s: Stage, shot: StageShot, k: f32) -> CamNow {
+  c: CamNow;
+  c.fov = 0.82;
+  push := ifx shot.move == MOVE_PUSH then k else ifx shot.move == MOVE_PULL then -k else 0.0f32;
+  w := shot.who;
+  if w >= 0 && w < AS_SLOTS && (shot.framing == FR_CLOSE || shot.framing == FR_EXTREME) {
+    p := s.who[w]; head := anime_head(s, w); f := sg_forward(p.yaw); r := sg_side(p.yaw);
+    dist := (ifx shot.framing == FR_EXTREME then 0.42f32 else 0.95f32) - 0.3 * push;
+    if w == AS_MADE { dist = 4.5 - 1.2 * push; }
+    c.eye = add(add(head, times(f, dist)), add(times(r, 0.1 * dist), v3(0, 0.02, 0)));
+    c.at = add(head, v3(0, -0.045, 0)); c.fov = 0.6;
+    return c;
+  }
+  if w >= 0 && w < AS_SLOTS && shot.framing == FR_OVER {
+    p := s.who[w]; f := sg_forward(p.yaw); r := sg_side(p.yaw);
+    c.eye = add(v3(p.x, 1.95, p.z), add(times(f, -1.9 - 0.4 * push), times(r, -0.75)));
+    c.at = add(v3(p.x, 1.6, p.z), times(f, 6));
+    c.fov = 0.78;
+    return c;
+  }
+  if w >= 0 && w < AS_SLOTS && shot.framing == FR_LOW {
+    p := s.who[w]; f := sg_forward(p.yaw); r := sg_side(p.yaw);
+    c.eye = add(v3(p.x, 0.3, p.z), add(times(f, 3.0 - 0.7 * push), times(r, -0.6)));
+    c.at = v3(p.x, HEAD_Y[w] - 0.25, p.z); c.fov = 0.9;
+    return c;
+  }
+  if w >= 0 && w < AS_SLOTS && shot.framing == FR_MEDIUM {
+    p := s.who[w]; f := sg_forward(MARK_YAW[w]); r := sg_side(MARK_YAW[w]);
+    if w == AS_MADE {
+      c.eye = v3(-2.5 + 1.5 * push, 3.5, 6.5); c.at = v3(8, 3.4, 0); c.fov = 0.9;
+      return c;
+    }
+    dist := 2.6 - 0.5 * push;
+    c.eye = add(v3(p.x, 1.55, p.z), add(times(f, dist), times(r, 0.85)));
+    c.at = v3(p.x, HEAD_Y[w] - 0.32, p.z);
+    c.fov = 0.7;
+    return c;
+  }
+  // wide and establishing shots, by place
+  if shot.framing == FR_ESTABLISHING {
+    c.eye = v3(26 - 6 * push, 17 - 4 * push, 34 - 8 * push); c.at = v3(-2, 6, -6); c.fov = 0.78;
+    return c;
+  }
+  if shot.place == PL_BEHIND {
+    c.eye = v3(-1.2 + 0.4 * push, 1.5, -4.2 + 0.9 * push); c.at = v3(0.4, 1.7, 6.0); c.fov = 0.86;
+    return c;
+  }
+  if shot.place == PL_WALL {
+    c.eye = v3(1.8 - 2.0 * k, 2.4 + 0.7 * k, 6.6 + 1.4 * k); c.at = v3(8.6, 3.0, 0.0); c.fov = 0.92;
+    return c;
+  }
+  if shot.framing == FR_WIDE && shot.place == PL_COURTYARD && shot.move == MOVE_HOLD {
+    c.eye = v3(-10.5, 6.2, 17.5); c.at = v3(2.0, 2.2, 1.0); c.fov = 0.88;
+    return c;
+  }
+  c.eye = v3(13.5 - 1.5 * push, 5.2, 9.5); c.at = v3(0.4, 1.6, 4.6); c.fov = 0.86;
+  return c;
+}
+
+// Where the camera is at t: the current shot's move flown from its start to its end over SHOT_DRIFT
+// (verse/cinematic.coax, eased), shaken as the stage says.
+anime_camera_at :: (s: Stage, t: f32) -> CamNow {
+  a := sg_frame(s, s.shot, 0);
+  b := sg_frame(s, s.shot, 1);
+  f := verse_flight_new();
+  f = verse_flight_key(f, 0, a.eye, a.at, true, EASE_LINEAR);
+  f = verse_flight_key(f, SHOT_DRIFT, b.eye, b.at, false, EASE_OUT);
+  f = verse_flight_start(f, f64(s.shot.at), false);
+  live := Shot.{eye = b.eye, at = b.at};
+  now := verse_flight_shot(f, f64(t), live);
+  if !verse_flight_flying(f, f64(t)) { now = live; }
+  c := CamNow.{eye = now.eye, at = now.at, fov = a.fov};
+  if s.shake > 0 {
+    q := s.shake;
+    c.eye = add(c.eye, v3(q * sin(t * 61.0), q * 0.7 * sin(t * 47.0 + 1.3), q * sin(t * 53.0 + 2.1)));
+    c.at = add(c.at, v3(q * 0.5 * sin(t * 43.0 + 0.4), q * 0.5 * sin(t * 59.0 + 0.9), 0));
+  }
+  return c;
+}
+
+// ---- Checks
+sg_demo :: (out: [] AnimeEvent) -> int { lines := DEMO_LINES; answers := DEMO_ANSWERS; return anime_timeline(lines[..], answers[..], true, out); }
+sg_at :: (t: f32) -> Stage { ev: [EVENTS_MAX] AnimeEvent; n := sg_demo(ev[..]); return anime_stage(ev[..], n, t, 1); }
+sg_hand_y :: (b: Limbs) -> f32 { return 1.38 - 0.3 * cos(b.r_pitch) - 0.28 * cos(b.r_pitch + b.r_elbow); }
+
+#test "the stage before anything is directed: two heroes, an establishing shot" {
+  s := sg_at(0.5);
+  #assert s.who[AS_HEROINE].on && s.who[AS_HERO].on && !s.who[AS_HOODED].on && !s.who[AS_LORD].on && !s.who[AS_MADE].on;
+  #assert s.shot.framing == FR_ESTABLISHING && s.fx_n == 0 && s.make_at < 0 && s.flash == 0;
+}
+
+#test "Draconia raises her wand: her hand goes above her head" {
+  s := sg_at(5.0);
+  #assert s.who[AS_HEROINE].pose == POSE_RAISE;
+  b := anime_limbs(s.who[AS_HEROINE], 5.0);
+  #assert sg_hand_y(b) > 1.9 && b.glow > 0.5;
+  #assert sg_hand_y(anime_limbs(sg_at(2.0).who[AS_HEROINE], 2.0)) < 1.2;   // before: at her side
+}
+
+#test "her fireball winds up, leaves the wand, flies to the gate and bursts" {
+  ev: [EVENTS_MAX] AnimeEvent; n := sg_demo(ev[..]);
+  cast_at := -1.0f32;
+  for i: 0..<n { if ev[i].d.kind == AD_CAST && ev[i].d.who == AS_HEROINE { cast_at = ev[i].at; } }
+  #assert cast_at > 6;
+  s := anime_stage(ev[..], n, cast_at + 0.2, 1);
+  #assert s.who[AS_HEROINE].pose == POSE_CAST && s.fx_n == 2 && s.fx[0].kind == FXK_BOLT && s.fx[0].at > cast_at + 0.2;   // still winding up
+  hit := cast_at + CAST_RELEASE + FLIGHT;
+  #assert same(s.fx[1].to, anime_place(PL_GATE), 0.001) && near(s.fx[1].at, hit, 0.001);
+  #assert anime_stage(ev[..], n, hit + 0.02, 1).flash > 0 && anime_stage(ev[..], n, hit + 0.02, 1).shake > 0;
+  #assert anime_stage(ev[..], n, cast_at + CAST_SETTLE + 1, 1).who[AS_HEROINE].pose == POSE_CAST;
+  #assert sg_now(anime_stage(ev[..], n, cast_at + CAST_SETTLE + 1, 1).who[AS_HEROINE], cast_at + CAST_SETTLE + 1) == POSE_READY;
+}
+
+#test "flash to Kai: three white frames, then his close-up, sad, then angry" {
+  ev: [EVENTS_MAX] AnimeEvent; n := sg_demo(ev[..]);
+  cut := -1.0f32;
+  for i: 0..<n { if ev[i].d.kind == AD_CUT { cut = ev[i].at; } }
+  #assert anime_stage(ev[..], n, cut + 0.01, 1).flash == 1 && anime_stage(ev[..], n, cut + 0.12, 1).flash < 1;
+  s := anime_stage(ev[..], n, cut + 0.5, 1);
+  #assert s.shot.framing == FR_CLOSE && s.shot.who == AS_HERO && s.who[AS_HERO].emotion == EMO_SAD;
+  #assert sg_at(17.0).who[AS_HERO].emotion == EMO_ANGRY;
+}
+
+#test "the hooded figures appear behind them one by one, and the heroes turn" {
+  s := sg_at(26.85);
+  #assert s.who[AS_HOODED].on && s.who[AS_HOODED + 1].on && s.who[AS_HOODED + 2].on && !s.who[AS_LORD].on;
+  #assert s.who[AS_HOODED + 1].at > s.who[AS_HOODED].at && s.who[AS_HOODED + 2].at > s.who[AS_HOODED + 1].at;
+  #assert s.who[AS_HOODED].z > s.who[AS_HEROINE].z + 4;    // behind them
+  #assert abs(sg_at(29.0).who[AS_HEROINE].yaw) < 0.5;        // turned to face them
+}
+
+#test "the dark lord steps out of the smoke" {
+  a := sg_at(31.2); b := sg_at(34.0);
+  #assert a.who[AS_LORD].on && b.who[AS_LORD].z < a.who[AS_LORD].z && b.who[AS_LORD].z > MARK_Z[AS_LORD] - LORD_STEP - 0.01;
+}
+
+#test "the huge fireball: an impact frame, a white flash, speed lines, a shake, everyone recoils" {
+  ev: [EVENTS_MAX] AnimeEvent; n := sg_demo(ev[..]);
+  hit := -1.0f32;
+  for i: 0..<n { if ev[i].d.kind == AD_CAST && ev[i].d.size == SIZE_HUGE { hit = ev[i].at + 1.0; } }
+  #assert hit > 34;
+  i0 := anime_stage(ev[..], n, hit + 0.01, 1);
+  #assert i0.impact == 1 && i0.shake > 0.3;
+  i1 := anime_stage(ev[..], n, hit + 0.15, 1);
+  #assert i1.impact == 0 && i1.flash > 0.5 && i1.speed > 0.9;
+  i2 := anime_stage(ev[..], n, hit + 0.6, 1);
+  #assert i2.who[AS_HEROINE].pose == POSE_RECOIL && i2.who[AS_HERO].pose == POSE_RECOIL && i2.who[AS_HERO].emotion == EMO_SHOCKED;
+  #assert anime_stage(ev[..], n, hit + 3, 1).flash == 0 && anime_stage(ev[..], n, hit - 0.1, 1).impact == 0;
+}
+
+#test "the ink dragon draws in: sketch, flood, shading, made" {
+  s := sg_at(44.0);
+  #assert s.make_at > 42 && s.breach_at > 42 && s.who[AS_MADE].on;
+  a := anime_draw_in(0.8, 1); #assert a.sketch > 0.4 && a.sketch < 0.6 && a.flood == 0 && !a.made;
+  b := anime_draw_in(2.4, 1); #assert b.sketch == 1 && b.flood > 0.4 && b.flood < 0.6 && b.shade == 0;
+  c := anime_draw_in(3.7, 1); #assert c.flood == 1 && c.shade > 0.4 && !c.made;
+  #assert anime_draw_in(anime_draw_in_length(1) + 0.01, 1).made && !anime_draw_in(anime_draw_in_length(1) - 0.01, 1).made;
+  #assert anime_draw_in_length(2.5) < anime_draw_in_length(1);   // a faster maker
+  #assert s.make_at + anime_draw_in_length(1) < sg_at(60).hold_at; // made before the final hold
+}
+
+#forall "the camera is always somewhere real, looking somewhere else" i: 0..<240 #steps 200000000 {
+  t := cast(f32) i * 0.25;
+  s := sg_at(t);
+  c := anime_camera_at(s, t);
+  #assert finite3(c.eye) && finite3(c.at) && length(sub(c.at, c.eye)) > 0.2 && c.fov > 0.3 && c.fov < 1.2;
+  #assert c.eye.y > 0.1;   // never under the courtyard
+}
+
+#test "a close-up frames the head near and pushes in" {
+  ev: [EVENTS_MAX] AnimeEvent; n := sg_demo(ev[..]);
+  at := -1.0f32;
+  for i: 0..<n { if ev[i].d.kind == AD_SHOT && ev[i].d.option == FR_CLOSE { at = ev[i].at; } }
+  s := anime_stage(ev[..], n, at + 0.05, 1);
+  head := anime_head(s, AS_HEROINE);
+  c0 := anime_camera_at(s, at + 0.05); c1 := anime_camera_at(s, at + 1.2);
+  #assert length(sub(c0.eye, head)) < 1.0 && length(sub(c1.eye, head)) < length(sub(c0.eye, head));
+  #assert length(sub(c0.at, head)) < 0.1;
+}

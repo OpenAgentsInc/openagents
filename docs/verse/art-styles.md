@@ -6,9 +6,11 @@ and Planetary Villa's "Hecate's Cemetery in painterly" milestone (closed: Hecate
 Cemetery moved to flat).
 
 The owner's rule: every zone on the Verse is drawn in one of a few art
-styles. For now there are four: **lowpoly**, **painterly**, **photoreal**
-(as close to photorealistic as we can get) and **flat** (flat-shaded low
-poly in a realm's own few colours; built October 30, see [Flat](#flat)). A zone names its style; the
+styles. For now there are five: **lowpoly**, **painterly**, **photoreal**
+(as close to photorealistic as we can get), **flat** (flat-shaded low
+poly in a realm's own few colours; built October 30, see [Flat](#flat)) and
+**anime** (cel-shaded modern anime in one of four variants; its style
+layer built November 2, see [Anime](#anime)). A zone names its style; the
 engine owns what the style means. Realms declare a style; they don't
 hand-tune shading numbers.
 
@@ -37,9 +39,10 @@ when a zone needs it.
 ## The style field
 
 `apps/openagents-web/realms.json`: each realm gets a required `style`, one
-of `lowpoly`, `painterly`, `photoreal`, `flat`. A realm whose parts differ (an
+of `lowpoly`, `painterly`, `photoreal`, `flat`, `anime`. A realm whose parts differ (an
 interior, a dungeon under a city) lists them in `zones`, each with an `id`
-and a `style`; a zone without one takes the realm's.
+and a `style`; a zone without one takes the realm's. An anime realm or zone
+may also name its `variant` ([Anime](#anime)).
 
 ```json
 "realm": { "slug": "everglade", "module": "everglade", "style": "painterly",
@@ -47,7 +50,8 @@ and a `style`; a zone without one takes the realm's.
 ```
 
 - `coax/web/realms.ts --check` refuses a realm without a style, an unknown
-  style, a zone id that appears twice, and a painterly, photoreal or flat realm
+  style, a zone id that appears twice, an unknown anime variant or a variant on
+  something not drawn anime, and a painterly, photoreal, flat or anime realm
   whose `<module>.wgsl` lacks the style block that `coax wgsl` generates (below).
 - The style goes to the module in the page facts (message 600:
   `style=painterly`, and `zone.<id>=<style>` for each zone) and to the page
@@ -199,6 +203,137 @@ in). Shared in `verse/style.coax` for any flat realm that asks for it
 | Edges | A crisp light line, one pixel, along a shape's outline where it stands in front of something clearly further (4 percent and 0.25 m) or the sky (`verse_style_facet_edge`, in the post pass from the distance the scene writes to its second target). The ground and the water ask for none; it fades out from 60 to 140 m and to 0.4 by night |
 | Ground | Its own faces show (each cell's two triangles their own tone) |
 | Cost | Fewer triangles than before; four more texture loads a pixel in the post pass. Fairy Forest on a phone (390x844 at 3x, headless): 1.06 ms GPU p50 against 1.33 before |
+
+## Anime
+
+Added November 2 (the owner: "a new style called anime ... standard anime,
+maybe variations within that"). The look of modern TV anime and anime
+films, described in words; no studio's characters, frames or artwork are
+copied or committed. Solid shapes shaded in flat cel tones with coloured
+ink lines, under vivid skies with towering clouds, the far background a
+little softer and more painted than the crisp foreground.
+
+| | Anime |
+| --- | --- |
+| Shading | Cel: half Lambert (N.L folded to 0..1) under the cast shadow's light, cut into **two tones** (shadow under the edge, lit over it) with a hard edge antialiased over a few thousandths, never a gradient (`verse_style_anime_cel`). An optional third tone, a sharp **highlight spot** where N.H passes a cut (hair sheen, metal, an eye's glint: `verse_style_anime_spot`). Characters' edge eases down 0.12 where they face the eye, so a face toward the camera stays lit (`verse_style_anime_cel_char`) |
+| Shadow tone | The lit tone at a set share of its value (0.45 to 0.62 by variant), times a cool **blue-violet tint** over the tint's own luminance (`verse_style_anime_shadow`), then put back to exactly that share of the lit luminance (`verse_style_keep_value`): cooler, never grey or black, and the same value step on every albedo |
+| Ink lines | A **coloured** line (the albedo darkened to 0.22 to 0.45 of itself, never pure black: `verse_style_anime_ink_colour`) along silhouettes (a depth gap past 4 percent of the distance and 0.15 m) and creases (normals turning past 40 degrees) from screen-space depth and normal differences (`verse_style_anime_ink_edge`). Its width is the variant's (1.5 to 3 px) near and thins to a quarter of it by the variant's far distance (70 to 150 m: `verse_style_anime_ink_width`); under a pixel it covers the pixel in part (`verse_style_anime_ink_cover`) |
+| Rim | A thin, hard bright rim where N.V falls under 0.24 (0.28 for action), more on the key light's side (`verse_style_anime_rim`), on characters and on the world's near shapes against the sky |
+| Sky | A vivid gradient, the deep zenith brought down most of the sky (power 0.4 to 0.6) to a pale horizon (`verse_style_anime_sky`): deep blue over pale cyan by day; orange, pink and violet at dawn and dusk, with a warm band low toward the sun (`verse_style_anime_glow`); deep indigo with stars at night (`verse_style_anime_star`) |
+| Clouds | Big flat-shaded cumulus: the dome layer cut with a crisp edge (`verse_style_cloud_cover` at cut 0.545..0.555) and a towering bank over the horizon (`verse_style_anime_cumulus_top`, `verse_style_anime_cumulus`), each shaded in **two or three flat tones** with hard edges (`verse_style_anime_cloud_tone`), lit on the sun's side and high in each head (`verse_style_anime_cumulus_lit`); the shadow tone is the top's colour drawn toward the zenith's, so it is the sky's blue, never grey (`verse_style_anime_cloud_colour`) |
+| Distance | Aerial perspective toward the pale horizon colour, no height term, a painted backdrop rather than fog (`verse_style_anime_aerial`); far off the cel edge softens, its antialias up to 9 times wider (`verse_style_anime_far_aa`), and the ink thins. The foreground stays crisp |
+| Light and post | Clean and saturated (1.15 to 1.25), shadows lifted (0.01 to 0.025), a tone curve; bloom on lights and spells, everything emissive blooming fully (`verse_style_anime_glow_share`); lens sparkles (`verse_style_anime_sparkle`) and light streaks (`verse_style_anime_streak`) on bright points; a gentle vignette (`verse_style_anime_vignette`); light shafts as painterly's |
+| Motion | Speed lines for action and impact frames: thin spokes round a clear middle, redrawn every twelfth of a second (`verse_style_anime_speed_lines`), drawn by the realm when it wants them. Drifting petals, sparkles and embers are the realm's particles |
+| Shadows | A real shadow map, crisp: 4 taps at 1 texel (2048, 1024 on a phone); the cel band does the tinting, so no cooling pass |
+| Grass and water | Lush grass in the pastoral (16 a square metre, 6 on a phone), a little elsewhere, none in the city; no normal tilt (the cel band reads the light). Water in hard bands with sparkles |
+| Phones | The same look: the same bands, tint, ink, rim, sky and tone. A smaller shadow map, one cloud octave, half the shafts, less grass, 0.8 of the bloom |
+
+### Variants
+
+One preset each, the same functions; a realm or a zone picks one.
+
+| | pastoral | action | dusk | neon |
+| --- | --- | --- | --- | --- |
+| What | a bright summer day: painted backgrounds, big clouds, lush greens (a countryside film) | battle anime: harder contrast, thicker lines, strong rims, glowing spells, speed lines | magic hour all day: golden-pink sky, long shadows, sentimental | a night city all day: cyan and magenta neon, wet reflective ground |
+| Time | follows the clock (noon day, dusk, night) | follows the clock | the sun held at 8 degrees at every hour | the sun never up: the moon keys, stars out, at every hour |
+| Seen at (`verse_style_anime_home`) | 0.5 (noon) | 0.0 (night) | 0.75 | 0.0 |
+| Cel edge, antialias | 0.46, 0.008 | 0.52, 0.005 | 0.50, 0.008 | 0.50, 0.006 |
+| Shadow value share | 0.62 | 0.45 | 0.55 | 0.50 |
+| Shadow tint (at its home) | (0.62, 0.66, 1.00) | (0.45, 0.45, 1.00) | (0.62, 0.48, 0.92) | (0.52, 0.38, 1.00) |
+| Characters' edge | 0.42 | 0.48 | 0.46 | 0.46 |
+| Spot cut, strength | 0.96, 0.55 | 0.95, 0.80 | 0.96, 0.50 | 0.94, 0.90 |
+| Ink width (px), share of albedo, thins by (m) | 2.0, 0.38, 150 | 3.0, 0.22, 90 | 2.0, 0.32, 120 | 1.5, 0.45, 70 |
+| Rim world, characters | 0.25, 0.50 | 0.60, 0.90 | 0.50, 0.70 | 0.70, 0.90 (magenta) |
+| Zenith over horizon (at its home, linear) | (0.03, 0.18, 0.72) over (0.52, 0.80, 0.96) | (0.003, 0.004, 0.040) over (0.03, 0.04, 0.14) | (0.14, 0.08, 0.42) over (1.00, 0.52, 0.26) | (0.004, 0.003, 0.030) over (0.20, 0.05, 0.28) |
+| Sky power, warm band height, strength | 0.45, 0.22, 0.55 | 0.40, 0.25, 0.70 | 0.50, 0.30, 0.85 | 0.60, 0.18, 0.60 |
+| Cloud cover, shade toward zenith | 0.45, 0.45 | 0.35, 0.55 | 0.42, 0.50 | 0.18, 0.30 |
+| Saturation, black lift | 1.15, 0.020 | 1.20, 0.010 | 1.15, 0.025 | 1.25, 0.015 |
+| Bloom threshold, knee, mix | 0.85, 0.20, 0.25 | 0.70, 0.25, 0.45 | 0.75, 0.25, 0.40 | 0.60, 0.20, 0.55 |
+| Vignette | 0.15 | 0.35 | 0.25 | 0.30 |
+| Grass a m2 (phone) | 16 (6) | 8 (3) | 8 (3) | 0 |
+
+Every number at each clock key (midnight, dawn, noon, dusk) is in
+`anime_key` in `verse/style-preset.coax`; pastoral and action have their
+own day, dusk and night, and dusk and neon hold one look at every key.
+
+### Choosing one
+
+In `realms.json` the realm says `"style": "anime"` and, optionally,
+`"variant"`: one of `pastoral`, `action`, `dusk`, `neon` (none is
+`pastoral`). A zone may be anime in a realm of another style, and an anime
+zone may name its own variant; one without takes the realm's, else pastoral:
+
+```json
+"realm": { "slug": "anime-lab", "module": "animelab", "style": "anime", "variant": "dusk",
+           "clock": "fixed:0.75",
+           "zones": [{ "id": "street", "variant": "neon" }, { "id": "hall", "style": "flat" }], ... }
+```
+
+- `realms.ts --check` refuses an unknown variant, and a variant on a realm
+  or zone not drawn anime, and requires the style block in an anime realm's
+  (or a realm with an anime zone's) WGSL, as for flat.
+- The page gets `data-variant` on an anime realm (always, `pastoral` when
+  none is named) and anime zones in `data-zones` as `id:anime:variant`.
+  The facts (message 600) carry `variant=` and `zone.<id>.variant=`; a URL's
+  `?variant=NAME` sets `variant=` for shots, the way `?clock=` pins the clock.
+- The module turns the name into its preset:
+  `verse_style_anime(verse_style_anime_variant(name), tier)`, and may pin its
+  clock to `verse_style_anime_home(variant)` for a hero still.
+
+### The API
+
+`verse/style-preset.coax`: `STYLE_ANIME` (4); `ANIME_PASTORAL` (0),
+`ANIME_ACTION` (1), `ANIME_DUSK` (2), `ANIME_NEON` (3), `ANIME_VARIANTS` (4)
+and `ANIME_VARIANT_NAME`; `verse_style_anime(variant, tier) -> StylePreset`
+(not ok, variant -1, for an unknown variant); `verse_style_preset(STYLE_ANIME,
+tier)` is pastoral; `verse_style_anime_variant(name) -> int` (-1 for none);
+`verse_style_anime_home(variant) -> f32`. `StylePreset` gains `variant`,
+`ink_width`, `ink_dark`, `ink_far` and `vignette` (-1 and 0 in the other
+styles). `verse_style_at` fills the usual block, and anime's own numbers go
+in the slots flat uses for its own (each `SU_*` comment names them):
+
+| Slot | Anime |
+| --- | --- |
+| `SU_BANDS` | the cel edge twice (so `verse_style_bands` is the two-tone band), its antialias, the shadow tone's share of the lit value |
+| `SU_BANDS2` | characters' edge and antialias, the spot's N.H cut and strength |
+| `SU_RIM2` | character rim strength, N.V where the rim starts and where it is full, the ink width near (px) |
+| `SU_TINT` | the shadow tint (its hue: `verse_style_anime_shadow`), blob shadow strength |
+| `SU_GROUND_AMB.w` | the ink's share of its albedo |
+| `SU_BLOOM.w` | the distance (m) the ink thins to a quarter by |
+| `SU_HAZE`, `SU_HAZE_COLOUR` | the aerial fade (start, density, cap) toward its pale colour; `.w` the vignette's strength |
+| `SU_HAZE_KEY` | the warm band's colour and strength |
+| `SU_ZENITH`, `SU_HORIZON` | the sky; `SU_ZENITH.w` the warm band's height, `SU_HORIZON.w` the gradient's power |
+| `SU_CLOUD_TOP` | the clouds' lit top, `.w` how far their shadow tone goes to the zenith's colour |
+| `SU_STYLE.x` | the ink's opacity (1) |
+
+`verse/style.coax`: the functions above (`verse_style_anime_*`, scalar f32
+in the subset `coax wgsl` writes; their parameters are `an_`-prefixed as
+flat's are `fl_`) and the anime palette, `ANIME_*` slots (grass, grass2,
+foliage, stone, roof, wood, path, water, skin, hair, coat, banner, gold,
+spell, spell2, fire, neon cyan, neon magenta, asphalt, guardian) in
+`verse_style_anime_srgb(slot, ch)` and, linear, `verse_style_anime_colour`:
+clean saturated albedos shared by every variant, whose light makes the day,
+the dusk and the night. A realm emits them into its WGSL by loading
+`verse/style.coax` in its Coax (`apps/openagents-web/gpu/<module>.coax`).
+
+### Checks
+
+`#test "anime: ..."` in both files: two hard tones with nothing between
+but the antialias (on each variant's own block too, where the generated
+band function is the preset's edge), characters' faces kept lit, the spot;
+the shadow tone cooler than the lit and at exactly its value share for
+every palette slot, variant and hour; ink at silhouettes and creases,
+coloured, thinning with distance on each variant's numbers; a thin hard
+rim; the zenith darker and more saturated than its horizon for every
+variant at every key; dusk's horizon warm and neon night at every hour;
+action harder than pastoral; the phone tier the same look; the clouds'
+flat tones and crisp edges; the aerial fade; speed lines, streaks, sparkles,
+bloom and vignette; the palette clean and saturated. `realms.test.ts`
+covers the field.
+
+Status: the style layer (spec, presets, functions, checks, the field) is
+built. No realm draws in it yet: Anime Lab (`/realms/anime-lab`, unlisted)
+is the first, with each variant's world, an anime Grid and a short film.
 
 ## Painterly
 

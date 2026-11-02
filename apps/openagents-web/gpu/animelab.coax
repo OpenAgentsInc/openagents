@@ -1,0 +1,497 @@
+// Anime Lab's shaders (animelab.coax, docs/verse/anime-lab.md): build.sh writes
+// apps/openagents-web/animelab.wgsl from this with coax/web/wgsl-module.coax
+// (animelab.module and animelab.bindings beside it). No WGSL is written by hand.
+//
+// The look is the anime style's (docs/verse/art-styles.md, Anime), every
+// number from its preset block (verse/style-preset.coax verse_style_at, the
+// action variant), every shading step one of verse/style.coax's
+// verse_style_anime_* functions:
+// - bg_fs: the sky, a vivid gradient with the warm band toward the sun, the
+//   towering cumulus bank shaded in flat tones, stars and a big moon; below
+//   the horizon the far mountains and the lake, painted, under the aerial fade.
+// - scene_vs/scene_fs: the stage's triangles (two stores the page writes:
+//   the academy, built once, and the cast and effects, every frame) in two
+//   cel tones a form with a hard edge, the shadow tone the lit one under the
+//   cool tint at its value share, a highlight spot on hair, a hard rim, the
+//   braziers' and spells' light banded the same way, a crisp shadow map.
+//   aux carries the normal and an object number for the ink.
+// - post_fs: coloured ink lines from depth and normal differences, thinning
+//   with distance; bloom; the tone; the vignette; speed lines, impact frames
+//   and flashes; the overlay's panels under the text.
+// - fx_vs/fx_fs: the overlay's strokes and sans text (font.coax).
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/style.coax";
+
+// AnimelabU, the uniform block (animelab.coax U_*), floats:
+//   size 0 (width, height, time, dpr)
+//   view 4 (four rows: clip = rows · world)
+//   eye 20 (xyz, tan of half the vertical field), fwd 24 (xyz, aspect), right 28 (xyz, near), up 32 (xyz, far)
+//   shadow 36 (four rows: the key light's clip)
+//   fx 52 (flash, impact frame, speed lines, ink scale)
+//   draw 56 (the made thing's flood, its shading, its sketch, time since it was made)
+//   misc 60 (phone, the speed lines' centre x, y in 0..1, the moon's strength)
+//   panels 64 (12 of: rect x0 y0 x1 y1; colour rgb, alpha)
+//   lights 160 (8 of: xyz, radius; colour rgb, strength)
+//   style 224 (STYLE_FLOATS, verse_style_at)
+AL_EYE :: 20; AL_FWD :: 24; AL_RIGHT :: 28; AL_UP :: 32; AL_SHADOW :: 36; AL_FX :: 52; AL_DRAW :: 56; AL_MISC :: 60;
+AL_PANELS :: 64; AL_LIGHTS :: 160; AL_STYLE :: 224;
+AL_PANEL_N :: 12; AL_LIGHT_N :: 8;
+// Materials (animelab.coax MAT_*), in the colour word's top byte.
+// 0 world, 1 skin, 2 hair, 3 glow, 4 flat (unlit, no ink), 5 floor, 6 the made thing, 7 ink stroke,
+// 8 smoke, 9 window, 10 cloth
+
+al_st :: (u:[]f32,slot:int)->V4 {return wg_at4(u,AL_STYLE+(slot*4));}   // the style block's vec4 slot (SU_* / 4)
+
+al_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+animelab_bg_vs :: (i:u32,_iid1:u32)->V4 {return al_bg_vs(i,_iid1);}
+
+AnimelabLit :: struct {light:V4; aux:V4; }
+
+// The key light: toward the sun, or the moon when it is night (SU_KEY_DIR.w), as the preset says.
+al_key :: (u:[]f32)->V3 {return al_norm3(al_xyz(al_st(u,1)));}
+// The sun's direction for the sky's warm band: the key's, turned back when the moon keys.
+al_sun :: (u:[]f32)->V3 {
+  k:V4=al_st(u,1);
+  s:V3=al_norm3(v3(k.x,k.y,k.z));
+  if (k.w>0.5f32) {return al_scale3(s,-1.0f32);}
+  return s;
+}
+al_moon_dir :: ()->V3 {return al_norm3(v3(-0.62f32,0.36f32,-0.70f32));}
+
+// The view's direction through a pixel.
+al_ray :: (pos:V4,u:[]f32)->V3 {
+  x:f32=((pos.x/u[0])*2.0f32)-1.0f32;
+  y:f32=1.0f32-((pos.y/u[1])*2.0f32);
+  t:f32=u[AL_EYE+3];
+  d:V3=al_add3(al_xyz(wg_at4(u,AL_FWD)),al_add3(al_scale3(al_xyz(wg_at4(u,AL_RIGHT)),x*t*u[AL_FWD+3]),al_scale3(al_xyz(wg_at4(u,AL_UP)),y*t)));
+  return al_norm3(d);
+}
+
+// ---- the sky and the painted far background
+al_sky :: (d:V3,u:[]f32)->V4 {
+  up:f32=d.y;
+  z:V4=al_st(u,12); h:V4=al_st(u,13);
+  sky:V3=v3(verse_style_anime_sky(z.x,h.x,up,h.w),verse_style_anime_sky(z.y,h.y,up,h.w),verse_style_anime_sky(z.z,h.z,up,h.w));
+  sun:V3=al_sun(u);
+  flat:f32=sqrt(fmax((d.x*d.x)+(d.z*d.z),0.000001f32));
+  sflat:f32=sqrt(fmax((sun.x*sun.x)+(sun.z*sun.z),0.000001f32));
+  cs:f32=((d.x*sun.x)+(d.z*sun.z))/(flat*sflat);
+  hk:V4=al_st(u,11);
+  g:f32=verse_style_anime_glow(fmax(up,0.0f32),cs,z.w,hk.w);
+  sky=al_mix3(sky,v3(hk.x,hk.y,hk.z),g);
+  // stars, where the night shows
+  az:f32=wg_atan2(d.x,d.z);
+  stars:f32=al_st(u,14).w*verse_style_anime_star(az*60.0f32,up*60.0f32,0.08f32,u[2])*verse_style_soft_step(0.12f32,0.06f32,up);
+  sky=al_add3(sky,v3(stars*0.9f32,stars*0.95f32,stars));
+  emissive:f32=0.0f32;
+  // the moon: a big pale disc, its ring of light
+  m:f32=al_dot3(d,al_moon_dir());
+  ms:f32=u[AL_MISC+3];
+  disc:f32=verse_style_soft_step(0.9978f32,0.00025f32,m);
+  sky=al_add3(sky,al_scale3(v3(1.0f32,0.86f32,0.62f32),ms*(0.25f32*exp(-120.0f32*(1.0f32-m)))));
+  sky=al_mix3(sky,v3(1.6f32,1.45f32,1.15f32),disc*ms);
+  emissive=fmax(emissive,disc*ms);
+  // the cumulus bank over the horizon, in flat tones lit on the sun's side
+  top:f32=verse_style_anime_cumulus_top(az,0.34f32,1.7f32);
+  aa:f32=0.004f32;
+  inside:f32=verse_style_anime_cumulus(up,top,aa)*verse_style_soft_step(-0.01f32,0.01f32,up);
+  if (inside>0.0f32) {
+    grain:f32=verse_style_noise(az*7.0f32,up*22.0f32);
+    lit:f32=verse_style_anime_cumulus_lit(up,top,cs,grain);
+    tone:f32=verse_style_anime_cloud_tone(lit,0.012f32);
+    ct:V4=al_st(u,17);
+    cloud:V3=v3(verse_style_anime_cloud_colour(ct.x,z.x,ct.w,tone),verse_style_anime_cloud_colour(ct.y,z.y,ct.w,tone),verse_style_anime_cloud_colour(ct.z,z.z,ct.w,tone));
+    // the band toward the sun lights the clouds' undersides warm
+    cloud=al_mix3(cloud,v3(hk.x,hk.y,hk.z),g*0.55f32*(1.0f32-tone));
+    sky=al_mix3(sky,cloud,inside);
+  }
+  // the dome's big flat clouds overhead
+  if (up>0.04f32) {
+    k:V4=al_st(u,15); k2:V4=al_st(u,16);
+    q:V2=v2((d.x/up)*k.y,(d.z/up)*k.y);
+    n:f32=verse_style_cloud_field(q.x+(u[2]*k.z),q.y,k2.x,k2.y,k.w);
+    cover:f32=verse_style_cloud_cover(n,k.x,k2.z,k2.w)*verse_style_soft_step(0.12f32,0.08f32,up);
+    if (cover>0.0f32) {
+      n2:f32=verse_style_cloud_field(q.x+(u[2]*k.z)+(sun.x*300.0f32),q.y+(sun.z*300.0f32),k2.x,k2.y,k.w);
+      tone:f32=verse_style_anime_cloud_tone(st_sat(0.5f32+((n-n2)*6.0f32)),0.02f32);
+      ct:V4=al_st(u,17);
+      cloud:V3=v3(verse_style_anime_cloud_colour(ct.x,z.x,ct.w,tone),verse_style_anime_cloud_colour(ct.y,z.y,ct.w,tone),verse_style_anime_cloud_colour(ct.z,z.z,ct.w,tone));
+      sky=al_mix3(sky,cloud,cover);
+    }
+  }
+  // far mountains round the lake, painted flat under the aerial fade
+  ridge:f32=0.035f32+(0.075f32*verse_style_noise(az*2.3f32,4.0f32))+(0.028f32*verse_style_noise(az*9.0f32,1.0f32));
+  ridge=ridge*(0.55f32+(0.45f32*verse_style_soft_step(0.0f32,0.6f32,-d.z)));
+  if ((up<ridge)&&(up>-0.012f32)) {
+    side:f32=verse_style_noise((az*9.0f32)+(up*40.0f32),2.0f32);
+    litm:f32=verse_style_soft_step(0.5f32,0.02f32,side+(0.25f32*cs));
+    base:V3=al_mix3(v3(0.10f32,0.09f32,0.22f32),v3(0.26f32,0.16f32,0.32f32),litm);
+    fade:f32=0.55f32+(0.3f32*st_sat(up/fmax(ridge,0.001f32)));
+    hz:V4=al_st(u,10);
+    sky=al_mix3(base,v3(hz.x,hz.y,hz.z),fade*0.7f32);
+  }
+  // the lake far below: the sky in it, darker, in hard bands
+  if (up<=-0.012f32) {
+    r:V3=al_sky_reflect(v3(d.x,-up,d.z),u);
+    band:f32=ifx fract((-1.0f32/up)*0.9f32)<0.12f32 then 0.12f32 else 0.0f32;
+    sky=al_add3(al_scale3(r,0.42f32),v3(band*hk.x,band*hk.y,band*hk.z));
+  }
+  return v4(sky.x,sky.y,sky.z,emissive);
+}
+// The sky as the lake shows it: the gradient and the warm band only.
+al_sky_reflect :: (d:V3,u:[]f32)->V3 {
+  z:V4=al_st(u,12); h:V4=al_st(u,13); hk:V4=al_st(u,11);
+  sky:V3=v3(verse_style_anime_sky(z.x,h.x,d.y,h.w),verse_style_anime_sky(z.y,h.y,d.y,h.w),verse_style_anime_sky(z.z,h.z,d.y,h.w));
+  sun:V3=al_sun(u);
+  cs:f32=((d.x*sun.x)+(d.z*sun.z))/fmax(sqrt((d.x*d.x)+(d.z*d.z))*sqrt((sun.x*sun.x)+(sun.z*sun.z)),0.000001f32);
+  return al_mix3(sky,v3(hk.x,hk.y,hk.z),verse_style_anime_glow(d.y,cs,z.w,hk.w));
+}
+animelab_bg_fs :: (pos:V4,u:[]f32)->AnimelabLit {
+  s:V4=al_sky(al_ray(pos,u),u);
+  b:V4=al_st(u,19);
+  share:f32=verse_style_anime_glow_share(verse_style_luma(s.x,s.y,s.z),b.x,b.y,s.w);
+  return AnimelabLit.{light=v4(s.x,s.y,s.z,share),aux=v4(0.0f32,0.0f32,0.0f32,-1.0f32)};
+}
+
+// ---- the shadow map: the key light's view of the stage
+AnimelabShade :: struct {pos:V4; }
+al_word :: (i:u32,v:[]u32)->f32 {return f32_from_bits(v[cast(int)i]);}
+al_place :: (id:u32,instance:u32,world:[]u32,live:[]u32)->V3 {
+  b:u32=mul_wrap(id,cast(u32)6);
+  if (instance==0) {
+    return v3(al_word(b,world),al_word(add_wrap(b,cast(u32)1),world),al_word(add_wrap(b,cast(u32)2),world));
+  }
+  return v3(al_word(b,live),al_word(add_wrap(b,cast(u32)1),live),al_word(add_wrap(b,cast(u32)2),live));
+}
+al_rows :: (u:[]f32,at:int,w:V3)->V4 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v4(wg_dot4(wg_at4(u,at),p),wg_dot4(wg_at4(u,at+4),p),wg_dot4(wg_at4(u,at+8),p),wg_dot4(wg_at4(u,at+12),p));
+}
+animelab_shadow_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32)->AnimelabShade {
+  o:AnimelabShade;
+  b:u32=mul_wrap(id,cast(u32)6);
+  c:u32=ifx instance==0 then world[cast(int)add_wrap(b,cast(u32)4)] else live[cast(int)add_wrap(b,cast(u32)4)];
+  mat:u32=c>>24;
+  o.pos=al_rows(u,AL_SHADOW,al_place(id,instance,world,live));
+  // glow, flat marks, ink strokes and smoke cast no shadow
+  if ((mat==3)||(mat==4)||(mat==7)||(mat==8)||(mat==9)) {
+    o.pos=v4(0.0f32,0.0f32,-2.0f32,1.0f32);
+  }
+  return o;
+}
+animelab_shadow_fs :: (s:AnimelabShade) {
+}
+// How lit a point is by the key, 0 to 1: four taps of the map a texel apart (crisp, art-styles.md).
+al_lit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
+  q:V4=al_rows(u,AL_SHADOW,al_add3(w,al_scale3(n,0.04f32)));
+  p:V3=v3(q.x/q.w,q.y/q.w,q.z/q.w);
+  uv:V2=v2((p.x*0.5f32)+0.5f32,0.5f32-(p.y*0.5f32));
+  if ((uv.x<0.0f32)||(uv.x>1.0f32)||(uv.y<0.0f32)||(uv.y>1.0f32)||(p.z>1.0f32)) {return 1.0f32;}
+  t:f32=1.0f32/(cast(f32)(wg_dims_depth(shadow_map).x));
+  lit:f32=gpu_compare(shadow_map,shadow_cmp,v2(uv.x-(0.5f32*t),uv.y-(0.5f32*t)),p.z-0.0015f32);
+  lit=lit+gpu_compare(shadow_map,shadow_cmp,v2(uv.x+(0.5f32*t),uv.y-(0.5f32*t)),p.z-0.0015f32);
+  lit=lit+gpu_compare(shadow_map,shadow_cmp,v2(uv.x-(0.5f32*t),uv.y+(0.5f32*t)),p.z-0.0015f32);
+  lit=lit+gpu_compare(shadow_map,shadow_cmp,v2(uv.x+(0.5f32*t),uv.y+(0.5f32*t)),p.z-0.0015f32);
+  return lit*0.25f32;
+}
+
+// ---- the scene
+AnimelabS :: struct {pos:V4; world:V3; normal:V3; colour:V3; mat:f32 #flat; param:f32; obj:f32 #flat; }
+al_decode1 :: (c:f32)->f32 {return pow(c,2.2f32);}
+animelab_scene_vs :: (id:u32,instance:u32,u:[]f32,world:[]u32,live:[]u32)->AnimelabS {
+  o:AnimelabS;
+  b:u32=mul_wrap(id,cast(u32)6);
+  nw:u32=ifx instance==0 then world[cast(int)add_wrap(b,cast(u32)3)] else live[cast(int)add_wrap(b,cast(u32)3)];
+  cw:u32=ifx instance==0 then world[cast(int)add_wrap(b,cast(u32)4)] else live[cast(int)add_wrap(b,cast(u32)4)];
+  pw:u32=ifx instance==0 then world[cast(int)add_wrap(b,cast(u32)5)] else live[cast(int)add_wrap(b,cast(u32)5)];
+  w:V3=al_place(id,instance,world,live);
+  n4:V4=wg_unpack4x8unorm(nw);
+  c4:V4=wg_unpack4x8unorm(cw);
+  o.world=w;
+  o.pos=al_rows(u,4,w);
+  o.normal=v3((n4.x*2.0f32)-1.0f32,(n4.y*2.0f32)-1.0f32,(n4.z*2.0f32)-1.0f32);
+  o.colour=v3(al_decode1(c4.x),al_decode1(c4.y),al_decode1(c4.z));
+  o.mat=floor((c4.w*255.0f32)+0.5f32);
+  o.obj=floor((n4.w*255.0f32)+0.5f32);
+  o.param=f32_from_bits(pw);
+  return o;
+}
+
+// The lit tone: the albedo under the key and the sky.
+al_lit_tone :: (albedo:V3,u:[]f32)->V3 {
+  key:V4=al_st(u,0); amb:V4=al_st(u,5);
+  l:V3=v3((key.x*key.w)+(amb.x*amb.w),(key.y*key.w)+(amb.y*amb.w),(key.z*key.w)+(amb.z*amb.w));
+  return v3(albedo.x*l.x,albedo.y*l.y,albedo.z*l.z);
+}
+al_shadow_tone :: (lit:V3,u:[]f32)->V3 {
+  ti:V4=al_st(u,4);
+  bands:V4=al_st(u,7);
+  tl:f32=verse_style_luma(ti.x,ti.y,ti.z);
+  s:V3=v3(verse_style_anime_shadow(lit.x,ti.x,tl,bands.w),verse_style_anime_shadow(lit.y,ti.y,tl,bands.w),verse_style_anime_shadow(lit.z,ti.z,tl,bands.w));
+  before:f32=verse_style_luma(lit.x,lit.y,lit.z)*bands.w;
+  after:f32=verse_style_luma(s.x,s.y,s.z);
+  return v3(verse_style_keep_value(s.x,before,after),verse_style_keep_value(s.y,before,after),verse_style_keep_value(s.z,before,after));
+}
+animelab_scene_fs :: (s:AnimelabS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->AnimelabLit {
+  mat:f32=s.mat;
+  eye:V3=al_xyz(wg_at4(u,AL_EYE));
+  tov:V3=al_sub3(eye,s.world);
+  dist:f32=al_len3(tov);
+  v:V3=al_scale3(tov,1.0f32/fmax(dist,0.0001f32));
+  n:V3=al_norm3(al_add3(s.normal,v3(0.0f32,0.00001f32,0.0f32)));
+  if (al_dot3(n,v)<0.0f32) {n=al_scale3(n,-1.0f32);}
+  b:V4=al_st(u,19);
+  // glow: its light is all it is, and all of it blooms
+  if ((mat>2.5f32)&&(mat<3.5f32)) {
+    c:V3=al_scale3(s.colour,s.param);
+    return AnimelabLit.{light=v4(c.x,c.y,c.z,1.0f32),aux=v4(n.x,n.y,n.z,-1.0f32)};
+  }
+  // flat marks (eyes, brows, mouths) and ink strokes: their colour, unlit, no line round them
+  if (((mat>3.5f32)&&(mat<4.5f32))||((mat>6.5f32)&&(mat<7.5f32))) {
+    c:V3=s.colour;
+    if (mat<4.5f32) {c=al_scale3(c,0.55f32+(0.45f32*al_st(u,0).w));}
+    return AnimelabLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(n.x,n.y,n.z,-1.0f32)};
+  }
+  // windows: warm lamplight behind glass
+  if ((mat>8.5f32)&&(mat<9.5f32)) {
+    c:V3=al_scale3(s.colour,s.param);
+    return AnimelabLit.{light=v4(c.x,c.y,c.z,0.6f32),aux=v4(n.x,n.y,n.z,s.obj)};
+  }
+  albedo:V3=s.colour;
+  // the floor's flagstones: their joints darker, each stone its own tone
+  if ((mat>4.5f32)&&(mat<5.5f32)) {
+    g:V2=v2(s.world.x*0.62f32,(s.world.z*0.62f32)+(0.5f32*floor(s.world.x*0.62f32)));
+    f:V2=v2(fract(g.x),fract(g.y));
+    joint:f32=fmin(fmin(f.x,1.0f32-f.x),fmin(f.y,1.0f32-f.y));
+    stone:f32=verse_style_hash(floor(g.x),floor(g.y));
+    albedo=al_scale3(albedo,0.9f32+(0.16f32*stone));
+    albedo=al_scale3(albedo,ifx joint<0.035f32 then 0.62f32 else 1.0f32);
+  }
+  // smoke dissolves away as it thins (param: how much is left)
+  if ((mat>7.5f32)&&(mat<8.5f32)) {
+    h:f32=verse_style_noise((s.world.x*3.1f32)+(s.world.y*1.7f32),(s.world.z*3.1f32)-(s.world.y*2.3f32));
+    if (h>s.param) {gpu_discard();}
+  }
+  // the made thing floods with colour from its sketch lines outward (param: how far from a line)
+  flood:f32=u[AL_DRAW]; shading:f32=u[AL_DRAW+1];
+  if ((mat>5.5f32)&&(mat<6.5f32)) {
+    h:f32=0.18f32*verse_style_noise(s.world.x*4.0f32,(s.world.z*4.0f32)+s.world.y);
+    if ((s.param+h)>(flood*1.18f32)) {gpu_discard();}
+  }
+  l:V3=al_key(u);
+  ndl:f32=al_dot3(n,l);
+  ndv:f32=al_dot3(n,v);
+  lit:f32=al_lit(s.world,n,u,shadow_map,shadow_cmp);
+  w:f32=verse_style_anime_light(ndl,lit);
+  bands:V4=al_st(u,7); bands2:V4=al_st(u,8);
+  hz:V4=al_st(u,9);
+  share:f32=verse_style_anime_aerial(dist,hz.x,hz.y,hz.z);
+  aa:f32=verse_style_anime_far_aa(bands.z,share);
+  character:bool=((mat>0.5f32)&&(mat<2.5f32))||((mat>9.5f32)&&(mat<10.5f32));
+  tone:f32=ifx character then verse_style_anime_cel_char(w,ndv,bands2.x,bands2.y) else verse_style_anime_cel(w,bands.x,aa);
+  if ((mat>5.5f32)&&(mat<6.5f32)) {tone=mix(1.0f32,tone,shading);}
+  hi:V3=al_lit_tone(albedo,u);
+  lo:V3=al_shadow_tone(hi,u);
+  c:V3=al_mix3(lo,hi,tone);
+  // the braziers' fire and the spells: their light banded the same way, warm on whatever faces them
+  {
+    k:s32=0;
+    while k<AL_LIGHT_N {
+      p:V4=wg_at4(u,AL_LIGHTS+(cast(int)k*8));
+      col:V4=wg_at4(u,AL_LIGHTS+(cast(int)k*8)+4);
+      if (col.w>0.0f32) {
+        dl:V3=al_sub3(v3(p.x,p.y,p.z),s.world);
+        dd:f32=al_len3(dl);
+        fall:f32=st_sat(1.0f32-(dd/fmax(p.w,0.01f32)));
+        a:f32=verse_style_anime_cel(st_sat((al_dot3(n,al_scale3(dl,1.0f32/fmax(dd,0.0001f32)))*0.5f32)+0.5f32)*fall*fall,0.18f32,0.02f32);
+        c=al_add3(c,v3(albedo.x*col.x*col.w*a,albedo.y*col.y*col.w*a,albedo.z*col.z*col.w*a));
+      }
+      k+=1;
+    }
+  }
+  // the third tone: hair's sheen
+  if ((mat>1.5f32)&&(mat<2.5f32)) {
+    hh:V3=al_norm3(al_add3(l,v));
+    spot:f32=verse_style_anime_spot(abs(al_dot3(n,hh)),bands2.z-0.25f32,0.02f32,bands2.w)*lit;
+    c=al_add3(c,al_scale3(v3(hi.x+0.2f32,hi.y+0.2f32,hi.z+0.25f32),spot*0.5f32));
+  }
+  // the rim: thin and hard on characters, softer on the world's near shapes
+  r1:V4=al_st(u,2); r2:V4=al_st(u,3);
+  strength:f32=ifx character then r2.x else r1.w*0.5f32;
+  rim:f32=verse_style_anime_rim(abs(ndv),ndl,r2.y,r2.z,strength);
+  c=al_add3(c,v3(r1.x*rim,r1.y*rim,r1.z*rim));
+  // far off, the painted backdrop: toward the pale horizon colour
+  pale:V4=al_st(u,10);
+  c=al_mix3(c,v3(pale.x,pale.y,pale.z),share);
+  // smoke takes no ink round it: it is drawn soft, in flat tones
+  ink:f32=ifx (mat>7.5f32)&&(mat<8.5f32) then -1.0f32 else s.obj;
+  return AnimelabLit.{light=v4(c.x,c.y,c.z,verse_style_anime_glow_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y,0.0f32)),aux=v4(n.x,n.y,n.z,ink)};
+}
+
+// ---- the post pass: bloom (as realm.wgsl's), then the ink, the tone and the frame's effects
+animelab_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel:V2=v2(1.0f32/cast(f32)(wg_dims_2d(bloom_src).x),1.0f32/cast(f32)(wg_dims_2d(bloom_src).y));
+  uv:V2=v2(pos.x*bloom_step[3]*texel.x,pos.y*bloom_step[3]*texel.y);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<4 {
+        o:V2=v2(((cast(f32)(k&1)*2.0f32)-1.0f32)*texel.x,((cast(f32)(k>>1)*2.0f32)-1.0f32)*texel.y);
+        t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+o.x,uv.y+o.y),0.0f32);
+        c=al_add3(c,al_scale3(v3(t.x,t.y,t.z),fmin(t.w,1.0f32)));
+        k+=1;
+      }
+    }
+    return v4(c.x*0.25f32,c.y*0.25f32,c.z*0.25f32,1.0f32);
+  }
+  d:V2=v2(bloom_step[0]*texel.x,bloom_step[1]*texel.y);
+  c:V3=al_scale3(al_xyz(gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32)),0.227f32);
+  c=al_add3(c,al_scale3(al_add3(al_xyz(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(d.x*1.385f32),uv.y+(d.y*1.385f32)),0.0f32)),al_xyz(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-(d.x*1.385f32),uv.y-(d.y*1.385f32)),0.0f32))),0.316f32));
+  c=al_add3(c,al_scale3(al_add3(al_xyz(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(d.x*3.231f32),uv.y+(d.y*3.231f32)),0.0f32)),al_xyz(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-(d.x*3.231f32),uv.y-(d.y*3.231f32)),0.0f32))),0.070f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+// A depth sample as metres from the eye (the projection's near and far).
+al_linear :: (z:f32,u:[]f32)->f32 {
+  near:f32=u[AL_RIGHT+3]; far:f32=u[AL_UP+3];
+  if (z>=1.0f32) {return 100000.0f32;}
+  return (near*far)/(far-(z*(far-near)));
+}
+al_clampi :: (p:I2,size:U2)->I2 {
+  return i2(wg_clamp_i(p.x,0,cast(s32)(size.x)-1),wg_clamp_i(p.y,0,cast(s32)(size.y)-1));
+}
+// The ink at a pixel, 0 to 1 (art-styles.md, Anime: ink): silhouettes where a neighbour lies further by
+// more than the gap the style asks, creases where the normals turn, and the line between two things
+// touching; the line's width the preset's, thinning with distance.
+al_ink :: (p:I2,u:[]f32,post_aux:Tex2D,post_depth:TexDepth)->f32 {
+  a:V4=wg_load_2d(post_aux,p,0);
+  if (a.w<0.0f32) {return 0.0f32;}
+  size:U2=wg_dims_depth(post_depth);
+  dc:f32=al_linear(wg_load_depth(post_depth,p,0),u);
+  if (dc>50000.0f32) {return 0.0f32;}
+  rim2:V4=al_st(u,3); bl:V4=al_st(u,19);
+  wpx:f32=verse_style_anime_ink_width(dc,rim2.w,bl.w)*u[AL_FX+3];
+  o:f32=fmax(wpx*0.5f32,0.75f32);
+  na:V3=v3(a.x,a.y,a.z);
+  edge:f32=0.0f32;
+  {
+    k:s32=0;
+    while k<8 {
+      ang:f32=cast(f32)(k)*0.7853982f32;
+      q:I2=al_clampi(i2(p.x+wg_i32_f(wg_round(cos(ang)*o)),p.y+wg_i32_f(wg_round(sin(ang)*o))),size);
+      dq:f32=al_linear(wg_load_depth(post_depth,q,0),u);
+      b:V4=wg_load_2d(post_aux,q,0);
+      gap:f32=dq-dc;
+      ndn:f32=ifx b.w<0.0f32 then 1.0f32 else al_dot3(na,v3(b.x,b.y,b.z));
+      e:f32=verse_style_anime_ink_edge(gap,dc,ndn);
+      // two things touching: a line on the nearer one
+      if ((b.w>=0.0f32)&&(abs(b.w-a.w)>0.5f32)&&(gap>(-0.02f32))) {e=fmax(e,0.85f32);}
+      edge=fmax(edge,e);
+      k+=1;
+    }
+  }
+  return verse_style_anime_ink_cover(edge,wpx);
+}
+// The overlay's panels: rounded rects in the panels' colours, darkening what lies under them.
+al_panels :: (px:V2,c:V3,u:[]f32)->V3 {
+  out:V3=c;
+  rad:f32=6.0f32*fmax(u[3],1.0f32);
+  {
+    k:s32=0;
+    while k<AL_PANEL_N {
+      r:V4=wg_at4(u,AL_PANELS+(cast(int)k*8));
+      col:V4=wg_at4(u,AL_PANELS+(cast(int)k*8)+4);
+      if (col.w>0.0f32) {
+        cx:f32=(r.x+r.z)*0.5f32; cy:f32=(r.y+r.w)*0.5f32;
+        hx:f32=((r.z-r.x)*0.5f32)-rad; hy:f32=((r.w-r.y)*0.5f32)-rad;
+        qx:f32=fmax(abs(px.x-cx)-hx,0.0f32); qy:f32=fmax(abs(px.y-cy)-hy,0.0f32);
+        d:f32=sqrt((qx*qx)+(qy*qy))-rad;
+        inside:f32=1.0f32-st_sat(d+0.5f32);
+        out=al_mix3(out,v3(col.x,col.y,col.z),inside*col.w);
+      }
+      k+=1;
+    }
+  }
+  return out;
+}
+animelab_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
+  p:I2=i2(wg_i32_f(pos.x),wg_i32_f(pos.y));
+  uv:V2=v2(pos.x/u[0],pos.y/u[1]);
+  light:V3=al_xyz(wg_load_2d(post_light,p,0));
+  ink:f32=al_ink(p,u,post_aux,post_depth)*al_st(u,31).x;
+  dark:f32=al_st(u,6).w;
+  light=al_mix3(light,v3(verse_style_anime_ink_colour(light.x,dark),verse_style_anime_ink_colour(light.y,dark),verse_style_anime_ink_colour(light.z,dark)),ink);
+  bloom:V3=al_add3(al_scale3(al_xyz(gpu_sample_level(post_quarter,post_lin,uv,0.0f32)),0.55f32),al_scale3(al_xyz(gpu_sample_level(post_eighth,post_lin,uv,0.0f32)),0.45f32));
+  m:f32=al_st(u,19).z;
+  c:V3=v3(verse_style_bloom_mix(light.x,bloom.x,m),verse_style_bloom_mix(light.y,bloom.y,m),verse_style_bloom_mix(light.z,bloom.z,m));
+  // the tone: exposure, clean saturation, lifted shadows
+  tn:V4=al_st(u,18);
+  c=v3(verse_style_tone(c.x,tn.x),verse_style_tone(c.y,tn.x),verse_style_tone(c.z,tn.x));
+  lum:f32=verse_style_luma(c.x,c.y,c.z);
+  c=v3(verse_style_saturation(c.x,lum,tn.y),verse_style_saturation(c.y,lum,tn.y),verse_style_saturation(c.z,lum,tn.y));
+  c=v3(verse_style_lift(c.x,tn.z),verse_style_lift(c.y,tn.z),verse_style_lift(c.z,tn.z));
+  // the vignette, corrected for the frame's aspect
+  asp:f32=u[0]/fmax(u[1],1.0f32);
+  vx:f32=((uv.x*2.0f32)-1.0f32)*fmin(asp,1.6f32)/1.6f32;
+  vy:f32=(uv.y*2.0f32)-1.0f32;
+  c=al_scale3(c,verse_style_anime_vignette(vx,vy,al_st(u,10).w));
+  // speed lines round the frame's centre of action
+  sp:f32=u[AL_FX+2];
+  if (sp>0.0f32) {
+    dx:f32=(uv.x-u[AL_MISC+1])*asp; dy:f32=uv.y-u[AL_MISC+2];
+    lines:f32=verse_style_anime_speed_lines(wg_atan2(dy,dx)+3.1415927f32,sqrt((dx*dx)+(dy*dy))*2.0f32,u[2],110.0f32,0.42f32);
+    c=al_mix3(c,v3(1.0f32,0.97f32,0.92f32),lines*sp*0.8f32);
+  }
+  // an impact frame: the picture turned to ink, its light black and its dark a hot white-red
+  if (u[AL_FX+1]>0.5f32) {
+    l2:f32=verse_style_luma(c.x,c.y,c.z);
+    c=ifx l2>0.42f32 then v3(0.02f32,0.0f32,0.03f32) else v3(1.0f32,0.93f32,0.86f32);
+  }
+  // a flash: white over everything
+  c=al_mix3(c,v3(1.0f32,1.0f32,1.0f32),st_sat(u[AL_FX]));
+  g:V3=v3(pow(st_sat(c.x),1.0f32/2.2f32),pow(st_sat(c.y),1.0f32/2.2f32),pow(st_sat(c.z),1.0f32/2.2f32));
+  return v4(al_panels(v2(pos.x,pos.y),g,u).x,al_panels(v2(pos.x,pos.y),g,u).y,al_panels(v2(pos.x,pos.y),g,u).z,1.0f32);
+}
+
+// ---- the overlay: strokes and sans text, one quad each (aethyr/ui/draw.coax lit, font.coax draw_sans)
+AnimelabV :: struct {pos:V4; place:V2; shape:V4; tint:V4; }
+// along, across, pixels; length, core, light, glow; red, green, blue, mode
+animelab_fx_vs_in :: struct {a:V4; b:V4; c:V4; }
+animelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:animelab_fx_vs_in,u:[]f32)->AnimelabV {
+  a:V4=in_.a;
+  o:AnimelabV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  return o;
+}
+animelab_fx_fs :: (v:AnimelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  tint:V3=v3(v.tint.x,v.tint.y,v.tint.z);
+  if ((v.tint.w>3.5f32)&&(v.tint.w<4.5f32)) {
+    lod:f32=st_sat(wg_log2(64.0f32/fmax(v.shape.x,1.0f32))/4.0f32)*4.0f32;
+    sa:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    c:V3=al_scale3(tint,sa*fmin(v.shape.z*1.15f32,1.0f32));
+    return v4(c.x,c.y,c.z,1.0f32);
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=sqrt((along*along)+(v.place.y*v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.22f32;
+  c:V3=al_scale3(tint,(core+halo)*v.shape.z);
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+
+// ---- vector helpers
+al_xyz :: (a:V4)->V3 {return v3(a.x,a.y,a.z);}
+al_add3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+al_sub3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+al_scale3 :: (a:V3,k:f32)->V3 {return v3(a.x*k,a.y*k,a.z*k);}
+al_dot3 :: (a:V3,b:V3)->f32 {return (a.x*b.x)+(a.y*b.y)+(a.z*b.z);}
+al_len3 :: (a:V3)->f32 {return sqrt(al_dot3(a,a));}
+al_norm3 :: (a:V3)->V3 {return al_scale3(a,1.0f32/fmax(al_len3(a),0.000001f32));}
+al_mix3 :: (a:V3,b:V3,k:f32)->V3 {return v3(mix(a.x,b.x,k),mix(a.y,b.y,k),mix(a.z,b.z,k));}

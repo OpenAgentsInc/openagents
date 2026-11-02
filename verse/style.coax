@@ -447,6 +447,192 @@ verse_style_facet_edge :: (fl_own:f32,fl_other:f32)->f32 #export_c {
  return verse_style_soft_step(fl_at*1.5f32,fl_at*0.5f32,fl_gap);
 }
 
+// ---- Anime (art-styles.md, Anime): the look of modern TV anime and anime films, in words. Cel
+// shading in two flat tones a form with a hard antialiased edge and now and then a third, a sharp
+// highlight spot; the shadow tone the albedo under a cool blue-violet tint at a set share of its
+// value, never grey or black; coloured ink lines (the albedo darkened) round silhouettes and creases,
+// thinner with distance; a thin bright rim; a vivid gradient sky with big cumulus shaded flat in two
+// or three tones, lit on the sun's side; a softer painted far background (aerial perspective toward
+// the pale sky); bloom, sparkles and streaks on bright points, speed lines for action. The numbers are
+// the anime preset's (verse/style-preset.coax STYLE_ANIME, verse_style_anime(variant, tier)), passed in
+// from its block, so one function serves every variant.
+// The light a cel band reads: half Lambert (N.L folded into 0 to 1) under the cast shadow's light.
+verse_style_anime_light :: (an_ndl:f32,an_lit:f32)->f32 #export_c {return st_sat(an_ndl*0.5f32+0.5f32)*st_sat(an_lit);}
+// Two tones from that light: shadow (0) under `edge` (SU_BANDS.x), lit (1) over it. The edge is a hard
+// step antialiased over `aa` (SU_BANDS.z) either side, never a gradient.
+verse_style_anime_cel :: (an_w:f32,an_edge:f32,an_aa:f32)->f32 #export_c {return verse_style_soft_step(an_edge,st_max(an_aa,0.000001f32),an_w);}
+// Characters' two tones (edge SU_BANDS2.x, aa SU_BANDS2.y): the edge eases down by 0.12 where the
+// surface faces the eye (N.V), so a face toward the camera keeps its lit tone and the shadow falls on
+// the sides turning away, as anime draws faces.
+verse_style_anime_cel_char :: (an_w:f32,an_ndv:f32,an_edge:f32,an_aa:f32)->f32 #export_c {
+ return verse_style_soft_step(an_edge-0.12f32*st_sat(an_ndv),st_max(an_aa,0.000001f32),an_w);
+}
+// The third tone: a sharp highlight spot (hair sheen, metal, an eye's glint) where N.H passes `cut`
+// (SU_BANDS2.z), antialiased over aa, at `strength` (SU_BANDS2.w). Added in the key light's colour.
+verse_style_anime_spot :: (an_ndh:f32,an_cut:f32,an_aa:f32,an_strength:f32)->f32 #export_c {
+ return verse_style_soft_step(an_cut,st_max(an_aa,0.000001f32),an_ndh)*an_strength;
+}
+// One channel c of the shadow tone from the lit tone's: `depth` (SU_BANDS.w) of its value, turned toward
+// the shadow tint's hue (tint over tint_lum, SU_TINT, its luminance from verse_style_luma): a multiply,
+// so a warm albedo goes cool and keeps its colour. Put the three back to depth times the lit tone's
+// luminance with verse_style_keep_value and the shadow keeps its value exactly.
+verse_style_anime_shadow :: (an_c:f32,an_tint:f32,an_tint_lum:f32,an_depth:f32)->f32 #export_c {
+ return an_c*an_depth*st_max(an_tint,0.000001f32)/st_max(an_tint_lum,0.000001f32);
+}
+// Where an ink line falls, 0 to 1, from a pixel's screen-space differences: `gap` (metres: its
+// neighbour's distance less its own, the realm's largest of four), its own distance d, and `ndn`, the
+// dot of its normal and the neighbour's. A silhouette where the gap is past 4 percent of the distance
+// and 0.15 m (easing in over a quarter more), a crease where the normals turn past 40 degrees.
+verse_style_anime_ink_edge :: (an_gap:f32,an_d:f32,an_ndn:f32)->f32 #export_c {
+ an_at:=st_max(an_d,0.0f32)*0.04f32+0.15f32;
+ an_sil:=verse_style_soft_step(an_at*1.125f32,an_at*0.125f32,an_gap);
+ an_crease:=1.0f32-verse_style_soft_step(0.8f32,0.04f32,an_ndn);
+ return st_max(an_sil,an_crease);
+}
+// The line's width in pixels at distance d: `width` (SU_RIM2.w) near, from a tenth of `far` (SU_BLOOM.w)
+// thinning smoothly to a quarter of it at `far` and beyond.
+verse_style_anime_ink_width :: (an_d:f32,an_width:f32,an_far:f32)->f32 #export_c {
+ an_f:=st_max(an_far,0.001f32);
+ return an_width*(1.0f32-0.75f32*verse_style_soft_step(an_f*0.55f32,an_f*0.45f32,an_d));
+}
+// A line thinner than a pixel covers it in part: the edge times its width, at most all of it.
+verse_style_anime_ink_cover :: (an_edge:f32,an_width_px:f32)->f32 #export_c {return st_sat(an_edge)*st_sat(an_width_px);}
+// One channel of the ink: the albedo darkened to `dark` (SU_GROUND_AMB.w) of itself, a coloured line,
+// never pure black (no less than 0.04 of the albedo).
+verse_style_anime_ink_colour :: (an_c:f32,an_dark:f32)->f32 #export_c {return an_c*st_max(an_dark,0.04f32);}
+// A thin, hard rim: where N.V is under `start` (SU_RIM2.y) the surface takes it, all of it by `full`
+// (SU_RIM2.z), more on the key light's side, times strength (SU_RIM.w on the world, SU_RIM2.x on
+// characters). Added in the rim colour (SU_RIM).
+verse_style_anime_rim :: (an_ndv:f32,an_ndl:f32,an_start:f32,an_full:f32,an_strength:f32)->f32 #export_c {
+ an_edge:=1.0f32-verse_style_soft_step((an_start+an_full)*0.5f32,st_max((an_start-an_full)*0.5f32,0.000001f32),an_ndv);
+ return an_edge*(0.2f32+0.8f32*st_sat(an_ndl+0.35f32))*an_strength;
+}
+// The sky: horizon (0) to zenith (1) by the view's elevation sine, at `power` (SU_HORIZON.w, under 1:
+// the zenith's deep colour comes down most of the sky and the pale band hugs the horizon).
+verse_style_anime_sky_t :: (an_up:f32,an_power:f32)->f32 #export_c {return pow(st_max(st_sat(an_up),0.000001f32),an_power);}
+// One channel of the sky's gradient from the zenith's (SU_ZENITH) and the horizon's (SU_HORIZON).
+verse_style_anime_sky :: (an_zenith:f32,an_horizon:f32,an_up:f32,an_power:f32)->f32 #export_c {
+ return an_horizon+(an_zenith-an_horizon)*verse_style_anime_sky_t(an_up,an_power);
+}
+// The warm band low over the horizon at dawn and dusk (in SU_HAZE_KEY's colour, at its .w strength):
+// its share at elevation sine up, where cs is the view's horizontal cosine to the sun. Full at the
+// horizon, gone by `height` (SU_ZENITH.w) toward the sun and 0.6 of it away, a third as strong away.
+verse_style_anime_glow :: (an_up:f32,an_cs:f32,an_height:f32,an_strength:f32)->f32 #export_c {
+ an_side:=st_sat(an_cs*0.5f32+0.5f32);
+ an_h:=st_max(an_height,0.001f32)*(0.6f32+0.4f32*an_side);
+ return (1.0f32-verse_style_soft_step(an_h*0.5f32,an_h*0.5f32,an_up))*(0.33f32+0.67f32*an_side)*an_strength;
+}
+// A star in a cell of the night sky (x, y: the view direction over the cell size, the realm's choice):
+// one cell in `density` holds a small round point near its middle, twinkling with t. Times SU_SUN.w.
+verse_style_anime_star :: (an_x:f32,an_y:f32,an_density:f32,an_t:f32)->f32 #export_c {
+ an_ix:=floor(an_x); an_iy:=floor(an_y);
+ an_h:=verse_style_hash(an_ix,an_iy);
+ if an_h<1.0f32-an_density {return 0.0f32;}
+ an_fx:=an_x-an_ix-0.5f32; an_fy:=an_y-an_iy-0.5f32;
+ an_r:=sqrt(an_fx*an_fx+an_fy*an_fy);
+ return (1.0f32-verse_style_soft_step(0.12f32,0.04f32,an_r))*(0.75f32+0.25f32*sin(an_t*3.0f32+an_h*40.0f32));
+}
+// The clouds' flat tones from a cloud's lit share (verse_style_cloud_lit, or verse_style_anime_cumulus_lit):
+// shadow 0, mid 0.5, lit 1, the two edges (0.35, 0.7) hard, antialiased over aa. Its cover comes
+// from verse_style_cloud_cover with the preset's narrow cut (SU_CLOUDS2.zw): a crisp edge.
+verse_style_anime_cloud_tone :: (an_lit:f32,an_aa:f32)->f32 #export_c {
+ an_a:=st_max(an_aa,0.000001f32);
+ return 0.5f32*verse_style_soft_step(0.35f32,an_a,an_lit)+0.5f32*verse_style_soft_step(0.7f32,an_a,an_lit);
+}
+// One channel of a cloud: its lit top's colour (SU_CLOUD_TOP), the shadow tone that colour drawn
+// `under` (SU_CLOUD_TOP.w) of the way to the zenith's (the sky's own blue in the shade, never grey).
+verse_style_anime_cloud_colour :: (an_top:f32,an_zenith:f32,an_under:f32,an_tone:f32)->f32 #export_c {
+ an_shade:=an_top+(an_zenith-an_top)*st_sat(an_under);
+ return an_shade+(an_top-an_shade)*st_sat(an_tone);
+}
+// The towering cumulus over the horizon: the bank's top (elevation sine) at azimuth a (radians), heads
+// of two sizes over a low base, `tall` (0.3) at most. Seamless all the way round; `seed` moves it.
+verse_style_anime_cumulus_top :: (an_a:f32,an_tall:f32,an_seed:f32)->f32 #export_c {
+ an_c:=cos(an_a); an_s:=sin(an_a);
+ an_n1:=verse_style_noise(an_c*2.2f32+an_seed,an_s*2.2f32+an_seed*0.7f32);
+ an_n2:=verse_style_noise(an_c*6.5f32+an_seed+11.0f32,an_s*6.5f32+an_seed+3.0f32);
+ return an_tall*(0.12f32+0.88f32*an_n1*an_n1*(0.75f32+0.25f32*an_n2));
+}
+// Whether the view at elevation sine up is in the bank under its top, antialiased over aa: 1 in it.
+verse_style_anime_cumulus :: (an_up:f32,an_top:f32,an_aa:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(an_top,st_max(an_aa,0.000001f32),an_up);}
+// The bank's lit share, for verse_style_anime_cloud_tone: higher in a head is lit, and the sun's side
+// (cs, the horizontal cosine to it), with the noise's grain (0 to 1) breaking the tones into heads.
+verse_style_anime_cumulus_lit :: (an_up:f32,an_top:f32,an_cs:f32,an_grain:f32)->f32 #export_c {
+ return st_sat(0.55f32*st_sat(an_up/st_max(an_top,0.001f32))+0.35f32*st_sat(an_cs*0.5f32+0.5f32)+0.25f32*(an_grain-0.5f32));
+}
+// Aerial perspective: a far surface's share of the pale sky colour (the horizon's): none to `start`
+// metres, then toward `cap` at `density` a metre (SU_HAZE x, y, z). No height term: a painted
+// backdrop, not fog.
+verse_style_anime_aerial :: (an_d:f32,an_start:f32,an_density:f32,an_cap:f32)->f32 #export_c {
+ return an_cap*(1.0f32-exp(-an_density*st_max(an_d-an_start,0.0f32)));
+}
+// Far off the painting softens: the cel edge's antialias widens 1 + 8 times the aerial share, so the
+// background reads painted and the foreground crisp.
+verse_style_anime_far_aa :: (an_aa:f32,an_share:f32)->f32 #export_c {return an_aa*(1.0f32+8.0f32*st_sat(an_share));}
+// Speed lines at a screen point, polar about the frame's centre (angle a radians, radius r in half
+// heights): `count` thin spokes round, each on for one draw in two, redrawn 12 times a second by t;
+// none inside `inner` (the clear middle), full 0.3 past it. 0 to 1, drawn in the light's colour.
+verse_style_anime_speed_lines :: (an_a:f32,an_r:f32,an_t:f32,an_count:f32,an_inner:f32)->f32 #export_c {
+ an_q:=an_a/6.2831853f32*an_count;
+ an_cell:=floor(an_q);
+ an_f:=floor(an_t*12.0f32);
+ if verse_style_hash(an_cell,an_f)<0.5f32 {return 0.0f32;}
+ an_w:=0.06f32+0.14f32*verse_style_hash(an_cell+17.0f32,an_f);
+ an_line:=1.0f32-verse_style_soft_step(an_w,0.03f32,abs(an_q-an_cell-0.5f32));
+ return an_line*verse_style_soft_step(an_inner+0.15f32,0.15f32,an_r);
+}
+// A light streak through a bright point, from it by (dx, dy) pixels: long along x (`length`), thin across (`width`).
+verse_style_anime_streak :: (an_dx:f32,an_dy:f32,an_length:f32,an_width:f32)->f32 #export_c {
+ return exp(-abs(an_dx)/st_max(an_length,0.000001f32))*exp(-abs(an_dy)/st_max(an_width,0.000001f32));
+}
+// A lens sparkle: a four-point star, two crossing streaks `size` long and a twelfth as thick.
+verse_style_anime_sparkle :: (an_dx:f32,an_dy:f32,an_size:f32)->f32 #export_c {
+ return st_max(verse_style_anime_streak(an_dx,an_dy,an_size,an_size/12.0f32),verse_style_anime_streak(an_dy,an_dx,an_size,an_size/12.0f32));
+}
+// What blooms: the light's share past the threshold (verse_style_bloom_share at SU_BLOOM's numbers),
+// and all of what glows on purpose (emissive, 0 to 1: a spell, a brazier, neon, the guardian).
+verse_style_anime_glow_share :: (an_lum:f32,an_threshold:f32,an_knee:f32,an_emissive:f32)->f32 #export_c {
+ return st_max(verse_style_bloom_share(an_lum,an_threshold,an_knee),st_sat(an_emissive));
+}
+// A gentle vignette at (x, y), -1 to 1 across the frame (the realm corrects for aspect): 1 in the
+// middle, down by `strength` (SU_HAZE_COLOUR.w) in the corners.
+verse_style_anime_vignette :: (an_x:f32,an_y:f32,an_strength:f32)->f32 #export_c {
+ return 1.0f32-an_strength*verse_style_soft_step(1.1f32,0.6f32,an_x*an_x+an_y*an_y);
+}
+// The anime palette (art-styles.md, Anime: palette): clean saturated albedos in sRGB 0 to 1, the
+// same for every variant (the variant's light makes the pastoral day, the dusk and the night). A slot
+// is a role.
+ANIME_GRASS :: 0; ANIME_GRASS2 :: 1; ANIME_FOLIAGE :: 2; ANIME_STONE :: 3; ANIME_ROOF :: 4; ANIME_WOOD :: 5;
+ANIME_PATH :: 6; ANIME_WATER :: 7; ANIME_SKIN :: 8; ANIME_HAIR :: 9; ANIME_COAT :: 10; ANIME_BANNER :: 11;
+ANIME_GOLD :: 12; ANIME_SPELL :: 13; ANIME_SPELL2 :: 14; ANIME_FIRE :: 15; ANIME_NEON_CYAN :: 16;
+ANIME_NEON_MAGENTA :: 17; ANIME_ASPHALT :: 18; ANIME_GUARDIAN :: 19;
+ANIME_SLOTS :: 20;
+// One channel (0 red, 1 green, 2 blue) of an anime slot, sRGB.
+verse_style_anime_srgb :: (an_slot:f32,an_ch:f32)->f32 #export_c {
+ if an_slot<0.5f32 {return st_pick(an_ch,0.400f32,0.741f32,0.263f32);}    // grass: lush summer green
+ if an_slot<1.5f32 {return st_pick(an_ch,0.635f32,0.851f32,0.341f32);}    // grass2: sunlit yellow-green
+ if an_slot<2.5f32 {return st_pick(an_ch,0.169f32,0.494f32,0.282f32);}    // foliage: deep leaf
+ if an_slot<3.5f32 {return st_pick(an_ch,0.847f32,0.792f32,0.690f32);}    // stone: warm pale stone
+ if an_slot<4.5f32 {return st_pick(an_ch,0.267f32,0.420f32,0.659f32);}    // roof: slate blue
+ if an_slot<5.5f32 {return st_pick(an_ch,0.580f32,0.384f32,0.231f32);}    // wood: warm brown
+ if an_slot<6.5f32 {return st_pick(an_ch,0.910f32,0.851f32,0.678f32);}    // path: sand
+ if an_slot<7.5f32 {return st_pick(an_ch,0.157f32,0.631f32,0.808f32);}    // water: clear blue
+ if an_slot<8.5f32 {return st_pick(an_ch,1.000f32,0.882f32,0.808f32);}    // skin: light peach
+ if an_slot<9.5f32 {return st_pick(an_ch,0.239f32,0.188f32,0.353f32);}    // hair: dark violet-brown
+ if an_slot<10.5f32 {return st_pick(an_ch,0.122f32,0.157f32,0.282f32);}   // coat: deep navy
+ if an_slot<11.5f32 {return st_pick(an_ch,0.180f32,0.333f32,0.761f32);}   // banner: royal blue
+ if an_slot<12.5f32 {return st_pick(an_ch,1.000f32,0.820f32,0.302f32);}   // gold: trim and brass
+ if an_slot<13.5f32 {return st_pick(an_ch,0.502f32,0.929f32,1.000f32);}   // spell: pale cyan bolt
+ if an_slot<14.5f32 {return st_pick(an_ch,1.000f32,0.380f32,0.800f32);}   // spell2: magenta bolt
+ if an_slot<15.5f32 {return st_pick(an_ch,1.000f32,0.859f32,0.420f32);}   // fire: a brazier's yellow flame
+ if an_slot<16.5f32 {return st_pick(an_ch,0.000f32,0.941f32,1.000f32);}   // neon cyan
+ if an_slot<17.5f32 {return st_pick(an_ch,1.000f32,0.165f32,0.784f32);}   // neon magenta
+ if an_slot<18.5f32 {return st_pick(an_ch,0.180f32,0.200f32,0.302f32);}   // asphalt: wet blue-grey
+ return st_pick(an_ch,0.941f32,0.976f32,1.000f32);                       // guardian: white light, a touch of blue
+}
+// The same, linear (what the shaders compute in).
+verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(verse_style_anime_srgb(an_slot,an_ch),2.2f32);}
+
 #test "facets: one tone a face from its normal; corners nudged without cracks; an edge only in front of something further" {
  #assert verse_style_facet_tone(1.0f32,1.0f32)==1.0f32 && verse_style_facet_tone(-1.0f32,1.0f32)==0.0f32 && verse_style_facet_tone(1.0f32,0.0f32)==0.0f32;
  fl_last:=-1.0f32;
@@ -777,4 +963,175 @@ verse_style_facet_edge :: (fl_own:f32,fl_other:f32)->f32 #export_c {
  #assert abs(verse_style_canopy_sway(-0.15f32,0.3f32,0.05f32,0.5f32)+0.0125f32)<0.00001f32;
  #assert verse_style_canopy_sway(0.9f32,0.3f32,0.05f32,2.0f32)==0.05f32;
  #assert verse_style_canopy_open(0.1f32,0.3f32)==1.0f32 && verse_style_canopy_open(0.3f32,0.3f32)==0.0f32 && verse_style_canopy_open(0.5f32,0.0f32)==0.0f32;
+}
+
+// ---- anime (art-styles.md, Anime)
+#test "anime: two hard tones, nothing between them but the antialias; characters keep a face toward the eye lit" {
+ for e:0..<3 {
+  edge:=0.44f32+0.04f32*cast(f32)e; aa:=0.008f32;
+  last:=0.0f32;
+  for i:0..<1001 {
+   w:=cast(f32)i/1000.0f32; b:=verse_style_anime_cel(w,edge,aa);
+   if abs(w-edge)>aa+0.0001f32 {#assert b==0.0f32 || b==1.0f32;}
+   #assert b>=last; last=b;
+   c:=verse_style_anime_cel_char(w,0.0f32,edge,aa);
+   #assert c==b;   // seen side on, a character's band is the world's
+   d:=verse_style_anime_cel_char(w,1.0f32,edge,aa);
+   if abs(w-(edge-0.12f32))>aa+0.0001f32 {#assert d==0.0f32 || d==1.0f32;}
+  }
+  #assert abs(verse_style_anime_cel(edge,edge,aa)-0.5f32)<0.0001f32;
+  // facing the eye, the edge sits 0.12 lower: a light the world shades, a face takes lit
+  #assert verse_style_anime_cel(edge-0.08f32,edge,aa)==0.0f32 && verse_style_anime_cel_char(edge-0.08f32,1.0f32,edge,aa)==1.0f32;
+ }
+ // the light: lit facing the key, shadow facing away, and a cast shadow drops it to shadow
+ #assert verse_style_anime_cel(verse_style_anime_light(1.0f32,1.0f32),0.46f32,0.008f32)==1.0f32;
+ #assert verse_style_anime_cel(verse_style_anime_light(-0.3f32,1.0f32),0.46f32,0.008f32)==0.0f32;
+ #assert verse_style_anime_cel(verse_style_anime_light(1.0f32,0.2f32),0.46f32,0.008f32)==0.0f32;
+ // the third tone: a hard spot past its cut, nothing short of it
+ #assert verse_style_anime_spot(0.94f32,0.96f32,0.004f32,0.6f32)==0.0f32 && verse_style_anime_spot(0.97f32,0.96f32,0.004f32,0.6f32)==0.6f32;
+ #assert abs(verse_style_anime_spot(0.96f32,0.96f32,0.004f32,0.6f32)-0.3f32)<0.0001f32;
+}
+#test "anime: the shadow tone is the albedo under a cool tint, keeping its value; never grey or black" {
+ tr:=0.62f32; tg:=0.66f32; tb:=1.0f32; tl:=verse_style_luma(tr,tg,tb); depth:=0.6f32;
+ for s:0..<ANIME_SLOTS {
+  lr:=verse_style_anime_colour(cast(f32)s,0.0f32); lg:=verse_style_anime_colour(cast(f32)s,1.0f32); lb:=verse_style_anime_colour(cast(f32)s,2.0f32);
+  y:=verse_style_luma(lr,lg,lb);
+  sr:=verse_style_anime_shadow(lr,tr,tl,depth); sg:=verse_style_anime_shadow(lg,tg,tl,depth); sb:=verse_style_anime_shadow(lb,tb,tl,depth);
+  raw:=verse_style_luma(sr,sg,sb);
+  kr:=verse_style_keep_value(sr,depth*y,raw); kg:=verse_style_keep_value(sg,depth*y,raw); kb:=verse_style_keep_value(sb,depth*y,raw);
+  // its value is depth of the lit tone's, exactly once kept, within 15 percent before for all but the bluest albedos
+  #assert abs(verse_style_luma(kr,kg,kb)-depth*y)<0.00001f32;
+  if lb<lr || lb<lg {#assert abs(raw/(depth*y)-1.0f32)<0.15f32;}
+  // cooler: blue gains on red and green; and a colour, never black
+  if lr>0.0001f32 {#assert kb/kr>lb/lr*1.3f32;}
+  #assert kb/kg>lb/lg*1.2f32;
+  #assert kr>=0.0f32 && kg>0.0f32 && kb>0.0f32;
+ }
+ // a grey albedo's shadow is blue-violet, not grey, and exactly depth of its value with no keeping
+ gr:=verse_style_anime_shadow(0.5f32,tr,tl,depth); gg:=verse_style_anime_shadow(0.5f32,tg,tl,depth); gb:=verse_style_anime_shadow(0.5f32,tb,tl,depth);
+ #assert gb>gg && gg>gr && abs(verse_style_luma(gr,gg,gb)-0.3f32)<0.00001f32;
+}
+#test "anime: ink lines at silhouettes and creases, the albedo darkened, thinning with distance" {
+ // width: all of it near, a quarter far, never growing as the eye backs off
+ #assert verse_style_anime_ink_width(0.0f32,2.0f32,120.0f32)==2.0f32 && verse_style_anime_ink_width(12.0f32,2.0f32,120.0f32)==2.0f32;
+ #assert abs(verse_style_anime_ink_width(120.0f32,2.0f32,120.0f32)-0.5f32)<0.0001f32 && abs(verse_style_anime_ink_width(900.0f32,2.0f32,120.0f32)-0.5f32)<0.0001f32;
+ last:=99.0f32;
+ for i:0..<300 {w:=verse_style_anime_ink_width(cast(f32)i,2.0f32,120.0f32); #assert w<=last; last=w;}
+ #assert verse_style_anime_ink_width(60.0f32,2.0f32,120.0f32)<verse_style_anime_ink_width(20.0f32,2.0f32,120.0f32);
+ // where: a silhouette in front of something clearly further, a crease where the normals turn
+ #assert verse_style_anime_ink_edge(5.0f32,2.0f32,1.0f32)==1.0f32 && verse_style_anime_ink_edge(0.1f32,2.0f32,1.0f32)==0.0f32;
+ #assert verse_style_anime_ink_edge(0.5f32,2.0f32,1.0f32)==1.0f32 && verse_style_anime_ink_edge(0.5f32,50.0f32,1.0f32)==0.0f32;
+ #assert verse_style_anime_ink_edge(0.0f32,10.0f32,0.5f32)==1.0f32 && verse_style_anime_ink_edge(0.0f32,10.0f32,0.95f32)==0.0f32;
+ #assert verse_style_anime_ink_edge(-3.0f32,10.0f32,1.0f32)==0.0f32;   // the nearer side of an edge draws none
+ // a line under a pixel wide covers the pixel in part
+ #assert verse_style_anime_ink_cover(1.0f32,2.0f32)==1.0f32 && abs(verse_style_anime_ink_cover(1.0f32,0.5f32)-0.5f32)<0.0001f32 && verse_style_anime_ink_cover(0.0f32,2.0f32)==0.0f32;
+ // coloured: the albedo darkened, every channel by the same share, never pure black
+ #assert abs(verse_style_anime_ink_colour(0.8f32,0.35f32)-0.28f32)<0.0001f32;
+ #assert abs(verse_style_anime_ink_colour(0.6f32,0.35f32)/verse_style_anime_ink_colour(0.3f32,0.35f32)-2.0f32)<0.0001f32;
+ #assert verse_style_anime_ink_colour(0.5f32,0.0f32)>0.0f32 && verse_style_anime_ink_colour(0.5f32,0.35f32)<0.5f32;
+}
+#test "anime: a thin hard rim at the silhouette, stronger on the light's side" {
+ #assert verse_style_anime_rim(0.5f32,1.0f32,0.24f32,0.20f32,0.6f32)==0.0f32 && verse_style_anime_rim(0.24f32,1.0f32,0.24f32,0.20f32,0.6f32)==0.0f32;
+ #assert abs(verse_style_anime_rim(0.1f32,1.0f32,0.24f32,0.20f32,0.6f32)-0.6f32)<0.0001f32;
+ #assert verse_style_anime_rim(0.1f32,0.5f32,0.24f32,0.20f32,0.6f32)>verse_style_anime_rim(0.1f32,-0.8f32,0.24f32,0.20f32,0.6f32);
+ #assert verse_style_anime_rim(0.1f32,-1.0f32,0.24f32,0.20f32,0.6f32)>0.0f32;
+ // thin: on a round seen side on, only the outer 2 to 6 percent of its radius takes it
+ n:=0;
+ for i:0..<1000 {x:=(cast(f32)i+0.5f32)/1000.0f32; ndv:=sqrt(st_max(1.0f32-x*x,0.0f32)); if verse_style_anime_rim(ndv,0.5f32,0.24f32,0.20f32,0.6f32)>0.0f32 {n+=1;}}
+ #assert n>=20 && n<=60;
+}
+#test "anime: a vivid gradient sky, the warm band toward the sun, stars in their cells" {
+ zr:=0.04f32; zb:=0.75f32; hr:=0.55f32; hb:=0.95f32;
+ #assert abs(verse_style_anime_sky(zr,hr,1.0f32,0.45f32)-zr)<0.0001f32 && abs(verse_style_anime_sky(zr,hr,0.0f32,0.45f32)-hr)<0.002f32;
+ #assert verse_style_anime_sky(zr,hr,-0.3f32,0.45f32)==verse_style_anime_sky(zr,hr,0.0f32,0.45f32);   // under the horizon, the horizon's
+ last:=99.0f32;
+ for i:0..<101 {v:=verse_style_anime_sky(zr,hr,cast(f32)i/100.0f32,0.45f32); #assert v<=last; last=v;}
+ // under 1 the deep colour comes most of the way down: at 30 degrees it is more zenith than horizon
+ #assert verse_style_anime_sky_t(0.5f32,0.45f32)>0.7f32 && abs(verse_style_anime_sky(zb,hb,0.5f32,0.45f32)-zb)<abs(verse_style_anime_sky(zb,hb,0.5f32,0.45f32)-hb);
+ // the band: all of it at the horizon toward the sun, a third away, none above its height
+ #assert abs(verse_style_anime_glow(0.0f32,1.0f32,0.25f32,0.8f32)-0.8f32)<0.0001f32;
+ #assert abs(verse_style_anime_glow(0.0f32,-1.0f32,0.25f32,0.8f32)-0.264f32)<0.0001f32;
+ #assert verse_style_anime_glow(0.25f32,1.0f32,0.25f32,0.8f32)==0.0f32 && verse_style_anime_glow(0.2f32,-1.0f32,0.25f32,0.8f32)==0.0f32;
+ #assert verse_style_anime_glow(0.1f32,1.0f32,0.25f32,0.8f32)>verse_style_anime_glow(0.1f32,0.0f32,0.25f32,0.8f32);
+ #assert verse_style_anime_glow(0.0f32,1.0f32,0.25f32,0.0f32)==0.0f32;
+ // stars: none at density 0; at density 1 a point in the middle of every cell, nothing at its corner
+ lit:=0;
+ for i:0..<50 {
+  x:=cast(f32)i*1.37f32; y:=cast(f32)i*0.71f32;
+  #assert verse_style_anime_star(x,y,0.0f32,1.0f32)==0.0f32;
+  #assert verse_style_anime_star(floor(x)+0.5f32,floor(y)+0.5f32,1.0f32,cast(f32)i)>=0.5f32 && verse_style_anime_star(floor(x)+0.02f32,floor(y)+0.02f32,1.0f32,0.0f32)==0.0f32;
+  if verse_style_anime_star(floor(x)+0.5f32,floor(y)+0.5f32,0.1f32,0.0f32)>0.0f32 {lit+=1;}
+ }
+ #assert lit>0 && lit<20;
+}
+#test "anime: clouds in two or three flat tones with crisp edges, shaded toward the sky, lit on the sun's side" {
+ for i:0..<1001 {
+  l:=cast(f32)i/1000.0f32; t:=verse_style_anime_cloud_tone(l,0.01f32);
+  if abs(l-0.35f32)>0.0101f32 && abs(l-0.7f32)>0.0101f32 {#assert t==0.0f32 || abs(t-0.5f32)<0.00001f32 || t==1.0f32;}
+ }
+ // cover with the preset's narrow cut: a crisp edge, between none and all only over 0.01 of the field
+ soft:=0;
+ for i:0..<1001 {c:=verse_style_cloud_cover(cast(f32)i/1000.0f32,0.35f32,0.545f32,0.555f32); if c>0.0f32 && c<1.0f32 {soft+=1;}}
+ #assert soft<=11;
+ // the shadow tone: the white top drawn toward the blue zenith, so blue, not grey
+ #assert verse_style_anime_cloud_colour(1.0f32,0.04f32,0.45f32,1.0f32)==1.0f32;
+ sr:=verse_style_anime_cloud_colour(1.0f32,0.04f32,0.45f32,0.0f32); sb:=verse_style_anime_cloud_colour(1.0f32,0.75f32,0.45f32,0.0f32);
+ #assert abs(sr-0.568f32)<0.0001f32 && sb>sr;
+ // the cumulus bank: heads between its base and `tall`, round the horizon without a seam
+ lo:=1.0f32; hi:=0.0f32;
+ for i:0..<360 {
+  a:=cast(f32)i*0.0174533f32-3.14159f32; t:=verse_style_anime_cumulus_top(a,0.3f32,4.0f32);
+  #assert t>=0.3f32*0.12f32-0.0001f32 && t<=0.3f32+0.0001f32;
+  lo=st_min(lo,t); hi=st_max(hi,t);
+ }
+ #assert hi-lo>0.09f32;
+ #assert abs(verse_style_anime_cumulus_top(-3.14159265f32,0.3f32,4.0f32)-verse_style_anime_cumulus_top(3.14159265f32,0.3f32,4.0f32))<0.0001f32;
+ #assert verse_style_anime_cumulus(0.05f32,0.2f32,0.004f32)==1.0f32 && verse_style_anime_cumulus(0.3f32,0.2f32,0.004f32)==0.0f32;
+ // lit high in a head and on the sun's side
+ #assert verse_style_anime_cumulus_lit(0.19f32,0.2f32,1.0f32,0.5f32)>verse_style_anime_cumulus_lit(0.02f32,0.2f32,1.0f32,0.5f32);
+ #assert verse_style_anime_cumulus_lit(0.1f32,0.2f32,1.0f32,0.5f32)>verse_style_anime_cumulus_lit(0.1f32,0.2f32,-1.0f32,0.5f32);
+ #assert verse_style_anime_cloud_tone(verse_style_anime_cumulus_lit(0.2f32,0.2f32,1.0f32,0.6f32),0.01f32)==1.0f32;
+ #assert verse_style_anime_cloud_tone(verse_style_anime_cumulus_lit(0.0f32,0.2f32,-1.0f32,0.3f32),0.01f32)==0.0f32;
+}
+#test "anime: the far background fades toward the pale sky and softens; the near stays crisp" {
+ #assert verse_style_anime_aerial(30.0f32,60.0f32,0.006f32,0.55f32)==0.0f32;
+ last:=0.0f32;
+ for i:0..<100 {f:=verse_style_anime_aerial(60.0f32+cast(f32)i*20.0f32,60.0f32,0.006f32,0.55f32); #assert f>=last && f<=0.55f32; last=f;}
+ #assert abs(verse_style_anime_aerial(100000.0f32,60.0f32,0.006f32,0.55f32)-0.55f32)<0.0001f32;
+ #assert verse_style_anime_far_aa(0.008f32,0.0f32)==0.008f32 && abs(verse_style_anime_far_aa(0.008f32,1.0f32)-0.072f32)<0.00001f32;
+}
+#test "anime: speed lines round a clear middle, redrawn each twelfth of a second; streaks, sparkles, bloom and vignette" {
+ on:=0;
+ for i:0..<720 {
+  a:=cast(f32)i*0.00872665f32-3.14159f32;
+  #assert verse_style_anime_speed_lines(a,0.2f32,0.0f32,48.0f32,0.35f32)==0.0f32;
+  v:=verse_style_anime_speed_lines(a,1.0f32,0.0f32,48.0f32,0.35f32);
+  #assert v>=0.0f32 && v<=1.0f32;
+  if v>0.5f32 {on+=1;}
+  #assert v==verse_style_anime_speed_lines(a,1.0f32,0.07f32,48.0f32,0.35f32);   // the same draw within its twelfth
+ }
+ #assert on>36 && on<432;
+ moved:=0;
+ for i:0..<720 {a:=cast(f32)i*0.00872665f32-3.14159f32; if verse_style_anime_speed_lines(a,1.0f32,0.0f32,48.0f32,0.35f32)!=verse_style_anime_speed_lines(a,1.0f32,0.1f32,48.0f32,0.35f32) {moved+=1;}}
+ #assert moved>0;
+ #assert verse_style_anime_streak(0.0f32,0.0f32,40.0f32,2.0f32)==1.0f32 && verse_style_anime_streak(20.0f32,0.0f32,40.0f32,2.0f32)>verse_style_anime_streak(0.0f32,4.0f32,40.0f32,2.0f32);
+ #assert verse_style_anime_sparkle(10.0f32,0.0f32,20.0f32)==verse_style_anime_sparkle(0.0f32,10.0f32,20.0f32) && verse_style_anime_sparkle(10.0f32,10.0f32,20.0f32)<0.01f32 && verse_style_anime_sparkle(0.0f32,0.0f32,20.0f32)==1.0f32;
+ #assert verse_style_anime_glow_share(0.2f32,0.75f32,0.25f32,0.0f32)==0.0f32 && verse_style_anime_glow_share(0.2f32,0.75f32,0.25f32,1.0f32)==1.0f32;
+ #assert verse_style_anime_glow_share(3.0f32,0.75f32,0.25f32,0.0f32)==verse_style_bloom_share(3.0f32,0.75f32,0.25f32);
+ #assert verse_style_anime_vignette(0.0f32,0.0f32,0.3f32)==1.0f32 && abs(verse_style_anime_vignette(1.0f32,1.0f32,0.3f32)-0.7f32)<0.0001f32;
+ #assert verse_style_anime_vignette(0.5f32,0.3f32,0.3f32)==1.0f32;
+}
+#test "anime: a clean, saturated palette; nothing black, greens green, neon neon" {
+ for s:0..<ANIME_SLOTS {
+  r:=verse_style_anime_srgb(cast(f32)s,0.0f32); g:=verse_style_anime_srgb(cast(f32)s,1.0f32); b:=verse_style_anime_srgb(cast(f32)s,2.0f32);
+  hi:=st_max(r,st_max(g,b)); lo:=st_min(r,st_min(g,b));
+  #assert lo>=0.0f32 && hi<=1.0f32 && hi>0.15f32;
+  if s!=ANIME_STONE && s!=ANIME_SKIN && s!=ANIME_GUARDIAN {#assert (hi-lo)/hi>=0.25f32;}
+  #assert abs(verse_style_anime_colour(cast(f32)s,1.0f32)-pow(g,2.2f32))<0.00001f32;
+ }
+ for k:0..<3 {s:=ifx k==0 then ANIME_GRASS else ifx k==1 then ANIME_GRASS2 else ANIME_FOLIAGE;
+  #assert verse_style_anime_srgb(cast(f32)s,1.0f32)>verse_style_anime_srgb(cast(f32)s,0.0f32) && verse_style_anime_srgb(cast(f32)s,1.0f32)>verse_style_anime_srgb(cast(f32)s,2.0f32);}
+ #assert verse_style_anime_srgb(16.0f32,0.0f32)<0.1f32 && verse_style_anime_srgb(16.0f32,1.0f32)>0.9f32 && verse_style_anime_srgb(16.0f32,2.0f32)>0.9f32;
+ #assert verse_style_anime_srgb(17.0f32,0.0f32)>0.9f32 && verse_style_anime_srgb(17.0f32,1.0f32)<0.2f32 && verse_style_anime_srgb(17.0f32,2.0f32)>0.7f32;
+ #assert verse_style_anime_srgb(19.0f32,0.0f32)>0.9f32 && verse_style_anime_srgb(19.0f32,2.0f32)>=verse_style_anime_srgb(19.0f32,0.0f32);
 }

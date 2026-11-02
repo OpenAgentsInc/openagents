@@ -1,0 +1,27 @@
+// Anime Lab's style block (docs/verse/art-styles.md, Anime), its own library
+// for the page's face (animelab-face.c): the anime preset in a variant and a
+// tier, at the realm's clock, as verse_style_at writes it. It is a library of
+// its own because the stage's camera (verse/cinematic.coax, verse/space.coax)
+// and the presets' checks share short names in one unit; the face hands the
+// block to animelab.coax, which copies it into the uniforms.
+//   coax/bin/coax test apps/openagents-web/animelab-style.coax --library
+#load "../../verse/style-preset.coax";
+
+// The variant a name says (pastoral, action, dusk, neon), -1 for none of them.
+animelab_style_variant :: (name: string) -> int #export_c { return verse_style_anime_variant(name); }
+// The anime block for `variant` at `clock`, on a phone or not, into out (STYLE_FLOATS); false when
+// the variant is unknown.
+animelab_style_block :: (variant: int, phone: bool, clock: f32, out: [] f32) -> bool #export_c {
+  p := verse_style_anime(variant, ifx phone then STYLE_PHONE else STYLE_DESKTOP);
+  return verse_style_at(p, clock, out);
+}
+animelab_style_floats :: () -> int #export_c { return STYLE_FLOATS; }
+
+#test "the action variant's block just after sunset: anime, its ink, its key light" {
+  out: [STYLE_FLOATS] f32;
+  #assert animelab_style_block(ANIME_ACTION, false, 0.78, out[..]);
+  #assert out[SU_STYLE + 1] == cast(f32) STYLE_ANIME && out[SU_RIM2 + 3] == 3.0 && out[SU_GROUND_AMB + 3] == 0.22;
+  k := out[SU_KEY_DIR] * out[SU_KEY_DIR] + out[SU_KEY_DIR + 1] * out[SU_KEY_DIR + 1] + out[SU_KEY_DIR + 2] * out[SU_KEY_DIR + 2];
+  #assert k > 0.99 && k < 1.01;
+  #assert !animelab_style_block(7, false, 0.78, out[..]) && animelab_style_variant("neon") == ANIME_NEON && animelab_style_variant("x") == -1;
+}
