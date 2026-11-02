@@ -1,0 +1,494 @@
+// Coder's memory (Coder book chapter 19): facts you tell Coder to keep,
+// across sessions, on psionic/lib/harness/memory.coax. Every change is an
+// event in a hash-chained log; a revise names why and supersedes the text
+// it replaces; a forget hides the text's bytes in every earlier event and
+// keeps their digests, so the chain still verifies. Each verb reads the
+// log back, verifies it and folds it before it does anything.
+//
+//   coder remember KEY "TEXT" [--project] [--days N]
+//   coder revise KEY "TEXT" [--reason correction|update|resolve] [--project]
+//   coder forget KEY [--project]
+//   coder recall ["QUERY"] [--top N] [--json]
+//
+// A fact is the user's (every folder) or, with --project, this folder's
+// (keyed by its physical path). recall with a query ranks the facts by
+// cosine similarity of Vertex embeddings (gemini-embedding-001, 256
+// dimensions), which Microcoder's worker fetches: a fact's vector the
+// first time it is ranked, the query's every time.
+//
+//   ~/.openagents/coder/memory/events.jsonl   the log, one event a line; bytes in hex
+//   ~/.openagents/coder/memory/vectors.jsonl  one vector a live fact, keyed by its event's digest
+
+#load "../../psionic/lib/harness/memory.coax";
+#load "../../coax/lib/nostr/json-f64.coax";
+
+MEM_EVENTS :: 512;
+MEM_BYTES :: 262144;
+MEM_FILE :: 1048576;
+MEM_DIMS :: 256;
+MEM_SCALE :: 1000000.0;          // a vector is stored as integers: each value times this
+MEM_FOREVER :: 1000000000000;   // seconds: about 31,000 years, inside what the JSON reader takes
+MEM_NEW_MAX :: 32;              // vectors fetched in one recall; the rest wait for the next
+MEM_USER :: 1;
+
+MemStore :: struct { events: [MEM_EVENTS] MmEvent; bytes: [MEM_BYTES] u8; facts: [MEM_EVENTS] MmFact; }
+
+mem_hexd :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+
+// Appends b as lower-case hex.
+mem_hex :: (out: [] u8, at: int, b: string) -> int {
+  digits := "0123456789abcdef";
+  n := at;
+  for x: b { if n + 2 <= out.count { out[n] = digits[cast(int) (x >> 4)]; out[n + 1] = digits[cast(int) (x & 15)]; } n += 2; }
+  return n;
+}
+
+// Decodes hex s into out from at; the end, or -1 when s is not hex or out is full.
+mem_unhex :: (s: string, out: [] u8, at: int) -> int {
+  if s.count % 2 != 0 || at + s.count / 2 > out.count { return -1; }
+  for i: 0..<s.count / 2 {
+    h := mem_hexd(s[2 * i]); l := mem_hexd(s[2 * i + 1]);
+    if h < 0 || l < 0 { return -1; }
+    out[at + i] = cast,trunc(u8) (h * 16 + l);
+  }
+  return at + s.count / 2;
+}
+
+mem_d32 :: (s: string, ok: [] bool) -> [32] u8 {
+  d: [32] u8;
+  if s.count != 64 || mem_unhex(s, d[..], 0) != 32 { ok[0] = false; }
+  return d;
+}
+
+// A string field's raw value without its quotes (hex and names only, no escapes).
+mem_s :: (line: string, key: string) -> string {
+  r := cl_raw(line, key);
+  if r.count < 2 || r[0] != '"' { return ""; }
+  return cast(string) r[1..<r.count - 1];
+}
+
+mem_i :: (line: string, key: string, ok: [] bool) -> int {
+  v := cl_int(line, key);
+  if !v.ok { ok[0] = false; }
+  return v.value;
+}
+
+mem_op_name :: (o: MmOp) -> string { return ifx o == MmOp.remember then "remember" else ifx o == MmOp.revise then "revise" else "forget"; }
+mem_scope_name :: (s: MmScope) -> string { return ifx s == MmScope.session then "session" else ifx s == MmScope.user then "user" else "project"; }
+mem_reason_name :: (r: MmReason) -> string { return ifx r == MmReason.none then "none" else ifx r == MmReason.correction then "correction" else ifx r == MmReason.update then "update" else "resolve"; }
+
+mem_status_name :: (s: MmStatus) -> string {
+  names := [13] string.["ok", "capacity", "shape", "reason", "source", "same", "missing", "sequence", "link", "content", "digest", "redacted", "exposed"];
+  return names[cast(int) s];
+}
+
+// One event as a line of events.jsonl.
+mem_line :: (g: MmLog, i: int, out: [] u8) -> int {
+  e := g.events[i]; at := mm_at(g, i);
+  n := json_raw(out, 0, "{\"sequence\":"); n = json_write_int(out, n, e.sequence);
+  n = json_raw(out, n, ",\"op\":\""); n = json_raw(out, n, mem_op_name(e.op));
+  n = json_raw(out, n, "\",\"scope\":\""); n = json_raw(out, n, mem_scope_name(e.scope));
+  n = json_raw(out, n, "\",\"owner\":"); n = json_write_int(out, n, e.owner);
+  n = json_raw(out, n, ",\"reason\":\""); n = json_raw(out, n, mem_reason_name(e.reason));
+  n = json_raw(out, n, "\",\"source\":\""); n = json_raw(out, n, ifx e.source == MmSource.event then "event" else "cite");
+  n = json_raw(out, n, "\",\"origin\":\""); n = mem_hex(out, n, cast(string) e.origin[..]);
+  n = json_raw(out, n, "\",\"from\":"); n = json_write_int(out, n, e.from);
+  n = json_raw(out, n, ",\"to\":"); n = json_write_int(out, n, e.to);
+  n = json_raw(out, n, ",\"start\":"); n = json_write_int(out, n, e.start);
+  n = json_raw(out, n, ",\"until\":"); n = json_write_int(out, n, e.until);
+  n = json_raw(out, n, ",\"keys\":"); n = json_write_int(out, n, e.keys);
+  n = json_raw(out, n, ",\"texts\":"); n = json_write_int(out, n, e.texts);
+  n = json_raw(out, n, ",\"ids\":"); n = json_write_int(out, n, e.ids);
+  n = json_raw(out, n, ifx e.redacted then ",\"redacted\":true" else ",\"redacted\":false");
+  n = json_raw(out, n, ",\"content\":\""); n = mem_hex(out, n, cast(string) e.content[..]);
+  n = json_raw(out, n, "\",\"previous\":\""); n = mem_hex(out, n, cast(string) e.previous[..]);
+  n = json_raw(out, n, "\",\"digest\":\""); n = mem_hex(out, n, cast(string) e.digest[..]);
+  n = json_raw(out, n, "\",\"bytes\":\""); n = mem_hex(out, n, cast(string) g.bytes[at..<at + e.keys + e.texts + e.ids]);
+  n = json_raw(out, n, "\",\"key\":"); n = json_write_string(out, n, cast(string) g.bytes[at..<at + e.keys]);   // for reading; not loaded
+  return json_raw(out, n, "}\n");
+}
+
+// Reads one line back into event index of g; false when it does not parse.
+mem_unline :: (g: [] MmLog, line: string) -> bool {
+  ok: [1] bool; ok[0] = true;
+  e: MmEvent;
+  e.sequence = mem_i(line, "sequence", ok[..]);
+  op := mem_s(line, "op"); sc := mem_s(line, "scope"); rs := mem_s(line, "reason"); so := mem_s(line, "source");
+  if op == "remember" { e.op = MmOp.remember; } else if op == "revise" { e.op = MmOp.revise; } else if op == "forget" { e.op = MmOp.forget; } else { return false; }
+  if sc == "session" { e.scope = MmScope.session; } else if sc == "user" { e.scope = MmScope.user; } else if sc == "project" { e.scope = MmScope.project; } else { return false; }
+  if rs == "none" { e.reason = MmReason.none; } else if rs == "correction" { e.reason = MmReason.correction; } else if rs == "update" { e.reason = MmReason.update; } else if rs == "resolve" { e.reason = MmReason.resolve; } else { return false; }
+  if so == "event" { e.source = MmSource.event; } else if so == "cite" { e.source = MmSource.cite; } else { return false; }
+  e.owner = mem_i(line, "owner", ok[..]); e.from = mem_i(line, "from", ok[..]); e.to = mem_i(line, "to", ok[..]);
+  e.start = mem_i(line, "start", ok[..]); e.until = mem_i(line, "until", ok[..]);
+  e.keys = mem_i(line, "keys", ok[..]); e.texts = mem_i(line, "texts", ok[..]); e.ids = mem_i(line, "ids", ok[..]);
+  rd := cl_bool(line, "redacted"); e.redacted = rd.ok && rd.value;
+  e.origin = mem_d32(mem_s(line, "origin"), ok[..]); e.content = mem_d32(mem_s(line, "content"), ok[..]);
+  e.previous = mem_d32(mem_s(line, "previous"), ok[..]); e.digest = mem_d32(mem_s(line, "digest"), ok[..]);
+  if !ok[0] || !rd.ok || g[0].count >= g[0].events.count { return false; }
+  end := mem_unhex(mem_s(line, "bytes"), g[0].bytes, g[0].used);
+  if end < 0 || end - g[0].used != e.keys + e.texts + e.ids { return false; }
+  g[0].events[g[0].count] = e; g[0].count += 1; g[0].used = end;
+  return true;
+}
+
+// Reads the log file into g; "" when it read, else why not. A missing file is an empty log.
+mem_load :: (path: string, g: [] MmLog, file: [] u8) -> string {
+  g[0].count = 0; g[0].used = 0;
+  if !fs_exists(path) { return ""; }
+  n := fs_read(path, file);
+  if n < 0 { return "The memory log could not be read."; }
+  if n >= file.count { return "The memory log is larger than Coder reads."; }
+  at := 0;
+  while at < n {
+    e := at; while e < n && file[e] != 10 { e += 1; }
+    if e > at && !mem_unline(g, cast(string) file[at..<e]) { return "A line of the memory log does not parse."; }
+    at = e + 1;
+  }
+  return "";
+}
+
+mem_save :: (path: string, g: MmLog, file: [] u8) -> bool {
+  n := 0;
+  for i: 0..<g.count {
+    m := mem_line(g, i, file[n..<file.count]);
+    if m < 0 || n + m > file.count { return false; }
+    n += m;
+  }
+  tb: [1400] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, path), ".new");
+  return fs_write(cast(string) tb[0..<tn], cast(string) file[0..<n]) && fs_rename(cast(string) tb[0..<tn], path);
+}
+
+// The why of a refused write, in words.
+mem_why :: (s: MmStatus, key: string, out: [] u8) -> string {
+  n := 0;
+  if s == MmStatus.same { n = cd_cat(out, 0, "That text is already what "); n = cd_cat(out, n, key); n = cd_cat(out, n, " holds."); }
+  else if s == MmStatus.missing { n = cd_cat(out, 0, "Nothing is remembered under "); n = cd_cat(out, n, key); n = cd_cat(out, n, "."); }
+  else if s == MmStatus.capacity { n = cd_cat(out, 0, "Memory is full: forget something first."); }
+  else if s == MmStatus.shape { n = cd_cat(out, 0, "A fact needs a key and a text."); }
+  else { n = cd_cat(out, 0, "The write was refused ("); n = cd_cat(out, n, mem_status_name(s)); n = cd_cat(out, n, ")."); }
+  return cast(string) out[0..<n];
+}
+
+// The project owner: 48 bits of SHA-256 of the folder's physical path.
+mem_project :: (dir: string) -> int {
+  db: [4096] u8; n := cd_cat(db[..], 0, dir);
+  d := mm_sha(db[0..<n]);
+  v := 0;
+  for i: 0..<6 { v = v * 256 + cast(int) d[i]; }
+  return v;
+}
+
+mem_dir_here :: (out: [] u8) -> string {
+  pb: [4096] u8; pwd := cl_getenv("PWD", pb[..]);
+  argv := [2] string.["/bin/pwd", "-P"];
+  none: [1] string; ok: [1] bool;
+  r := rt_run_in(argv[..], none[0..<0], pwd, 10, out, ok[..]);
+  if ok[0] { return r; }
+  return cast(string) out[0..<cd_cat(out, 0, pwd)];
+}
+
+// Parses "[0.1,-0.2,...]" into dims integers (values times MEM_SCALE); false unless exactly dims.
+mem_vec :: (s: string, out: [] int) -> bool {
+  if s.count < 2 || s[0] != '[' || s[s.count - 1] != ']' { return false; }
+  k := 0; at := 1;
+  while at < s.count - 1 {
+    e := at; while e < s.count - 1 && s[e] != ',' { e += 1; }
+    v := json_f64(cast(string) s[at..<e]);
+    if !v.ok || k >= out.count { return false; }
+    out[k] = cast(int) (v.value * MEM_SCALE); k += 1;
+    at = e + 1;
+  }
+  return k == out.count;
+}
+
+mem_sqrt :: (x: f64) -> f64 {
+  if x <= 0.0 { return 0.0; }
+  g := ifx x > 1.0 then x else 1.0;
+  for i: 0..<200 { g = 0.5 * (g + x / g); }
+  return g;
+}
+
+mem_cosine :: (a: [] int, b: [] int) -> f64 {
+  d := 0.0; na := 0.0; nb := 0.0;
+  for i: 0..<a.count { x := cast(f64) a[i]; y := cast(f64) b[i]; d += x * y; na += x * x; nb += y * y; }
+  if na == 0.0 || nb == 0.0 { return 0.0; }
+  return d / (mem_sqrt(na) * mem_sqrt(nb));
+}
+
+// The vector line stored for the event digest dh, as its "values" list, or "".
+mem_vec_find :: (file: string, dh: string) -> string {
+  at := 0;
+  while at < file.count {
+    e := at; while e < file.count && file[e] != 10 { e += 1; }
+    ln := cast(string) file[at..<e];
+    if mem_s(ln, "event") == dh { return cl_raw(ln, "values"); }
+    at = e + 1;
+  }
+  return "";
+}
+
+mem_vec_line :: (dh: string, v: [] int, out: [] u8) -> int {
+  n := json_raw(out, 0, "{\"event\":\""); n = json_raw(out, n, dh); n = json_raw(out, n, "\",\"values\":[");
+  for i: 0..<v.count { if i > 0 { n = json_raw(out, n, ","); } n = json_write_int(out, n, v[i]); }
+  return json_raw(out, n, "]}\n");
+}
+
+// Keeps only the vectors of live facts.
+mem_vec_prune :: (path: string, g: MmLog, t: MmTable, file: [] u8, keep: [] u8) {
+  if !fs_exists(path) { return; }
+  n := fs_read(path, file);
+  if n < 0 || n >= file.count { return; }
+  k := 0; at := 0;
+  while at < n {
+    e := at; while e < n && file[e] != 10 { e += 1; }
+    ln := cast(string) file[at..<e];
+    live := false;
+    for f: t.facts[0..<t.count] {
+      if !mm_live(f) { continue; }
+      hb: [64] u8; h := mem_hex(hb[..], 0, cast(string) g.events[f.event].digest[..]);
+      if mem_s(ln, "event") == cast(string) hb[0..<h] { live = true; break; }
+    }
+    if live && k + (e - at) + 1 <= keep.count { for c: ln { keep[k] = c; k += 1; } keep[k] = 10; k += 1; }
+    at = e + 1;
+  }
+  tb: [1400] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, path), ".new");
+  x := fs_write(cast(string) tb[0..<tn], cast(string) keep[0..<k]) && fs_rename(cast(string) tb[0..<tn], path);
+}
+
+// Asks Microcoder's worker for embeddings: texts[0..<count] as documents,
+// then the query. Their vectors go to out, MEM_DIMS each, in that order.
+// "" when every one came back, else why not.
+mem_embed :: (texts: [] string, query: string, out: [] int) -> string {
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { return "CODER_REPO is not set: run Coder with coder/tui/coder.sh."; }
+  tb: [4200] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, repo), CD_MC_TOOL);
+  wb: [4200] u8; wn := cd_cat(wb[..], cd_cat(wb[..], 0, repo), CD_MC_WORKER);
+  h := cxproc_new();
+  if h < 0 { return "No process slot is free."; }
+  ok := cl_push(h, CL_FIELD_ARG, cast(string) tb[0..<tn]) && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]);
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return "Microcoder's worker did not start."; }
+  ob: [20000] u8;
+  for i: 0..<texts.count + 1 {
+    n := json_raw(ob[..], 0, "{\"embed\":"); n = json_write_string(ob[..], n, ifx i < texts.count then texts[i] else query);
+    n = json_raw(ob[..], n, ifx i < texts.count then "}\n" else ",\"query\":true}\n");
+    for b: cast(string) ob[0..<n] { x := cxproc_write(h, cast(int) b); }
+  }
+  f := cxproc_flush(h); c := cxproc_close_stdin(h);
+  got := 0; why := "";
+  line: [65536] u8;
+  for guard: 0..<100000 {
+    m := cxproc_read_line(h, 120000);
+    if m < 0 && m != CL_TOO_LONG { break; }
+    if m == CL_TOO_LONG || m > line.count { continue; }
+    for i: 0..<m { line[i] = cast,trunc(u8) cxproc_line_byte(h, i); }
+    ln := cast(string) line[0..<m];
+    if mem_s(ln, "kind") != "embedding" { continue; }
+    if cl_raw(ln, "error").count > 0 || got > texts.count || !mem_vec(cl_raw(ln, "values"), out[got * MEM_DIMS..<(got + 1) * MEM_DIMS]) { why = "Vertex gave no embedding."; break; }
+    got += 1;
+  }
+  w := cxproc_wait(h, 2000);
+  if w < 0 { k := cxproc_kill(h, CL_SIGKILL); w = cxproc_wait(h, 2000); }
+  r := cxproc_release(h);
+  if why.count > 0 { return why; }
+  if got != texts.count + 1 { return "Microcoder's worker stopped before every embedding came back."; }
+  return "";
+}
+
+mem_paths :: (p: [] RtPaths) -> bool {
+  if !rt_init(p) { return false; }
+  b: [1300] u8; x := fs_mkdir(rt_path(p, "/memory", b[..]));
+  return true;
+}
+
+// coder remember | revise | forget | recall.
+cd_cmd_memory :: (verb: string, key: string, text: string, project: bool, days: int, reason: string, top: int, json: bool) -> int {
+  p: [1] RtPaths; eb: [1400] u8; vb: [1400] u8;
+  if !mem_paths(p[..]) { tool_errln("coder: no $HOME"); return 1; }
+  st: [1] MemStore;
+  file: [MEM_FILE] u8;
+  epath := rt_path(p[..], "/memory/events.jsonl", eb[..]);
+  vpath := rt_path(p[..], "/memory/vectors.jsonl", vb[..]);
+  g: [1] MmLog; g[0] = MmLog.{events = st[0].events[..], bytes = st[0].bytes[..]};
+  t: [1] MmTable; t[0] = MmTable.{facts = st[0].facts[..]};
+  why := mem_load(epath, g[..], file[..]);
+  if why.count > 0 { tool_err("coder: "); tool_errln(why); return 1; }
+  v := mm_replay(g[0], t[..]);
+  if v.status != MmStatus.ok {
+    ib: [24] u8; tool_err("coder: the memory log does not verify at event "); tool_err(cd_itoa(v.index, ib[..])); tool_err(" ("); tool_err(mem_status_name(v.status)); tool_errln(")");
+    return 1;
+  }
+  db: [4096] u8; owner := mem_project(mem_dir_here(db[..]));
+  ctx := MmContext.{session = 0, user = MEM_USER, project = owner};
+  scope := ifx project then MmScope.project else MmScope.user;
+  sowner := ifx project then owner else MEM_USER;
+  now := cxproc_wall_us() / 1000000;
+  pn: [1] string; ps := MmPassages.{ids = pn[0..<0], heads = pn[0..<0], texts = pn[0..<0]};   // no cited facts from the command line
+  wy: [512] u8;
+  if verb == "remember" || verb == "revise" || verb == "forget" {
+    if key.count == 0 || (verb != "forget" && text.count == 0) {
+      tool_errln(ifx verb == "forget" then "coder forget KEY [--project]" else ifx verb == "remember" then "coder remember KEY \"TEXT\" [--project] [--days N]" else "coder revise KEY \"TEXT\" [--reason correction|update|resolve] [--project]");
+      return 2;
+    }
+    s := MmStatus.ok;
+    if verb == "forget" { s = mm_forget(g[..], t[..], key, scope, sowner, ps); }
+    else {
+      w := MmWrite.{key = key, scope = scope, owner = sowner, text = text, source = MmSource.event, start = now, until = ifx days > 0 then now + days * 86400 else MEM_FOREVER};
+      if verb == "remember" { s = mm_remember(g[..], t[..], w, ps); }
+      else {
+        rr := MmReason.update;
+        if reason == "correction" { rr = MmReason.correction; } else if reason == "resolve" { rr = MmReason.resolve; } else if reason.count > 0 && reason != "update" { tool_errln("coder revise: --reason is correction, update or resolve"); return 2; }
+        s = mm_revise(g[..], t[..], w, rr, ps);
+      }
+    }
+    if s != MmStatus.ok { tool_err("coder: "); tool_errln(mem_why(s, key, wy[..])); return 1; }
+    if !mem_save(epath, g[0], file[..]) { tool_errln("coder: the memory log could not be written"); return 1; }
+    keep: [MEM_FILE] u8;
+    mem_vec_prune(vpath, g[0], t[0], file[..], keep[..]);
+    last := t[0].facts[t[0].count - 1];
+    conflict := verb == "remember" && last.state == MmState.conflict;
+    if json {
+      o: [4096] u8;
+      n := json_raw(o[..], 0, "{\"key\":"); n = json_write_string(o[..], n, key);
+      n = json_raw(o[..], n, ",\"scope\":\""); n = json_raw(o[..], n, mem_scope_name(scope));
+      n = json_raw(o[..], n, "\",\"event\":"); n = json_write_int(o[..], n, g[0].count - 1);
+      n = json_raw(o[..], n, ",\"state\":\""); n = json_raw(o[..], n, ifx verb == "forget" then "forgotten" else ifx conflict then "conflict" else "current");
+      n = json_raw(o[..], n, "\"}");
+      cd_outln(cast(string) o[0..<n]);
+    } else if verb == "forget" { cd_out("Forgot "); cd_out(key); cd_outln("."); }
+    else if conflict { cd_out(key); cd_out(" now holds two texts; "); cd_out("coder revise "); cd_out(key); cd_outln(" \"TEXT\" settles it."); }
+    else {
+      vn: [24] u8; cd_out(ifx verb == "remember" then "Remembered " else "Revised "); cd_out(key);
+      if verb == "revise" { cd_out(" (version "); cd_out(cd_itoa(last.version, vn[..])); cd_out(")"); }
+      cd_outln(".");
+    }
+    return 0;
+  }
+  // recall
+  ids: [MEM_EVENTS] int;
+  n := mm_read(t[0], ctx, now, ps, ids[..]);
+  score: [MEM_EVENTS] f64;
+  for i: 0..<n { score[i] = 0.0; }
+  ranked := false;
+  if text.count > 0 && n > 0 {
+    vn := ifx fs_exists(vpath) then fs_read(vpath, file[..]) else 0;
+    if vn < 0 || vn >= file.count { vn = 0; }
+    vf := cast(string) file[0..<vn];
+    // the facts with no vector yet, then the query
+    miss: [MEM_NEW_MAX] int; texts: [MEM_NEW_MAX] string; tbuf: [MEM_NEW_MAX * 2048] u8; tu := 0; nm := 0;
+    for i: 0..<n {
+      f := t[0].facts[ids[i]];
+      hb: [64] u8; h := mem_hex(hb[..], 0, cast(string) g[0].events[f.event].digest[..]);
+      if mem_vec_find(vf, cast(string) hb[0..<h]).count > 0 || nm == MEM_NEW_MAX { continue; }
+      s0 := tu; tu = cd_cat(tbuf[..], tu, f.key); tu = cd_cat(tbuf[..], tu, ": "); tu = cd_cat(tbuf[..], tu, cast(string) f.text[0..<ifx f.text.count > 1800 then 1800 else f.text.count]);
+      miss[nm] = i; texts[nm] = cast(string) tbuf[s0..<tu]; nm += 1;
+    }
+    vecs: [(MEM_NEW_MAX + 1) * MEM_DIMS] int;
+    e := mem_embed(texts[0..<nm], text, vecs[..]);
+    if e.count > 0 { tool_err("coder recall: "); tool_err(e); tool_errln(" The facts are in the order they were written."); }
+    else {
+      ln: [8192] u8;
+      for j: 0..<nm {
+        f := t[0].facts[ids[miss[j]]];
+        hb: [64] u8; h := mem_hex(hb[..], 0, cast(string) g[0].events[f.event].digest[..]);
+        m := mem_vec_line(cast(string) hb[0..<h], vecs[j * MEM_DIMS..<(j + 1) * MEM_DIMS], ln[..]);
+        x := fs_append(vpath, cast(string) ln[0..<m]);
+      }
+      vn = fs_read(vpath, file[..]);
+      if vn < 0 || vn >= file.count { vn = 0; }
+      vf2 := cast(string) file[0..<vn];
+      q := vecs[nm * MEM_DIMS..<(nm + 1) * MEM_DIMS];
+      fv: [MEM_DIMS] int;
+      for i: 0..<n {
+        f := t[0].facts[ids[i]];
+        hb: [64] u8; h := mem_hex(hb[..], 0, cast(string) g[0].events[f.event].digest[..]);
+        score[i] = ifx mem_vec(mem_vec_find(vf2, cast(string) hb[0..<h]), fv[..]) then mem_cosine(q, fv[..]) else -1.0;
+      }
+      // best first; a tie keeps write order
+      for i: 1..<n {
+        j := i;
+        while j > 0 && score[j] > score[j - 1] { s := score[j]; score[j] = score[j - 1]; score[j - 1] = s; d := ids[j]; ids[j] = ids[j - 1]; ids[j - 1] = d; j -= 1; }
+      }
+      ranked = true;
+    }
+  }
+  shown := ifx top > 0 && top < n then top else n;
+  if json {
+    o: [65536] u8;
+    k := json_raw(o[..], 0, "{\"verified\":true,\"events\":"); k = json_write_int(o[..], k, g[0].count);
+    k = json_raw(o[..], k, ",\"ranked\":"); k = json_raw(o[..], k, ifx ranked then "true" else "false");
+    k = json_raw(o[..], k, ",\"facts\":[");
+    for i: 0..<shown {
+      f := t[0].facts[ids[i]];
+      k = json_raw(o[..], k, ifx i > 0 then ",{\"key\":" else "{\"key\":"); k = json_write_string(o[..], k, f.key);
+      k = json_raw(o[..], k, ",\"text\":"); k = json_write_string(o[..], k, f.text);
+      k = json_raw(o[..], k, ",\"scope\":\""); k = json_raw(o[..], k, mem_scope_name(f.scope));
+      k = json_raw(o[..], k, "\",\"version\":"); k = json_write_int(o[..], k, f.version);
+      if ranked { k = json_raw(o[..], k, ",\"score\":"); k = json_write_int(o[..], k, cast(int) (score[i] * 1000.0)); }
+      k = json_raw(o[..], k, "}");
+    }
+    k = json_raw(o[..], k, "]}");
+    if k < 0 { tool_errln("coder recall: too much to print as JSON; use --top"); return 1; }
+    cd_outln(cast(string) o[0..<k]);
+    return 0;
+  }
+  if n == 0 { cd_outln("Nothing is remembered here."); return 0; }
+  for i: 0..<shown {
+    f := t[0].facts[ids[i]];
+    if ranked { pb: [24] u8; pc := cast(int) (score[i] * 100.0); cd_out(cd_itoa(ifx pc < 0 then 0 else pc, pb[..])); cd_out("%  "); }
+    cd_out(f.key); cd_out(ifx f.scope == MmScope.project then " (this folder): " else ": "); cd_outln(f.text);
+  }
+  return 0;
+}
+
+#test "memory: the log round-trips through its file lines and still verifies" {
+  st: [1] MemStore;
+  g: [1] MmLog; g[0] = MmLog.{events = st[0].events[..], bytes = st[0].bytes[..]};
+  t: [1] MmTable; t[0] = MmTable.{facts = st[0].facts[..]};
+  pn: [1] string; ps := MmPassages.{ids = pn[0..<0], heads = pn[0..<0], texts = pn[0..<0]};   // no cited facts from the command line
+  #assert mm_remember(g[..], t[..], MmWrite.{key = "build", scope = MmScope.user, owner = 1, text = "make -C coder", start = 10, until = MEM_FOREVER}, ps) == MmStatus.ok;
+  #assert mm_revise(g[..], t[..], MmWrite.{key = "build", scope = MmScope.user, owner = 1, text = "coder/tui/coder.sh", start = 11, until = MEM_FOREVER}, MmReason.correction, ps) == MmStatus.ok;
+  #assert mm_remember(g[..], t[..], MmWrite.{key = "token", scope = MmScope.project, owner = 7, text = "secret-ish", start = 12, until = MEM_FOREVER}, ps) == MmStatus.ok;
+  #assert mm_forget(g[..], t[..], "token", MmScope.project, 7, ps) == MmStatus.ok;
+  file: [65536] u8; n := 0;
+  for i: 0..<g[0].count { n += mem_line(g[0], i, file[n..<file.count]); }
+  text := cast(string) file[0..<n];
+  // a forgotten text is not in the file; its key is
+  hb: [64] u8; h := mem_hex(hb[..], 0, "secret-ish");
+  found := false; for i: 0..<n - h { if cast(string) file[i..<i + h] == cast(string) hb[0..<h] { found = true; } }
+  #assert !found;
+  st2: [1] MemStore;
+  g2: [1] MmLog; g2[0] = MmLog.{events = st2[0].events[..], bytes = st2[0].bytes[..]};
+  t2: [1] MmTable; t2[0] = MmTable.{facts = st2[0].facts[..]};
+  at := 0;
+  while at < n { e := at; while file[e] != 10 { e += 1; } #assert mem_unline(g2[..], cast(string) file[at..<e]); at = e + 1; }
+  #assert g2[0].count == 4 && mm_replay(g2[0], t2[..]).status == MmStatus.ok;
+  ids: [8] int;
+  #assert mm_read(t2[0], MmContext.{user = 1, project = 7}, 20, ps, ids[..]) == 1 && t2[0].facts[ids[0]].text == "coder/tui/coder.sh" && t2[0].facts[ids[0]].version == 2;
+  // one changed byte breaks the chain
+  for i: 0..<n - 6 { if cast(string) file[i..<i + 6] == "\"from\"" { file[i + 7] = '1'; break; } }
+  st3: [1] MemStore;
+  g3: [1] MmLog; g3[0] = MmLog.{events = st3[0].events[..], bytes = st3[0].bytes[..]};
+  t3: [1] MmTable; t3[0] = MmTable.{facts = st3[0].facts[..]};
+  at = 0;
+  while at < n { e := at; while file[e] != 10 { e += 1; } ok := mem_unline(g3[..], cast(string) file[at..<e]); at = e + 1; }
+  #assert mm_replay(g3[0], t3[..]).status != MmStatus.ok;
+}
+
+#test "memory: vectors parse, store as integers and rank by cosine" {
+  a: [3] int; b: [3] int;
+  #assert !mem_vec("[0.1,0.2]", a[..]) && !mem_vec("0.1,0.2,0.3", a[..]);
+  #assert mem_vec("[1,0,0]", a[..]) && a[0] == 1000000 && a[1] == 0;
+  #assert mem_vec("[0.5,0.5,0]", b[..]);
+  c := mem_cosine(a[..], b[..]);
+  #assert c > 0.7071 && c < 0.7072;
+  #assert mem_cosine(a[..], a[..]) > 0.9999;
+  out: [256] u8; m := mem_vec_line("ab", b[..], out[..]);
+  #assert cast(string) out[0..<m] == "{\"event\":\"ab\",\"values\":[500000,500000,0]}\n";
+  #assert mem_vec_find(cast(string) out[0..<m], "ab") == "[500000,500000,0]" && mem_vec_find(cast(string) out[0..<m], "cd") == "";
+  #assert mem_sqrt(1000000000000.0) > 999999.999 && mem_sqrt(1000000000000.0) < 1000000.001;
+  #assert mem_project("/a") != mem_project("/b") && mem_project("/a") < 281474976710656;
+}

@@ -7,6 +7,7 @@
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true} or {"answer":false,"why":"..."}
+//        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
 //        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
@@ -14,6 +15,7 @@
 //        {"kind":"view","path":"a.txt","found":true}
 //        {"kind":"ask","command":"rm -rf build"}   a gated run's command, waiting for its answer
 //        {"kind":"ended","ending":"finished","text":"..."}
+//        {"kind":"embedding","values":[...]} or {"kind":"embedding","error":"..."}
 //
 // Each run's facts carry the earlier turns as "conversation". Credentials as
 // the desktop Lab reads them (microcoder_keys.coax): into curl's and gcloud's
@@ -31,6 +33,7 @@
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign;
 cxterm_write :: (s: [] u8) -> int #foreign;
+cxproc_sleep_ms :: (ms: int) -> int #foreign;
 
 MW_LINE :: 1048576;
 
@@ -73,6 +76,59 @@ mw_event :: (e: McRunEvent, o: [] u8) {
 mw_ended :: (o: [] u8, ending: string, text: string) {
   n := json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, ending);
   n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); n = json_raw(o, n, "}");
+  mw_send(o, n);
+}
+
+// An embedding from Vertex (gemini-embedding-001, 256 dimensions) for
+// Coder's memory (chapter 19): {"kind":"embedding","values":[...]}, or
+// with "error" when there is none. The token goes into curl's environment
+// only, as for a run. GW_REPLAY and GW_RECORD apply as for any request.
+MW_EMBED_MODEL :: "gemini-embedding-001";
+MW_EMBED_LOCATION :: "us-central1";
+MW_EMBED_DIMENSIONS :: 256;
+mw_embed :: (k: [] MkKeys, text: string, query: bool, o: [] u8) {
+  rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;
+  why := ifx replaying then "" else mk_vertex(k);
+  n := 0;
+  if why.count > 0 {
+    n = json_raw(o, 0, "{\"kind\":\"embedding\",\"error\":"); n = json_write_string(o, n, why); n = json_raw(o, n, "}");
+    mw_send(o, n); return;
+  }
+  ub: [512] u8;
+  u := mk_cat(ub[..], 0, "https://"); u = mk_cat(ub[..], u, MW_EMBED_LOCATION); u = mk_cat(ub[..], u, "-aiplatform.googleapis.com/v1/projects/");
+  u = mk_cat(ub[..], u, GW_VERTEX_PROJECT); u = mk_cat(ub[..], u, "/locations/"); u = mk_cat(ub[..], u, MW_EMBED_LOCATION);
+  u = mk_cat(ub[..], u, "/publishers/google/models/"); u = mk_cat(ub[..], u, MW_EMBED_MODEL); u = mk_cat(ub[..], u, ":predict");
+  bb: [40000] u8;
+  b := json_raw(bb[..], 0, "{\"instances\":[{\"content\":"); b = json_write_string(bb[..], b, cast(string) text[0..<ifx text.count > 8000 then 8000 else text.count]);
+  b = json_raw(bb[..], b, ifx query then ",\"task_type\":\"RETRIEVAL_QUERY\"}]" else ",\"task_type\":\"RETRIEVAL_DOCUMENT\"}]");
+  b = json_raw(bb[..], b, ",\"parameters\":{\"outputDimensionality\":"); b = json_write_int(bb[..], b, MW_EMBED_DIMENSIONS); b = json_raw(bb[..], b, "}}");
+  c: GwClient; c.url = cast(string) ub[0..<u]; c.key_env = GW_VERTEX_KEY_ENV; c.key_value = cast(string) k[0].vx[0].token[0..<k[0].vx[0].nt]; c.max_time_s = 60;
+  st: [1] GwStream; none: [1] string;
+  e := gw_start(c, cast(string) bb[0..<b], none[0..<0], st[..]);
+  body: [262144] u8; nb := 0;
+  if e.count == 0 {
+    line: [65536] u8;
+    for guard: 0..<10000000 {
+      r := gw_poll(st[..], line[..]);
+      if r.kind == GW_END { break; }
+      if r.kind == GW_IDLE { x := cxproc_sleep_ms(5); continue; }
+      if r.kind == GW_LINE { nb = mk_cat(body[..], nb, r.text); nb = mk_cat(body[..], nb, "\n"); }
+    }
+  }
+  status := st[0].status;
+  gw_close(st[..]);
+  resp := cast(string) body[0..<nb];
+  values := cl_raw(resp, "predictions.0.embeddings.values");
+  if e.count > 0 || status != 200 || values.count < 2 || values[0] != '[' {
+    eb: [600] u8; m := mk_cat(eb[..], 0, ifx e.count > 0 then e else "Vertex gave no embedding");
+    if e.count == 0 { tb: [24] u8; m = mk_cat(eb[..], m, " (status "); m = mk_cat(eb[..], m, gw_digits(tb[..], status)); m = mk_cat(eb[..], m, ")"); }
+    n = json_raw(o, 0, "{\"kind\":\"embedding\",\"error\":"); n = json_write_string(o, n, cast(string) eb[0..<m]); n = json_raw(o, n, "}");
+    mw_send(o, n); return;
+  }
+  // one line: Vertex pretty-prints the list
+  vb: [16384] u8; vn := 0;
+  for ch: values { if ch != 32 && ch != 10 && ch != 13 && ch != 9 && vn < vb.count { vb[vn] = ch; vn += 1; } }
+  n = json_raw(o, 0, "{\"kind\":\"embedding\",\"values\":"); n = json_raw(o, n, cast(string) vb[0..<vn]); n = json_raw(o, n, "}");
   mw_send(o, n);
 }
 
@@ -123,6 +179,12 @@ tool_main :: () -> int #export_c {
       continue;
     }
     if cl_bool(msg, "forget").ok { h[0].turns = 0; continue; }
+    if cl_raw(msg, "embed").count > 0 {
+      mk_keys(k[..]);
+      eq := cl_bool(msg, "query");
+      mw_embed(k[..], cl_str(ar[..], msg, "embed"), eq.ok && eq.value, out[..]);
+      continue;
+    }
     ans := cl_bool(msg, "answer");
     if ans.ok {
       if running {

@@ -371,6 +371,35 @@ def verbs(check):
         ra, rb = replay(), replay()
         check("replay: recorded gateway streams run through the loop with no credentials, byte-identical each time",
               ra[0] == 0 and ra == rb and '"text":"It printed replay-check."' in ra[1] and '"label":"Bash(echo replay-check)"' in ra[1])
+        # memory (chapter 19): remember, a conflict, a revise that settles it, forget; recall ranks by replayed embeddings
+        mhome = tempfile.mkdtemp(prefix="coder-memory-")
+        menv = dict(renv, HOME=mhome)
+        def mq(*a, e=None):
+            return subprocess.run([coder] + list(a), cwd=rw, env=e or menv, capture_output=True, text=True, timeout=300)
+        m1 = mq("remember", "deploy", "Ship openagents.com only through coax/web/release.sh.", "--project")
+        m2 = mq("remember", "build", "Build Coder with make.")
+        m3 = mq("remember", "build", "Build with the old script.")
+        m4 = mq("revise", "build", "Build with coder/tui/coder.sh.", "--reason", "resolve")
+        m5 = mq("remember", "cake", "The office cake is lemon on Fridays.")
+        m6 = mq("forget", "cake")
+        mdir = os.path.join(mhome, ".openagents", "coder", "memory")
+        evs = open(os.path.join(mdir, "events.jsonl")).read()
+        mfx = tempfile.mkdtemp(prefix="coder-memory-replay-")
+        for n in ("1.http", "2.http", "3.http"):
+            shutil.copy(os.path.join(HERE, "fixtures", "memory-replay", n), mfx)
+        mr = mq("recall", "how do I put the website live?", "--json", e=dict(menv, GW_REPLAY=mfx))
+        mj = json.loads(mr.stdout or "{}")
+        vlines = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
+        m7 = mq("forget", "build")
+        vafter = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
+        open(os.path.join(mdir, "events.jsonl"), "w").write(evs.replace('"from":0', '"from":5', 1))
+        m8 = mq("recall")
+        check("memory: remember, conflict, revise, forget; recall ranks by embeddings; forgotten text leaves the file; an edited log is refused",
+              all(x.returncode == 0 for x in (m1, m2, m4, m5, m6, m7)) and "now holds two texts" in m3.stdout and "version 3" in m4.stdout
+              and "lemon" not in evs and len(evs.splitlines()) == 6
+              and mr.returncode == 0 and mj.get("ranked") is True and [f["key"] for f in mj.get("facts", [])] == ["deploy", "build"]
+              and mj["facts"][0]["score"] > mj["facts"][1]["score"] and mj["facts"][1]["version"] == 3
+              and vlines == 2 and vafter == 1 and m8.returncode == 1 and "does not verify" in m8.stderr)
         # each Microcoder ending through coder run (chapter 9), from replayed responses
         def mhttp(content, status=200):
             if status != 200:

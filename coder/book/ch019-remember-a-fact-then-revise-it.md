@@ -6,10 +6,12 @@
 > that supersede with a reason; conflicts flagged until resolved; facts
 > whose cited passage changed refused as stale; forgetting that removes
 > the text from the log and the table, with a verifier that proves it; and
-> replay that rebuilds the store from the log. Still to come: checking an
-> event-sourced fact's digest against [chapter2](ch002-model-visible-means-logged.md)'s
-> session log, a store kept on disk and read back by a later process, and
-> retrieval ranked by a query.
+> replay that rebuilds the store from the log. Coder keeps the log on disk
+> (`coder remember`, `revise`, `forget`, `recall`), verifies it in every
+> later process, and ranks facts for a query by cosine similarity of Vertex
+> embeddings. Still to come: checking an event-sourced fact's digest
+> against [chapter 2](ch002-model-visible-means-logged.md)'s session log,
+> and the agent reading and writing its memory during a session.
 
 An agent that works across sessions needs to remember facts: the command
 that builds the project, the editor the user prefers, a deadline. Facts
@@ -585,18 +587,82 @@ apart from the store:
 
 `coax mutate` on `memory.coax` kills all 310 mutants; none survive.
 
+## In Coder
+
+Coder exposes the store as four verbs. Each reads the log back from disk,
+verifies the whole chain with `mm_replay` and folds it into a table before
+it does anything; a log that does not verify is refused, with the event
+where it breaks.
+
+```shell
+coder/tui/coder.sh remember build "Build Coder with coder/tui/coder.sh."
+coder/tui/coder.sh remember deploy "Ship openagents.com only through coax/web/release.sh." --project
+coder/tui/coder.sh revise build "Build with coder/tui/coder.sh." --reason correction
+coder/tui/coder.sh forget build
+coder/tui/coder.sh recall "how do I put the website live?" --top 3
+```
+
+- **Scope.** A fact is yours (user scope) unless you pass `--project`,
+  which scopes it to the folder you run Coder in. The project's owner id is
+  48 bits of SHA-256 of the folder's physical path, so a fact remembered in
+  one checkout is not shown in another. `recall` shows your facts and this
+  folder's.
+- **Window.** A fact holds from the second it was written until
+  `--days N` later, or for good. `recall` shows only facts inside their
+  window.
+- **Conflicts and revisions.** A second `remember` of a key that holds a
+  different text makes both versions conflict; neither is shown until
+  `revise` settles it. `revise` takes `--reason correction`, `update` (the
+  default) or `resolve`, and prints the new version number.
+- **Forget.** The forget event is appended, and the text bytes of every
+  earlier version of the key are overwritten in the file. Their content
+  digests stay, so the chain still verifies.
+- **Recall.** With no query, `recall` lists the facts in the order they
+  were written. With a query, it ranks them by cosine similarity of
+  Vertex `gemini-embedding-001` embeddings (256 dimensions): each fact as a
+  retrieval document (`KEY: TEXT`), the query as a retrieval query.
+  Microcoder's worker (`coder/tui/mcworker.coax`, request
+  `{"embed":"TEXT","query":true}`) makes the calls, so Coder itself holds
+  no credentials. A fact's vector is fetched the first time it is ranked
+  and kept; the query's is fetched every time. When Vertex can't be
+  reached, `recall` says so and lists the facts unranked. `--json` prints
+  the facts with their scope, version and score (thousandths of the
+  cosine).
+
+The files are in `~/.openagents/coder/memory/`:
+
+| File | What it holds |
+|---|---|
+| `events.jsonl` | The log, one event a line: every field of the event, its key, text and citation bytes in hex, and its digests. The `key` field is a readable copy and is not loaded. |
+| `vectors.jsonl` | One vector for each live fact, keyed by the digest of the event that wrote it, as integers (each value times 1,000,000). A write drops the vectors of facts that are no longer live. |
+
+Both files are rewritten through a temporary file and a rename. The verbs
+are in [coder/tui/memory.coax](../tui/memory.coax).
+
+In a live run on 2026-11-02, the query "how do I put the website live?"
+ranked the `deploy` fact at 71% and `build` at 63%, and "compile the
+coding agent" ranked `build` first at 75%. The second query fetched only
+its own embedding.
+
+The smoke (`coder/tui/smoke.py`) remembers, conflicts, revises and forgets
+in a fresh HOME, then replays three recorded embedding responses
+([fixtures/memory-replay](../tui/fixtures/memory-replay/README.md)) with
+`GW_REPLAY` and no credentials. It checks that `deploy` ranks first, that
+the forgotten text is not in the file, that `forget` drops the vector, and
+that a log with one edited field is refused.
+
 ## What this does not do yet
 
 - **Event sources are not checked against a session log.** An
   event-sourced fact carries the digest of the event it was said in, but
   nothing yet confirms that chapter2's log holds an event with that
   digest. Cited facts are checked against their passage on every read.
-- **The log lives in memory.** A later session in the same process sees
-  the store, and replay rebuilds it from the log, but writing the log to
-  disk and reading it back in another process is not built.
-- **No ranked retrieval.** Facts are looked up by key or listed by scope.
-  Retrieving the facts that matter for a query, with Psionic chapter 54's ranking,
-  is not built.
+- **The agent doesn't use its memory yet.** You write and read facts
+  with the verbs. Showing the served facts to the model at the start of a
+  session, and letting the agent propose a `remember` that you approve,
+  are not built.
+- **Ranking is by embeddings only.** Psionic chapter 54's lexical ranking
+  and reranking are not combined with the cosine score.
 
 ## Sources
 
