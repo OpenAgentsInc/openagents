@@ -1,0 +1,109 @@
+// Chapter 166's check helpers and oracles, loaded by psionic/lib/cosmos.coax.
+// The oracles are written again from the chapter's prose, with their own
+// indexing, and share no helper with the procedures they check.
+
+// Patch channel ch at latent (r, s), straight from the Wan rule: colour
+// ch / 4, column offset (ch % 4) / 2, row offset ch % 2.
+cs_patch_hand :: (x:[]f32,ch:int,r:int,s:int)->f64 {
+    c:=ch/4;b:=(ch%4)/2;a:=ch%2;
+    return f64(x[c*64+(2*r+a)*8+2*s+b]);
+}
+// The probe codec: the latent is the mean of a block's four red pixels;
+// decoding puts it back on those four red pixels.
+cs_probe :: (w:[]f32) {
+    for i:0..<w.count {w[i]=0;}
+    for c:0..<4 {w[c]=0.25;w[13+c]=1;}
+}
+// Synthetic denoiser weights: normals scaled by 1/2, norms near 1.
+cs_weights :: (w:[]f64,seed:u64) {
+    for i:0..<w.count {w[i]=df_normal(seed,u64(i))/2;}
+    for at:[7]int.[40,108,176,244,312,316,320] {for j:0..<4 {w[at+j]=1+w[at+j]/4;}}
+    for j:0..<4 {w[324+j]=1+w[324+j]/4;}
+}
+
+// The oracle's own pieces. Weight (r, c) of a rows x cols matrix at offset at.
+cs_o_w :: (w:[]f64,at:int,cols:int,r:int,c:int)->f64 {return w[at+r*cols+c];}
+cs_o_norm :: (v:[4]f64,w:[]f64,at:int)->[4]f64 {
+    m:=(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]+v[3]*v[3])/4;
+    out:[4]f64;for i:0..<4 {out[i]=v[i]/sqrt(m+0.00001)*w[at+i];}
+    return out;
+}
+cs_o_apply :: (w:[]f64,at:int,v:[4]f64)->[4]f64 {
+    out:[4]f64;for r:0..<4 {for c:0..<4 {out[r]+=cs_o_w(w,at,4,r,c)*v[c];}}
+    return out;
+}
+// Latent value at (row, col) belongs to token (row / 2) x 2 + col / 2, at
+// element (row % 2) x 2 + col % 2.
+cs_o_tokens :: (lat:[]f64)->[4][4]f64 {
+    t:[4][4]f64;
+    for row:0..<4 {for col:0..<4 {t[(row/2)*2+col/2][(row%2)*2+col%2]=lat[row*4+col];}}
+    return t;
+}
+cs_oracle_forward :: (w:[]f64,cond:[]f64,x:[]f64,t:f64,v:[]f64,ctx:[]f64) {
+    tc:=cs_o_tokens(cond);tx:=cs_o_tokens(x);
+    h:[8][4]f64;
+    for k:0..<4 {
+        h[k]=cs_o_apply(w,0,tc[k]);
+        g:=cs_o_apply(w,16,tx[k]);for j:0..<4 {h[4+k][j]=g[j]+w[32+j]+t*w[36+j];}
+    }
+    base:=[2]int.[40,176];
+    qs:[8][4]f64;ks:[8][4]f64;vs:[8][4]f64;seen:[8][4]f64;
+    for k:0..<8 {
+        b:=base[k/4];n:=cs_o_norm(h[k],w,b);
+        qs[k]=cs_o_apply(w,b+4,n);ks[k]=cs_o_apply(w,b+20,n);vs[k]=cs_o_apply(w,b+36,n);
+        seen[k]=ks[k];
+        if k<4 {seen[k]=cs_o_norm(ks[k],w,320);}
+        else {qs[k]=cs_o_norm(qs[k],w,312);ks[k]=cs_o_norm(ks[k],w,316);seen[k]=ks[k];}
+    }
+    after:[8][4]f64;
+    for k:0..<8 {
+        score:[8]f64;use:[8]bool;big:=-1.0e300;
+        for j:0..<8 {
+            use[j]=(k<4 && j<=k) || k>=4;
+            if use[j] {
+                key:=ks[j];if k>=4 {key=seen[j];}
+                score[j]=(qs[k][0]*key[0]+qs[k][1]*key[1]+qs[k][2]*key[2]+qs[k][3]*key[3])/2;
+                if score[j]>big {big=score[j];}
+            }
+        }
+        z:=0.0;for j:0..<8 {if use[j] {z+=exp(score[j]-big);}}
+        o:[4]f64;for j:0..<8 {if use[j] {p:=exp(score[j]-big)/z;for i:0..<4 {o[i]+=p*vs[j][i];}}}
+        y:=cs_o_apply(w,base[k/4]+52,o);
+        for i:0..<4 {after[k][i]=h[k][i]+y[i];}
+    }
+    for k:0..<8 {
+        b:=base[k/4];n:=cs_o_norm(after[k],w,b+68);
+        up:[8]f64;for r:0..<8 {for c:0..<4 {up[r]+=cs_o_w(w,b+72,4,r,c)*n[c];}if up[r]<0 {up[r]=0;}up[r]*=up[r];}
+        for r:0..<4 {d:=0.0;for c:0..<8 {d+=cs_o_w(w,b+104,8,r,c)*up[c];}after[k][r]+=d;}
+    }
+    for row:0..<4 {for col:0..<4 {
+        k:=(row/2)*2+col/2;e:=(row%2)*2+col%2;
+        n:=cs_o_norm(after[4+k],w,324);
+        s:=w[344+e];for j:0..<4 {s+=cs_o_w(w,328,4,e,j)*n[j];}
+        v[row*4+col]=s;ctx[row*4+col]=after[k][e];
+    }}
+}
+// The whole path again: last frame's block latents, Euler with this oracle.
+CsOracle :: struct {cond:[16]f64;latent:[16]f64;first:[16]f64;context:[16]f64;frame:[192]f32;}
+cs_oracle_generate :: (cw:[]f32,dw:[]f64,s:ObSeq,steps:int,seed:u64)->CsOracle {
+    o:CsOracle;last:=s.count-1;px:=s.pixels;
+    for r:0..<4 {for c:0..<4 {
+        z:=f64(cw[12]);
+        for ch:0..<12 {z+=f64(cw[ch])*cs_patch_hand(px[last*192..<last*192+192],ch,r,c);}
+        o.cond[r*4+c]=(z-0.5)/0.5;
+    }}
+    walk:[9]int;n:=cs_walk(steps,walk[..]);
+    for i:0..<16 {o.latent[i]=df_normal(seed,u64(i));}
+    v:[16]f64;h:[16]f64;
+    for st:0..<n-1 {
+        t0:=f64(walk[st])*(200.0/201.0)/1000;t1:=f64(walk[st+1])*(200.0/201.0)/1000;
+        cs_oracle_forward(dw,o.cond[..],o.latent[..],t0,v[..],h[..]);
+        if st==0 {o.first=v;o.context=h;}
+        for i:0..<16 {o.latent[i]+=(t1-t0)*v[i];}
+    }
+    for c:0..<3 {for y:0..<8 {for x:0..<8 {
+        ch:=c*4+(x%2)*2+y%2;
+        o.frame[c*64+y*8+x]=f32(f64(cw[13+ch])*(o.latent[(y/2)*4+x/2]*0.5+0.5)+f64(cw[25+ch]));
+    }}}
+    return o;
+}

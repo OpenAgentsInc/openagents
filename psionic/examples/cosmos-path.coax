@@ -1,0 +1,63 @@
+// Chapter 166: the pinned Cosmos3-Edge manifest checked against its
+// configuration, three real-weight slices against float64 references, and
+// the whole generation path on synthetic weights: an observation record,
+// the codec under chapter 165's contract, Karras flow levels under the
+// scheduler contract, two-tower Euler steps and the decoded frame, checked
+// stage by stage against the oracle, with the task evaluation reported
+// apart.
+#import "Basic";
+#load "../lib/cosmos.coax";
+
+show4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+
+// book:begin example
+main :: () {
+    // 1. Manifest: 19 shapes from config.json against the safetensors headers.
+    s:[95]int;cs_config_shapes(s[..]);same:=0;for i:0..<95 {if s[i]==CS_HEADER_SHAPES[i] {same+=1;}}
+    print("manifest: % tensors, % parameters, % layers of % tensors; % of 95 shape numbers match the config\n",
+        CS_HEADER_TENSORS,CS_HEADER_PARAMETERS,CS_HEADER_LAYERS,cs_per_layer(),same);
+
+    // 2. Real-weight slices, tolerance 1e-12 frozen before comparison.
+    u:[192]f64;for i:0..<192 {u[i]=cs_input_in(i);}
+    wi:=CS_PROJ_IN_W;bi:=CS_PROJ_IN_B;y:[8]f64;cs_linear_bf16(wi[..],bi[..],8,192,u[..],y[..]);
+    ok:=0;for r:0..<8 {if abs(y[r]-CS_REF_PROJ_IN[r])<=1e-12 {ok+=1;}}
+    print("proj_in rows 0..7 on a fixed latent patch: % of 8 within 1e-12; row 0 = %\n",ok,show4(y[0]));
+    h:[2048]f64;for j:0..<2048 {h[j]=cs_input_out(j);}
+    wo:=CS_PROJ_OUT_W;bo:=CS_PROJ_OUT_B;o:[2]f64;cs_linear_bf16(wo[..],bo[..],2,2048,h[..],o[..]);
+    ok=0;for r:0..<2 {if abs(o[r]-CS_REF_PROJ_OUT[r])<=1e-12 {ok+=1;}}
+    print("proj_out rows 0..1 on a fixed hidden state: % of 2 within 1e-12; % %\n",ok,show4(o[0]),show4(o[1]));
+    c:[8]f64;cs_conv_in_slice(c[..]);ok=0;for k:0..<8 {if abs(c[k]-CS_REF_CONV_IN[k])<=1e-12 {ok+=1;}}
+    print("VAE encoder conv_in, filters 0 and 1, one frame: % of 8 within 1e-12; filter 0 at (0, 0) = %\n",ok,show4(c[0]));
+
+    // 3. The codec on chapter 165's hand record, under its codec contract.
+    cw:[CS_CODEC_PARAMS]f32;cs_probe(cw[..]);rec:=ob_two();
+    run:=cs_codec_run(cw[..],rec);
+    print("codec contract: %; frame 1 codes:",ob_codec_check(run));for i:16..<32 {print(" %",run.batch[i]);}print("\n");
+
+    // 4. Flow levels, under the scheduler contract.
+    walk:[CS_STEPS_MAX+1]int;n:=cs_walk(4,walk[..]);
+    print("4 Karras steps, levels:");for i:0..<n {print(" %",walk[i]);}
+    print("; flow times:");for i:0..<n {print(" %",show4(cs_time(walk[i])));}
+    print("; scheduler contract: %\n",ob_schedule_check(cs_schedule(),walk[0..<n]));
+
+    // 5. The whole path, synthetic two-tower weights, seed 7.
+    dw:[CS_PARAMS]f64;cs_weights(dw[..],11);
+    r:=cs_generate(cw[..],dw[..],rec,4,7);ora:=cs_oracle_generate(cw[..],dw[..],rec,4,7);
+    worst:=0.0;
+    for i:0..<16 {for d:[4]f64.[r.latent[i]-ora.latent[i],r.first[i]-ora.first[i],r.context[i]-ora.context[i],r.cond[i]-ora.cond[i]] {if abs(d)>worst {worst=abs(d);}}}
+    px:=0;for i:0..<OB_PIXELS {if abs(r.frame[i]-ora.frame[i])<=0.000001 {px+=1;}}
+    print("generate: %; every stage within 1e-12 of the oracle: %; frame pixels within 1e-6: % of 192\n",r.status,worst<=1e-12,px);
+    print("  condition latent row 1:");for i:4..<8 {print(" %",show4(r.cond[i]));}print("\n");
+    print("  first velocity row 1:");for i:4..<8 {print(" %",show4(r.first[i]));}print("\n");
+    print("  final latent row 1:");for i:4..<8 {print(" %",show4(r.latent[i]));}print("\n");
+    print("  final codes:");for i:0..<16 {print(" %",r.codes[i]);}print("\n");
+
+    // 6. Task evaluation, apart from numerics: red mass within 25%.
+    seen:=cs_red_mass(rec.pixels[192..<384]);got:=cs_red_mass(r.frame[..]);
+    print("task: observed red mass %, generated % (untrained weights): plausible %\n",seen,show4(got),cs_plausible(seen,got));
+    ctx:[CS_LATENT]f64;f:[CS_LATENT]f64;x:[CS_LATENT]f64;
+    cs_sample(dw[..],r.cond[..],r.noise[..],walk[0..<n],true,x[..],f[..],ctx[..]);
+    frame:[OB_PIXELS]f32;cs_decode_latent(cw[..],x[..],frame[..]);
+    print("task: the exact flow toward the last frame's latent gives red mass %: plausible %\n",show4(cs_red_mass(frame[..])),cs_plausible(seen,cs_red_mass(frame[..])));
+}
+// book:end example

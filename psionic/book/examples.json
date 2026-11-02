@@ -2552,6 +2552,26 @@
       ]
     },
     {
+      "source": "psionic/examples/cosmos-path.coax",
+      "chapter": "psionic/book/ch166-one-complete-cosmos3-edge-path.md",
+      "stdout": "psionic/fixtures/cosmos-path.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/cosmos-path-refuse.coax",
+      "chapter": "psionic/book/ch166-one-complete-cosmos3-edge-path.md",
+      "stdout": "psionic/fixtures/cosmos-path-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/cooperate.coax",
       "chapter": "psionic/book/ch068-coax-kernels-cooperate.md",
       "stdout": "psionic/fixtures/cooperate.out",

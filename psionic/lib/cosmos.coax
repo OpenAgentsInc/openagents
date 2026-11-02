@@ -1,0 +1,521 @@
+// Chapter 166: one complete Cosmos3-Edge path. The pinned checkpoint's
+// manifest checked against its configuration; real-weight slices of its
+// latent input and output projections and its VAE's first convolution; and
+// the whole generation path wired end to end on small synthetic weights: an
+// observation record from chapter 165, a Wan-convention patchify codec that
+// passes chapter 165's codec contract, a two-tower denoiser (understanding
+// weights for the conditioning frame, generation weights for the noisy
+// latent, joint attention), Karras-spaced flow times that pass chapter 165's
+// scheduler contract, Euler steps on the flow ODE, and the decoded frame.
+// Profile psionic-cosmos-v1: binary64 sums in a fixed order, f32 pixels, one
+// CPU core, one 3 by 8 by 8 frame a step, at most 8 sampling steps.
+#load "observe-contracts.coax";
+#load "../tests/cosmos-checks.coax";   // the checks' oracles
+#load "../tests/cosmos-slices.coax";   // generated: header shapes, bf16 slices, references
+
+// book:begin config
+// From the pinned config.json, transformer/config.json and vae/config.json.
+CS_HIDDEN :: 2048;          // hidden_size
+CS_HEADS :: 16;             // num_attention_heads
+CS_KV_HEADS :: 8;           // num_key_value_heads
+CS_HEAD_DIM :: 128;         // head_dim, stated, not hidden / heads
+CS_FFN :: 9216;             // intermediate_size, relu2
+CS_LAYERS :: 28;            // num_hidden_layers
+CS_VOCAB :: 131072;         // vocab_size
+CS_LATENT_CH :: 48;         // latent_channel = the VAE's z_dim
+CS_LATENT_PATCH :: 2;       // latent_patch_size
+CS_ACTION_DIM :: 64;        // action_dim
+CS_DOMAINS :: 32;           // num_embodiment_domains
+CS_VAE_IN :: 12;            // 3 colours x patch 2 x 2
+CS_VAE_BASE :: 160;         // base_dim
+CS_VAE_DEC_BASE :: 256;     // decoder_base_dim
+CS_VAE_TOP :: 4;            // dim_mult's last entry
+CS_VIS_HIDDEN :: 1152;      // vision_config.hidden_size
+CS_VIS_PATCH :: 16;         // vision_config.patch_size
+CS_VIS_MERGE :: 2;          // spatial_merge_size
+CS_PROJ_HIDDEN :: 11520;    // projector merger_intermediate_size
+CS_TIME_FREQ :: 256;        // the time embedder's input width: in the header only
+CS_SIGMA_MIN :: 0.147;      // scheduler sigma_min
+CS_SIGMA_MAX :: 200.0;      // scheduler sigma_max
+CS_RHO :: 7.0;              // Karras spacing exponent
+CS_TRAIN_LEVELS :: 1000;    // num_train_timesteps
+// book:end config
+
+// book:begin shape
+CS_SIDE :: 8;               // frames are chapter 165's 3 x 8 x 8
+CS_GRID :: 4;               // the codec's latent: 1 channel of 4 x 4
+CS_LATENT :: 16;
+CS_CODEC_PARAMS :: 37;      // encoder 12 + 1 bias, decoder 12 + 12 biases
+CS_MEAN :: 0.5;             // the toy latent's mean and standard deviation
+CS_STD :: 0.5;
+CS_TOKENS :: 4;             // 2 x 2 latent patches a frame
+CS_WIDTH :: 4;              // a token: one latent patch, 1 x 2 x 2 values
+CS_D :: 4;                  // the denoiser's hidden width
+CS_F :: 8;                  // its MLP width
+CS_EPS :: 0.00001;          // rms_norm_eps
+CS_STEPS_MAX :: 8;
+CS_WEIGHT_MAX :: 1000.0;    // admitted denoiser weights: |w| at most this, so no sum overflows
+CS_TMAX :: 200.0/201.0;     // flow time at sigma_max: 200 / (1 + 200)
+// Synthetic denoiser weights, one flat list. A tower: norm 4, q, k, v, o 16
+// each, norm 4, up 8 x 4, down 4 x 8.
+CS_EU :: 0;  CS_WI :: 16; CS_BI :: 32; CS_TA :: 36;
+CS_TOWER :: 40; CS_TW :: 136;   // understanding tower at 40, generation at 176
+CS_QN :: 312; CS_KN :: 316; CS_KU :: 320; CS_NF :: 324; CS_WO :: 328; CS_BO :: 344;
+CS_PARAMS :: 348;
+// book:end shape
+
+// book:begin types
+CsStatus :: enum u8 {ok;record;codec;weights;steps;}
+// One generation: the walk of levels, the conditioning frame's latent, the
+// starting noise, the understanding tower's output and the velocity at the
+// first step, the final latent, its codes and the decoded frame.
+CsRun :: struct {
+    status:CsStatus;steps:int;walk:[CS_STEPS_MAX+1]int;
+    cond:[CS_LATENT]f64;noise:[CS_LATENT]f64;context:[CS_LATENT]f64;first:[CS_LATENT]f64;
+    latent:[CS_LATENT]f64;codes:[CS_LATENT]int;frame:[OB_PIXELS]f32;
+}
+// book:end types
+
+#test "the manifest's shapes follow from the configuration" {
+    s:[95]int;cs_config_shapes(s[..]);
+    for i:0..<95 {#assert s[i]==CS_HEADER_SHAPES[i];}
+    #assert CS_HEADER_LAYERS==CS_LAYERS && CS_HEADER_PER_LAYER==cs_per_layer() && CS_HEADER_TENSORS==1188;
+    #assert CS_HEADS*CS_HEAD_DIM==CS_HIDDEN && CS_KV_HEADS*CS_HEAD_DIM==1024;
+}
+#test "patchify the Wan way, and back" {
+    x:[OB_PIXELS]f32;for i:0..<OB_PIXELS {x[i]=f32(i);}
+    p:[CS_VAE_IN*CS_LATENT]f64;cs_patchify(x[..],0,p[..]);
+    for ch:0..<CS_VAE_IN {for r:0..<CS_GRID {for c:0..<CS_GRID {#assert p[ch*16+r*4+c]==cs_patch_hand(x[..],ch,r,c);}}}
+    // Channel 1 is red's row offset 1: pixel (row 1, column 0) is 8; channel 2 is column offset 1.
+    #assert p[16]==8 && p[32]==1 && p[48]==9 && p[64]==64;
+    y:[OB_PIXELS]f32;cs_unpatchify(p[..],y[..],0);for i:0..<OB_PIXELS {#assert y[i]==x[i];}
+}
+#test "the codec by hand, and chapter 165's codec contract" #steps 400000000 {
+    w:[CS_CODEC_PARAMS]f32;cs_probe(w[..]);s:=ob_two();
+    z:[CS_LATENT]f64;#assert cs_encode_latent(w[..],s.pixels[0..<192],z[..]);
+    for i:0..<16 {v:=-1.0;if i==5 || i==9 {v=0;}#assert z[i]==v;}
+    #assert cs_encode_latent(w[..],s.pixels[192..<384],z[..]);
+    for i:0..<16 {v:=-1.0;if i==5 || i==6 || i==9 || i==10 {v=-0.5;}#assert z[i]==v;}
+    r:=cs_codec_run(w[..],s);
+    #assert r.status==ObStatus.ok && ob_codec_check(r)==ObClause.ok && ob_four(r.written,32) && r.pixels==384;
+    for i:0..<16 {v:=-7;if i==5 || i==9 {v=0;}#assert r.batch[i]==v;v=-7;if i==5 || i==6 || i==9 || i==10 {v=-3;}#assert r.batch[16+i]==v;}
+    // Code 0 decodes to 0.5 and code -3 to -3/7 x 0.5 + 0.5 = 2/7, on all four red pixels of a block.
+    #assert r.decoded[3*8+3]==0.5 && r.decoded[192+4*8+4]==f32(f64(f32(-3.0/7))*0.5+0.5) && r.decoded[192+0]==0;
+    for i:64..<192 {#assert r.decoded[i]==0;}
+    // Every decoded pixel: red is its block's level x 0.5 + 0.5, green and blue 0.
+    for f:0..<2 {for y:0..<8 {for x:0..<8 {
+        #assert r.decoded[f*192+y*8+x]==f32(f64(cz_level(r.batch[f*16+(y/2)*4+x/2]))*0.5+0.5);
+        #assert r.decoded[f*192+64+y*8+x]==0 && r.decoded[f*192+128+y*8+x]==0;
+    }}}
+    // Random weights pass too; refusals.
+    q:[CS_CODEC_PARAMS]f32;for i:0..<CS_CODEC_PARAMS {q[i]=f32(df_normal(3,u64(i))/4);}
+    #assert ob_codec_check(cs_codec_run(q[..],ob_scene(2,true,6)))==ObClause.ok;
+    #assert cs_codec_run(w[0..<36],s).status==ObStatus.codec;
+    b:=w;b[20]=1.0/0.0;#assert cs_codec_run(b[..],s).status==ObStatus.codec;
+    bad:=s;bad.ticks[1]=180;#assert cs_codec_run(w[..],bad).status==ObStatus.missing;
+}
+#test "Karras flow times, the walk and chapter 165's scheduler contract" {
+    walk:[CS_STEPS_MAX+1]int;
+    #assert cs_walk(4,walk[..])==5;
+    hand:=[5]int.[1000,979,803,129,0];for i:0..<5 {#assert walk[i]==hand[i];}
+    #assert cs_walk(1,walk[..])==2 && walk[0]==1000 && walk[1]==0;
+    ten:[10]int;#assert cs_walk(9,ten[..])==0 && cs_walk(8,ten[..])==9;
+    #assert cs_walk(0,walk[..])==0 && cs_walk(9,walk[..])==0 && cs_walk(4,walk[0..<4])==0 && cs_walk(4,walk[0..<5])==5;
+    s:=cs_schedule();
+    for n:1..<CS_STEPS_MAX+1 {k:=cs_walk(n,walk[..]);#assert k==n+1 && ob_schedule_check(s,walk[0..<k])==ObClause.ok;}
+    // Level 1000 is t = 200/201: abar there is (1/201)^2 / ((1/201)^2 + (200/201)^2) = 1/40001.
+    #assert abs(s.abar[1000]-1.0/40001)<=1e-15 && s.abar[0]==1 && cs_time(500)==0.5*CS_TMAX;
+    #assert abs(cs_abar(0.5)-0.5)<=1e-15 && cs_abar(0)==1;
+    // The unsnapped Karras levels, as variance-preserving betas, decrease
+    // between the last two: the contract's beta clause would refuse them.
+    #assert abs(cs_sigma(4,0)-CS_SIGMA_MAX)<=1e-12 && cs_sigma(1,0)==CS_SIGMA_MAX && abs(cs_sigma(4,3)-CS_SIGMA_MIN)<=1e-12;
+    b3:=1-(1+cs_sigma(4,2)*cs_sigma(4,2))/(1+cs_sigma(4,1)*cs_sigma(4,1));
+    b4:=1-(1+cs_sigma(4,1)*cs_sigma(4,1))/(1+cs_sigma(4,0)*cs_sigma(4,0));
+    #assert b3>0.98 && b4<0.97;
+}
+#test "the denoiser against its independent oracle" #steps 400000000 {
+    w:[CS_PARAMS]f64;cs_weights(w[..],11);
+    for trial:0..<4 {
+        c:[CS_LATENT]f64;x:[CS_LATENT]f64;
+        for i:0..<16 {c[i]=df_normal(u64(20+trial),u64(i));x[i]=df_normal(u64(40+trial),u64(i));}
+        t:=0.2*f64(trial+1);
+        v:[CS_LATENT]f64;h:[CS_LATENT]f64;cs_forward(w[..],c[..],x[..],t,v[..],h[..]);
+        ov:[CS_LATENT]f64;oh:[CS_LATENT]f64;cs_oracle_forward(w[..],c[..],x[..],t,ov[..],oh[..]);
+        for i:0..<16 {#assert abs(v[i]-ov[i])<=1e-12 && abs(h[i]-oh[i])<=1e-12;}
+    }
+    // Probe: every weight 0 but proj_out's bias: the velocity is that bias.
+    z:[CS_PARAMS]f64;for i:0..<4 {z[CS_BO+i]=f64(i+1);}
+    c:[CS_LATENT]f64;v:[CS_LATENT]f64;h:[CS_LATENT]f64;cs_forward(z[..],c[..],c[..],0.5,v[..],h[..]);
+    for i:0..<16 {#assert v[i]==f64(cs_tok_elem(i)+1) && h[i]==0;}
+}
+#test "the softmax by hand, on scores near 1,000" {
+    // exp(1000) overflows; shifted by the largest, 1000.25, the weights are
+    // e^-0.25, e^-0.75 and 1.
+    s:=[3]f64.[1000,999.5,1000.25];cs_softmax(s[..]);
+    a:=exp(-0.25);b:=exp(-0.75);t:=a+b+1;
+    #assert abs(s[0]-a/t)<=1e-15 && abs(s[1]-b/t)<=1e-15 && abs(s[2]-1/t)<=1e-15;
+    s=[3]f64.[-1000,-999.5,-1000.25];cs_softmax(s[..]);a=exp(-0.5);b=exp(-0.75);t=a+1+b;
+    #assert abs(s[0]-a/t)<=1e-15 && abs(s[1]-1/t)<=1e-15 && abs(s[2]-b/t)<=1e-15;
+    two:=[2]f64.[3,3];cs_softmax(two[..]);#assert two[0]==0.5 && two[1]==0.5;
+    one:=[1]f64.[-7];cs_softmax(one[..]);#assert one[0]==1;
+    // The largest score is the middle one, 720 above the others: shifting by
+    // any other score would overflow.
+    w:=[3]f64.[0,720,1];cs_softmax(w[..]);#assert w[1]==1 && w[0]<1e-300 && w[2]<1e-300 && w[2]>w[0];
+}
+#test "Euler steps on the flow ODE" #steps 400000000 {
+    // The exact velocity toward one target lands on it: x_t' = x0 + (x_t - x0) t'/t.
+    walk:[CS_STEPS_MAX+1]int;n:=cs_walk(4,walk[..]);
+    target:[CS_LATENT]f64;noise:[CS_LATENT]f64;out:[CS_LATENT]f64;first:[CS_LATENT]f64;ctx:[CS_LATENT]f64;
+    for i:0..<16 {target[i]=f64(i%5)/4-0.5;noise[i]=df_normal(5,u64(i));}
+    w:[CS_PARAMS]f64;
+    cs_sample(w[..],target[..],noise[..],walk[0..<n],true,out[..],first[..],ctx[..]);
+    for i:0..<16 {#assert abs(out[i]-target[i])<=1e-12 && abs(first[i]-(noise[i]-target[i])/CS_TMAX)<=1e-12;}
+    // The bias-only probe: x = noise - TMAX x bias, whatever the walk.
+    for i:0..<4 {w[CS_BO+i]=f64(i+1)/10;}
+    for steps:1..<4 {
+        n=cs_walk(steps,walk[..]);cs_sample(w[..],target[..],noise[..],walk[0..<n],false,out[..],first[..],ctx[..]);
+        for i:0..<16 {#assert abs(out[i]-(noise[i]-CS_TMAX*f64(cs_tok_elem(i)+1)/10))<=1e-12;}
+    }
+}
+#test "the whole path, by hand and against the oracle" #steps 400000000 {
+    cw:[CS_CODEC_PARAMS]f32;cs_probe(cw[..]);dw:[CS_PARAMS]f64;s:=ob_two();
+    // Bias-only denoiser with bias 0: the latent is the noise; one step.
+    r:=cs_generate(cw[..],dw[..],s,1,7);
+    #assert r.status==CsStatus.ok && r.steps==1 && r.walk[0]==1000 && r.walk[1]==0;
+    for i:0..<16 {#assert r.latent[i]==df_normal(7,u64(i)) && r.noise[i]==r.latent[i] && r.first[i]==0;}
+    // The condition is the last frame: square at (3, 3), latent -0.5 on 4 blocks.
+    for i:0..<16 {v:=-1.0;if i==5 || i==6 || i==9 || i==10 {v=-0.5;}#assert r.cond[i]==v;}
+    // Decoding: red pixel (0, 0) is noise 0 x 0.5 + 0.5.
+    #assert r.frame[0]==f32(r.latent[0]*0.5+0.5) && r.frame[64]==0 && r.codes[0]==cz_code(r.latent[0]);
+    // Synthetic weights: every stage equals the oracle's.
+    cs_weights(dw[..],11);r=cs_generate(cw[..],dw[..],s,4,7);#assert r.status==CsStatus.ok;
+    o:=cs_oracle_generate(cw[..],dw[..],s,4,7);
+    for i:0..<16 {#assert abs(r.latent[i]-o.latent[i])<=1e-12 && abs(r.first[i]-o.first[i])<=1e-12 && abs(r.context[i]-o.context[i])<=1e-12 && r.cond[i]==o.cond[i];}
+    for i:0..<OB_PIXELS {#assert abs(r.frame[i]-o.frame[i])<=0.000001;}
+    // Random codec weights, decoder biases included.
+    q:[CS_CODEC_PARAMS]f32;for i:0..<CS_CODEC_PARAMS {q[i]=f32(df_normal(3,u64(i))/4);}
+    r2:=cs_generate(q[..],dw[..],s,3,9);o2:=cs_oracle_generate(q[..],dw[..],s,3,9);#assert r2.status==CsStatus.ok;
+    for i:0..<16 {#assert abs(r2.latent[i]-o2.latent[i])<=1e-12 && abs(r2.cond[i]-o2.cond[i])<=1e-12;}
+    for i:0..<OB_PIXELS {#assert abs(r2.frame[i]-o2.frame[i])<=0.000001;}
+    again:=cs_generate(cw[..],dw[..],s,4,7);for i:0..<16 {#assert f64_bits(again.latent[i])==f64_bits(r.latent[i]);}
+    // Refusals, in order.
+    bad:=s;bad.count=1;#assert cs_generate(cw[..],dw[..],bad,4,7).status==CsStatus.record;
+    #assert cs_generate(cw[0..<36],dw[..],s,4,7).status==CsStatus.codec;
+    #assert cs_generate(cw[..],dw[0..<347],s,4,7).status==CsStatus.weights;
+    d2:=dw;d2[100]=0.0/0.0;#assert cs_generate(cw[..],d2[..],s,4,7).status==CsStatus.weights;
+    #assert cs_generate(cw[..],dw[..],s,0,7).status==CsStatus.steps && cs_generate(cw[..],dw[..],s,9,7).status==CsStatus.steps;
+    #assert cs_generate(cw[..],dw[..],s,8,7).status==CsStatus.ok;
+    d2=dw;d2[7]=1000.0001;#assert cs_generate(cw[..],d2[..],s,4,7).status==CsStatus.weights;
+    d2=dw;d2[7]=-1001;#assert cs_generate(cw[..],d2[..],s,4,7).status==CsStatus.weights;
+    d2=dw;d2[7]=1000;d2[8]=-1000;#assert cs_generate(cw[..],d2[..],s,4,7).status==CsStatus.ok;
+}
+#test "task evaluation: red mass" #steps 400000000 {
+    s:=ob_two();
+    #assert cs_red_mass(s.pixels[0..<192])==4 && cs_red_mass(s.pixels[192..<384])==4;
+    f:[OB_PIXELS]f32;for i:0..<OB_PIXELS {f[i]=0.5;}#assert cs_red_mass(f[..])==32;
+    #assert cs_plausible(4,5) && cs_plausible(4,3) && cs_plausible(4,4.9) && !cs_plausible(4,5.1) && cs_plausible(4,3.1) && !cs_plausible(4,2.9) && !cs_plausible(0,0);
+}
+#test "real-weight slices: proj_in, proj_out and the VAE's first convolution" {
+    #assert cs_bf16(0x3f80)==1 && cs_bf16(0xbf80)==-1 && cs_bf16(0x4049)==3.140625 && cs_bf16(0)==0;
+    u:[192]f64;for i:0..<192 {u[i]=cs_input_in(i);}
+    wi:=CS_PROJ_IN_W;bi:=CS_PROJ_IN_B;y:[8]f64;cs_linear_bf16(wi[..],bi[..],8,192,u[..],y[..]);
+    for r:0..<8 {#assert abs(y[r]-CS_REF_PROJ_IN[r])<=1e-12;}
+    h:[2048]f64;for j:0..<2048 {h[j]=cs_input_out(j);}
+    wo:=CS_PROJ_OUT_W;bo:=CS_PROJ_OUT_B;o:[2]f64;cs_linear_bf16(wo[..],bo[..],2,2048,h[..],o[..]);
+    for r:0..<2 {#assert abs(o[r]-CS_REF_PROJ_OUT[r])<=1e-12;}
+    c:[8]f64;cs_conv_in_slice(c[..]);
+    for k:0..<8 {#assert abs(c[k]-CS_REF_CONV_IN[k])<=1e-12;}
+    #assert cs_input_in(0)==-1 && cs_input_in(1)==f64(37%17-8)/8 && cs_input_out(1)==f64(29%23-11)/11;
+}
+
+// book:begin manifest
+// The 19 shapes chapter 166 checks, each as 5 numbers padded with 1, in
+// the order of CS_HEADER_SHAPES.
+cs_config_shapes :: (out:[]int) {
+    q:=CS_HEADS*CS_HEAD_DIM;kv:=CS_KV_HEADS*CS_HEAD_DIM;patch:=CS_LATENT_CH*CS_LATENT_PATCH*CS_LATENT_PATCH;
+    s:=[19][5]int.[
+        [5]int.[q,CS_HIDDEN,1,1,1], [5]int.[kv,CS_HIDDEN,1,1,1],          // to_q, to_k: understanding
+        [5]int.[q,CS_HIDDEN,1,1,1], [5]int.[kv,CS_HIDDEN,1,1,1],          // add_q_proj, add_k_proj: generation
+        [5]int.[CS_HEAD_DIM,1,1,1,1],                                     // norm_added_q: per head
+        [5]int.[CS_FFN,CS_HIDDEN,1,1,1], [5]int.[CS_HIDDEN,CS_FFN,1,1,1], // mlp.up, mlp_moe_gen.down
+        [5]int.[CS_VOCAB,CS_HIDDEN,1,1,1],                                // embed_tokens
+        [5]int.[CS_HIDDEN,patch,1,1,1], [5]int.[patch,CS_HIDDEN,1,1,1],   // proj_in, proj_out
+        [5]int.[CS_HIDDEN,CS_TIME_FREQ,1,1,1],                            // time_embedder.linear_1
+        [5]int.[CS_DOMAINS,CS_ACTION_DIM,1,1,1],                          // action_proj_out.bias
+        [5]int.[CS_VAE_BASE,CS_VAE_IN,3,3,3],                             // encoder.conv_in
+        [5]int.[2*CS_LATENT_CH,CS_VAE_BASE*CS_VAE_TOP,3,3,3],             // encoder.conv_out: mean and log-variance
+        [5]int.[CS_VAE_DEC_BASE*CS_VAE_TOP,CS_LATENT_CH,3,3,3],           // decoder.conv_in
+        [5]int.[CS_VAE_IN,CS_VAE_DEC_BASE,3,3,3],                         // decoder.conv_out
+        [5]int.[CS_LATENT_CH,CS_LATENT_CH,1,1,1],                         // post_quant_conv
+        [5]int.[CS_VIS_HIDDEN,3*CS_VIS_PATCH*CS_VIS_PATCH,1,1,1],         // vision patch_embedding
+        [5]int.[CS_PROJ_HIDDEN,CS_VIS_HIDDEN*CS_VIS_MERGE*CS_VIS_MERGE,1,1,1]]; // projector linear_fc1
+    for i:0..<19 {for j:0..<5 {out[i*5+j]=s[i][j];}}
+}
+// Tensors a layer holds: two towers, each with 2 norms, 2 MLP matrices and
+// 4 attention matrices, plus 3 key and query norms the generation tower uses.
+cs_per_layer :: ()->int {return 2*(2+2+4)+3;}
+// book:end manifest
+
+// book:begin codec
+// Wan's patchify: pixel (colour c, row 2r + a, column 2s + b) is channel
+// c x 4 + b x 2 + a at (r, s). Column offset first.
+cs_patchify :: (x:[]f32,at:int,p:[]f64) {
+    for c:0..<3 {for y:0..<CS_SIDE {for col:0..<CS_SIDE {
+        p[((c*4+(col%2)*2+y%2)*CS_GRID+y/2)*CS_GRID+col/2]=f64(x[at+(c*CS_SIDE+y)*CS_SIDE+col]);
+    }}}
+}
+cs_unpatchify :: (p:[]f64,x:[]f32,at:int) {
+    for c:0..<3 {for y:0..<CS_SIDE {for col:0..<CS_SIDE {
+        x[at+(c*CS_SIDE+y)*CS_SIDE+col]=f32(p[((c*4+(col%2)*2+y%2)*CS_GRID+y/2)*CS_GRID+col/2]);
+    }}}
+}
+// Weights: encoder e[0..11] and bias e[12]; decoder d[13..24] and biases
+// [25..36]. z = e . patch + e12, normalized as (z - mean) / std, the Wan
+// pipelines' convention; decoding inverts the normalization first.
+cs_codec_ok :: (w:[]f32)->bool {
+    if w.count!=CS_CODEC_PARAMS {return false;}
+    for v:w {if !ob_finite(v) {return false;}}
+    return true;
+}
+// The frame at x[at..]: its normalized latent.
+cs_latent :: (w:[]f32,x:[]f32,at:int,z:[]f64) {
+    p:[CS_VAE_IN*CS_LATENT]f64;cs_patchify(x,at,p[..]);
+    for i:0..<CS_LATENT {
+        s:=f64(w[12]);for c:0..<CS_VAE_IN {s+=f64(w[c])*p[c*CS_LATENT+i];}
+        z[i]=(s-CS_MEAN)/CS_STD;
+    }
+}
+// The frame decoded from a normalized latent, into x[at..].
+cs_frame :: (w:[]f32,z:[]f64,x:[]f32,at:int) {
+    p:[CS_VAE_IN*CS_LATENT]f64;
+    for i:0..<CS_LATENT {v:=z[i]*CS_STD+CS_MEAN;for c:0..<CS_VAE_IN {p[c*CS_LATENT+i]=f64(w[13+c])*v+f64(w[25+c]);}}
+    cs_unpatchify(p[..],x,at);
+}
+// One admitted frame's latent; false when the weights or the frame are not.
+cs_encode_latent :: (w:[]f32,x:[]f32,z:[]f64)->bool {
+    if !cs_codec_ok(w) || x.count!=OB_PIXELS {return false;}
+    cs_latent(w,x,0,z);
+    return true;
+}
+cs_decode_latent :: (w:[]f32,z:[]f64,x:[]f32) {cs_frame(w,z,x,0);}
+// Codes for frames first..first + n - 1: chapter 145's 15 levels of the
+// normalized latent.
+cs_encode :: (w:[]f32,x:[]f32,first:int,n:int,codes:[]int)->int {
+    z:[CS_LATENT]f64;
+    for f:0..<n {
+        cs_latent(w,x,(first+f)*OB_PIXELS,z[..]);
+        for i:0..<CS_LATENT {codes[f*CS_LATENT+i]=cz_code(z[i]);}
+    }
+    return n*CS_LATENT;
+}
+cs_decode :: (w:[]f32,codes:[]int,n:int,x:[]f32)->int {
+    z:[CS_LATENT]f64;
+    for f:0..<n {
+        for i:0..<CS_LATENT {z[i]=f64(cz_level(codes[f*CS_LATENT+i]));}
+        cs_frame(w,z[..],x,f*OB_PIXELS);
+    }
+    return n*OB_PIXELS;
+}
+// book:end codec
+
+// book:begin run-codec
+// Chapter 165's codec contract, filled from this codec.
+cs_codec_run :: (w:[]f32,seq:ObSeq)->ObCodecRun {
+    r:ObCodecRun;r.status=ob_admit(seq);if r.status!=ObStatus.ok {return r;}
+    if !cs_codec_ok(w) {r.status=ObStatus.codec;return r;}
+    s:=seq;n:=s.count;r.frames=n;
+    r.written[0]=cs_encode(w,s.pixels[..],0,n,r.batch[..]);
+    one:[CS_LATENT]int;
+    for f:0..<n {
+        r.written[1]+=cs_encode(w,s.pixels[..],f,1,one[..]);
+        for j:0..<CS_LATENT {r.single[f*CS_LATENT+j]=one[j];}
+    }
+    r.written[2]=cs_encode(w,s.pixels[..],0,n,r.again[..]);
+    bytes:[OB_CODES_MAX/2]u8;p:=cz_pack(r.batch[0..<n*CS_LATENT],bytes[..]);
+    r.written[3]=cz_unpack(bytes[0..<p.written],r.unpacked[..]).written;
+    r.pixels=cs_decode(w,r.batch[..],n,r.decoded[..]);
+    return r;
+}
+// book:end run-codec
+
+// book:begin schedule
+// Karras sigma i of n between sigma_max (i = 0) and sigma_min (i = n - 1).
+cs_sigma :: (n:int,i:int)->f64 {
+    if n==1 {return CS_SIGMA_MAX;}
+    a:=pow(CS_SIGMA_MAX,1/CS_RHO);b:=pow(CS_SIGMA_MIN,1/CS_RHO);
+    return pow(a+f64(i)/f64(n-1)*(b-a),CS_RHO);
+}
+// Level k of 1,000 is flow time k x TMAX / 1000.
+cs_time :: (k:int)->f64 {return f64(k)*CS_TMAX/CS_TRAIN_LEVELS;}
+// n + 1 levels: each Karras sigma as flow time sigma / (1 + sigma), snapped
+// to the nearest level, then 0. Returns n + 1, or 0 when n is not in 1..8 or
+// out is too short.
+cs_walk :: (n:int,out:[]int)->int {
+    if n<1 || n>CS_STEPS_MAX || out.count<n+1 {return 0;}
+    for i:0..<n {sg:=cs_sigma(n,i);out[i]=int(floor(sg/(1+sg)*CS_TRAIN_LEVELS/CS_TMAX+0.5));}
+    out[n]=0;
+    return n+1;
+}
+// The same signal-to-noise ratio as a variance-preserving abar: x_t =
+// (1 - t) x0 + t eps has abar = (1 - t)^2 / ((1 - t)^2 + t^2).
+cs_abar :: (t:f64)->f64 {a:=(1-t)*(1-t);return a/(a+t*t);}
+cs_schedule :: ()->DfSchedule {
+    b:[CS_TRAIN_LEVELS]f64;
+    for k:1..<CS_TRAIN_LEVELS+1 {b[k-1]=1-cs_abar(cs_time(k))/cs_abar(cs_time(k-1));}
+    return df_betas(b[..]);
+}
+// book:end schedule
+
+// book:begin denoiser
+// Token k of a latent is the 2 x 2 patch at (k / 2, k % 2); latent value i
+// is element cs_tok_elem(i) of token cs_tok(i).
+cs_tok :: (i:int)->int {return ((i/CS_GRID)/2)*2+(i%CS_GRID)/2;}
+cs_tok_elem :: (i:int)->int {return ((i/CS_GRID)%2)*2+i%2;}
+// out = W x for the out.count x x.count matrix W stored row by row at at.
+cs_mv :: (w:[]f64,at:int,x:[]f64,out:[]f64) {
+    for r:0..<out.count {s:=0.0;for c:0..<x.count {s+=w[at+r*x.count+c]*x[c];}out[r]=s;}
+}
+cs_rms :: (x:[]f64,w:[]f64,at:int,out:[]f64) {
+    s:=0.0;for v:x {s+=v*v;}
+    k:=1/sqrt(s/f64(x.count)+CS_EPS);
+    for i:0..<x.count {out[i]=x[i]*k*w[at+i];}
+}
+// Residual MLP of one tower: h += down(relu(up(rms(h)))^2).
+cs_mlp :: (w:[]f64,tw:int,h:[]f64) {
+    m:[CS_D]f64;cs_rms(h,w,tw+68,m[..]);u:[CS_F]f64;cs_mv(w,tw+72,m[..],u[..]);
+    for j:0..<CS_F {r:=(u[j]+abs(u[j]))/2;u[j]=r*r;}
+    d:[CS_D]f64;cs_mv(w,tw+104,u[..],d[..]);for j:0..<CS_D {h[j]+=d[j];}
+}
+// Scores to probabilities in place, shifted by the largest score first so
+// no exponential overflows. The largest without a branch: max(a, b) = (a +
+// b + |a - b|) / 2.
+cs_softmax :: (s:[]f64) {
+    top:=s[0];for j:1..<s.count {top=(top+s[j]+abs(top-s[j]))/2;}
+    tot:=0.0;for j:0..<s.count {s[j]=exp(s[j]-top);tot+=s[j];}
+    for j:0..<s.count {s[j]/=tot;}
+}
+// One layer, two towers. The 4 conditioning tokens use the understanding
+// weights and attend causally among themselves; the 4 noisy tokens use the
+// generation weights, normalize their queries and keys, and attend to every
+// token, seeing the understanding keys through their own norm. Returns the
+// velocity v and the understanding tower's output h, both as latents.
+cs_forward :: (w:[]f64,cond:[]f64,x:[]f64,t:f64,v:[]f64,ctx:[]f64) {
+    U:=CS_TOWER;G:=CS_TOWER+CS_TW;
+    // Hidden states of 8 tokens: understanding 0..3, generation 4..7.
+    h:[8*CS_D]f64;
+    tc:[CS_TOKENS*CS_WIDTH]f64;tx:[CS_TOKENS*CS_WIDTH]f64;
+    for i:0..<CS_LATENT {tc[cs_tok(i)*CS_WIDTH+cs_tok_elem(i)]=cond[i];tx[cs_tok(i)*CS_WIDTH+cs_tok_elem(i)]=x[i];}
+    for k:0..<CS_TOKENS {
+        cs_mv(w,CS_EU,tc[k*4..<k*4+4],h[k*4..<k*4+4]);
+        g:=(k+4)*4;cs_mv(w,CS_WI,tx[k*4..<k*4+4],h[g..<g+4]);
+        for j:0..<CS_D {h[g+j]+=w[CS_BI+j]+w[CS_TA+j]*t;}
+    }
+    // Queries, keys and values; kg holds the understanding keys as the
+    // generation tokens see them.
+    q:[8*CS_D]f64;kk:[8*CS_D]f64;vv:[8*CS_D]f64;kg:[4*CS_D]f64;a:[CS_D]f64;e:[CS_D]f64;
+    for k:0..<8 {
+        tw:=U;if k>=4 {tw=G;}
+        cs_rms(h[k*4..<k*4+4],w,tw,a[..]);
+        cs_mv(w,tw+4,a[..],q[k*4..<k*4+4]);cs_mv(w,tw+20,a[..],kk[k*4..<k*4+4]);cs_mv(w,tw+36,a[..],vv[k*4..<k*4+4]);
+        if k>=4 {
+            cs_rms(q[k*4..<k*4+4],w,CS_QN,e[..]);for j:0..<4 {q[k*4+j]=e[j];}
+            cs_rms(kk[k*4..<k*4+4],w,CS_KN,e[..]);for j:0..<4 {kk[k*4+j]=e[j];}
+        } else {
+            cs_rms(kk[k*4..<k*4+4],w,CS_KU,kg[k*4..<k*4+4]);
+        }
+    }
+    // Scaled dot products over the visible tokens, softmax, output matrix,
+    // residual. All 8 outputs come from the inputs above.
+    out:[8*CS_D]f64;
+    for k:0..<8 {
+        tw:=U;last:=k;if k>=4 {tw=G;last=7;}
+        s:[8]f64;
+        for j:0..<last+1 {
+            d:=0.0;
+            if k>=4 && j<4 {for i:0..<4 {d+=q[k*4+i]*kg[j*4+i];}} else {for i:0..<4 {d+=q[k*4+i]*kk[j*4+i];}}
+            s[j]=d*0.5;
+        }
+        cs_softmax(s[0..<last+1]);
+        mix:[CS_D]f64;for j:0..<last+1 {for i:0..<4 {mix[i]+=s[j]*vv[j*4+i];}}
+        cs_mv(w,tw+52,mix[..],out[k*4..<k*4+4]);
+    }
+    for i:0..<8*CS_D {h[i]+=out[i];}
+    for k:0..<CS_TOKENS {cs_mlp(w,U,h[k*4..<k*4+4]);cs_mlp(w,G,h[(k+4)*4..<(k+4)*4+4]);}
+    for i:0..<CS_LATENT {
+        k:=cs_tok(i)+4;cs_rms(h[k*4..<k*4+4],w,CS_NF,a[..]);
+        r:=cs_tok_elem(i);s:=w[CS_BO+r];for j:0..<CS_D {s+=w[CS_WO+r*CS_D+j]*a[j];}
+        v[i]=s;ctx[i]=h[cs_tok(i)*4+r];
+    }
+}
+// book:end denoiser
+
+// book:begin sample
+// Euler on the flow ODE from the noise along the walk: x += (t' - t) v. With
+// exact set, v is the true velocity toward cond, (x - cond) / t.
+cs_sample :: (w:[]f64,cond:[]f64,noise:[]f64,walk:[]int,exact:bool,x:[]f64,first:[]f64,ctx:[]f64) {
+    for i:0..<CS_LATENT {x[i]=noise[i];}
+    v:[CS_LATENT]f64;h:[CS_LATENT]f64;
+    for s:0..<walk.count-1 {
+        t:=cs_time(walk[s]);dt:=cs_time(walk[s+1])-t;
+        if exact {for i:0..<CS_LATENT {v[i]=(x[i]-cond[i])/t;}} else {cs_forward(w,cond,x,t,v[..],h[..]);}
+        if s==0 {for i:0..<CS_LATENT {first[i]=v[i];ctx[i]=h[i];}}
+        for i:0..<CS_LATENT {x[i]+=dt*v[i];}
+    }
+}
+// book:end sample
+
+// book:begin generate
+// The path: admit the record, encode its last frame, draw the noise, walk
+// the levels, decode the latent.
+cs_generate :: (cw:[]f32,dw:[]f64,seq:ObSeq,steps:int,seed:u64)->CsRun {
+    r:CsRun;
+    if ob_admit(seq)!=ObStatus.ok {r.status=CsStatus.record;return r;}
+    s:=seq;n:=s.count;
+    if !cs_encode_latent(cw,s.pixels[(n-1)*OB_PIXELS..<n*OB_PIXELS],r.cond[..]) {r.status=CsStatus.codec;return r;}
+    if dw.count!=CS_PARAMS {r.status=CsStatus.weights;return r;}
+    for v:dw {if !df_finite(v) || abs(v)>CS_WEIGHT_MAX {r.status=CsStatus.weights;return r;}}
+    k:=cs_walk(steps,r.walk[..]);if k==0 {r.status=CsStatus.steps;return r;}
+    r.steps=steps;
+    for i:0..<CS_LATENT {r.noise[i]=df_normal(seed,u64(i));}
+    cs_sample(dw,r.cond[..],r.noise[..],r.walk[0..<k],false,r.latent[..],r.first[..],r.context[..]);
+    for i:0..<CS_LATENT {r.codes[i]=cz_code(r.latent[i]);}
+    cs_decode_latent(cw,r.latent[..],r.frame[..]);
+    return r;
+}
+// book:end generate
+
+// book:begin task
+// Task evaluation, apart from numerics: the red mass (sum of the red
+// channel) of a generated frame stays within 25% of the observed frame's.
+// A moving square neither appears nor vanishes.
+cs_red_mass :: (x:[]f32)->f64 {s:=0.0;for i:0..<64 {s+=f64(x[i]);}return s;}
+cs_plausible :: (observed:f64,generated:f64)->bool {return observed>0 && abs(generated-observed)<=0.25*observed;}
+// book:end task
+
+// book:begin slices
+// A bf16 word is the top half of an f32.
+cs_bf16 :: (b:u16)->f64 {return f64(f32_from_bits(u32(b)<<16));}
+// rows outputs of an affine map whose weights are bf16 words, summed from 0
+// in input order, then the bias added.
+cs_linear_bf16 :: (w:[]u16,b:[]u16,rows:int,cols:int,x:[]f64,out:[]f64) {
+    for r:0..<rows {s:=0.0;for c:0..<cols {s+=cs_bf16(w[r*cols+c])*x[c];}out[r]=cs_bf16(b[r])+s;}
+}
+cs_input_in :: (i:int)->f64 {return f64((i*37)%17-8)/8;}
+cs_input_out :: (j:int)->f64 {return f64((j*29)%23-11)/11;}
+// The VAE encoder's conv_in on one frame of a 3 x 4 x 4 image: patchified
+// to 12 x 2 x 2; the causal pad puts two zero frames first, so only temporal
+// tap 2 meets the frame; zero spatial padding of 1. Filters 0 and 1, all 4
+// positions.
+cs_conv_in_slice :: (out:[]f64) {
+    p:[12*4]f64;
+    for c:0..<3 {for y:0..<4 {for x:0..<4 {p[(c*4+(x%2)*2+y%2)*4+(y/2)*2+x/2]=f64(((c*16+y*4+x)*7)%11-5)/5;}}}
+    for o:0..<2 {for y:0..<2 {for x:0..<2 {
+        s:=0.0;
+        // Every 3 x 3 window holds the whole 2 x 2 grid: tap (py - y + 1, px - x + 1).
+        for c:0..<12 {for py:0..<2 {for px:0..<2 {
+            s+=cs_bf16(CS_CONV_IN_W[((o*12+c)*3+py-y+1)*3+px-x+1])*p[c*4+py*2+px];
+        }}}
+        out[(o*2+y)*2+x]=cs_bf16(CS_CONV_IN_B[o])+s;
+    }}}
+}
+// book:end slices

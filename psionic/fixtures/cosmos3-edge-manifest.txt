@@ -1,0 +1,151 @@
+# Cosmos3-Edge, nvidia/Cosmos3-Edge at revision 344d602b128d1bbdacb43b08d0a3626f46343e29
+# Written by psionic/tests/cosmos_slices.py from safetensors headers only.
+# file  bytes  sha256  tensors  header-bytes
+file transformer/diffusion_pytorch_model-00001-of-00002.safetensors 5000040072 116134e5492c514df79a2f07214e577c397aa961387dbe1c5dda488e7994ff6b 426 48000
+file transformer/diffusion_pytorch_model-00002-of-00002.safetensors 1739335512 3b4c0aafe2705c900ac7bc743085a8e9e09c906624331bc2baa21e172e5d48e4 123 13520
+file vae/diffusion_pytorch_model.safetensors 1409400600 230496cb59ff85bc9c040487737c4062480cb61c71e697b197b4c30142f2a0da 196 23256
+file vision_encoder/model.safetensors 978739880 2180ad739ecc96b5c1e9386892d3c5c08bfa42b9cdab9aabc53b028671db89b3 443 54464
+# group  file  count  dtype  shapes (layer index as N)
+group action_modality_embed transformer 1 BF16 2048
+group embed_tokens.weight transformer 1 BF16 131072x2048
+group layers.N.input_layernorm.weight transformer 22 BF16 2048
+group layers.N.input_layernorm_moe_gen.weight transformer 22 BF16 2048
+group layers.N.mlp.down_proj.weight transformer 22 BF16 2048x9216
+group layers.N.mlp.up_proj.weight transformer 22 BF16 9216x2048
+group layers.N.mlp_moe_gen.down_proj.weight transformer 22 BF16 2048x9216
+group layers.N.mlp_moe_gen.up_proj.weight transformer 22 BF16 9216x2048
+group layers.N.post_attention_layernorm.weight transformer 22 BF16 2048
+group layers.N.post_attention_layernorm_moe_gen.weight transformer 22 BF16 2048
+group layers.N.self_attn.add_k_proj.weight transformer 22 BF16 1024x2048
+group layers.N.self_attn.add_q_proj.weight transformer 23 BF16 2048x2048
+group layers.N.self_attn.add_v_proj.weight transformer 22 BF16 1024x2048
+group layers.N.self_attn.k_norm_und_for_gen.weight transformer 23 BF16 128
+group layers.N.self_attn.norm_added_k.weight transformer 22 BF16 128
+group layers.N.self_attn.norm_added_q.weight transformer 22 BF16 128
+group layers.N.self_attn.to_add_out.weight transformer 22 BF16 2048x2048
+group layers.N.self_attn.to_k.weight transformer 23 BF16 1024x2048
+group layers.N.self_attn.to_out.weight transformer 23 BF16 2048x2048
+group layers.N.self_attn.to_q.weight transformer 23 BF16 2048x2048
+group layers.N.self_attn.to_v.weight transformer 23 BF16 1024x2048
+group action_proj_in.bias.weight transformer 1 BF16 32x2048
+group action_proj_in.fc.weight transformer 1 BF16 32x131072
+group action_proj_out.bias.weight transformer 1 BF16 32x64
+group action_proj_out.fc.weight transformer 1 BF16 32x131072
+group layers.N.input_layernorm.weight transformer 6 BF16 2048
+group layers.N.input_layernorm_moe_gen.weight transformer 6 BF16 2048
+group layers.N.mlp.down_proj.weight transformer 6 BF16 2048x9216
+group layers.N.mlp.up_proj.weight transformer 6 BF16 9216x2048
+group layers.N.mlp_moe_gen.down_proj.weight transformer 6 BF16 2048x9216
+group layers.N.mlp_moe_gen.up_proj.weight transformer 6 BF16 9216x2048
+group layers.N.post_attention_layernorm.weight transformer 6 BF16 2048
+group layers.N.post_attention_layernorm_moe_gen.weight transformer 6 BF16 2048
+group layers.N.self_attn.add_k_proj.weight transformer 6 BF16 1024x2048
+group layers.N.self_attn.add_v_proj.weight transformer 6 BF16 1024x2048
+group layers.N.self_attn.norm_added_k.weight transformer 6 BF16 128
+group layers.N.self_attn.norm_added_q.weight transformer 6 BF16 128
+group layers.N.self_attn.to_add_out.weight transformer 6 BF16 2048x2048
+group layers.N.self_attn.add_q_proj.weight transformer 5 BF16 2048x2048
+group layers.N.self_attn.k_norm_und_for_gen.weight transformer 5 BF16 128
+group layers.N.self_attn.to_k.weight transformer 5 BF16 1024x2048
+group layers.N.self_attn.to_out.weight transformer 5 BF16 2048x2048
+group layers.N.self_attn.to_q.weight transformer 5 BF16 2048x2048
+group layers.N.self_attn.to_v.weight transformer 5 BF16 1024x2048
+group lm_head.weight transformer 1 BF16 131072x2048
+group norm.weight transformer 1 BF16 2048
+group norm_moe_gen.weight transformer 1 BF16 2048
+group proj_in.bias transformer 1 BF16 2048
+group proj_in.weight transformer 1 BF16 2048x192
+group proj_out.bias transformer 1 BF16 192
+group proj_out.weight transformer 1 BF16 192x2048
+group time_embedder.linear_1.bias transformer 1 BF16 2048
+group time_embedder.linear_1.weight transformer 1 BF16 2048x256
+group time_embedder.linear_2.bias transformer 1 BF16 2048
+group time_embedder.linear_2.weight transformer 1 BF16 2048x2048
+group decoder.conv_in.bias vae 1 BF16 1024
+group decoder.conv_in.weight vae 1 BF16 1024x48x3x3x3
+group decoder.conv_out.bias vae 1 BF16 12
+group decoder.conv_out.weight vae 1 BF16 12x256x3x3x3
+group decoder.mid_block.attentions.N.norm.gamma vae 1 BF16 1024x1x1
+group decoder.mid_block.attentions.N.proj.bias vae 1 BF16 1024
+group decoder.mid_block.attentions.N.proj.weight vae 1 BF16 1024x1024x1x1
+group decoder.mid_block.attentions.N.to_qkv.bias vae 1 BF16 3072
+group decoder.mid_block.attentions.N.to_qkv.weight vae 1 BF16 3072x1024x1x1
+group decoder.mid_block.resnets.N.conv1.bias vae 2 BF16 1024
+group decoder.mid_block.resnets.N.conv1.weight vae 2 BF16 1024x1024x3x3x3
+group decoder.mid_block.resnets.N.conv2.bias vae 2 BF16 1024
+group decoder.mid_block.resnets.N.conv2.weight vae 2 BF16 1024x1024x3x3x3
+group decoder.mid_block.resnets.N.norm1.gamma vae 2 BF16 1024x1x1x1
+group decoder.mid_block.resnets.N.norm2.gamma vae 2 BF16 1024x1x1x1
+group decoder.norm_out.gamma vae 1 BF16 256x1x1x1
+group decoder.up_blocks.N.resnets.N.conv1.bias vae 12 BF16 1024 256 512
+group decoder.up_blocks.N.resnets.N.conv1.weight vae 12 BF16 1024x1024x3x3x3 256x256x3x3x3 256x512x3x3x3 512x1024x3x3x3 512x512x3x3x3
+group decoder.up_blocks.N.resnets.N.conv2.bias vae 12 BF16 1024 256 512
+group decoder.up_blocks.N.resnets.N.conv2.weight vae 12 BF16 1024x1024x3x3x3 256x256x3x3x3 512x512x3x3x3
+group decoder.up_blocks.N.resnets.N.norm1.gamma vae 12 BF16 1024x1x1x1 256x1x1x1 512x1x1x1
+group decoder.up_blocks.N.resnets.N.norm2.gamma vae 12 BF16 1024x1x1x1 256x1x1x1 512x1x1x1
+group decoder.up_blocks.N.upsampler.resample.N.bias vae 3 BF16 1024 512
+group decoder.up_blocks.N.upsampler.resample.N.weight vae 3 BF16 1024x1024x3x3 512x512x3x3
+group decoder.up_blocks.N.upsampler.time_conv.bias vae 2 BF16 2048
+group decoder.up_blocks.N.upsampler.time_conv.weight vae 2 BF16 2048x1024x3x1x1
+group decoder.up_blocks.N.resnets.N.conv_shortcut.bias vae 2 BF16 256 512
+group decoder.up_blocks.N.resnets.N.conv_shortcut.weight vae 2 BF16 256x512x1x1x1 512x1024x1x1x1
+group encoder.conv_in.bias vae 1 BF16 160
+group encoder.conv_in.weight vae 1 BF16 160x12x3x3x3
+group encoder.conv_out.bias vae 1 BF16 96
+group encoder.conv_out.weight vae 1 BF16 96x640x3x3x3
+group encoder.down_blocks.N.downsampler.resample.N.bias vae 3 BF16 160 320 640
+group encoder.down_blocks.N.downsampler.resample.N.weight vae 3 BF16 160x160x3x3 320x320x3x3 640x640x3x3
+group encoder.down_blocks.N.resnets.N.conv1.bias vae 8 BF16 160 320 640
+group encoder.down_blocks.N.resnets.N.conv1.weight vae 8 BF16 160x160x3x3x3 320x160x3x3x3 320x320x3x3x3 640x320x3x3x3 640x640x3x3x3
+group encoder.down_blocks.N.resnets.N.conv2.bias vae 8 BF16 160 320 640
+group encoder.down_blocks.N.resnets.N.conv2.weight vae 8 BF16 160x160x3x3x3 320x320x3x3x3 640x640x3x3x3
+group encoder.down_blocks.N.resnets.N.norm1.gamma vae 8 BF16 160x1x1x1 320x1x1x1 640x1x1x1
+group encoder.down_blocks.N.resnets.N.norm2.gamma vae 8 BF16 160x1x1x1 320x1x1x1 640x1x1x1
+group encoder.down_blocks.N.downsampler.time_conv.bias vae 2 BF16 320 640
+group encoder.down_blocks.N.downsampler.time_conv.weight vae 2 BF16 320x320x3x1x1 640x640x3x1x1
+group encoder.down_blocks.N.resnets.N.conv_shortcut.bias vae 2 BF16 320 640
+group encoder.down_blocks.N.resnets.N.conv_shortcut.weight vae 2 BF16 320x160x1x1x1 640x320x1x1x1
+group encoder.mid_block.attentions.N.norm.gamma vae 1 BF16 640x1x1
+group encoder.mid_block.attentions.N.proj.bias vae 1 BF16 640
+group encoder.mid_block.attentions.N.proj.weight vae 1 BF16 640x640x1x1
+group encoder.mid_block.attentions.N.to_qkv.bias vae 1 BF16 1920
+group encoder.mid_block.attentions.N.to_qkv.weight vae 1 BF16 1920x640x1x1
+group encoder.mid_block.resnets.N.conv1.bias vae 2 BF16 640
+group encoder.mid_block.resnets.N.conv1.weight vae 2 BF16 640x640x3x3x3
+group encoder.mid_block.resnets.N.conv2.bias vae 2 BF16 640
+group encoder.mid_block.resnets.N.conv2.weight vae 2 BF16 640x640x3x3x3
+group encoder.mid_block.resnets.N.norm1.gamma vae 2 BF16 640x1x1x1
+group encoder.mid_block.resnets.N.norm2.gamma vae 2 BF16 640x1x1x1
+group encoder.norm_out.gamma vae 1 BF16 640x1x1x1
+group post_quant_conv.bias vae 1 BF16 48
+group post_quant_conv.weight vae 1 BF16 48x48x1x1x1
+group quant_conv.bias vae 1 BF16 96
+group quant_conv.weight vae 1 BF16 96x96x1x1x1
+group model.projector.linear_fc1.bias vision_encoder 1 BF16 11520
+group model.projector.linear_fc1.weight vision_encoder 1 BF16 11520x4608
+group model.projector.linear_fc2.bias vision_encoder 1 BF16 2048
+group model.projector.linear_fc2.weight vision_encoder 1 BF16 2048x11520
+group model.projector.norm.bias vision_encoder 1 BF16 1152
+group model.projector.norm.weight vision_encoder 1 BF16 1152
+group model.visual.embeddings.patch_embedding.bias vision_encoder 1 BF16 1152
+group model.visual.embeddings.patch_embedding.weight vision_encoder 1 BF16 1152x768
+group model.visual.embeddings.position_embedding.weight vision_encoder 1 BF16 256x1152
+group model.visual.encoder.layers.N.layer_norm1.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.layer_norm1.weight vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.layer_norm2.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.layer_norm2.weight vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.mlp.fc1.bias vision_encoder 27 BF16 4304
+group model.visual.encoder.layers.N.mlp.fc1.weight vision_encoder 27 BF16 4304x1152
+group model.visual.encoder.layers.N.mlp.fc2.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.mlp.fc2.weight vision_encoder 27 BF16 1152x4304
+group model.visual.encoder.layers.N.self_attn.k_proj.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.self_attn.k_proj.weight vision_encoder 27 BF16 1152x1152
+group model.visual.encoder.layers.N.self_attn.out_proj.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.self_attn.out_proj.weight vision_encoder 27 BF16 1152x1152
+group model.visual.encoder.layers.N.self_attn.q_proj.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.self_attn.q_proj.weight vision_encoder 27 BF16 1152x1152
+group model.visual.encoder.layers.N.self_attn.v_proj.bias vision_encoder 27 BF16 1152
+group model.visual.encoder.layers.N.self_attn.v_proj.weight vision_encoder 27 BF16 1152x1152
+group model.visual.post_layernorm.bias vision_encoder 1 BF16 1152
+group model.visual.post_layernorm.weight vision_encoder 1 BF16 1152
+parameters 4563688396

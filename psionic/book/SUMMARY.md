@@ -183,7 +183,7 @@
 - [164. Execute Nemotron Lightning](ch164-execute-nemotron-lightning.md) — partly implemented
 
 - [165. Sequences of observations](ch165-sequences-of-observations.md) — partly implemented
-- [166. One complete Cosmos3-Edge path](ch166-one-complete-cosmos3-edge-path.md) — design draft
+- [166. One complete Cosmos3-Edge path](ch166-one-complete-cosmos3-edge-path.md) — partly implemented
 - [167. Command a robot](ch167-command-a-robot.md) — runnable position/pose IK, linearized posture projection, rest-to-rest timing, PD gains, short owned Euler loop, nonlinear control measurements, bounded gain study (no qualified family) and scheduled PD (original cases and two frozen C/D poses; no-contact SDK/own parity)
 - [168. Imitation before robotics scale](ch168-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [169. Execute a GR00T policy](ch169-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

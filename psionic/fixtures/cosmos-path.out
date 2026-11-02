@@ -1,0 +1,13 @@
+manifest: 1188 tensors, 4563688396 parameters, 28 layers of 19 tensors; 95 of 95 shape numbers match the config
+proj_in rows 0..7 on a fixed latent patch: 8 of 8 within 1e-12; row 0 = -0.0563
+proj_out rows 0..1 on a fixed hidden state: 2 of 2 within 1e-12; -0.3058 -0.1299
+VAE encoder conv_in, filters 0 and 1, one frame: 8 of 8 within 1e-12; filter 0 at (0, 0) = -0.2012
+codec contract: ok; frame 1 codes: -7 -7 -7 -7 -7 -3 -3 -7 -7 -3 -3 -7 -7 -7 -7 -7
+4 Karras steps, levels: 1000 979 803 129 0; flow times: 0.995 0.9741 0.799 0.1284 0.0; scheduler contract: ok
+generate: ok; every stage within 1e-12 of the oracle: true; frame pixels within 1e-6: 192 of 192
+  condition latent row 1: -1.0 -0.5 -0.5 -1.0
+  first velocity row 1: 1.3165 1.4035 0.9908 1.3716
+  final latent row 1: -1.3029 -0.9822 0.9797 -3.2472
+  final codes: 7 -7 7 -7 -7 -7 7 -7 4 -5 7 -7 6 -7 -7 7
+task: observed red mass 4.0, generated 23.5544 (untrained weights): plausible false
+task: the exact flow toward the last frame's latent gives red mass 4.0: plausible true

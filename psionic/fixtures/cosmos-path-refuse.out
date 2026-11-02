@@ -1,0 +1,7 @@
+a record with a missing frame: record
+36 codec weights: codec
+a NaN codec weight: codec (codec contract: status)
+347 denoiser weights: weights
+a denoiser weight of 1001: weights
+0 steps: steps, 9 steps: steps
+unsnapped Karras betas: 0.0212 0.9389 0.9877 0.9659; chapter 146 says order, the contract says status
