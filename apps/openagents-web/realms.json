@@ -205,6 +205,7 @@
         "clock": "fixed:0.5",
         "title": "Anime Lab",
         "description": "Direct an anime with your voice: spoken lines become typed directions, and an anime scene at Skyreach Academy plays them as you speak. The demo's voice is simulated.",
+        "share": "Direct an anime with your voice: say a line and a scene at Skyreach Academy plays it. In your browser.",
         "alt": "Enter the Verse",
         "module": "animelab",
         "slot": "anime-lab",
