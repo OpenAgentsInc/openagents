@@ -11,7 +11,8 @@
 //   coder/tui/coder.sh [--engine claude|echo] [--model M] [--cwd DIR]
 //   coder/tui/coder.sh --print "TASK"      no TUI: one task, plain lines out
 //
-// Keys: Enter sends, Ctrl-J, Alt-Enter or a trailing \ adds a line, Up and
+// Keys: Enter sends, Shift-Enter (Ctrl-J, Alt-Enter or a trailing \ where
+// the terminal cannot report Shift-Enter) adds a line, Up and
 // Down walk history, Esc stops a run, Ctrl-C stops a run, clears the
 // composer, or quits; Ctrl-D on an empty composer quits. /help lists the
 // slash commands.
@@ -140,8 +141,8 @@ cd_draw :: (a: [] App) {
   if max < 1 { max = 1; } if max > 12 { max = 12; }
   tui_rows_editor(r, a[0].ed[..], "› ", "  ", cols, max, TUI_BRIGHT);
   k = tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
-  hint := ifx a[0].engine == ENGINE_CLAUDE then "Enter send · Ctrl-J newline · ↑ history · Esc stop · Ctrl-C quit · claude"
-          else "Enter send · Ctrl-J newline · ↑ history · Esc stop · Ctrl-C quit · echo (offline)";
+  hint := ifx a[0].engine == ENGINE_CLAUDE then "Enter send · Shift-Enter newline · ↑ history · Esc stop · Ctrl-C quit · claude"
+          else "Enter send · Shift-Enter newline · ↑ history · Esc stop · Ctrl-C quit · echo (offline)";
   k = tui_rows_add(r, TUI_FAINT, cast(string) hint[0..<tui_fit(hint, cols)]);
   tui_live_draw(a[0].o[..], a[0].lv[..], r);
   cd_flush(a);
@@ -493,7 +494,7 @@ cd_submit :: (a: [] App) {
     if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); return; }
     if msg == "/clear" {
       cd_claude_close(a);
-      if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); a[0].lv[0].drawn = 0; a[0].lv[0].at = 0; }
+      if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); }
       cd_commit(a, TUI_FAINT, "  The conversation is cleared; the next message starts a new session.");
       return;
     }
@@ -516,7 +517,7 @@ cd_key :: (a: [] App, k: TuiKey) {
   }
   if k.kind == TUI_K_CTRL_D { if a[0].ed[0].n == 0 && !a[0].running { a[0].quit = true; } else { x := tui_ed_key(a[0].ed[..], TuiKey.{kind = TUI_K_DELETE}); } return; }
   if k.kind == TUI_K_ESC { if a[0].running { cd_stop(a); } return; }
-  if k.kind == TUI_K_CLEAR { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); a[0].lv[0].drawn = 0; a[0].lv[0].at = 0; return; }
+  if k.kind == TUI_K_CLEAR { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); return; }
   r := tui_ed_key(a[0].ed[..], k);
   if r == TUI_ED_SUBMIT {
     if a[0].running { return; }      // one task at a time for now; the text stays
@@ -598,7 +599,9 @@ tool_main :: () -> int #export_c {
   w := cxterm_watch();
   x := cxterm_keys(1);
   cd_size(a);
+  tui_live_pin(a[0].o[..], a[0].lv[..], a[0].rows);    // the composer sits on the bottom rows
   tui_csi(a[0].o[..], "?2004h");                       // bracketed paste
+  tui_csi(a[0].o[..], TUI_KEYS_ON);                     // Shift-Enter distinct from Enter
   hb: [512] u8; hn := cd_cat(hb[..], 0, "Coder ");
   hn = cd_cat(hb[..], hn, CODER_VERSION); hn = cd_cat(hb[..], hn, " · ");
   hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else "echo engine (offline)");
@@ -610,7 +613,7 @@ tool_main :: () -> int #export_c {
   while !a[0].quit {
     if cxterm_stopped() != 0 { break; }
     dirty := false;
-    if cxterm_resized() != 0 { cd_size(a); dirty = true; }
+    if cxterm_resized() != 0 { cd_size(a); tui_live_resize(a[0].lv[..], a[0].rows); dirty = true; }
     wait := ifx a[0].running then 10 else 40;
     if cd_read_keys(a, wait) { dirty = true; }
     if a[0].quit { break; }
@@ -622,6 +625,7 @@ tool_main :: () -> int #export_c {
   if a[0].running { cd_stop(a); }
   cd_claude_close(a);
   tui_live_erase(a[0].o[..], a[0].lv[..]);
+  tui_csi(a[0].o[..], TUI_KEYS_OFF);
   tui_csi(a[0].o[..], "?2004l"); tui_csi(a[0].o[..], "?25h"); tui_csi(a[0].o[..], "0m");
   cd_flush(a);
   x = cxterm_keys(0);

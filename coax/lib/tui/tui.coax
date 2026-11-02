@@ -102,6 +102,60 @@ TuiKeys :: struct {
 
 tui_named :: (kind: int, used: int) -> TuiKeyRead { return TuiKeyRead.{key = TuiKey.{kind = kind}, used = used}; }
 
+// The key a control byte stands for, taking `used` bytes; used 0 when the
+// byte is not one of them.
+tui_ctrl :: (c: int, used: int) -> TuiKeyRead {
+  if c == 13 { return tui_named(TUI_K_ENTER, used); }
+  if c == 10 { return tui_named(TUI_K_NEWLINE, used); }        // Ctrl-J
+  if c == 127 || c == 8 { return tui_named(TUI_K_BACKSPACE, used); }
+  if c == 9 { return tui_named(TUI_K_TAB, used); }
+  if c == 1 { return tui_named(TUI_K_HOME, used); }            // Ctrl-A
+  if c == 5 { return tui_named(TUI_K_END, used); }             // Ctrl-E
+  if c == 2 { return tui_named(TUI_K_LEFT, used); }            // Ctrl-B
+  if c == 6 { return tui_named(TUI_K_RIGHT, used); }           // Ctrl-F
+  if c == 3 { return tui_named(TUI_K_CTRL_C, used); }
+  if c == 4 { return tui_named(TUI_K_CTRL_D, used); }
+  if c == 21 { return tui_named(TUI_K_KILL_LINE, used); }      // Ctrl-U
+  if c == 11 { return tui_named(TUI_K_KILL_END, used); }       // Ctrl-K
+  if c == 23 { return tui_named(TUI_K_KILL_WORD, used); }      // Ctrl-W
+  if c == 12 { return tui_named(TUI_K_CLEAR, used); }          // Ctrl-L
+  if c == 16 { return tui_named(TUI_K_UP, used); }             // Ctrl-P
+  if c == 14 { return tui_named(TUI_K_DOWN, used); }           // Ctrl-N
+  return tui_named(TUI_K_NONE, 0);
+}
+
+// Keyboard protocol on: with the kitty protocol's "disambiguate" flag the
+// terminal reports Shift-Enter, Ctrl-letters and Esc as CSI ... u, so
+// Shift-Enter differs from Enter. Terminals without it ignore the request.
+TUI_KEYS_ON :: ">1u";     // for tui_csi
+TUI_KEYS_OFF :: "<u";
+
+// The leading number of a CSI parameter field, or -1.
+tui_csi_num :: (p: string, at: int) -> int {
+  v := -1; i := at;
+  while i < p.count && p[i] >= '0' && p[i] <= '9' { v = ifx v < 0 then 0 else v; v = v * 10 + cast(int) (p[i] - '0'); i += 1; }
+  return v;
+}
+
+// A kitty CSI-u key: "code" or "code;mods" (mods 1 + shift 1, alt 2, ctrl 4).
+tui_csi_u :: (p: string, used: int) -> TuiKeyRead {
+  cp := tui_csi_num(p, 0);
+  semi := 0; while semi < p.count && p[semi] != ';' && p[semi] != ':' { semi += 1; }
+  while semi < p.count && p[semi] != ';' { semi += 1; }       // skip alternate codes after ':'
+  mods := ifx semi < p.count then tui_csi_num(p, semi + 1) - 1 else 0;
+  if mods < 0 { mods = 0; }
+  shift := (mods & 1) != 0; alt := (mods & 2) != 0; ctrl := (mods & 4) != 0;
+  if cp == 13 { return tui_named(ifx shift || alt || ctrl then TUI_K_NEWLINE else TUI_K_ENTER, used); }
+  if cp == 27 { return tui_named(TUI_K_ESC, used); }
+  if cp == 9 { return tui_named(TUI_K_TAB, used); }
+  if cp == 127 || cp == 8 { return tui_named(ifx alt || ctrl then TUI_K_KILL_WORD else TUI_K_BACKSPACE, used); }
+  if ctrl && cp >= 'a' && cp <= 'z' { r := tui_ctrl(cp - 'a' + 1, used); if r.used > 0 { return r; } return tui_named(TUI_K_NONE, used); }
+  if alt && cp == 'b' { return tui_named(TUI_K_WORD_LEFT, used); }
+  if alt && cp == 'f' { return tui_named(TUI_K_WORD_RIGHT, used); }
+  if cp >= 32 && !ctrl && !alt { return TuiKeyRead.{key = TuiKey.{kind = TUI_K_CHAR, cp = cp}, used = used}; }
+  return tui_named(TUI_K_NONE, used);
+}
+
 // Decodes one key from b[at..]. With more false, a lone ESC is the Esc key
 // (the caller waited and nothing followed); with more true, an unfinished
 // sequence asks for more bytes (used 0).
@@ -127,22 +181,8 @@ tui_key :: (k: [] TuiKeys, b: string, at: int, more: bool) -> TuiKeyRead {
     return TuiKeyRead.{key = TuiKey.{kind = TUI_K_NONE}, used = i - at};
   }
   c := cast(int) b[at];
-  if c == 13 { return tui_named(TUI_K_ENTER, 1); }
-  if c == 10 { return tui_named(TUI_K_NEWLINE, 1); }        // Ctrl-J
-  if c == 127 || c == 8 { return tui_named(TUI_K_BACKSPACE, 1); }
-  if c == 9 { return tui_named(TUI_K_TAB, 1); }
-  if c == 1 { return tui_named(TUI_K_HOME, 1); }            // Ctrl-A
-  if c == 5 { return tui_named(TUI_K_END, 1); }             // Ctrl-E
-  if c == 2 { return tui_named(TUI_K_LEFT, 1); }            // Ctrl-B
-  if c == 6 { return tui_named(TUI_K_RIGHT, 1); }           // Ctrl-F
-  if c == 3 { return tui_named(TUI_K_CTRL_C, 1); }
-  if c == 4 { return tui_named(TUI_K_CTRL_D, 1); }
-  if c == 21 { return tui_named(TUI_K_KILL_LINE, 1); }      // Ctrl-U
-  if c == 11 { return tui_named(TUI_K_KILL_END, 1); }       // Ctrl-K
-  if c == 23 { return tui_named(TUI_K_KILL_WORD, 1); }      // Ctrl-W
-  if c == 12 { return tui_named(TUI_K_CLEAR, 1); }          // Ctrl-L
-  if c == 16 { return tui_named(TUI_K_UP, 1); }             // Ctrl-P
-  if c == 14 { return tui_named(TUI_K_DOWN, 1); }           // Ctrl-N
+  ctl := tui_ctrl(c, 1);
+  if ctl.used > 0 { return ctl; }
   if c == 27 {
     if at + 1 >= b.count { return ifx more then tui_named(TUI_K_NONE, 0) else tui_named(TUI_K_ESC, 1); }
     n := cast(int) b[at + 1];
@@ -167,13 +207,14 @@ tui_key :: (k: [] TuiKeys, b: string, at: int, more: bool) -> TuiKeyRead {
     f := cast(int) b[i];
     used := i + 1 - at;
     if f == '~' {
+      if p == "27;2;13" || p == "27;3;13" || p == "27;5;13" { return tui_named(TUI_K_NEWLINE, used); }   // xterm modifyOtherKeys
       if p == "200" { k[0].pasting = true; k[0].np = 0; return tui_named(TUI_K_NONE, used); }
       if p == "3" { return tui_named(TUI_K_DELETE, used); }
       if p == "1" || p == "7" { return tui_named(TUI_K_HOME, used); }
       if p == "4" || p == "8" { return tui_named(TUI_K_END, used); }
       return tui_named(TUI_K_NONE, used);
     }
-    if f == 'u' && (p == "13;2" || p == "13;3" || p == "13;5") { return tui_named(TUI_K_NEWLINE, used); }   // kitty: Shift/Alt/Ctrl-Enter
+    if f == 'u' { return tui_csi_u(p, used); }
     alt := p == "1;3" || p == "1;5";
     if f == 'A' { return tui_named(TUI_K_UP, used); }
     if f == 'B' { return tui_named(TUI_K_DOWN, used); }
@@ -436,7 +477,30 @@ tui_rows_editor :: (r: [] TuiRows, e: [] TuiEditor, prompt: string, cont: string
 
 // The rows drawn at the bottom of the terminal last time, and the cursor's
 // row within them, so the next draw can come back to their top.
-TuiLive :: struct { drawn: int; at: int; hidden: bool; }
+// floor keeps the region's bottom on the screen's last row: when the
+// region gets shorter without text committed above it, blank rows above the
+// region take up the difference. rows is the screen height (0: not pinned).
+TuiLive :: struct { drawn: int; at: int; hidden: bool; floor: int; rows: int; }
+
+// Pins the live region to the bottom of a screen of `rows` rows: scrolls what
+// is on the screen into the scrollback and starts the region at the top of the
+// emptied screen, filled down to the last row.
+tui_live_pin :: (o: [] TuiOut, lv: [] TuiLive, rows: int) {
+  for i: 0..<rows { tui_put(o, "\n"); }
+  if rows > 1 { tui_csi_n(o, rows - 1, "A"); }
+  tui_byte(o, 13);
+  lv[0].drawn = 0; lv[0].at = 0; lv[0].rows = rows; lv[0].floor = rows;
+}
+
+// After the screen was cleared with the cursor at its top-left.
+tui_live_cleared :: (lv: [] TuiLive) { lv[0].drawn = 0; lv[0].at = 0; lv[0].floor = lv[0].rows; }
+
+// A new screen height; the region stays pinned on its next draw.
+tui_live_resize :: (lv: [] TuiLive, rows: int) {
+  if lv[0].rows == 0 { return; }
+  lv[0].rows = rows;
+  if lv[0].floor > rows { lv[0].floor = rows; }
+}
 
 // Moves to the top of the live region and erases it and everything below.
 tui_live_erase :: (o: [] TuiOut, lv: [] TuiLive) {
@@ -450,7 +514,10 @@ tui_live_erase :: (o: [] TuiOut, lv: [] TuiLive) {
 // Draws rows as the live region; the cursor ends where the rows place it.
 tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
   tui_csi(o, "?25l");
+  low := lv[0].floor;
   tui_live_erase(o, lv);
+  pad := ifx lv[0].rows > 0 && low > r[0].n then low - r[0].n else 0;
+  for i: 0..<pad { tui_csi(o, "K"); tui_put(o, "\r\n"); }
   for i: 0..<r[0].n {
     if i > 0 { tui_put(o, "\r\n"); }
     tui_style(o, r[0].style[i]);
@@ -458,14 +525,15 @@ tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
     tui_style(o, TUI_PLAIN);
     tui_csi(o, "K");
   }
-  lv[0].drawn = r[0].n;
-  lv[0].at = ifx r[0].n > 0 then r[0].n - 1 else 0;
+  lv[0].drawn = pad + r[0].n;
+  lv[0].floor = ifx lv[0].rows > 0 then pad + r[0].n else 0;
+  lv[0].at = ifx lv[0].drawn > 0 then lv[0].drawn - 1 else 0;
   if r[0].cur_row >= 0 && r[0].cur_row < r[0].n {
     up := r[0].n - 1 - r[0].cur_row;
     if up > 0 { tui_csi_n(o, up, "A"); }
     tui_byte(o, 13);
     if r[0].cur_col > 0 { tui_csi_n(o, r[0].cur_col, "C"); }
-    lv[0].at = r[0].cur_row;
+    lv[0].at = pad + r[0].cur_row;
     tui_csi(o, "?25h");
   }
 }
@@ -473,7 +541,13 @@ tui_live_draw :: (o: [] TuiOut, lv: [] TuiLive, r: [] TuiRows) {
 // Writes finished text into the scrollback above the live region: erase the
 // region, write the text and a line end; the caller draws the region again.
 tui_live_commit :: (o: [] TuiOut, lv: [] TuiLive, style: int, s: string) {
-  tui_live_erase(o, lv);
+  // The committed lines move the region down by at least their count; the
+  // blank rows they fill no longer need padding. (A wrapped line takes more
+  // rows, which only makes the next draw scroll, never leave a gap.)
+  high := ifx lv[0].drawn > lv[0].floor then lv[0].drawn else lv[0].floor;
+  lines := 1; for c: s { if c == 10 { lines += 1; } }
+  lv[0].floor = ifx lv[0].rows > 0 && high > lines then high - lines else 0;
+  if lv[0].drawn > 0 { erase_floor := lv[0].floor; tui_live_erase(o, lv); lv[0].floor = erase_floor; }
   tui_style(o, style);
   for c: s { if c == 10 { tui_style(o, TUI_PLAIN); tui_put(o, "\r\n"); tui_style(o, style); } else { tui_byte(o, cast(int) c); } }
   tui_style(o, TUI_PLAIN);
@@ -510,6 +584,14 @@ tui_tb :: (s: string, out: [] u8) -> string {
   #assert tui_key(k, tui_tb("`[1;3C", tb5[..]), 0, false).key.kind == TUI_K_WORD_RIGHT;
   #assert tui_key(k, tui_tb("`\r", tb6[..]), 0, false).key.kind == TUI_K_NEWLINE;
   #assert tui_key(k, tui_tb("`[13;2u", tb7[..]), 0, false).key.kind == TUI_K_NEWLINE;
+  // the kitty protocol: Enter, Esc, Ctrl-C and a shifted letter as CSI u
+  ku: [16] u8;
+  #assert tui_key(k, tui_tb("`[13u", ku[..]), 0, false).key.kind == TUI_K_ENTER;
+  #assert tui_key(k, tui_tb("`[27u", ku[..]), 0, false).key.kind == TUI_K_ESC;
+  #assert tui_key(k, tui_tb("`[99;5u", ku[..]), 0, false).key.kind == TUI_K_CTRL_C;
+  #assert tui_key(k, tui_tb("`[127;3u", ku[..]), 0, false).key.kind == TUI_K_KILL_WORD;
+  sh := tui_key(k, tui_tb("`[65;2u", ku[..]), 0, false); #assert sh.key.kind == TUI_K_CHAR && sh.key.cp == 'A' && sh.used == 7;
+  #assert tui_key(k, tui_tb("`[27;2;13~", ku[..]), 0, false).key.kind == TUI_K_NEWLINE;
   #assert tui_key(k, tui_tb("`[3~", tb8[..]), 0, false).key.kind == TUI_K_DELETE;
   #assert tui_key(k, tui_tb("`", tb9[..]), 0, false).key.kind == TUI_K_ESC;
   #assert tui_key(k, tui_tb("`", tb10[..]), 0, true).used == 0;
@@ -590,4 +672,28 @@ tui_tb :: (s: string, out: [] u8) -> string {
   t := tui_text(o);
   #assert t.count > 6 && t[0] == 27 && t[1] == '[' && t[2] == '1' && t[3] == 'A';
   #assert lv[0].drawn == 0;
+}
+
+#test "a pinned region keeps its bottom on the last row as it shrinks and commits" {
+  ob: [8192] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
+  lv_b: [1] TuiLive; lv := lv_b[..];
+  r_b: [1] TuiRows; r := r_b[..];
+  tui_live_pin(o, lv, 10);
+  #assert lv[0].floor == 10 && lv[0].drawn == 0;
+  tui_live_commit(o, lv, TUI_PLAIN, "banner\nhelp");          // two lines fill two blank rows
+  #assert lv[0].floor == 8;
+  tui_rows_reset(r); k := tui_rows_add(r, TUI_PLAIN, "status"); k = tui_rows_add(r, TUI_PLAIN, "› ");
+  r[0].cur_row = 1; r[0].cur_col = 2;
+  tui_live_draw(o, lv, r);
+  #assert lv[0].drawn == 8 && lv[0].at == 7;                  // six blank rows, then the two rows
+  tui_rows_reset(r); k = tui_rows_add(r, TUI_PLAIN, "› ");
+  r[0].cur_row = 0; r[0].cur_col = 2;
+  tui_live_draw(o, lv, r);                                     // shorter: one more blank row
+  #assert lv[0].drawn == 8 && lv[0].at == 7;
+  for i: 0..<9 { tui_live_commit(o, lv, TUI_PLAIN, "line"); tui_live_draw(o, lv, r); }
+  #assert lv[0].floor == 1 && lv[0].drawn == 1;               // the screen is full; no padding left
+  tui_live_resize(lv, 4);
+  #assert lv[0].rows == 4 && lv[0].floor == 1;
+  unpinned_b: [1] TuiLive; tui_live_draw(o, unpinned_b[..], r);
+  #assert unpinned_b[0].drawn == 1 && unpinned_b[0].floor == 0;
 }

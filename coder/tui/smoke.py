@@ -119,14 +119,20 @@ def main():
     send(b"$ echo smoke-ok\r")
     check("command ran", read_until("$ echo smoke-ok · exit 0", 10))
     check("command output", read_until("    smoke-ok", 5))
+    send(b"top\x1b[13;2ubottom\r")       # kitty Shift-Enter between two lines
+    check("Shift-Enter adds a line", read_until("› top", 5) and read_until("  bottom", 5) and b"topbottom" not in out)
+    check("Shift-Enter turn ended", read_until("You said: top", 10))
+    end = time.time() + 15
+    while out.count("⎿ finished".encode()) < 3 and time.time() < end:
+        read_until("\x00never", 0.2)
     send(b"\x1b[200~first line\rsecond line\x1b[201~")
     send(b"\r")
     check("paste kept both lines", read_until("first line", 5) and read_until("second line", 5))
     check("paste reply", read_until("You said: first line", 10))
     end = time.time() + 15
-    while out.count("⎿ finished".encode()) < 3 and time.time() < end:
+    while out.count("⎿ finished".encode()) < 4 and time.time() < end:
         read_until("\x00never", 0.2)
-    check("paste turn ended", out.count("⎿ finished".encode()) >= 3)
+    check("paste turn ended", out.count("⎿ finished".encode()) >= 4)
     send(b"\x1b[A")
     time.sleep(0.3)
     send(b"\x03")            # clears the recalled entry
