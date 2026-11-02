@@ -25,9 +25,13 @@ caret. It never presses Enter, submits a message or runs a command.
    In the **OpenAgents** menu, turn on
    **Enable Local Dictation — Parakeet**, then grant macOS microphone access.
    The setting defaults off and is saved locally.
-3. Wait for the initial model load. Hold **⌘D**, speak, then release it.
+3. Choose **OpenAgents → Dictation Input…** to use the system default or a
+   specific input device. The choice is saved locally by stable CoreAudio UID.
+   An unavailable selected input is an error; it never silently switches to
+   another microphone.
+4. Wait for the initial model load. Hold **⌘D**, speak, then release it.
    Holding the microphone below the composer does the same thing.
-4. Review the inserted draft and send it yourself. Undo removes the insertion
+5. Review the inserted draft and send it yourself. Undo removes the insertion
    as one edit. Escape cancels a pending dictation.
 
 The system's microphone indicator stays on while dictation is enabled and
@@ -50,8 +54,13 @@ The timeline keeps up to 450 ms before the press, ignores holds shorter than
 300 ms, includes up to 200 ms after release and caps the complete captured clip
 at 60 seconds. A level gate and at least 160 ms of speech must pass before
 inference. Empty ASR text is also “No speech detected.” The controller reuses
-Verse's Coax resampling at 16, 24, 44.1 and 48 kHz; the host takes the default
-input's first channel. It refuses other rates rather than mislabeling samples.
+Verse's Coax resampling at exactly 16, 24, 44.1 and 48 kHz; the host transports
+channel zero of the selected input (planar or interleaved float32, 1–32
+channels). Other rates, including fractional near-matches, refuse explicitly.
+Device/configuration changes stop capture, clear old audio and invalidate the
+request. Choose an available input again to rearm; returning to **System
+default input** is an explicit choice. Late old-device callbacks and in-flight
+recognition cannot publish a draft after the switch.
 
 Parakeet's per-call bound remains 327,520 samples. Longer clips are divided
 into at most three independent model requests, with exact coverage and no
@@ -68,6 +77,10 @@ neither a successful transcript nor an error reaches the send path.
 
 ## Verification and limits
 
+[Device selection and route-change checks](../verification/coder-dictation-devices-2026-11-02/README.md)
+cover injected devices and actual PCM buffer layouts. Physical device removal
+and permissions remain owner acceptance.
+
 [The dated record](../verification/coder-dictation-2026-11-02/README.md)
 keeps focused policy mutations, native O0/O2 and sanitizer checks, asynchronous
 host-effect cases, the real resident Metal recording and offscreen app checks.
@@ -75,7 +88,7 @@ Tests use public recordings or injected capture/permission effects; they never
 open the owner's microphone or a visible window.
 
 The [Hex proposal](2026-11-02-coder-voice-from-hex.md) still has later work:
-repository vocabulary rescoring, spoken formatting, device selection, partial
+repository vocabulary rescoring, spoken formatting, partial
 text while speaking, streaming and measured key-release latency. The terminal
 UI's toggle gesture and a standalone `openagents dictate` command are separate.
 No 300 ms dictation-latency or representative multilingual-quality claim is made.

@@ -396,6 +396,29 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     if dictationSetup { dictation.setEnabled(dsk_dictation_enabled(desk) != 0) }
     saveSettings(); syncDictation()
   }
+  @objc func chooseDictationInput(_ sender: Any?) {
+    let menu = NSMenu(title: "Dictation Input")
+    func choice(_ name: String, _ uid: String) {
+      let item = NSMenuItem(title: name, action: #selector(selectDictationInput(_:)), keyEquivalent: "")
+      item.target = self; item.representedObject = uid
+      item.state = dictation.selectedInputUID == uid ? .on : .off
+      menu.addItem(item)
+    }
+    choice("System default input", "")
+    let devices = dictation.inputDevices
+    for device in devices { choice(device.name, device.uid) }
+    if !dictation.selectedInputUID.isEmpty && !devices.contains(where: { $0.uid == dictation.selectedInputUID }) {
+      let missing = NSMenuItem(title: "Selected input unavailable — choose an input", action: nil, keyEquivalent: "")
+      missing.isEnabled = false; menu.addItem(missing)
+    }
+    menu.popUp(positioning: nil, at: NSPoint(x: 16, y: bounds.height - 36), in: self)
+  }
+  @objc func selectDictationInput(_ sender: NSMenuItem) {
+    guard let uid = sender.representedObject as? String else { return }
+    cancelDictationForEdit()
+    _ = dictation.selectInput(uid)
+    syncDictation()
+  }
 
   var queue: MTLCommandQueue!
   var pipeline: MTLRenderPipelineState!

@@ -284,6 +284,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     menu("OpenAgents", [
       item("About OpenAgents", #selector(NSApplication.orderFrontStandardAboutPanel(_:))), .separator(),
       item("Enable Local Dictation — Parakeet", #selector(ZeronView.toggleDictation(_:))),
+      item("Dictation Input…", #selector(ZeronView.chooseDictationInput(_:))),
       item("Hold ⌘D or microphone · on-device draft only", nil), .separator(),
       services, .separator(),
       item("Hide OpenAgents", #selector(NSApplication.hide(_:)), "h"),

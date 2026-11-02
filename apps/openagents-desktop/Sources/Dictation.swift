@@ -3,16 +3,29 @@
 // segment boundaries, text joining and result eligibility belong to Coax.
 import Foundation
 import AVFoundation
+import CoreAudio
+import AudioToolbox
 
 enum DictationPermission { case unknown, granted, denied }
 enum DictationEffectError: Error, Equatable { case model, capture, format, recognition }
 
+struct DictationInputDevice: Equatable { let uid: String; let name: String }
+
 protocol DictationAudioCapture: AnyObject {
+  var inputDevices: [DictationInputDevice] { get }
+  var selectedInputUID: String { get }
+  func selectInput(_ uid: String) throws
   var permission: DictationPermission { get }
   func requestPermission(_ completion: @escaping (Bool) -> Void)
   func start(_ receive: @escaping ([Float], Int32, Int64) -> Void,
              failure: @escaping () -> Void) throws
   func stop()
+}
+
+extension DictationAudioCapture {
+  var inputDevices: [DictationInputDevice] { [] }
+  var selectedInputUID: String { "" }
+  func selectInput(_ uid: String) throws { if !uid.isEmpty { throw DictationEffectError.capture } }
 }
 
 protocol DictationRecognizer: AnyObject {
@@ -25,6 +38,61 @@ final class MicrophoneDictationCapture: DictationAudioCapture {
   private let engine = AVAudioEngine()
   private var tapped = false
   private var changed: NSObjectProtocol?
+  private let preferences: UserDefaults
+  private static let selectionKey = "OpenAgentsLocalDictationInputUID"
+  private var hardwareListeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+  init(preferences: UserDefaults = .standard) { self.preferences = preferences }
+  var selectedInputUID: String { preferences.string(forKey: Self.selectionKey) ?? "" }
+  private func text(_ device: AudioDeviceID, _ selector: AudioObjectPropertySelector) -> String {
+    var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var value: Unmanaged<CFString>?; var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+    let status = withUnsafeMutablePointer(to: &value) { AudioObjectGetPropertyData(device, &address, 0, nil, &size, $0) }
+    // CoreAudio's property contract transfers a retained CFObject to caller.
+    guard status == noErr, let value else { return "" }
+    return value.takeRetainedValue() as String
+  }
+  private func channels(_ device: AudioDeviceID) -> Int {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr, size >= MemoryLayout<AudioBufferList>.size else { return 0 }
+    let storage = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+    defer { storage.deallocate() }
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, storage) == noErr else { return 0 }
+    return UnsafeMutableAudioBufferListPointer(storage.assumingMemoryBound(to: AudioBufferList.self)).reduce(0) { $0 + Int($1.mNumberChannels) }
+  }
+  private func devices() -> [(AudioDeviceID, DictationInputDevice)] {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr,
+          size >= MemoryLayout<AudioDeviceID>.size, size <= 4096, size % UInt32(MemoryLayout<AudioDeviceID>.size) == 0 else { return [] }
+    var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+    let status = ids.withUnsafeMutableBytes { AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, $0.baseAddress!) }
+    guard status == noErr else { return [] }
+    return ids.filter { channels($0) > 0 }.compactMap { id in
+      let uid = text(id, kAudioDevicePropertyDeviceUID)
+      guard deviceMatches(uid, uid, false) else { return nil }
+      return (id, DictationInputDevice(uid: uid, name: text(id, kAudioObjectPropertyName)))
+    }
+  }
+  var inputDevices: [DictationInputDevice] { devices().map { $0.1 } }
+  func selectInput(_ uid: String) throws {
+    // An empty selection explicitly follows the OS default. An unavailable
+    // selected UID never silently changes the user's persisted selection.
+    if !uid.isEmpty && !inputDevices.contains(where: { deviceMatches(uid, $0.uid, false) }) { throw DictationEffectError.capture }
+    preferences.set(uid, forKey: Self.selectionKey)
+  }
+  private func deviceMatches(_ wanted: String, _ observed: String, _ isDefault: Bool) -> Bool {
+    let a = Array(wanted.utf8), b = Array(observed.utf8)
+    return a.withUnsafeBufferPointer { x in b.withUnsafeBufferPointer { y in
+      dct_device_matches(x.baseAddress, Int32(x.count), y.baseAddress, Int32(y.count), isDefault ? 1 : 0) != 0
+    } }
+  }
+  private func selectedDevice() -> AudioDeviceID? {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var value = AudioDeviceID(0), size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    if AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &value) != noErr { value = 0 }
+    return devices().first { deviceMatches(selectedInputUID, $0.1.uid, $0.0 == value) }?.0
+  }
   var permission: DictationPermission {
     switch AVCaptureDevice.authorizationStatus(for: .audio) {
     case .authorized: return .granted
@@ -38,29 +106,50 @@ final class MicrophoneDictationCapture: DictationAudioCapture {
   func start(_ receive: @escaping ([Float], Int32, Int64) -> Void,
              failure: @escaping () -> Void) throws {
     stop()
+    guard let device = selectedDevice() else { throw DictationEffectError.capture }
     let input = engine.inputNode
+    guard let unit = input.audioUnit else { throw DictationEffectError.capture }
+    var selected = device
+    guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &selected, UInt32(MemoryLayout<AudioDeviceID>.size)) == noErr else { throw DictationEffectError.capture }
     let format = input.outputFormat(forBus: 0)
-    guard format.channelCount > 0, format.sampleRate > 0,
-          format.commonFormat == .pcmFormatFloat32 else { throw DictationEffectError.format }
+    guard format.sampleRate >= 1, format.sampleRate <= 192000,
+          format.commonFormat == .pcmFormatFloat32,
+          dct_device_format(format.sampleRate, Int64(format.channelCount), format.isInterleaved ? Int64(format.channelCount) : 1, 1) != 0 else { throw DictationEffectError.format }
     input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, time in
-      guard time.isHostTimeValid, let channel = buffer.floatChannelData?[0] else { failure(); return }
-      // Transport channel zero, including interleaved hardware layouts. All
-      // conversion, rate admission and filtering occur in the Coax controller.
-      let n = Int(buffer.frameLength), stride = Int(buffer.stride)
-      var mono = [Float](repeating: 0, count: n)
-      for i in 0..<n { mono[i] = channel[i * stride] }
+      guard let mono = Self.channelZero(buffer, hostTimeValid: time.isHostTimeValid) else { failure(); return }
       let first = Int64(AVAudioTime.seconds(forHostTime: time.hostTime) * 1000)
       receive(mono, Int32(buffer.format.sampleRate), first)
     }
     tapped = true
     do {
-      engine.prepare(); try engine.start()
+      for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice] {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        let listener: AudioObjectPropertyListenerBlock = { _, _ in failure() }
+        guard AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, nil, listener) == noErr else { throw DictationEffectError.capture }
+        hardwareListeners.append((address, listener))
+      }
       changed = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
                                                        object: engine, queue: nil) { _ in failure() }
+      // Subscribe before starting IO and revalidate the choice so a route
+      // change between enumeration and listener installation cannot be missed.
+      guard selectedDevice() == device else { throw DictationEffectError.capture }
+      engine.prepare(); try engine.start()
     }
     catch { stop(); throw error }
   }
+  static func channelZero(_ buffer: AVAudioPCMBuffer, hostTimeValid: Bool) -> [Float]? {
+    guard buffer.format.sampleRate >= 1, buffer.format.sampleRate <= 192000,
+          buffer.format.commonFormat == .pcmFormatFloat32,
+          dct_device_format(buffer.format.sampleRate, Int64(buffer.format.channelCount), Int64(buffer.stride), hostTimeValid ? 1 : 0) != 0,
+          let channel = buffer.floatChannelData?[0] else { return nil }
+    let n = Int(buffer.frameLength), stride = Int(buffer.stride)
+    var mono = [Float](repeating: 0, count: n)
+    for i in 0..<n { mono[i] = channel[i * stride] }
+    return mono
+  }
   func stop() {
+    for (var address, listener) in hardwareListeners { AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, nil, listener) }
+    hardwareListeners.removeAll()
     if let changed { NotificationCenter.default.removeObserver(changed); self.changed = nil }
     if tapped { engine.inputNode.removeTap(onBus: 0); tapped = false }
     engine.stop()
@@ -335,6 +424,16 @@ final class CoderDictation {
   }
   func inspect() -> (Int32, Int32, UInt64, Int32) {
     sync { (Int32(dct_phase(controller)), Int32(dct_outcome(controller)), dct_ticket(controller), dct_samples(controller)) }
+  }
+  var inputDevices: [DictationInputDevice] { sync { capture.inputDevices } }
+  var selectedInputUID: String { sync { capture.selectedInputUID } }
+  @discardableResult func selectInput(_ uid: String) -> Bool {
+    sync {
+      guard !disposed else { return false }
+      stopCapture(); dct_cancel(controller); dct_ready(controller, 0)
+      do { try capture.selectInput(uid); reconcile(); publish(); return true }
+      catch { captureFault(3); return false }
+    }
   }
   func isReady() -> Bool { sync { !disposed && dct_capture_allowed(controller) != 0 } }
   func shutdown() {

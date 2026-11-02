@@ -3218,7 +3218,13 @@ reuses Verse's resampling/VAD and plans complete nonoverlapping Parakeet slices.
 The desktop insertion authority holds the original composer text, selection
 and send count. It admits one complete UTF-8 insertion only for the current
 unchanged draft; edits, cancellation, IME and navigation invalidate it. Literal
-newlines stay draft bytes. It never calls a send operation. Checks and explicit
+newlines stay draft bytes. It never calls a send operation. Local device choice
+is explicit and persisted by stable CoreAudio UID; a missing explicit input never
+falls back to another microphone. Device/configuration changes stop the capture
+generation, clear audio and cancel pending insertion. The shared
+`apps/shared/dictation-device.coax` policy admits exact selected/default identity
+and exact supported rates, channels and planar/interleaved strides; late callbacks
+cannot enter a replacement generation. Checks and explicit
 hardware limits: `docs/verification/coder-dictation-2026-11-02/README.md`.
 
 Model-boundary exception: Debug builds accept `-OAVoiceFixture` (a bundled

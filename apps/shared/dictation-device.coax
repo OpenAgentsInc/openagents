@@ -1,0 +1,34 @@
+// Device selection/format admission for local capture; hosts enumerate effects.
+#authority;
+#test "dictation device explicit selection never falls back to a different default" {
+ #assert dci_matches("", "built-in", true);
+ #assert !dci_matches("", "usb", false);
+ #assert dci_matches("usb", "usb", false);
+ #assert !dci_matches("usb", "built-in", true);
+ #assert !dci_matches("missing", "", true);
+ #assert !dci_format(16000.5,1,1,true);
+ #assert !dci_matches("bad\nuid", "bad\nuid", false);
+ ids:[513]u8;for i:0..<ids.count {ids[i]='x';}
+ #assert dci_matches(cast(string)ids[0..<512],cast(string)ids[0..<512],false);
+ #assert !dci_matches(cast(string)ids[..],cast(string)ids[..],false);
+}
+#forall "dictation device transport admits supported rates and exact channel strides" rate:0..<6,channels:0..<34,interleaved:bool {
+ rates:=[6]int.[0,16000,24000,44100,48000,96000];stride:=ifx interleaved then channels else 1;
+ expected:=rate>=1 && rate<=4 && channels>=1 && channels<=32;
+ #assert dci_format(cast(f64)rates[rate],channels,stride,true)==expected;
+ #assert !dci_format(cast(f64)rates[rate],channels,0,true);
+ #assert !dci_format(cast(f64)rates[rate],channels,stride,false);
+}
+dci_uid :: (uid:string)->bool {
+ if uid.count<0 || uid.count>512 {return false;}
+ for c:uid {if c<32 || c==127 {return false;}}
+ return true;
+}
+dci_matches :: (wanted:string,observed:string,is_default:bool)->bool #export_c {
+ if !dci_uid(wanted) || !dci_uid(observed) || observed.count==0 {return false;}
+ return ifx wanted.count==0 then is_default else wanted==observed;
+}
+dci_format :: (rate:f64,channels:int,stride:int,host_time:bool)->bool #export_c {
+ return host_time && (rate==16000 || rate==24000 || rate==44100 || rate==48000)
+  && channels>=1 && channels<=32 && (stride==1 || stride==channels);
+}

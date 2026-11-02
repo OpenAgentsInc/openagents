@@ -34,3 +34,5 @@ int dct_result(void*p,uint64_t ticket,int success){return p?dct_complete(view(p)
 int dct_append_text(void*p,uint64_t ticket,const uint8_t*text,int32_t n){return p?dct_add_text(view(p),ticket,(coax_string){(const char*)text,text?n:0}):0;}
 int32_t dct_text_count(void*p){return p?(int32_t)((DctOwner*)p)->state.text_n:0;}
 int32_t dct_copy_text(void*p,uint8_t*out,int32_t cap){return p?(int32_t)dct_copy_words(view(p),(coax_v_u8){out,out?cap:0}):-1;}
+int dct_device_matches(const uint8_t*w,int32_t wn,const uint8_t*u,int32_t un,int d){if((!w&&wn!=0)||(!u&&un!=0))return 0;return dci_matches((coax_string){(const char*)w,wn},(coax_string){(const char*)u,un},d!=0);}
+int dct_device_format(double r,int64_t c,int64_t s,int h){return dci_format(r,c,s,h!=0);}

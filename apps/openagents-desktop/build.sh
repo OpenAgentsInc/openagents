@@ -29,7 +29,7 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/dictation-build.coax" "$repo" "$work/c"
 xcrun -sdk macosx metal "$here/Shaders.metal" "$here/Zeron.metal" -o "$app/Contents/Resources/default.metallib"
 xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" "$work/c/zeron.o" "$work/c/zeron-face.o" "$work/c/lab-sign.o" "$work/c/dictation.o" "$work/c/dictation-face.o" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
-  -framework AppKit -framework Metal -framework MetalKit -framework CoreText -framework AVFoundation -framework Foundation -lpthread -lm -o "$app/Contents/MacOS/OpenAgents"
+  -framework AppKit -framework Metal -framework MetalKit -framework CoreText -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -lpthread -lm -o "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 rm -rf "$app/Contents/Resources/fonts" "$app/Contents/Resources/icons"
 # Geist, its OFL, Zeron's icons and the NOTICE live beside the shared components (apps/shared/zeron/).

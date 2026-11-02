@@ -41,6 +41,8 @@ int dct_result(void *state,uint64_t ticket,int success);
 int dct_append_text(void *state,uint64_t ticket,const uint8_t *text,int32_t length);
 int32_t dct_text_count(void *state);
 int32_t dct_copy_text(void *state,uint8_t *out,int32_t capacity);
+int dct_device_matches(const uint8_t *wanted,int32_t wanted_n,const uint8_t *observed,int32_t observed_n,int is_default);
+int dct_device_format(double rate,int64_t channels,int64_t stride,int host_time);
 #ifdef __cplusplus
 }
 #endif

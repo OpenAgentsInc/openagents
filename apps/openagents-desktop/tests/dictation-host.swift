@@ -2,6 +2,7 @@
 // Injected devices never request microphone permission, open hardware or write
 // audio. --real uses a public recorded PCM clip and the genuine Metal model.
 import Foundation
+import AVFoundation
 
 enum DictationOracleError: Error { case failed(String), injected }
 func require(_ test: @autoclosure () -> Bool, _ message: String) throws {
@@ -20,6 +21,16 @@ final class OracleCapture: DictationAudioCapture {
   private var requests = 0, starts = 0, stops = 0
   private var pending: ((Bool) -> Void)?
   private var failed: (() -> Void)?
+  private var received: (([Float], Int32, Int64) -> Void)?
+  private var oldReceive: (([Float], Int32, Int64) -> Void)?
+  private var oldFailure: (() -> Void)?
+  private var selection = ""
+  var inputDevices: [DictationInputDevice] { [DictationInputDevice(uid: "usb", name: "USB input")] }
+  var selectedInputUID: String { lock.lock(); defer { lock.unlock() }; return selection }
+  func selectInput(_ uid: String) throws {
+    guard uid == "" || uid == "usb" else { throw DictationEffectError.capture }
+    lock.lock(); selection = uid; lock.unlock()
+  }
   init(_ permission: DictationPermission = .granted) { value = permission }
   var permission: DictationPermission { lock.lock(); defer { lock.unlock() }; return value }
   var counts: (Int, Int, Int) { lock.lock(); defer { lock.unlock() }; return (requests, starts, stops) }
@@ -28,9 +39,10 @@ final class OracleCapture: DictationAudioCapture {
     lock.lock(); value = allowed ? .granted : .denied; let callback = pending; pending = nil; lock.unlock(); callback?(allowed)
   }
   func start(_ receive: @escaping ([Float], Int32, Int64) -> Void, failure: @escaping () -> Void) throws {
-    lock.lock(); starts += 1; failed = failure; lock.unlock()
+    lock.lock(); starts += 1; failed = failure; received = receive; lock.unlock()
   }
-  func stop() { lock.lock(); stops += 1; failed = nil; lock.unlock() }
+  func stop() { lock.lock(); stops += 1; oldReceive = received; oldFailure = failed; received = nil; failed = nil; lock.unlock() }
+  func sendOld() { lock.lock(); let receive = oldReceive, failed = oldFailure; lock.unlock(); receive?(square(320), 16000, 0); failed?() }
   func fail() { lock.lock(); let callback = failed; lock.unlock(); callback?() }
 }
 
@@ -87,6 +99,62 @@ func utterance(_ host: CoderDictation, silence: Bool = false) throws -> UInt64 {
       try real(model: CommandLine.arguments[2], pcm: CommandLine.arguments[3]); return
     }
     var checked = 0
+    do {
+      let name = "openagents.dictation-device-oracle.\(UUID().uuidString)"
+      let preferences = UserDefaults(suiteName: name)!
+      defer { preferences.removePersistentDomain(forName: name) }
+      preferences.set("removed-interface", forKey: "OpenAgentsLocalDictationInputUID")
+      let first = MicrophoneDictationCapture(preferences: preferences)
+      let second = MicrophoneDictationCapture(preferences: preferences)
+      try require(first.selectedInputUID == "removed-interface" && second.selectedInputUID == first.selectedInputUID, "stable UID selection not restored")
+      try second.selectInput("")
+      try require(first.selectedInputUID.isEmpty, "explicit default selection not persisted")
+      checked += 1
+    }
+    // New device tests exercise the genuine CoderDictation queue and generation
+    // guards with captured old hardware callbacks; no microphone is opened.
+    do {
+      let capture = OracleCapture(), recognizer = OracleRecognizer(); var results: [String] = []
+      let host = try prepared(capture, recognizer) { _, text in results.append(text) }
+      frames(host, 0, 20); host.fixtureTime(400); let old = host.begin(); frames(host, 20, 30)
+      try require(host.selectInput("usb"), "explicit device selection failed")
+      try require(capture.selectedInputUID == "usb" && capture.counts.1 == 2 && capture.counts.2 == 1, "device selection did not restart effects")
+      try require(host.inspect().0 == 1 && host.inspect().3 == 0 && host.begin() > old, "device change kept pending request/audio"); host.cancel()
+      capture.sendOld(); drain()
+      try require(host.isReady() && host.inspect().3 == 0 && recognizer.counts.1 == 0 && results.isEmpty, "old device callbacks contaminated new capture")
+      try require(!host.selectInput("missing") && capture.selectedInputUID == "usb" && !host.isReady(), "missing selection silently fell back")
+      host.shutdown(); checked += 1
+    }
+    do {
+      let capture = OracleCapture(), recognizer = OracleRecognizer(); var results: [String] = []
+      let host = try prepared(capture, recognizer) { _, text in results.append(text) }
+      recognizer.blockCall = DispatchSemaphore(value: 0); _ = try utterance(host)
+      try eventually("device inference not started") { recognizer.counts.1 == 1 }
+      try require(host.selectInput("usb"), "device switch during inference")
+      recognizer.blockCall?.signal(); try eventually("old inference did not finish") { recognizer.counts.3 == 1 }; drain()
+      try require(results.isEmpty && host.inspect().3 == 0 && recognizer.counts.0 == 1, "device switch published stale result or reloaded resident model")
+      capture.fail(); drain(); try require(!host.isReady() && host.inspect().3 == 0 && host.inspect().1 == 4, "route loss did not clear and fault")
+      capture.sendOld(); drain(); try require(results.isEmpty, "route loss late result")
+      host.shutdown(); checked += 1
+    }
+    do {
+      for rate in [16000.0, 24000, 44100, 48000] {
+        for interleaved in [false, true] {
+          let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 2, interleaved: interleaved)!
+          let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)!; buffer.frameLength = 4
+          for i in 0..<4 { buffer.floatChannelData![0][i * Int(buffer.stride)] = Float(i + 1) / 8 }
+          let mono = MicrophoneDictationCapture.channelZero(buffer, hostTimeValid: true)
+          try require(mono == [0.125, 0.25, 0.375, 0.5], "stereo/interleaved channel zero transport")
+          try require(MicrophoneDictationCapture.channelZero(buffer, hostTimeValid: false) == nil, "invalid host timestamp admitted")
+        }
+      }
+      for rate in [96000.0, 16000.5] {
+        let unsupported = AVAudioPCMBuffer(pcmFormat: AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!, frameCapacity: 4)!
+        unsupported.frameLength = 4
+        try require(MicrophoneDictationCapture.channelZero(unsupported, hostTimeValid: true) == nil, "unsupported or fractional capture rate admitted")
+      }
+      checked += 1
+    }
     do {
       let capture = OracleCapture(.unknown), recognizer = OracleRecognizer()
       let host = CoderDictation(fixture: true, capture: capture, recognizer: recognizer,

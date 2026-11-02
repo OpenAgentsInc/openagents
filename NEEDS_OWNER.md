@@ -580,3 +580,19 @@ checks, current app build and recorded-audio offscreen dictation. The earlier
 diagnostic evidence is retained separately; normal compiler bootstrap/release
 qualification is not claimed. The microphone and macOS permission checks above
 remain pending.
+
+### Parakeet dictation input selection and route changes
+
+The software checks use injected devices and public recorded audio; they never
+open the microphone or request permission. In OpenAgents for Mac:
+
+- [ ] Open **OpenAgents → Dictation Input…** and choose a specific microphone.
+      Relaunch and confirm that input remains selected; **System default input**
+      should follow macOS only when explicitly selected.
+- [ ] With dictation enabled, begin a hold and unplug or change the input.
+      Confirm capture stops and no stale transcript enters the composer.
+- [ ] Reopen **Dictation Input…**, choose an available input and try a fresh
+      hold. Confirm it produces one editable draft and never sends it.
+
+An unavailable explicit selection must show as unavailable rather than silently
+using another input. [Software record](docs/verification/coder-dictation-devices-2026-11-02/README.md).
