@@ -1,0 +1,71 @@
+// Chapter 161's longer training receipt: 96 training trajectories (384
+// pairs of frames), 200 epochs for a spherical and a planar forecaster, then
+// four-step rollouts from 48 held-out initial fields, with area-weighted
+// relative errors by lead time and root mean square errors by latitude band.
+// Its output is psionic/fixtures/sphere-long.out; regenerate it with
+//   coax/bin/coax run psionic/tests/sphere-long.coax --release
+// The acceptance threshold (the spherical forecaster's mean held-out error
+// at lead 4 at most 0.10) was written into chapter 161 before this program
+// first ran on the held-out seeds.
+#import "Basic";
+#load "../lib/sphere.coax";
+
+NLAT :: 16;
+NLON :: 32;
+CELLS :: 512;
+LEADS :: 4;
+LONG_TRAIN :: 96;
+LONG_TEST :: 48;
+LONG_EPOCHS :: 200;
+LONG_THRESHOLD :: 0.1;
+FLOW :: SpFlow.{kappa=0.02,rate=2,dt=0.25,substeps=16};
+POLAR :: 0.8660254037844386;   // sin 60 degrees
+long_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+long_sig :: (v:f64)->f64 {
+    if v==0 {return 0;}
+    s:=1.0;while abs(v)*s<1000 {s*=10;}
+    return floor(v*s+0.5)/s;
+}
+
+main :: () {
+    g:=sp_grid(NLAT,NLON,NLAT);
+    // Each training trajectory is made in one small buffer and cut into pairs.
+    test:[LONG_TEST*(LEADS+1)*CELLS]f64;one:[(LEADS+1)*CELLS]f64;
+    inputs:[LONG_TRAIN*LEADS*CELLS]f64;targets:[LONG_TRAIN*LEADS*CELLS]f64;
+    for k:0..<LONG_TRAIN {
+        #assert sp_trajectory(g,FLOW,cast(u64)(1000+k),one[..])==SpStatus.ok;
+        for s:0..<LEADS {to:=(k*LEADS+s)*CELLS;for t:0..<CELLS {inputs[to+t]=one[s*CELLS+t];targets[to+t]=one[(s+1)*CELLS+t];}}
+    }
+    for k:0..<LONG_TEST {#assert sp_trajectory(g,FLOW,cast(u64)(3000+k),test[k*(LEADS+1)*CELLS..<(k+1)*(LEADS+1)*CELLS])==SpStatus.ok;}
+    print("data: % x % Gauss grid, kappa 0.02, rate 2, steps of 0.25 in 16 substeps\n",NLAT,NLON);
+    print("training: seeds 1000 to %, % pairs, % epochs, batch 8, rate 0.01 halved each quarter\n",1000+LONG_TRAIN-1,LONG_TRAIN*LEADS,LONG_EPOCHS);
+    pe:[LEADS]f64;
+    for k:0..<LONG_TEST {base:=k*(LEADS+1)*CELLS;for s:0..<LEADS {pe[s]+=sp_rel_error(g,test[base..<base+CELLS],test[base+(s+1)*CELLS..<base+(s+2)*CELLS])/LONG_TEST;}}
+    nets:=[2]SpNet.[SpNet.{kind=SpKind.sphere,width=4,layers=3,modes=16},SpNet.{kind=SpKind.plane,width=4,layers=3,modes=8}];
+    sphere4:=0.0;
+    for n:0..<2 {
+        net:=nets[n];P:=sp_params(net);p:[SP_PARAMS_MAX]f64;m:[SP_PARAMS_MAX]f64;w:[SP_PARAMS_MAX]f64;losses:[LONG_EPOCHS]f64;
+        sp_init(net,p[0..<P],7);
+        cfg:=SpTrain.{epochs=LONG_EPOCHS,batch=8,lr=0.01,decay=0.0001};
+        #assert sp_train(net,p[0..<P],m[0..<P],w[0..<P],g,inputs[..],targets[..],cfg,losses[..])==SpStatus.ok;
+        print("% network: width 4, 3 layers, % modes; % parameters\n",net.kind,net.modes,P);
+        for e:0..<LONG_EPOCHS {if e%50==0 || e==LONG_EPOCHS-1 {print("  epoch %: loss %\n",e,long_sig(losses[e]));}}
+        lead:[LEADS]f64;worst:[LEADS]f64;polar:=0.0;tropics:=0.0;out:[LEADS*CELLS]f64;
+        for k:0..<LONG_TEST {
+            base:=k*(LEADS+1)*CELLS;
+            #assert sp_rollout(net,p[0..<P],g,test[base..<base+CELLS],out[..])==SpStatus.ok;
+            for s:0..<LEADS {
+                e:=sp_rel_error(g,out[s*CELLS..<(s+1)*CELLS],test[base+(s+1)*CELLS..<base+(s+2)*CELLS]);
+                lead[s]+=e/LONG_TEST;if e>worst[s] {worst[s]=e;}
+            }
+            last:=out[(LEADS-1)*CELLS..<LEADS*CELLS];truth:=test[base+LEADS*CELLS..<base+(LEADS+1)*CELLS];
+            polar+=sp_band_rms(g,last,truth,POLAR,true)/LONG_TEST;tropics+=sp_band_rms(g,last,truth,POLAR,false)/LONG_TEST;
+        }
+        print("  held-out (seeds 3000 to %) relative error by lead, mean: % % % %\n",3000+LONG_TEST-1,long_r4(lead[0]),long_r4(lead[1]),long_r4(lead[2]),long_r4(lead[3]));
+        print("  worst: % % % %\n",long_r4(worst[0]),long_r4(worst[1]),long_r4(worst[2]),long_r4(worst[3]));
+        print("  lead 4 rms error: polar caps (above 60 degrees) %, below 60 degrees %\n",long_r4(polar),long_r4(tropics));
+        if n==0 {sphere4=lead[LEADS-1];}
+    }
+    print("persistence by lead: % % % %\n",long_r4(pe[0]),long_r4(pe[1]),long_r4(pe[2]),long_r4(pe[3]));
+    print("threshold: spherical mean at lead 4 at most %: %\n",LONG_THRESHOLD,ifx sphere4<=LONG_THRESHOLD then "pass" else "fail");
+}

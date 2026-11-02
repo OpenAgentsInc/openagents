@@ -1,0 +1,19 @@
+2 Gauss nodes: x = +-0.5774 (1/sqrt 3), weights 1.0 and 1.0
+cos(theta): a_10 = 2.0467 (sqrt(4 pi/3) = 2.0467), a_00 = 0.0
+sin(theta) cos(phi): a_11 = 1.4472 (sqrt(2 pi/3) = 1.4472)
+16 x 32 grid, degrees below 16: round trip of 136 coefficients, largest error below 1e-13: true
+one step of 0.25, largest error with 2, 4, 8 substeps: 0.0002059 0.00005103 0.00001269; ratios 4.035 4.0203
+16 training and 8 held-out trajectories, 5 frames each
+seed 1000 at the north pole: -0.1829 -0.28 -0.4149 -0.5783 -0.7379
+sphere network: 841 parameters, 80 steps; loss 0.01334 then 0.0006676
+  held-out relative error by lead: 0.0569 0.0954 0.1167 0.1336
+  lead 4 rms error, polar caps 0.088, below 60 degrees 0.0846
+plane network: 21673 parameters, 80 steps; loss 0.01279 then 0.0004318
+  held-out relative error by lead: 0.0419 0.0745 0.0997 0.1251
+  lead 4 rms error, polar caps 0.1211, below 60 degrees 0.0741
+persistence by lead: 0.3062 0.4986 0.6183 0.6926
+a grid of 33 latitudes: size
+16 degrees on 30 longitudes: degree
+a negative diffusion: flow
+a NaN in the field: number
+17 degrees in a layer on this grid: network

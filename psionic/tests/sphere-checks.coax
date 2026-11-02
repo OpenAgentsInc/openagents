@@ -1,0 +1,159 @@
+// Oracles and fixtures for psionic/lib/sphere.coax (chapter 161). Nothing
+// here calls the library's Legendre recurrence or its transforms: the
+// associated Legendre functions come from the explicit polynomial formula,
+// the transform is a direct double sum with cos and sin, and a band-limited
+// field is evaluated point by point at any position on the sphere.
+SP_CHECK_PI :: 3.141592653589793;
+
+sp_near :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+sp_worst :: (a:[]f64,b:[]f64)->f64 {w:=0.0;for i:0..<a.count {d:=abs(a[i]-b[i]);if d>w {w=d;}}return w;}
+// A fixed sequence in [-1, 1].
+sp_fill :: (seed:int,v:[]f64) {
+    s:=seed*7919+12345;
+    for i:0..<v.count {s=(s*1103515245+12345)%2147483648;v[i]=f64(s%2001-1000)/1000;}
+}
+sp_fact :: (n:int)->f64 {r:=1.0;for k:1..<n+1 {r*=f64(k);}return r;}
+sp_power :: (x:f64,n:int)->f64 {r:=1.0;for k:0..<n {r*=x;}return r;}
+
+// The orthonormal associated Legendre function from its polynomial:
+// P_l(x) = 2^-l sum over k of (-1)^k C(l, k) C(2l - 2k, l) x^(l - 2k),
+// P_l^m = (1 - x^2)^(m/2) d^m/dx^m P_l, scaled by
+// sqrt((2l + 1)/(4 pi) (l - m)!/(l + m)!). No Condon-Shortley phase.
+sp_oracle_plm :: (l:int,m:int,x:f64)->f64 {
+    s:=0.0;
+    for k:0..<l/2+1 {
+        p:=l-2*k;
+        if p>=m {
+            c:=sp_fact(l)/(sp_fact(k)*sp_fact(l-k))*sp_fact(2*l-2*k)/(sp_fact(l)*sp_fact(l-2*k))*sp_fact(p)/sp_fact(p-m);
+            if k%2==1 {c= -c;}
+            s+=c*sp_power(x,p-m);
+        }
+    }
+    s/=sp_power(2,l);
+    return sqrt(f64(2*l+1)/(4*SP_CHECK_PI)*sp_fact(l-m)/sp_fact(l+m))*sp_power(sqrt(1-x*x),m)*s;
+}
+sp_slot :: (l:int,m:int)->int {return l*(l+1)/2+m;}
+
+// The transform as a direct sum over every grid point:
+// a_lm = sum over j, k of w_j (2 pi/nlon) f_jk P_lm(x_j) e^(-i m phi_k).
+sp_oracle_analysis :: (g:SpGrid,f:[]f64,ar:[]f64,ai:[]f64) {
+    for l:0..<g.deg {for m:0..<l+1 {
+        sr:=0.0;si:=0.0;
+        for j:0..<g.nlat {for k:0..<g.nlon {
+            phi:=2*SP_CHECK_PI*f64(k)/f64(g.nlon);c:=g.w[j]*2*SP_CHECK_PI/f64(g.nlon)*f[j*g.nlon+k]*sp_oracle_plm(l,m,g.x[j]);
+            sr+=c*cos(f64(m)*phi);si-=c*sin(f64(m)*phi);
+        }}
+        ar[sp_slot(l,m)]=sr;ai[sp_slot(l,m)]=si;
+    }}
+}
+// A band-limited field at the unit vector (cx, cy, cz): the sum over l and
+// m >= 0 of c_m P_lm(cz) Re(a_lm e^(i m phi)), c_0 = 1, c_m = 2, with
+// e^(i phi) = (cx + i cy)/sqrt(cx^2 + cy^2).
+sp_oracle_eval :: (deg:int,ar:[]f64,ai:[]f64,cx:f64,cy:f64,cz:f64)->f64 {
+    s:=sqrt(cx*cx+cy*cy);er:=1.0;ei:=0.0;
+    if s>0 {er=cx/s;ei=cy/s;}
+    v:=0.0;zr:=1.0;zi:=0.0;   // (e^(i phi))^m
+    for m:0..<deg {
+        c:=2.0;if m==0 {c=1;}
+        for l:m..<deg {v+=c*sp_oracle_plm(l,m,cz)*(ar[sp_slot(l,m)]*zr-ai[sp_slot(l,m)]*zi);}
+        t:=zr*er-zi*ei;zi=zr*ei+zi*er;zr=t;
+    }
+    return v;
+}
+// Grid point (j, k) as a unit vector.
+SpPoint :: struct {x:f64;y:f64;z:f64;}
+sp_point :: (g:SpGrid,j:int,k:int)->SpPoint {
+    phi:=2*SP_CHECK_PI*f64(k)/f64(g.nlon);s:=sqrt(1-g.x[j]*g.x[j]);
+    return SpPoint.{x=s*cos(phi),y=s*sin(phi),z=g.x[j]};
+}
+// R^-1 p for R = Rz(alpha) Ry(beta): Ry(-beta) Rz(-alpha) p.
+sp_unrotate :: (p:SpPoint,alpha:f64,beta:f64)->SpPoint {
+    ca:=cos(alpha);sa:=sin(alpha);cb:=cos(beta);sb:=sin(beta);
+    x:=ca*p.x+sa*p.y;y:= -sa*p.x+ca*p.y;z:=p.z;
+    return SpPoint.{x=cb*x-sb*z,y=y,z=sb*x+cb*z};
+}
+// Random coefficients below degree deg, with a_l0 real.
+sp_random_coeffs :: (seed:int,deg:int,ar:[]f64,ai:[]f64) {
+    n:=deg*(deg+1)/2;sp_fill(seed,ar[0..<n]);sp_fill(seed+1,ai[0..<n]);
+    for l:0..<deg {ai[sp_slot(l,0)]=0;}
+}
+
+// Every parameter's gradient against a central difference with step 1e-6:
+// the worst |fd - g| / (1 + |g|), for a scalar loss sum of dy . y.
+sp_layer_gradients :: (seed:int,nlat:int,nlon:int,deg:int,cin:int,cout:int,act:FoAct)->f64 {
+    g:=sp_grid(nlat,nlon,deg);cells:=nlat*nlon;m:=cin*cout*deg;
+    w:[64]f64;lin:[16]f64;bias:[4]f64;sp_fill(seed,w[0..<m]);sp_fill(seed+1,lin[0..<cin*cout]);sp_fill(seed+2,bias[0..<cout]);
+    l:=SpLayer.{cin=cin,cout=cout,deg=deg,act=act,w=w[0..<m],lin=lin[0..<cin*cout],bias=bias[0..<cout]};
+    x:[256]f64;dy:[256]f64;pre:[256]f64;y:[256]f64;dx:[256]f64;sp_fill(seed+3,x[0..<cin*cells]);sp_fill(seed+4,dy[0..<cout*cells]);
+    gw:[64]f64;gl:[16]f64;gb:[4]f64;gr:=SpGrad.{w=gw[0..<m],lin=gl[0..<cin*cout],bias=gb[0..<cout]};
+    if sp_layer_forward(l,g,x[0..<cin*cells],pre[0..<cout*cells],y[0..<cout*cells])!=SpStatus.ok {return 1e9;}
+    if sp_layer_backward(l,g,x[0..<cin*cells],pre[0..<cout*cells],dy[0..<cout*cells],dx[0..<cin*cells],gr)!=SpStatus.ok {return 1e9;}
+    h:=1e-6;worst:=0.0;
+    // Parameters, then inputs: all through one loss.
+    for t:0..<m+cin*cout+cout+cin*cells {
+        v:=w[0..<m];q:=t;exact:=gw[0..<m];
+        if t>=m {v=lin[0..<cin*cout];q=t-m;exact=gl[0..<cin*cout];}
+        if t>=m+cin*cout {v=bias[0..<cout];q=t-m-cin*cout;exact=gb[0..<cout];}
+        if t>=m+cin*cout+cout {v=x[0..<cin*cells];q=t-m-cin*cout-cout;exact=dx[0..<cin*cells];}
+        keep:=v[q];
+        v[q]=keep+h;_a:=sp_layer_forward(l,g,x[0..<cin*cells],pre[0..<cout*cells],y[0..<cout*cells]);lp:=0.0;for i:0..<cout*cells {lp+=dy[i]*y[i];}
+        v[q]=keep-h;_b:=sp_layer_forward(l,g,x[0..<cin*cells],pre[0..<cout*cells],y[0..<cout*cells]);lm:=0.0;for i:0..<cout*cells {lm+=dy[i]*y[i];}
+        v[q]=keep;
+        e:=abs((lp-lm)/(2*h)-exact[q])/(1+abs(exact[q]));if e>worst {worst=e;}
+    }
+    return worst;
+}
+
+// The network's whole gradient against central differences, on one pair.
+sp_net_gradients :: (net:SpNet,nlat:int,nlon:int,deg:int,seed:int)->f64 {
+    g:=sp_grid(nlat,nlon,deg);cells:=nlat*nlon;P:=sp_params(net);
+    p:[1200]f64;gr:[1200]f64;off:[1200]f64;u:[64]f64;target:[64]f64;ws:[1200]f64;d:[64]f64;
+    sp_init(net,p[0..<P],cast(u64)seed);sp_fill(seed,off[0..<P]);
+    for t:0..<P {p[t]+=0.2*off[t];}
+    sp_fill(seed+10,u[0..<cells]);sp_fill(seed+20,target[0..<cells]);
+    out:=sp_out(net,cells);
+    if sp_forward(net,p[0..<P],g,u[0..<cells],ws[..])!=SpStatus.ok {return 1e9;}
+    _l:=sp_loss(g,ws[out..<out+cells],u[0..<cells],target[0..<cells],d[0..<cells]);
+    if sp_backward(net,p[0..<P],g,u[0..<cells],ws[..],d[0..<cells],gr[0..<P])!=SpStatus.ok {return 1e9;}
+    worst:=0.0;h:=1e-6;
+    for t:0..<P {
+        keep:=p[t];
+        p[t]=keep+h;_a:=sp_forward(net,p[0..<P],g,u[0..<cells],ws[..]);lp:=sp_loss(g,ws[out..<out+cells],u[0..<cells],target[0..<cells],d[0..<cells]);
+        p[t]=keep-h;_b:=sp_forward(net,p[0..<P],g,u[0..<cells],ws[..]);lm:=sp_loss(g,ws[out..<out+cells],u[0..<cells],target[0..<cells],d[0..<cells]);
+        p[t]=keep;
+        e:=abs((lp-lm)/(2*h)-gr[t])/(1+abs(gr[t]));if e>worst {worst=e;}
+    }
+    return worst;
+}
+
+// Training against the same loop written out with aw_step: batch b holds
+// examples b batch to min((b + 1) batch, count) - 1; the step uses the mean
+// of their gradients at the epoch's rate. The parameters must agree exactly.
+sp_train_matches :: (kind:SpKind,cfg:SpTrain,count:int)->bool {
+    net:=SpNet.{kind=kind,width=2,layers=1,modes=2};g:=sp_grid(3,4,2);cells:=12;P:=sp_params(net);
+    u:[48]f64;target:[48]f64;sp_fill(31,u[0..<cells*count]);sp_fill(32,target[0..<cells*count]);
+    pa:[200]f64;ma:[200]f64;va:[200]f64;pb:[200]f64;mb:[200]f64;vb:[200]f64;la:[4]f64;
+    sp_init(net,pa[0..<P],9);for t:0..<P {pb[t]=pa[t];}
+    if sp_train(net,pa[0..<P],ma[0..<P],va[0..<P],g,u[0..<cells*count],target[0..<cells*count],cfg,la[0..<cfg.epochs])!=SpStatus.ok {return false;}
+    ws:[400]f64;gr:[200]f64;sum:[200]f64;d:[12]f64;state:AwState;out:=sp_out(net,cells);
+    for e:0..<cfg.epochs {
+        total:=0.0;rate:=cfg.lr;for q:0..<(4*e)/cfg.epochs {rate/=2;}
+        group:=[1]AwGroup.[AwGroup.{first=0,count=P,lr=rate,beta1=0.9,beta2=0.999,eps=1e-8,decay=cfg.decay}];
+        for b:0..<(count+cfg.batch-1)/cfg.batch {
+            lo:=b*cfg.batch;hi:=lo+cfg.batch;if hi>count {hi=count;}
+            for t:0..<P {sum[t]=0;}
+            for s:lo..<hi {
+                _f:=sp_forward(net,pb[0..<P],g,u[cells*s..<cells*(s+1)],ws[..]);
+                total+=sp_loss(g,ws[out..<out+cells],u[cells*s..<cells*(s+1)],target[cells*s..<cells*(s+1)],d[..]);
+                _g:=sp_backward(net,pb[0..<P],g,u[cells*s..<cells*(s+1)],ws[..],d[..],gr[0..<P]);
+                for t:0..<P {sum[t]+=gr[t]/f64(hi-lo);}
+            }
+            none:[1]f32;r:=aw_step(group[..],AwPolicy.{},state,pb[0..<P],sum[0..<P],mb[0..<P],vb[0..<P],none[0..<0],false);
+            if r.status!=AwStatus.ok {return false;}
+            state=r.state;
+        }
+        if la[e]!=total/f64(count) {return false;}
+    }
+    for t:0..<P {if pa[t]!=pb[t] || ma[t]!=mb[t] || va[t]!=vb[t] {return false;}}
+    return true;
+}

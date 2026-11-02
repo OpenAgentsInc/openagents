@@ -1,0 +1,105 @@
+// Chapter 161: forecast on a sphere. The degree-1 transform by hand, a round
+// trip, the solver's order, a seeded dataset of reaction-diffusion
+// trajectories, short training runs of a spherical and a planar forecaster,
+// their held-out rollouts with area-weighted errors by lead time and by
+// latitude band, and the inputs the library refuses.
+#import "Basic";
+#load "../lib/sphere.coax";
+
+NLAT :: 16;
+NLON :: 32;
+CELLS :: 512;
+LEADS :: 4;
+TRAIN :: 16;
+TEST :: 8;
+EPOCHS :: 10;
+FLOW :: SpFlow.{kappa=0.02,rate=2,dt=0.25,substeps=16};
+POLAR :: 0.8660254037844386;   // sin 60 degrees
+sp_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+// Four significant digits.
+sp_sig :: (v:f64)->f64 {
+    if v==0 {return 0;}
+    s:=1.0;while abs(v)*s<1000 {s*=10;}
+    return floor(v*s+0.5)/s;
+}
+// Training pairs: every consecutive pair of frames of each trajectory.
+pairs :: (frames:[]f64,inputs:[]f64,targets:[]f64) {
+    count:=frames.count/((LEADS+1)*CELLS);
+    for k:0..<count {for s:0..<LEADS {
+        at:=(k*(LEADS+1)+s)*CELLS;to:=(k*LEADS+s)*CELLS;
+        for t:0..<CELLS {inputs[to+t]=frames[at+t];targets[to+t]=frames[at+CELLS+t];}
+    }}
+}
+// The mean held-out error at each lead, and the band errors at the last lead.
+Score :: struct {lead:[LEADS]f64;polar:f64;tropics:f64;}
+score :: (net:SpNet,p:[]f64,g:SpGrid,frames:[]f64,count:int)->Score {
+    r:Score;out:[LEADS*CELLS]f64;
+    for k:0..<count {
+        base:=k*(LEADS+1)*CELLS;
+        #assert sp_rollout(net,p,g,frames[base..<base+CELLS],out[..])==SpStatus.ok;
+        for s:0..<LEADS {r.lead[s]+=sp_rel_error(g,out[s*CELLS..<(s+1)*CELLS],frames[base+(s+1)*CELLS..<base+(s+2)*CELLS])/f64(count);}
+        last:=out[(LEADS-1)*CELLS..<LEADS*CELLS];truth:=frames[base+LEADS*CELLS..<base+(LEADS+1)*CELLS];
+        r.polar+=sp_band_rms(g,last,truth,POLAR,true)/f64(count);r.tropics+=sp_band_rms(g,last,truth,POLAR,false)/f64(count);
+    }
+    return r;
+}
+
+// book:begin example
+main :: () {
+    // 1. The degree-1 transform by hand: 2 latitudes, 3 longitudes.
+    h:=sp_grid(2,3,2);f:[6]f64;ar:[3]f64;ai:[3]f64;
+    print("2 Gauss nodes: x = +-% (1/sqrt 3), weights % and %\n",sp_r4(h.x[0]),sp_r4(h.w[0]),sp_r4(h.w[1]));
+    for k:0..<3 {f[k]=h.x[0];f[3+k]=h.x[1];}
+    _a:=sp_analysis(h,f[..],ar[..],ai[..]);
+    print("cos(theta): a_10 = % (sqrt(4 pi/3) = %), a_00 = %\n",sp_r4(ar[1]),sp_r4(sqrt(4*SP_PI/3)),sp_r4(abs(ar[0])));
+    for k:0..<3 {f[k]=sqrt(2.0/3)*cos(2*SP_PI*f64(k)/3);f[3+k]=f[k];}
+    _b:=sp_analysis(h,f[..],ar[..],ai[..]);
+    print("sin(theta) cos(phi): a_11 = % (sqrt(2 pi/3) = %)\n",sp_r4(ar[2]),sp_r4(sqrt(2*SP_PI/3)));
+
+    // 2. A round trip on the forecasting grid.
+    g:=sp_grid(NLAT,NLON,NLAT);cr:[136]f64;ci:[136]f64;br:[136]f64;bi:[136]f64;u:[CELLS]f64;
+    sp_random_coeffs(1,NLAT,cr[..],ci[..]);
+    _c:=sp_synthesis(g,cr[..],ci[..],u[..]);_d:=sp_analysis(g,u[..],br[..],bi[..]);
+    worst:=sp_worst(br[..],cr[..]);if sp_worst(bi[..],ci[..])>worst {worst=sp_worst(bi[..],ci[..]);}
+    print("% x % grid, degrees below %: round trip of 136 coefficients, largest error below 1e-13: %\n",NLAT,NLON,NLAT,worst<1e-13);
+
+    // 3. The solver: error against 128 substeps falls 4 times per halving.
+    u0:[CELLS]f64;ref:[CELLS]f64;v:[CELLS]f64;_e:=sp_initial(g,5,u0[..]);
+    fine:=FLOW;fine.substeps=128;_f:=sp_step(g,fine,u0[..],ref[..]);
+    e:[3]f64;
+    for r:0..<3 {s:=FLOW;s.substeps=2<<r;_g:=sp_step(g,s,u0[..],v[..]);e[r]=sp_worst(v[..],ref[..]);}
+    print("one step of 0.25, largest error with 2, 4, 8 substeps: % % %; ratios % %\n",sp_sig(e[0]),sp_sig(e[1]),sp_sig(e[2]),sp_r4(e[0]/e[1]),sp_r4(e[1]/e[2]));
+
+    // 4. Data: trajectories of 5 frames, training seeds 1000.., held-out 3000...
+    train:[TRAIN*(LEADS+1)*CELLS]f64;test:[TEST*(LEADS+1)*CELLS]f64;
+    for k:0..<TRAIN {#assert sp_trajectory(g,FLOW,cast(u64)(1000+k),train[k*(LEADS+1)*CELLS..<(k+1)*(LEADS+1)*CELLS])==SpStatus.ok;}
+    for k:0..<TEST {#assert sp_trajectory(g,FLOW,cast(u64)(3000+k),test[k*(LEADS+1)*CELLS..<(k+1)*(LEADS+1)*CELLS])==SpStatus.ok;}
+    inputs:[TRAIN*LEADS*CELLS]f64;targets:[TRAIN*LEADS*CELLS]f64;pairs(train[..],inputs[..],targets[..]);
+    print("% training and % held-out trajectories, % frames each\n",TRAIN,TEST,LEADS+1);
+    print("seed 1000 at the north pole: % % % % %\n",sp_r4(train[0]),sp_r4(train[CELLS]),sp_r4(train[2*CELLS]),sp_r4(train[3*CELLS]),sp_r4(train[4*CELLS]));
+
+    // 5. Short training runs: spherical layers and planar layers.
+    nets:=[2]SpNet.[SpNet.{kind=SpKind.sphere,width=4,layers=3,modes=16},SpNet.{kind=SpKind.plane,width=4,layers=3,modes=8}];
+    cfg:=SpTrain.{epochs=EPOCHS,batch=8,lr=0.01,decay=0.0001};
+    for n:0..<2 {
+        net:=nets[n];P:=sp_params(net);p:[SP_PARAMS_MAX]f64;m:[SP_PARAMS_MAX]f64;w:[SP_PARAMS_MAX]f64;losses:[EPOCHS]f64;
+        sp_init(net,p[0..<P],7);
+        #assert sp_train(net,p[0..<P],m[0..<P],w[0..<P],g,inputs[..],targets[..],cfg,losses[..])==SpStatus.ok;
+        print("% network: % parameters, % steps; loss % then %\n",net.kind,P,EPOCHS*TRAIN*LEADS/8,sp_sig(losses[0]),sp_sig(losses[EPOCHS-1]));
+        r:=score(net,p[0..<P],g,test[..],TEST);
+        print("  held-out relative error by lead: % % % %\n",sp_r4(r.lead[0]),sp_r4(r.lead[1]),sp_r4(r.lead[2]),sp_r4(r.lead[3]));
+        print("  lead 4 rms error, polar caps %, below 60 degrees %\n",sp_r4(r.polar),sp_r4(r.tropics));
+    }
+    // Persistence: the forecast that nothing changes.
+    pe:[LEADS]f64;
+    for k:0..<TEST {base:=k*(LEADS+1)*CELLS;for s:0..<LEADS {pe[s]+=sp_rel_error(g,test[base..<base+CELLS],test[base+(s+1)*CELLS..<base+(s+2)*CELLS])/TEST;}}
+    print("persistence by lead: % % % %\n",sp_r4(pe[0]),sp_r4(pe[1]),sp_r4(pe[2]),sp_r4(pe[3]));
+
+    // 6. Refusals.
+    print("a grid of 33 latitudes: %\n",sp_grid(33,64,8).status);
+    print("16 degrees on 30 longitudes: %\n",sp_grid(16,30,16).status);
+    print("a negative diffusion: %\n",sp_step(g,SpFlow.{kappa=-1,rate=2,dt=0.25,substeps=16},u0[..],v[..]));
+    u0[7]=0.0/0.0;print("a NaN in the field: %\n",sp_analysis(g,u0[..],br[..],bi[..]));
+    print("17 degrees in a layer on this grid: %\n",sp_forward(SpNet.{kind=SpKind.sphere,width=4,layers=3,modes=17},br[0..<1],g,u[..],v[..]));
+}
+// book:end example

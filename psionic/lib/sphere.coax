@@ -1,0 +1,1028 @@
+// Chapter 161: forecast on a sphere. A spherical harmonic transform
+// (Gauss-Legendre latitudes, orthonormal associated Legendre functions by
+// their three-term recurrence, chapter 151's FFT around each latitude), a
+// reaction-diffusion equation on the sphere solved with it, a spherical
+// Fourier layer that weights each degree, and a small forecaster built from
+// such layers or from chapter 156's planar Fourier layers, trained with
+// chapter 124's AdamW and rolled out step after step.
+// Profile psionic-sphere-v1: binary64, one CPU core, sums in a fixed order;
+// a Gauss grid of 1 to 32 latitudes and 1 to 64 longitudes, degrees below
+// 32, networks at most 4 channels wide with at most 4 layers.
+#load "fourier.coax";
+#load "counter-rng.coax";
+#load "optim/adamw.coax";
+#load "../tests/sphere-checks.coax";   // the checks' oracles and fixtures
+
+// book:begin bounds
+SP_LAT_MAX :: 32;
+SP_LON_MAX :: 64;
+SP_CELLS_MAX :: 2048;            // 32 x 64
+SP_DEG_MAX :: 32;                // degrees 0 to 31
+SP_COEF_MAX :: 528;              // 32 x 33 / 2 coefficients
+SP_WIDTH_MAX :: 4;               // chapter 156's channel limit
+SP_LAYERS_MAX :: 4;
+SP_PARAMS_MAX :: 30000;
+SP_SUBSTEPS_MAX :: 10000;
+SP_PI :: 3.141592653589793;
+// book:end bounds
+
+// book:begin types
+SpStatus :: enum u8 {ok;size;degree;shape;number;capacity;channels;flow;network;}
+// A Gauss grid: nlat latitudes at the Gauss-Legendre nodes x_j = cos(theta_j),
+// north first, with quadrature weights w_j; nlon equally spaced longitudes
+// phi_k = 2 pi k/nlon; degrees 0 to deg - 1. Row j of a field is at j nlon.
+SpGrid :: struct {status:SpStatus;nlat:int;nlon:int;deg:int;x:[SP_LAT_MAX]f64;w:[SP_LAT_MAX]f64;}
+// One spherical Fourier layer from cin to cout channels keeping degrees
+// below deg. Degree l from input i to output o has the real weight
+// w[(o cin + i) deg + l], the same for every order m. lin is cout x cin.
+SpLayer :: struct {cin:int;cout:int;deg:int;act:FoAct;w:[]f64;lin:[]f64;bias:[]f64;}
+SpGrad :: struct {w:[]f64;lin:[]f64;bias:[]f64;}
+// u_t = kappa Laplacian(u) + rate (u - u^3), stepped dt at a time in
+// substeps Strang-split steps.
+SpFlow :: struct {kappa:f64;rate:f64;dt:f64;substeps:int;}
+SpKind :: enum u8 {sphere;plane;}
+// The forecaster: a lift 1 -> width, layers Fourier layers (spherical,
+// keeping modes degrees, or planar, keeping modes per direction), a
+// projection width -> 1, and the step u_next = u + out.
+SpNet :: struct {kind:SpKind;width:int;layers:int;modes:int;}
+SpTrain :: struct {epochs:int;batch:int;lr:f64;decay:f64;}
+// book:end types
+
+// 1. The grid and the transform.
+#test "the check helpers are pinned" {
+    v:[3]f64;sp_fill(1,v[..]);#assert v[0]==0.961 && v[1]== -0.69 && v[2]== -0.4;
+    a:=[2]f64.[1,-2];b:=[2]f64.[1.5,-2];#assert sp_worst(a[..],b[..])==0.5 && sp_near(1,1.25,0.25) && !sp_near(1,1.5,0.25);
+    #assert sp_fact(0)==1 && sp_fact(5)==120 && sp_power(-2,3)== -8 && sp_slot(2,1)==4;
+    // P_2^1 = sqrt(15/(8 pi)) x sqrt(1 - x^2) from the polynomial formula.
+    #assert sp_near(sp_oracle_plm(2,1,0.6),sqrt(15/(8*SP_PI))*0.6*0.8,1e-15) && sp_near(sp_oracle_plm(0,0,0.3),1/sqrt(4*SP_PI),1e-16);
+}
+#test "Gauss-Legendre nodes by hand" {
+    g:=sp_grid(1,1,1);#assert g.status==SpStatus.ok && g.x[0]==0 && g.w[0]==2;
+    g=sp_grid(2,3,2);#assert sp_near(g.x[0],1/sqrt(3.0),3e-16) && sp_near(g.x[1],-g.x[0],3e-16) && sp_near(g.w[0],1,2e-15) && sp_near(g.w[1],1,2e-15);
+    g=sp_grid(3,5,3);
+    #assert sp_near(g.x[1],0,1e-16) && sp_near(g.x[0],sqrt(0.6),2e-16) && sp_near(g.x[2],-sqrt(0.6),2e-16);
+    #assert sp_near(g.w[1],8.0/9,1e-15) && sp_near(g.w[0],5.0/9,1e-15) && sp_near(g.w[2],5.0/9,1e-15);
+}
+#forall "every grid size has its nodes: symmetric, weights summing to 2" n:1..<33 #steps 100000000 {
+    g:=sp_grid(n,2*n-1,n);s:=0.0;for j:0..<n {s+=g.w[j];#assert sp_near(g.x[n-1-j],-g.x[j],1e-15) && sp_near(g.w[n-1-j],g.w[j],1e-14);}
+    #assert g.status==SpStatus.ok && sp_near(s,2,1e-14) && g.x[0]<1;
+}
+#forall "n Gauss nodes integrate every power below 2n exactly" n:1..<13 #steps 100000000 {
+    g:=sp_grid(n,2*n-1,n);#assert g.status==SpStatus.ok;
+    for k:0..<2*n {
+        s:=0.0;for j:0..<n {s+=g.w[j]*sp_power(g.x[j],k);}
+        want:=0.0;if k%2==0 {want=2/f64(k+1);}
+        #assert sp_near(s,want,2e-15);
+    }
+    for j:1..<n {#assert g.x[j]<g.x[j-1];}
+}
+#test "Legendre functions by hand: degrees 0 to 2" {
+    col:[3]f64;x:=0.6;s:=0.8;
+    for m:0..<3 {
+        sp_legendre(3,m,x,col[..]);
+        if m==0 {#assert col[0]==1/sqrt(4*SP_PI) && sp_near(col[1],sqrt(3/(4*SP_PI))*x,1e-16) && sp_near(col[2],sqrt(5/(4*SP_PI))*(3*x*x-1)/2,1e-16);}
+        if m==1 {#assert sp_near(col[1],sqrt(3/(8*SP_PI))*s,1e-16) && sp_near(col[2],sqrt(15/(8*SP_PI))*x*s,1e-16);}
+        if m==2 {#assert sp_near(col[2],sqrt(15/(32*SP_PI))*s*s,1e-16);}
+    }
+}
+#forall "the recurrence matches the polynomial formula" n:0..<12 #steps 100000000 {
+    xs:=[4]f64.[0.93,-0.41,0.07,-0.9987];x:=xs[n%4];deg:=12;col:[12]f64;
+    for m:0..<deg {
+        sp_legendre(deg,m,x,col[..]);
+        for l:m..<deg {#assert sp_near(col[l],sp_oracle_plm(l,m,x),1e-11);}
+    }
+}
+#test "a degree-1 transform by hand" {
+    // Two latitudes x = +-1/sqrt(3), weights 1; three longitudes. cos(theta)
+    // is x on every point; its only coefficient is a_10 = sqrt(4 pi/3).
+    g:=sp_grid(2,3,2);f:[6]f64;ar:[3]f64;ai:[3]f64;
+    for k:0..<3 {f[k]=g.x[0];f[3+k]=g.x[1];}
+    #assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.ok;
+    #assert sp_near(ar[0],0,1e-15) && sp_near(ar[1],sqrt(4*SP_PI/3),1e-15) && sp_near(ar[2],0,1e-15) && sp_near(ai[2],0,1e-15);
+    // sin(theta) cos(phi): only a_11 = sqrt(2 pi/3); sin(theta) sin(phi): a_11 = -i sqrt(2 pi/3).
+    s:=sqrt(1-g.x[0]*g.x[0]);
+    for k:0..<3 {f[k]=s*cos(2*SP_PI*f64(k)/3);f[3+k]=f[k];}
+    #assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.ok;
+    #assert sp_near(ar[0],0,1e-15) && sp_near(ar[1],0,1e-15) && sp_near(ar[2],sqrt(2*SP_PI/3),1e-15) && sp_near(ai[2],0,1e-15);
+    back:[6]f64;#assert sp_synthesis(g,ar[..],ai[..],back[..])==SpStatus.ok && sp_worst(back[..],f[..])<=1e-15;
+    for k:0..<3 {f[k]=s*sin(2*SP_PI*f64(k)/3);f[3+k]=f[k];}
+    #assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.ok;
+    #assert sp_near(ar[2],0,1e-15) && sp_near(ai[2],-sqrt(2*SP_PI/3),1e-15) && sp_near(ar[1],0,1e-15);
+    #assert sp_synthesis(g,ar[..],ai[..],back[..])==SpStatus.ok && sp_worst(back[..],f[..])<=1e-15;
+}
+#test "analytic transforms: 1 and cos^2" {
+    g:=sp_grid(4,7,4);f:[28]f64;ar:[10]f64;ai:[10]f64;
+    for t:0..<28 {f[t]=1;}
+    #assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.ok && sp_near(ar[0],sqrt(4*SP_PI),1e-14);
+    for t:1..<10 {#assert sp_near(ar[t],0,1e-14) && sp_near(ai[t],0,1e-14);}
+    // x^2 = 1/3 + (2/3) P_2 and P_2 = sqrt(4 pi/5) Y_20.
+    for j:0..<4 {for k:0..<7 {f[j*7+k]=g.x[j]*g.x[j];}}
+    #assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.ok;
+    #assert sp_near(ar[0],sqrt(4*SP_PI)/3,1e-14) && sp_near(ar[3],2.0/3*sqrt(4*SP_PI/5),1e-14);
+    for t:0..<10 {if t!=0 && t!=3 {#assert sp_near(ar[t],0,1e-14) && sp_near(ai[t],0,1e-14);}}
+}
+#forall "the discrete harmonics are orthonormal" n:0..<4 #steps 400000000 {
+    shapes:=[12]int.[3,5,3, 4,8,4, 5,9,4, 6,12,6];
+    g:=sp_grid(shapes[3*n],shapes[3*n+1],shapes[3*n+2]);deg:=g.deg;
+    // <Y_lm, Y_l'm'> by quadrature, with the polynomial formula's P_lm.
+    for a:0..<deg*(deg+1)/2 {for b:0..<deg*(deg+1)/2 {
+        la:=0;while sp_slot(la+1,0)<=a {la+=1;}ma:=a-sp_slot(la,0);
+        lb:=0;while sp_slot(lb+1,0)<=b {lb+=1;}mb:=b-sp_slot(lb,0);
+        sr:=0.0;si:=0.0;
+        for j:0..<g.nlat {for k:0..<g.nlon {
+            phi:=2*SP_PI*f64(k)/f64(g.nlon);c:=g.w[j]*2*SP_PI/f64(g.nlon)*sp_oracle_plm(la,ma,g.x[j])*sp_oracle_plm(lb,mb,g.x[j]);
+            sr+=c*cos(f64(ma-mb)*phi);si+=c*sin(f64(ma-mb)*phi);
+        }}
+        want:=0.0;if a==b {want=1;}
+        #assert sp_near(sr,want,1e-13) && sp_near(si,0,1e-13);
+    }}
+}
+#forall "round trip and the direct sum" n:0..<6 #steps 400000000 {
+    shapes:=[18]int.[1,1,1, 2,3,2, 3,7,3, 4,10,4, 6,11,6, 8,16,8];
+    g:=sp_grid(shapes[3*n],shapes[3*n+1],shapes[3*n+2]);cells:=g.nlat*g.nlon;nc:=g.deg*(g.deg+1)/2;
+    ar:[36]f64;ai:[36]f64;br:[36]f64;bi:[36]f64;cr:[36]f64;ci:[36]f64;f:[128]f64;h:[128]f64;
+    sp_random_coeffs(n,g.deg,ar[..],ai[..]);
+    #assert sp_synthesis(g,ar[0..<nc],ai[0..<nc],f[0..<cells])==SpStatus.ok;
+    #assert sp_analysis(g,f[0..<cells],br[0..<nc],bi[0..<nc])==SpStatus.ok;
+    #assert sp_worst(br[0..<nc],ar[0..<nc])<=1e-13 && sp_worst(bi[0..<nc],ai[0..<nc])<=1e-13;
+    // Any field, band-limited or not, against the direct double sum.
+    sp_fill(n+40,h[0..<cells]);
+    #assert sp_analysis(g,h[0..<cells],br[0..<nc],bi[0..<nc])==SpStatus.ok;
+    sp_oracle_analysis(g,h[0..<cells],cr[..],ci[..]);
+    #assert sp_worst(br[0..<nc],cr[0..<nc])<=1e-13 && sp_worst(bi[0..<nc],ci[0..<nc])<=1e-13;
+    // The synthesis against the point-by-point sum at the grid points.
+    for j:0..<g.nlat {for k:0..<g.nlon {p:=sp_point(g,j,k);#assert sp_near(f[j*g.nlon+k],sp_oracle_eval(g.deg,ar[..],ai[..],p.x,p.y,p.z),1e-13);}}
+}
+#test "grid and transform refusals" {
+    #assert sp_grid(0,4,1).status==SpStatus.size && sp_grid(33,64,1).status==SpStatus.size && sp_grid(4,0,1).status==SpStatus.size && sp_grid(4,65,1).status==SpStatus.size;
+    #assert sp_grid(32,64,32).status==SpStatus.ok && sp_grid(32,62,32).status==SpStatus.degree && sp_grid(32,63,32).status==SpStatus.ok && sp_grid(4,8,5).status==SpStatus.degree && sp_grid(4,8,0).status==SpStatus.degree;
+    #assert sp_grid(4,7,4).status==SpStatus.ok && sp_grid(4,6,4).status==SpStatus.degree;
+    g:=sp_grid(2,3,2);f:=[6]f64.[1,2,3,4,5,6];ar:=[3]f64.[7,7,7];ai:[3]f64;
+    #assert sp_analysis(sp_grid(0,3,2),f[..],ar[..],ai[..])==SpStatus.size;
+    #assert sp_analysis(g,f[0..<5],ar[..],ai[..])==SpStatus.shape && sp_analysis(g,f[..],ar[0..<2],ai[..])==SpStatus.capacity && sp_analysis(g,f[..],ar[..],ai[0..<2])==SpStatus.capacity;
+    f[3]=sf_nan();#assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.number && ar[0]==7;
+    f[3]=1000000.0000000002;#assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.number;
+    f[3]=FO_VALUE_MAX;#assert sp_analysis(g,f[..],ar[..],ai[..])==SpStatus.ok;f[3]=4;
+    #assert sp_synthesis(sp_grid(2,2,2),ar[..],ai[..],f[..])==SpStatus.degree;
+    #assert sp_synthesis(g,ar[0..<2],ai[..],f[..])==SpStatus.shape && sp_synthesis(g,ar[..],ai[0..<2],f[..])==SpStatus.shape && sp_synthesis(g,ar[..],ai[..],f[0..<5])==SpStatus.capacity;
+    ai[1]=sf_inf();#assert sp_synthesis(g,ar[..],ai[..],f[..])==SpStatus.number && f[0]==1;
+}
+
+// book:begin grid
+// The Legendre polynomial P_n and its derivative at z by the three-term
+// recurrence k P_k = (2k - 1) z P_(k-1) - (k - 1) P_(k-2).
+SpLeg :: struct {p:f64;dp:f64;}
+sp_legendre_n :: (n:int,z:f64)->SpLeg {
+    a:=1.0;b:=z;
+    for k:2..<n+1 {c:=(f64(2*k-1)*z*b-f64(k-1)*a)/f64(k);a=b;b=c;}
+    return SpLeg.{p=b,dp=f64(n)*(z*b-a)/(z*z-1)};
+}
+// Node j of n from Newton's method on P_n, started at cos(pi (j + 3/4)/(n + 1/2))
+// and stopped at the first step that is not smaller than the one before; then
+// w_j = 2/((1 - x_j^2) P_n'(x_j)^2).
+sp_grid :: (nlat:int,nlon:int,deg:int)->SpGrid {
+    g:SpGrid;g.nlat=nlat;g.nlon=nlon;g.deg=deg;
+    if nlat<1 || nlat>SP_LAT_MAX || nlon<1 || nlon>SP_LON_MAX {g.status=SpStatus.size;return g;}
+    if deg<1 || deg>nlat || 2*deg-1>nlon {g.status=SpStatus.degree;return g;}
+    for j:0..<nlat {
+        z:=cos(SP_PI*(f64(j)+0.75)/(f64(nlat)+0.5));
+        q:=sp_legendre_n(nlat,z);d:=q.p/q.dp;
+        while true {
+            z-=d;q=sp_legendre_n(nlat,z);e:=q.p/q.dp;
+            if abs(e)>=abs(d) {break;}
+            d=e;
+        }
+        g.x[j]=z;g.w[j]=2/((1-z*z)*q.dp*q.dp);
+    }
+    return g;
+}
+// book:end grid
+
+// book:begin legendre
+// The orthonormal associated Legendre functions of order m at x, degrees m
+// to deg - 1, into out[l]: integral of P_lm^2 over [-1, 1] is 1/(2 pi), so
+// Y_lm = P_lm(cos theta) e^(i m phi) has unit norm on the sphere.
+//   P_00 = 1/sqrt(4 pi)
+//   P_mm = sqrt((2m + 1)/(2m)) sin(theta) P_(m-1)(m-1)
+//   P_(m+1)m = sqrt(2m + 3) x P_mm
+//   P_lm = a (x P_(l-1)m - b P_(l-2)m), a = sqrt((4l^2 - 1)/(l^2 - m^2)),
+//          b = sqrt(((l - 1)^2 - m^2)/(4 (l - 1)^2 - 1))
+sp_legendre :: (deg:int,m:int,x:f64,out:[]f64) {
+    s:=sqrt((1-x)*(1+x));p:=1/sqrt(4*SP_PI);
+    for k:1..<m+1 {p*=sqrt(f64(2*k+1)/f64(2*k))*s;}
+    out[m]=p;
+    if m+1<deg {out[m+1]=sqrt(f64(2*m+3))*x*p;}
+    for l:m+2..<deg {
+        a:=sqrt(f64(4*l*l-1)/f64(l*l-m*m));b:=sqrt(f64((l-1)*(l-1)-m*m)/f64(4*(l-1)*(l-1)-1));
+        out[l]=a*(x*out[l-1]-b*out[l-2]);
+    }
+}
+// Coefficient (l, m), 0 <= m <= l < deg, sits at l (l + 1)/2 + m.
+sp_index :: (l:int,m:int)->int {return l*(l+1)/2+m;}
+sp_coeffs :: (deg:int)->int {return deg*(deg+1)/2;}
+// book:end legendre
+
+// book:begin transform
+// Down: a_lm = sum over j of s_j P_lm(x_j) F_j(m), where F_j(m) is the FFT
+// of row j at bin m. With s_j = w_j 2 pi/nlon this is the transform; with
+// s_j = 1 it is, up to a factor, the synthesis's adjoint.
+sp_down :: (g:SpGrid,deg:int,f:[]f64,ar:[]f64,ai:[]f64,weighted:bool) {
+    for t:0..<sp_coeffs(deg) {ar[t]=0;ai[t]=0;}
+    re:[SP_LON_MAX]f64;im:[SP_LON_MAX]f64;col:[SP_DEG_MAX]f64;n:=g.nlon;
+    for j:0..<g.nlat {
+        for k:0..<n {re[k]=f[j*n+k];im[k]=0;}
+        sf_forward(re[0..<n],im[0..<n]);
+        s:=1.0;if weighted {s=g.w[j]*2*SP_PI/f64(n);}
+        for m:0..<deg {
+            sp_legendre(deg,m,g.x[j],col[..]);
+            for l:m..<deg {t:=sp_index(l,m);ar[t]+=s*col[l]*re[m];ai[t]+=s*col[l]*im[m];}
+        }
+    }
+}
+// Up: f_jk = sum over l, m of c_m P_lm(x_j) Re(a_lm e^(i m phi_k)), c_0 = 1
+// and c_m = 2 for the orders m and -m together. Bins m and nlon - m hold the
+// conjugate of G_j(m) = sum over l of a_lm P_lm(x_j), so the forward FFT's
+// real part is the sum; 2 deg - 1 <= nlon keeps the bins apart. a_l0's
+// imaginary part is not read.
+SpSum :: struct {re:f64;im:f64;}
+// G_j(m) = sum over l of a_lm P_lm(x_j).
+sp_column :: (deg:int,m:int,x:f64,ar:[]f64,ai:[]f64)->SpSum {
+    col:[SP_DEG_MAX]f64;sp_legendre(deg,m,x,col[..]);s:SpSum;
+    for l:m..<deg {t:=sp_index(l,m);s.re+=col[l]*ar[t];s.im+=col[l]*ai[t];}
+    return s;
+}
+sp_up :: (g:SpGrid,deg:int,ar:[]f64,ai:[]f64,f:[]f64) {
+    n:=g.nlon;
+    for j:0..<g.nlat {
+        re:[SP_LON_MAX]f64;im:[SP_LON_MAX]f64;   // zero outside the bins written
+        re[0]=sp_column(deg,0,g.x[j],ar,ai).re;
+        for m:1..<deg {
+            s:=sp_column(deg,m,g.x[j],ar,ai);
+            re[m]=s.re;im[m]= -s.im;re[n-m]=s.re;im[n-m]=s.im;
+        }
+        sf_forward(re[0..<n],im[0..<n]);
+        for k:0..<n {f[j*n+k]=re[k];}
+    }
+}
+sp_values_ok :: (v:[]f64)->bool {return fo_values_ok(v);}
+// The transform of a field on the grid: every coefficient below g.deg.
+sp_analysis :: (g:SpGrid,f:[]f64,ar:[]f64,ai:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    if f.count!=g.nlat*g.nlon {return SpStatus.shape;}
+    if ar.count<sp_coeffs(g.deg) || ai.count<sp_coeffs(g.deg) {return SpStatus.capacity;}
+    if !sp_values_ok(f) {return SpStatus.number;}
+    sp_down(g,g.deg,f,ar,ai,true);
+    return SpStatus.ok;
+}
+// The field on the grid from its coefficients.
+sp_synthesis :: (g:SpGrid,ar:[]f64,ai:[]f64,f:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    n:=sp_coeffs(g.deg);
+    if ar.count!=n || ai.count!=n {return SpStatus.shape;}
+    if f.count<g.nlat*g.nlon {return SpStatus.capacity;}
+    if !sp_values_ok(ar) || !sp_values_ok(ai) {return SpStatus.number;}
+    sp_up(g,g.deg,ar,ai,f);
+    return SpStatus.ok;
+}
+// book:end transform
+
+// 2. The equation and its data.
+#test "pure diffusion decays each harmonic by exp(-kappa l (l + 1) t)" #steps 400000000 {
+    g:=sp_grid(6,11,6);ar:[21]f64;ai:[21]f64;f:[66]f64;next:[66]f64;br:[21]f64;bi:[21]f64;
+    sp_random_coeffs(3,6,ar[..],ai[..]);#assert sp_synthesis(g,ar[..],ai[..],f[..])==SpStatus.ok;
+    flow:=SpFlow.{kappa=0.05,rate=0,dt=0.5,substeps=3};
+    #assert sp_step(g,flow,f[..],next[..])==SpStatus.ok && sp_analysis(g,next[..],br[..],bi[..])==SpStatus.ok;
+    for l:0..<6 {for m:0..<l+1 {
+        t:=sp_slot(l,m);d:=exp(-0.05*f64(l*(l+1))*0.5);
+        #assert sp_near(br[t],d*ar[t],1e-13) && sp_near(bi[t],d*ai[t],1e-13);
+    }}
+}
+#test "pure reaction follows u/sqrt(u^2 + (1 - u^2) e^(-2 r t))" #steps 100000000 {
+    g:=sp_grid(2,3,2);f:[6]f64;next:[6]f64;
+    // Only a constant field is checked against the formula: any other also diffuses.
+    // The fourth-order Runge-Kutta error falls 16 times per halving of h.
+    for t:0..<6 {f[t]=0.3;}
+    want:=0.3/sqrt(0.09+0.91*exp(-2.8));e:[3]f64;
+    for r:0..<3 {
+        #assert sp_step(g,SpFlow.{kappa=0.01,rate=2,dt=0.7,substeps=4<<r},f[..],next[..])==SpStatus.ok;
+        for t:1..<6 {#assert sp_near(next[t],next[0],1e-15);}
+        e[r]=abs(next[0]-want);
+    }
+    #assert e[2]<1e-6 && e[0]/e[1]>14 && e[0]/e[1]<18 && e[1]/e[2]>14 && e[1]/e[2]<18;
+    // Fields at the fixed points -1, 0 and 1 stay there.
+    for v:0..<3 {
+        for t:0..<6 {f[t]=f64(v-1);}
+        #assert sp_step(g,SpFlow.{kappa=0.01,rate=2,dt=0.7,substeps=3},f[..],next[..])==SpStatus.ok;
+        for t:0..<6 {#assert sp_near(next[t],f64(v-1),1e-15);}
+    }
+}
+#test "Strang splitting converges at second order" #steps 2000000000 {
+    g:=sp_grid(6,16,6);u:[96]f64;#assert sp_initial(g,5,u[..])==SpStatus.ok;
+    ref:[96]f64;a:[96]f64;b:[96]f64;c:[96]f64;
+    flow:=SpFlow.{kappa=0.05,rate=4,dt=0.5,substeps=128};
+    #assert sp_step(g,flow,u[..],ref[..])==SpStatus.ok;
+    flow.substeps=4;#assert sp_step(g,flow,u[..],a[..])==SpStatus.ok;
+    flow.substeps=8;#assert sp_step(g,flow,u[..],b[..])==SpStatus.ok;
+    flow.substeps=16;#assert sp_step(g,flow,u[..],c[..])==SpStatus.ok;
+    ea:=sp_worst(a[..],ref[..]);eb:=sp_worst(b[..],ref[..]);ec:=sp_worst(c[..],ref[..]);
+    #assert ea<0.007 && ea/eb>3.8 && ea/eb<4.4 && eb/ec>3.8 && eb/ec<4.4;
+}
+#test "the solver commutes with turns about the axis and with the equator mirror" #steps 400000000 {
+    // Shifting every row by 3 of 8 longitudes turns the sphere by 3/8 of a
+    // circle; reversing the rows mirrors it in the equator. Neither changes
+    // the equation, so stepping and turning commute.
+    g:=sp_grid(4,8,4);ar:[10]f64;ai:[10]f64;f:[32]f64;turned:[32]f64;a:[32]f64;b:[32]f64;
+    sp_random_coeffs(9,4,ar[..],ai[..]);#assert sp_synthesis(g,ar[..],ai[..],f[..])==SpStatus.ok;
+    flow:=SpFlow.{kappa=0.05,rate=3,dt=0.3,substeps=3};
+    for j:0..<4 {for k:0..<8 {turned[j*8+(k+3)%8]=f[j*8+k];}}
+    #assert sp_step(g,flow,f[..],a[..])==SpStatus.ok && sp_step(g,flow,turned[..],b[..])==SpStatus.ok;
+    for j:0..<4 {for k:0..<8 {#assert sp_near(b[j*8+(k+3)%8],a[j*8+k],1e-14);}}
+    for j:0..<4 {for k:0..<8 {turned[(3-j)*8+k]=f[j*8+k];}}
+    #assert sp_step(g,flow,turned[..],b[..])==SpStatus.ok;
+    for j:0..<4 {for k:0..<8 {#assert sp_near(b[(3-j)*8+k],a[j*8+k],1e-14);}}
+    // The step is nonlinear: twice the field does not step to twice the result.
+    for t:0..<32 {turned[t]=2*f[t];}
+    #assert sp_step(g,flow,turned[..],b[..])==SpStatus.ok && sp_worst(b[..],a[..])>0.01;
+}
+#test "a trajectory is the initial field and its steps" #steps 400000000 {
+    g:=sp_grid(6,16,6);flow:=SpFlow.{kappa=0.02,rate=2,dt=0.25,substeps=2};out:[288]f64;u:[96]f64;v:[96]f64;
+    #assert sp_trajectory(g,flow,4,out[..])==SpStatus.ok && sp_initial(g,4,u[..])==SpStatus.ok && sp_worst(out[0..<96],u[..])==0;
+    #assert sp_step(g,flow,u[..],v[..])==SpStatus.ok && sp_worst(out[96..<192],v[..])==0;
+    #assert sp_step(g,flow,v[..],u[..])==SpStatus.ok && sp_worst(out[192..<288],u[..])==0;
+    #assert sp_trajectory(g,flow,4,out[0..<96])==SpStatus.ok && sp_trajectory(g,flow,4,out[0..<95])==SpStatus.shape && sp_trajectory(g,flow,4,out[0..<0])==SpStatus.shape;
+    #assert sp_trajectory(g,flow,4,out[0..<200])==SpStatus.shape && sp_trajectory(sp_grid(5,9,5),flow,4,out[0..<90])==SpStatus.degree;
+    bad:=flow;bad.dt=0;#assert sp_trajectory(g,bad,4,out[..])==SpStatus.flow;
+}
+#test "an initial field by hand" {
+    g:=sp_grid(8,16,8);u:[128]f64;ar:[36]f64;ai:[36]f64;
+    #assert sp_initial(g,3,u[..])==SpStatus.ok && sp_analysis(g,u[..],ar[..],ai[..])==SpStatus.ok;
+    // a_lm's real part is draw 2 slot(l, m) for seed 3, its imaginary part
+    // the next draw, each mapped to [-0.6, 0.6) and divided by l + 1;
+    // degrees from SP_INIT_DEG on are zero.
+    for l:0..<8 {for m:0..<l+1 {
+        t:=sp_slot(l,m);wr:=0.0;wi:=0.0;
+        if l<SP_INIT_DEG {
+            wr=SP_INIT_AMP*(2*cr_draw(CrSeed.{seed=3,counter=cast(u64)(2*t)}).value-1)/f64(l+1);
+            if m>0 {wi=SP_INIT_AMP*(2*cr_draw(CrSeed.{seed=3,counter=cast(u64)(2*t+1)}).value-1)/f64(l+1);}
+        }
+        #assert sp_near(ar[t],wr,1e-14) && sp_near(ai[t],wi,1e-14);
+    }}
+    #assert sp_initial(sp_grid(5,9,5),3,u[0..<45])==SpStatus.degree && sp_initial(g,3,u[0..<127])==SpStatus.shape;
+    #assert sp_initial(sp_grid(6,11,6),3,u[0..<66])==SpStatus.ok && sp_initial(sp_grid(0,1,1),3,u[0..<0])==SpStatus.size;
+}
+#test "flow refusals" {
+    g:=sp_grid(2,3,2);f:=[6]f64.[1,2,3,4,5,6];next:=[6]f64.[7,7,7,7,7,7];ok:=SpFlow.{kappa=0.1,rate=1,dt=0.1,substeps=1};
+    #assert sp_step(sp_grid(2,2,2),ok,f[..],next[..])==SpStatus.degree;
+    #assert sp_step(g,ok,f[0..<5],next[..])==SpStatus.shape && sp_step(g,ok,f[..],next[0..<5])==SpStatus.capacity;
+    bad:=ok;bad.kappa= -0.001;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.rate= -0.001;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.dt=0;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.dt=100.001;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.kappa=1.001;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.rate=100.001;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.substeps=0;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.substeps=SP_SUBSTEPS_MAX+1;#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.kappa=sf_nan();#assert sp_step(g,bad,f[..],next[..])==SpStatus.flow;
+    bad=ok;bad.kappa=0;bad.rate=0;bad.dt=1e-9;bad.substeps=1;#assert sp_step(g,bad,f[..],next[..])==SpStatus.ok;
+    #assert sp_flow_ok(SpFlow.{kappa=0,rate=0,dt=1,substeps=SP_SUBSTEPS_MAX}) && !sp_flow_ok(SpFlow.{kappa=0,rate=0,dt=1,substeps=SP_SUBSTEPS_MAX+1});
+    bad=ok;bad.kappa=1;bad.rate=100;bad.dt=100;bad.substeps=2;#assert sp_step(g,bad,f[..],next[..])==SpStatus.ok;
+    for t:0..<6 {next[t]=7;}
+    f[2]=sf_nan();#assert sp_step(g,ok,f[..],next[..])==SpStatus.number && next[0]==7;
+    f[2]=2;f[1]=1.0000000000000002e6;#assert sp_step(g,ok,f[..],next[..])==SpStatus.number;
+}
+
+// book:begin flow
+// Diffusion at most 1, rate at most 100, a step in (0, 100], 1 to 10,000
+// substeps; NaN fails every comparison.
+sp_flow_ok :: (f:SpFlow)->bool {
+    return f.kappa>=0 && f.kappa<=1 && f.rate>=0 && f.rate<=100 && f.dt>0 && f.dt<=100 && f.substeps>=1 && f.substeps<=SP_SUBSTEPS_MAX;
+}
+// The equation is solved for the coefficients below g.deg (a Galerkin
+// system): the diffusion multiplies degree l by exp(-kappa l (l + 1) t)
+// exactly, and the reaction's coefficients N(a) come from rate (f - f^3) on
+// the grid, f the synthesis of a, transformed back.
+sp_diffuse :: (g:SpGrid,kappa:f64,t:f64,ar:[]f64,ai:[]f64) {
+    for l:1..<g.deg {   // degree 0 does not decay
+        d:=exp(-kappa*f64(l*(l+1))*t);
+        for m:0..<l+1 {ar[sp_index(l,m)]*=d;ai[sp_index(l,m)]*=d;}
+    }
+}
+sp_reaction :: (g:SpGrid,rate:f64,ar:[]f64,ai:[]f64,nr:[]f64,ni:[]f64) {
+    f:[SP_CELLS_MAX]f64;cells:=g.nlat*g.nlon;
+    sp_up(g,g.deg,ar,ai,f[0..<cells]);
+    for t:0..<cells {v:=f[t];f[t]=rate*(v-v*v*v);}
+    sp_down(g,g.deg,f[0..<cells],nr,ni,true);
+}
+// One Runge-Kutta stage: the reaction's coefficients at a + c k into out.
+// The first stage has c = 0.
+sp_stage :: (g:SpGrid,rate:f64,n:int,ar:[]f64,ai:[]f64,c:f64,kr:[]f64,ki:[]f64,outr:[]f64,outi:[]f64) {
+    br:[SP_COEF_MAX]f64;bi:[SP_COEF_MAX]f64;
+    for t:0..<n {br[t]=ar[t]+c*kr[t];bi[t]=ai[t]+c*ki[t];}
+    sp_reaction(g,rate,br[0..<n],bi[0..<n],outr,outi);
+}
+// One step of dt in substeps Strang steps of h: diffusion for h/2, the
+// reaction for h by the classical fourth-order Runge-Kutta method, diffusion
+// for h/2. The output is the synthesis of the final coefficients.
+sp_step :: (g:SpGrid,flow:SpFlow,u:[]f64,next:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    cells:=g.nlat*g.nlon;
+    if u.count!=cells {return SpStatus.shape;}
+    if next.count<cells {return SpStatus.capacity;}
+    if !sp_flow_ok(flow) {return SpStatus.flow;}
+    if !sp_values_ok(u) {return SpStatus.number;}
+    h:=flow.dt/f64(flow.substeps);n:=sp_coeffs(g.deg);
+    ar:[SP_COEF_MAX]f64;ai:[SP_COEF_MAX]f64;
+    // The four stages' coefficients, k1 to k4.
+    ar1:[SP_COEF_MAX]f64;ai1:[SP_COEF_MAX]f64;ar2:[SP_COEF_MAX]f64;ai2:[SP_COEF_MAX]f64;
+    ar3:[SP_COEF_MAX]f64;ai3:[SP_COEF_MAX]f64;ar4:[SP_COEF_MAX]f64;ai4:[SP_COEF_MAX]f64;
+    sp_down(g,g.deg,u,ar[0..<n],ai[0..<n],true);
+    for s:0..<flow.substeps {
+        sp_diffuse(g,flow.kappa,h/2,ar[..],ai[..]);
+        // Stage q reads a + c h k_(q-1): c = 0, 1/2, 1/2, 1.
+        sp_stage(g,flow.rate,n,ar[..],ai[..],0,ar[..],ai[..],ar1[..],ai1[..]);
+        sp_stage(g,flow.rate,n,ar[..],ai[..],h/2,ar1[..],ai1[..],ar2[..],ai2[..]);
+        sp_stage(g,flow.rate,n,ar[..],ai[..],h/2,ar2[..],ai2[..],ar3[..],ai3[..]);
+        sp_stage(g,flow.rate,n,ar[..],ai[..],h,ar3[..],ai3[..],ar4[..],ai4[..]);
+        for t:0..<n {
+            ar[t]+=h/6*(ar1[t]+2*ar2[t]+2*ar3[t]+ar4[t]);
+            ai[t]+=h/6*(ai1[t]+2*ai2[t]+2*ai3[t]+ai4[t]);
+        }
+        sp_diffuse(g,flow.kappa,h/2,ar[..],ai[..]);
+    }
+    sp_up(g,g.deg,ar[0..<n],ai[0..<n],next[0..<cells]);
+    return SpStatus.ok;
+}
+// book:end flow
+
+// book:begin seeded
+SP_INIT_DEG :: 6;
+SP_INIT_AMP :: 0.6;
+// A seeded smooth field: below degree 6, a_lm's real and imaginary parts are
+// uniform in [-0.6, 0.6) divided by l + 1 (a_l0 is real), drawn from the
+// counter generator at 2 (l (l + 1)/2 + m) and the next counter.
+sp_initial :: (g:SpGrid,seed:u64,u:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    if g.deg<SP_INIT_DEG {return SpStatus.degree;}
+    if u.count!=g.nlat*g.nlon {return SpStatus.shape;}
+    ar:[SP_COEF_MAX]f64;ai:[SP_COEF_MAX]f64;
+    for l:0..<SP_INIT_DEG {
+        for m:0..<l+1 {t:=sp_index(l,m);ar[t]=SP_INIT_AMP*(2*cr_draw(CrSeed.{seed=seed,counter=cast(u64)(2*t)}).value-1)/f64(l+1);}
+        for k:0..<l {t:=sp_index(l,k+1);ai[t]=SP_INIT_AMP*(2*cr_draw(CrSeed.{seed=seed,counter=cast(u64)(2*t+1)}).value-1)/f64(l+1);}
+    }
+    sp_up(g,g.deg,ar[..],ai[..],u);
+    return SpStatus.ok;
+}
+// A trajectory: the initial field for seed, then steps steps of flow, each
+// frame at s cells in out.
+sp_trajectory :: (g:SpGrid,flow:SpFlow,seed:u64,out:[]f64)->SpStatus {
+    cells:=g.nlat*g.nlon;
+    if out.count<cells || out.count%cells!=0 {return SpStatus.shape;}
+    status:=sp_initial(g,seed,out[0..<cells]);
+    for s:1..<out.count/cells {
+        if status==SpStatus.ok {status=sp_step(g,flow,out[(s-1)*cells..<s*cells],out[s*cells..<(s+1)*cells]);}
+    }
+    return status;
+}
+// book:end seeded
+
+// 3. The spherical Fourier layer.
+#test "a one-channel layer by hand" {
+    // Grid 2 x 3, degrees 0 and 1: weight 0.5 on degree 0 and 3 on degree 1,
+    // lin 0.25, bias -1. On f = 1 + cos(theta) the spectral path is
+    // 0.5 + 3 cos(theta), so y = 0.5 + 3x + 0.25 (1 + x) - 1.
+    g:=sp_grid(2,3,2);w:=[2]f64.[0.5,3];lin:=[1]f64.[0.25];bias:=[1]f64.[-1];
+    l:=SpLayer.{cin=1,cout=1,deg=2,act=FoAct.none,w=w[..],lin=lin[..],bias=bias[..]};
+    x:[6]f64;pre:[6]f64;y:[6]f64;for k:0..<3 {x[k]=1+g.x[0];x[3+k]=1+g.x[1];}
+    #assert sp_layer_forward(l,g,x[..],pre[..],y[..])==SpStatus.ok;
+    for t:0..<6 {z:=x[t]-1;#assert sp_near(y[t],0.5+3*z+0.25*(1+z)-1,1e-14) && pre[t]==y[t];}
+    // One degree kept: only the mean passes the spectral path.
+    l.deg=1;l.w=w[0..<1];#assert sp_layer_forward(l,g,x[..],pre[..],y[..])==SpStatus.ok;
+    for t:0..<6 {z:=x[t]-1;#assert sp_near(y[t],0.5+0.25*(1+z)-1,1e-14);}
+    // dL/dy = 1 at every point of a 2 x 3 grid: the bias gets 6 and lin gets the sum of x.
+    l.deg=2;l.w=w[..];l.act=FoAct.gelu;dy:=[6]f64.[1,1,1,1,1,1];dx:[6]f64;
+    gw:[2]f64;gl:[1]f64;gb:[1]f64;gr:=SpGrad.{w=gw[..],lin=gl[..],bias=gb[..]};
+    #assert sp_layer_forward(l,g,x[..],pre[..],y[..])==SpStatus.ok && sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],gr)==SpStatus.ok;
+    sb:=0.0;sl:=0.0;for t:0..<6 {sb+=fo_slope(FoAct.gelu,pre[t]);sl+=fo_slope(FoAct.gelu,pre[t])*x[t];}
+    #assert sp_near(gb[0],sb,1e-15) && sp_near(gl[0],sl,1e-14) && pre[0]!=y[0];
+}
+#test "layer gradients match central differences: 1 to 1, 2 x 3" #steps 400000000 {#assert sp_layer_gradients(0,2,3,2,1,1,FoAct.gelu)<=1e-8;}
+#test "layer gradients match central differences: 2 to 3, 4 x 8" #steps 800000000 {#assert sp_layer_gradients(1,4,8,3,2,3,FoAct.gelu)<=1e-8;}
+#test "layer gradients match central differences: 3 to 2, 5 x 8, no activation" #steps 800000000 {#assert sp_layer_gradients(2,5,8,4,3,2,FoAct.none)<=1e-8;}
+#forall "rotating the input rotates the output" n:0..<4 #steps 2000000000 {
+    // A band-limited input below degree 5, rotated by R = Rz(alpha) Ry(beta)
+    // before sampling; the layer's output must be the original output at
+    // R^-1 p, where the original output is computed from its coefficients
+    // b_lm = w_l a_lm and the pointwise path, point by point.
+    g:=sp_grid(5,9,5);cells:=45;
+    w:[50]f64;lin:[4]f64;bias:[2]f64;sp_fill(n+60,w[..]);sp_fill(n+61,lin[..]);sp_fill(n+62,bias[..]);
+    l:=SpLayer.{cin=2,cout=2,deg=5,act=cast(FoAct)(n%2),w=w[0..<20],lin=lin[..],bias=bias[..]};
+    ar:[30]f64;ai:[30]f64;sp_random_coeffs(n+70,5,ar[0..<15],ai[0..<15]);sp_random_coeffs(n+80,5,ar[15..<30],ai[15..<30]);
+    alpha:=0.3+0.7*f64(n);beta:=0.9-0.4*f64(n);
+    x:[90]f64;pre:[90]f64;y:[90]f64;
+    for j:0..<5 {for k:0..<9 {
+        q:=sp_unrotate(sp_point(g,j,k),alpha,beta);
+        for i:0..<2 {x[i*cells+j*9+k]=sp_oracle_eval(5,ar[i*15..<(i+1)*15],ai[i*15..<(i+1)*15],q.x,q.y,q.z);}
+    }}
+    #assert sp_layer_forward(l,g,x[..],pre[..],y[..])==SpStatus.ok;
+    for o:0..<2 {
+        br:[15]f64;bi:[15]f64;
+        for d:0..<5 {for m:0..<d+1 {for i:0..<2 {t:=sp_slot(d,m);br[t]+=w[(o*2+i)*5+d]*ar[i*15+t];bi[t]+=w[(o*2+i)*5+d]*ai[i*15+t];}}}
+        for j:0..<5 {for k:0..<9 {
+            q:=sp_unrotate(sp_point(g,j,k),alpha,beta);
+            v:=sp_oracle_eval(5,br[..],bi[..],q.x,q.y,q.z)+bias[o];
+            for i:0..<2 {v+=lin[o*2+i]*sp_oracle_eval(5,ar[i*15..<(i+1)*15],ai[i*15..<(i+1)*15],q.x,q.y,q.z);}
+            #assert sp_near(y[o*cells+j*9+k],fo_act(l.act,v),1e-12);
+        }}
+    }
+}
+#test "a weight for each order breaks the symmetry; a planar layer breaks it too" #steps 2000000000 {
+    // Rotating by 45 degrees about the y axis turns Y_10 (z) into a mix of
+    // orders 0 and 1 at degree 1. A layer that scales order 0 and
+    // order 1 differently cannot commute with that rotation; one weight per
+    // degree does. The planar layer's error on the same test is large.
+    g:=sp_grid(5,9,5);cells:=45;x:[45]f64;xr:[45]f64;pre:[45]f64;y:[45]f64;yr:[45]f64;
+    for j:0..<5 {for k:0..<9 {p:=sp_point(g,j,k);x[j*9+k]=p.z;xr[j*9+k]=sp_unrotate(p,0,SP_PI/4).z;}}
+    w:=[5]f64.[0.4,2,0.5,0.25,1];none:[1]f64;bias:[1]f64;
+    l:=SpLayer.{cin=1,cout=1,deg=5,act=FoAct.none,w=w[..],lin=none[..],bias=bias[..]};
+    #assert sp_layer_forward(l,g,xr[..],pre[..],yr[..])==SpStatus.ok;
+    for t:0..<45 {#assert sp_near(yr[t],2*xr[t],1e-13);}
+    // Order 1 scaled by 3 instead: the rotated input's output is no longer 2 xr.
+    ar:[15]f64;ai:[15]f64;#assert sp_analysis(g,xr[..],ar[..],ai[..])==SpStatus.ok;
+    ar[2]*=1.5;ai[2]*=1.5;ar[1]*=2;#assert sp_synthesis(g,ar[..],ai[..],y[..])==SpStatus.ok;
+    worst:=0.0;for t:0..<45 {d:=abs(y[t]-2*xr[t]);if d>worst {worst=d;}}
+    #assert worst>0.3;
+    // Chapter 156's layer on the same grid, read as a periodic 5 x 9 image.
+    wr:[9]f64;wi:[9]f64;lin:[1]f64;fb:[1]f64;sp_fill(90,wr[..]);sp_fill(91,wi[..]);
+    fl:=FoLayer.{cin=1,cout=1,k1=2,k2=2,act=FoAct.none,wr=wr[..],wi=wi[..],lin=lin[..],bias=fb[..]};
+    #assert fo_forward(fl,5,9,x[..],pre[..],y[..])==FoStatus.ok && fo_forward(fl,5,9,xr[..],pre[..],yr[..])==FoStatus.ok;
+    // y is a band-limited field of z only if the planar layer were equivariant; compare its rotation with yr.
+    #assert sp_analysis(g,y[..],ar[..],ai[..])==SpStatus.ok;
+    worst=0.0;
+    for j:0..<5 {for k:0..<9 {q:=sp_unrotate(sp_point(g,j,k),0,SP_PI/4);d:=abs(yr[j*9+k]-sp_oracle_eval(5,ar[..],ai[..],q.x,q.y,q.z));if d>worst {worst=d;}}}
+    #assert worst>0.1;
+}
+#test "layer refusals name the first problem and write nothing" {
+    g:=sp_grid(4,7,4);w:[24]f64;lin:[2]f64;bias:[1]f64;sp_fill(3,w[..]);sp_fill(4,lin[..]);
+    l:=SpLayer.{cin=2,cout=1,deg=3,act=FoAct.gelu,w=w[0..<6],lin=lin[..],bias=bias[..]};
+    x:[56]f64;sp_fill(5,x[..]);pre:[28]f64;y:[28]f64;dy:[28]f64;dx:[56]f64;
+    gw:[6]f64;gl:[2]f64;gb:[1]f64;gr:=SpGrad.{w=gw[..],lin=gl[..],bias=gb[..]};
+    for t:0..<28 {y[t]= -7;pre[t]= -7;}
+    #assert sp_layer_forward(l,sp_grid(4,6,4),x[..],pre[..],y[..])==SpStatus.degree;
+    bad:=l;bad.cin=0;#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.channels;
+    bad=l;bad.cout=0;#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.channels;
+    bad=l;bad.cin=5;#assert sp_layer_check(bad,g,x[..])==SpStatus.channels;
+    bad=l;bad.cout=5;#assert sp_layer_check(bad,g,x[..])==SpStatus.channels;
+    four:=SpLayer.{cin=4,cout=4,deg=1,act=FoAct.none,w=w[0..<16],lin=w[0..<16],bias=w[0..<4]};big:[112]f64;
+    #assert sp_layer_check(four,g,big[..])==SpStatus.ok;
+    bad=l;bad.deg=0;#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.degree;
+    bad=l;bad.deg=5;bad.w=w[0..<10];#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.degree;
+    bad=l;bad.deg=4;bad.w=w[0..<8];#assert sp_layer_check(bad,g,x[..])==SpStatus.ok;
+    bad=l;bad.w=w[0..<5];#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.shape;
+    bad=l;bad.lin=lin[0..<1];#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.shape;
+    bad=l;bad.bias=bias[0..<0];#assert sp_layer_forward(bad,g,x[..],pre[..],y[..])==SpStatus.shape;
+    #assert sp_layer_forward(l,g,x[0..<55],pre[..],y[..])==SpStatus.shape;
+    k:=x[9];x[9]=sf_nan();#assert sp_layer_forward(l,g,x[..],pre[..],y[..])==SpStatus.number;x[9]=k;
+    k=w[5];w[5]=sf_inf();#assert sp_layer_check(l,g,x[..])==SpStatus.number;w[5]=k;
+    k=lin[1];lin[1]=sf_nan();#assert sp_layer_check(l,g,x[..])==SpStatus.number;lin[1]=k;
+    bias[0]=sf_nan();#assert sp_layer_check(l,g,x[..])==SpStatus.number;bias[0]=0;
+    #assert sp_layer_forward(l,g,x[..],pre[0..<27],y[..])==SpStatus.capacity && sp_layer_forward(l,g,x[..],pre[..],y[0..<27])==SpStatus.capacity;
+    for t:0..<28 {#assert y[t]== -7 && pre[t]== -7;}
+    #assert sp_layer_forward(l,g,x[..],pre[..],y[..])==SpStatus.ok;sp_fill(6,dy[..]);
+    for t:0..<56 {dx[t]= -7;}
+    #assert sp_layer_backward(l,g,x[..],pre[0..<27],dy[..],dx[..],gr)==SpStatus.shape && sp_layer_backward(l,g,x[..],pre[..],dy[0..<27],dx[..],gr)==SpStatus.shape;
+    k=dy[3];dy[3]=sf_nan();#assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],gr)==SpStatus.number;dy[3]=k;
+    k=pre[3];pre[3]=sf_inf();#assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],gr)==SpStatus.number;pre[3]=k;
+    bad=l;bad.cin=0;#assert sp_layer_backward(bad,g,x[..],pre[..],dy[..],dx[..],gr)==SpStatus.channels;
+    #assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[0..<55],gr)==SpStatus.capacity;
+    h:=gr;h.w=gw[0..<5];#assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],h)==SpStatus.capacity;
+    h=gr;h.lin=gl[0..<1];#assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],h)==SpStatus.capacity;
+    h=gr;h.bias=gb[0..<0];#assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],h)==SpStatus.capacity;
+    for t:0..<56 {#assert dx[t]== -7;}
+    #assert sp_layer_backward(l,g,x[..],pre[..],dy[..],dx[..],gr)==SpStatus.ok && dx[0]!= -7;
+}
+
+// book:begin layer
+// The layer and its input: grid, channels, degrees, lengths, then values.
+sp_layer_check :: (l:SpLayer,g:SpGrid,x:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    if l.cin<1 || l.cout<1 || l.cin>SP_WIDTH_MAX || l.cout>SP_WIDTH_MAX {return SpStatus.channels;}
+    if l.deg<1 || l.deg>g.deg {return SpStatus.degree;}
+    if l.w.count!=l.cout*l.cin*l.deg || l.lin.count!=l.cout*l.cin || l.bias.count!=l.cout || x.count!=l.cin*g.nlat*g.nlon {return SpStatus.shape;}
+    if !sp_values_ok(l.w) || !sp_values_ok(l.lin) || !sp_values_ok(l.bias) || !sp_values_ok(x) {return SpStatus.number;}
+    return SpStatus.ok;
+}
+// y_o = act(synthesis(b_o) + sum over i of lin_oi x_i + bias_o), where
+// b_o,lm = sum over i of w_oil a_i,lm and a_i is the transform of x_i below
+// degree deg. One weight serves every order m of a degree, so the layer
+// commutes with rotations of the sphere.
+sp_layer_forward :: (l:SpLayer,g:SpGrid,x:[]f64,pre:[]f64,y:[]f64)->SpStatus {
+    status:=sp_layer_check(l,g,x);if status!=SpStatus.ok {return status;}
+    cells:=g.nlat*g.nlon;n:=sp_coeffs(l.deg);
+    if pre.count<l.cout*cells || y.count<l.cout*cells {return SpStatus.capacity;}
+    ar:[SP_WIDTH_MAX*SP_COEF_MAX]f64;ai:[SP_WIDTH_MAX*SP_COEF_MAX]f64;
+    for i:0..<l.cin {sp_down(g,l.deg,x[i*cells..<(i+1)*cells],ar[i*n..<ar.count],ai[i*n..<ai.count],true);}
+    for o:0..<l.cout {
+        br:[SP_COEF_MAX]f64;bi:[SP_COEF_MAX]f64;s:[SP_CELLS_MAX]f64;
+        for r:0..<l.deg {d:=l.deg-1-r;for m:0..<d+1 {   // highest degree first
+            t:=sp_index(d,m);zr:=0.0;zi:=0.0;
+            for i:0..<l.cin {w:=l.w[(o*l.cin+i)*l.deg+d];zr+=w*ar[i*n+t];zi+=w*ai[i*n+t];}
+            br[t]=zr;bi[t]=zi;
+        }}
+        sp_up(g,l.deg,br[0..<n],bi[0..<n],s[0..<cells]);
+        for t:0..<cells {
+            v:=s[t]+l.bias[o];
+            for i:0..<l.cin {v+=l.lin[o*l.cin+i]*x[i*cells+t];}
+            pre[o*cells+t]=v;y[o*cells+t]=fo_act(l.act,v);
+        }
+    }
+    return SpStatus.ok;
+}
+// book:end layer
+
+// book:begin adjoint
+// Given dL/dy, write dL/dx and every parameter's gradient (overwritten).
+// With g_o = dL/dy_o act'(pre_o), let h_o = sp_down(g_o) unweighted: the
+// synthesis's adjoint is c_m h_o (c_0 = 1, c_m = 2) and the transform's
+// adjoint is (2 pi/nlon) w_j times the synthesis of a coefficient divided by
+// c_m. So dL/dw_oil = sum over m of c_m Re(conj(h_o,lm) a_i,lm), and
+// dL/dx_i = (2 pi/nlon) w_j synthesis(sum over o of w_oil h_o) plus the
+// pointwise path.
+sp_layer_backward :: (l:SpLayer,g:SpGrid,x:[]f64,pre:[]f64,dy:[]f64,dx:[]f64,gr:SpGrad)->SpStatus {
+    status:=sp_layer_check(l,g,x);if status!=SpStatus.ok {return status;}
+    cells:=g.nlat*g.nlon;n:=sp_coeffs(l.deg);nc:=l.cout*cells;
+    if pre.count!=nc || dy.count!=nc {return SpStatus.shape;}
+    if !sp_values_ok(pre) || !sp_values_ok(dy) {return SpStatus.number;}
+    if dx.count<l.cin*cells || gr.w.count<l.w.count || gr.lin.count<l.cout*l.cin || gr.bias.count<l.cout {return SpStatus.capacity;}
+    ar:[SP_WIDTH_MAX*SP_COEF_MAX]f64;ai:[SP_WIDTH_MAX*SP_COEF_MAX]f64;
+    hr:[SP_WIDTH_MAX*SP_COEF_MAX]f64;hi:[SP_WIDTH_MAX*SP_COEF_MAX]f64;gz:[SP_WIDTH_MAX*SP_CELLS_MAX]f64;
+    for i:0..<l.cin {sp_down(g,l.deg,x[i*cells..<(i+1)*cells],ar[i*n..<ar.count],ai[i*n..<ai.count],true);}
+    for o:0..<l.cout {
+        sum:=0.0;
+        for t:0..<cells {v:=dy[o*cells+t]*fo_slope(l.act,pre[o*cells+t]);gz[o*cells+t]=v;sum+=v;}
+        gr.bias[o]=sum;
+        for i:0..<l.cin {s:=0.0;for t:0..<cells {s+=gz[o*cells+t]*x[i*cells+t];}gr.lin[o*l.cin+i]=s;}
+        sp_down(g,l.deg,gz[o*cells..<gz.count],hr[o*n..<hr.count],hi[o*n..<hi.count],false);
+    }
+    for i:0..<l.cin {
+        dr:[SP_COEF_MAX]f64;di:[SP_COEF_MAX]f64;s:[SP_CELLS_MAX]f64;
+        for o:0..<l.cout {for d:0..<l.deg {
+            q:=0.0;
+            for m:0..<d+1 {t:=sp_index(d,m);c:=2.0;if m==0 {c=1;}q+=c*(hr[o*n+t]*ar[i*n+t]+hi[o*n+t]*ai[i*n+t]);}
+            gr.w[(o*l.cin+i)*l.deg+d]=q;
+        }}
+        for r:0..<l.deg {d:=l.deg-1-r;for m:0..<d+1 {   // highest degree first
+            t:=sp_index(d,m);zr:=0.0;zi:=0.0;
+            for o:0..<l.cout {w:=l.w[(o*l.cin+i)*l.deg+d];zr+=w*hr[o*n+t];zi+=w*hi[o*n+t];}
+            dr[t]=zr;di[t]=zi;
+        }}
+        sp_up(g,l.deg,dr[0..<n],di[0..<n],s[0..<cells]);
+        for j:0..<g.nlat {for k:0..<g.nlon {
+            t:=j*g.nlon+k;v:=s[t]*g.w[j]*2*SP_PI/f64(g.nlon);
+            for o:0..<l.cout {v+=l.lin[o*l.cin+i]*gz[o*cells+t];}
+            dx[i*cells+t]=v;
+        }}
+    }
+    return SpStatus.ok;
+}
+// book:end adjoint
+
+// 4. The forecaster.
+#test "parameter layout by hand" {
+    g:=sp_grid(8,16,8);
+    s:=SpNet.{kind=SpKind.sphere,width=2,layers=2,modes=3};
+    // Each layer: 2 x 2 x 3 = 12 degree weights, 4 lin, 2 bias = 18.
+    #assert sp_layer_size(s)==18 && sp_params(s)==4+36+3 && sp_proj(s)==40 && sp_work(s,10)==150 && sp_out(s,10)==100;
+    p:[85]f64;for t:0..<85 {p[t]=f64(t);}
+    a:=sp_sphere_layer(s,p[..],1);#assert a.cin==2 && a.cout==2 && a.deg==3 && a.act==FoAct.gelu && a.w.count==12 && a.w[0]==22 && a.lin[0]==34 && a.bias[1]==39;
+    q:=SpNet.{kind=SpKind.plane,width=2,layers=1,modes=2};
+    // 2 x 2 x 9 kept modes, real and imaginary: 72; lin 4, bias 2.
+    #assert sp_layer_size(q)==78 && sp_params(q)==4+78+3;
+    b:=sp_plane_layer(q,p[..],0);#assert b.k1==2 && b.k2==2 && b.wr.count==36 && b.wr[0]==4 && b.wi[0]==40 && b.lin[0]==76 && b.bias[0]==80;
+    gs:=sp_sphere_grad(s,p[..],0);#assert gs.w[0]==4 && gs.lin[3]==19 && gs.bias[1]==21;
+    gp:=sp_plane_grad(q,p[..],0);#assert gp.wi[35]==75 && gp.bias[1]==81;
+    #assert sp_net_ok(s,g) && sp_net_ok(q,g) && sp_net_ok(SpNet.{kind=SpKind.sphere,width=4,layers=4,modes=8},g);
+    #assert !sp_net_ok(SpNet.{kind=SpKind.sphere,width=0,layers=1,modes=1},g) && !sp_net_ok(SpNet.{kind=SpKind.sphere,width=5,layers=1,modes=1},g);
+    #assert !sp_net_ok(SpNet.{kind=SpKind.sphere,width=1,layers=0,modes=1},g) && !sp_net_ok(SpNet.{kind=SpKind.sphere,width=1,layers=5,modes=1},g);
+    #assert !sp_net_ok(SpNet.{kind=SpKind.sphere,width=1,layers=1,modes=0},g) && !sp_net_ok(SpNet.{kind=SpKind.sphere,width=1,layers=1,modes=9},g);
+    #assert sp_net_ok(SpNet.{kind=SpKind.plane,width=1,layers=1,modes=8},sp_grid(15,15,8)) && !sp_net_ok(SpNet.{kind=SpKind.plane,width=1,layers=1,modes=9},sp_grid(32,64,8));
+    #assert !sp_net_ok(SpNet.{kind=SpKind.plane,width=1,layers=1,modes=8},sp_grid(14,15,7)) && !sp_net_ok(SpNet.{kind=SpKind.plane,width=1,layers=1,modes=8},sp_grid(15,14,7));
+    #assert !sp_net_ok(SpNet.{kind=SpKind.plane,width=1,layers=1,modes=0},g);
+}
+#test "initial weights by hand" {
+    // Width 3, two spherical layers of 3 degrees: lift 0..2, its biases 3..5;
+    // layer 0's degree weights 6..32, lin 33..41, bias 42..44; layer 1 from
+    // 45; projection 84..86 and 87.
+    net:=SpNet.{kind=SpKind.sphere,width=3,layers=2,modes=3};p:[88]f64;#assert sp_params(net)==88;sp_init(net,p[..],5);
+    for t:0..<88 {
+        u:=2*cr_draw(CrSeed.{seed=5,counter=cast(u64)t}).value-1;s:=0.0;
+        if t<3 {s=1;}
+        if (t>=6 && t<33) || (t>=45 && t<72) {s=1.0/9;}
+        if (t>=33 && t<42) || (t>=72 && t<81) {s=1/sqrt(3.0);}
+        if t>=84 && t<87 {s=1/sqrt(3.0);}
+        #assert p[t]==u*s;
+    }
+}
+#test "a one-channel forecaster by hand" {
+    // Lift 2 u + 0.5; one layer keeping degree 0 with weight 0.25, lin 1,
+    // bias 0; projection 3 h - 1. On a constant field u = 0.2: h0 = 0.9, the
+    // layer's pre-activation 0.25 h0 + h0 = 1.125, out = 3 gelu(1.125) - 1.
+    g:=sp_grid(2,3,1);net:=SpNet.{kind=SpKind.sphere,width=1,layers=1,modes=1};
+    p:=[7]f64.[2,0.5,0.25,1,0,3,-1];u:=[6]f64.[0.2,0.2,0.2,0.2,0.2,0.2];ws:[30]f64;next:[6]f64;
+    #assert sp_params(net)==7 && sp_work(net,6)==36 && sp_forward(net,p[..],g,u[..],ws[0..<29])==SpStatus.shape;
+    big:[40]f64;
+    #assert sp_forward(net,p[..],g,u[..],big[..])==SpStatus.ok;
+    for t:0..<6 {#assert sp_near(big[t],0.9,1e-15) && sp_near(big[12+t],1.125,1e-15) && sp_near(big[sp_out(net,6)+t],3*fo_act(FoAct.gelu,1.125)-1,1e-14);}
+    #assert sp_predict(net,p[..],g,u[..],next[..],big[..])==SpStatus.ok;
+    for t:0..<6 {#assert sp_near(next[t],0.2+3*fo_act(FoAct.gelu,1.125)-1,1e-14);}
+    // The same with a planar layer keeping one mode: the mean, weight 0.25.
+    q:=SpNet.{kind=SpKind.plane,width=1,layers=1,modes=1};pp:=[8]f64.[2,0.5,0.25,0,1,0,3,-1];
+    #assert sp_params(q)==8 && sp_forward(q,pp[..],g,u[..],big[..])==SpStatus.ok && sp_near(big[sp_out(q,6)+5],3*fo_act(FoAct.gelu,1.125)-1,1e-14);
+}
+#test "area weights, loss and errors by hand" {
+    g:=sp_grid(2,3,2);
+    #assert sp_area(g,0)==g.w[0]/6 && sp_near(sp_area(g,0)*3+sp_area(g,1)*3,1,1e-15);
+    // Four latitudes: weights 0.3479 and 0.6521 (rounded), so the two outer rows are lighter.
+    h:=sp_grid(4,7,4);#assert sp_area(h,0)<sp_area(h,1) && sp_area(h,0)==sp_area(h,3);
+    out:=[6]f64.[1,0,0,0,0,0];u:=[6]f64.[0,0,0,0,0,0];target:=[6]f64.[0,0,0,0,0,2];d:[6]f64;
+    #assert sp_near(sp_loss(g,out[..],u[..],target[..],d[..]),5.0/6,1e-15) && sp_near(d[0],1.0/3,1e-15) && sp_near(d[5],-2.0/3,1e-15) && d[1]==0;
+    a:=[6]f64.[1,1,1,1,1,1];b:=[6]f64.[2,2,2,2,2,2];
+    #assert sp_near(sp_rel_error(g,a[..],b[..]),0.5,1e-15) && sp_rel_error(g,b[..],b[..])==0;
+    a=b;a[0]=3;#assert sp_near(sp_rel_error(g,a[..],b[..]),sqrt(sp_area(g,0)/4),1e-15);
+    // An error only in the outer rows of h counts by their area, not their count.
+    x:[28]f64;y:[28]f64;for t:0..<28 {y[t]=1;x[t]=1;}for k:0..<7 {x[k]=2;x[21+k]=2;}
+    want:=sqrt(2*sp_area(h,0)*7);#assert sp_near(sp_rel_error(h,x[..],y[..]),want,1e-15) && sp_rel_error(h,x[..],y[..])<sqrt(0.5);
+    #assert sp_near(sp_band_rms(h,x[..],y[..],0.8,true),1,1e-15) && sp_band_rms(h,x[..],y[..],0.8,false)==0;
+    #assert sp_band_rms(h,x[..],y[..],0,false)==0 && sp_near(sp_band_rms(h,x[..],y[..],0,true),want,1e-15);
+    #assert sp_near(sp_band_rms(h,x[..],y[..],h.x[1],true),want,1e-15) && sp_band_rms(h,x[..],y[..],h.x[0],true)==1;
+    y[0]=0;#assert sp_near(sp_band_rms(h,x[..],y[..],0.8,true),sqrt(17.0/14),1e-15);
+}
+#test "forecaster gradients match central differences: spherical, 3 x 8" #steps 2000000000 {#assert sp_net_gradients(SpNet.{kind=SpKind.sphere,width=2,layers=2,modes=3},3,8,3,1)<=1e-7;}
+#test "forecaster gradients match central differences: planar, 4 x 4" #steps 2000000000 {#assert sp_net_gradients(SpNet.{kind=SpKind.plane,width=2,layers=2,modes=2},4,4,2,2)<=1e-7;}
+#test "forecaster gradients match central differences: one wide, three layers" #steps 2000000000 {#assert sp_net_gradients(SpNet.{kind=SpKind.sphere,width=1,layers=3,modes=2},2,3,2,3)<=1e-7;}
+#test "training is batch-mean AdamW steps in order" #steps 4000000000 {
+    #assert sp_train_matches(SpKind.sphere,SpTrain.{epochs=2,batch=2,lr=0.02,decay=0.1},3);
+    #assert sp_train_matches(SpKind.plane,SpTrain.{epochs=4,batch=1,lr=0.05,decay=0},2);
+    #assert sp_train_matches(SpKind.sphere,SpTrain.{epochs=1,batch=3,lr=0.01,decay=0.25},3);
+}
+#test "the rate halves each quarter" {
+    c:=SpTrain.{epochs=8,lr=0.4};
+    #assert sp_rate(c,0)==0.4 && sp_rate(c,1)==0.4 && sp_rate(c,2)==0.2 && sp_rate(c,4)==0.1 && sp_rate(c,7)==0.05;
+}
+#test "a rollout feeds each forecast back in" #steps 400000000 {
+    g:=sp_grid(3,5,3);net:=SpNet.{kind=SpKind.sphere,width=2,layers=1,modes=2};P:=sp_params(net);p:[40]f64;sp_init(net,p[0..<P],4);
+    u:[15]f64;sp_fill(7,u[..]);frames:[45]f64;ws:[200]f64;a:[15]f64;b:[15]f64;
+    #assert sp_rollout(net,p[0..<P],g,u[..],frames[..])==SpStatus.ok;
+    #assert sp_predict(net,p[0..<P],g,u[..],a[..],ws[..])==SpStatus.ok && sp_worst(a[..],frames[0..<15])==0;
+    #assert sp_predict(net,p[0..<P],g,a[..],b[..],ws[..])==SpStatus.ok && sp_worst(b[..],frames[15..<30])==0;
+    #assert sp_predict(net,p[0..<P],g,b[..],a[..],ws[..])==SpStatus.ok && sp_worst(a[..],frames[30..<45])==0;
+    #assert sp_rollout(net,p[0..<P],g,u[..],frames[0..<15])==SpStatus.ok && sp_rollout(net,p[0..<P],g,u[..],frames[0..<44])==SpStatus.shape && sp_rollout(net,p[0..<P],g,u[..],frames[0..<0])==SpStatus.shape;
+    #assert sp_rollout(net,p[0..<P-1],g,u[..],frames[..])==SpStatus.shape && sp_predict(net,p[0..<P],g,u[..],a[0..<14],ws[..])==SpStatus.capacity;
+}
+#test "forecaster refusals name the first problem" {
+    g:=sp_grid(2,3,1);net:=SpNet.{kind=SpKind.sphere,width=1,layers=1,modes=1};p:[7]f64;u:=[6]f64.[0.2,0.2,0.2,0.2,0.2,0.2];ws:[40]f64;d:[6]f64;gr:[7]f64;
+    #assert sp_forward(net,p[..],sp_grid(2,2,2),u[..],ws[..])==SpStatus.degree;
+    #assert sp_forward(SpNet.{kind=SpKind.sphere,width=1,layers=1,modes=2},p[..],g,u[..],ws[..])==SpStatus.network;
+    #assert sp_forward(net,p[0..<6],g,u[..],ws[..])==SpStatus.shape && sp_forward(net,p[..],g,u[0..<5],ws[..])==SpStatus.shape;
+    #assert sp_forward(net,p[..],g,u[..],ws[0..<35])==SpStatus.shape && sp_forward(net,p[..],g,u[..],ws[0..<36])==SpStatus.ok;
+    p[6]=sf_nan();#assert sp_forward(net,p[..],g,u[..],ws[..])==SpStatus.number;p[6]=0;
+    u[2]=sf_inf();#assert sp_forward(net,p[..],g,u[..],ws[..])==SpStatus.number;u[2]=0.2;
+    p[0]=10;u[2]=200000;#assert sp_forward(net,p[..],g,u[..],ws[..])==SpStatus.number;   // the layer's input passes 1e6
+    q:=SpNet.{kind=SpKind.plane,width=1,layers=1,modes=1};pp:[8]f64;pp[0]=10;
+    #assert sp_forward(q,pp[..],g,u[..],ws[..])==SpStatus.number;
+    p[0]=0;u[2]=0.2;
+    #assert sp_backward(net,p[..],g,u[..],ws[..],d[..],gr[0..<6])==SpStatus.shape && sp_backward(net,p[..],g,u[..],ws[..],d[0..<5],gr[..])==SpStatus.shape;
+    #assert sp_backward(SpNet.{},p[..],g,u[..],ws[..],d[..],gr[..])==SpStatus.network;
+    d[1]=sf_nan();#assert sp_backward(net,p[..],g,u[..],ws[..],d[..],gr[..])==SpStatus.number;d[1]=1;
+    #assert sp_forward(net,p[..],g,u[..],ws[..])==SpStatus.ok && sp_backward(net,p[..],g,u[..],ws[..],d[..],gr[..])==SpStatus.ok && gr[6]==1;
+    ws[12]=2000000;#assert sp_backward(net,p[..],g,u[..],ws[..],d[..],gr[..])==SpStatus.number;   // a stored pre-activation past 1e6
+    pp[0]=0;#assert sp_forward(q,pp[..],g,u[..],ws[..])==SpStatus.ok;ws[12]=2000000;
+    pg:[8]f64;#assert sp_backward(q,pp[..],g,u[..],ws[..],d[..],pg[..])==SpStatus.number;
+}
+#test "training refusals" {
+    g:=sp_grid(2,3,1);net:=SpNet.{kind=SpKind.sphere,width=1,layers=1,modes=1};p:[7]f64;m:[7]f64;v:[7]f64;
+    u:[12]f64;target:[12]f64;sp_fill(1,u[..]);sp_fill(2,target[..]);l:[2]f64;c:=SpTrain.{epochs=2,batch=1,lr=0.01};
+    sp_init(net,p[..],1);
+    #assert sp_train(net,p[..],m[..],v[..],g,u[..],target[..],SpTrain.{epochs=0,batch=1,lr=0.01},l[0..<0])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],g,u[..],target[..],SpTrain.{epochs=2,batch=0,lr=0.01},l[..])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],g,u[..],target[..],c,l[0..<1])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],g,u[0..<0],target[0..<0],c,l[..])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],g,u[0..<11],target[0..<11],c,l[..])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],g,u[0..<6],target[..],c,l[..])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],sp_grid(2,2,2),u[..],target[..],c,l[..])==SpStatus.degree;
+    #assert sp_train(net,p[0..<6],m[..],v[..],g,u[..],target[..],c,l[..])==SpStatus.shape;
+    #assert sp_train(net,p[..],m[..],v[..],g,u[..],target[..],SpTrain.{epochs=2,batch=1,lr=2},l[..])==SpStatus.number;
+    sp_init(net,p[..],1);for t:0..<7 {m[t]=0;v[t]=0;}
+    #assert sp_train(net,p[..],m[..],v[..],g,u[..],target[..],c,l[..])==SpStatus.ok && l[1]<l[0];
+    #assert sp_train(net,p[..],m[..],v[..],g,u[0..<6],target[0..<6],c,l[..])==SpStatus.ok;
+}
+
+// book:begin net
+sp_net_ok :: (net:SpNet,g:SpGrid)->bool {
+    if net.width<1 || net.width>SP_WIDTH_MAX || net.layers<1 || net.layers>SP_LAYERS_MAX || net.modes<1 {return false;}
+    if net.kind==SpKind.sphere {return net.modes<=g.deg;}
+    return net.modes<=FO_MODES_MAX && 2*net.modes-1<=g.nlat && 2*net.modes-1<=g.nlon;
+}
+// A layer's spectral weights: one per degree and channel pair on the
+// sphere; a complex weight per kept mode and channel pair on the plane.
+sp_spectral :: (net:SpNet)->int {
+    w:=net.width;
+    if net.kind==SpKind.sphere {return w*w*net.modes;}
+    return 2*w*w*(2*net.modes-1)*(2*net.modes-1);
+}
+sp_layer_size :: (net:SpNet)->int {w:=net.width;return sp_spectral(net)+w*w+w;}
+// Parameters, in order: lift weights and biases (width each), each layer's
+// spectral weights, lin and bias, the projection's weights and its bias.
+sp_params :: (net:SpNet)->int {return 3*net.width+net.layers*sp_layer_size(net)+1;}
+sp_proj :: (net:SpNet)->int {return 2*net.width+net.layers*sp_layer_size(net);}
+// Layer k as a view of p: GELU on every layer.
+sp_sphere_layer :: (net:SpNet,p:[]f64,k:int)->SpLayer {
+    w:=net.width;s:=sp_spectral(net);at:=2*w+k*sp_layer_size(net);
+    return SpLayer.{cin=w,cout=w,deg=net.modes,act=FoAct.gelu,w=p[at..<at+s],lin=p[at+s..<at+s+w*w],bias=p[at+s+w*w..<at+s+w*w+w]};
+}
+sp_plane_layer :: (net:SpNet,p:[]f64,k:int)->FoLayer {
+    w:=net.width;s:=sp_spectral(net);at:=2*w+k*sp_layer_size(net);
+    return FoLayer.{cin=w,cout=w,k1=net.modes,k2=net.modes,act=FoAct.gelu,wr=p[at..<at+s/2],wi=p[at+s/2..<at+s],
+        lin=p[at+s..<at+s+w*w],bias=p[at+s+w*w..<at+s+w*w+w]};
+}
+sp_sphere_grad :: (net:SpNet,g:[]f64,k:int)->SpGrad {v:=sp_sphere_layer(net,g,k);return SpGrad.{w=v.w,lin=v.lin,bias=v.bias};}
+sp_plane_grad :: (net:SpNet,g:[]f64,k:int)->FoGrad {v:=sp_plane_layer(net,g,k);return FoGrad.{wr=v.wr,wi=v.wi,lin=v.lin,bias=v.bias};}
+// Working storage for one example: every layer's input and pre-activation,
+// the output and two backward buffers.
+sp_work :: (net:SpNet,cells:int)->int {return (2*net.layers+3)*net.width*cells+cells;}
+sp_out :: (net:SpNet,cells:int)->int {return (2*net.layers+1)*net.width*cells;}
+// book:end net
+
+// book:begin init
+// Lift weights uniform in +-1, lin and projection weights in
+// +-1/sqrt(width), spectral weights in +-1/width^2; biases zero.
+sp_init :: (net:SpNet,p:[]f64,seed:u64) {
+    w:=net.width;proj:=sp_proj(net);s:=sp_spectral(net);
+    for t:0..<p.count {
+        u:=2*cr_draw(CrSeed.{seed=seed,counter=cast(u64)t}).value-1;scale:=0.0;
+        if t<w {scale=1;}
+        else if t>=2*w && t<proj {
+            r:=(t-2*w)%sp_layer_size(net);
+            if r<s {scale=1/f64(w*w);} else if r<s+w*w {scale=1/sqrt(f64(w));}
+        }
+        else if t>=proj && t<proj+w {scale=1/sqrt(f64(w));}
+        p[t]=u*scale;
+    }
+}
+// book:end init
+
+// book:begin forward
+sp_block :: (ws:[]f64,k:int,b:int)->[]f64 {return ws[k*b..<k*b+b];}
+// The network, the grid it must fit, the lengths, then every value.
+sp_admit :: (net:SpNet,p:[]f64,g:SpGrid,u:[]f64,ws:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    if !sp_net_ok(net,g) {return SpStatus.network;}
+    cells:=g.nlat*g.nlon;
+    if p.count!=sp_params(net) || u.count!=cells || ws.count<sp_work(net,cells) {return SpStatus.shape;}
+    if !sp_values_ok(p) || !sp_values_ok(u) {return SpStatus.number;}
+    return SpStatus.ok;
+}
+// The network's output at every grid point, written to ws at sp_out.
+sp_forward :: (net:SpNet,p:[]f64,g:SpGrid,u:[]f64,ws:[]f64)->SpStatus {
+    status:=sp_admit(net,p,g,u,ws);if status!=SpStatus.ok {return status;}
+    w:=net.width;L:=net.layers;cells:=g.nlat*g.nlon;wc:=w*cells;
+    for c:0..<w {for t:0..<cells {ws[c*cells+t]=p[c]*u[t]+p[w+c];}}
+    for l:0..<L {
+        h:=sp_block(ws,l,wc);pre:=sp_block(ws,L+1+l,wc);y:=sp_block(ws,l+1,wc);
+        if net.kind==SpKind.sphere {
+            if sp_layer_forward(sp_sphere_layer(net,p,l),g,h,pre,y)!=SpStatus.ok {return SpStatus.number;}
+        } else {
+            if fo_forward(sp_plane_layer(net,p,l),g.nlat,g.nlon,h,pre,y)!=FoStatus.ok {return SpStatus.number;}
+        }
+    }
+    proj:=sp_proj(net);out:=sp_out(net,cells);
+    for t:0..<cells {v:=p[proj+w];for c:0..<w {v+=p[proj+c]*ws[L*wc+c*cells+t];}ws[out+t]=v;}
+    return SpStatus.ok;
+}
+// One forecast step: u_next = u + out.
+sp_predict :: (net:SpNet,p:[]f64,g:SpGrid,u:[]f64,next:[]f64,ws:[]f64)->SpStatus {
+    status:=sp_forward(net,p,g,u,ws);if status!=SpStatus.ok {return status;}
+    cells:=g.nlat*g.nlon;if next.count<cells {return SpStatus.capacity;}
+    out:=sp_out(net,cells);
+    for t:0..<cells {next[t]=u[t]+ws[out+t];}
+    return SpStatus.ok;
+}
+// book:end forward
+
+// book:begin backward
+// After sp_forward on the same input, write dL/dp to gr given dL/dout.
+// Every entry of gr is overwritten.
+sp_backward :: (net:SpNet,p:[]f64,g:SpGrid,u:[]f64,ws:[]f64,dout:[]f64,gr:[]f64)->SpStatus {
+    status:=sp_admit(net,p,g,u,ws);if status!=SpStatus.ok {return status;}
+    cells:=g.nlat*g.nlon;if dout.count!=cells || gr.count!=p.count {return SpStatus.shape;}
+    if !sp_values_ok(dout) {return SpStatus.number;}
+    w:=net.width;L:=net.layers;wc:=w*cells;proj:=sp_proj(net);a:=sp_out(net,cells)+cells;
+    s:=0.0;for t:0..<cells {s+=dout[t];}gr[proj+w]=s;
+    for c:0..<w {
+        q:=0.0;
+        for t:0..<cells {q+=dout[t]*ws[L*wc+c*cells+t];ws[a+c*cells+t]=p[proj+c]*dout[t];}
+        gr[proj+c]=q;
+    }
+    // Layer l's output gradient is in buffer (L - 1 - l) mod 2 after a; its
+    // input gradient goes to the other one.
+    for r:0..<L {
+        l:=L-1-r;i:=a+(r%2)*wc;o:=a+((r+1)%2)*wc;dy:=ws[i..<i+wc];dx:=ws[o..<o+wc];
+        h:=sp_block(ws,l,wc);pre:=sp_block(ws,L+1+l,wc);
+        if net.kind==SpKind.sphere {
+            if sp_layer_backward(sp_sphere_layer(net,p,l),g,h,pre,dy,dx,sp_sphere_grad(net,gr,l))!=SpStatus.ok {return SpStatus.number;}
+        } else {
+            if fo_backward(sp_plane_layer(net,p,l),g.nlat,g.nlon,h,pre,dy,dx,sp_plane_grad(net,gr,l))!=FoStatus.ok {return SpStatus.number;}
+        }
+    }
+    a+=(L%2)*wc;
+    for c:0..<w {
+        sb:=0.0;su:=0.0;
+        for t:0..<cells {sb+=ws[a+c*cells+t];su+=ws[a+c*cells+t]*u[t];}
+        gr[w+c]=sb;gr[c]=su;
+    }
+    return SpStatus.ok;
+}
+// book:end backward
+
+// book:begin train
+// The area of grid row j's cells as a fraction of the sphere: w_j/(2 nlon).
+sp_area :: (g:SpGrid,j:int)->f64 {return g.w[j]/(2*f64(g.nlon));}
+// The area-weighted mean squared error of the step u + out against target,
+// and its gradient for out.
+sp_loss :: (g:SpGrid,out:[]f64,u:[]f64,target:[]f64,dout:[]f64)->f64 {
+    s:=0.0;
+    for j:0..<g.nlat {for k:0..<g.nlon {
+        t:=j*g.nlon+k;e:=u[t]+out[t]-target[t];a:=sp_area(g,j);
+        s+=a*e*e;dout[t]=2*a*e;
+    }}
+    return s;
+}
+// The learning rate halves after each quarter of the epochs.
+sp_rate :: (cfg:SpTrain,epoch:int)->f64 {return cfg.lr*pow(0.5,f64((4*epoch)/cfg.epochs));}
+// Minibatches in a fixed order; the gradient is the batch mean, then one
+// AdamW step. losses[e] is epoch e's mean training loss. m and v are AdamW's
+// moments, zero at the start.
+sp_train :: (net:SpNet,p:[]f64,m:[]f64,v:[]f64,g:SpGrid,inputs:[]f64,targets:[]f64,cfg:SpTrain,losses:[]f64)->SpStatus {
+    if g.status!=SpStatus.ok {return g.status;}
+    cells:=g.nlat*g.nlon;count:=targets.count/cells;
+    if cfg.epochs<1 || cfg.batch<1 || losses.count!=cfg.epochs || count<1 || targets.count!=count*cells || inputs.count!=count*cells {return SpStatus.shape;}
+    ws:[(2*SP_LAYERS_MAX+3)*SP_WIDTH_MAX*SP_CELLS_MAX+SP_CELLS_MAX]f64;
+    gr:[SP_PARAMS_MAX]f64;sum:[SP_PARAMS_MAX]f64;dout:[SP_CELLS_MAX]f64;none:[1]f32;
+    P:=p.count;state:AwState;out:=sp_out(net,cells);
+    for e:0..<cfg.epochs {
+        total:=0.0;group:=[1]AwGroup.[AwGroup.{first=0,count=P,lr=sp_rate(cfg,e),beta1=0.9,beta2=0.999,eps=1e-8,decay=cfg.decay}];
+        start:=0;
+        while start<count {
+            left:=count-start;size:=cast(int)((f64(cfg.batch+left)-abs(f64(cfg.batch-left)))/2);   // the smaller, without a tie
+            for t:0..<P {sum[t]=0;}
+            for s:start..<start+size {
+                x:=inputs[s*cells..<(s+1)*cells];
+                status:=sp_forward(net,p,g,x,ws[..]);if status!=SpStatus.ok {return status;}
+                total+=sp_loss(g,ws[out..<out+cells],x,targets[s*cells..<(s+1)*cells],dout[0..<cells]);
+                status=sp_backward(net,p,g,x,ws[..],dout[0..<cells],gr[0..<P]);if status!=SpStatus.ok {return status;}
+                for t:0..<P {sum[t]+=gr[t]/f64(size);}
+            }
+            r:=aw_step(group[..],AwPolicy.{},state,p,sum[0..<P],m,v,none[0..<0],false);
+            if r.status!=AwStatus.ok {return SpStatus.number;}
+            state=r.state;start+=size;
+        }
+        losses[e]=total/f64(count);
+    }
+    return SpStatus.ok;
+}
+// book:end train
+
+// book:begin rollout
+// Forecasts fed back as inputs: frame s of frames is the forecast s + 1
+// steps after u.
+sp_rollout :: (net:SpNet,p:[]f64,g:SpGrid,u:[]f64,frames:[]f64)->SpStatus {
+    cells:=g.nlat*g.nlon;
+    if frames.count<cells || frames.count%cells!=0 {return SpStatus.shape;}
+    ws:[(2*SP_LAYERS_MAX+3)*SP_WIDTH_MAX*SP_CELLS_MAX+SP_CELLS_MAX]f64;
+    status:=sp_predict(net,p,g,u,frames[0..<cells],ws[..]);
+    for s:1..<frames.count/cells {
+        if status==SpStatus.ok {status=sp_predict(net,p,g,frames[(s-1)*cells..<s*cells],frames[s*cells..<(s+1)*cells],ws[..]);}
+    }
+    return status;
+}
+// book:end rollout
+
+// book:begin metrics
+// The area-weighted relative error sqrt(sum a_j (x - y)^2 / sum a_j y^2).
+sp_rel_error :: (g:SpGrid,x:[]f64,y:[]f64)->f64 {
+    e:=0.0;s:=0.0;
+    for j:0..<g.nlat {for k:0..<g.nlon {t:=j*g.nlon+k;d:=x[t]-y[t];e+=sp_area(g,j)*d*d;s+=sp_area(g,j)*y[t]*y[t];}}
+    return sqrt(e/s);
+}
+// The area-weighted root mean square of x - y over the polar rows
+// (|x_j| >= cap, that is, latitude at least asin(cap)) or the others.
+sp_band_rms :: (g:SpGrid,x:[]f64,y:[]f64,cap:f64,polar:bool)->f64 {
+    e:=0.0;s:=0.0;
+    for j:0..<g.nlat {
+        if (abs(g.x[j])>=cap)==polar {
+            for k:0..<g.nlon {t:=j*g.nlon+k;d:=x[t]-y[t];e+=sp_area(g,j)*d*d;s+=sp_area(g,j);}
+        }
+    }
+    if s==0 {return 0;}
+    return sqrt(e/s);
+}
+// book:end metrics

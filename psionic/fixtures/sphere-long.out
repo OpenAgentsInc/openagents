@@ -1,0 +1,22 @@
+data: 16 x 32 Gauss grid, kappa 0.02, rate 2, steps of 0.25 in 16 substeps
+training: seeds 1000 to 1095, 384 pairs, 200 epochs, batch 8, rate 0.01 halved each quarter
+sphere network: width 4, 3 layers, 16 modes; 841 parameters
+  epoch 0: loss 0.00511
+  epoch 50: loss 0.00001152
+  epoch 100: loss 6.818e-06
+  epoch 150: loss 3.566e-06
+  epoch 199: loss 3.434e-06
+  held-out (seeds 3000 to 3047) relative error by lead, mean: 0.0027 0.004 0.0048 0.0062
+  worst: 0.0037 0.0058 0.0071 0.0092
+  lead 4 rms error: polar caps (above 60 degrees) 0.0041, below 60 degrees 0.0041
+plane network: width 4, 3 layers, 8 modes; 21673 parameters
+  epoch 0: loss 0.004191
+  epoch 50: loss 0.00007924
+  epoch 100: loss 0.0000611
+  epoch 150: loss 0.00004904
+  epoch 199: loss 0.00004581
+  held-out (seeds 3000 to 3047) relative error by lead, mean: 0.017 0.0318 0.0459 0.0611
+  worst: 0.0251 0.0475 0.0667 0.0883
+  lead 4 rms error: polar caps (above 60 degrees) 0.0835, below 60 degrees 0.0317
+persistence by lead: 0.3096 0.5005 0.6175 0.6894
+threshold: spherical mean at lead 4 at most 0.1: pass
