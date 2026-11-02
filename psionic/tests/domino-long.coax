@@ -1,0 +1,67 @@
+// Chapter 160's longer training receipt: 16 training spheroids
+// (a = 0.55, 0.60, ..., 1.30) with 64 queries each, 3,000 full-batch steps,
+// then the relative L2 error of surface pressure on 8 held-out spheroids
+// (a = 0.575, 0.675, ..., 1.275) the run never saw. Its output is
+// psionic/fixtures/domino-long.out; regenerate it with
+//   coax/bin/coax run psionic/tests/domino-long.coax --release
+// The acceptance thresholds (mean held-out error at most 0.20, and below the
+// best geometry-blind fit of the same law) were written into chapter 160
+// before this program first ran on the held-out shapes.
+#import "Basic";
+#load "../lib/domino.coax";
+
+LONG_TRAIN :: 16;
+LONG_HELD :: 8;
+LONG_Q :: 64;
+LONG_STEPS :: 3000;
+LONG_THRESHOLD :: 0.20;
+LONG_BOX :: DmBox.{low=[3]f64.[-1.5,-1.5,-1.5],high=[3]f64.[1.5,1.5,1.5],side=6};
+LONG_RADII :: DmRadii.{geometry=[2]f64.[0.3,0.6],local=[2]f64.[0.65,1.5]};
+long_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+LongShape :: struct {status:DmStatus;area:f64;}
+long_shape :: (a:f64,seed:u64,rows:[]f64,labels:[]f64,smooth:[]f64)->LongShape {
+    out:LongShape;v:[198]f64;t:[384]int;nv:=dm_spheroid(a,0.5,2,v[..],t[..]);
+    m:=fd_mesh_admit(FdMesh.{vertices=v[0..<3*nv],triangles=t[..]});
+    cloud:[768]f64;nrm:[768]f64;qs:[192]f64;qn:[192]f64;feat:[1944]f64;
+    #assert fd_sample_surface(m,seed,cloud[..],nrm[..]).status==FdStatus.ok;
+    #assert fd_sample_surface(m,seed+1000,qs[..],qn[..]).status==FdStatus.ok;
+    r:=dm_encode(m,cloud[..],LONG_BOX,LONG_RADII,dm_encoder(1),feat[..]);out.status=r.status;
+    if r.status!=DmStatus.ok {return out;}
+    r=dm_rows(LONG_BOX,LONG_RADII,feat[..],cloud[..],nrm[..],qs[..],qn[..],rows);out.status=r.status;
+    for k:0..<LONG_Q {labels[k]=dm_cp_normal(a,0.5,fd_at(qn[..],k));smooth[k]=dm_cp(a,0.5,fd_at(qs[..],k));}
+    out.area=m.area;return out;
+}
+long_rel :: (p:[]f64,q:[]f64)->f64 {e:=0.0;s:=0.0;for i:0..<p.count {e+=(p[i]-q[i])*(p[i]-q[i]);s+=q[i]*q[i];}return sqrt(e/s);}
+main :: () {
+    rows:[LONG_TRAIN*LONG_Q*DM_ROW]f64;y:[LONG_TRAIN*LONG_Q]f64;ys:[LONG_TRAIN*LONG_Q]f64;
+    for k:0..<LONG_TRAIN {
+        s:=long_shape(0.55+0.05*f64(k),cast(u64)(100+k),rows[k*LONG_Q*DM_ROW..<(k+1)*LONG_Q*DM_ROW],y[k*LONG_Q..<(k+1)*LONG_Q],ys[k*LONG_Q..<(k+1)*LONG_Q]);
+        #assert s.status==DmStatus.ok;
+    }
+    // The best geometry-blind fit of the law: one K for every shape in
+    // Cp = 1 - K (1 - n_x^2), by least squares on the training labels.
+    num:=0.0;den:=0.0;
+    for k:0..<LONG_TRAIN*LONG_Q {nx:=rows[k*DM_ROW+3];s:=1-nx*nx;num+=(1-y[k])*s;den+=s*s;}
+    K:=num/den;
+    p:[DM_PARAMS]f64;m:[DM_PARAMS]f64;v:[DM_PARAMS]f64;losses:[LONG_STEPS]f64;dm_init(p[..],7);
+    #assert dm_train(p[..],m[..],v[..],rows[..],y[..],DmTrain.{steps=LONG_STEPS,lr=0.01,decay=0},losses[..])==DmStatus.ok;
+    print("% training shapes, % queries each, % steps\n",LONG_TRAIN,LONG_Q,LONG_STEPS);
+    for s:0..<LONG_STEPS {if s%500==0 || s==LONG_STEPS-1 {print("  step %: loss %\n",s,long_r4(losses[s]));}}
+    print("training relative L2: %; geometry-blind K = %\n",long_r4(dm_error(p[..],rows[..],y[..])),long_r4(K));
+    mean:=0.0;worst:=0.0;blind:=0.0;smooth:=0.0;
+    for j:0..<LONG_HELD {
+        a:=0.575+0.1*f64(j);hr:[LONG_Q*DM_ROW]f64;hy:[LONG_Q]f64;hs:[LONG_Q]f64;
+        s:=long_shape(a,cast(u64)(300+j),hr[..],hy[..],hs[..]);#assert s.status==DmStatus.ok;
+        e:=dm_error(p[..],hr[..],hy[..]);es:=dm_error(p[..],hr[..],hs[..]);
+        b:[LONG_Q]f64;cp:[LONG_Q]f64;n:[3*LONG_Q]f64;
+        for k:0..<LONG_Q {
+            nx:=hr[k*DM_ROW+3];b[k]=1-K*(1-nx*nx);cp[k]=dm_forward(p[..],hr[k*DM_ROW..<(k+1)*DM_ROW]);
+            for d:0..<3 {n[3*k+d]=hr[k*DM_ROW+3+d];}
+        }
+        eb:=long_rel(b[..],hy[..]);
+        mean+=e/LONG_HELD;blind+=eb/LONG_HELD;smooth+=es/LONG_HELD;if e>worst {worst=e;}
+        print("  held-out a = %: alpha %, error % (smooth body %), geometry-blind %, pressure drag: network %, labels %\n",long_r4(a),long_r4(dm_alpha(a,0.5)),long_r4(e),long_r4(es),long_r4(eb),long_r4(dm_drag(cp[..],n[..],s.area)),long_r4(dm_drag(hy[..],n[..],s.area)));
+    }
+    print("held-out relative L2: mean %, worst %; geometry-blind mean %; against the smooth body %\n",long_r4(mean),long_r4(worst),long_r4(blind),long_r4(smooth));
+    print("threshold: mean at most % and below the geometry-blind fit: %\n",LONG_THRESHOLD,ifx mean<=LONG_THRESHOLD && mean<blind then "pass" else "fail");
+}

@@ -1,0 +1,18 @@
+sphere: A0 = 0.6667, alpha = 0.5, Cp nose 1.0 waist -1.25
+a = 1, b = 0.5: A0 = 0.3471, alpha = 0.21, Cp waist -0.4641
+shape a = 0.55: area 3.1899, signed distance at node (-0.3, -0.3, -0.3) 0.0334
+shape a = 0.85: area 4.4557, signed distance at node (-0.3, -0.3, -0.3) -0.0175
+shape a = 1.15: area 5.7789, signed distance at node (-0.3, -0.3, -0.3) -0.0326
+query 0 of shape 0: blend weights 0.966 0.0129 0.0123 0.0088
+  step 0: loss 0.2037
+  step 100: loss 0.0357
+  step 200: loss 0.0109
+  step 300: loss 0.009
+  step 399: loss 0.0084
+relative L2 error: training 0.1838 held-out 0.2101
+an open mesh: mesh (open)
+a triangle with a repeated corner: mesh (degenerate)
+local radii 1.5 and 1.5: radius
+a geometry radius of 0: radius
+a query at x = 1.6, outside the box: bounds
+a 9 x 9 x 9 grid: limit

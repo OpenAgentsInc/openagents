@@ -175,7 +175,7 @@
 - [157. Learn Darcy flow](ch157-learn-darcy-flow.md)
 - [158. A field around a shape](ch158-a-field-around-a-shape.md)
 - [159. Learn a scene from its views](ch159-learn-a-scene-from-its-views.md) — partly implemented
-- [160. Execute DoMINO](ch160-execute-domino.md) — design draft
+- [160. Execute DoMINO](ch160-execute-domino.md) — partly implemented
 - [161. Forecast on a sphere](ch161-forecast-on-a-sphere.md) — partly implemented
 
 - [162. A recurrence you can inspect](ch162-a-recurrence-you-can-inspect.md)
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

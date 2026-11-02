@@ -1,0 +1,79 @@
+// Chapter 160: DoMINO's pieces, small. The spheroid's pressure law by hand,
+// one shape encoded on a grid, a query's stencil, a short training run on
+// eight spheroids and the error on four it never saw, and the inputs the
+// pieces refuse.
+#import "Basic";
+#load "../lib/domino.coax";
+
+SHAPES :: 8;
+HELD :: 4;
+QUERIES :: 32;
+STEPS :: 400;
+BOX :: DmBox.{low=[3]f64.[-1.5,-1.5,-1.5],high=[3]f64.[1.5,1.5,1.5],side=6};
+RADII :: DmRadii.{geometry=[2]f64.[0.3,0.6],local=[2]f64.[0.65,1.5]};
+dm_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+
+// book:begin shape
+// One spheroid with semi-axes a, 0.5, 0.5: its level-2 mesh, 256 surface
+// points, the grid encoding, then queries rows and their pressure labels
+// (the spheroid's law read at the mesh's own normal).
+DmShape :: struct {status:DmStatus;area:f64;sdf_centre:f64;}
+dm_shape :: (a:f64,seed:u64,rows:[]f64,labels:[]f64)->DmShape {
+    out:DmShape;v:[198]f64;t:[384]int;nv:=dm_spheroid(a,0.5,2,v[..],t[..]);
+    m:=fd_mesh_admit(FdMesh.{vertices=v[0..<3*nv],triangles=t[..]});
+    cloud:[768]f64;nrm:[768]f64;qs:[384]f64;qn:[384]f64;feat:[1944]f64;
+    nq:=labels.count;
+    #assert fd_sample_surface(m,seed,cloud[..],nrm[..]).status==FdStatus.ok;
+    #assert fd_sample_surface(m,seed+1000,qs[0..<3*nq],qn[0..<3*nq]).status==FdStatus.ok;
+    r:=dm_encode(m,cloud[..],BOX,RADII,dm_encoder(1),feat[..]);out.status=r.status;
+    if r.status!=DmStatus.ok {return out;}
+    r=dm_rows(BOX,RADII,feat[..],cloud[..],nrm[..],qs[0..<3*nq],qn[0..<3*nq],rows);out.status=r.status;
+    for k:0..<nq {labels[k]=dm_cp_normal(a,0.5,fd_at(qn[..],k));}
+    out.area=m.area;out.sdf_centre=feat[(2*36+2*6+2)*DM_FEAT];
+    return out;
+}
+// book:end shape
+
+// book:begin example
+main :: () {
+    // 1. The pressure law by hand: a sphere, then a spheroid twice as long.
+    print("sphere: A0 = %, alpha = %, Cp nose % waist %\n",dm_r4(dm_a0(0.5,0.5)),dm_r4(dm_alpha(0.5,0.5)),dm_cp(0.5,0.5,[3]f64.[0.5,0,0]),dm_cp(0.5,0.5,[3]f64.[0,0.5,0]));
+    print("a = 1, b = 0.5: A0 = %, alpha = %, Cp waist %\n",dm_r4(dm_a0(1,0.5)),dm_r4(dm_alpha(1,0.5)),dm_r4(dm_cp(1,0.5,[3]f64.[0,0.5,0])));
+
+    // 2. Training shapes a = 0.55, 0.65, ..., 1.25; held-out shapes a = 0.6, 0.8, 1.0, 1.2.
+    rows:[SHAPES*QUERIES*DM_ROW]f64;y:[SHAPES*QUERIES]f64;
+    hrows:[HELD*QUERIES*DM_ROW]f64;hy:[HELD*QUERIES]f64;
+    for k:0..<SHAPES {
+        a:=0.55+0.1*f64(k);
+        s:=dm_shape(a,cast(u64)(100+k),rows[k*QUERIES*DM_ROW..<(k+1)*QUERIES*DM_ROW],y[k*QUERIES..<(k+1)*QUERIES]);
+        #assert s.status==DmStatus.ok;
+        if k%3==0 {print("shape a = %: area %, signed distance at node (-0.3, -0.3, -0.3) %\n",dm_r4(a),dm_r4(s.area),dm_r4(s.sdf_centre));}
+    }
+    for k:0..<HELD {
+        s:=dm_shape(0.6+0.2*f64(k),cast(u64)(200+k),hrows[k*QUERIES*DM_ROW..<(k+1)*QUERIES*DM_ROW],hy[k*QUERIES..<(k+1)*QUERIES]);
+        #assert s.status==DmStatus.ok;
+    }
+    print("query 0 of shape 0: blend weights % % % %\n",dm_r4(rows[100]),dm_r4(rows[101]),dm_r4(rows[102]),dm_r4(rows[103]));
+
+    // 3. A short training run.
+    p:[DM_PARAMS]f64;m:[DM_PARAMS]f64;v:[DM_PARAMS]f64;losses:[STEPS]f64;dm_init(p[..],7);
+    #assert dm_train(p[..],m[..],v[..],rows[..],y[..],DmTrain.{steps=STEPS,lr=0.01,decay=0},losses[..])==DmStatus.ok;
+    for s:0..<STEPS {if s%100==0 || s==STEPS-1 {print("  step %: loss %\n",s,dm_r4(losses[s]));}}
+    print("relative L2 error: training % held-out %\n",dm_r4(dm_error(p[..],rows[..],y[..])),dm_r4(dm_error(p[..],hrows[..],hy[..])));
+
+    // 4. Refusals.
+    vs:[198]f64;ts:[384]int;nv:=dm_spheroid(1,0.5,2,vs[..],ts[..]);
+    open:=fd_mesh_admit(FdMesh.{vertices=vs[0..<3*nv],triangles=ts[0..<381]});
+    cloud:[768]f64;feat:[1944]f64;
+    r:=dm_encode(open,cloud[..],BOX,RADII,dm_encoder(1),feat[..]);print("an open mesh: % (%)\n",r.status,r.cause);
+    flat:=ts;flat[2]=flat[1];
+    r=dm_encode(fd_mesh_admit(FdMesh.{vertices=vs[0..<3*nv],triangles=flat[..]}),cloud[..],BOX,RADII,dm_encoder(1),feat[..]);print("a triangle with a repeated corner: % (%)\n",r.status,r.cause);
+    bad:=RADII;bad.local[0]=1.5;print("local radii 1.5 and 1.5: %\n",dm_radii_check(BOX,bad));
+    bad=RADII;bad.geometry[0]=0;print("a geometry radius of 0: %\n",dm_radii_check(BOX,bad));
+    q:=[3]f64.[1.6,0,0];qn:=[3]f64.[1,0,0];row:[DM_ROW]f64;
+    m2:=fd_mesh_admit(FdMesh.{vertices=vs[0..<3*nv],triangles=ts[..]});nrm:[768]f64;
+    #assert fd_sample_surface(m2,5,cloud[..],nrm[..]).status==FdStatus.ok && dm_encode(m2,cloud[..],BOX,RADII,dm_encoder(1),feat[..]).status==DmStatus.ok;
+    print("a query at x = 1.6, outside the box: %\n",dm_rows(BOX,RADII,feat[..],cloud[..],nrm[..],q[..],qn[..],row[..]).status);
+    big:=BOX;big.side=9;print("a 9 x 9 x 9 grid: %\n",dm_box_check(big));
+}
+// book:end example

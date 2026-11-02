@@ -2002,6 +2002,16 @@
       ]
     },
     {
+      "source": "psionic/examples/domino.coax",
+      "chapter": "psionic/book/ch160-execute-domino.md",
+      "stdout": "psionic/fixtures/domino.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/sphere-forecast.coax",
       "chapter": "psionic/book/ch161-forecast-on-a-sphere.md",
       "stdout": "psionic/fixtures/sphere-forecast.out",

@@ -1,0 +1,19 @@
+16 training shapes, 64 queries each, 3000 steps
+  step 0: loss 0.1723
+  step 500: loss 0.0042
+  step 1000: loss 0.0031
+  step 1500: loss 0.0025
+  step 2000: loss 0.0022
+  step 2500: loss 0.0021
+  step 2999: loss 0.0019
+training relative L2: 0.0942; geometry-blind K = 1.5585
+  held-out a = 0.575: alpha 0.4222, error 0.0982 (smooth body 0.2572), geometry-blind 0.4936, pressure drag: network -0.0422, labels -0.029
+  held-out a = 0.675: alpha 0.3466, error 0.0553 (smooth body 0.1806), geometry-blind 0.3433, pressure drag: network 0.0891, labels 0.094
+  held-out a = 0.775: alpha 0.2914, error 0.1383 (smooth body 0.3171), geometry-blind 0.1846, pressure drag: network 0.0526, labels 0.0386
+  held-out a = 0.875: alpha 0.2497, error 0.1127 (smooth body 0.2567), geometry-blind 0.0062, pressure drag: network -0.1317, labels -0.1355
+  held-out a = 0.975: alpha 0.2171, error 0.1223 (smooth body 0.2332), geometry-blind 0.1756, pressure drag: network -0.1012, labels -0.1085
+  held-out a = 1.075: alpha 0.191, error 0.203 (smooth body 0.2861), geometry-blind 0.3631, pressure drag: network 0.1567, labels 0.1141
+  held-out a = 1.175: alpha 0.1698, error 0.1779 (smooth body 0.2705), geometry-blind 0.5699, pressure drag: network -0.0011, labels 0.0112
+  held-out a = 1.275: alpha 0.1522, error 0.2788 (smooth body 0.3567), geometry-blind 0.7287, pressure drag: network -0.2784, labels -0.1929
+held-out relative L2: mean 0.1483, worst 0.2788; geometry-blind mean 0.3581; against the smooth body 0.2698
+threshold: mean at most 0.2 and below the geometry-blind fit: pass
