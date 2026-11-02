@@ -165,8 +165,13 @@ Each of these is recorded in the chapter that found it:
 
 These earlier records are cited, not rerun:
 
-- **libsecp256k1 comparisons:** chapters 11 and 14.
-- **10,000-signature run (chapter 13):** checked only by the Python oracle.
+- **libsecp256k1 comparisons (chapters 11 and 14):** done later on
+  2026-11-01, with no mismatch
+  ([2026-11-01-libsecp-crosscheck.md](2026-11-01-libsecp-crosscheck.md)).
+- **10,000-signature run (chapter 13):** libsecp256k1 later verified 10,000
+  Coax signatures and 300 events. Each was also equal to libsecp256k1's own
+  signature
+  ([2026-11-01-libsecp-crosscheck.md](2026-11-01-libsecp-crosscheck.md)).
 - **Secret probe (chapter 13):** the memcheck gate exempts three procedures.
 - **Entropy (chapter 12):** the Mac, iOS and Chrome runs.
 - **Mutation, sanitizers and the 10,000-entity run:** chapters 15 and 16.

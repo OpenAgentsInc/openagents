@@ -501,8 +501,12 @@ signatures, `r` and `s` at their bounds, messages at and over the limit,
 and inputs that must stay unchanged. The fast path's differential covers
 790 cases per build. [schnorr_hour.py](../../coax/tests/nostr/schnorr_hour.py)
 ran the reference path for one hour on 2026-10-28: 1,743,107 cases per
-native profile and 102,536 Nostr cases, with no mismatch. These were not
-rerun for this chapter; the records are
+native profile and 102,536 Nostr cases, with no mismatch. `schnorr.py` and
+`schnorr_fast.py` were rerun against libsecp256k1 on 2026-11-01, with no
+mismatch: 790 fast-path cases per build, native and wasm, and 8 of 8
+`schnorr.py` tests
+([2026-11-01-libsecp-crosscheck.md](../../docs/verification/2026-11-01-libsecp-crosscheck.md)).
+The hour run was not repeated. The earlier records are
 [coax-schnorr-verify-2026-10-28.md](../../docs/verification/coax-schnorr-verify-2026-10-28.md)
 and [2026-10-29-schnorr-fast.md](../../docs/verification/2026-10-29-schnorr-fast.md).
 

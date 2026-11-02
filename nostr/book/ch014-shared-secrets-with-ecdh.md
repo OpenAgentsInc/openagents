@@ -554,7 +554,10 @@ uncompressed off-curve Wycheproof cases, 256 seeded random cases, four
 invalid secrets, one invalid peer and a fixture that tells libsecp256k1's
 default hashed output from the raw x. Each valid result is compared with
 libsecp256k1 `v0.8.0` and with a Python computation. It needs the oracle
-built as chapter 7 describes and was not rerun today. The record is
+built as chapter 7 describes. On 2026-11-01 it was rerun with 783 of 783
+cases in all four builds
+([2026-11-01-libsecp-crosscheck.md](../../docs/verification/2026-11-01-libsecp-crosscheck.md)).
+The first record is
 [2026-10-29-ecdh-acceptance.md](../../docs/verification/2026-10-29-ecdh-acceptance.md)
 and its [evidence](../../docs/verification/2026-10-29-ecdh-abi-migration.json):
 783 of 783 cases in every build, 107 Coax checks, and 1,842 of 1,842

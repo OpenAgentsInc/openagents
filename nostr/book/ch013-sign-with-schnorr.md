@@ -582,9 +582,25 @@ The [2026-10-30 event-sign record](../../docs/verification/2026-10-30-event-sign
 reports that all 10,000 verify (230 seconds). The verifier there is the
 pure-Python BIP-340 verifier in
 [oracle.py](../../tools/coax-nostr/fuzz/oracle.py), written from the BIP and
-sharing no code with Coax. libsecp256k1, which chapter 11 uses to check
-verification, has not been run on the signer's output; that is a later
-check. These runs were not repeated for this chapter.
+sharing no code with Coax. These runs were not repeated for this chapter.
+
+### libsecp256k1 on the signer's output
+
+[schnorr_sign_libsecp.py](../../coax/tests/nostr/schnorr_sign_libsecp.py)
+sends the signer's output to libsecp256k1 `v0.8.0`, built as chapter 7
+describes. Each Coax signature must pass `secp256k1_schnorrsig_verify` and
+be byte-for-byte equal to libsecp256k1's own signature for the same key,
+message and aux. Each event id must also match an independent NIP-01
+serializer. On 2026-11-01, 10,000 seeded random signatures and 300 signed
+events ran in the release build in 8 shards of about a minute each. Another
+1,000 signatures and 100 events ran in the checked build, and another 1,000
+and 100 in the release build under ASan and UBSan. None failed. The record
+is
+[2026-11-01-libsecp-crosscheck.md](../../docs/verification/2026-11-01-libsecp-crosscheck.md).
+
+```shell
+for i in 1 2 3 4 5 6 7 8; do python3 coax/tests/nostr/schnorr_sign_libsecp.py --shard $i/8 & done; wait
+```
 
 ### Secret flow
 
