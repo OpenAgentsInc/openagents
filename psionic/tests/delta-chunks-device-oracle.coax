@@ -1,0 +1,53 @@
+// Chapter 42's device checks: a binary64 token-by-token oracle of the gated
+// delta rule over the device layouts, loaded by
+// psionic/lib/device/delta-chunks-kernels.coax. It is written separately from
+// the kernel: one state matrix per value head, decayed, corrected toward each
+// value and read with each query, every product and sum in f64.
+
+// Profile delta-chunks-cuda-f32-v1, frozen before any comparison: an output
+// or carried state may differ from chapter 11's recurrence, from chapter 42's
+// CPU chunked profile, from the device recurrence (dl_scan) or from this
+// oracle by at most DKD_TOLERANCE * (1 + the largest |reference value|).
+// book:begin tolerance
+DKD_TOLERANCE :: 0.001;
+// book:end tolerance
+
+// out[(t*heads + h)*128 + c] over tokens from the state kept[h*128*128 +
+// c*128 + r] (zero when start is false); kept receives the final state in
+// the same layout. Inputs as dl_scan reads them.
+dkd_oracle :: (tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f64,kept:[]f64,start:bool) {
+    for h:0..<heads {
+        kh:=h/(heads/key_heads);vbase:=key_heads*256+h*128;
+        if !start {for i:0..<16384 {kept[h*16384+i]=0;}}
+        s:=kept[h*16384..<(h+1)*16384];
+        for t:0..<tokens {
+            kb:=(t*key_heads+kh)*128;g:=f64(decay[t*heads+h]);b:=f64(beta[t*heads+h]);
+            for c:0..<128 {
+                predicted:=0.0;
+                for r:0..<128 {predicted+=s[c*128+r]*g*f64(k[kb+r]);}
+                u:=b*(f64(conv[t*channels+vbase+c])-predicted);
+                read:=0.0;
+                for r:0..<128 {s[c*128+r]=s[c*128+r]*g+f64(k[kb+r])*u;read+=f64(q[kb+r])*s[c*128+r];}
+                out[(t*heads+h)*128+c]=read;
+            }
+        }
+    }
+}
+// A deterministic value in [-1, 1].
+dkd_value :: (i:int)->f32 {return f32((i*37+i*i%11)%41-20)/20;}
+
+// Inputs for `heads` value heads over `key_heads` key heads: channels
+// [q | k | v], already normalized, as dl_qk and dl_gates leave them.
+dkd_fill :: (tokens:int,heads:int,key_heads:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32) {
+    channels:=key_heads*256+heads*128;
+    for i:0..<tokens*channels {conv[i]=dkd_value(i+11);}
+    for i:0..<tokens*key_heads*128 {q[i]=dkd_value(3*i+1)/16;k[i]=dkd_value(5*i+2)/16;}
+    for i:0..<tokens*heads {beta[i]=0.5+dkd_value(7*i)/4;decay[i]=0.75+dkd_value(2*i+5)/5;}
+}
+dkd_run :: (tokens:int,chunk:int,heads:int,key_heads:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) {
+    for g:0..<heads*8 {dkd_chunk(g,tokens,chunk,heads,key_heads,key_heads*256+heads*128,conv,q,k,beta,decay,out,state);}
+}
+dkd_scan :: (tokens:int,heads:int,key_heads:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f32) {
+    for item:0..<heads*128 {dl_scan(item,tokens,heads,key_heads,key_heads*256+heads*128,conv,q,k,beta,decay,out);}
+}
+

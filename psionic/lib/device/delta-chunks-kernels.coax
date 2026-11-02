@@ -1,0 +1,201 @@
+// Chapter 42 on the device: Gated DeltaNet prefill in chunks as a group
+// kernel of chapter 37's compute subset (chapter 68's rules). One group of
+// 128 threads per value head and block of 16 value columns: thread
+// (column j, slice p) keeps rows 16p ..< 16p+16 of column j of the head's
+// 128 x 128 state in registers for the whole prompt, and the group stages
+// each chunk's keys in shared memory once for all its threads.
+// Profile delta-chunks-cuda-f32-v1: f32 everywhere, sums in index order;
+// a sum over the 128 key rows adds 8 slices of 16 rows, each in row order,
+// then the slices in order. Per chunk, the decays G[t] (chunk start through
+// token t) and D[t][i] (after token i through token t) are products in
+// token order; the corrections u come from forward substitution over
+// D[t][i] (k[t] . k[i]); every token reads the WY form, and the state is
+// carried once per chunk. The inputs are chapter 44's device
+// layouts (dl_conv, dl_gates and dl_qk write them), so the kernel replaces
+// dl_scan inside Elephant's linear layers. --fmad=false and no
+// transcendental functions: the device and the C build of this file
+// compute the same bits.
+#load "layer.coax";
+
+// book:begin shape
+DKD_THREADS :: 128;  // threads per group: 16 columns x 8 row slices
+DKD_COLS :: 16;      // value columns per group
+DKD_SLICES :: 8;     // row slices per column, 16 key rows each
+DKD_CHUNK :: 16;     // most tokens per chunk: the shared tiles' rows
+DKD_WIDTH :: 128;    // key and value width per head
+// book:end shape
+
+// book:begin kernel
+// Group `item` is columns 16*(item%8) ..< +16 of value head item/8; key head
+// h/(heads/key_heads). Token t's normalized key and query are k and
+// q[(t*key_heads + kh)*128 ...], its value conv[t*channels + key_heads*256
+// + h*128 ...], its beta and decay beta and decay[t*heads + h].
+// out[(t*heads + h)*128 + c] receives the read before the gated norm, as
+// dl_scan writes it. state holds the starting state in chapter 11's layout,
+// state[(h*128 + r)*128 + c] for key row r and value column c, and receives
+// the carried state.
+dkd_chunk :: (item:int,tokens:int,chunk:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,
+    beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) #export_c {
+    // Registers: st, each thread's 16 state rows, and uu, its column's
+    // corrections for the chunk. Shared: the chunk's keys; per-slice partial
+    // sums pu (predictions) and py (reads); D (k . k) and D (q . k); G,
+    // D[n-1][i] and beta.
+    st:[2048]f32;uu:[2048]f32;
+    kt:[2048]f32;pu:[2048]f32;py:[2048]f32;a:[256]f32;b:[256]f32;total:[16]f32;last:[16]f32;bt:[16]f32;
+    h:=item/8;col:=item%8*DKD_COLS;kh:=h/(heads/key_heads);vbase:=key_heads*256+h*128+col;sb:=h*DKD_WIDTH*DKD_WIDTH+col;
+    for thread:0..<DKD_THREADS {
+        for i:0..<16 {st[thread*16+i]=state[sb+(thread/16*16+i)*DKD_WIDTH+thread%16];}
+    }
+    last_block:=(tokens-1)/chunk;
+    for block:0..<last_block+1 {
+        lo:=block*chunk;n:=ifx block==last_block then tokens-lo else chunk;
+        // Thread i stages an eighth of token i/8's key (zero past the
+        // chunk); thread i < 16 takes token i's G, D[n-1][i] and beta, zero
+        // past the chunk.
+        for thread:0..<DKD_THREADS {
+            t:=thread/8;kb:=((lo+t)*key_heads+kh)*DKD_WIDTH+thread%8*16;
+            for c:0..<16 {x:f32=0;if t<n {x=k[kb+c];}kt[thread*16+c]=x;}
+            if thread<DKD_CHUNK {
+                g:f32=0;ratio:f32=0;w:f32=0;
+                if thread<n {
+                    g=1;for j:0..<thread+1 {g=g*decay[(lo+j)*heads+h];}
+                    ratio=1;for j:0..<n-1-thread {ratio=ratio*decay[(lo+n-1-j)*heads+h];}
+                    w=beta[(lo+thread)*heads+h];
+                }
+                total[thread]=g;last[thread]=ratio;bt[thread]=w;
+            }
+        }
+        // Thread i fills entries 2i and 2i+1 of the 16 x 16 tables: row t,
+        // column j holds D[t][j] (k[t] . k[j]) for j < t and D[t][j]
+        // (q[t] . k[j]) for j <= t, both below n; every other entry is 0.
+        for thread:0..<DKD_THREADS {
+            for c:0..<2 {
+                t:=thread/8;i:=thread%8*2+c;x:f32=0;z:f32=0;
+                if t<n && i<=t {
+                    ratio:f32=1;for j:0..<t-i {ratio=ratio*decay[(lo+t-j)*heads+h];}
+                    qb:=((lo+t)*key_heads+kh)*DKD_WIDTH;kk:f32=0;qk:f32=0;
+                    for r:0..<DKD_WIDTH {key:=kt[i*DKD_WIDTH+r];kk+=kt[t*DKD_WIDTH+r]*key;qk+=q[qb+r]*key;}
+                    if i<t {x=ratio*kk;}
+                    z=ratio*qk;
+                }
+                a[thread*2+c]=x;b[thread*2+c]=z;
+            }
+        }
+        // Thread (j, p): its slice's share of the chunk's starting state's
+        // prediction and read for every token of the chunk.
+        for thread:0..<DKD_THREADS {
+            r0:=thread/16*16;
+            for t:0..<DKD_CHUNK {
+                pv:f32=0;yv:f32=0;
+                if t<n {
+                    g:=total[t];qb:=((lo+t)*key_heads+kh)*DKD_WIDTH+r0;
+                    for i:0..<16 {x:=st[thread*16+i];pv+=x*g*kt[t*DKD_WIDTH+r0+i];yv+=q[qb+i]*x*g;}
+                }
+                pu[thread*16+t]=pv;py[thread*16+t]=yv;
+            }
+        }
+        // Thread (j, p): forward substitution for column j's corrections
+        // (each of the column's 8 threads solves it, into its own
+        // registers), then the reads of tokens p and p + 8.
+        for thread:0..<DKD_THREADS {
+            j:=thread%16;
+            for t:0..<DKD_CHUNK {
+                memory:f32=0;
+                for s:0..<DKD_SLICES {memory+=pu[(s*16+j)*16+t];}
+                for i:0..<DKD_CHUNK {memory+=a[t*DKD_CHUNK+i]*uu[thread*16+i];}
+                u:f32=0;if t<n {u=(conv[(lo+t)*channels+vbase+j]-memory)*bt[t];}
+                uu[thread*16+t]=u;
+            }
+            for c:0..<2 {
+                t:=c*8+thread/16;read:f32=0;
+                for s:0..<DKD_SLICES {read+=py[(s*16+j)*16+t];}
+                for i:0..<DKD_CHUNK {read+=b[t*DKD_CHUNK+i]*uu[thread*16+i];}
+                if t<n {out[((lo+t)*heads+h)*DKD_WIDTH+col+j]=read;}
+            }
+        }
+        // Thread (j, p): the carried state of its 16 rows.
+        for thread:0..<DKD_THREADS {
+            r0:=thread/16*16;g:=total[n-1];
+            for i:0..<16 {
+                x:=st[thread*16+i]*g;
+                for s:0..<DKD_CHUNK {x+=last[s]*kt[s*DKD_WIDTH+r0+i]*uu[thread*16+s];}
+                st[thread*16+i]=x;
+            }
+        }
+    }
+    for thread:0..<DKD_THREADS {
+        for i:0..<16 {state[sb+(thread/16*16+i)*DKD_WIDTH+thread%16]=st[thread*16+i];}
+    }
+}
+// book:end kernel
+
+
+// ---- Checks, against the device recurrence (dl_scan), the binary64 oracle
+// and the hand trace.
+#load "../../tests/delta-chunks-device-oracle.coax";
+
+#test "the hand trace: two tokens in one chunk" #steps 400000000 {
+    // One key and one value coordinate carry everything: S0 = 2, q = k = 1,
+    // beta = 0.5, decay = 0.5, values 3 and 5. Outputs 2 and 3, state 3.
+    conv:[768]f32;q:[256]f32;k:[256]f32;beta:=[2]f32.[0.5,0.5];decay:=[2]f32.[0.5,0.5];
+    conv[256]=3;conv[384+256]=5;q[0]=1;k[0]=1;q[128]=1;k[128]=1;
+    for chunk:1..<3 {
+        out:[256]f32;state:[16384]f32;state[0]=2;
+        dkd_chunk(0,2,chunk,1,1,384,conv[..],q[..],k[..],beta[..],decay[..],out[..],state[..]);
+        #assert out[0]==2 && out[128]==3 && state[0]==3;
+        for i:1..<128 {#assert out[i]==0 && out[128+i]==0;}
+        for i:1..<16384 {#assert state[i]==0;}
+    }
+}
+#test "chunks of one and three agree with the device recurrence, from a carried state" #steps 2000000000 {
+    // Four value heads over two key heads (heads 0, 1 read key head 0; 2, 3
+    // key head 1), 3 tokens, from a nonzero state that dl_scan_state reads
+    // column by column.
+    conv:[3072]f32;q:[768]f32;k:[768]f32;beta:[12]f32;decay:[12]f32;
+    dkd_fill(3,4,2,conv[..],q[..],k[..],beta[..],decay[..]);
+    state:[65536]f32;kept:[65536]f32;
+    for h:0..<4 {for r:0..<128 {for c:0..<128 {x:=dkd_value(h*977+r*31+c*7)/4;state[h*16384+r*128+c]=x;kept[h*16384+c*128+r]=x;}}}
+    scan:[1536]f32;
+    for item:0..<512 {dl_scan_state(item,3,4,2,1024,conv[..],q[..],k[..],beta[..],decay[..],scan[..],kept[..],3);}
+    for chunk:[2]int.[1,3] {
+        out:[1536]f32;carried:[65536]f32;for i:0..<65536 {carried[i]=state[i];}
+        dkd_run(3,chunk,4,2,conv[..],q[..],k[..],beta[..],decay[..],out[..],carried[..]);
+        worst:=0.0;for i:0..<1536 {d:=abs(f64(out[i])-f64(scan[i]));if d>worst {worst=d;}}
+        worst_state:=0.0;
+        for h:0..<4 {for r:0..<128 {for c:0..<128 {d:=abs(f64(carried[h*16384+r*128+c])-f64(kept[h*16384+c*128+r]));if d>worst_state {worst_state=d;}}}}
+        #assert worst<0.000001 && worst_state<0.000001;
+    }
+}
+#test "longer chunks stay within the tolerance of the binary64 oracle" #steps 2000000000 {
+    // Two value heads over one key head, 20 tokens from a nonzero state:
+    // chunks of 6 (6, 6, 6, 2) and of 16 (16, 4).
+    conv:[10240]f32;q:[2560]f32;k:[2560]f32;beta:[40]f32;decay:[40]f32;
+    dkd_fill(20,2,1,conv[..],q[..],k[..],beta[..],decay[..]);
+    start:[32768]f32;begin:[32768]f64;
+    for h:0..<2 {for r:0..<128 {for c:0..<128 {x:=dkd_value(h*977+r*31+c*7)/4;start[h*16384+r*128+c]=x;begin[h*16384+c*128+r]=f64(x);}}}
+    exact:[5120]f64;dkd_oracle(20,2,1,512,conv[..],q[..],k[..],beta[..],decay[..],exact[..],begin[..],true);
+    big:=0.0;for x:exact {if abs(x)>big {big=abs(x);}}
+    #assert big>0.1;
+    chunks:=[2]int.[6,16];
+    for m:0..<2 {
+        out:[5120]f32;state:[32768]f32;for i:0..<32768 {state[i]=start[i];}
+        dkd_run(20,chunks[m],2,1,conv[..],q[..],k[..],beta[..],decay[..],out[..],state[..]);
+        worst:=0.0;for i:0..<5120 {d:=abs(f64(out[i])-exact[i]);if d>worst {worst=d;}}
+        worst_state:=0.0;
+        for h:0..<2 {for r:0..<128 {for c:0..<128 {
+            d:=abs(f64(state[h*16384+r*128+c])-begin[h*16384+c*128+r]);if d>worst_state {worst_state=d;}
+        }}}
+        #assert worst<=DKD_TOLERANCE*(1+big) && worst<0.00001 && worst_state<0.00001;
+    }
+}
+#test "a prefill split at a chunk boundary continues bit for bit" #steps 2000000000 {
+    conv:[4608]f32;q:[1152]f32;k:[1152]f32;beta:[18]f32;decay:[18]f32;
+    dkd_fill(9,2,1,conv[..],q[..],k[..],beta[..],decay[..]);
+    whole:[2304]f32;state:[32768]f32;dkd_run(9,4,2,1,conv[..],q[..],k[..],beta[..],decay[..],whole[..],state[..]);
+    part:[2304]f32;carried:[32768]f32;
+    // Chunks of 4 over 9 tokens are 4, 4 and 1: the same as 8 tokens, then 1.
+    dkd_run(8,4,2,1,conv[..],q[..],k[..],beta[..],decay[..],part[..],carried[..]);
+    dkd_run(1,4,2,1,conv[4096..<4608],q[1024..<1152],k[1024..<1152],beta[16..<18],decay[16..<18],part[2048..<2304],carried[..]);
+    for i:0..<2304 {#assert f32_bits(part[i])==f32_bits(whole[i]);}
+    for i:0..<32768 {#assert f32_bits(carried[i])==f32_bits(state[i]);}
+}

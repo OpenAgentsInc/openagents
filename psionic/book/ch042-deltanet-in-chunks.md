@@ -14,12 +14,15 @@ numerical profile and a tolerance against chapter 11's step, frozen before
 any comparison.
 
 What runs is a bounded CPU implementation over chapter 11's packed per-token
-inputs: the convolution, the triangular solve, the gated output
+inputs (the convolution, the triangular solve, the gated output
 normalization, snapshots at chunk boundaries and resuming from them, each
-compared with chapter 11's `pd_step`. The device kernel in
-[chapter 37](ch037-a-coax-compute-subset.md)'s compute subset and the
-prefill timing on Elephant's prompts are not built yet; the last section
-lists what remains.
+compared with chapter 11's `pd_step`), and a group kernel in
+[chapter 37](ch037-a-coax-compute-subset.md)'s compute subset that runs the
+same chunked form on an RTX 4080 inside
+[chapter 44](ch044-elephant-on-cuda.md)'s linear-layer kernels, at
+Elephant's real shape, on synthetic prompts of 64 to 2,048 tokens and on
+linear layer 0 of the original weights. Chapter 44's decision program does
+not use the kernel yet; the last section lists what remains.
 
 ```shell
 coax/bin/coax run psionic/examples/delta-chunks.coax
@@ -394,19 +397,379 @@ state column `(max, -max, -max)` whose correction pushes one entry past
 non-finite value cannot be built inside a Coax check, so only the compiled
 example exercises the non-finite `number` refusal.
 
+## On the device
+
+On the CPU the chunked form does the same work as the recurrence. Its value
+is the shape of that work: within a chunk, every token's prediction from the
+starting state, every key-key and query-key product and the state update are
+independent sums a device can run at once. Chapter 44's Elephant path runs
+the recurrence as `dl_scan`: one work item per value column of each head
+(32 x 128 = 4,096 items), each walking every token in order with its state
+column in registers.
+
+`dkd_chunk` is a **group kernel** (chapter 68): one block of 128 threads per
+value head and block of 16 value columns, 256 groups for Elephant. Thread
+(j, p) keeps rows `16p ..< 16p + 16` of column j of the head's state in its
+own registers for the whole prompt. Per chunk of up to 16 tokens:
+
+1. the group copies the chunk's keys into shared memory, and 16 threads
+   take each token's `G`, `D[n-1][i]` and beta;
+2. the threads fill the two 16 x 16 tables `D[t][i] (k[t] . k[i])` for
+   `i < t` and `D[t][i] (q[t] . k[i])` for `i <= t`;
+3. each thread adds its 16 rows' share of every token's prediction
+   `G[t] S^T k[t]` and read `G[t] S^T q[t]` into two shared partial-sum
+   tables;
+4. each thread adds its column's 8 partial sums, solves the column's
+   corrections u by forward substitution into its own registers, and
+   writes the reads of two of the chunk's tokens;
+5. each thread carries its 16 state rows to the chunk's end.
+
+<!-- source: psionic/lib/device/delta-chunks-kernels.coax shape -->
+```jai
+DKD_THREADS :: 128;  // threads per group: 16 columns x 8 row slices
+DKD_COLS :: 16;      // value columns per group
+DKD_SLICES :: 8;     // row slices per column, 16 key rows each
+DKD_CHUNK :: 16;     // most tokens per chunk: the shared tiles' rows
+DKD_WIDTH :: 128;    // key and value width per head
+```
+
+<!-- source: psionic/lib/device/delta-chunks-kernels.coax kernel -->
+```jai
+// Group `item` is columns 16*(item%8) ..< +16 of value head item/8; key head
+// h/(heads/key_heads). Token t's normalized key and query are k and
+// q[(t*key_heads + kh)*128 ...], its value conv[t*channels + key_heads*256
+// + h*128 ...], its beta and decay beta and decay[t*heads + h].
+// out[(t*heads + h)*128 + c] receives the read before the gated norm, as
+// dl_scan writes it. state holds the starting state in chapter 11's layout,
+// state[(h*128 + r)*128 + c] for key row r and value column c, and receives
+// the carried state.
+dkd_chunk :: (item:int,tokens:int,chunk:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,
+    beta:[]f32,decay:[]f32,out:[]f32,state:[]f32) #export_c {
+    // Registers: st, each thread's 16 state rows, and uu, its column's
+    // corrections for the chunk. Shared: the chunk's keys; per-slice partial
+    // sums pu (predictions) and py (reads); D (k . k) and D (q . k); G,
+    // D[n-1][i] and beta.
+    st:[2048]f32;uu:[2048]f32;
+    kt:[2048]f32;pu:[2048]f32;py:[2048]f32;a:[256]f32;b:[256]f32;total:[16]f32;last:[16]f32;bt:[16]f32;
+    h:=item/8;col:=item%8*DKD_COLS;kh:=h/(heads/key_heads);vbase:=key_heads*256+h*128+col;sb:=h*DKD_WIDTH*DKD_WIDTH+col;
+    for thread:0..<DKD_THREADS {
+        for i:0..<16 {st[thread*16+i]=state[sb+(thread/16*16+i)*DKD_WIDTH+thread%16];}
+    }
+    last_block:=(tokens-1)/chunk;
+    for block:0..<last_block+1 {
+        lo:=block*chunk;n:=ifx block==last_block then tokens-lo else chunk;
+        // Thread i stages an eighth of token i/8's key (zero past the
+        // chunk); thread i < 16 takes token i's G, D[n-1][i] and beta, zero
+        // past the chunk.
+        for thread:0..<DKD_THREADS {
+            t:=thread/8;kb:=((lo+t)*key_heads+kh)*DKD_WIDTH+thread%8*16;
+            for c:0..<16 {x:f32=0;if t<n {x=k[kb+c];}kt[thread*16+c]=x;}
+            if thread<DKD_CHUNK {
+                g:f32=0;ratio:f32=0;w:f32=0;
+                if thread<n {
+                    g=1;for j:0..<thread+1 {g=g*decay[(lo+j)*heads+h];}
+                    ratio=1;for j:0..<n-1-thread {ratio=ratio*decay[(lo+n-1-j)*heads+h];}
+                    w=beta[(lo+thread)*heads+h];
+                }
+                total[thread]=g;last[thread]=ratio;bt[thread]=w;
+            }
+        }
+        // Thread i fills entries 2i and 2i+1 of the 16 x 16 tables: row t,
+        // column j holds D[t][j] (k[t] . k[j]) for j < t and D[t][j]
+        // (q[t] . k[j]) for j <= t, both below n; every other entry is 0.
+        for thread:0..<DKD_THREADS {
+            for c:0..<2 {
+                t:=thread/8;i:=thread%8*2+c;x:f32=0;z:f32=0;
+                if t<n && i<=t {
+                    ratio:f32=1;for j:0..<t-i {ratio=ratio*decay[(lo+t-j)*heads+h];}
+                    qb:=((lo+t)*key_heads+kh)*DKD_WIDTH;kk:f32=0;qk:f32=0;
+                    for r:0..<DKD_WIDTH {key:=kt[i*DKD_WIDTH+r];kk+=kt[t*DKD_WIDTH+r]*key;qk+=q[qb+r]*key;}
+                    if i<t {x=ratio*kk;}
+                    z=ratio*qk;
+                }
+                a[thread*2+c]=x;b[thread*2+c]=z;
+            }
+        }
+        // Thread (j, p): its slice's share of the chunk's starting state's
+        // prediction and read for every token of the chunk.
+        for thread:0..<DKD_THREADS {
+            r0:=thread/16*16;
+            for t:0..<DKD_CHUNK {
+                pv:f32=0;yv:f32=0;
+                if t<n {
+                    g:=total[t];qb:=((lo+t)*key_heads+kh)*DKD_WIDTH+r0;
+                    for i:0..<16 {x:=st[thread*16+i];pv+=x*g*kt[t*DKD_WIDTH+r0+i];yv+=q[qb+i]*x*g;}
+                }
+                pu[thread*16+t]=pv;py[thread*16+t]=yv;
+            }
+        }
+        // Thread (j, p): forward substitution for column j's corrections
+        // (each of the column's 8 threads solves it, into its own
+        // registers), then the reads of tokens p and p + 8.
+        for thread:0..<DKD_THREADS {
+            j:=thread%16;
+            for t:0..<DKD_CHUNK {
+                memory:f32=0;
+                for s:0..<DKD_SLICES {memory+=pu[(s*16+j)*16+t];}
+                for i:0..<DKD_CHUNK {memory+=a[t*DKD_CHUNK+i]*uu[thread*16+i];}
+                u:f32=0;if t<n {u=(conv[(lo+t)*channels+vbase+j]-memory)*bt[t];}
+                uu[thread*16+t]=u;
+            }
+            for c:0..<2 {
+                t:=c*8+thread/16;read:f32=0;
+                for s:0..<DKD_SLICES {read+=py[(s*16+j)*16+t];}
+                for i:0..<DKD_CHUNK {read+=b[t*DKD_CHUNK+i]*uu[thread*16+i];}
+                if t<n {out[((lo+t)*heads+h)*DKD_WIDTH+col+j]=read;}
+            }
+        }
+        // Thread (j, p): the carried state of its 16 rows.
+        for thread:0..<DKD_THREADS {
+            r0:=thread/16*16;g:=total[n-1];
+            for i:0..<16 {
+                x:=st[thread*16+i]*g;
+                for s:0..<DKD_CHUNK {x+=last[s]*kt[s*DKD_WIDTH+r0+i]*uu[thread*16+s];}
+                st[thread*16+i]=x;
+            }
+        }
+    }
+    for thread:0..<DKD_THREADS {
+        for i:0..<16 {state[sb+(thread/16*16+i)*DKD_WIDTH+thread%16]=st[thread*16+i];}
+    }
+}
+```
+
+The inputs are exactly what chapter 44's `dl_conv`, `dl_gates` and `dl_qk`
+write and the output is what `dl_scan` writes, so `dkd_chunk` replaces
+`dl_scan` between them with no other change; `dl_gate_norm` follows. The
+state uses chapter 11's layout, so the carried state compares directly with
+`pd_step`'s.
+
+Two details keep the kernel inside chapter 37's subset. Every loop over the
+chunk's tokens runs to the constant `DKD_CHUNK` and skips tokens past the
+chunk's end, because the compiler only accepts register and shared indices
+it can prove a thread owns. Entries of the tables and corrections past the
+chunk's end are written as 0, so later sums over all 16 slots add exact
+zeros.
+
+### The profile and its tolerance
+
+Profile `delta-chunks-cuda-f32-v1`:
+
+- `f32` values and sums throughout, each sum in index order; a sum over the
+  128 key rows adds 8 slices of 16 rows, each in row order, then the slices
+  in order.
+- Per chunk, `G` and `D` are products of decays in token order, as on the
+  CPU.
+- Every token reads the WY form; the state is carried once per chunk.
+- `--fmad=false` and no transcendental functions in the kernel, so the
+  device and the C build of the same source compute the same bits.
+
+The tolerance was frozen in the device oracle before any comparison ran:
+
+<!-- source: psionic/tests/delta-chunks-device-oracle.coax tolerance -->
+```jai
+DKD_TOLERANCE :: 0.001;
+```
+
+An output or carried state may differ from chapter 11's recurrence, from this
+chapter's CPU profile, from chapter 44's `dl_scan` path or from a binary64
+oracle by at most `0.001 x (1 + the largest |reference value|)`, the bound
+chapter 41's device kernel uses.
+
+### Admission and launch checks
+
+`delta-chunks-plan.coax` is an `#authority` file. `dkp_admit` asks chapter
+68's `da_admit` whether the reported device can run 128 threads with 26,816
+shared bytes; `dkp_check` refuses a launch whose shape, prompt, chunk or
+views do not fit before any byte moves:
+
+<!-- source: psionic/lib/device/delta-chunks-plan.coax plan -->
+```jai
+// What dkd_chunk needs: 128 threads; shared keys and two partial-sum
+// tables (16 x 128 f32 each), two 16 x 16 f32 tables and three rows of 16.
+DKP_NEEDS :: DaNeeds.{threads=128,shared=26816,mma=false};
+dkp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c {
+    return da_admit(DKP_NEEDS,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
+}
+// The checks a launch must pass, in order: chapter 11's head bounds, the
+// prompt and chunk ranges, then every view's exact length. counts: conv, q,
+// k, beta, decay, out and state view lengths.
+dkp_check :: (tokens:int,chunk:int,heads:int,key_heads:int,conv:int,q:int,k:int,beta:int,decay:int,out:int,state:int)->DkStatus #export_c {
+    if key_heads<1 || key_heads>16 || heads<key_heads || heads>48 || heads%key_heads!=0 {return DkStatus.shape;}
+    if tokens<1 || tokens>4096 || chunk<1 || chunk>DKD_CHUNK {return DkStatus.range;}
+    if conv!=tokens*(key_heads*256+heads*128) || q!=tokens*key_heads*128 || k!=q {return DkStatus.capacity;}
+    if beta!=tokens*heads || decay!=beta || out!=beta*128 || state!=heads*16384 {return DkStatus.capacity;}
+    return DkStatus.ok;
+}
+// Groups of a launch: one per value head and block of 16 value columns.
+dkp_groups :: (heads:int)->int #export_c {return heads*8;}
+```
+
+A chunk of 17, a prompt of 4,097 tokens, 49 value heads, 3 value heads over
+2 key heads, or any view one element too long or too short is refused with
+its own status, and checks pin each boundary. `coax mutate --root-only`
+leaves no surviving mutant in either device file.
+
+### Checks before the device
+
+The kernel's checks run its C build against the hand trace above (both chunk
+sizes give outputs 2 and 3 and state 3 exactly), against `dl_scan_state`
+from a nonzero carried state with four value heads over two key heads
+(chunks of 1 and 3), against the binary64 oracle over 20 tokens with chunks
+of 6 and 16, and against itself split at a chunk boundary (bit for bit).
+The harness's runtime file adds one more: chapter 44's `dl_conv`,
+`dl_gates`, `dl_qk`, then `dkd_chunk`, then `dl_gate_norm`, from chapter
+11's packed inputs at width 128, against `pd_step` and this chapter's CPU
+profile.
+
+### On the RTX 4080
+
+```shell
+COAX_CC=gcc psionic/tests/check_delta_chunks_device.sh ~/models/elephant-1-b3f8a934
+```
+
+The harness runs those checks, emits the CUDA source with `coax cuda`, and
+for each prompt length runs chapter 44's `dl_conv`, `dl_gates` and `dl_qk`
+once, then compares and times the scan step alone: `dl_scan` as chapter 44's
+program launches it, and `dkd_chunk` with chunks of 2, 4, 8 and 16 tokens,
+each followed by `dl_gate_norm`. Each layer output is compared with the
+`dl_scan` path, with this chapter's CPU profile (chunks of 64) and with
+chapter 11's recurrence, and the carried state with chapter 11's; the device
+draft of value heads 0 and 31 is compared with the C build of `dkd_chunk`.
+Times are chapter 34's warm runs: one warm-up, 10 recorded runs,
+`cm_two_pass` and `cm_compare`, the best chunk size against `dl_scan`.
+
+The synthetic prompts are chapter 11's packed inputs at Elephant's linear-
+layer shape (16 key heads, 32 value heads, width 128) with log A between
+-4 and 0, so some heads keep almost all of their state across the prompt.
+Lengths of 64, 256 and 1,024 tokens print the same comparisons; the run's
+end, the 2,048-token prompt and the original weights:
+
+```text
+device: NVIDIA GeForce RTX 4080 (sm_89); dkd_chunk (128 threads, 26816 shared bytes): admitted
+synthetic packed inputs at Elephant's linear-layer shape: 16 key heads, 32 value heads, width 128, log A in [-4, 0]
+2048 tokens:
+  dl_scan (chapter 44's recurrence, one item per value column): mean 13.274 ms, sd 0.369 ms, min 13.077 ms (10 warm runs)
+  dl_scan path against chapter 11's recurrence: largest difference 2.15e-06, 1004607 of 8388608 bit-identical, within tolerance
+ chunk 2:
+  against the dl_scan path: largest difference 2.74e-06, 914000 of 8388608 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 1.42e-06, 1556487 of 8388608 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 1.55e-06, 1464497 of 8388608 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 2.83e-07, 118572 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 47.299 ms, sd 2.897 ms, min 45.455 ms (10 warm runs)
+ chunk 4:
+  against the dl_scan path: largest difference 2.86e-06, 889553 of 8388608 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 1.39e-06, 1506449 of 8388608 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 1.52e-06, 1420425 of 8388608 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 2.68e-07, 115073 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 26.040 ms, sd 1.159 ms, min 25.433 ms (10 warm runs)
+ chunk 8:
+  against the dl_scan path: largest difference 2.74e-06, 862287 of 8388608 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 1.42e-06, 1432303 of 8388608 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 1.55e-06, 1356108 of 8388608 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 2.98e-07, 116596 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 15.067 ms, sd 0.479 ms, min 14.845 ms (10 warm runs)
+ chunk 16:
+  against the dl_scan path: largest difference 2.74e-06, 835444 of 8388608 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 1.43e-06, 1351409 of 8388608 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 1.56e-06, 1288451 of 8388608 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 3.87e-07, 115890 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 9.716 ms, sd 0.354 ms, min 9.477 ms (10 warm runs)
+  chunk 16, heads 0 and 31: device draft against the C build: largest difference 0, 524288 of 524288 bit-identical, within tolerance
+  best chunk 16; chapter 34 verdict: dkd_chunk is faster than dl_scan (time ratio dl_scan/dkd_chunk 1.37, standard error 0.162 ms)
+mean scan times (ms): tokens, dl_scan, chunk 2, chunk 4, chunk 8, chunk 16
+  64, 0.244, 1.572, 0.885, 0.509, 0.324
+  256, 0.966, 6.263, 3.513, 2.020, 1.287
+  1024, 3.978, 23.648, 13.187, 7.620, 4.810
+  2048, 13.274, 47.299, 26.040, 15.067, 9.716
+original Elephant linear layer 0 over the 86-token recorded decision prompt:
+  dl_scan (chapter 44's recurrence, one item per value column): mean 0.329 ms, sd 0.002 ms, min 0.328 ms (10 warm runs)
+  dl_scan path against chapter 11's recurrence: largest difference 2.98e-07, 43948 of 352256 bit-identical, within tolerance
+ chunk 2:
+  against the dl_scan path: largest difference 2.09e-07, 40704 of 352256 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 2.38e-07, 83333 of 352256 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 2.38e-07, 78397 of 352256 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 2.29e-05, 127766 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 2.113 ms, sd 0.001 ms, min 2.111 ms (10 warm runs)
+ chunk 4:
+  against the dl_scan path: largest difference 2.09e-07, 40617 of 352256 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 2.38e-07, 81803 of 352256 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 2.38e-07, 77073 of 352256 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 1.53e-05, 128402 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 1.209 ms, sd 0.002 ms, min 1.205 ms (10 warm runs)
+ chunk 8:
+  against the dl_scan path: largest difference 2.38e-07, 39792 of 352256 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 2.38e-07, 79572 of 352256 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 2.98e-07, 74642 of 352256 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 1.14e-05, 126348 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 0.695 ms, sd 0.001 ms, min 0.693 ms (10 warm runs)
+ chunk 16:
+  against the dl_scan path: largest difference 2.38e-07, 38674 of 352256 bit-identical, within tolerance
+  against chapter 42's CPU chunked profile (chunk 64): largest difference 2.38e-07, 76166 of 352256 bit-identical, within tolerance
+  against chapter 11's recurrence: largest difference 2.38e-07, 72424 of 352256 bit-identical, within tolerance
+  carried state against chapter 11's: largest difference 5.72e-06, 126419 of 524288 bit-identical, within tolerance
+  dkd_chunk: mean 0.464 ms, sd 0.001 ms, min 0.463 ms (10 warm runs)
+  chunk 16, heads 0 and 31: device draft against the C build: largest difference 0, 22016 of 22016 bit-identical, within tolerance
+  best chunk 16; chapter 34 verdict: dkd_chunk is slower than dl_scan (time ratio dl_scan/dkd_chunk 0.71, standard error 0.001 ms)
+chapter 42 on CUDA: every comparison within the frozen tolerance
+```
+
+Every comparison at every length and chunk size stayed within the frozen
+bound; the largest output difference from chapter 11's recurrence on the
+synthetic prompts was below `3e-6`. The device and the C build of
+`dkd_chunk` agreed bit for bit.
+
+The chunk-size sweep, mean milliseconds for the scan step:
+
+| Tokens | `dl_scan` | chunk 2 | chunk 4 | chunk 8 | chunk 16 |
+| --- | --- | --- | --- | --- | --- |
+| 64 | 0.244 | 1.572 | 0.885 | 0.509 | 0.324 |
+| 256 | 0.966 | 6.263 | 3.513 | 2.020 | 1.287 |
+| 1024 | 3.978 | 23.648 | 13.187 | 7.620 | 4.810 |
+| 2048 | 13.274 | 47.299 | 26.040 | 15.067 | 9.716 |
+| 86 (layer 0, original weights) | 0.329 | 2.113 | 1.209 | 0.695 | 0.464 |
+
+Chunks of 16, the largest the shared tiles allow, were fastest at every
+length, and that is the recorded choice. The time falls almost in proportion
+to the chunk size, so each chunk's fixed cost (five barriers, the decay
+products, the 16 x 16 tables and the serial forward substitution of each
+column) dominates the work that grows with the chunk. Against `dl_scan`,
+chapter 34's verdict is: slower at 64 and 256 tokens (time ratio 0.75),
+noisy at 1,024 (`dl_scan`'s own runs varied, ratio 0.83), and faster at 2,048
+tokens, 9.7 ms against 13.3 ms (ratio 1.37). On the 86-token original-weight
+prompt the chunked kernel is slower (0.46 ms against 0.33 ms). `dl_scan` stays
+the better kernel for Elephant's short decision prompts; the chunked kernel
+starts to pay for itself between 1,024 and 2,048 tokens.
+
+### Original weights
+
+With Elephant's original files the harness maps linear layer 0's tensors
+with the model-io layer map (`pm_layer`), gathers the embedding rows of the
+86 tokens of the recorded decision request (`psionic/tests/elephant_reference_fixture.py`),
+and runs `ql_step`'s input norm and BF16 projections in Coax on the CPU
+(`dkr_pack` in the harness's runtime file packs them exactly as `ql_step`
+does). The device then runs the layer core above. The outputs agree with
+chapter 11's recurrence within `3e-7` and the carried state within `2.3e-5`
+at every chunk size: the real state holds larger values than the synthetic
+one, and the bound scales with them.
+
 ## What this does not do yet
 
-- **A device kernel.** No chunked kernel in chapter 37's compute subset runs
-  yet. On the CPU the chunked form does the same work as the recurrence; its
-  value is the matrix-shaped work a device can run in parallel, and that is
-  not measured here.
-- **Elephant's prefill time.** Nothing here reads Elephant's weights or
-  replaces `pd_step` inside chapter 11's linear layer, so there is no before
-  and after timing on a named device, and no measured chunk size. llama.cpp
-  uses 64.
-- **Real model widths in the checks.** The checks use widths of 2 and 13
-  tokens; chapter 11's shape bounds are enforced, but the tolerance has not
-  been exercised at width 128 or at thousands of tokens.
+- **Chapter 44's decision program.** `dkd_chunk` runs between chapter 44's
+  own kernels in this chapter's harness, but chapter 44's plan still
+  launches `dl_scan` and `dl_scan_state`; adopting the kernel needs the
+  plan, its forked-prefix state (which `dl_scan_state` keeps column by
+  column) and the whole decision's qualification. On Elephant's 86-token
+  decision prompt it would be slower, so adoption should depend on the
+  prompt length.
+- **Snapshots on the device.** The kernel carries the state between chunks
+  but does not write chunk-boundary snapshots.
+- **A faster kernel.** Chunks of 16 are fastest here and still pay a large
+  fixed cost per chunk; larger chunks need more than chapter 37's 32 KiB of
+  shared arrays, and tensor-core products need chapter 68's group kernels to
+  accept the matrix primitive. llama.cpp uses chunks of 64.
+- **Other devices and layers.** One RTX 4080, one original layer on one
+  prompt; the kernel has not been compiled with `coax metal-compute`.
 
 ## Sources
 

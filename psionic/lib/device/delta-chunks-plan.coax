@@ -1,0 +1,89 @@
+// Chapter 42 on the device: what the host may launch. dkp_check refuses a
+// dkd_chunk launch whose shape, chunk or views do not fit, before any byte
+// moves; dkp_admit decides whether the device the host reports can run the
+// group kernel at all (chapter 68's da_admit); dkp_within is the frozen
+// tolerance's verdict. The host only reports and obeys.
+#authority;
+#load "admit.coax";
+#load "delta-chunks-kernels.coax";
+#load "../delta-chunks.coax";
+
+// book:begin plan
+// What dkd_chunk needs: 128 threads; shared keys and two partial-sum
+// tables (16 x 128 f32 each), two 16 x 16 f32 tables and three rows of 16.
+DKP_NEEDS :: DaNeeds.{threads=128,shared=26816,mma=false};
+dkp_admit :: (major:int,minor:int,max_threads:int,max_shared:int)->DaStatus #export_c {
+    return da_admit(DKP_NEEDS,DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
+}
+// The checks a launch must pass, in order: chapter 11's head bounds, the
+// prompt and chunk ranges, then every view's exact length. counts: conv, q,
+// k, beta, decay, out and state view lengths.
+dkp_check :: (tokens:int,chunk:int,heads:int,key_heads:int,conv:int,q:int,k:int,beta:int,decay:int,out:int,state:int)->DkStatus #export_c {
+    if key_heads<1 || key_heads>16 || heads<key_heads || heads>48 || heads%key_heads!=0 {return DkStatus.shape;}
+    if tokens<1 || tokens>4096 || chunk<1 || chunk>DKD_CHUNK {return DkStatus.range;}
+    if conv!=tokens*(key_heads*256+heads*128) || q!=tokens*key_heads*128 || k!=q {return DkStatus.capacity;}
+    if beta!=tokens*heads || decay!=beta || out!=beta*128 || state!=heads*16384 {return DkStatus.capacity;}
+    return DkStatus.ok;
+}
+// Groups of a launch: one per value head and block of 16 value columns.
+dkp_groups :: (heads:int)->int #export_c {return heads*8;}
+// book:end plan
+
+// Where |a - b| is largest (the first such index), and the frozen
+// tolerance's verdict on a difference: within DKD_TOLERANCE * (1 + |v|) for
+// the largest |v| of the reference values.
+dkp_worst :: (a:[]f32,b:[]f32)->int #export_c {
+    at:=0;for i:1..<a.count {if abs(f64(a[i])-f64(b[i]))>abs(f64(a[at])-f64(b[at])) {at=i;}}return at;
+}
+dkp_within :: (worst:f64,values:[]f32)->bool #export_c {
+    if worst<=DKD_TOLERANCE {return true;}
+    for v:values {if worst<=DKD_TOLERANCE*(1+abs(f64(v))) {return true;}}
+    return false;
+}
+
+#test "the device report decides admission" {
+    #assert dkp_admit(8,9,1024,49152)==DaStatus.ok;
+    #assert dkp_admit(7,5,1024,26816)==DaStatus.ok;
+    #assert dkp_admit(8,9,1024,26815)==DaStatus.shared;
+    #assert dkp_admit(8,9,128,49152)==DaStatus.ok;
+    #assert dkp_admit(8,9,127,49152)==DaStatus.threads;
+    #assert dkp_admit(8,9,31,49152)==DaStatus.report;
+}
+// A launch whose views are all exact.
+dkp_try :: (tokens:int,chunk:int,heads:int,key_heads:int)->DkStatus {
+    c:=tokens*(key_heads*256+heads*128);qk:=tokens*key_heads*128;g:=tokens*heads;
+    return dkp_check(tokens,chunk,heads,key_heads,c,qk,qk,g,g,g*128,heads*16384);
+}
+#test "Elephant's linear layers pass at every prompt length" {
+    for tokens:[6]int.[1,64,256,1024,2048,4096] {for chunk:[4]int.[1,2,8,16] {#assert dkp_try(tokens,chunk,32,16)==DkStatus.ok;}}
+    #assert dkp_groups(32)==256 && dkp_groups(1)==8;
+    #assert dkp_check(2048,16,32,16,2048*8192,2048*2048,2048*2048,2048*32,2048*32,2048*4096,524288)==DkStatus.ok;
+    #assert dkp_try(1,1,48,16)==DkStatus.ok && dkp_try(1,1,1,1)==DkStatus.ok && dkp_try(1,1,16,16)==DkStatus.ok;
+}
+#test "each refusal names its cause, endpoints included" {
+    // shape
+    #assert dkp_try(4,4,32,0)==DkStatus.shape && dkp_try(4,4,34,17)==DkStatus.shape && dkp_try(4,4,49,1)==DkStatus.shape;
+    #assert dkp_try(4,4,3,2)==DkStatus.shape && dkp_try(4,4,0,1)==DkStatus.shape && dkp_try(4,4,-2,1)==DkStatus.shape;
+    // range
+    #assert dkp_try(0,4,2,1)==DkStatus.range && dkp_try(4097,4,2,1)==DkStatus.range && dkp_try(4096,16,2,1)==DkStatus.ok;
+    #assert dkp_try(4,0,2,1)==DkStatus.range && dkp_try(4,17,2,1)==DkStatus.range && dkp_try(4,16,2,1)==DkStatus.ok;
+    // capacity: each view by one element either way
+    c:=4*512;qk:=512;g:=8;
+    #assert dkp_check(4,4,2,1,c,qk,qk,g,g,g*128,32768)==DkStatus.ok;
+    #assert dkp_check(4,4,2,1,c-1,qk,qk,g,g,g*128,32768)==DkStatus.capacity && dkp_check(4,4,2,1,c+1,qk,qk,g,g,g*128,32768)==DkStatus.capacity;
+    #assert dkp_check(4,4,2,1,c,qk-1,qk,g,g,g*128,32768)==DkStatus.capacity && dkp_check(4,4,2,1,c,qk,qk+1,g,g,g*128,32768)==DkStatus.capacity;
+    #assert dkp_check(4,4,2,1,c,qk+1,qk+1,g,g,g*128,32768)==DkStatus.capacity;
+    #assert dkp_check(4,4,2,1,c,qk,qk,g-1,g,g*128,32768)==DkStatus.capacity && dkp_check(4,4,2,1,c,qk,qk,g,g+1,g*128,32768)==DkStatus.capacity;
+    #assert dkp_check(4,4,2,1,c,qk,qk,g+1,g+1,g*128,32768)==DkStatus.capacity;
+    #assert dkp_check(4,4,2,1,c,qk,qk,g,g,g*128-1,32768)==DkStatus.capacity && dkp_check(4,4,2,1,c,qk,qk,g,g,g*128+1,32768)==DkStatus.capacity;
+    #assert dkp_check(4,4,2,1,c,qk,qk,g,g,g*128,32767)==DkStatus.capacity && dkp_check(4,4,2,1,c,qk,qk,g,g,g*128,32769)==DkStatus.capacity;
+}
+#test "differences and the tolerance verdict" {
+    a:=[4]f32.[1,-2,3,0];b:=[4]f32.[1,-2.5,3.25,0.5];
+    #assert dkp_worst(a[..],b[..])==1 && dkp_worst(b[..],a[..])==1 && dkp_worst(a[2..<4],b[2..<4])==1 && dkp_worst(a[0..<1],b[0..<1])==0;
+    t:=[2]f32.[1,1];u:=[2]f32.[2,2];#assert dkp_worst(t[..],u[..])==0;
+    // Largest |value| 3: the bound is 0.001 * 4, endpoint included.
+    #assert dkp_within(DKD_TOLERANCE*4,a[..]) && !dkp_within(0.0041,a[..]);
+    v:=[2]f32.[1,-3];#assert dkp_within(DKD_TOLERANCE*4,v[..]) && !dkp_within(0.0041,v[..]);
+    #assert dkp_within(DKD_TOLERANCE,a[0..<0]) && !dkp_within(0.0011,a[0..<0]) && dkp_within(0.0011,a[0..<1]);
+}
