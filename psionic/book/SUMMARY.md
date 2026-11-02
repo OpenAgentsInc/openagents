@@ -155,7 +155,7 @@
 - [141. Distill Mammoth into Elephant](ch141-distill-mammoth-into-elephant.md) — partly implemented
 
 - [142. Pixels, convolutions and patches](ch142-pixels-convolutions-and-patches.md) — partly implemented
-- [143. Elephant and Mammoth see](ch143-elephant-and-mammoth-see.md) — design draft
+- [143. Elephant and Mammoth see](ch143-elephant-and-mammoth-see.md) — partly implemented
 - [144. See with C-RADIO](ch144-see-with-c-radio.md) — design draft
 - [145. Compress and reconstruct an image](ch145-compress-and-reconstruct-an-image.md) — partly implemented
 - [146. Noise, diffusion and flow](ch146-noise-diffusion-and-flow.md)
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–142, 145–148, 151–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–143, 145–148, 151–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

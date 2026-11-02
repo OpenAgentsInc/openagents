@@ -1,0 +1,703 @@
+// Chapter 143: Elephant and Mammoth see. The vision tower that ships in both
+// pinned Qwen3.5 checkpoints: its tensor inventory checked against the
+// config, image admission and preprocessing as the Qwen3-VL processor lays
+// patches out, the encoder's patch embedding with its interpolated position
+// table, one transformer block with 2-D rotary positions, the 2 by 2 patch
+// merger, and the multimodal request layout with interleaved M-RoPE
+// positions. Profile psionic-see-v1: f32 storage, binary64 sums, one rounding
+// to f32 per stored value.
+#load "pixels.coax";
+#load "model-io/access.coax";
+#load "../fixtures/see/oracle.coax";
+#authority;
+
+// book:begin types
+SvStatus :: enum u8 {ok;config;shape;channels;depth;small;large;multiple;capacity;alias;number;missing;dtype;extra;layout;}
+// The vision_config fields the encoder reads, the processor's smallest image
+// area (least, in pixels), and the text side's width (out).
+SvConfig :: struct {patch:int;temporal:int;merge:int;width:int;heads:int;inner:int;depth:int;positions:int;out:int;least:int;epsilon:f64;theta:f64;}
+SvGrid :: struct {status:SvStatus;grid_h:int;grid_w:int;patches:int;tokens:int;features:int;}
+SvResult :: struct {status:SvStatus;written:int;cause:int;}
+SvNeed :: struct {count:int;shape:P5Shape;}
+SvBlock :: struct {norm1:[]f32;norm1_bias:[]f32;qkv:[]f32;qkv_bias:[]f32;proj:[]f32;proj_bias:[]f32;
+    norm2:[]f32;norm2_bias:[]f32;fc1:[]f32;fc1_bias:[]f32;fc2:[]f32;fc2_bias:[]f32;}
+SvMerger :: struct {norm:[]f32;norm_bias:[]f32;fc1:[]f32;fc1_bias:[]f32;fc2:[]f32;fc2_bias:[]f32;}
+// book:end types
+
+SV_EXTENT_MAX :: 8192;
+SV_GRID_MAX :: 32;
+SV_VOCAB :: 248320;
+SV_VISION_START :: 248053;
+SV_VISION_END :: 248054;
+SV_IMAGE :: 248056;
+SV_VIDEO :: 248057;
+
+// book:begin configs
+// Both checkpoints' vision_config: 16-pixel patches over 2 frames, 2 by 2
+// merging, width 1152 in 16 heads, 27 blocks, a 48 by 48 position table.
+// Only the merger's output width differs: the text model's hidden size.
+// The processor's smallest area is 65536 pixels (256 by 256).
+sv_elephant :: ()->SvConfig {
+    return SvConfig.{patch=16,temporal=2,merge=2,width=1152,heads=16,inner=4304,depth=27,positions=2304,out=4096,least=65536,epsilon=0.000001,theta=10000.0};
+}
+sv_mammoth :: ()->SvConfig {c:=sv_elephant();c.out=5120;return c;}
+// book:end configs
+
+// The tiny configuration the checks and the oracle share: 2-pixel patches,
+// width 8 in 2 heads of 4, a 3 by 3 position table, output width 5.
+sv_tiny :: ()->SvConfig {
+    return SvConfig.{patch=2,temporal=2,merge=2,width=8,heads=2,inner=6,depth=1,positions=9,out=5,least=16,epsilon=0.000001,theta=10000.0};
+}
+// Multiples of 1/16 in [-1/2, 1/2], the oracle's generator.
+sv_fill :: (x:[]f32,seed:int) {for i:0..<x.count {x[i]=f32((i*seed+11)%17-8)/16;}}
+sv_bytes :: (x:[]u8) {for i:0..<x.count {x[i]=cast(u8)((i*37+11)%256);}}
+
+#test "configurations: both checkpoints, the tiny one, and each bad field alone" {
+    e:=sv_elephant();m:=sv_mammoth();
+    #assert sv_config_status(e)==SvStatus.ok && sv_config_status(m)==SvStatus.ok && sv_config_status(sv_tiny())==SvStatus.ok;
+    #assert m.out==5120 && e.out==4096 && m.width==e.width && sv_side(e.positions)==48 && sv_side(9)==3 && sv_side(10)==3 && sv_side(1)==1;
+    bad:=[13]SvConfig.[sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny(),sv_tiny()];
+    bad[0].patch=0;bad[1].temporal=0;bad[2].merge=0;bad[3].heads=3;bad[4].width=4;bad[5].positions=10;bad[6].inner=0;
+    bad[7].out=0;bad[8].least=0;bad[9].epsilon=0;bad[10].theta=1;bad[11].depth=0;bad[12].width=SV_EXTENT_MAX+8;
+    for b:bad {#assert sv_config_status(b)==SvStatus.config;}
+    edge:=sv_tiny();edge.width=SV_EXTENT_MAX;edge.heads=2;#assert sv_config_status(edge)==SvStatus.ok;
+    edge=sv_tiny();edge.inner=SV_EXTENT_MAX;edge.out=SV_EXTENT_MAX;edge.positions=SV_EXTENT_MAX-92;#assert sv_config_status(edge)==SvStatus.ok;
+    edge.inner=SV_EXTENT_MAX+1;#assert sv_config_status(edge)==SvStatus.config;
+    edge=sv_tiny();edge.out=SV_EXTENT_MAX+1;#assert sv_config_status(edge)==SvStatus.config;
+    edge=sv_tiny();edge.positions=SV_EXTENT_MAX+1;#assert sv_config_status(edge)==SvStatus.config;
+    edge=sv_tiny();edge.heads=1;edge.temporal=1;edge.least=1;#assert sv_config_status(edge)==SvStatus.ok;
+    edge=sv_tiny();edge.heads=0;#assert sv_config_status(edge)==SvStatus.config;
+    edge=sv_tiny();edge.width=6;edge.heads=1;#assert sv_config_status(edge)==SvStatus.config;
+}
+
+// book:begin admit
+sv_side :: (n:int)->int {s:=1;while (s+1)*(s+1)<=n {s+=1;}return s;}
+sv_config_status :: (c:SvConfig)->SvStatus {
+    sizes:=[8]int.[c.patch,c.temporal,c.merge,c.width,c.heads,c.inner,c.positions,c.out];
+    for s:sizes {if s<1 || s>SV_EXTENT_MAX {return SvStatus.config;}}
+    if c.depth<1 || c.least<1 || !(c.epsilon>0) || !(c.theta>1) {return SvStatus.config;}
+    // Each head splits in half for rotation, and each half into a row part
+    // and a column part; the position table is a square grid.
+    if c.width%c.heads!=0 || (c.width/c.heads)%4!=0 {return SvStatus.config;}
+    s:=sv_side(c.positions);if s*s!=c.positions {return SvStatus.config;}
+    return SvStatus.ok;
+}
+// An image is admitted as is: 8-bit RGB, both sides a multiple of patch times
+// merge (32 pixels), at least the processor's smallest area, at most
+// chapter 142's 512-pixel side. For such an image the processor's resize
+// rule (round each side to a multiple of 32, then keep the area within its
+// bounds) leaves the size unchanged, so no resampling happens here.
+sv_admit :: (c:SvConfig,image:PxImage)->SvGrid {
+    if sv_config_status(c)!=SvStatus.ok {return SvGrid.{status=SvStatus.config};}
+    s:=px_image_status(image);
+    if s==PxStatus.shape {return SvGrid.{status=SvStatus.shape};}
+    if s==PxStatus.limit {return SvGrid.{status=SvStatus.large};}
+    if s==PxStatus.channels {return SvGrid.{status=SvStatus.channels};}
+    if s==PxStatus.depth {return SvGrid.{status=SvStatus.depth};}
+    unit:=c.patch*c.merge;
+    if image.width%unit!=0 || image.height%unit!=0 {return SvGrid.{status=SvStatus.multiple};}
+    if image.width*image.height<c.least {return SvGrid.{status=SvStatus.small};}
+    g:=SvGrid.{grid_h=image.height/c.patch,grid_w=image.width/c.patch,features=3*c.temporal*c.patch*c.patch};
+    if g.grid_h>SV_GRID_MAX || g.grid_w>SV_GRID_MAX {return SvGrid.{status=SvStatus.large};}
+    g.patches=g.grid_h*g.grid_w;g.tokens=g.patches/(c.merge*c.merge);
+    return g;
+}
+// book:end admit
+
+#test "admission: grids, tokens and each refusal" {
+    e:=sv_elephant();
+    g:=sv_admit(e,PxImage.{width=256,height=256});
+    #assert g.status==SvStatus.ok && g.grid_h==16 && g.grid_w==16 && g.patches==256 && g.tokens==64 && g.features==1536;
+    g=sv_admit(e,PxImage.{width=320,height=256});#assert g.status==SvStatus.ok && g.grid_h==16 && g.grid_w==20 && g.tokens==80;
+    g=sv_admit(e,PxImage.{width=512,height=128});#assert g.status==SvStatus.ok && g.patches==256;
+    #assert sv_admit(e,PxImage.{width=512,height=96}).status==SvStatus.small;
+    #assert sv_admit(e,PxImage.{width=256,height=250}).status==SvStatus.multiple;
+    #assert sv_admit(e,PxImage.{width=240,height=256}).status==SvStatus.multiple;
+    #assert sv_admit(e,PxImage.{width=544,height=256}).status==SvStatus.large;
+    #assert sv_admit(e,PxImage.{width=0,height=256}).status==SvStatus.shape;
+    #assert sv_admit(e,PxImage.{width=256,height=256,channels=4}).status==SvStatus.channels;
+    #assert sv_admit(e,PxImage.{width=256,height=256,depth=16}).status==SvStatus.depth;
+    bad:=e;bad.merge=0;#assert sv_admit(bad,PxImage.{width=256,height=256}).status==SvStatus.config;
+    t:=sv_tiny();#assert sv_admit(t,PxImage.{width=4,height=4}).status==SvStatus.ok && sv_admit(t,PxImage.{width=4,height=4}).tokens==1;
+    #assert sv_admit(t,PxImage.{width=8,height=4}).tokens==2;
+    t.least=17;#assert sv_admit(t,PxImage.{width=4,height=4}).status==SvStatus.small && sv_admit(t,PxImage.{width=8,height=4}).status==SvStatus.ok;
+    #assert sv_admit(sv_tiny(),PxImage.{width=128,height=4}).status==SvStatus.large && sv_admit(sv_tiny(),PxImage.{width=64,height=4}).grid_w==32;
+    #assert sv_admit(sv_tiny(),PxImage.{width=4,height=128}).status==SvStatus.large && sv_admit(sv_tiny(),PxImage.{width=4,height=64}).grid_h==32;
+}
+
+#test "other merge sizes: grids, tokens and cells" {
+    one:=sv_tiny();one.merge=1;
+    #assert sv_admit(one,PxImage.{width=66,height=4}).status==SvStatus.large && sv_admit(one,PxImage.{width=64,height=4}).tokens==64;
+    #assert sv_admit(one,PxImage.{width=4,height=66}).status==SvStatus.large;
+    three:=sv_tiny();three.merge=3;g:=sv_admit(three,PxImage.{width=12,height=12});
+    #assert g.status==SvStatus.ok && g.patches==36 && g.tokens==4;
+    c:=sv_cell(three,g,9);#assert c[0]==0 && c[1]==3;
+    c=sv_cell(three,g,13);#assert c[0]==1 && c[1]==4;
+    c=sv_cell(three,g,20);#assert c[0]==3 && c[1]==2;
+}
+
+#test "patch cells follow the merged order, block by block" {
+    t:=sv_tiny();g:=sv_admit(t,PxImage.{width=8,height=8});
+    // A 4 by 4 grid: patches 0..3 are the top-left 2 by 2 block, 4..7 the top-right.
+    rows:=[16]int.[0,0,1,1,0,0,1,1,2,2,3,3,2,2,3,3];cols:=[16]int.[0,1,0,1,2,3,2,3,0,1,0,1,2,3,2,3];
+    for r:0..<16 {cell:=sv_cell(t,g,r);#assert cell[0]==rows[r] && cell[1]==cols[r];}
+    g=sv_admit(t,PxImage.{width=8,height=4});
+    rows2:=[8]int.[0,0,1,1,0,0,1,1];cols2:=[8]int.[0,1,0,1,2,3,2,3];
+    for r:0..<8 {cell:=sv_cell(t,g,r);#assert cell[0]==rows2[r] && cell[1]==cols2[r];}
+}
+
+// book:begin pixels
+// Patch r of the processor's order: merged blocks left to right and top to
+// bottom, and inside each block its merge by merge patches in the same order.
+sv_cell :: (c:SvConfig,g:SvGrid,r:int)->[2]int {
+    per:=c.merge*c.merge;across:=g.grid_w/c.merge;b:=r/per;i:=r%per;
+    return [2]int.[(b/across)*c.merge+i/c.merge,(b%across)*c.merge+i%c.merge];
+}
+// Bytes to patch rows. Chapter 142's preprocessing with the processor's
+// profile (scale 1/255, mean 0.5, spread 0.5, no resize) gives a
+// channel-major image; each patch row then holds (channel, frame, row,
+// column) values, the layout of the patch embedding's weights. A still image
+// repeats in every frame of the temporal patch.
+sv_profile :: (image:PxImage)->PxProfile {
+    return PxProfile.{scale=1.0/255,mean=[3]f64.[0.5,0.5,0.5],std=[3]f64.[0.5,0.5,0.5],height=image.height,width=image.width,filter=PxFilter.nearest};
+}
+sv_pixels :: (c:SvConfig,image:PxImage,bytes:[]u8,work:[]f32,out:[]f32,overlap:bool)->SvResult {
+    g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
+    area:=image.width*image.height;stage:=3*area;
+    if bytes.count!=stage {return SvResult.{status=SvStatus.shape};}
+    if work.count<2*stage || out.count<g.patches*g.features {return SvResult.{status=SvStatus.capacity};}
+    if overlap {return SvResult.{status=SvStatus.alias};}
+    #assert px_preprocess(image,bytes,sv_profile(image),work[0..<stage],work[stage..<2*stage],false).written==stage;
+    pp:=c.patch*c.patch;
+    for r:0..<g.patches {
+        cell:=sv_cell(c,g,r);
+        for k:0..<g.features {
+            ch:=k/(c.temporal*pp);y:=cell[0]*c.patch+(k/c.patch)%c.patch;x:=cell[1]*c.patch+k%c.patch;
+            out[r*g.features+k]=work[stage+(ch*image.height+y)*image.width+x];
+        }
+    }
+    return SvResult.{written=g.patches*g.features};
+}
+// book:end pixels
+
+sv_tiny_value :: (y:int,x:int,ch:int)->f32 {i:=3*(8*y+x)+ch;return f32((f64(f32(f64((i*37+11)%256)*(1.0/255)))-0.5)/0.5);}
+#test "pixels: bytes to patch rows by hand, and refusals before writing" {
+    t:=sv_tiny();image:=PxImage.{width=8,height=4};bytes:[96]u8;sv_bytes(bytes[..]);work:[192]f32;out:[193]f32;out[192]=-7;
+    r:=sv_pixels(t,image,bytes[..],work[..],out[..],false);
+    #assert r.status==SvStatus.ok && r.written==192 && out[192]==-7;
+    // Byte (y, x, c) sits at 3 * (8 * y + x) + c and is (37 * i + 11) mod 256.
+    for r2:0..<8 {cell:=sv_cell(t,sv_admit(t,image),r2);for k:0..<24 {
+        ch:=k/8;#assert out[r2*24+k]==sv_tiny_value(cell[0]*2+(k/2)%2,cell[1]*2+k%2,ch);
+    }}
+    // Patch 4 is grid cell (0, 2): pixel (0, 4), red, byte index 12, value 199.
+    #assert out[96]==f32((f64(f32(199*(1.0/255)))-0.5)/0.5) && out[100]==out[96];
+    bgr:=image;bgr.order=PxOrder.bgr;other:[192]f32;
+    #assert sv_pixels(t,bgr,bytes[..],work[..],other[..],false).status==SvStatus.ok && other[0]==out[16] && other[16]==out[0] && other[8]==out[8];
+    out[0]=-7;
+    #assert sv_pixels(t,PxImage.{width=6,height=4},bytes[0..<72],work[..],out[..],false).status==SvStatus.multiple;
+    #assert sv_pixels(t,image,bytes[0..<95],work[..],out[..],false).status==SvStatus.shape;
+    #assert sv_pixels(t,image,bytes[..],work[0..<191],out[..],false).status==SvStatus.capacity;
+    #assert sv_pixels(t,image,bytes[..],work[..],out[0..<191],false).status==SvStatus.capacity;
+    #assert sv_pixels(t,image,bytes[..],work[..],out[0..<192],true).status==SvStatus.alias;
+    #assert out[0]==-7 && sv_pixels(t,image,bytes[..],work[..],out[0..<192],false).written==192;
+}
+
+// book:begin rotary
+// The 2-D rotary angles of patch r: a head of d values rotates its first and
+// second halves together; the first quarter of frequencies turns with the
+// patch's row, the second with its column. Frequency j of d/4 is
+// theta^(-4j/d), the table of a rotary embedding of width d/2.
+sv_angle :: (c:SvConfig,g:SvGrid,r:int,i:int)->f64 {
+    d:=c.width/c.heads;quarter:=d/4;j:=i%(d/2);cell:=sv_cell(c,g,r);
+    p:=cell[0];if j>=quarter {p=cell[1];j-=quarter;}
+    return f64(p)*exp(-log(c.theta)*f64(4*j)/f64(d));
+}
+// book:end rotary
+
+#test "rotary angles by hand" {
+    t:=sv_tiny();g:=sv_admit(t,PxImage.{width=8,height=8});
+    // d = 4: one row frequency and one column frequency, each 1, repeated.
+    cell:=sv_cell(t,g,7);#assert cell[0]==1 && cell[1]==3;
+    #assert sv_angle(t,g,7,0)==1 && sv_angle(t,g,7,1)==3 && sv_angle(t,g,7,2)==1 && sv_angle(t,g,7,3)==3;
+    e:=sv_elephant();ge:=sv_admit(e,PxImage.{width=256,height=256});
+    // Patch 3 is cell (1, 1); frequency 1 of 18 is 10000^(-4/72).
+    #assert abs(sv_angle(e,ge,3,1)-exp(-log(10000.0)/18))<1e-15 && sv_angle(e,ge,3,0)==1 && sv_angle(e,ge,3,18)==1;
+    #assert abs(sv_angle(e,ge,3,37)-exp(-log(10000.0)/18))<1e-15 && sv_angle(e,ge,2,18)==0 && sv_angle(e,ge,2,0)==1;
+    #assert abs(sv_angle(e,ge,5,19)-3*exp(-log(10000.0)/18))<1e-15;
+}
+
+// book:begin linear
+// A value too large for f32 becomes NaN, which the finiteness check after
+// each stage refuses.
+sv_f32 :: (v:f64)->f32 {if psionic_ops_fits_f32(v) {return f32(v);}return f32(0.0/0.0);}
+// y = x W^T + b over rows, binary64 sums, one rounding per stored value.
+sv_linear :: (x:[]f32,rows:int,inputs:int,w:[]f32,bias:[]f32,outputs:int,y:[]f32) {
+    for r:0..<rows {for o:0..<outputs {
+        acc:=f64(bias[o]);
+        for k:0..<inputs {acc+=f64(x[r*inputs+k])*f64(w[o*inputs+k]);}
+        y[r*outputs+o]=sv_f32(acc);
+    }}
+}
+// Layer normalization over each row: population variance, epsilon inside
+// the root, then scale and shift.
+sv_norm :: (x:[]f32,rows:int,width:int,gain:[]f32,bias:[]f32,epsilon:f64,y:[]f32) {
+    for r:0..<rows {
+        mean:=0.0;for k:0..<width {mean+=f64(x[r*width+k]);}mean/=f64(width);
+        spread:=0.0;for k:0..<width {d:=f64(x[r*width+k])-mean;spread+=d*d;}
+        inverse:=1/sqrt(spread/f64(width)+epsilon);
+        for k:0..<width {y[r*width+k]=sv_f32((f64(x[r*width+k])-mean)*inverse*f64(gain[k])+f64(bias[k]));}
+    }
+}
+// tanh as 1 - 2 / (e^(2a) + 1); past |a| = 10 it is within 5e-9 of 1.
+sv_tanh :: (a:f64)->f64 {if a>10.0 {return 1.0;}if a<-10.0 {return -1.0;}return 1-2/(exp(2*a)+1);}
+// The block's activation, GELU with the tanh approximation.
+sv_gelu_tanh :: (z:f64)->f64 {return 0.5*z*(1+sv_tanh(0.7978845608028654*(z+0.044715*z*z*z)));}
+// The merger's activation, GELU with erf. erf by Abramowitz and Stegun
+// 7.1.26, absolute error below 1.5e-7, odd in x; past |x| = 8 it is 1 to
+// that accuracy.
+sv_erf :: (x:f64)->f64 {
+    z:=abs(x);t:=1/(1+0.3275911*z);
+    p:=((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t;
+    v:=1-p*exp(-z*z);
+    return ifx x<0 then -v else v;
+}
+sv_gelu :: (z:f64)->f64 {return 0.5*z*(1+sv_erf(z*0.7071067811865476));}
+// book:end linear
+
+#test "activations against known values" {
+    // erf(0) by the formula is 1 - 0.999999999 = 1e-9, not 0: the sum of the five coefficients.
+    #assert sv_erf(0)>0 && abs(sv_erf(0)-1e-9)<1e-15 && abs(sv_erf(0.5)-0.5204998778130465)<1.5e-7 && abs(sv_erf(-1)+0.8427007929497149)<1.5e-7;
+    #assert abs(sv_erf(2)-0.9953222650189527)<1.5e-7 && abs(sv_erf(-3.5)+0.9999992569016276)<1.5e-7 && sv_erf(30)==1 && sv_erf(-1e200)==-1;
+    #assert abs(sv_erf(0.25)-0.2763263901682369)<1.5e-7 && abs(sv_erf(1.5)-0.9661051464753108)<1.5e-7;
+    #assert abs(sv_gelu(1)-0.8413447460685429)<1e-7 && abs(sv_gelu(-1)+0.15865525393145707)<1e-7;
+    #assert abs(sv_gelu_tanh(1)-0.8411919906082768)<1e-15 && abs(sv_gelu_tanh(-2)+0.04540230591222494)<1e-15;
+    #assert sv_tanh(0)==0 && abs(sv_tanh(-0.5)+0.46211715726000974)<1e-15 && sv_tanh(400)==1 && sv_tanh(-400)==-1 && sv_tanh(10)<1 && sv_tanh(-10)>-1;
+    eps:=[2]f32.[0,2];one:=[2]f32.[1,1];zero:=[2]f32.[0,0];ye:[2]f32;sv_norm(eps[..],1,2,one[..],zero[..],3,ye[..]);#assert ye[0]==-0.5 && ye[1]==0.5;
+    x:=[6]f32.[1,2,3,4,5,6];g:=[3]f32.[1,2,1];b:=[3]f32.[0,0,1];y:[6]f32;
+    sv_norm(x[..],2,3,g[..],b[..],0,y[..]);
+    // Each row is mean m + (-1, 0, 1) with variance 2/3: (-sqrt(3/2), 0, sqrt(3/2)).
+    s:=sv_f32(sqrt(1.5));#assert y[0]==-s && y[1]==0 && y[2]==sv_f32(sqrt(1.5)+1) && y[3]==-s && y[5]==y[2];
+    w:=[6]f32.[1,0,-1,2,1,0];bias:=[2]f32.[0.5,-1];z:[4]f32;
+    sv_linear(x[..],2,3,w[..],bias[..],2,z[..]);#assert z[0]==-1.5 && z[1]==3 && z[2]==-1.5 && z[3]==12;
+}
+
+// book:begin embed
+// The patch embedding, a convolution whose stride equals its kernel, is one
+// row product per patch (3 * 2 * 16 * 16 = 1536 inputs), plus the learned
+// position of its cell. The 48 by 48 table is resized to the patch grid
+// bilinearly with corners aligned: grid row y reads table row
+// y * (side - 1) / (rows - 1) and blends the two rows around it.
+sv_embed_work :: (c:SvConfig,g:SvGrid)->int {return g.patches*c.width;}
+sv_embed :: (c:SvConfig,image:PxImage,patches:[]f32,w:[]f32,bias:[]f32,table:[]f32,out:[]f32,work:[]f32,overlap:bool)->SvResult {
+    g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
+    n:=g.patches;f:=g.features;d:=c.width;
+    if patches.count!=n*f || w.count!=d*f || bias.count!=d || table.count!=c.positions*d {return SvResult.{status=SvStatus.shape};}
+    if out.count<n*d || work.count<n*d {return SvResult.{status=SvStatus.capacity};}
+    if overlap {return SvResult.{status=SvStatus.alias};}
+    if !px_finite(patches) || !px_finite(w) || !px_finite(bias) || !px_finite(table) {return SvResult.{status=SvStatus.number};}
+    sv_linear(patches,n,f,w,bias,d,work);
+    side:=sv_side(c.positions);
+    for r:0..<n {
+        cell:=sv_cell(c,g,r);a:=sv_point(cell[0],g.grid_h,side);b:=sv_point(cell[1],g.grid_w,side);
+        low:=a.low*side;high:=a.high*side;
+        for k:0..<d {
+            top:=(1-b.fraction)*f64(table[(low+b.low)*d+k])+b.fraction*f64(table[(low+b.high)*d+k]);
+            bottom:=(1-b.fraction)*f64(table[(high+b.low)*d+k])+b.fraction*f64(table[(high+b.high)*d+k]);
+            work[r*d+k]=sv_f32(f64(work[r*d+k])+f64(sv_f32((1-a.fraction)*top+a.fraction*bottom)));
+        }
+    }
+    if !px_finite(work[0..<n*d]) {return SvResult.{status=SvStatus.number};}
+    for i:0..<n*d {out[i]=work[i];}
+    return SvResult.{written=n*d};
+}
+SvPoint :: struct {low:int;high:int;fraction:f64;}
+sv_point :: (i:int,count:int,side:int)->SvPoint {
+    if count==1 {return SvPoint.{}; }
+    p:=f64(i*(side-1))/f64(count-1);low:=cast(int)floor(p);
+    return SvPoint.{low=low,high=ifx low<side-1 then low+1 else low,fraction=p-f64(low)};
+}
+// book:end embed
+
+#test "position points by hand" {
+    // 48 rows onto 16: row 1 reads 47/15 = 3.1333..., between 3 and 4.
+    p:=sv_point(1,16,48);#assert p.low==3 && p.high==4 && abs(p.fraction-(47.0/15-3))<1e-15;
+    p=sv_point(15,16,48);#assert p.low==47 && p.high==47 && p.fraction==0;
+    p=sv_point(0,16,48);#assert p.low==0 && p.high==1 && p.fraction==0;
+    p=sv_point(0,1,48);#assert p.low==0 && p.high==0 && p.fraction==0;
+    p=sv_point(1,2,3);#assert p.low==2 && p.high==2 && p.fraction==0;
+    p=sv_point(2,4,3);#assert p.low==1 && p.high==2 && abs(p.fraction-1.0/3)<1e-15;
+    p=sv_point(1,4,3);#assert p.low==0 && p.high==1 && abs(p.fraction-2.0/3)<1e-15;
+}
+
+// book:begin block
+// One encoder block: x + attention(norm1(x)), then + fc2(gelu(fc1(norm2(x)))).
+// Attention is bidirectional over the image's patches, per head, with the
+// rotary angles above applied to queries and keys.
+sv_block_work :: (c:SvConfig,n:int)->int {return n*(6*c.width+c.inner);}
+sv_block_status :: (c:SvConfig,w:SvBlock)->SvStatus {
+    d:=c.width;i:=c.inner;
+    counts:=[12]int.[w.norm1.count,w.norm1_bias.count,w.qkv.count,w.qkv_bias.count,w.proj.count,w.proj_bias.count,
+        w.norm2.count,w.norm2_bias.count,w.fc1.count,w.fc1_bias.count,w.fc2.count,w.fc2_bias.count];
+    want:=[12]int.[d,d,3*d*d,3*d,d*d,d,d,d,i*d,i,d*i,d];
+    for k:0..<12 {if counts[k]!=want[k] {return SvStatus.shape;}}
+    parts:=[12][]f32.[w.norm1,w.norm1_bias,w.qkv,w.qkv_bias,w.proj,w.proj_bias,w.norm2,w.norm2_bias,w.fc1,w.fc1_bias,w.fc2,w.fc2_bias];
+    for p:parts {if !px_finite(p) {return SvStatus.number;}}
+    return SvStatus.ok;
+}
+sv_block :: (c:SvConfig,image:PxImage,x:[]f32,w:SvBlock,out:[]f32,work:[]f32,overlap:bool)->SvResult {
+    g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
+    n:=g.patches;d:=c.width;heads:=c.heads;hd:=d/heads;half:=hd/2;
+    if x.count!=n*d {return SvResult.{status=SvStatus.shape};}
+    s:=sv_block_status(c,w);if s!=SvStatus.ok {return SvResult.{status=s};}
+    if out.count<n*d || work.count<sv_block_work(c,n) {return SvResult.{status=SvStatus.capacity};}
+    if overlap {return SvResult.{status=SvStatus.alias};}
+    if !px_finite(x) {return SvResult.{status=SvStatus.number};}
+    q0:=n*d;a0:=4*n*d;m0:=5*n*d;f0:=6*n*d;
+    h:=work[0..<q0];qkv:=work[q0..<a0];att:=work[a0..<m0];mid:=work[m0..<f0];f:=work[f0..<sv_block_work(c,n)];
+    sv_norm(x,n,d,w.norm1,w.norm1_bias,c.epsilon,h);
+    sv_linear(h,n,d,w.qkv,w.qkv_bias,3*d,qkv);
+    // Rotate queries (part 0) and keys (part 1) in place, half against half.
+    // Patch 0 sits at (0, 0) and does not turn; rows go last to first.
+    for back:0..<n {r:=n-1-back;for part:0..<2 {for head:0..<heads {for i:0..<half {
+        at:=r*3*d+part*d+head*hd;angle:=sv_angle(c,g,r,i);a:=f64(qkv[at+i]);b:=f64(qkv[at+i+half]);
+        qkv[at+i]=sv_f32(a*cos(angle)-b*sin(angle));qkv[at+i+half]=sv_f32(b*cos(angle)+a*sin(angle));
+    }}}}
+    scale:=1/sqrt(f64(hd));
+    for head:0..<heads {for r:0..<n {
+        q:=r*3*d+head*hd;top:=sv_score(qkv,q,d+head*hd,hd,scale);
+        for j:1..<n {v:=sv_score(qkv,q,j*3*d+d+head*hd,hd,scale);top=(top+v+abs(top-v))/2;}
+        total:=0.0;for j:0..<n {total+=exp(sv_score(qkv,q,j*3*d+d+head*hd,hd,scale)-top);}
+        for e:0..<hd {
+            acc:=0.0;
+            for j:0..<n {acc+=exp(sv_score(qkv,q,j*3*d+d+head*hd,hd,scale)-top)*f64(qkv[j*3*d+2*d+head*hd+e]);}
+            att[r*d+head*hd+e]=sv_f32(acc/total);
+        }
+    }}
+    sv_linear(att,n,d,w.proj,w.proj_bias,d,mid);
+    for i:0..<n*d {mid[i]=sv_f32(f64(mid[i])+f64(x[i]));}
+    sv_norm(mid,n,d,w.norm2,w.norm2_bias,c.epsilon,h);
+    sv_linear(h,n,d,w.fc1,w.fc1_bias,c.inner,f);
+    for i:0..<n*c.inner {f[i]=sv_f32(sv_gelu_tanh(f64(f[i])));}
+    sv_linear(f,n,c.inner,w.fc2,w.fc2_bias,d,att);
+    for i:0..<n*d {att[i]=sv_f32(f64(att[i])+f64(mid[i]));}
+    if !px_finite(att) {return SvResult.{status=SvStatus.number};}
+    for i:0..<n*d {out[i]=att[i];}
+    return SvResult.{written=n*d};
+}
+sv_score :: (qkv:[]f32,q:int,k:int,width:int,scale:f64)->f64 {
+    acc:=0.0;for e:0..<width {acc+=f64(qkv[q+e])*f64(qkv[k+e]);}return acc*scale;
+}
+// book:end block
+
+// book:begin merge
+// The merger: layer-normalize each patch, join each block's merge by merge
+// patches into one row (4 * 1152 = 4608 values), then fc2(gelu(fc1(row))):
+// one token of the text model's width per block.
+sv_merge_work :: (c:SvConfig,g:SvGrid)->int {k:=c.merge*c.merge*c.width;return g.patches*c.width+g.tokens*(k+c.out);}
+sv_merge :: (c:SvConfig,image:PxImage,x:[]f32,m:SvMerger,out:[]f32,work:[]f32,overlap:bool)->SvResult {
+    g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
+    n:=g.patches;t:=g.tokens;d:=c.width;k:=c.merge*c.merge*d;
+    if x.count!=n*d || m.norm.count!=d || m.norm_bias.count!=d || m.fc1.count!=k*k || m.fc1_bias.count!=k || m.fc2.count!=c.out*k || m.fc2_bias.count!=c.out {
+        return SvResult.{status=SvStatus.shape};
+    }
+    if out.count<t*c.out || work.count<sv_merge_work(c,g) {return SvResult.{status=SvStatus.capacity};}
+    if overlap {return SvResult.{status=SvStatus.alias};}
+    parts:=[7][]f32.[x,m.norm,m.norm_bias,m.fc1,m.fc1_bias,m.fc2,m.fc2_bias];
+    for p:parts {if !px_finite(p) {return SvResult.{status=SvStatus.number};}}
+    ty:=t*c.out;zk:=t*k;y:=work[0..<ty];z:=work[ty..<ty+zk];h:=work[ty+zk..<sv_merge_work(c,g)];
+    sv_norm(x,n,d,m.norm,m.norm_bias,c.epsilon,h);
+    sv_linear(h,t,k,m.fc1,m.fc1_bias,k,z);
+    for i:0..<t*k {z[i]=sv_f32(sv_gelu(f64(z[i])));}
+    sv_linear(z,t,k,m.fc2,m.fc2_bias,c.out,y);
+    if !px_finite(y) {return SvResult.{status=SvStatus.number};}
+    for i:0..<t*c.out {out[i]=y[i];}
+    return SvResult.{written=t*c.out};
+}
+// book:end merge
+
+// Tiny synthetic weights, laid out exactly as the oracle generates them.
+SvTiny :: struct {patch_w:[192]f32;patch_b:[8]f32;table:[72]f32;block:[430]f32;merger:[1237]f32;}
+sv_tiny_weights :: ()->SvTiny {
+    t:SvTiny;sv_fill(t.patch_w[..],5);sv_fill(t.patch_b[..],3);sv_fill(t.table[..],7);sv_fill(t.block[..],11);sv_fill(t.merger[..],13);return t;
+}
+sv_tiny_block :: (b:[]f32)->SvBlock {
+    return SvBlock.{norm1=b[0..<8],norm1_bias=b[8..<16],qkv=b[16..<208],qkv_bias=b[208..<232],proj=b[232..<296],proj_bias=b[296..<304],
+        norm2=b[304..<312],norm2_bias=b[312..<320],fc1=b[320..<368],fc1_bias=b[368..<374],fc2=b[374..<422],fc2_bias=b[422..<430]};
+}
+sv_tiny_merger :: (m:[]f32)->SvMerger {
+    return SvMerger.{norm=m[0..<8],norm_bias=m[8..<16],fc1=m[16..<1040],fc1_bias=m[1040..<1072],fc2=m[1072..<1232],fc2_bias=m[1232..<1237]};
+}
+
+#test "the tiny encoder agrees with the independent oracle" {
+    t:=sv_tiny();image:=PxImage.{width=8,height=4};g:=sv_admit(t,image);
+    bytes:[96]u8;sv_bytes(bytes[..]);work:[1600]f32;patches:[192]f32;
+    #assert sv_pixels(t,image,bytes[..],work[0..<192],patches[..],false).written==192;
+    for i:0..<192 {#assert abs(f64(patches[i])-SV_ORACLE_PATCHES[i])<=3e-7;}
+    w:=sv_tiny_weights();
+    oracle_embed:=SV_ORACLE_EMBED;oracle_block:=SV_ORACLE_BLOCK;oracle_merge:=SV_ORACLE_MERGE;
+    embedded:[64]f32;r:=sv_embed(t,image,patches[..],w.patch_w[..],w.patch_b[..],w.table[..],embedded[..],work[..],false);
+    #assert r.status==SvStatus.ok && r.written==64 && sv_near(embedded[..],oracle_embed[..]);
+    blocked:[64]f32;r=sv_block(t,image,embedded[..],sv_tiny_block(w.block[..]),blocked[..],work[..],false);
+    #assert r.status==SvStatus.ok && r.written==64 && sv_near(blocked[..],oracle_block[..]);
+    merged:[10]f32;r=sv_merge(t,image,blocked[..],sv_tiny_merger(w.merger[..]),merged[..],work[..],false);
+    #assert r.status==SvStatus.ok && r.written==10 && sv_near(merged[..],oracle_merge[..]);
+}
+
+#test "a second encoder, 3-pixel patches merged 3 by 3, agrees with the oracle" {
+    // One frame, one head of 8, a 2 by 2 table on a 3 by 6 grid: fractional rows and columns.
+    c:=SvConfig.{patch=3,temporal=1,merge=3,width=8,heads=1,inner=5,depth=1,positions=4,out=3,least=1,epsilon=0.000001,theta=10000.0};
+    image:=PxImage.{width=18,height=9};g:=sv_admit(c,image);#assert g.patches==18 && g.tokens==2 && g.features==27;
+    bytes:[486]u8;sv_bytes(bytes[..]);work:[3000]f32;patches:[486]f32;
+    #assert sv_pixels(c,image,bytes[..],work[0..<972],patches[..],false).written==486;
+    oracle:=SV_ORACLE_B_PATCHES;for i:0..<486 {#assert abs(f64(patches[i])-oracle[i])<=3e-7;}
+    pw:[216]f32;pb:[8]f32;table:[32]f32;bw:[413]f32;mw:[5491]f32;
+    sv_fill(pw[..],5);sv_fill(pb[..],3);sv_fill(table[..],7);sv_fill(bw[..],11);sv_fill(mw[..],13);
+    embedded:[144]f32;r:=sv_embed(c,image,patches[..],pw[..],pb[..],table[..],embedded[..],work[0..<144],false);
+    oe:=SV_ORACLE_B_EMBED;#assert r.status==SvStatus.ok && sv_near(embedded[..],oe[..]);
+    b:=SvBlock.{norm1=bw[0..<8],norm1_bias=bw[8..<16],qkv=bw[16..<208],qkv_bias=bw[208..<232],proj=bw[232..<296],proj_bias=bw[296..<304],
+        norm2=bw[304..<312],norm2_bias=bw[312..<320],fc1=bw[320..<360],fc1_bias=bw[360..<365],fc2=bw[365..<405],fc2_bias=bw[405..<413]};
+    blocked:[144]f32;r=sv_block(c,image,embedded[..],b,blocked[..],work[0..<sv_block_work(c,18)],false);
+    ob:=SV_ORACLE_B_BLOCK;#assert r.status==SvStatus.ok && sv_near(blocked[..],ob[..]);
+    m:=SvMerger.{norm=mw[0..<8],norm_bias=mw[8..<16],fc1=mw[16..<5200],fc1_bias=mw[5200..<5272],fc2=mw[5272..<5488],fc2_bias=mw[5488..<5491]};
+    merged:[6]f32;r=sv_merge(c,image,blocked[..],m,merged[..],work[0..<sv_merge_work(c,g)],false);
+    om:=SV_ORACLE_B_MERGE;#assert r.status==SvStatus.ok && sv_near(merged[..],om[..]);
+    #assert sv_merge_work(c,g)==144+2*(72+3) && sv_block_work(c,18)==18*53;
+}
+
+#test "encoder refusals come before any write" {
+    t:=sv_tiny();image:=PxImage.{width=8,height=4};g:=sv_admit(t,image);w:=sv_tiny_weights();
+    x:[192]f32;sv_fill(x[..],3);work:[1600]f32;out:[64]f32;for i:0..<64 {out[i]=-7;}
+    pw:=w.patch_w[..];pb:=w.patch_b[..];tb:=w.table[..];
+    #assert sv_embed(t,PxImage.{width=6,height=4},x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.multiple;
+    bad:=t;bad.heads=3;#assert sv_embed(bad,image,x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.config;
+    #assert sv_embed(t,image,x[0..<191],pw,pb,tb,out[..],work[..],false).status==SvStatus.shape;
+    #assert sv_embed(t,image,x[..],pw[0..<191],pb,tb,out[..],work[..],false).status==SvStatus.shape;
+    #assert sv_embed(t,image,x[..],pw,pb[0..<7],tb,out[..],work[..],false).status==SvStatus.shape;
+    #assert sv_embed(t,image,x[..],pw,pb,tb[0..<71],out[..],work[..],false).status==SvStatus.shape;
+    #assert sv_embed(t,image,x[..],pw,pb,tb,out[0..<63],work[..],false).status==SvStatus.capacity;
+    #assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[0..<63],false).status==SvStatus.capacity;
+    #assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[0..<64],true).status==SvStatus.alias;
+    nan:=x;nan[191]=0.0/0.0;#assert sv_embed(t,image,nan[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.number;
+    w.patch_w[191]=1.0/0.0;#assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.number;w.patch_w[191]=0;
+    w.patch_b[7]=1.0/0.0;#assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.number;w.patch_b[7]=0;
+    w.table[71]=1.0/0.0;#assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.number;w.table[71]=0;
+    // Only element 0 overflows: 2.5e38 + 2e38; its neighbour reads 2e38 / 3.
+    w.patch_b[0]=2.5e38;w.table[0]=2e38;#assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.number;
+    // Only the last row's last feature, and the one at grid (1, 2), overflow.
+    w=sv_tiny_weights();w.patch_b[7]=3e38;w.table[71]=3e38;#assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[..],false).status==SvStatus.number;
+    for v:out {#assert v==-7;}
+    w=sv_tiny_weights();#assert sv_embed(t,image,x[..],pw,pb,tb,out[..],work[0..<64],false).written==64 && sv_embed_work(t,g)==64;
+
+    h:=x[0..<64];b:=sv_tiny_block(w.block[..]);for i:0..<64 {out[i]=-7;}
+    #assert sv_block_work(t,8)==432;
+    #assert sv_block(t,PxImage.{width=6,height=4},h,b,out[..],work[..],false).status==SvStatus.multiple;
+    #assert sv_block(bad,image,h,b,out[..],work[..],false).status==SvStatus.config;
+    #assert sv_block(t,image,x[0..<63],b,out[..],work[..],false).status==SvStatus.shape;
+    for k:0..<12 {
+        short:=b;
+        if k==0 {short.norm1=b.norm1[0..<7];} if k==1 {short.norm1_bias=b.norm1_bias[0..<7];} if k==2 {short.qkv=b.qkv[0..<191];}
+        if k==3 {short.qkv_bias=b.qkv_bias[0..<23];} if k==4 {short.proj=b.proj[0..<63];} if k==5 {short.proj_bias=b.proj_bias[0..<7];}
+        if k==6 {short.norm2=b.norm2[0..<7];} if k==7 {short.norm2_bias=b.norm2_bias[0..<7];} if k==8 {short.fc1=b.fc1[0..<47];}
+        if k==9 {short.fc1_bias=b.fc1_bias[0..<5];} if k==10 {short.fc2=b.fc2[0..<47];} if k==11 {short.fc2_bias=b.fc2_bias[0..<7];}
+        #assert sv_block_status(t,short)==SvStatus.shape;
+        saved:=w.block;w.block[[12]int.[0,8,16,208,232,296,304,312,320,368,374,422][k]]=1.0/0.0;
+        #assert sv_block_status(t,b)==SvStatus.number;w.block=saved;
+    }
+    #assert sv_block(t,image,h,b,out[0..<63],work[..],false).status==SvStatus.capacity;
+    #assert sv_block(t,image,h,b,out[..],work[0..<431],false).status==SvStatus.capacity;
+    #assert sv_block(t,image,h,b,out[..],work[0..<432],true).status==SvStatus.alias;
+    hn:=x;hn[63]=0.0/0.0;#assert sv_block(t,image,hn[0..<64],b,out[..],work[..],false).status==SvStatus.number;
+    w.block[429]=3e38;w.block[303]=3e38;#assert sv_block(t,image,h,b,out[..],work[..],false).status==SvStatus.number;
+    for v:out {#assert v==-7;}
+    w=sv_tiny_weights();#assert sv_block(t,image,h,b,out[..],work[0..<432],false).written==64;
+
+    m:=sv_tiny_merger(w.merger[..]);y:[10]f32;for i:0..<10 {y[i]=-7;}
+    #assert sv_merge_work(t,g)==138;
+    #assert sv_merge(t,PxImage.{width=6,height=4},h,m,y[..],work[..],false).status==SvStatus.multiple;
+    #assert sv_merge(bad,image,h,m,y[..],work[..],false).status==SvStatus.config;
+    #assert sv_merge(t,image,x[0..<63],m,y[..],work[..],false).status==SvStatus.shape;
+    for k:0..<6 {
+        short:=m;
+        if k==0 {short.norm=m.norm[0..<7];} if k==1 {short.norm_bias=m.norm_bias[0..<7];} if k==2 {short.fc1=m.fc1[0..<1023];}
+        if k==3 {short.fc1_bias=m.fc1_bias[0..<31];} if k==4 {short.fc2=m.fc2[0..<159];} if k==5 {short.fc2_bias=m.fc2_bias[0..<4];}
+        #assert sv_merge(t,image,h,short,y[..],work[..],false).status==SvStatus.shape;
+        saved:=w.merger;w.merger[[6]int.[0,8,16,1040,1072,1232][k]]=1.0/0.0;
+        #assert sv_merge(t,image,h,m,y[..],work[..],false).status==SvStatus.number;w.merger=saved;
+    }
+    hn=x;hn[63]=1.0/0.0;#assert sv_merge(t,image,hn[0..<64],m,y[..],work[..],false).status==SvStatus.number;
+    #assert sv_merge(t,image,h,m,y[0..<9],work[..],false).status==SvStatus.capacity;
+    #assert sv_merge(t,image,h,m,y[..],work[0..<137],false).status==SvStatus.capacity;
+    #assert sv_merge(t,image,h,m,y[..],work[0..<138],true).status==SvStatus.alias;
+    for i:16..<1040 {w.merger[i]=0;}for i:1040..<1072 {w.merger[i]=1;}for i:1200..<1232 {w.merger[i]=3e38;}#assert sv_merge(t,image,h,m,y[..],work[..],false).status==SvStatus.number;
+    for v:y {#assert v==-7;}
+    w=sv_tiny_weights();#assert sv_merge(t,image,h,m,y[..],work[0..<138],false).written==10;
+}
+
+#test "attention subtracts the largest score before exponentiating" {
+    // Without the shift, or with a key left out of the largest score, exp
+    // overflows and the block refuses.
+    t:=sv_tiny();image:=PxImage.{width=8,height=4};w:=sv_tiny_weights();
+    // q and k are their biases, (60, 60, 0, 0) per head: patch r's own key
+    // scores (3600 + 3600) / 2 = 3600, every other key at least 827 less;
+    // head 1's keys are the negatives, so its largest score is another key's.
+    for i:0..<192 {w.block[16+i]=0;}for i:0..<16 {w.block[208+i]=ifx i%4<2 then 60.0 else 0.0;}w.block[220]=-60;w.block[221]=-60;
+    b:=sv_tiny_block(w.block[..]);
+    x:[64]f32;sv_fill(x[..],3);out:[64]f32;work:[432]f32;
+    r:=sv_block(t,image,x[..],b,out[..],work[..],false);#assert r.status==SvStatus.ok;
+}
+
+// book:begin inventory
+// The vision tensors a checkpoint must hold, in a fixed order: nine shared
+// tensors, then twelve per block. Each entry writes its name and returns its
+// shape; every one is BF16.
+SV_SHARED :: 9;
+SV_PER_BLOCK :: 12;
+sv_tensors :: (c:SvConfig)->int {return SV_SHARED+SV_PER_BLOCK*c.depth;}
+sv_s1 :: (a:int)->P5Shape {return P5Shape.{rank=1,dims=[5]int.[a,0,0,0,0]};}
+sv_s2 :: (a:int,b:int)->P5Shape {return P5Shape.{rank=2,dims=[5]int.[a,b,0,0,0]};}
+sv_need :: (c:SvConfig,i:int,name:[]u8)->SvNeed {
+    d:=c.width;k:=c.merge*c.merge*d;
+    n:=json_raw(name,0,"model.visual.");
+    if i<SV_SHARED {
+        shared:=[9]string.["patch_embed.proj.weight","patch_embed.proj.bias","pos_embed.weight","merger.norm.weight","merger.norm.bias",
+            "merger.linear_fc1.weight","merger.linear_fc1.bias","merger.linear_fc2.weight","merger.linear_fc2.bias"];
+        shapes:=[9]P5Shape.[P5Shape.{rank=5,dims=[5]int.[d,3,c.temporal,c.patch,c.patch]},sv_s1(d),sv_s2(c.positions,d),sv_s1(d),sv_s1(d),
+            sv_s2(k,k),sv_s1(k),sv_s2(c.out,k),sv_s1(c.out)];
+        return SvNeed.{count=json_raw(name,n,shared[i]),shape=shapes[i]};
+    }
+    b:=(i-SV_SHARED)/SV_PER_BLOCK;j:=(i-SV_SHARED)%SV_PER_BLOCK;
+    suffixes:=[12]string.["norm1.weight","norm1.bias","attn.qkv.weight","attn.qkv.bias","attn.proj.weight","attn.proj.bias",
+        "norm2.weight","norm2.bias","mlp.linear_fc1.weight","mlp.linear_fc1.bias","mlp.linear_fc2.weight","mlp.linear_fc2.bias"];
+    shapes:=[12]P5Shape.[sv_s1(d),sv_s1(d),sv_s2(3*d,d),sv_s1(3*d),sv_s2(d,d),sv_s1(d),sv_s1(d),sv_s1(d),sv_s2(c.inner,d),sv_s1(c.inner),sv_s2(d,c.inner),sv_s1(d)];
+    n=json_raw(name,n,"blocks.");n=json_write_int(name,n,b);n=json_raw(name,n,".");
+    return SvNeed.{count=json_raw(name,n,suffixes[j]),shape=shapes[j]};
+}
+sv_visual :: (name:string)->bool {
+    prefix:="model.visual.";if name.count<prefix.count {return false;}
+    for i:0..<prefix.count {if name[i]!=prefix[i] {return false;}}
+    return true;
+}
+// Every needed tensor present once, BF16, with the config's shape, and no
+// other tensor under model.visual. Returns the parameter count.
+sv_inventory :: (c:SvConfig,inventory:[]P5Tensor)->SvResult {
+    if sv_config_status(c)!=SvStatus.ok {return SvResult.{status=SvStatus.config};}
+    total:=0;
+    for i:0..<sv_tensors(c) {
+        name:[128]u8;need:=sv_need(c,i,name[..]);key:=cast(string)name[0..<need.count];found:=-1;
+        for t:0..<inventory.count {if inventory[t].name==key {if found>=0 {return SvResult.{status=SvStatus.extra,cause=i};}found=t;}}
+        if found<0 {return SvResult.{status=SvStatus.missing,cause=i};}
+        if inventory[found].dtype!=PwDtype.bf16 {return SvResult.{status=SvStatus.dtype,cause=i};}
+        if !pa_shape_equal(inventory[found].shape,need.shape) {return SvResult.{status=SvStatus.shape,cause=i};}
+        total+=inventory[found].elements;
+    }
+    visual:=0;for t:inventory {if sv_visual(t.name) {visual+=1;}}
+    if visual!=sv_tensors(c) {return SvResult.{status=SvStatus.extra,cause=visual};}
+    return SvResult.{written=total,cause=visual};
+}
+// book:end inventory
+
+#test "names and shapes of the vision tensors" {
+    e:=sv_elephant();name:[128]u8;
+    #assert sv_tensors(e)==333 && sv_tensors(sv_tiny())==21;
+    n:=sv_need(e,0,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.patch_embed.proj.weight" && n.shape.rank==5;
+    #assert n.shape.dims[0]==1152 && n.shape.dims[1]==3 && n.shape.dims[2]==2 && n.shape.dims[3]==16 && n.shape.dims[4]==16;
+    n=sv_need(e,2,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.pos_embed.weight" && pa_shape_equal(n.shape,sv_s2(2304,1152));
+    n=sv_need(e,5,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.merger.linear_fc1.weight" && pa_shape_equal(n.shape,sv_s2(4608,4608));
+    n=sv_need(e,8,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.merger.linear_fc2.bias" && pa_shape_equal(n.shape,sv_s1(4096));
+    three:=sv_tiny();three.merge=3;n=sv_need(three,5,name[..]);#assert pa_shape_equal(n.shape,sv_s2(72,72));
+    n=sv_need(sv_mammoth(),7,name[..]);#assert pa_shape_equal(n.shape,sv_s2(5120,4608));
+    n=sv_need(e,11,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.blocks.0.attn.qkv.weight" && pa_shape_equal(n.shape,sv_s2(3456,1152));
+    n=sv_need(e,332,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.blocks.26.mlp.linear_fc2.bias" && pa_shape_equal(n.shape,sv_s1(1152));
+    n=sv_need(e,329,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.blocks.26.mlp.linear_fc1.weight" && pa_shape_equal(n.shape,sv_s2(4304,1152));
+    n=sv_need(e,21,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.blocks.1.norm1.weight";
+    n=sv_need(e,22,name[..]);#assert cast(string)name[0..<n.count]=="model.visual.blocks.1.norm1.bias";
+    #assert sv_visual("model.visual.") && !sv_visual("Model.visual.x") && sv_visual("model.visual.x") && !sv_visual("model.visual") && !sv_visual("model.visuaL.x") && !sv_visual("lm_head.weight");
+}
+
+#test "inventory: complete, then each defect alone" {
+    t:=sv_tiny();names:[2688]u8;inv:[22]P5Tensor;
+    for i:0..<21 {
+        need:=sv_need(t,i,names[i*128..<(i+1)*128]);z:=p5_shape_size(need.shape,PwDtype.bf16);
+        inv[i]=P5Tensor.{name=cast(string)names[i*128..<i*128+need.count],shape=need.shape,dtype=PwDtype.bf16,elements=z.elements};
+    }
+    inv[21]=P5Tensor.{name="model.language_model.norm.weight",shape=sv_s1(8),elements=8};
+    r:=sv_inventory(t,inv[..]);
+    // 192 + 8 + 72 + 8 + 8 + 1024 + 32 + 160 + 5, then 430 for the block.
+    #assert r.status==SvStatus.ok && r.written==1939 && r.cause==21;
+    bad:=t;bad.depth=0;#assert sv_inventory(bad,inv[..]).status==SvStatus.config;
+    r=sv_inventory(t,inv[0..<20]);#assert r.status==SvStatus.missing && r.cause==20;
+    saved:=inv[3];inv[3].dtype=PwDtype.f32;r=sv_inventory(t,inv[..]);#assert r.status==SvStatus.dtype && r.cause==3;
+    inv[3]=saved;inv[3].shape=sv_s1(9);r=sv_inventory(t,inv[..]);#assert r.status==SvStatus.shape && r.cause==3;
+    inv[3]=saved;inv[21]=inv[4];r=sv_inventory(t,inv[..]);#assert r.status==SvStatus.extra && r.cause==4;
+    inv[21]=inv[0];r=sv_inventory(t,inv[..]);#assert r.status==SvStatus.extra && r.cause==0;
+    inv[21]=P5Tensor.{name="model.visual.deepstack.0",shape=sv_s1(8),elements=8};r=sv_inventory(t,inv[..]);
+    #assert r.status==SvStatus.extra && r.cause==22;
+}
+
+// book:begin layout
+// The rendered request with an image: the text before it (ending with the
+// role header), the vision-start token, one image token per merged block,
+// the vision-end token, then the text after. Positions are three rows,
+// (time, height, width). Text tokens carry their index on all three; image
+// tokens carry the image's start s on the time row and s plus their block's
+// row and column; text after the image continues from the largest
+// position used plus one.
+sv_layout_length :: (g:SvGrid,before:int,after:int)->int {return before+after+g.tokens+2;}
+sv_layout :: (c:SvConfig,image:PxImage,before:[]int,after:[]int,ids:[]int,pos:[]int)->SvResult {
+    g:=sv_admit(c,image);if g.status!=SvStatus.ok {return SvResult.{status=g.status};}
+    for t:before {if !sv_text_token(t) {return SvResult.{status=SvStatus.layout,cause=t};}}
+    for t:after {if !sv_text_token(t) {return SvResult.{status=SvStatus.layout,cause=t};}}
+    total:=sv_layout_length(g,before.count,after.count);
+    if ids.count<total || pos.count<3*total {return SvResult.{status=SvStatus.capacity};}
+    at:=0;
+    for t:before {sv_put(ids,pos,total,at,t,at,at,at);at+=1;}
+    sv_put(ids,pos,total,at,SV_VISION_START,at,at,at);at+=1;
+    start:=at;across:=g.grid_w/c.merge;
+    for k:0..<g.tokens {sv_put(ids,pos,total,at,SV_IMAGE,start,start+k/across,start+k%across);at+=1;}
+    down:=g.grid_h/c.merge;next:=start+(down+across+cast(int)abs(f64(down-across)))/2;
+    sv_put(ids,pos,total,at,SV_VISION_END,next,next,next);at+=1;
+    for t:after {next+=1;sv_put(ids,pos,total,at,t,next,next,next);at+=1;}
+    return SvResult.{written=total};
+}
+// Vision start and end, the vision pad, image and video tokens are reserved:
+// a client's text cannot place them.
+sv_text_token :: (t:int)->bool {return t>=0 && t<SV_VOCAB && (t<SV_VISION_START || t>SV_VIDEO);}
+sv_put :: (ids:[]int,pos:[]int,total:int,at:int,id:int,t:int,h:int,w:int) {ids[at]=id;pos[at]=t;pos[total+at]=h;pos[2*total+at]=w;}
+// The text model's rotary frequency j (of 32: rotary width 64 of head width
+// 256) reads one of the three rows. Interleaved sections (11, 11, 10): j mod
+// 3 = 1 reads height for the first 11 such j, j mod 3 = 2 reads width for
+// the first 10,
+// every other j reads time.
+sv_mrope_axis :: (sections:[3]int,j:int)->int {
+    if j%3==1 && j/3<sections[1] {return 1;}
+    if j%3==2 && j/3<sections[2] {return 2;}
+    return 0;
+}
+// book:end layout
+
+#test "layout and positions by hand" {
+    e:=sv_elephant();image:=PxImage.{width=320,height=256};before:=[3]int.[10,11,12];after:=[2]int.[20,21];
+    ids:[87]int;pos:[261]int;ids[86]=-7;
+    r:=sv_layout(e,image,before[..],after[..],ids[0..<87],pos[..]);
+    #assert r.status==SvStatus.ok && r.written==87 && sv_layout_length(sv_admit(e,image),3,2)==87;
+    #assert ids[0]==10 && ids[2]==12 && ids[3]==SV_VISION_START && ids[4]==SV_IMAGE && ids[83]==SV_IMAGE && ids[84]==SV_VISION_END && ids[85]==20 && ids[86]==21;
+    // Text 0..3, then the 8 by 10 grid from start 4, then 4 + 10 = 14 onward.
+    for i:0..<4 {#assert pos[i]==i && pos[87+i]==i && pos[174+i]==i;}
+    #assert pos[4]==4 && pos[87+4]==4 && pos[174+4]==4;
+    #assert pos[4+13]==4 && pos[87+4+13]==5 && pos[174+4+13]==7;
+    #assert pos[83]==4 && pos[87+83]==11 && pos[174+83]==13;
+    #assert pos[84]==14 && pos[87+84]==14 && pos[174+84]==14 && pos[86]==16 && pos[87+86]==16 && pos[174+86]==16;
+    tall:=PxImage.{width=256,height=320};r=sv_layout(e,tall,before[..],after[..],ids[..],pos[..]);
+    #assert r.written==87 && pos[84]==14 && pos[87+83]==13 && pos[174+83]==11;
+    #assert sv_layout(e,PxImage.{width=250,height=256},before[..],after[..],ids[..],pos[..]).status==SvStatus.multiple;
+    #assert sv_layout(e,image,before[..],after[..],ids[0..<86],pos[..]).status==SvStatus.capacity;
+    #assert sv_layout(e,image,before[..],after[..],ids[..],pos[0..<260]).status==SvStatus.capacity;
+    injected:=[2]int.[20,SV_IMAGE];r=sv_layout(e,image,before[..],injected[..],ids[..],pos[..]);#assert r.status==SvStatus.layout && r.cause==SV_IMAGE;
+    injected[1]=SV_VISION_START;#assert sv_layout(e,image,injected[..],after[..],ids[..],pos[..]).status==SvStatus.layout;
+    #assert sv_text_token(0) && sv_text_token(SV_VISION_START-1) && sv_text_token(SV_VIDEO+1) && sv_text_token(SV_VOCAB-1);
+    #assert !sv_text_token(-1) && !sv_text_token(SV_VOCAB) && !sv_text_token(SV_VISION_END) && !sv_text_token(SV_VIDEO);
+    sections:=[3]int.[11,11,10];h:=0;w:=0;
+    for j:0..<32 {a:=sv_mrope_axis(sections,j);if a==1 {h+=1;} if a==2 {w+=1;} #assert a==j%3;}
+    #assert h==11 && w==10 && sv_mrope_axis(sections,32)==0 && sv_mrope_axis(sections,33)==0 && sv_mrope_axis(sections,34)==0;
+    #assert sv_mrope_axis([3]int.[11,10,10],31)==0 && sv_mrope_axis([3]int.[11,11,11],32)==2;
+}

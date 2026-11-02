@@ -1,0 +1,24 @@
+// Chapter 143: what the image path refuses, each with its typed reason.
+#import "Basic";
+#load "../lib/see.coax";
+
+// book:begin refuse
+main :: () {
+    e:=sv_elephant();
+    images:=[6]PxImage.[PxImage.{width=250,height=256},PxImage.{width=128,height=128},PxImage.{width=544,height=256},
+        PxImage.{width=256,height=256,channels=4},PxImage.{width=256,height=256,depth=16},PxImage.{width=0,height=256}];
+    labels:=[6]string.["250x256, not a multiple of 32","128x128, below 65536 pixels","544x256, over 512 pixels a side",
+        "256x256 with 4 channels","256x256 with 16-bit channels","0x256"];
+    for i:0..<6 {print("%: %\n",labels[i],sv_admit(e,images[i]).status);}
+    // A client's text that already holds an image token is refused.
+    image:=PxImage.{width=256,height=256};before:=[2]int.[10,SV_IMAGE];after:=[1]int.[20];ids:[70]int;pos:[210]int;
+    r:=sv_layout(e,image,before[..],after[..],ids[..],pos[..]);
+    print("text holding token %: %\n",r.cause,r.status);
+    // Weights one value short, and too little output room.
+    t:=sv_tiny();small:=PxImage.{width=8,height=4};w:=sv_tiny_weights();x:[192]f32;sv_fill(x[..],3);work:[64]f32;out:[64]f32;
+    r=sv_embed(t,small,x[..],w.patch_w[0..<191],w.patch_b[..],w.table[..],out[..],work[..],false);
+    print("patch weights one short: %\n",r.status);
+    r=sv_embed(t,small,x[..],w.patch_w[..],w.patch_b[..],w.table[..],out[0..<63],work[..],false);
+    print("output one value short: %\n",r.status);
+}
+// book:end refuse

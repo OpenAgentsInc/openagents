@@ -1,0 +1,9 @@
+250x256, not a multiple of 32: multiple
+128x128, below 65536 pixels: small
+544x256, over 512 pixels a side: large
+256x256 with 4 channels: channels
+256x256 with 16-bit channels: depth
+0x256: shape
+text holding token 248056: layout
+patch weights one short: shape
+output one value short: capacity

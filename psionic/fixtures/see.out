@@ -1,0 +1,21 @@
+vision tensors: Elephant 333, Mammoth 333; merger output width 4096 and 5120
+320x256 image: 320 patches in a 16 by 20 grid, 1536 values each, 80 image tokens
+bytes 0, 51, 255 become -1.0 -0.6 1.0
+patch 0 is grid cell (0, 0)
+patch 1 is grid cell (0, 1)
+patch 2 is grid cell (1, 0)
+patch 3 is grid cell (1, 1)
+patch 4 is grid cell (0, 2)
+patch 5 is grid cell (0, 3)
+request: 87 tokens
+  token 0 id 10: time 0 height 0 width 0
+  token 3 id 248053: time 3 height 3 width 3
+  token 4 id 248056: time 4 height 4 width 4
+  token 5 id 248056: time 4 height 4 width 5
+  token 14 id 248056: time 4 height 5 width 4
+  token 83 id 248056: time 4 height 11 width 13
+  token 84 id 248054: time 14 height 14 width 14
+  token 86 id 21: time 16 height 16 width 16
+M-RoPE rows of the 32 text frequencies: 0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0 1 2 0 1
+tiny encoder: ok, 10 values, within the oracle's tolerance: true
+  token 0: -2.559846 0.58792496 -1.0654418 0.2055582 1.7459991

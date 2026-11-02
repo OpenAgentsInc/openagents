@@ -1,0 +1,19 @@
+elephant: 760 tensors in the file, 333 under model.visual, inventory status 0 (entry 333), 456010480 vision parameters
+elephant: decoded 59783376 weights in 0.12 s; slice in 0.16 s
+oracle inventory: 333 model.visual tensors, 333 expected, 0 wrong, 0 extra, 456010480 parameters
+  patches: 12288 values, largest |coax - oracle| / (1 + |oracle|) = 5.91e-08
+  embedding: 9216 values, largest |coax - oracle| / (1 + |oracle|) = 6.04e-08
+  block 0: 9216 values, largest |coax - oracle| / (1 + |oracle|) = 3.14e-07
+  merger: 8192 values, largest |coax - oracle| / (1 + |oracle|) = 3.13e-07
+  320x256 patches: 491520 values, largest |coax - oracle| / (1 + |oracle|) = 5.91e-08
+within the frozen tolerance 0.0001
+mammoth: 400 tensors in the file, 333 under model.visual, inventory status 0 (entry 333), 460730096 vision parameters
+mammoth: decoded 64502992 weights in 0.14 s; slice in 0.17 s
+oracle inventory: 333 model.visual tensors, 333 expected, 0 wrong, 0 extra, 460730096 parameters
+  patches: 12288 values, largest |coax - oracle| / (1 + |oracle|) = 5.91e-08
+  embedding: 9216 values, largest |coax - oracle| / (1 + |oracle|) = 5.85e-08
+  block 0: 9216 values, largest |coax - oracle| / (1 + |oracle|) = 2.69e-07
+  merger: 10240 values, largest |coax - oracle| / (1 + |oracle|) = 5.61e-07
+  320x256 patches: 491520 values, largest |coax - oracle| / (1 + |oracle|) = 5.91e-08
+within the frozen tolerance 0.0001
+vision slices: 24 s

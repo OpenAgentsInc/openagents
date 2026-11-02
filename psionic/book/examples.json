@@ -1122,6 +1122,26 @@
       ]
     },
     {
+      "source": "psionic/examples/see.coax",
+      "chapter": "psionic/book/ch143-elephant-and-mammoth-see.md",
+      "stdout": "psionic/fixtures/see.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/see-refuse.coax",
+      "chapter": "psionic/book/ch143-elephant-and-mammoth-see.md",
+      "stdout": "psionic/fixtures/see-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/resume.coax",
       "chapter": "psionic/book/ch122-a-checkpoint-holds-the-whole-experiment.md",
       "stdout": "psionic/fixtures/resume.out",

@@ -1,0 +1,58 @@
+// Original-weight slices of the vision tower (chapter 143). C maps the file
+// and moves bytes; the inventory check, BF16 decoding and every value of the
+// encoder are Coax. Model 0 is Elephant, 1 is Mammoth.
+#load "../lib/see.coax";
+
+ss_config :: (model:int)->SvConfig {if model==1 {return sv_mammoth();}return sv_elephant();}
+// The slice runs the encoder on a 32 by 64 image, a 2 by 4 patch grid: the
+// processor's smallest area is lifted for the slice only.
+ss_slice_config :: (model:int)->SvConfig {c:=ss_config(model);c.least=1;return c;}
+ss_part :: (w:[]f32,at:[]int,i:int)->[]f32 {return w[at[i]..<at[i+1]];}
+ss_small :: ()->PxImage {return PxImage.{width=64,height=32};}
+ss_full :: ()->PxImage {return PxImage.{width=320,height=256};}
+
+ss_inventory :: (model:int,inventory:[]P5Tensor)->SvResult #export_c {return sv_inventory(ss_config(model),inventory);}
+// The tensors the slice reads: the nine shared ones, then block 0's twelve.
+ss_count :: ()->int #export_c {return SV_SHARED+SV_PER_BLOCK;}
+ss_elements :: (model:int,i:int)->int #export_c {
+    name:[128]u8;need:=sv_need(ss_config(model),i,name[..]);return p5_shape_size(need.shape,PwDtype.bf16).elements;
+}
+ss_decode :: (model:int,i:int,inventory:[]P5Tensor,files:[]PaFile,out:[]f32)->SvResult #export_c {
+    name:[128]u8;need:=sv_need(ss_config(model),i,name[..]);
+    v:=pa_view(cast(string)name[0..<need.count],need.shape,PwDtype.bf16,inventory,files);
+    if v.status!=PwStatus.ok {return SvResult.{status=SvStatus.missing,cause=cast(int)v.status};}
+    if out.count!=v.elements {return SvResult.{status=SvStatus.capacity};}
+    for k:0..<v.elements {
+        bits:=qm_bits(QmDtype.bf16,v.data,k);
+        if !psionic_tensor_finite_bits(bits) {return SvResult.{status=SvStatus.number,cause=k};}
+        out[k]=f32_from_bits(bits);
+    }
+    return SvResult.{written=v.elements};
+}
+ss_output :: (model:int)->int #export_c {
+    c:=ss_slice_config(model);g:=sv_admit(c,ss_small());full:=sv_admit(c,ss_full());
+    return g.patches*g.features+2*g.patches*c.width+g.tokens*c.out+full.patches*full.features;
+}
+ss_work :: (model:int)->int #export_c {
+    c:=ss_slice_config(model);g:=sv_admit(c,ss_small());
+    return 6*320*256+sv_block_work(c,g.patches)+sv_merge_work(c,g);
+}
+// weights: the decoded tensors in ss_decode's order, end to end. out:
+// slice patches, embedding, block 0, merger, then the full image's patches.
+ss_slice :: (model:int,weights:[]f32,out:[]f32,work:[]f32)->SvResult #export_c {
+    c:=ss_slice_config(model);g:=sv_admit(c,ss_small());
+    at:[22]int;for i:0..<ss_count() {at[i+1]=at[i]+ss_elements(model,i);}
+    if weights.count!=at[ss_count()] || out.count!=ss_output(model) || work.count<ss_work(model) {return SvResult.{status=SvStatus.capacity};}
+    bytes:[6144]u8;sv_bytes(bytes[..]);
+    n:=g.patches*g.features;e:=n+g.patches*c.width;b:=e+g.patches*c.width;m:=b+g.tokens*c.out;
+    r:=sv_pixels(c,ss_small(),bytes[..],work,out[0..<n],false);if r.status!=SvStatus.ok {return r;}
+    r=sv_embed(c,ss_small(),out[0..<n],ss_part(weights,at[..],0),ss_part(weights,at[..],1),ss_part(weights,at[..],2),out[n..<e],work,false);if r.status!=SvStatus.ok {return r;}
+    w:=SvBlock.{norm1=ss_part(weights,at[..],9),norm1_bias=ss_part(weights,at[..],10),qkv=ss_part(weights,at[..],11),qkv_bias=ss_part(weights,at[..],12),proj=ss_part(weights,at[..],13),proj_bias=ss_part(weights,at[..],14),
+        norm2=ss_part(weights,at[..],15),norm2_bias=ss_part(weights,at[..],16),fc1=ss_part(weights,at[..],17),fc1_bias=ss_part(weights,at[..],18),fc2=ss_part(weights,at[..],19),fc2_bias=ss_part(weights,at[..],20)};
+    r=sv_block(c,ss_small(),out[n..<e],w,out[e..<b],work,false);if r.status!=SvStatus.ok {return r;}
+    merger:=SvMerger.{norm=ss_part(weights,at[..],3),norm_bias=ss_part(weights,at[..],4),fc1=ss_part(weights,at[..],5),fc1_bias=ss_part(weights,at[..],6),fc2=ss_part(weights,at[..],7),fc2_bias=ss_part(weights,at[..],8)};
+    r=sv_merge(c,ss_small(),out[e..<b],merger,out[b..<m],work,false);if r.status!=SvStatus.ok {return r;}
+    big:[245760]u8;sv_bytes(big[..]);
+    r=sv_pixels(c,ss_full(),big[..],work,out[m..<out.count],false);if r.status!=SvStatus.ok {return r;}
+    return SvResult.{written=out.count};
+}
