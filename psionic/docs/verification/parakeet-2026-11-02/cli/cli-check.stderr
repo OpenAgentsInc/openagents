@@ -1,0 +1,5 @@
+/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet-cli-check.coax:25:14: error[E0317]: argument 1 of 'proc_run' is [] string, given [12] string
+   r:=proc_run([12]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,"--text","--device","cuda"],10000,out[..],err[..]);if r.status!=2 {return 6;}checks+=1;
+               ^
+  fix: pass a view of it: name[..]
+1 error

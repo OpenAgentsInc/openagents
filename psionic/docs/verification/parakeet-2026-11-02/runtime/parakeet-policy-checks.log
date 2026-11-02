@@ -1,0 +1,11 @@
+ok   #forall Parakeet model policy byte ranges admit exact endpoints without arithmetic overflow (8 cases, 544 steps, 0 ms)
+ok   #test Parakeet model policy tensor identity shape dtype and offsets are admitted together (1 case, 46874 steps, 0 ms)
+ok   #test Parakeet model policy rejects wrong file and malformed headers before publishing offsets (1 case, 61099 steps, 0 ms)
+ok   #forall Parakeet model policy public text capacity includes the terminating byte (30 cases, 544 steps, 0 ms)
+ok   #test Parakeet model policy pinned file size is exact (1 case, 73 steps, 0 ms)
+ok   #test Parakeet model policy tokenizer input size is bounded (1 case, 101 steps, 0 ms)
+ok   #test Parakeet model policy rejects every unsafe configuration before deriving sizes (1 case, 5009 steps, 0 ms)
+ok   #test Parakeet model policy admits an entire positive metadata graph and rejects each independent fault atomically (1 case, 21383314 steps, 292 ms)
+ok   #test Parakeet model policy metadata refuses malformed JSON empty graph bad configuration and payload bounds (1 case, 1520 steps, 0 ms)
+9 of 250 checks (--only 'Parakeet model policy'), 9 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

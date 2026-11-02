@@ -1,0 +1,103 @@
+{
+  "schema": "psionic.parakeet.public-snapshot.v1",
+  "argv": [
+    "/tmp/parakeet-snapshot-late/check",
+    "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0000.pcm",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0006.pcm"
+  ],
+  "returncode": 0,
+  "timeout": false,
+  "seconds": 16.88833329093177,
+  "inputs_before": {
+    "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet-runtime-snapshot.c": "b705eaa5ebe251cc8f9b25338f91920f27f7b592d3ad4035a5a673a87f367e76",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/psionic-parakeet.h": "517914be2df16f6b340284c058ebe098937f4937454dd48bf32ed829dde640e7",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-face.c": "5138ddf9a4569ef4c815a9085b602e2b938836c4129085ce96a2d8606ef41197",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-metal.c": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/runtime.coax": "bc64963506a2a6caada5485eec1d9015f0330689d40d2b11529465afa2cd2441",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/front.coax": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/text.coax": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+    "/tmp/parakeet-qualified/libpsionic-parakeet.a": "22e1023e7039e24039035b9eff533b97198501e5d32b3c10326ee0b6150e0b39",
+    "/tmp/parakeet-snapshot-late/check": "b80bb2eeeb4d7da1c66fdb0f61bc23aee6b2c3006233d3d3ae7cfadd04c4e94b",
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0000.pcm": "9afaada0c1b445dae8a3baae5bbaffdcedbd2c09eb66b86720b8045c854feefc",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0006.pcm": "b42c73c3425642f28f09d347a8bba3456efcb228bb374670cdd9411ce1c26e3f"
+  },
+  "inputs_after": {
+    "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet-runtime-snapshot.c": "b705eaa5ebe251cc8f9b25338f91920f27f7b592d3ad4035a5a673a87f367e76",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/psionic-parakeet.h": "517914be2df16f6b340284c058ebe098937f4937454dd48bf32ed829dde640e7",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-face.c": "5138ddf9a4569ef4c815a9085b602e2b938836c4129085ce96a2d8606ef41197",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-metal.c": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/runtime.coax": "bc64963506a2a6caada5485eec1d9015f0330689d40d2b11529465afa2cd2441",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/front.coax": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/text.coax": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+    "/tmp/parakeet-qualified/libpsionic-parakeet.a": "22e1023e7039e24039035b9eff533b97198501e5d32b3c10326ee0b6150e0b39",
+    "/tmp/parakeet-snapshot-late/check": "b80bb2eeeb4d7da1c66fdb0f61bc23aee6b2c3006233d3d3ae7cfadd04c4e94b",
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0000.pcm": "9afaada0c1b445dae8a3baae5bbaffdcedbd2c09eb66b86720b8045c854feefc",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0006.pcm": "b42c73c3425642f28f09d347a8bba3456efcb228bb374670cdd9411ce1c26e3f"
+  },
+  "inputs_unchanged": true,
+  "stdout_sha256": "2303142c5747f81e60f79269386b5ec26dcddec406a12bdc25b1641a5d14be34",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "passed": true,
+  "scope": "Single new adversarial A-success/B-full-inference text-capacity-failure/B-success sequence plus failed stage/JSON copies, only public APIs; no corpus replay.",
+  "oracle_fixture_correction": "Initial assertion misspelled the public phase tag as transcribe rather than transcription; original failed receipt/source retained. No product change or weakened failure-status expectation.",
+  "observed_utc": "2026-11-02T20:39:15.541545+00:00",
+  "compile_argv": [
+    "cc",
+    "-std=c11",
+    "-O2",
+    "-g",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Ipsionic/platform",
+    "psionic/tests/parakeet-runtime-snapshot.c",
+    "/tmp/parakeet-qualified/libpsionic-parakeet.a",
+    "-framework",
+    "Metal",
+    "-framework",
+    "Foundation",
+    "-lpthread",
+    "-lm",
+    "-o",
+    "/tmp/parakeet-snapshot-late/check"
+  ],
+  "qualification": "New public API temporal/atomicity case only; three necessary actual-GPU transcriptions in a single resident model lifetime. Existing 29-clip corpus was not replayed.",
+  "asserted_fields": [
+    "caller text unchanged on late text capacity refusal",
+    "every public info field including successful inference time unchanged",
+    "token IDs and encoded-frame indices unchanged",
+    "JSON exact bytes unchanged",
+    "feature and encoder snapshot counts/bytes unchanged",
+    "too-small stage and JSON copy outputs untouched",
+    "successful different-length B replaces A snapshot"
+  ],
+  "padding_contract": "Info compares named field values, never unspecified C padding. Feature and encoded arrays compare bytes because the API promises copying the same retained f32 snapshot.",
+  "actual_case": {
+    "A": {
+      "samples": 56080,
+      "tokens": 15,
+      "feature_values": 44800,
+      "encoded_values": 45056
+    },
+    "B": {
+      "samples": 93600,
+      "tokens": 32,
+      "feature_values": 74880,
+      "encoded_values": 75776
+    }
+  },
+  "library_scope": "The qualified latest v1 corpus producer; the older /tmp/parakeet-final archive was not relabelled.",
+  "binaries_committed": false,
+  "artifacts": {
+    "README.md": "08a0e7da20e5e2d31da81cece09f9d4567094575278b46bfd11c0712c832327e",
+    "first-fixture/parakeet-runtime-snapshot.c": "067757b440f753d9f47aef42e94459ea610cfbad485b1011fce77c0304a5ed8b",
+    "first-fixture/record.json": "37249cf101f5a234b66df9e82f3c3615165fd7e61893812c23c04ed0f4d60065",
+    "first-fixture/stderr": "c13c3bb19b59fa44f84cec84948b8f87e2e606873cc3da19985e977844f2ad0a",
+    "first-fixture/stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "2303142c5747f81e60f79269386b5ec26dcddec406a12bdc25b1641a5d14be34"
+  }
+}

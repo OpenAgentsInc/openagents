@@ -1,0 +1,108 @@
+{
+  "schema": "psionic.parakeet.chapter-153.v1",
+  "date": "2026-11-02",
+  "base_commit": "3a676bebc6",
+  "status": "passed-bounded-resident-metal-profile",
+  "model": {
+    "id": "nvidia/parakeet-tdt-0.6b-v3",
+    "revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+    "weights_sha256": "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11",
+    "tokenizer_sha256": "bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91"
+  },
+  "components": {
+    "resident_api": "runtime/record.json",
+    "metal_encoder": "metal/record.json",
+    "independent_reference": "reference/manifest.json",
+    "frontend_and_text": "frontend/",
+    "cli": "cli/",
+    "late_capacity_snapshot": "snapshot/record.json"
+  },
+  "mutation": {
+    "scope": "Only new changed root code; unchanged legacy 318/822 and whole-project mutation gates were not repeated. No equivalent exclusions.",
+    "front_plan": [
+      21,
+      21,
+      0
+    ],
+    "frontend": [
+      63,
+      63,
+      0
+    ],
+    "text": [
+      43,
+      43,
+      0
+    ],
+    "model_policy": [
+      147,
+      147,
+      0
+    ],
+    "gpu_plan": [
+      70,
+      70,
+      0
+    ],
+    "cli_policy": [
+      17,
+      17,
+      0
+    ]
+  },
+  "reference": {
+    "implementation": "NVIDIA NeMo",
+    "commit": "5f15875acd0885ed92eadfee874ae87b0529ffa2",
+    "full_pipeline_recordings": 29,
+    "language_smoke_slices": 25,
+    "token_frame_text": "exact",
+    "feature_encoder_tolerance": {
+      "absolute": 0.001,
+      "relative": 0.001
+    },
+    "cpu_decoder_only_recordings": 29,
+    "forced_logit_tdt_cases": 13
+  },
+  "metrics": "reference/product-quality-latency.json",
+  "limits": [
+    "Metal encoder qualification on named M5 Max; no new complete CPU encoder qualification.",
+    "320..327520 mono 16 kHz samples; not arbitrary duration or 60-second dictation.",
+    "No microphone, Coder UI, vocabulary rescoring or true streaming integration.",
+    "One ordered latency pass; filesystem cache uncontrolled; no key-release or latency-distribution guarantee.",
+    "Native ASan/UBSan passes; macOS unsupported LeakSanitizer launch retained, no leak-sanitizer claim."
+  ],
+  "source_pins": {
+    "psionic/lib/parakeet/front-plan.coax": "3ec78ba276b929f5434aea1acd92e144d3104e162dd623cf3988f5793733fb0d",
+    "psionic/lib/parakeet/front.coax": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+    "psionic/lib/parakeet/text.coax": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+    "apps/openagents-cli/parakeet-rules.coax": "46e6363c3fa547f11e8eb9f5f8782623ecdd342bc29e9b62a0c44bcc8fcd1d6a",
+    "apps/openagents-cli/parakeet.coax": "b44ae19492f07513ae009ca294ec9cc625da83222c64f245dd2589cdd6628a18",
+    "apps/openagents-cli/transcribe.coax": "9794687e40cdde30b9ed445c2c04533bc6093e346b9b3048a72810ca538ff3cd",
+    "apps/openagents-cli/out.coax": "1a8da12592ea6f31161b12ab6f59d953784f1564df953a27caa7e48bd3702a94",
+    "psionic/tests/parakeet-cli-check.coax": "913d4b2c15c63b1e44e9ea3a11deba05e1cdfd08ff983d238f6b0ddc8e19211f",
+    "psionic/tests/parakeet-cli-fixture.coax": "ff20fd70b55d8584f09c21439b6cdbe2595d255327798281c55964258518740d"
+  },
+  "root_compilers": {
+    "coax/bin/coax": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b"
+  },
+  "source_identity_note": "Source pins identify final bodies. Actual native/reference producer snapshots and compiler hashes are in each component record. The public CLI real inference preceded the later dependency-freshness inventory expansion; dispatch/inference bodies are unchanged.",
+  "publication": {
+    "rebase_audit": "publication/rebase-source-audit.json",
+    "book": "publication/book-rebased-v2.stdout",
+    "tools_policy": {
+      "result": "unrelated-current-main-failures",
+      "record": "publication/tools-rebased.stdout",
+      "files": [
+        "coax/tests/bitcoin/chacha20_poly1305.py",
+        "coax/tests/bitcoin/chacha20_poly1305_wasm.cjs",
+        "coax/web/api/computer-flow.ts"
+      ],
+      "own_new_tools": "All named new Parakeet non-Coax tools have declared independent oracle/reference or thin-wrapper reasons. No port-list exemption added."
+    },
+    "merged_cli": "cli/cli-check-rebased.stdout",
+    "merged_cli_compiler": {
+      "path": "/Users/christopherdavid/work/openagents/coax/bin/coax",
+      "sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8"
+    }
+  }
+}

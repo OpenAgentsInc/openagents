@@ -1,0 +1,6 @@
+psionic/lib/parakeet/plan.coax:38:19: error[E0412]: non-finite compile-time bit conversion
+   if mode==1 {x[0]=f32_from_bits(0x7fc00000);}if mode==2 {x[0]=10000.001;}if mode==3 {x[15]= -10000.001;}
+                    ^
+  note: in #forall Parakeet GPU finite input and output bounds preserve the declared numeric profile
+  counterexample: mode = 1
+coax: the checks fail before any mutation; make them pass first

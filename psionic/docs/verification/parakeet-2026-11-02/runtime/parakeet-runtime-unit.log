@@ -1,0 +1,7 @@
+ok   #forall Parakeet runtime byte ranges admit exact endpoints without arithmetic overflow (8 cases, 544 steps, 0 ms)
+ok   #test Parakeet runtime tensor identity shape dtype and offsets are admitted together (1 case, 46874 steps, 0 ms)
+ok   #test Parakeet runtime rejects wrong file and malformed headers before publishing offsets (1 case, 60215 steps, 1 ms)
+ok   #forall Parakeet runtime public text capacity includes the terminating byte (30 cases, 544 steps, 0 ms)
+ok   #test Parakeet runtime JSON escapes text and records exact token frame metadata (1 case, 47571 steps, 0 ms)
+5 of 252 checks (--only 'Parakeet runtime'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

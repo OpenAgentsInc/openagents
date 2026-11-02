@@ -1,0 +1,51 @@
+// Bounded GPU encoder extents and admission; no model arithmetic.
+#load "../conformer.coax";
+#authority;
+
+PkfPlan :: struct {ok:bool;input:int;conv:int;output:int;h:int;a:int;b:int;q:int;k:int;v:int;ctx:int;p:int;rp:int;two:int;g:int;c:int;end:int;n:int;}
+
+#test "Parakeet fast planner has independent nonoverlapping tiny buffer extents" {
+ s:=cf_tiny();p:=pkf_plan(s,17);#assert p.ok && p.n==3 && p.input==272 && p.conv==216 && p.output==24;
+ #assert p.h==704 && p.a==728 && p.b==752 && p.q==800 && p.k==824 && p.v==848 && p.ctx==872;
+ #assert p.p==896 && p.rp==936 && p.two==976 && p.g==1024 && p.c==1048 && p.end==1072;
+ #assert pkf_plan(s,1).ok && pkf_plan(cf_parakeet(),2048).ok && pkf_plan(cf_parakeet(),2048).output==262144;
+ #assert pkf_shape().dim==1024 && pkf_weights()==609373186 && pkf_work(17)==pkf_plan(cf_parakeet(),17).end;
+ #assert pkf_admit(s,17,cf_weight_count(s),272,1072,24);
+ #assert !pkf_admit(s,17,cf_weight_count(s)+1,272,1072,24) && !pkf_admit(s,17,cf_weight_count(s),273,1072,24) && pkf_admit(s,17,cf_weight_count(s),272,1073,25) && !pkf_admit(s,17,cf_weight_count(s)-1,272,1072,24) && !pkf_admit(s,17,cf_weight_count(s),271,1072,24);
+ #assert !pkf_admit(s,17,cf_weight_count(s),272,1071,24) && !pkf_admit(s,17,cf_weight_count(s),272,1072,23);
+}
+#forall "Parakeet fast planner refuses invalid frame and head dimensions before allocation" bad:0..<6 {
+ s:=cf_tiny();frames:=17;if bad==0 {frames=0;}if bad==1 {frames=2049;}if bad==2 {s.heads=0;}if bad==3 {s.dim=1024;s.heads=1;}if bad==4 {s.channels=257;}if bad==5 {s.dim=258;s.heads=2;}
+ #assert !pkf_plan(s,frames).ok;
+}
+
+pkf_plan :: (s:CfShape,frames:int)->PkfPlan #export_c {
+ if cf_shape_check(s)!=CfStatus.ok || frames<1 || frames>CF_FRAMES_MAX || s.dim/s.heads>128 {return PkfPlan.{};}
+ t1:=cf_stage(frames);f1:=cf_stage(s.mels);n:=cf_length(frames);nd:=n*s.dim;np:=(2*n-1)*s.dim;
+ a:=PkfPlan.{ok=true,input=frames*s.mels,conv=s.channels*t1*f1,output=nd,n=n};a.h=a.input+2*a.conv;a.a=a.h+nd;a.b=a.a+nd;a.q=a.b+n*s.hidden;
+ a.k=a.q+nd;a.v=a.k+nd;a.ctx=a.v+nd;a.p=a.ctx+nd;a.rp=a.p+np;a.two=a.rp+np;a.g=a.two+2*nd;a.c=a.g+nd;a.end=a.c+nd;return a;
+}
+pkf_admit :: (s:CfShape,frames:int,weights:int,input:int,work:int,output:int)->bool #export_c {
+ p:=pkf_plan(s,frames);return p.ok && weights==cf_weight_count(s) && input==p.input && work>=p.end && output>=p.n*s.dim;
+}
+pkf_shape :: ()->CfShape #export_c {return cf_parakeet();}
+pkf_weights :: ()->int #export_c {return cf_weight_count(cf_parakeet());}
+pkf_work :: (frames:int)->int #export_c {return pkf_plan(cf_parakeet(),frames).end;}
+
+
+#forall "Parakeet GPU finite input and output bounds preserve the declared numeric profile" mode:0..<8 {
+ s:=cf_tiny();x:[16]f32;y:[8]f32;frames:=1;
+ #assert !pkf_input_valid(s,0,x[0..<0]) && !pkf_output_valid(s,0,y[0..<0]);
+ #assert !pkf_input_valid(s,1,x[0..<15]) && !pkf_output_valid(s,1,y[0..<7]);
+ if mode==1 {x[0]=cf_nan();}if mode==2 {x[0]=10000.001;}if mode==3 {x[15]= -10000.001;}
+ if mode==4 {y[0]=cf_nan();}if mode==5 {y[7]=100000.1;}
+ if mode==6 {x[0]=10000;y[0]=100000;}if mode==7 {x[0]= -10000;y[0]= -100000;}
+ #assert pkf_input_valid(s,frames,x[..])==(mode!=1 && mode!=2 && mode!=3);
+ #assert pkf_output_valid(s,frames,y[..])==(mode!=4 && mode!=5);
+}
+pkf_input_valid :: (s:CfShape,frames:int,x:[]f32)->bool #export_c {
+ p:=pkf_plan(s,frames);if !p.ok || x.count!=p.input {return false;}lengths:=[1]int.[frames];return cf_features_ok(x,lengths[..],s.mels,frames);
+}
+pkf_output_valid :: (s:CfShape,frames:int,x:[]f32)->bool #export_c {
+ p:=pkf_plan(s,frames);if !p.ok || x.count!=p.output {return false;}lengths:=[1]int.[p.n];return cf_frames_ok(x,lengths[..],p.n,s.dim);
+}

@@ -1,0 +1,21 @@
+{
+  "language": "bg",
+  "config": "bg_bg",
+  "split": "test",
+  "utterance_id": "1960",
+  "audio_member": "test/10006190615151687504.wav",
+  "samples": 221760,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "bg.pcm",
+  "pcm_sha256": "78d0aa30f70bc0abf912619089c9fee82aa3bc164702545b21e2a1a2bac4ea63",
+  "wav_sha256": "fe5889b11c2ac629a3b997074d73fbeb31225de848ac0c5d9d245800e2b8903d",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "59e7c106e924d04d24c13f419b98c35edc860bbc4fb8b2acb3e32dc82a8c6d14",
+  "raw_reference": "Съобщава се, че е бил на около 20 години. В изявление Бийбър заяви, че „докато не съм присъствал, нито пряко замесен в този трагичен инцидент, мислите и молитвите ми са със семейството на жертвата.“",
+  "reference": "съобщава се че е бил на около 20 години. в изявление бийбър заяви че докато не съм присъствал нито пряко замесен в този трагичен инцидент мислите и молитвите ми са със семейството на жертвата.",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/bg_bg/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/bg_bg/test.tsv"
+}

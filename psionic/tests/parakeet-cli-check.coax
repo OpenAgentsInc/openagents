@@ -1,0 +1,32 @@
+// The built OpenAgents CLI against a separate child argv fixture. This
+// verifies dispatch, paths with spaces and refusal before any model effect.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
+ cli:=args_at(a[..],0);fixture:=args_at(a[..],1);tmpbuf:[1024]u8;tmp:=fs_temp("parakeet-cli",tmpbuf[..]);if tmp=="" {return 3;}
+ modelbuf:[1200]u8;wavebuf:[1200]u8;model:=fs_join(tmp,"model with spaces",modelbuf[..]);wav:=fs_join(tmp,"sample with spaces.wav",wavebuf[..]);
+ if !fs_mkdir(model) || !fs_write(wav,"fixture: no speech inference occurs") {return 3;}
+ env:[2048]u8;prefix:="OPENAGENTS_PARAKEET_CLI=";for i:0..<prefix.count {env[i]=prefix[i];}for i:0..<fixture.count {env[prefix.count+i]=fixture[i];}binding:=cast(string)env[0..<prefix.count+fixture.count];
+ out:[32768]u8;err:[32768]u8;checks:=0;
+ for json:0..<2 {for cpu:0..<2 {
+  argv:=[12]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,ifx json==1 then "--json" else "--text","--device",ifx cpu==1 then "cpu" else "gpu"];
+  // proc_run transports complete lines without the terminal newline.
+  r:=proc_run(argv[..],10000,out[..],err[..]);expected:=ifx json==1 then "{\"text\":\"fixture transcript\",\"backend\":\"parakeet\"}" else "fixture transcript";
+  if r.started!=0 || r.status!=0 || r.timed_out || cast(string)out[0..<r.out_n]!=expected {print("transport refused: started=% status=% timed_out=% bytes=% expected=% out=[%]\n",r.started,r.status,r.timed_out,r.out_n,expected.count,cast(string)out[0..<r.out_n]);tool_errln(cast(string)err[0..<r.err_n]);return 4;}checks+=1;
+ }}
+ // Flags before the domain/file exercise the shared positional parser too.
+ before:=[12]string.["env",binding,cli,"--model-dir",model,"--backend","parakeet","transcribe",wav,"--text","--device","gpu"];
+ before_run:=proc_run(before[..],10000,out[..],err[..]);if before_run.status!=0 || cast(string)out[0..<before_run.out_n]!="fixture transcript" {return 7;}checks+=1;
+ flags:=[7]string.["--srt","--vtt","--language","--words","--prompt","--model","--threads"];
+ values:=[7]string.["","","en","Coax","rewrite","tiny","8"];
+ for i:0..<7 {
+  argv:=[11]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,flags[i],values[i]];
+  r:=proc_run(argv[0..<ifx values[i]=="" then 10 else 11],10000,out[..],err[..]);if r.status!=2 || r.timed_out {return 5;}checks+=1;
+ }
+ wrong:=[12]string.["env",binding,cli,"transcribe",wav,"--backend","parakeet","--model-dir",model,"--text","--device","cuda"];
+ r:=proc_run(wrong[..],10000,out[..],err[..]);if r.status!=2 {return 6;}checks+=1;
+ removed:=fs_remove(tmp);print("Parakeet CLI transport: % supported/refused cases passed; fixture only, no inference\n",checks);return 0;
+}

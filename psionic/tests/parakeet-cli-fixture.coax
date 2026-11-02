@@ -1,0 +1,11 @@
+// Transport fixture only: verifies the actual CLI's child argv, never speech.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {return 2;}
+ if args_at(a[..],0)!="transcribe" || args_at(a[..],1)=="" || args_at(a[..],2)=="" {return 3;}
+ if args_at(a[..],3)!="--gpu" && args_at(a[..],3)!="--cpu" {return 4;}
+ if args_at(a[..],4)=="--text" {print("fixture transcript\n");return 0;}
+ if args_at(a[..],4)=="--json" {print("{\"text\":\"fixture transcript\",\"backend\":\"parakeet\"}\n");return 0;}
+ return 5;
+}

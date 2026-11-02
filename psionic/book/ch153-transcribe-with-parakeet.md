@@ -1,16 +1,12 @@
 # 153. Transcribe with Parakeet
 
-> **Status: partly implemented.** The pinned `parakeet-tdt-0.6b-v3`
-> checkpoint transcribes speech on the CPU: its 627 million weights load into
-> chapter 152's encoder and this chapter's token-and-duration (TDT) decoder,
-> the vocabulary is read from its `tokenizer.json`, and four LibriSpeech
-> test-clean clips come out with no word or character errors against
-> thresholds frozen before the run. An independent Python oracle matches the
-> log-mel features, the subsampling and encoder layers 0 and 1 on the real
-> weights. The decoder's pieces each match an independent reference on
-> hand-set and seeded weights. Still to do: comparing with tensors and tokens
-> recorded from NeMo's own model, and WER and CER per language slice of a
-> versioned test set (here one English set of four clips).
+> **Status: implemented — bounded resident Metal profile.** The original
+> Parakeet v3 weights run through a Coax frontend, Metal encoder and CPU TDT
+> decoder, with a resident native API and CLI. All 29 frozen recordings match
+> actual NeMo tokens, frame positions and text; complete intermediate tensors
+> pass the declared tolerance. The earlier CPU observations below retain
+> their original teaching profile. Streaming and Coder's microphone UI remain
+> separate work.
 
 [Chapter 152](ch152-a-speech-encoder.md) built NVIDIA NeMo's FastConformer
 encoder: it turns 100 log-mel frames a second into 12.5 encoded frames a
@@ -39,12 +35,157 @@ This chapter has three parts:
   scored text through chapters 151, 152 and this one, run on the real
   weights.
 
-Everything stores f32 and sums in binary64 with chapter 4's compensated
+The original teaching implementation below stores f32 and sums in binary64 with chapter 4's compensated
 accumulator, rounding once to f32 per stored value. That is the profile
 `psionic-tdt-v1`. The bounds admit Parakeet's real decoder sizes: 8,192
 tokens and the blank, encoder width 1,024, prediction and joint width 640,
 2 LSTM layers, up to 8 durations, at most 10 symbols a frame and 256 encoded
 frames (20.47 seconds of audio).
+
+## The resident engine: the current route
+
+The runnable product is now separate from the original test harness. It maps
+and authenticates the pinned safetensors file and tokenizer once, owns the
+vocabulary for the model's lifetime, keeps the encoder weights on Metal, and
+serializes calls through one resident engine. No NeMo, Torch, ONNX runtime,
+cuBLAS, cuDNN or Python is linked into the recognizer. The independent reference
+uses NeMo on the 4080; the shipped arithmetic is Coax.
+
+The [engine guide](../docs/parakeet.md) gives installation and the C API. With
+the pinned model directory already downloaded, run from the repository root:
+
+```shell
+psionic/platform/parakeet-build.sh
+psionic/build/parakeet/psionic-parakeet transcribe /path/to/model clip.wav --gpu --json
+apps/openagents-cli/build.sh
+apps/openagents-cli/build/openagents transcribe clip.wav --backend parakeet --model-dir /path/to/model --json
+```
+
+The default cache is
+`~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99/`.
+The loader checks the original 2,508,311,120 checkpoint bytes against the SHA
+below, checks the entire tensor inventory and payload coverage, and checks
+`tokenizer.json` against
+`bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91`.
+It needs no Python-generated range file. The host maps files, copies bytes,
+allocates memory and binds Metal; Coax makes the admission and model decisions.
+
+The public [native header](../platform/psionic-parakeet.h) provides
+`psionic_parakeet_open`, `psionic_parakeet_text` and
+`psionic_parakeet_close`. Open once, pass 16 kHz mono f32 samples, copy the
+text into the caller's draft, then close when the engine is no longer needed.
+There is one open model per process. Calls serialize; a failed request leaves
+the previous successful text, token/frame metadata and stage snapshots intact.
+An inspection copies a snapshot into caller storage rather than returning a
+view into reused inference workspace.
+
+The current profile accepts **320 through 327,520 samples**, or 20 ms through
+20.47 seconds. A GPU request fails explicitly if Metal is unavailable; it
+never silently performs a slow CPU transcription. `--cpu` selects the slower
+compensated teaching arithmetic explicitly. The CLI supports text and JSON.
+It refuses forced language, vocabulary bias, prompts and timestamp-file flags
+that this recognizer does not implement. Language is inferred by the model.
+
+This is a whole-utterance recognizer. Coder microphone capture, the dictation
+timeline, vocabulary rescoring, 60-second segmentation and speculative partials
+remain the separate [voice plan](../../docs/voice/2026-11-02-coder-voice-from-hex.md)
+and chapter 154. No speech is captured, message submitted or command executed
+by this chapter's transcription API.
+
+## What the official reference caught
+
+Four correct transcripts were insufficient evidence of NeMo parity. The first
+actual comparison found that the old generic spectral route normalized one
+extra physical STFT column. NeMo's valid length is the number of complete
+160-sample hops; its centred STFT physically stores one column more:
+
+```jai
+samples = 56080;
+valid_frames = samples / 160;       // 350
+physical_stft_frames = 351;
+mean = sum(log_mel[0..<350]) / 350;
+std = sqrt(sum((log_mel[0..<350] - mean)^2) / 349) + 0.00001;
+```
+
+[`front-plan.coax`](../lib/parakeet/front-plan.coax) admits both extents.
+[`front.coax`](../lib/parakeet/front.coax) computes the physical spectra,
+normalizes only valid columns, and compacts those columns into a mel-major
+128 × valid-frames tensor. Excluded tail values never enter the statistics.
+NeMo's official encoder produces exactly the same valid outputs when given
+these compact features as when given its physical tensor and length mask;
+[the recorded probe](../docs/verification/parakeet-2026-11-02/reference/boundary-probe/record.json)
+checks both an ordinary case and the eight-frame subsampling boundary.
+This keeps the generic spectral and earlier compensated teaching profiles
+unchanged while correcting the resident recognizer.
+
+The complete integration also caught an uninitialized mel-filter bank: a
+fresh zero-filled bank made every normalized feature zero, while reused
+workspace from another clip length could contain old log features. The
+resident frontend now constructs its bank before every request. Its regression
+check uses a nonconstant waveform and poisoned/reused workspace. The failed
+full run is retained, rather than renamed as a pass.
+
+The new [Metal schedule](../lib/parakeet/fast.coax) composes subsampling,
+half feed-forward residuals, relative-position attention, the convolution
+module and final normalization through all 24 layers. Every kernel is in
+[`device.coax`](../lib/parakeet/device.coax); the host only binds and launches
+it. This f32 device profile is checked within frozen tolerances, not declared
+bitwise equal to the compensated CPU arithmetic. The prediction and joint
+networks still use the CPU TDT implementation below.
+
+NeMo's SentencePiece decoder also has a specific unknown surface: token zero
+renders as `" ⁇ "`, including its spaces. Other control-looking pieces are
+preserved literally. [`text.coax`](../lib/parakeet/text.coax) matches those
+recorded cases without changing generic `tdt_text`, stripping controls, or
+turning a transcript into an instruction.
+
+## Recorded reference and evaluation
+
+[The qualification record](../docs/verification/parakeet-2026-11-02/README.md)
+binds the actual source, binary, model, inputs, numeric tolerances and failed
+attempts. Its independent implementation is NVIDIA NeMo commit
+`5f15875acd0885ed92eadfee874ae87b0529ffa2`, using `GreedyTDTInfer` with ten
+symbols per frame, no dither and no extra `pad_to` padding. All 723 original
+safetensors bindings load strictly into the official modules. No pickle is
+read or executed. Thirteen actual forced-logit reference cases exercise the
+symbol cap, zero duration and blank skips, including NeMo's corrected cap
+behavior. The Coax rule is compared with their emitted tokens and frame IDs;
+the implementations do not claim identical internal joint-call counts.
+
+The frozen evaluation contains the four original English clips and one
+versioned FLEURS test utterance for each of the 25 supported languages. Every
+source revision, selection rule, PCM hash and reference is in
+[`manifest.json`](../fixtures/parakeet-reference/manifest.json), frozen before
+inference. These are **smoke slices**, not estimates of corpus accuracy.
+Multilingual WER/CER uses the declared Unicode NFKC/casefold normalization;
+it is distinct from the legacy ASCII normalization below. The four original
+English clips retain their previously frozen 5% WER and 3% CER gate.
+
+All **29/29** complete pipelines pass. Every feature and final encoder value
+meets the frozen elementwise bound `abs(error) <= 0.001 + 0.001 * abs(reference)`;
+the largest absolute gaps are 0.00043449 and 0.00004368 respectively. Token IDs,
+frame positions and raw text match exactly. A separate resident CPU decoder
+run on the recorded NeMo encoder tensors also matches all 29; that is a
+decoder check, not a new full CPU encoder run. The original English gate has
+**0/46 word errors and 0/258 character errors**. The
+[per-language table](../docs/verification/parakeet-2026-11-02/reference/product-quality-latency.md)
+reports every FLEURS score, including the weaker observations, without turning
+one utterance into a language-quality claim.
+
+On an Apple M5 Max with 128 GiB and macOS 26.4, one ordered resident pass
+recognized 298.435 seconds of audio in **48.375 seconds** of complete API
+inference: **6.17 audio seconds per inference second**. Fresh engine opening
+took **20.272 seconds**, with filesystem cache uncontrolled. The four English
+requests took 743–1541 ms; the first may include Metal warm-up. These are
+offline per-request times, not key-release or streaming latency. They do not
+meet the Coder proposal's 300 ms goal. Keep a model resident and improve the
+measured bottlenecks before selecting this as the dictation default.
+
+The [qualification index](../docs/verification/parakeet-2026-11-02/README.md)
+records focused mutation checks, native O0/O2 and ASan/UBSan API checks, the
+actual GPU corpus, and the public CLI run from a foreign working directory
+with a file name containing spaces. Passing unchanged legacy gates were reused;
+no full CPU-model or old 822-mutant run was repeated.
 
 ## The pinned checkpoint
 
@@ -69,7 +210,7 @@ embedding row is zero (the decoder relies on that, below), and writes one
 line per tensor, sorted by name, into
 [`parakeet-tdt-manifest.coax`](../fixtures/parakeet-tdt-manifest.coax):
 
-```text
+```jai
 decoder.decoder_projector.bias F32 640
 decoder.decoder_projector.weight F32 640,640
 decoder.embedding.weight F32 8193,640
@@ -119,7 +260,7 @@ python3 -I psionic/tests/parakeet_manifest.py ~/models/parakeet-tdt-0.6b-v3-541d
 COAX_CC=gcc psionic/tests/check_parakeet.sh ~/models/parakeet-tdt-0.6b-v3-541d1f99
 ```
 
-```text
+```jai
 checkpoint 541d1f99c6b0c3cd0b11a95167540bb8edefd82b: 723 lines, 723 expected, ok; 627057286 F32 parameters
 decoder: 18128518 weights; 256 frames need 179078 work values
 hand decoder: ok, 4 tokens
@@ -711,7 +852,7 @@ main :: () {
 }
 ```
 
-```text
+```jai
 44.1 kHz audio: rate
 327,521 samples (over 20.47 s): length
 an 80-mel model against the pinned file: checkpoint, first missing: encoder.subsampling.linear.weight F32 1024,2560
@@ -1008,7 +1149,7 @@ main :: () {
 }
 ```
 
-```text
+```jai
 encoder array 609373186 values, decoder array 18128518; 627057286 checkpoint values placed, 24 step counters skipped
 tensor 51, encoder.layers.0.self_attn.k_proj.weight: encoder array at 13782016, 1048576 values
 20.47 s of audio: 2048 feature frames, 256 encoded; work 295040 binary64 and 36354950 f32 values
@@ -1040,7 +1181,7 @@ errors per 100 reference characters. The model card reports a LibriSpeech
 test-clean word error rate of about 2%, so a correct implementation should
 pass easily and a broken one should not.
 
-### The run
+### The historical CPU run
 
 [`check_parakeet.sh`](../tests/check_parakeet.sh) hashes the checkpoint and
 checks its inventory, compiles
@@ -1049,7 +1190,7 @@ harness [`parakeet_run.c`](../tests/parakeet_run.c), which maps the file and
 copies each tensor's bytes to the place `pk_slot` names, then transcribes
 each clip in its own process. Every decision above the bytes is Coax.
 
-```text
+```jai
 loaded 627057286 weights in 0.8 s: encoder array 609373186, decoder array 18128518
 slices of 6930-75918-0011: 320 feature frames, 40 encoded frames, layers 0 and 1, 2.5 s
 6930-75918-0000, 3.50 s of audio, 351 feature frames, 44 encoded, 15 tokens, 26 s:
@@ -1087,7 +1228,7 @@ of the stage before, so a difference would point at one stage. The
 tolerance was frozen before the first comparison: 10⁻⁴ × (1 + the largest
 value of the slice).
 
-```text
+```jai
 log-mel features, 320 frames: largest difference 2.01e-07, limit 0.00059, within
 subsampling, 40 frames: largest difference 0.000247, limit 0.534, within
 encoder layer 0: largest difference 3.5e-05, limit 0.0195, within
@@ -1138,7 +1279,11 @@ comparisons whose two branches agree at equality, where a mutant could not
 be told apart: ReLU is (v + |v|) / 2, the minimum is computed from the sign
 bit of a - b, and tanh and the logistic function share one formula.
 
-## What remains
+## The historical stopping point
+
+The list below describes the initial CPU teaching run, retained to explain
+why its four error-free transcripts did not finish this chapter. The resident
+route and current qualification above supersede its reference/evaluation gaps.
 
 - **Recorded references.** Comparing features, encoder outputs and token
   sequences with tensors recorded from NeMo's own model on fixed utterances.
@@ -1153,7 +1298,8 @@ bit of a - b, and tanh and the logistic function share one formula.
   audio on one core.
 
 Offline transcription does not establish streaming latency;
-[chapter 154](ch154-transcribe-while-someone-speaks.md) measures that.
+[chapter 154](ch154-transcribe-while-someone-speaks.md) develops the separate
+streaming foundations and still requires a real model and wall-clock evidence.
 
 ## Dependencies
 
@@ -1175,3 +1321,7 @@ Offline transcription does not establish streaming latency;
   pinned revision.
 - LibriSpeech (Panayotov, Chen, Povey and Khudanpur, 2015), test-clean,
   CC BY 4.0.
+- [Pinned NeMo frontend](https://github.com/NVIDIA-NeMo/NeMo/blob/5f15875acd0885ed92eadfee874ae87b0529ffa2/nemo/collections/asr/parts/preprocessing/features.py)
+  and [greedy TDT decoder](https://github.com/NVIDIA-NeMo/NeMo/blob/5f15875acd0885ed92eadfee874ae87b0529ffa2/nemo/collections/asr/parts/submodules/rnnt_greedy_decoding.py).
+- [FLEURS](https://huggingface.co/datasets/google/fleurs/tree/70bb2e84b976b7e960aa89f1c648e09c59f894dd),
+  CC BY 4.0; the local manifest records each selected source and conversion.

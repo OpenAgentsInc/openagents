@@ -1,0 +1,43 @@
+{
+  "argv": [
+    "/tmp/parakeet-reference-native-v1/reference-native",
+    "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "/tmp/parakeet-reference-native-v1/inputs.tsv",
+    "/tmp/parakeet-reference-native-v1/product"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
+    "--",
+    "/tmp/parakeet-reference-native-v1/reference-native",
+    "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "/tmp/parakeet-reference-native-v1/inputs.tsv",
+    "/tmp/parakeet-reference-native-v1/product"
+  ],
+  "cwd": "/private/tmp/openagents-12625-complete-20261101",
+  "started": true,
+  "pid": 85373,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 33.68226799997501,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 1553,
+  "observed_stderr_bytes": 0,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 33554432,
+    "stderr": 33554432,
+    "total": 33554432
+  },
+  "timeout_s": 829.8070877080318,
+  "deadline": 590026.568141291
+}

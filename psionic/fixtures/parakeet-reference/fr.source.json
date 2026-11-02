@@ -1,0 +1,21 @@
+{
+  "language": "fr",
+  "config": "fr_fr",
+  "split": "test",
+  "utterance_id": "1987",
+  "audio_member": "test/10043298898524273336.wav",
+  "samples": 163200,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "fr.pcm",
+  "pcm_sha256": "21620d49816591bb527d7fc9c1e15a18cae3f4b5f27acb7c64f3e1ba85305a2b",
+  "wav_sha256": "c834367fd212902124bdd0e0f6c1f16b5561af6386600f145e5aec50008b298d",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "5d06d338b242e00786fcf12c4c92008b9f399d5a5c872c91dca90572e7869c0d",
+  "raw_reference": "L’accident a eu lieu en terrain montagneux, et il semblerait que cela ait été causé par un incendie malveillant.",
+  "reference": "l'accident a eu lieu en terrain montagneux et il semblerait que cela ait été causé par un incendie malveillant",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/fr_fr/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/fr_fr/test.tsv"
+}

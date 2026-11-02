@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/tmp/parakeet-api-profiles/asan/check"
+  ],
+  "returncode": 0,
+  "seconds": 0.10109008301515132,
+  "binary_sha256_before": "8e5fbb295b828e1064d36091fa0f2a16d85463d70c7bd416b4305d918d721ba0",
+  "binary_sha256_after": "8e5fbb295b828e1064d36091fa0f2a16d85463d70c7bd416b4305d918d721ba0",
+  "environment": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "reason": "Initial launch aborted before main because macOS AddressSanitizer explicitly does not support detect_leaks=1. Preserve that raw failure. Reuse identical already-built ASan/UBSan executable and change only unsupported leak-detector environment. No passing compile/O0/O2 step repeated."
+}

@@ -15,12 +15,15 @@
 //   (#12623).
 // - whispercpp: whisper.cpp's whisper-cli (Homebrew: brew install
 //   whisper-cpp), on request only; compare uses it as the reference.
+// - parakeet: the pinned TDT v3 safetensors model, explicitly selected;
+//   resident native API, Metal encoder and Coax decoder (chapter 153).
 // Decoding: Psionic reads WAV files itself (psionic/lib/whisper/wav.coax).
 // ffmpeg turns any other audio or video into 16 kHz mono 16-bit WAV.
 // Firm reason: 6 (no Coax decoder for compressed audio and video
 // containers yet); it is one program call, and the WAV it writes is all
 // either backend reads.
 #load "transcribe-rules.coax";
+#load "parakeet.coax";
 #load "../../psionic/lib/whisper/score.coax";
 
 TR_HF :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-";
@@ -34,6 +37,8 @@ transcribe_usage :: () {
   print("%\n", "  transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo] [--language en|auto|CODE]");
   print("%\n", "                  [--text|--srt|--vtt|--json] [--backend psionic|whispercpp] [--threads N]");
   print("%\n", "                  [--words Psionic,Coax] [--prompt TEXT]   names to spell right (psionic)");
+  print("%\n", "  transcribe FILE --backend parakeet [--model-dir DIR] [--device gpu|cpu] [--text|--json]");
+  print("%\n", "                                     pinned local Parakeet v3; automatic language, bounded utterance");
   print("%\n", "                                     audio or video; base and English by default");
   print("%\n", "  transcribe models                  the models in ~/.cache/openagents/models/whisper");
   print("%\n", "  transcribe fetch MODEL             downloads a model (transcribe fetches one it needs)");
@@ -143,6 +148,7 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "models" { return transcribe_models(r); }
   if verb == "compare" { return transcribe_compare(a, r); }
   if verb == "corpus" { return transcribe_corpus(r, positional(a, 2)); }
+  if args_value(a,"--backend","psionic")=="parakeet" { return tr_parakeet(a,r,verb); }
   language := args_value(a, "--language", "en");
   if !tr_language_ok(language) { return fail(r, EXIT_USAGE, "--language is en, auto, or a two or three letter code such as de"); }
   nb: [64] u8;
@@ -161,7 +167,7 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   format := tr_format(args_has(a, "--text"), args_has(a, "--srt"), args_has(a, "--vtt"), r[0].json);
   if format < 0 { return fail(r, EXIT_USAGE, "pick one of --text, --srt, --vtt and --json"); }
   backend := args_value(a, "--backend", "psionic");
-  if backend != "whispercpp" && backend != "psionic" { return fail(r, EXIT_USAGE, "--backend is whispercpp or psionic"); }
+  if backend != "whispercpp" && backend != "psionic" { return fail(r, EXIT_USAGE, "--backend is psionic, whispercpp or parakeet"); }
   eb: [1100] u8; engine := "";
   if backend == "psionic" {
     engine = tr_engine(eb[..]);

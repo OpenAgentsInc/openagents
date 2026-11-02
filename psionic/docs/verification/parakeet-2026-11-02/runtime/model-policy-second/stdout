@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/model-policy.coax:48:67: mutant survived: '+' became '-'
+   count:=1;for i:0..<t.rank {if jv_int(d,jv_at(d,shape,i),t.dims[i]+1)!=t.dims[i] {return PkRtSpan.{status=PkRtStatus.tensor};}count*=t.dims[i];}
+                                                                    ^
+psionic/lib/parakeet/model-policy.coax:48:68: mutant survived: 1 became 2
+   count:=1;for i:0..<t.rank {if jv_int(d,jv_at(d,shape,i),t.dims[i]+1)!=t.dims[i] {return PkRtSpan.{status=PkRtStatus.tensor};}count*=t.dims[i];}
+                                                                     ^
+psionic/lib/parakeet/model-policy.coax:49:75: mutant survived: '+' became '-'
+   a:=jv_int(d,jv_at(d,offsets,0),-1);b:=jv_int(d,jv_at(d,offsets,1),payload+1);width:=ifx t.dtype=="F32" then 4 else 8;
+                                                                            ^
+psionic/lib/parakeet/model-policy.coax:49:76: mutant survived: 1 became 2
+   a:=jv_int(d,jv_at(d,offsets,0),-1);b:=jv_int(d,jv_at(d,offsets,1),payload+1);width:=ifx t.dtype=="F32" then 4 else 8;
+                                                                             ^
+146 mutants, 142 killed, 4 survived

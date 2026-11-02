@@ -1,0 +1,4 @@
+psionic/lib/parakeet/text.coax:19:9: error[E0357]: array length 0 is out of range (1 to 1 GiB total)
+   empty:[0]int;#assert pkv3_text(pieces[..],empty[..],out[0..<0])==0;
+          ^
+1 error

@@ -1,0 +1,54 @@
+// Coax owns the FastConformer GPU schedule and every buffer range. The
+// foreign function merely binds one named generated kernel to a Metal batch.
+// Weights are authenticated/validated once by the resident model loader.
+#load "plan.coax";
+
+pkq_launch :: (kind:int,items:int,n0:int,n1:int,n2:int,n3:int,n4:int,n5:int,n6:int,n7:int,scale:f32,a:[]f32,b:[]f32,c:[]f32,d:[]f32,e:[]f32,f:[]f32)->bool #foreign;
+// Fixed kernel IDs are a private versioned ABI with parakeet-metal.c.
+pkf_linear :: (rows:int,ni:int,no:int,bias:bool,x:[]f32,w:[]f32,at:int,y:[]f32)->bool {
+ return pkq_launch(1,((rows+63)/64)*((no+31)/32),rows,ni,no,ifx bias then 1 else 0,0,0,0,0,0,x,w[at..<at+ni*no],w[at+ni*no..<at+ni*no+ifx bias then no else 0],y,y,y);
+}
+pkf_norm :: (n:int,d:int,x:[]f32,w:[]f32,at:int,y:[]f32)->bool {return pkq_launch(2,n,d,0,0,0,0,0,0,0,0,x,w[at..<at+d],w[at+d..<at+2*d],y,y,y);}
+pkf_conv :: (ih:int,iw:int,ic:int,oc:int,groups:int,k:int,stride:int,pad:int,x:[]f32,w:[]f32,at:int,y:[]f32)->bool {
+ size:=oc*(ic/groups)*k*k;count:=oc*((ih+2*pad-k)/stride+1)*((iw+2*pad-k)/stride+1);
+ return pkq_launch(3,count,ih,iw,ic,oc,groups,k,stride,pad,0,x,w[at..<at+size],w[at+size..<at+size+oc],y,y,y);
+}
+pkf_relu :: (x:[]f32)->bool {return pkq_launch(4,x.count,0,0,0,0,0,0,0,0,0,x,x,x,x,x,x);}
+pkf_silu :: (x:[]f32)->bool {return pkq_launch(6,x.count,0,0,0,0,0,0,0,0,0,x,x,x,x,x,x);}
+pkf_add :: (x:[]f32,y:[]f32,scale:f32)->bool {return pkq_launch(7,x.count,0,0,0,0,0,0,0,0,scale,x,y,y,y,y,y);}
+pkf_ff :: (s:CfShape,n:int,w:[]f32,a:CfFf,h:[]f32,norm:[]f32,wide:[]f32,tmp:[]f32)->bool {
+ return pkf_norm(n,s.dim,h,w,a.norm,norm) && pkf_linear(n,s.dim,s.hidden,true,norm,w,a.w1,wide) && pkf_silu(wide) && pkf_linear(n,s.hidden,s.dim,true,wide,w,a.w2,tmp) && pkf_add(tmp,h,0.5);
+}
+// Generic shape and layer-count entry allows real slices and tiny independent
+// references to use exactly the production schedule. layers=0 is subsampling.
+pkf_encode :: (s:CfShape,w:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32,layers:int)->bool #export_c {
+ if !pkf_admit(s,frames,w.count,x.count,work.count,out.count) || !pkf_input_valid(s,frames,x) || layers<0 || layers>s.layers {return false;}
+ p:=pkf_plan(s,frames);c:=cf_plan(s,1,frames);d:=s.dim;n:=p.n;nd:=n*d;np:=(2*n-1)*d;sub:=cf_sub_at(s);
+ input:=work[0..<p.input];ca:=work[p.input..<p.input+p.conv];cb:=work[p.input+p.conv..<p.h];h:=work[p.h..<p.a];a:=work[p.a..<p.b];b:=work[p.b..<p.q];q:=work[p.q..<p.k];k:=work[p.k..<p.v];v:=work[p.v..<p.ctx];ctx:=work[p.ctx..<p.p];pos:=work[p.p..<p.rp];rp:=work[p.rp..<p.two];two:=work[p.two..<p.g];g:=work[p.g..<p.c];cv:=work[p.c..<p.end];
+ // CPU writes this shared table before any command buffer is submitted.
+ for r:0..<2*n-1 {cf_position(n-1-r,d,pos[r*d..<(r+1)*d]);}
+ if !pkq_launch(0,p.input,frames,s.mels,0,0,0,0,0,0,0,x,input,input,input,input,input) {return false;}
+ if !pkf_conv(frames,s.mels,1,s.channels,1,3,2,1,input,w,sub.conv0,ca) || !pkf_relu(ca) {return false;}
+ n2:=s.channels*c.t2*c.f2;n3:=s.channels*c.t3*c.f3;
+ if !pkf_conv(c.t1,c.f1,s.channels,s.channels,s.channels,3,2,1,ca,w,sub.dw1,cb[0..<n2]) {return false;}
+ if !pkf_conv(c.t2,c.f2,s.channels,s.channels,1,1,1,0,cb[0..<n2],w,sub.pw1,ca[0..<n2]) || !pkf_relu(ca[0..<n2]) {return false;}
+ if !pkf_conv(c.t2,c.f2,s.channels,s.channels,s.channels,3,2,1,ca[0..<n2],w,sub.dw2,cb[0..<n3]) {return false;}
+ if !pkf_conv(c.t3,c.f3,s.channels,s.channels,1,1,1,0,cb[0..<n3],w,sub.pw2,ca[0..<n3]) || !pkf_relu(ca[0..<n3]) {return false;}
+ wide:=s.channels*c.f3;gather:=cb[0..<n*wide];
+ if !pkq_launch(5,n*wide,n,c.f3,s.channels,0,0,0,0,0,0,ca,gather,gather,gather,gather,gather) || !pkf_linear(n,wide,d,true,gather,w,sub.out,h) {return false;}
+ if s.xscale {if !pkq_launch(11,nd,0,0,0,0,0,0,0,0,sqrt(f32(d)),h,h,h,h,h,h) {return false;}}
+ for layer:0..<layers {
+  l:=cf_layer_at(s,cf_layer_base(s,layer));
+  if !pkf_ff(s,n,w,l.ff1,h,a,b,ctx) {return false;}
+  at:=l.att;
+  if !pkf_norm(n,d,h,w,at.norm,a) || !pkf_linear(n,d,d,true,a,w,at.q,q) || !pkf_linear(n,d,d,true,a,w,at.k,k) || !pkf_linear(n,d,d,true,a,w,at.v,v) || !pkf_linear(2*n-1,d,d,false,pos,w,at.pos,rp) {return false;}
+  if !pkq_launch(10,n*s.heads,n,d,s.heads,at.u,at.bias_v,0,0,0,0,q,k,v,rp,w,ctx) || !pkf_linear(n,d,d,true,ctx,w,at.o,a) || !pkf_add(a,h,1) {return false;}
+  co:=l.conv;
+  if !pkf_norm(n,d,h,w,co.norm,a) || !pkf_linear(n,d,2*d,true,a,w,co.pw1,two) {return false;}
+  if !pkq_launch(8,nd,d,0,0,0,0,0,0,0,0,two,g,g,g,g,g) {return false;}
+  if !pkq_launch(9,nd,n,d,s.kernel,0,0,0,0,0,0,g,w[co.dw..<co.dw+d*s.kernel],w[co.dw+d*s.kernel..<co.dw+d*s.kernel+d],w[co.bn..<co.bn+4*d],cv,cv) {return false;}
+  if !pkf_linear(n,d,d,true,cv,w,co.pw2,a) || !pkf_add(a,h,1) || !pkf_ff(s,n,w,l.ff2,h,a,b,ctx) || !pkf_norm(n,d,h,w,l.out,a) {return false;}
+  if !pkq_launch(12,nd,0,0,0,0,0,0,0,0,0,a,h,h,h,h,h) {return false;}
+ }
+ return pkq_launch(12,nd,0,0,0,0,0,0,0,0,0,h,out,out,out,out,out);
+}

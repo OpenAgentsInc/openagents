@@ -1,0 +1,61 @@
+bg 221760 78d0aa30f70bc0abf912619089c9fee82aa3bc164702545b21e2a1a2bac4ea63
+hr 128640 32839b8153e5380ed5f295d1cabfa7db7b89be6956b5b3d8da46587a0a0562ff
+cs 213120 13217a916ff0e606e5c613f8cbeca34336db08cfbaae049831a840597a5591dc
+da 81600 8aaa4937161912210fdc34a8fe84a32e0d4afb7386888df9da60d2ad490b4b09
+nl 103680 7a18b9de9cdf754b7e5421d471b2b068e7c2af8a98ab48395aba611314da6a2d
+en 168960 399d811b252e488191998a7c244ba7097cd5c9ecb3246596d3adefb010211119
+et 225600 8dac187f968aa738f6f15c3b387ceeebf435fe3f4925bff1aaf08c90dccf8091
+fi 297600 b2a868184517a3ff2a0551f96033f5f5be58bf1e1c06b0ea9357e84009a87bf1
+fr 163200 21620d49816591bb527d7fc9c1e15a18cae3f4b5f27acb7c64f3e1ba85305a2b
+de 287040 f37289793d13cf31e9885441cc968c6944b1d616c78d42b2f854716f5280421c
+el 176640 9527a011228139db04a8ab87ea64f68aeafe6a4316e0e17db699135903f0f426
+hu 192960 f19a54db4a28d7f23c05c949ae67b0d0ef7c4e5e10208fdfc8e7b61daf921774
+it 184320 f0dae1a14ea651931aaef6bdd60a14b3a30d61181733acaef77302fe6898f553
+lv 193920 b59c29cbff042e1f32f3d409405fd753bd57514ca87c78f1fae81a09be8dfb2e
+lt 92160 d64525ef430b8f0fe38eb53faf27b780517ba3f5788e66190cb13e62a66fd3b6
+mt 219840 913e8ab06bdf2c0d4086faa2512f9e2b15a7bebf28d5734d0dd8ce9016b7a856
+pl 193920 437f87a4e73285ce1801f641b519863f3c8e9dbf54fdff7d203ad47997390ce8
+Traceback (most recent call last):
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet_reference_acquire.py", line 64, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet_reference_acquire.py", line 61, in main
+    for row in pool.map(language,LANGS.items()):rows.append(row);print(row['language'],row['samples'],row['pcm_sha256'],flush=True)
+               ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/concurrent/futures/_base.py", line 672, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/concurrent/futures/_base.py", line 312, in _result_or_cancel
+    return fut.result(timeout)
+           ~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/concurrent/futures/_base.py", line 447, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/concurrent/futures/_base.py", line 396, in __get_result
+    raise self._exception
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/concurrent/futures/thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/concurrent/futures/thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet_reference_acquire.py", line 21, in language
+    lang,config=item;prefix=f'https://huggingface.co/datasets/google/fleurs/resolve/{REV}/data/{config}/';tsv=fetch(prefix+'test.tsv');rows={r[1]:r for r in csv.reader(io.StringIO(tsv.decode()),delimiter='\t')}
+                                                                                                              ~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet_reference_acquire.py", line 19, in fetch
+    with urllib.request.urlopen(url,timeout=60) as r:return r.read()
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/urllib/request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/urllib/request.py", line 495, in open
+    response = meth(req, response)
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/urllib/request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/urllib/request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/urllib/request.py", line 466, in _call_chain
+    result = func(*args)
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/urllib/request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 404: Not Found

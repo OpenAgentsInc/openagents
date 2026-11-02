@@ -1,0 +1,21 @@
+{
+  "language": "de",
+  "config": "de_de",
+  "split": "test",
+  "utterance_id": "2003",
+  "audio_member": "test/10004059102127011984.wav",
+  "samples": 287040,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "de.pcm",
+  "pcm_sha256": "f37289793d13cf31e9885441cc968c6944b1d616c78d42b2f854716f5280421c",
+  "wav_sha256": "1603ed8fcea31a7f32f51d137eaa3516d15aca947898b81a136f4a9732f08ad2",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "82fab72c58a347345675c238f2492bb997105a4ab45d69e2a2b34ed29082fa97",
+  "raw_reference": "Für die besten Aussichten auf Hongkong sollten Sie die Insel verlassen und zum gegenüberliegenden Ufer von Kowloon fahren.",
+  "reference": "für die besten aussichten auf hongkong sollten sie die insel verlassen und zum gegenüberliegenden ufer von kowloon fahren",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/de_de/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/de_de/test.tsv"
+}

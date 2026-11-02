@@ -1,0 +1,1 @@
+Assertion failed: (strstr(err,"transcribe refused")&&strstr(err,"status 10")), function main, file parakeet-runtime-snapshot.c, line 49.

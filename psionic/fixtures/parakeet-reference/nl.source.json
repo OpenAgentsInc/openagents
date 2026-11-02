@@ -1,0 +1,21 @@
+{
+  "language": "nl",
+  "config": "nl_nl",
+  "split": "test",
+  "utterance_id": "1927",
+  "audio_member": "test/10042455874761876908.wav",
+  "samples": 103680,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "nl.pcm",
+  "pcm_sha256": "7a18b9de9cdf754b7e5421d471b2b068e7c2af8a98ab48395aba611314da6a2d",
+  "wav_sha256": "4cfe25af0596ee2c709a9a375e1ac456d9821d91a067f7bfbf63ab07ba89e9cf",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "c22c2d38e4aca57f3a09ee01168fdb3863011e8f13ad24955324d209f692eb21",
+  "raw_reference": "Volgens Angel (2006) kunnen organisaties beter presteren met een aanpak op basis van het continuümmodel.",
+  "reference": "volgens angel 2006 kunnen organisaties beter presteren met een aanpak op basis van het continuümmodel",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/nl_nl/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/nl_nl/test.tsv"
+}

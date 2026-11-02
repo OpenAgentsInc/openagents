@@ -167,7 +167,7 @@
 
 - [151. Waveforms and spectral features](ch151-waveforms-and-spectral-features.md) — partly implemented
 - [152. A speech encoder](ch152-a-speech-encoder.md) — partly implemented
-- [153. Transcribe with Parakeet](ch153-transcribe-with-parakeet.md) — partly implemented
+- [153. Transcribe with Parakeet](ch153-transcribe-with-parakeet.md)
 - [154. Transcribe while someone speaks](ch154-transcribe-while-someone-speaks.md) — partly implemented
 - [155. Speak the answer](ch155-speak-the-answer.md) — partly implemented
 

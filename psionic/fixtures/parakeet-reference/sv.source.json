@@ -1,0 +1,21 @@
+{
+  "language": "sv",
+  "config": "sv_se",
+  "split": "test",
+  "utterance_id": "1844",
+  "audio_member": "test/10008573238567024266.wav",
+  "samples": 92160,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "sv.pcm",
+  "pcm_sha256": "b56526c25f323d86a8da31411cf14d526646ca03edfc6d89671a14cb9b077669",
+  "wav_sha256": "5f79743f38681a43429da7405eac03c1c7ec69abf608c949d86efcb763b33067",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "55f48c5385a6e5fb8a62ea90212c04b005e2f77d7bd8fcf20bc3a5bda223aae2",
+  "raw_reference": "Månens yta utgörs av stenar och stoft. Månens yttre lager kallas skorpan.",
+  "reference": "månens yta utgörs av stenar och stoft månens yttre lager kallas skorpan",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/sv_se/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/sv_se/test.tsv"
+}

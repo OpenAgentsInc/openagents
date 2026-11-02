@@ -1,0 +1,34 @@
+// Independent malformed-metadata controls. Fixture transport uses the already
+// separately checked architecture inventory; each changed fault is explicit.
+pkmp_fixture :: (c:TdtConfig,fault:int,out:[]u8)->int {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);at:=0;buf:[160]u8;n:=tdt_expected_count(c);
+ for i:0..<n {
+  if fault==6 && i==0 {continue;}t:=tdt_expected(c,i);name_i:=ifx fault==5 && i==n-1 then 0 else i;k:=pk_name(c,name_i,buf[..]);jo_key(o[..],ifx fault==7 && i==0 then "unknown" else cast(string)buf[0..<k]);jo_obj(o[..]);
+  jo_key(o[..],"dtype");jo_str(o[..],ifx fault==1 && i==0 then "BF16" else t.dtype);
+  jo_key(o[..],"shape");jo_arr(o[..]);elements:=1;for d:0..<t.rank {jo_int(o[..],t.dims[d]+ifx fault==2 && i==0 && d==0 then 1 else 0);elements*=t.dims[d];}jo_end(o[..]);
+  size:=elements*ifx t.dtype=="F32" then 4 else 8;begin:=ifx fault==8 && t.dtype=="I64" then 0 else at;
+  if fault==13 {total:=0;for q:0..<n {u:=tdt_expected(c,q);ec:=1;for axis:0..<u.rank {ec*=u.dims[axis];}total+=ec*ifx u.dtype=="F32" then 4 else 8;}begin=total-at-size;}
+  jo_key(o[..],"data_offsets");jo_arr(o[..]);jo_int(o[..],ifx fault==4 && i==0 then -1 else begin);jo_int(o[..],begin+size+ifx fault==3 && i==0 then 1 else 0);jo_end(o[..]);jo_end(o[..]);at+=size;
+ }
+ if fault==10 {jo_key(o[..],"__metadata__");jo_str(o[..],"wrong");}
+ if fault==14 {for repeat:0..<2 {jo_key(o[..],"__metadata__");jo_obj(o[..]);jo_end(o[..]);}}
+ if fault==11 {jo_key(o[..],"__metadata__");jo_obj(o[..]);jo_end(o[..]);}
+ jo_end(o[..]);#assert !o[0].bad;return o[0].n;
+}
+#test "Parakeet model policy admits an entire positive metadata graph and rejects each independent fault atomically" #steps 400000000 {
+ c:=pk_tiny();storage:[32768]u8;nodes:[2048]JvNode;offsets:[1024]int;n:=tdt_expected_count(c);payload:=0;
+ for i:0..<n {t:=tdt_expected(c,i);elements:=1;for d:0..<t.rank {elements*=t.dims[d];}payload+=elements*ifx t.dtype=="F32" then 4 else 8;}
+ for fault:0..<15 {for i:0..<1024 {offsets[i]= -7;}written:=pkmp_fixture(c,fault,storage[..]);cap:=ifx fault==12 then n-1 else 1024;
+  r:=pkmp_layout(cast(string)storage[0..<written],payload+ifx fault==9 then 1 else 0,c,nodes[..],offsets[0..<cap]);
+  if fault==0 || fault==11 || fault==13 {#assert r==PkRtStatus.ok && offsets[0]==(ifx fault==13 then payload-16 else 0);}
+  else {#assert r!=PkRtStatus.ok;for i:0..<1024 {#assert offsets[i]== -7;}}
+ }
+}
+#test "Parakeet model policy metadata refuses malformed JSON empty graph bad configuration and payload bounds" {
+ nodes:[128]JvNode;out:[1024]int;out[0]= -7;c:=pk_tiny();
+ for text:[2]string.["{","[]"] {#assert pkmp_layout(text,1,c,nodes[..],out[..])==PkRtStatus.header && out[0]== -7;}
+ #assert pkmp_layout("{}",1,c,nodes[..],out[..])==PkRtStatus.tensor;
+ #assert pkmp_layout("{}",-1,c,nodes[..],out[..])==PkRtStatus.tensor;
+ #assert pkmp_layout("{}",2508311121,c,nodes[..],out[..])==PkRtStatus.tensor;
+ c.enc=0;#assert pkmp_layout("{}",0,c,nodes[..],out[..])==PkRtStatus.tensor;
+}

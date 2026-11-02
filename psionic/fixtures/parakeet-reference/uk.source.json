@@ -1,0 +1,21 @@
+{
+  "language": "uk",
+  "config": "uk_ua",
+  "split": "test",
+  "utterance_id": "1982",
+  "audio_member": "test/10021730821550109934.wav",
+  "samples": 118080,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "uk.pcm",
+  "pcm_sha256": "591825340749b96e8279f36f7bcd562c705189f0540b28686bd68563ff97083d",
+  "wav_sha256": "3fd525aa0804a05dbe27298c3ac15455a3ac6d16d4cdee572dd54b9a26c36535",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "afabf1e7e138632dd65781a768257b9d86c591175ae08e8ca201d00081815d49",
+  "raw_reference": "Жінки: усім подорожнім жінкам радять казати, що вони заміжні, незалежно від справжнього сімейного стану.",
+  "reference": "жінки усім подорожнім жінкам радять казати що вони заміжні незалежно від справжнього сімейного стану",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/uk_ua/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/uk_ua/test.tsv"
+}

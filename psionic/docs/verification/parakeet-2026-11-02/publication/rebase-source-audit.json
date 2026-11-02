@@ -1,0 +1,195 @@
+{
+  "scope": "Read-only rebase audit: all retained component source pins remain byte-identical after rebase. Historical actual producer hashes are retained, never relabeled as new binaries. The changed main SHA256 tagged-state API is outside the retained runtime closure; its kernel dependency is unchanged.",
+  "rebased_onto": "67f3a338aa3faf67137156f9e12ecb5ceebd1d1c",
+  "component_source_files": 46,
+  "all_identical": true,
+  "sources": {
+    "coax/lib/crypto/sha256-kernel.coax": {
+      "qualified": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "current": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+    },
+    "coax/lib/json/json.coax": {
+      "qualified": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+      "current": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "qualified": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "current": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "qualified": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "current": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/json.coax": {
+      "qualified": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "current": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    "psionic/fixtures/parakeet-tdt-manifest.coax": {
+      "qualified": "75ec03d06a939ea65fe5f847b318196f573e6e9140d77064758dc8d22bf4ccad",
+      "current": "75ec03d06a939ea65fe5f847b318196f573e6e9140d77064758dc8d22bf4ccad"
+    },
+    "psionic/lib/conformer.coax": {
+      "qualified": "4219e29528c93ab0bc2727402d1ed30ff4da218f61458731f4ded368defc1dcd",
+      "current": "4219e29528c93ab0bc2727402d1ed30ff4da218f61458731f4ded368defc1dcd"
+    },
+    "psionic/lib/counter-rng.coax": {
+      "qualified": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "current": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    "psionic/lib/ops-contract.coax": {
+      "qualified": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d",
+      "current": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d"
+    },
+    "psionic/lib/ops.coax": {
+      "qualified": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+      "current": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1"
+    },
+    "psionic/lib/parakeet/fast.coax": {
+      "qualified": "834cd0142f6cd79a04c7a8945486d9670b2d669fe5c3291e724730a9aa16f6f0",
+      "current": "834cd0142f6cd79a04c7a8945486d9670b2d669fe5c3291e724730a9aa16f6f0"
+    },
+    "psionic/lib/parakeet/front-plan.coax": {
+      "qualified": "3ec78ba276b929f5434aea1acd92e144d3104e162dd623cf3988f5793733fb0d",
+      "current": "3ec78ba276b929f5434aea1acd92e144d3104e162dd623cf3988f5793733fb0d"
+    },
+    "psionic/lib/parakeet/front.coax": {
+      "qualified": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+      "current": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c"
+    },
+    "psionic/lib/parakeet/model-policy.coax": {
+      "qualified": "fbf5badd98a2b97ab5362b76cd48c1abd17167f87182a6783aef10b613f5f8b3",
+      "current": "fbf5badd98a2b97ab5362b76cd48c1abd17167f87182a6783aef10b613f5f8b3"
+    },
+    "psionic/lib/parakeet/plan.coax": {
+      "qualified": "52e7078d250c790ece17d0d081b430454236ebdaf16af8c5ebb14a2146a89662",
+      "current": "52e7078d250c790ece17d0d081b430454236ebdaf16af8c5ebb14a2146a89662"
+    },
+    "psionic/lib/parakeet/runtime.coax": {
+      "qualified": "bc64963506a2a6caada5485eec1d9015f0330689d40d2b11529465afa2cd2441",
+      "current": "bc64963506a2a6caada5485eec1d9015f0330689d40d2b11529465afa2cd2441"
+    },
+    "psionic/lib/parakeet/text.coax": {
+      "qualified": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+      "current": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18"
+    },
+    "psionic/lib/parakeet.coax": {
+      "qualified": "eeede0238558b34f2dc60e307800f807150100b64de1f2e815f20c2bfb44f65e",
+      "current": "eeede0238558b34f2dc60e307800f807150100b64de1f2e815f20c2bfb44f65e"
+    },
+    "psionic/lib/pixels.coax": {
+      "qualified": "851422f0e765bf8768fea0e6bf9d163cb0a995322b2611c5cadab2ff27112838",
+      "current": "851422f0e765bf8768fea0e6bf9d163cb0a995322b2611c5cadab2ff27112838"
+    },
+    "psionic/lib/spectral.coax": {
+      "qualified": "338e993e5334016c6c4fa09caab7af068ba8df5e7cc7c6b4e9e124e7cdf86e13",
+      "current": "338e993e5334016c6c4fa09caab7af068ba8df5e7cc7c6b4e9e124e7cdf86e13"
+    },
+    "psionic/lib/tdt.coax": {
+      "qualified": "86a4472950b14a44e263a4cf14ac95c05e417be07679d5f89a3fc996e23e3549",
+      "current": "86a4472950b14a44e263a4cf14ac95c05e417be07679d5f89a3fc996e23e3549"
+    },
+    "psionic/lib/tensor-ops-contract.coax": {
+      "qualified": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "current": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591"
+    },
+    "psionic/lib/tensor-ops.coax": {
+      "qualified": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "current": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772"
+    },
+    "psionic/lib/tensor-view.coax": {
+      "qualified": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "current": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529"
+    },
+    "psionic/lib/tensor.coax": {
+      "qualified": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "current": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6"
+    },
+    "psionic/lib/whisper/ggml.coax": {
+      "qualified": "23316d936aa538671fac6944ec48561fd860a25ef8b2de94e6bcefae94dbf8bd",
+      "current": "23316d936aa538671fac6944ec48561fd860a25ef8b2de94e6bcefae94dbf8bd"
+    },
+    "psionic/lib/whisper/wav.coax": {
+      "qualified": "c3f9fbb1909aa3c9f4641eee969149870ef2c4b573148a71570ce96ebeaa7b1a",
+      "current": "c3f9fbb1909aa3c9f4641eee969149870ef2c4b573148a71570ce96ebeaa7b1a"
+    },
+    "psionic/tests/conformer-checks.coax": {
+      "qualified": "661d5325ba2e6ef9c888ecf73acb5ec4124a61843680c712182a75aab54a36b0",
+      "current": "661d5325ba2e6ef9c888ecf73acb5ec4124a61843680c712182a75aab54a36b0"
+    },
+    "psionic/tests/parakeet-model-checks.coax": {
+      "qualified": "f61bdca53f570e97b5cf8f6d7f8917b3cd5075aa9100424ee15757da2f272aff",
+      "current": "f61bdca53f570e97b5cf8f6d7f8917b3cd5075aa9100424ee15757da2f272aff"
+    },
+    "psionic/tests/tdt-checks.coax": {
+      "qualified": "e7f45be8c0d75471a89a09c4ac8d237f2ce78364609a2b16ef9de936c8ddb5e8",
+      "current": "e7f45be8c0d75471a89a09c4ac8d237f2ce78364609a2b16ef9de936c8ddb5e8"
+    },
+    "psionic/lib/parakeet/device.coax": {
+      "qualified": "eb2513f09a275772a59ab1d6f5405deef9444ce1db94a4c22fb43c864c58e82c",
+      "current": "eb2513f09a275772a59ab1d6f5405deef9444ce1db94a4c22fb43c864c58e82c"
+    },
+    "psionic/platform/parakeet-metal.c": {
+      "qualified": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab",
+      "current": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab"
+    },
+    "psionic/platform/parakeet-metal.h": {
+      "qualified": "035d9f9ebb4524d0c74065332233149985f34d3407ed05cc3ef3416250d4049b",
+      "current": "035d9f9ebb4524d0c74065332233149985f34d3407ed05cc3ef3416250d4049b"
+    },
+    "psionic/tests/parakeet-device-reference.coax": {
+      "qualified": "34cb24b0cc25ac70b66baa5a4d607f0fd3e03b8753c2c3a7d51072a91495fffc",
+      "current": "34cb24b0cc25ac70b66baa5a4d607f0fd3e03b8753c2c3a7d51072a91495fffc"
+    },
+    "psionic/tests/parakeet-device.c": {
+      "qualified": "586be0f05b44f343f33b4314302126a86ee1f41e5bdfd928d7cea361cc650514",
+      "current": "586be0f05b44f343f33b4314302126a86ee1f41e5bdfd928d7cea361cc650514"
+    },
+    "psionic/platform/metal-host.m": {
+      "qualified": "99d1d54567ba7d941a4747f979bdf5b3e61de134e65ca37d7e478fd5fff2dd87",
+      "current": "99d1d54567ba7d941a4747f979bdf5b3e61de134e65ca37d7e478fd5fff2dd87"
+    },
+    "psionic/platform/metal-host.h": {
+      "qualified": "7b253de9f95200255504263acabea5e35a5cde11fd721b0b0625feabdf3be977",
+      "current": "7b253de9f95200255504263acabea5e35a5cde11fd721b0b0625feabdf3be977"
+    },
+    "psionic/lib/whisper/device.coax": {
+      "qualified": "df88e1d9dcc795a0c61f87380a058240ee3e1f349215c728b47a3d8c2940f872",
+      "current": "df88e1d9dcc795a0c61f87380a058240ee3e1f349215c728b47a3d8c2940f872"
+    },
+    "coax/lib/compute/apple.coax": {
+      "qualified": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb",
+      "current": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb"
+    },
+    "psionic/tests/parakeet_reference.py": {
+      "qualified": "b6f9ffcf6002c5cd5012147cc91843ff934c7c1829c056dee9cae647fb51ea84",
+      "current": "b6f9ffcf6002c5cd5012147cc91843ff934c7c1829c056dee9cae647fb51ea84"
+    },
+    "psionic/tests/parakeet_reference_probe.py": {
+      "qualified": "a814e5aead9ef5b88584c3f227f81a0aaa35ebb1e134a4ddbe91b4d6f9cc946c",
+      "current": "a814e5aead9ef5b88584c3f227f81a0aaa35ebb1e134a4ddbe91b4d6f9cc946c"
+    },
+    "psionic/tests/parakeet_reference_acquire.py": {
+      "qualified": "7c3575a44a0837a5ad50396716101783394d90e5d8400010615cc279be6741d6",
+      "current": "7c3575a44a0837a5ad50396716101783394d90e5d8400010615cc279be6741d6"
+    },
+    "psionic/tests/parakeet_reference_compare.py": {
+      "qualified": "e7b96ae44b0c32599c449ac566f8f091746d01680d77b3434889996436918bdf",
+      "current": "e7b96ae44b0c32599c449ac566f8f091746d01680d77b3434889996436918bdf"
+    },
+    "psionic/tests/parakeet_reference_native.py": {
+      "qualified": "53e8d9931935f00b0f6864204c42b59062f59e878239180b79bfd85985216339",
+      "current": "53e8d9931935f00b0f6864204c42b59062f59e878239180b79bfd85985216339"
+    },
+    "psionic/tests/parakeet_reference_native.c": {
+      "qualified": "13c202407825e37a6e3039cb28b7c7b38a8f84e99e40f94c4073f7f165fae7e0",
+      "current": "13c202407825e37a6e3039cb28b7c7b38a8f84e99e40f94c4073f7f165fae7e0"
+    },
+    "psionic/tests/parakeet-reference-rules.coax": {
+      "qualified": "b394784b125c29843fe50baad8850caf2f6b4e661890957081ed8ea72f7c7bd6",
+      "current": "b394784b125c29843fe50baad8850caf2f6b4e661890957081ed8ea72f7c7bd6"
+    }
+  },
+  "native_gate_reused": "runtime/record.json",
+  "gpu_gate_reused": "reference/full-gpu-comparison.json",
+  "cli": "Current-main CLI rebuilt and transport checks rerun because main changed CLI paths; both --take and --model-dir retained."
+}

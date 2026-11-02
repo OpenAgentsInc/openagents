@@ -1,0 +1,21 @@
+{
+  "language": "hu",
+  "config": "hu_hu",
+  "split": "test",
+  "utterance_id": "1742",
+  "audio_member": "test/10004554113809348010.wav",
+  "samples": 192960,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "hu.pcm",
+  "pcm_sha256": "f19a54db4a28d7f23c05c949ae67b0d0ef7c4e5e10208fdfc8e7b61daf921774",
+  "wav_sha256": "0f181e6b6820d105be2b6cf348b9f4eeb896cd0cb65f1b7567cf367bb91c2ae4",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "939accd545532c3b0eb34891742829314267efd6c67a4a5ac5e15aef23dec82f",
+  "raw_reference": "Hongkong nevét a Hongkong-szigetről kapta, és ez a hely sok turista számára a figyelem középpontjában áll.",
+  "reference": "hongkong nevét a hongkong szigetről kapta és ez a hely sok turista számára a figyelem középpontjában áll",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/hu_hu/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/hu_hu/test.tsv"
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "psionic.parakeet.public-snapshot.v1",
+  "argv": [
+    "/tmp/parakeet-snapshot-late/check",
+    "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0000.pcm",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0006.pcm"
+  ],
+  "returncode": -6,
+  "timeout": false,
+  "seconds": 18.261331040994264,
+  "inputs_before": {
+    "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet-runtime-snapshot.c": "067757b440f753d9f47aef42e94459ea610cfbad485b1011fce77c0304a5ed8b",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/psionic-parakeet.h": "517914be2df16f6b340284c058ebe098937f4937454dd48bf32ed829dde640e7",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-face.c": "5138ddf9a4569ef4c815a9085b602e2b938836c4129085ce96a2d8606ef41197",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-metal.c": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/runtime.coax": "bc64963506a2a6caada5485eec1d9015f0330689d40d2b11529465afa2cd2441",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/front.coax": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/text.coax": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+    "/tmp/parakeet-qualified/libpsionic-parakeet.a": "22e1023e7039e24039035b9eff533b97198501e5d32b3c10326ee0b6150e0b39",
+    "/tmp/parakeet-snapshot-late/check": "204440a7f7667ec68f367745dfdf9c48b50b9fc45275aeea868276b1e39907be",
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0000.pcm": "9afaada0c1b445dae8a3baae5bbaffdcedbd2c09eb66b86720b8045c854feefc",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0006.pcm": "b42c73c3425642f28f09d347a8bba3456efcb228bb374670cdd9411ce1c26e3f"
+  },
+  "inputs_after": {
+    "/private/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet-runtime-snapshot.c": "067757b440f753d9f47aef42e94459ea610cfbad485b1011fce77c0304a5ed8b",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/psionic-parakeet.h": "517914be2df16f6b340284c058ebe098937f4937454dd48bf32ed829dde640e7",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-face.c": "5138ddf9a4569ef4c815a9085b602e2b938836c4129085ce96a2d8606ef41197",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-metal.c": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/runtime.coax": "bc64963506a2a6caada5485eec1d9015f0330689d40d2b11529465afa2cd2441",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/front.coax": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/lib/parakeet/text.coax": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+    "/tmp/parakeet-qualified/libpsionic-parakeet.a": "22e1023e7039e24039035b9eff533b97198501e5d32b3c10326ee0b6150e0b39",
+    "/tmp/parakeet-snapshot-late/check": "204440a7f7667ec68f367745dfdf9c48b50b9fc45275aeea868276b1e39907be",
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0000.pcm": "9afaada0c1b445dae8a3baae5bbaffdcedbd2c09eb66b86720b8045c854feefc",
+    "/private/tmp/openagents-12625-complete-20261101/psionic/fixtures/parakeet/6930-75918-0006.pcm": "b42c73c3425642f28f09d347a8bba3456efcb228bb374670cdd9411ce1c26e3f"
+  },
+  "inputs_unchanged": true,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "c13c3bb19b59fa44f84cec84948b8f87e2e606873cc3da19985e977844f2ad0a",
+  "passed": false,
+  "scope": "Single new adversarial A-success/B-full-inference text-capacity-failure/B-success sequence plus failed stage/JSON copies, only public APIs; no corpus replay."
+}

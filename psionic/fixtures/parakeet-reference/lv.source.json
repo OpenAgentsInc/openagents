@@ -1,0 +1,21 @@
+{
+  "language": "lv",
+  "config": "lv_lv",
+  "split": "test",
+  "utterance_id": "1951",
+  "audio_member": "test/10056229872667344281.wav",
+  "samples": 193920,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "lv.pcm",
+  "pcm_sha256": "b59c29cbff042e1f32f3d409405fd753bd57514ca87c78f1fae81a09be8dfb2e",
+  "wav_sha256": "ee66849b50b658ef456663b1b32540a0c5f28d4fec0cb117f51a1b5ee49c56e7",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "3207f996478a7176bf1fe08bc01646f63fad6e59acad2b861c1e7bc994fa5e94",
+  "raw_reference": "2002. gadā Gomu iznīcināja lava no Njiragongo vulkāna, kas apraka vairumu pilsētas ielu, jo īpaši tās centrā.",
+  "reference": "2002. gadā gomu iznīcināja lava no njiragongo vulkāna kas apraka vairumu pilsētas ielu jo īpaši tās centrā",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/lv_lv/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/lv_lv/test.tsv"
+}

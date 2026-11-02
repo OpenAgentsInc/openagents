@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/book.py", line 299, in <module>
+    main()
+    ~~~~^^
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/book.py", line 293, in main
+    examples = check(args.book)
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/book.py", line 96, in check
+    assert not errors, f"chapter registry ({book}/chapters.json): " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: chapter registry (psionic/book/chapters.json): README.md: ch153-transcribe-with-parakeet.md status must be 'Runnable: psionic-parakeet-resident-v1, bounded CPU frontend + Metal f32 encoder + compensated CPU TDT' (optionally followed by ' (...)'), not 'Implemented: psionic-parakeet-resident-v1, bounded Metal encoder and compensated CPU TDT'

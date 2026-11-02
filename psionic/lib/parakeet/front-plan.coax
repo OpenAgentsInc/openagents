@@ -1,0 +1,29 @@
+// NeMo's valid length is floor(samples / hop), while centred STFT stores
+// one additional physical column. Never include that column in statistics.
+#authority;
+PkFrontPlan :: struct {ok:bool;frames:int;physical:int;encoded:int;raw:int;features:int;}
+PK_FRONT_MELS :: 128;
+PK_FRONT_HOP :: 160;
+PK_FRONT_MAX :: 327520;
+
+#forall "Parakeet frontend refuses fewer than two valid analysis frames" samples: -1..<320 {
+ #assert !pk_front_plan(samples).ok;
+}
+#test "Parakeet frontend has distinct physical and valid lengths at hop boundaries" {
+ for samples:[4]int.[320,321,478,479] {p:=pk_front_plan(samples);#assert p.ok && p.frames==2 && p.physical==3 && p.encoded==1 && p.raw==384 && p.features==256;}
+ p:=pk_front_plan(480);#assert p.ok && p.frames==3 && p.physical==4 && p.encoded==1;
+ p=pk_front_plan(1280);#assert p.frames==8 && p.physical==9 && p.encoded==1;
+ p=pk_front_plan(1440);#assert p.frames==9 && p.physical==10 && p.encoded==2;
+}
+#test "Parakeet frontend lengths match the four original recorded NeMo utterances" {
+ samples:=[4]int.[56080,80400,93600,51120];valid:=[4]int.[350,502,585,319];encoded:=[4]int.[44,63,74,40];
+ for i:0..<4 {p:=pk_front_plan(samples[i]);#assert p.ok && p.frames==valid[i] && p.physical==valid[i]+1 && p.encoded==encoded[i] && p.features==128*valid[i] && p.raw==128*(valid[i]+1);}
+}
+#test "Parakeet frontend keeps the existing utterance maximum without overflow" {
+ p:=pk_front_plan(327520);#assert p.ok && p.frames==2047 && p.physical==2048 && p.encoded==256 && p.raw==262144 && p.features==262016;
+ #assert !pk_front_plan(327521).ok && !pk_front_plan(9223372036854775807).ok;
+}
+pk_front_plan :: (samples:int)->PkFrontPlan {
+ if samples<320 || samples>PK_FRONT_MAX {return PkFrontPlan.{};}
+ n:=samples/PK_FRONT_HOP;return PkFrontPlan.{ok=true,frames=n,physical=n+1,encoded=(n+7)/8,raw=PK_FRONT_MELS*(n+1),features=PK_FRONT_MELS*n};
+}

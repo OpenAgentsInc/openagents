@@ -1,0 +1,21 @@
+{
+  "language": "mt",
+  "config": "mt_mt",
+  "split": "test",
+  "utterance_id": "1920",
+  "audio_member": "test/10011477559153786610.wav",
+  "samples": 219840,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "mt.pcm",
+  "pcm_sha256": "913e8ab06bdf2c0d4086faa2512f9e2b15a7bebf28d5734d0dd8ce9016b7a856",
+  "wav_sha256": "c63d937d1a906fa68d0f67f77c271504ec7f0e4a1aa7c7af2283c0fa8affee74",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "08e63ec0d5e7e67c3746a7a932180ac01cd6d21bef98ad4a120b1e435d561b9f",
+  "raw_reference": "Ġeneralment huma jkollhom offerti ta' ikel, xorb u divertiment speċjali, biex iżommu lill-mistiednin f'burdata tajba, u jżommuhom fuq il-post.",
+  "reference": "ġeneralment huma jkollhom offerti ta' ikel xorb u divertiment speċjali biex iżommu lill-mistiednin f'burdata tajba u jżommuhom fuq il-post",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/mt_mt/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/mt_mt/test.tsv"
+}

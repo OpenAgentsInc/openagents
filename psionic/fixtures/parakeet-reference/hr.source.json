@@ -1,0 +1,21 @@
+{
+  "language": "hr",
+  "config": "hr_hr",
+  "split": "test",
+  "utterance_id": "1776",
+  "audio_member": "test/10055598453054034810.wav",
+  "samples": 128640,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "hr.pcm",
+  "pcm_sha256": "32839b8153e5380ed5f295d1cabfa7db7b89be6956b5b3d8da46587a0a0562ff",
+  "wav_sha256": "73c9e5a2e922930cf2bf549fc289a965ad9c10299261c92cc7ddd8b5d389c0ca",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "2eda0cd1e5fabeaf0bb5e932b6cae7794647fd8eb28b8c9e13983d3c7c5bc572",
+  "raw_reference": "Tijekom noći izrađeno je između 150 i 200 kopija koje su sada poznate pod nazivom „Dunlap broadsides“.",
+  "reference": "tijekom noći izrađeno je između 150 i 200 kopija koje su sada poznate pod nazivom dunlap broadsides",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/hr_hr/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/hr_hr/test.tsv"
+}

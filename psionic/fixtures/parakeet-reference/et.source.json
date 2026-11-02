@@ -1,0 +1,21 @@
+{
+  "language": "et",
+  "config": "et_ee",
+  "split": "test",
+  "utterance_id": "1831",
+  "audio_member": "test/10017682066430689137.wav",
+  "samples": 225600,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "et.pcm",
+  "pcm_sha256": "8dac187f968aa738f6f15c3b387ceeebf435fe3f4925bff1aaf08c90dccf8091",
+  "wav_sha256": "7f2c991a2eac9b601632337ed44b469bfcb581f26fd1facbef4d42f98eeee5ef",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "2d37ae07a737c74cee0a2e173612fbc91114877aee298d36a4d9197d3a93c672",
+  "raw_reference": "Plitvice järvede rahvuspark on kaetud tihedate metsadega, põhiliselt pöökide, kuuskede ja nulgedega, ning seal kasvab mägi- ja vahemeretaimestike segu.",
+  "reference": "plitvice järvede rahvuspark on kaetud tihedate metsadega põhiliselt pöökide kuuskede ja nulgedega ning seal kasvab mägi ja vahemeretaimestike segu",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/et_ee/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/et_ee/test.tsv"
+}

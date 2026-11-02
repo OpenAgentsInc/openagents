@@ -1,0 +1,21 @@
+{
+  "language": "es",
+  "config": "es_419",
+  "split": "test",
+  "utterance_id": "2001",
+  "audio_member": "test/1001146817223348054.wav",
+  "samples": 205440,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "es.pcm",
+  "pcm_sha256": "88ed90c18726882ad2e7b838747fd3797776b7c233583ee2bf767dad0d546cb2",
+  "wav_sha256": "861ceedc4d50fbe52fc89b6d0c0fa740b9cd6fa668388e754064847386af0faf",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "d107a93a4f54a18ac25cd470bb4cdadce14fb075b0c1d1542258e274d209ec09",
+  "raw_reference": "Se recomienda enfáticamente a los viajeros que se informen sobre cualquier riesgo de clima extremo en el área que visitan, dado que ello puede afectar sus planes de viaje.",
+  "reference": "se recomienda enfáticamente a los viajeros que se informen sobre cualquier riesgo de clima extremo en el área que visitan dado que ello puede afectar sus planes de viaje",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/es_419/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/es_419/test.tsv"
+}

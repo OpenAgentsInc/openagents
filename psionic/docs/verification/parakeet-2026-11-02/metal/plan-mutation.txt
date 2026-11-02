@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/plan.coax:23:89: mutant survived: 128 became 129
+   if cf_shape_check(s)!=CfStatus.ok || frames<1 || frames>CF_FRAMES_MAX || s.dim/s.heads>128 {return PkfPlan.{};}
+                                                                                          ^
+psionic/lib/parakeet/plan.coax:24:15: mutant survived: 1 became 2
+   p:=cf_plan(s,1,frames);n:=p.t3;nd:=n*s.dim;np:=(2*n-1)*s.dim;
+                ^
+63 mutants, 61 killed, 2 survived

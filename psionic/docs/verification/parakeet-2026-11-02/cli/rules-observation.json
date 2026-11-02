@@ -1,0 +1,15 @@
+{
+  "scope": "Original interactive tool observation; raw stdout was not archived for this one invocation. Counts below are the observed compiler report, not a fabricated rerun.",
+  "source": "apps/openagents-cli/parakeet-rules.coax",
+  "checks": {
+    "authored": 4,
+    "passed": 4
+  },
+  "mutation": {
+    "mutants": 17,
+    "killed": 17,
+    "survived": 0
+  },
+  "compiler": "coax/bin/coax",
+  "later_changes": "none to policy source"
+}

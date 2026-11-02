@@ -1,0 +1,13 @@
+{
+  "schema": "openagents.voice.offline-stt-observation.v1",
+  "scope": "Parakeet chapter 153 offline resident pipeline; not Coder dictation/key-release/streaming or D4 completion",
+  "record": "../../psionic/docs/verification/parakeet-2026-11-02/reference/product-quality-latency.json",
+  "hardware": "Apple M5 Max, 128 GiB, macOS 26.4",
+  "fresh_engine_open_seconds": 20.272077,
+  "filesystem_cache": "uncontrolled",
+  "audio_seconds": 298.435,
+  "inference_seconds": 48.374912,
+  "ordered_requests": 29,
+  "repetitions": 1,
+  "audio_seconds_per_inference_second": 6.169210188950834
+}

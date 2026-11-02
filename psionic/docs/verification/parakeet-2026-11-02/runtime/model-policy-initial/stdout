@@ -1,0 +1,92 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/model-policy.coax:37:69: mutant survived: '>=' became '>'
+  pkrt_span :: (a:int,b:int,n:int,payload:int)->bool {return a>=0 && b>=a && n>=0 && b<=payload && b-a==n;}
+                                                                      ^
+psionic/lib/parakeet/model-policy.coax:37:77: mutant survived: '>=' became '>'
+  pkrt_span :: (a:int,b:int,n:int,payload:int)->bool {return a>=0 && b>=a && n>=0 && b<=payload && b-a==n;}
+                                                                              ^
+psionic/lib/parakeet/model-policy.coax:37:79: mutant survived: 0 became 1
+  pkrt_span :: (a:int,b:int,n:int,payload:int)->bool {return a>=0 && b>=a && n>=0 && b<=payload && b-a==n;}
+                                                                                ^
+psionic/lib/parakeet/model-policy.coax:41:15: mutant survived: '<' became '<='
+   if file.count<10 {return -1;}n:u64;for i:0..<8 {n|=cast(u64)file[i]<<(8*i);}
+                ^
+psionic/lib/parakeet/model-policy.coax:41:16: mutant survived: 10 became 11
+   if file.count<10 {return -1;}n:u64;for i:0..<8 {n|=cast(u64)file[i]<<(8*i);}
+                 ^
+psionic/lib/parakeet/model-policy.coax:41:27: mutant survived: -1 became 0
+   if file.count<10 {return -1;}n:u64;for i:0..<8 {n|=cast(u64)file[i]<<(8*i);}
+                            ^
+psionic/lib/parakeet/model-policy.coax:42:43: mutant survived: '>' became '>='
+   if n<2 || n>cast(u64)PKRT_HEADER_MAX || n>cast(u64)(file.count-8) {return -1;}return 8+cast(int)n;
+                                            ^
+psionic/lib/parakeet/model-policy.coax:42:65: mutant survived: 8 became 9
+   if n<2 || n>cast(u64)PKRT_HEADER_MAX || n>cast(u64)(file.count-8) {return -1;}return 8+cast(int)n;
+                                                                  ^
+psionic/lib/parakeet/model-policy.coax:48:58: mutant survived: -1 became 0
+   count:=1;for i:0..<t.rank {if jv_int(d,jv_at(d,shape,i),-1)!=t.dims[i] {return PkRtSpan.{status=PkRtStatus.tensor};}count*=t.dims[i];}
+                                                           ^
+psionic/lib/parakeet/model-policy.coax:49:68: mutant survived: -1 became 0
+   a:=jv_int(d,jv_at(d,offsets,0),-1);b:=jv_int(d,jv_at(d,offsets,1),-1);width:=ifx t.dtype=="F32" then 4 else 8;
+                                                                     ^
+psionic/lib/parakeet/model-policy.coax:54:42: mutant survived: '||' became '&&'
+   if payload<0 || payload>PKRT_FILE_BYTES || !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+                                           ^
+psionic/lib/parakeet/model-policy.coax:54:15: mutant survived: '||' became '&&'
+   if payload<0 || payload>PKRT_FILE_BYTES || !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+                ^
+psionic/lib/parakeet/model-policy.coax:54:12: mutant survived: '<' became '<='
+   if payload<0 || payload>PKRT_FILE_BYTES || !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+             ^
+psionic/lib/parakeet/model-policy.coax:54:13: mutant survived: 0 became 1
+   if payload<0 || payload>PKRT_FILE_BYTES || !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+              ^
+psionic/lib/parakeet/model-policy.coax:54:25: mutant survived: '>' became '>='
+   if payload<0 || payload>PKRT_FILE_BYTES || !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+                          ^
+psionic/lib/parakeet/model-policy.coax:54:26: mutant survived: 2508311120 became 2508311121
+   if payload<0 || payload>PKRT_FILE_BYTES || !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+                           ^
+psionic/lib/parakeet/model-policy.coax:55:98: mutant survived: '||' became '&&'
+   if offsets.count<expected {return PkRtStatus.capacity;}d:[1]Jv;if !jv_parse(d[..],header,nodes) || jv_kind(d[0],0)!=JV_OBJECT {return PkRtStatus.header;}
+                                                                                                   ^
+psionic/lib/parakeet/model-policy.coax:56:42: mutant survived: '||' became '&&'
+   count:=jv_len(d[0],0);if count<expected || count>expected+1 {return PkRtStatus.tensor;}
+                                           ^
+psionic/lib/parakeet/model-policy.coax:56:60: mutant survived: 1 became 2
+   count:=jv_len(d[0],0);if count<expected || count>expected+1 {return PkRtStatus.tensor;}
+                                                             ^
+psionic/lib/parakeet/model-policy.coax:61:111: mutant survived: the assignment was removed
+    if jv_raw_eq(key,"__metadata__") {if meta || jv_kind(d[0],member)!=JV_OBJECT {return PkRtStatus.tensor;}meta=true;}
+                                                                                                                ^
+psionic/lib/parakeet/model-policy.coax:61:112: mutant survived: true became false
+    if jv_raw_eq(key,"__metadata__") {if meta || jv_kind(d[0],member)!=JV_OBJECT {return PkRtStatus.tensor;}meta=true;}
+                                                                                                                 ^
+psionic/lib/parakeet/model-policy.coax:63:12: mutant survived: -1 became 0
+     found:= -1;for i:0..<expected {n:=pk_name(c,i,buf[..]);if jv_raw_eq(key,cast(string)buf[0..<n]) {found=i;break;}}
+             ^
+psionic/lib/parakeet/model-policy.coax:69:105: mutant survived: 0 became 1
+   covered:=0;for i:0..<expected {if !seen[i] {return PkRtStatus.tensor;}covered+=ends[i]-starts[i];for j:0..<i {if starts[i]<ends[j] && starts[j]<ends[i] {return PkRtStatus.tensor;}}}
+                                                                                                          ^
+psionic/lib/parakeet/model-policy.coax:69:145: mutant survived: '<' became '<='
+   covered:=0;for i:0..<expected {if !seen[i] {return PkRtStatus.tensor;}covered+=ends[i]-starts[i];for j:0..<i {if starts[i]<ends[j] && starts[j]<ends[i] {return PkRtStatus.tensor;}}}
+                                                                                                                                                  ^
+psionic/lib/parakeet/model-policy.coax:79:15: mutant survived: '||' became '&&'
+   if c.heads<1 || c.durations<1 || c.durations>8 {return false;}
+                ^
+psionic/lib/parakeet/model-policy.coax:79:12: mutant survived: '<' became '<='
+   if c.heads<1 || c.durations<1 || c.durations>8 {return false;}
+             ^
+psionic/lib/parakeet/model-policy.coax:79:13: mutant survived: 1 became 2
+   if c.heads<1 || c.durations<1 || c.durations>8 {return false;}
+              ^
+psionic/lib/parakeet/model-policy.coax:79:29: mutant survived: '<' became '<='
+   if c.heads<1 || c.durations<1 || c.durations>8 {return false;}
+                              ^
+psionic/lib/parakeet/model-policy.coax:79:30: mutant survived: 1 became 2
+   if c.heads<1 || c.durations<1 || c.durations>8 {return false;}
+                               ^
+psionic/lib/parakeet/model-policy.coax:79:46: mutant survived: '>' became '>='
+   if c.heads<1 || c.durations<1 || c.durations>8 {return false;}
+                                               ^
+165 mutants, 135 killed, 30 survived

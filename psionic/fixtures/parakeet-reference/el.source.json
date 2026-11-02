@@ -1,0 +1,21 @@
+{
+  "language": "el",
+  "config": "el_gr",
+  "split": "test",
+  "utterance_id": "1993",
+  "audio_member": "test/10055043144368529343.wav",
+  "samples": 176640,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "el.pcm",
+  "pcm_sha256": "9527a011228139db04a8ab87ea64f68aeafe6a4316e0e17db699135903f0f426",
+  "wav_sha256": "f677e6129f88fe517510aaa63fb84c9c5ccba0c6eae4d97fb9451c91e077dcd4",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "0b1ab8c363b6ea42325825129753df1f99b231031735ccb7cf3ca03f5041c62f",
+  "raw_reference": "Η δέκατη καταιγίδα της εποχής των ατλαντικών τυφώνων που απέκτησε όνομα, η Υποτροπική Καταιγίδα Τζέρι, σχηματίσθηκε σήμερα στον Ατλαντικό Ωκεανό.",
+  "reference": "η δέκατη καταιγίδα της εποχής των ατλαντικών τυφώνων που απέκτησε όνομα η υποτροπική καταιγίδα τζέρι σχηματίσθηκε σήμερα στον ατλαντικό ωκεανό",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/el_gr/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/el_gr/test.tsv"
+}

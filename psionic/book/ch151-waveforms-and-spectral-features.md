@@ -4,7 +4,7 @@
 > FFT of any size up to 4,096 and its inverse, spectrograms, mel filter
 > banks, log-mel features and per-feature normalization run on the CPU and
 > are checked against an independent oracle. Matching recorded features of
-> the pinned Parakeet model is chapter 153's job and is not done yet.
+> the pinned Parakeet model is qualified separately in chapter 153.
 
 Speech models do not read raw audio samples. They read spectral features,
 and those features depend on exact conventions: the sample rate, the window
@@ -520,6 +520,12 @@ result is taken with a guard: `add` takes log(v + guard), as NeMo does with
 2⁻²⁴; `clamp` takes log(max(v, guard)). Per-feature normalization then
 standardizes each mel row over the frames. It subtracts the mean and divides
 by the n − 1 standard deviation plus 10⁻⁵, which are NeMo's constants.
+
+The generic function below uses every supplied frame. NeMo's real Parakeet
+pipeline distinguishes physical centred-STFT columns from valid feature
+length: the final extra column is excluded from the statistics and masked.
+[Chapter 153](ch153-transcribe-with-parakeet.md) records the actual NeMo probe
+and implements that model-specific valid-prefix normalization separately.
 
 By hand: one feature over three frames with values 1, 2 and 6 has mean 3,
 deviations −2, −1 and 3, and variance 14/2 = 7. The normalized values are

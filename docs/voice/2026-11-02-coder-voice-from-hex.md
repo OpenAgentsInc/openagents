@@ -1,6 +1,7 @@
 # Voice in Coder: what we take from Hex
 
-*Proposal, 2026-11-02. Nothing here is built yet.*
+*Proposal, 2026-11-02. Coder dictation is not built yet. The Parakeet engine
+foundation described below is now qualified separately in Psionic chapter 153.*
 
 This document does three things:
 
@@ -81,7 +82,7 @@ Two measured facts from Hex matter most for us:
 | Voice engine: resample to 16 kHz, levels, noise floor, VAD, end of turn, barge-in | Shipped | `verse/voice.coax`, `verse/platform/voice.h` |
 | Voice host on Cloud Run with Google and Psionic providers | Shipped | `verse/voice-host/`, [dev.md](dev.md) |
 | Web voice in realms, iOS voice toggle | Web shipped; iOS simulator only | `coax/web/voice.js`, `apps/openagents-ios/OpenAgents/Voice/` |
-| Psionic Parakeet TDT 0.6B v3 in Coax | Partial: four LibriSpeech clips exact, no NeMo parity yet | `psionic/lib/parakeet.coax`, Psionic book ch. 151–154 |
+| Psionic Parakeet TDT 0.6B v3 in Coax | Resident native API and explicit CLI backend; Metal encoder, CPU decoder; all 29 frozen recordings match actual NeMo tokens/text and intermediate tensors meet tolerance, with 25-language smoke scores | [Engine guide](../../psionic/docs/parakeet.md), [chapter 153](../../psionic/book/ch153-transcribe-with-parakeet.md) |
 | Psionic text to speech | Rule-based teaching version only | `psionic/lib/speak.coax`, ch. 155 |
 | Zeron's dictation in Coder Desktop (Rust): Parakeet v3 INT8 on ONNX, hold Cmd+D, at most 60 s, transcribes into the draft and never sends | Shipped in the sibling repo; not ported to the Coax Mac app | `~/work/coder-desktop/crates/voice`, `crates/ui/src/dictation.rs` |
 | Coder terminal UI and CLI | Shipped, no voice | `coder/tui/coder.coax` (submit is `cd_submit`, line 1076) |
@@ -213,8 +214,13 @@ machine, model and build, as coax-native-voice.md requires.
 
 **Take later:**
 
-- **Parakeet** once Psionic's Coax Parakeet matches NeMo (book ch. 153).
-  Hex makes it the default for speed and accuracy, and Zeron ships it.
+- **Parakeet in Coder.** Psionic's bounded resident engine now matches actual
+  NeMo on chapter 153's frozen 29-recording qualification. Its measured offline
+  baseline processes 298.435 s audio in 48.375 s inference on an M5 Max, with
+  a 20.272 s fresh engine open (filesystem cache uncontrolled). That is not
+  a 300 ms key-release result. Keep it resident, measure dictation timing and
+  implement the 60-second segmentation policy before choosing it as default.
+  Hex makes Parakeet the default for speed and accuracy, and Zeron ships it.
   Hex's vocabulary rescoring (rescore look-alike spans with the
   transducer's score instead of boosting tokens) is the method to copy
   then.
@@ -276,7 +282,11 @@ Each phase ends with its checks passing and a measurement committed.
 - **D4. Evaluation and tuning.** The corpus and harness below, and the
   latency table filled in. Pick the default model (`base.en` or `small.en`)
   from the numbers.
-- **D5. Later.** Parakeet, the optional cleanup pass, Linux capture.
+- **D5. Later.** Integrate the now-qualified Parakeet engine: resident lifetime,
+  silence admission, 20.47-second model-bound segmentation, vocabulary rescoring
+  and measured release latency. The optional cleanup pass and Linux capture
+  also remain here. Engine qualification does not complete D0–D4 or authorize
+  opening a microphone.
 
 Talking with Coder out loud (spoken replies, barge-in) is not in these
 phases. When it comes, it uses the voice host and `openagents.voice.v1`:

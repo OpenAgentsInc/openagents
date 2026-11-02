@@ -1,0 +1,70 @@
+// The pinned NeMo frontend: valid-length statistics, not statistics over
+// every physical STFT column. Compact valid columns before the encoder.
+// Dither is zero in evaluation, as in the recorded official reference.
+#load "../spectral.coax";
+#load "front-plan.coax";
+
+#test "Parakeet frontend excludes poisoned physical tail from mean and sample deviation" {
+ raw:=[6]f64.[1,3,sf_nan(),2,6,sf_inf()];out:=[5]f32.[9,9,9,9,9];
+ #assert pk_front_normalize(raw[..],2,3,2,out[0..<4])==SfStatus.ok;
+ #assert abs(f64(out[0])+1/(sqrt(2.0)+0.00001))<0.0000001 && out[1]== -out[0];
+ #assert abs(f64(out[2])+2/(sqrt(8.0)+0.00001))<0.0000001 && out[3]== -out[2] && out[4]==9;
+}
+#test "Parakeet frontend keeps complete valid rows and refuses before output publication" {
+ raw:=[4]f64.[1,3,2,6];out:=[4]f32.[7,7,7,7];
+ #assert pk_front_normalize(raw[..],2,2,2,out[..])==SfStatus.ok && out[0]<0 && out[1]>0 && out[2]<0 && out[3]>0;
+ for fault:0..<6 {
+  for i:0..<4 {out[i]=7;}x:=raw;valid:=2;physical:=2;mels:=2;cap:=4;
+  if fault==0 {valid=1;}if fault==1 {valid=3;}if fault==2 {mels=0;}if fault==3 {physical=3;}if fault==4 {cap=3;}if fault==5 {x[2]=sf_nan();}
+  #assert pk_front_normalize(x[..],mels,physical,valid,out[0..<cap])!=SfStatus.ok;
+  for i:0..<4 {#assert out[i]==7;}
+ }
+}
+#test "Parakeet frontend admits one mel and the last physical column while excluding its tail" {
+ raw:[2048]f64;raw[0]=1;raw[1]=2;raw[2]=3;raw[2047]=sf_nan();out:[3]f32;
+ #assert pk_front_normalize(raw[..],1,2048,3,out[..])==SfStatus.ok;
+ #assert abs(f64(out[0])+1/1.00001)<0.0000001 && out[1]==0 && out[2]== -out[0];
+ #assert pk_front_normalize(raw[..],129,2,2,out[..])==SfStatus.shape;
+ #assert pk_front_normalize(raw[..],1,2049,2,out[..])==SfStatus.shape;
+ raw[0]=sf_inf();#assert pk_front_normalize(raw[..],1,2048,3,out[..])==SfStatus.number;
+}
+#test "Parakeet frontend capacities are products of independent rows and columns" {
+ raw:[9]f64;out:=[9]f32.[7,7,7,7,7,7,7,7,7];
+ #assert pk_front_normalize(raw[0..<5],3,2,2,out[..])==SfStatus.capacity;
+ #assert pk_front_normalize(raw[..],3,3,3,out[0..<8])==SfStatus.capacity;
+ for i:0..<9 {#assert out[i]==7;}
+}
+#test "Parakeet frontend computes unnormalized physical spectra before compact statistics" #steps 200000000 {
+ signal:[480]f64;sf_test_signal(signal[..]);a:=SfAudio.{rate=16000,channels=1,samples=signal[..]};spec:=sf_nemo_spec();bank:[128*257]f64;raw:[128*4]f64;mine:[128*3]f32;ref:[128*3]f32;
+ #assert sf_mel_bank(spec,bank[..]).status==SfStatus.ok;
+ got:=pk_front_features(a,bank[..],raw[..],mine[..]);#assert got.status==SfStatus.ok && got.frames==3 && got.mels==128 && got.bins==257;
+ spec.normalize=SfNormalize.none;other:[128*4]f64;#assert sf_features(a,spec,bank[..],other[..]).frames==4;
+ #assert pk_front_normalize(other[..],128,4,3,ref[..])==SfStatus.ok;
+ for i:0..<mine.count {#assert mine[i]==ref[i];}
+ #assert pk_front_features(a,bank[..],raw[0..<raw.count-1],mine[..]).status==SfStatus.capacity;
+ #assert pk_front_features(a,bank[..],raw[..],mine[0..<mine.count-1]).status==SfStatus.capacity;
+}
+
+pk_front_normalize :: (raw:[]f64,mels:int,physical:int,valid:int,out:[]f32)->SfStatus {
+ if mels<1 || mels>128 || physical<valid || valid<2 || physical>2048 {return SfStatus.shape;}
+ if raw.count<mels*physical || out.count<mels*valid {return SfStatus.capacity;}
+ for m:0..<mels {for t:0..<valid {if !sf_finite(raw[m*physical+t]) {return SfStatus.number;}}}
+ for m:0..<mels {
+  total:PsionicAccumulator;for t:0..<valid {total=psionic_ops_accumulate(total,raw[m*physical+t]);}
+  mean:=psionic_ops_total(total)/f64(valid);sum:PsionicAccumulator;
+  for t:0..<valid {v:=raw[m*physical+t]-mean;sum=psionic_ops_accumulate(sum,v*v);}
+  deviation:=sqrt(psionic_ops_total(sum)/f64(valid-1))+SF_DEVIATION_GUARD;
+  for t:0..<valid {out[m*valid+t]=f32((raw[m*physical+t]-mean)/deviation);}
+ }
+ return SfStatus.ok;
+}
+pk_front_features :: (a:SfAudio,bank:[]f64,scratch:[]f64,out:[]f32)->SfResult {
+ plan:=pk_front_plan(a.samples.count);if !plan.ok {return SfResult.{status=SfStatus.length};}
+ if scratch.count<plan.raw || out.count<plan.features {return SfResult.{status=SfStatus.capacity};}
+ s:=sf_nemo_spec();s.normalize=SfNormalize.none;
+ // The single public capacity guard above admits these exact logical
+ // prefixes. A longer caller arena never becomes part of this computation.
+ r:=sf_features(a,s,bank,scratch[0..<plan.raw]);if r.status!=SfStatus.ok {return r;}
+ status:=pk_front_normalize(scratch[0..<plan.raw],128,plan.physical,plan.frames,out[0..<plan.features]);
+ return SfResult.{status=status,frames=plan.frames,bins=257,mels=128};
+}

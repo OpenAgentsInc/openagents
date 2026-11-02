@@ -1,0 +1,4 @@
+MODEL_OPEN_SECONDS 15.271661
+GPU 6930-75918-0000 audio=3.505000 frames=350 encoded=44 tokens=0 inference_ms=569.793000 total_seconds=0.570391
+GPU 6930-75918-0002 audio=5.025000 frames=502 encoded=63 tokens=0 inference_ms=326.401000 total_seconds=0.327460
+GPU 6930-75918-0006 audio=5.850000 frames=585 encoded=74 tokens=0 inference_ms=357.186000 total_seconds=0.358641

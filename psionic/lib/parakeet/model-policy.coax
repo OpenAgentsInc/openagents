@@ -1,0 +1,113 @@
+// Pinned Parakeet model admission. Metadata/payload-size checks need no weight allocation.
+#load "../parakeet.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+#load "../../../coax/lib/nostr/json.coax";
+#load "../../tests/parakeet-model-checks.coax";
+#authority;
+PkRtStatus :: enum u8 {ok;file;digest;header;tensor;vocabulary;audio;capacity;encoder;decoder;text;gpu;}
+PKRT_FILE_BYTES :: 2508311120;
+PKRT_HEADER_MAX :: 1048576;
+PKRT_JSON_MAX :: 4194304;
+PkRtSpan :: struct {status:PkRtStatus;begin:int;end:int;}
+
+// Checks precede the implementation. Component admission is exercised on
+// hand-built metadata; the exact pinned file's positive is a native gate.
+#forall "Parakeet model policy byte ranges admit exact endpoints without arithmetic overflow" mode:0..<8 {
+ a:=0;b:=8;n:=8;payload:=8;
+ if mode==1 {a= -1;}if mode==2 {b= -1;}if mode==3 {b=7;}if mode==4 {b=9;}if mode==5 {n= -1;}if mode==6 {a=9223372036854775807;}if mode==7 {a=1;b=8;}
+ #assert pkrt_span(a,b,n,payload)==(mode==0);
+}
+#test "Parakeet model policy tensor identity shape dtype and offsets are admitted together" {
+ nodes:[96]JvNode;d:[1]Jv;t:=tdt_d2(2,3);t.dtype="F32";
+ texts:=[8]string.["{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[0,24]}","{\"dtype\":\"F16\",\"shape\":[2,3],\"data_offsets\":[0,24]}","{\"dtype\":\"F32\",\"shape\":[3,2],\"data_offsets\":[0,24]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[-1,23]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[0,25]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[0,24],\"extra\":0}","{\"dtype\":\"F32\",\"dtype\":\"F32\",\"shape\":[2,3]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[0.5,24]}"];
+ for i:0..<8 {#assert jv_parse(d[..],texts[i],nodes[..]);r:=pkrt_tensor(d[0],0,t,24);#assert (r.status==PkRtStatus.ok)==(i==0);if i==0 {#assert r.begin==0 && r.end==24;}}
+ #assert jv_parse(d[..],"{\"dtype\":\"I64\",\"shape\":[],\"data_offsets\":[0,8]}",nodes[..]);t=tdt_d1(1);t.rank=0;t.dtype="I64";#assert pkrt_tensor(d[0],0,t,8).status==PkRtStatus.ok;
+}
+#test "Parakeet model policy rejects wrong file and malformed headers before publishing offsets" {
+ bytes:[32]u8;nodes:[16]JvNode;offsets:[723]int;for i:0..<723 {offsets[i]= -7;}
+ #assert pkmp_layout("{}",8,tdt_parakeet(),nodes[..],offsets[..])==PkRtStatus.tensor;
+ #assert pkrt_header(bytes[..])== -1;bytes[0]=2;bytes[8]='{';bytes[9]='}';#assert pkrt_header(bytes[..])==10;
+ bytes[0]=255;#assert pkrt_header(bytes[..])== -1;for i:0..<723 {#assert offsets[i]== -7;}
+ #assert pkrt_pinned("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+ #assert !pkrt_pinned("abd", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}
+#forall "Parakeet model policy public text capacity includes the terminating byte" n:0..<5,cap:0..<6 {
+ #assert pkrt_text_fits(n,cap)==(cap>n);
+}
+
+pkrt_span :: (a:int,b:int,n:int,payload:int)->bool {return a>=0 && b>a && b<=payload && b-a==n;}
+pkrt_pinned :: (bytes:string,expected:string)->bool {hex:[64]u8;return S_hex(S_hash(bytes),hex[..]) && cast(string)hex[..]==expected;}
+pkrt_text_fits :: (n:int,cap:int)->bool {return n>=0 && n<cap;}
+pkrt_header :: (file:[]u8)->int {
+ if file.count<10 {return -1;}n:u64;for i:0..<8 {n|=cast(u64)file[i]<<(8*i);}
+ if n<2 || n>cast(u64)PKRT_HEADER_MAX || n>cast(u64)(file.count-8) {return -1;}return 8+cast(int)n;
+}
+pkrt_tensor :: (d:Jv,at:int,t:TdtTensor,payload:int)->PkRtSpan {
+ if jv_kind(d,at)!=JV_OBJECT || jv_len(d,at)!=3 {return PkRtSpan.{status=PkRtStatus.tensor};}
+ dtype:=jv_get(d,at,"dtype");shape:=jv_get(d,at,"shape");offsets:=jv_get(d,at,"data_offsets");
+ if jv_kind(d,dtype)!=JV_STRING || !jv_raw_eq(jv_raw(d,dtype),t.dtype) || jv_kind(d,shape)!=JV_ARRAY || jv_len(d,shape)!=t.rank || jv_kind(d,offsets)!=JV_ARRAY || jv_len(d,offsets)!=2 {return PkRtSpan.{status=PkRtStatus.tensor};}
+ count:=1;for i:0..<t.rank {number:=pkmp_int(d,jv_at(d,shape,i));if !number.ok || number.value!=t.dims[i] {return PkRtSpan.{status=PkRtStatus.tensor};}count*=t.dims[i];}
+ a:=pkmp_int(d,jv_at(d,offsets,0));b:=pkmp_int(d,jv_at(d,offsets,1));if !a.ok || !b.ok {return PkRtSpan.{status=PkRtStatus.tensor};}width:=ifx t.dtype=="F32" then 4 else 8;
+ if !pkrt_span(a.value,b.value,count*width,payload) {return PkRtSpan.{status=PkRtStatus.tensor};}return PkRtSpan.{begin=a.value,end=b.value};
+}
+// The complete exact inventory is admitted before offsets are published.
+pkmp_layout :: (header:string,payload:int,c:TdtConfig,nodes:[]JvNode,offsets:[]int)->PkRtStatus {
+ if !pkmp_config(c) {return PkRtStatus.tensor;}expected:=tdt_expected_count(c);
+ if offsets.count<expected {return PkRtStatus.capacity;}d:[1]Jv;if !jv_parse(d[..],header,nodes) || jv_kind(d[0],0)!=JV_OBJECT {return PkRtStatus.header;}
+ count:=jv_len(d[0],0);
+ starts:[1024]int;ends:[1024]int;seen:[1024]bool;meta:=false;buf:[160]u8;
+ member:=jv_at(d[0],0,0);
+ for k:0..<count {
+  key:=jv_key(d[0],member);
+  if jv_raw_eq(key,"__metadata__") {if meta || jv_kind(d[0],member)!=JV_OBJECT {return PkRtStatus.tensor;}meta=true;}
+  else {
+   found:= -1;for i:0..<expected {n:=pk_name(c,i,buf[..]);if jv_raw_eq(key,cast(string)buf[0..<n]) {found=i;break;}}
+   if found<0 || seen[found] {return PkRtStatus.tensor;}r:=pkrt_tensor(d[0],member,tdt_expected(c,found),payload);if r.status!=PkRtStatus.ok {return r.status;}
+   starts[found]=r.begin;ends[found]=r.end;seen[found]=true;
+  }
+  member=d[0].nodes[member].next;
+ }
+ covered:=0;for i:0..<expected {if !seen[i] {return PkRtStatus.tensor;}covered+=ends[i]-starts[i];for j:0..<i {if starts[i]<ends[j] && starts[j]<ends[i] {return PkRtStatus.tensor;}}}
+ if covered!=payload {return PkRtStatus.tensor;}for i:0..<expected {offsets[i]=starts[i];}return PkRtStatus.ok;
+}
+
+#test "Parakeet model policy pinned file size is exact" {for n:[5]int.[-1,0,2508311119,2508311120,2508311121] {#assert pkmp_model_size(n)==(n==2508311120);}}
+#test "Parakeet model policy tokenizer input size is bounded" {for n:[5]int.[-1,0,1,4194304,4194305] {#assert pkmp_tokenizer_size(n)==(n>=1 && n<=4194304);}}
+pkmp_model_size :: (n:int)->bool {return n==PKRT_FILE_BYTES;}
+pkmp_tokenizer_size :: (n:int)->bool {return n>=1 && n<=PKRT_JSON_MAX;}
+
+pkmp_config :: (c:TdtConfig)->bool {
+ if c.durations>8 {return false;}
+ return cf_shape_check(pk_encoder(c))==CfStatus.ok && tdt_shape_check(pk_decoder(c))==TdtStatus.ok;
+}
+#test "Parakeet model policy rejects every unsafe configuration before deriving sizes" {
+ #assert pkmp_config(tdt_parakeet()) && pkmp_config(pk_tiny());
+ for fault:0..<16 {c:=pk_tiny();if fault==0 {c.heads=0;}if fault==1 {c.durations=0;}if fault==2 {c.durations=9;}if fault==3 {c.pred_layers=0;}if fault==4 {c.pred_layers=3;}if fault==5 {c.layers=0;}if fault==6 {c.layers=25;}if fault==7 {c.pred=0;}if fault==8 {c.pred=641;}if fault==9 {c.vocab=0;}if fault==10 {c.vocab=8193;}if fault==11 {c.joint=0;}if fault==12 {c.joint=641;}if fault==13 {c.mels=129;}if fault==14 {c.channels=257;}if fault==15 {c.enc=1;}#assert !pkmp_config(c);}
+}
+#test "Parakeet model policy header length admits one MiB and rejects the next byte" {
+ bytes:[1048585]u8;bytes[2]=16;#assert pkrt_header(bytes[..])==1048584;
+ bytes[0]=1;#assert pkrt_header(bytes[..])== -1;
+ bytes[0]=0;#assert pkrt_header(bytes[0..<1048583])== -1;
+}
+#test "Parakeet model policy shape and offsets must be arrays rather than objects" {
+ nodes:[64]JvNode;d:[1]Jv;t:=tdt_d2(2,3);t.dtype="F32";
+ texts:=[2]string.["{\"dtype\":\"F32\",\"shape\":{\"a\":2,\"b\":3},\"data_offsets\":[0,24]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":{\"a\":0,\"b\":24}}"];
+ for text:texts {#assert jv_parse(d[..],text,nodes[..]) && pkrt_tensor(d[0],0,t,24).status==PkRtStatus.tensor;}
+}
+
+#test "Parakeet model policy smallest header and exact bytes cannot be refused" {
+ bytes:=[10]u8.[2,0,0,0,0,0,0,0,123,125];#assert pkrt_header(bytes[..])==10 && pkrt_header(bytes[0..<9])== -1;
+ #assert !pkrt_span(0,0,0,0) && !pkrt_text_fits(-1,4);
+ c:=pk_tiny();c.heads=1;c.durations=1;#assert pkmp_config(c);c.durations=8;#assert pkmp_config(c);
+}
+#test "Parakeet model policy malformed shape and terminal offset integers cannot become valid zeroes" {
+ nodes:[64]JvNode;d:[1]Jv;t:=tdt_d2(2,3);t.dtype="F32";
+ for text:[2]string.["{\"dtype\":\"F32\",\"shape\":[2.5,3],\"data_offsets\":[0,24]}","{\"dtype\":\"F32\",\"shape\":[2,3],\"data_offsets\":[0,0.5]}"] {#assert jv_parse(d[..],text,nodes[..]);#assert pkrt_tensor(d[0],0,t,24).status==PkRtStatus.tensor;}
+}
+
+pkmp_int :: (d:Jv,at:int)->JsonInt {if jv_kind(d,at)!=JV_NUMBER {return JsonInt.{};}return json_int(jv_raw(d,at));}
+#test "Parakeet model policy numbers cannot be strings and malformed decimals have explicit failure" {
+ nodes:[64]JvNode;d:[1]Jv;
+ for text:[4]string.["\"24\"","2.5","1e3","9223372036854775808"] {#assert jv_parse(d[..],text,nodes[..]);#assert !pkmp_int(d[0],0).ok;}
+ #assert jv_parse(d[..],"24",nodes[..]);r:=pkmp_int(d[0],0);#assert r.ok && r.value==24;
+}

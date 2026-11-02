@@ -1,0 +1,4 @@
+ok   #test Parakeet text matches recorded official SentencePiece unknown spacing (1 case, 5180 steps, 0 ms)
+ok   #test Parakeet text preserves literal control pieces and exact output bounds (1 case, 1829 steps, 0 ms)
+2 of 60 checks (--only 'Parakeet text'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

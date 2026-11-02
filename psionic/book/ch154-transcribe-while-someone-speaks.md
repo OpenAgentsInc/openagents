@@ -8,9 +8,8 @@
 > utterance, and each final hypothesis carries its latency in audio time.
 > The stream matches a whole-utterance reference bit for bit, and with the
 > whole utterance in one chunk it matches chapter 152's encoder bit for bit.
-> Still to do: streaming a real model (Parakeet's encoder is 1,024 wide,
-> beyond chapter 152's bound of 128, and it was trained with full attention
-> and centred convolutions, so it is not a streaming model), streaming the
+> Still to do: streaming a real model (Parakeet was trained with full attention
+> and centred convolutions, so it is not a cache-aware streaming model), streaming the
 > TDT decoder of chapter 153, computing features from audio as it arrives,
 > taking end of turn and barge-in from the voice engine through
 > `verse/platform/voice.h`, and wall-clock latency at P50 and P99 on a named
@@ -50,7 +49,8 @@ result.
 
 Parakeet, chapter 153's model, cannot be streamed this way:
 
-- its width is 1,024 and chapter 152's encoder is bounded to 128;
+- its width is 1,024; chapter 153 now runs that full width offline, while
+  this chapter's qualified stream remains the small seeded profile;
 - it was trained with full attention and centred depthwise convolutions, so
   restricting it to past context gives a different model, not a streaming
   copy of the same one. NeMo publishes separately trained cache-aware

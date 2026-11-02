@@ -1,0 +1,21 @@
+{
+  "language": "it",
+  "config": "it_it",
+  "split": "test",
+  "utterance_id": "1787",
+  "audio_member": "test/10000151032537989529.wav",
+  "samples": 184320,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "it.pcm",
+  "pcm_sha256": "f0dae1a14ea651931aaef6bdd60a14b3a30d61181733acaef77302fe6898f553",
+  "wav_sha256": "65e5fc8ce454bf33767fb2aa2f85f7c1b4409ec55579c79824a325d33480d374",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "af1a6d7295547d283441e2ea2e6f24f41d9b26098b47fe3d588930cd053c7b08",
+  "raw_reference": "Il blog è uno strumento che si prefigge di incoraggiare la collaborazione e sviluppare l'apprendimento degli studenti ben oltre la giornata scolastica normale.",
+  "reference": "il blog è uno strumento che si prefigge di incoraggiare la collaborazione e sviluppare l'apprendimento degli studenti ben oltre la giornata scolastica normale",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/it_it/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/it_it/test.tsv"
+}

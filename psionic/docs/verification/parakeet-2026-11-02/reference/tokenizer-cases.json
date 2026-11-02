@@ -1,0 +1,355 @@
+[
+  {
+    "ids": [
+      0
+    ],
+    "pieces": [
+      "<unk>"
+    ],
+    "text": " ⁇ "
+  },
+  {
+    "ids": [
+      1
+    ],
+    "pieces": [
+      "<|nospeech|>"
+    ],
+    "text": "<|nospeech|>"
+  },
+  {
+    "ids": [
+      2
+    ],
+    "pieces": [
+      "<pad>"
+    ],
+    "text": "<pad>"
+  },
+  {
+    "ids": [
+      3
+    ],
+    "pieces": [
+      "<|endoftext|>"
+    ],
+    "text": "<|endoftext|>"
+  },
+  {
+    "ids": [
+      4
+    ],
+    "pieces": [
+      "<|startoftranscript|>"
+    ],
+    "text": "<|startoftranscript|>"
+  },
+  {
+    "ids": [
+      5
+    ],
+    "pieces": [
+      "<|pnc|>"
+    ],
+    "text": "<|pnc|>"
+  },
+  {
+    "ids": [
+      6
+    ],
+    "pieces": [
+      "<|nopnc|>"
+    ],
+    "text": "<|nopnc|>"
+  },
+  {
+    "ids": [
+      7
+    ],
+    "pieces": [
+      "<|startofcontext|>"
+    ],
+    "text": "<|startofcontext|>"
+  },
+  {
+    "ids": [
+      8
+    ],
+    "pieces": [
+      "<|itn|>"
+    ],
+    "text": "<|itn|>"
+  },
+  {
+    "ids": [
+      9
+    ],
+    "pieces": [
+      "<|noitn|>"
+    ],
+    "text": "<|noitn|>"
+  },
+  {
+    "ids": [
+      10
+    ],
+    "pieces": [
+      "<|timestamp|>"
+    ],
+    "text": "<|timestamp|>"
+  },
+  {
+    "ids": [
+      11
+    ],
+    "pieces": [
+      "<|notimestamp|>"
+    ],
+    "text": "<|notimestamp|>"
+  },
+  {
+    "ids": [
+      12
+    ],
+    "pieces": [
+      "<|diarize|>"
+    ],
+    "text": "<|diarize|>"
+  },
+  {
+    "ids": [
+      13
+    ],
+    "pieces": [
+      "<|nodiarize|>"
+    ],
+    "text": "<|nodiarize|>"
+  },
+  {
+    "ids": [
+      14
+    ],
+    "pieces": [
+      "<|spkchange|>"
+    ],
+    "text": "<|spkchange|>"
+  },
+  {
+    "ids": [
+      15
+    ],
+    "pieces": [
+      "<|audioseparator|>"
+    ],
+    "text": "<|audioseparator|>"
+  },
+  {
+    "ids": [
+      16
+    ],
+    "pieces": [
+      "<|emo:undefined|>"
+    ],
+    "text": "<|emo:undefined|>"
+  },
+  {
+    "ids": [
+      17
+    ],
+    "pieces": [
+      "<|emo:neutral|>"
+    ],
+    "text": "<|emo:neutral|>"
+  },
+  {
+    "ids": [
+      18
+    ],
+    "pieces": [
+      "<|emo:happy|>"
+    ],
+    "text": "<|emo:happy|>"
+  },
+  {
+    "ids": [
+      19
+    ],
+    "pieces": [
+      "<|emo:sad|>"
+    ],
+    "text": "<|emo:sad|>"
+  },
+  {
+    "ids": [
+      20
+    ],
+    "pieces": [
+      "<|emo:angry|>"
+    ],
+    "text": "<|emo:angry|>"
+  },
+  {
+    "ids": [
+      21
+    ],
+    "pieces": [
+      "<|unklang|>"
+    ],
+    "text": "<|unklang|>"
+  },
+  {
+    "ids": [
+      22
+    ],
+    "pieces": [
+      "<|predict_lang|>"
+    ],
+    "text": "<|predict_lang|>"
+  },
+  {
+    "ids": [
+      23
+    ],
+    "pieces": [
+      "<|nopredict_lang|>"
+    ],
+    "text": "<|nopredict_lang|>"
+  },
+  {
+    "ids": [
+      24
+    ],
+    "pieces": [
+      "<|aa|>"
+    ],
+    "text": "<|aa|>"
+  },
+  {
+    "ids": [
+      25
+    ],
+    "pieces": [
+      "<|ab|>"
+    ],
+    "text": "<|ab|>"
+  },
+  {
+    "ids": [
+      26
+    ],
+    "pieces": [
+      "<|af|>"
+    ],
+    "text": "<|af|>"
+  },
+  {
+    "ids": [
+      27
+    ],
+    "pieces": [
+      "<|ak|>"
+    ],
+    "text": "<|ak|>"
+  },
+  {
+    "ids": [
+      28
+    ],
+    "pieces": [
+      "<|sq|>"
+    ],
+    "text": "<|sq|>"
+  },
+  {
+    "ids": [
+      29
+    ],
+    "pieces": [
+      "<|am|>"
+    ],
+    "text": "<|am|>"
+  },
+  {
+    "ids": [
+      30
+    ],
+    "pieces": [
+      "<|ar|>"
+    ],
+    "text": "<|ar|>"
+  },
+  {
+    "ids": [
+      31
+    ],
+    "pieces": [
+      "<|an|>"
+    ],
+    "text": "<|an|>"
+  },
+  {
+    "ids": [
+      0,
+      284,
+      300
+    ],
+    "pieces": [
+      "<unk>",
+      "an",
+      "▁j"
+    ],
+    "text": " ⁇ an j"
+  },
+  {
+    "ids": [
+      1,
+      284,
+      300
+    ],
+    "pieces": [
+      "<|nospeech|>",
+      "an",
+      "▁j"
+    ],
+    "text": "<|nospeech|>an j"
+  },
+  {
+    "ids": [
+      2,
+      284,
+      300
+    ],
+    "pieces": [
+      "<pad>",
+      "an",
+      "▁j"
+    ],
+    "text": "<pad>an j"
+  },
+  {
+    "ids": [
+      3,
+      284,
+      300
+    ],
+    "pieces": [
+      "<|endoftext|>",
+      "an",
+      "▁j"
+    ],
+    "text": "<|endoftext|>an j"
+  },
+  {
+    "ids": [
+      4,
+      284,
+      300
+    ],
+    "pieces": [
+      "<|startoftranscript|>",
+      "an",
+      "▁j"
+    ],
+    "text": "<|startoftranscript|>an j"
+  }
+]

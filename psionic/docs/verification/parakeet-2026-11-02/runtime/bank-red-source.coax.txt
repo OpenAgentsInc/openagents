@@ -1,0 +1,84 @@
+// Resident engine: platform effects are supplied by parakeet-face.c.
+#load "model-policy.coax";
+#load "fast.coax";
+#load "front.coax";
+#load "text.coax";
+#load "../whisper/wav.coax";
+pkrt_layout :: (file:[]u8,nodes:[]JvNode,offsets:[]int)->PkRtStatus #export_c {
+ if !pkmp_model_size(file.count) {return PkRtStatus.file;}base:=pkrt_header(file);if base<0 {return PkRtStatus.header;}
+ status:=pkmp_layout(cast(string)file[8..<base],file.count-base,tdt_parakeet(),nodes,offsets);if status!=PkRtStatus.ok {return status;}for i:0..<723 {offsets[i]+=base;}return PkRtStatus.ok;
+}
+pkrt_open :: (file:[]u8,json:[]u8,nodes:[]JvNode,bytes:[]u8,pieces:[]string,offsets:[]int)->PkRtStatus #export_c {
+ if !pkmp_model_size(file.count) {return PkRtStatus.file;}
+ if !pkrt_pinned(cast(string)file,TDT_PINNED_SHA256) {return PkRtStatus.digest;}
+ status:=pkrt_layout(file,nodes,offsets);if status!=PkRtStatus.ok {return status;}
+ if !pkmp_tokenizer_size(json.count) {return PkRtStatus.vocabulary;}
+ if !pkrt_pinned(cast(string)json,"bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91") {return PkRtStatus.digest;}
+ if pk_vocab(cast(string)json,8192,nodes,bytes,pieces).status!=PkStatus.ok {return PkRtStatus.vocabulary;}return PkRtStatus.ok;
+}
+pkrt_part :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).part;}
+pkrt_at :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).at;}
+pkrt_count :: (i:int)->int #export_c {return pk_slot(tdt_parakeet(),i).count;}
+pkrt_encoder_count :: ()->int #export_c {return cf_weight_count(pk_encoder(tdt_parakeet()));}
+pkrt_decoder_count :: ()->int #export_c {return tdt_plan(pk_decoder(tdt_parakeet()),1).weights;}
+pkrt_work64 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f64;}
+pkrt_work32 :: (samples:int)->int #export_c {return pk_work(tdt_parakeet(),samples).f32;}
+
+cxpk_encode :: (ew:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32)->int #foreign;
+// Decode-only entry for independently recorded encoder tensors. Status is
+// typed; output text is published only after complete token rendering.
+pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
+ r:=tdt_decode(tdt_parakeet_shape(),dw,encoded,frames,work,tokens,at);if r.status!=TdtStatus.ok {return PkRtStatus.decoder;}
+ draft:[PK_TEXT_MAX]u8;n:=pkv3_text(pieces,tokens[0..<r.written],draft[..]);if n<0 || !pkrt_text_fits(n,text.count) || stats.count<2 {return PkRtStatus.text;}
+ for i:0..<n {text[i]=draft[i];}text[n]=0;stats[0]=n;stats[1]=r.written;return PkRtStatus.ok;
+}
+// Samples are 16kHz mono f32. Features and final encoded frames are exposed
+// in caller buffers for NeMo parity, never a private temporary dump.
+pkrt_transcribe :: (ew:[]f32,dw:[]f32,pieces:[]string,samples:[]f32,gpu:bool,wave:[]f64,w64:[]f64,w32:[]f32,features:[]f32,encoded:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
+ c:=tdt_parakeet();if ew.count!=pkrt_encoder_count() || dw.count!=pkrt_decoder_count() || pieces.count!=8192 {return PkRtStatus.tensor;}k:=pk_front_plan(samples.count);if !k.ok || wave.count<samples.count {return PkRtStatus.audio;}
+ if w64.count<k.raw+128*257 || w32.count<cf_plan(pk_encoder(c),1,k.frames).work+tdt_plan(pk_decoder(c),k.encoded).work || features.count<c.mels*k.frames || encoded.count<k.encoded*c.enc || stats.count<4 {return PkRtStatus.capacity;}
+ status:=pkrt_features(samples,wave,w64,features);if status!=PkRtStatus.ok {return status;}nf:=k.features;
+ work:=cf_plan(pk_encoder(c),1,k.frames).work;
+ if gpu {if cxpk_encode(ew,features[0..<nf],k.frames,w32[0..<work],encoded[0..<k.encoded*c.enc])!=1 {return PkRtStatus.gpu;}}
+ else {lengths:=[1]int.[k.frames];got:[1]int;if cf_encode(pk_encoder(c),ew,features[0..<nf],lengths[..],1,k.frames,w32[0..<work],encoded[0..<k.encoded*c.enc],got[..],false).status!=CfStatus.ok {return PkRtStatus.encoder;}}
+ st:=pkrt_decode(dw,pieces,encoded[0..<k.encoded*c.enc],k.encoded,w32[work..<w32.count],tokens,at,text,stats);if st==PkRtStatus.ok {stats[2]=k.frames;stats[3]=k.encoded;}return st;
+}
+pkrt_wav_info :: (file:[]u8)->WvInfo #export_c {return wv_info(file);}
+pkrt_wav_length :: (frames:int,rate:int)->int #export_c {return wv_length(frames,rate);}
+pkrt_wav :: (file:[]u8,mono:[]f32,out:[]f32)->int #export_c {
+ info:=wv_info(file);if info.status!=WvStatus.ok || mono.count<info.frames {return -1;}if wv_mono(file,info,mono)<0 {return -1;}table:[WV_TABLE]f64;wv_table(table[..]);return wv_resample(mono[0..<info.frames],info.rate,table[..],out);
+}
+// Format metadata and token/frame snapshots in Coax; the host only writes it.
+pkrt_json :: (text:string,gpu:bool,samples:int,stats:[]int,tokens:[]int,frames:[]int,out:[]u8)->int #export_c {
+ if stats.count<4 || stats[1]<0 || stats[1]>tokens.count || stats[1]>frames.count {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+ jo_key(o[..],"text");jo_str(o[..],text);jo_key(o[..],"model");jo_str(o[..],"nvidia/parakeet-tdt-0.6b-v3");jo_key(o[..],"revision");jo_str(o[..],TDT_PINNED_REVISION);
+ jo_key(o[..],"backend");jo_str(o[..],ifx gpu then "metal" else "cpu-exact");jo_key(o[..],"device");jo_str(o[..],ifx gpu then "apple-metal" else "cpu");jo_key(o[..],"samples");jo_int(o[..],samples);
+ jo_key(o[..],"feature_frames");jo_int(o[..],stats[2]);jo_key(o[..],"encoded_frames");jo_int(o[..],stats[3]);jo_key(o[..],"token_count");jo_int(o[..],stats[1]);
+ jo_key(o[..],"tokens");jo_arr(o[..]);for i:0..<stats[1] {jo_int(o[..],tokens[i]);}jo_end(o[..]);jo_key(o[..],"frames");jo_arr(o[..]);for i:0..<stats[1] {jo_int(o[..],frames[i]);}jo_end(o[..]);jo_end(o[..]);if o[0].bad {return -1;}return o[0].n;
+}
+#test "Parakeet runtime JSON escapes text and records exact token frame metadata" {
+ out:[2048]u8;stats:=[4]int.[4,2,11,2];tokens:=[2]int.[7,9];frames:=[2]int.[0,1];n:=pkrt_json("x\"\ny",true,1600,stats[..],tokens[..],frames[..],out[..]);#assert n>0;
+ nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]);#assert jv_int(d[0],jv_path(d[0],0,"tokens[1]"),-1)==9 && jv_int(d[0],jv_path(d[0],0,"frames[1]"),-1)==1;
+ #assert pkrt_json("x",false,1,stats[..],tokens[..],frames[..],out[0..<4])== -1;
+}
+
+pkrt_audio_count :: (samples:int)->bool #export_c {return pk_front_plan(samples).ok;}
+
+#test "Parakeet resident frontend initializes its mel bank and survives changing clip lengths" #steps 200000000 {
+ signal:[800]f64;sf_test_signal(signal[..]);samples:[800]f32;for i:0..<800 {samples[i]=f32(signal[i]);signal[i]=f64(samples[i]);}
+ wave:[800]f64;work:[33664]f64;mine:[640]f32;reference:[640]f32;bank:[32896]f64;raw:[768]f64;
+ #assert sf_mel_bank(sf_nemo_spec(),bank[..]).status==SfStatus.ok;
+ for count:[3]int.[800,640,800] {plan:=pk_front_plan(count);#assert plan.ok;
+  #assert pk_front_features(SfAudio.{rate=16000,channels=1,samples=signal[0..<count]},bank[..],raw[..],reference[..]).status==SfStatus.ok;
+  #assert pkrt_features(samples[0..<count],wave[..],work[..],mine[..])==PkRtStatus.ok;
+  biggest:=0.0;for i:0..<plan.features {#assert mine[i]==reference[i];if abs(f64(mine[i]))>biggest {biggest=abs(f64(mine[i]));}}
+  #assert biggest>0.1;
+ }
+}
+pkrt_features :: (samples:[]f32,wave:[]f64,w64:[]f64,features:[]f32)->PkRtStatus #export_c {
+ k:=pk_front_plan(samples.count);if !k.ok || wave.count<samples.count {return PkRtStatus.audio;}
+ if w64.count<k.raw+128*257 || features.count<k.features {return PkRtStatus.capacity;}
+ for i:0..<samples.count {if !psionic_tensor_finite_bits(f32_bits(samples[i])) || abs(f64(samples[i]))>1 {return PkRtStatus.audio;}wave[i]=f64(samples[i]);}
+ a:=SfAudio.{rate=16000,channels=1,samples=wave[0..<samples.count]};bank:=w64[k.raw..<k.raw+128*257];
+ if pk_front_features(a,bank,w64[0..<k.raw],features[0..<k.features]).status!=SfStatus.ok {return PkRtStatus.audio;}return PkRtStatus.ok;
+}

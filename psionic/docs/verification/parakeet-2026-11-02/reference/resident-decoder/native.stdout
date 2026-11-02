@@ -1,0 +1,33 @@
+MODEL_OPEN_SECONDS 10.859187
+SECOND_OWNER_REFUSED
+DECODE 6930-75918-0000 frames=44 tokens=15 seconds=0.265883
+REAL_MODEL_FAILURE_SNAPSHOTS 4 passed
+DECODE 6930-75918-0002 frames=63 tokens=26 seconds=0.407970
+DECODE 6930-75918-0006 frames=74 tokens=32 seconds=0.505075
+DECODE 6930-75918-0011 frames=40 tokens=15 seconds=0.256011
+DECODE bg frames=174 tokens=76 seconds=1.206794
+DECODE hr frames=101 tokens=41 seconds=0.664176
+DECODE cs frames=167 tokens=58 seconds=0.978943
+DECODE da frames=64 tokens=24 seconds=0.426655
+DECODE nl frames=81 tokens=32 seconds=0.540293
+DECODE en frames=132 tokens=38 seconds=0.638469
+DECODE et frames=177 tokens=61 seconds=0.994043
+DECODE fi frames=233 tokens=90 seconds=1.400255
+DECODE fr frames=128 tokens=42 seconds=0.678758
+DECODE de frames=225 tokens=41 seconds=0.851663
+DECODE el frames=138 tokens=70 seconds=1.106586
+DECODE hu frames=151 tokens=40 seconds=0.730132
+DECODE it frames=144 tokens=54 seconds=0.885097
+DECODE lv frames=152 tokens=52 seconds=1.060983
+DECODE lt frames=72 tokens=27 seconds=0.510762
+DECODE mt frames=172 tokens=56 seconds=0.986353
+DECODE pl frames=152 tokens=68 seconds=1.052479
+DECODE pt frames=222 tokens=73 seconds=1.153565
+DECODE ro frames=79 tokens=33 seconds=0.578319
+DECODE sk frames=123 tokens=37 seconds=0.612532
+DECODE sl frames=94 tokens=42 seconds=0.646654
+DECODE es frames=161 tokens=59 seconds=0.917710
+DECODE sv frames=72 tokens=31 seconds=0.537924
+DECODE ru frames=212 tokens=69 seconds=1.178548
+DECODE uk frames=93 tokens=47 seconds=0.727237
+DONE clips=29 seconds=33.362696

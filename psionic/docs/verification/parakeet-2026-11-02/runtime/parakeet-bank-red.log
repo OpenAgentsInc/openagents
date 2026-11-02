@@ -1,0 +1,7 @@
+FAIL #test Parakeet resident frontend initializes its mel bank and survives changing clip lengths (318 ms)
+psionic/lib/parakeet/runtime.coax:74:41: error[E0406]: assertion failed
+    biggest:=0.0;for i:0..<plan.features {#assert mine[i]==reference[i];if abs(f64(mine[i]))>biggest {biggest=abs(f64(mine[i]));}}
+                                          ^
+  note: in #test Parakeet resident frontend initializes its mel bank and survives changing clip lengths
+1 of 297 checks (--only 'Parakeet resident frontend'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

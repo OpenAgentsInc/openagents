@@ -1,0 +1,21 @@
+{
+  "language": "cs",
+  "config": "cs_cz",
+  "split": "test",
+  "utterance_id": "1893",
+  "audio_member": "test/10008901044567586183.wav",
+  "samples": 213120,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "cs.pcm",
+  "pcm_sha256": "13217a916ff0e606e5c613f8cbeca34336db08cfbaae049831a840597a5591dc",
+  "wav_sha256": "8968abc80072b93069ac98995885a45457717bb80317fb06de5b04a7321eaaf7",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "51f38f46c8149f98ee8c491c3e90dac092e4f3148612b1381ba0935456d4f6c4",
+  "raw_reference": "Sundarbans je největším pásem pobřežních mangrovů na světě, který se od pobřeží táhne 80 km (50 mil) do vnitrozemí Bangladéše a Indie.",
+  "reference": "sundarbans je největším pásem pobřežních mangrovů na světě který se od pobřeží táhne 80 km 50 mil do vnitrozemí bangladéše a indie",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/cs_cz/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/cs_cz/test.tsv"
+}

@@ -1,0 +1,76 @@
+// Local Parakeet through Psionic's resident engine executable. The engine
+// performs checkpoint/vocabulary validation and all inference in Coax.
+#load "parakeet-rules.coax";
+
+TR_PK_SOURCES :: [48]string.[
+  "coax/bin/coax", "psionic/lib/parakeet.coax", "psionic/lib/tdt.coax",
+  "psionic/lib/conformer.coax", "psionic/lib/spectral.coax", "psionic/lib/pixels.coax",
+  "psionic/lib/parakeet/runtime.coax", "psionic/lib/parakeet/fast.coax", "psionic/lib/parakeet/device.coax",
+  "psionic/platform/parakeet-face.c", "psionic/platform/psionic-parakeet.h",
+  "psionic/platform/parakeet-build.sh", "psionic/platform/parakeet-metal.c", "psionic/platform/parakeet-metal.h",
+  "psionic/platform/metal-host.m", "psionic/platform/metal-host.h", "psionic/lib/whisper/wav.coax",
+  "coax/lib/json/json.coax", "coax/lib/crypto/sha256.coax", "coax/lib/crypto/sha256-kernel.coax",
+  "psionic/platform/parakeet-build.coax", "psionic/lib/parakeet/plan.coax", "psionic/lib/parakeet/model-policy.coax",
+  "psionic/lib/parakeet/front.coax", "psionic/lib/parakeet/front-plan.coax", "psionic/lib/parakeet/text.coax",
+  "psionic/lib/whisper/device.coax", "coax/lib/compute/apple.coax", "psionic/lib/ops.coax", "psionic/lib/tensor.coax",
+  "psionic/lib/counter-rng.coax", "coax/lib/crypto/bytes.coax",
+  "coax/lib/nostr/fixtures/coax_relay.coax", "coax/lib/nostr/fixtures/json_suite.coax", "coax/lib/nostr/json.coax",
+  "coax/lib/sys/args.coax", "coax/lib/sys/fs.coax", "coax/lib/sys/proc.coax", "coax/lib/sys/tool.coax",
+  "psionic/fixtures/parakeet-tdt-manifest.coax", "psionic/lib/ops-contract.coax",
+  "psionic/lib/tensor-ops-contract.coax", "psionic/lib/tensor-ops.coax", "psionic/lib/tensor-view.coax",
+  "psionic/lib/whisper/ggml.coax", "psionic/tests/conformer-checks.coax",
+  "psionic/tests/parakeet-model-checks.coax", "psionic/tests/tdt-checks.coax"];
+
+tr_pk_engine :: (out:[]u8)->string {
+  override:=proc_getenv("OPENAGENTS_PARAKEET_CLI",out);if override!="" {return override;}
+  sr:[1024]u8;root:=source_root(sr[..]);if root=="" {return "";}
+  d:[1100]u8;dir:=fs_join(root,"psionic/build/parakeet",d[..]);bin:=fs_join(dir,"psionic-parakeet",out);
+  built:=fs_mtime_ns(bin);stale:=built<0;
+  for src:TR_PK_SOURCES {p:[1200]u8;stamp:=fs_mtime_ns(fs_join(root,src,p[..]));if stamp<0 || stamp>built {stale=true;}}
+  if !stale {return bin;}
+  p:[1200]u8;script:=fs_join(root,"psionic/platform/parakeet-build.sh",p[..]);
+  tool_errln("transcribe: building Psionic Parakeet");
+  argv:=[4]string.["bash",script,dir,root];o:[4096]u8;e:[8192]u8;
+  got:=proc_run(argv[..],600000,o[..],e[..]);
+  if got.started!=0 || got.status!=0 || got.timed_out {if got.err_n>0 {tool_err(cast(string)e[0..<got.err_n]);}return "";}
+  return bin;
+}
+tr_pk_model :: (out:[]u8)->string {
+  env:[1024]u8;s:=proc_getenv("OPENAGENTS_PARAKEET_MODEL",env[..]);
+  if s!="" {if s.count>out.count {return "";}for i:0..<s.count {out[i]=s[i];}return cast(string)out[0..<s.count];}
+  h:[1024]u8;return fs_join(home(h[..]),".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",out);
+}
+tr_parakeet :: (a:[]Args,r:[]Rep,file:string)->int {
+  format:=tr_format(args_has(a,"--text"),args_has(a,"--srt"),args_has(a,"--vtt"),r[0].json);
+  language:=args_value(a,"--language","auto");device:=args_value(a,"--device","gpu");
+  status:=tr_pk_options(format,language,args_value(a,"--prompt",""),args_value(a,"--words",""),device);
+  if status==1 {return fail(r,EXIT_USAGE,"Parakeet supports --text or --json; select only one output format");}
+  if status==2 {return fail(r,EXIT_USAGE,"Parakeet detects its language; use --language auto without a forced language");}
+  if status==3 {return fail(r,EXIT_USAGE,"Parakeet vocabulary rescoring is not implemented; --words and --prompt need the Whisper backend");}
+  if status==4 {return fail(r,EXIT_USAGE,"Parakeet --device is gpu or cpu; GPU failure never silently selects CPU");}
+  if args_has(a,"--model") || args_has(a,"--threads") {return fail(r,EXIT_USAGE,"Parakeet uses --model-dir DIR and its named device; --model and --threads are Whisper options");}
+  if fs_kind(file)!=FS_FILE {return fail(r,EXIT_NOT_FOUND,"no such audio file");}
+  m:[1200]u8;model:=args_value(a,"--model-dir","");if model=="" {model=tr_pk_model(m[..]);}
+  if fs_kind(model)!=FS_DIR {return fail(r,EXIT_NOT_FOUND,"Parakeet checkpoint directory missing: use --model-dir DIR or OPENAGENTS_PARAKEET_MODEL (chapter 153)");}
+  e:[1200]u8;engine:=tr_pk_engine(e[..]);if engine=="" {return fail(r,EXIT_FAIL,"cannot build Psionic Parakeet from this checkout");}
+  // All audio decoding remains in the engine for supported WAV. A compressed
+  // container is converted by the existing explicit ffmpeg boundary.
+  is_wav:=file.count>4 && (cast(string)file[file.count-4..<file.count]==".wav" || cast(string)file[file.count-4..<file.count]==".WAV");
+  temp:[1024]u8;wav:[1200]u8;tmp:="";input:=file;err:[8192]u8;
+  if !is_wav {
+    tmp=fs_temp("openagents-parakeet",temp[..]);if tmp=="" {return fail(r,EXIT_FAIL,"cannot make an audio temporary directory");}
+    input=fs_join(tmp,"audio.wav",wav[..]);code:=tr_decode(file,input,err[..]);
+    if code!=EXIT_OK {rm:=fs_remove(tmp);return fail(r,code,"ffmpeg could not decode the audio for Parakeet");}
+  }
+  output:[131072]u8;flag:=ifx format==3 then "--json" else "--text";dev:=ifx device=="gpu" then "--gpu" else "--cpu";
+  argv:=[6]string.[engine,"transcribe",model,input,dev,flag];got:=proc_run(argv[..],840000,output[..],err[..]);
+  if tmp!="" {rm:=fs_remove(tmp);}
+  if got.started!=0 || got.status!=0 || got.timed_out || got.cut {
+    if got.err_n>0 {tool_err(cast(string)err[0..<got.err_n]);}
+    return fail(r,EXIT_FAIL,"Psionic Parakeet refused or failed; checkpoint, audio and GPU errors are not retried on another engine");
+  }
+  if got.err_n>0 {tool_err(cast(string)err[0..<got.err_n]);}
+  print("%",cast(string)output[0..<got.out_n]);
+  if got.out_n>0 && output[got.out_n-1]!='\n' {print("\n");}
+  return EXIT_OK;
+}

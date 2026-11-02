@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/book.py", line 299, in <module>
+    main()
+    ~~~~^^
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/book.py", line 293, in main
+    examples = check(args.book)
+  File "/private/tmp/openagents-12625-complete-20261101/psionic/tests/book.py", line 91, in check
+    assert not errors, "reviewed capability claims: " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: reviewed capability claims: psionic.execution.current: evidence changed; review psionic/book/SUMMARY.md; psionic.gpu.current: evidence changed; review psionic/book/SUMMARY.md

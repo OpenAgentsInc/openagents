@@ -1,0 +1,11 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/text.coax:28:15: mutant survived: '<=' became '<'
+     marker:=i+3<=piece.count && piece[i..<i+3]=="▁";
+                ^
+psionic/lib/parakeet/text.coax:28:14: mutant survived: 3 became 4
+     marker:=i+3<=piece.count && piece[i..<i+3]=="▁";
+               ^
+psionic/lib/parakeet/text.coax:29:52: mutant survived: -1 became 0
+     if marker {i+=3;if n>0 {if n==out.count {return -1;}out[n]=' ';n+=1;}}
+                                                     ^
+43 mutants, 40 killed, 3 survived

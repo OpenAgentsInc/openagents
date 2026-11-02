@@ -1,0 +1,14 @@
+// CPU meaning from the already-qualified compensated encoder, used only
+// as an independent target comparison for the f32 Metal implementation.
+#load "../lib/parakeet/fast.coax";
+#load "parakeet-run-runtime.coax";
+pkref_shape :: ()->CfShape #export_c {return cf_tiny();}
+pkref_weights :: (s:CfShape)->int #export_c {return cf_weight_count(s);}
+pkref_work :: (s:CfShape,frames:int)->int #export_c {return cf_plan(s,1,frames).work;}
+pkref_init :: (s:CfShape,w:[]f32)->bool #export_c {return cf_init(s,w,5)==CfStatus.ok;}
+pkref_encode :: (s:CfShape,w:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32,layers:int)->bool #export_c {
+ p:=cf_plan(s,1,frames);if p.status!=CfStatus.ok || layers<0 || layers>s.layers || w.count!=p.weights || x.count!=p.input || work.count<p.work || out.count<p.output {return false;}
+ lengths:=[1]int.[frames];h:=work[p.at_output..<p.work];cf_subsample(s,w,x,lengths[..],1,frames,work,h);
+ for i:0..<layers {cf_layer(s,w,cf_layer_at(s,cf_layer_base(s,i)),h,p.t3,work[p.at_layer..<p.at_output]);}
+ for i:0..<p.output {out[i]=h[i];}return true;
+}

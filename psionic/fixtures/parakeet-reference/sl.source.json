@@ -1,0 +1,21 @@
+{
+  "language": "sl",
+  "config": "sl_si",
+  "split": "test",
+  "utterance_id": "1738",
+  "audio_member": "test/10005375387265624885.wav",
+  "samples": 120000,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "sl.pcm",
+  "pcm_sha256": "e5f413dc564d6122907c3d1a951655c0ff4eef32f1348c5ae2c1bbe7df45d705",
+  "wav_sha256": "8bbe4027b86b288bbd062ca9e40f44357f3cbd85e67aa7f2dbba0ef27f81b708",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "9f762b7a6f43e3e52b89accba413cb9d5bc7d515a0c3fb36a07de372ce548865",
+  "raw_reference": "Napadel je tudi vsa bitja, ki so stopila v vodo; niti ogromni dinozavri, kot so tiranozavri, mu niso bili kos.",
+  "reference": "napadel je tudi vsa bitja ki so stopila v vodo niti ogromni dinozavri kot so tiranozavri mu niso bili kos",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/sl_si/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/sl_si/test.tsv"
+}

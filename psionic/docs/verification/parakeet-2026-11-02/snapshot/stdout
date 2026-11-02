@@ -1,0 +1,1 @@
+PASS late-capacity snapshot: A_samples=56080 A_tokens=15 A_features=44800 A_encoded=45056; B_samples=93600 B_tokens=32 B_features=74880 B_encoded=75776; text/info/tokens/frames/JSON/features/encoder snapshot A unchanged after real B inference refusal; small stage/JSON copies atomic; successful B replaces snapshot

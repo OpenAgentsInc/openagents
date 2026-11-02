@@ -1,0 +1,21 @@
+{
+  "language": "en",
+  "config": "en_us",
+  "split": "test",
+  "utterance_id": "1904",
+  "audio_member": "test/1003119935936341070.wav",
+  "samples": 168960,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "en.pcm",
+  "pcm_sha256": "399d811b252e488191998a7c244ba7097cd5c9ecb3246596d3adefb010211119",
+  "wav_sha256": "33aca50159ec2e3cbcc894eb26faa916d6badb1b49fb75994973561540a7f012",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "74c046239374deeb60fa63f258f907388093a32bcaa3140965f70ef05c79f7ca",
+  "raw_reference": "However, due to the slow communication channels, styles in the west could lag behind by 25 to 30 year.",
+  "reference": "however due to the slow communication channels styles in the west could lag behind by 25 to 30 year",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/test.tsv"
+}

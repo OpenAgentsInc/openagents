@@ -1,0 +1,190 @@
+{
+  "scope": "One resident public API process, one model open, one pass through29 frozen clips. First inference includes GPU resident-weight upload; following28 are warm. No end-of-keypress or microphone latency claim.",
+  "model_open_seconds": 20.272077,
+  "rows": [
+    {
+      "id": "6930-75918-0000",
+      "audio_seconds": 3.505,
+      "inference_ms": 1293.412,
+      "rtf": 0.3690191155492154
+    },
+    {
+      "id": "6930-75918-0002",
+      "audio_seconds": 5.025,
+      "inference_ms": 1360.674,
+      "rtf": 0.27078089552238804
+    },
+    {
+      "id": "6930-75918-0006",
+      "audio_seconds": 5.85,
+      "inference_ms": 1541.441,
+      "rtf": 0.26349418803418806
+    },
+    {
+      "id": "6930-75918-0011",
+      "audio_seconds": 3.195,
+      "inference_ms": 742.898,
+      "rtf": 0.23251893583724573
+    },
+    {
+      "id": "bg",
+      "audio_seconds": 13.86,
+      "inference_ms": 3200.38,
+      "rtf": 0.23090764790764792
+    },
+    {
+      "id": "hr",
+      "audio_seconds": 8.04,
+      "inference_ms": 2246.383,
+      "rtf": 0.27940087064676616
+    },
+    {
+      "id": "cs",
+      "audio_seconds": 13.32,
+      "inference_ms": 2962.937,
+      "rtf": 0.2224427177177177
+    },
+    {
+      "id": "da",
+      "audio_seconds": 5.1,
+      "inference_ms": 1317.57,
+      "rtf": 0.25834705882352943
+    },
+    {
+      "id": "nl",
+      "audio_seconds": 6.48,
+      "inference_ms": 1335.28,
+      "rtf": 0.2060617283950617
+    },
+    {
+      "id": "en",
+      "audio_seconds": 10.56,
+      "inference_ms": 1511.245,
+      "rtf": 0.14311032196969695
+    },
+    {
+      "id": "et",
+      "audio_seconds": 14.1,
+      "inference_ms": 2373.417,
+      "rtf": 0.16832744680851064
+    },
+    {
+      "id": "fi",
+      "audio_seconds": 18.6,
+      "inference_ms": 2855.634,
+      "rtf": 0.15352870967741936
+    },
+    {
+      "id": "fr",
+      "audio_seconds": 10.2,
+      "inference_ms": 1356.841,
+      "rtf": 0.1330236274509804
+    },
+    {
+      "id": "de",
+      "audio_seconds": 17.94,
+      "inference_ms": 1963.371,
+      "rtf": 0.10944096989966555
+    },
+    {
+      "id": "el",
+      "audio_seconds": 11.04,
+      "inference_ms": 2185.346,
+      "rtf": 0.19794800724637682
+    },
+    {
+      "id": "hu",
+      "audio_seconds": 12.06,
+      "inference_ms": 1557.591,
+      "rtf": 0.12915348258706466
+    },
+    {
+      "id": "it",
+      "audio_seconds": 11.52,
+      "inference_ms": 1691.593,
+      "rtf": 0.1468396701388889
+    },
+    {
+      "id": "lv",
+      "audio_seconds": 12.12,
+      "inference_ms": 1710.693,
+      "rtf": 0.14114628712871288
+    },
+    {
+      "id": "lt",
+      "audio_seconds": 5.76,
+      "inference_ms": 853.79,
+      "rtf": 0.14822743055555554
+    },
+    {
+      "id": "mt",
+      "audio_seconds": 13.74,
+      "inference_ms": 1700.645,
+      "rtf": 0.12377328966521106
+    },
+    {
+      "id": "pl",
+      "audio_seconds": 12.12,
+      "inference_ms": 1754.001,
+      "rtf": 0.14471955445544554
+    },
+    {
+      "id": "pt",
+      "audio_seconds": 17.76,
+      "inference_ms": 2060.081,
+      "rtf": 0.11599555180180181
+    },
+    {
+      "id": "ro",
+      "audio_seconds": 6.3,
+      "inference_ms": 1000.564,
+      "rtf": 0.15881968253968254
+    },
+    {
+      "id": "sk",
+      "audio_seconds": 9.84,
+      "inference_ms": 1081.537,
+      "rtf": 0.10991229674796747
+    },
+    {
+      "id": "sl",
+      "audio_seconds": 7.5,
+      "inference_ms": 1064.912,
+      "rtf": 0.14198826666666667
+    },
+    {
+      "id": "es",
+      "audio_seconds": 12.84,
+      "inference_ms": 1552.393,
+      "rtf": 0.1209028816199377
+    },
+    {
+      "id": "sv",
+      "audio_seconds": 5.76,
+      "inference_ms": 926.573,
+      "rtf": 0.16086336805555557
+    },
+    {
+      "id": "ru",
+      "audio_seconds": 16.92,
+      "inference_ms": 2075.257,
+      "rtf": 0.12265112293144208
+    },
+    {
+      "id": "uk",
+      "audio_seconds": 7.38,
+      "inference_ms": 1098.453,
+      "rtf": 0.1488418699186992
+    }
+  ],
+  "warm_p50_ms": 1554.992,
+  "warm_p95_nearest_rank_ms": 2962.937,
+  "total_audio_seconds": 298.435,
+  "total_inference_seconds": 48.374911999999995,
+  "weighted_rtf": 0.16209530383500592,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "cpu": "Apple M5 Max",
+  "physical_cpus": 18,
+  "memory_bytes": 137438953472
+}

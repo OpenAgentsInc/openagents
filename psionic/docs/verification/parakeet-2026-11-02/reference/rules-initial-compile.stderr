@@ -1,0 +1,109 @@
+psionic/tests/parakeet-reference-rules.coax:9:79: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=1,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:9:102: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=1,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                                       ^
+psionic/tests/parakeet-reference-rules.coax:9:126: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=1,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:10:79: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=2,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:10:102: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=2,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                                       ^
+psionic/tests/parakeet-reference-rules.coax:10:126: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=2,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:11:79: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=5,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:11:102: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=5,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                                       ^
+psionic/tests/parakeet-reference-rules.coax:11:126: error[E0358]: [20] int needs 20 elements, given 5
+   PkNeMoRule.{frames=10,cap=5,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1],at=[20]int.[0,2,4,6,8],dur=[20]int.[2,2,2,2,2]},
+                                                                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:12:79: error[E0358]: [20] int needs 20 elements, given 10
+   PkNeMoRule.{frames=10,cap=2,token=1,alternating=true,duration=0,count=10,ids=[20]int.[1,1,1,1,1,1,1,1,1,1],at=[20]int.[0,0,2,2,4,4,6,6,8,8],dur=[20]int.[0,2,0,2,0,2,0,2,0,2]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:12:112: error[E0358]: [20] int needs 20 elements, given 10
+   PkNeMoRule.{frames=10,cap=2,token=1,alternating=true,duration=0,count=10,ids=[20]int.[1,1,1,1,1,1,1,1,1,1],at=[20]int.[0,0,2,2,4,4,6,6,8,8],dur=[20]int.[0,2,0,2,0,2,0,2,0,2]},
+                                                                                                                 ^
+psionic/tests/parakeet-reference-rules.coax:12:146: error[E0358]: [20] int needs 20 elements, given 10
+   PkNeMoRule.{frames=10,cap=2,token=1,alternating=true,duration=0,count=10,ids=[20]int.[1,1,1,1,1,1,1,1,1,1],at=[20]int.[0,0,2,2,4,4,6,6,8,8],dur=[20]int.[0,2,0,2,0,2,0,2,0,2]},
+                                                                                                                                                   ^
+psionic/tests/parakeet-reference-rules.coax:13:78: error[E0358]: [20] int needs 20 elements, given 4
+   PkNeMoRule.{frames=4,cap=1,token=1,alternating=false,duration=0,count=4,ids=[20]int.[1,1,1,1],at=[20]int.[0,1,2,3],dur=[20]int.[0,0,0,0]},
+                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:13:99: error[E0358]: [20] int needs 20 elements, given 4
+   PkNeMoRule.{frames=4,cap=1,token=1,alternating=false,duration=0,count=4,ids=[20]int.[1,1,1,1],at=[20]int.[0,1,2,3],dur=[20]int.[0,0,0,0]},
+                                                                                                    ^
+psionic/tests/parakeet-reference-rules.coax:13:121: error[E0358]: [20] int needs 20 elements, given 4
+   PkNeMoRule.{frames=4,cap=1,token=1,alternating=false,duration=0,count=4,ids=[20]int.[1,1,1,1],at=[20]int.[0,1,2,3],dur=[20]int.[0,0,0,0]},
+                                                                                                                          ^
+psionic/tests/parakeet-reference-rules.coax:14:78: error[E0358]: [20] int needs 20 elements, given 8
+   PkNeMoRule.{frames=4,cap=2,token=1,alternating=false,duration=0,count=8,ids=[20]int.[1,1,1,1,1,1,1,1],at=[20]int.[0,0,1,1,2,2,3,3],dur=[20]int.[0,0,0,0,0,0,0,0]},
+                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:14:107: error[E0358]: [20] int needs 20 elements, given 8
+   PkNeMoRule.{frames=4,cap=2,token=1,alternating=false,duration=0,count=8,ids=[20]int.[1,1,1,1,1,1,1,1],at=[20]int.[0,0,1,1,2,2,3,3],dur=[20]int.[0,0,0,0,0,0,0,0]},
+                                                                                                            ^
+psionic/tests/parakeet-reference-rules.coax:14:137: error[E0358]: [20] int needs 20 elements, given 8
+   PkNeMoRule.{frames=4,cap=2,token=1,alternating=false,duration=0,count=8,ids=[20]int.[1,1,1,1,1,1,1,1],at=[20]int.[0,0,1,1,2,2,3,3],dur=[20]int.[0,0,0,0,0,0,0,0]},
+                                                                                                                                          ^
+psionic/tests/parakeet-reference-rules.coax:16:78: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=1,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:16:92: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=1,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                             ^
+psionic/tests/parakeet-reference-rules.coax:16:107: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=1,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                                            ^
+psionic/tests/parakeet-reference-rules.coax:17:78: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=2,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:17:92: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=2,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                             ^
+psionic/tests/parakeet-reference-rules.coax:17:107: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=2,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                                            ^
+psionic/tests/parakeet-reference-rules.coax:18:78: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=5,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                               ^
+psionic/tests/parakeet-reference-rules.coax:18:92: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=5,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                             ^
+psionic/tests/parakeet-reference-rules.coax:18:107: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=4,cap=5,token=2,alternating=false,duration=0,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                                            ^
+psionic/tests/parakeet-reference-rules.coax:19:79: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=1,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:19:93: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=1,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                              ^
+psionic/tests/parakeet-reference-rules.coax:19:108: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=1,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                                             ^
+psionic/tests/parakeet-reference-rules.coax:20:79: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=2,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:20:93: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=2,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                              ^
+psionic/tests/parakeet-reference-rules.coax:20:108: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=2,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                                             ^
+psionic/tests/parakeet-reference-rules.coax:21:79: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=5,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                ^
+psionic/tests/parakeet-reference-rules.coax:21:93: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=5,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                              ^
+psionic/tests/parakeet-reference-rules.coax:21:108: error[E0358]: [20] int needs 20 elements, given 0
+   PkNeMoRule.{frames=10,cap=5,token=2,alternating=false,duration=2,count=0,ids=[20]int.[],at=[20]int.[],dur=[20]int.[]},
+                                                                                                             ^
+36 errors

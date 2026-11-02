@@ -1,0 +1,21 @@
+{
+  "language": "ru",
+  "config": "ru_ru",
+  "split": "test",
+  "utterance_id": "1819",
+  "audio_member": "test/10000611681338527501.wav",
+  "samples": 270720,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "ru.pcm",
+  "pcm_sha256": "c608254f1a89e046fae75a4371810f6f60b2383a8a55102fb0a895f0bc2ac13b",
+  "wav_sha256": "08d7f2cd51bb0de6d00655368d9926888930a8a2482ee48153c1b099dcc2a7e4",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "cd54f261220f49afbb4c128633a737eca4a22f6c0a8233d3cc891478d06676e6",
+  "raw_reference": "В древнем Китае использовали уникальный способ обозначения периодов времени; каждый этап Китая или каждая семья, находившаяся у власти, были особой династией.",
+  "reference": "в древнем китае использовали уникальный способ обозначения периодов времени каждый этап китая или каждая семья находившаяся у власти были особой династией",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/ru_ru/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/ru_ru/test.tsv"
+}

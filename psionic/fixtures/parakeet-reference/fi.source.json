@@ -1,0 +1,21 @@
+{
+  "language": "fi",
+  "config": "fi_fi",
+  "split": "test",
+  "utterance_id": "1862",
+  "audio_member": "test/10036992464162193014.wav",
+  "samples": 297600,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "fi.pcm",
+  "pcm_sha256": "b2a868184517a3ff2a0551f96033f5f5be58bf1e1c06b0ea9357e84009a87bf1",
+  "wav_sha256": "12bbf5af448359d9e9fecd6f5f6218279547236323cbbc6ac547390b2c4a5145",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "7616a61077e705067b36fc43d9042943fc306bf6a62022c13b0ca45e926f6c9d",
+  "raw_reference": "Yhdysvaltojen ilmailuviranomainen väittää, että NextGen on järjestelmä, jonka ansiosta lentokoneet voivat lentää lyhyempiä reittejä, säästää vuosittain miljoonia gallonia polttoainetta ja vähentää hiilidioksidipäästöjä.",
+  "reference": "yhdysvaltojen ilmailuviranomainen väittää että nextgen on järjestelmä jonka ansiosta lentokoneet voivat lentää lyhyempiä reittejä säästää vuosittain miljoonia gallonia polttoainetta ja vähentää hiilidioksidipäästöjä",
+  "gender": "FEMALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/fi_fi/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/fi_fi/test.tsv"
+}

@@ -1,0 +1,367 @@
+{
+  "schema": "psionic.parakeet-nemo-boundaries.v1",
+  "source_revision": "5f15875acd0885ed92eadfee874ae87b0529ffa2",
+  "physical_vs_compact": [
+    {
+      "id": "english-nonmultiple",
+      "samples": 56080,
+      "pcm_sha256": "9afaada0c1b445dae8a3baae5bbaffdcedbd2c09eb66b86720b8045c854feefc",
+      "feature_physical": [
+        1,
+        128,
+        351
+      ],
+      "feature_valid": 350,
+      "feature_tail_abs_max": 0.0,
+      "encoder_full_physical": [
+        1,
+        1024,
+        44
+      ],
+      "encoder_compact_physical": [
+        1,
+        1024,
+        44
+      ],
+      "encoded_valid": 44,
+      "subsample_full": {
+        "physical": [
+          1,
+          44,
+          1024
+        ],
+        "valid": [
+          44
+        ]
+      },
+      "subsample_compact": {
+        "physical": [
+          1,
+          44,
+          1024
+        ],
+        "valid": [
+          44
+        ]
+      },
+      "subsample_valid_max_abs_gap": 0.0,
+      "encoder_valid_max_abs_gap": 0.0,
+      "within_frozen_abs0_001": true
+    },
+    {
+      "id": "fleurs-en-multiple-eight",
+      "samples": 168960,
+      "pcm_sha256": "399d811b252e488191998a7c244ba7097cd5c9ecb3246596d3adefb010211119",
+      "feature_physical": [
+        1,
+        128,
+        1057
+      ],
+      "feature_valid": 1056,
+      "feature_tail_abs_max": 0.0,
+      "encoder_full_physical": [
+        1,
+        1024,
+        133
+      ],
+      "encoder_compact_physical": [
+        1,
+        1024,
+        132
+      ],
+      "encoded_valid": 132,
+      "subsample_full": {
+        "physical": [
+          1,
+          133,
+          1024
+        ],
+        "valid": [
+          132
+        ]
+      },
+      "subsample_compact": {
+        "physical": [
+          1,
+          132,
+          1024
+        ],
+        "valid": [
+          132
+        ]
+      },
+      "subsample_valid_max_abs_gap": 0.0,
+      "encoder_valid_max_abs_gap": 0.0,
+      "within_frozen_abs0_001": true
+    }
+  ],
+  "length_probes": [
+    {
+      "samples": 0,
+      "valid": 0,
+      "physical": 1,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 1,
+      "valid": 0,
+      "physical": 1,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 159,
+      "valid": 0,
+      "physical": 1,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 160,
+      "exception": "ValueError",
+      "message": "normalize_batch with `per_feature` normalize_type received a tensor of length 1. This will result in torch.std() returning nan. Make sure your audio length has enough samples for a single feature (ex. at least `hop_length` for Mel Spectrograms)."
+    },
+    {
+      "samples": 161,
+      "exception": "ValueError",
+      "message": "normalize_batch with `per_feature` normalize_type received a tensor of length 1. This will result in torch.std() returning nan. Make sure your audio length has enough samples for a single feature (ex. at least `hop_length` for Mel Spectrograms)."
+    },
+    {
+      "samples": 319,
+      "exception": "ValueError",
+      "message": "normalize_batch with `per_feature` normalize_type received a tensor of length 1. This will result in torch.std() returning nan. Make sure your audio length has enough samples for a single feature (ex. at least `hop_length` for Mel Spectrograms)."
+    },
+    {
+      "samples": 320,
+      "valid": 2,
+      "physical": 3,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 321,
+      "valid": 2,
+      "physical": 3,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 479,
+      "valid": 2,
+      "physical": 3,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 480,
+      "valid": 3,
+      "physical": 4,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 481,
+      "valid": 3,
+      "physical": 4,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 1279,
+      "valid": 7,
+      "physical": 8,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 1280,
+      "valid": 8,
+      "physical": 9,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 1281,
+      "valid": 8,
+      "physical": 9,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 16000,
+      "valid": 100,
+      "physical": 101,
+      "finite": true,
+      "tail_zero": true
+    },
+    {
+      "samples": 16001,
+      "valid": 100,
+      "physical": 101,
+      "finite": true,
+      "tail_zero": true
+    }
+  ],
+  "unknown_cases": [
+    {
+      "ids": [
+        0
+      ],
+      "pieces": [
+        "<unk>"
+      ],
+      "text": " ⁇ ",
+      "utf8_hex": "20e2818720"
+    },
+    {
+      "ids": [
+        0,
+        0
+      ],
+      "pieces": [
+        "<unk>",
+        "<unk>"
+      ],
+      "text": " ⁇  ⁇ ",
+      "utf8_hex": "20e281872020e2818720"
+    },
+    {
+      "ids": [
+        0,
+        284
+      ],
+      "pieces": [
+        "<unk>",
+        "an"
+      ],
+      "text": " ⁇ an",
+      "utf8_hex": "20e2818720616e"
+    },
+    {
+      "ids": [
+        284,
+        0
+      ],
+      "pieces": [
+        "an",
+        "<unk>"
+      ],
+      "text": "an ⁇ ",
+      "utf8_hex": "616e20e2818720"
+    },
+    {
+      "ids": [
+        284,
+        0,
+        300
+      ],
+      "pieces": [
+        "an",
+        "<unk>",
+        "▁j"
+      ],
+      "text": "an ⁇  j",
+      "utf8_hex": "616e20e2818720206a"
+    },
+    {
+      "ids": [
+        284,
+        0,
+        284
+      ],
+      "pieces": [
+        "an",
+        "<unk>",
+        "an"
+      ],
+      "text": "an ⁇ an",
+      "utf8_hex": "616e20e2818720616e"
+    },
+    {
+      "ids": [
+        0,
+        1
+      ],
+      "pieces": [
+        "<unk>",
+        "<|nospeech|>"
+      ],
+      "text": " ⁇ <|nospeech|>",
+      "utf8_hex": "20e28187203c7c6e6f7370656563687c3e"
+    },
+    {
+      "ids": [
+        1,
+        0
+      ],
+      "pieces": [
+        "<|nospeech|>",
+        "<unk>"
+      ],
+      "text": "<|nospeech|> ⁇ ",
+      "utf8_hex": "3c7c6e6f7370656563687c3e20e2818720"
+    },
+    {
+      "ids": [
+        0,
+        284,
+        0
+      ],
+      "pieces": [
+        "<unk>",
+        "an",
+        "<unk>"
+      ],
+      "text": " ⁇ an ⁇ ",
+      "utf8_hex": "20e2818720616e20e2818720"
+    },
+    {
+      "ids": [
+        300
+      ],
+      "pieces": [
+        "▁j"
+      ],
+      "text": "j",
+      "utf8_hex": "6a"
+    },
+    {
+      "ids": [
+        300,
+        0
+      ],
+      "pieces": [
+        "▁j",
+        "<unk>"
+      ],
+      "text": "j ⁇ ",
+      "utf8_hex": "6a20e2818720"
+    },
+    {
+      "ids": [
+        0,
+        300
+      ],
+      "pieces": [
+        "<unk>",
+        "▁j"
+      ],
+      "text": " ⁇  j",
+      "utf8_hex": "20e2818720206a"
+    },
+    {
+      "ids": [
+        300,
+        300
+      ],
+      "pieces": [
+        "▁j",
+        "▁j"
+      ],
+      "text": "j j",
+      "utf8_hex": "6a206a"
+    }
+  ],
+  "passed": true
+}

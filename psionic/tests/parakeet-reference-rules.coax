@@ -1,0 +1,33 @@
+// Actual official NeMo GreedyTDTInfer forced-logit traces, source revision
+// 5f15875acd0885ed92eadfee874ae87b0529ffa2, recorded on 2026-11-02.
+// Raw actual reference record SHA256 2f98038e31f992b64a20ee285019373f4ddc2fd34a6b1a5213f1b58149faf7fa.
+// This checks observable emitted IDs/frames/durations, not the number of
+// repeated blank-duration-zero calls: Coax safely skips those equivalent blanks.
+#load "../lib/tdt.coax";
+PkNeMoRule :: struct {frames:int;cap:int;token:int;alternating:bool;duration:int;count:int;ids:[20]int;at:[20]int;dur:[20]int;}
+PK_NEMO_RULES :: [13]PkNeMoRule.[
+ PkNeMoRule.{frames=10,cap=1,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,2,4,6,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[2,2,2,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=10,cap=2,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,2,4,6,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[2,2,2,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=10,cap=5,token=1,alternating=false,duration=2,count=5,ids=[20]int.[1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,2,4,6,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[2,2,2,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=10,cap=2,token=1,alternating=true,duration=0,count=10,ids=[20]int.[1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,2,2,4,4,6,6,8,8,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,2,0,2,0,2,0,2,0,2,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=4,cap=1,token=1,alternating=false,duration=0,count=4,ids=[20]int.[1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,1,2,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=4,cap=2,token=1,alternating=false,duration=0,count=8,ids=[20]int.[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,1,1,2,2,3,3,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=4,cap=5,token=1,alternating=false,duration=0,count=20,ids=[20]int.[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],at=[20]int.[0,0,0,0,0,1,1,1,1,1,2,2,2,2,2,3,3,3,3,3],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=4,cap=1,token=2,alternating=false,duration=0,count=0,ids=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=4,cap=2,token=2,alternating=false,duration=0,count=0,ids=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=4,cap=5,token=2,alternating=false,duration=0,count=0,ids=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=10,cap=1,token=2,alternating=false,duration=2,count=0,ids=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=10,cap=2,token=2,alternating=false,duration=2,count=0,ids=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+ PkNeMoRule.{frames=10,cap=5,token=2,alternating=false,duration=2,count=0,ids=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],at=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],dur=[20]int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+];
+#forall "actual NeMo forced-logit TDT cap traces preserve token frame and duration outputs" scenario:0..<13 {
+ c:=PK_NEMO_RULES[scenario];s:=tdt_durations(TdtShape.{vocab=2,enc=1,pred=1,layers=1,joint=1,max_symbols=c.cap},5);
+ t:=0;symbols:=0;calls:=0;written:=0;
+ while t<c.frames {
+  duration:=c.duration;if c.alternating {duration=ifx calls%2==0 then 0 else 2;}
+  got:=tdt_rule(s,t,symbols,c.token,duration);
+  if got.emit {#assert written<c.count && c.ids[written]==c.token && c.at[written]==t && c.dur[written]==duration;written+=1;}
+  t=got.t;symbols=got.symbols;calls+=1;#assert calls<=c.frames*c.cap;
+ }
+ #assert written==c.count;
+}

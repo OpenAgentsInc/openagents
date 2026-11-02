@@ -1,0 +1,139 @@
+{
+  "schema": "psionic.parakeet.metal.component.v1",
+  "observed_utc": "2026-11-02T20:07:59.081451+00:00",
+  "status": "passed-component-profile",
+  "compiler": {
+    "path": "/tmp/coax-12625-closure/native-v6/coax",
+    "sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+    "version": "coax0 0.48.0"
+  },
+  "host": {
+    "cpu_gpu": "Apple M5 Max",
+    "memory_bytes": 137438953472,
+    "macos": "26.4",
+    "cc": "Apple clang 21.0.0 (clang-2100.1.1.101)"
+  },
+  "source_pins_after_component_runs": {
+    "psionic/lib/parakeet/device.coax": "eb2513f09a275772a59ab1d6f5405deef9444ce1db94a4c22fb43c864c58e82c",
+    "psionic/lib/parakeet/fast.coax": "834cd0142f6cd79a04c7a8945486d9670b2d669fe5c3291e724730a9aa16f6f0",
+    "psionic/lib/parakeet/plan.coax": "52e7078d250c790ece17d0d081b430454236ebdaf16af8c5ebb14a2146a89662",
+    "psionic/platform/parakeet-metal.c": "6af879ef9cb513dd0913d23c61da6adc1975a44fc2336fa75421e5be79f670ab",
+    "psionic/platform/parakeet-metal.h": "035d9f9ebb4524d0c74065332233149985f34d3407ed05cc3ef3416250d4049b",
+    "psionic/tests/parakeet-device-reference.coax": "34cb24b0cc25ac70b66baa5a4d607f0fd3e03b8753c2c3a7d51072a91495fffc",
+    "psionic/tests/parakeet-device.c": "586be0f05b44f343f33b4314302126a86ee1f41e5bdfd928d7cea361cc650514",
+    "psionic/platform/metal-host.m": "99d1d54567ba7d941a4747f979bdf5b3e61de134e65ca37d7e478fd5fff2dd87",
+    "psionic/platform/metal-host.h": "7b253de9f95200255504263acabea5e35a5cde11fd721b0b0625feabdf3be977",
+    "psionic/lib/whisper/device.coax": "df88e1d9dcc795a0c61f87380a058240ee3e1f349215c728b47a3d8c2940f872",
+    "coax/lib/compute/apple.coax": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb",
+    "psionic/lib/conformer.coax": "4219e29528c93ab0bc2727402d1ed30ff4da218f61458731f4ded368defc1dcd"
+  },
+  "arithmetic_profile": "f32 arithmetic; Coax simdgroup matrix kernels, stable online relative attention; fast math off; not bitwise compensated-f64 CPU equality",
+  "no_handwritten_gpu_arithmetic": true,
+  "normal_device_checks": {
+    "groups": 4,
+    "passed": 4,
+    "scope": "new Parakeet device checks only; inherited unchanged Whisper checks not repeated"
+  },
+  "planner_authority": {
+    "checks": 116,
+    "passed": 116,
+    "root_only_mutants": 70,
+    "killed": 70,
+    "survived": 0,
+    "record": "plan-mutation-v3.txt",
+    "earlier_attempts": [
+      "63/61/2: exact head-width129 boundary missing; unused cf_plan batch argument independently mutable. Added boundary and removed needless plan construction, no waivers.",
+      "v2 baseline failed E0412 on constructing a nonfinite constant from bits; use existing cf_nan runtime helper in corrected v3."
+    ]
+  },
+  "tiny_gpu": {
+    "cases": 6,
+    "frames": [
+      1,
+      17,
+      33
+    ],
+    "prefix_layers": [
+      0,
+      1
+    ],
+    "max_absolute_error": 3.87430191e-07,
+    "initial_raw": "tiny-initial.stdout",
+    "shape_extent_refusals": true
+  },
+  "sanitizer_gpu": {
+    "profile": "clang O1 address+undefined, fatal sanitizer settings, leak detection disabled for platform Metal; all C/ObjC host and Coax reference objects instrumented",
+    "cases": 6,
+    "nonfinite_input_refusals": true,
+    "output_tail_preserved": true,
+    "stdout": "tiny-asan.stdout",
+    "stderr": "tiny-asan.stderr",
+    "returncode": 0,
+    "wrong_weight_extent_refusals": true
+  },
+  "original_weights_gpu_slices": {
+    "returncode": 0,
+    "model_sha256": "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11",
+    "checkpoint_bytes": 2508311120,
+    "clip": "6930-75918-0011",
+    "clip_sha256": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62",
+    "feature_frames": 320,
+    "encoded_frames": 40,
+    "prefix_layers": [
+      0,
+      1,
+      2
+    ],
+    "max_abs_errors": [
+      0.0087890625,
+      0.000259399414,
+      0.000228881836
+    ],
+    "rms_errors": [
+      0.000301285016,
+      8.31092436e-06,
+      9.28027223e-06
+    ],
+    "gpu_ms": [
+      12.136708,
+      9.407,
+      12.907625
+    ],
+    "tolerance": "1e-3*(1+largest CPU reference value), fixed in harness before this comparison",
+    "command": [
+      "/tmp/parakeet-metal-dev/test",
+      "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+      "/tmp/parakeet-metal-dev/ranges.txt",
+      "psionic/fixtures/parakeet/6930-75918-0011.pcm"
+    ],
+    "raw": "original-slices.stdout",
+    "qualification": "Layer arithmetic only: legacy chapter frontend features and compensated CPU references, not a NeMo-produced tensor or the corrected compact NeMo frontend. Stdout retained from tool response; no rerun solely to produce another log."
+  },
+  "model_cache": {
+    "path": "~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "local_model_sha256_verified": true,
+    "tokenizer_sha256": "bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91"
+  },
+  "lifetime_contract": "Serialized immutable model; shared weights/work persist until close; output copied only after GPU success and numeric validation. No CPU fallback on a requested GPU failure.",
+  "remaining_integration": "Current corrected compact frontend and actual NeMo full-model token/tensor parity belong to the sibling/root integration records. Legacy same-input slices are not relabelled as NeMo parity.",
+  "artifacts": {
+    "README.md": "3b31c6e725be79ff94316a03ff89b8fd4c86642c41a6e9c1e5751d06fc4a01b1",
+    "compiled-sources/device.metal.gz": "0f7d8b69cc1fe4cc84e098c03c923a71f3bb4f9eca439cc0e3ff17cf305c00f3",
+    "compiled-sources/parakeet-fast.c.gz": "5476b949b81a22d5702e0901c16d4fdbc73bcc3883238748965ef4448af6fd66",
+    "compiled-sources/parakeet-fast.h.gz": "a767eda742e734c141709cbd4d1baf1adf45e559c330c94a061a29a9e5dae13a",
+    "compiled-sources/parakeet-metal-source.h.gz": "e41ec9f6654813d6aacf0afa96cec08f8d8ce6d52848fafdb797355edade9dbd",
+    "compiled-sources/parakeet-ref.c.gz": "ea4fc0b3fcf71a20040fd556a03a4a2008cc95bd68049f5079f875fa00d7bba7",
+    "compiled-sources/parakeet-ref.h.gz": "e4f86ebcca40f02d75ec226a454c9849069ee6b486c3167583d0c64c44b8616b",
+    "original-slices.stdout": "afa381cdfe6c791301bbfb0d6d00880bb1c1bb75c84e9e1cd0cc2f017bdda884",
+    "plan-checks-v2.txt": "ed18f3bc3535e01b35a98c7628611455f81ddaaf04fb4752fe649266468ad326",
+    "plan-checks-v3.txt": "c480228d22d5f770a4eeaac784e989134e629b185ce8e554ca0ec0ade366acd5",
+    "plan-checks.txt": "13c55bcfba42afca9c1370dd2c5392bf7d56f3c03333b43a70fa93a63accfea8",
+    "plan-mutation-v2.txt": "4711568281d47d53c1f61422c03c125e10085bf88c4d6c1f8fde423c37ffb662",
+    "plan-mutation-v3.txt": "ac70b1d9539fdfc1a620f7355a117322f8853ca8ca5f346afd35a194a4d89b62",
+    "plan-mutation.txt": "56da8c043f0e38e3d6155c21726ba60a2c3da80a42f39bcb188eca6f5d1694f5",
+    "ranges.txt": "e0779e182984a6a52a92bbbca0de179e6f9db4f054c1e5bf04abb86c573674d5",
+    "tiny-asan.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tiny-asan.stdout": "57125efc785dba8fd13de3feb0abe5ccbc4fd2484423208e6846d9a0e17e3e3c",
+    "tiny-initial.stdout": "c3be7e34d4920dae8e35b46963287161d75ba7cb4e1026f068b5d2c285bcd228"
+  }
+}

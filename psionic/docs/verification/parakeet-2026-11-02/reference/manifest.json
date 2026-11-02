@@ -1,0 +1,644 @@
+{
+  "scope": "Actual pinned NeMo reference + frozen dataset + independent product verification for chapter153; no shipped external runtime dependency.",
+  "reference_record": "nemo-record/record.json",
+  "full_gpu_comparison": "full-gpu-comparison.json",
+  "product_quality_latency": "product-quality-latency.json",
+  "resident_cpu_decoder": "resident-decoder/record.json",
+  "physical_valid_and_tokenizer": "boundary-probe/record.json",
+  "actual_source_identity_verified": true,
+  "sources": {
+    "psionic/tests/parakeet_reference.py": "b6f9ffcf6002c5cd5012147cc91843ff934c7c1829c056dee9cae647fb51ea84",
+    "psionic/tests/parakeet_reference_probe.py": "a814e5aead9ef5b88584c3f227f81a0aaa35ebb1e134a4ddbe91b4d6f9cc946c",
+    "psionic/tests/parakeet_reference_acquire.py": "7c3575a44a0837a5ad50396716101783394d90e5d8400010615cc279be6741d6",
+    "psionic/tests/parakeet_reference_compare.py": "e7b96ae44b0c32599c449ac566f8f091746d01680d77b3434889996436918bdf",
+    "psionic/tests/parakeet_reference_native.py": "53e8d9931935f00b0f6864204c42b59062f59e878239180b79bfd85985216339",
+    "psionic/tests/parakeet_reference_native.c": "13c202407825e37a6e3039cb28b7c7b38a8f84e99e40f94c4073f7f165fae7e0",
+    "psionic/tests/parakeet-reference-rules.coax": "b394784b125c29843fe50baad8850caf2f6b4e661890957081ed8ea72f7c7bd6"
+  },
+  "files": {
+    "README.md": {
+      "sha256": "62ab3483dd972e57f6a70be43a6966563c1ee9d4e49769650b3c0a6934a29f06",
+      "bytes": 9029
+    },
+    "acquire-config-failure.log": {
+      "sha256": "8ac2e6ef940af09af60b9715d9fdfbed185be7778f9888048e6584b6c0fd8c80",
+      "bytes": 5044
+    },
+    "acquire-passed.log": {
+      "sha256": "d3404c7e2870fd853df48666ef3a43cb0c7e1df2b6c90d2ba82580d693bec1a8",
+      "bytes": 1898
+    },
+    "acquire-width-failure.log": {
+      "sha256": "536b81de882ba1fb9e34e1d5a164f9950e1ef7628d17963b4dbd9316ad15af0a",
+      "bytes": 2158
+    },
+    "actual-v1.log.gz": {
+      "sha256": "527781612c5c9217e54313f3c057b0ec729059fe6473d7daf9ad29b7a483f140",
+      "bytes": 1993,
+      "encoding": "gzip",
+      "uncompressed_name": "actual-v1.log",
+      "uncompressed_sha256": "32233f4b13c6e3c828bb5ca0621ae1088276b95b71f822ced20deab3c65578ac",
+      "uncompressed_bytes": 19648
+    },
+    "actual-v2.log": {
+      "sha256": "056d4c927eb3c352f9a849c54425839e6d105bf3d9664c4fa9e50e8e4cc82b9e",
+      "bytes": 2301
+    },
+    "actual-v3.log": {
+      "sha256": "60050be030a73ca147490bcb37faedc56d05aaba794ffbb8e1fc39e825c36ef5",
+      "bytes": 5041
+    },
+    "boundary-probe.log": {
+      "sha256": "0183380f69d663e80d10f9af81d324a48c78121b663c510b96758b19d7a50e96",
+      "bytes": 1402
+    },
+    "boundary-probe/record.json": {
+      "sha256": "1dcabc8aeb7f615629985707d492308c9427ccd8f88fd52c78d89c42e93c6e64",
+      "bytes": 7032
+    },
+    "comparator-self-check.json": {
+      "sha256": "93f1ab7fccc4e159e89d08605e34fc1873d9b2cdc1be8b7fd53d4710f1b9fe0f",
+      "bytes": 1964
+    },
+    "environment.txt": {
+      "sha256": "af4f231e844c09459741e2c5f7ba93be07f9969d107a49b89d38bbe175f3af2e",
+      "bytes": 3293
+    },
+    "executed-identities.txt": {
+      "sha256": "1225d7c67a77e059f52cb638d288221f1283f4b261e55215dc3a1b8ac06396d1",
+      "bytes": 305
+    },
+    "failed-product-v1/6930-75918-0000.encoded.f32": {
+      "sha256": "44229a1043a4f5cab2d7586bf6ac8075e1e07b7eabbd8a3a5eb7abe99ae972fc",
+      "bytes": 180224
+    },
+    "failed-product-v1/6930-75918-0000.features.f32": {
+      "sha256": "66731787e751f992654a8d5924c6445f36ce30035c0d470f293f9e4a3445bd4d",
+      "bytes": 179200
+    },
+    "failed-product-v1/6930-75918-0000.tokens.json": {
+      "sha256": "3e294b2164e6be395546ef7c8f55ae09199d0fbd71f4bbaf237f8ce9bc2b60e2",
+      "bytes": 241
+    },
+    "failed-product-v1/comparison.json": {
+      "sha256": "e60d3e2bfe3232e6995830f3c29c1cd7b3f526de5798cde1a9d595c37394063e",
+      "bytes": 2527
+    },
+    "failed-product-v1/process.json": {
+      "sha256": "2f7b14df3f126fd4030bf40709023eb4570077fc5394a241f38b39c5ad025148",
+      "bytes": 6591
+    },
+    "failed-product-v1/stderr": {
+      "sha256": "902a9ae3135991e5b51553bc65e02dc39f640107f17a7eb703b0fea8266fb103",
+      "bytes": 70
+    },
+    "failed-product-v1/stdout": {
+      "sha256": "dba61cbf68388bac1628d219e3aa52c5933cc5a8c0b2d3770aae13c2c2b91d7f",
+      "bytes": 368
+    },
+    "full-gpu-comparison.json": {
+      "sha256": "55b42298235fd45d04d0bc5f2a444b8bf329b6b2851afcc466d3a13a9166193d",
+      "bytes": 65868
+    },
+    "full-gpu-comparison.stdout": {
+      "sha256": "7c6aac68fb0fd4cbc7d8ffcb5dcebc081068a566e03fd51589977a308b4ef8b8",
+      "bytes": 44
+    },
+    "install-nemo.log": {
+      "sha256": "53edcff3492282b4314a9e2f94385a98735050b782c745406b52aa73019f25b1",
+      "bytes": 4803
+    },
+    "install-torch.log": {
+      "sha256": "defe4bb0ce0f21fda7da38a6e9ac567b764bbfdd9fdfd42c42146697b1cbd451",
+      "bytes": 2230
+    },
+    "nemo-record/6930-75918-0000/encoded.f32": {
+      "sha256": "678516be406216ec2aa643ed471e7910de0819bd0df55579bd5fd8b6ed061436",
+      "bytes": 180224
+    },
+    "nemo-record/6930-75918-0000/features.f32": {
+      "sha256": "94b96aa0385aec152bc6836f5d9e4bc4a09ace1f2468dc1750be620f2b9b2c68",
+      "bytes": 179200
+    },
+    "nemo-record/6930-75918-0000/tokens.json": {
+      "sha256": "51ff4370d3d8951884fb240abc6ce957ba053addd5cc80bb41f679c96625346a",
+      "bytes": 1353
+    },
+    "nemo-record/6930-75918-0002/encoded.f32": {
+      "sha256": "9a4f4dd2c5ebc0cefac3ea03fb111875c9465fd9a8005b21ceabedd501b857d0",
+      "bytes": 258048
+    },
+    "nemo-record/6930-75918-0002/features.f32": {
+      "sha256": "c9c0ec22b8375ec6416a4dbc8cac0c554d8bcd21445d03537b38f8106859c336",
+      "bytes": 257024
+    },
+    "nemo-record/6930-75918-0002/tokens.json": {
+      "sha256": "7f947a7524a7bc4e70ce144fa1897e0bb876a59e75d1632d994b34110373ae18",
+      "bytes": 1687
+    },
+    "nemo-record/6930-75918-0006/encoded.f32": {
+      "sha256": "818b86c1c2fcc3577dbb46ad29a29c1282b1560148685a2222a0794bdb6bb396",
+      "bytes": 303104
+    },
+    "nemo-record/6930-75918-0006/features.f32": {
+      "sha256": "825e80a8f8394a20dff489a11869e63569739bfa402e1c4d76ce38b1ff1c8686",
+      "bytes": 299520
+    },
+    "nemo-record/6930-75918-0006/tokens.json": {
+      "sha256": "264db69267fdfa421babf6067afe932cd40a0ce995de6fc4e61551a19801c57c",
+      "bytes": 1863
+    },
+    "nemo-record/6930-75918-0011/encoded.f32": {
+      "sha256": "c6f8a54d373d892a188cb4668d58a2a579cca78256600ac41f5811e2e4ddd511",
+      "bytes": 163840
+    },
+    "nemo-record/6930-75918-0011/features.f32": {
+      "sha256": "22960080cf5ff3efbf62a36704e2f5516c4499c78e8994e0a7ca5b07df00af3d",
+      "bytes": 163328
+    },
+    "nemo-record/6930-75918-0011/tokens.json": {
+      "sha256": "add2d987956e0d457db24272f3ec01f94bfcd9b936935d8e9363b874cde19a8a",
+      "bytes": 1347
+    },
+    "nemo-record/bg/encoded.f32": {
+      "sha256": "01708c9c3ddb0959733e44901c3fb6d8a793bee0298f8371205625504820a6a5",
+      "bytes": 712704
+    },
+    "nemo-record/bg/features.f32": {
+      "sha256": "7d7746a2c448489d69d6c0089def5eb3db0f8d6324a4b365affd3717492bbf2f",
+      "bytes": 709632
+    },
+    "nemo-record/bg/tokens.json": {
+      "sha256": "861bbcc50f12e5b8002e5812dad19cce105d6af95b8aafacb050794b5bf32df8",
+      "bytes": 3465
+    },
+    "nemo-record/bindings.json": {
+      "sha256": "3d218a9c1d6bbd5ed3d76b9b5734bc0163855f3b9a1bf823a8443c21b322f21b",
+      "bytes": 165504
+    },
+    "nemo-record/cs/encoded.f32": {
+      "sha256": "f6bddd75f6988054f46885716bc8fd20199caaf27803aeb0836f9f0fa8a69fa5",
+      "bytes": 684032
+    },
+    "nemo-record/cs/features.f32": {
+      "sha256": "5eec2f407a14725974236f3745294714b6a367ad5158ee1b5ef12fcaf1690c5b",
+      "bytes": 681984
+    },
+    "nemo-record/cs/tokens.json": {
+      "sha256": "3b110101840552ebf743fb14385a93a3b0d32ea7915da901af0a7e4ffdc80a3d",
+      "bytes": 2595
+    },
+    "nemo-record/da/encoded.f32": {
+      "sha256": "2962196e2452298d4ce09b22bae02370b0bb777c008089860b7547f5832e4404",
+      "bytes": 262144
+    },
+    "nemo-record/da/features.f32": {
+      "sha256": "cc7960690638b459a3c3ae63de09155293b3b27d37491fdae3b8bc0a4fb60b3b",
+      "bytes": 261120
+    },
+    "nemo-record/da/tokens.json": {
+      "sha256": "e2b379fdc114879d84ed0e80556a66ab3bba5f79e4c67dc0e3d0f65173a8779a",
+      "bytes": 1577
+    },
+    "nemo-record/de/encoded.f32": {
+      "sha256": "b3b52483606d97a68b9735760f33b07e389766568cc864e014c63a1887750144",
+      "bytes": 921600
+    },
+    "nemo-record/de/features.f32": {
+      "sha256": "a860817f8cf97f4cbcad5751149bcd90df11afdad745f7d33259aa98af29f510",
+      "bytes": 918528
+    },
+    "nemo-record/de/tokens.json": {
+      "sha256": "ac8652338be2a9b04216e2c9e8fc53cf494c750342231db20571eca2470e7c73",
+      "bytes": 2137
+    },
+    "nemo-record/el/encoded.f32": {
+      "sha256": "78094301e945fcbdacc0303da511d940d326a2c9502c3707f2bdabfa26d10814",
+      "bytes": 565248
+    },
+    "nemo-record/el/features.f32": {
+      "sha256": "0a1875d50d9893ae832680dcb05d6479804bca2b52a86327304e0dcff7c86648",
+      "bytes": 565248
+    },
+    "nemo-record/el/tokens.json": {
+      "sha256": "27e8994bc68ff7cee20df64162472473d5b8c03faea15e759fd870cd5465468d",
+      "bytes": 3138
+    },
+    "nemo-record/en/encoded.f32": {
+      "sha256": "4c18b892314fe165514977a151a62df106a826de8942ceb5cc104340b1bf1f63",
+      "bytes": 540672
+    },
+    "nemo-record/en/features.f32": {
+      "sha256": "4c6e4602dced8b98fea64883314179d7416d6ab03bdabd6a2703bd3eba4944b0",
+      "bytes": 540672
+    },
+    "nemo-record/en/tokens.json": {
+      "sha256": "90b6680f5744bd5319b4b72922d81a7141894e6882989a563cc97fa521207fd8",
+      "bytes": 1992
+    },
+    "nemo-record/es/encoded.f32": {
+      "sha256": "72d69f99971cc385019c637a908e3c1aba0c60ffa2b24ac696f9dc20340f88a5",
+      "bytes": 659456
+    },
+    "nemo-record/es/features.f32": {
+      "sha256": "022bc62cbea7fa4c359b107750c463b7069fb73725535bd09f0c9219a381fa00",
+      "bytes": 657408
+    },
+    "nemo-record/es/tokens.json": {
+      "sha256": "d15b90e10847ed7baaf3b29995d6b17ab92632a5c9d38d71c212b5c2316d4041",
+      "bytes": 2666
+    },
+    "nemo-record/et/encoded.f32": {
+      "sha256": "85913a0d7887fc3e958a3e8485b4f7d75af057852357d05ab84cb017586d2e8b",
+      "bytes": 724992
+    },
+    "nemo-record/et/features.f32": {
+      "sha256": "c830f35d443147d59ec2bd4595d547abfff8c9bb9a95800467bcee315aa4caa5",
+      "bytes": 721920
+    },
+    "nemo-record/et/tokens.json": {
+      "sha256": "ed6736b075432ded69584ac932435cd79f0657774b65136e0fc60c7c6497018c",
+      "bytes": 2682
+    },
+    "nemo-record/fi/encoded.f32": {
+      "sha256": "b7cd5f256f4c89761f425459d038d1bce0cd09325980e021c2b3605f09c943ca",
+      "bytes": 954368
+    },
+    "nemo-record/fi/features.f32": {
+      "sha256": "d415bfe7c4f3d11f67154574d108d269015ff07c561dc0278651d82f0f83beb1",
+      "bytes": 952320
+    },
+    "nemo-record/fi/tokens.json": {
+      "sha256": "6c99af5daa45cf7941634465a9072c7d4ef683f01fb144bc01a8caa6df808ad9",
+      "bytes": 3594
+    },
+    "nemo-record/fr/encoded.f32": {
+      "sha256": "583a107eb30cf62c6df16d9b22f5fa95da960caa8e9ef50cfb6f2987dbe26167",
+      "bytes": 524288
+    },
+    "nemo-record/fr/features.f32": {
+      "sha256": "33a565f1cfae2cc802b716e23129249d02ce3c36e247ca3fd07236b6c3523345",
+      "bytes": 522240
+    },
+    "nemo-record/fr/tokens.json": {
+      "sha256": "9bf625ec314e8579e79b49b6dcb821e8c02ae713012b0b0e4ac338137436494f",
+      "bytes": 2119
+    },
+    "nemo-record/hr/encoded.f32": {
+      "sha256": "af303c55ee7296fe11f58d275fb9c63a6203ed4bd1997e00c92f84dfbf5215f7",
+      "bytes": 413696
+    },
+    "nemo-record/hr/features.f32": {
+      "sha256": "2c900f0f451cd49fccc676150fa98ed552225db50a9d1c8d266059759c230499",
+      "bytes": 411648
+    },
+    "nemo-record/hr/tokens.json": {
+      "sha256": "fdfcc2f379aff7450ee13d5cad69985343ff338201f273828ce90024d8531784",
+      "bytes": 2060
+    },
+    "nemo-record/hu/encoded.f32": {
+      "sha256": "3431bccd19ad19378c4f001cf213f915abe09eaf810c056933a5d8ab8dbca21a",
+      "bytes": 618496
+    },
+    "nemo-record/hu/features.f32": {
+      "sha256": "a88443a66a7818a2771032cff31acbd5678cd09d2ef44209b126ea7a681d5e5d",
+      "bytes": 617472
+    },
+    "nemo-record/hu/tokens.json": {
+      "sha256": "996fa15581d2a987ffbdcf1af4c22bb6c26c5bf601b3b91a5efcf9b0a1da5011",
+      "bytes": 2086
+    },
+    "nemo-record/it/encoded.f32": {
+      "sha256": "a6570ad7fbc174a80f8f3c6a40efa1f61764f001cf4d01960415099b05c7d883",
+      "bytes": 589824
+    },
+    "nemo-record/it/features.f32": {
+      "sha256": "45d312886f63e16979ee28e5283793ca803b9a0339ad12231991d07794928fe3",
+      "bytes": 589824
+    },
+    "nemo-record/it/tokens.json": {
+      "sha256": "cc320226f81bef065142ed352db82582a53869a37b86662ba2dbebc475b02070",
+      "bytes": 2513
+    },
+    "nemo-record/lt/encoded.f32": {
+      "sha256": "d70c095188acbfac96c9b6f4d86165550b5d3257e644b0f927d03d5b91d65459",
+      "bytes": 294912
+    },
+    "nemo-record/lt/features.f32": {
+      "sha256": "2afd144ef5be0e4309d6f3f558c3604e10785941989518221a889b015d7c2231",
+      "bytes": 294912
+    },
+    "nemo-record/lt/tokens.json": {
+      "sha256": "83b231579ee05ee596bd8793de714e79d7c400d371eade223f0e39439dfb571c",
+      "bytes": 1654
+    },
+    "nemo-record/lv/encoded.f32": {
+      "sha256": "e54f943578eb607fbee126ec3da3e1ac7904631dc33011b834f41cb4f6ebe7e0",
+      "bytes": 622592
+    },
+    "nemo-record/lv/features.f32": {
+      "sha256": "a5d83e8f912ff1c8f5135a1a19cb6c64b85ceb1965a24cba5522c71033595f5e",
+      "bytes": 620544
+    },
+    "nemo-record/lv/tokens.json": {
+      "sha256": "e9d74d484b2b7fc04b10bea92e69cba204bb03817d84c048e133f704880da04a",
+      "bytes": 2383
+    },
+    "nemo-record/mt/encoded.f32": {
+      "sha256": "c16c2d9c98a4fa0d5e4d8edf0a7ebd01ba7506fbfb3380edc8f964d83a2be558",
+      "bytes": 704512
+    },
+    "nemo-record/mt/features.f32": {
+      "sha256": "518583176e156b134c7b78f46ada3666bd936537cf7aaa3009ee05e8015ed7ea",
+      "bytes": 703488
+    },
+    "nemo-record/mt/tokens.json": {
+      "sha256": "e55daaa375df7cee2f081e7684bf9fe497ef71bd3acd7c34ef31f0c9d24f8f7b",
+      "bytes": 2545
+    },
+    "nemo-record/nl/encoded.f32": {
+      "sha256": "8bdaa0ed0d4e2d62a80fa63c2c10029d29a2a47db3ae7bda4ab19cb956e84269",
+      "bytes": 331776
+    },
+    "nemo-record/nl/features.f32": {
+      "sha256": "df86b2efabbde9f5f24b021531dd73d19acf93c8cddd23b2c47fea4bf179f4b6",
+      "bytes": 331776
+    },
+    "nemo-record/nl/tokens.json": {
+      "sha256": "360dd8454eae9ac641231b889f72df3f9ca82e9fb1acc9aacf01c7fee4f42818",
+      "bytes": 1839
+    },
+    "nemo-record/pl/encoded.f32": {
+      "sha256": "43669bd692344801b06ba31d777d71019be953850cc4cd9eade8f90620870803",
+      "bytes": 622592
+    },
+    "nemo-record/pl/features.f32": {
+      "sha256": "b2299d8a0dec0a7137da4c02b1f2cda6e53ec7edfb352df874fa74c280d038b3",
+      "bytes": 620544
+    },
+    "nemo-record/pl/tokens.json": {
+      "sha256": "4ce48d83f41b8a0e88a86207a7375a0bb3c8eedd7d60276fa12c9878e8f3fea9",
+      "bytes": 2892
+    },
+    "nemo-record/pt/encoded.f32": {
+      "sha256": "7f12348085e47cf02c41227de7d2a04c0caac07ee14fdff147d59cf02ecef4dc",
+      "bytes": 909312
+    },
+    "nemo-record/pt/features.f32": {
+      "sha256": "d16a9d5e936ef8bb366015cde13862c0f84fe2098de1cad11034bf2cc60c0573",
+      "bytes": 909312
+    },
+    "nemo-record/pt/tokens.json": {
+      "sha256": "dcc20e8041b69735720db2ae7c6fe986682e130cf0a33c48a30f0aa6c82f0642",
+      "bytes": 3176
+    },
+    "nemo-record/record.json": {
+      "sha256": "2f98038e31f992b64a20ee285019373f4ddc2fd34a6b1a5213f1b58149faf7fa",
+      "bytes": 253334
+    },
+    "nemo-record/ro/encoded.f32": {
+      "sha256": "35c970c728200936a5adf8d719d7c6ffbe7b2ffd2dd3d5ef5e773cfdbedd3b92",
+      "bytes": 323584
+    },
+    "nemo-record/ro/features.f32": {
+      "sha256": "fa8a84bcdc5db2721fb1f25a557d9d2398959ef229e872d97bb69c85d4aa549e",
+      "bytes": 322560
+    },
+    "nemo-record/ro/tokens.json": {
+      "sha256": "c1a9843570ee6a1215c5f55ba1e361e4beae41f3e5d676f69672c14e8974bcf0",
+      "bytes": 1837
+    },
+    "nemo-record/ru/encoded.f32": {
+      "sha256": "3adc365e6f11fb829b26c6cd797621d06ba10c0e7735831c05a8a60dec0e7fb9",
+      "bytes": 868352
+    },
+    "nemo-record/ru/features.f32": {
+      "sha256": "77744452ff061f9f294c0f86581460c980e53cdf0b05eac21ab3490cef1f5172",
+      "bytes": 866304
+    },
+    "nemo-record/ru/tokens.json": {
+      "sha256": "9fe08ba2e705b41f13d1e1706720c8dd2049ef421ccb4c7fb775a9682cb8e15d",
+      "bytes": 3180
+    },
+    "nemo-record/sk/encoded.f32": {
+      "sha256": "cd4314716ea49e19ce0160b07348f755ec0acbf08263096faf46b31249ede42d",
+      "bytes": 503808
+    },
+    "nemo-record/sk/features.f32": {
+      "sha256": "6411c38cefd27c016bb4433fbd096170c1ceaf8f6e89194c46e0107a15ce16c8",
+      "bytes": 503808
+    },
+    "nemo-record/sk/tokens.json": {
+      "sha256": "8153a922924651964834a5062fef764c0e673c12b26f178a2d38383856a93575",
+      "bytes": 1966
+    },
+    "nemo-record/sl/encoded.f32": {
+      "sha256": "5ab622384ca3648cde4a63f7012942253e6a0510abbbc6556cb6ded632f2b914",
+      "bytes": 385024
+    },
+    "nemo-record/sl/features.f32": {
+      "sha256": "68fcd6bf8d550254a9f47966db373bed215beb42f098305f9e378163e9810549",
+      "bytes": 384000
+    },
+    "nemo-record/sl/tokens.json": {
+      "sha256": "25ca9da2fe9c23e777955d9ca58a22dda625ae5bb7d9dfb3d770320570ebb300",
+      "bytes": 2091
+    },
+    "nemo-record/sv/encoded.f32": {
+      "sha256": "0c4fb07efbc5276377ba9bcfe4d5100c86870e0d63256915c429d8fac8a1c6b7",
+      "bytes": 294912
+    },
+    "nemo-record/sv/features.f32": {
+      "sha256": "17ce27fdf1d71b8c1c6729f3728d6d04f142e378ea65707c9c62258ba9159799",
+      "bytes": 294912
+    },
+    "nemo-record/sv/tokens.json": {
+      "sha256": "98a29c14ececff83f7a76728c022faabf83c8e5600308026fd55663cb589ec34",
+      "bytes": 1758
+    },
+    "nemo-record/uk/encoded.f32": {
+      "sha256": "57958f07213a0b1d1152dff9fe0a520c6c59640b717bb5adafc3e93f11b792b5",
+      "bytes": 380928
+    },
+    "nemo-record/uk/features.f32": {
+      "sha256": "f5c52abd0d9f9415b3625e84d7aaab2ccf0a275f15bade26c20e0209744c89ee",
+      "bytes": 377856
+    },
+    "nemo-record/uk/tokens.json": {
+      "sha256": "17064777d06fb18e98943a9faf74a9f7a642604f281a011e2689cafddbbe7754",
+      "bytes": 2386
+    },
+    "product-quality-latency.json": {
+      "sha256": "11fcfa7451ff6808bc1cc9ac86273aab8c5656d24207249d5c6744e7164c4200",
+      "bytes": 29311
+    },
+    "product-quality-latency.md": {
+      "sha256": "78244b61c75c1f3a831161dbd0ed25e502ffe8252691639090b09294c3ae3eed",
+      "bytes": 3206
+    },
+    "resident-decoder-launch.stdout": {
+      "sha256": "9950f5a612a381e26b4704b4ddb10f0fe08a40fd46eda2846c416a20de2b6bb3",
+      "bytes": 119
+    },
+    "resident-decoder/compile.json": {
+      "sha256": "59090ede9549de8c30e4e5a757e12d5956554fb2182be36fc76124dc0949aea4",
+      "bytes": 1823
+    },
+    "resident-decoder/compile.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "resident-decoder/compile.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "resident-decoder/inputs.tsv": {
+      "sha256": "de261737dfff129217d4e72175e3f0c2a8664f59102123ee6c2bced5b48dfd1c",
+      "bytes": 4095
+    },
+    "resident-decoder/native.json": {
+      "sha256": "0b24fca8274dd054fbb99c081e43b9fffcb9232f285a1d976e5ba749d3dafaf7",
+      "bytes": 1348
+    },
+    "resident-decoder/native.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "resident-decoder/native.stdout": {
+      "sha256": "e82105df2c3a5df2260f47a8bd0760870bf304b1acf163514cccbc8106db62b4",
+      "bytes": 1553
+    },
+    "resident-decoder/product/6930-75918-0000.tokens.json": {
+      "sha256": "dd36b0b72db71426f750fec23ffb586d58635ac2528bc2417bd038c843f340c8",
+      "bytes": 390
+    },
+    "resident-decoder/product/6930-75918-0002.tokens.json": {
+      "sha256": "d9593bdb4b16b71a76a6442bc17442ff51913f39b3a25576d2010db1bc60e3eb",
+      "bytes": 503
+    },
+    "resident-decoder/product/6930-75918-0006.tokens.json": {
+      "sha256": "7e5a2fbaef559ce8971b39703f876875f43f2a08c738126c08d1fab1a7f4dd99",
+      "bytes": 565
+    },
+    "resident-decoder/product/6930-75918-0011.tokens.json": {
+      "sha256": "11ea3eb6eb81f00d09060ae54cc0303e6de19ad072767e75cef83bb3e1fc8808",
+      "bytes": 386
+    },
+    "resident-decoder/product/bg.tokens.json": {
+      "sha256": "353e1de42d74851c49f101a3132f5cf7fd0f76eb53f598b7ad59e63511a66945",
+      "bytes": 1198
+    },
+    "resident-decoder/product/cs.tokens.json": {
+      "sha256": "43ee07783fc2a8393570f7be4ac8e8f6594b2fc3c3f257ad5e6cc8067791a573",
+      "bytes": 834
+    },
+    "resident-decoder/product/da.tokens.json": {
+      "sha256": "0f51eb4d8171b257994dbbc708349e711be2c90f4d29e0c3a371986cf57f5a55",
+      "bytes": 479
+    },
+    "resident-decoder/product/de.tokens.json": {
+      "sha256": "a39811e8b038545438b2e8bfcf12968e1a52f3263bf81d64e0d55b80345b8af4",
+      "bytes": 690
+    },
+    "resident-decoder/product/el.tokens.json": {
+      "sha256": "4a7253f2df4f81c220755bbb4357ca9fd728e64b868bc138fd1ffad59f9ac713",
+      "bytes": 1056
+    },
+    "resident-decoder/product/en.tokens.json": {
+      "sha256": "72477d22031d88334f6271b37af684443aced9f11310bbd9fa8b5e1ef6af3023",
+      "bytes": 621
+    },
+    "resident-decoder/product/es.tokens.json": {
+      "sha256": "bc8b3e65f504c92076fd134a6d4d1ff9b4bfa987003e927435f92386b4d33dd8",
+      "bytes": 865
+    },
+    "resident-decoder/product/et.tokens.json": {
+      "sha256": "cbdd8a27aec05f8b6636be585452a6e509843e078280076f2041e24aef28b276",
+      "bytes": 867
+    },
+    "resident-decoder/product/fi.tokens.json": {
+      "sha256": "b06fcd6d472d23a07b923c0377cc002943a4910e635c15f666e92d8e0a1f54a3",
+      "bytes": 1201
+    },
+    "resident-decoder/product/fr.tokens.json": {
+      "sha256": "431867fad0c732f62d5900fabb810ada78e95683f7785ba8f62d4257533652f0",
+      "bytes": 665
+    },
+    "resident-decoder/product/hr.tokens.json": {
+      "sha256": "ab765a665e427cf983ea872a574f742ab5907dc36d0932415419750286c1a18d",
+      "bytes": 637
+    },
+    "resident-decoder/product/hu.tokens.json": {
+      "sha256": "5c31c6d51af514b161f6420e385315cace3d1f223557206b90d495fd93b8b755",
+      "bytes": 666
+    },
+    "resident-decoder/product/it.tokens.json": {
+      "sha256": "23e96c781acdb72aa7089276e3a09afa7b1ce98d7d919cfa16806c5718a9c362",
+      "bytes": 809
+    },
+    "resident-decoder/product/lt.tokens.json": {
+      "sha256": "34892c32260ad07aa530a432e5f7f8415b08bcf0dcbfbf87ca567333dfd25f3a",
+      "bytes": 503
+    },
+    "resident-decoder/product/lv.tokens.json": {
+      "sha256": "662aa7641da8e273e7e0af30d40a635d96562ff75c84f28803e57efac787c9fd",
+      "bytes": 758
+    },
+    "resident-decoder/product/mt.tokens.json": {
+      "sha256": "6583fe97a3b827d54baa6fd76e06edc2dfa0c52aab738924a9bdbf620e3c4bc1",
+      "bytes": 825
+    },
+    "resident-decoder/product/nl.tokens.json": {
+      "sha256": "02ed3019f5026189175eb4a7dbd8360adeffda492dd75a95a706b7395d484588",
+      "bytes": 569
+    },
+    "resident-decoder/product/pl.tokens.json": {
+      "sha256": "acd933fcd9a58bb3f395de9e90c06208a32033a8ccc6ca7e8d5ccfa5ef65e1ac",
+      "bytes": 936
+    },
+    "resident-decoder/product/pt.tokens.json": {
+      "sha256": "362ddec1ee0c0b87ea95815e89f022c39451aa2fbb6fa3d19e99b92ab9a6bd94",
+      "bytes": 1072
+    },
+    "resident-decoder/product/ro.tokens.json": {
+      "sha256": "bc726884ae7e188699e20ea649c60404d6a3c4c988c112926525a22e3e2757dd",
+      "bytes": 564
+    },
+    "resident-decoder/product/ru.tokens.json": {
+      "sha256": "c72b036fe82fdacc198a46fb8aeef40e5119629d0bc5942c303f584fea26135b",
+      "bytes": 1092
+    },
+    "resident-decoder/product/sk.tokens.json": {
+      "sha256": "63b442fda2c9d7e928bd039b8394e010cd6d61190bdd62c8cf52aa5104cbb468",
+      "bytes": 615
+    },
+    "resident-decoder/product/sl.tokens.json": {
+      "sha256": "6fdf72d1802b2cfeb122175914cfe590a055430d4a08d0349aee84797f0c5a9d",
+      "bytes": 648
+    },
+    "resident-decoder/product/sv.tokens.json": {
+      "sha256": "7ea6d7e315ab1d34b4d77b6c2aeecddf30d339e6ff84f13b18dc24b30f14d544",
+      "bytes": 535
+    },
+    "resident-decoder/product/uk.tokens.json": {
+      "sha256": "0b43bcb6d01eae2e7b8b1e788a12c6b38e97ffa0254c3b3f1540caf120afc5af",
+      "bytes": 776
+    },
+    "resident-decoder/record.json": {
+      "sha256": "a7850211ac49c7c9a22c7f4d027cca1ba1aebeb52652b9f8ab8706d4e59eb6f9",
+      "bytes": 23825
+    },
+    "rules-initial-compile.stderr": {
+      "sha256": "ed11220acb5a6aa3725bd38d2035537ab238c0f6c867faa367f8c0e91314bb74",
+      "bytes": 12309
+    },
+    "rules-passed.stdout": {
+      "sha256": "07094202ed14eff47980b5f2c632d0c69e3c2589d69bdd6c6fde4aecdb3a506d",
+      "bytes": 276
+    },
+    "tokenizer-cases.json": {
+      "sha256": "0df49bb62d9cb9a9290e63868a2bdca19db7d2a745316ac280f8ff5944ba6bcc",
+      "bytes": 4207
+    }
+  }
+}

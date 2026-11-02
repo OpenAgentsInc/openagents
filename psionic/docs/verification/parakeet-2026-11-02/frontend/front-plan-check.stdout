@@ -1,0 +1,5 @@
+ok   #forall Parakeet frontend refuses fewer than two valid analysis frames (321 cases, 4817 steps, 0 ms)
+ok   #test Parakeet frontend has distinct physical and valid lengths at hop boundaries (1 case, 425 steps, 0 ms)
+ok   #test Parakeet frontend lengths match the four original recorded NeMo utterances (1 case, 362 steps, 0 ms)
+ok   #test Parakeet frontend keeps the existing utterance maximum without overflow (1 case, 99 steps, 0 ms)
+4 checks, 4 passed, 0 failed

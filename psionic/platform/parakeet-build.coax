@@ -1,0 +1,42 @@
+// The resident Parakeet build; orchestration and deadlines stay in Coax.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+PkbPaths :: struct {bytes:[32768]u8;used:int;}
+pkb_path :: (p:[]PkbPaths,dir:string,name:string)->string {
+ start:=p[0].used;for c:dir {p[0].bytes[p[0].used]=c;p[0].used+=1;}p[0].bytes[p[0].used]='/';p[0].used+=1;for c:name {p[0].bytes[p[0].used]=c;p[0].used+=1;}return cast(string)p[0].bytes[start..<p[0].used];
+}
+pkb_run :: (argv:[]string,output:[]u8,deadline:int)->int {
+ left:=deadline-proc_now_ms();if left<=0 {tool_errln("Parakeet build exceeded its fourteen-minute limit");return -1;}
+ err:[65536]u8;r:=proc_run(argv,ifx left<180000 then left else 180000,output,err[..]);if r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)output[0..<r.out_n]);return -1;}return r.out_n;
+}
+tool_main :: ()->int #export_c {
+ deadline:=proc_now_ms()+840000;args:[1]Args;if !args_load(args[..]) || args_count(args[..])>2 {tool_errln("usage: parakeet-build [OUTPUT_DIRECTORY [SOURCE_ROOT]]");return 2;}
+ cwd:[4096]u8;root:=ifx args_count(args[..])==2 then args_at(args[..],1) else fs_cwd(cwd[..]);raw_dir:=ifx args_count(args[..])>=1 then args_at(args[..],0) else "psionic/build/parakeet";
+ if root.count<1 || root.count>512 || raw_dir.count<1 || raw_dir.count>512 {tool_errln("invalid source/output directory extent");return 2;}p:[1]PkbPaths;dir:=ifx raw_dir[0]=='/' then raw_dir else pkb_path(p[..],root,raw_dir);env:[4096]u8;ccenv:[4096]u8;coax:=proc_getenv("COAX",env[..]);if coax.count==0 {coax=pkb_path(p[..],root,"coax/bin/coax");}cc:=proc_getenv("COAX_CC",ccenv[..]);if cc.count==0 {cc="cc";}
+ runtime_src:=pkb_path(p[..],root,"psionic/lib/parakeet/runtime.coax");fast_src:=pkb_path(p[..],root,"psionic/lib/parakeet/fast.coax");device_src:=pkb_path(p[..],root,"psionic/lib/parakeet/device.coax");metal_src:=pkb_path(p[..],root,"psionic/platform/parakeet-metal.c");host_src:=pkb_path(p[..],root,"psionic/platform/metal-host.m");face_src:=pkb_path(p[..],root,"psionic/platform/parakeet-face.c");platform_inc:=pkb_path(p[..],root,"psionic/platform");runtime_c:=pkb_path(p[..],dir,"parakeet-runtime.c");runtime_h:=pkb_path(p[..],dir,"parakeet-runtime.h");runtime_o:=pkb_path(p[..],dir,"parakeet-runtime.o");face_o:=pkb_path(p[..],dir,"parakeet-face.o");lib_o:=pkb_path(p[..],dir,"psionic-parakeet.o");binary:=pkb_path(p[..],dir,"psionic-parakeet");archive:=pkb_path(p[..],dir,"libpsionic-parakeet.a");
+ fast_c:=pkb_path(p[..],dir,"parakeet-fast.c");fast_h:=pkb_path(p[..],dir,"parakeet-fast.h");fast_o:=pkb_path(p[..],dir,"parakeet-fast.o");metal_o:=pkb_path(p[..],dir,"parakeet-metal.o");host_o:=pkb_path(p[..],dir,"metal-host.o");msl:=pkb_path(p[..],dir,"parakeet.metal");source_h:=pkb_path(p[..],dir,"parakeet-metal-source.h");
+ out:[16777216]u8;mk:=[3]string.["mkdir","-p",dir];if pkb_run(mk[..],out[..],deadline)<0 {return 1;}
+ gen:=[8]string.[coax,"c",runtime_src,"--release","--library","--header",runtime_h,"--run-steps=250000000"];n:=pkb_run(gen[0..<7],out[..],deadline);if n<0 || !fs_write(runtime_c,cast(string)out[0..<n]) {return 1;}
+ mac:=tool_os()==TOOL_MAC;
+ if mac {
+  g:=[7]string.[coax,"c",fast_src,"--release","--library","--header",fast_h];n=pkb_run(g[..],out[..],deadline);if n<0 || !fs_write(fast_c,cast(string)out[0..<n]) {return 1;}
+  m:=[4]string.[coax,"metal-compute",device_src,"--release"];n=pkb_run(m[..],out[..],deadline);if n<0 || !fs_write(msl,cast(string)out[0..<n]) {return 1;}
+  // xxd is byte transport only. Its fixed C byte array has no model logic.
+  // An explicit identifier avoids xxd deriving it from a caller's path.
+  xargs:=[5]string.["xxd","-i","-n","parakeet_metal_source",msl];n=pkb_run(xargs[..],out[..],deadline);if n<0 || !fs_write(source_h,cast(string)out[0..<n]) {return 1;}
+  f:=[13]string.[cc,"-std=c11","-O2","-c",metal_src,"-o",metal_o,"-I",dir,"-I",platform_inc,"-Wno-unused-function","-Wno-unused-parameter"];if pkb_run(f[..],out[..],deadline)<0 {return 1;}
+  h:=[9]string.[cc,"-fobjc-arc","-mmacosx-version-min=15.0","-O2","-c",host_src,"-o",host_o,"-Wno-unused-function"];if pkb_run(h[..],out[..],deadline)<0 {return 1;}
+ }
+ units:=[3]string.[runtime_c,face_src,face_src];objects:=[3]string.[runtime_o,face_o,lib_o];
+ for i:0..<3 {
+  flags:=[18]string.[cc,"-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unused-function","-Wno-unused-parameter","-Wno-unknown-pragmas","-I",dir,"-I",platform_inc,"-c",units[i],"-o",objects[i],ifx mac then "-DPSIONIC_PARAKEET_METAL" else "-DPSIONIC_PARAKEET_CPU_ONLY","-DPSIONIC_PARAKEET_LIBRARY"];
+  if pkb_run(flags[0..<17+ifx i==2 then 1 else 0],out[..],deadline)<0 {return 1;}
+ }
+ if fs_exists(archive) {if !fs_remove(archive) {tool_errln("cannot replace previous Parakeet archive");return 1;}}
+ if mac {link:=[12]string.[cc,face_o,runtime_o,metal_o,host_o,"-framework","Metal","-framework","Foundation","-lm","-lpthread","-o"];all:[13]string;for i:0..<12 {all[i]=link[i];}all[12]=binary;if pkb_run(all[..],out[..],deadline)<0 {return 1;}
+  ar:=[7]string.["ar","rcs",archive,lib_o,runtime_o,metal_o,host_o];if pkb_run(ar[..],out[..],deadline)<0 {return 1;}
+ }else {link:=[7]string.[cc,face_o,runtime_o,"-lm","-lpthread","-o",binary];if pkb_run(link[..],out[..],deadline)<0 {return 1;}ar:=[5]string.["ar","rcs",archive,lib_o,runtime_o];if pkb_run(ar[..],out[..],deadline)<0 {return 1;}}
+ print("%\n",binary);return 0;
+}

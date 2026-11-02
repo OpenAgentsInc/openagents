@@ -1,0 +1,3 @@
+ok   #forall actual NeMo forced-logit TDT cap traces preserve token frame and duration outputs (13 cases, 9448 steps, 0 ms)
+1 of 59 checks (--only 'actual NeMo'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

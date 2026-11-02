@@ -1,0 +1,8 @@
+{
+  "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/541d1f99c6b0c3cd0b11a95167540bb8edefd82b/parakeet-tdt-0.6b-v3.nemo",
+  "member": "./902810505b78491d95378fa3000d1bc6_tokenizer.model",
+  "offset_data": 105984,
+  "bytes": 360916,
+  "sha256": "eacec2b0a77f336d4a2ca4a25a7047575d3c2b74de47e997f4c205126ed3135e",
+  "purpose": "Official NeMo SentencePieceTokenizer text conversion/control-token comparison; independent of evaluation selection."
+}

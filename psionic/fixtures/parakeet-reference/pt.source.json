@@ -1,0 +1,21 @@
+{
+  "language": "pt",
+  "config": "pt_br",
+  "split": "test",
+  "utterance_id": "1960",
+  "audio_member": "test/10008174856218516817.wav",
+  "samples": 284160,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "pt.pcm",
+  "pcm_sha256": "d0acd218aee6a7b628d580b22d5cbce9ebd32b9900701f112005f9af36992416",
+  "wav_sha256": "9748e0f96f4b79ccabde80e12e20069c32cf70fdc214d4495ee73a177c0075c2",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "4a7b8ae8ce07c355dcd2cf087a6486c7c3ab931d751b9a9218a9ee0cd798964b",
+  "raw_reference": "Segundo informações, ele estava na casa dos 20 anos. Em uma declaração, Bieber disse que, \"embora eu não estivesse presente nem diretamente envolvido neste trágico incidente, meus pensamentos e orações estão com a família da vítima\".",
+  "reference": "segundo informações ele estava na casa dos 20 anos em uma declaração bieber disse que embora eu não estivesse presente nem diretamente envolvido neste trágico incidente meus pensamentos e orações estão com a família da vítima",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/pt_br/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/pt_br/test.tsv"
+}

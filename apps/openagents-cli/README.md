@@ -315,6 +315,11 @@ openagents transcribe fetch medium                # downloads one; transcribe al
 - `--backend whispercpp` runs whisper.cpp's `whisper-cli` (`brew install
   whisper-cpp ffmpeg`) on request. The measurements are in
   [psionic/docs/transcribe.md](../../psionic/docs/transcribe.md).
+- `--backend parakeet` runs the pinned original Parakeet TDT v3 through our
+  Coax frontend, Metal encoder and CPU decoder. Use `--model-dir DIR` and
+  `--text` or `--json`; mono 16 kHz clips are bounded to 20.47 seconds.
+  Language is automatic; Whisper's word bias and subtitle flags are refused.
+  [Setup, native API and qualification](../../psionic/docs/parakeet.md).
 - A status line (model, backend, milliseconds) goes to stderr; the
   transcript is the only thing on stdout.
 

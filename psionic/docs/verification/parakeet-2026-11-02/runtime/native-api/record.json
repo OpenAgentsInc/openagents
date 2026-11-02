@@ -1,0 +1,41 @@
+{
+  "schema": "psionic.parakeet.native-api-composed.v1",
+  "profiles": {
+    "O0": {
+      "compile_steps": 3,
+      "all_compile_exit_statuses": 0,
+      "test_exit_status": 0
+    },
+    "O2": {
+      "compile_steps": 3,
+      "all_compile_exit_statuses": 0,
+      "test_exit_status": 0
+    },
+    "asan": {
+      "compile_steps": 3,
+      "all_compile_exit_statuses": 0,
+      "initial_test_exit_status": -6,
+      "initial_error": "AddressSanitizer: detect_leaks is not supported on this platform.",
+      "initial_before_main": true,
+      "continuation": "asan-continuation/record.json"
+    }
+  },
+  "scope": "Whole generated runtime and public C face at O0/O2; fatal ASan+UBSan CPU-only API refusal/lifecycle checks. No full CPU encoder. Positive original-weight resident API observations are separately recorded.",
+  "initial_recorder": "tooling/parakeet-api-profiles.py",
+  "initial_recorder_note": "Initial recorder printed each completion status, then raised on unsupported LSan startup before writing its final aggregate JSON. Preserve original raw per-command outputs; this composition transcribes those observed status0 steps and does not rerun them. The same hash-pinned already-built sanitizer binary was continued only with unsupported LSan disabled.",
+  "source_hashes_at_packaging": {
+    "/tmp/parakeet-qualified/parakeet-runtime.c": "7a3a5e8fb1a00a6882f12d79e79b41e09e64e1192bf1a49aa67bd0e4af9ec67b",
+    "/tmp/parakeet-qualified/parakeet-runtime.h": "50413fef81848cc261710f98b53a6e20827dab5942061d9daa4b6a5f1d46e453",
+    "/tmp/openagents-12625-complete-20261101/psionic/platform/parakeet-face.c": "5138ddf9a4569ef4c815a9085b602e2b938836c4129085ce96a2d8606ef41197",
+    "/tmp/openagents-12625-complete-20261101/psionic/platform/psionic-parakeet.h": "517914be2df16f6b340284c058ebe098937f4937454dd48bf32ed829dde640e7",
+    "/tmp/openagents-12625-complete-20261101/psionic/tests/parakeet-runtime-api.c": "acb4941a7b589b3e15ece9e4d7b794976ac8ba395d54c8edfc55d1b2bc979516"
+  },
+  "binary_hashes": {
+    "/tmp/parakeet-api-profiles/O2/check": "129b05f0e5f4efb04bc8d026cf45068af60a7178bba7f58e383440ebd5d54089",
+    "/tmp/parakeet-api-profiles/asan/check": "8e5fbb295b828e1064d36091fa0f2a16d85463d70c7bd416b4305d918d721ba0",
+    "/tmp/parakeet-api-profiles/O0/check": "556a393d046b4aefb68a955ddbbb1fb5c9afbd437909547342bf160c2912d778"
+  },
+  "continuation_passed": true,
+  "leak_detection_qualified": false,
+  "passed": true
+}

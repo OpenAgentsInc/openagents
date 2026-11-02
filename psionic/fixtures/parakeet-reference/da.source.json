@@ -1,0 +1,21 @@
+{
+  "language": "da",
+  "config": "da_dk",
+  "split": "test",
+  "utterance_id": "1908",
+  "audio_member": "test/10016401698104160032.wav",
+  "samples": 81600,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "da.pcm",
+  "pcm_sha256": "8aaa4937161912210fdc34a8fe84a32e0d4afb7386888df9da60d2ad490b4b09",
+  "wav_sha256": "355a74a9ec558e703d65a4e2e0d5887fedf115fcfdc8f0776acb74bee2d44aa0",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "84f731c8393f1ea0bcabee26ba6a9a797ec331b8ab4144054a2722955df803b6",
+  "raw_reference": "Dette er en vigtig måde at skelne mellem nogle verber og objektiver",
+  "reference": "dette er en vigtig måde at skelne mellem nogle verber og objektiver",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/da_dk/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/da_dk/test.tsv"
+}

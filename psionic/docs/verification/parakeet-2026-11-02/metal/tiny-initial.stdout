@@ -1,0 +1,7 @@
+tiny frames=1 layers=0 values=8 max_error=1.49011612e-08 limit=0.00132933009 gpu_ms=0.224000
+tiny frames=1 layers=1 values=8 max_error=3.42726707e-07 limit=0.00293406844 gpu_ms=0.820000
+tiny frames=17 layers=0 values=24 max_error=2.98023224e-08 limit=0.00137251061 gpu_ms=0.225250
+tiny frames=17 layers=1 values=24 max_error=3.7252903e-07 limit=0.00286164188 gpu_ms=0.841042
+tiny frames=33 layers=0 values=40 max_error=1.49011612e-08 limit=0.00133297974 gpu_ms=0.214083
+tiny frames=33 layers=1 values=40 max_error=3.87430191e-07 limit=0.0029261049 gpu_ms=0.881167
+Parakeet Metal: 6 CPU-reference cases and capacity refusals passed

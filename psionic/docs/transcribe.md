@@ -457,6 +457,26 @@ What the numbers say:
   higher, because the attention scores also get a buffer of their own.
 
 
+## Original Parakeet v3
+
+Whisper remains the default. Select `--backend parakeet` for Psionic's own
+bounded Parakeet TDT v3 implementation: CPU frontend, Metal FastConformer,
+CPU decoder, with model and vocabulary held by a resident native engine.
+The [Parakeet guide](parakeet.md) gives pinned downloads, the static C API,
+limits and [chapter 153](../book/ch153-transcribe-with-parakeet.md).
+
+```shell
+openagents transcribe clip.wav --backend parakeet --model-dir /path/to/parakeet --json
+```
+
+Text/JSON and automatic language are supported; forced language, prompt/word
+bias and subtitles are refused. The current bound is 320..327520 samples at
+16 kHz; long dictation and streaming require a separate policy. Explicit GPU
+failure never silently switches engines. All 29 frozen recordings match actual
+NeMo token IDs, frame IDs and text, with complete intermediate tensor tolerance
+checks and 25-language smoke scores. The [measurement table](verification/parakeet-2026-11-02/reference/product-quality-latency.md)
+reports offline timing separately from the Whisper measurements above.
+
 ## Checks
 
 ```sh

@@ -1,0 +1,60 @@
+{
+  "schema": "psionic.parakeet-nemo-comparison.v1",
+  "reference_record_sha256": "2f98038e31f992b64a20ee285019373f4ddc2fd34a6b1a5213f1b58149faf7fa",
+  "fixture_manifest_sha256": "ffe97a41feb987b8a6457b5c44908b54855803d78bf8abfe7c00de31fc6abaf2",
+  "product_inputs": {
+    "/tmp/parakeet-gpu-corpus/6930-75918-0000.tokens.json": "3e294b2164e6be395546ef7c8f55ae09199d0fbd71f4bbaf237f8ce9bc2b60e2",
+    "/tmp/parakeet-gpu-corpus/6930-75918-0000.features.f32": "66731787e751f992654a8d5924c6445f36ce30035c0d470f293f9e4a3445bd4d",
+    "/tmp/parakeet-gpu-corpus/6930-75918-0000.encoded.f32": "44229a1043a4f5cab2d7586bf6ac8075e1e07b7eabbd8a3a5eb7abe99ae972fc"
+  },
+  "clips": [
+    {
+      "id": "6930-75918-0000",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "complete features/encoder/decoder",
+      "tokens_equal": false,
+      "frames_equal": false,
+      "text_equal": false,
+      "reference_score": {
+        "words": 8,
+        "word_errors": 0,
+        "characters": 46,
+        "character_errors": 0
+      },
+      "reference_text": "Concord returned to its place amidst the tents,",
+      "product_text": "",
+      "product_tokens_sha256": "3e294b2164e6be395546ef7c8f55ae09199d0fbd71f4bbaf237f8ce9bc2b60e2",
+      "tensors": {
+        "features": {
+          "passed": false,
+          "values": 44800,
+          "outside_tolerance": 44771,
+          "max_abs_gap": 4.152492523193359,
+          "max_gap_index": 840,
+          "max_tolerance_ratio": 805.91917494327,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "94b96aa0385aec152bc6836f5d9e4bc4a09ace1f2468dc1750be620f2b9b2c68",
+          "product_sha256": "66731787e751f992654a8d5924c6445f36ce30035c0d470f293f9e4a3445bd4d"
+        },
+        "encoded": {
+          "passed": false,
+          "values": 45056,
+          "outside_tolerance": 43215,
+          "max_abs_gap": 0.21879232674837112,
+          "max_gap_index": 17350,
+          "max_tolerance_ratio": 199.04877573327624,
+          "abs_tolerance": 0.001,
+          "relative_tolerance": 0.001,
+          "reference_sha256": "678516be406216ec2aa643ed471e7910de0819bd0df55579bd5fd8b6ed061436",
+          "product_sha256": "44229a1043a4f5cab2d7586bf6ac8075e1e07b7eabbd8a3a5eb7abe99ae972fc"
+        }
+      },
+      "passed": false
+    }
+  ],
+  "passed": false,
+  "full_inference_qualification": true,
+  "scope": "Only named artifacts and this finite audio set; decoder-only comparisons do not qualify the product encoder."
+}

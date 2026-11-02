@@ -1,0 +1,35 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/front.coax:35:9: mutant survived: '<' became '<='
+   if mels<1 || mels>128 || physical<valid || valid<2 || physical>2048 {return SfStatus.shape;}
+          ^
+psionic/lib/parakeet/front.coax:35:10: mutant survived: 1 became 2
+   if mels<1 || mels>128 || physical<valid || valid<2 || physical>2048 {return SfStatus.shape;}
+           ^
+psionic/lib/parakeet/front.coax:35:20: mutant survived: 128 became 129
+   if mels<1 || mels>128 || physical<valid || valid<2 || physical>2048 {return SfStatus.shape;}
+                     ^
+psionic/lib/parakeet/front.coax:35:64: mutant survived: '>' became '>='
+   if mels<1 || mels>128 || physical<valid || valid<2 || physical>2048 {return SfStatus.shape;}
+                                                                 ^
+psionic/lib/parakeet/front.coax:35:65: mutant survived: 2048 became 2049
+   if mels<1 || mels>128 || physical<valid || valid<2 || physical>2048 {return SfStatus.shape;}
+                                                                  ^
+psionic/lib/parakeet/front.coax:36:19: mutant survived: '*' became '+'
+   if raw.count<mels*physical || out.count<mels*valid {return SfStatus.capacity;}
+                    ^
+psionic/lib/parakeet/front.coax:36:46: mutant survived: '*' became '+'
+   if raw.count<mels*physical || out.count<mels*valid {return SfStatus.capacity;}
+                                               ^
+psionic/lib/parakeet/front.coax:37:8: mutant survived: 0 became 1
+   for m:0..<mels {for t:0..<valid {if !sf_finite(raw[m*physical+t]) {return SfStatus.number;}}}
+         ^
+psionic/lib/parakeet/front.coax:42:41: mutant survived: '/' became '*'
+    deviation:=sqrt(psionic_ops_total(sum)/f64(valid-1))+SF_DEVIATION_GUARD;
+                                          ^
+psionic/lib/parakeet/front.coax:49:28: mutant survived: '||' became '&&'
+   if scratch.count<plan.raw || out.count<plan.features {return SfResult.{status=SfStatus.capacity};}
+                             ^
+psionic/lib/parakeet/front.coax:53:57: mutant survived: 257 became 258
+   return SfResult.{status=status,frames=plan.frames,bins=257,mels=128};
+                                                          ^
+60 mutants, 49 killed, 11 survived

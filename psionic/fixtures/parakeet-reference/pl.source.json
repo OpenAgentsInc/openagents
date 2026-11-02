@@ -1,0 +1,21 @@
+{
+  "language": "pl",
+  "config": "pl_pl",
+  "split": "test",
+  "utterance_id": "1829",
+  "audio_member": "test/10003602174340488201.wav",
+  "samples": 193920,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "pl.pcm",
+  "pcm_sha256": "437f87a4e73285ce1801f641b519863f3c8e9dbf54fdff7d203ad47997390ce8",
+  "wav_sha256": "c63af76a5badf2dbce622732e6ca8b92a38591a7e2e8cc4e6ce6035aae299702",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "e7fe94fab2b204a863153a1ac1590606c2ee966c58e57b2778d9afe36206c521",
+  "raw_reference": "Podróżni zwiedzający państwa obłożone szczególnie wysokimi podatkami mogą czasem zaoszczędzić sporo pieniędzy, szczególnie na takich towarach jak alkohol i tytoń.",
+  "reference": "podróżni zwiedzający państwa obłożone szczególnie wysokimi podatkami mogą czasem zaoszczędzić sporo pieniędzy szczególnie na takich towarach jak alkohol i tytoń",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/pl_pl/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/pl_pl/test.tsv"
+}

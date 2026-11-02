@@ -1,0 +1,21 @@
+{
+  "language": "sk",
+  "config": "sk_sk",
+  "split": "test",
+  "utterance_id": "1781",
+  "audio_member": "test/10051555811813730705.wav",
+  "samples": 157440,
+  "rate": 16000,
+  "channels": 1,
+  "pcm_file": "sk.pcm",
+  "pcm_sha256": "25d18933766096c9b6c59ca556d163eecf0a2b4e37a926fe5863a1609bca04dc",
+  "wav_sha256": "87bb277cd46efdae0747510be7c6c63cd2a0bc37fcd31645fc09113887d45a9b",
+  "source_sample_width": 4,
+  "conversion": "PCM source to signed16le at16kHz, ffmpeg dither_method=none when source width is not2",
+  "tsv_sha256": "aac63b04f2cb38a76dccd74e1b82e0392bb542a363bec09a20374704085d5fc0",
+  "raw_reference": "Madagaskar je zďaleka tým najväčším a je sám o sebe kontinentom, keď ide o divokú prírodu.",
+  "reference": "madagaskar je zďaleka tým najväčším a je sám o sebe kontinentom keď ide o divokú prírodu",
+  "gender": "MALE",
+  "source_archive": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/sk_sk/audio/test.tar.gz",
+  "source_tsv": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/sk_sk/test.tsv"
+}

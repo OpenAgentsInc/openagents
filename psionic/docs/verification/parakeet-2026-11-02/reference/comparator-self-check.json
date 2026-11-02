@@ -1,0 +1,64 @@
+{
+  "scope": "Independent artifact-comparator finite/value/shape negative controls, no model execution or product-quality claim.",
+  "passed": true,
+  "cases": [
+    {
+      "case": "equal",
+      "expected": true,
+      "observed": {
+        "passed": true,
+        "values": 3,
+        "outside_tolerance": 0,
+        "max_abs_gap": 0.0,
+        "max_gap_index": -1,
+        "max_tolerance_ratio": 0.0,
+        "abs_tolerance": 0.001,
+        "relative_tolerance": 0.001,
+        "reference_sha256": "8052b229f468402af899ceda391f62053c31fb3803accdd4548986361b9b563a",
+        "product_sha256": "8052b229f468402af899ceda391f62053c31fb3803accdd4548986361b9b563a"
+      }
+    },
+    {
+      "case": "outside",
+      "expected": false,
+      "observed": {
+        "passed": false,
+        "values": 3,
+        "outside_tolerance": 1,
+        "max_abs_gap": 1.0,
+        "max_gap_index": 2,
+        "max_tolerance_ratio": 333.3333333333333,
+        "abs_tolerance": 0.001,
+        "relative_tolerance": 0.001,
+        "reference_sha256": "8052b229f468402af899ceda391f62053c31fb3803accdd4548986361b9b563a",
+        "product_sha256": "9b0fb770a5483b463e2e2afaa3b4f3db0d372b37b27260f1652b2a8cb6b25192"
+      }
+    },
+    {
+      "case": "nonfinite",
+      "expected": false,
+      "observed": {
+        "passed": false,
+        "values": 3,
+        "outside_tolerance": 1,
+        "max_abs_gap": 0.0,
+        "max_gap_index": -1,
+        "max_tolerance_ratio": 0.0,
+        "abs_tolerance": 0.001,
+        "relative_tolerance": 0.001,
+        "reference_sha256": "8052b229f468402af899ceda391f62053c31fb3803accdd4548986361b9b563a",
+        "product_sha256": "195f577d56fbd00a6e86130d9f007b465bed6361fe6e9ba852627a1c8e1b4a35"
+      }
+    },
+    {
+      "case": "wrongextent",
+      "expected": false,
+      "observed": {
+        "passed": false,
+        "reference_values": 3,
+        "product_values": 2,
+        "reason": "shape/byte extent differs"
+      }
+    }
+  ]
+}
