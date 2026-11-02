@@ -1,0 +1,14 @@
+#import "Basic";
+#load "frame.coax";
+
+main :: () {
+    resources:=[2]RfResource.[RfResource.{generation=5,kind=RF_COLOR,first=9,last=9},RfResource.{generation=2,kind=RF_UNIFORM,words=16,first=9,last=9}];
+    bindings:=[1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=2},words=16}];
+    draws:=[1]RfDraw.[RfDraw.{count=3,base=0x80000000,instances=1}];
+    frame:=rf_begin(9,RfLimits.{passes=1,bindings=1,draws=1,words=16});
+    accepted:=rf_pass(frame,resources[..],RfHandle.{slot=0,generation=5},bindings[..],draws[..],RfGeometry.{vertices=3,instances=1});
+    if !accepted.accepted || accepted.frame.words!=16 {print("unexpected refusal\n");return;}
+    stale:=rf_pass(frame,resources[..],RfHandle.{slot=0,generation=4},bindings[..],draws[..],RfGeometry.{vertices=3,instances=1});
+    if stale.accepted || stale.frame.passes!=0 || rf_finish(accepted.frame).active {print("unexpected admission or reservation\n");return;}
+    print("frame9: pass1, binding1, draw1, words16; stale target refused whole; reservations released\n");
+}

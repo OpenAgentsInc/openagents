@@ -1,0 +1,7 @@
+#load "../render/frame.coax";
+#load "../../verse/grid-render.coax";
+#load "../../verse/grid.coax";
+render_begin :: (epoch:int,l:RfLimits)->RfFrame #export_c {return rf_begin(epoch,l);}
+render_pass :: (f:RfFrame,r:[]RfResource,h:RfHandle,b:[]RfBinding,d:[]RfDraw,g:RfGeometry)->RfResult #export_c {return rf_pass(f,r,h,b,d,g);}
+render_finish :: (f:RfFrame)->RfFrame #export_c {return rf_finish(f);}
+render_view :: (w:f32,h:f32,n:int)->bool #export_c {return grid_render_view_allowed(w,h,n);}

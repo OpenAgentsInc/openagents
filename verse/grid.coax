@@ -1,5 +1,6 @@
 #load "../coax/lib/quantity.coax" as quantities;
 #load "sticks.coax";   // the touch controls (the move stick, the look finger, the hotbar's slot)
+#load "grid-render.coax"; // shared frame/pass/binding admission for the matrix output
 // The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
 // ground of lines every 4 m out to 264 m, brighter on the street lines every
 // 24 m, fading into the black field from 6 m to 110 m, with a ring at your
@@ -190,12 +191,18 @@ ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, w
   }
 }
 
+#test "Grid projection admission preserves output on a nonfinite viewport" {
+  out:[16]f32;for i:0..<16 {out[i]=19;}
+  #assert !verse_grid_view(0,2,-4,0,1,0,1.0f32/0.0f32,100,out[..]);
+  for i:0..<16 {#assert out[i]==19;}
+}
+
 // The camera as a 4x4 matrix, by rows, from the world to Metal's clip
 // space: the same screen position as `project`, and depth 0 at NEAR to 1 at
 // FAR, so the host's depth-tested meshes line up with the lines drawn here.
 verse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                        width: f32, height: f32, out: [] f32) -> bool #export_c {
-  if !(width > 0) || !(height > 0) || out.count < 16 { return false; }
+  if !grid_render_view_allowed(width,height,out.count) {return false;}
   c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
   // x and y: the view's right and up, scaled so x / z * focal pixels from
   // the centre is the edge at width / 2; z: depth times z; w: z.

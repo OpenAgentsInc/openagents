@@ -1,0 +1,493 @@
+{
+  "schema_version": 1,
+  "issue": "https://github.com/OpenAgentsInc/openagents/issues/12628",
+  "base_commit": "abfe5291c96f414d1ad091a152313e8558257c57",
+  "profile": "aethyr-frame-admission-cpu-v1",
+  "passed": true,
+  "scope": "CPU metadata admission plus actual native Grid sixteen-word projection-output boundary. Complete renderer/playable migration and GPU lifecycle are NOT qualified.",
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "bytes": 3298840
+  },
+  "compiler_provenance": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/provenance.record",
+    "sha256": "b2f31e09286372c20fac9558039e02eadfa9261f781d95fac09540facef9e9d5",
+    "bytes": 214
+  },
+  "sources": [
+    {
+      "path": "aethyr/render/frame.coax",
+      "sha256": "fb9c6695b7deb0e46e15a7c14cf3c47d0774284c3f1d76e5a39fb4028a8c5e1b",
+      "bytes": 3828
+    },
+    {
+      "path": "aethyr/render/admit-frame.coax",
+      "sha256": "0e69d096224d638346bc5547b2f556910f00282b14114c47cc471c5b4dde7883",
+      "bytes": 1044
+    },
+    {
+      "path": "aethyr/tests/render-frame-checks.coax",
+      "sha256": "a89fecc3f0f4998b7f27affca6883d3f7eae9d935426e54c3208655839b29ece",
+      "bytes": 6269
+    },
+    {
+      "path": "aethyr/tests/render-native.coax",
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "bytes": 491
+    },
+    {
+      "path": "aethyr/tests/render-native.c",
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "bytes": 4868
+    },
+    {
+      "path": "aethyr/tests/check_render_native.py",
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "bytes": 4488
+    },
+    {
+      "path": "verse/grid-render.coax",
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "bytes": 1214
+    },
+    {
+      "path": "verse/grid.coax",
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "bytes": 27954
+    },
+    {
+      "path": "verse/sticks.coax",
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "bytes": 20876
+    },
+    {
+      "path": "coax/lib/quantity.coax",
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "bytes": 585
+    },
+    {
+      "path": "aethyr/fixtures/render-admission.out",
+      "sha256": "aec52e2ec5e1108d86de527ef7b4e0b553c680e60822f0f8fdf4c153fddd79d4",
+      "bytes": 91
+    }
+  ],
+  "observations": {
+    "check_first": "Missing API RED before implementation; actual Grid nonfinite-width behavioral RED before delegation; raw setup/authoring errors preserved.",
+    "evaluator": {
+      "core_groups_per_mode": 5,
+      "core_modes": [
+        "debug",
+        "release"
+      ],
+      "adapter_groups_per_mode": 1,
+      "new_actual_grid_refusal_groups_per_mode": 1,
+      "affected_existing_matrix_cases_per_mode": 35,
+      "affected_existing_short_matrix_groups_per_mode": 1,
+      "note": "Focused --only wrapper checks skip authority execution coverage. Full core checks and its root mutation run provide the new policy coverage."
+    },
+    "mutation": {
+      "scope": "new aethyr/render/frame.coax only; entry-root with dependency checks retained",
+      "mutants": 120,
+      "killed": 120,
+      "survivors": 0,
+      "earlier_runs": [
+        {
+          "mutants": 121,
+          "killed": 99,
+          "survivors": 22
+        },
+        {
+          "mutants": 111,
+          "killed": 110,
+          "survivors": 1
+        }
+      ],
+      "waivers": 0,
+      "note": "The initial byte-alignment representation contained redundant admission decisions. Final API uses four-byte word offsets/extents; remaining cumulative-limit checks strengthened. No equivalent-mutant waivers."
+    },
+    "native": {
+      "profiles": [
+        "checked Coax C / host O0",
+        "release Coax C / host O2",
+        "checked Coax C / host O1 ASan+UBSan"
+      ],
+      "binding_cases_per_profile": 307800,
+      "draw_cases_per_profile": 2592,
+      "lifetime_cases_per_profile": 180,
+      "actual_grid_viewport_extent_cases_per_profile": 108,
+      "four_u32_draw_abi": true,
+      "host_effects": 0,
+      "release_receipt": "release/receipt.json",
+      "sanitized_receipt": "sanitized/receipt.json",
+      "identity_limit": "Release and sanitizer driver bind before/after source/tool hashes; earlier manual O0 observation is post-run hash-bound here, not claimed prospectively frozen.",
+      "debug_artifacts": [
+        {
+          "path": "/tmp/aethyr-render-20261102/render.c",
+          "sha256": "1ee7145d1f40b9a1f83eff4e93d2eff7932e17192b07cb474984445ebc74ffd9",
+          "bytes": 79408
+        },
+        {
+          "path": "/tmp/aethyr-render-20261102/render.h",
+          "sha256": "8fbe1f3941b54eae8830cd862e98d2b4594a2413dda4eadac12210cf3a25d11f",
+          "bytes": 22920
+        },
+        {
+          "path": "/tmp/aethyr-render-20261102/native-debug",
+          "sha256": "31cc06ed7d3546077323092156923ca8cd09b08ea0e2ed7c12da5ccc59da8eca",
+          "bytes": 94624
+        }
+      ]
+    },
+    "example": {
+      "source": "aethyr/render/admit-frame.coax",
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "exit_status": 0,
+      "stdout": "aethyr/fixtures/render-admission.out",
+      "exact": true
+    },
+    "metadata": {
+      "command": [
+        "python3",
+        "psionic/tests/book.py",
+        "--book",
+        "aethyr"
+      ],
+      "exit_status": 0,
+      "programs": 19,
+      "source_linked_listings": 107,
+      "new_documentation_local_links": 36,
+      "statuses_unchanged": [
+        "chapter11 design draft",
+        "chapter64 design draft"
+      ]
+    }
+  },
+  "limits": [
+    "Caller keeps the current returned frame and immutable truthful slot/generation/epoch metadata; old copied frame replay, arbitrary forged frame values, physical ownership and GPU handle authenticity are outside this profile.",
+    "No texture/depth/sampler, format/sample/layout compatibility, GPU-specific alignment, barriers, raster/depth/blend/rounding or nonzero fragment-quad derivative qualification.",
+    "Index values remain admitted by the existing asset owner. Word budget sums binding extents, not unique GPU memory.",
+    "rf_finish clears CPU counters only. No GPU allocation/submission/fence/release host integration, browser run, iOS app build, full rendering gate or unrelated full mutation gate was executed.",
+    "No fixed-step/input/replay/camera/feet equations or four-u32 existing draw consumers were changed. Existing evidence is historical, not rerun qualification.",
+    "ASan/UBSan reports no errors; Apple leak detection disabled."
+  ],
+  "logs": [
+    {
+      "path": "aethyr/fixtures/render/logs/book-metadata.log",
+      "sha256": "047b7d8e418a63f67af39d9295bb29f84af3279d6836bb80892b77065e560132",
+      "bytes": 81
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/cc-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/cc-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/check-first.log",
+      "sha256": "4cdbc5cca8034008cd4fe572895587ef78161923baadd01e832dcda0f28d2435",
+      "bytes": 18969
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/debug-final.log",
+      "sha256": "de396d10e2334abaf663c785131636b536581ac5981bc40f4646fe0d02d64d6c",
+      "bytes": 607
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/debug-v2.log",
+      "sha256": "6a797b8916fde6a8c1855874f5c655f1fa766f29312687fc4db5605c5de40ed2",
+      "bytes": 484
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/debug-v3.log",
+      "sha256": "bf810b15457892262aa8776f5fca5a0487ed12382b0d0d09849b9e9d37eadd6a",
+      "bytes": 607
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/debug.log",
+      "sha256": "d88d901fb324ec69e4c7f58795863feec4bff7c0286208c3e4bd203cc0424031",
+      "bytes": 237
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/emission-full.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/emission.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-debug-final.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-debug-final.stdout",
+      "sha256": "aec52e2ec5e1108d86de527ef7b4e0b553c680e60822f0f8fdf4c153fddd79d4",
+      "bytes": 91
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-debug-v2.stderr",
+      "sha256": "d8fc8d753a63d3b0d47674e521898a39236354f1b0855ded6301cf9153ce22cb",
+      "bytes": 164
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-debug-v2.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-debug.stderr",
+      "sha256": "73938aabe6d4511ce426a67fd2d862756a7fb8f3a3043bc90b3f635d035ae5ed",
+      "bytes": 457
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-debug.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-release-final.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-release-final.stdout",
+      "sha256": "aec52e2ec5e1108d86de527ef7b4e0b553c680e60822f0f8fdf4c153fddd79d4",
+      "bytes": 91
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-release.stderr",
+      "sha256": "d8fc8d753a63d3b0d47674e521898a39236354f1b0855ded6301cf9153ce22cb",
+      "bytes": 164
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/example-release.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/focused-grid-commands.json",
+      "sha256": "531fdf3df275aac93c2b94487a2af71a5d4d08a16d45ab47ff3189a6ee14a6fc",
+      "bytes": 2214
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-adapter-debug-final.log",
+      "sha256": "c3e7ce2609530b852064e424774011d873bdab964a71dd8a4296011efc0433e5",
+      "bytes": 274
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-adapter-release-final.log",
+      "sha256": "c3e7ce2609530b852064e424774011d873bdab964a71dd8a4296011efc0433e5",
+      "bytes": 274
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-adapter.log",
+      "sha256": "cbca88d265aeaaa29b00b7773c68c832479f60529efd9b912ce4e54948b03a2c",
+      "bytes": 274
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-callsite-green.log",
+      "sha256": "8ce2b8231512a106bb9251e3ca9bb290e7f55e066a838bff552346299f21df58",
+      "bytes": 270
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-callsite-red.log",
+      "sha256": "779fb966e29be5d533d3362e9145faa0d3956583c5ab5217a6ecf54f6d540f4d",
+      "bytes": 371
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-callsite-release.log",
+      "sha256": "8ce2b8231512a106bb9251e3ca9bb290e7f55e066a838bff552346299f21df58",
+      "bytes": 270
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-empty-debug.log",
+      "sha256": "c6d45269f12ccd609adb73bafb6e7b7aba41b5bfc79e6ae3c4f47822ccfc4070",
+      "bytes": 251
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-empty-release.log",
+      "sha256": "c6d45269f12ccd609adb73bafb6e7b7aba41b5bfc79e6ae3c4f47822ccfc4070",
+      "bytes": 251
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-matrix-debug.log",
+      "sha256": "bb35fa336a4c66eac707d4ab8cdadca61497ce99a0c77b287547d1eaa003f5d2",
+      "bytes": 293
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/grid-matrix-release.log",
+      "sha256": "26235a9d0603a3ea40dc922dee3c66edbc29e6445c0a74a24ab01a9f0c89659d",
+      "bytes": 293
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/mutate-final.log",
+      "sha256": "80c0f977e5b795b537b3767b970ac44c5219544b6a37ad938d4dfb91bf021a48",
+      "bytes": 116
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/mutate-v1.log",
+      "sha256": "7518966b58bbf25905ba297192dd8a132a146b3eee1f1d3f9e3fa7aac2c81843",
+      "bytes": 5235
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/mutate-v2.log",
+      "sha256": "a1a94488832a8bf12bfd0c5eda5be8ee270b51d0224e1926ada1745f98a8c0d6",
+      "bytes": 406
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/native-debug.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/native-debug.stdout",
+      "sha256": "a22492d851e0300466fe380035e1878547a99af927103a90ebafe251eb6f3d3d",
+      "bytes": 163
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/release-final.log",
+      "sha256": "de396d10e2334abaf663c785131636b536581ac5981bc40f4646fe0d02d64d6c",
+      "bytes": 607
+    },
+    {
+      "path": "aethyr/fixtures/render/logs/release.log",
+      "sha256": "6a797b8916fde6a8c1855874f5c655f1fa766f29312687fc4db5605c5de40ed2",
+      "bytes": 484
+    }
+  ],
+  "final_commands": [
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "test",
+        "aethyr/render/frame.coax",
+        "--library"
+      ],
+      "log": "logs/debug-final.log",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "test",
+        "aethyr/render/frame.coax",
+        "--library",
+        "--release"
+      ],
+      "log": "logs/release-final.log",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "mutate",
+        "aethyr/render/frame.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4"
+      ],
+      "log": "logs/mutate-final.log",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "test",
+        "verse/grid.coax",
+        "--library",
+        "--only",
+        "Grid projection admission"
+      ],
+      "log": "logs/grid-callsite-green.log",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "test",
+        "verse/grid.coax",
+        "--library",
+        "--only",
+        "Grid projection admission",
+        "--release"
+      ],
+      "log": "logs/grid-callsite-release.log",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "run",
+        "aethyr/render/admit-frame.coax"
+      ],
+      "stdout": "logs/example-debug-final.stdout",
+      "stderr": "logs/example-debug-final.stderr",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "run",
+        "aethyr/render/admit-frame.coax",
+        "--release"
+      ],
+      "stdout": "logs/example-release-final.stdout",
+      "stderr": "logs/example-release-final.stderr",
+      "exit_status": 0
+    },
+    {
+      "argv": [
+        "python3",
+        "psionic/tests/book.py",
+        "--book",
+        "aethyr"
+      ],
+      "log": "logs/book-metadata.log",
+      "exit_status": 0
+    }
+  ],
+  "additional_command_inventory": "logs/focused-grid-commands.json",
+  "manual_debug_native_commands": {
+    "binding": "post-run identities only; first native attempt succeeded",
+    "argv": [
+      [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "c",
+        "aethyr/tests/render-native.coax",
+        "--library",
+        "--header",
+        "/tmp/aethyr-render-20261102/render.h"
+      ],
+      [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I/tmp/aethyr-render-20261102",
+        "/tmp/aethyr-render-20261102/render.c",
+        "aethyr/tests/render-native.c",
+        "-lm",
+        "-o",
+        "/tmp/aethyr-render-20261102/native-debug"
+      ],
+      [
+        "/tmp/aethyr-render-20261102/native-debug"
+      ]
+    ]
+  },
+  "retention": "Raw diagnostics/results and JSON receipts are committed. Generated C/header, emission stdout containing C and native binaries remain under /tmp/aethyr-render-20261102 with recorded hashes; they are not repository deliverables."
+}

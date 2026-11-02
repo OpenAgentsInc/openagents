@@ -1,0 +1,69 @@
+// CPU metadata admission v1. Caller owns an immutable resource table and all
+// live disjoint storage for a frame. Slot+generation are symbolic identities,
+// not unforgeable GPU handles or a proof of physical lifetime. No views escape.
+// Bindings: uniform/storage buffers only; offsets/extents are four-byte words.
+// Color target is an opaque identity. Binding/layout-specific GPU alignment is
+// still a host-profile requirement (e.g. dynamic-uniform offset alignment).
+// Texture/depth/sampler/raster/shader compatibility remain outside this profile.
+#module "aethyr.render.frame";
+#authority;
+#load "../tests/render-frame-checks.coax";
+
+RF_UNIFORM :: 1; RF_STORAGE :: 2; RF_COLOR :: 3;
+RfHandle :: struct {slot:int=-1;generation:int;}
+RfResource :: struct {generation:int;kind:int;words:int;first:int;last:int;}
+RfBinding :: struct {group:int;binding:int;resource:RfHandle;offset:int;words:int;}
+// Existing host ABI, in this exact order. High bit of base means direct draw.
+RfDraw :: struct {first:u32;count:u32;base:u32;instances:u32;}
+RfGeometry :: struct {vertices:u32;indices:u32;instances:u32;}
+RfLimits :: struct {passes:int;bindings:int;draws:int;words:int;}
+RfFrame :: struct {active:bool;epoch:int;limit:RfLimits;passes:int;bindings:int;draws:int;words:int;}
+RfResult :: struct {accepted:bool;frame:RfFrame;}
+
+rf_viewport :: (width:f32,height:f32)->bool {
+    return width>0 && height>0 && width-width==0 && height-height==0;
+}
+
+rf_begin :: (epoch:int,limit:RfLimits)->RfFrame {
+    if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.words<0 {return RfFrame.{};}
+    return RfFrame.{active=true,epoch=epoch,limit=limit};
+}
+
+rf_live :: (resources:[]RfResource,h:RfHandle,epoch:int)->bool {
+    if h.slot<0 || h.slot>=resources.count || h.generation<1 {return false;}
+    r:=resources[h.slot];
+    return r.generation==h.generation && r.first<=epoch && epoch<=r.last;
+}
+
+// Plans come from rf_begin and successful rf_pass results, unchanged.
+// A refusal returns the original frame. Publication is one value assignment.
+// Indexed geometry's index VALUES must already be admitted by its asset owner;
+// this checks index range and instance range, not index-buffer contents.
+rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBinding,draws:[]RfDraw,g:RfGeometry)->RfResult {
+    no:=RfResult.{frame=f};
+    if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
+    if !rf_live(resources,target,f.epoch) {return no;}
+    if resources[target.slot].kind!=RF_COLOR {return no;}
+    words:=f.words;
+    for i:0..<bindings.count {
+        b:=bindings[i];
+        if b.group<0 || b.group>=4 || b.binding<0 || b.binding>=8 || !rf_live(resources,b.resource,f.epoch) {return no;}
+        for j:0..<i {if bindings[j].group==b.group && bindings[j].binding==b.binding {return no;}}
+        r:=resources[b.resource.slot];
+        if r.kind!=RF_UNIFORM && r.kind!=RF_STORAGE {return no;}
+        if b.offset<0 || b.words<1 || b.words>r.words {return no;}
+        if b.offset>r.words-b.words {return no;}
+        if b.words>f.limit.words-words {return no;}words+=b.words;
+    }
+    for d:draws {
+        cap:=g.indices;if (d.base&0x80000000)!=0 {cap=g.vertices;}
+        base:=d.base&0x7fffffff;
+        if d.first>cap || d.count>cap-d.first || base>g.instances || d.instances>g.instances-base {return no;}
+    }
+    next:=f;next.passes+=1;next.bindings+=bindings.count;next.draws+=draws.count;next.words=words;
+    return RfResult.{accepted=true,frame=next};
+}
+
+// Finish and abort have the same CPU reservation cleanup; idempotent. This
+// does not destroy GPU objects: their host owner releases them after GPU use.
+rf_finish :: (f:RfFrame)->RfFrame {return RfFrame.{epoch=f.epoch,limit=f.limit};}

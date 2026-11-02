@@ -1,0 +1,6 @@
+ok   #test render admission accepts exact limits and preserves the draw ABI (1 case, 708 steps, 0 ms)
+ok   #test render admission refuses stale dead wrong-kind and out-of-range resources whole (1 case, 3061 steps, 0 ms)
+ok   #test render admission separates bindings and bounds indexed and direct draws (1 case, 2292 steps, 0 ms)
+ok   #test render admission rejects invalid declarations and budgets and abort cleans reservations (1 case, 715 steps, 0 ms)
+ok   #test render admission word ranges and independent cumulative limits have sharp boundaries (1 case, 2655 steps, 0 ms)
+5 checks, 5 passed, 0 failed

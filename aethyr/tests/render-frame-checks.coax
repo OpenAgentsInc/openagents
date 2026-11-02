@@ -1,0 +1,80 @@
+#test "render admission accepts exact limits and preserves the draw ABI" {
+    #assert rf_viewport(1,1) && rf_viewport(390,844);
+    #assert !rf_viewport(0,1) && !rf_viewport(1,0) && !rf_viewport(-1,1) && !rf_viewport(1,-1);
+    #assert !rf_viewport(0.0f32/0.0f32,1) && !rf_viewport(1,0.0f32/0.0f32);
+    #assert !rf_viewport(1.0f32/0.0f32,1) && !rf_viewport(1,1.0f32/0.0f32);
+    #assert size_of(RfDraw)==16;
+    f:=rf_begin(7,RfLimits.{passes=1,bindings=1,draws=1,words=16});
+    r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=6,base=0x80000000,instances=1}];
+    a:=rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1});
+    #assert a.accepted && a.frame.passes==1 && a.frame.bindings==1 && a.frame.draws==1 && a.frame.words==16;
+    #assert !rf_pass(a.frame,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1}).accepted;
+    z:=rf_finish(a.frame);#assert !z.active && z.epoch==7 && z.passes==0 && z.bindings==0 && z.draws==0 && z.words==0;
+    #assert !rf_pass(z,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{}).accepted;
+}
+
+#test "render admission refuses stale dead wrong-kind and out-of-range resources whole" {
+    f:=rf_begin(7,RfLimits.{passes=4,bindings=8,draws=8,words=256});
+    r:=rf_test_resources();b:=rf_test_bindings();d:[1]RfDraw;
+    for k:0..<13 {
+        rr:=r;bb:=b;h:=RfHandle.{slot=0,generation=3};
+        if k==0 {h.slot=-1;}if k==1 {h.slot=2;}if k==2 {h.generation=2;}
+        if k==3 {rr[0].first=8;}if k==4 {rr[0].last=6;}if k==5 {rr[0].kind=RF_UNIFORM;}
+        if k==6 {bb[0].resource.generation=0;}if k==7 {bb[0].offset=-4;}if k==8 {bb[0].offset=1;}
+        if k==9 {bb[0].words=0;}if k==10 {bb[0].words=17;}if k==11 {bb[0].group=4;}if k==12 {bb[0].binding=8;}
+        a:=rf_pass(f,rr[..],h,bb[..],d[..],RfGeometry.{});
+        #assert !a.accepted && a.frame.active && a.frame.epoch==7 && a.frame.passes==0 && a.frame.words==0;
+    }
+}
+
+#test "render admission separates bindings and bounds indexed and direct draws" {
+    f:=rf_begin(7,RfLimits.{passes=2,bindings=4,draws=4,words=32});r:=rf_test_resources();b:=rf_test_bindings();
+    bb:=[2]RfBinding.[b[0],b[0]];d:[1]RfDraw;
+    #assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[..],RfGeometry.{}).accepted;
+    bb[1].binding=1;#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[0..<0],RfGeometry.{}).accepted;
+    d[0]=RfDraw.{first=3,count=2,base=1,instances=2};g:=RfGeometry.{vertices=4,indices=5,instances=3};
+    #assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    d[0].count=3;#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    d[0]=RfDraw.{first=2,count=2,base=0x80000000,instances=3};#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    d[0].first=3;#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    d[0]=RfDraw.{count=1,base=0x80000002,instances=2};#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+}
+
+#test "render admission rejects invalid declarations and budgets and abort cleans reservations" {
+    l:=RfLimits.{passes=1,bindings=1,draws=1,words=16};
+    #assert !rf_begin(0,l).active;ll:=l;ll.passes=0;#assert !rf_begin(1,ll).active;
+    ll=l;ll.bindings=-1;#assert !rf_begin(1,ll).active;ll=l;ll.draws=-1;#assert !rf_begin(1,ll).active;
+    ll=l;ll.words=-1;#assert !rf_begin(1,ll).active;
+    r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=1,instances=1}];g:=RfGeometry.{indices=1,instances=1};
+    ll=l;ll.bindings=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    ll=l;ll.draws=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    ll=l;ll.words=15;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+    z:=rf_finish(rf_begin(7,l));#assert !z.active && z.epoch==7 && z.passes==0 && rf_finish(z).words==0;
+}
+
+rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,words=16,first=1,last=9}];}
+rf_test_bindings :: ()->[1]RfBinding {return [1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=1},words=16}];}
+
+#test "render admission word ranges and independent cumulative limits have sharp boundaries" {
+    l:=RfLimits.{passes=1};#assert rf_begin(1,l).active;
+    r:=rf_test_resources();b:=rf_test_bindings();d:[1]RfDraw;h:=RfHandle.{slot=0,generation=3};
+    f:=rf_begin(7,RfLimits.{passes=2,bindings=2,draws=2,words=2});
+    b[0].words=1;b[0].offset=15;b[0].group=3;b[0].binding=7;r[1].kind=RF_STORAGE;
+    a:=rf_pass(f,r[..],h,b[..],d[..],RfGeometry.{});#assert a.accepted;
+    #assert rf_pass(a.frame,r[..],h,b[..],d[..],RfGeometry.{}).accepted;
+    b[0].words=2;#assert !rf_pass(a.frame,r[..],h,b[..],d[..],RfGeometry.{}).accepted;
+    b[0].offset=0;#assert !rf_pass(a.frame,r[..],h,b[..],d[..],RfGeometry.{}).accepted;
+    b[0].words=1;bb:=[2]RfBinding.[b[0],b[0]];bb[1].binding=6;
+    #assert !rf_pass(a.frame,r[..],h,bb[..],d[0..<0],RfGeometry.{}).accepted;
+    q:=rf_pass(rf_begin(7,RfLimits.{passes=2,bindings=2,words=100}),r[..],h,b[..],d[0..<0],RfGeometry.{});
+    #assert q.accepted && !rf_pass(q.frame,r[..],h,bb[..],d[0..<0],RfGeometry.{}).accepted;
+    dd:[2]RfDraw;#assert !rf_pass(a.frame,r[..],h,b[0..<0],dd[..],RfGeometry.{}).accepted;
+    b[0].group=-1;#assert !rf_pass(f,r[..],h,b[..],d[..],RfGeometry.{}).accepted;
+    b[0].group=0;b[0].binding=-1;#assert !rf_pass(f,r[..],h,b[..],d[..],RfGeometry.{}).accepted;
+    b[0].binding=0;r[1].kind=RF_COLOR;#assert !rf_pass(f,r[..],h,b[..],d[..],RfGeometry.{}).accepted;
+    f=rf_begin(7,RfLimits.{passes=1});a=rf_pass(f,r[..],h,b[0..<0],d[0..<0],RfGeometry.{});#assert a.accepted;
+    #assert !rf_pass(a.frame,r[..],h,b[0..<0],d[0..<0],RfGeometry.{}).accepted;
+    #assert !rf_pass(rf_finish(f),r[..],h,b[0..<0],d[0..<0],RfGeometry.{}).accepted;
+    f=rf_begin(7,RfLimits.{passes=1,draws=1});d[0]=RfDraw.{first=3,base=3};
+    #assert rf_pass(f,r[..],h,b[0..<0],d[..],RfGeometry.{indices=3,instances=3}).accepted;
+}

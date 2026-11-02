@@ -1,0 +1,3 @@
+ok   #test Grid view admission requires the whole matrix and a finite positive viewport (1 case, 1163 steps, 0 ms)
+1 of 6 checks (--only 'Grid view admission'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,4 @@
+aethyr/tests/render-frame-checks.coax:14:53: error[E0357]: array length 0 is out of range (1 to 1 GiB total)
+      r:=rf_test_resources();b:=rf_test_bindings();d:[0]RfDraw;
+                                                      ^
+1 error

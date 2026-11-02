@@ -4,8 +4,9 @@
 > the realms' WGSL and SPIR-V from Coax, and the native Vulkan path has
 > recorded parity evidence. This chapter plans the shared Aethyr frame,
 > pass and binding admission above those paths, together with a complete
-> CPU reference for the admitted shader profiles. Those Aethyr modules
-> are not built yet; the existing renderer is the baseline to preserve.
+> CPU reference for the admitted shader profiles. A first CPU metadata
+> admission component now exists, but shared GPU submission and the complete
+> reference are not built yet; the existing renderer is the baseline to preserve.
 
 A realm's simulation ends each step with a state; drawing turns the
 interpolated state (chapter 1) into pixels. Aethyr keeps that turn small and
@@ -83,6 +84,12 @@ qualified migration: changing the hash can change a realm's appearance.
 
 What is missing is one admitted renderer contract: realm-specific Coax
 shaders and host paths still need shared frame/pass/binding admission.
+The first [bounded CPU admission component](../render/README.md) now validates
+symbolic slot/generation/epoch identities, buffer binding ranges, pass/draw/word
+limits and atomic refusal/cleanup. `verse/grid.coax` directly uses it for the
+sixteen-word native projection output; this is component adoption, not the
+browser Grid's GPU frame or the complete chapter profile. It submits no GPU
+work and qualifies no texture, raster, depth, blend or derivative behavior.
 The shader library's CPU texture operations cover simple nearest/bilinear
 sampling, and its fragment derivatives currently return zero for an isolated
 fragment. That is not an oracle for derivative-dependent shaders. A full

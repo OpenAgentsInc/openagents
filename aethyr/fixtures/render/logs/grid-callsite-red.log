@@ -1,0 +1,6 @@
+FAIL #test Grid projection admission preserves output on a nonfinite viewport (0 ms)
+verse/grid.coax:195:3: error[E0406]: assertion failed
+    #assert !verse_grid_view(0,2,-4,0,1,0,1.0f32/0.0f32,100,out[..]);
+    ^
+  note: in #test Grid projection admission preserves output on a nonfinite viewport
+1 of 39 checks (--only 'Grid projection admission'), 0 passed, 1 failed

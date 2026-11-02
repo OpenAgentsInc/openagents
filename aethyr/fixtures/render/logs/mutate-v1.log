@@ -1,0 +1,68 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/frame.coax:22:13: mutant survived: '<' became '<='
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+              ^
+aethyr/render/frame.coax:22:14: mutant survived: 1 became 2
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+               ^
+aethyr/render/frame.coax:22:51: mutant survived: '<' became '<='
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+                                                    ^
+aethyr/render/frame.coax:22:52: mutant survived: 0 became 1
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+                                                     ^
+aethyr/render/frame.coax:22:68: mutant survived: '<' became '<='
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+                                                                     ^
+aethyr/render/frame.coax:22:69: mutant survived: 0 became 1
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+                                                                      ^
+aethyr/render/frame.coax:22:85: mutant survived: '<' became '<='
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+                                                                                      ^
+aethyr/render/frame.coax:22:86: mutant survived: 0 became 1
+      if epoch<1 || limit.passes<1 || limit.bindings<0 || limit.draws<0 || limit.bytes<0 {return RfFrame.{};}
+                                                                                       ^
+aethyr/render/frame.coax:38:18: mutant survived: '||' became '&&'
+      if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
+                   ^
+aethyr/render/frame.coax:38:29: mutant survived: '>=' became '>'
+      if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
+                              ^
+aethyr/render/frame.coax:38:80: mutant survived: '-' became '+'
+      if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
+                                                                                 ^
+aethyr/render/frame.coax:38:120: mutant survived: '-' became '+'
+      if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
+                                                                                                                         ^
+aethyr/render/frame.coax:47:40: mutant survived: '!=' became '=='
+          if r.kind!=RF_UNIFORM && r.kind!=RF_STORAGE {return no;}
+                                         ^
+aethyr/render/frame.coax:47:42: mutant survived: 2 became 3
+          if r.kind!=RF_UNIFORM && r.kind!=RF_STORAGE {return no;}
+                                           ^
+aethyr/render/frame.coax:48:34: mutant survived: '%' became '/'
+          if b.offset<0 || b.offset%4!=0 || b.bytes<1 || b.bytes%4!=0 || b.offset>r.bytes || b.bytes>r.bytes-b.offset {return no;}
+                                   ^
+aethyr/render/frame.coax:48:35: mutant survived: 4 became 5
+          if b.offset<0 || b.offset%4!=0 || b.bytes<1 || b.bytes%4!=0 || b.offset>r.bytes || b.bytes>r.bytes-b.offset {return no;}
+                                    ^
+aethyr/render/frame.coax:48:50: mutant survived: '<' became '<='
+          if b.offset<0 || b.offset%4!=0 || b.bytes<1 || b.bytes%4!=0 || b.offset>r.bytes || b.bytes>r.bytes-b.offset {return no;}
+                                                   ^
+aethyr/render/frame.coax:48:51: mutant survived: 1 became 2
+          if b.offset<0 || b.offset%4!=0 || b.bytes<1 || b.bytes%4!=0 || b.offset>r.bytes || b.bytes>r.bytes-b.offset {return no;}
+                                                    ^
+aethyr/render/frame.coax:48:80: mutant survived: '>' became '>='
+          if b.offset<0 || b.offset%4!=0 || b.bytes<1 || b.bytes%4!=0 || b.offset>r.bytes || b.bytes>r.bytes-b.offset {return no;}
+                                                                                 ^
+aethyr/render/frame.coax:49:33: mutant survived: '-' became '+'
+          if b.bytes>f.limit.bytes-bytes {return no;}bytes+=b.bytes;
+                                  ^
+aethyr/render/frame.coax:54:19: mutant survived: '>' became '>='
+          if d.first>cap || d.count>cap-d.first || base>g.instances || d.instances>g.instances-base {return no;}
+                    ^
+aethyr/render/frame.coax:54:54: mutant survived: '>' became '>='
+          if d.first>cap || d.count>cap-d.first || base>g.instances || d.instances>g.instances-base {return no;}
+                                                       ^
+121 mutants, 99 killed, 22 survived

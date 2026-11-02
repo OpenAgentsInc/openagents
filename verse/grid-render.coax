@@ -1,0 +1,21 @@
+// The Grid's native projection output is one 16-word uniform binding. This
+// component admission is shared with render plans; it is not GPU submission.
+#load "../aethyr/render/frame.coax";
+
+#test "Grid view admission requires the whole matrix and a finite positive viewport" {
+    #assert grid_render_view_allowed(390,844,16) && grid_render_view_allowed(1,1,17);
+    #assert !grid_render_view_allowed(390,844,15) && !grid_render_view_allowed(0,844,16);
+    #assert !grid_render_view_allowed(390,-1,16);
+    #assert !grid_render_view_allowed(0.0f32/0.0f32,844,16);
+    #assert !grid_render_view_allowed(390,1.0f32/0.0f32,16);
+}
+
+grid_render_view_allowed :: (width:f32,height:f32,words:int)->bool {
+    if !rf_viewport(width,height) {return false;}
+    r:=[2]RfResource.[RfResource.{generation=1,kind=RF_COLOR,first=1,last=1},RfResource.{generation=1,kind=RF_UNIFORM,words=words,first=1,last=1}];
+    b:=[1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=1},words=16}];d:[1]RfDraw;
+    f:=rf_begin(1,RfLimits.{passes=1,bindings=1,words=16});
+    a:=rf_pass(f,r[..],RfHandle.{slot=0,generation=1},b[..],d[0..<0],RfGeometry.{});
+    if !a.accepted {return false;}
+    return !rf_finish(a.frame).active;
+}

@@ -1,0 +1,3 @@
+ok   #forall the view matrix puts points where the lines go, with depth 0 at NEAR and 1 at FAR (35 cases, 75674 steps, 3 ms)
+1 of 45 checks (--only 'the view matrix puts points'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

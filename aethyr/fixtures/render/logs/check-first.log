@@ -1,0 +1,232 @@
+aethyr/tests/render-frame-checks.coax:51:29: error[E0302]: unknown type 'RfResource'
+  rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,bytes=64,first=1,last=9}];}
+                              ^
+aethyr/tests/render-frame-checks.coax:52:28: error[E0302]: unknown type 'RfBinding'
+  rf_test_bindings :: ()->[1]RfBinding {return [1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=1},bytes=64}];}
+                             ^
+aethyr/tests/render-frame-checks.coax:51:51: error[E0302]: unknown type 'RfResource'
+  rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,bytes=64,first=1,last=9}];}
+                                                    ^
+aethyr/tests/render-frame-checks.coax:51:93: error[E0306]: 'RF_COLOR' is not declared
+  rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,bytes=64,first=1,last=9}];}
+                                                                                              ^
+aethyr/tests/render-frame-checks.coax:51:63: error[E0302]: 'RfResource' is not a struct
+  rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,bytes=64,first=1,last=9}];}
+                                                                ^
+aethyr/tests/render-frame-checks.coax:51:148: error[E0306]: 'RF_UNIFORM' is not declared
+  rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,bytes=64,first=1,last=9}];}
+                                                                                                                                                     ^
+aethyr/tests/render-frame-checks.coax:51:118: error[E0302]: 'RfResource' is not a struct
+  rf_test_resources :: ()->[2]RfResource {return [2]RfResource.[RfResource.{generation=3,kind=RF_COLOR,first=7,last=7},RfResource.{generation=1,kind=RF_UNIFORM,bytes=64,first=1,last=9}];}
+                                                                                                                       ^
+aethyr/tests/render-frame-checks.coax:52:49: error[E0302]: unknown type 'RfBinding'
+  rf_test_bindings :: ()->[1]RfBinding {return [1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=1},bytes=64}];}
+                                                  ^
+aethyr/tests/render-frame-checks.coax:52:80: error[E0302]: 'RfHandle' is not a struct
+  rf_test_bindings :: ()->[1]RfBinding {return [1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=1},bytes=64}];}
+                                                                                 ^
+aethyr/tests/render-frame-checks.coax:52:60: error[E0302]: 'RfBinding' is not a struct
+  rf_test_bindings :: ()->[1]RfBinding {return [1]RfBinding.[RfBinding.{resource=RfHandle.{slot=1,generation=1},bytes=64}];}
+                                                             ^
+aethyr/tests/render-frame-checks.coax:2:21: error[E0302]: unknown type 'RfDraw'
+      #assert size_of(RfDraw)==16;
+                      ^
+aethyr/tests/render-frame-checks.coax:3:8: error[E0315]: procedure 'rf_begin' is not declared
+      f:=rf_begin(7,RfLimits.{passes=1,bindings=1,draws=1,bytes=64});
+         ^
+aethyr/tests/render-frame-checks.coax:3:19: error[E0302]: 'RfLimits' is not a struct
+      f:=rf_begin(7,RfLimits.{passes=1,bindings=1,draws=1,bytes=64});
+                    ^
+aethyr/tests/render-frame-checks.coax:4:56: error[E0302]: unknown type 'RfDraw'
+      r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=6,base=0x80000000,instances=1}];
+                                                         ^
+aethyr/tests/render-frame-checks.coax:4:64: error[E0302]: 'RfDraw' is not a struct
+      r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=6,base=0x80000000,instances=1}];
+                                                                 ^
+aethyr/tests/render-frame-checks.coax:5:8: error[E0315]: procedure 'rf_pass' is not declared
+      a:=rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1});
+         ^
+aethyr/tests/render-frame-checks.coax:5:24: error[E0302]: 'RfHandle' is not a struct
+      a:=rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1});
+                         ^
+aethyr/tests/render-frame-checks.coax:5:67: error[E0302]: 'RfGeometry' is not a struct
+      a:=rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1});
+                                                                    ^
+aethyr/tests/render-frame-checks.coax:7:14: error[E0315]: procedure 'rf_pass' is not declared
+      #assert !rf_pass(a.frame,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1}).accepted;
+               ^
+aethyr/tests/render-frame-checks.coax:7:36: error[E0302]: 'RfHandle' is not a struct
+      #assert !rf_pass(a.frame,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1}).accepted;
+                                     ^
+aethyr/tests/render-frame-checks.coax:7:79: error[E0302]: 'RfGeometry' is not a struct
+      #assert !rf_pass(a.frame,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{vertices=6,instances=1}).accepted;
+                                                                                ^
+aethyr/tests/render-frame-checks.coax:8:8: error[E0315]: procedure 'rf_finish' is not declared
+      z:=rf_finish(a.frame);#assert !z.active && z.epoch==7 && z.passes==0 && z.bindings==0 && z.draws==0 && z.bytes==0;
+         ^
+aethyr/tests/render-frame-checks.coax:9:14: error[E0315]: procedure 'rf_pass' is not declared
+      #assert !rf_pass(z,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{}).accepted;
+               ^
+aethyr/tests/render-frame-checks.coax:9:30: error[E0302]: 'RfHandle' is not a struct
+      #assert !rf_pass(z,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{}).accepted;
+                               ^
+aethyr/tests/render-frame-checks.coax:9:73: error[E0302]: 'RfGeometry' is not a struct
+      #assert !rf_pass(z,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],RfGeometry.{}).accepted;
+                                                                          ^
+aethyr/tests/render-frame-checks.coax:13:8: error[E0315]: procedure 'rf_begin' is not declared
+      f:=rf_begin(7,RfLimits.{passes=4,bindings=8,draws=8,bytes=1024});
+         ^
+aethyr/tests/render-frame-checks.coax:13:19: error[E0302]: 'RfLimits' is not a struct
+      f:=rf_begin(7,RfLimits.{passes=4,bindings=8,draws=8,bytes=1024});
+                    ^
+aethyr/tests/render-frame-checks.coax:14:55: error[E0302]: unknown type 'RfDraw'
+      r:=rf_test_resources();b:=rf_test_bindings();d:[0]RfDraw;
+                                                        ^
+aethyr/tests/render-frame-checks.coax:16:24: error[E0302]: 'RfHandle' is not a struct
+          rr:=r;bb:=b;h:=RfHandle.{slot=0,generation=3};
+                         ^
+aethyr/tests/render-frame-checks.coax:18:76: error[E0306]: 'RF_UNIFORM' is not declared
+          if k==3 {rr[0].first=8;}if k==4 {rr[0].last=6;}if k==5 {rr[0].kind=RF_UNIFORM;}
+                                                                             ^
+aethyr/tests/render-frame-checks.coax:21:12: error[E0315]: procedure 'rf_pass' is not declared
+          a:=rf_pass(f,rr[..],h,bb[..],d[..],RfGeometry.{});
+             ^
+aethyr/tests/render-frame-checks.coax:21:44: error[E0302]: 'RfGeometry' is not a struct
+          a:=rf_pass(f,rr[..],h,bb[..],d[..],RfGeometry.{});
+                                             ^
+aethyr/tests/render-frame-checks.coax:27:8: error[E0315]: procedure 'rf_begin' is not declared
+      f:=rf_begin(7,RfLimits.{passes=2,bindings=4,draws=4,bytes=128});r:=rf_test_resources();b:=rf_test_bindings();
+         ^
+aethyr/tests/render-frame-checks.coax:27:19: error[E0302]: 'RfLimits' is not a struct
+      f:=rf_begin(7,RfLimits.{passes=2,bindings=4,draws=4,bytes=128});r:=rf_test_resources();b:=rf_test_bindings();
+                    ^
+aethyr/tests/render-frame-checks.coax:28:12: error[E0302]: unknown type 'RfBinding'
+      bb:=[2]RfBinding.[b[0],b[0]];d:[1]RfDraw;
+             ^
+aethyr/tests/render-frame-checks.coax:28:39: error[E0302]: unknown type 'RfDraw'
+      bb:=[2]RfBinding.[b[0],b[0]];d:[1]RfDraw;
+                                        ^
+aethyr/tests/render-frame-checks.coax:29:14: error[E0315]: procedure 'rf_pass' is not declared
+      #assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[..],RfGeometry.{}).accepted;
+               ^
+aethyr/tests/render-frame-checks.coax:29:30: error[E0302]: 'RfHandle' is not a struct
+      #assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[..],RfGeometry.{}).accepted;
+                               ^
+aethyr/tests/render-frame-checks.coax:29:74: error[E0302]: 'RfGeometry' is not a struct
+      #assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[..],RfGeometry.{}).accepted;
+                                                                           ^
+aethyr/tests/render-frame-checks.coax:30:29: error[E0315]: procedure 'rf_pass' is not declared
+      bb[1].binding=1;#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[0..<0],RfGeometry.{}).accepted;
+                              ^
+aethyr/tests/render-frame-checks.coax:30:45: error[E0302]: 'RfHandle' is not a struct
+      bb[1].binding=1;#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[0..<0],RfGeometry.{}).accepted;
+                                              ^
+aethyr/tests/render-frame-checks.coax:30:92: error[E0302]: 'RfGeometry' is not a struct
+      bb[1].binding=1;#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},bb[..],d[0..<0],RfGeometry.{}).accepted;
+                                                                                             ^
+aethyr/tests/render-frame-checks.coax:31:10: error[E0302]: 'RfDraw' is not a struct
+      d[0]=RfDraw.{first=3,count=2,base=1,instances=2};g:=RfGeometry.{vertices=4,indices=5,instances=3};
+           ^
+aethyr/tests/render-frame-checks.coax:31:57: error[E0302]: 'RfGeometry' is not a struct
+      d[0]=RfDraw.{first=3,count=2,base=1,instances=2};g:=RfGeometry.{vertices=4,indices=5,instances=3};
+                                                          ^
+aethyr/tests/render-frame-checks.coax:32:13: error[E0315]: procedure 'rf_pass' is not declared
+      #assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+              ^
+aethyr/tests/render-frame-checks.coax:32:29: error[E0302]: 'RfHandle' is not a struct
+      #assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                              ^
+aethyr/tests/render-frame-checks.coax:33:27: error[E0315]: procedure 'rf_pass' is not declared
+      d[0].count=3;#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                            ^
+aethyr/tests/render-frame-checks.coax:33:43: error[E0302]: 'RfHandle' is not a struct
+      d[0].count=3;#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                            ^
+aethyr/tests/render-frame-checks.coax:34:10: error[E0302]: 'RfDraw' is not a struct
+      d[0]=RfDraw.{first=2,count=2,base=0x80000000,instances=3};#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+           ^
+aethyr/tests/render-frame-checks.coax:34:71: error[E0315]: procedure 'rf_pass' is not declared
+      d[0]=RfDraw.{first=2,count=2,base=0x80000000,instances=3};#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                                        ^
+aethyr/tests/render-frame-checks.coax:34:87: error[E0302]: 'RfHandle' is not a struct
+      d[0]=RfDraw.{first=2,count=2,base=0x80000000,instances=3};#assert rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                                                        ^
+aethyr/tests/render-frame-checks.coax:35:27: error[E0315]: procedure 'rf_pass' is not declared
+      d[0].first=3;#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                            ^
+aethyr/tests/render-frame-checks.coax:35:43: error[E0302]: 'RfHandle' is not a struct
+      d[0].first=3;#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                            ^
+aethyr/tests/render-frame-checks.coax:36:10: error[E0302]: 'RfDraw' is not a struct
+      d[0]=RfDraw.{count=1,base=0x80000002,instances=2};#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+           ^
+aethyr/tests/render-frame-checks.coax:36:64: error[E0315]: procedure 'rf_pass' is not declared
+      d[0]=RfDraw.{count=1,base=0x80000002,instances=2};#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                                 ^
+aethyr/tests/render-frame-checks.coax:36:80: error[E0302]: 'RfHandle' is not a struct
+      d[0]=RfDraw.{count=1,base=0x80000002,instances=2};#assert !rf_pass(f,r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                                                 ^
+aethyr/tests/render-frame-checks.coax:40:8: error[E0302]: 'RfLimits' is not a struct
+      l:=RfLimits.{passes=1,bindings=1,draws=1,bytes=64};
+         ^
+aethyr/tests/render-frame-checks.coax:41:14: error[E0315]: procedure 'rf_begin' is not declared
+      #assert !rf_begin(0,l).active;ll:=l;ll.passes=0;#assert !rf_begin(1,ll).active;
+               ^
+aethyr/tests/render-frame-checks.coax:41:62: error[E0315]: procedure 'rf_begin' is not declared
+      #assert !rf_begin(0,l).active;ll:=l;ll.passes=0;#assert !rf_begin(1,ll).active;
+                                                               ^
+aethyr/tests/render-frame-checks.coax:42:34: error[E0315]: procedure 'rf_begin' is not declared
+      ll=l;ll.bindings=-1;#assert !rf_begin(1,ll).active;ll=l;ll.draws=-1;#assert !rf_begin(1,ll).active;
+                                   ^
+aethyr/tests/render-frame-checks.coax:42:82: error[E0315]: procedure 'rf_begin' is not declared
+      ll=l;ll.bindings=-1;#assert !rf_begin(1,ll).active;ll=l;ll.draws=-1;#assert !rf_begin(1,ll).active;
+                                                                                   ^
+aethyr/tests/render-frame-checks.coax:43:31: error[E0315]: procedure 'rf_begin' is not declared
+      ll=l;ll.bytes=-1;#assert !rf_begin(1,ll).active;
+                                ^
+aethyr/tests/render-frame-checks.coax:44:56: error[E0302]: unknown type 'RfDraw'
+      r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=1,instances=1}];g:=RfGeometry.{indices=1,instances=1};
+                                                         ^
+aethyr/tests/render-frame-checks.coax:44:64: error[E0302]: 'RfDraw' is not a struct
+      r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=1,instances=1}];g:=RfGeometry.{indices=1,instances=1};
+                                                                 ^
+aethyr/tests/render-frame-checks.coax:44:97: error[E0302]: 'RfGeometry' is not a struct
+      r:=rf_test_resources();b:=rf_test_bindings();d:=[1]RfDraw.[RfDraw.{count=1,instances=1}];g:=RfGeometry.{indices=1,instances=1};
+                                                                                                  ^
+aethyr/tests/render-frame-checks.coax:45:33: error[E0315]: procedure 'rf_pass' is not declared
+      ll=l;ll.bindings=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                  ^
+aethyr/tests/render-frame-checks.coax:45:41: error[E0315]: procedure 'rf_begin' is not declared
+      ll=l;ll.bindings=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                          ^
+aethyr/tests/render-frame-checks.coax:45:62: error[E0302]: 'RfHandle' is not a struct
+      ll=l;ll.bindings=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                               ^
+aethyr/tests/render-frame-checks.coax:46:30: error[E0315]: procedure 'rf_pass' is not declared
+      ll=l;ll.draws=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                               ^
+aethyr/tests/render-frame-checks.coax:46:38: error[E0315]: procedure 'rf_begin' is not declared
+      ll=l;ll.draws=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                       ^
+aethyr/tests/render-frame-checks.coax:46:59: error[E0302]: 'RfHandle' is not a struct
+      ll=l;ll.draws=0;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                            ^
+aethyr/tests/render-frame-checks.coax:47:31: error[E0315]: procedure 'rf_pass' is not declared
+      ll=l;ll.bytes=63;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                ^
+aethyr/tests/render-frame-checks.coax:47:39: error[E0315]: procedure 'rf_begin' is not declared
+      ll=l;ll.bytes=63;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                        ^
+aethyr/tests/render-frame-checks.coax:47:60: error[E0302]: 'RfHandle' is not a struct
+      ll=l;ll.bytes=63;#assert !rf_pass(rf_begin(7,ll),r[..],RfHandle.{slot=0,generation=3},b[..],d[..],g).accepted;
+                                                             ^
+aethyr/tests/render-frame-checks.coax:48:8: error[E0315]: procedure 'rf_finish' is not declared
+      z:=rf_finish(rf_begin(7,l));#assert !z.active && z.epoch==7 && z.passes==0 && rf_finish(z).bytes==0;
+         ^
+aethyr/tests/render-frame-checks.coax:48:18: error[E0315]: procedure 'rf_begin' is not declared
+      z:=rf_finish(rf_begin(7,l));#assert !z.active && z.epoch==7 && z.passes==0 && rf_finish(z).bytes==0;
+                   ^
+aethyr/tests/render-frame-checks.coax:48:83: error[E0315]: procedure 'rf_finish' is not declared
+      z:=rf_finish(rf_begin(7,l));#assert !z.active && z.epoch==7 && z.passes==0 && rf_finish(z).bytes==0;
+                                                                                    ^
+77 errors

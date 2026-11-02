@@ -1,0 +1,3 @@
+ok   #test no view for an empty screen or a short matrix (1 case, 437 steps, 0 ms)
+1 of 45 checks (--only 'no view for an empty screen'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

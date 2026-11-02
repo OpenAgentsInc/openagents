@@ -1,0 +1,5 @@
+aethyr/render/admit-frame.coax:4:1: error[E0337]: 'main' takes no parameters and returns nothing in coax0
+  main :: ()->int {
+  ^
+  fix: main :: () { ... }
+1 error

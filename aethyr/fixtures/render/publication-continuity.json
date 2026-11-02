@@ -1,0 +1,170 @@
+{
+  "scope": "Post-merge source continuity and metadata only. All unchanged numerical/mutation/native results retained; no browser or GPU qualification added.",
+  "source_observations": [
+    {
+      "path": "aethyr/render/frame.coax",
+      "sha256": "fb9c6695b7deb0e46e15a7c14cf3c47d0774284c3f1d76e5a39fb4028a8c5e1b",
+      "matches": true
+    },
+    {
+      "path": "aethyr/render/admit-frame.coax",
+      "sha256": "0e69d096224d638346bc5547b2f556910f00282b14114c47cc471c5b4dde7883",
+      "matches": true
+    },
+    {
+      "path": "aethyr/tests/render-frame-checks.coax",
+      "sha256": "a89fecc3f0f4998b7f27affca6883d3f7eae9d935426e54c3208655839b29ece",
+      "matches": true
+    },
+    {
+      "path": "aethyr/tests/render-native.coax",
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "matches": true
+    },
+    {
+      "path": "aethyr/tests/render-native.c",
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "matches": true
+    },
+    {
+      "path": "aethyr/tests/check_render_native.py",
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "matches": true
+    },
+    {
+      "path": "verse/grid-render.coax",
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "matches": true
+    },
+    {
+      "path": "verse/grid.coax",
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "matches": true
+    },
+    {
+      "path": "verse/sticks.coax",
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "matches": true
+    },
+    {
+      "path": "coax/lib/quantity.coax",
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "matches": true
+    },
+    {
+      "path": "aethyr/fixtures/render-admission.out",
+      "sha256": "aec52e2ec5e1108d86de527ef7b4e0b553c680e60822f0f8fdf4c153fddd79d4",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "aethyr/render/frame.coax",
+      "sha256": "fb9c6695b7deb0e46e15a7c14cf3c47d0774284c3f1d76e5a39fb4028a8c5e1b",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "aethyr/tests/check_render_native.py",
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "aethyr/tests/render-frame-checks.coax",
+      "sha256": "a89fecc3f0f4998b7f27affca6883d3f7eae9d935426e54c3208655839b29ece",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "aethyr/tests/render-native.c",
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "aethyr/tests/render-native.coax",
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "coax/lib/quantity.coax",
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "verse/grid-render.coax",
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "verse/grid.coax",
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "matches": true
+    },
+    {
+      "mode": "release",
+      "path": "verse/sticks.coax",
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "aethyr/render/frame.coax",
+      "sha256": "fb9c6695b7deb0e46e15a7c14cf3c47d0774284c3f1d76e5a39fb4028a8c5e1b",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "aethyr/tests/check_render_native.py",
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "aethyr/tests/render-frame-checks.coax",
+      "sha256": "a89fecc3f0f4998b7f27affca6883d3f7eae9d935426e54c3208655839b29ece",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "aethyr/tests/render-native.c",
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "aethyr/tests/render-native.coax",
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "coax/lib/quantity.coax",
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "verse/grid-render.coax",
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "verse/grid.coax",
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "matches": true
+    },
+    {
+      "mode": "sanitized",
+      "path": "verse/sticks.coax",
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "matches": true
+    }
+  ],
+  "all_match": true,
+  "metadata": "19 programs,107 exact source listings, local links pass; draft statuses unchanged"
+}

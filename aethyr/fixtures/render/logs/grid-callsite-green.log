@@ -1,0 +1,3 @@
+ok   #test Grid projection admission preserves output on a nonfinite viewport (1 case, 283 steps, 0 ms)
+1 of 45 checks (--only 'Grid projection admission'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

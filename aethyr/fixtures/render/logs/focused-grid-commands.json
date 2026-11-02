@@ -1,0 +1,83 @@
+[
+  {
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "test",
+      "verse/grid-render.coax",
+      "--library",
+      "--only",
+      "Grid view admission"
+    ],
+    "exit_status": 0,
+    "seconds": 0.01175191707443446,
+    "log": "grid-adapter-debug-final.log"
+  },
+  {
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "test",
+      "verse/grid-render.coax",
+      "--library",
+      "--only",
+      "Grid view admission",
+      "--release"
+    ],
+    "exit_status": 0,
+    "seconds": 0.01009929203428328,
+    "log": "grid-adapter-release-final.log"
+  },
+  {
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "test",
+      "verse/grid.coax",
+      "--library",
+      "--only",
+      "the view matrix puts points"
+    ],
+    "exit_status": 0,
+    "seconds": 0.03546949999872595,
+    "log": "grid-matrix-debug.log"
+  },
+  {
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "test",
+      "verse/grid.coax",
+      "--library",
+      "--only",
+      "the view matrix puts points",
+      "--release"
+    ],
+    "exit_status": 0,
+    "seconds": 0.037477041012607515,
+    "log": "grid-matrix-release.log"
+  },
+  {
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "test",
+      "verse/grid.coax",
+      "--library",
+      "--only",
+      "no view for an empty screen"
+    ],
+    "exit_status": 0,
+    "seconds": 0.033176833065226674,
+    "log": "grid-empty-debug.log"
+  },
+  {
+    "argv": [
+      "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "test",
+      "verse/grid.coax",
+      "--library",
+      "--only",
+      "no view for an empty screen",
+      "--release"
+    ],
+    "exit_status": 0,
+    "seconds": 0.03218500001821667,
+    "log": "grid-empty-release.log"
+  }
+]

@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "mode": "sanitized",
+  "passed": true,
+  "error": null,
+  "scope": "CPU metadata and actual Grid projection boundary only; no browser/GPU/raster/playable-route qualification. Caller-owned resource/arena preconditions remain.",
+  "source_and_tool_before": [
+    {
+      "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "bytes": 3298840
+    },
+    {
+      "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/provenance.record",
+      "sha256": "b2f31e09286372c20fac9558039e02eadfa9261f781d95fac09540facef9e9d5",
+      "bytes": 214
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/render/frame.coax",
+      "sha256": "fb9c6695b7deb0e46e15a7c14cf3c47d0774284c3f1d76e5a39fb4028a8c5e1b",
+      "bytes": 3828
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/check_render_native.py",
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "bytes": 4488
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-frame-checks.coax",
+      "sha256": "a89fecc3f0f4998b7f27affca6883d3f7eae9d935426e54c3208655839b29ece",
+      "bytes": 6269
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-native.c",
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "bytes": 4868
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-native.coax",
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "bytes": 491
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/coax/lib/quantity.coax",
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "bytes": 585
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/verse/grid-render.coax",
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "bytes": 1214
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/verse/grid.coax",
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "bytes": 27954
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/verse/sticks.coax",
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "bytes": 20876
+    },
+    {
+      "path": "/usr/bin/cc",
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "bytes": 118928
+    }
+  ],
+  "source_and_tool_after": [
+    {
+      "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+      "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+      "bytes": 3298840
+    },
+    {
+      "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/provenance.record",
+      "sha256": "b2f31e09286372c20fac9558039e02eadfa9261f781d95fac09540facef9e9d5",
+      "bytes": 214
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/render/frame.coax",
+      "sha256": "fb9c6695b7deb0e46e15a7c14cf3c47d0774284c3f1d76e5a39fb4028a8c5e1b",
+      "bytes": 3828
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/check_render_native.py",
+      "sha256": "727342b2b1b48c0ae711857e512c3ab62df8472fe2b1b644c1982aeb75df933a",
+      "bytes": 4488
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-frame-checks.coax",
+      "sha256": "a89fecc3f0f4998b7f27affca6883d3f7eae9d935426e54c3208655839b29ece",
+      "bytes": 6269
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-native.c",
+      "sha256": "6d3370114cdb4ba5cc280261e1ed8658ebc225c5f5513230cf3ef61feabedf56",
+      "bytes": 4868
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-native.coax",
+      "sha256": "8ea4b5bbef6e400cabb3b4a3766551da980aeb1494b8b79a31282a6fd298095d",
+      "bytes": 491
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/coax/lib/quantity.coax",
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "bytes": 585
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/verse/grid-render.coax",
+      "sha256": "aee57aa6365ec60e756bc2f61c1b4aa656cf09a3966bd1dbbdd6721cd4ce5ae6",
+      "bytes": 1214
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/verse/grid.coax",
+      "sha256": "d59ca6a8db7aa21f55abd6b68d07be7f0fa7549da5451bda21c7878b8961c3c9",
+      "bytes": 27954
+    },
+    {
+      "path": "/private/tmp/openagents-aethyr-render-20261101/verse/sticks.coax",
+      "sha256": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+      "bytes": 20876
+    },
+    {
+      "path": "/usr/bin/cc",
+      "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "bytes": 118928
+    }
+  ],
+  "unchanged": true,
+  "commands": [
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "--version"
+      ],
+      "exit_status": 0,
+      "seconds": 0.008088874979875982,
+      "stdout": "compiler-version.stdout",
+      "stderr": "compiler-version.stderr"
+    },
+    {
+      "argv": [
+        "/usr/bin/cc",
+        "--version"
+      ],
+      "exit_status": 0,
+      "seconds": 0.027854874962940812,
+      "stdout": "cc-version.stdout",
+      "stderr": "cc-version.stderr"
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "c",
+        "aethyr/tests/render-native.coax",
+        "--library",
+        "--header",
+        "/private/tmp/aethyr-render-20261102/sanitized-native/render.h"
+      ],
+      "exit_status": 0,
+      "seconds": 0.06196491699665785,
+      "stdout": "emit.stdout",
+      "stderr": "emit.stderr"
+    },
+    {
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fno-omit-frame-pointer",
+        "-fsanitize=address,undefined",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I/private/tmp/aethyr-render-20261102/sanitized-native",
+        "/private/tmp/aethyr-render-20261102/sanitized-native/render.c",
+        "/private/tmp/openagents-aethyr-render-20261101/aethyr/tests/render-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-render-20261102/sanitized-native/render-native"
+      ],
+      "exit_status": 0,
+      "seconds": 0.6161509169032797,
+      "stdout": "compile.stdout",
+      "stderr": "compile.stderr"
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-render-20261102/sanitized-native/render-native"
+      ],
+      "exit_status": 0,
+      "seconds": 0.3593844580464065,
+      "stdout": "native.stdout",
+      "stderr": "native.stderr"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/cc-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/cc-version.stdout",
+      "sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "bytes": 202
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/compile.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/compile.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/compiler-version.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/compiler-version.stdout",
+      "sha256": "1a93d3a96a06aced3fece1e855aa87f58cf2074a3120e350714122faddde5cf9",
+      "bytes": 13
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/emit.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/emit.stdout",
+      "sha256": "1ee7145d1f40b9a1f83eff4e93d2eff7932e17192b07cb474984445ebc74ffd9",
+      "bytes": 79408
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/native.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/native.stdout",
+      "sha256": "a22492d851e0300466fe380035e1878547a99af927103a90ebafe251eb6f3d3d",
+      "bytes": 163
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/render-native",
+      "sha256": "8728eab2063c281bb6a3d0efc9746736b775202aad63c058acf8c37ae29e6c38",
+      "bytes": 113536
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/render.c",
+      "sha256": "1ee7145d1f40b9a1f83eff4e93d2eff7932e17192b07cb474984445ebc74ffd9",
+      "bytes": 79408
+    },
+    {
+      "path": "/private/tmp/aethyr-render-20261102/sanitized-native/render.h",
+      "sha256": "8fbe1f3941b54eae8830cd862e98d2b4594a2413dda4eadac12210cf3a25d11f",
+      "bytes": 22920
+    }
+  ],
+  "sanitizer_limit": "Apple leak detection disabled; ASan/UBSan enabled only in sanitized mode."
+}

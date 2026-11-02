@@ -1,0 +1,10 @@
+aethyr/render/admit-frame.coax:10:5: error[E0315]: procedure 'assert' is not declared
+      assert(accepted.accepted && accepted.frame.words==16);
+      ^
+aethyr/render/admit-frame.coax:12:5: error[E0315]: procedure 'assert' is not declared
+      assert(!stale.accepted && stale.frame.passes==0);
+      ^
+aethyr/render/admit-frame.coax:13:5: error[E0315]: procedure 'assert' is not declared
+      assert(!rf_finish(accepted.frame).active);
+      ^
+3 errors

@@ -78,6 +78,11 @@ have Coax-generated WGSL and the native Vulkan port's recorded checks
 ([native-GPU status](../../docs/verse/native-gpu.md#status)). Chapter 11 still
 owns common frame/pass/binding admission and the full CPU-reference profile.
 Do not count that future consolidation as another shader-source port.
+Its first [CPU metadata component](../render/README.md) is now used by
+`verse_grid_view` through `verse/grid-render.coax`, before the native matrix
+output is written. The browser Grid frame, GPU resource owners and pass
+submission remain private adapters. This narrow adoption does not complete
+the playable route or `ec-migrate`.
 
 Shared modules already in use: [verse/player.coax](../../verse/player.coax),
 [camera.coax](../../verse/camera.coax),
