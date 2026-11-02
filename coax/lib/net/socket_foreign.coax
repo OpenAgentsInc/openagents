@@ -9,3 +9,6 @@ cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
 cxsock_byte :: (h: int, i: int) -> int #foreign;
 cxsock_close :: (h: int) -> int #foreign;
 cxsock_now_ms :: () -> int #foreign;
+cxsock_listen :: (port: int) -> int #foreign;
+cxsock_port :: (h: int) -> int #foreign;
+cxsock_accept :: (h: int, timeout_ms: int) -> int #foreign;

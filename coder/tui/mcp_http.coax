@@ -1,0 +1,153 @@
+// `coder mcp --http PORT`: the same MCP server over the Streamable HTTP
+// transport (MCP 2025-06-18), on 127.0.0.1 only (Coder book chapter 16).
+// Each POST to /mcp carries one JSON-RPC message: a request is answered
+// with 200 and the response as application/json, and a notification or a
+// response is acknowledged with 202 and no body. The server offers no
+// server-to-client stream, so GET is answered 405. A request whose Origin
+// header names anything but this machine is refused with 403, against DNS
+// rebinding. One connection at a time, closed after each answer.
+#load "../../coax/lib/net/socket_foreign.coax";
+
+CD_SOCK_TIMEOUT :: -2;
+CD_HTTP_MAX :: 262144;      // a request's head and body together
+
+// Where the head ends (just past the blank line), or -1 while it has not.
+cd_http_end :: (b: string) -> int {
+  for i: 3..<b.count { if b[i] == 10 && b[i - 1] == 13 && b[i - 2] == 10 && b[i - 3] == 13 { return i + 1; } }
+  return -1;
+}
+
+cd_http_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+
+// The value of header name (lower case) in head, trimmed; "" when it is absent.
+cd_http_header :: (head: string, name: string) -> string {
+  at := 0;
+  while at < head.count {
+    e := at; while e < head.count && head[e] != 10 { e += 1; }
+    ln := cast(string) head[at..<e];
+    if ln.count > name.count && ln[name.count] == ':' {
+      same := true;
+      for i: 0..<name.count { if cd_http_lower(ln[i]) != name[i] { same = false; break; } }
+      if same {
+        f := name.count + 1; t := ln.count;
+        while f < t && (ln[f] == ' ' || ln[f] == 9) { f += 1; }
+        while t > f && (ln[t - 1] == 13 || ln[t - 1] == ' ' || ln[t - 1] == 9) { t -= 1; }
+        return cast(string) ln[f..<t];
+      }
+    }
+    at = e + 1;
+  }
+  return "";
+}
+
+// Word k (0 the method, 1 the target) of the request line.
+cd_http_word :: (head: string, k: int) -> string {
+  at := 0;
+  for w: 0..<k + 1 {
+    e := at; while e < head.count && head[e] != ' ' && head[e] != 13 && head[e] != 10 { e += 1; }
+    if w == k { return cast(string) head[at..<e]; }
+    if e >= head.count || head[e] != ' ' { return ""; }
+    at = e + 1;
+  }
+  return "";
+}
+
+// Whether an Origin header is absent or names this machine.
+cd_http_origin_ok :: (o: string) -> bool {
+  if o.count == 0 { return true; }
+  hosts := [6] string.["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1", "http://[::1]", "https://[::1]"];
+  for h: hosts {
+    if o == h { return true; }
+    if o.count > h.count && cast(string) o[0..<h.count] == h && o[h.count] == ':' {
+      for i: h.count + 1..<o.count { if o[i] < '0' || o[i] > '9' { return false; } }
+      return o.count > h.count + 1;
+    }
+  }
+  return false;
+}
+
+// What to answer a request: its status, and for 200 the body. Pure, for the tests.
+CdHttpReply :: struct { status: int; body: string; }
+
+cd_http_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
+  r: CdHttpReply;
+  if !cd_http_origin_ok(cd_http_header(head, "origin")) { r.status = 403; return r; }
+  target := cd_http_word(head, 1);
+  q := 0; while q < target.count && target[q] != '?' { q += 1; }
+  if cast(string) target[0..<q] != "/mcp" { r.status = 404; return r; }
+  if cd_http_word(head, 0) != "POST" { r.status = 405; return r; }
+  b := 0; while b < body.count && (body[b] == ' ' || body[b] == 9 || body[b] == 13 || body[b] == 10) { b += 1; }
+  if b >= body.count || body[b] != '{' { r.status = 400; return r; }    // one message a POST; no batches
+  r.body = cd_mcp_answer(body, out);
+  r.status = ifx r.body.count > 0 then 200 else 202;
+  return r;
+}
+
+cd_http_write :: (c: int, s: string) -> bool {
+  for x: s { if cxsock_write(c, cast(int) x) != 0 { return false; } }
+  return true;
+}
+
+cd_http_send :: (c: int, r: CdHttpReply) {
+  tb: [24] u8;
+  reason := ifx r.status == 200 then "OK" else (ifx r.status == 202 then "Accepted" else (ifx r.status == 400 then "Bad Request" else (ifx r.status == 403 then "Forbidden" else (ifx r.status == 404 then "Not Found" else (ifx r.status == 405 then "Method Not Allowed" else "Payload Too Large")))));
+  hb: [512] u8;
+  n := cd_cat(hb[..], 0, "HTTP/1.1 "); n = cd_cat(hb[..], n, cd_itoa(r.status, tb[..])); n = cd_cat(hb[..], n, " "); n = cd_cat(hb[..], n, reason);
+  n = cd_cat(hb[..], n, "\r\nConnection: close\r\nContent-Length: "); n = cd_cat(hb[..], n, cd_itoa(r.body.count, tb[..]));
+  if r.body.count > 0 { n = cd_cat(hb[..], n, "\r\nContent-Type: application/json"); }
+  if r.status == 405 { n = cd_cat(hb[..], n, "\r\nAllow: POST"); }
+  n = cd_cat(hb[..], n, "\r\n\r\n");
+  ok := cd_http_write(c, cast(string) hb[0..<n]) && cd_http_write(c, r.body);
+  f := cxsock_flush(c, 10000);
+}
+
+// coder mcp --http PORT (0 picks a port): serves until killed.
+cd_cmd_mcp_http :: (port: int) -> int {
+  l := cxsock_listen(port);
+  if l < 0 { tool_err("coder mcp: could not listen on 127.0.0.1:"); tb0: [24] u8; tool_errln(cd_itoa(port, tb0[..])); return 1; }
+  pb: [24] u8; lb: [128] u8;
+  m := cd_cat(lb[..], 0, "coder mcp: http://127.0.0.1:"); m = cd_cat(lb[..], m, cd_itoa(cxsock_port(l), pb[..])); m = cd_cat(lb[..], m, "/mcp");
+  cd_outln(cast(string) lb[0..<m]);
+  req: [CD_HTTP_MAX] u8;
+  out: [524288] u8;
+  for guard: 0..<1000000000 {
+    c := cxsock_accept(l, 1000);
+    if c < 0 { continue; }
+    n := 0; head := -1; total := -1; big := false;
+    for reads: 0..<100000 {
+      k := cxsock_read(c, 10000);
+      if k <= 0 { break; }
+      for i: 0..<k { if n < req.count { req[n] = cast,trunc(u8) cxsock_byte(c, i); n += 1; } else { big = true; } }
+      if head < 0 {
+        head = cd_http_end(cast(string) req[0..<n]);
+        if head >= 0 { clen := cd_atoi(cd_http_header(cast(string) req[0..<head], "content-length")); total = head + (ifx clen > 0 then clen else 0); }
+      }
+      if big || (total >= 0 && n >= total) { break; }
+    }
+    r: CdHttpReply;
+    if big || (total > req.count) { r.status = 413; }
+    else if head >= 0 && n >= total { r = cd_http_reply(cast(string) req[0..<head], cast(string) req[head..<total], out[..]); }
+    else { r.status = 400; }
+    cd_http_send(c, r);
+    x := cxsock_close(c);
+  }
+  return 0;
+}
+
+#test "mcp over http: one message a POST to /mcp, from this machine only" {
+  out: [65536] u8;
+  head := "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:7777\r\ncontent-length: 58\r\nOrigin: http://localhost:3000\r\nAccept: application/json, text/event-stream\r\n\r\n";
+  #assert cd_http_end(cast(string) head) == head.count;
+  #assert cd_http_end("POST /mcp HTTP/1.1\r\nHost: x\r\n") == -1;
+  #assert cd_http_header(head, "content-length") == "58" && cd_http_header(head, "origin") == "http://localhost:3000" && cd_http_header(head, "mcp-session-id") == "";
+  #assert cd_http_word(head, 0) == "POST" && cd_http_word(head, 1) == "/mcp";
+  r := cd_http_reply(head, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", out[..]);
+  #assert r.status == 200 && r.body == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}";
+  #assert cd_http_reply(head, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", out[..]).status == 202;
+  #assert cd_http_reply(head, "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}]", out[..]).status == 400;
+  #assert cd_http_reply("GET /mcp HTTP/1.1\r\nAccept: text/event-stream\r\n\r\n", "", out[..]).status == 405;
+  #assert cd_http_reply("POST /other HTTP/1.1\r\n\r\n", "{}", out[..]).status == 404;
+  #assert cd_http_reply("POST /mcp HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n", "{}", out[..]).status == 403;
+  #assert cd_http_origin_ok("http://127.0.0.1:8080") && cd_http_origin_ok("") && cd_http_origin_ok("http://[::1]");
+  #assert !cd_http_origin_ok("http://localhost.evil.example") && !cd_http_origin_ok("http://localhost:80x") && !cd_http_origin_ok("null");
+}

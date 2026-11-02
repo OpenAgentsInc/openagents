@@ -10,8 +10,9 @@
 > is a typed tool (`coder decide`, `coder_decide`), and `coder mcp` serves
 > each session's log as an MCP resource. The harness's client and server
 > also run over the stdio transport, and Claude Code has called the harness
-> server's tools live. The Streamable HTTP transport remains; see
-> [What remains](#what-remains).
+> server's tools live. `coder mcp --http PORT` serves the same tools over
+> the Streamable HTTP transport on 127.0.0.1, and Claude Code has called
+> them that way. See [What remains](#what-remains).
 
 Other programs already speak protocols for tools. A Model Context Protocol
 (MCP) server publishes tools as JSON-RPC 2.0 messages, and the Open
@@ -768,11 +769,40 @@ In the live check, Claude Code connected to `coder mcp`, read
 quoted the log's first line, `Coder 0.1.0 · echo · …`. The smoke lists the
 resources, reads one, and checks that a `..` URI is not found.
 
+## Over HTTP
+
+`coder mcp --http PORT` ([coder/tui/mcp_http.coax](../../coder/tui/mcp_http.coax))
+serves the same server over the Streamable HTTP transport of MCP
+2025-06-18, at `http://127.0.0.1:PORT/mcp`. `--http 0` picks a free port and
+prints the URL. Both transports answer through one function,
+`cd_mcp_answer`, so a message gets the same reply either way.
+
+| Request | Answer |
+| --- | --- |
+| `POST /mcp` with a request | `200`, the response as `application/json` |
+| `POST /mcp` with a notification or a response | `202`, no body |
+| `POST /mcp` with a JSON array | `400`: one message a POST, since 2025-06-18 has no batches |
+| `GET /mcp` | `405`: the server offers no stream of its own |
+| an `Origin` other than this machine | `403`, against DNS rebinding |
+| another path | `404` |
+
+It listens on the loopback address only. The listener is a small addition
+to the TCP effect, `cxsock_listen` and `cxsock_accept` in
+[socket-native.c](../../coax/platform/socket-native.c), and an accepted
+connection reads and writes like a connected one. The server takes one
+connection at a time and closes it after each answer.
+
+In the live check, `claude -p` with `{"type":"http","url":...}` in its MCP
+configuration called `coder_status` and answered with the session's state.
+The smoke posts an `initialize`, a notification, a `coder_status` call, a
+`GET` and a request from another origin, and checks each status.
+
 ## What remains
 
-- **The HTTP transport.** The harness speaks stdio (see
-  [Over stdio](#over-stdio)); the Streamable HTTP transport needs the
-  host's socket effects.
+- **The HTTP transport in the harness.** Coder serves MCP over HTTP, but
+  the harness's own client and server speak stdio only (see
+  [Over stdio](#over-stdio)). Coder's HTTP server keeps no `Mcp-Session-Id`
+  and offers no server-sent events.
 - **Lists past one message.** The harness client imports a `tools/list`
   of at most 2,048 bytes, so a larger server such as `coder mcp` is refused
   at import with `shape`.

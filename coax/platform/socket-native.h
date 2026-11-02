@@ -28,7 +28,13 @@ extern "C" {
    ready, negative: for ever) and returns the count of bytes now readable
    through cxsock_byte (valid until the next read), CXSOCK_TIMEOUT, CXSOCK_EOF
    or CXSOCK_ERROR. cxsock_close releases the handle. SIGPIPE is not raised:
-   a write to a closed peer reports CXSOCK_ERROR. */
+   a write to a closed peer reports CXSOCK_ERROR.
+
+   Listen (loopback only): cxsock_listen(port) listens on 127.0.0.1:port (0
+   picks a free port) and returns a listener handle, or CXSOCK_REFUSED when
+   the port is taken; cxsock_port(h) is the port it bound;
+   cxsock_accept(h, timeout_ms) returns a connection handle, used like a
+   connected one, or CXSOCK_TIMEOUT / CXSOCK_FULL / CXSOCK_ERROR. */
 #define CXSOCK_EOF (-1)
 #define CXSOCK_TIMEOUT (-2)
 #define CXSOCK_ERROR (-3)
@@ -47,6 +53,9 @@ int64_t cxsock_flush(int64_t h, int64_t timeout_ms);
 int64_t cxsock_read(int64_t h, int64_t timeout_ms);
 int64_t cxsock_byte(int64_t h, int64_t i);
 int64_t cxsock_close(int64_t h);
+int64_t cxsock_listen(int64_t port);
+int64_t cxsock_port(int64_t h);
+int64_t cxsock_accept(int64_t h, int64_t timeout_ms);
 int64_t cxsock_now_ms(void);
 /* For coax/platform/tls-native.c only (not a #foreign import): the handle's
    file descriptor, or -1. TLS reads and writes the descriptor directly and

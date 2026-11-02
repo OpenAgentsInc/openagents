@@ -32,20 +32,18 @@ CD_MCP_SCHEMAS :: [9] string.[
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}",
   "{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":2,\"maxItems\":32},\"state\":{\"type\":\"string\",\"description\":\"what the question is about: text, or a JSON object\"}},\"required\":[\"question\",\"options\"]}"];
 
-cd_mcp_send :: (s: string) { cd_outln(s); }
-
 // {"jsonrpc":"2.0","id":ID,"result":RESULT}
-cd_mcp_result :: (id: string, result: string, out: [] u8) {
+cd_mcp_result :: (id: string, result: string, out: [] u8) -> string {
   n := json_raw(out, 0, "{\"jsonrpc\":\"2.0\",\"id\":"); n = json_raw(out, n, id);
   n = json_raw(out, n, ",\"result\":"); n = json_raw(out, n, result); n = json_raw(out, n, "}");
-  if n > 0 { cd_mcp_send(cast(string) out[0..<n]); }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
 }
 
-cd_mcp_error :: (id: string, code: int, message: string, out: [] u8) {
+cd_mcp_error :: (id: string, code: int, message: string, out: [] u8) -> string {
   n := json_raw(out, 0, "{\"jsonrpc\":\"2.0\",\"id\":"); n = json_raw(out, n, ifx id.count > 0 then id else "null");
   n = json_raw(out, n, ",\"error\":{\"code\":"); n = json_write_int(out, n, code);
   n = json_raw(out, n, ",\"message\":"); n = json_write_string(out, n, message); n = json_raw(out, n, "}}");
-  if n > 0 { cd_mcp_send(cast(string) out[0..<n]); }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
 }
 
 cd_mcp_tools :: (out: [] u8) -> string {
@@ -201,6 +199,41 @@ cd_mcp_read :: (uri: string, out: [] u8) -> string {
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 
+// The answer to one MCP message, or "" for a notification or a response.
+cd_mcp_answer :: (msg: string, out: [] u8) -> string {
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  method := cl_str(ar[..], msg, "method");
+  id := cl_raw(msg, "id");
+  params := cl_raw(msg, "params");
+  if id.count == 0 || method.count == 0 { return ""; }      // a notification or a response: no answer
+  if method == "initialize" {
+    want := cl_str(ar[..], params, "protocolVersion");
+    versions := CD_MCP_VERSIONS; v := versions[0];
+    for x: versions { if x == want { v = x; } }
+    rb: [1024] u8;
+    r := json_raw(rb[..], 0, "{\"protocolVersion\":"); r = json_write_string(rb[..], r, v);
+    r = json_raw(rb[..], r, ",\"capabilities\":{\"tools\":{},\"resources\":{}},\"serverInfo\":{\"name\":\"coder\",\"version\":"); r = json_write_string(rb[..], r, CODER_VERSION);
+    r = json_raw(rb[..], r, "},\"instructions\":\"Coder runs coding tasks in repositories on this machine as background sessions. Start one with coder_run, follow it with coder_status and coder_log, and talk to it with coder_send.\"}");
+    return cd_mcp_result(id, cast(string) rb[0..<r], out);
+  }
+  if method == "ping" { return cd_mcp_result(id, "{}", out); }
+  if method == "tools/list" { tb: [16384] u8; return cd_mcp_result(id, cd_mcp_tools(tb[..]), out); }
+  if method == "tools/call" {
+    none: [1] string; cb: [524288] u8; r := cd_mcp_call(ar[..], params, none[0..<0], cb[..]);
+    return ifx r.count == 0 then cd_mcp_error(id, -32602, "Unknown tool.", out) else cd_mcp_result(id, r, out);
+  }
+  if method == "resources/list" { lb: [262144] u8; return cd_mcp_result(id, cd_mcp_resources(ar[..], lb[..]), out); }
+  if method == "resources/templates/list" {
+    return cd_mcp_result(id, "{\"resourceTemplates\":[{\"uriTemplate\":\"coder://session/{id}\",\"name\":\"session\",\"title\":\"A Coder session's log\",\"mimeType\":\"text/plain\"}]}", out);
+  }
+  if method == "resources/read" {
+    rb: [400000] u8; r := cd_mcp_read(cl_str(ar[..], params, "uri"), rb[..]);
+    return ifx r.count == 0 then cd_mcp_error(id, -32002, "Resource not found.", out) else cd_mcp_result(id, r, out);
+  }
+  return cd_mcp_error(id, -32601, "Method not found.", out);
+}
+
+// coder mcp: the stdio transport, one JSON-RPC message a line each way.
 cd_cmd_mcp :: () -> int {
   line: [CD_MCP_LINE] u8;
   out: [524288] u8;
@@ -213,39 +246,7 @@ cd_cmd_mcp :: () -> int {
       if c == 10 { break; }
       if n < line.count { line[n] = cast,trunc(u8) c; n += 1; }
     }
-    if n > 0 {
-      msg := cast(string) line[0..<n];
-      ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-      method := cl_str(ar[..], msg, "method");
-      id := cl_raw(msg, "id");
-      params := cl_raw(msg, "params");
-      if id.count == 0 { }                                   // a notification: no answer
-      else if method == "initialize" {
-        want := cl_str(ar[..], params, "protocolVersion");
-        versions := CD_MCP_VERSIONS; v := versions[0];
-        for x: versions { if x == want { v = x; } }
-        rb: [1024] u8;
-        r := json_raw(rb[..], 0, "{\"protocolVersion\":"); r = json_write_string(rb[..], r, v);
-        r = json_raw(rb[..], r, ",\"capabilities\":{\"tools\":{},\"resources\":{}},\"serverInfo\":{\"name\":\"coder\",\"version\":"); r = json_write_string(rb[..], r, CODER_VERSION);
-        r = json_raw(rb[..], r, "},\"instructions\":\"Coder runs coding tasks in repositories on this machine as background sessions. Start one with coder_run, follow it with coder_status and coder_log, and talk to it with coder_send.\"}");
-        cd_mcp_result(id, cast(string) rb[0..<r], out[..]);
-      }
-      else if method == "ping" { cd_mcp_result(id, "{}", out[..]); }
-      else if method == "tools/list" { tb: [16384] u8; cd_mcp_result(id, cd_mcp_tools(tb[..]), out[..]); }
-      else if method == "tools/call" {
-        none: [1] string; cb: [524288] u8; r := cd_mcp_call(ar[..], params, none[0..<0], cb[..]);
-        if r.count == 0 { cd_mcp_error(id, -32602, "Unknown tool.", out[..]); } else { cd_mcp_result(id, r, out[..]); }
-      }
-      else if method == "resources/list" { lb: [262144] u8; cd_mcp_result(id, cd_mcp_resources(ar[..], lb[..]), out[..]); }
-      else if method == "resources/templates/list" {
-        cd_mcp_result(id, "{\"resourceTemplates\":[{\"uriTemplate\":\"coder://session/{id}\",\"name\":\"session\",\"title\":\"A Coder session's log\",\"mimeType\":\"text/plain\"}]}", out[..]);
-      }
-      else if method == "resources/read" {
-        rb: [400000] u8; r := cd_mcp_read(cl_str(ar[..], params, "uri"), rb[..]);
-        if r.count == 0 { cd_mcp_error(id, -32002, "Resource not found.", out[..]); } else { cd_mcp_result(id, r, out[..]); }
-      }
-      else { cd_mcp_error(id, -32601, "Method not found.", out[..]); }
-    }
+    if n > 0 { a := cd_mcp_answer(cast(string) line[0..<n], out[..]); if a.count > 0 { cd_outln(a); } }
     if eof { return 0; }
   }
   return 0;
