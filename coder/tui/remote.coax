@@ -183,21 +183,45 @@ cd_r2_run :: (r: [] CdRoute2, args: [] string, sid: [] u8) -> int {
   return ifx st < 0 then 1 else st;
 }
 
+// The route as one JSON object (with id when it is not ""); its length, or < 0.
+cd_r2_json :: (r: [] CdRoute2, id: string, o: [] u8) -> int {
+  n := json_raw(o, 0, "{");
+  if id.count > 0 { n = json_raw(o, n, "\"id\":"); n = json_write_string(o, n, id); n = json_raw(o, n, ","); }
+  n = json_raw(o, n, ifx r[0].ssh then "\"on\":\"ssh\"" else "\"on\":\"cloud\"");
+  n = json_raw(o, n, ",\"dest\":"); n = json_write_string(o, n, cd_r2_s(r[0].dest[..], r[0].ndest));
+  n = json_raw(o, n, ",\"repo\":"); n = json_write_string(o, n, cd_r2_s(r[0].repo[..], r[0].nrepo));
+  if r[0].cloud {
+    n = json_raw(o, n, ",\"zone\":"); n = json_write_string(o, n, cd_r2_s(r[0].zone[..], r[0].nzone));
+    n = json_raw(o, n, ",\"project\":"); n = json_write_string(o, n, cd_r2_s(r[0].project[..], r[0].nproject));
+    n = json_raw(o, n, ",\"config\":"); n = json_write_string(o, n, cd_r2_s(r[0].config[..], r[0].nconfig));
+  }
+  return json_raw(o, n, "}");
+}
+
+// A route read back from cd_r2_json's object; false when it is not one.
+cd_r2_parse :: (rec: string, r: [] CdRoute2) -> bool {
+  r[0] = CdRoute2.{};
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  on := cl_str(ar[..], rec, "on");
+  r[0].ssh = on == "ssh"; r[0].cloud = on == "cloud";
+  r[0].ndest = cd_cat(r[0].dest[..], 0, cl_str(ar[..], rec, "dest"));
+  r[0].nrepo = cd_cat(r[0].repo[..], 0, cl_str(ar[..], rec, "repo"));
+  r[0].nzone = cd_cat(r[0].zone[..], 0, cl_str(ar[..], rec, "zone"));
+  r[0].nproject = cd_cat(r[0].project[..], 0, cl_str(ar[..], rec, "project"));
+  r[0].nconfig = cd_cat(r[0].config[..], 0, cl_str(ar[..], rec, "config"));
+  r[0].ok = (r[0].ssh || r[0].cloud) && cd_r2_plain(cd_r2_s(r[0].dest[..], r[0].ndest)) && cd_r2_plain(cd_r2_s(r[0].repo[..], r[0].nrepo));
+  if r[0].cloud { r[0].ok = r[0].ok && cd_r2_plain(cd_r2_s(r[0].zone[..], r[0].nzone)) && cd_r2_plain(cd_r2_s(r[0].project[..], r[0].nproject)); }
+  return r[0].ok;
+}
+
 // sessions/ID.remote: where a session started with --on lives.
 cd_r2_record :: (r: [] CdRoute2, id: string) -> bool {
   db: [1100] u8; dir := cs_dir(db[..]);
   if dir.count == 0 { return false; }
   o: [4096] u8;
-  n := json_raw(o[..], 0, "{\"id\":"); n = json_write_string(o[..], n, id);
-  n = json_raw(o[..], n, ifx r[0].ssh then ",\"on\":\"ssh\"" else ",\"on\":\"cloud\"");
-  n = json_raw(o[..], n, ",\"dest\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].dest[..], r[0].ndest));
-  n = json_raw(o[..], n, ",\"repo\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].repo[..], r[0].nrepo));
-  if r[0].cloud {
-    n = json_raw(o[..], n, ",\"zone\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].zone[..], r[0].nzone));
-    n = json_raw(o[..], n, ",\"project\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].project[..], r[0].nproject));
-    n = json_raw(o[..], n, ",\"config\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].config[..], r[0].nconfig));
-  }
-  n = json_raw(o[..], n, "}\n");
+  n := cd_r2_json(r, id, o[..]);
+  if n < 0 { return false; }
+  n = json_raw(o[..], n, "\n");
   pb: [1400] u8; pn := cd_cat(pb[..], cd_cat(pb[..], cd_cat(pb[..], 0, dir), "/"), id); pn = cd_cat(pb[..], pn, ".remote");
   return n > 0 && fs_write(cast(string) pb[0..<pn], cast(string) o[0..<n]);
 }
@@ -222,18 +246,9 @@ cd_r2_recorded :: (id: string, r: [] CdRoute2, full: [] u8) -> bool {
   pn := cd_cat(pb[..], cd_cat(pb[..], cd_cat(pb[..], 0, dir), "/"), found); pn = cd_cat(pb[..], pn, ".remote");
   k := fs_read(cast(string) pb[0..<pn], fb[..]);
   if k <= 0 { return false; }
-  rec := cast(string) fb[0..<k];
-  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  on := cl_str(ar[..], rec, "on");
-  r[0].ssh = on == "ssh"; r[0].cloud = on == "cloud";
-  r[0].ndest = cd_cat(r[0].dest[..], 0, cl_str(ar[..], rec, "dest"));
-  r[0].nrepo = cd_cat(r[0].repo[..], 0, cl_str(ar[..], rec, "repo"));
-  r[0].nzone = cd_cat(r[0].zone[..], 0, cl_str(ar[..], rec, "zone"));
-  r[0].nproject = cd_cat(r[0].project[..], 0, cl_str(ar[..], rec, "project"));
-  r[0].nconfig = cd_cat(r[0].config[..], 0, cl_str(ar[..], rec, "config"));
+  if !cd_r2_parse(cast(string) fb[0..<k], r) { return false; }
   e := cd_cat(full, 0, found); if e < full.count { full[e] = 0; }
-  r[0].ok = (r[0].ssh || r[0].cloud) && cd_r2_plain(cd_r2_s(r[0].dest[..], r[0].ndest)) && cd_r2_plain(cd_r2_s(r[0].repo[..], r[0].nrepo));
-  return r[0].ok;
+  return true;
 }
 
 // The verb's arguments without --on and --remote-repo, for the remote Coder.
@@ -259,6 +274,7 @@ cd_cmd_on :: (args: [] Args, verb: string, on: string) -> int {
   st := cd_r2_run(r[..], a[0..<na], sid[..]);
   k := 0; while k < sid.count && sid[k] != 0 { k += 1; }
   if k > 0 && (verb == "run" || verb == "fork") { x := cd_r2_record(r[..], cast(string) sid[0..<k]); }
+  if verb == "queue" && st == 255 { return dm_hold(r[..], a[0..<na], args_has(args, "--json")); }   // ssh could not reach it: the daemon here sends it later
   return st;
 }
 

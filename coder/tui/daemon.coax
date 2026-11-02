@@ -1,0 +1,333 @@
+// A machine attached as an execution environment (Coder book chapters 20
+// and 23). `coder daemon` holds no session state: each pass it writes a
+// heartbeat, then starts each queued job as an ordinary detached session, if
+// the job is within this machine's grant (its engines and the directories a
+// job may run in). `coder queue` adds a job; with --on ssh:DEST it adds the
+// job to that machine's queue, and when ssh cannot reach DEST the job is
+// held here and the daemon here sends it once DEST answers. `coder jobs`
+// shows the daemon and the jobs.
+//
+//   ~/.openagents/coder/daemon/daemon.json   the heartbeat: name, host, grant, last pass
+//   ~/.openagents/coder/daemon/jobs/ID.json  a queued job: task, engine, cwd
+//   ~/.openagents/coder/daemon/done/ID.json  the job with its session, or why it was refused
+//   ~/.openagents/coder/daemon/held/ID.json  a job for a machine that did not answer
+//
+//   coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--once]
+//   coder queue "TASK" [--engine E] [--cwd DIR] [--on ssh:DEST]
+//   coder jobs [--json] [--on ssh:DEST]
+
+DM_PASS_MS :: 2000;
+DM_HELD_EVERY :: 15;        // passes between tries of the held jobs (30 seconds)
+DM_STALE_S :: 10;           // a heartbeat older than this is a daemon that is not running
+
+dm_init :: (p: [] RtPaths) -> bool {
+  if !rt_init(p) { return false; }
+  b: [1300] u8;
+  x := fs_mkdir(rt_path(p, "/daemon", b[..])); x = fs_mkdir(rt_path(p, "/daemon/jobs", b[..]));
+  x = fs_mkdir(rt_path(p, "/daemon/done", b[..])); x = fs_mkdir(rt_path(p, "/daemon/held", b[..]));
+  return true;
+}
+
+// Whether v is one of a comma-separated list; an empty list holds everything.
+dm_listed :: (list: string, v: string) -> bool {
+  if list.count == 0 { return true; }
+  at := 0;
+  while at <= list.count {
+    e := at; while e < list.count && list[e] != ',' { e += 1; }
+    if cast(string) list[at..<e] == v { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+// Whether dir is one of roots (comma-separated absolute paths) or under one.
+dm_under :: (roots: string, dir: string) -> bool {
+  if dir.count == 0 || dir[0] != '/' { return false; }
+  for i: 0..<dir.count {      // no step up out of a root
+    if dir[i] == '.' && i > 0 && dir[i - 1] == '/' && i + 1 < dir.count && dir[i + 1] == '.' && (i + 2 == dir.count || dir[i + 2] == '/') { return false; }
+  }
+  at := 0;
+  while at <= roots.count {
+    e := at; while e < roots.count && roots[e] != ',' { e += 1; }
+    root := cast(string) roots[at..<e];
+    while root.count > 1 && root[root.count - 1] == '/' { root = cast(string) root[0..<root.count - 1]; }
+    if root.count > 0 && root[0] == '/' {
+      if dir == root || root == "/" { return true; }
+      if dir.count > root.count && cast(string) dir[0..<root.count] == root && dir[root.count] == '/' { return true; }
+    }
+    at = e + 1;
+  }
+  return false;
+}
+
+// Why a job is outside the grant, or "" when it is admitted.
+dm_admit :: (engines: string, roots: string, engine: string, cwd: string) -> string {
+  if !dm_listed(engines, engine) { return "its engine is outside this machine's grant"; }
+  if !dm_under(roots, cwd) { return "its directory is outside this machine's grant"; }
+  return "";
+}
+
+// Whether a sorts before b, byte by byte.
+dm_before :: (a: string, b: string) -> bool {
+  k := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<k { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+
+dm_file :: (p: [] RtPaths, sub: string, name: string, out: [] u8) -> string {
+  b: [1300] u8; n := cd_cat(out, 0, rt_path(p, sub, b[..])); n = cd_cat(out, n, "/"); n = cd_cat(out, n, name);
+  return cast(string) out[0..<n];
+}
+
+// coder queue "TASK": a job in this machine's queue; prints its ID.
+cd_cmd_queue :: (task: string, engine: string, cwd: string, json: bool) -> int {
+  if task.count == 0 { tool_errln("coder queue: coder queue \"TASK\" [--engine E] [--cwd DIR] [--on ssh:DEST]"); return 2; }
+  p: [1] RtPaths;
+  if !dm_init(p[..]) { tool_errln("coder queue: no $HOME"); return 1; }
+  ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
+  o: [65536] u8;
+  n := json_raw(o[..], 0, "{\"id\":"); n = json_write_string(o[..], n, id);
+  n = json_raw(o[..], n, ",\"task\":"); n = json_write_string(o[..], n, task);
+  n = json_raw(o[..], n, ",\"engine\":"); n = json_write_string(o[..], n, engine);
+  n = json_raw(o[..], n, ",\"cwd\":"); n = json_write_string(o[..], n, cwd);
+  n = json_raw(o[..], n, ",\"at\":"); n = json_write_int(o[..], n, cxproc_wall_us()); n = json_raw(o[..], n, "}\n");
+  nb: [64] u8; nn := cd_cat(nb[..], cd_cat(nb[..], 0, id), ".json");
+  pb: [1500] u8;
+  if n < 0 || !fs_write(dm_file(p[..], "/daemon/jobs", cast(string) nb[0..<nn], pb[..]), cast(string) o[0..<n]) { tool_errln("coder queue: could not write the queue"); return 1; }
+  if json { jb: [128] u8; k := json_raw(jb[..], 0, "{\"job\":"); k = json_write_string(jb[..], k, id); k = json_raw(jb[..], k, ",\"state\":\"queued\"}"); cd_outln(cast(string) jb[0..<k]); }
+  else { cd_outln(id); }
+  return 0;
+}
+
+// A queue verb for a machine ssh could not reach: kept in held/ with its route,
+// for the daemon here to send when the machine answers.
+dm_hold :: (r: [] CdRoute2, args: [] string, json: bool) -> int {
+  p: [1] RtPaths;
+  if !dm_init(p[..]) { tool_errln("coder queue: no $HOME"); return 1; }
+  ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
+  o: [65536] u8;
+  n := json_raw(o[..], 0, "{\"id\":"); n = json_write_string(o[..], n, id);
+  n = json_raw(o[..], n, ",\"route\":");
+  rb: [4096] u8; rn := cd_r2_json(r, "", rb[..]);
+  if rn < 0 { return 1; }
+  n = json_raw(o[..], n, cast(string) rb[0..<rn]);
+  n = json_raw(o[..], n, ",\"args\":[");
+  for i: 0..<args.count { n = json_raw(o[..], n, ifx i > 0 then "," else ""); n = json_write_string(o[..], n, args[i]); }
+  n = json_raw(o[..], n, "]}\n");
+  nb: [64] u8; nn := cd_cat(nb[..], cd_cat(nb[..], 0, id), ".json");
+  pb: [1500] u8;
+  if n < 0 || !fs_write(dm_file(p[..], "/daemon/held", cast(string) nb[0..<nn], pb[..]), cast(string) o[0..<n]) { tool_errln("coder queue: could not hold the job"); return 1; }
+  dest := cd_r2_s(r[0].dest[..], r[0].ndest);
+  if json { jb: [512] u8; k := json_raw(jb[..], 0, "{\"job\":"); k = json_write_string(jb[..], k, id); k = json_raw(jb[..], k, ",\"state\":\"held\",\"dest\":"); k = json_write_string(jb[..], k, dest); k = json_raw(jb[..], k, "}"); cd_outln(cast(string) jb[0..<k]); }
+  else { tool_err("coder: "); tool_err(dest); tool_errln(" did not answer; the job is held here, and `coder daemon` here sends it when it does"); cd_outln(id); }
+  return 0;
+}
+
+// One pass over the queue: each job starts as a detached session or is refused. The number handled.
+dm_pass :: (p: [] RtPaths, engines: string, roots: string, json: bool) -> int {
+  l_b: [1] FsList; l := l_b[..];
+  jb: [1300] u8; jobs := rt_path(p, "/daemon/jobs", jb[..]);
+  n := fs_list(jobs, l);
+  handled := 0;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
+    pb: [1500] u8; path := dm_file(p, "/daemon/jobs", name, pb[..]);
+    tb: [65536] u8; tn := fs_read(path, tb[..]);
+    if tn <= 0 { continue; }
+    jtext := cast(string) tb[0..<tn];
+    ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    id := cl_str(ar[..], jtext, "id"); task := cl_str(ar[..], jtext, "task");
+    engine := cl_str(ar[..], jtext, "engine"); cwd := cl_str(ar[..], jtext, "cwd");
+    why := dm_admit(engines, roots, engine, cwd);
+    if task.count == 0 { why = "it has no task"; }
+    sb: [64] u8; sid := "";
+    if why.count == 0 {
+      a := [6] string.["run", task, "--engine", engine, "--cwd", cwd];
+      sid = rt_coder(a[..], sb[..]);
+      if sid.count == 0 { why = "its session did not start"; }
+    }
+    o: [70000] u8;
+    k := json_raw(o[..], 0, cast(string) jtext[0..<jtext.count - (ifx jtext[jtext.count - 1] == 10 then 2 else 1)]);
+    if sid.count > 0 { k = json_raw(o[..], k, ",\"session\":"); k = json_write_string(o[..], k, sid); }
+    else { k = json_raw(o[..], k, ",\"refused\":"); k = json_write_string(o[..], k, why); }
+    k = json_raw(o[..], k, ",\"handled\":"); k = json_write_int(o[..], k, cxproc_wall_us()); k = json_raw(o[..], k, "}\n");
+    db: [1500] u8;
+    if k > 0 { x := fs_write(dm_file(p, "/daemon/done", name, db[..]), cast(string) o[0..<k]); }
+    y := fs_remove(path);
+    if json { cd_outln(cast(string) o[0..<k - 1]); }
+    else {
+      lb: [1024] u8; m := cd_cat(lb[..], 0, "job "); m = cd_cat(lb[..], m, id);
+      m = cd_cat(lb[..], m, ifx sid.count > 0 then ": session " else ": refused, "); m = cd_cat(lb[..], m, ifx sid.count > 0 then sid else why);
+      cd_outln(cast(string) lb[0..<m]);
+    }
+    handled += 1;
+  }
+  return handled;
+}
+
+// Tries each held job's machine again; a job its machine took moves to done/.
+dm_send_held :: (p: [] RtPaths, json: bool) -> int {
+  l_b: [1] FsList; l := l_b[..];
+  hb: [1300] u8; held := rt_path(p, "/daemon/held", hb[..]);
+  n := fs_list(held, l);
+  sent := 0;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
+    pb: [1500] u8; path := dm_file(p, "/daemon/held", name, pb[..]);
+    tb: [65536] u8; tn := fs_read(path, tb[..]);
+    if tn <= 0 { continue; }
+    rec := cast(string) tb[0..<tn];
+    r: [1] CdRoute2;
+    if !cd_r2_parse(cl_raw(rec, "route"), r[..]) { continue; }
+    ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    all := cl_raw(rec, "args");
+    a: [64] string; na := 0;
+    for j: 0..<cl_count(all) { if na < a.count { a[na] = cl_text(ar[..], all, cl_item(all, j)); na += 1; } }
+    sid: [64] u8;
+    st := cd_r2_run(r[..], a[0..<na], sid[..]);
+    if st == 255 { continue; }     // still not answering
+    k := 0; while k < sid.count && sid[k] != 0 { k += 1; }
+    o: [70000] u8;
+    w := json_raw(o[..], 0, cast(string) rec[0..<rec.count - (ifx rec[rec.count - 1] == 10 then 2 else 1)]);
+    w = json_raw(o[..], w, ",\"remote_job\":"); w = json_write_string(o[..], w, cast(string) sid[0..<k]);
+    w = json_raw(o[..], w, ",\"exit\":"); w = json_write_int(o[..], w, st); w = json_raw(o[..], w, "}\n");
+    db: [1500] u8;
+    if w > 0 && fs_write(dm_file(p, "/daemon/done", name, db[..]), cast(string) o[0..<w]) { x := fs_remove(path); }
+    sent += 1;
+  }
+  return sent;
+}
+
+// The heartbeat: who this daemon is, what it admits and when it last passed.
+dm_beat :: (p: [] RtPaths, name: string, host: string, engines: string, roots: string) -> bool {
+  o: [8192] u8;
+  n := json_raw(o[..], 0, "{\"name\":"); n = json_write_string(o[..], n, name);
+  n = json_raw(o[..], n, ",\"host\":"); n = json_write_string(o[..], n, host);
+  n = json_raw(o[..], n, ",\"engines\":"); n = json_write_string(o[..], n, ifx engines.count > 0 then engines else "any");
+  n = json_raw(o[..], n, ",\"roots\":"); n = json_write_string(o[..], n, roots);
+  n = json_raw(o[..], n, ",\"at\":"); n = json_write_int(o[..], n, cxproc_wall_us()); n = json_raw(o[..], n, "}\n");
+  b: [1300] u8;
+  return n > 0 && fs_write(rt_path(p, "/daemon/daemon.json", b[..]), cast(string) o[0..<n]);
+}
+
+// coder daemon: attach this machine. Ctrl-C stops it; nothing is lost, since the queue is files.
+cd_cmd_daemon :: (name0: string, engines: string, roots0: string, once: bool, json: bool) -> int {
+  p: [1] RtPaths;
+  if !dm_init(p[..]) { tool_errln("coder daemon: no $HOME"); return 1; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  roots := ifx roots0.count > 0 then roots0 else home;
+  hn: [256] u8; ok: [1] bool;
+  hv := [1] string.["hostname"];
+  host := rt_run(hv[..], hn[..], ok[..]);
+  name := ifx name0.count > 0 then name0 else host;
+  if !once && !json {
+    lb: [4096] u8; m := cd_cat(lb[..], 0, "Daemon "); m = cd_cat(lb[..], m, name);
+    m = cd_cat(lb[..], m, ": starting jobs from ~/.openagents/coder/daemon/jobs (engines: "); m = cd_cat(lb[..], m, ifx engines.count > 0 then engines else "any");
+    m = cd_cat(lb[..], m, "; under "); m = cd_cat(lb[..], m, roots); m = cd_cat(lb[..], m, "). Ctrl-C stops it.");
+    cd_outln(cast(string) lb[0..<m]);
+  }
+  pass := 0;
+  while true {
+    b := dm_beat(p[..], name, host, engines, roots);
+    h := dm_pass(p[..], engines, roots, json);
+    if pass % DM_HELD_EVERY == 0 { s := dm_send_held(p[..], json); }
+    if once { return 0; }
+    x := cxproc_sleep_ms(DM_PASS_MS);
+    pass += 1;
+  }
+  return 0;
+}
+
+// coder jobs: the daemon's heartbeat, then queued, held and handled jobs, newest first.
+cd_cmd_jobs :: (json: bool) -> int {
+  p: [1] RtPaths;
+  if !dm_init(p[..]) { tool_errln("coder jobs: no $HOME"); return 1; }
+  b: [1300] u8; hbuf: [8192] u8;
+  hn := fs_read(rt_path(p[..], "/daemon/daemon.json", b[..]), hbuf[..]);
+  beat := ifx hn > 0 then cast(string) hbuf[0..<hn] else "";
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  now := cxproc_wall_us();
+  at := cl_int(beat, "at");
+  age := ifx at.ok then (now - at.value) / 1000000 else -1;
+  up := at.ok && age <= DM_STALE_S;
+  o: [262144] u8; n := 0;
+  if json {
+    n = json_raw(o[..], 0, "{\"daemon\":");
+    if hn > 0 {
+      while beat.count > 0 && beat[beat.count - 1] == 10 { beat = cast(string) beat[0..<beat.count - 1]; }
+      n = json_raw(o[..], n, cast(string) beat[0..<beat.count - 1]); n = json_raw(o[..], n, ifx up then ",\"up\":true}" else ",\"up\":false}");
+    } else { n = json_raw(o[..], n, "null"); }
+    n = json_raw(o[..], n, ",\"jobs\":[");
+  } else {
+    tb: [24] u8;
+    if hn <= 0 { n = cd_cat(o[..], 0, "no daemon has run here (coder daemon)\n"); }
+    else {
+      n = cd_cat(o[..], 0, "daemon "); n = cd_cat(o[..], n, cl_str(ar[..], beat, "name"));
+      n = cd_cat(o[..], n, ifx up then " up" else " down"); n = cd_cat(o[..], n, " · last pass ");
+      n = cd_cat(o[..], n, cd_itoa(age, tb[..])); n = cd_cat(o[..], n, "s ago · engines ");
+      n = cd_cat(o[..], n, cl_str(ar[..], beat, "engines")); n = cd_cat(o[..], n, " · under "); n = cd_cat(o[..], n, cl_str(ar[..], beat, "roots")); n = cd_cat(o[..], n, "\n");
+    }
+  }
+  subs := [3] string.["/daemon/jobs", "/daemon/held", "/daemon/done"];
+  states := [3] string.["queued", "held", "done"];
+  rows := 0;
+  for s: 0..<3 {
+    l_b: [1] FsList; l := l_b[..];
+    db: [1300] u8; k := fs_list(rt_path(p[..], subs[s], db[..]), l);
+    // newest first: IDs sort by time
+    order: [512] int; m := 0;
+    for i: 0..<k { nm := fs_entry(l, i); if m < order.count && nm.count > 5 && cast(string) nm[nm.count - 5..<nm.count] == ".json" { order[m] = i; m += 1; } }
+    for i: 1..<m { j := i; while j > 0 && dm_before(fs_entry(l, order[j - 1]), fs_entry(l, order[j])) { t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1; } }
+    shown := ifx s == 2 && m > 20 then 20 else m;
+    for i: 0..<shown {
+      fb: [1500] u8; tb2: [65536] u8;
+      tn := fs_read(dm_file(p[..], subs[s], fs_entry(l, order[i]), fb[..]), tb2[..]);
+      if tn <= 0 { continue; }
+      rec := cast(string) tb2[0..<tn];
+      ar[0].at = 0; ar[0].full = false;
+      id := cl_str(ar[..], rec, "id");
+      task := cl_str(ar[..], rec, "task");
+      if task.count == 0 { all := cl_raw(rec, "args"); if cl_count(all) > 1 { task = cl_text(ar[..], all, cl_item(all, 1)); } }
+      session := cl_str(ar[..], rec, "session");
+      rjob := cl_str(ar[..], rec, "remote_job");
+      refused := cl_str(ar[..], rec, "refused");
+      dest := cl_str(ar[..], rec, "route.dest");
+      state := ifx s < 2 then states[s] else (ifx refused.count > 0 then "refused" else (ifx session.count > 0 then "started" else "sent"));
+      if json {
+        n = json_raw(o[..], n, ifx rows > 0 then "," else "");
+        n = json_raw(o[..], n, "{\"job\":"); n = json_write_string(o[..], n, id);
+        n = json_raw(o[..], n, ",\"state\":"); n = json_write_string(o[..], n, state);
+        n = json_raw(o[..], n, ",\"task\":"); n = json_write_string(o[..], n, task);
+        if session.count > 0 { n = json_raw(o[..], n, ",\"session\":"); n = json_write_string(o[..], n, session); }
+        if refused.count > 0 { n = json_raw(o[..], n, ",\"why\":"); n = json_write_string(o[..], n, refused); }
+        if dest.count > 0 { n = json_raw(o[..], n, ",\"dest\":"); n = json_write_string(o[..], n, dest); }
+        if rjob.count > 0 { n = json_raw(o[..], n, ",\"remote_job\":"); n = json_write_string(o[..], n, rjob); }
+        n = json_raw(o[..], n, "}");
+      } else {
+        n = cd_cat(o[..], n, id); n = cd_cat(o[..], n, "  "); n = cd_cat(o[..], n, state);
+        if session.count > 0 { n = cd_cat(o[..], n, " "); n = cd_cat(o[..], n, session); }
+        if dest.count > 0 { n = cd_cat(o[..], n, " for "); n = cd_cat(o[..], n, dest); }
+        if rjob.count > 0 { n = cd_cat(o[..], n, " as job "); n = cd_cat(o[..], n, rjob); }
+        if refused.count > 0 { n = cd_cat(o[..], n, " ("); n = cd_cat(o[..], n, refused); n = cd_cat(o[..], n, ")"); }
+        n = cd_cat(o[..], n, "  "); n = cd_cat(o[..], n, cast(string) task[0..<ifx task.count > 60 then 60 else task.count]); n = cd_cat(o[..], n, "\n");
+      }
+      rows += 1;
+    }
+  }
+  if json { n = json_raw(o[..], n, "]}"); cd_outln(cast(string) o[0..<n]); }
+  else { while n > 0 && o[n - 1] == 10 { n -= 1; } if n > 0 { cd_outln(cast(string) o[0..<n]); } }
+  return 0;
+}
+
+#test "daemon: a job is admitted only within the machine's grant" {
+  #assert dm_admit("", "/home/a", "echo", "/home/a/repo") == "";
+  #assert dm_admit("echo,micro", "/home/a", "echo", "/home/a") == "";
+  #assert dm_admit("echo,micro", "/home/a", "claude", "/home/a/repo") == "its engine is outside this machine's grant";
+  #assert dm_admit("", "/home/a", "echo", "/home/ab") == "its directory is outside this machine's grant";
+  #assert dm_admit("", "/home/a", "echo", "/home/a/../b") == "its directory is outside this machine's grant";
+  #assert dm_admit("", "/home/a", "echo", "relative/dir") == "its directory is outside this machine's grant";
+  #assert dm_admit("", "/srv/x,/home/a/", "echo", "/home/a/w") == "";
+  #assert dm_admit("", "/home/a", "echo", "/home/a/..x") == "";
+}

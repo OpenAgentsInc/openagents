@@ -6,8 +6,10 @@
 > that repeats one step or, by System One's judgment, isn't making progress,
 > and stops it if that happens again. Replies follow per-channel rules: at
 > most 100 words for chat, structured for issues. Long work runs as
-> background jobs (chapter14). Still to come: compute apart from execution
-> environments (machine daemons and credential handles), rules for pull
+> background jobs (chapter14). `coder daemon` attaches a machine as an
+> execution environment: it starts queued jobs only within the machine's
+> grant, and a job for a machine that is offline waits and is sent when the
+> machine answers. Still to come: credential handles, rules for pull
 > requests, mail and documents, and the restart and fault-injection
 > measurements.
 
@@ -140,6 +142,29 @@ and the reply follows its rules (`rt_reply`):
 | `chat` | At most 100 words, cut with " …". Says how a Worker stopped if it didn't finish. |
 | `issue` | Structured: the ending, steps and session first, then the full result. |
 
+### Machine daemons
+
+`coder daemon` ([daemon.coax](../../coder/tui/daemon.coax)) attaches the
+machine it runs on. It holds no session state. Every two seconds it:
+
+1. Writes a heartbeat, `~/.openagents/coder/daemon/daemon.json`, with its
+   name, host, grant and the time of the pass.
+2. Takes each job in `daemon/jobs/` and checks it against the grant:
+   `--engines E,F` (any engine when left out) and `--root DIR,DIR` (the
+   directories a job may run in, `$HOME` by default; a path that steps up
+   with `..` is refused). An admitted job starts as an ordinary detached
+   session, `coder run TASK --engine E --cwd DIR --detach`. The job then
+   moves to `daemon/done/` with its session, or with why it was refused.
+3. Every 30 seconds, tries the jobs held for machines that did not answer.
+
+`coder queue "TASK" [--engine E] [--cwd DIR]` adds a job and prints its ID.
+With `--on ssh:DEST` the job goes into DEST's queue. When ssh can't reach
+DEST (exit 255), the job is held here in `daemon/held/` with its route, and
+this machine's daemon sends it once DEST answers. `coder jobs` shows the
+daemon's heartbeat (`up` when its last pass was within 10 seconds) and every
+job: `queued`, `held`, `started` with its session, `refused` with why, or
+`sent` with the job ID it got on the other machine.
+
 ## Checks
 
 - `python3 coder/tui/smoke.py`, offline: each check runs `coder router
@@ -148,7 +173,12 @@ and the reply follows its rules (`rt_reply`):
   Worker whose process is killed ends as `lost`. A Worker that repeats one
   step is stopped, and a quiet Worker with no System One key is reported as
   stuck.
-- Unit checks: the chat cap of 100 words and the issue format.
+- The smoke also queues three jobs for a daemon granted `echo,micro`: the one
+  inside the grant starts a session, and the ones with another engine or
+  another directory are refused with why. A job queued `--on ssh:box` while
+  a stand-in `ssh` fails is held, sent on the next daemon pass after `ssh`
+  works, and started by the other machine's daemon.
+- Unit checks: a job's admission against the grant, the chat cap of 100 words and the issue format.
 - Live: two quiet Workers with the same task, "fix the failing parser test".
   System One judged the one that read, edited and tested the parser as still
   making progress, and the one browsing news sites as not, and the watchdog
@@ -172,8 +202,9 @@ and the reply follows its rules (`rt_reply`):
   and every pull request body has its required sections.
 - **Restart.** Killing the loop's container mid-task and starting a new one
   resumes every open task from the log with no lost or repeated tool effects.
-- **Intermittent machines.** A task bound to a machine that goes offline waits,
-  then completes when the machine reconnects.
+- [x] **Intermittent machines.** A task bound to a machine that goes offline
+  waits, then completes when the machine reconnects. Checked by the smoke
+  with a stand-in `ssh`, and live against coderos-4080.
 - **Watchdog.** In fault-injection runs (API errors, a Worker looping on one
   failing call, a Worker drifting off its goal) the watchdog detects each
   fault and the time to detection is reported.

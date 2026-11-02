@@ -8,8 +8,9 @@
 > instead of a server. Each conversation is a session file in
 > `~/.openagents/coder/sessions`. `coder mcp` serves the verbs as MCP tools
 > on stdio, and Claude Code drives Coder through it. `--on ssh:DEST` runs
-> any verb on another machine. Still to come: `daemon`, and a live
-> `--on cloud`, which waits on a pool host that can bootstrap current main.
+> any verb on another machine, and `coder daemon` attaches a machine that
+> starts queued jobs within its grant. Still to come: a live `--on cloud`,
+> which waits on a pool host that can bootstrap current main.
 
 Every chapter in this book ends in a verb. This chapter puts them into the
 `coder` domain of the `openagents` binary.
@@ -31,6 +32,8 @@ Every chapter in this book ends in a verb. This chapter puts them into the
   | `coder watch THREAD` | subscribe Coder to a Thread such as `github:owner/repo#123` |
   | `coder policy list\|add\|rm` | the trigger policies for acting without being asked |
   | `coder daemon` | attach this machine as an execution environment |
+  | `coder queue "TASK"` | a job for a machine's daemon; held here while that machine does not answer |
+  | `coder jobs` | the daemon's heartbeat and its jobs |
   | `coder bench SUITE` | run a harness suite and report it |
 
 - One command table drives the parser, help, the MCP tool list and the
@@ -176,6 +179,10 @@ installed `openagents cloud` builds the Rust sources that main has since
 removed. The smoke checks `--on ssh:` with a stand-in `ssh` that runs the
 line in a second `HOME`.
 
+`coder daemon`, `coder queue` and `coder jobs` are chapter 20's machine
+daemons: a job queued `--on ssh:DEST` while DEST is offline is held here
+and sent when DEST answers.
+
 ### The session log
 
 [coder/tui/session.coax](../../coder/tui/session.coax) writes one JSON
@@ -224,7 +231,9 @@ such session, 130 stopped.
   that session follow it there; checked live on coderos-4080 and by the
   smoke.
 - [ ] `--on cloud` runs on a pool host, live.
-- [ ] `coder daemon` attaches this machine as an execution environment.
+- [x] `coder daemon` attaches this machine as an execution environment
+  (chapter 20's machine daemons), with `queue` and `jobs`; checked by the
+  smoke.
 - [ ] Each verb exists in the command table with `--json` and the spec's exit
   codes, and a `coder-journey` check runs `run`, `log`, `fork`, `stop` and
   `replay` on a fixture repository.

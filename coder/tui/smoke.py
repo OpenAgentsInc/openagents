@@ -354,6 +354,28 @@ def verbs(check):
         check("--on ssh: the run happens on the other machine, is recorded here, and status by prefix is forwarded",
               rr.returncode == 0 and any(l.get("text") == "remote-ok" for l in rl) and recs == [rid + ".remote"]
               and any(n.startswith(rid) for n in os.listdir(os.path.join(rhome, ".openagents", "coder", "sessions"))) and rid in rs.stdout and "finished" in rs.stdout)
+        # coder daemon (chapters 20 and 23): queued jobs start within the grant; a job for a machine that does not answer is held, then sent
+        dq = lambda *a, e=env: subprocess.run([coder, *a], cwd=REPO, env=e, capture_output=True, text=True, timeout=300)
+        dq("queue", "$ echo daemon-ok", "--engine", "echo", "--cwd", home); dq("queue", "x", "--engine", "claude", "--cwd", home)
+        dq("queue", "y", "--engine", "echo", "--cwd", "/etc")
+        dq("daemon", "--once", "--engines", "echo,micro")
+        dj = json.loads(dq("jobs", "--json").stdout)
+        dst = sorted((j["state"], j.get("why", "")) for j in dj["jobs"])
+        check("daemon: a queued job starts as a session; an engine or directory outside the grant is refused",
+              dj["daemon"]["engines"] == "echo,micro" and dst == [("refused", "its directory is outside this machine's grant"), ("refused", "its engine is outside this machine's grant"), ("started", "")])
+        with open(os.path.join(fake, "ssh"), "w") as f:
+            f.write("#!/bin/sh\nexit 255\n")
+        hq = dq("queue", "$ echo held-ok", "--engine", "echo", "--cwd", rhome, "--on", "ssh:box", e=senv)
+        held = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["state"] == "held"]
+        with open(os.path.join(fake, "ssh"), "w") as f:
+            f.write("#!/bin/sh\nfor a; do last=\"$a\"; done\nHOME=" + rhome + " exec sh -c \"$last\"\n")
+        dq("daemon", "--once", e=senv)
+        sent = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["state"] == "sent"]
+        dq("daemon", "--once", e=dict(env, HOME=rhome))
+        rj = [j for j in json.loads(dq("jobs", "--json", e=dict(env, HOME=rhome)).stdout)["jobs"] if j["task"] == "$ echo held-ok"]
+        check("daemon: a job for a machine that does not answer is held, then sent when it does, and starts there",
+              hq.returncode == 0 and len(held) == 1 and held[0]["dest"] == "box" and len(sent) == 1 and sent[0].get("remote_job")
+              and len(rj) == 1 and rj[0]["state"] == "started" and rj[0]["job"] == sent[0]["remote_job"])
         os.remove(os.path.join(fake, "ssh"))
         # Wasm plugins: built from Coax, run in the bounded host; a module importing more than it was admitted is refused
         if os.path.exists("/opt/homebrew/opt/llvm/bin/clang") and os.path.isdir("/opt/homebrew/opt/wasi-libc/share/wasi-sysroot"):
