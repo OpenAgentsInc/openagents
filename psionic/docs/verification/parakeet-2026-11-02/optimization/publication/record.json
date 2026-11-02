@@ -42,5 +42,18 @@
     "cpu_decoder_reference_recordings": 29,
     "feature_encoder_v1_v2_byte_identical": 58,
     "cli_transport_cases": 13
+  },
+  "final_main": {
+    "implementation_commit": "d24c01c6a9",
+    "tools_policy": {
+      "returncode": 0,
+      "record": "tools-parallel-rebased.stdout",
+      "result": "1529 tracked tool files; zero new without a reason. Earlier upstream failures are retained as historical observations."
+    },
+    "book": {
+      "returncode": 0,
+      "record": "book-final-main.stdout"
+    },
+    "runtime_checks": "Reuse source-identical native/reference receipts; no runtime gate repeated for this record-only follow-up."
   }
 }
