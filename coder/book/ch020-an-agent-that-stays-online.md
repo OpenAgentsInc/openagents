@@ -12,8 +12,11 @@
 > machine answers. A Router killed between an effect and its record
 > resumes without repeating the effect, and the watchdog's time to
 > detection is measured for each fault. Pull request replies have their
-> required sections. Still to come: credential handles, rules for mail and
-> documents, and rechecking API errors until they clear.
+> required sections. A job names credential handles, never secrets; the
+> daemon gives a job the handle's variable only when its grant lists the
+> handle, and the session log shows `[credential]` in place of the value.
+> Still to come: rules for mail and documents, and rechecking API errors
+> until they clear.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -264,6 +267,48 @@ held here. The next daemon pass sent it, and coderos-4080's own daemon,
 granted `/tmp` and `/home`, started it as a session that printed the host
 name and finished.
 
+### Credential handles
+
+A credential is a named secret kept on the machine that uses it
+([credential.coax](../../coder/tui/credential.coax)):
+
+```sh
+coder credential add gh GH_TOKEN < token.txt   # one line from stdin
+coder credential ls                            # names and variables, never values
+coder credential rm gh
+```
+
+`add` reads the value from stdin, so it never appears in a command line,
+the shell history or a process list. The value is stored as `GH_TOKEN=...`
+in `~/.openagents/coder/credentials/gh.env`, mode 600, in a mode 700
+folder. A value shorter than 8 characters is refused, since hiding it would
+also hide ordinary words in the log.
+
+A job names handles: `coder queue "TASK" --credential gh`. The job file
+holds the name, so the queue, a held job and the ssh command line that
+sends it carry no secret. The daemon admits the job only when its grant
+lists every handle the job names (`coder daemon --credentials gh`) and each
+one is stored on that machine; otherwise the job is refused with why. An
+admitted job's session starts with `GH_TOKEN` in its environment and
+`CODER_SECRET_VARS=GH_TOKEN`. The session reads that list when it opens and
+writes `[credential]` in place of each value, as typed and as JSON escapes
+it, in every log line, every `--json` line and the reply it reports to
+another session. A daemon without `--credentials` gives no job any
+credential.
+
+What it does not cover: the TUI screen of a session someone starts by hand
+with the variable already set, and an engine's own model. Claude Code,
+Codex and Microcoder run commands themselves, so a command that prints the
+value sends it to that engine's model before Coder's log hides it. Use
+tools that read the variable without printing it, such as `gh`, which reads
+`GH_TOKEN`.
+
+In the live check, a job running `printenv GH_TOKEN | wc -c` under a grant
+for `gh` printed 24 (the 23-character value and a newline), and its log
+recorded the value itself as `[credential]`. The same job under a daemon
+without the grant was refused: "a credential it names is outside this
+machine's grant".
+
 ## Checks
 
 - `python3 coder/tui/smoke.py`, offline: each check runs `coder router
@@ -277,10 +322,14 @@ name and finished.
   another directory are refused with why. A job queued `--on ssh:box` while
   a stand-in `ssh` fails is held, sent on the next daemon pass after `ssh`
   works, and started by the other machine's daemon.
+- The smoke stores a credential (mode 600, listed without its value),
+  checks that a daemon without the grant refuses a job that names it, and
+  that a daemon with the grant starts it with the variable set and a log
+  that holds `[credential]` but not the value.
 - The smoke kills the Router with SIGKILL right after it starts a Worker and
   right after it posts a reply (see [A crash between two steps](#a-crash-between-two-steps)),
   and checks that the next pass repeats neither.
-- Unit checks: a job's admission against the grant, the chat cap of 100 words and the issue format.
+- Unit checks: handle and variable names, a job's handles against the grant, the hiding of values longer and shorter than the mark, a job's admission against the grant, the chat cap of 100 words and the issue format.
 - Live: two quiet Workers with the same task, "fix the failing parser test".
   System One judged the one that read, edited and tested the parser as still
   making progress, and the one browsing news sites as not, and the watchdog

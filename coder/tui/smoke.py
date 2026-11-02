@@ -496,6 +496,27 @@ def verbs(check):
               hq.returncode == 0 and len(held) == 1 and held[0]["dest"] == "box" and len(sent) == 1 and sent[0].get("remote_job")
               and len(rj) == 1 and rj[0]["state"] == "started" and rj[0]["job"] == sent[0]["remote_job"])
         os.remove(os.path.join(fake, "ssh"))
+        # credential handles (chapter 20): a job names a handle; only a grant that lists it gets the variable, and the log hides the value
+        cv = "ghp_SMOKEVALUE1234567890"
+        ca = subprocess.run([coder, "credential", "add", "gh", "GH_TOKEN"], cwd=REPO, env=env, input=cv + "\n", capture_output=True, text=True, timeout=60)
+        cmode = oct(os.stat(os.path.join(home, ".openagents/coder/credentials/gh.env")).st_mode & 0o777)
+        cls = dq("credential", "ls", "--json").stdout
+        dq("queue", "$ printenv GH_TOKEN | wc -c; printenv GH_TOKEN", "--engine", "echo", "--cwd", home, "--credential", "gh")
+        dq("daemon", "--once", "--engines", "echo")
+        cr1 = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["task"].startswith("$ printenv GH_TOKEN")]
+        dq("queue", "$ printenv GH_TOKEN | wc -c; printenv GH_TOKEN", "--engine", "echo", "--cwd", home, "--credential", "gh")
+        dq("daemon", "--once", "--engines", "echo", "--credentials", "gh")
+        cr2 = [j for j in json.loads(dq("jobs", "--json").stdout)["jobs"] if j["task"].startswith("$ printenv GH_TOKEN") and j["state"] == "started"]
+        cfile = os.path.join(home, ".openagents/coder/sessions", (cr2[0].get("session", "") if cr2 else "none") + ".jsonl")
+        clog = ""
+        for _ in range(60):
+            clog = open(cfile).read() if os.path.exists(cfile) else ""
+            if '"kind":"end"' in clog: break
+            time.sleep(0.5)
+        check("credentials: a job gets a handle's variable only under a grant that lists it, and its log shows [credential]",
+              ca.returncode == 0 and cmode == "0o600" and json.loads(cls) == [{"name": "gh", "var": "GH_TOKEN"}]
+              and len(cr1) == 1 and cr1[0].get("why") == "a credential it names is outside this machine's grant"
+              and len(cr2) == 1 and "[credential]" in clog and str(len(cv) + 1) in clog and cv not in clog)
         # Wasm plugins: built from Coax, run in the bounded host; a module importing more than it was admitted is refused
         if os.path.exists("/opt/homebrew/opt/llvm/bin/clang") and os.path.isdir("/opt/homebrew/opt/wasi-libc/share/wasi-sysroot"):
             wsrc = os.path.join(REPO, "coder", "plugins", "hello", "hello.coax"); wsh = os.path.join(HERE, "wasm_plugin.sh")

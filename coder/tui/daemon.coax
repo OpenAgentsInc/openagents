@@ -80,7 +80,7 @@ dm_file :: (p: [] RtPaths, sub: string, name: string, out: [] u8) -> string {
 }
 
 // coder queue "TASK": a job in this machine's queue; prints its ID.
-cd_cmd_queue :: (task: string, engine: string, cwd: string, json: bool) -> int {
+cd_cmd_queue :: (task: string, engine: string, cwd: string, creds: string, json: bool) -> int {
   if task.count == 0 { tool_errln("coder queue: coder queue \"TASK\" [--engine E] [--cwd DIR] [--on ssh:DEST]"); return 2; }
   p: [1] RtPaths;
   if !dm_init(p[..]) { tool_errln("coder queue: no $HOME"); return 1; }
@@ -90,6 +90,7 @@ cd_cmd_queue :: (task: string, engine: string, cwd: string, json: bool) -> int {
   n = json_raw(o[..], n, ",\"task\":"); n = json_write_string(o[..], n, task);
   n = json_raw(o[..], n, ",\"engine\":"); n = json_write_string(o[..], n, engine);
   n = json_raw(o[..], n, ",\"cwd\":"); n = json_write_string(o[..], n, cwd);
+  if creds.count > 0 { n = json_raw(o[..], n, ",\"credentials\":"); n = json_write_string(o[..], n, creds); }
   n = json_raw(o[..], n, ",\"at\":"); n = json_write_int(o[..], n, cxproc_wall_us()); n = json_raw(o[..], n, "}\n");
   nb: [64] u8; nn := cd_cat(nb[..], cd_cat(nb[..], 0, id), ".json");
   pb: [1500] u8;
@@ -124,7 +125,7 @@ dm_hold :: (r: [] CdRoute2, args: [] string, json: bool) -> int {
 }
 
 // One pass over the queue: each job starts as a detached session or is refused. The number handled.
-dm_pass :: (p: [] RtPaths, engines: string, roots: string, json: bool) -> int {
+dm_pass :: (p: [] RtPaths, engines: string, roots: string, creds: string, json: bool) -> int {
   l_b: [1] FsList; l := l_b[..];
   jb: [1300] u8; jobs := rt_path(p, "/daemon/jobs", jb[..]);
   n := fs_list(jobs, l);
@@ -140,11 +141,32 @@ dm_pass :: (p: [] RtPaths, engines: string, roots: string, json: bool) -> int {
     id := cl_str(ar[..], jtext, "id"); task := cl_str(ar[..], jtext, "task");
     engine := cl_str(ar[..], jtext, "engine"); cwd := cl_str(ar[..], jtext, "cwd");
     why := dm_admit(engines, roots, engine, cwd);
+    wanted := cl_str(ar[..], jtext, "credentials");
+    if why.count == 0 { why = cr_admit(creds, wanted); }
     if task.count == 0 { why = "it has no task"; }
     sb: [64] u8; sid := "";
     if why.count == 0 {
       a := [6] string.["run", task, "--engine", engine, "--cwd", cwd];
-      sid = rt_coder(a[..], sb[..]);
+      // each handle's VAR=value, and CODER_SECRET_VARS so the session hides the values
+      eb: [9 * CR_VALUE] u8; env: [CR_MAX + 1] string; ne := 0; used := 0;
+      vb: [1100] u8; nv := cd_cat(vb[..], 0, "CODER_SECRET_VARS=");
+      at := 0;
+      while wanted.count > 0 && at <= wanted.count {
+        e := at; while e < wanted.count && wanted[e] != ',' { e += 1; }
+        nm := cast(string) wanted[at..<e];
+        if nm.count > 0 && ne < CR_MAX {
+          one := cr_entry(nm, eb[used..<used + CR_VALUE]);
+          if one.count > 0 {
+            env[ne] = one; ne += 1; used += one.count;
+            if nv > 18 { nv = cd_cat(vb[..], nv, ","); }
+            nv = cd_cat(vb[..], nv, cr_var_of(one));
+          }
+        }
+        at = e + 1;
+      }
+      if ne > 0 { env[ne] = cast(string) vb[0..<nv]; ne += 1; }
+      sid = rt_coder_env(a[..], env[0..<ne], sb[..]);
+      for z: 0..<eb.count { eb[z] = 0; }
       if sid.count == 0 { why = "its session did not start"; }
     }
     o: [70000] u8;
@@ -201,19 +223,20 @@ dm_send_held :: (p: [] RtPaths, json: bool) -> int {
 }
 
 // The heartbeat: who this daemon is, what it admits and when it last passed.
-dm_beat :: (p: [] RtPaths, name: string, host: string, engines: string, roots: string) -> bool {
+dm_beat :: (p: [] RtPaths, name: string, host: string, engines: string, roots: string, creds: string) -> bool {
   o: [8192] u8;
   n := json_raw(o[..], 0, "{\"name\":"); n = json_write_string(o[..], n, name);
   n = json_raw(o[..], n, ",\"host\":"); n = json_write_string(o[..], n, host);
   n = json_raw(o[..], n, ",\"engines\":"); n = json_write_string(o[..], n, ifx engines.count > 0 then engines else "any");
   n = json_raw(o[..], n, ",\"roots\":"); n = json_write_string(o[..], n, roots);
+  n = json_raw(o[..], n, ",\"credentials\":"); n = json_write_string(o[..], n, creds);
   n = json_raw(o[..], n, ",\"at\":"); n = json_write_int(o[..], n, cxproc_wall_us()); n = json_raw(o[..], n, "}\n");
   b: [1300] u8;
   return n > 0 && fs_write(rt_path(p, "/daemon/daemon.json", b[..]), cast(string) o[0..<n]);
 }
 
 // coder daemon: attach this machine. Ctrl-C stops it; nothing is lost, since the queue is files.
-cd_cmd_daemon :: (name0: string, engines: string, roots0: string, once: bool, json: bool) -> int {
+cd_cmd_daemon :: (name0: string, engines: string, roots0: string, creds: string, once: bool, json: bool) -> int {
   p: [1] RtPaths;
   if !dm_init(p[..]) { tool_errln("coder daemon: no $HOME"); return 1; }
   hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
@@ -225,13 +248,15 @@ cd_cmd_daemon :: (name0: string, engines: string, roots0: string, once: bool, js
   if !once && !json {
     lb: [4096] u8; m := cd_cat(lb[..], 0, "Daemon "); m = cd_cat(lb[..], m, name);
     m = cd_cat(lb[..], m, ": starting jobs from ~/.openagents/coder/daemon/jobs (engines: "); m = cd_cat(lb[..], m, ifx engines.count > 0 then engines else "any");
-    m = cd_cat(lb[..], m, "; under "); m = cd_cat(lb[..], m, roots); m = cd_cat(lb[..], m, "). Ctrl-C stops it.");
+    m = cd_cat(lb[..], m, "; under "); m = cd_cat(lb[..], m, roots);
+    if creds.count > 0 { m = cd_cat(lb[..], m, "; credentials "); m = cd_cat(lb[..], m, creds); }
+    m = cd_cat(lb[..], m, "). Ctrl-C stops it.");
     cd_outln(cast(string) lb[0..<m]);
   }
   pass := 0;
   while true {
-    b := dm_beat(p[..], name, host, engines, roots);
-    h := dm_pass(p[..], engines, roots, json);
+    b := dm_beat(p[..], name, host, engines, roots, creds);
+    h := dm_pass(p[..], engines, roots, creds, json);
     if pass % DM_HELD_EVERY == 0 { s := dm_send_held(p[..], json); }
     if once { return 0; }
     x := cxproc_sleep_ms(DM_PASS_MS);

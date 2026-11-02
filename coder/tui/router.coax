@@ -349,6 +349,12 @@ rt_run_in :: (argv: [] string, env: [] string, cwd: string, limit_s: int, out: [
 
 // Runs `coder.sh ARGS... --detach`, which prints the new session's ID; "" when it failed.
 rt_coder :: (args: [] string, id_out: [] u8) -> string {
+  none: [1] string;
+  return rt_coder_env(args, none[0..<0], id_out);
+}
+
+// rt_coder with NAME=value entries added to the session's environment.
+rt_coder_env :: (args: [] string, env: [] string, id_out: [] u8) -> string {
   rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
   if repo.count == 0 { return ""; }
   sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
@@ -356,7 +362,7 @@ rt_coder :: (args: [] string, id_out: [] u8) -> string {
   for i: 0..<args.count { argv[i + 1] = args[i]; }
   argv[args.count + 1] = "--detach";
   ok: [1] bool;
-  id := rt_run(argv[0..<args.count + 2], id_out, ok[..]);
+  id := rt_run_in(argv[0..<args.count + 2], env, "", 120, id_out, ok[..]);
   return ifx ok[0] then id else "";
 }
 
