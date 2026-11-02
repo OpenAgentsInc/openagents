@@ -144,6 +144,53 @@ def verbs(check):
         stop = subprocess.run([coder, "stop", jid], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         st = subprocess.run([coder, "status", jid, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("stop ends the job as stopped", stop.returncode == 0 and json.loads(st.stdout)["state"] == "stopped")
+        # the Router (chapters 17 and 20): an event addressed to the agent starts a Worker, a later event on its
+        # thread goes to that Worker as a fork, an ignored source is dropped, and a Worker whose process dies is lost
+        rdir = os.path.join(home, ".openagents", "coder", "router")
+        os.makedirs(rdir, exist_ok=True)
+        with open(os.path.join(rdir, "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},"spam":{"mode":"ignore","authors":["*"]}}}')
+        def router():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+            return [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        def trigger(*a):
+            return subprocess.run([coder, "trigger", *a], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).returncode
+        ok = trigger("$ echo first", "--thread", "ci", "--to-agent") == 0 and trigger("buy now", "--source", "spam", "--to-agent") == 0 \
+            and trigger("just chatting", "--thread", "lunch") == 0
+        r1 = router()
+        fates = sorted(l["fate"] for l in r1)
+        check("router: a request starts a worker; ignored and unaddressed events drop", ok and fates == sorted([
+            "addressed to the agent: new worker", "dropped: source ignored", "dropped: not addressed to the agent"]))
+        w1 = next((l.get("session", "") for l in r1 if l.get("thread") == "ci"), "")
+        for _ in range(100):
+            st = subprocess.run([coder, "status", w1, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if st.returncode == 0 and json.loads(st.stdout)["state"] == "finished":
+                break
+            time.sleep(0.2)
+        trigger("$ sleep 60", "--thread", "ci")
+        r2 = router()
+        w2 = r2[0].get("session", "") if r2 else ""
+        for _ in range(100):                # the Worker writes its session file a moment after it starts
+            head = subprocess.run([coder, "log", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if head.returncode == 0 and head.stdout.strip():
+                break
+            time.sleep(0.2)
+        check("router: a later event on the thread goes to its worker", len(r2) == 1 and r2[0]["fate"] == "passed to its thread's worker"
+              and w2 != w1 and head.returncode == 0 and json.loads(head.stdout.splitlines()[0]).get("parent") == w1)
+        wpid = 0
+        for _ in range(100):
+            try:
+                wpid = int(open(os.path.join(home, ".openagents", "coder", "sessions", w2 + ".pid")).read().strip())
+                break
+            except (OSError, ValueError):
+                time.sleep(0.2)
+        if wpid:
+            os.kill(wpid, 9)                # the Worker this smoke started
+            time.sleep(0.5)
+        r3 = router()
+        st = subprocess.run([coder, "status", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("watchdog: a worker whose process died ends as lost", any(l["fate"] == "worker lost: ended" for l in r3)
+              and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost")
         # no --engine and no System One key: the default engine, and the log says why
         bare = dict(env, PATH="/usr/bin:/bin")
         for k in ("BASETEN_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):

@@ -93,7 +93,7 @@ grow together:
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — partly implemented | Forks at a turn boundary, scoped subagents, background jobs and goals. |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — partly implemented | Ordered profiles, owned registrations, visible states and third-party plugins in bounded Wasm signed as Nostr events. |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented | MCP, ACP, Open Responses function tools and System One decisions as a tool. |
-| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — design draft | OpenAgents as the Router and Coder as Workers: Triggers, two-stage filtering, Thread subscription, batching, inline and spill, chain of recall and acting ahead. |
+| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — partly implemented | OpenAgents as the Router and Coder as Workers: Triggers, two-stage filtering, Thread subscription, batching, inline and spill, chain of recall and acting ahead. |
 | [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented | No session content leaves the machine without a per-session, revocable opt-in. |
 | [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) — partly implemented | Source-linked memory whose corrected facts never return in their old form. |
 
@@ -101,7 +101,7 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| [20. An agent that stays online](ch020-an-agent-that-stays-online.md) — design draft | Full duplex, channel rules, stateless compute over the log, per-machine daemons, a watchdog and credential handles. |
+| [20. An agent that stays online](ch020-an-agent-that-stays-online.md) — partly implemented | Full duplex, channel rules, stateless compute over the log, per-machine daemons, a watchdog and credential handles. |
 
 ## V. Measure
 

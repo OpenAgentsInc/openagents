@@ -34,6 +34,7 @@
 #load "session.coax";
 #load "route.coax";
 #load "plugins.coax";
+#load "router.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -775,10 +776,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck MIN] [--json]   the Router: starts Workers for events, keeps them online\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [7] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at"];
+CD_VALUE_FLAGS :: [11] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -1125,6 +1126,8 @@ tool_main :: () -> int #export_c {
   if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
   if verb == "route" { return cd_cmd_route(cd_positional(args, 1), json); }
   if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
+  if verb == "trigger" { return cd_cmd_trigger(cd_positional(args, 1), args_value(args, "--thread", ""), args_value(args, "--source", "local"), args_value(args, "--author", "me"), args_has(args, "--to-agent")); }
+  if verb == "router" { return cd_cmd_router(args_has(args, "--once"), cd_atoi(args_value(args, "--stuck", "30")), json); }
   pl_b: [1] PlRegistry; pl_load(pl_b[..]);
   if verb == "plugins" { return cd_cmd_plugins(pl_b[..], json); }
   if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }

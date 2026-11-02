@@ -90,6 +90,24 @@ cd_env_value :: (text: string, name: string) -> string {
   return "";
 }
 
+// A System One client with its key: from BASETEN_API_KEY, or from
+// ~/work/.secrets/baseten.env into kb, for curl's environment only. "" when
+// it is ready, else why not. Wipe kb after the call.
+cd_so_keyed :: (c: [] SoClient, kb: [] u8) -> string {
+  c[0] = SoClient.{};
+  ev: [16] u8;
+  if cl_getenv(SO_BASETEN_KEY_ENV, ev[..]).count > 0 { return ""; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  pb: [1200] u8; pn := cd_cat(pb[..], cd_cat(pb[..], 0, home), CD_BASETEN_ENV);
+  fb: [8192] u8; nf := fs_read(cast(string) pb[0..<pn], fb[..]);
+  v := cd_env_value(cast(string) fb[0..<ifx nf > 0 then nf else 0], SO_BASETEN_KEY_ENV);
+  kn := ifx v.count <= kb.count then cd_cat(kb, 0, v) else 0;
+  for i: 0..<fb.count { fb[i] = 0; }
+  if kn == 0 { return "no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env"; }
+  c[0].key_value = cast(string) kb[0..<kn];
+  return "";
+}
+
 cd_route_fail :: (r: [] CdRoute, why: string) { r[0].ok = false; r[0].nwhy = cd_cat(r[0].why[..], 0, why); }
 
 // Asks System One; r says what it chose, or why there is no decision.
@@ -97,19 +115,10 @@ cd_route :: (task: string, local: bool, r: [] CdRoute) {
   sb: [32768] u8;
   state := cd_route_state(task, cd_on_path("claude"), cd_on_path("codex"), local, sb[..]);
   if state.count == 0 { cd_route_fail(r, "the task is too long to route"); return; }
-  c: SoClient;
-  kb: [512] u8; kn := 0;
-  ev: [16] u8;
-  if cl_getenv(SO_BASETEN_KEY_ENV, ev[..]).count == 0 {
-    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
-    pb: [1200] u8; pn := cd_cat(pb[..], cd_cat(pb[..], 0, home), CD_BASETEN_ENV);
-    fb: [8192] u8; nf := fs_read(cast(string) pb[0..<pn], fb[..]);
-    v := cd_env_value(cast(string) fb[0..<ifx nf > 0 then nf else 0], SO_BASETEN_KEY_ENV);
-    if v.count <= kb.count { kn = cd_cat(kb[..], 0, v); }
-    for i: 0..<fb.count { fb[i] = 0; }
-    if kn == 0 { cd_route_fail(r, "no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env"); return; }
-    c.key_value = cast(string) kb[0..<kn];
-  }
+  cb: [1] SoClient; kb: [512] u8;
+  why := cd_so_keyed(cb[..], kb[..]);
+  if why.count > 0 { cd_route_fail(r, why); return; }
+  c := cb[0];
   buf: [16384] u8; b: [1] SoBody;
   cd_route_body(b[..], buf[..], state);
   out: [65536] u8; err: [4096] u8;

@@ -1,6 +1,14 @@
 # 17. One agent, many tasks
 
-> **Status: unimplemented — design draft.** Nothing here runs yet.
+> **Status: partly implemented.** A local Router runs in Coder: `coder
+> trigger` writes typed Trigger records to an inbox, and `coder router`
+> decides each one's fate. The fast path runs in code on bounded fields, a
+> System One decision is the slow path, Workers are detached Coder sessions,
+> and a later event on a subscribed Thread passes straight to its Worker. The
+> offline smoke and a live System One check cover it. Still to come: real
+> sources (chat, issues, CI), a Router model that writes replies, batching,
+> inline and spill, chain of recall, acting ahead, many-to-many subscriptions,
+> and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
 five active sessions at once, so past that point the limit is their attention,
@@ -69,6 +77,86 @@ the harness, and the agent they talk to is the same agent in every channel.
   Worker delivers only a confirmed result, such as a reproduced bug with a
   small fix as a pull request, and otherwise stays silent. Discarded work is
   logged with its cost.
+
+## What runs
+
+### Triggers
+
+`coder trigger "TEXT" [--thread T] [--source S] [--author A] [--to-agent]`
+writes one Trigger record to `~/.openagents/coder/inbox/ID.json`:
+
+```json
+{"id":"20261102-073134-163","source":"local","thread":"ci","author":"me","to_agent":true,"text":"$ echo first"}
+```
+
+Any program that can write a file can be a source: a chat bridge, a webhook
+receiver or a CI step. `to_agent` is a bounded field the source sets when
+the event is addressed to the agent, for example a mention or a direct
+message. The Router never guesses it from the text.
+
+### Sources and the fast path
+
+Each source has a policy in `~/.openagents/coder/router/sources.json`:
+
+```json
+{"sources":{
+  "local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},
+  "chat":{"mode":"candidate","authors":["*"],"policy":"A team chat. The agent works on requests about this repository; ignore social talk."},
+  "spam":{"mode":"ignore","authors":["*"]}}}
+```
+
+`coder router` ([router.coax](../../coder/tui/router.coax), `rt_fast`)
+decides in code, on the source, the author and the Thread only:
+
+| Event | Fate |
+| --- | --- |
+| Unknown source, or mode `ignore` | dropped: source ignored |
+| Author not on the source's list | dropped: author not allowed |
+| A Worker subscribes to the Thread | passed to its Thread's Worker |
+| `to_agent` is true | addressed to the agent: new Worker |
+| `explicit_requests_only` and not addressed | dropped: not addressed to the agent |
+| `candidate` and not addressed | the slow path |
+
+### The slow path
+
+A candidate goes to System One (mammoth-1) as a typed yes-or-no question:
+does the event ask the coding agent to do work now, under the source's
+written policy? The state System One sees is the event's source, Thread,
+author and text, and the policy. A probability of 0.5 or more starts a
+Worker. With no System One key, the event is dropped and the log says why.
+No keyword decides intent.
+
+In the live check, with the `chat` policy above, "the build on main is
+failing in the parser tests, can someone fix it?" started a Worker, and
+"anyone want lunch at noon?" was dropped.
+
+### Workers and subscription
+
+A Worker is a background Coder session (chapter14): the Router runs `coder
+run TEXT --detach`, on the source's engine when the policy names one. The
+Thread then subscribes to that session, in `router/threads` (one Thread and
+session ID per line). A later event on the Thread passes to its Worker in
+code, as `coder fork SESSION TEXT --detach`, so the new session carries the
+Thread's conversation. The subscription then moves to the new session. A
+Worker never writes to people; the Router's log records each event's fate:
+
+```json
+{"kind":"trigger","id":"20261102-073137-458","source":"local","thread":"ci","fate":"passed to its thread's worker","session":"20261102-073137-636","at_us":1793604697637825}
+```
+
+Decided events move to `inbox/done/`, so each event is decided once.
+
+## Checks
+
+- `coax test coder/tui/coder.coax`: the fast path on every combination of
+  mode, author, Thread and `to_agent`. Also source and author lookup, and the
+  Thread table's read and write.
+- `python3 coder/tui/smoke.py`, offline:
+  - An addressed event starts a Worker.
+  - An ignored source and an unaddressed event are dropped.
+  - A later event on the Thread goes to its Worker as a fork whose header
+    names the first Worker.
+- Live: the two `chat` events above, decided by System One.
 
 ## Dependencies
 

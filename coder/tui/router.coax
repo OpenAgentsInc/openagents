@@ -1,0 +1,353 @@
+// One agent, many tasks (Coder book chapter 17), and the loop that keeps it
+// online (chapter 20), on this machine. Events arrive as Trigger records,
+// one JSON file each, in ~/.openagents/coder/inbox:
+//
+//   {"id":"t1","source":"local","thread":"fix-ci","author":"chris",
+//    "to_agent":true,"text":"the CI run on main fails; fix it"}
+//
+// The Router decides each one's fate in two stages:
+//
+// - Fast path, in code, on bounded fields only: the source's mode from
+//   router/sources.json (explicit_requests_only, candidate or ignore) and its
+//   author allowlist. A thread that a Worker subscribes to passes straight to
+//   that Worker. An event addressed to the agent (to_agent) starts a Worker.
+// - Slow path: a candidate that isn't addressed to the agent goes to System
+//   One with the source's written policy, which decides whether it asks for
+//   work. No keyword decides intent.
+//
+// A Worker is a Coder session run as a background job (chapter 14): `coder
+// run TEXT --detach`, and for a later event on its thread, `coder fork
+// SESSION TEXT --detach`, so it carries the thread's conversation. The thread
+// then subscribes to the new session. Workers don't talk to people; the
+// Router's log says what happened to every event.
+//
+// State lives in files, so a Router that restarts resumes where it was:
+// router/threads (thread and session, a line each), router/log.jsonl, and
+// inbox/done for the events it has decided. The watchdog (chapter 20) looks
+// at Workers on each pass: a Worker whose process is gone without an end
+// line is ended as lost, and one whose log hasn't grown for --stuck minutes
+// is reported once.
+
+RT_MODES :: [3] string.["explicit_requests_only", "candidate", "ignore"];
+RT_THREADS :: 256;
+
+RtTrigger :: struct {
+  id: string; source: string; thread: string; author: string; text: string;
+  to_agent: bool;
+}
+
+// What the fast path decided.
+RT_DROP_SOURCE :: 0; RT_DROP_AUTHOR :: 1; RT_DROP_NOT_ASKED :: 2; RT_TO_THREAD :: 3; RT_START :: 4; RT_ASK :: 5;
+RT_FATES :: [6] string.["dropped: source ignored", "dropped: author not allowed", "dropped: not addressed to the agent", "passed to its thread's worker", "addressed to the agent: new worker", "a candidate: System One decides"];
+
+// The fast path: bounded fields only. mode is the source's mode ("" for an
+// unknown source), allowed whether the author is on its allowlist, worker
+// whether the thread has a Worker.
+rt_fast :: (t: RtTrigger, mode: string, allowed: bool, worker: bool) -> int {
+  if mode.count == 0 || mode == "ignore" { return RT_DROP_SOURCE; }
+  if !allowed { return RT_DROP_AUTHOR; }
+  if worker && t.thread.count > 0 { return RT_TO_THREAD; }
+  if t.to_agent { return RT_START; }
+  if mode == "explicit_requests_only" { return RT_DROP_NOT_ASKED; }
+  return RT_ASK;
+}
+
+// The source's policy in sources.json: {"sources":{"local":{"mode":"candidate","authors":["*"],"engine":"echo","policy":"..."}}}.
+rt_source :: (ar: [] ClArena, sources: string, source: string) -> string {
+  all := cl_raw(sources, "sources");
+  for i: 0..<cl_count(all) {
+    k := cl_text(ar, all, cl_key(all, i));
+    if k == source { return cl_json(all, cl_item(all, i)); }
+  }
+  return "";
+}
+
+rt_author_ok :: (ar: [] ClArena, policy: string, author: string) -> bool {
+  list := cl_raw(policy, "authors");
+  for i: 0..<cl_count(list) {
+    a := cl_text(ar, list, cl_item(list, i));
+    if a == "*" || a == author { return true; }
+  }
+  return false;
+}
+
+// The thread table: "thread\tsession" lines.
+RtThreads :: struct { thread: [RT_THREADS] [128] u8; nthread: [RT_THREADS] int; session: [RT_THREADS] [32] u8; nsession: [RT_THREADS] int; n: int; }
+
+rt_thread_find :: (th: [] RtThreads, thread: string) -> int {
+  for i: 0..<th[0].n { if cast(string) th[0].thread[i][0..<th[0].nthread[i]] == thread { return i; } }
+  return -1;
+}
+
+rt_thread_set :: (th: [] RtThreads, thread: string, session: string) {
+  i := rt_thread_find(th, thread);
+  if i < 0 { if th[0].n == RT_THREADS { return; } i = th[0].n; th[0].n += 1; th[0].nthread[i] = cd_cat(th[0].thread[i][..], 0, thread); }
+  th[0].nsession[i] = cd_cat(th[0].session[i][..], 0, session);
+}
+
+rt_threads_read :: (th: [] RtThreads, text: string) {
+  th[0].n = 0;
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    tab := 0; while tab < line.count && line[tab] != 9 { tab += 1; }
+    if tab == 0 || tab >= line.count - 1 { continue; }
+    rt_thread_set(th, cast(string) line[0..<tab], cast(string) line[tab + 1..<line.count]);
+  }
+}
+
+rt_threads_text :: (th: [] RtThreads, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<th[0].n {
+    n = cd_cat(out, n, cast(string) th[0].thread[i][0..<th[0].nthread[i]]); n = cd_cat(out, n, "\t");
+    n = cd_cat(out, n, cast(string) th[0].session[i][0..<th[0].nsession[i]]); n = cd_cat(out, n, "\n");
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- the loop
+
+RtPaths :: struct { root: [1100] u8; nroot: int; }
+
+rt_path :: (p: [] RtPaths, rel: string, out: [] u8) -> string {
+  n := cd_cat(out, 0, cast(string) p[0].root[0..<p[0].nroot]); n = cd_cat(out, n, rel);
+  return cast(string) out[0..<n];
+}
+
+rt_init :: (p: [] RtPaths) -> bool {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return false; }
+  n := cd_cat(p[0].root[..], 0, home); n = cd_cat(p[0].root[..], n, "/.openagents"); x := fs_mkdir(cast(string) p[0].root[0..<n]);
+  n = cd_cat(p[0].root[..], n, "/coder"); x = fs_mkdir(cast(string) p[0].root[0..<n]);
+  p[0].nroot = n;
+  b: [1300] u8;
+  x = fs_mkdir(rt_path(p, "/inbox", b[..])); x = fs_mkdir(rt_path(p, "/inbox/done", b[..])); x = fs_mkdir(rt_path(p, "/router", b[..]));
+  return true;
+}
+
+// Runs `coder.sh ARGS... --detach`, which prints the new session's ID; "" when it failed.
+rt_coder :: (args: [] string, id_out: [] u8) -> string {
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { return ""; }
+  sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
+  h := cxproc_new();
+  if h < 0 { return ""; }
+  ok := cl_push(h, CL_FIELD_ARG, cast(string) sb[0..<sn]);
+  for v: args { ok = ok && cl_push(h, CL_FIELD_ARG, v); }
+  ok = ok && cl_push(h, CL_FIELD_ARG, "--detach");
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return ""; }
+  c := cxproc_close_stdin(h);
+  n := 0;
+  for guard: 0..<600 {
+    m := cxproc_read_line(h, 1000);
+    if m == CL_TIMEOUT { continue; }
+    if m <= 0 { break; }
+    for i: 0..<m { if n < id_out.count { id_out[n] = cast,trunc(u8) cxproc_line_byte(h, i); n += 1; } }
+  }
+  w := cxproc_wait(h, 30000); r := cxproc_release(h);
+  return ifx w == 0 then cast(string) id_out[0..<n] else "";
+}
+
+// Asks System One whether a candidate asks for work, under the source's written policy. 1 yes, 0 no, -1 no decision (why in why).
+rt_decide :: (t: RtTrigger, policy: string, why: [] u8, nwhy: [] int) -> int {
+  cb: [1] SoClient; kb: [512] u8;
+  w := cd_so_keyed(cb[..], kb[..]);
+  if w.count > 0 { nwhy[0] = cd_cat(why, 0, w); return -1; }
+  sb: [32768] u8;
+  n := json_raw(sb[..], 0, "{\"event\":{\"source\":"); n = json_write_string(sb[..], n, t.source);
+  n = json_raw(sb[..], n, ",\"thread\":"); n = json_write_string(sb[..], n, t.thread);
+  n = json_raw(sb[..], n, ",\"author\":"); n = json_write_string(sb[..], n, t.author);
+  n = json_raw(sb[..], n, ",\"text\":"); n = json_write_string(sb[..], n, t.text);
+  n = json_raw(sb[..], n, "},\"policy\":"); n = json_write_string(sb[..], n, policy);
+  n = json_raw(sb[..], n, "}");
+  if n < 0 { nwhy[0] = cd_cat(why, 0, "the event is too long to decide"); return -1; }
+  buf: [16384] u8; b: [1] SoBody;
+  so_begin(b[..], buf[..], SO_MAMMOTH, "");
+  so_state_json(b[..], cast(string) sb[0..<n]);
+  so_noul(b[..], "work", "Under the policy, does this event ask the coding agent to do work now (a change, a fix, a review, an answer only the agent can give)?");
+  out: [65536] u8; err: [4096] u8;
+  res := so_decide(cb[0], b[..], out[..], err[..]);
+  for i: 0..<kb.count { kb[i] = 0; }
+  if res.problem.count > 0 { nwhy[0] = cd_cat(why, 0, ifx res.stderr.count > 0 then res.stderr else res.problem); return -1; }
+  p := so_noul_of(res.body, "work");
+  if !p.ok { nwhy[0] = cd_cat(why, 0, "System One's answer has no work"); return -1; }
+  nwhy[0] = 0;
+  return ifx p.value >= 0.5 then 1 else 0;
+}
+
+rt_log :: (p: [] RtPaths, t: RtTrigger, fate: string, session: string, note: string, json: bool) {
+  ob: [8192] u8;
+  n := json_raw(ob[..], 0, "{\"kind\":\"trigger\",\"id\":"); n = json_write_string(ob[..], n, t.id);
+  n = json_raw(ob[..], n, ",\"source\":"); n = json_write_string(ob[..], n, t.source);
+  n = json_raw(ob[..], n, ",\"thread\":"); n = json_write_string(ob[..], n, t.thread);
+  n = json_raw(ob[..], n, ",\"fate\":"); n = json_write_string(ob[..], n, fate);
+  if session.count > 0 { n = json_raw(ob[..], n, ",\"session\":"); n = json_write_string(ob[..], n, session); }
+  if note.count > 0 { n = json_raw(ob[..], n, ",\"note\":"); n = json_write_string(ob[..], n, note); }
+  n = json_raw(ob[..], n, ",\"at_us\":"); n = json_write_int(ob[..], n, cxproc_wall_us());
+  n = json_raw(ob[..], n, "}\n");
+  if n < 0 { return; }
+  b: [1300] u8; x := fs_append(rt_path(p, "/router/log.jsonl", b[..]), cast(string) ob[0..<n]);
+  if json { cd_out(cast(string) ob[0..<n]); }
+  else {
+    lb: [1024] u8; ln := cd_cat(lb[..], 0, t.id); ln = cd_cat(lb[..], ln, "  "); ln = cd_cat(lb[..], ln, fate);
+    if session.count > 0 { ln = cd_cat(lb[..], ln, "  "); ln = cd_cat(lb[..], ln, session); }
+    if note.count > 0 { ln = cd_cat(lb[..], ln, "  ("); ln = cd_cat(lb[..], ln, note); ln = cd_cat(lb[..], ln, ")"); }
+    cd_outln(cast(string) lb[0..<ln]);
+  }
+}
+
+// One pass over the inbox: every event's fate, oldest file first. How many events.
+rt_pass :: (p: [] RtPaths, th: [] RtThreads, json: bool) -> int {
+  b: [1300] u8; sb: [65536] u8;
+  sn := fs_read(rt_path(p, "/router/sources.json", b[..]), sb[..]);
+  sources := ifx sn > 0 then cast(string) sb[0..<sn] else "{}";
+  l_b: [1] FsList; l := l_b[..];
+  ib: [1300] u8; inbox := rt_path(p, "/inbox", ib[..]);
+  n := fs_list(inbox, l);
+  done := 0;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
+    pb: [1500] u8; pn := cd_cat(pb[..], 0, inbox); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
+    path := cast(string) pb[0..<pn];
+    tb: [65536] u8; tn := fs_read(path, tb[..]);
+    db: [1600] u8; dn := cd_cat(db[..], 0, inbox); dn = cd_cat(db[..], dn, "/done/"); dn = cd_cat(db[..], dn, name);
+    if tn <= 0 { continue; }
+    text := cast(string) tb[0..<tn];
+    ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    t: RtTrigger;
+    t.id = cl_str(ar[..], text, "id"); t.source = cl_str(ar[..], text, "source"); t.thread = cl_str(ar[..], text, "thread");
+    t.author = cl_str(ar[..], text, "author"); t.text = cl_str(ar[..], text, "text");
+    ta := cl_bool(text, "to_agent"); t.to_agent = ta.ok && ta.value;
+    if t.id.count == 0 { t.id = cast(string) name[0..<name.count - 5]; }
+    policy := rt_source(ar[..], sources, t.source);
+    mode := ifx policy.count > 0 then cl_str(ar[..], policy, "mode") else "";
+    k := rt_thread_find(th, t.thread);
+    fate := rt_fast(t, mode, policy.count > 0 && rt_author_ok(ar[..], policy, t.author), k >= 0);
+    fates := RT_FATES;
+    engine := ifx policy.count > 0 then cl_str(ar[..], policy, "engine") else "";
+    decided := false;
+    if fate == RT_ASK {
+      wb: [1024] u8; nw: [1] int;
+      d := rt_decide(t, cl_str(ar[..], policy, "policy"), wb[..], nw[..]);
+      if d < 0 { rt_log(p, t, "dropped: no decision", "", cast(string) wb[0..<nw[0]], json); }
+      else if d == 0 { rt_log(p, t, "dropped: System One said it asks for no work", "", "", json); }
+      else { fate = RT_START; decided = true; }
+    }
+    if fate == RT_START || fate == RT_TO_THREAD {
+      args: [8] string; na := 0;
+      if fate == RT_TO_THREAD { args[0] = "fork"; args[1] = cast(string) th[0].session[k][0..<th[0].nsession[k]]; args[2] = t.text; na = 3; }
+      else { args[0] = "run"; args[1] = t.text; na = 2; }
+      if engine.count > 0 { args[na] = "--engine"; args[na + 1] = engine; na += 2; }
+      idb: [64] u8; id := rt_coder(args[0..<na], idb[..]);
+      if id.count == 0 { rt_log(p, t, "failed: the worker did not start", "", "", json); }
+      else {
+        if t.thread.count > 0 {
+          rt_thread_set(th, t.thread, id);
+          tt: [65536] u8; x := fs_write(rt_path(p, "/router/threads", b[..]), rt_threads_text(th, tt[..]));
+        }
+        rt_log(p, t, ifx decided then "System One said it asks for work: new worker" else fates[fate], id, "", json);
+      }
+    } else if fate != RT_ASK { rt_log(p, t, fates[fate], "", "", json); }
+    x := fs_rename(path, cast(string) db[0..<dn]);
+    done += 1;
+  }
+  return done;
+}
+
+// The watchdog: each thread's Worker that is still running. A process that is
+// gone without an end line ends as lost; one whose log is older than stuck_min
+// minutes is reported once.
+rt_watch :: (p: [] RtPaths, th: [] RtThreads, stuck_min: int, warned: [] bool, json: bool) {
+  for i: 0..<th[0].n {
+    id := cast(string) th[0].session[i][0..<th[0].nsession[i]];
+    fb: [4194304] u8; ib: [128] u8;
+    text := cd_session_file(id, fb[..], ib[..]);
+    if text.count == 0 { continue; }
+    s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    cs_read(text, s[..], ar[..]);
+    if cast(string) s[0].ending[0..<s[0].nending] != "running" { continue; }
+    t: RtTrigger; t.id = "watchdog"; t.source = "watchdog"; t.thread = cast(string) th[0].thread[i][0..<th[0].nthread[i]];
+    pid := cd_job_pid(id);
+    if pid > 0 && cxproc_pid_alive(pid) == 0 {
+      pb: [1300] u8; lb: [256] u8;
+      n := json_raw(lb[..], 0, "{\"kind\":\"end\",\"ending\":\"lost\",\"ms\":0,\"steps\":0,\"text\":\"the worker's process is gone\"}\n");
+      x := fs_append(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
+      y := fs_remove(cd_sibling(id, ".pid", pb[..]));
+      rt_log(p, t, "worker lost: ended", id, "", json);
+      continue;
+    }
+    sp: [1300] u8;
+    age := cxproc_wall_us() / 1000 - fs_mtime_ns(cd_sibling(id, ".jsonl", sp[..])) / 1000000;
+    if stuck_min > 0 && age > stuck_min * 60000 && i < warned.count && !warned[i] {
+      warned[i] = true;
+      tb: [16] u8; nb: [64] u8; nn := cd_cat(nb[..], 0, "no progress for "); nn = cd_cat(nb[..], nn, cd_itoa(age / 60000, tb[..])); nn = cd_cat(nb[..], nn, " minutes");
+      rt_log(p, t, "worker stuck", id, cast(string) nb[0..<nn], json);
+    }
+  }
+}
+
+// coder router [--once] [--stuck MIN] [--json]: the Router's loop.
+cd_cmd_router :: (once: bool, stuck_min: int, json: bool) -> int {
+  p: [1] RtPaths;
+  if !rt_init(p[..]) { tool_errln("coder router: no $HOME"); return 1; }
+  th: [1] RtThreads; b: [1300] u8; tb: [65536] u8;
+  tn := fs_read(rt_path(p[..], "/router/threads", b[..]), tb[..]);
+  rt_threads_read(th[..], ifx tn > 0 then cast(string) tb[0..<tn] else "");
+  warned: [RT_THREADS] bool;
+  if !once && !json { cd_outln("Router: watching ~/.openagents/coder/inbox. Ctrl-C stops it; it resumes from its files."); }
+  while true {
+    n := rt_pass(p[..], th[..], json);
+    rt_watch(p[..], th[..], stuck_min, warned[..], json);
+    if once { return 0; }
+    x := cxproc_sleep_ms(2000);
+  }
+  return 0;
+}
+
+// coder trigger "TEXT" [--thread T] [--source S] [--author A] [--to-agent]: one event into the inbox.
+cd_cmd_trigger :: (text: string, thread: string, source: string, author: string, to_agent: bool) -> int {
+  if text.count == 0 { tool_errln("coder trigger: coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]"); return 2; }
+  p: [1] RtPaths;
+  if !rt_init(p[..]) { tool_errln("coder trigger: no $HOME"); return 1; }
+  ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
+  ob: [65536] u8;
+  n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
+  n = json_raw(ob[..], n, ",\"source\":"); n = json_write_string(ob[..], n, source);
+  n = json_raw(ob[..], n, ",\"thread\":"); n = json_write_string(ob[..], n, thread);
+  n = json_raw(ob[..], n, ",\"author\":"); n = json_write_string(ob[..], n, author);
+  n = json_raw(ob[..], n, ifx to_agent then ",\"to_agent\":true" else ",\"to_agent\":false");
+  n = json_raw(ob[..], n, ",\"text\":"); n = json_write_string(ob[..], n, text);
+  n = json_raw(ob[..], n, "}\n");
+  if n < 0 { tool_errln("coder trigger: the text is too long"); return 2; }
+  b: [1300] u8; pb: [1400] u8; pn := cd_cat(pb[..], 0, rt_path(p[..], "/inbox/", b[..])); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".json");
+  if !fs_write(cast(string) pb[0..<pn], cast(string) ob[0..<n]) { tool_errln("coder trigger: could not write the inbox"); return 1; }
+  cd_outln(id);
+  return 0;
+}
+
+#test "the fast path decides on bounded fields: source, author, thread, addressed" {
+  t: RtTrigger; t.thread = "ci"; t.to_agent = false;
+  #assert rt_fast(t, "", true, false) == RT_DROP_SOURCE && rt_fast(t, "ignore", true, true) == RT_DROP_SOURCE;
+  #assert rt_fast(t, "candidate", false, true) == RT_DROP_AUTHOR;
+  #assert rt_fast(t, "candidate", true, true) == RT_TO_THREAD;
+  #assert rt_fast(t, "explicit_requests_only", true, false) == RT_DROP_NOT_ASKED;
+  #assert rt_fast(t, "candidate", true, false) == RT_ASK;
+  t.to_agent = true;
+  #assert rt_fast(t, "explicit_requests_only", true, false) == RT_START;
+}
+
+#test "sources, authors and the thread table" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  src := "{\"sources\":{\"local\":{\"mode\":\"candidate\",\"authors\":[\"*\"]},\"github:o/r\":{\"mode\":\"explicit_requests_only\",\"authors\":[\"chris\"]}}}";
+  g := rt_source(ar[..], src, "github:o/r");
+  #assert cl_str(ar[..], g, "mode") == "explicit_requests_only" && rt_author_ok(ar[..], g, "chris") && !rt_author_ok(ar[..], g, "bot");
+  #assert rt_source(ar[..], src, "mail").count == 0 && rt_author_ok(ar[..], rt_source(ar[..], src, "local"), "anyone");
+  th: [1] RtThreads; ob: [1024] u8;
+  rt_threads_read(th[..], "ci\t20261102-000000-001\nbad line\ndocs\t20261102-000000-002\n");
+  #assert th[0].n == 2 && rt_thread_find(th[..], "docs") == 1;
+  rt_thread_set(th[..], "ci", "20261102-000000-003");
+  #assert rt_threads_text(th[..], ob[..]) == "ci\t20261102-000000-003\ndocs\t20261102-000000-002\n";
+}

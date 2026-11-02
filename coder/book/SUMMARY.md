@@ -27,13 +27,13 @@
 - [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — partly implemented
 - [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — partly implemented
 - [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented
-- [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — design draft
+- [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — partly implemented
 - [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented
 - [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) — partly implemented
 
 ## IV. Staying online
 
-- [20. An agent that stays online](ch020-an-agent-that-stays-online.md) — design draft
+- [20. An agent that stays online](ch020-an-agent-that-stays-online.md) — partly implemented
 
 ## V. Measure
 

@@ -28,8 +28,8 @@ built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 23 are
-partly implemented, 12 are written surveys and 2 are design drafts; none is fully implemented yet. Chapters 1–8
+Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 25 are
+partly implemented and 12 are written surveys; none is fully implemented yet. Chapters 1–8
 and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
 code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
 names it.
@@ -62,10 +62,10 @@ names it.
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks and background jobs |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Partly implemented: owned commands, states, signed installs |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) | Partly implemented: cpu-mcp-2025-06-18-subset-v1, bounded CPU |
-| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Unimplemented: design draft |
+| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Partly implemented: a local Router, triggers and Workers |
 | [18. Consent before sharing](ch018-consent-before-sharing.md) | Partly implemented: cs-consent-v1, bounded CPU, SHA-256 hash-chained consent ledger |
 | [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) | Partly implemented: mm-memory-v1, bounded CPU, SHA-256 hash-chained memory events |
-| [20. An agent that stays online](ch020-an-agent-that-stays-online.md) | Unimplemented: design draft |
+| [20. An agent that stays online](ch020-an-agent-that-stays-online.md) | Partly implemented: a resumable loop and a watchdog |
 | [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1, bounded CPU |
 | [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) | Partly implemented: cpu-int-candidates-v1, bounded CPU |
 | [23. `openagents coder`](ch023-openagents-coder.md) | Partly implemented: `run`, `ls`, `status`, `log` |
