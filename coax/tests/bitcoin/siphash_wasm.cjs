@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Run SipHash-2-4 compiled to wasm32 in Node's WASI and compare each tag with
 // the fixture's (the 64 reference vectors and the oracle cases from siphash.py).
 const fs = require('node:fs');

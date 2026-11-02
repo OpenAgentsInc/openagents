@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Run SHA-512 compiled to wasm32 in Node's WASI and compare each digest with
 // the fixture's (the NIST CAVS rows and hashlib streams from sha512.py).
 const fs = require('node:fs');

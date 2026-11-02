@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: the NIST CAVS vectors and Python's hashlib check the Coax hash)
 """SHA-512 against every NIST CAVS 11.0 ShortMsg and LongMsg vector, natively and in Wasm.
 
 Bitcoin From Scratch, chapter 7. Compiles coax/lib/crypto/sha512-memory.coax
