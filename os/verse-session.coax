@@ -1,0 +1,208 @@
+// Verse OS's boot session (docs/os/2026-11-02-verse-os.md, milestone V0): the program a VT's login
+// runs so the machine shows the Verse instead of a desktop. It waits until its VT is the one on the
+// screen, runs the first realm there on the bare display (verse/gpu/vk-realm.c, which takes the
+// screen as this login's own, no root), follows travel from realm to realm as realm.sh's screen mode
+// does, and when the person leaves (Escape held a second) vk-realm shows the VT it was told to, and
+// this waits for its VT to come back, to start again where they were.
+//   verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once]
+//   verse-session --dir DIR --window [--fullscreen] [--first REALM] [--state DIR]
+// DIR is what `verse/gpu/realm.sh HOST install DIR` keeps: a directory per realm (its vk-realm,
+// drawdir and given) and the travel file (slug:module pairs). --tty N waits for ttyN to show
+// first (default: start at once); --leave-to VT is the VT shown on leaving (default 1); --state
+// DIR keeps the player, place and bar online (vk-realm --net); --once ends after one leave.
+// --window runs the same travel in a window on the Wayland desktop instead (vk-realm --window, or
+// --fullscreen), and ends when the window is closed.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+
+VS_TRAVELLED :: 3;       // vk-realm's status when the realm opened another (--go)
+VS_FOREVER :: 31536000;  // vk-realm --seconds: a year, so only the person ends it
+VS_WORDS :: 32;
+
+// The words of a line (spaces, tabs and newlines between), as slices of text: how many.
+vs_words :: (text: string, words: [] string) -> int {
+  n := 0; i := 0;
+  while i < text.count && n < words.count {
+    while i < text.count && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n') { i += 1; }
+    if i >= text.count { break; }
+    s := i;
+    while i < text.count && text[i] != ' ' && text[i] != '\t' && text[i] != '\n' { i += 1; }
+    words[n] = text[s..<i]; n += 1;
+  }
+  return n;
+}
+#test "words" {
+  w: [VS_WORDS] string;
+  #assert vs_words("", w[..]) == 0 && vs_words(" \n", w[..]) == 0;
+  #assert vs_words("- --page 1\n", w[..]) == 3 && w[0] == "-" && w[1] == "--page" && w[2] == "1";
+  #assert vs_words("  everglade.pack\t--facts x  ", w[..]) == 3 && w[0] == "everglade.pack" && w[2] == "x";
+  two: [2] string;
+  #assert vs_words("a b c", two[..]) == 2 && two[1] == "b";
+}
+
+// The module a slug opens, from realm.sh's travel line ("slug:module ..."), or "" when the slug is
+// not one of them (a world that is not native here: the person stays where they were).
+vs_module_of :: (travel: string, slug: string) -> string {
+  w: [64] string;
+  n := vs_words(travel, w[..]);
+  if slug.count == 0 { return ""; }
+  for i: 0..<n {
+    p := w[i]; c := 0;
+    while c < p.count && p[c] != ':' { c += 1; }
+    if c < p.count && c + 1 < p.count && p[0..<c] == slug { return p[c + 1..<p.count]; }
+  }
+  return "";
+}
+#test "travel names a module" {
+  t := "galaxy:verse the-grid:newland hold-the-stair:stair\n";
+  #assert vs_module_of(t, "the-grid") == "newland" && vs_module_of(t, "galaxy") == "verse";
+  #assert vs_module_of(t, "hold-the-stair") == "stair";
+  #assert vs_module_of(t, "the-gri") == "" && vs_module_of(t, "") == "" && vs_module_of(t, "newland") == "";
+  #assert vs_module_of("bad: :x the-grid:", "the-grid") == "" && vs_module_of("bad:", "bad") == "";
+}
+
+// Whether /sys/class/tty/tty0/active (what shows) names ttyN.
+vs_shows :: (active: string, n: int) -> bool {
+  w: [2] string;
+  if vs_words(active, w[..]) != 1 { return false; }
+  t := w[0];
+  if t.count < 4 || t[0..<3] != "tty" { return false; }
+  return args_whole(t[3..<t.count]) == n;
+}
+#test "which VT shows" {
+  #assert vs_shows("tty3\n", 3) && vs_shows("tty12", 12);
+  #assert !vs_shows("tty3\n", 2) && !vs_shows("tty", 0) && !vs_shows("", 3) && !vs_shows("pts3", 3) && !vs_shows("tty3 tty4", 3);
+}
+
+// What to run next after vk-realm ends with status, having opened next (the module its slug names,
+// "" when none) that is here or not: the module to start without waiting, or "" to wait for the VT
+// (the person left, it failed, or the world is not native here).
+vs_after :: (status: int, next: string, here: bool) -> string {
+  if status != VS_TRAVELLED || next.count == 0 || !here { return ""; }
+  return next;
+}
+#test "after a realm ends" {
+  #assert vs_after(3, "newland", true) == "newland";
+  #assert vs_after(3, "newland", false) == "" && vs_after(3, "", true) == "";
+  #assert vs_after(0, "newland", true) == "" && vs_after(1, "newland", true) == "" && vs_after(4, "newland", true) == "";
+}
+
+vs_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+vs_copy :: (out: [] u8, s: string) -> string { return vs_cat(out, s, ""); }
+
+// Whether DIR has realm m built (its vk-realm).
+vs_has_realm :: (dir: string, m: string) -> bool {
+  b: [4096] u8; c: [4096] u8;
+  d := fs_join(dir, m, b[..]);
+  return fs_exists(fs_join(d, "vk-realm", c[..]));
+}
+
+// Waits until ttyN shows (n 0: at once).
+vs_wait_for :: (n: int) {
+  if n <= 0 { return; }
+  active: [64] u8;
+  while true {
+    k := fs_read("/sys/class/tty/tty0/active", active[..]);
+    if k > 0 && vs_shows(cast(string) active[0..<k], n) { return; }
+    proc_sleep(500);
+  }
+}
+
+// One realm on the screen: its exit status, its lines passed through to this program's stdout.
+vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string) -> int {
+  b: [6] [4096] u8;
+  rdir := fs_join(dir, realm, b[0][..]);
+  drawdir_text: [4096] u8; given_text: [4096] u8;
+  nd := fs_read(fs_join(rdir, "drawdir", b[1][..]), drawdir_text[..]);
+  ng := fs_read(fs_join(rdir, "given", b[2][..]), given_text[..]);
+  if nd <= 0 || ng <= 0 { print("verse-session: % has no drawdir or given\n", realm); return -1; }
+  dw: [VS_WORDS] string; gw: [VS_WORDS] string;
+  ndw := vs_words(cast(string) drawdir_text[0..<nd], dw[..]);
+  ngw := vs_words(cast(string) given_text[0..<ng], gw[..]);
+  h := proc_new(); if h < 0 { return -1; }
+  ok := proc_arg(h, fs_join(rdir, "vk-realm", b[3][..]));
+  for i: 0..<ndw { ok = ok && proc_arg(h, dw[i]); }
+  for i: 0..<ngw { ok = ok && proc_arg(h, gw[i]); }
+  ok = ok && proc_arg(h, "--name") && proc_arg(h, realm) && proc_arg(h, "--go") && proc_arg(h, go);
+  if window.count > 0 { ok = ok && proc_arg(h, window); }
+  else { ok = ok && proc_arg(h, "--leave-to") && proc_arg(h, leave_to); }
+  ok = ok && proc_arg(h, "--seconds");
+  sb: [24] u8; ok = ok && proc_arg(h, vs_num(VS_FOREVER, sb[..]));
+  if state.count > 0 { ok = ok && proc_arg(h, "--net") && proc_arg(h, state); }
+  ok = ok && proc_cwd(h, rdir);
+  if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", realm); return -1; }
+  c := proc_close_stdin(h);
+  line: [65536] u8;
+  while true {
+    n := proc_line(h, -1, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n >= 0 { print("%\n", cast(string) line[0..<n]); }
+  }
+  status := proc_wait(h, -1);
+  e: [4096] u8; t := proc_stderr(h, e[..]);
+  if t.count > 0 { tool_err(t); if t[t.count - 1] != '\n' { tool_errln(""); } }
+  d := proc_release(h);
+  return status;
+}
+vs_num :: (n: int, out: [] u8) -> string {
+  d: [24] u8; k := 0; v := n;
+  while true { d[k] = cast,trunc(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  for i: 0..<k { out[i] = d[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+#test "numbers" { b: [24] u8; #assert vs_num(0, b[..]) == "0" && vs_num(31536000, b[..]) == "31536000"; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  usage := "usage: verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once] [--window | --fullscreen]";
+  if !args_load(a[..]) { tool_errln(usage); return 2; }
+  dir := args_value(a[..], "--dir", "");
+  tty := args_whole(args_value(a[..], "--tty", "0"));
+  leave_to := args_value(a[..], "--leave-to", "1");
+  state := args_value(a[..], "--state", "");
+  window := ifx args_has(a[..], "--fullscreen") then "--fullscreen" else ifx args_has(a[..], "--window") then "--window" else "";
+  once := args_has(a[..], "--once") || window.count > 0;
+  if dir.count == 0 || tty < 0 || args_whole(leave_to) < 0 { tool_errln(usage); return 2; }
+  travel_text: [65536] u8; b: [4] [4096] u8;
+  nt := fs_read(fs_join(dir, "travel", b[0][..]), travel_text[..]);
+  travel := ifx nt > 0 then cast(string) travel_text[0..<nt] else "";
+  cur_b: [256] u8;
+  cur := vs_copy(cur_b[..], args_value(a[..], "--first", "newland"));
+  if !vs_has_realm(dir, cur) { print("verse-session: no realm % in %\n", cur, dir); return 1; }
+  go := fs_join(dir, "go", b[1][..]);
+  while true {
+    if window.count == 0 { vs_wait_for(tty); }
+    r := fs_remove(go);
+    status := vs_run(dir, cur, leave_to, state, go, window);
+    slug_b: [256] u8; ns := fs_read(go, slug_b[..]);
+    slug := ifx ns > 0 then cast(string) slug_b[0..<ns] else "";
+    w: [2] string; if vs_words(slug, w[..]) == 1 { slug = w[0]; } else { slug = ""; }
+    m := vs_module_of(travel, slug);
+    next := vs_after(status, m, m.count > 0 && vs_has_realm(dir, m));
+    if next.count > 0 {
+      print("verse-session: % opened % (%)\n", cur, slug, next);
+      nb: [256] u8; nn := vs_copy(nb[..], next);
+      cur = vs_copy(cur_b[..], nn);
+      continue;
+    }
+    if status == VS_TRAVELLED { print("verse-session: % opened %, which is not native here; staying\n", cur, slug); continue; }
+    print("verse-session: % ended (status %)\n", cur, status);
+    if once { return ifx status == 0 then 0 else 1; }
+    // a failure that comes back at once must not spin: a second before the next try
+    proc_sleep(1000);
+    // the person left to another VT: wait for this one to show again (vs_wait_for), then resume
+    if tty > 0 {
+      active: [64] u8; k := fs_read("/sys/class/tty/tty0/active", active[..]);
+      while k > 0 && vs_shows(cast(string) active[0..<k], tty) { proc_sleep(500); k = fs_read("/sys/class/tty/tty0/active", active[..]); }
+    }
+  }
+  return 0;
+}

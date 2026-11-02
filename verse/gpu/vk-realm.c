@@ -6,7 +6,8 @@
 // buffers in place, its counts are set, and the spec is recorded and presented.
 //   vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden]
 //            [--seconds N] [--demo] [--shot OUT.ppm] [--shot-at S]       on the screen (vkd.h)
-//            [--net DIR] [--origin HOST[:PORT]] [--name NAME]
+//            [--net DIR] [--origin HOST[:PORT]] [--name NAME] [--leave-to VT]
+//   vk-realm DIR PACK ... --window [--fullscreen] [--size WxH] ...          in a window on the Wayland desktop (vkw.h)
 //   vk-realm DIR PACK ... --headless FRAMES [--out OUT.f32]                 offscreen
 // DIR holds spec.txt and its files. --size is what the passes draw at (default: the screen's,
 // or the spec's offscreen); on the screen it is scaled to the mode's size. --headless runs
@@ -37,6 +38,7 @@
 #include "vk-spec.h"
 #endif
 #include "vkd.h"
+#include "vkw.h"
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -45,8 +47,35 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <linux/kd.h>
+#include <linux/vt.h>
+#include <sys/ioctl.h>
 
 #define MAX_FRAMES 100000
+
+// --leave-to N (the boot session, docs/os/2026-11-02-verse-os.md V0): the realm runs on its own
+// VT, which this process's login owns, so no root is needed. While it runs the console is kept
+// in graphics mode (no text drawn over the realm); on leaving it goes back to text and VT N shows.
+static int vt_fd = -1;
+// A crash gives the console back too, or the VT would stay dark with nothing drawing it.
+static void vt_on_crash(int sig) {
+  if (vt_fd >= 0) ioctl(vt_fd, KDSETMODE, KD_TEXT);
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+static void vt_hold(void) {
+  vt_fd = open("/dev/tty", O_RDWR | O_CLOEXEC);
+  if (vt_fd >= 0 && ioctl(vt_fd, KDSETMODE, KD_GRAPHICS) < 0) { close(vt_fd); vt_fd = -1; }
+  if (vt_fd >= 0) { signal(SIGSEGV, vt_on_crash); signal(SIGBUS, vt_on_crash); signal(SIGABRT, vt_on_crash); signal(SIGFPE, vt_on_crash); }
+}
+static void vt_leave(int to) {
+  if (vt_fd < 0) return;
+  ioctl(vt_fd, KDSETMODE, KD_TEXT);
+  if (to > 0) ioctl(vt_fd, VT_ACTIVATE, to);
+  close(vt_fd);
+  vt_fd = -1;
+}
 static RealmHost H;
 static volatile sig_atomic_t stopping;
 static void on_signal(int s) { (void)s; stopping = 1; }
@@ -134,6 +163,13 @@ static void to_pointer(void *user, float x, float y, int phase) { (void)user; co
 static void to_wheel(void *user, float dy) { (void)user; coaxial_wheel(H.state, dy); }
 static Mice mice;
 static int cursor;
+static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
+static float draw_w, draw_h;   // what the realm draws at
+static void to_pointer_window(void *user, float x, float y, int phase) {
+  float sx = window_p && window_p->w ? draw_w / (float)window_p->w : 1, sy = window_p && window_p->h ? draw_h / (float)window_p->h : 1;
+  mice.x = x * sx; mice.y = y * sy; mice.down = phase != 2;
+  to_pointer(user, mice.x, mice.y, phase);
+}
 static uint32_t with_cursor(uint32_t n) {
   if (!cursor || H.floats != 16 || n > (uint32_t)H.max_vertices || 6 > (uint32_t)H.max_vertices-n) return n;
   float *v = (float *)rh_ptr(H.vertices) + (size_t)n * 16, r = 14;
@@ -247,20 +283,22 @@ static void press_keys(const char *keys, int frame) {
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
-                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...]\n");
+                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT]\n");
     return 2;
   }
   const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL,*raw_out=NULL;
   double seconds = 60, shot_at = 4;
   float scale = 1;
   uint32_t w = 0, h = 0;
-  int golden = 0, headless = 0, demo = 0;
+  int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
   int page = 0;
   for (int i = 3; i < argc; i++) {
     const char *a = argv[i], *val = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--golden")) golden = 1;
     else if (!strcmp(a, "--demo")) demo = 1;
+    else if (!strcmp(a, "--window")) windowed = 1;
+    else if (!strcmp(a, "--fullscreen")) windowed = fullscreen = 1;
     else if (!val) { fprintf(stderr, "vk-realm: %s wants a value\n", a); return 2; }
     else if (!strcmp(a, "--facts")) facts = val, i++;
     else if (!strcmp(a, "--net")) net_dir = val, i++;
@@ -276,6 +314,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--out")) out = val, i++;
     else if (!strcmp(a, "--raw-out")) raw_out = val, i++;
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
+    else if (!strcmp(a, "--leave-to")) leave_to = atoi(val), i++;  // the boot session: hold this VT, show VT N on leaving
     else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
@@ -337,10 +376,20 @@ int main(int argc, char **argv) {
 #endif
 
   Vkc v;
-  Vkd screen;
+  Vkd screen = {0};
+  static Vkw win;
   static Vkp p;
   if (headless) vkc_open(&v);
-  else {
+  else if (windowed) {
+    // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
+    VkwTo wto = {to_pointer_window, to_wheel, NULL};
+    vkw_open(&v, &win, "Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
+    screen.period = win.period;
+    vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
+    if (!w) { w = p.w; h = p.h; }
+    draw_w = (float)w; draw_h = (float)h;
+  } else {
+    if (leave_to) vt_hold();
     vkd_open(&v, &screen, "vk-realm");
     vkp_open(&v, &p, screen.surface, screen.extent.width, screen.extent.height);
     if (!w) { w = p.w; h = p.h; }
@@ -419,20 +468,31 @@ int main(int argc, char **argv) {
       fclose(f);
     }
   } else {
+    if (windowed) { window_p = &p; cursor = 1; }
+    else {
     keyboards_open();
     keyboards_hold_to_leave = 1.0;   // a press of Escape is the realm's (it closes a field); held a second, it leaves
     mice_open(&mice, (float)w, (float)h);
     cursor = mice.count > 0;
+    }
     MiceTo to = {to_pointer, to_wheel, NULL};
-    fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
+    if (windowed) fprintf(stderr, "vk-realm: in a %ux%u window%s at %.3f Hz, drawn at %ux%u; closing the window or %.0f s ends it\n", p.w, p.h, fullscreen ? " (full screen)" : "", 1 / screen.period, w, h, seconds);
+    else fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
             mice.count, seconds);
     double start = now_s(), prev = start;
     while (frames < MAX_FRAMES) {
       double t = now_s();
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
-      if (keyboards_read(NULL)) { why = "Escape was held"; break; }
-      mice_read(&mice, (float)w, (float)h, &to);
+      if (windowed) {
+        vkw_pump(&win);
+        if (win.closed) { why = "the window was closed"; break; }
+        // a new size from the compositor: a new swapchain; the realm keeps drawing at its size
+        if (win.want_w > 0 && win.want_h > 0 && ((uint32_t)win.want_w != p.w || (uint32_t)win.want_h != p.h)) vkp_resize(&v, &p, (uint32_t)win.want_w, (uint32_t)win.want_h);
+      } else {
+        if (keyboards_read(NULL)) { why = "Escape was held"; break; }
+        mice_read(&mice, (float)w, (float)h, &to);
+      }
       if (demo) {
         // walk forward and turn now and then, for a run nobody plays
         int phase = (int)((t - start) / 3) % 3;
@@ -514,9 +574,14 @@ int main(int argc, char **argv) {
   if (headless) vkc_close(&v);
   else {
     vkp_close(&v, &p);
-    vkd_close(&v, &screen);
-    keyboards_close();
-    mice_close(&mice);
+    if (windowed) vkw_close(&v, &win);
+    else {
+      vkd_close(&v, &screen);
+      keyboards_close();
+      mice_close(&mice);
+      // leaving to another realm keeps the VT for the next one
+      if (!travelled) vt_leave(leave_to);
+    }
   }
   rh_net_close();
   rh_close(&H);

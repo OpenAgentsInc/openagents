@@ -1,0 +1,44 @@
+{
+  description = "Verse OS: NixOS modules for a machine that boots into the Verse (docs/os/2026-11-02-verse-os.md)";
+
+  # The nixpkgs coderos-4080 runs (~/coder/os's pin), so a host importing these
+  # modules builds the system it built before, plus what they add.
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/c25784012c9982bca5b3e0de87e90bbdac8927d3";
+
+  outputs = { self, nixpkgs }:
+    let
+      system = "x86_64-linux";
+      # A host with nothing but the module, for the evaluation check: a
+      # stand-in disk and boot loader, one account, the Verse on tty3.
+      example = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          self.nixosModules.verse-os
+          {
+            boot.loader.grub.enable = false;
+            boot.loader.systemd-boot.enable = true;
+            fileSystems."/" = { device = "/dev/disk/by-label/verse-os"; fsType = "ext4"; };
+            users.users.pilot = { isNormalUser = true; };
+            services.getty.autologinUser = "pilot";
+            verseos.session = {
+              enable = true;
+              user = "pilot";
+              dir = "/home/pilot/.local/share/verse-os/current";
+              stateDir = "/home/pilot/.local/state/verse";
+            };
+            system.stateVersion = "26.05";
+          }
+        ];
+      };
+    in
+    {
+      nixosModules.verse-os = ./modules/verse-os.nix;
+      nixosModules.default = self.nixosModules.verse-os;
+
+      nixosConfigurations.verse-os-example = example;
+
+      # `nix flake check ./os/nix` evaluates the example host to its system:
+      # the options type-check, the assertions hold, the login script renders.
+      checks.${system}.example = example.config.system.build.toplevel;
+    };
+}

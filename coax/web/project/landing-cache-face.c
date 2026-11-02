@@ -64,16 +64,18 @@ int64_t home_cache_rewritten(void) {int64_t r=cache.rewrite;cache.rewrite=0;retu
 int64_t home_cache_head_chunks(void) {return cache.head_chunks;}
 int64_t home_cache_put(int64_t chunk,int64_t chunks,int64_t token) {
   int64_t n=chunk<0?hc_head(c(),chunks,out()):hc_pack(c(),chunk,out());if(n<0)return -1;
-  char k[24];int32_t kn=key(k,chunk);
+  static char k[24];int32_t kn=key(k,chunk);
   return coaxial_storage_put(1,(int32_t)token,(uint32_t)(uintptr_t)NS,sizeof NS-1,1,(uint32_t)(uintptr_t)k,kn,(uint32_t)(uintptr_t)nl_output_bytes,(int32_t)n);
 }
 int64_t home_cache_get(int64_t chunk,int64_t token) {
-  char k[24];int32_t kn=key(k,chunk);
+  static char k[24];int32_t kn=key(k,chunk);
   return coaxial_storage_get(0,(int32_t)token,(uint32_t)(uintptr_t)NS,sizeof NS-1,1,(uint32_t)(uintptr_t)k,kn);
 }
-/* The build's seed part i (`openagents project landing`), named by its capture. */
+/* The build's seed part i (`openagents project landing`), named by its capture.
+   The buffers handed to the host are static, not on the stack: natively (verse/native/realm-host.c)
+   a pointer is a 32-bit offset, and the stack lies above 4 GB, where it would be cut off. */
 int64_t home_cache_seed(int64_t captured,int64_t part) {
-  char url[96];int n=0;const char *p="/build/home-seed/";while(*p)url[n++]=*p++;
+  static char url[96];int n=0;const char *p="/build/home-seed/";while(*p)url[n++]=*p++;
   char d[24];int m=0;do{d[m++]=(char)('0'+captured%10);captured/=10;}while(captured&&m<20);while(m)url[n++]=d[--m];
   url[n++]='-';m=0;do{d[m++]=(char)('0'+part%10);part/=10;}while(part&&m<20);while(m)url[n++]=d[--m];
   p=".txt";while(*p)url[n++]=*p++;

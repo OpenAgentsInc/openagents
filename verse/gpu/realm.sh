@@ -17,6 +17,17 @@
 #                                                    presses of Right) and opened with Enter, then the
 #                                                    realm it names started as the screen would
 #   verse/gpu/realm.sh HOST screen [vk-realm options: --seconds N --demo --size WxH --shot-at S]
+#   verse/gpu/realm.sh HOST window [vk-realm options: --fullscreen --seconds N --size WxH --demo]
+#                                                    the same travel as screen, in a window on HOST's
+#                                                    Wayland desktop (vkw.h): no root, no VT; the
+#                                                    window's close ends it (VERSE_WAYLAND_DISPLAY
+#                                                    names the display, default wayland-1)
+#   verse/gpu/realm.sh HOST install DIR              builds the realms and keeps them in DIR on HOST, with
+#                                                    verse-session (os/verse-session.coax), the boot
+#                                                    session that runs them (docs/os/2026-11-02-verse-os.md
+#                                                    V0); DIR is replaced whole, the old one kept until the
+#                                                    new one is in place
+#   HOST local (or localhost) builds and runs here, with no ssh.
 #   verse/gpu/realm.sh HOST net                      the network (verse/native/net.coax, the approved
 #                                                    TLS): one request by the helper, then the first
 #                                                    realm headless with --net, its requests and answers logged
@@ -36,10 +47,14 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
-host="${1:?usage: realm.sh HOST check|screen|net [options]}"
-mode="${2:?usage: realm.sh HOST check|screen|net [options]}"
+host="${1:?usage: realm.sh HOST check|screen|window|net [options]}"
+mode="${2:?usage: realm.sh HOST check|screen|window|net [options]}"
+# the commands below run on HOST: over ssh, or here for local
+there() { if [[ "$host" == local || "$host" == localhost ]]; then bash -c "$1"; else ssh -o BatchMode=yes "$host" "$1"; fi; }
 shift 2
-case "$mode" in check|screen|net) ;; *) echo "realm.sh: unknown mode $mode" >&2; exit 2 ;; esac
+dest=""
+if [[ "$mode" == install ]]; then dest="${1:?usage: realm.sh HOST install DIR}"; shift; fi
+case "$mode" in check|screen|net|window|install) ;; *) echo "realm.sh: unknown mode $mode" >&2; exit 2 ;; esac
 renderer="${VERSE_GPU_RENDERER:-shared}"
 case "$renderer" in shared|legacy) ;; *) echo "realm.sh: VERSE_GPU_RENDERER must be shared or legacy" >&2; exit 2 ;; esac
 check_sizes="${VERSE_GPU_CHECK_SIZES-320x180 2560x1440 3840x2160}"
@@ -118,7 +133,7 @@ for realm in "${realms[@]}"; do
     printf '.\n' > "$ship/drawdir"
   else printf 'spec\n' > "$ship/drawdir"; fi
   cp "$here"/vk-realm.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
-     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$ship/"
+     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$ship/"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
   mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"
@@ -140,7 +155,8 @@ mkdir -p "$work/ship/net-src"
 coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c coax/lib/crypto/entropy.coax --library --header "$work/ship/net-src/entropy-policy.h") > "$work/ship/net-src/entropy.c"
 (cd "$root" && "$coax" c verse/native/net.coax --library) > "$work/ship/net-src/net.c"
-for f in tool-native process-native store-file-native socket-native tls-native entropy-native entropy-foreign; do
+(cd "$root" && "$coax" c os/verse-session.coax --library) > "$work/ship/net-src/verse-session.c"
+for f in tool-native process-native store-file-native read-file-native socket-native tls-native entropy-native entropy-foreign; do
   cp "$root/coax/platform/$f.c" "$root/coax/platform/$f.h" "$work/ship/net-src/"
 done
 args="$*"
@@ -149,12 +165,21 @@ automation=""
 [[ " $args " == *" --demo "* ]] && automation=native-demo
 first="${realms[0]}"
 
-COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/ship" -cf - . | ssh -o BatchMode=yes "$host" "set -e
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/ship" -cf - . | there "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; tar -x -C \"\$d\" 2>/dev/null; cd \"\$d\"
-nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validation-layers openssl --run '
+nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validation-layers openssl wayland wayland-scanner wayland-protocols --run '
   set -e
+  # the window (vkw.h): xdg-shell and server-side decorations, generated for the wayland here
+  wp=\$(pkg-config --variable=pkgdatadir wayland-protocols); mkdir -p wl
+  for x in stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1; do
+    n=\$(basename \$x)
+    wayland-scanner client-header \$wp/\$x.xml wl/\$n-client-protocol.h
+    wayland-scanner private-code \$wp/\$x.xml wl/\$n-protocol.c
+  done
   (cd net-src && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. net.c tool-native.c process-native.c store-file-native.c socket-native.c \
-     tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../net)
+     tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../net
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-session.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
+     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session)
   # each realm as realm-run builds it: no PIE (its pointers fit 32 bits), no contraction
   flags=\"-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -w -I.\"
   # the math of the wasm (musl, verse/native/musl-math.sh) ahead of glibc, as realm-run links it
@@ -171,7 +196,8 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
      pids=()
      for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
-     gcc \$flags \"\${link_flags[@]}\" -Ikms \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
+     gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
+     gcc \$flags \"\${link_flags[@]}\" -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client) -lvulkan -lm -o vk-realm
      cp ../net .) & realm_pids+=(\$!)
   done
   for pid in \"\${realm_pids[@]}\"; do wait \$pid; done
@@ -226,6 +252,38 @@ if [ $mode = net ]; then
   VERSE_AUTOMATION=$automation VERSE_NATIVE_NET_LOG=1 ./vk-realm \$(cat drawdir) \$(cat given) --name $first --size 320x180 --headless 3000 --net \$here/kept
   echo \"realm.sh: kept: \$(ls \$here/kept 2>/dev/null | tr '\\n' ' ')\"
   exit 0
+fi
+if [ $mode = install ]; then
+  # the built realms, kept: DIR.new filled, then swapped in for DIR
+  dest=$dest; mkdir -p \$(dirname \$dest); rm -rf \$dest.new \$dest.old
+  mkdir \$dest.new && cp -a \$here/. \$dest.new/ && rm -rf \$dest.new/net-src \$dest.new/ship 2>/dev/null
+  { [ ! -e \$dest ] || mv \$dest \$dest.old; } && mv \$dest.new \$dest && rm -rf \$dest.old
+  # the store paths the programs link (Vulkan, libdrm, wayland, OpenSSL: nix-shell's), kept from
+  # the garbage collector while this directory holds them
+  mkdir -p \$dest/.gcroots
+  for p in \$(LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ldd \$dest/*/vk-realm \$dest/net \$dest/verse-session 2>/dev/null | grep -o \"/nix/store/[^/ ]*\" | sort -u); do
+    nix-store --add-root \$dest/.gcroots/\$(basename \$p) -r \$p > /dev/null
+  done
+  echo \"realm.sh: installed \$(cat \$dest/realms) in \$dest\"
+  exit 0
+fi
+if [ $mode = window ]; then
+  # travel in a window on the desktop, as screen does on the bare screen: no root, no VT, no watchdog
+  # (the window's close, --seconds or a signal end it)
+  export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)} WAYLAND_DISPLAY=${VERSE_WAYLAND_DISPLAY:-wayland-1}
+  mkdir -p \$HOME/.local/state/verse
+  cur=$first; start=\$(date +%s); status=0
+  while :; do
+    left=\$(( $seconds - (\$(date +%s) - start) ))
+    [ \$left -gt 0 ] || break
+    rm -f \$here/go; status=0
+    (cd \$here/\$cur && ${automation:+VERSE_AUTOMATION=$automation} ./vk-realm \$(cat drawdir) \$(cat given) --name \$cur --window --net \$HOME/.local/state/verse $args --seconds \$left --go \$here/go) || status=\$?
+    [ \$status = 3 ] || break
+    slug=\$(cat \$here/go 2>/dev/null || true); next=\$(module_of \$slug)
+    if [ -n \"\$next\" ]; then echo \"realm.sh: \$cur opened \$slug (\$next)\"; cur=\$next; else echo \"realm.sh: \$cur opened \$slug, which is not native here; staying\"; fi
+  done
+  [ \$status = 3 ] && status=0
+  exit \${status:-0}
 fi
 sudo -n rm -f /tmp/verse-realm-shot.ppm
 from=\$(sudo -n fgconsole); to=\$(sudo -n fgconsole --next-available)

@@ -25,6 +25,27 @@ a bronze figure with the account's name and AGENT. Production after that.
 `realm use build THING` still needs a staging realm with BUILD on; no listed
 staging realm has it, and switching one on is an edit to someone's realm.
 
+## Verse OS V0: the Verse on tty3 of coderos-4080 (2026-11-02)
+
+The boot session is built (docs/os/2026-11-02-verse-os.md, "Status"):
+`os/verse-session.coax`, `vk-realm --leave-to`, `verse/gpu/realm.sh local
+install`, and the NixOS module `os/nix/modules/verse-os.nix`. Turning it on
+changes the machine's configuration, so it waits for you:
+
+1. Build the realms (no screen change): `verse/gpu/realm.sh local install
+   ~/.local/share/verse-os/current` from an openagents checkout.
+2. In `~/coder/os`, add the input `verse-os.url =
+   "git+file:///home/christopherdavid/openagents?dir=os/nix"`, import
+   `verse-os.nixosModules.verse-os` in `hosts/coderos-4080.nix`, and set
+   `verseos.session = { enable = true; user = "christopherdavid"; tty = 3;
+   dir = "/home/christopherdavid/.local/share/verse-os/current"; stateDir =
+   "/home/christopherdavid/.local/state/verse"; };`. Build, compare with
+   `nix store diff-closures`, switch. The module adds you to `input`, so log
+   in again once (or reboot) before the session can read the keyboard.
+3. At the desk: Ctrl+Alt+F3. The Grid fills the screen. Escape held a second
+   returns to tty1; Ctrl+Alt+F3 resumes. Say whether it should become tty1
+   (booting straight into the Verse), which is V0's last step.
+
 ## Background jobs stopped after desktop lockups (2026-11-02)
 
 At the owner's request, the open-issues chat stopped its eight mutation
