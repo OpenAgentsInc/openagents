@@ -28,9 +28,8 @@ built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 21 are
-partly implemented, 12 are written surveys, 3 are design drafts and 1 is
-planned; none is fully implemented yet. Chapters 1–8
+Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 22 are
+partly implemented, 12 are written surveys and 3 are design drafts; none is fully implemented yet. Chapters 1–8
 and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
 code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
 names it.
@@ -83,7 +82,7 @@ names it.
 | [34. Background Agents](ch034-background-agents.md) | Written: ColeMurray/background-agents@80426f4 |
 | [35. Flue and Agent OS](ch035-flue-and-agent-os.md) | Written: withastro/flue@deee93b, rivet-dev/agent-os@c746292 |
 | [36. A terminal UI](ch036-a-terminal-ui.md) | Partly implemented: three agents inline, macOS terminal |
-| [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Planned |
+| [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Partly implemented: vt-text-v1, bounded CPU |
 
 ## Contents
 

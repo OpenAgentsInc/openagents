@@ -25,6 +25,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/tui/tui.coax";
+#load "../../coax/lib/tui/vt.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
@@ -53,6 +54,8 @@ SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
   pre: string;                   // a fork's earlier turns, sent ahead of its first message
+  vt: [1] Vt;                    // reads a tool's output as a terminal would show it (chapter 37)
+  vt_out: [131072] u8;
   engine: int;
   model: string;
   model_engine: int;             // --model is for the engine it came with
@@ -239,7 +242,20 @@ cd_finish :: (a: [] App, ending: int, text: string) {
   a[0].running = false; a[0].ask = false;
 }
 
-cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output: string) {
+// What a terminal would show for output a program wrote: CR rewrites, cursor
+// moves and colors applied, so a progress bar reads as its last state. Text
+// with no control bytes comes back as it is.
+cd_screen :: (a: [] App, output: string) -> string {
+  plain := true;
+  for c: output { if (c < 32 && c != 10 && c != 9) || c == 127 { plain = false; break; } }
+  if plain { return output; }
+  vt_init(a[0].vt[..], 200, 160, true);
+  vt_feed(a[0].vt[..], output);
+  return vt_text(a[0].vt[..], a[0].vt_out[..]);
+}
+
+cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output_raw: string) {
+  output := cd_screen(a, output_raw);
   cd_reply_commit(a, true);
   sb: [4096] u8; n := 0; tb: [16] u8;
   n = cd_cat(sb[..], n, "  $ "); n = cd_cat(sb[..], n, cmd);
@@ -486,7 +502,8 @@ cd_tool_row :: (a: [] App, label: string) {
 }
 
 // A tool's result in one row: its first line and how many more.
-cd_result_line :: (a: [] App, text: string, bad: bool) {
+cd_result_line :: (a: [] App, text_raw: string, bad: bool) {
+  text := cd_screen(a, text_raw);
   cs_result(a, text, bad);
   lines := 0; for c: text { if c == 10 { lines += 1; } }
   if text.count > 0 && text[text.count - 1] == 10 { lines -= 1; }

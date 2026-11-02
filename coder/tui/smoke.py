@@ -6,7 +6,7 @@ paste, walks history with Up, switches agent with Shift-Tab (legacy and
 kitty), then quits with Ctrl-C and checks the exit. Then the verbs without a
 terminal, in a fresh HOME: coder run --json on the psionic engine against a
 stand-in local model server (local_model.py), coder ls --json, coder log and
-coder status on an unknown ID, coder fork, coder run --detach then coder
+coder status on an unknown ID, a progress bar's output, coder fork, coder run --detach then coder
 stop, and coder run without --engine or a System
 One key (the default engine, with the reason in the log).
 
@@ -109,6 +109,10 @@ def verbs(check):
         sid = rows[0]["id"] if rows else "none"
         log = subprocess.run([coder, "log", sid[:15]], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("log by ID prefix", log.returncode == 0 and "● local-ok" in log.stdout and "Bash(echo local-step)" in log.stdout)
+        # a progress bar and colors read back as a terminal shows them (chapter 37)
+        bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]
+        check("output reads as the screen shows it", len(res) == 1 and res[0]["text"] == "100%\nok")
         # fork: the new session carries the parent's turns, and its header names the parent
         first = subprocess.run([coder, "run", "remember heliotrope", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pid_ = json.loads(first.stdout.splitlines()[0])["id"]

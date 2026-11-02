@@ -145,7 +145,7 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 | Chapter | What we build and check |
 | --- | --- |
 | [36. A terminal UI](ch036-a-terminal-ui.md) — partly implemented | Coder inline in the person's terminal, as Claude Code and Codex run: a live region for status, the streaming reply and the composer, and finished turns committed to scrollback. Raw keys, a key decoder with bracketed paste, display width, a composer with history, and a pseudo-terminal smoke test. Code: `coax/lib/tui/tui.coax` and `coder/tui/`. |
-| [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — planned | A VT emulator in Coax so Coder can run programs that draw to a terminal and read the screen as text, checked against libghostty as an oracle and never linked to it. |
+| [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — partly implemented | A VT emulator in Coax so Coder can run programs that draw to a terminal and read the screen as text, checked against libghostty as an oracle and never linked to it. |
 
 ## What stays in Psionic
 

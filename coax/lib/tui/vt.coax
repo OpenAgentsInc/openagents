@@ -1,0 +1,390 @@
+// A terminal emulator's core in Coax (Coder book chapter 37): bytes a
+// program writes to a terminal go in, and what the screen shows comes out as
+// text. A parser state machine (ground, escape, CSI, OSC, UTF-8) drives a
+// cell grid with a cursor, a scroll region, an alternate screen and wide
+// characters. Lines that scroll off the top of the main screen are kept as
+// history, so a long output reads back whole.
+//
+// It holds the subset of sequences real tools emit: cursor moves and
+// addressing, erasing in the line and the display, inserting and deleting
+// lines and characters, scrolling, saving the cursor, the alternate screen
+// (?47, ?1047, ?1049) and the window title (OSC 0 and 2). SGR, modes it
+// doesn't model and charset designations are read and dropped, so they never
+// show as text. Colors aren't kept: the snapshot is for reading.
+//
+// Coder uses it for command output: a progress bar that rewrites one line
+// with CR reads back as its last state, and colors and cursor moves leave no
+// bytes behind.
+//
+//   v: [1] Vt; vt_init(v, 80, 24, true);
+//   vt_feed(v, bytes); text := vt_text(v, out);
+//
+// Checks: coax test coax/lib/tui/vt.coax --library
+
+#load "tui.coax";
+
+VT_CELLS :: 32768;               // cols * rows at most, for each screen
+VT_HISTORY :: 262144;            // bytes of lines scrolled off the main screen
+VT_PARAMS :: 16;
+
+VT_GROUND :: 0; VT_ESC :: 1; VT_CSI :: 2; VT_OSC :: 3; VT_OSC_ESC :: 4; VT_CHARSET :: 5;
+VT_WIDE_TAIL :: -1;              // the cell after a wide character
+
+Vt :: struct {
+  cols: int; rows: int;
+  lf_cr: bool;                   // LF also returns the carriage, as a terminal's onlcr does for a program's output
+  main: [VT_CELLS] int;          // a code point a cell; 0 is blank
+  other: [VT_CELLS] int;         // the alternate screen
+  alt: bool;
+  cx: int; cy: int;
+  wrap: bool;                    // the last column was written: the next character wraps first
+  saved_x: int; saved_y: int;
+  main_x: int; main_y: int;      // the main screen's cursor while the alternate one shows
+  top: int; bot: int;            // the scroll region, rows top..bot inclusive
+  state: int;
+  params: [VT_PARAMS] int; np: int; marker: u8; have: bool;
+  u: int; uneed: int;            // a UTF-8 sequence in progress
+  osc: [512] u8; nosc: int;
+  title: [256] u8; ntitle: int;
+  hist: [VT_HISTORY] u8; nhist: int; hist_full: bool;
+}
+
+vt_init :: (v: [] Vt, cols: int, rows: int, lf_cr: bool) {
+  c := ifx cols < 2 then 2 else cols; r := ifx rows < 2 then 2 else rows;
+  if c * r > VT_CELLS { r = VT_CELLS / c; }
+  v[0].cols = c; v[0].rows = r; v[0].lf_cr = lf_cr;
+  v[0].alt = false; v[0].cx = 0; v[0].cy = 0; v[0].wrap = false;
+  v[0].saved_x = 0; v[0].saved_y = 0;
+  v[0].top = 0; v[0].bot = r - 1;
+  v[0].state = VT_GROUND; v[0].np = 0; v[0].uneed = 0;
+  v[0].nosc = 0; v[0].ntitle = 0; v[0].nhist = 0; v[0].hist_full = false;
+  for i: 0..<c * r { v[0].main[i] = 0; v[0].other[i] = 0; }
+}
+
+vt_get :: (v: [] Vt, x: int, y: int) -> int { k := y * v[0].cols + x; return ifx v[0].alt then v[0].other[k] else v[0].main[k]; }
+vt_set :: (v: [] Vt, x: int, y: int, cp: int) {
+  if x < 0 || y < 0 || x >= v[0].cols || y >= v[0].rows { return; }
+  k := y * v[0].cols + x;
+  if v[0].alt { v[0].other[k] = cp; } else { v[0].main[k] = cp; }
+}
+
+vt_clamp :: (v: [] Vt) {
+  if v[0].cx < 0 { v[0].cx = 0; } if v[0].cx >= v[0].cols { v[0].cx = v[0].cols - 1; }
+  if v[0].cy < 0 { v[0].cy = 0; } if v[0].cy >= v[0].rows { v[0].cy = v[0].rows - 1; }
+}
+
+// One code point as UTF-8 into out at n; the new length.
+vt_utf8 :: (out: [] u8, n: int, cp: int) -> int {
+  m := n;
+  if cp < 0x80 { if m < out.count { out[m] = cast,trunc(u8) cp; m += 1; } return m; }
+  b: [4] u8; k := 0;
+  if cp < 0x800 { b[0] = cast,trunc(u8) (0xc0 | (cp >> 6)); b[1] = cast,trunc(u8) (0x80 | (cp & 63)); k = 2; }
+  else if cp < 0x10000 { b[0] = cast,trunc(u8) (0xe0 | (cp >> 12)); b[1] = cast,trunc(u8) (0x80 | ((cp >> 6) & 63)); b[2] = cast,trunc(u8) (0x80 | (cp & 63)); k = 3; }
+  else { b[0] = cast,trunc(u8) (0xf0 | (cp >> 18)); b[1] = cast,trunc(u8) (0x80 | ((cp >> 12) & 63)); b[2] = cast,trunc(u8) (0x80 | ((cp >> 6) & 63)); b[3] = cast,trunc(u8) (0x80 | (cp & 63)); k = 4; }
+  if m + k > out.count { return m; }
+  for i: 0..<k { out[m + i] = b[i]; }
+  return m + k;
+}
+
+// Row y as text, trailing blanks dropped, into out at n; the new length.
+vt_row_text :: (v: [] Vt, y: int, out: [] u8, n: int) -> int {
+  last := v[0].cols - 1;
+  while last >= 0 && (vt_get(v, last, y) == 0 || vt_get(v, last, y) == ' ') { last -= 1; }
+  m := n;
+  for x: 0..<last + 1 {
+    cp := vt_get(v, x, y);
+    if cp == VT_WIDE_TAIL { continue; }
+    m = vt_utf8(out, m, ifx cp == 0 then ' ' else cp);
+  }
+  return m;
+}
+
+// Keeps row 0 of the main screen as history before it scrolls away.
+vt_keep :: (v: [] Vt) {
+  if v[0].alt || v[0].hist_full { return; }
+  rb: [8192] u8;
+  n := vt_row_text(v, 0, rb[..], 0);
+  if v[0].nhist + n + 1 > VT_HISTORY { v[0].hist_full = true; return; }
+  for i: 0..<n { v[0].hist[v[0].nhist + i] = rb[i]; }
+  v[0].nhist += n;
+  v[0].hist[v[0].nhist] = 10; v[0].nhist += 1;
+}
+
+vt_clear_row :: (v: [] Vt, y: int, from: int, to: int) { for x: from..<to { vt_set(v, x, y, 0); } }
+
+// Scrolls rows top..bot up by k: the top row leaves (into history when it is the screen's top), blank rows enter below.
+vt_scroll_up :: (v: [] Vt, top: int, bot: int, k: int) {
+  for step: 0..<k {
+    if top == 0 { vt_keep(v); }
+    for y: top..<bot { for x: 0..<v[0].cols { vt_set(v, x, y, vt_get(v, x, y + 1)); } }
+    vt_clear_row(v, bot, 0, v[0].cols);
+  }
+}
+vt_scroll_down :: (v: [] Vt, top: int, bot: int, k: int) {
+  for step: 0..<k {
+    y := bot;
+    while y > top { for x: 0..<v[0].cols { vt_set(v, x, y, vt_get(v, x, y - 1)); } y -= 1; }
+    vt_clear_row(v, top, 0, v[0].cols);
+  }
+}
+
+vt_linefeed :: (v: [] Vt) {
+  v[0].wrap = false;
+  if v[0].cy == v[0].bot { vt_scroll_up(v, v[0].top, v[0].bot, 1); }
+  else if v[0].cy < v[0].rows - 1 { v[0].cy += 1; }
+}
+
+vt_print :: (v: [] Vt, cp: int) {
+  w := tui_width(cp);
+  if w == 0 { return; }          // combining marks and joiners aren't modelled
+  if v[0].wrap { v[0].cx = 0; vt_linefeed(v); }
+  if w == 2 && v[0].cx == v[0].cols - 1 { vt_set(v, v[0].cx, v[0].cy, 0); v[0].cx = 0; vt_linefeed(v); }
+  // writing over half of a wide character blanks the other half
+  if vt_get(v, v[0].cx, v[0].cy) == VT_WIDE_TAIL && v[0].cx > 0 { vt_set(v, v[0].cx - 1, v[0].cy, 0); }
+  vt_set(v, v[0].cx, v[0].cy, cp);
+  if w == 2 { vt_set(v, v[0].cx + 1, v[0].cy, VT_WIDE_TAIL); }
+  v[0].cx += w;
+  if v[0].cx >= v[0].cols { v[0].cx = v[0].cols - 1; v[0].wrap = true; }
+}
+
+vt_param :: (v: [] Vt, i: int, dflt: int) -> int { return ifx i < v[0].np && v[0].params[i] > 0 then v[0].params[i] else dflt; }
+
+vt_alt_screen :: (v: [] Vt, on: bool) {
+  if on == v[0].alt { return; }
+  if on {
+    v[0].main_x = v[0].cx; v[0].main_y = v[0].cy;
+    v[0].alt = true;
+    for i: 0..<v[0].cols * v[0].rows { v[0].other[i] = 0; }
+    v[0].cx = 0; v[0].cy = 0;
+  } else {
+    v[0].alt = false;
+    v[0].cx = v[0].main_x; v[0].cy = v[0].main_y;
+  }
+  v[0].wrap = false;
+}
+
+vt_csi :: (v: [] Vt, final: u8) {
+  p0 := vt_param(v, 0, 1);
+  if v[0].marker == '?' {
+    if final == 'h' || final == 'l' {
+      for i: 0..<v[0].np { m := v[0].params[i]; if m == 47 || m == 1047 || m == 1049 { vt_alt_screen(v, final == 'h'); } }
+    }
+    return;                      // other private modes (cursor, mouse, paste) don't change the text
+  }
+  if v[0].marker != 0 { return; }
+  v[0].wrap = false;
+  if final == 'A' { v[0].cy -= p0; if v[0].cy < v[0].top && v[0].cy + p0 >= v[0].top { v[0].cy = v[0].top; } }
+  else if final == 'B' || final == 'e' { v[0].cy += p0; if v[0].cy > v[0].bot && v[0].cy - p0 <= v[0].bot { v[0].cy = v[0].bot; } }
+  else if final == 'C' || final == 'a' { v[0].cx += p0; }
+  else if final == 'D' { v[0].cx -= p0; }
+  else if final == 'E' { v[0].cy += p0; v[0].cx = 0; }
+  else if final == 'F' { v[0].cy -= p0; v[0].cx = 0; }
+  else if final == 'G' || final == '`' { v[0].cx = p0 - 1; }
+  else if final == 'd' { v[0].cy = p0 - 1; }
+  else if final == 'H' || final == 'f' { v[0].cy = vt_param(v, 0, 1) - 1; v[0].cx = vt_param(v, 1, 1) - 1; }
+  else if final == 'J' {
+    m := ifx v[0].np > 0 then v[0].params[0] else 0;
+    if m == 0 { vt_clear_row(v, v[0].cy, v[0].cx, v[0].cols); for y: v[0].cy + 1..<v[0].rows { vt_clear_row(v, y, 0, v[0].cols); } }
+    else if m == 1 { for y: 0..<v[0].cy { vt_clear_row(v, y, 0, v[0].cols); } vt_clear_row(v, v[0].cy, 0, v[0].cx + 1); }
+    else { for y: 0..<v[0].rows { vt_clear_row(v, y, 0, v[0].cols); } if m == 3 { v[0].nhist = 0; v[0].hist_full = false; } }
+  }
+  else if final == 'K' {
+    m := ifx v[0].np > 0 then v[0].params[0] else 0;
+    if m == 0 { vt_clear_row(v, v[0].cy, v[0].cx, v[0].cols); }
+    else if m == 1 { vt_clear_row(v, v[0].cy, 0, v[0].cx + 1); }
+    else { vt_clear_row(v, v[0].cy, 0, v[0].cols); }
+  }
+  else if final == 'X' { vt_clear_row(v, v[0].cy, v[0].cx, ifx v[0].cx + p0 < v[0].cols then v[0].cx + p0 else v[0].cols); }
+  else if final == 'P' {
+    for x: v[0].cx..<v[0].cols { vt_set(v, x, v[0].cy, ifx x + p0 < v[0].cols then vt_get(v, x + p0, v[0].cy) else 0); }
+  }
+  else if final == '@' {
+    x := v[0].cols - 1;
+    while x >= v[0].cx { vt_set(v, x, v[0].cy, ifx x - p0 >= v[0].cx then vt_get(v, x - p0, v[0].cy) else 0); x -= 1; }
+  }
+  else if final == 'L' { if v[0].cy >= v[0].top && v[0].cy <= v[0].bot { vt_scroll_down(v, v[0].cy, v[0].bot, p0); } }
+  else if final == 'M' { if v[0].cy >= v[0].top && v[0].cy <= v[0].bot { for i: 0..<p0 { for y: v[0].cy..<v[0].bot { for x: 0..<v[0].cols { vt_set(v, x, y, vt_get(v, x, y + 1)); } } vt_clear_row(v, v[0].bot, 0, v[0].cols); } } }
+  else if final == 'S' { vt_scroll_up(v, v[0].top, v[0].bot, p0); }
+  else if final == 'T' { vt_scroll_down(v, v[0].top, v[0].bot, p0); }
+  else if final == 'r' {
+    t := vt_param(v, 0, 1) - 1; b := vt_param(v, 1, v[0].rows) - 1;
+    if t >= 0 && b < v[0].rows && t < b { v[0].top = t; v[0].bot = b; v[0].cx = 0; v[0].cy = 0; }
+  }
+  else if final == 's' { v[0].saved_x = v[0].cx; v[0].saved_y = v[0].cy; }
+  else if final == 'u' { v[0].cx = v[0].saved_x; v[0].cy = v[0].saved_y; }
+  // m (colors and styles), h and l (modes), n (reports), t (window) and the rest leave the text alone
+  vt_clamp(v);
+}
+
+vt_osc_end :: (v: [] Vt) {
+  o := cast(string) v[0].osc[0..<v[0].nosc];
+  if o.count >= 2 && (o[0] == '0' || o[0] == '2') && o[1] == ';' {
+    t := cast(string) o[2..<o.count];
+    n := 0; for c: t { if n < v[0].title.count { v[0].title[n] = c; n += 1; } }
+    v[0].ntitle = n;
+  }
+  v[0].nosc = 0;
+}
+
+vt_esc :: (v: [] Vt, c: u8) {
+  v[0].state = VT_GROUND;
+  if c == '[' { v[0].state = VT_CSI; v[0].np = 0; v[0].marker = 0; v[0].have = false; for i: 0..<VT_PARAMS { v[0].params[i] = 0; } }
+  else if c == ']' { v[0].state = VT_OSC; v[0].nosc = 0; }
+  else if c == '(' || c == ')' || c == '*' || c == '+' { v[0].state = VT_CHARSET; }
+  else if c == '7' { v[0].saved_x = v[0].cx; v[0].saved_y = v[0].cy; }
+  else if c == '8' { v[0].cx = v[0].saved_x; v[0].cy = v[0].saved_y; vt_clamp(v); }
+  else if c == 'D' { vt_linefeed(v); }
+  else if c == 'E' { v[0].cx = 0; vt_linefeed(v); }
+  else if c == 'M' { v[0].wrap = false; if v[0].cy == v[0].top { vt_scroll_down(v, v[0].top, v[0].bot, 1); } else if v[0].cy > 0 { v[0].cy -= 1; } }
+  else if c == 'c' { vt_init(v, v[0].cols, v[0].rows, v[0].lf_cr); }
+}
+
+// One byte from the program.
+vt_byte :: (v: [] Vt, b: u8) {
+  st := v[0].state;
+  if st == VT_OSC {
+    if b == 7 { vt_osc_end(v); v[0].state = VT_GROUND; }
+    else if b == 27 { v[0].state = VT_OSC_ESC; }
+    else if v[0].nosc < v[0].osc.count { v[0].osc[v[0].nosc] = b; v[0].nosc += 1; }
+    return;
+  }
+  if st == VT_OSC_ESC { vt_osc_end(v); v[0].state = VT_GROUND; if b != '\\' { vt_byte(v, b); } return; }
+  if st == VT_CHARSET { v[0].state = VT_GROUND; return; }
+  if b == 27 { v[0].state = VT_ESC; v[0].uneed = 0; return; }
+  if st == VT_ESC { vt_esc(v, b); return; }
+  if st == VT_CSI {
+    if b >= '0' && b <= '9' {
+      if v[0].np == 0 { v[0].np = 1; }
+      k := v[0].np - 1;
+      if v[0].params[k] < 100000 { v[0].params[k] = v[0].params[k] * 10 + cast(int) (b - '0'); }
+    } else if b == ';' || b == ':' {
+      if v[0].np == 0 { v[0].np = 1; }
+      if v[0].np < VT_PARAMS { v[0].np += 1; }
+    } else if b >= 0x3c && b <= 0x3f { v[0].marker = b; }
+    else if b >= 0x40 && b <= 0x7e { v[0].state = VT_GROUND; vt_csi(v, b); }
+    else if b < 0x20 { vt_control(v, b); }           // controls act inside a sequence too
+    return;                                           // intermediates (0x20-0x2f) are dropped
+  }
+  // ground: UTF-8, controls, text
+  if v[0].uneed > 0 {
+    if (b & 0xc0) == 0x80 {
+      v[0].u = (v[0].u << 6) | cast(int) (b & 63); v[0].uneed -= 1;
+      if v[0].uneed == 0 { vt_print(v, v[0].u); }
+      return;
+    }
+    v[0].uneed = 0; vt_print(v, 0xfffd);
+  }
+  if b < 0x20 || b == 0x7f { vt_control(v, b); return; }
+  if b < 0x80 { vt_print(v, cast(int) b); return; }
+  if b >= 0xf0 && b < 0xf8 { v[0].u = cast(int) (b & 7); v[0].uneed = 3; }
+  else if b >= 0xe0 { v[0].u = cast(int) (b & 15); v[0].uneed = 2; }
+  else if b >= 0xc0 { v[0].u = cast(int) (b & 31); v[0].uneed = 1; }
+  else { vt_print(v, 0xfffd); }
+}
+
+vt_control :: (v: [] Vt, b: u8) {
+  if b == 13 { v[0].cx = 0; v[0].wrap = false; }
+  else if b == 10 || b == 11 || b == 12 { if v[0].lf_cr { v[0].cx = 0; } vt_linefeed(v); }
+  else if b == 8 { if v[0].wrap { v[0].wrap = false; } else if v[0].cx > 0 { v[0].cx -= 1; } }
+  else if b == 9 { v[0].cx = ((v[0].cx / 8) + 1) * 8; if v[0].cx >= v[0].cols { v[0].cx = v[0].cols - 1; } }
+  // BEL, NUL, DEL and the rest do nothing to the text
+}
+
+vt_feed :: (v: [] Vt, s: string) { for b: s { vt_byte(v, b); } }
+
+// What the program left: the history, then the screen showing now down to
+// its last row with text. Lines end with LF; no trailing blank lines.
+vt_text :: (v: [] Vt, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<v[0].nhist { if n < out.count { out[n] = v[0].hist[i]; n += 1; } }
+  last := v[0].rows - 1;
+  while last >= 0 { e := vt_row_text(v, last, out, n); if e > n { break; } last -= 1; }
+  for y: 0..<last + 1 {
+    n = vt_row_text(v, y, out, n);
+    if n < out.count { out[n] = 10; n += 1; }
+  }
+  while n > 0 && out[n - 1] == 10 { n -= 1; }
+  return cast(string) out[0..<n];
+}
+
+// The screen alone, as a program with the alternate screen shows it: what a model reads of a full-screen tool.
+vt_screen :: (v: [] Vt, out: [] u8) -> string {
+  n := 0;
+  for y: 0..<v[0].rows { n = vt_row_text(v, y, out, n); if n < out.count { out[n] = 10; n += 1; } }
+  while n > 0 && out[n - 1] == 10 { n -= 1; }
+  return cast(string) out[0..<n];
+}
+
+vt_title :: (v: [] Vt) -> string { return cast(string) v[0].title[0..<v[0].ntitle]; }
+
+// ---------------------------------------------------------------- checks
+
+// Test text: ` is ESC and | is BEL (Coax strings have no escape for either).
+vt_t :: (v: [] Vt, s: string) { for c: s { vt_byte(v, ifx c == '`' then cast(u8) 27 else ifx c == '|' then cast(u8) 7 else c); } }
+vt_run :: (v: [] Vt, cols: int, rows: int, s: string, out: [] u8) -> string { vt_init(v, cols, rows, true); vt_t(v, s); return vt_text(v, out); }
+
+#test "a progress bar rewritten with CR reads back as its last state; colors leave nothing" {
+  v: [1] Vt; o: [4096] u8;
+  #assert vt_run(v[..], 40, 5, "fetch  10%\rfetch  50%\rfetch 100%\ndone\n", o[..]) == "fetch 100%\ndone";
+  #assert vt_run(v[..], 40, 5, "`[1;32mok`[0m `[31mfail`[m\n", o[..]) == "ok fail";
+}
+
+#test "erasing: the rest of the line, the whole line, the display" {
+  v: [1] Vt; o: [4096] u8;
+  #assert vt_run(v[..], 20, 4, "abcdef`[3D`[K", o[..]) == "abc";
+  #assert vt_run(v[..], 20, 4, "abcdef`[2KX", o[..]) == "      X";
+  #assert vt_run(v[..], 20, 4, "one\ntwo`[2J`[Hthree", o[..]) == "three";
+  #assert vt_run(v[..], 20, 4, "abcdef`[1;3H`[2P", o[..]) == "abef";
+  #assert vt_run(v[..], 20, 4, "abcdef`[1;3H`[2@", o[..]) == "ab  cdef";
+}
+
+#test "cursor addressing and moves" {
+  v: [1] Vt; o: [4096] u8;
+  #assert vt_run(v[..], 10, 3, "`[3;5Hx`[1;1Hy`[2;2Hz", o[..]) == "y\n z\n    x";
+  #assert vt_run(v[..], 10, 3, "ab`[Bc`[Ad", o[..]) == "ab d\n  c";
+  #assert vt_run(v[..], 10, 3, "a\tb", o[..]) == "a       b";
+}
+
+#test "lines that scroll off the top are history; wrapping at the last column" {
+  v: [1] Vt; o: [4096] u8;
+  #assert vt_run(v[..], 10, 3, "1\n2\n3\n4\n5\n", o[..]) == "1\n2\n3\n4\n5";
+  #assert vt_run(v[..], 4, 3, "abcdefgh", o[..]) == "abcd\nefgh";
+  #assert vt_run(v[..], 4, 3, "abcd\nX", o[..]) == "abcd\nX";
+}
+
+#test "the alternate screen: what it showed goes; the main screen comes back" {
+  v: [1] Vt; o: [4096] u8; s: [4096] u8;
+  vt_init(v[..], 20, 4, true);
+  vt_t(v[..], "$ top\n`[?1049h`[HPID CPU\n1 99%");
+  #assert vt_screen(v[..], s[..]) == "PID CPU\n1 99%";
+  vt_t(v[..], "`[?1049l$ ");
+  #assert vt_text(v[..], o[..]) == "$ top\n$";
+}
+
+#test "wide characters take two cells; UTF-8 split across feeds" {
+  v: [1] Vt; o: [4096] u8;
+  vt_init(v[..], 10, 3, true);
+  w := "中x";                     // U+4E2D is three bytes and two columns
+  vt_feed(v[..], cast(string) w[0..<2]); vt_feed(v[..], cast(string) w[2..<w.count]);
+  #assert vt_text(v[..], o[..]) == "中x" && v[0].cx == 3;
+  #assert vt_run(v[..], 3, 3, "ab中", o[..]) == "ab\n中";
+}
+
+#test "a scroll region scrolls inside itself; insert and delete lines" {
+  v: [1] Vt; o: [4096] u8; s: [4096] u8;
+  vt_init(v[..], 10, 4, true);
+  vt_t(v[..], "head`[2;3r`[2;1Ha\nb\nc`[4;1Hfoot");
+  #assert vt_screen(v[..], s[..]) == "head\nb\nc\nfoot";
+  vt_init(v[..], 10, 4, true);
+  vt_t(v[..], "1\n2\n3`[2;1H`[L");
+  #assert vt_screen(v[..], s[..]) == "1\n\n2\n3";
+  vt_t(v[..], "`[M");
+  #assert vt_screen(v[..], s[..]) == "1\n2\n3";
+}
+
+#test "OSC sets the title and never shows; a sequence split across feeds" {
+  v: [1] Vt; o: [4096] u8;
+  vt_init(v[..], 20, 3, true);
+  vt_t(v[..], "`]0;build|ok `]2;tests`\\"); vt_t(v[..], "`["); vt_t(v[..], "31mred`[0m");
+  #assert vt_text(v[..], o[..]) == "ok red" && vt_title(v[..]) == "tests";
+}
