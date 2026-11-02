@@ -2473,6 +2473,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/condense-history.coax",
+      "chapter": "psionic/book/ch206-condense-the-history.md",
+      "stdout": "psionic/fixtures/condense-history.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/tool-capabilities.coax",
       "chapter": "psionic/book/ch203-tools-as-typed-capabilities.md",
       "stdout": "psionic/fixtures/tool-capabilities.out",

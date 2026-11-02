@@ -1,0 +1,32 @@
+frozen prefix: 4 tokens; 6 turns; log: 17 events, 140 tokens
+turn 1: 9 tokens; request 9 tokens at log length 2
+turn 2: 13 tokens; request 13 tokens at log length 4; ok, shares 8 with the previous
+turn 3: 17 tokens; request 17 tokens at log length 6; ok, shares 12 with the previous
+turn 4: 21 tokens, condensed 6 events into 15 tokens; request 15 tokens at log length 10; ok, shares 6 with the previous, break at 6 allowed by the condensation at event 8
+turn 5: 19 tokens; request 19 tokens at log length 12; ok, shares 14 with the previous
+turn 6: 23 tokens, condensed 5 events into 14 tokens; request 14 tokens at log length 16; ok, shares 7 with the previous, break at 7 allowed by the condensation at event 14
+view at turn 4: events 0 9 7; tokens 90 91 -207 6 12 10 20 30 40 41
+view at turn 6: events 0 15 13; tokens 90 91 -207 5 14 40 50 60 61
+the session rebuilt from the log: ok, 2 breaks
+a second log: 3 turns, then turn 4's user text: ok
+turns 1 to 3 dropped without a logged condensation: source (a request the log's condensed view does not explain), position 6
+begin event: ok; crash before the summary: log ok; view: open (a condensation begun and not ended), event 8
+summary event: ok; request 15 tokens, ok, break at 6 allowed by the condensation at event 8
+a summary with no begin event: summary (a summary that is not the summarizer's output for the named events), event 8
+a condensation naming the pinned fact: pinned (a condensation names a pinned fact), event 8
+a begin event with no summary: open (a condensation begun and not ended), event 8
+a wrong digest word: names (a begin event that does not name visible events by digest, in view order), event 8
+a summary token changed: summary (a summary that is not the summarizer's output for the named events), event 9
+a redacted event named: log (the log does not verify, or a redacted event is in the view or named), event 8
+never condensed: 0 condensations, verifier ok
+  tokens by request: 9 13 17 21 25 29
+  blocks reused: 0 2 3 4 5 6
+  prompt tokens 114, cached 80, recomputed 34; modeled prefill 147610 us, P50 23629 us, P95 29465 us
+window 20, keep 1 turn: 2 condensations, verifier ok
+  tokens by request: 9 13 17 15 19 14
+  blocks reused: 0 2 3 1 3 1
+  prompt tokens 87, cached 40, recomputed 47; modeled prefill 166579 us, P50 26547 us, P95 32384 us
+window 20, keep 2 turns: 3 condensations, verifier ok
+  tokens by request: 9 13 17 18 17 17
+  blocks reused: 0 2 3 1 1 2
+  prompt tokens 91, cached 36, recomputed 55; modeled prefill 178251 us, P50 29465 us, P95 36761 us

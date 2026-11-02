@@ -1,0 +1,510 @@
+// Chapter 206: condense the history. When the next request would pass the
+// window, the harness replaces older history with one summary. The
+// condensation is two events in chapter 201's log: a begin event that names
+// each replaced event by index and event digest, then the summary, which a
+// deterministic stand-in summarizer computes from the named events alone.
+// The condensed view is the log's text events in order, with each
+// condensation's named events removed and its summary in the place of the
+// first one. System events in the history are pinned facts: no policy and
+// no verifier lets a condensation name one. A request after a condensation
+// may break chapter 202's stable prefix, but only at the first event that a
+// logged condensation removed; any other change is refused at its position.
+// Profile cd-condense-v1: chapter 202's px-prefix-v1 requests; a log of at
+// most 32 text events; a view of at most 64 tokens; at most 8 events named
+// by one condensation; event digests written as eight 32-bit words.
+#load "prefix.coax";
+#load "../../tests/harness-condense-checks.coax";
+#authority;
+
+CD_EVENTS :: 32;
+CD_NAMES :: 8;
+// The first token of a begin event and of a summary event. Text from a
+// tokenizer is never negative; chapter 201 writes -1 over redacted tokens.
+CD_BEGIN :: -206;
+CD_SUMMARY :: -207;
+
+// book:begin types
+CdStatus :: enum u8 {ok;shape;log;kind;names;pinned;open;summary;budget;source;prefix;}
+// The condensed view of a log: the events the model sees, in order, and
+// their tokens. gone[e] is the begin event of the condensation that removed
+// event e, or 0 while e is in the view: a begin event names earlier events,
+// so it is never event 0. A refusal names the event where it happened.
+CdView :: struct {status:CdStatus;event:int;items:int;item:[32]int;gone:[32]int;n:int;tok:[64]int;}
+// When to condense: the request's window in tokens (frozen prefix, view and
+// tail), and the user turns kept whole at the end of the view.
+CdPolicy :: struct {window:int;keep:int;}
+// A plan: the request's length now and after, and the events to name.
+CdPlan :: struct {status:CdStatus;condense:bool;length:int;after:int;names:int;name:[8]int;}
+// The verifier's answer: the request, the log event or token position of a
+// refusal, the tokens shared with the previous request, and for an admitted
+// break the begin event that allowed it and the breaks counted so far.
+CdVerdict :: struct {status:CdStatus;request:int;event:int;at:int;shared:int;by:int;breaks:int;}
+// book:end types
+// A request as the harness sends it: its plan, and the log's length when it
+// was assembled.
+CdStep :: struct {plan:CdPlan;at:int;r:PxRequest;}
+
+// Checks come first. The hand session's parts, the forgeries and the
+// independent oracle are in psionic/tests/harness-condense-checks.coax.
+// book:begin check-hand
+#test "the hand session: two condensations, by hand" #steps 4000000000 {
+    ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    q:[6]PxRequest;at:[6]int;p:[6]CdPlan;s:=cdc_open();
+    #assert cdc_hand(l[..],CdPolicy.{window=20,keep=1},6,q[..],at[..],p[..])==6;
+    // 9, 13 and 17 tokens fit the window of 20; 21 at turn 4 and 23 at turn 6 do not.
+    before:=[6]int.[9,13,17,21,19,23];n:=[6]int.[9,13,17,15,19,14];
+    for k:0..<6 {#assert p[k].status==CdStatus.ok && p[k].length==before[k] && p[k].after==n[k] && q[k].n==n[k] && p[k].condense==(k==3 || k==5);}
+    // Turn 4: turns 1 to 3, events 1 to 6, go. Turn 6: the first summary (event 9) and turns 4 and 5 go.
+    first:=[6]int.[1,2,3,4,5,6];second:=[5]int.[9,7,10,11,12];
+    #assert p[3].names==6 && p[5].names==5;
+    for j:0..<6 {#assert p[3].name[j]==first[j];}
+    for j:0..<5 {#assert p[5].name[j]==second[j];}
+    // The first summary: the mark, 6 events, 12 tokens, and turns 1 to 3's first tokens.
+    v:=cd_view(cd_at(l[0],at[3]));
+    #assert v.status==CdStatus.ok && v.items==3 && v.item[0]==0 && v.item[1]==9 && v.item[2]==7 && v.n==10;
+    want:=[10]int.[90,91,CD_SUMMARY,6,12,10,20,30,40,41];for i:0..<10 {#assert v.tok[i]==want[i];}
+    for e:1..<7 {#assert v.gone[e]==8;}
+    #assert v.gone[0]==0 && v.gone[7]==0;
+    v=cd_view(cd_at(l[0],at[5]));
+    #assert v.status==CdStatus.ok && v.items==3 && v.item[1]==15 && v.item[2]==13 && v.n==9 && v.gone[9]==14 && v.gone[7]==14 && v.gone[1]==8;
+    want2:=[9]int.[90,91,CD_SUMMARY,5,14,40,50,60,61];for i:0..<9 {#assert v.tok[i]==want2[i];}
+    // The first condensation breaks the prefix at position 6, just after the pinned fact; the second
+    // at 7, since both summaries start with the mark. Each break is admitted.
+    for k:1..<6 {
+        a:=cd_admit(s,l[0],at[k-1],q[k-1],at[k],q[k]);x:=px_admit(q[k-1],q[k]);
+        if k==3 || k==5 {#assert a.status==CdStatus.ok && a.at==(ifx k==3 then 6 else 7) && a.by==(ifx k==3 then 8 else 14) && a.breaks==1 && x.status==PxStatus.prefix && x.at==a.at;}
+        else {#assert a.status==CdStatus.ok && a.by==0 && a.breaks==0 && x.status==PxStatus.ok && a.shared==q[k-1].n-1;}
+    }
+    c:=cd_session(s,l[0],at[..],q[..]);#assert c.status==CdStatus.ok && c.request==5 && c.breaks==2;
+}
+// book:end check-hand
+// book:begin check-refuse
+#test "an unlogged rewrite, a crash between the events, and forged condensations" #steps 4000000000 {
+    ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    q:[6]PxRequest;at:[6]int;p:[6]CdPlan;s:=cdc_open();
+    #assert cdc_hand(l[..],CdPolicy.{window=20,keep=1},3,q[..],at[..],p[..])==3;
+    u:=[2]int.[40,41];#assert lg_say(l[..],LgKind.user,u[..])==LgStatus.ok;
+    // Turns 1 to 3 dropped without a logged condensation: refused at position 6, where turn 1 was.
+    h:=[4]int.[90,91,40,41];tail:=[1]int.[1004];x:=px_add(px_add(s,PxKind.history,0,h[..]),PxKind.tail,0,tail[..]);
+    a:=cd_admit(s,l[0],at[2],q[2],l[0].count,x);#assert a.status==CdStatus.source && a.at==6;
+    // A crash after the begin event: the log still verifies, and the view names the open condensation.
+    g:=l[0];names:=[6]int.[1,2,3,4,5,6];#assert cd_begin(l[..],names[..])==CdStatus.ok;
+    v:=cd_view(l[0]);#assert lg_verify(l[0]).status==LgStatus.ok && v.status==CdStatus.open && v.event==8;
+    #assert cd_assemble(s,l[0],tail[..]).status==PxStatus.log && cd_check(s,l[0],l[0].count,x).status==CdStatus.open;
+    // Finishing it admits exactly the condensed request.
+    #assert cd_end(l[..],names[..])==CdStatus.ok;y:=cd_assemble(s,l[0],tail[..]);#assert y.status==PxStatus.ok && y.n==15;
+    #assert y.sections==5 && y.section[3].kind==PxKind.history && y.section[3].key==0 && y.section[4].kind==PxKind.tail && y.section[4].key==0;
+    a=cd_admit(s,l[0],at[2],q[2],l[0].count,y);#assert a.status==CdStatus.ok && a.by==8 && a.at==6 && a.breaks==1;
+    // One token of the summary changed in the request: refused at its position.
+    z:=y;z.tok[9]+=1;a=cd_admit(s,l[0],at[2],q[2],l[0].count,z);#assert a.status==CdStatus.source && a.at==9;
+    // A previous request that the log does not explain is refused where it differs.
+    o:=q[2];o.tok[5]=0;a=cd_admit(s,l[0],at[2],o,l[0].count,y);#assert a.status==CdStatus.prefix && a.at==5 && a.shared==5;
+    o=q[2];o.tok[0]=0;a=cd_admit(s,l[0],at[2],o,at[2],q[2]);#assert a.status==CdStatus.prefix && a.at==0;
+    // Forgeries written straight into the log after event 7, each refused at its event.
+    f:=cdc_forge(g,0);#assert f.status==CdStatus.summary && f.event==8;
+    f=cdc_forge(g,1);#assert f.status==CdStatus.pinned && f.event==8;
+    f=cdc_forge(g,3);#assert f.status==CdStatus.open && f.event==8;
+    for k:[8]int.[2,4,5,6,7,13,14,16] {f=cdc_forge(g,k);#assert f.status==CdStatus.names && f.event==8;}
+    for k:[4]int.[8,9,10,17] {f=cdc_forge(g,k);#assert f.status==CdStatus.summary && f.event==9;}
+    f=cdc_forge(g,11);#assert f.status==CdStatus.log && f.event==8;
+    f=cdc_forge(g,12);#assert f.status==CdStatus.names && f.event==8;
+    f=cdc_forge(g,15);#assert f.status==CdStatus.ok && f.items==3 && f.item[1]==9 && f.n==10;
+}
+// book:end check-refuse
+#test "views: the log must verify, hold only text, fit, and hide nothing redacted" #steps 4000000000 {
+    ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    q:[6]PxRequest;at:[6]int;p:[6]CdPlan;s:=cdc_open();
+    #assert cdc_hand(l[..],CdPolicy.{window=20,keep=1},4,q[..],at[..],p[..])==4;
+    // A tampered token: refused at its event.
+    e:=ev;k:=tk;g:=LgLog.{events=e[..],tokens=k[..],count=l[0].count,used=l[0].used};k[5]+=1;v:=cd_view(g);#assert v.status==CdStatus.log && v.event==2;
+    // A redacted event in the view, and one named by a condensation.
+    k=tk;r:=[1]LgLog.[g];#assert lg_redact(r[..],7)==LgStatus.ok;v=cd_view(r[0]);#assert v.status==CdStatus.log && v.event==7;
+    e=ev;k=tk;#assert lg_redact(r[..],2)==LgStatus.ok;v=cd_view(r[0]);#assert v.status==CdStatus.log && v.event==8;
+    v=cd_view(cd_at(r[0],8));#assert v.status==CdStatus.log && v.event==2;
+    // A condensation that names an event an earlier one removed.
+    e=ev;k=tk;names:=[1]int.[1];f:[11]int;h:=[1]LgLog.[l[0]];h[0].events=e[..];h[0].tokens=k[..];
+    #assert lg_say(h[..],LgKind.context,f[0..<cdc_begin(h[0],names[..],f[..])])==LgStatus.ok;
+    #assert lg_say(h[..],LgKind.context,f[0..<cdc_summary(h[0],names[..],f[..])])==LgStatus.ok;
+    v=cd_view(h[0]);#assert v.status==CdStatus.names && v.event==11;
+    // Chapter 201's turns are not text: refused at the start event.
+    e2:[32]LgEvent;t2:[64]int;m:=[1]LgLog.[LgLog.{events=e2[..],tokens=t2[..]}];#assert pxc_trace(m[..]).status==LgStatus.ok;
+    v=cd_view(m[0]);#assert v.status==CdStatus.kind && v.event==1;
+    #assert cd_assemble(s,m[0],at[0..<0]).status==PxStatus.log;
+    // Marks in user text are only text; an empty context event is not a mark.
+    e3:[34]LgEvent;t3:[80]int;b:=[1]LgLog.[LgLog.{events=e3[..],tokens=t3[..]}];
+    mark:=[2]int.[CD_SUMMARY,CD_BEGIN];#assert lg_say(b[..],LgKind.user,mark[..])==LgStatus.ok && lg_say(b[..],LgKind.context,mark[0..<0])==LgStatus.ok;
+    zero:=[1]int.[0];#assert cd_begin(b[..],zero[..])==CdStatus.ok && cd_end(b[..],zero[..])==CdStatus.ok;
+    v=cd_view(b[0]);#assert v.status==CdStatus.ok && v.items==2 && v.item[0]==3 && v.item[1]==1 && v.n==4 && v.tok[0]==CD_SUMMARY && v.tok[3]==CD_SUMMARY;
+    // 32 events fit and 33 do not; a view of 64 tokens fits and one of 65 does not.
+    b[0].count=0;b[0].used=0;three:=[3]int.[3,4,5];
+    for i:0..<32 {#assert lg_say(b[..],LgKind.user,three[0..<2])==LgStatus.ok;}
+    v=cd_view(b[0]);#assert v.status==CdStatus.ok && v.n==64 && v.items==32;
+    #assert lg_say(b[..],LgKind.user,three[0..<0])==LgStatus.ok;v=cd_view(b[0]);#assert v.status==CdStatus.shape && v.event==33;
+    b[0].count=31;b[0].used=62;#assert lg_say(b[..],LgKind.user,three[0..<1])==LgStatus.ok;v=cd_view(b[0]);#assert v.status==CdStatus.ok && v.n==63;
+    b[0].count=31;b[0].used=62;#assert lg_say(b[..],LgKind.user,three[..])==LgStatus.ok;v=cd_view(b[0]);#assert v.status==CdStatus.shape && v.event==31;
+    // A refused prefix stays refused.
+    w:[2]PxTool;bad:=px_open(three[..],w[..],three[..]);#assert cd_assemble(bad,l[0],three[..]).status==PxStatus.tools;
+}
+#test "the summarizer, the begin and end events, and their bounds" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[200]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    a:=[3]int.[11,12,13];b:=[1]int.[21];
+    #assert lg_say(l[..],LgKind.user,a[..])==LgStatus.ok && lg_say(l[..],LgKind.user,a[0..<0])==LgStatus.ok;
+    #assert lg_say(l[..],LgKind.context,b[..])==LgStatus.ok && lg_say(l[..],LgKind.user,b[..])==LgStatus.ok;
+    // An empty user event adds no topic; a context event adds none either.
+    out:[11]int;n:=[4]int.[0,1,2,3];c:=cd_summarize(l[0],n[..],out[..]);
+    #assert c==5 && out[0]==CD_SUMMARY && out[1]==4 && out[2]==5 && out[3]==11 && out[4]==21;
+    c=cd_summarize(l[0],n[1..<3],out[..]);#assert c==3 && out[1]==2 && out[2]==1;
+    // The digest words: four bytes each, low byte first.
+    d:[32]u8;d[4]=1;d[5]=2;d[7]=255;d[31]=9;#assert cd_word(d,1)==1+512+4278190080 && cd_word(d,0)==0 && cd_word(d,7)==150994944;
+    // Begin and end: one to eight events of the log.
+    nine:=[9]int.[0,1,2,3,0,1,2,3,0];bad:=[1]int.[4];
+    #assert cd_begin(l[..],nine[0..<0])==CdStatus.shape && cd_begin(l[..],nine[..])==CdStatus.shape && cd_begin(l[..],bad[..])==CdStatus.shape;
+    bad[0]= -1;#assert cd_begin(l[..],bad[..])==CdStatus.shape && cd_end(l[..],bad[..])==CdStatus.shape && l[0].count==4;
+    #assert cd_named(l[0],nine[0..<8]) && !cd_named(l[0],nine[..]) && !cd_named(l[0],nine[0..<0]);
+    bad[0]=3;#assert cd_named(l[0],bad[..]);bad[0]=4;#assert !cd_named(l[0],bad[..]);
+    // Eight names logged: the begin event holds 2 + 9 * 8 tokens.
+    #assert cd_begin(l[..],nine[0..<8])==CdStatus.ok && l[0].count==5 && l[0].used==79;
+    // No room for the summary: the log is left open, as after a crash.
+    full:=[1]LgLog.[LgLog.{events=ev[0..<5],tokens=tk[..],count=5,used=79}];
+    #assert cd_end(full[..],nine[0..<8])==CdStatus.shape && cd_view(full[0]).status==CdStatus.names;
+    // No room for the begin event.
+    #assert cd_begin(full[..],bad[0..<0])==CdStatus.shape;bad[0]=2;#assert cd_begin(full[..],bad[..])==CdStatus.shape && full[0].count==5;
+    // Condense events 0 and 3: the summary takes event 0's place.
+    l[0].count=4;l[0].used=5;two:=[2]int.[0,3];#assert cd_begin(l[..],two[..])==CdStatus.ok && cd_end(l[..],two[..])==CdStatus.ok;
+    v:=cd_view(l[0]);#assert v.status==CdStatus.ok && v.items==3 && v.item[0]==5 && v.item[1]==1 && v.item[2]==2 && v.n==6;
+    // An end whose names differ from its begin's is refused.
+    l[0].count=4;l[0].used=5;#assert cd_begin(l[..],two[..])==CdStatus.ok && cd_end(l[..],two[1..<2])==CdStatus.ok && cd_view(l[0]).status==CdStatus.summary;
+}
+#test "plans: when to condense, what to keep, and when nothing fits" #steps 4000000000 {
+    ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    q:[6]PxRequest;at:[6]int;p:[6]CdPlan;s:=cdc_open();
+    #assert cdc_hand(l[..],CdPolicy.{window=64,keep=1},4,q[..],at[..],p[..])==4;
+    // At turn 4: 4 + 2 + 12 + 2 + a tail of 1 is 21 tokens.
+    g:=cd_at(l[0],8);c:=cd_plan(s,g,1,CdPolicy.{window=21,keep=1});#assert c.status==CdStatus.ok && !c.condense && c.length==21 && c.after==21;
+    c=cd_plan(s,g,1,CdPolicy.{window=20,keep=1});#assert c.status==CdStatus.ok && c.condense && c.names==6 && c.after==15;
+    // A window reached exactly after condensing is enough; one less is not.
+    c=cd_plan(s,g,1,CdPolicy.{window=15,keep=1});#assert c.status==CdStatus.ok && c.condense && c.after==15;
+    c=cd_plan(s,g,1,CdPolicy.{window=14,keep=1});#assert c.status==CdStatus.budget && !c.condense && c.after==15 && c.names==6;
+    // Keeping two turns names turns 1 and 2; keeping four or five leaves nothing to name.
+    c=cd_plan(s,g,1,CdPolicy.{window=20,keep=2});#assert c.status==CdStatus.ok && c.names==4 && c.name[3]==4 && c.after==18;
+    c=cd_plan(s,g,1,CdPolicy.{window=20,keep=4});#assert c.status==CdStatus.budget && c.names==0;
+    c=cd_plan(s,g,1,CdPolicy.{window=20,keep=5});#assert c.status==CdStatus.budget && c.names==0;
+    // Keeping none names every event but the pinned fact.
+    c=cd_plan(s,g,1,CdPolicy.{window=20,keep=0});#assert c.status==CdStatus.ok && c.names==7 && c.name[6]==7 && c.after==14;
+    // At most eight events are named, the oldest.
+    two:=[2]int.[70,71];for i:0..<4 {#assert lg_say(l[..],LgKind.context,two[..])==LgStatus.ok;}
+    c=cd_plan(s,l[0],1,CdPolicy.{window=22,keep=0});#assert c.status==CdStatus.ok && c.names==8 && c.name[7]==8 && c.after==22;
+    // Bad policies, a bad tail, a refused prefix and a log that does not verify.
+    #assert cd_plan(s,g,1,CdPolicy.{window=0,keep=1}).status==CdStatus.shape && cd_plan(s,g,1,CdPolicy.{window=1,keep=0}).status==CdStatus.budget;
+    #assert cd_plan(s,g,1,CdPolicy.{window=20,keep= -1}).status==CdStatus.shape && cd_plan(s,g,-1,CdPolicy.{window=20,keep=0}).status==CdStatus.shape;
+    #assert cd_plan(s,g,0,CdPolicy.{window=20,keep=1}).length==20;
+    w:[2]PxTool;bad:=px_open(two[..],w[..],two[..]);#assert cd_plan(bad,g,1,CdPolicy.{window=20,keep=1}).status==CdStatus.shape;
+    e:=ev;k:=tk;k[0]+=1;#assert cd_plan(s,LgLog.{events=e[..],tokens=k[..],count=8,used=g.used},1,CdPolicy.{window=20,keep=1}).status==CdStatus.log;
+    // A plan that cannot fit logs nothing; nor does one that does not need to.
+    n:=l[0].count;r:=cd_request(l[..],s,two[..],CdPolicy.{window=8,keep=1});
+    #assert r.plan.status==CdStatus.budget && r.r.status==PxStatus.log && l[0].count==n && r.at==n;
+    r=cd_request(l[..],s,two[..],CdPolicy.{window=64,keep=1});#assert r.plan.status==CdStatus.ok && r.r.status==PxStatus.ok && r.r.n==32 && r.at==n && l[0].count==n;
+    // With no room left in the log, a condensation is refused before anything is sent.
+    full:=[1]LgLog.[l[0]];full[0].events=ev[0..<n];r=cd_request(full[..],s,two[..],CdPolicy.{window=26,keep=1});
+    #assert r.plan.status==CdStatus.shape && r.r.status==PxStatus.log && full[0].count==n;
+    // Nine names, each visible, are still refused.
+    e2:=ev;k2:=tk;h:=[1]LgLog.[l[0]];h[0].events=e2[..];h[0].tokens=k2[..];nine:=[9]int.[1,2,3,4,5,6,7,8,9];f:[90]int;
+    #assert lg_say(h[..],LgKind.context,f[0..<cdc_begin(h[0],nine[..],f[..])])==LgStatus.ok;
+    #assert lg_say(h[..],LgKind.context,f[0..<cdc_summary(h[0],nine[..],f[..])])==LgStatus.ok;
+    v:=cd_view(h[0]);#assert v.status==CdStatus.names && v.event==13;
+    // Eight names logged and applied.
+    c=cd_condense(l[..],s,1,CdPolicy.{window=22,keep=0});v=cd_view(l[0]);
+    #assert c.status==CdStatus.ok && v.status==CdStatus.ok && v.items==6 && v.item[1]==14 && v.n==17 && l[0].count==15;
+}
+#test "the verifier's bounds" #steps 4000000000 {
+    ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    q:[6]PxRequest;at:[6]int;p:[6]CdPlan;s:=cdc_open();
+    #assert cdc_hand(l[..],CdPolicy.{window=20,keep=1},4,q[..],at[..],p[..])==4;
+    g:=l[0];
+    #assert cd_check(s,g,-1,q[0]).status==CdStatus.shape && cd_check(s,g,g.count+1,q[0]).status==CdStatus.shape;
+    #assert cd_check(s,g,at[0],q[0]).status==CdStatus.ok && cd_check(s,g,g.count,q[0]).status==CdStatus.source;
+    r:=q[0];r.status=PxStatus.shape;#assert cd_check(s,g,at[0],r).status==CdStatus.shape;
+    // Without a tail: one token short of the view, and one token past it.
+    h:=[5]int.[90,91,10,11,0];v:=cd_check(s,g,at[0],px_add(s,PxKind.history,0,h[0..<3]));#assert v.status==CdStatus.source && v.at==7;
+    v=cd_check(s,g,at[0],px_add(s,PxKind.history,0,h[..]));#assert v.status==CdStatus.source && v.at==8;
+    #assert cd_check(s,g,at[0],px_add(s,PxKind.history,0,h[0..<4])).status==CdStatus.ok;
+    // A request cut short whose stale tokens still match: refused at its end.
+    r=q[0];r.tok[0]=0;v=cd_check(s,g,at[0],r);#assert v.status==CdStatus.source && v.at==0;
+    r=q[0];r.sections=4;r.section[3].count=3;r.n=7;v=cd_check(s,g,at[0],r);#assert v.status==CdStatus.source && v.at==7;
+    // The empty log: the frozen prefix and a tail; and a session from it.
+    e:=px_add(s,PxKind.tail,0,h[4..<5]);#assert cd_check(s,g,0,e).status==CdStatus.ok && cd_admit(s,g,0,e,at[0],q[0]).status==CdStatus.ok;
+    // A request whose tail leaves no room for the view.
+    big:[58]int;#assert cd_check(s,g,at[0],px_add(s,PxKind.tail,0,big[..])).status==CdStatus.shape;
+    #assert cd_check(s,g,at[0],px_add(s,PxKind.tail,0,big[0..<56])).status==CdStatus.source;
+    // The two requests' log lengths must be in order and in the log.
+    #assert cd_admit(s,g,at[1],q[1],at[0],q[0]).status==CdStatus.shape && cd_admit(s,g,-1,q[0],at[1],q[1]).status==CdStatus.shape;
+    #assert cd_admit(s,g,at[0],q[0],g.count+1,q[1]).status==CdStatus.shape && cd_admit(s,g,at[0],q[0],at[0],q[0]).status==CdStatus.ok;
+    // Either log length inside an open condensation.
+    v=cd_admit(s,g,at[3]-1,q[2],at[3],q[3]);#assert v.status==CdStatus.open && v.event==8;
+    v=cd_admit(s,g,at[2],q[2],at[3]-1,q[3]);#assert v.status==CdStatus.open && v.event==8;
+    // Sessions: lengths must match, and a refusal names the request.
+    #assert cd_session(s,g,at[0..<0],q[0..<0]).status==CdStatus.shape && cd_session(s,g,at[0..<1],q[0..<2]).status==CdStatus.shape;
+    x:=q;x[1].tok[6]+=1;v=cd_session(s,g,at[0..<4],x[0..<4]);#assert v.status==CdStatus.source && v.request==1 && v.at==6;
+    x=q;x[0].tok[6]+=1;v=cd_session(s,g,at[0..<4],x[0..<4]);#assert v.status==CdStatus.source && v.request==0;
+    v=cd_session(s,g,at[0..<1],q[0..<1]);#assert v.status==CdStatus.ok && v.breaks==0;
+}
+#test "names" {
+    #assert cd_status_name(CdStatus.ok)=="ok" && cd_status_name(CdStatus.shape)=="outside the view's or the request's bounds";
+    #assert cd_status_name(CdStatus.log)=="the log does not verify, or a redacted event is in the view or named";
+    #assert cd_status_name(CdStatus.kind)=="an event that is not text" && cd_status_name(CdStatus.names)=="a begin event that does not name visible events by digest, in view order";
+    #assert cd_status_name(CdStatus.pinned)=="a condensation names a pinned fact" && cd_status_name(CdStatus.open)=="a condensation begun and not ended";
+    #assert cd_status_name(CdStatus.summary)=="a summary that is not the summarizer's output for the named events";
+    #assert cd_status_name(CdStatus.budget)=="no condensation the policy allows fits the window";
+    #assert cd_status_name(CdStatus.source)=="a request the log's condensed view does not explain";
+    #assert cd_status_name(CdStatus.prefix)=="changes bytes before the first event a logged condensation removed";
+}
+// book:begin check-cache
+#test "three schedules on chapter 176's cache, block by block" #steps 4000000000 {
+    mem:[1728]f64;m:[3]PxMeasure;win:=[3]int.[64,20,20];keep:=[3]int.[1,1,2];n:[18]int;
+    for x:0..<3 {
+        ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];q:[6]PxRequest;at:[6]int;p:[6]CdPlan;
+        #assert cdc_hand(l[..],CdPolicy.{window=win[x],keep=keep[x]},6,q[..],at[..],p[..])==6;
+        #assert cd_session(cdc_open(),l[0],at[..],q[..]).status==CdStatus.ok;
+        m[x]=px_measure(q[..],1,4,mem[..]);#assert m[x].status==PxStatus.ok;
+        for i:0..<6 {n[6*x+i]=q[i].n;}
+    }
+    tokens:=[18]int.[9,13,17,21,25,29, 9,13,17,15,19,14, 9,13,17,18,17,17];
+    hit:=[18]int.[0,2,3,4,5,6, 0,2,3,1,3,1, 0,2,3,1,1,2];
+    for i:0..<18 {#assert n[i]==tokens[i] && m[i/6].reused[i%6]==hit[i];}
+    #assert m[0].tokens==114 && m[0].cached==80 && m[1].tokens==87 && m[1].cached==40 && m[2].tokens==91 && m[2].cached==36;
+    // The break-even at turn 4: 6 more tokens recomputed, 12 fewer cached, 6 fewer sent.
+    #assert (15-4*m[1].reused[3])-(21-4*m[0].reused[3])==6 && 4*(m[0].reused[3]-m[1].reused[3])==12;
+    // In modeled time a condensation only costs: the more it recomputes, the longer the prefill.
+    #assert m[0].prefill==147610 && m[1].prefill==166579 && m[2].prefill==178251;
+    #assert m[0].p50==23629 && m[1].p50==26547 && m[2].p95==36761;
+}
+// book:end check-cache
+
+// Independent checks on random sessions (psionic/tests/harness-condense-checks.coax).
+#forall "each request is the oracle's; after a condensation it extends the condensed view exactly" seed:0..<20 #steps 4000000000 {
+    cdc_random(seed);
+}
+
+// book:begin view
+// Event e's digest as eight words of four little-endian bytes each.
+cd_word :: (d:[32]u8,w:int)->int {
+    x:=0;for b:0..<4 {x=256*x+cast(int)d[4*w+3-b];}
+    return x;
+}
+// The stand-in summarizer: the mark, how many events and tokens it
+// replaces, then the first token of each named user event, in order. It is
+// not a model; it is deterministic, short, and a function of the named
+// events' tokens only, so a verifier can recompute it.
+cd_summarize :: (g:LgLog,names:[]int,out:[]int)->int {
+    out[0]=CD_SUMMARY;out[1]=names.count;out[2]=0;n:=3;
+    for x:names {
+        at:=lg_offset(g,x);e:=g.events[x];out[2]+=e.count;
+        if e.kind==LgKind.user && e.count>0 {out[n]=g.tokens[at];n+=1;}
+    }
+    return n;
+}
+cd_refuse :: (v:CdView,status:CdStatus,event:int)->CdView {r:=v;r.status=status;r.event=event;return r;}
+// The view position of event x, or the view's length.
+cd_find :: (v:CdView,x:int)->int {
+    item:=v.item;for y,p:item[0..<v.items] {if y==x {return p;}}
+    return v.items;
+}
+// The begin event at i and the summary after it, applied to the view. Each
+// named event must be in the view, after the one named before it, not a
+// pinned fact, unredacted, and named with its own digest; the next event
+// must be the summarizer's output for them. The summary takes the first
+// named event's place, and the others leave the view.
+cd_apply :: (from:CdView,g:LgLog,i:int,start:int)->CdView {
+    v:=from;at:=start;e:=g.events[i];k:=e.count/9;
+    if (e.count-2)%9!=0 || k<1 || k>CD_NAMES || g.tokens[at+1]!=k {return cd_refuse(v,CdStatus.names,i);}
+    names:[8]int;next:=0;
+    for j:0..<k {
+        x:=g.tokens[at+2+9*j];q:=cd_find(v,x);
+        if q==v.items || q<next {return cd_refuse(v,CdStatus.names,i);}
+        if g.events[x].kind==LgKind.system {return cd_refuse(v,CdStatus.pinned,i);}
+        for w:0..<8 {if g.tokens[at+3+9*j+w]!=cd_word(g.events[x].digest,w) {return cd_refuse(v,CdStatus.names,i);}}
+        if g.events[x].redacted {return cd_refuse(v,CdStatus.log,i);}
+        names[j]=x;next=q+1;
+    }
+    if i+1==g.count {return cd_refuse(v,CdStatus.open,i);}
+    s:[11]int;n:=cd_summarize(g,names[0..<k],s[..]);f:=g.events[i+1];at+=e.count;
+    if f.kind!=LgKind.context || f.count!=n {return cd_refuse(v,CdStatus.summary,i+1);}
+    for t:0..<n {if g.tokens[at+t]!=s[t] {return cd_refuse(v,CdStatus.summary,i+1);}}
+    for x:names[0..<k] {v.gone[x]=i;}
+    m:=0;
+    item:=from.item;
+    for x:item[0..<from.items] {
+        if x==names[0] {v.item[m]=i+1;m+=1;}
+        else if v.gone[x]==0 {v.item[m]=x;m+=1;}
+    }
+    v.items=m;return v;
+}
+// The condensed view of a verified log of text events. A context event that
+// starts with CD_BEGIN is a condensation; one that starts with CD_SUMMARY
+// must follow a begin event.
+cd_view :: (g:LgLog)->CdView {
+    v:CdView;
+    if g.count>CD_EVENTS {return cd_refuse(v,CdStatus.shape,g.count);}
+    c:=lg_verify(g);if c.status!=LgStatus.ok {return cd_refuse(v,CdStatus.log,c.index);}
+    i:=0;at:=0;
+    while i<g.count {
+        e:=g.events[i];
+        if !lg_text(e.kind) {return cd_refuse(v,CdStatus.kind,i);}
+        marked:=e.kind==LgKind.context && e.count>0;
+        if marked && g.tokens[at]==CD_SUMMARY {return cd_refuse(v,CdStatus.summary,i);}
+        if marked && g.tokens[at]==CD_BEGIN {
+            v=cd_apply(v,g,i,at);if v.status!=CdStatus.ok {return v;}
+            at+=e.count+g.events[i+1].count;i+=2;
+        }
+        else {v.item[v.items]=i;v.items+=1;at+=e.count;i+=1;}
+    }
+    for x:v.item[0..<v.items] {
+        e:=g.events[x];
+        if e.redacted {return cd_refuse(v,CdStatus.log,x);}
+        if e.count>PX_TOKENS-v.n {return cd_refuse(v,CdStatus.shape,x);}
+        at=lg_offset(g,x);for t:0..<e.count {v.tok[v.n+t]=g.tokens[at+t];}
+        v.n+=e.count;
+    }
+    return v;
+}
+// The log as it stood after its first n events.
+cd_at :: (g:LgLog,n:int)->LgLog {return LgLog.{events=g.events,tokens=g.tokens,count=n,used=lg_offset(g,n)};}
+// book:end view
+
+// book:begin condense
+// Which events to name, under the policy, for a request with a tail of
+// tail tokens. Nothing is named while the request fits the window. Then the
+// cut is the view position of the keep-th user event from the end; the
+// events before it, oldest first, up to eight, except pinned facts, are
+// named. A plan that would still not fit is refused, and nothing is logged.
+cd_plan :: (s:PxRequest,g:LgLog,tail:int,p:CdPolicy)->CdPlan {
+    r:CdPlan;r.status=CdStatus.shape;
+    if s.status!=PxStatus.ok || p.window<1 || p.keep<0 || tail<0 {return r;}
+    v:=cd_view(g);if v.status!=CdStatus.ok {r.status=v.status;return r;}
+    r.status=CdStatus.ok;r.length=s.n+v.n+tail;r.after=r.length;
+    if r.length<=p.window {return r;}
+    cut:=v.items;left:=p.keep;
+    while left>0 && cut>0 {cut-=1;if g.events[v.item[cut]].kind==LgKind.user {left-=1;}}
+    for x:v.item[0..<cut] {
+        if g.events[x].kind!=LgKind.system && r.names<CD_NAMES {r.name[r.names]=x;r.names+=1;r.after-=g.events[x].count;}
+    }
+    out:[11]int;r.after+=cd_summarize(g,r.name[0..<r.names],out[..]);
+    // With nothing named, after is longer than now, so the plan is refused.
+    if r.after>p.window {r.status=CdStatus.budget;return r;}
+    r.condense=true;return r;
+}
+// One to eight events of the log, by index.
+cd_named :: (g:LgLog,names:[]int)->bool {
+    if names.count<1 || names.count>CD_NAMES {return false;}
+    for x:names {if x<0 || x>=g.count {return false;}}
+    return true;
+}
+// The begin event: the mark, the count, then each named event's index and
+// digest words.
+cd_begin :: (l:[]LgLog,names:[]int)->CdStatus {
+    g:=l[0];b:[74]int;b[0]=CD_BEGIN;b[1]=names.count;
+    if !cd_named(g,names) {return CdStatus.shape;}
+    for x,j:names {b[2+9*j]=x;for w:0..<8 {b[3+9*j+w]=cd_word(g.events[x].digest,w);}}
+    if lg_say(l,LgKind.context,b[0..<2+9*names.count])!=LgStatus.ok {return CdStatus.shape;}
+    return CdStatus.ok;
+}
+// The summary event for the same names, right after the begin event. If the
+// log is full here, it holds an open condensation, as after a crash; the
+// verifier refuses a summary that does not match its begin event.
+cd_end :: (l:[]LgLog,names:[]int)->CdStatus {
+    g:=l[0];s:[11]int;
+    if !cd_named(g,names) {return CdStatus.shape;}
+    if lg_say(l,LgKind.context,s[0..<cd_summarize(g,names,s[..])])!=LgStatus.ok {return CdStatus.shape;}
+    return CdStatus.ok;
+}
+// Plan, and when the plan says so, log both events.
+cd_condense :: (l:[]LgLog,s:PxRequest,tail:int,p:CdPolicy)->CdPlan {
+    r:=cd_plan(s,l[0],tail,p);
+    if r.condense {
+        r.status=cd_begin(l,r.name[0..<r.names]);
+        if r.status==CdStatus.ok {r.status=cd_end(l,r.name[0..<r.names]);}
+    }
+    return r;
+}
+// book:end condense
+
+// book:begin assemble
+// A request from the condensed view: chapter 202's frozen prefix, the view
+// as its history section, then the tail.
+cd_history :: (s:PxRequest,v:CdView)->PxRequest {
+    r:=s;
+    if r.status!=PxStatus.ok {return r;}
+    if v.status!=CdStatus.ok {r.status=PxStatus.log;return r;}
+    tok:=v.tok;return px_add(r,PxKind.history,0,tok[0..<v.n]);
+}
+cd_build :: (s:PxRequest,v:CdView,tail:[]int)->PxRequest {return px_add(cd_history(s,v),PxKind.tail,0,tail);}
+cd_assemble :: (s:PxRequest,g:LgLog,tail:[]int)->PxRequest {return cd_build(s,cd_view(g),tail);}
+// What the harness does before each request: condense if the policy says
+// so, then assemble from the log.
+cd_request :: (l:[]LgLog,s:PxRequest,tail:[]int,p:CdPolicy)->CdStep {
+    r:CdStep;r.plan=cd_condense(l,s,tail.count,p);r.at=l[0].count;
+    r.r.status=PxStatus.log;
+    if r.plan.status==CdStatus.ok {r.r=cd_assemble(s,l[0],tail);}
+    return r;
+}
+// book:end assemble
+
+// book:begin verify
+// Every token of r must be the frozen prefix, the view of the log's first
+// at events, and r's own tail, in that order; a refusal names the first
+// position that differs.
+cd_match :: (s:PxRequest,v:CdView,r:PxRequest)->CdVerdict {
+    if r.status!=PxStatus.ok {return CdVerdict.{status=CdStatus.shape};}
+    tok:=r.tok;w:=cd_build(s,v,tok[px_boundary(r)..<r.n]);
+    if w.status!=PxStatus.ok {return CdVerdict.{status=CdStatus.shape};}
+    p:=0;while p<w.n && p<r.n && w.tok[p]==r.tok[p] {p+=1;}
+    if p<w.n || p<r.n {return CdVerdict.{status=CdStatus.source,at=p};}
+    return CdVerdict.{};
+}
+cd_check :: (s:PxRequest,g:LgLog,at:int,r:PxRequest)->CdVerdict {
+    if at<0 || at>g.count {return CdVerdict.{status=CdStatus.shape};}
+    v:=cd_view(cd_at(g,at));
+    if v.status!=CdStatus.ok {return CdVerdict.{status=v.status,event=v.event};}
+    return cd_match(s,v,r);
+}
+// The next request after prev, each with the log length it was assembled
+// at. next must be what the log explains. If it does not start with every
+// token of prev before prev's boundary, the first difference must be at or
+// after the first event of prev's view that a logged condensation has since
+// removed; by names that condensation's begin event.
+cd_admit :: (s:PxRequest,g:LgLog,pat:int,prev:PxRequest,nat:int,next:PxRequest)->CdVerdict {
+    if pat<0 || pat>nat || nat>g.count {return CdVerdict.{status=CdStatus.shape};}
+    b:=cd_view(cd_at(g,nat));a:=cd_view(cd_at(g,pat));
+    if b.status!=CdStatus.ok {return CdVerdict.{status=b.status,event=b.event};}
+    c:=cd_match(s,b,next);if c.status!=CdStatus.ok {return c;}
+    if a.status!=CdStatus.ok {return CdVerdict.{status=a.status,event=a.event};}
+    v:=px_admit(prev,next);c.shared=v.shared;c.at=v.at;
+    if v.status==PxStatus.ok {return c;}
+    p:=s.n;
+    for x:a.item[0..<a.items] {
+        if b.gone[x]!=0 {
+            if v.at<p {break;}
+            c.by=b.gone[x];c.breaks=1;return c;
+        }
+        p+=g.events[x].count;
+    }
+    c.status=CdStatus.prefix;return c;
+}
+// A session's requests and the log lengths they were assembled at: the
+// first refusal, with the request's index, or the last verdict with the
+// number of admitted breaks. Every request is rebuilt from the log.
+cd_session :: (s:PxRequest,g:LgLog,at:[]int,reqs:[]PxRequest)->CdVerdict {
+    if reqs.count<1 || at.count!=reqs.count {return CdVerdict.{status=CdStatus.shape};}
+    c:=cd_check(s,g,at[0],reqs[0]);n:=0;
+    for i:1..<reqs.count {
+        if c.status!=CdStatus.ok {return c;}
+        c=cd_admit(s,g,at[i-1],reqs[i-1],at[i],reqs[i]);c.request=i;n+=c.breaks;c.breaks=n;
+    }
+    return c;
+}
+// book:end verify
+
+cd_status_name :: (s:CdStatus)->string {
+    names:=[11]string.["ok","outside the view's or the request's bounds","the log does not verify, or a redacted event is in the view or named","an event that is not text","a begin event that does not name visible events by digest, in view order","a condensation names a pinned fact","a condensation begun and not ended","a summary that is not the summarizer's output for the named events","no condensation the policy allows fits the window","a request the log's condensed view does not explain","changes bytes before the first event a logged condensation removed"];
+    return names[cast(int)s];
+}

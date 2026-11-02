@@ -1,0 +1,60 @@
+#import "Basic";
+#load "../lib/harness/condense.coax";
+// Chapter 206's example: the hand session condensed twice under a window of
+// 20 tokens, each request admitted by the verifier; an unlogged rewrite, a
+// crash between the two events and forged condensations, each refused; and
+// three schedules on chapter 176's cache. Every number is exact.
+ex_view :: (label:string,v:CdView) {
+    print("%: events",label);for i:0..<v.items {print(" %",v.item[i]);}
+    print("; tokens");for i:0..<v.n {print(" %",v.tok[i]);}
+    print("\n");
+}
+ex_refuse :: (label:string,v:CdView) {print("%: % (%), event %\n",label,v.status,cd_status_name(v.status),v.event);}
+// book:begin example
+main :: () {
+    // The hand session: a pinned fact, then six turns, a request in each, under a window of 20 tokens.
+    ev:[32]LgEvent;tk:[512]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    q:[6]PxRequest;at:[6]int;p:[6]CdPlan;s:=cdc_open();
+    turns:=cdc_hand(l[..],CdPolicy.{window=20,keep=1},6,q[..],at[..],p[..]);
+    print("frozen prefix: % tokens; % turns; log: % events, % tokens\n",s.n,turns,l[0].count,l[0].used);
+    for k:0..<6 {
+        print("turn %: % tokens",k+1,p[k].length);
+        if p[k].condense {print(", condensed % events into % tokens",p[k].names,p[k].after);}
+        print("; request % tokens at log length %",q[k].n,at[k]);
+        if k>0 {
+            a:=cd_admit(s,l[0],at[k-1],q[k-1],at[k],q[k]);
+            print("; %, shares % with the previous",a.status,a.shared);
+            if a.by>0 {print(", break at % allowed by the condensation at event %",a.at,a.by);}
+        }
+        print("\n");
+    }
+    ex_view("view at turn 4",cd_view(cd_at(l[0],at[3])));
+    ex_view("view at turn 6",cd_view(cd_at(l[0],at[5])));
+    c:=cd_session(s,l[0],at[..],q[..]);print("the session rebuilt from the log: %, % breaks\n",c.status,c.breaks);
+    // Broken inputs, each refused at its place.
+    e2:[32]LgEvent;t2:[512]int;g:=[1]LgLog.[LgLog.{events=e2[..],tokens=t2[..]}];
+    turns=cdc_hand(g[..],CdPolicy.{window=20,keep=1},3,q[..],at[..],p[..]);
+    u:=[2]int.[40,41];print("a second log: % turns, then turn 4's user text: %\n",turns,lg_say(g[..],LgKind.user,u[..]));
+    h:=[4]int.[90,91,40,41];tail:=[1]int.[1004];x:=px_add(px_add(s,PxKind.history,0,h[..]),PxKind.tail,0,tail[..]);
+    a:=cd_admit(s,g[0],at[2],q[2],g[0].count,x);
+    print("turns 1 to 3 dropped without a logged condensation: % (%), position %\n",a.status,cd_status_name(a.status),a.at);
+    before:=g[0];names:=[6]int.[1,2,3,4,5,6];
+    print("begin event: %; crash before the summary: log %; ",cd_begin(g[..],names[..]),lg_verify(g[0]).status);ex_refuse("view",cd_view(g[0]));
+    print("summary event: %",cd_end(g[..],names[..]));y:=cd_assemble(s,g[0],tail[..]);a=cd_admit(s,g[0],at[2],q[2],g[0].count,y);
+    print("; request % tokens, %, break at % allowed by the condensation at event %\n",y.n,a.status,a.at,a.by);
+    labels:=[6]string.["a summary with no begin event","a condensation naming the pinned fact","a begin event with no summary","a wrong digest word","a summary token changed","a redacted event named"];
+    cases:=[6]int.[0,1,3,6,8,11];
+    for k,i:cases {ex_refuse(labels[i],cdc_forge(before,k));}
+    // Three schedules of the same six turns on chapter 176's cache, pages of 4, 1 output token each.
+    win:=[3]int.[64,20,20];keep:=[3]int.[1,1,2];sched:=[3]string.["never condensed","window 20, keep 1 turn","window 20, keep 2 turns"];mem:[1728]f64;
+    for k:0..<3 {
+        e3:[32]LgEvent;t3:[512]int;r:=[1]LgLog.[LgLog.{events=e3[..],tokens=t3[..]}];
+        turns=cdc_hand(r[..],CdPolicy.{window=win[k],keep=keep[k]},6,q[..],at[..],p[..]);
+        m:=px_measure(q[..],1,4,mem[..]);n:=0;for z:p {if z.condense {n+=1;}}
+        print("%: % condensations, verifier %\n  tokens by request:",sched[k],n,cd_session(s,r[0],at[..],q[..]).status);
+        for i:0..<6 {print(" %",q[i].n);}
+        print("\n  blocks reused:");for i:0..<6 {print(" %",m.reused[i]);}
+        print("\n  prompt tokens %, cached %, recomputed %; modeled prefill % us, P50 % us, P95 % us\n",m.tokens,m.cached,m.tokens-m.cached,m.prefill,m.p50,m.p95);
+    }
+}
+// book:end example

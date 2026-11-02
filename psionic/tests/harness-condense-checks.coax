@@ -1,0 +1,168 @@
+// Chapter 206's check helpers, kept apart from psionic/lib/harness/condense.coax:
+// the hand session, forged condensations written straight into the log, and
+// an oracle that keeps its own list of what the model sees, with its own
+// policy and summarizer, for random sessions. Nothing here is used by the
+// condenser itself.
+
+// The frozen prefix: system text [1, 2] and one tool, id 7, schema [7, 8].
+cdc_open :: ()->PxRequest {
+    sy:=[2]int.[1,2];t:=[1]PxTool.[PxTool.{id=7,count=2}];t[0].tok[0]=7;t[0].tok[1]=8;
+    return px_open(sy[..],t[..],sy[0..<0]);
+}
+// The hand session: a pinned fact [90, 91], then each turn t (from 1) logs
+// the user's [10t, 10t+1], sends a request with the tail [1000 + t], and
+// logs the reply as context [10t+2, 10t+3].
+cdc_hand :: (l:[]LgLog,p:CdPolicy,turns:int,out:[]PxRequest,at:[]int,plans:[]CdPlan)->int {
+    s:=cdc_open();fact:=[2]int.[90,91];#assert lg_say(l,LgKind.system,fact[..])==LgStatus.ok;
+    for k:0..<turns {
+        t:=k+1;u:=[2]int.[10*t,10*t+1];#assert lg_say(l,LgKind.user,u[..])==LgStatus.ok;
+        tail:=[1]int.[1000+t];r:=cd_request(l,s,tail[..],p);out[k]=r.r;at[k]=r.at;plans[k]=r.plan;
+        c:=[2]int.[10*t+2,10*t+3];#assert lg_say(l,LgKind.context,c[..])==LgStatus.ok;
+    }
+    return turns;
+}
+
+// The oracle's own encodings: a digest as eight words of four bytes, low
+// byte first, and the summary.
+cdc_word :: (d:[32]u8,w:int)->int {return cast(int)d[4*w]+256*cast(int)d[4*w+1]+65536*cast(int)d[4*w+2]+16777216*cast(int)d[4*w+3];}
+cdc_begin :: (g:LgLog,names:[]int,out:[]int)->int {
+    out[0]=CD_BEGIN;out[1]=names.count;n:=2;
+    for x:names {out[n]=x;n+=1;for w:0..<8 {out[n]=cdc_word(g.events[x].digest,w);n+=1;}}
+    return n;
+}
+cdc_summary :: (g:LgLog,names:[]int,out:[]int)->int {
+    total:=0;n:=3;
+    for x:names {
+        at:=0;for e:g.events[0..<x] {at+=e.count;}
+        total+=g.events[x].count;
+        if g.events[x].kind==LgKind.user && g.events[x].count>0 {out[n]=g.tokens[at];n+=1;}
+    }
+    out[0]=CD_SUMMARY;out[1]=names.count;out[2]=total;return n;
+}
+// A copy of the first eight events of the log g (a pinned fact and three
+// turns, then turn 4's user event), with forged condensation number k
+// written after them; the view of the copy.
+cdc_forge :: (g:LgLog,k:int)->CdView {
+    ev:[16]LgEvent;tk:[400]int;for i:0..<8 {ev[i]=g.events[i];}for i:0..<g.used {tk[i]=g.tokens[i];}
+    l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..],count=8,used=g.used}];
+    names:=[6]int.[1,2,3,4,5,6];b:[90]int;s:[12]int;
+    if k==11 {#assert lg_redact(l[..],3)==LgStatus.ok;}
+    nb:=cdc_begin(l[0],names[..],b[..]);ns:=cdc_summary(l[0],names[..],s[..]);
+    one:=[1]int.[0];pair:=[2]int.[2,1];twice:=[2]int.[1,1];future:=[1]int.[9];nine:=[9]int.[1,2,3,4,5,6,7,1,2];
+    if k==0 {s[0]=CD_SUMMARY;ns=3;}
+    else if k==1 {nb=cdc_begin(l[0],one[..],b[..]);ns=cdc_summary(l[0],one[..],s[..]);}
+    else if k==2 {nb=2;b[1]=0;}
+    else if k==16 {nb=1;}
+    else if k==4 {nb=cdc_begin(l[0],nine[..],b[..]);}
+    else if k==5 {b[nb]=0;nb+=1;}
+    else if k==6 {b[3+9*2]+=1;}
+    else if k==7 {b[1]=2;nb=11;}
+    else if k==8 {s[4]+=1;}
+    else if k==17 {s[0]=0;}
+    else if k==9 {s[ns]=0;ns+=1;}
+    else if k==12 {nb=cdc_begin(l[0],pair[..],b[..]);ns=cdc_summary(l[0],pair[..],s[..]);}
+    else if k==13 {nb=cdc_begin(l[0],twice[..],b[..]);}
+    else if k==14 {nb=cdc_begin(l[0],future[..],b[..]);}
+    if k!=0 {#assert lg_say(l[..],LgKind.context,b[0..<nb])==LgStatus.ok;}
+    // Case 3 ends after the begin event; case 10 logs the summary as user text.
+    if k!=3 {#assert lg_say(l[..],ifx k==10 then LgKind.user else LgKind.context,s[0..<ns])==LgStatus.ok;}
+    return cd_view(l[0]);
+}
+
+// The oracle's model of what the model sees: one entry per visible event,
+// with its kind, its log event and its tokens.
+CdcSeg :: struct {kind:LgKind;event:int;n:int;tok:[11]int;}
+CdcModel :: struct {segs:int;seg:[32]CdcSeg;}
+cdc_tokens :: (m:CdcModel,out:[]int)->int {
+    n:=0;seg:=m.seg;for g:seg[0..<m.segs] {tok:=g.tok;for x:tok[0..<g.n] {out[n]=x;n+=1;}}
+    return n;
+}
+// The oracle's policy: 0 the request fits, 1 condense names, 2 nothing fits.
+// The cut is found from the list of user entries, not by walking back.
+CdcPlan :: struct {what:int;after:int;names:int;name:[8]int;}
+cdc_plan :: (m:CdcModel,prefix:int,tail:int,p:CdPolicy)->CdcPlan {
+    r:CdcPlan;hist:=0;users:[32]int;nu:=0;seg:=m.seg;
+    for g,i:seg[0..<m.segs] {hist+=g.n;if g.kind==LgKind.user {users[nu]=i;nu+=1;}}
+    length:=prefix+hist+tail;r.after=length;
+    if length<=p.window {return r;}
+    cut:=0;
+    if p.keep==0 {cut=m.segs;}
+    else if nu>=p.keep {cut=users[nu-p.keep];}
+    topics:=0;
+    for g,i:seg[0..<cut] {
+        if g.kind!=LgKind.system && r.names<8 {r.name[r.names]=i;r.names+=1;r.after-=g.n;if g.kind==LgKind.user && g.n>0 {topics+=1;}}
+    }
+    r.after+=3+topics;r.what=ifx r.names>0 && r.after<=p.window then 1 else 2;
+    return r;
+}
+
+// A random session: chapter 202's random prefix parts, a random policy, and
+// up to 12 text events (pinned facts, user and context text of 0 to 3
+// tokens), each followed by a request with 0 to 2 tail tokens.
+cdc_random :: (seed:int) {
+    w:=pxc_work(seed);s:=px_open(w.system[0..<w.ns],w.tools[0..<w.nt],w.header[0..<w.nh]);#assert s.status==PxStatus.ok;
+    sd:=cast(u64)(seed+20600);c:=cast(u64)0;
+    p:=CdPolicy.{window=s.n+6+pxc_pick(sd,0,16),keep=pxc_pick(sd,1,3)};c=2;
+    ev:[32]LgEvent;tk:[2048]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    m:CdcModel;pins:[16]int;np:=0;prev:PxRequest;pat:=0;have:=false;
+    reqs:[16]PxRequest;ats:[16]int;nreq:=0;breaks:=0;
+    steps:=4+pxc_pick(sd,c,9);c+=1;
+    for e:0..<steps {
+        if l[0].count+3>CD_EVENTS {break;}
+        x:=pxc_pick(sd,c,10);c+=1;kind:=ifx x==0 then LgKind.system else ifx x<5 then LgKind.user else LgKind.context;
+        text:[3]int;n:=pxc_pick(sd,c,4);c+=1;for i:0..<3 {text[i]=pxc_pick(sd,c,40);c+=1;}
+        g:=CdcSeg.{kind=kind,event=l[0].count,n=n};for i:0..<n {g.tok[i]=text[i];}
+        if kind==LgKind.system {pins[np]=l[0].count;np+=1;}
+        #assert lg_say(l[..],kind,text[0..<n])==LgStatus.ok;
+        m.seg[m.segs]=g;m.segs+=1;
+        tail:[2]int;nt:=pxc_pick(sd,c,3);c+=1;for i:0..<2 {tail[i]=1000+pxc_pick(sd,c,40);c+=1;}
+        want:=cdc_plan(m,s.n,nt,p);before:=l[0].count;
+        r:=cd_request(l[..],s,tail[0..<nt],p);
+        #assert r.plan.after==want.after && r.plan.names==want.names;
+        for j:0..<want.names {#assert r.plan.name[j]==m.seg[want.name[j]].event;}
+        if want.what==2 {#assert r.plan.status==CdStatus.budget && !r.plan.condense && l[0].count==before && r.r.status==PxStatus.log;continue;}
+        #assert r.plan.status==CdStatus.ok && r.plan.condense==(want.what==1);
+        // Where the first named entry starts in the previous request.
+        first:=s.n;
+        if want.what==1 {
+            for h:m.seg[0..<want.name[0]] {first+=h.n;}
+            names:[8]int;for j:0..<want.names {names[j]=m.seg[want.name[j]].event;}
+            y:CdcSeg;y.kind=LgKind.context;y.event=l[0].count-1;y.n=cdc_summary(l[0],names[0..<want.names],y.tok[..]);
+            #assert l[0].count==before+2;
+            // The begin event holds exactly the names and their digests.
+            b:[74]int;nb:=cdc_begin(l[0],names[0..<want.names],b[..]);at:=0;for q:ev[0..<before] {at+=q.count;}
+            #assert ev[before].count==nb;for i:0..<nb {#assert tk[at+i]==b[i];}
+            k:=CdcModel.{};
+            for h,i:m.seg[0..<m.segs] {
+                named:=false;for j:0..<want.names {if want.name[j]==i {named=true;}}
+                if i==want.name[0] {k.seg[k.segs]=y;k.segs+=1;}
+                else if !named {k.seg[k.segs]=h;k.segs+=1;}
+            }
+            m=k;
+        }
+        // The request is the frozen prefix, the oracle's view and the tail, token for token.
+        hist:[64]int;nh:=cdc_tokens(m,hist[..]);full:[64]int;
+        nf:=pxc_build(w.system[0..<w.ns],w.tools[0..<w.nt],w.header[0..<w.nh],hist[0..<nh],tail[0..<nt],full[..]);
+        #assert r.r.status==PxStatus.ok && r.r.n==nf && r.at==l[0].count && px_boundary(r.r)==nf-nt;
+        for i:0..<nf {#assert r.r.tok[i]==full[i];}
+        // Pinned facts are never dropped.
+        v:=cd_view(l[0]);#assert v.status==CdStatus.ok && v.n==nh;
+        for pin:pins[0..<np] {seen:=0;for i:0..<v.items {if v.item[i]==pin {seen+=1;}}#assert seen==1;}
+        if have {
+            a:=cd_admit(s,l[0],pat,prev,r.at,r.r);u:=px_admit(prev,r.r);
+            #assert a.status==CdStatus.ok && a.shared==u.shared;
+            if want.what==1 {
+                // A break, if any, is at or after the first named entry, and is the condensation's.
+                #assert u.status==PxStatus.ok || (u.at>=first && a.by==r.at-2 && a.at==u.at);
+                if u.status!=PxStatus.ok {breaks+=1;}
+            }
+            else {#assert u.status==PxStatus.ok && a.by==0;}
+            // An unlogged rewrite of one token is refused at exactly its position.
+            q:=first+pxc_pick(sd,c,nf-nt-first+1);c+=1;
+            if q<nf-nt {z:=r.r;z.tok[q]+=1;a=cd_check(s,l[0],r.at,z);#assert a.status==CdStatus.source && a.at==q;}
+        }
+        prev=r.r;pat=r.at;have=true;reqs[nreq]=r.r;ats[nreq]=r.at;nreq+=1;
+    }
+    // Replay: every request rebuilt from the log alone, and each break admitted once.
+    if nreq>0 {v:=cd_session(s,l[0],ats[0..<nreq],reqs[0..<nreq]);#assert v.status==CdStatus.ok && v.breaks==breaks && v.request==nreq-1;}
+}

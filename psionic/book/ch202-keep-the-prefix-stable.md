@@ -588,9 +588,10 @@ Mutation of `harness/prefix.coax` leaves no survivors.
   over a long session, rather than modeled from chapter 175's step cost.
 - Real system prompts and tool schemas as tokens from a tokenizer, and
   sessions longer than chapter 176's bounds of 16 requests of 32 tokens.
-- Condensation ([chapter 206](ch206-condense-the-history.md)), which
-  replaces older history and so deliberately breaks the prefix; the
-  checker has no exception for it yet.
+- Condensation now runs in [chapter 206](ch206-condense-the-history.md),
+  whose `cd_admit` wraps `px_admit` with the one exception: a break at a
+  logged condensation. Merging that exception into this chapter's
+  assembler, so one checker covers both, remains.
 
 ## Sources
 
