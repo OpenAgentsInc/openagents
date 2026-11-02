@@ -6,8 +6,9 @@
 > codes, and with no verb opens the terminal UI. `trigger` and `router` run
 > chapter 17's Router. `watch` and `policy` work locally through that Router
 > instead of a server. Each conversation is a session file in
-> `~/.openagents/coder/sessions`. Still to come: `daemon`, `--on cloud`, and
-> the same verbs as MCP tools.
+> `~/.openagents/coder/sessions`. `coder mcp` serves the verbs as MCP tools
+> on stdio, and Claude Code drives Coder through it. Still to come: `daemon`
+> and `--on cloud`.
 
 Every chapter in this book ends in a verb. This chapter puts them into the
 `coder` domain of the `openagents` binary.
@@ -124,6 +125,32 @@ Router of chapters 17 and 20 on this machine:
   repository has no policy yet, it adds one that admits only the account
   `gh` is logged in as.
 
+### The verbs as MCP tools
+
+`coder mcp` ([mcp.coax](../../coder/tui/mcp.coax)) is an MCP server on
+standard input and output, one JSON-RPC message a line. It answers
+`initialize`, `ping`, `tools/list` and `tools/call`, and each tool runs the
+matching verb as a child process, so the tools and the verbs can't drift
+apart:
+
+| Tool | Verb |
+| --- | --- |
+| `coder_run` | `coder run TASK --detach [--engine E] [--cwd DIR]`: returns the ID at once |
+| `coder_ls`, `coder_status`, `coder_log`, `coder_stop`, `coder_replay` | the verb of the same name |
+| `coder_send` | a message for a session: a running job takes it as its next turn; an ended one continues in a fork |
+| `coder_fork` | `coder fork ID TASK --detach [--at N]` |
+
+`coder_run` always runs a background job, so a client's tool-call timeout
+never cuts a task short; the client follows it with `coder_status` and
+`coder_log`. To give Claude Code these tools:
+
+```sh
+claude mcp add coder -- "$PWD/coder/tui/coder.sh" mcp
+```
+
+In the live check, `claude -p` called `coder_ls` through the server and
+answered with the number of sessions on the machine.
+
 ### The session log
 
 [coder/tui/session.coax](../../coder/tui/session.coax) writes one JSON
@@ -166,6 +193,8 @@ such session, 130 stopped.
   one, a fork's request rebuilt byte for byte and a changed log refused, a
   suite's report kept, a watched Thread's event starting a Worker, and
   sources added, listed and removed.
+- [x] The verbs are MCP tools (`coder mcp`); the smoke starts a run and
+  reads its log through them, and Claude Code called one live.
 - [ ] Each verb exists in the command table with `--json` and the spec's exit
   codes, and a `coder-journey` check runs `run`, `log`, `fork`, `stop` and
   `replay` on a fixture repository.

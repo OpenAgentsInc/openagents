@@ -331,6 +331,26 @@ def verbs(check):
         br = json.loads(bn.stdout) if bn.returncode == 0 else {}
         check("bench: a suite runs and its report is kept", br.get("passed") is True and "passed, 0 failed" in br.get("last", "")
               and len(os.listdir(os.path.join(home, ".openagents", "coder", "bench"))) == 1)
+        # coder mcp: the verbs as MCP tools on stdio
+        mp = subprocess.Popen([coder, "mcp"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        def rpc(i, m, params):
+            mp.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": m, "params": params}) + "\n"); mp.stdin.flush()
+            return json.loads(mp.stdout.readline())
+        init = rpc(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}})
+        tools = [t["name"] for t in rpc(2, "tools/list", {})["result"]["tools"]]
+        started = rpc(3, "tools/call", {"name": "coder_run", "arguments": {"task": "$ echo via-mcp", "engine": "echo"}})["result"]
+        mid = started["content"][0]["text"].strip()
+        logged = ""
+        for _ in range(50):
+            logged = rpc(4, "tools/call", {"name": "coder_log", "arguments": {"id": mid}})["result"]["content"][0]["text"]
+            if "finished" in logged:
+                break
+            time.sleep(0.2)
+        unknown = rpc(5, "tools/call", {"name": "coder_nope", "arguments": {}})
+        mp.stdin.close(); mp.wait(timeout=10)
+        check("mcp: initialize, the tool list, a run started and its log read through tools",
+              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 8 and not started["isError"]
+              and "    └ via-mcp" in logged and unknown["error"]["code"] == -32602)
         bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("status of an unknown ID exits 6", bad.returncode == 6)
     finally:

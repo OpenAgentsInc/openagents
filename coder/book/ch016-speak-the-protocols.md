@@ -4,8 +4,10 @@
 > handshake, `tools/list` and `tools/call`) and Open Responses function
 > calls run in both directions over byte strings, with typed import,
 > chapter4's admission, a remote policy and a hash-chained message log.
-> Live transports (stdio and HTTP), MCP resources, ACP for editors and
-> System One as a tool remain; see [What remains](#what-remains).
+> Coder also serves its verbs as MCP tools over the stdio transport
+> (`coder mcp`, chapter 23), which Claude Code drives live. The harness's
+> own client over live transports (stdio and HTTP), MCP resources, ACP for
+> editors and System One as a tool remain; see [What remains](#what-remains).
 
 Other programs already speak protocols for tools. A Model Context Protocol
 (MCP) server publishes tools as JSON-RPC 2.0 messages, and the Open
@@ -665,9 +667,11 @@ outcome as calling chapter4's `ht_call` directly.
 
 ## What remains
 
-- **Live transports.** Messages are byte strings in one process. MCP's
-  stdio transport (newline-delimited messages to a child process) and its
-  Streamable HTTP transport need the host's process and socket effects.
+- **Live transports.** The harness's messages are byte strings in one
+  process. Coder's `coder mcp` serves the stdio transport for real
+  (newline-delimited messages; Claude Code connects to it), but the
+  harness's client and server here don't use it yet, and the Streamable
+  HTTP transport needs the host's socket effects.
 - **The rest of MCP.** Resources, prompts, sampling, pagination with
   `nextCursor`, notifications other than `initialized`, string request ids,
   and content other than one text item.
