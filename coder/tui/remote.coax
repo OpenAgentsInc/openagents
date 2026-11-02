@@ -1,0 +1,291 @@
+// Coder on another machine (Coder book chapter 23): --on ssh:DEST runs a
+// verb with Coder on that machine over ssh, and --on cloud runs it on a host
+// of the GCE pool (`openagents cloud`), reached as user coder through an IAP
+// tunnel with the pool's key. The remote machine's own checkout runs the
+// verb (--remote-repo DIR, default ~/openagents), so its sessions stay there.
+// A session started this way leaves a record here, sessions/ID.remote, and
+// status, log, stop, attach and replay of that ID go back to its machine.
+//
+//   coder run "TASK" --on ssh:coderos-4080 --engine echo
+//   coder ls --on ssh:coderos-4080
+//   coder log ID                      (the record says where ID lives)
+
+CD_REMOTE_REPO :: "~/openagents";
+CD_POOL_KEY :: "/.openagents/cloud/pool_ed25519";      // under $HOME
+CD_REMOTE_LINE :: 1048576;
+
+CdRoute2 :: struct {
+  ok: bool;
+  ssh: bool; cloud: bool;
+  dest: [256] u8; ndest: int;           // ssh destination, or the pool host's name
+  zone: [64] u8; nzone: int;
+  project: [64] u8; nproject: int;
+  config: [1024] u8; nconfig: int;      // the pool's CLOUDSDK_CONFIG
+  repo: [512] u8; nrepo: int;
+  why: [512] u8; nwhy: int;
+}
+
+cd_r2_s :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+cd_r2_fail :: (r: [] CdRoute2, why: string) -> bool { r[0].ok = false; r[0].nwhy = cd_cat(r[0].why[..], 0, why); return false; }
+
+// Characters a destination, zone, project or repo may hold, so they go into a shell line unquoted.
+cd_r2_plain :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '/' || c == '~' || c == '@') { return false; } }
+  return true;
+}
+
+// 'text' for a shell, with ' as '\''.
+cd_r2_quote :: (out: [] u8, n0: int, s: string) -> int {
+  n := cd_cat(out, n0, "'");
+  for c: s { if c == '\'' { n = cd_cat(out, n, "'\\''"); } else if n < out.count { out[n] = c; n += 1; } }
+  return cd_cat(out, n, "'");
+}
+
+// --on local or mac is this machine.
+cd_on_local :: (on: string) -> bool { return on.count == 0 || on == "local" || on == "mac"; }
+
+// The route for --on: ssh:DEST, or cloud (a pool host, started when there is none and start is set).
+cd_r2_route :: (on: string, repo: string, start: bool, r: [] CdRoute2) -> bool {
+  r[0] = CdRoute2.{};
+  rp := ifx repo.count > 0 then repo else CD_REMOTE_REPO;
+  if !cd_r2_plain(rp) { return cd_r2_fail(r, "--remote-repo takes a plain path"); }
+  r[0].nrepo = cd_cat(r[0].repo[..], 0, rp);
+  if on.count > 4 && cast(string) on[0..<4] == "ssh:" {
+    d := cast(string) on[4..<on.count];
+    if !cd_r2_plain(d) || d[0] == '-' { return cd_r2_fail(r, "--on ssh:DEST takes a plain ssh destination"); }
+    r[0].ssh = true; r[0].ndest = cd_cat(r[0].dest[..], 0, d); r[0].ok = true;
+    return true;
+  }
+  if on != "cloud" { return cd_r2_fail(r, "--on is local, ssh:DEST or cloud"); }
+  r[0].cloud = true;
+  return cd_r2_pool_host(r, start);
+}
+
+// The pool's first running host, from `openagents --json cloud status`; with
+// start, `openagents cloud up --hosts 1` first when there is none.
+cd_r2_pool_host :: (r: [] CdRoute2, start: bool) -> bool {
+  for attempt: 0..<2 {
+    argv := [4] string.["openagents", "--json", "cloud", "status"];
+    none: [1] string;
+    ob: [262144] u8; ok: [1] bool;
+    text := rt_run_in(argv[..], none[0..<0], "", 120, ob[..], ok[..]);
+    if !ok[0] || text.count == 0 { return cd_r2_fail(r, "openagents cloud status failed: is the openagents CLI installed and the pool granted (openagents cloud up)?"); }
+    ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    hosts := cl_raw(text, "hosts");
+    for i: 0..<cl_count(hosts) {
+      h := cl_json(hosts, cl_item(hosts, i));
+      name := cl_str(ar[..], h, "name"); if name.count == 0 { name = cl_str(ar[..], h, "instance"); }
+      zone := cl_str(ar[..], h, "zone");
+      if name.count == 0 || zone.count == 0 || !cd_r2_plain(name) || !cd_r2_plain(zone) { continue; }
+      st := cl_str(ar[..], h, "status");
+      if st.count > 0 && st != "RUNNING" && st != "running" && st != "ready" { continue; }
+      r[0].ndest = cd_cat(r[0].dest[..], 0, name); r[0].nzone = cd_cat(r[0].zone[..], 0, zone);
+      pj := cl_str(ar[..], text, "pool.project"); r[0].nproject = cd_cat(r[0].project[..], 0, ifx pj.count > 0 then pj else "openagentsgemini");
+      cf := cl_str(ar[..], text, "pool.gcloud_config"); r[0].nconfig = cd_cat(r[0].config[..], 0, cf);
+      r[0].ok = true;
+      return true;
+    }
+    if !start || attempt == 1 { return cd_r2_fail(r, "the pool has no running host: start one with openagents cloud up --hosts 1"); }
+    tool_errln("coder: starting a pool host (openagents cloud up --hosts 1); it deletes itself after its idle minutes");
+    up := [5] string.["openagents", "cloud", "up", "--hosts", "1"];
+    ub: [65536] u8; uok: [1] bool;
+    out := rt_run_in(up[..], none[0..<0], "", 1200, ub[..], uok[..]);
+    if !uok[0] { tool_errln(out); return cd_r2_fail(r, "openagents cloud up failed"); }
+  }
+  return false;
+}
+
+// The command line run on the remote machine: cd REPO && coder.sh ARGS.
+cd_r2_line :: (r: [] CdRoute2, args: [] string, out: [] u8) -> string {
+  repo := cd_r2_s(r[0].repo[..], r[0].nrepo);
+  n := cd_cat(out, 0, "cd ");
+  if repo.count >= 2 && repo[0] == '~' && repo[1] == '/' { n = cd_cat(out, n, "\"$HOME\"/"); n = cd_cat(out, n, cast(string) repo[2..<repo.count]); }
+  else { n = cd_cat(out, n, repo); }
+  n = cd_cat(out, n, " && BROWSER=/usr/bin/true coder/tui/coder.sh");
+  for a: args { n = cd_cat(out, n, " "); n = cd_r2_quote(out, n, a); }
+  return cast(string) out[0..<n];
+}
+
+// ssh's argv for the route and one remote command line.
+cd_r2_argv :: (r: [] CdRoute2, line: string, argv: [] string, bufs: [] [1200] u8) -> int {
+  n := 0;
+  argv[n] = "ssh"; n += 1;
+  argv[n] = "-o"; argv[n + 1] = "BatchMode=yes"; n += 2;
+  argv[n] = "-o"; argv[n + 1] = "ConnectTimeout=20"; n += 2;
+  if r[0].ssh { argv[n] = cd_r2_s(r[0].dest[..], r[0].ndest); n += 1; argv[n] = line; return n + 1; }
+  // a pool host: user coder, the pool's key, IAP as the proxy, a host key that is new each time
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  k := cd_cat(bufs[0][..], cd_cat(bufs[0][..], 0, home), CD_POOL_KEY);
+  argv[n] = "-i"; argv[n + 1] = cast(string) bufs[0][0..<k]; n += 2;
+  argv[n] = "-o"; argv[n + 1] = "StrictHostKeyChecking=no"; n += 2;
+  argv[n] = "-o"; argv[n + 1] = "UserKnownHostsFile=/dev/null"; n += 2;
+  argv[n] = "-o"; argv[n + 1] = "LogLevel=ERROR"; n += 2;
+  p := cd_cat(bufs[1][..], 0, "ProxyCommand=env");
+  if r[0].nconfig > 0 { p = cd_cat(bufs[1][..], p, " CLOUDSDK_CONFIG="); p = cd_cat(bufs[1][..], p, cd_r2_s(r[0].config[..], r[0].nconfig)); }
+  p = cd_cat(bufs[1][..], p, " gcloud compute start-iap-tunnel "); p = cd_cat(bufs[1][..], p, cd_r2_s(r[0].dest[..], r[0].ndest));
+  p = cd_cat(bufs[1][..], p, " 22 --listen-on-stdin --zone "); p = cd_cat(bufs[1][..], p, cd_r2_s(r[0].zone[..], r[0].nzone));
+  p = cd_cat(bufs[1][..], p, " --project "); p = cd_cat(bufs[1][..], p, cd_r2_s(r[0].project[..], r[0].nproject));
+  p = cd_cat(bufs[1][..], p, " --verbosity=error");
+  argv[n] = "-o"; argv[n + 1] = cast(string) bufs[1][0..<p]; n += 2;
+  d := cd_cat(bufs[2][..], cd_cat(bufs[2][..], 0, "coder@"), cd_r2_s(r[0].dest[..], r[0].ndest));
+  argv[n] = cast(string) bufs[2][0..<d]; n += 1;
+  argv[n] = line; return n + 1;
+}
+
+// A session ID in one line of a remote verb's output, or "".
+cd_r2_session_of :: (line: string, ar: [] ClArena) -> string {
+  if line.count > 0 && line[0] == '{' {
+    k := cl_str(ar, line, "kind");
+    if k == "session" || k.count == 0 { return cl_str(ar, line, "id"); }
+    return "";
+  }
+  t := line; while t.count > 0 && t[0] == ' ' { t = cast(string) t[1..<t.count]; }
+  if t.count > 8 && cast(string) t[0..<8] == "session " { t = cast(string) t[8..<t.count]; }
+  if t.count != 19 || t[8] != '-' || t[15] != '-' { return ""; }
+  for c, i: t { if i != 8 && i != 15 && (c < '0' || c > '9') { return ""; } }
+  return t;
+}
+
+// Runs args with Coder on the route's machine, its output relayed line by
+// line; the exit status. sid gets the session it started, if any.
+cd_r2_run :: (r: [] CdRoute2, args: [] string, sid: [] u8) -> int {
+  lb: [16384] u8; line := cd_r2_line(r, args, lb[..]);
+  argv: [32] string; bufs: [3] [1200] u8;
+  na := cd_r2_argv(r, line, argv[..], bufs[..]);
+  h := cxproc_new();
+  if h < 0 { tool_errln("coder: no process slot is free"); return 1; }
+  ok := true;
+  for i: 0..<na { ok = ok && cl_push(h, CL_FIELD_ARG, argv[i]); }
+  if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); tool_errln("coder: ssh could not start"); return 1; }
+  c := cxproc_close_stdin(h);
+  for i: 0..<sid.count { sid[i] = 0; }
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  buf: [CD_REMOTE_LINE] u8;
+  for guard: 0..<100000000 {
+    m := cxproc_read_line(h, 1000);
+    if m == CL_TIMEOUT { continue; }
+    if m == CL_TOO_LONG { continue; }
+    if m < 0 { break; }
+    k := ifx m > buf.count then buf.count else m;
+    for i: 0..<k { buf[i] = cast,trunc(u8) cxproc_line_byte(h, i); }
+    text := cast(string) buf[0..<k];
+    cd_outln(text);
+    ar[0].at = 0; ar[0].full = false;
+    if sid[0] == 0 { s := cd_r2_session_of(text, ar[..]); if s.count > 0 { e := cd_cat(sid, 0, s); } }
+  }
+  st := cxproc_wait(h, 30000);
+  eb: [8192] u8; en := 0;
+  sc := cxproc_stderr_count(h);
+  for i: 0..<sc { if en < eb.count { eb[en] = cast,trunc(u8) cxproc_stderr_byte(h, i); en += 1; } }
+  x := cxproc_release(h);
+  if en > 0 { tool_err(cast(string) eb[0..<en]); }
+  return ifx st < 0 then 1 else st;
+}
+
+// sessions/ID.remote: where a session started with --on lives.
+cd_r2_record :: (r: [] CdRoute2, id: string) -> bool {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { return false; }
+  o: [4096] u8;
+  n := json_raw(o[..], 0, "{\"id\":"); n = json_write_string(o[..], n, id);
+  n = json_raw(o[..], n, ifx r[0].ssh then ",\"on\":\"ssh\"" else ",\"on\":\"cloud\"");
+  n = json_raw(o[..], n, ",\"dest\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].dest[..], r[0].ndest));
+  n = json_raw(o[..], n, ",\"repo\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].repo[..], r[0].nrepo));
+  if r[0].cloud {
+    n = json_raw(o[..], n, ",\"zone\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].zone[..], r[0].nzone));
+    n = json_raw(o[..], n, ",\"project\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].project[..], r[0].nproject));
+    n = json_raw(o[..], n, ",\"config\":"); n = json_write_string(o[..], n, cd_r2_s(r[0].config[..], r[0].nconfig));
+  }
+  n = json_raw(o[..], n, "}\n");
+  pb: [1400] u8; pn := cd_cat(pb[..], cd_cat(pb[..], cd_cat(pb[..], 0, dir), "/"), id); pn = cd_cat(pb[..], pn, ".remote");
+  return n > 0 && fs_write(cast(string) pb[0..<pn], cast(string) o[0..<n]);
+}
+
+// The route of a recorded remote session (an exact ID, or a prefix of one); false when there is none.
+cd_r2_recorded :: (id: string, r: [] CdRoute2, full: [] u8) -> bool {
+  r[0] = CdRoute2.{};
+  if id.count == 0 { return false; }
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { return false; }
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  found := ""; count := 0;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count < 8 || cast(string) name[name.count - 7..<name.count] != ".remote" { continue; }
+    base := cast(string) name[0..<name.count - 7];
+    if base.count >= id.count && cast(string) base[0..<id.count] == id { found = base; count += 1; if base == id { count = 1; break; } }
+  }
+  if count != 1 { return false; }
+  fb: [4096] u8; pb: [1400] u8;
+  pn := cd_cat(pb[..], cd_cat(pb[..], cd_cat(pb[..], 0, dir), "/"), found); pn = cd_cat(pb[..], pn, ".remote");
+  k := fs_read(cast(string) pb[0..<pn], fb[..]);
+  if k <= 0 { return false; }
+  rec := cast(string) fb[0..<k];
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  on := cl_str(ar[..], rec, "on");
+  r[0].ssh = on == "ssh"; r[0].cloud = on == "cloud";
+  r[0].ndest = cd_cat(r[0].dest[..], 0, cl_str(ar[..], rec, "dest"));
+  r[0].nrepo = cd_cat(r[0].repo[..], 0, cl_str(ar[..], rec, "repo"));
+  r[0].nzone = cd_cat(r[0].zone[..], 0, cl_str(ar[..], rec, "zone"));
+  r[0].nproject = cd_cat(r[0].project[..], 0, cl_str(ar[..], rec, "project"));
+  r[0].nconfig = cd_cat(r[0].config[..], 0, cl_str(ar[..], rec, "config"));
+  e := cd_cat(full, 0, found); if e < full.count { full[e] = 0; }
+  r[0].ok = (r[0].ssh || r[0].cloud) && cd_r2_plain(cd_r2_s(r[0].dest[..], r[0].ndest)) && cd_r2_plain(cd_r2_s(r[0].repo[..], r[0].nrepo));
+  return r[0].ok;
+}
+
+// The verb's arguments without --on and --remote-repo, for the remote Coder.
+cd_r2_args :: (args: [] Args, out: [] string) -> int {
+  n := 0; i := 0;
+  while i < args_count(args) {
+    v := args_at(args, i);
+    if v == "--on" || v == "--remote-repo" { i += 2; continue; }
+    if n < out.count { out[n] = v; n += 1; }
+    i += 1;
+  }
+  return n;
+}
+
+// A verb run with --on ssh:DEST or cloud.
+cd_cmd_on :: (args: [] Args, verb: string, on: string) -> int {
+  r: [1] CdRoute2;
+  if !cd_r2_route(on, args_value(args, "--remote-repo", ""), verb == "run" || verb == "fork", r[..]) {
+    tool_err("coder: "); tool_errln(cd_r2_s(r[0].why[..], r[0].nwhy)); return 2;
+  }
+  a: [256] string; na := cd_r2_args(args, a[..]);
+  sid: [64] u8;
+  st := cd_r2_run(r[..], a[0..<na], sid[..]);
+  k := 0; while k < sid.count && sid[k] != 0 { k += 1; }
+  if k > 0 && (verb == "run" || verb == "fork") { x := cd_r2_record(r[..], cast(string) sid[0..<k]); }
+  return st;
+}
+
+// status, log, stop, attach or replay of a session that lives on another machine; -1 when ID is local.
+cd_cmd_remote_id :: (args: [] Args, id: string) -> int {
+  r: [1] CdRoute2; full: [64] u8;
+  if !cd_r2_recorded(id, r[..], full[..]) { return -1; }
+  a: [256] string; na := cd_r2_args(args, a[..]);
+  k := 0; while k < full.count && full[k] != 0 { k += 1; }
+  for i: 0..<na { if a[i] == id { a[i] = cast(string) full[0..<k]; } }   // the remote's ID in full
+  sid: [64] u8;
+  return cd_r2_run(r[..], a[0..<na], sid[..]);
+}
+
+#test "remote: a route's command line quotes every argument; ssh destinations are plain" {
+  r: [1] CdRoute2;
+  #assert cd_r2_route("ssh:coderos-4080", "", false, r[..]);
+  lb: [512] u8;
+  a := [4] string.["run", "it's $HOME; rm -rf /", "--engine", "echo"];
+  #assert cd_r2_line(r[..], a[..], lb[..]) == "cd \"$HOME\"/openagents && BROWSER=/usr/bin/true coder/tui/coder.sh 'run' 'it'\\''s $HOME; rm -rf /' '--engine' 'echo'";
+  #assert !cd_r2_route("ssh:-oProxyCommand=x", "", false, r[..]);
+  #assert !cd_r2_route("ssh:host;reboot", "", false, r[..]);
+  #assert !cd_r2_route("mars", "", false, r[..]);
+  #assert !cd_r2_route("ssh:h", "/tmp/a b", false, r[..]);
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert cd_r2_session_of("{\"kind\":\"session\",\"id\":\"20261102-073134-163\"}", ar[..]) == "20261102-073134-163";
+  #assert cd_r2_session_of("20261102-073134-163", ar[..]) == "20261102-073134-163";
+  #assert cd_r2_session_of("  session 20261102-073134-163", ar[..]) == "20261102-073134-163";
+  #assert cd_r2_session_of("› $ echo hi", ar[..]) == "";
+}

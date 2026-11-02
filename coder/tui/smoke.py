@@ -340,6 +340,21 @@ def verbs(check):
         nop = subprocess.run([coder, "plugins", "--profile", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("profiles: an unknown profile is refused", nop.returncode == 2 and "no such profile" in nop.stderr)
         os.remove(os.path.join(plugdir, "fmt.json")); os.remove(os.path.join(plugdir, "tidy.json"))
+        # --on ssh:DEST (chapter 23): a stand-in ssh runs the remote line here, in another HOME whose openagents is this checkout
+        rhome = tempfile.mkdtemp(prefix="coder-remote-"); os.symlink(REPO, os.path.join(rhome, "openagents"))
+        with open(os.path.join(fake, "ssh"), "w") as f:
+            f.write("#!/bin/sh\nfor a; do last=\"$a\"; done\nHOME=" + rhome + " exec sh -c \"$last\"\n")
+        os.chmod(os.path.join(fake, "ssh"), 0o755)
+        senv = dict(env, PATH=fake + ":" + env["PATH"])
+        rr = subprocess.run([coder, "run", "$ echo remote-ok", "--engine", "echo", "--json", "--on", "ssh:box"], cwd=REPO, env=senv, capture_output=True, text=True, timeout=600)
+        rl = [json.loads(l) for l in rr.stdout.splitlines() if l.startswith("{")]
+        rid = rl[0].get("id", "") if rl and rl[0].get("kind") == "session" else ""
+        recs = [n for n in os.listdir(os.path.join(home, ".openagents", "coder", "sessions")) if n.endswith(".remote")]
+        rs = subprocess.run([coder, "status", rid[:15] or "none", "--json"], cwd=REPO, env=senv, capture_output=True, text=True, timeout=120)
+        check("--on ssh: the run happens on the other machine, is recorded here, and status by prefix is forwarded",
+              rr.returncode == 0 and any(l.get("text") == "remote-ok" for l in rl) and recs == [rid + ".remote"]
+              and any(n.startswith(rid) for n in os.listdir(os.path.join(rhome, ".openagents", "coder", "sessions"))) and rid in rs.stdout and "finished" in rs.stdout)
+        os.remove(os.path.join(fake, "ssh"))
         # Wasm plugins: built from Coax, run in the bounded host; a module importing more than it was admitted is refused
         if os.path.exists("/opt/homebrew/opt/llvm/bin/clang") and os.path.isdir("/opt/homebrew/opt/wasi-libc/share/wasi-sysroot"):
             wsrc = os.path.join(REPO, "coder", "plugins", "hello", "hello.coax"); wsh = os.path.join(HERE, "wasm_plugin.sh")

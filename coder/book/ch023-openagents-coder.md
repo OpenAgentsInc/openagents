@@ -7,8 +7,9 @@
 > chapter 17's Router. `watch` and `policy` work locally through that Router
 > instead of a server. Each conversation is a session file in
 > `~/.openagents/coder/sessions`. `coder mcp` serves the verbs as MCP tools
-> on stdio, and Claude Code drives Coder through it. Still to come: `daemon`
-> and `--on cloud`.
+> on stdio, and Claude Code drives Coder through it. `--on ssh:DEST` runs
+> any verb on another machine. Still to come: `daemon`, and a live
+> `--on cloud`, which waits on a pool host that can bootstrap current main.
 
 Every chapter in this book ends in a verb. This chapter puts them into the
 `coder` domain of the `openagents` binary.
@@ -19,7 +20,7 @@ Every chapter in this book ends in a verb. This chapter puts them into the
 
   | Verb | What it does |
   | --- | --- |
-  | `coder run "TASK" [--engine E] [--on mac\|cloud] [--cwd DIR]` | start a task; prints its ID and streams steps unless `--detach` |
+  | `coder run "TASK" [--engine E] [--on ssh:DEST\|cloud] [--cwd DIR]` | start a task; prints its ID and streams steps unless `--detach` |
   | `coder ls` | tasks with state, engine, Thread and age |
   | `coder status ID` | one task's state, last step and ending |
   | `coder log ID` | the task's session log as text or `--json` lines |
@@ -151,6 +152,30 @@ claude mcp add coder -- "$PWD/coder/tui/coder.sh" mcp
 In the live check, `claude -p` called `coder_ls` through the server and
 answered with the number of sessions on the machine.
 
+### Running on another machine
+
+`--on ssh:DEST` or `--on cloud` sends any verb to another machine.
+[coder/tui/remote.coax](../../coder/tui/remote.coax) runs it there over
+`ssh`, as `cd "$HOME"/openagents && coder/tui/coder.sh VERB ...`, and relays
+each line of output as it arrives. `--remote-repo DIR` names a different
+checkout on that machine. `DEST` is an ssh host or alias, made only of
+letters, digits and `.-_@:`.
+
+- `run` writes `sessions/ID.remote` here, with the route and the
+  destination, so `status`, `log`, `stop`, `attach` and `replay` of that ID
+  (or any unique prefix of it) go to the same machine without `--on`.
+- `--on cloud` takes a running host from `openagents cloud status`, or starts
+  one with `openagents cloud up --hosts 1`, and reaches it through an IAP
+  tunnel with the pool's key. The host deletes itself after its idle minutes.
+
+In the live check, `coder run '$ uname -sm; hostname' --engine echo --on
+ssh:coderos-4080` answered `Linux x86_64` and `coderos-4080`; a `--detach`
+run there was followed with `attach` and listed with `ls --on`. A
+`--on cloud` run started a pool host, but the host's bootstrap failed: the
+installed `openagents cloud` builds the Rust sources that main has since
+removed. The smoke checks `--on ssh:` with a stand-in `ssh` that runs the
+line in a second `HOME`.
+
 ### The session log
 
 [coder/tui/session.coax](../../coder/tui/session.coax) writes one JSON
@@ -195,6 +220,11 @@ such session, 130 stopped.
   sources added, listed and removed.
 - [x] The verbs are MCP tools (`coder mcp`); the smoke starts a run and
   reads its log through them, and Claude Code called one live.
+- [x] `--on ssh:DEST` runs a verb on another machine, and later verbs on
+  that session follow it there; checked live on coderos-4080 and by the
+  smoke.
+- [ ] `--on cloud` runs on a pool host, live.
+- [ ] `coder daemon` attaches this machine as an execution environment.
 - [ ] Each verb exists in the command table with `--json` and the spec's exit
   codes, and a `coder-journey` check runs `run`, `log`, `fork`, `stop` and
   `replay` on a fixture repository.
@@ -202,4 +232,4 @@ such session, 130 stopped.
 ## Sources
 
 - [The openagents CLI, v1.0.0](../../docs/cli/2026-11-01-openagents-cli-v1.md).
-- `apps/openagents-cli/coder.coax`, `coder/tui/coder.coax` (`tool_main` and the verbs), `coder/tui/session.coax`.
+- `apps/openagents-cli/coder.coax`, `coder/tui/coder.coax` (`tool_main` and the verbs), `coder/tui/session.coax`, `coder/tui/remote.coax`.
