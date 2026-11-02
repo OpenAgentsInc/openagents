@@ -1,0 +1,13 @@
+checkpoint 541d1f99c6b0c3cd0b11a95167540bb8edefd82b: 723 lines, 723 expected, ok; 627057286 F32 parameters
+decoder: 18128518 weights; 256 frames need 179078 work values
+hand decoder: ok, 4 tokens
+  tokens: 1 2 2 0
+  frames: 0 1 1 3
+  equals the two-loop reference: true
+  text: "ohh now" against "oh now"
+  word errors: 1 of 2
+  character errors: 1 of 6
+seeded decoder, 12 frames: ok, 8 tokens
+  tokens: 2 2 3 3 2 1 1 2
+  frames: 0 1 3 5 7 8 9 10
+  equals the two-loop reference: true

@@ -1,0 +1,36 @@
+// Chapter 153: the pinned Parakeet checkpoint's inventory against the
+// architecture, then greedy TDT decoding with the hand decoder and with a
+// seeded one, each against the two-loop reference, then text and error rates.
+#import "Basic";
+#load "../lib/tdt.coax";
+
+// book:begin run
+show :: (label:string,v:[]int) {print("%:",label);for x:v {print(" %",x);}print("\n");}
+main :: () {
+    c:=tdt_parakeet();inv:=tdt_inventory(c,TDT_PINNED_MANIFEST);
+    print("checkpoint %: % lines, % expected, %; % F32 parameters\n",TDT_PINNED_REVISION,inv.lines,tdt_expected_count(c),inv.status,inv.parameters);
+    p:=tdt_plan(tdt_parakeet_shape(),256);
+    print("decoder: % weights; 256 frames need % work values\n",p.weights,p.work);
+
+    s:=tdt_hand();w:[260]f32;x:[16]f32;tdt_hand_weights(w[..],x[..]);work:[64]f32;tok:[16]int;at:[16]int;
+    r:=tdt_decode(s,w[..],x[..],4,work[..],tok[..],at[..]);
+    print("hand decoder: %, % tokens\n",r.status,r.written);show("  tokens",tok[0..<r.written]);show("  frames",at[0..<r.written]);
+    rt:[16]int;ra:[16]int;n:=tdt_ref_decode(s,w[..],x[..],4,rt[..],ra[..]);
+    same:=n==r.written;for i:0..<n {same=same && rt[i]==tok[i] && ra[i]==at[i];}
+    print("  equals the two-loop reference: %\n",same);
+
+    pieces:=[4]string.["▁now","▁o","h","▁no"];out:[32]u8;m:=tdt_text(pieces[..],tok[0..<r.written],out[..]);
+    hyp:=cast(string)out[0..<m];ref:="oh now";print("  text: \"%\" against \"%\"\n",hyp,ref);
+    a:[16]string;b:[16]string;row:[17]int;
+    na:=tdt_words(ref,a[..]);nb:=tdt_words(hyp,b[..]);print("  word errors: % of %\n",tdt_distance(a[0..<na],b[0..<nb],row[..]),na);
+    na=tdt_chars(ref,a[..]);nb=tdt_chars(hyp,b[..]);print("  character errors: % of %\n",tdt_distance(a[0..<na],b[0..<nb],row[..]),na);
+
+    t:=tdt_tiny();q:=tdt_plan(t,12);sw:[433]f32;#assert tdt_init(t,sw[..],7)==TdtStatus.ok;
+    sx:[36]f32;tdt_fixture_frames(sx[..],7);swork:[200]f32;
+    r=tdt_decode(t,sw[..],sx[..],12,swork[0..<q.work],tok[..],at[..]);
+    print("seeded decoder, 12 frames: %, % tokens\n",r.status,r.written);show("  tokens",tok[0..<r.written]);show("  frames",at[0..<r.written]);
+    n=tdt_ref_decode(t,sw[..],sx[..],12,rt[..],ra[..]);
+    same=n==r.written;for i:0..<n {same=same && rt[i]==tok[i] && ra[i]==at[i];}
+    print("  equals the two-loop reference: %\n",same);
+}
+// book:end run

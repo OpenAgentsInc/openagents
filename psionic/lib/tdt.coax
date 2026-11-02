@@ -1,0 +1,625 @@
+// Chapter 153: transcribe with Parakeet. The token-and-duration transducer
+// (TDT) decoder of nvidia/parakeet-tdt-0.6b-v3: a prediction network (an
+// embedding and stacked LSTM layers), a joint network (two projections, ReLU,
+// one linear map to the tokens, the blank and the durations), and greedy
+// decoding with fixed rules for blanks, durations and the most symbols a
+// frame. Around it: the pinned checkpoint's tensor inventory checked against
+// the architecture, audio admission, pieces to text, and word and character
+// error rates.
+// Profile psionic-tdt-v1: f32 storage, binary64 compensated sums (chapter 4's
+// accumulator), one rounding to f32 per stored value; at most 8,192 tokens,
+// encoder width 1,024, prediction and joint width 640, 2 LSTM layers, 8
+// durations, 10 symbols a frame and 256 encoded frames (20 s of audio).
+#load "spectral.coax";
+#load "counter-rng.coax";
+#load "../fixtures/parakeet-tdt-manifest.coax";
+#load "../tests/tdt-checks.coax";   // the checks' references
+
+// book:begin types
+TdtStatus :: enum u8 {ok;shape;limit;rate;length;capacity;number;token;checkpoint;}
+// vocab tokens, and the blank after them (index vocab); enc the encoder
+// width; pred the prediction network's width; layers its LSTM layers; joint
+// the joint network's width; durations how many entries of dur are used;
+// max_symbols the most tokens one frame may emit.
+TdtShape :: struct {vocab:int;enc:int;pred:int;layers:int;joint:int;durations:int;dur:[8]int;max_symbols:int;}
+// Where each part of the flat f32 weight array starts, and how much work
+// space a decode of some frame count needs, at the offsets given.
+TdtPlan :: struct {status:TdtStatus;weights:int;lstm:int;dec:int;enc:int;head:int;outputs:int;
+    work:int;at_h:int;at_c:int;at_x:int;at_dec:int;at_z:int;at_logits:int;at_gates:int;}
+TdtResult :: struct {status:TdtStatus;written:int;}
+// book:end types
+
+// book:begin bounds
+TDT_VOCAB_MAX :: 8192;
+TDT_ENC_MAX :: 1024;
+TDT_PRED_MAX :: 640;
+TDT_JOINT_MAX :: 640;
+TDT_LAYERS_MAX :: 2;
+TDT_DURATIONS_MAX :: 8;
+TDT_SKIP_MAX :: 8;
+TDT_SYMBOLS_MAX :: 10;
+TDT_FRAMES_MAX :: 256;          // chapter 152's CF_TOKENS_MAX: 2,048 feature frames
+TDT_RATE :: 16000;
+TDT_SAMPLES_MAX :: 327520;      // 20.47 s: 2,048 frames at a 160-sample hop, centred
+TDT_FRAME_MAX :: 100000.0;      // what the joint reads, as chapter 152's CF_FRAME_MAX
+TDT_WEIGHT_MAX :: 1000.0;
+// book:end bounds
+
+// book:begin pinned
+// nvidia/parakeet-tdt-0.6b-v3's shape, from its config.json at the pinned
+// revision: the encoder (chapter 152's FastConformer) and the decoder.
+TdtConfig :: struct {mels:int;channels:int;enc:int;heads:int;hidden:int;kernel:int;layers:int;
+    vocab:int;pred:int;pred_layers:int;joint:int;durations:int;}
+tdt_parakeet :: ()->TdtConfig {
+    return TdtConfig.{mels=128,channels=256,enc=1024,heads=8,hidden=4096,kernel=9,layers=24,
+        vocab=8192,pred=640,pred_layers=2,joint=640,durations=5};
+}
+// Durations 0, 1, ..., n - 1.
+tdt_durations :: (s:TdtShape,n:int)->TdtShape {t:=s;t.durations=n;for i:0..<n {t.dur[i]=i;}return t;}
+tdt_parakeet_shape :: ()->TdtShape {
+    return tdt_durations(TdtShape.{vocab=8192,enc=1024,pred=640,layers=2,joint=640,max_symbols=10},5);
+}
+// book:end pinned
+
+#test "rules by hand: a token, a token with a skip, a forced blank skip, the symbol cap" {
+    s:=tdt_tiny();
+    m:=tdt_rule(s,0,0,1,0);#assert m.emit && m.t==0 && m.symbols==1;
+    m=tdt_rule(s,0,1,2,2);#assert m.emit && m.t==2 && m.symbols==0;
+    m=tdt_rule(s,2,0,4,0);#assert !m.emit && m.t==3 && m.symbols==0;
+    m=tdt_rule(s,3,0,0,0);#assert m.emit && m.t==3 && m.symbols==1;
+    m=tdt_rule(s,3,1,0,0);#assert m.emit && m.t==4 && m.symbols==0;
+    m=tdt_rule(s,3,1,4,1);#assert !m.emit && m.t==4 && m.symbols==0;
+    m=tdt_rule(s,5,1,1,2);#assert m.emit && m.t==7 && m.symbols==0;
+}
+#test "sigmoid, tanh and ReLU by hand" {
+    #assert tdt_sigmoid(0)==0.5 && tdt_sigmoid(-800)==0 && tdt_sigmoid(800)==1 && abs(tdt_sigmoid(2)-0.8807970779778823)<=3e-16 && abs(tdt_sigmoid(-3)-0.04742587317756678)<=3e-16;
+    #assert tdt_tanh(0)==0 && tdt_tanh(-400)==-1 && tdt_tanh(400)==1;
+    #assert abs(tdt_tanh(0.5)-0.46211715726000974)<=2e-16 && abs(tdt_tanh(-1)+0.7615941559557649)<=2e-16;
+    #assert tdt_relu(-2.5)==0 && tdt_relu(2.5)==2.5 && tdt_relu(0)==0 && tdt_min(3,5)==3 && tdt_min(5,3)==3 && tdt_min(-2,-2)==-2;
+}
+#test "seeded weights, recomputed" {
+    s:=tdt_tiny();p:=tdt_plan(s,1);w:[433]f32;for i:0..<433 {w[i]=7;}#assert p.weights==433;
+    #assert tdt_init(s,w[..],5)==TdtStatus.ok;
+    // Region i: its first index and the spread of its values.
+    starts:=[13]int.[0,16,20,148,180,308,340,360,365,380,385,425,433];
+    spreads:=[12]f64.[1,0,0.5,0.1,0.5,0.1,0.5,0.1,1/sqrt(3.0),0.1,1/sqrt(5.0),0.1];
+    for r:0..<12 {for i:starts[r]..<starts[r+1] {
+        u:=f64(cr_bits(5,cast(u64)i)>>11)/9007199254740992.0;#assert w[i]==f32(spreads[r]*(2*u-1));
+    }}
+    for i:16..<20 {#assert f32_bits(w[i])==0 || f32_bits(w[i])==0x80000000;}
+}
+#test "the layout: offsets, counts and the pinned decoder's size" {
+    s:=tdt_tiny();p:=tdt_plan(s,4);
+    #assert p.status==TdtStatus.ok && p.lstm==5*4 && p.dec==20+2*(8*16+8*4) && p.enc==p.dec+5*4+5 && p.head==p.enc+5*3+5;
+    #assert p.outputs==4+1+3 && p.weights==p.head+8*5+8;
+    #assert p.at_h==4*5 && p.at_c==p.at_h+8 && p.at_x==p.at_c+8 && p.at_dec==p.at_x+4;
+    #assert p.at_z==p.at_dec+5 && p.at_logits==p.at_z+5 && p.at_gates==p.at_logits+8 && p.work==p.at_gates+16;
+    q:=tdt_plan(tdt_parakeet_shape(),256);
+    // embedding 8193 x 640; two LSTM layers of 2 x 2560 x 640 + 2 x 2560;
+    // projections 640 x 640 + 640 and 640 x 1024 + 640; head 8198 x 640 + 8198.
+    #assert q.status==TdtStatus.ok && q.weights==5243520+2*(3276800+5120)+410240+656000+5254918;
+    #assert q.work==256*640+2*1280+640+2560+640+640+8198;
+}
+#test "shapes outside the bounds are refused" {
+    s:=tdt_tiny();#assert tdt_shape_check(s)==TdtStatus.ok && tdt_shape_check(tdt_parakeet_shape())==TdtStatus.ok;
+    b:=s;b.vocab=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.vocab=8193;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.enc=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.enc=1025;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.pred=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.pred=641;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.joint=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.joint=641;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.layers=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.layers=3;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.durations=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.durations=9;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.max_symbols=0;#assert tdt_shape_check(b)==TdtStatus.shape;b.max_symbols=11;#assert tdt_shape_check(b)==TdtStatus.limit;
+    b=s;b.dur[0]=-1;#assert tdt_shape_check(b)==TdtStatus.shape;
+    b=s;b.dur[2]=9;#assert tdt_shape_check(b)==TdtStatus.shape;b.dur[2]=8;#assert tdt_shape_check(b)==TdtStatus.ok;
+    b=s;b.dur[2]=1;#assert tdt_shape_check(b)==TdtStatus.shape;b=s;b.dur[1]=0;#assert tdt_shape_check(b)==TdtStatus.shape;
+    one:=tdt_durations(TdtShape.{vocab=1,enc=1,pred=1,layers=1,joint=1,max_symbols=1},1);#assert tdt_shape_check(one)==TdtStatus.ok;
+    #assert tdt_shape_check(tdt_durations(s,8))==TdtStatus.ok;
+    b=s;b.dur[0]=5;b=tdt_durations(b,3);#assert b.dur[0]==0 && b.dur[2]==2 && b.durations==3;
+    // The pinned values, from config.json and generation_config.json.
+    c:=tdt_parakeet();
+    #assert c.mels==128 && c.channels==256 && c.enc==1024 && c.heads==8 && c.hidden==4096 && c.kernel==9 && c.layers==24;
+    #assert c.vocab==8192 && c.pred==640 && c.pred_layers==2 && c.joint==640 && c.durations==5;
+    q:=tdt_parakeet_shape();
+    #assert q.vocab==8192 && q.enc==1024 && q.pred==640 && q.layers==2 && q.joint==640 && q.durations==5 && q.max_symbols==10;
+    for i:0..<8 {#assert q.dur[i]==ifx i<5 then i else 0;}
+    b=s;b.durations=1;#assert tdt_shape_check(b)==TdtStatus.ok;b.dur[0]=1;#assert tdt_shape_check(b)==TdtStatus.ok;
+    #assert tdt_plan(s,0).status==TdtStatus.length && tdt_plan(s,257).status==TdtStatus.length && tdt_plan(s,256).status==TdtStatus.ok;
+    b.vocab=0;#assert tdt_plan(b,4).status==TdtStatus.shape;
+}
+
+// book:begin layout
+// The flat weight array, in order: the embedding (vocab + 1, pred), whose
+// blank row is zero; per LSTM layer W_ih (4 pred, pred), W_hh (4 pred, pred),
+// b_ih and b_hh, gates in PyTorch's order i, f, g, o; the prediction
+// projection (joint, pred) and bias; the encoder projection (joint, enc) and
+// bias; the head (vocab + 1 + durations, joint) and bias.
+tdt_shape_check :: (s:TdtShape)->TdtStatus {
+    if s.vocab<1 || s.enc<1 || s.pred<1 || s.joint<1 || s.layers<1 || s.durations<1 || s.max_symbols<1 {return TdtStatus.shape;}
+    if s.vocab>TDT_VOCAB_MAX || s.enc>TDT_ENC_MAX || s.pred>TDT_PRED_MAX || s.joint>TDT_JOINT_MAX || s.layers>TDT_LAYERS_MAX
+        || s.durations>TDT_DURATIONS_MAX || s.max_symbols>TDT_SYMBOLS_MAX {return TdtStatus.limit;}
+    // Durations rise strictly from 0 or more and stay within TDT_SKIP_MAX.
+    if s.dur[0]<0 || s.dur[s.durations-1]>TDT_SKIP_MAX {return TdtStatus.shape;}
+    for i:1..<s.durations {if s.dur[i]<=s.dur[i-1] {return TdtStatus.shape;}}
+    return TdtStatus.ok;
+}
+tdt_plan :: (s:TdtShape,frames:int)->TdtPlan {
+    status:=tdt_shape_check(s);if status!=TdtStatus.ok {return TdtPlan.{status=status};}
+    if frames<1 || frames>TDT_FRAMES_MAX {return TdtPlan.{status=TdtStatus.length};}
+    p:TdtPlan;p.lstm=(s.vocab+1)*s.pred;p.dec=p.lstm+s.layers*(8*s.pred*s.pred+8*s.pred);
+    p.enc=p.dec+s.joint*s.pred+s.joint;p.head=p.enc+s.joint*s.enc+s.joint;
+    p.outputs=s.vocab+1+s.durations;p.weights=p.head+p.outputs*s.joint+p.outputs;
+    p.at_h=frames*s.joint;p.at_c=p.at_h+s.layers*s.pred;p.at_x=p.at_c+s.layers*s.pred;p.at_dec=p.at_x+s.pred;
+    p.at_z=p.at_dec+s.joint;p.at_logits=p.at_z+s.joint;p.at_gates=p.at_logits+p.outputs;p.work=p.at_gates+4*s.pred;
+    return p;
+}
+// book:end layout
+
+tdt_tiny :: ()->TdtShape {return tdt_durations(TdtShape.{vocab=4,enc=3,pred=4,layers=2,joint=5,max_symbols=2},3);}
+// tanh from exp(-2|a|), which never overflows, with a's sign; the logistic
+// function is (1 + tanh(v / 2)) / 2. ReLU is (v + |v|) / 2, exact in
+// binary64. None of them compares two numbers.
+tdt_tanh :: (a:f64)->f64 {t:=exp(-2*abs(a));v:=(1-t)/(1+t);return ifx a==abs(a) then v else -v;}
+tdt_sigmoid :: (v:f64)->f64 {return (1+tdt_tanh(v/2))/2;}
+tdt_relu :: (v:f64)->f64 {return (v+abs(v))/2;}
+
+// book:begin init
+// Seeded weights: matrices uniform in +-1/sqrt(fan in), biases in +-0.1,
+// the embedding in +-1 with its blank row zero. Weight i takes draw i of the
+// seed's counter stream.
+tdt_fill :: (w:[]f32,at:int,n:int,spread:f64,seed:u64) {
+    for i:at..<at+n {u:=f64(cr_bits(seed,cast(u64)i)>>11)/9007199254740992.0;w[i]=f32(spread*(2*u-1));}
+}
+tdt_init :: (s:TdtShape,w:[]f32,seed:u64)->TdtStatus {
+    p:=tdt_plan(s,TDT_FRAMES_MAX);if p.status!=TdtStatus.ok {return p.status;}
+    if w.count!=p.weights {return TdtStatus.shape;}
+    // Last region first, so a fill that ran long would show in the next one.
+    tdt_fill(w,p.head+p.outputs*s.joint,p.outputs,0.1,seed);tdt_fill(w,p.head,p.outputs*s.joint,1/sqrt(f64(s.joint)),seed);
+    tdt_fill(w,p.enc+s.joint*s.enc,s.joint,0.1,seed);tdt_fill(w,p.enc,s.joint*s.enc,1/sqrt(f64(s.enc)),seed);
+    tdt_fill(w,p.dec+s.joint*s.pred,s.joint,0.1,seed);tdt_fill(w,p.dec,s.joint*s.pred,1/sqrt(f64(s.pred)),seed);
+    for k:0..<s.layers {
+        at:=p.lstm+(s.layers-1-k)*(8*s.pred*s.pred+8*s.pred);
+        tdt_fill(w,at+8*s.pred*s.pred,8*s.pred,0.1,seed);tdt_fill(w,at,8*s.pred*s.pred,1/sqrt(f64(s.pred)),seed);
+    }
+    tdt_fill(w,0,s.vocab*s.pred,1,seed);for i:s.vocab*s.pred..<p.lstm {w[i]=0;}
+    return TdtStatus.ok;
+}
+// book:end init
+
+// book:begin linear
+// out[r] = bias[r] + sum over c of W[r][c] x[c]; W is (out.count,
+// x.count) at w[at], the bias right after it.
+tdt_linear :: (w:[]f32,at:int,x:[]f32,out:[]f32) {
+    rows:=out.count;cols:=x.count;
+    for r:0..<rows {
+        t:PsionicAccumulator;t=psionic_ops_accumulate(t,f64(w[at+rows*cols+r]));
+        for c:0..<cols {t=psionic_ops_accumulate(t,f64(w[at+r*cols+c])*f64(x[c]));}
+        out[r]=f32(psionic_ops_total(t));
+    }
+}
+// book:end linear
+
+// book:begin lstm
+// One label through the prediction network: the label's embedding row
+// enters layer 0; each layer's new h is the next layer's input. Gates are
+// W_ih x + b_ih + W_hh h + b_hh, in the order i, f, g, o; then
+// c = sigmoid(f) c + sigmoid(i) tanh(g) and h = sigmoid(o) tanh(c). The last
+// layer's h is the prediction g the joint reads.
+tdt_part :: (a:[]f32,at:int,n:int)->[]f32 {return a[at..<at+n];}
+tdt_predict :: (s:TdtShape,p:TdtPlan,w:[]f32,label:int,work:[]f32) {
+    n:=s.pred;x:=tdt_part(work,p.at_x,n);gates:=tdt_part(work,p.at_gates,4*n);
+    for i:0..<n {x[i]=w[label*n+i];}
+    for l:0..<s.layers {
+        at:=p.lstm+l*(8*n*n+8*n);h:=tdt_part(work,p.at_h+l*n,n);c:=tdt_part(work,p.at_c+l*n,n);
+        for r:0..<4*n {
+            t:PsionicAccumulator;t=psionic_ops_accumulate(t,f64(w[at+8*n*n+r]));t=psionic_ops_accumulate(t,f64(w[at+8*n*n+4*n+r]));
+            for k:0..<n {t=psionic_ops_accumulate(t,f64(w[at+r*n+k])*f64(x[k]));}
+            for k:0..<n {t=psionic_ops_accumulate(t,f64(w[at+4*n*n+r*n+k])*f64(h[k]));}
+            gates[r]=f32(psionic_ops_total(t));
+        }
+        for j:0..<n {
+            c[j]=f32(tdt_sigmoid(f64(gates[n+j]))*f64(c[j])+tdt_sigmoid(f64(gates[j]))*tdt_tanh(f64(gates[2*n+j])));
+            h[j]=f32(tdt_sigmoid(f64(gates[3*n+j]))*tdt_tanh(f64(c[j])));x[j]=h[j];
+        }
+    }
+    tdt_linear(w,p.dec,x,work[p.at_dec..<p.at_dec+s.joint]);
+}
+// book:end lstm
+
+// book:begin joint
+// The joint network at encoded frame t: ReLU of the frame's projection plus
+// the prediction's projection, then the head. The best token is the largest
+// of the first vocab + 1 outputs, the best duration the largest of the rest;
+// the lowest index wins a tie. Admitted weights and frames keep every
+// output finite: |h| <= 1, so each projection and output is below 7e16.
+TdtPick :: struct {token:int;duration:int;}
+tdt_joint :: (s:TdtShape,p:TdtPlan,w:[]f32,t:int,work:[]f32)->TdtPick {
+    z:=work[p.at_z..<p.at_z+s.joint];
+    for j:0..<s.joint {z[j]=f32(tdt_relu(f64(work[t*s.joint+j])+f64(work[p.at_dec+j])));}
+    logits:=work[p.at_logits..<p.at_logits+p.outputs];tdt_linear(w,p.head,z,logits);
+    pick:TdtPick;pick.duration=s.vocab+1;
+    for k:1..<s.vocab+1 {if logits[k]>logits[pick.token] {pick.token=k;}}
+    for k:s.vocab+2..<p.outputs {if logits[k]>logits[pick.duration] {pick.duration=k;}}
+    pick.duration-=s.vocab+1;
+    return pick;
+}
+// book:end joint
+
+// book:begin rule
+// One decision of greedy TDT decoding at encoded frame t, after symbols
+// decisions there. A blank emits nothing; a blank with duration 0 skips one
+// frame anyway, so a blank always moves on. A skip above 0 moves to frame
+// t + skip. A token with duration 0 stays on frame t, unless the frame has
+// now made max_symbols decisions; then it moves on one frame.
+TdtMove :: struct {emit:bool;t:int;symbols:int;}
+tdt_rule :: (s:TdtShape,t:int,symbols:int,token:int,duration:int)->TdtMove {
+    blank:=token==s.vocab;skip:=s.dur[duration];
+    if blank && skip==0 {skip=1;}
+    if skip==0 && symbols+1==s.max_symbols {skip=1;}
+    if skip>0 {return TdtMove.{emit=!blank,t=t+skip};}
+    return TdtMove.{emit=true,t=t,symbols=symbols+1};
+}
+// book:end rule
+
+// book:begin admit
+// Every weight finite and within TDT_WEIGHT_MAX; every value of every frame
+// finite and within TDT_FRAME_MAX.
+tdt_values_ok :: (v:[]f32,limit:f64)->bool {
+    for x:v {if !psionic_tensor_finite_bits(f32_bits(x)) || abs(f64(x))>limit {return false;}}
+    return true;
+}
+// book:end admit
+
+// book:begin decode
+// Greedy TDT decoding of frames encoded frames (enc, frames x s.enc). Writes
+// each emitted token and the frame it was emitted at; refuses before writing
+// anything when an input is outside its bounds, and with capacity when the
+// outputs fill up (written then counts what was kept).
+tdt_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int)->TdtResult {
+    p:=tdt_plan(s,frames);if p.status!=TdtStatus.ok {return TdtResult.{status=p.status};}
+    if w.count!=p.weights || enc.count!=frames*s.enc {return TdtResult.{status=TdtStatus.shape};}
+    if work.count<p.work || at.count<tokens.count {return TdtResult.{status=TdtStatus.capacity};}
+    if !tdt_values_ok(w,TDT_WEIGHT_MAX) || !tdt_values_ok(enc,TDT_FRAME_MAX) {return TdtResult.{status=TdtStatus.number};}
+    for t:0..<frames {tdt_linear(w,p.enc,enc[t*s.enc..<t*s.enc+s.enc],work[t*s.joint..<t*s.joint+s.joint]);}
+    for i:p.at_h..<p.at_x {work[i]=0;}
+    tdt_predict(s,p,w,s.vocab,work);   // the blank starts the prediction network
+    t:=0;symbols:=0;n:=0;
+    while t<frames {
+        pick:=tdt_joint(s,p,w,t,work);
+        m:=tdt_rule(s,t,symbols,pick.token,pick.duration);
+        if m.emit {
+            if n==tokens.count {return TdtResult.{status=TdtStatus.capacity,written=n};}
+            tokens[n]=pick.token;at[n]=t;n+=1;tdt_predict(s,p,w,pick.token,work);
+        }
+        t=m.t;symbols=m.symbols;
+    }
+    return TdtResult.{written=n};
+}
+// book:end decode
+
+// book:begin audio
+// What the decoder admits: one channel at 16 kHz in [-1, 1] (chapter 151's
+// sf_admit) and at most TDT_SAMPLES_MAX samples. An encoded frame is 8 hops
+// of 160 samples: 80 ms.
+tdt_admit :: (a:SfAudio)->TdtStatus {
+    st:=sf_admit(a,sf_nemo_spec());
+    if st==SfStatus.rate {return TdtStatus.rate;}
+    if st!=SfStatus.ok {return TdtStatus.shape;}
+    if a.samples.count>TDT_SAMPLES_MAX {return TdtStatus.length;}
+    return TdtStatus.ok;
+}
+// book:end audio
+
+// book:begin text
+// Tokens to text: concatenate their pieces and turn each U+2581 (the
+// SentencePiece word mark, bytes E2 96 81) into a space, dropping a leading
+// one. The byte count, or -1 for a token outside pieces or too small an out.
+tdt_text :: (pieces:[]string,tokens:[]int,out:[]u8)->int {
+    n:=0;
+    for k:tokens {
+        if k<0 || k>=pieces.count {return -1;}
+        piece:=pieces[k];i:=0;
+        while i<piece.count {
+            mark:=i+3<=piece.count && piece[i..<i+3]=="▁";
+            if n>=out.count {return -1;}
+            if mark {i+=3;if n>0 {out[n]=' ';n+=1;}}
+            else {out[n]=piece[i];n+=1;i+=1;}
+        }
+    }
+    return n;
+}
+// book:end text
+
+// book:begin errors
+// Words split on spaces; characters are UTF-8 code points, spaces included.
+// Each unit is written into units as a view of text; the count, or -1 when
+// units is too small.
+tdt_words :: (text:string,units:[]string)->int {
+    n:=0;i:=0;
+    while i<text.count {
+        if text[i]==' ' {i+=1;continue;}
+        start:=i;while i<text.count && text[i]!=' ' {i+=1;}
+        if n==units.count {return -1;}
+        units[n]=text[start..<i];n+=1;
+    }
+    return n;
+}
+tdt_chars :: (text:string,units:[]string)->int {
+    n:=0;i:=0;
+    while i<text.count {
+        start:=i;i+=1;while i<text.count && (text[i]&0xC0)==0x80 {i+=1;}
+        if n==units.count {return -1;}
+        units[n]=text[start..<i];n+=1;
+    }
+    return n;
+}
+// The fewest substitutions, insertions and deletions that turn ref into hyp
+// (Levenshtein), with one row of hyp.count + 1 integers; -1 when row is
+// too short. The error rate is that over ref.count.
+// The smaller of a and b with no comparison: d >> 63 is all ones when d < 0.
+tdt_min :: (a:int,b:int)->int {d:=a-b;return b+(d&(d>>63));}
+tdt_distance :: (ref:[]string,hyp:[]string,row:[]int)->int {
+    if row.count<hyp.count+1 {return -1;}
+    for j:0..<hyp.count+1 {row[j]=j;}
+    for i:1..<ref.count+1 {
+        diag:=row[0];row[0]=i;
+        for j:1..<hyp.count+1 {
+            up:=row[j];row[j]=tdt_min(tdt_min(up+1,row[j-1]+1),diag+(ifx ref[i-1]==hyp[j-1] then 0 else 1));diag=up;
+        }
+    }
+    return row[hyp.count];
+}
+// book:end errors
+
+// book:begin checkpoint
+// The tensor a checkpoint of shape c must hold at position i (0 to
+// tdt_expected_count(c) - 1): its name (a prefix, a layer number when layer
+// is not -1, a suffix), dtype and dimensions. The names are Hugging Face's
+// for ParakeetForTDT.
+TdtTensor :: struct {prefix:string;layer:int;suffix:string;dtype:string;rank:int;dims:[4]int;}
+tdt_d1 :: (a:int)->TdtTensor {t:TdtTensor;t.rank=1;t.dims[0]=a;return t;}
+tdt_d2 :: (a:int,b:int)->TdtTensor {t:=tdt_d1(a);t.rank=2;t.dims[1]=b;return t;}
+tdt_d3 :: (a:int,b:int,c:int)->TdtTensor {t:=tdt_d2(a,b);t.rank=3;t.dims[2]=c;return t;}
+tdt_d4 :: (a:int,b:int,c:int,d:int)->TdtTensor {t:=tdt_d3(a,b,c);t.rank=4;t.dims[3]=d;return t;}
+tdt_tensor :: (prefix:string,layer:int,suffix:string,dims:TdtTensor)->TdtTensor {
+    t:=dims;t.prefix=prefix;t.layer=layer;t.suffix=suffix;t.dtype="F32";return t;
+}
+tdt_whole :: (name:string,dims:TdtTensor)->TdtTensor {return tdt_tensor(name,-1,"",dims);}
+TDT_LAYER_TENSORS :: 29;
+TDT_LAYER_NAMES :: [29]string.[".conv.depthwise_conv.weight",".conv.norm.bias",".conv.norm.num_batches_tracked",
+    ".conv.norm.running_mean",".conv.norm.running_var",".conv.norm.weight",".conv.pointwise_conv1.weight",".conv.pointwise_conv2.weight",
+    ".feed_forward1.linear1.weight",".feed_forward1.linear2.weight",".feed_forward2.linear1.weight",".feed_forward2.linear2.weight",
+    ".norm_conv.bias",".norm_conv.weight",".norm_feed_forward1.bias",".norm_feed_forward1.weight",".norm_feed_forward2.bias",
+    ".norm_feed_forward2.weight",".norm_out.bias",".norm_out.weight",".norm_self_att.bias",".norm_self_att.weight",
+    ".self_attn.bias_u",".self_attn.bias_v",".self_attn.k_proj.weight",".self_attn.o_proj.weight",".self_attn.q_proj.weight",
+    ".self_attn.relative_k_proj.weight",".self_attn.v_proj.weight"];
+// Tensor k of an encoder layer, in the order of TDT_LAYER_NAMES. Batch
+// norm's step counter is a scalar I64; the layers' linear maps and
+// convolutions have no biases.
+tdt_layer_tensor :: (c:TdtConfig,layer:int,k:int)->TdtTensor {
+    e:=c.enc;name:=TDT_LAYER_NAMES[k];p:="encoder.layers.";
+    if k==0 {return tdt_tensor(p,layer,name,tdt_d3(e,1,c.kernel));}
+    if k==2 {none:TdtTensor;t:=tdt_tensor(p,layer,name,none);t.dtype="I64";return t;}
+    if k==6 {return tdt_tensor(p,layer,name,tdt_d3(2*e,e,1));}
+    if k==7 {return tdt_tensor(p,layer,name,tdt_d3(e,e,1));}
+    if k==8 || k==10 {return tdt_tensor(p,layer,name,tdt_d2(c.hidden,e));}
+    if k==9 || k==11 {return tdt_tensor(p,layer,name,tdt_d2(e,c.hidden));}
+    if k==22 || k==23 {return tdt_tensor(p,layer,name,tdt_d2(c.heads,e/c.heads));}
+    if k>=24 {return tdt_tensor(p,layer,name,tdt_d2(e,e));}
+    return tdt_tensor(p,layer,name,tdt_d1(e));
+}
+// The decoder (projection, embedding, LSTM), the encoder projection and the
+// head, then the subsampling, then the encoder layers.
+tdt_expected_count :: (c:TdtConfig)->int {return 3+4*c.pred_layers+4+12+c.layers*TDT_LAYER_TENSORS;}
+tdt_expected :: (c:TdtConfig,i:int)->TdtTensor {
+    g:=4*c.pred;outputs:=c.vocab+1+c.durations;ch:=c.channels;
+    if i==0 {return tdt_whole("decoder.decoder_projector.bias",tdt_d1(c.joint));}
+    if i==1 {return tdt_whole("decoder.decoder_projector.weight",tdt_d2(c.joint,c.pred));}
+    if i==2 {return tdt_whole("decoder.embedding.weight",tdt_d2(c.vocab+1,c.pred));}
+    j:=i-3;
+    if j<4*c.pred_layers {
+        names:=[4]string.["decoder.lstm.bias_hh_l","decoder.lstm.bias_ih_l","decoder.lstm.weight_hh_l","decoder.lstm.weight_ih_l"];
+        return tdt_tensor(names[j%4],j/4,"",ifx j%4<2 then tdt_d1(g) else tdt_d2(g,c.pred));
+    }
+    j-=4*c.pred_layers;
+    if j==0 {return tdt_whole("encoder_projector.bias",tdt_d1(c.joint));}
+    if j==1 {return tdt_whole("encoder_projector.weight",tdt_d2(c.joint,c.enc));}
+    if j==2 {return tdt_whole("joint.head.bias",tdt_d1(outputs));}
+    if j==3 {return tdt_whole("joint.head.weight",tdt_d2(outputs,c.joint));}
+    j-=4;
+    if j<10 {
+        // Convolutions 0, 2 and 5 are 3 x 3 (the first full, the others
+        // depthwise); 3 and 6 are pointwise. Each has a bias.
+        conv:=[5]int.[0,2,3,5,6];n:=conv[j/2];p:="encoder.subsampling.layers.";
+        if j%2==0 {return tdt_tensor(p,n,".bias",tdt_d1(ch));}
+        if n==3 || n==6 {return tdt_tensor(p,n,".weight",tdt_d4(ch,ch,1,1));}
+        return tdt_tensor(p,n,".weight",tdt_d4(ch,1,3,3));
+    }
+    if j==10 {return tdt_whole("encoder.subsampling.linear.bias",tdt_d1(c.enc));}
+    if j==11 {return tdt_whole("encoder.subsampling.linear.weight",tdt_d2(c.enc,ch*(c.mels/8)));}
+    j-=12;return tdt_layer_tensor(c,j/TDT_LAYER_TENSORS,j%TDT_LAYER_TENSORS);
+}
+// book:end checkpoint
+
+// book:begin inventory
+// One manifest line: name, dtype, dimensions joined by commas. The byte
+// count written into out (at least 160 bytes).
+tdt_put :: (out:[]u8,n:int,s:string)->int {for i:0..<s.count {out[n+i]=s[i];}return n+s.count;}
+tdt_put_int :: (out:[]u8,n:int,v:int)->int {
+    digits:[20]u8;k:=0;x:=v;
+    while true {digits[k]=cast(u8)('0'+x%10);k+=1;x/=10;if x==0 {break;}}
+    m:=n;while k>0 {k-=1;out[m]=digits[k];m+=1;}
+    return m;
+}
+tdt_line :: (t:TdtTensor,out:[]u8)->int {
+    n:=tdt_put(out,0,t.prefix);if t.layer>=0 {n=tdt_put_int(out,n,t.layer);}
+    n=tdt_put(out,n,t.suffix);n=tdt_put(out,n," ");n=tdt_put(out,n,t.dtype);n=tdt_put(out,n," ");
+    for i:0..<t.rank {if i>0 {n=tdt_put(out,n,",");}n=tdt_put_int(out,n,t.dims[i]);}
+    return n;
+}
+// A manifest (one line a tensor) matches shape c when it has exactly the
+// expected lines, each once, in any order. The expected lines are distinct
+// (a test compares every pair), so this is a one-to-one match. Otherwise the result names the
+// first expected tensor that is missing or repeats (bad), or
+// bad = -1 when every expected line is there once but there are more lines.
+// parameters counts the F32 values.
+// A manifest of more than TDT_LINES_MAX lines is refused unread.
+TdtInventory :: struct {status:TdtStatus;lines:int;parameters:int;bad:int;}
+TDT_LINES_MAX :: 1024;
+tdt_inventory :: (c:TdtConfig,manifest:string)->TdtInventory {
+    ends:[1025]int;lines:=0;ends[0]=-1;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        if lines==TDT_LINES_MAX {return TdtInventory.{status=TdtStatus.checkpoint,lines=lines+1,bad=-1};}
+        lines+=1;ends[lines]=i;
+    }}
+    r:TdtInventory;r.lines=lines;buf:[160]u8;
+    for e:0..<tdt_expected_count(c) {
+        t:=tdt_expected(c,e);n:=tdt_line(t,buf[..]);line:=cast(string)buf[0..<n];found:=0;
+        for k:0..<lines {from:=ends[k]+1;if ends[k+1]-from==n && manifest[from..<ends[k+1]]==line {found+=1;}}
+        if found!=1 {return TdtInventory.{status=TdtStatus.checkpoint,lines=lines,bad=e};}
+        if t.dtype=="F32" {size:=1;for k:0..<t.rank {size*=t.dims[k];}r.parameters+=size;}
+    }
+    if lines!=tdt_expected_count(c) {return TdtInventory.{status=TdtStatus.checkpoint,lines=lines,bad=-1};}
+    return r;
+}
+// book:end inventory
+
+// book:begin hand
+// A decoder whose prediction network is all zeros, so each decision depends
+// on the frame alone: frame j is the unit vector e_j, the encoder
+// projection copies it, and column j of the head marks one token and one
+// duration index. Frame 0: token 1, skip 1. Frame 1: token 2, skip 0.
+// Frame 2: the blank, skip 0. Frame 3: token 0, skip 2.
+tdt_hand :: ()->TdtShape {return tdt_durations(TdtShape.{vocab=4,enc=4,pred=4,layers=1,joint=4,max_symbols=2},3);}
+tdt_hand_weights :: (w:[]f32,frames:[]f32) {
+    s:=tdt_hand();p:=tdt_plan(s,TDT_FRAMES_MAX);for i:0..<w.count {w[i]=0;}
+    token:=[4]int.[1,2,4,0];duration:=[4]int.[1,0,0,2];
+    for j:0..<4 {
+        w[p.enc+j*4+j]=1;w[p.head+token[j]*4+j]=1;w[p.head+(5+duration[j])*4+j]=1;
+        for i:0..<4 {frames[j*4+i]=ifx i==j then 1.0 else 0.0;}
+    }
+}
+// book:end hand
+
+#test "the hand decoder: tokens 1 2 2 0 at frames 0 1 1 3, text and error rates" {
+    s:=tdt_hand();p:=tdt_plan(s,4);w:[260]f32;x:[16]f32;#assert p.weights==260 && p.work==60;
+    for i:0..<260 {w[i]=7;}for i:0..<16 {x[i]=7;}tdt_hand_weights(w[..],x[..]);
+    // Twelve ones (four in the encoder projection, eight in the head), the rest 0.
+    ones:=0;for v:w {if v==1 {ones+=1;} else {#assert v==0;}}#assert ones==12;
+    toks:=[4]int.[1,2,4,0];durs:=[4]int.[1,0,0,2];
+    for j:0..<4 {#assert w[p.enc+j*4+j]==1 && w[p.head+toks[j]*4+j]==1 && w[p.head+(5+durs[j])*4+j]==1;}
+    for i:0..<16 {#assert f64(x[i])==ifx i%5==0 then 1.0 else 0.0;}
+    work:[64]f32;tok:[8]int;at:[8]int;for i:0..<64 {work[i]=3;}
+    r:=tdt_decode(s,w[..],x[..],4,work[0..<60],tok[..],at[..]);
+    #assert r.status==TdtStatus.ok && r.written==4 && tok[0]==1 && tok[1]==2 && tok[2]==2 && tok[3]==0;
+    #assert at[0]==0 && at[1]==1 && at[2]==1 && at[3]==3;
+    rt:[8]int;ra:[8]int;#assert tdt_ref_decode(s,w[..],x[..],4,rt[..],ra[..])==4 && rt[2]==2 && ra[3]==3;
+    // A tie goes to the lower index: frame 0 also marks token 3 and duration 2.
+    w[p.head+3*4]=1;w[p.head+7*4]=1;r=tdt_decode(s,w[..],x[..],4,work[..],tok[..],at[..]);
+    #assert r.written==4 && tok[0]==1 && at[1]==1 && tok[3]==0;
+    pieces:=[4]string.["▁now","▁o","h","▁no"];
+    out:[16]u8;n:=tdt_text(pieces[..],tok[0..<4],out[..]);#assert n==7 && cast(string)out[0..<7]=="ohh now";
+    #assert tdt_text(pieces[..],tok[0..<4],out[0..<6])==-1;
+    bad:=[1]int.[4];#assert tdt_text(pieces[..],bad[..],out[..])==-1;bad[0]=-1;#assert tdt_text(pieces[..],bad[..],out[..])==-1;
+    a:[8]string;b:[8]string;row:[9]int;
+    #assert tdt_words("oh now",a[..])==2 && tdt_words(" ohh  now ",b[..])==2 && tdt_distance(a[0..<2],b[0..<2],row[..])==1;
+    #assert tdt_chars("oh now",a[..])==6 && tdt_chars("ohh now",b[..])==7 && tdt_distance(a[0..<6],b[0..<7],row[..])==1;
+    #assert tdt_distance(a[0..<6],b[0..<7],row[0..<7])==-1 && tdt_words("a b c",a[0..<2])==-1 && tdt_chars("abc",a[0..<2])==-1;
+    #assert tdt_chars("été",a[..])==3 && a[0]=="é";
+    // Only the three bytes of U+2581 make a space: not U+2580, U+1581 or U+2019.
+    marks:=[5]string.["a","▁b▁","▀","ᖁ","’"];seq:=[5]int.[0,1,2,3,4];
+    n=tdt_text(marks[..],seq[..],out[..]);#assert n==13 && cast(string)out[0..<n]=="a b ▀ᖁ’";
+}
+#forall "the decoder equals the two-loop reference: tokens, frames, count" seed:0..<24 #steps 400000000 {
+    s:=tdt_tiny();s.max_symbols=1+seed%3;s.layers=1+seed%2;p:=tdt_plan(s,12);
+    w:[500]f32;#assert tdt_init(s,w[0..<p.weights],cast(u64)seed)==TdtStatus.ok;
+    x:[36]f32;tdt_fixture_frames(x[..],cast(u64)seed);
+    work:[200]f32;tok:[40]int;at:[40]int;rt:[40]int;ra:[40]int;
+    r:=tdt_decode(s,w[0..<p.weights],x[..],12,work[..],tok[..],at[..]);
+    n:=tdt_ref_decode(s,w[0..<p.weights],x[..],12,rt[..],ra[..]);
+    #assert r.status==TdtStatus.ok && r.written==n;
+    for i:0..<n {#assert tok[i]==rt[i] && at[i]==ra[i];}
+    // Again on the work left over: the same tokens.
+    again:=tdt_decode(s,w[0..<p.weights],x[..],12,work[..],rt[..],ra[..]);
+    #assert again.written==n;for i:0..<n {#assert tok[i]==rt[i] && at[i]==ra[i];}
+    // The prediction and joint networks' values, step by step, against the
+    // reference: the blank, then three tokens.
+    st:[3200]f32;for i:p.at_h..<p.at_x {work[i]=0;}
+    tdt_ref_step(s,w[0..<p.weights],s.vocab,st[..]);tdt_predict(s,p,w[0..<p.weights],s.vocab,work[..]);
+    for step:0..<4 {
+        if step>0 {k:=(seed+step)%s.vocab;tdt_ref_step(s,w[0..<p.weights],k,st[..]);tdt_predict(s,p,w[0..<p.weights],k,work[..]);}
+        for l:0..<s.layers {for j:0..<s.pred {
+            #assert abs(f64(work[p.at_h+l*4+j])-f64(st[l*640+j]))<=1e-6 && abs(f64(work[p.at_c+l*4+j])-f64(st[1280+l*640+j]))<=1e-6;
+        }}
+        for j:0..<s.joint {#assert abs(f64(work[p.at_dec+j])-f64(st[2560+j]))<=1e-6;}
+        t:=(seed+3*step)%12;tdt_linear(w[0..<p.weights],p.enc,x[t*3..<t*3+3],work[t*5..<t*5+5]);
+        pick:=tdt_joint(s,p,w[0..<p.weights],t,work[..]);
+        proj:[5]f32;tdt_ref_project(s,w[0..<p.weights],x[t*3..<t*3+3],proj[..]);logit:[8]f32;tdt_ref_logits(s,w[0..<p.weights],proj[..],st[..],logit[..]);
+        for j:0..<8 {#assert abs(f64(work[p.at_logits+j])-f64(logit[j]))<=1e-5;}
+        best:=0;for j:1..<5 {if logit[j]>logit[best] {best=j;}}#assert pick.token==best;
+        dur:=0;for j:1..<3 {if logit[5+j]>logit[5+dur] {dur=j;}}#assert pick.duration==dur;
+    }
+}
+#forall "the distance equals the full-table reference" seed:0..<200 #steps 100000000 {
+    words:=[3]string.["a","b","c"];ref:[12]string;hyp:[12]string;
+    nr:=cast(int)(cr_bits(cast(u64)seed,0)%13);nh:=cast(int)(cr_bits(cast(u64)seed,1)%13);
+    for i:0..<nr {ref[i]=words[cr_bits(cast(u64)seed,cast(u64)(2+i))%3];}
+    for i:0..<nh {hyp[i]=words[cr_bits(cast(u64)seed,cast(u64)(20+i))%3];}
+    row:[13]int;#assert tdt_distance(ref[0..<nr],hyp[0..<nh],row[..])==tdt_ref_distance(ref[0..<nr],hyp[0..<nh]);
+}
+#test "the pinned checkpoint's inventory is the architecture's, line for line" #steps 400000000 {
+    c:=tdt_parakeet();#assert tdt_expected_count(c)==723 && TDT_PINNED_TENSORS==723;
+    r:=tdt_inventory(c,TDT_PINNED_MANIFEST);
+    #assert r.status==TdtStatus.ok && r.lines==723 && r.bad==0 && r.parameters==627057286;
+    buf:[160]u8;n:=tdt_line(tdt_expected(c,2),buf[..]);#assert cast(string)buf[0..<n]=="decoder.embedding.weight F32 8193,640";
+    n=tdt_line(tdt_expected(c,24),buf[..]);#assert cast(string)buf[0..<n]=="encoder.subsampling.layers.6.weight F32 256,256,1,1";
+    n=tdt_line(tdt_expected(c,27+29+2),buf[..]);#assert cast(string)buf[0..<n]=="encoder.layers.1.conv.norm.num_batches_tracked I64 ";
+    n=tdt_line(tdt_expected(c,722),buf[..]);#assert cast(string)buf[0..<n]=="encoder.layers.23.self_attn.v_proj.weight F32 1024,1024";
+    d:=c;d.mels=80;r=tdt_inventory(d,TDT_PINNED_MANIFEST);#assert r.status==TdtStatus.checkpoint && r.bad==26;
+    d=c;d.layers=23;r=tdt_inventory(d,TDT_PINNED_MANIFEST);#assert r.status==TdtStatus.checkpoint && r.bad==-1 && r.lines==723;
+    d=c;d.durations=4;r=tdt_inventory(d,TDT_PINNED_MANIFEST);#assert r.status==TdtStatus.checkpoint && r.bad==13;
+    twice:="decoder.embedding.weight F32 8193,640\ndecoder.embedding.weight F32 8193,640\n";
+
+    r=tdt_inventory(c,twice);#assert r.status==TdtStatus.checkpoint && r.bad==0 && r.lines==2;
+    blank:[38200]u8;blank[0]='\n';for i:0..<TDT_PINNED_MANIFEST.count {blank[i+1]=TDT_PINNED_MANIFEST[i];}
+    r=tdt_inventory(c,cast(string)blank[0..<TDT_PINNED_MANIFEST.count+1]);#assert r.status==TdtStatus.checkpoint && r.bad==-1 && r.lines==724;
+    for i:0..<1025 {blank[i]='\n';}
+    r=tdt_inventory(c,cast(string)blank[0..<1024]);#assert r.status==TdtStatus.checkpoint && r.bad==0 && r.lines==1024;
+    r=tdt_inventory(c,cast(string)blank[0..<1025]);#assert r.status==TdtStatus.checkpoint && r.bad==-1 && r.lines==1025;
+}
+#test "the expected lines are distinct" #steps 2000000000 {
+    c:=tdt_parakeet();count:=tdt_expected_count(c);text:[40000]u8;ends:[724]int;at:=0;
+    for e:0..<count {at+=tdt_line(tdt_expected(c,e),text[at..<at+160]);ends[e+1]=at;}
+    for a:0..<count {for b:a+1..<count {#assert cast(string)text[ends[a]..<ends[a+1]]!=cast(string)text[ends[b]..<ends[b+1]];}}
+}
+#test "audio admission: rate, channels, length" {
+    x:[327521]f64;a:=SfAudio.{rate=16000,channels=1,samples=x[0..<327520]};
+    #assert tdt_admit(a)==TdtStatus.ok;
+    a.samples=x[..];#assert tdt_admit(a)==TdtStatus.length;a.samples=x[0..<1];#assert tdt_admit(a)==TdtStatus.ok;
+    a.rate=44100;#assert tdt_admit(a)==TdtStatus.rate;a.rate=16000;
+    a.channels=2;#assert tdt_admit(a)==TdtStatus.shape;a.channels=1;
+    a.samples=x[0..<0];#assert tdt_admit(a)==TdtStatus.shape;
+    // The front end the checkpoint's processor_config.json names.
+    s:=sf_nemo_spec();#assert s.rate==16000 && s.n_fft==512 && s.win_length==400 && s.hop==160 && s.mels==128 && s.preemphasis==0.97;
+}
+#test "decode refusals write nothing and keep their order" {
+    s:=tdt_tiny();p:=tdt_plan(s,4);w:[500]f32;#assert tdt_init(s,w[0..<p.weights],3)==TdtStatus.ok;
+    x:[12]f32;tdt_fixture_frames(x[..],3);work:[200]f32;tok:[8]int;at:[8]int;
+    for i:0..<8 {tok[i]=-7;at[i]=-7;}
+    b:=s;b.joint=0;#assert tdt_decode(b,w[0..<p.weights],x[..],4,work[..],tok[..],at[..]).status==TdtStatus.shape;
+    #assert tdt_decode(s,w[0..<p.weights],x[..],0,work[..],tok[..],at[..]).status==TdtStatus.length;
+    #assert tdt_decode(s,w[0..<p.weights-1],x[..],4,work[..],tok[..],at[..]).status==TdtStatus.shape;
+    #assert tdt_decode(s,w[0..<p.weights],x[0..<11],4,work[..],tok[..],at[..]).status==TdtStatus.shape;
+    #assert tdt_decode(s,w[0..<p.weights],x[..],4,work[0..<p.work-1],tok[..],at[..]).status==TdtStatus.capacity;
+    #assert tdt_decode(s,w[0..<p.weights],x[..],4,work[0..<p.work],tok[..],at[0..<7]).status==TdtStatus.capacity;
+    x[5]=100001;#assert tdt_decode(s,w[0..<p.weights],x[..],4,work[..],tok[..],at[..]).status==TdtStatus.number;
+    x[5]=-100000;w[7]=1001;#assert tdt_decode(s,w[0..<p.weights],x[..],4,work[..],tok[..],at[..]).status==TdtStatus.number;
+    w[7]=-1000;zero:f32=0;x[5]=zero/zero;#assert tdt_decode(s,w[0..<p.weights],x[..],4,work[..],tok[..],at[..]).status==TdtStatus.number;
+    for i:0..<8 {#assert tok[i]==-7 && at[i]==-7;}
+    x[5]=-100000;#assert tdt_decode(s,w[0..<p.weights],x[..],4,work[0..<p.work],tok[..],at[0..<8]).status==TdtStatus.ok;
+    w[7]=1000;x[5]=100000;#assert tdt_decode(s,w[0..<p.weights],x[..],4,work[0..<p.work],tok[0..<7],at[..]).status==TdtStatus.ok;
+    #assert tdt_init(b,w[0..<p.weights],3)==TdtStatus.shape && tdt_init(s,w[0..<p.weights-1],3)==TdtStatus.shape;
+    // The hand decoder emits 4 tokens: room for 3 keeps 3 and says capacity.
+    h:=tdt_hand();hw:[260]f32;hx:[16]f32;tdt_hand_weights(hw[..],hx[..]);
+    r:=tdt_decode(h,hw[..],hx[..],4,work[..],tok[0..<3],at[0..<3]);
+    #assert r.status==TdtStatus.capacity && r.written==3 && tok[2]==2;
+}

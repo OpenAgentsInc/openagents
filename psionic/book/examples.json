@@ -172,6 +172,26 @@
       ]
     },
     {
+      "source": "psionic/examples/transcribe-tdt.coax",
+      "chapter": "psionic/book/ch153-transcribe-with-parakeet.md",
+      "stdout": "psionic/fixtures/transcribe-tdt.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/transcribe-tdt-refuse.coax",
+      "chapter": "psionic/book/ch153-transcribe-with-parakeet.md",
+      "stdout": "psionic/fixtures/transcribe-tdt-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/int8-products.coax",
       "chapter": "psionic/book/ch048-integer-matrix-products.md",
       "stdout": "psionic/fixtures/int8-products.out",

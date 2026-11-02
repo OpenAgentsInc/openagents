@@ -1,0 +1,28 @@
+// Chapter 153: wrong audio, a checkpoint that does not fit the architecture,
+// and broken decoder inputs, each refused with its status.
+#import "Basic";
+#load "../lib/tdt.coax";
+
+// book:begin refuse
+main :: () {
+    x:[327521]f64;a:=SfAudio.{rate=44100,channels=1,samples=x[0..<16000]};
+    print("44.1 kHz audio: %\n",tdt_admit(a));
+    a.rate=16000;a.samples=x[..];print("327,521 samples (over 20.47 s): %\n",tdt_admit(a));
+
+    buf:[160]u8;c:=tdt_parakeet();
+    d:=c;d.mels=80;r:=tdt_inventory(d,TDT_PINNED_MANIFEST);n:=tdt_line(tdt_expected(d,r.bad),buf[..]);
+    print("an 80-mel model against the pinned file: %, first missing: %\n",r.status,cast(string)buf[0..<n]);
+    d=c;d.kernel=31;r=tdt_inventory(d,TDT_PINNED_MANIFEST);n=tdt_line(tdt_expected(d,r.bad),buf[..]);
+    print("31 depthwise taps: %, first missing: %\n",r.status,cast(string)buf[0..<n]);
+    d=c;d.layers=17;r=tdt_inventory(d,TDT_PINNED_MANIFEST);
+    print("17 layers: %, % lines for % expected\n",r.status,r.lines,tdt_expected_count(d));
+
+    s:=tdt_hand();w:[260]f32;f:[16]f32;tdt_hand_weights(w[..],f[..]);work:[64]f32;tok:[8]int;at:[8]int;
+    print("room for 3 tokens: %\n",tdt_decode(s,w[..],f[..],4,work[..],tok[0..<3],at[0..<3]));
+    zero:f32=0;f[5]=zero/zero;print("a NaN frame value: %\n",tdt_decode(s,w[..],f[..],4,work[..],tok[..],at[..]));
+    f[5]=0;w[0]=1001;print("a weight of 1,001: %\n",tdt_decode(s,w[..],f[..],4,work[..],tok[..],at[..]));
+    w[0]=0;print("257 frames: %\n",tdt_decode(s,w[..],f[..],257,work[..],tok[..],at[..]));
+    print("work one value short: %\n",tdt_decode(s,w[..],f[..],4,work[0..<59],tok[..],at[..]));
+    b:=s;b.dur[1]=0;print("durations 0 0 2: %\n",tdt_decode(b,w[..],f[..],4,work[..],tok[..],at[..]));
+}
+// book:end refuse

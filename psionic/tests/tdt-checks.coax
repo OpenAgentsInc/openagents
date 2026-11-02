@@ -1,0 +1,79 @@
+// Chapter 153's check references, loaded by psionic/lib/tdt.coax. Nothing
+// here calls the decoder. Sums are plain binary64 in index order; values are
+// rounded to f32 where the decoder stores them, so the token decisions can be
+// compared exactly. The greedy loop is written as two nested loops, the way
+// NeMo's reference greedy TDT decoder reads, not as one rule.
+// The state st: h of layer l at l*640, c at 1280 + l*640, the projected
+// prediction at 2560.
+tdt_ref_sigmoid :: (v:f64)->f64 {if v< -700 {return 0;}return 1/(1+exp(-v));}
+tdt_ref_tanh :: (v:f64)->f64 {if abs(v)>20 {return ifx v<0 then -1.0 else 1.0;}a:=exp(v);b:=exp(-v);return (a-b)/(a+b);}
+// Weight offsets, recomputed here from the layout's description.
+tdt_ref_lstm :: (s:TdtShape,l:int)->int {return (s.vocab+1)*s.pred+l*(8*s.pred*s.pred+8*s.pred);}
+tdt_ref_dec :: (s:TdtShape)->int {return tdt_ref_lstm(s,s.layers);}
+tdt_ref_enc :: (s:TdtShape)->int {return tdt_ref_dec(s)+s.joint*s.pred+s.joint;}
+tdt_ref_head :: (s:TdtShape)->int {return tdt_ref_enc(s)+s.joint*s.enc+s.joint;}
+tdt_ref_matvec :: (w:[]f32,at:int,rows:int,cols:int,x:[]f32,r:int)->f64 {
+    sum:=0.0;for c:0..<cols {sum+=f64(w[at+r*cols+c])*f64(x[c]);}return sum+f64(w[at+rows*cols+r]);
+}
+tdt_ref_step :: (s:TdtShape,w:[]f32,label:int,st:[]f32) {
+    n:=s.pred;x:[640]f32;for i:0..<n {x[i]=w[label*n+i];}
+    for l:0..<s.layers {
+        at:=tdt_ref_lstm(s,l);gate:[2560]f32;
+        for r:0..<4*n {
+            sum:=0.0;
+            for c:0..<n {sum+=f64(w[at+r*n+c])*f64(x[c])+f64(w[at+4*n*n+r*n+c])*f64(st[l*640+c]);}
+            gate[r]=f32(sum+f64(w[at+8*n*n+r])+f64(w[at+8*n*n+4*n+r]));
+        }
+        for j:0..<n {
+            st[1280+l*640+j]=f32(tdt_ref_sigmoid(f64(gate[n+j]))*f64(st[1280+l*640+j])+tdt_ref_sigmoid(f64(gate[j]))*tdt_ref_tanh(f64(gate[2*n+j])));
+            st[l*640+j]=f32(tdt_ref_sigmoid(f64(gate[3*n+j]))*tdt_ref_tanh(f64(st[1280+l*640+j])));
+            x[j]=st[l*640+j];
+        }
+    }
+    for j:0..<s.joint {st[2560+j]=f32(tdt_ref_matvec(w,tdt_ref_dec(s),s.joint,n,x[..],j));}
+}
+// One frame through the encoder projection.
+tdt_ref_project :: (s:TdtShape,w:[]f32,frame:[]f32,p:[]f32) {
+    for j:0..<s.joint {p[j]=f32(tdt_ref_matvec(w,tdt_ref_enc(s),s.joint,s.enc,frame,j));}
+}
+// The joint network's outputs for a projected frame p and the state st.
+tdt_ref_logits :: (s:TdtShape,w:[]f32,p:[]f32,st:[]f32,logit:[]f32) {
+    outputs:=s.vocab+1+s.durations;
+    z:[640]f32;for j:0..<s.joint {v:=f64(p[j])+f64(st[2560+j]);z[j]=f32(ifx v>0 then v else 0.0);}
+    for r:0..<outputs {logit[r]=f32(tdt_ref_matvec(w,tdt_ref_head(s),outputs,s.joint,z[..],r));}
+}
+// The reference greedy decoder; returns the token count, tokens and frames
+// in toks and frames.
+tdt_ref_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,toks:[]int,at:[]int)->int {
+    st:[3200]f32;for i:0..<3200 {st[i]=0;}
+    tdt_ref_step(s,w,s.vocab,st[..]);
+    outputs:=s.vocab+1+s.durations;n:=0;t:=0;
+    while t<frames {
+        p:[640]f32;tdt_ref_project(s,w,enc[t*s.enc..<(t+1)*s.enc],p[..]);
+        symbols:=0;more:=true;
+        while more && symbols<s.max_symbols {
+            logit:[8205]f32;tdt_ref_logits(s,w,p[..],st[..],logit[..]);
+            k:=0;for r:0..<s.vocab+1 {if logit[r]>logit[k] {k=r;}}
+            d:=0;for r:0..<s.durations {if logit[s.vocab+1+r]>logit[s.vocab+1+d] {d=r;}}
+            skip:=s.dur[d];
+            if k==s.vocab {if skip==0 {skip=1;}}
+            else {toks[n]=k;at[n]=t;n+=1;tdt_ref_step(s,w,k,st[..]);}
+            symbols+=1;more=skip==0;t+=skip;
+        }
+        if more {t+=1;}
+    }
+    return n;
+}
+// Levenshtein distance with the whole (ref + 1) x (hyp + 1) table.
+tdt_ref_distance :: (ref:[]string,hyp:[]string)->int {
+    d:[33][33]int;
+    for i:0..<ref.count+1 {d[i][0]=i;}
+    for j:0..<hyp.count+1 {d[0][j]=j;}
+    for i:1..<ref.count+1 {for j:1..<hyp.count+1 {
+        a:=d[i-1][j]+1;b:=d[i][j-1]+1;c:=d[i-1][j-1]+(ifx ref[i-1]==hyp[j-1] then 0 else 1);
+        m:=ifx a<b then a else b;d[i][j]=ifx m<c then m else c;
+    }}
+    return d[ref.count][hyp.count];
+}
+// Seeded encoder frames in [-2, 2), apart from the weight seeds.
+tdt_fixture_frames :: (x:[]f32,seed:u64) {for i:0..<x.count {x[i]=f32(4*(f64(cr_bits(seed+15300,cast(u64)i)>>11)/9007199254740992.0)-2);}}

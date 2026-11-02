@@ -1,0 +1,11 @@
+44.1 kHz audio: rate
+327,521 samples (over 20.47 s): length
+an 80-mel model against the pinned file: checkpoint, first missing: encoder.subsampling.linear.weight F32 1024,2560
+31 depthwise taps: checkpoint, first missing: encoder.layers.0.conv.depthwise_conv.weight F32 1024,1,31
+17 layers: checkpoint, 723 lines for 520 expected
+room for 3 tokens: TdtResult.{status = capacity, written = 3}
+a NaN frame value: TdtResult.{status = number, written = 0}
+a weight of 1,001: TdtResult.{status = number, written = 0}
+257 frames: TdtResult.{status = length, written = 0}
+work one value short: TdtResult.{status = capacity, written = 0}
+durations 0 0 2: TdtResult.{status = shape, written = 0}
